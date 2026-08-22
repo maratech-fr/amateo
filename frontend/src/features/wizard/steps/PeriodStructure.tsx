@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useCalendarEntry, useEntryConflicts, usePeriodAnchor, useSchedulePlanForEntry } from "@/features/cockpit/queries";
 import { useTeamLinks } from "@/features/matches/queries";
+import { INTENSITY_LABEL } from "@/features/matches/lib/teamLinkLabel";
 import { frDateShort } from "@/features/cockpit/lib/date";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { readFailed, readLoading } from "@/shared/lib/readState";
@@ -138,7 +139,7 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
   const bridgeLabelOf = (teamId: string): string | null => {
     const parts = teamLinks
       .filter((l) => l.teamAId === teamId || l.teamBId === teamId)
-      .map((l) => `${teams.find((t) => t.id === (l.teamAId === teamId ? l.teamBId : l.teamAId))?.name ?? "?"} (${"PREFERRED" === l.trainingIntensity ? "Préféré" : "Obligatoire"})`);
+      .map((l) => `${teams.find((t) => t.id === (l.teamAId === teamId ? l.teamBId : l.teamAId))?.name ?? "?"} (${INTENSITY_LABEL[l.trainingIntensity]})`);
     return parts.length > 0 ? `Passerelle avec ${parts.join(", ")}` : null;
   };
   const linksLabelOf = (teamId: string): string | null => {

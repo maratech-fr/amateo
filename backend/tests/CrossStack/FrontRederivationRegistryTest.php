@@ -118,6 +118,7 @@ final class FrontRederivationRegistryTest extends TestCase
         'features/wizard/steps/ConstraintsStep.tsx' => 'éditeur de formulaire : quels CHAMPS montrer par famille lors de la saisie — pas ce que le solveur fait',
         'features/wizard/steps/RecapStep.tsx' => 'affichage : compte les contraintes HARD pour un chiffre du récap',
         'features/planning/SlotDetail.tsx' => 'présentation : ruleType → libellé « obligatoire »/« préférence »',
+        'features/matches/lib/teamLinkLabel.ts' => 'présentation : maison UNIQUE du libellé d\'intensité de passerelle (table PREFERRED/MANDATORY → « Préféré »/« Obligatoire »), consommée par les deux hôtes de la sous-ligne — aucun verdict, le solveur reste seul juge de ce qu\'une intensité FAIT',
     ];
 
     // ---------------------------------------------------------------- (i) REGISTRE

@@ -6,6 +6,7 @@ import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } fro
 
 import { useMe } from "@/shared/session/queries";
 import { useTeamLinks } from "@/features/matches/queries";
+import { INTENSITY_LABEL } from "@/features/matches/lib/teamLinkLabel";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { DeleteConfirm } from "@/shared/components/ui/delete-confirm";
@@ -472,7 +473,7 @@ function TeamsEditor() {
       .filter((l) => l.teamAId === teamId || l.teamBId === teamId)
       .map((l) => {
         const other = l.teamAId === teamId ? l.teamBId : l.teamAId;
-        return `${teamNameById.get(other) ?? "?"} (${"PREFERRED" === l.trainingIntensity ? "Préféré" : "Obligatoire"})`;
+        return `${teamNameById.get(other) ?? "?"} (${INTENSITY_LABEL[l.trainingIntensity]})`;
       });
     return parts.length > 0 ? `Passerelle avec ${parts.join(", ")}` : null;
   };

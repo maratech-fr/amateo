@@ -8,8 +8,8 @@ import type { TeamLike, TierLike } from "@/shared/lib/teamTiers";
 
 import type { TeamLink, TeamLinkIntensity, TeamLinkType } from "./api";
 import { useCreateTeamLink, useDeleteTeamLink, useTeamLinks, useUpdateTeamLink } from "./queries";
+import { INTENSITY_LABEL } from "./lib/teamLinkLabel";
 
-const INTENSITY_LABEL: Record<TeamLinkIntensity, string> = { PREFERRED: "Préféré", MANDATORY: "Obligatoire" };
 
 /**
  * Passerelles entre équipes — la SECTION seule (extraite de `HabitsLinksDialog`, lot P2-45).
