@@ -6508,7 +6508,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "The period windows another plan ALREADY governs inside `[start, end]`, sorted by start date \u2014 served so the UI never offers a week whose plan creation the server would refuse with 409. Same predicate as the write guard, by construction. Each `windows[]` item: `entryId`, `title`, `startDate`, `endDate`, `label` (composed server-side, shown as-is). With `entryId` the querying family is excluded (mother and sibling weeks are legitimate); with `seasonId` (mother not yet created) nothing is excluded. Read-only, open to members."
+                        "description": "The period windows another plan ALREADY governs inside `[start, end]`, sorted by start date \u2014 served so the UI never offers a week whose plan creation the server would refuse with 409. Same predicate as the write guard, by construction. Each `windows[]` item: `entryId`, `title`, `startDate`, `endDate`, `label`, and `reason` \u2014 the ready-to-display sentence, composed server-side by the same helper that names the 409 refusal, and shown as-is (the UI adds only the shortcut to the conflicting planning; it never composes a domain sentence). With `entryId` the querying family is excluded (mother and sibling weeks are legitimate); with `seasonId` (mother not yet created) nothing is excluded. Read-only, open to members."
                     },
                     "400": {
                         "description": "No club in context"

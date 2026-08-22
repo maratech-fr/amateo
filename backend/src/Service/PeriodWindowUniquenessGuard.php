@@ -116,6 +116,21 @@ final class PeriodWindowUniquenessGuard
         // plan, qui répète déjà la fenêtre), + sa fenêtre, et invite aux DEUX issues explicites (modifier ou
         // supprimer le planning en place) plus la découpe en semaines — geste déjà existant (P2-36).
         // Aucun identifiant interne (gardé par PublicTextIsFreeOfInternalIdentifiersTest).
-        throw new WindowAlreadyPlannedException($conflictEntryId, \sprintf('Ces dates sont déjà planifiées par « %s » (%s). Une seule planification peut gouverner une même période : modifiez ce planning existant ou supprimez-le avant d’en créer un autre ici. Vous pouvez aussi découper la période en semaines pour les planifier séparément.', $conflict['entry_title'], $windowLabel));
+        throw new WindowAlreadyPlannedException($conflictEntryId, \sprintf('%s Une seule planification peut gouverner une même période : modifiez ce planning existant ou supprimez-le avant d’en créer un autre ici. Vous pouvez aussi découper la période en semaines pour les planifier séparément.', self::nameConflict($conflict['entry_title'], $windowLabel)));
     }
+    /**
+     * COMMENT ON NOMME une fenêtre déjà planifiée — foyer unique de la formule, partagé par le
+     * refus 409 et par la route de lecture qui PRÉVIENT ce refus.
+     *
+     * ⚑ Pourquoi une méthode et pas deux littéraux qui se ressemblent : les deux textes n'ont pas
+     * la même SUITE (le 409 invite aux issues, l'écran les offre en boutons), mais ils doivent
+     * nommer la période et sa fenêtre de la MÊME manière — sinon le gestionnaire lit deux noms
+     * pour un seul objet, et croit à deux plannings. Aucun identifiant interne
+     * (`PublicTextIsFreeOfInternalIdentifiersTest`).
+     */
+    public static function nameConflict(string $entryTitle, string $windowLabel): string
+    {
+        return \sprintf('Ces dates sont déjà planifiées par « %s » (%s).', $entryTitle, $windowLabel);
+    }
+
 }

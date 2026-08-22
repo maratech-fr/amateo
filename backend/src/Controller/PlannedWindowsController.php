@@ -109,6 +109,14 @@ final class PlannedWindowsController extends AbstractController
                 'endDate' => $endDate->format('Y-m-d'),
                 // Repère composé SERVEUR, par le MÊME helper que le message du 409 — le front l'affiche tel quel.
                 'label' => $this->schedulePlanProvisioner->windowLabel($startDate, $endDate),
+                // La PHRASE que l'écran affiche telle quelle. Même nommage que le refus 409
+                // (foyer `PeriodWindowUniquenessGuard::nameConflict`), sans son invitation à
+                // « découper en semaines » : le gestionnaire qui lit ceci EST déjà dans l'écran
+                // de découpe — l'y renvoyer serait lui désigner la porte où il se tient.
+                'reason' => PeriodWindowUniquenessGuard::nameConflict(
+                    (string) $row['entry_title'],
+                    $this->schedulePlanProvisioner->windowLabel($startDate, $endDate),
+                ),
             ];
         }
 

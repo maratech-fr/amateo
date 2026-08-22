@@ -76,6 +76,19 @@ final class PlannedWindowsParityTest extends WebTestCase
         self::assertNotSame('', $windows[0]['label'], 'la fenêtre est nommée côté serveur');
         self::assertNotSame('', $windows[1]['label']);
 
+        // La PHRASE est servie prête à afficher — l'écran n'en compose aucune. Et elle NOMME la
+        // période exactement comme le refus 409 le fera : deux noms pour un seul objet feraient
+        // croire au gestionnaire qu'il existe deux plannings.
+        foreach ($windows as $window) {
+            self::assertArrayHasKey('reason', $window, 'la route sert la phrase, elle ne laisse pas le front la composer');
+            self::assertSame(
+                PeriodWindowUniquenessGuard::nameConflict((string) $window['title'], (string) $window['label']),
+                $window['reason'],
+                'le nommage servi doit être CELUI du refus 409 — foyer unique',
+            );
+            self::assertStringNotContainsString('découper', (string) $window['reason'], "l'écran de découpe ne renvoie pas vers lui-même");
+        }
+
         // (a) SERVIE → refusée : une nouvelle période qui MORD sur octobre est bien refusée en 409.
         $incident = $this->postPeriodDated($user, 'closure', 'Autre incident', '2026-10-20', '2026-10-26');
         $this->adaptPeriodExpecting(409, $user, $incident);

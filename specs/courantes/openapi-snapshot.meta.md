@@ -2,8 +2,8 @@ Last verified @ 2026-08-22 (régénéré après `docker compose restart php-fpm`
 
 Changements récents :
 - **P2-38 prévention — les fenêtres déjà planifiées, servies (2026-08-22)** : **+1 path** —
-  `GET /api/planned-windows` (200 : `windows[]` {entryId, title, startDate, endDate, `label`
-  composé serveur}, les plages qu'un autre plan de période gouverne déjà dans `[start, end]` ;
+  `GET /api/planned-windows` (200 : `windows[]` {entryId, title, startDate, endDate, `label` et
+  `reason` — la PHRASE prête à afficher, composée serveur par le même helper que le refus 409}, les plages qu'un autre plan de période gouverne déjà dans `[start, end]` ;
   400 sans club ; 404 entryId/seasonId inconnu ou d'un autre club ; 422 start/end absents ou
   malformés, ou ni entryId ni seasonId). 168 → **169 paths**. Route de LECTURE (aucune écriture),
   **ouverte au Membre** — pas de gate management. Même prédicat que la garde d'écriture
