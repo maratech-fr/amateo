@@ -1,4 +1,4 @@
-import { Check, Lock, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { Check, Lock, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
@@ -28,7 +28,6 @@ import { sortByName } from "@/shared/lib/nameOrder";
 import { useWizardStore } from "../store";
 import { PeriodConstraints } from "./PeriodStructure";
 import { ReservationPanel } from "./ReservationPanel";
-import { MutualisationPanel } from "./MutualisationPanel";
 
 const FAMILIES: { key: ConstraintFamily; label: string }[] = [
   { key: "TIME", label: "Horaires" },
@@ -141,7 +140,7 @@ export function ConstraintsStep() {
   // Onglets de PRÉSENTATION (ne créent AUCUNE contrainte) : "base" = règles immuables lecture
   // seule, "wellbeing" = règles réglables (implicit_rule_settings). "constraint"/"reserve"
   // pilotent le formulaire de contraintes / la réservation.
-  const [mode, setMode] = useState<"constraint" | "reserve" | "base" | "wellbeing" | "mutualise">("constraint");
+  const [mode, setMode] = useState<"constraint" | "reserve" | "base" | "wellbeing">("constraint");
   const [ruleType, setRuleType] = useState<ConstraintRuleType>("PREFERRED");
   // target: "" = toutes les équipes (CLUB) · "tag:NAME" = un groupe · sinon un id d'équipe (TEAM)
   const [target, setTarget] = useState("");
@@ -759,22 +758,6 @@ export function ConstraintsStep() {
           <Lock className="size-3.5" />
           Réserver
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            if (null !== editingId) {
-              resetForm();
-            }
-            setMode("mutualise");
-          }}
-          className={cn(
-            "-mb-px flex items-center gap-1 border-b-2 px-3 py-1.5 text-sm",
-            "mutualise" === mode ? "border-accent font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <Users className="size-3.5" />
-          Mutualisation
-        </button>
       </div>
 
       {/* Mode période : les contraintes HÉRITÉES du planning principal vivent DANS l'onglet
@@ -796,7 +779,7 @@ export function ConstraintsStep() {
       {"base" === mode ? (
         <ProductRulesPanel />
       ) : "wellbeing" === mode ? (
-        // Même ancrage que « Réserver »/« Mutualisation » : en période le panneau règle la COPIE
+        // Même ancrage que « Réserver » : en période le panneau règle la COPIE
         // du plan (schedulePlanId), jamais le socle du club ; hors période, la saison (null).
         periodMode ? (
           <PeriodAnchorGate
@@ -823,19 +806,6 @@ export function ConstraintsStep() {
           </PeriodAnchorGate>
         ) : (
           <ReservationPanel teams={allTeams} pausedTeamIds={pausedIds} tiers={tiers} venues={reservationVenues} disabledVenueIds={disabledIds} schedulePlanId={null} entryId={periodEntryId} />
-        )
-      ) : "mutualise" === mode ? (
-        // Même ancrage que « Réserver » : plan de la période en mode période, socle (null) sinon.
-        periodMode ? (
-          <PeriodAnchorGate
-            anchor={anchor}
-            loadingLabel="Chargement du planning de la période…"
-            errorLabel="Impossible de charger le planning de la période."
-          >
-            {(schedulePlanId) => <MutualisationPanel teams={allTeams} tiers={tiers} pausedTeamIds={pausedIds} schedulePlanId={schedulePlanId} />}
-          </PeriodAnchorGate>
-        ) : (
-          <MutualisationPanel teams={allTeams} tiers={tiers} pausedTeamIds={pausedIds} schedulePlanId={null} />
         )
       ) : (
         <>

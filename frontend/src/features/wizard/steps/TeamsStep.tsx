@@ -1,10 +1,11 @@
 import { closestCorners, DndContext, type DragEndEvent, DragOverlay, KeyboardSensor, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowUpDown, ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronUp, GripVertical, Link2, Plus, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useMe } from "@/shared/session/queries";
+import { useTeamLinks } from "@/features/matches/queries";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { DeleteConfirm } from "@/shared/components/ui/delete-confirm";
@@ -22,6 +23,7 @@ import { orderedTeams, teamsOfTier } from "../lib/ranking";
 import { useCreateTeam, useDeleteTeam, useDeletionImpact, usePriorityTiers, useReorderTeams, useSharedTrainingGroups, useSportCategories, useUpdateTeam, useWizardTeams } from "../queries";
 import { useWizardStore } from "../store";
 import { PeriodTeams } from "./PeriodStructure";
+import { TeamLinksModal } from "./TeamLinksModal";
 import { compareNamesFr } from "@/shared/lib/nameOrder";
 
 const GENDERS: { value: Gender | ""; label: string }[] = [
@@ -88,17 +90,20 @@ interface RowProps {
   tiers: PriorityTier[];
   onField: (team: Team, patch: Partial<TeamPayload>) => void;
   onDelete: (team: Team) => void;
+  /** P2-45 — ouvre la modale « Liens » (passerelles + mutualisation) de cette équipe. */
+  onOpenLinks: (team: Team) => void;
   /** Badge de rang : `short` sur la ligne (S/A/B/C/D), `full` en infobulle. */
   rankLabel: { short: string; full: string };
   /** Flèches ↑↓ : ABSENTES quand `onMove` l'est — hors ordre par rang, elles n'ont pas de sens. */
   onMove?: (dir: -1 | 1) => void;
   canUp?: boolean;
   canDown?: boolean;
-  /** P2-27 — repère « mutualisée » : l'équipe s'entraîne avec d'autres. null = aucun groupe. */
-  mutualiseLabel?: string | null;
+  /** P2-45 — sous-ligne des liens : « Mutualisée avec … · Passerelle avec … (Préféré) ».
+   *  null = ni groupe ni passerelle → aucun texte ajouté (densité nominale). */
+  linksLabel?: string | null;
 }
 
-function TeamRow({ team, number, categories, tiers, onField, onDelete, rankLabel, canUp, canDown, onMove, mutualiseLabel }: RowProps) {
+function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLinks, rankLabel, canUp, canDown, onMove, linksLabel }: RowProps) {
   // Local edit buffers (saved on blur). name/sessions only change through this row.
   const [name, setName] = useState(team.name);
   const [sessions, setSessions] = useState(String(team.sessionsPerWeek));
@@ -177,6 +182,11 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, rankLabel
         />
         {/* Rang is not edited inline: changing a team's tier is done via the
             "Trier" mode (drag & drop between S/A/B/C/D zones). */}
+        {/* P2-45 — l'affordance « Liens » : une icône muette par ligne (densité nominale), à côté
+            de la corbeille. Elle ouvre passerelles + mutualisation de CETTE équipe. */}
+        <Button size="icon" variant="ghost" className="size-8" aria-label={`Liens de ${team.name}`} onClick={() => onOpenLinks(team)}>
+          <Link2 className="size-4" />
+        </Button>
         <Button size="icon" variant="ghost" className="size-8 text-destructive" aria-label="Supprimer" disabled={engaged} onClick={() => onDelete(team)}>
           <Trash2 className="size-4" />
         </Button>
@@ -188,7 +198,7 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, rankLabel
         // sans la moindre raison. Le POURQUOI est dit une fois au-dessus de la liste.
         <p className="ml-8 mt-1 text-xs text-muted-foreground">Engagée en compétition — niveau et suppression verrouillés.</p>
       )}
-      {mutualiseLabel ? <p className="ml-8 mt-1 text-xs text-muted-foreground">{mutualiseLabel}</p> : null}
+      {linksLabel ? <p className="ml-8 mt-1 text-xs text-muted-foreground">{linksLabel}</p> : null}
       {bonusCompetitionWarning && (
         <p role="alert" className="ml-8 mt-1 text-xs text-warning">
           Équipe en compétition classée Bonus (D) — elle passera en dernier ; vérifiez le rang.
@@ -361,6 +371,10 @@ function TeamsEditor() {
   // P2-27 — le repère « mutualisée » sur chaque ligne : les groupes du SOCLE (l'éditeur de saison
   // ne travaille jamais une période). Sans param le provider renvoie socle ET périodes → on filtre.
   const { data: sharedGroups = [] } = useSharedTrainingGroups(null);
+  // P2-45 — les passerelles du club+saison, SERVIES par le module matchs (régime 1, aucune
+  // redérivation) : elles nourrissent la sous-ligne « Passerelle avec … » et la modale Liens.
+  const { data: teamLinks = [] } = useTeamLinks();
+  const [linksTeam, setLinksTeam] = useState<Team | null>(null);
   const create = useCreateTeam();
   const update = useUpdateTeam();
   const del = useDeleteTeam();
@@ -450,6 +464,23 @@ function TeamsEditor() {
     }
     const others = g.teamIds.filter((x) => x !== teamId).map((x) => teamNameById.get(x) ?? "?");
     return others.length > 0 ? `Mutualisée avec ${others.join(", ")}` : "Mutualisée";
+  };
+  // P2-45 — le repère « passerelle » : nomme la co-équipière ET l'INTENSITÉ (tranchage fondateur),
+  // lue telle quelle du lien servi (jamais recalculée). Une équipe peut être passerelée à plusieurs.
+  const bridgeLabelOf = (teamId: string): string | null => {
+    const parts = teamLinks
+      .filter((l) => l.teamAId === teamId || l.teamBId === teamId)
+      .map((l) => {
+        const other = l.teamAId === teamId ? l.teamBId : l.teamAId;
+        return `${teamNameById.get(other) ?? "?"} (${"PREFERRED" === l.trainingIntensity ? "Préféré" : "Obligatoire"})`;
+      });
+    return parts.length > 0 ? `Passerelle avec ${parts.join(", ")}` : null;
+  };
+  // La sous-ligne combinée : « Mutualisée avec … · Passerelle avec … (Préféré) ». Sans lien ni
+  // groupe, `null` → aucun texte (densité nominale, l'icône Liens suffit).
+  const linksLabelOf = (teamId: string): string | null => {
+    const combined = [mutualiseLabelOf(teamId), bridgeLabelOf(teamId)].filter((x): x is string => null !== x);
+    return combined.length > 0 ? combined.join(" · ") : null;
   };
   const categoryRank = new Map(categories.map((c, index) => [c.id, index]));
   const flatTeams = [...teams].sort((a, b) => sort.dir * compareOn(sort.column, a, b, categoryRank));
@@ -839,11 +870,12 @@ function TeamsEditor() {
                           tiers={tiers}
                           onField={onField}
                           onDelete={setToDelete}
+                          onOpenLinks={setLinksTeam}
                           rankLabel={rankLabelOf(team)}
                           canUp={index > 0 && !reorderBusy}
                           canDown={index < group.length - 1 && !reorderBusy}
                           onMove={null === tier ? undefined : (dir) => moveInTier(team, dir)}
-                          mutualiseLabel={mutualiseLabelOf(team.id)}
+                          linksLabel={linksLabelOf(team.id)}
                         />
                       ))}
                     </div>
@@ -854,7 +886,7 @@ function TeamsEditor() {
                 // et le badge de rang par ligne porte l'information qu'elles donnaient.
                 <div className="rounded-lg border border-border bg-card px-2">
                   {flatTeams.map((team) => (
-                    <TeamRow key={team.id} team={team} categories={categories} tiers={tiers} onField={onField} onDelete={setToDelete} rankLabel={rankLabelOf(team)} mutualiseLabel={mutualiseLabelOf(team.id)} />
+                    <TeamRow key={team.id} team={team} categories={categories} tiers={tiers} onField={onField} onDelete={setToDelete} onOpenLinks={setLinksTeam} rankLabel={rankLabelOf(team)} linksLabel={linksLabelOf(team.id)} />
                   ))}
                 </div>
               )}
@@ -889,6 +921,11 @@ function TeamsEditor() {
         }}
         onCancel={() => setToDelete(null)}
       />
+      {/* P2-45 — la modale Liens de l'équipe. En SAISON, les passerelles sont ÉDITABLES
+          (readOnlyLinks=false) et la mutualisation écrit sur le socle (schedulePlanId null). */}
+      {null !== linksTeam ? (
+        <TeamLinksModal team={linksTeam} teams={teams} tiers={tiers} schedulePlanId={null} readOnlyLinks={false} onClose={() => setLinksTeam(null)} />
+      ) : null}
     </div>
   );
 }

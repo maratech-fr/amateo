@@ -1471,12 +1471,13 @@ describe("ConstraintsStep — affiner un groupe (targetTags / excludeTags)", () 
 });
 
 /**
- * P2-27 PR B — l'onglet « Mutualisation » : son PLACEMENT (à côté de « Réserver ») et son
- * ANCRAGE (socle en saison via `schedulePlanId` null ; plan de la période derrière
- * `PeriodAnchorGate` en mode période). Le comportement interne du panneau est gardé par
- * MutualisationPanel.test ; ici on garde le câblage dans l'étape.
+ * P2-45 — l'onglet « Mutualisation » A DÉMÉNAGÉ dans l'étape Équipes (modale par équipe) : il
+ * n'existe plus DANS ConstraintsStep, ni en saison ni en période. La création d'un groupe et son
+ * ancrage (socle `schedulePlanId` null / plan de période) sont désormais gardés depuis leurs
+ * nouveaux hôtes (TeamsStep.test, PeriodStructure.test). Le wrapper `describe` survit pour son
+ * `beforeEach`, dont dépend « le tableau des contraintes » niché ci-dessous.
  */
-describe("ConstraintsStep — onglet Mutualisation", () => {
+describe("ConstraintsStep — l'onglet Mutualisation a déménagé (P2-45)", () => {
   beforeEach(() => {
     h.list = [];
     h.sharedGroups = [];
@@ -1487,44 +1488,17 @@ describe("ConstraintsStep — onglet Mutualisation", () => {
   });
   afterEach(() => useWizardStore.getState().exitPeriodMode());
 
-  it("crée un groupe sur le SOCLE en mode saison (schedulePlanId null)", async () => {
-    const user = userEvent.setup();
+  it("n'offre plus d'onglet « Mutualisation » en saison", () => {
     renderWithProviders(<ConstraintsStep />);
-
-    await user.click(screen.getByRole("button", { name: "Mutualisation" }));
-    // Le panneau du socle : on coche deux équipes puis on crée.
-    await user.click(screen.getByRole("checkbox", { name: "SM1" }));
-    await user.click(screen.getByRole("checkbox", { name: "Fanion" }));
-    await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
-
-    expect(h.stgCreate).toHaveBeenCalledOnce();
-    const arg = h.stgCreate.mock.calls[0][0] as { schedulePlanId: string | null; teamIds: string[]; commonSessions: number };
-    expect(arg.schedulePlanId).toBeNull();
-    expect([...arg.teamIds].sort()).toEqual(["t1", "t2"]);
-    expect(arg.commonSessions).toBe(1);
+    expect(screen.queryByRole("button", { name: "Mutualisation" })).toBeNull();
+    // Falsification : « Réserver », l'onglet voisin, n'a PAS bougé — c'est bien Mutualisation qui part.
+    expect(screen.getByRole("button", { name: "Réserver" })).toBeInTheDocument();
   });
 
-  it("en mode période, passe par la porte d'ancre puis écrit sur le plan de la période", async () => {
-    const user = userEvent.setup();
+  it("n'offre plus d'onglet « Mutualisation » en période non plus", () => {
     useWizardStore.getState().startPeriodMode("entry-27");
     renderWithProviders(<ConstraintsStep />);
-
-    await user.click(screen.getByRole("button", { name: "Mutualisation" }));
-    await user.click(screen.getByRole("checkbox", { name: "SM1" }));
-    await user.click(screen.getByRole("checkbox", { name: "Fanion" }));
-    await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
-
-    expect(h.stgCreate.mock.calls[0][0]).toMatchObject({ schedulePlanId: "plan-1" });
-  });
-
-  it("en mode période, attend l'ancre avant d'offrir le panneau (pas d'écriture sur le socle)", async () => {
-    periodAnchorReady.value = false;
-    useWizardStore.getState().startPeriodMode("entry-27");
-    renderWithProviders(<ConstraintsStep />);
-
-    await userEvent.click(screen.getByRole("button", { name: "Mutualisation" }));
-    expect(screen.getByText(/Chargement du planning de la période/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Créer le groupe" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Mutualisation" })).toBeNull();
   });
 
   /**

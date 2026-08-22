@@ -1,7 +1,8 @@
-import { Loader2, Trash2 } from "lucide-react";
+import { Link2, Loader2, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { useCalendarEntry, useEntryConflicts, usePeriodAnchor, useSchedulePlanForEntry } from "@/features/cockpit/queries";
+import { useTeamLinks } from "@/features/matches/queries";
 import { frDateShort } from "@/features/cockpit/lib/date";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { readFailed, readLoading } from "@/shared/lib/readState";
@@ -64,6 +65,7 @@ import { CapacitySelect, GroupLabelField, SharedSlotHint } from "./slotFields";
 import { VenueAvailabilityGrid } from "./VenueAvailabilityGrid";
 import { claimPeriodSeed, periodSeedWasClaimed } from "./periodSeed";
 import { PeriodAnchorGate } from "./PeriodAnchorGate";
+import { TeamLinksModal } from "./TeamLinksModal";
 
 const fieldClass = "h-8 rounded-md border border-input bg-background px-2 text-sm";
 
@@ -114,6 +116,10 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
   // P2-27 — le repère « mutualisée » DOIT figurer aussi en période, sinon il mentirait par
   // omission : les groupes de CETTE période (schedulePlanId concret derrière PeriodAnchorGate).
   const { data: sharedGroups = [] } = useSharedTrainingGroups(schedulePlanId);
+  // P2-45 — les passerelles du club+saison (SERVIES par le module matchs) : le repère « passerelle »
+  // et la modale Liens. En période elles sont en LECTURE SEULE (structure de saison).
+  const { data: teamLinks = [] } = useTeamLinks();
+  const [linksTeam, setLinksTeam] = useState<Team | null>(null);
   const mutualiseGroupOfTeam = new Map<string, SharedTrainingGroup>();
   for (const g of sharedGroups) {
     for (const id of g.teamIds) {
@@ -127,6 +133,17 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
     }
     const others = g.teamIds.filter((x) => x !== teamId).map((x) => teams.find((t) => t.id === x)?.name ?? "?");
     return others.length > 0 ? `Mutualisée avec ${others.join(", ")}` : "Mutualisée";
+  };
+  // P2-45 — le repère « passerelle », intensité comprise (lue telle quelle du lien, jamais recalculée).
+  const bridgeLabelOf = (teamId: string): string | null => {
+    const parts = teamLinks
+      .filter((l) => l.teamAId === teamId || l.teamBId === teamId)
+      .map((l) => `${teams.find((t) => t.id === (l.teamAId === teamId ? l.teamBId : l.teamAId))?.name ?? "?"} (${"PREFERRED" === l.trainingIntensity ? "Préféré" : "Obligatoire"})`);
+    return parts.length > 0 ? `Passerelle avec ${parts.join(", ")}` : null;
+  };
+  const linksLabelOf = (teamId: string): string | null => {
+    const combined = [mutualiseLabelOf(teamId), bridgeLabelOf(teamId)].filter((x): x is string => null !== x);
+    return combined.length > 0 ? combined.join(" · ") : null;
   };
 
   const groups = groupTeamsByTier(teams, tiers);
@@ -316,27 +333,49 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
                   <label className="flex items-center gap-2">
                     <input type="checkbox" checked={active} disabled={busy} onChange={(e) => toggle(t, e.target.checked)} aria-label={`${t.name} active cette période`} />
                     <span className={cn(!active && "text-muted-foreground line-through")}>{t.name}</span>
-                    {mutualiseLabelOf(t.id) ? <span className="text-xs italic text-muted-foreground">· {mutualiseLabelOf(t.id)}</span> : null}
+                    {linksLabelOf(t.id) ? <span className="text-xs italic text-muted-foreground">· {linksLabelOf(t.id)}</span> : null}
                   </label>
-                  <label className={cn("flex items-center gap-1 text-xs text-muted-foreground", !active && "opacity-50")}>
-                    séances
-                    <input
-                      type="number"
-                      min={1}
-                      max={7}
-                      className={cn(fieldClass, "w-14")}
-                      value={sessionsOf(t)}
-                      disabled={!active || busy}
-                      onChange={(e) => setSessions(t, Number(e.target.value))}
-                      aria-label={`Séances de ${t.name} cette période`}
-                    />
-                  </label>
+                  <div className="flex items-center gap-2">
+                    <label className={cn("flex items-center gap-1 text-xs text-muted-foreground", !active && "opacity-50")}>
+                      séances
+                      <input
+                        type="number"
+                        min={1}
+                        max={7}
+                        className={cn(fieldClass, "w-14")}
+                        value={sessionsOf(t)}
+                        disabled={!active || busy}
+                        onChange={(e) => setSessions(t, Number(e.target.value))}
+                        aria-label={`Séances de ${t.name} cette période`}
+                      />
+                    </label>
+                    {/* P2-45 — l'affordance « Liens » (même geste qu'en saison) : passerelles (lecture
+                        seule ici) + mutualisation (éditable, ancrée au plan de la période). */}
+                    <Button size="icon" variant="ghost" className="size-8" aria-label={`Liens de ${t.name}`} onClick={() => setLinksTeam(t)}>
+                      <Link2 className="size-4" />
+                    </Button>
+                  </div>
                 </div>
               );
             })}
           </AccordionSection>
         ))}
       </div>
+
+      {/* P2-45 — la modale Liens d'une équipe de la période. Passerelles en LECTURE SEULE (la saison
+          seule les déclare) ; mutualisation ancrée au PLAN de la période (schedulePlanId). Les
+          équipes en pause ne sont pas offertes comme candidates à la mutualisation. */}
+      {null !== linksTeam ? (
+        <TeamLinksModal
+          team={linksTeam}
+          teams={teams}
+          tiers={tiers}
+          schedulePlanId={schedulePlanId}
+          pausedTeamIds={new Set(teams.filter((t) => !isActive(t)).map((t) => t.id))}
+          readOnlyLinks
+          onClose={() => setLinksTeam(null)}
+        />
+      ) : null}
     </div>
   );
 }

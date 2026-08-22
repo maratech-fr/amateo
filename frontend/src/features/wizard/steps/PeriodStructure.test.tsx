@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Closure } from "@/features/cockpit/api";
+import type { TeamLink } from "@/features/matches/api";
 
 import type { Constraint, SharedTrainingGroup } from "../api";
 
@@ -90,6 +91,11 @@ const tiersState: { data: Array<{ id: number; label: string; name: string; color
 };
 // P2-27 — les groupes de mutualisation de la période (défaut vide : aucun repère).
 const sharedGroupsState: { data: SharedTrainingGroup[] } = { data: [] };
+// P2-45 — mutualisation ouverte depuis la modale Liens ; passerelles servies par le module matchs.
+const stgCreate = vi.fn();
+const stgUpdate = vi.fn();
+const stgDelete = vi.fn();
+const teamLinksState: { data: TeamLink[] } = { data: [] };
 
 vi.mock("../queries", () => ({
   useWizardTeams: () => ({ data: teamsState.data }),
@@ -159,6 +165,20 @@ vi.mock("../queries", () => ({
   useUpdatePeriodConstraintOverride: () => ({ mutate: updateConstraintOverride, isPending: false }),
   useDeletePeriodConstraintOverride: () => ({ mutate: deleteConstraintOverride, isPending: false }),
   useSharedTrainingGroups: () => ({ data: sharedGroupsState.data }),
+  // P2-45 — la modale Liens (ouverte depuis une équipe de la période) embarque MutualisationPanel.
+  useCreateSharedTrainingGroup: () => ({ mutateAsync: stgCreate, isPending: false }),
+  useUpdateSharedTrainingGroup: () => ({ mutateAsync: stgUpdate, isPending: false }),
+  useDeleteSharedTrainingGroup: () => ({ mutate: stgDelete }),
+}));
+// P2-45 — passerelles SERVIES par le module matchs (lecture seule en période). On pilote ses hooks.
+vi.mock("@/features/matches/queries", () => ({
+  useTeamLinks: () => ({ data: teamLinksState.data, isError: false }),
+  useCreateTeamLink: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateTeamLink: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteTeamLink: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+vi.mock("@/features/matches/HabitsLinksButton", () => ({
+  HabitsLinksButton: () => <button type="button">Gérer les passerelles</button>,
 }));
 vi.mock("@/features/cockpit/queries", () => ({
   useEntryConflicts: () => ({ data: { venueIds: conflictState.venueIds, closures: conflictState.closures, fullyClosedVenueIds: conflictState.fullyClosedVenueIds, effectiveClosedWeekdays: conflictState.effectiveClosedWeekdays, disabledVenueIds: conflictState.disabledVenueIds }, isError: false, refetch: vi.fn() }),
@@ -199,6 +219,7 @@ afterEach(() => {
   vi.clearAllMocks();
   resetPeriodSeed();
   sharedGroupsState.data = [];
+  teamLinksState.data = [];
   extraVenuesState.value = [];
   overridesState.data = [];
   constraintsState.data = [];
@@ -407,6 +428,56 @@ describe("PeriodTeams — repère de mutualisation (P2-27)", () => {
     // Sans ce repère EN PÉRIODE, la mutualisation mentirait par omission (elle n'apparaîtrait
     // qu'en saison). SM1 (t1) est mutualisée avec U13 (t2).
     expect(screen.getByText(/Mutualisée avec U13/)).toBeInTheDocument();
+  });
+});
+
+describe("PeriodTeams — liens par équipe (P2-45)", () => {
+  it("offre une affordance « Liens de … » par équipe", () => {
+    overridesState.data = [{ id: "o2", teamId: "t2", isActive: true, sessionsPerWeek: null, schedulePlanId: "plan-1" }];
+    render(<PeriodTeams calendarEntryId="links-affordance" />);
+    expect(screen.getByRole("button", { name: "Liens de SM1" })).toBeInTheDocument();
+  });
+
+  it("étend le repère aux passerelles, avec l'intensité (donnée servie)", () => {
+    overridesState.data = [{ id: "o2", teamId: "t2", isActive: true, sessionsPerWeek: null, schedulePlanId: "plan-1" }];
+    teamLinksState.data = [{ id: "l1", teamAId: "t1", teamBId: "t2", linkType: "NOT_SIMULTANEOUS", trainingIntensity: "PREFERRED" }];
+    render(<PeriodTeams calendarEntryId="links-marker" />);
+    expect(screen.getByText(/Passerelle avec U13 \(Préféré\)/)).toBeInTheDocument();
+  });
+
+  // Falsification #2 — depuis PeriodTeamsPanel, la mutualisation écrit sur le PLAN de période.
+  it("creating a group from the period Teams step anchors it on the period plan", async () => {
+    const user = userEvent.setup();
+    overridesState.data = [{ id: "o2", teamId: "t2", isActive: true, sessionsPerWeek: null, schedulePlanId: "plan-1" }];
+    render(<PeriodTeams calendarEntryId="period-anchor" />);
+
+    await user.click(screen.getByRole("button", { name: "Liens de SM1" }));
+    // SM1 pré-cochée (initialTeamId) ; on ajoute U13 puis on crée.
+    await user.click(screen.getByRole("checkbox", { name: "U13" }));
+    await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
+
+    expect(stgCreate).toHaveBeenCalledOnce();
+    expect(stgCreate.mock.calls[0][0]).toMatchObject({ schedulePlanId: "plan-1" });
+  });
+
+  // Falsification #5 — en période, les passerelles sont en LECTURE SEULE : la liste + l'intensité
+  // s'affichent, mais aucun contrôle d'édition, et la raison est DITE à l'écran.
+  it("shows bridges read-only in a period (list + intensity, no edit controls, explained)", async () => {
+    const user = userEvent.setup();
+    overridesState.data = [{ id: "o2", teamId: "t2", isActive: true, sessionsPerWeek: null, schedulePlanId: "plan-1" }];
+    teamLinksState.data = [{ id: "l1", teamAId: "t1", teamBId: "t2", linkType: "NOT_SIMULTANEOUS", trainingIntensity: "PREFERRED" }];
+    render(<PeriodTeams calendarEntryId="readonly-links" />);
+
+    await user.click(screen.getByRole("button", { name: "Liens de SM1" }));
+    // La raison : jamais une section grisée muette.
+    expect(screen.getByText(/se déclarent au niveau de la saison/)).toBeInTheDocument();
+    // L'intensité est affichée en TEXTE (pas via un contrôle éditable).
+    expect(screen.getByText(/Entraînement\s*:\s*Préféré/)).toBeInTheDocument();
+    // Aucun contrôle d'édition de passerelle.
+    expect(screen.queryByRole("button", { name: "Ajouter la passerelle" })).toBeNull();
+    expect(screen.queryByLabelText(/Intensité d'entraînement, passerelle/)).toBeNull();
+    // La mutualisation, elle, RESTE éditable en période (le formulaire est là).
+    expect(screen.getByRole("button", { name: "Créer le groupe" })).toBeInTheDocument();
   });
 });
 
