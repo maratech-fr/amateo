@@ -6500,6 +6500,72 @@
                 "summary": "Venue closures and clashing baseline sessions for a period"
             }
         },
+        "/api/planned-windows": {
+            "get": {
+                "operationId": "getApiPlannedWindows",
+                "tags": [
+                    "Cockpit"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The period windows another plan ALREADY governs inside `[start, end]`, sorted by start date \u2014 served so the UI never offers a week whose plan creation the server would refuse with 409. Same predicate as the write guard, by construction. Each `windows[]` item: `entryId`, `title`, `startDate`, `endDate`, `label` (composed server-side, shown as-is). With `entryId` the querying family is excluded (mother and sibling weeks are legitimate); with `seasonId` (mother not yet created) nothing is excluded. Read-only, open to members."
+                    },
+                    "400": {
+                        "description": "No club in context"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "404": {
+                        "description": "Unknown entryId/seasonId, or belonging to another club (never an existence oracle)"
+                    },
+                    "422": {
+                        "description": "Missing or malformed start/end (YYYY-MM-DD), or neither entryId nor seasonId given"
+                    }
+                },
+                "summary": "Period windows already planned inside a date range, served for the UI",
+                "parameters": [
+                    {
+                        "name": "start",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        },
+                        "description": "Window lower bound (YYYY-MM-DD)"
+                    },
+                    {
+                        "name": "end",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        },
+                        "description": "Window upper bound (YYYY-MM-DD)"
+                    },
+                    {
+                        "name": "entryId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "The materialised period entry; its season is used and its root family excluded. Provide this OR seasonId"
+                    },
+                    {
+                        "name": "seasonId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "The season, for the \"mother not yet created\" path (no family excluded). Provide this OR entryId"
+                    }
+                ]
+            }
+        },
         "/api/competitions": {
             "get": {
                 "operationId": "api_competitions_get_collection",

@@ -379,6 +379,15 @@ jobs:
       - name: SocleDeviationParityTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SocleDeviationParityTest.php --group phase1'
 
+      # P2-38 prévention (axe planning lifecycle — ADR-0002 inv. 4) : la route de lecture
+      # GET /api/planned-windows sert EXACTEMENT les fenêtres que la garde d'écriture refuse
+      # en 409 window_already_planned — même prédicat par construction (foyer unique
+      # governingWindows), prouvé par le comportement, falsifié dans les deux sens. Plus la
+      # famille (ni servie ni refusée), l'isolation saison/club (404), le chevauchement partiel
+      # aux bornes, le chemin pending (seasonId) et la lecture ouverte au Membre.
+      - name: PlannedWindowsParityTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/PlannedWindowsParityTest.php --group phase1'
+
       - name: SeasonVersionUniquenessTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SeasonVersionUniquenessTest.php --group phase1'
 

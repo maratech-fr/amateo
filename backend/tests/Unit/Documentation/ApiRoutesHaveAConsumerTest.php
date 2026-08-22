@@ -58,6 +58,10 @@ final class ApiRoutesHaveAConsumerTest extends TestCase
         // grep du frontend ne pouvait la voir — c'est pour ce genre de cas qu'une exemption
         // se justifie par une PREUVE, pas par « je n'ai rien trouvé ».
         '/api/ffbb-logos/{scope}/{code}' => 'URL stockée en base par FfbbClubPopulator, rendue en <img src> — jamais écrite dans le front',
+        // P2-38 prévention : le backend (route + garde + NR) précède son consommateur, livré dans
+        // le lot frontend suivant (la modale « Quelles semaines ajuster ? » cesse d'offrir une
+        // semaine déjà planifiée). À RETIRER quand `frontend/src` appellera `planned-windows`.
+        '/api/planned-windows' => 'consommateur livré dans le lot frontend P2-38 (étapes 4-6) — exemption temporaire, à retirer quand le front l\'appelle',
     ];
 
     public function testEveryClubApiRouteHasAtLeastOneConsumer(): void

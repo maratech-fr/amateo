@@ -41,6 +41,55 @@ final class PeriodWindowUniquenessGuard
     ) {}
 
     /**
+     * Les plages qu'un AUTRE plan de période gouverne à l'intérieur de la fenêtre visée, triées
+     * par date de début. FOYER UNIQUE du prédicat : la garde d'écriture ({@see assertWindowFree})
+     * et la route de lecture `GET /api/planned-windows` (P2-38, prévention) partagent CE seul texte
+     * SQL — la lecture ne peut donc pas promettre une disponibilité que l'écriture refuse. La parité
+     * est vraie PAR CONSTRUCTION (un seul SQL, pas deux jumeaux) ET prouvée par le comportement
+     * (`PlannedWindowsParityTest`, falsifié dans les deux sens).
+     *
+     * `$excludedRootEntryId` exclut la FAMILLE de l'entrée qui interroge (même ancêtre racine :
+     * parent↔enfant et semaines sœurs, cf. docblock de classe). `null` = aucune exclusion : le
+     * chemin « mère pas encore créée » de la route (une fenêtre candidate qui n'a pas encore
+     * d'entrée) n'a aucune famille à exclure — il voit donc TOUS les plans qui la recoupent.
+     *
+     * @param string      $clubId              le club interrogé
+     * @param string      $seasonId            sa saison (deux périodes de saisons différentes ne se croisent jamais)
+     * @param string|null $excludedRootEntryId l'ancêtre racine à exclure (`COALESCE(parent_entry_id, id)`), ou null
+     * @param string      $start               la borne basse de la fenêtre visée (Y-m-d)
+     * @param string      $end                 la borne haute de la fenêtre visée (Y-m-d)
+     *
+     * @return list<array{entry_id: string, entry_title: string, start_date: string, end_date: string}>
+     */
+    public function governingWindows(string $clubId, string $seasonId, ?string $excludedRootEntryId, string $start, string $end): array
+    {
+        /** @var list<array{entry_id: string, entry_title: string, start_date: string, end_date: string}> $rows */
+        $rows = $this->entityManager->getConnection()->fetchAllAssociative(
+            'SELECT e.id AS entry_id, e.title AS entry_title, e.start_date, e.end_date '
+            . 'FROM schedule_plan p JOIN calendar_entry e ON e.id = p.calendar_entry_id '
+            . 'WHERE p.club_id = :club AND p.season_id = :season AND p.type <> \'SEASON\' '
+            // Chevauchement (inclusion OU recouvrement partiel) : début ≤ fin de l'autre ET fin ≥ début.
+            . 'AND e.start_date <= :bornEnd AND e.end_date >= :bornStart '
+            // La FAMILLE (même ancêtre racine) est exclue : parent↔enfant et semaines sœurs sont
+            // légitimes. `:root IS NULL` = pas de famille à exclure (fenêtre candidate sans entrée).
+            // CAST explicite en uuid : sans lui, un `:root` NULL n'a pas de type inférable (le
+            // `IS NULL` seul laisse Postgres indéterminé) — le cast type le paramètre UNE fois, sans
+            // dédoubler le SQL, et rend la comparaison uuid<>uuid explicite (colonnes id/parent_entry_id).
+            . 'AND (CAST(:root AS uuid) IS NULL OR COALESCE(e.parent_entry_id, e.id) <> CAST(:root AS uuid)) '
+            . 'ORDER BY e.start_date ASC',
+            [
+                'club' => $clubId,
+                'season' => $seasonId,
+                'bornStart' => $start,
+                'bornEnd' => $end,
+                'root' => $excludedRootEntryId,
+            ],
+        );
+
+        return $rows;
+    }
+
+    /**
      * @param string $clubId          le club du plan qui naît
      * @param string $seasonId        sa saison (deux périodes de saisons différentes ne se croisent jamais)
      * @param string $bornRootEntryId l'ancêtre racine de l'entrée qui naît : son parentEntryId, sinon son id
@@ -51,38 +100,22 @@ final class PeriodWindowUniquenessGuard
      */
     public function assertWindowFree(string $clubId, string $seasonId, string $bornRootEntryId, string $bornStart, string $bornEnd): void
     {
-        $conflict = $this->entityManager->getConnection()->fetchAssociative(
-            'SELECT e.id AS entry_id, e.title AS entry_title, e.start_date, e.end_date '
-            . 'FROM schedule_plan p JOIN calendar_entry e ON e.id = p.calendar_entry_id '
-            . 'WHERE p.club_id = :club AND p.season_id = :season AND p.type <> \'SEASON\' '
-            // Chevauchement (inclusion OU recouvrement partiel) : début ≤ fin de l'autre ET fin ≥ début.
-            . 'AND e.start_date <= :bornEnd AND e.end_date >= :bornStart '
-            // La FAMILLE (même ancêtre racine) est exclue : parent↔enfant et semaines sœurs sont légitimes.
-            . 'AND COALESCE(e.parent_entry_id, e.id) <> :root '
-            . 'ORDER BY e.start_date ASC LIMIT 1',
-            [
-                'club' => $clubId,
-                'season' => $seasonId,
-                'bornStart' => $bornStart,
-                'bornEnd' => $bornEnd,
-                'root' => $bornRootEntryId,
-            ],
-        );
-
-        if (false === $conflict) {
+        $conflicts = $this->governingWindows($clubId, $seasonId, $bornRootEntryId, $bornStart, $bornEnd);
+        if ([] === $conflicts) {
             return;
         }
 
-        $conflictEntryId = (string) $conflict['entry_id'];
+        $conflict = $conflicts[0];
+        $conflictEntryId = $conflict['entry_id'];
         $windowLabel = $this->schedulePlanProvisioner->windowLabel(
-            new DateTimeImmutable((string) $conflict['start_date']),
-            new DateTimeImmutable((string) $conflict['end_date']),
+            new DateTimeImmutable($conflict['start_date']),
+            new DateTimeImmutable($conflict['end_date']),
         );
 
         // NOMME la période telle que le gestionnaire l'a INTITULÉE (pas le nom auto-généré du
         // plan, qui répète déjà la fenêtre), + sa fenêtre, et invite aux DEUX issues explicites (modifier ou
         // supprimer le planning en place) plus la découpe en semaines — geste déjà existant (P2-36).
         // Aucun identifiant interne (gardé par PublicTextIsFreeOfInternalIdentifiersTest).
-        throw new WindowAlreadyPlannedException($conflictEntryId, \sprintf('Ces dates sont déjà planifiées par « %s » (%s). Une seule planification peut gouverner une même période : modifiez ce planning existant ou supprimez-le avant d’en créer un autre ici. Vous pouvez aussi découper la période en semaines pour les planifier séparément.', (string) $conflict['entry_title'], $windowLabel));
+        throw new WindowAlreadyPlannedException($conflictEntryId, \sprintf('Ces dates sont déjà planifiées par « %s » (%s). Une seule planification peut gouverner une même période : modifiez ce planning existant ou supprimez-le avant d’en créer un autre ici. Vous pouvez aussi découper la période en semaines pour les planifier séparément.', $conflict['entry_title'], $windowLabel));
     }
 }
