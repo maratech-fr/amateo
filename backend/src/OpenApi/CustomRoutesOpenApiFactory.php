@@ -1800,6 +1800,38 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
                     ['name' => 'seasonId', 'in' => 'query', 'required' => false, 'schema' => ['type' => 'string'], 'description' => 'The season, for the "mother not yet created" path (no family excluded). Provide this OR entryId'],
                 ],
             )),
+            '/api/reservations/group' => new PathItem(post: new Operation(
+                operationId: 'postApiReservationsGroup',
+                tags: ['Reservation'],
+                responses: [
+                    '201' => $this->jsonResponse('Shared-training group reserved on one slot: N reservations (one per member) written in a single flush; the response carries their ids', [
+                        'type' => 'object',
+                        'properties' => [
+                            'ids' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'uuid']],
+                            'count' => ['type' => 'integer'],
+                        ],
+                    ]),
+                    '400' => new Response('Invalid JSON, or a missing/malformed field'),
+                    '401' => $unauthorized,
+                    '403' => new Response('Not a management member'),
+                    '404' => new Response('Unknown shared-training group (or another club\'s — never an existence oracle)'),
+                    '409' => new Response('Archived season (read-only)'),
+                    '422' => new Response('Scope mismatch (group not declared for this plan), closed venue, occupied slot (exclusivity), shared-sessions ceiling reached, a member over its weekly sessions, or unknown schedule plan'),
+                ],
+                summary: 'Reserve a shared-training group on one slot (atomic batch write of one HARD reservation per member)',
+                requestBody: $this->jsonBody([
+                    'type' => 'object',
+                    'required' => ['sharedTrainingGroupId', 'venueId', 'dayOfWeek', 'startTime'],
+                    'properties' => [
+                        'sharedTrainingGroupId' => ['type' => 'string', 'format' => 'uuid'],
+                        'venueId' => ['type' => 'string', 'format' => 'uuid'],
+                        'dayOfWeek' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 7],
+                        'startTime' => ['type' => 'string', 'description' => 'HH:MM'],
+                        'durationMinutes' => ['type' => 'integer', 'default' => 90],
+                        'schedulePlanId' => ['type' => 'string', 'format' => 'uuid', 'nullable' => true, 'description' => 'NULL = base (season) plan; set = a period overlay — must match the group\'s own scope'],
+                    ],
+                ]),
+            )),
             '/api/teams/reorder' => new PathItem(post: new Operation(
                 operationId: 'postApiTeamsReorder',
                 tags: ['Teams'],
