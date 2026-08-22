@@ -27,6 +27,8 @@ export function MutualisationPanel({
   tiers,
   schedulePlanId,
   pausedTeamIds,
+  initialTeamId,
+  hideLinksManager = false,
 }: {
   teams: Team[];
   tiers: PriorityTier[];
@@ -34,6 +36,11 @@ export function MutualisationPanel({
   schedulePlanId: string | null;
   /** Teams paused for the period : never offered as candidates (grouping them would be a no-op). */
   pausedTeamIds?: ReadonlySet<string>;
+  /** P2-45 — ouvert depuis une équipe : pré-coche cette équipe dans le nouveau groupe. */
+  initialTeamId?: string;
+  /** P2-45 — masque « Gérer les passerelles » quand la section passerelles est déjà à l'écran
+   *  (la modale Liens) — jamais un dialog dans le dialog. */
+  hideLinksManager?: boolean;
 }) {
   const { data: allGroups = [] } = useSharedTrainingGroups(schedulePlanId);
   // En portée socle le provider renvoie socle ET périodes : on ne garde que le socle.
@@ -46,7 +53,7 @@ export function MutualisationPanel({
   const update = useUpdateSharedTrainingGroup();
   const del = useDeleteSharedTrainingGroup();
 
-  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [checked, setChecked] = useState<Set<string>>(new Set(undefined === initialTeamId ? [] : [initialTeamId]));
   const [commonSessions, setCommonSessions] = useState(1);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -152,8 +159,9 @@ export function MutualisationPanel({
           partagent chaque semaine. Le système les placera au même créneau pour ce nombre de séances.
         </p>
         {/* L'écran unique des passerelles (module matchs) : déclarer un lien y remonte l'équipe liée
-            en tête de la sélection ci-dessous. Le dialog reste dans features/matches, ce bouton l'ouvre. */}
-        <HabitsLinksButton className="shrink-0" />
+            en tête de la sélection ci-dessous. Le dialog reste dans features/matches, ce bouton l'ouvre.
+            Masqué (P2-45) quand la modale Liens montre déjà la section passerelles au-dessus. */}
+        {hideLinksManager ? null : <HabitsLinksButton className="shrink-0" />}
       </div>
 
       {0 === teamLinks.length && candidates.length > 0 ? (

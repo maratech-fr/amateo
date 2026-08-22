@@ -6,6 +6,8 @@ import { renderWithProviders } from "@/test/utils";
 
 import { TEAM_COLUMNS } from "../lib/teamColumns";
 
+import type { TeamLink } from "@/features/matches/api";
+
 import type { SharedTrainingGroup, Team } from "../api";
 
 const baseTeam: Team = {
@@ -25,6 +27,11 @@ const CATEGORIES = [
 
 // P2-27 — les groupes de mutualisation (repère « Mutualisée avec … » par ligne).
 const sharedGroupsState: { data: SharedTrainingGroup[] } = { data: [] };
+// P2-45 — les passerelles (repère « Passerelle avec … » + la modale Liens ouverte par ligne).
+const teamLinksState: { data: TeamLink[] } = { data: [] };
+const stgCreate = vi.fn();
+const stgUpdate = vi.fn();
+const stgDelete = vi.fn();
 const createMut = vi.fn();
 const updateMut = vi.fn();
 const reorderMut = vi.fn();
@@ -61,9 +68,30 @@ vi.mock("../queries", () => ({
   useWizardTeamCoaches: () => ({ data: [] }),
   useWizardCoachPlayers: () => ({ data: [] }),
   useSharedTrainingGroups: () => ({ data: sharedGroupsState.data }),
+  // P2-45 — la modale Liens embarque MutualisationPanel : ses hooks vivent dans le même provider.
+  useCreateSharedTrainingGroup: () => ({ mutateAsync: stgCreate, isPending: false }),
+  useUpdateSharedTrainingGroup: () => ({ mutateAsync: stgUpdate, isPending: false }),
+  useDeleteSharedTrainingGroup: () => ({ mutate: stgDelete }),
+  useTeamPeriodOverrides: () => ({ data: [] }),
   // P3-16 — l'impact d'une suppression est calculé par le SERVEUR : le mock rend une
   // réponse résolue et vide, l'écran n'en dérive plus aucun compte.
   useDeletionImpact: () => ({ data: deletionImpact.value, isPending: false, isError: false }),
+}));
+
+// P2-45 — les passerelles sont SERVIES par le module matchs. La modale Liens rend la section
+// passerelles (matchs) : on pilote ses hooks, jamais le réseau.
+const createLinkMut = vi.fn();
+const updateLinkMut = vi.fn();
+const deleteLinkMut = vi.fn();
+vi.mock("@/features/matches/queries", () => ({
+  useTeamLinks: () => ({ data: teamLinksState.data, isError: false }),
+  useCreateTeamLink: () => ({ mutate: createLinkMut, isPending: false }),
+  useUpdateTeamLink: () => ({ mutate: updateLinkMut, isPending: false }),
+  useDeleteTeamLink: () => ({ mutate: deleteLinkMut, isPending: false }),
+}));
+// Le bouton « Gérer les passerelles » (masqué dans la modale) est testé chez lui : ici on le stube.
+vi.mock("@/features/matches/HabitsLinksButton", () => ({
+  HabitsLinksButton: () => <button type="button">Gérer les passerelles</button>,
 }));
 
 import { TeamsStep } from "./TeamsStep";
@@ -73,6 +101,10 @@ describe("TeamsStep", () => {
     team = baseTeam;
     teamsState.data = null;
     sharedGroupsState.data = [];
+    teamLinksState.data = [];
+    stgCreate.mockClear();
+    stgUpdate.mockClear();
+    stgDelete.mockClear();
     reorderMut.mockClear();
     reorderPending.value = false;
     createMut.mockClear();
@@ -141,9 +173,54 @@ describe("TeamsStep", () => {
     expect(screen.getByText(/Mutualisée avec SM4/)).toBeInTheDocument();
   });
 
-  it("leaves a non-mutualised team unmarked", () => {
+  it("leaves a team with neither group nor bridge unmarked (P2-45 : ni Mutualisée ni Passerelle)", () => {
     renderWithProviders(<TeamsStep />);
     expect(screen.queryByText(/Mutualisée/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Passerelle avec/)).not.toBeInTheDocument();
+  });
+
+  // P2-45 — la sous-ligne s'ÉTEND aux passerelles, avec l'INTENSITÉ (donnée SERVIE, régime 1).
+  it("marks a bridged team, naming the partner AND its intensity", () => {
+    teamsState.data = [baseTeam, { ...baseTeam, id: "t2", name: "SM4" }];
+    teamLinksState.data = [{ id: "l1", teamAId: "t1", teamBId: "t2", linkType: "NOT_SIMULTANEOUS", trainingIntensity: "PREFERRED" }];
+    renderWithProviders(<TeamsStep />);
+
+    expect(screen.getByText(/Passerelle avec SM4 \(Préféré\)/)).toBeInTheDocument();
+  });
+
+  // P2-45 — l'affordance par équipe : un bouton-icône muet nommé « Liens de {équipe} » par ligne.
+  it("offers a per-row « Liens de … » affordance", () => {
+    renderWithProviders(<TeamsStep />);
+    expect(screen.getByRole("button", { name: "Liens de SM3" })).toBeInTheDocument();
+  });
+
+  // P2-45 (falsification #2) — depuis TeamsEditor (SAISON), la mutualisation écrit sur le SOCLE
+  // (schedulePlanId null). C'est la maison qui reprend le test supprimé de ConstraintsStep.
+  it("creating a group from the season Teams step anchors it on the socle (schedulePlanId null)", async () => {
+    const user = userEvent.setup();
+    teamsState.data = [baseTeam, { ...baseTeam, id: "t2", name: "SM4" }];
+    renderWithProviders(<TeamsStep />);
+
+    await user.click(screen.getByRole("button", { name: "Liens de SM3" }));
+    // La modale : SM3 est pré-cochée (initialTeamId), on ajoute SM4 puis on crée.
+    await user.click(screen.getByRole("checkbox", { name: "SM4" }));
+    await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
+
+    expect(stgCreate).toHaveBeenCalledOnce();
+    const arg = stgCreate.mock.calls[0][0] as { schedulePlanId: string | null; teamIds: string[] };
+    expect(arg.schedulePlanId).toBeNull();
+    expect([...arg.teamIds].sort()).toEqual(["t1", "t2"]);
+  });
+
+  // P2-45 — en saison, les passerelles sont ÉDITABLES : le formulaire d'ajout est offert dans la modale.
+  it("shows the bridge editing controls in the modal in season mode", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<TeamsStep />);
+
+    await user.click(screen.getByRole("button", { name: "Liens de SM3" }));
+    expect(screen.getByRole("button", { name: "Ajouter la passerelle" })).toBeInTheDocument();
+    // Jamais un dialog dans le dialog : « Gérer les passerelles » est masqué.
+    expect(screen.queryByRole("button", { name: "Gérer les passerelles" })).toBeNull();
   });
 
   it("shows a play-level select and no redundant inner heading", () => {

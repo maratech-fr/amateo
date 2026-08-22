@@ -6,11 +6,10 @@ import { Modal } from "@/shared/components/ui/modal";
 import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 
-import type { Fixture, PriorityTier, Team, TeamLinkIntensity, TeamLinkType, Venue } from "./api";
+import type { Fixture, PriorityTier, Team, Venue } from "./api";
 import { inferHabits } from "./lib/habitInference";
-import { useCreateTeamLink, useCreateTeamMatchHabit, useDeleteTeamLink, useDeleteTeamMatchHabit, useTeamLinks, useTeamMatchHabits, useUpdateTeamLink } from "./queries";
-
-const INTENSITY_LABEL: Record<TeamLinkIntensity, string> = { PREFERRED: "Préféré", MANDATORY: "Obligatoire" };
+import { useCreateTeamMatchHabit, useDeleteTeamMatchHabit, useTeamMatchHabits } from "./queries";
+import { TeamLinksSection } from "./TeamLinksSection";
 
 const DAY_LABELS = ["", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
@@ -31,28 +30,17 @@ interface HabitsLinksDialogProps {
  */
 export function HabitsLinksDialog({ teams, tiers, venues, fixtures, onClose }: HabitsLinksDialogProps) {
   const habitsQuery = useTeamMatchHabits();
-  const linksQuery = useTeamLinks();
   const createHabit = useCreateTeamMatchHabit();
   const deleteHabit = useDeleteTeamMatchHabit();
-  const createLink = useCreateTeamLink();
-  const updateLink = useUpdateTeamLink();
-  const deleteLink = useDeleteTeamLink();
 
   const [habitTeamId, setHabitTeamId] = useState(teams[0]?.id ?? "");
   const [habitDay, setHabitDay] = useState(6);
   const [habitTime, setHabitTime] = useState("15:30");
   const [habitVenueId, setHabitVenueId] = useState("");
 
-  const [linkTeamAId, setLinkTeamAId] = useState("");
-  const [linkTeamBId, setLinkTeamBId] = useState("");
-  const [linkType, setLinkType] = useState<TeamLinkType>("NOT_SIMULTANEOUS");
-  const [linkIntensity, setLinkIntensity] = useState<TeamLinkIntensity>("PREFERRED");
-
   const habits = habitsQuery.data ?? [];
-  const links = linksQuery.data ?? [];
   const suggestions = inferHabits(fixtures, habits);
 
-  const teamName = (id: string): string => teams.find((t) => t.id === id)?.name ?? "Équipe ?";
   const venueName = (id: string | null): string | null => (null === id ? null : (venues.find((v) => v.id === id)?.name ?? null));
 
   const teamHabits = habits.filter((h) => h.teamId === habitTeamId);
@@ -63,13 +51,6 @@ export function HabitsLinksDialog({ teams, tiers, venues, fixtures, onClose }: H
       return;
     }
     createHabit.mutate({ teamId: habitTeamId, dayOfWeek: habitDay, kickoffTime: habitTime, ...("" !== habitVenueId ? { venueId: habitVenueId } : {}) });
-  };
-
-  const addLink = (): void => {
-    if ("" === linkTeamAId || "" === linkTeamBId || linkTeamAId === linkTeamBId || createLink.isPending) {
-      return;
-    }
-    createLink.mutate({ teamAId: linkTeamAId, teamBId: linkTeamBId, linkType, trainingIntensity: linkIntensity });
   };
 
   return (
@@ -165,86 +146,12 @@ export function HabitsLinksDialog({ teams, tiers, venues, fixtures, onClose }: H
           </div>
         </section>
 
-        <section className="flex flex-col gap-2 border-t border-border pt-3">
-          <h3 className="text-sm font-semibold">Passerelles entre équipes</h3>
-          <p className="text-xs text-muted-foreground">
-            « SM1 et SM2 partagent des joueurs » → déclarez une passerelle. Deux réglages <strong>indépendants</strong> :
-          </p>
-          <ul className="ml-4 list-disc text-xs text-muted-foreground">
-            <li>
-              <strong>Côté matchs</strong> — « jamais en même temps » (le radar alerte) ou « l'un après l'autre » (enchaînement respecté au placement).
-            </li>
-            <li>
-              <strong>Côté entraînement</strong> — <em>Préféré</em> : les séances des deux équipes évitent de se chevaucher. <em>Obligatoire</em> : jamais en
-              même temps — peut rendre le planning infaisable si trop contraint.
-            </li>
-          </ul>
-
-          {linksQuery.isError ? <p className="text-sm text-destructive">Les passerelles n’ont pas pu être chargées.</p> : null}
-
-          <ul className="flex flex-col gap-1">
-            {links.map((link) => (
-              <li key={link.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border px-2 py-1.5 text-sm">
-                <span className="flex-1">
-                  {teamName(link.teamAId)} ↔ {teamName(link.teamBId)} ·{" "}
-                  <span className="text-muted-foreground">{"NOT_SIMULTANEOUS" === link.linkType ? "jamais en même temps" : "l'un après l'autre"}</span>
-                </span>
-                <label className="flex items-center gap-1 text-xs text-muted-foreground">
-                  Entraînement
-                  <Select
-                    aria-label={`Intensité d'entraînement, passerelle ${teamName(link.teamAId)} – ${teamName(link.teamBId)}`}
-                    className="h-8 w-32"
-                    value={link.trainingIntensity}
-                    disabled={updateLink.isPending}
-                    onChange={(e) => updateLink.mutate({ link, input: { trainingIntensity: e.target.value as TeamLinkIntensity } })}
-                  >
-                    <option value="PREFERRED">{INTENSITY_LABEL.PREFERRED}</option>
-                    <option value="MANDATORY">{INTENSITY_LABEL.MANDATORY}</option>
-                  </Select>
-                </label>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-7"
-                  aria-label={`Supprimer la passerelle ${teamName(link.teamAId)} – ${teamName(link.teamBId)}`}
-                  disabled={deleteLink.isPending}
-                  onClick={() => deleteLink.mutate(link.id)}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </li>
-            ))}
-          </ul>
-
-          <div className="flex flex-wrap items-end gap-2">
-            <TeamSelect aria-label="Première équipe du lien" className="w-32" teams={teams} tiers={tiers} placeholder="Équipe A…" value={linkTeamAId} onChange={(e) => setLinkTeamAId(e.target.value)} />
-            <TeamSelect aria-label="Seconde équipe du lien" className="w-32" teams={teams} tiers={tiers} placeholder="Équipe B…" value={linkTeamBId} onChange={(e) => setLinkTeamBId(e.target.value)} />
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              Matchs
-              <Select aria-label="Type de lien côté matchs" className="h-9 w-44" value={linkType} onChange={(e) => setLinkType(e.target.value as TeamLinkType)}>
-                <option value="NOT_SIMULTANEOUS">Jamais en même temps</option>
-                <option value="BACK_TO_BACK">L'un après l'autre</option>
-              </Select>
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              Entraînement
-              <Select aria-label="Intensité d'entraînement du lien" className="h-9 w-32" value={linkIntensity} onChange={(e) => setLinkIntensity(e.target.value as TeamLinkIntensity)}>
-                <option value="PREFERRED">{INTENSITY_LABEL.PREFERRED}</option>
-                <option value="MANDATORY">{INTENSITY_LABEL.MANDATORY}</option>
-              </Select>
-            </label>
-            <Button
-              size="icon"
-              className="size-9"
-              aria-label="Ajouter la passerelle"
-              title="Ajouter la passerelle"
-              disabled={"" === linkTeamAId || "" === linkTeamBId || linkTeamAId === linkTeamBId || createLink.isPending}
-              onClick={addLink}
-            >
-              <Plus className="size-4" />
-            </Button>
-          </div>
-        </section>
+        {/* Passerelles — extraites en `TeamLinksSection` (P2-45) pour être rejouées, en lecture
+            seule, dans l'étape Équipes du wizard. Ici (module matchs), la section reste ÉDITABLE ;
+            le séparateur qui la détachait des habitudes est porté par le wrapper. */}
+        <div className="border-t border-border pt-3">
+          <TeamLinksSection teams={teams} tiers={tiers} />
+        </div>
 
         <div className="flex justify-end">
           <Button variant="outline" size="sm" onClick={onClose}>
