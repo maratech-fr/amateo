@@ -834,6 +834,24 @@ def _diagnose_conflicts(
 
     _caps: dict[Any, int] = slot_capacities or {}
 
+    # P2-46 — mutualisation : N verrous d'un MÊME groupe déclaré sur une case sont UNE séance
+    # commune, pas N séances. Une réservation de groupe s'éclate en N `Reservation` (une par
+    # membre, même case) → N verrous HARD sur cette case ; les compter comme N occupants
+    # distincts crierait faussement à la sur-capacité (« accueille 3 équipes… capacité 2 ») alors
+    # que le gestionnaire a réservé UNE séance partagée. Même esprit que l'exemption passerelle
+    # « une séance mutualisée déclarée n'est jamais une violation » (constraints.py) et la
+    # tolérance coach D-14. L'exemption est CONDITIONNÉE à la déclaration : un membre est
+    # rabattu sur l'identité de SON groupe, une équipe hors de tout groupe garde la sienne, si
+    # bien que trois équipes sur une case SANS groupe déclaré restent une violation, et un
+    # mélange (2 membres d'un groupe + 1 équipe étrangère) compte 2 — le groupe pour 1,
+    # l'étrangère pour 1. Bloc `sharedTrainings` absent ⇒ map vide ⇒ occupants == équipes
+    # distinctes ⇒ chemin byte-identique (goldens inchangés).
+    team_to_group: dict[str, str] = {}
+    for group_index, group in enumerate(_collection(model_data, "sharedTrainings", "shared_trainings")):
+        group_key = f"__shared_group__{_get(group, 'id', default=group_index)}"
+        for member in _get(group, "teamIds", "team_ids", default=[]) or []:
+            team_to_group.setdefault(str(member), group_key)
+
     # Post-solve safety check: venue over-capacity.
     venue_bookings: dict[tuple[str, int, str], list[str]] = defaultdict(list)
     venue_durations: dict[tuple[str, int, str], int] = {}
@@ -847,7 +865,10 @@ def _diagnose_conflicts(
         # is the duplicate-slot artifact, not over-capacity (audit ENG-09).
         team_ids = list(dict.fromkeys(booked))
         capacity = _caps.get((venue_id, day_of_week, start_time), 1)
-        if len(team_ids) > capacity:
+        # P2-46 — chaque membre d'un groupe déclaré compte pour l'identité de son groupe : les
+        # membres co-localisés se fondent en UN occupant. Sans groupe, `occupants == team_ids`.
+        occupants = {team_to_group.get(team_id, team_id) for team_id in team_ids}
+        if len(occupants) > capacity:
             when = f"{_day_label(day_of_week)} {_time_range(start_time, venue_durations.get((venue_id, day_of_week, start_time)))}"
             diagnostics.append(
                 {
@@ -857,10 +878,16 @@ def _diagnose_conflicts(
                     "venueId": venue_id,
                     "dayOfWeek": day_of_week,
                     "startTime": str(start_time)[:5],
+                    # P2-46 — le message COMPTE ce que la règle a compté : `occupants`, pas
+                    # `team_ids`. Sinon il ment sur le remède — « 3 équipes / capacité 1 » avec
+                    # un groupe de 2 + une étrangère ferait viser une capacité 3 quand 2 suffit,
+                    # et « déplacez une séance » enverrait déplacer UN membre, ce qui ne libère
+                    # rien (le groupe reste). Un groupe est nommé comme un seul occupant.
                     "message": (
-                        f"Le gymnase {_label(venue_id, venue_names)} accueille {len(team_ids)} équipes "
-                        f"en même temps le {when} alors que sa capacité est de {capacity} : "
-                        f"{_named_list(team_ids, team_names)}."
+                        f"Le gymnase {_label(venue_id, venue_names)} accueille {len(occupants)} "
+                        f"{'occupant' if len(occupants) == 1 else 'occupants'} en même temps le {when} "
+                        f"alors que sa capacité est de {capacity} : "
+                        f"{_occupant_list(team_ids, team_to_group, team_names)}."
                     ),
                     "suggestions": [
                         "Déplacez l'une des séances sur un autre horaire ou un autre gymnase.",
@@ -1668,6 +1695,29 @@ def _label(entity_id: Any, names: Mapping[str, str]) -> str:
 
 def _named_list(ids: list[str], names: Mapping[str, str]) -> str:
     return ", ".join(_label(i, names) for i in ids)
+
+
+def _occupant_list(team_ids: list[str], team_to_group: Mapping[str, str], names: Mapping[str, str]) -> str:
+    """Énumère les OCCUPANTS d'une case, un groupe mutualisé comptant pour un seul (P2-46).
+
+    Miroir exact du comptage qui décide de la violation : les membres co-localisés d'un même
+    groupe déclaré se fondent en une entrée « le groupe mutualisé (A, B) », les autres équipes
+    restent nommées une à une. Un message qui énumère plus d'entrées que le compte annoncé
+    ferait viser le mauvais remède.
+    """
+    parts: list[str] = []
+    seen_groups: set[str] = set()
+    for team_id in team_ids:
+        group_key = team_to_group.get(team_id)
+        if group_key is None:
+            parts.append(_label(team_id, names))
+            continue
+        if group_key in seen_groups:
+            continue
+        seen_groups.add(group_key)
+        members = [_label(other, names) for other in team_ids if team_to_group.get(other) == group_key]
+        parts.append(f"le groupe mutualisé ({', '.join(members)})")
+    return ", ".join(parts)
 
 
 def _get(source: Mapping[str, Any] | Any, *names: str, default: Any = None) -> Any:
