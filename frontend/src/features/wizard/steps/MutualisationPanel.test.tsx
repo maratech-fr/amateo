@@ -280,3 +280,23 @@ describe("MutualisationPanel — portée", () => {
     expect(screen.queryByRole("checkbox", { name: "U11" })).toBeNull();
   });
 });
+
+describe("MutualisationPanel — ouvert depuis une équipe (P2-45 : initialTeamId, hideLinksManager)", () => {
+  it("pré-coche l'équipe d'ouverture (initialTeamId)", () => {
+    renderWithProviders(<MutualisationPanel teams={TEAMS} tiers={TIERS} schedulePlanId={null} initialTeamId="t1" />);
+    expect(screen.getByRole("checkbox", { name: "SM1" })).toBeChecked();
+    // Falsification : une autre équipe n'est PAS cochée d'office.
+    expect(screen.getByRole("checkbox", { name: "SM2" })).not.toBeChecked();
+  });
+
+  it("sans initialTeamId, aucune équipe n'est cochée d'office (le pré-cochage vient bien de la prop)", () => {
+    renderWithProviders(<MutualisationPanel teams={TEAMS} tiers={TIERS} schedulePlanId={null} />);
+    expect(screen.getByRole("checkbox", { name: "SM1" })).not.toBeChecked();
+  });
+
+  it("hideLinksManager masque « Gérer les passerelles » (jamais un dialog dans le dialog)", () => {
+    renderWithProviders(<MutualisationPanel teams={TEAMS} tiers={TIERS} schedulePlanId={null} hideLinksManager />);
+    expect(screen.queryByRole("button", { name: "Gérer les passerelles" })).toBeNull();
+    // Falsification : sans la prop, le bouton EST là (cf. l'état vide plus haut).
+  });
+});
