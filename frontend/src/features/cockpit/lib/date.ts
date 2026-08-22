@@ -344,6 +344,19 @@ export function groupCoverageSlots<C extends { id: string }>(slots: { week: Week
   return groups;
 }
 
+/**
+ * P2-38 (prévention) — retire de l'offre les semaines qu'une PLAGE DÉJÀ PLANIFIÉE (servie par le
+ * backend) recoupe. Chevauchement inclusif de dates ISO. Les plages viennent du serveur : le front
+ * ne calcule PAS quelle fenêtre est planifiée (règle d'or), il soustrait ce qu'on lui sert. Aucune
+ * plage ⇒ l'offre est rendue intacte (fail-open : le pire cas retombe sur l'existant, gardé par le 409).
+ */
+export function subtractPlannedWeeks(offered: WeekWindow[], plannedRanges: { startDate: string; endDate: string }[]): WeekWindow[] {
+  if (0 === plannedRanges.length) {
+    return offered;
+  }
+  return offered.filter((w) => !plannedRanges.some((r) => r.startDate <= w.endDate && r.endDate >= w.startDate));
+}
+
 /** Une fenêtre de vacances telle que le front la LIT dans les données servies (P2-40). */
 export interface HolidayWindow {
   label: string;

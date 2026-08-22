@@ -277,6 +277,7 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onClose }: { entri
           weeks={pickerOffer.offered}
           season={workingSeason}
           excludedRanges={pickerOffer.excludedRanges}
+          plannedRanges={pickerOffer.plannedRanges}
           busy={createWeekChildren.isPending}
           state={pickerState}
           block={{ ...blockInfo, deleting: blockDeleting, deleteFailed: blockDeleteFailed, onDeleteVersions: deleteBlockVersionsAndSplit }}
@@ -383,7 +384,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
   // Flux de découpage partagé avec le radar ; ici, plusieurs semaines créées →
   // referme le DayDialog (le radar reprend le relais via ses cartes). Le chemin
   // `pending` matérialise la mère vacances SEULEMENT à la confirmation du picker.
-  const { pickerFor, setPickerFor, pendingMother, setPendingMother, openPendingPicker, createWeekChildren, createHoliday, adaptBlock, pickWeeks, pickWeeksPending, adaptWholePending, createOneWeek, windowConflict, resetWindowConflict, requestAdapt: requestWeekAdapt, pickerState, blockInfo, blockDeleting, blockDeleteFailed, deleteBlockVersionsAndSplit } = useWeekAdapt(adapt, childrenResolved);
+  const { pickerFor, setPickerFor, pendingMother, setPendingMother, openPendingPicker, createWeekChildren, createHoliday, adaptBlock, pickWeeks, pickWeeksPending, adaptWholePending, recordPendingOnly, createOneWeek, windowConflict, resetWindowConflict, requestAdapt: requestWeekAdapt, pickerState, pickerOffer, pendingOffer, pendingPickerState, blockInfo, blockDeleting, blockDeleteFailed, deleteBlockVersionsAndSplit } = useWeekAdapt(adapt, childrenResolved);
   // P2-36 — la décision « semaines / bloc / chargement » vit dans useWeekAdapt (maison unique,
   // partagée avec le radar) : on ne passe plus que l'entrée + le savoir « déjà découpée »
   // (weekChildren). Données pas résolues → le picker s'ouvre en « chargement » et le DIT, au
@@ -554,11 +555,14 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
           title={pendingMother.label}
           startDate={pendingMother.startDate}
           endDate={pendingMother.endDate}
-          weeks={periodWeeksToAdjust(pendingMother.startDate, pendingMother.endDate, workingSeason, pendingMother.periodType, today)}
+          weeks={pendingOffer.offered}
           season={workingSeason}
+          plannedRanges={pendingOffer.plannedRanges}
+          state={pendingPickerState}
           busy={createHoliday.isPending || createWeekChildren.isPending}
           onPickSegments={(segments) => pickWeeksPending(pendingMother, segments)}
           onAdaptWhole={() => adaptWholePending(pendingMother)}
+          onRecordOnly={() => recordPendingOnly(pendingMother)}
           onClose={() => { resetWindowConflict(); setPendingMother(null); }}
           conflict={windowConflict}
           onOpenConflict={adapt}
@@ -570,8 +574,9 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
           title={pickerFor.title}
           startDate={pickerFor.startDate}
           endDate={pickerFor.endDate}
-          weeks={periodWeeksToAdjust(pickerFor.startDate, pickerFor.endDate, workingSeason, "holiday", today)}
+          weeks={pickerOffer.offered}
           season={workingSeason}
+          plannedRanges={pickerOffer.plannedRanges}
           busy={createWeekChildren.isPending}
           state={pickerState}
           block={{ ...blockInfo, deleting: blockDeleting, deleteFailed: blockDeleteFailed, onDeleteVersions: deleteBlockVersionsAndSplit }}

@@ -218,6 +218,39 @@ function invalidateEntries(queryClient: ReturnType<typeof useQueryClient>): void
   void queryClient.invalidateQueries({ queryKey: ["calendar-entries"] });
 }
 
+/** P2-38 (prévention) — une création de plan/semaines CHANGE le verdict « déjà planifié » : on
+ *  périme toute lecture de `planned-windows` pour que la modale rouverte reflète la nouvelle réalité. */
+function invalidatePlannedWindows(queryClient: ReturnType<typeof useQueryClient>): void {
+  void queryClient.invalidateQueries({ queryKey: ["planned-windows"] });
+}
+
+/** De quoi interroger `planned-windows` : la fenêtre + la référence (entrée matérialisée OU saison
+ *  pour une mère pending). `null` ⇒ la requête est désactivée (aucun picker ouvert). */
+export interface PlannedWindowsRef {
+  start: string;
+  end: string;
+  entryId?: string;
+  seasonId?: string;
+}
+
+/**
+ * P2-38 (prévention, étapes 4-6) — LES FENÊTRES DÉJÀ PLANIFIÉES par un AUTRE plan de période sur la
+ * fenêtre visée. Activée SEULEMENT quand un picker est ouvert (`ref` non nul) : aucun fetch sur les
+ * chemins sans modale — la prévention est un confort borné à la modale, le 409 reste la garde.
+ */
+export function usePlannedWindows(ref: PlannedWindowsRef | null) {
+  const start = ref?.start ?? "";
+  const end = ref?.end ?? "";
+  const entryId = ref?.entryId;
+  const seasonId = ref?.seasonId;
+  return useQuery({
+    queryKey: ["planned-windows", start, end, entryId ?? seasonId ?? null],
+    queryFn: () => cockpitApi.getPlannedWindows({ start, end, entryId, seasonId }),
+    enabled: null !== ref,
+    staleTime: 30_000,
+  });
+}
+
 /**
  * LE GESTE « Adapter » (ADR-0002 amendé 2026-07-24) : crée le plan de la période
  * AVANT d'ouvrir le wizard — une période n'a plus de plan à sa matérialisation,
@@ -228,7 +261,10 @@ export function useCreatePeriodPlan() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (calendarEntryId: string) => cockpitApi.createSchedulePlan(calendarEntryId),
-    onSuccess: () => invalidateEntries(queryClient),
+    onSuccess: () => {
+      invalidateEntries(queryClient);
+      invalidatePlannedWindows(queryClient);
+    },
     // Le hook possède son feedback : un refus de chevauchement (P2-38) est TU ici (le dialogue
     // l'affiche), tout autre échec remplace le toast du filet global.
     onError: ownWindowConflictFeedback,
@@ -399,7 +435,10 @@ export function useCreateWeekChildren() {
       }
       return { created, failedCount };
     },
-    onSettled: () => invalidateEntries(queryClient),
+    onSettled: () => {
+      invalidateEntries(queryClient);
+      invalidatePlannedWindows(queryClient);
+    },
     // Le hook possède son feedback : le refus de chevauchement (P2-38) est TU (le picker/l'encart
     // l'affiche), tout autre échec remplace le toast du filet global.
     onError: ownWindowConflictFeedback,

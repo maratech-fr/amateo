@@ -6,10 +6,20 @@ import { IN_FLIGHT_STATUSES } from "@/shared/lib/scheduleStatus";
 import { useDeleteSchedule, useSchedules } from "@/features/planning/queries";
 import { toast } from "@/shared/stores/toastStore";
 
-import type { CalendarEntry, CalendarEntryPeriodType, SchedulePlan } from "../api";
+import type { CalendarEntry, CalendarEntryPeriodType, PlannedWindow, SchedulePlan } from "../api";
 import { WindowAlreadyPlannedError } from "../api";
-import { useCalendarEntries, useCreateHolidayPeriod, useCreatePeriodPlan, useCreateWeekChildren, useSchedulePlans, useSchoolHolidays, type WeekChildrenResult } from "../queries";
-import { closureWeeksOffer, holidayWindows, periodWeeksToAdjust, todayISO, type ClosureWeeksOffer, type WeekSegment, type WeekWindow } from "./date";
+import { useCalendarEntries, useCreateHolidayPeriod, useCreatePeriodPlan, useCreateWeekChildren, usePlannedWindows, useSchedulePlans, useSchoolHolidays, type PlannedWindowsRef, type WeekChildrenResult } from "../queries";
+import { closureWeeksOffer, holidayWindows, periodWeeksToAdjust, subtractPlannedWeeks, todayISO, type ClosureWeeksOffer, type WeekSegment, type WeekWindow } from "./date";
+
+/**
+ * L'offre servie au picker : les semaines offertes + les blocs vacances écartés (P2-40) + les
+ * fenêtres DÉJÀ PLANIFIÉES par un autre plan (P2-38). Les trois notions sont ORTHOGONALES : une
+ * fenêtre peut être partiellement sous vacances ET partiellement déjà planifiée — `plannedRanges`
+ * n'est donc PAS un 5ᵉ état du picker mais une liste à côté de l'état.
+ */
+export interface PickerOffer extends ClosureWeeksOffer {
+  plannedRanges: PlannedWindow[];
+}
 
 /** Le refus « une seule planification par fenêtre » (P2-38), tel que l'affiche le geste. */
 export interface WindowConflict {
@@ -173,6 +183,27 @@ export function useWeekAdapt(adapt: (entryId: string) => void, childrenResolved 
   const holidayWindowsResolved = undefined !== schoolHolidaysQuery.data && undefined !== calendarEntriesQuery.data;
   const holidayWins = null === workingSeason || !holidayWindowsResolved ? [] : holidayWindows(calendarEntriesQuery.data ?? [], schoolHolidaysQuery.data?.items ?? [], workingSeason);
 
+  // P2-38 (prévention, étapes 4-6) — LES FENÊTRES DÉJÀ PLANIFIÉES par un AUTRE plan de période,
+  // servies par le backend (règle d'or : jamais recalculées). Une entrée matérialisée s'interroge
+  // par `entryId`, une mère pending par `seasonId`. La requête n'est ARMÉE que sur le picker ouvert
+  // (aucun fetch sur les chemins sans modale ; la prévention est bornée à la modale).
+  //
+  // FAIL-OPEN sur ERREUR de lecture : pendant la requête → non résolu (le picker s'ouvre en
+  // « chargement » plutôt qu'en offre qu'on rétracte ensuite) ; si la lecture ÉCHOUE → on offre
+  // TOUT (zéro exclusion), parce que le pire cas est exactement l'existant (le 409
+  // `window_already_planned` reste rendu par `noteWindowConflict`) alors qu'un fail-closed
+  // bloquerait un geste légitime sur une panne transitoire. La prévention est un confort ; le
+  // refus est la garde.
+  const plannedWindowsRef: PlannedWindowsRef | null =
+    null !== pickerFor
+      ? { start: pickerFor.startDate, end: pickerFor.endDate, entryId: pickerFor.id }
+      : null !== pendingMother && null !== workingSeason
+        ? { start: pendingMother.startDate, end: pendingMother.endDate, seasonId: workingSeason.id }
+        : null;
+  const plannedWindowsQuery = usePlannedWindows(plannedWindowsRef);
+  const plannedWindowsResolved = undefined !== plannedWindowsQuery.data || plannedWindowsQuery.isError;
+  const plannedWindows: PlannedWindow[] = plannedWindowsQuery.data ?? [];
+
   const planForEntry = (entryId: string): SchedulePlan | null => (plans ?? []).find((p) => p.calendarEntryId === entryId) ?? null;
   const versionsOf = (planId: string | null): Schedule[] => (null === planId ? [] : (schedules ?? []).filter((s) => s.schedulePlanId === planId));
 
@@ -199,7 +230,12 @@ export function useWeekAdapt(adapt: (entryId: string) => void, childrenResolved 
     // Une fermeture ne peut décider qu'une fois les vacances résolues : sinon on ne SAIT PAS si
     // une semaine est couverte (et un raccourci « une seule semaine » filerait en bloc à tort).
     const holidayResolved = !isClosure || holidayWindowsResolved;
-    const resolved = undefined !== plans && undefined !== schedules && childrenResolved && holidayResolved;
+    // P2-38 — le verdict « déjà planifié » entre dans `resolved` (même mécanique que holidayResolved) :
+    // la modale s'ouvre en « chargement » plutôt qu'en offre qu'on rétracte ensuite. INDISPENSABLE :
+    // la resynchro `sig !== signature` du picker réinitialise segments/coches dès que la liste des
+    // lundis change — un verdict arrivant tard effacerait sinon le scindage/fusion manuel du
+    // gestionnaire sans un mot. (Fail-open : `plannedWindowsResolved` est vrai aussi sur ERREUR.)
+    const resolved = undefined !== plans && undefined !== schedules && childrenResolved && holidayResolved && plannedWindowsResolved;
     const offer = offerFor(startDate, endDate, periodType);
     const holidayCovered = offer.excludedRanges.length > 0;
     const totalWeeks = null === workingSeason ? 0 : periodWeeksToAdjust(startDate, endDate, workingSeason, periodType, todayISO()).length;
@@ -386,9 +422,22 @@ export function useWeekAdapt(adapt: (entryId: string) => void, childrenResolved 
   const pickerDecision = null === pickerFor ? null : decisionFor(pickerFor, false);
   const pickerState: WeekPickerState = null === pickerDecision ? "weeks" : (pickerStateOf(pickerDecision) ?? "weeks");
   // L'offre (semaines offertes + blocs exclus par les vacances) du picker ouvert et de la mère
-  // pending — exposée pour que les surfaces ne recalculent plus (P2-40).
-  const pickerOffer: ClosureWeeksOffer = null === pickerFor ? { offered: [], excludedRanges: [] } : offerFor(pickerFor.startDate, pickerFor.endDate, pickerFor.periodType);
-  const pendingOffer: ClosureWeeksOffer = null === pendingMother ? { offered: [], excludedRanges: [] } : offerFor(pendingMother.startDate, pendingMother.endDate, pendingMother.periodType);
+  // pending — exposée pour que les surfaces ne recalculent plus (P2-40). P2-38 : on RETIRE en plus
+  // les semaines qu'une fenêtre déjà planifiée recoupe, et on expose `plannedRanges` À CÔTÉ des
+  // exclusions vacances (notions orthogonales — jamais fusionnées). `offerFor` (générique, consommé
+  // par les cartes de couverture) reste INTACT : la prévention est bornée à la modale.
+  const pickerBaseOffer: ClosureWeeksOffer = null === pickerFor ? { offered: [], excludedRanges: [] } : offerFor(pickerFor.startDate, pickerFor.endDate, pickerFor.periodType);
+  const pendingBaseOffer: ClosureWeeksOffer = null === pendingMother ? { offered: [], excludedRanges: [] } : offerFor(pendingMother.startDate, pendingMother.endDate, pendingMother.periodType);
+  const pickerOffer: PickerOffer = {
+    offered: subtractPlannedWeeks(pickerBaseOffer.offered, plannedWindows),
+    excludedRanges: pickerBaseOffer.excludedRanges,
+    plannedRanges: null === pickerFor ? [] : plannedWindows,
+  };
+  const pendingOffer: PickerOffer = {
+    offered: subtractPlannedWeeks(pendingBaseOffer.offered, plannedWindows),
+    excludedRanges: pendingBaseOffer.excludedRanges,
+    plannedRanges: null === pendingMother ? [] : plannedWindows,
+  };
   const pendingDecision = null === pendingMother ? null : decisionForWindow(pendingMother.startDate, pendingMother.endDate, pendingMother.periodType, { alreadySplit: false, blockGenerated: false });
   const pendingPickerState: WeekPickerState = null === pendingDecision ? "weeks" : (pickerStateOf(pendingDecision) ?? "weeks");
   const pickerPlan = null === pickerFor ? null : planForEntry(pickerFor.id);

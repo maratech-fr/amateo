@@ -5,6 +5,7 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Modal } from "@/shared/components/ui/modal";
 import { Spinner } from "@/shared/components/ui/spinner";
 
+import type { PlannedWindow } from "./api";
 import { frDateShort, mergeSegments, segmentLabel, segmentsFromOffer, segmentWeekCount, splitSegment, type ExcludedWeekRange, type WeekSegment, type WeekWindow } from "./lib/date";
 import type { WeekPickerState, WindowConflict } from "./lib/useWeekAdapt";
 import { WindowAlreadyPlannedNotice } from "./WindowAlreadyPlannedNotice";
@@ -47,6 +48,15 @@ interface WeekPickerDialogProps {
   block?: WeekPickerBlock;
   /** P2-40 — les blocs de semaines écartés parce qu'une vacance les gouverne (ligne d'info, état `holiday`). */
   excludedRanges?: ExcludedWeekRange[];
+  /**
+   * P2-38 (prévention) — les fenêtres qu'un AUTRE plan de période gouverne déjà, SERVIES par le
+   * backend. Leurs semaines sont déjà RETIRÉES de l'offre (pas de case à cocher) ; on les NOMME dans
+   * un encart au-dessus de la liste, avec la `reason` servie TELLE QUELLE (le front ne compose aucune
+   * phrase métier) et le raccourci « Ouvrir le planning en place ». On ne fabrique pas de ligne-segment
+   * désactivée : l'unité de la liste est le SEGMENT, pas la semaine, et forcer une frontière de segment
+   * ici obligerait le front à dériver un objet métier.
+   */
+  plannedRanges?: PlannedWindow[];
   /** P2-41 — segments cochés → un planning (enfant) par segment. */
   onPickSegments: (segments: WeekSegment[]) => void;
   /** Chemin « d'un bloc » : adapter toute la période sur son plan (comportement historique). */
@@ -79,7 +89,7 @@ interface WeekPickerDialogProps {
  * P2-36 : le dialogue s'OUVRE toujours et NOMME sa raison (`state`) — « en chargement » ≠ « déjà
  * générée d'un bloc » — au lieu de basculer en bloc sans un mot.
  */
-export function WeekPickerDialog({ title, startDate, endDate, weeks, season, busy, state = "weeks", block, excludedRanges = [], onPickSegments, onAdaptWhole, onRecordOnly, onClose, conflict, onOpenConflict }: WeekPickerDialogProps) {
+export function WeekPickerDialog({ title, startDate, endDate, weeks, season, busy, state = "weeks", block, excludedRanges = [], plannedRanges = [], onPickSegments, onAdaptWhole, onRecordOnly, onClose, conflict, onOpenConflict }: WeekPickerDialogProps) {
   // Segments dérivés de l'offre + fenêtre, PUIS mutés localement par scinder/fusionner.
   const [segments, setSegments] = useState<WeekSegment[]>(() => segmentsFromOffer(weeks, startDate, endDate));
   const [checked, setChecked] = useState<Set<string>>(() => new Set(segments.map((s) => s.monday)));
@@ -149,6 +159,23 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, bus
   const versionLabel = `${versionCount} version${versionCount > 1 ? "s" : ""}`;
   const createLabel = picked.length > 1 ? `Créer les ${picked.length} plannings` : "Créer le planning";
 
+  // P2-38 (prévention) — le chemin « d'un bloc » est INTERDIT dès qu'une partie de la fenêtre est
+  // gouvernée : par des vacances (état `holiday`, aligné sur ce patron par décision fondateur) OU
+  // par un autre plan déjà en place (`plannedRanges`). Un plan de bloc engloberait des semaines qui
+  // ne lui appartiennent pas. On le DÉSACTIVE avec sa raison VISIBLE — pas caché, et jamais via
+  // `title=` (`button.tsx` pose `disabled:pointer-events-none`, l'infobulle native ne se déclenche
+  // pas). L'état `block` (déjà généré d'un bloc) garde son propre chemin « Continuer d'un bloc ».
+  const isBlockState = "block" === state;
+  const blockPathBlocked = !isBlockState && ("holiday" === state || plannedRanges.length > 0);
+  const blockPathReason =
+    plannedRanges.length > 0
+      ? "Une partie de ces dates est déjà planifiée par ailleurs — adaptez les semaines restantes une à une."
+      : "Des vacances couvrent une partie de cette période — adaptez les semaines restantes une à une.";
+  // Le choix des semaines et le bloc « à consigner » ne sont offerts qu'en états DÉCIDÉS
+  // (weeks / holiday), jamais en chargement ni en bloc.
+  const decided = "weeks" === state || "holiday" === state;
+  const noneOfferable = decided && 0 === segments.length;
+
   // La liste de segments, partagée par l'état `weeks` (choix classique) et `holiday` (les segments
   // hors vacances qui restent à traiter). Précochés ; scinder/fusionner sont des gestes nommés,
   // atteignables au clavier.
@@ -194,11 +221,32 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, bus
 
   return (
     <Modal label="Choisir les semaines" title="Quelles semaines ajuster ?" onClose={onClose}>
+      {/* P2-38 (prévention) — les fenêtres déjà planifiées par un AUTRE plan, NOMMÉES au-dessus de
+          la liste (une par fenêtre gouvernante), avec la `reason` servie TELLE QUELLE + « Ouvrir le
+          planning en place ». `aria-live="polite"` : le verdict arrive APRÈS l'ouverture (la modale
+          s'ouvre en chargement). Rendu dans les états `weeks` ET `holiday` — les deux exclusions
+          (vacances P2-40, déjà planifié P2-38) coexistent. */}
+      <div aria-live="polite">
+        {decided
+          ? plannedRanges.map((planned) => (
+              <div key={planned.entryId} className="mt-4">
+                <WindowAlreadyPlannedNotice message={planned.reason} onOpen={() => onOpenConflict?.(planned.entryId)} />
+              </div>
+            ))
+          : null}
+      </div>
+
       {"weeks" === state ? (
-        <>
-          <p className="mt-2 text-sm text-muted-foreground">« {title} » couvre plusieurs semaines. Chaque segment coché devient un planning indépendant — scindez-le en semaines ou fusionnez des segments voisins à votre main.</p>
-          {segmentList}
-        </>
+        segments.length > 0 ? (
+          <>
+            <p className="mt-2 text-sm text-muted-foreground">« {title} » couvre plusieurs semaines. Chaque segment coché devient un planning indépendant — scindez-le en semaines ou fusionnez des segments voisins à votre main.</p>
+            {segmentList}
+          </>
+        ) : (
+          // Fenêtre 100 % gouvernée (déjà planifiée) : les encarts ci-dessus disent par qui, il ne
+          // reste rien à cocher ici.
+          <p className="mt-2 text-sm text-muted-foreground">Aucune semaine de cette indisponibilité ne reste à ajuster ici.</p>
+        )
       ) : null}
 
       {/* ÉTAT « chevauchement vacances » (P2-40) : les semaines sous vacances sont EXCLUES (pas
@@ -280,20 +328,25 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, bus
       ) : null}
 
       <div className="mt-6 flex flex-wrap justify-end gap-2">
-        {/* Le chemin « d'un bloc » disparaît dès qu'une vacance couvre une semaine (état holiday). */}
-        {"holiday" === state ? null : (
-          <Button variant="ghost" size="sm" onClick={onAdaptWhole} disabled={busy || block?.deleting}>
-            {"block" === state ? "Continuer d'un bloc" : "Adapter toute la période d'un bloc"}
+        {/* Le chemin « d'un bloc » reste VISIBLE mais DÉSACTIVÉ (avec sa raison) dès qu'une partie
+            de la fenêtre est gouvernée — vacances (P2-40) ou déjà planifié (P2-38) — au lieu d'être
+            caché (décision fondateur, alignement du cas vacances sur le patron « désactivé + raison »). */}
+        <div>
+          <Button variant="ghost" size="sm" onClick={onAdaptWhole} disabled={busy || block?.deleting || blockPathBlocked}>
+            {isBlockState ? "Continuer d'un bloc" : "Adapter toute la période d'un bloc"}
           </Button>
-        )}
-        {"weeks" === state || ("holiday" === state && segments.length > 0) ? (
+          {blockPathBlocked ? <p className="mt-1 text-xs text-muted-foreground">{blockPathReason}</p> : null}
+        </div>
+        {decided && segments.length > 0 ? (
           <Button size="sm" onClick={() => onPickSegments(picked)} disabled={busy || 0 === picked.length}>
             {busy ? <Spinner className="size-4" /> : null}
             {createLabel}
           </Button>
         ) : null}
-        {/* 100 % sous vacances, chemin pending : consigner le FAIT (sans plan ni navigation). */}
-        {"holiday" === state && 0 === segments.length && undefined !== onRecordOnly ? (
+        {/* 0 segment offert (100 % sous vacances OU 100 % déjà planifié), chemin pending : consigner
+            le FAIT (sans plan ni navigation). Condition GÉNÉRALISÉE sur « 0 segment offert », pas sur
+            l'état holiday — sinon le nouveau cas « tout déjà planifié » donnerait une modale en cul-de-sac. */}
+        {noneOfferable && undefined !== onRecordOnly ? (
           <Button size="sm" onClick={onRecordOnly} disabled={busy}>
             {busy ? <Spinner className="size-4" /> : null}
             Consigner l'indisponibilité

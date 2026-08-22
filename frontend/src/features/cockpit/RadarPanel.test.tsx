@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CalendarEntry, SchedulePlan, SchoolHoliday } from "./api";
+import type { CalendarEntry, PlannedWindow, SchedulePlan, SchoolHoliday } from "./api";
 import { setTodayOverride } from "@/shared/lib/clock";
 
 import { addDays, frDateShort, frDateShortNoYear, mondayOf, todayISO } from "./lib/date";
@@ -63,6 +63,10 @@ let impactItemsData: { unavailabilityId: string; trainingSlotCount: number }[] =
 // existants (fermeture sans vacances) ne voient aucun changement.
 let schoolHolidaysData: { zone: string | null; items: SchoolHoliday[] } | undefined = { zone: "A", items: [] };
 let calendarEntriesData: CalendarEntry[] | undefined = [];
+// P2-38 (prévention) — les fenêtres déjà planifiées SERVIES, que useWeekAdapt lit pour RETIRER
+// leurs semaines de l'offre du picker et les NOMMER. Vide par défaut : les cas existants (aucune
+// fenêtre en conflit) restent inchangés. `data: []` = verdict RÉSOLU (pas de « chargement »).
+let plannedWindowsData: PlannedWindow[] = [];
 
 vi.mock("./queries", () => ({
   useCreateHolidayPeriod: () => ({ mutate: createHolidayMutate, mutateAsync: createHolidayMutateAsync, isPending: false }),
@@ -76,6 +80,7 @@ vi.mock("./queries", () => ({
   useEntryConflictsList: (ids: string[]) => ids.map(() => ({ data: conflictsData, isPending: conflictsPending })),
   useSchedulePlans: () => ({ data: plansState.failed ? undefined : plansData, isError: plansState.failed }),
   useCreateVenueClosure: () => ({ mutate: createVenueClosureMutate, mutateAsync: createVenueClosureMutateAsync, isPending: false }),
+  usePlannedWindows: () => ({ data: plannedWindowsData, isError: false }),
 }));
 // P4-68 — les indispos gymnase alimentent une carte du radar. Les trois lectures sont
 // simulées ici : une liste VIDE par défaut, chaque cas qui en veut une la pose lui-même.
@@ -172,6 +177,7 @@ describe("RadarPanel", () => {
     impactItemsData = [];
     schoolHolidaysData = { zone: "A", items: [] };
     calendarEntriesData = [];
+    plannedWindowsData = [];
     deleteScheduleMutateAsync.mockClear();
   });
   afterEach(() => setTodayOverride(null));
@@ -626,6 +632,27 @@ describe("RadarPanel", () => {
     expect(screen.getByText(new RegExp(`Semaines du ${frDateShortNoYear(addDays(w1s, 7))} `))).toBeInTheDocument();
   });
 
+  // P2-38 (prévention) — une semaine qu'un AUTRE plan gouverne déjà (fenêtre SERVIE par le backend)
+  // est RETIRÉE des cases à cocher du picker, et NOMMÉE dans un encart portant la `reason` servie
+  // telle quelle + « Ouvrir le planning en place ». Bout-en-bout : useWeekAdapt soustrait, la modale
+  // rend l'encart. Le 409 reste la garde ; ceci est la prévention.
+  it("retire du picker une semaine déjà planifiée et affiche l'encart servi (P2-38)", async () => {
+    const user = userEvent.setup();
+    const w1s = mondayOf("2999-01-04"); // lundi
+    setTodayOverride(w1s); // les 3 semaines de la vacance sont à venir
+    // Un autre plan gouverne la 2ᵉ semaine (07→13). La reason est COMPOSÉE SERVEUR : le front l'affiche telle quelle.
+    plannedWindowsData = [{ entryId: "reprise-42", title: "Reprise", startDate: addDays(w1s, 7), endDate: addDays(w1s, 13), label: "semaine du 11 janv.", reason: "Ces dates sont déjà planifiées par « Reprise » (semaine du 11 janv.)." }];
+    renderRadar({ holidays: [{ id: "h9", label: "Vacances longues", holidayType: "noel", startDate: w1s, endDate: addDays(w1s, 20), schoolYear: "2998-2999" }] });
+
+    await user.click(screen.getByRole("button", { name: "Adapter" }));
+    expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
+    // L'encart servi, tel quel, avec le raccourci d'ouverture.
+    expect(screen.getByText(/déjà planifiées par « Reprise » \(semaine du 11 janv\.\)/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /ouvrir le planning en place/i })).toBeInTheDocument();
+    // La 2ᵉ semaine est RETIRÉE : la 1ʳᵉ et la 3ᵉ restent, séparées par le trou → deux segments.
+    expect(screen.getAllByRole("checkbox")).toHaveLength(2);
+  });
+
   // « Commencé » n'est pas « fini », à l'échelle VACANCE aussi : le filtre de période
   // gardait `startDate >= today` et faisait disparaître, dès le samedi de son début, le
   // seul point d'entrée vers « Adapter » et « Solliciter les coachs ».
@@ -1048,10 +1075,11 @@ describe("RadarPanel", () => {
       expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
       expect(screen.getByText(/couvertes par Vacances test/)).toBeInTheDocument();
       expect(screen.getByText(/le rappel vous attend/i)).toBeInTheDocument();
-      // P2-41 — les deux semaines pleines hors vacances forment UN segment (une coche) ; le chemin
-      // de repli « d'un bloc » a disparu (ses deux libellés de bouton).
+      // P2-41 — les deux semaines pleines hors vacances forment UN segment (une coche). ALIGNEMENT
+      // fondateur (P2-38) : le chemin « d'un bloc » n'est plus CACHÉ mais DÉSACTIVÉ avec sa raison
+      // (bascule voulue) ; « Continuer d'un bloc » (libellé de l'état block) reste absent.
       expect(screen.getAllByRole("checkbox")).toHaveLength(1);
-      expect(screen.queryByRole("button", { name: /adapter toute la période d'un bloc/i })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /adapter toute la période d'un bloc/i })).toBeDisabled();
       expect(screen.queryByRole("button", { name: /continuer d'un bloc/i })).not.toBeInTheDocument();
       // Rien créé tant que non confirmé.
       expect(createVenueClosureMutate).not.toHaveBeenCalled();
@@ -1072,7 +1100,8 @@ describe("RadarPanel", () => {
 
       expect(screen.getByText(/couvertes par Vacances test/)).toBeInTheDocument();
       expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /d'un bloc/i })).not.toBeInTheDocument();
+      // ALIGNEMENT fondateur (P2-38) : « d'un bloc » présent mais DÉSACTIVÉ (au lieu de caché).
+      expect(screen.getByRole("button", { name: /adapter toute la période d'un bloc/i })).toBeDisabled();
 
       await user.click(screen.getByRole("button", { name: /consigner l'indisponibilité/i }));
       await waitFor(() =>

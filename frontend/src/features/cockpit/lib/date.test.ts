@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { actionableWeeks, addDays, closureWeeksOffer, groupCoverageSlots, holidayWindows, isActionableWeek, mergeSegments, mondayOf, periodAdjustWeeks, periodWeeksToAdjust, segmentLabel, segmentsFromOffer, segmentWeekCount, splitSegment, weeksCovering, buildMonthGrid, daysUntil, isWithin, monthWindow, toISODate, type WeekWindow } from "./date";
+import { actionableWeeks, addDays, closureWeeksOffer, groupCoverageSlots, holidayWindows, isActionableWeek, mergeSegments, mondayOf, periodAdjustWeeks, periodWeeksToAdjust, segmentLabel, segmentsFromOffer, segmentWeekCount, splitSegment, subtractPlannedWeeks, weeksCovering, buildMonthGrid, daysUntil, isWithin, monthWindow, toISODate, type WeekWindow } from "./date";
 
 describe("cockpit date utils", () => {
   it("builds a 42-cell Monday-first grid", () => {
@@ -447,5 +447,36 @@ describe("groupCoverageSlots — regroupement des semaines par enfant (P2-41)", 
     ]);
     expect(groups.map((g) => g.child?.id ?? null)).toEqual(["a", null, "b"]);
     expect(groups[0].weeks).toHaveLength(2);
+  });
+});
+
+// P2-38 (prévention) — subtractPlannedWeeks retire les semaines qu'une plage SERVIE (backend)
+// recoupe ; les plages ne sont jamais recalculées côté front (règle d'or). Fail-open : aucune plage
+// ⇒ l'offre est rendue intacte.
+describe("subtractPlannedWeeks (P2-38)", () => {
+  const wk = (monday: string): WeekWindow => ({ startDate: monday, endDate: addDays(monday, 6), monday });
+  const offered = [wk("2026-11-09"), wk("2026-11-16"), wk("2026-11-23")];
+
+  it("aucune plage → l'offre est rendue intacte (fail-open)", () => {
+    expect(subtractPlannedWeeks(offered, [])).toBe(offered);
+  });
+
+  it("retire la seule semaine que la plage recoupe (chevauchement inclusif)", () => {
+    const result = subtractPlannedWeeks(offered, [{ startDate: "2026-11-16", endDate: "2026-11-22" }]);
+    expect(result.map((w) => w.monday)).toEqual(["2026-11-09", "2026-11-23"]);
+  });
+
+  it("un chevauchement même partiel suffit à retirer une semaine", () => {
+    // La plage empiète d'un seul jour sur la 1ʳᵉ semaine (dimanche 15) et couvre la 2ᵉ.
+    const result = subtractPlannedWeeks(offered, [{ startDate: "2026-11-15", endDate: "2026-11-20" }]);
+    expect(result.map((w) => w.monday)).toEqual(["2026-11-23"]);
+  });
+
+  it("plusieurs plages se cumulent", () => {
+    const result = subtractPlannedWeeks(offered, [
+      { startDate: "2026-11-09", endDate: "2026-11-15" },
+      { startDate: "2026-11-23", endDate: "2026-11-29" },
+    ]);
+    expect(result.map((w) => w.monday)).toEqual(["2026-11-16"]);
   });
 });

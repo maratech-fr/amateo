@@ -41,6 +41,9 @@ vi.mock("./queries", () => ({
   // RadarPanel dérive « version active » du plan de la période (lot D-b).
   useSchedulePlans: () => ({ data: [], isSuccess: true }),
   useCreateVenueClosure: () => ({ mutate: vi.fn(), isPending: false }),
+  // P2-38 — useWeekAdapt (dans RadarPanel) lit les fenêtres déjà planifiées ; ici jamais de picker
+  // ouvert, mais le hook doit exister dans le mock.
+  usePlannedWindows: () => ({ data: [], isError: false }),
 }));
 // P4-68 — le radar lit les indispos gymnase (et la carte du cockpit les liste) :
 // rien à signaler dans ces cas d'état, la machine à états n'en dépend pas.
