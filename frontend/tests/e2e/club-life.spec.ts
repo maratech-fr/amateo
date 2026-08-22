@@ -9,16 +9,18 @@ import { settleVeil } from "./support";
  * du 2026-08-19** : le repli silencieux vers le plan de SAISON quand on génère une période. Le
  * gestionnaire croyait adapter sa période, et générait dans le socle.
  *
- * ⚑ **Pourquoi le club SEEDÉ, et pourquoi l'INCIDENT plutôt que la reprise** (arbitrages
- * fondateur, tous deux adossés à des mesures) :
+ * ⚑ **Pourquoi le club SEEDÉ, et pourquoi l'incident QUI EXISTE DÉJÀ** (mesuré, pas supposé) :
+ * le seed porte exactement la matière du parcours — deux plannings de **reprise** (17-23 et 24-30
+ * août, une version COMPLETED chacun) et l'**incident Matéo** (fermeture du 7 au 27 septembre,
+ * plan créé, **zéro version**). C'est le préalable que P5-13 a livré aux fixtures pour ce test.
  *
- *  - Il n'existe que **deux portes** vers un plan de période — le radar vacances et « Déclarer
- *    une indisponibilité » ; « Créer une période libre » est désactivé (`DayDialog.tsx`, « à
- *    venir »). Or le radar vacances exige une **zone de vacances**, qui vient de la fiche FFBB et
- *    est en LECTURE SEULE dans l'app : un club frais aux identifiants de test n'en a jamais.
- *  - Parmi ces deux portes, l'incident **crée sa propre période**, sur une fenêtre que ce spec
- *    choisit. Il ne dépend donc ni de la structure de vacances du seed, ni de ses plans
- *    existants — contrairement à la reprise, dont les segments libres varient avec le seed.
+ * ⚠ **Le premier jet DÉCLARAIT son propre incident, et c'était une impasse** — consigné pour que
+ * personne ne recommence : sur ce seed, il n'existe **aucune semaine libre dans l'horizon du
+ * radar**. L'horizon vaut 30 jours (`VENUE_UNAVAILABILITY_HORIZON_DAYS`, `RadarPanel.tsx`) ; à
+ * partir du 22/08 il court jusqu'au 21/09 — or les vacances d'été tiennent jusqu'au 31/08 (donc la
+ * semaine du 31/08 au 06/09 est écartée EN ENTIER, l'exclusion est hebdomadaire) et l'incident
+ * Matéo gouverne du 07 au 27/09. Toute fenêtre inventée tombe soit sous les vacances, soit sur un
+ * plan existant. Trois fenêtres essayées avant de comprendre qu'il fallait lire la base.
  *
  * Le socle et la génération « from scratch », eux, restent couverts par `journey.spec.ts`, qui
  * les fait sur un club neuf, de l'inscription jusqu'à la réouverture.
@@ -33,24 +35,12 @@ import { settleVeil } from "./support";
 const EMAIL = "mara.mb@bccl.fr";
 const PASSWORD = "maraboubccl";
 
-/** Le motif de l'indisponibilité créée ici — il rend la période RECONNAISSABLE d'un run à l'autre. */
-const MOTIF = "Incident e2e";
-
 /**
- * La fenêtre de l'incident : **du 1er au 4 septembre 2026**. Deux contraintes la déterminent, et
- * les deux ont été apprises en la plaçant mal.
- *
- *  1. **Hors de tout plan du seed** — vacances d'été jusqu'au 31/08, adaptation Matéo 07→27/09 :
- *     deux plans de période qui se chevauchent sont refusés en 409 `window_already_planned`
- *     (P2-38, `PeriodWindowUniquenessGuard`). Le créneau du 1er au 6 septembre est le seul libre
- *     à proximité.
- *  2. **PROCHE de la date courante du club.** Le cockpit est un calendrier du MOIS affiché et
- *     son panneau « À traiter » a un horizon court : un incident déclaré en octobre est bien
- *     enregistré, mais **invisible** depuis l'accueil — aucune carte, donc aucun geste possible.
- *     Mesuré : avec une fenêtre au 5 octobre, le cockpit n'offrait ni « Adapter » ni « Reprendre ».
+ * L'incident du seed : la fermeture du gymnase Matéo (7 → 27 septembre 2026), plan créé et
+ * **aucune version** — c'est LUI que ce parcours mène jusqu'à son overlay. On le désigne par un
+ * fragment de son titre, stable d'un seed à l'autre.
  */
-const INCIDENT_START = "2026-09-01";
-const INCIDENT_END = "2026-09-04";
+const INCIDENT = "Matéo";
 
 async function login(page: import("./fixtures").Page): Promise<void> {
   await page.goto("/login");
@@ -127,7 +117,7 @@ async function expectSocleIntact(page: import("./fixtures").Page, label: string)
 // ailleurs, et que la prochaine session ne doit pas repayer : les deux seules portes vers un plan
 // de période, l'horizon du cockpit qui rend un incident lointain invisible, la garde de
 // chevauchement, l'ellipse du bandeau. `fixme` le laisse visible sans rougir la CI.
-test.fixme("un incident déclaré ouvre un overlay borné à SON plan, sans toucher au socle", async ({ page }) => {
+test("un incident déclaré ouvre un overlay borné à SON plan, sans toucher au socle", async ({ page }) => {
   test.setTimeout(420_000);
 
   await login(page);
@@ -136,42 +126,64 @@ test.fixme("un incident déclaré ouvre un overlay borné à SON plan, sans touc
   //         ici il est le décor dont on vérifie qu'il ne bouge pas.)
   await expectSocleIntact(page, "avant l'incident");
 
-  // --- 1 · L'INCIDENT — un gymnase indisponible sur une fenêtre libre.
+  // --- 1 · LES PLANNINGS DE REPRISE existent déjà, chacun avec SA version terminée. C'est la
+  //         cohabitation qu'on vérifiera en fin de parcours : trois plannings distincts.
   await openCockpit(page);
-  if ((await page.getByText(MOTIF).count()) === 0) {
-    await page.getByRole("button", { name: "Déclarer" }).first().click();
-    const declaration = page.getByRole("dialog");
-    await expect(declaration).toBeVisible({ timeout: 15_000 });
-    await declaration.getByLabel("Début de l'indisponibilité").fill(INCIDENT_START);
-    await declaration.getByLabel("Fin de l'indisponibilité").fill(INCIDENT_END);
-    await declaration.getByLabel("Motif de l'indisponibilité").fill(MOTIF);
-    await declaration.getByRole("button", { name: "Déclarer" }).click();
-    await expect(declaration).toBeHidden({ timeout: 30_000 });
+
+  // --- 2 · L'INCIDENT s'ouvre par la porte du radar. On vise l'ouvreur DE LA CARTE qui le porte,
+  //         jamais une POSITION dans la liste : le premier jet cliquait `opener.last()` en
+  //         supposant que le radar range par date, et tombait sur une carte déjà planifiée →
+  //         409, reproductible sur seed frais. `RadarCard` (`RadarPanel.tsx`) rend son titre dans
+  //         un `<p>` à l'intérieur d'un conteneur bordé : le filtrer par son texte désigne LA
+  //         carte, quel que soit l'ordre d'affichage.
+  // ⚠ Borner au REPÈRE d'abord : « Matéo » apparaît aussi dans chaque case du calendrier du mois
+  // (« 18 Août … Matéo indisponible (travaux) »), donc un filtre sur toute la page attrape le
+  // calendrier et jamais la carte. Le radar est un `<aside>` — repère `complementary`.
+  const radar = page.getByRole("complementary").filter({ hasText: "À traiter" });
+  const card = radar.locator("div.rounded-md.border").filter({ hasText: INCIDENT });
+  await expect(card.first(), "l'incident du seed doit avoir sa carte au radar").toBeVisible({ timeout: 30_000 });
+
+  // ⚠ DEUX faits d'écran qu'on ne devine pas, et qui ont coûté deux runs de sept minutes chacun —
+  // c'est la raison pour laquelle la consigne était de LIRE `RadarPanel` d'abord :
+  //  1. la carte d'une fermeture est REPLIÉE (son action vit dans `children`, monté au dépli) ;
+  //  2. son ouvreur n'est PAS un bouton « Adapter » mais une PUCE DE COUVERTURE, une par semaine
+  //     ou groupe de semaines, libellée « sem. du … · à faire » (`RadarPanel.tsx` — la puce
+  //     appelle `adapt(child.id)` quand la semaine n'a pas encore de version, `viewOverlay`
+  //     sinon). Les semaines déjà gouvernées, elles, ne sont pas cliquables du tout.
+  const unfold = card.first().getByRole("button", { name: /^Déplier / });
+  if (await unfold.isVisible().catch(() => false)) {
+    await unfold.click();
   }
+  // ⚠ IDEMPOTENCE — la base e2e n'est jamais réinitialisée, donc la puce de NOTRE semaine change
+  // d'état d'un run à l'autre : « à faire » au premier passage (elle appelle `adapt` → wizard),
+  // « ✅ » ensuite (elle appelle `viewOverlay` → `/planning`). On la vise donc par sa FENÊTRE, pas
+  // par son état, et on accepte les deux destinations. Mordu au deuxième run : le premier avait
+  // généré l'overlay, et le spec ne se reconnaissait plus.
+  await card.first().getByRole("button", { name: /^sem\. du 7 sept/ }).first().click();
 
-  // --- 2 · La période née de l'incident s'ouvre par la même porte que toute période.
-  await openCockpit(page);
-  const opener = page.getByRole("button", { name: /^(Reprendre|Adapter)$/ });
-  await expect(opener.first(), "l'incident déclaré doit offrir une période à adapter").toBeVisible({ timeout: 30_000 });
-  // La DERNIÈRE carte : le radar range les périodes par date, et la nôtre (début septembre)
-  // vient après les vacances d'été que porte le seed.
-  await opener.last().click();
-  const weeks = page.getByRole("dialog");
-  if ((await weeks.count()) > 0 && (await weeks.isVisible())) {
-    // Une période multi-semaines demande QUELLES semaines ajuster ; la nôtre tient en une.
-    await page.getByRole("button", { name: /^(Créer (le|les) |Adapter toute la période)/ }).first().click();
+  // Une période de PLUSIEURS semaines demande d'abord lesquelles ajuster. On prend le bloc entier
+  // — c'est le geste du gestionnaire qui subit une fermeture de trois semaines.
+  const weeks = page.getByRole("dialog", { name: "Choisir les semaines" });
+  if (await weeks.isVisible().catch(() => false)) {
+    const wholeBlock = weeks.getByRole("button", { name: /^(Adapter toute la période|Continuer d'un bloc)/ });
+    await expect(wholeBlock, "le chemin « d'un bloc » doit être OFFERT : la fenêtre de l'incident n'est ni sous vacances ni déjà planifiée").toBeEnabled({ timeout: 15_000 });
+    await wholeBlock.click();
   }
-  await expect(page).toHaveURL(/\/wizard/, { timeout: 30_000 });
+  await expect(page, "la puce doit mener à l'écran de la période — atelier (1er passage) ou planning (overlay déjà là)").toHaveURL(/\/(wizard|planning)/, { timeout: 30_000 });
+  const inWizard = /\/wizard/.test(page.url());
 
-  const periodTitle = await readPeriodTitle(page);
-
-  // --- 3 · Générer l'overlay, s'il ne l'est pas déjà (idempotence).
-  await page.getByRole("button", { name: "Génération", exact: false }).first().click();
-  await expect(page.getByRole("heading", { name: /Étape 6\/6/ })).toBeVisible({ timeout: 30_000 });
-  if ((await versionsOf(page)).length === 0) {
-    await page.getByRole("button", { name: "Générer le planning de période" }).click();
-    // Mesuré à 4 s sur ce club ; la marge couvre un runner chargé, pas une attente à l'aveugle.
-    await expect(page.getByRole("combobox", { name: /version du planning/i }), `${periodTitle} : la génération n'a produit aucune version`).toBeVisible({ timeout: 180_000 });
+  // --- 3 · Générer l'overlay, s'il ne l'est pas déjà (idempotence). L'atelier n'existe qu'au
+  //         premier passage : une fois l'overlay né, la puce mène droit à l'écran du planning.
+  let periodTitle = "l'overlay de la période";
+  if (inWizard) {
+    periodTitle = await readPeriodTitle(page);
+    await page.getByRole("button", { name: "Génération", exact: false }).first().click();
+    await expect(page.getByRole("heading", { name: /Étape 6\/6/ })).toBeVisible({ timeout: 30_000 });
+    if ((await versionsOf(page)).length === 0) {
+      await page.getByRole("button", { name: "Générer le planning de période" }).click();
+      // Mesuré à 4 s sur ce club ; la marge couvre un runner chargé, pas une attente à l'aveugle.
+      await expect(page.getByRole("combobox", { name: /version du planning/i }), `${periodTitle} : la génération n'a produit aucune version`).toBeVisible({ timeout: 180_000 });
+    }
   }
 
   // --- 4 · LES TÉMOINS DU BORNAGE — le cœur de ce parcours.
@@ -181,7 +193,9 @@ test.fixme("un incident déclaré ouvre un overlay borné à SON plan, sans touc
   // où il borne la liste des versions.
 
   // T1 — l'écran NOMME son plan. Un wizard resté en mode saison n'affiche pas ce bandeau.
-  await expect(page.getByText(`Mode période — ${periodTitle}`), "l'écran doit se dire en mode période sur SA période").toBeVisible();
+  if (inWizard) {
+    await expect(page.getByText(`Mode période — ${periodTitle}`), "l'atelier doit se dire en mode période sur SA période").toBeVisible();
+  }
 
   // T2 — le sélecteur ne montre QUE la lignée de ce plan. Le socle du club seedé est VALIDÉ :
   // s'il fuitait ici, son libellé « en vigueur » apparaîtrait dans la liste.
@@ -201,5 +215,12 @@ test.fixme("un incident déclaré ouvre un overlay borné à SON plan, sans touc
   const plannings = page.getByRole("dialog");
   await expect(plannings).toBeVisible({ timeout: 15_000 });
   await expect(plannings, "le socle doit rester listé et VALIDÉ").toContainText("Validé");
-  await expect(plannings, "l'overlay de l'incident doit être listé à côté du socle").toContainText(periodTitle);
+  // ⚠ On identifie l'overlay par sa FENÊTRE, pas par son nom — parce que le produit lui en donne
+  // DEUX : le bandeau du wizard affiche le titre de l'ENTRÉE (« Matéo indisponible (travaux) — … »)
+  // quand cette liste affiche le nom du PLAN (« Ajustement gymnase — du 7 septembre… »). Même
+  // objet, deux noms : constat de ce parcours, consigné en roadmap. La fenêtre, elle, ne ment pas.
+  await expect(plannings, "l'overlay de l'incident doit être listé à côté du socle").toContainText("07-09-2026 → 27-09-2026");
+  // Les DEUX reprises du seed sont là aussi : trois plannings distincts coexistent, chacun avec
+  // sa lignée — c'est la « réalité d'un club » que ce parcours doit attester (P4-122).
+  await expect(plannings, "les plannings de reprise doivent cohabiter avec le socle et l'overlay").toContainText("Reprise");
 });
