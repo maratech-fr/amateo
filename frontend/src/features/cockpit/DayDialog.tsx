@@ -16,6 +16,7 @@ import { useWorkingSeason } from "@/shared/session/queries";
 import { clampRangeToSeason, frDateShort, groupCoverageSlots, periodWeeksToAdjust, todayISO, weeksCovering } from "./lib/date";
 import { seasonLockTitle, useSocleValidated } from "./lib/socle";
 import { useWeekAdapt } from "./lib/useWeekAdapt";
+import { WarningPanel } from "@/shared/components/ui/warning-panel";
 import { WindowAlreadyPlannedNotice } from "./WindowAlreadyPlannedNotice";
 import { entryIcon, entryLabel, holidayIcon, isHolidayAnchor, isHolidayWeekChild } from "./lib/markers";
 import { useCalendarEntries, useCreateCutoff, useCreateEvent, useCreateVenueClosure, useDeleteEntry, useSchedulePlanForEntry, useSchedulePlans } from "./queries";
@@ -393,14 +394,15 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
   const requestAdapt = (target: CalendarEntry) => requestWeekAdapt(target, { alreadySplit: weekChildren.length > 0 });
 
   return (
-    <div className="space-y-2 rounded-md border border-warning/50 bg-warning/10 px-3 py-2">
-      <p className="flex items-center gap-2 text-sm">
-        {/* Same season emoji as the calendar (🎄/🎃/…) — decorative, the text names it. */}
-        <span aria-hidden className="text-base leading-none">{holidayIcon(holiday)}</span>
-        <span>
+    <WarningPanel
+      /* Same season emoji as the calendar (🎄/🎃/…) — decorative, the text names it. */
+      icon={<span className="text-base">{holidayIcon(holiday)}</span>}
+      message={
+        <>
           <span className="font-medium">Vacances</span> — {holiday.label}
-        </span>
-      </p>
+        </>
+      }
+    >
       {/* Toutes les vacances sont adaptables, été inclus (planning de reprise —
           retour fondateur 2026-07-18, P2-5 E2 : l'exclusion `ete` est levée). */}
       {null !== entry && weekChildren.length > 0 ? (
@@ -590,7 +592,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
           onOpenConflict={adapt}
         />
       ) : null}
-    </div>
+    </WarningPanel>
   );
 }
 

@@ -1,6 +1,6 @@
 # FORWARD Components Spec — Pages & Shared Components (hors wizard)
 
-Last verified @ 2026-08-22 (P4-117/UXC-17 — re-vérifié : la ligne `EmptyState` du tableau décrivait une primitive qui N'EXISTAIT PAS (prop `action` jamais écrite, consommateurs `DiagnosticsPage`/`TierListPage` introuvables dans `src/`) pendant que le composant réel vivait en LOCAL dans `PlanningPage` ; la promotion UXC-17 rend la ligne vraie — les trois étages du vide vivent dans `empty-hint.tsx`, props confrontées au code. ⚠ Vérification HONNÊTEMENT PARTIELLE, comme la précédente : seule cette ligne et ses voisines immédiates ont été confrontées cette passe ; le découpage du fichier (>1000 lignes) réclamé par les passes précédentes reste à faire)
+Last verified @ 2026-08-22 (recalé par la livraison P4-127 (b) : la primitive `WarningPanel` entre au tableau — l'encart d'avertissement était re-déclaré à trois endroits avec deux boîtes différentes. Props confrontées au code en écrivant la ligne. ⚠ Vérification HONNÊTEMENT PARTIELLE, comme les précédentes : cette ligne et ses voisines immédiates, pas les >1000 lignes du fichier ; le découpage réclamé par les passes précédentes reste à faire)
 
 > 🛑 **Ce document est SUPERSEDED. Il ne décrit pas le frontend livré.**
 >
@@ -541,6 +541,7 @@ de la présentation + accessibilité.
 | `AccordionSection` | Section dépliable (`aria-expanded`/`aria-controls`, chevron) | `title`, `defaultOpen`, `children` | ClubPage (sections Demandes / Visuel) |
 | `Modal` | Modal accessible (focus trap, Escape, backdrop), **hauteur bornée + contenu défilant**, **largeur par palier nommé** | `label`, `title`, `onClose`, `children`, `size` (`sm`\|`md`\|`lg`\|`xl`, défaut `md`) | cockpit, wizard, matchs, planning, admin |
 | `FichePage` | Le cadre des pages « fiche » : 832 px centrés + paragraphes bornés à la longueur de ligne lisible | `className` (rythme vertical de la page), `children` | ClubPage, ProfilePage, ReleaseNotesPage |
+| `WarningPanel` | L'encart d'AVERTISSEMENT — un fait qui limite ce qui est possible ici (semaines sous vacances, fenêtre déjà planifiée). **Une seule boîte** depuis P4-127 : trois sites la re-déclaraient avec deux bordures différentes, deux d'entre eux côte à côte dans la même modale. ⚠ Ce n'est **pas** une alerte d'erreur : ni `role="alert"` ni `aria-live` — quand le contenu arrive de façon asynchrone, c'est le CONTENEUR de l'appelant qui porte la région live, pour annoncer une fois et non une fois par encart | `icon` (décoratif — le texte porte seul le sens), `message`, `children` (l'action, rendue en FRÈRE du paragraphe : un `<div>` dans un `<p>` est invalide), `className` | `WindowAlreadyPlannedNotice`, `WeekPickerDialog`, `DayDialog` |
 | `Toast` | Notification temporaire (succès, erreur, info) | `variant`, `message`, `duration` | Toutes les pages (mutations) |
 | `ConfirmDialog` | Dialogue de confirmation (action destructive) — panneau jumeau de `Modal`, **largeur lue dans `MODAL_WIDTH.sm`** | `open`, `title`, `description`, `confirmLabel`, `confirmPhrase`, `onConfirm`, `onCancel` | Suppression d'équipe, reset club |
 
