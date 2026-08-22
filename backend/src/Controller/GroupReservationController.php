@@ -49,6 +49,15 @@ final class GroupReservationController extends AbstractController implements Sea
     ) {}
 
     /**
+     * Forme d'UUID — motif canonique du dépôt (`TenantFilterListener::isUuid`). Ne juge QUE la
+     * forme : l'existence et la portée restent tranchées par les lookups sous filtre tenant.
+     */
+    private static function isUuid(string $value): bool
+    {
+        return 1 === preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value);
+    }
+
+    /**
      * Écriture de COLLECTION (N réservations de la saison courante) : aucune ressource unique dont
      * dériver la saison, le header/saison courante gouverne — patron `ReorderTeamsController`, et
      * parité avec le POST de réservation unitaire (dont le processor cible aussi la saison courante).
@@ -80,15 +89,34 @@ final class GroupReservationController extends AbstractController implements Sea
         if (!\is_string($groupId) || !\is_string($venueId) || !\is_int($dayOfWeek) || !\is_string($startTimeRaw)) {
             return $this->json(['error' => 'Missing required field: sharedTrainingGroupId, venueId, dayOfWeek, startTime.'], Response::HTTP_BAD_REQUEST);
         }
-        if (null !== $schedulePlanId && !\is_string($schedulePlanId)) {
-            return $this->json(['error' => 'schedulePlanId must be a string.'], Response::HTTP_BAD_REQUEST);
+        // ⚠ FORME de l'UUID pré-validée : un id malformé ne doit JAMAIS atteindre Postgres.
+        // Les colonnes visées sont des `uuid` natifs — `WHERE id = 'abc'` y lève un 22P02, donc
+        // un 500 là où le rail unitaire rend un 422 propre (`ReservationInput` porte
+        // `#[Assert\Uuid]`). C'est une classe de défaut que le dépôt documente DEUX fois
+        // (`AssertsSchedulePlanExistsTrait`, `TenantFilterListener::findClubSeason`) ; ce rail
+        // la réintroduisait. Relevé en revue de sécurité, 2026-08-23.
+        if (!self::isUuid($groupId) || !self::isUuid($venueId)) {
+            return $this->json(['error' => 'Identifiant invalide.'], Response::HTTP_BAD_REQUEST);
+        }
+        if (null !== $schedulePlanId && (!\is_string($schedulePlanId) || !self::isUuid($schedulePlanId))) {
+            return $this->json(['error' => 'Identifiant de planning invalide.'], Response::HTTP_BAD_REQUEST);
+        }
+        // PARITÉ des bornes avec `ReservationInput` (#[Assert\Range]) : sans elles, `dayOfWeek: 8`
+        // ou une durée de 5000 min s'écrivent en base et DÉGRADENT le solve en silence (le schéma
+        // moteur ne borne pas `day_of_week`), tandis qu'un entier hors SMALLINT lève un 500 au
+        // flush. Un rail batch ne peut pas être plus permissif que son rail unitaire.
+        if ($dayOfWeek < 1 || $dayOfWeek > 7) {
+            return $this->json(['error' => 'Le jour doit être compris entre 1 (lundi) et 7 (dimanche).'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+        $durationMinutes = \is_int($durationRaw) ? $durationRaw : 90;
+        if ($durationMinutes < 15 || $durationMinutes > 300) {
+            return $this->json(['error' => 'La durée doit être comprise entre 15 et 300 minutes.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
         try {
             $startTime = new DateTimeImmutable($startTimeRaw);
         } catch (Exception) {
             return $this->json(['error' => 'startTime must be a valid time (HH:MM).'], Response::HTTP_BAD_REQUEST);
         }
-        $durationMinutes = \is_int($durationRaw) ? $durationRaw : 90;
 
         // Groupe résolu SOUS le filtre tenant (findOneBy, jamais find — un groupe d'un AUTRE club
         // devient introuvable, jamais un oracle d'existence). Leçon TeamLink « PR B ».

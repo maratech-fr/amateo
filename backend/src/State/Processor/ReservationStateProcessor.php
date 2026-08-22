@@ -118,8 +118,13 @@ class ReservationStateProcessor extends AbstractStateProcessor
     protected function createEntityFromInput(object $input): Reservation
     {
         // clubId + seasonId are set by AbstractStateProcessor from the tenant/season
-        // context. No SEC-07 management gate — reservations are a wizard write, like
-        // constraints and venue slots.
+        // context. ⚠ Le gate management S'APPLIQUE bien ici : aucune surcharge de
+        // `requiresManagementRole()` ⇒ le défaut `true` d'AbstractStateProcessor:127
+        // gate l'écriture. L'ancien commentaire disait « No SEC-07 management gate »,
+        // ce qui se lisait « route ouverte » alors qu'il voulait dire « pas de
+        // surcharge EXPLICITE » — sur un sujet d'autorisation, la nuance décidait mal
+        // (relevé en livrant le rail de groupe, P2-46 PR-2 : c'est la parité avec
+        // cette route qui a imposé d'y poser `assertManager()`).
         $entity = new Reservation;
         if (null !== $input->teamId) {
             $entity->setTeamId($input->teamId);

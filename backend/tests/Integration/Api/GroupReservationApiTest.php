@@ -282,6 +282,66 @@ final class GroupReservationApiTest extends WebTestCase
         self::assertTrue($reloaded->isResourcesChangedSinceGeneration(), 'l\'écriture batch doit périmer le planning de saison COMPLETED');
     }
 
+    // ── Parité de VALIDATION avec le rail unitaire (revue sécu 2026-08-23) ───────
+
+    /**
+     * Un identifiant MALFORMÉ ne doit jamais atteindre Postgres : les colonnes visées sont des
+     * `uuid` natifs, où `WHERE id = 'abc'` lève un 22P02 — donc un 500 là où le rail unitaire
+     * rend un 422 propre (`ReservationInput` porte `#[Assert\Uuid]`). Classe de défaut que le
+     * dépôt documente DEUX fois (`AssertsSchedulePlanExistsTrait`,
+     * `TenantFilterListener::findClubSeason`) et que ce rail réintroduisait.
+     */
+    public function testAMalformedIdentifierIsRefusedBeforeReachingPostgres(): void
+    {
+        [$t1, $t2] = [$this->team(2), $this->team(2)];
+        $venue = $this->venue(false);
+        $group = $this->group(null, [$t1, $t2], 2);
+
+        foreach ([['abc', $venue->getId()], [$group->getId(), 'not-a-uuid'], ['', $venue->getId()]] as [$groupId, $venueId]) {
+            $this->client->request('POST', '/api/reservations/group', [], [], [
+                'HTTP_X-Club-Id' => $this->club->getId(),
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
+                'CONTENT_TYPE' => 'application/json',
+            ], json_encode([
+                'sharedTrainingGroupId' => $groupId,
+                'venueId' => $venueId,
+                'dayOfWeek' => 2, 'startTime' => '18:00',
+            ], \JSON_THROW_ON_ERROR));
+
+            self::assertResponseStatusCodeSame(400, \sprintf('id « %s »/« %s » : attendu 400, jamais un 500 Postgres', $groupId, $venueId));
+        }
+        self::assertCount(0, $this->em->getRepository(Reservation::class)->findBy(['clubId' => $this->club->getId()]));
+    }
+
+    /**
+     * Les bornes de `dayOfWeek` et `durationMinutes` du rail unitaire (`#[Assert\Range]`)
+     * s'appliquent AUSSI ici : sans elles, `dayOfWeek: 8` s'écrit en base et dégrade le solve
+     * en SILENCE (le schéma moteur ne borne pas ce champ). Un rail batch ne peut pas être plus
+     * permissif que son rail unitaire.
+     */
+    public function testOutOfRangeDayOrDurationIsRefused(): void
+    {
+        [$t1, $t2] = [$this->team(2), $this->team(2)];
+        $venue = $this->venue(false);
+        $group = $this->group(null, [$t1, $t2], 2);
+
+        foreach ([['dayOfWeek' => 8], ['dayOfWeek' => 0], ['durationMinutes' => 5000], ['durationMinutes' => 5]] as $override) {
+            $body = [
+                'sharedTrainingGroupId' => $group->getId(),
+                'venueId' => $venue->getId(),
+                'dayOfWeek' => 2, 'startTime' => '18:00', 'durationMinutes' => 90,
+            ];
+            $this->client->request('POST', '/api/reservations/group', [], [], [
+                'HTTP_X-Club-Id' => $this->club->getId(),
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
+                'CONTENT_TYPE' => 'application/json',
+            ], json_encode(array_merge($body, $override), \JSON_THROW_ON_ERROR));
+
+            self::assertResponseStatusCodeSame(422, \sprintf('%s hors bornes : attendu 422', array_key_first($override)));
+        }
+        self::assertCount(0, $this->em->getRepository(Reservation::class)->findBy(['clubId' => $this->club->getId()]));
+    }
+
     // ── SEC-07 : parité stricte avec POST /reservations ──────────────────────────
 
     public function testNonManagementMemberIsForbidden(): void
