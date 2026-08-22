@@ -60,6 +60,9 @@ vi.mock("./queries", () => ({
   // P2-40 — useWeekAdapt source les vacances pour l'offre des fermetures. Vide par défaut :
   // les cas existants (fermeture sans vacances) sont inchangés.
   useSchoolHolidays: () => ({ data: schoolHolidaysMock }),
+  // P2-38 (prévention) — les fenêtres déjà planifiées SERVIES. Vide + résolu par défaut : aucun
+  // changement pour les cas existants.
+  usePlannedWindows: () => ({ data: [], isError: false }),
 }));
 vi.mock("@/features/planning/queries", () => ({
   useVenues: () => ({ data: [{ id: "v1", name: "Gymnase A", color: null, canSplit: false, isActive: true }] }),
@@ -777,10 +780,11 @@ describe("DayDialog — fermeture chevauchant des vacances (P2-40)", () => {
 
     expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
     expect(screen.getByText(/couvertes par Petites vacances/)).toBeInTheDocument();
-    // P2-41 — les deux semaines pleines hors vacances forment UN segment (une coche) ; le chemin
-    // de repli « d'un bloc » a disparu (ses deux libellés de bouton).
+    // P2-41 — les deux semaines pleines hors vacances forment UN segment (une coche). ALIGNEMENT
+    // fondateur (P2-38) : le chemin « d'un bloc » n'est plus CACHÉ mais DÉSACTIVÉ avec sa raison
+    // (bascule voulue) ; « Continuer d'un bloc » (libellé de l'état block) reste absent.
     expect(screen.getAllByRole("checkbox")).toHaveLength(1);
-    expect(screen.queryByRole("button", { name: /adapter toute la période d'un bloc/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /adapter toute la période d'un bloc/i })).toBeDisabled();
     expect(screen.queryByRole("button", { name: /continuer d'un bloc/i })).not.toBeInTheDocument();
     // Entrée déjà en base : rien à consigner.
     expect(screen.queryByRole("button", { name: /consigner l'indisponibilité/i })).not.toBeInTheDocument();

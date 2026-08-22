@@ -235,3 +235,39 @@ export const getPublicHolidays = (from: string, to: string): Promise<PublicHolid
 
 export const getEntryConflicts = (entryId: string): Promise<EntryConflictsResponse> =>
   api.get(`calendar-entries/${entryId}/conflicts`).json();
+
+/**
+ * P2-38 (prévention) — UNE FENÊTRE déjà planifiée par un AUTRE plan de période, servie par le
+ * backend pour que la modale d'ajustement cesse d'offrir une semaine dont la création serait
+ * refusée en 409. Le `reason` est la PHRASE prête à afficher, composée SERVEUR (même foyer que le
+ * refus 409) : le front l'affiche TELLE QUELLE, il n'en dérive ni n'en concatène aucune règle
+ * métier (règle d'or, `.claude/rules/frontend.md`). `entryId` = l'entrée du planning en conflit,
+ * pour le raccourci « Ouvrir le planning en place ».
+ */
+export interface PlannedWindow {
+  entryId: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  label: string;
+  reason: string;
+}
+
+/**
+ * Les fenêtres déjà gouvernées par un AUTRE plan de période sur [start, end]. Deux chemins d'appel
+ * (le backend en exige exactement un) : `entryId` quand la mère est matérialisée, `seasonId` quand
+ * la mère n'existe pas encore (chemin pending). Rend directement le tableau `windows` (trié par date
+ * côté serveur).
+ */
+export const getPlannedWindows = async (params: { start: string; end: string; entryId?: string; seasonId?: string }): Promise<PlannedWindow[]> => {
+  const searchParams: Record<string, string> = { start: params.start, end: params.end };
+  if (undefined !== params.entryId) {
+    searchParams.entryId = params.entryId;
+  }
+  if (undefined !== params.seasonId) {
+    searchParams.seasonId = params.seasonId;
+  }
+  const response = await api.get("planned-windows", { searchParams }).json<{ windows: PlannedWindow[] }>();
+
+  return response.windows;
+};

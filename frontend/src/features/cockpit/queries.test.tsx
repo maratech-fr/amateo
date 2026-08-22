@@ -7,7 +7,7 @@ import { createConstraint } from "@/features/wizard/api";
 
 import * as cockpitApi from "./api";
 import { addDays, segmentsFromOffer, type WeekWindow } from "./lib/date";
-import { useCreateCutoff, useCreateWeekChildren, usePublicHolidays } from "./queries";
+import { useCreateCutoff, useCreateWeekChildren, usePlannedWindows, usePublicHolidays } from "./queries";
 
 vi.mock("./api", () => ({
   getCalendarEntries: vi.fn(),
@@ -15,6 +15,7 @@ vi.mock("./api", () => ({
   getSchoolHolidays: vi.fn(),
   getPublicHolidays: vi.fn().mockResolvedValue({ zone: "A", items: [] }),
   getEntryConflicts: vi.fn(),
+  getPlannedWindows: vi.fn().mockResolvedValue([]),
   createCalendarEntry: vi.fn().mockResolvedValue({ id: "e1" }),
   deleteCalendarEntry: vi.fn(),
 }));
@@ -56,6 +57,27 @@ describe("cockpit queries — payload contracts", () => {
     renderHook(() => usePublicHolidays("2026-07-01", "2026-08-09"), { wrapper });
 
     await waitFor(() => expect(cockpitApi.getPublicHolidays).toHaveBeenCalledWith("2026-07-01", "2026-08-09"));
+  });
+
+  // P2-38 (prévention) — usePlannedWindows n'est ARMÉ que sur une ref (picker ouvert) : aucun fetch
+  // sur les chemins sans modale. Il transmet la fenêtre + la ref (entryId) et déballe `windows`.
+  it("usePlannedWindows : désactivé sans ref, armé sur une ref, déballe windows", async () => {
+    vi.mocked(cockpitApi.getPlannedWindows).mockClear();
+    vi.mocked(cockpitApi.getPlannedWindows).mockResolvedValue([
+      { entryId: "conflit-1", title: "Reprise", startDate: "2026-11-16", endDate: "2026-11-22", label: "semaine du 16 nov.", reason: "Ces dates sont déjà planifiées par « Reprise »." },
+    ]);
+
+    // Ref nulle → requête désactivée, aucun appel réseau.
+    const { result: off } = renderHook(() => usePlannedWindows(null), { wrapper });
+    expect(off.current.fetchStatus).toBe("idle");
+    expect(cockpitApi.getPlannedWindows).not.toHaveBeenCalled();
+
+    // Ref entryId → armée : la fenêtre + entryId partent, `windows` est déballé.
+    const { result } = renderHook(() => usePlannedWindows({ start: "2026-11-01", end: "2026-11-30", entryId: "e1" }), { wrapper });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(cockpitApi.getPlannedWindows).toHaveBeenCalledWith({ start: "2026-11-01", end: "2026-11-30", entryId: "e1" });
+    expect(result.current.data).toHaveLength(1);
+    expect(result.current.data?.[0].reason).toBe("Ces dates sont déjà planifiées par « Reprise ».");
   });
 
   // P2-41 — un POST par SEGMENT coché : fenêtre = bornes du segment ; titre taille 1 inchangé

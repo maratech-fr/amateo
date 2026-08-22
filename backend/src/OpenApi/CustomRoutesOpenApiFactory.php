@@ -1782,6 +1782,24 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
                 ],
                 summary: 'Named deviations of a closure period version vs the season plan, computed server-side',
             )),
+            '/api/planned-windows' => new PathItem(get: new Operation(
+                operationId: 'getApiPlannedWindows',
+                tags: ['Cockpit'],
+                responses: [
+                    '200' => new Response('The period windows another plan ALREADY governs inside `[start, end]`, sorted by start date — served so the UI never offers a week whose plan creation the server would refuse with 409. Same predicate as the write guard, by construction. Each `windows[]` item: `entryId`, `title`, `startDate`, `endDate`, `label`, and `reason` — the ready-to-display sentence, composed server-side by the same helper that names the 409 refusal, and shown as-is (the UI adds only the shortcut to the conflicting planning; it never composes a domain sentence). With `entryId` the querying family is excluded (mother and sibling weeks are legitimate); with `seasonId` (mother not yet created) nothing is excluded. Read-only, open to members.'),
+                    '400' => new Response('No club in context'),
+                    '401' => $unauthorized,
+                    '404' => new Response('Unknown entryId/seasonId, or belonging to another club (never an existence oracle)'),
+                    '422' => new Response('Missing or malformed start/end (YYYY-MM-DD), or neither entryId nor seasonId given'),
+                ],
+                summary: 'Period windows already planned inside a date range, served for the UI',
+                parameters: [
+                    ['name' => 'start', 'in' => 'query', 'required' => true, 'schema' => ['type' => 'string', 'format' => 'date'], 'description' => 'Window lower bound (YYYY-MM-DD)'],
+                    ['name' => 'end', 'in' => 'query', 'required' => true, 'schema' => ['type' => 'string', 'format' => 'date'], 'description' => 'Window upper bound (YYYY-MM-DD)'],
+                    ['name' => 'entryId', 'in' => 'query', 'required' => false, 'schema' => ['type' => 'string'], 'description' => 'The materialised period entry; its season is used and its root family excluded. Provide this OR seasonId'],
+                    ['name' => 'seasonId', 'in' => 'query', 'required' => false, 'schema' => ['type' => 'string'], 'description' => 'The season, for the "mother not yet created" path (no family excluded). Provide this OR entryId'],
+                ],
+            )),
             '/api/teams/reorder' => new PathItem(post: new Operation(
                 operationId: 'postApiTeamsReorder',
                 tags: ['Teams'],

@@ -166,7 +166,7 @@ describe("WeekPickerDialog — chevauchement vacances (P2-40)", () => {
   ];
   const excludedRanges = [{ startDate: "2026-08-17", endDate: "2026-09-06", labels: ["Vacances d'été"] }];
 
-  it("affiche la ligne d'info, propose les semaines hors vacances, et RETIRE le chemin d'un bloc", () => {
+  it("affiche la ligne d'info, propose les semaines hors vacances, et DÉSACTIVE le chemin d'un bloc avec sa raison", () => {
     render(
       <WeekPickerDialog
         title="Armand indisponible"
@@ -188,8 +188,11 @@ describe("WeekPickerDialog — chevauchement vacances (P2-40)", () => {
     // segment (une seule coche), pas deux semaines individuelles.
     expect(screen.getAllByRole("checkbox")).toHaveLength(1);
     expect(screen.getByText("Semaines du 7 sept. 2026 au 20 sept. 2026 — d'un bloc (2 semaines)")).toBeInTheDocument();
-    // Le chemin « d'un bloc » a disparu (les deux libellés possibles du bouton de repli).
-    expect(screen.queryByRole("button", { name: /adapter toute la période d'un bloc/i })).not.toBeInTheDocument();
+    // ALIGNEMENT fondateur (P2-38) : le chemin « d'un bloc » n'est plus CACHÉ mais DÉSACTIVÉ avec sa
+    // raison visible (patron B). Bascule VOULUE — trois assertions « absent » deviennent « présent,
+    // désactivé, avec sa raison ». « Continuer d'un bloc » (libellé de l'état block) reste, lui, absent.
+    expect(screen.getByRole("button", { name: /adapter toute la période d'un bloc/i })).toBeDisabled();
+    expect(screen.getByText(/vacances couvrent une partie de cette période/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /continuer d'un bloc/i })).not.toBeInTheDocument();
   });
 
@@ -218,7 +221,7 @@ describe("WeekPickerDialog — chevauchement vacances (P2-40)", () => {
     expect(onRecordOnly).toHaveBeenCalled();
   });
 
-  it("entrée déjà en base (pas de onRecordOnly) : info seule, aucun bouton d'action", () => {
+  it("entrée déjà en base (pas de onRecordOnly) : info seule, ni « Consigner » ni « Créer » ; le chemin d'un bloc reste désactivé", () => {
     render(
       <WeekPickerDialog
         title="Armand indisponible"
@@ -235,7 +238,10 @@ describe("WeekPickerDialog — chevauchement vacances (P2-40)", () => {
     );
 
     expect(screen.queryByRole("button", { name: /consigner l'indisponibilité/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /d'un bloc/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /créer/i })).not.toBeInTheDocument();
+    // ALIGNEMENT fondateur (P2-38) : le chemin « d'un bloc » est désormais présent mais DÉSACTIVÉ
+    // (bascule voulue), au lieu d'être caché.
+    expect(screen.getByRole("button", { name: /adapter toute la période d'un bloc/i })).toBeDisabled();
     expect(screen.getByText(/couvertes par Vacances d'été/)).toBeInTheDocument();
   });
 });
@@ -327,5 +333,74 @@ describe("WeekPickerDialog — segments (P2-41)", () => {
     expect(segs[0].startDate).toBe("2026-08-31");
     expect(segs[0].endDate).toBe("2026-09-27");
     expect(segs[0].weeks).toHaveLength(4);
+  });
+});
+
+// P2-38 (prévention) — une semaine gouvernée par un AUTRE plan de période est RETIRÉE des cases à
+// cocher (la soustraction vit dans useWeekAdapt) et NOMMÉE dans un encart au-dessus de la liste,
+// portant la `reason` SERVEUR telle quelle + « Ouvrir le planning en place ». Le chemin « d'un bloc »
+// est désactivé avec sa raison. Le picker n'invente aucune phrase métier (règle d'or).
+describe("WeekPickerDialog — prévention semaines déjà planifiées (P2-38)", () => {
+  const planned = [{ entryId: "reprise-3", title: "Reprise", startDate: "2026-11-16", endDate: "2026-11-22", label: "semaine du 16 nov.", reason: "Ces dates sont déjà planifiées par « Reprise » (semaine du 16 nov.)." }];
+
+  it("état weeks : NOMME la fenêtre gouvernante (reason servie), propose de l'ouvrir, et DÉSACTIVE le chemin d'un bloc avec sa raison", async () => {
+    const user = userEvent.setup();
+    const onOpenConflict = vi.fn();
+    render(<WeekPickerDialog title={mother.title} startDate={mother.startDate} endDate={mother.endDate} weeks={weeks} busy={false} plannedRanges={planned} onPickSegments={vi.fn()} onAdaptWhole={vi.fn()} onClose={vi.fn()} onOpenConflict={onOpenConflict} />);
+
+    // La reason SERVEUR est affichée telle quelle (le front ne compose rien).
+    expect(screen.getByText(/déjà planifiées par « Reprise » \(semaine du 16 nov\.\)/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /ouvrir le planning en place/i }));
+    expect(onOpenConflict).toHaveBeenCalledWith("reprise-3");
+
+    // B — le chemin « d'un bloc » est VISIBLE mais désactivé, sa raison en clair (jamais via title=).
+    expect(screen.getByRole("button", { name: /adapter toute la période d'un bloc/i })).toBeDisabled();
+    expect(screen.getByText(/déjà planifiée par ailleurs/i)).toBeInTheDocument();
+  });
+
+  it("un encart PAR fenêtre gouvernante", () => {
+    const two = [planned[0], { entryId: "stage-9", title: "Stage", startDate: "2026-11-23", endDate: "2026-11-29", label: "semaine du 23 nov.", reason: "Ces dates sont déjà planifiées par « Stage » (semaine du 23 nov.)." }];
+    render(<WeekPickerDialog title={mother.title} startDate={mother.startDate} endDate={mother.endDate} weeks={weeks} busy={false} plannedRanges={two} onPickSegments={vi.fn()} onAdaptWhole={vi.fn()} onClose={vi.fn()} onOpenConflict={vi.fn()} />);
+    expect(screen.getAllByRole("button", { name: /ouvrir le planning en place/i })).toHaveLength(2);
+  });
+
+  it("les encarts coexistent avec l'exclusion vacances (état holiday, notions orthogonales)", () => {
+    render(
+      <WeekPickerDialog
+        title="Armand indisponible"
+        startDate="2026-08-17"
+        endDate="2026-10-01"
+        weeks={[{ startDate: "2026-09-07", endDate: "2026-09-13", monday: "2026-09-07" }]}
+        excludedRanges={[{ startDate: "2026-08-17", endDate: "2026-09-06", labels: ["Vacances d'été"] }]}
+        plannedRanges={planned}
+        state="holiday"
+        busy={false}
+        onPickSegments={vi.fn()}
+        onAdaptWhole={vi.fn()}
+        onClose={vi.fn()}
+        onOpenConflict={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/couvertes par Vacances d'été/)).toBeInTheDocument();
+    expect(screen.getByText(/déjà planifiées par « Reprise »/)).toBeInTheDocument();
+  });
+
+  it("D — 100 % déjà planifiée : ligne « rien à ajuster », encart présent, « Consigner » offert au pending", async () => {
+    const user = userEvent.setup();
+    const onRecordOnly = vi.fn();
+    render(<WeekPickerDialog title={mother.title} startDate={mother.startDate} endDate={mother.endDate} weeks={[]} busy={false} plannedRanges={planned} onRecordOnly={onRecordOnly} onPickSegments={vi.fn()} onAdaptWhole={vi.fn()} onClose={vi.fn()} onOpenConflict={vi.fn()} />);
+
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /créer/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Aucune semaine de cette indisponibilité ne reste à ajuster ici/)).toBeInTheDocument();
+    expect(screen.getByText(/déjà planifiées par « Reprise »/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /consigner l'indisponibilité/i }));
+    expect(onRecordOnly).toHaveBeenCalled();
+  });
+
+  it("témoin : sans plannedRanges, aucun encart et le chemin d'un bloc reste actif", () => {
+    render(<WeekPickerDialog title={mother.title} startDate={mother.startDate} endDate={mother.endDate} weeks={weeks} busy={false} onPickSegments={vi.fn()} onAdaptWhole={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /ouvrir le planning en place/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /adapter toute la période d'un bloc/i })).toBeEnabled();
   });
 });

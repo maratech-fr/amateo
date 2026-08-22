@@ -24,6 +24,9 @@ vi.mock("./queries", () => ({
   useCalendarEntries: () => ({ data: [] }),
   // P2-40 — useWeekAdapt (dans DayList) source les vacances pour l'offre des fermetures.
   useSchoolHolidays: () => ({ data: { zone: "A", items: [] } }),
+  // P2-38 — useWeekAdapt (dans DayList) lit les fenêtres déjà planifiées ; ici jamais de picker
+  // ouvert, mais le hook doit exister dans le mock.
+  usePlannedWindows: () => ({ data: [], isError: false }),
 }));
 vi.mock("@/features/planning/queries", () => ({
   useVenues: () => ({ data: [] }),

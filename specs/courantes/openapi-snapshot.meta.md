@@ -1,6 +1,15 @@
-Last verified @ 2026-08-22 (régénéré après `docker compose restart php-fpm` — piège opcache, `backend/AGENTS.md` §17. Lot PASSERELLES PR-1 : la propriété `trainingIntensity` apparaît aux schémas `TeamLink` (lecture ET écriture — enum PREFERRED/MANDATORY, défaut PREFERRED). **Aucun path ajouté ni supprimé** : c'est un ajout de propriété pur. Contrat backend⇄engine **2.13 → 2.14**)
+Last verified @ 2026-08-22 (régénéré après `docker compose restart php-fpm` — piège opcache, `backend/AGENTS.md` §17. DEUX livraisons le même jour : le lot PASSERELLES (0 path — propriété `trainingIntensity` sur les schémas `TeamLink`, contrat backend⇄engine 2.13 → 2.14) et la PRÉVENTION P2-38 (**+1 path** `GET /api/planned-windows`). Le compte final est donc 169 paths, et le snapshot versionné ici les porte tous les deux)
 
 Changements récents :
+- **P2-38 prévention — les fenêtres déjà planifiées, servies (2026-08-22)** : **+1 path** —
+  `GET /api/planned-windows` (200 : `windows[]` {entryId, title, startDate, endDate, `label` et
+  `reason` — la PHRASE prête à afficher, composée serveur par le même helper que le refus 409}, les plages qu'un autre plan de période gouverne déjà dans `[start, end]` ;
+  400 sans club ; 404 entryId/seasonId inconnu ou d'un autre club ; 422 start/end absents ou
+  malformés, ou ni entryId ni seasonId). 168 → **169 paths**. Route de LECTURE (aucune écriture),
+  **ouverte au Membre** — pas de gate management. Même prédicat que la garde d'écriture
+  `window_already_planned` par CONSTRUCTION (foyer unique `PeriodWindowUniquenessGuard::governingWindows`).
+  Contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.13, zéro appel moteur).
+
 - **Passerelles PR-1 — intensité côté entraînement (2026-08-22)** : **0 path** — les schémas
   `TeamLink` (input `TeamLinkInput` + output `TeamLink`) gagnent la propriété optionnelle
   `trainingIntensity` (enum `PREFERRED`/`MANDATORY`, défaut `PREFERRED`) : l'intensité qui, en PR-2,

@@ -1,6 +1,6 @@
 # Accueil « cockpit temporel » — mise au clair (préliminaire calendriers secondaires)
 
-Last verified @ 2026-08-20 (recalé — le **§6bis Gymnases** cessait de renvoyer vers une « question
+Last verified @ 2026-08-22 (recalé par la livraison : le §5bis reçoit la PRÉVENTION du refus `window_already_planned` — le serveur sert le verdict (`GET /api/planned-windows`), la modale n'offre plus une semaine qu'il refuserait, et le chemin « d'un bloc » passe de CACHÉ à désactivé-avec-raison, cas vacances aligné. Re-vérifié en écrivant : `WindowAlreadyPlannedNotice` est bien réutilisé sans deuxième maison, la garde d'écriture reste appelée aux deux sites de naissance, et la décision fermée P2-40 — phrase vacances composée FRONT — est intacte)
 ouverte » qui était en fait TRANCHÉE : la grille d'un gymnase entièrement fermé reste modifiable
 (décision fondateur du 2026-08-18), désormais consignée en décision FERMÉE dans
 `etat-des-lieux.md` §2 et retirée de la roadmap. Le COMPORTEMENT décrit, lui, est re-vérifié et
@@ -530,6 +530,29 @@ l'horloge. Le **serveur** garde l'heure réelle (P4-16 reste ouverte pour lui).
 
 Le geste unique « cliquer une date » ouvre donc **le bon niveau selon le besoin** : une note
 rapide (modale) ou l'atelier de génération (le wizard en mode période). Pas deux entrées à retenir.
+
+**La PRÉVENTION du même refus (2026-08-22).** Le refus ci-dessous reste le filet ; il ne devrait
+plus surprendre. `WeekPickerDialog` ne propose plus une semaine dont la création serait refusée :
+le serveur SERT le verdict (`GET /api/planned-windows`, `backend-inventory.md`), l'écran l'affiche.
+- **Ce que voit le gestionnaire** : les semaines gouvernées par un autre plan QUITTENT les cases à
+  cocher et sont NOMMÉES au-dessus de la liste — un `WindowAlreadyPlannedNotice` par fenêtre,
+  portant la phrase SERVIE telle quelle et le raccourci « Ouvrir le planning en place ». Une ligne
+  désactivée aurait obligé le front à inventer une frontière de segment (l'unité de la liste est le
+  SEGMENT, pas la semaine) — donc à dériver un objet métier.
+- **« Adapter toute la période d'un bloc » est DÉSACTIVÉ avec sa raison, jamais caché** — et le cas
+  VACANCES est aligné dessus au passage (il masquait ce bouton depuis P2-40) : cacher l'action
+  cache aussi le LEVIER qui la rendrait possible. Patron déjà en place pour `generationInFlight`.
+- **Le verdict tardif ne rétracte rien** : `plannedWindowsResolved` entre dans le `resolved` de la
+  décision, donc la modale s'ouvre en « chargement » — sans quoi la resynchro sur signature aurait
+  effacé le scindage manuel du gestionnaire sous ses yeux.
+- **Fail-open sur ERREUR de lecture** (assumé) : on offre tout, et le pire cas redevient exactement
+  l'existant — le 409 ci-dessous. Un fail-closed bloquerait un geste légitime sur une panne
+  transitoire. La prévention est un confort, le refus est la garde.
+- ⚠ **Portée : la modale SEULE.** Les autres chemins de naissance (mère mono-semaine, chip
+  « + créer » d'une semaine de couverture) gardent le 409 comme unique traitement.
+- ⚠ La phrase du cas VACANCES reste composée côté front : décision fermée P2-40 (aucun calcul
+  serveur de couverture vacances n'existe à mirorer). Reposée le 2026-08-22 par la passe de design,
+  retranchée dans le même sens.
 
 **Refus de chevauchement sur « Adapter » (P2-38 PR3, 2026-08-18).** Le geste « Adapter » — mini
 popover d'une date, `WeekPickerDialog`, carte du radar — est sous la garde serveur (« une seule

@@ -757,6 +757,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
           weeks={pendingOffer.offered}
           season={workingSeason}
           excludedRanges={pendingOffer.excludedRanges}
+          plannedRanges={pendingOffer.plannedRanges}
           state={pendingPickerState}
           busy={createHoliday.isPending || createClosureFromUnavailability.isPending || createWeekChildren.isPending}
           onPickSegments={(segments) => pickWeeksPending(pendingMother, segments)}
@@ -776,6 +777,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
           weeks={pickerOffer.offered}
           season={workingSeason}
           excludedRanges={pickerOffer.excludedRanges}
+          plannedRanges={pickerOffer.plannedRanges}
           busy={createWeekChildren.isPending}
           state={pickerState}
           block={{ ...blockInfo, deleting: blockDeleting, deleteFailed: blockDeleteFailed, onDeleteVersions: deleteBlockVersionsAndSplit }}
