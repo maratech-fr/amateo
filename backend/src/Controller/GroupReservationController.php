@@ -49,15 +49,6 @@ final class GroupReservationController extends AbstractController implements Sea
     ) {}
 
     /**
-     * Forme d'UUID — motif canonique du dépôt (`TenantFilterListener::isUuid`). Ne juge QUE la
-     * forme : l'existence et la portée restent tranchées par les lookups sous filtre tenant.
-     */
-    private static function isUuid(string $value): bool
-    {
-        return 1 === preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value);
-    }
-
-    /**
      * Écriture de COLLECTION (N réservations de la saison courante) : aucune ressource unique dont
      * dériver la saison, le header/saison courante gouverne — patron `ReorderTeamsController`, et
      * parité avec le POST de réservation unitaire (dont le processor cible aussi la saison courante).
@@ -95,10 +86,10 @@ final class GroupReservationController extends AbstractController implements Sea
         // `#[Assert\Uuid]`). C'est une classe de défaut que le dépôt documente DEUX fois
         // (`AssertsSchedulePlanExistsTrait`, `TenantFilterListener::findClubSeason`) ; ce rail
         // la réintroduisait. Relevé en revue de sécurité, 2026-08-23.
-        if (!self::isUuid($groupId) || !self::isUuid($venueId)) {
+        if (!$this->isUuid($groupId) || !$this->isUuid($venueId)) {
             return $this->json(['error' => 'Identifiant invalide.'], Response::HTTP_BAD_REQUEST);
         }
-        if (null !== $schedulePlanId && (!\is_string($schedulePlanId) || !self::isUuid($schedulePlanId))) {
+        if (null !== $schedulePlanId && (!\is_string($schedulePlanId) || !$this->isUuid($schedulePlanId))) {
             return $this->json(['error' => 'Identifiant de planning invalide.'], Response::HTTP_BAD_REQUEST);
         }
         // PARITÉ des bornes avec `ReservationInput` (#[Assert\Range]) : sans elles, `dayOfWeek: 8`
@@ -151,6 +142,15 @@ final class GroupReservationController extends AbstractController implements Sea
         }
 
         return $this->json(['ids' => $ids, 'count' => \count($ids)], Response::HTTP_CREATED);
+    }
+
+    /**
+     * Forme d'UUID — motif canonique du dépôt (`TenantFilterListener::isUuid`). Ne juge QUE la
+     * forme : l'existence et la portée restent tranchées par les lookups sous filtre tenant.
+     */
+    private function isUuid(string $value): bool
+    {
+        return 1 === preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value);
     }
 
     /**
