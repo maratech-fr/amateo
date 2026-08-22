@@ -878,10 +878,16 @@ def _diagnose_conflicts(
                     "venueId": venue_id,
                     "dayOfWeek": day_of_week,
                     "startTime": str(start_time)[:5],
+                    # P2-46 — le message COMPTE ce que la règle a compté : `occupants`, pas
+                    # `team_ids`. Sinon il ment sur le remède — « 3 équipes / capacité 1 » avec
+                    # un groupe de 2 + une étrangère ferait viser une capacité 3 quand 2 suffit,
+                    # et « déplacez une séance » enverrait déplacer UN membre, ce qui ne libère
+                    # rien (le groupe reste). Un groupe est nommé comme un seul occupant.
                     "message": (
-                        f"Le gymnase {_label(venue_id, venue_names)} accueille {len(team_ids)} équipes "
-                        f"en même temps le {when} alors que sa capacité est de {capacity} : "
-                        f"{_named_list(team_ids, team_names)}."
+                        f"Le gymnase {_label(venue_id, venue_names)} accueille {len(occupants)} "
+                        f"{'occupant' if len(occupants) == 1 else 'occupants'} en même temps le {when} "
+                        f"alors que sa capacité est de {capacity} : "
+                        f"{_occupant_list(team_ids, team_to_group, team_names)}."
                     ),
                     "suggestions": [
                         "Déplacez l'une des séances sur un autre horaire ou un autre gymnase.",
@@ -1689,6 +1695,29 @@ def _label(entity_id: Any, names: Mapping[str, str]) -> str:
 
 def _named_list(ids: list[str], names: Mapping[str, str]) -> str:
     return ", ".join(_label(i, names) for i in ids)
+
+
+def _occupant_list(team_ids: list[str], team_to_group: Mapping[str, str], names: Mapping[str, str]) -> str:
+    """Énumère les OCCUPANTS d'une case, un groupe mutualisé comptant pour un seul (P2-46).
+
+    Miroir exact du comptage qui décide de la violation : les membres co-localisés d'un même
+    groupe déclaré se fondent en une entrée « le groupe mutualisé (A, B) », les autres équipes
+    restent nommées une à une. Un message qui énumère plus d'entrées que le compte annoncé
+    ferait viser le mauvais remède.
+    """
+    parts: list[str] = []
+    seen_groups: set[str] = set()
+    for team_id in team_ids:
+        group_key = team_to_group.get(team_id)
+        if group_key is None:
+            parts.append(_label(team_id, names))
+            continue
+        if group_key in seen_groups:
+            continue
+        seen_groups.add(group_key)
+        members = [_label(other, names) for other in team_ids if team_to_group.get(other) == group_key]
+        parts.append(f"le groupe mutualisé ({', '.join(members)})")
+    return ", ".join(parts)
 
 
 def _get(source: Mapping[str, Any] | Any, *names: str, default: Any = None) -> Any:

@@ -81,3 +81,30 @@ def test_group_reserved_on_exactly_k_cases_stays_feasible() -> None:
     result = solve_payload(payload)
 
     assert result["status"] == "completed", "une case pleine et K=1 doivent rester résolubles"
+
+
+def test_over_capacity_message_counts_what_the_rule_counted() -> None:
+    """P2-46 — le message du diagnostic COMPTE les occupants, pas les équipes.
+
+    Le défaut qu'il garde (trouvé en revue, 2026-08-23) : la décision se prend sur
+    `len(occupants)` mais le message annonçait `len(team_ids)`. Groupe de 2 + une étrangère
+    sur une capacité 1 : « accueille 3 équipes … capacité 1 » ferait viser une capacité 3
+    quand 2 suffit, et « déplacez une séance » enverrait déplacer UN membre — ce qui ne
+    libère rien, le groupe restant. Un message qui ment sur le remède est pire que pas de
+    message.
+    """
+    from app.solver.result_builder import _occupant_list
+
+    names = {"A": "CEC1", "B": "CEC2", "C": "SM4"}
+    team_to_group = {"A": "__shared_group__g1", "B": "__shared_group__g1"}
+    team_ids = ["A", "B", "C"]
+
+    occupants = {team_to_group.get(t, t) for t in team_ids}
+    assert len(occupants) == 2, "le groupe compte pour UN occupant, l'étrangère pour un"
+
+    # L'énumération suit le comptage : le groupe apparaît UNE fois, membres nommés dedans.
+    listing = _occupant_list(team_ids, team_to_group, names)
+    assert listing == "le groupe mutualisé (CEC1, CEC2), SM4"
+
+    # Sans groupe déclaré : chemin inchangé, une entrée par équipe.
+    assert _occupant_list(team_ids, {}, names) == "CEC1, CEC2, SM4"
