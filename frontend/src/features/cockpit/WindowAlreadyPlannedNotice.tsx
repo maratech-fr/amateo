@@ -1,6 +1,7 @@
 import { CalendarClock } from "lucide-react";
 
 import { Button } from "@/shared/components/ui/button";
+import { WarningPanel } from "@/shared/components/ui/warning-panel";
 
 /**
  * ADR-0002 inv. 4 (P2-38 PR3) — le refus « une seule planification par fenêtre » rendu comme une
@@ -12,16 +13,12 @@ import { Button } from "@/shared/components/ui/button";
  */
 export function WindowAlreadyPlannedNotice({ message, onOpen }: { message: string; onOpen: () => void }) {
   return (
-    <div className="space-y-2 rounded-md border border-warning/60 bg-warning/10 px-3 py-2 text-sm text-foreground">
-      <p className="flex items-start gap-2">
-        <CalendarClock aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
-        <span>{message}</span>
-      </p>
+    <WarningPanel icon={<CalendarClock className="size-4 text-warning" />} message={message}>
       <div className="flex justify-end">
         <Button variant="outline" size="sm" onClick={onOpen}>
           Ouvrir le planning en place
         </Button>
       </div>
-    </div>
+    </WarningPanel>
   );
 }

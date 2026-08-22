@@ -4,6 +4,7 @@ import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Modal } from "@/shared/components/ui/modal";
 import { Spinner } from "@/shared/components/ui/spinner";
+import { WarningPanel } from "@/shared/components/ui/warning-panel";
 
 import type { PlannedWindow } from "./api";
 import { frDateShort, mergeSegments, segmentLabel, segmentsFromOffer, segmentWeekCount, splitSegment, type ExcludedWeekRange, type WeekSegment, type WeekWindow } from "./lib/date";
@@ -256,9 +257,10 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, bus
       {"holiday" === state ? (
         <div className="mt-2 space-y-3 text-sm">
           {excludedRanges.map((range) => (
-            <p key={range.startDate} className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-foreground">
-              Semaines du {frDateShort(range.startDate)} au {frDateShort(range.endDate)} couvertes par {range.labels.join(", ")} — le rappel vous attend dans son planning.
-            </p>
+            <WarningPanel
+              key={range.startDate}
+              message={`Semaines du ${frDateShort(range.startDate)} au ${frDateShort(range.endDate)} couvertes par ${range.labels.join(", ")} — le rappel vous attend dans son planning.`}
+            />
           ))}
           {segments.length > 0 ? (
             <>
