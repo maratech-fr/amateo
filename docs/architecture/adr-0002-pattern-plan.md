@@ -679,6 +679,15 @@ validation du besoin → plan → code → NR phase1 → code-review → go util
   cette PR1 ne fait PAS** : elle ne pose aucune garde à la CRÉATION d'un plan/d'une entrée —
   c'est l'objet de la PR2 ci-dessous.
 
+  **PR3 — le même invariant devient aussi une LECTURE (2026-08-22).** Un invariant qui ne sait que
+  REFUSER se découvre trop tard : l'écran proposait des semaines dont la création serait rejetée.
+  `GET /api/planned-windows` sert désormais les fenêtres déjà gouvernées, **depuis le SQL de la
+  garde elle-même** (`governingWindows()`, dont `assertWindowFree()` n'est plus qu'un cas
+  particulier — un seul `SELECT` dans le service). L'invariant a donc deux faces qui ne peuvent pas
+  diverger : il refuse, et il dit à l'avance ce qu'il refuserait. ⚠ La face lecture ne REMPLACE
+  jamais la face refus — deux gestionnaires en course, un cache périmé, un appel d'API direct
+  retombent sur le 409. Gardé dans les deux sens par `Security/PlannedWindowsParityTest`.
+
   **PR2 — une seule planification par fenêtre (livrée 2026-08-18)** tient enfin l'invariant 4 à
   la NAISSANCE d'un plan de période : `App\Service\PeriodWindowUniquenessGuard::assertWindowFree`,
   appelée aux **deux seuls sites de naissance** — le geste « Adapter »

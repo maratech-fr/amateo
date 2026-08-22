@@ -8,6 +8,7 @@ import type { CalendarEntry, PlannedWindow, SchedulePlan, SchoolHoliday } from "
 import { setTodayOverride } from "@/shared/lib/clock";
 
 import { addDays, frDateShort, frDateShortNoYear, mondayOf, todayISO } from "./lib/date";
+import { useToastStore } from "@/shared/stores/toastStore";
 import { RadarPanel } from "./RadarPanel";
 
 const createHolidayMutate = vi.fn();
@@ -1107,6 +1108,46 @@ describe("RadarPanel", () => {
       await waitFor(() =>
         expect(createVenueClosureMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ venueId: "gym-1", startDate: start, endDate: addDays(start, 4) })),
       );
+    });
+
+    // ⚑ Le message de confirmation DIT où le rappel attend — et depuis que la prévention ouvre
+    // « Consigner » au cas « fenêtre déjà gouvernée par un autre plan », « dans le planning des
+    // vacances » devenait FAUX la moitié du temps. Un message qui ment se réinstalle en silence :
+    // on le garde. Falsifié dans les deux sens (le cas vacances est le test ci-dessus).
+    it("« Consigner » sur une fenêtre déjà PLANIFIÉE : le message ne parle plus de vacances, il nomme le planning qui couvre", async () => {
+      const user = userEvent.setup();
+      const today = todayISO();
+      const start = mondayOf(addDays(today, 12));
+      // ⚠ Fenêtre MULTI-semaines : une mère d'une seule semaine part en adaptation directe sans
+      // ouvrir la modale — chemin volontairement HORS de la prévention (il garde le 409).
+      unavailabilitiesData = [{ id: "u1", venueId: "gym-1", startDate: start, endDate: addDays(start, 11), label: "travaux" }];
+      // Aucune vacance ici : c'est un PLAN de période qui gouverne toute la fenêtre.
+      schoolHolidaysData = { zone: "A", items: [] };
+      plannedWindowsData = [
+        {
+          entryId: "reprise-7",
+          title: "Reprise",
+          startDate: start,
+          endDate: addDays(start, 13),
+          label: "semaines du 11 au 24 janv.",
+          reason: "Ces dates sont déjà planifiées par « Reprise » (semaines du 11 au 24 janv.).",
+        },
+      ];
+      renderRadar();
+
+      await user.click(screen.getByRole("button", { name: "Adapter" }));
+      expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+
+      // ⚠ Le store de toasts est un SINGLETON partagé par tout le fichier : sans ce vidage, on
+      // lirait les messages des tests précédents et l'assertion « ne dit pas vacances » serait
+      // fausse pour une raison qui n'a rien à voir avec le code (mordu en écrivant ce test).
+      useToastStore.setState({ toasts: [] });
+      await user.click(screen.getByRole("button", { name: /consigner l'indisponibilité/i }));
+      await waitFor(() => expect(createVenueClosureMutateAsync).toHaveBeenCalled());
+
+      const messages = useToastStore.getState().toasts.map((t) => t.message);
+      expect(messages.some((m) => /planning qui couvre ces dates/i.test(m))).toBe(true);
+      expect(messages.some((m) => /planning des vacances/i.test(m))).toBe(false);
     });
   });
 });

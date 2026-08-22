@@ -41,6 +41,21 @@ final class PeriodWindowUniquenessGuard
     ) {}
 
     /**
+     * COMMENT ON NOMME une fenêtre déjà planifiée — foyer unique de la formule, partagé par le
+     * refus 409 et par la route de lecture qui PRÉVIENT ce refus.
+     *
+     * ⚑ Pourquoi une méthode et pas deux littéraux qui se ressemblent : les deux textes n'ont pas
+     * la même SUITE (le 409 invite aux issues, l'écran les offre en boutons), mais ils doivent
+     * nommer la période et sa fenêtre de la MÊME manière — sinon le gestionnaire lit deux noms
+     * pour un seul objet, et croit à deux plannings. Aucun identifiant interne
+     * (`PublicTextIsFreeOfInternalIdentifiersTest`).
+     */
+    public static function nameConflict(string $entryTitle, string $windowLabel): string
+    {
+        return \sprintf('Ces dates sont déjà planifiées par « %s » (%s).', $entryTitle, $windowLabel);
+    }
+
+    /**
      * Les plages qu'un AUTRE plan de période gouverne à l'intérieur de la fenêtre visée, triées
      * par date de début. FOYER UNIQUE du prédicat : la garde d'écriture ({@see assertWindowFree})
      * et la route de lecture `GET /api/planned-windows` (P2-38, prévention) partagent CE seul texte
@@ -67,7 +82,11 @@ final class PeriodWindowUniquenessGuard
         $rows = $this->entityManager->getConnection()->fetchAllAssociative(
             'SELECT e.id AS entry_id, e.title AS entry_title, e.start_date, e.end_date '
             . 'FROM schedule_plan p JOIN calendar_entry e ON e.id = p.calendar_entry_id '
-            . 'WHERE p.club_id = :club AND p.season_id = :season AND p.type <> \'SEASON\' '
+            // Défense en profondeur (revue de sécurité 2026-08-22) : le club est déjà tenu par
+            // `p.club_id` et par RLS, et l'intégrité de la FK lie l'entrée au plan. On le REDIT
+            // néanmoins sur l'entrée jointe — la frontière de club devient lisible dans le SQL
+            // lui-même, au lieu de dépendre d'un raisonnement sur deux mécanismes distants.
+            . 'WHERE p.club_id = :club AND e.club_id = :club AND p.season_id = :season AND p.type <> \'SEASON\' '
             // Chevauchement (inclusion OU recouvrement partiel) : début ≤ fin de l'autre ET fin ≥ début.
             . 'AND e.start_date <= :bornEnd AND e.end_date >= :bornStart '
             // La FAMILLE (même ancêtre racine) est exclue : parent↔enfant et semaines sœurs sont
@@ -118,19 +137,4 @@ final class PeriodWindowUniquenessGuard
         // Aucun identifiant interne (gardé par PublicTextIsFreeOfInternalIdentifiersTest).
         throw new WindowAlreadyPlannedException($conflictEntryId, \sprintf('%s Une seule planification peut gouverner une même période : modifiez ce planning existant ou supprimez-le avant d’en créer un autre ici. Vous pouvez aussi découper la période en semaines pour les planifier séparément.', self::nameConflict($conflict['entry_title'], $windowLabel)));
     }
-    /**
-     * COMMENT ON NOMME une fenêtre déjà planifiée — foyer unique de la formule, partagé par le
-     * refus 409 et par la route de lecture qui PRÉVIENT ce refus.
-     *
-     * ⚑ Pourquoi une méthode et pas deux littéraux qui se ressemblent : les deux textes n'ont pas
-     * la même SUITE (le 409 invite aux issues, l'écran les offre en boutons), mais ils doivent
-     * nommer la période et sa fenêtre de la MÊME manière — sinon le gestionnaire lit deux noms
-     * pour un seul objet, et croit à deux plannings. Aucun identifiant interne
-     * (`PublicTextIsFreeOfInternalIdentifiersTest`).
-     */
-    public static function nameConflict(string $entryTitle, string $windowLabel): string
-    {
-        return \sprintf('Ces dates sont déjà planifiées par « %s » (%s).', $entryTitle, $windowLabel);
-    }
-
 }

@@ -86,7 +86,7 @@ final class PlannedWindowsParityTest extends WebTestCase
                 $window['reason'],
                 'le nommage servi doit être CELUI du refus 409 — foyer unique',
             );
-            self::assertStringNotContainsString('découper', (string) $window['reason'], "l'écran de découpe ne renvoie pas vers lui-même");
+            self::assertStringNotContainsString('découper', (string) $window['reason'], 'l\'écran de découpe ne renvoie pas vers lui-même');
         }
 
         // (a) SERVIE → refusée : une nouvelle période qui MORD sur octobre est bien refusée en 409.

@@ -365,17 +365,28 @@ export function useWeekAdapt(adapt: (entryId: string) => void, childrenResolved 
     }
   };
 
-  // P2-40 — « Consigner l'indisponibilité » : quand TOUTES les semaines d'une fermeture sont sous
-  // vacances, il n'y a ni semaine à découper ni bloc à adapter — mais le FAIT doit exister. Sans
-  // lui, le pré-remplissage des coches gymnase dans le planning des vacances n'a rien à lire, et
-  // « le rappel vous attend » serait faux. On matérialise donc la fermeture via son `create`, SANS
-  // plan ni navigation. Réservé au chemin pending (une entrée déjà en base n'a rien à consigner).
+  // P2-40 — « Consigner l'indisponibilité » : quand il ne reste AUCUNE semaine à découper ni bloc à
+  // adapter, le FAIT doit exister quand même. Sans lui, le pré-remplissage des coches gymnase dans
+  // le planning qui gouverne la fenêtre n'a rien à lire. On matérialise donc la fermeture via son
+  // `create`, SANS plan ni navigation. Réservé au chemin pending (une entrée déjà en base n'a rien
+  // à consigner).
+  //
+  // ⚠ **Le message DIT où le rappel attend, et ce n'est plus toujours les vacances** (2026-08-22).
+  // Depuis que la prévention ouvre ce chemin au cas « fenêtre déjà gouvernée par un autre plan de
+  // période », la phrase d'origine — « dans le planning des vacances » — devenait FAUSSE la moitié
+  // du temps : le rappel attend dans le plan qui gouverne, quel qu'il soit. On ne nomme donc que ce
+  // qu'on sait : les vacances quand c'est une couverture de vacances, le planning en place sinon.
   const recordPendingOnly = async (pending: PendingMother): Promise<void> => {
     setWindowConflict(null);
+    const governedByPlan = pendingOffer.plannedRanges.length > 0;
     try {
       await pending.create();
       setPendingMother(null);
-      toast.success("Indisponibilité consignée — le rappel vous attend dans le planning des vacances.");
+      toast.success(
+        governedByPlan
+          ? "Indisponibilité consignée — le rappel vous attend dans le planning qui couvre ces dates."
+          : "Indisponibilité consignée — le rappel vous attend dans le planning des vacances.",
+      );
     } catch (error) {
       noteWindowConflict(error);
     }
