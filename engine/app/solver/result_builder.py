@@ -834,6 +834,24 @@ def _diagnose_conflicts(
 
     _caps: dict[Any, int] = slot_capacities or {}
 
+    # P2-46 — mutualisation : N verrous d'un MÊME groupe déclaré sur une case sont UNE séance
+    # commune, pas N séances. Une réservation de groupe s'éclate en N `Reservation` (une par
+    # membre, même case) → N verrous HARD sur cette case ; les compter comme N occupants
+    # distincts crierait faussement à la sur-capacité (« accueille 3 équipes… capacité 2 ») alors
+    # que le gestionnaire a réservé UNE séance partagée. Même esprit que l'exemption passerelle
+    # « une séance mutualisée déclarée n'est jamais une violation » (constraints.py) et la
+    # tolérance coach D-14. L'exemption est CONDITIONNÉE à la déclaration : un membre est
+    # rabattu sur l'identité de SON groupe, une équipe hors de tout groupe garde la sienne, si
+    # bien que trois équipes sur une case SANS groupe déclaré restent une violation, et un
+    # mélange (2 membres d'un groupe + 1 équipe étrangère) compte 2 — le groupe pour 1,
+    # l'étrangère pour 1. Bloc `sharedTrainings` absent ⇒ map vide ⇒ occupants == équipes
+    # distinctes ⇒ chemin byte-identique (goldens inchangés).
+    team_to_group: dict[str, str] = {}
+    for group_index, group in enumerate(_collection(model_data, "sharedTrainings", "shared_trainings")):
+        group_key = f"__shared_group__{_get(group, 'id', default=group_index)}"
+        for member in _get(group, "teamIds", "team_ids", default=[]) or []:
+            team_to_group.setdefault(str(member), group_key)
+
     # Post-solve safety check: venue over-capacity.
     venue_bookings: dict[tuple[str, int, str], list[str]] = defaultdict(list)
     venue_durations: dict[tuple[str, int, str], int] = {}
@@ -847,7 +865,10 @@ def _diagnose_conflicts(
         # is the duplicate-slot artifact, not over-capacity (audit ENG-09).
         team_ids = list(dict.fromkeys(booked))
         capacity = _caps.get((venue_id, day_of_week, start_time), 1)
-        if len(team_ids) > capacity:
+        # P2-46 — chaque membre d'un groupe déclaré compte pour l'identité de son groupe : les
+        # membres co-localisés se fondent en UN occupant. Sans groupe, `occupants == team_ids`.
+        occupants = {team_to_group.get(team_id, team_id) for team_id in team_ids}
+        if len(occupants) > capacity:
             when = f"{_day_label(day_of_week)} {_time_range(start_time, venue_durations.get((venue_id, day_of_week, start_time)))}"
             diagnostics.append(
                 {
