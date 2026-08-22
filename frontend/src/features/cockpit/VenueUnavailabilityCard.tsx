@@ -131,6 +131,14 @@ export function VenueUnavailabilityCard() {
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted-foreground">Gymnase</span>
               <Select aria-label="Gymnase indisponible" value={venueId} onChange={(e) => setVenueId(e.target.value)}>
+                {/* ⚠ L'option VIDE n'est pas un ornement : sans elle, `venueId` naît à "" sans
+                    correspondre à aucune option, et le navigateur affiche la PREMIÈRE comme
+                    sélectionnée. L'écran montrait donc un gymnase choisi pendant que l'état était
+                    vide — « Déclarer » restait mort, sans un mot. Pire : cliquer l'option déjà
+                    affichée ne déclenche pas `change`, donc le premier gymnase de la liste était
+                    INATTEIGNABLE. Mesuré par le parcours e2e « incident » (P4-122), qui a passé
+                    sept minutes sur ce bouton. Même forme que la liste jumelle de `DayDialog`. */}
+                <option value="">Gymnase indisponible…</option>
                 {venues.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.name}
