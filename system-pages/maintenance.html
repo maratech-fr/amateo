@@ -62,13 +62,6 @@
       color: var(--ink); margin-bottom: 40px; display: none;
     }
     .logotype .dot { color: var(--accent); }
-    .mark {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 76px; height: 76px; border-radius: 999px;
-      background: var(--accent-soft); color: var(--accent-ink);
-      margin-bottom: 28px;
-    }
-    .mark svg { width: 38px; height: 38px; display: block; }
     h1 {
       font-size: clamp(26px, 5vw, 36px); line-height: 1.12; letter-spacing: -0.02em;
       font-weight: 800; text-wrap: balance; margin-bottom: 16px;
@@ -86,25 +79,100 @@
       border: 1.5px solid transparent;
       transition: border-color 120ms ease;
     }
-    @media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
+    @media (prefers-reduced-motion: reduce) {
+      .btn { transition: none; }
+      /* Scène : on COUPE l'animation, rien d'autre. Cartes à opacité de base 1 +
+         flottaison en TRANSFORM pur → `animation:none` les laisse posées, visibles,
+         immobiles. AUCUN override d'opacité ici (transposé d'un écran d'attente à un
+         écran de panne, il peindrait un faux état « plein/succès »). Racine identique
+         à PR-1 (frontend/src/shared/components/ui/system-scene.css). */
+      .ss-anim { animation: none !important; }
+    }
     .btn-ghost { border-color: var(--line); color: var(--ink); background: var(--surface); }
     .btn-ghost:hover { border-color: var(--muted); }
     .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
     [data-cta="support"] { display: none; }
+    /* ── Scène système décorative (P5-22 PR-2). Voisine de l'in-app, JAMAIS
+         synchronisée — voir le commentaire au-dessus du SVG. Couleurs = tokens de la
+         palette dupliquée ci-dessus (surface/line/muted/accent). ── */
+    .scene { width: 100%; max-width: 360px; margin: 0 auto 30px; }
+    .scene svg { display: block; width: 100%; height: auto; }
+    /* Flottaison des cartes : amplitude faible (~6 %), TRANSFORM pur. Base
+       translateY(0)/scaleY(1) = pose figée (l'état exact du reduced-motion). */
+    @keyframes ss-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+    @keyframes ss-squash { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.02); } }
+    /* L'ombre au sol se rétrécit et pâlit quand la carte s'élève. Opacité de repos
+       0.16 portée par l'attribut SVG → `animation:none` la laisse posée. */
+    @keyframes ss-shadow { 0%, 100% { transform: scaleX(1); opacity: 0.16; } 50% { transform: scaleX(0.82); opacity: 0.09; } }
+    /* ── Compteur de retour (MAINTENANCE seulement). Ligne discrète, masquée tant
+         que le JS n'a pas validé un horodatage FUTUR (attribut `hidden`). ── */
+    p.return {
+      margin: 22px auto 0; max-width: 46ch;
+      font-size: 15px; color: var(--muted); text-wrap: pretty;
+    }
+    p.return .at { color: var(--ink-2); font-weight: 650; font-variant-numeric: tabular-nums; }
+    p.return .eta { font-variant-numeric: tabular-nums; }
   </style>
 </head>
 <body>
   <main>
     <a class="logotype" data-brand-logotype href="/"><span data-brand></span><span class="dot">.</span></a>
 
-    <span class="mark" aria-hidden="true">
-      <!-- Un rouleau de peinture : « on refait le parquet ». SVG inline, aucun asset réseau. -->
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="4" width="13" height="6" rx="1.5" />
-        <path d="M16 7h3a1.5 1.5 0 0 1 1.5 1.5V11a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 0 10 14v2" />
-        <rect x="8.5" y="16" width="3" height="5" rx="1" />
+    <!-- SCÈNE système (P5-22 PR-2). MÊME DESSIN que la scène in-app
+         (frontend/src/shared/components/ui/system-scene.tsx) et que sa VOISINE
+         system-pages/503.html — mais VOISINES, JAMAIS SYNCHRONISÉES : aucune source
+         partagée, aucun test de parité (règle system-pages.md : la ressemblance est une
+         CONVENTION, la palette DUPLIQUÉE, jamais une dépendance ; un script d'inlinage
+         serait une chaîne de build, un test de parité fabriquerait une fausse synchro).
+         Demi-terrain vu de dessus, cartes d'équipes flottant en apesanteur, ombres au sol.
+         Décorative → aria-hidden (le sens vit dans le titre). Animation = TRANSFORM pur +
+         opacité de base PLEINE : sous prefers-reduced-motion, `animation:none` suffit à
+         laisser les cartes posées, AUCUN override d'opacité (cf. system-scene.css de PR-1). -->
+    <div class="scene" aria-hidden="true">
+      <svg viewBox="0 0 320 158" preserveAspectRatio="xMidYMid meet">
+        <!-- Demi-terrain en filigrane : ligne de fond, raquette + cercle, arc à 3 pts, rond central. -->
+        <g fill="none" stroke="var(--muted)" stroke-width="2" opacity="0.28">
+          <rect x="8" y="8" width="304" height="142" rx="8" />
+          <rect x="128" y="104" width="64" height="46" />
+          <circle cx="160" cy="104" r="20" />
+          <path d="M60 150V120a100 100 0 0 1 200 0v30" />
+          <path d="M136 8a24 24 0 0 1 48 0" />
+        </g>
+        <!-- Ombres au sol (sous les cartes) — durées/délais non harmoniques pour éviter tout « pouls » collectif. -->
+        <ellipse class="ss-anim" cx="67" cy="120" rx="30" ry="5" fill="#000" opacity="0.16" style="transform-box:fill-box;transform-origin:center;animation:ss-shadow 5.2s ease-in-out infinite" />
+        <ellipse class="ss-anim" cx="159" cy="112" rx="30" ry="5" fill="#000" opacity="0.16" style="transform-box:fill-box;transform-origin:center;animation:ss-shadow 4.4s ease-in-out 0.5s infinite" />
+        <ellipse class="ss-anim" cx="247" cy="124" rx="28" ry="5" fill="#000" opacity="0.16" style="transform-box:fill-box;transform-origin:center;animation:ss-shadow 5.8s ease-in-out 0.9s infinite" />
+        <!-- Carte GAUCHE — « créneau libre · à replacer » : contour pointillé STATIQUE, accent en filigrane. -->
+        <g class="ss-anim" style="animation:ss-float 5.2s ease-in-out infinite">
+          <g class="ss-anim" style="transform-box:fill-box;transform-origin:bottom center;animation:ss-squash 5.2s ease-in-out infinite">
+            <rect x="34" y="70" width="66" height="40" rx="8" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="5 4" opacity="0.85" />
+            <rect x="42" y="78" width="12" height="12" rx="3" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="3 2.5" />
+            <rect x="60" y="80" width="30" height="5" rx="2.5" fill="var(--muted)" opacity="0.4" />
+            <rect x="60" y="90" width="20" height="4" rx="2" fill="var(--muted)" opacity="0.28" />
+          </g>
+        </g>
+        <!-- Carte CENTRE — carte d'équipe posée : pastille d'accent tempérée (0.6) + squelette de contenu. -->
+        <g class="ss-anim" style="animation:ss-float 4.4s ease-in-out 0.5s infinite">
+          <g class="ss-anim" style="transform-box:fill-box;transform-origin:bottom center;animation:ss-squash 4.4s ease-in-out 0.5s infinite">
+            <rect x="126" y="58" width="66" height="40" rx="8" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5" />
+            <rect x="134" y="66" width="12" height="12" rx="3" fill="var(--accent)" opacity="0.6" />
+            <rect x="152" y="68" width="30" height="5" rx="2.5" fill="var(--muted)" opacity="0.8" />
+            <rect x="152" y="78" width="20" height="4" rx="2" fill="var(--muted)" opacity="0.45" />
+            <rect x="134" y="86" width="48" height="5" rx="2.5" fill="var(--line)" />
+          </g>
+        </g>
+        <!-- Carte DROITE — seconde carte posée, désynchronisée. -->
+        <g class="ss-anim" style="animation:ss-float 5.8s ease-in-out 0.9s infinite">
+          <g class="ss-anim" style="transform-box:fill-box;transform-origin:bottom center;animation:ss-squash 5.8s ease-in-out 0.9s infinite">
+            <rect x="214" y="76" width="66" height="40" rx="8" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5" />
+            <rect x="222" y="84" width="12" height="12" rx="3" fill="var(--accent)" opacity="0.5" />
+            <rect x="240" y="86" width="30" height="5" rx="2.5" fill="var(--muted)" opacity="0.8" />
+            <rect x="240" y="96" width="20" height="4" rx="2" fill="var(--muted)" opacity="0.45" />
+            <rect x="222" y="104" width="48" height="5" rx="2.5" fill="var(--line)" />
+          </g>
+        </g>
       </svg>
-    </span>
+    </div>
 
     <h1>On refait le parquet.</h1>
     <p class="lede">
@@ -112,7 +180,21 @@
       On en profite pour graisser les rouages.
     </p>
 
+    <!-- Compteur de retour — MAINTENANCE SEULEMENT. Alimenté par le témoin ENRICHI :
+         l'exploitant peut écrire l'heure de retour dedans (`echo "…ISO8601…" > maintenance.on`).
+         Un `touch` nu laisse le fichier VIDE → aucune ligne (rétro-compat runbook).
+         Masqué (attribut `hidden`) tant que le JS n'a pas validé un horodatage FUTUR ;
+         sans JS → rien, page intacte. Contenu ENTIÈREMENT posé par le script ci-dessous. -->
+    <p class="return" data-return hidden><span data-return-lead></span><span class="at" data-return-time></span><span class="eta" data-return-eta></span></p>
+
     <div class="ctas">
+      <!-- « Réessayer » sur une maintenance PLANIFIÉE est volontairement GHOST, PAS un
+           primaire plein comme sur la 503 SUBIE (asymétrie assumée, passe de design) :
+           en panne, réessayer est l'espoir utile (« c'est peut-être revenu ») ; en
+           maintenance choisie, la vérité est « revenez à HH:MM » — un primaire plein
+           sur-promettrait et userait la confiance à chaque clic vide. Honnête et sans
+           JS : l'ancre pointe la racine. -->
+      <a class="btn btn-ghost" href="/" data-cta="retry">Réessayer maintenant</a>
       <a class="btn btn-ghost" href="#" data-cta="support">Prévenir le support</a>
     </div>
   </main>
@@ -140,6 +222,62 @@
           mail.style.display = "inline-block";
         }
       }
+    })();
+    // ── Compteur de retour (MAINTENANCE SEULEMENT) ────────────────────────────
+    // Lit le témoin enrichi via /maintenance-until — URL same-origin servie du disque
+    // par Caddy (route DANS le route{} du bloc maintenance : rewrite → maintenance.on,
+    // status 200 ; voir docs/ops/Caddyfile.example). Le témoin NE FUIT pas hors
+    // maintenance : cette route n'existe qu'à l'intérieur de handle @maintenance.
+    // Décision fondateur : PAS de compteur sur la 503 subie, ici SEULEMENT.
+    (function () {
+      var el = document.querySelector("[data-return]");
+      if (!el || !window.fetch) return;              // sans JS/fetch : rien, page intacte.
+      var lead = el.querySelector("[data-return-lead]");
+      var at = el.querySelector("[data-return-time]");
+      var eta = el.querySelector("[data-return-eta]");
+      var timer = null;
+
+      function two(n) { return (n < 10 ? "0" : "") + n; }
+      function etaText(ms) {
+        var mins = Math.round(ms / 60000);
+        if (mins < 1) return "dans moins d\u2019une minute";
+        var h = Math.floor(mins / 60), m = mins % 60;
+        if (h === 0) return "dans " + m + " min";
+        if (m === 0) return "dans " + h + " h";
+        return "dans " + h + " h " + m + " min";
+      }
+      // Franchissement EN DIRECT (l'heure promise passe pendant que l'on regarde) :
+      // on ne masque PAS (l'info aurait l'air d'avoir disparu) — on rassure. Distinct
+      // du cas « déjà dépassé AU CHARGEMENT » qui, lui, masque (une horloge périmée
+      // n'apprend rien). Passe de design.
+      function passed() {
+        if (timer) { clearInterval(timer); timer = null; }
+        lead.textContent = "Retour pr\u00e9vu ";
+        at.textContent = "";
+        eta.textContent = "d\u2019un instant \u00e0 l\u2019autre";
+      }
+      function tick(target) {
+        var rem = target - Date.now();
+        if (rem <= 0) { passed(); return; }
+        eta.textContent = " \u00b7 " + etaText(rem);
+      }
+
+      fetch("/maintenance-until", { cache: "no-store" }).then(function (r) {
+        return r.ok ? r.text() : null;
+      }).then(function (txt) {
+        if (txt == null) return;
+        var raw = txt.trim();
+        if (!raw) return;                            // `touch` nu → fichier vide → pas de ligne.
+        var target = new Date(raw).getTime();
+        if (isNaN(target)) return;                   // illisible → pas de ligne (jamais inventé).
+        if (target - Date.now() <= 0) return;        // déjà dépassé au chargement → pas de ligne.
+        var d = new Date(target);
+        lead.textContent = "Retour pr\u00e9vu vers ";
+        at.textContent = two(d.getHours()) + ":" + two(d.getMinutes());
+        tick(target);
+        el.hidden = false;
+        timer = setInterval(function () { tick(target); }, 30000);
+      })["catch"](function () {});                   // panne réseau → silencieux, page intacte.
     })();
   </script>
 </body>

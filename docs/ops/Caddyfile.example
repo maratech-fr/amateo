@@ -61,6 +61,40 @@ app.amateo.app {
 				rewrite * /landing/config.js
 				file_server
 			}
+			# Compteur de RETOUR (maintenance seulement) : expose le témoin ENRICHI à la
+			# page de maintenance, same-origin, servi du disque. L'exploitant écrit
+			# l'heure de retour DANS le témoin (`echo "2026-…T…+02:00" > maintenance.on`) ;
+			# la page lit /maintenance-until (jamais /maintenance.on en clair) et en tire
+			# « Retour prévu vers HH:MM » + un décompte. Un `touch` nu (témoin vide) →
+			# aucun compteur, page intacte.
+			# ⚠ DANS ce `route{}`, impérativement — même piège que /config.js ci-dessus :
+			#   hors `route`, Caddy réordonne `rewrite` AVANT `handle`, le rewrite global
+			#   tire en premier et ce bloc devient du CODE MORT (prouvé au `caddy adapt`).
+			# ⚠ NON-FUITE : ce handler vit à l'INTÉRIEUR de handle @maintenance ; hors
+			#   fenêtre de maintenance (témoin absent) le bloc n'existe pas, /maintenance-until
+			#   part au reverse_proxy comme n'importe quelle requête — le témoin ne fuit jamais.
+			@maintenance-until path /maintenance-until
+			handle @maintenance-until {
+				rewrite * /maintenance.on
+				# ⚠ TYPE FORCÉ + anti-sniff. Caddy n'a AUCUNE table MIME pour `.on` : sans
+				#   ces deux en-têtes, le témoin part SANS `Content-Type`, et un navigateur
+				#   qui ouvre /maintenance-until directement RENIFLE le contenu. Un témoin
+				#   contenant du HTML s'exécuterait alors SAME-ORIGIN. Non exploitable
+				#   aujourd'hui (seul root-en-SSH écrit ce fichier) — mais l'arête est
+				#   latente : elle s'ouvrirait au premier second écrivain (script d'ops,
+				#   entrée de workflow, futur « bandeau de maintenance »). Relevé en revue
+				#   de sécurité le 2026-08-23, corrigé à la source plutôt que documenté.
+				#   `no-store` : la page fetch déjà en no-store, on l'aligne au bord.
+				header Content-Type "text/plain; charset=utf-8"
+				header X-Content-Type-Options nosniff
+				header Cache-Control "no-store"
+				# 200 EXPLICITE : le 503 appartient à la PAGE, pas à cette sous-ressource
+				# que le fetch() de la page doit lire en succès (r.ok). Sans lui elle
+				# risquerait d'hériter d'un statut ambigu.
+				file_server {
+					status 200
+				}
+			}
 			rewrite * /system-pages/maintenance.html
 			file_server {
 				# 503 + Retry-After, JAMAIS 200 : un 200 ferait indexer la page à la

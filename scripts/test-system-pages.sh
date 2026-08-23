@@ -17,6 +17,11 @@
 #   4. témoin retiré, amont vivant → GET /   → 200, contenu de l'amont intact
 #   5. amont vivant répondant 404 → GET /x   → 404 de l'amont, corps INTACT
 #   6. dossier system-pages absent → GET /   → 5xx corps vide, jamais 200
+#   7. maintenance ON, témoin vide (`touch`)  → /maintenance-until → 200 corps VIDE
+#   8. maintenance ON, témoin ENRICHI         → /maintenance-until → 200 + horodatage
+#   9. maintenance ON, GET /maintenance.on    → la PAGE (503), jamais le témoin en clair
+#  10. maintenance OFF, /maintenance-until     → part à l'amont, le témoin NE FUIT PAS
+#  11. poids des pages servies                 → chaque page < 40 Ko (garde de poids)
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -216,6 +221,57 @@ if body_has "window.LANDING_CONFIG = {" \
 else
   ko "3ter. maintenance ON → GET /config.js → VRAI config landing (status=$STATUS)"
 fi
+
+# Cas 7 — témoin VIDE (posé par `touch` ci-dessus) → /maintenance-until sert un corps
+# VIDE en 200 : c'est la rétro-compat du runbook (touch nu) — la page, voyant le vide,
+# NE montre aucun compteur. On prouve ici la MOITIÉ câblage ; la moitié JS (ligne masquée)
+# est prouvée au navigateur.
+get "/maintenance-until"
+if expect_status 200 && [ -z "$BODY" ]; then
+  ok "7. maintenance ON, témoin vide (touch) → /maintenance-until = 200 corps vide"
+else
+  ko "7. maintenance ON, témoin vide → 200 corps vide (status=$STATUS, body='${BODY:0:40}')"
+fi
+
+# Cas 8 — témoin ENRICHI : l'exploitant écrit l'heure de retour DANS le témoin. La
+# source du compteur devient lisible same-origin, exactement telle qu'écrite.
+STAMP="2099-01-02T20:30:00+00:00"
+printf '%s' "$STAMP" > "$STAGING/maintenance.on"
+get "/maintenance-until"
+if expect_status 200 && body_has "$STAMP"; then
+  ok "8. maintenance ON, témoin enrichi → /maintenance-until = 200 + horodatage servi"
+else
+  ko "8. maintenance ON, témoin enrichi → 200 + horodatage (status=$STATUS, body='${BODY:0:40}')"
+fi
+
+# Cas 9 — le CHEMIN BRUT du témoin n'est jamais servi en clair : GET /maintenance.on
+# tombe sur le rewrite global → la PAGE de maintenance (503), pas l'horodatage. Seule
+# /maintenance-until l'expose.
+get "/maintenance.on"
+if expect_status 503 && body_has "On refait le parquet" && ! body_has "$STAMP"; then
+  ok "9. maintenance ON, GET /maintenance.on → la PAGE (503), jamais le témoin en clair"
+else
+  ko "9. maintenance ON, GET /maintenance.on → PAGE 503 sans l'horodatage (status=$STATUS)"
+fi
+
+# Cas 12 — le témoin est servi en TEXTE et NON reniflable. Caddy n'a aucune table MIME
+# pour `.on` : sans en-têtes forcés, il partirait SANS Content-Type, et un navigateur qui
+# ouvre /maintenance-until reniflerait le contenu — un témoin contenant du HTML
+# s'exécuterait SAME-ORIGIN. Relevé en revue de sécurité le 2026-08-23.
+printf '<html><script>alert(1)</script></html>' > "$STAGING/maintenance.on"
+get "/maintenance-until"
+# ⚠ `|| true` OBLIGATOIRE : sous `set -e`, un grep sans correspondance (justement le cas
+# que ce test doit ATTRAPER — aucun Content-Type émis) TUERAIT le script au lieu de
+# rapporter un échec nommé, et les cas suivants ne tourneraient plus. Un test qui abat la
+# suite au lieu de la faire rougir proprement ne garde rien.
+ct="$(printf '%s' "$HEADERS" | grep -i '^Content-Type:' | tr -d '\r' || true)"
+nosniff="$(printf '%s' "$HEADERS" | grep -ci '^X-Content-Type-Options:[[:space:]]*nosniff' || true)"
+if printf '%s' "$ct" | grep -qi 'text/plain' && [ "$nosniff" = "1" ]; then
+  ok "12. témoin servi en text/plain + nosniff (jamais reniflé comme HTML)"
+else
+  ko "12. témoin servi en text/plain + nosniff (ct='$ct' nosniff=$nosniff)"
+fi
+
 rm -f "$STAGING/maintenance.on"
 # Vérif de symétrie : le retrait rouvre immédiatement (sans reload).
 get "/"
@@ -224,6 +280,33 @@ if expect_status 200 && body_has "UPSTREAM-ALIVE-HOMEPAGE"; then
 else
   ko "3bis. maintenance OFF → 200 (status=$STATUS)"
 fi
+
+# Cas 10 — NON-FUITE : maintenance OFF (témoin retiré) + amont VIVANT. /maintenance-until
+# n'est plus une route (elle vit DANS handle @maintenance) : la requête part au
+# reverse_proxy comme n'importe quelle autre → corps de l'amont. Si la route avait fui
+# hors du bloc maintenance, elle réécrirait vers /maintenance.on ABSENT → 404, PAS le
+# corps de l'amont : l'assertion discrimine.
+get "/maintenance-until"
+if expect_status 200 && body_has "UPSTREAM-ALIVE-HOMEPAGE" && ! body_has "2099-01-02"; then
+  ok "10. maintenance OFF → /maintenance-until part à l'amont (le témoin NE FUIT PAS)"
+else
+  ko "10. maintenance OFF → /maintenance-until ne doit PAS servir le témoin (status=$STATUS, body='${BODY:0:40}')"
+fi
+
+# Cas 11 — GARDE DE POIDS : chaque page servie < 40 Ko (40 × 1024 o). La borne dure de la
+# règle est 100 Ko, mais les pages font ~13-16 Ko : un garde à 100 Ko ne se déclencherait
+# JAMAIS. 40 Ko laisse ~2,5-3× de marge tout en restant un vrai signal. Falsifiable :
+# gonfler une page au-delà du seuil fait rougir ce cas.
+echo "==> Cas 11 — poids des pages servies (< 40 Ko chacune)"
+MAX_BYTES=40960
+for f in 503.html maintenance.html; do
+  bytes="$(wc -c < "$STAGING/system-pages/$f")"
+  if [ "$bytes" -lt "$MAX_BYTES" ]; then
+    ok "11. $f = ${bytes} o (< ${MAX_BYTES} o)"
+  else
+    ko "11. $f = ${bytes} o (≥ ${MAX_BYTES} o — page trop lourde)"
+  fi
+done
 
 echo
 echo "==> Résultat : $PASS OK, $FAIL KO"
