@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\State\Processor;
 
-use ApiPlatform\Validator\Exception\ValidationException;
 use App\ApiResource\VenuePeriodOverrideResource;
 use App\Dto\VenuePeriodOverrideInput;
 use App\Entity\VenuePeriodOverride;
@@ -157,7 +156,7 @@ class VenuePeriodOverrideStateProcessor extends AbstractStateProcessor
         // Un seul réglage par (période, gymnase) — l'index unique remonterait sinon en 500
         // sur un double-submit ; on rend un 422 propre (l'édition passe par PUT).
         if (!\in_array(null, [$input->schedulePlanId, $input->venueId, $this->entityManager->getRepository(VenuePeriodOverride::class)->findOneBy(['schedulePlanId' => $input->schedulePlanId, 'venueId' => $input->venueId])], true)) {
-            throw new ValidationException('Ce gymnase a déjà un réglage pour cette période — modifiez-le.');
+            $this->refuse('Ce gymnase a déjà un réglage pour cette période — modifiez-le.');
         }
 
         // Le mode est un réglage DE PÉRIODE. Le viser sur le plan de saison rendrait ses
@@ -166,7 +165,7 @@ class VenuePeriodOverrideStateProcessor extends AbstractStateProcessor
         // Le planning principal n'est JAMAIS modifié par une période (invariant n°1) —
         // on le rend impossible ici plutôt que d'en dépendre côté UI.
         if ($this->schedulePlanProvisioner->planIsSeason($input->schedulePlanId)) {
-            throw new ValidationException('Un mode de gymnase se règle sur une période, pas sur le planning de la saison.');
+            $this->refuse('Un mode de gymnase se règle sur une période, pas sur le planning de la saison.');
         }
 
         $entity = new VenuePeriodOverride;

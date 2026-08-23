@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\State\Processor;
 
-use ApiPlatform\Validator\Exception\ValidationException;
 use App\ApiResource\TeamPeriodOverrideResource;
 use App\Dto\TeamPeriodOverrideInput;
 use App\Entity\TeamPeriodOverride;
@@ -72,7 +71,7 @@ class TeamPeriodOverrideStateProcessor extends AbstractStateProcessor
         // One override per (period, team) — the DB unique index would otherwise
         // surface as a 500 on a double-submit; give a clean 422 instead (edit via PUT).
         if (!\in_array(null, [$input->schedulePlanId, $input->teamId, $this->entityManager->getRepository(TeamPeriodOverride::class)->findOneBy(['schedulePlanId' => $input->schedulePlanId, 'teamId' => $input->teamId])], true)) {
-            throw new ValidationException('This team already has an override for this period — edit it instead.');
+            $this->refuse('Cette équipe a déjà un réglage pour cette période — modifiez-le.');
         }
 
         $entity = new TeamPeriodOverride;

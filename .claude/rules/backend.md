@@ -33,3 +33,4 @@ paths:
   SÉRIALISÉS compris), catalogue admin, descriptions/help CLI, messages d'erreur, emails,
   exports. Les COMMENTAIRES de code (`//`, blocs, docblocks NON sérialisés), oui. La substance
   reste, la référence part. Gardé par `PublicTextIsFreeOfInternalIdentifiersTest`.
+- 🔴 **Jamais `new ValidationException('chaîne')`** — le 422 serait MUET (liste de violations VIDE, « An error occurred » à l'écran, le message meurt). L'idiome unique : `$this->refuse('…')` (`AbstractStateProcessor`), gardé par `Unit/ValidationExceptionCarriesViolationsTest` qui interdit le constructeur partout ailleurs dans `src/`. Détail et piège d'assertion (`\u0027`) : `backend/docs/error-copy.md` §rail 422.

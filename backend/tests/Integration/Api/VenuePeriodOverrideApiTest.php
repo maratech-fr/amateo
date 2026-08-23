@@ -198,6 +198,8 @@ final class VenuePeriodOverrideApiTest extends WebTestCase
         // de l'index unique. L'édition passe par PUT.
         $this->post(['schedulePlanId' => $this->planId, 'venueId' => $this->venueA->getId(), 'mode' => 'DISABLED']);
         self::assertResponseStatusCodeSame(422);
+        // P4-126 — le motif voyage jusque dans le corps (un 422 muet rendrait `violations: []`).
+        self::assertStringContainsString('Ce gymnase a déjà un réglage pour cette période — modifiez-le.', (string) $this->client->getResponse()->getContent());
     }
 
     // ── Indispo INFORMATIVE (fondateur 2026-08-18) : le verrou P2-37 D2 SAUTE ──

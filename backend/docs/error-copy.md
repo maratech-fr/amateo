@@ -4,7 +4,7 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-08-22 (créé avec la passe de traduction des corps d'erreur 4xx atteignables
+Last verified @ 2026-08-23 (recalé par la livraison P4-126 : le rail 422 des processors entre au doc — l'idiome unique `refuse()`, le mécanisme du mutisme, le garde, le piège \u0027. Vérifié en écrivant : les 12 messages anglais des processors sont passés en français métier dans le même lot, la règle « français dès que visible » est donc tenue)
 par un gestionnaire ; règle et frontières confrontées à `frontend/src/shared/lib/errorMessage.ts`
 et aux contrôleurs/services/state-processors touchés.)
 
@@ -28,6 +28,25 @@ body.detail` **que** pour `status < 500`. Donc :
     qui ne se produisent pas depuis un front authentifié normal.
   - **Superadmin `SA0`** (`Controller/Admin*`, firewall `/api/admin/**`) et **outillage `Dev*`** :
     hors app gestionnaire, laissés tels quels.
+
+## Le rail 422 des state processors — un refus PARLE (P4-126, 2026-08-23)
+
+`throw new ValidationException('chaîne')` rend un 422 **muet** : le constructeur-chaîne crée une
+`ConstraintViolationList` VIDE, et le normalizer d'API Platform dérive `detail` et `violations[]`
+**exclusivement de la liste** — l'écran affiche « An error occurred » pendant que le message
+français soigné meurt dans un champ que personne ne lit. Mesuré le 2026-08-22 : 35 occurrences
+dans 11 processors, dont les 3 messages de la mutualisation que la passe #700 avait traduits
+**pour personne**.
+
+**L'idiome est unique** : `$this->refuse('…')` (`AbstractStateProcessor` — vraie liste, le message
+ressort dans `violations[].message` ET `detail`, les deux champs que lit `errorMessage.ts`).
+`new ValidationException(` est **interdit partout ailleurs** dans `src/`, gardé par
+`tests/Unit/ValidationExceptionCarriesViolationsTest` — une liste ad hoc hors du helper
+recréerait une deuxième maison.
+
+⚠ Piège d'assertion connu : API Platform sérialise l'apostrophe en `\u0027` — une assertion sur
+le CORPS BRUT manque « d'accès » ou « L'indisponibilité ». Décoder le JSON et lire
+`violations[0].message`, comme le fait le consommateur réel.
 
 ## Intouchables (ne relèvent pas de la copie humaine)
 

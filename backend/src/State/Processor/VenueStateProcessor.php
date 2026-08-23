@@ -4,13 +4,10 @@ declare(strict_types=1);
 
 namespace App\State\Processor;
 
-use ApiPlatform\Validator\Exception\ValidationException;
 use App\ApiResource\VenueResource;
 use App\Dto\VenueInput;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
-use Symfony\Component\Validator\ConstraintViolation;
-use Symfony\Component\Validator\ConstraintViolationList;
 
 /**
  * @extends AbstractStateProcessor<Venue, VenueInput, VenueResource>
@@ -153,12 +150,10 @@ class VenueStateProcessor extends AbstractStateProcessor
         }
 
         if (!$confirmed) {
-            // Une VRAIE liste de violations (pas un message nu) : le normaliseur d'ApiPlatform
-            // reconstruit `detail`/`violations` DEPUIS la liste — un message-chaîne y ressortirait
-            // vide, et le toast du front (qui lit `detail`) n'afficherait rien.
-            $message = $this->splitCascadeMessage($venue, $overCapacity);
-
-            throw new ValidationException(new ConstraintViolationList([new ConstraintViolation($message, $message, [], null, '', null)]));
+            // `refuse()` construit une VRAIE liste de violations (le normaliseur d'ApiPlatform
+            // reconstruit `detail`/`violations` DEPUIS elle — un message-chaîne nu y ressortirait
+            // vide, et le toast du front, qui lit `detail`, n'afficherait rien).
+            $this->refuse($this->splitCascadeMessage($venue, $overCapacity));
         }
 
         $this->cascadeDeleter?->clampSplitSlotsAndClearPins($overCapacity);

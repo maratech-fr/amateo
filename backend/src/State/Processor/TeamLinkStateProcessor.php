@@ -4,15 +4,12 @@ declare(strict_types=1);
 
 namespace App\State\Processor;
 
-use ApiPlatform\Validator\Exception\ValidationException;
 use App\ApiResource\TeamLinkResource;
 use App\Dto\TeamLinkInput;
 use App\Entity\Team;
 use App\Entity\TeamLink;
 use App\Enum\TeamLinkIntensity;
 use App\Enum\TeamLinkType;
-use Symfony\Component\Validator\ConstraintViolation;
-use Symfony\Component\Validator\ConstraintViolationList;
 
 /**
  * Wizard-surface structure entity (VenueMatchWindow idiom): not management
@@ -68,18 +65,6 @@ class TeamLinkStateProcessor extends AbstractStateProcessor
     protected function mapEntityToOutput(object $entity): TeamLinkResource
     {
         return TeamLinkResource::fromEntity($entity);
-    }
-
-    /**
-     * 422 NOMMÉ. ⚠ `new ValidationException('chaîne')` rend `violations: []` et
-     * « An error occurred » — le message n'atteint JAMAIS l'écran (mesuré 2026-08-22
-     * sur ce processor). Seule une vraie ConstraintViolationList voyage jusqu'au
-     * toast (`errorMessage.ts` lit `violations[].message`). Doctrine P5-14 : jamais
-     * « une erreur est survenue » quand la cause est connue.
-     */
-    private function refuse(string $message): never
-    {
-        throw new ValidationException(new ConstraintViolationList([new ConstraintViolation($message, null, [], null, null, null)]));
     }
 
     private function applyInput(TeamLink $entity, TeamLinkInput $input): void

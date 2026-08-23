@@ -85,6 +85,8 @@ final class CoachWishCampaignApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
         $this->post($this->payload());
         self::assertResponseStatusCodeSame(422);
+        // P4-126 — le motif voyage jusque dans le corps (un 422 muet rendrait `violations: []`).
+        self::assertStringContainsString('Une collecte existe déjà pour cette période — modifiez-la.', (string) $this->client->getResponse()->getContent());
     }
 
     public function testCampaignOnANonHolidayPeriodIsRejectedWith422(): void

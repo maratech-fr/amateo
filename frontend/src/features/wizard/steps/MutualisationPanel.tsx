@@ -5,7 +5,7 @@ import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
-import { apiErrorMessage } from "@/shared/api/errors";
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { HabitsLinksButton } from "@/features/matches/HabitsLinksButton";
 import { useTeamLinks } from "@/features/matches/queries";
 import { groupTeamsByTier } from "@/shared/lib/teamTiers";
@@ -20,7 +20,7 @@ import { useCreateSharedTrainingGroup, useDeleteSharedTrainingGroup, useSharedTr
  * sessions. Same anchoring as the "Réserver" tab — base plan (schedulePlanId null) or a period
  * overlay behind `PeriodAnchorGate`. The server (`SharedTrainingGroupStateProcessor`) is the sole
  * judge; everything below (K cap, already-grouped lock, candidate ranking) is FAIL-SAFE guidance,
- * never a permission — a 422 stays handled and shown via `apiErrorMessage`.
+ * never a permission — a 422 stays handled and shown via `errorMessage` (reads detail + violations).
  */
 export function MutualisationPanel({
   teams,
@@ -122,9 +122,11 @@ export function MutualisationPanel({
       }
       resetForm();
     } catch (e) {
-      // ky 2.x : le corps du 422 vit dans error.data (jamais error.response) — `apiErrorMessage`
-      // le lit. Le serveur reste seul juge : on affiche son motif plutôt que de le pré-supposer.
-      setError(await apiErrorMessage(e));
+      // ky 2.x : le corps du 422 vit dans error.data (jamais error.response). `errorMessage` lit
+      // `detail` PUIS `violations[].message` — la forme d'un 422 d'API Platform, que `apiErrorMessage`
+      // (error/message seuls) laissait muet à l'écran (P4-126). Le serveur reste seul juge : on
+      // affiche son motif plutôt que de le pré-supposer.
+      setError(await errorMessage(e));
     }
   };
 
