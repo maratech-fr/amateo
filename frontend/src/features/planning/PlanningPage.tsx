@@ -81,6 +81,16 @@ function ValidateDialog({ hasAlerts, siblingCount, busy, onConfirm, onCancel }: 
           onCancel();
         }
       }}
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onCancel} disabled={busy}>
+            Annuler
+          </Button>
+          <Button size="sm" onClick={onConfirm} disabled={busy}>
+            Valider
+          </Button>
+        </>
+      }
     >
       <p className="mt-2 text-sm text-muted-foreground">
         {hasAlerts
@@ -92,14 +102,6 @@ function ValidateDialog({ hasAlerts, siblingCount, busy, onConfirm, onCancel }: 
           Seule cette version sera conservée — {siblingCount > 1 ? `les ${siblingCount} autres versions seront définitivement supprimées` : "l'autre version sera définitivement supprimée"}.
         </p>
       ) : null}
-      <div className="mt-6 flex justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={onCancel} disabled={busy}>
-          Annuler
-        </Button>
-        <Button size="sm" onClick={onConfirm} disabled={busy}>
-          Valider
-        </Button>
-      </div>
     </Modal>
   );
 }

@@ -996,7 +996,22 @@ function PeriodSlotEditor({
   };
 
   return (
-    <Modal label="Modifier le créneau" title="Modifier le créneau" onClose={onClose}>
+    <Modal
+      label="Modifier le créneau"
+      title="Modifier le créneau"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" className="text-destructive" onClick={() => setConfirmDelete(true)}>
+            <Trash2 className="size-4" />
+            Supprimer
+          </Button>
+          <Button onClick={save} disabled={update.isPending}>
+            Enregistrer
+          </Button>
+        </>
+      }
+    >
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <label className="text-xs text-muted-foreground">
           Jour
@@ -1049,16 +1064,6 @@ function PeriodSlotEditor({
           {error}
         </p>
       ) : null}
-
-      <div className="mt-5 flex justify-end gap-2">
-        <Button variant="ghost" className="text-destructive" onClick={() => setConfirmDelete(true)}>
-          <Trash2 className="size-4" />
-          Supprimer
-        </Button>
-        <Button onClick={save} disabled={update.isPending}>
-          Enregistrer
-        </Button>
-      </div>
 
       {/* affectsPeriodPlans NON posé : supprimer un créneau de PÉRIODE ne touche QUE cette
           période, pas « les plannings de période » — l'exagérer trompe (invariant n°4,

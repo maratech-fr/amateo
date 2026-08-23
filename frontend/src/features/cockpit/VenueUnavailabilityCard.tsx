@@ -122,7 +122,21 @@ export function VenueUnavailabilityCard() {
       )}
 
       {dialogOpen ? (
-        <Modal label="Indisponibilité gymnase" title="Déclarer une indisponibilité" onClose={() => setDialogOpen(false)}>
+        <Modal
+          label="Indisponibilité gymnase"
+          title="Déclarer une indisponibilité"
+          onClose={() => setDialogOpen(false)}
+          footer={
+            <>
+              <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)}>
+                Annuler
+              </Button>
+              <Button size="sm" disabled={!canCreate} onClick={submit}>
+                Déclarer
+              </Button>
+            </>
+          }
+        >
           <div className="flex flex-col gap-3">
             <p className="text-xs text-muted-foreground">
               Toutes circonstances : le gymnase est fermé pour les matchs ET les entraînements sur la plage. Rien
@@ -163,14 +177,6 @@ export function VenueUnavailabilityCard() {
               <span className="text-muted-foreground">Motif (optionnel)</span>
               <input aria-label="Motif de l'indisponibilité" className="h-9 rounded-md border border-border bg-background px-2 text-sm" placeholder="travaux, reprise mairie…" value={label} onChange={(e) => setLabel(e.target.value)} />
             </label>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)}>
-                Annuler
-              </Button>
-              <Button size="sm" disabled={!canCreate} onClick={submit}>
-                Déclarer
-              </Button>
-            </div>
           </div>
         </Modal>
       ) : null}

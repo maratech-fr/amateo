@@ -730,7 +730,27 @@ function ClubActionsDialog({ club, onClose }: { club: AdminClub; onClose: () => 
     .map((arg) => ({ label: arg.label, value: arg.choices.find((c) => c.value === argValues[arg.key])?.label ?? argValues[arg.key] }));
 
   return (
-    <Modal label={`Actions support — ${club.name}`} title={`Actions support — ${club.name}`} onClose={onClose} size="xl">
+    <Modal
+      label={`Actions support — ${club.name}`}
+      title={`Actions support — ${club.name}`}
+      onClose={onClose}
+      size="xl"
+      // Pied ÉPINGLÉ seulement quand une action est SÉLECTIONNÉE — le catalogue (selected===null)
+      // défile sans pied, ses entrées sont elles-mêmes les cibles cliquables.
+      footer={
+        selected ? (
+          <>
+            <Button type="button" variant="ghost" onClick={reset} disabled={run.isPending}>
+              Retour
+            </Button>
+            <Button type="button" variant={selected.dangerous ? "destructive" : "default"} disabled={primaryBlocked} onClick={onPrimary}>
+              {run.isPending ? <Spinner className="size-4" /> : null}
+              Exécuter
+            </Button>
+          </>
+        ) : undefined
+      }
+    >
       <div className="mt-4 space-y-4">
         {actions.isPending ? <p className="text-sm text-muted-foreground">Chargement du catalogue…</p> : null}
         {actions.isError ? <p className="text-sm text-destructive">Catalogue d’actions indisponible.</p> : null}
@@ -802,15 +822,6 @@ function ClubActionsDialog({ club, onClose }: { club: AdminClub; onClose: () => 
                 />
               </div>
             ) : null}
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="ghost" onClick={reset} disabled={run.isPending}>
-                Retour
-              </Button>
-              <Button type="button" variant={selected.dangerous ? "destructive" : "default"} disabled={primaryBlocked} onClick={onPrimary}>
-                {run.isPending ? <Spinner className="size-4" /> : null}
-                Exécuter
-              </Button>
-            </div>
           </div>
         ) : null}
       </div>

@@ -1,6 +1,6 @@
 # FORWARD Components Spec — Pages & Shared Components (hors wizard)
 
-Last verified @ 2026-08-22 (recalé par la livraison P4-127 (b) : la primitive `WarningPanel` entre au tableau — l'encart d'avertissement était re-déclaré à trois endroits avec deux boîtes différentes. Props confrontées au code en écrivant la ligne. ⚠ Vérification HONNÊTEMENT PARTIELLE, comme les précédentes : cette ligne et ses voisines immédiates, pas les >1000 lignes du fichier ; le découpage réclamé par les passes précédentes reste à faire)
+Last verified @ 2026-08-23 (recalé par la livraison P4-127 d+e : `Modal` gagne le slot `footer` épinglé et `Button` perd `disabled:pointer-events-none`. Vérifié en écrivant : la ligne Button annonçait une prop `loading` — AUCUNE prop `loading` n'existe dans `button.tsx`, retirée de la ligne (le motif exact de la prop fantôme `action` d'EmptyState, corrigée le 22). ⚠ Vérification HONNÊTEMENT PARTIELLE : ces deux lignes et leurs voisines ; le découpage du fichier reste à faire)
 
 > 🛑 **Ce document est SUPERSEDED. Il ne décrit pas le frontend livré.**
 >
@@ -529,7 +529,7 @@ de la présentation + accessibilité.
 
 | Composant | Rôle | Props clés | Utilisé par |
 |-----------|------|------------|-------------|
-| `Button` | Bouton avec variants (primary, secondary, danger, ghost) + sizes | `variant`, `size`, `loading`, `disabled`, `children` | Toutes les pages |
+| `Button` | Bouton avec variants + sizes. **Désactivé, il INFORME** (P4-127 e) : plus de `pointer-events-none` — les `title=` d'explication vivent, curseur `not-allowed`, survols bornés aux boutons actifs (`hover:enabled:`) ; la doctrine « raison en clair à côté » reste la norme pour les cas importants | `variant`, `size`, `disabled`, `children` | Toutes les pages |
 | `Input` | Input texte avec label, erreur, hint | `label`, `error`, `hint`, `type`, `value`, `onChange` | LoginForm, RegisterForm, tous formulaires |
 | `Select` | Dropdown natif stylé + label | `label`, `options`, `value`, `onChange` | ScheduleViewPage (filtres), DiagnosticsPage |
 | `Badge` | Badge coloré (statut, tier, severity) | `color`, `children`, `icon` | ScheduleHeader, TierColumn, DiagnosticItem |
@@ -539,7 +539,7 @@ de la présentation + accessibilité.
 | `EmptyState` / `EmptyBlock` / `EmptyHint` | Les TROIS étages du vide, une seule maison (`empty-hint.tsx`, UXC-17) : la Card « vue entière vide » (pointillés, icône + titre + description) · le bloc pointillé de grille/panneau · le paragraphe discret en ligne | `EmptyState` : `icon` (défaut `CalendarX2`), `title`, `description` — pas de prop `action` (l'ancienne ligne en promettait une qui n'a jamais existé) ; les deux autres : `children`, `className` | PlanningPage (State) · grilles horaires (Block) · ~15 écrans (Hint) |
 | `Menu` / `MenuItem` | Dropdown accessible (burger, motif APG menu-button) — focus au 1er item à l'ouverture, flèches ↑/↓ (roving), Esc/Tab ferment + rendent le focus au déclencheur, clic-dehors, `z-50` au-dessus du plein écran wizard, sans dépendance | `label`, `trigger`, `children` / `onSelect` \| `to` (NavLink, état actif), `icon` | AppLayout (menu compte : Club · Profil · Thème · Logout) |
 | `AccordionSection` | Section dépliable (`aria-expanded`/`aria-controls`, chevron) | `title`, `defaultOpen`, `children` | ClubPage (sections Demandes / Visuel) |
-| `Modal` | Modal accessible (focus trap, Escape, backdrop), **hauteur bornée + contenu défilant**, **largeur par palier nommé** | `label`, `title`, `onClose`, `children`, `size` (`sm`\|`md`\|`lg`\|`xl`, défaut `md`) | cockpit, wizard, matchs, planning, admin |
+| `Modal` | Modal accessible (focus trap, Escape, backdrop), **hauteur bornée + contenu défilant**, **largeur par palier nommé**, **pied d'actions ÉPINGLÉ hors défilement** (P4-127 d — la règle de partage : le pied reçoit les actions et le microcopy qui les qualifie, les conséquences restent dans le corps) | `label`, `title`, `onClose`, `children`, `footer`, `size` (`sm`\|`md`\|`lg`\|`xl`, défaut `md`) | cockpit, wizard, matchs, planning, admin |
 | `FichePage` | Le cadre des pages « fiche » : 832 px centrés + paragraphes bornés à la longueur de ligne lisible | `className` (rythme vertical de la page), `children` | ClubPage, ProfilePage, ReleaseNotesPage |
 | `WarningPanel` | L'encart d'AVERTISSEMENT — un fait qui limite ce qui est possible ici (semaines sous vacances, fenêtre déjà planifiée). **Une seule boîte** depuis P4-127 : trois sites la re-déclaraient avec deux bordures différentes, deux d'entre eux côte à côte dans la même modale. ⚠ Ce n'est **pas** une alerte d'erreur : ni `role="alert"` ni `aria-live` — quand le contenu arrive de façon asynchrone, c'est le CONTENEUR de l'appelant qui porte la région live, pour annoncer une fois et non une fois par encart | `icon` (décoratif — le texte porte seul le sens), `message`, `children` (l'action, rendue en FRÈRE du paragraphe : un `<div>` dans un `<p>` est invalide), `className` | `WindowAlreadyPlannedNotice`, `WeekPickerDialog`, `DayDialog` |
 | `Toast` | Notification temporaire (succès, erreur, info) | `variant`, `message`, `duration` | Toutes les pages (mutations) |

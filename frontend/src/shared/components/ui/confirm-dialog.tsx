@@ -106,7 +106,10 @@ export function ConfirmDialog({
             </div>
           )}
         </div>
-        <div className="mt-6 flex shrink-0 justify-end gap-2">
+        {/* Même filet que le pied ÉPINGLÉ de `Modal` (P4-127 d) : bordure + `pt-4`, pour que les
+            deux panneaux jumeaux restent jumeaux. Les boutons vivaient déjà HORS de la zone
+            défilante ; seule la ligne de séparation est ajoutée. */}
+        <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-2 border-t border-border pt-4">
           <Button variant="ghost" onClick={onCancel}>
             {cancelLabel}
           </Button>

@@ -43,6 +43,30 @@ interface ModalProps {
   children: ReactNode;
   /** Palier de largeur — `md` par défaut. Voir `MODAL_WIDTH` pour le choix du palier. */
   size?: ModalSize;
+  /**
+   * Rangée d'actions ÉPINGLÉE, rendue HORS de la zone défilante (P4-127 d).
+   *
+   * ⚑ Le pourquoi : jusqu'ici les rangées d'actions vivaient DANS `overflow-y-auto` et
+   * défilaient avec le contenu — sur une modale longue, « Enregistrer » / « Valider »
+   * sortait du champ, il fallait faire défiler jusqu'en bas pour agir. Le pied résout ça
+   * une fois pour toutes : il reste visible pendant que le corps défile. Il n'est rendu que
+   * si le slot est fourni ; l'espacement (`mt-4`, la bordure `border-t`, le `pt-4`) vit ICI,
+   * une seule fois — les appelants ne portent plus leur `mt-6 flex justify-end gap-2`.
+   *
+   * ⚑ Règle de migration (mécanique) : le slot reçoit **les actions et le microcopy qui
+   * QUALIFIE une action** (raison de désactivation d'un bouton, spinner d'attente) ; tout ce
+   * qui décrit la **CONSÉQUENCE** du geste reste dans le corps, défilant. Garde-fou : jamais
+   * de bloc de prose dans le pied — il est `shrink-0`, il mangerait le viewport du contenu.
+   *
+   * ⚠ Risque clavier CRÉÉ par la sortie des actions du flux défilant : une modale longue peut
+   * n'avoir plus AUCUN focusable dans la zone défilante, la rendant indéfilable au clavier sur
+   * les navigateurs qui ne rendent pas les conteneurs scrollables focusables. On s'appuie sur
+   * le comportement moderne (Chrome ≥127 / Firefox rendent ces conteneurs focusables) et on le
+   * PROUVE par un témoin e2e (`tests/e2e/modal-reachability.spec.ts` — « atteignable au
+   * clavier »). Si ce témoin échoue un jour, repli : `tabIndex={0}` + `aria-label` sur la zone
+   * de scroll.
+   */
+  footer?: ReactNode;
 }
 
 /**
@@ -66,7 +90,7 @@ interface ModalProps {
  * un enfant flex refuse de rétrécir sous sa taille de contenu sans lui, et `overflow-y-auto`
  * n'aurait alors rien à faire défiler.
  */
-export function Modal({ label, title, onClose, children, size = "md" }: ModalProps) {
+export function Modal({ label, title, onClose, children, size = "md", footer }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   // Focus-trap + initial focus + focus restoration + Escape (WCAG 2.1.2 / 2.4.3).
   useModalA11y({ ref: panelRef, onClose });
@@ -89,6 +113,7 @@ export function Modal({ label, title, onClose, children, size = "md" }: ModalPro
           </button>
         </div>
         <div className="min-h-0 overflow-y-auto">{children}</div>
+        {footer ? <footer className="mt-4 flex shrink-0 flex-wrap justify-end gap-2 border-t border-border pt-4">{footer}</footer> : null}
       </div>
     </div>,
     document.body,

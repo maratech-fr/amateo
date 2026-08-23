@@ -40,6 +40,7 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
   const [error, setError] = useState<string | null>(null);
   const topicId = useId();
   const messageId = useId();
+  const formId = useId();
 
   const contextual = "contextual" === variant;
   const screen = screenProp ?? pathname;
@@ -93,8 +94,24 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
   }
 
   return (
-    <Modal label="Signaler" title={contextual ? "Signaler un problème sur cet écran" : "Signaler un bug ou une idée"} onClose={onClose}>
-      <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+    <Modal
+      label="Signaler"
+      title={contextual ? "Signaler un problème sur cet écran" : "Signaler un bug ou une idée"}
+      onClose={onClose}
+      // Le formulaire vit dans le corps défilant ; le bouton d'envoi part au pied épinglé et
+      // reste rattaché au `<form>` par l'attribut HTML `form={formId}` (submit + Entrée intacts).
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button type="submit" form={formId} disabled={submit.isPending}>
+            {submit.isPending ? "Envoi…" : "Envoyer"}
+          </Button>
+        </>
+      }
+    >
+      <form id={formId} onSubmit={handleSubmit} className="mt-4 space-y-4">
         {contextual ? null : (
           <div className="space-y-1.5">
             <Label htmlFor={topicId}>Type de signalement</Label>
@@ -131,14 +148,6 @@ export function FeedbackDialog({ variant, onClose, screen: screenProp, scheduleI
           </p>
         ) : null}
 
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>
-            Annuler
-          </Button>
-          <Button type="submit" disabled={submit.isPending}>
-            {submit.isPending ? "Envoi…" : "Envoyer"}
-          </Button>
-        </div>
       </form>
     </Modal>
   );

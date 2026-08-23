@@ -54,7 +54,17 @@ export function HabitsLinksDialog({ teams, tiers, venues, fixtures, onClose }: H
   };
 
   return (
-    <Modal label="Habitudes et passerelles" title="Habitudes & passerelles" onClose={onClose} size="lg">
+    <Modal
+      label="Habitudes et passerelles"
+      title="Habitudes & passerelles"
+      onClose={onClose}
+      size="lg"
+      footer={
+        <Button variant="outline" size="sm" onClick={onClose}>
+          Fermer
+        </Button>
+      }
+    >
       <div className="flex flex-col gap-4">
         <section className="flex flex-col gap-2">
           <h3 className="text-sm font-semibold">Habitudes de match</h3>
@@ -153,11 +163,6 @@ export function HabitsLinksDialog({ teams, tiers, venues, fixtures, onClose }: H
           <TeamLinksSection teams={teams} tiers={tiers} />
         </div>
 
-        <div className="flex justify-end">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Fermer
-          </Button>
-        </div>
       </div>
     </Modal>
   );

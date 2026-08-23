@@ -221,7 +221,40 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, bus
   );
 
   return (
-    <Modal label="Choisir les semaines" title="Quelles semaines ajuster ?" onClose={onClose}>
+    <Modal
+      label="Choisir les semaines"
+      title="Quelles semaines ajuster ?"
+      onClose={onClose}
+      footer={
+        <>
+          {/* Le chemin « d'un bloc » reste VISIBLE mais DÉSACTIVÉ (avec sa raison) dès qu'une partie
+              de la fenêtre est gouvernée — vacances (P2-40) ou déjà planifié (P2-38) — au lieu d'être
+              caché (décision fondateur, alignement du cas vacances sur le patron « désactivé + raison »).
+              La raison QUALIFIE le bouton : elle voyage AVEC lui dans le pied (règle de migration P4-127 d). */}
+          <div>
+            <Button variant="ghost" size="sm" onClick={onAdaptWhole} disabled={busy || block?.deleting || blockPathBlocked}>
+              {isBlockState ? "Continuer d'un bloc" : "Adapter toute la période d'un bloc"}
+            </Button>
+            {blockPathBlocked ? <p className="mt-1 text-xs text-muted-foreground">{blockPathReason}</p> : null}
+          </div>
+          {decided && segments.length > 0 ? (
+            <Button size="sm" onClick={() => onPickSegments(picked)} disabled={busy || 0 === picked.length}>
+              {busy ? <Spinner className="size-4" /> : null}
+              {createLabel}
+            </Button>
+          ) : null}
+          {/* 0 segment offert (100 % sous vacances OU 100 % déjà planifié), chemin pending : consigner
+              le FAIT (sans plan ni navigation). Condition GÉNÉRALISÉE sur « 0 segment offert », pas sur
+              l'état holiday — sinon le nouveau cas « tout déjà planifié » donnerait une modale en cul-de-sac. */}
+          {noneOfferable && undefined !== onRecordOnly ? (
+            <Button size="sm" onClick={onRecordOnly} disabled={busy}>
+              {busy ? <Spinner className="size-4" /> : null}
+              Consigner l'indisponibilité
+            </Button>
+          ) : null}
+        </>
+      }
+    >
       {/* P2-38 (prévention) — les fenêtres déjà planifiées par un AUTRE plan, NOMMÉES au-dessus de
           la liste (une par fenêtre gouvernante), avec la `reason` servie TELLE QUELLE + « Ouvrir le
           planning en place ». `aria-live="polite"` : le verdict arrive APRÈS l'ouverture (la modale
@@ -328,33 +361,6 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, bus
           <WindowAlreadyPlannedNotice message={conflict.message} onOpen={() => onOpenConflict(conflict.entryId)} />
         </div>
       ) : null}
-
-      <div className="mt-6 flex flex-wrap justify-end gap-2">
-        {/* Le chemin « d'un bloc » reste VISIBLE mais DÉSACTIVÉ (avec sa raison) dès qu'une partie
-            de la fenêtre est gouvernée — vacances (P2-40) ou déjà planifié (P2-38) — au lieu d'être
-            caché (décision fondateur, alignement du cas vacances sur le patron « désactivé + raison »). */}
-        <div>
-          <Button variant="ghost" size="sm" onClick={onAdaptWhole} disabled={busy || block?.deleting || blockPathBlocked}>
-            {isBlockState ? "Continuer d'un bloc" : "Adapter toute la période d'un bloc"}
-          </Button>
-          {blockPathBlocked ? <p className="mt-1 text-xs text-muted-foreground">{blockPathReason}</p> : null}
-        </div>
-        {decided && segments.length > 0 ? (
-          <Button size="sm" onClick={() => onPickSegments(picked)} disabled={busy || 0 === picked.length}>
-            {busy ? <Spinner className="size-4" /> : null}
-            {createLabel}
-          </Button>
-        ) : null}
-        {/* 0 segment offert (100 % sous vacances OU 100 % déjà planifié), chemin pending : consigner
-            le FAIT (sans plan ni navigation). Condition GÉNÉRALISÉE sur « 0 segment offert », pas sur
-            l'état holiday — sinon le nouveau cas « tout déjà planifié » donnerait une modale en cul-de-sac. */}
-        {noneOfferable && undefined !== onRecordOnly ? (
-          <Button size="sm" onClick={onRecordOnly} disabled={busy}>
-            {busy ? <Spinner className="size-4" /> : null}
-            Consigner l'indisponibilité
-          </Button>
-        ) : null}
-      </div>
 
       {/* Confirmation destructive : NOMME la portée (nombre de versions + réglages qui repartent
           de la saison — ce que fait la découpe côté serveur). Patron ConfirmDialog réutilisé. */}

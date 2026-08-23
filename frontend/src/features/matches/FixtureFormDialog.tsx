@@ -50,7 +50,21 @@ export function FixtureFormDialog({ teams, tiers, competitions, fixture = null, 
 
   const title = editing ? "Modifier le match" : "Nouveau match";
   return (
-    <Modal label={title} title={title} onClose={onClose}>
+    <Modal
+      label={title}
+      title={title}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button size="sm" disabled={!valid || busy} onClick={submit}>
+            {editing ? "Enregistrer" : "Créer"}
+          </Button>
+        </>
+      }
+    >
       <div className="flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-muted-foreground">Équipe</span>
@@ -101,14 +115,6 @@ export function FixtureFormDialog({ teams, tiers, competitions, fixture = null, 
           <p className="text-xs text-warning">Passer ce match à l'extérieur libèrera son créneau — il quittera la grille.</p>
         ) : null}
 
-        <div className="mt-1 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Annuler
-          </Button>
-          <Button size="sm" disabled={!valid || busy} onClick={submit}>
-            {editing ? "Enregistrer" : "Créer"}
-          </Button>
-        </div>
       </div>
     </Modal>
   );
