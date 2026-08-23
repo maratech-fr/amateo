@@ -18,10 +18,17 @@ interface WeekendGridProps {
   onSelectFixture?: (fixtureId: string) => void;
   /** Highlighted cell (the fixture whose panel is open, or the swap source). */
   selectedFixtureId?: string | null;
+  /**
+   * RMM-1 PR4 (L6) — swap mode made VISIBLE on the grid. When non-null, the mode
+   * is armed: cells whose fixtureId is in the set are the exchange CANDIDATES
+   * (ring highlight + pointer), every other placed cell is dimmed so the eye
+   * lands on the clickable targets. `null` = not in swap mode (nothing dimmed).
+   */
+  swapCandidateIds?: Set<string> | null;
 }
 
 /** The placed home matches of one weekend on a dated venue grid (each block = 2h15 footprint). */
-export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null }: WeekendGridProps) {
+export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, swapCandidateIds = null }: WeekendGridProps) {
   const { columns, dateGroups, rows, cells, empty } = model;
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -84,10 +91,18 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null }
         {cells.map((cell) => {
           const clickable = !cell.ghost && undefined !== onSelectFixture;
           const Tag = clickable ? "button" : "div";
+          // RMM-1 PR4 (L6) — le mode échange se VOIT : les candidates portent
+          // l'anneau + le curseur, les autres cellules placées s'estompent.
+          const swapArmed = null !== swapCandidateIds;
+          const isSwapCandidate = swapArmed && !cell.ghost && swapCandidateIds.has(cell.fixtureId);
+          const isSwapSource = swapArmed && cell.fixtureId === selectedFixtureId;
+          const swapDimmed = swapArmed && !isSwapCandidate && !isSwapSource;
           return (
             <Tag
               key={cell.key}
               {...(clickable ? { type: "button" as const, onClick: () => onSelectFixture(cell.fixtureId) } : {})}
+              {...(cell.ghost ? {} : { "data-fixture-id": cell.fixtureId })}
+              {...(isSwapCandidate ? { "data-swap-candidate": "true" } : {})}
               title={
                 cell.ghost
                   ? `Habitude ${cell.teamLabel} · ${cell.venueLabel} · ${cell.footprintLabel} — fenêtre protégée (calendrier pas encore connu)`
@@ -100,6 +115,11 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null }
                 cell.ghost ? "border border-dashed border-border opacity-60" : "",
                 clickable ? "cursor-pointer hover:brightness-95 dark:hover:brightness-110" : "",
                 cell.fixtureId === selectedFixtureId ? "ring-2 ring-accent" : "",
+                // Candidate d'échange : anneau accent net (affordance « clique-moi »).
+                isSwapCandidate ? "ring-2 ring-accent ring-offset-1 ring-offset-background" : "",
+                // Hors du couple source/candidates : on estompe (pas d'animation —
+                // reduced-motion + on ne fait clignoter aucune cellule).
+                swapDimmed ? "opacity-40" : "",
               )}
               style={{
                 gridColumn: cell.gridColumn,

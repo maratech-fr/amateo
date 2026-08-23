@@ -144,13 +144,14 @@ describe("MatchesPage — la boucle guidée (RMM-1 PR3)", () => {
     expect(screen.queryByText(/n° —/)).not.toBeInTheDocument();
   });
 
-  it("étape « Saisi dans FBI » : liste les domiciles PLACÉS avec le geste « Marquer saisi »", async () => {
+  it("étape « Saisi dans FBI » (L9) : liste par équipe, cocher = « Marquer saisi »", async () => {
     const user = userEvent.setup();
     renderWithProviders(<MatchesPage />);
     await gotoStep(user, /Saisi dans FBI/);
-    // Le seul domicile PLACED de la semaine (Seniors) est à recopier.
-    expect(await screen.findByText("Seniors")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Marquer saisi" }));
+    // La vue de saisie L9 groupe par équipe : le seul domicile PLACED (Seniors)
+    // a son en-tête de groupe, et sa ligne se coche par « Marquer saisi : … ».
+    expect(await screen.findByRole("heading", { name: "Seniors" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Marquer saisi.*Rivaux/ }));
     expect(submitFixture).toHaveBeenCalledWith(expect.objectContaining({ id: "fx-placed" }));
   });
 
@@ -219,6 +220,37 @@ describe("MatchesPage — la boucle guidée (RMM-1 PR3)", () => {
     expect(await screen.findByRole("button", { name: "Déplacer" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Dé-placer" }));
     expect(unplaceFixture).toHaveBeenCalledWith(expect.objectContaining({ id: "fx-placed" }));
+  });
+
+  // ── Contexte stable (L6, RMM-1 PR4) ─────────────────────────────────────────
+  it("L6 — le slot de panneau est PERMANENT : état vide « Sélectionnez un match » sans sélection", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MatchesPage />);
+    await gotoStep(user, /Domiciles posés/);
+
+    // Rien de sélectionné → l'état vide occupe le slot (la colonne ne saute plus).
+    expect(await screen.findByText("Sélectionnez un match")).toBeInTheDocument();
+    // Sélectionner un domicile placé → le panneau remplace l'état vide.
+    await user.click(await screen.findByRole("button", { name: /Seniors.*Rivaux/ }));
+    expect(await screen.findByRole("button", { name: "Dé-placer" })).toBeInTheDocument();
+    expect(screen.queryByText("Sélectionnez un match")).not.toBeInTheDocument();
+    // Fermer → retour à l'état vide, le slot n'a jamais disparu.
+    await user.click(screen.getByRole("button", { name: "Fermer" }));
+    expect(await screen.findByText("Sélectionnez un match")).toBeInTheDocument();
+  });
+
+  it("L6 — Échap sort du mode échange ; le bandeau reste tant qu'il est armé", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MatchesPage />);
+    await gotoStep(user, /Domiciles posés/);
+
+    await user.click(await screen.findByRole("button", { name: /Seniors.*Rivaux/ }));
+    await user.click(screen.getByRole("button", { name: /Échanger avec/ }));
+    // Le bandeau d'échange reste affiché tant que le mode est armé (conservé PR3).
+    expect(screen.getByText(/cliquez le match à échanger/)).toBeInTheDocument();
+    // Échap désarme le mode.
+    await user.keyboard("{Escape}");
+    expect(screen.queryByText(/cliquez le match à échanger/)).not.toBeInTheDocument();
   });
 
   // ── La barre utilitaire réduite (L5) — l'action primaire vit dans la vue ─────

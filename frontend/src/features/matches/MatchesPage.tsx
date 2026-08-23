@@ -1,5 +1,5 @@
-import { ChevronLeft, ChevronRight, Info, Plus, Upload, Wand2 } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, Info, MousePointerClick, Plus, Upload, Wand2 } from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { FeedbackButton } from "@/features/feedback/FeedbackButton";
 import { Button } from "@/shared/components/ui/button";
@@ -61,18 +61,18 @@ export function MatchesPage() {
   const reopenFixture = useReopenFixture();
   // P1-4 PR E1 — fixture whose identity fields are being edited (dialog).
   const [editFixture, setEditFixture] = useState<Fixture | null>(null);
-  // Reasons of the LAST auto-placement (non-persisted — PR E grades them).
-  const [unplacedReasons, setUnplacedReasons] = useState<Map<string, string>>(new Map());
 
   const {
     selectedWeekend,
     railStep,
     selectedFixtureId,
+    unplacedReasons,
     swapSourceId,
     fixtureFormOpen,
     importDialogOpen,
     setSelectedWeekend,
     setRailStep,
+    setUnplacedReasons,
     setSelectedFixtureId,
     setSwapSourceId,
     setFixtureFormOpen,
@@ -135,6 +135,32 @@ export function MatchesPage() {
   );
 
   const swapSource = allFixtures.find((f) => f.id === swapSourceId) ?? null;
+
+  // RMM-1 PR4 (L6) — le mode échange se VOIT sur la grille : les candidates sont
+  // les AUTRES domiciles placés (PLACED, jamais la source elle-même — mêmes cibles
+  // qu'accepte `onGridSelect`). `null` hors mode → aucune cellule estompée.
+  const swapCandidateIds = useMemo<Set<string> | null>(() => {
+    if (null === swapSourceId) {
+      return null;
+    }
+    return new Set(weekendFixtures.filter((f) => isPlacedOnGrid(f) && "PLACED" === f.status && f.id !== swapSourceId).map((f) => f.id));
+  }, [swapSourceId, weekendFixtures]);
+
+  // RMM-1 PR4 (L6) — Échap sort du mode échange (WCAG 2.1.2 escape-route) ; le
+  // bandeau et le style des cellules retombent avec `swapSourceId`.
+  useEffect(() => {
+    if (null === swapSourceId) {
+      return;
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      if ("Escape" === event.key) {
+        setSwapSourceId(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [swapSourceId, setSwapSourceId]);
+
   const mutating =
     placeFixture.isPending ||
     moveFixture.isPending ||
@@ -211,6 +237,19 @@ export function MatchesPage() {
       />
     ) : null;
 
+  // RMM-1 PR4 (L6) — le slot du panneau est PERMANENT : quand rien n'est
+  // sélectionné, un état vide occupe la place (fin du saut de colonne). Le
+  // panneau réel le remplace dès qu'un domicile est choisi.
+  const panelSlot = panelBlock ?? (
+    <Card className="border-dashed">
+      <CardContent className="flex min-h-32 flex-col items-center justify-center gap-2 py-8 text-center text-sm text-muted-foreground">
+        <MousePointerClick className="size-6 opacity-60" />
+        <span className="font-medium text-foreground">Sélectionnez un match</span>
+        <span>Choisissez un domicile sur la grille ou dans la liste pour le placer.</span>
+      </CardContent>
+    </Card>
+  );
+
   const swapBanner =
     null !== swapSource ? (
       <p className="flex items-center justify-between gap-2 rounded-md border border-accent/50 bg-accent/10 px-3 py-2 text-sm">
@@ -225,7 +264,7 @@ export function MatchesPage() {
 
   const gridBlock = (
     <div className="h-[32rem]">
-      <WeekendGrid model={grid} onSelectFixture={onGridSelect} selectedFixtureId={swapSourceId ?? selectedFixtureId} />
+      <WeekendGrid model={grid} onSelectFixture={onGridSelect} selectedFixtureId={swapSourceId ?? selectedFixtureId} swapCandidateIds={swapCandidateIds} />
     </div>
   );
 
@@ -281,7 +320,7 @@ export function MatchesPage() {
     content = (
       <div className="flex flex-col gap-3">
         {offModelBadge}
-        {panelBlock}
+        {panelSlot}
         {swapBanner}
         {gridBlock}
         {awayBlock}
@@ -301,7 +340,14 @@ export function MatchesPage() {
           <CardTitle className="text-base">À recopier dans FBI</CardTitle>
         </CardHeader>
         <CardContent>
-          <FbiEntryList fixtures={weekendFixtures} teams={teamsMap} busy={mutating} onSubmit={(fixture) => submitFixture.mutate(fixture, { onSuccess: () => toast.success("Match marqué saisi dans FBI") })} />
+          <FbiEntryList
+            fixtures={weekendFixtures}
+            teams={teamsMap}
+            venues={venuesMap}
+            busy={mutating}
+            onSubmit={(fixture) => submitFixture.mutate(fixture, { onSuccess: () => toast.success("Match marqué saisi dans FBI") })}
+            onReopen={(fixture) => reopenFixture.mutate(fixture)}
+          />
         </CardContent>
       </Card>
     );
@@ -335,7 +381,7 @@ export function MatchesPage() {
                 <UnplacedList fixtures={allFixtures} teams={teamsMap} selectedFixtureId={selectedFixtureId} unplacedReasons={unplacedReasons} onSelect={setSelectedFixtureId} />
               </CardContent>
             </Card>
-            {panelBlock}
+            {panelSlot}
           </div>
           <div className="flex flex-col gap-2">
             {swapBanner}
