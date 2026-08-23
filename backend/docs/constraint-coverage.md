@@ -1,6 +1,6 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-08-22 (P4-120 — première vérification stampée de ce fichier, contre le code : `maxConsecutiveDays` OFF par défaut et son test `engine/tests/semantic/test_consecutive_days.py` ✓ · ALIGN-07 gardé par `test_hard_lock_divisible_slot.py` ✓ · retrait de `FACILITY_CAPACITY` le 2026-08-08 confirmé (`engine/app/main.py:483-484`) — c'est ce doc qui disait VRAI, `business.md` corrigé dans la même passe ✓ · `spacing` −2 ✓ · les deux renvois de bas de page existent (`constraint-vocabulary.md` stampé 2026-08-20, `constraint-matrix.md`) ✓. **Deux faits corrigés** : `preferredVenueId` annoncé +60 (poids d'avant V10 — réel : +10) ; l'axe priorité laissait croire que `orToolsWeight` pilotait les poids alors qu'ils sont codés en dur et le champ ignoré)
+Last verified @ 2026-08-23 (recalé par la livraison ALIGN-09 : « au moins une séance tel jour » passe 🟡 → ✅ — mode wizard, gate bloquant, sémantique « l'un de ces jours » vérifiée au code (`constraints.py:1783-1789`, une somme sur l'union par équipe). `forcedDays` était déjà prouvé décisif par le test sémantique CI ; la clé héritée #120 est migrée (contraintes vives ET snapshots))
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels
@@ -25,7 +25,7 @@ Last verified @ 2026-08-22 (P4-120 — première vérification stampée de ce fi
 | « Pas d'entraînement tel jour » (dur) | DAY `forbiddenDays` (HARD) | ✅ | U9/U11 pas le mercredi |
 | « Éviter tel jour » (préférence) | DAY `forbiddenDays` (PREFERRED) | ✅ soft | SM2 évite le vendredi |
 | « Uniquement tel(s) jour(s) » | DAY `allowedDays` (whitelist, HARD) | ✅ | Vétérans le vendredi uniquement |
-| **« Au moins une séance tel jour »** | DAY `forcedDays` (engine-only, **pas exposé dans l'UI**) | 🟡 | — (le moteur sait, le wizard ne l'émet pas) |
+| **« Au moins une séance tel jour »** | DAY `forcedDays` (HARD — sémantique « l'un de ces jours » : UNE somme sur l'union par équipe) | ✅ *(ALIGN-09, 2026-08-23)* | mode wizard « au moins une » ; le gate pré-solve BLOQUE si aucun des jours imposés n'a de créneau candidat (décision fondateur : certitude arithmétique d'échec) et AVERTIT quand deux règles fusionnent |
 | **« Espacer les séances d'un jour »** / « pas 2 jours d'affilée » | règle **implicite soft** `spacing` (poids −2, malus sur jours consécutifs) — activée pour toutes les équipes, ne bloque jamais | ✅ soft *(ALIGN-06)* | besoin BCCL « implicite » — préféré, pas garanti |
 | **« Pas 3 entraînements d'affilée »** (dur) | règle implicite `maxConsecutiveDays` (5e règle bien-être, contrat 2.13) | ✅ | **Livrée le 2026-08-19 (P2-42 / ALIGN-08)** — réglable HARD (garantie) ou PREFERRED (objectif), seuil 2-5, **OFF par défaut** : un club l'active, sinon rien ne change. Prouvée par `engine/tests/semantic/test_consecutive_days.py` |
 
@@ -74,7 +74,7 @@ Les 3 angles morts historiques d'alignement sont désormais couverts :
 
 1. ~~« Pas 3 entraînements d'affilée » / écart dur~~ — **RÉSORBÉ le 2026-08-19** (P2-42) : la règle implicite `maxConsecutiveDays` pose la contrainte dure que le soft `spacing` ne garantissait pas. Le nudge `spacing` reste : il départage des ex æquo sur les PAIRES de jours, la règle garantit sur les suites — deux travaux différents.
 2. **Minimum de séances garanti** (🟡) — `MIN_SESSIONS` est une cible soft ; à trancher si un plancher dur est voulu (risque d'INFEASIBLE si capacité insuffisante).
-3. **« Au moins une séance tel jour »** (🟡) — le moteur sait (`forcedDays`) mais le wizard ne l'expose pas.
+3. ~~« Au moins une séance tel jour »~~ — **RÉSORBÉ le 2026-08-23** (ALIGN-09) : mode wizard « au moins une », gate bloquant, clé héritée migrée.
 
 > Détail moteur exhaustif (toutes les clés + mécanismes) : `engine/docs/constraint-vocabulary.md`.
 > Offre réellement câblée dans le wizard : `docs/architecture/constraint-matrix.md`.

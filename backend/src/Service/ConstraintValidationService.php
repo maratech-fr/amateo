@@ -71,6 +71,14 @@ final class ConstraintValidationService
                 if (!isset($config['allowedDays']) && !isset($config['forbiddenDays']) && !isset($config['forcedDays'])) {
                     $errors[] = 'Une contrainte de jour doit préciser au moins un jour (autorisé, à éviter ou imposé).';
                 }
+                // forcedDays (« au moins une séance l'un de ces jours ») n'est honoré par
+                // l'engine QUE sur HARD/LOCK : les règles DAY ne sont collectées que pour ces
+                // types (constraints.py), et le chemin soft ne lit que preferredDays
+                // (objective.py) — un forcedDays PREFERRED serait un placebo muet. Même patron
+                // que maxEndTime ci-dessus.
+                if (isset($config['forcedDays']) && !\in_array($constraint->getRuleType()->value, ['HARD', 'LOCK'], true)) {
+                    $errors[] = 'La règle « au moins une séance » n\'existe qu\'en règle obligatoire.';
+                }
                 break;
 
             case ConstraintFamily::FACILITY:

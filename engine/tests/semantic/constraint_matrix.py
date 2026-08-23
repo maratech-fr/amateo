@@ -402,21 +402,22 @@ MATRIX: tuple[MatrixCell, ...] = (
         config={"allowedDays": [1]},
         lock_silence=LockSilence.DIAGNOSED,
     ),
-    # --- Understood by the engine but never emitted by the wizard ---------------
+    # ALIGN-09: the wizard "au moins une" maps to forcedDays — "at least one session
+    # on ONE of these days" (an aggregate sum over the union, ≠ "only"). Enforced hard
+    # and diagnosed when a lock leaves the forced day unserved (section 2bis of
+    # diagnose_locked_slot_violations) — hence DIAGNOSED, with a config the lock test drives.
     MatrixCell(
         "DAY",
         "HARD",
         "forcedDays",
         "TEAM",
-        Expectation.NOT_OFFERED,
-        False,
-        note="engine-only: 'at least one session on these days' (≠ 'only'); the wizard emits allowedDays",
-        # Not offered by the UI, but the engine enforces it hard and diagnoses a lock that
-        # leaves the forced day unserved (section 2bis of diagnose_locked_slot_violations) —
-        # so the honest lock-silence label is DIAGNOSED, with a config the lock test can drive.
+        Expectation.HONORED_HARD,
+        True,
+        note="wizard 'au moins une' = at least one session on ONE of these days (≠ 'only'); always hard",
         config={"forcedDays": [1]},
         lock_silence=LockSilence.DIAGNOSED,
     ),
+    # --- Understood by the engine but never emitted by the wizard ---------------
     MatrixCell(
         "DAY",
         "PREFERRED",

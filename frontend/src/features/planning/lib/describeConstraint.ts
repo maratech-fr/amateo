@@ -31,8 +31,8 @@ import type { Constraint } from "../api";
  *
  * PORTÉE : on ne décrit QUE ce qu'on sait rendre FIDÈLEMENT. Cible introuvable (équipe/coach
  * supprimé) → on rend le prédicat SEUL, jamais « ? · … ». Prédicat non couvert (clé inconnue,
- * gymnase introuvable, `forcedDays` LEGACY au sens ambigu — ENG-16) → `null` : l'appelant retombe
- * alors sur le `name`. Une description approximative serait le même mensonge sous une autre forme.
+ * gymnase introuvable) → `null` : l'appelant retombe alors sur le `name`. Une description
+ * approximative serait le même mensonge sous une autre forme.
  */
 type VenueNameFn = (venueId: string) => string | undefined;
 
@@ -181,12 +181,16 @@ function dayParts(cfg: Record<string, unknown>): ConstraintPredicatePart[] {
     // Verbe APRÈS la valeur : « lundi, mardi interdits ». C'est le seul cas de la famille.
     return [{ verb: `interdit${forbidden.length > 1 ? "s" : ""}`, value: daysPhrase(forbidden), verbFirst: false }];
   }
-  // whitelist (`allowedDays`) : seuls ces jours sont permis. Le LEGACY `forcedDays` (avant
-  // ENG-16) a le MÊME sens côté wizard mais désigne « au moins une séance ces jours » côté
-  // engine — ambigu, donc non décrit : on retombe sur le nom plutôt que de risquer le contresens.
+  // whitelist (`allowedDays`) : seuls ces jours sont permis.
   const allowed = asDayNums(cfg.allowedDays);
+  if (allowed.length > 0) {
+    return [{ verb: "uniquement", value: daysPhrase(allowed), verbFirst: true }];
+  }
+  // `forcedDays` = « au moins une séance l'un de ces jours » (agrégat sur l'union côté engine),
+  // le mode « au moins une » du wizard — distinct de `allowedDays`.
+  const forced = asDayNums(cfg.forcedDays);
 
-  return allowed.length > 0 ? [{ verb: "uniquement", value: daysPhrase(allowed), verbFirst: true }] : [];
+  return forced.length > 0 ? [{ verb: "au moins une séance", value: daysPhrase(forced), verbFirst: true }] : [];
 }
 
 function facilityParts(cfg: Record<string, unknown>, venueName: VenueNameFn): ConstraintPredicatePart[] {

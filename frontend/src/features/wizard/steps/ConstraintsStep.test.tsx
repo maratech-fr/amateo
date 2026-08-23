@@ -425,11 +425,27 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     renderWithProviders(<ConstraintsStep />);
 
     await user.click(screen.getByRole("button", { name: "Jours" }));
-    await user.selectOptions(screen.getByLabelText("Type de jour"), "forced");
+    await user.selectOptions(screen.getByLabelText("Type de jour"), "only");
     await user.click(screen.getByRole("button", { name: "Ven" }));
     await user.click(screen.getByRole("button", { name: "Ajouter la contrainte" }));
 
     expect(h.createMut.mock.calls[0][0]).toMatchObject({ family: "DAY", ruleType: "HARD", config: { allowedDays: [5] } });
+  });
+
+  it("DAY 'au moins une' emits HARD forcedDays (« at least one session on ONE of these days » — ALIGN-09)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConstraintsStep />);
+
+    await user.click(screen.getByRole("button", { name: "Jours" }));
+    // "au moins une" pins HARD (no rule selector) and emits forcedDays, not allowedDays.
+    await user.selectOptions(screen.getByLabelText("Type de jour"), "atLeast");
+    expect(screen.queryByLabelText("Règle")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Dim" }));
+    await user.click(screen.getByRole("button", { name: "Ajouter la contrainte" }));
+
+    expect(h.createMut.mock.calls[0][0]).toMatchObject({ family: "DAY", ruleType: "HARD", config: { forcedDays: [7] } });
+    expect(h.createMut.mock.calls[0][0].config).not.toHaveProperty("allowedDays");
+    expect(h.createMut.mock.calls[0][0].name).toBe("Toutes les équipes · au moins une séance dimanche");
   });
 
   it("names the day group after the polarity in force, so the gesture says its own sense (P4-58a)", async () => {
@@ -443,8 +459,15 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     // pour l'éviter — et un lecteur d'écran n'annonce que « Ven ».
     expect(screen.getByRole("group", { name: "Jours à éviter" })).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText("Type de jour"), "forced");
-    expect(screen.getByRole("group", { name: "Jours imposés" })).toBeInTheDocument();
+    // « uniquement » = whitelist : la légende dit « Seuls jours autorisés » (le mensonge
+    // « Jours imposés » corrigé — « imposés » est désormais le mot du mode « au moins une »).
+    await user.selectOptions(screen.getByLabelText("Type de jour"), "only");
+    expect(screen.getByRole("group", { name: "Seuls jours autorisés" })).toBeInTheDocument();
+
+    // « au moins une » (ALIGN-09) : « au moins une séance l'un de ces jours » — l'agrégat sur
+    // l'union, pas « chacun ». La légende le dit à la lettre.
+    await user.selectOptions(screen.getByLabelText("Type de jour"), "atLeast");
+    expect(screen.getByRole("group", { name: "Au moins une séance l'un de ces jours" })).toBeInTheDocument();
 
     // Et l'état de chaque jour est porté par le bouton lui-même, pas seulement par sa classe.
     await user.click(screen.getByRole("button", { name: "Ven" }));
@@ -545,17 +568,17 @@ describe("ConstraintsStep — edit an existing constraint", () => {
     expect(arg.body.config).toEqual({ forcedVenueId: "v2" });
   });
 
-  it("loads a legacy forcedDays 'uniquement' rule and auto-migrates it to allowedDays on save (ENG-16 review)", async () => {
+  it("round-trips a forcedDays 'au moins une' rule without downgrading it (ALIGN-09)", async () => {
     const user = userEvent.setup();
     h.list = [
       {
-        id: "c-legacy-day",
-        name: "SM1 · uniquement Ven",
+        id: "c-atleast-day",
+        name: "SM1 · au moins une séance vendredi",
         scope: "TEAM",
         scopeTargetId: "t1",
         family: "DAY",
         ruleType: "HARD",
-        config: { forcedDays: [5] }, // legacy key from #120
+        config: { forcedDays: [5] },
         isActive: true,
       },
     ];
@@ -563,13 +586,15 @@ describe("ConstraintsStep — edit an existing constraint", () => {
 
     await user.click(screen.getByRole("button", { name: "Jours" }));
     await user.click(screen.getByRole("button", { name: "Modifier" }));
-    // Legacy forcedDays loads as the "uniquement" mode, day preselected.
-    expect(screen.getByLabelText("Type de jour")).toHaveValue("forced");
+    // forcedDays loads as the "au moins une" mode (HARD-pinned, no rule selector), day preselected.
+    expect(screen.getByLabelText("Type de jour")).toHaveValue("atLeast");
+    expect(screen.getByRole("button", { name: "Ven", pressed: true })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Enregistrer la contrainte" }));
 
     const arg = h.updateMut.mock.calls[0][0] as { body: Constraint };
-    expect(arg.body.config).toEqual({ allowedDays: [5] });
-    expect(arg.body.config).not.toHaveProperty("forcedDays");
+    expect(arg.body.config).toEqual({ forcedDays: [5] });
+    expect(arg.body.config).not.toHaveProperty("allowedDays");
+    expect(arg.body.ruleType).toBe("HARD");
   });
 });
 
@@ -1566,7 +1591,7 @@ describe("ConstraintsStep — l'onglet Mutualisation a déménagé (P2-45)", () 
     });
 
     it("retombe sur le NOM quand la règle n'est pas descriptible — jamais une cellule vide", () => {
-      // `forcedDays` est LEGACY et ambigu (ENG-16) : `describeConstraint` refuse de le décrire.
+      // Clé inconnue (`legacyUnknownKey`) : `describeConstraint` refuse de la décrire.
       // Une cellule vide laisserait croire qu'il n'y a rien à appliquer.
       // ⚠ Rester dans la famille de l'onglet ACTIF (TIME) : une contrainte d'une autre
       // famille n'est pas listée du tout, et le test passerait à vide.

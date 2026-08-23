@@ -204,6 +204,11 @@ final class ValidateConstraintsController extends AbstractController
         // n'a jamais choisi que son coach se dédouble. Décision fondateur : ça BLOQUE.
         $blockers = [
             ...$saturationBlockers,
+            // ALIGN-09 — « au moins une séance l'un de ces jours » quand AUCUN de ces jours n'a
+            // de créneau candidat : INFEASIBLE certain, on BLOQUE (le gate prévient pour un
+            // risque, bloque pour une certitude arithmétique). Lu sur le MÊME payload que les
+            // avertissements, donc saison ET période.
+            ...(null !== $capacityPayload ? $this->preventionWarnings->detectBlockers($capacityPayload) : []),
             // 3. P4-44 — une réservation qui ne retombe sur AUCUN créneau de la grille.
             //    Sur une PÉRIODE, `OrphanPinGuard` refusait déjà la génération, mais
             //    l'écran « Réserver » ne peut pas montrer la ligne fautive (il boucle

@@ -1,6 +1,6 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-08-23 (rotation de fraîcheur — re-sondé contre le code, **tout juste** : `minStartTime` admise par `ConstraintConfigValidator.php:63` ET lue par `constraints.py:1664` (échantillon de la table 3 couches) ✓ · `constraintPredicateParts`/`constraintTarget` existent (`describeConstraint.ts:88,105`) ✓ · l'onglet « Réserver » sérialise bien en verrou HARD via `ScheduleConstraintBuilder` ✓ · le renvoi `constraint-matrix.md` existe ✓. Les clés engine-only `forcedDays`/`preferredDays` restent engine-only — l'item ALIGN-09 qui les exposerait au wizard est toujours OUVERT (fond P4-117))
+Last verified @ 2026-08-23 (recalé par la livraison ALIGN-09 : `forcedDays` n'est PLUS engine-only — le wizard émet le mode « au moins une » (HARD seul, le chemin soft du moteur ne lit que `preferredDays`/`forbiddenDays`), et la clé héritée #120 est migrée. `preferredDays` reste engine-only par DÉCISION FERMÉE du même jour — voir l'état des lieux ; la table 3 couches reste vraie pour elle)
 
 > **But** : (1) lister ce que le **wizard émet** réellement, et (2) mettre les **3 couches côte à côte**
 > (frontend → backend → engine) pour repérer les **scissions** et les **angles morts** — les cas où
