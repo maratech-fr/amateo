@@ -346,8 +346,10 @@ final class PeriodPlanBirthTest extends WebTestCase
         $entryId = $this->postPeriod($user, 'holiday', 'Nom de naissance');
         $this->adaptPeriod($user, $entryId);
 
-        // Le nom de NAISSANCE du plan est la réponse générée (E6, « Vacances … — Semaine du … »),
-        // distincte du titre de la période — on le capture, puis on prouve qu'il ne bouge pas.
+        // Le nom de NAISSANCE du plan est le TITRE de la période au moment du geste (décision
+        // fondateur 2026-08-23) : il n'est plus « distinct du titre » par un gabarit serveur, mais
+        // GELÉ à la naissance — on le capture, puis on prouve qu'un titre CHANGÉ ensuite ne le
+        // réécrit pas (inv. 12).
         $bornPlan = $this->planOf($club->getId(), $entryId);
         self::assertInstanceOf(SchedulePlan::class, $bornPlan);
         $birthName = $bornPlan->getName();

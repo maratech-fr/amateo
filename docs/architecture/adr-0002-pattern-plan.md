@@ -33,7 +33,7 @@ Plan                                    ← l'objet de premier ordre (nouveau)
   id, clubId, seasonId
   type              SEASON | CLOSURE | HOLIDAY
   name              le nom PUBLIC, éditable (pinceau) — « Planning de la saison 2025-2026 »,
-                    « Ajustement Barros — Semaine du 20 octobre 2025 », « Vacances de la Toussaint — … »
+                    le TITRE de son entrée de calendrier (depuis le 2026-08-23 — une seule identité ; avant : gabarits « Ajustement {gymnase} — {repère} », « {label} — {repère} »)
   startDate/endDate SA période d'application (SEASON = la saison ; sinon la semaine)
   calendarEntryId?  le DÉCLENCHEUR (l'indispo/les vacances du calendrier) — N plans possibles
                     par déclencheur (2 semaines ⇒ 2 plans) ; null pour SEASON
@@ -208,7 +208,7 @@ Schedule (= Version)                    ← existant, recentré
     slots, diagnostics, photos, réglages).
 11. **Exports** : nom de fichier = **nom du Plan**.
 12. **Défauts de nom** (à la création du plan, `SchedulePlanProvisioner` — source unique) :
-    SEASON `Planning de la saison {saison}` · CLOSURE `Ajustement {gymnase} — {repère}` ·
+    SEASON `Planning de la saison {saison}` · CLOSURE et HOLIDAY : **le titre de l'entrée** (2026-08-23 ; anciens gabarits supprimés, plans anciens non migrés) ·
     HOLIDAY `{label vacances} — {repère}`. Le **repère** se lit en clair : une fenêtre couvrant
     exactement une semaine calendaire (lundi→dimanche) donne `Semaine du 17 août 2026`, toute
     autre garde ses deux bornes `du 20 octobre 2025 au 2 novembre 2025`. Le nom du plan est

@@ -215,10 +215,12 @@ test("un incident déclaré ouvre un overlay borné à SON plan, sans toucher au
   const plannings = page.getByRole("dialog");
   await expect(plannings).toBeVisible({ timeout: 15_000 });
   await expect(plannings, "le socle doit rester listé et VALIDÉ").toContainText("Validé");
-  // ⚠ On identifie l'overlay par sa FENÊTRE, pas par son nom — parce que le produit lui en donne
-  // DEUX : le bandeau du wizard affiche le titre de l'ENTRÉE (« Matéo indisponible (travaux) — … »)
-  // quand cette liste affiche le nom du PLAN (« Ajustement gymnase — du 7 septembre… »). Même
-  // objet, deux noms : constat de ce parcours, consigné en roadmap. La fenêtre, elle, ne ment pas.
+  // ⚠ On identifie l'overlay par sa FENÊTRE, pas par son nom — choix d'IDEMPOTENCE. Depuis la
+  // décision fondateur 2026-08-23, un plan de période naît nommé du TITRE de son entrée : le
+  // bandeau du wizard et cette liste affichent donc le même nom pour un plan né sous cette règle.
+  // Mais la base e2e peut encore porter des plans nés sous l'ANCIEN gabarit serveur (« Ajustement
+  // gymnase — … »), au nom distinct du titre — s'appuyer sur la fenêtre traverse les deux ères
+  // sans jamais mentir.
   await expect(plannings, "l'overlay de l'incident doit être listé à côté du socle").toContainText("07-09-2026 → 27-09-2026");
   // Les DEUX reprises du seed sont là aussi : trois plannings distincts coexistent, chacun avec
   // sa lignée — c'est la « réalité d'un club » que ce parcours doit attester (P4-122).
