@@ -1,6 +1,16 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-22 (édition lot PASSERELLES — la passerelle gagne un SECOND impact : `TeamLink.trainingIntensity` (`PREFERRED`/`MANDATORY`), gouvernant l'ENTRAÎNEMENT seul (arbitrage fondateur n°1). Re-vérifié contre le code : l'entité porte `trainingIntensity` défaut `PREFERRED` (`backend/src/Entity/TeamLink.php`, colonne `training_intensity` `DEFAULT 'PREFERRED'`) ✓ ; cap `MAX_TEAM_LINKS = 50` (`backend/src/State/Processor/TeamLinkStateProcessor.php`, 422 nommé) ✓ ; l'écran unique `HabitsLinksDialog` porte le choix Préféré/Obligatoire et s'ouvre du wizard via `HabitsLinksButton` ✓. Le détail moteur vit dans `engine/docs/constraint-vocabulary.md` §Passerelles. Le reste du fichier non re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`)
+Last verified @ 2026-08-24 (graduation RMM-1, PR4 « le poste de travail » — RMM-1 est livré en
+entier, nouvelle section « Refonte UX — RMM-1 »). Re-vérifié contre le code : `MatchesLayout.tsx`
+(deux routes, garde `useSocleValidated` commun) ✓ ; `lib/loopSteps.ts` (`deriveLoopSteps`,
+`isOffModel`, `datelessConflicts` — les deux formules validées fondateur) ✓ ; `FbiEntryList.tsx`
+(groupage équipe, filtres, lot borné aux lignes affichées, `RECOPIABLE`) ✓ ; `MatchesPage.tsx`
+(panneau permanent `panelSlot`, `swapCandidateIds`, listener Échap) ✓ ; `WeekendGrid.tsx`
+(`data-swap-candidate`, cellules estompées) ✓ ; `store.ts` (`unplacedReasons` purgé par
+`setSelectedWeekend`) ✓ ; `FixtureStateProcessor.php:74` (écriture de statut → `MANUAL`) ✓ ;
+`lib/fixtureStatusLabel.ts` (table FR) ✓. Le reste du fichier (paliers A/PR-1→F2, périmètre
+engagé) non re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git :
+`git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
 > [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés
@@ -495,6 +505,97 @@ structure incohérente avec la version qu'on prétend recharger. Il refuse **aus
 **autre niveau** pour une équipe engagée : `level` est un champ mappé, donc la photo le réinsère tel quel, et le
 gel du niveau (voir plus haut) serait contourné par le restore — le club se retrouverait inscrit sous un niveau
 que l'API refuse ensuite de corriger. Une équipe engagée présente dans la photo **avec son niveau** ne bloque rien.
+
+## Refonte UX — RMM-1 (P2-26, 4 PR entre 2026-08-23 et 2026-08-24)
+
+> Cadrage : [`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md) §6quater
+> (lignes L1-L9). **RMM-1 est livré en entier** (PR1 « geste manquant », PR2 « deux espaces », PR3
+> « rail dérivé », PR4 « poste de travail ») ; RMM-2 (extraction de la primitive `step-rail`) et
+> RMM-0 (lisibilité des modales) sont des lots FRÈRES déjà livrés séparément, réutilisés ici.
+> **Zéro comportement moteur, zéro API** : la refonte réorganise l'écran, le solveur de placement et
+> le radar (sections ci-dessus) sont inchangés.
+
+- **Deux espaces, deux routes** : `/matchs` (la boucle hebdo) et `/matchs/configuration` (le SET-UP
+  rare) sont deux vraies routes sous `MatchesLayout.tsx` — nav en onglets (deep-link + bouton retour
+  du navigateur), garde socle **commun** (`useSocleValidated`, même condition que `SocleGuard`
+  côté serveur) posé une seule fois autour de l'`Outlet`. `ConfigurationPage.tsx` héberge Engagements
+  FFBB, Accès match, Habitudes & passerelles et l'**image A/B en écran de plein droit**
+  (`TypicalWeekendGrid` — le toggle `typicalView` a disparu de la boucle). Import FBI reste
+  accessible des deux côtés (même dialogue, deux entrées).
+- **Le rail à 5 étapes DÉRIVÉES** (`features/matches/lib/loopSteps.ts`, `deriveLoopSteps`, fonction
+  **pure** — zéro état stocké, zéro backend) : *batch importé* (des fixtures existent sur la
+  semaine) → *placés au modèle* (0 domicile `UNPLACED` dont l'équipe a une `TeamMatchHabit`) →
+  *litiges* (compte du radar rattaché aux fixtures de la semaine, `weekConflictCount`) → *domiciles
+  posés* (0 `HOME` `UNPLACED`) → *saisi FBI* (`SUBMITTED`+`VALIDATED` == tous les `HOME` de la
+  semaine). Consomme la primitive partagée `shared/components/ui/step-rail.tsx` (second
+  consommateur après le wizard). Store `railStep` (`null` = auto = **premier trou** — la première
+  étape non faite, `defaultLoopStep` ; tout fait → la dernière étape, état « veille » entre deux
+  rafales de matchs) ; changer de semaine (`setSelectedWeekend`) remet le rail à `null`.
+  Deux formules VALIDÉES fondateur, à ne pas re-discuter : (1) un **écart au modèle** (`isOffModel`
+  — jour/heure/gymnase divergeant de l'habitude déclarée) est un **SIGNAL affiché, jamais un
+  `done` bloquant** (verbatim : « c'est un signal, c'est pas bloquant ») — sans habitude sur
+  l'équipe il n'y a pas de modèle de référence, donc pas d'écart possible ; (2) un **conflit SANS
+  fixture référencé** (ex. `COMPETITION_INCOMPLETE`, `datelessConflicts`) sort du compte hebdo de
+  l'étape « Litiges » et s'affiche en **bandeau global** au-dessus du rail, jamais rattaché à une
+  semaine précise.
+- **Le geste manquant : « Marquer saisi dans FBI »** — `PlacementPanel.tsx` porte
+  `onSubmit`/`onReopen` sur un match `PLACED`/`SUBMITTED` (PUT `status`,
+  `FixtureStateProcessor.php:74`, tout écrit stampe `MANUAL`) — **réversible** : un `SUBMITTED`
+  redevient `PLACED` par le même panel, ce qui en fait **le chemin de réparation** quand le
+  gymnase d'un match déjà saisi meurt (suppression/indisponibilité, cf. § capacité ci-dessus).
+  Vocabulaire FR unique (`lib/fixtureStatusLabel.ts`, table jamais un ternaire) : Importé · Placé ·
+  **Saisi dans FBI** · Validé ligue — jamais les codes d'enum affichés.
+- **Hiérarchie d'actions** : l'action primaire est celle de l'étape courante du rail (Importer FBI /
+  Placer automatiquement / rien en Litiges-fbiEntry) ; les gestes rares (Engagements FFBB, Accès
+  match, Habitudes & passerelles, image A/B) ont quitté la barre plate pour `/matchs/configuration` ;
+  « Nouveau match » reste secondaire (`variant="outline"`) dans la barre utilitaire.
+- **La semaine devient l'axe primaire** : label « Semaine du {lundi} au {dimanche} » au-dessus du
+  rail (`weekLabel`, `lib/weekendGrid.ts`) — le bucket reste le week-end (Lun→Dim), seules les
+  bornes affichées changent. Le **n° de rencontre** (`externalRef`) s'affiche dans la grille
+  (`WeekendGrid.tsx`) et les listes (`AwayList.tsx`, `UnplacedList.tsx`, `FbiEntryList.tsx`) — un
+  repère discret, **jamais une clé** (l'unicité reste composite club+saison+équipe+`externalRef`,
+  fait #2 du cadrage).
+- **Contexte stable** : le slot du panneau de placement est **PERMANENT** — un état vide
+  (« Sélectionnez un match ») occupe la colonne quand rien n'est sélectionné (fin du saut de
+  colonne qui faisait apparaître/disparaître `PlacementPanel`). Le **mode échange se VOIT sur la
+  grille** : les candidates (les autres domiciles `PLACED` de la semaine, jamais la source)
+  portent un anneau (`data-swap-candidate`), les autres cellules placées s'estompent
+  (`opacity-40`, sans animation — pas de clignotement) ; **Échap désarme le mode** (WCAG 2.1.2
+  escape route, listener `keydown` dans `MatchesPage.tsx`). Les **raisons de non-placement** du
+  dernier auto-placement (store `unplacedReasons`, par fixtureId) restent affichées tant que la
+  semaine reste à l'écran — un autre geste ne les efface plus (avant cette PR elles vivaient dans
+  un state React local, perdu au moindre refresh) — et sont **purgées au changement de semaine**
+  (`setSelectedWeekend`) : une raison d'une autre semaine ne fuit jamais.
+- **La vue de saisie FBI** (`FbiEntryList.tsx`) — **une PROJECTION pure des fixtures existants,
+  zéro backend**, pensée pour que la recopie dans FBI soit bête (coller à l'écran FBI, préconisation
+  fondateur). Ne montre que les domiciles **recopiables** (`PLACED`/`SUBMITTED`/`VALIDATED` — un
+  `UNPLACED` n'a rien à saisir) ; **groupée par équipe** (section = équipe, tri alpha), et dans
+  chaque groupe les lignes encore à saisir sont en tête, les rangées déjà saisies en dessous. Une
+  ligne porte date + heure (ce que FBI demande pour un domicile), l'adversaire, la salle, et le n°
+  de rencontre en repère. **Cocher une ligne** = le geste ci-dessus (`onSubmit`) ; une ligne saisie
+  garde un « Corriger » discret (`onReopen`, réversible) ; une `VALIDATED` (ligue) est en lecture
+  pure (« Validé ligue »). Filtrable **équipe** et **date**, indépendamment de la navigation
+  semaine. « Tout marquer saisi » soumet en lot **UNIQUEMENT les lignes actuellement AFFICHÉES et
+  encore `PLACED`** (le filtre en cours borne le lot — décision fondateur, plus sûr qu'un lot
+  global), sous confirmation nommant le compte exact.
+- **Front** — tests : `MatchesLayout.test.tsx` (deux routes, garde socle), `ConfigurationPage.test.tsx`,
+  `lib/loopSteps.test.ts` (les 5 dérivations, écart-signal, conflit sans date), `store.test.ts`
+  (`railStep`, `unplacedReasons` purgés à la semaine), `WeekendGrid.test.tsx` (candidates d'échange
+  visibles, source jamais candidate), `FbiEntryList.test.tsx` (groupage équipe, filtres deux sens,
+  lot borné au filtre affiché, état vide), `MatchesPage.test.tsx` (panneau permanent, Échap sort du
+  mode échange). E2e : `tests/e2e/matches.spec.ts` inchangé dans son scénario (login → créer →
+  placer), la refonte ne change aucune assertion de comportement moteur.
+
+**Trois points d'insertion futurs identifiés dans le code actuel** (rien de ce qui suit n'est
+implémenté — pointeurs vers le programme ouvert, `../evolution/refonte-module-matchs.md` §9) :
+- **RMM-3** (le « gardien » à l'ouverture) viendra sur `ConflictRadar.tsx` — badges « nouveau
+  depuis ta dernière visite » (matchs arrivés, nouveaux conflits), nécessite une persistance légère
+  de l'horodatage de visite (le radar est stateless aujourd'hui).
+- **RMM-4** (FBI source de plein droit + réconciliation) viendra sur le diff de ré-import
+  (`FbiFixtureImporter`) — un écran « état app vs état fichier », choix par écart, au lieu de la
+  mise à jour silencieuse actuelle.
+- **RMM-6** (échéances ligue/comité) viendra sur `FbiEntryList.tsx` (L9 ci-dessus) — une échéance
+  affichée à côté de chaque ligne, saisie manuellement (la ligue les envoie par mail).
 
 ## Reste palier A (à venir)
 
