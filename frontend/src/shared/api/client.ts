@@ -72,16 +72,34 @@ export const api = ky.create({
           }
         }
       },
-      (state) => {
-        // P5-6 — retenir le dernier incident serveur (request_id ré-émis) pour le
-        // proposer à un signalement contextuel ouvert dans la foulée. Indépendant
-        // de Sentry (le canal de signalement vit sans DSN) ; hook distinct des deux
-        // autres pour ne rien changer à leur comportement.
+      async (state) => {
+        // P5-6 → P4-129 — retenir le dernier incident serveur (≥ 500), request-id
+        // PRÉSENT OU NON. P5-6 le proposait à un signalement contextuel ; P4-129 le
+        // sert aussi au bloc « Détails techniques (dev) ». Indépendant de Sentry (le
+        // canal de signalement vit sans DSN) ; hook distinct des deux autres pour ne
+        // rien changer à leur comportement.
+        //
+        // ⚠ P4-129 — pourquoi l'on n'exige plus le request-id : le 502 nginx observé
+        // sur :5173 arrivait SANS X-Request-Id ; l'ancien garde `if (requestId)`
+        // n'enregistrait alors RIEN — l'incident même qui a motivé la fiche. Statut +
+        // URL suffisent ; c'est le cas NOMINAL du besoin.
+        //
+        // Le `code` machine est best-effort : on CLONE la réponse (ky 2.x consomme le
+        // corps original, cf. commentaire plus bas) puis on parse en try/catch — le
+        // clone a son propre flux, distinct de celui que lira ky. Sur le 502 nginx le
+        // corps est du HTML : le parse échoue silencieusement, ce n'est pas une erreur.
         if (state.response.status >= 500) {
-          const requestId = state.response.headers.get("X-Request-Id");
-          if (requestId) {
-            recordIncident(requestId);
+          const requestId = state.response.headers.get("X-Request-Id") ?? undefined;
+          let code: string | undefined;
+          try {
+            const body = (await state.response.clone().json()) as { code?: unknown };
+            if (typeof body.code === "string") {
+              code = body.code;
+            }
+          } catch {
+            // Corps non-JSON (HTML nginx du 502) ou vide : statut + URL restent l'essentiel.
           }
+          recordIncident({ status: state.response.status, url: state.request.url, requestId, code });
         }
       },
       (state) => {

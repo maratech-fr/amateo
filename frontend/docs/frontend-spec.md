@@ -4,7 +4,7 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-08-22 (recalé — **§6.8 complété du bloc `<noscript>` et du pointeur
+Last verified @ 2026-08-23 (recalé par la livraison P4-129 : le §6.8 gagne le bloc « Détails techniques (dev) » et le paragraphe du rail d'incident est corrigé — il affirmait que `lastIncidentStore` « ne retient un X-Request-Id que sur un ≥ 500 », désormais il capture {status, url, code?, requestId?} request-id ou non. Vérifié en écrivant : le wrapper `readRecentIncidentRequestId` préserve le contrat de la modale de signalement, et la garde `import.meta.env.DEV` est lue au rendu)
 `error-copy.md`** (P5-14 soldée) : confronté au code — `index.html` (bloc présent, sans marque,
 sans ressource externe), `tooling/noscript.test.ts` (4 assertions, RED prouvé sans le bloc),
 `shared/lib/errorMessage.ts:32-34` (corps 4xx repris tels quels, < 500 seulement),
@@ -877,7 +877,7 @@ et elle est là pour ça : c'est le seul écran qu'on peut confondre avec une fa
 
 ⚠ **La « référence support » n'est jamais fabriquée.** L'échec de génération est **asynchrone** — le
 POST rend 202, l'échec arrive en `status: FAILED` dans des réponses **200** — or `lastIncidentStore`
-ne retient un `X-Request-Id` que sur un **≥ 500**. La ligne « Code incident » ne s'affiche donc que
+n'enregistre un incident que sur un **≥ 500** (depuis P4-129, 2026-08-23, il capture `{status, url, code?, requestId?}` — request-id présent OU NON : le 502 nginx qui a motivé la ligne n'en portait pas, et l'ancien rail ne retenait rien ; le wrapper `readRecentIncidentRequestId` préserve le contrat de la modale de signalement). La ligne « Code incident » ne s'affiche donc que
 si une valeur fraîche existe (rare ici). La corrélation honnête est le **`scheduleId`**, joint
 automatiquement au signalement — à condition que « Contacter le support » ouvre `FeedbackDialog` en
 **`variant="contextual"`** : en `free`, le contexte reste à quai.
@@ -885,6 +885,13 @@ automatiquement au signalement — à condition que « Contacter le support » o
 **`launch.isError` seul ne route PAS vers cet écran** : un 4xx est du métier servi (422 épinglage
 orphelin, 403 crédits) et garde son `launchReason` ; un échec réseau du POST relève du rail
 hors-ligne/500 — le service de calcul n'a même pas été sollicité.
+
+**En DEV seulement (P4-129)** : sous le message grand public de tout écran système (et de
+`GenerationServiceDown`), un bloc repliable « Détails techniques (dev) » — statut réel, URL, code
+machine s'il existe, `X-Request-Id`, horodatage figé au montage — en deux groupes (« Cet écran » /
+« Dernier incident serveur (peut être sans lien avec cet écran) »). Gardé `import.meta.env.DEV` lu
+au RENDU : physiquement absent du bundle prod (prouvé par grep du bundle ET par test sous
+`vi.stubEnv`), hors de toute live region, jamais focusé au montage.
 
 **Hors de cette tranche** : la **503/maintenance**, geste d'ops (Caddy `handle_errors`), pas du code
 applicatif ; et cet écran dans la boucle de travail `/planning`, qui garde son traitement propre.

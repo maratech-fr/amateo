@@ -74,7 +74,7 @@ describe("FeedbackDialog — variante contextuelle", () => {
 
   it("joint le request-id d'un incident serveur récent (< 10 min)", async () => {
     mockSubmit.mockResolvedValue({ id: "fb1" });
-    recordIncident("req-999");
+    recordIncident({ status: 500, url: "/api/planning", requestId: "req-999" });
     renderWithProviders(<FeedbackDialog variant="contextual" screen="/planning" onClose={vi.fn()} />, { route: "/planning" });
 
     await userEvent.type(screen.getByRole("textbox", { name: "Décrivez le problème" }), "Erreur 500 vue");

@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
+
+import { clearLastIncident, recordIncident } from "@/shared/api/lastIncidentStore";
 
 import { SystemScreen } from "./system-screen";
 
@@ -16,6 +18,10 @@ import { SystemScreen } from "./system-screen";
  */
 describe("SystemScreen — primitive présentationnelle", () => {
   const noop = () => {};
+
+  afterEach(() => {
+    clearLastIncident();
+  });
 
   it("rend à nu (aucun provider), avec titre, corps et geste principal", () => {
     render(
@@ -95,6 +101,19 @@ describe("SystemScreen — primitive présentationnelle", () => {
     for (const leak of ["error:", "exception", "componentstack", "sqlstate", "select * from", "\n    at "]) {
       expect(text, `détail interne « ${leak} » exposé`).not.toContain(leak);
     }
+  });
+
+  // P4-129 — le bloc « Détails techniques (dev) » apparaît dans le pied en DEV dès
+  // qu'un incident serveur frais existe (SystemScreen ne lui passe pas de props écran).
+  it("affiche le bloc « Détails techniques (dev) » dans le pied en DEV, sur incident frais", () => {
+    recordIncident({ status: 502, url: "/api/generate", requestId: "req-abc" });
+    render(
+      <SystemScreen title="Arrêt de jeu imprévu." primaryAction={{ label: "Réessayer", onClick: noop }}>
+        Une erreur inattendue.
+      </SystemScreen>,
+    );
+    expect(screen.getByText("Détails techniques (dev)")).toBeInTheDocument();
+    expect(screen.getByText(/Dernier incident serveur/i)).toBeInTheDocument();
   });
 
   it("passe axe (structure, rôles, noms)", async () => {

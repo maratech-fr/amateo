@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FeedbackDialog } from "@/features/feedback/FeedbackDialog";
 import { readRecentIncidentRequestId } from "@/shared/api/lastIncidentStore";
 import { Button } from "@/shared/components/ui/button";
+import { DevIncidentDetails } from "@/shared/components/ui/dev-incident-details";
 
 import { GenerationScene } from "./GenerationScene";
 
@@ -71,6 +72,11 @@ export function GenerationServiceDown({ onRetry, creditsBlocked, creditSuffix, s
           // sur un <p>, qu'axe refuse — aria-prohibited-attr).
           <p className="select-all text-xs tabular-nums text-muted-foreground">Code incident : {incidentId}</p>
         ) : null}
+
+        {/* P4-129 — détails techniques repliables, DEV uniquement. FRÈRE de la région
+            `role="status"` (jamais dedans : un details qui bascule y serait ré-annoncé).
+            Le scheduleId de ce run va dans le groupe « Cet écran ». */}
+        <DevIncidentDetails scheduleId={scheduleId} />
       </GenerationScene>
 
       {/* ⚠ Impératif `contextual` : `FeedbackDialog` ne joint le contexte (dont le scheduleId) QU'en
