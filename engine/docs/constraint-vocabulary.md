@@ -1,6 +1,6 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-08-23 (recalé par la livraison ALIGN-09 : `forcedDays` n'est plus engine-only — le wizard émet le mode « au moins une » et la clé héritée #120 est migrée. Vérifié en écrivant : la sémantique de la table (« au moins une séance ces jours-là », pose `somme(vars) ≥ 1`) reste exacte au code (`constraints.py:1783-1789` — une somme sur l'UNION par équipe, donc « l'un de ces jours »), et le piège `allowedDays` ≠ `forcedDays` que ce doc nomme est précisément celui que la migration vient de purger des données héritées)
+Last verified @ 2026-08-24 (recalé ENG-32 : le monolithe `constraints.py` est devenu le paquet `constraints/` — les références de ce fichier pointent désormais fichier+fonction, stables au refactor. Vérification précédente toujours valable : recalé par la livraison ALIGN-09 : `forcedDays` n'est plus engine-only — le wizard émet le mode « au moins une » et la clé héritée #120 est migrée. Vérifié en écrivant : la sémantique de la table (« au moins une séance ces jours-là », pose `somme(vars) ≥ 1`) reste exacte au code (``constraints/targeting.py` (`add_time_window_constraints`, pose `somme ≥ 1`)` — une somme sur l'UNION par équipe, donc « l'un de ces jours »), et le piège `allowedDays` ≠ `forcedDays` que ce doc nomme est précisément celui que la migration vient de purger des données héritées)
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -204,7 +204,7 @@ verrou avec les contraintes **saisies** et émet un `constraint_not_honored` de 
 
 *Rien à ce jour.* Le seul manque que cette section listait — « pas N jours d'affilée » — **est
 modélisé depuis P2-42** (`add_max_consecutive_days_constraints`,
-`engine/app/solver/constraints.py:1309`, réglable HARD/PREFERRED/OFF, défaut 3 jours, bornes 2-5) :
+`engine/app/solver/constraints/wellness.py` (`add_max_consecutive_days_constraints`), réglable HARD/PREFERRED/OFF, défaut 3 jours, bornes 2-5) :
 voir la ligne `MAX_CONSECUTIVE_DAYS` du tableau des règles implicites ci-dessus. La section reste
 en place — un nouveau manque constaté s'y écrit, il ne se dilue pas dans le reste du document.
 

@@ -1,6 +1,6 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-08-22 (P4-120 — première vérification stampée de ce fichier, contre le code, **tout juste** : les clés de la table existent dans `ConstraintConfigValidator` (`minStartTime`/`maxEndTime` type time:63-65, `minAtVenueCount`:86, `fromTime`:96, `excludeTags`:48) ✓ · foyer unique `TeamTagResolver::resolveConstraintTeamIds` (`:278`) ✓ · `ConstraintKeysAreHonouredByEngineTest` existe et le job `engine-semantics` aussi (`ci.yml:790`) ✓ · migration `Version20260807190000` (suppression `coachId`) présente ✓ · `PlanVenueClosures::effectiveStateForPlan` (`:169`) ✓ · `POST /api/constraints/validate` (`ValidateConstraintsController.php:64`) ✓)
+Last verified @ 2026-08-24 (recalé ENG-32 : le monolithe `constraints.py` est devenu le paquet `constraints/` — les références de ce fichier pointent désormais fichier+fonction, stables au refactor. Vérification précédente toujours valable : P4-120 — première vérification stampée de ce fichier, contre le code, **tout juste** : les clés de la table existent dans `ConstraintConfigValidator` (`minStartTime`/`maxEndTime` type time:63-65, `minAtVenueCount`:86, `fromTime`:96, `excludeTags`:48) ✓ · foyer unique `TeamTagResolver::resolveConstraintTeamIds` (`:278`) ✓ · `ConstraintKeysAreHonouredByEngineTest` existe et le job `engine-semantics` aussi (`ci.yml:790`) ✓ · migration `Version20260807190000` (suppression `coachId`) présente ✓ · `PlanVenueClosures::effectiveStateForPlan` (`:169`) ✓ · `POST /api/constraints/validate` (`ValidateConstraintsController.php:64`) ✓)
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.
@@ -17,12 +17,12 @@ avec le nom de la clé et les réglages acceptés pour la famille.
 
 | Famille | Clé | Type attendu | Lue par |
 |---|---|---|---|
-| **TIME** | `minStartTime` `maxStartTime` `maxEndTime` | `HH:MM` | moteur (`constraints.py`) |
-| **DAY** | `preferredDays` `forbiddenDays` `forcedDays` `allowedDays` | liste d'entiers 1-7 (lundi = 1) | moteur (`constraints.py`, `objective.py`) |
-| **FACILITY** | `forcedVenueId` `forbiddenVenueId` `preferredVenueId` `minAtVenueId` | UUID de gymnase | moteur (`constraints.py`) |
+| **TIME** | `minStartTime` `maxStartTime` `maxEndTime` | `HH:MM` | moteur (`constraints/` — paquet) |
+| **DAY** | `preferredDays` `forbiddenDays` `forcedDays` `allowedDays` | liste d'entiers 1-7 (lundi = 1) | moteur (`constraints/`, `objective.py`) |
+| **FACILITY** | `forcedVenueId` `forbiddenVenueId` `preferredVenueId` `minAtVenueId` | UUID de gymnase | moteur (`constraints/` — paquet) |
 | **FACILITY** | `minAtVenueCount` | entier ≥ 1 | moteur |
 | **FACILITY** | `type` (`venue_closed`) · `startDate` · `endDate` | constante · `AAAA-MM-JJ` | **backend seul** (`VenueClosureDays`) — une fermeture datée DÉRIVE un défaut de jours fermés (jamais stockée telle quelle) ; le réglage du plan (`VenuePeriodOverride.mode`/`dayOverrides`) peut le contredire jour par jour — la composition des deux vit dans `PlanVenueClosures::effectiveStateForPlan/Entry` (décision fondateur 2026-08-18 : l'indisponibilité déclarée est INFORMATIVE), et c'est l'état EFFECTIF qui ne produit aucune ligne de payload pour les jours fermés |
-| **COACH_AVAILABILITY** | `unavailableDays` `availableDays` | liste d'entiers 1-7 | moteur (`constraints.py`) |
+| **COACH_AVAILABILITY** | `unavailableDays` `availableDays` | liste d'entiers 1-7 | moteur (`constraints/` — paquet) |
 | **COACH_AVAILABILITY** | `fromTime` `untilTime` | `HH:MM` | moteur — bornent l'indisponibilité dans la journée |
 | **toutes** | `targetTag` | libellé de groupe non vide | **backend seul** — éclaté en N contraintes par équipe, puis RETIRÉ du payload (`ScheduleConstraintBuilder`). **Forme HISTORIQUE, toujours lue** : équivaut à `targetTags: [x]` |
 | **toutes** | `targetTags` | liste de tags | **INTERSECTION** — l'équipe doit porter TOUS ces tags (ex. `["SENIOR","COMPETITION"]`). Mélanger avec `targetTag` → **422** (jamais d'ambiguïté silencieuse) |

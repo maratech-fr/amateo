@@ -120,7 +120,7 @@ le contre-exemple réel de la CI, et un montage qui force la main du solveur —
 
 ## Règles structurelles JAMAIS saisies — et ce que l'écran en montre (P4-55, 2026-08-11)
 
-`add_level_1_hard_constraints` (`engine/app/solver/constraints.py:153`) pose une douzaine de
+`add_level_1_hard_constraints` (`engine/app/solver/`constraints/common.py` (`_record_closure`)`) pose une douzaine de
 règles que **personne n'entre nulle part**. Elles ne sont ni dans le wizard, ni dans le
 `config` d'une contrainte, ni dans le payload : elles sont le modèle lui-même. Le gestionnaire
 ne savait donc pas ce qu'il obtient gratuitement, ni pourquoi un placement « qui aurait dû
