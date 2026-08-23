@@ -65,6 +65,7 @@ final class SharedTrainingGroupStateProcessorTest extends KernelTestCase
         $this->em->flush();
 
         $this->expectException(ValidationException::class);
+        $this->expectExceptionMessage('Le nombre de séances communes (3) dépasse le nombre de séances d\'une des équipes du groupe (2).');
         $this->post($this->input([$t1->getId(), $t2->getId()], 3, null), $club, $season);
     }
 
@@ -81,6 +82,7 @@ final class SharedTrainingGroupStateProcessorTest extends KernelTestCase
 
         // Second groupe socle réutilisant t2 : refusé (même plan = socle NULL).
         $this->expectException(ValidationException::class);
+        $this->expectExceptionMessage('Une équipe fait déjà partie d\'un autre groupe mutualisé pour cette portée.');
         $this->post($this->input([$t2->getId(), $t3->getId()], 1, null), $club, $season);
     }
 
@@ -91,6 +93,7 @@ final class SharedTrainingGroupStateProcessorTest extends KernelTestCase
         $this->em->flush();
 
         $this->expectException(ValidationException::class);
+        $this->expectExceptionMessage('Une équipe du groupe est inconnue de cette saison.');
         $this->post($this->input([$t1->getId(), $this->uuid()], 1, null), $club, $season);
     }
 

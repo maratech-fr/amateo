@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\State\Processor;
 
-use ApiPlatform\Validator\Exception\ValidationException;
 use App\ApiResource\ConstraintPeriodOverrideResource;
 use App\Dto\ConstraintPeriodOverrideInput;
 use App\Entity\ConstraintPeriodOverride;
@@ -41,7 +40,7 @@ class ConstraintPeriodOverrideStateProcessor extends AbstractStateProcessor
         // One override per (period, constraint) — the DB unique index would otherwise
         // surface as a 500 on a double-submit; give a clean 422 instead (edit via PUT).
         if (!\in_array(null, [$input->schedulePlanId, $input->constraintId, $this->entityManager->getRepository(ConstraintPeriodOverride::class)->findOneBy(['schedulePlanId' => $input->schedulePlanId, 'constraintId' => $input->constraintId])], true)) {
-            throw new ValidationException('This constraint already has an override for this period — edit it instead.');
+            $this->refuse('Cette contrainte a déjà un réglage pour cette période — modifiez-le.');
         }
 
         $entity = new ConstraintPeriodOverride;

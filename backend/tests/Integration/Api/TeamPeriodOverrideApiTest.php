@@ -85,6 +85,8 @@ final class TeamPeriodOverrideApiTest extends WebTestCase
         // A second POST for the same (period, team) → clean 422, not a 500 from the DB unique index.
         $this->post(['schedulePlanId' => $this->planId, 'teamId' => self::TEAM, 'isActive' => true, 'sessionsPerWeek' => 2]);
         self::assertResponseStatusCodeSame(422);
+        // P4-126 — le motif voyage jusque dans le corps (un 422 muet rendrait `violations: []`).
+        self::assertStringContainsString('Cette équipe a déjà un réglage pour cette période — modifiez-le.', (string) $this->client->getResponse()->getContent());
     }
 
     /**

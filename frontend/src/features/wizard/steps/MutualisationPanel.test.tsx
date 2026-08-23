@@ -193,7 +193,7 @@ describe("MutualisationPanel — pré-validation FAIL-SAFE (le serveur reste jug
     expect(screen.getByText(/déjà mutualisée avec U11/)).toBeInTheDocument();
   });
 
-  it("affiche le motif d'un 422 serveur (lu depuis error.data via apiErrorMessage)", async () => {
+  it("affiche le motif d'un 422 serveur (lu depuis error.data via errorMessage)", async () => {
     const user = userEvent.setup();
     const err = new HTTPError(new Response(null, { status: 422 }), new Request("http://localhost/"), { method: "POST" } as never);
     (err as { data?: unknown }).data = { error: "Une équipe du groupe est inconnue de cette saison." };
@@ -205,6 +205,24 @@ describe("MutualisationPanel — pré-validation FAIL-SAFE (le serveur reste jug
     await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
 
     expect(await screen.findByText("Une équipe du groupe est inconnue de cette saison.")).toBeInTheDocument();
+  });
+
+  // P4-126 — un 422 d'API Platform ne porte NI `error` NI `message` : son motif vit dans `detail`
+  // et `violations[].message`. `apiErrorMessage` ne lisait que error/message → toast générique et
+  // motif perdu à l'écran. `errorMessage` lit detail puis violations : le motif REMONTE.
+  it("affiche le motif d'un 422 porté par violations[] (forme API Platform, sans error/message)", async () => {
+    const user = userEvent.setup();
+    const message = "Une équipe fait déjà partie d'un autre groupe mutualisé pour cette portée.";
+    const err = new HTTPError(new Response(null, { status: 422 }), new Request("http://localhost/"), { method: "POST" } as never);
+    (err as { data?: unknown }).data = { title: "An error occurred", detail: message, violations: [{ propertyPath: "", message }] };
+    stgCreate.mockRejectedValueOnce(err);
+    renderPanel();
+
+    await user.click(screen.getByRole("checkbox", { name: "SM1" }));
+    await user.click(screen.getByRole("checkbox", { name: "SM2" }));
+    await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
   });
 });
 

@@ -91,6 +91,8 @@ final class CoachWishApiTest extends WebTestCase
 
         $this->post($this->payload(['weekStart' => '2026-02-16', 'slotsWanted' => 4]));
         self::assertResponseStatusCodeSame(422);
+        // P4-126 — le motif voyage jusque dans le corps (un 422 muet rendrait `violations: []`).
+        self::assertStringContainsString('Une doléance existe déjà pour cette équipe et cette semaine — modifiez-la.', (string) $this->client->getResponse()->getContent());
     }
 
     public function testRejectedOnAClosurePeriod(): void

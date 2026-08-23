@@ -83,6 +83,8 @@ final class VenueTrainingSlotApiTest extends WebTestCase
         // 16:30–18:00 overlaps the 17:00–18:30 window on the same day/venue.
         $this->postSlot($venue->getId(), 1, '16:30', 90);
         self::assertResponseStatusCodeSame(422);
+        // P4-126 — le motif voyage jusque dans le corps (un 422 muet rendrait `violations: []`).
+        self::assertStringContainsString('Ce créneau en chevauche un autre du même gymnase ce jour-là.', (string) $this->client->getResponse()->getContent());
     }
 
     public function testAdjacentSlotsDoNotOverlap(): void

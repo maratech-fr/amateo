@@ -8,6 +8,7 @@ use ApiPlatform\Metadata\DeleteOperationInterface;
 use ApiPlatform\Metadata\HttpOperation;
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
+use ApiPlatform\Validator\Exception\ValidationException;
 use App\Entity\TenantOwnedInterface;
 use App\Entity\User;
 use App\Enum\AuditAction;
@@ -28,6 +29,8 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
+use Symfony\Component\Validator\ConstraintViolation;
+use Symfony\Component\Validator\ConstraintViolationList;
 use Symfony\Contracts\Service\Attribute\Required;
 
 /**
@@ -303,6 +306,27 @@ abstract class AbstractStateProcessor implements ProcessorInterface
             $field,
             implode(', ', $accepted),
         ));
+    }
+
+    /**
+     * 422 NOMMÉ — maison unique du refus de saisie. ⚠ `new ValidationException('chaîne')` (le
+     * constructeur chaîne d'API Platform) construit une `ConstraintViolationList` VIDE, et le
+     * normalizer dérive `detail` + `violations[]` EXCLUSIVEMENT de cette liste : un message nu
+     * rend `violations: []`, `detail: ""` et le titre générique « An error occurred » — la cause
+     * n'atteint JAMAIS l'écran. Le front lit `detail` puis `violations[].message`
+     * (`errorMessage.ts`) : seule une VRAIE `ConstraintViolationList` voyage jusqu'au toast.
+     * Doctrine P5-14 : jamais « une erreur est survenue » quand la cause est connue.
+     *
+     * Pas de `propertyPath` : aucun des sites appelants n'en portait, et le front ne le lit pas.
+     * Le jour où un champ devra être surligné, l'ajouter ici est une ligne — une seule fois.
+     *
+     * L'idiome nu `new ValidationException('…')` est INTERDIT hors de cette classe
+     * (`ValidationExceptionCarriesViolationsTest`) : une liste ad hoc construite ailleurs
+     * recréerait une deuxième maison du même piège muet.
+     */
+    protected function refuse(string $message): never
+    {
+        throw new ValidationException(new ConstraintViolationList([new ConstraintViolation($message, null, [], null, null, null)]));
     }
 
     /**

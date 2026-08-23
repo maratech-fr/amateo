@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\State\Processor;
 
-use ApiPlatform\Validator\Exception\ValidationException;
 use App\ApiResource\TeamMatchHabitResource;
 use App\Dto\TeamMatchHabitInput;
 use App\Entity\Team;
@@ -76,10 +75,10 @@ class TeamMatchHabitStateProcessor extends AbstractStateProcessor
         // filters → 422. `findOneBy`, NOT `find()`: a PK load can serve the
         // identity map and skip the SQL filters (leçon PR B).
         if (!$this->entityManager->getRepository(Team::class)->findOneBy(['id' => $entity->getTeamId()]) instanceof Team) {
-            throw new ValidationException('Unknown team for this club.');
+            $this->refuse('Équipe inconnue pour ce club.');
         }
         if (null !== $entity->getVenueId() && !$this->entityManager->getRepository(Venue::class)->findOneBy(['id' => $entity->getVenueId()]) instanceof Venue) {
-            throw new ValidationException('Unknown venue for this club.');
+            $this->refuse('Gymnase inconnu pour ce club.');
         }
         // One habit per weekday and per team — the DB unique is the backstop,
         // this gives the manager a readable 422 instead of a 500.
@@ -88,7 +87,7 @@ class TeamMatchHabitStateProcessor extends AbstractStateProcessor
             'dayOfWeek' => $entity->getDayOfWeek(),
         ]);
         if ($existing instanceof TeamMatchHabit && $existing->getId() !== $entity->getId()) {
-            throw new ValidationException('This team already has a habit on that day — edit it instead.');
+            $this->refuse('Cette équipe a déjà une habitude de match ce jour-là — modifiez-la.');
         }
     }
 }

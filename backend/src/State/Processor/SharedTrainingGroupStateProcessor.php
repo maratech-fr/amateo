@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\State\Processor;
 
-use ApiPlatform\Validator\Exception\ValidationException;
 use App\ApiResource\SharedTrainingGroupResource;
 use App\Dto\SharedTrainingGroupInput;
 use App\Entity\Reservation;
@@ -182,7 +181,7 @@ class SharedTrainingGroupStateProcessor extends AbstractStateProcessor
         foreach ($teamIds as $teamId) {
             $team = $teamRepo->findOneBy(['id' => $teamId, 'clubId' => $clubId, 'seasonId' => $seasonId]);
             if (!$team instanceof Team) {
-                throw new ValidationException('Une équipe du groupe est inconnue de cette saison.');
+                $this->refuse('Une équipe du groupe est inconnue de cette saison.');
             }
             $effective = $this->effectiveSessionsPerWeek($team, $planId);
             $minEffective = null === $minEffective ? $effective : min($minEffective, $effective);
@@ -191,12 +190,12 @@ class SharedTrainingGroupStateProcessor extends AbstractStateProcessor
         // K borné au plus petit sessionsPerWeek effectif : au-delà, la mutualisation exige plus
         // de séances communes qu'une équipe n'en a → jamais satisfiable.
         if (null !== $minEffective && $commonSessions > $minEffective) {
-            throw new ValidationException(\sprintf('Le nombre de séances communes (%d) dépasse le nombre de séances d\'une des équipes du groupe (%d).', $commonSessions, $minEffective));
+            $this->refuse(\sprintf('Le nombre de séances communes (%d) dépasse le nombre de séances d\'une des équipes du groupe (%d).', $commonSessions, $minEffective));
         }
 
         // Une équipe ne peut appartenir qu'à un seul groupe pour un plan donné.
         foreach ($this->teamIdsAlreadyGrouped($clubId, $seasonId, $planId, $teamIds, $excludeGroupId) as $_alreadyGrouped) {
-            throw new ValidationException('Une équipe fait déjà partie d\'un autre groupe mutualisé pour cette portée.');
+            $this->refuse('Une équipe fait déjà partie d\'un autre groupe mutualisé pour cette portée.');
         }
     }
 

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\State\Processor;
 
-use ApiPlatform\Validator\Exception\ValidationException;
 use App\ApiResource\CoachWishCampaignResource;
 use App\Dto\CoachWishCampaignInput;
 use App\Entity\CalendarEntry;
@@ -104,7 +103,7 @@ class CoachWishCampaignStateProcessor extends AbstractStateProcessor
 
         // Une seule campagne par période — l'index unique remonterait sinon en 500 ; 422 propre.
         if (null !== $this->entityManager->getRepository(CoachWishCampaign::class)->findOneBy(['calendarEntryId' => $input->calendarEntryId])) {
-            throw new ValidationException('Une collecte existe déjà pour cette période — modifiez-la.');
+            $this->refuse('Une collecte existe déjà pour cette période — modifiez-la.');
         }
 
         $entity = new CoachWishCampaign;
@@ -151,30 +150,30 @@ class CoachWishCampaignStateProcessor extends AbstractStateProcessor
         $entryId = $knownEntryId ?? $input->calendarEntryId;
         $entry = null === $entryId ? null : $this->entityManager->getRepository(CalendarEntry::class)->find($entryId);
         if (!$entry instanceof CalendarEntry) {
-            throw new ValidationException('Période introuvable.');
+            $this->refuse('Période introuvable.');
         }
         if (CalendarEntryKind::PERIOD !== $entry->getKind() || CalendarEntryPeriodType::HOLIDAY !== $entry->getPeriodType()) {
-            throw new ValidationException('La collecte ne concerne que les périodes de vacances.');
+            $this->refuse('La collecte ne concerne que les périodes de vacances.');
         }
         if (null !== $entry->getParentEntryId()) {
-            throw new ValidationException('Adressez la collecte à la période mère, pas à une semaine isolée.');
+            $this->refuse('Adressez la collecte à la période mère, pas à une semaine isolée.');
         }
 
         foreach ($input->weeks as $week) {
             $weekStart = new DateTimeImmutable((string) $week . ' 00:00:00');
             if ('1' !== $weekStart->format('N')) {
-                throw new ValidationException('Chaque semaine doit commencer un lundi.');
+                $this->refuse('Chaque semaine doit commencer un lundi.');
             }
             // Fenêtre : la semaine (lundi→dimanche) doit intersecter la période, date à date.
             $weekEnd = $weekStart->modify('+6 days');
             if ($weekStart > $entry->getEndDate() || $weekEnd < $entry->getStartDate()) {
-                throw new ValidationException('Une semaine choisie ne recoupe pas la période de vacances.');
+                $this->refuse('Une semaine choisie ne recoupe pas la période de vacances.');
             }
         }
 
         foreach ($input->teamIds as $teamId) {
             if (null === $this->entityManager->getRepository(Team::class)->find($teamId)) {
-                throw new ValidationException('Équipe introuvable.');
+                $this->refuse('Équipe introuvable.');
             }
         }
     }

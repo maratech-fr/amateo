@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\State\Processor;
 
-use ApiPlatform\Validator\Exception\ValidationException;
 use App\ApiResource\VenueTrainingSlotResource;
 use App\Dto\VenueTrainingSlotInput;
 use App\Entity\Venue;
@@ -176,7 +175,7 @@ class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
         // début par ce chemin, et deux façons de convertir la même valeur finissent par
         // diverger — c'est le motif de duplication que P4-37 a soldé côté front.
         if ($this->minutesOf($entity) + $entity->getDurationMinutes() > 24 * 60) {
-            throw new ValidationException('A slot must end within its day: it would run past midnight.');
+            $this->refuse('Un créneau doit se terminer dans sa journée : celui-ci déborderait après minuit.');
         }
     }
 
@@ -189,7 +188,7 @@ class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
         $venue = $this->entityManager->find(Venue::class, $entity->getVenueId());
 
         if ($venue instanceof Venue && false === $venue->getCanSplit()) {
-            throw new ValidationException('Un créneau ne peut accueillir 2 équipes ou plus que si le gymnase est déclaré divisible : cochez « terrain divisible » dans l\'étape Gymnases, ou laissez la capacité à 1.');
+            $this->refuse('Un créneau ne peut accueillir 2 équipes ou plus que si le gymnase est déclaré divisible : cochez « terrain divisible » dans l\'étape Gymnases, ou laissez la capacité à 1.');
         }
     }
 
@@ -202,7 +201,7 @@ class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
     private function validateGroupLabel(VenueTrainingSlot $entity): void
     {
         if (null !== $entity->getGroupLabel() && $entity->getCapacity() < 2) {
-            throw new ValidationException('Un libellé de groupe suppose au moins deux équipes sur le créneau : augmentez la capacité à 2 ou retirez le libellé.');
+            $this->refuse('Un libellé de groupe suppose au moins deux équipes sur le créneau : augmentez la capacité à 2 ou retirez le libellé.');
         }
     }
 
@@ -248,7 +247,7 @@ class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
             }
             $otherStart = $this->minutesOf($other);
             if ($start < $otherStart + $other->getDurationMinutes() && $otherStart < $end) {
-                throw new ValidationException('This slot overlaps another slot of the same venue on that day.');
+                $this->refuse('Ce créneau en chevauche un autre du même gymnase ce jour-là.');
             }
         }
     }

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\State\Processor;
 
-use ApiPlatform\Validator\Exception\ValidationException;
 use App\ApiResource\CoachWishResource;
 use App\Dto\CoachWishInput;
 use App\Entity\CalendarEntry;
@@ -48,7 +47,7 @@ class CoachWishStateProcessor extends AbstractStateProcessor
         // À la CRÉATION la doléance est saisie « au nom d'un coach » : coachId requis ici
         // (le DTO l'a rendu nullable pour l'ÉDITION d'une doléance dé-attribuée — revue #10 C1).
         if (null === $input->coachId) {
-            throw new ValidationException('Une doléance se saisit au nom d’un coach.');
+            $this->refuse('Une doléance se saisit au nom d’un coach.');
         }
 
         // Une seule doléance par (période, équipe, semaine) — l'index unique remonterait
@@ -58,7 +57,7 @@ class CoachWishStateProcessor extends AbstractStateProcessor
             'teamId' => $input->teamId,
             'weekStart' => $weekStart,
         ])) {
-            throw new ValidationException('Une doléance existe déjà pour cette équipe et cette semaine — modifiez-la.');
+            $this->refuse('Une doléance existe déjà pour cette équipe et cette semaine — modifiez-la.');
         }
 
         $entity = new CoachWish;
@@ -113,17 +112,17 @@ class CoachWishStateProcessor extends AbstractStateProcessor
             ? null
             : $this->entityManager->getRepository(CalendarEntry::class)->find($input->calendarEntryId);
         if (!$entry instanceof CalendarEntry) {
-            throw new ValidationException('Période introuvable.');
+            $this->refuse('Période introuvable.');
         }
         if (CalendarEntryKind::PERIOD !== $entry->getKind() || CalendarEntryPeriodType::HOLIDAY !== $entry->getPeriodType()) {
-            throw new ValidationException('Les doléances ne concernent que les périodes de vacances.');
+            $this->refuse('Les doléances ne concernent que les périodes de vacances.');
         }
         if (null !== $entry->getParentEntryId()) {
-            throw new ValidationException('Adressez la doléance à la période mère, pas à une semaine isolée.');
+            $this->refuse('Adressez la doléance à la période mère, pas à une semaine isolée.');
         }
 
         if ('1' !== $weekStart->format('N')) {
-            throw new ValidationException('La semaine doit commencer un lundi.');
+            $this->refuse('La semaine doit commencer un lundi.');
         }
         // Fenêtre élargie : la semaine (lundi→dimanche) doit INTERSECTER la période — c'est
         // l'ensemble que `weeksCovering` produit côté front (une semaine peut déborder avant
@@ -132,16 +131,16 @@ class CoachWishStateProcessor extends AbstractStateProcessor
         // ancrer à midi rejetait à tort une semaine que l'UI offre (revue #10 C1).
         $weekEnd = $weekStart->modify('+6 days');
         if ($weekStart > $entry->getEndDate() || $weekEnd < $entry->getStartDate()) {
-            throw new ValidationException('Cette semaine ne recoupe pas la période de vacances.');
+            $this->refuse('Cette semaine ne recoupe pas la période de vacances.');
         }
 
         if (null === $this->entityManager->getRepository(Team::class)->find($input->teamId)) {
-            throw new ValidationException('Équipe introuvable.');
+            $this->refuse('Équipe introuvable.');
         }
         // coachId est optionnel côté DTO (édition d'une doléance dé-attribuée) ; à la
         // création il est déjà exigé plus haut. Ne vérifier l'existence que s'il est fourni.
         if (null !== $input->coachId && null === $this->entityManager->getRepository(Coach::class)->find($input->coachId)) {
-            throw new ValidationException('Coach introuvable.');
+            $this->refuse('Coach introuvable.');
         }
     }
 

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\State\Processor;
 
-use ApiPlatform\Validator\Exception\ValidationException;
 use App\ApiResource\VenueMatchWindowResource;
 use App\Dto\VenueMatchWindowInput;
 use App\Entity\Venue;
@@ -71,7 +70,7 @@ class VenueMatchWindowStateProcessor extends AbstractStateProcessor
         // Same-day window, no midnight crossing (P4-61 precedent) — end is
         // exclusive, so start < end is the whole rule.
         if ($entity->getStartTime()->format('H:i') >= $entity->getEndTime()->format('H:i')) {
-            throw new ValidationException('A match access window must end after it starts, within the same day.');
+            $this->refuse('Une fenêtre d\'accès aux matchs doit se terminer après son début, le même jour.');
         }
     }
 
@@ -84,7 +83,7 @@ class VenueMatchWindowStateProcessor extends AbstractStateProcessor
     private function assertVenueInScope(string $venueId): void
     {
         if (!$this->entityManager->getRepository(Venue::class)->findOneBy(['id' => $venueId]) instanceof Venue) {
-            throw new ValidationException('Unknown venue for this club.');
+            $this->refuse('Gymnase inconnu pour ce club.');
         }
     }
 }

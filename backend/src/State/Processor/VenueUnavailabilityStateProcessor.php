@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\State\Processor;
 
-use ApiPlatform\Validator\Exception\ValidationException;
 use App\ApiResource\VenueUnavailabilityResource;
 use App\Dto\VenueUnavailabilityInput;
 use App\Entity\Venue;
@@ -77,7 +76,7 @@ class VenueUnavailabilityStateProcessor extends AbstractStateProcessor
 
         $this->assertVenueInScope($entity->getVenueId());
         if ($entity->getStartDate() > $entity->getEndDate()) {
-            throw new ValidationException('The unavailability must end on or after its start date.');
+            $this->refuse('L\'indisponibilité doit se terminer à sa date de début ou après.');
         }
     }
 
@@ -90,7 +89,7 @@ class VenueUnavailabilityStateProcessor extends AbstractStateProcessor
     private function assertVenueInScope(string $venueId): void
     {
         if (!$this->entityManager->getRepository(Venue::class)->findOneBy(['id' => $venueId]) instanceof Venue) {
-            throw new ValidationException('Unknown venue for this club.');
+            $this->refuse('Gymnase inconnu pour ce club.');
         }
     }
 }
