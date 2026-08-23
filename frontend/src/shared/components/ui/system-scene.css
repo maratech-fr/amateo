@@ -1,0 +1,46 @@
+/*
+ * Keyframes de la scène commune des écrans système (P5-22 — 404, 403, 500, hors-ligne pleine
+ * page). Namespacées `ss-` : co-locées ici plutôt qu'en global — la scène n'existe que dans
+ * `SystemScreen`. Les COULEURS vivent dans le SVG via les tokens de `index.css`
+ * (var(--card|muted|border|muted-foreground) + var(--accent) qui suit le club) : une seule scène,
+ * lisible en thème clair ET sombre. Voir system-scene.tsx.
+ *
+ * PRINCIPE « à l'arrêt veut dire à l'arrêt » : la scène FLOTTE, elle ne se remplit jamais, ne
+ * progresse jamais, ne balaye jamais — aucun `stroke-dashoffset` animé, aucune case qui se pose,
+ * aucune accumulation. C'est ce qui la rend compatible avec un écran d'ERREUR (un balayage sous un
+ * titre de panne suggérerait à tort un traitement en cours). Les seules animations sont des
+ * TRANSFORMS (flottaison + écrasement des cartes, pulsation de l'ombre au sol) : aucune ne révèle
+ * un élément par l'opacité.
+ */
+
+/* Flottaison verticale des cartes (apesanteur). Amplitude VOLONTAIREMENT faible (~9 px sur une
+   scène de ~150 px, ~6 %) : au-dessus d'un titre de panne, un mouvement discret ne détourne pas
+   l'œil du message et du geste de reprise (passe de design). Transform pur : à `animation: none`,
+   la carte retombe à translateY(0) — son état posé, exactement la pose figée du reduced-motion. */
+@keyframes ss-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-9px); }
+}
+/* Étirement à peine perceptible au sommet (respiration, pas de squash « gravité » qui contredirait
+   l'apesanteur). Base scaleY(1) = pose figée. */
+@keyframes ss-squash {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.02); }
+}
+/* L'ombre au sol se rétrécit et pâlit quand la carte s'élève (elle s'éloigne). Opacité de REPOS
+   0.16 portée par l'attribut de l'ellipse : à `animation: none`, l'ombre reste visible et posée. */
+@keyframes ss-shadow {
+  0%, 100% { transform: scaleX(1); opacity: 0.16; }
+  50% { transform: scaleX(0.82); opacity: 0.09; }
+}
+
+/* prefers-reduced-motion : on COUPE les animations, un point c'est tout. Décision fondateur :
+   l'état figé = cartes POSÉES, visibles, immobiles — jamais masquées, jamais un état « plein/
+   succès ». Les cartes ont une opacité de base 1 dans le SVG et la flottaison est un TRANSFORM :
+   `animation: none` suffit donc à les laisser naturellement visibles et immobiles. C'est pourquoi
+   ce bloc ne contient AUCUN `opacity: 1 !important` — cet override, transposé d'un écran d'attente
+   à un écran d'erreur, peindrait un faux état de succès sous un titre de panne. Ici : rien à
+   forcer, tout est déjà visible au repos. */
+@media (prefers-reduced-motion: reduce) {
+  .ss-anim { animation: none !important; }
+}
