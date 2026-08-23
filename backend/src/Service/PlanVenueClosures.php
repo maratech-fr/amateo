@@ -14,6 +14,7 @@ use DateInterval;
 use DatePeriod;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 /**
  * P2-37/P2-38 — la MAISON UNIQUE de « ce que les fermetures s'appliquant à CE plan font ».
@@ -81,6 +82,48 @@ final class PlanVenueClosures
     private static function humanDate(string $isoDate): string
     {
         return new DateTimeImmutable($isoDate)->format('j/n');
+    }
+
+    /**
+     * On ne réserve pas un gymnase que la période rend indisponible CE jour-là. L'indisponibilité
+     * est INFORMATIVE (décision fondateur 2026-08-18) : on suit l'ÉTAT EFFECTIF de la MAISON UNIQUE
+     * — l'incident déclaré COMPOSÉ avec le masque manuel du plan. Un jour rouvert OPEN redevient
+     * réservable ; un jour décoché à la main devient refusé. Le message distingue la cause
+     * (indisponibilité déclarée vs décochage manuel). On refuse à la SOURCE (422).
+     *
+     * MAISON UNIQUE partagée : le rail de réservation unitaire ({@see ReservationStateProcessor})
+     * ET le rail batch de mutualisation ({@see GroupReservationController}) passent tous deux ici —
+     * la copie du message et la logique de composition ne vivent qu'à un endroit.
+     */
+    public function assertVenueOpenForPlan(?string $schedulePlanId, ?string $venueId, ?int $dayOfWeek): void
+    {
+        // Trois retours anticipés séparés (et non un `||` — que Rector réécrirait en `in_array`,
+        // perdant le narrowing non-null dont a besoin `effectiveStateForPlan(string)`).
+        if (null === $schedulePlanId) {
+            return;
+        }
+        if (null === $venueId || null === $dayOfWeek) {
+            return;
+        }
+        $state = $this->effectiveStateForPlan($schedulePlanId);
+        $fullyClosed = isset($state['fullyClosedVenueIds'][$venueId]);
+        $dayClosed = isset($state['effectiveClosedWeekdaysByVenue'][$venueId][$dayOfWeek]);
+        if (!$fullyClosed && !$dayClosed) {
+            return;
+        }
+
+        // Un jour fermé À LA MAIN (masque CLOSED sans indisponibilité déclarée dessous) : la
+        // cause est le décochage, pas une fermeture — rien à nommer, on invite à le rouvrir.
+        if (!$fullyClosed && isset($state['manualClosedWeekdaysByVenue'][$venueId][$dayOfWeek])) {
+            throw new UnprocessableEntityHttpException('Ce gymnase est fermé ce jour-là pour cette période (jour décoché) : la séance ne peut pas y être réservée. Rouvrez ce jour, ou choisissez un autre créneau.');
+        }
+
+        $label = self::describeForVenue($state['summaries'], $venueId);
+        $cause = $fullyClosed ? 'est indisponible sur toute la période' : 'est fermé ce jour-là';
+
+        // Même patron surfaçant le message que `assertSchedulePlanExists` (le
+        // `ValidationException(string)` d'API Platform ne remonte pas son message).
+        throw new UnprocessableEntityHttpException(\sprintf('Ce gymnase %s%s : la séance ne peut pas y être réservée. Choisissez un autre créneau, ou ajustez la fermeture.', $cause, null !== $label ? ' — ' . $label : ''));
     }
 
     /**

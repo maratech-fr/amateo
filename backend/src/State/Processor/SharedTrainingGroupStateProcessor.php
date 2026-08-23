@@ -10,7 +10,8 @@ use App\Dto\SharedTrainingGroupInput;
 use App\Entity\SharedTrainingGroup;
 use App\Entity\SharedTrainingGroupTeam;
 use App\Entity\Team;
-use App\Entity\TeamPeriodOverride;
+use App\Service\EffectiveTeamSessions;
+use Symfony\Contracts\Service\Attribute\Required;
 
 /**
  * P2-27 — écriture d'une déclaration de mutualisation. Un groupe = un parent
@@ -26,6 +27,14 @@ use App\Entity\TeamPeriodOverride;
 class SharedTrainingGroupStateProcessor extends AbstractStateProcessor
 {
     use AssertsSchedulePlanExistsTrait;
+
+    private EffectiveTeamSessions $effectiveTeamSessions;
+
+    #[Required]
+    public function setEffectiveTeamSessions(EffectiveTeamSessions $effectiveTeamSessions): void
+    {
+        $this->effectiveTeamSessions = $effectiveTeamSessions;
+    }
 
     protected function getEntityClass(): string
     {
@@ -158,15 +167,8 @@ class SharedTrainingGroupStateProcessor extends AbstractStateProcessor
 
     private function effectiveSessionsPerWeek(Team $team, ?string $planId): int
     {
-        if (null !== $planId) {
-            $override = $this->entityManager->getRepository(TeamPeriodOverride::class)
-                ->findOneBy(['schedulePlanId' => $planId, 'teamId' => $team->getId()]);
-            if ($override instanceof TeamPeriodOverride && null !== $override->getSessionsPerWeek()) {
-                return $override->getSessionsPerWeek();
-            }
-        }
-
-        return $team->getSessionsPerWeek();
+        // Maison unique de la notion (partagée avec la garde d'occupation) : {@see EffectiveTeamSessions}.
+        return $this->effectiveTeamSessions->perWeek($team, $planId);
     }
 
     /**

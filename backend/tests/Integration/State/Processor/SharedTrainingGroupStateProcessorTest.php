@@ -13,6 +13,7 @@ use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
+use App\Service\EffectiveTeamSessions;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
@@ -105,6 +106,8 @@ final class SharedTrainingGroupStateProcessorTest extends KernelTestCase
             $container->get(SeasonAccessGuard::class),
             $container->get(ManagementAccessGuard::class),
         );
+        // Dépendance #[Required] : câblée à la main puisque le processor est instancié hors conteneur.
+        $this->processor->setEffectiveTeamSessions($container->get(EffectiveTeamSessions::class));
     }
 
     private function post(SharedTrainingGroupInput $input, Club $club, Season $season): SharedTrainingGroupResource

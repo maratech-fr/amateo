@@ -1,6 +1,17 @@
-Last verified @ 2026-08-22 (régénéré après `docker compose restart php-fpm` — piège opcache, `backend/AGENTS.md` §17. DEUX livraisons le même jour : le lot PASSERELLES (0 path — propriété `trainingIntensity` sur les schémas `TeamLink`, contrat backend⇄engine 2.13 → 2.14) et la PRÉVENTION P2-38 (**+1 path** `GET /api/planned-windows`). Le compte final est donc 169 paths, et le snapshot versionné ici les porte tous les deux)
+Last verified @ 2026-08-23 (régénéré après `docker compose restart php-fpm` — piège opcache, `backend/AGENTS.md` §17. P2-46 PR-2 ajoute **+1 path** `POST /api/reservations/group` : le compte passe de 169 à **170 paths**. Contrat backend⇄engine INCHANGÉ — cette route est un rail d'écriture, zéro appel moteur.)
 
 Changements récents :
+- **P2-46 PR-2 — la réservation batch d'un groupe mutualisé (2026-08-23)** : **+1 path** —
+  `POST /api/reservations/group` (201 : `{ids[], count}` — N réservations HARD, une par membre,
+  écrites en UN flush ; 400 JSON/champ manquant ; 403 non-gestionnaire ; 404 groupe inconnu ou
+  d'un autre club ; 409 saison archivée ; 422 portée du groupe ≠ planning, gymnase fermé, créneau
+  occupé (exclusivité), plafond de séances communes atteint, membre au-delà de son volume
+  hebdomadaire, ou plan inconnu). Corps :
+  `{sharedTrainingGroupId, venueId, dayOfWeek, startTime, durationMinutes?, schedulePlanId?}`.
+  169 → **170 paths**. Écriture management (SEC-07, parité stricte avec `POST /reservations`),
+  garde de saison archivée via `SeasonScopedWriteInterface`. Contrat backend⇄engine **inchangé**
+  (`CONTRACT_VERSION` 2.14, zéro appel moteur — la règle d'occupation exclusive vit à l'ÉCRITURE,
+  le moteur lit ensuite les N verrous comme UNE séance commune, PR-1).
 - **P2-38 prévention — les fenêtres déjà planifiées, servies (2026-08-22)** : **+1 path** —
   `GET /api/planned-windows` (200 : `windows[]` {entryId, title, startDate, endDate, `label` et
   `reason` — la PHRASE prête à afficher, composée serveur par le même helper que le refus 409}, les plages qu'un autre plan de période gouverne déjà dans `[start, end]` ;

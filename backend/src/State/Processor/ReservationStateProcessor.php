@@ -12,9 +12,10 @@ use App\Entity\User;
 use App\Enum\AuditAction;
 use App\Enum\LockLevel;
 use App\Service\PlanVenueClosures;
+use App\Service\ReservationGroupOccupancy;
+use DateTimeImmutable;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
-use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 use Symfony\Contracts\Service\Attribute\Required;
 
 /**
@@ -26,10 +27,18 @@ class ReservationStateProcessor extends AbstractStateProcessor
 
     private PlanVenueClosures $planVenueClosures;
 
+    private ReservationGroupOccupancy $reservationGroupOccupancy;
+
     #[Required]
     public function setPlanVenueClosures(PlanVenueClosures $planVenueClosures): void
     {
         $this->planVenueClosures = $planVenueClosures;
+    }
+
+    #[Required]
+    public function setReservationGroupOccupancy(ReservationGroupOccupancy $reservationGroupOccupancy): void
+    {
+        $this->reservationGroupOccupancy = $reservationGroupOccupancy;
     }
 
     protected function getEntityClass(): string
@@ -109,8 +118,13 @@ class ReservationStateProcessor extends AbstractStateProcessor
     protected function createEntityFromInput(object $input): Reservation
     {
         // clubId + seasonId are set by AbstractStateProcessor from the tenant/season
-        // context. No SEC-07 management gate — reservations are a wizard write, like
-        // constraints and venue slots.
+        // context. ⚠ Le gate management S'APPLIQUE bien ici : aucune surcharge de
+        // `requiresManagementRole()` ⇒ le défaut `true` d'AbstractStateProcessor:127
+        // gate l'écriture. L'ancien commentaire disait « No SEC-07 management gate »,
+        // ce qui se lisait « route ouverte » alors qu'il voulait dire « pas de
+        // surcharge EXPLICITE » — sur un sujet d'autorisation, la nuance décidait mal
+        // (relevé en livrant le rail de groupe, P2-46 PR-2 : c'est la parité avec
+        // cette route qui a imposé d'y poser `assertManager()`).
         $entity = new Reservation;
         if (null !== $input->teamId) {
             $entity->setTeamId($input->teamId);
@@ -129,6 +143,12 @@ class ReservationStateProcessor extends AbstractStateProcessor
         }
         $this->assertSchedulePlanExists($this->entityManager, $input->schedulePlanId);
         $this->assertVenueOpen($input->schedulePlanId, $input->venueId, $input->dayOfWeek);
+
+        // P2-46 PR-2 — la garde symétrique de l'occupation exclusive : une réservation INDIVIDUELLE
+        // est refusée si la case porte déjà un groupe COMPLET (règle b) ou si sa capacité est
+        // dépassée (règle e).
+        $this->assertOccupancy($input);
+
         $entity->setSchedulePlanId($input->schedulePlanId);
 
         return $entity;
@@ -152,42 +172,37 @@ class ReservationStateProcessor extends AbstractStateProcessor
     }
 
     /**
-     * On ne réserve pas un gymnase que la période rend indisponible CE jour-là. L'indisponibilité
-     * est désormais INFORMATIVE (décision fondateur 2026-08-18) : on suit l'ÉTAT EFFECTIF de la
-     * MAISON UNIQUE — l'incident déclaré COMPOSÉ avec le masque manuel du plan. Un jour rouvert
-     * OPEN redevient réservable ; un jour décoché à la main devient refusé. Le message distingue
-     * la cause (indisponibilité déclarée vs décochage manuel). On refuse à la SOURCE (422) ; les
-     * réservations DÉJÀ posées ne sont ni supprimées ni modifiées (décision fondateur : « on ne
-     * fait pas de modification passive, on alerte » — l'alerte vit côté récap, `unservedReservationIds`).
+     * On ne réserve pas un gymnase que la période rend indisponible CE jour-là. Décision fondateur
+     * 2026-08-18 : l'indisponibilité est INFORMATIVE, l'état effectif fait foi, on refuse à la
+     * SOURCE (422) sans toucher aux réservations déjà posées (l'alerte vit côté récap,
+     * `unservedReservationIds`). La logique et la copie sont la MAISON UNIQUE
+     * {@see PlanVenueClosures::assertVenueOpenForPlan} — partagée avec le rail batch de mutualisation.
      */
     private function assertVenueOpen(?string $schedulePlanId, ?string $venueId, ?int $dayOfWeek): void
     {
-        // Trois retours anticipés séparés (et non un `||` — que Rector réécrirait en `in_array`,
-        // perdant le narrowing non-null dont a besoin `effectiveStateForPlan(string)`).
-        if (null === $schedulePlanId) {
+        $this->planVenueClosures->assertVenueOpenForPlan($schedulePlanId, $venueId, $dayOfWeek);
+    }
+
+    /**
+     * Rules (b)+(e) via la MAISON UNIQUE {@see ReservationGroupOccupancy}. Quatre retours anticipés
+     * SÉPARÉS (et non un `&&` que Rector réécrirait en `in_array`, perdant le narrowing non-null
+     * dont a besoin `assertIndividualReservationAllowed(string, …)`) : les champs SONT non-null ici,
+     * validés par `ReservationInput` avant le processor, mais le garde reste explicite pour PHPStan.
+     */
+    private function assertOccupancy(ReservationInput $input): void
+    {
+        if (null === $input->teamId) {
             return;
         }
-        if (null === $venueId || null === $dayOfWeek) {
+        if (null === $input->venueId) {
             return;
         }
-        $state = $this->planVenueClosures->effectiveStateForPlan($schedulePlanId);
-        $fullyClosed = isset($state['fullyClosedVenueIds'][$venueId]);
-        $dayClosed = isset($state['effectiveClosedWeekdaysByVenue'][$venueId][$dayOfWeek]);
-        if (!$fullyClosed && !$dayClosed) {
+        if (null === $input->dayOfWeek) {
             return;
         }
-
-        // Un jour fermé À LA MAIN (masque CLOSED sans indisponibilité déclarée dessous) : la
-        // cause est le décochage, pas une fermeture — rien à nommer, on invite à le rouvrir.
-        if (!$fullyClosed && isset($state['manualClosedWeekdaysByVenue'][$venueId][$dayOfWeek])) {
-            throw new UnprocessableEntityHttpException('Ce gymnase est fermé ce jour-là pour cette période (jour décoché) : la séance ne peut pas y être réservée. Rouvrez ce jour, ou choisissez un autre créneau.');
+        if (!$input->startTime instanceof DateTimeImmutable) {
+            return;
         }
-
-        $label = PlanVenueClosures::describeForVenue($state['summaries'], $venueId);
-        $cause = $fullyClosed ? 'est indisponible sur toute la période' : 'est fermé ce jour-là';
-
-        // Même patron surfaçant le message que `assertSchedulePlanExists` (le
-        // `ValidationException(string)` d'API Platform ne remonte pas son message).
-        throw new UnprocessableEntityHttpException(\sprintf('Ce gymnase %s%s : la séance ne peut pas y être réservée. Choisissez un autre créneau, ou ajustez la fermeture.', $cause, null !== $label ? ' — ' . $label : ''));
+        $this->reservationGroupOccupancy->assertIndividualReservationAllowed($input->teamId, $input->venueId, $input->dayOfWeek, $input->startTime, $input->schedulePlanId);
     }
 }

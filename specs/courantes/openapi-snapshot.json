@@ -11225,6 +11225,102 @@
                 }
             }
         },
+        "/api/reservations/group": {
+            "post": {
+                "operationId": "postApiReservationsGroup",
+                "tags": [
+                    "Reservation"
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Shared-training group reserved on one slot: N reservations (one per member) written in a single flush; the response carries their ids",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "ids": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string",
+                                                "format": "uuid"
+                                            }
+                                        },
+                                        "count": {
+                                            "type": "integer"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid JSON, or a missing/malformed field"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "404": {
+                        "description": "Unknown shared-training group (or another club's \u2014 never an existence oracle)"
+                    },
+                    "409": {
+                        "description": "Archived season (read-only)"
+                    },
+                    "422": {
+                        "description": "Scope mismatch (group not declared for this plan), closed venue, occupied slot (exclusivity), shared-sessions ceiling reached, a member over its weekly sessions, or unknown schedule plan"
+                    }
+                },
+                "summary": "Reserve a shared-training group on one slot (atomic batch write of one HARD reservation per member)",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "sharedTrainingGroupId",
+                                    "venueId",
+                                    "dayOfWeek",
+                                    "startTime"
+                                ],
+                                "properties": {
+                                    "sharedTrainingGroupId": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "venueId": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "dayOfWeek": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 7
+                                    },
+                                    "startTime": {
+                                        "type": "string",
+                                        "description": "HH:MM"
+                                    },
+                                    "durationMinutes": {
+                                        "type": "integer",
+                                        "default": 90
+                                    },
+                                    "schedulePlanId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "nullable": true,
+                                        "description": "NULL = base (season) plan; set = a period overlay \u2014 must match the group's own scope"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
         "/api/reservations/{id}": {
             "get": {
                 "operationId": "api_reservations_id_get",
