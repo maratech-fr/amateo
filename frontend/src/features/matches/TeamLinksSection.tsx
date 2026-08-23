@@ -9,6 +9,7 @@ import type { TeamLike, TierLike } from "@/shared/lib/teamTiers";
 import type { TeamLink, TeamLinkIntensity, TeamLinkType } from "./api";
 import { useCreateTeamLink, useDeleteTeamLink, useTeamLinks, useUpdateTeamLink } from "./queries";
 import { INTENSITY_LABEL } from "./lib/teamLinkLabel";
+import { linkableBTeams } from "./lib/linkableTeams";
 
 
 /**
@@ -99,16 +100,31 @@ function EditableLinks<T extends TeamLike>({
   const updateLink = useUpdateTeamLink();
   const deleteLink = useDeleteTeamLink();
 
-  const [linkTeamAId, setLinkTeamAId] = useState(filterTeamId ?? "");
+  // Ancrée (`filterTeamId` fourni) : A est FIGÉE — un FAIT affiché en texte, pas un champ. L'état A
+  // n'existe alors plus (`teamAId = filterTeamId`), impossible de créer un lien « côté SM1 » qui ne
+  // concerne pas SM1. Sans ancrage (dialog `/matchs`), le sélecteur A reste STRICTEMENT inchangé.
+  const anchored = undefined !== filterTeamId;
+  const [selectedA, setSelectedA] = useState("");
+  const teamAId = filterTeamId ?? selectedA;
   const [linkTeamBId, setLinkTeamBId] = useState("");
   const [linkType, setLinkType] = useState<TeamLinkType>("NOT_SIMULTANEOUS");
   const [linkIntensity, setLinkIntensity] = useState<TeamLinkIntensity>("PREFERRED");
 
+  // B proposables : ancrée → toutes − A − déjà liées à A (garde-fou d'ergonomie, le serveur refuse
+  // le doublon en 422 quoi qu'il arrive) ; sans ancrage → toutes (comportement `/matchs` inchangé,
+  // décision fondateur 2026-08-23). `links` est déjà filtré à l'équipe ancrée = les liens nommant A.
+  const bTeams = anchored ? linkableBTeams(teams, teamAId, links) : teams;
+  // « Toutes déjà liées » n'est vrai que s'il EXISTE d'autres équipes, toutes liées à A. S'il n'y a
+  // simplement aucune autre équipe (club à une seule équipe), on garde le formulaire d'ajout normal
+  // (B vide, bouton inerte) plutôt qu'une phrase fausse — cf. TeamsStep « Liens de … » à une équipe.
+  const hasOtherTeams = teams.some((t) => t.id !== teamAId);
+  const noLinkableB = anchored && hasOtherTeams && 0 === bTeams.length;
+
   const addLink = (): void => {
-    if ("" === linkTeamAId || "" === linkTeamBId || linkTeamAId === linkTeamBId || createLink.isPending) {
+    if ("" === teamAId || "" === linkTeamBId || teamAId === linkTeamBId || createLink.isPending) {
       return;
     }
-    createLink.mutate({ teamAId: linkTeamAId, teamBId: linkTeamBId, linkType, trainingIntensity: linkIntensity });
+    createLink.mutate({ teamAId, teamBId: linkTeamBId, linkType, trainingIntensity: linkIntensity });
   };
 
   return (
@@ -160,34 +176,48 @@ function EditableLinks<T extends TeamLike>({
         ))}
       </ul>
 
-      <div className="flex flex-wrap items-end gap-2">
-        <TeamSelect aria-label="Première équipe du lien" className="w-32" teams={teams} tiers={tiers} placeholder="Équipe A…" value={linkTeamAId} onChange={(e) => setLinkTeamAId(e.target.value)} />
-        <TeamSelect aria-label="Seconde équipe du lien" className="w-32" teams={teams} tiers={tiers} placeholder="Équipe B…" value={linkTeamBId} onChange={(e) => setLinkTeamBId(e.target.value)} />
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Matchs
-          <Select aria-label="Type de lien côté matchs" className="h-9 w-44" value={linkType} onChange={(e) => setLinkType(e.target.value as TeamLinkType)}>
-            <option value="NOT_SIMULTANEOUS">Jamais en même temps</option>
-            <option value="BACK_TO_BACK">L'un après l'autre</option>
-          </Select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Entraînement
-          <Select aria-label="Intensité d'entraînement du lien" className="h-9 w-32" value={linkIntensity} onChange={(e) => setLinkIntensity(e.target.value as TeamLinkIntensity)}>
-            <option value="PREFERRED">{INTENSITY_LABEL.PREFERRED}</option>
-            <option value="MANDATORY">{INTENSITY_LABEL.MANDATORY}</option>
-          </Select>
-        </label>
-        <Button
-          size="icon"
-          className="size-9"
-          aria-label="Ajouter la passerelle"
-          title="Ajouter la passerelle"
-          disabled={"" === linkTeamAId || "" === linkTeamBId || linkTeamAId === linkTeamBId || createLink.isPending}
-          onClick={addLink}
-        >
-          <Plus className="size-4" />
-        </Button>
-      </div>
+      {noLinkableB ? (
+        // Ancrée, toutes les équipes déjà liées à A : jamais un sélecteur vide muet, une phrase.
+        <p className="text-xs text-muted-foreground">Toutes les équipes sont déjà liées à {teamName(teamAId)}.</p>
+      ) : (
+        <div className="flex flex-wrap items-end gap-2">
+          {anchored ? (
+            // A FIGÉE : un FAIT en texte (« SM1 ↔ … »), pas un champ désactivé (qui se lirait comme une panne).
+            <span className="flex items-center gap-1.5 self-center text-sm">
+              <span className="sr-only">Passerelle depuis {teamName(teamAId)} — choisir la seconde équipe</span>
+              <span className="font-medium text-foreground">{teamName(teamAId)}</span>
+              <span aria-hidden className="text-muted-foreground">↔</span>
+            </span>
+          ) : (
+            <TeamSelect aria-label="Première équipe du lien" className="w-32" teams={teams} tiers={tiers} placeholder="Équipe A…" value={selectedA} onChange={(e) => setSelectedA(e.target.value)} />
+          )}
+          <TeamSelect aria-label="Seconde équipe du lien" className="w-32" teams={bTeams} tiers={tiers} placeholder="Équipe B…" value={linkTeamBId} onChange={(e) => setLinkTeamBId(e.target.value)} />
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Matchs
+            <Select aria-label="Type de lien côté matchs" className="h-9 w-44" value={linkType} onChange={(e) => setLinkType(e.target.value as TeamLinkType)}>
+              <option value="NOT_SIMULTANEOUS">Jamais en même temps</option>
+              <option value="BACK_TO_BACK">L'un après l'autre</option>
+            </Select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Entraînement
+            <Select aria-label="Intensité d'entraînement du lien" className="h-9 w-32" value={linkIntensity} onChange={(e) => setLinkIntensity(e.target.value as TeamLinkIntensity)}>
+              <option value="PREFERRED">{INTENSITY_LABEL.PREFERRED}</option>
+              <option value="MANDATORY">{INTENSITY_LABEL.MANDATORY}</option>
+            </Select>
+          </label>
+          <Button
+            size="icon"
+            className="size-9"
+            aria-label="Ajouter la passerelle"
+            title="Ajouter la passerelle"
+            disabled={"" === teamAId || "" === linkTeamBId || teamAId === linkTeamBId || createLink.isPending}
+            onClick={addLink}
+          >
+            <Plus className="size-4" />
+          </Button>
+        </div>
+      )}
     </>
   );
 }

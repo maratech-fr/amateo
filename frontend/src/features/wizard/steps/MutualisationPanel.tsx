@@ -12,7 +12,7 @@ import { groupTeamsByTier } from "@/shared/lib/teamTiers";
 import { cn } from "@/shared/lib/utils";
 
 import type { PriorityTier, SharedTrainingGroup, Team } from "../api";
-import { alreadyGroupedTeamIds, groupContainingTeam, maxCommonSessions, sharedGroupLabel, splitByLinks, teamsLinkedTo } from "../lib/sharedTraining";
+import { alreadyGroupedTeamIds, filterCandidates, groupContainingTeam, maxCommonSessions, sharedGroupLabel, splitByLinks, teamsLinkedTo } from "../lib/sharedTraining";
 import { useCreateSharedTrainingGroup, useDeleteSharedTrainingGroup, useSharedTrainingGroups, useTeamPeriodOverrides, useUpdateSharedTrainingGroup } from "../queries";
 
 /**
@@ -57,6 +57,7 @@ export function MutualisationPanel({
   const [commonSessions, setCommonSessions] = useState(1);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<SharedTrainingGroup | null>(null);
 
@@ -83,6 +84,13 @@ export function MutualisationPanel({
   // passerelle pour l'ancre, on garde la liste plate (toutes visibles) et le hint guide vers la
   // déclaration — le bloc « liées » ne masque jamais les autres équipes pour rien.
   const showSplit = candidates.some((t) => linkedIds.has(t.id));
+
+  // Recherche (P2-45 suite) : une requête active COURT-CIRCUITE le split liées/reste en liste plate
+  // (sinon un résultat resterait caché derrière « Afficher toutes les équipes »). Une équipe cochée
+  // ou verrouillée reste trouvable (`filterCandidates` : le coché est exempté, le verrouillé a un nom).
+  const searching = "" !== query.trim();
+  const filtered = filterCandidates(candidates, query, checked);
+  const countMessage = 0 === filtered.length ? "Aucune équipe trouvée" : `${filtered.length} équipe${filtered.length > 1 ? "s" : ""} trouvée${filtered.length > 1 ? "s" : ""}`;
 
   const resetForm = () => {
     setEditingId(null);
@@ -137,17 +145,25 @@ export function MutualisationPanel({
     const otherGroup = lockedIds.has(t.id) ? groupContainingTeam(scopeGroups, t.id, editingId) : undefined;
     const locked = undefined !== otherGroup;
     const withNames = otherGroup ? otherGroup.teamIds.filter((id) => id !== t.id).map(nameOf).join(", ") : "";
+    // L'ancre = l'équipe de CETTE fiche (`initialTeamId`) : on ne la décoche pas de son propre
+    // groupe sans le voir. Le verrou porte sur le GESTE de décocher (disabled si cochée), pas sur un
+    // forçage permanent : éditer un groupe qui ne la contient pas la décoche légitimement, re-cocher
+    // reste permis. Fondateur : pas de confirmation — on supprime le groupe et on recommence.
+    const anchorLocked = t.id === initialTeamId && checked.has(t.id);
 
     return (
       <div key={t.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-        <label className={cn("flex items-center gap-1.5 text-sm", locked && "text-muted-foreground")}>
-          <input type="checkbox" aria-label={t.name} checked={checked.has(t.id)} disabled={locked} onChange={() => toggle(t.id)} />
+        <label className={cn("flex items-center gap-1.5 text-sm", (locked || anchorLocked) && "text-muted-foreground")}>
+          <input type="checkbox" aria-label={t.name} checked={checked.has(t.id)} disabled={locked || anchorLocked} onChange={() => toggle(t.id)} />
           {t.name}
         </label>
+        {/* La raison EN TEXTE (pas un `title` de survol) : au clavier comme au lecteur d'écran, une
+            case grisée sans motif lisible laisse le gestionnaire sans recours. Le verrou « déjà
+            mutualisée » prime celui de l'ancre. */}
         {locked ? (
-          // La raison EN TEXTE (pas un `title` de survol) : au clavier comme au lecteur d'écran,
-          // une case grisée sans motif lisible laisse le gestionnaire sans recours.
           <span className="text-xs text-muted-foreground">déjà mutualisée{withNames ? ` avec ${withNames}` : ""}</span>
+        ) : anchorLocked ? (
+          <span className="text-xs text-muted-foreground">Cette fiche — retirez-la en supprimant le groupe.</span>
         ) : null}
       </div>
     );
@@ -179,7 +195,29 @@ export function MutualisationPanel({
           <EmptyHint>Ajoutez d'abord des équipes pour pouvoir les mutualiser.</EmptyHint>
         ) : (
           <>
-            {!showSplit ? (
+            <Input
+              type="search"
+              aria-label="Rechercher une équipe"
+              placeholder="Rechercher une équipe"
+              className="mb-2 h-8"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+
+            {searching ? (
+              // Recherche active : liste PLATE (le split est court-circuité) + compte annoncé.
+              <>
+                <p aria-live="polite" className="mb-1 text-xs text-muted-foreground">
+                  {countMessage}
+                </p>
+                {0 === filtered.length ? (
+                  // Témoin, jamais une liste vide muette : la requête est NOMMÉE.
+                  <p className="text-sm text-muted-foreground">Aucune équipe ne correspond à « {query.trim()} ».</p>
+                ) : (
+                  <div className="flex flex-col gap-1">{filtered.map(candidateRow)}</div>
+                )}
+              </>
+            ) : !showSplit ? (
               // Rien de coché, ou aucune passerelle pour l'ancre : liste plate (toutes les équipes
               // visibles). Le split « liées » n'apparaît qu'à partir d'une équipe passerelée.
               <div className="flex flex-col gap-1">{candidates.map(candidateRow)}</div>
