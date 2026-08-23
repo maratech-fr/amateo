@@ -9,6 +9,7 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import type { Fixture, PlaceFixtureInput, TeamMatchHabit, Venue, VenueMatchWindow, VenueUnavailability } from "./api";
 import { isInEnvelope, isoWeekday } from "./lib/envelope";
 import type { EnvelopeResult } from "./lib/envelope";
+import { FIXTURE_STATUS_LABEL } from "./lib/fixtureStatusLabel";
 import { matchVenueIds, venueAccessError } from "./lib/matchAccess";
 
 interface PlacementPanelProps {
@@ -30,6 +31,10 @@ interface PlacementPanelProps {
   onStartSwap: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  /** RMM-1 PR 1 — close the weekly loop: mark the placed match saisi dans FBI. */
+  onSubmit: () => void;
+  /** RMM-1 PR 1 — repair path: hand a SUBMITTED match back to PLACED. */
+  onReopen: () => void;
 }
 
 const fieldClass = "h-9 rounded-md border border-input bg-background px-2 text-sm";
@@ -65,8 +70,10 @@ function EnvelopeHint({ envelope, kickoff }: { envelope: EnvelopeResult; kickoff
  * Place / re-place a home fixture and drive the manual loop (P1-4 PR E1):
  * unplace, lock/hand back to the solver, swap, edit, delete. Two HARD guards on
  * the placement gesture itself: the league envelope (when the team maps) and the
- * club's capacity data (PR B). A SUBMITTED/VALIDATED match is read-only — it is
- * filed with the federation.
+ * club's capacity data (PR B). RMM-1 PR 1 closes the weekly loop: a PLACED match
+ * can be marked « Saisi dans FBI » (SUBMITTED, anchored); a SUBMITTED match keeps
+ * the « Corriger » repair path back to PLACED. VALIDATED is fully read-only — the
+ * league owns it.
  */
 export function PlacementPanel({
   fixture,
@@ -85,6 +92,8 @@ export function PlacementPanel({
   onStartSwap,
   onEdit,
   onDelete,
+  onSubmit,
+  onReopen,
 }: PlacementPanelProps) {
   // Masquer n'est légitime que pour un CHOIX (§7.2.3) : le sélecteur n'offre
   // que les gymnases de match — mais seulement si le club a déclaré des
@@ -106,7 +115,10 @@ export function PlacementPanel({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const placed = "PLACED" === fixture.status;
-  const readonly = "SUBMITTED" === fixture.status || "VALIDATED" === fixture.status;
+  // Saisi dans FBI : ancré, sortie « Corriger » possible. Validé ligue : la
+  // ligue possède le match, aucune sortie. Les deux ferment l'édition.
+  const submitted = "SUBMITTED" === fixture.status;
+  const validated = "VALIDATED" === fixture.status;
   const locked = placed && "SOLVER" !== fixture.placementSource;
 
   const hasKickoff = "" !== kickoff;
@@ -132,12 +144,33 @@ export function PlacementPanel({
         <Row label="Adversaire" value={fixture.opponentLabel} />
         <Row label="Date" value={fixture.matchDate} />
 
-        {readonly ? (
-          <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
-            Match déposé à la fédération — il ne se modifie plus ici.
-          </p>
+        {submitted ? (
+          <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+            <div>
+              <p className="text-sm font-medium">{FIXTURE_STATUS_LABEL.SUBMITTED}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Ce match est ancré : les prochaines générations ne le déplaceront plus. À corriger seulement en cas d'erreur
+                (gymnase indisponible, saisie erronée).
+              </p>
+            </div>
+            <Button variant="ghost" size="sm" disabled={busy} className="self-start text-muted-foreground" onClick={onReopen}>
+              <Undo2 className="size-3.5" />
+              Corriger — repasser en Placé
+            </Button>
+          </div>
+        ) : validated ? (
+          <div className="mt-3 border-t border-border pt-3">
+            <p className="text-sm font-medium">{FIXTURE_STATUS_LABEL.VALIDATED}</p>
+            <p className="mt-1 text-xs text-muted-foreground">La ligue a validé ce match. Il est définitif et ne se modifie plus ici.</p>
+          </div>
         ) : (
           <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+            {placed ? (
+              <Button variant="outline" size="sm" disabled={busy} className="border-success/40 text-success hover:bg-success/10" onClick={onSubmit}>
+                <Check className="size-3.5" />
+                Marquer saisi dans FBI
+              </Button>
+            ) : null}
             <div className="grid grid-cols-2 gap-2">
               <VenueSelect
                 aria-label="Gymnase"
