@@ -138,8 +138,22 @@ export const routes: RouteObject[] = [
             lazy: async () => ({ Component: (await import("@/features/planning/PlanningPage")).PlanningPage }),
           },
           {
+            // RMM-1 PR2 — « deux espaces ». `/matchs` est un LAYOUT (garde socle +
+            // navigation) ; ses deux enfants sont deux ROUTES lazy : la boucle hebdo
+            // (index) et la Configuration rare, qui ne charge donc pas avec la boucle.
+            // Les filets (errorElement, HydrateFallback) du parent couvrent les deux.
             path: "/matchs",
-            lazy: async () => ({ Component: (await import("@/features/matches/MatchesPage")).MatchesPage }),
+            lazy: async () => ({ Component: (await import("@/features/matches/MatchesLayout")).MatchesLayout }),
+            children: [
+              {
+                index: true,
+                lazy: async () => ({ Component: (await import("@/features/matches/MatchesPage")).MatchesPage }),
+              },
+              {
+                path: "configuration",
+                lazy: async () => ({ Component: (await import("@/features/matches/ConfigurationPage")).ConfigurationPage }),
+              },
+            ],
           },
           {
             path: "/wizard",

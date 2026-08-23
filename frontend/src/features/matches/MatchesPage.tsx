@@ -1,25 +1,19 @@
-import { CalendarRange, ChevronLeft, ChevronRight, DoorOpen, Link2, Lock, Plus, Repeat, Upload, Wand2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Upload, Wand2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { FeedbackButton } from "@/features/feedback/FeedbackButton";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
-import { Modal } from "@/shared/components/ui/modal";
-import { Select } from "@/shared/components/ui/select";
 import { Spinner } from "@/shared/components/ui/spinner";
 
 import type { Category, Coach, Fixture, Team, Venue } from "./api";
 import { AwayList } from "./AwayList";
 import { ConflictRadar } from "./ConflictRadar";
-import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { FixtureFormDialog } from "./FixtureFormDialog";
-import { buildTypicalWeekend } from "./lib/typicalWeekend";
-import { TypicalWeekendGrid } from "./TypicalWeekendGrid";
 import { ImportFbiDialog } from "./ImportFbiDialog";
-import { HabitsLinksDialog } from "./HabitsLinksDialog";
 import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
+import { placementToastMessage } from "./lib/placementToast";
 import { buildWeekendGrid, isPlacedOnGrid, listWeekends, weekendKeyOf, weekendLabel } from "./lib/weekendGrid";
-import { MatchWindowsEditor } from "./MatchWindowsEditor";
 import { PlacementPanel } from "./PlacementPanel";
 import { useCategories, useCoaches, useCompetitions, useConflicts, useDeleteFixture, useFixtures, useLeagueWindows, useLockFixture, useMoveFixture, usePlaceFixture, usePlaceMatches, usePriorityTiers, useReopenFixture, useSubmitFixture, useSwapFixtures, useTeamMatchHabits, useTeams, useUnlockFixture, useUnplaceFixture, useVenueMatchWindows, useVenues, useVenueUnavailabilities } from "./queries";
 import { toast } from "@/shared/stores/toastStore";
@@ -27,14 +21,12 @@ import { useCredits } from "@/shared/credits/useCredits";
 import { useMatchesStore } from "./store";
 import { UnplacedList } from "./UnplacedList";
 import { WeekendGrid } from "./WeekendGrid";
-import { useSocleValidated } from "@/shared/lib/socle";
 
 function byId<T extends { id: string }>(rows: T[] | undefined): Map<string, T> {
   return new Map((rows ?? []).map((row) => [row.id, row]));
 }
 
 export function MatchesPage() {
-  const socleValidated = useSocleValidated();
   // §4bis pt 2 — le placement de matchs consomme 1 crédit : solde sur le bouton,
   // désactivé à 0 (Découverte bridée). Si la requête part quand même, le 403
   // serveur remonte via `usePlaceMatches`.onError (errorMessage → toast).
@@ -65,17 +57,8 @@ export function MatchesPage() {
   const reopenFixture = useReopenFixture();
   // P1-4 PR E1 — fixture whose identity fields are being edited (dialog).
   const [editFixture, setEditFixture] = useState<Fixture | null>(null);
-  // P1-4 PR E2 — grid view: dated weekends, or the date-less « week-end type ».
-  const [typicalView, setTypicalView] = useState(false);
   // Reasons of the LAST auto-placement (non-persisted — PR E grades them).
   const [unplacedReasons, setUnplacedReasons] = useState<Map<string, string>>(new Map());
-  // Second entry point of the match-access editor (founder 2026-08-03: wizard
-  // for onboarding, HERE when working the matches) — local UI state only.
-  const [accessDialogOpen, setAccessDialogOpen] = useState(false);
-  const [accessVenueId, setAccessVenueId] = useState("");
-  const [habitsDialogOpen, setHabitsDialogOpen] = useState(false);
-  // P1-4 PR F — the FFBB pairing dialog (fetches on open only).
-  const [ffbbDialogOpen, setFfbbDialogOpen] = useState(false);
 
   const {
     selectedWeekend,
@@ -180,71 +163,37 @@ export function MatchesPage() {
     );
   }
 
-  // Matches are locked until the season's plan points at a version (cockpit
-  // state 2) — the same condition the server's SocleGuard enforces on writes.
-  if (!socleValidated) {
-    return (
-      <div className="mx-auto max-w-md py-16 text-center">
-        <Lock className="mx-auto mb-3 size-8 text-accent" />
-        <h1 className="mb-1 text-lg font-semibold">Matchs verrouillés</h1>
-        <p className="text-sm text-muted-foreground">Validez d'abord votre planning principal (accueil → Ouvrir) pour débloquer les matchs.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="border-l-[3px] border-accent pl-3 text-lg font-semibold">Matchs</h1>
-        <div className="flex gap-2">
-          {/* P5-6 — porte contextuelle (pas de scheduleId sur cet écran). */}
-          <FeedbackButton screen="/matchs" />
-          <Button
-            size="sm"
-            disabled={placeMatches.isPending || placeCreditsBlocked}
-            onClick={() =>
-              placeMatches.mutate(undefined, {
-                onSuccess: (result) => {
-                  setUnplacedReasons(new Map(result.unplaced.map((u) => [u.matchId, u.message])));
-                  toast.success(
-                    `${result.placed} match${result.placed > 1 ? "s" : ""} placé${result.placed > 1 ? "s" : ""}` +
-                      (result.unplaced.length > 0 ? ` · ${result.unplaced.length} non plaçable${result.unplaced.length > 1 ? "s" : ""}` : ""),
-                  );
-                },
-              })
-            }
-          >
-            <Wand2 className="size-4" />
-            {placeMatches.isPending ? "Placement…" : `Placer automatiquement${placeCreditSuffix}`}
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setHabitsDialogOpen(true)}>
-            <Repeat className="size-4" />
-            Habitudes & passerelles
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setAccessVenueId(venues.data?.[0]?.id ?? "");
-              setAccessDialogOpen(true);
-            }}
-          >
-            <DoorOpen className="size-4" />
-            Accès match
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setFfbbDialogOpen(true)}>
-            <Link2 className="size-4" />
-            Engagements FFBB
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
-            <Upload className="size-4" />
-            Importer FBI
-          </Button>
-          <Button size="sm" onClick={() => setFixtureFormOpen(true)}>
-            <Plus className="size-4" />
-            Nouveau match
-          </Button>
-        </div>
+      {/* RMM-1 PR2 — la barre RÉDUITE de la boucle : les 3 actions rares sont
+          parties en Configuration, l'image A/B aussi (fin du toggle). Ne reste
+          que le geste hebdomadaire. `flex-wrap` — §6bis gênant (barre sans wrap). */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {/* P5-6 — porte contextuelle (pas de scheduleId sur cet écran). */}
+        <FeedbackButton screen="/matchs" />
+        <Button
+          size="sm"
+          disabled={placeMatches.isPending || placeCreditsBlocked}
+          onClick={() =>
+            placeMatches.mutate(undefined, {
+              onSuccess: (result) => {
+                setUnplacedReasons(new Map(result.unplaced.map((u) => [u.matchId, u.message])));
+                toast.success(placementToastMessage(result));
+              },
+            })
+          }
+        >
+          <Wand2 className="size-4" />
+          {placeMatches.isPending ? "Placement…" : `Placer automatiquement${placeCreditSuffix}`}
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
+          <Upload className="size-4" />
+          Importer FBI
+        </Button>
+        <Button size="sm" onClick={() => setFixtureFormOpen(true)}>
+          <Plus className="size-4" />
+          Nouveau match
+        </Button>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
@@ -309,29 +258,19 @@ export function MatchesPage() {
         </div>
 
         <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-2">
-            {typicalView ? (
-              <span className="text-sm font-medium">Le gabarit idéal — les habitudes de toutes les équipes, sans dates</span>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" disabled={weekendIndex <= 0} onClick={() => setSelectedWeekend(weekends[weekendIndex - 1] ?? null)} aria-label="Week-end précédent">
-                  <ChevronLeft className="size-4" />
-                </Button>
-                <span className="text-sm font-medium">{null === activeWeekend ? "Aucun match" : weekendLabel(activeWeekend)}</span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={weekendIndex < 0 || weekendIndex >= weekends.length - 1}
-                  onClick={() => setSelectedWeekend(weekends[weekendIndex + 1] ?? null)}
-                  aria-label="Week-end suivant"
-                >
-                  <ChevronRight className="size-4" />
-                </Button>
-              </div>
-            )}
-            <Button variant="outline" size="sm" aria-pressed={typicalView} onClick={() => setTypicalView(!typicalView)}>
-              <CalendarRange className="size-4" />
-              {typicalView ? "Week-ends" : "Week-end type"}
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" disabled={weekendIndex <= 0} onClick={() => setSelectedWeekend(weekends[weekendIndex - 1] ?? null)} aria-label="Week-end précédent">
+              <ChevronLeft className="size-4" />
+            </Button>
+            <span className="text-sm font-medium">{null === activeWeekend ? "Aucun match" : weekendLabel(activeWeekend)}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={weekendIndex < 0 || weekendIndex >= weekends.length - 1}
+              onClick={() => setSelectedWeekend(weekends[weekendIndex + 1] ?? null)}
+              aria-label="Week-end suivant"
+            >
+              <ChevronRight className="size-4" />
             </Button>
           </div>
           {null !== swapSource ? (
@@ -345,21 +284,15 @@ export function MatchesPage() {
             </p>
           ) : null}
           <div className="h-[32rem]">
-            {typicalView ? (
-              <TypicalWeekendGrid model={buildTypicalWeekend(habitsQuery.data ?? [])} venues={venuesMap} teams={teamsMap} />
-            ) : (
-              <WeekendGrid model={grid} onSelectFixture={onGridSelect} selectedFixtureId={swapSourceId ?? selectedFixtureId} />
-            )}
+            <WeekendGrid model={grid} onSelectFixture={onGridSelect} selectedFixtureId={swapSourceId ?? selectedFixtureId} />
           </div>
-          {typicalView ? null : (
-            <AwayList
-              fixtures={weekendFixtures}
-              teams={teamsMap}
-              habits={habitsQuery.data ?? []}
-              onEdit={setEditFixture}
-              onDelete={(fixture) => deleteFixture.mutate(fixture.id)}
-            />
-          )}
+          <AwayList
+            fixtures={weekendFixtures}
+            teams={teamsMap}
+            habits={habitsQuery.data ?? []}
+            onEdit={setEditFixture}
+            onDelete={(fixture) => deleteFixture.mutate(fixture.id)}
+          />
         </div>
       </div>
 
@@ -368,38 +301,6 @@ export function MatchesPage() {
         <FixtureFormDialog teams={teams.data ?? []} tiers={priorityTiers.data ?? []} competitions={competitions.data ?? []} fixture={editFixture} onClose={() => setEditFixture(null)} />
       ) : null}
       {importDialogOpen ? <ImportFbiDialog teams={teams.data ?? []} tiers={priorityTiers.data ?? []} onClose={() => setImportDialogOpen(false)} /> : null}
-      {ffbbDialogOpen ? <FfbbEngagementsDialog teams={teams.data ?? []} tiers={priorityTiers.data ?? []} onClose={() => setFfbbDialogOpen(false)} /> : null}
-      {habitsDialogOpen ? (
-        <HabitsLinksDialog teams={teams.data ?? []} tiers={priorityTiers.data ?? []} venues={venues.data ?? []} fixtures={allFixtures} onClose={() => setHabitsDialogOpen(false)} />
-      ) : null}
-      {accessDialogOpen ? (
-        <Modal
-          label="Accès match"
-          title="Accès match des gymnases"
-          onClose={() => setAccessDialogOpen(false)}
-          size="lg"
-          footer={
-            <Button variant="outline" size="sm" onClick={() => setAccessDialogOpen(false)}>
-              Fermer
-            </Button>
-          }
-        >
-          <div className="flex flex-col gap-3">
-            <p className="text-xs text-muted-foreground">
-              Les créneaux accordés les jours de match — un gymnase sans fenêtre n'accueille pas de
-              matchs. Même éditeur que l'étape Gymnases du wizard.
-            </p>
-            <Select aria-label="Gymnase des accès match" value={accessVenueId} onChange={(e) => setAccessVenueId(e.target.value)}>
-              {(venues.data ?? []).map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                </option>
-              ))}
-            </Select>
-            {"" !== accessVenueId ? <MatchWindowsEditor venueId={accessVenueId} /> : null}
-          </div>
-        </Modal>
-      ) : null}
     </div>
   );
 }

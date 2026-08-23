@@ -153,8 +153,7 @@ describe("MatchesPage (integration)", () => {
     expect(placeFixture).toHaveBeenCalledWith(expect.objectContaining({ id: "fx-unplaced" }), { venueId: "venue-1", kickoffTime: "15:00" });
   });
 
-  it("shows the away band with the opponent venue and switches to the week-end type view (P1-4 PR E2)", async () => {
-    const user = userEvent.setup();
+  it("shows the away band with the opponent venue (P1-4 PR E2)", async () => {
     renderWithProviders(<MatchesPage />);
 
     // Away band of the active weekend — the away match is visible at last.
@@ -162,13 +161,24 @@ describe("MatchesPage (integration)", () => {
 
     // The graded diagnostic groups by severity (MAIN coach clash = group 3).
     expect(await screen.findByText("Coach principal en double")).toBeInTheDocument();
+  });
 
-    // Toggle to the date-less template view (no habit declared → empty hint).
-    await user.click(screen.getByRole("button", { name: "Week-end type" }));
-    expect(screen.getByText(/Aucune habitude déclarée/)).toBeInTheDocument();
-    expect(screen.queryByText(/à Grenoble/)).not.toBeInTheDocument(); // the away band is a dated-view thing
-    await user.click(screen.getByRole("button", { name: "Week-ends" }));
-    expect(await screen.findByText(/à Grenoble \(Halle Clemenceau\)/)).toBeInTheDocument();
+  // ── RMM-1 PR2 — la boucle hebdo perd les actions rares ET le toggle A/B ────────────
+  it("la barre de la boucle se réduit : ni actions rares, ni toggle « Week-end type »", async () => {
+    renderWithProviders(<MatchesPage />);
+    await screen.findByRole("button", { name: /vs Voisins/ });
+
+    // Les 3 actions rares sont parties en Configuration.
+    expect(screen.queryByRole("button", { name: "Habitudes & passerelles" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Accès match" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Engagements FFBB" })).not.toBeInTheDocument();
+    // L'image A/B est un écran de plein droit (Configuration), plus un toggle.
+    expect(screen.queryByRole("button", { name: /Week-end type/ })).not.toBeInTheDocument();
+
+    // La barre réduite reste : placer auto · importer FBI · nouveau match.
+    expect(screen.getByRole("button", { name: /Placer automatiquement/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Importer FBI/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Nouveau match/ })).toBeInTheDocument();
   });
 
   it("clicking a placed grid cell opens the manual-loop panel (P1-4 PR E1)", async () => {

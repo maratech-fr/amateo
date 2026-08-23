@@ -84,6 +84,18 @@ describe("router — les filets du découpage", () => {
       expect(byPath.get(path)?.lazy, `${path} doit rester lazy`).toBeDefined();
     }
   });
+
+  // RMM-1 PR2 — /matchs est désormais un LAYOUT (garde socle + nav) avec deux espaces
+  // enfants : la boucle hebdo (index) et la Configuration. Les deux sont lazy (la
+  // Configuration rare ne charge pas avec la boucle) et vivent SOUS les filets.
+  it("le layout /matchs porte deux espaces lazy (boucle en index + configuration)", () => {
+    const matches = collect(root).find((r) => "/matchs" === r.path);
+    expect(matches?.lazy, "le layout /matchs doit être lazy").toBeDefined();
+    const index = matches?.children?.find((r) => true === r.index);
+    const config = matches?.children?.find((r) => "configuration" === r.path);
+    expect(index?.lazy, "la boucle hebdo (index) doit être lazy").toBeDefined();
+    expect(config?.lazy, "la Configuration (/matchs/configuration) doit être lazy").toBeDefined();
+  });
 });
 
 type Route = (typeof routes)[number];
