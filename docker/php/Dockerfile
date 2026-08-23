@@ -37,7 +37,22 @@ RUN apt-get update \
         zip \
     # P4-89 — phpredis via PECL (miroir pecl.php.net), pas via codeload GitHub :
     # trois jobs CI tués le 2026-08-12 par un 503 GitHub sur cette couche.
-    && pecl install redis-6.3.0 \
+    #
+    # P4-124 — et le RETRY que P4-89 n'avait pas : changer de source n'avait pas traité le
+    # mode d'échec, seulement déplacé (le 2026-08-22, un téléchargement TRONQUÉ — 95 714 octets
+    # sur 399 284 — a tué la CI de la même façon que les 503 de 2026-08-12). Trois essais,
+    # back-off 10 s/20 s, et le cache de téléchargement PEAR est PURGÉ avant chaque essai :
+    # sans cette purge, le .tgz tronqué du 1er essai fait échouer le 2e sur « unable to
+    # unpack » alors que le réseau, lui, est revenu. PAS de `--force` : il masquerait un
+    # échec au lieu de le rejouer. Si les trois essais échouent, le build échoue FRANCHEMENT
+    # — c'est `docker-php-ext-enable` qui reste le contrôle d'intégrité final (pas de .so,
+    # pas d'image). Prouvé en cassant volontairement le téléchargement (voir la PR P4-124).
+    && for attempt in 1 2 3; do \
+         rm -rf /tmp/pear/download; \
+         if pecl install redis-6.3.0; then break; fi; \
+         if [ "$attempt" = 3 ]; then echo "pecl install redis: échec après 3 essais" >&2; exit 1; fi; \
+         sleep $((attempt * 10)); \
+       done \
     && docker-php-ext-enable redis \
     && echo "memory_limit = 512M" > /usr/local/etc/php/conf.d/zz-memory.ini \
     && echo "max_execution_time = 0" >> /usr/local/etc/php/conf.d/zz-memory.ini \
