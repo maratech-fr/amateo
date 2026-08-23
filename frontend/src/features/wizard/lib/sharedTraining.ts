@@ -122,3 +122,28 @@ export function splitByLinks(
 
   return { near, far };
 }
+
+/** Minuscule + accents retirés, pour une recherche insensible à la CASSE ET aux ACCENTS. */
+function normalizeForSearch(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+}
+
+/**
+ * Filtre les candidats de la mutualisation par une requête texte (insensible casse+accents).
+ * Deux garde-fous d'ergonomie, jamais une permission (c'est de l'affichage) :
+ *  - une requête VIDE (ou blanche) ne filtre rien — tous les candidats reviennent ;
+ *  - une équipe COCHÉE est EXEMPTÉE du filtre — on ne perd jamais une sélection de vue, même quand
+ *    son nom ne correspond pas à la requête (exigence fondateur).
+ * L'ORDRE des candidats est préservé.
+ */
+export function filterCandidates(candidates: Team[], query: string, checkedIds: ReadonlySet<string>): Team[] {
+  const needle = normalizeForSearch(query.trim());
+  if ("" === needle) {
+    return candidates;
+  }
+
+  return candidates.filter((t) => checkedIds.has(t.id) || normalizeForSearch(t.name).includes(needle));
+}

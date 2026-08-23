@@ -4,6 +4,7 @@ import type { SharedTrainingGroup, Team, TeamPeriodOverride } from "../api";
 import {
   alreadyGroupedTeamIds,
   effectiveSessionsPerWeek,
+  filterCandidates,
   groupContainingTeam,
   maxCommonSessions,
   sharedGroupLabel,
@@ -140,5 +141,44 @@ describe("splitByLinks — a DISPLAY split « liées » (bridged to the anchor) 
     const { near, far } = splitByLinks([linked, other], anchor, new Set(["a", "e"]), new Set());
     expect(near.map((t) => t.id)).toContain("e");
     expect(far.map((t) => t.id)).not.toContain("e");
+  });
+});
+
+describe("filterCandidates — recherche texte insensible casse+accents, coché exempté", () => {
+  const teams = [
+    team({ id: "t1", name: "U15F2" }),
+    team({ id: "t2", name: "U15M1" }),
+    team({ id: "t3", name: "SM1" }),
+    team({ id: "t4", name: "Séniors" }),
+  ];
+
+  it("requête vide (ou blanche) ne filtre rien — tous les candidats reviennent", () => {
+    expect(filterCandidates(teams, "", new Set()).map((t) => t.id)).toEqual(["t1", "t2", "t3", "t4"]);
+    expect(filterCandidates(teams, "   ", new Set()).map((t) => t.id)).toEqual(["t1", "t2", "t3", "t4"]);
+  });
+
+  it("garde les correspondances, masque le reste", () => {
+    const ids = filterCandidates(teams, "U15F2", new Set()).map((t) => t.id);
+    expect(ids).toEqual(["t1"]);
+  });
+
+  it("est insensible à la casse", () => {
+    expect(filterCandidates(teams, "sm1", new Set()).map((t) => t.id)).toEqual(["t3"]);
+  });
+
+  it("est insensible aux accents (dans la requête ET dans le nom)", () => {
+    expect(filterCandidates(teams, "seniors", new Set()).map((t) => t.id)).toEqual(["t4"]);
+    expect(filterCandidates(teams, "sénior", new Set()).map((t) => t.id)).toEqual(["t4"]);
+  });
+
+  it("une équipe COCHÉE survit au filtre même si son nom ne correspond pas", () => {
+    // On cherche « U15 » : SM1 ne correspond pas, mais elle est cochée → elle reste.
+    const ids = filterCandidates(teams, "U15", new Set(["t3"])).map((t) => t.id);
+    expect(ids).toEqual(["t1", "t2", "t3"]);
+  });
+
+  it("préserve l'ordre des candidats", () => {
+    const ids = filterCandidates(teams, "U15", new Set()).map((t) => t.id);
+    expect(ids).toEqual(["t1", "t2"]);
   });
 });

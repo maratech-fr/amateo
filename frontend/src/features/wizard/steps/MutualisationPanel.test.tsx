@@ -317,4 +317,104 @@ describe("MutualisationPanel — ouvert depuis une équipe (P2-45 : initialTeamI
     expect(screen.queryByRole("button", { name: "Gérer les passerelles" })).toBeNull();
     // Falsification : sans la prop, le bouton EST là (cf. l'état vide plus haut).
   });
+
+  it("l'ANCRE (initialTeamId) n'est pas décochable : case cochée + disabled + raison en texte", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MutualisationPanel teams={TEAMS} tiers={TIERS} schedulePlanId={null} initialTeamId="t1" />);
+
+    const anchor = screen.getByRole("checkbox", { name: "SM1" });
+    expect(anchor).toBeChecked();
+    expect(anchor).toBeDisabled();
+    // Un clic sur une case disabled est inerte : elle reste cochée.
+    await user.click(anchor);
+    expect(anchor).toBeChecked();
+    // La raison est DITE (pas un title de survol).
+    expect(screen.getByText(/retirez-la en supprimant le groupe/)).toBeInTheDocument();
+  });
+
+  it("une équipe NON-ancre reste décochable normalement", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MutualisationPanel teams={TEAMS} tiers={TIERS} schedulePlanId={null} initialTeamId="t1" />);
+
+    await user.click(screen.getByRole("checkbox", { name: "SM2" }));
+    expect(screen.getByRole("checkbox", { name: "SM2" })).toBeChecked();
+    await user.click(screen.getByRole("checkbox", { name: "SM2" }));
+    expect(screen.getByRole("checkbox", { name: "SM2" })).not.toBeChecked();
+  });
+});
+
+describe("MutualisationPanel — recherche d'équipes (P2-45 suite)", () => {
+  const search = () => screen.getByRole("searchbox", { name: "Rechercher une équipe" });
+
+  it("filtre la liste : la correspondante reste, la non-correspondante disparaît", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.type(search(), "SF1");
+    expect(screen.getByRole("checkbox", { name: "SF1" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "SM1" })).toBeNull();
+  });
+
+  it("est insensible à la casse", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.type(search(), "sf1");
+    expect(screen.getByRole("checkbox", { name: "SF1" })).toBeInTheDocument();
+  });
+
+  it("une équipe COCHÉE survit au filtre même si son nom ne correspond pas", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(screen.getByRole("checkbox", { name: "SM1" }));
+    await user.type(search(), "SF1");
+    // SM1 ne correspond pas à « SF1 » mais reste visible car cochée.
+    expect(screen.getByRole("checkbox", { name: "SM1" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "SF1" })).toBeInTheDocument();
+  });
+
+  it("une équipe VERROUILLÉE (déjà mutualisée) reste trouvable, avec sa raison", async () => {
+    const user = userEvent.setup();
+    sharedGroupsState.data = [group("g1", ["t3", "t4"])];
+    renderPanel();
+    await user.type(search(), "SF1");
+    const sf1 = screen.getByRole("checkbox", { name: "SF1" });
+    expect(sf1).toBeInTheDocument();
+    expect(sf1).toBeDisabled();
+    expect(screen.getByText(/déjà mutualisée avec U11/)).toBeInTheDocument();
+  });
+
+  it("résultat vide → message qui NOMME la requête (jamais une liste muette)", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.type(search(), "zzz");
+    expect(screen.getByText(/Aucune équipe ne correspond à « zzz »/)).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("une recherche active COURT-CIRCUITE le split liées/reste en liste plate", async () => {
+    const user = userEvent.setup();
+    // SM1↔U11 passerelées : cocher SM1 fait apparaître le bloc « Équipes liées » et replie SM2.
+    teamLinksState.data = [link("t1", "t4")];
+    renderPanel();
+    await user.click(screen.getByRole("checkbox", { name: "SM1" }));
+    expect(screen.getByRole("group", { name: "Équipes liées" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "SM2" })).toBeNull();
+
+    // Recherche « SM » : plus de bloc « liées », SM2 (qui était repliée) est directement visible.
+    await user.type(search(), "SM");
+    expect(screen.queryByRole("group", { name: "Équipes liées" })).toBeNull();
+    expect(screen.getByRole("checkbox", { name: "SM2" })).toBeInTheDocument();
+  });
+
+  it("annonce le compte de résultats en aria-live (accord singulier/pluriel)", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.type(search(), "SM");
+    expect(screen.getByText("2 équipes trouvées")).toBeInTheDocument();
+    await user.clear(search());
+    await user.type(search(), "SF1");
+    expect(screen.getByText("1 équipe trouvée")).toBeInTheDocument();
+    await user.clear(search());
+    await user.type(search(), "zzz");
+    expect(screen.getByText("Aucune équipe trouvée")).toBeInTheDocument();
+  });
 });
