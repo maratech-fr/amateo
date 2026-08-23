@@ -1,6 +1,6 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-08-23 (recalé par la livraison ALIGN-09 : « au moins une séance tel jour » passe 🟡 → ✅ — mode wizard, gate bloquant, sémantique « l'un de ces jours » vérifiée au code (`constraints.py:1783-1789`, une somme sur l'union par équipe). `forcedDays` était déjà prouvé décisif par le test sémantique CI ; la clé héritée #120 est migrée (contraintes vives ET snapshots))
+Last verified @ 2026-08-24 (recalé ENG-32 : le monolithe `constraints.py` est devenu le paquet `constraints/` — les références de ce fichier pointent désormais fichier+fonction, stables au refactor. Vérification précédente toujours valable : recalé par la livraison ALIGN-09 : « au moins une séance tel jour » passe 🟡 → ✅ — mode wizard, gate bloquant, sémantique « l'un de ces jours » vérifiée au code (`constraints/targeting.py`, `add_time_window_constraints` — une somme sur l'union par équipe). `forcedDays` était déjà prouvé décisif par le test sémantique CI ; la clé héritée #120 est migrée (contraintes vives ET snapshots))
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels

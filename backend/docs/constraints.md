@@ -1,6 +1,6 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-08-22 (P4-120 — première vérification stampée de ce fichier, contre le code : tags système sondés présents dans `TeamTagService` (`EMB`, `PRE_REGION`, `LOISIR_JEUNE`, `HONNEUR`, `PROMOTION`, `MIXTE`) ✓ · retrait de `FACILITY_CAPACITY` (2026-08-08) déjà acté au §2.2 ✓ · `ConstraintValidationService` appelé par le SEUL `ValidateConstraintsController` — la note du §6 reste vraie ✓ · suppression de `config.coachId` (SEC-13) conforme ✓. **Quatre faits corrigés** : l'exemple du scope `FACILITY` décrivait encore la famille retirée « N équipes simultanées max » — en contradiction avec le §2.2 du MÊME fichier ; l'intersection de tags dite « logique future » est LIVRÉE depuis le 2026-08-15 (`targetTags`/`excludeTags`, P2-29) ; les implicites dites « codées en dur, non configurables » alors que les règles de bien-être se règlent via `implicitRules` et que `maxConsecutiveDays` naît ÉTEINTE ; le tableau §5 recalé en conséquence)
+Last verified @ 2026-08-24 (recalé ENG-32 : le monolithe `constraints.py` est devenu le paquet `constraints/` — les références de ce fichier pointent désormais fichier+fonction, stables au refactor. Vérification précédente toujours valable : P4-120 — première vérification stampée de ce fichier, contre le code : tags système sondés présents dans `TeamTagService` (`EMB`, `PRE_REGION`, `LOISIR_JEUNE`, `HONNEUR`, `PROMOTION`, `MIXTE`) ✓ · retrait de `FACILITY_CAPACITY` (2026-08-08) déjà acté au §2.2 ✓ · `ConstraintValidationService` appelé par le SEUL `ValidateConstraintsController` — la note du §6 reste vraie ✓ · suppression de `config.coachId` (SEC-13) conforme ✓. **Quatre faits corrigés** : l'exemple du scope `FACILITY` décrivait encore la famille retirée « N équipes simultanées max » — en contradiction avec le §2.2 du MÊME fichier ; l'intersection de tags dite « logique future » est LIVRÉE depuis le 2026-08-15 (`targetTags`/`excludeTags`, P2-29) ; les implicites dites « codées en dur, non configurables » alors que les règles de bien-être se règlent via `implicitRules` et que `maxConsecutiveDays` naît ÉTEINTE ; le tableau §5 recalé en conséquence)
 
 > ClubScheduler — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
@@ -91,7 +91,7 @@ Déclare les jours où un entraîneur est indisponible (ou, à l'inverse, les se
 
 ⚠ **La cible est le SCOPE, pas le config** (SEC-13, 2026-08-07). `scopeTargetId` porte le
 coach ; `config.coachId` a été supprimé — il valait exactement la même valeur (6 lignes sur 6,
-mesuré) et le solveur n'a jamais lu que le scope (`constraints.py` : `scope_target_id`). Deux
+mesuré) et le solveur n'a jamais lu que le scope (`constraints/parsing.py` : `scope_target_id`). Deux
 endroits pour une même vérité finissent par diverger. `targetTag` reste une cible légitime :
 il désigne un GROUPE, ce que le scope ne sait pas exprimer.
 

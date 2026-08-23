@@ -1,6 +1,6 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-08-22 (recalé au bump de contrat **2.13 → 2.14** (lot PASSERELLES PR-1 : bloc optionnel `teamLinks`, ACCEPTÉ mais non consommé) — `engine/CONTRACT_VERSION` et les deux marqueurs « version active » ci-dessous portés à 2.14, la liste des bumps complétée. Précédemment recalé par la livraison d'**AUD-ENG-33** — le budget propre du rail verdict. ⚠ Une affirmation FAUSSE corrigée au passage, sans rapport avec ce lot : le §`/place-matches` disait encore « le sémaphore global (`_solve_semaphore`) borne quand même le CPU », vrai avant AUD-ENG-30, faux depuis — c'est `_placement_semaphore` qui borne ce rail. Les numéros de ligne du handler ont été re-vérifiés (`main.py:766`, le doc en citait un périmé) et le tableau des trois budgets de concurrence est neuf. Non re-vérifié cette passe : le reste de l'inventaire, qui n'a pas été confronté ligne à ligne)
+Last verified @ 2026-08-24 (recalé ENG-32 : le monolithe `constraints.py` est devenu le paquet `constraints/` — les références de ce fichier pointent désormais fichier+fonction, stables au refactor. Vérification précédente toujours valable : recalé au bump de contrat **2.13 → 2.14** (lot PASSERELLES PR-1 : bloc optionnel `teamLinks`, ACCEPTÉ mais non consommé) — `engine/CONTRACT_VERSION` et les deux marqueurs « version active » ci-dessous portés à 2.14, la liste des bumps complétée. Précédemment recalé par la livraison d'**AUD-ENG-33** — le budget propre du rail verdict. ⚠ Une affirmation FAUSSE corrigée au passage, sans rapport avec ce lot : le §`/place-matches` disait encore « le sémaphore global (`_solve_semaphore`) borne quand même le CPU », vrai avant AUD-ENG-30, faux depuis — c'est `_placement_semaphore` qui borne ce rail. Les numéros de ligne du handler ont été re-vérifiés (`main.py:766`, le doc en citait un périmé) et le tableau des trois budgets de concurrence est neuf. Non re-vérifié cette passe : le reste de l'inventaire, qui n'a pas été confronté ligne à ligne)
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
 > Source de vérité : `engine/app/main.py`, `engine/app/schemas/input_schema.py`, `engine/app/schemas/output_schema.py`, `engine/app/solver/{model,constraints,objective,result_builder}.py`, `engine/app/core/config.py`.
@@ -21,7 +21,7 @@ Last verified @ 2026-08-22 (recalé au bump de contrat **2.13 → 2.14** (lot PA
   - `app/schemas/input_schema.py` — `ScheduleInputSchema`.
   - `app/schemas/output_schema.py` — `ScheduleOutputSchema`.
   - `app/solver/model.py` — `ScheduleCpModel` (variables booléennes `x[team, venue, day, slot]`).
-  - `app/solver/constraints.py` — contraintes Level-1 (hard) + `parse_v2_constraints`.
+  - `app/solver/constraints/` — **paquet** (ENG-32, 2026-08-24 — l'ancien monolithe de 3 870 l. découpé par métier, surface d'import inchangée) : `parsing.py` (lecture du payload + règles implicites) · `structural.py` (overlap/capacité/verrous) · `wellness.py` (bien-être) · `targeting.py` (fenêtres/gymnases/mutualisation/passerelles) · `diagnostics.py` (explications post-solve) · `common.py` (types, constantes, normalisation) · `__init__.py` (façade de ré-export **+ l'orchestrateur `add_level_1_hard_constraints`** — il y vit par contrainte de COUTURE DE TEST : le test des règles implicites patche les poseurs via le namespace du paquet).
   - `app/solver/objective.py` — objectif Level-2 (poids fixes T24).
   - `app/solver/result_builder.py` — solution → `ScheduleOutputSchema` + diagnostics.
   - `app/solver/match_placement.py` — le SECOND problème (placement de matchs datés, ADR-0003).
@@ -257,7 +257,7 @@ Contrat **2.11** (le MÊME que `/generate` — un seul contrat pour les deux end
 - **DiagnosticSchema** : `id`, `type`, `severity`, `ruleKey` (règle implicite concernée, `implicit_rule_not_honored`), `teamId`, `coachId`, `venueId`, `dayOfWeek`, `startTime`, `durationMinutes`, `message`, `suggestions: list[str]`, `causes: list[DiagnosticCauseSchema]` (P4-99, renseigné UNIQUEMENT par `session_below_effective_min`), `openCandidates: int | None` (créneaux libres restés ouverts — même diagnostic), `createdAt`.
 - **DiagnosticCauseSchema** (contrat 2.8, P4-99) : `kind` (Literal fermé — `hard_lock`, `venue_forbidden`, `coach_unavailability`, `time_window`, `day_conflict`, `day_forbidden`, `forced_venue_elsewhere`), `constraintId: str | None`, `label: str | None`, `count: int`. MESURÉE à la pose des contraintes (jamais reconstituée après coup) via `model.candidate_closures` (par variable) + `model.lock_removed_candidates` (candidats sans variable retirés par un verrou).
   - Types valides — la liste FAIT foi, c'est un `Literal` fermé (`output_schema.py:62-75`, D-41 : un type hors énumération est refusé à la construction) : `coach_overload`, `conflict`, `constraint_not_honored`, `day_constraint_conflict`, `implicit_rule_not_honored`, `session_below_effective_min`, `shared_training_not_honored`, `soft_lock_moved`, `unplaced`, `unplaced_match`, `unused_slot`, `venue_minimum_unreachable`. `shared_training_not_honored` (P2-27, contrat 2.12) — `_diagnose_shared_trainings` : sur INFEASIBLE, cause CERTAINE nommée quand aucune fenêtre de gymnase n'a une capacité ≥ la taille du groupe (le groupe ne pourra JAMAIS partager de case) ; sur un solve abouti, défense en profondeur — le nombre RÉEL de séances communes dans les slots finaux, s'il diverge du `K` déclaré, est signalé (la contrainte étant dure, ce cas ne devrait pas survenir). ⚠ Cette ligne a dérivé jusqu'au 2026-08-15 : elle citait `coach_no_rest_day` (type mort, retiré au contrat 2.7) et omettait `implicit_rule_not_honored` et `unplaced_match`. Catalogue commenté (causes + action corrective) : `engine/docs/solver-errors.md`.
-  - **`constraint_not_honored`** (`_not_honored_warning`, `constraints.py`) : émis quand une contrainte saisie ne peut pas être honorée. **Deux producteurs** — (1) `parse_v2_constraints` au parse, en `WARNING`, quand la règle n'est pas traduisible en terme solver (sans équipe cible, dispo coach reçue en non-HARD, règle de gymnase écrasée) — audit P0.1, traçabilité UI↔engine ; (2) `diagnose_locked_slot_violations` après construction du modèle, en **INFO**, quand un verrou HARD a rendu la contrainte inatteignable (P2-9, cf. §2). Les deux rejoignent `diagnostics[]` via `main.py`. Cf. `docs/architecture/constraint-matrix.md` et `engine/docs/constraint-vocabulary.md`.
+  - **`constraint_not_honored`** (`_not_honored_warning`, `constraints/common.py`) : émis quand une contrainte saisie ne peut pas être honorée. **Deux producteurs** — (1) `parse_v2_constraints` au parse, en `WARNING`, quand la règle n'est pas traduisible en terme solver (sans équipe cible, dispo coach reçue en non-HARD, règle de gymnase écrasée) — audit P0.1, traçabilité UI↔engine ; (2) `diagnose_locked_slot_violations` après construction du modèle, en **INFO**, quand un verrou HARD a rendu la contrainte inatteignable (P2-9, cf. §2). Les deux rejoignent `diagnostics[]` via `main.py`. Cf. `docs/architecture/constraint-matrix.md` et `engine/docs/constraint-vocabulary.md`.
 
 ---
 
@@ -275,7 +275,7 @@ Contrat **2.11** (le MÊME que `/generate` — un seul contrat pour les deux end
 
 ### 4.2 Family & Scope
 
-- **`family`** : catégorie de règle. Valeurs reconnues (`_KNOWN_FAMILIES`, `constraints.py`) : `TIME`, `DAY`, `FACILITY`, `COACH_AVAILABILITY`. Types legacy reconnus (`_KNOWN_TYPES`) : `TEAM_COACH`, `COACH_PLAYER_UNAVAILABILITY`, `PRIORITY_TIER`. Une contrainte dont **ni** la famille **ni** le type n'est reconnu est loggée comme dérive de contrat.
+- **`family`** : catégorie de règle. Valeurs reconnues (`_KNOWN_FAMILIES`, `constraints/parsing.py`) : `TIME`, `DAY`, `FACILITY`, `COACH_AVAILABILITY`. Types legacy reconnus (`_KNOWN_TYPES`) : `TEAM_COACH`, `COACH_PLAYER_UNAVAILABILITY`, `PRIORITY_TIER`. Une contrainte dont **ni** la famille **ni** le type n'est reconnu est loggée comme dérive de contrat.
 - **`scope`** : cible de la règle. Valeur vue : `TEAM`. (D'autres scopes peuvent exister mais ne sont pas traités différemment dans le code lu.)
 - **`scopeTargetId`** : ID de la cible (team, coach, venue selon family/scope).
 
@@ -300,7 +300,7 @@ Contrat **2.11** (le MÊME que `/generate` — un seul contrat pour les deux end
 
 ### 4.4 Contraintes Hard Level-1 (`add_level_1_hard_constraints`)
 
-Familles de contraintes comptées dans `HardConstraintStats` (liste exhaustive : dataclass dans `app/solver/constraints.py`) :
+Familles de contraintes comptées dans `HardConstraintStats` (liste exhaustive : dataclass dans `app/solver/constraints/common.py`) :
 
 | # | Nom | Rôle |
 |---|-----|------|
