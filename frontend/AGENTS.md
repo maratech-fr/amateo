@@ -328,6 +328,12 @@ product rules — reuse them instead of rolling your own:
 - **`team-select`** — every team picker in the app (constraints, coaches, matches, FBI import)
   goes through it: optgroups by rank, same order as the Teams step. Reranking a team updates
   the order **everywhere**.
+- **`step-rail`** — the left step rail (`<nav className="shrink-0 md:w-44">`), extracted from the
+  wizard (RMM-2). Presentation **pure**: `done`/`locked` arrive **calculated** in the `steps`
+  array (it knows nothing of validation gates, guided mode, business locks, or the nav veil);
+  `onSelect` bubbles the click so the caller owns its effects. Accessible name follows WCAG 2.5.3
+  (it **contains** the visible label; a done step appends "— étape terminée"). Imports `Check`/`Lock`
+  itself, and deliberately **no `className` prop** (same rationale as `modal`).
 
 ### `shared/lib/readState.ts` — the anti-"credible emptiness" rule
 

@@ -1,5 +1,5 @@
 import { HTTPError } from "ky";
-import { AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronsDown, ChevronsUp, Lock, MessageSquare, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CalendarClock, ChevronsDown, ChevronsUp, MessageSquare, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useBlocker, useNavigate, useSearchParams } from "react-router";
 
@@ -16,6 +16,7 @@ import { listSchedules } from "@/features/planning/api";
 import { useSchedules } from "@/features/planning/queries";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { StepRail } from "@/shared/components/ui/step-rail";
 import { cn } from "@/shared/lib/utils";
 import { armNavTransition } from "@/shared/stores/navTransitionStore";
 
@@ -449,50 +450,25 @@ export function WizardPage() {
         onCancel={keepPeriod}
       />
       <div className="flex flex-col gap-6 md:flex-row">
-      {/* Left step navigation — collapsible (W8/N4) so any step (incl. génération) can go full-width */}
+      {/* Left step navigation — collapsible (W8/N4) so any step (incl. génération) can go full-width.
+          Le RAIL est la primitive partagée `step-rail` (RMM-2) : présentation pure. La logique de
+          verrouillage (guidé/génération bloquée — P4-58 b) et les coches « étape terminée » restent
+          calculées ICI (mêmes verdicts que les portes) et lui sont PASSÉES. Le voile de navigation
+          (lot C) reste dans le onSelect : le composant ne connaît pas le navTransitionStore. */}
       {navCollapsed ? null : (
-        <nav className="shrink-0 md:w-44">
-          <ol className="flex flex-col gap-1">
-            {WIZARD_STEPS.map((step, i) => {
-              const locked = (guided && i > maxIndex) || ("generate" === step.id && generateBlocked);
-              const done = true === stepDone[step.id];
-              return (
-                <li key={step.id}>
-                  <button
-                    type="button"
-                    disabled={locked}
-                    onClick={() => {
-                      // GESTE de navigation → arme le voile « changement de page » (lot C).
-                      armNavTransition();
-                      setStep(step.id);
-                    }}
-                    aria-current={step.id === stepId ? "step" : undefined}
-                    // WCAG 2.5.3 : le nom accessible CONTIENT le texte visible, l'état s'ajoute.
-                    aria-label={done ? `${step.label} — étape terminée` : undefined}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition",
-                      step.id === stepId ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/60",
-                      locked ? "cursor-not-allowed opacity-40 hover:bg-transparent" : "",
-                    )}
-                  >
-                    {/* P4-58 (b) — la pastille dit l'ÉTAT : ✓ = étape complète (même
-                        verdict que sa porte), numéro sinon. */}
-                    <span
-                      className={cn(
-                        "flex size-5 shrink-0 items-center justify-center rounded-full border text-xs",
-                        done ? "border-success text-success" : "border-border",
-                      )}
-                    >
-                      {done ? <Check className="size-3" aria-hidden="true" /> : i + 1}
-                    </span>
-                    <span className="flex-1">{step.label}</span>
-                    {locked ? <Lock className="size-3" /> : null}
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-        </nav>
+        <StepRail
+          steps={WIZARD_STEPS.map((step, i) => ({
+            ...step,
+            done: true === stepDone[step.id],
+            locked: (guided && i > maxIndex) || ("generate" === step.id && generateBlocked),
+          }))}
+          currentId={stepId}
+          onSelect={(id) => {
+            // GESTE de navigation → arme le voile « changement de page » (lot C).
+            armNavTransition();
+            setStep(id);
+          }}
+        />
       )}
 
       {/* Current step — fills the viewport height so the sticky footer sits at
