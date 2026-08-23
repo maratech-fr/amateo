@@ -7,7 +7,7 @@ import { renderWithProviders } from "@/test/utils";
 import type { ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team } from "./api";
 import { ImportFbiDialog } from "./ImportFbiDialog";
 
-const { analyzeFbiFixtures, importFbiFixtures } = vi.hoisted(() => ({
+const { analyzeFbiFixtures, importFbiFixtures, placeMatches } = vi.hoisted(() => ({
   analyzeFbiFixtures: vi.fn(() =>
     Promise.resolve({
       divisions: [
@@ -32,9 +32,15 @@ const { analyzeFbiFixtures, importFbiFixtures } = vi.hoisted(() => ({
       completeness: [],
     } satisfies ImportFbiResult as ImportFbiResult),
   ),
+  placeMatches: vi.fn(() => Promise.resolve({ placed: 22, skipped: 0, unplaced: [], diagnostics: [] })),
 }));
 
-vi.mock("./api", () => ({ analyzeFbiFixtures, importFbiFixtures }));
+vi.mock("./api", () => ({ analyzeFbiFixtures, importFbiFixtures, placeMatches }));
+
+// useCredits lit useMe : `club` mutable pour piloter le solde (bouton de placement
+// de fin d'import — grisé à 0 AVEC le solde, jamais masqué).
+const meState = vi.hoisted(() => ({ club: undefined as Record<string, unknown> | undefined }));
+vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: { club: meState.club } }) }));
 
 const teams: Team[] = [
   { id: "team-1", name: "SM1", sportCategoryId: "cat", level: null, gender: null, priorityTierId: 1, tierOrder: 0 },
@@ -53,6 +59,8 @@ const pickFile = async (user: ReturnType<typeof userEvent.setup>) => {
 beforeEach(() => {
   analyzeFbiFixtures.mockClear();
   importFbiFixtures.mockClear();
+  placeMatches.mockClear();
+  meState.club = undefined;
 });
 
 describe("ImportFbiDialog", () => {
@@ -206,5 +214,45 @@ describe("ImportFbiDialog", () => {
     await user.click(screen.getByRole("button", { name: "Importer" }));
 
     await waitFor(() => expect(screen.getByText(/PNM : 9\/22 journées — fichier partiel ou phase pas encore sortie/)).toBeInTheDocument());
+  });
+
+  // ── RMM-1 PR2 — le placement proposé en fin d'import (décision fondateur) ─────────
+  it("propose de placer les matchs importés AU rapport réussi — jamais avant, jamais sans clic", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await waitFor(() => expect(screen.getByLabelText("Équipe pour DF2")).toBeInTheDocument());
+    await user.selectOptions(screen.getByLabelText("Équipe pour DF2"), "team-2");
+
+    // Avant le rapport : aucun bouton de placement (l'offre naît du rapport réussi).
+    expect(screen.queryByRole("button", { name: /Placer les matchs importés/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Importer" }));
+    await waitFor(() => expect(screen.getByText(/22 créés · 1 mis à jour · 9 inchangés/)).toBeInTheDocument());
+
+    const place = screen.getByRole("button", { name: /Placer les matchs importés/ });
+    // FALSIFICATION — le rail n'est JAMAIS lancé tant que le bouton n'est pas cliqué.
+    expect(placeMatches).not.toHaveBeenCalled();
+
+    await user.click(place);
+    expect(placeMatches).toHaveBeenCalledOnce();
+  });
+
+  it("à 0 crédit, le bouton de placement est GRISÉ avec le solde visible (jamais masqué)", async () => {
+    meState.club = { entitlements: { planCode: "decouverte", planName: "Découverte", maxTeams: null, teamsUsed: 4, creditsMax: 10, creditsUsed: 10, canGenerate: false, canPlaceMatches: false, canExportPdf: false, seasonTransition: false } };
+    const user = userEvent.setup();
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await waitFor(() => expect(screen.getByLabelText("Équipe pour DF2")).toBeInTheDocument());
+    await user.selectOptions(screen.getByLabelText("Équipe pour DF2"), "team-2");
+    await user.click(screen.getByRole("button", { name: "Importer" }));
+    await waitFor(() => expect(screen.getByText(/22 créés/)).toBeInTheDocument());
+
+    const place = await screen.findByRole("button", { name: /Placer les matchs importés \(0 crédit\)/ });
+    expect(place).toBeDisabled();
+    await user.click(place);
+    expect(placeMatches).not.toHaveBeenCalled();
   });
 });

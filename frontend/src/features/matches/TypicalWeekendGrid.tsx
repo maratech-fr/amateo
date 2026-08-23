@@ -55,12 +55,18 @@ export function TypicalWeekendGrid({ model, venues, teams }: TypicalWeekendGridP
               );
             })}
 
-            {columns.map((column, i) => (
-              <div key={column.key} className="flex items-center justify-center gap-1 truncate border-b border-l border-border bg-card px-1 text-muted-foreground" style={{ gridColumn: 2 + i, gridRow: 2 }}>
-                {null !== (venues.get(column.venueId)?.color ?? null) ? <VenueSwatch color={venues.get(column.venueId)?.color ?? ""} /> : null}
-                <span className="truncate">{venues.get(column.venueId)?.name ?? "Gymnase ?"}</span>
-              </div>
-            ))}
+            {columns.map((column, i) => {
+              // §6bis (gênant) — l'en-tête de gymnase gagne le `title` de secours que
+              // sa jumelle datée (WeekendGrid) portait déjà : un nom tronqué reste
+              // lisible au survol, désormais que le gabarit est un écran de plein droit.
+              const venueName = venues.get(column.venueId)?.name ?? "Gymnase ?";
+              return (
+                <div key={column.key} className="flex items-center justify-center gap-1 truncate border-b border-l border-border bg-card px-1 text-muted-foreground" style={{ gridColumn: 2 + i, gridRow: 2 }} title={venueName}>
+                  {null !== (venues.get(column.venueId)?.color ?? null) ? <VenueSwatch color={venues.get(column.venueId)?.color ?? ""} /> : null}
+                  <span className="truncate">{venueName}</span>
+                </div>
+              );
+            })}
 
             {Array.from({ length: rows }, (_, i) => (
               <div key={`t-${i}`} className="border-r border-border bg-card px-1 text-right text-[10px] text-muted-foreground" style={{ gridColumn: 1, gridRow: 3 + i }}>
