@@ -53,7 +53,7 @@ frontend/
 │   │   ├── coach-wishes/        # #10 doléances: modal, campaign, PUBLIC page, radar badge
 │   │   ├── cockpit/             # / home: season-plan banner, month calendar, radar
 │   │   ├── legal/               # /confidentialite
-│   │   ├── matches/             # /matchs: weekend grid, conflict radar, FBI import
+│   │   ├── matches/             # /matchs (guided loop, 5 derived rail steps) + /matchs/configuration (rare setup)
 │   │   ├── planning/            # /planning work loop: WeekGrid, toolbar, exports
 │   │   ├── profile/             # /profile
 │   │   ├── season-transition/   # Season pivot banner + re-dating dialog
@@ -334,6 +334,9 @@ product rules — reuse them instead of rolling your own:
   `onSelect` bubbles the click so the caller owns its effects. Accessible name follows WCAG 2.5.3
   (it **contains** the visible label; a done step appends "— étape terminée"). Imports `Check`/`Lock`
   itself, and deliberately **no `className` prop** (same rationale as `modal`).
+  Second consumer since RMM-1 PR3: `features/matches` (`MatchesPage` + `lib/loopSteps.ts`) —
+  its `steps`/`done` are **recomputed from scratch on every render** (no persisted progression,
+  no locks), unlike the wizard's precomputed array. Don't assume the rail itself tracks anything.
 
 ### `shared/lib/readState.ts` — the anti-"credible emptiness" rule
 

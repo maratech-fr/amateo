@@ -145,15 +145,26 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
 
   await page.getByRole("link", { name: "Matchs" }).click();
   await expect(page.getByRole("heading", { name: "Matchs" })).toBeVisible();
+
+  // RMM-1 PR3 — l'écran est désormais une BOUCLE GUIDÉE : un rail de 5 vues (le
+  // même geste que le wizard). Le radar vit dans la vue « Litiges » ; la liste
+  // « à placer », le panneau et la grille dans « Domiciles posés ». On NAVIGUE
+  // donc explicitement (les boutons du rail portent le libellé de l'étape). Le
+  // radar reste un témoin : présent dans sa vue.
+  await page.getByRole("button", { name: /Litiges/ }).click();
   await expect(page.getByText(/^Diagnostic/)).toBeVisible();
 
-  // Manual entry (before the FBI import).
+  // Manual entry (« Nouveau match » est dans la barre du haut, dispo partout).
   await page.getByRole("button", { name: /Nouveau match/i }).click();
   await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeVisible();
   await page.getByLabel("Équipe").selectOption({ index: 0 });
   await page.getByLabel("Date").fill("2027-03-06"); // a Saturday
   await page.getByLabel("Adversaire").fill(opponent);
   await page.getByRole("button", { name: "Créer" }).click();
+
+  // La liste « à placer » + le panneau + la grille vivent dans la vue « Domiciles
+  // posés » (rail⇄vue). On l'ouvre avant de manipuler le placement.
+  await page.getByRole("button", { name: /Domiciles posés/ }).click();
 
   // The new home fixture shows in the to-do list; open its placement panel.
   // Names disambiguate the two buttons carrying the opponent: the to-do entry

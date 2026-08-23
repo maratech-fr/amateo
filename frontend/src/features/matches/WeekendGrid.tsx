@@ -120,6 +120,8 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null }
               <span className="truncate text-[10px] text-muted-foreground">
                 {cell.ghost ? `${cell.kickoffLabel} · fenêtre protégée` : `${cell.kickoffLabel} · ${cell.opponentLabel}`}
               </span>
+              {/* RMM-1 PR3 (L7) — n° de rencontre : repère discret, jamais une clé (fait #2 §4). */}
+              {null !== cell.externalRef ? <span className="text-[10px] tabular-nums text-muted-foreground/80">n° {cell.externalRef}</span> : null}
             </Tag>
           );
         })}

@@ -1,6 +1,6 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-08-21 (recalé — **§La passe de design ÉLARGIE aux décisions d'INTERACTION** (décision fondateur du jour) : la règle ne se déclenchait que sur l'apparence et bornait la passe aux écrans PUBLICS, deux limites falsifiées le jour même par le lot C — écran interne, défauts non visuels (rôle ARIA, absence d'échappatoire). Le garde-fou « le skill ne valide rien » est reformulé en « ne MESURE rien » : il ne rend ni ne calcule, mais il TRANCHE une décision contre son corpus de règles, ce que la passe du jour a démontré deux fois. Résultats des deux passes (PR #502 apparence, lot C interaction) consignés dans la section. Historique des passes : `git log -p --follow frontend/docs/frontend-strategy.md`.)
+Last verified @ 2026-08-24 (rotation `documentation-update` — versions et plafonds re-confrontés au code : `frontend/package.json` (`react` 19.2.8, `vite` 8.2.1, `typescript` 6.0.2, `vitest` 4.1.10, `@playwright/test` 1.62.1 — préfixes `^`/`~` cohérents avec le tableau) ; `vitest.config.ts:25,30` (`testTimeout: 15_000`, `slowTestThreshold: 3_000`) ; `src/test/setup.ts:28` (`asyncUtilTimeout: 5_000`) — les deux plafonds tiennent toujours. Historique des passes : `git log -p --follow frontend/docs/frontend-strategy.md`.)
 
 > **Statut : le rebuild est LIVRÉ.** Les formulations « pour le rebuild » ci-dessous sont
 > historiques ; le document reste la référence vivante des **versions de la stack**, des

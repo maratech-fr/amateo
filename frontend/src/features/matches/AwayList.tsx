@@ -49,7 +49,7 @@ export function AwayList({ fixtures, teams, habits, onEdit, onDelete }: AwayList
           // L'heure (et son badge « estimée ») portent les conflits de coach et sont en QUEUE de
           // ligne (§6bis B5) : on n'enroule plus jamais dans une troncature, et un `title` de
           // secours rend la ligne entière lisible dans la colonne étroite.
-          const awayLine = `${teamLabel} · ${frDate(fixture.matchDate)} · à ${fixture.opponentLabel}${null !== fixture.fbiVenueLabel ? ` (${fixture.fbiVenueLabel})` : ""}${null !== hour ? ` · ${hour}` : " · heure inconnue"}${estimated ? " · heure estimée" : ""}`;
+          const awayLine = `${teamLabel} · ${frDate(fixture.matchDate)} · à ${fixture.opponentLabel}${null !== fixture.fbiVenueLabel ? ` (${fixture.fbiVenueLabel})` : ""}${null !== hour ? ` · ${hour}` : " · heure inconnue"}${estimated ? " · heure estimée" : ""}${null !== fixture.externalRef ? ` · n° ${fixture.externalRef}` : ""}`;
           return (
             <li key={fixture.id} className="flex items-center justify-between gap-2 text-sm">
               <span className="min-w-0" title={awayLine}>
@@ -59,6 +59,8 @@ export function AwayList({ fixtures, teams, habits, onEdit, onDelete }: AwayList
                   · {frDate(fixture.matchDate)} · à {fixture.opponentLabel}
                   {null !== fixture.fbiVenueLabel ? ` (${fixture.fbiVenueLabel})` : ""}
                   {null !== hour ? ` · ${hour}` : " · heure inconnue"}
+                  {/* RMM-1 PR3 (L7) — n° de rencontre : repère discret, jamais une clé. */}
+                  {null !== fixture.externalRef ? <span className="tabular-nums"> · n° {fixture.externalRef}</span> : null}
                 </span>
                 {estimated ? <span className="ml-1 rounded bg-muted px-1 text-xs uppercase tracking-wide">heure estimée</span> : null}
               </span>

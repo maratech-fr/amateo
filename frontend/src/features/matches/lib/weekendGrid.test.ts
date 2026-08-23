@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Fixture, Team, Venue } from "../api";
-import { buildWeekendGrid, isPlacedOnGrid, listWeekends, weekendKeyOf } from "./weekendGrid";
+import { buildWeekendGrid, isPlacedOnGrid, listWeekends, weekendKeyOf, weekLabel } from "./weekendGrid";
 
 const fixture = (over: Partial<Fixture> = {}): Fixture => ({
   id: "fx-1",
@@ -135,5 +135,18 @@ describe("habit ghosts (P1-4 PR C)", () => {
     expect(ghost?.laneCount).toBe(2);
     expect(real?.laneCount).toBe(2);
     expect(ghost?.lane).not.toBe(real?.lane);
+  });
+
+  it("RMM-1 PR3 — la cellule PORTE le n° de rencontre (externalRef), null pour un ghost", () => {
+    const grid = buildWeekendGrid([fixture({ externalRef: "26" })], venues, teams, new Set(), [habit({ teamId: "team-ghost", kickoffTime: "16:00" })], "2026-10-03");
+    expect(grid.cells.find((c) => !c.ghost)?.externalRef).toBe("26");
+    expect(grid.cells.find((c) => c.ghost)?.externalRef).toBeNull();
+  });
+});
+
+describe("weekLabel — l'axe SEMAINE (L7)", () => {
+  it("étiquette lundi→dimanche de la semaine du samedi bucket", () => {
+    // 2026-10-03 est un samedi → semaine du lundi 28 sept. au dimanche 4 oct.
+    expect(weekLabel("2026-10-03")).toBe("Semaine du 28 sept. au 4 oct.");
   });
 });

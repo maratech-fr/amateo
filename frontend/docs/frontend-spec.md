@@ -4,12 +4,12 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-08-23 (recalé par la livraison P4-129 : le §6.8 gagne le bloc « Détails techniques (dev) » et le paragraphe du rail d'incident est corrigé — il affirmait que `lastIncidentStore` « ne retient un X-Request-Id que sur un ≥ 500 », désormais il capture {status, url, code?, requestId?} request-id ou non. Vérifié en écrivant : le wrapper `readRecentIncidentRequestId` préserve le contrat de la modale de signalement, et la garde `import.meta.env.DEV` est lue au rendu)
-`error-copy.md`** (P5-14 soldée) : confronté au code — `index.html` (bloc présent, sans marque,
-sans ressource externe), `tooling/noscript.test.ts` (4 assertions, RED prouvé sans le bloc),
-`shared/lib/errorMessage.ts:32-34` (corps 4xx repris tels quels, < 500 seulement),
-`PlanningToolbar.test.tsx` (score nulle part), `DiagnosticsPanel.tsx` (causes servies),
-`CompromiseList.tsx` (compromis servis, jamais dérivés).)
+Last verified @ 2026-08-24 (recalé par RMM-1 PR3 : la route `/matchs`, l'arborescence
+`features/matches/` et la ligne `matches store` du §état confrontées au code —
+`MatchesLayout.tsx` (deux routes `/matchs` + `/matchs/configuration`, garde socle commun),
+`lib/loopSteps.ts` (`deriveLoopSteps`, 5 étapes dérivées, zéro état stocké),
+`store.ts` (`railStep`, reset au changement de semaine), `ConfigurationPage.tsx` (SET-UP rare :
+Engagements FFBB, Accès match, Habitudes & passerelles, image A/B en écran plein droit))
 
 ---
 
@@ -76,7 +76,7 @@ découpage sûr et **aucun n'est optionnel** quand on ajoute une route :
 | `/waiting` | Attente d'approbation (`WaitingApprovalPage`) — poll `/api/me` toutes les 5 s, redirige vers `/` dès `membershipStatus === "active"` | Token requis | `AuthLayout` |
 | `/` | **Cockpit temporel** (`CockpitPage`) : bandeau planning principal (Ouvrir/**Modifier** = reopen · Tous les plannings) · calendrier mensuel des exceptions · radar (à traiter). **Débloqué dès `me.seasonPlan.hasFinishedVersion`** (le plan de saison porte ≥1 version terminée — dérivé, indépendant du pointeur : rouvrir ne re-verrouille pas) ; sinon redirige vers `/wizard`. **Palier B** : CTAs radar « Adapter » actifs (→ wizard mode période) ; « Voir le plan » (overlay généré → consultation) ; « Modifier » le socle avec overlays → **confirmation proportionnée** (409 `overlays_exist` → dialog « supprimera N secondaires »). Overlays exclus du sélecteur de plannings (badge « Période ») | Required | `AppLayout` |
 | `/planning` | **L'écran de la version EN VIGUEUR** (`PlanningPage`, `embedded=false`, symétrie stricte 2026-08-20) : grille `WeekGrid` (un planning **FAILED** sans créneau y montre les **réservations** en pseudo-créneaux HARD lecture seule — couche socle/période du payload, gymnases désactivés filtrés, bandeau « seuls vos créneaux réservés sont affichés » + état vide dédié sans réservation — retour fondateur 2026-08-06), toolbar (badge de statut + pastille « Période » visibles ici comme en mode wizard ; **sélecteur de versions**, lui, reste réservé au wizard), **nom du planning éditable au header** (porté par le plan, `PUT /api/schedule_plans/{id}`), bandeau divergence structure, diagnostics, détail créneau. **« Rouvrir » vit ici** (`!embedded`, `PlanningToolbar.tsx`) — il ramène à l'étape Génération du wizard ; **Valider/Régénérer/Supprimer restent bornés à `embedded`** (gestes de travail, wizard seul) — « le plan pointe la version et ses sœurs sont supprimées » (ADR-0002 inv. 1) se déclenche depuis le wizard et atterrit ici en succès | Required | `AppLayout` |
-| `/matchs` | **Module matchs** (`MatchesPage`) : placement des rencontres domicile (grille week-end), radar de conflits coach/joueur, import FBI (`ImportFbiDialog`) | Required | `AppLayout` |
+| `/matchs` | **Module matchs — la boucle guidée** (`MatchesLayout` → `Outlet`, RMM-1) : rail à 5 étapes DÉRIVÉES (`lib/loopSteps.ts`, zéro état stocké — batch importé · placés au modèle · litiges · domiciles posés · saisi FBI), une vue par étape sur `MatchesPage` (import FBI, grille week-end + `PlacementPanel`, radar de conflits, `FbiEntryList` pour le geste « Marquer saisi »). L'axe de navigation est la **semaine calendaire** (`weekLabel`), le n° de rencontre FBI (`externalRef`) affiché en repère (grille + listes). Les gestes rares (Engagements FFBB, Accès match, Habitudes & passerelles, image A/B) vivent sous `/matchs/configuration` (`ConfigurationPage`) — deux onglets d'un même layout, garde socle commun. Détail métier : `specs/courantes/module-matchs.md` | Required | `AppLayout` |
 | `/wizard` | Assistant de saisie 6 étapes : Équipes → Gymnases → Coachs → Contraintes → Récapitulatif → Génération (`AuthGuard` y redirige tant que `me.seasonPlan.hasFinishedVersion === false`, c.-à-d. tant que le club n'a jamais généré) | Required | `AppLayout` |
 | `/club` | Identité du club : logo (upload + recadrage `LogoCropper` + suppression), couleur d'accent (+ palette), **section « Informations du club »** (champs FFBB — voir ci-dessous, admin) **et section « Demandes »** (approbation des adhésions `pending`, admin — l'ancienne route `/pending-members` a été repliée ici) | Required | `AppLayout` |
 | `/profile` | Profil utilisateur | Required | `AppLayout` |
@@ -1077,7 +1077,7 @@ Le frontend n'utilise **pas** `useInfiniteQuery` (aucune occurrence dans `src/`)
 | `transitionUiStore` | `src/shared/stores/transitionUiStore.ts` | état UI du bandeau de bascule de saison | persisté |
 | wizard `store` | `src/features/wizard/store.ts` | étape courante, étape max atteinte, **mode** (`season`/`period`) + `calendarEntryId` — **aucune donnée métier** | persisté (`version: 4`) |
 | planning `store` | `src/features/planning/store.ts` | planning sélectionné + état UI (vue, filtres) | Non persisté |
-| matches `store` | `src/features/matches/store.ts` | état UI du module matchs | Non persisté |
+| matches `store` | `src/features/matches/store.ts` | état UI du module matchs — dont `railStep` (RMM-1 PR3, vue de la boucle choisie ; `null` = auto = premier trou, reset au changement de semaine) | Non persisté |
 | admin `store` | `src/features/admin/store.ts` | état UI de la console superadmin | Non persisté |
 
 ### authStore
@@ -1225,7 +1225,9 @@ frontend/src/
 │   │                           # PublicWishPage (route publique), RadarCoachWishAction
 │   ├── cockpit/                # CockpitPage : bandeau planning socle, calendrier mensuel, radar overlays
 │   ├── legal/                  # PrivacyPage (/confidentialite)
-│   ├── matches/                # MatchesPage : grille week-end, radar conflits, ImportFbiDialog
+│   ├── matches/                # MatchesLayout (deux routes) → MatchesPage (boucle : rail 5 étapes
+│   │                           # dérivées lib/loopSteps.ts, grille week-end, radar conflits,
+│   │                           # FbiEntryList) + ConfigurationPage (SET-UP rare)
 │   ├── planning/               # PlanningPage, PlanningToolbar, WeekGrid, SlotDetail, DiagnosticsPanel,
 │   │                           # ResourceFilter, GenerationWaiting, ExportMenu, store, lib/grid
 │   ├── profile/                # ProfilePage
