@@ -33,8 +33,10 @@ export function FfbbEngagementsDialog({ teams, tiers, onClose }: FfbbEngagements
     .map((row) => ({ ffbbCompetitionId: row.ffbbCompetitionId, teamId: chosenOf(row.ffbbCompetitionId, row.suggestedTeamId) }))
     .filter((pairing) => "" !== pairing.teamId);
 
+  const teamName = (id: string): string => teams.find((team) => team.id === id)?.name ?? "";
+
   return (
-    <Modal label="Engagements FFBB" title="Engagements FFBB" onClose={onClose}>
+    <Modal label="Engagements FFBB" title="Engagements FFBB" onClose={onClose} size="lg">
       <div className="flex flex-col gap-3">
         <p className="text-xs text-muted-foreground">
           Les équipes engagées telles que la ligue les connaît — rattachez chacune à votre équipe puis
@@ -56,28 +58,37 @@ export function FfbbEngagementsDialog({ teams, tiers, onClose }: FfbbEngagements
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {rows.map((row) => (
-              <li key={row.ffbbCompetitionId} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
-                <span className="min-w-0 text-sm">
-                  <span className="block truncate font-medium">{row.competitionName}</span>
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {row.pouleName} · {row.pouleSize} clubs
-                    {null !== row.category ? ` · ${row.category}` : ""}
-                    {null !== row.level ? ` · ${row.level}` : ""}
-                    {null !== row.gender ? ` · ${row.gender}` : ""}
+            {rows.map((row) => {
+              // Le chiffre discriminant (« …Division 2 » vs « …Division 3 ») est en QUEUE de
+              // chaîne : on LAISSE le libellé s'enrouler (jamais tronqué → toujours visible, y
+              // compris au doigt) et on double d'un `title` de secours (§6bis B1/B2).
+              const subLabel = `${row.pouleName} · ${row.pouleSize} clubs${null !== row.category ? ` · ${row.category}` : ""}${null !== row.level ? ` · ${row.level}` : ""}${null !== row.gender ? ` · ${row.gender}` : ""}`;
+              const chosen = chosenOf(row.ffbbCompetitionId, row.suggestedTeamId);
+              return (
+                <li key={row.ffbbCompetitionId} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+                  <span className="min-w-0 text-sm">
+                    <span className="block font-medium" title={row.competitionName}>
+                      {row.competitionName}
+                    </span>
+                    <span className="block text-xs text-muted-foreground" title={subLabel}>
+                      {subLabel}
+                    </span>
                   </span>
-                </span>
-                <TeamSelect
-                  aria-label={`Équipe pour ${row.competitionName}`}
-                  className="h-9 w-44 shrink-0 rounded-md border border-input bg-background px-2 text-sm"
-                  teams={teams}
-                  tiers={tiers}
-                  placeholder="Non rattachée"
-                  value={chosenOf(row.ffbbCompetitionId, row.suggestedTeamId)}
-                  onChange={(e) => setChoices({ ...choices, [row.ffbbCompetitionId]: e.target.value })}
-                />
-              </li>
-            ))}
+                  <TeamSelect
+                    aria-label={`Équipe pour ${row.competitionName}`}
+                    // La valeur sélectionnée se lit sans ouvrir le select (§6bis B4) : élargi,
+                    // et un `title` en secours pour le nom d'équipe qui déborderait encore.
+                    title={"" !== chosen ? teamName(chosen) : "Non rattachée"}
+                    className="h-9 w-52 shrink-0 rounded-md border border-input bg-background px-2 text-sm"
+                    teams={teams}
+                    tiers={tiers}
+                    placeholder="Non rattachée"
+                    value={chosen}
+                    onChange={(e) => setChoices({ ...choices, [row.ffbbCompetitionId]: e.target.value })}
+                  />
+                </li>
+              );
+            })}
           </ul>
         )}
 

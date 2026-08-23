@@ -45,10 +45,15 @@ export function AwayList({ fixtures, teams, habits, onEdit, onDelete }: AwayList
           const habit = habits.find((h) => h.teamId === fixture.teamId && h.dayOfWeek === isoWeekday(fixture.matchDate));
           const hour = fixture.kickoffTime ?? habit?.kickoffTime ?? null;
           const estimated = null === fixture.kickoffTime && null !== hour;
+          const teamLabel = teams.get(fixture.teamId)?.name ?? "Équipe ?";
+          // L'heure (et son badge « estimée ») portent les conflits de coach et sont en QUEUE de
+          // ligne (§6bis B5) : on n'enroule plus jamais dans une troncature, et un `title` de
+          // secours rend la ligne entière lisible dans la colonne étroite.
+          const awayLine = `${teamLabel} · ${frDate(fixture.matchDate)} · à ${fixture.opponentLabel}${null !== fixture.fbiVenueLabel ? ` (${fixture.fbiVenueLabel})` : ""}${null !== hour ? ` · ${hour}` : " · heure inconnue"}${estimated ? " · heure estimée" : ""}`;
           return (
             <li key={fixture.id} className="flex items-center justify-between gap-2 text-sm">
-              <span className="min-w-0 truncate">
-                <span className="font-medium">{teams.get(fixture.teamId)?.name ?? "Équipe ?"}</span>
+              <span className="min-w-0" title={awayLine}>
+                <span className="font-medium">{teamLabel}</span>
                 <span className="text-muted-foreground">
                   {" "}
                   · {frDate(fixture.matchDate)} · à {fixture.opponentLabel}
