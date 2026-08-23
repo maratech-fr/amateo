@@ -9,10 +9,11 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * P4-57 — les quatre préventions AVANT génération.
+ * P4-57 / ALIGN-09 — les préventions AVANT génération : des AVERTISSEMENTS ({@see detect}) et,
+ * depuis ALIGN-09, des BLOQUEURS ({@see detectBlockers}).
  *
- * Chaque cas est monté en DEUX temps : le montage fautif doit avertir, ET le montage sain doit
- * se taire. Un warning qui ne sait pas se taire est pire que pas de warning — le gestionnaire
+ * Chaque cas est monté en DEUX temps : le montage fautif doit avertir/bloquer, ET le montage sain
+ * doit se taire. Un warning qui ne sait pas se taire est pire que pas de warning — le gestionnaire
  * apprend à ignorer le bandeau, et le jour où il dit vrai personne ne le lit.
  *
  * Le payload employé ici est celui qui part au moteur (`ScheduleConstraintBuilder`) : mêmes
@@ -153,10 +154,109 @@ final class PreSolvePreventionWarningsTest extends TestCase
         self::assertSame([], array_filter($found, static fn (string $w): bool => str_contains($w, 'absente de cette période')));
     }
 
+    /**
+     * ALIGN-09 BLOQUEUR — « au moins une séance l'un de ces jours » (forcedDays) dont AUCUN jour
+     * imposé ne porte de créneau candidat : INFEASIBLE certain, donc ça BLOQUE.
+     */
+    public function testForcedDaysWithNoCandidateSlotBlocks(): void
+    {
+        $found = $this->warnings->detectBlockers($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1, 2])],
+            teams: [$this->team('t1', 'U11 A')],
+            constraints: [$this->dayRule('TEAM', 't1', ['forcedDays' => [7]])],
+        ));
+
+        self::assertContains(
+            'U11 A : au moins une séance exigée le(s) dimanche, mais aucun créneau sur aucun de ces jours — ouvrez un créneau (étape Gymnases) ou retirez la règle (étape Contraintes).',
+            $found,
+        );
+    }
+
+    /** UN seul jour imposé qui croise un créneau suffit (le constat porte sur l'UNION) : silence. */
+    public function testForcedDaysWithACandidateSlotDoesNotBlock(): void
+    {
+        $found = $this->warnings->detectBlockers($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1])],
+            teams: [$this->team('t1', 'U11 A')],
+            constraints: [$this->dayRule('TEAM', 't1', ['forcedDays' => [1, 7]])],
+        ));
+
+        self::assertSame([], $found);
+    }
+
+    /**
+     * Subtilité : un jour imposé zéroté par le complément d'une whitelist `allowedDays` compte
+     * comme SANS candidat (le moteur interdit le complément — constraints.py). Le créneau existe
+     * pourtant ce jour-là.
+     */
+    public function testForcedDayZeroedByAllowedDaysWhitelistBlocks(): void
+    {
+        $found = $this->warnings->detectBlockers($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1, 2])],
+            teams: [$this->team('t1', 'U11 A')],
+            constraints: [
+                // « au moins une le lundi » MAIS whitelist « uniquement le mardi » → lundi interdit.
+                $this->dayRule('TEAM', 't1', ['forcedDays' => [1]]),
+                $this->dayRule('TEAM', 't1', ['allowedDays' => [2]]),
+            ],
+        ));
+
+        self::assertContains(
+            'U11 A : au moins une séance exigée le(s) lundi, mais aucun créneau sur aucun de ces jours — ouvrez un créneau (étape Gymnases) ou retirez la règle (étape Contraintes).',
+            $found,
+        );
+    }
+
+    /** Un forcedDays NON obligatoire (placebo côté moteur) ne bloque JAMAIS. */
+    public function testAPreferredForcedDaysNeverBlocks(): void
+    {
+        $found = $this->warnings->detectBlockers($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1, 2])],
+            teams: [$this->team('t1', 'U11 A')],
+            constraints: [$this->dayRule('TEAM', 't1', ['forcedDays' => [7]], 'PREFERRED')],
+        ));
+
+        self::assertSame([], $found);
+    }
+
+    /**
+     * ALIGN-09 AVERTISSEMENT de FUSION — deux règles « au moins une séance » sur la même équipe se
+     * combinent en une seule exigence (l'union des jours). Risque de malentendu → on avertit.
+     */
+    public function testTwoForcedDayRulesOnSameTeamWarnOfMerge(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1, 3])],
+            teams: [$this->team('t1', 'SM1')],
+            constraints: [
+                $this->dayRule('TEAM', 't1', ['forcedDays' => [1]]),
+                $this->dayRule('TEAM', 't1', ['forcedDays' => [3]]),
+            ],
+        ));
+
+        self::assertContains(
+            'Deux règles « au moins une séance » sur SM1 se combinent : une seule séance sur l\'ensemble lundi, mercredi suffira.',
+            $found,
+        );
+    }
+
+    /** Une seule règle « au moins une séance » ne déclenche PAS l'avertissement de fusion. */
+    public function testASingleForcedDayRuleDoesNotWarnOfMerge(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1])],
+            teams: [$this->team('t1', 'SM1')],
+            constraints: [$this->dayRule('TEAM', 't1', ['forcedDays' => [1]])],
+        ));
+
+        self::assertSame([], array_filter($found, static fn (string $w): bool => str_contains($w, 'se combinent')));
+    }
+
     /** Un payload vide n'invente rien : zéro équipe, zéro gymnase, zéro bruit. */
     public function testAnEmptyPayloadSaysNothing(): void
     {
         self::assertSame([], $this->warnings->detect([]));
+        self::assertSame([], $this->warnings->detectBlockers([]));
     }
 
     protected function setUp(): void
@@ -214,5 +314,18 @@ final class PreSolvePreventionWarningsTest extends TestCase
     private function teamCoach(string $teamId, string $coachId): array
     {
         return ['type' => 'TEAM_COACH', 'teamId' => $teamId, 'metadata' => ['coachId' => $coachId]];
+    }
+
+    /**
+     * Une contrainte DAY telle que le builder l'émet (avec `family`/`ruleType`) — le calcul des
+     * règles de jour ne retient que HARD/LOCK, comme le moteur.
+     *
+     * @param array<string, mixed> $config
+     *
+     * @return array<string, mixed>
+     */
+    private function dayRule(string $scope, string $targetId, array $config, string $ruleType = 'HARD'): array
+    {
+        return ['scope' => $scope, 'scopeTargetId' => $targetId, 'family' => 'DAY', 'ruleType' => $ruleType, 'config' => $config];
     }
 }

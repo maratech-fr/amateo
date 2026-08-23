@@ -1,6 +1,6 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-08-22 (édition lot PASSERELLES — nouvelle section « Passerelles (`teamLinks`) », vérifiée contre le code : `MANDATORY` pose l'anti-chevauchement DUR `var_a + var_b ≤ 1` (`add_team_link_constraints`, `engine/app/solver/constraints.py`) ✓ ; `PREFERRED` pose un malus d'objectif `−TEAM_LINK_TIER_WEIGHTS[tier]`, tier le plus haut des deux, S8/A6/B4/C2/D1 (`objective.add_team_link_penalty` + `TEAM_LINK_TIER_WEIGHTS`) ✓ ; exemption séance mutualisée déclarée (`share_declared`) et diagnostic résiduel `team_link_not_honored` (`result_builder._diagnose_team_links`) ✓. Reste du fichier non re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git.)
+Last verified @ 2026-08-23 (recalé par la livraison ALIGN-09 : `forcedDays` n'est plus engine-only — le wizard émet le mode « au moins une » et la clé héritée #120 est migrée. Vérifié en écrivant : la sémantique de la table (« au moins une séance ces jours-là », pose `somme(vars) ≥ 1`) reste exacte au code (`constraints.py:1783-1789` — une somme sur l'UNION par équipe, donc « l'un de ces jours »), et le piège `allowedDays` ≠ `forcedDays` que ce doc nomme est précisément celui que la migration vient de purger des données héritées)
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -45,7 +45,7 @@ Last verified @ 2026-08-22 (édition lot PASSERELLES — nouvelle section « Pas
 |---|---|---|
 | `forbiddenDays` (`[int]`) | **éviter** ces jours | `HARD` → jours interdits (dur) · `PREFERRED` → malus soft « éviter ces jours » |
 | `allowedDays` (`[int]`) | **uniquement** ces jours (whitelist) | l'engine **interdit tout jour hors liste**. Toujours dur. (liste vide = « non configuré », aucune restriction) |
-| `forcedDays` (`[int]`) | **au moins une** séance ces jours-là | pose `somme(vars de ces jours) ≥ 1`. **N'interdit PAS** les autres jours. **Engine-only** (le wizard émet `allowedDays` pour « uniquement », cf. audit ENG-16) |
+| `forcedDays` (`[int]`) | **au moins une** séance ces jours-là | pose `somme(vars de ces jours) ≥ 1`. **N'interdit PAS** les autres jours. **exposé au wizard depuis 2026-08-23 (ALIGN-09)** (le wizard émet `allowedDays` pour « uniquement », cf. audit ENG-16) |
 | `preferredDays` (`[int]`) | préférer ces jours | bonus objectif. **Engine-only** (jamais émis par le wizard) |
 
 > **Piège** : `allowedDays` (« uniquement ») ≠ `forcedDays` (« au moins un »). « Vétérans le vendredi

@@ -156,11 +156,12 @@ export function ConstraintsStep() {
   // "finir avant" = maxEndTime (l'engine calcule fin = début + durée du créneau).
   const [endTime, setEndTime] = useState("");
   const [days, setDays] = useState<Set<number>>(new Set());
-  // "à éviter" (forbiddenDays) vs "uniquement" (allowedDays — whitelist : SEULS
-  // ces jours sont permis, l'engine interdit le complément). NB : forcedDays de
-  // l'engine ne veut dire QUE « au moins une séance ces jours-là » — pas ce qu'on
-  // veut ici (audit ENG-16).
-  const [dayMode, setDayMode] = useState<"forbidden" | "forced">("forbidden");
+  // Trois modes JOUR, trois clés engine (littéraux HONNÊTES) :
+  //   "forbidden" → forbiddenDays (à éviter, soft possible) ;
+  //   "only"      → allowedDays (whitelist : SEULS ces jours, l'engine interdit le complément) ;
+  //   "atLeast"   → forcedDays (« au moins une séance l'UN de ces jours » — somme agrégée sur
+  //                 l'union, PAS « chacun »). "only" et "atLeast" sont TOUJOURS obligatoires.
+  const [dayMode, setDayMode] = useState<"forbidden" | "only" | "atLeast">("forbidden");
   // "préfère" (preferredVenueId) · "évite" (forbiddenVenueId) · "impose"
   // (forcedVenueId, dur) · "au moins N" (minAtVenueId + minAtVenueCount, dur).
   const [venueMode, setVenueMode] = useState<"preferred" | "forbidden" | "forced" | "min">("preferred");
@@ -346,10 +347,13 @@ export function ConstraintsStep() {
       if (0 === days.size) {
         return null;
       }
-      if ("forced" === dayMode) {
-        // "uniquement" = whitelist allowedDays (l'engine interdit tous les autres
-        // jours) — PAS forcedDays qui n'impose qu'« au moins une séance » (ENG-16).
+      if ("only" === dayMode) {
+        // "uniquement" = whitelist allowedDays (l'engine interdit tous les autres jours).
         return { name: `${who} · uniquement ${dayNames(days)}`, scope, scopeTargetId, family, ruleType: "HARD", config: { ...tagConfig, allowedDays: [...days] } };
+      }
+      if ("atLeast" === dayMode) {
+        // "au moins une" = forcedDays (« au moins une séance l'un de ces jours ») — toujours dur.
+        return { name: `${who} · au moins une séance ${dayNames(days)}`, scope, scopeTargetId, family, ruleType: "HARD", config: { ...tagConfig, forcedDays: [...days] } };
       }
       return { name: `${who} · pas ${dayNames(days)}`, scope, scopeTargetId, family, ruleType, config: { ...tagConfig, forbiddenDays: [...days] } };
     }
@@ -445,13 +449,11 @@ export function ConstraintsStep() {
     setMode("constraint");
     setFamily(c.family);
     const cfg = c.config;
-    // Forced modes (impose/uniquement) + coach availability are pinned HARD by
+    // Forced modes (impose/uniquement/au moins une) + coach availability are pinned HARD by
     // build() and hide the rule selector — load them as PREFERRED so that if the
     // user later switches to a soft mode it does NOT stay a hard requirement (the
     // inherited HARD would otherwise leak through, keeping the venue/day forced).
-    // `cfg.forcedDays` is the LEGACY key for the DAY "uniquement" mode (#120,
-    // before ENG-16) — still recognised so an old row loads correctly and
-    // auto-migrates to allowedDays on save.
+    // DAY "uniquement" (allowedDays) AND "au moins une" (forcedDays) are both HARD-pinned.
     const isForced = ("FACILITY" === c.family && ("string" === typeof cfg.forcedVenueId || "string" === typeof cfg.minAtVenueId)) || ("DAY" === c.family && (Array.isArray(cfg.allowedDays) || Array.isArray(cfg.forcedDays))) || "COACH_AVAILABILITY" === c.family;
     setRuleType(isForced ? "PREFERRED" : c.ruleType);
     // Affinage : on repart propre, la branche « cible = tag » ci-dessous le repeuple si besoin.
@@ -488,12 +490,18 @@ export function ConstraintsStep() {
       setEndTime("string" === typeof cfg.maxEndTime ? cfg.maxEndTime : "");
     }
     if ("DAY" === c.family) {
-      // allowedDays (current) OR forcedDays (legacy #120) both mean the "uniquement"
-      // mode; loading the legacy key lets a re-save auto-migrate it to allowedDays.
-      const only = Array.isArray(cfg.allowedDays) ? cfg.allowedDays : cfg.forcedDays;
-      const onlyThese = Array.isArray(only);
-      setDayMode(onlyThese ? "forced" : "forbidden");
-      setDays(new Set(asNums(onlyThese ? only : cfg.forbiddenDays)));
+      // Trois clés, trois modes : allowedDays → "uniquement", forcedDays → "au moins une",
+      // sinon forbiddenDays → "à éviter".
+      if (Array.isArray(cfg.allowedDays)) {
+        setDayMode("only");
+        setDays(new Set(asNums(cfg.allowedDays)));
+      } else if (Array.isArray(cfg.forcedDays)) {
+        setDayMode("atLeast");
+        setDays(new Set(asNums(cfg.forcedDays)));
+      } else {
+        setDayMode("forbidden");
+        setDays(new Set(asNums(cfg.forbiddenDays)));
+      }
     }
     if ("FACILITY" === c.family) {
       if ("string" === typeof cfg.forcedVenueId) {
@@ -833,11 +841,12 @@ export function ConstraintsStep() {
 
         {"DAY" === family && (
           <>
-            <Select aria-label="Type de jour" className="h-8 w-28" value={dayMode} onChange={(e) => setDayMode(e.target.value as "forbidden" | "forced")}>
+            <Select aria-label="Type de jour" className="h-8 w-36" value={dayMode} onChange={(e) => setDayMode(e.target.value as "forbidden" | "only" | "atLeast")}>
               <option value="forbidden">à éviter</option>
-              <option value="forced">uniquement</option>
+              <option value="only">uniquement</option>
+              <option value="atLeast">au moins une</option>
             </Select>
-            <DayPicker days={days} toggle={toggleDay} legend={"forced" === dayMode ? "Jours imposés" : "Jours à éviter"} />
+            <DayPicker days={days} toggle={toggleDay} legend={"only" === dayMode ? "Seuls jours autorisés" : "atLeast" === dayMode ? "Au moins une séance l'un de ces jours" : "Jours à éviter"} />
           </>
         )}
 
@@ -912,11 +921,11 @@ export function ConstraintsStep() {
           </>
         )}
 
-        {"COACH_AVAILABILITY" === family || ("TIME" === family && "" !== endTime) || ("DAY" === family && "forced" === dayMode) || ("FACILITY" === family && ("forced" === effectiveVenueMode || "min" === effectiveVenueMode)) ? (
-          // Coach availability + "impose"/"uniquement" + "Fini avant" are ALWAYS
-          // hard (a person can't be in two places; a forced venue/day and a
-          // gym-closing end-bound are musts, not nudges) — the payload pins HARD,
-          // so a rule selector here would be a lie.
+        {"COACH_AVAILABILITY" === family || ("TIME" === family && "" !== endTime) || ("DAY" === family && "forbidden" !== dayMode) || ("FACILITY" === family && ("forced" === effectiveVenueMode || "min" === effectiveVenueMode)) ? (
+          // Coach availability + "impose"/"uniquement"/"au moins une" + "Fini avant" are
+          // ALWAYS hard (a person can't be in two places; a forced venue, a whitelist/at-least
+          // day rule, and a gym-closing end-bound are musts, not nudges) — the payload pins
+          // HARD, so a rule selector here would be a lie.
           <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">Obligatoire</span>
         ) : (
           <Select aria-label="Règle" className="h-8 w-28" value={ruleType} onChange={(e) => setRuleType(e.target.value as ConstraintRuleType)}>
@@ -989,9 +998,9 @@ export function ConstraintsStep() {
                     <tr key={c.id} data-constraint-id={c.id} className={cn("border-b border-border/60 last:border-0", editingId === c.id ? "bg-accent/10 ring-1 ring-inset ring-accent" : "")}>
                       <td className="px-3 py-2 align-top">{target ?? "—"}</td>
                       {0 === parts.length ? (
-                        // Règle non descriptible fidèlement (clé inconnue, `forcedDays` LEGACY
-                        // ambigu, gymnase supprimé) : on rend le NOM en entier plutôt qu'une
-                        // cellule vide, qui laisserait croire qu'il n'y a rien à appliquer.
+                        // Règle non descriptible fidèlement (clé inconnue, gymnase supprimé) : on
+                        // rend le NOM en entier plutôt qu'une cellule vide, qui laisserait croire
+                        // qu'il n'y a rien à appliquer.
                         <td className="px-3 py-2 align-top text-muted-foreground" colSpan={2}>{c.name}</td>
                       ) : (
                         <>

@@ -152,6 +152,10 @@ def _violates(cell: MatrixCell, slot: dict[str, Any]) -> bool:
         return slot["venueId"] == config["forbiddenVenueId"]
     if key == "allowedDays":
         return int(slot["dayOfWeek"]) not in set(config["allowedDays"])
+    if key == "forcedDays":
+        # A 1-session team: "at least one session on ONE of the forced days" reduces
+        # to "the single session is on a forced day" — same shape as the whitelist.
+        return int(slot["dayOfWeek"]) not in set(config["forcedDays"])
     raise AssertionError(f"no violation predicate for {key}")
 
 

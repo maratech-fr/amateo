@@ -46,6 +46,14 @@ describe("describeConstraint — ce que la règle FAIT, pas son nom", () => {
     expect(desc!.toLowerCase()).toContain("mercredi");
   });
 
+  it("DAY forcedDays se lit « au moins une séance » (ALIGN-09, distinct de « uniquement »)", () => {
+    const desc = describeConstraint(constraint({ family: "DAY", config: { forcedDays: [7] } }), lookups);
+    expect(desc!.toLowerCase()).toContain("au moins une séance");
+    expect(desc!.toLowerCase()).toContain("dimanche");
+    // Ce n'est PAS « uniquement » : les deux clés ont des sens différents côté moteur.
+    expect(desc!.toLowerCase()).not.toContain("uniquement");
+  });
+
   // CLUB nu → cible « Toutes les équipes · <prédicat> » (prédicat en clair, minuscule, comme le wizard).
   it("FACILITY minAtVenueId nomme le gymnase et le compte", () => {
     const desc = describeConstraint(constraint({ family: "FACILITY", config: { minAtVenueId: "v-mateo", minAtVenueCount: 1 } }), lookups);

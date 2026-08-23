@@ -172,6 +172,20 @@ final class ConstraintValidationServiceTest extends TestCase
         self::assertContains('Une contrainte de jour doit préciser au moins un jour (autorisé, à éviter ou imposé).', $errors);
     }
 
+    public function testForcedDaysAtPreferredIsRejected(): void
+    {
+        // ALIGN-09 — le moteur n'honore forcedDays que sur HARD/LOCK (constraints.py) ; un
+        // forcedDays PREFERRED serait un placebo muet (objective.py ne lit que preferredDays).
+        $constraint = (new Constraint)->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::PREFERRED)->setConfig(['forcedDays' => [1]]);
+        self::assertContains('La règle « au moins une séance » n\'existe qu\'en règle obligatoire.', $this->service->validate($constraint));
+    }
+
+    public function testForcedDaysAtHardIsAccepted(): void
+    {
+        $constraint = (new Constraint)->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::HARD)->setConfig(['forcedDays' => [1]]);
+        self::assertNotContains('La règle « au moins une séance » n\'existe qu\'en règle obligatoire.', $this->service->validate($constraint));
+    }
+
     public function testFacilityFamilyRequiresAVenueKey(): void
     {
         $constraint = new Constraint;
