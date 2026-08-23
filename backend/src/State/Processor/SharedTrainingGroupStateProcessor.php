@@ -7,10 +7,12 @@ namespace App\State\Processor;
 use ApiPlatform\Validator\Exception\ValidationException;
 use App\ApiResource\SharedTrainingGroupResource;
 use App\Dto\SharedTrainingGroupInput;
+use App\Entity\Reservation;
 use App\Entity\SharedTrainingGroup;
 use App\Entity\SharedTrainingGroupTeam;
 use App\Entity\Team;
 use App\Service\EffectiveTeamSessions;
+use App\Service\ReservationGroupOccupancy;
 use Symfony\Contracts\Service\Attribute\Required;
 
 /**
@@ -113,6 +115,12 @@ class SharedTrainingGroupStateProcessor extends AbstractStateProcessor
      */
     protected function cascadeBeforeDelete(object $entity): void
     {
+        // Le groupe meurt : ses réservations de lot (les cases « groupe-complètes ») partent AVEC
+        // lui — sinon les verrous HARD restants feraient déclencher au moteur un diagnostic de
+        // sur-capacité fantôme (P2-46 PR-4). MÊME sort et MÊME dérivation que la cascade de
+        // suppression d'une équipe ({@see ReservationGroupOccupancy}), pas une seconde logique.
+        $this->pruneBatchReservations($entity);
+
         // Pas de cascade ORM : on purge les lignes membres à la main avant la suppression du parent.
         foreach ($this->membershipRows($entity->getId()) as $row) {
             $this->entityManager->remove($row);
@@ -131,6 +139,33 @@ class SharedTrainingGroupStateProcessor extends AbstractStateProcessor
         sort($teamIds);
 
         return SharedTrainingGroupResource::fromEntity($entity, $teamIds);
+    }
+
+    private function pruneBatchReservations(SharedTrainingGroup $group): void
+    {
+        $memberSet = [];
+        foreach ($this->membershipRows($group->getId()) as $row) {
+            $memberSet[$row->getTeamId()] = true;
+        }
+        if ([] === $memberSet) {
+            return;
+        }
+
+        $qb = $this->entityManager->getRepository(Reservation::class)->createQueryBuilder('r');
+        $planId = $group->getSchedulePlanId();
+        if (null === $planId) {
+            $qb->where('r.schedulePlanId IS NULL');
+        } else {
+            $qb->where('r.schedulePlanId = :planId')->setParameter('planId', $planId);
+        }
+        /** @var list<Reservation> $reservations */
+        $reservations = $qb->getQuery()->getResult();
+
+        // Le groupe entier disparaît : toutes ses réservations de lot partent (aucune équipe
+        // survivante à épargner, contrairement à la cascade d'équipe).
+        foreach (ReservationGroupOccupancy::reservationsOnGroupCompleteCases($reservations, $memberSet) as $reservation) {
+            $this->entityManager->remove($reservation);
+        }
     }
 
     /**

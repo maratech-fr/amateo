@@ -144,7 +144,7 @@ final class RoadmapIdentityTest extends TestCase
                 unset($retired[$id]);
                 $alive[$id] = ($alive[$id] ?? 0) + 1;
             }
-            foreach (array_diff_key($removed, $added) as $id => $_) {
+            foreach (array_keys(array_diff_key($removed, $added)) as $id) {
                 $alive[$id] = max(0, ($alive[$id] ?? 0) - 1);
                 if (0 === $alive[$id]) {
                     $retired[$id] = true;
@@ -160,9 +160,9 @@ final class RoadmapIdentityTest extends TestCase
 
                 continue;
             }
-            if (1 === preg_match('/^\+\| ([A-Z]+[0-9]*-[0-9]+[a-z]?) \|/', $line, $m)) {
+            if (1 === preg_match('/^\+\| ([A-Z]+\d*-\d+[a-z]?) \|/', $line, $m)) {
                 $added[$m[1]] = $line;
-            } elseif (1 === preg_match('/^-\| ([A-Z]+[0-9]*-[0-9]+[a-z]?) \|/', $line, $m)) {
+            } elseif (1 === preg_match('/^-\| ([A-Z]+\d*-\d+[a-z]?) \|/', $line, $m)) {
                 $removed[$m[1]] = true;
             }
         }
