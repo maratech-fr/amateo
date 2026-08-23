@@ -31,6 +31,21 @@ export function weekendLabel(saturdayKey: string): string {
   return `Week-end du ${date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}`;
 }
 
+/**
+ * RMM-1 PR3 (L7) — la SEMAINE calendaire est l'axe primaire : « Semaine du {lundi}
+ * au {dimanche} », le grain réel du gestionnaire sur FBI. Le bucket reste le
+ * samedi de la semaine Lun→Dim (`weekendKeyOf`) — on n'étiquette que ses bornes.
+ */
+export function weekLabel(saturdayKey: string): string {
+  const saturday = new Date(`${saturdayKey}T00:00:00`);
+  const monday = new Date(saturday);
+  monday.setDate(saturday.getDate() - 5);
+  const sunday = new Date(saturday);
+  sunday.setDate(saturday.getDate() + 1);
+  const fmt = (d: Date): string => d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+  return `Semaine du ${fmt(monday)} au ${fmt(sunday)}`;
+}
+
 /** Sorted distinct weekend buckets that contain at least one fixture. */
 export function listWeekends(fixtures: Fixture[]): string[] {
   return [...new Set(fixtures.map((f) => weekendKeyOf(f.matchDate)))].sort();
@@ -71,6 +86,8 @@ export interface WeekendCell {
   venueColor: string | null;
   kickoffLabel: string;
   footprintLabel: string;
+  /** RMM-1 PR3 (L7) — n° de rencontre FBI, repère discret. null pour un ghost/manuel. */
+  externalRef: string | null;
   outOfEnvelope: boolean;
   /** P1-4 PR C — a HABIT ghost, not a match: the team's protected window on a
    * weekend its calendar has not reached yet. Purely visual, never blocking. */
@@ -230,6 +247,7 @@ export function buildWeekendGrid(
       venueColor: venues.get(fixture.venueId as string)?.color ?? null,
       kickoffLabel: formatMinutes(kickoff),
       footprintLabel: `${formatMinutes(start)}–${formatMinutes(end)}`,
+      externalRef: fixture.externalRef,
       outOfEnvelope: outOfEnvelope.has(fixture.id),
       ghost: false,
       locked: "SOLVER" !== fixture.placementSource,
@@ -261,6 +279,7 @@ export function buildWeekendGrid(
       venueColor: venues.get(ghost.venueId)?.color ?? null,
       kickoffLabel: formatMinutes(ghost.kickoffMin),
       footprintLabel: `${formatMinutes(start)}–${formatMinutes(end)}`,
+      externalRef: null,
       outOfEnvelope: false,
       ghost: true,
       locked: false,

@@ -42,6 +42,8 @@ export function UnplacedList({ fixtures, teams, selectedFixtureId, unplacedReaso
               <span className="block truncate font-medium">{teams.get(fixture.teamId)?.name ?? "Équipe ?"}</span>
               <span className="block truncate text-xs text-muted-foreground">
                 {fixture.matchDate} · vs {fixture.opponentLabel}
+                {/* RMM-1 PR3 (L7) — n° de rencontre : repère discret, jamais une clé. */}
+                {null !== fixture.externalRef ? <span className="tabular-nums"> · n° {fixture.externalRef}</span> : null}
               </span>
               {undefined !== unplacedReasons?.get(fixture.id) ? (
                 <span className="mt-0.5 flex items-start gap-1 text-xs text-warning">

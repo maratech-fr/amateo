@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,9 +7,10 @@ import { renderWithProviders } from "@/test/utils";
 import { MatchesPage } from "./MatchesPage";
 import { useMatchesStore } from "./store";
 
-const { placeFixture, unplaceFixture } = vi.hoisted(() => ({
+const { placeFixture, unplaceFixture, submitFixture } = vi.hoisted(() => ({
   placeFixture: vi.fn(() => Promise.resolve({})),
   unplaceFixture: vi.fn(() => Promise.resolve({})),
+  submitFixture: vi.fn(() => Promise.resolve({})),
 }));
 
 // Matches are unlocked only once the season's socle is validated. `club`
@@ -22,10 +23,11 @@ vi.mock("@/shared/session/queries", () => ({
 vi.mock("./api", () => ({
   getFixtures: vi.fn(() =>
     Promise.resolve([
-      { id: "fx-unplaced", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "Voisins", status: "UNPLACED", venueId: null, kickoffTime: null },
-      { id: "fx-placed", teamId: "team-2", seasonId: "s", competitionId: null, matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "Rivaux", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00" },
+      { id: "fx-unplaced", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "Voisins", status: "UNPLACED", venueId: null, kickoffTime: null, externalRef: null },
+      // externalRef renseigné → repère « n° 26 » rendu dans la grille (fait #2, jamais une clé).
+      { id: "fx-placed", teamId: "team-2", seasonId: "s", competitionId: null, matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "Rivaux", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: "26" },
       // P1-4 PR E2 — an away match of the same weekend (visible in the away band).
-      { id: "fx-away", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-10-04", homeAway: "AWAY", opponentLabel: "Grenoble", status: "UNPLACED", venueId: null, kickoffTime: null, fbiVenueLabel: "Halle Clemenceau" },
+      { id: "fx-away", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-10-04", homeAway: "AWAY", opponentLabel: "Grenoble", status: "UNPLACED", venueId: null, kickoffTime: null, fbiVenueLabel: "Halle Clemenceau", externalRef: null },
     ]),
   ),
   getCompetitions: vi.fn(() => Promise.resolve([])),
@@ -88,62 +90,77 @@ vi.mock("./api", () => ({
   lockFixture: vi.fn(() => Promise.resolve({})),
   unlockFixture: vi.fn(() => Promise.resolve({})),
   swapFixtures: vi.fn(() => Promise.resolve()),
+  // RMM-1 PR1/PR3 — close the loop.
+  submitFixture,
+  reopenFixture: vi.fn(() => Promise.resolve({})),
 }));
 
 beforeEach(() => {
   placeFixture.mockClear();
   unplaceFixture.mockClear();
+  submitFixture.mockClear();
   meState.club = undefined;
-  useMatchesStore.setState({ selectedWeekend: null, selectedFixtureId: null, swapSourceId: null, fixtureFormOpen: false });
+  useMatchesStore.setState({ selectedWeekend: null, railStep: null, selectedFixtureId: null, swapSourceId: null, fixtureFormOpen: false, importDialogOpen: false });
 });
 
-describe("MatchesPage (integration)", () => {
-  it("lists the unplaced home match and renders the conflict radar", async () => {
-    renderWithProviders(<MatchesPage />);
+/** Click a rail step by its label (the rail is the only <nav> here). */
+async function gotoStep(user: ReturnType<typeof userEvent.setup>, label: RegExp): Promise<void> {
+  const rail = await screen.findByRole("navigation");
+  await user.click(within(rail).getByRole("button", { name: label }));
+}
 
-    // Unplaced to-do list.
-    expect(await screen.findByRole("button", { name: /vs Voisins/ })).toBeInTheDocument();
-    // Radar shows the same-coach conflict.
+describe("MatchesPage — la boucle guidée (RMM-1 PR3)", () => {
+  it("dérive un rail de 5 étapes ; le premier trou (Litiges) est la vue par défaut", async () => {
+    renderWithProviders(<MatchesPage />);
+    const rail = await screen.findByRole("navigation");
+    // Les 5 étapes, comptes DANS le label (Litiges (1) : le conflit de W ; Saisi 0/2).
+    expect(within(rail).getByRole("button", { name: /Batch importé/ })).toBeInTheDocument();
+    expect(within(rail).getByRole("button", { name: /Placés au modèle/ })).toBeInTheDocument();
+    expect(within(rail).getByRole("button", { name: /Litiges \(1\)/ })).toBeInTheDocument();
+    expect(within(rail).getByRole("button", { name: /Domiciles posés/ })).toBeInTheDocument();
+    expect(within(rail).getByRole("button", { name: /Saisi dans FBI \(0\/2\)/ })).toBeInTheDocument();
+    // Premier trou = Litiges (batch+model done) → la vue radar est à l'écran d'emblée.
     expect(await screen.findByText("Jean Dupont")).toBeInTheDocument();
     expect(screen.getByText(/U13 et Seniors/)).toBeInTheDocument();
-    // Placed match is on the grid.
-    expect(screen.getByText("Seniors")).toBeInTheDocument();
   });
 
-  it("auto-places on demand and surfaces the unplaced reason (P1-4 PR D)", async () => {
-    const user = (await import("@testing-library/user-event")).default.setup();
-    renderWithProviders(<MatchesPage />);
-
-    await screen.findByRole("button", { name: /vs Voisins/ });
-    await user.click(screen.getByRole("button", { name: /Placer automatiquement/ }));
-
-    const { placeMatches: placeMatchesMock } = await import("./api");
-    expect(placeMatchesMock).toHaveBeenCalledOnce();
-    // The named reason lands under the still-unplaced match — the
-    // ask-your-derogation-early signal.
-    expect(await screen.findByText(/Aucune fenêtre d'accès match/)).toBeInTheDocument();
-  });
-
-  it("P1-3 §4bis — le bouton « Placer » affiche le solde et se désactive à 0 (Découverte bridée)", async () => {
-    meState.club = { entitlements: { planCode: "decouverte", planName: "Découverte", maxTeams: null, teamsUsed: 4, creditsMax: 10, creditsUsed: 10, canGenerate: false, canPlaceMatches: false, canExportPdf: false, seasonTransition: false } };
-    renderWithProviders(<MatchesPage />);
-    const place = await screen.findByRole("button", { name: /Placer automatiquement \(0\)/ });
-    expect(place).toBeDisabled();
-  });
-
-  it("P1-3 §4bis — offre payante : le bouton « Placer » n'affiche AUCUN solde", async () => {
-    meState.club = { entitlements: { planCode: "essentiel", planName: "Essentiel", maxTeams: 20, teamsUsed: 4, creditsMax: null, creditsUsed: 0, canGenerate: true, canPlaceMatches: true, canExportPdf: true, seasonTransition: true } };
-    renderWithProviders(<MatchesPage />);
-    const place = await screen.findByRole("button", { name: "Placer automatiquement" });
-    expect(place).toBeEnabled();
-  });
-
-  it("opens the placement panel and places a home fixture (venue + kickoff)", async () => {
+  it("cliquer une étape change la VUE ; la vue sélectionnée reste même si elle est « done »", async () => {
     const user = userEvent.setup();
     renderWithProviders(<MatchesPage />);
+    // « Placés au modèle » est DONE (défaut = Litiges) — le sélectionner l'affiche
+    // quand même : le rail ne saute jamais sous le choix de l'utilisateur.
+    await gotoStep(user, /Placés au modèle/);
+    // Vue modèle : la grille (le domicile placé) est là, plus le radar.
+    expect(await screen.findByRole("button", { name: /Seniors.*Rivaux/ })).toBeInTheDocument();
+    expect(screen.queryByText("Jean Dupont")).not.toBeInTheDocument();
+  });
 
+  it("affiche le n° de rencontre comme repère, absent quand null (pas de « n° — »)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MatchesPage />);
+    await gotoStep(user, /Placés au modèle/);
+    // fx-placed porte externalRef 26 → repère rendu ; fx-unplaced n'en a pas.
+    expect(await screen.findByText("n° 26")).toBeInTheDocument();
+    expect(screen.queryByText(/n° —/)).not.toBeInTheDocument();
+  });
+
+  it("étape « Saisi dans FBI » : liste les domiciles PLACÉS avec le geste « Marquer saisi »", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MatchesPage />);
+    await gotoStep(user, /Saisi dans FBI/);
+    // Le seul domicile PLACED de la semaine (Seniors) est à recopier.
+    expect(await screen.findByText("Seniors")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Marquer saisi" }));
+    expect(submitFixture).toHaveBeenCalledWith(expect.objectContaining({ id: "fx-placed" }));
+  });
+
+  it("liste le match à placer et pose le domicile (vue Domiciles)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MatchesPage />);
+    await gotoStep(user, /Domiciles posés/);
+
+    // Vue Domiciles : la liste « à placer ».
     await user.click(await screen.findByRole("button", { name: /vs Voisins/ }));
-
     const venue = await screen.findByLabelText("Gymnase");
     await user.selectOptions(venue, "venue-1");
     await user.type(screen.getByLabelText("Heure de coup d'envoi"), "15:00");
@@ -153,44 +170,77 @@ describe("MatchesPage (integration)", () => {
     expect(placeFixture).toHaveBeenCalledWith(expect.objectContaining({ id: "fx-unplaced" }), { venueId: "venue-1", kickoffTime: "15:00" });
   });
 
-  it("shows the away band with the opponent venue (P1-4 PR E2)", async () => {
+  it("auto-place à la demande et fait remonter la raison de non-placement (P1-4 PR D)", async () => {
+    const user = userEvent.setup();
     renderWithProviders(<MatchesPage />);
+    await gotoStep(user, /Domiciles posés/);
 
-    // Away band of the active weekend — the away match is visible at last.
+    await user.click(await screen.findByRole("button", { name: /Placer automatiquement/ }));
+    const { placeMatches: placeMatchesMock } = await import("./api");
+    expect(placeMatchesMock).toHaveBeenCalledOnce();
+    expect(await screen.findByText(/Aucune fenêtre d'accès match/)).toBeInTheDocument();
+  });
+
+  it("P1-3 §4bis — « Placer automatiquement » affiche le solde et se désactive à 0 (Découverte bridée)", async () => {
+    meState.club = { entitlements: { planCode: "decouverte", planName: "Découverte", maxTeams: null, teamsUsed: 4, creditsMax: 10, creditsUsed: 10, canGenerate: false, canPlaceMatches: false, canExportPdf: false, seasonTransition: false } };
+    const user = userEvent.setup();
+    renderWithProviders(<MatchesPage />);
+    await gotoStep(user, /Domiciles posés/);
+    const place = await screen.findByRole("button", { name: /Placer automatiquement \(0\)/ });
+    expect(place).toBeDisabled();
+  });
+
+  it("P1-3 §4bis — offre payante : « Placer automatiquement » n'affiche AUCUN solde", async () => {
+    meState.club = { entitlements: { planCode: "essentiel", planName: "Essentiel", maxTeams: 20, teamsUsed: 4, creditsMax: null, creditsUsed: 0, canGenerate: true, canPlaceMatches: true, canExportPdf: true, seasonTransition: true } };
+    const user = userEvent.setup();
+    renderWithProviders(<MatchesPage />);
+    await gotoStep(user, /Domiciles posés/);
+    const place = await screen.findByRole("button", { name: "Placer automatiquement" });
+    expect(place).toBeEnabled();
+  });
+
+  it("montre la bande extérieur et le radar gradué (vues Domiciles puis Litiges)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MatchesPage />);
+    // Bande extérieur : présente dans la vue Domiciles (comme dans la vue modèle).
+    await gotoStep(user, /Domiciles posés/);
     expect(await screen.findByText(/à Grenoble \(Halle Clemenceau\)/)).toBeInTheDocument();
-
-    // The graded diagnostic groups by severity (MAIN coach clash = group 3).
+    // Radar gradué : vue Litiges (groupe sévérité 3 = coach principal en double).
+    await gotoStep(user, /Litiges/);
     expect(await screen.findByText("Coach principal en double")).toBeInTheDocument();
   });
 
-  // ── RMM-1 PR2 — la boucle hebdo perd les actions rares ET le toggle A/B ────────────
-  it("la barre de la boucle se réduit : ni actions rares, ni toggle « Week-end type »", async () => {
-    renderWithProviders(<MatchesPage />);
-    await screen.findByRole("button", { name: /vs Voisins/ });
-
-    // Les 3 actions rares sont parties en Configuration.
-    expect(screen.queryByRole("button", { name: "Habitudes & passerelles" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Accès match" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Engagements FFBB" })).not.toBeInTheDocument();
-    // L'image A/B est un écran de plein droit (Configuration), plus un toggle.
-    expect(screen.queryByRole("button", { name: /Week-end type/ })).not.toBeInTheDocument();
-
-    // La barre réduite reste : placer auto · importer FBI · nouveau match.
-    expect(screen.getByRole("button", { name: /Placer automatiquement/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Importer FBI/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Nouveau match/ })).toBeInTheDocument();
-  });
-
-  it("clicking a placed grid cell opens the manual-loop panel (P1-4 PR E1)", async () => {
+  it("clic sur une cellule placée ouvre le panneau de boucle manuelle (P1-4 PR E1)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<MatchesPage />);
+    await gotoStep(user, /Domiciles posés/);
 
-    // The placed match renders as a clickable grid cell (team + kickoff + opponent).
     await user.click(await screen.findByRole("button", { name: /Seniors.*Rivaux/ }));
-
-    // Panel of a PLACED match: main action is Déplacer, manual loop below.
     expect(await screen.findByRole("button", { name: "Déplacer" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Dé-placer" }));
     expect(unplaceFixture).toHaveBeenCalledWith(expect.objectContaining({ id: "fx-placed" }));
+  });
+
+  // ── La barre utilitaire réduite (L5) — l'action primaire vit dans la vue ─────
+  it("la barre du haut ne porte QUE « Nouveau match » ; les actions primaires sont dans les vues", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MatchesPage />);
+    await screen.findByRole("navigation");
+
+    // Actions rares parties en Configuration (inchangé PR2), toggle A/B disparu.
+    expect(screen.queryByRole("button", { name: "Habitudes & passerelles" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Engagements FFBB" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Week-end type/ })).not.toBeInTheDocument();
+
+    // La barre du haut : Nouveau match seulement. « Placer auto » / « Importer FBI »
+    // ne sont PAS dans la barre — ils sont l'action primaire de LEUR étape.
+    expect(screen.getByRole("button", { name: /Nouveau match/ })).toBeInTheDocument();
+    // Vue par défaut = Litiges : ni placer auto ni importer visibles.
+    expect(screen.queryByRole("button", { name: /Placer automatiquement/ })).not.toBeInTheDocument();
+    // Étape Batch → « Importer FBI » primaire ; étape Domiciles → « Placer auto » primaire.
+    await gotoStep(user, /Batch importé/);
+    expect(screen.getByRole("button", { name: /Importer FBI/ })).toBeInTheDocument();
+    await gotoStep(user, /Domiciles posés/);
+    expect(screen.getByRole("button", { name: /Placer automatiquement/ })).toBeInTheDocument();
   });
 });
