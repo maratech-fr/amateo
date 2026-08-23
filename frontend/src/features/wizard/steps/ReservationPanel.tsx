@@ -9,7 +9,7 @@ import { readFailed } from "@/shared/lib/readState";
 import type { PriorityTier, Team, Venue, VenueTrainingSlot } from "../api";
 import { reservedTeamsBySlot, effectiveSlotCapacity, slotKey } from "../lib/reservationSlots";
 import { closuresByVenue, closurePeriodLabel, isSlotClosed } from "../lib/venueClosures";
-import { useGridSlots, useReservations, useWizardTeamCoaches } from "../queries";
+import { useGridSlots, useReservations, useSharedTrainingGroups, useWizardTeamCoaches } from "../queries";
 import { ReservationGrid } from "./ReservationGrid";
 import { SlotReservationModal } from "./SlotReservationModal";
 
@@ -47,6 +47,11 @@ export function ReservationPanel({
   // une réservation hors de la grille servie bloquerait la génération (#8).
   const { data: slots = [] } = useGridSlots(schedulePlanId);
   const { data: reservations = [] } = useReservations(schedulePlanId);
+  // P2-46 PR-3 — les groupes de mutualisation de la portée courante, posables sur un créneau libre.
+  // En portée socle le provider renvoie socle ET périodes : on ne garde que le socle (même tri que
+  // MutualisationPanel).
+  const { data: allSharedGroups = [] } = useSharedTrainingGroups(schedulePlanId);
+  const sharedGroups = null === schedulePlanId ? allSharedGroups.filter((g) => null === g.schedulePlanId) : allSharedGroups;
   // P2-22 D2 — les fermetures de gymnase de la période. Hors période (entryId null) le hook
   // est désactivé → aucune fermeture, socle inchangé.
   const conflictsQuery = useEntryConflicts(entryId ?? null);
@@ -158,6 +163,7 @@ export function ReservationPanel({
           venueFullyClosed={selectedFullyClosed}
           venueClosures={closuresOfVenue}
           venueCanSplit={venueCanSplit}
+          sharedTrainingGroups={sharedGroups}
           schedulePlanId={schedulePlanId}
           onClose={() => setActiveSlot(null)}
         />

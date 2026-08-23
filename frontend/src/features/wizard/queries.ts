@@ -593,6 +593,15 @@ export function useDeleteReservation() {
   });
 }
 
+/** P2-46 PR-3 — pose un groupe de mutualisation sur une case : UN appel au rail batch pour ses N réservations. */
+export function useCreateGroupReservation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: wizardApi.GroupReservationPayload) => wizardApi.createGroupReservation(body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "reservations"] }),
+  });
+}
+
 // --- Shared training groups (P2-27) : N teams train TOGETHER, K common sessions ---
 
 /**

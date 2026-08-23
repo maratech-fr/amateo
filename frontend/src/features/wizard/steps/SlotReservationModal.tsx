@@ -1,19 +1,24 @@
-import { AlertTriangle, Lock, Trash2, Undo2 } from "lucide-react";
-import { useState } from "react";
+import { AlertTriangle, Lock, Trash2, Undo2, Users } from "lucide-react";
+import { useId, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { Modal } from "@/shared/components/ui/modal";
 import { TeamSelect } from "@/shared/components/ui/team-select";
+import { apiErrorMessage } from "@/shared/api/errors";
 
 import type { Closure } from "@/features/cockpit/api";
 
-import type { PriorityTier, Reservation, Team, TeamCoach, Venue, VenueTrainingSlot } from "../api";
+import type { PriorityTier, Reservation, SharedTrainingGroup, Team, TeamCoach, Venue, VenueTrainingSlot } from "../api";
 import { conflictingReservation, mainCoachByTeam } from "../lib/coachDoubleBooking";
 import { dayLabel, hhmm } from "../lib/days";
 import { closureLabel } from "../lib/venueClosures";
+import { offerableGroups, postedGroupOnSlot } from "../lib/groupReservation";
 import { assignableTeams, effectiveSlotCapacity, slotKey } from "../lib/reservationSlots";
-import { useCreateReservation, useDeleteReservation } from "../queries";
+import { useCreateGroupReservation, useCreateReservation, useDeleteReservation } from "../queries";
 import { WizardStepLink } from "../WizardStepLink";
+
+/** Préfixe des valeurs de la section « Entraînements mutualisés » du sélecteur (P2-46 PR-3). */
+const GROUP_VALUE_PREFIX = "group:";
 
 interface Props {
   slot: VenueTrainingSlot;
@@ -41,6 +46,8 @@ interface Props {
    *  refus serveur : quelle fermeture, sur quelles dates. */
   venueClosures?: Closure[];
   venueCanSplit: Map<string, boolean>;
+  /** Les groupes de mutualisation de la PORTÉE courante (P2-46 PR-3) — posables sur un créneau libre. */
+  sharedTrainingGroups?: SharedTrainingGroup[];
   schedulePlanId: string | null;
   onClose: () => void;
 }
@@ -80,14 +87,19 @@ export function SlotReservationModal({
   venueFullyClosed = false,
   venueClosures = [],
   venueCanSplit,
+  sharedTrainingGroups = [],
   schedulePlanId,
   onClose,
 }: Props) {
   const create = useCreateReservation();
   const del = useDeleteReservation();
+  const createGroup = useCreateGroupReservation();
+  const blockedGroupsDescId = useId();
 
   // Brouillon local : rien n'est écrit avant « Valider ».
   const [added, setAdded] = useState<string[]>([]);
+  // Groupes de mutualisation posés dans le brouillon (P2-46 PR-3) — un seul appel au rail batch au submit.
+  const [addedGroups, setAddedGroups] = useState<string[]>([]);
   const [removed, setRemoved] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -95,6 +107,9 @@ export function SlotReservationModal({
   const teamName = new Map(teams.map((t) => [t.id, t.name]));
   const venueName = new Map(venues.map((v) => [v.id, v.name]));
   const coachByTeam = mainCoachByTeam(teamCoaches ?? []);
+  // La règle ne peut pas s'appliquer sans les liens équipe→coach : une Map vide ne trouve
+  // AUCUN conflit. Plutôt que d'autoriser en aveugle (fail-open), on ferme la saisie.
+  const guardReady = null !== teamCoaches;
   const key = slotKey(slot.venueId, slot.dayOfWeek, slot.startTime);
   const capacity = effectiveSlotCapacity(slot, venueCanSplit);
 
@@ -139,6 +154,24 @@ export function SlotReservationModal({
   const offerable = undefined === pausedTeamIds ? teams : teams.filter((t) => !pausedTeamIds.has(t.id));
   const pickable = blockAdd ? [] : assignableTeams(offerable, tiers, slot, draftReservations, venueCanSplit);
 
+  // MUTUALISATION (P2-46 PR-3). Un groupe occupe la case SEUL : il exige un créneau libre dans le
+  // brouillon (retraits déjà pris en compte — c'est ce qui rend « retirer SM4 + poser le groupe »
+  // faisable en UNE validation), et une fois posé, aucune autre équipe ne s'y ajoute.
+  const groupById = new Map(sharedTrainingGroups.map((g) => [g.id, g]));
+  const postedLot = postedGroupOnSlot(onSlot, sharedTrainingGroups);
+  const hasDraftedGroup = addedGroups.length > 0;
+  // La case est occupée par un groupe : lot DÉJÀ écrit, ou lot dans le brouillon.
+  const groupOccupies = null !== postedLot || hasDraftedGroup;
+  const slotEmptyInDraft = 0 === onSlot.length && 0 === added.length && !hasDraftedGroup;
+  const groupOffer = blockAdd ? { offerable: [], blocked: [] } : offerableGroups(sharedTrainingGroups, teams, draftReservations, slotEmptyInDraft, pausedTeamIds);
+  const mutualisationOptions = groupOffer.offerable.map((g) => ({ value: `${GROUP_VALUE_PREFIX}${g.id}`, label: g.label }));
+  // Guide (b) : la case porte des équipes individuelles alors que des groupes existent — dire
+  // POURQUOI aucun groupe n'est proposé et COMMENT débloquer (retirer les équipes). Une absence
+  // muette serait le pire cas (le gestionnaire chercherait sans comprendre).
+  const showGroupGuide = guardReady && !blockAdd && !groupOccupies && sharedTrainingGroups.length > 0 && !slotEmptyInDraft;
+
+  const lotLabel = (teamIds: string[]): string => teamIds.map((id) => teamName.get(id) ?? "?").join(" + ");
+
   const pick = (teamId: string) => {
     if ("" === teamId) {
       return;
@@ -158,6 +191,18 @@ export function SlotReservationModal({
     setAdded((prev) => [...prev, teamId]);
   };
 
+  // Le sélecteur porte deux sémantiques d'écriture (ajouter UNE équipe, ou poser TOUT un groupe) :
+  // la valeur préfixée `group:` aiguille vers le rail batch, tout le reste reste un ajout unitaire.
+  const onSelect = (value: string) => {
+    if (value.startsWith(GROUP_VALUE_PREFIX)) {
+      setError(null);
+      setAddedGroups((prev) => [...prev, value.slice(GROUP_VALUE_PREFIX.length)]);
+
+      return;
+    }
+    pick(value);
+  };
+
   /**
    * Les écritures partent une par une, et le brouillon est PURGÉ AU FUR ET À MESURE. C'est
    * ce qui rend une reprise sûre : après un échec, « Valider » ne rejoue que ce qui reste
@@ -168,8 +213,9 @@ export function SlotReservationModal({
    */
   const submit = async () => {
     setSubmitError(null);
+    // Phase 1 — retraits PUIS ajouts unitaires. Les retraits d'abord : ils libèrent de la capacité
+    // (et VIDENT la case) pour les ajouts du même lot, groupe compris (rail exclusif : créneau libre).
     try {
-      // Les retraits d'abord : ils libèrent de la capacité pour les ajouts du même lot.
       for (const id of [...removed]) {
         await del.mutateAsync(id);
         setRemoved((prev) => prev.filter((pending) => pending !== id));
@@ -178,19 +224,31 @@ export function SlotReservationModal({
         await create.mutateAsync({ teamId, venueId: slot.venueId, dayOfWeek: slot.dayOfWeek, startTime: hhmm(slot.startTime), durationMinutes: slot.durationMinutes, schedulePlanId });
         setAdded((prev) => prev.filter((pending) => pending !== teamId));
       }
-      onClose();
     } catch {
       // La modale RESTE ouverte, avec ce qui n'est pas passé : sans ce message le
       // gestionnaire ne saurait pas qu'une partie de son lot est partie et l'autre non.
       setSubmitError("Une partie des modifications n'a pas pu être enregistrée. Ce qui reste affiché n'est pas encore appliqué — réessayez.");
+
+      return;
     }
+    // Phase 2 — chaque groupe posé part en UN SEUL appel au rail batch (N réservations, un flush
+    // atomique côté serveur), APRÈS les retraits (la case est alors libre). Un 422 serveur reste
+    // seul juge : on affiche SON motif (le front n'est qu'un garde-fou d'ergonomie).
+    try {
+      for (const groupId of [...addedGroups]) {
+        await createGroup.mutateAsync({ sharedTrainingGroupId: groupId, venueId: slot.venueId, dayOfWeek: slot.dayOfWeek, startTime: hhmm(slot.startTime), durationMinutes: slot.durationMinutes, schedulePlanId });
+        setAddedGroups((prev) => prev.filter((pending) => pending !== groupId));
+      }
+    } catch (e) {
+      setSubmitError(await apiErrorMessage(e));
+
+      return;
+    }
+    onClose();
   };
 
-  const busy = create.isPending || del.isPending;
-  const dirty = added.length > 0 || removed.length > 0;
-  // La règle ne peut pas s'appliquer sans les liens équipe→coach : une Map vide ne trouve
-  // AUCUN conflit. Plutôt que d'autoriser en aveugle (fail-open), on ferme la saisie.
-  const guardReady = null !== teamCoaches;
+  const busy = create.isPending || del.isPending || createGroup.isPending;
+  const dirty = added.length > 0 || removed.length > 0 || addedGroups.length > 0;
   // Fermer pendant l'envoi laisserait des mutations en vol s'appliquer sans trace à l'écran.
   const dismiss = () => {
     if (!busy) {
@@ -204,25 +262,47 @@ export function SlotReservationModal({
         Fixe une équipe sur ce créneau (verrou pris en compte à chaque génération). Ce créneau accepte {capacity} équipe{capacity > 1 ? "s" : ""}.
       </p>
 
-      {onSlot.length > 0 || added.length > 0 ? (
+      {onSlot.length > 0 || added.length > 0 || removed.length > 0 || addedGroups.length > 0 ? (
         <ul className="mb-3 flex flex-col gap-1">
-          {onSlot.map((r) => (
-            <li key={r.id} className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm">
-              <Lock className="size-3.5 text-accent" />
-              <span className="flex-1 font-medium">{teamName.get(r.teamId) ?? "?"}</span>
+          {/* Un lot mutualisé DÉJÀ écrit = UNE ligne (membres nommés), pas N verrous anonymes : son
+              retrait empile les N `DELETE`. Sinon, les réservations individuelles ligne à ligne. */}
+          {null !== postedLot ? (
+            <li key="posted-lot" className="flex items-start gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm">
+              <Users className="mt-0.5 size-3.5 shrink-0 text-accent" />
+              <span className="flex-1 font-medium">
+                {lotLabel(postedLot.group.teamIds)} <span className="font-normal text-muted-foreground">· entraînement mutualisé</span>
+              </span>
               <button
                 type="button"
-                aria-label={`Retirer ${teamName.get(r.teamId) ?? "l'équipe"}`}
+                aria-label={`Retirer l'entraînement mutualisé ${lotLabel(postedLot.group.teamIds)}`}
                 className="rounded p-1 text-muted-foreground hover:text-destructive"
                 onClick={() => {
-                  setError(null); // le refus affiché peut devenir caduc en libérant la place
-                  setRemoved((prev) => [...prev, r.id]);
+                  setError(null);
+                  setRemoved((prev) => [...prev, ...postedLot.reservationIds]);
                 }}
               >
                 <Trash2 className="size-4" />
               </button>
             </li>
-          ))}
+          ) : (
+            onSlot.map((r) => (
+              <li key={r.id} className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm">
+                <Lock className="size-3.5 text-accent" />
+                <span className="flex-1 font-medium">{teamName.get(r.teamId) ?? "?"}</span>
+                <button
+                  type="button"
+                  aria-label={`Retirer ${teamName.get(r.teamId) ?? "l'équipe"}`}
+                  className="rounded p-1 text-muted-foreground hover:text-destructive"
+                  onClick={() => {
+                    setError(null); // le refus affiché peut devenir caduc en libérant la place
+                    setRemoved((prev) => [...prev, r.id]);
+                  }}
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              </li>
+            ))
+          )}
           {/* Un retrait en attente reste NOMMÉ et annulable : le remplacer par un compteur
               anonyme empêchait de savoir quelle équipe on avait retirée, et de revenir en
               arrière autrement qu'en fermant la modale — ce qui abandonnait aussi les ajouts. */}
@@ -264,6 +344,32 @@ export function SlotReservationModal({
               </button>
             </li>
           ))}
+          {/* Un groupe posé dans le brouillon = UNE ligne « à valider » (même traitement accent-dashed
+              qu'un ajout unitaire, membres nommés) ; l'annuler le retire du brouillon, rien n'est écrit. */}
+          {addedGroups.map((groupId) => {
+            const members = groupById.get(groupId)?.teamIds ?? [];
+
+            return (
+              <li key={`draft-group-${groupId}`} className="flex items-start gap-2 rounded-md border border-dashed border-accent/60 bg-accent/5 px-3 py-1.5 text-sm">
+                <Users className="mt-0.5 size-3.5 shrink-0 text-accent" />
+                <span className="flex-1 font-medium">
+                  {lotLabel(members)} <span className="font-normal text-muted-foreground">· entraînement mutualisé</span>
+                </span>
+                <span className="text-xs text-muted-foreground">à valider</span>
+                <button
+                  type="button"
+                  aria-label={`Annuler l'ajout de l'entraînement mutualisé ${lotLabel(members)}`}
+                  className="rounded p-1 text-muted-foreground hover:text-destructive"
+                  onClick={() => {
+                    setError(null);
+                    setAddedGroups((prev) => prev.filter((id) => id !== groupId));
+                  }}
+                >
+                  <Undo2 className="size-4" />
+                </button>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
 
@@ -295,11 +401,43 @@ export function SlotReservationModal({
             </>
           )}
         </p>
+      ) : groupOccupies ? (
+        // Un groupe occupe la case SEUL (règle b) : plus d'ajout individuel. Le lot ci-dessus le
+        // nomme, la ligne reste donc sans libellé. `status` poli : c'est un état issu du brouillon.
+        <p role="status" className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground">
+          Un entraînement mutualisé occupe seul ce créneau. Retirez-le pour ajouter des équipes.
+        </p>
       ) : occupied < capacity ? (
-        pickable.length > 0 ? (
-          // Groupes par rang (demande fondateur 2026-08-04) : 49 équipes à plat sont
-          // illisibles — TeamSelect est le home unique du découpage S/A/B/C/D.
-          <TeamSelect aria-label="Ajouter une équipe" className="h-9 w-full" value="" onChange={(e) => pick(e.target.value)} disabled={busy} teams={pickable} tiers={tiers} placeholder="— ajouter une équipe —" />
+        pickable.length > 0 || mutualisationOptions.length > 0 ? (
+          <>
+            {/* Groupes par rang (demande fondateur 2026-08-04) : 49 équipes à plat sont illisibles —
+                TeamSelect est le home unique du découpage S/A/B/C/D. La section « Entraînements
+                mutualisés » vient EN TÊTE (P2-46 PR-3), avant les paliers, valeurs préfixées `group:`. */}
+            <TeamSelect
+              aria-label="Ajouter une équipe"
+              aria-describedby={groupOffer.blocked.length > 0 ? blockedGroupsDescId : undefined}
+              className="h-9 w-full"
+              value=""
+              onChange={(e) => onSelect(e.target.value)}
+              disabled={busy}
+              teams={pickable}
+              tiers={tiers}
+              mutualisationGroups={mutualisationOptions}
+              placeholder="— ajouter une équipe —"
+            />
+            {/* Raison NOMMÉE par groupe indisponible (K atteint, membre en pause, membre au plafond) :
+                liste muette interdite. Contenu STATIQUE au rendu (pas une région live) — relié au
+                sélecteur par `aria-describedby` pour qu'un lecteur d'écran l'entende en arrivant dessus. */}
+            {groupOffer.blocked.length > 0 ? (
+              <ul id={blockedGroupsDescId} className="mt-2 flex flex-col gap-0.5">
+                {groupOffer.blocked.map((g) => (
+                  <li key={g.id} className="text-xs text-muted-foreground">
+                    {g.label} — {g.reason} <span className="font-medium">· indisponible</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </>
         ) : (
           <p className="text-xs text-muted-foreground">Aucune équipe disponible (toutes ont atteint leur nombre de séances ou sont déjà sur ce créneau).</p>
         )
@@ -319,6 +457,14 @@ export function SlotReservationModal({
           </WizardStepLink>
         </div>
       )}
+
+      {/* Guide (b) — la case porte des équipes alors que des groupes existent : dire POURQUOI aucun
+          groupe n'est proposé et où agir (les retirer). `status` poli, comme « Créneau complet ». */}
+      {showGroupGuide ? (
+        <p role="status" className="mt-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground">
+          Un entraînement mutualisé ne se pose que sur un créneau libre — retirez les équipes ci-dessus pour en poser un.
+        </p>
+      ) : null}
 
       {null !== error || null !== submitError ? (
         <p role="alert" className="mt-3 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">

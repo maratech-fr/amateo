@@ -299,6 +299,22 @@ export const listReservations = (params?: Record<string, string>): Promise<Reser
 export const createReservation = (body: ReservationPayload): Promise<Reservation> => api.post("reservations", { json: body }).json();
 export const deleteReservation = (id: string): Promise<void> => api.delete(`reservations/${id}`).then(() => undefined);
 
+/**
+ * Rail BATCH de mutualisation (P2-46 PR-2) : poser UN groupe sur UNE case écrit ses N réservations
+ * en un seul flush atomique. Le retrait n'a pas de route dédiée — c'est N `deleteReservation`.
+ */
+export interface GroupReservationPayload {
+  sharedTrainingGroupId: string;
+  venueId: string;
+  dayOfWeek: number;
+  startTime: string;
+  durationMinutes: number;
+  schedulePlanId?: string | null;
+}
+
+export const createGroupReservation = (body: GroupReservationPayload): Promise<{ ids: string[]; count: number }> =>
+  api.post("reservations/group", { json: body }).json();
+
 // --- Shared training groups (P2-27) : N teams train TOGETHER, K common sessions ---
 
 /**

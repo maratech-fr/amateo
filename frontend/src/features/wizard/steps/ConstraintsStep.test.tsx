@@ -23,6 +23,7 @@ const h = vi.hoisted(() => ({
   list: [] as Constraint[],
   resCreate: vi.fn(),
   resDelete: vi.fn(),
+  resGroupCreate: vi.fn(),
   reservations: [] as { id: string; calendarEntryId: string | null; teamId: string; venueId: string; dayOfWeek: number; startTime: string; durationMinutes: number }[],
   teamCoaches: [] as { id: string; teamId: string; coachId: string; role: string }[] | undefined,
   coachesPending: false,
@@ -102,6 +103,7 @@ vi.mock("../queries", () => ({
   useWizardTeamCoaches: () => ({ data: h.teamCoaches, isPending: h.coachesPending, isError: h.coachesFailed, refetch: vi.fn() }),
   useCreateReservation: () => ({ mutateAsync: h.resCreate, isPending: false }),
   useDeleteReservation: () => ({ mutateAsync: h.resDelete, isPending: false }),
+  useCreateGroupReservation: () => ({ mutateAsync: h.resGroupCreate, isPending: false }),
   // P2-27 — la mutualisation. Le mock HONORE `enabled` (comme useReservations) : une période
   // non résolue ne doit pas servir les groupes du SOCLE.
   useSharedTrainingGroups: (_planId?: string | null, enabled?: boolean) => ({ data: false === enabled ? [] : h.sharedGroups }),
