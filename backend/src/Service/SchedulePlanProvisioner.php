@@ -7,7 +7,6 @@ namespace App\Service;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\Season;
-use App\Enum\ConstraintFamily;
 use App\Enum\SchedulePlanType;
 use App\Repository\ImplicitRuleSettingRepository;
 use DateTimeImmutable;
@@ -34,6 +33,10 @@ use Throwable;
  *   donc précéder les réglages qui s'y accrochent (inv. 5) — le créer à la première
  *   version, comme le lot A, était simplement trop tard. Naissance seule : l'identité
  *   d'une période qui porte un plan est gelée (422), il n'y a donc rien à synchroniser.
+ *   Le plan de période naît NOMMÉ du TITRE de son entrée (décision fondateur 2026-08-23) :
+ *   une seule identité, plus de nom serveur reconstruit par gabarit ni de recalage — la date
+ *   reste lisible car un titre de période porte désormais toujours sa fenêtre. Voir le POURQUOI
+ *   détaillé au site de naissance (ensurePeriodPlanId).
  * - linkSchedule(): ADR-0002 C4 — NUMÉROTE une version dans son plan. Le plan est POSÉ par
  *   l'appelant (`schedulePlanId`) : le POST le nomme (ScheduleStateProcessor), le regenerate
  *   reprend celui de la source. linkSchedule ne résout donc plus rien, il pose `versionNumber`
@@ -418,17 +421,18 @@ final class SchedulePlanProvisioner
      * PLAN, toujours. SOURCE UNIQUE de la règle et de son repli.
      *
      * `Schedule.name` n'est qu'une PHOTO prise à la création de la version : elle se périme
-     * dès que le gestionnaire renomme le plan, ou dès que `refreshClosurePlanName` y pose le
-     * gymnase. La lire pour afficher, exporter ou nommer un fichier fait diverger le document
-     * remis aux coachs du nom que l'écran affiche (constaté en revue #339 round 2 : le PDF
-     * portait « Vacances d'été — … » dans un fichier nommé « reprise-aout.pdf »).
+     * dès que le gestionnaire renomme le plan. La lire pour afficher, exporter ou nommer un
+     * fichier fait diverger le document remis aux coachs du nom que l'écran affiche (constaté
+     * en revue #339 round 2 : le PDF portait « Vacances d'été — … » dans un fichier nommé
+     * « reprise-aout.pdf »).
      *
      * Repli sur la photo si le plan a disparu — un export doit rendre un document, pas une erreur.
      *
-     * ⚠ Portée exacte : « le nom d'un planning vu depuis UNE DE SES VERSIONS ». `OverlayManager::
-     * periodLabelOf` nomme délibérément autrement (le titre de la `CalendarEntry`, c'est-à-dire le
-     * FAIT déclencheur) dans la popup de suppression — le gestionnaire y reconnaît son incident.
-     * Écart assumé, tracé en roadmap plutôt que rendu uniforme dans cette PR.
+     * ⚠ Portée exacte : « le nom d'un planning vu depuis UNE DE SES VERSIONS ». Pour une PÉRIODE,
+     * le nom du plan NAÎT du titre de la `CalendarEntry` (décision fondateur 2026-08-23), donc
+     * `OverlayManager::periodLabelOf` — qui nomme d'après ce même titre dans la popup de suppression
+     * — COÏNCIDE désormais avec ce nom à la naissance ; ils ne divergent qu'après un renommage
+     * manuel du plan (inv. 12), le titre de l'entrée restant, lui, le FAIT déclencheur figé.
      */
     public function displayNameOf(Schedule $schedule): string
     {
@@ -553,59 +557,6 @@ final class SchedulePlanProvisioner
 
             return $season instanceof Season ? $this->createSeasonPlan($season)->getId() : null;
         });
-    }
-
-    /**
-     * E6 / correctif F2 : recale le nom d'un plan de FERMETURE une fois la datée `venue_closed`
-     * connue (elle naît après l'entrée, 2 POST). Le nom n'est recalé QUE tant qu'il vaut ENCORE
-     * le générique de naissance (« Ajustement gymnase — {repère} ») — comparé à l'octet près, pas
-     * par gabarit : dès qu'il est résolu OU renommé par le gestionnaire (inv. 12), il est figé.
-     *
-     * ⚠ Le générique est RECALCULÉ ici par `closurePlanName(null, …)`. Changer le gabarit change
-     * donc la clé de comparaison : les plans nés sous un gabarit ANTÉRIEUR ne matchent plus et ne
-     * seront jamais recalés (constaté à la revue #339 lors du passage au repère en clair). Décision
-     * fondateur, cohérente avec P2-9bis : V0, pas de migration de données — les rares plans
-     * concernés se renomment à la main.
-     *
-     * Conséquence assumée : re-cibler le gymnase d'UNE MÊME fermeture ne renomme pas (le nom est
-     * gelé à la 1re résolution) — un vrai changement de gymnase se fait en créant une nouvelle
-     * fermeture (nouvelle entrée → nouveau plan, correctement nommé). Ce compromis protège inv. 12
-     * de façon absolue : aucune heuristique de nom ne peut confondre un renommage avec un auto.
-     *
-     * Best-effort côté appelant (ConstraintStateProcessor l'entoure d'un try/catch) : un nom est
-     * cosmétique et ne doit jamais faire échouer l'écriture de la contrainte, déjà committée.
-     */
-    public function refreshClosurePlanName(string $sourceEntryId): void
-    {
-        $venue = $this->closedVenueName($sourceEntryId);
-        if (null === $venue) {
-            return; // pas (encore) de gymnase résoluble : rien à recaler
-        }
-
-        // Le plan de la fermeture (mère) ET ceux de ses semaines enfants.
-        $rows = $this->entityManager->getConnection()->fetchAllAssociative(
-            'SELECT p.id AS pid, e.start_date, e.end_date FROM schedule_plan p '
-            . 'JOIN calendar_entry e ON e.id = p.calendar_entry_id '
-            . 'WHERE p.type = \'CLOSURE\' AND (e.id = :src OR e.parent_entry_id = :src)',
-            ['src' => $sourceEntryId],
-        );
-        foreach ($rows as $r) {
-            $start = new DateTimeImmutable((string) $r['start_date']);
-            $end = new DateTimeImmutable((string) $r['end_date']);
-            // Compare-and-set ATOMIQUE sur le nom générique : ne recale QUE si le nom est encore
-            // exactement celui de naissance. Un renommage concurrent (chemin ORM) fait 0 ligne —
-            // pas de TOCTOU, pas de lost update. UPDATE brut : esquive le season_filter (le plan
-            // peut vivre hors saison active), bump `version` à la main (pas de flush ORM → pas
-            // d'OptimisticLock), étanche (RLS scope par club).
-            $this->entityManager->getConnection()->executeStatement(
-                'UPDATE schedule_plan SET name = :name, updated_at = now(), version = version + 1 WHERE id = :id AND name = :generic',
-                [
-                    'name' => $this->closurePlanName($venue, $start, $end),
-                    'id' => (string) $r['pid'],
-                    'generic' => $this->closurePlanName(null, $start, $end),
-                ],
-            );
-        }
     }
 
     /**
@@ -745,7 +696,7 @@ final class SchedulePlanProvisioner
         // Read the entry filter-free: season_filter would hide a period whose
         // season is not the request's active one.
         $row = $this->entityManager->getConnection()->fetchAssociative(
-            'SELECT club_id, season_id, title, period_type, start_date, end_date, parent_entry_id, school_holiday_id FROM calendar_entry WHERE id = :id',
+            'SELECT club_id, season_id, title, period_type, start_date, end_date FROM calendar_entry WHERE id = :id',
             ['id' => $calendarEntryId],
         );
         if (false === $row) {
@@ -757,13 +708,35 @@ final class SchedulePlanProvisioner
             return null;
         }
 
+        $start = new DateTimeImmutable((string) $row['start_date']);
+        $end = new DateTimeImmutable((string) $row['end_date']);
+
+        // Décision fondateur 2026-08-23 — UNE SEULE IDENTITÉ : le nom du plan de période NAÎT
+        // du TITRE de son entrée de calendrier. Avant, une entrée portait son titre (le FAIT :
+        // « Vacances de la Toussaint — … ») ET son plan portait un nom serveur reconstruit par
+        // gabarit (la RÉPONSE : « Ajustement gymnase — Semaine du … ») : deux identités sans lien
+        // visible, que le gestionnaire ne pouvait rapprocher (constat e2e P4-122). On garde la
+        // seule qui a un sens pour lui — le titre qu'il a saisi. Le gabarit serveur et son
+        // recalage (refreshClosurePlanName) disparaissent avec ce choix.
+        //
+        // La date reste lisible d'un coup d'œil parce qu'un TITRE de période porte désormais
+        // toujours sa fenêtre (« — du … au … ») : c'est la convention posée le même jour côté
+        // création (frontend/src/features/cockpit/queries.ts). Le nom du plan, étant le titre,
+        // la porte donc lui aussi. Inv. 12 intact : le nom n'est posé qu'ICI, à la naissance ;
+        // le renommage manuel du gestionnaire reste souverain ensuite.
+        //
+        // Repli défensif seulement (hors API, où NotBlank rend un titre vide impossible) : une
+        // fenêtre datée, pour ne jamais naître sans nom.
+        $title = (string) $row['title'];
+        $name = '' !== $title ? $title : 'Période — ' . $this->windowSuffix($start, $end);
+
         $plan = (new SchedulePlan)
             ->setClubId((string) $row['club_id'])
             ->setSeasonId((string) $row['season_id'])
             ->setType($type)
-            ->setName($this->periodPlanName($type, $row, $calendarEntryId))
-            ->setStartDate(new DateTimeImmutable((string) $row['start_date']))
-            ->setEndDate(new DateTimeImmutable((string) $row['end_date']))
+            ->setName($name)
+            ->setStartDate($start)
+            ->setEndDate($end)
             ->setCalendarEntryId($calendarEntryId);
         $this->entityManager->persist($plan);
         $this->entityManager->flush(); // l'id du plan doit exister avant les copies ci-dessous
@@ -857,113 +830,6 @@ final class SchedulePlanProvisioner
     private function seasonPlanName(Season $season): string
     {
         return 'Planning de la saison ' . $season->getName();
-    }
-
-    /**
-     * E6 (types-de-planning « Nom par défaut ») : le nom PUBLIC du plan de période
-     * (ADR-0002 inv. 12) — la RÉPONSE, distincte du FAIT déclencheur (`CalendarEntry.title`,
-     * ex. « Gymnase A — fermé »). Source unique côté serveur ; le gestionnaire renomme ensuite.
-     * - CLOSURE : « Ajustement {gymnase} — {repère} » (gymnase = la datée `venue_closed`).
-     * - HOLIDAY : « {label} — {repère} » (label du référentiel, ex. « Vacances de la Toussaint »).
-     * Le {repère} se lit en clair (windowSuffix) : « Semaine du 20 octobre 2025 » quand la fenêtre
-     * couvre exactement une semaine calendaire, sinon « du 20 octobre 2025 au 2 novembre 2025 ».
-     * Fallback sobre si la donnée manque (gymnase inconnu / vacances hors référentiel) — jamais de crash.
-     *
-     * ⚠ CLOSURE : la datée `venue_closed` naît APRÈS l'entrée (le front fait 2 POST) ; à la
-     * naissance du plan le gymnase est donc souvent introuvable → nom générique « Ajustement
-     * gymnase … ». {@see refreshClosurePlanName} le recale quand la datée arrive.
-     *
-     * @param array<string, mixed> $row colonnes lues dans ensurePeriodPlanId
-     */
-    private function periodPlanName(SchedulePlanType $type, array $row, string $calendarEntryId): string
-    {
-        $start = new DateTimeImmutable((string) $row['start_date']);
-        $end = new DateTimeImmutable((string) $row['end_date']);
-        // Les datées ET le rattachement vacances d'une semaine ENFANT vivent sur sa MÈRE
-        // (datedConstraintSourceId = parent_entry_id ?? id).
-        $source = \is_string($row['parent_entry_id'] ?? null) ? (string) $row['parent_entry_id'] : $calendarEntryId;
-
-        if (SchedulePlanType::HOLIDAY === $type) {
-            // Un enfant de semaine ne porte pas school_holiday_id : remonter à la mère.
-            $holidayId = \is_string($row['school_holiday_id'] ?? null) ? (string) $row['school_holiday_id'] : $this->holidayIdOf($source);
-
-            return $this->holidayPlanName($holidayId, $start, $end);
-        }
-
-        // CLOSURE : la datée venue_closed naît APRÈS l'entrée (2 POST), donc le gymnase n'est
-        // JAMAIS résoluble ici — nom générique direct, sans requête inutile. refreshClosurePlanName
-        // le recale dès que la datée arrive (ConstraintStateProcessor::afterPersist).
-        return $this->closurePlanName(null, $start, $end);
-    }
-
-    private function holidayIdOf(string $entryId): ?string
-    {
-        $id = $this->entityManager->getConnection()->fetchOne(
-            'SELECT school_holiday_id FROM calendar_entry WHERE id = :id',
-            ['id' => $entryId],
-        );
-
-        return \is_string($id) && '' !== $id ? $id : null;
-    }
-
-    private function holidayPlanName(?string $holidayId, DateTimeImmutable $start, DateTimeImmutable $end): string
-    {
-        $label = null;
-        if (null !== $holidayId) {
-            $found = $this->entityManager->getConnection()->fetchOne(
-                'SELECT label FROM school_holiday_period WHERE id = :id',
-                ['id' => $holidayId],
-            );
-            $label = \is_string($found) && '' !== $found ? $found : null;
-        }
-        // « Vacances de la Toussaint — Semaine du 20 octobre 2025 ». Le préfixe
-        // « Planning de » est tombé (retour fondateur 2026-07-31) : dans une LISTE de
-        // plannings il ne distinguait rien, il ne faisait que décaler chaque libellé.
-        // R3-B : c'est le LABEL qu'on tronque, jamais le suffixe daté. Budget CALCULÉ (même
-        // raison qu'en closurePlanName) : un plafond fixe laissait la phrase dépasser 180, et
-        // la troncature externe amputait la date.
-        $suffix = ' — ' . $this->windowSuffix($start, $end);
-        $budget = max(1, 180 - mb_strlen($suffix));
-
-        return mb_substr($label ?? 'Vacances', 0, $budget) . $suffix;
-    }
-
-    /**
-     * Nom du gymnase fermé = scopeTargetId de la datée `venue_closed`. Filtré STRICTEMENT sur
-     * `config.type = 'venue_closed'` (R3-D : FACILITY couvre aussi forced/preferred/forbidden
-     * Venue — un type absent ou autre ne doit JAMAIS fournir un gymnase pour le nom ; en cas de
-     * doute on garde le nom générique plutôt qu'un mauvais gymnase). `created_at` pour un choix
-     * déterministe s'il y en a plusieurs.
-     */
-    private function closedVenueName(string $sourceEntryId): ?string
-    {
-        $name = $this->entityManager->getConnection()->fetchOne(
-            'SELECT v.name FROM venue v JOIN "constraint" c ON c.scope_target_id = v.id '
-            . 'WHERE c.calendar_entry_id = :eid AND c.family = :fam AND c.is_active = true '
-            . 'AND c.config->>\'type\' = \'venue_closed\' '
-            . 'ORDER BY c.created_at ASC LIMIT 1',
-            ['eid' => $sourceEntryId, 'fam' => ConstraintFamily::FACILITY->value],
-        );
-
-        return \is_string($name) ? $name : null;
-    }
-
-    private function closurePlanName(?string $venue, DateTimeImmutable $start, DateTimeImmutable $end): string
-    {
-        // R3-B : c'est le GYMNASE qu'on tronque, JAMAIS la phrase entière — le suffixe daté
-        // doit TOUJOURS survivre à la limite de 180 (`SchedulePlan.name`), sinon le nom cesse
-        // d'être comparable au générique et `refreshClosurePlanName` ne recale plus jamais ce
-        // plan. Le budget se CALCULE au lieu d'être estimé : le suffixe en toutes lettres peut
-        // atteindre ~42 caractères (« du 1er septembre 2026 au 30 septembre 2026 »), là où un
-        // plafond fixe de 140 sur le gymnase laissait la phrase dépasser 180 — et la troncature
-        // externe amputait alors la DATE, exactement ce que cette règle interdit (revue #339).
-        // Le gymnase RESTE dans le libellé (arbitrage fondateur 2026-07-31) : c'est la seule
-        // chose qui distingue deux fermetures de la même semaine.
-        $prefix = 'Ajustement ';
-        $suffix = ' — ' . $this->windowSuffix($start, $end);
-        $budget = max(1, 180 - mb_strlen($prefix) - mb_strlen($suffix));
-
-        return $prefix . mb_substr($venue ?? 'gymnase', 0, $budget) . $suffix;
     }
 
     /**

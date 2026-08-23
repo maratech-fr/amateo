@@ -499,7 +499,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         );
         self::assertNotFalse($plan, 'le segment est né AVEC son plan');
         self::assertSame('CLOSURE', (string) $plan['type'], 'le plan est de type CLOSURE');
-        self::assertSame('Ajustement gymnase — du 7 septembre 2026 au 27 septembre 2026', (string) $plan['name'], 'le plan garde le nom générique (gymnase non recalé)');
+        self::assertSame('Matéo indisponible (travaux) — semaines du 7 sept. 2026 au 27 sept. 2026', (string) $plan['name'], 'le plan de période naît nommé du TITRE de son segment-enfant (décision fondateur 2026-08-23)');
         self::assertNull($plan['chosen_schedule_id'], 'le plan n\'est PAS validé (aucune version pointée)');
         self::assertTrue((bool) $plan['team_selection_initialized'], 'la sélection d\'équipes est initialisée (le wizard ne re-seede pas)');
         $planId = (string) $plan['id'];

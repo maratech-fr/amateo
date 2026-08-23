@@ -1651,16 +1651,13 @@ final class BcclSeeder
         }
 
         // --- Plan de la semaine (naissance seule : copie la grille de saison + les 4 règles
-        // bien-être, ancre les réglages) puis renommage post-naissance (inv. 12). ---
+        // bien-être, ancre les réglages). Le plan naît NOMMÉ du titre de son entrée
+        // (décision fondateur 2026-08-23) : `$week['title']` est déjà posé sur l'entrée
+        // ci-dessus, donc plus de renommage post-naissance à simuler ici. ---
         $planId = $this->schedulePlanProvisioner->provisionPeriodPlan($child->getId());
         if (null === $planId) {
             throw new RuntimeException(\sprintf('La semaine de reprise « %s » (holiday) n\'a pas reçu de plan.', $week['title']));
         }
-        // Renommage compare-and-set : idempotent (no-op au 2e run), esquive le season_filter.
-        $manager->getConnection()->executeStatement(
-            'UPDATE schedule_plan SET name = :name, updated_at = now(), version = version + 1 WHERE id = :id AND name <> :name',
-            ['name' => $week['title'], 'id' => $planId],
-        );
 
         // --- Grille du plan RECONSTRUITE À CHAQUE RUN. La purge des VenueTrainingSlot par
         // club/saison (section « VENUE TRAINING SLOTS ») emporte les copies de plan, et
@@ -1958,8 +1955,9 @@ final class BcclSeeder
 
         // --- Sa datée `venue_closed` : FACILITY/HARD sur Matéo, rattachée à l'entrée. Le front
         // fait 2 POST (entrée puis contrainte) et NOMME la contrainte comme le titre de l'entrée
-        // (useCreateVenueClosure) ; le plan naît donc AVANT elle et garde son nom générique
-        // « Ajustement gymnase … » (jamais recalé sur Matéo). Find-or-create par (club, entrée). ---
+        // (useCreateVenueClosure). Le plan de période naît NOMMÉ du TITRE de son entrée
+        // (décision fondateur 2026-08-23) : plus de nom générique ni de recalage sur Matéo.
+        // Find-or-create par (club, entrée). ---
         $closure = $manager->getRepository(Constraint::class)->findOneBy([
             'clubId' => $clubId,
             'calendarEntryId' => $incident->getId(),
@@ -2004,9 +2002,9 @@ final class BcclSeeder
         }
 
         // --- Le plan d'ajustement (naissance seule : copie la grille de saison + les 4 règles
-        // bien-être, ancre les réglages). Nom laissé au générique produit à la naissance
-        // (« Ajustement gymnase — du 7 septembre 2026 au 27 septembre 2026 ») : le gymnase n'est
-        // PAS recalé (2 POST du front). PAS de version, PAS de pointeur — travail EN COURS. ---
+        // bien-être, ancre les réglages). Il naît NOMMÉ du titre de son segment-enfant
+        // (« Matéo indisponible (travaux) — semaines du 7 sept. 2026 au 27 sept. 2026 »,
+        // décision fondateur 2026-08-23). PAS de version, PAS de pointeur — travail EN COURS. ---
         $planId = $this->schedulePlanProvisioner->provisionPeriodPlan($segment->getId());
         if (null === $planId) {
             throw new RuntimeException('Le segment d\'ajustement de l\'incident Matéo n\'a pas reçu de plan.');

@@ -346,7 +346,12 @@ export function useCreateHolidayPeriod() {
       cockpitApi.createCalendarEntry({
         kind: "period",
         periodType: "holiday",
-        title: holiday.label,
+        // Décision fondateur 2026-08-23 — un TITRE de période porte sa fenêtre. Le nom du plan
+        // NAÎT de ce titre côté backend, donc la date doit y être : le gestionnaire confirme d'un
+        // coup d'œil qu'il n'a pas visé la mauvaise vacance. Le label seul (« Vacances de la
+        // Toussaint ») ne la portait pas ; on l'enrichit « — du {début} au {fin} », même patron que
+        // les titres de segments-enfants (useCreateWeekChildren) et même helper de dates.
+        title: `${holiday.label} — du ${frDateShort(holiday.startDate)} au ${frDateShort(holiday.endDate)}`.slice(0, 180),
         startDate: holiday.startDate,
         endDate: holiday.endDate,
         schoolHolidayId: holiday.schoolHolidayId,

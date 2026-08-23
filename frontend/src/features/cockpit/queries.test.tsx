@@ -7,7 +7,7 @@ import { createConstraint } from "@/features/wizard/api";
 
 import * as cockpitApi from "./api";
 import { addDays, segmentsFromOffer, type WeekWindow } from "./lib/date";
-import { useCreateCutoff, useCreateWeekChildren, usePlannedWindows, usePublicHolidays } from "./queries";
+import { useCreateCutoff, useCreateHolidayPeriod, useCreateWeekChildren, usePlannedWindows, usePublicHolidays } from "./queries";
 
 vi.mock("./api", () => ({
   getCalendarEntries: vi.fn(),
@@ -78,6 +78,27 @@ describe("cockpit queries — payload contracts", () => {
     expect(cockpitApi.getPlannedWindows).toHaveBeenCalledWith({ start: "2026-11-01", end: "2026-11-30", entryId: "e1" });
     expect(result.current.data).toHaveLength(1);
     expect(result.current.data?.[0].reason).toBe("Ces dates sont déjà planifiées par « Reprise ».");
+  });
+
+  // Décision fondateur 2026-08-23 — le titre d'une vacance adaptée d'un bloc porte SA FENÊTRE.
+  // Le label nu (« Vacances de la Toussaint ») ne la portait pas ; le nom du plan naît de ce
+  // titre côté backend, donc la date doit y figurer pour rester lisible d'un coup d'œil.
+  it("useCreateHolidayPeriod enrichit le label avec la fenêtre « — du {début} au {fin} »", async () => {
+    vi.mocked(cockpitApi.createCalendarEntry).mockResolvedValue({ id: "e1" } as never);
+    const { result } = renderHook(() => useCreateHolidayPeriod(), { wrapper });
+
+    result.current.mutate({ schoolHolidayId: "h1", label: "Vacances de la Toussaint", startDate: "2026-10-20", endDate: "2026-11-02" });
+
+    await waitFor(() =>
+      expect(cockpitApi.createCalendarEntry).toHaveBeenCalledWith({
+        kind: "period",
+        periodType: "holiday",
+        title: "Vacances de la Toussaint — du 20 oct. 2026 au 2 nov. 2026",
+        startDate: "2026-10-20",
+        endDate: "2026-11-02",
+        schoolHolidayId: "h1",
+      }),
+    );
   });
 
   // P2-41 — un POST par SEGMENT coché : fenêtre = bornes du segment ; titre taille 1 inchangé
