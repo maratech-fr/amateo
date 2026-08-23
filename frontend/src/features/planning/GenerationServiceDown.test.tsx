@@ -90,7 +90,7 @@ describe("GenerationServiceDown — l'écran « le service de calcul ne répond 
     unmount();
 
     // Avec un incident frais (≥ 500 récent) : la ligne s'affiche.
-    recordIncident("req-abc");
+    recordIncident({ status: 502, url: "/api/generate", requestId: "req-abc" });
     render(<GenerationServiceDown onRetry={vi.fn()} creditsBlocked={false} creditSuffix="" scheduleId={null} />);
     expect(screen.getByText(/Code incident\s*:\s*req-abc/i)).toBeInTheDocument();
   });

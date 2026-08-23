@@ -1,6 +1,7 @@
 import { CalendarCheck2 } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef } from "react";
 
+import { DevIncidentDetails } from "@/shared/components/ui/dev-incident-details";
 import { PRODUCT_NAME } from "@/shared/lib/product";
 
 /**
@@ -88,6 +89,9 @@ export function SystemScreen({ title, children, primaryAction, secondaryAction, 
           // (pas d'aria-label sur un <p>, qu'axe refuse — aria-prohibited-attr).
           <p className="select-all text-xs tabular-nums text-muted-foreground">Code incident : {incidentId}</p>
         ) : null}
+        {/* P4-129 — détails techniques repliables, DEV uniquement. Dans le pied, donc hors
+            du focus posé sur le h1 au montage ; le composant ne vole jamais le focus. */}
+        <DevIncidentDetails />
         <span className="text-xs text-muted-foreground">{PRODUCT_NAME}</span>
       </footer>
     </section>

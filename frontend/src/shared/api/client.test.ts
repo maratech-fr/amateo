@@ -4,6 +4,7 @@ import { consumeSessionExpired } from "@/shared/lib/sessionExpiredNotice";
 import { useAuthStore } from "@/shared/stores/authStore";
 
 import { api } from "./client";
+import { clearLastIncident, readRecentIncident } from "./lastIncidentStore";
 
 /**
  * P5-11 — chaque requête sortante porte un X-Request-Id UNIQUE (crypto.randomUUID),
@@ -132,5 +133,80 @@ describe("api client — 401 handling", () => {
     await expect(client.post("login").json()).rejects.toBeDefined();
 
     expect(consumeSessionExpired()).toBe(false);
+  });
+});
+
+/**
+ * P4-129 — le hook `afterResponse` retient TOUT incident serveur (≥ 500), request-id
+ * présent ou non, avec le `code` machine best-effort. L'incident déclencheur : un 502
+ * nginx SANS X-Request-Id ni corps JSON, que l'ancien rail (qui exigeait un request-id)
+ * n'enregistrait pas du tout. On exerce les VRAIS hooks de `api` via `api.extend`.
+ */
+describe("api client — mémoire d'incident serveur (P4-129)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearLastIncident();
+  });
+
+  function stubResponse(status: number, body: string, contentType: string): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(body, { status, headers: { "content-type": contentType } })),
+    );
+  }
+
+  it("enregistre un 502 SANS X-Request-Id (statut + URL) — l'incident déclencheur", async () => {
+    stubResponse(502, "<html><body>502 Bad Gateway</body></html>", "text/html");
+
+    const client = api.extend({ baseUrl: "http://localhost/api/" });
+    await expect(client.get("teams").json()).rejects.toBeDefined();
+
+    const incident = readRecentIncident();
+    expect(incident).not.toBeNull();
+    expect(incident?.status).toBe(502);
+    expect(incident?.url).toContain("teams");
+    expect(incident?.requestId).toBeUndefined();
+    expect(incident?.code).toBeUndefined();
+  });
+
+  it("capture le `code` machine d'un corps JSON d'erreur", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response('{"code":"SOLVER_DOWN"}', {
+            status: 503,
+            headers: { "content-type": "application/json", "X-Request-Id": "req-777" },
+          }),
+      ),
+    );
+
+    const client = api.extend({ baseUrl: "http://localhost/api/" });
+    await expect(client.get("teams").json()).rejects.toBeDefined();
+
+    const incident = readRecentIncident();
+    expect(incident?.status).toBe(503);
+    expect(incident?.code).toBe("SOLVER_DOWN");
+    expect(incident?.requestId).toBe("req-777");
+  });
+
+  it("tolère un corps HTML (pas de throw) et enregistre quand même l'incident", async () => {
+    stubResponse(500, "<html>oops</html>", "text/html");
+
+    const client = api.extend({ baseUrl: "http://localhost/api/" });
+    // Le parse du clone échoue silencieusement : la requête rejette sur la HTTPError
+    // de ky (500), pas sur une erreur de parsing du hook.
+    await expect(client.get("teams").json()).rejects.toBeDefined();
+
+    expect(readRecentIncident()?.status).toBe(500);
+  });
+
+  it("n'enregistre RIEN sous 500 (une 404 n'est pas un incident serveur)", async () => {
+    stubResponse(404, '{"code":"not_found"}', "application/json");
+
+    const client = api.extend({ baseUrl: "http://localhost/api/" });
+    await expect(client.get("teams").json()).rejects.toBeDefined();
+
+    expect(readRecentIncident()).toBeNull();
   });
 });
