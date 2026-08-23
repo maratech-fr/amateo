@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useId, useRef } from "react";
 
 import { DevIncidentDetails } from "@/shared/components/ui/dev-incident-details";
 import { PRODUCT_NAME } from "@/shared/lib/product";
+import { SystemScene } from "@/shared/components/ui/system-scene";
 
 /**
  * P5-14 — la primitive PRÉSENTATIONNELLE des écrans système (404, 403, 500,
@@ -60,6 +61,11 @@ export function SystemScreen({ title, children, primaryAction, secondaryAction, 
         <CalendarCheck2 className="size-5 text-accent" aria-hidden />
         {PRODUCT_NAME}
       </span>
+
+      {/* Scène commune à TOUS les écrans système (P5-22) : un demi-terrain où des cartes
+          flottent en apesanteur. Décor (aria-hidden), rendu par DÉFAUT — c'est de la forme
+          partagée, pas de la copie par écran (aucune prop, aucun switch, cf. SystemScene). */}
+      <SystemScene />
 
       <div className="flex max-w-md flex-col gap-3">
         <h1 id={titleId} ref={headingRef} tabIndex={-1} className="text-xl font-semibold outline-none">
