@@ -25,12 +25,12 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, TypedDict, cast
 
-from .compromise import (
+from ..compromise import (
     FAMILY_IMPLICIT,
     CompromiseTermInfo,
 )
-from .helpers import MISSING, assignment_team_id, assignment_var, get_field, scalar_id
-from .model import DEFAULT_SESSION_MINUTES, SLOT_MINUTES, _format_time, _time_to_minutes
+from ..helpers import MISSING, assignment_team_id, assignment_var, get_field, scalar_id
+from ..model import DEFAULT_SESSION_MINUTES, SLOT_MINUTES, _format_time, _time_to_minutes
 
 logger = logging.getLogger("engine.constraints")
 
