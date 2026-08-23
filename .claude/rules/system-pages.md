@@ -30,7 +30,32 @@ paths:
   `contactEmail`, et le lien reste masqué tant que le config n'a pas chargé.
 - **Zéro dépendance réseau, inventaire imposé** : CSS **inline** · police **`system-ui`
   seule** (pas même une police auto-hébergée) · image **SVG inline ou rien** · **< 100 Ko** par
-  page · le seul chargement réseau est `/config.js`. Rien ne vient d'ailleurs.
+  page (borne DURE) — et [`../../scripts/test-system-pages.sh`](../../scripts/test-system-pages.sh)
+  garde en plus une borne bien plus **SERRÉE, < 40 Ko** par page servie : à ~13-16 Ko réels, un
+  garde à 100 Ko ne se déclencherait jamais (il ne garderait rien), 40 Ko laisse la marge tout en
+  restant un vrai signal (arbitrage fondateur P5-22). Le chargement réseau se limite à
+  **`/config.js`** (la marque, sur les DEUX pages) **plus `/maintenance-until`** — une 2ᵉ ressource
+  same-origin servie du disque, **en MAINTENANCE seulement** (le compteur de retour ci-dessous).
+  Rien d'autre ne vient d'ailleurs.
+- **La scène décorative est VOISINE de l'in-app, jamais synchronisée** (P5-22 PR-2) : même dessin
+  que `frontend/src/shared/components/ui/system-scene.tsx`, **inliné à la main dans chaque page**,
+  palette dupliquée — **aucune source partagée, aucun test de parité**. C'est délibéré : un script
+  d'inlinage serait une chaîne de build (interdite), un test de parité fabriquerait l'illusion d'une
+  synchro que la règle nie. La ressemblance est une **convention**. Animation = **TRANSFORM pur +
+  opacité de base pleine** → sous `prefers-reduced-motion`, `animation: none` suffit ; le bloc ne
+  contient **aucun override d'opacité** (transposé d'un écran d'attente, il peindrait un faux
+  « plein/succès » sous un titre de panne — même racine que la scène React, PR-1).
+- **Compteur de retour = MAINTENANCE seulement** (P5-22 PR-2). La **503 SUBIE n'a AUCUN compteur** :
+  sur une panne personne ne sait quand ça revient, un zéro atteint sans que rien ne change détruit la
+  confiance, et la page étant en 503 il repartirait à zéro à chaque rechargement (décision fondateur).
+  En maintenance, le témoin `maintenance.on` est **ENRICHI** : `echo "2026-…T…+02:00" > maintenance.on`
+  y écrit l'heure de retour ; un **`touch` nu reste VALIDE** (fichier vide → pas de compteur, page
+  intacte — rétro-compat runbook). La page lit **`/maintenance-until`** (jamais le témoin en clair) et
+  en tire « Retour prévu vers HH:MM » + un décompte en TEXTE. Horodatage absent / vide / illisible /
+  **déjà dépassé au chargement** → ligne **MASQUÉE**, jamais un compteur inventé ; **sans JS → rien**,
+  page fonctionnelle. ⚠ La route `/maintenance-until` DOIT vivre **DANS le `route {}`** de
+  `handle @maintenance` (même piège `rewrite`-avant-`handle` que `/config.js`, tranché au
+  `caddy adapt`) : hors du bloc maintenance elle **exposerait le témoin** quand l'app est vivante.
 - **Thème** : `prefers-color-scheme` en **CSS pur**, palette dupliquée de la landing, les deux
   variantes conçues ensemble. ⚠ Un accent qui « porte du texte » S'INVERSE entre thèmes (sombre
   sur clair / clair sur sombre) : le bouton plein a ses **propres** tokens fond/texte pour rester

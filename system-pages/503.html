@@ -76,13 +76,6 @@
       display: none;
     }
     .logotype .dot { color: var(--accent); }
-    .mark {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 76px; height: 76px; border-radius: 999px;
-      background: var(--accent-soft); color: var(--accent-ink);
-      margin-bottom: 28px;
-    }
-    .mark svg { width: 38px; height: 38px; display: block; }
     h1 {
       font-size: clamp(26px, 5vw, 36px); line-height: 1.12; letter-spacing: -0.02em;
       font-weight: 800; text-wrap: balance; margin-bottom: 16px;
@@ -100,7 +93,15 @@
       border: 1.5px solid transparent; cursor: pointer;
       transition: background-color 120ms ease, border-color 120ms ease;
     }
-    @media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
+    @media (prefers-reduced-motion: reduce) {
+      .btn { transition: none; }
+      /* Scène : on COUPE l'animation, rien d'autre. Cartes à opacité de base 1 +
+         flottaison en TRANSFORM pur → `animation:none` les laisse posées, visibles,
+         immobiles. AUCUN override d'opacité ici (transposé d'un écran d'attente à un
+         écran de panne, il peindrait un faux état « plein/succès »). Racine identique
+         à PR-1 (frontend/src/shared/components/ui/system-scene.css). */
+      .ss-anim { animation: none !important; }
+    }
     .btn-primary { background: var(--btn-bg); color: var(--btn-fg); }
     .btn-primary:hover { background: var(--btn-bg-hover); }
     .btn-ghost { border-color: var(--line); color: var(--ink); background: var(--surface); }
@@ -109,21 +110,79 @@
     /* Le lien support reste MASQUÉ tant que config.js n'a pas fourni contactEmail :
        jamais une adresse en dur, jamais un mailto vide. */
     [data-cta="support"] { display: none; }
+    /* ── Scène système décorative (P5-22 PR-2). Voisine de l'in-app, JAMAIS
+         synchronisée — voir le commentaire au-dessus du SVG. Couleurs = tokens de la
+         palette dupliquée ci-dessus (surface/line/muted/accent). ── */
+    .scene { width: 100%; max-width: 360px; margin: 0 auto 30px; }
+    .scene svg { display: block; width: 100%; height: auto; }
+    /* Flottaison des cartes : amplitude faible (~6 %), TRANSFORM pur. Base
+       translateY(0)/scaleY(1) = pose figée (l'état exact du reduced-motion). */
+    @keyframes ss-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+    @keyframes ss-squash { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.02); } }
+    /* L'ombre au sol se rétrécit et pâlit quand la carte s'élève. Opacité de repos
+       0.16 portée par l'attribut SVG → `animation:none` la laisse posée. */
+    @keyframes ss-shadow { 0%, 100% { transform: scaleX(1); opacity: 0.16; } 50% { transform: scaleX(0.82); opacity: 0.09; } }
   </style>
 </head>
 <body>
   <main>
     <a class="logotype" data-brand-logotype href="/"><span data-brand></span><span class="dot">.</span></a>
 
-    <span class="mark" aria-hidden="true">
-      <!-- Une clé : « on cherche les clés ». SVG inline, aucun asset réseau. -->
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="8" cy="8" r="4.2" />
-        <path d="M11 11l8 8" />
-        <path d="M16.5 16.5l2-2" />
-        <path d="M19 14l1.6 1.6" />
+    <!-- SCÈNE système (P5-22 PR-2). MÊME DESSIN que la scène in-app
+         (frontend/src/shared/components/ui/system-scene.tsx) et que sa VOISINE
+         system-pages/maintenance.html — mais VOISINES, JAMAIS SYNCHRONISÉES : aucune source
+         partagée, aucun test de parité (règle system-pages.md : la ressemblance est une
+         CONVENTION, la palette DUPLIQUÉE, jamais une dépendance ; un script d'inlinage
+         serait une chaîne de build, un test de parité fabriquerait une fausse synchro).
+         Demi-terrain vu de dessus, cartes d'équipes flottant en apesanteur, ombres au sol.
+         Décorative → aria-hidden (le sens vit dans le titre). Animation = TRANSFORM pur +
+         opacité de base PLEINE : sous prefers-reduced-motion, `animation:none` suffit à
+         laisser les cartes posées, AUCUN override d'opacité (cf. system-scene.css de PR-1). -->
+    <div class="scene" aria-hidden="true">
+      <svg viewBox="0 0 320 158" preserveAspectRatio="xMidYMid meet">
+        <!-- Demi-terrain en filigrane : ligne de fond, raquette + cercle, arc à 3 pts, rond central. -->
+        <g fill="none" stroke="var(--muted)" stroke-width="2" opacity="0.28">
+          <rect x="8" y="8" width="304" height="142" rx="8" />
+          <rect x="128" y="104" width="64" height="46" />
+          <circle cx="160" cy="104" r="20" />
+          <path d="M60 150V120a100 100 0 0 1 200 0v30" />
+          <path d="M136 8a24 24 0 0 1 48 0" />
+        </g>
+        <!-- Ombres au sol (sous les cartes) — durées/délais non harmoniques pour éviter tout « pouls » collectif. -->
+        <ellipse class="ss-anim" cx="67" cy="120" rx="30" ry="5" fill="#000" opacity="0.16" style="transform-box:fill-box;transform-origin:center;animation:ss-shadow 5.2s ease-in-out infinite" />
+        <ellipse class="ss-anim" cx="159" cy="112" rx="30" ry="5" fill="#000" opacity="0.16" style="transform-box:fill-box;transform-origin:center;animation:ss-shadow 4.4s ease-in-out 0.5s infinite" />
+        <ellipse class="ss-anim" cx="247" cy="124" rx="28" ry="5" fill="#000" opacity="0.16" style="transform-box:fill-box;transform-origin:center;animation:ss-shadow 5.8s ease-in-out 0.9s infinite" />
+        <!-- Carte GAUCHE — « créneau libre · à replacer » : contour pointillé STATIQUE, accent en filigrane. -->
+        <g class="ss-anim" style="animation:ss-float 5.2s ease-in-out infinite">
+          <g class="ss-anim" style="transform-box:fill-box;transform-origin:bottom center;animation:ss-squash 5.2s ease-in-out infinite">
+            <rect x="34" y="70" width="66" height="40" rx="8" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="5 4" opacity="0.85" />
+            <rect x="42" y="78" width="12" height="12" rx="3" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="3 2.5" />
+            <rect x="60" y="80" width="30" height="5" rx="2.5" fill="var(--muted)" opacity="0.4" />
+            <rect x="60" y="90" width="20" height="4" rx="2" fill="var(--muted)" opacity="0.28" />
+          </g>
+        </g>
+        <!-- Carte CENTRE — carte d'équipe posée : pastille d'accent tempérée (0.6) + squelette de contenu. -->
+        <g class="ss-anim" style="animation:ss-float 4.4s ease-in-out 0.5s infinite">
+          <g class="ss-anim" style="transform-box:fill-box;transform-origin:bottom center;animation:ss-squash 4.4s ease-in-out 0.5s infinite">
+            <rect x="126" y="58" width="66" height="40" rx="8" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5" />
+            <rect x="134" y="66" width="12" height="12" rx="3" fill="var(--accent)" opacity="0.6" />
+            <rect x="152" y="68" width="30" height="5" rx="2.5" fill="var(--muted)" opacity="0.8" />
+            <rect x="152" y="78" width="20" height="4" rx="2" fill="var(--muted)" opacity="0.45" />
+            <rect x="134" y="86" width="48" height="5" rx="2.5" fill="var(--line)" />
+          </g>
+        </g>
+        <!-- Carte DROITE — seconde carte posée, désynchronisée. -->
+        <g class="ss-anim" style="animation:ss-float 5.8s ease-in-out 0.9s infinite">
+          <g class="ss-anim" style="transform-box:fill-box;transform-origin:bottom center;animation:ss-squash 5.8s ease-in-out 0.9s infinite">
+            <rect x="214" y="76" width="66" height="40" rx="8" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5" />
+            <rect x="222" y="84" width="12" height="12" rx="3" fill="var(--accent)" opacity="0.5" />
+            <rect x="240" y="86" width="30" height="5" rx="2.5" fill="var(--muted)" opacity="0.8" />
+            <rect x="240" y="96" width="20" height="4" rx="2" fill="var(--muted)" opacity="0.45" />
+            <rect x="222" y="104" width="48" height="5" rx="2.5" fill="var(--line)" />
+          </g>
+        </g>
       </svg>
-    </span>
+    </div>
 
     <h1>Le gymnase est fermé, on cherche les clés.</h1>
     <p class="lede">
