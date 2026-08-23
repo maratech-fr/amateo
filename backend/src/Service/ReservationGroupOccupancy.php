@@ -48,6 +48,59 @@ final class ReservationGroupOccupancy
     ) {}
 
     /**
+     * MAISON UNIQUE de la dérivation « case groupe-complète » : les réservations posées sur les
+     * cases (gymnase, jour, heure HH:MM) dont l'ensemble des équipes réservées est EXACTEMENT le
+     * jeu de membres du groupe. Statique et pure — l'appelant borne d'abord les réservations à
+     * UNE portée (le filtre tenant à l'écriture, un club+saison+plan explicite à la suppression).
+     *
+     * Partagée par la garde d'occupation ci-dessus (règles a/b/c) ET par la cascade de suppression
+     * (P2-46 PR-4) : quand un groupe meurt, ces réservations partent avec lui — sinon les N-1
+     * verrous HARD restants déclencheraient à la génération suivante un diagnostic de sur-capacité
+     * FANTÔME (le bloc `sharedTrainings` qui les exemptait, PR-1, aurait disparu).
+     *
+     * @param list<Reservation>   $reservations réservations d'UNE portée déjà bornée par l'appelant
+     * @param array<string, true> $memberSet    le jeu de membres du groupe
+     *
+     * @return list<Reservation>
+     */
+    public static function reservationsOnGroupCompleteCases(array $reservations, array $memberSet): array
+    {
+        if ([] === $memberSet) {
+            return [];
+        }
+
+        $byCase = [];
+        foreach ($reservations as $reservation) {
+            $key = $reservation->getVenueId() . '|' . $reservation->getDayOfWeek() . '|' . $reservation->getStartTime()->format('H:i');
+            $byCase[$key][] = $reservation;
+        }
+
+        $result = [];
+        foreach ($byCase as $caseReservations) {
+            $teamSet = [];
+            foreach ($caseReservations as $reservation) {
+                $teamSet[$reservation->getTeamId()] = true;
+            }
+            if (self::setsEqual($teamSet, $memberSet)) {
+                foreach ($caseReservations as $reservation) {
+                    $result[] = $reservation;
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<string, true> $a
+     * @param array<string, true> $b
+     */
+    private static function setsEqual(array $a, array $b): bool
+    {
+        return \count($a) === \count($b) && [] === array_diff_key($a, $b) && [] === array_diff_key($b, $a);
+    }
+
+    /**
      * Rail BATCH de mutualisation : règles (a) exclusivité, (c) plafond K, (d) plafond par membre.
      *
      * @param list<string> $memberTeamIds
@@ -160,20 +213,12 @@ final class ReservationGroupOccupancy
      */
     private function groupCompleteCaseCount(array $memberSet, ?string $schedulePlanId): int
     {
-        $byCase = [];
-        foreach ($this->reservationsInScope($schedulePlanId) as $reservation) {
-            $key = $reservation->getVenueId() . '|' . $reservation->getDayOfWeek() . '|' . $reservation->getStartTime()->format('H:i');
-            $byCase[$key][$reservation->getTeamId()] = true;
+        $cases = [];
+        foreach (self::reservationsOnGroupCompleteCases($this->reservationsInScope($schedulePlanId), $memberSet) as $reservation) {
+            $cases[$reservation->getVenueId() . '|' . $reservation->getDayOfWeek() . '|' . $reservation->getStartTime()->format('H:i')] = true;
         }
 
-        $count = 0;
-        foreach ($byCase as $caseSet) {
-            if ($this->setsEqual($caseSet, $memberSet)) {
-                ++$count;
-            }
-        }
-
-        return $count;
+        return \count($cases);
     }
 
     /**
@@ -187,7 +232,7 @@ final class ReservationGroupOccupancy
             return null;
         }
         foreach ($this->groupsInScope($schedulePlanId) as [$group, $memberSet]) {
-            if ($this->setsEqual($memberSet, $reservedSet)) {
+            if (self::setsEqual($memberSet, $reservedSet)) {
                 return $group;
             }
         }
@@ -335,14 +380,5 @@ final class ReservationGroupOccupancy
             return;
         }
         $qb->andWhere($alias . '.schedulePlanId = :planId')->setParameter('planId', $schedulePlanId);
-    }
-
-    /**
-     * @param array<string, true> $a
-     * @param array<string, true> $b
-     */
-    private function setsEqual(array $a, array $b): bool
-    {
-        return \count($a) === \count($b) && [] === array_diff_key($a, $b) && [] === array_diff_key($b, $a);
     }
 }

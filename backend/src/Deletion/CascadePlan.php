@@ -46,6 +46,9 @@ final class CascadePlan
     public static function forTeam(): array
     {
         return [
+            // ⚠ AVANT la purge des réservations de l'équipe : une case n'est « groupe-complète »
+            // que tant que la réservation de l'équipe supprimée y figure encore (P2-46 PR-4).
+            new SharedGroupReservationPruneStep(new ImpactLabel('team_shared_reservation', 'réservation d\'entraînement mutualisé', 'réservations d\'entraînement mutualisé')),
             new DeleteByFieldStep(Reservation::class, 'teamId', new ImpactLabel('team_reservation', 'créneau réservé', 'créneaux réservés')),
             new DeleteByFieldStep(TeamCoach::class, 'teamId', new ImpactLabel('team_coach', 'coach lié', 'coachs liés')),
             new DeleteByFieldStep(CoachPlayerMembership::class, 'teamId', new ImpactLabel('team_coach_player', 'coach-joueur lié', 'coach-joueurs liés')),
