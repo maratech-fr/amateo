@@ -105,35 +105,44 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
               {analysis.exempted > 0 ? ` · ${analysis.exempted} exempt${analysis.exempted > 1 ? "s" : ""}` : ""}
             </p>
             <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">
-              {analysis.divisions.map((division) => (
-                <li key={divisionKey(division)} className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 flex-1 truncate">
-                    {division.name}
-                    {null !== division.fbiTeamLabel ? (
-                      <span className="text-muted-foreground"> ({division.fbiTeamLabel})</span>
-                    ) : null}
-                    <span className="text-muted-foreground"> · {division.rowCount} match{division.rowCount > 1 ? "s" : ""}</span>
-                  </span>
-                  {null !== division.teamId ? (
-                    <span className="shrink-0 text-xs text-muted-foreground">→ {teamName(division.teamId)}</span>
-                  ) : (
-                    <span className="flex shrink-0 flex-col items-end gap-0.5">
-                      <TeamSelect
-                        aria-label={`Équipe pour ${division.name}${null !== division.fbiTeamLabel ? ` (${division.fbiTeamLabel})` : ""}`}
-                        className="w-40 shrink-0"
-                        teams={teams}
-                        tiers={tiers}
-                        placeholder="Associer à…"
-                        value={choices[divisionKey(division)] ?? usableSuggestion(division) ?? ""}
-                        onChange={(e) => setChoices((prev) => ({ ...prev, [divisionKey(division)]: e.target.value }))}
-                      />
-                      {null !== usableSuggestion(division) && undefined === choices[divisionKey(division)] ? (
-                        <span className="rounded bg-muted px-1 text-xs uppercase tracking-wide text-muted-foreground">proposé par la FFBB</span>
+              {analysis.divisions.map((division) => {
+                // Mapper à l'aveugle crée des matchs sur la MAUVAISE équipe (§6bis B3) : le nom
+                // de division + son `fbiTeamLabel` (présent SEULEMENT quand deux équipes du club
+                // partagent la division) ne sont plus tronqués — ils s'enroulent, avec un `title`
+                // de secours. La valeur du select (§6bis B4) se lit sans l'ouvrir.
+                const divisionLabel = `${division.name}${null !== division.fbiTeamLabel ? ` (${division.fbiTeamLabel})` : ""} · ${division.rowCount} match${division.rowCount > 1 ? "s" : ""}`;
+                const selected = choices[divisionKey(division)] ?? usableSuggestion(division) ?? "";
+                return (
+                  <li key={divisionKey(division)} className="flex items-center justify-between gap-2">
+                    <span className="min-w-0 flex-1" title={divisionLabel}>
+                      {division.name}
+                      {null !== division.fbiTeamLabel ? (
+                        <span className="text-muted-foreground"> ({division.fbiTeamLabel})</span>
                       ) : null}
+                      <span className="text-muted-foreground"> · {division.rowCount} match{division.rowCount > 1 ? "s" : ""}</span>
                     </span>
-                  )}
-                </li>
-              ))}
+                    {null !== division.teamId ? (
+                      <span className="shrink-0 text-xs text-muted-foreground">→ {teamName(division.teamId)}</span>
+                    ) : (
+                      <span className="flex shrink-0 flex-col items-end gap-0.5">
+                        <TeamSelect
+                          aria-label={`Équipe pour ${division.name}${null !== division.fbiTeamLabel ? ` (${division.fbiTeamLabel})` : ""}`}
+                          title={"" !== selected ? teamName(selected) : "Associer à…"}
+                          className="w-52 shrink-0"
+                          teams={teams}
+                          tiers={tiers}
+                          placeholder="Associer à…"
+                          value={selected}
+                          onChange={(e) => setChoices((prev) => ({ ...prev, [divisionKey(division)]: e.target.value }))}
+                        />
+                        {null !== usableSuggestion(division) && undefined === choices[divisionKey(division)] ? (
+                          <span className="rounded bg-muted px-1 text-xs uppercase tracking-wide text-muted-foreground">proposé par la FFBB</span>
+                        ) : null}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
             {/* P1-4 PR F2 (6.1) — poule guard verdicts of the dry-run. */}
             {analysis.divisions.some((d) => null !== d.pouleError || d.pouleUnknownOpponents.length > 0) ? (

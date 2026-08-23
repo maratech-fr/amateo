@@ -91,3 +91,37 @@ describe("FfbbEngagementsDialog (P1-4 PR F)", () => {
     await waitFor(() => expect(screen.getByText(/FFBB indisponible/)).toBeInTheDocument());
   });
 });
+
+// ── RMM-0 (§6bis B1/B2/B4) — la décision d'appariement ne se prend plus à l'aveugle ─────────
+describe("RMM-0 — lisibilité de l'appariement (B1/B2/B4)", () => {
+  it("la modale prend le palier large ; le nom de compétition et sa sous-ligne montrent leur queue", async () => {
+    getFfbbEngagements.mockResolvedValue({
+      engagements: [engagement({ competitionName: "Championnat Régional Séniors Masculins Division 3" })],
+    });
+    renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    // Palier « lg » (liste d'engagements) : la modale a la place de montrer la queue de chaîne.
+    expect(screen.getByRole("dialog")).toHaveClass("lg:max-w-3xl");
+
+    // B1 — le chiffre discriminant (« Division 3 ») est en QUEUE : le libellé ne doit plus être
+    // tronqué sans secours (wrap = toujours visible, + title de secours).
+    const name = await screen.findByText("Championnat Régional Séniors Masculins Division 3");
+    expect(name).not.toHaveClass("truncate");
+    expect(name).toHaveAttribute("title", "Championnat Régional Séniors Masculins Division 3");
+
+    // B2 — la sous-ligne désambiguïsante (poule · taille · catégorie · niveau · genre).
+    const sub = screen.getByText(/Poule B2 · 8 clubs/);
+    expect(sub).not.toHaveClass("truncate");
+    expect(sub.getAttribute("title")).toContain("Masculin");
+  });
+
+  it("B4 — le select d'équipe expose sa valeur choisie (élargi + title de secours)", async () => {
+    getFfbbEngagements.mockResolvedValue({ engagements: [engagement({ suggestedTeamId: "team-sm2" })] });
+    renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    const select = await screen.findByLabelText("Équipe pour Pré régionale masculine");
+    expect(select).toHaveClass("w-52");
+    // La valeur pré-remplie se lit sans ouvrir le select.
+    expect(select).toHaveAttribute("title", "SM2");
+  });
+});

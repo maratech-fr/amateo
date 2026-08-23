@@ -160,6 +160,32 @@ describe("ImportFbiDialog", () => {
     expect(screen.getByText(/D3 : hors poule — US INTRUS/)).toBeInTheDocument();
   });
 
+  // ── RMM-0 (§6bis B3/B4) — mapper à l'aveugle crée des matchs sur la MAUVAISE équipe ─────────
+  it("B3/B4 — le libellé de division et la valeur du select restent lisibles (wrap + title, select élargi)", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce({
+      divisions: [
+        { name: "Division 2 Masculine Séniors", fbiTeamLabel: "Équipe 2", rowCount: 22, teamId: null, competitionId: null, suggestedTeamId: "team-2", suggestedCompetitionId: "comp-9", pouleError: null, pouleUnknownOpponents: [] },
+      ],
+      totalRows: 22,
+      exempted: 0,
+      errors: [],
+    });
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+
+    // B3 — le nom de division + son fbiTeamLabel (qui n'existe QUE quand il est indispensable).
+    const label = await screen.findByText(/Division 2 Masculine Séniors/);
+    expect(label).not.toHaveClass("truncate");
+    expect(label.getAttribute("title")).toContain("Équipe 2");
+
+    // B4 — la valeur pré-remplie du select se lit sans l'ouvrir (élargie + title de secours).
+    const select = screen.getByLabelText(/Équipe pour Division 2 Masculine Séniors/);
+    expect(select).toHaveClass("w-52");
+    expect(select).toHaveAttribute("title", "SF3");
+  });
+
   it("reports the completeness of paired competitions after the import", async () => {
     const user = userEvent.setup();
     importFbiFixtures.mockResolvedValueOnce({
