@@ -103,6 +103,26 @@ export function useUnplaceFixture() {
   });
 }
 
+/** « Marquer saisi dans FBI » — ferme la boucle hebdo (status → SUBMITTED). */
+export function useSubmitFixture() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (fixture: Fixture) => matchesApi.submitFixture(fixture),
+    onSuccess: () => invalidateFixtures(queryClient),
+    onError: () => toast.error("Impossible de marquer le match saisi dans FBI"),
+  });
+}
+
+/** « Corriger — repasser en Placé » — sortie de SUBMITTED (status → PLACED). */
+export function useReopenFixture() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (fixture: Fixture) => matchesApi.reopenFixture(fixture),
+    onSuccess: () => invalidateFixtures(queryClient),
+    onError: () => toast.error("Impossible de repasser le match en Placé"),
+  });
+}
+
 export function useMoveFixture() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -21,7 +21,7 @@ import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
 import { buildWeekendGrid, isPlacedOnGrid, listWeekends, weekendKeyOf, weekendLabel } from "./lib/weekendGrid";
 import { MatchWindowsEditor } from "./MatchWindowsEditor";
 import { PlacementPanel } from "./PlacementPanel";
-import { useCategories, useCoaches, useCompetitions, useConflicts, useDeleteFixture, useFixtures, useLeagueWindows, useLockFixture, useMoveFixture, usePlaceFixture, usePlaceMatches, usePriorityTiers, useSwapFixtures, useTeamMatchHabits, useTeams, useUnlockFixture, useUnplaceFixture, useVenueMatchWindows, useVenues, useVenueUnavailabilities } from "./queries";
+import { useCategories, useCoaches, useCompetitions, useConflicts, useDeleteFixture, useFixtures, useLeagueWindows, useLockFixture, useMoveFixture, usePlaceFixture, usePlaceMatches, usePriorityTiers, useReopenFixture, useSubmitFixture, useSwapFixtures, useTeamMatchHabits, useTeams, useUnlockFixture, useUnplaceFixture, useVenueMatchWindows, useVenues, useVenueUnavailabilities } from "./queries";
 import { toast } from "@/shared/stores/toastStore";
 import { useCredits } from "@/shared/credits/useCredits";
 import { useMatchesStore } from "./store";
@@ -61,6 +61,8 @@ export function MatchesPage() {
   const unlockFixture = useUnlockFixture();
   const deleteFixture = useDeleteFixture();
   const swapFixtures = useSwapFixtures();
+  const submitFixture = useSubmitFixture();
+  const reopenFixture = useReopenFixture();
   // P1-4 PR E1 — fixture whose identity fields are being edited (dialog).
   const [editFixture, setEditFixture] = useState<Fixture | null>(null);
   // P1-4 PR E2 — grid view: dated weekends, or the date-less « week-end type ».
@@ -135,7 +137,15 @@ export function MatchesPage() {
 
   const swapSource = allFixtures.find((f) => f.id === swapSourceId) ?? null;
   const mutating =
-    placeFixture.isPending || moveFixture.isPending || unplaceFixture.isPending || lockFixture.isPending || unlockFixture.isPending || deleteFixture.isPending || swapFixtures.isPending;
+    placeFixture.isPending ||
+    moveFixture.isPending ||
+    unplaceFixture.isPending ||
+    lockFixture.isPending ||
+    unlockFixture.isPending ||
+    deleteFixture.isPending ||
+    swapFixtures.isPending ||
+    submitFixture.isPending ||
+    reopenFixture.isPending;
 
   // P1-4 PR E1 — a grid click either picks the swap partner (swap mode) or opens
   // the panel of the clicked match.
@@ -273,6 +283,8 @@ export function MatchesPage() {
               onStartSwap={() => setSwapSourceId(selectedFixture.id)}
               onEdit={() => setEditFixture(selectedFixture)}
               onDelete={() => deleteFixture.mutate(selectedFixture.id, { onSuccess: () => setSelectedFixtureId(null) })}
+              onSubmit={() => submitFixture.mutate(selectedFixture, { onSuccess: () => toast.success("Match marqué saisi dans FBI") })}
+              onReopen={() => reopenFixture.mutate(selectedFixture)}
             />
           ) : null}
 

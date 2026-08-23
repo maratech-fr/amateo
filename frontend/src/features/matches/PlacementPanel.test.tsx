@@ -45,6 +45,8 @@ interface Overrides {
   onStartSwap?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onSubmit?: () => void;
+  onReopen?: () => void;
 }
 
 function renderPanel(envelope: EnvelopeResult, onPlace = vi.fn(), overrides: Overrides = {}) {
@@ -66,6 +68,8 @@ function renderPanel(envelope: EnvelopeResult, onPlace = vi.fn(), overrides: Ove
       onStartSwap={overrides.onStartSwap ?? vi.fn()}
       onEdit={overrides.onEdit ?? vi.fn()}
       onDelete={overrides.onDelete ?? vi.fn()}
+      onSubmit={overrides.onSubmit ?? vi.fn()}
+      onReopen={overrides.onReopen ?? vi.fn()}
     />,
   );
   return onPlace;
@@ -234,10 +238,48 @@ describe("PlacementPanel", () => {
     expect(onDelete).toHaveBeenCalledOnce();
   });
 
-  it("a SUBMITTED match is read-only — filed with the federation", () => {
-    renderPanel(openEnvelope, vi.fn(), { fixture: { ...placedFixture, status: "SUBMITTED" } });
-    expect(screen.getByText(/Match déposé à la fédération/)).toBeInTheDocument();
+  // ── Weekly loop close (RMM-1 PR 1) ───────────────────────────────────────
+
+  it("offers « Marquer saisi dans FBI » on a placed match and emits onSubmit", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    renderPanel(openEnvelope, vi.fn(), { fixture: placedFixture, onSubmit });
+
+    const submit = screen.getByRole("button", { name: "Marquer saisi dans FBI" });
+    await user.click(submit);
+    expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
+  it("does not offer « Marquer saisi dans FBI » on an unplaced match (nothing placed yet)", () => {
+    renderPanel(openEnvelope, vi.fn()); // default fixture is UNPLACED
+    expect(screen.queryByRole("button", { name: "Marquer saisi dans FBI" })).not.toBeInTheDocument();
+  });
+
+  it("on a SUBMITTED match: French status, anchor sentence, and the « Corriger » exit — edit gestures gone", async () => {
+    const user = userEvent.setup();
+    const onReopen = vi.fn();
+    renderPanel(openEnvelope, vi.fn(), { fixture: { ...placedFixture, status: "SUBMITTED" }, onReopen });
+
+    expect(screen.getByText("Saisi dans FBI")).toBeInTheDocument();
+    expect(screen.getByText(/les prochaines générations ne le déplaceront plus/)).toBeInTheDocument();
+
+    // The edit gestures stay blocked while submitted.
     expect(screen.queryByRole("button", { name: "Déplacer" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Supprimer" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Marquer saisi dans FBI" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Corriger — repasser en Placé" }));
+    expect(onReopen).toHaveBeenCalledOnce();
+  });
+
+  it("on a VALIDATED match: French status, finality sentence, and NO exit — the league owns it", () => {
+    renderPanel(openEnvelope, vi.fn(), { fixture: { ...placedFixture, status: "VALIDATED" } });
+
+    expect(screen.getByText("Validé ligue")).toBeInTheDocument();
+    expect(screen.getByText(/La ligue a validé ce match/)).toBeInTheDocument();
+    // No exit at all — not even the repair path.
+    expect(screen.queryByRole("button", { name: "Corriger — repasser en Placé" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Marquer saisi dans FBI" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Déplacer" })).not.toBeInTheDocument();
   });
 });

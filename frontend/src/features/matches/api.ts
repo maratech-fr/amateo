@@ -554,6 +554,26 @@ export const unplaceFixture = (fixture: Fixture): Promise<Fixture> =>
     .put(`fixtures/${fixture.id}`, { json: { ...fixtureEchoBody(fixture), status: "UNPLACED", venueId: "", kickoffTime: "" } })
     .json<Fixture>();
 
+/**
+ * Ferme la boucle hebdo : le match placé est SAISI DANS FBI (`status: SUBMITTED`).
+ * Full-replace comme tous les PUT — on ÉCHO tout le fixture, seul `status` bouge.
+ * ⚠ Effet de bord ASSUMÉ (décision fondateur) : côté serveur, toute écriture de
+ * statut ≠ UNPLACED tamponne `placementSource = MANUAL`. Marquer « saisi » ANCRE
+ * donc le match — c'est voulu : un match déclaré à la fédération ne doit plus
+ * bouger au solve.
+ */
+export const submitFixture = (fixture: Fixture): Promise<Fixture> =>
+  api.put(`fixtures/${fixture.id}`, { json: { ...fixtureEchoBody(fixture), status: "SUBMITTED" } }).json<Fixture>();
+
+/**
+ * Sortie de SUBMITTED : « Corriger » repasse le match en PLACED (chemin de
+ * réparation — gymnase mort, erreur de saisie FBI). Full-replace, seul `status`
+ * change. Le match reste MANUAL après ce retour ; « Rendre au système » demeure
+ * ensuite possible sur un placement intact.
+ */
+export const reopenFixture = (fixture: Fixture): Promise<Fixture> =>
+  api.put(`fixtures/${fixture.id}`, { json: { ...fixtureEchoBody(fixture), status: "PLACED" } }).json<Fixture>();
+
 /** Move a placed fixture (venue and/or kickoff) — stays a MANUAL anchor. */
 export const moveFixture = (fixture: Fixture, input: PlaceFixtureInput): Promise<Fixture> =>
   api
