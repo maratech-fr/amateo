@@ -132,7 +132,10 @@ export function EvictConfirmDialog({ open, phase, occupantName, compromises, vio
           ) : null}
         </div>
 
-        <div className="mt-6 flex shrink-0 justify-end gap-2">
+        {/* Même filet que le pied ÉPINGLÉ de `Modal` / `ConfirmDialog` (P4-127 d) : bordure +
+            `pt-4`. Troisième panneau jumeau fait main — il partage la grammaire. Les boutons
+            vivaient déjà HORS de la zone défilante. */}
+        <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-2 border-t border-border pt-4">
           <Button variant="ghost" onClick={onClose}>
             {"refused" === phase ? "Fermer" : "Annuler"}
           </Button>

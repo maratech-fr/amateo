@@ -121,10 +121,45 @@ test.describe("une modale longue reste atteignable", () => {
       await page.setViewportSize({ width, height });
       await expectDialogFitsAndScrolls(page, `Actions support · ${width}×${height}`);
 
+      // ─ TÉMOIN CLAVIER (P4-127 d) — ici, dans le test qui a DÉJÀ une session, plutôt qu'en
+      //   test séparé : un 3ᵉ `loginAsSuperAdmin` ferait franchir au spec le plafond admin_auth
+      //   (5 tentatives / 15 min par IP — cf. Makefile), throttlant le test suivant. En sortant
+      //   les actions du flux défilant (pied `shrink-0` hors de `overflow-y-auto`), on a créé le
+      //   risque d'une zone défilante sans focusable, donc indéfilable au clavier sur un
+      //   navigateur qui ne rend pas les conteneurs scrollables focusables. On PROUVE le
+      //   comportement moderne (Chrome ≥127 / Firefox) : depuis le haut, tabuler fait descendre
+      //   le focus et le navigateur amène au champ le contenu du bas — la zone défile. Si ce
+      //   témoin tombe, repli `tabIndex={0}` + `aria-label` (docblock du slot `footer`, modal.tsx).
+      if (1440 === width) {
+        const dialog = page.getByRole("dialog");
+        // `expectDialogFitsAndScrolls` vient de défiler PROGRAMMATIQUEMENT jusqu'en bas — on
+        // remet à zéro pour que le défilement qui suit soit imputable au SEUL clavier.
+        await dialog.evaluate((panel: HTMLElement) => {
+          const scroller = panel.querySelector<HTMLElement>(":scope > .overflow-y-auto");
+          if (scroller) {
+            scroller.scrollTop = 0;
+          }
+        });
+        await dialog.evaluate((panel: HTMLElement) => panel.focus());
+        let scrolledTop = 0;
+        for (let i = 0; i < 60 && 0 === scrolledTop; i++) {
+          await page.keyboard.press("Tab");
+          scrolledTop = await dialog.evaluate((panel: HTMLElement) => {
+            const scroller = panel.querySelector<HTMLElement>(":scope > .overflow-y-auto");
+            return scroller ? scroller.scrollTop : 0;
+          });
+        }
+        expect(
+          scrolledTop,
+          "témoin clavier : tabuler dans la modale n'a JAMAIS fait défiler la zone de contenu — le bas de la modale est inatteignable au clavier (repli `tabIndex={0}` requis)",
+        ).toBeGreaterThan(0);
+      }
+
       await page.getByRole("dialog").getByRole("button", { name: "Fermer", exact: true }).click();
       await expect(page.getByRole("dialog")).toBeHidden();
     }
   });
+
 
   /**
    * P4-107 (3ᵉ tranche) — la LARGEUR, sur le seul écran où elle se mesure.

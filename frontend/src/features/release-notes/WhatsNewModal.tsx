@@ -41,7 +41,23 @@ export function WhatsNewModal() {
   if (0 === fresh.length) return null;
 
   return (
-    <Modal label="Quoi de neuf" title="Quoi de neuf ?" onClose={() => setDismissed(true)}>
+    <Modal
+      label="Quoi de neuf"
+      title="Quoi de neuf ?"
+      onClose={() => setDismissed(true)}
+      // Rangée en `justify-between` (lien à gauche, action à droite) : un enfant `w-full`
+      // remplit le pied `justify-end` de la primitive et préserve exactement cette disposition.
+      footer={
+        <div className="flex w-full items-center justify-between gap-3">
+          <Link to="/nouveautes" className="text-sm text-accent underline" onClick={() => setDismissed(true)}>
+            Tout voir
+          </Link>
+          <Button type="button" disabled={markSeen.isPending} onClick={() => markSeen.mutate(undefined, { onSuccess: () => setDismissed(true) })}>
+            J'ai compris
+          </Button>
+        </div>
+      }
+    >
       <ul className="mt-4 space-y-4">
         {fresh.map((item) => (
           <li key={item.id} className="border-b border-border pb-4 last:border-b-0">
@@ -51,14 +67,6 @@ export function WhatsNewModal() {
           </li>
         ))}
       </ul>
-      <div className="mt-5 flex items-center justify-between gap-3">
-        <Link to="/nouveautes" className="text-sm text-accent underline" onClick={() => setDismissed(true)}>
-          Tout voir
-        </Link>
-        <Button type="button" disabled={markSeen.isPending} onClick={() => markSeen.mutate(undefined, { onSuccess: () => setDismissed(true) })}>
-          J'ai compris
-        </Button>
-      </div>
     </Modal>
   );
 }

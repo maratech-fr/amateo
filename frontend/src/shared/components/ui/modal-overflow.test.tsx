@@ -64,6 +64,42 @@ describe("les modales bornent leur hauteur et laissent défiler leur contenu", (
     expect(header?.textContent).toContain("Titre");
   });
 
+  it("Modal : le pied `footer` est ÉPINGLÉ hors de la zone défilante, avec sa bordure (P4-127 d)", () => {
+    render(
+      <Modal label="Test" title="Titre" footer={<button type="button">Valider</button>} onClose={vi.fn()}>
+        <p>Contenu très long</p>
+      </Modal>,
+    );
+
+    const dialog = panel();
+    const zone = scroller(dialog);
+    expect(zone).not.toBeNull();
+
+    const foot = dialog.querySelector(":scope > footer");
+    expect(foot, "le pied doit être un enfant DIRECT du panneau, jamais du conteneur défilant").not.toBeNull();
+    // ⚠ LE point du correctif : les actions vivaient DANS `overflow-y-auto` et sortaient du champ
+    // sur une modale longue. Le pied n'est PAS descendant de la zone défilante — les boutons
+    // restent visibles quand le contenu déborde (jsdom ne mesure pas ; assertion STRUCTURELLE).
+    expect(zone?.contains(foot), "les actions du pied ne doivent JAMAIS pouvoir défiler hors de vue").toBe(false);
+    const action = screen.getByRole("button", { name: "Valider" });
+    expect(zone?.contains(action)).toBe(false);
+
+    // Le filet visuel permanent qui détache le pied du contenu, et le `shrink-0` qui l'empêche
+    // de se faire écraser par un corps trop haut.
+    expect(foot?.className).toMatch(/border-t/);
+    expect(foot?.className).toMatch(/\bshrink-0\b/);
+  });
+
+  it("Modal : aucun pied rendu quand le slot `footer` est absent", () => {
+    render(
+      <Modal label="Test" title="Titre" onClose={vi.fn()}>
+        <p>Contenu</p>
+      </Modal>,
+    );
+
+    expect(panel().querySelector(":scope > footer"), "pas de slot → pas de pied (ni bordure fantôme)").toBeNull();
+  });
+
   it("ConfirmDialog : panneau borné, description défilante, BOUTONS toujours visibles", () => {
     render(
       <ConfirmDialog

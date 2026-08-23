@@ -77,7 +77,22 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
   const canImport = null !== file && null !== analysis && !importFbi.isPending && !analyzeFbi.isPending;
 
   return (
-    <Modal label="Importer FBI" title="Importer un export FBI" onClose={onClose} size="lg">
+    <Modal
+      label="Importer FBI"
+      title="Importer un export FBI"
+      onClose={onClose}
+      size="lg"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Fermer
+          </Button>
+          <Button size="sm" disabled={!canImport} onClick={submit}>
+            Importer
+          </Button>
+        </>
+      }
+    >
       <div className="flex flex-col gap-3">
         <p className="text-xs text-muted-foreground">
           L’export FBI global du club (« Saisie des résultats », .xlsx). Chaque division se relie une seule fois à
@@ -214,14 +229,6 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
           </div>
         ) : null}
 
-        <div className="mt-1 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Fermer
-          </Button>
-          <Button size="sm" disabled={!canImport} onClick={submit}>
-            Importer
-          </Button>
-        </div>
       </div>
     </Modal>
   );

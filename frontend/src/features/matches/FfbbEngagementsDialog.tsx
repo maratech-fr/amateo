@@ -36,7 +36,26 @@ export function FfbbEngagementsDialog({ teams, tiers, onClose }: FfbbEngagements
   const teamName = (id: string): string => teams.find((team) => team.id === id)?.name ?? "";
 
   return (
-    <Modal label="Engagements FFBB" title="Engagements FFBB" onClose={onClose} size="lg">
+    <Modal
+      label="Engagements FFBB"
+      title="Engagements FFBB"
+      onClose={onClose}
+      size="lg"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Fermer
+          </Button>
+          <Button
+            size="sm"
+            disabled={0 === pairings.length || confirm.isPending}
+            onClick={() => confirm.mutate(pairings, { onSuccess: onClose })}
+          >
+            {confirm.isPending ? "Enregistrement…" : `Confirmer ${pairings.length} appariement${pairings.length > 1 ? "s" : ""}`}
+          </Button>
+        </>
+      }
+    >
       <div className="flex flex-col gap-3">
         <p className="text-xs text-muted-foreground">
           Les équipes engagées telles que la ligue les connaît — rattachez chacune à votre équipe puis
@@ -92,18 +111,6 @@ export function FfbbEngagementsDialog({ teams, tiers, onClose }: FfbbEngagements
           </ul>
         )}
 
-        <div className="mt-1 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Fermer
-          </Button>
-          <Button
-            size="sm"
-            disabled={0 === pairings.length || confirm.isPending}
-            onClick={() => confirm.mutate(pairings, { onSuccess: onClose })}
-          >
-            {confirm.isPending ? "Enregistrement…" : `Confirmer ${pairings.length} appariement${pairings.length > 1 ? "s" : ""}`}
-          </Button>
-        </div>
       </div>
     </Modal>
   );

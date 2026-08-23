@@ -162,7 +162,30 @@ export function RedateEventsDialog({ sourceSeasonId, targetSeasonId, targetSeaso
   }
 
   return (
-    <Modal label="Reconduire les événements" title="Reconduire les événements" onClose={onClose} size="lg">
+    <Modal
+      label="Reconduire les événements"
+      title="Reconduire les événements"
+      onClose={onClose}
+      size="lg"
+      // Pied dépendant de l'état : rien pendant le chargement, « Fermer » sur erreur, la paire
+      // « Plus tard / Reconduire » sur la liste. Même grammaire de pied que les autres modales.
+      footer={
+        "pending" === decision ? undefined : "error" === decision ? (
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Fermer
+          </Button>
+        ) : (
+          <>
+            <Button variant="outline" size="sm" onClick={onClose} disabled={submitting}>
+              Plus tard
+            </Button>
+            <Button size="sm" onClick={() => void submit()} disabled={submitting || 0 === keptCount || invalidCount > 0}>
+              {submitting ? "Reconduction…" : `Reconduire ${keptCount} événement${keptCount > 1 ? "s" : ""}`}
+            </Button>
+          </>
+        )
+      }
+    >
       {"pending" === decision ? (
         <div className="flex justify-center py-8">
           <Spinner />
@@ -172,11 +195,6 @@ export function RedateEventsDialog({ sourceSeasonId, targetSeasonId, targetSeaso
           <p className="text-sm text-destructive">
             Impossible de charger les événements de la saison — la reconduction n'a pas pu démarrer. Relancez « Préparer la saison suivante » pour réessayer.
           </p>
-          <div className="flex justify-end">
-            <Button variant="outline" size="sm" onClick={onClose}>
-              Fermer
-            </Button>
-          </div>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
@@ -215,15 +233,6 @@ export function RedateEventsDialog({ sourceSeasonId, targetSeasonId, targetSeaso
               );
             })}
           </ul>
-
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={onClose} disabled={submitting}>
-              Plus tard
-            </Button>
-            <Button size="sm" onClick={() => void submit()} disabled={submitting || 0 === keptCount || invalidCount > 0}>
-              {submitting ? "Reconduction…" : `Reconduire ${keptCount} événement${keptCount > 1 ? "s" : ""}`}
-            </Button>
-          </div>
         </div>
       )}
     </Modal>

@@ -225,7 +225,27 @@ function FeedbackDetailDialog({ item, onClose }: { item: AdminFeedbackItem; onCl
   };
 
   return (
-    <Modal label="Détail du signalement" title="Signalement" onClose={onClose} size="xl">
+    <Modal
+      label="Détail du signalement"
+      title="Signalement"
+      onClose={onClose}
+      size="xl"
+      footer={
+        confirming ? (
+          <>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(false)}>Annuler</Button>
+            <Button type="button" size="sm" disabled={pending} onClick={runVerdict}>
+              {pending ? <Spinner className="size-4" /> : null}
+              {"untreated" === status ? "Confirmer le traitement" : "Confirmer la réouverture"}
+            </Button>
+          </>
+        ) : (
+          <Button type="button" size="sm" variant="outline" onClick={() => setConfirming(true)}>
+            {"untreated" === status ? "Traiter" : "Rouvrir"}
+          </Button>
+        )
+      }
+    >
       <div className="mt-4 space-y-5 text-sm">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
           <MetaRow label="Club" value={item.clubName ?? "Club inconnu"} />
@@ -252,21 +272,6 @@ function FeedbackDetailDialog({ item, onClose }: { item: AdminFeedbackItem; onCl
           <p role="alert" className="text-sm text-destructive">{actionError}</p>
         ) : null}
 
-        <div className="flex items-center justify-end gap-2">
-          {confirming ? (
-            <>
-              <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(false)}>Annuler</Button>
-              <Button type="button" size="sm" disabled={pending} onClick={runVerdict}>
-                {pending ? <Spinner className="size-4" /> : null}
-                {"untreated" === status ? "Confirmer le traitement" : "Confirmer la réouverture"}
-              </Button>
-            </>
-          ) : (
-            <Button type="button" size="sm" variant="outline" onClick={() => setConfirming(true)}>
-              {"untreated" === status ? "Traiter" : "Rouvrir"}
-            </Button>
-          )}
-        </div>
       </div>
     </Modal>
   );

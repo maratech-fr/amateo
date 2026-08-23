@@ -257,7 +257,21 @@ export function SlotReservationModal({
   };
 
   return (
-    <Modal label="Réserver ce créneau" title={`${venue.name} · ${dayLabel(slot.dayOfWeek)} ${hhmm(slot.startTime)}`} onClose={dismiss}>
+    <Modal
+      label="Réserver ce créneau"
+      title={`${venue.name} · ${dayLabel(slot.dayOfWeek)} ${hhmm(slot.startTime)}`}
+      onClose={dismiss}
+      footer={
+        <>
+          <Button variant="ghost" onClick={dismiss} disabled={busy}>
+            Annuler
+          </Button>
+          <Button onClick={() => void submit()} disabled={busy || !dirty}>
+            {busy ? "Enregistrement…" : "Valider"}
+          </Button>
+        </>
+      }
+    >
       <p className="mb-3 text-xs text-muted-foreground">
         Fixe une équipe sur ce créneau (verrou pris en compte à chaque génération). Ce créneau accepte {capacity} équipe{capacity > 1 ? "s" : ""}.
       </p>
@@ -473,14 +487,6 @@ export function SlotReservationModal({
         </p>
       ) : null}
 
-      <div className="mt-4 flex justify-end gap-2">
-        <Button variant="ghost" onClick={dismiss} disabled={busy}>
-          Annuler
-        </Button>
-        <Button onClick={() => void submit()} disabled={busy || !dirty}>
-          {busy ? "Enregistrement…" : "Valider"}
-        </Button>
-      </div>
     </Modal>
   );
 }

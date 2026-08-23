@@ -361,7 +361,17 @@ export function MatchesPage() {
         <HabitsLinksDialog teams={teams.data ?? []} tiers={priorityTiers.data ?? []} venues={venues.data ?? []} fixtures={allFixtures} onClose={() => setHabitsDialogOpen(false)} />
       ) : null}
       {accessDialogOpen ? (
-        <Modal label="Accès match" title="Accès match des gymnases" onClose={() => setAccessDialogOpen(false)} size="lg">
+        <Modal
+          label="Accès match"
+          title="Accès match des gymnases"
+          onClose={() => setAccessDialogOpen(false)}
+          size="lg"
+          footer={
+            <Button variant="outline" size="sm" onClick={() => setAccessDialogOpen(false)}>
+              Fermer
+            </Button>
+          }
+        >
           <div className="flex flex-col gap-3">
             <p className="text-xs text-muted-foreground">
               Les créneaux accordés les jours de match — un gymnase sans fenêtre n'accueille pas de
@@ -375,11 +385,6 @@ export function MatchesPage() {
               ))}
             </Select>
             {"" !== accessVenueId ? <MatchWindowsEditor venueId={accessVenueId} /> : null}
-            <div className="flex justify-end">
-              <Button variant="outline" size="sm" onClick={() => setAccessDialogOpen(false)}>
-                Fermer
-              </Button>
-            </div>
           </div>
         </Modal>
       ) : null}

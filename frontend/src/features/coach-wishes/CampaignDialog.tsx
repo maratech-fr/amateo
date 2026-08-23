@@ -232,7 +232,27 @@ export function CampaignDialog({ entry, season, existing, onClose }: CampaignDia
   const tabs = null === campaign ? [{ id: "reglages", label: "Réglages" }] : [{ id: "reglages", label: "Réglages" }, { id: "coachs", label: `Coachs (${campaign.coaches.length})` }];
 
   return (
-    <Modal label="Solliciter les coachs" title="Solliciter les coachs" onClose={onClose}>
+    <Modal
+      label="Solliciter les coachs"
+      title="Solliciter les coachs"
+      onClose={onClose}
+      // Pied épinglé pour l'onglet RÉGLAGES seulement — c'est lui qui porte le geste
+      // « Créer / Enregistrer ». L'onglet Coachs (suivi des réponses) gère ses propres
+      // actions dans son contenu, il n'a pas de pied de modale.
+      footer={
+        "reglages" === activeTab ? (
+          <>
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              Fermer
+            </Button>
+            <Button size="sm" disabled={!canSave || saving} onClick={save}>
+              {saving ? <Spinner className="size-4" /> : null}
+              {null === campaign ? "Créer la collecte" : "Enregistrer"}
+            </Button>
+          </>
+        ) : undefined
+      }
+    >
       {/* P3-15 — DEUX MOMENTS, DEUX ONGLETS. On règle une fois (semaines, équipes, date
           limite), puis on revient suivre les réponses et envoyer. Tout empiler faisait une
           modale « BEAUCOUP TROP longue, c'est pas jouable » (fondateur).
@@ -276,16 +296,6 @@ export function CampaignDialog({ entry, season, existing, onClose }: CampaignDia
         </label>
 
         {failed ? <p className="mt-3 text-sm text-destructive">Enregistrement impossible. Vérifiez les semaines et équipes choisies.</p> : null}
-
-        <div className="mt-5 flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            Fermer
-          </Button>
-          <Button size="sm" disabled={!canSave || saving} onClick={save}>
-            {saving ? <Spinner className="size-4" /> : null}
-            {null === campaign ? "Créer la collecte" : "Enregistrer"}
-          </Button>
-        </div>
       </TabPanel>
 
       {null !== campaign ? (
