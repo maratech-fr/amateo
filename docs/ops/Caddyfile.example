@@ -76,6 +76,18 @@ app.amateo.app {
 			@maintenance-until path /maintenance-until
 			handle @maintenance-until {
 				rewrite * /maintenance.on
+				# ⚠ TYPE FORCÉ + anti-sniff. Caddy n'a AUCUNE table MIME pour `.on` : sans
+				#   ces deux en-têtes, le témoin part SANS `Content-Type`, et un navigateur
+				#   qui ouvre /maintenance-until directement RENIFLE le contenu. Un témoin
+				#   contenant du HTML s'exécuterait alors SAME-ORIGIN. Non exploitable
+				#   aujourd'hui (seul root-en-SSH écrit ce fichier) — mais l'arête est
+				#   latente : elle s'ouvrirait au premier second écrivain (script d'ops,
+				#   entrée de workflow, futur « bandeau de maintenance »). Relevé en revue
+				#   de sécurité le 2026-08-23, corrigé à la source plutôt que documenté.
+				#   `no-store` : la page fetch déjà en no-store, on l'aligne au bord.
+				header Content-Type "text/plain; charset=utf-8"
+				header X-Content-Type-Options nosniff
+				header Cache-Control "no-store"
 				# 200 EXPLICITE : le 503 appartient à la PAGE, pas à cette sous-ressource
 				# que le fetch() de la page doit lire en succès (r.ok). Sans lui elle
 				# risquerait d'hériter d'un statut ambigu.

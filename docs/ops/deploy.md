@@ -255,10 +255,22 @@ agit **immédiatement, sans reload Caddy**.
 ⚠ Le témoin vit à `$DEPLOY_PATH/maintenance.on`, **HORS** du dossier `system-pages/` que le
 deploy bascule — sinon un déploiement pendant la fenêtre l'effacerait en silence.
 
+🔴 **Le CONTENU de ce fichier est SERVI PUBLIQUEMENT** à `https://app.amateo.app/maintenance-until`
+pendant toute la fenêtre de maintenance — c'est ainsi que la page affiche « Retour prévu vers … ».
+**N'y écrivez QU'UN horodatage ISO 8601, et rien d'autre.** Jamais de note libre : « restauration
+base après incident client X » y serait lisible par n'importe qui. (La page ignore ce qui n'est pas
+une date — mais le fichier, lui, reste servi tel quel.) Relevé en revue de sécurité le 2026-08-23 :
+le risque n'est pas technique, il est d'usage.
+
 **Allumer** (puis vérifier qu'on répond bien 503) :
 
 ```bash
+# Avec heure de retour — la page affiche « Retour prévu vers 23:30 » + un décompte :
+ssh <hôte> "echo '2026-08-23T23:30:00+02:00' > /srv/clubscheduler/maintenance.on"
+
+# Sans heure connue — un `touch` nu reste valide : page normale, aucun compteur :
 ssh <hôte> "touch /srv/clubscheduler/maintenance.on"
+
 curl -sS -o /dev/null -w '%{http_code}\n' https://app.amateo.app/     # attendu : 503
 ```
 

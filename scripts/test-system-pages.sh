@@ -254,6 +254,24 @@ else
   ko "9. maintenance ON, GET /maintenance.on → PAGE 503 sans l'horodatage (status=$STATUS)"
 fi
 
+# Cas 12 — le témoin est servi en TEXTE et NON reniflable. Caddy n'a aucune table MIME
+# pour `.on` : sans en-têtes forcés, il partirait SANS Content-Type, et un navigateur qui
+# ouvre /maintenance-until reniflerait le contenu — un témoin contenant du HTML
+# s'exécuterait SAME-ORIGIN. Relevé en revue de sécurité le 2026-08-23.
+printf '<html><script>alert(1)</script></html>' > "$STAGING/maintenance.on"
+get "/maintenance-until"
+# ⚠ `|| true` OBLIGATOIRE : sous `set -e`, un grep sans correspondance (justement le cas
+# que ce test doit ATTRAPER — aucun Content-Type émis) TUERAIT le script au lieu de
+# rapporter un échec nommé, et les cas suivants ne tourneraient plus. Un test qui abat la
+# suite au lieu de la faire rougir proprement ne garde rien.
+ct="$(printf '%s' "$HEADERS" | grep -i '^Content-Type:' | tr -d '\r' || true)"
+nosniff="$(printf '%s' "$HEADERS" | grep -ci '^X-Content-Type-Options:[[:space:]]*nosniff' || true)"
+if printf '%s' "$ct" | grep -qi 'text/plain' && [ "$nosniff" = "1" ]; then
+  ok "12. témoin servi en text/plain + nosniff (jamais reniflé comme HTML)"
+else
+  ko "12. témoin servi en text/plain + nosniff (ct='$ct' nosniff=$nosniff)"
+fi
+
 rm -f "$STAGING/maintenance.on"
 # Vérif de symétrie : le retrait rouvre immédiatement (sans reload).
 get "/"
