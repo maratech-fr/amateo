@@ -1,6 +1,16 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-08-22 (P4-120 — premiere verification stampee de ce fichier, contre le code : contrat 2.14 (`engine/CONTRACT_VERSION`) et comparaison MAJOR seule ✓ · verrou asyncio par club qui ATTEND, jamais de 503 (`app/main.py:127-128`) ✓ · `lockLevel` chaine libre, pas un enum (`input_schema.py:229`) ✓ · `solverTimeoutSeconds` defaut 650 (`input_schema.py:242`) ✓ · paliers workers 1/8 au seuil 200 (`_adaptive_workers`, `app/main.py:442`) ✓ · poids objectif dont `spacing` (`objective.py`) ✓ · `venue_minimum_unreachable` existe ✓ · `solver_version` = version("ortools"), pin `>=9.11,<10` (`pyproject.toml:14`) ✓ · topic `club:{clubId}:schedule:{scheduleId}` (`MercureTopic.php`) ✓. **Un fait corrige** : l'exemple de payload disait `"version": "2.1"` — le backend emet exactement `2.14` (egalite stricte gardee par `PayloadVersionMatchesContractVersionTest`) ; l'exemple montre desormais le payload reel, la tolerance MAJOR reste expliquee en prose)
+Last verified @ 2026-08-24 (rotation `documentation-update`, hors sujet de la PR — file:line
+recales, tous perimes depuis un deplacement de modules non repercute ici). Contre le code :
+contrat 2.14 (`engine/CONTRACT_VERSION`) et comparaison MAJOR seule ✓ · verrou asyncio par club qui
+ATTEND, jamais de 503 (`app/main.py:128-129`, dict `_club_locks` + garde) ✓ · `lockLevel` chaine
+libre, pas un enum (`app/schemas/input_schema.py:249`, PAS `app/input_schema.py` — le fichier a
+migre sous `schemas/`) ✓ · `solverTimeoutSeconds` defaut 650 (`app/schemas/input_schema.py:262`) ✓ ·
+paliers workers 1/8 au seuil 200 (`_adaptive_workers`, `app/main.py:443`) ✓ · module objectif
+desormais `app/solver/objective.py` (PAS `app/objective.py`) ✓ · module modele desormais
+`app/solver/model.py` (PAS `app/model.py`) ✓ · `venue_minimum_unreachable` existe ✓ ·
+`solver_version` = version("ortools"), pin `>=9.11,<10` (`pyproject.toml:14`) ✓ · topic
+`club:{clubId}:schedule:{scheduleId}` (`MercureTopic.php`) ✓.
 
 > Ce document decrit le chemin complet d'une requete de generation d'emploi du temps, du moment ou le backend construit le payload jusqu'a la notification en temps reel du frontend. Destine aux developpeurs travaillant sur l'integration backend/engine.
 

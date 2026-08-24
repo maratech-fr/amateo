@@ -1,24 +1,19 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-24 (graduation RMM-3, le « gardien » à l'ouverture — RMM-3 est ENTIÈREMENT
-livré, RMM-3 est le DERNIER lot ouvert de la refonte à graduer, nouvelle section « Le gardien à
-l'ouverture »). Re-vérifié contre le code : `ConflictFingerprinter.php` (champs d'identité par
-type, paires triées, exclusions severity/dates/compteurs) ✓ ; `MatchModuleVisitController.php`
-(un seul endpoint POST, grâce 30 min glissante, première visite muette, rotation après calcul) ✓ ;
-`MatchModuleDeltaComputer.php` (les trois signaux, comparaison par IDS) ✓ ; `MatchModuleVisit.php`
-(unicité club+saison+user, RGPD) ✓ ; `MatchesLayout.tsx`/`queries.ts` (`useModuleVisit`, `enabled`
-piloté par la garde socle, `staleTime`/`gcTime: Infinity`) ✓ ; `ModuleVisitBanner.tsx`
-(`role="status"`, segments non nuls, muet en première visite) ✓ ; `ConflictRadar.tsx` (prop
-`newFingerprints`, chip ornementale) ✓. Graduation RMM-1 précédente re-confirmée : `MatchesLayout.tsx`
-(deux routes, garde `useSocleValidated` commun) ✓ ; `lib/loopSteps.ts` (`deriveLoopSteps`,
-`isOffModel`, `datelessConflicts` — les deux formules validées fondateur) ✓ ; `FbiEntryList.tsx`
-(groupage équipe, filtres, lot borné aux lignes affichées, `RECOPIABLE`) ✓ ; `MatchesPage.tsx`
-(panneau permanent `panelSlot`, `swapCandidateIds`, listener Échap) ✓ ; `WeekendGrid.tsx`
-(`data-swap-candidate`, cellules estompées) ✓ ; `store.ts` (`unplacedReasons` purgé par
-`setSelectedWeekend`) ✓ ; `FixtureStateProcessor.php:74` (écriture de statut → `MANUAL`) ✓ ;
-`lib/fixtureStatusLabel.ts` (table FR) ✓. Le reste du fichier (paliers A/PR-1→F2, périmètre
-engagé) non re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git :
-`git log -p --follow specs/courantes/module-matchs.md`
+Last verified @ 2026-08-24 (graduation RMM-4 PR-1+PR-2, réconciliation FBI — nouvelle section
+« Réconciliation FBI (RMM-4) », le lot **reste OUVERT** — PR-3 doit rebrancher `ReconciliationPanel`
+sur un autre canal). Re-vérifié contre le code : `FbiFixtureImporter.php` (`DEVIATION_FIELDS`
+date/kickoff/venue, `detectFieldDeviations`/`groupDeviations` au dry-run, `applyDeviationMode`/
+`applyFieldTakeFile` à l'import — date/salle dé-placent, heure rétrograde `SUBMITTED`/`VALIDATED`,
+`indexDecisions` ignore un champ/choix inconnu, `carryForwardTrace`/`persistingSet`) ✓ ;
+`FbiIngestion.php` (`pendingDeviations`, tenant+saison, PAS personnelle) ✓ ; `FbiIngestionSource.php`
+(`FFBB_API` préparé, jamais émis) ✓ ; `FbiIngestionFreshnessController.php` (lecture Membre, `latest`
+nullable) ✓ ; `ReconciliationView.tsx`/`ReconciliationPanel.tsx`/`store.ts` (payload en mémoire,
+renvoi propre sans payload, toggle sans défaut) ✓ ; `lib/deviationConsequence.ts`/`lib/fbiFreshness.ts`
+(conséquence redite jamais redérivée, seuil 30 j) ✓ ; `ImportFbiDialog.tsx` (bascule « Examiner » sur
+`deviations` non vide) ✓ ; `ConfigurationPage.tsx`/`MatchesPage.tsx` (carte + rappel de fraîcheur) ✓.
+Le reste du fichier (paliers A/PR-1→F2, RMM-1/RMM-3, périmètre engagé) non re-vérifié cette passe —
+un stamp REMPLACE, l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
 > [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés
@@ -159,16 +154,21 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   XLSX. En-têtes tolérants (« N° de match » avec espace traînant, « Numéro » legacy accepté).
 - **Endpoints** (opérations API Platform sur `FixtureResource`, gate partagée `FixtureImportGate` —
   refus byte-identiques) : `POST /api/fixtures/import/analyze` (multipart `file`) et
-  `POST /api/fixtures/import` (multipart `file` + `mappings` JSON). Séquence : pas de club/adhésion → 404,
+  `POST /api/fixtures/import` (multipart `file` + `mappings` JSON + `decisions` JSON optionnel — la
+  réconciliation, RMM-4 ci-dessous). Séquence : pas de club/adhésion → 404,
   membre non-management → 403, saison archivée → 409, **socle non validé → 409 (`SocleGuard`)**,
   fichier/mappings invalides → 400. Un `teamId` étranger dans `mappings` est invisible (filtres tenant) →
   400, aucune écriture cross-club.
 - **Rapport** `{created, updated, unchanged, exempted, errors[], warnings[{type, division, externalRef,
-  message}], unmappedDivisions[{name, fbiTeamLabel, rowCount}]}`.
+  message}], unmappedDivisions[{name, fbiTeamLabel, rowCount}], completeness[…], unresolvedDeviations[…],
+  depositedAt}` — les deux derniers champs sont la réconciliation (RMM-4 ci-dessous).
 - **UI** : « Importer FBI » dans `/matchs` → `ImportFbiDialog` **une passe** : fichier choisi → analyse
-  auto → table des correspondances (connues en texte, nouvelles en `TeamSelect`) → « Importer » envoie
-  fichier + nouveaux mappings → rapport affiché en place. Invalidation `fixtures` + `wizard/teams`
-  (engagement) + `competitions`.
+  auto → table des correspondances (connues en texte, nouvelles en `TeamSelect`). Si l'analyse ne rend
+  AUCUN écart domicile, « Importer » envoie fichier + nouveaux mappings → rapport affiché en place, flux
+  inchangé depuis PR A. Si elle en rend (RMM-4), le bouton devient « Examiner l'écart »/« Examiner les N
+  écarts » et bascule vers la vue dédiée `/matchs/reconciliation` au lieu d'importer directement — détail
+  ci-dessous. Invalidation `fixtures` + `wizard/teams` (engagement) + `competitions` (+ `fbi-ingestions`
+  côté réconciliation).
 
 ## Couche capacité (P1-4 PR B, 2026-08-03)
 
@@ -594,11 +594,8 @@ que l'API refuse ensuite de corriger. Une équipe engagée présente dans la pho
   mode échange). E2e : `tests/e2e/matches.spec.ts` inchangé dans son scénario (login → créer →
   placer), la refonte ne change aucune assertion de comportement moteur.
 
-**Deux points d'insertion futurs identifiés dans le code actuel** (rien de ce qui suit n'est
-implémenté — pointeurs vers le programme ouvert, `../evolution/refonte-module-matchs.md` §9) :
-- **RMM-4** (FBI source de plein droit + réconciliation) viendra sur le diff de ré-import
-  (`FbiFixtureImporter`) — un écran « état app vs état fichier », choix par écart, au lieu de la
-  mise à jour silencieuse actuelle.
+**Un point d'insertion futur identifié dans le code actuel** (rien de ce qui suit n'est implémenté
+— pointeur vers le programme ouvert, `../evolution/refonte-module-matchs.md` §9) :
 - **RMM-6** (échéances ligue/comité) viendra sur `FbiEntryList.tsx` (L9 ci-dessus) — une échéance
   affichée à côté de chaque ligne, saisie manuellement (la ligue les envoie par mail). **Une
   escalade cockpit/login en période d'échéance est actée (décision fondateur 2026-08-24)** :
@@ -670,6 +667,77 @@ implémenté — pointeurs vers le programme ouvert, `../evolution/refonte-modul
   intact ; rien de la sévérité, du tri, des libellés ni des étapes du rail n'en dépend — vérifié en
   non-régression (`MatchesPage.test.tsx` : un delta plein affiche le bandeau sans toucher au moindre
   libellé du rail).
+
+## Réconciliation FBI (RMM-4, PR-1 backend + PR-2 front, 2026-08-24)
+
+> Cadrage : [`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md) §4
+> fait 1, §7 et §9 (RMM-4). Besoin d'origine : un ré-import FBI qui re-décide une date/heure/salle
+> d'un domicile **déjà placé** mettait à jour en silence — aucune alerte, la divergence app⇄FBI
+> passait inaperçue. **Le lot reste OUVERT** (roadmap P2-48) : une **PR-3** doit encore rebrancher
+> `ReconciliationPanel` sur un autre canal que le dialogue d'import (`ReconciliationPanel.tsx:27` —
+> le panneau est délibérément agnostique du canal qui l'alimente) ; le seul canal aujourd'hui reste
+> le dépôt manuel du xlsx (l'index `rencontres` de l'API FFBB reste vide pour les vrais clubs,
+> `FbiIngestionSource` documente `FFBB_API` comme préparé, jamais émis).
+
+- **Le périmètre de réconciliation (D1/D3)** : seuls les domiciles **déjà placés** peuvent diverger
+  — un extérieur, ou un domicile encore `UNPLACED`, ou une ligne qui change de côté, sort du
+  périmètre. Trois champs seulement deviennent un CHOIX : **date, heure (kickoff), salle**
+  (`FbiFixtureImporter::DEVIATION_FIELDS`) ; adversaire et libellé de salle brut restent une mise à
+  jour silencieuse (jamais un écart présenté).
+- **`analyze()` détecte, `import()` tranche.** L'analyse (dry-run, zéro écriture) recalcule les
+  écarts et les rend groupés par fixture (`groupDeviations`) ; l'import reçoit en plus un champ
+  multipart `decisions` (liste `{fixtureId, field, choice: keep_app|take_file}`) — **un champ SANS
+  décision n'est jamais écrit par défaut** et atterrit dans `unresolvedDeviations` du rapport
+  (`FbiFixtureImporter::applyDeviationMode`). Le diff est RECALCULÉ à l'import (la base a pu bouger
+  depuis l'analyse) — une décision porte sur un champ qui a cessé de diverger est simplement ignorée.
+- **La conséquence par champ, écrite dans le moteur d'import ET redite au front** (jamais
+  redérivée — `frontend/.../lib/deviationConsequence.ts` l'énonce, ne la recalcule pas) :
+  **date** ou **salle** prises du fichier **dé-placent** le match (`UNPLACED`, salle effacée, à
+  replacer) — la ligue a re-décidé ; **heure** prise du fichier reste **en place** (le gymnase
+  n'est jamais remis en cause) mais **rétrograde** un `SUBMITTED`/`VALIDATED` en `PLACED`
+  (`demoteSubmitted`) — la case FBI était cochée sur une mauvaise heure, à re-saisir. « Garder
+  l'app » n'écrit jamais rien.
+- **La trace — un pense-bête, pas un journal.** Chaque dépôt écrit une `FbiIngestion` datée
+  (`club_id`+`season_id`, PAS personnelle — RGPD/purges génériques) portant
+  `pendingDeviations` : les écarts « garder l'app » de CE dépôt, plus ceux d'un dépôt antérieur qui
+  divergent TOUJOURS. Au dépôt suivant, un écart encore présent dans cette liste porte
+  `persisting: true` (badge « Écart persistant ») ; un « prendre le fichier » RÉSOUT l'écart
+  (retiré de la trace) ; un fichier revenu à la valeur app ou un fixture disparu éteint la trace en
+  silence — **seul un dépôt `FBI_XLSX` touche une trace**, une ingestion `FFBB_API` future n'en
+  efface ni n'en reporte aucune (`FbiIngestionSource`).
+- **La fraîcheur — `GET /api/fbi-ingestions/latest`** (`FbiIngestionFreshnessController`, lecture
+  ouverte au Membre, aucune garde management) : le dernier dépôt du club+saison (`null` = aucun).
+  Front : `useLatestFbiIngestion` (invalidée après chaque import) alimente une carte dans
+  `ConfigurationPage` (« Dernier dépôt FBI : aujourd'hui/hier/il y a N jours », escalade en warning
+  au-delà de `STALE_DAYS = 30` ou en l'absence totale de dépôt) et un rappel discret (`text-xs`
+  muted, sans bordure ni icône) près du rail semaine de `MatchesPage` — « aujourd'hui » toujours lu
+  du front (`todayISO`, ancrage démo compris), jamais du serveur.
+- **La vue dédiée `/matchs/reconciliation`** (décision fondateur 2026-08-24, passe de conception
+  `ui-ux-pro-max` : l'écran de choix ne tient pas dans la modale d'import). Enfant de
+  `MatchesLayout` — garde socle héritée, aucune route propre. **Zéro état serveur** : elle vit du
+  payload d'analyse porté EN MÉMOIRE par le store (`useMatchesStore().reconciliation` — `File` =
+  référence JS vivante, jamais sérialisée, jamais re-uploadée). Arriver ici sans payload (accès
+  direct, refresh, F5) est un **renvoi propre** vers la boucle (`EmptyState` + retour) — rien n'est
+  écrit ; quitter (« Abandonner ») abandonne sans rien écraser ; re-déposer le fichier re-présente
+  les écarts. `ImportFbiDialog` bascule ici (« Examiner… ») au lieu d'appeler `import()`
+  directement quand `analyze()` a rendu des écarts.
+- **`ReconciliationPanel`** — une carte PAR écart (fixture) : en-tête équipe/division/n° de
+  rencontre + statut FR + badge persistant ; **bande destructive `role="alert"`** quand le match
+  est déjà `SUBMITTED`/`VALIDATED` (signalement renforcé, `isDeposited`) ; par champ divergent, deux
+  colonnes (app / fichier, la divergence en teinte warning — jamais rouge, le rouge reste réservé à
+  la conséquence), un **toggle segmenté SANS défaut** (garder l'app / prendre le fichier,
+  `aria-pressed`), et la **conséquence TOUJOURS visible avant le choix**. Gestes de masse (« Tout
+  prendre du fichier », « Tout garder ») **pré-remplissent seulement** — aucune écriture avant
+  « Appliquer l'import », qui affiche un résumé de confirmation (N pris du fichier · N gardés · N
+  non tranchés, ces derniers explicitement annoncés « pas écrasés, re-présentés au prochain
+  dépôt »). L'import final réutilise le MÊME rail `importFbi.mutate` que le flux sans écart (fichier
+  + mappings + `decisions`).
+- **Front** — tests : `lib/deviationConsequence.test.ts`, `lib/fbiFreshness.test.ts`,
+  `ReconciliationPanel.test.tsx` (toggle sans défaut, gestes de masse,
+  bande destructive, conséquence), `ReconciliationView.test.tsx` (renvoi propre sans payload,
+  abandon, rapport avec écarts non tranchés), `ImportFbiDialog.test.tsx` (bouton « Examiner » quand
+  `deviations` non vide, flux inchangé sinon), `ConfigurationPage.test.tsx`/`MatchesPage.test.tsx`
+  (carte et rappel de fraîcheur).
 
 ## Reste palier A (à venir)
 
