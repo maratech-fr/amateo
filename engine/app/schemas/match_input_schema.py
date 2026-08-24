@@ -17,6 +17,8 @@ MAX_TEAM_LINKS = 400
 MAX_TRAINING_OCCUPANCIES = 20000
 MAX_WINDOWS_PER_VENUE = 50
 MAX_UNAVAILABILITIES_PER_VENUE = 100
+MAX_SLOT_ROTATIONS = 100
+MAX_TEAMS_PER_SLOT_ROTATION = 20
 MAX_TIMEOUT_SECONDS = 60
 
 
@@ -123,6 +125,24 @@ class TeamLinkSchema(SerializableModel):
     type: str = "NOT_SIMULTANEOUS"  # NOT_SIMULTANEOUS | BACK_TO_BACK
 
 
+class SlotRotationSchema(SerializableModel):
+    """RMM-5 (P2-49) — a shared match slot (venue + ISO day + kickoff) rotated
+    between member teams (the SM1/SM2 20:30 case): scarcity of slots → week A one
+    team receives, week B another, on the SAME physical slot (refonte §8).
+
+    The A/B image is a SOFT ideal (never a HARD): a member's HOME match on the
+    slot's day is ATTRACTED to (kickoff, venue), at strict parity with the habit
+    terms, and the slot's window is protected on member-free dates. The backend
+    already applies the SUPPLÉANCE: a member's same-day habit is dropped from
+    `teams[].habits`, so a member gets rotation OR habit that day, never both. An
+    absent/empty block ⇒ byte-identical code path (pattern `sharedTrainings`)."""
+
+    venue_id: str = Field(alias="venueId")
+    day_of_week: int = Field(alias="dayOfWeek", ge=1, le=7)
+    kickoff: time
+    team_ids: list[str] = Field(alias="teamIds", max_length=MAX_TEAMS_PER_SLOT_ROTATION)
+
+
 class TrainingOccupancySchema(SerializableModel):
     """A dated training session projected by the backend from the EFFECTIVE
     schedule (ADR-0002 rules live backend-side — the engine stays flat)."""
@@ -149,6 +169,9 @@ class MatchPlacementInputSchema(SerializableModel):
     venues: list[MatchVenueSchema] = Field(default_factory=list, max_length=MAX_MATCH_VENUES)
     teams: list[MatchTeamSchema] = Field(default_factory=list, max_length=MAX_MATCH_TEAMS)
     team_links: list[TeamLinkSchema] = Field(default_factory=list, alias="teamLinks", max_length=MAX_TEAM_LINKS)
+    slot_rotations: list[SlotRotationSchema] = Field(
+        default_factory=list, alias="slotRotations", max_length=MAX_SLOT_ROTATIONS
+    )
     training_occupancies: list[TrainingOccupancySchema] = Field(
         default_factory=list, alias="trainingOccupancies", max_length=MAX_TRAINING_OCCUPANCIES
     )

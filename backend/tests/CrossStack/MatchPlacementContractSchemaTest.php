@@ -48,9 +48,11 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         // Version DÉRIVÉE de la source ; l'égalité constante⇄engine/CONTRACT_VERSION
         // est gardée par PayloadVersionMatchesContractVersionTest.
         self::assertSame(MatchPlacementPayloadBuilder::CONTRACT_VERSION, $payload['version']);
-        foreach (['clubId', 'seasonId', 'solverSeed', 'solverTimeoutSeconds', 'matches', 'venues', 'teams', 'teamLinks', 'trainingOccupancies'] as $key) {
+        foreach (['clubId', 'seasonId', 'solverSeed', 'solverTimeoutSeconds', 'matches', 'venues', 'teams', 'teamLinks', 'slotRotations', 'trainingOccupancies'] as $key) {
             self::assertArrayHasKey($key, $payload);
         }
+        // RMM-5 : aucune rotation seedée ⇒ bloc [] (chemin byte-identique côté moteur).
+        self::assertSame([], $payload['slotRotations']);
 
         self::assertSame(1, $built['toPlaceCount']);
         $match = $payload['matches'][0];

@@ -202,6 +202,57 @@ def test_a_manual_anchor_is_never_moved_nor_double_booked() -> None:
         assert not (start < anchor_end and anchor_start < end), f"{placement.match_id} overlaps the manual anchor"
 
 
+def test_ab_rotation_image_is_honoured_across_two_weekends() -> None:
+    # RMM-5 constraint-semantics (§7.1): the SM1/SM2 shared slot (Mateo, Saturday
+    # 20:30). Two federal weekends: week A only SM1 receives, week B only SM2 —
+    # the alternation of the model. Each member's HOME match must land ON the
+    # slot (day + hour + venue), and no HARD rule is ever violated.
+    next_saturday = (date.fromisoformat(SATURDAY) + timedelta(days=7)).isoformat()
+    payload: dict[str, Any] = {
+        "version": read_contract_version(),
+        "clubId": "club-bccl",
+        "seasonId": "season-2026",
+        "solverSeed": 42,
+        "solverTimeoutSeconds": 30,
+        "matches": [
+            {"id": "m-sm1", "teamId": "sm1", "date": SATURDAY, "kind": "TO_PLACE"},
+            {"id": "m-sm2", "teamId": "sm2", "date": next_saturday, "kind": "TO_PLACE"},
+        ],
+        "venues": [
+            {
+                "id": "mateo",
+                "name": "Mateo",
+                "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
+                "unavailabilities": [],
+            },
+            {
+                "id": "armand",
+                "name": "Armand",
+                "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
+                "unavailabilities": [],
+            },
+        ],
+        "teams": [
+            {"id": "sm1", "name": "SM1", "leagueWindows": [], "habits": [], "coaches": []},
+            {"id": "sm2", "name": "SM2", "leagueWindows": [], "habits": [], "coaches": []},
+        ],
+        "teamLinks": [],
+        "slotRotations": [{"venueId": "mateo", "dayOfWeek": 6, "kickoff": "20:30", "teamIds": ["sm1", "sm2"]}],
+        "trainingOccupancies": [],
+    }
+    input_data = MatchPlacementInputSchema.model_validate(payload)
+    output = MatchPlacementOutputSchema.model_validate(solve_match_placement(input_data))
+
+    assert output.unplaced == []
+    placed = {p.match_id: (p.venue_id, p.kickoff) for p in output.placements}
+    # Each member receives ON the shared slot on its own weekend.
+    assert placed == {
+        "m-sm1": ("mateo", time(20, 30)),
+        "m-sm2": ("mateo", time(20, 30)),
+    }
+    assert_no_hard_violation(input_data, output)
+
+
 def test_horizon_spans_weeks_and_stays_consistent() -> None:
     # Two successive Saturdays solve in ONE call (the whole known horizon).
     payload = wire_payload()

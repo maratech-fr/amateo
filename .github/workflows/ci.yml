@@ -549,6 +549,14 @@ jobs:
       - name: TeamLinkPayloadParityTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/TeamLinkPayloadParityTest.php --group phase1'
 
+      # RMM-5 (P2-49) rotation A/B PR-2 : ce qui est STOCKÉ (créneaux de match partagés
+      # {venue, jour, heure, membres}) == le bloc `slotRotations` émis au moteur, et la SUPPLÉANCE
+      # retire l'habitude d'un membre le MÊME jour que sa rotation — jamais les autres. Falsifié
+      # dans les deux sens (rotation stockée émise, rotation d'un autre club ne fuit pas, habitude
+      # même-jour supplantée / autre jour conservée, sans rotation bloc [] + habitudes intactes).
+      - name: SlotRotationPayloadParityTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/SlotRotationPayloadParityTest.php --group phase1'
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
