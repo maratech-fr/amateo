@@ -238,6 +238,31 @@ final class SchedulePlanProvisioner
     }
 
     /**
+     * La DERNIÈRE version COMPLETED du plan SEASON d'une saison (createdAt DESC) —
+     * qu'elle soit pointée ou non. Sert le gardien (RMM-3) : une nouvelle génération
+     * réussie déplace cet id même sans repointage, signe qu'un calendrier neuf a été
+     * calculé depuis la dernière visite. Distinct de {@see chosenOfSeasonPlan} (le
+     * pointeur), qu'on compare séparément. Comme ses voisines : RAW SQL (esquive le
+     * season_filter, RLS scope le club), jointure explicite sur la saison du plan.
+     */
+    public function latestCompletedScheduleIdOfSeasonPlan(?string $seasonId): ?string
+    {
+        if (null === $seasonId) {
+            return null;
+        }
+
+        $id = $this->entityManager->getConnection()->fetchOne(
+            'SELECT s.id FROM schedule s '
+            . 'JOIN schedule_plan p ON p.id = s.schedule_plan_id '
+            . 'WHERE p.season_id = :sid AND p.type = \'SEASON\' AND s.status = \'COMPLETED\' '
+            . 'ORDER BY s.created_at DESC LIMIT 1',
+            ['sid' => $seasonId],
+        );
+
+        return \is_string($id) ? $id : null;
+    }
+
+    /**
      * La version CHOISIE du plan d'une PÉRIODE (ADR-0002) — l'overlay validé de
      * l'entrée. null = plan non validé (espace de travail) : on n'expose alors
      * aucune version active (le cockpit route vers « Ajuster »). Miroir période de

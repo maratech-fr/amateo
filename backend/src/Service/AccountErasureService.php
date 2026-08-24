@@ -124,6 +124,13 @@ final class AccountErasureService
                 'UPDATE club_user SET is_active = false, deactivated_at = NOW(), updated_at = NOW() WHERE user_id = :uid AND club_id = :cid',
                 ['uid' => $user->getId(), 'cid' => $clubId],
             );
+            // RMM-3 — l'instantané de visite du module matchs est une donnée PERSONNELLE
+            // (horodatages), pas un bien du club comme un signalement : il MEURT avec le
+            // compte. FORCE RLS scope le DELETE au club dont le GUC est posé ci-dessus.
+            $this->entityManager->getConnection()->executeStatement(
+                'DELETE FROM match_module_visit WHERE user_id = :uid',
+                ['uid' => $user->getId()],
+            );
         }
         $this->tenantConnectionContext->clear();
 

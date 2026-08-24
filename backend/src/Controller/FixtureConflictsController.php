@@ -15,6 +15,7 @@ use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
 use App\Repository\ClubRepository;
 use App\Repository\LeagueMatchWindowRepository;
+use App\Service\ConflictFingerprinter;
 use App\Service\LeagueEnvelopeResolver;
 use App\Service\MatchConflictDetector;
 use App\Service\SeasonResolver;
@@ -46,6 +47,7 @@ final class FixtureConflictsController extends AbstractController
         private readonly RequestStack $requestStack,
         private readonly SeasonResolver $seasonResolver,
         private readonly MatchConflictDetector $detector,
+        private readonly ConflictFingerprinter $fingerprinter,
         private readonly TrainingCalendarContext $trainingCalendarContext,
         private readonly ClubRepository $clubRepository,
         private readonly LeagueMatchWindowRepository $leagueWindowRepository,
@@ -103,6 +105,14 @@ final class FixtureConflictsController extends AbstractController
             $matchWindows,
             $envelope,
             $competitions,
+        );
+
+        // RMM-3 — champ ADDITIF : l'empreinte stable de chaque conflit, calculée EN
+        // AVAL par la maison unique (le détecteur reste intact). Le gardien s'en sert
+        // pour dire ce qui est « nouveau depuis ta dernière visite ».
+        $conflicts = array_map(
+            fn (array $conflict): array => $conflict + ['fingerprint' => $this->fingerprinter->fingerprint($conflict)],
+            $conflicts,
         );
 
         return $this->json([

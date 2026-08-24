@@ -1,6 +1,15 @@
-Last verified @ 2026-08-23 (régénéré après `docker compose restart php-fpm` — piège opcache, `backend/AGENTS.md` §17. P2-46 PR-2 ajoute **+1 path** `POST /api/reservations/group` : le compte passe de 169 à **170 paths**. Contrat backend⇄engine INCHANGÉ — cette route est un rail d'écriture, zéro appel moteur.)
+Last verified @ 2026-08-24 (régénéré après `docker compose restart php-fpm` — piège opcache, `backend/AGENTS.md` §17. RMM-3 PR-1 ajoute **+1 path** `POST /api/matches/module-visit` : le compte passe de 170 à **171 paths**. Contrat backend⇄engine INCHANGÉ — le gardien est un rail de persistance/lecture par visite, zéro appel moteur. SHA-256 du snapshot : `425bbc98d0f07a5eaa2d8d0fedb571f36d508fff3eeef1ebadf2698a13381387`.)
 
 Changements récents :
+- **RMM-3 PR-1 — le gardien à l'ouverture du module matchs (2026-08-24)** : **+1 path** —
+  `POST /api/matches/module-visit` (200 : `{firstVisit, newFixturesCount, newConflictFingerprints[],
+  planningChanged, referenceTakenAt}` — le delta « depuis ta dernière visite », stampe la référence
+  en effet de bord, première visite muette ; 400 sans club ou sans saison ; 401 sans JWT). Route
+  PAR UTILISATEUR, **ouverte au Membre** (aucune garde management, patron du signalement). **Champ
+  ADDITIF** sur `GET /api/fixtures/conflicts` : chaque item porte désormais `fingerprint` (l'identité
+  stable d'un conflit, propriété inline — aucun schéma nommé ajouté). 170 → **171 paths**. Contrat
+  backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.14, aucun appel moteur — persistance légère et
+  radar stateless recalculé).
 - **P2-46 PR-2 — la réservation batch d'un groupe mutualisé (2026-08-23)** : **+1 path** —
   `POST /api/reservations/group` (201 : `{ids[], count}` — N réservations HARD, une par membre,
   écrites en UN flush ; 400 JSON/champ manquant ; 403 non-gestionnaire ; 404 groupe inconnu ou

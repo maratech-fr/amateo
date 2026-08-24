@@ -71,6 +71,26 @@ final class FixtureConflictsApiTest extends WebTestCase
         self::assertNotContains($coachBId, $coachIds);
     }
 
+    /**
+     * RMM-3 — le contrat HTTP porte désormais un champ ADDITIF `fingerprint` sur
+     * chaque item : l'identité stable du conflit, calculée en aval du détecteur. Le
+     * gardien (POST /api/matches/module-visit) s'en sert pour dire ce qui est neuf.
+     */
+    public function testEveryConflictCarriesAStableFingerprint(): void
+    {
+        [, $userA, $coachAId] = $this->createClubWithOverlappingMatches('fp');
+
+        $this->client->request('GET', '/api/fixtures/conflicts', [], [], $this->authHeaders($userA));
+        self::assertResponseStatusCodeSame(200);
+
+        $conflicts = $this->responseData()['conflicts'];
+        self::assertCount(1, $conflicts);
+        self::assertArrayHasKey('fingerprint', $conflicts[0], 'chaque item porte son empreinte');
+        $fingerprint = $conflicts[0]['fingerprint'];
+        self::assertIsString($fingerprint);
+        self::assertStringStartsWith('MATCH_MATCH:' . $coachAId . ':', $fingerprint, 'l\'empreinte porte le type et le coach, jamais la sévérité ni le segment');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

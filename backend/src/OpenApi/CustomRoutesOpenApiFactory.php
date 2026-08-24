@@ -506,6 +506,7 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
                             'right' => ['type' => 'object', 'nullable' => true, 'description' => 'MATCH_MATCH: second fixture'],
                             'fixture' => ['type' => 'object', 'nullable' => true, 'description' => 'MATCH_TRAINING: the match'],
                             'training' => ['type' => 'object', 'nullable' => true, 'description' => 'MATCH_TRAINING: the training slot'],
+                            'fingerprint' => ['type' => 'string', 'description' => 'Stable identity of the conflict — same while it is the same dispute, changes when its nature changes (the guardian compares it across visits)'],
                         ]]],
                     ],
                 ]),
@@ -513,6 +514,26 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
                 '401' => new Response('Unauthorized (missing/expired JWT)'),
             ],
             summary: 'Same-coach match/training conflict radar (read-only, computed on the fly)',
+        )));
+
+        $paths->addPath('/api/matches/module-visit', new PathItem(post: new Operation(
+            operationId: 'stampMatchModuleVisit',
+            tags: ['Match'],
+            responses: [
+                '200' => $this->jsonResponse('What changed in the match module since this user\'s previous visit — new fixtures arrived, new conflicts, and whether the season plan moved. Stamps the visit as a side effect (first visit stays silent).', [
+                    'type' => 'object',
+                    'properties' => [
+                        'firstVisit' => ['type' => 'boolean', 'description' => 'True on the very first visit: the reference is set silently, every count is zero'],
+                        'newFixturesCount' => ['type' => 'integer', 'description' => 'Fixtures created since the reference was taken'],
+                        'newConflictFingerprints' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Conflicts present now and absent from the reference (vanished ones are not reported)'],
+                        'planningChanged' => ['type' => 'boolean', 'description' => 'The chosen season version or the latest completed one differs from the reference'],
+                        'referenceTakenAt' => ['type' => 'string', 'format' => 'date-time', 'description' => 'The moment the badges are measured against'],
+                    ],
+                ]),
+                '400' => new Response('No club or no season in context'),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+            ],
+            summary: 'Stamp the match-module visit and return what changed since the previous one (per user; open to any member)',
         )));
 
         $paths->addPath('/api/venue-unavailability-impact', new PathItem(get: new Operation(
