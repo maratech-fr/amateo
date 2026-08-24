@@ -13,6 +13,7 @@ use App\Entity\Competition;
 use App\Entity\Constraint;
 use App\Entity\ConstraintConflict;
 use App\Entity\ConstraintPeriodOverride;
+use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\MatchModuleVisit;
@@ -127,6 +128,9 @@ final class SeasonDataPurger
             // RMM-3 — instantané de visite du module matchs (club_id+season_id, aucun
             // enfant) : purgé avec la saison comme les autres tables tenant+saison.
             MatchModuleVisit::class,
+            // RMM-4 — ingestions FBI datées (club_id+season_id, aucun enfant) :
+            // purgées avec la saison ; ErasedClubPurger les suit via ce purger.
+            FbiIngestion::class,
             TeamCoach::class,
             CoachPlayerMembership::class,
             // P1-4 PR C — préférences matchs, pointent team_id : avant Team.

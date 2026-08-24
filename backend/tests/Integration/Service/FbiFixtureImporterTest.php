@@ -4,18 +4,23 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Service;
 
+use App\Clock\DevClockStore;
 use App\Entity\Club;
 use App\Entity\Competition;
+use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
+use App\Entity\Venue;
 use App\Enum\CompetitionType;
+use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Exception\ImportRejectedException;
+use App\Repository\FbiIngestionRepository;
 use App\Service\FbiFixtureImporter;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
@@ -338,13 +343,21 @@ final class FbiFixtureImporterTest extends KernelTestCase
 
     public function testRescheduledDateUnplacesAndWarns(): void
     {
+        // RMM-4: a date écart on a PLACED home is now a CHOICE — « take_file »
+        // keeps the pre-RMM-4 reschedule (la ligue a re-décidé → un-place).
         $this->importMapped([['D2', 'R3001', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
         $this->place('R3001');
+        $id = $this->fixtureId('R3001');
 
-        $result = $this->importMapped([['D2', 'R3001', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']]);
+        $result = $this->importMapped(
+            [['D2', 'R3001', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']],
+            null,
+            [['fixtureId' => $id, 'field' => 'date', 'choice' => 'take_file']],
+        );
 
         self::assertSame(0, $result['created']);
         self::assertSame(1, $result['updated']);
+        self::assertSame([], $result['unresolvedDeviations']);
         self::assertSame('RESCHEDULED', $result['warnings'][0]['type']);
         self::assertStringContainsString('placement annulé', $result['warnings'][0]['message']);
 
@@ -375,13 +388,21 @@ final class FbiFixtureImporterTest extends KernelTestCase
 
     public function testRealHourChangeUpdatesInPlaceKeepingTheVenue(): void
     {
+        // RMM-4: a kickoff écart on a PLACED home is a CHOICE — « take_file »
+        // updates the hour IN PLACE (venue kept), the pre-RMM-4 behaviour.
         $this->importMapped([['D2', 'R3003', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
         $venueId = $this->place('R3003');
+        $id = $this->fixtureId('R3003');
 
-        $result = $this->importMapped([['D2', 'R3003', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', '']]);
+        $result = $this->importMapped(
+            [['D2', 'R3003', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', '']],
+            null,
+            [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'take_file']],
+        );
 
         // The hour is the league's; the venue stays the club's choice.
         self::assertSame(1, $result['updated']);
+        self::assertSame([], $result['unresolvedDeviations']);
         self::assertSame('RESCHEDULED', $result['warnings'][0]['type']);
 
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'R3003']);
@@ -437,6 +458,220 @@ final class FbiFixtureImporterTest extends KernelTestCase
         );
 
         self::assertSame(2, $result['created']);
+    }
+
+    // ── Reconciliation FBI (RMM-4) ─────────────────────────────────────────
+
+    public function testPlacedHomeDateDivergenceIsAReportedDeviationNotWritten(): void
+    {
+        $this->importMapped([['D2', 'RD01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'Gymnase X']]);
+        $this->place('RD01');
+
+        // No decision: the écart is NOT applied — reported, app value INTACT.
+        $result = $this->importMapped([['D2', 'RD01', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X']]);
+
+        self::assertSame(0, $result['created']);
+        self::assertSame(0, $result['updated']);
+        self::assertSame(1, $result['unchanged']);
+        self::assertCount(1, $result['unresolvedDeviations']);
+        $deviation = $result['unresolvedDeviations'][0];
+        self::assertSame('RD01', $deviation['externalRef']);
+        self::assertFalse($deviation['persisting']);
+        self::assertSame(['app' => '2026-10-03', 'file' => '2026-10-10'], $deviation['fields']['date']);
+
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RD01']);
+        self::assertSame('2026-10-03', $fixture?->getMatchDate()->format('Y-m-d'));
+        self::assertSame(FixtureStatus::PLACED, $fixture?->getStatus());
+    }
+
+    public function testKeepAppWritesNothingAndBornsATraceThatPersistsThenDies(): void
+    {
+        // Distinct deposit instants so « the last deposit » is unambiguous (in
+        // real life deposits are days apart; the DB timestamp is second-precise).
+        $this->pinClock(new DateTimeImmutable('2026-09-01 10:00:00'));
+        $this->importMapped([['D2', 'RD02', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->place('RD02');
+        $id = $this->fixtureId('RD02');
+
+        // keep_app: nothing written, a trace is born (no unresolved — it was decided).
+        $this->pinClock(new DateTimeImmutable('2026-09-08 10:00:00'));
+        $r1 = $this->importMapped(
+            [['D2', 'RD02', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']],
+            null,
+            [['fixtureId' => $id, 'field' => 'date', 'choice' => 'keep_app']],
+        );
+        self::assertSame(0, $r1['updated']);
+        self::assertSame([], $r1['unresolvedDeviations']);
+        self::assertSame('2026-10-03', $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RD02'])?->getMatchDate()->format('Y-m-d'));
+
+        // Re-deposit the SAME divergent file: the écart re-appears, persisting.
+        $again = $this->importer->analyze($this->xlsx([['D2', 'RD02', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']]), $this->club);
+        self::assertCount(1, $again['deviations']);
+        self::assertTrue($again['deviations'][0]['persisting']);
+
+        // Re-deposit a CONFORMING file (date back to the app value): the trace dies.
+        $conform = $this->importer->analyze($this->xlsx([['D2', 'RD02', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]), $this->club);
+        self::assertSame([], $conform['deviations']);
+    }
+
+    public function testTakeFileOnADateUnplacesAndResolvesTheEcart(): void
+    {
+        // Retained semantics: take_file on a DATE = la ligue a re-décidé → the
+        // placement is invalidated (un-placed). The écart is then resolved.
+        $this->importMapped([['D2', 'RD03', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->place('RD03');
+        $id = $this->fixtureId('RD03');
+
+        $result = $this->importMapped(
+            [['D2', 'RD03', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']],
+            null,
+            [['fixtureId' => $id, 'field' => 'date', 'choice' => 'take_file']],
+        );
+        self::assertSame(1, $result['updated']);
+        self::assertSame([], $result['unresolvedDeviations']);
+
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RD03']);
+        self::assertSame('2026-10-10', $fixture?->getMatchDate()->format('Y-m-d'));
+        self::assertSame(FixtureStatus::UNPLACED, $fixture?->getStatus());
+        self::assertNull($fixture?->getVenueId());
+
+        // Idempotence: re-deposit the same file — now UNPLACED, no deviation.
+        $after = $this->importer->analyze($this->xlsx([['D2', 'RD03', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']]), $this->club);
+        self::assertSame([], $after['deviations']);
+    }
+
+    public function testAwayDivergenceNeverProducesADeviationTheFileWinsDirectly(): void
+    {
+        // Fondateur invariant: an AWAY match is informational only — never a
+        // choice. Even forced « placed », an écart on it is written directly.
+        $this->importMapped([['D2', 'RA01', 'AS Voisins', 'BC TESTVILLE - 1', '03/10/2026', '15:30', 'Salle Adverse']]);
+        $away = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RA01']);
+        self::assertSame(FixtureHomeAway::AWAY, $away?->getHomeAway());
+        $away?->setStatus(FixtureStatus::PLACED);
+        $this->em->flush();
+
+        $result = $this->importMapped([['D2', 'RA01', 'AS Voisins', 'BC TESTVILLE - 1', '10/10/2026', '15:30', 'Salle Adverse']]);
+
+        self::assertSame([], $result['unresolvedDeviations']);
+        self::assertSame(1, $result['updated']); // the file wrote the new date directly
+        self::assertSame('2026-10-10', $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RA01'])?->getMatchDate()->format('Y-m-d'));
+    }
+
+    public function testUnplacedHomeDivergenceIsNotADeviationTheFileWins(): void
+    {
+        // A home match still « à placer » keeps the pre-RMM-4 behaviour: the file
+        // wins (reschedule), no deviation to arbitrate.
+        $this->importMapped([['D2', 'RH01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+
+        $result = $this->importMapped([['D2', 'RH01', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']]);
+
+        self::assertSame([], $result['unresolvedDeviations']);
+        self::assertSame(1, $result['updated']);
+        self::assertSame('2026-10-10', $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RH01'])?->getMatchDate()->format('Y-m-d'));
+    }
+
+    public function testSubmittedTakeFileDropsToPlacedSubmittedKeepAppStaysSubmitted(): void
+    {
+        // take_file on a SUBMITTED fixture: writes the value AND un-submits to
+        // PLACED (the FBI checkmark was on a wrong hour); keep_app leaves it.
+        $this->importMapped([['D2', 'RS01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->place('RS01');
+        $this->setStatus('RS01', FixtureStatus::SUBMITTED);
+        $id = $this->fixtureId('RS01');
+
+        $take = $this->importMapped(
+            [['D2', 'RS01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', '']],
+            null,
+            [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'take_file']],
+        );
+        self::assertSame([], $take['unresolvedDeviations']);
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RS01']);
+        self::assertSame(FixtureStatus::PLACED, $fixture?->getStatus());
+        self::assertSame('17:00', $fixture?->getKickoffTime()?->format('H:i'));
+
+        // Re-submit, then keep_app on a fresh divergence: status untouched.
+        $this->setStatus('RS01', FixtureStatus::SUBMITTED);
+        $keep = $this->importMapped(
+            [['D2', 'RS01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '18:30', '']],
+            null,
+            [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'keep_app']],
+        );
+        self::assertSame([], $keep['unresolvedDeviations']);
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RS01']);
+        self::assertSame(FixtureStatus::SUBMITTED, $fixture?->getStatus());
+        self::assertSame('17:00', $fixture?->getKickoffTime()?->format('H:i'));
+    }
+
+    public function testVenueContainmentIsNoDeviationADifferentRoomIs(): void
+    {
+        $venueId = $this->createVenue('GYMNASE PIERRE DE COUBERTIN');
+        $this->importMapped([['D2', 'RV01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE PIERRE DE COUBERTIN']]);
+        $this->placeAt('RV01', $venueId);
+
+        // Whole-word containment (« Coubertin » ⊂ the placed venue): no deviation.
+        $contained = $this->importMapped([['D2', 'RV01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'Coubertin']]);
+        self::assertSame([], $contained['unresolvedDeviations']);
+
+        // A genuinely different room: a venue deviation.
+        $different = $this->importMapped([['D2', 'RV01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']]);
+        self::assertCount(1, $different['unresolvedDeviations']);
+        self::assertSame(
+            ['app' => 'GYMNASE PIERRE DE COUBERTIN', 'file' => 'GYMNASE MATEO'],
+            $different['unresolvedDeviations'][0]['fields']['venue'],
+        );
+    }
+
+    public function testTheZeroZeroSentinelIsNeverADeviation(): void
+    {
+        $this->importMapped([['D2', 'RZ01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->place('RZ01');
+
+        $result = $this->importMapped([['D2', 'RZ01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '00:00', '']]);
+
+        self::assertSame([], $result['unresolvedDeviations']);
+        self::assertSame(1, $result['unchanged']);
+        self::assertSame('15:30', $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RZ01'])?->getKickoffTime()?->format('H:i'));
+    }
+
+    public function testFixturePlacedAfterAnalyzeSurfacesAtImportWithoutDecision(): void
+    {
+        // The race the founder named: at analyze the home fixture was UNPLACED
+        // (no deviation). Placed BETWEEN analyze and import → the recomputed diff
+        // at import makes it a deviation; without a decision it stays intact.
+        $this->importMapped([['D2', 'RC01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+
+        $analysis = $this->importer->analyze($this->xlsx([['D2', 'RC01', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']]), $this->club);
+        self::assertSame([], $analysis['deviations']); // UNPLACED at analyze → not in perimeter
+
+        $this->place('RC01'); // the manager places it after analyzing
+
+        $result = $this->importMapped([['D2', 'RC01', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']]);
+        self::assertCount(1, $result['unresolvedDeviations']);
+        self::assertSame('2026-10-03', $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RC01'])?->getMatchDate()->format('Y-m-d'));
+
+        // Idempotence: re-deposit → the écart is presented again (still unresolved).
+        $again = $this->importMapped([['D2', 'RC01', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']]);
+        self::assertCount(1, $again['unresolvedDeviations']);
+    }
+
+    public function testEveryDepositWritesADatedIngestionAndOnlyXlsxIsTheLastDeposit(): void
+    {
+        $this->importMapped([['D2', 'RI01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        /** @var FbiIngestionRepository $repository */
+        $repository = self::getContainer()->get(FbiIngestionRepository::class);
+        $xlsx = $repository->latestXlsx();
+        self::assertNotNull($xlsx);
+        self::assertSame(FbiIngestionSource::FBI_XLSX, $xlsx->getSource());
+        self::assertSame(1, $xlsx->getCreated());
+
+        // A (future) API ingestion must NOT count as the last deposit and never
+        // kills/reports a trace — the repository only ever returns the xlsx one.
+        $api = new FbiIngestion($this->club->getId(), $this->team->getSeasonId(), FbiIngestionSource::FFBB_API, new DateTimeImmutable('+1 hour'), 0, 0, 0, 0, []);
+        $this->em->persist($api);
+        $this->em->flush();
+
+        $stillXlsx = $repository->latestXlsx();
+        self::assertSame(FbiIngestionSource::FBI_XLSX, $stillXlsx?->getSource());
     }
 
     // ── Row-level guards (PR-4 successors) ─────────────────────────────────
@@ -656,7 +891,15 @@ final class FbiFixtureImporterTest extends KernelTestCase
         foreach ($this->tempFiles as $file) {
             @unlink($file);
         }
+        // Release any pinned clock so it never bleeds into another test (Redis is
+        // shared, not rolled back).
+        self::getContainer()->get(DevClockStore::class)->set(null);
         parent::tearDown();
+    }
+
+    private function pinClock(DateTimeImmutable $at): void
+    {
+        self::getContainer()->get(DevClockStore::class)->set($at);
     }
 
     /** A competition of $this->team paired to a FFBB poule (refs + frozen data). */
@@ -768,10 +1011,11 @@ final class FbiFixtureImporterTest extends KernelTestCase
      *
      * @param list<list<string>>                                                            $rows
      * @param list<array{division: string, fbiTeamLabel: string|null, teamId: string}>|null $mappings
+     * @param list<array{fixtureId: string, field: string, choice: string}>                 $decisions
      *
-     * @return array{created: int, updated: int, unchanged: int, exempted: int, errors: list<string>, warnings: list<array{type: string, division: string, externalRef: string, message: string}>, unmappedDivisions: list<array{name: string, fbiTeamLabel: string|null, rowCount: int}>}
+     * @return array{created: int, updated: int, unchanged: int, exempted: int, errors: list<string>, warnings: list<array{type: string, division: string, externalRef: string, message: string}>, unmappedDivisions: list<array{name: string, fbiTeamLabel: string|null, rowCount: int}>, unresolvedDeviations: list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, persisting: bool, fields: array<string, array{app: string|null, file: string|null}>}>, depositedAt: string}
      */
-    private function importMapped(array $rows, ?array $mappings = null): array
+    private function importMapped(array $rows, ?array $mappings = null, array $decisions = []): array
     {
         if (null === $mappings) {
             $divisions = array_values(array_unique(array_column($rows, 0)));
@@ -781,7 +1025,16 @@ final class FbiFixtureImporterTest extends KernelTestCase
             );
         }
 
-        return $this->importer->import($this->xlsx($rows), $this->club, $mappings);
+        return $this->importer->import($this->xlsx($rows), $this->club, $mappings, $decisions);
+    }
+
+    /** The id of the imported fixture — the key of a reconciliation decision. */
+    private function fixtureId(string $externalRef): string
+    {
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
+        self::assertNotNull($fixture);
+
+        return $fixture->getId();
     }
 
     /** Marks the fixture as placed by the club: PLACED + a venue id. */
@@ -795,6 +1048,40 @@ final class FbiFixtureImporterTest extends KernelTestCase
         $this->em->flush();
 
         return $venueId;
+    }
+
+    /** Places the fixture at a REAL venue (for the fuzzy salle compare). */
+    private function placeAt(string $externalRef, string $venueId): void
+    {
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
+        self::assertNotNull($fixture);
+        $fixture->setStatus(FixtureStatus::PLACED);
+        $fixture->setVenueId($venueId);
+        $this->em->flush();
+    }
+
+    private function setStatus(string $externalRef, FixtureStatus $status): void
+    {
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
+        self::assertNotNull($fixture);
+        $fixture->setStatus($status);
+        $this->em->flush();
+    }
+
+    /** A real Venue of the club+season; returns its id. */
+    private function createVenue(string $name): string
+    {
+        $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $this->club->getId()]);
+        self::assertNotNull($season);
+        $venue = new Venue;
+        $venue->setClubId($this->club->getId());
+        $venue->setSeasonId($season->getId());
+        $venue->setName($name);
+        $venue->setSource('manual');
+        $this->em->persist($venue);
+        $this->em->flush();
+
+        return $venue->getId();
     }
 
     /** @param list<list<string>> $rows real-format header (« N° de match » with its trailing space) */

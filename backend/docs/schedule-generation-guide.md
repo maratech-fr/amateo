@@ -1,6 +1,12 @@
 # Guide de génération de planning — ClubScheduler
 
-Last verified @ 2026-08-22 (P4-120 — première vérification stampée de ce fichier, contre le code : `POST /api/schedules` et `POST /api/schedules/{id}/generate` existent (debug:router) ✓ · port 8080 = `NGINX_PORT` (`.env:6`) ✓ · statut `DRAFT` réel (`ScheduleStatus`) ✓ · gardes 409 version pointée / `GenerationComplexityGuard` / `OrphanPinGuard` présents dans le contrôleur ✓ · diagnostics `engine_timeout`/`engine_error`/`engine_failed` conformes au handler ✓ · rapports dev `var/generate` cohérents avec `make fix-perms` ✓. **Trois faits corrigés** : un Schedule est un planning d'ENTRAÎNEMENTS, pas « de matchs » ; la liste des refus pré-file s'est enrichie (caps métier par club, `SocleGuard` pour une période) ; la note « deux fichiers PDF+PNG » décrivait un export PNG qui a quitté TOTALEMENT le projet le 2026-08-21 — `pngExportUrl` n'existe plus)
+Last verified @ 2026-08-24 (rotation `documentation-update`, pas de sujet lié à cette passe — sondage
+des stamps les plus anciens du dépôt). Re-confronté au code, tout juste : les huit conteneurs cités
+(`clubscheduler-php-fpm`/`nginx`/`postgres`/`redis`/`engine`/`messenger-worker`/`mercure`/`mailpit`)
+existent dans `docker-compose.yml` ✓ · port 8080 = `NGINX_PORT` (`.env:6`) ✓ · les trois refus
+pré-file (409 version pointée, 422 `GenerationComplexityGuard`, 422 `OrphanPinGuard`) + la mention
+des caps métier par club et de `SocleGuard` pour une période, présents dans le contrôleur ✓ ·
+`pngExportUrl` toujours absent — `grep` vide sur `backend/src` et `frontend/src` ✓.
 
 > Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend ClubScheduler. Il s'adresse aux développeurs juniors qui découvrent le projet.
 

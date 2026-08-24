@@ -8,6 +8,7 @@ use App\Entity\Club;
 use App\Exception\ImportRejectedException;
 use App\Service\FbiFixtureImporter;
 use App\Service\FixtureImportGate;
+use App\Service\SeasonResolver;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
@@ -37,6 +38,7 @@ final class ImportFixturesController extends AbstractController
         private readonly FbiFixtureImporter $importer,
         private readonly FixtureImportGate $gate,
         private readonly LoggerInterface $logger,
+        private readonly SeasonResolver $seasonResolver,
     ) {}
 
     public function __invoke(Request $request): JsonResponse
@@ -55,8 +57,19 @@ final class ImportFixturesController extends AbstractController
             return $mappings;
         }
 
+        $decisions = $this->parseDecisions($request);
+        if ($decisions instanceof JsonResponse) {
+            return $decisions;
+        }
+
+        // La saison de l'ingestion est CELLE de la requête (revue de sécurité
+        // 2026-08-24) : la deviner depuis les données importées ouvrait un repli
+        // dégénéré (multi-saison → saison arbitraire ; club vide → pas de saison
+        // du tout). La gate a déjà exigé un socle pointé : la saison existe.
+        $season = $this->seasonResolver->selectedOrCurrent($request, $club->getId());
+
         try {
-            $result = $this->importer->import((string) $file->getRealPath(), $club, $mappings);
+            $result = $this->importer->import((string) $file->getRealPath(), $club, $mappings, $decisions, $season?->getId());
         } catch (ImportRejectedException $e) {
             // Le SEUL type relayé : son message est écrit pour le gestionnaire.
             return $this->json(['error' => $e->getMessage()], $e->getStatusCode());
@@ -89,6 +102,10 @@ final class ImportFixturesController extends AbstractController
             'warnings' => $result['warnings'],
             'unmappedDivisions' => $result['unmappedDivisions'],
             'completeness' => $result['completeness'],
+            // RMM-4 — perimeter écarts (home already placed) that had NO decision:
+            // left INTACT and reported, never overwritten by default.
+            'unresolvedDeviations' => $result['unresolvedDeviations'],
+            'depositedAt' => $result['depositedAt'],
         ], Response::HTTP_OK);
     }
 
@@ -138,5 +155,50 @@ final class ImportFixturesController extends AbstractController
         }
 
         return $mappings;
+    }
+
+    /**
+     * The multipart « decisions » field (RMM-4): a JSON list of
+     * {fixtureId, field, choice} — the manager's per-écart verdicts from the
+     * reconciliation screen. Absent = no decision (every perimeter écart stays
+     * unresolved and is reported, never overwritten). Unknown fields/choices are
+     * rejected at the boundary; the importer ignores any that do not match a live
+     * écart when the diff is recomputed.
+     *
+     * @return list<array{fixtureId: string, field: string, choice: string}>|JsonResponse
+     */
+    private function parseDecisions(Request $request): array|JsonResponse
+    {
+        $raw = $request->request->get('decisions');
+        if (null === $raw || '' === $raw) {
+            return [];
+        }
+        if (!\is_string($raw)) {
+            return $this->json(['error' => 'Champ « decisions » invalide.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!\is_array($decoded) || !array_is_list($decoded)) {
+            return $this->json(['error' => 'Champ « decisions » invalide (liste JSON attendue).'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $uuid = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
+        $decisions = [];
+        foreach ($decoded as $entry) {
+            if (!\is_array($entry)
+                || !\is_string($entry['fixtureId'] ?? null) || 1 !== preg_match($uuid, $entry['fixtureId'])
+                || !\in_array($entry['field'] ?? null, ['date', 'kickoff', 'venue'], true)
+                || !\in_array($entry['choice'] ?? null, ['keep_app', 'take_file'], true)
+            ) {
+                return $this->json(['error' => 'Champ « decisions » invalide (entrées {fixtureId, field: date|kickoff|venue, choice: keep_app|take_file} attendues).'], Response::HTTP_BAD_REQUEST);
+            }
+            $decisions[] = [
+                'fixtureId' => $entry['fixtureId'],
+                'field' => $entry['field'],
+                'choice' => $entry['choice'],
+            ];
+        }
+
+        return $decisions;
     }
 }

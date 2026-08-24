@@ -488,6 +488,29 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
             summary: 'League match-kickoff windows inherited by the club (global reference, read-only)',
         )));
 
+        $paths->addPath('/api/fbi-ingestions/latest', new PathItem(get: new Operation(
+            operationId: 'getLatestFbiIngestion',
+            tags: ['Match'],
+            responses: [
+                '200' => $this->jsonResponse('The last FBI export deposit of the club/season (freshness: « last deposit N days ago ») — null when none yet', [
+                    'type' => 'object',
+                    'properties' => [
+                        'latest' => ['type' => 'object', 'nullable' => true, 'properties' => [
+                            'depositedAt' => ['type' => 'string', 'format' => 'date-time'],
+                            'source' => ['type' => 'string', 'enum' => ['FBI_XLSX', 'FFBB_API']],
+                            'created' => ['type' => 'integer'],
+                            'updated' => ['type' => 'integer'],
+                            'unchanged' => ['type' => 'integer'],
+                            'deviationsCount' => ['type' => 'integer'],
+                        ]],
+                    ],
+                ]),
+                '400' => new Response('No club or season in context'),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+            ],
+            summary: 'Last FBI export deposit of the club/season (freshness feed, read-only, open to any member)',
+        )));
+
         $paths->addPath('/api/fixtures/conflicts', new PathItem(get: new Operation(
             operationId: 'getFixtureConflicts',
             tags: ['Match'],
