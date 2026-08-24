@@ -3,15 +3,18 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-08-24 (recalé par RMM-4 PR-3, le canal API FFBB — deux nouvelles routes
-`GET /api/ffbb/rencontres` + `POST /api/ffbb/rencontres/apply` lues contre
-`FfbbRencontresController.php` ; **RMM-4 est désormais LIVRÉ EN ENTIER**. Re-vérifié dans la même
-passe : les deux routes d'import FBI (PR-1) contre
+Last verified @ 2026-08-25 (ajout RMM-5 PR-1 — nouvelle ressource `MatchSlotRotation`, §2, lue
+contre `MatchSlotRotationResource.php`/`MatchSlotRotationStateProcessor.php`/
+`MatchSlotRotationStateProvider.php` ; cascades confrontées à `CascadePlan.php` +
+`MatchSlotRotationTeamPruneStep.php`/`MatchSlotRotationVenuePruneStep.php`). Re-vérifié dans la
+même passe : RMM-4 PR-3, le canal API FFBB — deux routes `GET /api/ffbb/rencontres` +
+`POST /api/ffbb/rencontres/apply` contre `FfbbRencontresController.php` ; **RMM-4 est LIVRÉ EN
+ENTIER**. Les deux routes d'import FBI (PR-1) contre
 `ImportFixturesController.php`/`ImportFixturesAnalyzeController.php`/`FbiFixtureImporter.php`
 — `deviations` à l'analyze, `decisions`/`unresolvedDeviations`/`depositedAt` à l'import, `take_file`
 dé-place sur date/salle et retombe `PLACED` sur heure ; `GET /api/fbi-ingestions/latest` contre
 `FbiIngestionFreshnessController.php` ; l'entité `FbiIngestion` (club+saison, aucun `user_id`)
-confrontée à `SeasonDataPurger.php:133` (purgée avec la saison))
+confrontée à `SeasonDataPurger.php` (purgée avec la saison))
 
 ---
 
@@ -131,6 +134,7 @@ Doctrine correspondantes vivent dans `backend/src/Entity/` et utilisent des UUID
 | — | Fixture | `/api/fixtures` | Rencontres (HOME/AWAY, placement domicile, `externalRef` = n° FBI) | Ops custom conflits + import FBI (§3) |
 | — | TeamLink | `/api/team_links` | Pont déclaré entre deux équipes — pas d'entité joueur, le gestionnaire déclare le lien (`teamAId < teamBId` normalisé par le processor) : `NOT_SIMULTANEOUS` (double projet, jamais en même temps) ou `BACK_TO_BACK` (enchaînées, implique `NOT_SIMULTANEOUS`). Consommé par le module matchs (`MatchPlacementPayloadBuilder`, `MatchConflictDetector`) — le solveur d'entraînement ne le lit pas | |
 | — | TeamMatchHabit | `/api/team_match_habits` | Créneau de match habituel d'une équipe (un par jour de semaine, gymnase optionnel) — consommé par le module matchs (`MatchPlacementPayloadBuilder`, `AwayKickoffEstimator`) pour estimer les coups d'envoi à l'extérieur | |
+| — | MatchSlotRotation | `/api/match_slot_rotations` | **RMM-5 PR-1 (2026-08-25), modèle SEUL — rien ne le consomme encore.** Créneau de match PARTAGÉ (gymnase **NOT NULL** + jour ISO + heure, unicité `(club_id, season_id, venue_id, day_of_week, kickoff_time)`) occupé en alternance par 2..10 équipes ordonnées (`MatchSlotRotationTeam`, `position` purement FICTIF — aucun calendrier). Écriture par remplacement transactionnel des membres ; 409 sur course d'unicité de créneau. Détail : [`module-matchs.md`](../../specs/courantes/module-matchs.md) § Rotation A/B. | |
 
 > La numérotation n'est **pas** un décompte — liste exhaustive et à jour : `ls backend/src/ApiResource/`. Les tables globales de référence (`PublicHoliday`, `SchoolHolidayPeriod`, `LeagueMatchWindow`) sont exposées en **lecture seule via contrôleurs invokables** (§3), pas comme ressources CRUD.
 
