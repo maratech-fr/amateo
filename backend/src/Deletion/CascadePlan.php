@@ -75,6 +75,9 @@ final class CascadePlan
             new DeleteByFieldStep(CoachWish::class, 'teamId', new ImpactLabel('team_coach_wish', 'demande de coach', 'demandes de coach')),
             new ScopedConstraintStep(ConstraintScope::TEAM, new ImpactLabel('team_constraint', 'contrainte visant cette équipe', 'contraintes visant cette équipe')),
             new SharedTrainingGroupPruneStep(new ImpactLabel('team_shared_group', 'groupe de mutualisation', 'groupes de mutualisation')),
+            // RMM-5 — l'équipe quitte ses créneaux de match partagés ; ceux qui tombent < 2
+            // membres sont SUPPRIMÉS (annoncés). Les survivants gardent leurs autres équipes.
+            new MatchSlotRotationTeamPruneStep(new ImpactLabel('team_match_slot_rotation', 'créneau de match partagé', 'créneaux de match partagés')),
             new ClearFieldStep(Team::class, 'parentTeamId', new ImpactLabel('team_child', 'équipe rattachée qui perdra son équipe parente', 'équipes rattachées qui perdront leur équipe parente')),
         ];
     }
@@ -85,6 +88,9 @@ final class CascadePlan
         return [
             new DeleteByFieldStep(VenueTrainingSlot::class, 'venueId', new ImpactLabel('venue_slot', 'créneau de disponibilité', 'créneaux de disponibilité')),
             new DeleteByFieldStep(VenueMatchWindow::class, 'venueId', new ImpactLabel('venue_match_window', 'fenêtre de match', 'fenêtres de match')),
+            // RMM-5 — la rotation EST le créneau (venue_id NOT NULL) : sans son gymnase elle
+            // n'existe plus, parent ET lignes membres partent (contrairement à l'habitude qui survit).
+            new MatchSlotRotationVenuePruneStep(new ImpactLabel('venue_match_slot_rotation', 'créneau de match partagé', 'créneaux de match partagés')),
             new DeleteByFieldStep(VenueUnavailability::class, 'venueId', new ImpactLabel('venue_unavailability', 'indisponibilité déclarée', 'indisponibilités déclarées')),
             new DeleteByFieldStep(VenuePeriodOverride::class, 'venueId', new ImpactLabel('venue_period_override', 'réglage de période', 'réglages de période')),
             new DeleteByFieldStep(Reservation::class, 'venueId', new ImpactLabel('venue_reservation', 'réservation d\'équipe', 'réservations d\'équipe')),

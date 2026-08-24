@@ -1,19 +1,18 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-24 (graduation RMM-4 PR-3, le canal API FFBB — **RMM-4 est LIVRÉ EN
-ENTIER**, la section « Réconciliation FBI (RMM-4) » s'étend au canal API, le lot QUITTE la
-roadmap). Re-vérifié contre le code : `FfbbRencontresController.php` (GET analyse + POST apply,
-management + socle + tenant, re-fetch serveur à l'apply) ✓ ; `FfbbApiClient::searchRencontres`
-(filtre STRICT serveur sur le code club, index `ffbbserver_rencontres`) ✓ ;
-`FfbbRencontreReader.php` (mapping home/away dérivé du côté club, sentinelle 00:00, filtre saison,
-clamp 180/64 des chaînes externes non bornées) ✓ ; `FfbbRencontreReconciler.php` (appariement
-3 étages + tier-0 idempotence sur `Fixture.ffbbRencontreId`, réutilise VERBATIM
-`FbiFixtureImporter` pour le diff et les décisions, ingestion `FFBB_API` sans trace) ✓ ;
-`ReconciliationView.tsx`/`store.ts` (union discriminée `xlsx`\|`api`, bandeau d'honnêteté
-`role="status"`, section créations avec `TeamSelect` par ligne) ✓ ; `ConfigurationPage.tsx`
-(bouton « Vérifier via l'API FFBB », à la demande seulement) ✓. Le reste (PR-1/PR-2, paliers
-A/PR-1→F2, RMM-1/RMM-3, périmètre engagé) non re-vérifié cette passe — un stamp REMPLACE,
-l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
+Last verified @ 2026-08-25 (graduation RMM-5 PR-1, le MODÈLE de la rotation A/B — **PREMIÈRE de 4
+PR, RMM-5 reste OUVERT** ; nouvelle section « Rotation A/B — RMM-5 PR-1 »). Re-vérifié contre le
+code : `MatchSlotRotation.php`/`MatchSlotRotationTeam.php` (venue NOT NULL, unicité créneau,
+`position` fictif) ✓ ; `MatchSlotRotationStateProcessor.php` (remplacement transactionnel des
+membres, 409 sur course d'unicité) ✓ ; `CascadePlan.php` +
+`MatchSlotRotationTeamPruneStep.php`/`MatchSlotRotationVenuePruneStep.php` ✓ ;
+`SeasonTransitionService.php` (recopie N+1 remappée, sous 2 membres = non recopiée) ✓ ;
+`SeasonDataPurger.php` (purge saison) ✓ ; la garde management par défaut (aucun override chez
+`VenueMatchWindowStateProcessor`/`TeamMatchHabitStateProcessor`/`TeamLinkStateProcessor`) — la
+mention « écritures non management-gated » d'une passe antérieure était **fausse**, corrigée ci-
+dessus. Le reste (RMM-4 canal API, PR-1/PR-2, paliers A/PR-1→F2, RMM-1/RMM-3, périmètre engagé)
+non re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git :
+`git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
 > [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés
@@ -249,10 +248,49 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   matchs ; le dialog reste dans `features/matches`). Chaque passerelle y porte le choix **« Préféré » /
   « Obligatoire »** (intensité d'entraînement — `<Select>` labellisé par équipe, copie qui sépare l'effet
   matchs de l'effet entraînement, création + édition `useUpdateTeamLink`). L'inférence d'habitude exige des
-  matchs importés (rien au wizard). Écritures non management-gated (patron `VenueMatchWindow`), derrière le
-  verrou socle de la page `/matchs`. Habitudes et passerelles sont consommées par le solveur de placement
+  matchs importés (rien au wizard). Écritures **management-gated** (`AbstractStateProcessor::requiresManagementRole()`
+  par défaut `true`, aucun override chez `VenueMatchWindowStateProcessor`/`TeamMatchHabitStateProcessor`/
+  `TeamLinkStateProcessor` — 403 au non-management), derrière le verrou socle de la page `/matchs`. Habitudes
+  et passerelles sont consommées par le solveur de placement
   matchs depuis la PR D (§ suivant) ; l'intensité d'entraînement, elle, par le solveur d'ENTRAÎNEMENT
   (lot PASSERELLES — `engine/docs/constraint-vocabulary.md` §Passerelles).
+
+## Rotation A/B — RMM-5 PR-1, le MODÈLE seul (2026-08-25, P2-49)
+
+**PREMIÈRE de 4 PR — RMM-5 reste OUVERT** ([`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md)
+§8-§9, cas SM1/SM2 sur le 20h30 : pénurie de créneaux → alternance semaine A/semaine B sur le
+MÊME créneau physique). Cette PR livre le modèle et son CRUD seuls — **rien ne le consomme
+encore** : ni payload/solveur (PR-2/3), ni radar, ni jour de repos d'entraînement dérivé, ni UI
+(PR-4). Contrat backend⇄engine INTACT (groupe `contract` vert sans modification).
+
+- **`MatchSlotRotation`** (`match_slot_rotation`, tenant+saison, RLS FORCE, patron
+  `TeamMatchHabit`/`VenueMatchWindow` — hors des plans de période, pas de `schedulePlanId`) : le
+  créneau physique = gymnase **NOT NULL** (à la différence d'une habitude, une rotation sans
+  gymnase n'est pas un créneau) + jour ISO + heure de coup d'envoi. Unicité `(club_id, season_id,
+  venue_id, day_of_week, kickoff_time)` — un créneau physique ne porte qu'UNE rotation.
+- **`MatchSlotRotationTeam`** — les membres ORDONNÉS (patron `SharedTrainingGroupTeam`,
+  club/saison dénormalisés, unicité `(rotation_id, team_id)`). `position` est **purement
+  FICTIF** (décision fondateur n°4 du §8) : il ne pilote AUCUN calendrier, il sert seulement à
+  un affichage A/B/C stable.
+- **CRUD `/api/match_slot_rotations`** (5-fichiers API Platform) : lecture ouverte au Membre,
+  écriture au régime **management par défaut du rail** (`AbstractStateProcessor::requiresManagementRole()`
+  = `true`, aucun override — même patron que `VenueMatchWindow`/`TeamMatchHabit`/`TeamLink`
+  ci-dessus). Écriture des membres par **REMPLACEMENT transactionnel** (delete+recreate dans une
+  seule transaction — la course entre deux écritures concurrentes du même créneau physique rend
+  **409** nommé, `UniqueConstraintViolationException` capturée, plutôt qu'un 500, correctif de
+  revue sécurité 2026-08-25). 422 : < 2 équipes, doublon d'équipe, formats (DTO,
+  `MatchSlotRotationInput`) ; gymnase/équipe étrangers au club+saison, créneau physique déjà pris
+  (processor, contre la base — la contrainte d'unicité DB reste le filet).
+- **Cascades** (`CascadePlan`) : une équipe supprimée quitte ses rotations, celles tombées
+  sous 2 membres sont supprimées et ANNONCÉES (`MatchSlotRotationTeamPruneStep`) ; un gymnase
+  supprimé emporte la rotation ENTIÈRE — parent et membres (`MatchSlotRotationVenuePruneStep`) —
+  la rotation EST le créneau, contrairement à une habitude qui survit sans gymnase.
+- **Bascule de saison** (`SeasonTransitionService`) : recopiée en N+1 comme les habitudes/
+  fenêtres, gymnase ET membres remappés — un gymnase non remappé laisse la rotation sans
+  ancrage (non recopiée) ; une rotation tombée sous 2 membres après remap perd son sens (non
+  recopiée) ; les positions survivantes se recompactent (déterministe).
+- **RGPD / reset saison** (`SeasonDataPurger`) : les deux tables purgées avec la saison (membres
+  avant le parent, patron `SharedTrainingGroup`).
 
 ## Solveur de placement — P1-4 PR D (2026-08-03, [ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md))
 

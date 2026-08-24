@@ -9,6 +9,8 @@ use App\Entity\ClubUser;
 use App\Entity\Competition;
 use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
+use App\Entity\MatchSlotRotation;
+use App\Entity\MatchSlotRotationTeam;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
@@ -320,6 +322,64 @@ final class MatchTenantIsolationTest extends WebTestCase
             'teamAId' => $teams[9]->getId(), 'teamBId' => $teams[10]->getId(), 'linkType' => 'NOT_SIMULTANEOUS',
         ], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(201);
+    }
+
+    // ── Rotation A/B (RMM-5) : le créneau de match partagé et ses membres, scopés+stampés ──
+
+    public function testMatchSlotRotationsAreScopedStampedAndUnique(): void
+    {
+        [$clubA, $userA, $seasonA] = $this->createClubUser('a');
+        $venueA = $this->createVenue($clubA, $seasonA, 'Coubertin');
+        $sm1 = $this->createTeam($clubA, $seasonA, 'SM1');
+        $sm2 = $this->createTeam($clubA, $seasonA, 'SM2');
+        [, $userB] = $this->createClubUser('b');
+        $headers = $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'];
+
+        $this->client->request('POST', '/api/match_slot_rotations', [], [], $headers, json_encode([
+            'venueId' => $venueA->getId(), 'dayOfWeek' => 6, 'kickoffTime' => '20:30',
+            'teamIds' => [$sm1->getId(), $sm2->getId()],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+
+        // Parent AND member rows carry the resolved club+season (denormalized on the member).
+        $rotation = $this->em->getRepository(MatchSlotRotation::class)->findOneBy(['venueId' => $venueA->getId()]);
+        self::assertSame($clubA->getId(), $rotation?->getClubId());
+        self::assertSame($seasonA->getId(), $rotation?->getSeasonId());
+        $members = $this->em->getRepository(MatchSlotRotationTeam::class)->findBy(['rotationId' => $rotation?->getId()]);
+        self::assertCount(2, $members);
+        foreach ($members as $member) {
+            self::assertSame($clubA->getId(), $member->getClubId());
+            self::assertSame($seasonA->getId(), $member->getSeasonId());
+        }
+
+        // Same physical slot → readable 422 (the DB unique is the backstop).
+        $this->client->request('POST', '/api/match_slot_rotations', [], [], $headers, json_encode([
+            'venueId' => $venueA->getId(), 'dayOfWeek' => 6, 'kickoffTime' => '20:30',
+            'teamIds' => [$sm1->getId(), $sm2->getId()],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        // Club B sees nothing of it.
+        $this->client->request('GET', '/api/match_slot_rotations', [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(200);
+        self::assertCount(0, $this->responseData()['member'] ?? ['sentinel']);
+    }
+
+    public function testMatchSlotRotationCannotTargetAForeignTeam(): void
+    {
+        [$clubA, $userA, $seasonA] = $this->createClubUser('a');
+        $venueA = $this->createVenue($clubA, $seasonA, 'Coubertin');
+        $sm1 = $this->createTeam($clubA, $seasonA, 'SM1');
+        [$clubB, , $seasonB] = $this->createClubUser('b');
+        $foreign = $this->createTeam($clubB, $seasonB, 'Étrangère');
+
+        // A foreign team is invisible through the tenant filters → 422, no cross-club write.
+        $this->client->request('POST', '/api/match_slot_rotations', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'venueId' => $venueA->getId(), 'dayOfWeek' => 6, 'kickoffTime' => '20:30',
+            'teamIds' => [$sm1->getId(), $foreign->getId()],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+        self::assertCount(0, $this->em->getRepository(MatchSlotRotation::class)->findBy(['clubId' => $clubA->getId()]));
     }
 
     public function testFbiIngestionsAreScopedToTheClub(): void

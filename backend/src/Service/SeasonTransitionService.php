@@ -9,6 +9,8 @@ use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
 use App\Entity\ImplicitRuleSetting;
+use App\Entity\MatchSlotRotation;
+use App\Entity\MatchSlotRotationTeam;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
@@ -355,6 +357,45 @@ final class SeasonTransitionService
             // serait une régression silencieuse — gardé par le test de transition).
             $copy->setTrainingIntensity($link->getTrainingIntensity());
             $this->entityManager->persist($copy);
+        }
+
+        // RMM-5 — les créneaux de match partagés (rotation A/B) suivent la saison, gymnase
+        // ET membres remappés. Un gymnase non remappé n'a rien où ancrer la rotation (elle EST
+        // le créneau) → non recopiée ; un membre non remappé est EXCLU ; une rotation qui tombe
+        // sous 2 membres après remap perd son sens → non recopiée. Les positions se recompactent
+        // sur l'ordre survivant (déterministe). Non comptabilisée dans `$counts`, comme les
+        // habitudes/fenêtres.
+        foreach ($this->rows(MatchSlotRotation::class, $clubId, $sourceId) as $rotation) {
+            $newVenueId = $venueMap[$rotation->getVenueId()] ?? null;
+            if (null === $newVenueId) {
+                continue;
+            }
+            $remappedTeamIds = [];
+            foreach ($this->entityManager->getRepository(MatchSlotRotationTeam::class)->findBy(['rotationId' => $rotation->getId()], ['position' => 'ASC', 'id' => 'ASC']) as $member) {
+                $newTeamId = $teamMap[$member->getTeamId()] ?? null;
+                if (null !== $newTeamId) {
+                    $remappedTeamIds[] = $newTeamId;
+                }
+            }
+            if (\count($remappedTeamIds) < 2) {
+                continue;
+            }
+            $copy = new MatchSlotRotation;
+            $copy->setClubId($clubId);
+            $copy->setSeasonId($target->getId());
+            $copy->setVenueId($newVenueId);
+            $copy->setDayOfWeek($rotation->getDayOfWeek());
+            $copy->setKickoffTime($rotation->getKickoffTime());
+            $this->entityManager->persist($copy);
+            foreach ($remappedTeamIds as $position => $teamId) {
+                $memberCopy = new MatchSlotRotationTeam;
+                $memberCopy->setClubId($clubId);
+                $memberCopy->setSeasonId($target->getId());
+                $memberCopy->setRotationId($copy->getId());
+                $memberCopy->setTeamId($teamId);
+                $memberCopy->setPosition($position);
+                $this->entityManager->persist($memberCopy);
+            }
         }
 
         $maps = ['venues' => $venueMap, 'coaches' => $coachMap, 'teams' => $teamMap];

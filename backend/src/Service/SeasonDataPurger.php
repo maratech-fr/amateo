@@ -17,6 +17,8 @@ use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\MatchModuleVisit;
+use App\Entity\MatchSlotRotation;
+use App\Entity\MatchSlotRotationTeam;
 use App\Entity\PeriodReminderLog;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
@@ -117,6 +119,10 @@ final class SeasonDataPurger
             // cosmétique). Deux tables club_id+season_id, purgées avec la saison.
             SharedTrainingGroupTeam::class,
             SharedTrainingGroup::class,
+            // RMM-5 — rotation A/B : les lignes membres avant le parent (aucune FK, ordre
+            // cosmétique). Deux tables club_id+season_id, purgées avec la saison.
+            MatchSlotRotationTeam::class,
+            MatchSlotRotation::class,
             // Module matchs (ajouté après ce purger — gap RGPD constaté PR-1) :
             // Fixture avant Competition (competitionId y pointe). Changement
             // ASSUMÉ pour ResetSeasonController aussi : « réinitialiser la
