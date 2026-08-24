@@ -1,6 +1,12 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-08-22 (P4-120 — première vérification stampée de ce fichier, contre le code, **tout juste** : hosts en constantes dures (`FfbbApiClient.php:25`, `SEARCH_URL`) et index `ffbbserver_organismes` (`:27`) ✓ · fallback `FFBB_MEILISEARCH_TOKEN` (`services.yaml:16,69`) ✓ · `POST /api/club/ffbb-import` (`FfbbImportController.php:36`) ✓ · `PATCH /api/club/info` bien SUPPRIMÉ — zéro occurrence dans `src/` ✓ · `FfbbClubPopulator::applyClub` (`Service/Basketball/`, `:66`) ✓ · `FfbbEngagementsController` et le cadrage archivé `docs/archive/api-ffbb-completion-club.md` existent ✓)
+Last verified @ 2026-08-24 (rotation `documentation-update`, pas de sujet lié à cette passe — sondage
+des stamps les plus anciens du dépôt). Re-confronté au code, tout juste : hosts en constantes dures
+(`Service/Basketball/FfbbApiClient.php:24-25`, `CONFIG_URL`/`SEARCH_URL`) et index
+`ffbbserver_organismes` ✓ · `POST /api/club/ffbb-import` (`Controller/Basketball/FfbbImportController.php:36`) ✓ ·
+`PATCH /api/club/info` bien SUPPRIMÉ — zéro occurrence dans `src/` ✓. Non re-sondé cette passe
+(déjà vérifié le 2026-08-22, zone non touchée depuis) : fallback `FFBB_MEILISEARCH_TOKEN`,
+`FfbbClubPopulator::applyClub`, `FfbbEngagementsController`, le cadrage archivé.
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit rester dans la **liste blanche de hosts** du client (SSRF, A12). Vérifié le 2026-07-10 sur le code réel `ARA0069036` (BCCL).
 

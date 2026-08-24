@@ -1,6 +1,13 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-08-22 (P4-120 — première vérification stampée de ce fichier, contre le code : cibles Make toutes présentes dans `backend/Makefile` ✓ · horaires du catalogue sondés sur 7 jobs (`AdminJobCatalog.php` : digest 07:00, approbations 08:30, purges 02:00/02:15/02:30/03:45, imports trimestriels 04:00/04:30) ✓ · pièges RLS des commandes Doctrine ✓ · les 3 scripts de `backend/scripts/` existent ✓. **Deux faits corrigés** : `app:exports:purge` disait encore « PDF/PNG » alors que le PNG a quitté le projet le 2026-08-21 (motif `.pdf` seul, `PurgeExportsCommand.php:61`) ; les décomptes « 143 fichiers / 24 steps » étaient DOUBLEMENT faux (réel ce jour : 204/44) et sont remplacés par du sans-décompte — la règle anti-décompte existe précisément parce que ces deux-là ont pourri)
+Last verified @ 2026-08-24 (rotation `documentation-update`, pas de sujet lié à cette passe —
+sondage des stamps les plus anciens du dépôt). Re-confronté au code : cibles Make toutes présentes
+dans `backend/Makefile` ✓. **Un fait corrigé** : la table des scripts n'en listait que 3 alors que
+`backend/scripts/*.sh` en compte **7** — `generate-schedule-test.sh`, `smoke-overlay.sh`,
+`smoke-place-matches.sh` et `smoke-coach-wishes.sh` manquaient (constaté par `ls`, pas par mémoire),
+ajoutés avec leur docstring en tête de fichier comme source. Non re-sondé cette passe (déjà vérifié
+le 2026-08-22, non touché depuis) : horaires du catalogue de jobs, pièges RLS des commandes
+Doctrine, le motif `.pdf` seul d'`app:exports:purge`.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).
@@ -81,4 +88,8 @@ Toutes manuelles sauf mention. Détail : `ls backend/src/Command/`.
 |--------|-------|
 | `smoke-solver.sh` | **Garde-fou solveur** : create → generate → poll, exige `COMPLETED`. Obligatoire quand engine/backend est touché (§7 CLAUDE.md) |
 | `generate-schedule.sh` | Guide pratique : pilote une génération via l'API (debug du flux) |
+| `generate-schedule-test.sh` | Auto-test de `generate-schedule.sh` (PASS/FAIL sur son propre comportement) |
 | `onboarding-smoke.sh` | Flux club neuf : register → données minimales → generate → `COMPLETED` |
+| `smoke-overlay.sh` | Smoke sémantique de l'overlay de période (ADR-0002) : fermeture → plan né de l'Adapter → version → build overlay (grille propre à la période, jamais l'union avec la saison) → `COMPLETED` |
+| `smoke-place-matches.sh` | Smoke sémantique du solveur de placement matchs (P1-4 PR D, `POST /api/fixtures/place`) : un domicile dans sa fenêtre d'accès revient `PLACED` dans l'empreinte-temps, un domicile sans fenêtre revient `UNPLACED` avec la raison nommée `no_access_window` |
+| `smoke-coach-wishes.sh` | Smoke sémantique du rail de sollicitation coach (#10) — le seul chemin `/api` non authentifié : campagne → token → page publique pré-remplie → `CoachWish` persisté |
