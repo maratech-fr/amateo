@@ -1,6 +1,20 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-08-22 (P4-120 — première vérification stampée de ce fichier, contre le code : `toArray(false)` sans exception HTTP (`EngineClient.php:39,58`) ✓ · `engine_timeout`/`engine_error` émis par le handler (`GenerateScheduleHandler.php:290,298`), `engine_failed` par `ScheduleDiagnosticsRecorder` (`:65,75`) ✓ · verrou Redis `nx`/`ex` (`ClubGenerationLock.php:26`) ✓ · payload SSE réduit à `status`/`score`/`unplaced`/`warnings` (`ScheduleProgressPublisher.php:41-44`) ✓ · budget adaptatif 60/180/600 plafonné 650 cohérent avec le moteur ✓. **Un fait corrigé** : le doc décrivait un statut `"infeasible"` sur le fil qui n'existe PAS — le schéma de sortie est `Literal["queued","generating","completed","failed"]` (`output_schema.py:130`), l'INFEASIBLE arrive en `"failed"` ; la ligne de tableau, le titre du §5.2 et l'exemple sont recalés)
+Last verified @ 2026-08-24 (rotation `documentation-update`, pas de sujet lié à cette passe — sondage
+des stamps les plus anciens du dépôt). Re-confronté au code : `toArray(false)` sans exception HTTP
+(`EngineClient.php:39,58`) ✓ · `engine_timeout`/`engine_error` émis par le handler
+(`GenerateScheduleHandler.php:290,298`), `engine_failed` par `ScheduleDiagnosticsRecorder`
+(`:65,75`) ✓ · verrou Redis `nx`/`ex` (`ClubGenerationLock.php:26`) ✓ · schéma de sortie
+`Literal["queued","generating","completed","failed"]` à `output_schema.py:137` (référence de ligne
+corrigée, était `:130`), aucun statut `"infeasible"` sur le fil ✓. **Deux faits corrigés cette
+passe** : (1) la version de payload citée (`"2.1"`) était **périmée** — `ScheduleConstraintBuilder::CONTRACT_VERSION`
+vaut **`2.14`**, alignée sur `engine/CONTRACT_VERSION` (CLAUDE.md §6) ; (2) le payload SSE et son
+transport avaient dérivé depuis FRT-04/P4-123 (2026-08-22, remontée de `shared/` vers
+`features/planning/`) — le front ne s'abonne plus planning par planning mais à un **sélecteur
+TEMPLATE de club** (`club:{clubId}:schedule:{id}`, `GET /api/mercure/auth`), et le payload publié
+porte désormais **`scheduleId`** en plus des quatre champs déjà documentés
+(`ScheduleProgressPublisher.php:41-44`) — sans lui l'événement ne dirait pas de quel planning il
+parle ; §6 recalé en conséquence.
 
 > ClubScheduler — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
@@ -125,7 +139,7 @@ Voici ce que fait la branche de base, dans l'ordre :
 
 6. **Niveaux de priorité** : il n'y a **pas** de clé `priorityTiers` top-level dans le payload. Les `PriorityTier` du club (S, A, B, C, D) sont sérialisés comme des **contraintes** de type `PRIORITY_TIER` dans `constraints[]`. Leurs poids ne sont pas envoyés (`orToolsWeight` volontairement omis) : le solveur applique des poids **codés en dur** côté engine — S=10000, A=1000, B=100, C=10, D=1 — un poids par tier serait accepté puis ignoré.
 
-7. **Métadonnées** : ajoute `version: "2.1"`, `clubId`, `seasonId`, `solverSeed` et `solverTimeoutSeconds`.
+7. **Métadonnées** : ajoute `version: "2.14"` (`ScheduleConstraintBuilder::CONTRACT_VERSION`, alignée sur `engine/CONTRACT_VERSION`), `clubId`, `seasonId`, `solverSeed` et `solverTimeoutSeconds`.
 
 Le payload complet pèse généralement entre 50 et 200 Ko de JSON selon la taille du club.
 
@@ -152,7 +166,7 @@ POST http://engine:8000/generate
 Content-Type: application/json
 
 {
-  "version": "2.1",
+  "version": "2.14",
   "clubId": "bccl-uuid",
   "seasonId": "2025-2026-uuid",
   "solverSeed": 42,
@@ -274,7 +288,7 @@ Le moteur a trouvé un planning valide. `ScheduleResultImporter` exécute les op
 
 ### 5.2 Cas : statut "failed"
 
-⚠ Il n'existe **pas** de statut `"infeasible"` sur le fil : le schéma de sortie du moteur est un `Literal["queued", "generating", "completed", "failed"]` (`output_schema.py:130`) — une instance INFEASIBLE arrive en `status: "failed"` avec ses diagnostics.
+⚠ Il n'existe **pas** de statut `"infeasible"` sur le fil : le schéma de sortie du moteur est un `Literal["queued", "generating", "completed", "failed"]` (`output_schema.py:137`) — une instance INFEASIBLE arrive en `status: "failed"` avec ses diagnostics.
 
 Le moteur n'a pas pu produire de planning complet.
 
@@ -305,20 +319,33 @@ Quel que soit le résultat (succès ou échec), le handler publie un événement
 
 ### 6.1 Topic
 
+Le publieur émet toujours sur le topic **exact** d'un planning (`MercureTopic::for`, foyer unique — D-10) :
+
 ```
 club:{clubId}:schedule:{scheduleId}
 ```
 
 > Exemple pour le BCCL : `club:bccl-uuid:schedule:550e8400-e29b-41d4-a716-446655440000`
 
+Le frontend, lui, ne s'abonne **plus** planning par planning depuis FRT-04/P4-123 : il ouvre **UN
+seul** `EventSource` par session, abonné au **sélecteur TEMPLATE du club**
+(`club:{clubId}:schedule:{id}`, le joker Mercure `{id}` — `MercureTopic::selectorForClub`) obtenu
+via `GET /api/mercure/auth` (champ `topicTemplate`) — toutes les générations du club arrivent sur
+la même connexion, sans en connaître les ids à l'avance (`frontend/src/features/planning/lib/scheduleStream.ts`).
+
 ### 6.2 Payload SSE
 
-L'update Mercure est **privé** (réservé aux abonnés autorisés du topic club) et porte quatre champs : `status`, `score`, `unplaced`, `warnings`. Il n'y a ni `scheduleId` (déjà porté par le topic), ni `timestamp`, ni liste de `diagnostics` (elles se consultent via l'API).
+L'update Mercure est **privé** (réservé aux abonnés autorisés du topic club) et porte **cinq**
+champs : `scheduleId`, `status`, `score`, `unplaced`, `warnings` (`ScheduleProgressPublisher::publish`).
+`scheduleId` est nécessaire depuis que l'abonnement est un TEMPLATE partagé par tous les plannings
+du club (§6.1) — sans lui, l'événement ne dirait pas de quel planning il parle. Il n'y a ni
+`timestamp`, ni liste de `diagnostics` (elles se consultent via l'API).
 
 **Cas succès :**
 
 ```json
 {
+  "scheduleId": "550e8400-e29b-41d4-a716-446655440000",
   "status": "COMPLETED",
   "score": 117679,
   "unplaced": 0,
@@ -330,6 +357,7 @@ L'update Mercure est **privé** (réservé aux abonnés autorisés du topic club
 
 ```json
 {
+  "scheduleId": "550e8400-e29b-41d4-a716-446655440000",
   "status": "FAILED",
   "score": null,
   "unplaced": 2,
@@ -339,11 +367,15 @@ L'update Mercure est **privé** (réservé aux abonnés autorisés du topic club
 
 ### 6.3 Comportement frontend
 
-Le frontend maintient une connexion `EventSource` permanente sur `/.well-known/mercure?topic=club:{clubId}:schedule:{scheduleId}`.
+Le frontend maintient la connexion `EventSource` unique décrite en §6.1. À réception d'un
+événement, il ne recopie **jamais** son payload dans un cache — le serveur reste la source de
+vérité — il **invalide** des clés react-query (`invalidationKeysFor`, `scheduleStream.ts`) :
 
-Quand il reçoit un événement :
-- Si `status === "COMPLETED"` : il recharge les créneaux via `GET /api/schedule_slot_templates?scheduleId=...` et rafraîchit la grille de planning (grille maison React — pas de FullCalendar).
-- Si `status === "FAILED"` : il affiche une notification d'erreur rouge avec la liste des diagnostics, et propose à l'utilisateur de consulter les détails du conflit.
+- toujours `["schedules"]` et `["wizard", "schedule_status", scheduleId]` (le statut suivi par le wizard) ;
+- en plus, si `status` est **terminal** (`COMPLETED`/`FAILED`, `isTerminalStatus`) : `["slots", scheduleId]` et `["diagnostics", scheduleId]`, ce qui déclenche le refetch des créneaux et diagnostics du planning et rafraîchit la grille (React maison, pas de FullCalendar) et le badge de statut (§8.2).
+
+Best-effort : si le flux Mercure est indisponible ou se coupe, le polling react-query prend le
+relais (accéléré) au lieu de rester figé — décrit par `isScheduleStreamConnected`.
 
 L'utilisateur n'a pas besoin d'actualiser la page manuellement.
 
@@ -360,7 +392,7 @@ Voici un tableau récapitulatif de tous les cas d'erreur possibles, avec leur ca
 | **Épinglage orphelin** | `OrphanPinGuard` (#8) : un verrou ou une réservation ne correspond plus à aucun créneau de la grille de période | — (refus synchrone **422**) | Aucun | Le message nomme le gymnase et le jour : redéfinir les créneaux, ou retirer l'épinglage |
 | **Club déjà en génération** | Verrou Redis `schedule_generation:club:{clubId}` tenu par un autre worker | `PENDING` (retry Messenger via `RecoverableMessageHandlingException`) | Aucun | Rien à faire : la demande sera rejouée automatiquement à la fin de la génération en cours |
 | **Timeout HTTP (> 650 s)** | Problème trop complexe pour le solveur CP-SAT (budget adaptatif 60/180/600 s dépassé côté engine) | `FAILED` | `engine_timeout` | Simplifier les contraintes `HARD`, augmenter le nombre de salles, ou réduire le nombre d'équipes |
-| **Payload invalide (422)** | Réponse engine sans clé `status` (corps d'erreur Pydantic) — improbable car le payload est construit par `ScheduleConstraintBuilder` | `FAILED` | `engine_failed` | Comparer le `snapshotData` au schéma engine (contrat v2.1) |
+| **Payload invalide (422)** | Réponse engine sans clé `status` (corps d'erreur Pydantic) — improbable car le payload est construit par `ScheduleConstraintBuilder` | `FAILED` | `engine_failed` | Comparer le `snapshotData` au schéma engine (contrat 2.14, `engine/CONTRACT_VERSION`) |
 | **Engine inaccessible** | Conteneur `engine` arrêté ou crash | `FAILED` | `engine_error` | Vérifier l'état des conteneurs Docker (`make logs SERVICE=engine`) |
 | **Planning infaisable** | Contraintes `HARD` mutuellement exclusives | `FAILED` | `conflict` + liste équipes non placées | Relâcher une contrainte `HARD` en `PREFERRED`, ou ajouter des ressources (salle, coach) |
 | **Partiellement résolu** | Ressources insuffisantes pour toutes les équipes | `COMPLETED` (score bas) | `unplaced` diagnostics | Accepter le planning incomplet, ou ajouter des créneaux/salles |
