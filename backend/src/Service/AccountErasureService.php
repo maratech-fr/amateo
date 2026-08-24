@@ -124,9 +124,18 @@ final class AccountErasureService
                 'UPDATE club_user SET is_active = false, deactivated_at = NOW(), updated_at = NOW() WHERE user_id = :uid AND club_id = :cid',
                 ['uid' => $user->getId(), 'cid' => $clubId],
             );
-            // RMM-3 — l'instantané de visite du module matchs est une donnée PERSONNELLE
-            // (horodatages), pas un bien du club comme un signalement : il MEURT avec le
-            // compte. FORCE RLS scope le DELETE au club dont le GUC est posé ci-dessus.
+        }
+
+        // RMM-3 — l'instantané de visite du module matchs est une donnée PERSONNELLE
+        // (horodatages), pas un bien du club comme un signalement : il MEURT avec le
+        // compte. La boucle porte sur TOUS les clubs d'adhésion (désactivés compris,
+        // `is_active` ignoré) : une visite stampée dans un club QUITTÉ avant
+        // l'effacement doit mourir aussi — la boucle des clubs ACTIFS ci-dessus la
+        // raterait. Une visite n'existe que là où une adhésion a existé (ouvrir le
+        // module exige d'être membre), donc ce périmètre est complet. FORCE RLS
+        // scope chaque DELETE au club dont le GUC est posé.
+        foreach ($this->clubUserRepository->findMemberClubIds($user->getId()) as $clubId) {
+            $this->tenantConnectionContext->setClubId($clubId);
             $this->entityManager->getConnection()->executeStatement(
                 'DELETE FROM match_module_visit WHERE user_id = :uid',
                 ['uid' => $user->getId()],
