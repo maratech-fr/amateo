@@ -1,6 +1,15 @@
-Last verified @ 2026-08-24 (RMM-4 PR-3 ajoute **+2 paths** `GET /api/ffbb/rencontres` et `POST /api/ffbb/rencontres/apply` : le compte passe de 172 à **174 paths**. Le canal API FFBB croise les rencontres publiées avec l'app et alimente le MÊME écran de réconciliation ; l'apply réutilise le moteur de décisions de l'import xlsx, re-fetch serveur, création idempotente. Contrat backend⇄engine INCHANGÉ — zéro appel moteur (Meilisearch FFBB à la demande). SHA-256 du snapshot : `ab7018474267b45641a917ed86430731e893c0a51e0f0561448a599b67c518e2`.)
+Last verified @ 2026-08-25 (RMM-5 PR-1 ajoute **+2 paths** — le CRUD de la rotation A/B `MatchSlotRotation` (collection + item) : le compte passe de 174 à **176 paths**. Modèle N-aire net-neuf (créneau de match partagé + membres ordonnés), backend PUR : aucun payload ni contrat backend⇄engine touché. SHA-256 du snapshot : `cbd0d0a1a13dba1ddebaa550f48f6a2cf8f687d7b2b48f895bae2c57a3ea12fb`.)
 
 Changements récents :
+- **RMM-5 PR-1 — le modèle de la rotation A/B (2026-08-25)** : **+2 paths** — le CRUD API Platform
+  `MatchSlotRotation` : `GET/POST /api/match_slot_rotations` (liste **ouverte au Membre**, création
+  management) et `GET/PUT/DELETE /api/match_slot_rotations/{id}`. Un créneau de match partagé
+  (gymnase + jour + heure, `venueId` NOT NULL) porté par N équipes ordonnées (A/B/C, position
+  FICTIVE) qui l'occupent en alternance — schémas `MatchSlotRotation` + `MatchSlotRotation.MatchSlotRotationInput`
+  (`venueId`, `dayOfWeek`, `kickoffTime`, `teamIds[]` ordonné). Écriture par REMPLACEMENT des membres,
+  scopé club+saison, hors plans de période (patron `TeamMatchHabit`/`VenueMatchWindow`). 174 →
+  **176 paths**. Backend PUR : rien ne consomme encore le modèle (payload/solveur = PR-2/3),
+  contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.14, aucun appel moteur).
 - **RMM-4 PR-3 — le canal API FFBB (2026-08-24)** : **+2 paths** —
   `GET /api/ffbb/rencontres` (200 : `{deviations[], creatable[], fetchedAt}` — les rencontres
   publiées par la FFBB croisées avec l'app : le diff des domiciles déjà placés qui divergent, PLUS

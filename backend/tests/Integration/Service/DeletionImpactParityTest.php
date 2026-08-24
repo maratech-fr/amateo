@@ -9,6 +9,8 @@ use App\Deletion\DeletionImpactCounter;
 use App\Entity\Club;
 use App\Entity\Coach;
 use App\Entity\Fixture;
+use App\Entity\MatchSlotRotation;
+use App\Entity\MatchSlotRotationTeam;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
@@ -435,6 +437,89 @@ final class DeletionImpactParityTest extends KernelTestCase
         self::assertSame($venue->getId(), $reloaded->getVenueId());
     }
 
+    /**
+     * RMM-5 (P2-49) — la cascade d'une ÉQUIPE sur les créneaux de match partagés : elle quitte
+     * ses rotations ; celles qui tombent SOUS 2 membres sont SUPPRIMÉES (annoncées), les autres
+     * survivent en la perdant. Ce qui est annoncé (les créneaux < 2 détruits) == ce qui tombe ;
+     * un créneau qui SURVIT n'est pas annoncé — il n'est pas détruit, l'équipe s'en va, c'est tout.
+     *
+     * Falsifiable : compter le trio survivant rougirait (assertSame 1) ; ne pas tuer le duo aussi.
+     */
+    public function testDeletingATeamPrunesUndersizedRotationsAndKeepsSurvivors(): void
+    {
+        [$club, $season] = $this->seed();
+        $venue = $this->venue($club, $season, 'Coubertin');
+        $doomed = $this->team($club, $season, forcedVenueId: $venue->getId());
+        $mate = $this->team($club, $season, forcedVenueId: $venue->getId());
+        $third = $this->team($club, $season, forcedVenueId: $venue->getId());
+
+        // Un DUO où doomed figure (→ tombe à 1, MEURT), un TRIO (→ survit à 2), et un créneau
+        // SANS doomed (intact). Créneaux distincts par (jour, heure) — l'unicité l'exige.
+        $duo = $this->rotation($club, $season, $venue, day: 6, at: '20:30', teams: [$doomed, $mate]);
+        $trio = $this->rotation($club, $season, $venue, day: 7, at: '18:00', teams: [$doomed, $mate, $third]);
+        $untouched = $this->rotation($club, $season, $venue, day: 6, at: '18:00', teams: [$mate, $third]);
+        $this->em->flush();
+
+        $impact = self::getContainer()->get(DeletionImpactCounter::class)->forTeam($doomed);
+        $announced = [];
+        foreach ($impact->lines as $line) {
+            $announced[$line['key']] = $line['count'];
+        }
+        self::assertSame(1, $announced['team_match_slot_rotation'] ?? 0, 'seul le créneau qui tombe < 2 est annoncé, pas le trio qui survit');
+
+        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfTeam($doomed);
+        $this->em->flush();
+        $this->em->clear();
+
+        // Le duo amputé est mort, lignes comprises.
+        self::assertNull($this->em->getRepository(MatchSlotRotation::class)->find($duo));
+        self::assertSame(0, $this->countBy(MatchSlotRotationTeam::class, 'rotationId', $duo));
+        // Le trio survit — mais doomed n'y figure plus (membre purgé), mate + third restent.
+        self::assertNotNull($this->em->getRepository(MatchSlotRotation::class)->find($trio));
+        self::assertSame(2, $this->countBy(MatchSlotRotationTeam::class, 'rotationId', $trio));
+        // Le créneau sans doomed n'a pas bougé.
+        self::assertNotNull($this->em->getRepository(MatchSlotRotation::class)->find($untouched));
+        self::assertSame(2, $this->countBy(MatchSlotRotationTeam::class, 'rotationId', $untouched));
+        // doomed ne figure plus dans aucun créneau.
+        self::assertSame(0, $this->countBy(MatchSlotRotationTeam::class, 'teamId', $doomed->getId()));
+    }
+
+    /**
+     * RMM-5 — la cascade d'un GYMNASE : la rotation EST le créneau (venue_id NOT NULL), donc
+     * supprimer le gymnase SUPPRIME ses créneaux partagés, parent ET lignes membres. Annoncé,
+     * et strictement borné à ce gymnase (un créneau d'un AUTRE gymnase survit).
+     */
+    public function testDeletingAVenueDeletesItsSharedSlots(): void
+    {
+        [$club, $season] = $this->seed();
+        $venue = $this->venue($club, $season, 'Coubertin');
+        $other = $this->venue($club, $season, 'Debarros');
+        $a = $this->team($club, $season, forcedVenueId: $venue->getId());
+        $b = $this->team($club, $season, forcedVenueId: $venue->getId());
+
+        $doomedRotation = $this->rotation($club, $season, $venue, day: 6, at: '20:30', teams: [$a, $b]);
+        $otherRotation = $this->rotation($club, $season, $other, day: 6, at: '20:30', teams: [$a, $b]);
+        $this->em->flush();
+
+        $impact = self::getContainer()->get(DeletionImpactCounter::class)->forVenue($venue);
+        $announced = [];
+        foreach ($impact->lines as $line) {
+            $announced[$line['key']] = $line['count'];
+        }
+        self::assertSame(1, $announced['venue_match_slot_rotation'] ?? 0, 'le créneau partagé du gymnase est annoncé');
+
+        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfVenue($venue);
+        $this->em->flush();
+        $this->em->clear();
+
+        // Le créneau du gymnase supprimé est parti, lignes comprises…
+        self::assertNull($this->em->getRepository(MatchSlotRotation::class)->find($doomedRotation));
+        self::assertSame(0, $this->countBy(MatchSlotRotationTeam::class, 'rotationId', $doomedRotation));
+        // …et celui de l'AUTRE gymnase survit intact.
+        self::assertNotNull($this->em->getRepository(MatchSlotRotation::class)->find($otherRotation));
+        self::assertSame(2, $this->countBy(MatchSlotRotationTeam::class, 'rotationId', $otherRotation));
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -560,6 +645,23 @@ final class DeletionImpactParityTest extends KernelTestCase
         $this->em->flush();
 
         return $group->getId();
+    }
+
+    /** Un créneau de match partagé (rotation A/B) et ses membres ordonnés. @param list<Team> $teams */
+    private function rotation(Club $club, Season $season, Venue $venue, int $day, string $at, array $teams): string
+    {
+        $rotation = (new MatchSlotRotation)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setVenueId($venue->getId())->setDayOfWeek($day)->setKickoffTime(new DateTimeImmutable($at));
+        $this->em->persist($rotation);
+        $this->em->flush();
+
+        foreach (array_values($teams) as $position => $team) {
+            $this->em->persist((new MatchSlotRotationTeam)->setClubId($club->getId())->setSeasonId($season->getId())
+                ->setRotationId($rotation->getId())->setTeamId($team->getId())->setPosition($position));
+        }
+        $this->em->flush();
+
+        return $rotation->getId();
     }
 
     private function schedule(Club $club, Season $season): Schedule

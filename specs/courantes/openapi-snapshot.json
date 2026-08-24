@@ -10635,6 +10635,404 @@
                 "summary": "Venue unavailability impact (alert-only, computed on the fly \u2014 blocks nothing)"
             }
         },
+        "/api/match_slot_rotations": {
+            "get": {
+                "operationId": "api_match_slot_rotations_get_collection",
+                "tags": [
+                    "MatchSlotRotation"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "MatchSlotRotation collection",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "type": "object",
+                                    "description": "MatchSlotRotation.jsonld collection.",
+                                    "allOf": [
+                                        {
+                                            "$ref": "#/components/schemas/HydraCollectionBaseSchemaNoPagination"
+                                        },
+                                        {
+                                            "type": "object",
+                                            "required": [
+                                                "member"
+                                            ],
+                                            "properties": {
+                                                "member": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/MatchSlotRotation.jsonld"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/MatchSlotRotation"
+                                    }
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/MatchSlotRotation.html"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "summary": "Retrieves the collection of MatchSlotRotation resources.",
+                "description": "Retrieves the collection of MatchSlotRotation resources.",
+                "parameters": []
+            },
+            "post": {
+                "operationId": "api_match_slot_rotations_post",
+                "tags": [
+                    "MatchSlotRotation"
+                ],
+                "responses": {
+                    "201": {
+                        "description": "MatchSlotRotation resource created",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchSlotRotation.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchSlotRotation"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchSlotRotation.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Creates a MatchSlotRotation resource.",
+                "description": "Creates a MatchSlotRotation resource.",
+                "parameters": [],
+                "requestBody": {
+                    "description": "The new MatchSlotRotation resource",
+                    "content": {
+                        "application/ld+json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MatchSlotRotation.MatchSlotRotationInput"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MatchSlotRotation.MatchSlotRotationInput"
+                            }
+                        },
+                        "text/html": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MatchSlotRotation.MatchSlotRotationInput"
+                            }
+                        }
+                    },
+                    "required": true
+                }
+            }
+        },
+        "/api/match_slot_rotations/{id}": {
+            "get": {
+                "operationId": "api_match_slot_rotations_id_get",
+                "tags": [
+                    "MatchSlotRotation"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "MatchSlotRotation resource",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchSlotRotation.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchSlotRotation"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchSlotRotation.html"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Retrieves a MatchSlotRotation resource.",
+                "description": "Retrieves a MatchSlotRotation resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "MatchSlotRotation identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ]
+            },
+            "put": {
+                "operationId": "api_match_slot_rotations_id_put",
+                "tags": [
+                    "MatchSlotRotation"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "MatchSlotRotation resource updated",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchSlotRotation.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchSlotRotation"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchSlotRotation.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Replaces the MatchSlotRotation resource.",
+                "description": "Replaces the MatchSlotRotation resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "MatchSlotRotation identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ],
+                "requestBody": {
+                    "description": "The updated MatchSlotRotation resource",
+                    "content": {
+                        "application/ld+json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MatchSlotRotation.MatchSlotRotationInput"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MatchSlotRotation.MatchSlotRotationInput"
+                            }
+                        },
+                        "text/html": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MatchSlotRotation.MatchSlotRotationInput"
+                            }
+                        }
+                    },
+                    "required": true
+                }
+            },
+            "delete": {
+                "operationId": "api_match_slot_rotations_id_delete",
+                "tags": [
+                    "MatchSlotRotation"
+                ],
+                "responses": {
+                    "204": {
+                        "description": "MatchSlotRotation resource deleted"
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Removes the MatchSlotRotation resource.",
+                "description": "Removes the MatchSlotRotation resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "MatchSlotRotation identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ]
+            }
+        },
         "/api/memberships": {
             "get": {
                 "operationId": "getApiMembershipsList",
@@ -23482,6 +23880,185 @@
                 ],
                 "description": "Les 4 r\u00e8gles implicites \u00ab bien-\u00eatre \u00bb, R\u00c9GLABLES par club/saison (contrat moteur 2.7).\n\nL'identifiant EST `ruleKey` (la cl\u00e9 camelCase du contrat), pas un uuid : le front r\u00e8gle une\nr\u00e8gle par son nom, sans conna\u00eetre de ligne en base. La collection est R\u00c9SOLUE \u2014 toujours 4\nentr\u00e9es, d\u00e9fauts inclus, pour que le front n'invente rien. Le PUT UPSERTE (cr\u00e9e la ligne au\npremier r\u00e9glage), le DELETE R\u00c9INITIALISE (supprime la ligne \u2192 retour au d\u00e9faut)."
             },
+            "MatchSlotRotation": {
+                "type": "object",
+                "description": "Rotation A/B : N \u00e9quipes d\u00e9clar\u00e9es sur un cr\u00e9neau de match partag\u00e9 (gymnase + jour + heure),\nqu'elles occupent en alternance. Scop\u00e9 club+saison, lecture ouverte au Membre (patron du\nmodule matchs) ; \u00e9criture derri\u00e8re les gardes tenant+saison (VenueMatchWindow idiom).",
+                "properties": {
+                    "id": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "version": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "venueId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "dayOfWeek": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "kickoffTime": {
+                        "description": "HH:MM",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "teamIds": {
+                        "description": "The rotation's teams, in display order (position ASC).",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "MatchSlotRotation.MatchSlotRotationInput": {
+                "type": "object",
+                "description": "Rotation A/B : N \u00e9quipes d\u00e9clar\u00e9es sur un cr\u00e9neau de match partag\u00e9 (gymnase + jour + heure),\nqu'elles occupent en alternance. Scop\u00e9 club+saison, lecture ouverte au Membre (patron du\nmodule matchs) ; \u00e9criture derri\u00e8re les gardes tenant+saison (VenueMatchWindow idiom).",
+                "required": [
+                    "venueId",
+                    "dayOfWeek",
+                    "kickoffTime"
+                ],
+                "properties": {
+                    "venueId": {
+                        "format": "uuid",
+                        "externalDocs": {
+                            "url": "https://schema.org/identifier"
+                        },
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "dayOfWeek": {
+                        "minimum": 1,
+                        "maximum": 7,
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "kickoffTime": {
+                        "pattern": "^(.*(^([01]\\d|2[0-3]):[0-5]\\d$).*)$",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "teamIds": {
+                        "minItems": 2,
+                        "maxItems": 10,
+                        "uniqueItems": true,
+                        "description": "De 2 (minimum m\u00e9tier \u2014 un cr\u00e9neau \u00e0 une \u00e9quipe n'alterne pas) \u00e0 10 (cap technique).",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "MatchSlotRotation.html": {
+                "type": "object",
+                "description": "Rotation A/B : N \u00e9quipes d\u00e9clar\u00e9es sur un cr\u00e9neau de match partag\u00e9 (gymnase + jour + heure),\nqu'elles occupent en alternance. Scop\u00e9 club+saison, lecture ouverte au Membre (patron du\nmodule matchs) ; \u00e9criture derri\u00e8re les gardes tenant+saison (VenueMatchWindow idiom).",
+                "properties": {
+                    "id": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "version": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "venueId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "dayOfWeek": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "kickoffTime": {
+                        "description": "HH:MM",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "teamIds": {
+                        "description": "The rotation's teams, in display order (position ASC).",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "MatchSlotRotation.jsonld": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/HydraItemBaseSchema"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "version": {
+                                "default": 0,
+                                "type": "integer"
+                            },
+                            "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            "updatedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            "venueId": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "dayOfWeek": {
+                                "default": 0,
+                                "type": "integer"
+                            },
+                            "kickoffTime": {
+                                "description": "HH:MM",
+                                "default": "",
+                                "type": "string"
+                            },
+                            "teamIds": {
+                                "description": "The rotation's teams, in display order (position ASC).",
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "description": "Rotation A/B : N \u00e9quipes d\u00e9clar\u00e9es sur un cr\u00e9neau de match partag\u00e9 (gymnase + jour + heure),\nqu'elles occupent en alternance. Scop\u00e9 club+saison, lecture ouverte au Membre (patron du\nmodule matchs) ; \u00e9criture derri\u00e8re les gardes tenant+saison (VenueMatchWindow idiom)."
+            },
             "PriorityTier": {
                 "type": "object",
                 "properties": {
@@ -28858,6 +29435,10 @@
         {
             "name": "ImplicitRuleSetting",
             "description": "Les 4 r\u00e8gles implicites \u00ab bien-\u00eatre \u00bb, R\u00c9GLABLES par club/saison (contrat moteur 2.7).\n\nL'identifiant EST `ruleKey` (la cl\u00e9 camelCase du contrat), pas un uuid : le front r\u00e8gle une\nr\u00e8gle par son nom, sans conna\u00eetre de ligne en base. La collection est R\u00c9SOLUE \u2014 toujours 4\nentr\u00e9es, d\u00e9fauts inclus, pour que le front n'invente rien. Le PUT UPSERTE (cr\u00e9e la ligne au\npremier r\u00e9glage), le DELETE R\u00c9INITIALISE (supprime la ligne \u2192 retour au d\u00e9faut)."
+        },
+        {
+            "name": "MatchSlotRotation",
+            "description": "Rotation A/B : N \u00e9quipes d\u00e9clar\u00e9es sur un cr\u00e9neau de match partag\u00e9 (gymnase + jour + heure),\nqu'elles occupent en alternance. Scop\u00e9 club+saison, lecture ouverte au Membre (patron du\nmodule matchs) ; \u00e9criture derri\u00e8re les gardes tenant+saison (VenueMatchWindow idiom)."
         },
         {
             "name": "PriorityTier",
