@@ -1,7 +1,9 @@
 # Guide de génération de planning — ClubScheduler
 
-Last verified @ 2026-08-24 (rotation `documentation-update`, pas de sujet lié à cette passe — sondage
-des stamps les plus anciens du dépôt). Re-confronté au code, tout juste : les huit conteneurs cités
+Last verified @ 2026-08-25 (recalé au bump de contrat **2.14 → 2.15** — RMM-5 rotation A/B PR-2,
+bloc `slotRotations` sur `/place-matches` ; ce fichier ne cite le contrat qu'au Cas 6 du tableau de
+pannes, désormais `v2.15`. Passe précédente (2026-08-24, rotation `documentation-update`) :
+re-confronté au code, tout juste : les huit conteneurs cités
 (`clubscheduler-php-fpm`/`nginx`/`postgres`/`redis`/`engine`/`messenger-worker`/`mercure`/`mailpit`)
 existent dans `docker-compose.yml` ✓ · port 8080 = `NGINX_PORT` (`.env:6`) ✓ · les trois refus
 pré-file (409 version pointée, 422 `GenerationComplexityGuard`, 422 `OrphanPinGuard`) + la mention

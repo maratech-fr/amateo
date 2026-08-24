@@ -55,8 +55,9 @@ Graphe des jobs, rôles et pièges : **`docs/testing/testing-strategy.md` §1** 
 Ce qu'il faut retenir en toute session :
 
 - **Bloquant = step NOMMÉ du job `blocking-tests` dans `.github/workflows/ci.yml`** — jamais
-  l'annotation `#[Group('phase1')]` (143 fichiers la portent, ~26 sont des steps). Un test annoté
-  mais non listé tourne dans `unit-tests` : après le gate, sans bloquer `build-docker`. Toute
+  l'annotation `#[Group('phase1')]` (la portent bien plus de fichiers `backend/tests/` que le job
+  n'a de steps nommés). Un test annoté mais non listé tourne dans `unit-tests` : après le gate,
+  sans bloquer `build-docker`. Toute
   affirmation « X est bloquant » se vérifie dans `ci.yml`. *(Le dernier cas ouvert,
   `TeamTagScopeTest`, est devenu un step le 2026-08-11 — DOC-3 fermée.)*
 - La liste ci-dessous est **la maison unique** de « quels tests gatent » (copie supprimée de

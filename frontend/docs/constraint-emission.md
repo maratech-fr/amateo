@@ -1,6 +1,12 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-08-23 (recalé par la livraison ALIGN-09 : `forcedDays` n'est PLUS engine-only — le wizard émet le mode « au moins une » (HARD seul, le chemin soft du moteur ne lit que `preferredDays`/`forbiddenDays`), et la clé héritée #120 est migrée. `preferredDays` reste engine-only par DÉCISION FERMÉE du même jour — voir l'état des lieux ; la table 3 couches reste vraie pour elle)
+Last verified @ 2026-08-25 (rotation `documentation-update`, hors sujet de la PR — sondage des
+stamps les plus anciens du dépôt). **Incohérence trouvée et corrigée** : le stamp précédent
+annonçait `forcedDays` livré (ALIGN-09) mais le tableau §2 et la synthèse §3 le listaient encore
+« ❌ non émis / scission A » — les deux gardaient l'ancien état. Re-confronté au code
+(`ConstraintsStep.tsx:355-356,456-500`, `ConstraintsStep.test.tsx:435-446`) : le mode « au moins
+une » émet bien `forcedDays` en HARD, table + synthèse corrigées pour ne plus lister que
+`preferredDays` en scission A (DÉCISION FERMÉE ALIGN-09 confirmée dans `etat-des-lieux.md`).
 
 > **But** : (1) lister ce que le **wizard émet** réellement, et (2) mettre les **3 couches côte à côte**
 > (frontend → backend → engine) pour repérer les **scissions** et les **angles morts** — les cas où
@@ -67,8 +73,8 @@ Colonnes : le **front** l'émet-il ? · le **backend** le transmet/transforme-t-
 | `venue_closed` (période) | ✅ (cockpit) | → **retrait des créneaux** du gymnase les jours fermés (`VenueClosureDays`, P2-5 5b #263) | ✅ | ✅ **aligné** *(plus d'expansion `forbiddenVenueId` : `expandClosedVenues` supprimé — le créneau fermé est retiré du payload à la source)* |
 | `targetTag` (groupe) | ✅ | → N contraintes TEAM | ✅ (par équipe) | ✅ **aligné** |
 | `orToolsWeight` (tier) | ❌ jamais émis (nulle part dans `frontend/src`) | ❌ ne l'envoie pas (retiré volontairement) | poids **fixes codés en dur** (`LEVEL_2_OBJECTIVE_WEIGHTS`) | ✅ **sans objet** : la priorité S≫A≫B≫C≫D est garantie côté engine sans transport du poids |
-| **`forcedDays`** (« au moins une séance tel jour ») | ❌ non émis | — | ✅ compris | 🟠 **scission A** : engine sait, le front n'expose pas |
-| **`preferredDays`** | ❌ non émis | — | ✅ (objectif) | 🟠 **scission A** (racine d'ENG-10) |
+| **`forcedDays`** (« au moins une séance tel jour ») | ✅ mode « au moins une » *(depuis ALIGN-09, HARD seul — pas de sélecteur de règle)* | passe | ✅ compris (dur, somme sur l'UNION par équipe) | ✅ **aligné** *(ALIGN-09)* |
+| **`preferredDays`** | ❌ non émis *(DÉCISION FERMÉE ALIGN-09 : reste engine-only)* | — | ✅ (objectif) | 🟠 **scission A** (racine d'ENG-10) |
 | **`maxEndTime`** (« Fini avant X h ») | ✅ « Fini avant » | passe | ✅ fenêtre dure (fin ≤ borne) | ✅ **aligné** *(ALIGN-04)* |
 | **`minAtVenueId`** + `minAtVenueCount` (« au moins N à ») | ✅ « au moins N » | passe (validation fail-fast) | ✅ plancher dur, fail-soft si inatteignable | ✅ **aligné** *(ALIGN-05)* |
 | **`spacing`** (espacer les jours) | *implicite* (aucune saisie) | — | ✅ malus soft jours consécutifs | ✅ **aligné** *(ALIGN-06, règle implicite)* |
@@ -77,7 +83,7 @@ Colonnes : le **front** l'émet-il ? · le **backend** le transmet/transforme-t-
 ## 3. Synthèse — scissions & angles morts
 
 - **Aligné** : tout ce que le wizard émet est écrit par le backend et honoré par l'engine. Les scissions historiques « déclaré ≠ effectif » (ENG-10/11/12/13 offre↔engine, **ENG-16** forcedDays↔allowedDays) sont **corrigées** et verrouillées par `constraint_matrix.py`.
-- **🟠 Scission A — l'engine sait, le front n'émet pas** : `forcedDays` (au moins une séance tel jour), `preferredDays`. *(`availableDays` — coach « disponible uniquement » — a été **exposé/aligné**.)* **Feature possible** : exposer les modes restants (petit ajout UI + cellule de matrice).
+- **🟠 Scission A — l'engine sait, le front n'émet pas** : `preferredDays` seul reste dans ce cas — DÉCISION FERMÉE (ALIGN-09, 2026-08-23, voir état des lieux) de ne pas l'exposer. *(`forcedDays` et `availableDays` — coach « disponible uniquement » — ont été **exposés/alignés**.)*
 - **✅ Angles morts résorbés (2026-07-08)** : `maxEndTime` (**ALIGN-04**, mode « Fini avant »), **minimum de séances par gymnase** `minAtVenueId` (**ALIGN-05**, mode « au moins N »), **espacement** `spacing` (**ALIGN-06**, règle implicite soft) sont désormais câblés sur les 3 couches et verrouillés (matrice engine + offre wizard). Reste **🔴 `max_consecutive_days`** (écart **dur** « pas 3 d'affilée ») — le soft `spacing` ne le garantit pas.
 
 > **Où le vérifier automatiquement — deux verrous complémentaires, aucun ne couvre tout :**

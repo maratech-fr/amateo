@@ -1,6 +1,9 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-08-24 (rotation `documentation-update`, hors sujet de la PR — la constante
+Last verified @ 2026-08-25 (recalé au bump de contrat **2.14 → 2.15** — RMM-5 rotation A/B PR-2,
+bloc `slotRotations` sur `/place-matches` ; ce fichier ne cite le contrat qu'au §422 (`version:
+"1.0"` vs le MAJOR 2 du contrat, désormais `2.15`). Passe précédente (2026-08-24, rotation
+`documentation-update`, hors sujet de la PR — la constante
 avait de nouveau bouge sans suivre la prose, exactement l'avertissement que ce fichier se fait a
 lui-meme §Formule du score). **Un fait corrige** : `SCORE_FORMULA_VERSION` disait V11, le code est
 a **V12** (`app/solver/objective.py:46` — lot PASSERELLES PR-2, penalite `teamLinks` PREFERRED,

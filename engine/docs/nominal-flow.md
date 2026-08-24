@@ -1,7 +1,9 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-08-24 (rotation `documentation-update`, hors sujet de la PR — file:line
-recales, tous perimes depuis un deplacement de modules non repercute ici). Contre le code :
+Last verified @ 2026-08-25 (recalé au bump de contrat **2.14 → 2.15** — RMM-5 rotation A/B PR-2,
+bloc `slotRotations` sur `/place-matches` ; ce fichier documente `/generate`, où seule la chaîne de
+version change. Passe précédente (2026-08-24, rotation `documentation-update`, hors sujet) :
+file:line recales, tous perimes depuis un deplacement de modules non repercute ici). Contre le code :
 contrat 2.15 (`engine/CONTRACT_VERSION`) et comparaison MAJOR seule ✓ · verrou asyncio par club qui
 ATTEND, jamais de 503 (`app/main.py:128-129`, dict `_club_locks` + garde) ✓ · `lockLevel` chaine
 libre, pas un enum (`app/schemas/input_schema.py:249`, PAS `app/input_schema.py` — le fichier a
