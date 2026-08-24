@@ -53,6 +53,32 @@ final class FfbbApiClientTest extends TestCase
         self::assertStringContainsString('commune.codePostal = \'69100\'', (string) json_decode($bodies[0], true)['queries'][0]['filter']);
     }
 
+    public function testSearchRencontresKeepsOnlyHitsCarryingTheClubCode(): void
+    {
+        // RMM-4 PR-3 — MESURÉ 2026-08-24 : le plein texte fait pleuvoir du bruit
+        // (un hit « AMICAL PNM » qui NE concerne PAS le club). Le filtre STRICT
+        // serveur ne garde qu'un hit dont le code club figure sur l'un des DEUX
+        // organismes ; le hit-bruit gelé ci-dessous DOIT être exclu.
+        $club = 'ARA0069036';
+        $hits = ['results' => [['hits' => [
+            ['id' => 'ours-home', 'idOrganismeEquipe1' => ['code' => $club], 'idOrganismeEquipe2' => ['code' => 'ARA0000002']],
+            ['id' => 'ours-away', 'idOrganismeEquipe1' => ['code' => 'ARA0000003'], 'idOrganismeEquipe2' => ['code' => $club]],
+            // Le bruit MESURÉ : « AMICAL PNM », deux clubs étrangers → exclu.
+            ['id' => 'bruit', 'idOrganismeEquipe1' => ['code' => 'ARA0000007'], 'idOrganismeEquipe2' => ['code' => 'ARA0000008'], 'competitionId' => ['nom' => 'AMICAL PNM']],
+        ]]]];
+        $client = new FfbbApiClient(new MockHttpClient(function (string $method, string $url) use ($hits): MockResponse {
+            if (str_contains($url, 'configuration')) {
+                return new MockResponse((string) json_encode(['data' => ['key_ms' => 't']]));
+            }
+
+            return new MockResponse((string) json_encode($hits));
+        }));
+
+        self::assertSame([], $client->searchRencontres('bad-code'), 'un code invalide ne fait aucun appel');
+        $kept = array_column($client->searchRencontres($club), 'id');
+        self::assertSame(['ours-home', 'ours-away'], $kept, 'le hit-bruit « AMICAL PNM » est exclu');
+    }
+
     public function testOnlyTalksToFixedFfbbHosts(): void
     {
         $hosts = [];

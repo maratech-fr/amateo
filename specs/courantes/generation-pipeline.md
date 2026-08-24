@@ -1,6 +1,11 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-08-22 (rotation de fraîcheur — re-vérifié contre le code : la chaîne `POST /api/schedules` (DRAFT) et `POST /api/schedules/{id}/generate` existent (debug:router) ✓ · topic `club:{clubId}:schedule:{scheduleId}` (`MercureTopic.php`) ✓ · verrou par club (`ClubGenerationLock.php`, Redis `nx`/`ex`) ✓ · l'abonné Mercure frontend existe ✓ — **et son chemin est recalé dans la même passe** : `scheduleStream.ts` a REMONTÉ de `shared/lib/` vers `features/planning/lib/` (P4-123, le temps réel appartient au planning) — c'est cette PR même qui le déplace, la rotation a attrapé la mention que la passe de déplacement avait manquée) — *(historique des passes retiré le 2026-08-19, audit DOC-33 ; il vit dans git : `git log -p --follow specs/courantes/generation-pipeline.md`)*
+Last verified @ 2026-08-24 (rotation de fraîcheur, sujet non touché par la PR courante — re-vérifié
+contre le code : topic `club:{clubId}:schedule:{scheduleId}` (`backend/src/Mercure/MercureTopic.php`)
+✓ · verrou par club `ClubGenerationLock::acquire` — `SET … NX EX` (`backend/src/Service/ClubGenerationLock.php:26`)
+✓ · l'abonné Mercure frontend vit à `frontend/src/features/planning/lib/scheduleStream.ts`
+(emplacement inchangé depuis la passe P4-123) ✓) — *(historique des passes retiré le 2026-08-19,
+audit DOC-33 ; il vit dans git : `git log -p --follow specs/courantes/generation-pipeline.md`)*
 
 > Vérité courante. Décrit ce qui **doit** se passer, zone par zone, quand un
 > gestionnaire lance une génération : ce que fait le frontend, ce que fait le

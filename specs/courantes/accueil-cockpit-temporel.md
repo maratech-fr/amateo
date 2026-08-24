@@ -1,13 +1,10 @@
 # Accueil « cockpit temporel » — mise au clair (préliminaire calendriers secondaires)
 
-Last verified @ 2026-08-22 (recalé par la livraison : le §5bis reçoit la PRÉVENTION du refus `window_already_planned` — le serveur sert le verdict (`GET /api/planned-windows`), la modale n'offre plus une semaine qu'il refuserait, et le chemin « d'un bloc » passe de CACHÉ à désactivé-avec-raison, cas vacances aligné. Re-vérifié en écrivant : `WindowAlreadyPlannedNotice` est bien réutilisé sans deuxième maison, la garde d'écriture reste appelée aux deux sites de naissance, et la décision fermée P2-40 — phrase vacances composée FRONT — est intacte)
-ouverte » qui était en fait TRANCHÉE : la grille d'un gymnase entièrement fermé reste modifiable
-(décision fondateur du 2026-08-18), désormais consignée en décision FERMÉE dans
-`etat-des-lieux.md` §2 et retirée de la roadmap. Le COMPORTEMENT décrit, lui, est re-vérifié et
-inchangé : le `<fieldset disabled>` de la grille ne gèle que sur le mode `DISABLED` de l'override,
-jamais sur une fermeture (`frontend/src/features/wizard/steps/PeriodStructure.tsx`). L'historique
-des passes précédentes vit dans `git log -p --follow` ce fichier et ses traces datées dans
-`etat-des-lieux.md` §3.
+Last verified @ 2026-08-24 (rotation de fraîcheur, sujet non touché par la PR courante — re-vérifié
+contre le code : `frontend/src/features/wizard/steps/PeriodStructure.tsx:400,727-828` — les DEUX
+`<fieldset disabled>` de la grille (rangée gymnase ET créneaux) ne gèlent que sur `isDisabled`
+(mode `DISABLED` de l'override), jamais sur une fermeture ✓. L'historique des passes précédentes
+vit dans `git log -p --follow` ce fichier et ses traces datées dans `etat-des-lieux.md` §3.
 
 > **Statut** : **approche arrêtée** (décisions tranchées §9) — **livrée** ; cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2.
 > **Pas un plan** — pas de tâches, pas d'effort chiffré ; l'exécution se planifiera palier par palier (§8).

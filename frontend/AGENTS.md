@@ -54,7 +54,7 @@ frontend/
 │   │   ├── cockpit/             # / home: season-plan banner, month calendar, radar
 │   │   ├── legal/               # /confidentialite
 │   │   ├── matches/             # /matchs (guided loop, 5 derived rail steps) + /matchs/configuration (rare setup)
-│   │   │                        # + /matchs/reconciliation (RMM-4, FBI écarts per-field — lot open, PR-3 pending)
+│   │   │                        # + /matchs/reconciliation (RMM-4, FBI écarts per-field — delivered, two channels: xlsx deposit + FFBB API)
 │   │   ├── planning/            # /planning work loop: WeekGrid, toolbar, exports
 │   │   ├── profile/             # /profile
 │   │   ├── season-transition/   # Season pivot banner + re-dating dialog

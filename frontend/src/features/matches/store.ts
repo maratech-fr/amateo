@@ -1,20 +1,20 @@
 import { create } from "zustand";
 
-import type { Deviation, FbiMapping } from "./api";
+import type { Deviation, FbiMapping, RencontreCreatable } from "./api";
 import type { LoopStepId } from "./lib/loopSteps";
 
 /**
- * RMM-4 — le payload d'analyse porté EN MÉMOIRE du dialogue d'import vers la vue
- * de réconciliation dédiée (`/matchs/reconciliation`). Le `File` voyage comme une
- * référence JS vivante — jamais sérialisé (pas d'`history.state`), jamais re-uploadé.
- * `null` = aucune analyse en cours : arriver sur la vue (accès direct/refresh) sans
- * ce payload est un « renvoi propre » vers la boucle, rien n'est écrit.
+ * RMM-4 — le payload d'analyse porté EN MÉMOIRE vers la vue de réconciliation
+ * dédiée (`/matchs/reconciliation`). DEUX canaux alimentent la MÊME vue (le
+ * `ReconciliationPanel` est agnostique) : le dépôt xlsx (`channel: "xlsx"` — le
+ * `File` voyage comme une référence JS vivante, jamais sérialisé ni re-uploadé)
+ * et le canal API FFBB (`channel: "api"` — les rencontres publiées croisées avec
+ * l'app, PR-3). `null` = aucune analyse en cours : arriver sur la vue (accès
+ * direct/refresh) sans ce payload est un « renvoi propre » vers la boucle.
  */
-export interface ReconciliationPayload {
-  file: File;
-  mappings: FbiMapping[];
-  deviations: Deviation[];
-}
+export type ReconciliationPayload =
+  | { channel: "xlsx"; file: File; mappings: FbiMapping[]; deviations: Deviation[] }
+  | { channel: "api"; deviations: Deviation[]; creatable: RencontreCreatable[]; fetchedAt: string };
 
 interface MatchesState {
   /** Saturday key of the weekend shown on the grid; null = auto (first available). */

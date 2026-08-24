@@ -108,6 +108,31 @@ final class EngagedTeamGuardTest extends WebTestCase
         self::assertNotNull($this->em->getRepository(Fixture::class)->find($fixture->getId()), 'et l\'import FBI ne part pas avec elle');
     }
 
+    public function testAFixtureBornFromTheFfbbApiChannelEngagesTheTeam(): void
+    {
+        // RMM-4 PR-3 — the FFBB-API channel is a NEW writer of fixtures (the amicaux
+        // it materialises). Engagement is derived from a fixture's mere EXISTENCE
+        // (TeamEngagementGuard: `SELECT 1 FROM fixture WHERE team_id`), never from
+        // how it was created: an amical stamped with an ffbbRencontreId, still
+        // UNPLACED, engages its team exactly like an FBI import.
+        $client = $this->client;
+        $team = $this->createTeam('U15 amical FFBB');
+        $fixture = $this->fixture($team, FixtureStatus::UNPLACED);
+        $this->scopeGucToClub($this->club->getId());
+        $fixture->setFfbbRencontreId('renc-api-1');
+        $this->em->flush();
+        $client->loginUser($this->user);
+
+        $client->request('DELETE', \sprintf('/api/teams/%s', $team->getId()), [], [], [
+            'HTTP_X-Club-Id' => $this->club->getId(),
+        ]);
+
+        self::assertResponseStatusCodeSame(409, 'un amical créé via l\'API FFBB engage l\'équipe');
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        self::assertNotNull($this->em->getRepository(Fixture::class)->find($fixture->getId()), 'l\'amical ne part pas avec elle');
+    }
+
     public function testATeamWithoutAnyFixtureIsDeletable(): void
     {
         // La garde ne bloque QUE ce qui joue : une équipe sans aucune rencontre reste

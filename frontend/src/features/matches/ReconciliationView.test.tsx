@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,7 +8,7 @@ import type { Deviation, ImportFbiResult } from "./api";
 import { ReconciliationView } from "./ReconciliationView";
 import { useMatchesStore } from "./store";
 
-const { importFbiFixtures, getTeams } = vi.hoisted(() => ({
+const { importFbiFixtures, getTeams, getPriorityTiers, applyFfbbRencontres, getFfbbRencontres } = vi.hoisted(() => ({
   importFbiFixtures: vi.fn(
     (): Promise<ImportFbiResult> =>
       Promise.resolve({
@@ -26,9 +26,12 @@ const { importFbiFixtures, getTeams } = vi.hoisted(() => ({
       }),
   ),
   getTeams: vi.fn(() => Promise.resolve([{ id: "team-1", name: "SM1", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 }])),
+  getPriorityTiers: vi.fn(() => Promise.resolve([])),
+  applyFfbbRencontres: vi.fn(),
+  getFfbbRencontres: vi.fn(),
 }));
 
-vi.mock("./api", () => ({ importFbiFixtures, getTeams }));
+vi.mock("./api", () => ({ importFbiFixtures, getTeams, getPriorityTiers, applyFfbbRencontres, getFfbbRencontres }));
 
 const deviation: Deviation = {
   fixtureId: "fx-1",
@@ -41,7 +44,7 @@ const deviation: Deviation = {
 };
 
 const file = new File(["xlsx"], "fbi.xlsx");
-const payload = { file, mappings: [{ division: "DF2", fbiTeamLabel: null, teamId: "team-1", competitionId: null }], deviations: [deviation] };
+const payload = { channel: "xlsx" as const, file, mappings: [{ division: "DF2", fbiTeamLabel: null, teamId: "team-1", competitionId: null }], deviations: [deviation] };
 
 beforeEach(() => {
   importFbiFixtures.mockClear();
@@ -118,5 +121,59 @@ describe("ReconciliationView (RMM-4 — vue dédiée)", () => {
 
     await waitFor(() => expect(screen.getByText(/1 écart.*non tranché/i)).toBeInTheDocument());
     expect(screen.getByText(/rien n'a été écrasé/i)).toBeInTheDocument();
+  });
+});
+
+describe("ReconciliationView — canal API FFBB (RMM-4 PR-3)", () => {
+  const creatableA = {
+    rencontreId: "renc-a",
+    competitionNom: "AMICAL",
+    date: "2026-09-23",
+    kickoff: "20:00",
+    homeAway: "HOME" as const,
+    opponentLabel: "BRON BASKET",
+    venueLabel: "GYMNASE STUB",
+    numeroJournee: null,
+    suggestedTeamId: null,
+  };
+  const creatableB = { ...creatableA, rencontreId: "renc-b", opponentLabel: "VAULX BASKET" };
+  const apiPayload = { channel: "api" as const, deviations: [], creatable: [creatableA, creatableB], fetchedAt: "2026-08-24T14:05:00+00:00" };
+
+  it("affiche le bandeau d'honnêteté (info, pas alarme) et la provenance API", () => {
+    useMatchesStore.setState({ reconciliation: apiPayload });
+    renderWithProviders(<ReconciliationView />, { route: "/matchs/reconciliation" });
+
+    const banner = screen.getByText(/Ce que la FFBB publie à cet instant/i);
+    expect(banner).toBeInTheDocument();
+    expect(banner.closest("[role='status']")).not.toBeNull(); // status, jamais alert
+    expect(screen.getByText(/la couverture fédérale n'est pas garantie/i)).toBeInTheDocument();
+    expect(screen.getByText(/Source : API FFBB/i)).toBeInTheDocument();
+  });
+
+  it("un creatable NON sélectionné n'est PAS envoyé (falsification)", async () => {
+    applyFfbbRencontres.mockResolvedValueOnce({ created: 1, updated: 0, unresolvedDeviations: [], depositedAt: "2026-08-24T14:06:00+00:00" });
+    useMatchesStore.setState({ reconciliation: apiPayload });
+    const user = userEvent.setup();
+    renderWithProviders(<ReconciliationView />, { route: "/matchs/reconciliation" });
+
+    // Je choisis une équipe pour A seulement ; B reste « Ne pas créer ».
+    await screen.findAllByRole("option", { name: "SM1" }); // les équipes se chargent async (une option par ligne)
+    await user.selectOptions(await screen.findByLabelText(/Créer le match vs BRON BASKET/i), "team-1");
+    await user.click(screen.getByRole("button", { name: /^Appliquer$/i }));
+    // Résumé de confirmation AVANT d'écrire — le bouton du dialogue.
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /^Appliquer$/i }));
+
+    await waitFor(() => expect(applyFfbbRencontres).toHaveBeenCalledOnce());
+    expect(applyFfbbRencontres).toHaveBeenCalledWith([], [{ rencontreId: "renc-a", teamId: "team-1" }]);
+    // FALSIFICATION — renc-b (laissé « Ne pas créer ») n'est jamais envoyé.
+    const [, creations] = applyFfbbRencontres.mock.calls[0];
+    expect(creations).not.toContainEqual(expect.objectContaining({ rencontreId: "renc-b" }));
+  });
+
+  it("rien à appliquer (aucun choix) → « Appliquer » désactivé", () => {
+    useMatchesStore.setState({ reconciliation: apiPayload });
+    renderWithProviders(<ReconciliationView />, { route: "/matchs/reconciliation" });
+    expect(screen.getByRole("button", { name: /^Appliquer$/i })).toBeDisabled();
   });
 });

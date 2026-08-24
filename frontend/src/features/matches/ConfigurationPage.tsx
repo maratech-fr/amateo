@@ -1,5 +1,6 @@
-import { Clock, DoorOpen, Link2, Repeat, Upload } from "lucide-react";
+import { Clock, DoorOpen, Link2, Radar, Repeat, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
@@ -7,6 +8,7 @@ import { Modal } from "@/shared/components/ui/modal";
 import { Select } from "@/shared/components/ui/select";
 import { todayISO } from "@/shared/lib/clock";
 import { cn } from "@/shared/lib/utils";
+import { toast } from "@/shared/stores/toastStore";
 
 import type { Team, Venue } from "./api";
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
@@ -15,7 +17,8 @@ import { ImportFbiDialog } from "./ImportFbiDialog";
 import { STALE_DAYS, depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
 import { buildTypicalWeekend } from "./lib/typicalWeekend";
 import { MatchWindowsEditor } from "./MatchWindowsEditor";
-import { useFixtures, useLatestFbiIngestion, usePriorityTiers, useTeamMatchHabits, useTeams, useVenues } from "./queries";
+import { useFfbbRencontres, useFixtures, useLatestFbiIngestion, usePriorityTiers, useTeamMatchHabits, useTeams, useVenues } from "./queries";
+import { useMatchesStore } from "./store";
 import { TypicalWeekendGrid } from "./TypicalWeekendGrid";
 
 function byId<T extends { id: string }>(rows: T[] | undefined): Map<string, T> {
@@ -40,6 +43,10 @@ export function ConfigurationPage() {
   const fixtures = useFixtures();
   const habitsQuery = useTeamMatchHabits();
   const freshness = useLatestFbiIngestion();
+  const navigate = useNavigate();
+  const setReconciliation = useMatchesStore((s) => s.setReconciliation);
+  // RMM-4 PR-3 — le canal API FFBB, à la demande seulement (`enabled: false`).
+  const rencontres = useFfbbRencontres(false);
 
   const [ffbbDialogOpen, setFfbbDialogOpen] = useState(false);
   const [habitsDialogOpen, setHabitsDialogOpen] = useState(false);
@@ -55,6 +62,19 @@ export function ConfigurationPage() {
   const latest = freshness.data?.latest ?? null;
   const freshDays = null !== latest ? depositDaysAgo(latest.depositedAt, todayISO()) : null;
   const staleFreshness = null === latest || (null !== freshDays && freshDays > STALE_DAYS);
+
+  // RMM-4 PR-3 — « Vérifier via l'API FFBB » : fetch à la demande, puis la MÊME
+  // vue de réconciliation (`/matchs/reconciliation`) avec un payload canal API.
+  // Panne FFBB → message propre, jamais un crash.
+  const checkViaApi = async (): Promise<void> => {
+    const res = await rencontres.refetch();
+    if (undefined === res.data) {
+      toast.error("La FFBB est indisponible pour le moment — réessayez plus tard.");
+      return;
+    }
+    setReconciliation({ channel: "api", deviations: res.data.deviations, creatable: res.data.creatable, fetchedAt: res.data.fetchedAt });
+    void navigate("/matchs/reconciliation");
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -117,10 +137,20 @@ export function ConfigurationPage() {
             L'export FBI complet du club, en début de saison ou de phase — même dialogue que
             l'import de la boucle hebdomadaire.
           </p>
-          <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
-            <Upload className="size-4" />
-            Importer FBI
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
+              <Upload className="size-4" />
+              Importer FBI
+            </Button>
+            {/* Canal API FFBB — un CONFORT secondaire ; l'import FBI reste la référence. */}
+            <Button variant="ghost" size="sm" disabled={rencontres.isFetching} onClick={() => void checkViaApi()}>
+              <Radar className="size-4" />
+              {rencontres.isFetching ? "Vérification…" : "Vérifier via l'API FFBB"}
+            </Button>
+          </div>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            Pré-remplit les matchs publiés par la FFBB (souvent des amicaux) — l'import FBI fait foi.
+          </p>
           {/* RMM-4 — la fraîcheur des données FBI, sous l'entrée de dépôt. */}
           <p className={cn("mt-3 flex items-center gap-1.5 text-sm", staleFreshness ? "text-warning-foreground" : "text-muted-foreground")}>
             <Clock className="size-4 shrink-0" aria-hidden="true" />

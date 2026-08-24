@@ -1,19 +1,19 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-24 (graduation RMM-4 PR-1+PR-2, réconciliation FBI — nouvelle section
-« Réconciliation FBI (RMM-4) », le lot **reste OUVERT** — PR-3 doit rebrancher `ReconciliationPanel`
-sur un autre canal). Re-vérifié contre le code : `FbiFixtureImporter.php` (`DEVIATION_FIELDS`
-date/kickoff/venue, `detectFieldDeviations`/`groupDeviations` au dry-run, `applyDeviationMode`/
-`applyFieldTakeFile` à l'import — date/salle dé-placent, heure rétrograde `SUBMITTED`/`VALIDATED`,
-`indexDecisions` ignore un champ/choix inconnu, `carryForwardTrace`/`persistingSet`) ✓ ;
-`FbiIngestion.php` (`pendingDeviations`, tenant+saison, PAS personnelle) ✓ ; `FbiIngestionSource.php`
-(`FFBB_API` préparé, jamais émis) ✓ ; `FbiIngestionFreshnessController.php` (lecture Membre, `latest`
-nullable) ✓ ; `ReconciliationView.tsx`/`ReconciliationPanel.tsx`/`store.ts` (payload en mémoire,
-renvoi propre sans payload, toggle sans défaut) ✓ ; `lib/deviationConsequence.ts`/`lib/fbiFreshness.ts`
-(conséquence redite jamais redérivée, seuil 30 j) ✓ ; `ImportFbiDialog.tsx` (bascule « Examiner » sur
-`deviations` non vide) ✓ ; `ConfigurationPage.tsx`/`MatchesPage.tsx` (carte + rappel de fraîcheur) ✓.
-Le reste du fichier (paliers A/PR-1→F2, RMM-1/RMM-3, périmètre engagé) non re-vérifié cette passe —
-un stamp REMPLACE, l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
+Last verified @ 2026-08-24 (graduation RMM-4 PR-3, le canal API FFBB — **RMM-4 est LIVRÉ EN
+ENTIER**, la section « Réconciliation FBI (RMM-4) » s'étend au canal API, le lot QUITTE la
+roadmap). Re-vérifié contre le code : `FfbbRencontresController.php` (GET analyse + POST apply,
+management + socle + tenant, re-fetch serveur à l'apply) ✓ ; `FfbbApiClient::searchRencontres`
+(filtre STRICT serveur sur le code club, index `ffbbserver_rencontres`) ✓ ;
+`FfbbRencontreReader.php` (mapping home/away dérivé du côté club, sentinelle 00:00, filtre saison,
+clamp 180/64 des chaînes externes non bornées) ✓ ; `FfbbRencontreReconciler.php` (appariement
+3 étages + tier-0 idempotence sur `Fixture.ffbbRencontreId`, réutilise VERBATIM
+`FbiFixtureImporter` pour le diff et les décisions, ingestion `FFBB_API` sans trace) ✓ ;
+`ReconciliationView.tsx`/`store.ts` (union discriminée `xlsx`\|`api`, bandeau d'honnêteté
+`role="status"`, section créations avec `TeamSelect` par ligne) ✓ ; `ConfigurationPage.tsx`
+(bouton « Vérifier via l'API FFBB », à la demande seulement) ✓. Le reste (PR-1/PR-2, paliers
+A/PR-1→F2, RMM-1/RMM-3, périmètre engagé) non re-vérifié cette passe — un stamp REMPLACE,
+l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
 > [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés
@@ -668,16 +668,15 @@ que l'API refuse ensuite de corriger. Une équipe engagée présente dans la pho
   non-régression (`MatchesPage.test.tsx` : un delta plein affiche le bandeau sans toucher au moindre
   libellé du rail).
 
-## Réconciliation FBI (RMM-4, PR-1 backend + PR-2 front, 2026-08-24)
+## Réconciliation FBI (RMM-4, 3 PR — backend, front, canal API, 2026-08-24 — LIVRÉ EN ENTIER)
 
 > Cadrage : [`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md) §4
 > fait 1, §7 et §9 (RMM-4). Besoin d'origine : un ré-import FBI qui re-décide une date/heure/salle
 > d'un domicile **déjà placé** mettait à jour en silence — aucune alerte, la divergence app⇄FBI
-> passait inaperçue. **Le lot reste OUVERT** (roadmap P2-48) : une **PR-3** doit encore rebrancher
-> `ReconciliationPanel` sur un autre canal que le dialogue d'import (`ReconciliationPanel.tsx:27` —
-> le panneau est délibérément agnostique du canal qui l'alimente) ; le seul canal aujourd'hui reste
-> le dépôt manuel du xlsx (l'index `rencontres` de l'API FFBB reste vide pour les vrais clubs,
-> `FbiIngestionSource` documente `FFBB_API` comme préparé, jamais émis).
+> passait inaperçue. **Le lot est LIVRÉ EN ENTIER** (P2-48, quitte la roadmap) : PR-1/PR-2 ont posé
+> l'écran de choix par écart sur le dépôt xlsx ; **PR-3 rebranche `ReconciliationPanel` sur un
+> second canal** — la vérification à la demande via l'API FFBB (`ReconciliationPanel.tsx:27` était
+> délibérément agnostique du canal qui l'alimente, exactement pour ce rebranchement).
 
 - **Le périmètre de réconciliation (D1/D3)** : seuls les domiciles **déjà placés** peuvent diverger
   — un extérieur, ou un domicile encore `UNPLACED`, ou une ligne qui change de côté, sort du
@@ -735,9 +734,61 @@ que l'API refuse ensuite de corriger. Une équipe engagée présente dans la pho
 - **Front** — tests : `lib/deviationConsequence.test.ts`, `lib/fbiFreshness.test.ts`,
   `ReconciliationPanel.test.tsx` (toggle sans défaut, gestes de masse,
   bande destructive, conséquence), `ReconciliationView.test.tsx` (renvoi propre sans payload,
-  abandon, rapport avec écarts non tranchés), `ImportFbiDialog.test.tsx` (bouton « Examiner » quand
-  `deviations` non vide, flux inchangé sinon), `ConfigurationPage.test.tsx`/`MatchesPage.test.tsx`
-  (carte et rappel de fraîcheur).
+  abandon, rapport avec écarts non tranchés, canal `api` compris), `ImportFbiDialog.test.tsx`
+  (bouton « Examiner » quand `deviations` non vide, flux inchangé sinon),
+  `ConfigurationPage.test.tsx`/`MatchesPage.test.tsx` (carte et rappel de fraîcheur, bouton
+  « Vérifier via l'API FFBB »).
+
+### Le canal API FFBB (RMM-4 PR-3, 2026-08-24)
+
+- **Deux portes vers le MÊME écran, jamais deux écrans.** Le dépôt xlsx reste l'entrée normale
+  (`ImportFbiDialog`, canal `channel: "xlsx"` du store) ; `ConfigurationPage` ajoute un second
+  bouton — « Vérifier via l'API FFBB » (`useFfbbRencontres`, à la demande seulement, aucun cache
+  ni cron) — qui alimente `ReconciliationView`/`ReconciliationPanel` via `channel: "api"`. Le
+  panneau est le même composant : seule la provenance affichée change (badge « Source : API
+  FFBB » vs « Source : dépôt FBI (fichier) »).
+- **La hiérarchie ne bouge pas : FBI (le xlsx) fait foi, l'API est un confort.** Un bandeau
+  d'honnêteté `role="status"` rappelle à chaque ouverture du canal API « ce que la FFBB publie à
+  cet instant » et que la couverture fédérale n'est **jamais garantie** — une équipe absente du
+  résultat peut avoir des matchs, l'import FBI reste la référence. `FfbbApiClient::searchRencontres`
+  applique un filtre STRICT côté serveur (le code club doit apparaître sur `idOrganismeEquipe1`
+  OU `idOrganismeEquipe2` du hit) après une recherche plein texte bruyante (bruit mesuré :
+  un hit « AMICAL PNM » ne concernant pas le club).
+- **Appariement 3 étages, plus un tier-0 d'idempotence** (`FfbbRencontreReconciler::matchRow`) :
+  0. une fixture portant déjà l'id national de la rencontre (`Fixture.ffbbRencontreId`) — une
+     re-vérification ne re-propose jamais un match déjà créé ; 1. la compétition APPARIÉE résout
+     l'équipe (une compétition non appariée = un amical → équipe non résolue → proposée à la
+     création) ; 2. parmi les fixtures de cette équipe, une date EXACTE ; 3. à défaut, un
+     adversaire normalisé (rattrape une date déplacée). Les écarts détectés sur un match APPARIÉ
+     réutilisent VERBATIM `FbiFixtureImporter::detectFieldDeviations`/`groupDeviations` — même
+     périmètre (domiciles déjà placés), mêmes trois champs, même moteur de décision que le xlsx,
+     jamais une seconde copie.
+- **Les créations proposées, jamais imposées** — la valeur ajoutée réelle de ce canal : les
+  rencontres publiées sans fixture correspondante (mesuré sur un vrai club : uniquement des
+  AMICAUX, zéro championnat — le calendrier officiel continue de passer par FBI). Chaque ligne
+  « Présents à la FFBB, absents de l'app » porte un `TeamSelect` — la compétition appariée
+  pré-remplit une suggestion, **rien n'est créé pour une ligne dont le select reste vide** («
+  Ne pas créer »). Un match AWAY créé depuis ce canal reste purement INFORMATIF (aucune salle
+  club à poser, aucun geste de placement requis) — même statut qu'une saisie manuelle extérieure.
+- **`POST /api/ffbb/rencontres/apply` RE-FETCHE côté serveur** — jamais les valeurs portées par
+  le client — puis ré-applique le même appariement et les décisions avant d'écrire ; une création
+  choisie deux fois (double-clic, onglets concurrents) est absorbée par l'idempotence tier-0, et
+  une collision vraiment concurrente heurte l'index unique partiel
+  (`uniq_fixture_ffbb_rencontre` — club+saison+équipe+`ffbbRencontreId`, NULL exclus) pour un
+  409 propre plutôt qu'un 500.
+- **Ce que le canal API n'affecte JAMAIS** : la fraîcheur xlsx (`GET /api/fbi-ingestions/latest`
+  ne lit que les dépôts `FBI_XLSX`) et la trace de réconciliation (`FbiIngestion.pendingDeviations`
+  — seul un dépôt `FBI_XLSX` la lit ou l'écrit). Chaque apply écrit sa propre `FbiIngestion` datée
+  `source=FFBB_API`, compteurs seuls, `pendingDeviations: []` — un pense-bête qui ne se mélange
+  jamais à celui du xlsx.
+- **Robustesse (revue sécurité 2026-08-24, aucune vulnérabilité trouvée)** : les chaînes externes
+  (libellés, id de rencontre) sont de la donnée FFBB non bornée, les colonnes le sont — clampées
+  à la frontière du reader (`FfbbRencontreReader`) : labels tronqués à 180, une ligne dont l'id
+  dépasse 64 caractères est ÉCARTÉE (une clé d'idempotence ne se tronque jamais), plutôt que de
+  faire échouer l'apply entier en 502 au flush.
+- **Back** — tests : `FfbbRencontresApiTest.php` (les deux routes, gardes SEC-07/socle/tenant,
+  re-fetch serveur, 409 doublon), `FfbbRencontreReaderTest.php` (mapping, filtre saison, clamp),
+  `FfbbApiClientTest.php` (filtre strict serveur).
 
 ## Reste palier A (à venir)
 

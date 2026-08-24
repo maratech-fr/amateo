@@ -101,7 +101,7 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
     if (null === file || null === analysis) {
       return;
     }
-    setReconciliation({ file, mappings: buildMappings(analysis), deviations: analysis.deviations });
+    setReconciliation({ channel: "xlsx", file, mappings: buildMappings(analysis), deviations: analysis.deviations });
     onClose();
     void navigate("/matchs/reconciliation");
   };

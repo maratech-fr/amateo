@@ -1,6 +1,18 @@
-Last verified @ 2026-08-24 (RMM-4 PR-1 ajoute **+1 path** `GET /api/fbi-ingestions/latest` : le compte passe de 171 à **172 paths**. Deux descriptions d'opération enrichies (`/api/fixtures/import/analyze` et `/api/fixtures/import` — réconciliation : `deviations`, champ multipart `decisions`, `unresolvedDeviations`, `depositedAt`). Contrat backend⇄engine INCHANGÉ — la réconciliation est un rail import/lecture, zéro appel moteur. SHA-256 du snapshot : `079fbe6ff40527d73558d16ff0e484f2c910da9a30c57d1734b964bd7d15587a`.)
+Last verified @ 2026-08-24 (RMM-4 PR-3 ajoute **+2 paths** `GET /api/ffbb/rencontres` et `POST /api/ffbb/rencontres/apply` : le compte passe de 172 à **174 paths**. Le canal API FFBB croise les rencontres publiées avec l'app et alimente le MÊME écran de réconciliation ; l'apply réutilise le moteur de décisions de l'import xlsx, re-fetch serveur, création idempotente. Contrat backend⇄engine INCHANGÉ — zéro appel moteur (Meilisearch FFBB à la demande). SHA-256 du snapshot : `ab7018474267b45641a917ed86430731e893c0a51e0f0561448a599b67c518e2`.)
 
 Changements récents :
+- **RMM-4 PR-3 — le canal API FFBB (2026-08-24)** : **+2 paths** —
+  `GET /api/ffbb/rencontres` (200 : `{deviations[], creatable[], fetchedAt}` — les rencontres
+  publiées par la FFBB croisées avec l'app : le diff des domiciles déjà placés qui divergent, PLUS
+  les rencontres absentes de l'app (`creatable`, les amicaux) proposées à la création ; 403
+  non-gestionnaire ; 409 socle non pointé ; 422 club sans code FFBB ; 502 FFBB injoignable) et
+  `POST /api/ffbb/rencontres/apply` (200 : `{created, updated, unresolvedDeviations[], depositedAt}`
+  — applique les décisions par écart via le MÊME moteur que l'import xlsx, crée les rencontres
+  choisies de façon idempotente ; RE-FETCH SERVEUR, jamais les valeurs du client ; 409 socle/saison
+  archivée/doublon concurrent). Écriture **management** (SEC-07) + socle pointé + saison écrivable.
+  Ingestion `FFBB_API` datée (compteurs seuls, jamais la fraîcheur xlsx, jamais une trace). 172 →
+  **174 paths**. Contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.14, zéro appel moteur —
+  index Meilisearch `ffbbserver_rencontres` à la demande, filtre strict serveur).
 - **RMM-4 PR-1 — réconciliation FBI (2026-08-24)** : **+1 path** —
   `GET /api/fbi-ingestions/latest` (200 : `{latest: {depositedAt, source, created, updated,
   unchanged, deviationsCount} | null}` — la fraîcheur « dernier dépôt FBI », `null` sans dépôt ;

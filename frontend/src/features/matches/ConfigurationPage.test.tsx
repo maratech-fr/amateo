@@ -1,9 +1,11 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
 
 import { ConfigurationPage } from "./ConfigurationPage";
+import { useMatchesStore } from "./store";
 
 // Le SET-UP (rare) : les 3 actions rares + l'image A/B en plein droit + une seconde
 // entrée d'import saisonnier. Aucun garde socle ici (il vit dans le layout).
@@ -14,6 +16,7 @@ vi.mock("./api", () => ({
   getTeamMatchHabits: vi.fn(() => Promise.resolve([])),
   getFixtures: vi.fn(() => Promise.resolve([])),
   getLatestFbiIngestion: vi.fn(() => Promise.resolve({ latest: null })),
+  getFfbbRencontres: vi.fn(),
 }));
 
 describe("ConfigurationPage (RMM-1 PR2 — le SET-UP)", () => {
@@ -50,5 +53,28 @@ describe("ConfigurationPage (RMM-1 PR2 — le SET-UP)", () => {
     });
     renderWithProviders(<ConfigurationPage />);
     expect(await screen.findByText(/Dernier dépôt FBI/i)).toBeInTheDocument();
+  });
+
+  // ── RMM-4 PR-3 — le bouton du canal API FFBB ─────────────────────────────────
+  it("« Vérifier via l'API FFBB » fetch à la demande et porte un payload canal API vers la vue", async () => {
+    const { getFfbbRencontres } = await import("./api");
+    (getFfbbRencontres as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      deviations: [],
+      creatable: [{ rencontreId: "renc-a", competitionNom: "AMICAL", date: "2026-09-23", kickoff: "20:00", homeAway: "HOME", opponentLabel: "BRON", venueLabel: null, numeroJournee: null, suggestedTeamId: null }],
+      fetchedAt: "2026-08-24T14:05:00+00:00",
+    });
+    useMatchesStore.setState({ reconciliation: null });
+    const user = userEvent.setup();
+    renderWithProviders(<ConfigurationPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Vérifier via l'API FFBB/i }));
+
+    await waitFor(() => expect(getFfbbRencontres).toHaveBeenCalledOnce());
+    const carried = useMatchesStore.getState().reconciliation;
+    expect(carried?.channel).toBe("api");
+    if (null === carried || "api" !== carried.channel) {
+      throw new Error("payload canal API attendu");
+    }
+    expect(carried.creatable).toHaveLength(1);
   });
 });
