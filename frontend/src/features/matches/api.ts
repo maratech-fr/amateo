@@ -465,11 +465,52 @@ export interface ImportAnalysisDivision {
   pouleUnknownOpponents: string[];
 }
 
+/** RMM-4 — the reconciliation perimeter: the three home fields that become a
+ * CHOICE when the file diverges from an already-placed match. */
+export type DeviationField = "date" | "kickoff" | "venue";
+
+/** Per-field écart: the app value VS the file value (either side may be null —
+ * e.g. an app kickoff not yet posed). */
+export interface DeviationFieldValues {
+  app: string | null;
+  file: string | null;
+}
+
+/**
+ * RMM-4 — one home match already placed whose file (FBI) values differ from the
+ * app: an « état app VS état fichier » card the manager decides per field. Shape
+ * mirrored from `FbiFixtureImporter::groupDeviations` (analyze + import report).
+ * `persisting: true` = the écart was already pending on the previous deposit —
+ * the promised FBI correction was NOT made.
+ */
+export interface Deviation {
+  fixtureId: string;
+  externalRef: string;
+  division: string;
+  teamId: string;
+  status: FixtureStatus;
+  persisting: boolean;
+  /** Only the divergent fields are present. */
+  fields: Partial<Record<DeviationField, DeviationFieldValues>>;
+}
+
+/** The manager's verdict on ONE écart field (RMM-4). `keep_app` writes nothing
+ * (a trace is kept); `take_file` adopts the file value (date/venue un-place the
+ * match, kickoff keeps the slot). */
+export interface DeviationDecision {
+  fixtureId: string;
+  field: DeviationField;
+  choice: "keep_app" | "take_file";
+}
+
 export interface ImportFbiAnalysis {
   divisions: ImportAnalysisDivision[];
   totalRows: number;
   exempted: number;
   errors: string[];
+  /** RMM-4 — home matches already placed whose date/heure/salle differ from the
+   * file, each to be decided per écart before the import writes anything. */
+  deviations: Deviation[];
 }
 
 export interface ImportFbiWarning {
@@ -490,6 +531,11 @@ export interface ImportFbiResult {
   unmappedDivisions: { name: string; fbiTeamLabel: string | null; rowCount: number }[];
   /** P1-4 PR F2 (6.2) — paired competitions still short of their expectation. */
   completeness: { competitionId: string; name: string; imported: number; expected: number }[];
+  /** RMM-4 — perimeter écarts that had NO decision: left INTACT, never
+   * overwritten. Reported so the manager can re-deposit to re-present them. */
+  unresolvedDeviations: Deviation[];
+  /** RMM-4 — this deposit is dated (freshness feed). */
+  depositedAt: string;
 }
 
 /** A manager's mapping choice for one division group of the analyze step. */
@@ -509,15 +555,34 @@ export const analyzeFbiFixtures = (file: File): Promise<ImportFbiAnalysis> => {
   return api.post("fixtures/import/analyze", { body: form }).json<ImportFbiAnalysis>();
 };
 
-/** One-pass import: the SAME file + the completed mappings (multipart). */
-export const importFbiFixtures = (file: File, mappings: FbiMapping[]): Promise<ImportFbiResult> => {
+/** One-pass import: the SAME file + the completed mappings + the per-écart
+ * decisions (RMM-4, all multipart). An empty `decisions` means every perimeter
+ * écart stays unresolved and is reported — nothing is overwritten by default. */
+export const importFbiFixtures = (file: File, mappings: FbiMapping[], decisions: DeviationDecision[] = []): Promise<ImportFbiResult> => {
   const form = new FormData();
   form.append("file", file);
   if (mappings.length > 0) {
     form.append("mappings", JSON.stringify(mappings));
   }
+  if (decisions.length > 0) {
+    form.append("decisions", JSON.stringify(decisions));
+  }
   return api.post("fixtures/import", { body: form }).json<ImportFbiResult>();
 };
+
+/** RMM-4 — the freshness feed: the club/season's last FBI deposit (or null when
+ * none yet). Open to any member (no management gate). */
+export interface FbiIngestionLatest {
+  depositedAt: string;
+  source: "FBI_XLSX" | "FFBB_API";
+  created: number;
+  updated: number;
+  unchanged: number;
+  deviationsCount: number;
+}
+
+export const getLatestFbiIngestion = (): Promise<{ latest: FbiIngestionLatest | null }> =>
+  api.get("fbi-ingestions/latest").json<{ latest: FbiIngestionLatest | null }>();
 
 export const createFixture = (input: CreateFixtureInput): Promise<Fixture> =>
   api.post("fixtures", { json: { competitionId: null, ...input } }).json<Fixture>();

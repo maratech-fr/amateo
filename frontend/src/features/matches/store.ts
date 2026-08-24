@@ -1,6 +1,20 @@
 import { create } from "zustand";
 
+import type { Deviation, FbiMapping } from "./api";
 import type { LoopStepId } from "./lib/loopSteps";
+
+/**
+ * RMM-4 — le payload d'analyse porté EN MÉMOIRE du dialogue d'import vers la vue
+ * de réconciliation dédiée (`/matchs/reconciliation`). Le `File` voyage comme une
+ * référence JS vivante — jamais sérialisé (pas d'`history.state`), jamais re-uploadé.
+ * `null` = aucune analyse en cours : arriver sur la vue (accès direct/refresh) sans
+ * ce payload est un « renvoi propre » vers la boucle, rien n'est écrit.
+ */
+export interface ReconciliationPayload {
+  file: File;
+  mappings: FbiMapping[];
+  deviations: Deviation[];
+}
 
 interface MatchesState {
   /** Saturday key of the weekend shown on the grid; null = auto (first available). */
@@ -26,6 +40,8 @@ interface MatchesState {
   fixtureFormOpen: boolean;
   /** FBI import dialog open. */
   importDialogOpen: boolean;
+  /** RMM-4 — analysis payload carried in memory to the reconciliation view. */
+  reconciliation: ReconciliationPayload | null;
   setSelectedWeekend: (key: string | null) => void;
   setRailStep: (step: LoopStepId | null) => void;
   setUnplacedReasons: (reasons: Map<string, string>) => void;
@@ -33,6 +49,7 @@ interface MatchesState {
   setSwapSourceId: (id: string | null) => void;
   setFixtureFormOpen: (open: boolean) => void;
   setImportDialogOpen: (open: boolean) => void;
+  setReconciliation: (payload: ReconciliationPayload | null) => void;
 }
 
 /** Per-session UI state — nothing worth persisting (selections are ephemeral). */
@@ -44,6 +61,7 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   swapSourceId: null,
   fixtureFormOpen: false,
   importDialogOpen: false,
+  reconciliation: null,
   // Changer de semaine remet la vue à l'auto (le premier trou de la NOUVELLE
   // semaine) — le rail ne « saute » jamais SOUS l'utilisateur, mais une autre
   // semaine est un autre contexte : on repart de son premier trou. Les raisons
@@ -56,4 +74,5 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   setSwapSourceId: (swapSourceId) => set({ swapSourceId }),
   setFixtureFormOpen: (fixtureFormOpen) => set({ fixtureFormOpen }),
   setImportDialogOpen: (importDialogOpen) => set({ importDialogOpen }),
+  setReconciliation: (reconciliation) => set({ reconciliation }),
 }));
