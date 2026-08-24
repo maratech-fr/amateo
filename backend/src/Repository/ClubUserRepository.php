@@ -70,6 +70,29 @@ final class ClubUserRepository extends ServiceEntityRepository
     }
 
     /**
+     * All club ids the user has EVER been a member of — `is_active` ignored.
+     * Same cross-tenant idiom as findActiveClubIds (docblock above). Sert
+     * l'effacement de compte (RMM-3) : la donnée personnelle d'un user (visite
+     * du module matchs) doit mourir dans les clubs QUITTÉS aussi — la liste
+     * des clubs actifs seule laisserait une ligne orpheline dans un club dont
+     * l'adhésion a été désactivée avant l'effacement.
+     *
+     * @return list<string>
+     */
+    public function findMemberClubIds(string $userId): array
+    {
+        /** @var list<string> $ids */
+        $ids = $this->tenantContext->runWithoutTenant(
+            fn (): array => $this->getEntityManager()->getConnection()->fetchFirstColumn(
+                'SELECT club_id FROM club_user WHERE user_id = :uid',
+                ['uid' => $userId],
+            ),
+        );
+
+        return $ids;
+    }
+
+    /**
      * P1-1 (PR C) — les adhésions DÉSACTIVÉES d'un club (`isActive=false` ET
      * `deactivatedAt` posé). Distinctes des pending (`deactivatedAt=null`) : un
      * désactivé se RÉACTIVE, une pending s'approuve. Sert l'onglet « désactivés »

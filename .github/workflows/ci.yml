@@ -388,6 +388,16 @@ jobs:
       - name: PlannedWindowsParityTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/PlannedWindowsParityTest.php --group phase1'
 
+      # RMM-3 (axe constraint semantics — le radar de conflits) : le gardien à l'ouverture stampe une
+      # référence de VISITE et sert le delta « depuis ta dernière visite ». L'empreinte d'un conflit est
+      # son IDENTITÉ stable — une nature changée (autre paire, MATCH_MATCH→MATCH_TRAINING) est signalée,
+      # une sévérité/segment ou un compteur qui bougent SEULS ne le sont pas. Falsifié dans les deux sens,
+      # plus l'isolation user (le stamp d'Anna n'éteint pas le delta de Mateo) + club + saison, le F5 dans
+      # la grâce (référence intacte), planningChanged dans les deux sens, le Membre autorisé, la première
+      # visite muette, et la saison archivée qui stampe quand même.
+      - name: MatchVisitDeltaParityTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/MatchVisitDeltaParityTest.php --group phase1'
+
       - name: SeasonVersionUniquenessTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SeasonVersionUniquenessTest.php --group phase1'
 

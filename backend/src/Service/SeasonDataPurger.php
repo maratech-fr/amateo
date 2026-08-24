@@ -15,6 +15,7 @@ use App\Entity\ConstraintConflict;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Fixture;
 use App\Entity\ImplicitRuleSetting;
+use App\Entity\MatchModuleVisit;
 use App\Entity\PeriodReminderLog;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
@@ -123,6 +124,9 @@ final class SeasonDataPurger
             // des équipes supprimées), ce qui était le vrai bug.
             Fixture::class,
             Competition::class,
+            // RMM-3 — instantané de visite du module matchs (club_id+season_id, aucun
+            // enfant) : purgé avec la saison comme les autres tables tenant+saison.
+            MatchModuleVisit::class,
             TeamCoach::class,
             CoachPlayerMembership::class,
             // P1-4 PR C — préférences matchs, pointent team_id : avant Team.

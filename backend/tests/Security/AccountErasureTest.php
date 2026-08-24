@@ -66,6 +66,46 @@ final class AccountErasureTest extends WebTestCase
         self::assertResponseStatusCodeSame(401);
     }
 
+    /**
+     * RMM-3 (revue de sécurité 2026-08-24) : la visite du module matchs est une
+     * donnée personnelle — elle meurt avec le compte MÊME dans un club dont
+     * l'adhésion a été désactivée AVANT l'effacement. Le trou falsifié : la
+     * boucle d'effacement ne portait que sur les clubs ACTIFS (`is_active`),
+     * une visite stampée puis un membre sorti du club laissait la ligne
+     * (user_id + horodatages) orpheline pour toujours.
+     */
+    public function testErasureDeletesVisitRowsInDeactivatedClubsToo(): void
+    {
+        [$token, $userId] = $this->registerVerified('ERAH');
+        $clubId = $this->clubIdOf($userId);
+        $seasonId = $this->currentSeasonId($clubId);
+
+        // Une visite stampée dans le club (le GUC est posé par currentSeasonId).
+        $this->em()->getConnection()->executeStatement(
+            'INSERT INTO match_module_visit (id, version, club_id, season_id, user_id, reference_snapshot, reference_taken_at, last_opened_at)
+             VALUES (gen_random_uuid(), 1, :cid, :sid, :uid, :snap, NOW(), NOW())',
+            ['cid' => $clubId, 'sid' => $seasonId, 'uid' => $userId, 'snap' => '{"fingerprints":[],"chosenScheduleId":null,"latestCompletedSeasonScheduleId":null}'],
+        );
+
+        // Le membre QUITTE le club avant d'effacer son compte : l'adhésion est
+        // désactivée — le club sort de findActiveClubIds.
+        $this->em()->getConnection()->executeStatement(
+            'UPDATE club_user SET is_active = false, deactivated_at = NOW() WHERE user_id = :uid AND club_id = :cid',
+            ['uid' => $userId, 'cid' => $clubId],
+        );
+
+        $count = $this->em()->getConnection()->fetchOne('SELECT COUNT(*) FROM match_module_visit WHERE user_id = :uid', ['uid' => $userId]);
+        self::assertSame(1, (int) $count, 'témoin : la visite existe avant l\'effacement');
+
+        $this->request('DELETE', '/api/me', $token, ['password' => 'Password123!']);
+        self::assertResponseIsSuccessful();
+
+        $this->scopeGucToClub($clubId);
+        $count = $this->em()->getConnection()->fetchOne('SELECT COUNT(*) FROM match_module_visit WHERE user_id = :uid', ['uid' => $userId]);
+        self::assertSame(0, (int) $count, 'la visite du club quitté est détruite avec le compte');
+        $this->clearGuc();
+    }
+
     public function testLastManagerErasureSchedulesTheClubPurge(): void
     {
         [$token, $userId, $email] = $this->registerVerified('ERAB');
