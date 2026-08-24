@@ -173,6 +173,14 @@ export interface Conflict {
   teamId?: string;
   imported?: number;
   expected?: number;
+  /**
+   * RMM-3 — identité STABLE d'un conflit (`ConflictFingerprinter` côté serveur) :
+   * même valeur tant que c'est le même litige, elle change quand sa nature change.
+   * Le « gardien » compare ces empreintes d'une visite à l'autre pour marquer
+   * « Nouveau » ceux qui viennent d'apparaître. Ornement pur : rien de la sévérité
+   * ni des étapes de la boucle n'en dépend.
+   */
+  fingerprint?: string;
 }
 
 export interface ConflictsResponse {
@@ -269,6 +277,30 @@ export const getLeagueWindows = (): Promise<LeagueWindowsResponse> =>
 
 /** Same-coach conflict radar, recomputed server-side on every call. */
 export const getConflicts = (): Promise<ConflictsResponse> => api.get("fixtures/conflicts").json<ConflictsResponse>();
+
+/**
+ * RMM-3 — le « gardien » à l'ouverture du module. Ce que le POST rapporte : ce qui
+ * a CHANGÉ depuis la précédente visite de CET utilisateur (matchs arrivés, conflits
+ * neufs par empreinte, planning de saison qui a bougé). Le serveur stampe la visite
+ * comme effet de bord (première visite = silencieuse, delta vide ; grâce glissante
+ * de 30 min → un F5 rejoue le même delta sans le rotationner). Voir
+ * `MatchModuleVisitController`.
+ */
+export interface ModuleVisitDelta {
+  /** Première visite : la référence est figée en silence, tous les comptes à zéro. */
+  firstVisit: boolean;
+  /** Fixtures créés depuis la prise de référence. */
+  newFixturesCount: number;
+  /** Empreintes des conflits présents maintenant et absents de la référence. */
+  newConflictFingerprints: string[];
+  /** La version de saison pointée (ou la dernière COMPLETED) a changé. */
+  planningChanged: boolean;
+  /** L'instant contre lequel les badges sont mesurés (ISO). */
+  referenceTakenAt: string;
+}
+
+/** Stampe la visite et rend le delta depuis la précédente (POST sans corps). */
+export const postModuleVisit = (): Promise<ModuleVisitDelta> => api.post("matches/module-visit").json<ModuleVisitDelta>();
 
 // ── Capacity layer (P1-4 PR B) ───────────────────────────────────────────────
 

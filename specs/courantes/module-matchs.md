@@ -1,7 +1,15 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-24 (graduation RMM-1, PR4 « le poste de travail » — RMM-1 est livré en
-entier, nouvelle section « Refonte UX — RMM-1 »). Re-vérifié contre le code : `MatchesLayout.tsx`
+Last verified @ 2026-08-24 (graduation RMM-3, le « gardien » à l'ouverture — RMM-3 est ENTIÈREMENT
+livré, RMM-3 est le DERNIER lot ouvert de la refonte à graduer, nouvelle section « Le gardien à
+l'ouverture »). Re-vérifié contre le code : `ConflictFingerprinter.php` (champs d'identité par
+type, paires triées, exclusions severity/dates/compteurs) ✓ ; `MatchModuleVisitController.php`
+(un seul endpoint POST, grâce 30 min glissante, première visite muette, rotation après calcul) ✓ ;
+`MatchModuleDeltaComputer.php` (les trois signaux, comparaison par IDS) ✓ ; `MatchModuleVisit.php`
+(unicité club+saison+user, RGPD) ✓ ; `MatchesLayout.tsx`/`queries.ts` (`useModuleVisit`, `enabled`
+piloté par la garde socle, `staleTime`/`gcTime: Infinity`) ✓ ; `ModuleVisitBanner.tsx`
+(`role="status"`, segments non nuls, muet en première visite) ✓ ; `ConflictRadar.tsx` (prop
+`newFingerprints`, chip ornementale) ✓. Graduation RMM-1 précédente re-confirmée : `MatchesLayout.tsx`
 (deux routes, garde `useSocleValidated` commun) ✓ ; `lib/loopSteps.ts` (`deriveLoopSteps`,
 `isOffModel`, `datelessConflicts` — les deux formules validées fondateur) ✓ ; `FbiEntryList.tsx`
 (groupage équipe, filtres, lot borné aux lignes affichées, `RECOPIABLE`) ✓ ; `MatchesPage.tsx`
@@ -586,16 +594,82 @@ que l'API refuse ensuite de corriger. Une équipe engagée présente dans la pho
   mode échange). E2e : `tests/e2e/matches.spec.ts` inchangé dans son scénario (login → créer →
   placer), la refonte ne change aucune assertion de comportement moteur.
 
-**Trois points d'insertion futurs identifiés dans le code actuel** (rien de ce qui suit n'est
+**Deux points d'insertion futurs identifiés dans le code actuel** (rien de ce qui suit n'est
 implémenté — pointeurs vers le programme ouvert, `../evolution/refonte-module-matchs.md` §9) :
-- **RMM-3** (le « gardien » à l'ouverture) viendra sur `ConflictRadar.tsx` — badges « nouveau
-  depuis ta dernière visite » (matchs arrivés, nouveaux conflits), nécessite une persistance légère
-  de l'horodatage de visite (le radar est stateless aujourd'hui).
 - **RMM-4** (FBI source de plein droit + réconciliation) viendra sur le diff de ré-import
   (`FbiFixtureImporter`) — un écran « état app vs état fichier », choix par écart, au lieu de la
   mise à jour silencieuse actuelle.
 - **RMM-6** (échéances ligue/comité) viendra sur `FbiEntryList.tsx` (L9 ci-dessus) — une échéance
-  affichée à côté de chaque ligne, saisie manuellement (la ligue les envoie par mail).
+  affichée à côté de chaque ligne, saisie manuellement (la ligue les envoie par mail). **Une
+  escalade cockpit/login en période d'échéance est actée (décision fondateur 2026-08-24)** :
+  `MatchModuleDeltaComputer` (§ « Le gardien » ci-dessous) est tenu SÉPARÉ de la rotation de
+  référence précisément pour que RMM-6 puisse un jour LIRE le delta sans stamper une visite — mais
+  c'est un point d'insertion préparé, pas un comportement livré.
+
+## Le gardien à l'ouverture (RMM-3, 2 PR — backend puis front, 2026-08-24)
+
+> Cadrage : [`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md) §7 et
+> §9 (RMM-3). Besoin d'origine : le radar de conflits est **stateless** (recalculé à chaque appel),
+> il ne peut donc jamais dire au gestionnaire ce qui a **changé depuis sa dernière visite** — il
+> découvre les nouveaux litiges « après coup ».
+
+- **L'empreinte d'un conflit — l'identité STABLE d'un litige.** Maison unique
+  `App\Service\ConflictFingerprinter` : une chaîne `TYPE:champs` dérivée des champs d'IDENTITÉ
+  seuls (les fixtures/coach/gymnase/compétition en cause, paires TRIÉES pour effacer l'artefact
+  gauche/droite du détecteur) — **jamais** `severity`, `start`/`end`, ni un compteur
+  (`imported`/`expected`). Deux fixtures dont l'heure estimée glisse restent le MÊME
+  `MATCH_MATCH` ; une `COMPETITION_INCOMPLETE` qui passe de 9/22 à 15/22 reste le MÊME conflit — un
+  ré-import ne le re-badge pas « Nouveau ». Une nature qui change réellement (le match A passe d'un
+  conflit avec B à un conflit avec C) produit une empreinte NEUVE, donc un badge. Consommée par
+  `FixtureConflictsController` (champ additif `fingerprint` sur `Conflict`) et par le calcul de
+  delta ci-dessous — la même empreinte des deux côtés, par construction.
+- **La référence de visite — persistance PAR utilisateur.** `App\Entity\MatchModuleVisit`
+  (table `match_module_visit`, contrainte d'unicité club+saison+`user_id`) fige un instantané
+  (empreintes de conflits + `chosenScheduleId`/dernière COMPLETED du plan SEASON) à chaque visite.
+  Le scoping utilisateur est APPLICATIF (patron `Feedback` — le contrôleur filtre sur `user_id`,
+  tenant+saison restent sous `TenantFilter`/RLS) : deux gestionnaires du même club ont chacun leur
+  propre « dernière visite ». Donnée PERSONNELLE (horodatages) : supprimée à l'effacement de
+  compte, exportée en portabilité RGPD.
+- **`POST /api/matches/module-visit`** (`MatchModuleVisitController`, aucune garde management —
+  ouvert au Membre, patron `FeedbackController` ; écrit même saison archivée, c'est un bookkeeping
+  utilisateur, pas une mutation du planning) — **UN SEUL endpoint**, pas de GET séparé : deux appels
+  ouvriraient une course F5 entre lire le delta et tourner la référence. Trois cas :
+  - **Première visite** : référence figée en SILENCE, `firstVisit: true`, tous les comptes à zéro —
+    rien à comparer.
+  - **Hors fenêtre de grâce** (`lastOpenedAt` > 30 min, `GRACE_MINUTES`) : NOUVELLE visite — le
+    delta est calculé contre l'ANCIENNE référence, PUIS la référence tourne sur l'état courant.
+  - **Dans la grâce** (fenêtre glissante) : MÊME visite — le delta est recalculé contre la
+    référence NON tournée, seul `lastOpenedAt` avance. Un F5 rejoue donc les mêmes badges
+    (idempotent), il ne les éteint jamais.
+  Le calcul lui-même vit dans `App\Service\MatchModuleDeltaComputer`, tenu SÉPARÉ de la rotation
+  (le contrôleur seul stampe) — trois signaux, tous falsifiables dans les deux sens
+  (`MatchVisitDeltaParityTest`, CLAUDE.md §4) : `newFixturesCount` (fixtures nées APRÈS la
+  référence, `createdAt > takenAt`) · `newConflictFingerprints` (empreintes courantes ABSENTES du
+  snapshot — un conflit disparu ne produit rien, seul le neuf est signalé) · `planningChanged` (la
+  version choisie OU la dernière COMPLETED du plan SEASON diffère du snapshot, comparaison
+  d'**IDS**, jamais d'`updatedAt`).
+- **Front — le POST part au montage du module, une fois.** `MatchesLayout.tsx` appelle
+  `useModuleVisit(socleValidated)` (`features/matches/queries.ts`) : `enabled` piloté par la même
+  garde socle que le verrou du module — **aucune visite n'est stampée sur un module verrouillé** ;
+  `staleTime`/`gcTime: Infinity`, `retry: false` — un seul POST par ouverture, jamais à un
+  re-render, jamais à la navigation boucle⇄configuration (même montage de layout, seul l'`Outlet`
+  change). `ModuleVisitBanner.tsx` et `ConflictRadar.tsx` lisent le MÊME cache react-query (une
+  seule requête nourrit les deux affichages).
+- **`ModuleVisitBanner`** — un bandeau `role="status"` (pas `alert`), ton ACCENT (heads-up amical,
+  distinct du warning des conflits sans date et du destructive socle), au-dessus du rail dans
+  `MatchesPage.tsx`. Muet si `firstVisit` ou delta vide (aucun des trois segments non nul). Les
+  segments NON NULS s'affichent dans l'ordre du geste — matchs arrivés → nouveaux conflits →
+  planning changé — singuliers propres (« 1 match arrivé », « 1 nouveau conflit »), ex. « Depuis
+  votre dernière visite : 12 matchs arrivés · 3 nouveaux conflits · le planning de saison a
+  changé ». **Non dismissible** (décision passe design) : le delta ne revient pas dans la session
+  (grâce serveur + cache infini côté client), un contrôle de fermeture ajouterait de l'état pour
+  rien — le bandeau ne paraît QUE quand il y a du neuf.
+- **Chips « Nouveau » sur le radar** — `ConflictRadar` reçoit une prop optionnelle
+  `newFingerprints` (`ReadonlySet<string>`) ; un conflit dont `fingerprint ∈ newFingerprints` porte
+  une chip. **Ornement PUR** : absente (prop non fournie ou empreinte non présente) → radar
+  intact ; rien de la sévérité, du tri, des libellés ni des étapes du rail n'en dépend — vérifié en
+  non-régression (`MatchesPage.test.tsx` : un delta plein affiche le bandeau sans toucher au moindre
+  libellé du rail).
 
 ## Reste palier A (à venir)
 
