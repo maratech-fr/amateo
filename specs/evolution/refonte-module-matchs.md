@@ -13,14 +13,12 @@
 > **Le palier A est LIVRÉ** — l'état courant du module vit dans
 > [`../courantes/module-matchs.md`](../courantes/module-matchs.md) ; le présent fichier ne décrit que
 > l'**ouvert**.
-> **RMM-0, RMM-1, RMM-2 et RMM-3 sont LIVRÉS (2026-08-21 → 2026-08-24)** — la refonte UX complète
-> (§6quater L1-L9) est graduée dans [`../courantes/module-matchs.md`](../courantes/module-matchs.md)
-> § « Refonte UX — RMM-1 », et le « gardien » à l'ouverture (2 PR, backend puis front) dans
-> § « Le gardien à l'ouverture ». **RMM-4 (réconciliation FBI) est LIVRÉ pour l'essentiel** (PR-1
-> backend + PR-2 front, 2026-08-24 — écran « état app vs état fichier », trace, fraîcheur, gradué
-> dans § « Réconciliation FBI ») : **reste sa PR-3**, qui rebranchera `ReconciliationPanel` (construit
-> agnostique du canal) au-delà du seul dialogue d'import. Restent aussi ouverts ici : la rotation
-> A/B (RMM-5) et le palier B/C (RMM-6→10).
+> **RMM-0, RMM-1, RMM-2, RMM-3 et RMM-4 sont LIVRÉS EN ENTIER (2026-08-21 → 2026-08-24)** — la refonte
+> UX complète (§6quater L1-L9) est graduée dans
+> [`../courantes/module-matchs.md`](../courantes/module-matchs.md) § « Refonte UX — RMM-1 », le
+> « gardien » à l'ouverture (2 PR, backend puis front) dans § « Le gardien à l'ouverture », et la
+> réconciliation FBI (3 PR : backend, front, canal API — 2026-08-24) dans § « Réconciliation FBI »,
+> canal API compris. Restent ouverts ici : la rotation A/B (RMM-5) et le palier B/C (RMM-6→10).
 > **Passe de conception du 2026-08-22 (fondateur)** : l'enchaînement ACTUEL est relevé clic par clic
 > (§6ter) et les **lignes de conception à modifier** sont posées (§6quater, L1-L8) — dont deux faits
 > neufs : **aucun geste ne pose `SUBMITTED`** (la boucle ne se boucle pas, L4) et **R1 est tombée**
@@ -370,10 +368,10 @@ Réponses aux deux questions fondateur de la passe de conception — chaque fait
 
 ## 7. Le « gardien » — le cœur de l'angoisse du gestionnaire
 
-> **Le premier volet ci-dessous (contrôle d'état à l'ouverture) est LIVRÉ (RMM-3, 2026-08-24)** —
-> comportement gradué dans [`../courantes/module-matchs.md`](../courantes/module-matchs.md)
-> § « Le gardien à l'ouverture ». Les deux autres volets (réconciliation FBI, fraîcheur des
-> données) restent OUVERTS sous RMM-4.
+> **Les trois volets ci-dessous sont LIVRÉS** — le contrôle d'état à l'ouverture (RMM-3,
+> 2026-08-24, gradué dans [`../courantes/module-matchs.md`](../courantes/module-matchs.md)
+> § « Le gardien à l'ouverture ») ; la réconciliation FBI et la fraîcheur des données (RMM-4,
+> 2026-08-24, gradué § « Réconciliation FBI »).
 
 Le sous-jacent « il ne sait pas si les données reçues sont à jour, et il découvre les conflits **après coup** »
 (§3.2 pts 3 & 6) pointe une **capacité net-neuve** : un **contrôle d'état à l'ouverture**.
@@ -458,7 +456,7 @@ quel palier chaque lot appartient — **ne pas créer de doublon de vérité**.
 | **RMM-1** | **LIVRÉ EN ENTIER (PR1→PR4, #732-#736, 2026-08-23/24).** Refonte UX pure : séparer SET-UP / geste récurrent, boucle semaine-par-semaine, hiérarchie d'actions, radar en fil conducteur, états vides, filtre par semaine, n° de rencontre affiché, contexte stable, vue de saisie FBI. Critère §6bis honoré : aucun libellé décisionnel tronqué, R1/R2 traités à la racine. **Zéro backend.** Comportement gradué : [`../courantes/module-matchs.md`](../courantes/module-matchs.md) § « Refonte UX — RMM-1 ». | Front | — (aucun comportement moteur touché) | **P2-26** (ce fichier = son détail) |
 | **RMM-2** | **LIVRÉ (2026-08-23).** Extraire le **rail d'étapes du wizard** dans `shared/` (`step-rail.tsx`), à rendu identique. Prérequis technique de RMM-1. **Resserrement fondateur 2026-08-23** : « exploiter `tabs` » et « mutualiser la grille temporelle » sont REPORTÉS (on ne mutualise pas spéculativement une brique sans son second consommateur) — seule l'extraction du rail était livrée ici. | Front | — | P2-26 |
 | **RMM-3** | **LIVRÉ EN ENTIER (2 PR, #737 backend + celle-ci front, 2026-08-24).** Gardien à l'ouverture du module (pas au login) : persistance légère par visite (`MatchModuleVisit`, par utilisateur), empreinte stable d'un conflit (`ConflictFingerprinter`), grâce glissante de 30 min, bandeau résumé (« depuis votre dernière visite : N matchs arrivés · N nouveaux conflits · le planning de saison a changé ») + chips « Nouveau » sur le radar. Comportement gradué : [`../courantes/module-matchs.md`](../courantes/module-matchs.md) § « Le gardien à l'ouverture ». | Back + Front | contrainte sémantique (conflits) → NR (`Security/MatchVisitDeltaParityTest`) | **P2-47** (SOLDÉE, quitte la roadmap) |
-| **RMM-4** | **FBI source de plein droit + réconciliation** : chaque dépôt xlsx = **ingestion datée** (fraîcheur affichée) ; le diff présente **chaque écart domicile** (heure/salle/date) au gestionnaire qui tranche — garder l'app (et corriger FBI) ou prendre le fichier — au lieu de mettre à jour en silence (décision §5). **Forme tranchée 2026-08-22 : un écran « état app VS état fichier », choix par écart.** Réutilise le diff de `FbiFixtureImporter`. **PR-1 backend LIVRÉE (2026-08-24)** : deviations à l'analyze, decisions à l'import (keep_app|take_file, jamais d'écrasement par défaut), `FbiIngestion` datée + trace, route de fraîcheur. **PR-2 front LIVRÉE (2026-08-24)** : vue dédiée `/matchs/reconciliation` (**décision fondateur — renverse la modale envisagée en cadrage** : la passe design a jugé l'écran de choix impraticable en modale pour N cartes d'écart), `ReconciliationPanel`, carte + rappel de fraîcheur. Comportement gradué : `../courantes/module-matchs.md` § « Réconciliation FBI ». **Reste PR-3** : `ReconciliationPanel` est construit délibérément AGNOSTIQUE du canal qui l'alimente (aujourd'hui : uniquement le dialogue d'import) — le rebrancher sur le canal `FFBB_API` (préparé, jamais émis pour un vrai club aujourd'hui — fait #1 du §4) reste à cadrer, PAS un simple suivi mécanique. | Back + Front | — | **P2-48** (net-neuf — canal manuel, fait #1 du §4) |
+| **RMM-4** | **LIVRÉ EN ENTIER (3 PR, 2026-08-24).** FBI source de plein droit + réconciliation : chaque dépôt xlsx = **ingestion datée** (fraîcheur affichée) ; le diff présente **chaque écart domicile** (heure/salle/date) au gestionnaire qui tranche — garder l'app (et corriger FBI) ou prendre le fichier — au lieu de mettre à jour en silence (décision §5). **Forme tranchée 2026-08-22 : un écran « état app VS état fichier », choix par écart.** Réutilise le diff de `FbiFixtureImporter`. **PR-1 backend** : deviations à l'analyze, decisions à l'import (keep_app|take_file, jamais d'écrasement par défaut), `FbiIngestion` datée + trace, route de fraîcheur. **PR-2 front** : vue dédiée `/matchs/reconciliation` (**décision fondateur — renverse la modale envisagée en cadrage** : la passe design a jugé l'écran de choix impraticable en modale pour N cartes d'écart), `ReconciliationPanel`, carte + rappel de fraîcheur. **PR-3 le canal API FFBB** : `ReconciliationPanel` — construit délibérément AGNOSTIQUE du canal — est rebranché sur `GET/POST /api/ffbb/rencontres(/apply)` (`FfbbRencontreReconciler`, appariement 3 étages + idempotence, réutilise VERBATIM le moteur de décisions xlsx) ; les rencontres publiées absentes de l'app (les amicaux) sont proposées à la création, jamais imposées ; couverture jamais promise. Comportement gradué : `../courantes/module-matchs.md` § « Réconciliation FBI », canal API compris. | Back + Front | — | **P2-48** (SOLDÉE, quitte la roadmap) |
 | **RMM-5** | **Rotation A/B** : modèle (alternance sur **créneau partagé** — cas SM1/SM2, §8) + payload/solveur (SOFT « respecte l'image A/B ») + UI SET-UP deux semaines + **le jour de repos d'entraînement suit l'image** (3ᵉ décision §8 — `matchDay` devient dérivé, la règle implicite côté entraînement aussi). | Model + Engine + Front | **contrat backend↔engine** + **contrainte sémantique** → NR (contract test + smoke-solver) | **net-neuf** (§8) |
 | **RMM-6** | **Échéances ligue/comité** — TRANCHÉ 2026-08-22 : la ligue les envoie **par MAIL** au gestionnaire, donc **saisie manuelle**, et **PLUSIEURS échéances concurrentes** par groupes d'équipes (région le 2 sept, département le 10, autres le 15…) — la granularité est le groupe/la compétition, jamais une date unique de club. Deadlines + rappel cockpit (radar matchs « deadline J-6 ») + affichée sur la vue de saisie (L9). | Back + Front | — | **palier B** — [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) §8 |
 | **RMM-7** | **Workflow dérogation** : brouillon + suivi d'état + deadline (tracker + rédacteur, PAS connecteur ligue). **Déclencheur et rôle de l'app TRANCHÉS 2026-08-22** : le point de départ est un **conflit signalé** (par le radar ou par un humain — cas type : SF1 extérieur 16h, SM2 domicile 16h30, même coach) ; le geste est HUMAIN (le gestionnaire négocie avec le club adverse, puis informe la ligue) ; **l'app ne fait que signaler — et idéalement fournir le CONTACT du club adverse (téléphone, email)**, ce qui donne à l'annuaire adverse (RMM-9) son cas d'usage le plus concret. Une dérogation **acceptée** peut fonder une règle durable (cas SM2 20h30 → alternance A/B, §8) : le tracker doit pouvoir la **graduer en règle du modèle**. | Back + Front | — | **palier B** — `gestion-matchs-ffbb.md` §8 |
@@ -468,7 +466,7 @@ quel palier chaque lot appartient — **ne pas créer de doublon de vérité**.
 
 **Séquencement — VALIDÉ fondateur 2026-08-17** : **RMM-0 immédiat** (débloque la décision d'appariement
 sans attendre la refonte) ; puis RMM-2 → RMM-1 (livrable rapide, faible risque, valeur immédiate) ; puis
-RMM-3 (**livré**) + RMM-4 (le « gardien », cœur de l'angoisse) ; puis RMM-5 (A/B, plus lourd car moteur) ; le reste
+RMM-3 + RMM-4 (le « gardien », cœur de l'angoisse — **les deux livrés**) ; puis RMM-5 (A/B, plus lourd car moteur) ; le reste
 (RMM-6→10) au rythme du palier B déjà spécifié. **Chaque lot est une session d'implémentation à part**, avec sa propre
 validation de besoin + `/plan` (CLAUDE.md §7).
 
@@ -483,7 +481,8 @@ validation de besoin + `/plan` (CLAUDE.md §7).
 > dépôt suivant qu'une correction FBI promise n'a pas été faite (badge « Écart persistant »), et
 > meurt en silence dès qu'un dépôt confirme (fichier revenu à la valeur app, ou fixture disparu) ou
 > qu'un « prendre le fichier » résout l'écart — borne « jusqu'au prochain dépôt », pas de délai
-> calendaire. Détail : `../courantes/module-matchs.md` § « Réconciliation FBI ». Reste :
+> calendaire. RMM-4 est depuis LIVRÉ EN ENTIER (PR-3, canal API FFBB, 2026-08-24). Détail :
+> `../courantes/module-matchs.md` § « Réconciliation FBI ». Reste :
 
 - **Officiels / arbitres dans le xlsx FBI (L9)** : le fondateur veut NOTER si la ligue a posé un
   officiel/arbitre — pas pour le gérer (pas notre sujet), mais pour **solliciter des gens du club**
@@ -497,9 +496,10 @@ validation de besoin + `/plan` (CLAUDE.md §7).
 - **`gestion-matchs-ffbb.md`** reste la **référence de besoin** du palier B/C (dérogation, trajet, annuaire
   adverse, catalogue-ligue, empreinte-temps). Les lots **RMM-6 à RMM-9** y renvoient — **ne pas les
   re-spécifier ici**.
-- **Ce fichier** possède la **refonte UX** (RMM-1/2), le **gardien** (RMM-3, **livré** — le
-  comportement vit désormais dans `../courantes/module-matchs.md`), la **réconciliation FBI**
-  (RMM-4) et la **rotation A/B** (RMM-5) — les net-neufs de l'entretien 2026-08-17.
+- **Ce fichier** possède la **refonte UX** (RMM-1/2), le **gardien** (RMM-3, **livré**) et la
+  **réconciliation FBI** (RMM-4, **livrée en entier** — les deux comportements vivent désormais
+  dans `../courantes/module-matchs.md`) ; reste la **rotation A/B** (RMM-5) — les net-neufs de
+  l'entretien 2026-08-17.
 - **La spec courante** [`../courantes/module-matchs.md`](../courantes/module-matchs.md) reste la vérité du
   **livré** ; chaque lot livré y gradue (et **quitte** ce fichier), trace datée en
   [`../courantes/etat-des-lieux.md`](../courantes/etat-des-lieux.md).

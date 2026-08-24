@@ -1,11 +1,15 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-08-24 (réconciliation FBI RMM-4 : re-mesure de `ffbbserver_rencontres` — l'index
-est passé à **1 052 documents**, mais les **36 hits BCCL sont tous des AMICAUX, zéro championnat** ;
-les deux anciennes mentions « 31/32 documents de test, 0 hit réel » sont corrigées ci-dessous).
-Re-confronté au code, tout juste : hosts en constantes dures
-(`Service/Basketball/FfbbApiClient.php:24-25`, `CONFIG_URL`/`SEARCH_URL`) et index
-`ffbbserver_organismes` ✓ · `POST /api/club/ffbb-import` (`Controller/Basketball/FfbbImportController.php:36`) ✓ ·
+Last verified @ 2026-08-24 (réconciliation FBI RMM-4 PR-3 — le canal `ffbbserver_rencontres` PASSE
+de « non exploité » à **exploité** : `FfbbApiClient::searchRencontres` (filtre STRICT serveur sur
+le code club, mesuré `Service/Basketball/FfbbApiClient.php:104-116`), `FfbbRencontreReader` (mapping
++ clamp des chaînes externes) et les routes `GET /api/ffbb/rencontres` + `POST .../apply`
+(`Controller/Basketball/FfbbRencontresController.php`) documentées au §« Réconciliation FBI, canal
+API » ci-dessous ; le calendrier OFFICIEL reste hors de portée — mesure inchangée : **36 hits BCCL,
+tous des AMICAUX, zéro championnat**, sur un index à **1 052 documents**). Re-confronté au code,
+tout juste : hosts en constantes dures (`Service/Basketball/FfbbApiClient.php:24-25`,
+`CONFIG_URL`/`SEARCH_URL`) et index `ffbbserver_organismes` ✓ ·
+`POST /api/club/ffbb-import` (`Controller/Basketball/FfbbImportController.php:36`) ✓ ·
 `PATCH /api/club/info` bien SUPPRIMÉ — zéro occurrence dans `src/` ✓. Non re-sondé cette passe
 (déjà vérifié le 2026-08-22, zone non touchée depuis) : fallback `FFBB_MEILISEARCH_TOKEN`,
 `FfbbClubPopulator::applyClub`, `FfbbEngagementsController`, le cadrage archivé.
@@ -93,7 +97,38 @@ GET https://api.ffbb.com/assets/{uuid}?format=webp&height=220&fit=contain
 ## Ce que l'API NE fournit PAS
 
 - **Président / correspondant nommé** (personne physique) : absent de l'index. Volontairement **hors scope** lot C (seul le contact institutionnel — mail secrétariat + tél — est exposé).
-- **Les calendriers de rencontres.** Re-mesuré le 2026-08-24 : l'index `ffbbserver_rencontres` existe, son schéma est complet (36 champs), et il porte désormais **1 052 documents** — mais pour le BCCL les **36 hits sont TOUS des AMICAUX, zéro rencontre de championnat**. La vérité du calendrier (championnat, poule, dates officielles) continue de passer par l'**import FBI** ; l'API ne remplace pas ce canal.
+- **Le calendrier OFFICIEL de rencontres** (championnat, poule, dates officielles). Re-mesuré le
+  2026-08-24 : l'index `ffbbserver_rencontres` existe, son schéma est complet (36 champs), et il
+  porte désormais **1 052 documents** — mais pour le BCCL les **36 hits sont TOUS des AMICAUX,
+  zéro rencontre de championnat**. La vérité du calendrier continue de passer par l'**import FBI** ;
+  l'API ne remplace pas ce canal. **Depuis RMM-4 PR-3 (2026-08-24), ce que l'index PORTE bel et
+  bien — les amicaux — EST exploité** en réconciliation (voir §ci-dessous) : un CONFORT qui
+  propose ces rencontres à la création, jamais un remplacement de FBI.
+
+## Réconciliation FBI, canal API (RMM-4 PR-3, 2026-08-24)
+
+Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + socle pointé + tenant**
+(écriture en plus : saison inscriptible) — `Controller/Basketball/FfbbRencontresController.php` :
+
+- `GET /api/ffbb/rencontres` — récupère à la demande les rencontres publiées du club (aucun cache,
+  aucun cron, même décision juridique que les autres canaux `search*`), les croise avec l'app et rend
+  `{deviations[], creatable[], fetchedAt}` : `deviations` = même forme que l'analyse xlsx (les
+  domiciles déjà placés dont date/heure/salle divergent) ; `creatable` = les rencontres publiées
+  SANS fixture correspondante (mesuré : uniquement des amicaux), proposées à la création.
+- `POST /api/ffbb/rencontres/apply` — RE-FETCHE côté serveur (jamais les valeurs du client), applique
+  les décisions par écart via le MÊME moteur que l'import xlsx (`FbiFixtureImporter`, réutilisé
+  verbatim) et crée les rencontres choisies (idempotent sur `Fixture.ffbbRencontreId` — index unique
+  partiel `uniq_fixture_ffbb_rencontre`, une collision concurrente rend un 409 propre).
+- **Filtre strict serveur** (`FfbbApiClient::searchRencontres`) : la recherche plein texte sur le
+  code club rend du bruit (un hit « AMICAL PNM » ne concernant pas le club, mesuré) — ne sont
+  gardés que les hits où le code club apparaît sur `idOrganismeEquipe1.code` OU
+  `idOrganismeEquipe2.code`. Le filtre saison est appliqué en aval par `FfbbRencontreReader`
+  (`saison.code` du hit).
+- **Ce canal ne touche jamais** la fraîcheur xlsx (`GET /api/fbi-ingestions/latest` ne lit que les
+  dépôts `source=FBI_XLSX`) ni la trace de réconciliation (`FbiIngestion.pendingDeviations`) — son
+  propre dépôt `FbiIngestion` est stampé `source=FFBB_API`, compteurs seuls.
+
+Détail produit complet (appariement 3 étages, front) : [`../../specs/courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) § « Réconciliation FBI (RMM-4) ».
 
 ## Engagements + compétitions (P1-4 PR F, appariement)
 
@@ -114,9 +149,8 @@ La jointure complète vit dans `FfbbEngagementReader` (filtre saison via `FfbbSe
 `PrÃ© rÃ©gionale`). Consommée par `FfbbEngagementsController` (`GET /api/ffbb/engagements` +
 `POST /api/ffbb/engagements/confirm`, SEC-07 + saison écrivable + socle pointé).
 
-Re-test `ffbbserver_rencontres` du 2026-08-24 : **1 052 documents** (l'index a grossi depuis le
-sondage initial), dont **36 hits pour le BCCL — tous des AMICAUX, aucun match de championnat**.
-L'API n'apporte donc pas le calendrier officiel : l'import FBI reste le chemin de la vérité.
+`ffbbserver_rencontres` (36 hits BCCL, tous des amicaux, zéro championnat) est un index DIFFÉRENT,
+désormais exploité côté réconciliation — voir § « Réconciliation FBI, canal API » plus haut.
 
 ## Salles d'une commune (P2-20 — autocomplétion des gymnases du wizard)
 

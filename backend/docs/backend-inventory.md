@@ -3,14 +3,15 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-08-24 (recalé par RMM-4 PR-1 : les deux routes d'import FBI relues en entier
-contre `ImportFixturesController.php`/`ImportFixturesAnalyzeController.php`/`FbiFixtureImporter.php`
+Last verified @ 2026-08-24 (recalé par RMM-4 PR-3, le canal API FFBB — deux nouvelles routes
+`GET /api/ffbb/rencontres` + `POST /api/ffbb/rencontres/apply` lues contre
+`FfbbRencontresController.php` ; **RMM-4 est désormais LIVRÉ EN ENTIER**. Re-vérifié dans la même
+passe : les deux routes d'import FBI (PR-1) contre
+`ImportFixturesController.php`/`ImportFixturesAnalyzeController.php`/`FbiFixtureImporter.php`
 — `deviations` à l'analyze, `decisions`/`unresolvedDeviations`/`depositedAt` à l'import, `take_file`
-dé-place sur date/salle et retombe `PLACED` sur heure ; nouvelle route
-`GET /api/fbi-ingestions/latest` lue contre `FbiIngestionFreshnessController.php` ; nouvelle entité
-`FbiIngestion` (club+saison, aucun `user_id`) confrontée à `SeasonDataPurger.php:133` (purgée avec
-la saison). PR-1 est backend seul : l'écran de réconciliation (PR-2) et le canal API (PR-3) restent
-hors périmètre, RMM-4 n'entre pas encore comme module gradué)
+dé-place sur date/salle et retombe `PLACED` sur heure ; `GET /api/fbi-ingestions/latest` contre
+`FbiIngestionFreshnessController.php` ; l'entité `FbiIngestion` (club+saison, aucun `user_id`)
+confrontée à `SeasonDataPurger.php:133` (purgée avec la saison))
 
 ---
 
@@ -457,6 +458,8 @@ Détail : [`module-matchs.md`](../../specs/courantes/module-matchs.md). Placemen
 | `/api/fixtures/import` | POST | `ImportFixturesController` | Import FBI **une passe** (fichier global + `mappings` JSON) : persiste les correspondances puis crée/**met à jour** par diff `(team, n° FBI)`. Rapport `created`/`updated`/`unchanged`/`exempted`/`warnings`/`unmappedDivisions`/`errors`. Remplace `/api/teams/{id}/fixtures/import` (P1-4 PR A, 2026-08-02). **RMM-4 (2026-08-24)** : accepte en plus `decisions` JSON (`{fixtureId, field: date\|kickoff\|venue, choice: keep_app\|take_file}`, `FbiFixtureImporter::import`) — un écart d'un domicile déjà placé **sans décision n'est plus écrasé en silence**, il reste intact et remonte dans `unresolvedDeviations` du rapport (avec `depositedAt`). `take_file` sur `date`/`venue` dé-place la rencontre (comme un HOME↔AWAY switch) ; sur `kickoff` la rencontre reste placée mais un `SUBMITTED`/`VALIDATED` retombe `PLACED`. Chaque dépôt écrit une `FbiIngestion` (club+saison, `source=FBI_XLSX`, compteurs + `pendingDeviations` — la trace « garder l'app » relue au dépôt suivant : re-divergente → reportée, réconciliée ou fixture disparu → éteinte en silence) ; salle comparée en **fuzzy containment** (`FbiFixtureImporter::venueMatches`), pas égalité stricte. La saison de l'ingestion est **celle de la requête** (`SeasonResolver::selectedOrCurrent`), jamais devinée depuis les lignes importées (revue sécurité 2026-08-24). |
 | `/api/fbi-ingestions/latest` | GET | `FbiIngestionFreshnessController` | **RMM-4 (2026-08-24)** — fraîcheur : le dernier dépôt xlsx (`source=FBI_XLSX`) du club+saison courants (`FbiIngestionRepository::latestXlsx`), `null` si aucun. Lecture ouverte au Membre (même patron que `LeagueMatchWindowsController`), tenant+saison résolus côté serveur. |
 | `/api/fixtures/place` | POST | `PlaceMatchesController` | « Placer automatiquement » (P1-4 PR D, ADR-0003). Rail **SYNCHRONE** — pas de Messenger/Mercure, verrou Redis dédié `MatchPlacementLock` (TTL 90 s, anti-double-clic). Ordre des gardes : SEC-07 (management) → saison inscriptible → `SocleGuard::assertSeasonPlanChosen` (409 si pas de socle en vigueur). Construit le payload (`MatchPlacementPayloadBuilder`, y compris `TeamLink`/`TeamMatchHabit`), appelle `POST /place-matches` sur l'engine (timeout 60 s, `BAD_GATEWAY` si l'appel échoue — rien n'est écrit avant l'application du résultat), applique les placements (`MatchPlacementResultApplier`). Un match non plaçable n'est **jamais une erreur** : il revient nommé dans `unplaced` avec sa raison. |
+| `/api/ffbb/rencontres` | GET | `FfbbRencontresController` | **RMM-4 PR-3 (2026-08-24)** — le canal API FFBB de réconciliation : récupère à la demande les rencontres publiées du club (`FfbbApiClient::searchRencontres`, filtre STRICT serveur sur le code club, index `ffbbserver_rencontres`), les croise avec l'app (`FfbbRencontreReconciler`, appariement 3 étages + tier-0 idempotence sur `Fixture.ffbbRencontreId`) et rend `{deviations[], creatable[], fetchedAt}` — `deviations` réutilise VERBATIM le moteur `FbiFixtureImporter` (même périmètre : domiciles déjà placés) ; `creatable` = les rencontres publiées sans fixture correspondante (mesuré : uniquement des amicaux), proposées à la création, jamais imposées. SEC-07 + `SocleGuard` + tenant ; 422 club sans code FFBB ; 502 FFBB injoignable. |
+| `/api/ffbb/rencontres/apply` | POST | `FfbbRencontresController` | **RMM-4 PR-3 (2026-08-24)** — RE-FETCHE côté serveur (jamais les valeurs du client), applique les décisions par écart (mêmes `{fixtureId, field, choice}` que l'import xlsx) et crée les rencontres choisies (`{rencontreId, teamId}`, idempotent sur l'index unique partiel `uniq_fixture_ffbb_rencontre`). Écrit une `FbiIngestion` datée `source=FFBB_API` (compteurs seuls, `pendingDeviations: []`) — ne touche JAMAIS la fraîcheur xlsx (`fbi-ingestions/latest` ne lit que `FBI_XLSX`) ni sa trace. SEC-07 + saison écrivable + `SocleGuard` + tenant ; 409 doublon concurrent (collision sur l'index unique). |
 
 ### Transition de saison (P1/P2)
 
