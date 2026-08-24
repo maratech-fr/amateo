@@ -1,6 +1,6 @@
 # ClubScheduler — Tenant Isolation Architecture
 
-Last verified @ 2026-08-22 (P4-120 — première vérification stampée de ce fichier, contre le code, **tout juste** sur huit sondages : priorité 7 APRÈS le firewall (`TenantFilterListener.php:55`) ✓ · skip `/api/admin/**` gardé par `AdminRequestBoundaryTest::testAnAdminRequestNeverSetsTheTenantGuc` (`:149`) ✓ · `TenantOwnedInterfaceCompletenessTest` existe (`tests/Security/`) ✓ · `tenant_filter` `enabled: false` (`doctrine.yaml:37`) ✓ · `findActiveClubIds` (`ClubUserRepository.php:59`) ✓ · `WriteTargetSeasonResolver` et `SeasonResolver` présents ✓ · `Version20260731090000` (drop `migration_user`) présente ✓ · SEC-13 « plus stricte des deux saisons » conforme à la livraison du 2026-08-21 ✓. « ClubScheduler » dans le titre : périmètre P5-21, laissé tel quel)
+Last verified @ 2026-08-24 (rotation documentation-update, à l'occasion de RMM-3 PR-1 : priorité 7 APRÈS le firewall (`TenantFilterListener.php:55-56`) ✓ · `TenantOwnedInterfaceCompletenessTest` existe (`tests/Security/`) ✓ · `findActiveClubIds` — `is_active = true`, `runWithoutTenant` (`ClubUserRepository.php:59-65`) ✓ · `RlsIsolationTest::testEveryPolicyOnClubIdTablesIsTenantScoped` existe (`tests/Security/RlsIsolationTest.php:89`) ✓ ; en creux, la nouvelle entité tenant du lot (`MatchModuleVisit`) confirme le motif décrit ici — `TenantOwnedInterface` + colonne `club_id` + policy canonique, zéro geste manuel hors la migration. « ClubScheduler » dans le titre : périmètre P5-21, laissé tel quel)
 
 ## Overview
 
