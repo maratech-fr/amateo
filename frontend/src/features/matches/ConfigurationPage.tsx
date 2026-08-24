@@ -1,18 +1,21 @@
-import { DoorOpen, Link2, Repeat, Upload } from "lucide-react";
+import { Clock, DoorOpen, Link2, Repeat, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Modal } from "@/shared/components/ui/modal";
 import { Select } from "@/shared/components/ui/select";
+import { todayISO } from "@/shared/lib/clock";
+import { cn } from "@/shared/lib/utils";
 
 import type { Team, Venue } from "./api";
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { HabitsLinksDialog } from "./HabitsLinksDialog";
 import { ImportFbiDialog } from "./ImportFbiDialog";
+import { STALE_DAYS, depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
 import { buildTypicalWeekend } from "./lib/typicalWeekend";
 import { MatchWindowsEditor } from "./MatchWindowsEditor";
-import { useFixtures, usePriorityTiers, useTeamMatchHabits, useTeams, useVenues } from "./queries";
+import { useFixtures, useLatestFbiIngestion, usePriorityTiers, useTeamMatchHabits, useTeams, useVenues } from "./queries";
 import { TypicalWeekendGrid } from "./TypicalWeekendGrid";
 
 function byId<T extends { id: string }>(rows: T[] | undefined): Map<string, T> {
@@ -36,6 +39,7 @@ export function ConfigurationPage() {
   const venues = useVenues();
   const fixtures = useFixtures();
   const habitsQuery = useTeamMatchHabits();
+  const freshness = useLatestFbiIngestion();
 
   const [ffbbDialogOpen, setFfbbDialogOpen] = useState(false);
   const [habitsDialogOpen, setHabitsDialogOpen] = useState(false);
@@ -45,6 +49,12 @@ export function ConfigurationPage() {
 
   const teamsMap = useMemo<Map<string, Team>>(() => byId(teams.data), [teams.data]);
   const venuesMap = useMemo<Map<string, Venue>>(() => byId(venues.data), [venues.data]);
+
+  // RMM-4 — la fraîcheur : le dernier dépôt FBI, en relatif. Escalade en warning
+  // quand aucun dépôt cette saison ou que le dernier date de plus de 30 jours.
+  const latest = freshness.data?.latest ?? null;
+  const freshDays = null !== latest ? depositDaysAgo(latest.depositedAt, todayISO()) : null;
+  const staleFreshness = null === latest || (null !== freshDays && freshDays > STALE_DAYS);
 
   return (
     <div className="flex flex-col gap-6">
@@ -111,10 +121,15 @@ export function ConfigurationPage() {
             <Upload className="size-4" />
             Importer FBI
           </Button>
+          {/* RMM-4 — la fraîcheur des données FBI, sous l'entrée de dépôt. */}
+          <p className={cn("mt-3 flex items-center gap-1.5 text-sm", staleFreshness ? "text-warning-foreground" : "text-muted-foreground")}>
+            <Clock className="size-4 shrink-0" aria-hidden="true" />
+            {null === latest || null === freshDays ? "Aucun dépôt FBI cette saison." : `Dernier dépôt FBI : ${relativeDepositLabel(freshDays)}.`}
+          </p>
         </CardContent>
       </Card>
 
-      {ffbbDialogOpen ? <FfbbEngagementsDialog teams={teams.data ?? []} tiers={tiers.data ?? []} onClose={() => setFfbbDialogOpen(false)} /> : null}
+      {ffbbDialogOpen ?<FfbbEngagementsDialog teams={teams.data ?? []} tiers={tiers.data ?? []} onClose={() => setFfbbDialogOpen(false)} /> : null}
       {habitsDialogOpen ? (
         <HabitsLinksDialog teams={teams.data ?? []} tiers={tiers.data ?? []} venues={venues.data ?? []} fixtures={fixtures.data ?? []} onClose={() => setHabitsDialogOpen(false)} />
       ) : null}
