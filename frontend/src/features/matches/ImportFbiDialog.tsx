@@ -1,5 +1,6 @@
 import { Wand2 } from "lucide-react";
 import { useState } from "react";
+import { useNavigate } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
 import { Modal } from "@/shared/components/ui/modal";
@@ -7,9 +8,10 @@ import { TeamSelect } from "@/shared/components/ui/team-select";
 import { useCredits } from "@/shared/credits/useCredits";
 import { toast } from "@/shared/stores/toastStore";
 
-import type { ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team } from "./api";
+import type { FbiMapping, ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team } from "./api";
 import { placementToastMessage } from "./lib/placementToast";
 import { useAnalyzeFbiFixtures, useImportFbiFixtures, usePlaceMatches } from "./queries";
+import { useMatchesStore } from "./store";
 
 interface ImportFbiDialogProps {
   teams: Team[];
@@ -32,6 +34,8 @@ const divisionKey = (d: { name: string; fbiTeamLabel: string | null }): string =
 export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps) {
   const analyzeFbi = useAnalyzeFbiFixtures();
   const importFbi = useImportFbiFixtures();
+  const navigate = useNavigate();
+  const setReconciliation = useMatchesStore((s) => s.setReconciliation);
   // RMM-1 PR2 — au rapport RÉUSSI, on propose de placer les matchs importés en UN
   // clic (jamais automatique). Même rail et même gate crédits que le bouton
   // principal de la boucle : solde dans le libellé, grisé à 0 mais JAMAIS masqué
@@ -63,16 +67,13 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
     }
   };
 
-  const submit = (): void => {
-    if (null === file || null === analysis) {
-      return;
-    }
-    // Only the NEW choices ride along — already-resolved divisions are persisted.
-    // A FFBB suggestion left untouched IS the choice shown on screen (F2, 6.3):
-    // what the select displays is what gets imported. When the suggestion is
-    // kept, its competitionId rides along so the PAIRED competition is reused
-    // server-side (refs, expectation, poule) instead of duplicated.
-    const mappings = analysis.divisions
+  // Only the NEW choices ride along — already-resolved divisions are persisted.
+  // A FFBB suggestion left untouched IS the choice shown on screen (F2, 6.3):
+  // what the select displays is what gets imported. When the suggestion is kept,
+  // its competitionId rides along so the PAIRED competition is reused server-side
+  // (refs, expectation, poule) instead of duplicated.
+  const buildMappings = (a: ImportFbiAnalysis): FbiMapping[] =>
+    a.divisions
       .filter((d) => null === d.teamId)
       .flatMap((d) => {
         const suggestion = usableSuggestion(d);
@@ -83,9 +84,30 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
         const competitionId = teamId === suggestion ? d.suggestedCompetitionId : null;
         return [{ division: d.name, fbiTeamLabel: d.fbiTeamLabel, teamId, competitionId }];
       });
-    importFbi.mutate({ file, mappings }, { onSuccess: setReport });
+
+  const submit = (): void => {
+    if (null === file || null === analysis) {
+      return;
+    }
+    importFbi.mutate({ file, mappings: buildMappings(analysis) }, { onSuccess: setReport });
   };
 
+  // RMM-4 — des écarts domicile ≠ fichier : on NE PAS importe en silence. Le
+  // fichier + les mappings complétés + les deviations voyagent EN MÉMOIRE vers la
+  // vue dédiée (`/matchs/reconciliation`) où le gestionnaire tranche chaque écart
+  // puis lance l'« Appliquer l'import ». Le File est une référence vivante — pas
+  // de sérialisation, pas de re-upload.
+  const examine = (): void => {
+    if (null === file || null === analysis) {
+      return;
+    }
+    setReconciliation({ file, mappings: buildMappings(analysis), deviations: analysis.deviations });
+    onClose();
+    void navigate("/matchs/reconciliation");
+  };
+
+  const deviationCount = analysis?.deviations.length ?? 0;
+  const hasDeviations = deviationCount > 0;
   const canImport = null !== file && null !== analysis && !importFbi.isPending && !analyzeFbi.isPending;
 
   return (
@@ -99,9 +121,15 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
           <Button variant="outline" size="sm" onClick={onClose}>
             Fermer
           </Button>
-          <Button size="sm" disabled={!canImport} onClick={submit}>
-            Importer
-          </Button>
+          {hasDeviations && null === report ? (
+            <Button size="sm" disabled={!canImport} onClick={examine}>
+              {1 === deviationCount ? "Examiner l'écart" : `Examiner les ${deviationCount} écarts`}
+            </Button>
+          ) : (
+            <Button size="sm" disabled={!canImport} onClick={submit}>
+              Importer
+            </Button>
+          )}
         </>
       }
     >

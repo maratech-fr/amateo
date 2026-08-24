@@ -4,8 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
 
-import type { ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team } from "./api";
+import type { Deviation, ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team } from "./api";
 import { ImportFbiDialog } from "./ImportFbiDialog";
+import { useMatchesStore } from "./store";
 
 const { analyzeFbiFixtures, importFbiFixtures, placeMatches } = vi.hoisted(() => ({
   analyzeFbiFixtures: vi.fn(() =>
@@ -17,6 +18,7 @@ const { analyzeFbiFixtures, importFbiFixtures, placeMatches } = vi.hoisted(() =>
       totalRows: 34,
       exempted: 2,
       errors: [],
+      deviations: [],
     } satisfies ImportFbiAnalysis as ImportFbiAnalysis),
   ),
   importFbiFixtures: vi.fn(() =>
@@ -30,6 +32,8 @@ const { analyzeFbiFixtures, importFbiFixtures, placeMatches } = vi.hoisted(() =>
       warnings: [{ type: "RESCHEDULED", division: "PNM", externalRef: "101137", message: "PNM n°101137 : re-programmé du 28/11/2026 au 05/12/2026." }],
       unmappedDivisions: [],
       completeness: [],
+      unresolvedDeviations: [],
+      depositedAt: "2026-08-24T10:00:00+00:00",
     } satisfies ImportFbiResult as ImportFbiResult),
   ),
   placeMatches: vi.fn(() => Promise.resolve({ placed: 22, skipped: 0, unplaced: [], diagnostics: [] })),
@@ -61,6 +65,7 @@ beforeEach(() => {
   importFbiFixtures.mockClear();
   placeMatches.mockClear();
   meState.club = undefined;
+  useMatchesStore.setState({ reconciliation: null });
 });
 
 describe("ImportFbiDialog", () => {
@@ -94,8 +99,9 @@ describe("ImportFbiDialog", () => {
     await user.click(screen.getByRole("button", { name: "Importer" }));
 
     expect(importFbiFixtures).toHaveBeenCalledOnce();
-    // Only DF2 rides along — PNM is already persisted server-side.
-    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [{ division: "DF2", fbiTeamLabel: null, teamId: "team-2", competitionId: null }]);
+    // Only DF2 rides along — PNM is already persisted server-side. No deviation →
+    // the import carries an EMPTY decisions list (RMM-4, nothing to reconcile).
+    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [{ division: "DF2", fbiTeamLabel: null, teamId: "team-2", competitionId: null }], []);
 
     // The dialog stays open and surfaces the diff report + warnings + errors.
     await waitFor(() => expect(screen.getByText(/22 créés · 1 mis à jour · 9 inchangés/)).toBeInTheDocument());
@@ -114,6 +120,7 @@ describe("ImportFbiDialog", () => {
       totalRows: 22,
       exempted: 0,
       errors: [],
+      deviations: [],
     });
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
@@ -124,7 +131,7 @@ describe("ImportFbiDialog", () => {
     // What the select DISPLAYS is what gets imported — untouched suggestion
     // included, and its competitionId rides along (pairing reused server-side).
     await user.click(screen.getByRole("button", { name: "Importer" }));
-    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [{ division: "DF2", fbiTeamLabel: null, teamId: "team-2", competitionId: "comp-9" }]);
+    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [{ division: "DF2", fbiTeamLabel: null, teamId: "team-2", competitionId: "comp-9" }], []);
   });
 
   it("ignores a suggestion whose team is not offerable — nothing invisible is ever sent", async () => {
@@ -138,6 +145,7 @@ describe("ImportFbiDialog", () => {
       totalRows: 22,
       exempted: 0,
       errors: [],
+      deviations: [],
     });
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
@@ -147,7 +155,7 @@ describe("ImportFbiDialog", () => {
     expect(screen.queryByText("proposé par la FFBB")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Importer" }));
-    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), []);
+    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [], []);
   });
 
   it("shows the blocking poule error and the minor drift on the analyze table", async () => {
@@ -160,6 +168,7 @@ describe("ImportFbiDialog", () => {
       totalRows: 20,
       exempted: 0,
       errors: [],
+      deviations: [],
     });
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
@@ -178,6 +187,7 @@ describe("ImportFbiDialog", () => {
       totalRows: 22,
       exempted: 0,
       errors: [],
+      deviations: [],
     });
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
@@ -206,6 +216,8 @@ describe("ImportFbiDialog", () => {
       warnings: [],
       unmappedDivisions: [],
       completeness: [{ competitionId: "c1", name: "PNM", imported: 9, expected: 22 }],
+      unresolvedDeviations: [],
+      depositedAt: "2026-08-24T10:00:00+00:00",
     });
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
@@ -254,5 +266,54 @@ describe("ImportFbiDialog", () => {
     expect(place).toBeDisabled();
     await user.click(place);
     expect(placeMatches).not.toHaveBeenCalled();
+  });
+
+  // ── RMM-4 — la réconciliation FBI : la vue dédiée s'insère AVANT l'import ─────────
+  it("des écarts détectés → le dialogue mène à la vue (fichier+mappings+deviations portés), JAMAIS l'import direct", async () => {
+    const user = userEvent.setup();
+    const deviation: Deviation = {
+      fixtureId: "fx-1",
+      externalRef: "101137",
+      division: "PNM",
+      teamId: "team-1",
+      status: "PLACED",
+      persisting: false,
+      fields: { date: { app: "2026-11-28", file: "2026-12-05" } },
+    };
+    analyzeFbiFixtures.mockResolvedValueOnce({
+      divisions: [{ name: "PNM", fbiTeamLabel: null, rowCount: 10, teamId: "team-1", competitionId: "comp-1", suggestedTeamId: null, suggestedCompetitionId: null, pouleError: null, pouleUnknownOpponents: [] }],
+      totalRows: 10,
+      exempted: 0,
+      errors: [],
+      deviations: [deviation],
+    });
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    // L'action primaire devient « Examiner » — jamais « Importer » quand il y a des écarts.
+    const examine = await screen.findByRole("button", { name: /Examiner l['’]écart/i });
+    expect(screen.queryByRole("button", { name: "Importer" })).not.toBeInTheDocument();
+
+    await user.click(examine);
+
+    // FALSIFICATION — l'import n'est PAS lancé : la vue tranchera d'abord.
+    expect(importFbiFixtures).not.toHaveBeenCalled();
+    // Le File + les mappings + les deviations voyagent en mémoire vers la vue.
+    const carried = useMatchesStore.getState().reconciliation;
+    expect(carried?.file).toBeInstanceOf(File);
+    expect(carried?.mappings).toEqual([]); // PNM déjà mappé côté serveur → rien de neuf à envoyer
+    expect(carried?.deviations).toEqual([deviation]);
+  });
+
+  it("aucune deviation → flux INCHANGÉ (pas d'étape « Examiner », import direct)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await waitFor(() => expect(screen.getByLabelText("Équipe pour DF2")).toBeInTheDocument());
+    // FALSIFICATION — aucune bascule vers la vue quand il n'y a pas d'écart.
+    expect(screen.queryByRole("button", { name: /Examiner/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Importer" })).toBeInTheDocument();
+    expect(useMatchesStore.getState().reconciliation).toBeNull();
   });
 });

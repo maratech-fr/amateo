@@ -153,6 +153,13 @@ export const routes: RouteObject[] = [
                 path: "configuration",
                 lazy: async () => ({ Component: (await import("@/features/matches/ConfigurationPage")).ConfigurationPage }),
               },
+              {
+                // RMM-4 — la vue dédiée de réconciliation FBI (garde socle héritée du
+                // layout). Elle vit du payload d'analyse porté en mémoire (store) :
+                // un accès direct sans payload renvoie proprement vers la boucle.
+                path: "reconciliation",
+                lazy: async () => ({ Component: (await import("@/features/matches/ReconciliationView")).ReconciliationView }),
+              },
             ],
           },
           {
