@@ -354,13 +354,21 @@ export function useAnalyzeFbiFixtures() {
 export function useImportFbiFixtures() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ file, mappings }: { file: File; mappings: matchesApi.FbiMapping[] }) =>
-      matchesApi.importFbiFixtures(file, mappings),
+    mutationFn: ({ file, mappings, decisions }: { file: File; mappings: matchesApi.FbiMapping[]; decisions?: matchesApi.DeviationDecision[] }) =>
+      matchesApi.importFbiFixtures(file, mappings, decisions ?? []),
     onSuccess: () => {
       invalidateFixtures(queryClient);
       // The import persists the new Division↔team mappings as competitions.
       void queryClient.invalidateQueries({ queryKey: ["competitions"] });
+      // RMM-4 — every deposit is dated: the freshness feed just moved.
+      void queryClient.invalidateQueries({ queryKey: ["fbi-ingestions", "latest"] });
     },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
+}
+
+/** RMM-4 — la fraîcheur : le dernier dépôt FBI du club+saison. Lecture légère,
+ * ouverte au Membre ; rafraîchie après chaque import (invalidation ci-dessus). */
+export function useLatestFbiIngestion() {
+  return useQuery({ queryKey: ["fbi-ingestions", "latest"], queryFn: matchesApi.getLatestFbiIngestion, staleTime: 60_000 });
 }

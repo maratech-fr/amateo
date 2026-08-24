@@ -1,6 +1,17 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-08-22 (P4-120 — premiere verification stampee de ce fichier, contre le code : `/implicit-constraints` existe (`app/main.py:809`) ✓ · verrou par club qui attend sans 503 ✓ · `coach_overload` compte des JOURS via `maxDaysOverride` (`result_builder.py:561,1658`) ✓ · `UNPLACED_PENALTY` 100 000 ✓ · chainage plafonne a 8 (`CHAINING_TIER_WEIGHTS`) ✓ · semantique 2.8 de `session_below_effective_min` ✓. **Quatre faits corriges dans la meme passe** : `SCORE_FORMULA_VERSION` disait V7 (code : V11) ; les poids de confort dataient d'avant V10 (`preferred` ±60 → ±10, jours/heures +30 → +5, avec la regle V10 « le remplissage prime ») ; `shared_training_not_honored` (ERROR, mutualisation) manquait au catalogue alors que le fichier promet de TOUT recenser ; le « dayOfWeek sans borne » est circonscrit a `VenueTrainingSlotSchema`)
+Last verified @ 2026-08-24 (rotation `documentation-update`, hors sujet de la PR — la constante
+avait de nouveau bouge sans suivre la prose, exactement l'avertissement que ce fichier se fait a
+lui-meme §Formule du score). **Un fait corrige** : `SCORE_FORMULA_VERSION` disait V11, le code est
+a **V12** (`app/solver/objective.py:46` — lot PASSERELLES PR-2, penalite `teamLinks` PREFERRED,
+INERTE par defaut ; tous les poids numeriques cites ici — session_count/preferred/avoided_venue/
+preferred_day/preferred_time/rest/spacing/missing_session/`UNPLACED_PENALTY`/`CHAINING_TIER_WEIGHTS`
+— restent inchanges entre V11 et V12, re-verifies un par un). File:line recales (perimes depuis un
+deplacement de module non repercute) : `/implicit-constraints` a `app/main.py:822` (pas 809) ;
+`coach_overload`/`maxDaysOverride` dans `app/solver/result_builder.py:566` (comptage) et `:1797-1801`
+(seuil, pas `:561,1658`). Contre le code par ailleurs : verrou par club qui attend sans 503 ✓ ·
+chainage plafonne a 8 (`CHAINING_TIER_WEIGHTS`, S8/A6/B4/C2/D1) ✓ · semantique 2.8 de
+`session_below_effective_min` ✓.
 
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 
@@ -137,7 +148,7 @@ Le score est un nombre entier qui reflete la qualite globale de la solution.
 La version actuelle de la formule est :
 
 ```
-SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V11"
+SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V12"
 ```
 
 ⚠ Cette constante bouge plus vite que la prose : en cas de doute, `app/solver/objective.py` fait foi — c'est elle qu'il faut lire, pas ce fichier.

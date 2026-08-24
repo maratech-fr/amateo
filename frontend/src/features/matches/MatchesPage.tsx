@@ -15,12 +15,14 @@ import { FbiEntryList } from "./FbiEntryList";
 import { FixtureFormDialog } from "./FixtureFormDialog";
 import { ImportFbiDialog } from "./ImportFbiDialog";
 import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
+import { depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
 import { datelessConflicts, defaultLoopStep, deriveLoopSteps, offModelCount } from "./lib/loopSteps";
+import { todayISO } from "@/shared/lib/clock";
 import { ModuleVisitBanner } from "./ModuleVisitBanner";
 import { placementToastMessage } from "./lib/placementToast";
 import { buildWeekendGrid, isPlacedOnGrid, listWeekends, weekendKeyOf, weekLabel } from "./lib/weekendGrid";
 import { PlacementPanel } from "./PlacementPanel";
-import { useCategories, useCoaches, useCompetitions, useConflicts, useDeleteFixture, useFixtures, useLeagueWindows, useLockFixture, useModuleVisit, useMoveFixture, usePlaceFixture, usePlaceMatches, usePriorityTiers, useReopenFixture, useSubmitFixture, useSwapFixtures, useTeamMatchHabits, useTeams, useUnlockFixture, useUnplaceFixture, useVenueMatchWindows, useVenues, useVenueUnavailabilities } from "./queries";
+import { useCategories, useCoaches, useCompetitions, useConflicts, useDeleteFixture, useFixtures, useLatestFbiIngestion, useLeagueWindows, useLockFixture, useModuleVisit, useMoveFixture, usePlaceFixture, usePlaceMatches, usePriorityTiers, useReopenFixture, useSubmitFixture, useSwapFixtures, useTeamMatchHabits, useTeams, useUnlockFixture, useUnplaceFixture, useVenueMatchWindows, useVenues, useVenueUnavailabilities } from "./queries";
 import { toast } from "@/shared/stores/toastStore";
 import { useCredits } from "@/shared/credits/useCredits";
 import { useMatchesStore } from "./store";
@@ -98,6 +100,12 @@ export function MatchesPage() {
   // neufs depuis la dernière visite — appartenance d'ensemble, pas une redérivation.
   const moduleVisit = useModuleVisit();
   const newConflictFingerprints = useMemo<Set<string>>(() => new Set(moduleVisit.data?.newConflictFingerprints ?? []), [moduleVisit.data]);
+
+  // RMM-4 — la fraîcheur, en rappel DISCRET près du rail (jamais un bandeau).
+  const freshness = useLatestFbiIngestion();
+  const latestDeposit = freshness.data?.latest ?? null;
+  const depositReminder =
+    null === latestDeposit ? "Aucun dépôt FBI cette saison" : `Dernier dépôt FBI ${relativeDepositLabel(depositDaysAgo(latestDeposit.depositedAt, todayISO()))}`;
 
   // Placed home fixtures out of their league envelope (only when the team maps).
   const outOfEnvelope = useMemo<Set<string>>(() => {
@@ -429,6 +437,8 @@ export function MatchesPage() {
         >
           <ChevronRight className="size-4" />
         </Button>
+        {/* RMM-4 — rappel de fraîcheur DISCRET (muted, sans bordure ni icône). */}
+        <span className="ml-auto text-xs text-muted-foreground">{depositReminder}</span>
       </div>
 
       {/* RMM-3 — le « gardien » : en tête, un HEADS-UP amical de ce qui a bougé

@@ -96,6 +96,8 @@ vi.mock("./api", () => ({
   // RMM-3 — le « gardien » : par défaut première visite (muet, aucun bandeau) pour
   // ne pas perturber les assertions des autres tests. Surchargé au besoin.
   postModuleVisit: vi.fn(() => Promise.resolve({ firstVisit: true, newFixturesCount: 0, newConflictFingerprints: [], planningChanged: false, referenceTakenAt: "2026-08-24T10:00:00+00:00" })),
+  // RMM-4 — la fraîcheur : un dépôt existe → rappel discret près du rail semaine.
+  getLatestFbiIngestion: vi.fn(() => Promise.resolve({ latest: { depositedAt: "2026-08-20T09:00:00+00:00", source: "FBI_XLSX", created: 10, updated: 2, unchanged: 3, deviationsCount: 0 } })),
 }));
 
 beforeEach(() => {
@@ -308,5 +310,11 @@ describe("MatchesPage — la boucle guidée (RMM-1 PR3)", () => {
     expect(within(rail).getByRole("button", { name: /Saisi dans FBI \(0\/2\)/ })).toBeInTheDocument();
     // Le rail ne porte aucune chip « Nouveau ».
     expect(within(rail).queryByText("Nouveau")).not.toBeInTheDocument();
+  });
+
+  // ── RMM-4 — rappel de fraîcheur DISCRET près du rail semaine ──────────────────
+  it("affiche un rappel discret du dernier dépôt FBI (muted, sans bandeau)", async () => {
+    renderWithProviders(<MatchesPage />);
+    expect(await screen.findByText(/Dernier dépôt FBI/i)).toBeInTheDocument();
   });
 });

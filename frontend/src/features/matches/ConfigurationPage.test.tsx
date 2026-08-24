@@ -13,6 +13,7 @@ vi.mock("./api", () => ({
   getVenues: vi.fn(() => Promise.resolve([{ id: "venue-1", name: "Gymnase Alpha", color: "#00aa00" }])),
   getTeamMatchHabits: vi.fn(() => Promise.resolve([])),
   getFixtures: vi.fn(() => Promise.resolve([])),
+  getLatestFbiIngestion: vi.fn(() => Promise.resolve({ latest: null })),
 }));
 
 describe("ConfigurationPage (RMM-1 PR2 — le SET-UP)", () => {
@@ -34,5 +35,20 @@ describe("ConfigurationPage (RMM-1 PR2 — le SET-UP)", () => {
   it("offre la seconde entrée d'import FBI (dépôt saisonnier)", async () => {
     renderWithProviders(<ConfigurationPage />);
     expect(await screen.findByRole("button", { name: /Importer FBI/ })).toBeInTheDocument();
+  });
+
+  // ── RMM-4 — la carte de fraîcheur du dépôt FBI ───────────────────────────────
+  it("aucun dépôt cette saison → la carte de fraîcheur le dit (latest null)", async () => {
+    renderWithProviders(<ConfigurationPage />);
+    expect(await screen.findByText(/Aucun dépôt.*cette saison/i)).toBeInTheDocument();
+  });
+
+  it("un dépôt existe → la carte affiche « Dernier dépôt FBI » en relatif", async () => {
+    const { getLatestFbiIngestion } = await import("./api");
+    (getLatestFbiIngestion as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      latest: { depositedAt: "2026-08-22T09:00:00+00:00", source: "FBI_XLSX", created: 5, updated: 1, unchanged: 2, deviationsCount: 0 },
+    });
+    renderWithProviders(<ConfigurationPage />);
+    expect(await screen.findByText(/Dernier dépôt FBI/i)).toBeInTheDocument();
   });
 });
