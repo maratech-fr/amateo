@@ -93,6 +93,9 @@ vi.mock("./api", () => ({
   // RMM-1 PR1/PR3 — close the loop.
   submitFixture,
   reopenFixture: vi.fn(() => Promise.resolve({})),
+  // RMM-3 — le « gardien » : par défaut première visite (muet, aucun bandeau) pour
+  // ne pas perturber les assertions des autres tests. Surchargé au besoin.
+  postModuleVisit: vi.fn(() => Promise.resolve({ firstVisit: true, newFixturesCount: 0, newConflictFingerprints: [], planningChanged: false, referenceTakenAt: "2026-08-24T10:00:00+00:00" })),
 }));
 
 beforeEach(() => {
@@ -274,5 +277,36 @@ describe("MatchesPage — la boucle guidée (RMM-1 PR3)", () => {
     expect(screen.getByRole("button", { name: /Importer FBI/ })).toBeInTheDocument();
     await gotoStep(user, /Domiciles posés/);
     expect(screen.getByRole("button", { name: /Placer automatiquement/ })).toBeInTheDocument();
+  });
+
+  // ── RMM-3 — le « gardien » : bandeau au-dessus du rail, rail INCHANGÉ ─────────
+  it("un delta plein affiche le bandeau du gardien SANS toucher aux labels du rail (non-régression)", async () => {
+    const { postModuleVisit } = await import("./api");
+    (postModuleVisit as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      firstVisit: false,
+      newFixturesCount: 12,
+      newConflictFingerprints: ["a", "b", "c"],
+      planningChanged: true,
+      referenceTakenAt: "2026-08-24T10:00:00+00:00",
+    });
+    renderWithProviders(<MatchesPage />);
+
+    // Le bandeau résumé, en tête (role="status"), avec les trois morceaux.
+    const banner = await screen.findByRole("status");
+    expect(banner).toHaveTextContent("Depuis votre dernière visite");
+    expect(banner).toHaveTextContent("12 matchs arrivés");
+    expect(banner).toHaveTextContent("3 nouveaux conflits");
+    expect(banner).toHaveTextContent("le planning de saison a changé");
+
+    // Les labels du rail restent BYTE-IDENTIQUES — le gardien est un ornement, il
+    // ne pose aucun `done`, aucun badge sur le rail, ne change aucun compte.
+    const rail = await screen.findByRole("navigation");
+    expect(within(rail).getByRole("button", { name: /Batch importé/ })).toBeInTheDocument();
+    expect(within(rail).getByRole("button", { name: /Placés au modèle/ })).toBeInTheDocument();
+    expect(within(rail).getByRole("button", { name: /Litiges \(1\)/ })).toBeInTheDocument();
+    expect(within(rail).getByRole("button", { name: /Domiciles posés/ })).toBeInTheDocument();
+    expect(within(rail).getByRole("button", { name: /Saisi dans FBI \(0\/2\)/ })).toBeInTheDocument();
+    // Le rail ne porte aucune chip « Nouveau ».
+    expect(within(rail).queryByText("Nouveau")).not.toBeInTheDocument();
   });
 });

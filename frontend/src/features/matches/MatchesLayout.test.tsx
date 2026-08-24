@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MatchesLayout } from "./MatchesLayout";
 
@@ -12,6 +13,21 @@ const meState = vi.hoisted(() => ({ chosen: null as string | null }));
 vi.mock("@/shared/session/queries", () => ({
   useMe: () => ({ data: { seasonPlan: { chosenScheduleId: meState.chosen } } }),
 }));
+
+// RMM-3 — compteur de POST de visite : le « gardien » ne doit stamper QU'UNE fois
+// par montage du layout, jamais sur un module verrouillé, jamais au re-render ni à
+// la navigation boucle⇄configuration.
+const visit = vi.hoisted(() => ({ count: 0 }));
+vi.mock("./api", () => ({
+  postModuleVisit: vi.fn(() => {
+    visit.count += 1;
+    return Promise.resolve({ firstVisit: true, newFixturesCount: 0, newConflictFingerprints: [], planningChanged: false, referenceTakenAt: "2026-08-24T10:00:00+00:00" });
+  }),
+}));
+
+beforeEach(() => {
+  visit.count = 0;
+});
 
 function renderAt(path: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -56,5 +72,38 @@ describe("MatchesLayout (RMM-1 PR2 — deux espaces)", () => {
     meState.chosen = "s1";
     renderAt("/matchs/configuration");
     expect(screen.getByText("CONFIG")).toBeInTheDocument();
+  });
+});
+
+describe("MatchesLayout — le « gardien » (RMM-3, POST de visite)", () => {
+  it("stampe la visite UNE fois au montage, quand le socle est validé", async () => {
+    meState.chosen = "s1";
+    renderAt("/matchs");
+    await waitFor(() => expect(visit.count).toBe(1));
+  });
+
+  it("ne stampe RIEN sur un module verrouillé (pas de socle pointé)", async () => {
+    meState.chosen = null;
+    renderAt("/matchs");
+    // On laisse le temps à un éventuel POST de partir : il ne doit jamais partir.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(visit.count).toBe(0);
+  });
+
+  it("ne re-POST pas à la navigation boucle⇄configuration (même montage de layout)", async () => {
+    meState.chosen = "s1";
+    const user = userEvent.setup();
+    renderAt("/matchs");
+    await waitFor(() => expect(visit.count).toBe(1));
+
+    // Naviguer vers la Configuration garde le LAYOUT monté (seul l'Outlet change) —
+    // le cache staleTime Infinity n'est pas refetché.
+    await user.click(screen.getByRole("link", { name: "Configuration" }));
+    expect(screen.getByText("CONFIG")).toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: "Semaine" }));
+    expect(screen.getByText("BOUCLE")).toBeInTheDocument();
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(visit.count).toBe(1);
   });
 });

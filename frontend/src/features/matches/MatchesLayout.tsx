@@ -4,6 +4,8 @@ import { NavLink, Outlet } from "react-router";
 import { cn } from "@/shared/lib/utils";
 import { useSocleValidated } from "@/shared/lib/socle";
 
+import { useModuleVisit } from "./queries";
+
 /**
  * RMM-1 PR2 — « deux espaces ». Le module matchs écrasait deux temps que le
  * gestionnaire vit séparément (cadrage §1, §6ter) : la BOUCLE hebdo (importer,
@@ -18,6 +20,14 @@ import { useSocleValidated } from "@/shared/lib/socle";
  */
 export function MatchesLayout() {
   const socleValidated = useSocleValidated();
+
+  // RMM-3 — le « gardien » : le POST de visite part au MONTAGE du module, une seule
+  // fois (staleTime Infinity), et seulement APRÈS la garde socle — `enabled` piloté
+  // par `socleValidated` pour qu'aucune visite ne soit stampée sur un module
+  // verrouillé. Le résultat (bandeau résumé + chips « Nouveau ») est lu par la boucle
+  // depuis le cache react-query partagé. Le layout enveloppant LES DEUX routes, la
+  // navigation boucle⇄configuration ne le remonte pas → pas de re-POST.
+  useModuleVisit(socleValidated);
 
   // Matchs verrouillés tant que le plan de saison ne pointe pas une version
   // (état cockpit 2) — même condition que le SocleGuard côté serveur. Le garde

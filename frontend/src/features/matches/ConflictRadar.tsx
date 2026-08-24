@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronDown, ChevronRight, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
@@ -12,6 +12,13 @@ interface ConflictRadarProps {
   conflicts: Conflict[];
   teams: Map<string, Team>;
   coaches: Map<string, Coach>;
+  /**
+   * RMM-3 — les empreintes des conflits NOUVEAUX depuis la dernière visite (le
+   * « gardien »). Un conflit dont l'empreinte est dedans porte une chip « Nouveau ».
+   * ORNEMENT PUR : rien de la sévérité, du tri, des libellés ni des étapes de la
+   * boucle n'en dépend ; absent (query non résolue) = aucune chip, radar intact.
+   */
+  newFingerprints?: ReadonlySet<string>;
 }
 
 function coachName(coaches: Map<string, Coach>, id: string): string {
@@ -103,9 +110,11 @@ const TONE_CLASSES = {
  * severity (1 = worst first), severity 7 folded behind a count — 40 blind away
  * matches must read as one line, not 40 alerts. Empty = green "no clash".
  */
-export function ConflictRadar({ conflicts, teams, coaches }: ConflictRadarProps) {
+export function ConflictRadar({ conflicts, teams, coaches, newFingerprints }: ConflictRadarProps) {
   const groups = groupBySeverity(conflicts);
   const [unfolded, setUnfolded] = useState<Set<number>>(new Set());
+
+  const isNew = (conflict: Conflict): boolean => undefined !== conflict.fingerprint && true === newFingerprints?.has(conflict.fingerprint);
 
   return (
     <Card>
@@ -162,7 +171,15 @@ export function ConflictRadar({ conflicts, teams, coaches }: ConflictRadarProps)
                           key={`${conflict.type}-${conflict.coachId ?? conflict.unavailabilityId ?? ""}-${index}`}
                           className={cn("rounded-md border px-3 py-2 text-sm", TONE_CLASSES[group.tone])}
                         >
-                          <p className="font-medium">{conflictTitle(conflict, coaches)}</p>
+                          <p className="flex flex-wrap items-center gap-1.5 font-medium">
+                            {conflictTitle(conflict, coaches)}
+                            {isNew(conflict) ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide text-accent">
+                                <Sparkles className="size-3" aria-hidden="true" />
+                                Nouveau
+                              </span>
+                            ) : null}
+                          </p>
                           <p className="text-muted-foreground">
                             {conflictSummary(conflict, teams)}
                             {estimatedTag(conflict) ? <span className="ml-1 rounded bg-muted px-1 text-xs uppercase tracking-wide">heure estimée</span> : null}

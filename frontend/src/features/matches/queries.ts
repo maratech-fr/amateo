@@ -23,6 +23,27 @@ export function useConflicts() {
   return useQuery({ queryKey: ["fixtures", "conflicts"], queryFn: matchesApi.getConflicts, staleTime: 10_000 });
 }
 
+/**
+ * RMM-3 — le « gardien » à l'ouverture. Le POST part au montage du module (le
+ * layout, `enabled` piloté par la garde socle) et le delta d'UNE ouverture ne se
+ * refetch JAMAIS en cours de session : `staleTime: Infinity`. La grâce serveur rend
+ * le F5 idempotent côté back, mais côté client on ne re-POST pas à chaque re-render
+ * ni à la navigation boucle⇄configuration (même montage de layout) — un seul POST.
+ * Le bandeau résumé et les chips « Nouveau » lisent tous CE cache (même clé), donc
+ * un seul appel les nourrit tous. `retry: false` : un badge raté n'est pas une
+ * erreur à réessayer, la prochaine visite le rejouera.
+ */
+export function useModuleVisit(enabled = true) {
+  return useQuery({
+    queryKey: ["matches", "module-visit"],
+    queryFn: matchesApi.postModuleVisit,
+    enabled,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    retry: false,
+  });
+}
+
 // Reference data (names + envelope axes). Long-lived within a session.
 export function useTeams() {
   return useQuery({ queryKey: ["teams"], queryFn: matchesApi.getTeams, staleTime: 300_000 });

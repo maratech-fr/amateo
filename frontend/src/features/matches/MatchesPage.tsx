@@ -16,10 +16,11 @@ import { FixtureFormDialog } from "./FixtureFormDialog";
 import { ImportFbiDialog } from "./ImportFbiDialog";
 import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
 import { datelessConflicts, defaultLoopStep, deriveLoopSteps, offModelCount } from "./lib/loopSteps";
+import { ModuleVisitBanner } from "./ModuleVisitBanner";
 import { placementToastMessage } from "./lib/placementToast";
 import { buildWeekendGrid, isPlacedOnGrid, listWeekends, weekendKeyOf, weekLabel } from "./lib/weekendGrid";
 import { PlacementPanel } from "./PlacementPanel";
-import { useCategories, useCoaches, useCompetitions, useConflicts, useDeleteFixture, useFixtures, useLeagueWindows, useLockFixture, useMoveFixture, usePlaceFixture, usePlaceMatches, usePriorityTiers, useReopenFixture, useSubmitFixture, useSwapFixtures, useTeamMatchHabits, useTeams, useUnlockFixture, useUnplaceFixture, useVenueMatchWindows, useVenues, useVenueUnavailabilities } from "./queries";
+import { useCategories, useCoaches, useCompetitions, useConflicts, useDeleteFixture, useFixtures, useLeagueWindows, useLockFixture, useModuleVisit, useMoveFixture, usePlaceFixture, usePlaceMatches, usePriorityTiers, useReopenFixture, useSubmitFixture, useSwapFixtures, useTeamMatchHabits, useTeams, useUnlockFixture, useUnplaceFixture, useVenueMatchWindows, useVenues, useVenueUnavailabilities } from "./queries";
 import { toast } from "@/shared/stores/toastStore";
 import { useCredits } from "@/shared/credits/useCredits";
 import { useMatchesStore } from "./store";
@@ -90,6 +91,13 @@ export function MatchesPage() {
   const resolvedTeamWindows = useMemo(() => leagueWindows.data?.resolvedTeamWindows ?? {}, [leagueWindows.data]);
   const habits = useMemo(() => habitsQuery.data ?? [], [habitsQuery.data]);
   const allConflicts = useMemo(() => conflicts.data?.conflicts ?? [], [conflicts.data]);
+
+  // RMM-3 — le « gardien » : le delta de visite est POSTé au montage du layout ;
+  // ici on LIT le même cache (une seule requête pour tout le module). Le bandeau
+  // résumé et les chips « Nouveau » du radar en dérivent. Empreintes des conflits
+  // neufs depuis la dernière visite — appartenance d'ensemble, pas une redérivation.
+  const moduleVisit = useModuleVisit();
+  const newConflictFingerprints = useMemo<Set<string>>(() => new Set(moduleVisit.data?.newConflictFingerprints ?? []), [moduleVisit.data]);
 
   // Placed home fixtures out of their league envelope (only when the team maps).
   const outOfEnvelope = useMemo<Set<string>>(() => {
@@ -330,7 +338,7 @@ export function MatchesPage() {
     content = (
       <div className="flex flex-col gap-3">
         {conflictErrorBlock}
-        {undefined === conflicts.data ? null : <ConflictRadar conflicts={conflicts.data.conflicts} teams={teamsMap} coaches={coachesMap} />}
+        {undefined === conflicts.data ? null : <ConflictRadar conflicts={conflicts.data.conflicts} teams={teamsMap} coaches={coachesMap} newFingerprints={newConflictFingerprints} />}
       </div>
     );
   } else if ("fbiEntry" === effectiveStep) {
@@ -422,6 +430,12 @@ export function MatchesPage() {
           <ChevronRight className="size-4" />
         </Button>
       </div>
+
+      {/* RMM-3 — le « gardien » : en tête, un HEADS-UP amical de ce qui a bougé
+          depuis la dernière visite (matchs arrivés, conflits neufs, planning changé).
+          Frère du bandeau des conflits sans date, mais ton accent (info, pas
+          warning) ; muet en première visite ou delta vide. */}
+      <ModuleVisitBanner delta={moduleVisit.data} />
 
       {/* Bandeau GLOBAL au-dessus du rail : les conflits SANS date (compétition
           incomplète…) sortent du compte hebdo — on les montre quand même. */}
