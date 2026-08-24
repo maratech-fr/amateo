@@ -8,6 +8,7 @@ use App\Entity\Club;
 use App\Exception\ImportRejectedException;
 use App\Service\FbiFixtureImporter;
 use App\Service\FixtureImportGate;
+use App\Service\SeasonResolver;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
@@ -37,6 +38,7 @@ final class ImportFixturesController extends AbstractController
         private readonly FbiFixtureImporter $importer,
         private readonly FixtureImportGate $gate,
         private readonly LoggerInterface $logger,
+        private readonly SeasonResolver $seasonResolver,
     ) {}
 
     public function __invoke(Request $request): JsonResponse
@@ -60,8 +62,14 @@ final class ImportFixturesController extends AbstractController
             return $decisions;
         }
 
+        // La saison de l'ingestion est CELLE de la requête (revue de sécurité
+        // 2026-08-24) : la deviner depuis les données importées ouvrait un repli
+        // dégénéré (multi-saison → saison arbitraire ; club vide → pas de saison
+        // du tout). La gate a déjà exigé un socle pointé : la saison existe.
+        $season = $this->seasonResolver->selectedOrCurrent($request, $club->getId());
+
         try {
-            $result = $this->importer->import((string) $file->getRealPath(), $club, $mappings, $decisions);
+            $result = $this->importer->import((string) $file->getRealPath(), $club, $mappings, $decisions, $season?->getId());
         } catch (ImportRejectedException $e) {
             // Le SEUL type relayé : son message est écrit pour le gestionnaire.
             return $this->json(['error' => $e->getMessage()], $e->getStatusCode());

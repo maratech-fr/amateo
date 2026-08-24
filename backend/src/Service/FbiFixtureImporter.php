@@ -21,6 +21,7 @@ use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
+use RuntimeException;
 use Symfony\Component\Clock\ClockInterface;
 
 /**
@@ -200,7 +201,7 @@ final class FbiFixtureImporter
      *     depositedAt: string,
      * }
      */
-    public function import(string $filePath, Club $club, array $mappings, array $decisions = []): array
+    public function import(string $filePath, Club $club, array $mappings, array $decisions = [], ?string $seasonId = null): array
     {
         $parsed = $this->parseFile($filePath, $club);
         $errors = $parsed['errors'];
@@ -327,7 +328,7 @@ final class FbiFixtureImporter
         $now = DateTimeImmutable::createFromInterface($this->clock->now());
         $ingestion = new FbiIngestion(
             $club->getId(),
-            $this->resolveSeasonId($club, $groups),
+            $seasonId ?? $this->resolveSeasonId($club, $groups),
             FbiIngestionSource::FBI_XLSX,
             $now,
             $created,
@@ -1017,8 +1018,14 @@ final class FbiFixtureImporter
             return $fixture->getSeasonId();
         }
         $season = $this->entityManager->getRepository(Season::class)->findOneBy(['clubId' => $club->getId()]);
+        if (!$season instanceof Season) {
+            // Jamais atteint : la gate d'import exige un socle pointé, donc une
+            // saison. Écrire un id de CLUB en season_id (l'ancien repli) aurait
+            // fabriqué une ligne invisible des purges — on refuse net.
+            throw new RuntimeException('Import sans saison résolue.');
+        }
 
-        return $season instanceof Season ? $season->getId() : $club->getId();
+        return $season->getId();
     }
 
     /**
