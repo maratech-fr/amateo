@@ -75,13 +75,21 @@ final class FfbbRencontreReader
             $venue = \is_array($hit['salle'] ?? null) ? $hit['salle'] : [];
             $kickoff = $this->kickoffOf($dateTime);
 
+            // Les chaînes FFBB sont de la donnée EXTERNE non bornée ; les colonnes,
+            // elles, le sont (opponent/venue 180, ffbb_rencontre_id 64). Sans clamp
+            // ici, UNE ligne trop longue publiée par la fédé ferait échouer l'apply
+            // ENTIER en 502 au flush (revue de sécurité 2026-08-24 — robustesse,
+            // pas une faille : SQL paramétré, React échappe).
+            if (mb_strlen($rencontreId) > 64) {
+                continue; // une clé d'idempotence intronquable ne se tronque pas
+            }
             $rows[] = [
                 'rencontreId' => $rencontreId,
                 'matchDate' => $dateTime->setTime(0, 0),
                 'kickoffTime' => $kickoff,
                 'homeAway' => $clubIsHome ? FixtureHomeAway::HOME : FixtureHomeAway::AWAY,
-                'opponentLabel' => $opponentName,
-                'venueLabel' => $this->labelOrNull($this->stringOrNull($venue['libelle'] ?? null)),
+                'opponentLabel' => mb_substr($opponentName, 0, 180),
+                'venueLabel' => $this->clamp180($this->labelOrNull($this->stringOrNull($venue['libelle'] ?? null))),
                 'competitionFfbbId' => $this->stringOrNull($competition['id'] ?? null),
                 'competitionName' => $this->fixEncoding($this->stringOrNull($competition['nom'] ?? null) ?? 'Amical'),
                 'numeroJournee' => $this->stringOrNull($hit['numeroJournee'] ?? null),
@@ -136,6 +144,12 @@ final class FfbbRencontreReader
     private function labelOrNull(?string $value): ?string
     {
         return null === $value ? null : $this->fixEncoding($value);
+    }
+
+    /** Borne un libellé externe à la capacité des colonnes (180) — voir le commentaire du clamp dans read(). */
+    private function clamp180(?string $value): ?string
+    {
+        return null === $value ? null : mb_substr($value, 0, 180);
     }
 
     /** Repair double-encoded UTF-8 (« PrÃ© rÃ©gionale » → « Pré régionale »), measured on the real index. */

@@ -58,6 +58,37 @@ final class FfbbRencontreReaderTest extends TestCase
         self::assertSame([], $this->reader()->read(self::CLUB, 2028));
     }
 
+    public function testExternalStringsAreClampedToColumnCapacity(): void
+    {
+        // Les chaînes FFBB sont non bornées, les colonnes le sont (labels 180,
+        // ffbb_rencontre_id 64) : sans clamp, UNE ligne trop longue publiée par
+        // la fédé ferait échouer l'apply ENTIER au flush (revue sécu 2026-08-24).
+        $us = ['code' => self::CLUB, 'nom' => 'NOTRE CLUB'];
+        $hits = ['results' => [['hits' => [
+            [
+                'id' => 'renc-long',
+                'date_rencontre' => '2026-10-04T15:30:00',
+                'idOrganismeEquipe1' => $us,
+                'idOrganismeEquipe2' => ['code' => 'ARA0000009', 'nom' => str_repeat('X', 200)],
+                'salle' => ['libelle' => str_repeat('S', 200)],
+                'saison' => ['code' => '26-27'],
+            ],
+            [
+                'id' => str_repeat('9', 65), // clé d'idempotence intronquable → ligne écartée
+                'date_rencontre' => '2026-10-11T15:30:00',
+                'idOrganismeEquipe1' => $us,
+                'idOrganismeEquipe2' => ['code' => 'ARA0000010', 'nom' => 'ADVERSAIRE'],
+                'saison' => ['code' => '26-27'],
+            ],
+        ]]]];
+
+        $rows = $this->readerFor($hits)->read(self::CLUB, 2026);
+
+        self::assertCount(1, $rows, 'la ligne à id > 64 est écartée, jamais tronquée');
+        self::assertSame(180, mb_strlen($rows[0]['opponentLabel']));
+        self::assertSame(180, mb_strlen((string) $rows[0]['venueLabel']));
+    }
+
     private function reader(): FfbbRencontreReader
     {
         $us = ['code' => self::CLUB, 'nom' => 'NOTRE CLUB'];
@@ -88,6 +119,12 @@ final class FfbbRencontreReaderTest extends TestCase
             ],
         ]]]];
 
+        return $this->readerFor($hits);
+    }
+
+    /** @param array<string, mixed> $hits */
+    private function readerFor(array $hits): FfbbRencontreReader
+    {
         $httpClient = new MockHttpClient(function (string $method, string $url) use ($hits): MockResponse {
             if (str_contains($url, 'api.ffbb.com')) {
                 return new MockResponse((string) json_encode(['data' => ['key_ms' => 'token']]));
