@@ -1,6 +1,15 @@
-Last verified @ 2026-08-24 (régénéré après `docker compose restart php-fpm` — piège opcache, `backend/AGENTS.md` §17. RMM-3 PR-1 ajoute **+1 path** `POST /api/matches/module-visit` : le compte passe de 170 à **171 paths**. Contrat backend⇄engine INCHANGÉ — le gardien est un rail de persistance/lecture par visite, zéro appel moteur. SHA-256 du snapshot : `425bbc98d0f07a5eaa2d8d0fedb571f36d508fff3eeef1ebadf2698a13381387`.)
+Last verified @ 2026-08-24 (RMM-4 PR-1 ajoute **+1 path** `GET /api/fbi-ingestions/latest` : le compte passe de 171 à **172 paths**. Deux descriptions d'opération enrichies (`/api/fixtures/import/analyze` et `/api/fixtures/import` — réconciliation : `deviations`, champ multipart `decisions`, `unresolvedDeviations`, `depositedAt`). Contrat backend⇄engine INCHANGÉ — la réconciliation est un rail import/lecture, zéro appel moteur. SHA-256 du snapshot : `079fbe6ff40527d73558d16ff0e484f2c910da9a30c57d1734b964bd7d15587a`.)
 
 Changements récents :
+- **RMM-4 PR-1 — réconciliation FBI (2026-08-24)** : **+1 path** —
+  `GET /api/fbi-ingestions/latest` (200 : `{latest: {depositedAt, source, created, updated,
+  unchanged, deviationsCount} | null}` — la fraîcheur « dernier dépôt FBI », `null` sans dépôt ;
+  400 sans club ou sans saison ; 401 sans JWT). Lecture **ouverte au Membre** (aucune garde
+  management, patron `GET /api/league-match-windows`), tenant+saison résolus côté serveur.
+  Descriptions ADDITIVES sur les deux opérations d'import : l'analyze rend désormais `deviations[]`
+  (état app VS état fichier des domiciles déjà placés), l'import accepte un champ multipart
+  `decisions` (verdicts par écart keep_app|take_file) et rend `unresolvedDeviations[]` + `depositedAt`.
+  171 → **172 paths**. Contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.14, aucun appel moteur).
 - **RMM-3 PR-1 — le gardien à l'ouverture du module matchs (2026-08-24)** : **+1 path** —
   `POST /api/matches/module-visit` (200 : `{firstVisit, newFixturesCount, newConflictFingerprints[],
   planningChanged, referenceTakenAt}` — le delta « depuis ta dernière visite », stampe la référence

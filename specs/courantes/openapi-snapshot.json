@@ -8467,7 +8467,7 @@
                     }
                 },
                 "summary": "Import an FBI club export (.xlsx) with validated mappings",
-                "description": "Multipart upload: field \"file\" + optional field \"mappings\" (JSON list of {division, fbiTeamLabel?, teamId} \u2014 the manager's choices from the analyze step; persisted as Competition rows). Creates new fixtures and DIFF-UPDATES known ones (by FBI number per team): a rescheduled date or a HOME\u2194AWAY switch un-places the match and lands in warnings[]. Report {message, created, updated, unchanged, exempted, errors[], warnings[{type, division, externalRef, message}], unmappedDivisions[]}. 404 no club/membership \u00b7 403 non-management member \u00b7 409 archived season, socle not validated or concurrent duplicate import \u00b7 400 missing/invalid file, columns or mappings.",
+                "description": "Multipart upload: field \"file\" + optional field \"mappings\" (JSON list of {division, fbiTeamLabel?, teamId} \u2014 the manager's choices from the analyze step; persisted as Competition rows) + optional field \"decisions\" (JSON list of {fixtureId, field: date|kickoff|venue, choice: keep_app|take_file} \u2014 the per-\u00e9cart verdicts from the reconciliation screen). Creates new fixtures and DIFF-UPDATES known ones (by FBI number per team): a rescheduled date or a HOME\u2194AWAY switch un-places the match and lands in warnings[]. A date/heure/salle difference on a home match already placed is NOT overwritten by default \u2014 without a decision it is left intact and reported in unresolvedDeviations. Every deposit is dated. Report {message, created, updated, unchanged, exempted, errors[], warnings[{type, division, externalRef, message}], unmappedDivisions[], unresolvedDeviations[{fixtureId, externalRef, division, teamId, status, persisting, fields}], depositedAt}. 404 no club/membership \u00b7 403 non-management member \u00b7 409 archived season, plan not validated or concurrent duplicate import \u00b7 400 missing/invalid file, columns, mappings or decisions.",
                 "parameters": [],
                 "requestBody": {
                     "description": "The new Fixture resource",
@@ -8483,6 +8483,10 @@
                                     "mappings": {
                                         "type": "string",
                                         "description": "JSON list of {division, fbiTeamLabel?, teamId}"
+                                    },
+                                    "decisions": {
+                                        "type": "string",
+                                        "description": "JSON list of {fixtureId, field: date|kickoff|venue, choice: keep_app|take_file}"
                                     }
                                 },
                                 "required": [
@@ -8567,7 +8571,7 @@
                     }
                 },
                 "summary": "Analyze an FBI club export (.xlsx) \u2014 dry-run",
-                "description": "Multipart upload (field \"file\"). Parses the club-wide FBI export and returns its division groups resolved against the persisted Division\u2194team mappings: {divisions[{name, fbiTeamLabel, rowCount, teamId, competitionId}], totalRows, exempted, errors[]}. Writes nothing. 404 no club/membership \u00b7 403 non-management member \u00b7 409 archived season or socle not validated \u00b7 400 missing/invalid file or columns.",
+                "description": "Multipart upload (field \"file\"). Parses the club-wide FBI export and returns its division groups resolved against the persisted Division\u2194team mappings, plus the reconciliation deviations \u2014 home matches already placed whose date/heure/salle differ from the file (state app VS state file), each to be decided at import: {divisions[{name, fbiTeamLabel, rowCount, teamId, competitionId}], totalRows, exempted, errors[], deviations[{fixtureId, externalRef, division, teamId, status, persisting, fields{date?,kickoff?,venue? each {app,file}}}]}. Writes nothing. 404 no club/membership \u00b7 403 non-management member \u00b7 409 archived season or plan not validated \u00b7 400 missing/invalid file or columns.",
                 "parameters": [],
                 "requestBody": {
                     "description": "The new Fixture resource",
@@ -9826,6 +9830,64 @@
                     },
                     "required": false
                 }
+            }
+        },
+        "/api/fbi-ingestions/latest": {
+            "get": {
+                "operationId": "getLatestFbiIngestion",
+                "tags": [
+                    "Match"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The last FBI export deposit of the club/season (freshness: \u00ab last deposit N days ago \u00bb) \u2014 null when none yet",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "latest": {
+                                            "type": "object",
+                                            "nullable": true,
+                                            "properties": {
+                                                "depositedAt": {
+                                                    "type": "string",
+                                                    "format": "date-time"
+                                                },
+                                                "source": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "FBI_XLSX",
+                                                        "FFBB_API"
+                                                    ]
+                                                },
+                                                "created": {
+                                                    "type": "integer"
+                                                },
+                                                "updated": {
+                                                    "type": "integer"
+                                                },
+                                                "unchanged": {
+                                                    "type": "integer"
+                                                },
+                                                "deviationsCount": {
+                                                    "type": "integer"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No club or season in context"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    }
+                },
+                "summary": "Last FBI export deposit of the club/season (freshness feed, read-only, open to any member)"
             }
         },
         "/api/ffbb/engagements": {

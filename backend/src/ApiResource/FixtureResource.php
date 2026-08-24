@@ -37,7 +37,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
         controller: 'App\Controller\ImportFixturesAnalyzeController',
         openapi: new OpenApiOperation(
             summary: 'Analyze an FBI club export (.xlsx) — dry-run',
-            description: 'Multipart upload (field "file"). Parses the club-wide FBI export and returns its division groups resolved against the persisted Division↔team mappings: {divisions[{name, fbiTeamLabel, rowCount, teamId, competitionId}], totalRows, exempted, errors[]}. Writes nothing. 404 no club/membership · 403 non-management member · 409 archived season or socle not validated · 400 missing/invalid file or columns.',
+            description: 'Multipart upload (field "file"). Parses the club-wide FBI export and returns its division groups resolved against the persisted Division↔team mappings, plus the reconciliation deviations — home matches already placed whose date/heure/salle differ from the file (state app VS state file), each to be decided at import: {divisions[{name, fbiTeamLabel, rowCount, teamId, competitionId}], totalRows, exempted, errors[], deviations[{fixtureId, externalRef, division, teamId, status, persisting, fields{date?,kickoff?,venue? each {app,file}}}]}. Writes nothing. 404 no club/membership · 403 non-management member · 409 archived season or plan not validated · 400 missing/invalid file or columns.',
             requestBody: new OpenApiRequestBody(
                 content: new ArrayObject([
                     'multipart/form-data' => [
@@ -55,13 +55,14 @@ use Symfony\Component\Serializer\Attribute\Groups;
         controller: 'App\Controller\ImportFixturesController',
         openapi: new OpenApiOperation(
             summary: 'Import an FBI club export (.xlsx) with validated mappings',
-            description: 'Multipart upload: field "file" + optional field "mappings" (JSON list of {division, fbiTeamLabel?, teamId} — the manager\'s choices from the analyze step; persisted as Competition rows). Creates new fixtures and DIFF-UPDATES known ones (by FBI number per team): a rescheduled date or a HOME↔AWAY switch un-places the match and lands in warnings[]. Report {message, created, updated, unchanged, exempted, errors[], warnings[{type, division, externalRef, message}], unmappedDivisions[]}. 404 no club/membership · 403 non-management member · 409 archived season, socle not validated or concurrent duplicate import · 400 missing/invalid file, columns or mappings.',
+            description: 'Multipart upload: field "file" + optional field "mappings" (JSON list of {division, fbiTeamLabel?, teamId} — the manager\'s choices from the analyze step; persisted as Competition rows) + optional field "decisions" (JSON list of {fixtureId, field: date|kickoff|venue, choice: keep_app|take_file} — the per-écart verdicts from the reconciliation screen). Creates new fixtures and DIFF-UPDATES known ones (by FBI number per team): a rescheduled date or a HOME↔AWAY switch un-places the match and lands in warnings[]. A date/heure/salle difference on a home match already placed is NOT overwritten by default — without a decision it is left intact and reported in unresolvedDeviations. Every deposit is dated. Report {message, created, updated, unchanged, exempted, errors[], warnings[{type, division, externalRef, message}], unmappedDivisions[], unresolvedDeviations[{fixtureId, externalRef, division, teamId, status, persisting, fields}], depositedAt}. 404 no club/membership · 403 non-management member · 409 archived season, plan not validated or concurrent duplicate import · 400 missing/invalid file, columns, mappings or decisions.',
             requestBody: new OpenApiRequestBody(
                 content: new ArrayObject([
                     'multipart/form-data' => [
                         'schema' => ['type' => 'object', 'properties' => [
                             'file' => ['type' => 'string', 'format' => 'binary'],
                             'mappings' => ['type' => 'string', 'description' => 'JSON list of {division, fbiTeamLabel?, teamId}'],
+                            'decisions' => ['type' => 'string', 'description' => 'JSON list of {fixtureId, field: date|kickoff|venue, choice: keep_app|take_file}'],
                         ], 'required' => ['file']],
                     ],
                 ]),

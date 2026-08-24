@@ -7,6 +7,7 @@ namespace App\Tests\Security;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Competition;
+use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -19,6 +20,7 @@ use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
 use App\Enum\CompetitionType;
+use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
@@ -318,6 +320,27 @@ final class MatchTenantIsolationTest extends WebTestCase
             'teamAId' => $teams[9]->getId(), 'teamBId' => $teams[10]->getId(), 'linkType' => 'NOT_SIMULTANEOUS',
         ], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(201);
+    }
+
+    public function testFbiIngestionsAreScopedToTheClub(): void
+    {
+        [$clubA, , $seasonA] = $this->createClubUser('a');
+        $this->scopeGucToClub($clubA->getId());
+        $this->em->persist(new FbiIngestion($clubA->getId(), $seasonA->getId(), FbiIngestionSource::FBI_XLSX, new DateTimeImmutable, 3, 1, 0, 0, []));
+        $this->em->flush();
+
+        [$clubB, $userB] = $this->createClubUser('b');
+
+        // Club B's freshness read (open to any member) sees nothing of club A's deposit.
+        $this->client->request('GET', '/api/fbi-ingestions/latest', [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(200);
+        $data = $this->responseData();
+        self::assertArrayHasKey('latest', $data);
+        self::assertNull($data['latest']);
+
+        // And the RLS-scoped repository confirms the boundary directly.
+        $this->scopeGucToClub($clubB->getId());
+        self::assertCount(0, $this->em->getRepository(FbiIngestion::class)->findBy(['clubId' => $clubA->getId()]));
     }
 
     protected function setUp(): void

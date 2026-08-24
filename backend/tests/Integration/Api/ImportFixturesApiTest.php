@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
+use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
+use App\Enum\FixtureStatus;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
@@ -103,6 +105,65 @@ final class ImportFixturesApiTest extends WebTestCase
         self::assertSame('RESCHEDULED', $second['warnings'][0]['type'] ?? null);
     }
 
+    public function testReconciliationDeviationsOverHttp(): void
+    {
+        [$token, $clubName, $teamId] = $this->registerWithTeam();
+        $needle = strtoupper($clubName);
+
+        // Import a home match, then place it (PLACED — inside the perimeter).
+        $this->upload('/api/fixtures/import', $token, $this->xlsx([
+            ['D2', 'A9300', $needle . ' - 1', 'AS Voisins', '03/10/2026', '15:30', 'Gymnase X'],
+        ]), ['mappings' => json_encode([['division' => 'D2', 'teamId' => $teamId]], \JSON_THROW_ON_ERROR)]);
+        self::assertResponseStatusCodeSame(200);
+
+        $fixtureId = $this->placeFixture('A9300');
+
+        // ANALYZE the same file with a rescheduled date → the deviation surfaces.
+        $this->upload('/api/fixtures/import/analyze', $token, $this->xlsx([
+            ['D2', 'A9300', $needle . ' - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X'],
+        ]));
+        self::assertResponseStatusCodeSame(200);
+        $analysis = $this->responseData();
+        self::assertCount(1, $analysis['deviations']);
+        self::assertSame($fixtureId, $analysis['deviations'][0]['fixtureId']);
+        self::assertSame(['app' => '2026-10-03', 'file' => '2026-10-10'], $analysis['deviations'][0]['fields']['date']);
+
+        // IMPORT WITHOUT a decision → intact + reported in unresolvedDeviations.
+        $this->upload('/api/fixtures/import', $token, $this->xlsx([
+            ['D2', 'A9300', $needle . ' - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X'],
+        ]));
+        self::assertResponseStatusCodeSame(200);
+        $noDecision = $this->responseData();
+        self::assertCount(1, $noDecision['unresolvedDeviations']);
+        self::assertArrayHasKey('depositedAt', $noDecision);
+        $this->assertFixtureDate($fixtureId, '2026-10-03');
+
+        // IMPORT WITH a take_file decision → applied, nothing left unresolved.
+        $this->upload('/api/fixtures/import', $token, $this->xlsx([
+            ['D2', 'A9300', $needle . ' - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X'],
+        ]), ['decisions' => json_encode([['fixtureId' => $fixtureId, 'field' => 'date', 'choice' => 'take_file']], \JSON_THROW_ON_ERROR)]);
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame([], $this->responseData()['unresolvedDeviations']);
+        $this->assertFixtureDate($fixtureId, '2026-10-10');
+
+        // Freshness read (open to member, tenant+season auto): the last deposit.
+        $this->client->request('GET', '/api/fbi-ingestions/latest', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(200);
+        $freshness = $this->responseData()['latest'] ?? null;
+        self::assertIsArray($freshness);
+        self::assertSame('FBI_XLSX', $freshness['source']);
+    }
+
+    public function testMalformedDecisionsFieldIsRejected(): void
+    {
+        [$token] = $this->registerWithTeam();
+
+        $this->upload('/api/fixtures/import', $token, $this->xlsx([
+            ['D2', 'A9400', 'X - 1', 'AS Voisins', '03/10/2026', '', ''],
+        ]), ['decisions' => '{ not a list }']);
+        self::assertResponseStatusCodeSame(400);
+    }
+
     public function testImportEngagesTheTeam(): void
     {
         // NR « périmètre engagé » (§7.1) : the import IS the engagement — even
@@ -170,7 +231,26 @@ final class ImportFixturesApiTest extends WebTestCase
         parent::tearDown();
     }
 
-    /** @param array<string, string> $parameters */
+    /** Places the imported fixture (PLACED + a venue id) and returns its id. */
+    private function placeFixture(string $externalRef): string
+    {
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
+        self::assertNotNull($fixture, 'imported fixture must exist');
+        $fixture->setStatus(FixtureStatus::PLACED);
+        $fixture->setVenueId('11111111-1111-4111-8111-111111111111');
+        $this->em->flush();
+
+        return $fixture->getId();
+    }
+
+    private function assertFixtureDate(string $id, string $expected): void
+    {
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->find($id);
+        self::assertNotNull($fixture);
+        self::assertSame($expected, $fixture->getMatchDate()->format('Y-m-d'));
+    }
+
     private function upload(string $uri, string $token, string $filePath, array $parameters = []): void
     {
         $this->client->request('POST', $uri, $parameters, [

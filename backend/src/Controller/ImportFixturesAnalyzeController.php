@@ -73,6 +73,9 @@ final class ImportFixturesAnalyzeController extends AbstractController
             'totalRows' => $result['totalRows'],
             'exempted' => $result['exempted'],
             'errors' => $result['errors'],
+            // RMM-4 — the reconciliation écarts of home fixtures already placed
+            // (state app VS state fichier), each to be decided per écart at import.
+            'deviations' => $result['deviations'],
         ], Response::HTTP_OK);
     }
 }

@@ -1,7 +1,9 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-08-24 (rotation `documentation-update`, pas de sujet lié à cette passe — sondage
-des stamps les plus anciens du dépôt). Re-confronté au code, tout juste : hosts en constantes dures
+Last verified @ 2026-08-24 (réconciliation FBI RMM-4 : re-mesure de `ffbbserver_rencontres` — l'index
+est passé à **1 052 documents**, mais les **36 hits BCCL sont tous des AMICAUX, zéro championnat** ;
+les deux anciennes mentions « 31/32 documents de test, 0 hit réel » sont corrigées ci-dessous).
+Re-confronté au code, tout juste : hosts en constantes dures
 (`Service/Basketball/FfbbApiClient.php:24-25`, `CONFIG_URL`/`SEARCH_URL`) et index
 `ffbbserver_organismes` ✓ · `POST /api/club/ffbb-import` (`Controller/Basketball/FfbbImportController.php:36`) ✓ ·
 `PATCH /api/club/info` bien SUPPRIMÉ — zéro occurrence dans `src/` ✓. Non re-sondé cette passe
@@ -91,7 +93,7 @@ GET https://api.ffbb.com/assets/{uuid}?format=webp&height=220&fit=contain
 ## Ce que l'API NE fournit PAS
 
 - **Président / correspondant nommé** (personne physique) : absent de l'index. Volontairement **hors scope** lot C (seul le contact institutionnel — mail secrétariat + tél — est exposé).
-- **Les calendriers de rencontres.** Mesuré le 2026-08-02 : l'index `ffbbserver_rencontres` existe, son schéma est complet (36 champs), mais il ne contient que **31 documents de TEST** au niveau national. Les matchs continuent de passer par l'**import FBI**.
+- **Les calendriers de rencontres.** Re-mesuré le 2026-08-24 : l'index `ffbbserver_rencontres` existe, son schéma est complet (36 champs), et il porte désormais **1 052 documents** — mais pour le BCCL les **36 hits sont TOUS des AMICAUX, zéro rencontre de championnat**. La vérité du calendrier (championnat, poule, dates officielles) continue de passer par l'**import FBI** ; l'API ne remplace pas ce canal.
 
 ## Engagements + compétitions (P1-4 PR F, appariement)
 
@@ -112,8 +114,9 @@ La jointure complète vit dans `FfbbEngagementReader` (filtre saison via `FfbbSe
 `PrÃ© rÃ©gionale`). Consommée par `FfbbEngagementsController` (`GET /api/ffbb/engagements` +
 `POST /api/ffbb/engagements/confirm`, SEC-07 + saison écrivable + socle pointé).
 
-Re-test `ffbbserver_rencontres` du 2026-08-03 : toujours **32 documents de test** (`joue: false`), 0 hit
-pour un code club réel — rien à récupérer, l'import FBI reste le chemin.
+Re-test `ffbbserver_rencontres` du 2026-08-24 : **1 052 documents** (l'index a grossi depuis le
+sondage initial), dont **36 hits pour le BCCL — tous des AMICAUX, aucun match de championnat**.
+L'API n'apporte donc pas le calendrier officiel : l'import FBI reste le chemin de la vérité.
 
 ## Salles d'une commune (P2-20 — autocomplétion des gymnases du wizard)
 
