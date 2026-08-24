@@ -11,6 +11,8 @@ use App\Entity\MatchSlotRotationTeam;
 use App\Entity\Team;
 use App\Entity\Venue;
 use DateTimeImmutable;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 /**
  * RMM-5 (P2-49) — écriture d'un créneau de match partagé. Une rotation = un parent
@@ -41,26 +43,14 @@ class MatchSlotRotationStateProcessor extends AbstractStateProcessor
      */
     protected function processPost(object $input, ?string $clubId, ?string $seasonId): object
     {
-        return $this->entityManager->wrapInTransaction(function () use ($input, $clubId, $seasonId): object {
-            $resolvedSeasonId = $this->resolveSeasonId($clubId, $seasonId);
-
-            $rotation = new MatchSlotRotation;
-            $this->applySlotFields($rotation, $input);
-            if (null !== $clubId) {
-                $rotation->setClubId($clubId);
-            }
-            if (null !== $resolvedSeasonId) {
-                $rotation->setSeasonId($resolvedSeasonId);
-            }
-
-            $this->assertRotationValid($rotation, $clubId, $resolvedSeasonId, $input->teamIds, null);
-
-            $this->entityManager->persist($rotation);
-            $this->addMembers($rotation, $input->teamIds, $clubId, $resolvedSeasonId);
-            $this->entityManager->flush();
-
-            return $this->mapEntityToOutput($rotation);
-        });
+        try {
+            return $this->doProcessPost($input, $clubId, $seasonId);
+        } catch (UniqueConstraintViolationException) {
+            // Même règle que le processPost du parent (P4-67) : une course sur
+            // l'unicité de créneau (deux POST simultanés du même créneau) est un
+            // doublon client → 409 nommé, jamais un 500 (revue sécurité 2026-08-25).
+            throw new ConflictHttpException('Ce créneau partagé existe déjà (doublon).');
+        }
     }
 
     /**
@@ -86,7 +76,16 @@ class MatchSlotRotationStateProcessor extends AbstractStateProcessor
         $this->applySlotFields($entity, $input);
         $this->assertRotationValid($entity, $entity->getClubId(), $entity->getSeasonId(), $input->teamIds, $entity->getId());
         $entity->touchUpdatedAt();
-        $this->replaceMembers($entity, $input->teamIds);
+        // Le remplacement des membres est TRANSACTIONNEL (revue sécurité 2026-08-25) :
+        // sans cela, le flush intermédiaire de replaceMembers COMMITTE la suppression
+        // seule — un échec du flush final laisserait une rotation à 0 membre en base,
+        // l'invariant ≥ 2 érodé en silence pour les consommateurs du payload (PR-2/3).
+        // Dans la transaction, le flush intermédiaire ne committe rien : tout part
+        // au commit, ou rien. Le flush du parent après nous devient un no-op.
+        $this->entityManager->wrapInTransaction(function () use ($entity, $input): void {
+            $this->replaceMembers($entity, $input->teamIds);
+            $this->entityManager->flush();
+        });
     }
 
     /**
@@ -111,6 +110,33 @@ class MatchSlotRotationStateProcessor extends AbstractStateProcessor
         );
 
         return MatchSlotRotationResource::fromEntity($entity, $teamIds);
+    }
+
+    /**
+     * @param MatchSlotRotationInput $input
+     */
+    private function doProcessPost(object $input, ?string $clubId, ?string $seasonId): MatchSlotRotationResource
+    {
+        return $this->entityManager->wrapInTransaction(function () use ($input, $clubId, $seasonId): MatchSlotRotationResource {
+            $resolvedSeasonId = $this->resolveSeasonId($clubId, $seasonId);
+
+            $rotation = new MatchSlotRotation;
+            $this->applySlotFields($rotation, $input);
+            if (null !== $clubId) {
+                $rotation->setClubId($clubId);
+            }
+            if (null !== $resolvedSeasonId) {
+                $rotation->setSeasonId($resolvedSeasonId);
+            }
+
+            $this->assertRotationValid($rotation, $clubId, $resolvedSeasonId, $input->teamIds, null);
+
+            $this->entityManager->persist($rotation);
+            $this->addMembers($rotation, $input->teamIds, $clubId, $resolvedSeasonId);
+            $this->entityManager->flush();
+
+            return $this->mapEntityToOutput($rotation);
+        });
     }
 
     private function applySlotFields(MatchSlotRotation $entity, MatchSlotRotationInput $input): void
