@@ -17,6 +17,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Exception\ImportRejectedException;
 use App\Repository\FbiIngestionRepository;
+use App\Service\Basketball\FfbbRencontreReconciler;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -62,6 +63,13 @@ use Symfony\Component\Clock\ClockInterface;
  *
  * Per-row error report (never fail-fast past the header): valid rows import
  * even when others fail.
+ *
+ * ⚑ The reconciliation deviation ENGINE (detect + take_file per field + record /
+ * group / indexDecisions + the venue-name index) is exposed `public` and is the
+ * ONE home of the app⇄file diff semantics: the FFBB-API channel (RMM-4 PR-3,
+ * {@see FfbbRencontreReconciler}) reuses it verbatim on
+ * rows of the same shape, so the two channels reconcile identically — never a
+ * second copy that could drift.
  */
 final class FbiFixtureImporter
 {
@@ -377,6 +385,213 @@ final class FbiFixtureImporter
     }
 
     /**
+     * The reconciliation perimeter (RMM-4 D1): the divergent date/kickoff/venue
+     * fields of a HOME fixture already placed, comparing the file to the app —
+     * OR null when the fixture is OUT of the perimeter (extérieur, or home but
+     * UNPLACED, or the row switches side). Read-only. AWAY never enters (the
+     * fondateur invariant): the perimeter requires the fixture to BE home and the
+     * row to STAY home.
+     *
+     * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
+     * @param array<string, string>                                                                                                                                               $venueNames venueId → Venue name
+     *
+     * @return array<string, array{app: string|null, file: string|null}>|null keyed by field (date/kickoff/venue); null = out of perimeter
+     */
+    public function detectFieldDeviations(Fixture $existing, array $row, array $venueNames): ?array
+    {
+        $inPerimeter = FixtureHomeAway::HOME === $existing->getHomeAway()
+            && FixtureHomeAway::HOME === $row['homeAway']
+            && FixtureStatus::UNPLACED !== $existing->getStatus();
+        if (!$inPerimeter) {
+            return null;
+        }
+
+        $fields = [];
+
+        if ($existing->getMatchDate()->format('Y-m-d') !== $row['matchDate']->format('Y-m-d')) {
+            $fields['date'] = ['app' => $existing->getMatchDate()->format('Y-m-d'), 'file' => $row['matchDate']->format('Y-m-d')];
+        }
+
+        // The 00:00 sentinel is parsed to null upstream (fact F2): a null file
+        // kickoff is « not set », never a divergence.
+        if ($row['kickoffTime'] instanceof DateTimeImmutable) {
+            $current = $existing->getKickoffTime();
+            if (!$current instanceof DateTimeImmutable || $current->format('H:i') !== $row['kickoffTime']->format('H:i')) {
+                $fields['kickoff'] = ['app' => $current?->format('H:i'), 'file' => $row['kickoffTime']->format('H:i')];
+            }
+        }
+
+        // Salle (D13): app = the placed Venue's name, file = the free FBI label.
+        // A placed home fixture without a venue id, or an unknown venue, cannot be
+        // compared → no deviation (degrade safe). Fuzzy: normalized equality OR
+        // whole-word containment either way (« Coubertin » ≈ « GYMNASE … COUBERTIN »).
+        $venueId = $existing->getVenueId();
+        $fileLabel = $row['venueLabel'];
+        if (null !== $venueId && null !== $fileLabel && isset($venueNames[$venueId])) {
+            $appLabel = $venueNames[$venueId];
+            if (!$this->venueMatches($appLabel, $fileLabel)) {
+                $fields['venue'] = ['app' => $appLabel, 'file' => $fileLabel];
+            }
+        }
+
+        return $fields;
+    }
+
+    /**
+     * « Prendre le fichier » on one field. Retained semantics (RMM-4):
+     * - DATE: la ligue a re-décidé → write the date AND un-place (UNPLACED, venue
+     *   cleared) — exactly today's reschedule; the placement is invalidated.
+     * - KICKOFF: write the hour IN PLACE (venue kept); a SUBMITTED/VALIDATED
+     *   fixture drops to PLACED (D2 — the FBI checkmark was on a wrong hour).
+     * - VENUE: the file names a different room → un-place (venue cleared, raw
+     *   label adopted) so the manager re-places; this makes take_file RESOLVE the
+     *   écart (next deposit: home UNPLACED → file wins, no deviation).
+     *
+     * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
+     */
+    public function applyFieldTakeFile(Fixture $existing, string $field, array $row): void
+    {
+        switch ($field) {
+            case 'date':
+                $existing->setMatchDate($row['matchDate']);
+                $this->unplace($existing);
+                break;
+            case 'kickoff':
+                if ($row['kickoffTime'] instanceof DateTimeImmutable) {
+                    $existing->setKickoffTime($row['kickoffTime']);
+                }
+                $this->demoteSubmitted($existing);
+                break;
+            case 'venue':
+                if (null !== $row['venueLabel']) {
+                    $existing->setFbiVenueLabel($row['venueLabel']);
+                }
+                $this->unplace($existing);
+                break;
+        }
+    }
+
+    /**
+     * @param array{app: string|null, file: string|null} $vals
+     * @param string|null                                $status the status the manager saw (defaults to the live one — analyze never mutates)
+     *
+     * @return array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}
+     */
+    public function deviationRecord(Fixture $existing, string $field, array $vals, string $divisionName, string $effect, ?string $status = null): array
+    {
+        return [
+            'fixtureId' => $existing->getId(),
+            'externalRef' => (string) $existing->getExternalRef(),
+            'division' => $divisionName,
+            'teamId' => $existing->getTeamId(),
+            'status' => $status ?? $existing->getStatus()->value,
+            'field' => $field,
+            'app' => $vals['app'],
+            'file' => $vals['file'],
+            'effect' => $effect,
+        ];
+    }
+
+    /**
+     * Groups flat per-field records into one deviation object per fixture, with a
+     * `persisting` flag (any of its fields was pending on the previous deposit).
+     * The `status` is captured at detection (before any take_file mutation) — the
+     * FIRST record of the fixture wins, so it reflects what the manager saw.
+     *
+     * @param list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}> $records
+     * @param array<string, true>                                                                                                                                                       $persistingSet
+     *
+     * @return list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, persisting: bool, fields: array<string, array{app: string|null, file: string|null}>}>
+     */
+    public function groupDeviations(array $records, array $persistingSet): array
+    {
+        /** @var array<string, array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, persisting: bool, fields: array<string, array{app: string|null, file: string|null}>}> $byFixture */
+        $byFixture = [];
+        foreach ($records as $record) {
+            $id = $record['fixtureId'];
+            if (!isset($byFixture[$id])) {
+                $byFixture[$id] = [
+                    'fixtureId' => $id,
+                    'externalRef' => $record['externalRef'],
+                    'division' => $record['division'],
+                    'teamId' => $record['teamId'],
+                    'status' => $record['status'],
+                    'persisting' => false,
+                    'fields' => [],
+                ];
+            }
+            $byFixture[$id]['fields'][$record['field']] = ['app' => $record['app'], 'file' => $record['file']];
+            if (isset($persistingSet[$id . '|' . $record['field']])) {
+                $byFixture[$id]['persisting'] = true;
+            }
+        }
+
+        return array_values($byFixture);
+    }
+
+    /**
+     * venueId → Venue name, scoped to the club+season by the tenant/season
+     * filters — for the fuzzy salle compare of a placed home fixture.
+     *
+     * @return array<string, string>
+     */
+    public function venueNamesById(): array
+    {
+        $names = [];
+        foreach ($this->entityManager->getRepository(Venue::class)->findAll() as $venue) {
+            $names[$venue->getId()] = $venue->getName();
+        }
+
+        return $names;
+    }
+
+    /**
+     * Normalizes the multipart decisions into a « fixtureId|field » → choice map.
+     * Unknown fields or choices are dropped (a forged decision can never write).
+     *
+     * @param list<array{fixtureId: string, field: string, choice: string}> $decisions
+     *
+     * @return array<string, string>
+     */
+    public function indexDecisions(array $decisions): array
+    {
+        $map = [];
+        foreach ($decisions as $decision) {
+            if (!\in_array($decision['field'], self::DEVIATION_FIELDS, true)) {
+                continue;
+            }
+            if ('keep_app' !== $decision['choice'] && 'take_file' !== $decision['choice']) {
+                continue;
+            }
+            $map[$decision['fixtureId'] . '|' . $decision['field']] = $decision['choice'];
+        }
+
+        return $map;
+    }
+
+    /**
+     * Whole-word containment of the club needle in a team label: both sides are
+     * normalized and space-padded so "bc test" matches "bc test 1" but never
+     * "bc testville" (word boundary, not substring).
+     */
+    public function containsClub(string $label, string $clubNeedle): bool
+    {
+        return str_contains(' ' . $this->normalizeLabel($label) . ' ', ' ' . $clubNeedle . ' ');
+    }
+
+    /**
+     * Header labels AND team labels tolerate case/accents/spacing drift: FBI
+     * exports are not under our control.
+     */
+    public function normalizeLabel(string $value): string
+    {
+        $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        $lower = mb_strtolower(false === $ascii ? $value : $ascii, 'UTF-8');
+
+        return trim((string) preg_replace('/\s+/', ' ', (string) preg_replace('/[^a-z0-9]+/', ' ', $lower)));
+    }
+
+    /**
      * Guard-before-write (revue F2 round 1): a mapping whose division the poule
      * guard REFUSES is dropped (named error) instead of persisted — the dialog
      * has no remap gesture, a wrong write would stick. The target competition
@@ -625,59 +840,6 @@ final class FbiFixtureImporter
     }
 
     /**
-     * The reconciliation perimeter (RMM-4 D1): the divergent date/kickoff/venue
-     * fields of a HOME fixture already placed, comparing the file to the app —
-     * OR null when the fixture is OUT of the perimeter (extérieur, or home but
-     * UNPLACED, or the row switches side). Read-only. AWAY never enters (the
-     * fondateur invariant): the perimeter requires the fixture to BE home and the
-     * row to STAY home.
-     *
-     * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
-     * @param array<string, string>                                                                                                                                               $venueNames venueId → Venue name
-     *
-     * @return array<string, array{app: string|null, file: string|null}>|null keyed by field (date/kickoff/venue); null = out of perimeter
-     */
-    private function detectFieldDeviations(Fixture $existing, array $row, array $venueNames): ?array
-    {
-        $inPerimeter = FixtureHomeAway::HOME === $existing->getHomeAway()
-            && FixtureHomeAway::HOME === $row['homeAway']
-            && FixtureStatus::UNPLACED !== $existing->getStatus();
-        if (!$inPerimeter) {
-            return null;
-        }
-
-        $fields = [];
-
-        if ($existing->getMatchDate()->format('Y-m-d') !== $row['matchDate']->format('Y-m-d')) {
-            $fields['date'] = ['app' => $existing->getMatchDate()->format('Y-m-d'), 'file' => $row['matchDate']->format('Y-m-d')];
-        }
-
-        // The 00:00 sentinel is parsed to null upstream (fact F2): a null file
-        // kickoff is « not set », never a divergence.
-        if ($row['kickoffTime'] instanceof DateTimeImmutable) {
-            $current = $existing->getKickoffTime();
-            if (!$current instanceof DateTimeImmutable || $current->format('H:i') !== $row['kickoffTime']->format('H:i')) {
-                $fields['kickoff'] = ['app' => $current?->format('H:i'), 'file' => $row['kickoffTime']->format('H:i')];
-            }
-        }
-
-        // Salle (D13): app = the placed Venue's name, file = the free FBI label.
-        // A placed home fixture without a venue id, or an unknown venue, cannot be
-        // compared → no deviation (degrade safe). Fuzzy: normalized equality OR
-        // whole-word containment either way (« Coubertin » ≈ « GYMNASE … COUBERTIN »).
-        $venueId = $existing->getVenueId();
-        $fileLabel = $row['venueLabel'];
-        if (null !== $venueId && null !== $fileLabel && isset($venueNames[$venueId])) {
-            $appLabel = $venueNames[$venueId];
-            if (!$this->venueMatches($appLabel, $fileLabel)) {
-                $fields['venue'] = ['app' => $appLabel, 'file' => $fileLabel];
-            }
-        }
-
-        return $fields;
-    }
-
-    /**
      * Applies the manager's per-écart verdicts on a fixture inside the perimeter.
      * A field WITHOUT a decision is left INTACT and recorded « none » (it will be
      * reported unresolved — never an écrasement by default). The opponent label
@@ -724,40 +886,6 @@ final class FbiFixtureImporter
         return $changed ? 'updated' : 'unchanged';
     }
 
-    /**
-     * « Prendre le fichier » on one field. Retained semantics (RMM-4):
-     * - DATE: la ligue a re-décidé → write the date AND un-place (UNPLACED, venue
-     *   cleared) — exactly today's reschedule; the placement is invalidated.
-     * - KICKOFF: write the hour IN PLACE (venue kept); a SUBMITTED/VALIDATED
-     *   fixture drops to PLACED (D2 — the FBI checkmark was on a wrong hour).
-     * - VENUE: the file names a different room → un-place (venue cleared, raw
-     *   label adopted) so the manager re-places; this makes take_file RESOLVE the
-     *   écart (next deposit: home UNPLACED → file wins, no deviation).
-     *
-     * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
-     */
-    private function applyFieldTakeFile(Fixture $existing, string $field, array $row): void
-    {
-        switch ($field) {
-            case 'date':
-                $existing->setMatchDate($row['matchDate']);
-                $this->unplace($existing);
-                break;
-            case 'kickoff':
-                if ($row['kickoffTime'] instanceof DateTimeImmutable) {
-                    $existing->setKickoffTime($row['kickoffTime']);
-                }
-                $this->demoteSubmitted($existing);
-                break;
-            case 'venue':
-                if (null !== $row['venueLabel']) {
-                    $existing->setFbiVenueLabel($row['venueLabel']);
-                }
-                $this->unplace($existing);
-                break;
-        }
-    }
-
     /** D2: an in-place take_file un-submits a SUBMITTED/VALIDATED fixture to PLACED. */
     private function demoteSubmitted(Fixture $fixture): void
     {
@@ -800,64 +928,6 @@ final class FbiFixtureImporter
         }
 
         return $a === $b || $this->containsClub($fileLabel, $a) || $this->containsClub($appLabel, $b);
-    }
-
-    /**
-     * @param array{app: string|null, file: string|null} $vals
-     * @param string|null                                $status the status the manager saw (defaults to the live one — analyze never mutates)
-     *
-     * @return array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}
-     */
-    private function deviationRecord(Fixture $existing, string $field, array $vals, string $divisionName, string $effect, ?string $status = null): array
-    {
-        return [
-            'fixtureId' => $existing->getId(),
-            'externalRef' => (string) $existing->getExternalRef(),
-            'division' => $divisionName,
-            'teamId' => $existing->getTeamId(),
-            'status' => $status ?? $existing->getStatus()->value,
-            'field' => $field,
-            'app' => $vals['app'],
-            'file' => $vals['file'],
-            'effect' => $effect,
-        ];
-    }
-
-    /**
-     * Groups flat per-field records into one deviation object per fixture, with a
-     * `persisting` flag (any of its fields was pending on the previous deposit).
-     * The `status` is captured at detection (before any take_file mutation) — the
-     * FIRST record of the fixture wins, so it reflects what the manager saw.
-     *
-     * @param list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}> $records
-     * @param array<string, true>                                                                                                                                                       $persistingSet
-     *
-     * @return list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, persisting: bool, fields: array<string, array{app: string|null, file: string|null}>}>
-     */
-    private function groupDeviations(array $records, array $persistingSet): array
-    {
-        /** @var array<string, array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, persisting: bool, fields: array<string, array{app: string|null, file: string|null}>}> $byFixture */
-        $byFixture = [];
-        foreach ($records as $record) {
-            $id = $record['fixtureId'];
-            if (!isset($byFixture[$id])) {
-                $byFixture[$id] = [
-                    'fixtureId' => $id,
-                    'externalRef' => $record['externalRef'],
-                    'division' => $record['division'],
-                    'teamId' => $record['teamId'],
-                    'status' => $record['status'],
-                    'persisting' => false,
-                    'fields' => [],
-                ];
-            }
-            $byFixture[$id]['fields'][$record['field']] = ['app' => $record['app'], 'file' => $record['file']];
-            if (isset($persistingSet[$id . '|' . $record['field']])) {
-                $byFixture[$id]['persisting'] = true;
-            }
-        }
-
-        return array_values($byFixture);
     }
 
     /**
@@ -919,46 +989,6 @@ final class FbiFixtureImporter
         }
 
         return $index;
-    }
-
-    /**
-     * venueId → Venue name, scoped to the club+season by the tenant/season
-     * filters — for the fuzzy salle compare of a placed home fixture.
-     *
-     * @return array<string, string>
-     */
-    private function venueNamesById(): array
-    {
-        $names = [];
-        foreach ($this->entityManager->getRepository(Venue::class)->findAll() as $venue) {
-            $names[$venue->getId()] = $venue->getName();
-        }
-
-        return $names;
-    }
-
-    /**
-     * Normalizes the multipart decisions into a « fixtureId|field » → choice map.
-     * Unknown fields or choices are dropped (a forged decision can never write).
-     *
-     * @param list<array{fixtureId: string, field: string, choice: string}> $decisions
-     *
-     * @return array<string, string>
-     */
-    private function indexDecisions(array $decisions): array
-    {
-        $map = [];
-        foreach ($decisions as $decision) {
-            if (!\in_array($decision['field'], self::DEVIATION_FIELDS, true)) {
-                continue;
-            }
-            if ('keep_app' !== $decision['choice'] && 'take_file' !== $decision['choice']) {
-                continue;
-            }
-            $map[$decision['fixtureId'] . '|' . $decision['field']] = $decision['choice'];
-        }
-
-        return $map;
     }
 
     /**
@@ -1366,28 +1396,6 @@ final class FbiFixtureImporter
         }
 
         return null;
-    }
-
-    /**
-     * Whole-word containment of the club needle in a team label: both sides are
-     * normalized and space-padded so "bc test" matches "bc test 1" but never
-     * "bc testville" (word boundary, not substring).
-     */
-    private function containsClub(string $label, string $clubNeedle): bool
-    {
-        return str_contains(' ' . $this->normalizeLabel($label) . ' ', ' ' . $clubNeedle . ' ');
-    }
-
-    /**
-     * Header labels AND team labels tolerate case/accents/spacing drift: FBI
-     * exports are not under our control.
-     */
-    private function normalizeLabel(string $value): string
-    {
-        $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
-        $lower = mb_strtolower(false === $ascii ? $value : $ascii, 'UTF-8');
-
-        return trim((string) preg_replace('/\s+/', ' ', (string) preg_replace('/[^a-z0-9]+/', ' ', $lower)));
     }
 
     /**

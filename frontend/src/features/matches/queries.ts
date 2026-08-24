@@ -202,6 +202,26 @@ export function useConfirmFfbbPairings() {
   });
 }
 
+/** RMM-4 PR-3 — the FFBB-API channel: fetched ON DEMAND (a management gesture,
+ * never cached — the button controls `enabled`). FBI stays the truth. */
+export function useFfbbRencontres(enabled: boolean) {
+  return useQuery({ queryKey: ["ffbb", "rencontres"], queryFn: matchesApi.getFfbbRencontres, enabled, staleTime: 0, gcTime: 0, retry: false });
+}
+
+export function useApplyFfbbRencontres() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ decisions, creations }: { decisions: matchesApi.DeviationDecision[]; creations: matchesApi.RencontreCreation[] }) =>
+      matchesApi.applyFfbbRencontres(decisions, creations),
+    onSuccess: () => {
+      invalidateFixtures(queryClient);
+      // Créations amicales : une compétition appariée matérialise le competitionId.
+      void queryClient.invalidateQueries({ queryKey: ["competitions"] });
+    },
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
 // ── Capacity layer (P1-4 PR B) ───────────────────────────────────────────────
 
 /** Match access windows of the club's venues — consumed by the placement panel,

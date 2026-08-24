@@ -28,6 +28,11 @@ use Doctrine\ORM\Mapping as ORM;
 // Partial-unique: FBI import idempotence — one fixture per FBI number per team
 // (team-scoped so an intra-club derby can exist once per team's export).
 #[ORM\UniqueConstraint(name: 'uniq_fixture_external_ref', columns: ['club_id', 'season_id', 'team_id', 'external_ref'], options: ['where' => '(external_ref IS NOT NULL)'])]
+// Partial-unique: FFBB-API channel idempotence (RMM-4 PR-3) — one fixture per
+// national rencontre id per team (same team-scoping as external_ref: an
+// intra-club amical can exist once per team; re-checking never re-proposes a
+// rencontre already created, and a concurrent create collides → clean 409).
+#[ORM\UniqueConstraint(name: 'uniq_fixture_ffbb_rencontre', columns: ['club_id', 'season_id', 'team_id', 'ffbb_rencontre_id'], options: ['where' => '(ffbb_rencontre_id IS NOT NULL)'])]
 #[ORM\HasLifecycleCallbacks]
 class Fixture implements TenantOwnedInterface
 {
@@ -84,6 +89,15 @@ class Fixture implements TenantOwnedInterface
      */
     #[ORM\Column(length: 64, nullable: true)]
     private ?string $externalRef = null;
+
+    /**
+     * National FFBB rencontre id (RMM-4 PR-3), when this fixture was created from
+     * the FFBB-API channel — the idempotence key so re-checking never re-proposes
+     * a rencontre already created. Null for xlsx-imported or hand-entered
+     * fixtures. Distinct from externalRef: the API has no FBI match number.
+     */
+    #[ORM\Column(length: 64, nullable: true)]
+    private ?string $ffbbRencontreId = null;
 
     /**
      * The raw « Salle » label from the FBI export — filled HOME and AWAY (the
@@ -276,6 +290,18 @@ class Fixture implements TenantOwnedInterface
     public function setExternalRef(?string $externalRef): self
     {
         $this->externalRef = $externalRef;
+
+        return $this;
+    }
+
+    public function getFfbbRencontreId(): ?string
+    {
+        return $this->ffbbRencontreId;
+    }
+
+    public function setFfbbRencontreId(?string $ffbbRencontreId): self
+    {
+        $this->ffbbRencontreId = $ffbbRencontreId;
 
         return $this;
     }

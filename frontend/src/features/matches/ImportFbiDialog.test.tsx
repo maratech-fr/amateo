@@ -300,9 +300,12 @@ describe("ImportFbiDialog", () => {
     expect(importFbiFixtures).not.toHaveBeenCalled();
     // Le File + les mappings + les deviations voyagent en mémoire vers la vue.
     const carried = useMatchesStore.getState().reconciliation;
-    expect(carried?.file).toBeInstanceOf(File);
-    expect(carried?.mappings).toEqual([]); // PNM déjà mappé côté serveur → rien de neuf à envoyer
-    expect(carried?.deviations).toEqual([deviation]);
+    if (null === carried || "xlsx" !== carried.channel) {
+      throw new Error("payload canal xlsx attendu");
+    }
+    expect(carried.file).toBeInstanceOf(File);
+    expect(carried.mappings).toEqual([]); // PNM déjà mappé côté serveur → rien de neuf à envoyer
+    expect(carried.deviations).toEqual([deviation]);
   });
 
   it("aucune deviation → flux INCHANGÉ (pas d'étape « Examiner », import direct)", async () => {

@@ -584,6 +584,55 @@ export interface FbiIngestionLatest {
 export const getLatestFbiIngestion = (): Promise<{ latest: FbiIngestionLatest | null }> =>
   api.get("fbi-ingestions/latest").json<{ latest: FbiIngestionLatest | null }>();
 
+// ── FFBB-API reconciliation channel (RMM-4 PR-3) ─────────────────────────────
+// FBI (the xlsx) stays the truth; the API is a convenience that ADDS the amicaux
+// the xlsx never lists. Same `Deviation`/`DeviationDecision` shapes as the import.
+
+/** A FFBB-published rencontre absent of the app, proposed for creation. The
+ * manager picks a team per line (none = not created); `suggestedTeamId`
+ * pre-fills it when a paired competition resolved the team. */
+export interface RencontreCreatable {
+  rencontreId: string;
+  competitionNom: string;
+  date: string;
+  kickoff: string | null;
+  homeAway: HomeAway;
+  opponentLabel: string;
+  venueLabel: string | null;
+  numeroJournee: string | null;
+  suggestedTeamId: string | null;
+}
+
+/** GET /api/ffbb/rencontres — the club's FFBB-published rencontres crossed with
+ * the app: the diff (deviations, same shape as the xlsx analyze) + the
+ * rencontres with no matching fixture (creatable). Never a promise of coverage. */
+export interface FfbbRencontresResult {
+  deviations: Deviation[];
+  creatable: RencontreCreatable[];
+  fetchedAt: string;
+}
+
+/** POST /api/ffbb/rencontres/apply — the per-écart decisions applied via the
+ * SAME engine as the xlsx import + the chosen rencontres created (idempotent). */
+export interface ApplyRencontresResult {
+  created: number;
+  updated: number;
+  unresolvedDeviations: Deviation[];
+  depositedAt: string;
+}
+
+/** One chosen creation: a rencontre + the team it is created for. */
+export interface RencontreCreation {
+  rencontreId: string;
+  teamId: string;
+}
+
+export const getFfbbRencontres = (): Promise<FfbbRencontresResult> =>
+  api.get("ffbb/rencontres").json<FfbbRencontresResult>();
+
+export const applyFfbbRencontres = (decisions: DeviationDecision[], creations: RencontreCreation[]): Promise<ApplyRencontresResult> =>
+  api.post("ffbb/rencontres/apply", { json: { decisions, creations } }).json<ApplyRencontresResult>();
+
 export const createFixture = (input: CreateFixtureInput): Promise<Fixture> =>
   api.post("fixtures", { json: { competitionId: null, ...input } }).json<Fixture>();
 

@@ -669,6 +669,86 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
             summary: 'Confirm the FFBB pairings in block (re-paired at each phase — 1 click)',
         )));
 
+        $paths->addPath('/api/ffbb/rencontres', new PathItem(get: new Operation(
+            operationId: 'listFfbbRencontres',
+            tags: ['Match'],
+            responses: [
+                '200' => $this->jsonResponse('The club\'s FFBB-published rencontres crossed with the app — on demand, never cached; the diff (deviations) plus the rencontres absent of the app (creatable, the amicaux), proposed for creation', [
+                    'type' => 'object',
+                    'properties' => [
+                        'deviations' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                            'fixtureId' => ['type' => 'string'],
+                            'externalRef' => ['type' => 'string'],
+                            'division' => ['type' => 'string'],
+                            'teamId' => ['type' => 'string'],
+                            'status' => ['type' => 'string'],
+                            'persisting' => ['type' => 'boolean'],
+                            'fields' => ['type' => 'object', 'additionalProperties' => ['type' => 'object', 'properties' => [
+                                'app' => ['type' => 'string', 'nullable' => true],
+                                'file' => ['type' => 'string', 'nullable' => true],
+                            ]]],
+                        ]]],
+                        'creatable' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                            'rencontreId' => ['type' => 'string'],
+                            'competitionNom' => ['type' => 'string'],
+                            'date' => ['type' => 'string'],
+                            'kickoff' => ['type' => 'string', 'nullable' => true],
+                            'homeAway' => ['type' => 'string'],
+                            'opponentLabel' => ['type' => 'string'],
+                            'venueLabel' => ['type' => 'string', 'nullable' => true],
+                            'numeroJournee' => ['type' => 'string', 'nullable' => true],
+                            'suggestedTeamId' => ['type' => 'string', 'nullable' => true],
+                        ]]],
+                        'fetchedAt' => ['type' => 'string', 'format' => 'date-time'],
+                    ],
+                ]),
+                '400' => new Response('No club/season in context'),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+                '403' => new Response('Not a management member'),
+                '409' => new Response('Season plan not chosen'),
+                '422' => new Response('The club has no FFBB code'),
+                '502' => new Response('FFBB unreachable — retry later'),
+            ],
+            summary: 'Cross the club\'s FFBB-published rencontres with the app (FBI stays the truth — the API is a convenience)',
+        )));
+
+        $paths->addPath('/api/ffbb/rencontres/apply', new PathItem(post: new Operation(
+            operationId: 'applyFfbbRencontres',
+            tags: ['Match'],
+            responses: [
+                '200' => $this->jsonResponse('Decisions applied (SAME engine as the xlsx import) and the chosen rencontres created (idempotent); values come from a server re-fetch, never the client', [
+                    'type' => 'object',
+                    'properties' => [
+                        'created' => ['type' => 'integer'],
+                        'updated' => ['type' => 'integer'],
+                        'unresolvedDeviations' => ['type' => 'array', 'items' => ['type' => 'object']],
+                        'depositedAt' => ['type' => 'string', 'format' => 'date-time'],
+                    ],
+                ]),
+                '400' => new Response('No club/season in context, or malformed decisions/creations'),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+                '403' => new Response('Not a management member'),
+                '409' => new Response('Season plan not chosen, archived season, or a concurrent create collided'),
+                '422' => new Response('The club has no FFBB code'),
+                '502' => new Response('FFBB unreachable — retry later'),
+            ],
+            summary: 'Apply the per-écart decisions and create the chosen rencontres (server re-fetch, never client values)',
+            requestBody: $this->jsonBody([
+                'type' => 'object',
+                'properties' => [
+                    'decisions' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                        'fixtureId' => ['type' => 'string'],
+                        'field' => ['type' => 'string', 'enum' => ['date', 'kickoff', 'venue']],
+                        'choice' => ['type' => 'string', 'enum' => ['keep_app', 'take_file']],
+                    ]]],
+                    'creations' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                        'rencontreId' => ['type' => 'string'],
+                        'teamId' => ['type' => 'string'],
+                    ]]],
+                ],
+            ]),
+        )));
+
         return $openApi;
     }
 

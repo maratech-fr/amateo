@@ -27,6 +27,18 @@ final class FfbbHttpClientStub implements HttpClientInterface
     public const POULE_ID = '910000000000001';
     public const POULE_CLUBS = ['AS TEST NORD', 'BC TEST SUD', 'ES TEST OUEST', 'US TEST EST'];
 
+    // RMM-4 PR-3 — the `ffbbserver_rencontres` fixtures: a championship rencontre
+    // paired to the stub competition, an AMICAL absent of any xlsx (the real value
+    // of the API channel), and a NOISE hit that does NOT concern the club (both
+    // organismes carry a foreign code) — the strict server filter must drop it.
+    public const RENCONTRE_CHAMP_ID = 'renc-champ-1';
+    public const RENCONTRE_AMICAL_ID = 'renc-amical-1';
+    public const RENCONTRE_NOISE_ID = 'renc-noise-x';
+    public const CHAMP_OPPONENT = 'AS TEST NORD';
+    public const AMICAL_OPPONENT = 'BRON BASKET';
+    public const CHAMP_KICKOFF = '20:30';
+    public const AMICAL_KICKOFF = '20:00';
+
     private readonly MockHttpClient $inner;
 
     public function __construct()
@@ -59,6 +71,13 @@ final class FfbbHttpClientStub implements HttpClientInterface
                     'idCompetition' => ['id' => self::COMPETITION_ID, 'code' => self::COMPETITION_CODE, 'nom' => 'Pré test masculine'],
                     'idPoule' => ['id' => self::POULE_ID, 'nom' => 'Poule T'],
                 ]] : [];
+
+                return $this->search($hits);
+            }
+            if (str_contains($body, 'ffbbserver_rencontres')) {
+                // The free-text search rains hits; only those carrying the club
+                // code (on one of the two organismes) are the club's.
+                $hits = str_contains($body, self::CLUB_CODE) ? $this->rencontres() : [];
 
                 return $this->search($hits);
             }
@@ -127,6 +146,51 @@ final class FfbbHttpClientStub implements HttpClientInterface
     public function withOptions(array $options): static
     {
         return $this;
+    }
+
+    /**
+     * The club's rencontres (RMM-4 PR-3): a championship hit paired to the stub
+     * competition (club HOME), an amical (club HOME, no paired competition), and a
+     * NOISE hit concerning two OTHER clubs — the strict filter must exclude it.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function rencontres(): array
+    {
+        $date = new DateTimeImmutable('today')->modify('+30 days')->format('Y-m-d');
+        $season = ['code' => $this->currentSeasonCode()];
+        $us = ['code' => self::CLUB_CODE, 'nom' => 'CLUB STUB FFBB'];
+
+        return [
+            [
+                'id' => self::RENCONTRE_CHAMP_ID,
+                'date_rencontre' => $date . 'T' . self::CHAMP_KICKOFF . ':00',
+                'idOrganismeEquipe1' => $us,
+                'idOrganismeEquipe2' => ['code' => 'ARA0000002', 'nom' => self::CHAMP_OPPONENT],
+                'competitionId' => ['id' => self::COMPETITION_ID, 'code' => self::COMPETITION_CODE, 'nom' => 'Pré test masculine'],
+                'idPoule' => ['id' => self::POULE_ID],
+                'salle' => ['libelle' => 'GYMNASE STUB', 'adresse' => '1 rue du Test'],
+                'numeroJournee' => 3,
+                'saison' => $season,
+            ],
+            [
+                'id' => self::RENCONTRE_AMICAL_ID,
+                'date_rencontre' => $date . 'T' . self::AMICAL_KICKOFF . ':00',
+                'idOrganismeEquipe1' => $us,
+                'idOrganismeEquipe2' => ['code' => 'ARA0000009', 'nom' => self::AMICAL_OPPONENT],
+                'competitionId' => ['id' => 'amical-unpaired', 'nom' => 'AMICAL'],
+                'salle' => ['libelle' => 'GYMNASE STUB', 'adresse' => '1 rue du Test'],
+                'saison' => $season,
+            ],
+            [
+                'id' => self::RENCONTRE_NOISE_ID,
+                'date_rencontre' => $date . 'T18:00:00',
+                'idOrganismeEquipe1' => ['code' => 'ARA0000007', 'nom' => 'AUTRE CLUB A'],
+                'idOrganismeEquipe2' => ['code' => 'ARA0000008', 'nom' => 'AUTRE CLUB B'],
+                'competitionId' => ['id' => 'amical-noise', 'nom' => 'AMICAL PNM'],
+                'saison' => $season,
+            ],
+        ];
     }
 
     /** « 26-27 » for today's season — the reader filters on the CURRENT season. */

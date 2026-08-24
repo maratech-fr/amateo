@@ -47,6 +47,17 @@ final class FfbbApiClient
         return 1 === preg_match(self::CLUB_CODE_RE, $code);
     }
 
+    /** The `code` of a FFBB organisme sub-object, or null when absent/malformed. */
+    private static function organismeCode(mixed $organisme): ?string
+    {
+        if (!\is_array($organisme)) {
+            return null;
+        }
+        $code = $organisme['code'] ?? null;
+
+        return \is_string($code) && '' !== $code ? $code : null;
+    }
+
     /**
      * Search organismes by free text (club code, or committee/league name to
      * resolve a parent). Returns the raw hit list (possibly empty). Transport
@@ -77,6 +88,31 @@ final class FfbbApiClient
         $hits = $this->query(['indexUid' => 'ffbbserver_engagements', 'q' => $clubCode, 'limit' => 300]);
 
         return array_values(array_filter($hits, static fn (array $hit): bool => ($hit['codeClub'] ?? null) === $clubCode));
+    }
+
+    /**
+     * The club's rencontres (RMM-4 PR-3, canal API FFBB). Same measured pitfall
+     * as the engagements: the free-text search rains noise (an « AMICAL PNM » hit
+     * that does NOT concern the club, mesuré 2026-08-24), so a STRICT server-side
+     * filter keeps only the hits where the club code appears on ONE of the two
+     * organismes — `idOrganismeEquipe1.code` OR `idOrganismeEquipe2.code`. The
+     * season is filtered downstream by {@see FfbbRencontreReader} (it reads
+     * `saison.code` on the hit). Code re-validated before the call (SSRF/format).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function searchRencontres(string $clubCode): array
+    {
+        if (!self::isValidClubCode($clubCode)) {
+            return [];
+        }
+        $hits = $this->query(['indexUid' => 'ffbbserver_rencontres', 'q' => $clubCode, 'limit' => 300]);
+
+        return array_values(array_filter(
+            $hits,
+            static fn (array $hit): bool => self::organismeCode($hit['idOrganismeEquipe1'] ?? null) === $clubCode
+                || self::organismeCode($hit['idOrganismeEquipe2'] ?? null) === $clubCode,
+        ));
     }
 
     /**
