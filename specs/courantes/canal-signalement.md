@@ -1,10 +1,9 @@
-Last verified @ 2026-08-24 (**rotation de fraîcheur** — re-vérifié contre le code, **tout juste**,
-un cran de dérive de ligne corrigé : `shared/api/client.ts:48` (pas `:47`, une note P4-129 a
-décalé le fichier depuis) pose bien un `X-Request-Id` sur chaque requête et le relit sur la
-réponse ; `RequestIdListener.php`/`RequestIdMiddleware.php` existent (backend+bus) ; l'endpoint
-`POST /api/feedback` existe (`backend/src/Controller/FeedbackController.php:66`) ; `monolog-bundle`
-est bien dans `composer.json`. La contradiction corrigée à une passe antérieure — un §1 qui
-affirmait encore « aucun canal utilisateur » sous un en-tête « LIVRÉ » — n'est pas revenue)
+Last verified @ 2026-08-25 (**rotation de fraîcheur**, RMM-6 PR-2 — zone non touchée par cette PR.
+Re-confronté au code : `frontend/src/shared/api/client.ts:48` pose bien un `X-Request-Id` sur
+chaque requête et le relit sur la réponse ; `EventListener/RequestIdListener.php` +
+`Messenger/RequestIdMiddleware.php` existent (backend+bus) ; `POST /api/feedback`
+(`backend/src/Controller/FeedbackController.php:66`) existe ; `monolog-bundle` est bien dans
+`composer.json`. Tout juste — la contradiction corrigée à une passe antérieure n'est pas revenue)
 
 # Canal signalement, support & reproduction
 
