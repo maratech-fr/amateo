@@ -9832,6 +9832,80 @@
                 }
             }
         },
+        "/api/competitions/entry-deadlines": {
+            "post": {
+                "operationId": "setCompetitionEntryDeadlines",
+                "tags": [
+                    "Match"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The competitions whose league/committee entry deadline was set (or cleared). When a paired competition receives a non-null deadline, it also becomes the overridable community default for that federation competition (last write wins).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "updated": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            },
+                                            "description": "Ids of the competitions written"
+                                        },
+                                        "deadline": {
+                                            "type": "string",
+                                            "format": "date",
+                                            "nullable": true,
+                                            "description": "The deadline applied (null = cleared)"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "409": {
+                        "description": "The selected season is archived (read-only)"
+                    },
+                    "422": {
+                        "description": "No competitions, malformed deadline, or an unknown/foreign competition id (nothing is written)"
+                    }
+                },
+                "summary": "Set (or clear) the entry deadline on a set of competitions \u2014 management only",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "competitionIds",
+                                    "deadline"
+                                ],
+                                "properties": {
+                                    "competitionIds": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "The competitions to stamp with the same deadline"
+                                    },
+                                    "deadline": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "nullable": true,
+                                        "description": "The league/committee entry deadline (AAAA-MM-JJ), or null to clear the club value"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
         "/api/fbi-ingestions/latest": {
             "get": {
                 "operationId": "getLatestFbiIngestion",
@@ -10504,6 +10578,88 @@
                     }
                 },
                 "summary": "League match-kickoff windows inherited by the club (global reference, read-only)"
+            }
+        },
+        "/api/matches/deadline-outlook": {
+            "get": {
+                "operationId": "getMatchDeadlineOutlook",
+                "tags": [
+                    "Match"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The entry-deadline cockpit outlook: each still-owed effective deadline (club value, else community default) with its competitions, how many home fixtures remain to enter, and whether the seven-day reminder window is open. When at least one window is open, the current user's guardian delta is joined (read-only, the visit is not stamped).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "windows": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "deadline": {
+                                                        "type": "string",
+                                                        "format": "date"
+                                                    },
+                                                    "source": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "club",
+                                                            "community"
+                                                        ],
+                                                        "description": "Where the effective deadline came from"
+                                                    },
+                                                    "competitionNames": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "toEnterCount": {
+                                                        "type": "integer",
+                                                        "description": "Home fixtures not yet entered in FBI (UNPLACED included)"
+                                                    },
+                                                    "withinWindow": {
+                                                        "type": "boolean",
+                                                        "description": "True within seven days of the deadline (overdue included)"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "guardianDelta": {
+                                            "type": "object",
+                                            "nullable": true,
+                                            "description": "Present only when a reminder window is open AND the user already has a visit reference",
+                                            "properties": {
+                                                "newFixturesCount": {
+                                                    "type": "integer"
+                                                },
+                                                "newConflictFingerprints": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string"
+                                                    }
+                                                },
+                                                "planningChanged": {
+                                                    "type": "boolean"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No club in context"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    }
+                },
+                "summary": "League/committee entry-deadline outlook for the cockpit (read-only, open to any member)"
             }
         },
         "/api/matches/module-visit": {

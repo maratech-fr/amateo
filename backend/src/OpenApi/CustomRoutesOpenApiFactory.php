@@ -559,6 +559,59 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
             summary: 'Stamp the match-module visit and return what changed since the previous one (per user; open to any member)',
         )));
 
+        $paths->addPath('/api/competitions/entry-deadlines', new PathItem(post: new Operation(
+            operationId: 'setCompetitionEntryDeadlines',
+            tags: ['Match'],
+            responses: [
+                '200' => $this->jsonResponse('The competitions whose league/committee entry deadline was set (or cleared). When a paired competition receives a non-null deadline, it also becomes the overridable community default for that federation competition (last write wins).', [
+                    'type' => 'object',
+                    'properties' => [
+                        'updated' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Ids of the competitions written'],
+                        'deadline' => ['type' => 'string', 'format' => 'date', 'nullable' => true, 'description' => 'The deadline applied (null = cleared)'],
+                    ],
+                ]),
+                '403' => new Response('Not a management member'),
+                '409' => new Response('The selected season is archived (read-only)'),
+                '422' => new Response('No competitions, malformed deadline, or an unknown/foreign competition id (nothing is written)'),
+            ],
+            summary: 'Set (or clear) the entry deadline on a set of competitions — management only',
+            requestBody: $this->jsonBody([
+                'type' => 'object',
+                'required' => ['competitionIds', 'deadline'],
+                'properties' => [
+                    'competitionIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'The competitions to stamp with the same deadline'],
+                    'deadline' => ['type' => 'string', 'format' => 'date', 'nullable' => true, 'description' => 'The league/committee entry deadline (AAAA-MM-JJ), or null to clear the club value'],
+                ],
+            ]),
+        )));
+
+        $paths->addPath('/api/matches/deadline-outlook', new PathItem(get: new Operation(
+            operationId: 'getMatchDeadlineOutlook',
+            tags: ['Match'],
+            responses: [
+                '200' => $this->jsonResponse('The entry-deadline cockpit outlook: each still-owed effective deadline (club value, else community default) with its competitions, how many home fixtures remain to enter, and whether the seven-day reminder window is open. When at least one window is open, the current user\'s guardian delta is joined (read-only, the visit is not stamped).', [
+                    'type' => 'object',
+                    'properties' => [
+                        'windows' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                            'deadline' => ['type' => 'string', 'format' => 'date'],
+                            'source' => ['type' => 'string', 'enum' => ['club', 'community'], 'description' => 'Where the effective deadline came from'],
+                            'competitionNames' => ['type' => 'array', 'items' => ['type' => 'string']],
+                            'toEnterCount' => ['type' => 'integer', 'description' => 'Home fixtures not yet entered in FBI (UNPLACED included)'],
+                            'withinWindow' => ['type' => 'boolean', 'description' => 'True within seven days of the deadline (overdue included)'],
+                        ]]],
+                        'guardianDelta' => ['type' => 'object', 'nullable' => true, 'description' => 'Present only when a reminder window is open AND the user already has a visit reference', 'properties' => [
+                            'newFixturesCount' => ['type' => 'integer'],
+                            'newConflictFingerprints' => ['type' => 'array', 'items' => ['type' => 'string']],
+                            'planningChanged' => ['type' => 'boolean'],
+                        ]],
+                    ],
+                ]),
+                '400' => new Response('No club in context'),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+            ],
+            summary: 'League/committee entry-deadline outlook for the cockpit (read-only, open to any member)',
+        )));
+
         $paths->addPath('/api/venue-unavailability-impact', new PathItem(get: new Operation(
             operationId: 'getVenueUnavailabilityImpact',
             tags: ['Match'],

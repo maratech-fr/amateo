@@ -1,17 +1,17 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-25 (graduation RMM-5 PR-4, le SET-UP A/B et le signal —
-**RMM-5 EST LIVRÉ EN ENTIER (les 4 PR), P2-49 clôt** ; section « Rotation A/B — RMM-5
-PR-1+PR-2+PR-3 » étendue en « PR-1+PR-2+PR-3+PR-4 », nouvelle sous-section « Le SET-UP A/B et le
-signal — RMM-5 PR-4 »). Re-vérifié contre le code (frontend seul, zéro fichier backend/engine dans
-le diff — contrat **2.15 inchangé**) : `MatchSlotRotationsEditor.tsx` (déclaration ordonnée sur
-`/matchs/configuration`, flèches ↑/↓, badge A/B/C, phrase « l'ordre ne commande aucun calendrier »)
-✓ ; `TypicalWeekendGrid`/`buildTypicalWeekend` — `weekCountOf` = plus grande rotation ≥ 2 membres,
-1 sans rotation ⇒ **aucun segmenté**, grille identique à avant (défaut `rotations = []`) ✓ ;
-`isOffModel`/`offModelCount` — la rotation du même jour PRIME sur l'habitude (miroir de la
-suppléance backend PR-2) ✓ ; `sameWeekendRotationCount` — pilule neutre, jamais un `done` ✓. Le
-reste (PR-1/PR-2/PR-3 rotation, RMM-4 canal API, paliers A/PR-1→F2, RMM-1/RMM-3, périmètre engagé)
-non re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git :
+Last verified @ 2026-08-25 (graduation RMM-6 PR-1, échéances ligue/comité — nouvelle section
+« Échéances ligue/comité — RMM-6 PR-1 » : champ `Competition.entryDeadline` hors CRUD, endpoint
+bulk `POST /api/competitions/entry-deadlines`, PREMIÈRE table communautaire hors tenant
+`shared_competition_deadline` [GRANT sans DELETE, risque résiduel F-2 assumé], lecture
+`effectiveEntryDeadline`/`deadlineSource`, outlook `GET /api/matches/deadline-outlook`). Re-vérifié
+contre le code : `Competition.php`, `SharedCompetitionDeadline.php`,
+`CompetitionEntryDeadlinesController.php`, `EntryDeadlineOutlookController.php`,
+`EntryDeadlineOutlook.php`, `CompetitionResource.php`/`CompetitionStateProvider.php`,
+`Version20260825140000.php` — RMM-6 reste OUVERT (roadmap `P2-50`, 2 PR frontend restantes) ; la
+note d'insertion de la section RMM-1 (`FbiEntryList.tsx` L9) pointe désormais vers cette nouvelle
+section sans être purgée. Le reste (RMM-5 les 4 PR, RMM-4 canal API, paliers A/PR-1→F2, RMM-1/RMM-3,
+périmètre engagé) non re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git :
 `git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
@@ -761,7 +761,10 @@ que l'API refuse ensuite de corriger. Une équipe engagée présente dans la pho
   escalade cockpit/login en période d'échéance est actée (décision fondateur 2026-08-24)** :
   `MatchModuleDeltaComputer` (§ « Le gardien » ci-dessous) est tenu SÉPARÉ de la rotation de
   référence précisément pour que RMM-6 puisse un jour LIRE le delta sans stamper une visite — mais
-  c'est un point d'insertion préparé, pas un comportement livré.
+  c'est un point d'insertion préparé, pas un comportement livré. **PR-1 backend (le champ, le
+  défaut communautaire, l'outlook) est livrée** — § « Échéances ligue/comité — RMM-6 PR-1 »
+  plus bas ; ce qui suit ici (L9 sur `FbiEntryList.tsx`, l'escalade cockpit/login) reste non
+  implémenté.
 
 ## Le gardien à l'ouverture (RMM-3, 2 PR — backend puis front, 2026-08-24)
 
@@ -949,6 +952,66 @@ que l'API refuse ensuite de corriger. Une équipe engagée présente dans la pho
 - **Back** — tests : `FfbbRencontresApiTest.php` (les deux routes, gardes SEC-07/socle/tenant,
   re-fetch serveur, 409 doublon), `FfbbRencontreReaderTest.php` (mapping, filtre saison, clamp),
   `FfbbApiClientTest.php` (filtre strict serveur).
+
+## Échéances ligue/comité — RMM-6 PR-1 (backend, 2026-08-25)
+
+> Cadrage : [`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md) §9
+> (RMM-6, P2-50) et le point d'insertion posé en RMM-1 ci-dessus (`FbiEntryList.tsx` L9). **PR-1 de
+> 3 — backend seul, RMM-6 reste OUVERT** (roadmap `P2-50`) : la vue de saisie (L9 sur
+> `FbiEntryList`), le rappel cockpit « deadline J-6 » et l'escalade cockpit/login restent des PR
+> frontend à venir. Besoin d'origine : la ligue/le comité envoie plusieurs échéances CONCURRENTES
+> par mail, par groupe d'équipes (région le 2 sept, département le 10, autres le 15…) — la
+> granularité est la **compétition**, jamais une date unique de club.
+
+- **Le champ, hors CRUD.** `Competition.entryDeadline` (`entry_deadline` DATE nullable) — écrit
+  par le SEUL endpoint bulk ci-dessous, jamais par le CRUD `PUT /api/competitions/{id}` (même
+  patron que les refs d'appariement FFBB). `POST /api/competitions/entry-deadlines`
+  (`CompetitionEntryDeadlinesController`, management SEC-07) reçoit `{competitionIds[], deadline}`
+  et pose (ou efface) **UNE** échéance sur un lot en une transaction : un id inconnu/étranger au
+  club+saison → 422, **rien** écrit ; l'effacement est un geste **explicite**
+  (`"deadline": null`) — une clé `deadline` absente rend 422 plutôt que d'essuyer les échéances du
+  club en silence (revue sécurité 2026-08-25, F-3).
+- **Le défaut communautaire — PREMIÈRE table partagée entre clubs du dépôt.**
+  `App\Entity\SharedCompetitionDeadline` (table `shared_competition_deadline`) : keyée sur l'id
+  FFBB de compétition (`ffbbCompetitionId`, UNIQUE), **aucune colonne club-identifiante** (pas de
+  `club_id`, pas de `user_id`, pas de compteur — par conception, assertionné sur le catalogue
+  Postgres par `EntryDeadlineShareTest`). Hors `TenantOwnedInterface`, donc hors RLS et hors filtre
+  saison (patron `league_match_window` — un id FFBB est déjà scopé saison côté fédération) ; GRANT
+  explicite `SELECT, INSERT, UPDATE` à `app_user` (**pas de DELETE** — aucun chemin de code
+  n'efface une ligne partagée, revue sécurité 2026-08-25 F-1) posé par la migration
+  `Version20260825140000`. Une compétition **appariée** (`ffbbCompetitionId` non null) et une date
+  **posée** (jamais un effacement) upserte la ligne partagée — **dernière écriture gagne** : un
+  second club écrasant la proposition ne touche PAS la valeur `entryDeadline` (souveraine) du
+  premier, et effacer sa propre valeur club n'efface jamais le partagé. Deux compétitions du même
+  lot bulk partageant le même id fédéral ne produisent qu'**un seul** upsert (revue sécurité F-4).
+  ⚠ **Risque résiduel ASSUMÉ et opposable** (docblock de l'entité, F-2) : « apparié » repose sur
+  `Club.ffbbClubCode`, un code fédéral PUBLIC auto-déclaré — un club pourrait revendiquer le code
+  d'un autre pour s'apparier et écrire ce défaut. Borné par conception (la donnée est une DATE,
+  toujours « proposée », toujours surchargeable, et les clubs légitimement appariés s'écrasent déjà
+  entre eux) — **ne jamais enrichir cette table** (compteurs, provenance, texte libre) sans
+  re-passer la revue.
+- **La lecture — la règle « club gagne » servie par le backend, jamais recalculée au front.**
+  `CompetitionResource` porte trois champs additifs en lecture : `entryDeadline` (la valeur club
+  brute), `effectiveEntryDeadline` (club **??** défaut communautaire) et `deadlineSource`
+  (`'club'`\|`'community'`\|`null`). Le join au partagé se fait par `ffbbCompetitionId` — une
+  compétition non appariée n'a jamais de `deadlineSource: 'community'`. La réponse servie est
+  **byte-identique** quel que soit le club auteur du défaut (zéro oracle sur « qui a posé la
+  date »).
+- **L'outlook J-7 — `GET /api/matches/deadline-outlook`** (`EntryDeadlineOutlookController` →
+  `App\Service\EntryDeadlineOutlook`, **la maison unique** de la règle J-7,
+  `REMINDER_WINDOW_DAYS = 7`). Lecture seule, **ouvert au Membre** (patron
+  `MatchModuleVisitController`) : pour chaque échéance EFFECTIVE encore due (au moins un domicile
+  `HOME` pas `SUBMITTED`/`VALIDATED` dans sa compétition), sert ses compétitions
+  (`competitionNames`), le nombre de domiciles restant à saisir (`toEnterCount`) et si la fenêtre
+  J-7 est ouverte (`withinWindow`, une échéance dépassée reste ouverte). Groupé par
+  (date, source) — une échéance région et une échéance département distinctes restent deux
+  fenêtres. Quand au moins une fenêtre est ouverte **et** que l'utilisateur a déjà une référence de
+  visite (§ Le gardien à l'ouverture), le bloc `guardianDelta` est joint en réutilisant
+  `MatchModuleDeltaComputer` **sans stamper** — c'est précisément pourquoi le calcul du delta a été
+  tenu séparé de la rotation dès RMM-3 (note déjà posée ci-dessus, honorée ici). Aucune référence de
+  visite → le bloc est simplement absent, jamais calculé.
+- **Back** — tests : `EntryDeadlineShareTest.php` (les huit volets ci-dessus, NR bloquant CLAUDE.md
+  §4), `ManagementRoleTest.php` (le bulk rejoint la matrice management-only).
 
 ## Reste palier A (à venir)
 
