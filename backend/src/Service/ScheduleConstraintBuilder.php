@@ -8,6 +8,8 @@ use App\Entity\CalendarEntry;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
+use App\Entity\MatchSlotRotation;
+use App\Entity\MatchSlotRotationTeam;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
@@ -19,6 +21,7 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\TeamLink;
+use App\Entity\TeamMatchHabit;
 use App\Entity\TeamTag;
 use App\Entity\TeamTagAssignment;
 use App\Entity\Venue;
@@ -942,12 +945,64 @@ final class ScheduleConstraintBuilder
             'level' => $team->getLevel()?->value,
             'sessionsPerWeek' => $this->currentSessionOverrides[$team->getId()] ?? $team->getSessionsPerWeek(),
             'minSessionsOverride' => $team->getMinSessionsOverride(),
-            'matchDay' => $team->getMatchDay(),
+            'matchDay' => $this->deriveMatchDay($team, $seasonId),
             'forcedVenueId' => $team->getForcedVenueId(),
             'isActive' => $team->getIsActive(),
             'parentTeamId' => $team->getParentTeamId(),
             'tags' => $tags,
         ];
+    }
+
+    /**
+     * matchDay ÉMIS = image A/B DÉRIVÉE (RMM-5 PR-3, 3ᵉ décision fondateur §8 : « le repos suit
+     * l'image ») : le DERNIER jour de match ISO de la semaine =
+     * `max(jours ISO des habitudes de l'équipe ∪ jours ISO des rotations dont elle est membre)`.
+     * Le repos qui compte est celui d'APRÈS ce dernier match ; le moteur en dérive
+     * `rest_day = match_day % 7 + 1`, formule JUSTE en ISO uniquement
+     * (`engine/app/solver/objective.py`, `_rest_day_terms` : « the day after (m mod 7 + 1) »,
+     * « a SUNDAY match makes Monday the rest day »). La valeur émise reste donc dans le format
+     * que l'ENGINE attend — ISO 1..7. Dérivation déterministe (`max`, insensible à l'ordre).
+     *
+     * Repli — équipe SANS image (ni habitude ni rotation) : le champ déclaré `Team.matchDay`,
+     * stocké 0-based (0 = lundi, `TeamInput` valide 0..6), CONVERTI en ISO (+1) pour alimenter la
+     * MÊME formule moteur (sans conversion, un `matchDay=5` samedi produisait un repos samedi au
+     * lieu de dimanche — bug dormant). Sans champ déclaré non plus → null (comportement
+     * d'aujourd'hui). Le champ n'est PAS supprimé (repli legacy, zéro migration, conversion à
+     * l'émission SEULE).
+     */
+    private function deriveMatchDay(Team $team, string $seasonId): ?int
+    {
+        $days = [];
+        if ($this->entityManager instanceof EntityManagerInterface) {
+            foreach ($this->entityManager->getRepository(TeamMatchHabit::class)->findBy([
+                'teamId' => $team->getId(),
+                'seasonId' => $seasonId,
+            ]) as $habit) {
+                $days[] = $habit->getDayOfWeek();
+            }
+
+            $rotationIds = array_map(
+                static fn (MatchSlotRotationTeam $member): string => $member->getRotationId(),
+                $this->entityManager->getRepository(MatchSlotRotationTeam::class)->findBy([
+                    'teamId' => $team->getId(),
+                    'seasonId' => $seasonId,
+                ]),
+            );
+            if ([] !== $rotationIds) {
+                foreach ($this->entityManager->getRepository(MatchSlotRotation::class)->findBy(['id' => $rotationIds]) as $rotation) {
+                    $days[] = $rotation->getDayOfWeek();
+                }
+            }
+        }
+
+        if ([] !== $days) {
+            return max($days);
+        }
+
+        // Repli legacy : champ déclaré 0-based (0 = lundi) → ISO (+1) ; null reste null.
+        $declared = $team->getMatchDay();
+
+        return null === $declared ? null : $declared + 1;
     }
 
     /** @return array<string, mixed> */

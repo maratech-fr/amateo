@@ -7,6 +7,8 @@ namespace App\EventListener;
 use App\Entity\CalendarEntry;
 use App\Entity\Coach;
 use App\Entity\ImplicitRuleSetting;
+use App\Entity\MatchSlotRotation;
+use App\Entity\MatchSlotRotationTeam;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
@@ -14,6 +16,7 @@ use App\Entity\SharedTrainingGroup;
 use App\Entity\SharedTrainingGroupTeam;
 use App\Entity\Team;
 use App\Entity\TeamLink;
+use App\Entity\TeamMatchHabit;
 use App\Entity\TeamPeriodOverride;
 use App\Entity\TeamTag;
 use App\Entity\TeamTagAssignment;
@@ -64,6 +67,9 @@ use Doctrine\ORM\Events;
  *   venue                       | club_id + season_id         | club + saison
  *   coach                       | club_id + season_id         | club + saison
  *   team                        | club_id + season_id         | club + saison  (cf. structureDiverged)
+ *   team_match_habit            | club_id + season_id         | club + saison  (RMM-5 : matchDay dérivé)
+ *   match_slot_rotation         | club_id + season_id         | club + saison  (RMM-5 : matchDay dérivé)
+ *   match_slot_rotation_team    | club_id + season_id         | club + saison  (RMM-5 : membre de rotation)
  *   team_tag_assignment         | club_id + season_id         | club + saison
  *   implicit_rule_setting       | schedule_plan_id (nullable) | plan si non-NULL, sinon club+saison (**)
  *   calendar_entry              | club_id + season_id (*)     | club + saison  (repli, cf. (*))
@@ -155,6 +161,14 @@ use Doctrine\ORM\Events;
 #[AsEntityListener(event: Events::postRemove, method: 'sharedTrainingGroupTouched', entity: SharedTrainingGroup::class)]
 #[AsEntityListener(event: Events::postPersist, method: 'sharedTrainingGroupTeamTouched', entity: SharedTrainingGroupTeam::class)]
 #[AsEntityListener(event: Events::postRemove, method: 'sharedTrainingGroupTeamTouched', entity: SharedTrainingGroupTeam::class)]
+#[AsEntityListener(event: Events::postPersist, method: 'teamMatchHabitTouched', entity: TeamMatchHabit::class)]
+#[AsEntityListener(event: Events::postUpdate, method: 'teamMatchHabitTouched', entity: TeamMatchHabit::class)]
+#[AsEntityListener(event: Events::postRemove, method: 'teamMatchHabitTouched', entity: TeamMatchHabit::class)]
+#[AsEntityListener(event: Events::postPersist, method: 'matchSlotRotationTouched', entity: MatchSlotRotation::class)]
+#[AsEntityListener(event: Events::postUpdate, method: 'matchSlotRotationTouched', entity: MatchSlotRotation::class)]
+#[AsEntityListener(event: Events::postRemove, method: 'matchSlotRotationTouched', entity: MatchSlotRotation::class)]
+#[AsEntityListener(event: Events::postPersist, method: 'matchSlotRotationTeamTouched', entity: MatchSlotRotationTeam::class)]
+#[AsEntityListener(event: Events::postRemove, method: 'matchSlotRotationTeamTouched', entity: MatchSlotRotationTeam::class)]
 #[AsDoctrineListener(event: Events::postFlush)]
 final class ResourceChangeStaleScheduleListener
 {
@@ -291,6 +305,36 @@ final class ResourceChangeStaleScheduleListener
             return;
         }
         $this->markPlanScoped($entity->getSchedulePlanId(), $clubId, $entity->getSeasonId());
+    }
+
+    public function teamMatchHabitTouched(TeamMatchHabit $entity): void
+    {
+        // RMM-5 PR-3 — une habitude porte un jour ISO qui entre dans le max dérivé du matchDay
+        // (ScheduleConstraintBuilder::deriveMatchDay) et donc dans le payload /generate hashé.
+        // La modifier périme les COMPLETED du club+saison (patron STRUCTURE, teamTouched).
+        $this->markClubSeason($entity->getClubId(), $entity->getSeasonId());
+    }
+
+    public function matchSlotRotationTouched(MatchSlotRotation $entity): void
+    {
+        // RMM-5 PR-3 — le jour de match ISO d'une équipe est DÉRIVÉ de ses habitudes ∪ rotations
+        // (ScheduleConstraintBuilder::deriveMatchDay) et entre dans le payload /generate hashé.
+        // Modifier une rotation (jour/heure/gymnase) peut donc bouger le matchDay émis → périme
+        // les COMPLETED du club+saison, patron STRUCTURE (teamTouched). La rotation est
+        // club+saison (hors plan de période) → socle ET périodes suivent la même déclaration.
+        $this->markClubSeason($entity->getClubId(), $entity->getSeasonId());
+    }
+
+    public function matchSlotRotationTeamTouched(MatchSlotRotationTeam $entity): void
+    {
+        // Ajouter/retirer un membre change quelles équipes tirent leur matchDay de la rotation
+        // (écriture des membres = delete+recreate, patron SharedTrainingGroupTeam : postPersist +
+        // postRemove suffisent). Colonnes club/saison dénormalisées → pas de jointure.
+        $clubId = $entity->getClubId();
+        if (null === $clubId) {
+            return;
+        }
+        $this->markClubSeason($clubId, $entity->getSeasonId());
     }
 
     public function postFlush(PostFlushEventArgs $args): void

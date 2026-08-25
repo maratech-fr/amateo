@@ -15,6 +15,7 @@ use App\Entity\TeamMatchHabit;
 use App\Entity\Venue;
 use App\Enum\SeasonStatus;
 use App\Service\MatchPlacementPayloadBuilder;
+use App\Service\ScheduleConstraintBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -50,6 +51,8 @@ final class SlotRotationPayloadParityTest extends KernelTestCase
     private EntityManagerInterface $em;
 
     private MatchPlacementPayloadBuilder $builder;
+
+    private ScheduleConstraintBuilder $generateBuilder;
 
     /**
      * Sens 1 — la rotation stockée est reflétée EXACTEMENT (un builder émettant [] échoue).
@@ -155,11 +158,100 @@ final class SlotRotationPayloadParityTest extends KernelTestCase
         );
     }
 
+    // ───────────────────── VOLET DÉRIVATION (RMM-5 PR-3, /generate) ─────────────────────
+    // Le matchDay ÉMIS au moteur d'entraînement (payload /generate, ScheduleConstraintBuilder)
+    // est DÉRIVÉ de l'image A/B : max(jours ISO des habitudes ∪ jours ISO des rotations). Le
+    // repos suit l'image (3ᵉ décision fondateur §8). Falsifié dans les DEUX sens.
+
+    /**
+     * Habitude(s) seule(s) : le DERNIER jour ISO de la semaine gagne (max), pas le premier.
+     */
+    public function testMatchDayDerivesTheMaxIsoDayOfHabits(): void
+    {
+        [$club, $season] = $this->seedClub();
+        $tSat = $this->team($club, $season);
+        $tSatSun = $this->team($club, $season);
+        // tSat : samedi seul (jour 6) → matchDay 6.
+        $this->habit($club, $season, $tSat, 6, '15:30');
+        // tSatSun : samedi + dimanche → matchDay 7 (le repos qui compte est celui d'après le
+        // DERNIER match ; un builder qui prendrait le min émettrait 6 et échouerait).
+        $this->habit($club, $season, $tSatSun, 6, '15:30');
+        $this->habit($club, $season, $tSatSun, 7, '11:00');
+        $this->em->flush();
+
+        $payload = $this->generatePayload($club, $season);
+
+        self::assertSame(6, $this->emittedMatchDay($payload, $tSat->getId()), 'habitude samedi seule → matchDay ISO 6');
+        self::assertSame(7, $this->emittedMatchDay($payload, $tSatSun->getId()), 'habitudes sam+dim → max ISO 7');
+    }
+
+    /**
+     * Rotation seule → son jour ISO ; habitude + rotation → l'UNION, max ISO.
+     */
+    public function testMatchDayDerivesFromRotationsUnionedWithHabits(): void
+    {
+        [$club, $season] = $this->seedClub();
+        $venue = $this->venue($club, $season);
+        $tRot = $this->team($club, $season);
+        $tRotPartner = $this->team($club, $season);
+        $tHabitAndRot = $this->team($club, $season);
+        $tHabitPartner = $this->team($club, $season);
+
+        // Rotation le dimanche (jour 7), membres tRot + tRotPartner → matchDay 7.
+        $this->rotation($club, $season, $venue, 7, '10:00', [$tRot, $tRotPartner]);
+        // tHabitAndRot : habitude samedi (6) + membre d'une rotation dimanche (7) → union, max 7.
+        $venue2 = $this->venue($club, $season);
+        $this->rotation($club, $season, $venue2, 7, '10:00', [$tHabitAndRot, $tHabitPartner]);
+        $this->habit($club, $season, $tHabitAndRot, 6, '15:30');
+        $this->em->flush();
+
+        $payload = $this->generatePayload($club, $season);
+
+        self::assertSame(7, $this->emittedMatchDay($payload, $tRot->getId()), 'rotation dimanche seule → matchDay ISO 7');
+        self::assertSame(7, $this->emittedMatchDay($payload, $tHabitAndRot->getId()), 'habitude sam ∪ rotation dim → max ISO 7');
+    }
+
+    /**
+     * Sans image : repli sur le champ déclaré `Team.matchDay`, 0-based (0 = lundi) CONVERTI en
+     * ISO (+1). Un builder qui émettrait la valeur brute (5) au lieu de 6 échoue — c'est le bug
+     * dormant (formule moteur `match_day % 7 + 1` juste en ISO seulement).
+     */
+    public function testDeclaredFieldFallbackIsConvertedZeroBasedToIso(): void
+    {
+        [$club, $season] = $this->seedClub();
+        $team = $this->team($club, $season);
+        $team->setMatchDay(5); // 0-based : 5 = samedi.
+        $this->em->flush();
+
+        $payload = $this->generatePayload($club, $season);
+
+        self::assertSame(6, $this->emittedMatchDay($payload, $team->getId()), 'champ déclaré 5 (0-based samedi) → ISO 6');
+    }
+
+    /**
+     * Ni image ni champ déclaré → null : le payload reste byte-identique au monde d'avant
+     * (l'émission historique était `$team->getMatchDay()`, null par défaut). Anti-régression.
+     */
+    public function testNoImageNoDeclaredFieldEmitsNullUnchanged(): void
+    {
+        [$club, $season] = $this->seedClub();
+        $team = $this->team($club, $season);
+        $this->em->flush();
+
+        $payload = $this->generatePayload($club, $season);
+
+        self::assertNull(
+            $this->emittedMatchDay($payload, $team->getId()),
+            'aucune image ni champ déclaré ⇒ matchDay null (identique à avant)',
+        );
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $this->builder = self::getContainer()->get(MatchPlacementPayloadBuilder::class);
+        $this->generateBuilder = self::getContainer()->get(ScheduleConstraintBuilder::class);
     }
 
     /**
@@ -189,6 +281,31 @@ final class SlotRotationPayloadParityTest extends KernelTestCase
             }
         }
         self::fail('team row not found in payload: ' . $teamId);
+    }
+
+    /**
+     * Le payload /generate (ScheduleConstraintBuilder) — celui qui porte le `matchDay` dérivé.
+     *
+     * @return array<string, mixed>
+     */
+    private function generatePayload(Club $club, Season $season): array
+    {
+        return $this->generateBuilder->buildForClubSeason($club->getId(), $season->getId());
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function emittedMatchDay(array $payload, string $teamId): ?int
+    {
+        /** @var list<array{id: string, matchDay: int|null}> $teams */
+        $teams = $payload['teams'];
+        foreach ($teams as $row) {
+            if ($row['id'] === $teamId) {
+                return $row['matchDay'];
+            }
+        }
+        self::fail('team row not found in /generate payload: ' . $teamId);
     }
 
     private function team(Club $club, Season $season): Team

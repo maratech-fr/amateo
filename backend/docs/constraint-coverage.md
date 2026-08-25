@@ -1,6 +1,6 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-08-24 (recalé ENG-32 : le monolithe `constraints.py` est devenu le paquet `constraints/` — les références de ce fichier pointent désormais fichier+fonction, stables au refactor. Vérification précédente toujours valable : recalé par la livraison ALIGN-09 : « au moins une séance tel jour » passe 🟡 → ✅ — mode wizard, gate bloquant, sémantique « l'un de ces jours » vérifiée au code (`constraints/targeting.py`, `add_time_window_constraints` — une somme sur l'union par équipe). `forcedDays` était déjà prouvé décisif par le test sémantique CI ; la clé héritée #120 est migrée (contraintes vives ET snapshots))
+Last verified @ 2026-08-25 (recalé RMM-5 PR-3 : la ligne « Jour de repos après un match » dit désormais que le `matchDay` émis est DÉRIVÉ de l'image A/B côté backend — `max(jours ISO des habitudes ∪ rotations)`, repli champ déclaré converti 0-based→ISO — via `ScheduleConstraintBuilder::deriveMatchDay`, vérifié au code. Vérification précédente toujours valable : recalé ENG-32 : le monolithe `constraints.py` est devenu le paquet `constraints/` — les références de ce fichier pointent désormais fichier+fonction, stables au refactor. Vérification précédente toujours valable : recalé par la livraison ALIGN-09 : « au moins une séance tel jour » passe 🟡 → ✅ — mode wizard, gate bloquant, sémantique « l'un de ces jours » vérifiée au code (`constraints/targeting.py`, `add_time_window_constraints` — une somme sur l'union par équipe). `forcedDays` était déjà prouvé décisif par le test sémantique CI ; la clé héritée #120 est migrée (contraintes vives ET snapshots))
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels
@@ -60,7 +60,16 @@ Last verified @ 2026-08-24 (recalé ENG-32 : le monolithe `constraints.py` est d
 | « Servir d'abord les équipes importantes » | tiers S=10000…D=1, poids **codés en dur** dans le moteur (`objective.py` — le champ `orToolsWeight` du payload est requis mais IGNORÉ) | ✅ soft | rangs S/A/B/C/D |
 | « Garantir N séances/semaine par équipe » | `MIN_SESSIONS` — **cible soft**, pas un plancher dur | 🟡 | ⚠ « minimum » non garanti (audit ENG-18) |
 | « Jamais 2 équipes sur le même créneau » | `VENUE_AT_MOST_ONE` / capacité (implicite) | ✅ | — |
-| « Jour de repos après un match » | bonus soft `add_match_day_rest_bonus` | ✅ soft | — |
+| « Jour de repos après un match » | bonus soft `add_match_day_rest_bonus` ; le `matchDay` émis est DÉRIVÉ de l'image A/B côté backend (`ScheduleConstraintBuilder::deriveMatchDay`, RMM-5 PR-3) | ✅ soft | — |
+
+> **`matchDay` DÉRIVÉ (RMM-5 PR-3, « le repos suit l'image »)** : le backend n'émet plus le champ
+> déclaré brut. `matchDay = max(jours ISO des habitudes de l'équipe ∪ jours ISO des rotations dont
+> elle est membre)` — le DERNIER jour de match de la semaine, car le repos qui compte est celui
+> d'après lui. Sans image (ni habitude ni rotation), repli sur le champ déclaré `Team.matchDay`
+> **converti 0-based → ISO (+1)** : le moteur calcule `rest_day = match_day % 7 + 1`, juste en ISO
+> seulement (sans conversion, un samedi déclaré donnait un repos samedi au lieu de dimanche). Sans
+> rien → `null`. La valeur émise reste ISO 1..7 ; conversion à l'émission seule, zéro migration, le
+> champ déclaré survit en repli legacy.
 
 ## Angles morts traités (2026-07-08)
 

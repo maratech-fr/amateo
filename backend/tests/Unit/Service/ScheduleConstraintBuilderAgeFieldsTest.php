@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Service;
 
+use App\Entity\MatchSlotRotation;
+use App\Entity\MatchSlotRotationTeam;
 use App\Entity\SportCategory;
 use App\Entity\Team;
+use App\Entity\TeamMatchHabit;
 use App\Entity\TeamTag;
 use App\Entity\TeamTagAssignment;
 use App\Service\ScheduleConstraintBuilder;
@@ -93,10 +96,19 @@ final class ScheduleConstraintBuilderAgeFieldsTest extends TestCase
         $tagRepository = $this->createMock(EntityRepository::class);
         $tagRepository->method('findBy')->willReturn([]);
 
+        // RMM-5 PR-3 — `serializeTeam` dérive désormais le `matchDay` des habitudes ∪ rotations
+        // (deriveMatchDay). Le mock doit servir ces repos (findBy vide) sinon `getRepository` rend
+        // null et le build lève un TypeError. findBy vide → repli sur le champ déclaré (ici null).
+        $emptyRepository = $this->createMock(EntityRepository::class);
+        $emptyRepository->method('findBy')->willReturn([]);
+
         $this->entityManager->method('getRepository')->willReturnMap([
             [SportCategory::class, $this->sportCategoryRepository],
             [TeamTagAssignment::class, $tagRepository],
             [TeamTag::class, $tagRepository],
+            [TeamMatchHabit::class, $emptyRepository],
+            [MatchSlotRotationTeam::class, $emptyRepository],
+            [MatchSlotRotation::class, $emptyRepository],
         ]);
 
         $this->builder = new ScheduleConstraintBuilder($this->logger, $this->entityManager);

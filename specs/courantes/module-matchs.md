@@ -1,18 +1,16 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-25 (graduation RMM-5 PR-2, le SOFT de placement de la rotation A/B — **2
-des 4 PR livrées, RMM-5 reste OUVERT** ; section « Rotation A/B — RMM-5 PR-1 » étendue en
-« PR-1+PR-2 », nouvelle sous-section « Le SOFT de placement — RMM-5 PR-2 »). Re-vérifié contre le
-code : `MatchPlacementPayloadBuilder::slotRotations()` (tri déterministe venue→jour→heure +
-`teamIds`, `position` ne voyage pas, rotation <2 membres abandonnée) ✓ ; la suppléance
-`habitsByTeam` (habitude même-jour retirée) ✓ ; `match_placement.py` — `W_ROTATION_TIME=15`/
-`W_ROTATION_VENUE=5` à parité de `W_HABIT_TIME`/`W_HABIT_VENUE`, protection de fenêtre au malus
-partagé `W_PROTECT_HABIT=25` (pas de nouvelle constante) ✓ ; les 4 constantes `CONTRACT_VERSION`
-synchrones à `2.15` (`ScheduleConstraintBuilder`, `MoveSlotService`,
-`MatchPlacementPayloadBuilder`, `engine/CONTRACT_VERSION`) ✓ ; smoke-place-matches.sh volet 3 et
-le scénario sémantique deux-week-ends ✓. Le reste (PR-1 rotation, RMM-4 canal API, paliers
-A/PR-1→F2, RMM-1/RMM-3, périmètre engagé) non re-vérifié cette passe — un stamp REMPLACE,
-l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
+Last verified @ 2026-08-25 (graduation RMM-5 PR-3, le repos d'entraînement DÉRIVÉ de l'image A/B —
+**3 des 4 PR livrées, RMM-5 reste OUVERT** ; section « Rotation A/B — RMM-5 PR-1+PR-2 » étendue en
+« PR-1+PR-2+PR-3 », nouvelle sous-section « Le repos d'entraînement dérivé — RMM-5 PR-3 »).
+Re-vérifié contre le code : `ScheduleConstraintBuilder::deriveMatchDay` — `max` des jours ISO de
+`TeamMatchHabit` ∪ `MatchSlotRotation` (via `MatchSlotRotationTeam`), repli sur `Team.matchDay`
+converti 0-based→ISO (`+1`), `null` si rien ✓ ; `ResourceChangeStaleScheduleListener` écoute
+désormais `TeamMatchHabit`/`MatchSlotRotation`/`MatchSlotRotationTeam` (postPersist/postUpdate/
+postRemove, marquage club+saison) ✓ ; zéro fichier engine dans le diff, contrat **2.15 inchangé**
+(pas de nouveau champ de payload, seule la valeur émise change) ✓. Le reste (PR-1/PR-2 rotation,
+RMM-4 canal API, paliers A/PR-1→F2, RMM-1/RMM-3, périmètre engagé) non re-vérifié cette passe — un
+stamp REMPLACE, l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
 > [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés
@@ -255,13 +253,14 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   matchs depuis la PR D (§ suivant) ; l'intensité d'entraînement, elle, par le solveur d'ENTRAÎNEMENT
   (lot PASSERELLES — `engine/docs/constraint-vocabulary.md` §Passerelles).
 
-## Rotation A/B — RMM-5 PR-1+PR-2, le MODÈLE puis le SOFT (2026-08-25, P2-49)
+## Rotation A/B — RMM-5 PR-1+PR-2+PR-3, le MODÈLE, le SOFT puis le REPOS DÉRIVÉ (2026-08-25, P2-49)
 
-**2 des 4 PR livrées — RMM-5 reste OUVERT** ([`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md)
+**3 des 4 PR livrées — RMM-5 reste OUVERT** ([`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md)
 §8-§9, cas SM1/SM2 sur le 20h30 : pénurie de créneaux → alternance semaine A/semaine B sur le
 MÊME créneau physique). PR-1 livre le modèle et son CRUD seuls — rien ne le consomme encore. PR-2
-(ci-dessous) branche le bloc au payload `/place-matches` et l'attraction SOFT côté solveur — aucun
-MOVE. Restent OUVERTS : le repos d'entraînement DÉRIVÉ de la rotation (PR-3), l'UI SET-UP (PR-4).
+branche le bloc au payload `/place-matches` et l'attraction SOFT côté solveur — aucun MOVE. PR-3
+(ci-dessous) fait suivre le repos d'entraînement du solve hebdo à la même image. Reste OUVERTE :
+l'UI SET-UP deux semaines (PR-4).
 
 - **`MatchSlotRotation`** (`match_slot_rotation`, tenant+saison, RLS FORCE, patron
   `TeamMatchHabit`/`VenueMatchWindow` — hors des plans de période, pas de `schedulePlanId`) : le
@@ -328,6 +327,39 @@ parité stricte du mécanisme d'habitude.
   l'attraction SOFT tire vraiment, pas seulement « une heure légale quelconque ».
 - **Garde bloquante** : `CrossStack/SlotRotationPayloadParityTest` (STOCKÉ == ÉMIS + la
   suppléance même-jour, falsifiés dans les deux sens — CLAUDE.md §4).
+
+### Le repos d'entraînement dérivé — RMM-5 PR-3 (2026-08-25)
+
+3ᵉ décision fondateur honorée ([`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md)
+§8) : **le jour de repos d'entraînement suit l'image A/B**, jamais une déclaration à part. Touche le
+solve HEBDO (`POST /generate`, `ScheduleConstraintBuilder`) — **le solveur de placement des matchs
+lui-même n'est pas concerné**, il consomme déjà `slotRotations`/`habits` (PR-2 ci-dessus) ; ce volet
+change ce que reçoit le solveur d'ENTRAÎNEMENT pour son bonus « jour de repos après un match »
+(`add_match_day_rest_bonus`, [`../../backend/docs/constraint-coverage.md`](../../backend/docs/constraint-coverage.md)).
+
+- **Formule** (`ScheduleConstraintBuilder::deriveMatchDay`) : `matchDay = max(jours ISO des
+  habitudes de l'équipe ∪ jours ISO des rotations dont elle est membre)` — le DERNIER jour de match
+  de la semaine, car le repos qui compte est celui d'après lui (un `max`, pas un `min` : une équipe
+  samedi+dimanche a son repos après le dimanche, pas après le samedi).
+- **Repli sans image** (ni habitude ni rotation) : le champ déclaré `Team.matchDay`, stocké
+  **0-based** (0 = lundi, `TeamInput.php` `Range(0,6)`, jamais exposé à l'écran), **converti en ISO
+  (+1)** à l'émission pour alimenter la MÊME formule moteur que la valeur dérivée
+  (`rest_day = match_day % 7 + 1`, juste en ISO uniquement — `engine/app/solver/objective.py`).
+  **Corrige le bug dormant D-11** ([`../evolution/duplications-de-verite.md`](../evolution/duplications-de-verite.md)) :
+  sans cette conversion, un `matchDay` déclaré samedi (5, 0-based) produisait un repos calculé
+  samedi au lieu de dimanche — dormant faute d'écran écrivant le champ, jamais observé en
+  production. Sans image ET sans champ déclaré → `null`, inchangé.
+- **Le champ déclaré n'est pas supprimé** : repli legacy, zéro migration, conversion à l'émission
+  SEULE (la colonne reste 0-based en base).
+- **Péremption** (`ResourceChangeStaleScheduleListener`) : `TeamMatchHabit`, `MatchSlotRotation` et
+  `MatchSlotRotationTeam` marquent désormais les plannings COMPLETED du club+saison comme périmés
+  à la création/modification/suppression (patron STRUCTURE, `teamTouched`) — leur contenu entre
+  dans le `matchDay` émis, donc dans le payload `/generate` hashé ; un import démarque.
+- **Garde bloquante** : volet dérivation de `CrossStack/SlotRotationPayloadParityTest` (habitude
+  seule → max ISO ; rotation seule et union habitude+rotation → max ISO ; repli champ déclaré
+  converti 0-based→ISO ; ni image ni champ déclaré → `null` inchangé) + volet
+  `Integration/Service/ResourceChangeStaleScheduleTest` (habitude/rotation périment le club+saison,
+  frontière saison tenue, import démarque).
 
 ## Solveur de placement — P1-4 PR D (2026-08-03, [ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md))
 
