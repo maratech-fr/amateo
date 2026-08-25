@@ -58,6 +58,17 @@ export function useModuleVisit(enabled = true) {
   });
 }
 
+/**
+ * RMM-6 PR-3 — l'outlook J-7 des échéances de saisie, consommé par la tuile
+ * cockpit (`FbiDeadlineCard`). Lecture seule, ouvert au Membre. La règle J-7
+ * (`withinWindow`) et le bloc gardien sont calculés BACKEND — le front n'invente
+ * rien. Frais court : une échéance approche et le compte de matchs à saisir bouge
+ * à chaque saisie FBI marquée.
+ */
+export function useDeadlineOutlook() {
+  return useQuery({ queryKey: ["matches", "deadline-outlook"], queryFn: matchesApi.getDeadlineOutlook, staleTime: 30_000 });
+}
+
 // Reference data (names + envelope axes). Long-lived within a session.
 export function useTeams() {
   return useQuery({ queryKey: ["teams"], queryFn: matchesApi.getTeams, staleTime: 300_000 });

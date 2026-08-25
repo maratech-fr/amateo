@@ -320,6 +320,45 @@ export interface ModuleVisitDelta {
 /** Stampe la visite et rend le delta depuis la précédente (POST sans corps). */
 export const postModuleVisit = (): Promise<ModuleVisitDelta> => api.post("matches/module-visit").json<ModuleVisitDelta>();
 
+// ── Échéances de saisie : l'outlook J-7 du cockpit (RMM-6 PR-3) ───────────────
+
+/**
+ * Une échéance EFFECTIVE encore due, groupée (date, source) par le backend. La
+ * règle J-7 (`withinWindow`) est calculée SERVEUR — la maison unique
+ * `EntryDeadlineOutlook` : le front n'invente aucune fenêtre (🔴 `.claude/rules/frontend.md`).
+ */
+export interface DeadlineOutlookWindow {
+  /** Y-m-d */
+  deadline: string;
+  /** 'club' (valeur du club) | 'community' (défaut communautaire proposé). */
+  source: "club" | "community";
+  competitionNames: string[];
+  /** Domiciles pas encore saisis dans FBI (UNPLACED compris). */
+  toEnterCount: number;
+  /** Vraie dans les sept jours de l'échéance (dépassée comprise) — calcul BACKEND. */
+  withinWindow: boolean;
+}
+
+/**
+ * Le delta du « gardien » joint à l'outlook QUAND une fenêtre est ouverte et que
+ * l'utilisateur a déjà une référence de visite — lu SANS stamper (RMM-6 PR-1).
+ * Sous-ensemble de `ModuleVisitDelta` (ni `firstVisit` ni `referenceTakenAt`).
+ */
+export interface DeadlineGuardianDelta {
+  newFixturesCount: number;
+  newConflictFingerprints: string[];
+  planningChanged: boolean;
+}
+
+export interface DeadlineOutlook {
+  windows: DeadlineOutlookWindow[];
+  /** Absent quand aucune fenêtre n'est ouverte OU sans référence de visite. */
+  guardianDelta?: DeadlineGuardianDelta;
+}
+
+/** L'outlook J-7 des échéances de saisie (lecture seule, ouvert au Membre). */
+export const getDeadlineOutlook = (): Promise<DeadlineOutlook> => api.get("matches/deadline-outlook").json<DeadlineOutlook>();
+
 // ── Capacity layer (P1-4 PR B) ───────────────────────────────────────────────
 
 /** Match access window of a venue — ≥ 1 window makes it a MATCH venue. */

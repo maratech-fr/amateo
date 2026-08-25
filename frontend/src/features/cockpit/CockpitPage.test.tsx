@@ -53,6 +53,8 @@ vi.mock("@/features/matches/queries", () => ({
   useUnavailabilityImpact: () => ({ data: { clubId: "c", seasonId: null, items: [] } }),
   useCreateVenueUnavailability: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteVenueUnavailability: () => ({ mutate: vi.fn(), isPending: false }),
+  // RMM-6 PR-3 — la tuile échéances FBI consomme cet outlook ; muet dans ces états.
+  useDeadlineOutlook: () => ({ data: undefined }),
 }));
 
 function renderCockpit() {

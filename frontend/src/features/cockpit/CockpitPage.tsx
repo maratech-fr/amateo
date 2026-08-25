@@ -7,6 +7,7 @@ import { useSchedules } from "@/features/planning/queries";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 
 import { SeasonPlanBanner } from "./SeasonPlanBanner";
+import { FbiDeadlineCard } from "./FbiDeadlineCard";
 import { MonthCalendar } from "./MonthCalendar";
 import { PUBLIC_HOLIDAY_HORIZON_DAYS, RadarPanel } from "./RadarPanel";
 import { VenueUnavailabilityCard } from "./VenueUnavailabilityCard";
@@ -76,6 +77,10 @@ export function CockpitPage() {
         </div>
       ) : null}
       <SeasonPlanBanner schedules={schedules} socleValidated={socleValidated} loading={schedulesLoading} entries={radarEntries} />
+      {/* RMM-6 PR-3 — le rappel de saisie FBI « remonte dès le login » : pleine largeur
+          sous le bandeau planning, au-dessus de la grille. MUET (rend null) hors d'une
+          fenêtre J-7 servie par le backend — zéro encombrement dans le cas courant. */}
+      <FbiDeadlineCard />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
         {/* P2-5 E1 : mères ET semaines enfants s'affichent — une semaine pleine
             DÉBORDE sa mère (queue/tête hors incident), la filtrer laisserait ces
