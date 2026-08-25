@@ -74,7 +74,13 @@ final class CompetitionEntryDeadlinesController extends AbstractController
         }
         $competitionIds = array_keys($competitionIds);
 
-        $deadline = $this->parseDeadline($payload['deadline'] ?? null);
+        // Revue sécurité 2026-08-25 (F-3) : une clé absente n'est PAS un effacement.
+        // L'effacement est un geste EXPLICITE (`"deadline": null`) — un front bogué
+        // qui omet la clé ne doit pas essuyer les échéances du club en silence.
+        if (!\array_key_exists('deadline', $payload)) {
+            return $this->json(['error' => 'Clé « deadline » manquante (date AAAA-MM-JJ, ou null pour effacer).'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+        $deadline = $this->parseDeadline($payload['deadline']);
         if (false === $deadline) {
             return $this->json(['error' => 'Date d\'échéance invalide (format attendu : AAAA-MM-JJ).'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
@@ -92,14 +98,20 @@ final class CompetitionEntryDeadlinesController extends AbstractController
         }
 
         $this->entityManager->wrapInTransaction(function () use ($competitions, $deadline): void {
+            // Revue sécurité 2026-08-25 (F-4) : deux compétitions du même lot peuvent
+            // porter le même id fédéral (rien ne l'interdit en base) — sans ce suivi,
+            // le second upsert re-persisterait la même ligne partagée et la contrainte
+            // d'unicité ferait un 500 au commit. Un seul upsert par id fédéral suffit.
+            $upserted = [];
             foreach ($competitions as $competition) {
                 $competition->setEntryDeadline($deadline);
 
                 // Le défaut communautaire ne bouge QUE pour une compétition appariée,
                 // et seulement quand on POSE une date (l'effacer n'efface pas le partagé).
                 $ffbbCompetitionId = $competition->getFfbbCompetitionId();
-                if ($deadline instanceof DateTimeImmutable && null !== $ffbbCompetitionId) {
+                if ($deadline instanceof DateTimeImmutable && null !== $ffbbCompetitionId && !isset($upserted[$ffbbCompetitionId])) {
                     $this->upsertShared($ffbbCompetitionId, $deadline);
+                    $upserted[$ffbbCompetitionId] = true;
                 }
             }
         });

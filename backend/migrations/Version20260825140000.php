@@ -39,10 +39,14 @@ final class Version20260825140000 extends AbstractMigration
         $this->addSql('CREATE UNIQUE INDEX uniq_shared_competition_deadline_ffbb ON shared_competition_deadline (ffbb_competition_id)');
 
         // Table GLOBALE (aucune donnée club-identifiante) → pas de RLS ; seul le GRANT
+        // borne app_user. PAS de DELETE (revue sécurité 2026-08-25, F-1) : aucun chemin
+        // de code ne supprime une ligne partagée (« effacer sa valeur club n'efface pas
+        // le partagé ») — sur une table SANS RLS, le GRANT est la seule couche DB, on ne
+        // donne que le nécessaire (l'upsert exige SELECT+INSERT+UPDATE).
         // runtime est nécessaire pour que app_user la lise et l'écrive.
         $hasAppUser = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
         if ($hasAppUser) {
-            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON shared_competition_deadline TO app_user');
+            $this->addSql('GRANT SELECT, INSERT, UPDATE ON shared_competition_deadline TO app_user');
         }
     }
 

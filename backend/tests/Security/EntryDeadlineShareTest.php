@@ -240,6 +240,39 @@ final class EntryDeadlineShareTest extends WebTestCase
     // (g) gardes : management 403, tenant (422 étranger sans écriture), 409 archivée
     // ─────────────────────────────────────────────────────────────────────────
 
+    public function testMissingDeadlineKeyIsRejectedNotTreatedAsClear(): void
+    {
+        // Revue sécurité 2026-08-25 (F-3) : la clé absente n'est PAS « null » — un
+        // front bogué qui omet la clé ne doit pas essuyer les échéances du club.
+        [, $season, $user] = $this->createClub('gmk');
+        $comp = $this->makeCompetition($season, 1, null);
+        $this->postDeadlines($user, [$comp->getId()], '2026-09-10');
+
+        $server = $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'];
+        $this->client->request('POST', '/api/competitions/entry-deadlines', [], [], $server, json_encode([
+            'competitionIds' => [$comp->getId()],
+        ], \JSON_THROW_ON_ERROR));
+
+        self::assertSame(422, $this->client->getResponse()->getStatusCode(), 'clé absente → 422, jamais un effacement');
+        self::assertSame('2026-09-10', $this->getCompetition($user, $comp->getId())['entryDeadline'], 'la valeur club est intacte');
+    }
+
+    public function testDuplicateFfbbIdInOneBatchUpsertsOnceWithout500(): void
+    {
+        // Revue sécurité 2026-08-25 (F-4) : deux compétitions du même lot peuvent porter
+        // le même id fédéral — un seul upsert partagé, jamais un 500 d'unicité au commit.
+        [, $season, $user] = $this->createClub('gdup');
+        $ffbb = 'FFBB-COMP-' . uniqid('dup', false);
+        $compA = $this->makeCompetition($season, 1, $ffbb);
+        $compB = $this->makeCompetition($season, 2, $ffbb);
+
+        $before = $this->sharedRowCount();
+        [$status] = $this->postDeadlinesRaw($user, [$compA->getId(), $compB->getId()], '2026-09-10');
+
+        self::assertSame(200, $status, 'le lot au double id fédéral passe (pas de 500 au commit)');
+        self::assertSame($before + 1, $this->sharedRowCount(), 'UNE seule ligne partagée pour l\'id fédéral');
+    }
+
     public function testNonManagementMemberIsForbidden(): void
     {
         [$club, $season] = $this->createClub('gm');

@@ -25,6 +25,16 @@ use Doctrine\ORM\Mapping as ORM;
  * pattern as ffbb_league / league_match_window), and carries no season column:
  * an FFBB competition id is already season-scoped by the federation
  * (FfbbEngagementReader — an id only exists within its season).
+ *
+ * ⚠ RISQUE RÉSIDUEL ASSUMÉ (revue sécurité 2026-08-25, F-2) : « apparié » repose
+ * sur Club.ffbbClubCode, un code fédéral PUBLIC auto-déclaré — un club peut
+ * revendiquer le code d'un autre, s'apparier à ses compétitions et écrire ce
+ * défaut. Borné par conception : la donnée est UNE date, toujours marquée
+ * « proposée », toujours surchargeable, et les clubs légitimement appariés
+ * s'écrasent déjà entre eux (last-write-wins). ⚠ COROLLAIRE OPPOSABLE : ne
+ * JAMAIS enrichir cette table (compteurs, provenance, texte libre) sans
+ * re-passer la revue — l'appariement auto-déclaré deviendrait le vecteur de
+ * fuite de ce qu'on y ajouterait.
  */
 #[ORM\Entity(repositoryClass: SharedCompetitionDeadlineRepository::class)]
 #[ORM\Table(name: 'shared_competition_deadline')]
