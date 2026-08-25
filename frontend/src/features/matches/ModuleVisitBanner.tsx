@@ -1,6 +1,7 @@
 import { Sparkles } from "lucide-react";
 
 import type { ModuleVisitDelta } from "./api";
+import { visitDeltaSegments } from "./lib/visitDeltaSegments";
 
 interface ModuleVisitBannerProps {
   /** Le delta du « gardien » ; `undefined` tant que la requête n'est pas résolue. */
@@ -19,18 +20,7 @@ export function moduleVisitSummary(delta: ModuleVisitDelta): string[] {
   if (delta.firstVisit) {
     return [];
   }
-  const segments: string[] = [];
-  if (delta.newFixturesCount > 0) {
-    segments.push(`${delta.newFixturesCount} match${delta.newFixturesCount > 1 ? "s" : ""} arrivé${delta.newFixturesCount > 1 ? "s" : ""}`);
-  }
-  const conflicts = delta.newConflictFingerprints.length;
-  if (conflicts > 0) {
-    segments.push(`${conflicts} nouveau${conflicts > 1 ? "x" : ""} conflit${conflicts > 1 ? "s" : ""}`);
-  }
-  if (delta.planningChanged) {
-    segments.push("le planning de saison a changé");
-  }
-  return segments;
+  return visitDeltaSegments(delta);
 }
 
 /**

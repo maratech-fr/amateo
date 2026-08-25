@@ -51,7 +51,8 @@ frontend/
 │   │   ├── auth/                # Login · register · verify-email · password · waiting
 │   │   ├── club/                # /club hub: identity (logo/accent), FFBB info, requests
 │   │   ├── coach-wishes/        # #10 doléances: modal, campaign, PUBLIC page, radar badge
-│   │   ├── cockpit/             # / home: season-plan banner, month calendar, radar
+│   │   ├── cockpit/             # / home: season-plan banner, month calendar, radar,
+│   │   │                        # FbiDeadlineCard (RMM-6 PR-3: matches FBI-entry reminder + login escalation)
 │   │   ├── legal/               # /confidentialite
 │   │   ├── matches/             # /matchs (guided loop, 5 derived rail steps) + /matchs/configuration (rare setup)
 │   │   │                        # + /matchs/reconciliation (RMM-4, FBI écarts per-field — delivered, two channels: xlsx deposit + FFBB API)
