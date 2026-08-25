@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { Fixture, Team, Venue } from "./api";
+import type { Competition, Fixture, Team, Venue } from "./api";
 import { FbiEntryList } from "./FbiEntryList";
 
 const teams = new Map<string, Team>([
@@ -117,5 +117,72 @@ describe("FbiEntryList — la vue de saisie FBI (RMM-1 PR4, L9)", () => {
   it("état vide : aucun domicile recopiable → message dédié", () => {
     render(<FbiEntryList fixtures={[]} teams={teams} venues={venues} busy={false} onSubmit={vi.fn()} onReopen={vi.fn()} />);
     expect(screen.getByText(/Aucun domicile à recopier/)).toBeInTheDocument();
+  });
+});
+
+// ── RMM-6 PR-2 — l'échéance de saisie par ligne ──────────────────────────────
+const comp = (id: string, over: Partial<Competition>): Competition => ({
+  id,
+  teamId: "tA",
+  name: "Départemental",
+  competitionType: "CHAMPIONSHIP",
+  effectiveEntryDeadline: null,
+  deadlineSource: null,
+  ...over,
+});
+
+/** Un domicile PLACÉ rattaché à une compétition donnée. */
+function fixtureWith(competitionId: string | null): Fixture {
+  return { ...base, id: "fxD", teamId: "tA", competitionId, matchDate: "2026-10-31", opponentLabel: "Voisins", status: "PLACED", venueId: "v1", kickoffTime: "16:00", externalRef: "40" };
+}
+
+function renderDeadline(competitionId: string | null, competitions: Map<string, Competition>, today: string) {
+  const onSubmit = vi.fn();
+  render(
+    <FbiEntryList fixtures={[fixtureWith(competitionId)]} teams={teams} venues={venues} competitions={competitions} today={today} busy={false} onSubmit={onSubmit} onReopen={vi.fn()} />,
+  );
+  return { onSubmit };
+}
+
+describe("FbiEntryList — l'échéance de saisie par ligne (RMM-6 PR-2)", () => {
+  it("à venir : « avant le … (J-3) » via effectiveEntryDeadline SERVIE", () => {
+    const competitions = new Map([["c", comp("c", { effectiveEntryDeadline: "2026-10-06", deadlineSource: "club" })]]);
+    renderDeadline("c", competitions, "2026-10-03");
+    expect(screen.getByText(/avant le .*\(J-3\)/)).toBeInTheDocument();
+  });
+
+  it("le jour même : « (aujourd'hui) » (J0)", () => {
+    const competitions = new Map([["c", comp("c", { effectiveEntryDeadline: "2026-10-03", deadlineSource: "club" })]]);
+    renderDeadline("c", competitions, "2026-10-03");
+    expect(screen.getByText(/\(aujourd'hui\)/)).toBeInTheDocument();
+  });
+
+  it("dépassée : « échéance dépassée (J+2) » — ET la case reste COCHABLE (jamais bloquant)", async () => {
+    const user = userEvent.setup();
+    const competitions = new Map([["c", comp("c", { effectiveEntryDeadline: "2026-10-01", deadlineSource: "club" })]]);
+    const { onSubmit } = renderDeadline("c", competitions, "2026-10-03");
+    expect(screen.getByText(/échéance dépassée \(J\+2\)/)).toBeInTheDocument();
+    // FALSIFICATION : le geste « Marquer saisi » marche SOUS échéance dépassée.
+    await user.click(screen.getByRole("button", { name: /Marquer saisi.*Voisins/ }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ id: "fxD" }));
+  });
+
+  it("source communautaire → suffixe « · proposée »", () => {
+    const competitions = new Map([["c", comp("c", { effectiveEntryDeadline: "2026-10-06", deadlineSource: "community" })]]);
+    renderDeadline("c", competitions, "2026-10-03");
+    expect(screen.getByText(/proposée/)).toBeInTheDocument();
+  });
+
+  it("amical (competitionId null) → AUCUNE échéance affichée", () => {
+    renderDeadline(null, new Map(), "2026-10-03");
+    expect(screen.queryByText(/avant le/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/échéance dépassée/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/J-|J\+/)).not.toBeInTheDocument();
+  });
+
+  it("compétition sans échéance servie → rien affiché", () => {
+    const competitions = new Map([["c", comp("c", { effectiveEntryDeadline: null, deadlineSource: null })]]);
+    renderDeadline("c", competitions, "2026-10-03");
+    expect(screen.queryByText(/avant le/)).not.toBeInTheDocument();
   });
 });

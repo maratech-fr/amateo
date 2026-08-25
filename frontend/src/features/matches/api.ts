@@ -45,6 +45,15 @@ export interface Competition {
   ffbbPouleName?: string | null;
   ffbbCompetitionName?: string | null;
   expectedMatchdays?: number | null;
+  /**
+   * RMM-6 — entry-deadline projection, read-only (written by the bulk endpoint
+   * below, never the CRUD). `entryDeadline` is the club's OWN value; the backend
+   * serves the rule « club wins, else community default » in `effectiveEntryDeadline`
+   * and names its origin in `deadlineSource`. The front NEVER recomputes the rule.
+   */
+  entryDeadline?: string | null;
+  effectiveEntryDeadline?: string | null;
+  deadlineSource?: "club" | "community" | null;
 }
 
 // ── FFBB pairing (P1-4 PR F) ─────────────────────────────────────────────────
@@ -263,6 +272,15 @@ function normalizeFixture(raw: Fixture): Fixture {
 
 export const getFixtures = async (): Promise<Fixture[]> => (await collectionAll<Fixture>("fixtures")).map(normalizeFixture);
 export const getCompetitions = (): Promise<Competition[]> => collectionAll<Competition>("competitions");
+
+/**
+ * RMM-6 — pose (ou EFFACE) UNE échéance de saisie sur un lot de compétitions, en un
+ * seul geste (une transaction backend). `deadline: null` EXPLICITE = effacer ; le
+ * backend rejette (422) une clé absente pour ne jamais essuyer les échéances en
+ * silence. Un id inconnu/étranger → 422, rien écrit. Management-gated.
+ */
+export const setEntryDeadlines = (competitionIds: string[], deadline: string | null): Promise<{ updated: string[]; deadline: string | null }> =>
+  api.post("competitions/entry-deadlines", { json: { competitionIds, deadline } }).json<{ updated: string[]; deadline: string | null }>();
 export const getTeams = (): Promise<Team[]> => collectionAll<Team>("teams");
 // Tiers are a tiny fixed set (S/A/B/C/D) and their id is numeric, so use the
 // unpaginated `collection` (collectionAll constrains T to a string id).

@@ -14,6 +14,20 @@ export function useCompetitions() {
   return useQuery({ queryKey: ["competitions"], queryFn: matchesApi.getCompetitions, staleTime: 300_000 });
 }
 
+/**
+ * RMM-6 — l'écriture bulk des échéances de saisie. Invalide `competitions` : les
+ * champs lus (`entryDeadline`/`effectiveEntryDeadline`/`deadlineSource`) y vivent.
+ * 422/409 remontent par `onError` (toast) ; l'éditeur ajoute son alerte de formulaire.
+ */
+export function useSetEntryDeadlines() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ competitionIds, deadline }: { competitionIds: string[]; deadline: string | null }) => matchesApi.setEntryDeadlines(competitionIds, deadline),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["competitions"] }),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
 export function useLeagueWindows() {
   return useQuery({ queryKey: ["league-match-windows"], queryFn: matchesApi.getLeagueWindows, staleTime: 300_000 });
 }

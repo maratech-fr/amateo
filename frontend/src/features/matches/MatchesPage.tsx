@@ -8,7 +8,7 @@ import { EmptyState } from "@/shared/components/ui/empty-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { StepRail } from "@/shared/components/ui/step-rail";
 
-import type { Category, Coach, Fixture, Team, Venue } from "./api";
+import type { Category, Coach, Competition, Fixture, Team, Venue } from "./api";
 import { AwayList } from "./AwayList";
 import { ConflictRadar } from "./ConflictRadar";
 import { FbiEntryList } from "./FbiEntryList";
@@ -86,6 +86,7 @@ export function MatchesPage() {
   const teamsMap = useMemo<Map<string, Team>>(() => byId(teams.data), [teams.data]);
   const venuesMap = useMemo<Map<string, Venue>>(() => byId(venues.data), [venues.data]);
   const categoriesMap = useMemo<Map<string, Category>>(() => byId(categories.data), [categories.data]);
+  const competitionsMap = useMemo<Map<string, Competition>>(() => byId(competitions.data), [competitions.data]);
   const coachesMap = useMemo<Map<string, Coach>>(() => byId(coaches.data), [coaches.data]);
 
   const allFixtures = useMemo<Fixture[]>(() => fixtures.data ?? [], [fixtures.data]);
@@ -376,6 +377,8 @@ export function MatchesPage() {
             fixtures={weekendFixtures}
             teams={teamsMap}
             venues={venuesMap}
+            competitions={competitionsMap}
+            today={todayISO()}
             busy={mutating}
             onSubmit={(fixture) => submitFixture.mutate(fixture, { onSuccess: () => toast.success("Match marqué saisi dans FBI") })}
             onReopen={(fixture) => reopenFixture.mutate(fixture)}
