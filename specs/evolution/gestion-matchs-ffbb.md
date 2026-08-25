@@ -272,6 +272,13 @@ sans importance), mais pas d'approximation ville à raffiner.
 
 ## 8. Le workflow dérogation = mini-tracker daté (nouvelle brique)
 
+> ⚠ **FERMÉ SANS CODE le 2026-08-25 (fondateur)** — « la dérogation n'est pas un objet de l'app,
+> c'est juste la réponse à un conflit à résoudre avec le club adverse ; rien de plus chez nous ».
+> Pas de deadline, pas d'états : le radar signale, le gestionnaire traite (déplacement manuel ou
+> la ligue modifie), le ré-import/la vérification API constate, le conflit disparaît seul. Cette
+> section reste en l'état comme trace du cadrage ; la décision vit au registre
+> (`../courantes/etat-des-lieux.md` §2). Le volet « échéances de SAISIE », lui, a été livré (RMM-6).
+
 Un conflit détecté → le gestionnaire tranche :
 - **re-placer** (si domicile + marge disponible), ou
 - **dérogation** : brouillon (quel match, créneau actuel, changement demandé, motif) → **envoyée** → **en
