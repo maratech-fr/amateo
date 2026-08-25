@@ -1,6 +1,16 @@
 # Wizard — saisie des données (tranche 3, LIVRÉ)
 
-Last verified @ 2026-08-23 (édition RMM-2 — le CHROME COMMUN du wizard, §« Chrome commun (`WizardLayout`) ») : le rail d'étapes de gauche est EXTRAIT à rendu identique dans la primitive partagée `shared/components/ui/step-rail.tsx` (présentation pure). Re-vérifié contre le code : `WizardLayout.tsx` n'a plus le `<nav className="shrink-0 md:w-44">` codé en dur — il monte `<StepRail steps=… currentId={stepId} onSelect=… />`, la logique de verrouillage (guidé / génération bloquée) et les coches « étape terminée » restant CALCULÉES dans `WizardLayout` et PASSÉES au rail ✓ ; l'armement du voile (lot C) reste dans le `onSelect` de l'appelant, jamais dans la primitive ✓ ; `step-rail.tsx` n'importe aucun store ni hook applicatif, importe `Check`/`Lock` lui-même, sans prop `className` (patron `modal.tsx`) ✓ ; les 4 suites qui couvraient le rail (WizardPage voile, matches.spec, a11y-contrast, width-calibration) restent vertes SANS modification, témoin de l'extraction ✓. Le reste du fichier non re-vérifié cette passe — un stamp REMPLACE, l'historique des passes précédentes vit dans git)
+Last verified @ 2026-08-25 (rotation `documentation-update`, hors sujet de la PR — sondage ciblé,
+pas une relecture complète). Re-vérifié contre le code : `shared/components/ui/step-rail.tsx`
+existe et `WizardLayout.tsx` le monte (`<StepRail …/>`, plus de `<nav>` codé en dur) ✓ ;
+`features/wizard/lib/teamColumns.ts` (foyer unique des largeurs de colonnes, §1) existe ✓ ;
+`App\Service\Basketball\CategoryCatalog` (catalogue de catégories cité §1) existe côté backend ✓ ;
+`TeamLinksSection` (extraite de `HabitsLinksDialog`, réutilisée par la modale « Liens de {équipe} »
+§1) est bien importée par `matches/HabitsLinksDialog.tsx` — et le patron « flèches ↑/↓, jamais de
+drag » qu'elle a inspiré est cité EXPLICITEMENT par le nouveau `MatchSlotRotationsEditor.tsx`
+(RMM-5 PR-4, hors sujet de ce fichier mais confirme la filiation) ✓. Le reste du fichier (le
+détail de chaque étape) non re-contrôlé ligne à ligne cette passe — un stamp REMPLACE,
+l'historique des passes précédentes vit dans git)
 
 > ⚠️ **Réalité livrée — canonique.** Le draft "4 étapes" plus bas est **historique/superseded** : le wizard a été reconstruit dans `frontend/src/features/wizard` avec un flux plus granulaire, décidé avec le PO. Les sections 1+ ci-dessous ne décrivent plus l'implémentation.
 

@@ -1,16 +1,24 @@
+import { useState } from "react";
+
 import { EmptyBlock } from "@/shared/components/ui/empty-hint";
+import { Tabs } from "@/shared/components/ui/tabs";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { tint } from "@/shared/lib/color";
+import { dayLabelLong } from "@/shared/lib/days";
 
-import type { Team, Venue } from "./api";
-import type { TypicalWeekendModel } from "./lib/typicalWeekend";
+import type { MatchSlotRotation, Team, TeamMatchHabit, Venue } from "./api";
+import { buildTypicalWeekend, weekCountOf } from "./lib/typicalWeekend";
 
 const ROW_HEIGHT = 16; // px per 15-min step — same scale as the dated grid
 const HEADER_ROW = "1.75rem";
 const DAY_LABELS: Record<number, string> = { 6: "Samedi", 7: "Dimanche" };
 
+/** A/B/C… — l'étiquette de la semaine `k` (identique à l'ordre des membres d'une rotation). */
+const weekLetter = (index: number): string => String.fromCharCode(65 + index);
+
 interface TypicalWeekendGridProps {
-  model: TypicalWeekendModel;
+  habits: TeamMatchHabit[];
+  rotations: MatchSlotRotation[];
   venues: Map<string, Venue>;
   teams: Map<string, Team>;
 }
@@ -19,12 +27,40 @@ interface TypicalWeekendGridProps {
  * P1-4 PR E2 — the « week-end type »: every team's habitual window on a
  * date-less Sat/Sun × venues grid. READ-ONLY — the manager's ideal template;
  * habits are edited in « Habitudes & passerelles ».
+ *
+ * RMM-5 PR-4 — l'alternance A/B entre dans le gabarit : quand il existe des
+ * rotations, l'en-tête gagne un segmenté « Semaine A / Semaine B / … » (N = la
+ * plus grande rotation) et la semaine k dessine, pour chaque rotation, le membre
+ * `position k mod N`. **Sans rotation, N = 1 : AUCUN segmenté, la grille reste
+ * EXACTEMENT celle d'avant.** Le modèle (`buildTypicalWeekend`) reste pur ; ce
+ * composant ne fait que porter l'index de semaine choisi.
  */
-export function TypicalWeekendGrid({ model, venues, teams }: TypicalWeekendGridProps) {
-  const { columns, blocks, venueless, startMin, endMin, empty } = model;
+export function TypicalWeekendGrid({ habits, rotations, venues, teams }: TypicalWeekendGridProps) {
+  const [week, setWeek] = useState(0);
+  const weekCount = weekCountOf(rotations);
+  // Le choix d'une semaine peut se retrouver hors bornes si les rotations rétrécissent — on borne.
+  const activeWeek = week < weekCount ? week : 0;
+  const model = buildTypicalWeekend(habits, rotations, activeWeek);
+  const { columns, blocks, venueless, offWeekendRotations, startMin, endMin, empty } = model;
+
+  const segmented =
+    weekCount > 1 ? (
+      <Tabs
+        ariaLabel="Semaine de l'alternance"
+        idPrefix="ab-week"
+        tabs={Array.from({ length: weekCount }, (_, i) => ({ id: String(i), label: `Semaine ${weekLetter(i)}` }))}
+        activeTab={String(activeWeek)}
+        onTabChange={(id) => setWeek(Number(id))}
+      />
+    ) : null;
 
   if (empty) {
-    return <EmptyBlock>Aucune habitude déclarée — le week-end type se construit dans « Habitudes & passerelles ».</EmptyBlock>;
+    return (
+      <div className="flex h-full flex-col gap-2">
+        {segmented}
+        <EmptyBlock>Aucune habitude déclarée — le week-end type se construit dans « Habitudes & passerelles ».</EmptyBlock>
+      </div>
+    );
   }
 
   const stepMin = 15;
@@ -35,6 +71,7 @@ export function TypicalWeekendGrid({ model, venues, teams }: TypicalWeekendGridP
 
   return (
     <div className="flex h-full flex-col gap-2">
+      {segmented}
       {columns.length > 0 ? (
         <div className="overflow-auto rounded-lg border border-border bg-card">
           <div
@@ -106,6 +143,16 @@ export function TypicalWeekendGrid({ model, venues, teams }: TypicalWeekendGridP
           Sans gymnase :{" "}
           {venueless
             .map((h) => `${teams.get(h.teamId)?.name ?? "?"} · ${6 === h.dayOfWeek ? "sam" : "dim"} ${h.kickoffTime}`)
+            .join(" · ")}
+        </p>
+      ) : null}
+
+      {/* §tranche 3 — un créneau partagé hors week-end : listé à part (la grille est Sam/Dim). */}
+      {offWeekendRotations.length > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Hors week-end :{" "}
+          {offWeekendRotations
+            .map((r) => `${teams.get(r.teamId)?.name ?? "?"} · ${dayLabelLong(r.dayOfWeek)} ${r.kickoffTime} · ${venues.get(r.venueId)?.name ?? "?"}`)
             .join(" · ")}
         </p>
       ) : null}

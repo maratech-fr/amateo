@@ -53,6 +53,7 @@ vi.mock("./api", () => ({
   // Preferences layer (P1-4 PR C) — empty: no habit, no link.
   getTeamMatchHabits: vi.fn(() => Promise.resolve([])),
   getTeamLinks: vi.fn(() => Promise.resolve([])),
+  getMatchSlotRotations: vi.fn(() => Promise.resolve([])),
   // Auto-placement (P1-4 PR D).
   placeMatches: vi.fn(() =>
     Promise.resolve({

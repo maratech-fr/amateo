@@ -1,16 +1,18 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-25 (graduation RMM-5 PR-3, le repos d'entraînement DÉRIVÉ de l'image A/B —
-**3 des 4 PR livrées, RMM-5 reste OUVERT** ; section « Rotation A/B — RMM-5 PR-1+PR-2 » étendue en
-« PR-1+PR-2+PR-3 », nouvelle sous-section « Le repos d'entraînement dérivé — RMM-5 PR-3 »).
-Re-vérifié contre le code : `ScheduleConstraintBuilder::deriveMatchDay` — `max` des jours ISO de
-`TeamMatchHabit` ∪ `MatchSlotRotation` (via `MatchSlotRotationTeam`), repli sur `Team.matchDay`
-converti 0-based→ISO (`+1`), `null` si rien ✓ ; `ResourceChangeStaleScheduleListener` écoute
-désormais `TeamMatchHabit`/`MatchSlotRotation`/`MatchSlotRotationTeam` (postPersist/postUpdate/
-postRemove, marquage club+saison) ✓ ; zéro fichier engine dans le diff, contrat **2.15 inchangé**
-(pas de nouveau champ de payload, seule la valeur émise change) ✓. Le reste (PR-1/PR-2 rotation,
-RMM-4 canal API, paliers A/PR-1→F2, RMM-1/RMM-3, périmètre engagé) non re-vérifié cette passe — un
-stamp REMPLACE, l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
+Last verified @ 2026-08-25 (graduation RMM-5 PR-4, le SET-UP A/B et le signal —
+**RMM-5 EST LIVRÉ EN ENTIER (les 4 PR), P2-49 clôt** ; section « Rotation A/B — RMM-5
+PR-1+PR-2+PR-3 » étendue en « PR-1+PR-2+PR-3+PR-4 », nouvelle sous-section « Le SET-UP A/B et le
+signal — RMM-5 PR-4 »). Re-vérifié contre le code (frontend seul, zéro fichier backend/engine dans
+le diff — contrat **2.15 inchangé**) : `MatchSlotRotationsEditor.tsx` (déclaration ordonnée sur
+`/matchs/configuration`, flèches ↑/↓, badge A/B/C, phrase « l'ordre ne commande aucun calendrier »)
+✓ ; `TypicalWeekendGrid`/`buildTypicalWeekend` — `weekCountOf` = plus grande rotation ≥ 2 membres,
+1 sans rotation ⇒ **aucun segmenté**, grille identique à avant (défaut `rotations = []`) ✓ ;
+`isOffModel`/`offModelCount` — la rotation du même jour PRIME sur l'habitude (miroir de la
+suppléance backend PR-2) ✓ ; `sameWeekendRotationCount` — pilule neutre, jamais un `done` ✓. Le
+reste (PR-1/PR-2/PR-3 rotation, RMM-4 canal API, paliers A/PR-1→F2, RMM-1/RMM-3, périmètre engagé)
+non re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git :
+`git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
 > [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés
@@ -253,14 +255,15 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   matchs depuis la PR D (§ suivant) ; l'intensité d'entraînement, elle, par le solveur d'ENTRAÎNEMENT
   (lot PASSERELLES — `engine/docs/constraint-vocabulary.md` §Passerelles).
 
-## Rotation A/B — RMM-5 PR-1+PR-2+PR-3, le MODÈLE, le SOFT puis le REPOS DÉRIVÉ (2026-08-25, P2-49)
+## Rotation A/B — RMM-5, le MODÈLE, le SOFT, le REPOS DÉRIVÉ puis le SET-UP (2026-08-25, P2-49) — LIVRÉ EN ENTIER
 
-**3 des 4 PR livrées — RMM-5 reste OUVERT** ([`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md)
+**RMM-5 est LIVRÉ EN ENTIER (les 4 PR) — P2-49 clôt** ([`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md)
 §8-§9, cas SM1/SM2 sur le 20h30 : pénurie de créneaux → alternance semaine A/semaine B sur le
 MÊME créneau physique). PR-1 livre le modèle et son CRUD seuls — rien ne le consomme encore. PR-2
 branche le bloc au payload `/place-matches` et l'attraction SOFT côté solveur — aucun MOVE. PR-3
-(ci-dessous) fait suivre le repos d'entraînement du solve hebdo à la même image. Reste OUVERTE :
-l'UI SET-UP deux semaines (PR-4).
+fait suivre le repos d'entraînement du solve hebdo à la même image. PR-4 (ci-dessous) livre l'écran
+SET-UP qui déclare les créneaux partagés et le signal « hors image » associé — pur frontend, zéro
+fichier backend/engine, contrat inchangé.
 
 - **`MatchSlotRotation`** (`match_slot_rotation`, tenant+saison, RLS FORCE, patron
   `TeamMatchHabit`/`VenueMatchWindow` — hors des plans de période, pas de `schedulePlanId`) : le
@@ -360,6 +363,56 @@ change ce que reçoit le solveur d'ENTRAÎNEMENT pour son bonus « jour de repos
   converti 0-based→ISO ; ni image ni champ déclaré → `null` inchangé) + volet
   `Integration/Service/ResourceChangeStaleScheduleTest` (habitude/rotation périment le club+saison,
   frontière saison tenue, import démarque).
+
+### Le SET-UP A/B et le signal — RMM-5 PR-4 (2026-08-25)
+
+Dernière PR de RMM-5, **pur frontend** (zéro fichier backend/engine dans le diff) : elle donne un
+écran au modèle livré PR-1 et un signal cohérent à la boucle. **Deux décisions fondateur du §8
+honorées** ici (les décisions 1 « SOFT jamais bloquant » et 4 « FICTIF, aucun ancrage calendaire »
+— voir aussi PR-1/PR-3 ci-dessus pour les décisions 2 et 3).
+
+- **L'éditeur « Créneaux partagés (alternance) »** (`MatchSlotRotationsEditor.tsx`), sur
+  `/matchs/configuration`, frère de `MatchWindowsEditor`/`TeamLinksSection` : déclarer un créneau
+  (gymnase + jour + heure) et ses N équipes membres, **dans l'ordre** — badge A/B/C… par position,
+  réordonnancement par **flèches ↑/↓** (jamais de drag : sans clavier ni cible tactile fiable pour
+  un gestionnaire de 50 ans, patron déjà posé ailleurs dans le module). La phrase « l'ordre dessine
+  seulement l'alternance A/B/C ; il ne commande aucun calendrier » est **dite à l'écran**, jamais
+  tu — honore la décision fondateur n°4 (`position` purement fictif, § PR-1 ci-dessus). Retrait
+  d'un membre désactivé sous 2 équipes (un créneau partagé en compte au moins deux). Route CRUD
+  déjà livrée PR-1 (`/api/match_slot_rotations`) — **PR-4 écrit son premier client** (`api.ts` +
+  `queries.ts` : `useMatchSlotRotations`, `useCreateMatchSlotRotation`,
+  `useUpdateMatchSlotRotation`, `useDeleteMatchSlotRotation`, restés sans consommateur depuis
+  PR-1) ; écriture des membres en **PUT plein remplacement** (le slot + le roster ordonné entier
+  re-envoyés, le backend réécrit — patron déjà documenté § PR-1). Erreur 422 affichée **sur le
+  formulaire** (`role="alert"`) en plus du toast global.
+- **`TypicalWeekendGrid` gagne les semaines A/B** (`buildTypicalWeekend(habits, rotations,
+  weekIndex)`, modèle resté PUR) : `weekCountOf(rotations)` = la plus grande rotation ≥ 2 membres,
+  **1 sans rotation déclarée** — dans ce cas **aucun segmenté ne s'affiche**, la grille est
+  EXACTEMENT celle d'avant (le composant appelle le modèle avec `rotations=[]` par défaut,
+  anti-régression vraie par construction, `TypicalWeekendGrid.test.tsx`). Avec rotation(s), un
+  segmenté `Tabs` « Semaine A / Semaine B / … » (réutilisé, pas neuf) choisit l'index prévisualisé
+  — **jamais une semaine calendaire réelle** : la grille reste date-less, aucun ancrage n'est
+  déclaré (décision fondateur n°4). La semaine `k` dessine, pour chaque rotation week-end, le
+  membre `position k mod N`, dans la même colonne (jour+gymnase) qu'une habitude — collision posée
+  côte à côte comme pour les habitudes (une collision de gabarit doit se VOIR). Un créneau partagé
+  déclaré un jour **hors week-end** est listé à part (« Hors week-end : … », la grille reste
+  Sam/Dim only) plutôt que silencieusement absent.
+- **Le signal « hors image » s'étend aux membres de rotation** (`isOffModel`,
+  `lib/loopSteps.ts`) : pour un membre de rotation, la référence du jour du créneau **devient le
+  créneau lui-même** (jour/heure/gymnase), jamais son habitude — miroir exact de la suppléance
+  backend (PR-2 : l'habitude même-jour d'un membre est retirée du payload de placement). La
+  rotation du même jour **PRIME** donc sur l'habitude ; sans habitude NI rotation sur le jour, pas
+  de modèle de référence donc pas d'écart.
+- **Nouveau signal « même week-end »** (`sameWeekendRotationCount`) : compte les créneaux partagés
+  où **au moins deux membres distincts** reçoivent à domicile le même week-end affiché — l'image
+  A/B dit qu'un seul membre reçoit par week-end sur le créneau, deux domiciles la contredisent.
+  Rendu en **pilule NEUTRE** (icône `Info`, `bg-muted`) juste sous l'écart au modèle, sur l'étape
+  **« placés au modèle »** de `MatchesPage` — jamais une erreur, jamais dans un `done` du rail : honore la
+  décision fondateur n°1 (« l'image A/B est un IDÉAL SOFT, jamais un HARD… le radar peut signaler,
+  il ne bloque pas »), au même titre que l'écart au modèle existant.
+- **Zéro backend/API/contrat touché** : les mutations ajoutent un toast d'erreur en `onError`
+  (patron des autres mutations du module) ; aucune route ni schéma neufs, tout consomme le CRUD
+  livré PR-1.
 
 ## Solveur de placement — P1-4 PR D (2026-08-03, [ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md))
 

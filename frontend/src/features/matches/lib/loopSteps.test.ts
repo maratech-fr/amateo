@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { Conflict, Fixture, TeamMatchHabit } from "../api";
-import { defaultLoopStep, deriveLoopSteps, isOffModel, offModelCount } from "./loopSteps";
+import type { Conflict, Fixture, MatchSlotRotation, TeamMatchHabit } from "../api";
+import { defaultLoopStep, deriveLoopSteps, isOffModel, offModelCount, sameWeekendRotationCount } from "./loopSteps";
+
+function rotation(over: Partial<MatchSlotRotation> = {}): MatchSlotRotation {
+  return { id: over.id ?? "rot", venueId: over.venueId ?? "venue-1", dayOfWeek: over.dayOfWeek ?? 6, kickoffTime: over.kickoffTime ?? "16:00", teamIds: over.teamIds ?? ["team-1", "team-2"] };
+}
 
 /** A HOME fixture builder — everything placed by default, overridable. */
 function fx(over: Partial<Fixture> = {}): Fixture {
@@ -143,5 +147,64 @@ describe("isOffModel — divergence d'un domicile placé vs son habitude", () =>
   });
   it("même jour, heure et gymnase conformes ⇒ pas d'écart", () => {
     expect(isOffModel(fx({ kickoffTime: "16:00", venueId: "venue-1" }), [habit({ kickoffTime: "16:00", venueId: "venue-1" })])).toBe(false);
+  });
+});
+
+describe("isOffModel — le créneau de ROTATION est la référence du jour (RMM-5 PR-4)", () => {
+  it("membre d'un créneau partagé placé HORS de son créneau (heure) ⇒ écart", () => {
+    // La rotation samedi 20:30 est la référence ; placé à 18:30 → écart.
+    const fixture = fx({ teamId: "team-1", matchDate: "2026-10-03", kickoffTime: "18:30", venueId: "venue-1" });
+    expect(isOffModel(fixture, [], [rotation({ dayOfWeek: 6, kickoffTime: "20:30", venueId: "venue-1" })])).toBe(true);
+  });
+  it("membre placé HORS de son créneau (gymnase) ⇒ écart", () => {
+    const fixture = fx({ teamId: "team-1", matchDate: "2026-10-03", kickoffTime: "20:30", venueId: "venue-2" });
+    expect(isOffModel(fixture, [], [rotation({ dayOfWeek: 6, kickoffTime: "20:30", venueId: "venue-1" })])).toBe(true);
+  });
+  it("membre placé SUR son créneau (heure + gymnase) ⇒ pas d'écart", () => {
+    const fixture = fx({ teamId: "team-1", matchDate: "2026-10-03", kickoffTime: "20:30", venueId: "venue-1" });
+    expect(isOffModel(fixture, [], [rotation({ dayOfWeek: 6, kickoffTime: "20:30", venueId: "venue-1" })])).toBe(false);
+  });
+  it("la rotation du jour PRIME sur l'habitude (suppléance) : conforme au créneau ⇒ pas d'écart même si l'habitude divergeait", () => {
+    // Habitude 16:00 mais rotation 20:30 le même jour ; placé 20:30 → conforme (rotation prime).
+    const fixture = fx({ teamId: "team-1", matchDate: "2026-10-03", kickoffTime: "20:30", venueId: "venue-1" });
+    expect(isOffModel(fixture, [habit({ teamId: "team-1", dayOfWeek: 6, kickoffTime: "16:00", venueId: "venue-1" })], [rotation({ dayOfWeek: 6, kickoffTime: "20:30", venueId: "venue-1" })])).toBe(false);
+  });
+  it("offModelCount tient compte des rotations", () => {
+    const off = fx({ id: "o", teamId: "team-1", matchDate: "2026-10-03", kickoffTime: "18:30", venueId: "venue-1" });
+    expect(offModelCount([off], [], [rotation({ dayOfWeek: 6, kickoffTime: "20:30", venueId: "venue-1" })])).toBe(1);
+  });
+});
+
+describe("sameWeekendRotationCount — deux membres reçoivent le même week-end", () => {
+  it("deux membres distincts d'une même rotation à domicile le même week-end ⇒ 1", () => {
+    const home1 = fx({ id: "a", teamId: "team-1", homeAway: "HOME" });
+    const home2 = fx({ id: "b", teamId: "team-2", homeAway: "HOME" });
+    expect(sameWeekendRotationCount([home1, home2], [rotation({ teamIds: ["team-1", "team-2"] })])).toBe(1);
+  });
+  it("un seul membre à domicile ⇒ 0 (l'alternance est respectée)", () => {
+    const home1 = fx({ id: "a", teamId: "team-1", homeAway: "HOME" });
+    const away2 = fx({ id: "b", teamId: "team-2", homeAway: "AWAY" });
+    expect(sameWeekendRotationCount([home1, away2], [rotation({ teamIds: ["team-1", "team-2"] })])).toBe(0);
+  });
+  it("le MÊME membre deux fois à domicile ne compte pas (il faut deux membres DISTINCTS)", () => {
+    const home1 = fx({ id: "a", teamId: "team-1", homeAway: "HOME" });
+    const home1bis = fx({ id: "b", teamId: "team-1", homeAway: "HOME" });
+    expect(sameWeekendRotationCount([home1, home1bis], [rotation({ teamIds: ["team-1", "team-2"] })])).toBe(0);
+  });
+});
+
+describe("le SIGNAL ne rend JAMAIS une étape non-done, et les LABELS du rail restent byte-identiques", () => {
+  it("écart au modèle + même-week-end pleins : les 5 done et les 5 labels sont INCHANGÉS", () => {
+    // Deux membres d'une rotation, tous deux placés HORS créneau ET reçevant le même week-end.
+    const home1 = fx({ id: "a", teamId: "team-1", status: "SUBMITTED", matchDate: "2026-10-03", kickoffTime: "18:30", venueId: "venue-1" });
+    const home2 = fx({ id: "b", teamId: "team-2", status: "SUBMITTED", matchDate: "2026-10-03", kickoffTime: "18:30", venueId: "venue-1" });
+    const rots = [rotation({ dayOfWeek: 6, kickoffTime: "20:30", venueId: "venue-1", teamIds: ["team-1", "team-2"] })];
+    // Signal PLEIN…
+    expect(offModelCount([home1, home2], [], rots)).toBe(2);
+    expect(sameWeekendRotationCount([home1, home2], rots)).toBe(1);
+    // …et pourtant le rail est intact : les rotations n'entrent NULLE PART dans deriveLoopSteps.
+    const steps = deriveLoopSteps({ weekFixtures: [home1, home2], habits: [], conflicts: [] });
+    expect(steps.every((s) => s.done)).toBe(true);
+    expect(steps.map((s) => s.label)).toEqual(["Batch importé", "Placés au modèle", "Litiges (0)", "Domiciles posés", "Saisi dans FBI (2/2)"]);
   });
 });
