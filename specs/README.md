@@ -1,6 +1,6 @@
 # Living Specs System
 
-Last verified @ 2026-08-24 (rotation de fraîcheur — re-vérifié contre le code : les quatre gardes `backend/tests/Unit/Documentation/{DocPlacementTest,DocStampFreshnessTest,RoadmapIdentityTest,BlockingTestsListMatchesCiTest}.php` existent ✓ · `specs/courantes/` listé face au `ls` réel du dossier. **Corrigé ce jour** : `canal-signalement.md` (livré 2026-08-13/14) existe dans `specs/courantes/` depuis des semaines mais était absent du « Files Overview » — ajouté.)
+Last verified @ 2026-08-25 (rotation de fraîcheur — re-vérifié contre le code : les quatre gardes `backend/tests/Unit/Documentation/{DocPlacementTest,DocStampFreshnessTest,RoadmapIdentityTest,BlockingTestsListMatchesCiTest}.php` existent ✓ · `specs/courantes/` (12 fichiers dont `openapi-snapshot.json`/`.meta.md`) listé face au `ls` réel du dossier, « Files Overview » toujours à jour ✓ · le compteur roadmap re-confronté par grep (§« La règle des deux fichiers » — pas de dérive). Rien de faux trouvé cette passe.)
 
 ## 3-Tier Structure
 

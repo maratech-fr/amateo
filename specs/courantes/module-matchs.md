@@ -1,18 +1,21 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-25 (graduation RMM-6 PR-2, l'éditeur des échéances de saisie et leur
-affichage par ligne — section « Échéances ligue/comité — RMM-6 PR-1 + PR-2 » étendue :
-`EntryDeadlinesEditor.tsx` (nouvelle carte du SET-UP, multi-sélection + bulk `POST
-/api/competitions/entry-deadlines`, trois provenances club/proposée/aucune, badge d'appariement,
-effacement explicite) et `FbiEntryList.tsx` L9 (échéance effective par ligne, `lib/deadlineLabel.ts`
-pur, dépassée en avertissement JAMAIS bloquant). La note d'insertion de la section RMM-1
-(`FbiEntryList.tsx` L9) est **purgée** — le point d'insertion est livré, seul RMM-6 PR-3 (rappel
-cockpit + escalade cockpit/login) reste ouvert (roadmap `P2-50`). Re-vérifié contre le code :
-`EntryDeadlinesEditor.tsx`, `lib/deadlineLabel.ts`, `FbiEntryList.tsx`, `ConfigurationPage.tsx`,
-`api.ts`/`queries.ts` (`Competition.entryDeadline`/`effectiveEntryDeadline`/`deadlineSource`,
-`useSetEntryDeadlines`). Le reste (RMM-5 les 4 PR, RMM-4 canal API, paliers A/PR-1→F2, RMM-1/RMM-3,
-périmètre engagé, la partie backend PR-1) non re-vérifié cette passe — un stamp REMPLACE,
-l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
+Last verified @ 2026-08-25 (graduation RMM-6 PR-3, **DERNIÈRE du lot — RMM-6 est LIVRÉ EN ENTIER** :
+section renommée « Échéances ligue/comité — RMM-6 (3 PR) — LIVRÉ EN ENTIER » et étendue de la carte
+cockpit `FbiDeadlineCard` (pleine largeur sous le bandeau socle, rendue UNIQUEMENT quand le backend
+sert une fenêtre J-7 ouverte — le cockpit reste muet sinon, falsifié par test) + l'escalade « dès le
+login » (décision fondateur : « c'est dès le login car le placement est une urgence » — la carte vit
+sur `/`, la route cockpit, pas seulement `/matchs`) + le résumé du gardien (delta de visite) joint
+dans la même carte, jamais un second bloc + la lib de formulation `visitDeltaSegments` extraite de
+`moduleVisitSummary` et consommée par les DEUX (carte cockpit et `ModuleVisitBanner`, comportement
+inchangé). Le point d'insertion posé en RMM-3 (§ « Le gardien à l'ouverture ») et le point
+d'insertion RMM-6 PR-3 signalé en RMM-1 sont **purgés** — les deux sont consommés. Re-vérifié contre
+le code : `FbiDeadlineCard.tsx`, `FbiDeadlineCard.test.tsx`, `CockpitPage.tsx`,
+`lib/visitDeltaSegments.ts`, `ModuleVisitBanner.tsx`, `matches/api.ts`/`queries.ts`
+(`DeadlineOutlookWindow`/`DeadlineGuardianDelta`/`useDeadlineOutlook`), `app/router.tsx` (le cockpit
+EST la route `/`, donc la première page après login). Le reste (RMM-6 PR-1/PR-2, RMM-5 les 4 PR,
+RMM-4 canal API, paliers A/PR-1→F2, RMM-1/RMM-3, périmètre engagé) non re-vérifié cette passe — un
+stamp REMPLACE, l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
 > [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés
@@ -754,15 +757,12 @@ que l'API refuse ensuite de corriger. Une équipe engagée présente dans la pho
   mode échange). E2e : `tests/e2e/matches.spec.ts` inchangé dans son scénario (login → créer →
   placer), la refonte ne change aucune assertion de comportement moteur.
 
-**Un point d'insertion futur RESTE identifié** (rien de ce qui suit n'est implémenté — pointeur
-vers le programme ouvert, `../evolution/refonte-module-matchs.md` §9) :
-- **RMM-6 PR-3** (reste ouvert) — le rappel cockpit « deadline J-6 » et l'escalade cockpit/login en
-  période d'échéance, **actée décision fondateur 2026-08-24** : `MatchModuleDeltaComputer`
-  (§ « Le gardien » ci-dessous) est tenu SÉPARÉ de la rotation de référence précisément pour que
-  PR-3 puisse un jour LIRE le delta sans stamper une visite — un point d'insertion préparé, pas un
-  comportement livré. **PR-1 backend (le champ, le défaut communautaire, l'outlook) et PR-2 front
-  (l'éditeur du SET-UP, l'échéance affichée à côté de chaque ligne sur `FbiEntryList.tsx` L9) sont
-  livrées** — § « Échéances ligue/comité — RMM-6 » plus bas.
+**Le point d'insertion annoncé ici est CONSOMMÉ** — RMM-6 est livré en entier (3 PR, détail
+§ « Échéances ligue/comité — RMM-6 » plus bas) : le rappel cockpit et l'escalade cockpit/login sont
+la carte `FbiDeadlineCard` (RMM-6 PR-3, 2026-08-25) sur `/`, qui réutilise `MatchModuleDeltaComputer`
+via l'outlook (§ « Le gardien » ci-dessous) précisément comme le préparait la décision fondateur du
+2026-08-24 — le calcul du delta était resté séparé de la rotation de référence pour cette lecture
+future.
 
 ## Le gardien à l'ouverture (RMM-3, 2 PR — backend puis front, 2026-08-24)
 
@@ -951,12 +951,14 @@ vers le programme ouvert, `../evolution/refonte-module-matchs.md` §9) :
   re-fetch serveur, 409 doublon), `FfbbRencontreReaderTest.php` (mapping, filtre saison, clamp),
   `FfbbApiClientTest.php` (filtre strict serveur).
 
-## Échéances ligue/comité — RMM-6 PR-1 + PR-2 (backend puis front, 2026-08-25)
+## Échéances ligue/comité — RMM-6 (3 PR, 2026-08-25) — LIVRÉ EN ENTIER
 
 > Cadrage : [`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md) §9
-> (RMM-6, P2-50) et le point d'insertion posé en RMM-1 ci-dessus (`FbiEntryList.tsx` L9). **PR-1
-> (backend) et PR-2 (front) de 3 — RMM-6 reste OUVERT** (roadmap `P2-50`) : seuls le rappel cockpit
-> « deadline J-6 » et l'escalade cockpit/login (PR-3) restent à venir. Besoin d'origine : la
+> (RMM-6, P2-50) et le point d'insertion posé en RMM-1 ci-dessus (`FbiEntryList.tsx` L9) et en RMM-3
+> (§ « Le gardien à l'ouverture », `MatchModuleDeltaComputer` tenu séparé pour cette lecture).
+> **RMM-6 est LIVRÉ EN ENTIER** — PR-1 (backend) et PR-2 (front) posent le champ, le défaut
+> communautaire et l'éditeur du SET-UP ; **PR-3 (front, ci-dessous) livre le rappel cockpit et
+> l'escalade cockpit/login** — RMM-6 CLÔT P2-50, qui quitte la roadmap. Besoin d'origine : la
 > ligue/le comité envoie plusieurs échéances CONCURRENTES par mail, par groupe d'équipes (région le
 > 2 sept, département le 10, autres le 15…) — la granularité est la **compétition**, jamais une
 > date unique de club.
@@ -1029,14 +1031,50 @@ vers le programme ouvert, `../evolution/refonte-module-matchs.md` §9) :
   (« · proposée »).
 - **Back** — tests : `EntryDeadlineShareTest.php` (les huit volets ci-dessus, NR bloquant CLAUDE.md
   §4), `ManagementRoleTest.php` (le bulk rejoint la matrice management-only).
-- **Front** — tests : `EntryDeadlinesEditor.test.tsx` (les trois provenances distinctes, badge
-  d'appariement, multi-sélection → un seul POST avec exactement les ids cochés, effacement avec
-  `deadline: null` explicite, erreur 422/409 lisible en `role=alert`, état vide, boutons inertes
-  sans sélection), `lib/deadlineLabel.test.ts` (formatage pur : à venir/aujourd'hui/dépassée),
-  `FbiEntryList.test.tsx` (échéance par ligne dans ses trois états, dépassée non bloquante —
-  falsifié en cliquant « Marquer saisi » sous échéance dépassée —, amical et compétition sans
-  échéance servie = rien affiché), `ConfigurationPage.test.tsx` (la carte « Échéances de saisie »,
-  son état vide sans compétition).
+- **Front (PR-2)** — tests : `EntryDeadlinesEditor.test.tsx` (les trois provenances distinctes,
+  badge d'appariement, multi-sélection → un seul POST avec exactement les ids cochés, effacement
+  avec `deadline: null` explicite, erreur 422/409 lisible en `role=alert`, état vide, boutons
+  inertes sans sélection), `lib/deadlineLabel.test.ts` (formatage pur : à venir/aujourd'hui/
+  dépassée), `FbiEntryList.test.tsx` (échéance par ligne dans ses trois états, dépassée non
+  bloquante — falsifié en cliquant « Marquer saisi » sous échéance dépassée —, amical et
+  compétition sans échéance servie = rien affiché), `ConfigurationPage.test.tsx` (la carte
+  « Échéances de saisie », son état vide sans compétition).
+
+### La carte cockpit + l'escalade login — RMM-6 PR-3 (front, 2026-08-25)
+
+- **La tuile `FbiDeadlineCard`** — première incursion des matchs sur le cockpit d'accueil (`/`, la
+  route qui suit le login). Pleine largeur, insérée sous `SeasonPlanBanner` et au-dessus de la
+  grille du cockpit (`CockpitPage.tsx`) — jamais un remplacement des zones existantes (§ « Accueil
+  cockpit temporel » reste la maison du bandeau/calendrier/radar, inchangé par cette carte).
+  Consomme le nouveau hook `useDeadlineOutlook` (`GET /api/matches/deadline-outlook`, staleTime
+  30 s, ouvert au Membre — même endpoint que le SET-UP).
+- **Muette par défaut.** La carte ne rend **rien** (`null`) tant qu'aucune fenêtre outlook ne porte
+  `withinWindow: true` — zéro encombrement du cockpit hors période d'échéance, falsifié
+  (`FbiDeadlineCard.test.tsx`). Une fenêtre ouverte affiche « N match(s) à saisir avant le
+  [date] » + les noms de compétition, « · proposée » si la fenêtre vient du défaut communautaire
+  (`source: "community"`).
+- **Dépassée = un avertissement qui RESTE, jamais destructif.** Ton `accent` par défaut, escaladé
+  en `warning` (icône + bordure) dès qu'au moins une fenêtre affichée est dépassée
+  (`daysUntilDeadline < 0`, même lib pure `deadlineLabel.ts` que `FbiEntryList`) — la carte continue
+  d'afficher le compte de matchs non saisis, elle ne disparaît ni ne bloque rien.
+- **Le résumé du gardien fusionne DANS la carte.** Quand l'outlook joint `guardianDelta` (§ « Le
+  gardien à l'ouverture » — fenêtre ouverte ET référence de visite existante), la carte ajoute une
+  note subordonnée « Depuis votre dernière visite : … » sous un filet, **jamais un second bloc
+  concurrent** — honore la décision fondateur (« c'est dès le login car le placement est une
+  urgence »). Absent → aucun trou visuel, rien n'est calculé côté front.
+- **`visitDeltaSegments` — la formulation partagée, extraite.** Les trois segments non nuls du
+  delta de visite (matchs arrivés · nouveaux conflits · planning de saison changé, dans cet ordre)
+  vivent désormais dans `features/matches/lib/visitDeltaSegments.ts` (fonction pure, sans le voile
+  `firstVisit` propre au bandeau). `ModuleVisitBanner.moduleVisitSummary` et `FbiDeadlineCard` la
+  consomment TOUS LES DEUX — une seule maison pour la tournure française et les singuliers/
+  pluriels, comportement du bandeau **inchangé** (tests intacts).
+- **`RadarPanel` intouché** — le radar cockpit (vacances, indispos, plannings à régénérer) n'est
+  pas concerné par ce lot ; les deux to-do (RadarPanel, matchs) restent deux surfaces distinctes.
+- Tests : `FbiDeadlineCard.test.tsx` (mute hors fenêtre/data non résolue/liste vide, contenu en
+  fenêtre, provenance communautaire, dépassée reste affichée en ton warning, guardianDelta joint ou
+  absent), `visitDeltaSegments.test.ts` (les trois segments, singulier/pluriel) ; `CockpitPage.test.tsx`
+  mocke `useDeadlineOutlook` en `undefined` (carte muette) pour garder ses propres scénarios
+  intacts — la couverture de la carte elle-même vit dans son propre test dédié.
 
 ## Reste palier A (à venir)
 
