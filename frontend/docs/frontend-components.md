@@ -1,6 +1,12 @@
 # FORWARD Components Spec — Pages & Shared Components (hors wizard)
 
-Last verified @ 2026-08-23 (recalé par la livraison P4-127 d+e : `Modal` gagne le slot `footer` épinglé et `Button` perd `disabled:pointer-events-none`. Vérifié en écrivant : la ligne Button annonçait une prop `loading` — AUCUNE prop `loading` n'existe dans `button.tsx`, retirée de la ligne (le motif exact de la prop fantôme `action` d'EmptyState, corrigée le 22). ⚠ Vérification HONNÊTEMENT PARTIELLE : ces deux lignes et leurs voisines ; le découpage du fichier reste à faire)
+Last verified @ 2026-08-25 (rotation `documentation-update`, hors sujet de la PR — seule la
+section 1 vivante re-contrôlée : la convention snake_case des paths API Platform tient toujours
+sur les exemples cités (`priority_tiers`, `schedule_diagnostics`, `schedule_slot_templates`,
+`sport_categories`, `team_coaches`, `venue_training_slots`, tous confirmés dans
+`specs/courantes/openapi-snapshot.json`) et sur la ressource la plus récente livrée,
+`/api/match_slot_rotations` (RMM-5 PR-1), qui suit la même règle. Le bloc « Historique » (sections
+2-9) reste superseded, non re-vérifié — il ne prétend à aucune autorité)
 
 > 🛑 **Ce document est SUPERSEDED. Il ne décrit pas le frontend livré.**
 >
