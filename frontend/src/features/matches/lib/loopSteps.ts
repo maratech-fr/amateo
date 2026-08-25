@@ -1,4 +1,4 @@
-import type { Conflict, Fixture, TeamMatchHabit } from "../api";
+import type { Conflict, Fixture, MatchSlotRotation, TeamMatchHabit } from "../api";
 import { isoWeekday } from "./envelope";
 
 /**
@@ -35,21 +35,38 @@ const teamHasHabit = (teamId: string, habits: TeamMatchHabit[]): boolean => habi
 
 /**
  * Écart au modèle d'un domicile PLACÉ (jour / heure / gymnase divergeant de la
- * `TeamMatchHabit`). C'est un SIGNAL affiché, JAMAIS un `done` : « c'est un signal,
- * c'est pas bloquant » (verbatim fondateur). Sans habitude sur l'équipe il n'y a
- * pas de modèle de référence — donc pas d'écart.
+ * référence du jour). C'est un SIGNAL affiché, JAMAIS un `done` : « c'est un signal,
+ * c'est pas bloquant » (verbatim fondateur). Sans référence sur l'équipe (ni habitude
+ * ni rotation) il n'y a pas de modèle — donc pas d'écart.
+ *
+ * RMM-5 PR-4 — pour un MEMBRE de rotation, le modèle de référence du jour du créneau
+ * EST le créneau de rotation (jour/heure/gymnase), pas son habitude : cohérent avec la
+ * suppléance backend (l'habitude même-jour d'un membre est retirée du payload de
+ * placement). La rotation du même jour PRIME donc sur l'habitude.
  */
-export function isOffModel(fixture: Fixture, habits: TeamMatchHabit[]): boolean {
+export function isOffModel(fixture: Fixture, habits: TeamMatchHabit[], rotations: MatchSlotRotation[] = []): boolean {
   if ("HOME" !== fixture.homeAway || "UNPLACED" === fixture.status) {
     return false;
   }
   const teamHabits = habits.filter((h) => h.teamId === fixture.teamId);
-  if (0 === teamHabits.length) {
-    return false;
+  const teamRotations = rotations.filter((r) => r.teamIds.includes(fixture.teamId));
+  if (0 === teamHabits.length && 0 === teamRotations.length) {
+    return false; // aucun modèle de référence
   }
-  const habit = teamHabits.find((h) => h.dayOfWeek === isoWeekday(fixture.matchDate)) ?? null;
+  const day = isoWeekday(fixture.matchDate);
+
+  // Suppléance : la rotation du même jour est la référence du jour (jamais l'habitude).
+  const rotation = teamRotations.find((r) => r.dayOfWeek === day) ?? null;
+  if (null !== rotation) {
+    if (null !== fixture.kickoffTime && fixture.kickoffTime !== rotation.kickoffTime) {
+      return true; // heure divergente du créneau partagé
+    }
+    return null !== fixture.venueId && fixture.venueId !== rotation.venueId; // gymnase divergent (le créneau a TOUJOURS un gymnase)
+  }
+
+  const habit = teamHabits.find((h) => h.dayOfWeek === day) ?? null;
   if (null === habit) {
-    return true; // placé un jour non habituel
+    return true; // placé un jour non habituel (ni habitude ni rotation ce jour-là)
   }
   if (null !== fixture.kickoffTime && fixture.kickoffTime !== habit.kickoffTime) {
     return true; // heure divergente
@@ -57,7 +74,20 @@ export function isOffModel(fixture: Fixture, habits: TeamMatchHabit[]): boolean 
   return null !== habit.venueId && null !== fixture.venueId && fixture.venueId !== habit.venueId; // gymnase divergent
 }
 
-export const offModelCount = (weekFixtures: Fixture[], habits: TeamMatchHabit[]): number => weekFixtures.filter((f) => isOffModel(f, habits)).length;
+export const offModelCount = (weekFixtures: Fixture[], habits: TeamMatchHabit[], rotations: MatchSlotRotation[] = []): number =>
+  weekFixtures.filter((f) => isOffModel(f, habits, rotations)).length;
+
+/**
+ * RMM-5 PR-4 — le compteur « même week-end » : combien de créneaux partagés voient
+ * DEUX de leurs membres (ou plus, distincts) recevoir À DOMICILE le même week-end
+ * affiché. L'alternance dit qu'un seul membre reçoit par week-end sur le créneau ;
+ * deux domiciles la contredisent. SIGNAL neutre (pilule), jamais un blocage — comme
+ * l'écart au modèle, il n'entre dans AUCUN `done`.
+ */
+export function sameWeekendRotationCount(weekFixtures: Fixture[], rotations: MatchSlotRotation[]): number {
+  const homeTeams = new Set(weekFixtures.filter((f) => "HOME" === f.homeAway).map((f) => f.teamId));
+  return rotations.filter((r) => r.teamIds.filter((t) => homeTeams.has(t)).length >= 2).length;
+}
 
 /** Les fixtureIds qu'un conflit référence (0, 1 ou 2) — un conflit sans fixture est « sans date ». */
 function conflictFixtureIds(conflict: Conflict): string[] {

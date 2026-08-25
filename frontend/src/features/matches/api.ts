@@ -430,6 +430,43 @@ export const updateTeamLink = (link: TeamLink, input: { linkType?: TeamLinkType;
 
 export const deleteTeamLink = (id: string): Promise<void> => api.delete(`team_links/${id}`).then(() => undefined);
 
+// ── Rotation A/B — shared match slots (RMM-5) ────────────────────────────────
+
+/**
+ * A shared match slot (venue + day + kickoff) and its ORDERED teams, alternating
+ * A/B/C. `teamIds` order is FICTIONAL — it draws the alternation on screen and
+ * drives no calendar (founder decision, spec §8). Read open to Member, write
+ * management-gated (backend rail default).
+ */
+export interface MatchSlotRotation {
+  id: string;
+  venueId: string;
+  /** ISO 1..7 */
+  dayOfWeek: number;
+  /** HH:MM */
+  kickoffTime: string;
+  /** Ordered members (position ASC) — the order IS the A/B/C drawing, nothing more. */
+  teamIds: string[];
+}
+
+export interface MatchSlotRotationInput {
+  venueId: string;
+  dayOfWeek: number;
+  kickoffTime: string;
+  teamIds: string[];
+}
+
+export const getMatchSlotRotations = (): Promise<MatchSlotRotation[]> => collectionAll<MatchSlotRotation>("match_slot_rotations");
+
+export const createMatchSlotRotation = (input: MatchSlotRotationInput): Promise<MatchSlotRotation> =>
+  api.post("match_slot_rotations", { json: input }).json<MatchSlotRotation>();
+
+/** PUT is a full replace: the whole slot + ordered roster is re-sent (backend rewrites members). */
+export const updateMatchSlotRotation = (id: string, input: MatchSlotRotationInput): Promise<MatchSlotRotation> =>
+  api.put(`match_slot_rotations/${id}`, { json: input }).json<MatchSlotRotation>();
+
+export const deleteMatchSlotRotation = (id: string): Promise<void> => api.delete(`match_slot_rotations/${id}`).then(() => undefined);
+
 // ── Auto-placement (P1-4 PR D) ───────────────────────────────────────────────
 
 export type UnplacedReason = "no_access_window" | "no_league_intersection" | "venue_unavailable" | "venue_full";

@@ -348,6 +348,43 @@ export function useDeleteTeamLink() {
   });
 }
 
+// ── Rotation A/B — shared match slots (RMM-5 PR-4) ───────────────────────────
+
+export function useMatchSlotRotations() {
+  return useQuery({ queryKey: ["match_slot_rotations"], queryFn: matchesApi.getMatchSlotRotations, staleTime: 300_000 });
+}
+
+function invalidateRotations(queryClient: ReturnType<typeof useQueryClient>): void {
+  void queryClient.invalidateQueries({ queryKey: ["match_slot_rotations"] });
+}
+
+export function useCreateMatchSlotRotation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: matchesApi.createMatchSlotRotation,
+    onSuccess: () => invalidateRotations(queryClient),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+export function useUpdateMatchSlotRotation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: matchesApi.MatchSlotRotationInput }) => matchesApi.updateMatchSlotRotation(id, input),
+    onSuccess: () => invalidateRotations(queryClient),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+export function useDeleteMatchSlotRotation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: matchesApi.deleteMatchSlotRotation,
+    onSuccess: () => invalidateRotations(queryClient),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
 /** « Placer automatiquement » (P1-4 PR D) — synchronous solve; every fixture
  * surface moves (placements + radar + engagement stays as-is). */
 export function usePlaceMatches() {

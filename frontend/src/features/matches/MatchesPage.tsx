@@ -16,13 +16,13 @@ import { FixtureFormDialog } from "./FixtureFormDialog";
 import { ImportFbiDialog } from "./ImportFbiDialog";
 import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
 import { depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
-import { datelessConflicts, defaultLoopStep, deriveLoopSteps, offModelCount } from "./lib/loopSteps";
+import { datelessConflicts, defaultLoopStep, deriveLoopSteps, offModelCount, sameWeekendRotationCount } from "./lib/loopSteps";
 import { todayISO } from "@/shared/lib/clock";
 import { ModuleVisitBanner } from "./ModuleVisitBanner";
 import { placementToastMessage } from "./lib/placementToast";
 import { buildWeekendGrid, isPlacedOnGrid, listWeekends, weekendKeyOf, weekLabel } from "./lib/weekendGrid";
 import { PlacementPanel } from "./PlacementPanel";
-import { useCategories, useCoaches, useCompetitions, useConflicts, useDeleteFixture, useFixtures, useLatestFbiIngestion, useLeagueWindows, useLockFixture, useModuleVisit, useMoveFixture, usePlaceFixture, usePlaceMatches, usePriorityTiers, useReopenFixture, useSubmitFixture, useSwapFixtures, useTeamMatchHabits, useTeams, useUnlockFixture, useUnplaceFixture, useVenueMatchWindows, useVenues, useVenueUnavailabilities } from "./queries";
+import { useCategories, useCoaches, useCompetitions, useConflicts, useDeleteFixture, useFixtures, useLatestFbiIngestion, useLeagueWindows, useLockFixture, useMatchSlotRotations, useModuleVisit, useMoveFixture, usePlaceFixture, usePlaceMatches, usePriorityTiers, useReopenFixture, useSubmitFixture, useSwapFixtures, useTeamMatchHabits, useTeams, useUnlockFixture, useUnplaceFixture, useVenueMatchWindows, useVenues, useVenueUnavailabilities } from "./queries";
 import { toast } from "@/shared/stores/toastStore";
 import { useCredits } from "@/shared/credits/useCredits";
 import { useMatchesStore } from "./store";
@@ -52,6 +52,7 @@ export function MatchesPage() {
   const matchWindows = useVenueMatchWindows();
   const unavailabilities = useVenueUnavailabilities();
   const habitsQuery = useTeamMatchHabits();
+  const rotationsQuery = useMatchSlotRotations();
   const placeFixture = usePlaceFixture();
   const placeMatches = usePlaceMatches();
   const moveFixture = useMoveFixture();
@@ -92,6 +93,7 @@ export function MatchesPage() {
   // P1-4 PR E2 (dette iv) — the team↔window join is resolved by the SERVER.
   const resolvedTeamWindows = useMemo(() => leagueWindows.data?.resolvedTeamWindows ?? {}, [leagueWindows.data]);
   const habits = useMemo(() => habitsQuery.data ?? [], [habitsQuery.data]);
+  const rotations = useMemo(() => rotationsQuery.data ?? [], [rotationsQuery.data]);
   const allConflicts = useMemo(() => conflicts.data?.conflicts ?? [], [conflicts.data]);
 
   // RMM-3 — le « gardien » : le delta de visite est POSTé au montage du layout ;
@@ -142,7 +144,9 @@ export function MatchesPage() {
   const steps = useMemo(() => deriveLoopSteps({ weekFixtures: weekendFixtures, habits, conflicts: allConflicts }), [weekendFixtures, habits, allConflicts]);
   const effectiveStep = railStep ?? defaultLoopStep(steps);
   const dateless = useMemo(() => datelessConflicts(allConflicts), [allConflicts]);
-  const offModel = useMemo(() => offModelCount(weekendFixtures, habits), [weekendFixtures, habits]);
+  const offModel = useMemo(() => offModelCount(weekendFixtures, habits, rotations), [weekendFixtures, habits, rotations]);
+  // RMM-5 PR-4 — deux membres d'un même créneau partagé reçoivent le même week-end : signal neutre.
+  const sameWeekendRotations = useMemo(() => sameWeekendRotationCount(weekendFixtures, rotations), [weekendFixtures, rotations]);
 
   const selectedFixture = allFixtures.find((f) => f.id === selectedFixtureId) ?? null;
   const selectedEnvelope = useMemo(
@@ -312,6 +316,17 @@ export function MatchesPage() {
       </span>
     ) : null;
 
+  // RMM-5 PR-4 — le signal « même week-end » : deux équipes d'un créneau partagé
+  // reçoivent le même week-end (l'alternance dit une seule). Pilule NEUTRE, jamais
+  // une erreur — cohérente avec l'écart au modèle (« c'est un signal, pas bloquant »).
+  const sameWeekendBadge =
+    sameWeekendRotations > 0 ? (
+      <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
+        <Info className="size-3.5" />
+        {sameWeekendRotations} créneau{sameWeekendRotations > 1 ? "x" : ""} partagé{sameWeekendRotations > 1 ? "s" : ""} : deux équipes reçoivent ce week-end
+      </span>
+    ) : null;
+
   // ── The current step's VIEW (rail⇄vue : filtres de la même page) ────────────
   let content: ReactNode;
   if ("batch" === effectiveStep) {
@@ -336,6 +351,7 @@ export function MatchesPage() {
     content = (
       <div className="flex flex-col gap-3">
         {offModelBadge}
+        {sameWeekendBadge}
         {panelSlot}
         {swapBanner}
         {gridBlock}

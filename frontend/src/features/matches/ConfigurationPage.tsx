@@ -15,9 +15,9 @@ import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { HabitsLinksDialog } from "./HabitsLinksDialog";
 import { ImportFbiDialog } from "./ImportFbiDialog";
 import { STALE_DAYS, depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
-import { buildTypicalWeekend } from "./lib/typicalWeekend";
+import { MatchSlotRotationsEditor } from "./MatchSlotRotationsEditor";
 import { MatchWindowsEditor } from "./MatchWindowsEditor";
-import { useFfbbRencontres, useFixtures, useLatestFbiIngestion, usePriorityTiers, useTeamMatchHabits, useTeams, useVenues } from "./queries";
+import { useFfbbRencontres, useFixtures, useLatestFbiIngestion, useMatchSlotRotations, usePriorityTiers, useTeamMatchHabits, useTeams, useVenues } from "./queries";
 import { useMatchesStore } from "./store";
 import { TypicalWeekendGrid } from "./TypicalWeekendGrid";
 
@@ -42,6 +42,7 @@ export function ConfigurationPage() {
   const venues = useVenues();
   const fixtures = useFixtures();
   const habitsQuery = useTeamMatchHabits();
+  const rotationsQuery = useMatchSlotRotations();
   const freshness = useLatestFbiIngestion();
   const navigate = useNavigate();
   const setReconciliation = useMatchesStore((s) => s.setReconciliation);
@@ -89,8 +90,18 @@ export function ConfigurationPage() {
             placement respecte au maximum. Il se dessine dans « Habitudes &amp; passerelles ».
           </p>
           <div className="h-[32rem]">
-            <TypicalWeekendGrid model={buildTypicalWeekend(habitsQuery.data ?? [])} venues={venuesMap} teams={teamsMap} />
+            <TypicalWeekendGrid habits={habitsQuery.data ?? []} rotations={rotationsQuery.data ?? []} venues={venuesMap} teams={teamsMap} />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* 1bis. Les créneaux partagés (alternance A/B) — la pénurie de créneaux dessinée. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Créneaux partagés (alternance)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MatchSlotRotationsEditor teams={teams.data ?? []} tiers={tiers.data ?? []} venues={venues.data ?? []} />
         </CardContent>
       </Card>
 
