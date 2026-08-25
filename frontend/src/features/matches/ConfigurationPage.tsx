@@ -14,10 +14,11 @@ import type { Team, Venue } from "./api";
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { HabitsLinksDialog } from "./HabitsLinksDialog";
 import { ImportFbiDialog } from "./ImportFbiDialog";
+import { EntryDeadlinesEditor } from "./EntryDeadlinesEditor";
 import { STALE_DAYS, depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
 import { MatchSlotRotationsEditor } from "./MatchSlotRotationsEditor";
 import { MatchWindowsEditor } from "./MatchWindowsEditor";
-import { useFfbbRencontres, useFixtures, useLatestFbiIngestion, useMatchSlotRotations, usePriorityTiers, useTeamMatchHabits, useTeams, useVenues } from "./queries";
+import { useCompetitions, useFfbbRencontres, useFixtures, useLatestFbiIngestion, useMatchSlotRotations, usePriorityTiers, useTeamMatchHabits, useTeams, useVenues } from "./queries";
 import { useMatchesStore } from "./store";
 import { TypicalWeekendGrid } from "./TypicalWeekendGrid";
 
@@ -41,6 +42,7 @@ export function ConfigurationPage() {
   const tiers = usePriorityTiers();
   const venues = useVenues();
   const fixtures = useFixtures();
+  const competitions = useCompetitions();
   const habitsQuery = useTeamMatchHabits();
   const rotationsQuery = useMatchSlotRotations();
   const freshness = useLatestFbiIngestion();
@@ -102,6 +104,16 @@ export function ConfigurationPage() {
         </CardHeader>
         <CardContent>
           <MatchSlotRotationsEditor teams={teams.data ?? []} tiers={tiers.data ?? []} venues={venues.data ?? []} />
+        </CardContent>
+      </Card>
+
+      {/* 1ter. Les échéances de saisie ligue/comité — une par compétition. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Échéances de saisie</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <EntryDeadlinesEditor competitions={competitions.data ?? []} teams={teams.data ?? []} />
         </CardContent>
       </Card>
 

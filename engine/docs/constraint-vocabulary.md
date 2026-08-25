@@ -1,6 +1,11 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-08-24 (recalé ENG-32 : le monolithe `constraints.py` est devenu le paquet `constraints/` — les références de ce fichier pointent désormais fichier+fonction, stables au refactor. Vérification précédente toujours valable : recalé par la livraison ALIGN-09 : `forcedDays` n'est plus engine-only — le wizard émet le mode « au moins une » et la clé héritée #120 est migrée. Vérifié en écrivant : la sémantique de la table (« au moins une séance ces jours-là », pose `somme(vars) ≥ 1`) reste exacte au code (``constraints/targeting.py` (`add_time_window_constraints`, pose `somme ≥ 1`)` — une somme sur l'UNION par équipe, donc « l'un de ces jours »), et le piège `allowedDays` ≠ `forcedDays` que ce doc nomme est précisément celui que la migration vient de purger des données héritées)
+Last verified @ 2026-08-25 (rotation `documentation-update`, RMM-6 PR-2 — zone non touchée par
+cette PR, contrôle de fraîcheur). Re-confronté au code : le paquet `app/solver/constraints/`
+(`parsing.py`, `targeting.py`, `structural.py`, `wellness.py`, `diagnostics.py`, `common.py`) ✓ ·
+`parse_v2_constraints` (`parsing.py:141`) et `add_time_window_constraints` (`targeting.py:30`) ✓ ·
+`constraint_not_honored` émis par `common.py:622-623` ✓ · `maxEndTime` calculé par créneau,
+`slot_start + slot_duration` comparé (`targeting.py:91,123-126`) ✓.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.

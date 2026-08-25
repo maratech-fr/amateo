@@ -1,18 +1,18 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-25 (graduation RMM-6 PR-1, échéances ligue/comité — nouvelle section
-« Échéances ligue/comité — RMM-6 PR-1 » : champ `Competition.entryDeadline` hors CRUD, endpoint
-bulk `POST /api/competitions/entry-deadlines`, PREMIÈRE table communautaire hors tenant
-`shared_competition_deadline` [GRANT sans DELETE, risque résiduel F-2 assumé], lecture
-`effectiveEntryDeadline`/`deadlineSource`, outlook `GET /api/matches/deadline-outlook`). Re-vérifié
-contre le code : `Competition.php`, `SharedCompetitionDeadline.php`,
-`CompetitionEntryDeadlinesController.php`, `EntryDeadlineOutlookController.php`,
-`EntryDeadlineOutlook.php`, `CompetitionResource.php`/`CompetitionStateProvider.php`,
-`Version20260825140000.php` — RMM-6 reste OUVERT (roadmap `P2-50`, 2 PR frontend restantes) ; la
-note d'insertion de la section RMM-1 (`FbiEntryList.tsx` L9) pointe désormais vers cette nouvelle
-section sans être purgée. Le reste (RMM-5 les 4 PR, RMM-4 canal API, paliers A/PR-1→F2, RMM-1/RMM-3,
-périmètre engagé) non re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git :
-`git log -p --follow specs/courantes/module-matchs.md`
+Last verified @ 2026-08-25 (graduation RMM-6 PR-2, l'éditeur des échéances de saisie et leur
+affichage par ligne — section « Échéances ligue/comité — RMM-6 PR-1 + PR-2 » étendue :
+`EntryDeadlinesEditor.tsx` (nouvelle carte du SET-UP, multi-sélection + bulk `POST
+/api/competitions/entry-deadlines`, trois provenances club/proposée/aucune, badge d'appariement,
+effacement explicite) et `FbiEntryList.tsx` L9 (échéance effective par ligne, `lib/deadlineLabel.ts`
+pur, dépassée en avertissement JAMAIS bloquant). La note d'insertion de la section RMM-1
+(`FbiEntryList.tsx` L9) est **purgée** — le point d'insertion est livré, seul RMM-6 PR-3 (rappel
+cockpit + escalade cockpit/login) reste ouvert (roadmap `P2-50`). Re-vérifié contre le code :
+`EntryDeadlinesEditor.tsx`, `lib/deadlineLabel.ts`, `FbiEntryList.tsx`, `ConfigurationPage.tsx`,
+`api.ts`/`queries.ts` (`Competition.entryDeadline`/`effectiveEntryDeadline`/`deadlineSource`,
+`useSetEntryDeadlines`). Le reste (RMM-5 les 4 PR, RMM-4 canal API, paliers A/PR-1→F2, RMM-1/RMM-3,
+périmètre engagé, la partie backend PR-1) non re-vérifié cette passe — un stamp REMPLACE,
+l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
 > [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés
@@ -754,17 +754,15 @@ que l'API refuse ensuite de corriger. Une équipe engagée présente dans la pho
   mode échange). E2e : `tests/e2e/matches.spec.ts` inchangé dans son scénario (login → créer →
   placer), la refonte ne change aucune assertion de comportement moteur.
 
-**Un point d'insertion futur identifié dans le code actuel** (rien de ce qui suit n'est implémenté
-— pointeur vers le programme ouvert, `../evolution/refonte-module-matchs.md` §9) :
-- **RMM-6** (échéances ligue/comité) viendra sur `FbiEntryList.tsx` (L9 ci-dessus) — une échéance
-  affichée à côté de chaque ligne, saisie manuellement (la ligue les envoie par mail). **Une
-  escalade cockpit/login en période d'échéance est actée (décision fondateur 2026-08-24)** :
-  `MatchModuleDeltaComputer` (§ « Le gardien » ci-dessous) est tenu SÉPARÉ de la rotation de
-  référence précisément pour que RMM-6 puisse un jour LIRE le delta sans stamper une visite — mais
-  c'est un point d'insertion préparé, pas un comportement livré. **PR-1 backend (le champ, le
-  défaut communautaire, l'outlook) est livrée** — § « Échéances ligue/comité — RMM-6 PR-1 »
-  plus bas ; ce qui suit ici (L9 sur `FbiEntryList.tsx`, l'escalade cockpit/login) reste non
-  implémenté.
+**Un point d'insertion futur RESTE identifié** (rien de ce qui suit n'est implémenté — pointeur
+vers le programme ouvert, `../evolution/refonte-module-matchs.md` §9) :
+- **RMM-6 PR-3** (reste ouvert) — le rappel cockpit « deadline J-6 » et l'escalade cockpit/login en
+  période d'échéance, **actée décision fondateur 2026-08-24** : `MatchModuleDeltaComputer`
+  (§ « Le gardien » ci-dessous) est tenu SÉPARÉ de la rotation de référence précisément pour que
+  PR-3 puisse un jour LIRE le delta sans stamper une visite — un point d'insertion préparé, pas un
+  comportement livré. **PR-1 backend (le champ, le défaut communautaire, l'outlook) et PR-2 front
+  (l'éditeur du SET-UP, l'échéance affichée à côté de chaque ligne sur `FbiEntryList.tsx` L9) sont
+  livrées** — § « Échéances ligue/comité — RMM-6 » plus bas.
 
 ## Le gardien à l'ouverture (RMM-3, 2 PR — backend puis front, 2026-08-24)
 
@@ -953,15 +951,15 @@ que l'API refuse ensuite de corriger. Une équipe engagée présente dans la pho
   re-fetch serveur, 409 doublon), `FfbbRencontreReaderTest.php` (mapping, filtre saison, clamp),
   `FfbbApiClientTest.php` (filtre strict serveur).
 
-## Échéances ligue/comité — RMM-6 PR-1 (backend, 2026-08-25)
+## Échéances ligue/comité — RMM-6 PR-1 + PR-2 (backend puis front, 2026-08-25)
 
 > Cadrage : [`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md) §9
-> (RMM-6, P2-50) et le point d'insertion posé en RMM-1 ci-dessus (`FbiEntryList.tsx` L9). **PR-1 de
-> 3 — backend seul, RMM-6 reste OUVERT** (roadmap `P2-50`) : la vue de saisie (L9 sur
-> `FbiEntryList`), le rappel cockpit « deadline J-6 » et l'escalade cockpit/login restent des PR
-> frontend à venir. Besoin d'origine : la ligue/le comité envoie plusieurs échéances CONCURRENTES
-> par mail, par groupe d'équipes (région le 2 sept, département le 10, autres le 15…) — la
-> granularité est la **compétition**, jamais une date unique de club.
+> (RMM-6, P2-50) et le point d'insertion posé en RMM-1 ci-dessus (`FbiEntryList.tsx` L9). **PR-1
+> (backend) et PR-2 (front) de 3 — RMM-6 reste OUVERT** (roadmap `P2-50`) : seuls le rappel cockpit
+> « deadline J-6 » et l'escalade cockpit/login (PR-3) restent à venir. Besoin d'origine : la
+> ligue/le comité envoie plusieurs échéances CONCURRENTES par mail, par groupe d'équipes (région le
+> 2 sept, département le 10, autres le 15…) — la granularité est la **compétition**, jamais une
+> date unique de club.
 
 - **Le champ, hors CRUD.** `Competition.entryDeadline` (`entry_deadline` DATE nullable) — écrit
   par le SEUL endpoint bulk ci-dessous, jamais par le CRUD `PUT /api/competitions/{id}` (même
@@ -1010,8 +1008,35 @@ que l'API refuse ensuite de corriger. Une équipe engagée présente dans la pho
   `MatchModuleDeltaComputer` **sans stamper** — c'est précisément pourquoi le calcul du delta a été
   tenu séparé de la rotation dès RMM-3 (note déjà posée ci-dessus, honorée ici). Aucune référence de
   visite → le bloc est simplement absent, jamais calculé.
+- **L'éditeur — `EntryDeadlinesEditor.tsx`, une nouvelle carte du SET-UP `/matchs/configuration`.**
+  Multi-sélection (case par ligne + « tout cocher/décocher ») + **une date** → `POST
+  /api/competitions/entry-deadlines` en un seul lot (`useSetEntryDeadlines`, invalide la query
+  `competitions`). Trois provenances distinguées **icône + texte, jamais la couleur seule** : CLUB
+  (`CalendarCheck`, date pleine), PROPOSÉE (`Info` + « proposée » — le défaut communautaire
+  pré-rempli, une info, pas une alarme), AUCUNE (« aucune échéance »). Une compétition **appariée**
+  (`ffbbCompetitionId` non null) porte le badge « partagée avec les autres clubs » ; une non
+  appariée ne le porte pas. L'effacement est un geste **explicite** (bouton « Effacer l'échéance »,
+  jamais un champ vidé) — miroir front du refus 422 backend sur une clé `deadline` absente (§ PR-1
+  ci-dessus). 🔴 Le front n'invente rien : `effectiveEntryDeadline`/`deadlineSource` sont
+  **affichés**, jamais recalculés (`.claude/rules/frontend.md`, régime 1).
+- **La vue de saisie — `FbiEntryList.tsx` L9, livré.** Chaque ligne de match porte, sous
+  adversaire/salle, l'échéance **effective** de sa compétition (`deadlineDisplay`, lib pure
+  `lib/deadlineLabel.ts` — formate une date déjà servie, ne redérive aucune règle) : à venir
+  « avant le 10 sept. (J-3) », le jour même « (aujourd'hui) », dépassée « échéance dépassée
+  (J+2) ». **Dépassée = un avertissement visuel (icône + ton warning), JAMAIS un blocage** — la
+  case « Marquer saisi » reste cochable, falsifié par test. Un match **amical** (`competitionId`
+  null) ou une compétition sans échéance servie n'affiche rien. Provenance proposée signalée
+  (« · proposée »).
 - **Back** — tests : `EntryDeadlineShareTest.php` (les huit volets ci-dessus, NR bloquant CLAUDE.md
   §4), `ManagementRoleTest.php` (le bulk rejoint la matrice management-only).
+- **Front** — tests : `EntryDeadlinesEditor.test.tsx` (les trois provenances distinctes, badge
+  d'appariement, multi-sélection → un seul POST avec exactement les ids cochés, effacement avec
+  `deadline: null` explicite, erreur 422/409 lisible en `role=alert`, état vide, boutons inertes
+  sans sélection), `lib/deadlineLabel.test.ts` (formatage pur : à venir/aujourd'hui/dépassée),
+  `FbiEntryList.test.tsx` (échéance par ligne dans ses trois états, dépassée non bloquante —
+  falsifié en cliquant « Marquer saisi » sous échéance dépassée —, amical et compétition sans
+  échéance servie = rien affiché), `ConfigurationPage.test.tsx` (la carte « Échéances de saisie »,
+  son état vide sans compétition).
 
 ## Reste palier A (à venir)
 

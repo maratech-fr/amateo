@@ -13,6 +13,7 @@ vi.mock("./api", () => ({
   getTeams: vi.fn(() => Promise.resolve([{ id: "team-1", name: "U13", sportCategoryId: "cat-1", level: null, gender: null, priorityTierId: 3, tierOrder: 0 }])),
   getPriorityTiers: vi.fn(() => Promise.resolve([{ id: 3, label: "B", name: "Moyenne", color: null }])),
   getVenues: vi.fn(() => Promise.resolve([{ id: "venue-1", name: "Gymnase Alpha", color: "#00aa00" }])),
+  getCompetitions: vi.fn(() => Promise.resolve([])),
   getTeamMatchHabits: vi.fn(() => Promise.resolve([])),
   getMatchSlotRotations: vi.fn(() => Promise.resolve([])),
   createMatchSlotRotation: vi.fn(),
@@ -42,6 +43,13 @@ describe("ConfigurationPage (RMM-1 PR2 — le SET-UP)", () => {
   it("offre la seconde entrée d'import FBI (dépôt saisonnier)", async () => {
     renderWithProviders(<ConfigurationPage />);
     expect(await screen.findByRole("button", { name: /Importer FBI/ })).toBeInTheDocument();
+  });
+
+  // ── RMM-6 PR-2 — l'éditeur des échéances de saisie ───────────────────────────
+  it("porte l'éditeur « Échéances de saisie » (aucune compétition → son état vide)", async () => {
+    renderWithProviders(<ConfigurationPage />);
+    expect(await screen.findByRole("heading", { name: "Échéances de saisie", level: 3 })).toBeInTheDocument();
+    expect(screen.getByText(/Aucune compétition/i)).toBeInTheDocument();
   });
 
   // ── RMM-4 — la carte de fraîcheur du dépôt FBI ───────────────────────────────

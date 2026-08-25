@@ -1,19 +1,25 @@
-import { Check, Undo2 } from "lucide-react";
+import { AlertTriangle, Check, Undo2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Select } from "@/shared/components/ui/select";
+import { todayISO } from "@/shared/lib/clock";
 import { cn } from "@/shared/lib/utils";
 
-import type { Fixture, FixtureStatus, Team, Venue } from "./api";
+import type { Competition, Fixture, FixtureStatus, Team, Venue } from "./api";
+import { deadlineDisplay } from "./lib/deadlineLabel";
 
 interface FbiEntryListProps {
   /** Fixtures of the active week (already bucketed by the page). */
   fixtures: Fixture[];
   teams: Map<string, Team>;
   venues: Map<string, Venue>;
+  /** RMM-6 — competition of each fixture, to read its served entry deadline. */
+  competitions?: Map<string, Competition>;
+  /** App today (`todayISO`, demo anchor included) — for the deadline countdown. */
+  today?: string;
   busy: boolean;
   /** L4 — cocher une ligne PLACÉE : elle passe SUBMITTED (« saisi dans FBI »). */
   onSubmit: (fixture: Fixture) => void;
@@ -48,7 +54,7 @@ function orderInTeam(a: Fixture, b: Fixture): number {
  * lignes affichées (le filtre borne le lot — décision fondateur, plus sûr), sous
  * confirmation. **Zéro backend : une PROJECTION des fixtures existants.**
  */
-export function FbiEntryList({ fixtures, teams, venues, busy, onSubmit, onReopen }: FbiEntryListProps) {
+export function FbiEntryList({ fixtures, teams, venues, competitions, today = todayISO(), busy, onSubmit, onReopen }: FbiEntryListProps) {
   const [teamFilter, setTeamFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [confirmBatch, setConfirmBatch] = useState(false);
@@ -148,6 +154,12 @@ export function FbiEntryList({ fixtures, teams, venues, busy, onSubmit, onReopen
                   const done = isDone(f);
                   const teamName = group.team.name;
                   const venueName = null === f.venueId ? "Gymnase ?" : (venues.get(f.venueId)?.name ?? "Gymnase ?");
+                  // RMM-6 — l'échéance de saisie SERVIE de la compétition du match (amical =
+                  // pas de compétition → rien). Signal, jamais un blocage : la case reste cochable.
+                  const competition = null !== f.competitionId ? competitions?.get(f.competitionId) : undefined;
+                  const effective = competition?.effectiveEntryDeadline ?? null;
+                  const deadline = null !== effective ? deadlineDisplay(effective, today) : null;
+                  const proposed = "community" === competition?.deadlineSource;
                   return (
                     <li
                       key={f.id}
@@ -183,6 +195,13 @@ export function FbiEntryList({ fixtures, teams, venues, busy, onSubmit, onReopen
                           vs {f.opponentLabel} · {venueName}
                           {null !== f.externalRef ? <span className="tabular-nums"> · n° {f.externalRef}</span> : null}
                         </span>
+                        {null !== deadline ? (
+                          <span className={cn("flex items-center gap-1 text-xs", deadline.overdue ? "text-warning" : "text-muted-foreground")}>
+                            {deadline.overdue ? <AlertTriangle className="size-3 shrink-0" aria-hidden /> : null}
+                            {deadline.label} ({deadline.countdown})
+                            {proposed ? " · proposée" : ""}
+                          </span>
+                        ) : null}
                       </span>
 
                       {"SUBMITTED" === f.status ? (

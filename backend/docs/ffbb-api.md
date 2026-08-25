@@ -1,18 +1,14 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-08-24 (réconciliation FBI RMM-4 PR-3 — le canal `ffbbserver_rencontres` PASSE
-de « non exploité » à **exploité** : `FfbbApiClient::searchRencontres` (filtre STRICT serveur sur
-le code club, mesuré `Service/Basketball/FfbbApiClient.php:104-116`), `FfbbRencontreReader` (mapping
-+ clamp des chaînes externes) et les routes `GET /api/ffbb/rencontres` + `POST .../apply`
-(`Controller/Basketball/FfbbRencontresController.php`) documentées au §« Réconciliation FBI, canal
-API » ci-dessous ; le calendrier OFFICIEL reste hors de portée — mesure inchangée : **36 hits BCCL,
-tous des AMICAUX, zéro championnat**, sur un index à **1 052 documents**). Re-confronté au code,
-tout juste : hosts en constantes dures (`Service/Basketball/FfbbApiClient.php:24-25`,
-`CONFIG_URL`/`SEARCH_URL`) et index `ffbbserver_organismes` ✓ ·
-`POST /api/club/ffbb-import` (`Controller/Basketball/FfbbImportController.php:36`) ✓ ·
-`PATCH /api/club/info` bien SUPPRIMÉ — zéro occurrence dans `src/` ✓. Non re-sondé cette passe
-(déjà vérifié le 2026-08-22, zone non touchée depuis) : fallback `FFBB_MEILISEARCH_TOKEN`,
-`FfbbClubPopulator::applyClub`, `FfbbEngagementsController`, le cadrage archivé.
+Last verified @ 2026-08-25 (rotation `documentation-update`, RMM-6 PR-2 — zone non touchée par
+cette PR, contrôle de fraîcheur). Re-confronté au code : hosts en constantes dures
+(`Service/Basketball/FfbbApiClient.php:24-25`, `CONFIG_URL`/`SEARCH_URL`) ✓ · filtre strict serveur
+de `searchRencontres` sur `idOrganismeEquipe1`/`idOrganismeEquipe2.code` (`FfbbApiClient.php:104-116`)
+✓ · routes `GET /api/ffbb/rencontres` + `POST /api/ffbb/rencontres/apply`
+(`Controller/Basketball/FfbbRencontresController.php:60,81`) ✓ ·
+`PATCH /api/club/info` bien SUPPRIMÉ — zéro occurrence dans `src/` ✓. Non re-sondé cette passe :
+fallback `FFBB_MEILISEARCH_TOKEN`, `FfbbClubPopulator::applyClub`, `FfbbEngagementsController`,
+le cadrage archivé, la mesure « 36 hits BCCL / 1 052 documents » (donnée externe, non re-sondée).
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit rester dans la **liste blanche de hosts** du client (SSRF, A12). Vérifié le 2026-07-10 sur le code réel `ARA0069036` (BCCL).
 
