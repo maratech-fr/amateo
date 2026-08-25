@@ -4,7 +4,10 @@
 #   1. a Saturday home match with a Saturday 14:00-18:00 access window comes
 #      back PLACED with a kickoff inside 14:30-16:15 (footprint fits), and
 #   2. a Sunday home match (no Sunday window) comes back UNPLACED with the
-#      named reason `no_access_window` (the ask-your-derogation-early signal).
+#      named reason `no_access_window` (the ask-your-derogation-early signal), and
+#   3. (RMM-5) with a shared match slot declared (Saturday 15:30 on that venue,
+#      home team a member), the Saturday placement lands ON the slot — venue +
+#      15:30 — proving the SOFT rotation attraction fires end-to-end.
 #
 # Self-sufficient for local dev: mints a token for the fixtures user, settles
 # the season plan pointer if needed (dev DB only), creates its own venue window
@@ -61,9 +64,12 @@ if [ -z "$CHOSEN" ]; then
   POINTER_SET_BY_SMOKE=1
 fi
 
-TEAM_ID=$(curl -sf "$API_BASE/teams?itemsPerPage=1" "${auth[@]}" | jget member.0.id)
+TEAMS=$(curl -sf "$API_BASE/teams?itemsPerPage=2" "${auth[@]}")
+TEAM_ID=$(echo "$TEAMS" | jget member.0.id)
+SECOND_TEAM_ID=$(echo "$TEAMS" | jget member.1.id)
 VENUE_ID=$(curl -sf "$API_BASE/venues?itemsPerPage=1" "${auth[@]}" | jget member.0.id)
 [ "$TEAM_ID" != "null" ] && [ "$VENUE_ID" != "null" ] || die "dev club has no team/venue"
+[ "$SECOND_TEAM_ID" != "null" ] || die "dev club needs a 2nd team for the rotation volet"
 
 # Next Saturday / Sunday (dates in the future keep the data obviously smoke-ish).
 SATURDAY=$(date -d "next saturday" +%Y-%m-%d)
@@ -71,6 +77,7 @@ SUNDAY=$(date -d "$SATURDAY + 1 day" +%Y-%m-%d)
 
 cleanup() {
   for id in ${FX_SAT:-} ${FX_SUN:-}; do curl -s -X DELETE "$API_BASE/fixtures/$id" "${auth[@]}" >/dev/null || true; done
+  [ -n "${ROTATION_ID:-}" ] && curl -s -X DELETE "$API_BASE/match_slot_rotations/$ROTATION_ID" "${auth[@]}" >/dev/null || true
   [ -n "${WINDOW_ID:-}" ] && curl -s -X DELETE "$API_BASE/venue_match_windows/$WINDOW_ID" "${auth[@]}" >/dev/null || true
   # A pointer WE settled would 409 the weekly smoke's schedule creation — undo it.
   if [ "$POINTER_SET_BY_SMOKE" = 1 ]; then
@@ -88,6 +95,14 @@ FX_SUN=$(curl -sf -X POST "$API_BASE/fixtures" "${auth[@]}" \
   -d "{\"teamId\":\"$TEAM_ID\",\"matchDate\":\"$SUNDAY\",\"homeAway\":\"HOME\",\"opponentLabel\":\"Smoke Sun\"}" | jget id)
 [ -n "$WINDOW_ID" ] && [ -n "$FX_SAT" ] && [ -n "$FX_SUN" ] || die "seeding failed"
 
+# RMM-5 rotation volet — declare a shared match slot on THAT venue, Saturday 15:30,
+# with the home team as a member: the SOFT rotation attraction must pull the home
+# placement ONTO the slot (day + hour + venue), not just anywhere in the window.
+info "declaring a Saturday 15:30 rotation on the venue (members: home team + one more)"
+ROTATION_ID=$(curl -sf -X POST "$API_BASE/match_slot_rotations" "${auth[@]}" \
+  -d "{\"venueId\":\"$VENUE_ID\",\"dayOfWeek\":6,\"kickoffTime\":\"15:30\",\"teamIds\":[\"$TEAM_ID\",\"$SECOND_TEAM_ID\"]}" | jget id)
+[ -n "$ROTATION_ID" ] && [ "$ROTATION_ID" != "null" ] || die "rotation declaration failed"
+
 info "POST /api/fixtures/place"
 RESULT=$(curl -sf -X POST "$API_BASE/fixtures/place" "${auth[@]}") || die "placement call failed"
 
@@ -102,4 +117,11 @@ STATUS=$(echo "$SAT" | jget status); KICK=$(echo "$SAT" | jget kickoffTime); SRC
 REASON=$(echo "$RESULT" | unplaced_reason "$FX_SUN")
 [ "$REASON" = "no_access_window" ] || die "Sunday match reason=$REASON (expected no_access_window)"
 
-ok "solver placed Saturday at $KICK (window honoured) and NAMED the Sunday impossibility"
+# Assertion 3 — the rotation volet: the home placement lands ON the slot (venue +
+# 15:30), not merely somewhere legal. The rotation attraction is the only pull
+# toward 15:30 here (no habit seeded), so this proves the SOFT term fires.
+VENUE_PLACED=$(echo "$SAT" | jget venueId)
+[[ "$KICK" == "15:30"* ]] || die "rotation volet: kickoff $KICK not attracted to the 15:30 slot"
+[ "$VENUE_PLACED" = "$VENUE_ID" ] || die "rotation volet: placed on $VENUE_PLACED, not the slot venue"
+
+ok "solver placed Saturday at $KICK on the rotation slot, and NAMED the Sunday impossibility"

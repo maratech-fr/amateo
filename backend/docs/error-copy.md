@@ -4,9 +4,12 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-08-23 (recalé par la livraison P4-126 : le rail 422 des processors entre au doc — l'idiome unique `refuse()`, le mécanisme du mutisme, le garde, le piège \u0027. Vérifié en écrivant : les 12 messages anglais des processors sont passés en français métier dans le même lot, la règle « français dès que visible » est donc tenue)
-par un gestionnaire ; règle et frontières confrontées à `frontend/src/shared/lib/errorMessage.ts`
-et aux contrôleurs/services/state-processors touchés.)
+Last verified @ 2026-08-25 (rotation `documentation-update`, hors sujet de la PR — sondage des
+stamps les plus anciens du dépôt). Re-confronté au code : `status < 500` toujours à
+`errorMessage.ts:32` ✓ · `new ValidationException(` toujours confiné à
+`AbstractStateProcessor.php` (aucune autre occurrence dans `src/`) ✓ ·
+`ValidationExceptionCarriesViolationsTest` et `PublicTextIsFreeOfInternalIdentifiersTest`
+existent bien sous ces noms ✓. Rien de faux trouvé, tout redate à l'identique.
 
 ## La règle
 

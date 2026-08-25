@@ -47,7 +47,11 @@ Invariant gardé par `assert_no_hard_violation` (tests sémantiques).
 Candidats au pas de **15 min** dans (accès ∩ ligue), l'empreinte 2h15 entière dans la fenêtre d'accès
 (l'échauffement occupe la salle). Poids SOFT (produit, golden-épinglés) : conflit coach MAIN −60 ·
 passerelle NOT_SIMULTANEOUS violée −40 · habitude heure +15 / gymnase +5 (le jour est constant) ·
-fenêtre habituelle protégée −25 · BACK_TO_BACK enchaîné +15 · coach ASSISTANT −10 · stabilité re-solve
+fenêtre habituelle protégée −25 · **rotation A/B — attraction heure +15 / gymnase +5 · fenêtre de
+rotation protégée −25** (RMM-5 : extension à parité stricte du mécanisme d'habitude, le créneau
+partagé attire le domicile d'un membre son jour de rotation et se défend les dates où aucun membre
+ne joue ; la suppléance backend garantit qu'un membre reçoit rotation OU habitude, jamais les deux) ·
+BACK_TO_BACK enchaîné +15 · coach ASSISTANT −10 · stabilité re-solve
 +8 (+ hint) · compactage −1 **par pas de 15 min** de trou (jamais par minute — un trou de 6 h ne doit
 pas renverser un conflit de coach).
 

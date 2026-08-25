@@ -1,18 +1,18 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-25 (graduation RMM-5 PR-1, le MODÈLE de la rotation A/B — **PREMIÈRE de 4
-PR, RMM-5 reste OUVERT** ; nouvelle section « Rotation A/B — RMM-5 PR-1 »). Re-vérifié contre le
-code : `MatchSlotRotation.php`/`MatchSlotRotationTeam.php` (venue NOT NULL, unicité créneau,
-`position` fictif) ✓ ; `MatchSlotRotationStateProcessor.php` (remplacement transactionnel des
-membres, 409 sur course d'unicité) ✓ ; `CascadePlan.php` +
-`MatchSlotRotationTeamPruneStep.php`/`MatchSlotRotationVenuePruneStep.php` ✓ ;
-`SeasonTransitionService.php` (recopie N+1 remappée, sous 2 membres = non recopiée) ✓ ;
-`SeasonDataPurger.php` (purge saison) ✓ ; la garde management par défaut (aucun override chez
-`VenueMatchWindowStateProcessor`/`TeamMatchHabitStateProcessor`/`TeamLinkStateProcessor`) — la
-mention « écritures non management-gated » d'une passe antérieure était **fausse**, corrigée ci-
-dessus. Le reste (RMM-4 canal API, PR-1/PR-2, paliers A/PR-1→F2, RMM-1/RMM-3, périmètre engagé)
-non re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git :
-`git log -p --follow specs/courantes/module-matchs.md`
+Last verified @ 2026-08-25 (graduation RMM-5 PR-2, le SOFT de placement de la rotation A/B — **2
+des 4 PR livrées, RMM-5 reste OUVERT** ; section « Rotation A/B — RMM-5 PR-1 » étendue en
+« PR-1+PR-2 », nouvelle sous-section « Le SOFT de placement — RMM-5 PR-2 »). Re-vérifié contre le
+code : `MatchPlacementPayloadBuilder::slotRotations()` (tri déterministe venue→jour→heure +
+`teamIds`, `position` ne voyage pas, rotation <2 membres abandonnée) ✓ ; la suppléance
+`habitsByTeam` (habitude même-jour retirée) ✓ ; `match_placement.py` — `W_ROTATION_TIME=15`/
+`W_ROTATION_VENUE=5` à parité de `W_HABIT_TIME`/`W_HABIT_VENUE`, protection de fenêtre au malus
+partagé `W_PROTECT_HABIT=25` (pas de nouvelle constante) ✓ ; les 4 constantes `CONTRACT_VERSION`
+synchrones à `2.15` (`ScheduleConstraintBuilder`, `MoveSlotService`,
+`MatchPlacementPayloadBuilder`, `engine/CONTRACT_VERSION`) ✓ ; smoke-place-matches.sh volet 3 et
+le scénario sémantique deux-week-ends ✓. Le reste (PR-1 rotation, RMM-4 canal API, paliers
+A/PR-1→F2, RMM-1/RMM-3, périmètre engagé) non re-vérifié cette passe — un stamp REMPLACE,
+l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
 > [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés
@@ -255,13 +255,13 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   matchs depuis la PR D (§ suivant) ; l'intensité d'entraînement, elle, par le solveur d'ENTRAÎNEMENT
   (lot PASSERELLES — `engine/docs/constraint-vocabulary.md` §Passerelles).
 
-## Rotation A/B — RMM-5 PR-1, le MODÈLE seul (2026-08-25, P2-49)
+## Rotation A/B — RMM-5 PR-1+PR-2, le MODÈLE puis le SOFT (2026-08-25, P2-49)
 
-**PREMIÈRE de 4 PR — RMM-5 reste OUVERT** ([`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md)
+**2 des 4 PR livrées — RMM-5 reste OUVERT** ([`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md)
 §8-§9, cas SM1/SM2 sur le 20h30 : pénurie de créneaux → alternance semaine A/semaine B sur le
-MÊME créneau physique). Cette PR livre le modèle et son CRUD seuls — **rien ne le consomme
-encore** : ni payload/solveur (PR-2/3), ni radar, ni jour de repos d'entraînement dérivé, ni UI
-(PR-4). Contrat backend⇄engine INTACT (groupe `contract` vert sans modification).
+MÊME créneau physique). PR-1 livre le modèle et son CRUD seuls — rien ne le consomme encore. PR-2
+(ci-dessous) branche le bloc au payload `/place-matches` et l'attraction SOFT côté solveur — aucun
+MOVE. Restent OUVERTS : le repos d'entraînement DÉRIVÉ de la rotation (PR-3), l'UI SET-UP (PR-4).
 
 - **`MatchSlotRotation`** (`match_slot_rotation`, tenant+saison, RLS FORCE, patron
   `TeamMatchHabit`/`VenueMatchWindow` — hors des plans de période, pas de `schedulePlanId`) : le
@@ -291,6 +291,43 @@ encore** : ni payload/solveur (PR-2/3), ni radar, ni jour de repos d'entraîneme
   recopiée) ; les positions survivantes se recompactent (déterministe).
 - **RGPD / reset saison** (`SeasonDataPurger`) : les deux tables purgées avec la saison (membres
   avant le parent, patron `SharedTrainingGroup`).
+
+### Le SOFT de placement — RMM-5 PR-2 (2026-08-25)
+
+Bump de contrat **2.14 → 2.15** (les 4 constantes `CONTRACT_VERSION` — `ScheduleConstraintBuilder`,
+`MoveSlotService`, `MatchPlacementPayloadBuilder`, `engine/CONTRACT_VERSION` — un seul contrat pour
+les 3 endpoints). Aucun MOVE ici : l'image A/B n'est qu'un **bonus SOFT** sur `/place-matches`, à
+parité stricte du mécanisme d'habitude.
+
+- **Le bloc `slotRotations`** (`MatchPlacementPayloadBuilder::slotRotations()`) sérialise chaque
+  rotation ≥ 2 membres en `{venueId, dayOfWeek, kickoff, teamIds}` — l'ordre `position` (fictif) ne
+  VOYAGE PAS, mais l'ordre de sérialisation EST déterministe (rotations triées venue→jour→heure,
+  `teamIds` triés) : ni un UUID de rotation ni un UUID de membre ne fait varier le payload (patron
+  du tri des tags). Une rotation tombée sous 2 membres n'est pas émise (miroir de
+  `sharedTrainings`). Absent/vide ⇒ payload byte-identique.
+- **La suppléance** (backend, à l'assemblage `habitsByTeam`) : l'habitude d'une équipe le **même
+  jour ISO** qu'une de ses rotations est **retirée** du bloc `habits` émis — une équipe reçoit
+  rotation OU habitude ce jour-là, jamais les deux bonus cumulés ; les autres jours de l'équipe
+  restent intacts.
+- **Côté solveur** (`match_placement.py`, SOFT uniquement, aucun HARD nouveau) :
+  - **Attraction** — le domicile d'un membre, son jour de rotation, gagne `W_ROTATION_TIME=15` si
+    le candidat tombe sur l'heure de la rotation et `W_ROTATION_VENUE=5` s'il tombe sur son
+    gymnase — les mêmes poids que `W_HABIT_TIME`/`W_HABIT_VENUE`, à parité stricte ; comme la
+    suppléance backend garantit qu'un membre ne porte jamais habitude ET rotation le même jour, ces
+    deux bonus ne s'additionnent jamais sur le même candidat.
+  - **Protection de fenêtre** — sur une date où **aucun membre** de la rotation n'a de match, le
+    créneau (gymnase + fenêtre 2h15 autour du coup d'envoi) est défendu contre les AUTRES équipes
+    au même malus que la protection d'habitude, **`W_PROTECT_HABIT=25`** (mécanisme `protected`
+    partagé, pas une nouvelle constante).
+- **Scénario sémantique** (`test_ab_rotation_image_is_honoured_across_two_weekends`) : deux week-ends
+  fédéraux successifs, SM1 reçoit le week-end A et SM2 le week-end B sur le MÊME créneau — les deux
+  domiciles atterrissent sur le créneau partagé, sans violation HARD.
+- **Smoke** (`backend/scripts/smoke-place-matches.sh`, volet 3) : une rotation Samedi 15h30 déclarée
+  sur le gymnase de smoke (équipe de home + une seconde équipe), **sans habitude seedée** — le
+  placement du samedi doit atterrir SUR le créneau (gymnase + 15:30), preuve bout-en-bout que
+  l'attraction SOFT tire vraiment, pas seulement « une heure légale quelconque ».
+- **Garde bloquante** : `CrossStack/SlotRotationPayloadParityTest` (STOCKÉ == ÉMIS + la
+  suppléance même-jour, falsifiés dans les deux sens — CLAUDE.md §4).
 
 ## Solveur de placement — P1-4 PR D (2026-08-03, [ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md))
 

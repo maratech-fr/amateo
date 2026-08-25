@@ -7,6 +7,8 @@ namespace App\Service;
 use App\Entity\Club;
 use App\Entity\Fixture;
 use App\Entity\LeagueMatchWindow;
+use App\Entity\MatchSlotRotation;
+use App\Entity\MatchSlotRotationTeam;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
@@ -52,7 +54,7 @@ final class MatchPlacementPayloadBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '2.14';
+    public const string CONTRACT_VERSION = '2.15';
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -85,8 +87,17 @@ final class MatchPlacementPayloadBuilder
         $teamLinks = $this->entityManager->getRepository(TeamLink::class)->findBy([]);
         /** @var list<TeamCoach> $teamCoaches */
         $teamCoaches = $this->entityManager->getRepository(TeamCoach::class)->findBy([]);
+        /** @var list<MatchSlotRotation> $rotations */
+        $rotations = $this->entityManager->getRepository(MatchSlotRotation::class)->findBy([]);
 
         $habitIndex = $this->awayKickoffEstimator->indexHabits($habits);
+
+        // Slot rotations (RMM-5, §8) : le créneau de match PARTAGÉ entre N équipes
+        // qui l'occupent en alternance (SM1/SM2 sur le 20h30). $rotationTeamDays
+        // porte la SUPPLÉANCE (tranchage 5) : l'habitude d'un membre LE MÊME JOUR
+        // que sa rotation n'est PAS émise plus bas — la rotation vaut habitude ce
+        // jour-là, un seul bonus SOFT côté moteur.
+        [$rotationRows, $rotationTeamDays] = $this->slotRotations($rotations);
 
         // Matches.
         $toPlaceCount = 0;
@@ -132,6 +143,11 @@ final class MatchPlacementPayloadBuilder
         $envelope = $this->resolveEnvelope($club, $teams, $categories);
         $habitsByTeam = [];
         foreach ($habits as $habit) {
+            // Suppléance (tranchage 5) : l'habitude d'un membre le MÊME jour que sa
+            // rotation est SUPPLANTÉE — pas de double bonus. Les autres jours restent.
+            if (isset($rotationTeamDays[$habit->getTeamId()][$habit->getDayOfWeek()])) {
+                continue;
+            }
             $habitsByTeam[$habit->getTeamId()][] = [
                 'dayOfWeek' => $habit->getDayOfWeek(),
                 'kickoff' => $habit->getKickoffTime()->format('H:i'),
@@ -188,6 +204,7 @@ final class MatchPlacementPayloadBuilder
                     'teamBId' => $link->getTeamBId(),
                     'type' => $link->getLinkType()->value,
                 ], $teamLinks),
+                'slotRotations' => $rotationRows,
                 'trainingOccupancies' => $this->trainingOccupancies($fixtures, $seasonId, $teamCoaches),
             ],
             'toPlaceCount' => $toPlaceCount,
@@ -240,6 +257,53 @@ final class MatchPlacementPayloadBuilder
             'venueId' => $fixture->getVenueId(),
             'kickoff' => $fixture->getKickoffTime()->format('H:i'),
         ];
+    }
+
+    /**
+     * Sérialise les créneaux de match partagés (RMM-5, §8) en
+     * `{venueId, dayOfWeek, kickoff, teamIds}`, et l'index (teamId → jours) de la
+     * SUPPLÉANCE des habitudes. L'ordre `position` des membres ne VOYAGE PAS
+     * (fictif, décision fondateur n°4 : le moteur n'en a pas l'usage) — mais
+     * l'ordre d'itération des rotations ET des teamIds est déterministe (patron du
+     * tri des tags, ScheduleConstraintBuilder) : ni les UUID des rotations ni ceux
+     * des membres ne doivent faire varier le payload. Une rotation tombée sous 2
+     * membres n'a plus de sens (miroir de serializeSharedTrainings) : abandonnée.
+     *
+     * @param list<MatchSlotRotation> $rotations
+     *
+     * @return array{0: list<array{venueId: string, dayOfWeek: int, kickoff: string, teamIds: list<string>}>, 1: array<string, array<int, true>>}
+     */
+    private function slotRotations(array $rotations): array
+    {
+        $rows = [];
+        $teamDays = [];
+        foreach ($rotations as $rotation) {
+            /** @var list<MatchSlotRotationTeam> $members */
+            $members = $this->entityManager->getRepository(MatchSlotRotationTeam::class)
+                ->findBy(['rotationId' => $rotation->getId()]);
+            $teamIds = [];
+            foreach ($members as $member) {
+                $teamIds[] = $member->getTeamId();
+            }
+            sort($teamIds);
+            if (\count($teamIds) < 2) {
+                continue;
+            }
+            foreach ($teamIds as $teamId) {
+                $teamDays[$teamId][$rotation->getDayOfWeek()] = true;
+            }
+            $rows[] = [
+                'venueId' => $rotation->getVenueId(),
+                'dayOfWeek' => $rotation->getDayOfWeek(),
+                'kickoff' => $rotation->getKickoffTime()->format('H:i'),
+                'teamIds' => $teamIds,
+            ];
+        }
+
+        usort($rows, static fn (array $a, array $b): int => [$a['venueId'], $a['dayOfWeek'], $a['kickoff']]
+            <=> [$b['venueId'], $b['dayOfWeek'], $b['kickoff']]);
+
+        return [$rows, $teamDays];
     }
 
     /**
