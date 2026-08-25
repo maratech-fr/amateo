@@ -557,6 +557,19 @@ jobs:
       - name: SlotRotationPayloadParityTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/SlotRotationPayloadParityTest.php --group phase1'
 
+      # RMM-6 (P2-50) échéances ligue/comité PR-1 : le défaut communautaire vit dans une table
+      # PARTAGÉE entre clubs (`shared_competition_deadline`) — la seule surface du module matchs qui
+      # traverse la frontière tenant. Ce gate tient l'invariant de partage : le SCHÉMA du partagé
+      # n'a AUCUNE colonne club-identifiante (assertion sur le catalogue Postgres), un club apparié à
+      # la même compétition fédérale LIT la proposition et un club apparié à une autre NON, la valeur
+      # club gagne toujours, la réponse servie est BYTE-IDENTIQUE quel que soit l'auteur (zéro
+      # oracle), dernière écriture gagne sans toucher le premier club, les gardes (management 403,
+      # tenant 422, saison archivée 409), et l'outlook J-7 ne STAMPE pas la visite. Falsifié dans les
+      # deux sens. Sans ce gate, une colonne club_id pourrait se glisser dans le partagé (fuite
+      # tenant) ou l'écrasement piétiner une valeur club souveraine, en silence.
+      - name: EntryDeadlineShareTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/EntryDeadlineShareTest.php --group phase1'
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest

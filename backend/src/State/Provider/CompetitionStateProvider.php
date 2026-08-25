@@ -4,15 +4,28 @@ declare(strict_types=1);
 
 namespace App\State\Provider;
 
+use ApiPlatform\State\Pagination\Pagination;
 use App\ApiResource\CompetitionResource;
 use App\Entity\Competition;
+use App\Repository\SharedCompetitionDeadlineRepository;
+use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
+use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
  * @extends AbstractStateProvider<Competition, CompetitionResource>
  */
 class CompetitionStateProvider extends AbstractStateProvider
 {
+    public function __construct(
+        EntityManagerInterface $entityManager,
+        RequestStack $requestStack,
+        Pagination $pagination,
+        private readonly SharedCompetitionDeadlineRepository $sharedDeadlineRepository,
+    ) {
+        parent::__construct($entityManager, $requestStack, $pagination);
+    }
+
     protected function getEntityClass(): string
     {
         return Competition::class;
@@ -37,6 +50,14 @@ class CompetitionStateProvider extends AbstractStateProvider
      */
     protected function mapEntityToOutput(object $entity): CompetitionResource
     {
-        return CompetitionResource::fromEntity($entity);
+        // RMM-6 — the community default is joined by the federation competition id.
+        // Only a PAIRED competition (ffbbCompetitionId non null) can carry one; the
+        // shared table is GLOBAL, so this join is deliberately not tenant-scoped.
+        $ffbbCompetitionId = $entity->getFfbbCompetitionId();
+        $shared = null !== $ffbbCompetitionId
+            ? $this->sharedDeadlineRepository->findOneByFfbbCompetitionId($ffbbCompetitionId)
+            : null;
+
+        return CompetitionResource::fromEntity($entity, $shared);
     }
 }

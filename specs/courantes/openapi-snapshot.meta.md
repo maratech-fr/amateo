@@ -1,6 +1,19 @@
-Last verified @ 2026-08-25 (RMM-5 PR-1 ajoute **+2 paths** — le CRUD de la rotation A/B `MatchSlotRotation` (collection + item) : le compte passe de 174 à **176 paths**. Modèle N-aire net-neuf (créneau de match partagé + membres ordonnés), backend PUR : aucun payload ni contrat backend⇄engine touché. SHA-256 du snapshot : `cbd0d0a1a13dba1ddebaa550f48f6a2cf8f687d7b2b48f895bae2c57a3ea12fb`.)
+Last verified @ 2026-08-25 (RMM-6 PR-1 ajoute **+2 paths** — les échéances ligue/comité : `POST /api/competitions/entry-deadlines` (saisie bulk management) + `GET /api/matches/deadline-outlook` (outlook J-7, ouvert au Membre) : le compte passe de 176 à **178 paths**. Backend PUR, aucun payload ni contrat backend⇄engine touché. SHA-256 du snapshot : `249e78b86e803116eea74649bdb673f80c556f4a14e7247274ee60a62fd23aa5`.)
 
 Changements récents :
+- **RMM-6 PR-1 — échéances ligue/comité (2026-08-25)** : **+2 paths** —
+  `POST /api/competitions/entry-deadlines` (200 : `{updated[], deadline|null}` — pose ou efface
+  UNE échéance sur un lot de compétitions ; **management** SEC-07 ; 409 saison archivée ; 422 aucune
+  compétition / date malformée / compétition inconnue-étrangère, rien écrit) et
+  `GET /api/matches/deadline-outlook` (200 : `{windows[], guardianDelta?}` — chaque échéance
+  effective encore due (valeur club, sinon défaut communautaire) avec ses compétitions, le nombre de
+  domiciles restant à saisir et si la fenêtre J-7 est ouverte ; le bloc gardien n'est joint que
+  fenêtre ouverte ET référence de visite existante, SANS stamper ; **ouvert au Membre** ; 400 sans
+  club). **Champs ADDITIFS** en LECTURE sur le schéma `Competition` : `entryDeadline` (valeur club),
+  `effectiveEntryDeadline` (club ?? défaut communautaire) et `deadlineSource` (`club`|`community`|`null`)
+  — la règle « club gagne » servie par le backend. Défaut communautaire = table PARTAGÉE hors-tenant
+  `shared_competition_deadline` (aucune donnée club-identifiante). 176 → **178 paths**. Backend PUR,
+  contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.14, aucun appel moteur).
 - **RMM-5 PR-1 — le modèle de la rotation A/B (2026-08-25)** : **+2 paths** — le CRUD API Platform
   `MatchSlotRotation` : `GET/POST /api/match_slot_rotations` (liste **ouverte au Membre**, création
   management) et `GET/PUT/DELETE /api/match_slot_rotations/{id}`. Un créneau de match partagé

@@ -101,6 +101,17 @@ class Competition implements TenantOwnedInterface
     #[ORM\Column(type: 'json', nullable: true)]
     private ?array $ffbbPouleOpponents = null;
 
+    /**
+     * The league/committee entry deadline for this competition (RMM-6) — the date
+     * by which the club must have entered its home matches in FBI. Set ONLY by the
+     * dedicated bulk endpoint (POST /api/competitions/entry-deadlines), never by
+     * the CRUD (same out-of-CRUD pattern as the FFBB pairing refs above). Null =
+     * no club-set deadline; the read model then falls back to the community
+     * default (SharedCompetitionDeadline) when this competition is paired.
+     */
+    #[ORM\Column(name: 'entry_deadline', type: 'date_immutable', nullable: true)]
+    private ?DateTimeImmutable $entryDeadline = null;
+
     public function __construct()
     {
         $this->id = $this->newUuid();
@@ -322,6 +333,18 @@ class Competition implements TenantOwnedInterface
     public function setFfbbPouleOpponents(?array $ffbbPouleOpponents): self
     {
         $this->ffbbPouleOpponents = $ffbbPouleOpponents;
+
+        return $this;
+    }
+
+    public function getEntryDeadline(): ?DateTimeImmutable
+    {
+        return $this->entryDeadline;
+    }
+
+    public function setEntryDeadline(?DateTimeImmutable $entryDeadline): self
+    {
+        $this->entryDeadline = $entryDeadline;
 
         return $this;
     }

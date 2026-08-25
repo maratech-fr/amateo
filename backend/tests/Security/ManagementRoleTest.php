@@ -84,6 +84,9 @@ final class ManagementRoleTest extends WebTestCase
             // #10 C3 — actions d'envoi : assertManager() tire AVANT le lookup → un id bidon suffit.
             ['POST', '/api/coach_wish_campaigns/' . self::DUMMY_ID . '/send-links', '{}'],
             ['POST', '/api/coach_wish_campaigns/' . self::DUMMY_ID . '/remind', '{}'],
+            // RMM-6 — la saisie bulk des échéances ligue/comité est management-only : assertManager()
+            // tire AVANT tout lookup de compétition, un corps valide-en-forme atteint le 403.
+            ['POST', '/api/competitions/entry-deadlines', '{"competitionIds":["11111111-1111-4111-8111-111111111111"],"deadline":null}'],
         ];
     }
 
