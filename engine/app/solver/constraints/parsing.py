@@ -12,6 +12,7 @@ from typing import Any
 from ..model import _time_to_minutes
 from .common import (
     HARD,
+    MANDATORY,
     OFF,
     PREFERRED,
     ParsedConstraints,
@@ -43,6 +44,16 @@ def _intensity(block: Mapping[str, Any] | None) -> str:
     return PREFERRED if value == PREFERRED else HARD
 
 
+def _travel_intensity(block: Mapping[str, Any] | None) -> str:
+    """P2-53 RMM-8 PR-2 — le trajet parle PREFERRED/MANDATORY (patron passerelle), pas
+    HARD/PREFERRED : ``_intensity`` répondrait HARD là où le contrat dit MANDATORY. Défaut
+    PREFERRED (le « plus », arbitrage fondataire) ; seul un ``MANDATORY`` explicite durcit."""
+    if block is None:
+        return PREFERRED
+    value = str(block.get("intensity") or PREFERRED).upper()
+    return MANDATORY if value == MANDATORY else PREFERRED
+
+
 def resolve_implicit_rules(raw: Mapping[str, Any] | None) -> ResolvedImplicitRules:
     """Normalise le bloc ``implicitRules`` (aliases camelCase du dump ``by_alias``, ou
     snake_case défensif) en réglage effectif. ``None`` ou bloc vide = défauts historiques.
@@ -55,6 +66,7 @@ def resolve_implicit_rules(raw: Mapping[str, Any] | None) -> ResolvedImplicitRul
     chain = _rule_block(raw, "maxConsecutiveSessions", "max_consecutive_sessions")
     days = _rule_block(raw, "maxConsecutiveDays", "max_consecutive_days")
     age = _rule_block(raw, "ageAscending", "age_ascending")
+    travel = _rule_block(raw, "travelTime", "travel_time")
 
     def _int(block: Mapping[str, Any] | None, default: int, *names: str) -> int:
         if block is None:
@@ -77,6 +89,12 @@ def resolve_implicit_rules(raw: Mapping[str, Any] | None) -> ResolvedImplicitRul
         max_consecutive_days_intensity=OFF if days is None else _intensity(days),
         max_consecutive_days=_int(days, 3, "maxConsecutiveDays", "max_consecutive_days"),
         age_ascending_intensity=_intensity(age),
+        # P2-53 RMM-8 PR-2 — trajet : le bloc PRÉSENT = règle active (opt-in). L'intensité est
+        # PREFERRED/MANDATORY (défaut PREFERRED via _intensity, qui replie sur PREFERRED). Le
+        # barème par défaut d'un couple non arbitré (20) est réglable par ``defaultMinutes``.
+        travel_time_active=travel is not None,
+        travel_time_intensity=_travel_intensity(travel),
+        travel_time_default_minutes=_int(travel, 20, "defaultMinutes", "default_minutes"),
     )
 
 

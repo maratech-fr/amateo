@@ -211,6 +211,12 @@ from .targeting import add_venue_minimum_constraints as add_venue_minimum_constr
 from .targeting import iter_team_link_overlaps as iter_team_link_overlaps
 from .targeting import team_link_placements_by_team as team_link_placements_by_team
 from .targeting import team_share_declared_pairs as team_share_declared_pairs
+from .travel import TRAVEL_BATTEMENT_VIOLATION_WEIGHT as TRAVEL_BATTEMENT_VIOLATION_WEIGHT
+from .travel import TRAVEL_DEPARTAGE_WEIGHT as TRAVEL_DEPARTAGE_WEIGHT
+from .travel import add_travel_departage_penalty as add_travel_departage_penalty
+from .travel import add_travel_time_hard_constraints as add_travel_time_hard_constraints
+from .travel import add_travel_time_penalty as add_travel_time_penalty
+from .travel import build_travel_matrix as build_travel_matrix
 from .wellness import _find_consecutive_chains as _find_consecutive_chains
 from .wellness import add_age_ascending_constraints as add_age_ascending_constraints
 from .wellness import add_coach_rest_day_constraints as add_coach_rest_day_constraints
@@ -236,6 +242,7 @@ def add_level_1_hard_constraints(
     team_player_map: dict[str, list[str]] | None = None,
     shared_trainings: Iterable[Any] = (),
     team_links: Iterable[Any] = (),
+    venue_travel_times: Iterable[Any] = (),
 ) -> HardConstraintStats:
     """Add the implicit + derived + new-implicit level-1 hard constraints to a CP-SAT model.
 
@@ -391,6 +398,20 @@ def add_level_1_hard_constraints(
         model, assignment_list, team_links=team_links, shared_trainings=shared_trainings
     )
 
+    # 15. P2-53 RMM-8 — trajet MANDATORY : INTERDIT DUR les enchaînements au battement trop court.
+    # Ne pose QUE si la règle est active ET MANDATORY (le PREFERRED vit dans l'objectif, le
+    # départage aussi). Règle inactive / matrice vide / PREFERRED ⇒ aucune pose (byte-identique).
+    if rules.travel_time_active and rules.travel_time_intensity == MANDATORY:
+        stats.travel_time = add_travel_time_hard_constraints(
+            model,
+            assignment_list,
+            coaches=coaches,
+            team_links=team_links,
+            team_coach_map=team_coach_map,
+            venue_travel_times=venue_travel_times,
+            default_minutes=rules.travel_time_default_minutes,
+        )
+
     return stats
 
 
@@ -415,6 +436,10 @@ __all__ = [
     "add_team_link_constraints",
     "add_team_no_overlap",
     "add_time_window_constraints",
+    "add_travel_departage_penalty",
+    "add_travel_time_hard_constraints",
+    "add_travel_time_penalty",
+    "build_travel_matrix",
     "diagnose_locked_slot_violations",
     "iter_team_link_overlaps",
     "parse_v2_constraints",

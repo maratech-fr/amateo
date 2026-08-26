@@ -158,6 +158,17 @@ class ResolvedImplicitRules:
     # P2-42 — l'ÉQUIPE et les JOURS, pas la personne et les créneaux (cf. add_max_consecutive_days).
     max_consecutive_days_intensity: str = OFF
     max_consecutive_days: int = 3
+    # P2-53 RMM-8 PR-2 — trajet entre gymnases. ``travel_time_active`` naît du bloc `travelTime`
+    # du payload (absent = inactive, ni départage ni battement — l'opt-in au premier geste sur la
+    # matrice). ``travel_time_intensity`` gouverne le BATTEMENT (PREFERRED = soft compromis,
+    # MANDATORY = interdit dur) ; le DÉPARTAGE « moindre trajet » s'applique dès que la règle est
+    # active, quel que soit le cran. ``travel_time_default_minutes`` = barème d'un couple non
+    # arbitré (20). Le vocabulaire d'intensité est PREFERRED/MANDATORY (patron passerelle), PAS
+    # HARD/PREFERRED comme les 5 règles de bien-être : le trajet suggère ou interdit, il ne « durcit »
+    # pas une préférence de confort.
+    travel_time_active: bool = False
+    travel_time_intensity: str = PREFERRED
+    travel_time_default_minutes: int = 20
 
 
 @dataclass
@@ -187,6 +198,11 @@ class HardConstraintStats:
     # Lot PASSERELLES — contraintes d'anti-chevauchement DUR des passerelles MANDATORY posées. 0
     # quand le bloc ``teamLinks`` est absent/vide ou tout PREFERRED (chemin byte-identique).
     team_link: int = 0
+    # P2-53 RMM-8 PR-2 — battements de trajet INTERDITS DUR (règle `travelTime` MANDATORY : deux
+    # séances enchaînées à des gymnases différents dont l'écart est plus court que le barème). 0
+    # quand la règle est inactive, PREFERRED, ou sans couple concerné (chemin byte-identique). À NE
+    # PAS confondre avec le stub ``travel_feasibility_stub`` (jamais posé, référencé par 3 suites).
+    travel_time: int = 0
     # Littéraux de violation AGRÉGÉS des règles implicites passées en PREFERRED, prêts pour
     # l'objectif : ``(literal, weight_name)``. Vide quand tout est HARD (défaut). Hors du
     # total : ce sont des termes d'objectif, pas des contraintes dures.
@@ -219,6 +235,7 @@ class HardConstraintStats:
             + self.max_consecutive_sessions
             + self.shared_training
             + self.team_link
+            + self.travel_time
         )
 
 

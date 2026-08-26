@@ -7,6 +7,7 @@ from pydantic import Field
 from app.schemas.input_schema import (
     MAX_SHARED_TRAINING_GROUPS,
     MAX_TEAM_LINKS,
+    MAX_VENUE_TRAVEL_TIMES,
     CoachSchema,
     ConstraintV2Schema,
     ImplicitRulesSchema,
@@ -17,6 +18,7 @@ from app.schemas.input_schema import (
     TeamLinkSchema,
     TeamSchema,
     VenueSchema,
+    VenueTravelTimeSchema,
 )
 
 # P2-2 F2a — verdict moteur sur UN candidat de deplacement (mono-candidat, pas de
@@ -81,6 +83,12 @@ class ValidateAssignmentsInputSchema(SerializableModel):
     # Lot PASSERELLES — le verdict accepte AUSSI le bloc `teamLinks` (parité de vocabulaire avec
     # /generate). ACCEPTÉ mais NON consommé en PR-1. Absent/vide ⇒ aucun effet (rétro-compat).
     team_links: list[TeamLinkSchema] = Field(default_factory=list, alias="teamLinks", max_length=MAX_TEAM_LINKS)
+    # P2-53 RMM-8 PR-2 — le verdict accepte AUSSI `venueTravelTimes` (parité de vocabulaire avec
+    # /generate : le backend émet le même dialecte). ACCEPTÉ mais NON consommé par le verdict.
+    # Absent/vide ⇒ aucun effet (rétro-compat).
+    venue_travel_times: list[VenueTravelTimeSchema] = Field(
+        default_factory=list, alias="venueTravelTimes", max_length=MAX_VENUE_TRAVEL_TIMES
+    )
     candidate: CandidateAssignmentSchema
     # P2-32 — l'état « AVANT » du candidat, pour le DELTA de compromis. Pour un DÉPLACEMENT le
     # backend y pose le placement d'origine de la source (même forme que ``candidate``) : « avant »

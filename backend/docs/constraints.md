@@ -1,6 +1,14 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-08-24 (recalé ENG-32 : le monolithe `constraints.py` est devenu le paquet `constraints/` — les références de ce fichier pointent désormais fichier+fonction, stables au refactor. Vérification précédente toujours valable : P4-120 — première vérification stampée de ce fichier, contre le code : tags système sondés présents dans `TeamTagService` (`EMB`, `PRE_REGION`, `LOISIR_JEUNE`, `HONNEUR`, `PROMOTION`, `MIXTE`) ✓ · retrait de `FACILITY_CAPACITY` (2026-08-08) déjà acté au §2.2 ✓ · `ConstraintValidationService` appelé par le SEUL `ValidateConstraintsController` — la note du §6 reste vraie ✓ · suppression de `config.coachId` (SEC-13) conforme ✓. **Quatre faits corrigés** : l'exemple du scope `FACILITY` décrivait encore la famille retirée « N équipes simultanées max » — en contradiction avec le §2.2 du MÊME fichier ; l'intersection de tags dite « logique future » est LIVRÉE depuis le 2026-08-15 (`targetTags`/`excludeTags`, P2-29) ; les implicites dites « codées en dur, non configurables » alors que les règles de bien-être se règlent via `implicitRules` et que `maxConsecutiveDays` naît ÉTEINTE ; le tableau §5 recalé en conséquence)
+Last verified @ 2026-08-26 (rotation `documentation-update`, zone non touchée par cette PR —
+contrôle de fraîcheur. Re-confronté au code : tags système présents dans `TeamTagService`
+(`EMB`, `PRE_REGION`, `LOISIR_JEUNE`, `HONNEUR`, `PROMOTION`, `MIXTE`) ✓ · `FACILITY_CAPACITY`
+retirée des trois couches, ne subsiste qu'en commentaires historiques
+(`ScheduleConstraintBuilder.php:1297`, `ValidateConstraintsController.php:254`,
+`engine/app/main.py:486`) ✓ · `ConstraintValidationService` toujours appelé par le SEUL
+`ValidateConstraintsController` (grep) ✓ · aucune clé `config.coachId` sur `Constraint` (les
+`coachId` restants du grep appartiennent à d'autres structures — `slotTemplates`/`teamCoach`,
+pas au JSON `config` d'une contrainte) ✓. Rien de faux trouvé cette passe.)
 
 > ClubScheduler — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 

@@ -33,6 +33,10 @@ FAMILY_IMPLICIT = "implicit_rule"
 # Lot PASSERELLES PR-2 — le chevauchement d'une passerelle PREFERRED créé par un déplacement
 # accepté (arbitrage n°4). Extension de la liste FERMÉE décidée par le fondateur pour ce lot.
 FAMILY_TEAM_LINK = "team_link"
+# P2-53 RMM-8 PR-2 — un BATTEMENT de trajet trop court concédé (règle `travelTime` PREFERRED) :
+# deux séances enchaînées à des gymnases différents dont l'écart est plus court que le barème du
+# coach. Extension de la liste FERMÉE décidée par le fondateur pour ce lot.
+FAMILY_TRAVEL = "travel_time"
 
 COMPROMISE_FAMILIES = frozenset(
     {
@@ -45,6 +49,7 @@ COMPROMISE_FAMILIES = frozenset(
         FAMILY_COACH_DAY_CAP,
         FAMILY_IMPLICIT,
         FAMILY_TEAM_LINK,
+        FAMILY_TRAVEL,
     }
 )
 
@@ -153,6 +158,12 @@ def _message(family: str, effect: str, rep: CompromiseTermInfo, names: dict[str,
             if broken
             else f"{team} ne chevauche plus l'équipe avec laquelle elle partage des joueurs."
         )
+    if family == FAMILY_TRAVEL:
+        return (
+            f"{coach} n'a désormais plus le temps de rejoindre son gymnase suivant."
+            if broken
+            else f"{coach} a de nouveau le temps de rejoindre son gymnase suivant."
+        )
     if family == FAMILY_CHAINING:
         where = f"au {venue}" if venue else ""
         when = f"le {day}" if day else ""
@@ -248,6 +259,7 @@ __all__ = [
     "FAMILY_SPACING",
     "FAMILY_TEAM_LINK",
     "FAMILY_TIME",
+    "FAMILY_TRAVEL",
     "FAMILY_VENUE",
     "CompromiseTermInfo",
     "compute_compromises",

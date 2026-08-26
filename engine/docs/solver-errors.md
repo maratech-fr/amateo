@@ -1,8 +1,8 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-08-25 (recalé au bump de contrat **2.14 → 2.15** — RMM-5 rotation A/B PR-2,
-bloc `slotRotations` sur `/place-matches` ; ce fichier ne cite le contrat qu'au §422 (`version:
-"1.0"` vs le MAJOR 2 du contrat, désormais `2.15`). Passe précédente (2026-08-24, rotation
+Last verified @ 2026-08-26 (recalé au bump de contrat **2.15 → 2.16** — P2-53 RMM-8 PR-2,
+blocs de trajet sur `/generate` ; ce fichier ne cite le contrat qu'au §422 (`version:
+"1.0"` vs le MAJOR 2 du contrat, désormais `2.16`). Passe précédente (2026-08-25, bump 2.14 → 2.15, rotation
 `documentation-update`, hors sujet de la PR — la constante
 avait de nouveau bouge sans suivre la prose, exactement l'avertissement que ce fichier se fait a
 lui-meme §Formule du score). **Un fait corrige** : `SCORE_FORMULA_VERSION` disait V11, le code est
@@ -33,7 +33,7 @@ Ces erreurs sont retournees directement par l'API FastAPI, avant meme que le sol
 - `sessionsPerWeek: "trois"` au lieu d'un entier
 - Champ `sportCategoryId` manquant sur une equipe (requis)
 - Cle inconnue dans le payload (les schemas sont `extra=forbid`)
-- `version: "1.0"` alors que le moteur parle le **MAJOR 2** du contrat `2.15` (`"2.0"` comme `"2.1"` passent)
+- `version: "1.0"` alors que le moteur parle le **MAJOR 2** du contrat `2.16` (`"2.0"` comme `"2.1"` passent)
 
 **Attention — deux pieges qui ne provoquent PAS de 422** : `lockLevel` est une **chaine libre**, pas un enum (un `"FORT"` est accepte et simplement traite comme non-`HARD`), et le `dayOfWeek` d'un creneau de gymnase (`VenueTrainingSlotSchema`) est un entier **sans borne** — un `8` passe la validation (d'autres schemas du meme payload, eux, sont bornes `ge=1, le=7` : la tolerance n'est pas une regle generale).
 

@@ -33,6 +33,10 @@ MAX_TEAMS_PER_SHARED_GROUP = 10
 # Défense en profondeur : le backend borne à la SAISIE (TeamLinkStateProcessor::MAX_TEAM_LINKS,
 # miroir manuel de cette constante), ceci est la dernière ligne au bord.
 MAX_TEAM_LINKS = 50
+# P2-53 RMM-8 PR-2 — plafond du bloc `venueTravelTimes` : une ligne par COUPLE de gymnases du
+# club. 150 ≈ le cap métier de l'autofill (120 = 16 gymnases × 15 / 2) plus de la marge. Défense
+# en profondeur au bord : le backend borne déjà la saisie (VenueTravelTimeAutofillService).
+MAX_VENUE_TRAVEL_TIMES = 150
 
 
 class SerializableModel(BaseModel):
@@ -100,6 +104,10 @@ class CoachSchema(SerializableModel):
     is_active: bool = Field(default=False, alias="isActive")
     parent_coach_id: str | None = Field(default=None, alias="parentCoachId")
     is_employee: bool = Field(default=False, alias="isEmployee")
+    # P2-53 RMM-8 PR-2 — le coach est-il VÉHICULÉ ? Décide de SON barème de trajet
+    # (véhiculé → temps voiture, sinon temps à pied) dans la règle implicite `travelTime`.
+    # Défaut False (à pied) : conservateur, et absent d'un vieux payload ⇒ à pied.
+    is_vehicled: bool = Field(default=False, alias="isVehicled")
 
 
 class ConstraintV2Schema(BaseModel):
@@ -176,6 +184,23 @@ class MaxConsecutiveDaysRuleSchema(SerializableModel):
     max_consecutive_days: int = Field(default=3, ge=2, le=5, alias="maxConsecutiveDays")
 
 
+class TravelTimeRuleSchema(SerializableModel):
+    """P2-53 RMM-8 PR-2 — la règle implicite « temps de trajet entre gymnases ».
+
+    Elle naît OPT-IN : le backend n'émet ce bloc QUE si le club a AU MOINS une ligne de matrice
+    de trajet (activation au premier geste, jamais un changement silencieux — précédent P2-42).
+    Son intensité gouverne le second terme (le BATTEMENT entre deux séances enchaînées à des
+    gymnases différents) : ``PREFERRED`` (défaut) → un battement trop court est une violation
+    SOFT nommée dans les compromis ; ``MANDATORY`` → il est INTERDIT DUR (diagnostic
+    ``travel_time_infeasible``). Le premier terme, le DÉPARTAGE « moindre trajet », s'applique
+    dès que la règle est active, quel que soit le cran (arbitrage fondateur : un PLUS, préférable
+    en cas d'égalité, jamais dominant). ``default_minutes`` = le barème appliqué à un couple de
+    gymnases jamais arbitré (défaut 20)."""
+
+    intensity: Literal["PREFERRED", "MANDATORY"] = "PREFERRED"
+    default_minutes: int = Field(default=20, ge=0, le=600, alias="defaultMinutes")
+
+
 class ImplicitRulesSchema(SerializableModel):
     """Réglage par club des 4 règles implicites « bien-être ». Chaque champ est
     optionnel : absent = défaut (HARD, seuils historiques). L'ABSENCE TOTALE du bloc
@@ -188,6 +213,10 @@ class ImplicitRulesSchema(SerializableModel):
     )
     age_ascending: IntensityRuleSchema | None = Field(default=None, alias="ageAscending")
     max_consecutive_days: MaxConsecutiveDaysRuleSchema | None = Field(default=None, alias="maxConsecutiveDays")
+    # P2-53 RMM-8 PR-2 — trajet entre gymnases. Absent (défaut) = règle inactive, comme une
+    # règle opt-in éteinte : ni départage ni battement. Le moteur lit l'absence comme « pas de
+    # matrice, pas de règle » (patron `maxConsecutiveDays`).
+    travel_time: TravelTimeRuleSchema | None = Field(default=None, alias="travelTime")
 
 
 class PreviousAssignmentSchema(SerializableModel):
@@ -236,6 +265,22 @@ class TeamLinkSchema(SerializableModel):
     team_a_id: str = Field(alias="teamAId")
     team_b_id: str = Field(alias="teamBId")
     intensity: Literal["PREFERRED", "MANDATORY"] = "PREFERRED"
+
+
+class VenueTravelTimeSchema(SerializableModel):
+    """P2-53 RMM-8 PR-2 — le barème de trajet ENTRE DEUX GYMNASES d'un club.
+
+    Deux minutes par couple : le temps ACCEPTABLE en VOITURE (``driving_minutes``) et À PIED
+    (``walking_minutes``), chacune NULLABLE (null = ce couple/mode jamais arbitré → le moteur
+    applique le défaut ``travelTime.default_minutes`` = 20). Le backend émet les couples TRIÉS
+    (``venue_a_id`` < ``venue_b_id``, ordre lexical) ; la lecture moteur est symétrique. Un bloc
+    ``venueTravelTimes`` absent/vide ⇒ chemin byte-identique (patron ``teamLinks``) : aucune
+    variable de trajet posée, goldens inchangés."""
+
+    venue_a_id: str = Field(alias="venueAId")
+    venue_b_id: str = Field(alias="venueBId")
+    driving_minutes: int | None = Field(default=None, alias="drivingMinutes")
+    walking_minutes: int | None = Field(default=None, alias="walkingMinutes")
 
 
 class ScheduleSlotTemplateSchema(SerializableModel):
@@ -292,6 +337,12 @@ class ScheduleInputSchema(SerializableModel):
     # NON consommé en PR-1 : absent/vide ⇒ payload byte-identique (patron sharedTrainings), goldens
     # et score inchangés. Cap 50 miroité à la saisie backend (TeamLinkStateProcessor).
     team_links: list[TeamLinkSchema] = Field(default_factory=list, alias="teamLinks", max_length=MAX_TEAM_LINKS)
+    # P2-53 RMM-8 PR-2 — matrice de trajet entre gymnases (barème voiture/à pied par couple).
+    # Absent/vide ⇒ payload byte-identique (patron teamLinks), goldens inchangés. Cap 150 =
+    # défense en profondeur au bord (le backend borne déjà la matrice à la saisie/autofill).
+    venue_travel_times: list[VenueTravelTimeSchema] = Field(
+        default_factory=list, alias="venueTravelTimes", max_length=MAX_VENUE_TRAVEL_TIMES
+    )
 
     @model_validator(mode="after")
     def _bound_total_slots(self) -> ScheduleInputSchema:

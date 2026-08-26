@@ -95,11 +95,16 @@ club/saison (un 400 de contexte ne brûle pas un jeton — revue sécurité 2026
 autofill concurrent (ou un POST manuel du même couple) a créé la même ligne entre le pré-read et
 l'écriture (`UniqueConstraintViolationException` nommée, idiome rejouable P4-67).
 
-## Ce que la matrice ne fait PAS (encore)
+## Ce que la matrice alimente désormais (PR-2)
 
-- **Le solveur ne la lit pas** — PR-1 pose la géo + le modèle + l'autofill, backend pur, **contrat
-  backend⇄engine inchangé** (`CONTRACT_VERSION` 2.15, aucun appel moteur). Le bloc payload + la
-  contrainte moteur (stub `travel_feasibility`) sont **PR-2**.
-- **Aucun écran** ne l'exerce encore — PR-3.
-- Détail produit (décisions fondateur : deux barèmes, `Coach.isVehicled`, défaut 20 min pour une
-  paire jamais arbitrée, le trajet jamais dominant) : `specs/evolution/roadmap.md` ligne P2-53.
+- **Le solveur d'ENTRAÎNEMENT la lit** — `POST /generate` seul (jamais `/place-matches`) :
+  `ScheduleConstraintBuilder` sérialise la matrice club+saison (TRIÉE) dans le bloc
+  `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION` 2.16**. Sa présence (≥1 ligne) —
+  ELLE SEULE — active la règle implicite `travelTime` côté moteur (opt-in au premier geste, jamais
+  silencieux : un club sans matrice reçoit un payload byte-identique à avant). Détail du mécanisme
+  moteur (départage « moindre trajet » + battement PREFERRED/MANDATORY, barème coach
+  véhiculé/passerelle à pied, défaut 20 min) : `engine/docs/constraint-vocabulary.md` §Trajet entre
+  gymnases. Gardé par `CrossStack/VenueTravelTimePayloadParityTest`.
+- **Aucun écran** ne l'exerce encore — PR-3 (réglage d'intensité PREFERRED↔MANDATORY compris).
+- Décisions fondateur détaillées (deux barèmes, `Coach.isVehicled`, défaut 20 min pour une paire
+  jamais arbitrée, le trajet jamais dominant) : `specs/courantes/etat-des-lieux.md`.
