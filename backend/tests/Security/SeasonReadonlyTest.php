@@ -130,6 +130,21 @@ final class SeasonReadonlyTest extends WebTestCase
         self::assertResponseStatusCodeSame(409);
     }
 
+    public function testTravelRuleLeverUpsertOnAPastSeasonIs409(): void
+    {
+        [$user, , $seasons] = $this->createClubWithThreeSeasons();
+        [$past] = $seasons;
+        $auth = $this->authHeaders($user);
+
+        // P2-53 RMM-8 PR-4 — le levier d'intensité de trajet (PUT) sur une saison archivée →
+        // refusé (le processor 409 après le 403 management, même idiome).
+        $this->client->request('PUT', '/api/venue_travel_rule_settings/travelTime', [], [], $auth + [
+            'HTTP_X-Season-Id' => $past->getId(),
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['intensity' => 'MANDATORY'], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(409);
+    }
+
     public function testConstraintValidationStaysReadableOnAPastSeason(): void
     {
         [$user, , $seasons] = $this->createClubWithThreeSeasons();

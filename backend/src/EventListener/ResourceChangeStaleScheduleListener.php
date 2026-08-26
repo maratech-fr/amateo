@@ -23,6 +23,7 @@ use App\Entity\TeamTagAssignment;
 use App\Entity\Venue;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
+use App\Entity\VenueTravelRuleSetting;
 use App\Entity\VenueTravelTime;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
@@ -149,6 +150,9 @@ use Doctrine\ORM\Events;
 #[AsEntityListener(event: Events::postPersist, method: 'venueTravelTimeTouched', entity: VenueTravelTime::class)]
 #[AsEntityListener(event: Events::postUpdate, method: 'venueTravelTimeTouched', entity: VenueTravelTime::class)]
 #[AsEntityListener(event: Events::postRemove, method: 'venueTravelTimeTouched', entity: VenueTravelTime::class)]
+#[AsEntityListener(event: Events::postPersist, method: 'venueTravelRuleSettingTouched', entity: VenueTravelRuleSetting::class)]
+#[AsEntityListener(event: Events::postUpdate, method: 'venueTravelRuleSettingTouched', entity: VenueTravelRuleSetting::class)]
+#[AsEntityListener(event: Events::postRemove, method: 'venueTravelRuleSettingTouched', entity: VenueTravelRuleSetting::class)]
 #[AsEntityListener(event: Events::postPersist, method: 'teamTagAssignmentTouched', entity: TeamTagAssignment::class)]
 #[AsEntityListener(event: Events::postUpdate, method: 'teamTagAssignmentTouched', entity: TeamTagAssignment::class)]
 #[AsEntityListener(event: Events::postRemove, method: 'teamTagAssignmentTouched', entity: TeamTagAssignment::class)]
@@ -266,6 +270,15 @@ final class ResourceChangeStaleScheduleListener
         // P2-53 RMM-8 — la matrice de trajet est STRUCTURE de club+saison (patron
         // teamLinkTouched) : elle nourrira /generate en PR-2 pour TOUS les plans du
         // club+saison. On pose la péremption dès PR-1 pour ne pas l'oublier.
+        $this->markClubSeason($entity->getClubId(), $entity->getSeasonId());
+    }
+
+    public function venueTravelRuleSettingTouched(VenueTravelRuleSetting $entity): void
+    {
+        // P2-53 RMM-8 PR-4 — le levier d'intensité de la règle de trajet est STRUCTURE de
+        // club+saison (patron venueTravelTimeTouched) : sa portée n'est PAS scindée par plan (la
+        // matrice qu'il gouverne ne l'est pas), donc il nourrit /generate pour TOUS les plans du
+        // club+saison. Changer PREFERRED↔MANDATORY change le planning : on marque club+saison.
         $this->markClubSeason($entity->getClubId(), $entity->getSeasonId());
     }
 

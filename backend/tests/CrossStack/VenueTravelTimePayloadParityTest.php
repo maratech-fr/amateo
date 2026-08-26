@@ -8,8 +8,10 @@ use App\Entity\Club;
 use App\Entity\Coach;
 use App\Entity\Season;
 use App\Entity\User;
+use App\Entity\VenueTravelRuleSetting;
 use App\Entity\VenueTravelTime;
 use App\Enum\SeasonStatus;
+use App\Enum\TeamLinkIntensity;
 use App\Enum\VenueTravelTimeSource;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\TenantGucTrait;
@@ -74,6 +76,48 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
             ['intensity' => 'PREFERRED', 'defaultMinutes' => 20],
             $payload['implicitRules']['travelTime'],
             'la règle naît PREFERRED avec le défaut 20 (l’écran PR-3 réglera le cran/seuil)',
+        );
+    }
+
+    /**
+     * PR-4 — le LEVIER Obligatoire : une intensité stockée MANDATORY est ÉMISE MANDATORY (le
+     * défaut 20 reste). Falsification sens 1 : un builder qui garderait PREFERRED en dur échoue.
+     */
+    public function testStoredMandatoryIntensityIsEmitted(): void
+    {
+        [$club, $season] = $this->seed();
+        $this->travelTime($club, $season, 'aaaaaaaa-0000-4000-8000-00000000000a', 'bbbbbbbb-0000-4000-8000-00000000000a', 10, 20);
+        $this->travelRuleSetting($club, $season, TeamLinkIntensity::MANDATORY);
+        $this->em->flush();
+
+        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+
+        self::assertSame(
+            ['intensity' => 'MANDATORY', 'defaultMinutes' => 20],
+            $payload['implicitRules']['travelTime'],
+            'l’intensité stockée MANDATORY est émise MANDATORY (le levier Obligatoire), défaut 20 conservé',
+        );
+    }
+
+    /**
+     * PR-4 — falsification sens 2 : un réglage stocké PREFERRED (le défaut, explicitement posé)
+     * émet bien PREFERRED. Un builder qui émettrait toujours MANDATORY dès qu'une ligne existe
+     * échouerait ici. Combiné à `testClubWithoutMatrixEmitsEmptyBlockAndNoRule` (rien de stocké
+     * ⇒ PREFERRED, payload par ailleurs inchangé), le levier est falsifié dans les DEUX sens.
+     */
+    public function testStoredPreferredIntensityIsEmitted(): void
+    {
+        [$club, $season] = $this->seed();
+        $this->travelTime($club, $season, 'aaaaaaaa-0000-4000-8000-00000000000b', 'bbbbbbbb-0000-4000-8000-00000000000b', 10, 20);
+        $this->travelRuleSetting($club, $season, TeamLinkIntensity::PREFERRED);
+        $this->em->flush();
+
+        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+
+        self::assertSame(
+            ['intensity' => 'PREFERRED', 'defaultMinutes' => 20],
+            $payload['implicitRules']['travelTime'],
+            'un réglage PREFERRED stocké émet PREFERRED (le builder LIT le réglage, ne devine pas)',
         );
     }
 
@@ -158,6 +202,17 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
         $this->em->persist($row);
 
         return $row;
+    }
+
+    private function travelRuleSetting(Club $club, Season $season, TeamLinkIntensity $intensity): VenueTravelRuleSetting
+    {
+        $setting = new VenueTravelRuleSetting;
+        $setting->setClubId($club->getId());
+        $setting->setSeasonId($season->getId());
+        $setting->setIntensity($intensity);
+        $this->em->persist($setting);
+
+        return $setting;
     }
 
     private function coach(Club $club, Season $season, bool $vehicled): Coach

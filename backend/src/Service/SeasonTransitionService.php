@@ -19,6 +19,7 @@ use App\Entity\TeamMatchHabit;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueTrainingSlot;
+use App\Entity\VenueTravelRuleSetting;
 use App\Entity\VenueTravelTime;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
@@ -475,6 +476,20 @@ final class SeasonTransitionService
             $copy->setRuleKey($setting->getRuleKey());
             $copy->setIntensity($setting->getIntensity());
             $copy->setParams($setting->getParams());
+            $this->entityManager->persist($copy);
+        }
+
+        // P2-53 RMM-8 PR-4 — le levier d'intensité de la règle de trajet (PREFERRED|MANDATORY)
+        // suit la saison, comme la matrice qu'il gouverne : un club qui a mis « Obligatoire » en N
+        // le retrouve en N+1 (sinon la copie de matrice reviendrait silencieusement à Préféré).
+        // Aucune référence à remapper (un cran d'intensité). Absence de ligne = défaut, rien à
+        // copier. Pas comptabilisé dans `$counts`.
+        $travelRule = $this->entityManager->getRepository(VenueTravelRuleSetting::class)->findOneBy(['clubId' => $clubId, 'seasonId' => $sourceId]);
+        if ($travelRule instanceof VenueTravelRuleSetting) {
+            $copy = new VenueTravelRuleSetting;
+            $copy->setClubId($clubId);
+            $copy->setSeasonId($target->getId());
+            $copy->setIntensity($travelRule->getIntensity());
             $this->entityManager->persist($copy);
         }
 
