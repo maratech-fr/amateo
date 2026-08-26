@@ -199,6 +199,22 @@ export function useGeocode() {
   });
 }
 
+const TRAVEL_RULE_SETTING_KEY = ["wizard", "venue_travel_rule_setting"] as const;
+
+/** Le levier d'intensité de la règle de trajet, RÉSOLU (stocké OU défaut PREFERRED). */
+export function useTravelRuleSetting(enabled = true) {
+  return useQuery({ queryKey: TRAVEL_RULE_SETTING_KEY, queryFn: wizardApi.getTravelRuleSetting, staleTime: 30_000, enabled });
+}
+
+/** PUT du levier (PREFERRED↔MANDATORY). Réinvalide le levier après coup. */
+export function useUpdateTravelRuleSetting() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (intensity: wizardApi.VenueTravelRuleIntensity) => wizardApi.updateTravelRuleSetting(intensity),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: TRAVEL_RULE_SETTING_KEY }),
+  });
+}
+
 export function useCreateSlot() {
   const queryClient = useQueryClient();
   return useMutation({

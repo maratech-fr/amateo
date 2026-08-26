@@ -26,6 +26,7 @@ use App\Entity\TeamTag;
 use App\Entity\TeamTagAssignment;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
+use App\Entity\VenueTravelRuleSetting;
 use App\Entity\VenueTravelTime;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
@@ -34,6 +35,7 @@ use App\Enum\LockLevel;
 use App\Enum\SchedulePlanType;
 use App\Enum\TeamLinkIntensity;
 use App\Repository\VenueTrainingSlotRepository;
+use App\Repository\VenueTravelRuleSettingRepository;
 use DateTimeInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use LogicException;
@@ -118,6 +120,10 @@ final class ScheduleConstraintBuilder
         // pour le mode léger sans DB : le chemin `build()` en mémoire retombe alors sur les
         // défauts (tout HARD), byte-identique au payload historique de PR 1 côté absence.
         private readonly ?ImplicitRuleResolver $implicitRuleResolver = null,
+        // P2-53 RMM-8 PR-4 — le levier d'intensité de la règle `travelTime` (PREFERRED|MANDATORY).
+        // Nullable pour le même mode léger sans DB : sans lui (ou sans matrice) → PREFERRED, le
+        // défaut, donc payload byte-identique à avant PR-4 pour un club qui n'a rien réglé.
+        private readonly ?VenueTravelRuleSettingRepository $travelRuleSettingRepository = null,
     ) {}
 
     /**
@@ -591,16 +597,20 @@ final class ScheduleConstraintBuilder
         // P2-53 RMM-8 PR-2 — la règle implicite `travelTime` naît OPT-IN : elle n'est émise ACTIVE
         // que si le club a AU MOINS une ligne de matrice de trajet. C'est « l'activation au premier
         // geste sur la matrice » (précédent opt-in P2-42) : un club qui n'a rien saisi voit un
-        // payload byte-identique à avant (ni bloc `venueTravelTimes`, ni règle). Choix de
-        // conception : la règle est DÉRIVÉE ICI de la présence de matrice — pas un
-        // `ImplicitRuleSetting` stocké — ce qui garde `implicitRules` (bien-être) == sortie du
-        // résolveur pour les 5 clés historiques (invariant `ImplicitRulePayloadParityTest`), et
-        // laisse le réglage d'intensité/seuil (PREFERRED↔MANDATORY, 20) au futur écran (PR-3). Le
-        // moteur, lui, sait déjà consommer MANDATORY : PR-3 n'aura qu'à basculer le cran émis.
+        // payload byte-identique à avant (ni bloc `venueTravelTimes`, ni règle). La règle est
+        // DÉRIVÉE ICI de la présence de matrice — pas un `ImplicitRuleSetting` stocké — ce qui
+        // garde `implicitRules` (bien-être) == sortie du résolveur pour les 5 clés historiques
+        // (invariant `ImplicitRulePayloadParityTest`).
+        //
+        // PR-4 — l'INTENSITÉ, elle, devient un RÉGLAGE stocké (levier Obligatoire) : le cran émis
+        // = ce que le gestionnaire a réglé (`venue_travel_rule_setting`, club+saison, patron
+        // matrice) ?? PREFERRED. Un club qui n'a rien réglé garde PREFERRED — payload
+        // byte-identique à avant PR-4. Le seuil `defaultMinutes: 20` reste EN DUR (hors arbitrage
+        // fondateur). Gardé par `VenueTravelTimePayloadParityTest`.
         $serializedTravelTimes = $this->serializeVenueTravelTimes($venueTravelTimes);
         if ([] !== $serializedTravelTimes) {
             $implicitRules['travelTime'] = [
-                'intensity' => TeamLinkIntensity::PREFERRED->value,
+                'intensity' => $this->resolveTravelRuleIntensity($clubId, $seasonId)->value,
                 'defaultMinutes' => self::TRAVEL_TIME_DEFAULT_MINUTES,
             ];
         }
@@ -870,6 +880,23 @@ final class ScheduleConstraintBuilder
         );
 
         return $result;
+    }
+
+    /**
+     * L'intensité de la règle `travelTime` (P2-53 RMM-8 PR-4) : le réglage STOCKÉ du club+saison
+     * (`venue_travel_rule_setting`), ou PREFERRED — le défaut — quand rien n'est réglé, ou en mode
+     * léger sans DB. Portée club+saison SEULEMENT (la matrice qu'elle gouverne l'est aussi), donc
+     * NON scindée par plan : un plan de période émet la même intensité que le socle.
+     */
+    private function resolveTravelRuleIntensity(string $clubId, string $seasonId): TeamLinkIntensity
+    {
+        if (!$this->travelRuleSettingRepository instanceof VenueTravelRuleSettingRepository || '' === $clubId || '' === $seasonId) {
+            return TeamLinkIntensity::PREFERRED;
+        }
+
+        $stored = $this->travelRuleSettingRepository->findOneByClubSeason($clubId, $seasonId);
+
+        return $stored instanceof VenueTravelRuleSetting ? $stored->getIntensity() : TeamLinkIntensity::PREFERRED;
     }
 
     /**

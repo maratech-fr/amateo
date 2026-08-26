@@ -483,6 +483,29 @@ export const geocodeAddress = (q: string): Promise<GeocodeCandidate[]> =>
     .json<{ candidates: GeocodeCandidate[] }>()
     .then((r) => r.candidates);
 
+// --- Levier d'intensité de la règle de trajet (P2-53 RMM-8 PR-4) ---
+
+/**
+ * L'intensité de la règle « Trajet entre gymnases » — vocabulaire des passerelles côté
+ * entraînement : PREFERRED (préférence souple) ou MANDATORY (obligatoire). PAS le vocabulaire
+ * bien-être (HARD/PREFERRED/OFF) : c'est un store DÉDIÉ, singleton par club+saison.
+ */
+export type VenueTravelRuleIntensity = "PREFERRED" | "MANDATORY";
+
+/** Le levier RÉSOLU (stocké OU défaut PREFERRED). `isDefault` : true tant qu'aucune ligne stockée. */
+export interface VenueTravelRuleSetting {
+  ruleKey: "travelTime";
+  intensity: VenueTravelRuleIntensity;
+  isDefault: boolean;
+}
+
+/** GET du levier résolu du club+saison courant (SeasonFilter serveur-side, identifiant fixe). */
+export const getTravelRuleSetting = (): Promise<VenueTravelRuleSetting> => api.get("venue_travel_rule_settings/travelTime").json();
+
+/** PUT du levier (management) — 422 sur un vocabulaire bien-être, 409 saison archivée. */
+export const updateTravelRuleSetting = (intensity: VenueTravelRuleIntensity): Promise<VenueTravelRuleSetting> =>
+  api.put("venue_travel_rule_settings/travelTime", { json: { intensity } }).json();
+
 // --- Constraints (W4) ---
 
 export type ConstraintFamily = "TIME" | "DAY" | "FACILITY" | "COACH_AVAILABILITY";

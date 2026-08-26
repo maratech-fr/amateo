@@ -1,9 +1,10 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-08-26 (P2-53 RMM-8 PR-3 — nouvelle ligne `travelTime` §2, l'écran
-`TravelRuleNotice` étant informatif/lecture seule, confronté à `ScheduleConstraintBuilder.php:602-604`
-[intensité fixée en dur à PREFERRED, aucun rail wizard] et `ImplicitRulesPanel.tsx` [pas de
-bouton]). Vérification précédente toujours valable : `forcedDays` livré (ALIGN-09) — table §2 et
+Last verified @ 2026-08-26 (P2-53 RMM-8 PR-4 — la ligne `travelTime` §2 devient **alignée** :
+`TravelRuleNotice` (`ImplicitRulesPanel.tsx`) offre désormais un vrai sélecteur Préféré/Obligatoire
+qui poste sur `VenueTravelRuleSetting`, et `ScheduleConstraintBuilder::resolveTravelRuleIntensity`
+émet le réglage stocké ?? PREFERRED — le front peut maintenant choisir tout ce que l'engine sait
+consommer). Vérification précédente toujours valable : `forcedDays` livré (ALIGN-09) — table §2 et
 synthèse §3 confrontées à `ConstraintsStep.tsx:355-356,456-500`,
 `ConstraintsStep.test.tsx:435-446`, ne listent que `preferredDays` en scission A (DÉCISION FERMÉE
 ALIGN-09 confirmée dans `etat-des-lieux.md`).
@@ -79,14 +80,14 @@ Colonnes : le **front** l'émet-il ? · le **backend** le transmet/transforme-t-
 | **`minAtVenueId`** + `minAtVenueCount` (« au moins N à ») | ✅ « au moins N » | passe (validation fail-fast) | ✅ plancher dur, fail-soft si inatteignable | ✅ **aligné** *(ALIGN-05)* |
 | **`spacing`** (espacer les jours) | *implicite* (aucune saisie) | — | ✅ malus soft jours consécutifs | ✅ **aligné** *(ALIGN-06, règle implicite)* |
 | **`maxConsecutiveDays`** (« pas N jours d'affilée », **dur ou soft**) | ✅ panneau Bien-être (3 crans : Inactive / Objectif / Obligatoire) | passe dans `implicitRules` — **omis quand la règle est OFF** | ✅ contrainte dure ou malus −6 | ✅ **aligné** *(P2-42, 2026-08-19 — l'angle mort triple d'ALIGN-08 est fermé)* |
-| **`travelTime`** (trajet entre gymnases — départage « moindre trajet ») | *implicite* (aucune saisie ConstraintsStep — DÉRIVÉ de la présence de matrice `venue_travel_time`, saisie/autofill sur l'écran Gymnases) | passe dans `implicitRules`, **omis** sans matrice — intensité **fixée en dur à PREFERRED** à l'émission (`ScheduleConstraintBuilder.php:602-604`) | ✅ départage soft + battement PREFERRED/MANDATORY (le moteur sait consommer MANDATORY) | 🟡 **partiellement aligné** *(P2-53 RMM-8 PR-3, 2026-08-26)* — affichée en lecture seule (`TravelRuleNotice`), **aucun rail wizard pour choisir MANDATORY** : l'engine comprend plus que ce que l'écran peut poser. Reste : le levier Obligatoire (arbitrage fondateur en attente, `specs/evolution/roadmap.md` P2-53) |
+| **`travelTime`** (trajet entre gymnases — départage « moindre trajet » + battement) | ACTIVATION *implicite* (aucune saisie ConstraintsStep — DÉRIVÉE de la présence de matrice `venue_travel_time`, saisie/autofill sur l'écran Gymnases) ; INTENSITÉ **choisie** via `TravelRuleNotice` (sélecteur Préféré/Obligatoire, écrit `VenueTravelRuleSetting`) | passe dans `implicitRules`, **omis** sans matrice — intensité = réglage stocké **?? PREFERRED** (`ScheduleConstraintBuilder::resolveTravelRuleIntensity`) | ✅ départage soft + battement PREFERRED/MANDATORY | ✅ **aligné** *(P2-53 RMM-8, 4 PR, livré le 2026-08-26 — le levier Obligatoire de PR-4 ferme le dernier écart)* |
 
 ## 3. Synthèse — scissions & angles morts
 
 - **Aligné** : tout ce que le wizard émet est écrit par le backend et honoré par l'engine. Les scissions historiques « déclaré ≠ effectif » (ENG-10/11/12/13 offre↔engine, **ENG-16** forcedDays↔allowedDays) sont **corrigées** et verrouillées par `constraint_matrix.py`.
 - **🟠 Scission A — l'engine sait, le front n'émet pas** : `preferredDays` seul reste dans ce cas — DÉCISION FERMÉE (ALIGN-09, 2026-08-23, voir état des lieux) de ne pas l'exposer. *(`forcedDays` et `availableDays` — coach « disponible uniquement » — ont été **exposés/alignés**.)*
 - **✅ Angles morts résorbés (2026-07-08)** : `maxEndTime` (**ALIGN-04**, mode « Fini avant »), **minimum de séances par gymnase** `minAtVenueId` (**ALIGN-05**, mode « au moins N »), **espacement** `spacing` (**ALIGN-06**, règle implicite soft) sont désormais câblés sur les 3 couches et verrouillés (matrice engine + offre wizard). Reste **🔴 `max_consecutive_days`** (écart **dur** « pas 3 d'affilée ») — le soft `spacing` ne le garantit pas.
-- **🟡 `travelTime` — le front active mais ne règle pas** (P2-53 RMM-8, 2026-08-26) : distinct de la scission A — le front active bien la règle (matrice de trajet renseignée → `implicitRules.travelTime` émis) mais ne peut **choisir l'intensité** : le backend la fixe à PREFERRED, et l'engine sait pourtant déjà consommer MANDATORY. Angle mort assumé, PAS une décision fermée — arbitrage fondateur en attente (`specs/evolution/roadmap.md` P2-53).
+- **✅ `travelTime` — le front active ET règle désormais** (P2-53 RMM-8, 4 PR, livré le 2026-08-26) : l'activation reste dérivée de la matrice, mais l'intensité (Préféré/Obligatoire) est un vrai levier depuis PR-4 (`VenueTravelRuleSetting`) — l'engine comprenait déjà MANDATORY depuis PR-2, le front peut maintenant le poser. Plus un angle mort.
 
 > **Où le vérifier automatiquement — deux verrous complémentaires, aucun ne couvre tout :**
 >

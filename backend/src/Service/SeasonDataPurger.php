@@ -39,6 +39,7 @@ use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
+use App\Entity\VenueTravelRuleSetting;
 use App\Entity\VenueTravelTime;
 use App\Entity\VenueUnavailability;
 use Doctrine\ORM\EntityManagerInterface;
@@ -112,6 +113,9 @@ final class SeasonDataPurger
             // Réglages des règles implicites (club_id+season_id, aucun enfant) : purgés avec
             // la saison comme les contraintes.
             ImplicitRuleSetting::class,
+            // P2-53 RMM-8 PR-4 — le levier d'intensité de la règle de trajet (club_id+season_id,
+            // aucun enfant) : purgé avec la saison, comme les autres réglages tenant+saison.
+            VenueTravelRuleSetting::class,
             Reservation::class,
             TeamPeriodOverride::class,
             ConstraintPeriodOverride::class,

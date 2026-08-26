@@ -91,6 +91,10 @@ final class ManagementRoleTest extends WebTestCase
             // RMM-6 — la saisie bulk des échéances ligue/comité est management-only : assertManager()
             // tire AVANT tout lookup de compétition, un corps valide-en-forme atteint le 403.
             ['POST', '/api/competitions/entry-deadlines', '{"competitionIds":["11111111-1111-4111-8111-111111111111"],"deadline":null}'],
+            // P2-53 RMM-8 PR-4 — le levier d'intensité de la règle de trajet est management-only : le
+            // provider rend le résolu du défaut (jamais 404 sur la clé fixe), la requête atteint le
+            // processor, qui 403 un membre non-management.
+            ['PUT', '/api/venue_travel_rule_settings/travelTime', '{"intensity":"MANDATORY"}'],
         ];
     }
 
