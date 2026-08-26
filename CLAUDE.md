@@ -9,12 +9,11 @@
 
 ## 1. What this is
 
-Amateo (edited by Maratech — product/publisher name is a single variable, never a literal:
-`App\Service\ProductIdentity` backend, `shared/lib/product.ts` frontend, P5-15) generates
-per-club, per-season training schedules for basketball clubs (FFBB).
-A constraint solver (OR-Tools CP-SAT) places teams into venue time-slots under hard rules + a soft
-scoring objective. **Backend** orchestrates/persists/exposes the API, **engine** solves,
-**frontend** renders (wizard to enter data → generate → work-loop to adjust/regenerate).
+Amateo (édité par Maratech — les deux noms sont une **variable, jamais un littéral** :
+`App\Service\ProductIdentity` / `shared/lib/product.ts`) generates per-club, per-season training
+schedules for basketball clubs (FFBB). A constraint solver (OR-Tools CP-SAT) places teams into
+venue time-slots under hard rules + a soft scoring objective. **Backend** orchestrates/persists/
+exposes the API, **engine** solves, **frontend** renders (wizard → generate → work-loop).
 
 ## 2. Stack & zones
 
@@ -30,10 +29,9 @@ scoring objective. **Backend** orchestrates/persists/exposes the API, **engine**
 **Boundaries (critical — never cross):** `frontend → backend` via `/api/*` · `backend → engine` via
 `POST http://engine:8000/generate` · `backend → frontend` via Mercure SSE topic
 `club:{clubId}:schedule:{scheduleId}` · **engine is reactive, it NEVER calls the backend** ·
-**frontend NEVER calls the engine directly** — et **aucun proxy `/engine` n'existe nulle part** :
-celui du nginx DEV a été SUPPRIMÉ le 2026-07-31 parce qu'il exposait le solveur **sans
-authentification** à quiconque atteignait le port 8081, tunnel de démo compris. Ne pas le rétablir
-« pour debugger » : `docker compose exec engine …` fait le travail (`docker/frontend/nginx.conf:96-102`).
+**frontend NEVER calls the engine directly** — et **aucun proxy `/engine` nulle part, ne jamais en
+(ré)introduire** (l'ancien exposait le solveur SANS authentification) : pour debugger,
+`docker compose exec engine …` fait le travail.
 
 ## 3. Key commands
 
@@ -42,7 +40,7 @@ Backend, engine and frontend tooling run **inside Docker** (Makefiles wrap Docke
 ```bash
 make start | stop | install | test | lint     # root orchestration
 make bootstrap              # JWT keypair + create/migrate dev DB — re-run after a pull adds migrations
-cd backend && make test     # PHPStan(lvl8) + CS-Fixer + PHPUnit testsuite Unit SEULEMENT (§10.2)
+cd backend && make test     # PHPStan(lvl8) + CS-Fixer + PHPUnit testsuite Unit SEULEMENT (§10.1)
 cd backend && make tests-complete             # miroir exact de la CI — à passer AVANT tout push backend
 cd engine  && make test     # ruff (+format --check) + mypy + bandit + pytest   |  make format
 make -C frontend dev        # Dockerized Vite :5173 (proxies /api, /exports, /.well-known/mercure)
@@ -52,18 +50,14 @@ make -C frontend e2e        # Playwright entièrement dockerisé — exige stack
 ## 4. CI — ce qui gate quoi
 
 Graphe des jobs, rôles et pièges : **`docs/testing/testing-strategy.md` §1** (canonique).
-Ce qu'il faut retenir en toute session :
 
 - **Bloquant = step NOMMÉ du job `blocking-tests` dans `.github/workflows/ci.yml`** — jamais
-  l'annotation `#[Group('phase1')]` (la portent bien plus de fichiers `backend/tests/` que le job
-  n'a de steps nommés). Un test annoté mais non listé tourne dans `unit-tests` : après le gate,
-  sans bloquer `build-docker`. Toute
-  affirmation « X est bloquant » se vérifie dans `ci.yml`. *(Le dernier cas ouvert,
-  `TeamTagScopeTest`, est devenu un step le 2026-08-11 — DOC-3 fermée.)*
+  l'annotation `#[Group('phase1')]` (bien plus de fichiers la portent que le job n'a de steps).
+  Un test annoté mais non listé tourne dans `unit-tests` : après le gate, sans bloquer
+  `build-docker`. « X est bloquant » se vérifie dans `ci.yml`.
 - La liste de « quels tests gatent » vit dans **`docs/testing/blocking-tests.md`** — maison
-  unique (sortie de cet index le 2026-08-27 ; la copie testing-strategy avait déjà été supprimée
-  après dérive, DOC-26) ; `BlockingTestsListMatchesCiTest` la compare à `ci.yml` dans les deux
-  sens. Ce que chaque test garde en détail : **son propre docblock**.
+  unique, gardée par `BlockingTestsListMatchesCiTest` (⇄ `ci.yml`, les deux sens). Ce que chaque
+  test garde en détail : **son propre docblock**.
 - Jobs sans `needs` mais **required checks de `main`** : `rector` (style gate) ·
   `dependency-audit` · `secrets-scan` · `semgrep` · `smoke-tests` (5 smokes sémantiques) ·
   `engine-semantics` (groupe `contract` cross-stack). `build-docker` needs
@@ -71,55 +65,46 @@ Ce qu'il faut retenir en toute session :
 
 ## 5. Conventions (core — détail par zone dans `.claude/rules/`)
 
-- **Backend** : PHPStan level 8 (ext Doctrine+Symfony) · CS-Fixer `@Symfony`+`@PHP84Migration`+risky ·
-  **Rector cible PHP 8.4 et son style FAIT convention** (`src/` ET `tests/` — `!$x instanceof Foo`,
-  pas `null === $x`) · stack **Symfony LTS 7.4** (dérive → `composer update`, JAMAIS un pin —
-  détail piège Flex/lock : `.claude/rules/backend.md`) · PHPUnit 11 via `vendor/bin/phpunit`.
-- **Engine** : ruff (line 120, py312, double quotes) — **`ruff format` fait convention et est gardé
-  en CI** · mypy `strict` + plugin pydantic · pytest + golden fixtures + invariants + hypothesis.
+- **Backend** : PHPStan lvl 8 · CS-Fixer risky · **Rector PHP 8.4 FAIT convention** (`src/` ET
+  `tests/`) · **Symfony LTS 7.4** (dérive → `composer update`, JAMAIS un pin) · PHPUnit 11.
+- **Engine** : ruff — **`ruff format` fait convention, gardé en CI** · mypy `strict` · pytest +
+  goldens + invariants + hypothesis.
 
-## 6. Critical invariants (une ligne chacun — le doc pointé fait foi)
+## 6. Critical invariants (le doc pointé fait foi)
 
-- **Multi-tenant, 3 couches** : Doctrine `TenantFilter` + listener **priority 7, APRÈS le firewall
-  (ne jamais le remonter — fuite historique)** ; **PostgreSQL RLS ACTIVE** (`app_user`, GUC
-  `app.club_id`, 2 tables hybrides `club_user`/`coach_wish_token` ; porte admin = policies
-  `admin_all` par rôle, survit au PG managé sans `BYPASSRLS`) ; Club/User scopés dans leurs
-  providers. Le listener retourne immédiatement sur `/api/admin/**`. → `backend/docs/TENANT.md` +
-  `docs/security/rls.md`.
-- **JWT applicatif en cookie httpOnly** (`BEARER`, `path=/api`, `SameSite=Strict`, `Secure` piloté
-  par `JWT_COOKIE_SECURE` — jamais `isSecure()`) ; Bearer accepté pour scripts/smokes. →
-  `docs/security/jwt-cookie.md`.
-- **Superadmin SA0** : identité globale séparée, firewall stateful `/api/admin/**`, TOTP obligatoire,
-  CSRF central ; un JWT club ne franchit jamais ce firewall, la session admin ne pose jamais
-  `app.club_id`. → `specs/courantes/superadmin-auth.md`.
+- **Multi-tenant, 3 couches** : Doctrine `TenantFilter` + listener **priority 7, APRÈS le
+  firewall — ne jamais le remonter** ; **PostgreSQL RLS ACTIVE** ; Club/User scopés dans leurs
+  providers ; le listener retourne immédiatement sur `/api/admin/**`. → `backend/docs/TENANT.md`
+  + `docs/security/rls.md`.
+- **JWT applicatif en cookie httpOnly** — `Secure` piloté par `JWT_COOKIE_SECURE`, **jamais
+  `isSecure()`** ; Bearer accepté pour scripts/smokes. → `docs/security/jwt-cookie.md`.
+- **Superadmin SA0** : identité globale séparée, firewall stateful `/api/admin/**`, TOTP ; un JWT
+  club ne franchit jamais ce firewall, la session admin ne pose jamais `app.club_id`. →
+  `specs/courantes/superadmin-auth.md`.
 - **Pages publiques à token** (coach-wish, club-approval) : le token EST l'identité, 404
-  byte-identique, rate-limit IP ; le contrôleur pose lui-même `app.club_id` (relâché en `finally`).
+  byte-identique, rate-limit IP ; le contrôleur pose lui-même `app.club_id` (relâché en
+  `finally`). → `docs/security/rls.md`.
 - **Concurrence** : `ClubGenerationLock` Redis + verrou asyncio par club côté engine ; placement
   matchs = rail **synchrone** avec son propre `MatchPlacementLock` (ADR-0003).
 - **Génération async** : controller → Messenger (Redis) → handler (snapshot figé → POST engine →
   import → Mercure). Worker = conteneur `messenger-worker`.
-- **Grille de gymnase possédée par la période** (ADR-0002) : les slots d'une période sont une
-  **copie** prise à la naissance du plan — jamais d'union avec la saison ; overrides sparse ;
-  pin orphelin → 422 (`OrphanPinGuard`).
-- **Le socle commande les plans de période — deux invariants à connaître AVANT de cadrer** (ADR-0002) :
-  (1) **aucune génération de période sans socle EN VIGUEUR** — `SocleGuard` garde les 4 contrôleurs de
-  solve *et* `PeriodPlanTranscriber` (`Security/SeasonPlanInForceTest`) : si l'on est sur l'étape
-  Génération d'une période, le socle a **forcément** une version pointée, donc « et si le socle n'a
-  pas de version ? » est un cas IMPOSSIBLE, jamais un repli à écrire.
-  (2) **valider ou rouvrir le socle DÉTRUIT les plans de période futurs** — versions, plan et réglages
-  ancrés (grille copiée comprise) ; l'**entrée de calendrier survit** et la période retombe « à traiter ».
-  ⚠ Le critère est la **DATE** (`startDate > today`), PAS l'avancement : `findWithPlanNotStarted` ne
-  signifie pas « plan sans version » — un plan futur DÉJÀ généré est balayé lui aussi. Corollaire : la
-  grille copiée ne peut périmer en silence que pour une période **déjà commencée**.
-- **Contrat backend⇄engine** : schemas Pydantic ⇄ payload, version `engine/CONTRACT_VERSION`
-  (**2.16**, un seul contrat pour les 3 endpoints `/generate` · `/place-matches` · `/validate-assignments`),
-  **sync manuelle, pas de codegen** — gardé par `ContractSchemaTest` +
-  `MatchPlacementContractSchemaTest` + `ValidateAssignmentsContractSchemaTest`.
+- **Grille de gymnase possédée par la période** (ADR-0002) : slots d'une période = **copie**
+  prise à la naissance du plan, jamais d'union avec la saison ; overrides sparse ; pin orphelin
+  → 422 (`OrphanPinGuard`).
+- **Le socle commande les plans de période** (ADR-0002) : (1) **aucune génération de période sans
+  socle EN VIGUEUR** (`SocleGuard`) — « et si le socle n'a pas de version ? » est un cas
+  IMPOSSIBLE, jamais un repli à écrire ; (2) **valider/rouvrir le socle DÉTRUIT les plans de
+  période FUTURS** (l'entrée de calendrier survit) — ⚠ critère = la **DATE** (`startDate >
+  today`), PAS l'avancement : un plan futur DÉJÀ généré est balayé aussi. Corollaire : la grille
+  copiée ne peut périmer en silence que pour une période **déjà commencée**.
+- **Contrat backend⇄engine** : Pydantic ⇄ payload, `engine/CONTRACT_VERSION` (**2.16**, un seul
+  contrat pour `/generate` · `/place-matches` · `/validate-assignments`), **sync manuelle, pas de
+  codegen** — gardé par les 3 `*ContractSchemaTest`.
 - **FFBB outbound** : hosts hard-codés (SSRF-safe), best-effort, le frontend n'appelle jamais FFBB.
   → `backend/docs/ffbb-api.md`.
 - **Solveur** : single-pass, **aucun fallback de relaxation**, budget adaptatif 60/180/600 s,
-  workers adaptatifs 1/8, INFEASIBLE → `status="failed"` + diagnostics ; un verrou HARD est
-  souverain mais diagnostiqué. → `docs/architecture/adr-0001-single-pass-solve.md`.
+  INFEASIBLE → `status="failed"` + diagnostics ; un verrou HARD est souverain mais diagnostiqué.
+  → `docs/architecture/adr-0001-single-pass-solve.md`.
 
 ## 7. Workflow rules (orchestrator)
 
@@ -173,9 +158,8 @@ Extending this list = user decision.
 ## 8. Documentation rules
 
 `CLAUDE.md` = index court ; `docs/` = détail ; **one canonical home, no duplication**. Root
-`AGENTS.md` pointe ici ; `backend/AGENTS.md`, `engine/AGENTS.md` & **`frontend/AGENTS.md`**
-(le plus fourni des trois) = détail de zone ; `landing/` n'en a pas — tout tient dans sa règle. Mise à jour via
-le skill `documentation-update` avant chaque PR. Décisions structurantes → ADR
+`AGENTS.md` pointe ici ; `<zone>/AGENTS.md` = détail de zone. Mise à jour via le skill
+`documentation-update` avant chaque PR. Décisions structurantes → ADR
 (`docs/architecture/adr-index.md`).
 
 **Les deux fichiers de suivi — ne jamais les confondre** : `specs/evolution/roadmap.md` =
@@ -191,20 +175,15 @@ maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir l
 
 ## 10. Gotchas (top)
 
-1. Tout le tooling tourne dans Docker ; l'hôte n'a besoin que de Docker, Compose et Make.
-2. ⚠ **`make phpunit` = `--group phase1` seul · `make test` = testsuite `Unit` seule** — or la CI
-   `unit-tests` lance `phpunit tests/` ENTIER (7 dossiers hors testsuites : `Api/`, `Command/`,
-   `Double/`, `EventListener/`, `MessageHandler/`, `OpenApi/`, `Validator/`). **Avant de pousser :
-   `make -C backend tests-complete`** (miroir CI, enchaîne `db-init-test`).
-3. `contracts/` et `tests/` racine = placeholders vides (les tests cross-stack vivent dans
+1. ⚠ **`make phpunit` = `--group phase1` seul · `make test` = testsuite `Unit` seule** — or la CI
+   `unit-tests` lance `phpunit tests/` ENTIER. **Avant de pousser :
+   `make -C backend tests-complete`** (miroir CI — détail : `backend/docs/commands.md`).
+2. `contracts/` et `tests/` racine = placeholders vides (les tests cross-stack vivent dans
    `backend/tests/`).
-4. Frontend rebuilt + **actif** — tenant résolu côté serveur depuis le JWT : le front n'envoie
-   **aucun** header `X-Club-Id`.
+3. Tenant résolu côté serveur depuis le JWT : le front n'envoie **aucun** header `X-Club-Id`.
 
-**Pointers:** `docs/project-map.md` · `docs/glossary.md` · `docs/testing/testing-strategy.md` ·
-`specs/evolution/roadmap.md` (**l'ouvert**) · `specs/courantes/etat-des-lieux.md` (**le livré**) ·
-`docs/architecture/adr-index.md` · `specs/README.md` · `backend/docs/commands.md` ·
-`backend/docs/ffbb-api.md` · `backend/docs/geo-api.md` · ops : `docs/ops/` (`backup-restore.md` · `prod-stack.md` ·
-`deploy.md` · `load-test.md` · `observability.md`) · sécurité : `docs/security/` (`rls.md` · `mercure.md` · `jwt-cookie.md` · `rgpd.md` ·
-`scanners.md` · `turnstile.md`) · clés `config` d'une contrainte : `backend/docs/constraint-config-keys.md` ·
-archives : `docs/archive/`
+**Pointers:** `docs/project-map.md` (**la carte** — zones, ops, sécurité, tout le reste) ·
+`docs/glossary.md` · `docs/testing/testing-strategy.md` · `specs/evolution/roadmap.md`
+(**l'ouvert**) · `specs/courantes/etat-des-lieux.md` (**le livré**) ·
+`docs/architecture/adr-index.md` · `backend/docs/commands.md` · ops : `docs/ops/` · sécurité :
+`docs/security/` · clés `config` d'une contrainte : `backend/docs/constraint-config-keys.md`.
