@@ -6,6 +6,19 @@ services:
         arguments:
             $httpClient: '@App\Tests\Double\FfbbHttpClientStub'
 
+    # P2-53 RMM-8 — the geo clients never hit BAN/IGN in tests: deterministic
+    # stubs keyed on the query/coordinates (empty query → no candidate; a
+    # « poison » latitude → routing failure) so the autofill/geocode tests can
+    # falsify MANUAL-survival, unresolved and cap without a network call.
+    App\Tests\Double\BanGeocodingHttpClientStub: ~
+    App\Service\Geo\BanGeocodingClient:
+        arguments:
+            $httpClient: '@App\Tests\Double\BanGeocodingHttpClientStub'
+    App\Tests\Double\IgnRoutingHttpClientStub: ~
+    App\Service\Geo\IgnRoutingClient:
+        arguments:
+            $httpClient: '@App\Tests\Double\IgnRoutingHttpClientStub'
+
     App\AdminJob\AdminJobExecutorInterface:
         alias: App\Tests\Double\RecordingAdminJobExecutor
         public: true

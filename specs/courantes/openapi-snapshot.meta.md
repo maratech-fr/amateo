@@ -1,6 +1,19 @@
-Last verified @ 2026-08-26 (P2-52 RMM-10 ajoute **+1 path** — la salle perdue en silence : `GET /api/schedules/{id}/validate-impact` (impact de dépointage de la validation, ouvert au Membre) : le compte passe de 178 à **179 paths** ; plus **1 champ ADDITIF en LECTURE** sur le schéma `Fixture` : `unplacedReason` (`venue_lost`|`null`). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.15, aucun appel moteur — `unplacedReason` ne voyage PAS au moteur). SHA-256 du snapshot : `c16a83496e677ea813aefbeb58ee4d60959c58b3d7795f83c7a285f03e180ffe`.)
+Last verified @ 2026-08-26 (P2-53 RMM-8 PR-1 ajoute **+4 paths** — la géo + le modèle de la matrice de trajet : `GET /api/geocode` (géocodage BAN, management), `POST /api/venue-travel-times/autofill` (remplissage des trajets par l'IGN, management) et le CRUD `VenueTravelTime` (`GET/POST /api/venue_travel_times` + `GET/PUT/DELETE /api/venue_travel_times/{id}`, lecture ouverte au Membre) : le compte passe de 179 à **183 paths** ; plus **2 champs ADDITIFS en LECTURE** : `Venue.address` (l'adresse géocodée) et `Coach.isVehicled` (véhiculé → barème voiture, sinon à pied). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.15, aucun appel moteur — le bloc payload et le moteur sont la PR-2). SHA-256 du snapshot : `61865990fbe457f93c8ecc820bfc1458eaa3efe10a073e3207a6236ca21a7672`.)
 
 Changements récents :
+- **P2-53 RMM-8 PR-1 — la géo + le modèle de la matrice de trajet (2026-08-26)** : **+4 paths** —
+  `GET /api/geocode` (200 : `{candidates[]}` — candidats {label, latitude, longitude, score} de la
+  Base Adresse Nationale pour poser la lat/long d'un gymnase ; **management** SEC-07 ; 422 requête
+  vide/trop longue ; 502 service indisponible), `POST /api/venue-travel-times/autofill`
+  (200 : `{filled, unresolved[], skippedManual}` — remplit AUTO les minutes voiture/à pied de chaque
+  paire de gymnases géolocalisés via l'itinéraire IGN, **sans JAMAIS écraser une valeur MANUAL** ;
+  **management** ; 409 saison archivée ; 422 au-delà du cap de paires ; 429 rate-limit) et le CRUD
+  API Platform `VenueTravelTime` : `GET/POST /api/venue_travel_times` (liste **ouverte au Membre**,
+  création management) + `GET/PUT/DELETE /api/venue_travel_times/{id}`. Un barème de trajet par couple
+  de gymnases (`venueAId < venueBId`, `drivingMinutes`/`walkingMinutes` nullables + `drivingSource`/
+  `walkingSource` `AUTO`|`MANUAL`), scopé club+saison. **Champs ADDITIFS** en LECTURE : `Venue.address`
+  et `Coach.isVehicled` (défaut false). 179 → **183 paths**. Backend PUR : le bloc payload et le
+  moteur sont la PR-2, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.15, aucun appel moteur).
 - **P2-52 RMM-10 — un match déclaré ne perd plus sa salle en silence (2026-08-26)** : **+1 path** —
   `GET /api/schedules/{id}/validate-impact` (200 : `{orphanedFixtures, declaredOrphanedFixtures}` —
   combien de matchs domicile perdront leur salle si l'on valide ce planning, car ils pointent un

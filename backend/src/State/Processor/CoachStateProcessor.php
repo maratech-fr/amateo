@@ -57,6 +57,9 @@ class CoachStateProcessor extends AbstractStateProcessor
         if (null !== $input->isEmployee) {
             $entity->setIsEmployee($input->isEmployee);
         }
+        if (null !== $input->isVehicled) {
+            $entity->setIsVehicled($input->isVehicled);
+        }
         if (null !== $input->parentCoachId) {
             $entity->setParentCoachId($input->parentCoachId);
         }
@@ -96,6 +99,9 @@ class CoachStateProcessor extends AbstractStateProcessor
         }
         if (null !== $input->isEmployee) {
             $entity->setIsEmployee($input->isEmployee);
+        }
+        if (null !== $input->isVehicled) {
+            $entity->setIsVehicled($input->isVehicled);
         }
         if (null !== $input->parentCoachId) {
             $entity->setParentCoachId($input->parentCoachId);

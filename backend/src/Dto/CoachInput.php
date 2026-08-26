@@ -41,6 +41,10 @@ class CoachInput
     #[Groups(['write'])]
     public ?bool $isEmployee = null;
 
+    /** Véhiculé (barème voiture) ou non (barème à pied). */
+    #[Groups(['write'])]
+    public ?bool $isVehicled = null;
+
     #[Groups(['write'])]
     public ?string $parentCoachId = null;
 }

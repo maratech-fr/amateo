@@ -59,6 +59,14 @@ class Coach implements TenantOwnedInterface
     #[ORM\Column(type: 'boolean')]
     private bool $isEmployee = false;
 
+    /**
+     * P2-53 RMM-8 — véhiculé ou non. Défaut false (prudent : « pas véhiculé »
+     * applique la limite À PIED). Consommé par le solveur en PR-2 : véhiculé →
+     * barème voiture d'une paire de gymnases, sinon barème à pied.
+     */
+    #[ORM\Column(type: 'boolean', options: ['default' => false])]
+    private bool $isVehicled = false;
+
     #[ORM\Column(type: 'guid', nullable: true)]
     private ?string $parentCoachId = null;
 
@@ -238,6 +246,18 @@ class Coach implements TenantOwnedInterface
     public function setIsEmployee(bool $isEmployee): self
     {
         $this->isEmployee = $isEmployee;
+
+        return $this;
+    }
+
+    public function isVehicled(): bool
+    {
+        return $this->isVehicled;
+    }
+
+    public function setIsVehicled(bool $isVehicled): self
+    {
+        $this->isVehicled = $isVehicled;
 
         return $this;
     }

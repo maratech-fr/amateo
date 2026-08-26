@@ -22,6 +22,7 @@ use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
+use App\Entity\VenueTravelTime;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
@@ -495,6 +496,36 @@ final class DeletionImpactParityTest extends KernelTestCase
      * supprimer le gymnase SUPPRIME ses créneaux partagés, parent ET lignes membres. Annoncé,
      * et strictement borné à ce gymnase (un créneau d'un AUTRE gymnase survit).
      */
+    public function testDeletingAVenueAnnouncesAndDeletesItsTravelTimes(): void
+    {
+        [$club, $season] = $this->seed();
+        $venue = $this->venue($club, $season, 'Coubertin');
+        $other = $this->venue($club, $season, 'Debarros');
+        $third = $this->venue($club, $season, 'Gerland');
+
+        $this->travelTime($club, $season, $venue, $other);
+        $survivor = $this->travelTime($club, $season, $other, $third);
+        $this->em->flush();
+
+        $impact = self::getContainer()->get(DeletionImpactCounter::class)->forVenue($venue);
+        $announced = 0;
+        foreach ($impact->lines as $line) {
+            if (\in_array($line['key'], ['venue_travel_time_a', 'venue_travel_time_b'], true)) {
+                $announced += $line['count'];
+            }
+        }
+        self::assertSame(1, $announced, 'le barème de trajet du gymnase est annoncé (le couple avec l\'autre salle)');
+
+        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfVenue($venue);
+        $this->em->flush();
+        $this->em->clear();
+
+        // Annoncé == détruit : la matrice du gymnase supprimé est partie…
+        self::assertSame(0, $this->countBy(VenueTravelTime::class, 'venueAId', $venue->getId()) + $this->countBy(VenueTravelTime::class, 'venueBId', $venue->getId()));
+        // …et le couple des DEUX autres salles survit intact.
+        self::assertNotNull($this->em->getRepository(VenueTravelTime::class)->find($survivor));
+    }
+
     public function testDeletingAVenueDeletesItsSharedSlots(): void
     {
         [$club, $season] = $this->seed();
@@ -741,6 +772,18 @@ final class DeletionImpactParityTest extends KernelTestCase
         $this->em->flush();
 
         return $venue;
+    }
+
+    /** A travel-time bracket between two venues (normalized couple) and its id. */
+    private function travelTime(Club $club, Season $season, Venue $x, Venue $y): string
+    {
+        [$lo, $hi] = strcasecmp($x->getId(), $y->getId()) > 0 ? [$y->getId(), $x->getId()] : [$x->getId(), $y->getId()];
+        $travel = (new VenueTravelTime)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setVenueAId($lo)->setVenueBId($hi)->setDrivingMinutes(12);
+        $this->em->persist($travel);
+        $this->em->flush();
+
+        return $travel->getId();
     }
 
     private function team(Club $club, Season $season, string $forcedVenueId): Team

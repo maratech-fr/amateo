@@ -52,6 +52,14 @@ framework:
             policy: 'sliding_window'
             limit: 10
             interval: '1 hour'
+        # P2-53 RMM-8 — l'autofill de la matrice de trajet (POST /api/venue-travel-times/autofill),
+        # keyé PAR UTILISATEUR (JWT) : la route déclenche une RAFALE d'appels sortants vers l'IGN
+        # (jusqu'à ~240 requêtes au cap). 10/h couvre l'usage réel (on remplit la matrice
+        # ponctuellement, puis on ajuste à la main) et borne une boucle d'appels tiers.
+        venue_travel_time_autofill:
+            policy: 'sliding_window'
+            limit: 10
+            interval: '1 hour'
         # #10 C2 : la page publique de collecte des doléances (GET pré-remplissage +
         # POST soumission), par IP. 20/15min — large pour un coach (quelques soumissions),
         # borne réelle contre l'énumération de tokens.

@@ -19,6 +19,7 @@ use App\Entity\TeamMatchHabit;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueTrainingSlot;
+use App\Entity\VenueTravelTime;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
 use DateTimeImmutable;
@@ -183,6 +184,7 @@ final class SeasonTransitionService
             $copy->setCanSplit($venue->getCanSplit());
             $copy->setLatitude($venue->getLatitude());
             $copy->setLongitude($venue->getLongitude());
+            $copy->setAddress($venue->getAddress());
             $copy->setSource($venue->getSource());
             $copy->setExternalRef($venue->getExternalRef());
             $copy->setIsActive($venue->getIsActive());
@@ -356,6 +358,31 @@ final class SeasonTransitionService
             // Passerelles PR-1 : l'intensité côté entraînement se recopie en N+1 (l'oublier
             // serait une régression silencieuse — gardé par le test de transition).
             $copy->setTrainingIntensity($link->getTrainingIntensity());
+            $this->entityManager->persist($copy);
+        }
+
+        // P2-53 RMM-8 — la matrice de trajet suit la saison (remap gymnase). Un
+        // gymnase non remappé casse le couple → non recopié. Les minutes ET leurs
+        // sources (dont le MANUAL, la donnée terrain à préserver) sont transcrites.
+        foreach ($this->rows(VenueTravelTime::class, $clubId, $sourceId) as $travel) {
+            $venueAId = $venueMap[$travel->getVenueAId()] ?? null;
+            $venueBId = $venueMap[$travel->getVenueBId()] ?? null;
+            if (null === $venueAId || null === $venueBId) {
+                continue;
+            }
+            // The remapped uuids are new → re-normalize the couple invariant.
+            if (strcasecmp($venueAId, $venueBId) > 0) {
+                [$venueAId, $venueBId] = [$venueBId, $venueAId];
+            }
+            $copy = new VenueTravelTime;
+            $copy->setClubId($clubId);
+            $copy->setSeasonId($target->getId());
+            $copy->setVenueAId($venueAId);
+            $copy->setVenueBId($venueBId);
+            $copy->setDrivingMinutes($travel->getDrivingMinutes());
+            $copy->setWalkingMinutes($travel->getWalkingMinutes());
+            $copy->setDrivingSource($travel->getDrivingSource());
+            $copy->setWalkingSource($travel->getWalkingSource());
             $this->entityManager->persist($copy);
         }
 

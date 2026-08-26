@@ -67,6 +67,10 @@ class CoachResource
     #[Groups(['read'])]
     public bool $isEmployee = false;
 
+    /** Véhiculé (barème voiture) ou non (barème à pied). */
+    #[Groups(['read'])]
+    public bool $isVehicled = false;
+
     #[Groups(['read'])]
     public ?string $parentCoachId = null;
 
@@ -85,6 +89,7 @@ class CoachResource
         $dto->acceptableLateMinutes = $entity->getAcceptableLateMinutes();
         $dto->isActive = $entity->getIsActive();
         $dto->isEmployee = $entity->isEmployee();
+        $dto->isVehicled = $entity->isVehicled();
         $dto->parentCoachId = $entity->getParentCoachId();
 
         return $dto;

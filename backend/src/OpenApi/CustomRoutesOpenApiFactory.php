@@ -802,6 +802,56 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
             ]),
         )));
 
+        $paths->addPath('/api/geocode', new PathItem(get: new Operation(
+            operationId: 'geocodeAddress',
+            tags: ['Venue'],
+            responses: [
+                '200' => $this->jsonResponse('BAN geocoding candidates for a free-text address (top 5) — used to set a venue\'s latitude/longitude', [
+                    'type' => 'object',
+                    'properties' => [
+                        'candidates' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                            'label' => ['type' => 'string'],
+                            'latitude' => ['type' => 'number', 'format' => 'float'],
+                            'longitude' => ['type' => 'number', 'format' => 'float'],
+                            'score' => ['type' => 'number', 'format' => 'float'],
+                        ]]],
+                    ],
+                ]),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+                '403' => new Response('Not a management member'),
+                '422' => new Response('Missing or malformed query (3 to 200 characters)'),
+                '502' => new Response('Geocoding service unreachable — retry later'),
+            ],
+            summary: 'Geocode a free-text address via the Base Adresse Nationale (management only, tenant from JWT)',
+            parameters: [['name' => 'q', 'in' => 'query', 'required' => true, 'schema' => ['type' => 'string'], 'description' => 'Free-text address to geocode (3 to 200 characters)']],
+        )));
+
+        $paths->addPath('/api/venue-travel-times/autofill', new PathItem(post: new Operation(
+            operationId: 'autofillVenueTravelTimes',
+            tags: ['Venue'],
+            responses: [
+                '200' => $this->jsonResponse('Fills AUTO driving/walking minutes for every geolocated venue pair via IGN routing. A MANUAL value is NEVER overwritten; a pair with a missing geolocation or a routing failure comes back named (best-effort).', [
+                    'type' => 'object',
+                    'properties' => [
+                        'filled' => ['type' => 'integer', 'description' => 'Pairs where at least one AUTO minute was written'],
+                        'unresolved' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                            'venueAId' => ['type' => 'string'],
+                            'venueBId' => ['type' => 'string'],
+                            'reason' => ['type' => 'string', 'enum' => ['missing_geo', 'routing_failed']],
+                        ]]],
+                        'skippedManual' => ['type' => 'integer', 'description' => 'Pairs whose MANUAL value was preserved'],
+                    ],
+                ]),
+                '400' => new Response('No club or season in context'),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+                '403' => new Response('Not a management member'),
+                '409' => new Response('The selected season is archived (read-only)'),
+                '422' => new Response('Too many geolocated venue pairs for an automatic fill (fill by hand)'),
+                '429' => new Response('Too many requests (per-user rate limit)'),
+            ],
+            summary: 'Autofill the venue travel-time matrix from IGN routing (management only; never overwrites a MANUAL value)',
+        )));
+
         return $openApi;
     }
 

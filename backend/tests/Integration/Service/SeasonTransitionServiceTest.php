@@ -24,6 +24,7 @@ use App\Entity\TeamTagAssignment;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueTrainingSlot;
+use App\Entity\VenueTravelTime;
 use App\Entity\VenueUnavailability;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
@@ -33,6 +34,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLinkIntensity;
 use App\Enum\TeamLinkType;
+use App\Enum\VenueTravelTimeSource;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SeasonAlreadyTransitionedException;
 use App\Service\SeasonResolver;
@@ -110,6 +112,17 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         self::assertLessThan(0, strcasecmp($newTeamLink->getTeamAId(), $newTeamLink->getTeamBId()));
         // L'intensité côté entraînement suit la recopie (non-défaut : prouve le set).
         self::assertSame(TeamLinkIntensity::MANDATORY, $newTeamLink->getTrainingIntensity());
+
+        // P2-53 RMM-8 — le barème de trajet suit, remappé aux gymnases copiés, minutes ET
+        // source MANUAL préservées (falsifie l'oubli de setDriving*).
+        $newTravel = $this->em->getRepository(VenueTravelTime::class)->findOneBy(['seasonId' => $target->getId()]);
+        self::assertNotNull($newTravel);
+        $newVenueIds = [$newVenues[0]->getId(), $newVenues[1]->getId()];
+        self::assertContains($newTravel->getVenueAId(), $newVenueIds);
+        self::assertContains($newTravel->getVenueBId(), $newVenueIds);
+        self::assertLessThan(0, strcasecmp($newTravel->getVenueAId(), $newTravel->getVenueBId()));
+        self::assertSame(22, $newTravel->getDrivingMinutes());
+        self::assertSame(VenueTravelTimeSource::MANUAL, $newTravel->getDrivingSource());
 
         // Team: forcedVenueId remapped to the copied venue, name untouched.
         $newTeams = $this->em->getRepository(Team::class)->findBy(['seasonId' => $target->getId()], ['name' => 'ASC']);
@@ -392,6 +405,18 @@ final class SeasonTransitionServiceTest extends KernelTestCase
 
         $venueA = $this->venue($club, $season, 'Gym A');
         $venueB = $this->venue($club, $season, 'Gym B');
+
+        // P2-53 RMM-8 — un barème de trajet A↔B, valeur MANUAL : la recopie N+1 doit le
+        // remapper aux gymnases copiés ET préserver sa valeur/source (sinon régression muette).
+        $travel = new VenueTravelTime;
+        $travel->setClubId($club->getId());
+        $travel->setSeasonId($season->getId());
+        [$loV, $hiV] = strcasecmp($venueA->getId(), $venueB->getId()) > 0 ? [$venueB->getId(), $venueA->getId()] : [$venueA->getId(), $venueB->getId()];
+        $travel->setVenueAId($loV);
+        $travel->setVenueBId($hiV);
+        $travel->setDrivingMinutes(22);
+        $travel->setDrivingSource(VenueTravelTimeSource::MANUAL);
+        $this->em->persist($travel);
 
         $slot = new VenueTrainingSlot;
         $slot->setClubId($club->getId());
