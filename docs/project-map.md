@@ -174,7 +174,7 @@ Two further MCP servers are configured in `.mcp.json` and enabled: **Serena** (`
 
 ## 6. Cross-references
 - Vocabulaire transverse (termes métier + clés de payload): [`glossary.md`](glossary.md)
-- Commandes backend (make · console `app:*` · pièges RLS): [`../backend/docs/commands.md`](../backend/docs/commands.md) · routes FFBB: [`../backend/docs/ffbb-api.md`](../backend/docs/ffbb-api.md)
+- Commandes backend (make · console `app:*` · pièges RLS): [`../backend/docs/commands.md`](../backend/docs/commands.md) · routes FFBB: [`../backend/docs/ffbb-api.md`](../backend/docs/ffbb-api.md) · routes géo (BAN + IGN): [`../backend/docs/geo-api.md`](../backend/docs/geo-api.md)
 - Journal des upgrades (le pourquoi, pour le fondateur): [`upgrades.md`](upgrades.md) — tenu par le skill `/dependabot`
 - Tests & guardrails: [`testing/testing-strategy.md`](testing/testing-strategy.md)
 - Sécurité: [`security/rls.md`](security/rls.md) (RLS, GUC, exceptions) · [`security/mercure.md`](security/mercure.md) (durcissement SEC-05/06) · [`security/jwt-cookie.md`](security/jwt-cookie.md) (JWT en cookie httpOnly, `JWT_COOKIE_SECURE`, pièges de test) · [`security/rgpd.md`](security/rgpd.md) (registre art. 30)

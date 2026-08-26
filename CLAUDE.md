@@ -259,7 +259,7 @@ maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir l
 **Pointers:** `docs/project-map.md` · `docs/glossary.md` · `docs/testing/testing-strategy.md` ·
 `specs/evolution/roadmap.md` (**l'ouvert**) · `specs/courantes/etat-des-lieux.md` (**le livré**) ·
 `docs/architecture/adr-index.md` · `specs/README.md` · `backend/docs/commands.md` ·
-`backend/docs/ffbb-api.md` · ops : `docs/ops/` (`backup-restore.md` · `prod-stack.md` ·
+`backend/docs/ffbb-api.md` · `backend/docs/geo-api.md` · ops : `docs/ops/` (`backup-restore.md` · `prod-stack.md` ·
 `deploy.md` · `load-test.md` · `observability.md`) · sécurité : `docs/security/` (`rls.md` · `mercure.md` · `jwt-cookie.md` · `rgpd.md` ·
 `scanners.md` · `turnstile.md`) · clés `config` d'une contrainte : `backend/docs/constraint-config-keys.md` ·
 archives : `docs/archive/`

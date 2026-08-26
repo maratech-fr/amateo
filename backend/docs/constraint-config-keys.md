@@ -1,6 +1,13 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-08-24 (recalé ENG-32 : le monolithe `constraints.py` est devenu le paquet `constraints/` — les références de ce fichier pointent désormais fichier+fonction, stables au refactor. Vérification précédente toujours valable : P4-120 — première vérification stampée de ce fichier, contre le code, **tout juste** : les clés de la table existent dans `ConstraintConfigValidator` (`minStartTime`/`maxEndTime` type time:63-65, `minAtVenueCount`:86, `fromTime`:96, `excludeTags`:48) ✓ · foyer unique `TeamTagResolver::resolveConstraintTeamIds` (`:278`) ✓ · `ConstraintKeysAreHonouredByEngineTest` existe et le job `engine-semantics` aussi (`ci.yml:790`) ✓ · migration `Version20260807190000` (suppression `coachId`) présente ✓ · `PlanVenueClosures::effectiveStateForPlan` (`:169`) ✓ · `POST /api/constraints/validate` (`ValidateConstraintsController.php:64`) ✓)
+Last verified @ 2026-08-26 (rotation `documentation-update`, P2-53 PR-1 — zone non touchée par
+cette PR, contrôle de fraîcheur). Re-confronté au code : les clés de la table existent dans
+`ConstraintConfigValidator` (`minStartTime`/`maxEndTime` type time:63-65, `minAtVenueCount`:86,
+`fromTime`:96, `excludeTags`:48) ✓ · foyer unique `TeamTagResolver::resolveConstraintTeamIds`
+(`:278`) ✓ · `ConstraintKeysAreHonouredByEngineTest` existe et le job `engine-semantics` aussi
+(`ci.yml:837`) ✓ · migration `Version20260807190000` (suppression `coachId`) présente ✓ ·
+`PlanVenueClosures::effectiveStateForPlan` a **dérivé** (`:169` → `:212` désormais, corrigé cette
+passe) ✓ · `POST /api/constraints/validate` (`ValidateConstraintsController.php:64`) ✓)
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.
