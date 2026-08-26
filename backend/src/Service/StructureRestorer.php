@@ -163,29 +163,13 @@ final class StructureRestorer
             'DELETE App\Entity\VenueTrainingSlot vts WHERE vts.id IN (:ids)',
         );
 
-        // Un match dont le gymnase a disparu du restore. `Fixture` n'est ni dans le wipe
-        // ni dans la photo : il SURVIT, en nommant un venue_id mort (aucune FK ne
-        // l'arrête). On le DÉPOINTE au lieu de le supprimer — exactement ce que fait la
-        // suppression d'un gymnase par l'API (`purgeChildrenOfVenue` : « le match survit,
-        // il perd juste son gymnase »). Le laisser pendre est pire que le vider : il
-        // s'affiche avec un gymnase blanc ET reste HORS de la liste des matchs à placer,
-        // dont la règle est `venueId === null` — donc le gestionnaire n'apprend jamais
-        // que son match a perdu sa salle.
+        // P2-52 (RMM-10) — L'EXPLORATION NE DÉTRUIT PLUS. Un match dont le gymnase est absent
+        // de la photo restaurée SURVIT en nommant un venue_id transitoirement mort : on le
+        // LAISSE tel quel. Pointeur pendouillant assumé (revenir à une version qui porte ce
+        // gymnase le rend valide de nouveau — le radar peut signaler ACCESS_WINDOW_LOST, signal
+        // VRAI et transitoire). Ce n'est plus le restore qui dépointe : la VALIDATION est la
+        // seule gâchette (FixtureVenueLossMarker), et elle seule pose la raison persistante.
         //
-        // Pourquoi NULL ici alors qu'une équipe engagée vaut un 409 : les deux pertes ne
-        // se rattrapent pas pareil. Une équipe balayée laisse des matchs INVISIBLES et
-        // irrécupérables (plus aucun geste ne les atteint — celui qui les aurait purgés
-        // était la suppression de l'équipe, qui n'existe plus). Un gymnase balayé rend le
-        // match VISIBLE dans « à placer » : le gestionnaire le repose, et le restore
-        // l'avait prévenu que sa structure serait écrasée. Refuser vaut pour l'irréparable,
-        // pas pour le réparable. ⚠️ Résidu assumé : un match déjà SUBMITTED/VALIDATED à la
-        // fédération perd sa salle sans avertissement propre — voir roadmap DOC-2.
-        $this->entityManager->createQuery(
-            'UPDATE App\Entity\Fixture f SET f.venueId = NULL '
-            . 'WHERE f.clubId = :c AND f.seasonId = :s AND f.venueId IS NOT NULL '
-            . 'AND NOT EXISTS (SELECT 1 FROM App\Entity\Venue v WHERE v.id = f.venueId)',
-        )->setParameters($tenant)->execute();
-
         // L'inscription en compétition d'une équipe que le restore a balayée. Une équipe
         // balayée n'a AUCUN match (sinon elle serait engagée, et `assertRestoreKeepsEngagedTeams`
         // aurait refusé) — il n'y a donc pas de match orphelin à craindre ici, mais son

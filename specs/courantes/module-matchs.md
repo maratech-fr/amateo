@@ -1,21 +1,25 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-25 (graduation RMM-6 PR-3, **DERNIÈRE du lot — RMM-6 est LIVRÉ EN ENTIER** :
-section renommée « Échéances ligue/comité — RMM-6 (3 PR) — LIVRÉ EN ENTIER » et étendue de la carte
-cockpit `FbiDeadlineCard` (pleine largeur sous le bandeau socle, rendue UNIQUEMENT quand le backend
-sert une fenêtre J-7 ouverte — le cockpit reste muet sinon, falsifié par test) + l'escalade « dès le
-login » (décision fondateur : « c'est dès le login car le placement est une urgence » — la carte vit
-sur `/`, la route cockpit, pas seulement `/matchs`) + le résumé du gardien (delta de visite) joint
-dans la même carte, jamais un second bloc + la lib de formulation `visitDeltaSegments` extraite de
-`moduleVisitSummary` et consommée par les DEUX (carte cockpit et `ModuleVisitBanner`, comportement
-inchangé). Le point d'insertion posé en RMM-3 (§ « Le gardien à l'ouverture ») et le point
-d'insertion RMM-6 PR-3 signalé en RMM-1 sont **purgés** — les deux sont consommés. Re-vérifié contre
-le code : `FbiDeadlineCard.tsx`, `FbiDeadlineCard.test.tsx`, `CockpitPage.tsx`,
-`lib/visitDeltaSegments.ts`, `ModuleVisitBanner.tsx`, `matches/api.ts`/`queries.ts`
-(`DeadlineOutlookWindow`/`DeadlineGuardianDelta`/`useDeadlineOutlook`), `app/router.tsx` (le cockpit
-EST la route `/`, donc la première page après login). Le reste (RMM-6 PR-1/PR-2, RMM-5 les 4 PR,
-RMM-4 canal API, paliers A/PR-1→F2, RMM-1/RMM-3, périmètre engagé) non re-vérifié cette passe — un
-stamp REMPLACE, l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
+Last verified @ 2026-08-26 (P2-52 / RMM-10, **DERNIER lot de code du module matchs — le programme
+RMM est clos**, 2 PR — modèle+validation puis durcissement sécurité fail-closed). Nouvelle section
+« P2-52 — un match déclaré ne perd plus sa salle en silence (RMM-10) » : le restore/exploration
+(« Charger cette version ») **ne dépointe plus** un match dont le gymnase est absent de la photo
+(résidu assumé — pointeur transitoirement pendouillant, régularisé par la VALIDATION) ; la
+**validation d'un planning** devient la seconde et principale gâchette de dépointage, à parité par
+construction avec la suppression de gymnase (`OrphanedFixtureFinder` sert les deux : l'annonce
+`GET /schedules/{id}/validate-impact` et la gâchette `ValidateScheduleController`) ; foyer unique du
+dépointage `FixtureVenueLossMarker` (raison persistante `Fixture.unplacedReason = venue_lost`,
+heure conservée modifiable, effacée par `Fixture::setVenueId` dès qu'une salle non-null est reposée).
+Le paragraphe DOC-2 (§ « Le périmètre engagé ») est réécrit sur ce nouveau comportement — la
+suppression de gymnase délègue désormais au même foyer via `FixtureVenueLossStep` (remplace le
+`ClearFieldStep` générique), `EngagedTeamGuardTest` étendu (les deux gâchettes) et
+`DeletionImpactParityTest` étendu (le volet validation). Re-vérifié contre le code :
+`OrphanedFixtureFinder.php`, `FixtureVenueLossMarker.php`, `FixtureVenueLossStep.php`,
+`ValidateImpactController.php`, `ValidateScheduleController.php`, `StructureRestorer.php`,
+`Fixture.php`, `ValidateDialog.tsx`, `UnplacedList.tsx`, `unplacedReasonLabel.ts`. Le reste (RMM-6
+PR-1/PR-2/PR-3, RMM-5 les 4 PR, RMM-4 canal API, paliers A/PR-1→F2, RMM-1/RMM-3, RMM-7) non
+re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git :
+`git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
 > [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés
@@ -654,7 +658,7 @@ Conséquence assumée : **dès l'import FBI**, toutes les équipes de la compét
 | `isActive` | **libre** — sert aux plannings de période, pas au périmètre de la saison |
 | Nom, créneaux, gymnase | **libres** |
 
-**La salle d'un match, elle, n'est PAS protégée — et c'est délibéré (DOC-2, soldé le 2026-08-18).** Supprimer un gymnase dépointe `Fixture.venueId`, y compris sur un match `SUBMITTED`/`VALIDATED` déjà déclaré à la ligue. Le geste **n'est pas refusé** (un gymnase qui ferme, ça arrive, et le match redevient visiblement « à placer », donc récupérable) : il est **annoncé**. La modale de suppression compte ces matchs à part (`DeletionImpactCounter::declaredFixturesOnVenue`) et dit qu'ils devront être re-soumis à la fédération. Le match SURVIT à la suppression, il perd sa salle — gardé par `DeletionImpactParityTest`.
+**La salle d'un match, elle, n'est PAS protégée — et c'est délibéré (soldé le 2026-08-18, étendu par P2-52/RMM-10 le 2026-08-26).** Supprimer un gymnase dépointe le match, y compris un `SUBMITTED`/`VALIDATED` déjà déclaré à la ligue. Le geste **n'est pas refusé** (un gymnase qui ferme, ça arrive, et le match redevient visiblement « à placer », donc récupérable) : il est **annoncé**. La modale de suppression compte ces matchs à part (`DeletionImpactCounter::declaredFixturesOnVenue`) et dit qu'ils devront être re-soumis à la fédération. Le match SURVIT à la suppression, il perd sa salle — gardé par `DeletionImpactParityTest`. Détail du dépointage lui-même (foyer unique, raison persistante, seconde gâchette « validation ») : § « P2-52 — un match déclaré ne perd plus sa salle en silence » ci-dessous.
 
 La règle vit à **un seul endroit** (`TeamEngagementGuard`) : la garde d'écriture et le contrat de lecture
 (`TeamResource.isEngaged`, rempli en lot par `TeamStateProvider`) la consultent. Le front grise « Supprimer »
@@ -676,6 +680,57 @@ structure incohérente avec la version qu'on prétend recharger. Il refuse **aus
 **autre niveau** pour une équipe engagée : `level` est un champ mappé, donc la photo le réinsère tel quel, et le
 gel du niveau (voir plus haut) serait contourné par le restore — le club se retrouverait inscrit sous un niveau
 que l'API refuse ensuite de corriger. Une équipe engagée présente dans la photo **avec son niveau** ne bloque rien.
+
+## P2-52 — un match déclaré ne perd plus sa salle en silence (RMM-10, 2026-08-26) — LIVRÉ, DERNIER lot de code du module matchs
+
+Recadré deux fois par le fondateur avant implémentation (roadmap `P2-52`) : l'ancien comportement
+dépointait un match **immédiatement** pendant une exploration « Charger cette version » (résidu
+auto-avoué à la livraison de DOC-2), ce qui rendait l'exploration destructive — revenir à la bonne
+version ne rendait pas la salle. Décisions retenues :
+
+- **L'exploration ne dépointe plus rien.** `StructureRestorer::wipeStructure` a perdu son UPDATE DQL
+  de masse sur `Fixture.venueId` : un match dont le gymnase est absent de la photo restaurée
+  **survit intact**, en nommant un `venueId` **transitoirement pendouillant** (résidu assumé —
+  recharger une version qui porte à nouveau ce gymnase rend le pointeur valide de nouveau sans
+  aucun geste). Le radar peut afficher `ACCESS_WINDOW_LOST` sur ce match entre-temps : signal
+  VRAI et transitoire, pas un bug. Gardé par `StructureRestorerTest` +
+  `RegenerateFromVersionTest::testLoadVersionLeavesAMatchWhoseVenueDisappearedUntouched`.
+- **La VALIDATION d'un planning devient la gâchette principale.** `GET
+  /api/schedules/{id}/validate-impact` (lecture ouverte au Membre) sert l'impact AVANT que le
+  gestionnaire confirme : `{orphanedFixtures, declaredOrphanedFixtures}` — combien de matchs
+  domicile perdront leur salle (gymnase disparu du club+saison) et, parmi eux, combien sont déjà
+  `SUBMITTED`/`VALIDATED`. `ValidateDialog` n'affiche l'annonce (« N matchs [dont X déjà déclarés]
+  perdront leur salle ») QUE si N>0 (aucun bruit préventif — verbatim fondateur : « quel intérêt de
+  faire du bruit préventif ») et désactive « Valider » tant que l'impact n'est pas connu (en vol ou
+  en échec — jamais un impact inconnu présenté comme vide). `POST /api/schedules/{id}/validate`
+  dépointe alors, dans la MÊME transaction que le choix de version, exactement les matchs que la
+  route d'impact a annoncés — **parité par construction** : les deux consommateurs appellent le
+  même prédicat `OrphanedFixtureFinder::orphanedFixtures` (« `venueId` posé mais aucun `Venue` de ce
+  club+saison ne le porte »), donc l'annonce ne peut jamais mentir sur ce que la validation détruit.
+- **Foyer unique du dépointage : `FixtureVenueLossMarker`.** Un match dépointé repasse `UNPLACED`,
+  `venueId` NULL, `placementSource` NULL (il redevient plaçable), et porte la raison PERSISTANTE
+  `Fixture.unplacedReason = venue_lost` (« Le gymnase n'est plus affilié au club ») — distincte de
+  la raison volatile d'auto-placement qui ne vit que dans l'UI. La date/heure de coup d'envoi est
+  **conservée** comme repère modifiable, jamais une salle réelle. La raison s'efface d'elle-même dès
+  qu'une salle non-null est reposée (`Fixture::setVenueId`, maison unique de l'effacement).
+- **La suppression de gymnase (DOC-2, 2026-08-18) gagne la même bascule.** `CascadePlan` remplace le
+  `ClearFieldStep` générique sur `Fixture.venueId` par `FixtureVenueLossStep`, qui délègue au même
+  `FixtureVenueLossMarker` — même état final que la validation, `count()` (donc l'annonce
+  `venue_fixture` de la modale de suppression) inchangé.
+- **Le périmètre engagé résiste aux deux gâchettes.** L'engagement se dérive de l'EXISTENCE d'un
+  match (§ ci-dessus) : un match dépointé « salle perdue » EXISTE toujours, donc son équipe reste
+  engagée — `DELETE /api/teams/{id}` → 409 dans les deux cas (`EngagedTeamGuardTest` étendu).
+- **Contrat backend⇄engine inchangé** (`CONTRACT_VERSION` 2.15) : `unplacedReason` ne voyage jamais
+  au moteur, c'est un champ de lecture pur (`FixtureResource.unplacedReason`).
+
+NR : `Security/EngagedTeamGuardTest` (extension) · `Integration/Service/DeletionImpactParityTest`
+(extension, volet validation) · `Integration/Service/StructureRestorerTest` +
+`Integration/Api/RegenerateFromVersionTest` (l'exploration ne détruit plus). Revue sécurité du
+2026-08-26 : `ValidateImpactController` durci **fail-closed** sur un contexte club irrésolu (patron
+`DeletionImpactController`), et la borne club+saison du prédicat `OrphanedFixtureFinder` posée
+**explicitement dans la sous-requête** (pas seulement promise au docblock) — sans elle, hors
+contexte de requête (worker, CLI), un gymnase de n'importe quel club aurait pu « sauver » un
+fixture du marquage.
 
 ## Refonte UX — RMM-1 (P2-26, 4 PR entre 2026-08-23 et 2026-08-24)
 

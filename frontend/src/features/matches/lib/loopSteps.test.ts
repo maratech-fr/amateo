@@ -23,6 +23,7 @@ function fx(over: Partial<Fixture> = {}): Fixture {
     externalRef: over.externalRef ?? null,
     fbiVenueLabel: null,
     placementSource: over.placementSource ?? "MANUAL",
+    unplacedReason: over.unplacedReason ?? null,
     ...over,
   };
 }

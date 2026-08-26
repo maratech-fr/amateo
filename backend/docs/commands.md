@@ -1,13 +1,15 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-08-24 (rotation `documentation-update`, pas de sujet lié à cette passe —
-sondage des stamps les plus anciens du dépôt). Re-confronté au code : cibles Make toutes présentes
-dans `backend/Makefile` ✓. **Un fait corrigé** : la table des scripts n'en listait que 3 alors que
-`backend/scripts/*.sh` en compte **7** — `generate-schedule-test.sh`, `smoke-overlay.sh`,
-`smoke-place-matches.sh` et `smoke-coach-wishes.sh` manquaient (constaté par `ls`, pas par mémoire),
-ajoutés avec leur docstring en tête de fichier comme source. Non re-sondé cette passe (déjà vérifié
-le 2026-08-22, non touché depuis) : horaires du catalogue de jobs, pièges RLS des commandes
-Doctrine, le motif `.pdf` seul d'`app:exports:purge`.
+Last verified @ 2026-08-26 (rotation `documentation-update`, pas de sujet lié à cette passe —
+sondage des stamps les plus anciens du dépôt). Re-confronté au code : les 7 scripts de
+`backend/scripts/*.sh` toujours tous listés (`ls` ✓, aucun ajout/retrait depuis la dernière passe) ;
+cibles Make de la table toujours toutes présentes dans `backend/Makefile` (`test`, `tests-complete`,
+`phpunit`, `db-init`/`db-init-test`, `db-reset`/`db-reset-test`, `fixtures`, `phpstan`/`cs`/`cs-fix`/
+`rector`, `lint`, `migration-diff`/`migration-migrate`, `fix-perms`, `exec`, `jwt-keys`, `install`
+✓) ; `app:schedules:reconcile-stuck` confronté à `ReconcileStuckSchedulesCommand.php` (existe) ✓.
+Tout juste, rien à corriger. Non re-sondé cette passe : horaires exacts du catalogue de jobs,
+pièges RLS des commandes Doctrine, le motif `.pdf` seul d'`app:exports:purge` — un stamp REMPLACE,
+l'historique vit dans git : `git log -p --follow backend/docs/commands.md`.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).

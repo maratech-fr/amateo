@@ -239,13 +239,14 @@ final class RegenerateFromVersionTest extends WebTestCase
         );
     }
 
-    public function testLoadVersionUnpointsAMatchWhoseVenueDisappeared(): void
+    public function testLoadVersionLeavesAMatchWhoseVenueDisappearedUntouched(): void
     {
-        // `Fixture` n'est ni dans le wipe ni dans la photo : le match survit au restore.
-        // Si son gymnase, lui, n'est pas dans la photo, il est supprimé — et le match
-        // nomme un venue_id mort. Le laisser pendre est PIRE que le vider : il s'affiche
-        // avec un gymnase blanc ET reste hors de la liste des matchs à placer (dont la
-        // règle est `venueId === null`). Le gestionnaire n'apprendrait jamais la perte.
+        // P2-52 (RMM-10) — L'EXPLORATION NE DÉTRUIT PLUS. `Fixture` n'est ni dans le wipe ni
+        // dans la photo : le match survit au restore. Si son gymnase, lui, n'est pas dans la
+        // photo, il est supprimé — et le match nomme alors un venue_id transitoirement mort.
+        // On le LAISSE tel quel : pointeur pendouillant assumé (recharger une version qui porte
+        // ce gymnase le rend valide de nouveau). Le restore n'est plus la gâchette du dépointage
+        // — la VALIDATION l'est. « Charger cette version » est un ESSAI, il ne doit rien casser.
         $sm1 = $this->persistTeam('SM1');
         $v1 = $this->makeSchedule(ScheduleStatus::COMPLETED, null);
         $this->em->flush();
@@ -258,6 +259,7 @@ final class RegenerateFromVersionTest extends WebTestCase
             ->setName('Halle B')->setCanSplit(false)->setSource('manual');
         $this->em->persist($venue);
         $this->em->flush();
+        $venueId = $venue->getId();
         $fixture = (new Fixture)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setTeamId($sm1->getId())
@@ -265,7 +267,7 @@ final class RegenerateFromVersionTest extends WebTestCase
             ->setHomeAway(FixtureHomeAway::HOME)
             ->setOpponentLabel('AS Voisins')
             ->setStatus(FixtureStatus::PLACED)
-            ->setVenueId($venue->getId());
+            ->setVenueId($venueId);
         $this->em->persist($fixture);
         $this->em->flush();
 
@@ -276,8 +278,10 @@ final class RegenerateFromVersionTest extends WebTestCase
 
         $this->em->clear();
         $reloaded = $this->em->getRepository(Fixture::class)->find($fixture->getId());
-        self::assertNotNull($reloaded, 'le match survit — il perd juste son gymnase');
-        self::assertNull($reloaded->getVenueId(), 'et il redevient « à placer » au lieu de nommer un gymnase mort');
+        self::assertNotNull($reloaded, 'le match survit à l\'exploration');
+        self::assertSame($venueId, $reloaded->getVenueId(), 'le pointeur pendouille — le restore ne dépointe plus');
+        self::assertSame(FixtureStatus::PLACED, $reloaded->getStatus(), 'et son statut ne change pas : l\'essai ne détruit rien');
+        self::assertNull($reloaded->getUnplacedReason(), 'aucune raison venue_lost : ce n\'est pas la gâchette');
     }
 
     public function testRegenerateFromTheChosenVersionIsRefused(): void

@@ -17,7 +17,7 @@ const fixture = (over: Partial<Fixture>): Fixture => ({
   externalRef: null,
   fbiVenueLabel: null,
   placementSource: null,
-  ...over,
+  unplacedReason: null,  ...over,
 });
 
 /** N Saturday-15:30 fixtures (successive weeks). */

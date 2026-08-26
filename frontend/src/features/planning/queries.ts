@@ -139,6 +139,21 @@ export function useSocleDeviation(scheduleId: string | null) {
   });
 }
 
+/**
+ * P2-52 — l'impact de dépointage de la VALIDATION. Armé (scheduleId non nul) seulement quand le
+ * gestionnaire est sur le point de valider : on n'interroge pas l'impact avant que le geste soit
+ * envisagé. `staleTime: 0` — la donnée doit être fraîche au moment de confirmer (un gymnase a pu
+ * disparaître depuis le dernier rendu).
+ */
+export function useValidateImpact(scheduleId: string | null) {
+  return useQuery({
+    queryKey: ["validate-impact", scheduleId],
+    queryFn: () => planningApi.getValidateImpact(scheduleId as string),
+    enabled: null !== scheduleId,
+    staleTime: 0,
+  });
+}
+
 // Reference data (names + grouping). Long-lived — rarely changes within a session.
 export function useTeams() {
   return useQuery({ queryKey: ["teams"], queryFn: planningApi.getTeams, staleTime: 300_000 });

@@ -8,6 +8,7 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
+use App\Entity\Fixture;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\Team;
@@ -17,6 +18,8 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
+use App\Enum\FixtureHomeAway;
+use App\Enum\FixtureStatus;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\SchedulePlanProvisioner;
@@ -184,6 +187,61 @@ final class StructureRestorerTest extends KernelTestCase
         $this->em->clear();
         self::assertNull($this->em->getRepository(ConstraintPeriodOverride::class)->find($overrideId), 'an override whose permanent constraint is now absent is purged');
         self::assertNotNull($this->em->getRepository(CalendarEntry::class)->find($entry->getId()));
+    }
+
+    /**
+     * P2-52 (RMM-10) — L'EXPLORATION NE DÉTRUIT PLUS. Le restore ne DÉPOINTE plus un match dont
+     * le gymnase est absent de la photo : le pointeur PENDOUILLE, transitoire et assumé. Le
+     * scénario fondateur, joué : charger une version qui ignore le gymnase LAISSE le match
+     * intact, et recharger une version qui LE contient rend le pointeur valide de nouveau —
+     * l'essai ne coûte rien. (La VALIDATION, elle, est la gâchette du dépointage — pas ce test.).
+     */
+    public function testRestoreNoLongerUnplacesAMatchWhoseVenueIsAbsentFromThePhoto(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $team = $this->persistTeam($club, $season, 'SM1');
+        $this->em->flush();
+
+        // Photo « sans gymnase » (V1) : capturée AVANT que le gymnase existe.
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+
+        // Puis : un gymnase et un match domicile DÉCLARÉ posé dessus, avec son heure.
+        $venue = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase X')->setSource('manual');
+        $this->em->persist($venue);
+        $this->em->flush();
+        $venueId = $venue->getId();
+        $fixture = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
+            ->setMatchDate(new DateTimeImmutable('2026-01-10'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adversaire')
+            ->setStatus(FixtureStatus::SUBMITTED)->setVenueId($venueId)->setKickoffTime(new DateTimeImmutable('15:30'));
+        $this->em->persist($fixture);
+        // Photo « avec gymnase » (V2), pour la deuxième moitié du scénario.
+        $v2 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $fixtureId = $fixture->getId();
+        $this->snapshotter->store($v2, $this->snapshotter->serialize($club->getId(), $season->getId()));
+
+        // ── Charger V1 (sans le gymnase) : le gymnase est balayé, le match SURVIT INTACT.
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+        self::assertNull($this->em->getRepository(Venue::class)->find($venueId), 'le gymnase absent de la photo est balayé');
+        $afterV1 = $this->em->getRepository(Fixture::class)->find($fixtureId);
+        self::assertNotNull($afterV1);
+        self::assertSame($venueId, $afterV1->getVenueId(), 'le pointeur pendouille — le restore ne dépointe plus');
+        self::assertSame(FixtureStatus::SUBMITTED, $afterV1->getStatus(), 'le statut ne change pas : l\'exploration ne détruit rien');
+        self::assertNull($afterV1->getUnplacedReason(), 'aucune raison venue_lost : ce n\'est pas la gâchette');
+        self::assertNotNull($afterV1->getKickoffTime(), 'l\'heure est conservée');
+
+        // ── Recharger V2 (avec le gymnase) : le pointeur redevient valide, tout est intact.
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v2));
+        $this->em->clear();
+        self::assertNotNull($this->em->getRepository(Venue::class)->find($venueId), 'le gymnase revient avec son id d\'origine');
+        $afterV2 = $this->em->getRepository(Fixture::class)->find($fixtureId);
+        self::assertNotNull($afterV2);
+        self::assertSame($venueId, $afterV2->getVenueId(), 'le match retrouve un pointeur valide');
+        self::assertSame(FixtureStatus::SUBMITTED, $afterV2->getStatus());
+        self::assertNull($afterV2->getUnplacedReason());
     }
 
     protected function setUp(): void

@@ -127,6 +127,14 @@ class FixtureResource
     #[Groups(['read'])]
     public ?string $placementSource = null;
 
+    /**
+     * Why it went back to « à placer », when the reason must persist: `venue_lost`
+     * (its venue is no longer affiliated to the club), else null. Distinct from the
+     * volatile auto-placement reason held only in the UI.
+     */
+    #[Groups(['read'])]
+    public ?string $unplacedReason = null;
+
     public static function fromEntity(Fixture $entity): self
     {
         $dto = new self;
@@ -146,6 +154,7 @@ class FixtureResource
         $dto->externalRef = $entity->getExternalRef();
         $dto->fbiVenueLabel = $entity->getFbiVenueLabel();
         $dto->placementSource = $entity->getPlacementSource()?->value;
+        $dto->unplacedReason = $entity->getUnplacedReason()?->value;
 
         return $dto;
     }

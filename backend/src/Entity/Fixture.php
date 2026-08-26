@@ -7,6 +7,7 @@ namespace App\Entity;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
+use App\Enum\FixtureUnplacedReason;
 use App\Repository\FixtureRepository;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
@@ -113,6 +114,15 @@ class Fixture implements TenantOwnedInterface
      */
     #[ORM\Column(length: 10, nullable: true, enumType: FixturePlacementSource::class)]
     private ?FixturePlacementSource $placementSource = null;
+
+    /**
+     * Why this match went back to « à placer » AND its reason must persist across
+     * refreshes (P2-52 / RMM-10) — today only VENUE_LOST (its venue is no longer
+     * affiliated to the club). Null = placed, or un-placed for a volatile/UI-only
+     * reason. Cleared the moment a non-null venue is set again ({@see setVenueId}).
+     */
+    #[ORM\Column(length: 32, nullable: true, enumType: FixtureUnplacedReason::class)]
+    private ?FixtureUnplacedReason $unplacedReason = null;
 
     public function __construct()
     {
@@ -273,6 +283,13 @@ class Fixture implements TenantOwnedInterface
     public function setVenueId(?string $venueId): self
     {
         $this->venueId = $venueId;
+        // Effacement, MAISON UNIQUE (P2-52) : re-placer un match (venue non-null) éteint la
+        // raison de dépointage persistante — couvre le processor, l'applier du solveur, tout
+        // écrivain qui repose une salle. Le dépointage, lui, POSE la raison via son foyer
+        // unique (FixtureVenueLossMarker), jamais par ce setter.
+        if (null !== $venueId) {
+            $this->unplacedReason = null;
+        }
 
         return $this;
     }
@@ -319,6 +336,18 @@ class Fixture implements TenantOwnedInterface
     public function setPlacementSource(?FixturePlacementSource $placementSource): self
     {
         $this->placementSource = $placementSource;
+
+        return $this;
+    }
+
+    public function getUnplacedReason(): ?FixtureUnplacedReason
+    {
+        return $this->unplacedReason;
+    }
+
+    public function setUnplacedReason(?FixtureUnplacedReason $unplacedReason): self
+    {
+        $this->unplacedReason = $unplacedReason;
 
         return $this;
     }

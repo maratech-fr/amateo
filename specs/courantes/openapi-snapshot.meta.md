@@ -1,6 +1,16 @@
-Last verified @ 2026-08-25 (RMM-6 PR-1 ajoute **+2 paths** — les échéances ligue/comité : `POST /api/competitions/entry-deadlines` (saisie bulk management) + `GET /api/matches/deadline-outlook` (outlook J-7, ouvert au Membre) : le compte passe de 176 à **178 paths**. Backend PUR, aucun payload ni contrat backend⇄engine touché. SHA-256 du snapshot : `249e78b86e803116eea74649bdb673f80c556f4a14e7247274ee60a62fd23aa5`.)
+Last verified @ 2026-08-26 (P2-52 RMM-10 ajoute **+1 path** — la salle perdue en silence : `GET /api/schedules/{id}/validate-impact` (impact de dépointage de la validation, ouvert au Membre) : le compte passe de 178 à **179 paths** ; plus **1 champ ADDITIF en LECTURE** sur le schéma `Fixture` : `unplacedReason` (`venue_lost`|`null`). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.15, aucun appel moteur — `unplacedReason` ne voyage PAS au moteur). SHA-256 du snapshot : `c16a83496e677ea813aefbeb58ee4d60959c58b3d7795f83c7a285f03e180ffe`.)
 
 Changements récents :
+- **P2-52 RMM-10 — un match déclaré ne perd plus sa salle en silence (2026-08-26)** : **+1 path** —
+  `GET /api/schedules/{id}/validate-impact` (200 : `{orphanedFixtures, declaredOrphanedFixtures}` —
+  combien de matchs domicile perdront leur salle si l'on valide ce planning, car ils pointent un
+  gymnase qui n'est plus affilié au club, et combien parmi eux sont déjà déclarés à la fédération ;
+  **ouvert au Membre**, lecture seule ; 403 club étranger, 404 inconnu). Le MÊME prédicat sert la
+  VALIDATION, qui dépointe alors ces matchs (« à placer » + raison persistante `venue_lost`, heure
+  conservée) — parité par construction. **Champ ADDITIF** en LECTURE sur le schéma `Fixture` :
+  `unplacedReason` (`venue_lost` quand le gymnase n'est plus affilié, sinon `null` ; distinct de la
+  raison volatile d'auto-placement, non exposée). 178 → **179 paths**. Backend + frontend, contrat
+  backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.15, `unplacedReason` ne voyage jamais au moteur).
 - **RMM-6 PR-1 — échéances ligue/comité (2026-08-25)** : **+2 paths** —
   `POST /api/competitions/entry-deadlines` (200 : `{updated[], deadline|null}` — pose ou efface
   UNE échéance sur un lot de compétitions ; **management** SEC-07 ; 409 saison archivée ; 422 aucune

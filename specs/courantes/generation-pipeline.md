@@ -1,10 +1,10 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-08-24 (rotation de fraîcheur, sujet non touché par la PR courante — re-vérifié
+Last verified @ 2026-08-26 (rotation de fraîcheur, sujet non touché par la PR courante — re-vérifié
 contre le code : topic `club:{clubId}:schedule:{scheduleId}` (`backend/src/Mercure/MercureTopic.php`)
 ✓ · verrou par club `ClubGenerationLock::acquire` — `SET … NX EX` (`backend/src/Service/ClubGenerationLock.php:26`)
-✓ · l'abonné Mercure frontend vit à `frontend/src/features/planning/lib/scheduleStream.ts`
-(emplacement inchangé depuis la passe P4-123) ✓) — *(historique des passes retiré le 2026-08-19,
+✓ · l'abonné Mercure frontend vit toujours à `frontend/src/features/planning/lib/scheduleStream.ts`
+✓. Tout juste, rien à corriger) — *(historique des passes retiré le 2026-08-19,
 audit DOC-33 ; il vit dans git : `git log -p --follow specs/courantes/generation-pipeline.md`)*
 
 > Vérité courante. Décrit ce qui **doit** se passer, zone par zone, quand un

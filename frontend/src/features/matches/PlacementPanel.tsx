@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeftRight, Check, Lock, LockOpen, Pencil, Trash2, Undo2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Check, Lock, LockOpen, MapPinOff, Pencil, Trash2, Undo2, X } from "lucide-react";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { useState } from "react";
 
@@ -11,6 +11,7 @@ import { isInEnvelope, isoWeekday } from "./lib/envelope";
 import type { EnvelopeResult } from "./lib/envelope";
 import { FIXTURE_STATUS_LABEL } from "./lib/fixtureStatusLabel";
 import { matchVenueIds, venueAccessError } from "./lib/matchAccess";
+import { unplacedReasonLabel } from "./lib/unplacedReasonLabel";
 
 interface PlacementPanelProps {
   fixture: Fixture;
@@ -185,6 +186,16 @@ export function PlacementPanel({
               </VenueSelect>
               <input aria-label="Heure de coup d'envoi" type="time" value={kickoff} onChange={(e) => setKickoff(e.target.value)} className={fieldClass} />
             </div>
+
+            {/* P2-52 — rappel de la raison PERSISTANTE « le gymnase n'est plus affilié » : INFO
+                calme (muted + MapPinOff), tournée vers le prochain geste. Re-placer efface la
+                raison côté serveur — c'est exactement ce que ce panneau fait. */}
+            {"venue_lost" === fixture.unplacedReason ? (
+              <p className="flex items-start gap-1 text-xs text-muted-foreground">
+                <MapPinOff className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                {unplacedReasonLabel(fixture.unplacedReason)} — choisissez-en un autre.
+              </p>
+            ) : null}
 
             {null !== habit ? (
               <p className="text-xs text-muted-foreground">

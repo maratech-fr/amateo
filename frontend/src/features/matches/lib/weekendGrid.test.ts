@@ -17,7 +17,7 @@ const fixture = (over: Partial<Fixture> = {}): Fixture => ({
   externalRef: null,
   fbiVenueLabel: null,
   placementSource: null,
-  ...over,
+  unplacedReason: null,  ...over,
 });
 
 const venues = new Map<string, Venue>([["venue-1", { id: "venue-1", name: "Gymnase Alpha", color: "#00aa00" }]]);

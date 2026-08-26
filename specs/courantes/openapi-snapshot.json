@@ -14147,6 +14147,46 @@
                 "summary": "Point this version as the plan in force"
             }
         },
+        "/api/schedules/{id}/validate-impact": {
+            "get": {
+                "operationId": "getApiScheduleValidateImpact",
+                "tags": [
+                    "Schedules"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "What validating this version will make lose its venue: home matches pointing at a venue no longer affiliated to the club (deleted venue, or a dangling pointer left by exploration). Same predicate as the validation trigger \u2014 read-only, open to any member.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "orphanedFixtures": {
+                                            "type": "integer",
+                                            "description": "Home matches that will go back to \u00ab \u00e0 placer \u00bb on validation"
+                                        },
+                                        "declaredOrphanedFixtures": {
+                                            "type": "integer",
+                                            "description": "Subset already declared to the federation (SUBMITTED/VALIDATED) \u2014 to re-submit"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "description": "Version belongs to another club"
+                    },
+                    "404": {
+                        "description": "Resource not found"
+                    }
+                },
+                "summary": "Venue-loss impact of validating this version (read-only, open to any member)"
+            }
+        },
         "/api/reset-season": {
             "post": {
                 "operationId": "postApiResetSeason",
@@ -22238,6 +22278,27 @@
                             "integer",
                             "null"
                         ]
+                    },
+                    "entryDeadline": {
+                        "description": "The club's own entry deadline (Y-m-d), null when the club has set none.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "effectiveEntryDeadline": {
+                        "description": "club value ?? community default (Y-m-d), null when neither exists.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "deadlineSource": {
+                        "description": "'club' | 'community' | null \u2014 the origin of effectiveEntryDeadline.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 }
             },
@@ -22379,6 +22440,27 @@
                             "integer",
                             "null"
                         ]
+                    },
+                    "entryDeadline": {
+                        "description": "The club's own entry deadline (Y-m-d), null when the club has set none.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "effectiveEntryDeadline": {
+                        "description": "club value ?? community default (Y-m-d), null when neither exists.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "deadlineSource": {
+                        "description": "'club' | 'community' | null \u2014 the origin of effectiveEntryDeadline.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 }
             },
@@ -22468,6 +22550,27 @@
                             "expectedMatchdays": {
                                 "type": [
                                     "integer",
+                                    "null"
+                                ]
+                            },
+                            "entryDeadline": {
+                                "description": "The club's own entry deadline (Y-m-d), null when the club has set none.",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "effectiveEntryDeadline": {
+                                "description": "club value ?? community default (Y-m-d), null when neither exists.",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "deadlineSource": {
+                                "description": "'club' | 'community' | null \u2014 the origin of effectiveEntryDeadline.",
+                                "type": [
+                                    "string",
                                     "null"
                                 ]
                             }
@@ -23442,6 +23545,13 @@
                             "string",
                             "null"
                         ]
+                    },
+                    "unplacedReason": {
+                        "description": "Why it went back to \u00ab \u00e0 placer \u00bb, when the reason must persist: `venue_lost`\n(its venue is no longer affiliated to the club), else null. Distinct from the\nvolatile auto-placement reason held only in the UI.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 }
             },
@@ -23623,6 +23733,13 @@
                             "string",
                             "null"
                         ]
+                    },
+                    "unplacedReason": {
+                        "description": "Why it went back to \u00ab \u00e0 placer \u00bb, when the reason must persist: `venue_lost`\n(its venue is no longer affiliated to the club), else null. Distinct from the\nvolatile auto-placement reason held only in the UI.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 }
             },
@@ -23708,6 +23825,13 @@
                             },
                             "placementSource": {
                                 "description": "MANUAL | SOLVER | null \u2014 who placed it (re-solve anchor marker, PR D).",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "unplacedReason": {
+                                "description": "Why it went back to \u00ab \u00e0 placer \u00bb, when the reason must persist: `venue_lost`\n(its venue is no longer affiliated to the club), else null. Distinct from the\nvolatile auto-placement reason held only in the UI.",
                                 "type": [
                                     "string",
                                     "null"

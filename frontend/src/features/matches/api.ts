@@ -30,6 +30,11 @@ export interface Fixture {
   fbiVenueLabel: string | null;
   /** MANUAL | SOLVER | null — who placed it (re-solve anchor marker, PR D). */
   placementSource: "MANUAL" | "SOLVER" | null;
+  /**
+   * P2-52 — persistent reason it went back to « à placer »: `venue_lost` (its venue is no
+   * longer affiliated to the club), else null. Distinct from the volatile auto-placement reason.
+   */
+  unplacedReason: "venue_lost" | null;
 }
 
 export interface Competition {
@@ -267,6 +272,7 @@ function normalizeFixture(raw: Fixture): Fixture {
     externalRef: raw.externalRef ?? null,
     fbiVenueLabel: raw.fbiVenueLabel ?? null,
     placementSource: raw.placementSource ?? null,
+    unplacedReason: raw.unplacedReason ?? null,
   };
 }
 

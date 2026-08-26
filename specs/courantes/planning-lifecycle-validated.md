@@ -1,6 +1,10 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-08-24 (rotation `documentation-update` — §0 ancrages re-confrontés au code : `AuthGuard.tsx:50` et `CockpitPage.tsx:59` lisent bien `hasFinishedVersion` ; le garde matchs a **quitté `MatchesPage.tsx` pour `MatchesLayout.tsx`** en RMM-1 PR2 [2026-08-23], corrigé ci-dessous ; `SocleGuard::assertSeasonPlanChosen` toujours appelé depuis `FixtureStateProcessor`, `FixtureImportGate` [via `ImportFixturesController`] et `ScheduleStateProcessor` [liste non exhaustive — s'y sont ajoutés `PlaceMatchesController`, `TranscribePeriodPlanController`, `FillPeriodPlanController`, `FfbbEngagementsController`, non listés ici et non requis de l'être]. Historique des passes : `git log -p --follow specs/courantes/planning-lifecycle-validated.md`)
+Last verified @ 2026-08-26 (§3.3 gagne l'effet de bord RMM-10/P2-52 de `validate` — confronté à
+`ValidateScheduleController.php` [dépointage `FixtureVenueLossMarker` dans la même transaction que
+le pointage] ; simple pointeur vers `module-matchs.md`, pas de redescription. Reste de la passe
+2026-08-24 non re-vérifié cette fois — un stamp REMPLACE, l'historique vit dans git :
+`git log -p --follow specs/courantes/planning-lifecycle-validated.md`)
 
 > **Bascule 2026-07-16 (ADR-0002, `docs/architecture/adr-0002-pattern-plan.md`)** : le **plan de
 > type SEASON** (`schedule_plan`) et **la version qu'il pointe** (`chosen_schedule_id`) SONT le
@@ -145,6 +149,12 @@ DRAFT ──generate──▶ PENDING ──▶ GENERATING ──▶ COMPLETED
 ```
 - `validate` / `reopen` **ne changent aucun statut** : ils posent et retirent le **pointeur du plan** (`schedule_plan.chosen_schedule_id`). Une version choisie reste `COMPLETED` ; « validé » se lit sur le pointeur (`Schedule.isChosen` en lecture d'API).
 - `COMPLETED` inclut les plannings **partiels/dégradés** (commit `0fd895f`) → on peut choisir un planning partiel (assumé).
+- **Effet de bord de `validate` (RMM-10 / P2-52, 2026-08-26)** : dans la MÊME transaction que le
+  pointage, tout match domicile dont le gymnase a disparu du club+saison est dépointé
+  (`FixtureVenueLossMarker`, `UNPLACED` + raison persistante `venue_lost`) — annoncé au préalable
+  par `GET /api/schedules/{id}/validate-impact` (même prédicat, parité par construction). Comportement
+  et détail complet : [`module-matchs.md`](module-matchs.md) § « P2-52 — un match déclaré ne perd
+  plus sa salle en silence » ; cette spec ne fait que pointer l'effet de bord, pas le redécrire.
 
 ### 3.4 Pas de nouveau statut
 `ScheduleStatus` reste `DRAFT/PENDING/GENERATING/COMPLETED/FAILED` : « validé » se dérive du pointeur, donc **aucun statut à ajouter** (inv. 1).

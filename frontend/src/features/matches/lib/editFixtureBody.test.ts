@@ -17,7 +17,7 @@ const placed: Fixture = {
   externalRef: null,
   fbiVenueLabel: null,
   placementSource: "MANUAL",
-};
+  unplacedReason: null,};
 
 const edit = (over: Partial<EditFixtureInput> = {}): EditFixtureInput => ({
   matchDate: placed.matchDate,

@@ -1,5 +1,6 @@
 import type { DeletionImpact } from "@/shared/api/deletionImpact";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { DeclaredFixturesNotice } from "@/shared/components/ui/declared-fixtures-notice";
 
 interface DeleteConfirmProps {
   open: boolean;
@@ -87,13 +88,10 @@ export function DeleteConfirm({
               Dont <strong>{impact.slotsInForce}</strong> {impact.slotsInForce > 1 ? "séances" : "séance"} du planning <strong>en vigueur</strong>. Vos plannings terminés passeront en «&nbsp;périmé&nbsp;» — régénérez pour retrouver un état sûr.
             </p>
           ) : null}
-          {undefined !== impact && null !== impact && impact.declaredFixtures > 0 ? (
-            // DOC-2 — on ne refuse pas le geste (un gymnase qui ferme, ça arrive), on avertit :
-            // le match redevient « à placer », mais il faudra le re-soumettre.
-            <p className="mt-3 text-foreground">
-              <strong>{impact.declaredFixtures}</strong> {impact.declaredFixtures > 1 ? "matchs déjà déclarés" : "match déjà déclaré"} à la fédération {impact.declaredFixtures > 1 ? "perdront leur salle" : "perdra sa salle"} et {impact.declaredFixtures > 1 ? "devront" : "devra"} être re-{impact.declaredFixtures > 1 ? "soumis" : "soumis"} à la fédération.
-            </p>
-          ) : null}
+          {/* P2-52 — on ne refuse pas le geste (un gymnase qui ferme, ça arrive), on avertit :
+              le match redevient « à placer », mais un match déjà déclaré devra être re-soumis.
+              Phrase PARTAGÉE avec la validation de planning (même perte de salle). */}
+          {undefined !== impact && null !== impact ? <DeclaredFixturesNotice count={impact.declaredFixtures} /> : null}
           <p className={lines.length > 0 ? "mt-3 font-medium text-foreground" : "font-medium text-foreground"}>
             Cette action est définitive{affectsPeriodPlans ? ", y compris les réservations des plannings de période" : ""}.
           </p>

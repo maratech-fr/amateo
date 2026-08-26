@@ -1888,6 +1888,23 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
                 ],
                 summary: 'Point this version as the plan in force',
             )),
+            '/api/schedules/{id}/validate-impact' => new PathItem(get: new Operation(
+                operationId: 'getApiScheduleValidateImpact',
+                tags: ['Schedules'],
+                responses: [
+                    '200' => $this->jsonResponse('What validating this version will make lose its venue: home matches pointing at a venue no longer affiliated to the club (deleted venue, or a dangling pointer left by exploration). Same predicate as the validation trigger — read-only, open to any member.', [
+                        'type' => 'object',
+                        'properties' => [
+                            'orphanedFixtures' => ['type' => 'integer', 'description' => 'Home matches that will go back to « à placer » on validation'],
+                            'declaredOrphanedFixtures' => ['type' => 'integer', 'description' => 'Subset already declared to the federation (SUBMITTED/VALIDATED) — to re-submit'],
+                        ],
+                    ]),
+                    '401' => $unauthorized,
+                    '403' => new Response('Version belongs to another club'),
+                    '404' => $notFound,
+                ],
+                summary: 'Venue-loss impact of validating this version (read-only, open to any member)',
+            )),
             '/api/schedules/{id}/reopen' => new PathItem(post: new Operation(
                 operationId: 'postApiScheduleReopen',
                 tags: ['Schedules'],

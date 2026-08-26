@@ -775,6 +775,15 @@ export const getSlots = (scheduleId: string): Promise<Slot[]> => collection<Slot
  * re-appelable ; le backend calcule, le front présente. Réponse JSON simple (pas une collection).
  */
 export const getSocleDeviation = (scheduleId: string): Promise<SocleDeviation> => api.get(`schedules/${scheduleId}/socle-deviation`).json<SocleDeviation>();
+
+/** P2-52 — combien de matchs perdront leur salle si l'on VALIDE ce planning (gymnase disparu),
+ * et combien parmi eux sont déjà déclarés à la fédération. Même prédicat que la gâchette. */
+export interface ValidateImpact {
+  orphanedFixtures: number;
+  declaredOrphanedFixtures: number;
+}
+
+export const getValidateImpact = (scheduleId: string): Promise<ValidateImpact> => api.get(`schedules/${scheduleId}/validate-impact`).json<ValidateImpact>();
 export const getDiagnostics = (scheduleId: string): Promise<Diagnostic[]> => collection<Diagnostic>("schedule_diagnostics", { scheduleId });
 export const getTeams = (): Promise<Team[]> => collectionAll<Team>("teams");
 export const getVenues = async (): Promise<Venue[]> => sortByName(await collectionAll<Venue>("venues"));
