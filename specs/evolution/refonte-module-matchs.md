@@ -21,8 +21,16 @@
 > canal API compris, la **rotation A/B** (4 PR : modèle, SOFT placement, repos dérivé, SET-UP —
 > 2026-08-25, clôt **P2-49**) dans § « Rotation A/B — RMM-5 », et les **échéances ligue/comité**
 > (3 PR : champ+outlook backend, éditeur SET-UP front, carte cockpit + escalade login front —
-> 2026-08-25, clôt **P2-50**) dans § « Échéances ligue/comité — RMM-6 ». **Reste ouvert ici** : le
-> workflow de dérogation (RMM-7) et les paliers B/C (RMM-8/9/10).
+> 2026-08-25, clôt **P2-50**) dans § « Échéances ligue/comité — RMM-6 ». **RMM-7 est FERMÉ SANS CODE**
+> (fondateur, 2026-08-25 — la dérogation n'est pas un objet de l'app ; décision au registre
+> [`etat-des-lieux.md`](../courantes/etat-des-lieux.md) §2) et **RMM-10 est LIVRÉ (2 PR, 2026-08-26,
+> clôt P2-52)** — un match déclaré ne perd plus sa salle en silence, gradué dans
+> [`../courantes/module-matchs.md`](../courantes/module-matchs.md) § « P2-52 — un match déclaré ne
+> perd plus sa salle en silence ». **Ce fichier ne détaille plus AUCUN item ouvert** : ne restent
+> que RMM-8/RMM-9 (palier B/C, vision), dont le besoin vit dans
+> [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) et que ce fichier se contente de RENVOYER
+> (§11) — jamais de re-spécifier. Conservé pour son historique de décision et de livraison (§6-9),
+> plus référencé comme « fichier de détail actif » de la roadmap.
 > **Passe de conception du 2026-08-22 (fondateur)** : l'enchaînement ACTUEL est relevé clic par clic
 > (§6ter) et les **lignes de conception à modifier** sont posées (§6quater, L1-L8) — dont deux faits
 > neufs : **aucun geste ne pose `SUBMITTED`** (la boucle ne se boucle pas, L4) et **R1 est tombée**
@@ -485,14 +493,14 @@ quel palier chaque lot appartient — **ne pas créer de doublon de vérité**.
 | **RMM-7** | **FERMÉ SANS CODE (fondateur, 2026-08-25)** — « la dérogation n'est pas un objet de l'app, c'est juste la réponse à un conflit à résoudre avec le club adverse ; rien de plus chez nous ». La boucle signale→traite→constate existe déjà (radar + gestes sous verdict + réconciliation RMM-4) ; le tracker/états/deadline/rédacteur cadrés le 2026-08-22 étaient une sur-construction. Décision au registre : `etat-des-lieux.md` §2. Le cas d'usage « contact du club adverse » reste porté par RMM-9 seul. | — | — | **décision fermée** |
 | **RMM-8** | **Matrice trajet** + conflits spatiaux (empreinte AWAY réelle). Infra partagée avec l'entraînement (FF#5). | Back + Engine | contrainte sémantique → NR | **palier B/vision** — `gestion-matchs-ffbb.md` §7 + roadmap « Matrice de temps de trajet » |
 | **RMM-9** | **Annuaire adverse global** (table hors tenant, publique-seulement, enrichie par l'usage) + effet réseau (auto-remplissage heures/positions extérieures). | Back | isolation tenant → **test d'isolation dédié obligatoire** | **palier B/C** — `gestion-matchs-ffbb.md` §5bis/§11 |
-| **RMM-10** | Un match déclaré ne perd plus sa salle en silence — **recadré fondateur 2026-08-26** : le restore (exploration) ne touche PLUS aux matchs ; la **VALIDATION du planning** est la seule gâchette (annonce « N matchs déclarés perdront leur salle » si N>0, bascule UNPLACED + raison « gymnase n'est plus affilié au club », heure conservée modifiable) ; la suppression de gymnase (déjà annoncée) gagne la même bascule. Le volet « plages différentes sur un gymnase survivant » était DÉJÀ couvert (`ACCESS_WINDOW_LOST`). | Back + Front | **périmètre engagé** + lifecycle → NR (extensions de steps existants) | **P2-52** (roadmap) |
+| **RMM-10** | **LIVRÉ (2 PR, 2026-08-26).** Un match déclaré ne perd plus sa salle en silence — recadré fondateur 2026-08-25/26 : le restore (exploration) ne touche PLUS aux matchs (pointeur transitoirement pendouillant, assumé) ; la **VALIDATION du planning** est la gâchette principale (`GET /schedules/{id}/validate-impact` annonce « N matchs [dont X déclarés] perdront leur salle » si N>0, `POST /validate` bascule UNPLACED + raison persistante `venue_lost`, heure conservée modifiable) ; la suppression de gymnase (déjà annoncée) gagne la même bascule via le même foyer (`FixtureVenueLossMarker`). Le volet « plages différentes sur un gymnase survivant » était DÉJÀ couvert (`ACCESS_WINDOW_LOST`). Comportement gradué : [`../courantes/module-matchs.md`](../courantes/module-matchs.md) § « P2-52 — un match déclaré ne perd plus sa salle en silence ». | Back + Front | **périmètre engagé** + lifecycle → NR (`EngagedTeamGuardTest` + `DeletionImpactParityTest` étendus) | **P2-52** — SOLDÉE, quitte la roadmap |
 
 **Séquencement — VALIDÉ fondateur 2026-08-17** : **RMM-0 immédiat** (débloque la décision d'appariement
 sans attendre la refonte) ; puis RMM-2 → RMM-1 (livrable rapide, faible risque, valeur immédiate) ; puis
 RMM-3 + RMM-4 (le « gardien », cœur de l'angoisse) ; puis RMM-5 (A/B, plus lourd car moteur) ; puis
 RMM-6 (échéances ligue/comité, point d'insertion préparé dès RMM-3) — **RMM-0 à RMM-6 sont tous
-livrés en entier** ; le reste (RMM-7 le workflow de dérogation, RMM-8/9/10 palier B/C) au rythme du
-palier B déjà spécifié. **Chaque
+livrés en entier, RMM-7 est fermé sans code, et RMM-10 (P2-52) est livré (2026-08-26)** ; ne reste
+que RMM-8/RMM-9 (palier B/C), au rythme de `gestion-matchs-ffbb.md` déjà spécifié. **Chaque
 lot est une session d'implémentation à part**, avec sa propre
 validation de besoin + `/plan` (CLAUDE.md §7).
 
@@ -520,15 +528,16 @@ validation de besoin + `/plan` (CLAUDE.md §7).
 ## 11. Coordination avec `gestion-matchs-ffbb.md` (qui possède quoi)
 
 - **`gestion-matchs-ffbb.md`** reste la **référence de besoin** du palier B/C (dérogation, trajet, annuaire
-  adverse, catalogue-ligue, empreinte-temps, échéances). Les lots **RMM-7 à RMM-9** y renvoient —
-  **ne pas les re-spécifier ici** ; RMM-6 (échéances) y renvoyait aussi pour le besoin, il est
-  désormais livré.
+  adverse, catalogue-ligue, empreinte-temps, échéances). Seuls les lots **RMM-8/RMM-9** y renvoient
+  encore — **ne pas les re-spécifier ici** ; RMM-6 (échéances) y renvoyait aussi pour le besoin, il
+  est désormais livré, et RMM-7 (dérogation) est fermé sans code (§2 de l'état des lieux).
 - **Ce fichier** possède la **refonte UX** (RMM-1/2), le **gardien** (RMM-3, **livré**), la
   **réconciliation FBI** (RMM-4, **livrée en entier**), la **rotation A/B** (RMM-5, **livrée en
-  entier**) et les **échéances ligue/comité** (RMM-6, **livrées en entier**) — les cinq
-  comportements vivent désormais dans `../courantes/module-matchs.md`. Ne reste ouvert ici que le
-  workflow de dérogation (RMM-7) et le palier B/C (RMM-8→10), les net-neufs de l'entretien
-  2026-08-17.
+  entier**), les **échéances ligue/comité** (RMM-6, **livrées en entier**) et la **salle perdue en
+  silence** (RMM-10, P2-52, **livrée**) — les six comportements vivent désormais dans
+  `../courantes/module-matchs.md`. **Plus aucun item n'est ouvert ici** : ne reste que le palier B/C
+  (RMM-8/RMM-9), les net-neufs de l'entretien 2026-08-17, dont le besoin vit ENTIÈREMENT dans
+  `gestion-matchs-ffbb.md`.
 - **La spec courante** [`../courantes/module-matchs.md`](../courantes/module-matchs.md) reste la vérité du
   **livré** ; chaque lot livré y gradue (et **quitte** ce fichier), trace datée en
   [`../courantes/etat-des-lieux.md`](../courantes/etat-des-lieux.md).
