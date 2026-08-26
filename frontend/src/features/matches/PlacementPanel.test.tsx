@@ -20,6 +20,7 @@ const fixture: Fixture = {
   externalRef: null,
   fbiVenueLabel: null,
   placementSource: null,
+  unplacedReason: null,
 };
 const venues: Venue[] = [
   { id: "venue-1", name: "Gymnase Alpha", color: null },
@@ -74,6 +75,18 @@ function renderPanel(envelope: EnvelopeResult, onPlace = vi.fn(), overrides: Ove
   );
   return onPlace;
 }
+
+describe("PlacementPanel — rappel de la raison venue_lost (P2-52)", () => {
+  it("rappelle « le gymnase n'est plus affilié » tourné vers le prochain geste", () => {
+    renderPanel(openEnvelope, vi.fn(), { fixture: { ...fixture, unplacedReason: "venue_lost" } });
+    expect(screen.getByText(/Le gymnase n'est plus affilié au club — choisissez-en un autre\./)).toBeInTheDocument();
+  });
+
+  it("ne rappelle rien quand le match n'a pas perdu sa salle (falsification)", () => {
+    renderPanel(openEnvelope, vi.fn(), { fixture: { ...fixture, unplacedReason: null } });
+    expect(screen.queryByText(/n'est plus affilié au club/)).toBeNull();
+  });
+});
 
 describe("PlacementPanel", () => {
   it("blocks placement out of the envelope when the team maps", async () => {

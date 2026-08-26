@@ -83,6 +83,7 @@ describe("FixtureFormDialog", () => {
     externalRef: null,
     fbiVenueLabel: null,
     placementSource: "MANUAL" as const,
+    unplacedReason: null,
   };
 
   it("edit mode: prefilled fields, fixed team, submits the changed identity fields", async () => {

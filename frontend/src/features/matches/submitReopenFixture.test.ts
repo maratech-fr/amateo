@@ -24,7 +24,7 @@ const placed: Fixture = {
   externalRef: "FBI-42",
   fbiVenueLabel: null,
   placementSource: "MANUAL",
-};
+  unplacedReason: null,};
 
 function lastBody(): Record<string, unknown> {
   const call = put.mock.calls.at(-1);

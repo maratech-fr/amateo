@@ -13,10 +13,14 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
+use App\Entity\Venue;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
+use App\Enum\FixtureUnplacedReason;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
+use App\Service\EntityCascadeDeleter;
+use App\Service\FixtureVenueLossMarker;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -364,6 +368,66 @@ final class EngagedTeamGuardTest extends WebTestCase
             'HTTP_AUTHORIZATION' => 'Bearer ' . $token,
         ]);
         self::assertResponseStatusCodeSame(204, 'sans plus aucun match, l\'équipe redevient supprimable');
+    }
+
+    public function testAFixtureVenueLostByValidationStillEngagesItsTeam(): void
+    {
+        // P2-52 (RMM-10) — la gâchette de VALIDATION dépointe un match dont le gymnase a disparu :
+        // il repasse « à placer » MAIS EXISTE toujours (venue_lost). L'engagement étant dérivé de
+        // l'EXISTENCE d'un match, l'équipe reste engagée — DELETE → 409. Le dépointage ne doit
+        // JAMAIS être une porte dérobée pour supprimer une équipe engagée.
+        $client = $this->client;
+        $team = $this->createTeam('U15 dont le gymnase ferme');
+        $fixture = $this->fixture($team, FixtureStatus::SUBMITTED);
+
+        $this->scopeGucToClub($this->club->getId());
+        self::getContainer()->get(FixtureVenueLossMarker::class)->mark([$fixture->getId()]);
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        $marked = $this->em->getRepository(Fixture::class)->find($fixture->getId());
+        self::assertNotNull($marked, 'le match dépointé existe toujours');
+        self::assertSame(FixtureStatus::UNPLACED, $marked->getStatus());
+        self::assertSame(FixtureUnplacedReason::VENUE_LOST, $marked->getUnplacedReason());
+
+        $client->loginUser($this->user);
+        $client->request('DELETE', \sprintf('/api/teams/%s', $team->getId()), [], [], [
+            'HTTP_X-Club-Id' => $this->club->getId(),
+        ]);
+        self::assertResponseStatusCodeSame(409, 'un match dépointé engage toujours son équipe');
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        self::assertNotNull($this->em->getRepository(Fixture::class)->find($fixture->getId()), 'et il ne part pas avec elle');
+    }
+
+    public function testAFixtureVenueLostByVenueDeletionStillEngagesItsTeam(): void
+    {
+        // P2-52 — l'AUTRE gâchette : supprimer le GYMNASE d'un match engagé le dépointe (via le
+        // même marker), il redevient « à placer » mais reste — l'équipe reste engagée, DELETE → 409.
+        $client = $this->client;
+        $team = $this->createTeam('U18 dont la salle est vendue');
+        $this->scopeGucToClub($this->club->getId());
+        $venue = (new Venue)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('Gymnase vendu')->setSource('manual');
+        $this->em->persist($venue);
+        $this->em->flush();
+        $fixture = $this->fixture($team, FixtureStatus::SUBMITTED);
+        $this->scopeGucToClub($this->club->getId());
+        $fixture->setVenueId($venue->getId());
+        $this->em->flush();
+
+        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfVenue($venue);
+        $this->em->flush();
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        $marked = $this->em->getRepository(Fixture::class)->find($fixture->getId());
+        self::assertNotNull($marked, 'le match survit à la suppression de son gymnase');
+        self::assertNull($marked->getVenueId());
+        self::assertSame(FixtureUnplacedReason::VENUE_LOST, $marked->getUnplacedReason());
+
+        $client->loginUser($this->user);
+        $client->request('DELETE', \sprintf('/api/teams/%s', $team->getId()), [], [], [
+            'HTTP_X-Club-Id' => $this->club->getId(),
+        ]);
+        self::assertResponseStatusCodeSame(409, 'un match dont le gymnase a été supprimé engage toujours son équipe');
     }
 
     protected function setUp(): void

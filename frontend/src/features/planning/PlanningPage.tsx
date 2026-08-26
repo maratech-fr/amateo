@@ -1,6 +1,6 @@
 import { IN_FLIGHT_STATUSES } from "@/shared/lib/scheduleStatus";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, GitCompare, Loader2, Lock, Pencil, Sparkles, Star, Undo2, X } from "lucide-react";
+import { AlertTriangle, GitCompare, Loader2, Lock, Pencil, Sparkles, Star, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -20,7 +20,6 @@ import { toast } from "@/shared/stores/toastStore";
 import { useCredits } from "@/shared/credits/useCredits";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
-import { Modal } from "@/shared/components/ui/modal";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 
@@ -42,7 +41,7 @@ import { buildClubView } from "./lib/clubView";
 import { ClubViewTable } from "./ClubViewTable";
 import { availableResourceGroups, buildGrid, DAYS, type Lookups, slotGroupKey, toHourMinute } from "./lib/grid";
 import { PlanningToolbar } from "./PlanningToolbar";
-import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useLockSlot, useMoveDryRun, useMoveSlot, usePlaceSlot, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useReopenSchedule, useSchedules, useSlots, useSocleDeviation, useTeamCoaches, useTeams, useTrainingSlots, useValidateSchedule, useVenues } from "./queries";
+import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useLockSlot, useMoveDryRun, useMoveSlot, usePlaceSlot, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useReopenSchedule, useSchedules, useSlots, useSocleDeviation, useTeamCoaches, useTeams, useTrainingSlots, useValidateImpact, useValidateSchedule, useVenues } from "./queries";
 import { ResourceFilter } from "./ResourceFilter";
 import { SlotDetail, type MoveFeedback } from "./SlotDetail";
 
@@ -51,6 +50,7 @@ import { stalenessMessage } from "./lib/staleness";
 import type { ToReplaceEntry } from "./lib/toReplaceReason";
 import { isSeasonPlanType, planRepresentative, visibleOverlayVersions, visibleSeasonPlans } from "./lib/versions";
 import { SeasonComparisonModal } from "./SeasonComparisonModal";
+import { ValidateDialog } from "./ValidateDialog";
 import { usePlanningStore, type ViewMode } from "./store";
 import { SocleDeviationPanel } from "./SocleDeviationPanel";
 import { ToReplaceList } from "./ToReplaceList";
@@ -61,50 +61,6 @@ const IN_FLIGHT: readonly string[] = IN_FLIGHT_STATUSES;
 
 /** jour ISO → abréviation, pour le libellé du raccourci d'éviction (« Lun 18:00 »). */
 const DAY_ABBR = new Map(DAYS.map((d) => [d.n, d.label]));
-
-function ValidateDialog({ hasAlerts, siblingCount, busy, onConfirm, onCancel }: { hasAlerts: boolean; siblingCount: number; busy: boolean; onConfirm: () => void; onCancel: () => void }) {
-  return (
-    <Modal
-      size="sm"
-      label="Valider le planning"
-      title={
-        <span className="flex items-center gap-2">
-          {hasAlerts ? <AlertTriangle aria-hidden="true" className="size-5 text-warning" /> : <CheckCircle2 aria-hidden="true" className="size-5 text-muted-foreground" />}
-          Valider ce planning ?
-        </span>
-      }
-      // Block Escape/overlay/X dismissal while the validation is in flight: dismissing
-      // mid-request would hide the dialog but let the un-aborted mutation still lock the
-      // planning read-only (the raw dialog had no escape at all during busy).
-      onClose={() => {
-        if (!busy) {
-          onCancel();
-        }
-      }}
-      footer={
-        <>
-          <Button variant="outline" size="sm" onClick={onCancel} disabled={busy}>
-            Annuler
-          </Button>
-          <Button size="sm" onClick={onConfirm} disabled={busy}>
-            Valider
-          </Button>
-        </>
-      }
-    >
-      <p className="mt-2 text-sm text-muted-foreground">
-        {hasAlerts
-          ? "Ce planning présente des alertes du système (créneaux non placés, contraintes non satisfaites…). En le validant, vous assumez ces contre-indications sous votre responsabilité. Le planning passera en lecture seule."
-          : "Le planning passera en lecture seule (« Validé »). Vous pourrez le rouvrir pour le modifier."}
-      </p>
-      {siblingCount > 0 ? (
-        <p className="mt-3 text-sm font-medium text-foreground">
-          Seule cette version sera conservée — {siblingCount > 1 ? `les ${siblingCount} autres versions seront définitivement supprimées` : "l'autre version sera définitivement supprimée"}.
-        </p>
-      ) : null}
-    </Modal>
-  );
-}
 
 /** `embedded` = rendered inside the wizard's Génération step, where the sticky
  *  wizard header + footer eat extra vertical space, so the grid must be shorter.
@@ -354,6 +310,20 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // la seconde nomme un contexte que la première n'avait pas distingué.
   const [diagnosticsCollapsed, setDiagnosticsCollapsed] = useState(true);
   const [validateOpen, setValidateOpen] = useState(false);
+  // P2-52 — l'impact de dépointage de la validation, interrogé UNIQUEMENT quand la modale « Valider »
+  // est ouverte (le geste est envisagé). N=0 → l'annonce ne s'affiche pas ; N>0 → le confirm gagne
+  // l'avertissement « salle perdue » ; en vol / échec → le bouton Valider reste désactivé.
+  const validateImpactQuery = useValidateImpact(validateOpen ? validScheduleId : null);
+  const orphanImpact = useMemo(
+    () => ({
+      orphanCount: validateImpactQuery.data?.orphanedFixtures ?? 0,
+      declaredCount: validateImpactQuery.data?.declaredOrphanedFixtures ?? 0,
+      loading: readLoading(validateImpactQuery),
+      failed: readFailed(validateImpactQuery),
+      onRetry: () => void validateImpactQuery.refetch(),
+    }),
+    [validateImpactQuery],
+  );
   // Reopening the baseline with period overlays → 409; confirm to delete them.
   const [reopenOverlayCount, setReopenOverlayCount] = useState<number | null>(null);
 
@@ -1644,6 +1614,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           hasAlerts={diagnostics.length > 0}
           siblingCount={selectedSchedule?.capabilities?.versionsDeletedOnValidate ?? 0}
           busy={validateMutation.isPending}
+          orphan={orphanImpact}
           onCancel={() => setValidateOpen(false)}
           onConfirm={() => validate()}
         />

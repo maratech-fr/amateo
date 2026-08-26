@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Entity\CalendarEntry;
+use App\Entity\Fixture;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Enum\ScheduleStatus;
+use App\Service\FixtureVenueLossMarker;
 use App\Service\ManagementAccessGuard;
+use App\Service\OrphanedFixtureFinder;
 use App\Service\OverlayManager;
 use App\Service\ScheduleCapabilityResolver;
 use App\Service\SchedulePlanProvisioner;
@@ -45,6 +48,8 @@ final class ValidateScheduleController extends AbstractController implements Sea
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly ScheduleCapabilityResolver $capabilityResolver,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
+        private readonly OrphanedFixtureFinder $orphanedFixtureFinder,
+        private readonly FixtureVenueLossMarker $fixtureVenueLossMarker,
     ) {}
 
     // SEC-13 — la cible est le Schedule nommé dans l'URL (id de version).
@@ -217,6 +222,18 @@ final class ValidateScheduleController extends AbstractController implements Sea
             foreach ($siblings as $sibling) {
                 $this->overlayManager->deleteVersion($sibling);
             }
+
+            // P2-52 (RMM-10) — LA VALIDATION EST LA GÂCHETTE. Un match pointant une salle
+            // disparue (gymnase supprimé, ou pointeur laissé pendouillant par une exploration
+            // « Charger cette version ») est dépointé ICI, à parité stricte avec la route
+            // d'annonce `validate-impact` (MÊME prédicat, `OrphanedFixtureFinder`). N=0 →
+            // `mark([])` ne touche RIEN, la validation reste byte-identique à hier. N>0 → les
+            // matchs repassent « à placer » avec la raison persistante venue_lost, heure conservée.
+            $orphanedIds = array_map(
+                static fn (Fixture $fixture): string => $fixture->getId(),
+                $this->orphanedFixtureFinder->orphanedFixtures($schedule->getClubId(), $schedule->getSeasonId()),
+            );
+            $this->fixtureVenueLossMarker->mark($orphanedIds);
 
             return $this->json(['id' => $schedule->getId(), 'chosen' => true], Response::HTTP_OK);
         });

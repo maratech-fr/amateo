@@ -99,11 +99,13 @@ final class CascadePlan
             new ScopedConstraintStep(ConstraintScope::FACILITY, new ImpactLabel('venue_constraint', 'contrainte visant ce gymnase', 'contraintes visant ce gymnase')),
             new ClearFieldStep(Team::class, 'forcedVenueId', new ImpactLabel('venue_forced_team', 'équipe qui perdra son gymnase imposé', 'équipes qui perdront leur gymnase imposé')),
             new ClearFieldStep(Venue::class, 'parentVenueId', new ImpactLabel('venue_child', 'sous-salle qui perdra son gymnase parent', 'sous-salles qui perdront leur gymnase parent')),
-            // DOC-2 — le match SURVIT (sa salle est optionnelle : il redevient « à placer »,
+            // P2-52 — le match SURVIT (sa salle est optionnelle : il redevient « à placer »,
             // donc récupérable). C'est pourquoi la décision fondateur laisse le geste passer
             // au lieu de le refuser — mais un match DÉJÀ DÉCLARÉ à la fédération devra être
-            // re-soumis, et cela doit être dit AVANT (cf. DeletionImpactCounter).
-            new ClearFieldStep(Fixture::class, 'venueId', new ImpactLabel('venue_fixture', 'match qui perdra sa salle', 'matchs qui perdront leur salle')),
+            // re-soumis, et cela doit être dit AVANT (cf. DeletionImpactCounter). Le pas dédié
+            // délègue au FixtureVenueLossMarker : MÊME bascule que la gâchette de validation
+            // (UNPLACED + raison persistante venue_lost), annonce `venue_fixture` inchangée.
+            new FixtureVenueLossStep(new ImpactLabel('venue_fixture', 'match qui perdra sa salle', 'matchs qui perdront leur salle')),
         ];
     }
 

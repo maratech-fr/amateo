@@ -107,6 +107,9 @@ vi.mock("./api", () => {
   getConstraints: vi.fn(() => Promise.resolve([])),
   // P2-44 PR-5 : par défaut aucun écart (le panneau ne rend rien) — les cas dédiés surchargent.
   getSocleDeviation: vi.fn(() => Promise.resolve({ socleScheduleId: "socle", moved: [], unplaced: [] })),
+  // P2-52 : par défaut aucun match ne perd sa salle → l'annonce de validation ne s'affiche pas,
+  // « Valider » part comme aujourd'hui (les cas dédiés surchargent).
+  getValidateImpact: vi.fn(() => Promise.resolve({ orphanedFixtures: 0, declaredOrphanedFixtures: 0 })),
   getDiagnostics: vi.fn(() =>
     Promise.resolve([
       { id: "diag-1", scheduleId: SID, type: "conflict", severity: "ERROR", teamId: null, venueId: "venue-1", coachId: null, dayOfWeek: null, startTime: null, ruleKey: null, message: "Conflit de gymnase.", suggestions: [], causes: [], openCandidates: null },
@@ -956,7 +959,10 @@ describe("PlanningPage (integration)", () => {
 
     // Toolbar "Valider" opens the confirm dialog; confirm inside it.
     await user.click(screen.getByRole("button", { name: /valider/i }));
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Valider" }));
+    // P2-52 : le confirm attend l'impact (jamais confirmer sur un impact inconnu) — ici {0,0}.
+    const confirm = within(screen.getByRole("dialog")).getByRole("button", { name: "Valider" });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    await user.click(confirm);
     // Nouveau contrat (2026-08-20) : le succès NAVIGUE vers /planning — le socle validé
     // devient la version en vigueur, consultable, portant le badge et « Rouvrir » (journey e2e).
     await waitFor(() => expect(vi.mocked(validateSchedule)).toHaveBeenCalled());
