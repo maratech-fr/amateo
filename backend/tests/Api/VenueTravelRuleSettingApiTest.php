@@ -90,6 +90,25 @@ final class VenueTravelRuleSettingApiTest extends WebTestCase
         }
     }
 
+    public function testAnUnknownRuleKeyIs404NeverAnAlias(): void
+    {
+        // Revue sécurité 2026-08-26 (F-1) : toute clé ≠ travelTime fait 404 — en
+        // lecture ET en écriture. Sans la garde, « nonsense » aliasait le réglage
+        // réel (écriture comprise) et l'OpenAPI mentait sur l'identifiant.
+        [$user] = $this->seed();
+
+        $this->client->request('GET', '/api/venue_travel_rule_settings/nonsense', [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(404, 'lecture sur clé inconnue → 404');
+
+        $this->client->request('PUT', '/api/venue_travel_rule_settings/nonsense', [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], json_encode(['intensity' => 'MANDATORY'], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(404, 'écriture sur clé inconnue → 404, jamais un alias');
+
+        // Et le réglage réel n'a PAS bougé : toujours le défaut.
+        $this->client->request('GET', '/api/venue_travel_rule_settings/travelTime', [], [], $this->authHeaders($user));
+        self::assertResponseIsSuccessful();
+        self::assertSame('PREFERRED', $this->body()['intensity'], 'le PUT aliasé n\'a rien écrit');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

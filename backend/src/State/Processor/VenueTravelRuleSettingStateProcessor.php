@@ -40,6 +40,11 @@ final class VenueTravelRuleSettingStateProcessor implements ProcessorInterface
 
     public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): VenueTravelRuleSettingResource
     {
+        // Revue sécurité 2026-08-26 (F-1) : même garde que le provider — une clé
+        // inconnue fait 404, jamais une écriture aliasée sur le réglage réel.
+        if (VenueTravelRuleSettingResource::RULE_KEY !== ($uriVariables['ruleKey'] ?? null)) {
+            throw new NotFoundHttpException('Réglage inconnu.');
+        }
         $request = $this->requestStack->getCurrentRequest();
 
         // SEC-07 — management (403) AVANT saison archivée (409) : l'autorisation gagne.

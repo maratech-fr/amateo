@@ -28,6 +28,12 @@ final class VenueTravelRuleSettingStateProvider implements ProviderInterface
 
     public function provide(Operation $operation, array $uriVariables = [], array $context = []): ?VenueTravelRuleSettingResource
     {
+        // Revue sécurité 2026-08-26 (F-1) : la clé du chemin est VÉRIFIÉE — toute
+        // autre chaîne fait 404 au lieu d'aliaser silencieusement l'unique réglage
+        // (le piège du jour où une 2ᵉ clé existera, et l'OpenAPI cesse de mentir).
+        if (VenueTravelRuleSettingResource::RULE_KEY !== ($uriVariables['ruleKey'] ?? null)) {
+            return null;
+        }
         [$clubId, $seasonId] = $this->resolveScope();
         if (null === $clubId || null === $seasonId) {
             return null;
