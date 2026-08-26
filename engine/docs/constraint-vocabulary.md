@@ -1,11 +1,14 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-08-25 (rotation `documentation-update`, RMM-6 PR-2 — zone non touchée par
-cette PR, contrôle de fraîcheur). Re-confronté au code : le paquet `app/solver/constraints/`
-(`parsing.py`, `targeting.py`, `structural.py`, `wellness.py`, `diagnostics.py`, `common.py`) ✓ ·
-`parse_v2_constraints` (`parsing.py:141`) et `add_time_window_constraints` (`targeting.py:30`) ✓ ·
-`constraint_not_honored` émis par `common.py:622-623` ✓ · `maxEndTime` calculé par créneau,
-`slot_start + slot_duration` comparé (`targeting.py:91,123-126`) ✓.
+Last verified @ 2026-08-26 (P2-53 RMM-8 PR-2 — nouvelle section « Trajet entre gymnases »
+ajoutée : `engine/app/solver/constraints/travel.py` (départage `add_travel_departage_penalty`,
+battement `add_travel_time_penalty`/`add_travel_time_hard_constraints`, matrice
+`build_travel_matrix`) ✓ · résolution de l'intensité PREFERRED/MANDATORY et de `defaultMinutes`
+(`constraints/parsing.py:_travel_intensity`, `common.py:ResolvedImplicitRules.travel_time_*`) ✓ ·
+diagnostic `travel_time_infeasible` (`result_builder.py:_diagnose_travel_times`) ✓ · consommé par
+`/generate` seul, absent de `MatchPlacementPayloadBuilder`/`/place-matches` (grep) ✓. Reste du
+document non re-parcouru ligne à ligne cette passe (rotation précédente : `app/solver/constraints/`
+paquet §familles config, `parse_v2_constraints`, `constraint_not_honored`, `maxEndTime`).
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -179,6 +182,37 @@ insensible à ce réglage (arbitrage fondateur n°1). Deux régimes :
   (`result_builder._diagnose_team_links` → `team_link_not_honored`, ERROR, nommant les deux équipes),
   jamais avalé.
 - `teamLinks` vide (ou aucune passerelle du régime visé) ⇒ chemin byte-identique, goldens inchangés.
+
+## Trajet entre gymnases (`travelTime`) — départage + battement (P2-53 RMM-8)
+
+Bloc d'entrée `venueTravelTimes[]` (matrice `{venueAId, venueBId, drivingMinutes?, walkingMinutes?}`,
+club+saison, symétrique) + règle implicite `implicitRules.travelTime`. **OPT-IN à la PRÉSENCE de
+matrice** : le backend n'émet la règle active que si le club a saisi au moins une ligne (précédent
+`maxConsecutiveDays`) — absent ⇒ payload byte-identique, ni départage ni battement. **Consommé par
+`/generate` (solveur d'entraînement) seul** — `/place-matches` ne reçoit pas ce bloc.
+
+Deux « voyageurs » relient deux séances enchaînées le même jour à des gymnases différents et non
+chevauchantes :
+- un **coach commun** aux deux séances — barème **voiture** s'il est `isVehicled`, **à pied** sinon ;
+- une **passerelle** (`teamLinks`) — barème **à pied d'office** (joueurs partagés jamais modélisés
+  individuellement).
+
+Le barème appliqué est la colonne (voiture/à pied) du couple de gymnases dans `venueTravelTimes` ;
+un couple/mode jamais arbitré (colonne `null` ou couple absent de la matrice) retombe sur
+`travelTime.defaultMinutes` (défaut **20**, réglable 0-600).
+
+Deux termes, jamais le même rôle :
+
+| Terme | Mécanisme | Poids/portée |
+|---|---|---|
+| **Départage « moindre trajet »** | s'applique dès que la règle est active, quel que soit le cran ; préfère l'enchaînement au barème le plus court | malus faible, `1 × palier(barème)` (palier 1 ≤15 min, 2 ≤40 min, 3 au-delà) — vit dans la SOUS-BANDE de phase 2, SOUS le placement (verrouillé à l'optimum de phase 1) ET sous le chaînage (×4096) : ne départage QUE des ex æquo exacts, jamais dominant |
+| **Battement insuffisant** (`gap` entre fin de A et début de B < barème) | `PREFERRED` (défaut) → violation SOFT, compromis nommé famille `travel_time` ; `MANDATORY` → interdit dur | `PREFERRED` : malus `−6` (même masse que les règles de bien-être PREFERRED) ; `MANDATORY` : `add_travel_time_hard_constraints`, patron passerelle MANDATORY — un résidu ne peut survenir qu'entre deux séances VERROUILLÉES contradictoires, ANNONCÉ par le diagnostic `travel_time_infeasible` (jamais INFEASIBLE muet) |
+
+Le vocabulaire d'intensité est `PREFERRED`/`MANDATORY` (patron passerelle), **pas** `HARD`/`PREFERRED`
+comme les 5 règles de bien-être : le trajet suggère ou interdit, il ne « durcit » pas une préférence
+de confort. Le MÊME gymnase n'est jamais concerné (l'exemption coach-coach même-gymnase D-14 reste
+intacte). `venueTravelTimes` absent/vide OU règle inactive ⇒ aucune variable posée, chemin
+byte-identique, goldens inchangés.
 
 ## Ce qu'un verrou HARD écrase (P2-9)
 

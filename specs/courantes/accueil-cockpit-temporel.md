@@ -1,10 +1,12 @@
 # Accueil « cockpit temporel » — mise au clair (préliminaire calendriers secondaires)
 
-Last verified @ 2026-08-24 (rotation de fraîcheur, sujet non touché par la PR courante — re-vérifié
-contre le code : `frontend/src/features/wizard/steps/PeriodStructure.tsx:400,727-828` — les DEUX
+Last verified @ 2026-08-26 (rotation de fraîcheur, sujet non touché par cette PR — re-vérifié
+contre le code : `frontend/src/features/wizard/steps/PeriodStructure.tsx:400,728,788` — les DEUX
 `<fieldset disabled>` de la grille (rangée gymnase ET créneaux) ne gèlent que sur `isDisabled`
-(mode `DISABLED` de l'override), jamais sur une fermeture ✓. L'historique des passes précédentes
-vit dans `git log -p --follow` ce fichier et ses traces datées dans `etat-des-lieux.md` §3.
+(mode `DISABLED` de l'override), jamais sur une fermeture ✓ · `/` sert bien `CockpitPage`
+(`frontend/src/app/router.tsx:133-134`), conforme au statut « livré » de ce document ✓.
+L'historique des passes précédentes vit dans `git log -p --follow` ce fichier et ses traces datées
+dans `etat-des-lieux.md` §3.
 
 > **Statut** : **approche arrêtée** (décisions tranchées §9) — **livrée** ; cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2.
 > **Pas un plan** — pas de tâches, pas d'effort chiffré ; l'exécution se planifiera palier par palier (§8).

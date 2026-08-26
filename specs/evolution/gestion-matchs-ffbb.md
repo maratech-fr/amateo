@@ -260,9 +260,11 @@ préféré. Le radar signale tout placement **hors envelope**.
 
 ## 7. Le trajet = infra partagée avec l'entraînement (une pierre, deux coups)
 
-> ⚠ **La matrice NAÎT côté entraînement (P2-53/RMM-8, PR-1 livrée le 2026-08-26)** : géocodage
+> ⚠ **La matrice NAÎT côté entraînement (P2-53/RMM-8)** : PR-1 (2026-08-26) pose le géocodage
 > d'adresse (BAN) + table `venue_travel_time` (deux barèmes par paire de gymnases, voiture/à pied,
-> sources AUTO/MANUAL) + autofill IGN — backend pur, le solveur ne la lit pas encore (PR-2). Le
+> sources AUTO/MANUAL) + autofill IGN. **PR-2 (2026-08-26) la câble au solveur d'ENTRAÎNEMENT
+> SEUL** — `/place-matches` ne la reçoit pas : départage « moindre trajet » + battement
+> PREFERRED/MANDATORY (détail `engine/docs/constraint-vocabulary.md` §Trajet entre gymnases). Le
 > volet MATCHS ci-dessous (siège club ↔ ville adverse) reste **ouvert**, il attend l'annuaire
 > adverse (RMM-9/P2-54) pour avoir une ville/un gymnase adverse à mesurer.
 
