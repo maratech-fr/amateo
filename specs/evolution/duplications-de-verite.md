@@ -27,7 +27,7 @@ appliqué partout.** Quatre gardes exemplaires existent et fonctionnent :
 | `TenantOwnedInterfaceCompletenessTest` | marqueur d'interface ⇄ colonne `club_id`, diff **bidirectionnel** |
 | `RlsIsolationTest.php:39-46` | liste **dérivée de `pg_class`**, jamais recopiée (et `docs/security/rls.md:8` refuse explicitement de redonner un décompte) |
 | `TeamTagScopeTest.php:202-221` | constante SQL `INSERT_COLUMNS` lue **par réflexion** et diffée contre les métadonnées Doctrine |
-| `BlockingTestsListMatchesCiTest` | liste de `CLAUDE.md` §4 ⇄ steps de `ci.yml`, **dans les deux sens** (ajouté le 2026-08-08) |
+| `BlockingTestsListMatchesCiTest` | liste de `docs/testing/blocking-tests.md` (ex-`CLAUDE.md` §4, déménagée le 2026-08-27) ⇄ steps de `ci.yml`, **dans les deux sens** (ajouté le 2026-08-08) |
 
 **La forme commune, à appliquer partout ailleurs :**
 
