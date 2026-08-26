@@ -15,7 +15,7 @@ use App\State\Provider\VenueTravelRuleSettingStateProvider;
 use Symfony\Component\Serializer\Attribute\Groups;
 
 /**
- * Le levier d'intensité de la règle « Trajet entre gymnases » (P2-53 RMM-8 PR-4).
+ * Le levier d'intensité de la règle « Trajet entre gymnases ».
  *
  * SINGLETON par club+saison — un seul réglage, pas une collection. L'identifiant est le nom de la
  * règle gouvernée (`travelTime`), fixe : le front lit/écrit `…/venue_travel_rule_settings/travelTime`

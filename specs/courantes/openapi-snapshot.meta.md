@@ -1,6 +1,14 @@
-Last verified @ 2026-08-26 (P2-53 RMM-8 PR-1 ajoute **+4 paths** — la géo + le modèle de la matrice de trajet : `GET /api/geocode` (géocodage BAN, management), `POST /api/venue-travel-times/autofill` (remplissage des trajets par l'IGN, management) et le CRUD `VenueTravelTime` (`GET/POST /api/venue_travel_times` + `GET/PUT/DELETE /api/venue_travel_times/{id}`, lecture ouverte au Membre) : le compte passe de 179 à **183 paths** ; plus **2 champs ADDITIFS en LECTURE** : `Venue.address` (l'adresse géocodée) et `Coach.isVehicled` (véhiculé → barème voiture, sinon à pied). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.15, aucun appel moteur — le bloc payload et le moteur sont la PR-2). SHA-256 du snapshot : `61865990fbe457f93c8ecc820bfc1458eaa3efe10a073e3207a6236ca21a7672`.)
+Last verified @ 2026-08-26 (P2-53 RMM-8 PR-4 ajoute **+1 path** — le levier d'intensité de la règle « Trajet entre gymnases » : ressource singleton `VenueTravelRuleSetting` (`GET/PUT /api/venue_travel_rule_settings/{ruleKey}`, identifiant fixe `travelTime`, écriture management, lecture ouverte au Membre) qui résout/upserte l'intensité `PREFERRED`|`MANDATORY` du club+saison (défaut PREFERRED). 183 → **184 paths**. Backend + front LÉGER : le moteur consomme déjà MANDATORY (PR-2), contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.16, aucun appel moteur). SHA-256 du snapshot : `3713bff044b9c454a645a62a47aeae03100c0903a88034a60b7cbc35de72425d`.)
 
 Changements récents :
+- **P2-53 RMM-8 PR-4 — le levier Obligatoire de la règle de trajet (2026-08-26)** : **+1 path** —
+  ressource API Platform singleton `VenueTravelRuleSetting` : `GET /api/venue_travel_rule_settings/{ruleKey}`
+  (200 : `{ruleKey, intensity, isDefault}` — résout l'intensité stockée OU le défaut `PREFERRED`) +
+  `PUT` (upsert `PREFERRED`|`MANDATORY` ; **management** SEC-07 ; 409 saison archivée ; 422 sur un
+  vocabulaire bien-être HARD/OFF). Identifiant FIXE `travelTime` (le nom de la règle gouvernée), scope
+  club+saison. Store DÉDIÉ (vocabulaire des passerelles), PAS une 6ᵉ clé `implicit_rule_setting`.
+  183 → **184 paths**. Backend + front léger ; contrat backend⇄engine **inchangé** (`CONTRACT_VERSION`
+  2.16, le moteur consomme déjà MANDATORY depuis la PR-2).
 - **P2-53 RMM-8 PR-1 — la géo + le modèle de la matrice de trajet (2026-08-26)** : **+4 paths** —
   `GET /api/geocode` (200 : `{candidates[]}` — candidats {label, latitude, longitude, score} de la
   Base Adresse Nationale pour poser la lat/long d'un gymnase ; **management** SEC-07 ; 422 requête

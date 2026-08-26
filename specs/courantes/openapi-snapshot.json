@@ -20245,6 +20245,202 @@
                 ]
             }
         },
+        "/api/venue_travel_rule_settings/{ruleKey}": {
+            "get": {
+                "operationId": "api_venue_travel_rule_settings_ruleKey_get",
+                "tags": [
+                    "VenueTravelRuleSetting"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "VenueTravelRuleSetting resource",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueTravelRuleSetting.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueTravelRuleSetting"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueTravelRuleSetting.html"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Retrieves a VenueTravelRuleSetting resource.",
+                "description": "Retrieves a VenueTravelRuleSetting resource.",
+                "parameters": [
+                    {
+                        "name": "ruleKey",
+                        "in": "path",
+                        "description": "VenueTravelRuleSetting identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ]
+            },
+            "put": {
+                "operationId": "api_venue_travel_rule_settings_ruleKey_put",
+                "tags": [
+                    "VenueTravelRuleSetting"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "VenueTravelRuleSetting resource updated",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueTravelRuleSetting.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueTravelRuleSetting"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueTravelRuleSetting.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Replaces the VenueTravelRuleSetting resource.",
+                "description": "Replaces the VenueTravelRuleSetting resource.",
+                "parameters": [
+                    {
+                        "name": "ruleKey",
+                        "in": "path",
+                        "description": "VenueTravelRuleSetting identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ],
+                "requestBody": {
+                    "description": "The updated VenueTravelRuleSetting resource",
+                    "content": {
+                        "application/ld+json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VenueTravelRuleSetting.VenueTravelRuleSettingInput"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VenueTravelRuleSetting.VenueTravelRuleSettingInput"
+                            }
+                        },
+                        "text/html": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VenueTravelRuleSetting.VenueTravelRuleSettingInput"
+                            }
+                        }
+                    },
+                    "required": true
+                }
+            }
+        },
         "/api/venue_travel_times": {
             "get": {
                 "operationId": "api_venue_travel_times_get_collection",
@@ -30077,6 +30273,89 @@
                     }
                 ]
             },
+            "VenueTravelRuleSetting": {
+                "type": "object",
+                "description": "Le levier d'intensit\u00e9 de la r\u00e8gle \u00ab Trajet entre gymnases \u00bb.\n\nSINGLETON par club+saison \u2014 un seul r\u00e9glage, pas une collection. L'identifiant est le nom de la\nr\u00e8gle gouvern\u00e9e (`travelTime`), fixe : le front lit/\u00e9crit `\u2026/venue_travel_rule_settings/travelTime`\nsans conna\u00eetre de ligne en base. Le GET r\u00e9sout (stock\u00e9 OU d\u00e9faut PREFERRED), le PUT UPSERTE.\nL'\u00e9criture n'accepte que PREFERRED|MANDATORY ({@see TeamLinkIntensity}) \u2014 HARD/OFF sont refus\u00e9s\nen 422 (le DTO valide sur `TeamLinkIntensity::values()`).",
+                "properties": {
+                    "ruleKey": {
+                        "default": "travelTime",
+                        "type": "string"
+                    },
+                    "intensity": {
+                        "default": "PREFERRED",
+                        "type": "string"
+                    },
+                    "isDefault": {
+                        "description": "true tant que la r\u00e8gle est au d\u00e9faut (aucune ligne stock\u00e9e) \u2014 le front sait quoi montrer.",
+                        "default": true,
+                        "type": "boolean"
+                    }
+                }
+            },
+            "VenueTravelRuleSetting.VenueTravelRuleSettingInput": {
+                "type": "object",
+                "description": "Le levier d'intensit\u00e9 de la r\u00e8gle \u00ab Trajet entre gymnases \u00bb.\n\nSINGLETON par club+saison \u2014 un seul r\u00e9glage, pas une collection. L'identifiant est le nom de la\nr\u00e8gle gouvern\u00e9e (`travelTime`), fixe : le front lit/\u00e9crit `\u2026/venue_travel_rule_settings/travelTime`\nsans conna\u00eetre de ligne en base. Le GET r\u00e9sout (stock\u00e9 OU d\u00e9faut PREFERRED), le PUT UPSERTE.\nL'\u00e9criture n'accepte que PREFERRED|MANDATORY ({@see TeamLinkIntensity}) \u2014 HARD/OFF sont refus\u00e9s\nen 422 (le DTO valide sur `TeamLinkIntensity::values()`).",
+                "required": [
+                    "intensity"
+                ],
+                "properties": {
+                    "intensity": {
+                        "enum": [
+                            "PREFERRED",
+                            "MANDATORY"
+                        ],
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "VenueTravelRuleSetting.html": {
+                "type": "object",
+                "description": "Le levier d'intensit\u00e9 de la r\u00e8gle \u00ab Trajet entre gymnases \u00bb.\n\nSINGLETON par club+saison \u2014 un seul r\u00e9glage, pas une collection. L'identifiant est le nom de la\nr\u00e8gle gouvern\u00e9e (`travelTime`), fixe : le front lit/\u00e9crit `\u2026/venue_travel_rule_settings/travelTime`\nsans conna\u00eetre de ligne en base. Le GET r\u00e9sout (stock\u00e9 OU d\u00e9faut PREFERRED), le PUT UPSERTE.\nL'\u00e9criture n'accepte que PREFERRED|MANDATORY ({@see TeamLinkIntensity}) \u2014 HARD/OFF sont refus\u00e9s\nen 422 (le DTO valide sur `TeamLinkIntensity::values()`).",
+                "properties": {
+                    "ruleKey": {
+                        "default": "travelTime",
+                        "type": "string"
+                    },
+                    "intensity": {
+                        "default": "PREFERRED",
+                        "type": "string"
+                    },
+                    "isDefault": {
+                        "description": "true tant que la r\u00e8gle est au d\u00e9faut (aucune ligne stock\u00e9e) \u2014 le front sait quoi montrer.",
+                        "default": true,
+                        "type": "boolean"
+                    }
+                }
+            },
+            "VenueTravelRuleSetting.jsonld": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/HydraItemBaseSchema"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "ruleKey": {
+                                "default": "travelTime",
+                                "type": "string"
+                            },
+                            "intensity": {
+                                "default": "PREFERRED",
+                                "type": "string"
+                            },
+                            "isDefault": {
+                                "description": "true tant que la r\u00e8gle est au d\u00e9faut (aucune ligne stock\u00e9e) \u2014 le front sait quoi montrer.",
+                                "default": true,
+                                "type": "boolean"
+                            }
+                        }
+                    }
+                ],
+                "description": "Le levier d'intensit\u00e9 de la r\u00e8gle \u00ab Trajet entre gymnases \u00bb.\n\nSINGLETON par club+saison \u2014 un seul r\u00e9glage, pas une collection. L'identifiant est le nom de la\nr\u00e8gle gouvern\u00e9e (`travelTime`), fixe : le front lit/\u00e9crit `\u2026/venue_travel_rule_settings/travelTime`\nsans conna\u00eetre de ligne en base. Le GET r\u00e9sout (stock\u00e9 OU d\u00e9faut PREFERRED), le PUT UPSERTE.\nL'\u00e9criture n'accepte que PREFERRED|MANDATORY ({@see TeamLinkIntensity}) \u2014 HARD/OFF sont refus\u00e9s\nen 422 (le DTO valide sur `TeamLinkIntensity::values()`)."
+            },
             "VenueTravelTime": {
                 "type": "object",
                 "description": "A per-couple travel-time bracket between two venues \u2014 symmetric, one per couple.",
@@ -30636,6 +30915,10 @@
         {
             "name": "VenueTrainingSlot",
             "description": "Resource 'VenueTrainingSlot' operations."
+        },
+        {
+            "name": "VenueTravelRuleSetting",
+            "description": "Le levier d'intensit\u00e9 de la r\u00e8gle \u00ab Trajet entre gymnases \u00bb.\n\nSINGLETON par club+saison \u2014 un seul r\u00e9glage, pas une collection. L'identifiant est le nom de la\nr\u00e8gle gouvern\u00e9e (`travelTime`), fixe : le front lit/\u00e9crit `\u2026/venue_travel_rule_settings/travelTime`\nsans conna\u00eetre de ligne en base. Le GET r\u00e9sout (stock\u00e9 OU d\u00e9faut PREFERRED), le PUT UPSERTE.\nL'\u00e9criture n'accepte que PREFERRED|MANDATORY ({@see TeamLinkIntensity}) \u2014 HARD/OFF sont refus\u00e9s\nen 422 (le DTO valide sur `TeamLinkIntensity::values()`)."
         },
         {
             "name": "VenueTravelTime",
