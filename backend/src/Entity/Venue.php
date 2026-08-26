@@ -53,6 +53,10 @@ class Venue implements TenantOwnedInterface
     #[ORM\Column(type: 'decimal', precision: 10, scale: 7, nullable: true)]
     private ?string $longitude = null;
 
+    /** P2-53 RMM-8 — l'adresse saisie qu'on géocode (BAN) en lat/long ci-dessus. */
+    #[ORM\Column(type: 'string', length: 255, nullable: true)]
+    private ?string $address = null;
+
     #[ORM\Column(type: 'string', length: 20)]
     private string $source;
 
@@ -222,6 +226,18 @@ class Venue implements TenantOwnedInterface
     public function setLongitude(?string $longitude): self
     {
         $this->longitude = $longitude;
+
+        return $this;
+    }
+
+    public function getAddress(): ?string
+    {
+        return $this->address;
+    }
+
+    public function setAddress(?string $address): self
+    {
+        $this->address = $address;
 
         return $this;
     }

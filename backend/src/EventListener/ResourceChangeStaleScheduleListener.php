@@ -23,6 +23,7 @@ use App\Entity\TeamTagAssignment;
 use App\Entity\Venue;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
+use App\Entity\VenueTravelTime;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
@@ -71,6 +72,7 @@ use Doctrine\ORM\Events;
  *   match_slot_rotation         | club_id + season_id         | club + saison  (RMM-5 : matchDay dérivé)
  *   match_slot_rotation_team    | club_id + season_id         | club + saison  (RMM-5 : membre de rotation)
  *   team_tag_assignment         | club_id + season_id         | club + saison
+ *   venue_travel_time           | club_id + season_id         | club + saison  (RMM-8 : matrice trajet)
  *   implicit_rule_setting       | schedule_plan_id (nullable) | plan si non-NULL, sinon club+saison (**)
  *   calendar_entry              | club_id + season_id (*)     | club + saison  (repli, cf. (*))
  *   team_tag                    | club_id (pas de saison) (*) | club entier    (repli, cf. (*))
@@ -144,6 +146,9 @@ use Doctrine\ORM\Events;
 #[AsEntityListener(event: Events::postPersist, method: 'teamLinkTouched', entity: TeamLink::class)]
 #[AsEntityListener(event: Events::postUpdate, method: 'teamLinkTouched', entity: TeamLink::class)]
 #[AsEntityListener(event: Events::postRemove, method: 'teamLinkTouched', entity: TeamLink::class)]
+#[AsEntityListener(event: Events::postPersist, method: 'venueTravelTimeTouched', entity: VenueTravelTime::class)]
+#[AsEntityListener(event: Events::postUpdate, method: 'venueTravelTimeTouched', entity: VenueTravelTime::class)]
+#[AsEntityListener(event: Events::postRemove, method: 'venueTravelTimeTouched', entity: VenueTravelTime::class)]
 #[AsEntityListener(event: Events::postPersist, method: 'teamTagAssignmentTouched', entity: TeamTagAssignment::class)]
 #[AsEntityListener(event: Events::postUpdate, method: 'teamTagAssignmentTouched', entity: TeamTagAssignment::class)]
 #[AsEntityListener(event: Events::postRemove, method: 'teamTagAssignmentTouched', entity: TeamTagAssignment::class)]
@@ -253,6 +258,14 @@ final class ResourceChangeStaleScheduleListener
 
     public function teamTagAssignmentTouched(TeamTagAssignment $entity): void
     {
+        $this->markClubSeason($entity->getClubId(), $entity->getSeasonId());
+    }
+
+    public function venueTravelTimeTouched(VenueTravelTime $entity): void
+    {
+        // P2-53 RMM-8 — la matrice de trajet est STRUCTURE de club+saison (patron
+        // teamLinkTouched) : elle nourrira /generate en PR-2 pour TOUS les plans du
+        // club+saison. On pose la péremption dès PR-1 pour ne pas l'oublier.
         $this->markClubSeason($entity->getClubId(), $entity->getSeasonId());
     }
 

@@ -18320,6 +18320,145 @@
                 }
             }
         },
+        "/api/geocode": {
+            "get": {
+                "operationId": "geocodeAddress",
+                "tags": [
+                    "Venue"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "BAN geocoding candidates for a free-text address (top 5) \u2014 used to set a venue's latitude/longitude",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "candidates": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "label": {
+                                                        "type": "string"
+                                                    },
+                                                    "latitude": {
+                                                        "type": "number",
+                                                        "format": "float"
+                                                    },
+                                                    "longitude": {
+                                                        "type": "number",
+                                                        "format": "float"
+                                                    },
+                                                    "score": {
+                                                        "type": "number",
+                                                        "format": "float"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "422": {
+                        "description": "Missing or malformed query (3 to 200 characters)"
+                    },
+                    "502": {
+                        "description": "Geocoding service unreachable \u2014 retry later"
+                    }
+                },
+                "summary": "Geocode a free-text address via the Base Adresse Nationale (management only, tenant from JWT)",
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Free-text address to geocode (3 to 200 characters)"
+                    }
+                ]
+            }
+        },
+        "/api/venue-travel-times/autofill": {
+            "post": {
+                "operationId": "autofillVenueTravelTimes",
+                "tags": [
+                    "Venue"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Fills AUTO driving/walking minutes for every geolocated venue pair via IGN routing. A MANUAL value is NEVER overwritten; a pair with a missing geolocation or a routing failure comes back named (best-effort).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "filled": {
+                                            "type": "integer",
+                                            "description": "Pairs where at least one AUTO minute was written"
+                                        },
+                                        "unresolved": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "venueAId": {
+                                                        "type": "string"
+                                                    },
+                                                    "venueBId": {
+                                                        "type": "string"
+                                                    },
+                                                    "reason": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "missing_geo",
+                                                            "routing_failed"
+                                                        ]
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "skippedManual": {
+                                            "type": "integer",
+                                            "description": "Pairs whose MANUAL value was preserved"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No club or season in context"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "409": {
+                        "description": "The selected season is archived (read-only)"
+                    },
+                    "422": {
+                        "description": "Too many geolocated venue pairs for an automatic fill (fill by hand)"
+                    },
+                    "429": {
+                        "description": "Too many requests (per-user rate limit)"
+                    }
+                },
+                "summary": "Autofill the venue travel-time matrix from IGN routing (management only; never overwrites a MANUAL value)"
+            }
+        },
         "/api/venues": {
             "get": {
                 "operationId": "api_venues_get_collection",
@@ -20106,6 +20245,418 @@
                 ]
             }
         },
+        "/api/venue_travel_times": {
+            "get": {
+                "operationId": "api_venue_travel_times_get_collection",
+                "tags": [
+                    "VenueTravelTime"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "VenueTravelTime collection",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "type": "object",
+                                    "description": "VenueTravelTime.jsonld collection.",
+                                    "allOf": [
+                                        {
+                                            "$ref": "#/components/schemas/HydraCollectionBaseSchema"
+                                        },
+                                        {
+                                            "type": "object",
+                                            "required": [
+                                                "member"
+                                            ],
+                                            "properties": {
+                                                "member": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/VenueTravelTime.jsonld"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/VenueTravelTime"
+                                    }
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/VenueTravelTime.html"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "summary": "Retrieves the collection of VenueTravelTime resources.",
+                "description": "Retrieves the collection of VenueTravelTime resources.",
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "description": "The collection page number",
+                        "required": false,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 1
+                        },
+                        "style": "form",
+                        "explode": true
+                    }
+                ]
+            },
+            "post": {
+                "operationId": "api_venue_travel_times_post",
+                "tags": [
+                    "VenueTravelTime"
+                ],
+                "responses": {
+                    "201": {
+                        "description": "VenueTravelTime resource created",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueTravelTime.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueTravelTime"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueTravelTime.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Creates a VenueTravelTime resource.",
+                "description": "Creates a VenueTravelTime resource.",
+                "parameters": [],
+                "requestBody": {
+                    "description": "The new VenueTravelTime resource",
+                    "content": {
+                        "application/ld+json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VenueTravelTime.VenueTravelTimeInput"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VenueTravelTime.VenueTravelTimeInput"
+                            }
+                        },
+                        "text/html": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VenueTravelTime.VenueTravelTimeInput"
+                            }
+                        }
+                    },
+                    "required": true
+                }
+            }
+        },
+        "/api/venue_travel_times/{id}": {
+            "get": {
+                "operationId": "api_venue_travel_times_id_get",
+                "tags": [
+                    "VenueTravelTime"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "VenueTravelTime resource",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueTravelTime.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueTravelTime"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueTravelTime.html"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Retrieves a VenueTravelTime resource.",
+                "description": "Retrieves a VenueTravelTime resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "VenueTravelTime identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ]
+            },
+            "put": {
+                "operationId": "api_venue_travel_times_id_put",
+                "tags": [
+                    "VenueTravelTime"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "VenueTravelTime resource updated",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueTravelTime.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueTravelTime"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueTravelTime.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Replaces the VenueTravelTime resource.",
+                "description": "Replaces the VenueTravelTime resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "VenueTravelTime identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ],
+                "requestBody": {
+                    "description": "The updated VenueTravelTime resource",
+                    "content": {
+                        "application/ld+json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VenueTravelTime.VenueTravelTimeInput"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VenueTravelTime.VenueTravelTimeInput"
+                            }
+                        },
+                        "text/html": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VenueTravelTime.VenueTravelTimeInput"
+                            }
+                        }
+                    },
+                    "required": true
+                }
+            },
+            "delete": {
+                "operationId": "api_venue_travel_times_id_delete",
+                "tags": [
+                    "VenueTravelTime"
+                ],
+                "responses": {
+                    "204": {
+                        "description": "VenueTravelTime resource deleted"
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Removes the VenueTravelTime resource.",
+                "description": "Removes the VenueTravelTime resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "VenueTravelTime identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ]
+            }
+        },
         "/api/venue_unavailabilities": {
             "get": {
                 "operationId": "api_venue_unavailabilities_get_collection",
@@ -21299,6 +21850,11 @@
                         "default": false,
                         "type": "boolean"
                     },
+                    "isVehicled": {
+                        "description": "V\u00e9hicul\u00e9 (bar\u00e8me voiture) ou non (bar\u00e8me \u00e0 pied).",
+                        "default": false,
+                        "type": "boolean"
+                    },
                     "parentCoachId": {
                         "type": [
                             "string",
@@ -21363,6 +21919,13 @@
                         ]
                     },
                     "isEmployee": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "isVehicled": {
+                        "description": "V\u00e9hicul\u00e9 (bar\u00e8me voiture) ou non (bar\u00e8me \u00e0 pied).",
                         "type": [
                             "boolean",
                             "null"
@@ -21435,6 +21998,11 @@
                         "default": false,
                         "type": "boolean"
                     },
+                    "isVehicled": {
+                        "description": "V\u00e9hicul\u00e9 (bar\u00e8me voiture) ou non (bar\u00e8me \u00e0 pied).",
+                        "default": false,
+                        "type": "boolean"
+                    },
                     "parentCoachId": {
                         "type": [
                             "string",
@@ -21504,6 +22072,11 @@
                                 "type": "boolean"
                             },
                             "isEmployee": {
+                                "default": false,
+                                "type": "boolean"
+                            },
+                            "isVehicled": {
+                                "description": "V\u00e9hicul\u00e9 (bar\u00e8me voiture) ou non (bar\u00e8me \u00e0 pied).",
                                 "default": false,
                                 "type": "boolean"
                             },
@@ -28602,6 +29175,13 @@
                             "null"
                         ]
                     },
+                    "address": {
+                        "description": "L'adresse saisie qu'on g\u00e9ocode.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "source": {
                         "default": "",
                         "type": "string"
@@ -28661,6 +29241,14 @@
                         ]
                     },
                     "longitude": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "address": {
+                        "maxLength": 255,
+                        "description": "L'adresse saisie (g\u00e9ocod\u00e9e en lat/long via GET /api/geocode).",
                         "type": [
                             "string",
                             "null"
@@ -28753,6 +29341,13 @@
                             "null"
                         ]
                     },
+                    "address": {
+                        "description": "L'adresse saisie qu'on g\u00e9ocode.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "source": {
                         "default": "",
                         "type": "string"
@@ -28825,6 +29420,13 @@
                                 ]
                             },
                             "longitude": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "address": {
+                                "description": "L'adresse saisie qu'on g\u00e9ocode.",
                                 "type": [
                                     "string",
                                     "null"
@@ -29475,6 +30077,229 @@
                     }
                 ]
             },
+            "VenueTravelTime": {
+                "type": "object",
+                "description": "A per-couple travel-time bracket between two venues \u2014 symmetric, one per couple.",
+                "properties": {
+                    "id": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "version": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "venueAId": {
+                        "description": "Normalized: venueAId < venueBId.",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "venueBId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "drivingMinutes": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "walkingMinutes": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "drivingSource": {
+                        "description": "AUTO|MANUAL \u2014 null while the matching minutes value is null.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "walkingSource": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "VenueTravelTime.VenueTravelTimeInput": {
+                "type": "object",
+                "description": "A per-couple travel-time bracket between two venues \u2014 symmetric, one per couple.",
+                "required": [
+                    "venueAId",
+                    "venueBId"
+                ],
+                "properties": {
+                    "venueAId": {
+                        "format": "uuid",
+                        "externalDocs": {
+                            "url": "https://schema.org/identifier"
+                        },
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "venueBId": {
+                        "format": "uuid",
+                        "externalDocs": {
+                            "url": "https://schema.org/identifier"
+                        },
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "drivingMinutes": {
+                        "minimum": 1,
+                        "maximum": 240,
+                        "description": "Minutes ACCEPTABLES en voiture. Bornes raisonnables (1..240) : un\nencha\u00eenement de gymnases n'a pas de sens au-del\u00e0 de quatre heures. null =\nmode non renseign\u00e9. Une \u00e9criture d'une valeur pose la source MANUAL\n(VenueTravelTimeStateProcessor).",
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "walkingMinutes": {
+                        "minimum": 1,
+                        "maximum": 240,
+                        "description": "Minutes ACCEPTABLES \u00e0 pied (m\u00eames bornes).",
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "VenueTravelTime.html": {
+                "type": "object",
+                "description": "A per-couple travel-time bracket between two venues \u2014 symmetric, one per couple.",
+                "properties": {
+                    "id": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "version": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "venueAId": {
+                        "description": "Normalized: venueAId < venueBId.",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "venueBId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "drivingMinutes": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "walkingMinutes": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "drivingSource": {
+                        "description": "AUTO|MANUAL \u2014 null while the matching minutes value is null.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "walkingSource": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "VenueTravelTime.jsonld": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/HydraItemBaseSchema"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "version": {
+                                "default": 0,
+                                "type": "integer"
+                            },
+                            "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            "updatedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            "venueAId": {
+                                "description": "Normalized: venueAId < venueBId.",
+                                "default": "",
+                                "type": "string"
+                            },
+                            "venueBId": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "drivingMinutes": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ]
+                            },
+                            "walkingMinutes": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ]
+                            },
+                            "drivingSource": {
+                                "description": "AUTO|MANUAL \u2014 null while the matching minutes value is null.",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "walkingSource": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            }
+                        }
+                    }
+                ],
+                "description": "A per-couple travel-time bracket between two venues \u2014 symmetric, one per couple."
+            },
             "VenueUnavailability": {
                 "type": "object",
                 "description": "All-circumstances venue unavailability \u2014 alerts matches AND training, blocks nothing.",
@@ -29811,6 +30636,10 @@
         {
             "name": "VenueTrainingSlot",
             "description": "Resource 'VenueTrainingSlot' operations."
+        },
+        {
+            "name": "VenueTravelTime",
+            "description": "A per-couple travel-time bracket between two venues \u2014 symmetric, one per couple."
         },
         {
             "name": "VenueUnavailability",

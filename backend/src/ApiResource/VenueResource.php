@@ -58,6 +58,10 @@ class VenueResource
     #[Groups(['read'])]
     public ?string $longitude = null;
 
+    /** L'adresse saisie qu'on géocode. */
+    #[Groups(['read'])]
+    public ?string $address = null;
+
     #[Groups(['read'])]
     public string $source = '';
 
@@ -86,6 +90,7 @@ class VenueResource
         $dto->color = $entity->getColor();
         $dto->latitude = $entity->getLatitude();
         $dto->longitude = $entity->getLongitude();
+        $dto->address = $entity->getAddress();
         $dto->source = $entity->getSource();
         $dto->externalRef = $entity->getExternalRef();
         $dto->isActive = $entity->getIsActive();

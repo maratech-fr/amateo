@@ -19,6 +19,7 @@ use App\Entity\TeamTag;
 use App\Entity\Venue;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
+use App\Entity\VenueTravelTime;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ImplicitRuleIntensity;
@@ -413,6 +414,47 @@ final class ResourceChangeStaleScheduleTest extends KernelTestCase
         );
     }
 
+    public function testAVenueTravelTimeMarksTheClubSeasonSchedules(): void
+    {
+        [$club, $season] = $this->seed();
+        $schedule = $this->seasonSchedule($club, $season);
+
+        $otherSeason = $this->season($club, '2026-2027', '2026-09-01', '2027-06-30');
+        $otherSchedule = $this->seasonSchedule($club, $otherSeason);
+        $this->em->flush();
+
+        // La matrice de trajet est STRUCTURE de club+saison (patron passerelle) : elle
+        // nourrira /generate en PR-2 → périme dès PR-1. Season-scopé : la N+1 reste intacte.
+        $this->storeTravelTime($club, $season);
+
+        self::assertTrue(
+            $this->reload($schedule)->isResourcesChangedSinceGeneration(),
+            'Un barème de trajet modifié périme les plannings COMPLETED du club+saison.',
+        );
+        self::assertFalse(
+            $this->reload($otherSchedule)->isResourcesChangedSinceGeneration(),
+            'La frontière saison tient : un barème de la saison N ne périme pas la N+1.',
+        );
+    }
+
+    public function testAnImportClearsTheMarkerAfterATravelTimeChange(): void
+    {
+        [$club, $season] = $this->seed();
+        $schedule = $this->seasonSchedule($club, $season);
+        $this->em->flush();
+
+        $this->storeTravelTime($club, $season);
+        self::assertTrue($this->reload($schedule)->isResourcesChangedSinceGeneration());
+
+        $managed = $this->reload($schedule);
+        $this->importer->import($managed, ['slots' => []]);
+
+        self::assertFalse(
+            $this->reload($schedule)->isResourcesChangedSinceGeneration(),
+            'Un import de résultat solveur démarque le planning après un changement de barème de trajet.',
+        );
+    }
+
     public function testATeamMatchHabitChangeMarksTheClubSeasonSchedules(): void
     {
         [$club, $season] = $this->seed();
@@ -671,6 +713,23 @@ final class ResourceChangeStaleScheduleTest extends KernelTestCase
             ->setLinkType(TeamLinkType::NOT_SIMULTANEOUS)
             ->setTrainingIntensity(TeamLinkIntensity::PREFERRED);
         $this->em->persist($link);
+        $this->em->flush();
+        $this->em->clear();
+    }
+
+    private function storeTravelTime(Club $club, Season $season): void
+    {
+        // Les venueAId/venueBId ne sont pas relus par le listener (colonnes club/saison
+        // dénormalisées) : deux uuids suffisent à déclencher le marquage club+saison.
+        $ids = [$this->uuid(), $this->uuid()];
+        sort($ids);
+        $travel = (new VenueTravelTime)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setVenueAId($ids[0])
+            ->setVenueBId($ids[1])
+            ->setDrivingMinutes(12);
+        $this->em->persist($travel);
         $this->em->flush();
         $this->em->clear();
     }

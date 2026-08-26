@@ -47,6 +47,9 @@ class VenueStateProcessor extends AbstractStateProcessor
         if (null !== $input->longitude) {
             $entity->setLongitude($input->longitude);
         }
+        if (null !== $input->address) {
+            $entity->setAddress($input->address);
+        }
         if (null !== $input->source) {
             $entity->setSource($input->source);
         }
@@ -89,6 +92,9 @@ class VenueStateProcessor extends AbstractStateProcessor
         }
         if (null !== $input->longitude) {
             $entity->setLongitude($input->longitude);
+        }
+        if (null !== $input->address) {
+            $entity->setAddress($input->address);
         }
         if (null !== $input->source) {
             $entity->setSource($input->source);

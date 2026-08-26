@@ -3,15 +3,15 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-08-26 (P2-52 / RMM-10, dernier lot de code du module matchs : §2 ligne
-`Fixture` gagne `unplacedReason` — lue contre `Fixture.php`/`FixtureResource.php`/
-`FixtureUnplacedReason.php` ; §3 nouvelle route `GET /api/schedules/{id}/validate-impact` contre
-`ValidateImpactController.php`/`OrphanedFixtureFinder.php`, déclarée `CustomRoutesOpenApiFactory.php`
-et présente au snapshot OpenAPI ; ligne `/validate` recalée sur son nouvel effet de bord contre
-`ValidateScheduleController.php` (dépointage `FixtureVenueLossMarker`) ; ligne `deletion-impact`
-recalée contre `CascadePlan.php` (`FixtureVenueLossStep` remplace le `ClearFieldStep` générique sur
-`Fixture.venueId`). Reste antérieur non re-vérifié cette passe — un stamp REMPLACE, l'historique vit
-dans git : `git log -p --follow backend/docs/backend-inventory.md`)
+Last verified @ 2026-08-26 (P2-53 RMM-8 PR-1 — géo + matrice de trajet : §2 nouvelle ressource
+`VenueTravelTime` (`/api/venue_travel_times`) contre `Entity/VenueTravelTime.php` /
+`ApiResource/VenueTravelTimeResource.php` / `State/{Processor,Provider}/VenueTravelTime*.php` ;
+`Venue.address` et `Coach.isVehicled` ajoutés aux notes des lignes #4/#5 contre `Entity/Venue.php`
+/ `Entity/Coach.php` ; §3 nouvelle sous-section « Géo » contre `GeocodeController.php` /
+`VenueTravelTimeAutofillController.php`, déclarées `CustomRoutesOpenApiFactory.php` et présentes
+au snapshot OpenAPI (`specs/courantes/openapi-snapshot.meta.md` fait foi du delta). Reste antérieur non re-vérifié
+cette passe — un stamp REMPLACE, l'historique vit dans git :
+`git log -p --follow backend/docs/backend-inventory.md`)
 
 ---
 
@@ -98,8 +98,8 @@ Doctrine correspondantes vivent dans `backend/src/Entity/` et utilisent des UUID
 | 1 | Club | `/api/clubs` | Clubs / organisations | Opération custom `POST /clubs/{id}/import-teams` |
 | 2 | Season | `/api/seasons` | Saisons sportives | |
 | 3 | Team | `/api/teams` | Équipes (catégorie, priorité, créneaux) | |
-| 4 | Venue | `/api/venues` | Salles / lieux de pratique | |
-| 5 | Coach | `/api/coaches` | Entraîneurs | |
+| 4 | Venue | `/api/venues` | Salles / lieux de pratique | `address` (P2-53 RMM-8, nullable) — l'adresse saisie qu'on géocode en `latitude`/`longitude` via `GET /api/geocode` (§3) |
+| 5 | Coach | `/api/coaches` | Entraîneurs | `isVehicled` (P2-53 RMM-8, bool, défaut false) — véhiculé → barème voiture d'une paire de gymnases, sinon barème à pied ; consommé par le solveur en PR-2 |
 | 6 | User | `/api/users` | Utilisateurs | |
 | 7 | ClubUser | *(plus d'API)* | Membres du club (rôles) — la ressource générique a été **RETIRÉE le 2026-08-20 (P4-103)** : lecture seule, elle listait `userId`/`role`/`isActive` **sans aucun consommateur**, le front passant par `/api/memberships/*`. Surface retirée, garantie conservée par `MemberRoleTest` | |
 | 8 | Sport | `/api/sports` | Types de sports | |
@@ -132,6 +132,7 @@ Doctrine correspondantes vivent dans `backend/src/Entity/` et utilisent des UUID
 | — | TeamLink | `/api/team_links` | Pont déclaré entre deux équipes — pas d'entité joueur, le gestionnaire déclare le lien (`teamAId < teamBId` normalisé par le processor) : `NOT_SIMULTANEOUS` (double projet, jamais en même temps) ou `BACK_TO_BACK` (enchaînées, implique `NOT_SIMULTANEOUS`). Consommé par le module matchs (`MatchPlacementPayloadBuilder`, `MatchConflictDetector`) — le solveur d'entraînement ne le lit pas | |
 | — | TeamMatchHabit | `/api/team_match_habits` | Créneau de match habituel d'une équipe (un par jour de semaine, gymnase optionnel) — consommé par le module matchs (`MatchPlacementPayloadBuilder`, `AwayKickoffEstimator`) pour estimer les coups d'envoi à l'extérieur, **et par le solve hebdo** (`ScheduleConstraintBuilder::deriveMatchDay`, RMM-5 PR-3) pour dériver le `matchDay` (jour de repos) de l'équipe — toute écriture marque les plannings `COMPLETED` du club+saison périmés (`ResourceChangeStaleScheduleListener`) | |
 | — | MatchSlotRotation | `/api/match_slot_rotations` | **RMM-5 : PR-1 (modèle, 2026-08-25) → PR-2 (SOFT `/place-matches`, même jour) → PR-3 (dérive le `matchDay` du solve hebdo, même jour).** Créneau de match PARTAGÉ (gymnase **NOT NULL** + jour ISO + heure, unicité `(club_id, season_id, venue_id, day_of_week, kickoff_time)`) occupé en alternance par 2..10 équipes ordonnées (`MatchSlotRotationTeam`, `position` purement FICTIF — aucun calendrier). Écriture par remplacement transactionnel des membres ; 409 sur course d'unicité de créneau. Toute écriture (rotation ou membre) marque les plannings `COMPLETED` du club+saison périmés (`ResourceChangeStaleScheduleListener`). Détail : [`module-matchs.md`](../../specs/courantes/module-matchs.md) § Rotation A/B. | |
+| — | VenueTravelTime | `/api/venue_travel_times` (filtre `seasonId` exact) | **P2-53 RMM-8 PR-1 (2026-08-26).** Un barème de trajet ENTRE DEUX GYMNASES du club+saison : `drivingMinutes`/`walkingMinutes` (nullables, chacun indépendant) + `drivingSource`/`walkingSource` (`AUTO`\|`MANUAL`, ne portent une valeur que si la minute correspondante est renseignée). **Symétrique** : le processor normalise `venueAId < venueBId` (ordre lexical uuid) — un couple = une ligne (unique `club_id, season_id, venue_a_id, venue_b_id`). Toute valeur écrite par le CRUD est `MANUAL` — **jamais écrasée** par l'autofill (`POST /api/venue-travel-times/autofill`, §3 · `backend/docs/geo-api.md`). GetCollection/Get/Post/Put/Delete, écriture management (SEC-07), lecture ouverte au Membre. Cascade : suppr. d'un gymnase emporte ses barèmes (l'une ou l'autre colonne, patron `TeamLink`) ; purgée avec la saison ; suit la transition de saison (remap gymnase, minutes ET sources transcrites) ; STRUCTURE de club+saison — pas de `schedulePlanId`, la matrice nourrit tous les plans (patron `TeamLink`) ; toute écriture marque les plannings `COMPLETED` du club+saison périmés (`ResourceChangeStaleScheduleListener`). **Le solveur ne la lit pas encore** — bloc payload + contrainte moteur = PR-2. | |
 
 > La numérotation n'est **pas** un décompte — liste exhaustive et à jour : `ls backend/src/ApiResource/`. Les tables globales de référence (`PublicHoliday`, `SchoolHolidayPeriod`, `LeagueMatchWindow`) sont exposées en **lecture seule via contrôleurs invokables** (§3), pas comme ressources CRUD.
 
@@ -348,6 +349,16 @@ période capture ses dates dès sa création (ADR-0002), validée ou non. C'est 
 LECTURE (il n'existe rien d'autre à montrer tant que rien n'est validé), pas une réécriture de
 l'invariant : le solveur et le rail d'édition n'en sont pas affectés, seul cet encart de stats lit
 au travers.
+
+### Géo — géocodage & autofill de la matrice de trajet (P2-53 RMM-8, PR-1)
+
+Deux clients externes SSRF-safe (hosts codés en dur, patron `FfbbApiClient`), routes et logique
+détaillées dans [`docs/geo-api.md`](geo-api.md).
+
+| Route | Méthode | Contrôleur | Description |
+|-------|---------|------------|-------------|
+| `/api/geocode` | GET | `GeocodeController` | Proxy vers la Base Adresse Nationale (query `q`, 3 à 200 caractères). Management (SEC-07) ; 422 requête invalide, 502 service indisponible. Rend `{candidates: [{label, latitude, longitude, score}]}`, jamais le hit brut. |
+| `/api/venue-travel-times/autofill` | POST | `VenueTravelTimeAutofillController` | Remplit AUTO les minutes voiture/à pied de chaque paire de gymnases géolocalisés du club+saison, via l'itinéraire IGN. Management + saison écrivable (409 archivée) + rate-limit dédié PAR UTILISATEUR (`venue_travel_time_autofill`, 10/h) ; 422 au-delà du cap de 120 paires ; 409 sur course d'écriture concurrente. Une valeur `MANUAL` n'est jamais écrasée. Rend `{filled, unresolved[], skippedManual}`. |
 
 ### Export PDF / Excel
 

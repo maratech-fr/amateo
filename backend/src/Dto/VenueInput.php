@@ -25,6 +25,11 @@ class VenueInput
     #[Groups(['write'])]
     public ?string $longitude = null;
 
+    /** L'adresse saisie (géocodée en lat/long via GET /api/geocode). */
+    #[Assert\Length(max: 255)]
+    #[Groups(['write'])]
+    public ?string $address = null;
+
     #[Assert\NotBlank]
     #[Assert\Choice(choices: ['manual', 'ffbb', 'import'])]
     #[Groups(['write'])]

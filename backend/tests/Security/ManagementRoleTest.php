@@ -58,6 +58,10 @@ final class ManagementRoleTest extends WebTestCase
             // Club branding writes (same surface as /club/appearance).
             ['POST', '/api/club/logo'],
             ['DELETE', '/api/club/logo'],
+            // P2-53 RMM-8 — géocodage et autofill de la matrice : assertManager() tire AVANT
+            // tout travail, un id/corps bidon suffit à atteindre le 403.
+            ['GET', '/api/geocode?q=test'],
+            ['POST', '/api/venue-travel-times/autofill'],
         ];
     }
 
@@ -120,6 +124,9 @@ final class ManagementRoleTest extends WebTestCase
             ['POST', '/api/calendar_entries', '{"kind":"event","title":"NR","startDate":"2027-01-10","endDate":"2027-01-10"}'],
             ['POST', '/api/seasons', '{"name":"NR Saison","startDate":"2030-07-15","endDate":"2031-07-14"}'],
             ['POST', '/api/team_period_overrides', '{"schedulePlanId":"' . $uuid . '","teamId":"' . $uuid . '"}'],
+            // P2-53 RMM-8 — le CRUD de la matrice de trajet passe au data-provider géré (deux
+            // uuids valides-en-forme atteignent le processor, qui 403 un non-management).
+            ['POST', '/api/venue_travel_times', '{"venueAId":"' . $uuid . '","venueBId":"22222222-2222-4222-8222-222222222222","drivingMinutes":15}'],
         ];
     }
 

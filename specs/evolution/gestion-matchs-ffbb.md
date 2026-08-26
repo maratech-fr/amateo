@@ -260,6 +260,12 @@ préféré. Le radar signale tout placement **hors envelope**.
 
 ## 7. Le trajet = infra partagée avec l'entraînement (une pierre, deux coups)
 
+> ⚠ **La matrice NAÎT côté entraînement (P2-53/RMM-8, PR-1 livrée le 2026-08-26)** : géocodage
+> d'adresse (BAN) + table `venue_travel_time` (deux barèmes par paire de gymnases, voiture/à pied,
+> sources AUTO/MANUAL) + autofill IGN — backend pur, le solveur ne la lit pas encore (PR-2). Le
+> volet MATCHS ci-dessous (siège club ↔ ville adverse) reste **ouvert**, il attend l'annuaire
+> adverse (RMM-9/P2-54) pour avoir une ville/un gymnase adverse à mesurer.
+
 Un adversaire = une **ville** → **temps de trajet siège club ↔ ville adverse**. C'est la même matrice trajet
 que le module d'entraînement voulait déjà (FF#5, `venue_travel_times`) : elle sert **l'entraînement**
 (gym→gym) **ET** les matchs (siège→ville adverse). **Un seul investissement, deux features** → priorité

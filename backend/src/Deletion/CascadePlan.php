@@ -22,6 +22,7 @@ use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
+use App\Entity\VenueTravelTime;
 use App\Entity\VenueUnavailability;
 use App\Enum\ConstraintScope;
 
@@ -93,6 +94,10 @@ final class CascadePlan
             new MatchSlotRotationVenuePruneStep(new ImpactLabel('venue_match_slot_rotation', 'créneau de match partagé', 'créneaux de match partagés')),
             new DeleteByFieldStep(VenueUnavailability::class, 'venueId', new ImpactLabel('venue_unavailability', 'indisponibilité déclarée', 'indisponibilités déclarées')),
             new DeleteByFieldStep(VenuePeriodOverride::class, 'venueId', new ImpactLabel('venue_period_override', 'réglage de période', 'réglages de période')),
+            // P2-53 RMM-8 — la matrice de trajet du gymnase part avec lui (couple normalisé :
+            // le gymnase peut occuper l'une ou l'autre colonne, comme team_link).
+            new DeleteByFieldStep(VenueTravelTime::class, 'venueAId', new ImpactLabel('venue_travel_time_a', 'barème de trajet', 'barèmes de trajet')),
+            new DeleteByFieldStep(VenueTravelTime::class, 'venueBId', new ImpactLabel('venue_travel_time_b', 'barème de trajet', 'barèmes de trajet')),
             new DeleteByFieldStep(Reservation::class, 'venueId', new ImpactLabel('venue_reservation', 'réservation d\'équipe', 'réservations d\'équipe')),
             new DeleteByFieldStep(ScheduleSlotTemplate::class, 'venueId', new ImpactLabel('venue_slot_template', 'séance placée dans vos plannings', 'séances placées dans vos plannings')),
             new DeleteByFieldStep(ScheduleDiagnostic::class, 'venueId', null),

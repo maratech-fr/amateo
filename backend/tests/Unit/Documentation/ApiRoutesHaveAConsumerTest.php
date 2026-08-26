@@ -58,6 +58,9 @@ final class ApiRoutesHaveAConsumerTest extends TestCase
         // grep du frontend ne pouvait la voir — c'est pour ce genre de cas qu'une exemption
         // se justifie par une PREUVE, pas par « je n'ai rien trouvé ».
         '/api/ffbb-logos/{scope}/{code}' => 'URL stockée en base par FfbbClubPopulator, rendue en <img src> — jamais écrite dans le front',
+        // P2-53 RMM-8 PR-1 : le géocodage BAN naît TESTÉ (CRUD + autofill de la matrice de
+        // trajet livrés backend) mais son écran arrive à la PR-3 — le front le câblera alors.
+        '/api/geocode' => 'route de géocodage née testée (P2-53 PR-1) — le front la câble à la PR écran (PR-3)',
     ];
 
     public function testEveryClubApiRouteHasAtLeastOneConsumer(): void
