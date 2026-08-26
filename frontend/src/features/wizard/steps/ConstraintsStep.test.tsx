@@ -116,6 +116,9 @@ vi.mock("../queries", () => ({
   useImplicitRuleSettings: () => ({ data: h.implicitRules, isError: false }),
   useUpdateImplicitRuleSetting: () => ({ mutate: vi.fn(), isPending: false }),
   useResetImplicitRuleSetting: () => ({ mutate: vi.fn(), isPending: false }),
+  // P2-53 RMM-8 — l'entrée informative « Trajet entre gymnases » (onglet Base) lit la matrice.
+  // Vide par défaut → entrée absente ; le détail est couvert par ImplicitRulesPanel.test.
+  useVenueTravelTimes: () => ({ data: [] }),
 }));
 
 // Contrat réel de usePeriodAnchor : sans entrée (mode saison) l'ancre est la BASE

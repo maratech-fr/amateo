@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Route, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
@@ -28,8 +28,11 @@ import { filterSalles } from "../lib/salleSuggestions";
 import { slotPlacementError } from "../lib/slotOverlap";
 import { useCreateSlot, useCreateVenue, useDeleteSlot, useDeletionImpact, useDeleteVenue, useFfbbSalles, useFfbbSallesProches, useReservations, useUpdateSlot, useUpdateVenue, useVenueSlots, useWizardVenues } from "../queries";
 import { useWizardStore } from "../store";
+import { useWizardFooter } from "../lib/footerSlot";
 import { PeriodVenues } from "./PeriodStructure";
+import { TravelMatrixModal } from "./TravelMatrixModal";
 import { VenueAvailabilityGrid } from "./VenueAvailabilityGrid";
+import { VenueGeocodeField } from "./VenueGeocodeField";
 import { CapacitySelect, GroupLabelField, SharedSlotHint } from "./slotFields";
 import { WEEK } from "../lib/weekGrid";
 import { venuesWithoutSlot } from "../lib/useStepValidation";
@@ -297,6 +300,23 @@ function VenuesEditor() {
   // Fall back to the first venue when the selected id isn't in the list yet
   // (just-created, list refetching) so the panel never flashes "no venue".
   const selected = (selectedId ? venues.find((v) => v.id === selectedId) : null) ?? venues[0] ?? null;
+
+  // P2-53 RMM-8 — « Trajets entre gymnases » : un bouton du pied de page (à côté de « Suivant »),
+  // patron du « Trier » des Équipes. Il n'a de sens qu'avec au moins deux gymnases (il faut une
+  // paire). Ouvre la matrice de trajet.
+  const { setFooterExtra } = useWizardFooter();
+  const [matrixOpen, setMatrixOpen] = useState(false);
+  useEffect(() => {
+    setFooterExtra(
+      venues.length >= 2 ? (
+        <Button size="sm" variant="outline" onClick={() => setMatrixOpen(true)}>
+          <Route className="size-4" />
+          Trajets entre gymnases
+        </Button>
+      ) : null,
+    );
+    return () => setFooterExtra(null);
+  }, [venues.length, setFooterExtra]);
   const venueSlots = null === selected ? [] : slots.filter((s) => s.venueId === selected.id);
   // Les fenêtres match du gymnase affiché : la grille les rend en fantôme, la légende
   // n'apparaît que s'il y en a. Une seule dérivation pour les deux — sinon la légende
@@ -628,6 +648,16 @@ function VenuesEditor() {
                 <Trash2 className="size-4" />
               </Button>
             </div>
+            {/* P2-53 RMM-8 — adresse + géolocalisation. La géo alimente la matrice de trajet
+                (bouton « Trajets entre gymnases » du pied de page). PUT partiel : n'écrit que
+                address/lat/long, le reste du gymnase est préservé. */}
+            <div className="mt-3 border-t border-border pt-3">
+              <VenueGeocodeField
+                key={`geo-${selected.id}`}
+                venue={selected}
+                onLocate={({ address, latitude, longitude }) => update.mutate({ id: selected.id, body: { name: selected.name, address, latitude, longitude } })}
+              />
+            </div>
           </div>
 
           {/* Slot-placement toolbar — only the duration of the next dropped slot.
@@ -765,6 +795,19 @@ function VenuesEditor() {
           setPendingSplitOff(null);
         }}
       />
+
+      {matrixOpen ? (
+        <TravelMatrixModal
+          onClose={() => setMatrixOpen(false)}
+          onLocateVenue={(venueId) => {
+            // « Renseigner l'adresse » d'un gymnase sans géo → on le sélectionne et on ferme la
+            // matrice : la fiche du gymnase (avec le champ adresse) est juste en dessous.
+            setSelectedId(venueId);
+            setVenueName("");
+            setMatrixOpen(false);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

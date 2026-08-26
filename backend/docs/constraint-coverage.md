@@ -1,6 +1,19 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-08-25 (recalé RMM-5 PR-3 : la ligne « Jour de repos après un match » dit désormais que le `matchDay` émis est DÉRIVÉ de l'image A/B côté backend — `max(jours ISO des habitudes ∪ rotations)`, repli champ déclaré converti 0-based→ISO — via `ScheduleConstraintBuilder::deriveMatchDay`, vérifié au code. Vérification précédente toujours valable : recalé ENG-32 : le monolithe `constraints.py` est devenu le paquet `constraints/` — les références de ce fichier pointent désormais fichier+fonction, stables au refactor. Vérification précédente toujours valable : recalé par la livraison ALIGN-09 : « au moins une séance tel jour » passe 🟡 → ✅ — mode wizard, gate bloquant, sémantique « l'un de ces jours » vérifiée au code (`constraints/targeting.py`, `add_time_window_constraints` — une somme sur l'union par équipe). `forcedDays` était déjà prouvé décisif par le test sémantique CI ; la clé héritée #120 est migrée (contraintes vives ET snapshots))
+Last verified @ 2026-08-26 (rotation `documentation-update`, P2-53 PR-3 — zone non touchée par
+cette PR mais nouveau besoin gestionnaire livré : **ligne ajoutée** Axe GYMNASE « Éviter
+d'enchaîner deux gymnases trop éloignés » = règle implicite `travelTime`, statut 🟡 partiel — écran
+livré, intensité fixée en dur à PREFERRED côté backend (`ScheduleConstraintBuilder.php:602-604`),
+aucun rail wizard pour MANDATORY. Vérification précédente toujours valable : la ligne « Jour de
+repos après un match » — `matchDay` émis est DÉRIVÉ de l'image A/B côté backend (`max` des jours
+ISO des habitudes ∪ rotations, repli champ déclaré converti 0-based→ISO) via
+`ScheduleConstraintBuilder::deriveMatchDay`, vérifié au code. Recalé ENG-32 : le monolithe
+`constraints.py` est devenu le paquet `constraints/` — les références de ce fichier pointent
+désormais fichier+fonction, stables au refactor. Recalé par la livraison ALIGN-09 : « au moins une
+séance tel jour » passe 🟡 → ✅ — mode wizard, gate bloquant, sémantique « l'un de ces jours »
+vérifiée au code (`constraints/targeting.py`, `add_time_window_constraints` — une somme sur
+l'union par équipe). `forcedDays` était déjà prouvé décisif par le test sémantique CI ; la clé
+héritée #120 est migrée (contraintes vives ET snapshots))
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels
@@ -42,6 +55,7 @@ Last verified @ 2026-08-25 (recalé RMM-5 PR-3 : la ligne « Jour de repos aprè
 | **« Au moins une séance dans tel gymnase »** | FACILITY `minAtVenueId` + `minAtVenueCount` (HARD, mode « au moins N ») — plancher, ≠ forçage ; les autres séances restent libres | ✅ *(ALIGN-05)* | « au moins 1 séance à Armand » ; fail-fast backend si N > séances/semaine |
 | « Nb max d'équipes par créneau d'un gymnase » | **`VenueTrainingSlot.capacity`** par créneau (écran Gymnases, borné à 1 si `canSplit=false`) | ✅ | ADN divisible en 3. ⚠ La famille `FACILITY_CAPACITY` (rabot `maxTeams` sur TOUT un gymnase) a été retirée le 2026-08-08 : aucun chemin UI ne la créait |
 | « Réserver un créneau à une équipe (verrou) » | onglet « Réserver » → `ScheduleSlotTemplate` `lockLevel=HARD` (pin durable, pas une contrainte) — verrouille le **créneau entier**, divisible ou non : l'équipe épinglée est **seule**, le solveur ne remplit jamais l'autre moitié. Partager = **explicite** : réserver les N équipes (la modal borne le picker à `capacity`) — décision gestionnaire | ✅ *(ALIGN-07)* | SM1 seul sur samedi 18h (cap 2) ; SM1+SM2 co-épinglés = partage assumé |
+| **« Éviter d'enchaîner deux gymnases trop éloignés »** | règle implicite `travelTime` (matrice `venue_travel_time` renseignée sur l'écran Gymnases, autofill IGN ou saisie manuelle) — départage « moindre trajet » soft, jamais dominant | 🟡 partiel | **P2-53 RMM-8 (2026-08-26)** — écran livré (PR-3), intensité **fixée en dur à PREFERRED** à l'émission (`ScheduleConstraintBuilder.php:602-604`) : le moteur sait déjà consommer MANDATORY, mais aucun réglage wizard ne peut la basculer — reste le levier Obligatoire, `specs/evolution/roadmap.md` P2-53 |
 
 ## Axe COACH
 

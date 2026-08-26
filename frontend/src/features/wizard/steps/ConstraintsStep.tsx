@@ -5,7 +5,7 @@ import { useSearchParams } from "react-router";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { PeriodAnchorGate } from "./PeriodAnchorGate";
-import { ProductRulesPanel, WellbeingRulesPanel, isWellbeingKey } from "./ImplicitRulesPanel";
+import { ProductRulesPanel, TravelRuleNotice, WellbeingRulesPanel, isWellbeingKey } from "./ImplicitRulesPanel";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
@@ -785,7 +785,12 @@ export function ConstraintsStep() {
       {/* Onglets de présentation : Base (immuables, lecture seule) et Bien-être (réglables). Aucun
           ne crée de contrainte. */}
       {"base" === mode ? (
-        <ProductRulesPanel />
+        <>
+          <ProductRulesPanel />
+          {/* P2-53 RMM-8 — entrée informative « Trajet entre gymnases », visible seulement si une
+              matrice existe (opt-in dérivé serveur-side). Lecture seule : aucun rail d'intensité. */}
+          <TravelRuleNotice />
+        </>
       ) : "wellbeing" === mode ? (
         // Même ancrage que « Réserver » : en période le panneau règle la COPIE
         // du plan (schedulePlanId), jamais le socle du club ; hors période, la saison (null).

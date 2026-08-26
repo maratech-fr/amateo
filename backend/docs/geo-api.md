@@ -1,7 +1,12 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-08-26 (P2-53 RMM-8 PR-1 — première passe, écrite avec la PR qui crée les deux
-clients). Confronté au code : hosts en constantes dures (`Service/Geo/BanGeocodingClient.php:24`,
+Last verified @ 2026-08-26 (P2-53 RMM-8 PR-3 — l'écran câblé, câblage confronté au code :
+`VenueGeocodeField.tsx`/`TravelMatrixModal.tsx` appellent bien `GET /api/geocode` et les routes
+`venue_travel_times`/`venue-travel-times/autofill` ✓, score BAN non affiché en chiffre
+[`LOW_SCORE = 0.4`] ✓, aucune écriture avant clic explicite — falsifié par les tests RTL des deux
+composants ✓, `ScheduleConstraintBuilder.php:602-604` fixe toujours l'intensité `travelTime` à
+PREFERRED en dur [aucun rail backend pour la régler] ✓). Backend non re-sondé cette passe (déjà
+confronté PR-1/PR-2) : hosts en constantes dures (`Service/Geo/BanGeocodingClient.php:24`,
 `Service/Geo/IgnRoutingClient.php:27`) ✓ · `max_redirects: 0` + timeout serré sur les deux clients
 ✓ · `GeocodeController.php:33-46` (management SEC-07, 422 requête invalide, 502 transport) ✓ ·
 `VenueTravelTimeAutofillController.php:42-77` (management, saison écrivable, rate-limit dédié,
@@ -41,8 +46,14 @@ Headers:
 **Proxy backend** : `GET /api/geocode?q=` (`GeocodeController`) — management-gated (SEC-07,
 `ManagementAccessGuard::assertManager`), 422 si la requête est vide/malformée, 502 nommé si le
 service est indisponible (best-effort : jamais un formulaire cassé). Le frontend n'appelle jamais
-directement api-adresse.data.gouv.fr (frontière §2 de `CLAUDE.md`). Consommateur écran : pas
-encore câblé côté frontend au moment de PR-1 — la route naît testée, le câblage est PR-3.
+directement api-adresse.data.gouv.fr (frontière §2 de `CLAUDE.md`). **Consommateur écran (PR-3,
+livré)** : `VenueGeocodeField` (`frontend/src/features/wizard/steps/VenueGeocodeField.tsx`), sur la
+fiche d'un gymnase de l'étape Gymnases — saisie ≥3 caractères → « Localiser » → liste de candidats
+(`label`, sans le score chiffré : le premier porte « Recommandé », un score < 0.4 porte
+« correspondance approximative ») → clic écrit `address`+`latitude`+`longitude` sur le gymnase
+(PUT partiel). Un gymnase déjà géolocalisé (import FFBB ou géocodage antérieur) s'affiche
+« Localisé » et ne réécrit rien tant que « Modifier l'adresse » n'est pas cliqué explicitement —
+aucune écriture silencieuse. Détail écran : `frontend/docs/frontend-wizard.md` §Gymnases.
 
 ## 2. Itinéraire (temps de trajet) — IGN Géoplateforme
 
@@ -95,7 +106,7 @@ club/saison (un 400 de contexte ne brûle pas un jeton — revue sécurité 2026
 autofill concurrent (ou un POST manuel du même couple) a créé la même ligne entre le pré-read et
 l'écriture (`UniqueConstraintViolationException` nommée, idiome rejouable P4-67).
 
-## Ce que la matrice alimente désormais (PR-2)
+## Ce que la matrice alimente désormais (PR-2 + PR-3)
 
 - **Le solveur d'ENTRAÎNEMENT la lit** — `POST /generate` seul (jamais `/place-matches`) :
   `ScheduleConstraintBuilder` sérialise la matrice club+saison (TRIÉE) dans le bloc
@@ -105,6 +116,21 @@ l'écriture (`UniqueConstraintViolationException` nommée, idiome rejouable P4-6
   moteur (départage « moindre trajet » + battement PREFERRED/MANDATORY, barème coach
   véhiculé/passerelle à pied, défaut 20 min) : `engine/docs/constraint-vocabulary.md` §Trajet entre
   gymnases. Gardé par `CrossStack/VenueTravelTimePayloadParityTest`.
-- **Aucun écran** ne l'exerce encore — PR-3 (réglage d'intensité PREFERRED↔MANDATORY compris).
+- **L'écran (PR-3, livré)** : `TravelMatrixModal` (bouton footerExtra « Trajets entre gymnases » de
+  l'étape Gymnases, offert dès ≥2 gymnases) — première ouverture (aucune ligne) = consentement
+  passif à l'autofill, **jamais lancé sans clic** ; matrice groupée « Depuis {gymnase} », deux
+  colonnes voiture/à pied, badge AUTO/MANUEL (icône+texte), couples non résolus « À saisir »
+  + raison servie ; éditer une valeur la passe MANUEL côté serveur, « Recalculer » préserve les
+  MANUEL. La case **« Véhiculé »** sur la fiche coach (`CoachesStep`) choisit le barème appliqué à
+  ses enchaînements. **`TravelRuleNotice`** (onglet Base de l'étape Contraintes) affiche l'état de
+  la règle — visible seulement si la matrice porte ≥1 ligne (même dérivation que
+  `ScheduleConstraintBuilder`) — **en lecture seule** : aucun rail backend ne stocke l'intensité
+  (PR-2 la fixe en dur à PREFERRED, `ScheduleConstraintBuilder.php:602-604`), donc l'écran
+  n'invite pas à un réglage qui n'existe pas encore. Reste ouvert : le levier Obligatoire (rail de
+  réglage PREFERRED↔MANDATORY) — arbitrage fondateur en attente, voir
+  `specs/evolution/roadmap.md` P2-53. Détail écran complet :
+  `frontend/docs/frontend-wizard.md` §Gymnases/§Coachs/§Contraintes.
 - Décisions fondateur détaillées (deux barèmes, `Coach.isVehicled`, défaut 20 min pour une paire
-  jamais arbitrée, le trajet jamais dominant) : `specs/courantes/etat-des-lieux.md`.
+  jamais arbitrée, le trajet jamais dominant) : **`specs/evolution/roadmap.md` P2-53** — l'item
+  reste OUVERT (le levier Obligatoire manque), donc ces décisions n'ont pas encore gradué vers
+  `etat-des-lieux.md` (elles y migreront avec le MOVE, à la clôture complète du lot).
