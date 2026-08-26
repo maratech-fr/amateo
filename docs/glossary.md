@@ -63,7 +63,7 @@
 | **Réservation** (`Reservation`) | Épingle durable équipe→créneau (HARD), envoyée à l'engine en `slotTemplates`. ≠ `ScheduleSlotTemplate` (résultat de solve). |
 | **Diagnostic** | Explication structurée d'un échec/compromis solveur (`ScheduleDiagnostic`, ex. `day_constraint_conflict`, `venue_minimum_unreachable`). |
 
-## Payload backend↔engine (contrat `CONTRACT_VERSION`, actuel 2.15)
+## Payload backend↔engine (contrat `CONTRACT_VERSION`, actuel 2.16)
 
 Clés racine : `version` · `clubId` · `seasonId` · `scheduleName` · `solverSeed` (déterminisme) ·
 `solverTimeoutSeconds` (**plafond**, jamais le budget réel — paliers adaptatifs 60/180/600 s) ·

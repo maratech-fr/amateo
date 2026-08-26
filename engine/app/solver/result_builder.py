@@ -19,6 +19,7 @@ from ortools.sat.python import cp_model
 
 from app.solver.constraints import (
     ResolvedImplicitRules,
+    build_travel_matrix,
     iter_team_link_overlaps,
     team_share_declared_pairs,
 )
@@ -306,6 +307,7 @@ def _generate_diagnostics(
     diagnostics.extend(_diagnose_conflicts(model_data, solver_status, slots, slot_capacities=slot_capacities))
     diagnostics.extend(_diagnose_shared_trainings(model_data, solver_status, slots))
     diagnostics.extend(_diagnose_team_links(model_data, solver_status, slots))
+    diagnostics.extend(_diagnose_travel_times(model_data, solver_status, slots, team_coach_map or {}))
     return diagnostics
 
 
@@ -1145,6 +1147,131 @@ def _diagnose_team_links(
                 "createdAt": datetime.now(UTC).isoformat(),
             }
         )
+    return diagnostics
+
+
+def _diagnose_travel_times(
+    model_data: Mapping[str, Any] | Any,
+    solver_status: int,
+    slots: list[dict[str, Any]],
+    team_coach_map: Mapping[str, list[str]],
+) -> list[dict[str, Any]]:
+    """P2-53 RMM-8 PR-2 — NOMMER un battement de trajet RÉSIDUEL sous une règle MANDATORY.
+
+    ``add_travel_time_hard_constraints`` interdit tout enchaînement cross-gymnase au battement
+    trop court entre séances LIBRES (ou libre⇔verrou). Le seul cas qui SURVIT est deux séances
+    VERROUILLÉES qui s'enchaînent trop serré à des gymnases différents : deux actes du
+    gestionnaire qui se contredisent, ANNONCÉS post-solve plutôt qu'avalés (« jamais INFEASIBLE
+    muet », CLAUDE.md §6 — patron ``_diagnose_team_links``). PREFERRED ne passe pas ici : son
+    battement concédé est un COMPROMIS (famille ``travel_time``), pas un diagnostic. Matrice
+    absente / règle inactive ou PREFERRED / solve non abouti ⇒ ``[]``."""
+    implicit = _get(model_data, "implicitRules", "implicit_rules", default=None)
+    travel = _get(implicit, "travelTime", "travel_time", default=None) if implicit is not None else None
+    if travel is None or solver_status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return []
+    if str(_get(travel, "intensity", default="PREFERRED")).upper() != "MANDATORY":
+        return []
+
+    matrix = build_travel_matrix(_collection(model_data, "venueTravelTimes", "venue_travel_times"))
+    if not matrix:
+        return []
+    default_minutes = int(_get(travel, "defaultMinutes", "default_minutes", default=20))
+
+    placements = _team_link_placements_from_slots(slots)
+    coach_names = _coach_name_map(model_data)
+    team_names = _team_name_map(model_data)
+    vehicled = {
+        str(_get(c, "id", default="")): bool(_get(c, "is_vehicled", "isVehicled", default=False))
+        for c in _collection(model_data, "coaches")
+    }
+
+    def _baro(venue_a: str, venue_b: str, *, driving: bool) -> int:
+        pair = matrix.get(frozenset({venue_a, venue_b}))
+        if pair is None:
+            return default_minutes
+        value = pair[0] if driving else pair[1]
+        return int(value) if value is not None else default_minutes
+
+    def _too_tight(pa: tuple[int, int, int, str, None], pb: tuple[int, int, int, str, None], *, driving: bool) -> bool:
+        a_start, a_end, a_day, a_venue, _ = pa
+        b_start, b_end, b_day, b_venue, _ = pb
+        if a_day != b_day or a_venue == b_venue:
+            return False
+        if a_start < b_end and b_start < a_end:  # chevauchement : régi ailleurs
+            return False
+        gap = (b_start - a_end) if a_start <= b_start else (a_start - b_end)
+        return gap < _baro(a_venue, b_venue, driving=driving)
+
+    diagnostics: list[dict[str, Any]] = []
+    seen: set[tuple[str, ...]] = set()
+
+    # Voyageur COACH : ses séances (celles de ses équipes), barème voiture/à pied selon véhiculé.
+    coach_teams: dict[str, list[str]] = defaultdict(list)
+    for team_id, coach_ids in (team_coach_map or {}).items():
+        for coach_id in coach_ids or ():
+            coach_teams[str(coach_id)].append(str(team_id))
+    for coach_id, team_ids in coach_teams.items():
+        gathered = [p for team_id in team_ids for p in placements.get(team_id, [])]
+        ordered = sorted(gathered, key=lambda p: (p[2], p[0], p[1], p[3]))
+        driving = vehicled.get(coach_id, False)
+        for i in range(len(ordered)):
+            for j in range(i + 1, len(ordered)):
+                if not _too_tight(ordered[i], ordered[j], driving=driving):
+                    continue
+                key: tuple[str, ...] = ("coach", coach_id, str(ordered[i][2]), ordered[i][3], ordered[j][3])
+                if key in seen:
+                    continue
+                seen.add(key)
+                diagnostics.append(
+                    {
+                        "id": f"travel-time-infeasible-coach-{coach_id}-{ordered[i][2]}-{ordered[i][3]}-{ordered[j][3]}",
+                        "type": "travel_time_infeasible",
+                        "severity": "ERROR",
+                        "coachId": coach_id,
+                        "message": (
+                            f"Le coach {_label(coach_id, coach_names)} enchaîne deux séances verrouillées "
+                            "à des gymnases différents sans avoir le temps de faire le trajet entre les deux."
+                        ),
+                        "suggestions": [
+                            "Déverrouillez l'une des deux séances, écartez-les dans la journée, "
+                            "ou ajustez le temps de trajet entre ces deux gymnases.",
+                        ],
+                        "createdAt": datetime.now(UTC).isoformat(),
+                    }
+                )
+
+    # Voyageur PASSERELLE : séances de A face à celles de B, barème À PIED d'office.
+    for index, link in enumerate(_collection(model_data, "teamLinks", "team_links")):
+        team_a = str(_get(link, "teamAId", "team_a_id", default=""))
+        team_b = str(_get(link, "teamBId", "team_b_id", default=""))
+        if not team_a or not team_b or team_a == team_b:
+            continue
+        for pa in placements.get(team_a, []):
+            for pb in placements.get(team_b, []):
+                if not _too_tight(pa, pb, driving=False):
+                    continue
+                key = ("link", team_a, team_b, str(pa[2]), pa[3], pb[3])
+                if key in seen:
+                    continue
+                seen.add(key)
+                diagnostics.append(
+                    {
+                        "id": f"travel-time-infeasible-link-{index}-{pa[2]}-{pa[3]}-{pb[3]}",
+                        "type": "travel_time_infeasible",
+                        "severity": "ERROR",
+                        "message": (
+                            f"Les équipes {_label(team_a, team_names)} et {_label(team_b, team_names)}, "
+                            "déclarées en passerelle, ont des séances verrouillées à des gymnases différents "
+                            "sans le temps de faire le trajet à pied entre les deux."
+                        ),
+                        "suggestions": [
+                            "Déverrouillez l'une des séances, écartez-les dans la journée, "
+                            "ou ajustez le temps de trajet entre ces deux gymnases.",
+                        ],
+                        "createdAt": datetime.now(UTC).isoformat(),
+                    }
+                )
+
     return diagnostics
 
 

@@ -48,6 +48,10 @@ class DiagnosticCauseSchema(SerializableModel):
         # Lot PASSERELLES PR-2 — un candidat LIBRE fermé parce qu'il chevauchait la séance
         # VERROUILLÉE d'une équipe passerelée MANDATORY (``constraintId`` = id de la passerelle).
         "team_link",
+        # P2-53 RMM-8 PR-2 — un candidat LIBRE fermé parce qu'il enchaînait, à un gymnase
+        # DIFFÉRENT, une séance VERROUILLÉE dont le battement était plus court que le barème de
+        # trajet (règle ``travelTime`` MANDATORY).
+        "travel_time",
     ]
     constraint_id: str | None = Field(default=None, alias="constraintId")
     label: str | None = None
@@ -74,6 +78,11 @@ class DiagnosticSchema(SerializableModel):
         # séances qui se chevauchent dans le temps : SOFT concédé (PREFERRED) ou verrous HARD qui
         # se chevauchent sur une MANDATORY (jamais INFEASIBLE muet — CLAUDE.md §6).
         "team_link_not_honored",
+        # P2-53 RMM-8 PR-2 — règle ``travelTime`` MANDATORY : deux séances VERROUILLÉES enchaînées
+        # à des gymnases différents dont le battement est plus court que le barème de trajet (le
+        # coach n'a pas le temps de rejoindre le gymnase suivant). Jamais INFEASIBLE muet : deux
+        # verrous qui se contredisent sont ANNONCÉS post-solve (CLAUDE.md §6).
+        "travel_time_infeasible",
         "soft_lock_moved",
         "unplaced",
         "unplaced_match",

@@ -26,11 +26,13 @@ use App\Entity\TeamTag;
 use App\Entity\TeamTagAssignment;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
+use App\Entity\VenueTravelTime;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\SchedulePlanType;
+use App\Enum\TeamLinkIntensity;
 use App\Repository\VenueTrainingSlotRepository;
 use DateTimeInterface;
 use Doctrine\ORM\EntityManagerInterface;
@@ -57,9 +59,16 @@ final class ScheduleConstraintBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '2.15';
+    public const string CONTRACT_VERSION = '2.16';
     private const CACHE_TTL_SECONDS = 14_400;
     private const DEFAULT_SOLVER_SEED = 42;
+    /**
+     * P2-53 RMM-8 PR-2 — le barème de trajet appliqué à un couple de gymnases jamais arbitré
+     * (« défaut 20 min pour une paire jamais arbitrée », arbitrage fondateur). Émis dans la
+     * règle implicite `travelTime` ; le moteur l'applique quand la colonne voiture/à pied d'un
+     * couple est nulle ou absente.
+     */
+    private const TRAVEL_TIME_DEFAULT_MINUTES = 20;
     /**
      * Upper bound on the solve budget (seconds), aligned with the engine input
      * schema default (`solver_timeout_seconds` = 650). The engine derives an
@@ -201,6 +210,10 @@ final class ScheduleConstraintBuilder
             // ancré au plan) — la même déclaration nourrit socle et périodes. Filtrée au roster
             // dans serializeTeamLinks. Inerte en PR-1 (le moteur l'accepte, ne la consomme pas).
             teamLinks: $em->getRepository(TeamLink::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId], ['id' => 'ASC']),
+            // P2-53 RMM-8 — matrice de trajet : STRUCTURE de club+saison (patron TeamLink), la
+            // même nourrit socle et périodes. Triée à la sérialisation ; sa présence (≥1 ligne)
+            // active la règle implicite `travelTime` (opt-in au premier geste).
+            venueTravelTimes: $em->getRepository(VenueTravelTime::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId], ['id' => 'ASC']),
         );
 
         $this->currentAvailabilitiesByVenue = [];
@@ -399,6 +412,10 @@ final class ScheduleConstraintBuilder
             // socle, jamais des copies ancrées au plan. Le roster de période filtre : une équipe
             // désactivée pour la période sort du payload, son lien est abandonné (serializeTeamLinks).
             teamLinks: $em->getRepository(TeamLink::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId], ['id' => 'ASC']),
+            // P2-53 RMM-8 — matrice de trajet : STRUCTURE de club+saison, mêmes lignes que le
+            // socle (jamais une copie ancrée au plan) — le trajet entre deux gymnases ne change
+            // pas parce qu'on est en période. Sa présence active `travelTime` (opt-in).
+            venueTravelTimes: $em->getRepository(VenueTravelTime::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId], ['id' => 'ASC']),
             // ADR-0002 inv. 5 — le bloc `implicitRules` résout la COPIE de CE plan (repli saison
             // si legacy), jamais la portée saison directement : c'est ce que buildForClubSeason
             // (plan null) fait, ici on porte la période.
@@ -519,6 +536,7 @@ final class ScheduleConstraintBuilder
      * @param array<Reservation>           $reservations           persistent team→slot HARD pins (base/overlay)
      * @param array<SharedTrainingGroup>   $sharedTrainingGroups   P2-27 mutualisation groups (base: plan NULL / period: = planId)
      * @param array<TeamLink>              $teamLinks              lot PASSERELLES — club+season bridges (roster-filtered)
+     * @param array<VenueTravelTime>       $venueTravelTimes       P2-53 RMM-8 — travel matrix rows (club+season, symmetric)
      *
      * @return array<string, mixed>
      */
@@ -537,6 +555,7 @@ final class ScheduleConstraintBuilder
         array $reservations = [],
         array $sharedTrainingGroups = [],
         array $teamLinks = [],
+        array $venueTravelTimes = [],
         ?string $schedulePlanId = null,
     ): array {
         $serializedConstraints = array_merge(
@@ -569,6 +588,23 @@ final class ScheduleConstraintBuilder
                 : $this->implicitRuleResolver->resolve($clubId, $seasonId))
             : ImplicitRuleResolver::defaults();
 
+        // P2-53 RMM-8 PR-2 — la règle implicite `travelTime` naît OPT-IN : elle n'est émise ACTIVE
+        // que si le club a AU MOINS une ligne de matrice de trajet. C'est « l'activation au premier
+        // geste sur la matrice » (précédent opt-in P2-42) : un club qui n'a rien saisi voit un
+        // payload byte-identique à avant (ni bloc `venueTravelTimes`, ni règle). Choix de
+        // conception : la règle est DÉRIVÉE ICI de la présence de matrice — pas un
+        // `ImplicitRuleSetting` stocké — ce qui garde `implicitRules` (bien-être) == sortie du
+        // résolveur pour les 5 clés historiques (invariant `ImplicitRulePayloadParityTest`), et
+        // laisse le réglage d'intensité/seuil (PREFERRED↔MANDATORY, 20) au futur écran (PR-3). Le
+        // moteur, lui, sait déjà consommer MANDATORY : PR-3 n'aura qu'à basculer le cran émis.
+        $serializedTravelTimes = $this->serializeVenueTravelTimes($venueTravelTimes);
+        if ([] !== $serializedTravelTimes) {
+            $implicitRules['travelTime'] = [
+                'intensity' => TeamLinkIntensity::PREFERRED->value,
+                'defaultMinutes' => self::TRAVEL_TIME_DEFAULT_MINUTES,
+            ];
+        }
+
         return [
             'version' => self::CONTRACT_VERSION,
             'clubId' => $clubId,
@@ -590,6 +626,11 @@ final class ScheduleConstraintBuilder
             // chemin byte-identique côté moteur (default_factory=list). Inerte en PR-1 (accepté,
             // non consommé). Gardé par TeamLinkPayloadParityTest.
             'teamLinks' => $this->serializeTeamLinks($teamLinks, $teams),
+            // P2-53 RMM-8 PR-2 — matrice de trajet entre gymnases (barème voiture/à pied par
+            // couple), TRIÉE (venueAId, venueBId). Vide ⇒ [] : chemin byte-identique côté moteur
+            // (default_factory=list) ET règle `travelTime` inactive (ci-dessus). Gardé par
+            // VenueTravelTimePayloadParityTest.
+            'venueTravelTimes' => $serializedTravelTimes,
         ];
     }
 
@@ -795,6 +836,38 @@ final class ScheduleConstraintBuilder
                 'intensity' => $link->getTrainingIntensity()->value,
             ];
         }
+
+        return $result;
+    }
+
+    /**
+     * Sérialise la matrice de trajet en `{venueAId, venueBId, drivingMinutes, walkingMinutes}`,
+     * TRIÉE par (venueAId, venueBId) — tri déterministe pour un payload stable. Les lignes sont
+     * déjà normalisées venueAId < venueBId à la saisie (VenueTravelTimeStateProcessor) ; on ne
+     * filtre PAS au roster des gymnases (la matrice est une STRUCTURE de club+saison, comme les
+     * passerelles côté équipes — le moteur ne lit un couple que si les deux gymnases portent des
+     * séances). Les minutes NULLABLES passent telles quelles : le moteur applique le défaut 20.
+     *
+     * @param array<VenueTravelTime> $rows
+     *
+     * @return array<int, array{venueAId: string, venueBId: string, drivingMinutes: ?int, walkingMinutes: ?int}>
+     */
+    private function serializeVenueTravelTimes(array $rows): array
+    {
+        $result = [];
+        foreach ($rows as $row) {
+            $result[] = [
+                'venueAId' => $row->getVenueAId(),
+                'venueBId' => $row->getVenueBId(),
+                'drivingMinutes' => $row->getDrivingMinutes(),
+                'walkingMinutes' => $row->getWalkingMinutes(),
+            ];
+        }
+
+        usort(
+            $result,
+            static fn (array $a, array $b): int => [$a['venueAId'], $a['venueBId']] <=> [$b['venueAId'], $b['venueBId']],
+        );
 
         return $result;
     }
@@ -1019,6 +1092,9 @@ final class ScheduleConstraintBuilder
             'isActive' => $coach->getIsActive(),
             'isEmployee' => $coach->isEmployee(),
             'parentCoachId' => $coach->getParentCoachId(),
+            // P2-53 RMM-8 PR-2 — statut véhiculé : décide du barème de trajet du coach
+            // (véhiculé → voiture, sinon à pied) dans la règle implicite `travelTime`.
+            'isVehicled' => $coach->isVehicled(),
         ];
     }
 

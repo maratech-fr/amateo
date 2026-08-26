@@ -27,6 +27,8 @@ from app.schemas.validate_output_schema import ValidateAssignmentsOutputSchema
 from app.solver.constraints import (
     add_level_1_hard_constraints,
     add_time_window_constraints,
+    add_travel_departage_penalty,
+    add_travel_time_penalty,
     add_venue_minimum_constraints,
     diagnose_locked_slot_violations,
     parse_v2_constraints,
@@ -575,6 +577,7 @@ def _solve(
         team_player_map=team_player_map,
         shared_trainings=data.get("sharedTrainings", []),
         team_links=data.get("teamLinks", []),
+        venue_travel_times=data.get("venueTravelTimes", []),
     )
 
     _time_window_added, conflicts = add_time_window_constraints(model, model.x, parsed["time_windows"])
@@ -658,6 +661,22 @@ def _solve(
         teams=data.get("teams", []),
     )
 
+    # P2-53 RMM-8 PR-2 — battement de trajet PREFERRED : malus SOFT (−6) par enchaînement au
+    # battement trop court, plié dans le PLACEMENT (phase 1, patron passerelle PREFERRED). Ne
+    # produit des termes QUE si la règle est active ET PREFERRED (le MANDATORY est dur ci-dessus).
+    # Matrice absente / règle inactive / MANDATORY ⇒ [] (chemin byte-identique).
+    travel_battement_terms: list[Any] = []
+    if resolved_implicit_rules.travel_time_active and resolved_implicit_rules.travel_time_intensity != "MANDATORY":
+        travel_battement_terms = add_travel_time_penalty(
+            model,
+            assignments,
+            coaches=data.get("coaches", []),
+            team_links=data.get("teamLinks", []),
+            team_coach_map=team_coach_map,
+            venue_travel_times=data.get("venueTravelTimes", []),
+            default_minutes=resolved_implicit_rules.travel_time_default_minutes,
+        )
+
     # Phase 1 installs the PLACEMENT objective only; the chaining terms are built
     # into the model but kept out of the objective (apply_chaining=False) so their
     # tiny coefficients never wreck the placement optimality proof.
@@ -668,7 +687,7 @@ def _solve(
         soft_terms=soft_terms,
         hard_satisfied_team_ids=hard_satisfied_team_ids,
         apply_chaining=False,
-        extra_placement_terms=team_link_penalty_terms,
+        extra_placement_terms=[*team_link_penalty_terms, *travel_battement_terms],
         # A person chains a back-to-back pair as coach OR as player of the team;
         # the map is built once from the constraint links (l.446) and the chaining
         # terms are built once here, so phase 2 (which reuses chaining_terms) is
@@ -680,6 +699,23 @@ def _solve(
     # créneau qu'aucune training-slot ne porte) est ignorée : jamais de double paiement d'un
     # pin. Vide/absent ⇒ [] ⇒ phase 2 inchangée (chemin byte-identique).
     stability_terms = build_stability_terms(model.x, data.get("previousAssignments", []))
+
+    # P2-53 RMM-8 PR-2 — DÉPARTAGE « moindre trajet » : malus FAIBLE (−1×palier) par enchaînement
+    # cross-gymnase réalisé, quel que soit le cran. Il vit dans la SOUS-BANDE de PHASE 2 (comme la
+    # stabilité, SOUS le chaînage ×4096) : le placement est verrouillé à son optimum de phase 1, le
+    # départage n'ordonne donc QUE des ex æquo exacts (arbitrage fondateur « en cas d'égalité,
+    # jamais dominant »). Matrice absente / règle inactive ⇒ [] ⇒ phase 2 byte-identique.
+    travel_departage_terms: list[Any] = []
+    if resolved_implicit_rules.travel_time_active:
+        travel_departage_terms = add_travel_departage_penalty(
+            model,
+            assignments,
+            coaches=data.get("coaches", []),
+            team_links=data.get("teamLinks", []),
+            team_coach_map=team_coach_map,
+            venue_travel_times=data.get("venueTravelTimes", []),
+            default_minutes=resolved_implicit_rules.travel_time_default_minutes,
+        )
 
     # Adaptive timeout capped by the payload budget.
     n_teams = len(data.get("teams") or [])
@@ -710,7 +746,11 @@ def _solve(
     # P3-21 — phase 2 is now ALSO entered when only stability terms exist (chaining
     # empty): `chaining_terms OR stability_terms`. Without previousAssignments this
     # reduces to the historical `chaining_terms` condition (byte-identical). ---
-    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE) and (objective_stats.chaining_terms or stability_terms):
+    # P2-53 RMM-8 PR-2 — la phase 2 s'ouvre AUSSI quand seul le départage de trajet existe (comme
+    # pour la stabilité). Sans trajet ni stabilité, la condition se réduit à l'historique
+    # `chaining_terms` (byte-identique).
+    low_band_terms = [*stability_terms, *travel_departage_terms]
+    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE) and (objective_stats.chaining_terms or low_band_terms):
         placement_optimum = int(solver.ObjectiveValue())
         cast(Any, model).Add(objective_stats.placement_expression >= placement_optimum)
         # Warm-start phase 2 with the placement-optimal solution so it always has
@@ -718,16 +758,18 @@ def _solve(
         for phase1_var in model.x.values():
             cast(Any, model).AddHint(phase1_var, solver.Value(phase1_var))
         chaining_expr = sum(weight * var for var, weight in objective_stats.chaining_terms)
-        if stability_terms:
+        if low_band_terms:
             # Séparation LEXICOGRAPHIQUE : placement (verrouillé ci-dessus) > chaînage (×K) >
-            # stabilité. K = CHAINING_STABILITY_MULTIPLIER > masse max de stabilité (voir la
-            # preuve dans objective.py) : la stabilité ne départage QUE les ex æquo exacts.
-            stability_expr = sum(weight * var for var, weight in stability_terms)
+            # SOUS-BANDE (stabilité de convergence + départage de trajet). K =
+            # CHAINING_STABILITY_MULTIPLIER > masse max de la sous-bande (voir la preuve dans
+            # objective.py ; le départage y ajoute un terme de grain 1 borné, sous la même barre) :
+            # la sous-bande ne départage QUE les ex æquo exacts de placement ET de chaînage.
+            low_band_expr = sum(weight * var for var, weight in low_band_terms)
             cast(Any, model).Maximize(
-                objective_stats.placement_expression + CHAINING_STABILITY_MULTIPLIER * chaining_expr + stability_expr
+                objective_stats.placement_expression + CHAINING_STABILITY_MULTIPLIER * chaining_expr + low_band_expr
             )
         else:
-            # previousAssignments vide/absent ⇒ objectif phase 2 STRICTEMENT historique.
+            # previousAssignments + trajet vides/absents ⇒ objectif phase 2 STRICTEMENT historique.
             cast(Any, model).Maximize(objective_stats.placement_expression + chaining_expr)
         phase2_solver = cp_model.CpSolver()
         phase2_solver.parameters.max_time_in_seconds = min(timeout_seconds, CHAINING_PHASE_MAX_SECONDS)
@@ -736,12 +778,13 @@ def _solve(
         phase2_status = phase2_solver.Solve(model)
         if phase2_status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             solver, status = phase2_solver, phase2_status
-        if stability_terms:
-            # Score RAPPORTÉ aux poids d'ORIGINE, stabilité EXCLUE : le placement est verrouillé
-            # à `placement_optimum` (phase 1 = placement seul), le chaînage se lit aux poids
-            # naturels sur le solveur final. C'est exactement ce qu'aurait rapporté une phase 2
-            # SANS stabilité — la stabilité ne modifie donc pas le score. Sans stabilité on ne
-            # touche à rien : `result_builder` lit `ObjectiveValue()` tel quel (byte-identique).
+        if low_band_terms:
+            # Score RAPPORTÉ aux poids d'ORIGINE, SOUS-BANDE EXCLUE (stabilité de convergence ET
+            # départage de trajet) : le placement est verrouillé à `placement_optimum` (phase 1 =
+            # placement seul), le chaînage se lit aux poids naturels sur le solveur final. C'est
+            # exactement ce qu'aurait rapporté une phase 2 SANS sous-bande — ni la stabilité ni le
+            # départage ne modifient donc le score. Sans sous-bande on ne touche à rien :
+            # `result_builder` lit `ObjectiveValue()` tel quel (byte-identique).
             model.reported_score_override = placement_optimum + sum(
                 int(weight) * int(solver.Value(var)) for var, weight in objective_stats.chaining_terms
             )
