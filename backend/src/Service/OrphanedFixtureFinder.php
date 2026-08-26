@@ -39,7 +39,11 @@ final class OrphanedFixtureFinder
             ->where('f.clubId = :clubId')
             ->andWhere('f.seasonId = :seasonId')
             ->andWhere('f.venueId IS NOT NULL')
-            ->andWhere('NOT EXISTS (SELECT 1 FROM ' . Venue::class . ' v WHERE v.id = f.venueId)')
+            // Borne club+saison EXPLICITE sur la sous-requête aussi (revue sécurité
+            // 2026-08-26) : sans elle, hors contexte de requête (worker, CLI — filtres
+            // Doctrine éteints), un gymnase de N'IMPORTE quel club « sauverait » le
+            // fixture du marquage. Le docblock promettait la borne — le code la tient.
+            ->andWhere('NOT EXISTS (SELECT 1 FROM ' . Venue::class . ' v WHERE v.id = f.venueId AND v.clubId = :clubId AND v.seasonId = :seasonId)')
             ->setParameter('clubId', $clubId)
             ->setParameter('seasonId', $seasonId)
             ->getQuery()

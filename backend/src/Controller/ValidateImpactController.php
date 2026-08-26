@@ -54,8 +54,16 @@ final class ValidateImpactController extends AbstractController
             return $this->json(['error' => 'Planning introuvable.'], Response::HTTP_NOT_FOUND);
         }
 
+        // FAIL-CLOSED (revue sécurité 2026-08-26, patron durci AUD-BCK-17 de
+        // DeletionImpactController) : un contexte club IRRÉSOLU refuse — une défense
+        // en profondeur qui s'éteint sans bruit ne défend rien le jour où on compte
+        // sur elle (si le listener tenant ne stampe plus, le filtre Doctrine est
+        // probablement éteint aussi, et ce guard devient la seule couche applicative).
         $currentClubId = $this->resolveCurrentClubId($this->requestStack);
-        if (null !== $currentClubId && $schedule->getClubId() !== $currentClubId) {
+        if (null === $currentClubId) {
+            return $this->json(['error' => 'Contexte club introuvable.'], Response::HTTP_BAD_REQUEST);
+        }
+        if ($schedule->getClubId() !== $currentClubId) {
             return $this->json(['error' => 'Accès refusé.'], Response::HTTP_FORBIDDEN);
         }
 
