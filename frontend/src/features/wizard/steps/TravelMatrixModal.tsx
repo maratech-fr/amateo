@@ -140,8 +140,8 @@ function AutofillConsent({ onRun, onClose, running, error }: { onRun: () => void
         L'application peut estimer les temps de trajet entre chaque gymnase, en voiture et à pied. Vous pourrez corriger n'importe quelle valeur à la main.
       </p>
       <p className="max-w-md text-sm text-muted-foreground">
-        En les calculant, la règle « Trajet entre gymnases » s'active : le planning cherchera à enchaîner des gymnases proches. C'est une simple préférence, souple — elle n'impose
-        jamais rien.
+        En les calculant, la règle « Trajet entre gymnases » s'active : le planning cherchera à enchaîner des gymnases proches. Elle démarre en « Préféré » (une préférence souple),
+        et vous pourrez la passer en « Obligatoire » depuis l'étape Contraintes.
       </p>
       {null !== error ? (
         <p role="alert" className="flex items-center gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
