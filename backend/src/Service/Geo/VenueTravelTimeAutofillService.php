@@ -7,6 +7,7 @@ namespace App\Service\Geo;
 use App\Entity\Venue;
 use App\Entity\VenueTravelTime;
 use App\Enum\VenueTravelTimeSource;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -34,7 +35,10 @@ final class VenueTravelTimeAutofillService
     ) {}
 
     /**
-     * @throws AutofillCapExceededException when the geolocated-pair count exceeds the cap
+     * @throws AutofillCapExceededException       when the geolocated-pair count exceeds the cap
+     * @throws UniqueConstraintViolationException au flush, quand un
+     *                                            autofill concurrent (ou un POST manuel) a créé le même couple entre le pré-read
+     *                                            et l'écriture — l'appelant la nomme en 409 rejouable (idiome P4-67)
      *
      * @return array{filled: int, unresolved: list<array{venueAId: string, venueBId: string, reason: string}>, skippedManual: int}
      */
