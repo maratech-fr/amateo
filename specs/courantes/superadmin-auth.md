@@ -1,16 +1,14 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-08-25 (**rotation de fraîcheur**, RMM-5 PR-1 documentation-update — re-vérifié
+Last verified @ 2026-08-26 (rotation `documentation-update`, hors sujet de la PR — re-vérifié
 contre le code : le firewall `admin` couvre `^/api/admin` avec son `super_admin_provider` et n'est
 **pas** `stateless` — contrairement au firewall `api` qui l'est
 (`backend/config/packages/security.yaml:33-40`) ✓ · l'entité `SuperAdmin` existe, identité séparée
 du `User` ✓ · le `TenantFilterListener` retourne immédiatement sur `/api/admin/**` et ne pose donc
 jamais `app.club_id` sous identité admin (`TenantFilterListener.php:81-83`, gardé par
-`AdminRequestBoundaryTest`) ✓. **Corrigé cette passe** : le stamp précédent affirmait « la route
-TOTP est le **seul** `PUBLIC_ACCESS` du périmètre admin » — faux, `security.yaml:45-46` expose
-**deux** routes `PUBLIC_ACCESS` (`/api/admin/auth/password` **et** `/api/admin/auth/totp`, les
-deux portes de connexion qui précèdent toute session) ; le corps du fichier (§ « Parcours
-d'authentification ») le disait déjà correctement, seul le stamp dérivait)
+`AdminRequestBoundaryTest`) ✓ · les **deux** routes `PUBLIC_ACCESS` du périmètre admin tiennent
+toujours (`security.yaml:45-46` : `/api/admin/auth/password` et `/api/admin/auth/totp`) ✓. Rien à
+corriger ce jour)
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle
 > d'historisation SA3-A, la supervision SA3-B, la planification fiable SA3-C et

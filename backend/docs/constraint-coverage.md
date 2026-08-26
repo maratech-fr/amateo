@@ -1,10 +1,10 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-08-26 (rotation `documentation-update`, P2-53 PR-3 — zone non touchée par
-cette PR mais nouveau besoin gestionnaire livré : **ligne ajoutée** Axe GYMNASE « Éviter
-d'enchaîner deux gymnases trop éloignés » = règle implicite `travelTime`, statut 🟡 partiel — écran
-livré, intensité fixée en dur à PREFERRED côté backend (`ScheduleConstraintBuilder.php:602-604`),
-aucun rail wizard pour MANDATORY. Vérification précédente toujours valable : la ligne « Jour de
+Last verified @ 2026-08-26 (P2-53 PR-4, DERNIÈRE du lot — la ligne Axe GYMNASE « Éviter
+d'enchaîner deux gymnases trop éloignés » (règle implicite `travelTime`) passe de 🟡 partiel à
+✅ : l'écran offre désormais le levier d'intensité Préféré/Obligatoire
+(`VenueTravelRuleSetting`), `ScheduleConstraintBuilder::resolveTravelRuleIntensity` émet le
+réglage stocké ?? PREFERRED. Vérification précédente toujours valable : la ligne « Jour de
 repos après un match » — `matchDay` émis est DÉRIVÉ de l'image A/B côté backend (`max` des jours
 ISO des habitudes ∪ rotations, repli champ déclaré converti 0-based→ISO) via
 `ScheduleConstraintBuilder::deriveMatchDay`, vérifié au code. Recalé ENG-32 : le monolithe
@@ -55,7 +55,7 @@ héritée #120 est migrée (contraintes vives ET snapshots))
 | **« Au moins une séance dans tel gymnase »** | FACILITY `minAtVenueId` + `minAtVenueCount` (HARD, mode « au moins N ») — plancher, ≠ forçage ; les autres séances restent libres | ✅ *(ALIGN-05)* | « au moins 1 séance à Armand » ; fail-fast backend si N > séances/semaine |
 | « Nb max d'équipes par créneau d'un gymnase » | **`VenueTrainingSlot.capacity`** par créneau (écran Gymnases, borné à 1 si `canSplit=false`) | ✅ | ADN divisible en 3. ⚠ La famille `FACILITY_CAPACITY` (rabot `maxTeams` sur TOUT un gymnase) a été retirée le 2026-08-08 : aucun chemin UI ne la créait |
 | « Réserver un créneau à une équipe (verrou) » | onglet « Réserver » → `ScheduleSlotTemplate` `lockLevel=HARD` (pin durable, pas une contrainte) — verrouille le **créneau entier**, divisible ou non : l'équipe épinglée est **seule**, le solveur ne remplit jamais l'autre moitié. Partager = **explicite** : réserver les N équipes (la modal borne le picker à `capacity`) — décision gestionnaire | ✅ *(ALIGN-07)* | SM1 seul sur samedi 18h (cap 2) ; SM1+SM2 co-épinglés = partage assumé |
-| **« Éviter d'enchaîner deux gymnases trop éloignés »** | règle implicite `travelTime` (matrice `venue_travel_time` renseignée sur l'écran Gymnases, autofill IGN ou saisie manuelle) — départage « moindre trajet » soft, jamais dominant | 🟡 partiel | **P2-53 RMM-8 (2026-08-26)** — écran livré (PR-3), intensité **fixée en dur à PREFERRED** à l'émission (`ScheduleConstraintBuilder.php:602-604`) : le moteur sait déjà consommer MANDATORY, mais aucun réglage wizard ne peut la basculer — reste le levier Obligatoire, `specs/evolution/roadmap.md` P2-53 |
+| **« Éviter d'enchaîner deux gymnases trop éloignés »** | règle implicite `travelTime` (matrice `venue_travel_time` renseignée sur l'écran Gymnases, autofill IGN ou saisie manuelle) — départage « moindre trajet » soft (jamais dominant) + battement Préféré/Obligatoire réglable | ✅ | **P2-53 RMM-8 — SOLDÉ (4 PR, 2026-08-26)** — écran livré (PR-3), levier d'intensité Préféré/Obligatoire livré (PR-4, `VenueTravelRuleSetting`) : le gestionnaire choisit désormais tout ce que le moteur sait consommer, trace `specs/courantes/etat-des-lieux.md` §3 |
 
 ## Axe COACH
 

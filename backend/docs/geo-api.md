@@ -1,12 +1,18 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-08-26 (P2-53 RMM-8 PR-3 — l'écran câblé, câblage confronté au code :
-`VenueGeocodeField.tsx`/`TravelMatrixModal.tsx` appellent bien `GET /api/geocode` et les routes
-`venue_travel_times`/`venue-travel-times/autofill` ✓, score BAN non affiché en chiffre
-[`LOW_SCORE = 0.4`] ✓, aucune écriture avant clic explicite — falsifié par les tests RTL des deux
-composants ✓, `ScheduleConstraintBuilder.php:602-604` fixe toujours l'intensité `travelTime` à
-PREFERRED en dur [aucun rail backend pour la régler] ✓). Backend non re-sondé cette passe (déjà
-confronté PR-1/PR-2) : hosts en constantes dures (`Service/Geo/BanGeocodingClient.php:24`,
+Last verified @ 2026-08-26 (P2-53 RMM-8 PR-4 — le levier Obligatoire, DERNIÈRE PR du lot : le
+store dédié `VenueTravelRuleSetting` confronté au code — singleton club+saison
+(`Entity/VenueTravelRuleSetting.php`, contrainte d'unicité `club_id`+`season_id`) ✓,
+`Get`/`Put /api/venue_travel_rule_settings/{ruleKey}` avec identifiant FIXE `travelTime` : une clé
+inconnue rend 404 côté provider ET processor (`VenueTravelRuleSettingStateProvider.php`,
+`VenueTravelRuleSettingStateProcessor.php` — revue sécurité 2026-08-26, F-1) ✓, écriture management
+AVANT 409 saison archivée (`assertManager()` puis `assertWritable()`) ✓, 422 sur un vocabulaire
+bien-être HARD/OFF (`Dto/VenueTravelRuleSettingInput.php`, `Assert\Choice` sur
+`TeamLinkIntensity::values()`) ✓, `ScheduleConstraintBuilder::resolveTravelRuleIntensity`
+(`ScheduleConstraintBuilder.php:891-900`) émet le réglage stocké **?? PREFERRED** — plus le
+`PREFERRED` en dur des PR-2/3 ✓, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.16, le
+moteur consommait déjà MANDATORY depuis PR-2) ✓. PR-1/PR-2/PR-3 non re-sondées cette passe (déjà
+confrontées à leur tour) : hosts en constantes dures (`Service/Geo/BanGeocodingClient.php:24`,
 `Service/Geo/IgnRoutingClient.php:27`) ✓ · `max_redirects: 0` + timeout serré sur les deux clients
 ✓ · `GeocodeController.php:33-46` (management SEC-07, 422 requête invalide, 502 transport) ✓ ·
 `VenueTravelTimeAutofillController.php:42-77` (management, saison écrivable, rate-limit dédié,
@@ -106,31 +112,53 @@ club/saison (un 400 de contexte ne brûle pas un jeton — revue sécurité 2026
 autofill concurrent (ou un POST manuel du même couple) a créé la même ligne entre le pré-read et
 l'écriture (`UniqueConstraintViolationException` nommée, idiome rejouable P4-67).
 
-## Ce que la matrice alimente désormais (PR-2 + PR-3)
+## 4. Le levier d'intensité (`GET`/`PUT /api/venue_travel_rule_settings/travelTime`, PR-4)
+
+Le réglage qui décide si la règle implicite `travelTime` (§ ci-dessous) est une préférence souple
+ou une contrainte dure — vocabulaire des passerelles (PREFERRED|MANDATORY), store DÉDIÉ
+`VenueTravelRuleSetting` (singleton club+saison, `App\Entity\VenueTravelRuleSetting`) plutôt qu'une
+6ᵉ clé d'`ImplicitRuleSetting` : la colonne `intensity` de ce dernier est typée
+`enumType: ImplicitRuleIntensity` (HARD/PREFERRED/OFF), incapable de porter MANDATORY sans altérer
+les 5 règles de bien-être. Décision consignée `etat-des-lieux.md` §2.
+
+- **Identifiant fixe** : `travelKey` **toujours** `travelTime` (le nom de la règle gouvernée) —
+  toute autre valeur de chemin rend **404** côté `GET` et `PUT` (le provider et le processor
+  vérifient tous les deux `VenueTravelRuleSettingResource::RULE_KEY`, revue sécurité 2026-08-26
+  F-1 : aucun alias silencieux sur l'unique réglage le jour où une 2ᵉ clé existera).
+- **`GET`** résout : la ligne stockée du club+saison, ou `PREFERRED` (défaut) si rien n'a jamais
+  été réglé — `{ruleKey, intensity, isDefault}`. Lecture ouverte (pas de garde management).
+- **`PUT`** upserte l'intensité — **management** (SEC-07, avant le 409 de saison archivée) ; seul
+  `PREFERRED`|`MANDATORY` est accepté, un vocabulaire bien-être (HARD/OFF) rend **422**
+  (`VenueTravelRuleSettingInput`, `Assert\Choice` dérivé de `TeamLinkIntensity::values()`).
+- **Recopie N+1** (`SeasonTransitionService`) et **purge** (`SeasonDataPurger`) suivent le même
+  patron que la matrice qu'il gouverne.
+- Absence de ligne = défaut `PREFERRED`, reproduisant le comportement d'avant PR-4 : un club qui
+  n'a jamais touché le levier garde un payload byte-identique.
+
+## Ce que la matrice + le levier alimentent désormais (PR-2 → PR-4)
 
 - **Le solveur d'ENTRAÎNEMENT la lit** — `POST /generate` seul (jamais `/place-matches`) :
   `ScheduleConstraintBuilder` sérialise la matrice club+saison (TRIÉE) dans le bloc
   `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION` 2.16**. Sa présence (≥1 ligne) —
   ELLE SEULE — active la règle implicite `travelTime` côté moteur (opt-in au premier geste, jamais
-  silencieux : un club sans matrice reçoit un payload byte-identique à avant). Détail du mécanisme
-  moteur (départage « moindre trajet » + battement PREFERRED/MANDATORY, barème coach
+  silencieux : un club sans matrice reçoit un payload byte-identique à avant) ; l'INTENSITÉ émise
+  est le réglage stocké **?? PREFERRED** (`resolveTravelRuleIntensity`, § ci-dessus). Détail du
+  mécanisme moteur (départage « moindre trajet » + battement PREFERRED/MANDATORY, barème coach
   véhiculé/passerelle à pied, défaut 20 min) : `engine/docs/constraint-vocabulary.md` §Trajet entre
   gymnases. Gardé par `CrossStack/VenueTravelTimePayloadParityTest`.
-- **L'écran (PR-3, livré)** : `TravelMatrixModal` (bouton footerExtra « Trajets entre gymnases » de
-  l'étape Gymnases, offert dès ≥2 gymnases) — première ouverture (aucune ligne) = consentement
-  passif à l'autofill, **jamais lancé sans clic** ; matrice groupée « Depuis {gymnase} », deux
-  colonnes voiture/à pied, badge AUTO/MANUEL (icône+texte), couples non résolus « À saisir »
-  + raison servie ; éditer une valeur la passe MANUEL côté serveur, « Recalculer » préserve les
-  MANUEL. La case **« Véhiculé »** sur la fiche coach (`CoachesStep`) choisit le barème appliqué à
-  ses enchaînements. **`TravelRuleNotice`** (onglet Base de l'étape Contraintes) affiche l'état de
-  la règle — visible seulement si la matrice porte ≥1 ligne (même dérivation que
-  `ScheduleConstraintBuilder`) — **en lecture seule** : aucun rail backend ne stocke l'intensité
-  (PR-2 la fixe en dur à PREFERRED, `ScheduleConstraintBuilder.php:602-604`), donc l'écran
-  n'invite pas à un réglage qui n'existe pas encore. Reste ouvert : le levier Obligatoire (rail de
-  réglage PREFERRED↔MANDATORY) — arbitrage fondateur en attente, voir
-  `specs/evolution/roadmap.md` P2-53. Détail écran complet :
+- **L'écran (PR-3 la matrice, PR-4 le levier — les deux livrés)** : `TravelMatrixModal` (bouton
+  footerExtra « Trajets entre gymnases » de l'étape Gymnases, offert dès ≥2 gymnases) — première
+  ouverture (aucune ligne) = consentement passif à l'autofill, **jamais lancé sans clic** ; matrice
+  groupée « Depuis {gymnase} », deux colonnes voiture/à pied, badge AUTO/MANUEL (icône+texte),
+  couples non résolus « À saisir » + raison servie ; éditer une valeur la passe MANUEL côté
+  serveur, « Recalculer » préserve les MANUEL. La case **« Véhiculé »** sur la fiche coach
+  (`CoachesStep`) choisit le barème appliqué à ses enchaînements. **`TravelRuleNotice`** (onglet
+  Base de l'étape Contraintes) — visible seulement si la matrice porte ≥1 ligne (même dérivation
+  que `ScheduleConstraintBuilder`) — offre désormais un **vrai sélecteur** Préféré/Obligatoire
+  (patron exact de l'intensité des passerelles) : la copie dit le risque d'Obligatoire (« peut
+  rendre le planning infaisable »), toujours visible même en Préféré, pour être lu AVANT de
+  basculer ; désactivé (lecture seule) sur une saison archivée. Détail écran complet :
   `frontend/docs/frontend-wizard.md` §Gymnases/§Coachs/§Contraintes.
 - Décisions fondateur détaillées (deux barèmes, `Coach.isVehicled`, défaut 20 min pour une paire
-  jamais arbitrée, le trajet jamais dominant) : **`specs/evolution/roadmap.md` P2-53** — l'item
-  reste OUVERT (le levier Obligatoire manque), donc ces décisions n'ont pas encore gradué vers
-  `etat-des-lieux.md` (elles y migreront avec le MOVE, à la clôture complète du lot).
+  jamais arbitrée, le trajet jamais dominant, le store dédié du levier) : le lot **P2-53 est
+  ENTIÈREMENT livré (4 PR)** et a quitté la roadmap — trace datée : `etat-des-lieux.md` §3.

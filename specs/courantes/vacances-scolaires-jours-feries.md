@@ -1,6 +1,6 @@
 # Vacances scolaires & jours fériés — référentiels calendaires
 
-Last verified @ 2026-08-25 (rotation de fraîcheur — re-vérifié contre le code, **tout juste** : `AdminJobCatalog` déclare toujours `import-school-holidays`/`import-public-holidays` en `quarterly(4)`/`quarterly(4, 30)`, `manualTriggerAllowed: true` (`backend/src/AdminJob/AdminJobCatalog.php:63-64`) ✓ · `SchoolHolidayPeriod`/`Club.schoolZone`/« display-only » revérifiés au passage précédent, non re-contrôlés cette passe. Rien de faux ce passage) — *(historique des passes : `git log -p --follow specs/courantes/vacances-scolaires-jours-feries.md`)*
+Last verified @ 2026-08-26 (rotation de fraîcheur, hors sujet de la PR — re-vérifié contre le code : `AdminJobCatalog` déclare toujours `import-school-holidays`/`import-public-holidays` en `quarterly(4)`/`quarterly(4, 30)`, `manualTriggerAllowed: true` (`backend/src/AdminJob/AdminJobCatalog.php:63-64`) ✓. `SchoolHolidayPeriod`/`Club.schoolZone`/« display-only » non re-contrôlés cette passe. Rien de faux ce passage) — *(historique des passes : `git log -p --follow specs/courantes/vacances-scolaires-jours-feries.md`)*
 
 Feed d'affichage du cockpit (accueil temporel) : vacances scolaires de la zone du club + jours fériés applicables. **Display-only — jamais consommé par le solveur** : si un férié ou une vacance gêne un entraînement, le gestionnaire pose une période (`CalendarEntry` `closure`/`holiday`), il n'y a aucune règle implicite.
 

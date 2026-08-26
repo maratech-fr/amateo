@@ -3,15 +3,14 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-08-26 (P2-53 RMM-8 PR-1 — géo + matrice de trajet : §2 nouvelle ressource
-`VenueTravelTime` (`/api/venue_travel_times`) contre `Entity/VenueTravelTime.php` /
-`ApiResource/VenueTravelTimeResource.php` / `State/{Processor,Provider}/VenueTravelTime*.php` ;
-`Venue.address` et `Coach.isVehicled` ajoutés aux notes des lignes #4/#5 contre `Entity/Venue.php`
-/ `Entity/Coach.php` ; §3 nouvelle sous-section « Géo » contre `GeocodeController.php` /
-`VenueTravelTimeAutofillController.php`, déclarées `CustomRoutesOpenApiFactory.php` et présentes
-au snapshot OpenAPI (`specs/courantes/openapi-snapshot.meta.md` fait foi du delta). Reste antérieur non re-vérifié
-cette passe — un stamp REMPLACE, l'historique vit dans git :
-`git log -p --follow backend/docs/backend-inventory.md`)
+Last verified @ 2026-08-26 (P2-53 RMM-8 PR-4, DERNIÈRE du lot — §2 nouvelle ressource
+`VenueTravelRuleSetting` (`/api/venue_travel_rule_settings/{ruleKey}`) contre
+`Entity/VenueTravelRuleSetting.php` / `ApiResource/VenueTravelRuleSettingResource.php` /
+`State/{Processor,Provider}/VenueTravelRuleSetting*.php`, et la ligne `VenueTravelTime`
+recorrigée : « le solveur ne la lit pas encore » était vraie en PR-1, périmée depuis PR-2 (bloc
+`venueTravelTimes` consommé). Présente au snapshot OpenAPI (`openapi-snapshot.meta.md` fait foi du
+delta, +1 path). Reste antérieur non re-vérifié cette passe — un stamp REMPLACE, l'historique vit
+dans git : `git log -p --follow backend/docs/backend-inventory.md`)
 
 ---
 
@@ -132,7 +131,8 @@ Doctrine correspondantes vivent dans `backend/src/Entity/` et utilisent des UUID
 | — | TeamLink | `/api/team_links` | Pont déclaré entre deux équipes — pas d'entité joueur, le gestionnaire déclare le lien (`teamAId < teamBId` normalisé par le processor) : `NOT_SIMULTANEOUS` (double projet, jamais en même temps) ou `BACK_TO_BACK` (enchaînées, implique `NOT_SIMULTANEOUS`). Consommé par le module matchs (`MatchPlacementPayloadBuilder`, `MatchConflictDetector`) — le solveur d'entraînement ne le lit pas | |
 | — | TeamMatchHabit | `/api/team_match_habits` | Créneau de match habituel d'une équipe (un par jour de semaine, gymnase optionnel) — consommé par le module matchs (`MatchPlacementPayloadBuilder`, `AwayKickoffEstimator`) pour estimer les coups d'envoi à l'extérieur, **et par le solve hebdo** (`ScheduleConstraintBuilder::deriveMatchDay`, RMM-5 PR-3) pour dériver le `matchDay` (jour de repos) de l'équipe — toute écriture marque les plannings `COMPLETED` du club+saison périmés (`ResourceChangeStaleScheduleListener`) | |
 | — | MatchSlotRotation | `/api/match_slot_rotations` | **RMM-5 : PR-1 (modèle, 2026-08-25) → PR-2 (SOFT `/place-matches`, même jour) → PR-3 (dérive le `matchDay` du solve hebdo, même jour).** Créneau de match PARTAGÉ (gymnase **NOT NULL** + jour ISO + heure, unicité `(club_id, season_id, venue_id, day_of_week, kickoff_time)`) occupé en alternance par 2..10 équipes ordonnées (`MatchSlotRotationTeam`, `position` purement FICTIF — aucun calendrier). Écriture par remplacement transactionnel des membres ; 409 sur course d'unicité de créneau. Toute écriture (rotation ou membre) marque les plannings `COMPLETED` du club+saison périmés (`ResourceChangeStaleScheduleListener`). Détail : [`module-matchs.md`](../../specs/courantes/module-matchs.md) § Rotation A/B. | |
-| — | VenueTravelTime | `/api/venue_travel_times` (filtre `seasonId` exact) | **P2-53 RMM-8 PR-1 (2026-08-26).** Un barème de trajet ENTRE DEUX GYMNASES du club+saison : `drivingMinutes`/`walkingMinutes` (nullables, chacun indépendant) + `drivingSource`/`walkingSource` (`AUTO`\|`MANUAL`, ne portent une valeur que si la minute correspondante est renseignée). **Symétrique** : le processor normalise `venueAId < venueBId` (ordre lexical uuid) — un couple = une ligne (unique `club_id, season_id, venue_a_id, venue_b_id`). Toute valeur écrite par le CRUD est `MANUAL` — **jamais écrasée** par l'autofill (`POST /api/venue-travel-times/autofill`, §3 · `backend/docs/geo-api.md`). GetCollection/Get/Post/Put/Delete, écriture management (SEC-07), lecture ouverte au Membre. Cascade : suppr. d'un gymnase emporte ses barèmes (l'une ou l'autre colonne, patron `TeamLink`) ; purgée avec la saison ; suit la transition de saison (remap gymnase, minutes ET sources transcrites) ; STRUCTURE de club+saison — pas de `schedulePlanId`, la matrice nourrit tous les plans (patron `TeamLink`) ; toute écriture marque les plannings `COMPLETED` du club+saison périmés (`ResourceChangeStaleScheduleListener`). **Le solveur ne la lit pas encore** — bloc payload + contrainte moteur = PR-2. | |
+| — | VenueTravelTime | `/api/venue_travel_times` (filtre `seasonId` exact) | **P2-53 RMM-8 PR-1 (2026-08-26).** Un barème de trajet ENTRE DEUX GYMNASES du club+saison : `drivingMinutes`/`walkingMinutes` (nullables, chacun indépendant) + `drivingSource`/`walkingSource` (`AUTO`\|`MANUAL`, ne portent une valeur que si la minute correspondante est renseignée). **Symétrique** : le processor normalise `venueAId < venueBId` (ordre lexical uuid) — un couple = une ligne (unique `club_id, season_id, venue_a_id, venue_b_id`). Toute valeur écrite par le CRUD est `MANUAL` — **jamais écrasée** par l'autofill (`POST /api/venue-travel-times/autofill`, §3 · `backend/docs/geo-api.md`). GetCollection/Get/Post/Put/Delete, écriture management (SEC-07), lecture ouverte au Membre. Cascade : suppr. d'un gymnase emporte ses barèmes (l'une ou l'autre colonne, patron `TeamLink`) ; purgée avec la saison ; suit la transition de saison (remap gymnase, minutes ET sources transcrites) ; STRUCTURE de club+saison — pas de `schedulePlanId`, la matrice nourrit tous les plans (patron `TeamLink`) ; toute écriture marque les plannings `COMPLETED` du club+saison périmés (`ResourceChangeStaleScheduleListener`). **Le solveur la lit** depuis PR-2 (bloc `venueTravelTimes`, contrat 2.16) — voir la ligne `VenueTravelRuleSetting` ci-dessous pour l'intensité. | |
+| — | VenueTravelRuleSetting | `/api/venue_travel_rule_settings/{ruleKey}` (`ruleKey` FIXE `travelTime`) | **P2-53 RMM-8 PR-4, DERNIÈRE (2026-08-26).** Le levier d'intensité de la règle implicite `travelTime` — SINGLETON club+saison (`Entity/VenueTravelRuleSetting.php`, contrainte d'unicité `club_id`+`season_id`), vocabulaire **PREFERRED\|MANDATORY** des passerelles (`TeamLinkIntensity`), store DÉDIÉ plutôt qu'une 6ᵉ clé `ImplicitRuleSetting` (décision fermée : `etat-des-lieux.md` §2 — cette dernière est typée `ImplicitRuleIntensity` HARD/PREFERRED/OFF, vocabulaire bien-être). `Get`/`Put` seulement, une clé de chemin ≠ `travelTime` rend **404** des deux côtés (revue sécurité). GET résout (stocké ou défaut PREFERRED, `isDefault` servi), PUT upserte — écriture management (SEC-07), 409 saison archivée, 422 sur un vocabulaire bien-être. Recopie N+1 + purge suivent le patron de `VenueTravelTime`. Lu par `ScheduleConstraintBuilder::resolveTravelRuleIntensity`, émis dans `implicitRules.travelTime.intensity` du payload moteur. | |
 
 > La numérotation n'est **pas** un décompte — liste exhaustive et à jour : `ls backend/src/ApiResource/`. Les tables globales de référence (`PublicHoliday`, `SchoolHolidayPeriod`, `LeagueMatchWindow`) sont exposées en **lecture seule via contrôleurs invokables** (§3), pas comme ressources CRUD.
 
@@ -350,10 +350,11 @@ LECTURE (il n'existe rien d'autre à montrer tant que rien n'est validé), pas u
 l'invariant : le solveur et le rail d'édition n'en sont pas affectés, seul cet encart de stats lit
 au travers.
 
-### Géo — géocodage & autofill de la matrice de trajet (P2-53 RMM-8, PR-1)
+### Géo — géocodage & autofill de la matrice de trajet (P2-53 RMM-8, SOLDÉ — 4 PR)
 
 Deux clients externes SSRF-safe (hosts codés en dur, patron `FfbbApiClient`), routes et logique
-détaillées dans [`docs/geo-api.md`](geo-api.md).
+détaillées dans [`docs/geo-api.md`](geo-api.md). Le levier d'intensité (PR-4) est une ressource
+API Platform normale — voir la ligne `VenueTravelRuleSetting` du tableau §2, pas ici.
 
 | Route | Méthode | Contrôleur | Description |
 |-------|---------|------------|-------------|
