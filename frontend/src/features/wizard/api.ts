@@ -88,6 +88,11 @@ export interface Venue {
   isActive: boolean;
   /** Numéro fédéral FFBB (ancre P2-20/P2-21) — null pour un gymnase saisi à la main. */
   externalRef?: string | null;
+  /** P2-53 RMM-8 — adresse saisie (géocodée en lat/long via GET /api/geocode). null tant que non renseignée. */
+  address?: string | null;
+  /** GPS posé par une salle FFBB (P2-20) OU par le géocodage d'une adresse (P2-53). Chaînes numériques. */
+  latitude?: string | null;
+  longitude?: string | null;
 }
 
 export interface VenueTrainingSlot {
@@ -114,6 +119,8 @@ export interface VenuePayload {
   externalRef?: string | null;
   latitude?: string | null;
   longitude?: string | null;
+  /** P2-53 RMM-8 — adresse saisie, posée par le géocodage de `VenuesStep`. null = inchangée (PUT partiel). */
+  address?: string | null;
   /**
    * v2 cohérence canSplit — confirme une transition « terrain divisible » true→false alors que
    * des créneaux du gymnase accueillent 2 équipes ou plus. Sans elle, le backend refuse (422) ;
@@ -367,6 +374,9 @@ export interface Coach {
    *  solveur : il regroupe quand il peut, ne sacrifie jamais une séance, et le récap
    *  nomme le dépassement quand il n'y arrive pas. */
   maxDaysOverride: number | null;
+  /** P2-53 RMM-8 — le coach a un véhicule. Détermine le barème de trajet appliqué à ses
+   *  enchaînements (voiture s'il est véhiculé, à pied sinon). Défaut false. */
+  isVehicled: boolean;
 }
 
 export interface TeamCoach {
@@ -390,6 +400,8 @@ export interface CoachPayload {
   isEmployee?: boolean;
   isActive?: boolean;
   maxDaysOverride?: number | null;
+  /** P2-53 RMM-8 — statut véhiculé (PUT partiel : null = inchangé côté serveur). */
+  isVehicled?: boolean | null;
 }
 
 export const listCoaches = (): Promise<Coach[]> => collectionAll<Coach>("coaches");
@@ -405,6 +417,71 @@ export const listCoachPlayers = (): Promise<CoachPlayerMembership[]> => collecti
 export const createCoachPlayer = (body: { teamId: string; coachId: string; isActive: boolean }): Promise<CoachPlayerMembership> =>
   api.post("coach_player_memberships", { json: body }).json();
 export const deleteCoachPlayer = (id: string): Promise<void> => api.delete(`coach_player_memberships/${id}`).then(() => undefined);
+
+// --- Travel-time matrix + geocoding (P2-53 RMM-8) ---
+
+/** L'origine d'une valeur de trajet : AUTO (calculée par l'IGN) ou MANUAL (saisie, jamais écrasée). */
+export type VenueTravelTimeSource = "AUTO" | "MANUAL";
+
+/**
+ * Un barème de trajet entre DEUX gymnases (couple symétrique, un par couple : venueAId < venueBId
+ * normalisé serveur). Deux modes, chacun avec sa minute et sa source ; null tant qu'un mode n'est
+ * pas renseigné. Le club+saison est résolu serveur-side (SeasonFilter) — pas de param.
+ */
+export interface VenueTravelTime {
+  id: string;
+  venueAId: string;
+  venueBId: string;
+  drivingMinutes: number | null;
+  walkingMinutes: number | null;
+  drivingSource: VenueTravelTimeSource | null;
+  walkingSource: VenueTravelTimeSource | null;
+}
+
+/** Écriture d'un couple : une valeur écrite pose MANUAL (VenueTravelTimeStateProcessor). */
+export interface VenueTravelTimePayload {
+  venueAId: string;
+  venueBId: string;
+  drivingMinutes?: number | null;
+  walkingMinutes?: number | null;
+}
+
+/** La raison qu'un couple n'a pu être résolu par l'autofill (servie, jamais devinée). */
+export type AutofillUnresolvedReason = "missing_geo" | "routing_failed";
+
+/** Le verdict d'un autofill : combien remplis, quels couples non résolus (avec raison), combien de
+ *  valeurs MANUAL préservées. */
+export interface VenueTravelTimeAutofillResult {
+  filled: number;
+  unresolved: { venueAId: string; venueBId: string; reason: AutofillUnresolvedReason }[];
+  skippedManual: number;
+}
+
+/** Un candidat d'adresse rendu par la BAN (mapping serveur, jamais le hit brut). */
+export interface GeocodeCandidate {
+  label: string;
+  latitude: number;
+  longitude: number;
+  /** Score de pertinence BAN, 0..1. */
+  score: number;
+}
+
+/** La matrice du club+saison courant (SeasonFilter serveur-side, aucun param). */
+export const listVenueTravelTimes = (): Promise<VenueTravelTime[]> => collectionAll<VenueTravelTime>("venue_travel_times");
+
+export const createVenueTravelTime = (body: VenueTravelTimePayload): Promise<VenueTravelTime> => api.post("venue_travel_times", { json: body }).json();
+
+export const updateVenueTravelTime = (id: string, body: VenueTravelTimePayload): Promise<VenueTravelTime> => api.put(`venue_travel_times/${id}`, { json: body }).json();
+
+/** POST /api/venue-travel-times/autofill (tirets) — remplit AUTO, saute les MANUAL. 422 cap / 429 / 409. */
+export const autofillVenueTravelTimes = (): Promise<VenueTravelTimeAutofillResult> => api.post("venue-travel-times/autofill", { json: {} }).json();
+
+/** GET /api/geocode?q= (management) — jamais un appel direct à la BAN (frontière §2). 422 q<3/>200, 502 BAN down. */
+export const geocodeAddress = (q: string): Promise<GeocodeCandidate[]> =>
+  api
+    .get("geocode", { searchParams: { q } })
+    .json<{ candidates: GeocodeCandidate[] }>()
+    .then((r) => r.candidates);
 
 // --- Constraints (W4) ---
 

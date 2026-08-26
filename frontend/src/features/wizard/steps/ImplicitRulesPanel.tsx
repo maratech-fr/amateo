@@ -1,3 +1,4 @@
+import { Check, Route } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { useWorkingSeason } from "@/shared/session/queries";
@@ -8,7 +9,7 @@ import { readState } from "@/shared/lib/readState";
 import { cn } from "@/shared/lib/utils";
 
 import type { ImplicitRuleIntensity, ImplicitRuleKey, ImplicitRuleSetting, ImplicitRuleSettingPayload } from "../api";
-import { useImplicitRuleSettings, useResetImplicitRuleSetting, useUpdateImplicitRuleSetting } from "../queries";
+import { useImplicitRuleSettings, useResetImplicitRuleSetting, useUpdateImplicitRuleSetting, useVenueTravelTimes } from "../queries";
 
 /**
  * P2-28 — « les règles du système », remaniement de l'encart P4-55.
@@ -285,6 +286,41 @@ export function ProductRulesPanel() {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * P2-53 RMM-8 — l'entrée INFORMATIVE de la règle « Trajet entre gymnases », dans l'onglet Base.
+ *
+ * ⚠ Régime 1 (`.claude/rules/frontend.md`) : le front N'INVENTE aucune règle. L'activation de la
+ * règle est DÉRIVÉE serveur-side de la présence de matrice (`ScheduleConstraintBuilder` — la
+ * présence d'≥1 ligne active `travelTime`). Cette entrée AFFICHE le même fait observable — elle
+ * n'apparaît QUE si la matrice servie porte au moins une ligne. Ce n'est pas un réglage : PR-2 a
+ * FIXÉ l'intensité à « Préféré » à l'émission et **il n'existe aucun rail backend** pour la régler
+ * (pas d'`ImplicitRuleSetting` pour cette règle). L'écran est donc en LECTURE SEULE — promettre un
+ * réglage serait mentir. Le jour où un rail d'intensité PREFERRED↔MANDATORY existera, cette entrée
+ * gagnera son contrôle (et son test de parité).
+ */
+export function TravelRuleNotice() {
+  const { data: matrix = [] } = useVenueTravelTimes();
+  if (0 === matrix.length) {
+    return null;
+  }
+  return (
+    <div className="mt-2 flex flex-col gap-1 rounded-md border border-border bg-card px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Route className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <p className="text-sm font-medium text-foreground">Trajet entre gymnases</p>
+        <span className="inline-flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent">
+          <Check className="size-3" aria-hidden="true" />
+          Préféré · actif
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Le planning cherche à enchaîner des gymnases dont le trajet reste dans les temps que vous avez indiqués (en voiture ou à pied selon le coach). C'est une préférence souple («
+        Préféré ») : elle oriente le planning sans jamais s'imposer aux règles obligatoires. Elle s'est activée parce que vous avez renseigné les temps de trajet.
+      </p>
     </div>
   );
 }

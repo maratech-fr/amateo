@@ -31,7 +31,7 @@ describe("orderedTeams", () => {
 });
 
 function coach(over: Partial<Coach>): Coach {
-  return { id: "id", firstName: "F", lastName: "L", email: null, isEmployee: false, isActive: true, maxDaysOverride: null, ...over };
+  return { id: "id", firstName: "F", lastName: "L", email: null, isEmployee: false, isActive: true, maxDaysOverride: null, isVehicled: false, ...over };
 }
 
 describe("orderedCoaches", () => {

@@ -5,7 +5,7 @@ import { isScheduleStreamConnected, useScheduleStream } from "@/features/plannin
 
 import { activeTeams, pausedTeamIds } from "./lib/activeLayer";
 
-import type { CoachPayload, ConstraintPayload, SlotPayload, Team, TeamCoachRole, TeamPayload, Venue, VenuePayload } from "./api";
+import type { CoachPayload, ConstraintPayload, SlotPayload, Team, TeamCoachRole, TeamPayload, Venue, VenuePayload, VenueTravelTimePayload } from "./api";
 import * as wizardApi from "./api";
 
 /**
@@ -155,6 +155,47 @@ export function useDeleteVenue() {
       void invalidateEverywhere(queryClient, "venues");
       void queryClient.invalidateQueries({ queryKey: ["wizard", "venue_slots"] });
     },
+  });
+}
+
+// --- Travel-time matrix + geocoding (P2-53 RMM-8) ---
+
+const TRAVEL_TIMES_KEY = ["wizard", "venue_travel_times"] as const;
+
+/** La matrice de trajet du club+saison courant (SeasonFilter serveur-side). */
+export function useVenueTravelTimes() {
+  return useQuery({ queryKey: TRAVEL_TIMES_KEY, queryFn: wizardApi.listVenueTravelTimes, staleTime: 30_000 });
+}
+
+export function useCreateVenueTravelTime() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: VenueTravelTimePayload) => wizardApi.createVenueTravelTime(body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: TRAVEL_TIMES_KEY }),
+  });
+}
+
+export function useUpdateVenueTravelTime() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: VenueTravelTimePayload }) => wizardApi.updateVenueTravelTime(id, body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: TRAVEL_TIMES_KEY }),
+  });
+}
+
+/** L'autofill IGN — remplit AUTO, préserve les MANUAL. Après coup la matrice est réinvalidée. */
+export function useAutofillVenueTravelTimes() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => wizardApi.autofillVenueTravelTimes(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: TRAVEL_TIMES_KEY }),
+  });
+}
+
+/** Géocodage à la demande (le clic « Localiser »). Une mutation, pas une requête permanente. */
+export function useGeocode() {
+  return useMutation({
+    mutationFn: (q: string) => wizardApi.geocodeAddress(q),
   });
 }
 

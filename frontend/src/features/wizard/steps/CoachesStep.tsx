@@ -29,7 +29,16 @@ import { useWizardStore } from "../store";
 import { ReadonlyCoaches } from "./StructureSummary";
 
 function payload(coach: Coach, patch: Partial<Coach>) {
-  return { firstName: coach.firstName, lastName: coach.lastName, email: coach.email, isEmployee: coach.isEmployee, isActive: coach.isActive, maxDaysOverride: coach.maxDaysOverride, ...patch };
+  return {
+    firstName: coach.firstName,
+    lastName: coach.lastName,
+    email: coach.email,
+    isEmployee: coach.isEmployee,
+    isActive: coach.isActive,
+    maxDaysOverride: coach.maxDaysOverride,
+    isVehicled: coach.isVehicled,
+    ...patch,
+  };
 }
 
 interface CardProps {
@@ -117,6 +126,23 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks }: C
             <input type="checkbox" checked={coach.isEmployee} onChange={(e) => update.mutate({ id: coach.id, body: payload(coach, { isEmployee: e.target.checked }) })} />
             Salarié
           </label>
+          {/* P2-53 RMM-8 — le statut véhiculé choisit le barème de trajet (voiture/à pied) appliqué
+              aux enchaînements du coach. Défaut décoché. Aide PERSISTANTE (pas un tooltip : ce
+              public ne survole pas — passe de design 2026-08-26). */}
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            <label className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                aria-describedby={`vehicled-help-${coach.id}`}
+                checked={coach.isVehicled}
+                onChange={(e) => update.mutate({ id: coach.id, body: payload(coach, { isVehicled: e.target.checked }) })}
+              />
+              Véhiculé
+            </label>
+            <span id={`vehicled-help-${coach.id}`} className="text-muted-foreground">
+              (trajet en voiture, à pied sinon)
+            </span>
+          </span>
           {/* P4-51 — le plafond de COMPTE : « peu importe quels jours, pas plus de N par
               semaine ». Distinct d'une indisponibilité (qui dit QUELS jours, dans
               Contraintes). Vide = pas de plafond. Le solveur le traite en PRÉFÉRÉ : il
