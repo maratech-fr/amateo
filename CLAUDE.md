@@ -108,52 +108,42 @@ Graphe des jobs, rôles et pièges : **`docs/testing/testing-strategy.md` §1** 
 
 ## 7. Workflow rules (orchestrator)
 
-All custom agents/skills are **manual / user-triggered** (exception documentée : hook
-`code-review-graph`). ⚠ **Les subagents ne reçoivent PAS ce fichier** — leurs définitions
-(`.claude/agents/*.md`) leur ordonnent de le lire en première action.
+Agents/skills = **manuels, déclenchés par le user** (exception : hook `code-review-graph`).
+⚠ **Les subagents ne reçoivent PAS ce fichier** — leurs définitions leur ordonnent de le lire en
+première action. **Git (non négociable)** : **JAMAIS de commit sur `main`** (docs/specs compris) —
+branche puis PR ; **JAMAIS de merge sans le GO explicite du user** ; push libre, stop à « PR ready ».
 
-**Git discipline (non-negotiable).** **NEVER commit on `main`** — branch first (docs & specs
-included), PR ensuite. **NEVER merge without the user's explicit go.** Push freely, stop at
-« PR ready ». Applies to every change, doc-only ones too.
+**Deux lanes — choisir AVANT de commencer et le dire** :
+- **Full** (défaut : feature, comportement/API/schéma, axe §7.1).
+- **Light** (TOUTES : ≤2 fichiers, zéro comportement/API/schéma, zéro axe) : implémenter →
+  tests verts → `documentation-update` → PR → GO user.
 
-**Two lanes — pick BEFORE starting and say which:**
-- **Full lane** (default: feature, behaviour/API/schema change, structuring axis §7.1).
-- **Light lane** (ALL true: ≤2 files, no behaviour/API/schema change, no axis) : implement →
-  tests verts → `documentation-update` → PR → user go.
+**Cycle full lane** :
+0. **Lire le CODE avant d'analyser** — tout constat vérifié (grep/read/test) et cité
+   `fichier:ligne`, jamais de mémoire ni depuis un doc ; jamais « vérifié » sur balayage partiel.
+1. **Need validation** : besoin en 3-6 lignes + ambiguïtés + ce que je ne ferai PAS, chaque
+   constat adossé au code lu. **User valide — pas de `/plan` avant.**
+2. `/plan` (agent `planner`, porte la checklist §9) ; optionnel `contrarian-review`. User valide.
+3. Implémenter **strictement dans le scope** (agent `coder`, zéro refactor opportuniste).
+4. **NR obligatoire si axe §7.1 touché — même PR.** ⚠ `phase1` ne gate pas (§4) : un NR qui doit
+   gater = step `ci.yml` **ET** ligne `docs/testing/blocking-tests.md`, même PR — sinon le dire.
+5. **Tests verts en local avant de proposer le merge** : `/validation-runner` (suite ciblée +
+   contrats cross-zone + **smoke-solver obligatoire si engine/backend touché**, `COMPLETED` attendu).
+6. Résumé + **`documentation-update` (avant CHAQUE PR, les deux lanes)** — « rien d'impacté » se
+   conclut en regardant, jamais en supposant.
+7. **`/code-review` : le fondateur seul le déclenche.** **`/security-review` RESTE systématique**
+   si la PR touche auth/données/intégrations externes. Répondre à une revue : skill
+   `review-response` (plafond 4 rounds, GO fondateur dès le round 2).
+8. PR → **GO explicite du user** → merge.
 
-**Full lane cycle:**
-0. **Lire le CODE avant d'analyser.** Tout constat sur l'existant se vérifie dans le code
-   (grep/read/test), cité `fichier:ligne` — jamais de mémoire ni depuis un doc (la doc retarde
-   toujours sur le code). Jamais « vérifié » sur un balayage partiel.
-1. **Need validation** : besoin reformulé en 3-6 lignes + ambiguïtés + ce que je ne ferai PAS,
-   chaque constat adossé au code lu. **User valide — pas de `/plan` avant.**
-2. `/plan` (agent `planner` — il porte la checklist de cadrage §9). Optionnel `contrarian-review`.
-   User valide le plan.
-3. Implémenter **strictement dans le scope** (agent `coder` — no opportunistic refactor).
-4. **Non-régression obligatoire si axe §7.1 touché** — dans la même PR. ⚠ Annoter `phase1` ne
-   gate pas (§4) : si le NR doit gater, ajouter son **step à `ci.yml` ET sa ligne à
-   `docs/testing/blocking-tests.md`**
-   dans la même PR ; sinon le dire explicitement.
-5. **Tests verts en local avant de proposer le merge** : `/validation-runner` (suite ciblée de la
-   zone + tests de contrat cross-zone + **smoke-solver obligatoire si engine/backend touché** —
-   `backend/scripts/smoke-solver.sh`, planning `COMPLETED` attendu).
-6. Résumé + **`documentation-update` (exécuté, avant CHAQUE PR, les deux lanes)** — « rien
-   d'impacté » est une conclusion qu'on atteint en regardant, jamais une hypothèse.
-7. **`/code-review` est SORTI du cycle** (décision fondateur 2026-08-05) — seul le fondateur le
-   déclenche. **`/security-review` RESTE systématique** dès que la PR touche auth/données/
-   intégrations externes. Répondre à une revue : skill **`review-response`** (règle, consommateurs,
-   cadence — plafond 4 rounds, GO fondateur dès le round 2).
-8. PR → **user's explicit go** → merge.
+### 7.1 Structuring axes (liste fermée — NR requis si touché ; l'étendre = décision user)
 
-### 7.1 Structuring axes (closed list — NR test required when touched)
-
-tenant isolation (filter/listener/voters) · generation pipeline
-(controller→messenger→engine→import→Mercure) · **constraint semantics** (une contrainte saisie
-doit être honorée par le solveur — smoke sémantique, pas juste COMPLETED) · planning lifecycle
-(plan SEASON pointé = calendrier ; valider/rouvrir + verrous — ADR-0002) · **périmètre engagé**
-(équipe en compétition : ni suppression ni changement de niveau) · backend↔engine contract
-(schemas/CONTRACT_VERSION) · auth & memberships (register/login/approval/roles).
-Extending this list = user decision.
+tenant isolation · generation pipeline (controller→messenger→engine→import→Mercure) ·
+**constraint semantics** (une contrainte saisie doit être honorée par le solveur — smoke
+sémantique, pas juste COMPLETED) · planning lifecycle (plan SEASON pointé = calendrier ;
+valider/rouvrir + verrous — ADR-0002) · **périmètre engagé** (équipe en compétition : ni
+suppression ni changement de niveau) · backend↔engine contract (CONTRACT_VERSION) ·
+auth & memberships.
 
 ## 8. Documentation rules
 
