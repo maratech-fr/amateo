@@ -1,24 +1,10 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-26 (P2-52 / RMM-10, **DERNIER lot de code du module matchs — le programme
-RMM est clos**, 2 PR — modèle+validation puis durcissement sécurité fail-closed). Nouvelle section
-« P2-52 — un match déclaré ne perd plus sa salle en silence (RMM-10) » : le restore/exploration
-(« Charger cette version ») **ne dépointe plus** un match dont le gymnase est absent de la photo
-(résidu assumé — pointeur transitoirement pendouillant, régularisé par la VALIDATION) ; la
-**validation d'un planning** devient la seconde et principale gâchette de dépointage, à parité par
-construction avec la suppression de gymnase (`OrphanedFixtureFinder` sert les deux : l'annonce
-`GET /schedules/{id}/validate-impact` et la gâchette `ValidateScheduleController`) ; foyer unique du
-dépointage `FixtureVenueLossMarker` (raison persistante `Fixture.unplacedReason = venue_lost`,
-heure conservée modifiable, effacée par `Fixture::setVenueId` dès qu'une salle non-null est reposée).
-Le paragraphe DOC-2 (§ « Le périmètre engagé ») est réécrit sur ce nouveau comportement — la
-suppression de gymnase délègue désormais au même foyer via `FixtureVenueLossStep` (remplace le
-`ClearFieldStep` générique), `EngagedTeamGuardTest` étendu (les deux gâchettes) et
-`DeletionImpactParityTest` étendu (le volet validation). Re-vérifié contre le code :
-`OrphanedFixtureFinder.php`, `FixtureVenueLossMarker.php`, `FixtureVenueLossStep.php`,
-`ValidateImpactController.php`, `ValidateScheduleController.php`, `StructureRestorer.php`,
-`Fixture.php`, `ValidateDialog.tsx`, `UnplacedList.tsx`, `unplacedReasonLabel.ts`. Le reste (RMM-6
-PR-1/PR-2/PR-3, RMM-5 les 4 PR, RMM-4 canal API, paliers A/PR-1→F2, RMM-1/RMM-3, RMM-7) non
-re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git :
+Last verified @ 2026-08-27 (recalage de pointeurs SEULEMENT : la liste canonique des
+blocking-tests déménage de `CLAUDE.md` §4 vers `docs/testing/blocking-tests.md` — deux références
+mises à jour (`SlotRotationPayloadParityTest`, `MatchVisitDeltaParityTest`), aucun contenu métier
+touché. Le fond n'a pas été re-vérifié cette passe (dernière relecture code : 2026-08-26, P2-52 /
+RMM-10) — un stamp REMPLACE, l'historique vit dans git :
 `git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
@@ -336,7 +322,7 @@ parité stricte du mécanisme d'habitude.
   placement du samedi doit atterrir SUR le créneau (gymnase + 15:30), preuve bout-en-bout que
   l'attraction SOFT tire vraiment, pas seulement « une heure légale quelconque ».
 - **Garde bloquante** : `CrossStack/SlotRotationPayloadParityTest` (STOCKÉ == ÉMIS + la
-  suppléance même-jour, falsifiés dans les deux sens — CLAUDE.md §4).
+  suppléance même-jour, falsifiés dans les deux sens — liste canonique `docs/testing/blocking-tests.md`).
 
 ### Le repos d'entraînement dérivé — RMM-5 PR-3 (2026-08-25)
 
@@ -856,7 +842,7 @@ future.
     (idempotent), il ne les éteint jamais.
   Le calcul lui-même vit dans `App\Service\MatchModuleDeltaComputer`, tenu SÉPARÉ de la rotation
   (le contrôleur seul stampe) — trois signaux, tous falsifiables dans les deux sens
-  (`MatchVisitDeltaParityTest`, CLAUDE.md §4) : `newFixturesCount` (fixtures nées APRÈS la
+  (`MatchVisitDeltaParityTest`, liste canonique `docs/testing/blocking-tests.md`) : `newFixturesCount` (fixtures nées APRÈS la
   référence, `createdAt > takenAt`) · `newConflictFingerprints` (empreintes courantes ABSENTES du
   snapshot — un conflit disparu ne produit rien, seul le neuf est signalé) · `planningChanged` (la
   version choisie OU la dernière COMPLETED du plan SEASON diffère du snapshot, comparaison

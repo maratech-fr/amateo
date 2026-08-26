@@ -1,6 +1,6 @@
 # ClubScheduler — Tenant Isolation Architecture
 
-Last verified @ 2026-08-25 (rotation documentation-update, à l'occasion de RMM-6 PR-1 : priorité 7 APRÈS le firewall (`TenantFilterListener.php:50-56`, `getSubscribedEvents` → `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · `TenantOwnedInterfaceCompletenessTest` existe (`tests/Security/`) ✓ · `findActiveClubIds` — `is_active = true`, `runWithoutTenant` (`ClubUserRepository.php:59-69`) ✓ · `RlsIsolationTest::testEveryPolicyOnClubIdTablesIsTenantScoped` existe (`tests/Security/RlsIsolationTest.php:89`) ✓ ; en creux, la nouvelle table du lot (`shared_competition_deadline`) confirme la frontière décrite ici par son absence délibérée : elle N'IMPLÉMENTE PAS `TenantOwnedInterface`, porte AUCUNE colonne `club_id`, donc AUCUN GUC ne la borne — la seule couche pour elle est le GRANT (détail : `docs/security/rls.md`). « ClubScheduler » dans le titre : périmètre P5-21, laissé tel quel)
+Last verified @ 2026-08-27 (rotation documentation-update, à l'occasion du déménagement de la liste blocking-tests : priorité 7 (`TenantFilterListener.php:55`, `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · `TenantOwnedInterfaceCompletenessTest` et `RlsIsolationTest` existent (`tests/Security/`) ✓ · `findActiveClubIds` via `runWithoutTenant` (`ClubUserRepository.php:62,85`) ✓ · `DELETE /api/me` self-only + ré-authentification (`DeleteAccountController.php`) ✓ · purge après grâce (`PurgeErasedClubsCommand`) ✓. Rien à corriger ce jour)
 
 ## Overview
 

@@ -60,71 +60,14 @@ Ce qu'il faut retenir en toute session :
   sans bloquer `build-docker`. Toute
   affirmation « X est bloquant » se vérifie dans `ci.yml`. *(Le dernier cas ouvert,
   `TeamTagScopeTest`, est devenu un step le 2026-08-11 — DOC-3 fermée.)*
-- La liste ci-dessous est **la maison unique** de « quels tests gatent » (copie supprimée de
-  testing-strategy après dérive, DOC-26) ; `BlockingTestsListMatchesCiTest` la compare à `ci.yml`
-  dans les deux sens. Ce que chaque test garde en détail : **son propre docblock**.
+- La liste de « quels tests gatent » vit dans **`docs/testing/blocking-tests.md`** — maison
+  unique (sortie de cet index le 2026-08-27 ; la copie testing-strategy avait déjà été supprimée
+  après dérive, DOC-26) ; `BlockingTestsListMatchesCiTest` la compare à `ci.yml` dans les deux
+  sens. Ce que chaque test garde en détail : **son propre docblock**.
 - Jobs sans `needs` mais **required checks de `main`** : `rector` (style gate) ·
   `dependency-audit` · `secrets-scan` · `semgrep` · `smoke-tests` (5 smokes sémantiques) ·
   `engine-semantics` (groupe `contract` cross-stack). `build-docker` needs
   **[blocking-tests, engine-tests] only**.
-
-**blocking-tests** (must pass first — steps du job, un par ligne, tag = ce qui est gardé) :
-`Unit/Entity/UserInterfaceContractTest` (boot conteneur : `eraseCredentials`) ·
-`Unit/NoMergeConflictMarkerTest` (aucun marqueur de conflit Git commité — dépôt entier, `git grep` sur les fichiers SUIVIS ; écrit après que trois marqueurs de `stash pop` ont atteint `main` dans un journal Markdown, invisibles au linter comme à la revue) ·
-`Security/TenantIsolationTest` (isolation club) ·
-`Security/SeasonIsolationTest` (scoping saison + `X-Season-Id`) ·
-`Security/SeasonReadonlyTest` (saison archivée → 409) ·
-`Security/MatchTenantIsolationTest` (entités match tenant+season) ·
-`Security/TenantCacheIsolationTest` (cache scopé club) ·
-`Queue/ConcurrentGenerationTest` (verrou de génération) ·
-`CrossStack/ContractSchemaTest` (contrat backend⇄engine) ·
-`CrossStack/PayloadVersionMatchesContractVersionTest` (la version que le payload s'attribue == `engine/CONTRACT_VERSION`, égalité STRICTE — la dérive avait vécu deux bumps en silence) ·
-`CrossStack/ValidateAssignmentsContractSchemaTest` (contrat du verdict `/validate-assignments`) ·
-`Security/RlsIsolationTest` (RLS en base) ·
-`Security/ClubAccessTest` + `Security/UserSelfOnlyTest` + `Security/ImportAuthorizationTest` (lockdown API tenant) ·
-`Security/MercureHardeningTest` (Mercure durci) ·
-`Security/ManagementRoleTest` (écriture = management par défaut) ·
-`Security/ApiRateLimitTest` (throttle par user) ·
-`Security/ClubQuotaTest` (caps métier PAR CLUB, les 4 routes de solve — dont `/fill`, le comblement de période P2-44) ·
-`Security/SuperAdminAccessTest` (frontière SA0) ·
-`Security/EngagedTeamGuardTest` (périmètre engagé ; depuis P2-52, garde aussi qu'un match dépointé « salle perdue » par l'une ou l'autre gâchette EXISTE toujours, donc l'équipe reste engagée — DELETE → 409) ·
-`Security/PeriodPlanBirthTest` (naissance du plan — ADR-0002 ; depuis P2-38, garde aussi le refus
-409 `window_already_planned` dans les deux sens quand deux plans de période se chevauchent) ·
-`Security/PeriodCopyBirthTest` (l'adaptation naît comme une COPIE du socle : la V1 d'un plan de
-période transcrit la version POINTÉE du socle filtrée des réglages/fermetures — falsifié dans les
-deux sens ; séance saine copiée+verrouillée, jour fermé/gymnase désactivé/équipe réduite « à
-replacer » avec leur raison, réduction déterministe [dernières de la semaine], plan déjà versionné
-refusé 409, route sous les gardes rôle+tenant) ·
-`Security/SeasonVersionUniquenessTest` (socle en vigueur unique) ·
-`Security/SeasonPlanInForceTest` (SocleGuard, défense en profondeur) ·
-`Security/PeriodGatePayloadParityTest` (gate pré-solve == payload) ·
-`Security/RecapCapacityWarningTest` (capacité du récap lue du payload) ·
-`Security/CoachDoubleBookingTest` (verrous HARD dédoublant un coach) ·
-`Integration/ScheduleConstraintBuilderOverlayTest` (le build overlay n'écrit pas) ·
-`Security/PlanEntitlementsTest` (crédits Découverte + caps payants) ·
-`Security/MemberRoleTest` (rôles Gestionnaire/Membre, dernier gestionnaire) ·
-`Security/ScheduleCapabilityParityTest` (capacité affichée == verdict) ·
-`Security/TeamTagScopeTest` (portée d'un tag = ce que le solveur applique) ·
-`Integration/Service/LockOriginProvenanceTest` (origine d'un verrou VRAIE : réservation → RESERVATION, épinglage → MANUAL, indécidable → UNKNOWN, jamais deviné) ·
-`Security/SlotMoveVerdictTest` (déplacer un créneau passe sous le verdict moteur : refus = planning intact, source hors baseline, 409 pendant une génération) ·
-`Security/SlotPlacementVerdictTest` (placer une séance à la dérive passe sous le verdict moteur : refus = rien créé, gardes 409, tenant) ·
-`Security/SlotMoveGridParityTest` (garde précoce de move sur la grille : ce que l'écran Gymnases offre est accepté, ce qu'il n'offre pas — triplet inexistant, jour fermé — est refusé SANS appel moteur, et la durée écrite est TOUJOURS celle de l'emplacement, jamais celle qui voyageait avec l'équipe ; compteur de requêtes, saison ET période) ·
-`Integration/Service/ConstraintChangeStaleScheduleTest` (une contrainte modifiée APRÈS génération marque les plannings COMPLETED du club+saison comme périmés — listener d'entité, tout writer, frontière saison — et un import les démarque) ·
-`Integration/Service/ResourceChangeStaleScheduleTest` (une RESSOURCE du club modifiée — gymnase/coach/créneau/grille/réservation/override/tag/calendrier — marque les plannings périmés ; périmètre dérivé de `schedule_plan_id` : ADR-0002, la grille saison ne périme pas les copies de période et inversement ; un import démarque) ·
-`Integration/Service/DeletionImpactParityTest` (supprimer une salle/équipe/coach : ce qui est ANNONCÉ == ce qui est DÉTRUIT — `CascadePlan` est la maison unique, exécutée par le deleter et comptée par l'impact ; une destruction sans annonce rougit, un DQL qui contourne le plan aussi, et le match déjà déclaré perd sa salle SANS disparaître ; depuis P2-52 garde aussi le volet VALIDATION : la route `validate-impact` annonce {N, X} exactement ce que la validation dépointe (foyer unique `FixtureVenueLossMarker`), N=0 → validation byte-identique, et les DEUX gâchettes — gymnase supprimé, validation — mènent au MÊME état final « à placer » + raison `venue_lost` + heure conservée) ·
-`Security/PasswordResetEnumerationTest` (parité anti-énumération du rail mot de passe : hash factice, mail par le bus, 429 reset) ·
-`Security/RegisterTurnstileTest` (Turnstile sur le register : inerte sans secret configuré, 403 fail-closed sur verdict Cloudflare, fail-open sur panne transport, 403 identique email frais vs connu, rate-limit register intact et prioritaire) ·
-`CrossStack/ImplicitRulePayloadParityTest` (règles implicites bien-être : ce qui est STOCKÉ **dans la portée du plan** == le bloc `implicitRules` que SON payload émet, défauts compris — un plan de période émet sa COPIE prise à sa naissance et une modification de saison ne redescend PAS ; un plan né avant la copie retombe sur le bloc saison ; falsifié dans les deux sens) ·
-`CrossStack/PreviousAssignmentsPayloadParityTest` (placement précédent ÉMIS au moteur == placements de la version source en base — falsifié dans les deux sens ; source explicite / repli dernière COMPLETED / première génération = pas de bloc / overlay = sa propre lignée jamais le socle / HARD inclus ; une dernière COMPLETED née d'une transcription (P2-44 PR-4, ADR-0004) compte comme n'importe quelle COMPLETED : ses placements, et EUX seuls, sont émis ; ET le précédent n'entre pas dans le hash de snapshot — pas de dérive `snapshotHash` ⇄ `currentStructureHash`) ·
-`CrossStack/SharedTrainingPayloadParityTest` (mutualisation : ce qui est STOCKÉ — groupes {équipes, K} ancrés au plan — == le bloc `sharedTrainings` émis au moteur, socle ET période, portée dérivée du plan ; falsifié dans les deux sens — un groupe stocké apparaît, un groupe d'une autre portée ne fuit pas) ·
-`CrossStack/TeamLinkPayloadParityTest` (passerelles : ce qui est STOCKÉ — {teamAId, teamBId, intensity} de club+saison (STRUCTURE, patron Team/Coach) — == le bloc `teamLinks` émis au moteur, socle ET période, FILTRÉ au roster ; falsifié dans les deux sens — une passerelle stockée apparaît avec son intensité, un lien nommant une équipe désactivée pour la période ne fuit pas) ·
-`CrossStack/VenueTravelTimePayloadParityTest` (trajet P2-53 : ce qui est STOCKÉ — matrice {venueAId, venueBId, drivingMinutes, walkingMinutes} de club+saison (STRUCTURE) — == le bloc `venueTravelTimes` émis au moteur, TRIÉ par couple ; et sa présence — ELLE SEULE — active la règle implicite `travelTime` (PREFERRED + défaut 20), l'opt-in au 1er geste sur la matrice ; falsifié dans les deux sens — ligne stockée émise triée + coach `isVehicled`, matrice d'un autre club ne fuit pas, club sans matrice = bloc [] ET règle inactive ET payload par ailleurs identique) ·
-`CrossStack/SlotRotationPayloadParityTest` (RMM-5 rotation A/B : ce qui est STOCKÉ — créneaux de match partagés {venue, jour, heure, membres} de club+saison — == le bloc `slotRotations` émis au moteur `/place-matches`, ET la SUPPLÉANCE retire l'habitude d'un membre le MÊME jour que sa rotation, jamais celle d'un autre jour ; falsifié dans les deux sens — une rotation stockée apparaît triée, une rotation d'un autre club ne fuit pas [RLS], l'habitude même-jour supplantée / autre jour conservée, sans rotation bloc [] + habitudes intactes ; PLUS le volet dérivation RMM-5 PR-3 — le `matchDay` émis au `/generate` du solve hebdo == `max(jours ISO des habitudes ∪ rotations)`, repli champ déclaré `Team.matchDay` converti 0-based→ISO, sans image ni champ déclaré = null inchangé) ·
-`Security/SocleDeviationParityTest` (les écarts NOMMÉS d'une version de FERMETURE vs le socle pointé, route de lecture `GET /schedules/{id}/socle-deviation` : séances DÉPLACÉES (appariement chronologique socle→période) et NON REPLACÉES (reliquat du socle, raison SERVIE par la sélection — team_reduced/venue_disabled/venue_closed, `null` quand inexpliquée, jamais fabriquée) ; ni les inchangées ni les nouvelles ne sont rapportées, une équipe désactivée n'a aucun écart ; falsifié dans les deux sens, plus 422 saison/vacances, 409 non-COMPLETED/socle non pointé, tenant, lecture ouverte au Membre) ·
-`Security/PlannedWindowsParityTest` (P2-38 prévention : la route de lecture `GET /api/planned-windows` SERT exactement les fenêtres que la garde d'écriture refuse en 409 `window_already_planned` — même prédicat par CONSTRUCTION, foyer unique `governingWindows`, prouvé par le comportement et falsifié dans les DEUX sens : plage servie → POST chevauchant refusé, fenêtre non servie → POST accepté ; plus la FAMILLE ni servie ni refusée, l'isolation saison/club [404, jamais un oracle], le chevauchement PARTIEL aux bornes, le chemin pending [`seasonId` sans entrée] et la lecture ouverte au Membre) ·
-`Security/MatchVisitDeltaParityTest` (RMM-3, le gardien à l'ouverture du module matchs : l'EMPREINTE d'un conflit est son identité stable — `POST /api/matches/module-visit` stampe une référence de visite PAR UTILISATEUR et sert le delta « depuis ta dernière visite ». Falsifié dans les DEUX sens : une nature changée [le match A passe d'un conflit avec B à un conflit avec C ; MATCH_MATCH→MATCH_TRAINING] est SIGNALÉE, une sévérité/segment qui bougent seuls ou un COMPETITION_INCOMPLETE 9/22→15/22 ne le sont PAS ; nouveaux matchs comptés depuis la référence ; planningChanged dans les deux sens [nouvelle COMPLETED sans repointage / pointeur qui bouge / repointage identique → false] ; isolation USER (le stamp d'Anna n'éteint pas le delta de Mateo) + club [404] + saison [`X-Season-Id`] ; F5 dans la grâce → référence intacte, badges re-servis ; première visite muette ; Membre autorisé, saison archivée → stamp écrit quand même) ·
-`Security/EntryDeadlineShareTest` (RMM-6 P2-50, échéances ligue/comité : le défaut communautaire vit dans la table PARTAGÉE hors-tenant `shared_competition_deadline` — la seule surface du module matchs qui traverse la frontière tenant. Falsifié dans les DEUX sens : le SCHÉMA du partagé n'a AUCUNE colonne club-identifiante [catalogue Postgres, liste blanche exacte] ; un club apparié à la même compétition fédérale LIT la proposition, un club apparié à une AUTRE ne la voit PAS ; une échéance sur compétition NON appariée n'écrit RIEN au partagé ; la valeur club gagne TOUJOURS ; la réponse servie est BYTE-IDENTIQUE quel que soit le club auteur [zéro oracle] ; dernière écriture gagne [BCCL/Meyzieu] SANS toucher le premier club, effacer sa valeur club n'efface pas le partagé ; gardes management 403 / tenant 422 sans écriture / saison archivée 409 ; l'outlook J-7 `GET /api/matches/deadline-outlook` ne STAMPE pas — un POST module-visit postérieur sert le MÊME delta).
-Detail: `docs/testing/testing-strategy.md`.
 
 ## 5. Conventions (core — détail par zone dans `.claude/rules/`)
 
@@ -203,7 +146,8 @@ included), PR ensuite. **NEVER merge without the user's explicit go.** Push free
    User valide le plan.
 3. Implémenter **strictement dans le scope** (agent `coder` — no opportunistic refactor).
 4. **Non-régression obligatoire si axe §7.1 touché** — dans la même PR. ⚠ Annoter `phase1` ne
-   gate pas (§4) : si le NR doit gater, ajouter son **step à `ci.yml` ET sa ligne à la liste §4**
+   gate pas (§4) : si le NR doit gater, ajouter son **step à `ci.yml` ET sa ligne à
+   `docs/testing/blocking-tests.md`**
    dans la même PR ; sinon le dire explicitement.
 5. **Tests verts en local avant de proposer le merge** : `/validation-runner` (suite ciblée de la
    zone + tests de contrat cross-zone + **smoke-solver obligatoire si engine/backend touché** —

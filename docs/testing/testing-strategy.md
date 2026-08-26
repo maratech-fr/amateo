@@ -1,14 +1,12 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-08-25 (RMM-5 PR-2 : nouveau step bloquant `SlotRotationPayloadParityTest`
-ajouté à `blocking-tests` — §1 ne le nomme pas, il pointe CLAUDE.md §4 comme maison unique de la
-liste, donc rien à y ajouter ; vérifié en le confrontant à `ci.yml`. **Drift corrigé au passage,
-sans rapport avec ce lot** : la ligne §1 sur `--group phase1` citait un décompte figé (« 143
-fichiers… 24 steps ») déjà faux au moment de l'écrire — reformulé sans nombre, structurel (CLAUDE.md
-§4 porte la même correction). Historique des passes : `git log -p --follow
+Last verified @ 2026-08-27 (la liste canonique des blocking-tests DÉMÉNAGE de `CLAUDE.md` §4 vers
+[`blocking-tests.md`](blocking-tests.md) — allègement de l'index, contenu verbatim ; §1 continue
+de pointer la maison unique sans nommer les tests, `BlockingTestsListMatchesCiTest` suit le
+déménagement et compare toujours dans les deux sens. Historique des passes : `git log -p --follow
 docs/testing/testing-strategy.md` — un stamp REMPLACE, il ne s'empile pas (DOC-33).)
 
-Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4 and [`../project-map.md`](../project-map.md).
+Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique) and [`../project-map.md`](../project-map.md).
 
 ---
 
@@ -47,7 +45,7 @@ All PHP test jobs first **create + migrate the test DB** (`doctrine:database:cre
 | `lint` | `docker compose config` + `make -n help` |
 | `phpstan` (job name: **PHPStan & CS-Fixer**) | `composer phpstan` (level 8) **+ `composer cs-fix -- --dry-run --diff`** — needs postgres + redis. CS-Fixer vit ici, et non dans `lint`, parce que ce job a déjà le conteneur PHP que `lint` n'a pas (jusqu'au 2026-07-17 CS-Fixer ne tournait **nulle part** en CI, et `main` a été mergée rouge dessus deux fois) |
 | `rector` (**Rector (style gate)**) | `composer rector -- --dry-run` (P4-24). Job **dédié, sans `needs`**, dépendance d'aucun autre — mais le contexte « Rector (style gate) » fait partie des **required status checks de `main`** (depuis le 2026-07-27), donc **il bloque le merge**. Corriger en local : `docker compose exec php-fpm sh -c 'cd /app/backend && composer rector'` (`make -C backend rector` est un dry-run : il montre, il ne fixe pas) |
-| `blocking-tests` | les tests sécurité/queue/contrat lancés en **steps nommés**, chacun avec `--group phase1` — **gate du reste de la suite PHP** et de `build-docker`. ⚠ **La liste vit dans `CLAUDE.md` §4, et NULLE PART AILLEURS** : elle était recopiée ici et les deux copies ont dérivé l'une de l'autre (audit DOC-16 puis DOC-26, 3 éditions). Deux endroits pour une même vérité finissent par diverger — la copie est supprimée, pas resynchronisée. ⚠ **`--group phase1` ≠ le gate** : bien plus de fichiers `backend/tests/` portent l'annotation que le job n'a de steps nommés ; un fichier `phase1` non listé tourne dans `unit-tests`, donc après le gate et sans bloquer `build-docker`. La vérité exécutable est `.github/workflows/ci.yml` |
+| `blocking-tests` | les tests sécurité/queue/contrat lancés en **steps nommés**, chacun avec `--group phase1` — **gate du reste de la suite PHP** et de `build-docker`. ⚠ **La liste vit dans [`blocking-tests.md`](blocking-tests.md), et NULLE PART AILLEURS** : elle était recopiée ici et les deux copies ont dérivé l'une de l'autre (audit DOC-16 puis DOC-26, 3 éditions). Deux endroits pour une même vérité finissent par diverger — la copie est supprimée, pas resynchronisée. ⚠ **`--group phase1` ≠ le gate** : bien plus de fichiers `backend/tests/` portent l'annotation que le job n'a de steps nommés ; un fichier `phase1` non listé tourne dans `unit-tests`, donc après le gate et sans bloquer `build-docker`. La vérité exécutable est `.github/workflows/ci.yml` |
 | `unit-tests` | full PHPUnit `tests/` (does NOT gate build-docker) |
 | `e2e` | Playwright (full stack + Vite), needs blocking-tests. ⚠ **Deux cibles, pas une** : la suite tourne contre le **dev server** (:5173), puis un step dédié rejoue `security-headers.spec.ts` contre l'**image nginx** (:8081) avec `E2E_A17_REQUIRED=1`. Sans ce second passage, les tests A17 (CSP, HSTS, X-Frame-Options, nosniff) se **skippaient à chaque run** — les en-têtes n'existent que sur le build nginx — et le contrôle n'a jamais tourné en CI (audit D-04). La variable interdit au skip de revenir en silence : viser un dev server là devient un échec |
 | `smoke-tests` | **Les 5 smokes sémantiques** (`backend/scripts/` : onboarding · smoke-solver · smoke-place-matches · smoke-overlay · smoke-coach-wishes) sur une vraie stack. **Aucun `needs`** — ils répondent « la fonctionnalité marche-t-elle ? », indépendamment des suites unitaires, et n'installent ni npm ni Chromium : le verdict tombe ~2× plus tôt. Chacun est autosuffisant (JWT auto, données créées/nettoyées, pointeur socle rouvert PUIS restauré) : l'ordre est un confort, jamais une dépendance |
