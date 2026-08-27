@@ -1,6 +1,6 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-08-26 (P2-53 PR-4, DERNIÈRE du lot — la ligne Axe GYMNASE « Éviter
+Last verified @ 2026-08-28 (rotation `documentation-update`, P2-54 PR-3 — re-confronté au code, tout juste : `maxEndTime` HARD (`ConstraintConfigValidator` type time), `maxConsecutiveDays` posé dur (`wellness.py:add_max_consecutive_days_constraints`), `forcedDays` posé (`targeting.py:213` `sum(forced_day_vars) >= 1`), `travelTime` ✅ aligné. Passe précédente (P2-53 PR-4) — la ligne Axe GYMNASE « Éviter
 d'enchaîner deux gymnases trop éloignés » (règle implicite `travelTime`) passe de 🟡 partiel à
 ✅ : l'écran offre désormais le levier d'intensité Préféré/Obligatoire
 (`VenueTravelRuleSetting`), `ScheduleConstraintBuilder::resolveTravelRuleIntensity` émet le

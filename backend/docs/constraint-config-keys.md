@@ -1,6 +1,6 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-08-26 (rotation `documentation-update`, P2-53 PR-1 — zone non touchée par
+Last verified @ 2026-08-28 (rotation `documentation-update`, P2-54 PR-3 — zone non touchée par
 cette PR, contrôle de fraîcheur). Re-confronté au code : les clés de la table existent dans
 `ConstraintConfigValidator` (`minStartTime`/`maxEndTime` type time:63-65, `minAtVenueCount`:86,
 `fromTime`:96, `excludeTags`:48) ✓ · foyer unique `TeamTagResolver::resolveConstraintTeamIds`

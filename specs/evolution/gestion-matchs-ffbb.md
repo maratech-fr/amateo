@@ -282,9 +282,19 @@ préféré. Le radar signale tout placement **hors envelope**.
 > trajet » + battement PREFERRED/MANDATORY (détail `engine/docs/constraint-vocabulary.md` §Trajet
 > entre gymnases) ; l'écran (PR-3) ; et le **levier d'intensité** Préféré/Obligatoire (PR-4,
 > `VenueTravelRuleSetting`, store dédié club+saison) — trace complète :
-> `../courantes/etat-des-lieux.md` §3. Le volet MATCHS ci-dessous (siège club ↔ ville adverse)
-> reste **ouvert**, il attend l'annuaire adverse (RMM-9/P2-54) pour avoir une ville/un gymnase
-> adverse à mesurer.
+> `../courantes/etat-des-lieux.md` §3.
+>
+> ✅ **Le volet MATCHS est SOLDÉ (RMM-9/P2-54, 3 PR, livré le 2026-08-28).** L'annuaire adverse
+> (`opponent_directory`, PR-2) donne le lieu ; le trajet voiture IGN **siège club ↔ lieu adverse**
+> (table TENANT `opponent_travel`, source AUTO/MANUAL — jamais dans la table globale publique) est
+> injecté dans `MatchFootprint::roundTripTravelMinutes` : le radar de conflits devient **spatial**
+> (un coach qui joue à 45 min de route est vu occupé le temps du trajet). La correction manuelle du
+> gymnase adverse est une surcharge côté club. Le lieu adverse suit l'échelle « salle exacte du hit
+> API, sinon VILLE » (décision fondateur, §5bis amendé). Détail : `../courantes/module-matchs.md`
+> § « Annuaire adverse » + § « Trajet AWAY & radar spatial ». ⚠ N'est PAS câblé au SOLVEUR de
+> placement (`/place-matches` garde son empreinte 105 fixe, contrat 2.16 inchangé) — le trajet
+> nourrit le RADAR (préventif), pas l'optimisation ; réconciliation moteur laissée ouverte si un
+> club la réclame.
 
 Un adversaire = une **ville** → **temps de trajet siège club ↔ ville adverse**. C'est la même matrice trajet
 que le module d'entraînement voulait déjà (FF#5, `venue_travel_times`) : elle sert **l'entraînement**
