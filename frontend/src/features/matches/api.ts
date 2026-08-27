@@ -241,6 +241,28 @@ export interface Category {
   name: string;
 }
 
+/**
+ * P2-54 RMM-9 — la durée de match d'une catégorie. `matchMinutes`/`warmupMinutes`
+ * sont l'override propre (null = héritée) ; `defaultMatchMinutes`/`defaultWarmupMinutes`
+ * sont le défaut de FAMILLE, RÉSOLU par le serveur (MatchDurationResolver) — le front
+ * les AFFICHE (placeholder, en-tête de groupe), il ne les recalcule jamais
+ * (🔴 `.claude/rules/frontend.md`).
+ */
+export interface SportCategoryDuration {
+  id: string;
+  sportId: string;
+  name: string;
+  matchMinutes: number | null;
+  warmupMinutes: number | null;
+  defaultMatchMinutes: number;
+  defaultWarmupMinutes: number;
+}
+
+export interface SportCategoryDurationInput {
+  matchMinutes: number | null;
+  warmupMinutes: number | null;
+}
+
 export interface Coach {
   id: string;
   firstName: string;
@@ -294,6 +316,17 @@ export const getPriorityTiers = (): Promise<PriorityTier[]> => collection<Priori
 export const getVenues = async (): Promise<Venue[]> => sortByName(await collectionAll<Venue>("venues"));
 export const getCategories = (): Promise<Category[]> => collectionAll<Category>("sport_categories");
 export const getCoaches = (): Promise<Coach[]> => collectionAll<Coach>("coaches");
+
+export const getSportCategoryDurations = (): Promise<SportCategoryDuration[]> => collectionAll<SportCategoryDuration>("sport_categories");
+
+/**
+ * PUT re-sends sportId + name (tous deux NotBlank côté serveur) avec les deux durées.
+ * NULL = « revient au défaut de famille » — le serveur vide la colonne (jamais 0).
+ */
+export const updateSportCategoryDuration = (category: SportCategoryDuration, input: SportCategoryDurationInput): Promise<SportCategoryDuration> =>
+  api
+    .put(`sport_categories/${category.id}`, { json: { sportId: category.sportId, name: category.name, matchMinutes: input.matchMinutes, warmupMinutes: input.warmupMinutes } })
+    .json<SportCategoryDuration>();
 
 /** The league match-kickoff windows inherited by the club (envelope, AURA default). */
 export const getLeagueWindows = (): Promise<LeagueWindowsResponse> =>

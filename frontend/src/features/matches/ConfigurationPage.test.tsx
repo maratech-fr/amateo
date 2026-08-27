@@ -16,6 +16,8 @@ vi.mock("./api", () => ({
   getCompetitions: vi.fn(() => Promise.resolve([])),
   getTeamMatchHabits: vi.fn(() => Promise.resolve([])),
   getMatchSlotRotations: vi.fn(() => Promise.resolve([])),
+  getSportCategoryDurations: vi.fn(() => Promise.resolve([])),
+  updateSportCategoryDuration: vi.fn(),
   createMatchSlotRotation: vi.fn(),
   updateMatchSlotRotation: vi.fn(),
   deleteMatchSlotRotation: vi.fn(),
@@ -50,6 +52,12 @@ describe("ConfigurationPage (RMM-1 PR2 — le SET-UP)", () => {
     renderWithProviders(<ConfigurationPage />);
     expect(await screen.findByRole("heading", { name: "Échéances de saisie", level: 3 })).toBeInTheDocument();
     expect(screen.getByText(/Aucune compétition/i)).toBeInTheDocument();
+  });
+
+  // ── P2-54 RMM-9 — l'éditeur « Durée des matchs » ─────────────────────────────
+  it("porte l'éditeur « Durée des matchs » (aucune catégorie → son état vide)", async () => {
+    renderWithProviders(<ConfigurationPage />);
+    expect(await screen.findByRole("heading", { name: "Durée des matchs", level: 3 })).toBeInTheDocument();
   });
 
   // ── RMM-4 — la carte de fraîcheur du dépôt FBI ───────────────────────────────

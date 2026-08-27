@@ -90,6 +90,27 @@ export function useCoaches() {
   return useQuery({ queryKey: ["coaches"], queryFn: matchesApi.getCoaches, staleTime: 300_000 });
 }
 
+export function useSportCategoryDurations() {
+  return useQuery({ queryKey: ["sport_category_durations"], queryFn: matchesApi.getSportCategoryDurations, staleTime: 300_000 });
+}
+
+/**
+ * P2-54 RMM-9 — l'écriture d'une durée de match par catégorie. Toast succès/erreur
+ * (jamais de sauvegarde muette, FRT-27) + invalidation de la liste des durées.
+ */
+export function useUpdateSportCategoryDuration() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ category, input }: { category: matchesApi.SportCategoryDuration; input: matchesApi.SportCategoryDurationInput }) =>
+      matchesApi.updateSportCategoryDuration(category, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["sport_category_durations"] });
+      toast.success("Durée enregistrée.");
+    },
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
 /** Any fixture write changes the radar → invalidate both. */
 function invalidateFixtures(queryClient: ReturnType<typeof useQueryClient>): void {
   void queryClient.invalidateQueries({ queryKey: ["fixtures"] });
