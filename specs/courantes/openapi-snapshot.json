@@ -27500,6 +27500,26 @@
                     "sortOrder": {
                         "default": 0,
                         "type": "integer"
+                    },
+                    "matchMinutes": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "warmupMinutes": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "defaultMatchMinutes": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "defaultWarmupMinutes": {
+                        "default": 0,
+                        "type": "integer"
                     }
                 }
             },
@@ -27541,6 +27561,22 @@
                         ]
                     },
                     "sortOrder": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "matchMinutes": {
+                        "minimum": 30,
+                        "maximum": 240,
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "warmupMinutes": {
+                        "minimum": 0,
+                        "maximum": 120,
                         "type": [
                             "integer",
                             "null"
@@ -27592,6 +27628,26 @@
                         ]
                     },
                     "sortOrder": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "matchMinutes": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "warmupMinutes": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "defaultMatchMinutes": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "defaultWarmupMinutes": {
                         "default": 0,
                         "type": "integer"
                     }
@@ -27646,6 +27702,26 @@
                                 ]
                             },
                             "sortOrder": {
+                                "default": 0,
+                                "type": "integer"
+                            },
+                            "matchMinutes": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ]
+                            },
+                            "warmupMinutes": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ]
+                            },
+                            "defaultMatchMinutes": {
+                                "default": 0,
+                                "type": "integer"
+                            },
+                            "defaultWarmupMinutes": {
                                 "default": 0,
                                 "type": "integer"
                             }
