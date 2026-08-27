@@ -65,19 +65,24 @@ final class OpponentLocationResolver
      * The API channel (post-apply hook): re-reads the club's away rencontres and
      * resolves each distinct opponent — code and exact salle carried by the hit.
      *
-     * @return array{resolved: int, unresolved: list<string>, skipped: int}
+     * @param iterable<Fixture> $awayFixturesToStamp the season's AWAY fixtures whose
+     *                                               organisme code is stamped once resolved (P2-54 PR-3); the API opponent
+     *                                               name is matched to the fixture opponentLabel (best-effort — a miss here
+     *                                               is caught later by the catch-up route, which resolves by fixture name)
+     *
+     * @return array{resolved: int, unresolved: list<string>, skipped: int, stamped: int}
      */
-    public function resolveFromApiChannel(string $clubCode, int $seasonYear): array
+    public function resolveFromApiChannel(string $clubCode, int $seasonYear, iterable $awayFixturesToStamp = []): array
     {
         try {
             $observations = $this->reader->readAwayOpponents($clubCode, $seasonYear);
         } catch (Throwable $e) {
             $this->logger->warning('Opponent directory: away rencontres fetch failed', ['error' => $e->getMessage()]);
 
-            return ['resolved' => 0, 'unresolved' => [], 'skipped' => 0];
+            return ['resolved' => 0, 'unresolved' => [], 'skipped' => 0, 'stamped' => 0];
         }
 
-        return $this->resolveObservations($observations);
+        return $this->resolveObservations($observations, $awayFixturesToStamp);
     }
 
     /**
@@ -87,11 +92,16 @@ final class OpponentLocationResolver
      *
      * @param iterable<Fixture> $fixtures
      *
-     * @return array{resolved: int, unresolved: list<string>, skipped: int}
+     * @return array{resolved: int, unresolved: list<string>, skipped: int, stamped: int}
      */
     public function resolveFromFixtures(iterable $fixtures): array
     {
-        return $this->resolveObservations($this->buildFixtureObservations($fixtures));
+        // Materialize once: the SAME fixtures build the observations AND get their
+        // organisme code stamped (P2-54 PR-3) — the resolution reaches the code by
+        // strict name match, we only persist it back onto the fixtures.
+        $list = \is_array($fixtures) ? array_values($fixtures) : iterator_to_array($fixtures, false);
+
+        return $this->resolveObservations($this->buildFixtureObservations($list), $list);
     }
 
     /**
@@ -137,16 +147,23 @@ final class OpponentLocationResolver
      * never spent twice on the same opponent.
      *
      * @param list<array{organismeCode: string|null, name: string, directVenue: array{libelle: string, city: string|null, postalCode: string|null, latitude: float, longitude: float}|null}> $observations
+     * @param iterable<Fixture>                                                                                                                                                              $awayFixturesToStamp
+     *                                                                                                                                                                                                            the season's AWAY fixtures to stamp with the organisme code once known (P2-54 PR-3)
      *
-     * @return array{resolved: int, unresolved: list<string>, skipped: int}
+     * @return array{resolved: int, unresolved: list<string>, skipped: int, stamped: int}
      */
-    public function resolveObservations(array $observations): array
+    public function resolveObservations(array $observations, iterable $awayFixturesToStamp = []): array
     {
         $resolved = 0;
         $skipped = 0;
         $unresolved = [];
         $seen = [];
         $wrote = false;
+        // normalizeLabel(name) → resolved organisme code, so the away fixtures of
+        // this opponent can be stamped with their join key (P2-54 PR-3). Populated
+        // whenever a code is known — even when the LOCATION could not be resolved:
+        // the code is a valid join key, a later travel-resolve fills the rest.
+        $codeByName = [];
 
         foreach ($observations as $observation) {
             $dedupKey = $observation['organismeCode'] ?? $this->importer->normalizeLabel($observation['name']);
@@ -165,17 +182,23 @@ final class OpponentLocationResolver
                 continue;
             }
 
-            if ('resolved' === $outcome) {
+            if (null !== $outcome['code']) {
+                $codeByName[$this->importer->normalizeLabel($observation['name'])] = $outcome['code'];
+            }
+
+            if ('resolved' === $outcome['status']) {
                 ++$resolved;
                 $wrote = true;
-            } elseif ('skipped' === $outcome) {
+            } elseif ('skipped' === $outcome['status']) {
                 ++$skipped;
             } else {
                 $unresolved[] = $observation['name'];
             }
         }
 
-        if ($wrote) {
+        $stamped = $this->stampFixtures($awayFixturesToStamp, $codeByName);
+
+        if ($wrote || $stamped > 0) {
             try {
                 $this->entityManager->flush();
             } catch (Throwable $e) {
@@ -185,19 +208,52 @@ final class OpponentLocationResolver
             }
         }
 
-        return ['resolved' => $resolved, 'unresolved' => $unresolved, 'skipped' => $skipped];
+        return ['resolved' => $resolved, 'unresolved' => $unresolved, 'skipped' => $skipped, 'stamped' => $stamped];
+    }
+
+    /**
+     * Persist the resolved organisme code onto the AWAY fixtures of that opponent
+     * (the join key toward the directory + the tenant travel — P2-54 PR-3). Matched
+     * by normalized opponent label; the code is already computed, this only writes
+     * it back. The caller flushes.
+     *
+     * @param iterable<Fixture>     $awayFixtures
+     * @param array<string, string> $codeByName   normalizeLabel(name) → organisme code
+     */
+    private function stampFixtures(iterable $awayFixtures, array $codeByName): int
+    {
+        if ([] === $codeByName) {
+            return 0;
+        }
+
+        $stamped = 0;
+        foreach ($awayFixtures as $fixture) {
+            if (FixtureHomeAway::AWAY !== $fixture->getHomeAway()) {
+                continue;
+            }
+            $code = $codeByName[$this->importer->normalizeLabel(trim($fixture->getOpponentLabel()))] ?? null;
+            if (null === $code || $fixture->getOpponentOrganismeCode() === $code) {
+                continue;
+            }
+            $fixture->setOpponentOrganismeCode($code);
+            ++$stamped;
+        }
+
+        return $stamped;
     }
 
     /**
      * @param array{organismeCode: string|null, name: string, directVenue: array{libelle: string, city: string|null, postalCode: string|null, latitude: float, longitude: float}|null} $observation
      *
-     * @return 'resolved'|'skipped'|'unresolved'
+     * @return array{status: 'resolved'|'skipped'|'unresolved', code: string|null} the resolved organisme
+     *                                                                             code (as soon as step 1 finds it, independent of the location outcome) so the
+     *                                                                             caller can stamp the fixtures even when only the code — not the location — resolved
      */
-    private function resolveOne(array $observation): string
+    private function resolveOne(array $observation): array
     {
         $name = trim($observation['name']);
         if ('' === $name) {
-            return 'unresolved';
+            return ['status' => 'unresolved', 'code' => null];
         }
 
         // Step 1 — the KEY (organisme code). Known on the API channel; else resolved
@@ -208,7 +264,7 @@ final class OpponentLocationResolver
             $organismeHit = $this->resolveOrganismeByName($name);
             $code = null === $organismeHit ? null : $this->trimToNull($this->str($organismeHit['code'] ?? null));
             if (null === $code) {
-                return 'unresolved';
+                return ['status' => 'unresolved', 'code' => null];
             }
         }
 
@@ -216,7 +272,7 @@ final class OpponentLocationResolver
         // (no geo calls). A CITY row may still be upgraded to VENUE by the API channel.
         $existing = $this->directory->findOneByFfbbOrganismeCode($code);
         if ($existing instanceof OpponentDirectoryEntry && OpponentLocationPrecision::VENUE === $existing->getPrecision()) {
-            return 'skipped';
+            return ['status' => 'skipped', 'code' => $code];
         }
 
         // Step 3 — the best location, most precise first. VENUE is reserved to the
@@ -225,7 +281,8 @@ final class OpponentLocationResolver
             ?? $this->locateCity($name, $code, $organismeHit);
 
         if (null === $location) {
-            return 'unresolved';
+            // The code is a valid join key even without a location — stamp it.
+            return ['status' => 'unresolved', 'code' => $code];
         }
 
         $this->directory->upsert($code, $location['precision'], [
@@ -237,7 +294,7 @@ final class OpponentLocationResolver
             'venueLabel' => $location['venueLabel'],
         ]);
 
-        return 'resolved';
+        return ['status' => 'resolved', 'code' => $code];
     }
 
     /**

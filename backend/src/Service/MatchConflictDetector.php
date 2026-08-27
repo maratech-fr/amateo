@@ -109,19 +109,23 @@ final class MatchConflictDetector
     }
 
     /**
-     * @param list<Fixture>                                                                          $fixtures         season fixtures (already club+season scoped)
-     * @param list<TeamCoach>                                                                        $teamCoachRows    coach↔team links (scoped)
-     * @param string|null                                                                            $seasonScheduleId the season's calendar (the version its plan points at), or null
+     * @param list<Fixture>                                                                          $fixtures             season fixtures (already club+season scoped)
+     * @param list<TeamCoach>                                                                        $teamCoachRows        coach↔team links (scoped)
+     * @param string|null                                                                            $seasonScheduleId     the season's calendar (the version its plan points at), or null
      * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}> $activePeriods
-     *                                                                                                                 active period windows (ordered), scheduleId = their overlay or null
-     * @param array<string, list<ScheduleSlotTemplate>>                                              $slotsBySchedule  slots indexed by their scheduleId
-     * @param list<VenueUnavailability>                                                              $unavailabilities scoped all-circumstances closures
-     * @param list<TeamMatchHabit>                                                                   $habits           scoped habitual windows (estimation source)
-     * @param list<TeamLink>                                                                         $teamLinks        scoped declared bridges
-     * @param list<VenueMatchWindow>                                                                 $matchWindows     scoped access windows (ACCESS_WINDOW_LOST)
-     * @param array<string, list<LeagueMatchWindow>>                                                 $envelope         teamId → resolved league windows ([] = unmapped)
-     * @param list<Competition>                                                                      $competitions     scoped competitions (COMPETITION_INCOMPLETE — severity 6)
-     * @param array<string, MatchDurationProfile>                                                    $profilesByTeam   teamId → match duration profile (P2-54 RMM-9); a team absent falls back to MatchDurationProfile::fallback()
+     *                                                                                                                     active period windows (ordered), scheduleId = their overlay or null
+     * @param array<string, list<ScheduleSlotTemplate>>                                              $slotsBySchedule      slots indexed by their scheduleId
+     * @param list<VenueUnavailability>                                                              $unavailabilities     scoped all-circumstances closures
+     * @param list<TeamMatchHabit>                                                                   $habits               scoped habitual windows (estimation source)
+     * @param list<TeamLink>                                                                         $teamLinks            scoped declared bridges
+     * @param list<VenueMatchWindow>                                                                 $matchWindows         scoped access windows (ACCESS_WINDOW_LOST)
+     * @param array<string, list<LeagueMatchWindow>>                                                 $envelope             teamId → resolved league windows ([] = unmapped)
+     * @param list<Competition>                                                                      $competitions         scoped competitions (COMPETITION_INCOMPLETE — severity 6)
+     * @param array<string, MatchDurationProfile>                                                    $profilesByTeam       teamId → match duration profile (P2-54 RMM-9); a team absent falls back to MatchDurationProfile::fallback()
+     * @param array<string, int>                                                                     $roundTripByFixtureId
+     *                                                                                                                     fixtureId → round-trip car travel minutes (P2-54 RMM-9 PR-3, AWAY only); absent = 0
+     *                                                                                                                     (no travel modelled → no spatial extension of the footprint). The controller projects it
+     *                                                                                                                     from `opponent_travel` (2 × one-way), the detector stays pure.
      *
      * @return list<array<string, mixed>> conflict items ready to serialize
      */
@@ -138,6 +142,7 @@ final class MatchConflictDetector
         array $envelope = [],
         array $competitions = [],
         array $profilesByTeam = [],
+        array $roundTripByFixtureId = [],
     ): array {
         $coachesByTeam = [];
         // teamId → coachId → role; a coach both MAIN and ASSISTANT on one team
@@ -165,12 +170,16 @@ final class MatchConflictDetector
             // category profile; a team missing from the map falls back to the
             // documented 105/30 (MatchDurationProfile::fallback()).
             $profile = $profilesByTeam[$fixture->getTeamId()] ?? MatchDurationProfile::fallback();
+            // P2-54 RMM-9 PR-3 — the AWAY footprint gains the round-trip travel leg
+            // (0 when the opponent has no known travel). Home fixtures ignore it
+            // (MatchFootprint only adds the leg for AWAY).
+            $roundTrip = $roundTripByFixtureId[$fixture->getId()] ?? 0;
             $estimated = false;
-            $window = $this->footprint->occupancy($fixture, $profile);
+            $window = $this->footprint->occupancy($fixture, $profile, $roundTrip);
             if (null === $window) {
                 $estimatedKickoff = $this->awayKickoffEstimator->estimate($fixture, $habitByTeamDay);
                 if ($estimatedKickoff instanceof DateTimeImmutable) {
-                    $window = $this->footprint->occupancyAt($fixture, $estimatedKickoff, $profile);
+                    $window = $this->footprint->occupancyAt($fixture, $estimatedKickoff, $profile, $roundTrip);
                     $estimated = true;
                 }
             }

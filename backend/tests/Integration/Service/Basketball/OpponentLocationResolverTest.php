@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Service\Basketball;
 
+use App\Entity\Fixture;
+use App\Enum\FixtureHomeAway;
 use App\Enum\OpponentLocationPrecision;
 use App\Repository\OpponentDirectoryEntryRepository;
 use App\Service\Basketball\FfbbApiClient;
@@ -105,6 +107,28 @@ final class OpponentLocationResolverTest extends WebTestCase
             'le canal API autoritatif garde sa précision VENUE (directVenue = coordonnées exactes du hit)',
         );
         self::assertSame('GYMNASE AUTORITAIRE', $entry->getVenueLabel());
+    }
+
+    /**
+     * P2-54 PR-3 — the resolved organisme code is STAMPED back onto the AWAY
+     * fixtures of that opponent (the join key toward the directory + the tenant
+     * travel). Falsifiable: a fixture of a DIFFERENT opponent is left untouched.
+     */
+    public function testResolvedCodeIsStampedOntoTheMatchingAwayFixtures(): void
+    {
+        $resolver = $this->resolverWithControlledFfbb();
+
+        $match = (new Fixture)->setHomeAway(FixtureHomeAway::AWAY)->setOpponentLabel(self::OPPONENT_NAME);
+        $other = (new Fixture)->setHomeAway(FixtureHomeAway::AWAY)->setOpponentLabel('AUTRE CLUB SANS RESO');
+
+        $outcome = $resolver->resolveObservations(
+            [['organismeCode' => null, 'name' => self::OPPONENT_NAME, 'directVenue' => null]],
+            [$match, $other],
+        );
+
+        self::assertSame(1, $outcome['stamped']);
+        self::assertSame(self::XLSX_CODE, $match->getOpponentOrganismeCode(), 'the opponent\'s code is stamped as the join key');
+        self::assertNull($other->getOpponentOrganismeCode(), 'a fixture of another (unresolved) opponent is left untouched');
     }
 
     protected function setUp(): void

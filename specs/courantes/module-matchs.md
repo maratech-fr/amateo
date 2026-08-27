@@ -1,12 +1,12 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-28 (P2-54 RMM-9 PR-1 **et PR-2** — nouvelle section « Annuaire adverse » (table
-globale `opponent_directory`) re-vérifiée contre `OpponentDirectoryEntry.php`/`OpponentLocationResolver.php`/
-`OpponentResolveController.php`/`Version20260827150000.php` (REVOKE DELETE), invariant sécu VENUE-canal-API
-gardé par `OpponentLocationResolverTest` + `OpponentDirectoryShareTest` (bloquants) ; section « Empreinte-temps »
-(PR-1) durées PAR CATÉGORIE contre `MatchDurationProfile.php`/`MatchDurationResolver.php`, colonnes
-`Version20260827120000.php`, douche/battement supprimés de `MatchFootprint.php`. Deux divergences ASSUMÉES
-nommées — placement moteur (`match_placement.py` 105 fixe) et dessin de grille (`weekendGrid.ts:5-6`).
+Last verified @ 2026-08-28 (P2-54 RMM-9 **PR-3, le lot est SOLDÉ, le programme RMM est CLOS** — nouvelle
+section « Trajet AWAY & radar spatial » (`OpponentTravel` tenant + `Fixture.opponent_organisme_code`) vérifiée
+contre `Entity/OpponentTravel.php`/`Service/Geo/OpponentTravelResolver.php`/`Controller/OpponentTravelController.php`/
+`Version20260828120000.php` (RLS FORCE), injection `roundTripTravelMinutes` dans `FixtureConflictsController` →
+`MatchFootprint::occupancy`, `/security-review` zéro finding. Sections « Annuaire adverse » (PR-2) et
+« Empreinte-temps » (PR-1) re-confirmées inchangées. Deux divergences ASSUMÉES nommées — placement moteur
+(`match_placement.py` 105 fixe, contrat 2.16) et dessin de grille (`weekendGrid.ts:4-6`).
 Le reste du fichier non re-confronté cette passe — un stamp REMPLACE, l'historique vit dans git :
 `git log -p --follow specs/courantes/module-matchs.md`
 
@@ -102,8 +102,35 @@ dans les deux sens).
 
 **Alimentation** : hook post-import xlsx (`ImportFixturesController`), hook post-apply canal API
 (`FfbbRencontresController`), et rattrapage `POST /api/opponents/resolve` (management SEC-07, cap dur avant
-réseau + rate-limit `opponent_resolve` par user). **Rien ne LIT encore la table** (pas d'ApiResource) — le
-trajet et le radar spatial qui la consomment sont la PR-3.
+réseau + rate-limit `opponent_resolve` par user). L'annuaire est CONSOMMÉ par le trajet (§ suivante, PR-3).
+
+### Trajet AWAY & radar spatial — `OpponentTravel` (table TENANT, P2-54 RMM-9 PR-3, 2026-08-28)
+
+Le radar de conflits devient **SPATIAL** : un coach qui joue à l'extérieur est vu occupé le temps du trajet.
+- **Clé de jointure** : `Fixture.opponent_organisme_code` (colonne nullable, ajoutée PR-3) — le code fédéral de
+  l'adversaire, **stampé best-effort par `OpponentLocationResolver`** aux trois hooks (import xlsx, apply API,
+  rattrapage) au moment où il résout déjà ce code. Une AWAY sans code résolu reste « non localisée ».
+- **Table TENANT `opponent_travel`** (`TenantOwnedInterface`, RLS FORCE — patron `venue_travel_time`) :
+  club+saison+code adverse → `travelMinutes` (aller simple voiture, nullable), `source` `AUTO`|`MANUAL`, surcharge
+  de gymnase (`overrideVenue*`). ⚠ **Le trajet dépend du siège d'un club précis → donnée CLUB-spécifique, elle
+  vit ICI (tenant), JAMAIS dans `opponent_directory` (public).** Le MANUAL n'est jamais écrasé par l'AUTO.
+- **Calcul** (`OpponentTravelResolver`) : lieu = surcharge MANUAL si présente, sinon lat/long de
+  `opponent_directory` ; `IgnRoutingClient` voiture depuis `Club.latitude/longitude`. Best-effort (IGN en panne →
+  `travelMinutes` null, jamais une erreur bloquante). Route `POST /api/opponents/travel/resolve` (management,
+  cap + rate-limit `opponent_travel_resolve`). Correction MANUAL via `/api/ffbb/salles` + retour-à-l'AUTO.
+- **Injection radar** : `FixtureConflictsController` passe `roundTripTravelMinutes = 2 × OpponentTravel.travelMinutes`
+  à `MatchFootprint::occupancy(...)` par AWAY ; sans code/sans trajet → 0 (comportement actuel, pas de conflit
+  spatial — dit franchement). Détecteur toujours PUR.
+- **Écran** (`AwayTravelChip`, `OpponentTravelCard`, `LocateOpponentModal`) : chip trajet + précision par
+  icône+mot sur `AwayList` (VENUE « Gymnase · 22 min » / CITY « ville de X · ~35 min · approché »), carte
+  « Adversaires à localiser » au SET-UP, correction en modale per-adversaire (badge Auto/Manuel). La précision,
+  les minutes et le flag « approché » sont **servis par le backend** (le front ne les re-dérive pas).
+- NR isolation : `MatchTenantIsolationTest` étendu (`opponent_travel` scopé, un MANUAL de A ne fuit pas à B —
+  bloquant, ce fichier est déjà un step de `blocking-tests`). `/security-review` de la PR : **zéro finding**
+  (RLS FORCE complet, aucune écriture au global, coords MANUAL range-validées et self-scoped).
+- ⚠ **Divergences ASSUMÉES** : (1) le SOLVEUR de placement garde 105 min fixe (`match_placement.py`, contrat
+  2.16 inchangé) — le trajet nourrit le radar préventif, pas l'optimisation moteur ; (2) le dessin de la grille
+  week-end reste 2h15 fixe (`weekendGrid.ts:4-6`, présentation pure — le radar serveur est la source de vérité).
 
 ## Palier A — PR-2 (moteur de conflits, à la volée, coach seul, 2026-07-07)
 

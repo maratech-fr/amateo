@@ -70,6 +70,14 @@ framework:
             policy: 'sliding_window'
             limit: 10
             interval: '1 hour'
+        # P2-54 RMM-9 PR-3 — le calcul des trajets adverses (POST /api/opponents/travel/resolve),
+        # keyé PAR UTILISATEUR (JWT) : la route déclenche une RAFALE d'itinéraires IGN (un par
+        # adversaire distinct, cap 60). Même patron que opponent_resolve / venue_travel_time_autofill
+        # (per-user, non assoupli en test À DESSEIN).
+        opponent_travel_resolve:
+            policy: 'sliding_window'
+            limit: 10
+            interval: '1 hour'
         # #10 C2 : la page publique de collecte des doléances (GET pré-remplissage +
         # POST soumission), par IP. 20/15min — large pour un coach (quelques soumissions),
         # borne réelle contre l'énumération de tokens.

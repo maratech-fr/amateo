@@ -7,6 +7,7 @@ namespace App\Controller\Basketball;
 use App\Controller\ResolvesCurrentClubTrait;
 use App\Entity\Season;
 use App\Repository\ClubRepository;
+use App\Repository\FixtureRepository;
 use App\Service\Basketball\FfbbRencontreReconciler;
 use App\Service\Basketball\OpponentLocationResolver;
 use App\Service\ManagementAccessGuard;
@@ -58,6 +59,7 @@ final class FfbbRencontresController extends AbstractController
         private readonly SocleGuard $socleGuard,
         private readonly FfbbRencontreReconciler $reconciler,
         private readonly OpponentLocationResolver $opponentResolver,
+        private readonly FixtureRepository $fixtures,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -124,7 +126,9 @@ final class FfbbRencontresController extends AbstractController
         // 502. Best-effort intégral (le résolveur avale déjà toute panne réseau).
         // $clubCode/$seasonYear sont déjà garantis non-null (assert plus haut).
         try {
-            $this->opponentResolver->resolveFromApiChannel($clubCode, $seasonYear);
+            // Pass the season's AWAY fixtures so the resolved organisme code is
+            // stamped back onto them (P2-54 PR-3 join key). $seasonId is non-null here.
+            $this->opponentResolver->resolveFromApiChannel($clubCode, $seasonYear, $this->fixtures->findAwayBySeason((string) $seasonId));
         } catch (Throwable $e) {
             $this->logger->warning('Opponent directory: post-apply resolution failed', ['exception' => $e]);
         }

@@ -31,10 +31,12 @@
 > Cap de commercialisation : **mi-2027**.
 >
 > **Fichiers de détail actifs** : [`mutualisation-par-creneau.md`](mutualisation-par-creneau.md) (P2-51 — la mutualisation ancrée au créneau, liste terrain BCCL en preuve) ·
-> [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) (paliers B/C du module matchs — le palier A est livré, P1-4 soldé ;
-> `refonte-module-matchs.md` a livré/fermé tout son propre programme — RMM-0→7 et RMM-10 — le
-> 2026-08-26 et n'est donc plus listé ici : ce qui y reste [RMM-8/RMM-9] n'y est que RENVOYÉ, le
-> besoin vit ici) ·
+> [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) (module matchs — palier A livré (P1-4), **palier B
+> TRAJET+ANNUAIRE livré (RMM-8/P2-53 + RMM-9/P2-54, soldés 2026-08-28)** ; reste OUVERT : palier B
+> **dérogation** (§8, workflow tracker) et palier C (effet réseau — heures/tendances adverses cross-club) ;
+> `refonte-module-matchs.md` a livré/fermé tout son propre programme — RMM-0→7 et RMM-10 — le 2026-08-26.
+> **Le programme RMM (refonte + net-neufs RMM-0→10) est ENTIÈREMENT clos** ; ce qui reste du module vit
+> ici, en paliers) ·
 > le besoin [`ffbb-appariement-source-de-verite.md`](ffbb-appariement-source-de-verite.md) (**« on accompagne, on ne décide pas »** — nourrit P4-35/P3-7 et les paliers B/C ; ses mesures de référence — reconnaissance P2-19 + traces brutes + complétion club, lots tous soldés — sont **archivées** dans [`docs/archive/`](../../docs/archive/api-ffbb-app-reconnaissance.md) depuis le 2026-08-18) ·
 > [`etude-tailles-clubs-ffbb.md`](etude-tailles-clubs-ffbb.md) (**tailles des clubs mesurées sur l'API FFBB** — a nourri le cadrage P1-3, sert la grille tarifaire par taille) ·
 > [`console-superadmin.md`](console-superadmin.md) (P4-54) ·
@@ -257,7 +259,6 @@
 
 | Sujet | Effort | Note |
 |---|:---:|---|
-| **P2-54 (RMM-9) — Annuaire adverse global** ([`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) §5bis amendé, §11) — *PR-1 (durées/empreinte) + PR-2 (annuaire `opponent_directory` + résolution auto + NR isolation bloquants) LIVRÉES le 2026-08-28, traces état des lieux ; **reste la PR-3** : trajet IGN siège↔lieu adverse + radar spatial (injection dans `MatchFootprint::roundTripTravelMinutes`, table tenant `OpponentTravel` AUTO/MANUAL) + correction MANUAL du gymnase + liste « adversaires non localisés » ; résidu à réconcilier en PR-3 : la grille week-end dessine 2h15 fixe (`weekendGrid.ts:5-6`)* | 🔴 | Reste PR-3 : le trajet consomme l'annuaire (livré PR-2) — origine `Club.latitude/longitude`, tolérance ±15 min. ⚠ Le cache trajet est CLUB-spécifique (dérivé du siège) → table TENANT, JAMAIS dans `opponent_directory` (public-seulement). Correction MANUAL du gymnase = surcharge côté club, jamais une écriture au global. **Test d'isolation `OpponentTravel` dédié** + `/security-review` (data traverse tenant) |
 | **Reverse-engineering des contraintes** (dériver des PREFERRED du planning existant) | XL | Fort attrait, aucun cadrage. **Décisions déjà actées** : suggestions **PREFERRED uniquement** (des HARD dérivées figeraient le plan et neutraliseraient le solveur), **agrégation obligatoire** (« 4/4 séances mardi → 1 PREFERRED mardi » + score de confiance), analyse = **service backend pur, engine intouché**. Réutilise le rail `pendingConstraintSuggestion` déjà câblé |
 | **Régénération partielle guidée** (`PartialRegenService` — v3 §6.2, §14.2 · FF#1) | 🔴 | Partiellement couvert par les overlays (une période génère un plan borné sans toucher au socle) ; reste la regen **ciblée du plan de base** hors période. À requalifier quand un besoin réel se présente |
 | **Déterminisme exact du plan sur gros clubs** | 🟡 | Les 8 workers rendent l'assignation non déterministe (la **valeur** d'objectif reste stable). `interleave_search` seul ne suffit pas → refonte du budget timeout. À ne faire **que si** un club demande la repro exacte — aujourd'hui jugé inutile (le gestionnaire ajuste). Alternative : un mode « repro exacte » optionnel (1 worker + budget élargi) |

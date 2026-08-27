@@ -1,6 +1,20 @@
-Last verified @ 2026-08-27 (P2-54 RMM-9 PR-2 — l'annuaire adverse global : **+1 path** → **185 paths** (`grep -c '"/api/'`, la route custom `POST /api/opponents/resolve` déclarée dans `CustomRoutesOpenApiFactory`) · SHA-256 `76bd1798db1b266f2ebba0bacc55e19bfb476c2fb77b0533e700c1ffd0bc5a6a` (`sha256sum` conforme). Dernière évolution d'API : P2-54 RMM-9 PR-2, 2026-08-27 — voir la première entrée ci-dessous. Journal borné à 8 entrées depuis l'audit DOC-34 ; l'historique complet vit dans git, les livraisons dans `etat-des-lieux.md`.)
+Last verified @ 2026-08-28 (P2-54 RMM-9 PR-3 — le radar spatial : **+4 paths** → **189 paths** (`grep -c '"/api/'`, les routes custom `GET /api/opponents/travel` + `POST /api/opponents/travel/{manual,auto,resolve}` déclarées dans `CustomRoutesOpenApiFactory`, plus le champ `stamped` ajouté à `POST /api/opponents/resolve`) · SHA-256 `1ac366250705e260856965004d6e7c138c5af412eef1ecd3bd48689dbaff9bd4` (`sha256sum` conforme). Dernière évolution d'API : P2-54 RMM-9 PR-3, 2026-08-28 — voir la première entrée ci-dessous. Journal borné à 8 entrées depuis l'audit DOC-34 ; l'historique complet vit dans git, les livraisons dans `etat-des-lieux.md`.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **P2-54 RMM-9 PR-3 — le radar de conflits devient SPATIAL (2026-08-28)** : **+4 paths** — les routes
+  custom du trajet adverse (tenant `opponent_travel`, keyé sur le code organisme) :
+  `GET /api/opponents/travel` (**ouvert au Membre**, affichage : par adversaire AWAY distinct, la
+  précision du lieu `VENUE`|`CITY`|`null`, le nom du lieu, le trajet aller simple voiture nullable,
+  le flag serveur `approximated` = ville, la source `AUTO`|`MANUAL` ; 400 hors contexte),
+  `POST /api/opponents/travel/manual` (**management** SEC-07 : épingle un gymnase choisi via
+  `/api/ffbb/salles` → surcharge MANUAL + recalcul du trajet ; 422 adversaire/gymnase invalide ou sans
+  rencontre extérieure), `POST /api/opponents/travel/auto` (**management** : retour à l'AUTO ; 422 sans
+  surcharge à rétablir) et `POST /api/opponents/travel/resolve` (**management** : recalcule TOUS les
+  trajets AUTO — le MANUAL jamais écrasé ; cap dur 60 avant réseau IGN ; 429 rate-limit dédié
+  `opponent_travel_resolve`). **Champ ADDITIF** sur `POST /api/opponents/resolve` : `stamped` (fixtures
+  AWAY dont le code organisme a été posé — la clé de jointure). 185 → **189 paths**. Backend + frontend,
+  contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.16, aucun appel moteur — itinéraire IGN
+  `data.geopf.fr`, hôte déjà en place).
 - **P2-54 RMM-9 PR-2 — l'annuaire adverse global (2026-08-27)** : **+1 path** — route custom
   `POST /api/opponents/resolve` (rattrapage **management** SEC-07 : localise les adversaires AWAY du
   club+saison dans la table PARTAGÉE `opponent_directory`, keyée sur le code organisme fédéral —
@@ -72,18 +86,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   scopé club+saison, hors plans de période (patron `TeamMatchHabit`/`VenueMatchWindow`). 174 →
   **176 paths**. Backend PUR : rien ne consomme encore le modèle (payload/solveur = PR-2/3),
   contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.14, aucun appel moteur).
-- **RMM-4 PR-3 — le canal API FFBB (2026-08-24)** : **+2 paths** —
-  `GET /api/ffbb/rencontres` (200 : `{deviations[], creatable[], fetchedAt}` — les rencontres
-  publiées par la FFBB croisées avec l'app : le diff des domiciles déjà placés qui divergent, PLUS
-  les rencontres absentes de l'app (`creatable`, les amicaux) proposées à la création ; 403
-  non-gestionnaire ; 409 socle non pointé ; 422 club sans code FFBB ; 502 FFBB injoignable) et
-  `POST /api/ffbb/rencontres/apply` (200 : `{created, updated, unresolvedDeviations[], depositedAt}`
-  — applique les décisions par écart via le MÊME moteur que l'import xlsx, crée les rencontres
-  choisies de façon idempotente ; RE-FETCH SERVEUR, jamais les valeurs du client ; 409 socle/saison
-  archivée/doublon concurrent). Écriture **management** (SEC-07) + socle pointé + saison écrivable.
-  Ingestion `FFBB_API` datée (compteurs seuls, jamais la fraîcheur xlsx, jamais une trace). 172 →
-  **174 paths**. Contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.14, zéro appel moteur —
-  index Meilisearch `ffbbserver_rencontres` à la demande, filtre strict serveur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans `CustomRoutesOpenApiFactory`. Le journal

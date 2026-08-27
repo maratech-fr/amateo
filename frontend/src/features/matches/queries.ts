@@ -228,6 +228,61 @@ export function useSwapFixtures() {
   });
 }
 
+// ── Trajet adverse — radar spatial (P2-54 RMM-9 PR-3) ────────────────────────
+
+const OPPONENT_TRAVEL_KEY = ["opponents", "travel"] as const;
+
+/** Any travel write changes the spatial radar → invalidate travel AND conflicts. */
+function invalidateTravel(queryClient: ReturnType<typeof useQueryClient>): void {
+  void queryClient.invalidateQueries({ queryKey: OPPONENT_TRAVEL_KEY });
+  void queryClient.invalidateQueries({ queryKey: ["fixtures", "conflicts"] });
+}
+
+export function useOpponentTravel() {
+  return useQuery({ queryKey: OPPONENT_TRAVEL_KEY, queryFn: matchesApi.getOpponentTravel, staleTime: 30_000 });
+}
+
+export function useSetOpponentTravelManual() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: matchesApi.OpponentTravelManualInput) => matchesApi.setOpponentTravelManual(input),
+    onSuccess: () => invalidateTravel(queryClient),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+export function useSetOpponentTravelAuto() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (opponentOrganismeCode: string) => matchesApi.setOpponentTravelAuto(opponentOrganismeCode),
+    onSuccess: () => invalidateTravel(queryClient),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+export function useResolveOpponentTravel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => matchesApi.resolveOpponentTravel(),
+    onSuccess: (result) => {
+      invalidateTravel(queryClient);
+      toast.success(`Trajets recalculés : ${result.resolved} localisé(s).`);
+    },
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+/** Salles FFBB d'une commune (le combobox « Localiser ») — best-effort, patron VenuesStep. */
+export function useFfbbSalles(postalCode: string) {
+  return useQuery({
+    queryKey: ["ffbb_salles", postalCode],
+    queryFn: () => matchesApi.listFfbbSalles(postalCode),
+    enabled: /^\d{5}$/.test(postalCode),
+    staleTime: 3_600_000,
+    retry: false,
+  });
+}
+
 // ── FFBB pairing (P1-4 PR F) ─────────────────────────────────────────────────
 
 /** Fetched when the dialog OPENS only — on-demand consumption, never cached long. */
