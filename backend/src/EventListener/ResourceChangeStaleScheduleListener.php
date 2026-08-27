@@ -89,10 +89,12 @@ use Doctrine\ORM\Events;
  *
  * (**) `implicit_rule_setting` : une ligne de PÉRIODE (plan non-NULL) est une COPIE matérialisée
  *   → elle ne périme QUE son plan (patron override de période). Une ligne de SAISON (plan NULL)
- *   est le REPLI VIVANT des plans legacy sans copie : tant que `resolveForPlan` retombe sur la
- *   saison, ces plans la suivent VRAIMENT → on marque club+saison (et non seasonPlan). Cela
- *   sur-marque un peu les plans de période nés après la fonctionnalité (qui ont leur copie) :
- *   choix conservateur assumé — un faux « régénérez » coûte moins qu'un planning périmé ignoré.
+ *   périme le plan SEASON **et tout plan de période LEGACY** (celui qui n'a PAS sa propre copie et
+ *   suit donc encore la saison via le repli `resolveForPlan`), mais PAS les plans de période qui
+ *   ont matérialisé leur copie (ils ne suivent plus la saison, ADR-0002). Le critère de la requête
+ *   est EXACTEMENT celui de `resolveForPlan` (« ce plan a-t-il une ligne à son id ? ») : aucun plan
+ *   legacy n'est jamais raté (sous-marquer un legacy servirait un planning périmé en silence), et
+ *   les copies de période sont exclues sans conservatisme superflu (P4-104).
  *
  * `structureDiverged` (Team) : le marquage ci-dessus RECOUVRE la bannière `structureDiverged`
  * (qui compare `generatedTeamCount` aux équipes du jour). Les deux coexistent volontairement :
@@ -293,12 +295,13 @@ final class ResourceChangeStaleScheduleListener
             return;
         }
 
-        // Réglage de SAISON (plan NULL) : REPLI VIVANT des plans legacy sans copie. Tant que ce
-        // repli existe (resolveForPlan retombe sur la saison), un plan legacy suit RÉELLEMENT la
-        // saison → on marque club+saison, PAS seulement le plan SEASON (à la différence de la
-        // grille, dont la période est toujours une copie franche). Sur-marque légèrement les plans
-        // de période nés APRÈS la fonctionnalité (qui ont leur copie) : conservateur assumé.
-        $this->markClubSeason($entity->getClubId(), $entity->getSeasonId());
+        // Réglage de SAISON (plan NULL) : il gouverne le plan SEASON (qui lit les lignes plan-NULL)
+        // ET les plans de période LEGACY (sans copie propre : `resolveForPlan` retombe alors sur la
+        // saison). Il ne touche PAS un plan de période qui a matérialisé sa copie (il ne suit plus
+        // la saison, ADR-0002). Le périmètre distingue les deux par le MÊME critère que
+        // `resolveForPlan` : « le plan a-t-il une ligne `implicit_rule_setting` à son id ? » — non
+        // → il suit la saison, on marque ; oui → on l'exclut (P4-104).
+        $this->markSeasonImplicitRule($entity->getClubId(), $entity->getSeasonId());
     }
 
     public function calendarEntryTouched(CalendarEntry $entity): void
@@ -399,6 +402,17 @@ final class ResourceChangeStaleScheduleListener
         $this->pending['seasonPlan:' . $clubId . ':' . $seasonId] = ['scope' => 'seasonPlan', 'planId' => null, 'clubId' => $clubId, 'seasonId' => $seasonId];
     }
 
+    /**
+     * Périmètre d'un réglage bien-être de SAISON (plan NULL) : le plan SEASON + les plans de
+     * période LEGACY (sans copie propre), les copies de période EXCLUES (P4-104). Le calcul
+     * « a-t-il une copie ? » vit dans le WHERE de {@see apply()} — une seule requête distingue
+     * les deux, à l'image de `resolveForPlan`.
+     */
+    private function markSeasonImplicitRule(string $clubId, string $seasonId): void
+    {
+        $this->pending['seasonImplicitRule:' . $clubId . ':' . $seasonId] = ['scope' => 'seasonImplicitRule', 'planId' => null, 'clubId' => $clubId, 'seasonId' => $seasonId];
+    }
+
     private function markClubSeason(?string $clubId, string $seasonId): void
     {
         if (null === $clubId) {
@@ -437,6 +451,23 @@ final class ResourceChangeStaleScheduleListener
                 ->setParameter('clubId', $mark['clubId'])
                 ->setParameter('seasonId', $mark['seasonId'])
                 ->setParameter('seasonType', SchedulePlanType::SEASON),
+            // P4-104 — un réglage bien-être de SAISON (plan NULL) : le plan SEASON (qui lit les
+            // lignes plan-NULL) ET les plans de période LEGACY (sans copie à leur id : ils suivent
+            // la saison via `resolveForPlan`), MAIS PAS les plans de période qui ont matérialisé
+            // leur copie. On sélectionne donc les plans du club+saison dont l'id N'EST PAS parmi
+            // ceux qui portent une ligne `implicit_rule_setting` propre — le complément EXACT du
+            // critère `findByPlanIndexed != []` de `resolveForPlan` : aucun legacy n'est raté.
+            'seasonImplicitRule' => $manager->createQuery(
+                self::SET_STALE
+                . ' WHERE s.status = :status AND s.schedulePlanId IN ('
+                . 'SELECT p.id FROM ' . SchedulePlan::class . ' p'
+                . ' WHERE p.clubId = :clubId AND p.seasonId = :seasonId AND p.id NOT IN ('
+                . 'SELECT irs.schedulePlanId FROM ' . ImplicitRuleSetting::class . ' irs'
+                . ' WHERE irs.clubId = :clubId AND irs.seasonId = :seasonId AND irs.schedulePlanId IS NOT NULL))',
+            )
+                ->setParameter('status', ScheduleStatus::COMPLETED)
+                ->setParameter('clubId', $mark['clubId'])
+                ->setParameter('seasonId', $mark['seasonId']),
             'clubSeason' => $manager->createQuery(self::SET_STALE . ' WHERE s.clubId = :clubId AND s.seasonId = :seasonId AND s.status = :status')
                 ->setParameter('clubId', $mark['clubId'])
                 ->setParameter('seasonId', $mark['seasonId'])
