@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Entity\Club;
+use App\Entity\Season;
 use App\Exception\ImportRejectedException;
+use App\Repository\FixtureRepository;
+use App\Service\Basketball\OpponentLocationResolver;
 use App\Service\FbiFixtureImporter;
 use App\Service\FixtureImportGate;
 use App\Service\SeasonResolver;
@@ -20,6 +23,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Throwable;
 
 /**
  * POST /api/fixtures/import — club-wide FBI import, ONE pass (cadrage P1-4,
@@ -39,6 +43,8 @@ final class ImportFixturesController extends AbstractController
         private readonly FixtureImportGate $gate,
         private readonly LoggerInterface $logger,
         private readonly SeasonResolver $seasonResolver,
+        private readonly OpponentLocationResolver $opponentResolver,
+        private readonly FixtureRepository $fixtures,
     ) {}
 
     public function __invoke(Request $request): JsonResponse
@@ -92,6 +98,11 @@ final class ImportFixturesController extends AbstractController
             return $this->json(['error' => self::GENERIC_FAILURE], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        // P2-54 RMM-9 — after the fixtures are flushed, locate the DISTINCT away
+        // opponents into the global directory. Best-effort, jamais un import cassé :
+        // le résolveur avale déjà toute panne réseau, ce garde couvre le reste.
+        $this->resolveOpponentLocations($season);
+
         return $this->json([
             'message' => 'Import terminé.',
             'created' => $result['created'],
@@ -107,6 +118,18 @@ final class ImportFixturesController extends AbstractController
             'unresolvedDeviations' => $result['unresolvedDeviations'],
             'depositedAt' => $result['depositedAt'],
         ], Response::HTTP_OK);
+    }
+
+    private function resolveOpponentLocations(?Season $season): void
+    {
+        if (!$season instanceof Season) {
+            return;
+        }
+        try {
+            $this->opponentResolver->resolveFromFixtures($this->fixtures->findAwayBySeason($season->getId()));
+        } catch (Throwable $e) {
+            $this->logger->warning('Opponent directory: post-import resolution failed', ['exception' => $e]);
+        }
     }
 
     /**

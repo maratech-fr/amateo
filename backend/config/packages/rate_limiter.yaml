@@ -60,6 +60,16 @@ framework:
             policy: 'sliding_window'
             limit: 10
             interval: '1 hour'
+        # P2-54 RMM-9 — le rattrapage de l'annuaire adverse (POST /api/opponents/resolve),
+        # keyé PAR UTILISATEUR (JWT) : la route déclenche une RAFALE d'appels sortants
+        # (FFBB salles/organismes + géocodage BAN, jusqu'à ~3 requêtes par adversaire, cap 60).
+        # 10/h couvre l'usage réel (on rattrape ponctuellement, puis l'annuaire se remplit tout
+        # seul aux imports/apply) et borne une boucle d'appels tiers. Même patron que
+        # venue_travel_time_autofill (per-user, non assoupli en test À DESSEIN).
+        opponent_resolve:
+            policy: 'sliding_window'
+            limit: 10
+            interval: '1 hour'
         # #10 C2 : la page publique de collecte des doléances (GET pré-remplissage +
         # POST soumission), par IP. 20/15min — large pour un coach (quelques soumissions),
         # borne réelle contre l'énumération de tokens.

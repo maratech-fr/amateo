@@ -1,11 +1,12 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-28 (P2-54 RMM-9 PR-1 — la section « Empreinte-temps » est récrite sur les
-durées PAR CATÉGORIE : re-vérifié contre le code `MatchDurationProfile.php`/`MatchDurationResolver.php`
-(défauts de famille + repli 105/30), colonnes nullables `Version20260827120000.php`, douche/battement
-supprimés de `MatchFootprint.php`, `defaultMatchMinutes`/`defaultWarmupMinutes` servis par
-`SportCategoryResource`, écran `MatchDurationsEditor.tsx` ; deux divergences ASSUMÉES nommées —
-placement moteur (`match_placement.py` 105 fixe) et dessin de la grille (`weekendGrid.ts:5-6`).
+Last verified @ 2026-08-28 (P2-54 RMM-9 PR-1 **et PR-2** — nouvelle section « Annuaire adverse » (table
+globale `opponent_directory`) re-vérifiée contre `OpponentDirectoryEntry.php`/`OpponentLocationResolver.php`/
+`OpponentResolveController.php`/`Version20260827150000.php` (REVOKE DELETE), invariant sécu VENUE-canal-API
+gardé par `OpponentLocationResolverTest` + `OpponentDirectoryShareTest` (bloquants) ; section « Empreinte-temps »
+(PR-1) durées PAR CATÉGORIE contre `MatchDurationProfile.php`/`MatchDurationResolver.php`, colonnes
+`Version20260827120000.php`, douche/battement supprimés de `MatchFootprint.php`. Deux divergences ASSUMÉES
+nommées — placement moteur (`match_placement.py` 105 fixe) et dessin de grille (`weekendGrid.ts:5-6`).
 Le reste du fichier non re-confronté cette passe — un stamp REMPLACE, l'historique vit dans git :
 `git log -p --follow specs/courantes/module-matchs.md`
 
@@ -67,6 +68,42 @@ level × gender`. **Hors tenant** (pas de club_id/season_id, pas de RLS — patr
 de TOUT club** (couche 1 des 3 couches). Ligue dérivée du `ffbbClubCode` par **`LeagueResolver`** (préfixe
 3 lettres) → `Club.league` (posé au register). `GET /api/league-match-windows` → l'envelope héritée, fallback
 AURA si la ligue n'est pas cataloguée.
+
+### Annuaire adverse — `OpponentDirectoryEntry` (table GLOBALE, P2-54 RMM-9 PR-2, 2026-08-28)
+
+Où joue un adversaire, résolu **automatiquement** (le gestionnaire ne rattache RIEN). Table `opponent_directory`
+**hors tenant** (patron `shared_competition_deadline`/`public_holiday` : pas de club_id, pas de RLS,
+**GRANT SELECT/INSERT/UPDATE sans DELETE** — `REVOKE DELETE` explicite dans la migration car un
+`ALTER DEFAULT PRIVILEGES` antérieur conférait DELETE à `app_user`, cf. `Version20260827150000`), keyée sur le
+**code organisme fédéral public**, colonnes `name`/`city`/`postalCode`/`latitude`/`longitude`/`precision`
+(`VENUE`|`CITY`)/`venueLabel`. **Public fédéral SEULEMENT** — le docblock d'entité porte le corollaire
+opposable : n'y jamais ajouter de provenance/compteur/donnée club sans repasser la revue sécurité.
+
+**`OpponentLocationResolver`** — échelle, best-effort à chaque étage (une panne réseau → adversaire « non
+localisé », JAMAIS un import bloqué) :
+1. **Salle exacte du hit rencontre API** (`FfbbRencontreReader::readAwayOpponents` — l'objet `salle` porte
+   `cartographie.coordonnees.coordinates`, coords fédérales autoritatives, sondé le 2026-08-27) → précision
+   **`VENUE`**, gratuit.
+2. **Repli VILLE** : code organisme adverse → index `ffbbserver_organismes` (`_geo`, sinon commune/CP géocodés
+   `BanGeocodingClient`) → précision **`CITY`**. C'est le cas nominal du canal xlsx et du rattrapage
+   (décision fondateur : la ville suffit, cf. `gestion-matchs-ffbb.md` §5bis amendé).
+3. Rien ne résout → pas de ligne, l'adversaire reste non localisé.
+Upsert par code organisme, `VENUE` > `CITY` jamais l'inverse ; un adversaire déjà en `VENUE` est laissé tel
+quel (zéro appel réseau).
+
+🔴 **Invariant de sécurité (revue 2026-08-28) : la précision `VENUE` est RÉSERVÉE au canal API.** Un libellé
+de salle issu d'un **xlsx est fourni par le CLUB** — l'accepter comme `VENUE` laisserait un club épingler un
+adversaire réel à un faux gymnase, écrit dans la table partagée et lu byte-identique par tous les autres
+clubs, de façon **permanente** (premier-VENUE-gagne). L'étage « appariement franc par nom de salle » a donc
+été **retiré** ; le canal xlsx plafonne à `CITY`. Deux gardes **bloquants** : `OpponentDirectoryShareTest`
+(schéma partagé — zéro colonne club, byte-identique, pas de DELETE) et `OpponentLocationResolverTest`
+(comportement — xlsx `directVenue=null` → CITY jamais VENUE ; API `directVenue` peuplé → VENUE ; falsifiés
+dans les deux sens).
+
+**Alimentation** : hook post-import xlsx (`ImportFixturesController`), hook post-apply canal API
+(`FfbbRencontresController`), et rattrapage `POST /api/opponents/resolve` (management SEC-07, cap dur avant
+réseau + rate-limit `opponent_resolve` par user). **Rien ne LIT encore la table** (pas d'ApiResource) — le
+trajet et le radar spatial qui la consomment sont la PR-3.
 
 ## Palier A — PR-2 (moteur de conflits, à la volée, coach seul, 2026-07-07)
 

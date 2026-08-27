@@ -102,6 +102,99 @@ final class FfbbRencontreReader
         return $rows;
     }
 
+    /**
+     * The DISTINCT away opponents of the club for one season, for the global
+     * opponent directory (P2-54 RMM-9). For every rencontre where the club is the
+     * VISITOR (équipe 2), the opponent is the HOME organisme (équipe 1) and the
+     * `salle` is the opponent's home gym — so the hit carries, for free, both the
+     * opponent's federal organisme code (the directory KEY) and the exact venue.
+     *
+     * ⚠ Sondé 2026-08-27 : l'objet `salle` d'un hit rencontres porte
+     * `{id, libelle, adresse, cartographie:{ville, codePostal, coordonnees:{coordinates:[lng,lat]}}}`
+     * — donc l'étage 1 (« salle du hit ») donne les coordonnées EXACTES sans appel
+     * supplémentaire. Pas de `_geo` ni de `commune` à ce niveau (contrairement à
+     * l'index salles/organismes) : les coordonnées vivent dans
+     * `cartographie.coordonnees.coordinates` (ordre GeoJSON [lng, lat]).
+     *
+     * Best-effort, jamais une promesse : un hit sans salle exploitable rend un
+     * `directVenue` null (le résolveur retombe alors sur la ville — VENUE réservé au
+     * `directVenue` autoritatif, revue sécurité 2026-08-28).
+     *
+     * @return list<array{organismeCode: string, name: string, directVenue: array{libelle: string, city: string|null, postalCode: string|null, latitude: float, longitude: float}|null}>
+     */
+    public function readAwayOpponents(string $clubCode, int $seasonYear): array
+    {
+        $opponents = [];
+
+        foreach ($this->apiClient->searchRencontres($clubCode) as $hit) {
+            if (!FfbbSeasonCode::matchesSeasonYear($this->seasonCode($hit), $seasonYear)) {
+                continue; // another season
+            }
+
+            $equipe1 = \is_array($hit['idOrganismeEquipe1'] ?? null) ? $hit['idOrganismeEquipe1'] : [];
+            $equipe2 = \is_array($hit['idOrganismeEquipe2'] ?? null) ? $hit['idOrganismeEquipe2'] : [];
+            // The club is the VISITOR when it is NOT équipe 1 (home). Only then is
+            // the hit's salle the OPPONENT's gym; a home rencontre locates our own
+            // venue, never the opponent's.
+            if ($this->stringOrNull($equipe1['code'] ?? null) === $clubCode) {
+                continue;
+            }
+            $opponent = $equipe1;
+            $code = $this->stringOrNull($opponent['code'] ?? null);
+            $name = $this->fixEncoding($this->stringOrNull($opponent['nom'] ?? null) ?? '');
+            if (null === $code || mb_strlen($code) > 64 || '' === $name) {
+                continue; // no key / no name → not a usable directory row
+            }
+
+            $salle = \is_array($hit['salle'] ?? null) ? $hit['salle'] : [];
+            $opponents[] = [
+                'organismeCode' => $code,
+                'name' => mb_substr($name, 0, 180),
+                'directVenue' => $this->rencontreSalleVenue($salle),
+            ];
+        }
+
+        return $opponents;
+    }
+
+    /**
+     * The exact venue carried by a rencontre hit's `salle` (étage 1). Returns null
+     * when no usable coordinates are present.
+     *
+     * @param array<string, mixed> $salle
+     *
+     * @return array{libelle: string, city: string|null, postalCode: string|null, latitude: float, longitude: float}|null
+     */
+    private function rencontreSalleVenue(array $salle): ?array
+    {
+        $libelle = $this->clamp180($this->labelOrNull($this->stringOrNull($salle['libelle'] ?? null)));
+        if (null === $libelle) {
+            return null;
+        }
+        $carto = \is_array($salle['cartographie'] ?? null) ? $salle['cartographie'] : [];
+        $point = \is_array($carto['coordonnees'] ?? null) ? $carto['coordonnees'] : [];
+        $coordinates = \is_array($point['coordinates'] ?? null) ? $point['coordinates'] : [];
+        // GeoJSON order is [longitude, latitude].
+        $longitude = $coordinates[0] ?? null;
+        $latitude = $coordinates[1] ?? null;
+        if (!is_numeric($latitude) || !is_numeric($longitude)) {
+            return null;
+        }
+
+        return [
+            'libelle' => $libelle,
+            'city' => $this->clamp180($this->labelOrNull($this->stringOrNull($carto['ville'] ?? null))),
+            'postalCode' => $this->postalOrNull($this->stringOrNull($carto['codePostal'] ?? null)),
+            'latitude' => (float) $latitude,
+            'longitude' => (float) $longitude,
+        ];
+    }
+
+    private function postalOrNull(?string $value): ?string
+    {
+        return null === $value ? null : mb_substr($value, 0, 16);
+    }
+
     private function seasonCode(mixed $hit): ?string
     {
         $saison = \is_array($hit) && \is_array($hit['saison'] ?? null) ? $hit['saison'] : [];

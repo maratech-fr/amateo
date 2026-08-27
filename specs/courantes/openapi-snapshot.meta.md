@@ -1,6 +1,14 @@
-Last verified @ 2026-08-27 (P2-54 RMM-9 PR-1 — champs de durée de match sur `SportCategory` : **184 paths** INCHANGÉ (`grep -c '"/api/'`, ressource API Platform existante, aucune route neuve) · SHA-256 `eacccebabc2894654d7dc5a6a55e698455e82a8dda8d1729d0a2c951daa44b10` (`sha256sum` conforme, il BOUGE car les schémas `SportCategory` + `SportCategory.SportCategoryInput` gagnent des propriétés). Dernière évolution d'API : P2-54 RMM-9 PR-1, 2026-08-27 — voir la première entrée ci-dessous. Journal borné à 8 entrées depuis l'audit DOC-34 ; l'historique complet vit dans git, les livraisons dans `etat-des-lieux.md`.)
+Last verified @ 2026-08-27 (P2-54 RMM-9 PR-2 — l'annuaire adverse global : **+1 path** → **185 paths** (`grep -c '"/api/'`, la route custom `POST /api/opponents/resolve` déclarée dans `CustomRoutesOpenApiFactory`) · SHA-256 `76bd1798db1b266f2ebba0bacc55e19bfb476c2fb77b0533e700c1ffd0bc5a6a` (`sha256sum` conforme). Dernière évolution d'API : P2-54 RMM-9 PR-2, 2026-08-27 — voir la première entrée ci-dessous. Journal borné à 8 entrées depuis l'audit DOC-34 ; l'historique complet vit dans git, les livraisons dans `etat-des-lieux.md`.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **P2-54 RMM-9 PR-2 — l'annuaire adverse global (2026-08-27)** : **+1 path** — route custom
+  `POST /api/opponents/resolve` (rattrapage **management** SEC-07 : localise les adversaires AWAY du
+  club+saison dans la table PARTAGÉE `opponent_directory`, keyée sur le code organisme fédéral —
+  salle exacte du hit FFBB, appariement franc par nom de salle, ou repli ville géocodé BAN, best-effort ;
+  200 : `{resolved, unresolved[], skipped}` ; 422 au-delà de 60 adversaires distincts ; 429 rate-limit
+  par utilisateur). Les hooks post-import xlsx et post-apply FFBB remplissent l'annuaire tout seuls
+  (aucune route). Contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.16, aucun appel moteur —
+  index Meilisearch `ffbbserver_salles`/`ffbbserver_organismes` + géocodage BAN).
 - **P2-54 RMM-9 PR-1 — la durée de match devient un réglage par catégorie (2026-08-27)** : **+0 path**
   (ressource API Platform `SportCategory` existante). **Champs ADDITIFS en LECTURE** sur le schéma
   `SportCategory` : `matchMinutes`/`warmupMinutes` (l'override propre de la catégorie, `null` = héritée)
@@ -76,15 +84,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   Ingestion `FFBB_API` datée (compteurs seuls, jamais la fraîcheur xlsx, jamais une trace). 172 →
   **174 paths**. Contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.14, zéro appel moteur —
   index Meilisearch `ffbbserver_rencontres` à la demande, filtre strict serveur).
-- **RMM-4 PR-1 — réconciliation FBI (2026-08-24)** : **+1 path** —
-  `GET /api/fbi-ingestions/latest` (200 : `{latest: {depositedAt, source, created, updated,
-  unchanged, deviationsCount} | null}` — la fraîcheur « dernier dépôt FBI », `null` sans dépôt ;
-  400 sans club ou sans saison ; 401 sans JWT). Lecture **ouverte au Membre** (aucune garde
-  management, patron `GET /api/league-match-windows`), tenant+saison résolus côté serveur.
-  Descriptions ADDITIVES sur les deux opérations d'import : l'analyze rend désormais `deviations[]`
-  (état app VS état fichier des domiciles déjà placés), l'import accepte un champ multipart
-  `decisions` (verdicts par écart keep_app|take_file) et rend `unresolvedDeviations[]` + `depositedAt`.
-  171 → **172 paths**. Contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.14, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans `CustomRoutesOpenApiFactory`. Le journal

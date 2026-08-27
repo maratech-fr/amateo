@@ -578,6 +578,28 @@ jobs:
       - name: EntryDeadlineShareTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/EntryDeadlineShareTest.php --group phase1'
 
+      # P2-54 RMM-9 annuaire adverse PR-2 : la localisation d'un adversaire vit dans une table
+      # PARTAGÉE entre clubs (`opponent_directory`) — surface qui traverse la frontière tenant.
+      # Ce gate tient l'invariant de partage : le SCHÉMA n'a AUCUNE colonne club-identifiante
+      # (catalogue Postgres, liste blanche exacte), une entrée est visible et BYTE-IDENTIQUE quel
+      # que soit le club lecteur (aucun filtre tenant, aucune RLS), le rôle app_user a
+      # SELECT+INSERT+UPDATE mais PAS DELETE (seule couche DB d'une table sans RLS), et une
+      # résolution plus précise (VENUE) remplace une moins précise (CITY) jamais l'inverse.
+      # Falsifié dans les deux sens. Sans ce gate, une colonne club_id/provenance pourrait se
+      # glisser dans le partagé (fuite tenant, vecteur A21/BCK-18), en silence.
+      - name: OpponentDirectoryShareTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/OpponentDirectoryShareTest.php --group phase1'
+
+      # P2-54 RMM-9 correctif sécu 2026-08-28 : garde l'invariant COMPORTEMENTAL du résolveur —
+      # un label de salle xlsx (fourni par le club, texte libre) ne peut établir une précision
+      # VENUE dans la table partagée `opponent_directory` ; seul le hit API autoritatif
+      # (directVenue) le peut. Falsifié dans les deux sens (observation xlsx directVenue=null →
+      # CITY jamais VENUE, même index de salles rendant un appariement parfait ; observation API
+      # directVenue peuplé → VENUE). Le gate SCHÉMA voisin ne couvre PAS cette règle. Sans ce gate,
+      # l'empoisonnement permanent de la revue sécurité revient en silence.
+      - name: OpponentLocationResolverTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Service/Basketball/OpponentLocationResolverTest.php --group phase1'
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest

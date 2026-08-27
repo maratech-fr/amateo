@@ -8839,6 +8839,59 @@
                 ]
             }
         },
+        "/api/opponents/resolve": {
+            "post": {
+                "operationId": "resolveOpponentLocations",
+                "tags": [
+                    "Fixture"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Locates the DISTINCT away opponents of the club+season into the shared opponent directory (salle or city, best-effort). An opponent already known at venue precision is skipped; one that cannot be located comes back named.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "resolved": {
+                                            "type": "integer",
+                                            "description": "Opponents written/refined in the shared directory"
+                                        },
+                                        "unresolved": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            },
+                                            "description": "Opponent names that could not be located"
+                                        },
+                                        "skipped": {
+                                            "type": "integer",
+                                            "description": "Opponents already known at venue precision (no network call)"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No club or season in context"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "422": {
+                        "description": "Too many distinct opponents to locate at once (retry with fewer)"
+                    },
+                    "429": {
+                        "description": "Too many requests (per-user rate limit)"
+                    }
+                },
+                "summary": "Resolve the away opponents of the season into the shared opponent directory (management only)"
+            }
+        },
         "/api/implicit_rule_settings": {
             "get": {
                 "operationId": "api_implicit_rule_settings_get_collection",
