@@ -1,8 +1,9 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-08-26 (recalé au bump de contrat **2.15 → 2.16** — P2-53 RMM-8 PR-2,
-blocs de trajet sur `/generate` ; ce fichier ne cite le contrat qu'au §422 (`version:
-"1.0"` vs le MAJOR 2 du contrat, désormais `2.16`). Passe précédente (2026-08-25, bump 2.14 → 2.15, rotation
+Last verified @ 2026-08-28 (rotation `documentation-update`, passe Lot B — `engine/CONTRACT_VERSION`
+= **2.16** re-confirmé ; le fichier ne cite le contrat qu'au §422 (`version: "1.0"` du corps d'erreur
+vs le MAJOR 2). Passe précédente (recalé au bump 2.15 → 2.16 — P2-53 RMM-8 PR-2,
+blocs de trajet sur `/generate`). Antérieur (2026-08-25, bump 2.14 → 2.15, rotation
 `documentation-update`, hors sujet de la PR — la constante
 avait de nouveau bouge sans suivre la prose, exactement l'avertissement que ce fichier se fait a
 lui-meme §Formule du score). **Un fait corrige** : `SCORE_FORMULA_VERSION` disait V11, le code est
