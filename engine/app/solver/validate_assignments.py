@@ -14,6 +14,7 @@ from app.solver.constraints import (
     ParsedConstraints,
     add_level_1_hard_constraints,
     add_time_window_constraints,
+    add_travel_time_penalty,
     diagnose_candidate_conflicts,
     parse_v2_constraints,
     resolve_implicit_rules,
@@ -228,9 +229,12 @@ def _apply_hard(
     """The generation model's HARD layer, minus objective and session caps —
     ``add_fixed_slots`` (inside) freezes the baseline; nothing here relaxes.
 
-    Parité génération ⇄ verdict : le même réglage ``implicitRules`` s'applique. Un cran
-    HARD bloque le déplacement qui le casse ; un cran PREFERRED ne bloque pas (ses
-    littéraux de violation sont posés mais sans objectif ici — feasibility check seul)."""
+    Parité génération ⇄ verdict : le même réglage ``implicitRules`` s'applique, et la
+    ``venueTravelTimes`` est CONSOMMÉE ici comme dans ``/generate`` (P2-55) — sous
+    ``travelTime`` MANDATORY, un enchaînement au battement trop court pose l'INTERDIT DUR
+    et rend le déplacement fautif INFEASIBLE. Un cran HARD bloque le déplacement qui le
+    casse ; un cran PREFERRED ne bloque pas (ses littéraux de violation sont posés mais
+    sans objectif ici — feasibility check seul)."""
     min_by_team: dict[str, int] = {str(t.get("id")): 0 for t in data.get("teams", []) if t.get("id")}
     stats = add_level_1_hard_constraints(
         model,
@@ -247,6 +251,7 @@ def _apply_hard(
         team_player_map=team_player_map,
         shared_trainings=data.get("sharedTrainings", []),
         team_links=data.get("teamLinks", []),
+        venue_travel_times=data.get("venueTravelTimes", []),
     )
     add_time_window_constraints(model, model.x, parsed["time_windows"])
     return stats
@@ -362,6 +367,24 @@ def _evaluate_state(
         info_out=info,
     )
 
+    # P2-55 — battement de trajet PREFERRED : le malus SOFT du déplacement remonte comme COMPROMIS
+    # nommé (famille ``FAMILY_TRAVEL``), à l'identique du chemin ``/generate`` (main.py). Ne produit
+    # des termes QUE si la règle est active ET PREFERRED (le MANDATORY est dur, posé dans
+    # ``_apply_hard``). Matrice absente / règle inactive / MANDATORY ⇒ [] (chemin byte-identique).
+    resolved_rules = resolve_implicit_rules(data.get("implicitRules"))
+    travel_battement_terms: list[tuple[Any, int]] = []
+    if resolved_rules.travel_time_active and resolved_rules.travel_time_intensity != MANDATORY:
+        travel_battement_terms = add_travel_time_penalty(
+            model,
+            assignments,
+            coaches=data.get("coaches", []),
+            team_links=data.get("teamLinks", []),
+            team_coach_map=team_coach_map,
+            venue_travel_times=data.get("venueTravelTimes", []),
+            default_minutes=resolved_rules.travel_time_default_minutes,
+            info_out=info,
+        )
+
     add_level_2_objective(
         model,
         assignments,
@@ -370,7 +393,7 @@ def _evaluate_state(
         apply_chaining=True,
         team_player_map=team_player_map,
         info_out=info,
-        extra_placement_terms=team_link_penalty_terms,
+        extra_placement_terms=[*team_link_penalty_terms, *travel_battement_terms],
     )
 
     _, solver = _solve(model, timeout_seconds=timeout_seconds, seed=seed)
