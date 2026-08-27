@@ -549,7 +549,14 @@ export class VerdictAbandonedError extends EngineVerificationInterruptedError {
  * cette borne — elle ne masque donc jamais un timeout serveur, elle empêche seulement le front de
  * raccrocher trop tôt.
  */
-const MOVE_VERDICT_TIMEOUT_MS = 45_000;
+export const MOVE_VERDICT_TIMEOUT_MS = 45_000;
+
+/**
+ * La MÊME borne, EN SECONDES, pour la phrase d'attente montrée à l'utilisateur (« …jusqu'à N s »).
+ * DÉRIVÉE du budget transport ci-dessus, jamais un littéral indépendant : une dérive de l'un sans
+ * l'autre romprait en silence la cohérence message⇄comportement (P4-119 c bis). Source unique.
+ */
+export const MOVE_VERDICT_TIMEOUT_SECONDS = MOVE_VERDICT_TIMEOUT_MS / 1000;
 
 /**
  * Une interruption CÔTÉ CLIENT (timeout de ky, ou abort) — à traduire en

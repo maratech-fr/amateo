@@ -7,6 +7,7 @@ import { MODAL_WIDTH } from "@/shared/components/ui/modal";
 import { useModalA11y } from "@/shared/lib/useModalA11y";
 import { cn } from "@/shared/lib/utils";
 
+import { MOVE_VERDICT_TIMEOUT_SECONDS } from "./api";
 import type { Compromise, MoveViolation } from "./api";
 import { CompromiseList } from "./CompromiseList";
 
@@ -97,7 +98,7 @@ export function EvictConfirmDialog({ open, phase, occupantName, compromises, vio
             // indisponible » si le front raccroche. La borne suit le budget client (cf. api.ts).
             <div className="flex items-center gap-2 text-muted-foreground" role="status">
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              Vérification en cours — le moteur calcule, cela peut prendre jusqu'à 45 s.
+              Vérification en cours — le moteur calcule, cela peut prendre jusqu'à {MOVE_VERDICT_TIMEOUT_SECONDS} s.
             </div>
           ) : null}
 
