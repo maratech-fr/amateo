@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
 
+import * as matchesApi from "./api";
 import { MatchesPage } from "./MatchesPage";
 import { useMatchesStore } from "./store";
 
@@ -117,6 +118,16 @@ async function gotoStep(user: ReturnType<typeof userEvent.setup>, label: RegExp)
 }
 
 describe("MatchesPage — la boucle guidée (RMM-1 PR3)", () => {
+  it("au chargement, rend le FullPageSpinner PLEINE PAGE (cohérence cockpit/planning), pas un spinner nu", () => {
+    // getFixtures qui ne résout jamais → isLoading reste vrai, on capture l'état de chargement.
+    vi.mocked(matchesApi.getFixtures).mockReturnValueOnce(new Promise(() => {}));
+    renderWithProviders(<MatchesPage />);
+    // Discriminant : `FullPageSpinner` rend son Spinner en `size-8` (pleine page) ; l'ancien rendu
+    // était un `<Spinner>` NU en `size-5` par défaut dans un `py-16` (demi-page). Le `.min-h-screen`
+    // ne discrimine pas (le harness de test wrappe déjà) — c'est la taille qui prouve la primitive.
+    expect(screen.getByLabelText("Chargement")).toHaveClass("size-8");
+  });
+
   it("dérive un rail de 5 étapes ; le premier trou (Litiges) est la vue par défaut", async () => {
     renderWithProviders(<MatchesPage />);
     const rail = await screen.findByRole("navigation");
