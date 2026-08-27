@@ -12,6 +12,7 @@ use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
 use App\Dto\SportCategoryInput;
 use App\Entity\SportCategory;
+use App\Service\MatchDurationProfile;
 use App\State\Processor\SportCategoryStateProcessor;
 use App\State\Provider\SportCategoryStateProvider;
 use DateTimeImmutable;
@@ -56,7 +57,23 @@ class SportCategoryResource
     #[Groups(['read'])]
     public int $sortOrder = 0;
 
-    public static function fromEntity(SportCategory $entity): self
+    // P2-54 RMM-9 — la durée de match propre à la catégorie (null = héritée). Les
+    // deux `default*` portent le défaut de FAMILLE résolu par le serveur : le front
+    // les affiche en placeholder / en-tête de groupe, il ne re-dérive JAMAIS les
+    // défauts (FrontRederivationRegistryTest).
+    #[Groups(['read'])]
+    public ?int $matchMinutes = null;
+
+    #[Groups(['read'])]
+    public ?int $warmupMinutes = null;
+
+    #[Groups(['read'])]
+    public int $defaultMatchMinutes = 0;
+
+    #[Groups(['read'])]
+    public int $defaultWarmupMinutes = 0;
+
+    public static function fromEntity(SportCategory $entity, MatchDurationProfile $familyDefault): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
@@ -69,6 +86,10 @@ class SportCategoryResource
         $dto->ageMin = $entity->getAgeMin();
         $dto->ageMax = $entity->getAgeMax();
         $dto->sortOrder = $entity->getSortOrder();
+        $dto->matchMinutes = $entity->getMatchMinutes();
+        $dto->warmupMinutes = $entity->getWarmupMinutes();
+        $dto->defaultMatchMinutes = $familyDefault->matchMinutes;
+        $dto->defaultWarmupMinutes = $familyDefault->warmupMinutes;
 
         return $dto;
     }

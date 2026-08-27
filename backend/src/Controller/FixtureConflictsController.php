@@ -18,6 +18,7 @@ use App\Repository\LeagueMatchWindowRepository;
 use App\Service\ConflictFingerprinter;
 use App\Service\LeagueEnvelopeResolver;
 use App\Service\MatchConflictDetector;
+use App\Service\MatchDurationResolver;
 use App\Service\SeasonResolver;
 use App\Service\TrainingCalendarContext;
 use Doctrine\ORM\EntityManagerInterface;
@@ -52,6 +53,7 @@ final class FixtureConflictsController extends AbstractController
         private readonly ClubRepository $clubRepository,
         private readonly LeagueMatchWindowRepository $leagueWindowRepository,
         private readonly LeagueEnvelopeResolver $envelopeResolver,
+        private readonly MatchDurationResolver $matchDurationResolver,
     ) {}
 
     // priority > 0: this static path must win over API Platform's /api/fixtures/{id}
@@ -84,6 +86,20 @@ final class FixtureConflictsController extends AbstractController
         $categories = $this->entityManager->getRepository(SportCategory::class)->findBy([]);
         $league = $this->clubRepository->find($clubId)?->getLeague();
         $envelope = $this->envelopeResolver->resolve($teams, $categories, $this->leagueWindowRepository->findEnvelopeForLeague($league));
+        // P2-54 RMM-9 — teamId → match duration profile: the category's own values
+        // when set, else its family default (MatchDurationResolver). The detector
+        // stays PURE (data injected), the resolution happens once, here.
+        $categoriesById = [];
+        foreach ($categories as $category) {
+            $categoriesById[$category->getId()] = $category;
+        }
+        $profilesByTeam = [];
+        foreach ($teams as $team) {
+            $category = $categoriesById[$team->getSportCategoryId()] ?? null;
+            if (null !== $category) {
+                $profilesByTeam[$team->getId()] = $this->matchDurationResolver->resolve($category);
+            }
+        }
         // P1-4 PR F2 — severity 6 (completeness of PAIRED competitions).
         /** @var list<Competition> $competitions */
         $competitions = $this->entityManager->getRepository(Competition::class)->findBy([]);
@@ -105,6 +121,7 @@ final class FixtureConflictsController extends AbstractController
             $matchWindows,
             $envelope,
             $competitions,
+            $profilesByTeam,
         );
 
         // RMM-3 — champ ADDITIF : l'empreinte stable de chaque conflit, calculée EN

@@ -6,13 +6,23 @@ namespace App\State\Provider;
 
 use App\ApiResource\SportCategoryResource;
 use App\Entity\SportCategory;
+use App\Service\MatchDurationResolver;
 use Doctrine\ORM\QueryBuilder;
+use Symfony\Contracts\Service\Attribute\Required;
 
 /**
  * @extends AbstractStateProvider<SportCategory, SportCategoryResource>
  */
 class SportCategoryStateProvider extends AbstractStateProvider
 {
+    protected MatchDurationResolver $matchDurationResolver;
+
+    #[Required]
+    public function setMatchDurationResolver(MatchDurationResolver $matchDurationResolver): void
+    {
+        $this->matchDurationResolver = $matchDurationResolver;
+    }
+
     protected function getEntityClass(): string
     {
         return SportCategory::class;
@@ -43,6 +53,6 @@ class SportCategoryStateProvider extends AbstractStateProvider
      */
     protected function mapEntityToOutput(object $entity): SportCategoryResource
     {
-        return SportCategoryResource::fromEntity($entity);
+        return SportCategoryResource::fromEntity($entity, $this->matchDurationResolver->familyDefault($entity));
     }
 }
