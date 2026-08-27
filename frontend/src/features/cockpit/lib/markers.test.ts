@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CalendarEntry } from "../api";
-import { entryIcon } from "./markers";
+import { entryIcon, isHolidayAnchor } from "./markers";
 
 /**
  * Retour fondateur 2026-07-24, étendu à la MÈRE le 2026-08-19 : une VACANCE ne porte jamais ⛔
@@ -39,5 +39,32 @@ describe("entryIcon — la vacance ne porte jamais ⛔", () => {
   it("une FERMETURE garde son ⛔, une COUPURE son 🛑 (NR)", () => {
     expect(entryIcon(period({ periodType: "closure" }))).toBe("⛔");
     expect(entryIcon(period({ periodType: "cutoff" }))).toBe("🛑");
+  });
+});
+
+/**
+ * `isHolidayAnchor` est la SEULE maison du prédicat « cette entrée ANCRE une vacance scolaire »
+ * (P4-121) : RadarPanel (`entryByHoliday`) et DayDialog (l'entrée d'une vacance donnée) l'importent
+ * au lieu de refiltrer sur `schoolHolidayId` seul. Le cas décisif — un ENFANT qui porterait
+ * (hypothétiquement) un schoolHolidayId → false — est exactement la régression que la garde
+ * d'ancrage prévient sur ces deux sites : sans elle, un tel enfant serait pris pour l'ancre.
+ */
+describe("isHolidayAnchor — la maison du prédicat d'ancrage vacances", () => {
+  it("une entrée RACINE avec schoolHolidayId ancre → true", () => {
+    expect(isHolidayAnchor(period({ periodType: "holiday", schoolHolidayId: "sh-1", parentEntryId: null }))).toBe(true);
+  });
+
+  it("un ENFANT — même en portant (hypothétiquement) un schoolHolidayId — n'ancre PAS → false", () => {
+    // Falsification du fix RadarPanel/DayDialog : le filtre `schoolHolidayId`-seul d'avant aurait
+    // renvoyé true ici et pris cet enfant pour l'ancre ; la garde `parentEntryId === null` l'exclut.
+    expect(isHolidayAnchor(period({ periodType: "holiday", schoolHolidayId: "sh-1", parentEntryId: "mother" }))).toBe(false);
+  });
+
+  it("une RACINE sans schoolHolidayId n'ancre rien → false", () => {
+    expect(isHolidayAnchor(period({ periodType: "holiday", schoolHolidayId: null, parentEntryId: null }))).toBe(false);
+  });
+
+  it("une FERMETURE (racine, sans schoolHolidayId) n'ancre rien → false", () => {
+    expect(isHolidayAnchor(period({ periodType: "closure", schoolHolidayId: null, parentEntryId: null }))).toBe(false);
   });
 });

@@ -321,7 +321,11 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
   const workingSeason = useWorkingSeason();
   const clamped = null === workingSeason ? null : clampRangeToSeason(holiday.startDate, holiday.endDate, workingSeason);
 
-  const entry = entries.find((e) => e.schoolHolidayId === holiday.id) ?? null;
+  // L'entrée qui ANCRE cette vacance (`isHolidayAnchor` — racine + schoolHolidayId, maison unique
+  // du prédicat dans lib/markers). La garde d'ancrage empêche d'apparier une entrée-enfant qui
+  // porterait (hypothétiquement) un schoolHolidayId ; le rendu courant est inchangé (les enfants
+  // n'en portent pas).
+  const entry = entries.find((e) => isHolidayAnchor(e) && e.schoolHolidayId === holiday.id) ?? null;
   // ADR-0002 lot D-b : « overlay généré » = plan validé (chosenScheduleId), dérivé du plan.
   const plan = useSchedulePlanForEntry(entry?.id ?? null);
   const activeId = plan.data?.chosenScheduleId ?? null;

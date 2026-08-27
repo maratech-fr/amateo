@@ -521,8 +521,15 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
      * vérité côté serveur — le front n'invente pas la règle (règle d'or frontend.md).
      *
      * Bornée : une HOLIDAY RACINE seulement (une fermeture n'est pas une vacance ; une
-     * semaine-enfant n'ancre rien — `isHolidayAnchor` = racine + schoolHolidayId). Sans zone,
-     * sans club en contexte, ou sans vacance chevauchante → pas de lien (NULL).
+     * semaine-enfant n'ancre rien). Sans zone, sans club en contexte, ou sans vacance
+     * chevauchante → pas de lien (NULL).
+     *
+     * Même notion, deux opérations : cette méthode est le PENDANT ÉCRITURE de `isHolidayAnchor`
+     * (frontend `cockpit/lib/markers.ts`, LECTURE — « racine + schoolHolidayId »). Ici on CRÉE
+     * l'ancre (calcul du lien racine HOLIDAY → vacance de la zone) ; là-bas on DÉTECTE, parmi des
+     * entrées, celle qui ancre déjà une vacance. Le prédicat d'ancrage est purement STRUCTUREL
+     * (deux champs de l'entrée) et sa maison de lecture reste `isHolidayAnchor` côté front — pas
+     * une règle métier redérivée : ces deux sites ne sont pas des miroirs à mettre en parité.
      */
     private function autoLinkedHolidayId(CalendarEntryInput $input): ?string
     {

@@ -13,6 +13,7 @@ import { cn } from "@/shared/lib/utils";
 import type { CalendarEntry, CalendarEntryPeriodType, PublicHoliday, SchoolHoliday } from "./api";
 import { useCreateVenueClosure, useEntryConflicts, useEntryConflictsList, useSchedulePlans } from "./queries";
 import { clampRangeToSeason, daysUntil, frDateShort, groupCoverageSlots, isActionableWeek, todayISO, weeksCovering, type WeekWindow } from "./lib/date";
+import { isHolidayAnchor } from "./lib/markers";
 import { seasonLockTitle, useSocleValidated } from "./lib/socle";
 import { unavailabilitiesToAlert } from "./lib/venueUnavailabilityRadar";
 import { useWeekAdapt } from "./lib/useWeekAdapt";
@@ -249,9 +250,13 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   // la bascule silencieuse en bloc quand la condition tombait — le picker s'ouvre et NOMME l'état.
   const requestAdapt = (entry: CalendarEntry) => requestWeekAdapt(entry, { alreadySplit: childrenByParent.has(entry.id) });
 
-  // A holiday already materialised as a period entry (matched by schoolHolidayId).
+  // A holiday already materialised as a period entry: the ROOT entry that ANCHORS it
+  // (`isHolidayAnchor` — racine + schoolHolidayId, maison unique du prédicat dans lib/markers).
+  // Un enfant ne porte pas de schoolHolidayId aujourd'hui, mais filtrer sur `schoolHolidayId`
+  // seul appairerait à tort une future entrée-enfant qui en porterait un : la garde d'ancrage
+  // rend l'appariement robuste sans changer le rendu courant.
   // Ignored ones stay in the map so a dismissed holiday is skipped below, not re-proposed.
-  const entryByHoliday = new Map(entries.filter((e) => null !== e.schoolHolidayId).map((e) => [e.schoolHolidayId as string, e]));
+  const entryByHoliday = new Map(entries.filter(isHolidayAnchor).map((e) => [e.schoolHolidayId as string, e]));
 
   const holidaysInScope = holidays
     // ⚠ `endDate`, pas `startDate` (revue #344 round 2) : une vacance DÉJÀ COMMENCÉE dont

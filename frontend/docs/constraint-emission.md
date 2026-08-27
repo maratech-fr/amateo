@@ -1,10 +1,11 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-08-26 (P2-53 RMM-8 PR-4 — la ligne `travelTime` §2 devient **alignée** :
-`TravelRuleNotice` (`ImplicitRulesPanel.tsx`) offre désormais un vrai sélecteur Préféré/Obligatoire
-qui poste sur `VenueTravelRuleSetting`, et `ScheduleConstraintBuilder::resolveTravelRuleIntensity`
-émet le réglage stocké ?? PREFERRED — le front peut maintenant choisir tout ce que l'engine sait
-consommer). Vérification précédente toujours valable : `forcedDays` livré (ALIGN-09) — table §2 et
+Last verified @ 2026-08-28 (rotation `documentation-update`, passe Lot B — ligne `travelTime` §2
+re-confrontée : `resolveTravelRuleIntensity` émet le réglage stocké ?? PREFERRED
+(`ScheduleConstraintBuilder`), toujours ✅ aligné ; `forcedDays` livré (ALIGN-09). Passe précédente
+(P2-53 RMM-8 PR-4 — la ligne `travelTime` §2 devient **alignée** : `TravelRuleNotice`
+(`ImplicitRulesPanel.tsx`) sélecteur Préféré/Obligatoire qui poste sur `VenueTravelRuleSetting`).
+Vérification antérieure toujours valable : table §2 et
 synthèse §3 confrontées à `ConstraintsStep.tsx:355-356,456-500`,
 `ConstraintsStep.test.tsx:435-446`, ne listent que `preferredDays` en scission A (DÉCISION FERMÉE
 ALIGN-09 confirmée dans `etat-des-lieux.md`).
