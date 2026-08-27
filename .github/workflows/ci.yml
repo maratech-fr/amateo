@@ -590,6 +590,16 @@ jobs:
       - name: OpponentDirectoryShareTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/OpponentDirectoryShareTest.php --group phase1'
 
+      # P2-54 RMM-9 correctif sécu 2026-08-28 : garde l'invariant COMPORTEMENTAL du résolveur —
+      # un label de salle xlsx (fourni par le club, texte libre) ne peut établir une précision
+      # VENUE dans la table partagée `opponent_directory` ; seul le hit API autoritatif
+      # (directVenue) le peut. Falsifié dans les deux sens (observation xlsx directVenue=null →
+      # CITY jamais VENUE, même index de salles rendant un appariement parfait ; observation API
+      # directVenue peuplé → VENUE). Le gate SCHÉMA voisin ne couvre PAS cette règle. Sans ce gate,
+      # l'empoisonnement permanent de la revue sécurité revient en silence.
+      - name: OpponentLocationResolverTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Service/Basketball/OpponentLocationResolverTest.php --group phase1'
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest

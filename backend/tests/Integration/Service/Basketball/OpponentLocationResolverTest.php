@@ -38,6 +38,7 @@ use Symfony\Component\HttpClient\Response\MockResponse;
  * observation canal API (directVenue peuplé) → VENUE (le canal autoritatif garde son
  * étage 1 gratuit).
  */
+#[Group('phase1')]
 #[Group('integration')]
 #[Group('security')]
 final class OpponentLocationResolverTest extends WebTestCase
