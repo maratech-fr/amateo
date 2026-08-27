@@ -100,7 +100,7 @@ which is a no-op outside a transaction (see `../security/rls.md`).
 
 The blocking CI gate is roughly a dozen and a half `--group phase1` suites — tenant/season
 isolation, RLS, Mercure hardening, management roles, API rate limit, superadmin SA0, engaged-team
-perimeter, period-plan birth, backend↔engine contract. **The canonical list is `CLAUDE.md` §4** —
+perimeter, period-plan birth, backend↔engine contract. **The canonical list is `docs/testing/blocking-tests.md`** —
 don't copy it here, it grows.
 
 ```bash

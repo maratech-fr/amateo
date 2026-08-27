@@ -59,7 +59,8 @@ la même question finissent **toujours** par répondre autre chose.
    faux, committé après vérification du diff.
 5. **Committer avant tout `git checkout`.** Trois tests non committés ont été perdus ainsi.
 6. **Un test déclaré bloquant n'est pas un test bloquant** *(2026-07-30)*. Le job CI
-   `blocking-tests` énumère **un step par fichier** : un test annoncé dans `CLAUDE.md` §4 mais
+   `blocking-tests` énumère **un step par fichier** : un test annoncé dans la liste canonique
+   (`docs/testing/blocking-tests.md`, ex-`CLAUDE.md` §4) mais
    absent de `ci.yml` ne garde rien. Ajouter les deux **dans le même commit**.
 7. **Ne pas patcher sous pression de revue, correctif par correctif** *(2026-07-30)*. Six
    correctifs posés isolément en ont produit trois nouveaux, dont un **pire que le défaut

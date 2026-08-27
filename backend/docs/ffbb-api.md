@@ -1,9 +1,9 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-08-25 (rotation `documentation-update`, RMM-6 PR-2 — zone non touchée par
-cette PR, contrôle de fraîcheur). Re-confronté au code : hosts en constantes dures
+Last verified @ 2026-08-27 (rotation `documentation-update`, hors sujet de la PR — sondage des
+stamps les plus anciens du dépôt). Re-confronté au code : hosts en constantes dures
 (`Service/Basketball/FfbbApiClient.php:24-25`, `CONFIG_URL`/`SEARCH_URL`) ✓ · filtre strict serveur
-de `searchRencontres` sur `idOrganismeEquipe1`/`idOrganismeEquipe2.code` (`FfbbApiClient.php:104-116`)
+de `searchRencontres` sur `idOrganismeEquipe1`/`idOrganismeEquipe2.code` (`FfbbApiClient.php:113-114`)
 ✓ · routes `GET /api/ffbb/rencontres` + `POST /api/ffbb/rencontres/apply`
 (`Controller/Basketball/FfbbRencontresController.php:60,81`) ✓ ·
 `PATCH /api/club/info` bien SUPPRIMÉ — zéro occurrence dans `src/` ✓. Non re-sondé cette passe :

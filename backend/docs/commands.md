@@ -1,6 +1,9 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-08-26 (rotation `documentation-update`, pas de sujet lié à cette passe —
+Last verified @ 2026-08-27 (édition = recalage d'UN pointeur : la liste canonique des
+blocking-tests vit désormais dans `docs/testing/blocking-tests.md` (ex-`CLAUDE.md` §4), la ligne
+`make phpunit` la cite à sa nouvelle adresse — le fichier pointé existe et
+`BlockingTestsListMatchesCiTest` le garde ✓. Le reste : rotation du 2026-08-26 —
 sondage des stamps les plus anciens du dépôt). Re-confronté au code : les 7 scripts de
 `backend/scripts/*.sh` toujours tous listés (`ls` ✓, aucun ajout/retrait depuis la dernière passe) ;
 cibles Make de la table toujours toutes présentes dans `backend/Makefile` (`test`, `tests-complete`,
@@ -22,7 +25,7 @@ l'historique vit dans git : `git log -p --follow backend/docs/commands.md`.
 | `make install` | `composer install` dans le container |
 | `make test` | PHPStan + CS-Fixer + PHPUnit **`--testsuite Unit`** (⚠️ PAS le gate bloquant : ni `--group phase1`, ni `tests/` entier) |
 | `make tests-complete` | PHPStan + CS-Fixer + **`phpunit tests/`** (le DOSSIER entier — miroir EXACT du job CI `Unit Tests` ; seule cible qui voit Api/Command/Double/EventListener/MessageHandler/OpenApi/Validator) |
-| `make phpunit` | PHPUnit **`--group phase1`** seul (`APP_ENV=test` injecté) — ⚠ **ce n'est pas « le gate »** : le groupe compte plusieurs fois plus de fichiers que le job CI `blocking-tests` n'a de steps nommés (les décomptes exacts pourrissent en jours — `ci.yml` fait foi). La cible **couvre** le gate mais ne s'y réduit pas (CLAUDE.md §4) |
+| `make phpunit` | PHPUnit **`--group phase1`** seul (`APP_ENV=test` injecté) — ⚠ **ce n'est pas « le gate »** : le groupe compte plusieurs fois plus de fichiers que le job CI `blocking-tests` n'a de steps nommés (les décomptes exacts pourrissent en jours — `ci.yml` fait foi). La cible **couvre** le gate mais ne s'y réduit pas (liste : `docs/testing/blocking-tests.md`) |
 | `make tests-engine-semantics` | PHPUnit **`--group contract`** — les tests qui interrogent le **VRAI moteur** (job CI dédié et bloquant « Engine semantics ») : chaque clé de la liste blanche `config` doit **CHANGER** le résultat du solveur, le miroir de capacité doit rendre le même verdict que lui, le payload doit rester recevable. ⚠ `tests-complete` les **exclut** (`--exclude-group contract`), exactement comme `unit-tests` en CI : sans cette cible, ils ne tournent jamais en local |
 | `make db-init` | Crée + migre la base de **dev** — idempotent, ne détruit rien |
 | `make db-init-test` | Crée + migre la base de test (**pré-requis de toute suite**) |

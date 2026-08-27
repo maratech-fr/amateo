@@ -38,7 +38,7 @@ vider les clés.
 
 ## Gardes
 
-`Security/RegisterTurnstileTest` (step de `blocking-tests`, liste CLAUDE.md §4) : sans clé →
+`Security/RegisterTurnstileTest` (step de `blocking-tests`, liste `docs/testing/blocking-tests.md`) : sans clé →
 register intact (le kill-switch) ; avec clé → token exigé et vérifié sur l'URL en dur ;
 fail-open transport ; 429 du limiteur toujours premier. Périmètre : **register uniquement** —
 étendre à login/forgot/coach-wish serait un nouveau lot.
