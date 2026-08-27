@@ -8,6 +8,7 @@ import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { Modal } from "@/shared/components/ui/modal";
 import { readState } from "@/shared/lib/readState";
+import { toast } from "@/shared/stores/toastStore";
 
 import type { AutofillUnresolvedReason, Venue, VenueTravelTime, VenueTravelTimeAutofillResult, VenueTravelTimePayload } from "../api";
 import { useAutofillVenueTravelTimes, useCreateVenueTravelTime, useUpdateVenueTravelTime, useVenueTravelTimes, useWizardVenues } from "../queries";
@@ -89,6 +90,9 @@ function TravelCell({
     }
     const n = Number(trimmed);
     if (!Number.isInteger(n) || n < MIN_MINUTES || n > MAX_MINUTES) {
+      // FRT-27 — la restauration silencieuse laissait le gestionnaire croire que sa saisie
+      // avait pris. On DIT pourquoi elle est rejetée (le SIGNAL ; la restauration ne change pas).
+      toast.error(`Un temps de trajet doit être un nombre entier de minutes entre ${MIN_MINUTES} et ${MAX_MINUTES}.`);
       input.value = served; // hors bornes → on rend la valeur servie.
       return;
     }

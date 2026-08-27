@@ -1,7 +1,8 @@
 import { fireEvent, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
+import { toast } from "@/shared/stores/toastStore";
 
 import type { Venue, VenueTravelTime, VenueTravelTimeAutofillResult } from "../api";
 
@@ -49,6 +50,10 @@ beforeEach(() => {
   createMut.mockClear();
   updateMut.mockClear();
   autofillMut.mockClear();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("TravelMatrixModal — première ouverture (consentement)", () => {
@@ -128,6 +133,24 @@ describe("TravelMatrixModal — la matrice", () => {
     expect(screen.getAllByText("Manuel").length).toBeGreaterThanOrEqual(1);
     const input = screen.getByRole("textbox", { name: "En voiture — Alpha → Beta" }) as HTMLInputElement;
     expect(input.value).toBe("15");
+  });
+
+  it("une saisie HORS BORNES est rejetée AVEC un signal (toast) — plus de restauration muette (FRT-27)", () => {
+    const errorSpy = vi.spyOn(toast, "error").mockImplementation(() => 0);
+    matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "AUTO" })];
+    renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
+
+    const input = screen.getByRole("textbox", { name: "En voiture — Alpha → Beta" }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "999" } }); // > MAX_MINUTES (240)
+    fireEvent.blur(input);
+
+    // Le SIGNAL part…
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringMatching(/\S/));
+    // …la valeur servie est restaurée (logique inchangée)…
+    expect(input.value).toBe("15");
+    // …et rien n'est écrit côté serveur.
+    expect(updateMut).not.toHaveBeenCalled();
+    expect(createMut).not.toHaveBeenCalled();
   });
 
   it("nomme les gymnases sans adresse et offre le lien vers leur fiche", () => {

@@ -1,6 +1,8 @@
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { readState, type ReadState } from "@/shared/lib/readState";
+import { toast } from "@/shared/stores/toastStore";
 import { isScheduleStreamConnected, useScheduleStream } from "@/features/planning/lib/scheduleStream";
 
 import { activeTeams, pausedTeamIds } from "./lib/activeLayer";
@@ -172,6 +174,10 @@ export function useCreateVenueTravelTime() {
   return useMutation({
     mutationFn: (body: VenueTravelTimePayload) => wizardApi.createVenueTravelTime(body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: TRAVEL_TIMES_KEY }),
+    // FRT-27 — une minute saisie qui échoue (422/409/réseau) ne doit pas rater en
+    // silence : la valeur affichée divergerait du serveur jusqu'au refetch. Toast,
+    // patron du module matchs (matches/queries.ts).
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -180,6 +186,8 @@ export function useUpdateVenueTravelTime() {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: VenueTravelTimePayload }) => wizardApi.updateVenueTravelTime(id, body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: TRAVEL_TIMES_KEY }),
+    // FRT-27 — cf. useCreateVenueTravelTime : un échec de mise à jour ne doit pas rester muet.
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -212,6 +220,8 @@ export function useUpdateTravelRuleSetting() {
   return useMutation({
     mutationFn: (intensity: wizardApi.VenueTravelRuleIntensity) => wizardApi.updateTravelRuleSetting(intensity),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: TRAVEL_RULE_SETTING_KEY }),
+    // FRT-27 — cf. useCreateVenueTravelTime : un échec du changement d'intensité ne doit pas rester muet.
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
