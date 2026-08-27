@@ -1,4 +1,4 @@
-Last verified @ 2026-08-25 (**rotation de fraîcheur**, RMM-6 PR-2 — zone non touchée par cette PR.
+Last verified @ 2026-08-28 (**rotation de fraîcheur**, PR roadmap retours terrain — zone non touchée par cette PR.
 Re-confronté au code : `frontend/src/shared/api/client.ts:48` pose bien un `X-Request-Id` sur
 chaque requête et le relit sur la réponse ; `EventListener/RequestIdListener.php` +
 `Messenger/RequestIdMiddleware.php` existent (backend+bus) ; `POST /api/feedback`

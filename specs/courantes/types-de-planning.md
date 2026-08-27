@@ -1,6 +1,6 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-08-25 (rotation de fraîcheur — re-vérifié contre le code, tout juste : `SchedulePlanProvisioner::ensurePeriodPlanId` pose toujours `title` seul (`SchedulePlanProvisioner.php:714`) ✓ · `TranscribePeriodPlanController` (`POST /api/schedule_plans/{id}/transcribe-from-socle`) existe toujours ✓ · le défaut auto-transcription sur fermeture (P2-44 PR-4, §2) tient au code front — `GenerateStep.tsx` détecte `periodEntry?.periodType === "closure"` et déclenche `transcribe.mutateAsync` sans clic ✓ · `windowLabel`/`PeriodWindowUniquenessGuard` toujours la maison du 409 `window_already_planned` ✓. Rien de faux ce passage)
+Last verified @ 2026-08-28 (rotation de fraîcheur — re-vérifié contre le code, tout juste : `SchedulePlanProvisioner::ensurePeriodPlanId` pose toujours `title` seul (`SchedulePlanProvisioner.php:724-755`) ✓ · `TranscribePeriodPlanController` (`POST /api/schedule_plans/{id}/transcribe-from-socle`) existe toujours ✓ · le défaut auto-transcription sur fermeture (P2-44 PR-4, §2) tient au code front — `GenerateStep.tsx` détecte `periodEntry?.periodType === "closure"` et déclenche `transcribe.mutateAsync` sans clic ✓ · `windowLabel`/`PeriodWindowUniquenessGuard` toujours la maison du 409 `window_already_planned` ✓. Rien de faux ce passage)
 
 > **Rôle de ce document** : la trace durable du modèle métier des plannings, validé avec le
 > fondateur le 2026-07-12. C'est LA référence à consulter avant tout travail sur la
