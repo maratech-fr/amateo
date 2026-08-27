@@ -1,10 +1,12 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-27 (recalage de pointeurs SEULEMENT : la liste canonique des
-blocking-tests déménage de `CLAUDE.md` §4 vers `docs/testing/blocking-tests.md` — deux références
-mises à jour (`SlotRotationPayloadParityTest`, `MatchVisitDeltaParityTest`), aucun contenu métier
-touché. Le fond n'a pas été re-vérifié cette passe (dernière relecture code : 2026-08-26, P2-52 /
-RMM-10) — un stamp REMPLACE, l'historique vit dans git :
+Last verified @ 2026-08-28 (P2-54 RMM-9 PR-1 — la section « Empreinte-temps » est récrite sur les
+durées PAR CATÉGORIE : re-vérifié contre le code `MatchDurationProfile.php`/`MatchDurationResolver.php`
+(défauts de famille + repli 105/30), colonnes nullables `Version20260827120000.php`, douche/battement
+supprimés de `MatchFootprint.php`, `defaultMatchMinutes`/`defaultWarmupMinutes` servis par
+`SportCategoryResource`, écran `MatchDurationsEditor.tsx` ; deux divergences ASSUMÉES nommées —
+placement moteur (`match_placement.py` 105 fixe) et dessin de la grille (`weekendGrid.ts:5-6`).
+Le reste du fichier non re-confronté cette passe — un stamp REMPLACE, l'historique vit dans git :
 `git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
@@ -42,12 +44,20 @@ RMM-10) — un stamp REMPLACE, l'historique vit dans git :
 - API Platform 5-fichiers pour chaque (Resource/Input/Processor/Provider) → CRUD `/api/competitions`,
   `/api/fixtures`, filtrage tenant+season **automatique** (filtres SQL) + garde readonly-saison héritée (409).
 
-### Empreinte-temps — `MatchFootprint`
+### Empreinte-temps — `MatchFootprint` (durées PAR CATÉGORIE depuis P2-54 PR-1, 2026-08-28)
 
-Service pur (spec §4bis) : fenêtre d'occupation d'une personne pour un match. Domicile = **2h15**
-(30 échauffement + 1h45 match, de `kickoff−30` à `kickoff+105`). Extérieur = + **30 douche + 15 battement +
-trajet aller-retour** (trajet injecté, 0 jusqu'au palier B). C'est l'atome que le moteur de conflits (PR-2)
-chevauchera entre coachs/joueurs.
+Service pur (spec §4bis) : fenêtre d'occupation d'une personne pour un match. **Les durées ne sont
+plus des constantes** : un profil `{matchMinutes, warmupMinutes}` (`MatchDurationProfile`) est passé
+par l'appelant, résolu par **`MatchDurationResolver`** — colonnes nullables `sport_category.match_minutes`
+/`warmup_minutes` (override club par catégorie, écran « Durée des matchs » du SET-UP), sinon **défaut de
+famille** : U7-U11 75/30 · U13-U15 90/30 · U18-U21 105/30 · repli (Seniors, noms custom) 105/30 — le
+Resource **sert** `defaultMatchMinutes`/`defaultWarmupMinutes` résolus, le front n'en code aucun
+(anti-redérivation). Domicile = `kickoff−échauffement → kickoff+durée_match`. Extérieur = + **trajet
+aller-retour** (injecté, 0 jusqu'à la PR-3) — **la douche et le battement SONT SORTIS de l'empreinte**
+(décision fondateur 2026-08-28 : négligeables, le coach enchaîne en mordant sur l'échauffement suivant ;
+les anciennes constantes 30+15 sont supprimées). ⚠ **Divergence ASSUMÉE** : le solveur de placement
+(`engine/app/solver/match_placement.py`, `AFTER_KICKOFF_MIN = 105`) garde son empreinte figée — le radar
+est par catégorie, le placement moteur non ; à réconcilier si un club le constate, pas avant.
 
 ### Catalogue-ligue — `LeagueMatchWindow` (table GLOBALE)
 
@@ -99,7 +109,9 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
 
 - **Grille week-end** (`WeekendGrid` + `lib/weekendGrid.ts`) : calendrier daté week-end-centrique (colonnes =
   date × gymnase, lignes = créneaux), distinct du canevas lun-sam de l'entraînement. Chaque match placé =
-  bloc de son **empreinte 2h15** (`kickoff−30 → kickoff+105`), libellé au coup d'envoi. Navigation ‹ › entre
+  bloc d'une **empreinte VISUELLE fixe 2h15** (constantes locales `weekendGrid.ts:5-6` — résidu assumé
+  depuis P2-54 PR-1 : le radar calcule par catégorie, le DESSIN de la grille non ; présentation pure, à
+  réconcilier quand l'empreinte voyagera à l'écran — PR-3), libellé au coup d'envoi. Navigation ‹ › entre
   week-ends. Les matchs non placés / AWAY-sans-heure vivent dans la liste « À placer ».
 - **Pose domicile** (`PlacementPanel`) : clic sur un match à placer → panneau (salle + heure) →
   `PUT /api/fixtures/{id}` (full-replace, statut `PLACED`, corps reconstruit pour ne pas effacer opponent/

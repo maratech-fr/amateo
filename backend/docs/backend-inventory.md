@@ -3,13 +3,13 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-08-26 (P2-53 RMM-8 PR-4, DERNIÈRE du lot — §2 nouvelle ressource
-`VenueTravelRuleSetting` (`/api/venue_travel_rule_settings/{ruleKey}`) contre
-`Entity/VenueTravelRuleSetting.php` / `ApiResource/VenueTravelRuleSettingResource.php` /
-`State/{Processor,Provider}/VenueTravelRuleSetting*.php`, et la ligne `VenueTravelTime`
-recorrigée : « le solveur ne la lit pas encore » était vraie en PR-1, périmée depuis PR-2 (bloc
-`venueTravelTimes` consommé). Présente au snapshot OpenAPI (`openapi-snapshot.meta.md` fait foi du
-delta, +1 path). Reste antérieur non re-vérifié cette passe — un stamp REMPLACE, l'historique vit
+Last verified @ 2026-08-28 (P2-54 RMM-9 PR-1 — la ligne `SportCategory` §2 gagne les durées de
+match : colonnes nullables `match_minutes`/`warmup_minutes` (`Version20260827120000.php`),
+bornes 30-240/0-120 sur `SportCategoryInput`, défauts de famille résolus par
+`Service/MatchDurationResolver.php` et SERVIS en lecture (`defaultMatchMinutes`/
+`defaultWarmupMinutes`) — vérifié contre `ApiResource/SportCategoryResource.php` et le
+snapshot OpenAPI regénéré (184 paths, `openapi-snapshot.meta.md` fait foi). Reste antérieur non
+re-vérifié cette passe — un stamp REMPLACE, l'historique vit
 dans git : `git log -p --follow backend/docs/backend-inventory.md`)
 
 ---
@@ -102,7 +102,7 @@ Doctrine correspondantes vivent dans `backend/src/Entity/` et utilisent des UUID
 | 6 | User | `/api/users` | Utilisateurs | |
 | 7 | ClubUser | *(plus d'API)* | Membres du club (rôles) — la ressource générique a été **RETIRÉE le 2026-08-20 (P4-103)** : lecture seule, elle listait `userId`/`role`/`isActive` **sans aucun consommateur**, le front passant par `/api/memberships/*`. Surface retirée, garantie conservée par `MemberRoleTest` | |
 | 8 | Sport | `/api/sports` | Types de sports | |
-| 9 | SportCategory | `/api/sport-categories` | Catégories d'âge | |
+| 9 | SportCategory | `/api/sport-categories` | Catégories d'âge | Depuis P2-54 PR-1 : `matchMinutes`/`warmupMinutes` nullables (null = défaut de famille, servi en lecture via `defaultMatchMinutes`/`defaultWarmupMinutes` — `MatchDurationResolver`) ; pilote l'empreinte du radar matchs |
 | 10 | PriorityTier | `/api/priority-tiers` | Niveaux de priorité (S/A/B/C/D) | |
 | 11 | SubscriptionPlan | `/api/subscription_plans` | Plans d'abonnement (facturation ; renommé depuis `Plan`/`/api/plans` — ADR-0002 lot A, le nom « plan » revient au domaine planning) | |
 | 11bis | SchedulePlan | `/api/schedule_plans` | Conteneur nommé des versions d'une saison/période (ADR-0002) — filtres `calendarEntryId`, `type`. **POST** = le geste **« Adapter »** (`{calendarEntryId}`, `SchedulePlanStateProcessor`) : idempotent si la période a déjà son plan, 422 sur cutoff/mutualisation et sur une mère découpée, **409 `window_already_planned`** (P2-38 PR2, 2026-08-18, `App\Service\PeriodWindowUniquenessGuard`) si un AUTRE plan de période gouverne déjà tout ou partie de sa fenêtre — pris DANS le verrou de scope, jamais de destruction automatique, la famille (ancêtre racine `COALESCE(parent_entry_id, id)`) exclue. **PUT** renomme (le nom vit sur le plan, inv. 12). | |
