@@ -1,6 +1,6 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-08-26 (P2-53 RMM-8 PR-4 — le levier Obligatoire, DERNIÈRE PR du lot : le
+Last verified @ 2026-08-28 (rotation `documentation-update`, passe Lot A — drift corrigé : le §Consommateur listait `VenueTravelTimeAutofillService` SEUL, `OpponentTravelResolver` (P2-54 PR-3) ajouté. Hosts BAN/IGN en dur + `max_redirects: 0` re-confirmés (`BanGeocodingClient.php:24,59`, `IgnRoutingClient.php:27`). Passe précédente (P2-53 RMM-8 PR-4 — le levier Obligatoire, DERNIÈRE PR du lot : le
 store dédié `VenueTravelRuleSetting` confronté au code — singleton club+saison
 (`Entity/VenueTravelRuleSetting.php`, contrainte d'unicité `club_id`+`season_id`) ✓,
 `Get`/`Put /api/venue_travel_rule_settings/{ruleKey}` avec identifiant FIXE `travelTime` : une clé
@@ -82,8 +82,10 @@ Headers:
 - Best-effort par appel : une coordonnée hors plage, une réponse sans `duration` numérique, ou un
   échec de transport rendent `null` — jamais une exception qui casserait le lot.
 
-**Consommateur backend** : `VenueTravelTimeAutofillService` uniquement (pas de proxy `GET`
-individuel exposé — l'itinéraire n'est utile qu'en lot, voir §3).
+**Consommateurs backend** : `VenueTravelTimeAutofillService` (matrice ENTRAÎNEMENT gym→gym, en lot)
+**et**, depuis P2-54 PR-3, `OpponentTravelResolver` (trajet MATCHS siège club ↔ lieu adverse, table
+tenant `opponent_travel`) — même client `IgnRoutingClient`, même confinement SSRF. Pas de proxy `GET`
+individuel exposé.
 
 ## 3. L'autofill de la matrice de trajet (`POST /api/venue-travel-times/autofill`)
 
