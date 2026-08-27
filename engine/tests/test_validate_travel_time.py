@@ -76,15 +76,22 @@ def _payload(*, intensity: str, t1_start: str, t1_slots: list[tuple[int, str]]) 
 
 
 class TestMandatoryTravelVerdict:
-    def test_tight_enchainement_is_refused(self) -> None:
-        """MANDATORY : t2 vers V2/20:00 laisse au coach 10 min pour V1→V2 (barème 30) → REFUS.
+    def test_tight_enchainement_is_refused_and_names_travel(self) -> None:
+        """MANDATORY : t2 vers V2/20:00 laisse au coach 10 min pour V1→V2 (barème 30) → REFUS,
+        motif NOMMÉ ``travel_time_infeasible`` (le miroir déterministe, pas ``unknown_hard_conflict``).
 
-        Falsifie : sans ``venue_travel_times`` passé à ``_apply_hard``, le solve resterait
-        faisable et le verdict dirait « valide »."""
+        Falsifie DEUX fois : sans ``venue_travel_times`` passé à ``_apply_hard`` le solve resterait
+        faisable (« valide ») ; sans le miroir ``_travel_time_move_violation`` le refus n'aurait pas
+        ce NOM. On vérifie donc le nom du motif, pas seulement ``valid is False``."""
         result = _run(_payload(intensity="MANDATORY", t1_start="18:20", t1_slots=[(1, "18:20")]))
         assert result["valid"] is False, f"battement 10 < 30 sous MANDATORY doit être REFUSÉ; got {result}"
-        # Refus EXPLICABLE (jamais un « non » nu) : au moins une règle nommée est remontée.
         assert result["violations"], "un refus doit rester explicable (violation nommée)"
+        assert result["violations"][0]["rule"] == "travel_time_infeasible", (
+            f"le refus MANDATORY doit NOMMER le trajet, pas retomber sur unknown_hard_conflict; got {result['violations']}"
+        )
+        # Le coach est nommé dans les champs structurés ET le texte ne fuit aucun identifiant interne.
+        assert result["violations"][0]["coach_id"] == "c1"
+        assert "gymnase suivant" in result["violations"][0]["message"]
 
     def test_comfortable_enchainement_is_accepted(self) -> None:
         """TÉMOIN : la séance de t1 finit à 18:30, le coach a 90 min pour V1→V2 → ACCEPTÉ."""

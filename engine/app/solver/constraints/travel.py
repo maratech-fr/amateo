@@ -158,9 +158,8 @@ def _vehicled_by_coach(coaches: Iterable[Any]) -> dict[str, bool]:
     return result
 
 
-def _iter_travel_pairs(
-    assignments: Iterable[AssignmentInput] | Mapping[Any, BoolVarLike] | None,
-    locked_slots: Iterable[Any],
+def iter_travel_pairs_from_placements(
+    placements_by_team: Mapping[str, list[TravelPlacement]],
     *,
     coaches: Iterable[Any],
     team_links: Iterable[Any],
@@ -168,12 +167,13 @@ def _iter_travel_pairs(
     matrix: Mapping[frozenset[str], tuple[int | None, int | None]],
     default_minutes: int,
 ) -> Iterator[tuple[str, int, int, TravelPlacement, TravelPlacement]]:
-    """Énumère ``(traveler_key, gap, barometer, pa, pb)`` pour chaque enchaînement cross-gymnase,
-    même jour, non chevauchant, qu'un voyageur (coach véhiculé/à pied, ou passerelle à pied) doit
-    franchir. SOURCE UNIQUE partagée par les trois termes (hard MANDATORY, soft PREFERRED,
-    départage) : ils jugent EXACTEMENT la même géométrie."""
-    placements_by_team = team_link_placements_by_team(assignments, locked_slots)
-
+    """Le CŒUR géométrique de ``_iter_travel_pairs``, à partir de placements DÉJÀ résolus
+    (``team → [TravelPlacement]``). SOURCE UNIQUE du prédicat « battement / barème » (résorbe
+    ENG-37 côté verdict) : la pose du solveur ET le miroir déterministe de ``/validate-assignments``
+    l'appellent — donc ils jugent EXACTEMENT la même géométrie, sans jamais recalculer gap/barème à
+    la main. Énumère ``(traveler_key, gap, barometer, pa, pb)`` pour chaque enchaînement
+    cross-gymnase, même jour, non chevauchant, d'un voyageur (coach véhiculé/à pied, ou passerelle à
+    pied)."""
     # Voyageur COACH : toutes les séances de SES équipes, barème voiture/à pied selon véhiculé.
     vehicled = _vehicled_by_coach(coaches)
     for coach_id, team_ids in _coach_teams(team_coach_map).items():
@@ -208,6 +208,30 @@ def _iter_travel_pairs(
                     continue
                 barometer = _barometer(matrix, pa[3], pb[3], driving=False, default_minutes=default_minutes)
                 yield f"link:{link_id}", gap, barometer, pa, pb
+
+
+def _iter_travel_pairs(
+    assignments: Iterable[AssignmentInput] | Mapping[Any, BoolVarLike] | None,
+    locked_slots: Iterable[Any],
+    *,
+    coaches: Iterable[Any],
+    team_links: Iterable[Any],
+    team_coach_map: Mapping[str, list[str]] | None,
+    matrix: Mapping[frozenset[str], tuple[int | None, int | None]],
+    default_minutes: int,
+) -> Iterator[tuple[str, int, int, TravelPlacement, TravelPlacement]]:
+    """Résout les placements depuis les variables du modèle (``assignments`` + ``locked_slots``)
+    puis délègue au CŒUR géométrique ``iter_travel_pairs_from_placements``. Enveloppe consommée par
+    les trois termes de la pose (hard MANDATORY, soft PREFERRED, départage)."""
+    placements_by_team = team_link_placements_by_team(assignments, locked_slots)
+    yield from iter_travel_pairs_from_placements(
+        placements_by_team,
+        coaches=coaches,
+        team_links=team_links,
+        team_coach_map=team_coach_map,
+        matrix=matrix,
+        default_minutes=default_minutes,
+    )
 
 
 def _both_placed_literal(model: Any, pa: TravelPlacement, pb: TravelPlacement, name: str) -> BoolVarLike | None:
@@ -385,4 +409,5 @@ __all__ = [
     "add_travel_time_hard_constraints",
     "add_travel_time_penalty",
     "build_travel_matrix",
+    "iter_travel_pairs_from_placements",
 ]
