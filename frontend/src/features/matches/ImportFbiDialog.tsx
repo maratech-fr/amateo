@@ -212,7 +212,7 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
                 {analysis.divisions
                   .filter((d) => null === d.pouleError && d.pouleUnknownOpponents.length > 0)
                   .map((d) => (
-                    <li key={`pw-${divisionKey(d)}`} className="text-warning-foreground">
+                    <li key={`pw-${divisionKey(d)}`} className="text-warning">
                       {d.name} : hors poule — {d.pouleUnknownOpponents.join(", ")}
                     </li>
                   ))}
@@ -236,7 +236,7 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
               {report.exempted > 0 ? ` · ${report.exempted} exempt${report.exempted > 1 ? "s" : ""}` : ""}
             </p>
             {report.warnings.length > 0 ? (
-              <ul className="max-h-40 list-inside list-disc overflow-y-auto text-xs text-warning-foreground">
+              <ul className="max-h-40 list-inside list-disc overflow-y-auto text-xs text-warning">
                 {report.warnings.map((warning, i) => (
                   <li key={i}>{warning.message}</li>
                 ))}

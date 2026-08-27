@@ -105,7 +105,13 @@ describe("ImportFbiDialog", () => {
 
     // The dialog stays open and surfaces the diff report + warnings + errors.
     await waitFor(() => expect(screen.getByText(/22 créés · 1 mis à jour · 9 inchangés/)).toBeInTheDocument());
-    expect(screen.getByText(/PNM n°101137 : re-programmé/)).toBeInTheDocument();
+    const warning = screen.getByText(/PNM n°101137 : re-programmé/);
+    expect(warning).toBeInTheDocument();
+    // P4-130 — le texte d'avertissement porte le jeton RÉEL `text-warning` (amber-ish, gardé
+    // AA), plus le no-op `text-warning-foreground` (aucun `--color-warning-foreground` déclaré
+    // → héritait de la couleur parente au lieu du ton warning voulu).
+    expect(warning.closest("ul")).toHaveClass("text-warning");
+    expect(warning.closest("ul")).not.toHaveClass("text-warning-foreground");
     expect(screen.getByText(/Ligne 4 : aucune équipe ne correspond/)).toBeInTheDocument();
   });
 

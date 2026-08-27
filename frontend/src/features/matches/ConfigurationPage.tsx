@@ -198,7 +198,7 @@ export function ConfigurationPage() {
             Pré-remplit les matchs publiés par la FFBB (souvent des amicaux) — l'import FBI fait foi.
           </p>
           {/* RMM-4 — la fraîcheur des données FBI, sous l'entrée de dépôt. */}
-          <p className={cn("mt-3 flex items-center gap-1.5 text-sm", staleFreshness ? "text-warning-foreground" : "text-muted-foreground")}>
+          <p className={cn("mt-3 flex items-center gap-1.5 text-sm", staleFreshness ? "text-warning" : "text-muted-foreground")}>
             <Clock className="size-4 shrink-0" aria-hidden="true" />
             {null === latest || null === freshDays ? "Aucun dépôt FBI cette saison." : `Dernier dépôt FBI : ${relativeDepositLabel(freshDays)}.`}
           </p>
