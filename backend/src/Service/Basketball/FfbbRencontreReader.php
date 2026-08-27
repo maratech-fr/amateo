@@ -117,9 +117,10 @@ final class FfbbRencontreReader
      * `cartographie.coordonnees.coordinates` (ordre GeoJSON [lng, lat]).
      *
      * Best-effort, jamais une promesse : un hit sans salle exploitable rend un
-     * `directVenue` null (le résolveur retombe alors sur le libellé puis la ville).
+     * `directVenue` null (le résolveur retombe alors sur la ville — VENUE réservé au
+     * `directVenue` autoritatif, revue sécurité 2026-08-28).
      *
-     * @return list<array{organismeCode: string, name: string, venueLabel: string|null, directVenue: array{libelle: string, city: string|null, postalCode: string|null, latitude: float, longitude: float}|null}>
+     * @return list<array{organismeCode: string, name: string, directVenue: array{libelle: string, city: string|null, postalCode: string|null, latitude: float, longitude: float}|null}>
      */
     public function readAwayOpponents(string $clubCode, int $seasonYear): array
     {
@@ -149,7 +150,6 @@ final class FfbbRencontreReader
             $opponents[] = [
                 'organismeCode' => $code,
                 'name' => mb_substr($name, 0, 180),
-                'venueLabel' => $this->clamp180($this->labelOrNull($this->stringOrNull($salle['libelle'] ?? null))),
                 'directVenue' => $this->rencontreSalleVenue($salle),
             ];
         }

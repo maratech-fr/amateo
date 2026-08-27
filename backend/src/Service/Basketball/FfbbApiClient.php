@@ -187,28 +187,6 @@ final class FfbbApiClient
     }
 
     /**
-     * Salles by free-text NAME (P2-54 RMM-9 — localiser la salle d'un adversaire à
-     * partir de son libellé). Plein-texte `q` sur `ffbbserver_salles` (le même index
-     * que {@see searchSalles}, mais sans filtre commune) : le hit porte `libelle`,
-     * `_geo` {lat,lng} et `commune` {libelle, codePostal} (sondé 2026-08-27).
-     * L'appelant retient un hit SEULEMENT si son libellé normalisé concorde
-     * exactement — Meilisearch étant typo-tolérant. Le nom est borné en longueur
-     * avant l'appel (garde-fou, jamais une chaîne non bornée en `q`) ; limit petit.
-     *
-     * @return list<array<string, mixed>>
-     */
-    public function searchSallesByName(string $name, int $limit = 5): array
-    {
-        $trimmed = trim($name);
-        $length = mb_strlen($trimmed);
-        if ($length < 2 || $length > 180) {
-            return [];
-        }
-
-        return $this->query(['indexUid' => 'ffbbserver_salles', 'q' => $trimmed, 'limit' => $limit]);
-    }
-
-    /**
      * @param array<string, mixed> $searchQuery
      *
      * @return list<array<string, mixed>>

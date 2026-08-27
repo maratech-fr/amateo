@@ -28,12 +28,14 @@ use Throwable;
  *      extra call). ⚠ Sondé 2026-08-27 : le hit rencontres porte
  *      `salle.cartographie.coordonnees.coordinates = [lng, lat]` + ville + code
  *      postal, donc l'étage 1 est un VENUE gratuit ({@see FfbbRencontreReader::readAwayOpponents}) ;
- *   2. a FRANK salle-name match — the venue label searched on `ffbbserver_salles`,
- *      retained SEULEMENT si EXACTEMENT UN hit concorde après normalisation
- *      (0 ou ≥2 → étage 3) → VENUE ;
- *   3. a CITY fallback — the opponent organisme (by known code, else strict
+ *   2. a CITY fallback — the opponent organisme (by known code, else strict
  *      name match) → its `_geo`, else its commune/CP geocoded via the BAN → CITY ;
- *   4. rien ne résout → PAS de ligne (l'adversaire reste non localisé).
+ *   3. rien ne résout → PAS de ligne (l'adversaire reste non localisé).
+ *
+ * ⚠ Le VENUE label-matché (l'ancien étage « appariement franc par nom de salle »)
+ * a été RETIRÉ (revue sécurité 2026-08-28) — un label de salle xlsx est fourni par
+ * le club, il ne peut pas établir une précision VENUE dans une table PARTAGÉE entre
+ * tous les clubs (empoisonnement permanent) ; seul le hit API autoritatif le peut.
  *
  * A more precise resolution replaces a less precise one (VENUE > CITY), never the
  * reverse (repository upsert). An opponent already known at VENUE precision is
@@ -48,8 +50,6 @@ final class OpponentLocationResolver
 {
     /** Meilisearch est typo-tolérant : on élargit avant de filtrer STRICT. */
     private const int ORGANISME_SEARCH_LIMIT = 10;
-
-    private const int SALLE_SEARCH_LIMIT = 8;
 
     public function __construct(
         private readonly FfbbRencontreReader $reader,
@@ -96,12 +96,16 @@ final class OpponentLocationResolver
 
     /**
      * The DISTINCT away opponents of a set of fixtures, as resolver observations
-     * (name + venue label). Exposed so the catch-up route can enforce its hard cap
-     * on distinct opponents BEFORE any network call.
+     * (name only). Exposed so the catch-up route can enforce its hard cap on
+     * distinct opponents BEFORE any network call.
+     *
+     * The xlsx channel carries NO authoritative venue: `directVenue` stays null and
+     * the resolution can only reach CITY precision (the free-text salle label is
+     * club-supplied — il ne peut établir un VENUE dans la table partagée).
      *
      * @param iterable<Fixture> $fixtures
      *
-     * @return list<array{organismeCode: string|null, name: string, venueLabel: string|null, directVenue: array{libelle: string, city: string|null, postalCode: string|null, latitude: float, longitude: float}|null}>
+     * @return list<array{organismeCode: string|null, name: string, directVenue: array{libelle: string, city: string|null, postalCode: string|null, latitude: float, longitude: float}|null}>
      */
     public function buildFixtureObservations(iterable $fixtures): array
     {
@@ -115,16 +119,12 @@ final class OpponentLocationResolver
             if ('' === $label || '' === $key) {
                 continue;
             }
-            $venueLabel = $this->trimToNull($fixture->getFbiVenueLabel());
             if (!isset($byKey[$key])) {
                 $byKey[$key] = [
                     'organismeCode' => null,
                     'name' => mb_substr($label, 0, 180),
-                    'venueLabel' => $venueLabel,
                     'directVenue' => null,
                 ];
-            } elseif (null === $byKey[$key]['venueLabel'] && null !== $venueLabel) {
-                $byKey[$key]['venueLabel'] = $venueLabel; // fill a missing venue from a later leg
             }
         }
 
@@ -136,7 +136,7 @@ final class OpponentLocationResolver
      * by key (organisme code when known, else normalized name) so a network call is
      * never spent twice on the same opponent.
      *
-     * @param list<array{organismeCode: string|null, name: string, venueLabel: string|null, directVenue: array{libelle: string, city: string|null, postalCode: string|null, latitude: float, longitude: float}|null}> $observations
+     * @param list<array{organismeCode: string|null, name: string, directVenue: array{libelle: string, city: string|null, postalCode: string|null, latitude: float, longitude: float}|null}> $observations
      *
      * @return array{resolved: int, unresolved: list<string>, skipped: int}
      */
@@ -189,7 +189,7 @@ final class OpponentLocationResolver
     }
 
     /**
-     * @param array{organismeCode: string|null, name: string, venueLabel: string|null, directVenue: array{libelle: string, city: string|null, postalCode: string|null, latitude: float, longitude: float}|null} $observation
+     * @param array{organismeCode: string|null, name: string, directVenue: array{libelle: string, city: string|null, postalCode: string|null, latitude: float, longitude: float}|null} $observation
      *
      * @return 'resolved'|'skipped'|'unresolved'
      */
@@ -213,15 +213,15 @@ final class OpponentLocationResolver
         }
 
         // Step 2 — dedup: an opponent already known at VENUE precision is left as-is
-        // (no salle/geo calls). A CITY row may still be upgraded to VENUE.
+        // (no geo calls). A CITY row may still be upgraded to VENUE by the API channel.
         $existing = $this->directory->findOneByFfbbOrganismeCode($code);
         if ($existing instanceof OpponentDirectoryEntry && OpponentLocationPrecision::VENUE === $existing->getPrecision()) {
             return 'skipped';
         }
 
-        // Step 3 — the best location, most precise first.
+        // Step 3 — the best location, most precise first. VENUE is reserved to the
+        // AUTHORITATIVE API channel (directVenue); the xlsx/catch-up channel caps at CITY.
         $location = $this->locateVenueFromDirect($name, $observation['directVenue'])
-            ?? $this->locateVenueFromLabel($name, $observation['venueLabel'])
             ?? $this->locateCity($name, $code, $organismeHit);
 
         if (null === $location) {
@@ -257,47 +257,7 @@ final class OpponentLocationResolver
     }
 
     /**
-     * Étage 2 — a FRANK salle-name match: the venue label is retained only if
-     * EXACTLY ONE salle hit concords after normalization.
-     *
-     * @return array{precision: OpponentLocationPrecision, name: string, city: string|null, postalCode: string|null, latitude: float|null, longitude: float|null, venueLabel: string|null}|null
-     */
-    private function locateVenueFromLabel(string $name, ?string $venueLabel): ?array
-    {
-        $label = $this->trimToNull($venueLabel);
-        if (null === $label) {
-            return null;
-        }
-        $needle = $this->importer->normalizeLabel($label);
-        if ('' === $needle) {
-            return null;
-        }
-
-        $matches = [];
-        foreach ($this->apiClient->searchSallesByName($label, self::SALLE_SEARCH_LIMIT) as $hit) {
-            if ($this->importer->normalizeLabel($this->str($hit['libelle'] ?? null) ?? '') === $needle) {
-                $matches[] = $hit;
-            }
-        }
-        if (1 !== \count($matches)) {
-            return null; // 0 or ≥2 → not a frank match, fall to the city
-        }
-
-        $hit = $matches[0];
-        [$latitude, $longitude] = $this->geoOf($hit);
-
-        return $this->venue(
-            $name,
-            $this->str($hit['libelle'] ?? null) ?? $label,
-            $this->cityOf($hit),
-            $this->postalOf($hit),
-            $latitude,
-            $longitude,
-        );
-    }
-
-    /**
-     * Étage 3 — the opponent organisme's commune (its `_geo`, else its commune/CP
+     * Étage 2 — the opponent organisme's commune (its `_geo`, else its commune/CP
      * geocoded via the BAN).
      *
      * @param array<string, mixed>|null $organismeHit already resolved by name (name channel), else null
