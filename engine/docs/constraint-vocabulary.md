@@ -1,12 +1,14 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-08-26 (P2-53 RMM-8 PR-2 — nouvelle section « Trajet entre gymnases »
-ajoutée : `engine/app/solver/constraints/travel.py` (départage `add_travel_departage_penalty`,
-battement `add_travel_time_penalty`/`add_travel_time_hard_constraints`, matrice
-`build_travel_matrix`) ✓ · résolution de l'intensité PREFERRED/MANDATORY et de `defaultMinutes`
-(`constraints/parsing.py:_travel_intensity`, `common.py:ResolvedImplicitRules.travel_time_*`) ✓ ·
-diagnostic `travel_time_infeasible` (`result_builder.py:_diagnose_travel_times`) ✓ · consommé par
-`/generate` seul, absent de `MatchPlacementPayloadBuilder`/`/place-matches` (grep) ✓. Reste du
+Last verified @ 2026-08-28 (P2-55/ENG-36 — la section « Trajet entre gymnases » gagne la PARITÉ
+VERDICT : re-confronté au code, `validate_assignments.py` passe désormais `venueTravelTimes` au
+`_apply_hard` (interdit dur MANDATORY) et câble `add_travel_time_penalty(info_out=...)` +
+le miroir déterministe `_travel_time_move_violation` (`rule: travel_time_infeasible`) réutilisant
+`travel.py:iter_travel_pairs_from_placements` (source unique pose⇄miroir, ENG-37 résorbé côté
+verdict). Passe précédente (P2-53 RMM-8 PR-2) : `travel.py` (départage/battement/`build_travel_matrix`),
+intensité PREFERRED/MANDATORY (`parsing.py:_travel_intensity`), diagnostic
+`travel_time_infeasible` (`result_builder.py:_diagnose_travel_times`). `/place-matches` ne reçoit
+toujours pas ce bloc (grep). Reste du
 document non re-parcouru ligne à ligne cette passe (rotation précédente : `app/solver/constraints/`
 paquet §familles config, `parse_v2_constraints`, `constraint_not_honored`, `maxEndTime`).
 
@@ -189,7 +191,13 @@ Bloc d'entrée `venueTravelTimes[]` (matrice `{venueAId, venueBId, drivingMinute
 club+saison, symétrique) + règle implicite `implicitRules.travelTime`. **OPT-IN à la PRÉSENCE de
 matrice** : le backend n'émet la règle active que si le club a saisi au moins une ligne (précédent
 `maxConsecutiveDays`) — absent ⇒ payload byte-identique, ni départage ni battement. **Consommé par
-`/generate` (solveur d'entraînement) seul** — `/place-matches` ne reçoit pas ce bloc.
+`/generate` (solveur d'entraînement) ET `/validate-assignments` (le VERDICT d'un déplacement manuel,
+P2-55/ENG-36)** — `/place-matches` ne reçoit pas ce bloc. **Parité génération⇄verdict** : le verdict
+applique le même `_apply_hard` (matrice passée à `add_level_1_hard_constraints`) — sous `MANDATORY` un
+déplacement créant un battement trop court est **refusé et NOMMÉ** par le miroir déterministe
+`_travel_time_move_violation` (`rule: travel_time_infeasible`, réutilise le prédicat unique
+`iter_travel_pairs_from_placements` de `travel.py` — ENG-37 résorbé côté verdict) ; sous `PREFERRED`
+il est accepté mais le **compromis famille `travel_time` est nommé** dans la sortie.
 
 Deux « voyageurs » relient deux séances enchaînées le même jour à des gymnases différents et non
 chevauchantes :

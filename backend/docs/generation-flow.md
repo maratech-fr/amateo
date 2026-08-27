@@ -1,9 +1,10 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-08-26 (rotation `documentation-update`, P2-53 PR-3 — zone non touchée par
-cette PR, contrôle de fraîcheur). **Drift trouvé et corrigé** : les trois occurrences de
-`version: "2.15"` (exemple de payload §3/§4) et « contrat 2.15 » (tableau des pannes) étaient
-périmées — `ScheduleConstraintBuilder::CONTRACT_VERSION` vaut **`2.16`** depuis P2-53 RMM-8 PR-2
+Last verified @ 2026-08-28 (rotation `documentation-update`, passe P2-55 — zone non touchée par
+cette PR, contrôle de fraîcheur : `ScheduleConstraintBuilder::CONTRACT_VERSION` = **`2.16`**
+re-confirmé (`ScheduleConstraintBuilder.php:64`), aucune occurrence `2.15` résiduelle. Passe
+précédente (P2-53 PR-3) : les trois occurrences de `version: "2.15"` (exemple de payload §3/§4)
+et « contrat 2.15 » (tableau des pannes) étaient périmées — corrigées à 2.16 depuis P2-53 RMM-8 PR-2
 (`ScheduleConstraintBuilder.php:62`), le bump 2.15→2.16 n'avait jamais été répercuté ici. Reste
 vérifié sans écart : `toArray(false)` sans exception HTTP (`EngineClient.php:39,58`) ✓ ·
 `engine_timeout`/`engine_error` émis par le handler (`GenerateScheduleHandler.php:290,298`),
