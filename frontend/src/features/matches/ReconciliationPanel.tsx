@@ -142,7 +142,7 @@ export function ReconciliationPanel({ deviations, decisions, onDecisionsChange, 
                       </div>
 
                       {/* Conséquence TOUJOURS visible (avant le choix). */}
-                      <p className={cn("mt-2 text-xs", consequence.releasesSlot ? "text-warning-foreground" : "text-muted-foreground")}>{consequence.takeFile}</p>
+                      <p className={cn("mt-2 text-xs", consequence.releasesSlot ? "text-warning" : "text-muted-foreground")}>{consequence.takeFile}</p>
                       {"keep_app" === choice ? <p className="mt-1 text-xs text-muted-foreground">{consequence.keepApp}</p> : null}
                     </div>
                   );

@@ -1,6 +1,6 @@
 # Guide de génération de planning — ClubScheduler
 
-Last verified @ 2026-08-26 (recalé au bump de contrat **2.15 → 2.16** — P2-53 RMM-8 PR-2,
+Last verified @ 2026-08-28 (rotation `documentation-update`, passe Lot A — contrat re-confirmé `CONTRACT_VERSION` **2.16** (`ScheduleConstraintBuilder.php:64`), aucune occurrence 2.15 résiduelle. Passe précédente (recalé au bump de contrat **2.15 → 2.16** — P2-53 RMM-8 PR-2,
 blocs de trajet sur `/generate` ; ce fichier ne cite le contrat qu'au Cas 6 du tableau de
 pannes, désormais `v2.16`. Passe précédente (2026-08-25, bump 2.14 → 2.15) :
 re-confronté au code, tout juste : les huit conteneurs cités
