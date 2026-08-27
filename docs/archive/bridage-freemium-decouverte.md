@@ -3,12 +3,12 @@
 > **Statut** : ✅ **LIVRÉ le 2026-08-10** (P1-3 complet — PR #487 socle · #488 enforcement · #490 crédit XLSX ·
 > PR C UX de conversion ; NR `PlanEntitlementsTest` au gate CI). Ce fichier reste la référence du MODÈLE
 > (et de l'historique de cadrage §3) ; la carte du livré vit dans
-> [`etat-des-lieux.md`](../courantes/etat-des-lieux.md) §1.11. Garde-fou encore ouvert : §7.2 (question aux bêta).
+> [`etat-des-lieux.md`](../../specs/courantes/etat-des-lieux.md) §1.11. Garde-fou encore ouvert : §7.2 (question aux bêta).
 > **Nature** : fixe le modèle du plan gratuit ET le socle d'offres par statut, business-critique.
 > **Rattachement roadmap** : **P1-3**.
 > ⚑ **Modèle HYBRIDE acté le 2026-08-09 (soir)** — troisième et dernière itération d'une même journée
 > de cadrage, chaque renversement tracé en §3 : générations seules (2026-08-04) → cap 12 équipes
-> (2026-08-09 matin, après l'étude [`etude-tailles-clubs-ffbb.md`](etude-tailles-clubs-ffbb.md) et une
+> (2026-08-09 matin, après l'étude [`etude-tailles-clubs-ffbb.md`](../../specs/evolution/etude-tailles-clubs-ffbb.md) et une
 > passe `business-challenger`) → **hybride** (2026-08-09 soir : périmètre complet gratuit + générations
 > limitées + features off, cap d'équipes réservé aux paliers PAYANTS).
 > **Réutilise l'existant** : `SubscriptionPlan` (modèle livré, aucune offre seedée) · `Club.planId`

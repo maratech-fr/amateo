@@ -1,8 +1,8 @@
 # FORWARD Components Spec — Pages & Shared Components (hors wizard)
 
-Last verified @ 2026-08-26 (rotation `documentation-update`, hors sujet de la PR — seule la
-section 1 vivante re-contrôlée : la convention snake_case des paths API Platform tient toujours
-sur les exemples cités (`priority_tiers`, `schedule_diagnostics`, `schedule_slot_templates`,
+Last verified @ 2026-08-28 (rotation `documentation-update`, passe Lot E — la convention snake_case
+des paths API Platform tient toujours : `priority_tiers` re-confirmé au snapshot
+(`openapi-snapshot.json`), avec `schedule_diagnostics`, `schedule_slot_templates`,
 `sport_categories`, `team_coaches`, `venue_training_slots`, tous confirmés dans
 `specs/courantes/openapi-snapshot.json`) et sur la ressource la plus récente livrée,
 `/api/venue_travel_rule_settings/{ruleKey}` (P2-53 PR-4), qui suit la même règle. Le bloc
