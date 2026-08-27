@@ -10,7 +10,7 @@ namespace App\Enum;
  * vérification à la demande (FfbbRencontreReconciler::apply — l'index public ne
  * porte que ce que la fédé publie, amicaux surtout, cf. backend/docs/ffbb-api.md).
  *
- * La hiérarchie (refonte-module-matchs.md §4 fait #1) vit ici : SEUL un dépôt
+ * La hiérarchie (docs/archive/refonte-module-matchs.md §4 fait #1) vit ici : SEUL un dépôt
  * FBI_XLSX tue ou reporte une trace de réconciliation (une ingestion API ne
  * touche jamais une trace née d'un dépôt).
  */

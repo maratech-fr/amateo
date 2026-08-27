@@ -5,17 +5,17 @@
 > dédiée (§9).
 > **Nature** : coordonne **deux chantiers qui partagent le même écran** — la **refonte UX** (roadmap **P2-26**,
 > « l'amener au niveau du wizard ») **et** les **extensions palier B/C** déjà spécifiées dans
-> [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md). La roadmap l'exige : *« ne pas refondre ce qui va être
+> [`gestion-matchs-ffbb.md`](../../specs/evolution/gestion-matchs-ffbb.md). La roadmap l'exige : *« ne pas refondre ce qui va être
 > étendu sans coordonner les deux »* (P2-26).
 > **Ce document ne re-spécifie PAS le palier B/C** (dérogation, matrice trajet, annuaire adverse) : il le
 > **référence** et se concentre sur (a) la refonte UX et (b) les **besoins net-neufs** sortis de l'entretien
 > du 2026-08-17 (rotation A/B, « gardien » à l'ouverture, réconciliation FBI).
 > **Le palier A est LIVRÉ** — l'état courant du module vit dans
-> [`../courantes/module-matchs.md`](../courantes/module-matchs.md) ; le présent fichier ne décrit que
+> [`../courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) ; le présent fichier ne décrit que
 > l'**ouvert**.
 > **RMM-0, RMM-1, RMM-2, RMM-3, RMM-4, RMM-5 et RMM-6 sont LIVRÉS EN ENTIER (2026-08-21 → 2026-08-25)** —
 > la refonte UX complète (§6quater L1-L9) est graduée dans
-> [`../courantes/module-matchs.md`](../courantes/module-matchs.md) § « Refonte UX — RMM-1 », le
+> [`../courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) § « Refonte UX — RMM-1 », le
 > « gardien » à l'ouverture (2 PR, backend puis front) dans § « Le gardien à l'ouverture », la
 > réconciliation FBI (3 PR : backend, front, canal API — 2026-08-24) dans § « Réconciliation FBI »,
 > canal API compris, la **rotation A/B** (4 PR : modèle, SOFT placement, repos dérivé, SET-UP —
@@ -23,12 +23,12 @@
 > (3 PR : champ+outlook backend, éditeur SET-UP front, carte cockpit + escalade login front —
 > 2026-08-25, clôt **P2-50**) dans § « Échéances ligue/comité — RMM-6 ». **RMM-7 est FERMÉ SANS CODE**
 > (fondateur, 2026-08-25 — la dérogation n'est pas un objet de l'app ; décision au registre
-> [`etat-des-lieux.md`](../courantes/etat-des-lieux.md) §2) et **RMM-10 est LIVRÉ (2 PR, 2026-08-26,
+> [`etat-des-lieux.md`](../../specs/courantes/etat-des-lieux.md) §2) et **RMM-10 est LIVRÉ (2 PR, 2026-08-26,
 > clôt P2-52)** — un match déclaré ne perd plus sa salle en silence, gradué dans
-> [`../courantes/module-matchs.md`](../courantes/module-matchs.md) § « P2-52 — un match déclaré ne
+> [`../courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) § « P2-52 — un match déclaré ne
 > perd plus sa salle en silence ». **Ce fichier ne détaille plus AUCUN item ouvert** : ne restent
 > que RMM-8/RMM-9 (palier B/C, vision), dont le besoin vit dans
-> [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) et que ce fichier se contente de RENVOYER
+> [`gestion-matchs-ffbb.md`](../../specs/evolution/gestion-matchs-ffbb.md) et que ce fichier se contente de RENVOYER
 > (§11) — jamais de re-spécifier. Conservé pour son historique de décision et de livraison (§6-9),
 > plus référencé comme « fichier de détail actif » de la roadmap.
 > **Passe de conception du 2026-08-22 (fondateur)** : l'enchaînement ACTUEL est relevé clic par clic
@@ -69,7 +69,7 @@ planning.
 
 ## 2. Ce qui existe déjà (ne PAS re-construire — pointeurs)
 
-> Détail canonique : [`../courantes/module-matchs.md`](../courantes/module-matchs.md). Résumé de réemploi :
+> Détail canonique : [`../courantes/module-matchs.md`](../../specs/courantes/module-matchs.md). Résumé de réemploi :
 
 - **Modèle** : `Fixture` (match daté : `homeAway`, `externalRef` = n° FBI, `status`
   UNPLACED→PLACED→SUBMITTED→VALIDATED, `placementSource`), `Competition` (poule/phase FFBB, `expectedMatchdays`,
@@ -147,7 +147,7 @@ tout des données, cet état tombe naturellement (tout est SUBMITTED → rien à
 1. **« Import FBI par API » — impossible aujourd'hui, mais FBI est une SOURCE de plein droit.** L'API FFBB
    expose un index `rencontres` **vide pour les vrais clubs** (documents de test uniquement au niveau
    national ; 0 hit pour un club réel) — mesuré deux fois, cf.
-   [`api-ffbb-app-reconnaissance.md`](../../docs/archive/api-ffbb-app-reconnaissance.md) et `backend/docs/ffbb-api.md`.
+   [`api-ffbb-app-reconnaissance.md`](api-ffbb-app-reconnaissance.md) et `backend/docs/ffbb-api.md`.
    **Le seul CANAL d'entrée des rencontres reste l'export Excel FBI manuel** (déjà implémenté) ; on ne peut
    PAS supprimer le geste « télécharger le xlsx » ni la re-saisie manuelle dans FBI — limites **fédérales**,
    pas de notre code. → Ne rien promettre d'automatique côté FBI. **Mais (décision fondateur 2026-08-17) le
@@ -322,7 +322,7 @@ d'actions hebdomadaire, et l'image idéale (TypicalWeekendGrid) se cache derriè
 > **Le contrat de RMM-1 reste « zéro comportement moteur »** — chaque ligne ci-dessous est de la
 > structure d'écran ou un geste sur une API EXISTANTE. Une ligne = une décision, son ancre, sa cible.
 > **Table CLOSE depuis PR4 (2026-08-24) : les 9 lignes sont livrées** (L6 et L9 les deux dernières) —
-> le comportement gradue dans [`../courantes/module-matchs.md`](../courantes/module-matchs.md)
+> le comportement gradue dans [`../courantes/module-matchs.md`](../../specs/courantes/module-matchs.md)
 > § « Refonte UX — RMM-1 ». Elle reste ici pour son historique de décision (l'ancre AVANT/APRÈS),
 > git en gardant le fil.
 
@@ -383,7 +383,7 @@ Réponses aux deux questions fondateur de la passe de conception — chaque fait
 ## 7. Le « gardien » — le cœur de l'angoisse du gestionnaire
 
 > **Les trois volets ci-dessous sont LIVRÉS** — le contrôle d'état à l'ouverture (RMM-3,
-> 2026-08-24, gradué dans [`../courantes/module-matchs.md`](../courantes/module-matchs.md)
+> 2026-08-24, gradué dans [`../courantes/module-matchs.md`](../../specs/courantes/module-matchs.md)
 > § « Le gardien à l'ouverture ») ; la réconciliation FBI et la fraîcheur des données (RMM-4,
 > 2026-08-24, gradué § « Réconciliation FBI »).
 
@@ -410,7 +410,7 @@ Le sous-jacent « il ne sait pas si les données reçues sont à jour, et il dé
 
 > **LIVRÉ EN ENTIER (RMM-5, 4 PR, 2026-08-25)** — les quatre décisions fondateur ci-dessous sont
 > honorées dans le code et graduées dans
-> [`../courantes/module-matchs.md`](../courantes/module-matchs.md) § « Rotation A/B — RMM-5 » :
+> [`../courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) § « Rotation A/B — RMM-5 » :
 > le modèle N-aire du créneau partagé (PR-1, décision 2), le SOFT de placement jamais bloquant
 > (PR-2, décision 1), le repos d'entraînement dérivé de l'image (PR-3, décision 3) et l'écran
 > SET-UP + le signal, sans aucun ancrage calendaire déclaré (PR-4, décision 4). Ce qui suit reste
@@ -442,7 +442,7 @@ par la FFBB) ne pilotent pas la règle hebdomadaire. À terme, `team.matchDay` s
 (fin de la double déclaration), et la règle implicite de repos suit.
 > **LIVRÉ (RMM-5 PR-3, 2026-08-25)** : `team.matchDay` reste un champ déclaré en base (repli
 > legacy, zéro migration) mais n'est plus ÉMIS tel quel — le payload `/generate` porte la valeur
-> DÉRIVÉE. Détail : [`../courantes/module-matchs.md`](../courantes/module-matchs.md) § « Le repos
+> DÉRIVÉE. Détail : [`../courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) § « Le repos
 > d'entraînement dérivé — RMM-5 PR-3 ».
 
 **Quatrième décision (fondateur, 2026-08-22) : l'image A/B est FICTIVE — AUCUN ancrage calendaire à
@@ -484,16 +484,16 @@ quel palier chaque lot appartient — **ne pas créer de doublon de vérité**.
 | ID | Lot | Type | Axe §7.1 → NR | Rattachement |
 |---|---|---|---|---|
 | **RMM-0** | **LIVRÉ (#722, 2026-08-21).** Correctifs de lisibilité immédiats : les 5 bloquant-décision du registre (§6bis) — `title` sur tout libellé tronqué, selects lisibles, et consommer l'échelle `size` de la modale (P4-107). | Front | — | **P2-26** (correctif anticipé) |
-| **RMM-1** | **LIVRÉ EN ENTIER (PR1→PR4, #732-#736, 2026-08-23/24).** Refonte UX pure : séparer SET-UP / geste récurrent, boucle semaine-par-semaine, hiérarchie d'actions, radar en fil conducteur, états vides, filtre par semaine, n° de rencontre affiché, contexte stable, vue de saisie FBI. Critère §6bis honoré : aucun libellé décisionnel tronqué, R1/R2 traités à la racine. **Zéro backend.** Comportement gradué : [`../courantes/module-matchs.md`](../courantes/module-matchs.md) § « Refonte UX — RMM-1 ». | Front | — (aucun comportement moteur touché) | **P2-26** (ce fichier = son détail) |
+| **RMM-1** | **LIVRÉ EN ENTIER (PR1→PR4, #732-#736, 2026-08-23/24).** Refonte UX pure : séparer SET-UP / geste récurrent, boucle semaine-par-semaine, hiérarchie d'actions, radar en fil conducteur, états vides, filtre par semaine, n° de rencontre affiché, contexte stable, vue de saisie FBI. Critère §6bis honoré : aucun libellé décisionnel tronqué, R1/R2 traités à la racine. **Zéro backend.** Comportement gradué : [`../courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) § « Refonte UX — RMM-1 ». | Front | — (aucun comportement moteur touché) | **P2-26** (ce fichier = son détail) |
 | **RMM-2** | **LIVRÉ (2026-08-23).** Extraire le **rail d'étapes du wizard** dans `shared/` (`step-rail.tsx`), à rendu identique. Prérequis technique de RMM-1. **Resserrement fondateur 2026-08-23** : « exploiter `tabs` » et « mutualiser la grille temporelle » sont REPORTÉS (on ne mutualise pas spéculativement une brique sans son second consommateur) — seule l'extraction du rail était livrée ici. | Front | — | P2-26 |
-| **RMM-3** | **LIVRÉ EN ENTIER (2 PR, #737 backend + celle-ci front, 2026-08-24).** Gardien à l'ouverture du module (pas au login) : persistance légère par visite (`MatchModuleVisit`, par utilisateur), empreinte stable d'un conflit (`ConflictFingerprinter`), grâce glissante de 30 min, bandeau résumé (« depuis votre dernière visite : N matchs arrivés · N nouveaux conflits · le planning de saison a changé ») + chips « Nouveau » sur le radar. Comportement gradué : [`../courantes/module-matchs.md`](../courantes/module-matchs.md) § « Le gardien à l'ouverture ». | Back + Front | contrainte sémantique (conflits) → NR (`Security/MatchVisitDeltaParityTest`) | **P2-47** (SOLDÉE, quitte la roadmap) |
+| **RMM-3** | **LIVRÉ EN ENTIER (2 PR, #737 backend + celle-ci front, 2026-08-24).** Gardien à l'ouverture du module (pas au login) : persistance légère par visite (`MatchModuleVisit`, par utilisateur), empreinte stable d'un conflit (`ConflictFingerprinter`), grâce glissante de 30 min, bandeau résumé (« depuis votre dernière visite : N matchs arrivés · N nouveaux conflits · le planning de saison a changé ») + chips « Nouveau » sur le radar. Comportement gradué : [`../courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) § « Le gardien à l'ouverture ». | Back + Front | contrainte sémantique (conflits) → NR (`Security/MatchVisitDeltaParityTest`) | **P2-47** (SOLDÉE, quitte la roadmap) |
 | **RMM-4** | **LIVRÉ EN ENTIER (3 PR, 2026-08-24).** FBI source de plein droit + réconciliation : chaque dépôt xlsx = **ingestion datée** (fraîcheur affichée) ; le diff présente **chaque écart domicile** (heure/salle/date) au gestionnaire qui tranche — garder l'app (et corriger FBI) ou prendre le fichier — au lieu de mettre à jour en silence (décision §5). **Forme tranchée 2026-08-22 : un écran « état app VS état fichier », choix par écart.** Réutilise le diff de `FbiFixtureImporter`. **PR-1 backend** : deviations à l'analyze, decisions à l'import (keep_app|take_file, jamais d'écrasement par défaut), `FbiIngestion` datée + trace, route de fraîcheur. **PR-2 front** : vue dédiée `/matchs/reconciliation` (**décision fondateur — renverse la modale envisagée en cadrage** : la passe design a jugé l'écran de choix impraticable en modale pour N cartes d'écart), `ReconciliationPanel`, carte + rappel de fraîcheur. **PR-3 le canal API FFBB** : `ReconciliationPanel` — construit délibérément AGNOSTIQUE du canal — est rebranché sur `GET/POST /api/ffbb/rencontres(/apply)` (`FfbbRencontreReconciler`, appariement 3 étages + idempotence, réutilise VERBATIM le moteur de décisions xlsx) ; les rencontres publiées absentes de l'app (les amicaux) sont proposées à la création, jamais imposées ; couverture jamais promise. Comportement gradué : `../courantes/module-matchs.md` § « Réconciliation FBI », canal API compris. | Back + Front | — | **P2-48** (SOLDÉE, quitte la roadmap) |
-| **RMM-5** | **LIVRÉ EN ENTIER (4 PR, 2026-08-25).** **Rotation A/B** : modèle (alternance sur **créneau partagé** — cas SM1/SM2, §8) + payload/solveur (SOFT « respecte l'image A/B ») + UI SET-UP deux semaines + **le jour de repos d'entraînement suit l'image** (3ᵉ décision §8 — `matchDay` devient dérivé, la règle implicite côté entraînement aussi). **PR-1** : modèle N-aire `MatchSlotRotation`/`MatchSlotRotationTeam` + CRUD `/api/match_slot_rotations` seuls, rien ne le consomme encore. **PR-2** : bloc `slotRotations` branché au payload `/place-matches` (contrat **2.15**) et consommé en **SOFT** côté solveur — attraction (heure/gymnase, poids à parité stricte des habitudes) + protection de la fenêtre du créneau partagé ; suppléance backend (l'habitude même-jour d'un membre est retirée, jamais les autres jours). **PR-3** : le `matchDay` émis au `/generate` du solve hebdo (`ScheduleConstraintBuilder::deriveMatchDay`) devient `max(jours ISO des habitudes ∪ rotations dont l'équipe est membre)` — le repos suit l'image, 3ᵉ décision §8 honorée ; repli sur le champ déclaré `Team.matchDay` converti 0-based→ISO (correction du bug dormant D-11) ; habitudes/rotations/membres entrent dans `ResourceChangeStaleScheduleListener` (péremption COMPLETED). Zéro engine, contrat 2.15 inchangé. **PR-4 (LIVRÉE, 2026-08-25) : pur frontend.** L'éditeur « Créneaux partagés (alternance) » sur `/matchs/configuration` (déclaration ordonnée, flèches ↑/↓, badge A/B/C, phrase « l'ordre ne commande aucun calendrier ») ; `TypicalWeekendGrid` en semaines A/B (segmenté `Tabs`, invisible sans rotation — grille identique à avant) ; le signal « hors image » étendu (membre de rotation vs créneau, plus le compteur « même week-end »). Zéro backend/engine/contrat touché. Comportement gradué : [`../courantes/module-matchs.md`](../courantes/module-matchs.md) § « Rotation A/B — RMM-5 » (les 4 PR). | Model + Engine + Front | **contrat backend↔engine** + **contrainte sémantique** → NR (contract test + smoke-solver) | **P2-49** — SOLDÉE, quitte la roadmap |
-| **RMM-6** | **LIVRÉ EN ENTIER (3 PR, 2026-08-25).** **Échéances ligue/comité** — TRANCHÉ 2026-08-22 : la ligue les envoie **par MAIL** au gestionnaire, donc **saisie manuelle**, et **PLUSIEURS échéances concurrentes** par groupes d'équipes (région le 2 sept, département le 10, autres le 15…) — la granularité est le groupe/la compétition, jamais une date unique de club. **PR-1 backend** : champ par compétition + endpoint bulk + défaut communautaire partagé surchargeable + outlook J-7 (`GET /api/matches/deadline-outlook`). **PR-2 front** : l'éditeur « Échéances de saisie » du SET-UP + l'échéance affichée sur `FbiEntryList` (L9). **PR-3 front** : la carte cockpit `FbiDeadlineCard` (pleine largeur sur `/`, rendue SEULEMENT sous fenêtre J-7 ouverte, dépassée = warning qui reste jamais destructif) + l'escalade « dès le login » (décision fondateur : le placement de match est une urgence) + le résumé du gardien fusionné dans la même carte + la lib `visitDeltaSegments` extraite et partagée avec `ModuleVisitBanner`. Comportement gradué : [`../courantes/module-matchs.md`](../courantes/module-matchs.md) § « Échéances ligue/comité — RMM-6 ». | Back + Front | — | **P2-50** — SOLDÉE, quitte la roadmap ; besoin : [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) §8 |
+| **RMM-5** | **LIVRÉ EN ENTIER (4 PR, 2026-08-25).** **Rotation A/B** : modèle (alternance sur **créneau partagé** — cas SM1/SM2, §8) + payload/solveur (SOFT « respecte l'image A/B ») + UI SET-UP deux semaines + **le jour de repos d'entraînement suit l'image** (3ᵉ décision §8 — `matchDay` devient dérivé, la règle implicite côté entraînement aussi). **PR-1** : modèle N-aire `MatchSlotRotation`/`MatchSlotRotationTeam` + CRUD `/api/match_slot_rotations` seuls, rien ne le consomme encore. **PR-2** : bloc `slotRotations` branché au payload `/place-matches` (contrat **2.15**) et consommé en **SOFT** côté solveur — attraction (heure/gymnase, poids à parité stricte des habitudes) + protection de la fenêtre du créneau partagé ; suppléance backend (l'habitude même-jour d'un membre est retirée, jamais les autres jours). **PR-3** : le `matchDay` émis au `/generate` du solve hebdo (`ScheduleConstraintBuilder::deriveMatchDay`) devient `max(jours ISO des habitudes ∪ rotations dont l'équipe est membre)` — le repos suit l'image, 3ᵉ décision §8 honorée ; repli sur le champ déclaré `Team.matchDay` converti 0-based→ISO (correction du bug dormant D-11) ; habitudes/rotations/membres entrent dans `ResourceChangeStaleScheduleListener` (péremption COMPLETED). Zéro engine, contrat 2.15 inchangé. **PR-4 (LIVRÉE, 2026-08-25) : pur frontend.** L'éditeur « Créneaux partagés (alternance) » sur `/matchs/configuration` (déclaration ordonnée, flèches ↑/↓, badge A/B/C, phrase « l'ordre ne commande aucun calendrier ») ; `TypicalWeekendGrid` en semaines A/B (segmenté `Tabs`, invisible sans rotation — grille identique à avant) ; le signal « hors image » étendu (membre de rotation vs créneau, plus le compteur « même week-end »). Zéro backend/engine/contrat touché. Comportement gradué : [`../courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) § « Rotation A/B — RMM-5 » (les 4 PR). | Model + Engine + Front | **contrat backend↔engine** + **contrainte sémantique** → NR (contract test + smoke-solver) | **P2-49** — SOLDÉE, quitte la roadmap |
+| **RMM-6** | **LIVRÉ EN ENTIER (3 PR, 2026-08-25).** **Échéances ligue/comité** — TRANCHÉ 2026-08-22 : la ligue les envoie **par MAIL** au gestionnaire, donc **saisie manuelle**, et **PLUSIEURS échéances concurrentes** par groupes d'équipes (région le 2 sept, département le 10, autres le 15…) — la granularité est le groupe/la compétition, jamais une date unique de club. **PR-1 backend** : champ par compétition + endpoint bulk + défaut communautaire partagé surchargeable + outlook J-7 (`GET /api/matches/deadline-outlook`). **PR-2 front** : l'éditeur « Échéances de saisie » du SET-UP + l'échéance affichée sur `FbiEntryList` (L9). **PR-3 front** : la carte cockpit `FbiDeadlineCard` (pleine largeur sur `/`, rendue SEULEMENT sous fenêtre J-7 ouverte, dépassée = warning qui reste jamais destructif) + l'escalade « dès le login » (décision fondateur : le placement de match est une urgence) + le résumé du gardien fusionné dans la même carte + la lib `visitDeltaSegments` extraite et partagée avec `ModuleVisitBanner`. Comportement gradué : [`../courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) § « Échéances ligue/comité — RMM-6 ». | Back + Front | — | **P2-50** — SOLDÉE, quitte la roadmap ; besoin : [`gestion-matchs-ffbb.md`](../../specs/evolution/gestion-matchs-ffbb.md) §8 |
 | **RMM-7** | **FERMÉ SANS CODE (fondateur, 2026-08-25)** — « la dérogation n'est pas un objet de l'app, c'est juste la réponse à un conflit à résoudre avec le club adverse ; rien de plus chez nous ». La boucle signale→traite→constate existe déjà (radar + gestes sous verdict + réconciliation RMM-4) ; le tracker/états/deadline/rédacteur cadrés le 2026-08-22 étaient une sur-construction. Décision au registre : `etat-des-lieux.md` §2. Le cas d'usage « contact du club adverse » reste porté par RMM-9 seul. | — | — | **décision fermée** |
 | **RMM-8** | **Matrice trajet** + conflits spatiaux (empreinte AWAY réelle). Infra partagée avec l'entraînement (FF#5). | Back + Engine | contrainte sémantique → NR | **palier B/vision** — `gestion-matchs-ffbb.md` §7 + roadmap « Matrice de temps de trajet » |
 | **RMM-9** | **Annuaire adverse global** (table hors tenant, publique-seulement, enrichie par l'usage) + effet réseau (auto-remplissage heures/positions extérieures). | Back | isolation tenant → **test d'isolation dédié obligatoire** | **palier B/C** — `gestion-matchs-ffbb.md` §5bis/§11 |
-| **RMM-10** | **LIVRÉ (2 PR, 2026-08-26).** Un match déclaré ne perd plus sa salle en silence — recadré fondateur 2026-08-25/26 : le restore (exploration) ne touche PLUS aux matchs (pointeur transitoirement pendouillant, assumé) ; la **VALIDATION du planning** est la gâchette principale (`GET /schedules/{id}/validate-impact` annonce « N matchs [dont X déclarés] perdront leur salle » si N>0, `POST /validate` bascule UNPLACED + raison persistante `venue_lost`, heure conservée modifiable) ; la suppression de gymnase (déjà annoncée) gagne la même bascule via le même foyer (`FixtureVenueLossMarker`). Le volet « plages différentes sur un gymnase survivant » était DÉJÀ couvert (`ACCESS_WINDOW_LOST`). Comportement gradué : [`../courantes/module-matchs.md`](../courantes/module-matchs.md) § « P2-52 — un match déclaré ne perd plus sa salle en silence ». | Back + Front | **périmètre engagé** + lifecycle → NR (`EngagedTeamGuardTest` + `DeletionImpactParityTest` étendus) | **P2-52** — SOLDÉE, quitte la roadmap |
+| **RMM-10** | **LIVRÉ (2 PR, 2026-08-26).** Un match déclaré ne perd plus sa salle en silence — recadré fondateur 2026-08-25/26 : le restore (exploration) ne touche PLUS aux matchs (pointeur transitoirement pendouillant, assumé) ; la **VALIDATION du planning** est la gâchette principale (`GET /schedules/{id}/validate-impact` annonce « N matchs [dont X déclarés] perdront leur salle » si N>0, `POST /validate` bascule UNPLACED + raison persistante `venue_lost`, heure conservée modifiable) ; la suppression de gymnase (déjà annoncée) gagne la même bascule via le même foyer (`FixtureVenueLossMarker`). Le volet « plages différentes sur un gymnase survivant » était DÉJÀ couvert (`ACCESS_WINDOW_LOST`). Comportement gradué : [`../courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) § « P2-52 — un match déclaré ne perd plus sa salle en silence ». | Back + Front | **périmètre engagé** + lifecycle → NR (`EngagedTeamGuardTest` + `DeletionImpactParityTest` étendus) | **P2-52** — SOLDÉE, quitte la roadmap |
 
 **Séquencement — VALIDÉ fondateur 2026-08-17** : **RMM-0 immédiat** (débloque la décision d'appariement
 sans attendre la refonte) ; puis RMM-2 → RMM-1 (livrable rapide, faible risque, valeur immédiate) ; puis
@@ -538,9 +538,9 @@ validation de besoin + `/plan` (CLAUDE.md §7).
   `../courantes/module-matchs.md`. **Plus aucun item n'est ouvert ici** : ne reste que le palier B/C
   (RMM-8/RMM-9), les net-neufs de l'entretien 2026-08-17, dont le besoin vit ENTIÈREMENT dans
   `gestion-matchs-ffbb.md`.
-- **La spec courante** [`../courantes/module-matchs.md`](../courantes/module-matchs.md) reste la vérité du
+- **La spec courante** [`../courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) reste la vérité du
   **livré** ; chaque lot livré y gradue (et **quitte** ce fichier), trace datée en
-  [`../courantes/etat-des-lieux.md`](../courantes/etat-des-lieux.md).
+  [`../courantes/etat-des-lieux.md`](../../specs/courantes/etat-des-lieux.md).
 
 ---
 

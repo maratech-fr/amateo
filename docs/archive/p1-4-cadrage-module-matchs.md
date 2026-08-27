@@ -3,19 +3,19 @@
 > ✅ **LOT LIVRÉ (2026-08-03, 8 PR — cadrage + A→F2).** Ce fichier reste comme TRACE du cadrage (les
 > décisions fondateur y sont datées et l'ADR-0003 + l'état des lieux y renvoient) — il n'est plus un
 > fichier de détail ACTIF de la roadmap. Le comportement livré vit dans
-> [`../courantes/module-matchs.md`](../courantes/module-matchs.md) ; « est-ce fait ? » se répond dans
-> [`../courantes/etat-des-lieux.md`](../courantes/etat-des-lieux.md) §3.
+> [`../courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) ; « est-ce fait ? » se répond dans
+> [`../courantes/etat-des-lieux.md`](../../specs/courantes/etat-des-lieux.md) §3.
 
 > **Cadrage fondateur, 2026-08-02.** Posé en réponse à la ligne roadmap P1-4 (« besoin à valider et à
 > re-spécifier AVANT tout plan »), au fil d'un échange de challenge, **avec un vrai export FBI sur la
 > table** (`specs/initiales/rechercherRencontre.xlsx`, 124 rencontres, saison 2026-27 de BCCL).
 > Les §2 à §8 sont des **décisions** — ne pas les re-poser sans fait nouveau. Le §12 reste ouvert.
 >
-> **Ce document AMENDE** [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) (besoin initial 2026-07-06,
+> **Ce document AMENDE** [`gestion-matchs-ffbb.md`](../../specs/evolution/gestion-matchs-ffbb.md) (besoin initial 2026-07-06,
 > toujours valable pour le fond : empreinte-temps, catalogue-ligue, annuaire adverse) **et s'appuie sur**
-> [`ffbb-appariement-source-de-verite.md`](ffbb-appariement-source-de-verite.md) (appariement, poule
+> [`ffbb-appariement-source-de-verite.md`](../../specs/evolution/ffbb-appariement-source-de-verite.md) (appariement, poule
 > garde-fou, gymnases de match). Le livré est dans
-> [`module-matchs.md`](../courantes/module-matchs.md) (palier A, PR-1 à PR-4).
+> [`module-matchs.md`](../../specs/courantes/module-matchs.md) (palier A, PR-1 à PR-4).
 > **Pas un plan** — le phasage §11 découpe le lot, chaque PR aura son plan (Full lane).
 
 ---

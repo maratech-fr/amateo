@@ -1,7 +1,7 @@
 # ADR-0003 — Le solve de placement des matchs (P1-4 PR D)
 
 **Date** : 2026-08-03 · **Statut** : accepté (décisions fondateur du cadrage
-[`specs/evolution/p1-4-cadrage-module-matchs.md`](../../specs/evolution/p1-4-cadrage-module-matchs.md) §7,
+[`docs/archive/p1-4-cadrage-module-matchs.md`](../archive/p1-4-cadrage-module-matchs.md) §7,
 validées le 2026-08-03).
 
 ## Contexte

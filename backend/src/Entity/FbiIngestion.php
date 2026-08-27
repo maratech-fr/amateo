@@ -12,7 +12,7 @@ use Doctrine\ORM\Mapping as ORM;
 /**
  * Une INGESTION DATÉE de rencontres (RMM-4, réconciliation FBI). Chaque dépôt du
  * xlsx FBI en écrit une : l'app traite désormais le fichier comme une source de
- * données de plein droit (refonte-module-matchs.md §4/§5), pas comme une corvée
+ * données de plein droit (docs/archive/refonte-module-matchs.md §4/§5), pas comme une corvée
  * annexe. Elle porte la FRAÎCHEUR (« dernier dépôt : il y a N jours ») et la
  * TRACE de réconciliation.
  *
