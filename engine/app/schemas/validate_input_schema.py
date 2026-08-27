@@ -84,8 +84,9 @@ class ValidateAssignmentsInputSchema(SerializableModel):
     # /generate). ACCEPTÉ mais NON consommé en PR-1. Absent/vide ⇒ aucun effet (rétro-compat).
     team_links: list[TeamLinkSchema] = Field(default_factory=list, alias="teamLinks", max_length=MAX_TEAM_LINKS)
     # P2-53 RMM-8 PR-2 — le verdict accepte AUSSI `venueTravelTimes` (parité de vocabulaire avec
-    # /generate : le backend émet le même dialecte). ACCEPTÉ mais NON consommé par le verdict.
-    # Absent/vide ⇒ aucun effet (rétro-compat).
+    # /generate : le backend émet le même dialecte). P2-55 — désormais CONSOMMÉ par le verdict :
+    # MANDATORY pose l'interdit dur (battement trop court ⇒ refus), PREFERRED remonte le battement
+    # concédé en compromis nommé. Absent/vide ⇒ aucun effet (rétro-compat).
     venue_travel_times: list[VenueTravelTimeSchema] = Field(
         default_factory=list, alias="venueTravelTimes", max_length=MAX_VENUE_TRAVEL_TIMES
     )

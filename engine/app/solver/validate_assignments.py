@@ -12,13 +12,17 @@ from app.solver.constraints import (
     MANDATORY,
     HardConstraintStats,
     ParsedConstraints,
+    ResolvedImplicitRules,
     add_level_1_hard_constraints,
     add_time_window_constraints,
+    add_travel_time_penalty,
+    build_travel_matrix,
     diagnose_candidate_conflicts,
     parse_v2_constraints,
     resolve_implicit_rules,
     team_share_declared_pairs,
 )
+from app.solver.constraints.travel import TravelPlacement, iter_travel_pairs_from_placements
 from app.solver.model import (
     DEFAULT_SESSION_MINUTES,
     HARD_LOCK_LEVEL,
@@ -185,6 +189,83 @@ def _team_link_move_violation(
     return None
 
 
+def _travel_time_move_violation(
+    venue_travel_times: list[dict[str, Any]],
+    resolved_rules: ResolvedImplicitRules,
+    baseline_slots: list[dict[str, Any]],
+    candidate: dict[str, Any],
+    coaches: list[dict[str, Any]],
+    team_coach_map: dict[str, list[str]],
+    coach_names: dict[str, str],
+    venue_names: dict[str, str],
+) -> dict[str, Any] | None:
+    """P2-55 (ENG-36) — refus NOMMÉ (MIROIR MANDATORY) quand un déplacement crée un enchaînement au
+    battement trop court pour le coach (patron ``_team_link_move_violation``).
+
+    Ne s'arme que sous ``travelTime`` MANDATORY, matrice présente. On juge l'ÉTAT CONCRET (baseline
+    gelée + candidat) de façon déterministe, en RÉUTILISANT le prédicat géométrique de ``travel.py``
+    (``iter_travel_pairs_from_placements`` — gap/barème JAMAIS recalculés ici, résorbe ENG-37 côté
+    verdict) : un enchaînement cross-gymnase du MÊME coach dont l'écart est plus court que le barème
+    (voiture/à pied selon ``isVehicled``) et qui IMPLIQUE le candidat → refus. Le HARD posé dans
+    ``_apply_hard`` rendrait bien le solve INFEASIBLE, mais ``diagnose_candidate_conflicts`` ne
+    saurait pas l'attribuer — ce miroir le NOMME (motif ``travel_time_infeasible``, aligné sur le
+    diagnostic du rail ``/generate``).
+
+    Message français nommant le coach + les deux gymnases/heures ; aucun identifiant interne dans le
+    texte. ``None`` si rien à dire."""
+    if not (resolved_rules.travel_time_active and resolved_rules.travel_time_intensity == MANDATORY):
+        return None
+    matrix = build_travel_matrix(venue_travel_times)
+    if not matrix:
+        return None
+
+    placements_by_team: dict[str, list[TravelPlacement]] = {}
+    for slot in baseline_slots:
+        placements_by_team.setdefault(str(slot["team_id"]), []).append(
+            (int(slot["start"]), int(slot["end"]), int(slot["day"]), str(slot["venue_id"]), None)
+        )
+    candidate_placement: TravelPlacement = (
+        int(candidate["start"]),
+        int(candidate["end"]),
+        int(candidate["day"]),
+        str(candidate["venue_id"]),
+        None,
+    )
+    placements_by_team.setdefault(str(candidate["team_id"]), []).append(candidate_placement)
+
+    for traveler_key, gap, barometer, pa, pb in iter_travel_pairs_from_placements(
+        placements_by_team,
+        coaches=coaches,
+        team_links=(),  # miroir cadré au voyageur COACH (arbitrage P2-55) : passerelle hors champ.
+        team_coach_map=team_coach_map,
+        matrix=matrix,
+        default_minutes=resolved_rules.travel_time_default_minutes,
+    ):
+        if gap >= barometer:
+            continue  # battement suffisant : la pose ne poserait rien ici non plus.
+        if pa is not candidate_placement and pb is not candidate_placement:
+            continue  # enchaînement PRÉEXISTANT (baseline seule) : jamais imputé au déplacement.
+        coach_id = traveler_key.split(":", 1)[1]
+        first, second = (pa, pb) if pa[0] <= pb[0] else (pb, pa)
+        coach_label = coach_names.get(coach_id) or "Le coach"
+        first_venue = venue_names.get(first[3]) or first[3]
+        second_venue = venue_names.get(second[3]) or second[3]
+        return {
+            "rule": "travel_time_infeasible",
+            "message": (
+                f"{coach_label} enchaînerait {first_venue} à {_format_time(first[0])} puis "
+                f"{second_venue} à {_format_time(second[0])} : le battement est trop court pour "
+                "rejoindre le gymnase suivant."
+            ),
+            "coach_id": coach_id,
+            "team_id": str(candidate["team_id"]),
+            "venue_id": str(candidate["venue_id"]),
+            "day_of_week": int(candidate["day"]),
+            "start_time": str(candidate["start_time"]),
+        }
+    return None
+
+
 def _build_assignments(
     model: ScheduleCpModel,
     team_coach_map: dict[str, list[str]],
@@ -228,9 +309,12 @@ def _apply_hard(
     """The generation model's HARD layer, minus objective and session caps —
     ``add_fixed_slots`` (inside) freezes the baseline; nothing here relaxes.
 
-    Parité génération ⇄ verdict : le même réglage ``implicitRules`` s'applique. Un cran
-    HARD bloque le déplacement qui le casse ; un cran PREFERRED ne bloque pas (ses
-    littéraux de violation sont posés mais sans objectif ici — feasibility check seul)."""
+    Parité génération ⇄ verdict : le même réglage ``implicitRules`` s'applique, et la
+    ``venueTravelTimes`` est CONSOMMÉE ici comme dans ``/generate`` (P2-55) — sous
+    ``travelTime`` MANDATORY, un enchaînement au battement trop court pose l'INTERDIT DUR
+    et rend le déplacement fautif INFEASIBLE. Un cran HARD bloque le déplacement qui le
+    casse ; un cran PREFERRED ne bloque pas (ses littéraux de violation sont posés mais
+    sans objectif ici — feasibility check seul)."""
     min_by_team: dict[str, int] = {str(t.get("id")): 0 for t in data.get("teams", []) if t.get("id")}
     stats = add_level_1_hard_constraints(
         model,
@@ -247,6 +331,7 @@ def _apply_hard(
         team_player_map=team_player_map,
         shared_trainings=data.get("sharedTrainings", []),
         team_links=data.get("teamLinks", []),
+        venue_travel_times=data.get("venueTravelTimes", []),
     )
     add_time_window_constraints(model, model.x, parsed["time_windows"])
     return stats
@@ -362,6 +447,24 @@ def _evaluate_state(
         info_out=info,
     )
 
+    # P2-55 — battement de trajet PREFERRED : le malus SOFT du déplacement remonte comme COMPROMIS
+    # nommé (famille ``FAMILY_TRAVEL``), à l'identique du chemin ``/generate`` (main.py). Ne produit
+    # des termes QUE si la règle est active ET PREFERRED (le MANDATORY est dur, posé dans
+    # ``_apply_hard``). Matrice absente / règle inactive / MANDATORY ⇒ [] (chemin byte-identique).
+    resolved_rules = resolve_implicit_rules(data.get("implicitRules"))
+    travel_battement_terms: list[tuple[Any, int]] = []
+    if resolved_rules.travel_time_active and resolved_rules.travel_time_intensity != MANDATORY:
+        travel_battement_terms = add_travel_time_penalty(
+            model,
+            assignments,
+            coaches=data.get("coaches", []),
+            team_links=data.get("teamLinks", []),
+            team_coach_map=team_coach_map,
+            venue_travel_times=data.get("venueTravelTimes", []),
+            default_minutes=resolved_rules.travel_time_default_minutes,
+            info_out=info,
+        )
+
     add_level_2_objective(
         model,
         assignments,
@@ -370,7 +473,7 @@ def _evaluate_state(
         apply_chaining=True,
         team_player_map=team_player_map,
         info_out=info,
-        extra_placement_terms=team_link_penalty_terms,
+        extra_placement_terms=[*team_link_penalty_terms, *travel_battement_terms],
     )
 
     _, solver = _solve(model, timeout_seconds=timeout_seconds, seed=seed)
@@ -545,6 +648,30 @@ def validate_assignment(
     )
     if team_link_violation is not None:
         return {"valid": False, "violations": [team_link_violation], "compromises": [], "metrics": metrics}
+
+    # P2-55 (ENG-36) — miroir MANDATORY du TRAJET : un déplacement qui crée un enchaînement au
+    # battement trop court pour le coach est refusé, NOMMÉ (motif `travel_time_infeasible`). Le HARD
+    # posé dans `_apply_hard` rendrait bien le solve INFEASIBLE, mais `diagnose_candidate_conflicts`
+    # ne saurait pas l'attribuer — sans ce miroir, le refus atterrirait sur `unknown_hard_conflict`.
+    travel_violation = _travel_time_move_violation(
+        data.get("venueTravelTimes", []) or [],
+        resolve_implicit_rules(data.get("implicitRules")),
+        baseline_slots,
+        {
+            "team_id": c_team,
+            "venue_id": c_venue,
+            "day": c_day,
+            "start": c_start_min,
+            "end": c_end_min,
+            "start_time": c_start_text,
+        },
+        data.get("coaches", []),
+        team_coach_map,
+        coach_names,
+        venue_names,
+    )
+    if travel_violation is not None:
+        return {"valid": False, "violations": [travel_violation], "compromises": [], "metrics": metrics}
 
     assignments = _build_assignments(model, team_coach_map, frozen_keys)
     # Le candidat est epingle SEPAREMENT du gel de baseline (model.Add, pas
