@@ -1,6 +1,16 @@
-Last verified @ 2026-08-27 (audit DOC-34 — le journal « Changements récents » était devenu un fichier de 61 Ko / 94 entrées : **borné aux 8 dernières entrées**, l'historique complet vit dans git (`git log -p` sur ce fichier) et les livraisons dans `etat-des-lieux.md`. Le snapshot lui-même est INCHANGÉ, re-vérifié ce jour : **184 paths** (`grep -c '"/api/'`) · SHA-256 `3713bff044b9c454a645a62a47aeae03100c0903a88034a60b7cbc35de72425d` (`sha256sum` conforme). Dernière évolution d'API : P2-53 RMM-8 PR-4, 2026-08-26 — voir la première entrée ci-dessous.)
+Last verified @ 2026-08-27 (P2-54 RMM-9 PR-1 — champs de durée de match sur `SportCategory` : **184 paths** INCHANGÉ (`grep -c '"/api/'`, ressource API Platform existante, aucune route neuve) · SHA-256 `eacccebabc2894654d7dc5a6a55e698455e82a8dda8d1729d0a2c951daa44b10` (`sha256sum` conforme, il BOUGE car les schémas `SportCategory` + `SportCategory.SportCategoryInput` gagnent des propriétés). Dernière évolution d'API : P2-54 RMM-9 PR-1, 2026-08-27 — voir la première entrée ci-dessous. Journal borné à 8 entrées depuis l'audit DOC-34 ; l'historique complet vit dans git, les livraisons dans `etat-des-lieux.md`.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **P2-54 RMM-9 PR-1 — la durée de match devient un réglage par catégorie (2026-08-27)** : **+0 path**
+  (ressource API Platform `SportCategory` existante). **Champs ADDITIFS en LECTURE** sur le schéma
+  `SportCategory` : `matchMinutes`/`warmupMinutes` (l'override propre de la catégorie, `null` = héritée)
+  et `defaultMatchMinutes`/`defaultWarmupMinutes` (le défaut de FAMILLE résolu SERVEUR par
+  `MatchDurationResolver` — le front l'affiche, ne le recalcule pas). **Champs ADDITIFS en ÉCRITURE**
+  sur `SportCategory.SportCategoryInput` : `matchMinutes` (borné 30–240, `Assert\Range`) et
+  `warmupMinutes` (0–120) ; `null` = revient au défaut de famille. La douche/battement sortent de
+  l'empreinte du radar (`MatchFootprint`, changement de comportement assumé). 184 → **184 paths**.
+  Backend + frontend léger, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.16, aucun appel
+  moteur — le radar recalcule côté serveur, le solveur de placement garde ses 105 min figés).
 - **P2-53 RMM-8 PR-4 — le levier Obligatoire de la règle de trajet (2026-08-26)** : **+1 path** —
   ressource API Platform singleton `VenueTravelRuleSetting` : `GET /api/venue_travel_rule_settings/{ruleKey}`
   (200 : `{ruleKey, intensity, isDefault}` — résout l'intensité stockée OU le défaut `PREFERRED`) +
@@ -75,15 +85,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   (état app VS état fichier des domiciles déjà placés), l'import accepte un champ multipart
   `decisions` (verdicts par écart keep_app|take_file) et rend `unresolvedDeviations[]` + `depositedAt`.
   171 → **172 paths**. Contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.14, aucun appel moteur).
-- **RMM-3 PR-1 — le gardien à l'ouverture du module matchs (2026-08-24)** : **+1 path** —
-  `POST /api/matches/module-visit` (200 : `{firstVisit, newFixturesCount, newConflictFingerprints[],
-  planningChanged, referenceTakenAt}` — le delta « depuis ta dernière visite », stampe la référence
-  en effet de bord, première visite muette ; 400 sans club ou sans saison ; 401 sans JWT). Route
-  PAR UTILISATEUR, **ouverte au Membre** (aucune garde management, patron du signalement). **Champ
-  ADDITIF** sur `GET /api/fixtures/conflicts` : chaque item porte désormais `fingerprint` (l'identité
-  stable d'un conflit, propriété inline — aucun schéma nommé ajouté). 170 → **171 paths**. Contrat
-  backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.14, aucun appel moteur — persistance légère et
-  radar stateless recalculé).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans `CustomRoutesOpenApiFactory`. Le journal

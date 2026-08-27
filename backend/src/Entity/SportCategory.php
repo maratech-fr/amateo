@@ -54,6 +54,14 @@ class SportCategory implements TenantOwnedInterface
     #[ORM\Column(length: 10, nullable: true, enumType: Gender::class)]
     private ?Gender $gender = null;
 
+    // P2-54 RMM-9 — per-category match duration override (minutes). NULL means
+    // « follow the family default » (MatchDurationResolver), never 0.
+    #[ORM\Column(type: 'integer', nullable: true)]
+    private ?int $matchMinutes = null;
+
+    #[ORM\Column(type: 'integer', nullable: true)]
+    private ?int $warmupMinutes = null;
+
     public function __construct()
     {
         $this->id = $this->newUuid();
@@ -213,6 +221,30 @@ class SportCategory implements TenantOwnedInterface
     public function setGender(?Gender $gender): self
     {
         $this->gender = $gender;
+
+        return $this;
+    }
+
+    public function getMatchMinutes(): ?int
+    {
+        return $this->matchMinutes;
+    }
+
+    public function setMatchMinutes(?int $matchMinutes): self
+    {
+        $this->matchMinutes = $matchMinutes;
+
+        return $this;
+    }
+
+    public function getWarmupMinutes(): ?int
+    {
+        return $this->warmupMinutes;
+    }
+
+    public function setWarmupMinutes(?int $warmupMinutes): self
+    {
+        $this->warmupMinutes = $warmupMinutes;
 
         return $this;
     }

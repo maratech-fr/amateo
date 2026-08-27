@@ -121,6 +121,7 @@ final class MatchConflictDetector
      * @param list<VenueMatchWindow>                                                                 $matchWindows     scoped access windows (ACCESS_WINDOW_LOST)
      * @param array<string, list<LeagueMatchWindow>>                                                 $envelope         teamId → resolved league windows ([] = unmapped)
      * @param list<Competition>                                                                      $competitions     scoped competitions (COMPETITION_INCOMPLETE — severity 6)
+     * @param array<string, MatchDurationProfile>                                                    $profilesByTeam   teamId → match duration profile (P2-54 RMM-9); a team absent falls back to MatchDurationProfile::fallback()
      *
      * @return list<array<string, mixed>> conflict items ready to serialize
      */
@@ -136,6 +137,7 @@ final class MatchConflictDetector
         array $matchWindows = [],
         array $envelope = [],
         array $competitions = [],
+        array $profilesByTeam = [],
     ): array {
         $coachesByTeam = [];
         // teamId → coachId → role; a coach both MAIN and ASSISTANT on one team
@@ -159,12 +161,16 @@ final class MatchConflictDetector
         // need a coach).
         $views = [];
         foreach ($fixtures as $fixture) {
+            // P2-54 RMM-9 — the footprint durations now depend on the team's
+            // category profile; a team missing from the map falls back to the
+            // documented 105/30 (MatchDurationProfile::fallback()).
+            $profile = $profilesByTeam[$fixture->getTeamId()] ?? MatchDurationProfile::fallback();
             $estimated = false;
-            $window = $this->footprint->occupancy($fixture);
+            $window = $this->footprint->occupancy($fixture, $profile);
             if (null === $window) {
                 $estimatedKickoff = $this->awayKickoffEstimator->estimate($fixture, $habitByTeamDay);
                 if ($estimatedKickoff instanceof DateTimeImmutable) {
-                    $window = $this->footprint->occupancyAt($fixture, $estimatedKickoff);
+                    $window = $this->footprint->occupancyAt($fixture, $estimatedKickoff, $profile);
                     $estimated = true;
                 }
             }

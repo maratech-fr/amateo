@@ -16,9 +16,10 @@ import { HabitsLinksDialog } from "./HabitsLinksDialog";
 import { ImportFbiDialog } from "./ImportFbiDialog";
 import { EntryDeadlinesEditor } from "./EntryDeadlinesEditor";
 import { STALE_DAYS, depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
+import { MatchDurationsEditor } from "./MatchDurationsEditor";
 import { MatchSlotRotationsEditor } from "./MatchSlotRotationsEditor";
 import { MatchWindowsEditor } from "./MatchWindowsEditor";
-import { useCompetitions, useFfbbRencontres, useFixtures, useLatestFbiIngestion, useMatchSlotRotations, usePriorityTiers, useTeamMatchHabits, useTeams, useVenues } from "./queries";
+import { useCompetitions, useFfbbRencontres, useFixtures, useLatestFbiIngestion, useMatchSlotRotations, usePriorityTiers, useSportCategoryDurations, useTeamMatchHabits, useTeams, useVenues } from "./queries";
 import { useMatchesStore } from "./store";
 import { TypicalWeekendGrid } from "./TypicalWeekendGrid";
 
@@ -45,6 +46,7 @@ export function ConfigurationPage() {
   const competitions = useCompetitions();
   const habitsQuery = useTeamMatchHabits();
   const rotationsQuery = useMatchSlotRotations();
+  const categoryDurations = useSportCategoryDurations();
   const freshness = useLatestFbiIngestion();
   const navigate = useNavigate();
   const setReconciliation = useMatchesStore((s) => s.setReconciliation);
@@ -114,6 +116,16 @@ export function ConfigurationPage() {
         </CardHeader>
         <CardContent>
           <EntryDeadlinesEditor competitions={competitions.data ?? []} teams={teams.data ?? []} />
+        </CardContent>
+      </Card>
+
+      {/* 1quater. La durée des matchs — un réglage par catégorie (P2-54 RMM-9). */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Durée des matchs</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MatchDurationsEditor categories={categoryDurations.data ?? []} />
         </CardContent>
       </Card>
 

@@ -20,6 +20,7 @@ use App\Enum\TeamLinkType;
 use App\Service\AwayKickoffEstimator;
 use App\Service\EffectiveScheduleResolver;
 use App\Service\MatchConflictDetector;
+use App\Service\MatchDurationProfile;
 use App\Service\MatchFootprint;
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\Group;
@@ -484,6 +485,38 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame([], $viaNotSimultaneous);
     }
 
+    public function testPerCategoryProfileDrivesTheFootprint(): void
+    {
+        // P2-54 RMM-9 (NR) — a U9 profile (75/30) ends the 16:00 match at 17:15,
+        // clear of a 17:20 training; the fallback 105/30 ends at 17:45 and clashes.
+        // The profile the caller injects per team drives the footprint.
+        $fixtures = [$this->fixture('fx-1', self::TEAM_1, '2026-10-04', '16:00')];
+        $links = [$this->link(self::COACH_A, self::TEAM_1)];
+        $slots = [$this->slot('sl-1', self::BASELINE, self::TEAM_1, 7, '17:20', 60)]; // Sunday 17:20–18:20
+
+        // No profile → fallback 105/30 → match window ends 17:45 → clash.
+        $clash = $this->detect($fixtures, $links, self::BASELINE, [], [self::BASELINE => $slots]);
+        self::assertCount(1, $clash);
+        self::assertSame('MATCH_TRAINING', $clash[0]['type']);
+
+        // U9 profile for team-1 → match window ends 17:15 (half-open) → no clash.
+        $clear = $this->detect(
+            $fixtures,
+            $links,
+            self::BASELINE,
+            [],
+            [self::BASELINE => $slots],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [self::TEAM_1 => new MatchDurationProfile(75, 30)],
+        );
+        self::assertSame([], $clear);
+    }
+
     private function competition(string $id, ?int $expectedMatchdays): Competition
     {
         $competition = new Competition;
@@ -552,10 +585,10 @@ final class MatchConflictDetectorTest extends TestCase
      *
      * @return list<array<string, mixed>>
      */
-    private function detect(array $fixtures, array $links, ?string $baselineScheduleId = null, array $overlayPeriods = [], array $slotsBySchedule = [], array $unavailabilities = [], array $habits = [], array $teamLinks = [], array $matchWindows = [], array $envelope = [], array $competitions = []): array
+    private function detect(array $fixtures, array $links, ?string $baselineScheduleId = null, array $overlayPeriods = [], array $slotsBySchedule = [], array $unavailabilities = [], array $habits = [], array $teamLinks = [], array $matchWindows = [], array $envelope = [], array $competitions = [], array $profilesByTeam = []): array
     {
         return new MatchConflictDetector(new MatchFootprint, new EffectiveScheduleResolver, new AwayKickoffEstimator)
-            ->detect($fixtures, $links, $baselineScheduleId, $overlayPeriods, $slotsBySchedule, $unavailabilities, $habits, $teamLinks, $matchWindows, $envelope, $competitions);
+            ->detect($fixtures, $links, $baselineScheduleId, $overlayPeriods, $slotsBySchedule, $unavailabilities, $habits, $teamLinks, $matchWindows, $envelope, $competitions, $profilesByTeam);
     }
 
     private function leagueWindow(int $dayOfWeek, string $min, string $max): LeagueMatchWindow
