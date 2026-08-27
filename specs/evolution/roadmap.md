@@ -1,4 +1,4 @@
-# Roadmap (56) — ce qui reste à faire
+# Roadmap (55) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -144,7 +144,6 @@
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
 | P4-117 | **Fond de sac audit 2026-08-19 — les Faibles/Info restants** | ⚪ | S | Une ligne pour ne rien perdre, détail dans [`../audit/AUDIT-2026-08-19-claude-opus-5.md`](../audit/AUDIT-2026-08-19-claude-opus-5.md). **Lots FRONTEND/UX, DOC, ENGINE, BACKEND et FRONTEND-STRUCTUREL soldés le 2026-08-19** (FRT-23/24/26, UXC-14/15/16, A11Y-15/16 + le résidu UXC-11 ; puis DOC-32/33 ; puis ENG-35 ; puis BCK-16/17 ; puis FRT-21/22) — cf. état des lieux. **Reste** : **frontend** — FRT-20 (hook-mocking : patron de test, à traiter quand on touche les écrans concernés). *(UXC-17 soldé le 2026-08-22, ALIGN-09 le 2026-08-23, ENG-32 le 2026-08-24 — traces état des lieux.)* ⚠ Ne JAMAIS traiter en une seule PR : ces items couvrent cinq zones, le diff serait irrelisable — un lot par zone, quand on passe déjà dedans |
-| P4-112 | **`bridage-freemium-decouverte.md` décrit du LIVRÉ mais vit encore dans `evolution/`** | 🟡 | XS | Constaté à la passe doc du 2026-08-19. ⚑ **Le volet `p1-4-cadrage-module-matchs.md` est SOLDÉ le 2026-08-28** : archivé dans `docs/archive/` avec ses référents recalés (ADR-0003, module-matchs, gestion-matchs-ffbb, état des lieux) — même migration one-shot que le module matchs. **Reste** `bridage-freemium-decouverte.md` (bridage Découverte, livré avec P1-3 §4bis) : livré, plus référencé par la roadmap, mais `evolution/` ne tient que l'ouvert (`specs/README.md`). ⚠ **Ne PAS supprimer sec** : vérifier ses référents avant de le déplacer vers `docs/archive/` (précédent `api-ffbb-*` #633 + p1-4 ci-dessus). Migration one-shot, hors PR de feature |
 
 ### Retour terrain du 2026-08-19 (fix ancrage génération période)
 

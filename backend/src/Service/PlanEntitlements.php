@@ -13,7 +13,7 @@ use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * P1-3 PR A — l'offre EFFECTIVE d'un club, calculée à la LECTURE (pas de cron, pas
- * d'état stocké). Règles (spec bridage-freemium-decouverte §4-5) :
+ * d'état stocké). Règles (spec docs/archive/bridage-freemium-decouverte §4-5) :
  *   - `planId` null → Découverte (le défaut de tout compte) ;
  *   - offre payante/bêta dont `paidSeasonYear` < année-pivot de la saison courante
  *     → retombe sur Découverte (expiration) ;

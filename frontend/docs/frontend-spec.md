@@ -4,8 +4,8 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-08-26 (RMM-10 / P2-52, dernier lot de code du module matchs. §6.6bis recalé :
-« Valider » interroge désormais `GET /api/schedules/{id}/validate-impact`
+Last verified @ 2026-08-28 (rotation `documentation-update`, passe Lot E — §6.6bis re-confirmé au code (`useValidateImpact`/`ValidateDialog.tsx`, route `validate-impact` présente au snapshot). Les écrans matchs récents (chip trajet, carte « Adversaires à localiser », P2-54 PR-3) vivent dans `specs/courantes/module-matchs.md` (maison du module), non dupliqués ici. Passe précédente (RMM-10 / P2-52). §6.6bis :
+« Valider » interroge `GET /api/schedules/{id}/validate-impact`
 (`useValidateImpact`/`ValidateDialog.tsx`) avant de confirmer — annonce « salle perdue » si N>0,
 bouton désactivé tant que l'impact n'est pas connu. `UnplacedList.tsx` gagne un badge calme
 (`unplacedReasonLabel.ts`) quand `Fixture.unplacedReason=venue_lost`. Confronté au code :

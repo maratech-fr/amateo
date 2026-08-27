@@ -16,7 +16,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 /**
  * SA4 / P1-3 — action support : remet à zéro le pool de crédits de SORTIE d'un club
  * (offre Découverte). Reset superadmin seulement (le pool est non rechargeable par
- * l'utilisateur — spec bridage-freemium-decouverte §5). Connexion PAR DÉFAUT (même
+ * l'utilisateur — spec docs/archive/bridage-freemium-decouverte §5). Connexion PAR DÉFAUT (même
  * patron que MarkSeasonPaid, et que son action sœur app:clubs:set-plan) : `club` n'a
  * pas de club_id (pas de policy RLS) — l'UPDATE ciblé par id passe, SA4 gate l'accès.
  */
