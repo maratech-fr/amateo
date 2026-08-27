@@ -852,6 +852,27 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
             summary: 'Autofill the venue travel-time matrix from IGN routing (management only; never overwrites a MANUAL value)',
         )));
 
+        $paths->addPath('/api/opponents/resolve', new PathItem(post: new Operation(
+            operationId: 'resolveOpponentLocations',
+            tags: ['Fixture'],
+            responses: [
+                '200' => $this->jsonResponse('Locates the DISTINCT away opponents of the club+season into the shared opponent directory (salle or city, best-effort). An opponent already known at venue precision is skipped; one that cannot be located comes back named.', [
+                    'type' => 'object',
+                    'properties' => [
+                        'resolved' => ['type' => 'integer', 'description' => 'Opponents written/refined in the shared directory'],
+                        'unresolved' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Opponent names that could not be located'],
+                        'skipped' => ['type' => 'integer', 'description' => 'Opponents already known at venue precision (no network call)'],
+                    ],
+                ]),
+                '400' => new Response('No club or season in context'),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+                '403' => new Response('Not a management member'),
+                '422' => new Response('Too many distinct opponents to locate at once (retry with fewer)'),
+                '429' => new Response('Too many requests (per-user rate limit)'),
+            ],
+            summary: 'Resolve the away opponents of the season into the shared opponent directory (management only)',
+        )));
+
         return $openApi;
     }
 

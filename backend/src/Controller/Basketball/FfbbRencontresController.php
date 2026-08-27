@@ -8,11 +8,13 @@ use App\Controller\ResolvesCurrentClubTrait;
 use App\Entity\Season;
 use App\Repository\ClubRepository;
 use App\Service\Basketball\FfbbRencontreReconciler;
+use App\Service\Basketball\OpponentLocationResolver;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use App\Service\SocleGuard;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -55,6 +57,8 @@ final class FfbbRencontresController extends AbstractController
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly SocleGuard $socleGuard,
         private readonly FfbbRencontreReconciler $reconciler,
+        private readonly OpponentLocationResolver $opponentResolver,
+        private readonly LoggerInterface $logger,
     ) {}
 
     #[Route('/api/ffbb/rencontres', name: 'api_ffbb_rencontres', methods: ['GET'])]
@@ -112,6 +116,17 @@ final class FfbbRencontresController extends AbstractController
             return $this->json(['error' => 'Une vérification concurrente a créé les mêmes rencontres — réessayez.'], Response::HTTP_CONFLICT);
         } catch (Throwable) {
             return $this->json(['error' => 'FFBB indisponible, réessayez plus tard.'], Response::HTTP_BAD_GATEWAY);
+        }
+
+        // P2-54 RMM-9 — locate the away opponents into the global directory from the
+        // API hits (exact salle carried by each rencontre). OUTSIDE the apply
+        // try/catch above: a resolution hiccup must never turn a done apply into a
+        // 502. Best-effort intégral (le résolveur avale déjà toute panne réseau).
+        // $clubCode/$seasonYear sont déjà garantis non-null (assert plus haut).
+        try {
+            $this->opponentResolver->resolveFromApiChannel($clubCode, $seasonYear);
+        } catch (Throwable $e) {
+            $this->logger->warning('Opponent directory: post-apply resolution failed', ['exception' => $e]);
         }
 
         return $this->json([
