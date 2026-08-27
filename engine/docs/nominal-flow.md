@@ -1,6 +1,6 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-08-26 (recalé au bump de contrat **2.15 → 2.16** — P2-53 RMM-8 PR-2,
+Last verified @ 2026-08-28 (rotation `documentation-update`, passe Lot C — `engine/CONTRACT_VERSION` = **2.16** re-confirmé, ce fichier documente `/generate`. Passe précédente (recalé au bump de contrat **2.15 → 2.16** — P2-53 RMM-8 PR-2,
 blocs `venueTravelTimes`/`isVehicled`/règle `travelTime` sur `/generate` ; ce fichier documente
 `/generate`, où seule la chaîne de version est recalée ici (le détail des blocs vit dans
 `engine-inventory.md`). Passe précédente (2026-08-25, bump 2.14 → 2.15, rotation A/B) :

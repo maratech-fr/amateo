@@ -136,6 +136,10 @@ vi.mock("./api", () => {
   generateSchedule: vi.fn(),
   validateSchedule: vi.fn(),
   STATUS_LABELS: { DRAFT: "Brouillon", PENDING: "En attente", GENERATING: "Génération…", COMPLETED: "Terminé", FAILED: "Échec" },
+  // P4-119 c bis : EvictConfirmDialog lit cette constante de `./api` pour AFFICHER la borne
+  // d'attente. Le mock doit exposer la même surface — sa valeur exacte n'est vérifiée nulle part
+  // ici (la parité message⇄constante est gardée par EvictConfirmDialog.test.tsx, non moqué).
+  MOVE_VERDICT_TIMEOUT_SECONDS: 45,
   };
 });
 

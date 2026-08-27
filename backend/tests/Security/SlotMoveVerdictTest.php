@@ -466,6 +466,59 @@ final class SlotMoveVerdictTest extends KernelTestCase
         self::assertFalse($schedule->isManuallyEditedSinceGeneration(), 'un timeout ne marque pas le planning comme retouché');
     }
 
+    /**
+     * P4-119 (c) — INVARIANT : le backend n'applique JAMAIS un verdict que le moteur n'a pas rendu
+     * À TEMPS, éviction comprise. Le cas nu (sans éviction) est déjà épinglé par
+     * {@see testEngineTimeoutIsNotWrittenAndCarriesItsCode} ; ici la VARIANTE éviction, la plus
+     * dangereuse — l'écriture supprime l'occupant. Un timeout transport survient : le service lève
+     * {@see EngineTimeoutException} (→ 504) et NE DOIT rien avoir écrit — le créneau ne bouge pas
+     * (jour/heure/gymnase intacts), l'occupant à évincer n'est PAS supprimé, le marqueur reste à
+     * false. Falsification : déplacer l'écriture (setDayOfWeek/remove(evicted)/flush) AVANT
+     * `validateUnderTimeout` supprimerait l'occupant et déplacerait la source malgré le timeout →
+     * rouge ici. Le cas nginx-499 (client parti / serveur qui termine quand même) n'est PAS simulé
+     * : ce test couvre le vrai risque « le moteur n'a pas répondu à temps », testable proprement.
+     */
+    public function testEngineTimeoutWithEvictionDeletesNothingAndCarriesItsCode(): void
+    {
+        $ctx = $this->seed();
+        $slot = $ctx['slot'];
+        $originalDay = $slot->getDayOfWeek();
+        $originalVenue = $slot->getVenueId();
+        $originalStart = $slot->getStartTime()->format('H:i');
+        $occupant = $this->seedOccupant($ctx, 4, '20:00', $ctx['venue2']);
+        $occupantId = $occupant->getId();
+
+        // Le moteur dépasse le délai transport (MÊME type que « Idle timeout reached » en prod) —
+        // le verdict n'arrive jamais, donc l'éviction ne doit surtout pas s'appliquer.
+        $client = new MockHttpClient(static function (): MockResponse {
+            throw new TimeoutException('Idle timeout reached for "http://engine:8000/validate-assignments".');
+        });
+
+        try {
+            $this->service($client)->move($slot, 4, new DateTimeImmutable('20:00'), $ctx['venue2'], $occupantId);
+            self::fail('un timeout moteur doit lever, jamais appliquer l\'éviction');
+        } catch (EngineTimeoutException $e) {
+            self::assertSame('engine_timeout', $e->errorCode());
+        }
+
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        $reloaded = $this->em->getRepository(ScheduleSlotTemplate::class)->find($slot->getId());
+        self::assertInstanceOf(ScheduleSlotTemplate::class, $reloaded);
+        self::assertSame($originalDay, $reloaded->getDayOfWeek(), 'un timeout ne déplace PAS la source');
+        self::assertSame($originalVenue, $reloaded->getVenueId());
+        self::assertSame($originalStart, $reloaded->getStartTime()->format('H:i'));
+
+        self::assertNotNull(
+            $this->em->getRepository(ScheduleSlotTemplate::class)->find($occupantId),
+            'un verdict jamais rendu ne doit PAS supprimer l\'occupant à évincer',
+        );
+
+        $schedule = $this->em->getRepository(Schedule::class)->find($ctx['scheduleId']);
+        self::assertInstanceOf(Schedule::class, $schedule);
+        self::assertFalse($schedule->isManuallyEditedSinceGeneration(), 'un timeout ne marque pas le planning comme retouché');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();

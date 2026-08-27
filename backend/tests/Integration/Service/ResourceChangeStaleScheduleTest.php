@@ -332,6 +332,45 @@ final class ResourceChangeStaleScheduleTest extends KernelTestCase
         );
     }
 
+    /**
+     * P4-104 — un réglage bien-être de SAISON (plan NULL) marque le plan SEASON ET tout plan de
+     * période LEGACY (sans copie propre : il suit encore la saison via `resolveForPlan`), mais PAS
+     * un plan de période qui a matérialisé sa copie. Le resserrement est SÛR : un legacy n'est
+     * JAMAIS raté (le rater servirait un planning COMPLETED périmé en silence). Falsification : si
+     * le périmètre était le seul plan SEASON, le legacy resterait à false et rougirait ici ; s'il
+     * restait le club+saison entier, le plan à copie serait marqué à tort et rougirait aussi.
+     */
+    public function testASeasonImplicitRuleMarksSeasonAndLegacyPeriodButNotTheCopiedPeriod(): void
+    {
+        [$club, $season] = $this->seed();
+        $seasonSchedule = $this->seasonSchedule($club, $season);
+        // Un plan de période né APRÈS la fonctionnalité : sa naissance matérialise ses 4 copies
+        // (lignes à son id) → il ne suit plus la saison (ADR-0002).
+        $copiedPeriod = $this->periodSchedule($club, $season);
+        // Un plan de période LEGACY (né AVANT la copie) : on le simule en retirant ses 4 lignes
+        // matérialisées → findByPlanIndexed vide, resolveForPlan retombe sur la portée saison.
+        $legacyPeriod = $this->periodSchedule($club, $season, 'Vacances de Noël', '2025-12-20', '2026-01-04');
+        $this->em->flush();
+        $this->stripPlanImplicitRules($legacyPeriod->getSchedulePlanId());
+        $this->resetMarkers($seasonSchedule, $copiedPeriod, $legacyPeriod);
+
+        // Le geste sous test : régler une règle bien-être de SAISON (schedule_plan_id NULL).
+        $this->storeImplicitRule($club, $season, ImplicitRuleKey::COACH_REST_DAY, ImplicitRuleIntensity::PREFERRED);
+
+        self::assertTrue(
+            $this->reload($seasonSchedule)->isResourcesChangedSinceGeneration(),
+            'Un réglage bien-être de saison périme le plan SEASON (il lit les lignes plan-NULL).',
+        );
+        self::assertTrue(
+            $this->reload($legacyPeriod)->isResourcesChangedSinceGeneration(),
+            'P4-104 : un plan de période LEGACY (sans copie) suit la saison → périmé. Ne JAMAIS le rater.',
+        );
+        self::assertFalse(
+            $this->reload($copiedPeriod)->isResourcesChangedSinceGeneration(),
+            'P4-104 : un plan de période qui a sa copie ne suit plus la saison → PAS périmé.',
+        );
+    }
+
     public function testAnImportClearsTheMarkerAfterAnImplicitRuleChange(): void
     {
         [$club, $season] = $this->seed();
@@ -592,16 +631,16 @@ final class ResourceChangeStaleScheduleTest extends KernelTestCase
     }
 
     /** Un planning COMPLETED d'un plan de PÉRIODE (holiday), via une CalendarEntry. */
-    private function periodSchedule(Club $club, Season $season): Schedule
+    private function periodSchedule(Club $club, Season $season, string $title = 'Vacances de la Toussaint', string $start = '2025-10-18', string $end = '2025-11-02'): Schedule
     {
         $entry = (new CalendarEntry)
             ->setClubId($club->getId())
             ->setSeasonId($season->getId())
             ->setKind(CalendarEntryKind::PERIOD)
             ->setPeriodType(CalendarEntryPeriodType::HOLIDAY)
-            ->setTitle('Vacances de la Toussaint')
-            ->setStartDate(new DateTimeImmutable('2025-10-18'))
-            ->setEndDate(new DateTimeImmutable('2025-11-02'));
+            ->setTitle($title)
+            ->setStartDate(new DateTimeImmutable($start))
+            ->setEndDate(new DateTimeImmutable($end));
         $this->em->persist($entry);
         $this->em->flush();
 
@@ -683,6 +722,20 @@ final class ResourceChangeStaleScheduleTest extends KernelTestCase
         $row = $this->em->getRepository(ImplicitRuleSetting::class)->findOneBy(['schedulePlanId' => $schedulePlanId, 'ruleKey' => $ruleKey]);
         self::assertInstanceOf(ImplicitRuleSetting::class, $row, 'le plan doit porter sa copie de la règle (matérialisée à la naissance)');
         $row->setIntensity($intensity);
+        $this->em->flush();
+        $this->em->clear();
+    }
+
+    /**
+     * Simule un plan de période LEGACY (né avant la copie) : retire les lignes
+     * `implicit_rule_setting` propres au plan (`schedule_plan_id` = ce plan) matérialisées à sa
+     * naissance. Après ça, `findByPlanIndexed` est vide → `resolveForPlan` retombe sur la saison.
+     */
+    private function stripPlanImplicitRules(string $schedulePlanId): void
+    {
+        foreach ($this->em->getRepository(ImplicitRuleSetting::class)->findBy(['schedulePlanId' => $schedulePlanId]) as $row) {
+            $this->em->remove($row);
+        }
         $this->em->flush();
         $this->em->clear();
     }

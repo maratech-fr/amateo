@@ -1,6 +1,6 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-08-26 (rotation `documentation-update`, P2-53 PR-1 — zone non touchée par cette
+Last verified @ 2026-08-28 (rotation `documentation-update`, passe Lot C — zone non touchée par cette PR, contrôle de fraîcheur. Re-confronté au code : `UNPLACED_PENALTY = 100000` (`objective.py:141`), tiers S/A souverains, budget adaptatif 60/180/600 s (`_adaptive_timeout`, `main.py:413`) ✓. Passe précédente (P2-53 PR-1 — zone non touchée par cette
 PR, contrôle de fraîcheur). Re-confronté au code : poids de tiers S 10000/A 1000 fixes dans
 `app/solver/objective.py` ✓ (`missing_session` −1000, `UNPLACED_PENALTY` 100000, patron intact) ·
 budget adaptatif 60/180/600 s plafonné par le payload (`_adaptive_timeout`, `app/main.py:411-425`
