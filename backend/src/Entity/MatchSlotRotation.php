@@ -10,7 +10,7 @@ use Doctrine\ORM\Mapping as ORM;
 /**
  * RMM-5 (P2-49) — un créneau de match PARTAGÉ entre N équipes qui l'occupent en
  * alternance (« rotation A/B ») : le cas SM1/SM2 sur le 20h30 — semaine A SM1 reçoit,
- * semaine B SM2 reçoit, sur le MÊME créneau physique (refonte-module-matchs.md §8).
+ * semaine B SM2 reçoit, sur le MÊME créneau physique (docs/archive/refonte-module-matchs.md §8).
  *
  * Le module matchs vit HORS des plans de période (pas de ``schedulePlanId``, patron
  * {@see TeamMatchHabit}/{@see VenueMatchWindow}) : fait saison-scopé, tenant-owned

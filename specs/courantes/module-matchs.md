@@ -13,7 +13,7 @@ Le reste du fichier non re-confronté cette passe — un stamp REMPLACE, l'histo
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
 > [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés
 > pour l'exécution le 2026-08-02** par
-> [`../evolution/p1-4-cadrage-module-matchs.md`](../evolution/p1-4-cadrage-module-matchs.md) (P1-4 —
+> [`../../docs/archive/p1-4-cadrage-module-matchs.md`](../../docs/archive/p1-4-cadrage-module-matchs.md) (P1-4 —
 > notamment : le format FBI livré ici est **invalidé par un vrai export**, et le placement devient
 > solveur + boucle manuelle). Ici = ce qui **existe** aujourd'hui. Module **fonctionnellement autonome** : ses entités, son moteur de conflits et sa
 > grille week-end ne dépendent pas du solveur d'entraînement, et rien de ce module n'entre dans le payload
@@ -193,7 +193,7 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
 
 > **Format MESURÉ** sur un vrai export (« Saisie des résultats pour tout le club », gelé en fixture de test
 > `backend/tests/Fixtures/fbi/rechercherRencontre.xlsx`, 124 rencontres BCCL 2026-27 — faits F1-F9 du
-> [cadrage](../evolution/p1-4-cadrage-module-matchs.md) §3) : fichier **GLOBAL club**, colonnes
+> [cadrage](../../docs/archive/p1-4-cadrage-module-matchs.md) §3) : fichier **GLOBAL club**, colonnes
 > `Division · N° de match · Equipe 1 · Equipe 2 · Date de rencontre · Heure · Salle · e-Marque V2 ·
 > Scores/Forfaits (ignorés)`. L'import « un fichier par équipe » de PR-4 est supprimé.
 
@@ -326,7 +326,7 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
 
 ## Rotation A/B — RMM-5, le MODÈLE, le SOFT, le REPOS DÉRIVÉ puis le SET-UP (2026-08-25, P2-49) — LIVRÉ EN ENTIER
 
-**RMM-5 est LIVRÉ EN ENTIER (les 4 PR) — P2-49 clôt** ([`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md)
+**RMM-5 est LIVRÉ EN ENTIER (les 4 PR) — P2-49 clôt** ([`../../docs/archive/refonte-module-matchs.md`](../../docs/archive/refonte-module-matchs.md)
 §8-§9, cas SM1/SM2 sur le 20h30 : pénurie de créneaux → alternance semaine A/semaine B sur le
 MÊME créneau physique). PR-1 livre le modèle et son CRUD seuls — rien ne le consomme encore. PR-2
 branche le bloc au payload `/place-matches` et l'attraction SOFT côté solveur — aucun MOVE. PR-3
@@ -402,7 +402,7 @@ parité stricte du mécanisme d'habitude.
 
 ### Le repos d'entraînement dérivé — RMM-5 PR-3 (2026-08-25)
 
-3ᵉ décision fondateur honorée ([`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md)
+3ᵉ décision fondateur honorée ([`../../docs/archive/refonte-module-matchs.md`](../../docs/archive/refonte-module-matchs.md)
 §8) : **le jour de repos d'entraînement suit l'image A/B**, jamais une déclaration à part. Touche le
 solve HEBDO (`POST /generate`, `ScheduleConstraintBuilder`) — **le solveur de placement des matchs
 lui-même n'est pas concerné**, il consomme déjà `slotRotations`/`habits` (PR-2 ci-dessus) ; ce volet
@@ -796,7 +796,7 @@ fixture du marquage.
 
 ## Refonte UX — RMM-1 (P2-26, 4 PR entre 2026-08-23 et 2026-08-24)
 
-> Cadrage : [`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md) §6quater
+> Cadrage : [`../../docs/archive/refonte-module-matchs.md`](../../docs/archive/refonte-module-matchs.md) §6quater
 > (lignes L1-L9). **RMM-1 est livré en entier** (PR1 « geste manquant », PR2 « deux espaces », PR3
 > « rail dérivé », PR4 « poste de travail ») ; RMM-2 (extraction de la primitive `step-rail`) et
 > RMM-0 (lisibilité des modales) sont des lots FRÈRES déjà livrés séparément, réutilisés ici.
@@ -883,7 +883,7 @@ future.
 
 ## Le gardien à l'ouverture (RMM-3, 2 PR — backend puis front, 2026-08-24)
 
-> Cadrage : [`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md) §7 et
+> Cadrage : [`../../docs/archive/refonte-module-matchs.md`](../../docs/archive/refonte-module-matchs.md) §7 et
 > §9 (RMM-3). Besoin d'origine : le radar de conflits est **stateless** (recalculé à chaque appel),
 > il ne peut donc jamais dire au gestionnaire ce qui a **changé depuis sa dernière visite** — il
 > découvre les nouveaux litiges « après coup ».
@@ -948,7 +948,7 @@ future.
 
 ## Réconciliation FBI (RMM-4, 3 PR — backend, front, canal API, 2026-08-24 — LIVRÉ EN ENTIER)
 
-> Cadrage : [`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md) §4
+> Cadrage : [`../../docs/archive/refonte-module-matchs.md`](../../docs/archive/refonte-module-matchs.md) §4
 > fait 1, §7 et §9 (RMM-4). Besoin d'origine : un ré-import FBI qui re-décide une date/heure/salle
 > d'un domicile **déjà placé** mettait à jour en silence — aucune alerte, la divergence app⇄FBI
 > passait inaperçue. **Le lot est LIVRÉ EN ENTIER** (P2-48, quitte la roadmap) : PR-1/PR-2 ont posé
@@ -1070,7 +1070,7 @@ future.
 
 ## Échéances ligue/comité — RMM-6 (3 PR, 2026-08-25) — LIVRÉ EN ENTIER
 
-> Cadrage : [`../evolution/refonte-module-matchs.md`](../evolution/refonte-module-matchs.md) §9
+> Cadrage : [`../../docs/archive/refonte-module-matchs.md`](../../docs/archive/refonte-module-matchs.md) §9
 > (RMM-6, P2-50) et le point d'insertion posé en RMM-1 ci-dessus (`FbiEntryList.tsx` L9) et en RMM-3
 > (§ « Le gardien à l'ouverture », `MatchModuleDeltaComputer` tenu séparé pour cette lecture).
 > **RMM-6 est LIVRÉ EN ENTIER** — PR-1 (backend) et PR-2 (front) posent le champ, le défaut

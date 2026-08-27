@@ -8,7 +8,7 @@
 > **Rattachement roadmap** : **P1-4** (FF#21 « Planification des matchs »,
 > FF#19 « Import calendrier de matchs FFBB »). **Vision d'origine** : `initiales/ClubScheduler_v3.md` §1.4.
 >
-> ⚠ **AMENDÉ le 2026-08-02 par [`p1-4-cadrage-module-matchs.md`](p1-4-cadrage-module-matchs.md)** (cadrage
+> ⚠ **AMENDÉ le 2026-08-02 par [`p1-4-cadrage-module-matchs.md`](../../docs/archive/p1-4-cadrage-module-matchs.md)** (cadrage
 > tranché sur un vrai export FBI). Points renversés : **le solveur PLACE les matchs domicile** puis le
 > gestionnaire ajuste (le §2/§12 « pas un solveur / placement manuel » ne fait plus foi) · l'import FBI est
 > un **fichier GLOBAL club** (pas par équipe — §12 « export FBI par équipe » ne fait plus foi) · le tracker
