@@ -22,7 +22,7 @@ import { ModuleVisitBanner } from "./ModuleVisitBanner";
 import { placementToastMessage } from "./lib/placementToast";
 import { buildWeekendGrid, isPlacedOnGrid, listWeekends, weekendKeyOf, weekLabel } from "./lib/weekendGrid";
 import { PlacementPanel } from "./PlacementPanel";
-import { useCategories, useCoaches, useCompetitions, useConflicts, useDeleteFixture, useFixtures, useLatestFbiIngestion, useLeagueWindows, useLockFixture, useMatchSlotRotations, useModuleVisit, useMoveFixture, usePlaceFixture, usePlaceMatches, usePriorityTiers, useReopenFixture, useSubmitFixture, useSwapFixtures, useTeamMatchHabits, useTeams, useUnlockFixture, useUnplaceFixture, useVenueMatchWindows, useVenues, useVenueUnavailabilities } from "./queries";
+import { useCategories, useCoaches, useCompetitions, useConflicts, useDeleteFixture, useFixtures, useLatestFbiIngestion, useLeagueWindows, useLockFixture, useMatchSlotRotations, useModuleVisit, useMoveFixture, useOpponentTravel, usePlaceFixture, usePlaceMatches, usePriorityTiers, useReopenFixture, useSubmitFixture, useSwapFixtures, useTeamMatchHabits, useTeams, useUnlockFixture, useUnplaceFixture, useVenueMatchWindows, useVenues, useVenueUnavailabilities } from "./queries";
 import { toast } from "@/shared/stores/toastStore";
 import { useCredits } from "@/shared/credits/useCredits";
 import { useMatchesStore } from "./store";
@@ -53,6 +53,7 @@ export function MatchesPage() {
   const unavailabilities = useVenueUnavailabilities();
   const habitsQuery = useTeamMatchHabits();
   const rotationsQuery = useMatchSlotRotations();
+  const opponentTravel = useOpponentTravel();
   const placeFixture = usePlaceFixture();
   const placeMatches = usePlaceMatches();
   const moveFixture = useMoveFixture();
@@ -290,7 +291,7 @@ export function MatchesPage() {
   );
 
   const awayBlock = (
-    <AwayList fixtures={weekendFixtures} teams={teamsMap} habits={habits} onEdit={setEditFixture} onDelete={(fixture) => deleteFixture.mutate(fixture.id)} />
+    <AwayList fixtures={weekendFixtures} teams={teamsMap} habits={habits} travel={opponentTravel.data ?? []} onEdit={setEditFixture} onDelete={(fixture) => deleteFixture.mutate(fixture.id)} />
   );
 
   // Trois états, jamais deux : « pas de conflit » ne doit pas se confondre avec

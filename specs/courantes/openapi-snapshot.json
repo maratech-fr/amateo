@@ -8867,6 +8867,10 @@
                                         "skipped": {
                                             "type": "integer",
                                             "description": "Opponents already known at venue precision (no network call)"
+                                        },
+                                        "stamped": {
+                                            "type": "integer",
+                                            "description": "Away fixtures whose opponent organisme code was stamped (join key)"
                                         }
                                     }
                                 }
@@ -8890,6 +8894,331 @@
                     }
                 },
                 "summary": "Resolve the away opponents of the season into the shared opponent directory (management only)"
+            }
+        },
+        "/api/opponents/travel": {
+            "get": {
+                "operationId": "listOpponentTravel",
+                "tags": [
+                    "Fixture"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Per distinct AWAY opponent: where it plays (precision + location name), the one-way car travel from the club si\u00e8ge (nullable, best-effort), whether it is only approximated (city), and the AUTO/MANUAL source. Read-only display feed for the travel radar.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "clubId": {
+                                            "type": "string"
+                                        },
+                                        "seasonId": {
+                                            "type": "string"
+                                        },
+                                        "opponents": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "opponentOrganismeCode": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ]
+                                                    },
+                                                    "opponentLabel": {
+                                                        "type": "string"
+                                                    },
+                                                    "located": {
+                                                        "type": "boolean",
+                                                        "description": "A resolvable location exists (directory entry or manual override)"
+                                                    },
+                                                    "precision": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ],
+                                                        "enum": [
+                                                            "VENUE",
+                                                            "CITY",
+                                                            null
+                                                        ],
+                                                        "description": "How precisely the opponent venue is known"
+                                                    },
+                                                    "locationName": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ],
+                                                        "description": "The gym label (VENUE / override) or the commune (CITY)"
+                                                    },
+                                                    "travelMinutes": {
+                                                        "type": [
+                                                            "integer",
+                                                            "null"
+                                                        ],
+                                                        "description": "One-way car travel from the club si\u00e8ge (null = best-effort miss)"
+                                                    },
+                                                    "approximated": {
+                                                        "type": "boolean",
+                                                        "description": "Server-computed: the location is only city-precise"
+                                                    },
+                                                    "source": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ],
+                                                        "enum": [
+                                                            "AUTO",
+                                                            "MANUAL",
+                                                            null
+                                                        ]
+                                                    },
+                                                    "overrideVenueLabel": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ],
+                                                        "description": "The gym the manager pinned by hand"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No club or season in context"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    }
+                },
+                "summary": "The AWAY opponents' locations and travel times for the current club/season"
+            }
+        },
+        "/api/opponents/travel/auto": {
+            "post": {
+                "operationId": "setOpponentTravelAuto",
+                "tags": [
+                    "Fixture"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Drops the manual override and recomputes the travel from the shared directory location (return to AUTO).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "opponentOrganismeCode": {
+                                            "type": "string"
+                                        },
+                                        "travelMinutes": {
+                                            "type": [
+                                                "integer",
+                                                "null"
+                                            ]
+                                        },
+                                        "source": {
+                                            "type": "string",
+                                            "enum": [
+                                                "AUTO",
+                                                "MANUAL"
+                                            ]
+                                        },
+                                        "overrideVenueLabel": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No club or season in context"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "422": {
+                        "description": "No manual override to revert for this opponent"
+                    }
+                },
+                "summary": "Return an opponent to automatic travel resolution (management only)",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "opponentOrganismeCode"
+                                ],
+                                "properties": {
+                                    "opponentOrganismeCode": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
+        "/api/opponents/travel/manual": {
+            "post": {
+                "operationId": "setOpponentTravelManual",
+                "tags": [
+                    "Fixture"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Pins a specific gym for the opponent (MANUAL override) and recomputes the car travel from it. A MANUAL value is never overwritten by the AUTO pass afterwards.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "opponentOrganismeCode": {
+                                            "type": "string"
+                                        },
+                                        "travelMinutes": {
+                                            "type": [
+                                                "integer",
+                                                "null"
+                                            ]
+                                        },
+                                        "source": {
+                                            "type": "string",
+                                            "enum": [
+                                                "AUTO",
+                                                "MANUAL"
+                                            ]
+                                        },
+                                        "overrideVenueLabel": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No club or season in context"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "422": {
+                        "description": "Invalid opponent/venue, or the opponent has no away fixture this season"
+                    }
+                },
+                "summary": "Pin an opponent's gym by hand and recompute its travel (management only)",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "opponentOrganismeCode",
+                                    "venueLabel",
+                                    "latitude",
+                                    "longitude"
+                                ],
+                                "properties": {
+                                    "opponentOrganismeCode": {
+                                        "type": "string",
+                                        "description": "The opponent FFBB organisme code (must be an away opponent of the season)"
+                                    },
+                                    "venueLabel": {
+                                        "type": "string"
+                                    },
+                                    "venueExternalRef": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "The FFBB salle number, when picked from /api/ffbb/salles"
+                                    },
+                                    "latitude": {
+                                        "type": "number"
+                                    },
+                                    "longitude": {
+                                        "type": "number"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
+        "/api/opponents/travel/resolve": {
+            "post": {
+                "operationId": "resolveOpponentTravel",
+                "tags": [
+                    "Fixture"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Recomputes the AUTO car travel from the club si\u00e8ge to every away opponent's location (best-effort). A MANUAL override is left untouched; an opponent with no located venue comes back named.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "resolved": {
+                                            "type": "integer",
+                                            "description": "Opponents with a computed travel time"
+                                        },
+                                        "unresolved": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            },
+                                            "description": "Opponent codes with no located venue or no routing duration"
+                                        },
+                                        "skippedManual": {
+                                            "type": "integer",
+                                            "description": "Opponents whose MANUAL override was preserved"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No club or season in context"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "422": {
+                        "description": "Too many away opponents to resolve at once (retry with fewer)"
+                    },
+                    "429": {
+                        "description": "Too many requests (per-user rate limit)"
+                    }
+                },
+                "summary": "Recompute the AUTO travel times of the season's away opponents (management only)"
             }
         },
         "/api/implicit_rule_settings": {

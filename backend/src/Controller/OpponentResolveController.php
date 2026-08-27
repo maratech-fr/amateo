@@ -62,7 +62,9 @@ final class OpponentResolveController extends AbstractController
         // Cap dur AVANT tout appel réseau : `buildFixtureObservations` ne lit que la
         // base (fixtures AWAY du club+saison), aucun réseau. Un 422-cap ne brûle donc
         // pas un jeton du limiteur (consommé seulement après, avant le vrai travail).
-        $observations = $this->resolver->buildFixtureObservations($this->fixtures->findAwayBySeason($season->getId()));
+        // Les fixtures chargées ICI servent AUSSI à stamper leur code organisme (PR-3).
+        $awayFixtures = $this->fixtures->findAwayBySeason($season->getId());
+        $observations = $this->resolver->buildFixtureObservations($awayFixtures);
         if (\count($observations) > self::MAX_DISTINCT) {
             return $this->json([
                 'error' => \sprintf(
@@ -78,6 +80,6 @@ final class OpponentResolveController extends AbstractController
             return $this->json(['error' => 'Trop de résolutions d\'adversaires — réessayez plus tard.'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
-        return $this->json($this->resolver->resolveObservations($observations));
+        return $this->json($this->resolver->resolveObservations($observations, $awayFixtures));
     }
 }

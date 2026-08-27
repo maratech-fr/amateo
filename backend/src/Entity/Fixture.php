@@ -116,6 +116,22 @@ class Fixture implements TenantOwnedInterface
     private ?FixturePlacementSource $placementSource = null;
 
     /**
+     * The AWAY opponent's FFBB organisme code (P2-54 RMM-9 PR-3) — the JOIN KEY
+     * between this fixture and both the GLOBAL opponent directory (where the
+     * opponent plays) and the TENANT `opponent_travel` (this club's siège →
+     * that venue travel time). Stamped best-effort by {@see
+     * App\Service\Basketball\OpponentLocationResolver} when it resolves the code
+     * it already computes; null = opponent not (yet) located. HOME fixtures never
+     * carry it (only an away match locates the opponent's own gym).
+     *
+     * ⚠ RAFFINEMENT du plan (le plan disait « cache club-side » sans préciser la
+     * clé) : ce n'est PAS une donnée fédérale de plus sur la fixture, c'est la
+     * clé de jointure vers l'annuaire — aucune écriture au global.
+     */
+    #[ORM\Column(name: 'opponent_organisme_code', length: 64, nullable: true)]
+    private ?string $opponentOrganismeCode = null;
+
+    /**
      * Why this match went back to « à placer » AND its reason must persist across
      * refreshes (P2-52 / RMM-10) — today only VENUE_LOST (its venue is no longer
      * affiliated to the club). Null = placed, or un-placed for a volatile/UI-only
@@ -336,6 +352,18 @@ class Fixture implements TenantOwnedInterface
     public function setPlacementSource(?FixturePlacementSource $placementSource): self
     {
         $this->placementSource = $placementSource;
+
+        return $this;
+    }
+
+    public function getOpponentOrganismeCode(): ?string
+    {
+        return $this->opponentOrganismeCode;
+    }
+
+    public function setOpponentOrganismeCode(?string $opponentOrganismeCode): self
+    {
+        $this->opponentOrganismeCode = $opponentOrganismeCode;
 
         return $this;
     }

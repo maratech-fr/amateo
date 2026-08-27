@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Entity\Competition;
 use App\Entity\Fixture;
+use App\Entity\Season;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
@@ -13,8 +14,10 @@ use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
+use App\Enum\FixtureHomeAway;
 use App\Repository\ClubRepository;
 use App\Repository\LeagueMatchWindowRepository;
+use App\Repository\OpponentTravelRepository;
 use App\Service\ConflictFingerprinter;
 use App\Service\LeagueEnvelopeResolver;
 use App\Service\MatchConflictDetector;
@@ -54,6 +57,7 @@ final class FixtureConflictsController extends AbstractController
         private readonly LeagueMatchWindowRepository $leagueWindowRepository,
         private readonly LeagueEnvelopeResolver $envelopeResolver,
         private readonly MatchDurationResolver $matchDurationResolver,
+        private readonly OpponentTravelRepository $opponentTravelRepository,
     ) {}
 
     // priority > 0: this static path must win over API Platform's /api/fixtures/{id}
@@ -109,6 +113,23 @@ final class FixtureConflictsController extends AbstractController
         // slots) — shared with the unavailability impact (TrainingCalendarContext).
         $context = $this->trainingCalendarContext->load($season?->getId());
 
+        // P2-54 RMM-9 PR-3 — the SPATIAL radar: an AWAY fixture's footprint grows by
+        // the round trip (2 × one-way car time) to the opponent's venue, read from
+        // the tenant `opponent_travel` via the stamped organisme code. A fixture
+        // without code / without travel keeps 0 (no spatial conflict — told plainly).
+        $roundTripByFixtureId = [];
+        if ($season instanceof Season) {
+            $travelByCode = $this->opponentTravelRepository->travelMinutesByCode($season->getId());
+            if ([] !== $travelByCode) {
+                foreach ($fixtures as $fixture) {
+                    $code = $fixture->getOpponentOrganismeCode();
+                    if (FixtureHomeAway::AWAY === $fixture->getHomeAway() && null !== $code && isset($travelByCode[$code])) {
+                        $roundTripByFixtureId[$fixture->getId()] = 2 * $travelByCode[$code];
+                    }
+                }
+            }
+        }
+
         $conflicts = $this->detector->detect(
             $fixtures,
             $teamCoachRows,
@@ -122,6 +143,7 @@ final class FixtureConflictsController extends AbstractController
             $envelope,
             $competitions,
             $profilesByTeam,
+            $roundTripByFixtureId,
         );
 
         // RMM-3 — champ ADDITIF : l'empreinte stable de chaque conflit, calculée EN

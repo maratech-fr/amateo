@@ -18,6 +18,7 @@ import { EntryDeadlinesEditor } from "./EntryDeadlinesEditor";
 import { STALE_DAYS, depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
 import { MatchDurationsEditor } from "./MatchDurationsEditor";
 import { MatchSlotRotationsEditor } from "./MatchSlotRotationsEditor";
+import { OpponentTravelCard } from "./OpponentTravelCard";
 import { MatchWindowsEditor } from "./MatchWindowsEditor";
 import { useCompetitions, useFfbbRencontres, useFixtures, useLatestFbiIngestion, useMatchSlotRotations, usePriorityTiers, useSportCategoryDurations, useTeamMatchHabits, useTeams, useVenues } from "./queries";
 import { useMatchesStore } from "./store";
@@ -126,6 +127,16 @@ export function ConfigurationPage() {
         </CardHeader>
         <CardContent>
           <MatchDurationsEditor categories={categoryDurations.data ?? []} />
+        </CardContent>
+      </Card>
+
+      {/* 1quinquies. Le trajet adverse — le radar de conflits devient SPATIAL (P2-54 PR-3). */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Adversaires à localiser</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <OpponentTravelCard />
         </CardContent>
       </Card>
 

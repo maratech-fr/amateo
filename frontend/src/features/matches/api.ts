@@ -876,3 +876,71 @@ export const swapFixtures = async (a: Fixture, b: Fixture): Promise<void> => {
   await moveFixture(a, { venueId: b.venueId ?? "", kickoffTime: b.kickoffTime ?? "" });
   await moveFixture(b, { venueId: a.venueId ?? "", kickoffTime: a.kickoffTime ?? "" });
 };
+
+// ── P2-54 RMM-9 PR-3 — le radar SPATIAL : le trajet siège club ↔ lieu adverse ──
+
+/** How precisely an away opponent's venue is known (mirror of the backend enum, présentation seule). */
+export type OpponentLocationPrecision = "VENUE" | "CITY";
+export type OpponentTravelSource = "AUTO" | "MANUAL";
+
+/**
+ * Le trajet d'un adversaire AWAY, TOUT calculé côté serveur (le front n'en re-dérive
+ * rien — `approximated` et `travelMinutes` viennent du backend). `located` = un lieu
+ * exploitable existe ; `precision`/`locationName` disent lequel ; `source` distingue
+ * l'AUTO calculé de la correction MANUELLE.
+ */
+export interface OpponentTravel {
+  opponentOrganismeCode: string | null;
+  opponentLabel: string;
+  located: boolean;
+  precision: OpponentLocationPrecision | null;
+  locationName: string | null;
+  /** Aller simple en voiture, minutes — null = best-effort non calculé. */
+  travelMinutes: number | null;
+  /** Calculé SERVEUR (= précision ville) — le front NE le re-dérive PAS d'un seuil. */
+  approximated: boolean;
+  source: OpponentTravelSource | null;
+  overrideVenueLabel: string | null;
+}
+
+export const getOpponentTravel = async (): Promise<OpponentTravel[]> =>
+  (await api.get("opponents/travel").json<{ opponents: OpponentTravel[] }>()).opponents;
+
+export interface OpponentTravelManualInput {
+  opponentOrganismeCode: string;
+  venueLabel: string;
+  venueExternalRef: string | null;
+  latitude: number;
+  longitude: number;
+}
+
+/** Épingle un gymnase à la main pour un adversaire (surcharge MANUAL + recalcul du trajet). */
+export const setOpponentTravelManual = (input: OpponentTravelManualInput): Promise<unknown> =>
+  api.post("opponents/travel/manual", { json: input }).json();
+
+/** Rétablit la localisation automatique d'un adversaire (retire la surcharge). */
+export const setOpponentTravelAuto = (opponentOrganismeCode: string): Promise<unknown> =>
+  api.post("opponents/travel/auto", { json: { opponentOrganismeCode } }).json();
+
+export interface OpponentTravelResolveResult {
+  resolved: number;
+  unresolved: string[];
+  skippedManual: number;
+}
+
+/** Recalcule TOUS les trajets AUTO du club+saison (le MANUAL est préservé). */
+export const resolveOpponentTravel = (): Promise<OpponentTravelResolveResult> =>
+  api.post("opponents/travel/resolve").json<OpponentTravelResolveResult>();
+
+/** Une salle FFBB proposée par le proxy — le patron combobox de VenuesStep. */
+export interface FfbbSalle {
+  name: string;
+  address: string | null;
+  city: string | null;
+  externalRef: string | null;
+  latitude: string | null;
+  longitude: string | null;
+}
+
+export const listFfbbSalles = (postalCode: string): Promise<{ postalCode: string | null; salles: FfbbSalle[] }> =>
+  api.get("ffbb/salles", { searchParams: { postalCode } }).json();

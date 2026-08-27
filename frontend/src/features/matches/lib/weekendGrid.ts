@@ -1,7 +1,17 @@
 import type { Fixture, Team, TeamMatchHabit, Venue } from "../api";
 import { isoWeekday, timeToMinutes } from "./envelope";
 
-/** Home match footprint (spec §4bis): warm-up before kickoff + play after. */
+/**
+ * Empreinte VISUELLE fixe du dessin de grille (2h15 = 30 + 105). ⚠ Divergence
+ * ASSUMÉE, réaffirmée en P2-54 PR-3 : depuis la PR-1 la durée réelle est PAR
+ * CATÉGORIE, et depuis la PR-3 une empreinte AWAY inclut le TRAJET aller-retour —
+ * mais la grille reste un DESSIN indicatif à hauteur de bloc constante. La VÉRITÉ
+ * (durée par catégorie + trajet) vit dans le radar serveur (`GET /api/fixtures/conflicts`)
+ * et le chip de trajet de la liste extérieure (`AwayTravelChip`), pas ici : le
+ * dessin ne calcule aucun conflit, il place des blocs lisibles. Réconcilier la
+ * hauteur des blocs au cas par cas serait un chantier propre, pas une correction
+ * de mensonge — le radar tranche, la grille illustre.
+ */
 export const WARMUP_MINUTES = 30;
 export const MATCH_MINUTES = 105;
 

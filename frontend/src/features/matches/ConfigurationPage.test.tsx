@@ -24,6 +24,7 @@ vi.mock("./api", () => ({
   getFixtures: vi.fn(() => Promise.resolve([])),
   getLatestFbiIngestion: vi.fn(() => Promise.resolve({ latest: null })),
   getFfbbRencontres: vi.fn(),
+  getOpponentTravel: vi.fn(() => Promise.resolve([])),
 }));
 
 describe("ConfigurationPage (RMM-1 PR2 — le SET-UP)", () => {

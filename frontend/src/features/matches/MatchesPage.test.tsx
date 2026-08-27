@@ -99,6 +99,7 @@ vi.mock("./api", () => ({
   postModuleVisit: vi.fn(() => Promise.resolve({ firstVisit: true, newFixturesCount: 0, newConflictFingerprints: [], planningChanged: false, referenceTakenAt: "2026-08-24T10:00:00+00:00" })),
   // RMM-4 — la fraîcheur : un dépôt existe → rappel discret près du rail semaine.
   getLatestFbiIngestion: vi.fn(() => Promise.resolve({ latest: { depositedAt: "2026-08-20T09:00:00+00:00", source: "FBI_XLSX", created: 10, updated: 2, unchanged: 3, deviationsCount: 0 } })),
+  getOpponentTravel: vi.fn(() => Promise.resolve([])),
 }));
 
 beforeEach(() => {
