@@ -63,7 +63,7 @@ php bin/console app:db:restore-check     # PREUVE que le dernier dump est restau
    ```bash
    psql -h postgres -U clubscheduler -d postgres -c 'DROP DATABASE clubscheduler'
    psql -h postgres -U clubscheduler -d postgres -c 'CREATE DATABASE clubscheduler'
-   pg_restore --no-owner --no-privileges -h postgres -U clubscheduler -d clubscheduler \
+   pg_restore --no-owner --no-privileges -h postgres -U clubscheduler -d amateo \
        backend/var/backups/clubscheduler-<choisi>.dump
    ```
 

@@ -1,10 +1,12 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-08-27 (édition = recalage d'UN pointeur : la liste canonique des
-blocking-tests vit désormais dans `docs/testing/blocking-tests.md` (ex-`CLAUDE.md` §4), la ligne
-`make phpunit` la cite à sa nouvelle adresse — le fichier pointé existe et
-`BlockingTestsListMatchesCiTest` le garde ✓. Le reste : rotation du 2026-08-26 —
-sondage des stamps les plus anciens du dépôt). Re-confronté au code : les 7 scripts de
+Last verified @ 2026-08-28 (P4-141 — nouvelle section « Les 3 bases locales » en tête : modèle
+`amateo_dev`/`amateo_local`/`amateo_test` (+`amateo` prod), cibles `make play`/`make sandbox`,
+garde-fou `backend/scripts/lib/sandbox-guard.sh` et sa limite assumée — vérifié contre le code
+(la lib existe, allowlist `amateo_dev`/`*_test`, fail-closed sur base non résolue ; les 8 scripts
+mutateurs la sourcent). Passe précédente (2026-08-27) : la liste canonique des blocking-tests vit
+dans `docs/testing/blocking-tests.md`, la ligne `make phpunit` la cite à sa nouvelle adresse ✓.
+Re-confronté au code : les scripts de
 `backend/scripts/*.sh` toujours tous listés (`ls` ✓, aucun ajout/retrait depuis la dernière passe) ;
 cibles Make de la table toujours toutes présentes dans `backend/Makefile` (`test`, `tests-complete`,
 `phpunit`, `db-init`/`db-init-test`, `db-reset`/`db-reset-test`, `fixtures`, `phpstan`/`cs`/`cs-fix`/
@@ -17,6 +19,25 @@ l'historique vit dans git : `git log -p --follow backend/docs/commands.md`.
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).
 > La base : `make help` affiche cette liste côté Makefile.
+
+## Les 3 bases locales — et les deux commandes qui basculent (P4-141, 2026-08-28)
+
+Une stack pointe **une base à la fois**. Le défaut committé est le **bac à sable**, jamais la base de jeu.
+
+| Base | Rôle | Qui l'écrit |
+|---|---|---|
+| `amateo_dev` | **bac à sable** — seed/purge à volonté | l'IA : smokes, e2e, démos, parcours navigateur (**défaut committé**) |
+| `amateo_local` | **base de jeu du fondateur** | le fondateur seulement — mes scripts la REFUSENT |
+| `amateo_test` | tests unitaires (DAMA, transactionnelle) | phpunit — **même en mode play** (`.env.test` garde la main dans l'ordre dotenv) |
+| `amateo` | base de PROD | rien en local |
+
+- **`make play`** — bascule sur la base de jeu : crée `amateo_local` si absente, migre, `app:demo:seed-bccl`, écrit `backend/.env.local` (gitignoré) et redémarre `messenger-worker`+`cron-runner` (ils tiennent la config en mémoire).
+- **`make sandbox`** — retour au bac à sable : supprime `backend/.env.local` + même redémarrage.
+- La bascule vit **au niveau dotenv, jamais dans compose** : injecter `DATABASE_URL` par compose écraserait `.env.test` (env réel > dotenv) et enverrait phpunit sur la base de dev.
+
+🔴 **Le garde-fou (`backend/scripts/lib/sandbox-guard.sh`)** est sourcé par **tous** les scripts mutateurs. Il résout la base RÉELLEMENT visée (`SELECT current_database()` via php-fpm, donc il respecte toute la précédence dotenv) et **meurt** (`exit 1`) sauf si la cible est `amateo_dev` ou `*_test` — il refuse `amateo_local`, `amateo`, un nom inconnu, **et une base non résolue** (fail-closed). Lancer un smoke en mode play échoue bruyamment **sans rien écrire**. ⚠ Limite assumée : `SANDBOX_GUARD_LOADED=1` court-circuite la vérification (variable interne, héritée parent→enfant par conception) — le garde protège des ACCIDENTS, pas d'un contournement délibéré.
+
+`make -C backend db-drop-legacy` (optionnelle) supprime les anciennes `clubscheduler`/`clubscheduler_test` restées inertes dans le volume.
 
 ## Cibles Make (`backend/Makefile`)
 

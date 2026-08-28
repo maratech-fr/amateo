@@ -67,7 +67,7 @@ Deux gestes, par ordre de préférence :
 
 ```bash
 # 1. Rien n'écoute, rien n'est publié — le plus sûr.
-ssh <hôte> 'docker compose exec postgres psql -U <rôle> -d clubscheduler'
+ssh <hôte> 'docker compose exec postgres psql -U <rôle> -d amateo'
 
 # 2. Tunnel SSH, seulement si un client graphique est nécessaire (DBeaver, TablePlus).
 #    Exige de publier le port sur la LOOPBACK de l'hôte (127.0.0.1:5432:5432), JAMAIS 0.0.0.0.
