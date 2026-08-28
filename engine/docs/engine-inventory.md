@@ -1,6 +1,6 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-08-27 (audit DOC-35 — le stamp REMPLACE, il ne s'empile plus : les « passe précédente » empilées partent, l'historique vit dans git (`git log -p --follow engine/docs/engine-inventory.md`). Re-vérifié cette passe : `engine/CONTRACT_VERSION` = **2.16** et le champ `fichier =` de §« Contract version » aligné ✓ · table §4.4 : les lignes 12/14/15 (`max_consecutive_days`, `team_link`, `travel_time`) collent aux champs réels de `constraints/common.py:119,158-163` ✓ · l'arborescence paquet `app/solver/constraints/` citée en tête existe ✓. Non re-vérifié : le reste de l'inventaire, qui n'a pas été confronté ligne à ligne.)
+Last verified @ 2026-08-28 (ENG-39 — `objective` et `result_builder` sont désormais des PAQUETS (patron ENG-32) : §1 recalée sur les nouveaux chemins ; l'agrégateur ré-exporte tout, donc AUCUN import consommateur ne change. Déplacement pur : goldens intacts, 575 tests verts, test-garde ENG-37 repointé et re-falsifié. Passe précédente audit DOC-35 — le stamp REMPLACE, il ne s'empile plus : les « passe précédente » empilées partent, l'historique vit dans git (`git log -p --follow engine/docs/engine-inventory.md`). Re-vérifié cette passe : `engine/CONTRACT_VERSION` = **2.16** et le champ `fichier =` de §« Contract version » aligné ✓ · table §4.4 : les lignes 12/14/15 (`max_consecutive_days`, `team_link`, `travel_time`) collent aux champs réels de `constraints/common.py:119,158-163` ✓ · l'arborescence paquet `app/solver/constraints/` citée en tête existe ✓. Non re-vérifié : le reste de l'inventaire, qui n'a pas été confronté ligne à ligne.)
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
 > Source de vérité : `engine/app/main.py`, `engine/app/schemas/input_schema.py`, `engine/app/schemas/output_schema.py`, `engine/app/solver/{model,constraints,objective,result_builder}.py`, `engine/app/core/config.py`.
@@ -22,8 +22,8 @@ Last verified @ 2026-08-27 (audit DOC-35 — le stamp REMPLACE, il ne s'empile p
   - `app/schemas/output_schema.py` — `ScheduleOutputSchema`.
   - `app/solver/model.py` — `ScheduleCpModel` (variables booléennes `x[team, venue, day, slot]`).
   - `app/solver/constraints/` — **paquet** (ENG-32, 2026-08-24 — l'ancien monolithe de 3 870 l. découpé par métier, surface d'import inchangée) : `parsing.py` (lecture du payload + règles implicites) · `structural.py` (overlap/capacité/verrous) · `wellness.py` (bien-être) · `targeting.py` (fenêtres/gymnases/mutualisation/passerelles) · `diagnostics.py` (explications post-solve) · `common.py` (types, constantes, normalisation) · `__init__.py` (façade de ré-export **+ l'orchestrateur `add_level_1_hard_constraints`** — il y vit par contrainte de COUTURE DE TEST : le test des règles implicites patche les poseurs via le namespace du paquet).
-  - `app/solver/objective.py` — objectif Level-2 (poids fixes T24).
-  - `app/solver/result_builder.py` — solution → `ScheduleOutputSchema` + diagnostics.
+  - `app/solver/objective/` — objectif Level-2 (poids fixes T24), **paquet depuis ENG-39** : `weights` (tables/alias) → `normalise` (lecteurs) → `terms` (les `add_*`) ; l'agrégateur `__init__` ré-exporte tout (imports inchangés).
+  - `app/solver/result_builder/` — solution → `ScheduleOutputSchema` + diagnostics, **paquet depuis ENG-39** : `helpers` → `slots` + `diagnostics` (les 13 `_diagnose_*`) ; l'agrégateur `__init__` ré-exporte tout (imports inchangés).
   - `app/solver/match_placement.py` — le SECOND problème (placement de matchs datés, ADR-0003).
   - `app/schemas/match_input_schema.py` / `match_output_schema.py` — ses schémas dédiés.
 - **Port** : 8000 (conteneur Docker `engine`).
