@@ -52,6 +52,15 @@ final class SandboxGuardCoverageTest extends TestCase
                 continue;
             }
 
+            // `with-sandbox.sh` n'est PAS un mutateur : c'est un wrapper qui bascule
+            // l'env vers le bac à sable puis RESTAURE le mode play (trap), sans jamais
+            // écrire en base. Il ne DOIT justement pas sourcer la garde — elle le
+            // tuerait avant qu'il puisse basculer. La commande qu'il wrappe, elle,
+            // source la garde comme d'habitude.
+            if ('with-sandbox.sh' === $file->getFilename()) {
+                continue;
+            }
+
             $contents = file_get_contents($path);
             self::assertIsString($contents);
 

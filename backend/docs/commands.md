@@ -1,10 +1,6 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-08-28 (P4-141 — nouvelle section « Les 3 bases locales » en tête : modèle
-`amateo_dev`/`amateo_local`/`amateo_test` (+`amateo` prod), cibles `make play`/`make sandbox`,
-garde-fou `backend/scripts/lib/sandbox-guard.sh` et sa limite assumée — vérifié contre le code
-(la lib existe, allowlist `amateo_dev`/`*_test`, fail-closed sur base non résolue ; les 8 scripts
-mutateurs la sourcent). Passe précédente (2026-08-27) : la liste canonique des blocking-tests vit
+Last verified @ 2026-08-28 (correctif `make play` NON DESTRUCTEUR + wrapper `with-sandbox.sh` — §« Les 3 bases locales » recalée : `play` ne seede QUE si le club de démo est absent (le premier jet appelait `seed-bccl` inconditionnellement, qui PURGE le workspace — relancer `play` effaçait le travail sur BCCL) ; `seed-bccl` garde sa sémantique « créer ou RESET » ; le wrapper restaure le mode play même sur échec (`trap`), `.env.local` remis byte-identique. Vérifié : `make play` sur base peuplée → diff de 8 tables VIDE. Passe précédente (2026-08-27) : la liste canonique des blocking-tests vit
 dans `docs/testing/blocking-tests.md`, la ligne `make phpunit` la cite à sa nouvelle adresse ✓.
 Re-confronté au code : les scripts de
 `backend/scripts/*.sh` toujours tous listés (`ls` ✓, aucun ajout/retrait depuis la dernière passe) ;
@@ -31,11 +27,15 @@ Une stack pointe **une base à la fois**. Le défaut committé est le **bac à s
 | `amateo_test` | tests unitaires (DAMA, transactionnelle) | phpunit — **même en mode play** (`.env.test` garde la main dans l'ordre dotenv) |
 | `amateo` | base de PROD | rien en local |
 
-- **`make play`** — bascule sur la base de jeu : crée `amateo_local` si absente, migre, `app:demo:seed-bccl`, écrit `backend/.env.local` (gitignoré) et redémarre `messenger-worker`+`cron-runner` (ils tiennent la config en mémoire).
+- **`make play`** — bascule sur la base de jeu : écrit `backend/.env.local` (gitignoré), crée `amateo_local` si absente, migre, **seede le club de démo SEULEMENT s'il est ABSENT**, et redémarre `messenger-worker`+`cron-runner` (ils tiennent la config en mémoire). 🔴 **NON DESTRUCTEUR — à relancer autant qu'on veut** : si le club existe, **aucune donnée n'est touchée** (le message le dit à l'écran). C'était un défaut du premier jet : `make play` appelait `seed-bccl` inconditionnellement, or cette commande **purge** le workspace du club de démo avant de re-seeder — relancer `play` effaçait donc le travail fait sur BCCL.
+  - **Pour remettre VRAIMENT le club de démo à neuf** (geste de démonstration prospect) : `make -C backend seed-bccl` — sémantique « créer **ou RESET** » intacte, elle purge et re-seede.
+  - **Pour repartir de zéro** : vider la base (`make -C backend db-reset`) puis `make play`.
 - **`make sandbox`** — retour au bac à sable : supprime `backend/.env.local` + même redémarrage.
 - La bascule vit **au niveau dotenv, jamais dans compose** : injecter `DATABASE_URL` par compose écraserait `.env.test` (env réel > dotenv) et enverrait phpunit sur la base de dev.
 
 🔴 **Le garde-fou (`backend/scripts/lib/sandbox-guard.sh`)** est sourcé par **tous** les scripts mutateurs. Il résout la base RÉELLEMENT visée (`SELECT current_database()` via php-fpm, donc il respecte toute la précédence dotenv) et **meurt** (`exit 1`) sauf si la cible est `amateo_dev` ou `*_test` — il refuse `amateo_local`, `amateo`, un nom inconnu, **et une base non résolue** (fail-closed). Lancer un smoke en mode play échoue bruyamment **sans rien écrire**. ⚠ Limite assumée : `SANDBOX_GUARD_LOADED=1` court-circuite la vérification (variable interne, héritée parent→enfant par conception) — le garde protège des ACCIDENTS, pas d'un contournement délibéré.
+
+**Le wrapper `backend/scripts/with-sandbox.sh <commande…>`** (opt-in) : bascule en bac à sable, exécute, puis **RESTAURE le mode play à la sortie — succès, échec ou Ctrl-C** (`trap EXIT INT TERM`), en remettant le `.env.local` **byte-identique** (sauvegardé, jamais régénéré depuis le template). C'est ce que l'IA utilise pour ne jamais laisser le fondateur en bac à sable. ⚠ L'opt-in est le fait d'invoquer le wrapper : un script mutateur lancé SANS lui continue de **mourir** (le fail-closed du garde reste la règle — on ne bascule jamais la base de quelqu'un dans son dos).
 
 `make -C backend db-drop-legacy` (optionnelle) supprime les anciennes `clubscheduler`/`clubscheduler_test` restées inertes dans le volume.
 

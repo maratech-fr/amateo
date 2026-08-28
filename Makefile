@@ -37,13 +37,16 @@ restart: stop start ## Restart all services
 # `amateo_dev` = bac à sable de l'IA (défaut committé). `amateo_local` = base de
 # JEU du fondateur, que les scripts mutateurs de l'IA REFUSENT (sandbox-guard).
 # `make play` bascule toute la stack dev vers amateo_local (backend/.env.local,
-# gitignoré), la crée/migre et y (re)seede BCCL ; `make sandbox` retire la
-# surcharge et revient à amateo_dev. Les workers long-lived sont redémarrés car
-# ils tiennent la config DB en mémoire.
-play: .env ## Bascule la stack dev vers la base de JEU du fondateur (amateo_local) + seed BCCL
+# gitignoré), la crée/migre et — SEULEMENT si le club de démo BCCL est ABSENT —
+# la seede ; `make sandbox` retire la surcharge et revient à amateo_dev. Les
+# workers long-lived sont redémarrés car ils tiennent la config DB en mémoire.
+# ⚠ NON DESTRUCTEUR : `seed-bccl-if-absent` ne touche à rien si le club existe
+# déjà — le travail du fondateur sur BCCL survit à un re-`make play`. Le geste
+# de RESET explicite reste `make -C backend seed-bccl` (créer OU reset, voulu).
+play: .env ## Bascule vers la base de JEU du fondateur (amateo_local) + seed BCCL si absent
 	$(MAKE) -C backend play-env
 	$(MAKE) -C backend db-init
-	$(MAKE) -C backend seed-bccl
+	$(MAKE) -C backend seed-bccl-if-absent
 	$(DOCKER_COMPOSE) restart messenger-worker cron-runner
 
 sandbox: .env ## Revient au bac à sable de l'IA (amateo_dev) : retire backend/.env.local
