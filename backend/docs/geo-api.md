@@ -1,23 +1,6 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-08-28 (rotation `documentation-update`, passe Lot A — drift corrigé : le §Consommateur listait `VenueTravelTimeAutofillService` SEUL, `OpponentTravelResolver` (P2-54 PR-3) ajouté. Hosts BAN/IGN en dur + `max_redirects: 0` re-confirmés (`BanGeocodingClient.php:24,59`, `IgnRoutingClient.php:27`). Passe précédente (P2-53 RMM-8 PR-4 — le levier Obligatoire, DERNIÈRE PR du lot : le
-store dédié `VenueTravelRuleSetting` confronté au code — singleton club+saison
-(`Entity/VenueTravelRuleSetting.php`, contrainte d'unicité `club_id`+`season_id`) ✓,
-`Get`/`Put /api/venue_travel_rule_settings/{ruleKey}` avec identifiant FIXE `travelTime` : une clé
-inconnue rend 404 côté provider ET processor (`VenueTravelRuleSettingStateProvider.php`,
-`VenueTravelRuleSettingStateProcessor.php` — revue sécurité 2026-08-26, F-1) ✓, écriture management
-AVANT 409 saison archivée (`assertManager()` puis `assertWritable()`) ✓, 422 sur un vocabulaire
-bien-être HARD/OFF (`Dto/VenueTravelRuleSettingInput.php`, `Assert\Choice` sur
-`TeamLinkIntensity::values()`) ✓, `ScheduleConstraintBuilder::resolveTravelRuleIntensity`
-(`ScheduleConstraintBuilder.php:891-900`) émet le réglage stocké **?? PREFERRED** — plus le
-`PREFERRED` en dur des PR-2/3 ✓, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.16, le
-moteur consommait déjà MANDATORY depuis PR-2) ✓. PR-1/PR-2/PR-3 non re-sondées cette passe (déjà
-confrontées à leur tour) : hosts en constantes dures (`Service/Geo/BanGeocodingClient.php:24`,
-`Service/Geo/IgnRoutingClient.php:27`) ✓ · `max_redirects: 0` + timeout serré sur les deux clients
-✓ · `GeocodeController.php:33-46` (management SEC-07, 422 requête invalide, 502 transport) ✓ ·
-`VenueTravelTimeAutofillController.php:42-77` (management, saison écrivable, rate-limit dédié,
-cap dur, 409 concurrent) ✓ · `rate_limiter.yaml:59-62` (`venue_travel_time_autofill`, 10/h,
-sliding window) ✓ · `VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS` = 120 ✓.
+Last verified @ 2026-08-28 (BCK-22 — le budget global de l'autofill confronté au code : `IgnRoutingClient::BATCH_BUDGET_SECONDS = 30.0` (`IgnRoutingClient.php`), la 1ʳᵉ fenêtre part toujours puis dispatch stoppé passé le budget, clés restantes → `budgetExceededKeys` ✓ ; `VenueTravelTimeAutofillService::autofill` mappe ces clés sur la raison `budget_exceeded` (distincte de `routing_failed`) ✓ ; plafonds prod cités re-confirmés (`docker/php/Dockerfile:105` `max_execution_time=60`, `docker/nginx/default.conf:46` `fastcgi_read_timeout 60s`) ✓ ; `OpponentTravelResolver::resolve` consomme la même forme `['minutes'=>…]` (clé absente = non résolue, aucune raison distincte exposée côté adverse) ✓. Hosts BAN/IGN en dur + `max_redirects: 0`, cap dur 120 paires, rate-limit `venue_travel_time_autofill` non re-sondés cette passe (déjà confrontés à leur tour, passe Lot A du 2026-08-28).
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,
@@ -102,10 +85,23 @@ renseigne les paires à la main :
    feature : une correction gestionnaire n'est **jamais** écrasée par un re-calcul. Seuls les modes
    `AUTO` ou jamais renseignés partent en requête IGN, par lots multiplexés
    (`IgnRoutingClient::travelMinutesBatch`, fenêtres de 8 requêtes concurrentes).
-4. Écriture : minute + `source=AUTO`. Une paire dont un mode nécessaire ne résout pas (géo
-   manquante ou échec de routage) revient `unresolved` avec sa raison (`missing_geo` |
-   `routing_failed`), **jamais** un échec global du lot.
-5. Réponse `{filled, unresolved[], skippedManual}`.
+4. **Budget mural GLOBAL sur tout le lot** (BCK-22, 2026-08-28) : `IgnRoutingClient::BATCH_BUDGET_SECONDS`
+   = **30 s** (`IgnRoutingClient.php`) — sans lui, le cap de 120 paires × 2 profils = jusqu'à 240
+   appels en fenêtres de 8 × 5 s de timeout PAR APPEL pouvait tenir la requête ~150 s. La 1ʳᵉ fenêtre
+   part toujours ; au-delà de la 2ᵉ, une fois le budget consommé, les fenêtres suivantes ne sont plus
+   dispatchées et leurs clés reviennent dans `budgetExceededKeys`. Valeur adossée aux plafonds prod
+   réels : `max_execution_time = 60` (`docker/php/Dockerfile:105`) et `fastcgi_read_timeout 60s`
+   (`docker/nginx/default.conf:46`) — 30 s = la moitié, marge pour la dernière fenêtre bloquante + le
+   flush + la sérialisation.
+5. Écriture : minute + `source=AUTO`. Une paire dont un mode nécessaire ne résout pas revient
+   `unresolved` avec sa raison — `missing_geo` (géo manquante), `routing_failed` (IGN a répondu sans
+   durée exploitable ou le transport a échoué) ou **`budget_exceeded`** (le lot s'est arrêté avant
+   d'atteindre cette paire — pas un échec, un « relancez pour continuer ») —, **jamais** un échec
+   global du lot.
+6. Réponse `{filled, unresolved[], skippedManual}`. `OpponentTravelResolver` (trajet adverse, §
+   ci-dessous) consomme le même `travelMinutesBatch` : une clé jamais atteinte par le budget y revient
+   simplement absente de `minutes` → traitée comme un IGN muet (best-effort, sans raison distincte
+   exposée côté ce consommateur).
 
 **Route** : management-gated (SEC-07) + saison écrivable (`SeasonAccessGuard::assertWritable` —
 archivée → 409) + **rate-limit dédié PAR UTILISATEUR** `venue_travel_time_autofill` (10/h, sliding

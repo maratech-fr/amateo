@@ -18779,7 +18779,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Fills AUTO driving/walking minutes for every geolocated venue pair via IGN routing. A MANUAL value is NEVER overwritten; a pair with a missing geolocation or a routing failure comes back named (best-effort).",
+                        "description": "Fills AUTO driving/walking minutes for every geolocated venue pair via IGN routing. A MANUAL value is NEVER overwritten; a pair with a missing geolocation, a routing failure, or a spent batch time budget comes back named (best-effort, re-run to continue).",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -18804,7 +18804,8 @@
                                                         "type": "string",
                                                         "enum": [
                                                             "missing_geo",
-                                                            "routing_failed"
+                                                            "routing_failed",
+                                                            "budget_exceeded"
                                                         ]
                                                     }
                                                 }

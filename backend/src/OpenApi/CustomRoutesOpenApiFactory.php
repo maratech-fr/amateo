@@ -831,14 +831,14 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
             operationId: 'autofillVenueTravelTimes',
             tags: ['Venue'],
             responses: [
-                '200' => $this->jsonResponse('Fills AUTO driving/walking minutes for every geolocated venue pair via IGN routing. A MANUAL value is NEVER overwritten; a pair with a missing geolocation or a routing failure comes back named (best-effort).', [
+                '200' => $this->jsonResponse('Fills AUTO driving/walking minutes for every geolocated venue pair via IGN routing. A MANUAL value is NEVER overwritten; a pair with a missing geolocation, a routing failure, or a spent batch time budget comes back named (best-effort, re-run to continue).', [
                     'type' => 'object',
                     'properties' => [
                         'filled' => ['type' => 'integer', 'description' => 'Pairs where at least one AUTO minute was written'],
                         'unresolved' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
                             'venueAId' => ['type' => 'string'],
                             'venueBId' => ['type' => 'string'],
-                            'reason' => ['type' => 'string', 'enum' => ['missing_geo', 'routing_failed']],
+                            'reason' => ['type' => 'string', 'enum' => ['missing_geo', 'routing_failed', 'budget_exceeded']],
                         ]]],
                         'skippedManual' => ['type' => 'integer', 'description' => 'Pairs whose MANUAL value was preserved'],
                     ],
