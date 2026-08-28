@@ -447,7 +447,7 @@ export interface VenueTravelTimePayload {
 }
 
 /** La raison qu'un couple n'a pu être résolu par l'autofill (servie, jamais devinée). */
-export type AutofillUnresolvedReason = "missing_geo" | "routing_failed";
+export type AutofillUnresolvedReason = "missing_geo" | "routing_failed" | "budget_exceeded";
 
 /** Le verdict d'un autofill : combien remplis, quels couples non résolus (avec raison), combien de
  *  valeurs MANUAL préservées. */

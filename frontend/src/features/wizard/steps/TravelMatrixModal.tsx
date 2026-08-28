@@ -42,8 +42,18 @@ function pairKey(a: string, b: string): string {
   return [a, b].sort().join("|");
 }
 
+/** Le libellé d'une raison servie. Table EXHAUSTIVE, pas de repli : le ternaire précédent rendait
+ *  « calcul impossible » pour TOUT code inconnu — un `budget_exceeded` (lot interrompu, à relancer)
+ *  se lisait donc comme un échec définitif. Un nouveau code servi rougit ici tant qu'il n'a pas
+ *  son libellé. */
+const REASON_LABELS: Record<AutofillUnresolvedReason, string> = {
+  missing_geo: "gymnase sans adresse",
+  routing_failed: "calcul impossible",
+  budget_exceeded: "calcul interrompu, relancez",
+};
+
 function reasonLabel(reason: AutofillUnresolvedReason): string {
-  return "missing_geo" === reason ? "gymnase sans adresse" : "calcul impossible";
+  return REASON_LABELS[reason];
 }
 
 /** Le badge d'origine d'une valeur : AUTO (calculée) ou MANUEL (saisie). Icône + texte. */
