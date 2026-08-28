@@ -1,6 +1,11 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-08-27 (rotation `documentation-update` — versions et plafonds re-confrontés au code : `frontend/package.json` (`react` ^19.2.8, `vite` ^8.2.1, `typescript` ~6.0.2, `vitest` ^4.1.10, `@playwright/test` ^1.62.1 — préfixes `^`/`~` cohérents avec le tableau) ; `vitest.config.ts:25,30` (`testTimeout: 15_000`, `slowTestThreshold: 3_000`) ; `src/test/setup.ts:28` (`asyncUtilTimeout: 5_000`) — les deux plafonds tiennent toujours, rien de faux trouvé. Historique des passes : `git log -p --follow frontend/docs/frontend-strategy.md`.)
+Last verified @ 2026-08-29 (`documentation-update`, FRT-20/P4-117 — la prescription §1 « Queries
+TanStack Query » disait « mock `ky` » : **faux**, corrigé — vérifié sur `frontend/src` que seuls
+6 fichiers mockent `@/shared/api/client` contre le module `./api` voisin, patron réellement vivant
+dans `features/cockpit/queries.test.tsx` et `features/wizard/queries.test.tsx` (nouveau ce lot).
+Reste non re-touché cette passe : versions/plafonds §1-§2 (vérifiés le 2026-08-27, rien ne les a
+fait bouger depuis). Historique des passes : `git log -p --follow frontend/docs/frontend-strategy.md`.)
 
 > **Statut : le rebuild est LIVRÉ.** Les formulations « pour le rebuild » ci-dessous sont
 > historiques ; le document reste la référence vivante des **versions de la stack**, des
@@ -36,8 +41,13 @@ cycle RED → GREEN → REFACTOR avant d'être considéré livrable.
 - **Composants UI** : tests de rendu (React Testing Library) — props, états, accessibilité ARIA.
 - **Hooks personnalisés** : `renderHook` + scénarios de cycle de vie.
 - **Stores Zustand** : tests d'état, d'actions, de `persist`/`migrate`.
-- **Queries TanStack Query** : tests avec `QueryClient` de test, mock `ky`, vérification
-  `useQuery`/`useMutation` + gestion d'erreur.
+- **Queries TanStack Query** : tests avec un `QueryClient` de test **réel** (`renderHook`,
+  jamais un double du hook lui-même) et le module `./api` **voisin** mocké — pas `ky`
+  directement (patron vivant : `features/cockpit/queries.test.tsx`,
+  `features/wizard/queries.test.tsx`). Un test de COMPOSANT, lui, mocke légitimement les hooks
+  de sa propre feature (`vi.mock("./queries", …)`) : le composant n'est pas responsable
+  d'aller chercher la donnée — voir `specs/evolution/roadmap.md` (AUD-FRT-20) pour l'état de la
+  couverture module par module.
 - **Routes** : tests de navigation (React Router memory router), guards d'auth, redirections.
 - **Intégration API** : mock `ky` via MSW ou interceptor, vérification des payloads et headers.
 

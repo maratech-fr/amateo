@@ -1,10 +1,14 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-08-26 (§3.3 gagne l'effet de bord RMM-10/P2-52 de `validate` — confronté à
-`ValidateScheduleController.php` [dépointage `FixtureVenueLossMarker` dans la même transaction que
-le pointage] ; simple pointeur vers `module-matchs.md`, pas de redescription. Reste de la passe
-2026-08-24 non re-vérifié cette fois — un stamp REMPLACE, l'historique vit dans git :
-`git log -p --follow specs/courantes/planning-lifecycle-validated.md`)
+Last verified @ 2026-08-29 (rotation de fraîcheur `documentation-update` — re-confronté au code :
+`ValidateScheduleController.php` importe toujours `FixtureVenueLossMarker` (dépointage RMM-10/P2-52
+dans la même transaction que le pointage) ✓ · `AuthGuard.tsx` dérive toujours l'onboarding de
+`!seasonPlan.hasFinishedVersion` ✓ · `SocleGuard::assertSeasonPlanChosen` existe toujours
+(`backend/src/Service/SocleGuard.php`) ✓ · le garde matchs (état 2 verrouillé) vit dans
+`MatchesLayout.tsx` via `useSocleValidated()` (`shared/lib/socle.ts`, dérivé de
+`chosenScheduleId !== null` — même condition que documentée, portée en hook partagé depuis D-25/D-28
+pour éviter la retriplication cockpit/AppLayout/Matches). Rien de faux trouvé. Historique des passes
+vit dans git : `git log -p --follow specs/courantes/planning-lifecycle-validated.md`)
 
 > **Bascule 2026-07-16 (ADR-0002, `docs/architecture/adr-0002-pattern-plan.md`)** : le **plan de
 > type SEASON** (`schedule_plan`) et **la version qu'il pointe** (`chosen_schedule_id`) SONT le
