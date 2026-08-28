@@ -75,6 +75,7 @@ db-init-test:
 .PHONY: db-reset ## Drop, recreate, and migrate the dev database
 db-reset: APP_ENV = dev
 db-reset:
+	@scripts/lib/mutation-confirm.sh db-reset
 	$(EXECROOT) php bin/console doctrine:database:drop --force --if-exists --connection admin
 	$(EXECROOT) php bin/console doctrine:database:create --connection admin
 	$(EXECROOT) php bin/console doctrine:migrations:migrate --no-interaction
@@ -116,6 +117,7 @@ DB_ADMIN_URL = $(shell cat .env .env.local 2>/dev/null | awk -F= '$$1=="DATABASE
 .PHONY: fixtures ## Load backend fixtures + seed school-holiday reference data (clears var/generate)
 fixtures: APP_ENV = dev
 fixtures:
+	@scripts/lib/mutation-confirm.sh fixtures
 	# --purge-exclusions=subscription_plan : le catalogue d'offres (P1-3) est
 	# GLOBAL, seedé par la migration (comme en prod, où les fixtures ne tournent
 	# jamais). Sans l'exclusion, le purge des fixtures le viderait et le club dev
@@ -153,6 +155,7 @@ DEMO_BCCL_PASSWORD ?= DemoBccl!2026
 .PHONY: seed-bccl ## Seed/reset the permanent BCCL demo club (admin connection, like `fixtures`)
 seed-bccl: APP_ENV = dev
 seed-bccl:
+	@scripts/lib/mutation-confirm.sh seed-bccl
 	$(FIG) exec -e APP_ENV=$(APP_ENV) -e DATABASE_URL='$(DB_ADMIN_URL)' -u $(USERID):$(GROUPID) php-fpm php bin/console app:demo:seed-bccl --password='$(DEMO_BCCL_PASSWORD)' --no-interaction
 
 # `app:demo:seed-bccl` est « créer OU RESET » : il PURGE le workspace du club de
@@ -164,6 +167,10 @@ seed-bccl:
 # précédence dotenv) ; l'existence est lue par la connexion ADMIN (amateo_owner,
 # hors RLS, sinon 0 ligne sans GUC de club). Table `club` absente (base neuve
 # juste migrée) → club absent → seed. Le RESET explicite reste `make seed-bccl`.
+# CONFIRM=yes sur le sous-make : `seed-bccl` porte la garde interactive P4-145 (elle
+# demande confirmation sur amateo_local), mais ici le club est ABSENT — rien à
+# détruire, et `make play` ne doit pas s'interrompre pour une question. Le bypass ne
+# lève JAMAIS le refus prod (la garde le tranche avant CONFIRM).
 .PHONY: seed-bccl-if-absent ## Seed BCCL seulement si le club de démo est ABSENT (non destructeur — `make play`)
 seed-bccl-if-absent: APP_ENV = dev
 seed-bccl-if-absent:
@@ -175,7 +182,7 @@ seed-bccl-if-absent:
 	else count=0; fi; \
 	if [ "$${count:-0}" = "0" ]; then \
 		echo "club de démo absent sur $$db — seed initial (BCCL)."; \
-		$(MAKE) APP_ENV=dev seed-bccl; \
+		$(MAKE) APP_ENV=dev CONFIRM=yes seed-bccl; \
 	else \
 		echo "club de démo déjà présent sur $$db — aucune donnée touchée."; \
 	fi

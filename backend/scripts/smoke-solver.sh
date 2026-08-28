@@ -52,7 +52,20 @@ club_for_user() {
 CLUB_ID=$(club_for_user)
 if [[ -z "$CLUB_ID" ]]; then
   warn "no club for $USER_EMAIL — loading fixtures"
-  dc exec -T -e APP_ENV=dev -u 1000:1000 php-fpm sh -c 'cd /app/backend && php bin/console doctrine:fixtures:load --no-interaction' >/dev/null
+  # Fixtures purge+reseed via the ADMIN connection, NEVER the runtime amateo_app:
+  # BasketballInit refuses it, and the purge would hit tables whose DELETE is
+  # revoked for the app role (opponent_directory, shared_competition_deadline),
+  # dying with « permission denied ». Inject DATABASE_ADMIN_URL exactly like
+  # `make fixtures` / the CI « Load dev fixtures » step (read .env then .env.local,
+  # last wins) — resolved INSIDE the container so it honours the same dotenv the
+  # sandbox guard resolved. --purge-exclusions=subscription_plan: the offer
+  # catalogue is GLOBAL (seeded by migration), purging it breaks the beta pin.
+  dc exec -T -e APP_ENV=dev -u 1000:1000 php-fpm sh -c '
+    cd /app/backend
+    DBU=$(cat .env .env.local 2>/dev/null | sed -n "s/^DATABASE_ADMIN_URL=//p" | tail -n1 | tr -d "\"")
+    [ -n "$DBU" ] || { echo "DATABASE_ADMIN_URL introuvable dans backend/.env — fixtures ne peuvent pas tourner sur la connexion admin" >&2; exit 1; }
+    DATABASE_URL="$DBU" php bin/console doctrine:fixtures:load --no-interaction --purge-exclusions=subscription_plan
+  ' >/dev/null
   CLUB_ID=$(club_for_user)
 fi
 [[ -n "$CLUB_ID" ]] || die "could not resolve a club id (fixtures failed?)"
