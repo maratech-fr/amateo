@@ -462,7 +462,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
                   title={chipLocked ? lockTitle : undefined}
                   onClick={() => (null !== chosen ? viewOverlay(chosen) : adapt(child.id))}
                 >
-                  {`sem. du ${frDateShort(child.startDate)}${span} ${null !== chosen ? "✅" : wip ? "· en cours" : "· à faire"}`}
+                  {`sem. du ${frDateShort(child.startDate)}${span} ${null !== chosen ? "✅ validée" : wip ? "· en cours" : "· à faire"}`}
                 </Button>
                 {/* Suppression de L'enfant (segment) — dans l'encart, le plan est attaché aux
                     vacances (fondateur 2026-07-24 ; la ligne séparée a disparu). */}
