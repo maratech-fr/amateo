@@ -31,6 +31,10 @@ php() { dc exec -T -e APP_ENV=dev php-fpm sh -c "cd /app/backend && $1" 2>&1 | g
 # 1. Stack must be up
 dc ps php-fpm --format '{{.State}}' 2>/dev/null | grep -q running || die "stack down — run 'make start' first"
 
+# Fail-closed sandbox guard (P4-141): refuse to run against anything but the AI
+# sandbox (amateo_dev) or a *_test DB — exports SANDBOX_DB for the psql helper.
+source "$SCRIPT_DIR/lib/sandbox-guard.sh"
+
 # 2. JWT keypair (token minting needs it)
 if ! php 'test -f config/jwt/private.pem && echo yes' | grep -q yes; then
   warn "JWT keypair missing — generating"
@@ -60,7 +64,7 @@ ok "club id: $CLUB_ID"
 # founder does it in dev. The smoke re-opens for the duration and RESTORES the
 # pointer on exit: it must never depend on what ran before it, nor leave the club
 # in another state than it found it.
-psql_dev() { dc exec -T postgres psql -U clubscheduler -d clubscheduler -tA -c "$1"; }
+psql_dev() { dc exec -T postgres psql -U clubscheduler -d "$SANDBOX_DB" -tA -c "$1"; }
 RESTORE_CHOSEN=$(psql_dev "SELECT chosen_schedule_id FROM schedule_plan WHERE club_id='$CLUB_ID' AND type='SEASON' LIMIT 1" | tr -d '[:space:]')
 if [[ -n "$RESTORE_CHOSEN" ]]; then
   info "season plan in force — re-opening for the smoke (restored on exit)"

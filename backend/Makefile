@@ -70,7 +70,7 @@ db-init-test:
 	# transaction » : son verrou survit et TOUT run suivant gèle au premier accès à la
 	# même table (constaté 2026-07-24 : RunAdminJobCommandTest, DELETE bloqué en boucle).
 	# Postgres purge seul ces zombies après 60 s — DB de TEST uniquement.
-	$(FIG) exec -T postgres psql -U clubscheduler -d postgres -c "ALTER DATABASE clubscheduler_test SET idle_in_transaction_session_timeout = '60s'"
+	$(FIG) exec -T postgres psql -U clubscheduler -d postgres -c "ALTER DATABASE amateo_test SET idle_in_transaction_session_timeout = '60s'"
 
 .PHONY: db-reset ## Drop, recreate, and migrate the dev database
 db-reset: APP_ENV = dev
@@ -129,6 +129,40 @@ fixtures:
 	# cockpit calendar shows an empty summer.
 	$(FIG) exec -e APP_ENV=$(APP_ENV) -u $(USERID):$(GROUPID) php-fpm php bin/console app:school-holidays:seed --no-interaction
 	$(FIG) exec -e APP_ENV=$(APP_ENV) -u $(USERID):$(GROUPID) php-fpm php bin/console app:public-holidays:seed --no-interaction
+
+# --- P4-141 : play mode (fondateur) vs bac à sable (IA) ----------------------
+# `amateo_dev` = bac à sable de l'IA (défaut committé, seedé/purgé à volonté).
+# `amateo_local` = base de JEU du fondateur : les scripts mutateurs de l'IA la
+# REFUSENT (backend/scripts/lib/sandbox-guard.sh). `make play` (racine) bascule
+# toute la stack dev vers amateo_local via backend/.env.local (gitignoré) ;
+# `make sandbox` (racine) retire cette surcharge et revient à amateo_dev.
+.PHONY: play-env ## (interne à `make play`) Écrit backend/.env.local → amateo_local
+play-env:
+	@printf '# Généré par `make play` (P4-141) — base de JEU du fondateur (amateo_local).\n# Gitignoré. `make sandbox` le supprime pour revenir au bac à sable amateo_dev.\nDATABASE_URL="postgresql://app_user:app_user_password@postgres:5432/amateo_local?serverVersion=16&charset=utf8"\nDATABASE_ADMIN_URL="postgresql://clubscheduler:clubscheduler_dev_password@postgres:5432/amateo_local?serverVersion=16&charset=utf8"\n' > .env.local
+	@echo "backend/.env.local écrit — la stack dev vise amateo_local (mode play)."
+
+.PHONY: sandbox-env ## (interne à `make sandbox`) Supprime backend/.env.local → retour amateo_dev
+sandbox-env:
+	@rm -f .env.local
+	@echo "backend/.env.local supprimé — la stack dev revient au bac à sable amateo_dev."
+
+# Mot de passe du gestionnaire de démo BCCL — NON secret (dev only, même statut
+# que E2E_SA_PASSWORD côté frontend : il ne vit que dans la base de JEU). Requis
+# à la première création, optionnel au reset. Surchargeable : make seed-bccl DEMO_BCCL_PASSWORD=…
+DEMO_BCCL_PASSWORD ?= DemoBccl!2026
+.PHONY: seed-bccl ## Seed/reset the permanent BCCL demo club (admin connection, like `fixtures`)
+seed-bccl: APP_ENV = dev
+seed-bccl:
+	$(FIG) exec -e APP_ENV=$(APP_ENV) -e DATABASE_URL='$(DB_ADMIN_URL)' -u $(USERID):$(GROUPID) php-fpm php bin/console app:demo:seed-bccl --password='$(DEMO_BCCL_PASSWORD)' --no-interaction
+
+# OPTIONNEL, jamais lancé automatiquement (P4-141) : supprime les bases dev
+# héritées d'AVANT le découpage (clubscheduler / clubscheduler_test), restées
+# inertes dans le volume. Aucune donnée à préserver (BCCL se reseede via
+# `make seed-bccl`). À lancer À LA MAIN uniquement.
+.PHONY: db-drop-legacy ## (optionnel) Drop des bases dev héritées clubscheduler / clubscheduler_test
+db-drop-legacy:
+	$(FIG) exec -T postgres psql -U clubscheduler -d postgres -c "DROP DATABASE IF EXISTS clubscheduler"
+	$(FIG) exec -T postgres psql -U clubscheduler -d postgres -c "DROP DATABASE IF EXISTS clubscheduler_test"
 
 .PHONY: phpstan ## Run PHPStan
 phpstan:

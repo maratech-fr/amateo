@@ -199,6 +199,12 @@ if [[ -z "$TOKEN" ]]; then
   exit 1
 fi
 
+# Fail-closed sandbox guard (P4-141): creating + generating a schedule mutates
+# the app's database — refuse anything but the AI sandbox (amateo_dev) or *_test.
+# Placed after --help/token handling so a bare `--help` never needs the stack.
+# (Under generate-schedule-test.sh the guard is a no-op via SANDBOX_GUARD_SELFTEST.)
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/sandbox-guard.sh"
+
 if [[ -n "$SCHEDULE_ID" && -n "$CLUB_ID_ARG" ]]; then
   die "--schedule-id et --club-id sont mutuellement exclusifs"
 fi

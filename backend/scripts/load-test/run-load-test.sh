@@ -84,12 +84,16 @@ DB_ADMIN_URL=$(cat "$ROOT/backend/.env" "$ROOT/backend/.env.local" 2>/dev/null \
 [[ -n "$DB_ADMIN_URL" ]] || die "DATABASE_ADMIN_URL not found in backend/.env(.local)"
 
 psql_admin() { dc exec -T -e DATABASE_URL="$DB_ADMIN_URL" postgres \
-  psql -U clubscheduler -d clubscheduler -tA -c "$1"; }
+  psql -U clubscheduler -d "$SANDBOX_DB" -tA -c "$1"; }
 
 # ---------------------------------------------------------------------------
 # Pre-flight
 # ---------------------------------------------------------------------------
 dc ps php-fpm --format '{{.State}}' 2>/dev/null | grep -q running || die "stack down — run 'make start' first"
+
+# Fail-closed sandbox guard (P4-141): this harness seeds throwaway clubs — refuse
+# any DB but the AI sandbox (amateo_dev) or *_test. Exports SANDBOX_DB for psql_admin.
+source "$SCRIPT_DIR/../lib/sandbox-guard.sh"
 
 CGROUP_MEM=$(docker info --format '{{.MemoryLimit}}' 2>/dev/null || echo unknown)
 LIMITS_NOTE=""

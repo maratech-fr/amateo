@@ -27,7 +27,7 @@ die()  { printf '%bFAIL:%b %s\n' "$RED" "$NC" "$1" >&2; exit 1; }
 
 dc()  { docker compose -f "$COMPOSE" "$@"; }
 php() { dc exec -T -e APP_ENV=dev php-fpm sh -c "cd /app/backend && $1" 2>&1 | grep -vE '^\[debug\]|Notified event' || true; }
-psql_dev() { dc exec -T postgres psql -U clubscheduler -d clubscheduler -tA -c "$1"; }
+psql_dev() { dc exec -T postgres psql -U clubscheduler -d "$SANDBOX_DB" -tA -c "$1"; }
 jget() { python3 -c "import json,sys
 d=json.load(sys.stdin)
 for k in sys.argv[1].split('.'):
@@ -36,6 +36,9 @@ for k in sys.argv[1].split('.'):
 print(d if d is not None else 'null')" "$1"; }
 
 dc ps php-fpm --format '{{.State}}' 2>/dev/null | grep -q running || die "stack down — run 'make start' first"
+
+# Fail-closed sandbox guard (P4-141): exports SANDBOX_DB, refuses non-sandbox DBs.
+source "$SCRIPT_DIR/lib/sandbox-guard.sh"
 
 info "minting a dev token for $USER_EMAIL"
 TOKEN=$(php "php bin/console lexik:jwt:generate-token $USER_EMAIL --ttl=3600 --user-class='App\\Entity\\User'" | tr -d '[:space:]')
