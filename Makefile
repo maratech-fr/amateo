@@ -31,7 +31,16 @@ start: .env .installed ## Start all Docker services, install dependencies on fir
 stop: ## Stop all Docker services
 	$(DOCKER_COMPOSE) down
 
-restart: stop start ## Restart all services
+# Un redémarrage NE DOIT PAS installer. `start` dépend de `.installed` (build +
+# install backend/engine + bootstrap au premier run) ; quand l'install engine
+# échoue (ex. « Errno 13 /home/engine »), l'ancien `restart: stop start` mourait
+# APRÈS le `stop` et laissait nginx/cron-runner/frontend/pdf-worker DOWN — le smoke
+# suivant échouait alors sur « Backend unreachable :8080 », symptôme trompeur.
+# `restart` se contente donc de down + up --wait sur les images DÉJÀ construites
+# (un vrai premier run passe par `make start`, qui installe).
+restart: .env ## Restart all services (ne réinstalle pas — un redémarrage n'installe jamais)
+	$(DOCKER_COMPOSE) down
+	$(DOCKER_COMPOSE) up -d --wait
 
 # --- P4-141 : mode play (fondateur) vs bac à sable (IA) ----------------------
 # `amateo_dev` = bac à sable de l'IA (défaut committé). `amateo_local` = base de
