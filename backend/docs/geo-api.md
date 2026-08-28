@@ -1,6 +1,6 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-08-28 (BCK-22 — le budget global de l'autofill confronté au code : `IgnRoutingClient::BATCH_BUDGET_SECONDS = 30.0` (`IgnRoutingClient.php`), la 1ʳᵉ fenêtre part toujours puis dispatch stoppé passé le budget, clés restantes → `budgetExceededKeys` ✓ ; `VenueTravelTimeAutofillService::autofill` mappe ces clés sur la raison `budget_exceeded` (distincte de `routing_failed`) ✓ ; plafonds prod cités re-confirmés (`docker/php/Dockerfile:105` `max_execution_time=60`, `docker/nginx/default.conf:46` `fastcgi_read_timeout 60s`) ✓ ; `OpponentTravelResolver::resolve` consomme la même forme `['minutes'=>…]` (clé absente = non résolue, aucune raison distincte exposée côté adverse) ✓. Hosts BAN/IGN en dur + `max_redirects: 0`, cap dur 120 paires, rate-limit `venue_travel_time_autofill` non re-sondés cette passe (déjà confrontés à leur tour, passe Lot A du 2026-08-28).
+Last verified @ 2026-08-28 (BCK-22 — le budget global de l'autofill confronté au code : `IgnRoutingClient::BATCH_BUDGET_SECONDS = 30.0` (`IgnRoutingClient.php`), la 1ʳᵉ fenêtre part toujours puis dispatch stoppé passé le budget, clés restantes → `budgetExceededKeys` ✓ ; `VenueTravelTimeAutofillService::autofill` mappe ces clés sur la raison `budget_exceeded` (distincte de `routing_failed`) ✓ ; plafonds prod cités re-confirmés (`docker/php/Dockerfile:105` `max_execution_time=60`, `docker/nginx/default.conf:46` `fastcgi_read_timeout 60s`) ✓ ; `OpponentTravelResolver::resolve` consomme la même forme ET `budgetExceededKeys` : un code jamais tenté laisse sa ligne INTACTE (ni écriture ni création) et revient seulement `unresolved` ✓ — l'écraser par `null` était une régression de BCK-22, levée par la revue sécurité et gardée par `OpponentTravelResolverTest::testABudgetSkippedCodeKeepsItsExistingAutoValue`. Hosts BAN/IGN en dur + `max_redirects: 0`, cap dur 120 paires, rate-limit `venue_travel_time_autofill` non re-sondés cette passe (déjà confrontés à leur tour, passe Lot A du 2026-08-28).
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,
@@ -99,9 +99,13 @@ renseigne les paires à la main :
    d'atteindre cette paire — pas un échec, un « relancez pour continuer ») —, **jamais** un échec
    global du lot.
 6. Réponse `{filled, unresolved[], skippedManual}`. `OpponentTravelResolver` (trajet adverse, §
-   ci-dessous) consomme le même `travelMinutesBatch` : une clé jamais atteinte par le budget y revient
-   simplement absente de `minutes` → traitée comme un IGN muet (best-effort, sans raison distincte
-   exposée côté ce consommateur).
+   ci-dessous) consomme le même `travelMinutesBatch`, mais **distingue les deux sens de `null`** : une
+   clé jamais atteinte par le budget (`budgetExceededKeys`) laisse la ligne `opponent_travel` INTACTE
+   — ni écriture, ni création — et revient seulement `unresolved` ; seule une clé RÉELLEMENT tentée,
+   dont l'IGN n'a rendu aucune durée, écrase la valeur. Sans cette distinction, une relance sur un IGN
+   dégradé effaçait des trajets adverses déjà bons et sortait les rencontres concernées du radar de
+   conflits spatiaux (régression BCK-22, gardée par
+   `OpponentTravelResolverTest::testABudgetSkippedCodeKeepsItsExistingAutoValue`).
 
 **Route** : management-gated (SEC-07) + saison écrivable (`SeasonAccessGuard::assertWritable` —
 archivée → 409) + **rate-limit dédié PAR UTILISATEUR** `venue_travel_time_autofill` (10/h, sliding
