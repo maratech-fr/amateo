@@ -1,258 +1,55 @@
-"""Transform a CP-SAT solution into a ScheduleOutputSchema-compatible dict.
+"""Result builder — diagnostics post-solve lisibles par le gestionnaire (paquet ENG-39).
 
-The builder reads the solved boolean variables ``x[team, venue, day, slot]``,
-merges them with pre-placed HARD locked slots, and produces manager-readable
-diagnostics for any post-solve issues it detects.
+Extrait tel quel de l'ancien monolithe ``result_builder.py`` (déplacement pur, ENG-39). Réunit
+``_generate_diagnostics``, les treize ``_diagnose_*`` et leurs helpers locaux (causes de séance,
+géométrie de trajet, message d'infaisabilité…). Dépend de ``helpers`` (cartes/libellés) et des
+modules solveur ``model`` / ``constraints`` ; ne dépend PAS de ``slots`` ni de l'agrégateur.
+
+⚠ ENG-37 : ``_diagnose_travel_times`` consomme la SOURCE UNIQUE ``is_travel_too_tight`` (importée
+ci-dessous). Le test-garde ``test_travel_diagnostic_delegates_to_the_shared_geometry_source``
+neutralise cette source en patchant ``app.solver.result_builder.diagnostics.is_travel_too_tight`` —
+le nom doit rester résolu DANS CE MODULE pour que le garde morde.
 """
 
 from __future__ import annotations
 
 import contextlib
-import uuid
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from importlib.metadata import version
 from typing import Any
 
 from ortools.sat.python import cp_model
 
-from app.solver.constraints import (
+from ..constraints import (
     ResolvedImplicitRules,
     build_travel_matrix,
     is_travel_too_tight,
     iter_team_link_overlaps,
     team_share_declared_pairs,
 )
-from app.solver.model import (
+from ..model import (
     DEFAULT_SESSION_MINUTES,
-    SLOT_MINUTES,
     ScheduleCpModel,
     _format_time,
     _time_to_minutes,
 )
-from app.solver.objective import SCORE_FORMULA_VERSION
-
-
-def build_result(
-    model_data: Mapping[str, Any] | Any,
-    solver: cp_model.CpSolver,
-    model: ScheduleCpModel,
-    *,
-    status: Any | None = None,
-    constraint_version: str | None = None,
-    team_coach_map: Mapping[str, list[str]] | None = None,
-) -> dict[str, Any]:
-    """Transform a CP-SAT solution into a dict matching ``ScheduleOutputSchema``.
-
-    Args:
-        model_data: The original input data (dict or Pydantic model).
-        solver: The OR-Tools ``CpSolver`` instance after solving.
-        model: The ``ScheduleCpModel`` containing variables and locked slots.
-        team_coach_map: ENG-17 — la carte équipe → coachs MAIN issue de
-            ``parse_v2_constraints``. SOURCE UNIQUE : c'est déjà elle que le solveur
-            utilise pour l'exclusivité coach et pour attacher le coach aux
-            assignments (``main.py``). La redériver ici recopierait sa règle (filtre
-            de rôle, alias de clés) et les deux divergeraient.
-        status: Optional solver status. If omitted, inferred from the solver.
-
-    Returns:
-        A dictionary that validates against ``ScheduleOutputSchema``.
-    """
-    if status is not None:
-        solver_status = status
-    elif hasattr(solver, "_checked_response") and hasattr(solver._checked_response, "status"):
-        solver_status = solver._checked_response.status
-    else:
-        solver_status = cp_model.UNKNOWN
-
-    schema_status = "completed" if solver_status in (cp_model.OPTIMAL, cp_model.FEASIBLE) else "failed"
-
-    slots: list[dict[str, Any]] = []
-    diagnostics: list[dict[str, Any]] = []
-
-    # Preserve HARD locked slots regardless of solver status.
-    for locked in model.locked_slots:
-        slots.append(_locked_slot_to_dict(locked))
-
-    # Add solver-placed slots when the problem was solved successfully.
-    if solver_status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        # ENG-17 — la carte vient du MODÈLE par défaut (posée par `_solve`) ; le
-        # paramètre reste pour les appels directs (tests, harnais) qui construisent
-        # un modèle à la main.
-        solver_slots = _build_solver_slots(
-            model_data,
-            solver,
-            model,
-            team_coach_map if team_coach_map is not None else getattr(model, "team_coach_map", None),
-        )
-        slots.extend(solver_slots)
-
-    # Always run diagnostic checks. Le réglage implicite + les cartes coach/joueur viennent
-    # du MODÈLE (posés par ``main._solve``) : les warnings de règle implicite doivent se
-    # calculer au MÊME grain que la pose (personnes = coachs/joueurs des contraintes).
-    slot_capacities: dict[Any, int] = getattr(model, "slot_capacities", {})
-    resolved_team_coach_map = team_coach_map if team_coach_map is not None else getattr(model, "team_coach_map", None)
-    # P4-99 — la cause MESURÉE d'un créneau manquant, par équipe. Calculée UNIQUEMENT sur un
-    # solve abouti (les variables n'ont de valeur qu'alors) ; l'inversion var→équipe se fait
-    # ici, depuis `model.x`, seul endroit qui tient variable ET slot_key.
-    session_causes_by_team: dict[str, dict[str, Any]] = {}
-    if solver_status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        session_causes_by_team = _collect_session_causes(model, solver)
-    diagnostics.extend(
-        _generate_diagnostics(
-            model_data,
-            solver_status,
-            slots,
-            slot_capacities=slot_capacities,
-            implicit_rules=getattr(model, "implicit_rules", None),
-            team_coach_map=resolved_team_coach_map,
-            team_player_map=getattr(model, "team_player_map", None),
-            session_causes_by_team=session_causes_by_team,
-        )
-    )
-
-    unplaced = _unplaced_team_ids(model_data, slots)
-
-    score: int | None = None
-    if solver_status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        # P3-21 — quand la phase 2 a appliqué le terme de stabilité, `_solve` a recalculé le
-        # score aux poids d'ORIGINE (placement + chaînage naturel, stabilité exclue) car
-        # `ObjectiveValue()` porterait alors le multiplicateur de chaînage + la stabilité.
-        # Sans stabilité l'override reste None ⇒ `ObjectiveValue()` tel quel (byte-identique).
-        override = getattr(model, "reported_score_override", None)
-        score = override if override is not None else int(solver.ObjectiveValue())
-
-    metrics = {
-        "solver_version": version("ortools"),
-        "nb_variables": int(model.NumVariables()),
-        "nb_constraints": len(model.Proto().constraints),
-        "wall_time_ms": round(solver.WallTime() * 1000),
-        # Determinism identifiers — the backend persists these on the Schedule.
-        "score_formula_version": SCORE_FORMULA_VERSION,
-        "constraint_version": constraint_version,
-    }
-
-    return {
-        "status": schema_status,
-        "score": score,
-        "metrics": metrics,
-        "unplaced": unplaced,
-        "slots": slots,
-        "diagnostics": diagnostics,
-    }
-
-
-def _locked_slot_to_dict(locked: Mapping[str, Any] | Any) -> dict[str, Any]:
-    """Convert a normalized HARD locked slot into an output slot dict."""
-    team_id = str(_get(locked, "team_id", "teamId"))
-    venue_id = str(_get(locked, "venue_id", "venueId"))
-    day_of_week = int(_get(locked, "day_of_week", "dayOfWeek"))
-    start_time = str(_get(locked, "start_time", "startTime"))[:5]  # normalize "HH:MM:SS" → "HH:MM"
-    duration = int(_get(locked, "duration_minutes", "durationMinutes", default=DEFAULT_SESSION_MINUTES))
-    coach_id = _get(locked, "coach_id", "coachId", default=None)
-    pending_constraint_suggestion = _get(
-        locked, "pending_constraint_suggestion", "pendingConstraintSuggestion", default=None
-    )
-
-    return {
-        "id": _slot_id(team_id, venue_id, day_of_week, start_time),
-        "teamId": team_id,
-        "venueId": venue_id,
-        "coachId": coach_id,
-        "dayOfWeek": day_of_week,
-        "startTime": start_time,
-        "durationMinutes": duration,
-        "lockLevel": "HARD",
-        "pendingConstraintSuggestion": pending_constraint_suggestion,
-    }
-
-
-def _build_solver_slots(
-    model_data: Mapping[str, Any] | Any,
-    solver: cp_model.CpSolver,
-    model: ScheduleCpModel,
-    team_coach_map: Mapping[str, list[str]] | None = None,
-) -> list[dict[str, Any]]:
-    """Build output slots from CP-SAT boolean variables set to 1.
-
-    Consecutive variables for the same (team, venue, day) are merged into a
-    single slot. Duration per variable comes from ``model.slot_durations``
-    (the training-slot's declared duration) with a fallback to SLOT_MINUTES
-    for backward-compatible 15-min granularity.
-    """
-    from collections import defaultdict
-
-    slot_durations: dict[Any, int] = getattr(model, "slot_durations", {})
-
-    def _slot_dur(v_id: str, dow: int, start_min: int) -> int:
-        return slot_durations.get((v_id, dow, _format_time(start_min)), SLOT_MINUTES)
-
-    # Collect all active (team, venue, day, start_minutes) tuples
-    active: dict[tuple[str, str, int], list[int]] = defaultdict(list)
-    for slot_key, var in model.x.items():
-        if solver.Value(var) != 1:
-            continue
-        team_id, venue_id, day_of_week, slot_start = slot_key
-        start_minutes = _time_to_minutes(slot_start)
-        active[(team_id, venue_id, day_of_week)].append(start_minutes)
-
-    slots: list[dict[str, Any]] = []
-    for (team_id, venue_id, day_of_week), starts in active.items():
-        starts_sorted = sorted(starts)
-        coach_id = _find_coach_for_team(model_data, team_id, team_coach_map)
-
-        # Merge consecutive variables into contiguous blocks.
-        # Two variables are contiguous when the next start equals the end of the
-        # current block (i.e., no gap between them regardless of duration).
-        if not starts_sorted:
-            continue
-        block_start = starts_sorted[0]
-        block_end = starts_sorted[0] + _slot_dur(venue_id, day_of_week, starts_sorted[0])
-
-        for s in starts_sorted[1:]:
-            if s == block_end:
-                # contiguous — extend block
-                block_end = s + _slot_dur(venue_id, day_of_week, s)
-            else:
-                # gap — emit previous block and start a new one
-                duration = block_end - block_start
-                slots.append(
-                    {
-                        "id": _slot_id(team_id, venue_id, day_of_week, _format_time(block_start)),
-                        "teamId": team_id,
-                        "venueId": venue_id,
-                        "coachId": coach_id,
-                        "dayOfWeek": day_of_week,
-                        "startTime": _format_time(block_start),
-                        "durationMinutes": duration,
-                        "lockLevel": "NONE",
-                        "pendingConstraintSuggestion": None,
-                    }
-                )
-                block_start = s
-                block_end = s + _slot_dur(venue_id, day_of_week, s)
-
-        # Emit the last block
-        duration = block_end - block_start
-        slots.append(
-            {
-                "id": _slot_id(team_id, venue_id, day_of_week, _format_time(block_start)),
-                "teamId": team_id,
-                "venueId": venue_id,
-                "coachId": coach_id,
-                "dayOfWeek": day_of_week,
-                "startTime": _format_time(block_start),
-                "durationMinutes": duration,
-                "lockLevel": "NONE",
-                "pendingConstraintSuggestion": None,
-            }
-        )
-    return slots
-
-
-def _slot_id(team_id: str, venue_id: str, day_of_week: int, start_time: str) -> str:
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"clubscheduler-slot:{team_id}:{venue_id}:{day_of_week}:{start_time}"))
+from .helpers import (
+    _coach_name_map,
+    _coach_threshold,
+    _collection,
+    _day_label,
+    _get,
+    _label,
+    _named_list,
+    _occupant_list,
+    _slot_day,
+    _slot_templates,
+    _team_ids,
+    _team_name_map,
+    _time_range,
+    _venue_name_map,
+)
 
 
 def _generate_diagnostics(
@@ -1726,197 +1523,3 @@ def _diagnose_age_violations(
             }
         )
     return diagnostics
-
-
-def _slot_day(slot: Mapping[str, Any]) -> int | None:
-    raw = slot.get("dayOfWeek")
-    if raw is None:
-        return None
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return None
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-_FR_DAYS = {
-    1: "lundi",
-    2: "mardi",
-    3: "mercredi",
-    4: "jeudi",
-    5: "vendredi",
-    6: "samedi",
-    7: "dimanche",
-}
-
-
-def _day_label(day_of_week: Any) -> str:
-    """Human day name (French). Falls back to 'jour N' for unknown values."""
-    try:
-        return _FR_DAYS.get(int(day_of_week), f"jour {int(day_of_week)}")
-    except (TypeError, ValueError):
-        return f"jour {day_of_week}"
-
-
-def _time_range(start_time: str, duration_minutes: int | None) -> str:
-    """Return 'HH:MM–HH:MM' from a start time and duration (start only if unknown)."""
-    start = str(start_time)[:5]
-    if not duration_minutes:
-        return start
-    try:
-        end = _format_time(_time_to_minutes(start) + int(duration_minutes))
-    except (TypeError, ValueError):
-        return start
-    return f"{start}–{end}"
-
-
-def _team_name_map(model_data: Mapping[str, Any] | Any) -> dict[str, str]:
-    names: dict[str, str] = {}
-    for team in _collection(model_data, "teams"):
-        team_id = _get(team, "id", "team_id", "teamId")
-        if team_id is not None:
-            names[str(team_id)] = str(_get(team, "name", "team_name", default=str(team_id)))
-    return names
-
-
-def _venue_name_map(model_data: Mapping[str, Any] | Any) -> dict[str, str]:
-    names: dict[str, str] = {}
-    for venue in _collection(model_data, "venues"):
-        venue_id = _get(venue, "id", "venue_id", "venueId")
-        if venue_id is not None:
-            names[str(venue_id)] = str(_get(venue, "name", default=str(venue_id)))
-    return names
-
-
-def _coach_name_map(model_data: Mapping[str, Any] | Any) -> dict[str, str]:
-    names: dict[str, str] = {}
-    for coach in _collection(model_data, "coaches"):
-        coach_id = _get(coach, "id", "coach_id", "coachId")
-        if coach_id is None:
-            continue
-        full = _get(coach, "name", "coach_name", default=None)
-        if full is None:
-            first = _get(coach, "first_name", "firstName", default="")
-            last = _get(coach, "last_name", "lastName", default="")
-            full = f"{first} {last}".strip() or str(coach_id)
-        names[str(coach_id)] = str(full)
-    return names
-
-
-def _label(entity_id: Any, names: Mapping[str, str]) -> str:
-    """'Name' when known, else the raw id — never bare so the manager can act."""
-    return names.get(str(entity_id), str(entity_id))
-
-
-def _named_list(ids: list[str], names: Mapping[str, str]) -> str:
-    return ", ".join(_label(i, names) for i in ids)
-
-
-def _occupant_list(team_ids: list[str], team_to_group: Mapping[str, str], names: Mapping[str, str]) -> str:
-    """Énumère les OCCUPANTS d'une case, un groupe mutualisé comptant pour un seul (P2-46).
-
-    Miroir exact du comptage qui décide de la violation : les membres co-localisés d'un même
-    groupe déclaré se fondent en une entrée « le groupe mutualisé (A, B) », les autres équipes
-    restent nommées une à une. Un message qui énumère plus d'entrées que le compte annoncé
-    ferait viser le mauvais remède.
-    """
-    parts: list[str] = []
-    seen_groups: set[str] = set()
-    for team_id in team_ids:
-        group_key = team_to_group.get(team_id)
-        if group_key is None:
-            parts.append(_label(team_id, names))
-            continue
-        if group_key in seen_groups:
-            continue
-        seen_groups.add(group_key)
-        members = [_label(other, names) for other in team_ids if team_to_group.get(other) == group_key]
-        parts.append(f"le groupe mutualisé ({', '.join(members)})")
-    return ", ".join(parts)
-
-
-def _get(source: Mapping[str, Any] | Any, *names: str, default: Any = None) -> Any:
-    """Read the first available field from a dict or object."""
-    for name in names:
-        if isinstance(source, Mapping):
-            if name in source and source[name] is not None:
-                return source[name]
-            continue
-        if hasattr(source, name):
-            value = getattr(source, name)
-            if value is not None:
-                return value
-    return default
-
-
-def _team_ids(model_data: Mapping[str, Any] | Any) -> set[str]:
-    """Return all team IDs found in the input data."""
-    ids: set[str] = set()
-    for team in _collection(model_data, "teams"):
-        team_id = _get(team, "id", "team_id", "teamId")
-        if team_id is not None:
-            ids.add(str(team_id))
-    return ids
-
-
-def _slot_templates(model_data: Mapping[str, Any] | Any) -> list[Any]:
-    """Return all slot templates from the input data."""
-    return list(_collection(model_data, "slot_templates", "slotTemplates", "slots"))
-
-
-def _collection(source: Mapping[str, Any] | Any, *names: str) -> list[Any]:
-    """Extract a list-like collection from a dict or object by field name."""
-    for name in names:
-        values = _get(source, name, default=None)
-        if values is None:
-            continue
-        if isinstance(values, (list, tuple)):
-            return list(values)
-        raise TypeError(f"{name} must be a list-like collection")
-    return []
-
-
-def _find_coach_for_team(
-    model_data: Mapping[str, Any] | Any,
-    team_id: str,
-    team_coach_map: Mapping[str, list[str]] | None = None,
-) -> str | None:
-    """Qui encadre les séances GÉNÉRÉES de cette équipe ? (ENG-17)
-
-    Le coach MAIN d'abord — c'est ce que le solveur a réellement modélisé
-    (exclusivité coach, bonus de chaînage) et ce que `main.py` attache à chaque
-    assignment. Avant ce correctif, seuls les `slotTemplates` étaient consultés :
-    une équipe dont le coach vient d'une contrainte TEAM_COACH (le chemin
-    DOMINANT — c'est ainsi que le backend sérialise les liens) sortait
-    `coachId=None` sur toutes ses séances placées, et TOUS les diagnostics coach
-    (double-réservation, surcharge, jour de repos) restaient muets pour elle.
-
-    Le repli sur les `slotTemplates` reste : un payload sans contrainte
-    TEAM_COACH (tests, legacy) garde son comportement d'avant.
-    """
-    if team_coach_map is not None:
-        coaches = team_coach_map.get(team_id) or []
-        if coaches:
-            return str(coaches[0])
-
-    for template in _slot_templates(model_data):
-        template_team_id = _get(template, "team_id", "teamId")
-        if template_team_id is not None and str(template_team_id) == team_id:
-            coach_id = _get(template, "coach_id", "coachId")
-            if coach_id is not None:
-                return str(coach_id)
-    return None
-
-
-def _coach_threshold(model_data: Mapping[str, Any] | Any, coach_id: str) -> int:
-    """Return the recommended maximum number of working DAYS for a coach (maxDaysOverride)."""
-    for coach in _collection(model_data, "coaches"):
-        cid = _get(coach, "id", "coach_id", "coachId")
-        if cid is not None and str(cid) == coach_id:
-            override = _get(coach, "max_days_override", "maxDaysOverride")
-            if override is not None:
-                return max(1, int(override))
-    return 10**9

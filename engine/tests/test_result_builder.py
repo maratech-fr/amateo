@@ -549,7 +549,9 @@ class DiagnosticPrecisionTest(unittest.TestCase):
         # consomme via ``iter_travel_pairs_from_placements``). On le prouve en NEUTRALISANT la
         # source : si le diagnostic la consomme, forcer « jamais trop serré » fait disparaître le
         # résidu ; le jour où quelqu'un réintroduirait un barème/battement LOCAL dans
-        # ``result_builder``, ce patch n'aurait plus d'effet et ce test rougirait.
+        # ``result_builder.diagnostics``, ce patch n'aurait plus d'effet et ce test rougirait.
+        # ENG-39 — le patch vise le module OÙ le nom est résolu à l'appel : ``_diagnose_travel_times``
+        # vit dans ``result_builder.diagnostics``, donc ``is_travel_too_tight`` s'y résout.
         from unittest.mock import patch
 
         from app.solver.result_builder import _diagnose_travel_times
@@ -574,7 +576,7 @@ class DiagnosticPrecisionTest(unittest.TestCase):
         self.assertEqual("travel_time_infeasible", diags[0]["type"])
         self.assertEqual("c1", diags[0]["coachId"])
 
-        with patch("app.solver.result_builder.is_travel_too_tight", return_value=False):
+        with patch("app.solver.result_builder.diagnostics.is_travel_too_tight", return_value=False):
             self.assertEqual([], _diagnose_travel_times(model_data, cp_model.OPTIMAL, slots, team_coach_map))
 
 
