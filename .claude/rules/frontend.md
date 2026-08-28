@@ -28,6 +28,22 @@ paths:
   `contract`) : registre des miroirs déclarés (entrée sans parité → rouge) + détecteur des
   `switch` décideurs sur les enums de CONTRAINTE (module non déclaré → rouge, nommé). La largeur
   du détecteur est un CHOIX documenté (`POLICED_ENUMS`) ; le registre, lui, tient tous les miroirs.
+- 🔴 **Réutiliser le PARTAGÉ avant d'écrire du neuf — jamais réinventer un élément qui existe déjà.**
+  Avant de coder un état de chargement / vide / erreur, un bouton, une modale, un badge, une
+  pastille, un formulaire : **chercher la primitive partagée** et l'utiliser telle quelle.
+  Les maisons uniques (extensible) : **chargement** — `FullPageSpinner` (chargement de PAGE,
+  standard `cockpit`/`planning`/`profile`/`club`), `Spinner` (inline, dans un bouton),
+  `EmptyHint`/`EmptyBlock`/`EmptyState` (vide), `LoadErrorHint`+`readState` (échec de lecture avec
+  retry), `ActionVeil` (voile de navigation/sauvegarde global — `app/ActionVeil.tsx`) ;
+  **primitives** `shared/components/ui/*` (Button, Modal, Select, Input, Card, StepRail, Menu APG,
+  SourceBadge, VenueSwatch…) ; **couleurs/espacements** = tokens du thème (`text-warning`,
+  `text-muted-foreground`, `bg-muted`, `border-border`…), **jamais un `#hex`** ni une classe sans
+  jeton (`text-warning-foreground` était un no-op, P4-130). Recoder à la main un spinner nu, un
+  encart d'erreur, une pastille inline **là où la primitive existe** = incohérence UX (« même
+  chose, au même endroit, de la même façon » — famille UXC de l'audit). Cas fondateur du
+  **2026-08-28** : `MatchesPage` rendait un `<Spinner>` nu dans un `py-16` (demi-page) là où ses
+  4 pages sœurs utilisent `FullPageSpinner` — ramené sur la primitive. Si la primitive **manque**,
+  l'AJOUTER au partagé (une seule maison), pas en faire une variante locale.
 - 🔴 **L'image tooling COPIE le code — la rebâtir AVANT tout test**, sinon la suite valide une
   version périmée et passe : `docker compose --profile tools build frontend-tooling`
   (`make -C frontend install` le fait). **Deux faux verts dans la même session le 2026-08-11.**

@@ -5,7 +5,7 @@ import { FeedbackButton } from "@/features/feedback/FeedbackButton";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
-import { Spinner } from "@/shared/components/ui/spinner";
+import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { StepRail } from "@/shared/components/ui/step-rail";
 
 import type { Category, Coach, Competition, Fixture, Team, Venue } from "./api";
@@ -220,11 +220,9 @@ export function MatchesPage() {
   }
 
   if (fixtures.isLoading || teams.isLoading || venues.isLoading) {
-    return (
-      <div className="flex justify-center py-16">
-        <Spinner />
-      </div>
-    );
+    // Chargement de PAGE = `FullPageSpinner`, comme cockpit/planning/profil/club
+    // (cohérence UX — jamais un spinner nu par-dessus une demi-page).
+    return <FullPageSpinner />;
   }
 
   // ── Shared blocks reused across the step views ─────────────────────────────
