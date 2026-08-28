@@ -39,7 +39,8 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * club. Les huit volets sont falsifiés dans les DEUX sens.
  *
  * (a) le SCHÉMA du partagé n'a aucune colonne club-identifiante (catalogue Postgres, liste blanche
- *     exacte) · (b) un club apparié à la MÊME compétition fédérale LIT la proposition, un club
+ *     exacte) et le rôle applicatif a SELECT+INSERT+UPDATE mais PAS DELETE (P4-143 : le GRANT est
+ *     la seule couche DB d'une table sans RLS) · (b) un club apparié à la MÊME compétition fédérale LIT la proposition, un club
  *     apparié à une AUTRE ne la voit PAS · (c) une échéance sur compétition NON appariée n'écrit
  *     RIEN au partagé · (d) la valeur club gagne TOUJOURS · (e) la réponse servie est
  *     BYTE-IDENTIQUE quel que soit le club auteur (zéro oracle) · (f) dernière écriture gagne
@@ -81,6 +82,35 @@ final class EntryDeadlineShareTest extends WebTestCase
         foreach (['club_id', 'user_id', 'season_id', 'author_id', 'set_count', 'usage_count'] as $forbidden) {
             self::assertNotContains($forbidden, $columns, \sprintf('« %s » est interdite par conception sur le partagé', $forbidden));
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // (a bis) le rôle applicatif a SELECT+INSERT+UPDATE mais PAS DELETE (P4-143)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function testRuntimeRoleCannotDeleteFromTheSharedTable(): void
+    {
+        // P4-143 : le GRANT restreint de la migration de création (SELECT+INSERT+UPDATE)
+        // NE retirait PAS le DELETE que l'`ALTER DEFAULT PRIVILEGES` confère par défaut au
+        // rôle applicatif — il fallait un REVOKE explicite (patron OpponentDirectoryShareTest).
+        // Le GRANT est la SEULE couche DB de cette table sans RLS : « effacer sa valeur club
+        // n'efface pas le partagé » n'est vrai que si le rôle ne PEUT pas DELETE.
+        self::assertTrue(
+            (bool) $this->conn()->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'amateo_app\''),
+            'le rôle applicatif amateo_app existe (prémisse du modèle de sécurité)',
+        );
+
+        foreach (['SELECT', 'INSERT', 'UPDATE'] as $privilege) {
+            self::assertTrue((bool) $this->conn()->fetchOne(
+                'SELECT has_table_privilege(\'amateo_app\', \'shared_competition_deadline\', :privilege)',
+                ['privilege' => $privilege],
+            ), \sprintf('amateo_app doit avoir %s (l\'upsert du défaut communautaire l\'exige)', $privilege));
+        }
+
+        self::assertFalse((bool) $this->conn()->fetchOne(
+            'SELECT has_table_privilege(\'amateo_app\', \'shared_competition_deadline\', :privilege)',
+            ['privilege' => 'DELETE'],
+        ), 'amateo_app ne doit JAMAIS pouvoir DELETE une ligne partagée (revue sécurité F-1, seule couche DB sans RLS)');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
