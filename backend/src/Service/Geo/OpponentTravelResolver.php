@@ -112,9 +112,7 @@ final class OpponentTravelResolver
             return ['resolved' => 0, 'unresolved' => $unresolved, 'skippedManual' => $skippedManual];
         }
 
-        // A code the budget never reached is absent from `minutes` → null → listed
-        // unresolved, exactly like an IGN-mute pair (best-effort; a re-run resolves it).
-        $minutes = $this->routingClient->travelMinutesBatch(array_map(
+        $batch = $this->routingClient->travelMinutesBatch(array_map(
             static fn (array $t): array => [
                 'key' => $t['code'],
                 'profile' => IgnRoutingClient::PROFILE_CAR,
@@ -124,12 +122,23 @@ final class OpponentTravelResolver
                 'endLon' => $t['lon'],
             ],
             $geoTargets,
-        ))['minutes'];
+        ));
+        $minutes = $batch['minutes'];
+        $budgetExceeded = array_fill_keys($batch['budgetExceededKeys'], true);
 
         $resolved = 0;
         $wrote = false;
         foreach ($geoTargets as $target) {
             $code = $target['code'];
+            // The budget stopped BEFORE this code was even tried: NOT the same as an
+            // IGN-mute answer. Leave the row untouched — no write, no creation — so a
+            // good AUTO value already in base survives, and a re-run resolves it. Only
+            // a code that WAS tried and came back without a duration overwrites (below).
+            if (isset($budgetExceeded[$code])) {
+                $unresolved[] = $code;
+
+                continue;
+            }
             $value = $minutes[$code] ?? null;
             $row = $existing[$code] ?? $this->newRow($clubId, $seasonId, $code);
             // AUTO row: the location is the global directory's, no manual override.

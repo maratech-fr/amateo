@@ -20,11 +20,13 @@ use App\Repository\OpponentTravelRepository;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\OpponentTravelResolver;
 use App\Service\SeasonResolver;
+use App\Tests\Double\SteppingClock;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\Clock\MockClock;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
@@ -108,6 +110,86 @@ final class OpponentTravelResolverTest extends WebTestCase
         self::assertNull($this->travelRepository()->findOneByCode($season->getId(), self::OPPONENT_CODE));
     }
 
+    /**
+     * BCK-22 régression : un code que le budget n'a JAMAIS tenté ne doit pas être
+     * écrasé — une bonne valeur AUTO déjà en base survit, le code revient seulement
+     * `unresolved` (la relance le résoudra). Avant le correctif, l'absence de la clé
+     * dans `minutes` valait `setTravelMinutes(null)` et détruisait la valeur.
+     */
+    public function testABudgetSkippedCodeKeepsItsExistingAutoValue(): void
+    {
+        $club = new Club;
+        $club->setName('Club budget ' . uniqid('', true));
+        $club->setSlug('club-budget-opp-' . uniqid('', true));
+        $club->setTimezone('Europe/Paris');
+        $club->setLocale('fr');
+        $club->setLatitude(45.70);
+        $club->setLongitude(4.90);
+        $this->em->persist($club);
+        $this->em->flush();
+
+        $this->scopeGucToClub($club->getId());
+        $season = new Season;
+        $season->setClubId($club->getId());
+        $season->setName((string) SeasonResolver::seasonYear(new DateTimeImmutable('today')));
+        $season->setStartDate(new DateTimeImmutable('today'));
+        $season->setEndDate(new DateTimeImmutable('+300 days'));
+        $season->setStatus(SeasonStatus::ACTIVE);
+        $season->setTransitionData([]);
+        $this->em->persist($season);
+        $this->em->flush();
+
+        // 9 adversaires AWAY géolocalisés (> une fenêtre de 8), chacun avec une bonne
+        // ligne AUTO déjà en base (99 min). Aucun MANUAL, aucun sans localisation :
+        // le SEUL motif possible d'`unresolved` sera donc le budget.
+        for ($i = 0; $i < 9; ++$i) {
+            $code = \sprintf('ARA00699%03d', $i);
+
+            $fixture = new Fixture;
+            $fixture->setClubId($club->getId());
+            $fixture->setSeasonId($season->getId());
+            $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+            $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
+            $fixture->setHomeAway(FixtureHomeAway::AWAY);
+            $fixture->setOpponentLabel('Adverse ' . $i);
+            $fixture->setOpponentOrganismeCode($code);
+            $this->em->persist($fixture);
+
+            $existing = (new OpponentTravel)
+                ->setClubId($club->getId())
+                ->setSeasonId($season->getId())
+                ->setOpponentOrganismeCode($code)
+                ->setSource(OpponentTravelSource::AUTO)
+                ->setTravelMinutes(99)
+                ->setResolvedAt(new DateTimeImmutable);
+            $this->em->persist($existing);
+        }
+        $this->em->flush();
+
+        // Directory entries are GLOBAL (no club) → seeded without a GUC.
+        for ($i = 0; $i < 9; ++$i) {
+            $entry = new OpponentDirectoryEntry(\sprintf('ARA00699%03d', $i), 'Adverse ' . $i, OpponentLocationPrecision::CITY);
+            $entry->setLatitude(45.76)->setLongitude(4.86)->setCity('Lyon');
+            $this->em->persist($entry);
+        }
+        $this->em->flush();
+
+        // Step 100 s ≫ the 30 s budget : after window 0 (8 codes) the next clock read
+        // is past the deadline, so the 9th code's window is never dispatched.
+        $result = $this->resolverWithIgn(600, new SteppingClock(stepSeconds: 100))->resolve($club->getId(), $season->getId());
+
+        self::assertNotSame([], $result['unresolved'], 'le budget doit avoir coupé au moins un code');
+
+        $this->em->clear();
+        $this->scopeGucToClub($club->getId());
+        foreach ($result['unresolved'] as $code) {
+            $row = $this->travelRepository()->findOneByCode($season->getId(), $code);
+            self::assertInstanceOf(OpponentTravel::class, $row, "la ligne du code budget-coupé {$code} existe toujours");
+            self::assertSame(99, $row->getTravelMinutes(), "la bonne valeur AUTO survit au code budget-coupé {$code}");
+            self::assertSame(OpponentTravelSource::AUTO, $row->getSource());
+        }
+    }
+
     protected function setUp(): void
     {
         self::createClient();
@@ -116,13 +198,14 @@ final class OpponentTravelResolverTest extends WebTestCase
 
     /**
      * The real resolver, but its IGN client rides a MockHttpClient returning a
-     * fixed duration (seconds) for every pair.
+     * fixed duration (seconds) for every pair. The clock defaults to a still
+     * MockClock (budget never bites); a SteppingClock forces the budget to expire.
      */
-    private function resolverWithIgn(int $durationSeconds): OpponentTravelResolver
+    private function resolverWithIgn(int $durationSeconds, ?ClockInterface $clock = null): OpponentTravelResolver
     {
         $ign = new IgnRoutingClient(new MockHttpClient(
             static fn (): MockResponse => new MockResponse((string) json_encode(['duration' => $durationSeconds])),
-        ), new MockClock);
+        ), $clock ?? new MockClock);
 
         return new OpponentTravelResolver(
             $this->em,
