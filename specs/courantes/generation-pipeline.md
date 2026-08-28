@@ -1,7 +1,9 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-08-28 (rotation de fraîcheur, sujet non touché par la PR courante — re-vérifié
-contre le code : topic `club:{clubId}:schedule:{scheduleId}` (`backend/src/Mercure/MercureTopic.php:29`)
+Last verified @ 2026-08-29 (date recalée — le contenu ci-dessous a été écrit le 2026-08-28, le
+commit qui le porte (#779) a atterri le lendemain, décalage d'horloge de session sans rapport avec
+le contenu. Re-confronté avant de redater : topic
+`club:{clubId}:schedule:{scheduleId}` (`backend/src/Mercure/MercureTopic.php:29`)
 ✓ · verrou par club `ClubGenerationLock::acquire` — `$redis->set(..., ['nx', 'ex' => $ttlSeconds])`
 (`backend/src/Service/ClubGenerationLock.php:26`) ✓ · l'abonné Mercure frontend vit toujours à
 `frontend/src/features/planning/lib/scheduleStream.ts` ✓. Tout juste, rien à corriger) — *(historique des passes retiré le 2026-08-19,
