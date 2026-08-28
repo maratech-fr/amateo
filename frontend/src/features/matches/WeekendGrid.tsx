@@ -135,7 +135,9 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
                 <span className="truncate">{cell.ghost ? `Habitude ${cell.teamLabel}` : cell.teamLabel}</span>
                 {/* P1-4 PR E1 — padlock: MANUAL anchor, the solver never moves it. */}
                 {cell.locked ? <Lock aria-label="Ancre manuelle" className="ml-auto size-3 shrink-0 text-muted-foreground" /> : null}
-                {cell.outOfEnvelope ? <AlertTriangle className={cn("size-3 shrink-0 text-warning", cell.locked ? "" : "ml-auto")} /> : null}
+                {/* Nom accessible explicite (patron du cadenas voisin) : l'info « hors fenêtre
+                    ligue » ne peut reposer sur l'icône + la couleur seules (A11Y-17). */}
+                {cell.outOfEnvelope ? <AlertTriangle aria-label="Hors fenêtre ligue" className={cn("size-3 shrink-0 text-warning", cell.locked ? "" : "ml-auto")} /> : null}
               </span>
               <span className="truncate text-[10px] text-muted-foreground">
                 {cell.ghost ? `${cell.kickoffLabel} · fenêtre protégée` : `${cell.kickoffLabel} · ${cell.opponentLabel}`}
