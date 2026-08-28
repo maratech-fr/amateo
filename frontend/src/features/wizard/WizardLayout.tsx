@@ -126,11 +126,17 @@ export function WizardPage() {
   const venuesValidation = useStepValidation("venues");
   const coachesValidation = useStepValidation("coaches");
   const constraintsValidation = useStepValidation("constraints");
+  const teamsDone = 0 === teamsValidation.errors.length && true !== teamsValidation.pending;
+  const venuesDone = 0 === venuesValidation.errors.length && true !== venuesValidation.pending;
+  const coachesDone = 0 === coachesValidation.errors.length && true !== coachesValidation.pending;
   const stepDone: Partial<Record<WizardStepId, boolean>> = {
-    teams: 0 === teamsValidation.errors.length && true !== teamsValidation.pending,
-    venues: 0 === venuesValidation.errors.length && true !== venuesValidation.pending,
-    coaches: 0 === coachesValidation.errors.length && true !== coachesValidation.pending,
-    constraints: 0 === constraintsValidation.errors.length && true !== constraintsValidation.pending,
+    teams: teamsDone,
+    venues: venuesDone,
+    coaches: coachesDone,
+    // UXS-06 — les contraintes sont OPTIONNELLES : sur un club vierge elles n'ont aucune erreur,
+    // mais l'étape n'est pas « faite » tant que ses PRÉREQUIS ne le sont pas — on ne finit pas les
+    // contraintes d'un club sans équipes/gymnases/coachs. « valide » n'est pas « fait ».
+    constraints: teamsDone && venuesDone && coachesDone && 0 === constraintsValidation.errors.length && true !== constraintsValidation.pending,
     recap: 0 === recapValidation.errors.length && true !== recapValidation.pending,
   };
 
