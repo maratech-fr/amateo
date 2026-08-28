@@ -18,6 +18,10 @@ services:
     App\Service\Geo\IgnRoutingClient:
         arguments:
             $httpClient: '@App\Tests\Double\IgnRoutingHttpClientStub'
+            # This file has no `_defaults` autowire, so the clock (added for the
+            # global autofill budget) must be bound explicitly — same simulated
+            # clock the rest of the test env uses.
+            $clock: '@Symfony\Component\Clock\ClockInterface'
 
     App\AdminJob\AdminJobExecutorInterface:
         alias: App\Tests\Double\RecordingAdminJobExecutor

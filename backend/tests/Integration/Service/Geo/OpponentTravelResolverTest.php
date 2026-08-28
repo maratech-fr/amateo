@@ -25,6 +25,7 @@ use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Clock\MockClock;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 
@@ -121,7 +122,7 @@ final class OpponentTravelResolverTest extends WebTestCase
     {
         $ign = new IgnRoutingClient(new MockHttpClient(
             static fn (): MockResponse => new MockResponse((string) json_encode(['duration' => $durationSeconds])),
-        ));
+        ), new MockClock);
 
         return new OpponentTravelResolver(
             $this->em,

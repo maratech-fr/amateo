@@ -112,6 +112,8 @@ final class OpponentTravelResolver
             return ['resolved' => 0, 'unresolved' => $unresolved, 'skippedManual' => $skippedManual];
         }
 
+        // A code the budget never reached is absent from `minutes` → null → listed
+        // unresolved, exactly like an IGN-mute pair (best-effort; a re-run resolves it).
         $minutes = $this->routingClient->travelMinutesBatch(array_map(
             static fn (array $t): array => [
                 'key' => $t['code'],
@@ -122,7 +124,7 @@ final class OpponentTravelResolver
                 'endLon' => $t['lon'],
             ],
             $geoTargets,
-        ));
+        ))['minutes'];
 
         $resolved = 0;
         $wrote = false;

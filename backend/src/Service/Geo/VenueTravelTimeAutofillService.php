@@ -28,6 +28,11 @@ final class VenueTravelTimeAutofillService
 
     private const REASON_MISSING_GEO = 'missing_geo';
     private const REASON_ROUTING_FAILED = 'routing_failed';
+    // The routing budget ran out before this pair's turn: NOT a failure, the lot
+    // simply stopped dispatching (IgnRoutingClient::BATCH_BUDGET_SECONDS). Distinct
+    // from routing_failed so the manager is told to RE-RUN to continue, not that the
+    // pair is unroutable.
+    private const REASON_BUDGET_EXCEEDED = 'budget_exceeded';
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -87,7 +92,9 @@ final class VenueTravelTimeAutofillService
             throw new AutofillCapExceededException(\count($geoPairs), self::MAX_AUTOFILL_PAIRS);
         }
 
-        $minutes = $this->routingClient->travelMinutesBatch($this->buildJobs($geoPairs));
+        $batch = $this->routingClient->travelMinutesBatch($this->buildJobs($geoPairs));
+        $minutes = $batch['minutes'];
+        $budgetExceeded = array_fill_keys($batch['budgetExceededKeys'], true);
 
         $filled = 0;
         $skippedManual = 0;
@@ -95,13 +102,15 @@ final class VenueTravelTimeAutofillService
             $a = $pair['a'];
             $b = $pair['b'];
             $key = $a->getId() . '|' . $b->getId();
+            $carKey = $key . '|' . IgnRoutingClient::PROFILE_CAR;
+            $walkKey = $key . '|' . IgnRoutingClient::PROFILE_PEDESTRIAN;
 
             if ($pair['hadManual']) {
                 ++$skippedManual;
             }
 
-            $drivingValue = $pair['drivingNeeded'] ? ($minutes[$key . '|' . IgnRoutingClient::PROFILE_CAR] ?? null) : null;
-            $walkingValue = $pair['walkingNeeded'] ? ($minutes[$key . '|' . IgnRoutingClient::PROFILE_PEDESTRIAN] ?? null) : null;
+            $drivingValue = $pair['drivingNeeded'] ? ($minutes[$carKey] ?? null) : null;
+            $walkingValue = $pair['walkingNeeded'] ? ($minutes[$walkKey] ?? null) : null;
 
             $wrote = false;
             $row = $existing[$key] ?? null;
@@ -117,12 +126,17 @@ final class VenueTravelTimeAutofillService
                 $wrote = true;
             }
 
-            // A mode we needed but the routing could not resolve → the pair is
-            // unresolved (routing_failed), even if the OTHER mode was written.
-            $drivingFailed = $pair['drivingNeeded'] && null === $drivingValue;
-            $walkingFailed = $pair['walkingNeeded'] && null === $walkingValue;
-            if ($drivingFailed || $walkingFailed) {
-                $unresolved[] = ['venueAId' => $a->getId(), 'venueBId' => $b->getId(), 'reason' => self::REASON_ROUTING_FAILED];
+            // A mode we needed but did not write → the pair is unresolved, even if
+            // the OTHER mode was written. A mode the budget never reached takes the
+            // budget_exceeded reason (re-run to continue); an attempted-but-null mode
+            // is routing_failed.
+            $drivingBudget = $pair['drivingNeeded'] && isset($budgetExceeded[$carKey]);
+            $walkingBudget = $pair['walkingNeeded'] && isset($budgetExceeded[$walkKey]);
+            $drivingUnresolved = $pair['drivingNeeded'] && null === $drivingValue;
+            $walkingUnresolved = $pair['walkingNeeded'] && null === $walkingValue;
+            if ($drivingUnresolved || $walkingUnresolved) {
+                $reason = ($drivingBudget || $walkingBudget) ? self::REASON_BUDGET_EXCEEDED : self::REASON_ROUTING_FAILED;
+                $unresolved[] = ['venueAId' => $a->getId(), 'venueBId' => $b->getId(), 'reason' => $reason];
             }
 
             if ($wrote && null !== $row) {
