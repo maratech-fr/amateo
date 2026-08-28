@@ -88,7 +88,7 @@ Clés racine : `version` · `clubId` · `seasonId` · `scheduleName` · `solverS
 | Terme | Définition |
 |-------|------------|
 | **Tenant** | Le club courant, résolu **côté serveur depuis le JWT** (le frontend n'envoie PAS `X-Club-Id` ; header spoofé → 403). |
-| **RLS** | Row-Level Security PostgreSQL, policies `FORCE` sur `club_id`, clé = GUC `app.club_id`. Runtime `app_user` (restreint) / migrations-ops `clubscheduler` (connexion `admin`, **bypasse RLS**). CLI sans GUC → 0 ligne (attendu). |
+| **RLS** | Row-Level Security PostgreSQL, policies `FORCE` sur `club_id`, clé = GUC `app.club_id`. Runtime `app_user` (restreint) / migrations-ops `amateo_owner` (connexion `admin`, **bypasse RLS**). CLI sans GUC → 0 ligne (attendu). |
 | **GUC** | Variable de session PostgreSQL (`app.club_id`) posée par `TenantConnectionContext` (workers : depuis le message). |
 | **season_filter** | Filtre Doctrine intra-club : scope saison (X-Season-Id validé, sinon saison calendaire courante). |
 | **Mercure** | Hub SSE ; topic `club:{clubId}:schedule:{scheduleId}` ; publication **best-effort** (le front polle en secours). |

@@ -1,6 +1,6 @@
 # ClubScheduler — PostgreSQL Row-Level Security (RLS)
 
-Last verified @ 2026-08-27 (rotation documentation-update, à l'occasion du déménagement de la liste blocking-tests : `Version20260703120000`/`Version20260804120000`/`Version20260813130000`/`Version20260825140000` existent ✓ · `admin_all` « FOR ALL, USING/WITH CHECK true » (`Version20260813130000:19`) ✓ · GRANT `shared_competition_deadline` SANS DELETE (`Version20260825140000:42`, revue F-1) ✓ · `TenantConnectionContext` émet `set_config('app.club_id', ?, false)` session-scoped, pas `SET LOCAL` ✓. Rien à corriger ce jour)
+Last verified @ 2026-08-28 (P4-142 — renommage infra : rôle owner `amateo_owner`, conteneurs `amateo-*`, fonction RLS `enable_rls_for_existing_amateo_tables`, DSN admin recalés. Re-confronté au CLUSTER réel : 44 policies `admin_all` → `amateo_owner`, 0 vers l'ancien rôle ; `clubscheduler` n'existe plus ; `app_user` sans superuser ni BYPASSRLS ; 44/44 tables RLS en FORCE. Passe précédente : rotation documentation-update, à l'occasion du déménagement de la liste blocking-tests : `Version20260703120000`/`Version20260804120000`/`Version20260813130000`/`Version20260825140000` existent ✓ · `admin_all` « FOR ALL, USING/WITH CHECK true » (`Version20260813130000:19`) ✓ · GRANT `shared_competition_deadline` SANS DELETE (`Version20260825140000:42`, revue F-1) ✓ · `TenantConnectionContext` émet `set_config('app.club_id', ?, false)` session-scoped, pas `SET LOCAL` ✓. Rien à corriger ce jour)
 
 > ✅ **STATUS: ACTIVE** since migration `Version20260703120000` (SEC-03 fixed). The migration — not the initdb scripts — is the source of truth for policies and grants: **every table carrying a `club_id` column** is under `FORCE ROW LEVEL SECURITY` with a `tenant_isolation` policy `TO app_user` (no hard count here — new tenant tables inherit the pattern via the migration helper; the count would rot). `club_user` and `coach_wish_token` carry the hybrid SELECT bootstrap policy (open only while NO tenant GUC is set — scoped to the tenant otherwise, SEC-12 residual closed by `Version20260804120000`; deliberate cross-tenant reads go through `TenantConnectionContext::runWithoutTenant()`). Runtime connects as `app_user`; the GUC is set via `TenantConnectionContext` (`set_config`, session-scoped). **This file = operator how-to (env, roles, troubleshooting). The effective architecture — who sets the GUC, the exception tables, the superadmin door — is `docs/security/rls.md`, and it is CANONICAL.** ⚑ La consigne précédente disait « garder les deux en phase » : c'est précisément ce qui a produit la dérive du prédicat corrigée le 2026-08-19. Deux fichiers qu'on maintient en phase à la main divergent — le seul garde-fou est de ne PAS redire ici ce que le canon dit là-bas : on pointe. The `01/02/03-*.sql` initdb scripts remain for fresh volumes only.
 
@@ -13,7 +13,7 @@ ClubScheduler is designed to use **PostgreSQL Row-Level Security (RLS)** to enfo
 | User | Purpose | DDL Rights | RLS Bypass |
 |------|---------|------------|------------|
 | `app_user` | Symfony runtime (API requests) | **None** | **No** — policies apply |
-| `clubscheduler` | **migrations / ops / superadmin door** (Doctrine `admin` connection, `DATABASE_ADMIN_URL`) | all (owner; superuser **locally only**) | **Locally yes** (superuser). On managed PG (no `BYPASSRLS` ever): non-superuser owner, crosses via the `admin_all` policies (`Version20260813130000`, one per FORCE-RLS table) |
+| `amateo_owner` | **migrations / ops / superadmin door** (Doctrine `admin` connection, `DATABASE_ADMIN_URL`) | all (owner; superuser **locally only**) | **Locally yes** (superuser). On managed PG (no `BYPASSRLS` ever): non-superuser owner, crosses via the `admin_all` policies (`Version20260813130000`, one per FORCE-RLS table) |
 
 > **Security rule:** `app_user` is **not** a `SUPERUSER` and does **not** hold `CREATEDB` or `CREATEROLE`.
 
@@ -69,7 +69,7 @@ CREATE POLICY tenant_isolation ON public.<table_name>
 -- 3. Admin door (required — a FORCE-RLS table without it locks the admin
 --    connection out on managed PostgreSQL, where no role has BYPASSRLS)
 CREATE POLICY admin_all ON public.<table_name>
-    FOR ALL TO clubscheduler
+    FOR ALL TO amateo_owner
     USING (true) WITH CHECK (true);
 ```
 
@@ -82,7 +82,7 @@ CREATE POLICY admin_all ON public.<table_name>
 A helper function is provided in `01-rls.sql`:
 
 ```sql
-SELECT app_security.enable_rls_for_existing_clubscheduler_tables();
+SELECT app_security.enable_rls_for_existing_amateo_tables();
 ```
 
 This loops over every table in the `public` schema that has a `club_id` column and enables RLS. It **does not** create policies — you must add those separately (see `03-rls-template.sql`).
@@ -95,17 +95,17 @@ Use `app_user` for the runtime `DATABASE_URL`:
 
 ```env
 # .env.local (runtime)
-DATABASE_URL="postgresql://app_user:app_user_password@postgres:5432/clubscheduler?serverVersion=16&charset=utf8"
+DATABASE_URL="postgresql://app_user:app_user_password@postgres:5432/amateo_dev?serverVersion=16&charset=utf8"
 ```
 
-Migrations and ops run on the **`admin` Doctrine connection** (`clubscheduler`, superuser — the only RLS bypass):
+Migrations and ops run on the **`admin` Doctrine connection** (`amateo_owner`, superuser — the only RLS bypass):
 
 ```env
 # .env (migrations/ops — doctrine.yaml `admin` connection)
-DATABASE_ADMIN_URL="postgresql://clubscheduler:...@postgres:5432/clubscheduler?serverVersion=16&charset=utf8"
+DATABASE_ADMIN_URL="postgresql://amateo_owner:...@postgres:5432/amateo_dev?serverVersion=16&charset=utf8"
 ```
 
-⚠ `migration_user` **no longer exists** (dropped 2026-07-31, migration `Version20260731090000`). It was created by the init SQL with schema-wide `GRANT ALL` and used by **no** connection — a dormant service account with broad privileges. It could not be wired up either: at the time, `NOSUPERUSER` without `BYPASSRLS` meant default-deny under `FORCE`, so migrations and fixtures would break. Migrations run on the `admin` connection (`clubscheduler`). *(That wall is lifted since P5-7: a `NOSUPERUSER` role that is `clubscheduler` or a member of it passes through the `admin_all` policies — this is exactly the managed-PG regime.)*
+⚠ `migration_user` **no longer exists** (dropped 2026-07-31, migration `Version20260731090000`). It was created by the init SQL with schema-wide `GRANT ALL` and used by **no** connection — a dormant service account with broad privileges. It could not be wired up either: at the time, `NOSUPERUSER` without `BYPASSRLS` meant default-deny under `FORCE`, so migrations and fixtures would break. Migrations run on the `admin` connection (`amateo_owner`). *(That wall is lifted since P5-7: a `NOSUPERUSER` role that is `amateo_owner` or a member of it passes through the `admin_all` policies — this is exactly the managed-PG regime.)*
 
 ### 2. Setting the Tenant Context
 
@@ -127,7 +127,7 @@ You can verify isolation directly in `psql`:
 
 ```sql
 -- Connect as app_user
-\c clubscheduler app_user
+\c amateo_dev app_user
 
 -- Without context: should return 0 rows on an RLS-protected table
 SELECT * FROM public.event;
@@ -154,4 +154,4 @@ SELECT * FROM public.event;
 | `0 rows returned` for a table that has data | `app.club_id` not set | In `psql`: run `SELECT set_config('app.club_id', '<uuid>', false)` (or the `app_security.set_club_id(...)` helper). In the app: the context is set automatically by `TenantConnectionContext` |
 | `permission denied for table` | `app_user` lacks `GRANT` | Re-run `02-users.sh` or check `GRANT` statements |
 | Policy not enforced for table owner | `FORCE ROW LEVEL SECURITY` missing | Run `ALTER TABLE ... FORCE ROW LEVEL SECURITY` |
-| Migration fails with RLS error | Migration runs as `app_user` (no bypass) | Run migrations on the `admin` connection (`clubscheduler`, superuser) |
+| Migration fails with RLS error | Migration runs as `app_user` (no bypass) | Run migrations on the `admin` connection (`amateo_owner`, superuser) |

@@ -19,10 +19,10 @@ cours, suffisant pré-commercialisation.
 - **Cadence** : tick nocturne (01:00) qui **skippe sans activité** — zéro club = zéro dump,
   saison pleine = quotidien de fait. Signal : `club.last_activity_at` + `solver_metrics` +
   `audit_log`.
-- **Emplacement** : `backend/var/backups/clubscheduler-YYYYmmdd-His-u.dump` (format custom
+- **Emplacement** : `backend/var/backups/amateo-YYYYmmdd-His-u.dump` (format custom
   `pg_dump -Fc`), **rétention 14 dumps**.
 - **Off-site (optionnel mais recommandé dès la prod)** : poser `BACKUP_SYNC_COMMAND` dans
-  l'env (ex. `rclone copy /app/backend/var/backups b2:clubscheduler-backups`) — exécutée après
+  l'env (ex. `rclone copy /app/backend/var/backups b2:amateo-backups`) — exécutée après
   chaque dump, échec = warning jamais bloquant.
 - **Surveillance** : ligne « Sauvegarde base de données » du board fraîcheur + alerte email
   automatique (`freshness:db-backup`) si de l'activité reste non couverte > 26 h.
@@ -42,13 +42,13 @@ php bin/console app:db:restore-check     # PREUVE que le dernier dump est restau
 ### 3a. Restauration FINE (le cas fréquent : une table/un club abîmé)
 
 1. `php bin/console app:db:restore-check` — restaure le dernier dump dans une base jetable
-   `clubscheduler_restore_<rand>` et la DÉTRUIT. Pour INSPECTER au lieu de détruire :
+   `amateo_restore_<rand>` et la DÉTRUIT. Pour INSPECTER au lieu de détruire :
    restaurer à la main dans une base temporaire :
 
    ```bash
-   psql -h postgres -U clubscheduler -d postgres -c 'CREATE DATABASE inspect_restore'
-   pg_restore --no-owner --no-privileges -h postgres -U clubscheduler -d inspect_restore \
-       backend/var/backups/clubscheduler-<le-plus-recent>.dump
+   psql -h postgres -U amateo_owner -d postgres -c 'CREATE DATABASE inspect_restore'
+   pg_restore --no-owner --no-privileges -h postgres -U amateo_owner -d inspect_restore \
+       backend/var/backups/amateo-<le-plus-recent>.dump
    ```
 
 2. Comparer/extraire ce qu'il faut (`pg_dump -t <table> inspect_restore | psql ...`, ou des
@@ -61,10 +61,10 @@ php bin/console app:db:restore-check     # PREUVE que le dernier dump est restau
 2. Recréer la base vide puis restaurer :
 
    ```bash
-   psql -h postgres -U clubscheduler -d postgres -c 'DROP DATABASE clubscheduler'
-   psql -h postgres -U clubscheduler -d postgres -c 'CREATE DATABASE clubscheduler'
-   pg_restore --no-owner --no-privileges -h postgres -U clubscheduler -d amateo \
-       backend/var/backups/clubscheduler-<choisi>.dump
+   psql -h postgres -U amateo_owner -d postgres -c 'DROP DATABASE amateo'
+   psql -h postgres -U amateo_owner -d postgres -c 'CREATE DATABASE amateo'
+   pg_restore --no-owner --no-privileges -h postgres -U amateo_owner -d amateo \
+       backend/var/backups/amateo-<choisi>.dump
    ```
 
 3. `php bin/console doctrine:migrations:status` — vérifier l'alignement schéma/migrations.
@@ -95,7 +95,7 @@ php bin/console app:db:restore-check     # PREUVE que le dernier dump est restau
 Exemple **Scaleway Object Storage** (S3-compatible), credentials par variables
 d'env (pas de fichier de conf rclone à gérer) :
 
-1. Console Scaleway → *Object Storage* → créer un bucket (ex. `clubscheduler-backups`,
+1. Console Scaleway → *Object Storage* → créer un bucket (ex. `amateo-backups`,
    région `fr-par`, privé).
 2. *IAM → API Keys* → créer une clé dédiée backups (droits Object Storage seulement).
 3. Dans `.env.prod` — via le rail chiffré (`make env-decode@prod` → éditer →
@@ -103,7 +103,7 @@ d'env (pas de fichier de conf rclone à gérer) :
    chiffrés), ou directement sur la VM en dépannage (puis reporter au `.gpg`) :
 
    ```bash
-   BACKUP_SYNC_COMMAND=rclone copyto /app/backend/var/backups :s3:clubscheduler-backups/db --s3-provider=Scaleway --s3-endpoint=s3.fr-par.scw.cloud --s3-region=fr-par
+   BACKUP_SYNC_COMMAND=rclone copyto /app/backend/var/backups :s3:amateo-backups/db --s3-provider=Scaleway --s3-endpoint=s3.fr-par.scw.cloud --s3-region=fr-par
    RCLONE_S3_ACCESS_KEY_ID=<access-key>
    RCLONE_S3_SECRET_ACCESS_KEY=<secret-key>
    ```

@@ -57,8 +57,8 @@ docker compose version   # doit afficher v2.24 ou plus (interpolation .env)
 ⬜ Sur la VM :
 
 ```bash
-sudo mkdir -p /srv/clubscheduler && sudo chown $USER /srv/clubscheduler
-cd /srv/clubscheduler
+sudo mkdir -p /srv/amateo && sudo chown $USER /srv/amateo
+cd /srv/amateo
 ```
 
 ⬜ Copier depuis le repo (scp ou copier-coller) :
@@ -82,7 +82,7 @@ passe DB). ⚠ Répéter à la main les mots de passe dans `DATABASE_URL` /
 
 ### 1.3 Clés JWT
 
-⬜ Toujours dans `/srv/clubscheduler`, avec le `JWT_PASSPHRASE` posé en 1.2 :
+⬜ Toujours dans `/srv/amateo`, avec le `JWT_PASSPHRASE` posé en 1.2 :
 
 ```bash
 mkdir -p jwt
@@ -141,13 +141,13 @@ déploiement. Il lui faut la traversée sur `$DEPLOY_PATH` et la lecture sur `la
 `system-pages/` :
 
 ```bash
-sudo chmod o+x /srv/clubscheduler            # traverser, sans lire le reste
-sudo chmod -R o+rX /srv/clubscheduler/landing
-sudo chmod -R o+rX /srv/clubscheduler/system-pages
+sudo chmod o+x /srv/amateo            # traverser, sans lire le reste
+sudo chmod -R o+rX /srv/amateo/landing
+sudo chmod -R o+rX /srv/amateo/system-pages
 ```
 
-Vérifier plutôt que supposer : `sudo -u caddy cat /srv/clubscheduler/landing/index.html | head -1`
-et `sudo -u caddy cat /srv/clubscheduler/system-pages/503.html | head -1`.
+Vérifier plutôt que supposer : `sudo -u caddy cat /srv/amateo/landing/index.html | head -1`
+et `sudo -u caddy cat /srv/amateo/system-pages/503.html | head -1`.
 
 ### 1.6 Armer le workflow de déploiement
 
@@ -160,7 +160,7 @@ et `sudo -u caddy cat /srv/clubscheduler/system-pages/503.html | head -1`.
 | Secret | `DEPLOY_SSH_KEY` | une clé privée SSH dédiée au deploy (générer : `ssh-keygen -t ed25519 -f deploy_key`, mettre `deploy_key.pub` dans `~/.ssh/authorized_keys` de la VM, coller `deploy_key` ici) |
 | Secret | `ENV_GPG_PASSPHRASE` | la passphrase du `.env.prod.gpg` (celle du gestionnaire de mots de passe — voir § Secrets chiffrés) |
 | Variable | `DEPLOY_ENABLED` | `true` |
-| Variable | `DEPLOY_PATH` | `/srv/clubscheduler` (optionnelle, c'est le défaut) |
+| Variable | `DEPLOY_PATH` | `/srv/amateo` (optionnelle, c'est le défaut) |
 
 ### 1.7 Premier déploiement
 
@@ -266,10 +266,10 @@ le risque n'est pas technique, il est d'usage.
 
 ```bash
 # Avec heure de retour — la page affiche « Retour prévu vers 23:30 » + un décompte :
-ssh <hôte> "echo '2026-08-23T23:30:00+02:00' > /srv/clubscheduler/maintenance.on"
+ssh <hôte> "echo '2026-08-23T23:30:00+02:00' > /srv/amateo/maintenance.on"
 
 # Sans heure connue — un `touch` nu reste valide : page normale, aucun compteur :
-ssh <hôte> "touch /srv/clubscheduler/maintenance.on"
+ssh <hôte> "touch /srv/amateo/maintenance.on"
 
 curl -sS -o /dev/null -w '%{http_code}\n' https://app.amateo.app/     # attendu : 503
 ```
@@ -277,7 +277,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://app.amateo.app/     # attendu 
 **Éteindre** (puis vérifier la réouverture) :
 
 ```bash
-ssh <hôte> "rm -f /srv/clubscheduler/maintenance.on"
+ssh <hôte> "rm -f /srv/amateo/maintenance.on"
 curl -sS -o /dev/null -w '%{http_code}\n' https://app.amateo.app/     # attendu : 200
 ```
 

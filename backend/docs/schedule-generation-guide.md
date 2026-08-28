@@ -1,10 +1,10 @@
 # Guide de génération de planning — ClubScheduler
 
-Last verified @ 2026-08-28 (rotation `documentation-update`, passe Lot A — contrat re-confirmé `CONTRACT_VERSION` **2.16** (`ScheduleConstraintBuilder.php:64`), aucune occurrence 2.15 résiduelle. Passe précédente (recalé au bump de contrat **2.15 → 2.16** — P2-53 RMM-8 PR-2,
+Last verified @ 2026-08-28 (P4-142 — renommage infra : rôle owner `amateo_owner`, conteneurs `amateo-*`, fonction RLS `enable_rls_for_existing_amateo_tables`, DSN admin recalés. Re-confronté au CLUSTER réel : 44 policies `admin_all` → `amateo_owner`, 0 vers l'ancien rôle ; `clubscheduler` n'existe plus ; `app_user` sans superuser ni BYPASSRLS ; 44/44 tables RLS en FORCE. Passe précédente : rotation `documentation-update`, passe Lot A — contrat re-confirmé `CONTRACT_VERSION` **2.16** (`ScheduleConstraintBuilder.php:64`), aucune occurrence 2.15 résiduelle. Passe précédente (recalé au bump de contrat **2.15 → 2.16** — P2-53 RMM-8 PR-2,
 blocs de trajet sur `/generate` ; ce fichier ne cite le contrat qu'au Cas 6 du tableau de
 pannes, désormais `v2.16`. Passe précédente (2026-08-25, bump 2.14 → 2.15) :
 re-confronté au code, tout juste : les huit conteneurs cités
-(`clubscheduler-php-fpm`/`nginx`/`postgres`/`redis`/`engine`/`messenger-worker`/`mercure`/`mailpit`)
+(`amateo-php-fpm`/`nginx`/`postgres`/`redis`/`engine`/`messenger-worker`/`mercure`/`mailpit`)
 existent dans `docker-compose.yml` ✓ · port 8080 = `NGINX_PORT` (`.env:6`) ✓ · les trois refus
 pré-file (409 version pointée, 422 `GenerationComplexityGuard`, 422 `OrphanPinGuard`) + la mention
 des caps métier par club et de `SocleGuard` pour une période, présents dans le contrôleur ✓ ·
@@ -32,7 +32,7 @@ Cette commande lance `docker compose up -d --wait` et démarre tous les services
 docker ps
 ```
 
-Tu dois voir apparaître : `clubscheduler-php-fpm`, `clubscheduler-nginx`, `clubscheduler-postgres`, `clubscheduler-redis`, `clubscheduler-engine`, `clubscheduler-messenger-worker`, `clubscheduler-mercure`, et éventuellement `clubscheduler-mailpit`.
+Tu dois voir apparaître : `amateo-php-fpm`, `clubscheduler-nginx`, `amateo-postgres`, `amateo-redis`, `clubscheduler-engine`, `amateo-messenger-worker`, `clubscheduler-mercure`, et éventuellement `clubscheduler-mailpit`.
 
 ### Charger les fixtures
 
@@ -344,8 +344,8 @@ Voici chaque panne possible, avec son symptôme, sa cause, sa vérification, sa 
 |---|---|
 | **Symptôme** | Le statut repasse (ou reste) en `PENDING` alors qu'une génération a été demandée. Il n'y a **pas** de diagnostic `engine_busy` — ce type n'existe plus. |
 | **Cause** | Une autre génération est en cours pour le même club : le worker n'a pas pu prendre le verrou Redis `schedule_generation:club:{clubId}`, il a remis le statut en `PENDING` et levé une `RecoverableMessageHandlingException` (retry Messenger). |
-| **Vérification** | `docker exec clubscheduler-redis redis-cli GET schedule_generation:club:<club-uuid>` — si ça retourne un token, le verrou est actif. |
-| **Correction** | Normalement rien : le message est rejoué automatiquement. Si le verrou est orphelin (worker crashé), `docker exec clubscheduler-redis redis-cli DEL schedule_generation:club:<club-uuid>`. |
+| **Vérification** | `docker exec amateo-redis redis-cli GET schedule_generation:club:<club-uuid>` — si ça retourne un token, le verrou est actif. |
+| **Correction** | Normalement rien : le message est rejoué automatiquement. Si le verrou est orphelin (worker crashé), `docker exec amateo-redis redis-cli DEL schedule_generation:club:<club-uuid>`. |
 | **Prévention** | Le verrou expire automatiquement après `timeoutSeconds + 60` secondes (**≈ 710 s** avec le timeout par défaut de 650 s). Surveille les logs du worker pour détecter les crashes récurrents. |
 
 ### Cas 3 : FAILED + diagnostic "engine_timeout"
@@ -558,7 +558,7 @@ docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 ### Logs du worker Messenger
 
 ```bash
-docker logs -f clubscheduler-messenger-worker --tail 50
+docker logs -f amateo-messenger-worker --tail 50
 ```
 
 ### Logs du moteur Python
@@ -573,13 +573,13 @@ Le transport Messenger utilise les **Redis Streams** (stream `messages`) — pas
 
 ```bash
 # Compter les messages en attente
-docker exec clubscheduler-redis redis-cli XLEN messages
+docker exec amateo-redis redis-cli XLEN messages
 
 # Inspecter les messages
-docker exec clubscheduler-redis redis-cli XRANGE messages - + COUNT 5
+docker exec amateo-redis redis-cli XRANGE messages - + COUNT 5
 
 # Vérifier le verrou de génération
-docker exec clubscheduler-redis redis-cli GET schedule_generation:club:<club-uuid>
+docker exec amateo-redis redis-cli GET schedule_generation:club:<club-uuid>
 ```
 
 ### Forcer la consommation d'un message (mode debug)
