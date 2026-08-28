@@ -1,4 +1,4 @@
-# Roadmap (55) — ce qui reste à faire
+# Roadmap (54) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -111,7 +111,6 @@
 | P3-17 | **`COACH_FORBIDDEN_TIME_RANGE`** (plage horaire interdite, au-delà du jour entier) | 🟡 | M | `COACH_AVAILABILITY` ne gère aujourd'hui que les **jours** (`unavailableDays`) — l'engine sait déjà lire une fenêtre horaire (`_coach_window_minutes`), c'est la **config + l'UI** qui manquent. Même grille que le questionnaire coach si celui-ci retient jours × plages |
 | P3-5 | **Versions — diff / comparaison** (`ScheduleDiffService` — v3 §6.2 · FF#11) | 🟡 | L | Hors périmètre D assumé ; les snapshots existent déjà (`snapshot_data`) |
 | P3-7 | **Import d'équipes Excel — UI wizard** | ⚪ | S | Le backend existe (`POST /clubs/{id}/import-teams`) ; l'écran manque, et l'étape Équipes se tape aujourd'hui **une ligne à la fois** (49 équipes chez BCCL). ⚠ **Lire P4-35 AVANT de câbler l'écran** : le volet technique est réparé (2026-08-04 — identité par nom, tout-ou-rien) mais le design décidé reste une **correspondance explicite** faite par le gestionnaire, persistée pour le ré-import — ça change la maquette, pas seulement le backend. ⚑ **GARDÉ malgré P2-21** (décision fondateur 2026-08-04) : la date de souscription est asynchrone des poules — l'API peut rendre beaucoup ou AUCUNE équipe selon le moment ; l'Excel pallie. « L'API est une aide, pas la source de vérité » |
-| P3-19 | **Miroir d'algèbre du récap — la sortie définitive reste un calcul côté MOTEUR** | ⚪ | M | **Le DANGER de la ligne est neutralisé (2026-08-07)** : l'algèbre est extraite en `PayloadCapacityMirror` (source unique des trois lectures : offre, saturation, orphelines) et **gardée par `CapacityMirrorParityTest`** (cross-stack, groupe `contract`, moteur réel — tourne en CI dans `unit-tests`/`blocking-tests` qui démarrent l'engine) : falsifié DANS LES DEUX SENS — dédup retirée côté PHP → rouge ; rabot `FACILITY_CAPACITY` désactivé côté moteur → rouge. Une dérive d'algèbre ne peut plus être silencieuse. **Reste** (dégradé de 🟠 à ⚪) : déplacer le calcul côté moteur (endpoint capacité pré-solve) pour supprimer la double maintenance — à cadrer avec la question fail-open/fail-closed des bloqueurs si le moteur ne répond pas |
 
 ---
 
