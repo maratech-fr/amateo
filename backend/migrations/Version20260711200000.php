@@ -44,10 +44,15 @@ final class Version20260711200000 extends AbstractMigration
         $this->addSql('CREATE INDEX idx_audit_log_occurred_at ON audit_log (occurred_at)');
         $this->addSql('CREATE INDEX idx_audit_log_club_id ON audit_log (club_id)');
 
-        $this->addSql('ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY');
-        $this->addSql('ALTER TABLE public.audit_log FORCE ROW LEVEL SECURITY');
-        $this->addSql(\sprintf('CREATE POLICY audit_log_select ON public.audit_log FOR SELECT TO app_user USING (%s)', self::TENANT_PREDICATE));
-        $this->addSql(\sprintf('CREATE POLICY audit_log_insert ON public.audit_log FOR INSERT TO app_user WITH CHECK (club_id IS NULL OR %s)', self::TENANT_PREDICATE));
+        // Rôle applicatif résolu (app_user hérité OU amateo_app après le rename) —
+        // même patron que Version20260703120000.
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (\is_string($appRole)) {
+            $this->addSql('ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY');
+            $this->addSql('ALTER TABLE public.audit_log FORCE ROW LEVEL SECURITY');
+            $this->addSql(\sprintf('CREATE POLICY audit_log_select ON public.audit_log FOR SELECT TO ' . $appRole . ' USING (%s)', self::TENANT_PREDICATE));
+            $this->addSql(\sprintf('CREATE POLICY audit_log_insert ON public.audit_log FOR INSERT TO ' . $appRole . ' WITH CHECK (club_id IS NULL OR %s)', self::TENANT_PREDICATE));
+        }
         // Volontairement AUCUNE policy UPDATE/DELETE → append-only au niveau DB.
     }
 

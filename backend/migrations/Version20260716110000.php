@@ -25,11 +25,12 @@ final class Version20260716110000 extends AbstractMigration
         $this->addSql('CREATE INDEX idx_solver_metrics_schedule ON solver_metrics (schedule_id)');
         $this->addSql('CREATE INDEX idx_solver_metrics_created_brin ON solver_metrics USING BRIN (created_at)');
 
-        if ((bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'')) {
-            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON solver_metrics TO app_user');
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (\is_string($appRole)) {
+            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON solver_metrics TO ' . $appRole);
             $this->addSql('ALTER TABLE public.solver_metrics ENABLE ROW LEVEL SECURITY');
             $this->addSql('ALTER TABLE public.solver_metrics FORCE ROW LEVEL SECURITY');
-            $this->addSql(\sprintf('CREATE POLICY tenant_isolation ON public.solver_metrics FOR ALL TO app_user USING (%s) WITH CHECK (%s)', self::TENANT_PREDICATE, self::TENANT_PREDICATE));
+            $this->addSql(\sprintf('CREATE POLICY tenant_isolation ON public.solver_metrics FOR ALL TO ' . $appRole . ' USING (%s) WITH CHECK (%s)', self::TENANT_PREDICATE, self::TENANT_PREDICATE));
         }
     }
 

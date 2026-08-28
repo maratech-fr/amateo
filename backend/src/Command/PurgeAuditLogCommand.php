@@ -19,7 +19,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * une donnée à durée limitée).
  *
  * CONNEXION ADMIN obligatoire : audit_log n'a volontairement AUCUNE policy
- * DELETE pour app_user (append-only tenu par la DB) — seule la porte ops peut
+ * DELETE pour amateo_app (append-only tenu par la DB) — seule la porte ops peut
  * purger.
  */
 #[AsCommand(
@@ -52,12 +52,13 @@ final class PurgeAuditLogCommand extends Command
         \assert($connection instanceof Connection);
 
         // GARDE BRUYANT (revue PR-4, patron RlsIsolationTest) : si la connexion
-        // « admin » régresse vers app_user, le DELETE sous RLS affecterait 0
-        // ligne SANS erreur — la rétention 12 mois serait silencieusement
-        // inappliquée à jamais. On refuse de tourner plutôt que mentir.
+        // « admin » régresse vers le rôle applicatif restreint (app_user hérité ou
+        // amateo_app après le rename), le DELETE sous RLS affecterait 0 ligne SANS
+        // erreur — la rétention 12 mois serait silencieusement inappliquée à
+        // jamais. On refuse de tourner plutôt que mentir.
         $currentUser = (string) $connection->fetchOne('SELECT current_user');
-        if ('app_user' === $currentUser) {
-            $io->error('The admin connection runs as app_user (RLS would silently no-op the purge). Fix DATABASE_ADMIN_URL.');
+        if (\in_array($currentUser, ['app_user', 'amateo_app'], true)) {
+            $io->error('The admin connection runs as the restricted runtime role (RLS would silently no-op the purge). Fix DATABASE_ADMIN_URL.');
 
             return Command::FAILURE;
         }

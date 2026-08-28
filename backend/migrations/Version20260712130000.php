@@ -31,13 +31,13 @@ final class Version20260712130000 extends AbstractMigration
 
         // RLS: FORCE + tenant_isolation policy keyed on the app.club_id GUC (every
         // club_id table inherits this pattern — RlsIsolationTest enforces it).
-        $hasRole = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        if ($hasRole) {
-            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON constraint_period_override TO app_user');
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (\is_string($appRole)) {
+            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON constraint_period_override TO ' . $appRole);
             $this->addSql('ALTER TABLE public.constraint_period_override ENABLE ROW LEVEL SECURITY');
             $this->addSql('ALTER TABLE public.constraint_period_override FORCE ROW LEVEL SECURITY');
             $this->addSql(\sprintf(
-                'CREATE POLICY tenant_isolation ON public.constraint_period_override FOR ALL TO app_user USING (%s) WITH CHECK (%s)',
+                'CREATE POLICY tenant_isolation ON public.constraint_period_override FOR ALL TO ' . $appRole . ' USING (%s) WITH CHECK (%s)',
                 self::TENANT_PREDICATE,
                 self::TENANT_PREDICATE,
             ));

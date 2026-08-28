@@ -38,9 +38,9 @@ final class Version20260810160000 extends AbstractMigration
         // Global table (no club_id → no RLS), only a runtime-role grant, like
         // email_verification_token. The identity sequence is advanced by the
         // table INSERT, so no separate grant.
-        $hasRole = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        if ($hasRole) {
-            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON email_change_token TO app_user');
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (\is_string($appRole)) {
+            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON email_change_token TO ' . $appRole);
         }
     }
 

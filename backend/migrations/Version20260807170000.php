@@ -50,13 +50,13 @@ final class Version20260807170000 extends AbstractMigration
         $this->addSql('ALTER TABLE team_tag_assignment ALTER COLUMN club_id SET NOT NULL');
         $this->addSql('CREATE INDEX idx_team_tag_assignment_club ON team_tag_assignment (club_id)');
 
-        $hasRole = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        if ($hasRole) {
-            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON team_tag_assignment TO app_user');
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (\is_string($appRole)) {
+            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON team_tag_assignment TO ' . $appRole);
             $this->addSql('ALTER TABLE public.team_tag_assignment ENABLE ROW LEVEL SECURITY');
             $this->addSql('ALTER TABLE public.team_tag_assignment FORCE ROW LEVEL SECURITY');
             $this->addSql(\sprintf(
-                'CREATE POLICY tenant_isolation ON public.team_tag_assignment FOR ALL TO app_user USING (%s) WITH CHECK (%s)',
+                'CREATE POLICY tenant_isolation ON public.team_tag_assignment FOR ALL TO ' . $appRole . ' USING (%s) WITH CHECK (%s)',
                 self::TENANT_PREDICATE,
                 self::TENANT_PREDICATE,
             ));
@@ -65,8 +65,8 @@ final class Version20260807170000 extends AbstractMigration
 
     public function down(Schema $schema): void
     {
-        $hasRole = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        if ($hasRole) {
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (\is_string($appRole)) {
             $this->addSql('DROP POLICY IF EXISTS tenant_isolation ON public.team_tag_assignment');
             $this->addSql('ALTER TABLE public.team_tag_assignment NO FORCE ROW LEVEL SECURITY');
             $this->addSql('ALTER TABLE public.team_tag_assignment DISABLE ROW LEVEL SECURITY');

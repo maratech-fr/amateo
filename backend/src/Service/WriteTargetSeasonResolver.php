@@ -18,7 +18,7 @@ use Doctrine\ORM\EntityManagerInterface;
  * SQL brut FILTER-FREE, exactement le patron de
  * {@see SchedulePlanProvisioner::fetchPlanContext} : la saison de la cible n'est pas
  * forcément la saison filtrée du moment, donc le filtre `season_filter` la cacherait.
- * La RLS scope le club (connexion `app_user` — JAMAIS la connexion `admin` qui la
+ * La RLS scope le club (connexion `amateo_app` — JAMAIS la connexion `admin` qui la
  * contourne) : une cible d'un AUTRE club rend `null`, et l'appelant retombe sur le
  * header pendant que ses gardes tenant/404 gardent la main. Le garde saison ne doit
  * JAMAIS devenir un oracle d'existence : cible introuvable → `null` → repli.

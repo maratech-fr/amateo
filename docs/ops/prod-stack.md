@@ -82,7 +82,7 @@ Trois rôles, et confondre les deux premiers est le risque réel (→ [`../secur
 
 | Rôle | Portée | Usage |
 |---|---|---|
-| `app_user` | NOSUPERUSER, DML, **scopé par RLS** | la connexion runtime de l'application, jamais un humain |
+| `amateo_app` | NOSUPERUSER, DML, **scopé par RLS** | la connexion runtime de l'application, jamais un humain |
 | `amateo_owner` | propriétaire non-superuser, policies `admin_all` → **traverse le RLS, voit TOUS les clubs** | migrations et gestes de support qui l'exigent vraiment |
 | *(à créer, P5)* lecture seule | `SELECT` seulement, **sans** `admin_all` donc scopé lui aussi | l'exploration courante depuis un poste |
 

@@ -29,10 +29,10 @@ final class Version20260813150000 extends AbstractMigration
         $this->addSql('CREATE TABLE release_note (id UUID NOT NULL, version INT DEFAULT 1 NOT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, updated_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, title VARCHAR(160) NOT NULL, body TEXT NOT NULL, note_date DATE NOT NULL, published_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, PRIMARY KEY (id))');
         $this->addSql('CREATE INDEX idx_release_note_published_at ON release_note (published_at)');
 
-        $hasRole = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        if ($hasRole) {
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (\is_string($appRole)) {
             // Public product reference: readable/writable by app_user, no RLS policy (no club_id).
-            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON release_note TO app_user');
+            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON release_note TO ' . $appRole);
         }
 
         $this->addSql('ALTER TABLE app_user ADD release_notes_seen_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL');

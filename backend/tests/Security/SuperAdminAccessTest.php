@@ -355,7 +355,7 @@ final class SuperAdminAccessTest extends WebTestCase
         foreach (['super_admin', 'admin_audit_log', 'admin_job_run'] as $table) {
             foreach (['SELECT', 'INSERT', 'UPDATE', 'DELETE'] as $privilege) {
                 self::assertFalse((bool) $this->admin()->fetchOne(
-                    'SELECT has_table_privilege(\'app_user\', :table, :privilege)',
+                    'SELECT has_table_privilege(\'amateo_app\', :table, :privilege)',
                     ['table' => $table, 'privilege' => $privilege],
                 ));
             }

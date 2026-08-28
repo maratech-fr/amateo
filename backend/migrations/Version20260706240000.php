@@ -39,14 +39,14 @@ final class Version20260706240000 extends AbstractMigration
 
         $this->addSql('ALTER TABLE club ADD league VARCHAR(24) DEFAULT NULL');
 
-        $hasRole = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        if ($hasRole) {
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (\is_string($appRole)) {
             foreach (['competition', 'fixture'] as $table) {
-                $this->addSql(\sprintf('GRANT SELECT, INSERT, UPDATE, DELETE ON %s TO app_user', $table));
+                $this->addSql(\sprintf('GRANT SELECT, INSERT, UPDATE, DELETE ON %s TO ' . $appRole, $table));
                 $this->addSql(\sprintf('ALTER TABLE public.%s ENABLE ROW LEVEL SECURITY', $table));
                 $this->addSql(\sprintf('ALTER TABLE public.%s FORCE ROW LEVEL SECURITY', $table));
                 $this->addSql(\sprintf(
-                    'CREATE POLICY tenant_isolation ON public.%s FOR ALL TO app_user USING (%s) WITH CHECK (%s)',
+                    'CREATE POLICY tenant_isolation ON public.%s FOR ALL TO ' . $appRole . ' USING (%s) WITH CHECK (%s)',
                     $table,
                     self::TENANT_PREDICATE,
                     self::TENANT_PREDICATE,

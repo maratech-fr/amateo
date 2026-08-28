@@ -25,10 +25,10 @@ final class Version20260704140000 extends AbstractMigration
         $this->addSql('CREATE UNIQUE INDEX uniq_school_holiday_zone_type_year ON school_holiday_period (zone, holiday_type, school_year)');
         $this->addSql('CREATE INDEX idx_school_holiday_zone_start ON school_holiday_period (zone, start_date)');
 
-        $hasRole = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        if ($hasRole) {
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (\is_string($appRole)) {
             // Public reference: readable by app_user, no RLS policy (no club_id).
-            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON school_holiday_period TO app_user');
+            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON school_holiday_period TO ' . $appRole);
         }
     }
 

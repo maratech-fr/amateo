@@ -27,14 +27,14 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * comptes divergents et clés de dédup vues deux fois, que ce test attrape.
  *
  * Le seeder exige la connexion SUPERUSER (il purge/insère à travers la RLS, comme
- * `make fixtures`). En test la connexion par défaut est `app_user` : on bascule
+ * `make fixtures`). En test la connexion par défaut est `amateo_app` : on bascule
  * `DATABASE_URL` sur l'URL admin AVANT de booter, exactement comme la commande
  * `app:demo:seed-bccl` tourne sous `DATABASE_URL=$DATABASE_ADMIN_URL`.
  *
  * ⚠ PROCESSUS ISOLÉ obligatoire : DAMA épingle sa connexion statique au PREMIER
  * usager de `default` pour toute la durée du process (c'est ce qui tient sa
  * transaction ouverte d'un test à l'autre). Un autre test l'ayant ouverte en
- * `app_user`, notre bascule d'URL n'aurait plus prise. Un process neuf établit
+ * `amateo_app`, notre bascule d'URL n'aurait plus prise. Un process neuf établit
  * la connexion superuser d'entrée.
  *
  * ⚠ ROLLBACK EXPLICITE : sur cette connexion superuser reconstruite, la

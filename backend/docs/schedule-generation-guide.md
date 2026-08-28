@@ -1,6 +1,6 @@
 # Guide de génération de planning — ClubScheduler
 
-Last verified @ 2026-08-28 (P4-142 — renommage infra : rôle owner `amateo_owner`, conteneurs `amateo-*`, fonction RLS `enable_rls_for_existing_amateo_tables`, DSN admin recalés. Re-confronté au CLUSTER réel : 44 policies `admin_all` → `amateo_owner`, 0 vers l'ancien rôle ; `clubscheduler` n'existe plus ; `app_user` sans superuser ni BYPASSRLS ; 44/44 tables RLS en FORCE. Passe précédente : rotation `documentation-update`, passe Lot A — contrat re-confirmé `CONTRACT_VERSION` **2.16** (`ScheduleConstraintBuilder.php:64`), aucune occurrence 2.15 résiduelle. Passe précédente (recalé au bump de contrat **2.15 → 2.16** — P2-53 RMM-8 PR-2,
+Last verified @ 2026-08-28 (rôle APPLICATIF `app_user` → `amateo_app` : 38 gardes de migrations rendus tolérants aux DEUX noms (DDL identique, seul le rôle est résolu), `02-users.sh` crée `amateo_app`, migration de rename idempotente pour les clusters existants. Prouvé : cluster NEUF 2 bases (138 migrations ×2, policies `tenant_isolation` → `{amateo_app}` partout) ET cluster existant (rename, policies suivent l'OID, données préservées). Passe P4-142 — renommage infra : rôle owner `amateo_owner`, conteneurs `amateo-*`, fonction RLS `enable_rls_for_existing_amateo_tables`, DSN admin recalés. Re-confronté au CLUSTER réel : 44 policies `admin_all` → `amateo_owner`, 0 vers l'ancien rôle ; `clubscheduler` n'existe plus ; `app_user` sans superuser ni BYPASSRLS ; 44/44 tables RLS en FORCE. Passe précédente : rotation `documentation-update`, passe Lot A — contrat re-confirmé `CONTRACT_VERSION` **2.16** (`ScheduleConstraintBuilder.php:64`), aucune occurrence 2.15 résiduelle. Passe précédente (recalé au bump de contrat **2.15 → 2.16** — P2-53 RMM-8 PR-2,
 blocs de trajet sur `/generate` ; ce fichier ne cite le contrat qu'au Cas 6 du tableau de
 pannes, désormais `v2.16`. Passe précédente (2026-08-25, bump 2.14 → 2.15) :
 re-confronté au code, tout juste : les huit conteneurs cités
@@ -40,7 +40,7 @@ Tu dois voir apparaître : `amateo-php-fpm`, `clubscheduler-nginx`, `amateo-post
 cd backend && make fixtures
 ```
 
-> ⚠️ **Ne lance JAMAIS `doctrine:fixtures:load` à la main.** Sous `app_user`, la phase de purge est silencieusement filtrée par RLS (elle supprime zéro ligne sur les tables tenant) et le rechargement collisionne alors avec les données survivantes — base à moitié purgée. La fixture s'en protège désormais et **lève une exception** si la connexion n'est pas celle du superutilisateur. Passe toujours par `make fixtures`, qui injecte la connexion `admin`.
+> ⚠️ **Ne lance JAMAIS `doctrine:fixtures:load` à la main.** Sous `amateo_app`, la phase de purge est silencieusement filtrée par RLS (elle supprime zéro ligne sur les tables tenant) et le rechargement collisionne alors avec les données survivantes — base à moitié purgée. La fixture s'en protège désormais et **lève une exception** si la connexion n'est pas celle du superutilisateur. Passe toujours par `make fixtures`, qui injecte la connexion `admin`.
 
 ### Vérifier la santé du backend
 

@@ -25,10 +25,10 @@ final class Version20260706130000 extends AbstractMigration
         $this->addSql('CREATE TABLE public_holiday (id UUID NOT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, zone VARCHAR(24) NOT NULL, holiday_date DATE NOT NULL, label VARCHAR(120) NOT NULL, PRIMARY KEY (id))');
         $this->addSql('CREATE UNIQUE INDEX uniq_public_holiday_zone_date ON public_holiday (zone, holiday_date)');
 
-        $hasRole = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        if ($hasRole) {
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (\is_string($appRole)) {
             // Public reference: readable/writable by app_user, no RLS policy (no club_id).
-            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON public_holiday TO app_user');
+            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON public_holiday TO ' . $appRole);
         }
     }
 

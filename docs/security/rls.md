@@ -5,7 +5,7 @@
 
 ## Ce qui tourne
 
-- **Connexion runtime = `app_user`** (`DATABASE_URL`) : NOSUPERUSER, DML only. **Toute table portant une colonne `club_id`** porte `ENABLE` + `FORCE ROW LEVEL SECURITY` et une policy `tenant_isolation FOR ALL TO app_user` (pas de compte figé ici — chaque nouvelle table tenant hérite du motif via la migration ; un décompte périmerait) :
+- **Connexion runtime = `amateo_app`** (`DATABASE_URL`) : NOSUPERUSER, DML only. **Toute table portant une colonne `club_id`** porte `ENABLE` + `FORCE ROW LEVEL SECURITY` et une policy `tenant_isolation FOR ALL TO amateo_app` (pas de compte figé ici — chaque nouvelle table tenant hérite du motif via la migration ; un décompte périmerait) :
   `USING/WITH CHECK (club_id = NULLIF(current_setting('app.club_id', true), '')::uuid)` — GUC absent → **0 ligne, pas d'erreur** (fail-closed).
 - **GUC `app.club_id`** posé par `App\Service\TenantConnectionContext` via `SELECT set_config('app.club_id', ?, false)` (session-scoped, paramétré). Le `SET LOCAL` historique hors transaction était un no-op — ne pas y revenir.
 - **Qui pose le GUC** :
@@ -38,11 +38,11 @@ superuser et bypasse de toute façon (les policies y sont inertes) ; sur un **Po
 où aucun rôle n'a jamais `BYPASSRLS` — le même rôle, simple propriétaire non-superuser, traverse
 par ces policies. Le mode de défaillance managé est vécu en local par le test
 (`RlsIsolationTest::testAdminDoorLetsOwnerCrossClubsWhileAppUserStaysScoped` : rôle jetable
-`NOSUPERUSER` membre de `amateo_owner` — voit et écrit cross-club pendant qu'`app_user` reste
-scopé). `admin_all` n'élargit **pas** `app_user` : une policy permissive ne s'applique qu'aux
+`NOSUPERUSER` membre de `amateo_owner` — voit et écrit cross-club pendant qu'`amateo_app` reste
+scopé). `admin_all` n'élargit **pas** `amateo_app` : une policy permissive ne s'applique qu'aux
 rôles listés et à leurs membres (`pg_has_role`). Conséquence assumée : le rôle admin a
 UPDATE/DELETE sur `audit_log` (comportement identique à l'ancien bypass superuser — l'immuabilité
-du journal reste tenue contre `app_user`). Supervision totale via
+du journal reste tenue contre `amateo_app`). Supervision totale via
 - `psql -U amateo_owner`,
 - `php bin/console dbal:run-sql --connection admin "…"`,
 - le futur dashboard super-admin (P2) devra utiliser cette connexion.

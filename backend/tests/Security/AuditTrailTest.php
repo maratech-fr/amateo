@@ -83,7 +83,7 @@ final class AuditTrailTest extends WebTestCase
         );
         self::assertSame(1, (int) $inserted);
 
-        // app_user n'a AUCUNE policy UPDATE/DELETE : PostgreSQL n'affecte
+        // amateo_app n'a AUCUNE policy UPDATE/DELETE : PostgreSQL n'affecte
         // aucune ligne — l'histoire ne se réécrit pas depuis le runtime.
         $updated = $this->em()->getConnection()->executeStatement(
             'UPDATE audit_log SET action = \'auth.register\' WHERE club_id = :cid',

@@ -38,29 +38,29 @@ final class Version20260804120000 extends AbstractMigration
 
     public function up(Schema $schema): void
     {
-        $hasRole = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        if (!$hasRole) {
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (!\is_string($appRole)) {
             return;
         }
 
         $this->addSql('DROP POLICY IF EXISTS club_user_read ON public.club_user');
-        $this->addSql(\sprintf('CREATE POLICY club_user_read ON public.club_user FOR SELECT TO app_user USING (%s)', self::HYBRID_PREDICATE));
+        $this->addSql(\sprintf('CREATE POLICY club_user_read ON public.club_user FOR SELECT TO ' . $appRole . ' USING (%s)', self::HYBRID_PREDICATE));
 
         $this->addSql('DROP POLICY IF EXISTS coach_wish_token_read ON public.coach_wish_token');
-        $this->addSql(\sprintf('CREATE POLICY coach_wish_token_read ON public.coach_wish_token FOR SELECT TO app_user USING (%s)', self::HYBRID_PREDICATE));
+        $this->addSql(\sprintf('CREATE POLICY coach_wish_token_read ON public.coach_wish_token FOR SELECT TO ' . $appRole . ' USING (%s)', self::HYBRID_PREDICATE));
     }
 
     public function down(Schema $schema): void
     {
-        $hasRole = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        if (!$hasRole) {
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (!\is_string($appRole)) {
             return;
         }
 
         $this->addSql('DROP POLICY IF EXISTS club_user_read ON public.club_user');
-        $this->addSql('CREATE POLICY club_user_read ON public.club_user FOR SELECT TO app_user USING (true)');
+        $this->addSql('CREATE POLICY club_user_read ON public.club_user FOR SELECT TO ' . $appRole . ' USING (true)');
 
         $this->addSql('DROP POLICY IF EXISTS coach_wish_token_read ON public.coach_wish_token');
-        $this->addSql('CREATE POLICY coach_wish_token_read ON public.coach_wish_token FOR SELECT TO app_user USING (true)');
+        $this->addSql('CREATE POLICY coach_wish_token_read ON public.coach_wish_token FOR SELECT TO ' . $appRole . ' USING (true)');
     }
 }

@@ -44,9 +44,9 @@ final class Version20260825140000 extends AbstractMigration
         // le partagé ») — sur une table SANS RLS, le GRANT est la seule couche DB, on ne
         // donne que le nécessaire (l'upsert exige SELECT+INSERT+UPDATE).
         // runtime est nécessaire pour que app_user la lise et l'écrive.
-        $hasAppUser = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        if ($hasAppUser) {
-            $this->addSql('GRANT SELECT, INSERT, UPDATE ON shared_competition_deadline TO app_user');
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (\is_string($appRole)) {
+            $this->addSql('GRANT SELECT, INSERT, UPDATE ON shared_competition_deadline TO ' . $appRole);
         }
     }
 

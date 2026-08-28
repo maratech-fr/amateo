@@ -25,9 +25,9 @@ final class Version20260707120000 extends AbstractMigration
         $this->addSql('CREATE TABLE transition_reminder_log (id UUID NOT NULL, season_id UUID NOT NULL, threshold SMALLINT NOT NULL, sent_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, PRIMARY KEY (id))');
         $this->addSql('CREATE UNIQUE INDEX uniq_transition_reminder ON transition_reminder_log (season_id, threshold)');
 
-        $hasRole = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        if ($hasRole) {
-            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON transition_reminder_log TO app_user');
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (\is_string($appRole)) {
+            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON transition_reminder_log TO ' . $appRole);
         }
     }
 

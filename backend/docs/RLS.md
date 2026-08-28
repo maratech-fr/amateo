@@ -1,21 +1,21 @@
 # ClubScheduler — PostgreSQL Row-Level Security (RLS)
 
-Last verified @ 2026-08-28 (P4-142 — renommage infra : rôle owner `amateo_owner`, conteneurs `amateo-*`, fonction RLS `enable_rls_for_existing_amateo_tables`, DSN admin recalés. Re-confronté au CLUSTER réel : 44 policies `admin_all` → `amateo_owner`, 0 vers l'ancien rôle ; `clubscheduler` n'existe plus ; `app_user` sans superuser ni BYPASSRLS ; 44/44 tables RLS en FORCE. Passe précédente : rotation documentation-update, à l'occasion du déménagement de la liste blocking-tests : `Version20260703120000`/`Version20260804120000`/`Version20260813130000`/`Version20260825140000` existent ✓ · `admin_all` « FOR ALL, USING/WITH CHECK true » (`Version20260813130000:19`) ✓ · GRANT `shared_competition_deadline` SANS DELETE (`Version20260825140000:42`, revue F-1) ✓ · `TenantConnectionContext` émet `set_config('app.club_id', ?, false)` session-scoped, pas `SET LOCAL` ✓. Rien à corriger ce jour)
+Last verified @ 2026-08-28 (rôle APPLICATIF `app_user` → `amateo_app` : 38 gardes de migrations rendus tolérants aux DEUX noms (DDL identique, seul le rôle est résolu), `02-users.sh` crée `amateo_app`, migration de rename idempotente pour les clusters existants. Prouvé : cluster NEUF 2 bases (138 migrations ×2, policies `tenant_isolation` → `{amateo_app}` partout) ET cluster existant (rename, policies suivent l'OID, données préservées). Passe P4-142 — renommage infra : rôle owner `amateo_owner`, conteneurs `amateo-*`, fonction RLS `enable_rls_for_existing_amateo_tables`, DSN admin recalés. Re-confronté au CLUSTER réel : 44 policies `admin_all` → `amateo_owner`, 0 vers l'ancien rôle ; `clubscheduler` n'existe plus ; `app_user` sans superuser ni BYPASSRLS ; 44/44 tables RLS en FORCE. Passe précédente : rotation documentation-update, à l'occasion du déménagement de la liste blocking-tests : `Version20260703120000`/`Version20260804120000`/`Version20260813130000`/`Version20260825140000` existent ✓ · `admin_all` « FOR ALL, USING/WITH CHECK true » (`Version20260813130000:19`) ✓ · GRANT `shared_competition_deadline` SANS DELETE (`Version20260825140000:42`, revue F-1) ✓ · `TenantConnectionContext` émet `set_config('app.club_id', ?, false)` session-scoped, pas `SET LOCAL` ✓. Rien à corriger ce jour)
 
-> ✅ **STATUS: ACTIVE** since migration `Version20260703120000` (SEC-03 fixed). The migration — not the initdb scripts — is the source of truth for policies and grants: **every table carrying a `club_id` column** is under `FORCE ROW LEVEL SECURITY` with a `tenant_isolation` policy `TO app_user` (no hard count here — new tenant tables inherit the pattern via the migration helper; the count would rot). `club_user` and `coach_wish_token` carry the hybrid SELECT bootstrap policy (open only while NO tenant GUC is set — scoped to the tenant otherwise, SEC-12 residual closed by `Version20260804120000`; deliberate cross-tenant reads go through `TenantConnectionContext::runWithoutTenant()`). Runtime connects as `app_user`; the GUC is set via `TenantConnectionContext` (`set_config`, session-scoped). **This file = operator how-to (env, roles, troubleshooting). The effective architecture — who sets the GUC, the exception tables, the superadmin door — is `docs/security/rls.md`, and it is CANONICAL.** ⚑ La consigne précédente disait « garder les deux en phase » : c'est précisément ce qui a produit la dérive du prédicat corrigée le 2026-08-19. Deux fichiers qu'on maintient en phase à la main divergent — le seul garde-fou est de ne PAS redire ici ce que le canon dit là-bas : on pointe. The `01/02/03-*.sql` initdb scripts remain for fresh volumes only.
+> ✅ **STATUS: ACTIVE** since migration `Version20260703120000` (SEC-03 fixed). The migration — not the initdb scripts — is the source of truth for policies and grants: **every table carrying a `club_id` column** is under `FORCE ROW LEVEL SECURITY` with a `tenant_isolation` policy `TO amateo_app` (no hard count here — new tenant tables inherit the pattern via the migration helper; the count would rot). `club_user` and `coach_wish_token` carry the hybrid SELECT bootstrap policy (open only while NO tenant GUC is set — scoped to the tenant otherwise, SEC-12 residual closed by `Version20260804120000`; deliberate cross-tenant reads go through `TenantConnectionContext::runWithoutTenant()`). Runtime connects as `amateo_app`; the GUC is set via `TenantConnectionContext` (`set_config`, session-scoped). **This file = operator how-to (env, roles, troubleshooting). The effective architecture — who sets the GUC, the exception tables, the superadmin door — is `docs/security/rls.md`, and it is CANONICAL.** ⚑ La consigne précédente disait « garder les deux en phase » : c'est précisément ce qui a produit la dérive du prédicat corrigée le 2026-08-19. Deux fichiers qu'on maintient en phase à la main divergent — le seul garde-fou est de ne PAS redire ici ce que le canon dit là-bas : on pointe. The `01/02/03-*.sql` initdb scripts remain for fresh volumes only.
 
 ## Overview
 
-ClubScheduler is designed to use **PostgreSQL Row-Level Security (RLS)** to enforce **tenant isolation** at the database layer. Every business table that belongs to a club contains a `club_id` column. RLS policies ensure that the application user (`app_user`) can only see and manipulate rows whose `club_id` matches the tenant context set for the current database session.
+ClubScheduler is designed to use **PostgreSQL Row-Level Security (RLS)** to enforce **tenant isolation** at the database layer. Every business table that belongs to a club contains a `club_id` column. RLS policies ensure that the application user (`amateo_app`) can only see and manipulate rows whose `club_id` matches the tenant context set for the current database session.
 
 ## Database Users
 
 | User | Purpose | DDL Rights | RLS Bypass |
 |------|---------|------------|------------|
-| `app_user` | Symfony runtime (API requests) | **None** | **No** — policies apply |
+| `amateo_app` | Symfony runtime (API requests) | **None** | **No** — policies apply |
 | `amateo_owner` | **migrations / ops / superadmin door** (Doctrine `admin` connection, `DATABASE_ADMIN_URL`) | all (owner; superuser **locally only**) | **Locally yes** (superuser). On managed PG (no `BYPASSRLS` ever): non-superuser owner, crosses via the `admin_all` policies (`Version20260813130000`, one per FORCE-RLS table) |
 
-> **Security rule:** `app_user` is **not** a `SUPERUSER` and does **not** hold `CREATEDB` or `CREATEROLE`.
+> **Security rule:** `amateo_app` is **not** a `SUPERUSER` and does **not** hold `CREATEDB` or `CREATEROLE`.
 
 ## How Tenant Isolation Works
 
@@ -49,10 +49,10 @@ There is **no manual post-deploy step**: the Doctrine migration that creates a n
 >
 > ⚑ Ce document a lui-même dérivé sur ce point jusqu'au 2026-08-19 : il donnait
 > `current_setting('app.club_id')::UUID` **sans `NULLIF(…, '')` ni le `true` de `missing_ok`**, et
-> **sans `TO app_user`**. Les trois écarts comptent — sans `true`, `current_setting` **lève** quand
+> **sans `TO amateo_app`**. Les trois écarts comptent — sans `true`, `current_setting` **lève** quand
 > le GUC est absent au lieu de rendre NULL (fin du fail-closed) ; sans `NULLIF`, la **chaîne vide**
 > que pose `TenantConnectionContext::clear()` part en `''::uuid` et rend une **erreur 22P02** ;
-> sans `TO app_user`, la policy s'applique à tous les rôles et brouille la porte admin. L'architecture
+> sans `TO amateo_app`, la policy s'applique à tous les rôles et brouille la porte admin. L'architecture
 > effective, elle, est et reste [`../../docs/security/rls.md`](../../docs/security/rls.md).
 
 ```sql
@@ -62,7 +62,7 @@ ALTER TABLE public.<table_name> FORCE ROW LEVEL SECURITY;
 
 -- 2. Create tenant isolation policy — predicate + role are CANONICAL, copy them exactly
 CREATE POLICY tenant_isolation ON public.<table_name>
-    FOR ALL TO app_user
+    FOR ALL TO amateo_app
     USING (club_id = NULLIF(current_setting('app.club_id', true), '')::uuid)
     WITH CHECK (club_id = NULLIF(current_setting('app.club_id', true), '')::uuid);
 
@@ -91,11 +91,11 @@ This loops over every table in the `public` schema that has a `club_id` column a
 
 ### 1. Connection Configuration
 
-Use `app_user` for the runtime `DATABASE_URL`:
+Use `amateo_app` for the runtime `DATABASE_URL`:
 
 ```env
 # .env.local (runtime)
-DATABASE_URL="postgresql://app_user:app_user_password@postgres:5432/amateo_dev?serverVersion=16&charset=utf8"
+DATABASE_URL="postgresql://amateo_app:app_user_password@postgres:5432/amateo_dev?serverVersion=16&charset=utf8"
 ```
 
 Migrations and ops run on the **`admin` Doctrine connection** (`amateo_owner`, superuser — the only RLS bypass):
@@ -144,7 +144,7 @@ SELECT * FROM public.event;
 | File | Purpose |
 |------|---------|
 | `docker/postgres/init/01-rls.sql` | Helper function to batch-enable RLS on existing tables |
-| `docker/postgres/init/02-users.sh` | Creates `app_user` with its runtime grants (DML only, no DDL) |
+| `docker/postgres/init/02-users.sh` | Creates `amateo_app` with its runtime grants (DML only, no DDL) |
 | `docker/postgres/init/03-rls-template.sql` | Copy-paste templates for `ALTER TABLE ... ENABLE RLS` and `CREATE POLICY` |
 
 ## Troubleshooting
@@ -152,6 +152,6 @@ SELECT * FROM public.event;
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `0 rows returned` for a table that has data | `app.club_id` not set | In `psql`: run `SELECT set_config('app.club_id', '<uuid>', false)` (or the `app_security.set_club_id(...)` helper). In the app: the context is set automatically by `TenantConnectionContext` |
-| `permission denied for table` | `app_user` lacks `GRANT` | Re-run `02-users.sh` or check `GRANT` statements |
+| `permission denied for table` | `amateo_app` lacks `GRANT` | Re-run `02-users.sh` or check `GRANT` statements |
 | Policy not enforced for table owner | `FORCE ROW LEVEL SECURITY` missing | Run `ALTER TABLE ... FORCE ROW LEVEL SECURITY` |
-| Migration fails with RLS error | Migration runs as `app_user` (no bypass) | Run migrations on the `admin` connection (`amateo_owner`, superuser) |
+| Migration fails with RLS error | Migration runs as `amateo_app` (no bypass) | Run migrations on the `admin` connection (`amateo_owner`, superuser) |

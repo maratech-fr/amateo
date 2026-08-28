@@ -45,14 +45,14 @@ final class Version20260828120000 extends AbstractMigration
         $this->addSql('CREATE UNIQUE INDEX uniq_opponent_travel_code ON opponent_travel (club_id, season_id, opponent_organisme_code)');
         $this->addSql('CREATE INDEX idx_opponent_travel_club_season ON opponent_travel (club_id, season_id)');
 
-        $hasAppUser = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
         $hasOwner = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'amateo_owner\'');
-        if ($hasAppUser) {
-            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON opponent_travel TO app_user');
+        if (\is_string($appRole)) {
+            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON opponent_travel TO ' . $appRole);
             $this->addSql('ALTER TABLE public.opponent_travel ENABLE ROW LEVEL SECURITY');
             $this->addSql('ALTER TABLE public.opponent_travel FORCE ROW LEVEL SECURITY');
             $this->addSql(\sprintf(
-                'CREATE POLICY tenant_isolation ON public.opponent_travel FOR ALL TO app_user USING (%s) WITH CHECK (%s)',
+                'CREATE POLICY tenant_isolation ON public.opponent_travel FOR ALL TO ' . $appRole . ' USING (%s) WITH CHECK (%s)',
                 self::TENANT_PREDICATE,
                 self::TENANT_PREDICATE,
             ));

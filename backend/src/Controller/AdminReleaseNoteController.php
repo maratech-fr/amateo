@@ -19,7 +19,7 @@ use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInt
 /**
  * P5-12 — l'atelier superadmin du journal de nouveautés : lister (brouillons
  * inclus), créer, éditer, publier, supprimer. `release_note` est GLOBALE (no
- * RLS) donc l'EntityManager par défaut l'écrit via le GRANT app_user — aucune
+ * RLS) donc l'EntityManager par défaut l'écrit via le GRANT amateo_app — aucune
  * connexion admin dédiée n'est requise (contrairement à club_user, tenant-scopé).
  *
  * Gardes = patron AdminClubRequestController : firewall admin (session) + CSRF

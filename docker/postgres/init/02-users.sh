@@ -15,26 +15,34 @@ psql -v ON_ERROR_STOP=1 \
      -v app_user_password="$APP_USER_PASSWORD" \
      --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<'EOSQL'
 -- =============================================================================
--- 1. APPLICATION USER (app_user)
+-- 1. APPLICATION USER (amateo_app)
 -- =============================================================================
 -- Used by the Symfony backend at runtime.
 -- NO DDL privileges, NO SUPERUSER.
 -- Can only read/write data in the public schema.
+--
+-- Named amateo_app directly (no transitional legacy name). The frozen RLS
+-- migrations resolve the application role by probing BOTH names — app_user OR
+-- amateo_app — and target whichever exists, so they replay cleanly on this fresh
+-- cluster (amateo_app) AND on a pre-existing cluster still carrying the historical
+-- app_user (which a final migration renames in place — its policies follow the
+-- role OID). The password VARIABLE keeps its APP_USER_* name (dev secret,
+-- unchanged); only the ROLE is renamed.
 
-CREATE USER app_user WITH PASSWORD :'app_user_password' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+CREATE USER amateo_app WITH PASSWORD :'app_user_password' NOSUPERUSER NOCREATEDB NOCREATEROLE;
 
 -- Grant usage on the public schema
-GRANT USAGE ON SCHEMA public TO app_user;
+GRANT USAGE ON SCHEMA public TO amateo_app;
 
 -- Grant DML on all existing tables in public
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO amateo_app;
 
 -- Grant DML on all future tables in public (via default privileges)
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO amateo_app;
 
 -- Grant usage on all sequences (needed for auto-increment IDs)
-GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO app_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE ON SEQUENCES TO app_user;
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO amateo_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE ON SEQUENCES TO amateo_app;
 
 -- =============================================================================
 -- 2. (retiré) MIGRATION USER
@@ -49,10 +57,10 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE ON SEQUENCES TO app_user;
 -- Détail : backend/docs/RLS.md.
 
 -- =============================================================================
--- 3. RLS CONTEXT SETTER HELPER (executed by app_user)
+-- 3. RLS CONTEXT SETTER HELPER (executed by amateo_app)
 -- =============================================================================
 -- This function safely sets the tenant context variable used by RLS policies.
--- It is owned by the bootstrap superuser but executable by app_user.
+-- It is owned by the bootstrap superuser but executable by amateo_app.
 
 CREATE OR REPLACE FUNCTION app_security.set_club_id(club_id uuid)
 RETURNS void
@@ -67,5 +75,5 @@ $$;
 COMMENT ON FUNCTION app_security.set_club_id(uuid) IS
     'Sets the RLS tenant context variable. Must be called before each transaction that relies on tenant_isolation policies.';
 
-GRANT EXECUTE ON FUNCTION app_security.set_club_id(uuid) TO app_user;
+GRANT EXECUTE ON FUNCTION app_security.set_club_id(uuid) TO amateo_app;
 EOSQL
