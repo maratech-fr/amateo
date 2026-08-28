@@ -330,6 +330,28 @@ describe("RadarPanel", () => {
     expect(screen.getAllByRole("button", { name: /sem\. du .+ au .+· à faire/ })).toHaveLength(1);
   });
 
+  // A11Y-18 — l'état validé d'une chip de semaine porte un TEXTE (« validée »), de même nature que
+  // « · en cours »/« · à faire », et cohérent avec la même chip du DayDialog. Un ✅ nu est
+  // muet/aléatoire au lecteur d'écran selon la plateforme.
+  it("annonce « validée » par un texte sur la chip de couverture, pas le seul ✅", async () => {
+    const user = userEvent.setup();
+    const w1s = mondayOf("2999-01-15");
+    const w2s = addDays(w1s, 7);
+    plansData = [
+      { id: "pl-w1", type: "CLOSURE", name: "S1", startDate: FUTURE, calendarEntryId: "w1", chosenScheduleId: "ov1", teamSelectionInitialized: false },
+      { id: "pl-w2", type: "CLOSURE", name: "S2", startDate: FUTURE, calendarEntryId: "w2", chosenScheduleId: null, teamSelectionInitialized: false },
+    ];
+    renderRadar({
+      entries: [
+        closure({ id: "m1", title: "Barros en travaux", startDate: addDays(w1s, 3), endDate: addDays(w2s, 1) }),
+        closure({ id: "w1", title: "S1", parentEntryId: "m1", startDate: w1s, endDate: addDays(w1s, 6) }),
+        closure({ id: "w2", title: "S2", parentEntryId: "m1", startDate: w2s, endDate: addDays(w2s, 6) }),
+      ],
+    });
+    await expandCard(user, "Barros en travaux");
+    expect(screen.getByRole("button", { name: /validée/ })).toBeInTheDocument();
+  });
+
   // Une semaine DÉCOCHÉE au picker (ou perdue sur échec partiel) reste
   // planifiable : chip « + créer » (dead-end de la revue #262 round 1).
   it("a missing week shows a « + créer » chip on the coverage card", async () => {

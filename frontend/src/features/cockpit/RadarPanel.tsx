@@ -576,7 +576,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
                   title={chipLocked ? lockTitle : undefined}
                   onClick={() => (null !== activeId ? viewOverlay(activeId) : adapt(child.id))}
                 >
-                  {`sem. du ${frDateShort(child.startDate)}${span} ${null !== activeId ? "✅" : wip ? "· en cours" : "· à faire"}`}
+                  {`sem. du ${frDateShort(child.startDate)}${span} ${null !== activeId ? "✅ validée" : wip ? "· en cours" : "· à faire"}`}
                 </Button>
               );
             })}

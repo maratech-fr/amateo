@@ -555,6 +555,17 @@ describe("DayDialog — holiday block chips (3 states) and integrated week delet
     expect(chip).toBeDisabled();
   });
 
+  // A11Y-18 — l'état validé d'une chip de semaine ne peut reposer sur le seul emoji ✅ : il porte
+  // un TEXTE (« validée »), de même nature que « · en cours »/« · à faire », et cohérent avec la
+  // même chip de la carte radar. Un ✅ nu est muet/aléatoire au lecteur d'écran selon la plateforme.
+  it("annonce l'état « validée » par un texte, pas le seul emoji ✅ (A11Y-18)", async () => {
+    childEntriesData = [mother(), week()];
+    allPlansMock = [{ id: "wp1", calendarEntryId: "wk1", chosenScheduleId: "sched-ok" }]; // semaine validée
+    renderDialog([mother(), week()], { holiday: schoolHoliday() });
+
+    expect(await screen.findByRole("button", { name: /sem\. du 11 mai.*validée/ })).toBeInTheDocument();
+  });
+
   it("moves the week's delete action INTO the holiday block (no separate list row) and confirms it", async () => {
     childEntriesData = [mother(), week()];
     allPlansMock = [{ id: "wp1", calendarEntryId: "wk1", chosenScheduleId: null }];

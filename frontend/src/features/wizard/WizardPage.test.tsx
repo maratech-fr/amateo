@@ -264,6 +264,32 @@ describe("Wizard (integration)", () => {
     });
   });
 
+  // UXS-06 — « valide » n'est pas « fait » : les contraintes sont OPTIONNELLES (aucune erreur sur
+  // un club vierge). L'étape ne doit pourtant pas se cocher « terminée » tant que ses prérequis
+  // (Équipes/Gymnases/Coachs) sont en erreur — sinon ✓ sur une étape que le club n'a pas commencée.
+  describe("rail — Contraintes ne se coche pas avant ses prérequis (UXS-06)", () => {
+    it("club vierge : Contraintes n'est PAS « terminée » tant qu'Équipes est en erreur", async () => {
+      vi.mocked(api.listTeams).mockResolvedValue([]); // aucune équipe → Équipes en erreur
+      renderWithProviders(<WizardPage />, { route: "/wizard" });
+      await screen.findByRole("alert"); // l'écran a chargé (« Ajoutez au moins une équipe »)
+
+      // Le rail ne coche pas Contraintes : son nom accessible n'a pas le suffixe « terminée ».
+      const constraints = screen.getByRole("button", { name: /Contraintes/ });
+      expect(constraints).not.toHaveAttribute("aria-label", "Contraintes — étape terminée");
+    });
+
+    it("NR : Équipes/Gymnases/Coachs remplis, Contraintes SANS contrainte reste « terminée »", async () => {
+      // Choix légitime : un club réel sans aucune contrainte déclarée. Une fois le reste rempli,
+      // l'étape doit pouvoir se cocher — le fix ne casse pas le cas nominal.
+      vi.mocked(api.listVenues).mockResolvedValue([{ id: "v1", name: "Gymnase A", color: null, canSplit: false, isActive: true, externalRef: null }]);
+      vi.mocked(api.listVenueSlots).mockResolvedValue([{ id: "s1", venueId: "v1", dayOfWeek: 2, startTime: "20:30", durationMinutes: 120, capacity: 1 }]);
+      vi.mocked(api.listCoaches).mockResolvedValue([{ id: "co1", firstName: "Ana", lastName: "B", email: null, isEmployee: false, isActive: true, maxDaysOverride: null, isVehicled: false }]);
+      renderWithProviders(<WizardPage />, { route: "/wizard" });
+
+      expect(await screen.findByRole("button", { name: "Contraintes — étape terminée" })).toBeInTheDocument();
+    });
+  });
+
   it("enters sort mode from the footer « Trier » button and shows the tier drop zones", async () => {
     const user = userEvent.setup();
     renderWithProviders(<WizardPage />, { route: "/wizard" });

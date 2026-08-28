@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { Team, Venue } from "./api";
@@ -36,5 +36,16 @@ describe("WeekendGrid — mode échange (RMM-1 PR4, L6)", () => {
     expect(candidate).toHaveAttribute("data-swap-candidate", "true");
     // La source n'est jamais sa propre candidate d'échange.
     expect(source).not.toHaveAttribute("data-swap-candidate", "true");
+  });
+});
+
+describe("WeekendGrid — a11y (A11Y-17)", () => {
+  it("un match hors fenêtre ligue porte un nom accessible, pas l'icône + couleur seules", () => {
+    // 4ᵉ argument = ids hors enveloppe : fxA sort de la fenêtre autorisée par la ligue.
+    const model = buildWeekendGrid(fixtures, venues, teams, new Set(["fxA"]));
+    render(<WeekendGrid model={model} onSelectFixture={() => {}} />);
+    // L'alerte est annoncée au lecteur d'écran (patron du cadenas « Ancre manuelle » voisin) :
+    // sans nom accessible, l'info « hors fenêtre ligue » ne reposerait que sur l'icône + la couleur.
+    expect(screen.getByLabelText("Hors fenêtre ligue")).toBeInTheDocument();
   });
 });
