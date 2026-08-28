@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: docker/frontend/Dockerfile
-    container_name: clubscheduler-frontend
+    container_name: amateo-frontend
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-8081}:80"
     depends_on:
@@ -20,7 +20,7 @@ services:
       retries: 5
       start_period: 20s
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   # Node/npm tooling stays inside Docker. This service is run on demand by the
   # frontend Makefile and never starts as part of the application stack.
@@ -34,7 +34,7 @@ services:
     environment:
       HUSKY: "0"
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   # P4-33 — e2e Playwright DOCKERISÉ : l'hôte n'a plus besoin de Node (dernier
   # maillon qui l'exigeait). Image officielle, navigateurs préinstallés.
@@ -59,7 +59,7 @@ services:
       E2E_BASE_URL: http://frontend-dev:5173
       MAILPIT_WEB_URL: http://mailpit:8025
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   # Vite development server. Source code is bind-mounted for hot reload, while
   # dependencies remain in a Docker-managed volume rather than on the host.
@@ -87,7 +87,7 @@ services:
       mercure:
         condition: service_healthy
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   php-fpm:
     build:
@@ -96,7 +96,7 @@ services:
       args:
         UID: ${USER_ID:-1000}
         GID: ${GROUP_ID:-1000}
-    container_name: clubscheduler-php-fpm
+    container_name: amateo-php-fpm
     working_dir: /app/backend
     user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
     volumes:
@@ -126,11 +126,11 @@ services:
       retries: 5
       start_period: 20s
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   nginx:
     image: nginx:1.27-alpine
-    container_name: clubscheduler-nginx
+    container_name: amateo-nginx
     depends_on:
       php-fpm:
         condition: service_healthy
@@ -146,11 +146,11 @@ services:
       retries: 5
       start_period: 10s
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   postgres:
     image: postgres:16-alpine
-    container_name: clubscheduler-postgres
+    container_name: amateo-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -170,11 +170,11 @@ services:
       retries: 10
       start_period: 20s
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   redis:
     image: redis:7-alpine
-    container_name: clubscheduler-redis
+    container_name: amateo-redis
     ports:
       - "127.0.0.1:${REDIS_PORT}:6379"
     command: ["redis-server", "--appendonly", "yes"]
@@ -185,7 +185,7 @@ services:
       retries: 10
       start_period: 10s
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   messenger-worker:
     build:
@@ -194,7 +194,7 @@ services:
       args:
         UID: ${USER_ID:-1000}
         GID: ${GROUP_ID:-1000}
-    container_name: clubscheduler-messenger-worker
+    container_name: amateo-messenger-worker
     working_dir: /app/backend
     user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
     volumes:
@@ -221,7 +221,7 @@ services:
       retries: 5
       start_period: 20s
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   # Minute scheduler tick. app:jobs:run-due resolves due slots in Europe/Paris;
   # the allowlisted app:jobs:run wrapper prevents overlap and persists outcomes.
@@ -233,7 +233,7 @@ services:
       args:
         UID: ${USER_ID:-1000}
         GID: ${GROUP_ID:-1000}
-    container_name: clubscheduler-cron-runner
+    container_name: amateo-cron-runner
     working_dir: /app/backend
     user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
     volumes:
@@ -262,13 +262,13 @@ services:
       retries: 5
       start_period: 30s
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   engine:
     build:
       context: .
       dockerfile: docker/engine/Dockerfile
-    container_name: clubscheduler-engine
+    container_name: amateo-engine
     working_dir: /app/engine
     volumes:
       - ./:/app:cached
@@ -288,13 +288,13 @@ services:
       retries: 5
       start_period: 20s
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   pdf-worker:
     build:
       context: .
       dockerfile: docker/pdf-worker/Dockerfile
-    container_name: clubscheduler-pdf-worker
+    container_name: amateo-pdf-worker
     working_dir: /app/frontend
     # Host uid, like the PHP containers: the worker creates backend/public/exports
     # on the bind mount itself (PdfGenerator.php does NOT pre-create it), which the
@@ -318,11 +318,11 @@ services:
       retries: 5
       start_period: 20s
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   mercure:
     image: dunglas/mercure:latest
-    container_name: clubscheduler-mercure
+    container_name: amateo-mercure
     environment:
       SERVER_NAME: ":80"
       # SEC-05/06: dedicated Mercure secret (no longer the lexik JWT passphrase);
@@ -341,11 +341,11 @@ services:
       retries: 5
       start_period: 20s
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   mailpit:
     image: axllent/mailpit:latest
-    container_name: clubscheduler-mailpit
+    container_name: amateo-mailpit
     ports:
       - "127.0.0.1:${MAILPIT_SMTP_PORT}:1025"
       - "127.0.0.1:${MAILPIT_WEB_PORT}:8025"
@@ -356,11 +356,11 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - clubscheduler_network
+      - amateo_network
 
 networks:
-  clubscheduler_network:
-    name: clubscheduler_network
+  amateo_network:
+    name: amateo_network
 
 volumes:
   postgres_data:

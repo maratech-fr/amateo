@@ -815,7 +815,7 @@ jobs:
       - name: Seed the e2e super-admin (modal reachability)
         run: |
           docker compose exec -T php-fpm php bin/console cache:pool:clear cache.rate_limiter
-          docker compose exec -T postgres psql -U clubscheduler -d amateo_dev -c \
+          docker compose exec -T postgres psql -U amateo_owner -d amateo_dev -c \
             "DELETE FROM super_admin WHERE email='e2e-admin@clubscheduler.test'"
           printf 'E2eAdminPass!2026\nE2eAdminPass!2026\n' \
             | docker compose exec -T php-fpm php bin/console app:superadmin:create e2e-admin@clubscheduler.test > /tmp/e2e-sa.txt

@@ -27,7 +27,7 @@ services:
       context: .
       dockerfile: docker/frontend/Dockerfile
       target: prod
-    container_name: clubscheduler-frontend
+    container_name: amateo-frontend
     # Only published port of the whole stack — bound to localhost, the host
     # reverse-proxy (Caddy, TLS) is the actual internet-facing edge.
     ports:
@@ -47,7 +47,7 @@ services:
     restart: unless-stopped
     <<: *logging
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   php-fpm:
     image: ghcr.io/${GHCR_OWNER:?}/scheduler-php:${VERSION:-latest}
@@ -55,7 +55,7 @@ services:
       context: .
       dockerfile: docker/php/Dockerfile
       target: prod
-    container_name: clubscheduler-php-fpm
+    container_name: amateo-php-fpm
     working_dir: /app/backend
     env_file:
       - ./.env.prod
@@ -91,7 +91,7 @@ services:
     restart: unless-stopped
     <<: *logging
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   nginx:
     image: ghcr.io/${GHCR_OWNER:?}/scheduler-nginx:${VERSION:-latest}
@@ -99,7 +99,7 @@ services:
       context: .
       dockerfile: docker/php/Dockerfile
       target: nginx-prod
-    container_name: clubscheduler-nginx
+    container_name: amateo-nginx
     depends_on:
       php-fpm:
         condition: service_healthy
@@ -116,14 +116,14 @@ services:
     restart: unless-stopped
     <<: *logging
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   postgres:
     image: ghcr.io/${GHCR_OWNER:?}/scheduler-postgres:${VERSION:-latest}
     build:
       context: .
       dockerfile: docker/postgres/Dockerfile.prod
-    container_name: clubscheduler-postgres
+    container_name: amateo-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?}
       POSTGRES_USER: ${POSTGRES_USER:?}
@@ -142,11 +142,11 @@ services:
     restart: unless-stopped
     <<: *logging
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   redis:
     image: redis:7-alpine
-    container_name: clubscheduler-redis
+    container_name: amateo-redis
     # AOF + a named volume: the Messenger queue and rate-limiter state survive
     # a container restart (dev deliberately has no redis volume — prod must).
     command: ["redis-server", "--appendonly", "yes"]
@@ -162,7 +162,7 @@ services:
     restart: unless-stopped
     <<: *logging
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   messenger-worker:
     image: ghcr.io/${GHCR_OWNER:?}/scheduler-php:${VERSION:-latest}
@@ -170,7 +170,7 @@ services:
       context: .
       dockerfile: docker/php/Dockerfile
       target: prod
-    container_name: clubscheduler-messenger-worker
+    container_name: amateo-messenger-worker
     working_dir: /app/backend
     env_file:
       - ./.env.prod
@@ -202,7 +202,7 @@ services:
     restart: unless-stopped
     <<: *logging
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   # Minute scheduler tick (app:jobs:run-due, Europe/Paris cadences — SA3-C).
   cron-runner:
@@ -211,7 +211,7 @@ services:
       context: .
       dockerfile: docker/php/Dockerfile
       target: prod
-    container_name: clubscheduler-cron-runner
+    container_name: amateo-cron-runner
     working_dir: /app/backend
     env_file:
       - ./.env.prod
@@ -251,14 +251,14 @@ services:
     restart: unless-stopped
     <<: *logging
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   engine:
     image: ghcr.io/${GHCR_OWNER:?}/scheduler-engine:${VERSION:-latest}
     build:
       context: .
       dockerfile: docker/engine/Dockerfile
-    container_name: clubscheduler-engine
+    container_name: amateo-engine
     working_dir: /app/engine
     environment:
       PYTHONUNBUFFERED: "1"
@@ -277,14 +277,14 @@ services:
     restart: unless-stopped
     <<: *logging
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   pdf-worker:
     image: ghcr.io/${GHCR_OWNER:?}/scheduler-pdf-worker:${VERSION:-latest}
     build:
       context: .
       dockerfile: docker/pdf-worker/Dockerfile
-    container_name: clubscheduler-pdf-worker
+    container_name: amateo-pdf-worker
     working_dir: /app/frontend
     # Same uid as the php image's www-data (usermod'ed to 1000 at build): both
     # write/read the shared exports volume without a chown dance.
@@ -312,13 +312,13 @@ services:
     restart: unless-stopped
     <<: *logging
     networks:
-      - clubscheduler_network
+      - amateo_network
 
   mercure:
     # Pinned (dev uses :latest): same immutability contract as our own images —
     # a routine `docker compose pull` must never silently swap the hub version.
     image: dunglas/mercure:v0.19
-    container_name: clubscheduler-mercure
+    container_name: amateo-mercure
     environment:
       SERVER_NAME: ":80"
       MERCURE_PUBLISHER_JWT_KEY: ${MERCURE_JWT_SECRET:?}
@@ -337,11 +337,11 @@ services:
     restart: unless-stopped
     <<: *logging
     networks:
-      - clubscheduler_network
+      - amateo_network
 
 networks:
-  clubscheduler_network:
-    name: clubscheduler_network
+  amateo_network:
+    name: amateo_network
 
 volumes:
   postgres_data:

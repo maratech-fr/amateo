@@ -35,7 +35,7 @@ final class Version20260826140000 extends AbstractMigration
         $this->addSql('CREATE INDEX idx_venue_travel_rule_club_season ON venue_travel_rule_setting (club_id, season_id)');
 
         $hasAppUser = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        $hasOwner = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'clubscheduler\'');
+        $hasOwner = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'amateo_owner\'');
         if ($hasAppUser) {
             $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON venue_travel_rule_setting TO app_user');
             $this->addSql('ALTER TABLE public.venue_travel_rule_setting ENABLE ROW LEVEL SECURITY');
@@ -49,7 +49,7 @@ final class Version20260826140000 extends AbstractMigration
         // Porte admin (§6) : le rôle propriétaire garde l'accès sous FORCE RLS, sinon un PG managé
         // sans BYPASSRLS le DENY. RlsIsolationTest exige exactement 1 admin_all.
         if ($hasOwner) {
-            $this->addSql('CREATE POLICY admin_all ON public.venue_travel_rule_setting FOR ALL TO clubscheduler USING (true) WITH CHECK (true)');
+            $this->addSql('CREATE POLICY admin_all ON public.venue_travel_rule_setting FOR ALL TO amateo_owner USING (true) WITH CHECK (true)');
         }
     }
 

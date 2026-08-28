@@ -88,16 +88,16 @@ e2e: $(ROOT_ENV) ## Run Playwright e2e tests fully inside Docker (stack + `make 
 	# superadmin échoue et le spec rougit en désignant l'écran TOTP — ça RESSEMBLE à une
 	# régression alors que c'est le quota. On repart d'un compteur propre.
 	@$(FIG) exec -T php-fpm php bin/console cache:pool:clear cache.rate_limiter >/dev/null
-	@$(FIG) exec -T postgres psql -U clubscheduler -d amateo_dev -c \
+	@$(FIG) exec -T postgres psql -U amateo_owner -d amateo_dev -c \
 		"DELETE FROM super_admin WHERE email='$(E2E_SA_EMAIL)'" >/dev/null
 	@printf '$(E2E_SA_PASSWORD)\n$(E2E_SA_PASSWORD)\n' | $(FIG) exec -T php-fpm \
-		php bin/console app:superadmin:create $(E2E_SA_EMAIL) > /tmp/clubscheduler-e2e-sa.txt
+		php bin/console app:superadmin:create $(E2E_SA_EMAIL) > /tmp/amateo-e2e-sa.txt
 	$(FIG) --profile tools run --rm --no-deps \
 		-e E2E_SUPERADMIN_EMAIL='$(E2E_SA_EMAIL)' \
 		-e E2E_SUPERADMIN_PASSWORD='$(E2E_SA_PASSWORD)' \
-		-e E2E_SUPERADMIN_TOTP_SECRET="$$(sed -n 's/.*setup key: *//p' /tmp/clubscheduler-e2e-sa.txt | tr -d '\r\n')" \
+		-e E2E_SUPERADMIN_TOTP_SECRET="$$(sed -n 's/.*setup key: *//p' /tmp/amateo-e2e-sa.txt | tr -d '\r\n')" \
 		e2e sh -lc 'PUPPETEER_SKIP_DOWNLOAD=1 npm ci --legacy-peer-deps && npx playwright test'
-	@rm -f /tmp/clubscheduler-e2e-sa.txt
+	@rm -f /tmp/amateo-e2e-sa.txt
 
 help: ## Display this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)

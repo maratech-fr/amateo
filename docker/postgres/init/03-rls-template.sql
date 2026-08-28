@@ -26,13 +26,13 @@
 --     USING (club_id = current_setting('app.club_id')::UUID)
 --     WITH CHECK (club_id = current_setting('app.club_id')::UUID);
 
--- Under FORCE RLS the owner (clubscheduler) is ALSO subject to policies. On a
+-- Under FORCE RLS the owner (amateo_owner) is ALSO subject to policies. On a
 -- managed provider the owner is not a superuser, so without an explicit policy
 -- every FORCE table default-DENIES the admin supervision connection. Always add
 -- the admin door alongside tenant_isolation:
 
 -- CREATE POLICY admin_all ON public.<table_name>
---     FOR ALL TO clubscheduler
+--     FOR ALL TO amateo_owner
 --     USING (true) WITH CHECK (true);
 
 -- ---------------------------------------------------------------------------
@@ -41,7 +41,7 @@
 -- This uses the helper function created in 01-rls.sql.
 -- Safe to run repeatedly; it skips tables that are already RLS-enabled.
 
--- SELECT app_security.enable_rls_for_existing_clubscheduler_tables();
+-- SELECT app_security.enable_rls_for_existing_amateo_tables();
 
 -- ---------------------------------------------------------------------------
 -- D. EXAMPLE: COMPLETE SETUP FOR A NEW TABLE (copy-paste template)
@@ -55,7 +55,7 @@
 --     USING (club_id = current_setting('app.club_id')::UUID)
 --     WITH CHECK (club_id = current_setting('app.club_id')::UUID);
 -- CREATE POLICY admin_all ON public.event
---     FOR ALL TO clubscheduler
+--     FOR ALL TO amateo_owner
 --     USING (true) WITH CHECK (true);
 
 -- ---------------------------------------------------------------------------

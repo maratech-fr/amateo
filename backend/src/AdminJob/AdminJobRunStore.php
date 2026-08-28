@@ -18,7 +18,7 @@ final readonly class AdminJobRunStore
     public function tryAcquire(string $jobKey): bool
     {
         return (bool) $this->connection()->fetchOne(
-            'SELECT pg_try_advisory_lock(hashtext(\'clubscheduler.admin_job\'), hashtext(:job_key))',
+            'SELECT pg_try_advisory_lock(hashtext(\'amateo.admin_job\'), hashtext(:job_key))',
             ['job_key' => $jobKey],
         );
     }
@@ -26,7 +26,7 @@ final readonly class AdminJobRunStore
     public function release(string $jobKey): void
     {
         $this->connection()->fetchOne(
-            'SELECT pg_advisory_unlock(hashtext(\'clubscheduler.admin_job\'), hashtext(:job_key))',
+            'SELECT pg_advisory_unlock(hashtext(\'amateo.admin_job\'), hashtext(:job_key))',
             ['job_key' => $jobKey],
         );
     }

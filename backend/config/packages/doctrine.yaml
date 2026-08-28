@@ -8,7 +8,7 @@ doctrine:
             default:
                 url: '%env(resolve:DATABASE_URL)%'
                 profiling_collect_backtrace: '%kernel.debug%'
-            # Admin connection — clubscheduler (superuser, bypasses RLS).
+            # Admin connection — amateo_owner (superuser, bypasses RLS).
             # Used ONLY by migrations, database create/drop and ops/debug
             # (--connection admin). This is the superadmin supervision door.
             admin:

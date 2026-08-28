@@ -48,7 +48,7 @@ final class DatabaseBackupCommand extends Command
     public function __construct(
         private readonly BackupCoverage $coverage,
         // Connexion admin (superuser, hors RLS) : pg_dump doit viser LA base que
-        // l'app utilise (test → clubscheduler_test), pas un POSTGRES_DB d'env qui
+        // l'app utilise (test → amateo_test), pas un POSTGRES_DB d'env qui
         // peut désigner une base jamais migrée — dump vide « réussi » en CI.
         #[Autowire(service: 'doctrine.dbal.admin_connection')]
         private readonly Connection $adminConnection,
@@ -81,7 +81,7 @@ final class DatabaseBackupCommand extends Command
         // .part que ni le finally (process mort) ni la rétention (glob *.dump) ne voient —
         // sans ce balayage ils s'accumulent jusqu'au disque plein (round 2, finding 3).
         // 1 h de grâce : ne jamais toucher le .part d'un dump concurrent encore en cours.
-        foreach (glob($dir . '/clubscheduler-*.dump.part') ?: [] as $orphan) {
+        foreach (glob($dir . '/amateo-*.dump.part') ?: [] as $orphan) {
             $mtime = filemtime($orphan);
             if (false !== $mtime && $mtime < time() - 3600) {
                 // Log gardé par le RETOUR d'unlink : annoncer une suppression qui a
@@ -114,7 +114,7 @@ final class DatabaseBackupCommand extends Command
         // T0 = DÉBUT du snapshot : pg_dump photographie la base au start. Le mtime final
         // est posé à T0 pour que toute écriture PENDANT le dump reste « non couverte ».
         $snapshotStart = new DateTimeImmutable;
-        $final = \sprintf('%s/clubscheduler-%s.dump', $dir, $snapshotStart->format('Ymd-His-u'));
+        $final = \sprintf('%s/amateo-%s.dump', $dir, $snapshotStart->format('Ymd-His-u'));
         // Écriture en .part puis rename : un dump interrompu (timeout/kill) ne matche
         // jamais le glob *.dump — il ne peut pas masquer les backups suivants.
         $partial = $final . '.part';
@@ -178,7 +178,7 @@ final class DatabaseBackupCommand extends Command
 
     private function applyRetention(string $dir, SymfonyStyle $io): void
     {
-        $files = glob($dir . '/clubscheduler-*.dump') ?: [];
+        $files = glob($dir . '/amateo-*.dump') ?: [];
         // Le nom porte l'horodatage → l'ordre lexical EST l'ordre chronologique.
         sort($files);
         $excess = \count($files) - self::RETENTION;

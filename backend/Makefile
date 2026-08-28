@@ -70,7 +70,7 @@ db-init-test:
 	# transaction » : son verrou survit et TOUT run suivant gèle au premier accès à la
 	# même table (constaté 2026-07-24 : RunAdminJobCommandTest, DELETE bloqué en boucle).
 	# Postgres purge seul ces zombies après 60 s — DB de TEST uniquement.
-	$(FIG) exec -T postgres psql -U clubscheduler -d postgres -c "ALTER DATABASE amateo_test SET idle_in_transaction_session_timeout = '60s'"
+	$(FIG) exec -T postgres psql -U amateo_owner -d postgres -c "ALTER DATABASE amateo_test SET idle_in_transaction_session_timeout = '60s'"
 
 .PHONY: db-reset ## Drop, recreate, and migrate the dev database
 db-reset: APP_ENV = dev
@@ -138,7 +138,7 @@ fixtures:
 # `make sandbox` (racine) retire cette surcharge et revient à amateo_dev.
 .PHONY: play-env ## (interne à `make play`) Écrit backend/.env.local → amateo_local
 play-env:
-	@printf '# Généré par `make play` (P4-141) — base de JEU du fondateur (amateo_local).\n# Gitignoré. `make sandbox` le supprime pour revenir au bac à sable amateo_dev.\nDATABASE_URL="postgresql://app_user:app_user_password@postgres:5432/amateo_local?serverVersion=16&charset=utf8"\nDATABASE_ADMIN_URL="postgresql://clubscheduler:clubscheduler_dev_password@postgres:5432/amateo_local?serverVersion=16&charset=utf8"\n' > .env.local
+	@printf '# Généré par `make play` (P4-141) — base de JEU du fondateur (amateo_local).\n# Gitignoré. `make sandbox` le supprime pour revenir au bac à sable amateo_dev.\nDATABASE_URL="postgresql://app_user:app_user_password@postgres:5432/amateo_local?serverVersion=16&charset=utf8"\nDATABASE_ADMIN_URL="postgresql://amateo_owner:clubscheduler_dev_password@postgres:5432/amateo_local?serverVersion=16&charset=utf8"\n' > .env.local
 	@echo "backend/.env.local écrit — la stack dev vise amateo_local (mode play)."
 
 .PHONY: sandbox-env ## (interne à `make sandbox`) Supprime backend/.env.local → retour amateo_dev
@@ -161,8 +161,8 @@ seed-bccl:
 # `make seed-bccl`). À lancer À LA MAIN uniquement.
 .PHONY: db-drop-legacy ## (optionnel) Drop des bases dev héritées clubscheduler / clubscheduler_test
 db-drop-legacy:
-	$(FIG) exec -T postgres psql -U clubscheduler -d postgres -c "DROP DATABASE IF EXISTS clubscheduler"
-	$(FIG) exec -T postgres psql -U clubscheduler -d postgres -c "DROP DATABASE IF EXISTS clubscheduler_test"
+	$(FIG) exec -T postgres psql -U amateo_owner -d postgres -c "DROP DATABASE IF EXISTS clubscheduler"
+	$(FIG) exec -T postgres psql -U amateo_owner -d postgres -c "DROP DATABASE IF EXISTS clubscheduler_test"
 
 .PHONY: phpstan ## Run PHPStan
 phpstan:

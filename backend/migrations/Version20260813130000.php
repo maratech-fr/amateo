@@ -10,14 +10,14 @@ use Doctrine\Migrations\AbstractMigration;
 /**
  * Admin access policies under FORCE RLS (managed-Postgres provisioning).
  *
- * Runs on the ADMIN connection (clubscheduler). In dev/test the clubscheduler
+ * Runs on the ADMIN connection (amateo_owner). In dev/test the amateo_owner
  * role is a SUPERUSER and bypasses RLS entirely, so these policies are inert
  * there. On a MANAGED provider the owner role is created WITHOUT superuser:
  * FORCE ROW LEVEL SECURITY then applies to the owner too, and with no policy
  * granting it access every FORCE table default-DENIES the admin connection —
  * the superadmin supervision door slams shut. This migration reopens it with
  * one permissive admin_all policy (FOR ALL, USING/ WITH CHECK true) TO
- * clubscheduler on every FORCE table that exists at migration time.
+ * amateo_owner on every FORCE table that exists at migration time.
  *
  * The table list is enumerated PHP-side at execution (pg_class), not hardcoded:
  * every table already under FORCE gets its door. FUTURE FORCE tables are NOT
@@ -34,19 +34,31 @@ final class Version20260813130000 extends AbstractMigration
 {
     public function getDescription(): string
     {
-        return 'admin_all policies (FOR ALL, TO clubscheduler) on every FORCE-RLS table: keeps the admin supervision door open when the owner role is not a superuser (managed Postgres).';
+        return 'admin_all policies (FOR ALL, TO amateo_owner) on every FORCE-RLS table: keeps the admin supervision door open when the owner role is not a superuser (managed Postgres).';
     }
 
     public function up(Schema $schema): void
     {
-        // The clubscheduler role is provisioned per-environment (docker initdb
+        // P4-142 — owner role renamed clubscheduler → amateo_owner. Only the GUARD
+        // literal here (and in the sibling admin_all migrations) was amended: the
+        // pg_roles probe and the `TO <owner>` target of the CREATE POLICY. The DDL
+        // body is unchanged and the schema produced is identical — the policy still
+        // grants the admin supervision door to THE database owner, now under its new
+        // name. Editing a frozen migration is normally forbidden because a deployed
+        // cluster would diverge on replay; that reason does not apply here — NO
+        // cluster is deployed (prod was never provisioned) and every local/CI cluster
+        // is recreated from initdb, where the owner is now amateo_owner. `ALTER ROLE
+        // … RENAME` was not an option: the migrations run AS this role, and Postgres
+        // refuses `ERROR: session user cannot be renamed`.
+        //
+        // The amateo_owner role is provisioned per-environment (docker initdb
         // 02-users.sh in dev/test/CI, secure manual provisioning on a managed
         // provider) — never in a git-committed migration. On a managed provider
         // the owner MUST be created under this exact name. Fail loudly if absent.
-        $hasRole = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'clubscheduler\'');
+        $hasRole = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'amateo_owner\'');
         $this->abortIf(
             !$hasRole,
-            'Role clubscheduler does not exist. Provision the database owner first, under this exact name (dev/test: docker/postgres/init/02-users.sh; managed provider: the owner role must be named clubscheduler so these admin policies apply to it).',
+            'Role amateo_owner does not exist. Provision the database owner first, under this exact name (dev/test: docker/postgres/init/02-users.sh; managed provider: the owner role must be named amateo_owner so these admin policies apply to it).',
         );
 
         /** @var list<string> $tables */
@@ -59,7 +71,7 @@ final class Version20260813130000 extends AbstractMigration
             // Always double-quote the relname: some tenant tables are reserved
             // words ("constraint").
             $this->addSql(\sprintf(
-                'CREATE POLICY admin_all ON public."%s" FOR ALL TO clubscheduler USING (true) WITH CHECK (true)',
+                'CREATE POLICY admin_all ON public."%s" FOR ALL TO amateo_owner USING (true) WITH CHECK (true)',
                 $table,
             ));
         }

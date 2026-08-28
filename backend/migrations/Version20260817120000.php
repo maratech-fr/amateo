@@ -13,7 +13,7 @@ use Doctrine\Migrations\AbstractMigration;
  * Deux tables tenant-owned (`club_id`) : FORCE ROW LEVEL SECURITY comme toute table club_id
  * (RlsIsolationTest les découvre dynamiquement et exige ENABLE+FORCE+policy). Deux policies
  * chacune : `tenant_isolation` adossée au GUC app.club_id (prédicat canon, identique à
- * team_tag/implicit_rule_setting), et la porte `admin_all` TO clubscheduler (le provisioning
+ * team_tag/implicit_rule_setting), et la porte `admin_all` TO amateo_owner (le provisioning
  * des portes admin a déjà tourné et ne couvre pas une table créée après lui).
  *
  * `schedule_plan_id` NULLABLE = socle saison (NULL) vs plan de période (UUID) — patron
@@ -41,7 +41,7 @@ final class Version20260817120000 extends AbstractMigration
         $this->addSql('CREATE INDEX idx_shared_training_group_team_club_season ON shared_training_group_team (club_id, season_id)');
 
         $hasAppUser = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        $hasOwner = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'clubscheduler\'');
+        $hasOwner = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'amateo_owner\'');
 
         foreach (['shared_training_group', 'shared_training_group_team'] as $table) {
             if ($hasAppUser) {
@@ -56,7 +56,7 @@ final class Version20260817120000 extends AbstractMigration
                 ));
             }
             if ($hasOwner) {
-                $this->addSql(\sprintf('CREATE POLICY admin_all ON public.%s FOR ALL TO clubscheduler USING (true) WITH CHECK (true)', $table));
+                $this->addSql(\sprintf('CREATE POLICY admin_all ON public.%s FOR ALL TO amateo_owner USING (true) WITH CHECK (true)', $table));
             }
         }
     }

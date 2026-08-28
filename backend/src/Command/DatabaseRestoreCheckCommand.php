@@ -62,7 +62,7 @@ final class DatabaseRestoreCheckCommand extends Command
         // CREATE/DROP via psql (base de maintenance 'postgres'), PAS via Doctrine :
         // CREATE DATABASE refuse de tourner dans une transaction, et la connexion
         // Doctrine peut en porter une (wrapper transactionnel des tests).
-        $database = 'clubscheduler_restore_' . bin2hex(random_bytes(4));
+        $database = 'amateo_restore_' . bin2hex(random_bytes(4));
         $this->maintenance(\sprintf('CREATE DATABASE %s', $database));
         $dropFailed = false;
 
@@ -135,7 +135,7 @@ final class DatabaseRestoreCheckCommand extends Command
 
         $dirOption = $input->getOption('dir');
         $dir = \is_string($dirOption) && '' !== $dirOption ? $dirOption : $this->defaultBackupDir;
-        $files = glob(rtrim($dir, '/') . '/clubscheduler-*.dump') ?: [];
+        $files = glob(rtrim($dir, '/') . '/amateo-*.dump') ?: [];
         sort($files);
 
         return [] === $files ? null : end($files);

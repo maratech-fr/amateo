@@ -635,7 +635,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
 
         // Garde-fou : sans la connexion superuser, le seeder échouerait sur son
         // propre garde RLS — mais silencieusement tard. On l'affirme tôt.
-        self::assertSame('clubscheduler', $this->connection->fetchOne('SELECT current_user'));
+        self::assertSame('amateo_owner', $this->connection->fetchOne('SELECT current_user'));
 
         // Notre filet de rollback (voir docblock) : tout le seed vit ici.
         $this->connection->beginTransaction();

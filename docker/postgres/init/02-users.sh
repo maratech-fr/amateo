@@ -42,7 +42,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE ON SEQUENCES TO app_user;
 -- `migration_user` a été SUPPRIMÉ le 2026-07-31 (migration Version20260731090000).
 -- Il était créé ici avec GRANT ALL sur le schéma, ses tables et ses séquences (plus des
 -- ALTER DEFAULT PRIVILEGES qui étendaient ces droits aux tables futures) — et n'était
--- utilisé par AUCUNE connexion : les migrations passent par `clubscheduler`
+-- utilisé par AUCUNE connexion : les migrations passent par `amateo_owner`
 -- (DATABASE_ADMIN_URL). Un compte de service dormant à droits larges, sans contrepartie.
 -- Il ne pouvait pas non plus être câblé pour de vrai : NOSUPERUSER sans BYPASSRLS, il est
 -- default-deny sous FORCE ROW LEVEL SECURITY — migrations et fixtures casseraient.
