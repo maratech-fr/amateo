@@ -168,7 +168,7 @@ make exec             # Entrer dans le conteneur php-fpm
 
 > Les migrations passent par la connexion `admin` (`config/packages/doctrine_migrations.yaml`,
 > `connection: admin`) : elles portent le DDL et les policies RLS, que le rôle applicatif
-> `app_user` n'a pas le droit d'exécuter.
+> `amateo_app` n'a pas le droit d'exécuter.
 
 > ⚠️ Commandes backend = **dans Docker** (le Makefile enveloppe `docker compose exec`). Elles échouent sur l'hôte. La suite de tests a besoin de la base de test → `make db-init-test` d'abord.
 

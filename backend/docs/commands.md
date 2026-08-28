@@ -104,7 +104,7 @@ Toutes manuelles sauf mention. Détail : `ls backend/src/Command/`.
 
 | Commande | Piège |
 |----------|-------|
-| `dbal:run-sql "…"` | Connexion `default` = `app_user` **sous RLS sans GUC → 0 ligne sur les tables tenant**. Ops/debug : `--connection admin`. *(doctrine-bundle 3 a supprimé l'ancien alias `doctrine:query:sql`.)* |
+| `dbal:run-sql "…"` | Connexion `default` = `amateo_app` **sous RLS sans GUC → 0 ligne sur les tables tenant**. Ops/debug : `--connection admin`. *(doctrine-bundle 3 a supprimé l'ancien alias `doctrine:query:sql`.)* |
 | `doctrine:migrations:migrate` | Toujours via la connexion **admin** (les cibles make le font) |
 | `doctrine:fixtures:load` | **Interdit à la main** — garde applicatif (BasketballInit) : passe par `make fixtures` |
 

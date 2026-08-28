@@ -88,7 +88,7 @@ enumerated in [`../security/rls.md`](../security/rls.md). Three layers of isolat
 
 1. **Application layer**: Doctrine `TenantFilter` appends `WHERE club_id = ?` to every query on a
    `club_id`-owning entity.
-2. **Database layer**: PostgreSQL RLS `FORCE` policies — `app_user` only ever sees its own club's
+2. **Database layer**: PostgreSQL RLS `FORCE` policies — `amateo_app` only ever sees its own club's
    rows; no GUC → zero rows, no error (fail-closed).
 3. **Application scoping** for the tables without `club_id` (Club, User) in their providers/processors.
 
