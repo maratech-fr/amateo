@@ -43,6 +43,17 @@ describe("StepRail", () => {
     expect(done).toHaveAttribute("aria-label", "Gymnases — étape terminée");
   });
 
+  it("locked → nom accessible « — étape verrouillée » (WCAG 2.5.3) et cadenas aria-hidden", () => {
+    render(<StepRail steps={steps} currentId="a" onSelect={vi.fn()} />);
+    // « Coachs » est verrouillée : son nom accessible CONTIENT le label visible + l'état,
+    // comme le fait « done ». Avant le fix, seul `done` posait un aria-label.
+    const locked = screen.getByRole("button", { name: "Coachs — étape verrouillée" });
+    expect(locked).toHaveAttribute("aria-label", "Coachs — étape verrouillée");
+    // Le cadenas est décoratif (l'état vit déjà dans le nom accessible) : aria-hidden, comme le ✓.
+    const svg = locked.querySelector("svg");
+    expect(svg).toHaveAttribute("aria-hidden", "true");
+  });
+
   it("locked → disabled et onSelect JAMAIS appelé au clic", async () => {
     const onSelect = vi.fn();
     const user = userEvent.setup();

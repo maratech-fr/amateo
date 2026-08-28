@@ -51,7 +51,9 @@ export function StepRail<Id extends string>({ steps, currentId, onSelect }: Step
                 onClick={() => onSelect(step.id)}
                 aria-current={step.id === currentId ? "step" : undefined}
                 // WCAG 2.5.3 : le nom accessible CONTIENT le texte visible, l'état s'ajoute.
-                aria-label={done ? `${step.label} — étape terminée` : undefined}
+                // Verrouillée : on dit l'ÉTAT (pas le POURQUOI — le rail est présentation pure,
+                // il ne connaît pas la raison métier du verrou).
+                aria-label={done ? `${step.label} — étape terminée` : locked ? `${step.label} — étape verrouillée` : undefined}
                 className={cn(
                   "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition",
                   step.id === currentId ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/60",
@@ -68,7 +70,8 @@ export function StepRail<Id extends string>({ steps, currentId, onSelect }: Step
                   {done ? <Check className="size-3" aria-hidden="true" /> : i + 1}
                 </span>
                 <span className="flex-1">{step.label}</span>
-                {locked ? <Lock className="size-3" /> : null}
+                {/* Décoratif : l'état est déjà porté par le nom accessible (aria-label), comme le ✓. */}
+                {locked ? <Lock className="size-3" aria-hidden="true" /> : null}
               </button>
             </li>
           );
