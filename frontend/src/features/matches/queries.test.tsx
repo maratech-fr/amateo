@@ -380,25 +380,36 @@ describe("matches queries — onSettled (échange) et dry-run", () => {
     await waitFor(() => expect(matchesApi.getSportCategoryDurations).toHaveBeenCalledTimes(2));
   });
 
-  it("useCreateVenueMatchWindow / useDeleteVenueMatchWindow refetchent la liste ['venue_match_windows']", async () => {
-    // NB (finding hors PR — cf. rapport) : ces écritures NE touchent PAS ['fixtures','conflicts']
-    // alors que le conflit ACCESS_WINDOW_LOST dépend des fenêtres d'accès. Ce test ne verrouille
-    // QUE le comportement CORRECT (la liste refetche) pour rester vert et ne pas figer l'asymétrie.
+  it("useCreateVenueMatchWindow / useDeleteVenueMatchWindow refetchent la liste ET le radar", async () => {
+    // Le radar est la moitié qui manquait : `ACCESS_WINDOW_LOST` est dérivé des fenêtres d'accès,
+    // et ces deux écritures étaient les SEULES nourrissant le radar à ne pas l'invalider (leurs
+    // quatre frères le font). Le gestionnaire éditait ses fenêtres dans Configuration, revenait
+    // dans les 10 s (staleTime) sur la boucle de travail, et lisait un radar périmé : accès perdu
+    // en faux vert, ou conflit déjà résolu encore affiché.
     const client = makeClient();
     const { result } = renderHook(
-      () => ({ windows: useVenueMatchWindows(), create: useCreateVenueMatchWindow(), remove: useDeleteVenueMatchWindow() }),
+      () => ({
+        windows: useVenueMatchWindows(),
+        conflicts: useConflicts(),
+        create: useCreateVenueMatchWindow(),
+        remove: useDeleteVenueMatchWindow(),
+      }),
       { wrapper: wrapperFor(client) },
     );
 
     await waitFor(() => expect(result.current.windows.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.conflicts.isSuccess).toBe(true));
+    expect(matchesApi.getConflicts).toHaveBeenCalledTimes(1);
 
     result.current.create.mutate({ venueId: "v", dayOfWeek: 6, startTime: "14:00", endTime: "20:00" });
     await waitFor(() => expect(result.current.create.isSuccess).toBe(true));
     await waitFor(() => expect(matchesApi.getVenueMatchWindows).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(matchesApi.getConflicts).toHaveBeenCalledTimes(2));
 
     result.current.remove.mutate("w1");
     await waitFor(() => expect(result.current.remove.isSuccess).toBe(true));
     await waitFor(() => expect(matchesApi.getVenueMatchWindows).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(matchesApi.getConflicts).toHaveBeenCalledTimes(3));
   });
 });
 

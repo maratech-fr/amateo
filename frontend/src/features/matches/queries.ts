@@ -331,11 +331,25 @@ export function useVenueMatchWindows() {
   return useQuery({ queryKey: ["venue_match_windows"], queryFn: matchesApi.getVenueMatchWindows, staleTime: 300_000 });
 }
 
+/**
+ * Les fenêtres d'accès nourrissent le RADAR autant que la liste : `ACCESS_WINDOW_LOST` est
+ * dérivé d'elles (`App\Service\MatchConflictDetector::kickoffInsideWindow`, miroir front
+ * `lib/matchAccess.ts`). Sans la 2e clé, `useConflicts` (staleTime 10 s) servait son cache —
+ * un accès perdu passait en FAUX VERT, un conflit résolu restait affiché — jusqu'au prochain
+ * remontage. C'était la SEULE écriture nourrissant le radar à ne pas l'invalider ; ses quatre
+ * frères (`invalidateTravel`, `invalidateUnavailabilities`, `invalidateHabits`,
+ * `invalidateTeamLinks`) le faisaient déjà (FRT-20, 2e tranche).
+ */
+function invalidateMatchWindows(queryClient: ReturnType<typeof useQueryClient>): void {
+  void queryClient.invalidateQueries({ queryKey: ["venue_match_windows"] });
+  void queryClient.invalidateQueries({ queryKey: ["fixtures", "conflicts"] });
+}
+
 export function useCreateVenueMatchWindow() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: matchesApi.createVenueMatchWindow,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["venue_match_windows"] }),
+    onSuccess: () => invalidateMatchWindows(queryClient),
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
@@ -344,7 +358,7 @@ export function useDeleteVenueMatchWindow() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: matchesApi.deleteVenueMatchWindow,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["venue_match_windows"] }),
+    onSuccess: () => invalidateMatchWindows(queryClient),
     onError: () => toast.error("Suppression de la fenêtre impossible"),
   });
 }
