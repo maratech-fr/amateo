@@ -1,14 +1,15 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-08-28 (rotation `documentation-update`, hors sujet de la PR — re-vérifié
-contre le code : le firewall `admin` couvre `^/api/admin` avec son `super_admin_provider` et n'est
-**pas** `stateless` — contrairement au firewall `api` qui l'est
-(`backend/config/packages/security.yaml:33-39`) ✓ · l'entité `SuperAdmin` existe
-(`backend/src/Entity/SuperAdmin.php`), identité séparée du `User` ✓ · le `TenantFilterListener`
-retourne immédiatement sur `/api/admin` et ne pose donc jamais `app.club_id` sous identité admin
-(`TenantFilterListener.php:81`, gardé par `AdminRequestBoundaryTest`) ✓ · les **deux** routes
-`PUBLIC_ACCESS` du périmètre admin tiennent toujours (`security.yaml:45-46` : `/api/admin/auth/password`
-et `/api/admin/auth/totp`) ✓. Rien à corriger ce jour)
+Last verified @ 2026-08-29 (date recalée — le contenu ci-dessous a été écrit le 2026-08-28, le
+commit qui le porte (#779) a atterri le lendemain, décalage d'horloge de session sans rapport avec
+le contenu. Re-confronté avant de redater : le firewall `admin` couvre `^/api/admin` avec son
+`super_admin_provider` et n'est **pas** `stateless` — contrairement au firewall `api` qui l'est
+(`backend/config/packages/security.yaml:33-39`) ✓. **Reste du texte inchangé depuis le
+2026-08-28** : l'entité `SuperAdmin` existe (`backend/src/Entity/SuperAdmin.php`), identité séparée
+du `User` ✓ · le `TenantFilterListener` retourne immédiatement sur `/api/admin` et ne pose donc
+jamais `app.club_id` sous identité admin (`TenantFilterListener.php:81`, gardé par
+`AdminRequestBoundaryTest`) ✓ · les **deux** routes `PUBLIC_ACCESS` du périmètre admin tiennent
+toujours (`security.yaml:45-46` : `/api/admin/auth/password` et `/api/admin/auth/totp`) ✓)
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle
 > d'historisation SA3-A, la supervision SA3-B, la planification fiable SA3-C et

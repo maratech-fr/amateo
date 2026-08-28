@@ -1,4 +1,13 @@
-Last verified @ 2026-08-28 (BCK-22 — l'autofill de trajet gagne une 3ᵉ raison servie : **+0 path**, l'ENUM inline `reason` de `POST /api/venue-travel-times/autofill` (`CustomRoutesOpenApiFactory.php:841`) gagne `budget_exceeded` — le seul consommateur qui déclarait cette valeur close était sous-spécifié depuis que `IgnRoutingClient::travelMinutesBatch` la sert, aucun test cross-stack ne la couvrait (pas un schéma nommé). 189 → **189 paths** (`grep -c '"/api/'`) · SHA-256 `ee365910ca75f482a6078373d59749e07bb688804cea05b51d6032a3e4bedd08` (`sha256sum` conforme). Journal borné à 8 entrées depuis l'audit DOC-34 ; l'historique complet vit dans git, les livraisons dans `etat-des-lieux.md`.)
+Last verified @ 2026-08-29 (date recalée — le contenu ci-dessous a été écrit le 2026-08-28, le
+commit qui le porte (#779) a atterri le lendemain, décalage d'horloge de session sans rapport avec
+le contenu. Re-confronté avant de redater : **189 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`)
+✓ · SHA-256 `ee365910ca75f482a6078373d59749e07bb688804cea05b51d6032a3e4bedd08` (`sha256sum`
+conforme) ✓. **Reste du texte inchangé depuis le 2026-08-28** : BCK-22 — l'autofill de trajet gagne
+une 3ᵉ raison servie : **+0 path**, l'ENUM inline `reason` de `POST /api/venue-travel-times/autofill`
+(`CustomRoutesOpenApiFactory.php:841`) gagne `budget_exceeded` — le seul consommateur qui déclarait
+cette valeur close était sous-spécifié depuis que `IgnRoutingClient::travelMinutesBatch` la sert,
+aucun test cross-stack ne la couvrait (pas un schéma nommé). Journal borné à 8 entrées depuis
+l'audit DOC-34 ; l'historique complet vit dans git, les livraisons dans `etat-des-lieux.md`.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
 - **BCK-22 — le budget global de l'autofill de trajet (2026-08-28)** : **+0 path** — pas de route ni
