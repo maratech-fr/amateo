@@ -1,6 +1,13 @@
-Last verified @ 2026-08-28 (P2-54 RMM-9 PR-3 — le radar spatial : **+4 paths** → **189 paths** (`grep -c '"/api/'`, les routes custom `GET /api/opponents/travel` + `POST /api/opponents/travel/{manual,auto,resolve}` déclarées dans `CustomRoutesOpenApiFactory`, plus le champ `stamped` ajouté à `POST /api/opponents/resolve`) · SHA-256 `1ac366250705e260856965004d6e7c138c5af412eef1ecd3bd48689dbaff9bd4` (`sha256sum` conforme). Dernière évolution d'API : P2-54 RMM-9 PR-3, 2026-08-28 — voir la première entrée ci-dessous. Journal borné à 8 entrées depuis l'audit DOC-34 ; l'historique complet vit dans git, les livraisons dans `etat-des-lieux.md`.)
+Last verified @ 2026-08-28 (BCK-22 — l'autofill de trajet gagne une 3ᵉ raison servie : **+0 path**, l'ENUM inline `reason` de `POST /api/venue-travel-times/autofill` (`CustomRoutesOpenApiFactory.php:841`) gagne `budget_exceeded` — le seul consommateur qui déclarait cette valeur close était sous-spécifié depuis que `IgnRoutingClient::travelMinutesBatch` la sert, aucun test cross-stack ne la couvrait (pas un schéma nommé). 189 → **189 paths** (`grep -c '"/api/'`) · SHA-256 `ee365910ca75f482a6078373d59749e07bb688804cea05b51d6032a3e4bedd08` (`sha256sum` conforme). Journal borné à 8 entrées depuis l'audit DOC-34 ; l'historique complet vit dans git, les livraisons dans `etat-des-lieux.md`.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **BCK-22 — le budget global de l'autofill de trajet (2026-08-28)** : **+0 path** — pas de route ni
+  de DTO nouveau, un **ENUM inline** existant se complète : `POST /api/venue-travel-times/autofill`
+  peut désormais rendre `unresolved[].reason = "budget_exceeded"` (lot interrompu par
+  `IgnRoutingClient::BATCH_BUDGET_SECONDS`, distinct de `missing_geo`/`routing_failed` — « relancez
+  pour continuer », pas un échec). 189 → **189 paths**. Backend + frontend (`reasonLabel` devient une
+  table exhaustive côté écran), contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.16, aucun
+  appel moteur).
 - **P2-54 RMM-9 PR-3 — le radar de conflits devient SPATIAL (2026-08-28)** : **+4 paths** — les routes
   custom du trajet adverse (tenant `opponent_travel`, keyé sur le code organisme) :
   `GET /api/opponents/travel` (**ouvert au Membre**, affichage : par adversaire AWAY distinct, la
@@ -76,15 +83,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   `effectiveEntryDeadline` (club ?? défaut communautaire) et `deadlineSource` (`club`|`community`|`null`)
   — la règle « club gagne » servie par le backend. Défaut communautaire = table PARTAGÉE hors-tenant
   `shared_competition_deadline` (aucune donnée club-identifiante). 176 → **178 paths**. Backend PUR,
-  contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.14, aucun appel moteur).
-- **RMM-5 PR-1 — le modèle de la rotation A/B (2026-08-25)** : **+2 paths** — le CRUD API Platform
-  `MatchSlotRotation` : `GET/POST /api/match_slot_rotations` (liste **ouverte au Membre**, création
-  management) et `GET/PUT/DELETE /api/match_slot_rotations/{id}`. Un créneau de match partagé
-  (gymnase + jour + heure, `venueId` NOT NULL) porté par N équipes ordonnées (A/B/C, position
-  FICTIVE) qui l'occupent en alternance — schémas `MatchSlotRotation` + `MatchSlotRotation.MatchSlotRotationInput`
-  (`venueId`, `dayOfWeek`, `kickoffTime`, `teamIds[]` ordonné). Écriture par REMPLACEMENT des membres,
-  scopé club+saison, hors plans de période (patron `TeamMatchHabit`/`VenueMatchWindow`). 174 →
-  **176 paths**. Backend PUR : rien ne consomme encore le modèle (payload/solveur = PR-2/3),
   contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.14, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît

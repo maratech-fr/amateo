@@ -121,6 +121,17 @@ describe("TravelMatrixModal — la matrice", () => {
     expect(screen.getAllByText(/gymnase sans adresse/).length).toBeGreaterThanOrEqual(1);
   });
 
+  it("un couple interrompu par le budget se lit « relancez », pas « calcul impossible »", () => {
+    matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "AUTO" })];
+    autofillResultState.value = { filled: 1, unresolved: [{ venueAId: "v1", venueBId: "v3", reason: "budget_exceeded" }], skippedManual: 0 };
+    renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Recalculer les trajets" }));
+    // BCK-22 — le lot s'est arrêté sur son budget : le couple est à relancer, pas perdu.
+    expect(screen.getAllByText(/calcul interrompu, relancez/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/calcul impossible/)).toBeNull();
+  });
+
   it("re-lancer l'autofill : les valeurs MANUEL restent affichées inchangées", () => {
     matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "MANUAL" })];
     autofillResultState.value = { filled: 0, unresolved: [], skippedManual: 1 };
