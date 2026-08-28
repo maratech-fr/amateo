@@ -155,6 +155,31 @@ seed-bccl: APP_ENV = dev
 seed-bccl:
 	$(FIG) exec -e APP_ENV=$(APP_ENV) -e DATABASE_URL='$(DB_ADMIN_URL)' -u $(USERID):$(GROUPID) php-fpm php bin/console app:demo:seed-bccl --password='$(DEMO_BCCL_PASSWORD)' --no-interaction
 
+# `app:demo:seed-bccl` est « créer OU RESET » : il PURGE le workspace du club de
+# démo (ErasedClubPurger) avant de re-seeder. Appelé inconditionnellement par
+# `make play`, il détruisait le travail du fondateur sur BCCL à chaque bascule.
+# Cette cible n'appelle le seed QUE si le club de démo (code FFBB ARA9999999) est
+# ABSENT de la base VISÉE — sinon elle ne touche à RIEN. La base est résolue
+# dynamiquement (current_database via php-fpm → respecte .env.local et toute la
+# précédence dotenv) ; l'existence est lue par la connexion ADMIN (amateo_owner,
+# hors RLS, sinon 0 ligne sans GUC de club). Table `club` absente (base neuve
+# juste migrée) → club absent → seed. Le RESET explicite reste `make seed-bccl`.
+.PHONY: seed-bccl-if-absent ## Seed BCCL seulement si le club de démo est ABSENT (non destructeur — `make play`)
+seed-bccl-if-absent: APP_ENV = dev
+seed-bccl-if-absent:
+	@db=$$($(FIG) exec -T -e APP_ENV=dev php-fpm sh -c 'cd /app/backend && php bin/console dbal:run-sql "SELECT current_database() AS db"' 2>/dev/null | sed -E 's/[[:space:]]//g' | grep -vE '^-*$$' | grep -vxE 'db' | head -1); \
+	if [ -z "$$db" ]; then echo "seed-bccl-if-absent: base non résolue — la stack est-elle démarrée (make start) ?" >&2; exit 1; fi; \
+	tbl=$$($(FIG) exec -T postgres psql -U amateo_owner -d "$$db" -tAc "SELECT to_regclass('public.club') IS NOT NULL" 2>/dev/null | tr -d '[:space:]'); \
+	if [ "$$tbl" = "t" ]; then \
+		count=$$($(FIG) exec -T postgres psql -U amateo_owner -d "$$db" -tAc "SELECT count(*) FROM club WHERE ffbb_club_code = 'ARA9999999'" 2>/dev/null | tr -d '[:space:]'); \
+	else count=0; fi; \
+	if [ "$${count:-0}" = "0" ]; then \
+		echo "club de démo absent sur $$db — seed initial (BCCL)."; \
+		$(MAKE) APP_ENV=dev seed-bccl; \
+	else \
+		echo "club de démo déjà présent sur $$db — aucune donnée touchée."; \
+	fi
+
 # OPTIONNEL, jamais lancé automatiquement (P4-141) : supprime les bases dev
 # héritées d'AVANT le découpage (clubscheduler / clubscheduler_test), restées
 # inertes dans le volume. Aucune donnée à préserver (BCCL se reseede via
