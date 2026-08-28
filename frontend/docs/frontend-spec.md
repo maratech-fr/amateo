@@ -4,15 +4,15 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-08-28 (rotation `documentation-update`, passe Lot E — §6.6bis re-confirmé au code (`useValidateImpact`/`ValidateDialog.tsx`, route `validate-impact` présente au snapshot). Les écrans matchs récents (chip trajet, carte « Adversaires à localiser », P2-54 PR-3) vivent dans `specs/courantes/module-matchs.md` (maison du module), non dupliqués ici. Passe précédente (RMM-10 / P2-52). §6.6bis :
-« Valider » interroge `GET /api/schedules/{id}/validate-impact`
-(`useValidateImpact`/`ValidateDialog.tsx`) avant de confirmer — annonce « salle perdue » si N>0,
-bouton désactivé tant que l'impact n'est pas connu. `UnplacedList.tsx` gagne un badge calme
-(`unplacedReasonLabel.ts`) quand `Fixture.unplacedReason=venue_lost`. Confronté au code :
-`ValidateDialog.tsx`, `ValidateDialog.test.tsx`, `PlanningPage.tsx`, `planning/{api,queries}.ts`,
-`UnplacedList.tsx`, `matches/lib/unplacedReasonLabel.ts`, `shared/components/ui/declared-fixtures-notice.tsx`.
-Le reste du fichier (routes hors planning/matchs, primitives, stack) non re-vérifié cette passe — un
-stamp REMPLACE, l'historique vit dans git : `git log -p --follow frontend/docs/frontend-spec.md`)
+Last verified @ 2026-08-29 (`documentation-update`, FRT-20 2ᵉ tranche — nouvelle section « Radar de
+conflits (`/matchs`) — toute écriture qui le nourrit DOIT l'invalider » ajoutée et confrontée au
+code : `useConflicts` (`matches/queries.ts`) porte bien `queryKey: ["fixtures", "conflicts"]` et
+`staleTime: 10_000` ; les cinq helpers `invalidateTravel`/`invalidateUnavailabilities`/
+`invalidateHabits`/`invalidateTeamLinks`/`invalidateMatchWindows` invalident tous cette même clé ;
+`MatchConflictDetector::kickoffInsideWindow` (backend) et son miroir `matches/lib/matchAccess.ts`
+existent bien sous ces noms. Le reste du fichier (routes hors matchs, primitives, stack) non
+re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git :
+`git log -p --follow frontend/docs/frontend-spec.md`)
 
 ---
 
@@ -1145,6 +1145,26 @@ type AuthState = {
 | `/profile` | `GET /api/me` |
 | `/doleances/:token` | Endpoints **publics** de la campagne de doléances (lecture du formulaire pré-rempli + soumission des seules sections modifiées) — aucun JWT |
 | `/admin*` | `POST /api/admin/auth/password`, `POST /api/admin/auth/totp`, `GET /api/admin/auth/me`, `GET /api/admin/{overview,health,clubs,jobs,actions}`, `POST /api/admin/jobs/{key}/run` (en-tête `X-CSRF-Token`) — client `adminApi` dédié, cookie de session `same-origin` |
+
+### Radar de conflits (`/matchs`) — toute écriture qui le nourrit DOIT l'invalider
+
+`useConflicts` (`matches/queries.ts`, `queryKey: ["fixtures", "conflicts"]`, `staleTime: 10_000`)
+est **dérivé, jamais stocké** — `App\Service\MatchConflictDetector` le recalcule à la volée côté
+serveur à chaque lecture. Une écriture qui change une donnée dont le détecteur **dépend** doit
+donc invalider `["fixtures", "conflicts"]` **en plus** de sa propre clé, sinon le radar sert son
+cache jusqu'à 10 s — un accès perdu s'y lit en faux vert, un conflit résolu y reste affiché.
+Cinq foyers d'écriture respectent la règle, chacun via un helper `invalidate*` dédié
+(`matches/queries.ts`) : `invalidateTravel` (trajet adverse), `invalidateUnavailabilities`
+(indisponibilités gymnase), `invalidateHabits` (habitudes équipe), `invalidateTeamLinks`
+(passerelles), `invalidateMatchWindows` (fenêtres d'accès match). Ce dernier a été le
+**défaut trouvé et corrigé par FRT-20 2ᵉ tranche (2026-08-29)** : `useCreateVenueMatchWindow` /
+`useDeleteVenueMatchWindow` n'invalidaient QUE `["venue_match_windows"]`, alors que
+`ACCESS_WINDOW_LOST` est dérivé de ces fenêtres (`MatchConflictDetector::kickoffInsideWindow`,
+miroir front `matches/lib/matchAccess.ts`) — c'était le seul des cinq foyers à l'ignorer.
+**Toute nouvelle écriture du module matchs qui influence le détecteur suit ce patron** (vérifier
+`MatchConflictDetector.php` avant d'écrire un hook) ; couverture par l'EFFET (le vrai
+`useConflicts` monté sur un `QueryClient` réel refetche) plutôt qu'un espion sur
+`invalidateQueries` : `matches/queries.test.tsx`.
 
 ### Headers obligatoires
 
