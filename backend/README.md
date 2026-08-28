@@ -237,8 +237,8 @@ backend/
 - **PHP** : 8.4
 - **Framework** : Symfony 7
 - **API** : API Platform
-- **DB** : PostgreSQL 16 (via `clubscheduler-postgres`)
-- **Cache** : Redis (via `clubscheduler-redis`)
+- **DB** : PostgreSQL 16 (via `amateo-postgres`)
+- **Cache** : Redis (via `amateo-redis`)
 - **Message Bus** : Symfony Messenger + Redis
 - **Real-time** : Mercure (SSE)
 - **Port** : 9000 (php-fpm interne) — exposé via nginx 8080

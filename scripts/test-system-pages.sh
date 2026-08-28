@@ -31,7 +31,7 @@ NET="syspages-test-net-$$"
 CADDY_CT="syspages-caddy-$$"
 UP_CT="syspages-upstream-$$"
 WORK="$(mktemp -d)"
-STAGING="$WORK/deploy"          # monté sur /srv/clubscheduler dans le conteneur
+STAGING="$WORK/deploy"          # monté sur /srv/amateo dans le conteneur
 APP_HOST="app.localhost"
 
 PASS=0
@@ -105,7 +105,7 @@ docker run --rm -v "$EXAMPLE:/etc/caddy/Caddyfile:ro" "$CADDY_IMAGE" \
 docker network create "$NET" >/dev/null
 docker run -d --name "$CADDY_CT" --network "$NET" -p 127.0.0.1::80 \
   -v "$WORK/Caddyfile:/etc/caddy/Caddyfile:ro" \
-  -v "$STAGING:/srv/clubscheduler:ro" \
+  -v "$STAGING:/srv/amateo:ro" \
   "$CADDY_IMAGE" >/dev/null
 
 HOSTPORT="$(docker port "$CADDY_CT" 80/tcp | head -1 | sed 's/.*://')"

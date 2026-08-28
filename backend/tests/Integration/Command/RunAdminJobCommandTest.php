@@ -180,14 +180,14 @@ final class RunAdminJobCommandTest extends KernelTestCase
         $lockConnection = DriverManager::getConnection($this->admin->getParams());
         try {
             self::assertTrue((bool) $lockConnection->fetchOne(
-                'SELECT pg_try_advisory_lock(hashtext(\'clubscheduler.admin_job\'), hashtext(\'test-job\'))',
+                'SELECT pg_try_advisory_lock(hashtext(\'amateo.admin_job\'), hashtext(\'test-job\'))',
             ));
             $tester = $this->testerFor('test:job:success', Command::SUCCESS);
 
             self::assertSame(Command::FAILURE, $tester->execute(['job' => 'test-job']));
             self::assertSame(0, (int) $this->admin->fetchOne('SELECT COUNT(*) FROM admin_job_run'));
         } finally {
-            $lockConnection->fetchOne('SELECT pg_advisory_unlock(hashtext(\'clubscheduler.admin_job\'), hashtext(\'test-job\'))');
+            $lockConnection->fetchOne('SELECT pg_advisory_unlock(hashtext(\'amateo.admin_job\'), hashtext(\'test-job\'))');
             $lockConnection->close();
         }
     }

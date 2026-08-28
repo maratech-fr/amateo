@@ -84,7 +84,7 @@ DB_ADMIN_URL=$(cat "$ROOT/backend/.env" "$ROOT/backend/.env.local" 2>/dev/null \
 [[ -n "$DB_ADMIN_URL" ]] || die "DATABASE_ADMIN_URL not found in backend/.env(.local)"
 
 psql_admin() { dc exec -T -e DATABASE_URL="$DB_ADMIN_URL" postgres \
-  psql -U clubscheduler -d "$SANDBOX_DB" -tA -c "$1"; }
+  psql -U amateo_owner -d "$SANDBOX_DB" -tA -c "$1"; }
 
 # ---------------------------------------------------------------------------
 # Pre-flight

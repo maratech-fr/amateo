@@ -56,7 +56,7 @@ final class DatabaseBackupCommandTest extends KernelTestCase
 
         // Rétention : 15 fichiers factices ANTÉRIEURS + un run --force → il reste 14.
         for ($i = 1; $i <= 15; ++$i) {
-            touch(\sprintf('%s/clubscheduler-2020%02d01-000000.dump', $this->dir, ($i % 12) + 1));
+            touch(\sprintf('%s/amateo-2020%02d01-000000.dump', $this->dir, ($i % 12) + 1));
         }
         $retention = $backup();
         self::assertSame(Command::SUCCESS, $retention->execute(['--dir' => $this->dir, '--force' => true]));
@@ -99,7 +99,7 @@ final class DatabaseBackupCommandTest extends KernelTestCase
         self::assertStringContainsString('The backup is real', $check->getDisplay());
 
         // Aucune base jetable ne survit au check.
-        $leftovers = $this->admin()->fetchFirstColumn('SELECT datname FROM pg_database WHERE datname LIKE \'clubscheduler_restore_%\'');
+        $leftovers = $this->admin()->fetchFirstColumn('SELECT datname FROM pg_database WHERE datname LIKE \'amateo_restore_%\'');
         self::assertSame([], $leftovers, 'la base jetable est détruite après le check');
     }
 
@@ -116,11 +116,11 @@ final class DatabaseBackupCommandTest extends KernelTestCase
         self::assertTrue($this->backupRow($service)['stale'], 'de l\'activité jamais sauvegardée doit être rouge');
 
         // Dump frais (à l'instant) → couvert, vert.
-        touch($this->dir . '/clubscheduler-20990101-000000.dump');
+        touch($this->dir . '/amateo-20990101-000000.dump');
         self::assertFalse($this->backupRow($service)['stale'], 'un dump frais couvre l\'activité');
 
         // Dump VIEUX (> 26 h) avec activité plus récente → rouge.
-        touch($this->dir . '/clubscheduler-20990101-000000.dump', time() - 60 * 60 * 48);
+        touch($this->dir . '/amateo-20990101-000000.dump', time() - 60 * 60 * 48);
         self::assertTrue($this->backupRow($service)['stale'], 'activité non couverte depuis > 26 h = rouge');
     }
 
@@ -157,7 +157,7 @@ final class DatabaseBackupCommandTest extends KernelTestCase
     /** @return list<string> */
     private function dumps(): array
     {
-        return glob($this->dir . '/clubscheduler-*.dump') ?: [];
+        return glob($this->dir . '/amateo-*.dump') ?: [];
     }
 
     /** L'activité = un club avec last_activity_at récent ; withActivity: false = club à

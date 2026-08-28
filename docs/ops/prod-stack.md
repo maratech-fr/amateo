@@ -83,10 +83,10 @@ Trois rôles, et confondre les deux premiers est le risque réel (→ [`../secur
 | Rôle | Portée | Usage |
 |---|---|---|
 | `app_user` | NOSUPERUSER, DML, **scopé par RLS** | la connexion runtime de l'application, jamais un humain |
-| `clubscheduler` | propriétaire non-superuser, policies `admin_all` → **traverse le RLS, voit TOUS les clubs** | migrations et gestes de support qui l'exigent vraiment |
+| `amateo_owner` | propriétaire non-superuser, policies `admin_all` → **traverse le RLS, voit TOUS les clubs** | migrations et gestes de support qui l'exigent vraiment |
 | *(à créer, P5)* lecture seule | `SELECT` seulement, **sans** `admin_all` donc scopé lui aussi | l'exploration courante depuis un poste |
 
-⚠ **Le danger n'est pas théorique** : ouvrir un client graphique sur une session `clubscheduler`,
+⚠ **Le danger n'est pas théorique** : ouvrir un client graphique sur une session `amateo_owner`,
 c'est rapatrier sur un portable les données personnelles de **tous** les clubs — et un `UPDATE`
 mal collé y touche de vraies données de vrais clients, sans filet. Le rôle lecture seule existe
 pour que le geste courant ne puisse rien casser ni tout voir.
@@ -125,10 +125,10 @@ les logins en 500** (commandes complètes dans `.env.prod.dist`).
 
 ```bash
 # secrets factices + keypair local, puis :
-docker compose -p clubscheduler-prod -f docker-compose.prod.yml --env-file .env.prod up -d
+docker compose -p amateo-prod -f docker-compose.prod.yml --env-file .env.prod up -d
 ```
 
-⚠ `-p clubscheduler-prod` **obligatoire en local** : sans lui, compose réutilise
+⚠ `-p amateo-prod` **obligatoire en local** : sans lui, compose réutilise
 les volumes du projet dev (même dossier) — le cluster postgres dev serait monté
 tel quel et les scripts d'init prod ne joueraient pas. Sur la VM le problème
 n'existe pas. Preuve du 2026-07-25 : 10/10 healthy, migrations sur cluster

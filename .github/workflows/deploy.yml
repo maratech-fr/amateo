@@ -227,7 +227,7 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/srv/clubscheduler' }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/srv/amateo' }}
           ENV_GPG_PASSPHRASE: ${{ secrets.ENV_GPG_PASSPHRASE }}
         run: |
           if [ ! -f .env.prod.gpg ]; then
@@ -269,7 +269,7 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/srv/clubscheduler' }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/srv/amateo' }}
           VERSION: ${{ needs.build-push.outputs.version }}
         run: |
           # DEPLOY_PATH lands inside the remote command line — same strict

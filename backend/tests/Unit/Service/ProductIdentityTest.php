@@ -16,53 +16,48 @@ use SplFileInfo;
  * `APP_PRODUCT_NAME`/`APP_PUBLISHER_NAME`.
  *
  * Le test qui compte est le second : il interdit que l'ancien nom commercial
- * (« ClubScheduler ») revienne EN DUR dans `src/`. C'est précisément ce qui a
- * rendu le renommage coûteux — des libellés à retrouver un par un, dont
- * plusieurs au milieu d'un contrôleur de 900 lignes. Un « ClubScheduler »
- * littéral rouvre la chasse : il échoue ici, en nommant le fichier et la ligne.
+ * (« ClubScheduler ») revienne EN DUR dans `src/` et `config/`. C'est
+ * précisément ce qui a rendu le renommage coûteux — des libellés à retrouver un
+ * par un, dont plusieurs au milieu d'un contrôleur de 900 lignes. Un
+ * « ClubScheduler » littéral rouvre la chasse : il échoue ici, en nommant le
+ * fichier et la ligne.
  *
- * QUATRE littéraux techniques restent, EXCLUS par écrit — les renommer ne
- * corrige pas un texte lu par un humain, il CASSE des données déjà écrites :
- *  - `clubscheduler-*.dump`  : préfixe des SAUVEGARDES ; le changer rend
- *    invisibles les dumps existants (rétention, couverture, restauration).
- *  - `clubscheduler.admin_job` : clé du VERROU consultatif PostgreSQL ; deux
- *    versions déployées prendraient deux verrous et lanceraient deux fois le job.
- *  - `clubscheduler_*` : identifiants SQL / noms de base (la base applicative
- *    `clubscheduler_test`, la base de restauration `clubscheduler_restore_*`) —
- *    INFRA, au même titre que POSTGRES_DB / le rôle SQL `clubscheduler`.
- *  - `clubscheduler-slot:` (graine d'un UUIDv5 des créneaux) : vit dans
- *    `engine/`, HORS de la racine balayée ici — cité pour mémoire.
- * Une exclusion sans raison écrite serait une régression déguisée : ici chaque
- * ligne conservée porte sa raison ci-dessus.
+ * P4-142 — les DERNIERS littéraux d'infrastructure `clubscheduler` sous
+ * `src/`/`config/` ont disparu : le rôle SQL owner `clubscheduler` → `amateo_owner`,
+ * la clé du verrou `clubscheduler.admin_job` → `amateo.admin_job`, le préfixe des
+ * dumps `clubscheduler-*.dump` → `amateo-*`, la base de restauration
+ * `clubscheduler_restore_*` → `amateo_restore_*` (et les bases `clubscheduler_*` →
+ * `amateo_*` en PR-1). Conséquence : les DEUX allowlists ci-dessous se VIDENT — le
+ * balayage n'a plus rien à excuser et devient d'autant plus strict.
+ *
+ * Les quelques `clubscheduler` techniques encore vivants habitent tous HORS de la
+ * racine balayée ici, jamais à tolérer sous `src/`/`config/` : `clubscheduler-slot:`
+ * (graine UUIDv5 des créneaux) et le paquet `clubscheduler-engine` dans `engine/`,
+ * `clubscheduler:wish-draft:` dans `frontend/`, l'e-mail de compte
+ * `e2e-admin@clubscheduler.test`. Cités pour mémoire.
  */
 #[Group('phase1')]
 final class ProductIdentityTest extends TestCase
 {
     /**
-     * Sous-chaînes techniques tolérées (cf. docblock) : une ligne qui en
-     * contient une garde son littéral `clubscheduler` — ce n'est pas du texte
-     * lu par un humain, c'est une clé de persistance ou d'infrastructure.
+     * Sous-chaînes techniques tolérées : VIDE depuis P4-142 (cf. docblock de
+     * classe) — plus aucun littéral d'infrastructure `clubscheduler` ne subsiste
+     * sous `src/`/`config/`. Une ré-exclusion sans raison écrite serait une
+     * régression déguisée.
      *
      * @var list<string>
      */
-    private const array TECHNICAL_EXCEPTIONS = [
-        'clubscheduler-',          // préfixe des fichiers de sauvegarde (*.dump)
-        'clubscheduler.admin_job', // verrou consultatif PostgreSQL
-        'clubscheduler_',          // noms de base / identifiants SQL (infra)
-    ];
+    private const array TECHNICAL_EXCEPTIONS = [];
 
     /**
-     * Fichiers de CONFIGURATION d'infrastructure qui nomment le rôle SQL admin
-     * `clubscheduler` — un identifiant de base, pas un nom de produit : le renommer
-     * demanderait de recréer le rôle en production. Exclus par FICHIER (et non par
-     * sous-chaîne) pour qu'aucun titre affiché ne se glisse derrière l'exception.
+     * Fichiers de CONFIGURATION exclus par FICHIER : VIDE depuis P4-142 — les
+     * commentaires de `doctrine.yaml`/`doctrine_migrations.yaml` nomment désormais
+     * le rôle admin `amateo_owner`, plus `clubscheduler`, donc rien à exclure ; le
+     * balayage les couvre maintenant comme n'importe quel autre YAML de `config/`.
      *
      * @var list<string>
      */
-    private const array INFRA_CONFIG_FILES = [
-        'config/packages/doctrine.yaml',
-        'config/packages/doctrine_migrations.yaml',
-    ];
+    private const array INFRA_CONFIG_FILES = [];
 
     public function testIdentityCarriesTheConfiguredNames(): void
     {

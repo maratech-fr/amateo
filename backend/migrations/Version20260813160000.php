@@ -13,7 +13,7 @@ use Doctrine\Migrations\AbstractMigration;
  * Tenant-owned (`club_id`) : FORCE ROW LEVEL SECURITY comme toute table club_id
  * (RlsIsolationTest la découvre dynamiquement et exige ENABLE+FORCE+policy). Deux
  * policies : `tenant_isolation` adossée au GUC app.club_id (prédicat canon,
- * identique à team_tag), et la porte `admin_all` TO clubscheduler — la migration
+ * identique à team_tag), et la porte `admin_all` TO amateo_owner — la migration
  * de provisioning des portes admin (Version20260813130000) a déjà tourné, elle ne
  * couvre pas une table créée après elle, donc cette table pose la sienne.
  */
@@ -46,9 +46,9 @@ final class Version20260813160000 extends AbstractMigration
             ));
         }
 
-        $hasOwner = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'clubscheduler\'');
+        $hasOwner = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'amateo_owner\'');
         if ($hasOwner) {
-            $this->addSql('CREATE POLICY admin_all ON public.feedback FOR ALL TO clubscheduler USING (true) WITH CHECK (true)');
+            $this->addSql('CREATE POLICY admin_all ON public.feedback FOR ALL TO amateo_owner USING (true) WITH CHECK (true)');
         }
     }
 

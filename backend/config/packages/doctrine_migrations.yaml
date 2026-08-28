@@ -4,6 +4,6 @@ doctrine_migrations:
         # as migrations classes should NOT be autoloaded
         'DoctrineMigrations': '%kernel.project_dir%/migrations'
     # Migrations run DDL (and now RLS policies) — they need the admin
-    # connection (clubscheduler). The runtime app_user has no DDL rights.
+    # connection (amateo_owner). The runtime app_user has no DDL rights.
     connection: admin
     enable_profiler: false

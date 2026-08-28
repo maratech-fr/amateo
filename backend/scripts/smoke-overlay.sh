@@ -27,7 +27,7 @@ die()  { printf '%bFAIL:%b %s\n' "$RED" "$NC" "$1" >&2; exit 1; }
 
 dc()  { docker compose -f "$COMPOSE" "$@"; }
 php() { dc exec -T -e APP_ENV=dev php-fpm sh -c "cd /app/backend && $1" 2>&1 | grep -vE '^\[debug\]|Notified event' || true; }
-psql_dev() { dc exec -T postgres psql -U clubscheduler -d "$SANDBOX_DB" -tA -c "$1"; }
+psql_dev() { dc exec -T postgres psql -U amateo_owner -d "$SANDBOX_DB" -tA -c "$1"; }
 jget() { python3 -c "import json,sys
 d=json.load(sys.stdin)
 for k in sys.argv[1].split('.'):

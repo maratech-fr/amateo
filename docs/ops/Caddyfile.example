@@ -22,7 +22,7 @@ amateo.app {
 	#   exposerait amateo.app/503.html et amateo.app/system-pages/ à côté de la page
 	#   de vente. `system-pages/` est un FRÈRE de `landing/`, jamais dedans — il
 	#   n'est atteignable que par les blocs internes du site `app.` ci-dessous.
-	root * /srv/clubscheduler/landing
+	root * /srv/amateo/landing
 	file_server
 	encode gzip zstd
 }
@@ -34,7 +34,7 @@ www.amateo.app {
 app.amateo.app {
 	# Racine commune aux fichiers servis DU DISQUE (503, maintenance, et le
 	# config.js de la landing) — zéro dépendance à la stack Docker ou au réseau.
-	root * /srv/clubscheduler
+	root * /srv/amateo
 
 	# ── Interrupteur de MAINTENANCE — à fichier témoin ─────────────────────────
 	# Le matcher `file` est évalué à CHAQUE requête : poser (`touch`) ou retirer
@@ -122,14 +122,14 @@ app.amateo.app {
 	#   TRAVERSE le proxy telle quelle et n'entre JAMAIS ici. Les écrans de la SPA
 	#   restent souverains quand l'app vit ; cette page Caddy ne paraît que quand
 	#   elle est morte. Le matcher @down est une ceinture par-dessus les bretelles.
-	# ⚠ AVANT le premier déploiement, /srv/clubscheduler/system-pages/ n'existe pas :
+	# ⚠ AVANT le premier déploiement, /srv/amateo/system-pages/ n'existe pas :
 	#   le file_server échoue et Caddy retombe sur son gestionnaire d'erreur par
 	#   défaut → un 5xx à CORPS VIDE. Jamais pire, jamais un 200. (Prouvé : cas 6 de
 	#   scripts/test-system-pages.sh.)
 	handle_errors {
 		@down expression `{err.status_code} in [502, 503, 504]`
 		handle @down {
-			root * /srv/clubscheduler
+			root * /srv/amateo
 			# ⚠ `route` OBLIGATOIRE — même raison que le bloc maintenance ci-dessus :
 			#   sans lui, `rewrite` est réordonné AVANT `handle` et le bloc /config.js
 			#   devient du code mort.

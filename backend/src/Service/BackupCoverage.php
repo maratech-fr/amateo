@@ -51,7 +51,7 @@ final readonly class BackupCoverage
     public function latestDumpTime(string $dir): ?DateTimeImmutable
     {
         $latest = null;
-        foreach (glob(rtrim($dir, '/') . '/clubscheduler-*.dump') ?: [] as $file) {
+        foreach (glob(rtrim($dir, '/') . '/amateo-*.dump') ?: [] as $file) {
             $mtime = filemtime($file);
             if (false !== $mtime && (null === $latest || $mtime > $latest)) {
                 $latest = $mtime;

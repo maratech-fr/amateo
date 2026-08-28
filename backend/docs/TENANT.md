@@ -1,13 +1,13 @@
 # ClubScheduler — Tenant Isolation Architecture
 
-Last verified @ 2026-08-27 (rotation documentation-update, à l'occasion du déménagement de la liste blocking-tests : priorité 7 (`TenantFilterListener.php:55`, `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · `TenantOwnedInterfaceCompletenessTest` et `RlsIsolationTest` existent (`tests/Security/`) ✓ · `findActiveClubIds` via `runWithoutTenant` (`ClubUserRepository.php:62,85`) ✓ · `DELETE /api/me` self-only + ré-authentification (`DeleteAccountController.php`) ✓ · purge après grâce (`PurgeErasedClubsCommand`) ✓. Rien à corriger ce jour)
+Last verified @ 2026-08-28 (P4-142 — renommage infra : rôle owner `amateo_owner`, conteneurs `amateo-*`, fonction RLS `enable_rls_for_existing_amateo_tables`, DSN admin recalés. Re-confronté au CLUSTER réel : 44 policies `admin_all` → `amateo_owner`, 0 vers l'ancien rôle ; `clubscheduler` n'existe plus ; `app_user` sans superuser ni BYPASSRLS ; 44/44 tables RLS en FORCE. Passe précédente : rotation documentation-update, à l'occasion du déménagement de la liste blocking-tests : priorité 7 (`TenantFilterListener.php:55`, `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · `TenantOwnedInterfaceCompletenessTest` et `RlsIsolationTest` existent (`tests/Security/`) ✓ · `findActiveClubIds` via `runWithoutTenant` (`ClubUserRepository.php:62,85`) ✓ · `DELETE /api/me` self-only + ré-authentification (`DeleteAccountController.php`) ✓ · purge après grâce (`PurgeErasedClubsCommand`) ✓. Rien à corriger ce jour)
 
 ## Overview
 
 ClubScheduler is a **multi-tenant** application where every business entity belongs to exactly one club. Tenant isolation has **two layers, both active today**:
 
 1. **Application layer (ACTIVE)** — A Doctrine SQL filter (`TenantFilter`) transparently appends `club_id = ?` to every DQL/SQL query on entities that own a `club_id` column. **This is the effective tenant barrier.**
-2. **Database layer (ACTIVE since `Version20260703120000` — SEC-03 fixed)** — PostgreSQL Row-Level Security. Every `club_id` table carries `FORCE ROW LEVEL SECURITY` + a `tenant_isolation` policy keyed on the `app.club_id` GUC, the runtime connects as the restricted `app_user`, and the GUC is set via `TenantConnectionContext` (`set_config`, session-scoped — the old out-of-transaction `SET LOCAL` was a no-op). Workers set their own GUC from the message's `clubId`. See `docs/security/rls.md` for the full architecture, the `club_user` bootstrap exception and the `clubscheduler` superadmin door.
+2. **Database layer (ACTIVE since `Version20260703120000` — SEC-03 fixed)** — PostgreSQL Row-Level Security. Every `club_id` table carries `FORCE ROW LEVEL SECURITY` + a `tenant_isolation` policy keyed on the `app.club_id` GUC, the runtime connects as the restricted `app_user`, and the GUC is set via `TenantConnectionContext` (`set_config`, session-scoped — the old out-of-transaction `SET LOCAL` was a no-op). Workers set their own GUC from the message's `clubId`. See `docs/security/rls.md` for the full architecture, the `club_user` bootstrap exception and the `amateo_owner` superadmin door.
 
 Tenant entities also carry the explicit `App\Entity\TenantOwnedInterface` marker (BCK-03): the generic State providers/processors gate item reads and `Put`/`Delete` by `instanceof TenantOwnedInterface` (replacing `method_exists('getClubId')`), a type-safe app-layer check layered on the column-based filter + RLS. `TenantOwnedInterfaceCompletenessTest` (phase1) keeps the marker set identical to the `club_id`-column set, so no tenant entity can slip past the app-layer guards.
 
@@ -60,7 +60,7 @@ Console commands do **not** trigger `kernel.request`. Therefore:
 
 - The `tenant_filter` is **not** enabled automatically.
 - the `app.club_id` GUC is **never** set without an HTTP context.
-- CLI scripts that need tenant isolation must implement their own mechanism (e.g., explicit `--club-id` option, or `TenantConnectionContext::setClubId()` per club like the reminder crons). Maintenance tasks that must SEE ALL tenants run on the **`admin` Doctrine connection (`clubscheduler`, superuser — the only RLS bypass)**. ⚠ There is exactly **one** RLS bypass, and it is that `admin` connection. A second role (`migration_user`) used to exist in the init SQL with schema-wide `GRANT ALL` but no bypass and no configured connection — a dormant service account, **dropped on 2026-07-31** (`Version20260731090000`).
+- CLI scripts that need tenant isolation must implement their own mechanism (e.g., explicit `--club-id` option, or `TenantConnectionContext::setClubId()` per club like the reminder crons). Maintenance tasks that must SEE ALL tenants run on the **`admin` Doctrine connection (`amateo_owner`, superuser — the only RLS bypass)**. ⚠ There is exactly **one** RLS bypass, and it is that `admin` connection. A second role (`migration_user`) used to exist in the init SQL with schema-wide `GRANT ALL` but no bypass and no configured connection — a dormant service account, **dropped on 2026-07-31** (`Version20260731090000`).
 
 ## Registration
 
@@ -110,7 +110,7 @@ services:
   (`ManagementAccessGuard`, SEC-07), with a single explicit opt-out (`UserStateProcessor`, self-only edits).
   Custom write controllers carry their own guard (same SEC-07 rule). A non-management member reads
   everything, writes nothing. Guarded by `ManagementRoleTest` (blocking gate step).
-- **Connection separation (wired):** runtime = `app_user` (`DATABASE_URL`), migrations/ops/fixtures = `clubscheduler` via the Doctrine `admin` connection (`DATABASE_ADMIN_URL`). `clubscheduler` bypasses RLS — that is the deliberate superadmin supervision door (see `docs/security/rls.md`).
+- **Connection separation (wired):** runtime = `app_user` (`DATABASE_URL`), migrations/ops/fixtures = `amateo_owner` via the Doctrine `admin` connection (`DATABASE_ADMIN_URL`). `amateo_owner` bypasses RLS — that is the deliberate superadmin supervision door (see `docs/security/rls.md`).
 - ⚠ pgbouncer transaction-pooling is incompatible with the session-scoped GUC — redesign before introducing a pooler.
 
 ## See Also

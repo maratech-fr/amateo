@@ -183,16 +183,16 @@ final class RlsIsolationTest extends KernelTestCase
             $where = \sprintf('%s.%s (%s)', $table, $policy, $cmd);
 
             // Porte admin sous FORCE RLS. Sur un provider managé le rôle
-            // propriétaire (clubscheduler) n'est PAS superuser → FORCE lui
+            // propriétaire (amateo_owner) n'est PAS superuser → FORCE lui
             // s'applique, et sans policy chaque table FORCE le DENY par défaut :
             // la porte de supervision se referme. La policy admin_all (FOR ALL,
-            // USING/WITH CHECK true) TO clubscheduler la rouvre. Jugée sur SA clé
+            // USING/WITH CHECK true) TO amateo_owner la rouvre. Jugée sur SA clé
             // — le rôle — AVANT le canon tenant : une policy admin_all destinée à
             // TOUT AUTRE rôle (app_user, PUBLIC) ne prend PAS cette branche et
             // tombe dans le fail hors-canon plus bas (elle ouvrirait la table au
-            // runtime). Le rôle DOIT être exactement {clubscheduler}.
-            if ('{clubscheduler}' === (string) $row['roles']) {
-                self::assertSame('admin_all', $policy, \sprintf('%s : policy TO clubscheduler mais nommée %s — la porte admin doit s\'appeler admin_all.', $where, $policy));
+            // runtime). Le rôle DOIT être exactement {amateo_owner}.
+            if ('{amateo_owner}' === (string) $row['roles']) {
+                self::assertSame('admin_all', $policy, \sprintf('%s : policy TO amateo_owner mais nommée %s — la porte admin doit s\'appeler admin_all.', $where, $policy));
                 self::assertSame('ALL', $cmd, \sprintf('%s : porte admin admin_all mais cmd=%s — attendu FOR ALL.', $where, $cmd));
                 self::assertSame('true', $qual, \sprintf('%s : porte admin admin_all mais USING=%s — attendu true (accès total du superviseur).', $where, '' === $qual ? '<none>' : $qual));
                 self::assertSame('true', $withCheck, \sprintf('%s : porte admin admin_all mais WITH CHECK=%s — attendu true.', $where, '' === $withCheck ? '<none>' : $withCheck));
@@ -449,9 +449,9 @@ final class RlsIsolationTest extends KernelTestCase
     public function testAdminDoorLetsOwnerCrossClubsWhileAppUserStaysScoped(): void
     {
         // P5-7 — comportement des DEUX rôles sous FORCE RLS, sur la CONNEXION ADMIN.
-        // En dev/test clubscheduler est superuser (bypass total) : on ne peut PAS
+        // En dev/test amateo_owner est superuser (bypass total) : on ne peut PAS
         // prouver la porte admin depuis lui. On crée donc un rôle propriétaire
-        // NON-superuser (membre de clubscheduler, DML hérité, attributs SUPERUSER/
+        // NON-superuser (membre de amateo_owner, DML hérité, attributs SUPERUSER/
         // BYPASSRLS non hérités) — la situation exacte d'un provider managé — et on
         // bascule dessus par SET LOCAL ROLE (LOCAL obligatoire : un SET ROLE nu
         // survivrait à la connexion statique et empoisonnerait la suite).
@@ -464,11 +464,11 @@ final class RlsIsolationTest extends KernelTestCase
 
         // Idempotence : nom fixe, DROP IF EXISTS en tête (pas de paratest ici).
         $admin->executeStatement('DROP ROLE IF EXISTS rls_admin_probe');
-        $admin->executeStatement('CREATE ROLE rls_admin_probe NOSUPERUSER NOLOGIN IN ROLE clubscheduler');
+        $admin->executeStatement('CREATE ROLE rls_admin_probe NOSUPERUSER NOLOGIN IN ROLE amateo_owner');
 
         $admin->beginTransaction();
         try {
-            // Semis (comme clubscheduler : superuser bypass en dev/test, porte
+            // Semis (comme amateo_owner : superuser bypass en dev/test, porte
             // admin_all sur un managé). club n'a pas de club_id → pas de RLS.
             foreach ([$clubA => 'PA', $clubB => 'PB'] as $clubId => $tag) {
                 $admin->executeStatement(

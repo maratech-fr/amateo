@@ -13,7 +13,7 @@ use Doctrine\Migrations\AbstractMigration;
  * Tenant-owned (`club_id`) : FORCE ROW LEVEL SECURITY comme toute table club_id
  * (RlsIsolationTest la découvre dynamiquement et exige ENABLE+FORCE+policy). Deux policies :
  * `tenant_isolation` adossée au GUC app.club_id (prédicat canon, identique à team_tag), et la
- * porte `admin_all` TO clubscheduler — le provisioning des portes admin a déjà tourné et ne
+ * porte `admin_all` TO amateo_owner — le provisioning des portes admin a déjà tourné et ne
  * couvre pas une table créée après lui, donc cette table pose la sienne.
  *
  * ABSENCE DE LIGNE = DÉFAUT (HARD, seuils historiques) : aucun seed, unicité (club, saison, règle).
@@ -50,9 +50,9 @@ final class Version20260814140000 extends AbstractMigration
             ));
         }
 
-        $hasOwner = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'clubscheduler\'');
+        $hasOwner = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'amateo_owner\'');
         if ($hasOwner) {
-            $this->addSql('CREATE POLICY admin_all ON public.implicit_rule_setting FOR ALL TO clubscheduler USING (true) WITH CHECK (true)');
+            $this->addSql('CREATE POLICY admin_all ON public.implicit_rule_setting FOR ALL TO amateo_owner USING (true) WITH CHECK (true)');
         }
 
         // Diagnostic moteur `implicit_rule_not_honored` : la règle concernée (ruleKey du contrat).

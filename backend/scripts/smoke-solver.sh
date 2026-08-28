@@ -64,7 +64,7 @@ ok "club id: $CLUB_ID"
 # founder does it in dev. The smoke re-opens for the duration and RESTORES the
 # pointer on exit: it must never depend on what ran before it, nor leave the club
 # in another state than it found it.
-psql_dev() { dc exec -T postgres psql -U clubscheduler -d "$SANDBOX_DB" -tA -c "$1"; }
+psql_dev() { dc exec -T postgres psql -U amateo_owner -d "$SANDBOX_DB" -tA -c "$1"; }
 RESTORE_CHOSEN=$(psql_dev "SELECT chosen_schedule_id FROM schedule_plan WHERE club_id='$CLUB_ID' AND type='SEASON' LIMIT 1" | tr -d '[:space:]')
 if [[ -n "$RESTORE_CHOSEN" ]]; then
   info "season plan in force — re-opening for the smoke (restored on exit)"

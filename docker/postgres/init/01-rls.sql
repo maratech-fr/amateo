@@ -4,7 +4,7 @@
 
 CREATE SCHEMA IF NOT EXISTS app_security;
 
-CREATE OR REPLACE FUNCTION app_security.enable_rls_for_existing_clubscheduler_tables()
+CREATE OR REPLACE FUNCTION app_security.enable_rls_for_existing_amateo_tables()
 RETURNS void
 LANGUAGE plpgsql
 AS $$
@@ -31,7 +31,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION app_security.enable_rls_for_existing_clubscheduler_tables() IS
+COMMENT ON FUNCTION app_security.enable_rls_for_existing_amateo_tables() IS
     'Template helper: run after migrations create tables, then add concrete tenant policies per table.';
 
 -- Example policy template (intentionally inactive here):
