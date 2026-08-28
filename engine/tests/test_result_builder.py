@@ -543,6 +543,40 @@ class DiagnosticPrecisionTest(unittest.TestCase):
         message = _infeasible_message(model_data)
         self.assertIn("contraintes dures", message)
 
+    def test_travel_diagnostic_delegates_to_the_shared_geometry_source(self) -> None:
+        # ENG-37 — preuve de NON-DUPLICATION. Le diagnostic ne recalcule PLUS gap/barème : il
+        # délègue à la SOURCE UNIQUE ``is_travel_too_tight`` (celle-là même que la pose du solveur
+        # consomme via ``iter_travel_pairs_from_placements``). On le prouve en NEUTRALISANT la
+        # source : si le diagnostic la consomme, forcer « jamais trop serré » fait disparaître le
+        # résidu ; le jour où quelqu'un réintroduirait un barème/battement LOCAL dans
+        # ``result_builder``, ce patch n'aurait plus d'effet et ce test rougirait.
+        from unittest.mock import patch
+
+        from app.solver.result_builder import _diagnose_travel_times
+
+        model_data = {
+            "teams": [{"id": "t1", "name": "U11 A"}, {"id": "t2", "name": "U11 B"}],
+            "venues": [{"id": "V1", "name": "Gymnase Nord"}, {"id": "V2", "name": "Gymnase Sud"}],
+            "coaches": [{"id": "c1", "name": "Léa", "isVehicled": False}],
+            "implicitRules": {"travelTime": {"intensity": "MANDATORY"}},
+            "venueTravelTimes": [{"venueAId": "V1", "venueBId": "V2", "drivingMinutes": 5, "walkingMinutes": 30}],
+        }
+        # Deux séances VERROUILLÉES du même coach non véhiculé : V1 finit 19:50 (18:20 + 90),
+        # V2 débute 20:00 — battement 10 < barème à pied 30 → résidu MANDATORY nommé.
+        slots = [
+            {"venueId": "V1", "teamId": "t1", "dayOfWeek": 1, "startTime": "18:20", "durationMinutes": 90},
+            {"venueId": "V2", "teamId": "t2", "dayOfWeek": 1, "startTime": "20:00", "durationMinutes": 90},
+        ]
+        team_coach_map = {"t1": ["c1"], "t2": ["c1"]}
+
+        diags = _diagnose_travel_times(model_data, cp_model.OPTIMAL, slots, team_coach_map)
+        self.assertEqual(1, len(diags))
+        self.assertEqual("travel_time_infeasible", diags[0]["type"])
+        self.assertEqual("c1", diags[0]["coachId"])
+
+        with patch("app.solver.result_builder.is_travel_too_tight", return_value=False):
+            self.assertEqual([], _diagnose_travel_times(model_data, cp_model.OPTIMAL, slots, team_coach_map))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -217,6 +217,7 @@ from .travel import add_travel_departage_penalty as add_travel_departage_penalty
 from .travel import add_travel_time_hard_constraints as add_travel_time_hard_constraints
 from .travel import add_travel_time_penalty as add_travel_time_penalty
 from .travel import build_travel_matrix as build_travel_matrix
+from .travel import is_travel_too_tight as is_travel_too_tight
 from .wellness import _find_consecutive_chains as _find_consecutive_chains
 from .wellness import add_age_ascending_constraints as add_age_ascending_constraints
 from .wellness import add_coach_rest_day_constraints as add_coach_rest_day_constraints
@@ -441,6 +442,7 @@ __all__ = [
     "add_travel_time_penalty",
     "build_travel_matrix",
     "diagnose_locked_slot_violations",
+    "is_travel_too_tight",
     "iter_team_link_overlaps",
     "parse_v2_constraints",
     "team_link_placements_by_team",
