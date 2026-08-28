@@ -140,6 +140,27 @@ def _cross_venue_gap(pa: TravelPlacement, pb: TravelPlacement) -> int | None:
     return (b_start - a_end) if a_start <= b_start else (a_start - b_end)
 
 
+def is_travel_too_tight(
+    pa: TravelPlacement,
+    pb: TravelPlacement,
+    *,
+    driving: bool,
+    matrix: Mapping[frozenset[str], tuple[int | None, int | None]],
+    default_minutes: int,
+) -> bool:
+    """Prédicat « ces deux séances s'enchaînent trop serré » — SOURCE UNIQUE de la géométrie
+    battement/barème côté verdict. Compose EXACTEMENT les deux primitives que l'énumérateur
+    ``iter_travel_pairs_from_placements`` compose côté pose : ``_cross_venue_gap`` (la règle du
+    chevauchement + l'écart réel) et ``_barometer`` (la colonne du barème voiture/à pied). ``True``
+    ssi les séances sont le MÊME jour, à des gymnases DIFFÉRENTS, non chevauchantes ET séparées d'un
+    écart ``< barème``. Consommée par ``result_builder._diagnose_travel_times`` au lieu d'un
+    recalcul local de gap/barème (résorbe ENG-37 côté diagnostic)."""
+    gap = _cross_venue_gap(pa, pb)
+    if gap is None:
+        return False
+    return gap < _barometer(matrix, pa[3], pb[3], driving=driving, default_minutes=default_minutes)
+
+
 def _coach_teams(team_coach_map: Mapping[str, list[str]] | None) -> dict[str, list[str]]:
     """Inverse ``team → [coach]`` en ``coach → [team]`` (ordre stable des équipes)."""
     by_coach: dict[str, list[str]] = defaultdict(list)
@@ -409,5 +430,6 @@ __all__ = [
     "add_travel_time_hard_constraints",
     "add_travel_time_penalty",
     "build_travel_matrix",
+    "is_travel_too_tight",
     "iter_travel_pairs_from_placements",
 ]

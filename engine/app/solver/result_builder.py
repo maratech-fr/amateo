@@ -20,6 +20,7 @@ from ortools.sat.python import cp_model
 from app.solver.constraints import (
     ResolvedImplicitRules,
     build_travel_matrix,
+    is_travel_too_tight,
     iter_team_link_overlaps,
     team_share_declared_pairs,
 )
@@ -1185,22 +1186,12 @@ def _diagnose_travel_times(
         for c in _collection(model_data, "coaches")
     }
 
-    def _baro(venue_a: str, venue_b: str, *, driving: bool) -> int:
-        pair = matrix.get(frozenset({venue_a, venue_b}))
-        if pair is None:
-            return default_minutes
-        value = pair[0] if driving else pair[1]
-        return int(value) if value is not None else default_minutes
-
     def _too_tight(pa: tuple[int, int, int, str, None], pb: tuple[int, int, int, str, None], *, driving: bool) -> bool:
-        a_start, a_end, a_day, a_venue, _ = pa
-        b_start, b_end, b_day, b_venue, _ = pb
-        if a_day != b_day or a_venue == b_venue:
-            return False
-        if a_start < b_end and b_start < a_end:  # chevauchement : régi ailleurs
-            return False
-        gap = (b_start - a_end) if a_start <= b_start else (a_start - b_end)
-        return gap < _baro(a_venue, b_venue, driving=driving)
+        # ENG-37 — le prédicat battement/barème n'est PLUS recalculé ici : la source unique
+        # (``is_travel_too_tight``, qui compose ``_cross_venue_gap`` + ``_barometer``) est celle-là
+        # même que la pose du solveur consomme. Le diagnostic juge donc EXACTEMENT la géométrie que
+        # ``add_travel_time_hard_constraints`` a interdite.
+        return is_travel_too_tight(pa, pb, driving=driving, matrix=matrix, default_minutes=default_minutes)
 
     diagnostics: list[dict[str, Any]] = []
     seen: set[tuple[str, ...]] = set()
