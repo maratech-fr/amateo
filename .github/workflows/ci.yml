@@ -815,7 +815,7 @@ jobs:
       - name: Seed the e2e super-admin (modal reachability)
         run: |
           docker compose exec -T php-fpm php bin/console cache:pool:clear cache.rate_limiter
-          docker compose exec -T postgres psql -U clubscheduler -d clubscheduler -c \
+          docker compose exec -T postgres psql -U clubscheduler -d amateo_dev -c \
             "DELETE FROM super_admin WHERE email='e2e-admin@clubscheduler.test'"
           printf 'E2eAdminPass!2026\nE2eAdminPass!2026\n' \
             | docker compose exec -T php-fpm php bin/console app:superadmin:create e2e-admin@clubscheduler.test > /tmp/e2e-sa.txt
@@ -899,7 +899,7 @@ jobs:
       # ⚠ La base EST nécessaire, contrairement à ce que le périmètre laissait
       # croire : trois des quatre tests du groupe POSTent des payloads construits
       # à la main, mais `MatchPlacementContractSchemaTest` persiste des entités
-      # avant d'appeler /place-matches. Sans ça : « database clubscheduler_test
+      # avant d'appeler /place-matches. Sans ça : « database amateo_test
       # does not exist », 23 verts sur 24.
       - name: Init test database
         run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console doctrine:database:create --if-not-exists --connection admin --env=test && php bin/console doctrine:migrations:migrate --no-interaction --env=test'

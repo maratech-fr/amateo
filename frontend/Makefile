@@ -62,6 +62,11 @@ test: ## Run frontend checks and tests in Docker
 # mort (time-limit horaire) laissait sinon toute génération en PENDING.
 e2e: $(ROOT_ENV) ## Run Playwright e2e tests fully inside Docker (stack + `make dev` required)
 	$(FIG) up -d --wait
+	# Fail-closed sandbox guard (P4-141) — the e2e suite mutates the live dev DB
+	# (superadmin reset + fixtures + clubs). Refuse to run against anything but the
+	# AI sandbox (amateo_dev) or a *_test DB, so `make play` mode (amateo_local) is
+	# never wiped. Exit 1 aborts the target before any mutation.
+	@bash ../backend/scripts/lib/sandbox-guard.sh || exit 1
 	# Un volume nommé neuf naît possédé par root : la pré-étape le rend à l'UID
 	# hôte, sans quoi npm ci (exécuté en $${USER_ID:-1000}) refuse d'écrire.
 	$(FIG) --profile tools run --rm --no-deps --user root e2e sh -lc 'chown -R $${USER_ID:-1000}:$${GROUP_ID:-1000} /app/frontend/node_modules'
@@ -83,7 +88,7 @@ e2e: $(ROOT_ENV) ## Run Playwright e2e tests fully inside Docker (stack + `make 
 	# superadmin échoue et le spec rougit en désignant l'écran TOTP — ça RESSEMBLE à une
 	# régression alors que c'est le quota. On repart d'un compteur propre.
 	@$(FIG) exec -T php-fpm php bin/console cache:pool:clear cache.rate_limiter >/dev/null
-	@$(FIG) exec -T postgres psql -U clubscheduler -d clubscheduler -c \
+	@$(FIG) exec -T postgres psql -U clubscheduler -d amateo_dev -c \
 		"DELETE FROM super_admin WHERE email='$(E2E_SA_EMAIL)'" >/dev/null
 	@printf '$(E2E_SA_PASSWORD)\n$(E2E_SA_PASSWORD)\n' | $(FIG) exec -T php-fpm \
 		php bin/console app:superadmin:create $(E2E_SA_EMAIL) > /tmp/clubscheduler-e2e-sa.txt

@@ -4,6 +4,13 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SCRIPT="$SCRIPT_DIR/generate-schedule.sh"
 
+# This is a hermetic self-test: it drives generate-schedule.sh with a FAKE curl
+# and NO real backend, so there is no database to resolve and nothing to mutate.
+# SANDBOX_GUARD_SELFTEST makes the fail-closed sandbox guard (P4-141) a no-op —
+# here and, because it is exported, in the generate-schedule.sh child too.
+export SANDBOX_GUARD_SELFTEST=1
+source "$SCRIPT_DIR/lib/sandbox-guard.sh"
+
 pass() {
   printf 'PASS: %s\n' "$1"
 }

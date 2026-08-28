@@ -12,6 +12,11 @@ ok()   { printf '%bPASS:%b %s\n' "$GREEN" "$NC" "$1"; }
 die()  { printf '%bFAIL:%b %s\n' "$RED" "$NC" "$1" >&2; exit 1; }
 info() { printf '%b==>%b %s\n' "$BLUE" "$NC" "$1"; }
 
+# Fail-closed sandbox guard (P4-141): this smoke registers a REAL club — refuse
+# to run against anything but the AI sandbox (amateo_dev) or a *_test DB.
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+source "$SCRIPT_DIR/lib/sandbox-guard.sh"
+
 ARA="ONB$(date +%s)"
 EMAIL="onb-$ARA@smoke.fr"
 # A3: register defers everything to email verification — it returns a neutral 202

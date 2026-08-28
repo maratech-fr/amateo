@@ -33,6 +33,23 @@ stop: ## Stop all Docker services
 
 restart: stop start ## Restart all services
 
+# --- P4-141 : mode play (fondateur) vs bac à sable (IA) ----------------------
+# `amateo_dev` = bac à sable de l'IA (défaut committé). `amateo_local` = base de
+# JEU du fondateur, que les scripts mutateurs de l'IA REFUSENT (sandbox-guard).
+# `make play` bascule toute la stack dev vers amateo_local (backend/.env.local,
+# gitignoré), la crée/migre et y (re)seede BCCL ; `make sandbox` retire la
+# surcharge et revient à amateo_dev. Les workers long-lived sont redémarrés car
+# ils tiennent la config DB en mémoire.
+play: .env ## Bascule la stack dev vers la base de JEU du fondateur (amateo_local) + seed BCCL
+	$(MAKE) -C backend play-env
+	$(MAKE) -C backend db-init
+	$(MAKE) -C backend seed-bccl
+	$(DOCKER_COMPOSE) restart messenger-worker cron-runner
+
+sandbox: .env ## Revient au bac à sable de l'IA (amateo_dev) : retire backend/.env.local
+	$(MAKE) -C backend sandbox-env
+	$(DOCKER_COMPOSE) restart messenger-worker cron-runner
+
 install: .env ## Install backend and engine development dependencies
 	$(MAKE) -C backend install
 	$(MAKE) -C engine install
