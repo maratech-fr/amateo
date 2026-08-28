@@ -34,13 +34,13 @@ final class Version20260813160000 extends AbstractMigration
 
         // RLS: FORCE + policy tenant_isolation (GUC app.club_id) pour app_user, et la
         // porte admin_all pour le rôle propriétaire (supervision sous provider managé).
-        $hasAppUser = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        if ($hasAppUser) {
-            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON feedback TO app_user');
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (\is_string($appRole)) {
+            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON feedback TO ' . $appRole);
             $this->addSql('ALTER TABLE public.feedback ENABLE ROW LEVEL SECURITY');
             $this->addSql('ALTER TABLE public.feedback FORCE ROW LEVEL SECURITY');
             $this->addSql(\sprintf(
-                'CREATE POLICY tenant_isolation ON public.feedback FOR ALL TO app_user USING (%s) WITH CHECK (%s)',
+                'CREATE POLICY tenant_isolation ON public.feedback FOR ALL TO ' . $appRole . ' USING (%s) WITH CHECK (%s)',
                 self::TENANT_PREDICATE,
                 self::TENANT_PREDICATE,
             ));

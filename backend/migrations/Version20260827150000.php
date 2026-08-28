@@ -47,10 +47,10 @@ final class Version20260827150000 extends AbstractMigration
         // ⚠ Le REVOKE est INDISPENSABLE : l'`ALTER DEFAULT PRIVILEGES` de la 20260703120000
         // confère DÉJÀ SELECT+INSERT+UPDATE+DELETE à app_user sur toute table neuve — un GRANT
         // restreint ne RETIRE pas le DELETE conféré par défaut ; il faut le révoquer.
-        $hasAppUser = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        if ($hasAppUser) {
-            $this->addSql('GRANT SELECT, INSERT, UPDATE ON opponent_directory TO app_user');
-            $this->addSql('REVOKE DELETE ON opponent_directory FROM app_user');
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (\is_string($appRole)) {
+            $this->addSql('GRANT SELECT, INSERT, UPDATE ON opponent_directory TO ' . $appRole);
+            $this->addSql('REVOKE DELETE ON opponent_directory FROM ' . $appRole);
         }
     }
 

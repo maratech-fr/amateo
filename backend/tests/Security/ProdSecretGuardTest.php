@@ -101,7 +101,7 @@ final class ProdSecretGuardTest extends TestCase
             APP_SECRET=change-me-in-dev
             JWT_PASSPHRASE=committed_dev_passphrase
             MERCURE_JWT_SECRET=committed_dev_mercure
-            DATABASE_URL="postgresql://app_user:committed_dev_pw@postgres:5432/db"
+            DATABASE_URL="postgresql://amateo_app:committed_dev_pw@postgres:5432/db"
             DATABASE_ADMIN_URL="postgresql://admin:committed_admin_pw@postgres:5432/db"
             ENV);
     }
@@ -118,7 +118,7 @@ final class ProdSecretGuardTest extends TestCase
             'APP_SECRET' => 'Zx9RealRandomAppSecret',
             'JWT_PASSPHRASE' => 'Qw8RealPassphrase',
             'MERCURE_JWT_SECRET' => 'Rt7RealMercureSecret',
-            'DATABASE_URL' => 'postgresql://app_user:Str0ngProdPass@db:5432/prod',
+            'DATABASE_URL' => 'postgresql://amateo_app:Str0ngProdPass@db:5432/prod',
             'DATABASE_ADMIN_URL' => 'postgresql://admin:An0therProdPass@db:5432/prod',
         ];
     }

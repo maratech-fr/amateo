@@ -30,9 +30,9 @@ final class Version20260709130000 extends AbstractMigration
 
         // Runtime role needs DML on the new global table (no RLS: no club_id). The
         // identity sequence is advanced by the table INSERT, so no separate grant.
-        $hasRole = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        if ($hasRole) {
-            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON email_verification_token TO app_user');
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (\is_string($appRole)) {
+            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON email_verification_token TO ' . $appRole);
         }
 
         // Backfill: treat every pre-existing account as verified, else the login gate

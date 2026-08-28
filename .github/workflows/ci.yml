@@ -582,7 +582,7 @@ jobs:
       # PARTAGÉE entre clubs (`opponent_directory`) — surface qui traverse la frontière tenant.
       # Ce gate tient l'invariant de partage : le SCHÉMA n'a AUCUNE colonne club-identifiante
       # (catalogue Postgres, liste blanche exacte), une entrée est visible et BYTE-IDENTIQUE quel
-      # que soit le club lecteur (aucun filtre tenant, aucune RLS), le rôle app_user a
+      # que soit le club lecteur (aucun filtre tenant, aucune RLS), le rôle amateo_app a
       # SELECT+INSERT+UPDATE mais PAS DELETE (seule couche DB d'une table sans RLS), et une
       # résolution plus précise (VENUE) remplace une moins précise (CITY) jamais l'inverse.
       # Falsifié dans les deux sens. Sans ce gate, une colonne club_id/provenance pourrait se
@@ -742,7 +742,7 @@ jobs:
 
       # matches.spec logs in as the BasketballInit-seeded club — append-load the
       # dev fixtures (idempotent, existing rows are reused, never purged).
-      # BasketballInit REFUSES the app_user connection (RLS silently breaks the
+      # BasketballInit REFUSES the amateo_app connection (RLS silently breaks the
       # purge — see the guard in BasketballInit::load): inject the admin URL, like
       # `make fixtures` (reads .env then .env.local, last wins), so the loader runs
       # as the superuser. Kept --append (never purge the seeded club) instead of
@@ -949,7 +949,7 @@ jobs:
         run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console doctrine:migrations:migrate --no-interaction'
 
       # The seeded club the solver/matches/overlay smokes drive. Same admin-URL
-      # dance as the e2e job (BasketballInit refuses the app_user connection).
+      # dance as the e2e job (BasketballInit refuses the amateo_app connection).
       - name: Load dev fixtures
         run: |
           docker compose exec -T php-fpm sh -c '

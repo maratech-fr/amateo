@@ -8,7 +8,7 @@ use App\Service\TenantConnectionContext;
 
 /**
  * Test seeding under RLS: direct EntityManager inserts into club-scoped tables
- * go through the app_user connection, whose WITH CHECK policies require the
+ * go through the amateo_app connection, whose WITH CHECK policies require the
  * app.club_id GUC to match each row. Seeds must scope the connection to the
  * club they are inserting for (and re-scope when switching clubs).
  *

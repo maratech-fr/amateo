@@ -27,7 +27,7 @@ use Throwable;
  * global des non-traités. Digest VIDE (aucun signalement dans la fenêtre) → aucun
  * email. Destinataire = SUPPORT_EMAIL (vide → no-op annoncé).
  *
- * Lecture CROSS-TENANT : `feedback` est FORCE RLS, l'app_user sans GUC ne verrait
+ * Lecture CROSS-TENANT : `feedback` est FORCE RLS, l'amateo_app sans GUC ne verrait
  * rien — on lit par la connexion `admin` (porte admin_all), en SQL paramétré.
  *
  * ⚠ Le corps de l'email — INTERNE au fondateur — porte un EXTRAIT du message

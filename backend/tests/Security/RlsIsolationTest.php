@@ -14,7 +14,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
  * SEC-03 non-regression: the DATABASE itself enforces tenant isolation.
- * Raw SQL on the runtime (app_user) connection — no ORM, no Doctrine filter:
+ * Raw SQL on the runtime (amateo_app) connection — no ORM, no Doctrine filter:
  * these tests prove the RLS policies work even if every application layer is
  * bypassed. dama wraps each test in a transaction (rollback cleans the rows
  * AND the session GUC, set_config(..., false) being transactional).
@@ -188,7 +188,7 @@ final class RlsIsolationTest extends KernelTestCase
             // la porte de supervision se referme. La policy admin_all (FOR ALL,
             // USING/WITH CHECK true) TO amateo_owner la rouvre. Jugée sur SA clé
             // — le rôle — AVANT le canon tenant : une policy admin_all destinée à
-            // TOUT AUTRE rôle (app_user, PUBLIC) ne prend PAS cette branche et
+            // TOUT AUTRE rôle (amateo_app, PUBLIC) ne prend PAS cette branche et
             // tombe dans le fail hors-canon plus bas (elle ouvrirait la table au
             // runtime). Le rôle DOIT être exactement {amateo_owner}.
             if ('{amateo_owner}' === (string) $row['roles']) {
@@ -507,12 +507,12 @@ final class RlsIsolationTest extends KernelTestCase
                 'porte admin : DELETE cross-club passe',
             );
 
-            // SENS 2 : app_user reste scopé au GUC — le durcissement admin ne l'ouvre pas.
-            $admin->executeStatement('SET LOCAL ROLE app_user');
+            // SENS 2 : amateo_app reste scopé au GUC — le durcissement admin ne l'ouvre pas.
+            $admin->executeStatement('SET LOCAL ROLE amateo_app');
             $admin->executeStatement('SELECT set_config(?, ?, true)', ['app.club_id', $clubA]);
             /** @var list<string> $visible */
             $visible = $admin->fetchFirstColumn('SELECT DISTINCT club_id FROM team_tag WHERE club_id IN (?, ?)', [$clubA, $clubB]);
-            self::assertSame([$clubA], $visible, 'app_user posé sur A ne voit que A — la porte admin n\'a pas ouvert app_user');
+            self::assertSame([$clubA], $visible, 'amateo_app posé sur A ne voit que A — la porte admin n\'a pas ouvert amateo_app');
 
             // INSERT cross-club rejeté par WITH CHECK — contenu dans un savepoint pour
             // que l'abort PostgreSQL ne poison pas la transaction externe (nettoyage).
@@ -528,7 +528,7 @@ final class RlsIsolationTest extends KernelTestCase
                 $rejected = true;
                 $admin->rollBack();
             }
-            self::assertTrue($rejected, 'app_user sous GUC=A doit se voir REFUSER un INSERT club B (WITH CHECK tenant_isolation)');
+            self::assertTrue($rejected, 'amateo_app sous GUC=A doit se voir REFUSER un INSERT club B (WITH CHECK tenant_isolation)');
         } finally {
             $admin->executeStatement('RESET ROLE');
             $admin->rollBack();

@@ -30,7 +30,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *
  * (a) le SCHÉMA du partagé n'a AUCUNE colonne club-identifiante (catalogue Postgres, liste
  *     blanche exacte) · (b) une entrée est VISIBLE et BYTE-IDENTIQUE quel que soit le club qui
- *     lit (zéro oracle, aucun filtre tenant) · (c) le rôle applicatif app_user a
+ *     lit (zéro oracle, aucun filtre tenant) · (c) le rôle applicatif amateo_app a
  *     SELECT+INSERT+UPDATE mais PAS DELETE (le GRANT est la seule couche DB d'une table sans
  *     RLS) · (d) une résolution PLUS précise (VENUE) remplace une moins précise (CITY), JAMAIS
  *     l'inverse.
@@ -103,21 +103,21 @@ final class OpponentDirectoryShareTest extends WebTestCase
     public function testRuntimeRoleCannotDeleteFromTheSharedTable(): void
     {
         self::assertTrue(
-            (bool) $this->conn()->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\''),
-            'le rôle applicatif app_user existe (prémisse du modèle de sécurité)',
+            (bool) $this->conn()->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'amateo_app\''),
+            'le rôle applicatif amateo_app existe (prémisse du modèle de sécurité)',
         );
 
         foreach (['SELECT', 'INSERT', 'UPDATE'] as $privilege) {
             self::assertTrue((bool) $this->conn()->fetchOne(
-                'SELECT has_table_privilege(\'app_user\', \'opponent_directory\', :privilege)',
+                'SELECT has_table_privilege(\'amateo_app\', \'opponent_directory\', :privilege)',
                 ['privilege' => $privilege],
-            ), \sprintf('app_user doit avoir %s (l\'upsert de l\'annuaire l\'exige)', $privilege));
+            ), \sprintf('amateo_app doit avoir %s (l\'upsert de l\'annuaire l\'exige)', $privilege));
         }
 
         self::assertFalse((bool) $this->conn()->fetchOne(
-            'SELECT has_table_privilege(\'app_user\', \'opponent_directory\', :privilege)',
+            'SELECT has_table_privilege(\'amateo_app\', \'opponent_directory\', :privilege)',
             ['privilege' => 'DELETE'],
-        ), 'app_user ne doit JAMAIS pouvoir DELETE une ligne partagée (corollaire F-2, seule couche DB sans RLS)');
+        ), 'amateo_app ne doit JAMAIS pouvoir DELETE une ligne partagée (corollaire F-2, seule couche DB sans RLS)');
     }
 
     // ─────────────────────────────────────────────────────────────────────────

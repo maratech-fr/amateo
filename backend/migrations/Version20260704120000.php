@@ -34,13 +34,13 @@ final class Version20260704120000 extends AbstractMigration
         $this->addSql('CREATE INDEX idx_calendar_entry_window ON calendar_entry (club_id, start_date, end_date)');
 
         // RLS: FORCE + tenant_isolation policy keyed on the app.club_id GUC.
-        $hasRole = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'app_user\'');
-        if ($hasRole) {
-            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON calendar_entry TO app_user');
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (\is_string($appRole)) {
+            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON calendar_entry TO ' . $appRole);
             $this->addSql('ALTER TABLE public.calendar_entry ENABLE ROW LEVEL SECURITY');
             $this->addSql('ALTER TABLE public.calendar_entry FORCE ROW LEVEL SECURITY');
             $this->addSql(\sprintf(
-                'CREATE POLICY tenant_isolation ON public.calendar_entry FOR ALL TO app_user USING (%s) WITH CHECK (%s)',
+                'CREATE POLICY tenant_isolation ON public.calendar_entry FOR ALL TO ' . $appRole . ' USING (%s) WITH CHECK (%s)',
                 self::TENANT_PREDICATE,
                 self::TENANT_PREDICATE,
             ));

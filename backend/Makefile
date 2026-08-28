@@ -59,7 +59,7 @@ phpunit:
 	$(EXEC) php vendor/bin/phpunit --group phase1
 
 # RLS note: database create/drop and fixtures need the admin connection —
-# the runtime app_user has no CREATEDB and its DELETEs would be silently
+# the runtime amateo_app has no CREATEDB and its DELETEs would be silently
 # scoped by the RLS policies (partial purge).
 .PHONY: db-init-test ## Create and migrate the test database
 db-init-test: APP_ENV = test
@@ -91,7 +91,7 @@ migration-diff:
 	$(EXEC) php bin/console doctrine:migrations:diff --no-interaction
 
 # doctrine_migrations.yaml pins `connection: admin` — migrations carry DDL and RLS
-# policies, which the runtime app_user may not run. EXEC already injects APP_ENV,
+# policies, which the runtime amateo_app may not run. EXEC already injects APP_ENV,
 # so this single target serves both dev and test.
 .PHONY: migration-migrate ## Apply pending migrations (honours APP_ENV)
 migration-migrate:
@@ -138,7 +138,7 @@ fixtures:
 # `make sandbox` (racine) retire cette surcharge et revient à amateo_dev.
 .PHONY: play-env ## (interne à `make play`) Écrit backend/.env.local → amateo_local
 play-env:
-	@printf '# Généré par `make play` (P4-141) — base de JEU du fondateur (amateo_local).\n# Gitignoré. `make sandbox` le supprime pour revenir au bac à sable amateo_dev.\nDATABASE_URL="postgresql://app_user:app_user_password@postgres:5432/amateo_local?serverVersion=16&charset=utf8"\nDATABASE_ADMIN_URL="postgresql://amateo_owner:clubscheduler_dev_password@postgres:5432/amateo_local?serverVersion=16&charset=utf8"\n' > .env.local
+	@printf '# Généré par `make play` (P4-141) — base de JEU du fondateur (amateo_local).\n# Gitignoré. `make sandbox` le supprime pour revenir au bac à sable amateo_dev.\nDATABASE_URL="postgresql://amateo_app:app_user_password@postgres:5432/amateo_local?serverVersion=16&charset=utf8"\nDATABASE_ADMIN_URL="postgresql://amateo_owner:clubscheduler_dev_password@postgres:5432/amateo_local?serverVersion=16&charset=utf8"\n' > .env.local
 	@echo "backend/.env.local écrit — la stack dev vise amateo_local (mode play)."
 
 .PHONY: sandbox-env ## (interne à `make sandbox`) Supprime backend/.env.local → retour amateo_dev

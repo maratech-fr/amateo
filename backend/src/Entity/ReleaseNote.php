@@ -12,7 +12,7 @@ use Doctrine\ORM\Mapping as ORM;
  * Product changelog entry (« quoi de neuf ») shown to every member and a
  * "what's new" modal. GLOBAL, not tenant-owned: same for every club, no
  * club_id → no RLS (public product reference, like `public_holiday`). Only a
- * GRANT to app_user; the super-admin console authors it, members read the
+ * GRANT to amateo_app; the super-admin console authors it, members read the
  * PUBLISHED ones.
  *
  * `publishedAt` null = draft (invisible to members). `noteDate` is EDITORIAL:

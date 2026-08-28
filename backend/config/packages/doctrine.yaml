@@ -2,7 +2,7 @@ doctrine:
     dbal:
         default_connection: default
         connections:
-            # Runtime connection — RLS-restricted app_user. All ORM traffic.
+            # Runtime connection — RLS-restricted amateo_app. All ORM traffic.
             # use_savepoints removed: DBAL 4 always uses savepoints for nested
             # transactions (doctrine-bundle 3 dropped the option).
             default:

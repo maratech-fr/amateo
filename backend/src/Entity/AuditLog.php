@@ -14,7 +14,7 @@ use Symfony\Component\Uid\Uuid;
  * Aucune opération API Platform (pas d'attribut ApiResource) : la table ne
  * s'écrit que par AuditTrail et ne se lira que par la future console
  * superadmin (SA1, connexion admin). L'append-only est aussi tenu PAR LA DB :
- * la migration ne crée AUCUNE policy UPDATE/DELETE pour app_user — le rôle
+ * la migration ne crée AUCUNE policy UPDATE/DELETE pour amateo_app — le rôle
  * runtime ne peut physiquement pas réécrire l'histoire (RLS FORCE).
  *
  * clubId nullable : les événements globaux (register, login raté) n'ont pas de
