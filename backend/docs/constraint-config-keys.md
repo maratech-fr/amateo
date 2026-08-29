@@ -1,13 +1,13 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-08-28 (rotation `documentation-update`, P2-54 PR-3 — zone non touchée par
-cette PR, contrôle de fraîcheur). Re-confronté au code : les clés de la table existent dans
-`ConstraintConfigValidator` (`minStartTime`/`maxEndTime` type time:63-65, `minAtVenueCount`:86,
-`fromTime`:96, `excludeTags`:48) ✓ · foyer unique `TeamTagResolver::resolveConstraintTeamIds`
-(`:278`) ✓ · `ConstraintKeysAreHonouredByEngineTest` existe et le job `engine-semantics` aussi
-(`ci.yml:837`) ✓ · migration `Version20260807190000` (suppression `coachId`) présente ✓ ·
-`PlanVenueClosures::effectiveStateForPlan` a **dérivé** (`:169` → `:212` désormais, corrigé cette
-passe) ✓ · `POST /api/constraints/validate` (`ValidateConstraintsController.php:64`) ✓)
+Last verified @ 2026-08-29 (rotation `documentation-update`, FRT-20/P4-117 — zone non touchée par
+cette PR, contrôle de fraîcheur). Re-confronté au code : `ConstraintConfigValidator` porte
+toujours `minStartTime`/`maxEndTime` en type `time`, `minAtVenueCount` en `count`, `fromTime` en
+`time` ✓ · `TeamTagResolver::resolveConstraintTeamIds` existe (`:278`) ✓ ·
+`ConstraintKeysAreHonouredByEngineTest` existe (`backend/tests/CrossStack/`) et le job
+`engine-semantics` aussi (`ci.yml:867`) ✓ · migration `Version20260807190000` présente ✓ ·
+`PlanVenueClosures::effectiveStateForPlan` existe (`:212`) ✓ · `POST /api/constraints/validate`
+posé sur `ValidateConstraintsController::__invoke` (`:64-65`) ✓)
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.

@@ -1,11 +1,14 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-08-29 (`documentation-update`, FRT-20/P4-117 — la prescription §1 « Queries
-TanStack Query » disait « mock `ky` » : **faux**, corrigé — vérifié sur `frontend/src` que seuls
-6 fichiers mockent `@/shared/api/client` contre le module `./api` voisin, patron réellement vivant
-dans `features/cockpit/queries.test.tsx` et `features/wizard/queries.test.tsx` (nouveau ce lot).
-Reste non re-touché cette passe : versions/plafonds §1-§2 (vérifiés le 2026-08-27, rien ne les a
-fait bouger depuis). Historique des passes : `git log -p --follow frontend/docs/frontend-strategy.md`.)
+Last verified @ 2026-08-29 (`documentation-update`, clôture du lot FRT-20/P4-117 — 5 modules
+`queries.ts` sur 12 ont désormais leur `queries.test.tsx` dédié : `cockpit` (déjà avant le lot),
+`wizard`, `matches`, `planning`, `auth` (dernière tranche, ce commit) ; `admin` reste
+délibérément non couvert (persona fondateur, `etat-des-lieux.md` §2). §1 gagne la leçon de
+méthode qui a payé (preuve d'EFFET sur le cache, pas de l'appel à `invalidateQueries`) et son
+pointeur vers `etat-des-lieux.md` remplace le renvoi à `roadmap.md` (AUD-FRT-20/P4-117 en sont
+sortis — item livré, plus de home dans l'ouvert). Reste non re-touché cette passe : versions/
+plafonds §1-§2 (vérifiés le 2026-08-27, rien ne les a fait bouger depuis). Historique des
+passes : `git log -p --follow frontend/docs/frontend-strategy.md`.)
 
 > **Statut : le rebuild est LIVRÉ.** Les formulations « pour le rebuild » ci-dessous sont
 > historiques ; le document reste la référence vivante des **versions de la stack**, des
@@ -44,10 +47,21 @@ cycle RED → GREEN → REFACTOR avant d'être considéré livrable.
 - **Queries TanStack Query** : tests avec un `QueryClient` de test **réel** (`renderHook`,
   jamais un double du hook lui-même) et le module `./api` **voisin** mocké — pas `ky`
   directement (patron vivant : `features/cockpit/queries.test.tsx`,
-  `features/wizard/queries.test.tsx`). Un test de COMPOSANT, lui, mocke légitimement les hooks
-  de sa propre feature (`vi.mock("./queries", …)`) : le composant n'est pas responsable
-  d'aller chercher la donnée — voir `specs/evolution/roadmap.md` (AUD-FRT-20) pour l'état de la
-  couverture module par module.
+  `features/wizard/queries.test.tsx`, `features/matches/queries.test.tsx`,
+  `features/planning/queries.test.tsx`, `features/auth/queries.test.tsx`). Un test de
+  COMPOSANT, lui, mocke légitimement les hooks de sa propre feature (`vi.mock("./queries", …)`) :
+  le composant n'est pas responsable d'aller chercher la donnée.
+  ⚑ **Preuve d'EFFET, pas de l'appel** (lot AUD-FRT-20, clos le 2026-08-29 — trace
+  `specs/courantes/etat-des-lieux.md` §3) : le test qui compte monte le **vrai** lecteur
+  (`useConflicts`, `useLogout`, …) sur le même `QueryClient` que la mutation et constate que la
+  DONNÉE bouge (refetch, ou cache vidé) — pas un espion sur `invalidateQueries`, qui prouve
+  l'appel et ne voit **jamais** une invalidation absente. C'est cette exigence, et elle seule, qui
+  a débusqué le seul défaut réel du lot (`matches/queries.ts` : une invalidation manquante
+  laissait le radar de conflits en faux vert, cf. `frontend-spec.md` § « Radar de conflits »).
+  Modules `queries.ts` restant sans test dédié (`club`, `coach-wishes`, `feedback`, `profile`,
+  `release-notes`, `shared/session`) : hors scope de ce lot, à reprendre par le même risque si un
+  incident les désigne. `admin/queries.ts` est un abandon délibéré (persona fondateur, décision
+  `specs/courantes/etat-des-lieux.md` §2), pas un reliquat.
 - **Routes** : tests de navigation (React Router memory router), guards d'auth, redirections.
 - **Intégration API** : mock `ky` via MSW ou interceptor, vérification des payloads et headers.
 

@@ -1,14 +1,19 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-08-29 (rotation de fraîcheur `documentation-update` — re-confronté au code :
-`ValidateScheduleController.php` importe toujours `FixtureVenueLossMarker` (dépointage RMM-10/P2-52
-dans la même transaction que le pointage) ✓ · `AuthGuard.tsx` dérive toujours l'onboarding de
-`!seasonPlan.hasFinishedVersion` ✓ · `SocleGuard::assertSeasonPlanChosen` existe toujours
-(`backend/src/Service/SocleGuard.php`) ✓ · le garde matchs (état 2 verrouillé) vit dans
-`MatchesLayout.tsx` via `useSocleValidated()` (`shared/lib/socle.ts`, dérivé de
-`chosenScheduleId !== null` — même condition que documentée, portée en hook partagé depuis D-25/D-28
-pour éviter la retriplication cockpit/AppLayout/Matches). Rien de faux trouvé. Historique des passes
-vit dans git : `git log -p --follow specs/courantes/planning-lifecycle-validated.md`)
+Last verified @ 2026-08-29 (2ᵉ rotation de fraîcheur `documentation-update` du jour, cible imposée —
+la 1ʳᵉ passe du matin avait déclaré §2 juste sans l'avoir relu ligne à ligne : **§2 « État du code au
+moment de la rédaction » (Front) était FAUX sur plusieurs points**, corrigé sur place. Re-confronté
+au code : `useValidateSchedule()` EST consommé (`PlanningPage.tsx:298`, câblé à `onValidate` de
+`PlanningToolbar`) — la ligne disait « inutilisé » ✓ corrigé · le badge de statut est une pastille
+stylée, pas un texte brut, et le couple Base/Secondaire a disparu au profit d'une seule pastille
+« Période » (`PlanningToolbar.tsx:177-182`) ✓ corrigé · `IN_FLIGHT` a bien rejoint le foyer unique
+`shared/lib/scheduleStatus.ts` (D-31) PARTOUT sauf `planning/lib/pickLandingSchedule.ts:3`, resté sur
+sa propre copie littérale — dette ouverte `P4-141` ✓ trouvé et tracé. Reconfirmé au passage :
+`AuthGuard.tsx` dérive toujours l'onboarding de `!seasonPlan.hasFinishedVersion`
+(`AuthGuard.tsx:50`) ✓ · `SocleGuard::assertSeasonPlanChosen` existe et est appliqué dans
+`FixtureStateProcessor`/`ScheduleStateProcessor`/`GenerateScheduleController` en direct et dans
+`ImportFixturesController` via `FixtureImportGate` (indirection, pas un défaut) ✓. Historique des
+passes vit dans git : `git log -p --follow specs/courantes/planning-lifecycle-validated.md`)
 
 > **Bascule 2026-07-16 (ADR-0002, `docs/architecture/adr-0002-pattern-plan.md`)** : le **plan de
 > type SEASON** (`schedule_plan`) et **la version qu'il pointe** (`chosen_schedule_id`) SONT le
@@ -63,7 +68,7 @@ Ancrages : `AuthGuard.tsx` (onboarding = `!seasonPlan.hasFinishedVersion`), `Coc
 | Chemins d'édition **sans garde de statut** | `GenerateScheduleController` (regen `:46`) · `ManualEditController` (constraint, lock, move) · `ScheduleStateProcessor` PUT (`name/status/solverSeed` `:48-61`) — `schedule_slot_templates` est **read-only depuis 2026-08-16** (P4-102), plus de CRUD brut à garder ici |
 | `ScheduleInput.status` | `Choice` = 5 statuts actuels (`Dto/ScheduleInput.php:17-19`) |
 | Contrat engine | `ScheduleInputSchema` **sans status** ; output engine = littéral `queued/generating/completed/failed` ≠ enum backend ; `ContractSchemaTest` le vérifie → **VALIDATED n'impacte pas l'engine** |
-| Front | unions `ScheduleStatus` (`planning/api.ts:43`, `wizard/api.ts:205`) · `validateSchedule()`+`useValidateSchedule()` **existent mais inutilisés** (`planning/queries.ts:91`) · `pickDefaultSchedule` ne matche que `COMPLETED` (`PlanningPage.tsx:21-27`) · `IN_FLIGHT` dupliqué (`PlanningPage:18`, `queries:6`) · `SlotDetail`/`WeekGrid` **sans conscience du statut** · badge statut = texte brut (`PlanningToolbar:73`) · badge Base/Secondaire (`:75-82`) |
+| Front (instantané d'origine — **corrigé le 2026-08-29, plusieurs points avaient dérivé silencieusement**) | ⚠ **Faux, corrigé** : `validateSchedule()`+`useValidateSchedule()` ne sont plus « inutilisés » — le hook est appelé depuis `PlanningPage.tsx:298` et câblé au bouton « Valider » de `PlanningToolbar` (`onValidate`, §3.1). ⚠ **Faux, corrigé** : le badge de statut n'est plus un texte brut — pastille arrondie + icône verrou (`PlanningToolbar.tsx:177-180`, `STATUS_LABELS[selected.status]`) ; et il n'y a plus de paire Base/Secondaire — une seule pastille « Période » apparaît quand la version n'est PAS de saison (`:182`), son absence dit « saison ». **Toujours vrai, référence déplacée** : `pickDefaultSchedule` (désormais `planning/lib/pickLandingSchedule.ts`) ne matche que `COMPLETED`. **Toujours vrai, nuancé** : `IN_FLIGHT` a rejoint le foyer unique `shared/lib/scheduleStatus.ts` (D-31, 2026-08-08) partout SAUF `planning/lib/pickLandingSchedule.ts:3`, resté sur sa propre copie littérale — dette ouverte (`P4-141`). **Toujours vrai** : `SlotDetail`/`WeekGrid` restent sans conscience DIRECTE du statut, ils reçoivent un booléen `readOnly` déjà calculé par l'appelant |
 
 ## 3. Décisions de conception
 
