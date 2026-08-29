@@ -1,19 +1,19 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-08-28 (rotation `documentation-update`, passe Lot C — `engine/CONTRACT_VERSION` = **2.16** re-confirmé, ce fichier documente `/generate`. Passe précédente (recalé au bump de contrat **2.15 → 2.16** — P2-53 RMM-8 PR-2,
-blocs `venueTravelTimes`/`isVehicled`/règle `travelTime` sur `/generate` ; ce fichier documente
-`/generate`, où seule la chaîne de version est recalée ici (le détail des blocs vit dans
-`engine-inventory.md`). Passe précédente (2026-08-25, bump 2.14 → 2.15, rotation A/B) :
-file:line recales, tous perimes depuis un deplacement de modules non repercute ici). Contre le code :
-contrat 2.16 (`engine/CONTRACT_VERSION`) et comparaison MAJOR seule ✓ · verrou asyncio par club qui
-ATTEND, jamais de 503 (`app/main.py:128-129`, dict `_club_locks` + garde) ✓ · `lockLevel` chaine
-libre, pas un enum (`app/schemas/input_schema.py:249`, PAS `app/input_schema.py` — le fichier a
-migre sous `schemas/`) ✓ · `solverTimeoutSeconds` defaut 650 (`app/schemas/input_schema.py:262`) ✓ ·
-paliers workers 1/8 au seuil 200 (`_adaptive_workers`, `app/main.py:443`) ✓ · module objectif
-desormais `app/solver/objective.py` (PAS `app/objective.py`) ✓ · module modele desormais
-`app/solver/model.py` (PAS `app/model.py`) ✓ · `venue_minimum_unreachable` existe ✓ ·
-`solver_version` = version("ortools"), pin `>=9.11,<10` (`pyproject.toml:14`) ✓ · topic
-`club:{clubId}:schedule:{scheduleId}` (`MercureTopic.php`) ✓.
+Last verified @ 2026-08-29 (rotation `documentation-update`, passe P4-95 — fichier hors sujet de la
+PR, contrôle de fraîcheur. `engine/CONTRACT_VERSION` = **2.16** re-confirmé (`engine/CONTRACT_VERSION`).
+**Drift trouvé et corrigé** : trois `file:line` étaient périmés (dérive de lignes, pas de
+comportement) — verrou asyncio par club `_club_locks`+garde est en `app/main.py:130-131` (pas
+128-129), `_adaptive_workers` (paliers 1/8 au seuil 200) est défini `app/main.py:445` (pas 443),
+`lockLevel` chaîne libre est `app/schemas/input_schema.py:294` (pas 249) et
+`solverTimeoutSeconds` défaut 650 est `app/schemas/input_schema.py:307` (pas 262). **Fait plus
+significatif** : le module objectif a continué sa migration — ce n'est plus `app/solver/objective.py`
+(déjà signalé PAS `app/objective.py` à la passe précédente) mais le **paquet**
+`app/solver/objective/` (`__init__.py`/`normalise.py`/`terms.py`/`weights.py`). Reste vérifié sans
+écart : module modèle `app/solver/model.py` (paquet non éclaté) ✓ · `venue_minimum_unreachable`
+existe (`app/solver/constraints/targeting.py:320`) ✓ · `solver_version` = version("ortools"), pin
+`>=9.11,<10` (`pyproject.toml:14`) ✓ · topic `club:{clubId}:schedule:{scheduleId}`
+(`backend/src/Mercure/MercureTopic.php`) ✓.
 
 > Ce document decrit le chemin complet d'une requete de generation d'emploi du temps, du moment ou le backend construit le payload jusqu'a la notification en temps reel du frontend. Destine aux developpeurs travaillant sur l'integration backend/engine.
 

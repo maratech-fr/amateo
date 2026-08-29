@@ -389,6 +389,20 @@ describe("concernedSlots", () => {
     expect(result[0]).toMatchObject({ dayLabel: "Lun", timeLabel: "18:00", teamLabel: "U11", venueLabel: "Alpha" });
   });
 
+  it("P4-95 — un conflit de COACH (jour+heure, SANS gymnase) resserre sur les 2 créneaux du choc", () => {
+    // `diag-conflict-coach-*` ne porte PAS de venueId : tout son sens est que le coach est
+    // attendu dans DEUX gymnases au même moment. L'ancienne clé exigeait le gymnase, donc
+    // ce diagnostic retombait sur « tous les créneaux du coach » — y compris un autre jour.
+    const slots = [
+      slot({ id: "clash-a", coachId: "c1", venueId: "v1", teamId: "t1", dayOfWeek: 3, startTime: "18:00:00" }),
+      slot({ id: "clash-b", coachId: "c1", venueId: "v2", teamId: "t2", dayOfWeek: 3, startTime: "18:00:00" }),
+      slot({ id: "ailleurs", coachId: "c1", venueId: "v1", teamId: "t1", dayOfWeek: 5, startTime: "18:00:00" }),
+    ];
+    const result = concernedSlots({ teamId: null, venueId: null, coachId: "c1", dayOfWeek: 3, startTime: "18:00" }, slots, lookups);
+    expect(result.map((r) => r.slotId)).toEqual(["clash-a", "clash-b"]);
+    expect(result.map((r) => r.slotId)).not.toContain("ailleurs");
+  });
+
   it("un conflict PORTANT (venue, jour, heure) resserre sur CE créneau — pas tout le gymnase", () => {
     const slots = [
       slot({ id: "a", venueId: "v1", teamId: "t1", dayOfWeek: 6, startTime: "10:00:00" }),

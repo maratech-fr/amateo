@@ -148,13 +148,26 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
       onFocusVenue?.(diagnostic.venueId);
       return;
     }
-    // Un `conflict` PORTE (venue, jour, heure) : `concernedSlots` resserre sur LE créneau fautif ;
-    // on le surligne ET on l'OUVRE (le premier, dans l'ordre jour+heure de concernedSlots).
-    if ("conflict" === diagnostic.type && null !== diagnostic.venueId && null !== diagnostic.dayOfWeek && null !== diagnostic.startTime) {
+    // Un `conflict` qui PORTE (jour, heure) + un discriminant : `concernedSlots` resserre sur les
+    // créneaux fautifs de cet instant. On les surligne toujours ; on n'en OUVRE un que s'ils
+    // tiennent dans UNE case (même gymnase/jour/heure) — la sur-capacité d'un gymnase, où ouvrir
+    // « le premier » désigne bien le lieu du problème.
+    //
+    // ⚠ P4-95 (décision fondateur 2026-08-29) — un conflit de COACH s'étale sur DEUX cases, dans
+    // deux gymnases : on surligne les deux et on n'ouvre RIEN. En ouvrir une désignerait
+    // arbitrairement le créneau à déplacer, alors que l'arbitrage appartient au gestionnaire — et
+    // ouvrir un panneau masquerait justement l'autre moitié du choc.
+    if ("conflict" === diagnostic.type && null !== diagnostic.dayOfWeek && null !== diagnostic.startTime) {
       const concerned = concernedSlots(diagnostic, slots, lookups);
       onHighlight(new Set(concerned.map((c) => c.slotId)));
+      const cells = new Set(
+        concerned
+          .map((c) => slots.find((s) => s.id === c.slotId))
+          .filter((s): s is (typeof slots)[number] => undefined !== s)
+          .map((s) => `${s.venueId}|${s.dayOfWeek}|${s.startTime}`),
+      );
       const first = concerned[0]?.slotId;
-      if (undefined !== first) {
+      if (1 === cells.size && undefined !== first) {
         onOpenSlot?.(first);
       }
       return;
