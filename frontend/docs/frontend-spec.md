@@ -4,12 +4,11 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-08-29 (`documentation-update`, FRT-29 — §6.9 confronté au déplacement pur de
-`MODAL_WIDTH` : la constante a quitté `shared/components/ui/modal.tsx` pour
-`shared/components/ui/modal-width.ts` (résorption du warning `react-refresh/only-export-components`,
-`modal.tsx` ne réexporte plus que le composant `Modal`) — la ligne du tableau « Modale » corrigée en
-conséquence. Le reste du fichier (routes hors matchs/planning, primitives, stack) non re-vérifié
-cette passe — un stamp REMPLACE, l'historique vit dans git :
+Last verified @ 2026-08-29 (`documentation-update`, P4-148 — §10 confronté au déplacement pur de
+`Gender`/`TeamLevel` : les deux unions ont quitté `features/wizard/api.ts` pour
+`shared/lib/teamIdentity.ts` (nouveau fichier, `wizard/api.ts` les ré-exporte) — l'arborescence
+`shared/lib/` de la liste corrigée en conséquence. Le reste du fichier (routes, primitives, stack,
+§6.9) non re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git :
 `git log -p --follow frontend/docs/frontend-spec.md`)
 
 ---
@@ -1290,7 +1289,10 @@ frontend/src/
 │   │                           # team-select, modal, menu, accordion, toaster, empty-hint
 │   ├── hooks/                  # useApplyTheme, useApplyClubTheme
 │   ├── lib/                    # readState, teamTiers, color, palette, duration, errorMessage,
-│   │                           # download, clipboard, passwordPolicy, useModalA11y, queryClient, utils
+│   │                           # download, clipboard, passwordPolicy, useModalA11y, queryClient, utils,
+│   │                           # teamIdentity (Gender/TeamLevel — foyer unique des deux axes
+│   │                           # d'identité FFBB d'une équipe, descendu de wizard/ le 2026-08-29,
+│   │                           # P4-148 ; wizard/api.ts les ré-exporte)
 │   └── stores/                 # authStore, themeStore, seasonStore, toastStore, transitionUiStore
 └── test/                       # setup vitest, helpers de rendu, suite a11y
 ```

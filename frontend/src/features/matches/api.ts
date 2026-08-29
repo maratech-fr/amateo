@@ -1,6 +1,7 @@
 import { api } from "@/shared/api/client";
 import { collection, collectionAll } from "@/shared/api/collection";
 import { sortByName } from "@/shared/lib/nameOrder";
+import type { Gender, TeamLevel } from "@/shared/lib/teamIdentity";
 
 /**
  * Matches read/write API (module matchs, palier A PR-3). Tenant (club) + active
@@ -70,6 +71,12 @@ export interface FfbbEngagement {
   ffbbPouleId: string;
   pouleName: string;
   category: string | null;
+  /**
+   * ⚠ Le libellé FFBB BRUT (« Régional », « Pré régionale »), PAS l'enum `TeamLevel`.
+   * C'est ce que l'API fédérale sert, affiché tel quel dans le sous-titre du dialogue ;
+   * la correspondance vers `TeamLevel` se fait à l'appariement, pas ici (P4-148 : ce champ
+   * avait été resserré à tort, la CI l'a attrapé sur « Régional »).
+   */
   level: string | null;
   gender: string | null;
   pouleSize: number;
@@ -215,8 +222,8 @@ export interface Team {
   id: string;
   name: string;
   sportCategoryId: string;
-  level: string | null;
-  gender: string | null;
+  level: TeamLevel | null;
+  gender: Gender | null;
   // Priority tier (S/A/B/C/D) — used to group teams in selectors, same
   // découpage as the wizard's teams step.
   priorityTierId: number;

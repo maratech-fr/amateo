@@ -95,13 +95,12 @@ final class TsFieldsMatchOpenApiSchemaTest extends TestCase
      * @var array<string, string>
      */
     private const array DECLARED_ENUM_DRIFTS = [
-        // FRT-22 — dérive RÉELLE trouvée en amorçant. `matches/api.ts` type ces deux champs en
-        // `string | null` là où le schéma `Team` porte un enum (TeamLevel / Gender). Corriger le
-        // type TS change un type consommé par les écrans « matchs » : c'est un geste à part, que
-        // le fondateur arbitre sous FRT-22. On déclare l'écart pour que le garde soit vert sur le
-        // code ACTUEL — un garde qui naît rouge ne sera jamais adopté — sans toucher au front.
-        'matches/Team.level' => 'FRT-22 : `level: string | null` au lieu du type nommé, alors que le schéma porte un enum. Retyper le front touche les écrans « matchs » — geste arbitré séparément.',
-        'matches/Team.gender' => 'FRT-22 : `gender: string | null` au lieu du type nommé, alors que le schéma porte un enum. Même correction, même arbitrage que `level`.',
+        // P4-148 (2026-08-29) — les deux écarts FRT-22 (`matches/Team.level`/`.gender` en
+        // `string | null` là où le schéma porte un enum) sont RÉSORBÉS : le front les retype sur
+        // `TeamLevel | null`/`Gender | null` (descendus dans shared/lib/teamIdentity.ts). Ce garde
+        // reste vert SANS exemption — il est devenu le test d'acceptation du correctif. La carte
+        // reste ici, vide, pour la porte de sortie décrite dans le docblock (un écart futur se
+        // déclare, il ne se supprime pas).
     ];
 
     public function testEveryDeclaredFieldExistsInItsSchema(): void
@@ -161,6 +160,11 @@ final class TsFieldsMatchOpenApiSchemaTest extends TestCase
 
     public function testEveryDeclaredDriftCarriesAReason(): void
     {
+        // La carte peut être vide (P4-148 a résorbé les deux écarts d'amorçage) : on garde une
+        // assertion toujours exécutée pour que le test reste MEANINGFUL, et on vérifie chaque
+        // raison quand il en existe.
+        self::assertContainsOnly('string', self::DECLARED_ENUM_DRIFTS);
+
         foreach (self::DECLARED_ENUM_DRIFTS as $key => $reason) {
             self::assertNotSame('', trim($reason), \sprintf(
                 'L\'écart déclaré « %s » n\'a pas de raison. Un écart se déclare AVEC son pourquoi, ou pas du tout.',
