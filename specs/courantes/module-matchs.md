@@ -1,12 +1,8 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-28 (P2-54 RMM-9 **PR-3, le lot est SOLDÉ, le programme RMM est CLOS** — nouvelle
-section « Trajet AWAY & radar spatial » (`OpponentTravel` tenant + `Fixture.opponent_organisme_code`) vérifiée
-contre `Entity/OpponentTravel.php`/`Service/Geo/OpponentTravelResolver.php`/`Controller/OpponentTravelController.php`/
-`Version20260828120000.php` (RLS FORCE), injection `roundTripTravelMinutes` dans `FixtureConflictsController` →
-`MatchFootprint::occupancy`, `/security-review` zéro finding. Sections « Annuaire adverse » (PR-2) et
-« Empreinte-temps » (PR-1) re-confirmées inchangées. Deux divergences ASSUMÉES nommées — placement moteur
-(`match_placement.py` 105 fixe, contrat 2.16) et dessin de grille (`weekendGrid.ts:4-6`).
+Last verified @ 2026-08-29 (`documentation-update`, FRT-29 — déplacement pur de `moduleVisitSummary`
+hors de `ModuleVisitBanner.tsx` vers `features/matches/lib/moduleVisitSummary.ts`, comportement du
+bandeau inchangé : la mention « `ModuleVisitBanner.moduleVisitSummary` » corrigée en conséquence.
 Le reste du fichier non re-confronté cette passe — un stamp REMPLACE, l'historique vit dans git :
 `git log -p --follow specs/courantes/module-matchs.md`
 
@@ -1182,9 +1178,10 @@ future.
 - **`visitDeltaSegments` — la formulation partagée, extraite.** Les trois segments non nuls du
   delta de visite (matchs arrivés · nouveaux conflits · planning de saison changé, dans cet ordre)
   vivent désormais dans `features/matches/lib/visitDeltaSegments.ts` (fonction pure, sans le voile
-  `firstVisit` propre au bandeau). `ModuleVisitBanner.moduleVisitSummary` et `FbiDeadlineCard` la
-  consomment TOUS LES DEUX — une seule maison pour la tournure française et les singuliers/
-  pluriels, comportement du bandeau **inchangé** (tests intacts).
+  `firstVisit` propre au bandeau). `moduleVisitSummary` (déplacée de `ModuleVisitBanner.tsx` vers
+  `features/matches/lib/moduleVisitSummary.ts` — FRT-29, résorption d'un warning HMR) et
+  `FbiDeadlineCard` la consomment TOUS LES DEUX — une seule maison pour la tournure française et
+  les singuliers/pluriels, comportement du bandeau **inchangé** (tests intacts).
 - **`RadarPanel` intouché** — le radar cockpit (vacances, indispos, plannings à régénérer) n'est
   pas concerné par ce lot ; les deux to-do (RadarPanel, matchs) restent deux surfaces distinctes.
 - Tests : `FbiDeadlineCard.test.tsx` (mute hors fenêtre/data non résolue/liste vide, contenu en

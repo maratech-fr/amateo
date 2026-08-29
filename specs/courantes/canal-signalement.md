@@ -1,9 +1,9 @@
-Last verified @ 2026-08-28 (**rotation de fraîcheur**, PR roadmap retours terrain — zone non touchée par cette PR.
-Re-confronté au code : `frontend/src/shared/api/client.ts:48` pose bien un `X-Request-Id` sur
-chaque requête et le relit sur la réponse ; `EventListener/RequestIdListener.php` +
-`Messenger/RequestIdMiddleware.php` existent (backend+bus) ; `POST /api/feedback`
-(`backend/src/Controller/FeedbackController.php:66`) existe ; `monolog-bundle` est bien dans
-`composer.json`. Tout juste — la contradiction corrigée à une passe antérieure n'est pas revenue)
+Last verified @ 2026-08-29 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+cette PR. Re-confronté au code : `frontend/src/shared/api/client.ts` pose bien un `X-Request-Id`
+sur chaque requête ; `EventListener/RequestIdListener.php` + `Messenger/RequestIdMiddleware.php`
+existent (backend+bus) ; `POST /api/feedback` (`backend/src/Controller/FeedbackController.php:66`)
+existe ; `monolog-bundle` est bien dans `composer.json`. Tout juste — la contradiction corrigée à
+une passe antérieure n'est pas revenue)
 
 # Canal signalement, support & reproduction
 

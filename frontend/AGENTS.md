@@ -39,7 +39,9 @@ frontend/
 │   ├── main.tsx                 # Entry: Sentry init, pre-paint theme, createRoot
 │   ├── index.css                # Tailwind 4 @theme tokens + --accent slots
 │   ├── app/                     # Shell & routing
-│   │   ├── router.tsx           # createBrowserRouter + per-route `lazy` (see below)
+│   │   ├── router.tsx           # `AppRouter`: builds `createBrowserRouter(routes)` on first use
+│   │   ├── routes.tsx           # The `RouteObject[]` tree + per-route `lazy` (see below) — moved
+│   │   │                        # out of router.tsx (FRT-29) so it stays a non-component export
 │   │   ├── RootShell.tsx        # Technical root: carries the navigation-pending net
 │   │   ├── RouteErrorBoundary.tsx / ErrorBoundary.tsx
 │   │   ├── AppLayout.tsx        # Header (club logo = home link) + account menu
@@ -126,9 +128,10 @@ it the `/admin` specs SKIP explicitly rather than fail.
 
 ## Routing — split by route, and the three nets that make it safe
 
-`app/router.tsx` builds a data router where **everything except `/login` and the guards is
-`lazy`**. Motivation: a single chunk used to ship on every first visit — superadmin console
-and wizard included — even for a coach opening nothing but a public doléances page.
+`app/routes.tsx` declares the route tree, where **everything except `/login` and the guards is
+`lazy`**; `app/router.tsx` just calls `createBrowserRouter(routes)`. Motivation: a single chunk
+used to ship on every first visit — superadmin console and wizard included — even for a coach
+opening nothing but a public doléances page.
 
 Eager on purpose: `LoginPage` (entry path), `AuthGuard`, `AdminGuard` (their code must be
 present to decide).

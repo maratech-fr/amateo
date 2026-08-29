@@ -1,6 +1,12 @@
 # Identité visuelle par club (logo + couleur d'accent)
 
-Last verified @ 2026-08-28 (**rotation de fraîcheur**, P2-54 PR-1 documentation-update — re-vérifié contre le code, tout juste : `Club.logoUrl`/`accentColorDark`/`accentPalette` dans l'entité (`backend/src/Entity/Club.php:138-154`) ✓, `PATCH /api/club/appearance` (`ClubAppearanceController.php:33-34`) ✓, `useApplyClubTheme.ts:16-18` lit `accentColor`/`accentColorDark`/`accentPalette` sur `me.club` ✓, et `GenerationWaiting.tsx` n'affiche toujours aucun logo/initiale de club — sa seule occurrence de « logo » est le commentaire qui acte la décision fondateur du 2026-08-17 ✓. L'historique vit dans git : `git log -p --follow specs/courantes/identite-visuelle-club.md`)
+Last verified @ 2026-08-29 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+cette PR — re-vérifié contre le code, tout juste : `Club.logoUrl`/`accentColorDark`/`accentPalette`
+dans l'entité (`backend/src/Entity/Club.php:138-154`) ✓, `PATCH /api/club/appearance`
+(`ClubAppearanceController.php:34`) ✓, `useApplyClubTheme.ts` lit `accentColor`/`accentColorDark`/
+`accentPalette` sur `me.club` ✓, et `GenerationWaiting.tsx` n'affiche toujours aucun logo/initiale
+de club — sa seule occurrence de « logo » est le commentaire qui acte la décision fondateur du
+2026-08-17 ✓. L'historique vit dans git : `git log -p --follow specs/courantes/identite-visuelle-club.md`)
 
 > **LIVRÉ (2026-07-02)** — accent par club + logo + extraction 3 couleurs + écran « Gestion du club ». Détail livré ci-dessous ; ce qui reste ⬜ est du confort (voir « Questions ouvertes »).
 >
