@@ -1,6 +1,7 @@
 import { AlertTriangle, Check, Undo2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { frDateWeekdayNoYear } from "@/shared/lib/date";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
@@ -32,9 +33,6 @@ const RECOPIABLE: readonly FixtureStatus[] = ["PLACED", "SUBMITTED", "VALIDATED"
 const isRecopiable = (f: Fixture): boolean => "HOME" === f.homeAway && RECOPIABLE.includes(f.status);
 const isDone = (f: Fixture): boolean => "SUBMITTED" === f.status || "VALIDATED" === f.status;
 
-function frDate(dateKey: string): string {
-  return new Date(`${dateKey}T00:00:00`).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
-}
 
 /** Active (à saisir) EN TÊTE, puis les rangées déjà saisies ; à statut égal, par date+heure. */
 function orderInTeam(a: Fixture, b: Fixture): number {
@@ -119,7 +117,7 @@ export function FbiEntryList({ fixtures, teams, venues, competitions, today = to
             <option value="">Toutes les dates</option>
             {dateOptions.map((d) => (
               <option key={d} value={d}>
-                {frDate(d)}
+                {frDateWeekdayNoYear(d)}
               </option>
             ))}
           </Select>
@@ -189,7 +187,7 @@ export function FbiEntryList({ fixtures, teams, venues, competitions, today = to
 
                       <span className={cn("min-w-0 flex-1", done ? "text-muted-foreground" : "")}>
                         <span className="block font-medium tabular-nums">
-                          {frDate(f.matchDate)} · {f.kickoffTime ?? "—"}
+                          {frDateWeekdayNoYear(f.matchDate)} · {f.kickoffTime ?? "—"}
                         </span>
                         <span className="block truncate text-xs text-muted-foreground">
                           vs {f.opponentLabel} · {venueName}

@@ -4,6 +4,7 @@ const DAY_LABELS = ["", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "same
 
 // D-30 : cette implémentation (midi UTC) était la plus défensive des trois — elle est
 // devenue le foyer partagé.
+import { frDateShortNoYear } from "@/shared/lib/date";
 import { isoDayOf } from "@/shared/lib/days";
 
 export { isoDayOf };
@@ -53,7 +54,7 @@ export function venueAccessError(
   for (const unavailability of unavailabilities) {
     if (unavailability.venueId === venueId && matchDate >= unavailability.startDate && matchDate <= unavailability.endDate) {
       const label = null !== unavailability.label ? ` (${unavailability.label})` : "";
-      return `${venueName} est indisponible du ${frDate(unavailability.startDate)} au ${frDate(unavailability.endDate)}${label}.`;
+      return `${venueName} est indisponible du ${frDateShortNoYear(unavailability.startDate)} au ${frDateShortNoYear(unavailability.endDate)}${label}.`;
     }
   }
 
@@ -74,6 +75,3 @@ export function venueAccessError(
   return null;
 }
 
-function frDate(ymd: string): string {
-  return new Date(`${ymd}T12:00:00Z`).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
-}
