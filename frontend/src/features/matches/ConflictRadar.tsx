@@ -1,6 +1,7 @@
 import { AlertTriangle, ChevronDown, ChevronRight, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
 
+import { frDateShortNoYear } from "@/shared/lib/date";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { cn } from "@/shared/lib/utils";
 
@@ -63,20 +64,20 @@ function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string 
 
 function conflictSummary(conflict: Conflict, teams: Map<string, Team>): string {
   if (("MATCH_MATCH" === conflict.type || "VENUE_OVERLAP" === conflict.type) && conflict.left && conflict.right) {
-    return `${teamName(teams, conflict.left.teamId)} et ${teamName(teams, conflict.right.teamId)} — ${frDate(conflict.left.matchDate)}`;
+    return `${teamName(teams, conflict.left.teamId)} et ${teamName(teams, conflict.right.teamId)} — ${frDateShortNoYear(conflict.left.matchDate)}`;
   }
   if ("MATCH_TRAINING" === conflict.type && conflict.fixture && conflict.training) {
     return `Match ${teamName(teams, conflict.fixture.teamId)} × entraînement ${teamName(teams, conflict.training.teamId)}`;
   }
   if ("VENUE_UNAVAILABLE" === conflict.type && conflict.fixture) {
-    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDate(conflict.fixture.matchDate)} — gymnase indisponible, à repositionner`;
+    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} — gymnase indisponible, à repositionner`;
   }
   if ("ACCESS_WINDOW_LOST" === conflict.type && conflict.fixture) {
-    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDate(conflict.fixture.matchDate)} à ${conflict.fixture.kickoffTime ?? "?"} — la fenêtre d'accès a changé après le placement`;
+    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} à ${conflict.fixture.kickoffTime ?? "?"} — la fenêtre d'accès a changé après le placement`;
   }
   if ("LEAGUE_WINDOW_VIOLATION" === conflict.type && conflict.fixture) {
     const windows = (conflict.windows ?? []).map((w) => `${w.kickoffMin}–${w.kickoffMax}`).join(", ");
-    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDate(conflict.fixture.matchDate)} à ${conflict.fixture.kickoffTime ?? "?"} (fenêtres : ${windows}) — dérogation à demander tôt`;
+    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} à ${conflict.fixture.kickoffTime ?? "?"} (fenêtres : ${windows}) — dérogation à demander tôt`;
   }
   if ("TEAM_LINK_OVERLAP" === conflict.type && conflict.left && conflict.right) {
     return `Équipes liées en même temps — ${teamName(teams, conflict.left.teamId)} et ${teamName(teams, conflict.right.teamId)} (joueurs partagés)`;
@@ -85,7 +86,7 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>): string {
     return `${conflict.competitionName ?? "?"} (${teamName(teams, conflict.teamId)}) — ${conflict.imported ?? 0}/${conflict.expected ?? "?"} journées : fichier partiel ou phase pas encore sortie`;
   }
   if ("AWAY_NO_FOOTPRINT" === conflict.type && conflict.fixture) {
-    return `${teamName(teams, conflict.fixture.teamId)} · ${frDate(conflict.fixture.matchDate)} — invisible du radar, déclarez une habitude`;
+    return `${teamName(teams, conflict.fixture.teamId)} · ${frDateShortNoYear(conflict.fixture.matchDate)} — invisible du radar, déclarez une habitude`;
   }
   return "Conflit";
 }
@@ -93,10 +94,6 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>): string {
 /** « heure estimée » when a side's window borrows the team's habit (P1-4 PR C). */
 function estimatedTag(conflict: Conflict): boolean {
   return true === conflict.fixture?.estimatedKickoff || true === conflict.left?.estimatedKickoff || true === conflict.right?.estimatedKickoff;
-}
-
-function frDate(ymd: string): string {
-  return new Date(`${ymd}T12:00:00Z`).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 }
 
 const TONE_CLASSES = {
