@@ -4,15 +4,15 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-08-29 (`documentation-update`, FRT-20 2ᵉ tranche — nouvelle section « Radar de
-conflits (`/matchs`) — toute écriture qui le nourrit DOIT l'invalider » ajoutée et confrontée au
-code : `useConflicts` (`matches/queries.ts`) porte bien `queryKey: ["fixtures", "conflicts"]` et
-`staleTime: 10_000` ; les cinq helpers `invalidateTravel`/`invalidateUnavailabilities`/
-`invalidateHabits`/`invalidateTeamLinks`/`invalidateMatchWindows` invalident tous cette même clé ;
-`MatchConflictDetector::kickoffInsideWindow` (backend) et son miroir `matches/lib/matchAccess.ts`
-existent bien sous ces noms. Le reste du fichier (routes hors matchs, primitives, stack) non
-re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git :
-`git log -p --follow frontend/docs/frontend-spec.md`)
+Last verified @ 2026-08-29 (`documentation-update`, FRT-20 3ᵉ tranche — la section « Radar de
+conflits (`/matchs`) — toute écriture qui le nourrit DOIT l'invalider » gagne une nuance
+(« une invalidation n'est due que si le lecteur DÉRIVE réellement de l'écriture ») confrontée au
+code backend : `ManualEditService::applyLock` (`backend/src/Service/ManualEditService.php:16-23`)
+ne fait que `setLockLevel`/`setLockOrigin`/`flush`, aucun appel moteur ; `ScheduleDiagnosticsRecorder::record`
+n'est appelé que depuis `GenerateScheduleHandler.php` (lignes 451, 464) ; `ScheduleDiagnosticStateProvider`
+est un simple `WHERE scheduleId` ; zéro occurrence de `lockLevel` dans `ScheduleDiagnosticsRecorder.php`.
+Le reste du fichier (routes hors matchs/planning, primitives, stack) non re-vérifié cette passe —
+un stamp REMPLACE, l'historique vit dans git : `git log -p --follow frontend/docs/frontend-spec.md`)
 
 ---
 
@@ -1165,6 +1165,24 @@ miroir front `matches/lib/matchAccess.ts`) — c'était le seul des cinq foyers 
 `MatchConflictDetector.php` avant d'écrire un hook) ; couverture par l'EFFET (le vrai
 `useConflicts` monté sur un `QueryClient` réel refetche) plutôt qu'un espion sur
 `invalidateQueries` : `matches/queries.test.tsx`.
+
+**Nuance (FRT-20 3ᵉ tranche, planning, 2026-08-29) : une invalidation n'est due que si le lecteur
+DÉRIVE réellement de l'écriture.** La règle ci-dessus tient parce que le radar est **calculé à la
+volée** à chaque lecture — c'est ça qui rend un cache périmé possible, et donc l'invalidation
+nécessaire. Elle ne se généralise pas à « toute écriture doit invalider tout ce qui y ressemble » :
+ajouter une clé « par symétrie » sur une donnée qui ne dérive PAS de l'écriture est un refetch
+inutile, pas une sécurité. Exemple canonique — `useLockSlot` (`planning/queries.ts`) n'invalide
+QUE `["slots"]` + `["socle-deviation"]`, alors que le foyer commun des retouches acceptées
+(`invalidateMovePacket`, move/place) invalide aussi `["diagnostics"]` et `["schedules"]`. C'est
+correct : verrouiller un créneau n'appelle jamais le moteur (`ManualEditService::applyLock` ne
+fait que poser le verrou + `flush`), et les diagnostics sont des lignes **persistées à la
+génération** (`ScheduleDiagnosticsRecorder::record`, appelé UNIQUEMENT depuis
+`GenerateScheduleHandler`) — aucun diagnostic ne dérive du `lockLevel` d'un créneau à la lecture.
+Invalider `["diagnostics"]` après un verrou re-téléchargerait donc des lignes identiques : un
+no-op. Avant d'ajouter une invalidation « pour faire pareil qu'ailleurs », vérifier que le lecteur
+visé lit réellement une donnée que l'écriture change — sinon ne rien ajouter. Preuve :
+`planning/queries.test.tsx` (verrouille les deux faces : refetch requis d'un côté, absence de
+refetch de l'autre).
 
 ### Headers obligatoires
 
