@@ -48,7 +48,9 @@ final class TsUnionsMatchPhpEnumsTest extends TestCase
         'CalendarEntryKind' => 'cockpit/api.ts',
         'CalendarEntryPeriodType' => 'cockpit/api.ts',
         'CalendarEntryStatus' => 'cockpit/api.ts',
-        'Gender' => 'wizard/api.ts',
+        // P4-148 — l'union descend dans shared/lib/teamIdentity.ts (avec TeamLevel : les deux axes
+        // d'identité FFBB d'une équipe) ; le chemin remonte de src/features via `../`.
+        'Gender' => '../shared/lib/teamIdentity.ts',
         'VenuePeriodMode' => 'wizard/api.ts',
         'TeamCoachRole' => 'wizard/api.ts',
         'ConstraintFamily' => 'wizard/api.ts',
@@ -60,7 +62,8 @@ final class TsUnionsMatchPhpEnumsTest extends TestCase
         // donc la frontière sans qu'aucun côté ne garde l'autre. C'est un enum de PÉRIMÈTRE
         // ENGAGÉ (§7.1) — une valeur ajoutée côté PHP et oubliée côté TS rendrait un niveau
         // affiché comme inconnu sur l'écran des équipes.
-        'TeamLevel' => 'wizard/api.ts',
+        // P4-148 — descendu dans shared/lib/teamIdentity.ts avec Gender (identité FFBB d'une équipe).
+        'TeamLevel' => '../shared/lib/teamIdentity.ts',
         'FixtureStatus' => 'matches/api.ts',
         'TeamLinkType' => 'matches/api.ts',
         // Lot PASSERELLES PR-3 (2026-08-22) — l'intensité d'entraînement d'une passerelle

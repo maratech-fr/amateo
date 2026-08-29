@@ -5,20 +5,11 @@ import { collection, collectionAll } from "@/shared/api/collection";
 import type { DeletionImpact } from "@/shared/api/deletionImpact";
 import type { ToReplaceEntry } from "@/features/planning/lib/toReplaceReason";
 import { sortByName } from "@/shared/lib/nameOrder";
+// P4-148 — `Gender`/`TeamLevel` (l'identité FFBB d'une équipe) sont descendus dans shared/lib/ ;
+// on les ré-exporte ici pour ne pas casser les ~consommateurs qui les lisent depuis ce module.
+import type { Gender, TeamLevel } from "@/shared/lib/teamIdentity";
 
-export type Gender = "M" | "F" | "MIXTE";
-
-/** FFBB competition level (backend App\Enum\TeamLevel). LOISIR_* = non-competitive. */
-export type TeamLevel =
-  | "ELITE"
-  | "NATIONAL"
-  | "REGIONAL"
-  | "PRE_REGION"
-  | "DEPARTEMENTAL"
-  | "HONNEUR"
-  | "PROMOTION"
-  | "LOISIR_ADULTE"
-  | "LOISIR_JEUNE";
+export type { Gender, TeamLevel };
 
 export interface Team {
   id: string;

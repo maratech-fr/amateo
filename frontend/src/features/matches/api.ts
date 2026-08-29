@@ -1,6 +1,7 @@
 import { api } from "@/shared/api/client";
 import { collection, collectionAll } from "@/shared/api/collection";
 import { sortByName } from "@/shared/lib/nameOrder";
+import type { Gender, TeamLevel } from "@/shared/lib/teamIdentity";
 
 /**
  * Matches read/write API (module matchs, palier A PR-3). Tenant (club) + active
@@ -70,7 +71,7 @@ export interface FfbbEngagement {
   ffbbPouleId: string;
   pouleName: string;
   category: string | null;
-  level: string | null;
+  level: TeamLevel | null;
   gender: string | null;
   pouleSize: number;
   pouleOpponents: string[];
@@ -215,8 +216,8 @@ export interface Team {
   id: string;
   name: string;
   sportCategoryId: string;
-  level: string | null;
-  gender: string | null;
+  level: TeamLevel | null;
+  gender: Gender | null;
   // Priority tier (S/A/B/C/D) — used to group teams in selectors, same
   // découpage as the wizard's teams step.
   priorityTierId: number;
