@@ -5,7 +5,8 @@ import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 
 import type { Fixture, OpponentTravel, Team, TeamMatchHabit } from "./api";
-import { AwayTravelChip, awayTravelTitle } from "./AwayTravelChip";
+import { AwayTravelChip } from "./AwayTravelChip";
+import { awayTravelTitle } from "./lib/awayTravelTitle";
 import { isoWeekday } from "./lib/envelope";
 
 interface AwayListProps {

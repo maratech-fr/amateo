@@ -4,15 +4,13 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-08-29 (`documentation-update`, FRT-20 3ᵉ tranche — la section « Radar de
-conflits (`/matchs`) — toute écriture qui le nourrit DOIT l'invalider » gagne une nuance
-(« une invalidation n'est due que si le lecteur DÉRIVE réellement de l'écriture ») confrontée au
-code backend : `ManualEditService::applyLock` (`backend/src/Service/ManualEditService.php:16-23`)
-ne fait que `setLockLevel`/`setLockOrigin`/`flush`, aucun appel moteur ; `ScheduleDiagnosticsRecorder::record`
-n'est appelé que depuis `GenerateScheduleHandler.php` (lignes 451, 464) ; `ScheduleDiagnosticStateProvider`
-est un simple `WHERE scheduleId` ; zéro occurrence de `lockLevel` dans `ScheduleDiagnosticsRecorder.php`.
-Le reste du fichier (routes hors matchs/planning, primitives, stack) non re-vérifié cette passe —
-un stamp REMPLACE, l'historique vit dans git : `git log -p --follow frontend/docs/frontend-spec.md`)
+Last verified @ 2026-08-29 (`documentation-update`, FRT-29 — §6.9 confronté au déplacement pur de
+`MODAL_WIDTH` : la constante a quitté `shared/components/ui/modal.tsx` pour
+`shared/components/ui/modal-width.ts` (résorption du warning `react-refresh/only-export-components`,
+`modal.tsx` ne réexporte plus que le composant `Modal`) — la ligne du tableau « Modale » corrigée en
+conséquence. Le reste du fichier (routes hors matchs/planning, primitives, stack) non re-vérifié
+cette passe — un stamp REMPLACE, l'historique vit dans git :
+`git log -p --follow frontend/docs/frontend-spec.md`)
 
 ---
 
@@ -920,7 +918,7 @@ sous un shell devenu pleine largeur).
 | **Dense** (grille de planning, wizard, module matchs, scène d'attente) | **pleine largeur** — le shell ne borne rien (`AppLayout.tsx`, 1ʳᵉ tranche, PR #613) | l'écran lui-même |
 | **Fiche** (Club, Profil, Nouveautés) | **832 px** (`--container-fiche: 52rem`) | `FichePage` (`shared/components/ui/fiche-page.tsx`) |
 | **Texte long** (Confidentialité) | `max-w-2xl` | la page |
-| **Modale** | 4 paliers nommés — 448 / 576 / 768 / 1152 px | `MODAL_WIDTH` (`shared/components/ui/modal.tsx`) |
+| **Modale** | 4 paliers nommés — 448 / 576 / 768 / 1152 px | `MODAL_WIDTH` (`shared/components/ui/modal-width.ts`) |
 
 **Modales — la prop `size`, et rien d'autre.** `Modal` n'a **plus de prop `className`** : choisir
 un palier est le seul geste offert, et `tsc` rougit sur toute récidive. Les paliers montent avec

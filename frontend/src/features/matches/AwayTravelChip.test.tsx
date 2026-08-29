@@ -2,7 +2,8 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { OpponentTravel } from "./api";
-import { AwayTravelChip, awayTravelTitle } from "./AwayTravelChip";
+import { AwayTravelChip } from "./AwayTravelChip";
+import { awayTravelTitle } from "./lib/awayTravelTitle";
 
 const travel = (over: Partial<OpponentTravel>): OpponentTravel => ({
   opponentOrganismeCode: "ORG",
