@@ -1,19 +1,13 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-08-28 (rotation `documentation-update`, P2-54 PR-3 — re-confronté au code, tout juste : `maxEndTime` HARD (`ConstraintConfigValidator` type time), `maxConsecutiveDays` posé dur (`wellness.py:add_max_consecutive_days_constraints`), `forcedDays` posé (`targeting.py:213` `sum(forced_day_vars) >= 1`), `travelTime` ✅ aligné. Passe précédente (P2-53 PR-4) — la ligne Axe GYMNASE « Éviter
-d'enchaîner deux gymnases trop éloignés » (règle implicite `travelTime`) passe de 🟡 partiel à
-✅ : l'écran offre désormais le levier d'intensité Préféré/Obligatoire
-(`VenueTravelRuleSetting`), `ScheduleConstraintBuilder::resolveTravelRuleIntensity` émet le
-réglage stocké ?? PREFERRED. Vérification précédente toujours valable : la ligne « Jour de
-repos après un match » — `matchDay` émis est DÉRIVÉ de l'image A/B côté backend (`max` des jours
-ISO des habitudes ∪ rotations, repli champ déclaré converti 0-based→ISO) via
-`ScheduleConstraintBuilder::deriveMatchDay`, vérifié au code. Recalé ENG-32 : le monolithe
-`constraints.py` est devenu le paquet `constraints/` — les références de ce fichier pointent
-désormais fichier+fonction, stables au refactor. Recalé par la livraison ALIGN-09 : « au moins une
-séance tel jour » passe 🟡 → ✅ — mode wizard, gate bloquant, sémantique « l'un de ces jours »
-vérifiée au code (`constraints/targeting.py`, `add_time_window_constraints` — une somme sur
-l'union par équipe). `forcedDays` était déjà prouvé décisif par le test sémantique CI ; la clé
-héritée #120 est migrée (contraintes vives ET snapshots))
+Last verified @ 2026-08-29 (rotation `documentation-update`, FRT-20/P4-117 — zone non touchée par
+cette PR, contrôle de fraîcheur, tout juste). Re-confronté au code : `maxEndTime` toujours HARD
+(`ConstraintConfigValidator`, type `time`) ✓ · `maxConsecutiveDays` toujours posé dur
+(`engine/app/solver/constraints/wellness.py::add_max_consecutive_days_constraints`, `:494`) ✓ ·
+`forcedDays` toujours posé (`engine/app/solver/constraints/targeting.py:213`,
+`model.Add(sum(forced_day_vars) >= 1)`) ✓ · `ScheduleConstraintBuilder::resolveTravelRuleIntensity`
+existe toujours (`backend/src/Service/ScheduleConstraintBuilder.php:891`) ✓. Historique des
+passes : `git log -p --follow backend/docs/constraint-coverage.md`.)
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels
