@@ -2,10 +2,12 @@ import { IN_FLIGHT_STATUSES, type ScheduleStatus } from "@/shared/lib/scheduleSt
 
 import { isSeasonPlanType, visibleSeasonPlans } from "./versions";
 
-// D-31 : « en vol » a UN foyer, `shared/lib/scheduleStatus.ts`. Ce fichier en avait repris une
-// copie littérale née après la consolidation (P4-147) — un statut ajouté côté serveur aurait
-// bougé le foyer sans bouger la copie, et l'atterrissage aurait choisi un planning encore en
-// cours de génération.
+// D-31 : « en vol » a UN foyer, `shared/lib/scheduleStatus.ts`. Ce fichier portait une copie
+// littérale depuis sa naissance (2026-07-16) — donc AVANT la consolidation D-31 du 2026-08-08,
+// qui l'a simplement manquée en recensant les sites : une omission, pas une rechute (P4-147).
+// L'enjeu n'était pas cosmétique : un statut ajouté côté serveur aurait bougé le foyer sans
+// bouger la copie, et l'atterrissage aurait pu ouvrir sur un planning encore en cours de
+// génération.
 type LandingSchedule = { id: string; status: ScheduleStatus; createdAt: string; planType: string | null; schedulePlanId: string | null; isChosen?: boolean };
 
 export function pickDefaultSchedule(schedules: LandingSchedule[]): string | null {
