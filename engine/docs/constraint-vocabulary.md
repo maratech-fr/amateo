@@ -1,15 +1,13 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-08-28 (P2-55/ENG-36 — la section « Trajet entre gymnases » gagne la PARITÉ
-VERDICT : re-confronté au code, `validate_assignments.py` passe désormais `venueTravelTimes` au
-`_apply_hard` (interdit dur MANDATORY) et câble `add_travel_time_penalty(info_out=...)` +
-le miroir déterministe `_travel_time_move_violation` (`rule: travel_time_infeasible`) réutilisant
-`travel.py:iter_travel_pairs_from_placements` (source unique pose⇄miroir, ENG-37 résorbé côté
-verdict). Passe précédente (P2-53 RMM-8 PR-2) : `travel.py` (départage/battement/`build_travel_matrix`),
-intensité PREFERRED/MANDATORY (`parsing.py:_travel_intensity`), diagnostic
-`travel_time_infeasible` (`result_builder.py:_diagnose_travel_times`). `/place-matches` ne reçoit
-toujours pas ce bloc (grep). Reste du
-document non re-parcouru ligne à ligne cette passe (rotation précédente : `app/solver/constraints/`
+Last verified @ 2026-08-29 (rotation `documentation-update`, passe P4-147 — zone non touchée par
+cette PR, contrôle de fraîcheur. Ce fichier cite `result_builder._diagnose_travel_times` et
+`travel.py:iter_travel_pairs_from_placements` **au niveau module**, pas `fichier:ligne` — les deux
+survivent tels quels au découpage en paquets d'ENG-39 (2026-08-28), `_diagnose_travel_times` reste
+ré-exporté par `app/solver/result_builder/__init__.py:70`, `travel.py` n'a pas bougé de
+`constraints/`. Re-confronté au code : `validate_assignments.py:_apply_hard` consomme toujours
+`venueTravelTimes` (`:334`) et `_travel_time_move_violation` (`:192`) résorbe ENG-37 côté miroir
+✓. Reste du document non re-parcouru ligne à ligne cette passe (rotation précédente : `app/solver/constraints/`
 paquet §familles config, `parse_v2_constraints`, `constraint_not_honored`, `maxEndTime`).
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
