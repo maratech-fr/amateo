@@ -140,6 +140,29 @@ describe("DiagnosticsPanel — un conflict OUVRE le créneau fautif (P4-95)", ()
     expect(onOpenSlot).toHaveBeenCalledWith("a");
   });
 
+  it("P4-95 — un conflit de COACH surligne les DEUX cases et n'en ouvre AUCUNE", async () => {
+    // Décision fondateur (2026-08-29) : le choc s'étale sur deux gymnases, l'arbitrage
+    // « laquelle je déplace » appartient au gestionnaire. En ouvrir une le déciderait à sa
+    // place, et le panneau masquerait l'autre moitié du choc.
+    const user = userEvent.setup();
+    const onOpenSlot = vi.fn();
+    const onHighlight = vi.fn();
+    const clashSlots = [
+      slot({ id: "ca", teamId: "t1", venueId: "v1", coachId: "c1", dayOfWeek: 3, startTime: "18:00:00" }),
+      slot({ id: "cb", teamId: "t2", venueId: "v2", coachId: "c1", dayOfWeek: 3, startTime: "18:00:00" }),
+      slot({ id: "cc", teamId: "t1", venueId: "v1", coachId: "c1", dayOfWeek: 5, startTime: "18:00:00" }),
+    ];
+    // `diag-conflict-coach-*` : coach + jour + heure, JAMAIS de gymnase.
+    const coachClash = conflict({ venueId: null, coachId: "c1", dayOfWeek: 3, startTime: "18:00", message: "coach dédoublé" });
+    render(panel({ diagnostics: [coachClash], slots: clashSlots, onOpenSlot, onHighlight, openMostSevere: true, seedToken: "v1" }));
+
+    await user.click(screen.getByText("coach dédoublé"));
+
+    // Les deux créneaux du choc — et pas la séance du jeudi.
+    expect(lastSet(onHighlight)).toEqual(["ca", "cb"]);
+    expect(onOpenSlot).not.toHaveBeenCalled();
+  });
+
   it("un conflict SANS jour/heure n'ouvre rien (dégradation douce), garde le surlignage large", async () => {
     const user = userEvent.setup();
     const onOpenSlot = vi.fn();

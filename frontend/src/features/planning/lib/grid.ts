@@ -546,10 +546,17 @@ const dayLabelOf = (day: number): string => DAYS.find((d) => d.n === day)?.label
  * The slots a diagnostic points at (its team / venue / coach), sorted by day+time
  * so the "when + which teams" of a conflict is spelled out instead of implied.
  *
- * Quand le diagnostic PORTE (venue, jour, heure) — le cas d'un `conflict` (schéma engine 2.6) —
- * on RESSERRE sur LE créneau exact : gymnase + jour + heure à la minute (l'engine émet « HH:MM »,
- * un slot peut être « HH:MM:SS » → comparaison en minutes). Sans ces champs, comportement inchangé
- * (correspondance équipe / gymnase / coach).
+ * Quand le diagnostic PORTE (jour, heure) ET un discriminant — gymnase, coach OU équipe — on
+ * RESSERRE sur les créneaux exacts de ce moment (heure à la minute : l'engine émet « HH:MM », un
+ * slot peut être « HH:MM:SS »). Sans jour+heure, comportement inchangé (correspondance
+ * équipe / gymnase / coach).
+ *
+ * ⚠ P4-95 — le resserrement exigeait le `venueId`, or c'est précisément le champ qu'un CONFLIT DE
+ * COACH ne peut pas porter : tout son sens est que le coach est attendu dans DEUX gymnases au même
+ * moment (`diag-conflict-coach-*` pose coach + jour + heure, jamais un gymnase). Une ERREUR dont le
+ * moteur donne l'instant exact retombait donc sur « tous les créneaux de ce coach ». La clé est
+ * désormais (jour + heure + n'importe quel discriminant), ce qui couvre aussi le gymnase sans rien
+ * changer pour lui.
  */
 export function concernedSlots(
   diagnostic: { teamId: string | null; venueId: string | null; coachId: string | null; dayOfWeek?: number | null; startTime?: string | null },
@@ -558,10 +565,17 @@ export function concernedSlots(
 ): ConcernedSlot[] {
   const pinDay = diagnostic.dayOfWeek ?? null;
   const pinTime = diagnostic.startTime ?? null;
-  const matches =
-    null !== diagnostic.venueId && null !== pinDay && null !== pinTime
-      ? slots.filter((s) => s.venueId === diagnostic.venueId && s.dayOfWeek === pinDay && parseTimeToMinutes(s.startTime) === parseTimeToMinutes(pinTime))
-      : slots.filter(
+  const pinned = null !== pinDay && null !== pinTime && (null !== diagnostic.venueId || null !== diagnostic.coachId || null !== diagnostic.teamId);
+  const matches = pinned
+    ? slots.filter(
+        (s) =>
+          s.dayOfWeek === pinDay &&
+          parseTimeToMinutes(s.startTime) === parseTimeToMinutes(pinTime) &&
+          ((null !== diagnostic.venueId && s.venueId === diagnostic.venueId) ||
+            (null !== diagnostic.coachId && s.coachId === diagnostic.coachId) ||
+            (null !== diagnostic.teamId && s.teamId === diagnostic.teamId)),
+      )
+    : slots.filter(
           (s) =>
             (null !== diagnostic.teamId && diagnostic.teamId === s.teamId) ||
             (null !== diagnostic.venueId && diagnostic.venueId === s.venueId) ||
