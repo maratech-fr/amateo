@@ -2,7 +2,7 @@ import { isValidElement, type ReactElement } from "react";
 import { Navigate } from "react-router";
 import { describe, expect, it } from "vitest";
 
-import { routes } from "./router";
+import { routes } from "./routes";
 
 /**
  * NR du découpage en chunks (P4-6) — les FILETS, pas le contenu des pages.

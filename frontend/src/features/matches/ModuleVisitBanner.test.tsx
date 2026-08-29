@@ -2,7 +2,8 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { ModuleVisitDelta } from "./api";
-import { ModuleVisitBanner, moduleVisitSummary } from "./ModuleVisitBanner";
+import { ModuleVisitBanner } from "./ModuleVisitBanner";
+import { moduleVisitSummary } from "./lib/moduleVisitSummary";
 
 function delta(over: Partial<ModuleVisitDelta>): ModuleVisitDelta {
   return {

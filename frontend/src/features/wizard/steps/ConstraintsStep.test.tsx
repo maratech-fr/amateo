@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/utils";
 
 import type { Constraint, ImplicitRuleSetting, SharedTrainingGroup } from "../api";
-import { PRODUCT_RULES, WELLBEING_RULES } from "./ImplicitRulesPanel";
+import { PRODUCT_RULES, WELLBEING_RULES } from "../lib/implicitRules";
 
 const RESOLVED_IMPLICIT_RULES: ImplicitRuleSetting[] = [
   { ruleKey: "coachRestDay", intensity: "HARD", minRestDays: 1, maxConsecutive: null, maxConsecutiveDays: null, isDefault: true },

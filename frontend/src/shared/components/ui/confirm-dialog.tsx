@@ -2,7 +2,7 @@ import { type ReactNode, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Button } from "@/shared/components/ui/button";
-import { MODAL_WIDTH } from "@/shared/components/ui/modal";
+import { MODAL_WIDTH } from "@/shared/components/ui/modal-width";
 import { useModalA11y } from "@/shared/lib/useModalA11y";
 import { cn } from "@/shared/lib/utils";
 
