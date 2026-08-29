@@ -1,15 +1,18 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-08-28 (rotation `documentation-update`, passe Lot C — zone non touchée par cette PR, contrôle de fraîcheur. Re-confronté au code : `UNPLACED_PENALTY = 100000` (`objective.py:141`), tiers S/A souverains, budget adaptatif 60/180/600 s (`_adaptive_timeout`, `main.py:413`) ✓. Passe précédente (P2-53 PR-1 — zone non touchée par cette
-PR, contrôle de fraîcheur). Re-confronté au code : poids de tiers S 10000/A 1000 fixes dans
-`app/solver/objective.py` ✓ (`missing_session` −1000, `UNPLACED_PENALTY` 100000, patron intact) ·
-budget adaptatif 60/180/600 s plafonné par le payload (`_adaptive_timeout`, `app/main.py:411-425`
-— dérivé de `:410-425`, corrigé cette passe) ✓ · capacité de créneau dérivée backend
-`canSplit ? capacity : 1` — **dérivé** (`ScheduleConstraintBuilder.php:822` → `:879` désormais,
-corrigé cette passe) ✓ · `soft_lock_moved` existe (`result_builder.py:540`) ✓ · MIN_SESSIONS cible
-soft ENG-18 (docblock d'`add_level_1_hard_constraints`, `constraints/__init__.py:247`) ✓ ·
-`orToolsWeight` toujours requis et ignoré du solve (`input_schema.py:68` — dérivé de `:63`, corrigé
-cette passe) ✓)
+Last verified @ 2026-08-29 (rotation `documentation-update`, passe P4-147 — zone non touchée par
+cette PR, contrôle de fraîcheur. **`objective.py` et `result_builder.py` ont éclaté en PAQUETS
+depuis ENG-39 (2026-08-28)** : les deux chemins `fichier:ligne` cités par la passe précédente
+n'existent plus (`grep` à vide) — corrigé cette passe. Re-confronté au code : `UNPLACED_PENALTY =
+100000` (`app/solver/objective/weights.py:118`) ✓ · tiers S 10000/A 1000/B 100/C 10/D 1 fixes
+(`objective/weights.py:27-59`, `TIER_WEIGHT_NAMES`) ✓ · budget adaptatif 60/180/600 s
+(`_adaptive_timeout`, `app/main.py:413`) ✓ · capacité de créneau dérivée backend
+`canSplit ? capacity : 1` (`ScheduleConstraintBuilder.php:979`, ligne décalée depuis `:879`) ✓ ·
+`soft_lock_moved` existe (`app/solver/result_builder/diagnostics.py:340`, fonction
+`_diagnose_soft_lock_moved`) ✓ · MIN_SESSIONS cible soft ENG-18 (docblock d'
+`add_level_1_hard_constraints`, `constraints/__init__.py:255`, ligne décalée depuis `:247`) ✓ ·
+`orToolsWeight` toujours requis et ignoré du solve (`input_schema.py:72`, ligne décalée depuis
+`:68`) ✓)
 
 > Ce document explique le domaine de la planification sportive et ce que le moteur `engine` resout. Destine aux nouveaux developpeurs rejoignant le projet ClubScheduler.
 
