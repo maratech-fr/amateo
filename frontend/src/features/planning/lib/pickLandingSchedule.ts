@@ -1,8 +1,12 @@
+import { IN_FLIGHT_STATUSES, type ScheduleStatus } from "@/shared/lib/scheduleStatus";
+
 import { isSeasonPlanType, visibleSeasonPlans } from "./versions";
 
-const IN_FLIGHT = ["PENDING", "GENERATING"];
-
-type LandingSchedule = { id: string; status: string; createdAt: string; planType: string | null; schedulePlanId: string | null; isChosen?: boolean };
+// D-31 : « en vol » a UN foyer, `shared/lib/scheduleStatus.ts`. Ce fichier en avait repris une
+// copie littérale née après la consolidation (P4-147) — un statut ajouté côté serveur aurait
+// bougé le foyer sans bouger la copie, et l'atterrissage aurait choisi un planning encore en
+// cours de génération.
+type LandingSchedule = { id: string; status: ScheduleStatus; createdAt: string; planType: string | null; schedulePlanId: string | null; isChosen?: boolean };
 
 export function pickDefaultSchedule(schedules: LandingSchedule[]): string | null {
   const seasonPlans = visibleSeasonPlans(schedules);
@@ -19,5 +23,5 @@ export function pickLandingScheduleId(schedules: LandingSchedule[]): string | nu
   // et à le tenir synchrone. Une seule source.
   const base = schedules.find((s) => true === s.isChosen && isSeasonPlanType(s.planType));
 
-  return base && !IN_FLIGHT.includes(base.status) ? base.id : pickDefaultSchedule(schedules);
+  return base && !IN_FLIGHT_STATUSES.includes(base.status) ? base.id : pickDefaultSchedule(schedules);
 }
