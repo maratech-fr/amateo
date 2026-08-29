@@ -1,10 +1,11 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-29 (`documentation-update`, FRT-29 — déplacement pur de `moduleVisitSummary`
-hors de `ModuleVisitBanner.tsx` vers `features/matches/lib/moduleVisitSummary.ts`, comportement du
-bandeau inchangé : la mention « `ModuleVisitBanner.moduleVisitSummary` » corrigée en conséquence.
-Le reste du fichier non re-confronté cette passe — un stamp REMPLACE, l'historique vit dans git :
-`git log -p --follow specs/courantes/module-matchs.md`
+Last verified @ 2026-08-30 (`documentation-update`, UXC-18 — le module matchs dit désormais UN mot,
+« conflit », partout : carte `ConflictRadar` titrée « Conflits » (plus « Diagnostic »), rail
+`loopSteps.ts` « Conflits (n) » (plus « Litiges (n) », id technique `disputes` inchangé),
+bandeau `MatchesPage.tsx` aligné. Les deux occurrences de « Litiges » relevées en §Boucle
+matchs corrigées en conséquence. Le reste du fichier non re-confronté cette passe — un stamp
+REMPLACE, l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
 > [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés
@@ -820,7 +821,7 @@ fixture du marquage.
   `done` bloquant** (verbatim : « c'est un signal, c'est pas bloquant ») — sans habitude sur
   l'équipe il n'y a pas de modèle de référence, donc pas d'écart possible ; (2) un **conflit SANS
   fixture référencé** (ex. `COMPETITION_INCOMPLETE`, `datelessConflicts`) sort du compte hebdo de
-  l'étape « Litiges » et s'affiche en **bandeau global** au-dessus du rail, jamais rattaché à une
+  l'étape « Conflits » et s'affiche en **bandeau global** au-dessus du rail, jamais rattaché à une
   semaine précise.
 - **Le geste manquant : « Marquer saisi dans FBI »** — `PlacementPanel.tsx` porte
   `onSubmit`/`onReopen` sur un match `PLACED`/`SUBMITTED` (PUT `status`,
@@ -830,7 +831,7 @@ fixture du marquage.
   Vocabulaire FR unique (`lib/fixtureStatusLabel.ts`, table jamais un ternaire) : Importé · Placé ·
   **Saisi dans FBI** · Validé ligue — jamais les codes d'enum affichés.
 - **Hiérarchie d'actions** : l'action primaire est celle de l'étape courante du rail (Importer FBI /
-  Placer automatiquement / rien en Litiges-fbiEntry) ; les gestes rares (Engagements FFBB, Accès
+  Placer automatiquement / rien en Conflits-fbiEntry) ; les gestes rares (Engagements FFBB, Accès
   match, Habitudes & passerelles, image A/B) ont quitté la barre plate pour `/matchs/configuration` ;
   « Nouveau match » reste secondaire (`variant="outline"`) dans la barre utilitaire.
 - **La semaine devient l'axe primaire** : label « Semaine du {lundi} au {dimanche} » au-dessus du

@@ -1,14 +1,13 @@
 # Guide de génération de planning — ClubScheduler
 
-Last verified @ 2026-08-28 (rôle APPLICATIF `app_user` → `amateo_app` : 38 gardes de migrations rendus tolérants aux DEUX noms (DDL identique, seul le rôle est résolu), `02-users.sh` crée `amateo_app`, migration de rename idempotente pour les clusters existants. Prouvé : cluster NEUF 2 bases (138 migrations ×2, policies `tenant_isolation` → `{amateo_app}` partout) ET cluster existant (rename, policies suivent l'OID, données préservées). Passe P4-142 — renommage infra : rôle owner `amateo_owner`, conteneurs `amateo-*`, fonction RLS `enable_rls_for_existing_amateo_tables`, DSN admin recalés. Re-confronté au CLUSTER réel : 44 policies `admin_all` → `amateo_owner`, 0 vers l'ancien rôle ; `clubscheduler` n'existe plus ; `app_user` sans superuser ni BYPASSRLS ; 44/44 tables RLS en FORCE. Passe précédente : rotation `documentation-update`, passe Lot A — contrat re-confirmé `CONTRACT_VERSION` **2.16** (`ScheduleConstraintBuilder.php:64`), aucune occurrence 2.15 résiduelle. Passe précédente (recalé au bump de contrat **2.15 → 2.16** — P2-53 RMM-8 PR-2,
-blocs de trajet sur `/generate` ; ce fichier ne cite le contrat qu'au Cas 6 du tableau de
-pannes, désormais `v2.16`. Passe précédente (2026-08-25, bump 2.14 → 2.15) :
-re-confronté au code, tout juste : les huit conteneurs cités
-(`amateo-php-fpm`/`nginx`/`postgres`/`redis`/`engine`/`messenger-worker`/`mercure`/`mailpit`)
-existent dans `docker-compose.yml` ✓ · port 8080 = `NGINX_PORT` (`.env:6`) ✓ · les trois refus
-pré-file (409 version pointée, 422 `GenerationComplexityGuard`, 422 `OrphanPinGuard`) + la mention
-des caps métier par club et de `SocleGuard` pour une période, présents dans le contrôleur ✓ ·
-`pngExportUrl` toujours absent — `grep` vide sur `backend/src` et `frontend/src` ✓.
+Last verified @ 2026-08-30 (rotation `documentation-update`) — re-confronté au code : `CONTRACT_VERSION`
+**2.16** (`ScheduleConstraintBuilder.php:64`) ✓ ; les dix `container_name` de `docker-compose.yml`
+sont tous `amateo-*` ✓ — **drift trouvé et corrigé** : ce guide citait encore `clubscheduler-nginx`/
+`clubscheduler-engine`/`clubscheduler-mercure`/`clubscheduler-mailpit` (2 lignes, § « Vérifier que
+tout tourne » et § logs), restes de l'ère pré-P4-142 que cette passe avait manqués ; port 8080 =
+`NGINX_PORT` (`.env:6`) ✓ ; rôle applicatif `amateo_app` (`docker/postgres/init/02-users.sh`,
+« Named amateo_app directly (no transitional legacy name) ») ✓ ; `pngExportUrl` toujours absent —
+`grep` vide sur `backend/src` et `frontend/src` ✓.
 
 > Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend ClubScheduler. Il s'adresse aux développeurs juniors qui découvrent le projet.
 
@@ -32,7 +31,7 @@ Cette commande lance `docker compose up -d --wait` et démarre tous les services
 docker ps
 ```
 
-Tu dois voir apparaître : `amateo-php-fpm`, `clubscheduler-nginx`, `amateo-postgres`, `amateo-redis`, `clubscheduler-engine`, `amateo-messenger-worker`, `clubscheduler-mercure`, et éventuellement `clubscheduler-mailpit`.
+Tu dois voir apparaître : `amateo-php-fpm`, `amateo-nginx`, `amateo-postgres`, `amateo-redis`, `amateo-engine`, `amateo-messenger-worker`, `amateo-mercure`, et éventuellement `amateo-mailpit`.
 
 ### Charger les fixtures
 
@@ -564,7 +563,7 @@ docker logs -f amateo-messenger-worker --tail 50
 ### Logs du moteur Python
 
 ```bash
-docker logs -f clubscheduler-engine --tail 50
+docker logs -f amateo-engine --tail 50
 ```
 
 ### File Redis

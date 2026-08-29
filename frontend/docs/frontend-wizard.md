@@ -1,14 +1,10 @@
 # Wizard — saisie des données (tranche 3, LIVRÉ)
 
-Last verified @ 2026-08-29 (date recalée — le contenu ci-dessous a été écrit le 2026-08-28, le
-commit qui le porte (#779) a atterri le lendemain, décalage d'horloge de session sans rapport avec
-le contenu. Re-confronté avant de redater : `AutofillUnresolvedReason` (`wizard/api.ts:450`) porte
-toujours exactement `"missing_geo" | "routing_failed" | "budget_exceeded"` ✓. **Reste du texte
-inchangé depuis le 2026-08-28** : BCK-22 côté écran — `reasonLabel` (`TravelMatrixModal.tsx`)
-confronté au code : `REASON_LABELS` est une table `Record` EXHAUSTIVE — plus de ternaire à repli
-muet — falsifié par `TravelMatrixModal.test.tsx` (une paire `budget_exceeded` affiche « calcul
-interrompu, relancez », jamais « calcul impossible ») ✓. Reste du fichier non re-contrôlé ligne à
-ligne cette passe — un stamp REMPLACE, l'historique des passes
+Last verified @ 2026-08-30 (rotation `documentation-update`) — re-confronté : `AutofillUnresolvedReason`
+(`wizard/api.ts:441`, la ligne avait dérivé de 450 depuis la dernière passe) porte toujours
+exactement `"missing_geo" | "routing_failed" | "budget_exceeded"` ✓ ; `REASON_LABELS`
+(`TravelMatrixModal.tsx:49`) reste une table `Record` EXHAUSTIVE — tout juste. Reste du fichier
+non re-contrôlé ligne à ligne cette passe — un stamp REMPLACE, l'historique des passes
 précédentes vit dans git)
 
 > ⚠️ **Réalité livrée — canonique.** Le draft "4 étapes" plus bas est **historique/superseded** : le wizard a été reconstruit dans `frontend/src/features/wizard` avec un flux plus granulaire, décidé avec le PO. Les sections 1+ ci-dessous ne décrivent plus l'implémentation.
