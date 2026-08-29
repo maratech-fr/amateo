@@ -1,16 +1,14 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-08-28 (4 séquelles du lot BDD soldées — §« Les 3 bases locales » gagne le garde des cibles Make (`mutation-confirm.sh` : silence en bac à sable, refus sec en prod, CONFIRMATION sur `amateo_local` ; `db-init` non gardé car non destructeur). Prouvé : `make db-reset` en mode play → refus, base inchangée avant/après. Aussi soldés : REVOKE DELETE sur la table partagée (NR bloquant étendu et falsifié), fixtures du smoke par la connexion admin, `make restart` découplé de `install`. Passe précédente : correctif `make play` NON DESTRUCTEUR + wrapper `with-sandbox.sh` — §« Les 3 bases locales » recalée : `play` ne seede QUE si le club de démo est absent (le premier jet appelait `seed-bccl` inconditionnellement, qui PURGE le workspace — relancer `play` effaçait le travail sur BCCL) ; `seed-bccl` garde sa sémantique « créer ou RESET » ; le wrapper restaure le mode play même sur échec (`trap`), `.env.local` remis byte-identique. Vérifié : `make play` sur base peuplée → diff de 8 tables VIDE. Passe précédente (2026-08-27) : la liste canonique des blocking-tests vit
-dans `docs/testing/blocking-tests.md`, la ligne `make phpunit` la cite à sa nouvelle adresse ✓.
-Re-confronté au code : les scripts de
-`backend/scripts/*.sh` toujours tous listés (`ls` ✓, aucun ajout/retrait depuis la dernière passe) ;
-cibles Make de la table toujours toutes présentes dans `backend/Makefile` (`test`, `tests-complete`,
-`phpunit`, `db-init`/`db-init-test`, `db-reset`/`db-reset-test`, `fixtures`, `phpstan`/`cs`/`cs-fix`/
-`rector`, `lint`, `migration-diff`/`migration-migrate`, `fix-perms`, `exec`, `jwt-keys`, `install`
-✓) ; `app:schedules:reconcile-stuck` confronté à `ReconcileStuckSchedulesCommand.php` (existe) ✓.
-Tout juste, rien à corriger. Non re-sondé cette passe : horaires exacts du catalogue de jobs,
-pièges RLS des commandes Doctrine, le motif `.pdf` seul d'`app:exports:purge` — un stamp REMPLACE,
-l'historique vit dans git : `git log -p --follow backend/docs/commands.md`.
+Last verified @ 2026-08-29 (rotation `documentation-update`, FRT-28 — re-confronté au code : les 18
+cibles de la table (`test`, `tests-complete`, `phpunit`, `db-init`/`db-init-test`,
+`db-reset`/`db-reset-test`, `fixtures`, `phpstan`/`cs`/`cs-fix`/`rector`, `lint`,
+`migration-diff`/`migration-migrate`, `fix-perms`, `exec`, `jwt-keys`, `install`) toutes présentes
+dans `backend/Makefile` ✓ ; `app:schedules:reconcile-stuck` confronté à
+`ReconcileStuckSchedulesCommand.php` (existe) ✓. Tout juste, rien à corriger. Non re-sondé cette
+passe : horaires exacts du catalogue de jobs, pièges RLS des commandes Doctrine, le motif `.pdf`
+seul d'`app:exports:purge`, le détail des scripts `backend/scripts/*.sh` — un stamp REMPLACE,
+l'historique des passes vit dans git : `git log -p --follow backend/docs/commands.md`.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).

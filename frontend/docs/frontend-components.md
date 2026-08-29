@@ -1,12 +1,11 @@
 # FORWARD Components Spec — Pages & Shared Components (hors wizard)
 
-Last verified @ 2026-08-28 (rotation `documentation-update`, passe Lot E — la convention snake_case
-des paths API Platform tient toujours : `priority_tiers` re-confirmé au snapshot
-(`openapi-snapshot.json`), avec `schedule_diagnostics`, `schedule_slot_templates`,
-`sport_categories`, `team_coaches`, `venue_training_slots`, tous confirmés dans
-`specs/courantes/openapi-snapshot.json`) et sur la ressource la plus récente livrée,
-`/api/venue_travel_rule_settings/{ruleKey}` (P2-53 PR-4), qui suit la même règle. Le bloc
-« Historique » (sections 2-9) reste superseded, non re-vérifié — il ne prétend à aucune autorité)
+Last verified @ 2026-08-29 (rotation `documentation-update`, FRT-28 — la convention snake_case
+des paths API Platform tient toujours : `priority_tiers`, `schedule_diagnostics`,
+`schedule_slot_templates`, `sport_categories`, `team_coaches`, `venue_training_slots`, tous
+re-confirmés dans `specs/courantes/openapi-snapshot.json`, ainsi que
+`/api/venue_travel_rule_settings/{ruleKey}` (P2-53 PR-4). Rien à corriger. Le bloc « Historique »
+(sections 2-9) reste superseded, non re-vérifié — il ne prétend à aucune autorité)
 
 > 🛑 **Ce document est SUPERSEDED. Il ne décrit pas le frontend livré.**
 >

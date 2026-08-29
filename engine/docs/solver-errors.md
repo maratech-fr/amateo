@@ -1,21 +1,21 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-08-28 (rotation `documentation-update`, passe Lot B — `engine/CONTRACT_VERSION`
-= **2.16** re-confirmé ; le fichier ne cite le contrat qu'au §422 (`version: "1.0"` du corps d'erreur
-vs le MAJOR 2). Passe précédente (recalé au bump 2.15 → 2.16 — P2-53 RMM-8 PR-2,
-blocs de trajet sur `/generate`). Antérieur (2026-08-25, bump 2.14 → 2.15, rotation
-`documentation-update`, hors sujet de la PR — la constante
-avait de nouveau bouge sans suivre la prose, exactement l'avertissement que ce fichier se fait a
-lui-meme §Formule du score). **Un fait corrige** : `SCORE_FORMULA_VERSION` disait V11, le code est
-a **V12** (`app/solver/objective.py:46` — lot PASSERELLES PR-2, penalite `teamLinks` PREFERRED,
-INERTE par defaut ; tous les poids numeriques cites ici — session_count/preferred/avoided_venue/
-preferred_day/preferred_time/rest/spacing/missing_session/`UNPLACED_PENALTY`/`CHAINING_TIER_WEIGHTS`
-— restent inchanges entre V11 et V12, re-verifies un par un). File:line recales (perimes depuis un
-deplacement de module non repercute) : `/implicit-constraints` a `app/main.py:822` (pas 809) ;
-`coach_overload`/`maxDaysOverride` dans `app/solver/result_builder.py:566` (comptage) et `:1797-1801`
-(seuil, pas `:561,1658`). Contre le code par ailleurs : verrou par club qui attend sans 503 ✓ ·
-chainage plafonne a 8 (`CHAINING_TIER_WEIGHTS`, S8/A6/B4/C2/D1) ✓ · semantique 2.8 de
-`session_below_effective_min` ✓.
+Last verified @ 2026-08-29 (rotation `documentation-update`, FRT-28 — `engine/CONTRACT_VERSION`
+= **2.16** re-confirmé (fichier `engine/CONTRACT_VERSION`, distinct de `engine/.env`'s `CONTRACT_VERSION=2.0`
+qui n'est pas la source). **File:line recalés, cette fois pour de bon** : ENG-39 (2026-08-28, même
+jour que la passe précédente de ce fichier) a converti `app/solver/objective.py` et
+`app/solver/result_builder.py` en PAQUETS le jour même où ce fichier avait été vérifié — les deux
+modules monolithiques n'existent plus. `SCORE_FORMULA_VERSION` (toujours **V12**, valeur
+`"T24_LEVEL_2_FIXED_WEIGHTS_V12"` inchangée) vit désormais dans `app/solver/objective/weights.py:23`
+(pas `objective.py:46`) ; `LEVEL_2_OBJECTIVE_WEIGHTS` même fichier. `coach_overload`/`maxDaysOverride` :
+le seuil (`_coach_threshold`) est défini dans `app/solver/result_builder/helpers.py:199`, son
+application/comptage dans `app/solver/result_builder/diagnostics.py:359-382`
+(`_diagnose_coach_overload`) — pas `result_builder.py:566`/`:1797-1801`. `/implicit-constraints`
+vit maintenant à `app/main.py:865` (a de nouveau bougé depuis le `:822` de la passe précédente).
+Contre le code par ailleurs, inchangé : verrou par club qui attend sans 503 ✓ · chainage plafonne a
+8 (`CHAINING_TIER_WEIGHTS`, S8/A6/B4/C2/D1) ✓ · semantique 2.8 de `session_below_effective_min` ✓.
+⚑ **Leçon** : un stamp daté J n'est plus une garantie si le code bouge en J (même refactor pur,
+déplacement sans changement de comportement) — la seule preuve est de relire au moment de pousser.
 
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 
@@ -155,7 +155,7 @@ La version actuelle de la formule est :
 SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V12"
 ```
 
-⚠ Cette constante bouge plus vite que la prose : en cas de doute, `app/solver/objective.py` fait foi — c'est elle qu'il faut lire, pas ce fichier.
+⚠ Cette constante bouge plus vite que la prose : en cas de doute, `app/solver/objective/weights.py` fait foi — c'est elle qu'il faut lire, pas ce fichier.
 
 Ce code est incremente chaque fois que les poids de l'objectif changent. Cela permet de comparer des scores entre generations ayant la meme version de formule. Ne pas comparer un score genere avec `T24_LEVEL_2_FIXED_WEIGHTS_V7` a un score genere avec une version anterieure.
 
@@ -169,7 +169,7 @@ Supposons un club avec :
 - U13M2 (C, 2 seances) : 1 seance placee = 1 x 10 = 10
 - Ecole de basket (D, 1 seance) : 0 seance placee = 0
 
-Score de base = 62 210. S'y ajoutent ensuite les termes soft **reels** de l'objectif (poids `LEVEL_2_OBJECTIVE_WEIGHTS`, `app/solver/objective.py`) : `session_count` (+20 par seance placee), `preferred` / `avoided_venue` (+10 / -10 sur le gymnase prefere ou evite), `preferred_day` et `preferred_time` (+5), `rest` (+3, lendemain de match libre), `spacing` (-2, deux seances sur des jours consecutifs), le bonus de chainage (au plus 8, `CHAINING_TIER_WEIGHTS`) et la penalite `UNPLACED_PENALTY` (-100 000 par equipe totalement non placee). Depuis V10 (arbitrage fondateur 2026-08-15 : « le remplissage prime sur le confort »), tous les poids de confort sont recales **sous** la valeur d'une seance nue (tier D 1 + session_count 20 = 21) : le confort departage des solutions qui placent le MEME nombre de seances, jamais une seance contre un confort.
+Score de base = 62 210. S'y ajoutent ensuite les termes soft **reels** de l'objectif (poids `LEVEL_2_OBJECTIVE_WEIGHTS`, `app/solver/objective/weights.py`) : `session_count` (+20 par seance placee), `preferred` / `avoided_venue` (+10 / -10 sur le gymnase prefere ou evite), `preferred_day` et `preferred_time` (+5), `rest` (+3, lendemain de match libre), `spacing` (-2, deux seances sur des jours consecutifs), le bonus de chainage (au plus 8, `CHAINING_TIER_WEIGHTS`) et la penalite `UNPLACED_PENALTY` (-100 000 par equipe totalement non placee). Depuis V10 (arbitrage fondateur 2026-08-15 : « le remplissage prime sur le confort »), tous les poids de confort sont recales **sous** la valeur d'une seance nue (tier D 1 + session_count 20 = 21) : le confort departage des solutions qui placent le MEME nombre de seances, jamais une seance contre un confort.
 
 L'objectif ne contient **ni** bonus de preservation des verrous `SOFT` **ni** penalite de surcharge d'entraineur : `soft_lock_moved` et `coach_overload` sont des **diagnostics post-solve**, le solveur les constate apres coup au lieu de les optimiser.
 
