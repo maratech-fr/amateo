@@ -38,12 +38,17 @@ use PHPUnit\Framework\TestCase;
  *     d'enum côté serveur, lui, est déjà gardé par `TsUnionsMatchPhpEnumsTest` — ici on ne
  *     regarde que « le front a-t-il abandonné le type nommé au profit d'un string ».
  *
- * Ce qu'on ne vérifie PAS en v1, sciemment : **l'optionalité**. Aucun schéma du snapshot n'émet
- * de tableau `required` — API Platform donne à chaque propriété un `default` à la place, et les
- * réponses des routes custom (`CustomRoutesOpenApiFactory`) sont écrites à la main sans `required`.
- * Assertir « un champ non-optionnel côté TS doit être `required` côté schéma » ferait rougir
- * CHAQUE champ : bruit total, garde désarmé. On l'écarte et on le dit ici plutôt que de l'ajouter
- * pour la forme.
+ * Ce qu'on ne vérifie PAS en v1, sciemment : **l'optionalité**. Le snapshot PORTE bien des tableaux
+ * `required` (34 schémas) — mais **33 d'entre eux sont les schémas `*Input`**, côté ÉCRITURE ; le
+ * 34e est `HydraItemBaseSchema`. Les schémas de LECTURE que le front consomme (`Team`,
+ * `VenueTravelTime`…) n'en portent aucun : API Platform leur donne un `default` par propriété, et
+ * les réponses des routes custom (`CustomRoutesOpenApiFactory`) sont écrites à la main sans
+ * `required`. Assertir « un champ non-optionnel côté TS doit être `required` côté schéma » sur ces
+ * schémas-là ferait donc rougir CHAQUE champ : bruit total, garde désarmé.
+ *
+ * ⚑ La porte de sortie, si le besoin vient : les schémas `*Input` SONT exploitables. Un garde
+ * d'optionalité a du sens sur les corps que le front POSTe/PUTe (paire TS ↔ `X.XInput`), pas sur
+ * ce qu'il LIT. C'est une extension de ce fichier, pas un second garde.
  *
  * ⚠ **Les écarts se DÉCLARENT, ils ne se suppriment pas** (leçon de `TsUnionsMatchPhpEnumsTest`).
  * Un enum perdu qu'on ne peut pas corriger sans toucher à un écran consommateur se déclare dans
