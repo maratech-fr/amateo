@@ -3,14 +3,12 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-08-28 (rôle APPLICATIF `app_user` → `amateo_app` : 38 gardes de migrations rendus tolérants aux DEUX noms (DDL identique, seul le rôle est résolu), `02-users.sh` crée `amateo_app`, migration de rename idempotente pour les clusters existants. Prouvé : cluster NEUF 2 bases (138 migrations ×2, policies `tenant_isolation` → `{amateo_app}` partout) ET cluster existant (rename, policies suivent l'OID, données préservées). Passe P4-142 — renommage infra : rôle owner `amateo_owner`, conteneurs `amateo-*`, fonction RLS `enable_rls_for_existing_amateo_tables`, DSN admin recalés. Re-confronté au CLUSTER réel : 44 policies `admin_all` → `amateo_owner`, 0 vers l'ancien rôle ; `clubscheduler` n'existe plus ; `app_user` sans superuser ni BYPASSRLS ; 44/44 tables RLS en FORCE. Passe précédente : P2-54 RMM-9 PR-1 — la ligne `SportCategory` §2 gagne les durées de
-match : colonnes nullables `match_minutes`/`warmup_minutes` (`Version20260827120000.php`),
-bornes 30-240/0-120 sur `SportCategoryInput`, défauts de famille résolus par
-`Service/MatchDurationResolver.php` et SERVIS en lecture (`defaultMatchMinutes`/
-`defaultWarmupMinutes`) — vérifié contre `ApiResource/SportCategoryResource.php` et le
-snapshot OpenAPI regénéré (184 paths, `openapi-snapshot.meta.md` fait foi). Reste antérieur non
-re-vérifié cette passe — un stamp REMPLACE, l'historique vit
-dans git : `git log -p --follow backend/docs/backend-inventory.md`)
+Last verified @ 2026-08-29 (rotation `documentation-update`, zone non touchée par la PR du jour —
+contrôle de fraîcheur. Re-confronté au code : le rôle applicatif runtime reste `amateo_app`
+(`docs/security/rls.md:8,41-42` — connexion runtime `amateo_app`, NOSUPERUSER, distincte
+d'`amateo_owner`), aucun commit postérieur au 2026-08-28 ne le renomme ni ne rétablit `app_user`.
+Reste antérieur (le reste de l'inventaire, hors ce fait) non re-vérifié cette passe — un stamp
+REMPLACE, l'historique vit dans git : `git log -p --follow backend/docs/backend-inventory.md`)
 
 ---
 
