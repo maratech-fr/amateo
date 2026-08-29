@@ -1,20 +1,12 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-08-28 (rotation `documentation-update`, passe P2-55 — zone non touchée par
-cette PR, contrôle de fraîcheur : `ScheduleConstraintBuilder::CONTRACT_VERSION` = **`2.16`**
-re-confirmé (`ScheduleConstraintBuilder.php:64`), aucune occurrence `2.15` résiduelle. Passe
-précédente (P2-53 PR-3) : les trois occurrences de `version: "2.15"` (exemple de payload §3/§4)
-et « contrat 2.15 » (tableau des pannes) étaient périmées — corrigées à 2.16 depuis P2-53 RMM-8 PR-2
-(`ScheduleConstraintBuilder.php:62`), le bump 2.15→2.16 n'avait jamais été répercuté ici. Reste
-vérifié sans écart : `toArray(false)` sans exception HTTP (`EngineClient.php:39,58`) ✓ ·
-`engine_timeout`/`engine_error` émis par le handler (`GenerateScheduleHandler.php:290,298`),
-`engine_failed` par `ScheduleDiagnosticsRecorder` (`:65,75`) ✓ · verrou Redis `nx`/`ex`
-(`ClubGenerationLock.php:26`) ✓. Le payload SSE et son transport avaient dérivé depuis
-FRT-04/P4-123 (2026-08-22, remontée de `shared/` vers `features/planning/`) — le front ne
-s'abonne plus planning par planning mais à un **sélecteur TEMPLATE de club**
-(`club:{clubId}:schedule:{id}`, `GET /api/mercure/auth`), et le payload publié porte désormais
-**`scheduleId`** en plus des quatre champs déjà documentés (`ScheduleProgressPublisher.php:41-44`)
-— sans lui l'événement ne dirait pas de quel planning il parle ; §6 recalé en conséquence.
+Last verified @ 2026-08-29 (rotation `documentation-update`, passe P4-95 — fichier hors sujet de la
+PR, contrôle de fraîcheur. Re-confirmé sans écart : `ScheduleConstraintBuilder::CONTRACT_VERSION` =
+**`2.16`** (`ScheduleConstraintBuilder.php:64`) ✓ · `toArray(false)` sans exception HTTP
+(`EngineClient.php:39,58`) ✓ · `engine_timeout`/`engine_error` émis par le handler
+(`GenerateScheduleHandler.php:290,298`) ✓ · verrou Redis `nx`/`ex` (`ClubGenerationLock.php:26`) ✓.
+Le reste du fichier (SSE, sélecteur de topic club, §6) non re-confronté cette passe — un stamp
+REMPLACE, l'historique vit dans git : `git log -p --follow backend/docs/generation-flow.md`.
 
 > ClubScheduler — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
