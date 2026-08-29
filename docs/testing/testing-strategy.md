@@ -1,13 +1,13 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-08-29 (`documentation-update`, rotation — reconfronté à `.github/workflows/ci.yml` :
-les **SEPT** jobs sans `needs` (`frontend`, `secrets-scan`, `semgrep`, `dependency-audit`, `rector`,
-`engine-semantics`, `smoke-tests`) le sont toujours, `phpstan`/`engine-tests` restent exclus de cette
-liste à raison (ils alimentent respectivement `blocking-tests` et `build-docker`/`engine-perf`) ;
-`build-docker` a bien `needs: [blocking-tests, engine-tests]` ; les 4 gardes `backend/tests/Unit/Documentation/
-{DocPlacementTest,DocStampFreshnessTest,RoadmapIdentityTest,BlockingTestsListMatchesCiTest}.php`
-existent. Reste du fichier non re-vérifié cette passe. Historique des passes : `git log -p --follow
-docs/testing/testing-strategy.md` — un stamp REMPLACE, il ne s'empile pas (DOC-33).)
+Last verified @ 2026-08-29 (`documentation-update`, FRT-28 — nouveau §2 « `CrossStack/` — backend↔frontend
+contract guards » ajouté et confronté à `backend/tests/CrossStack/TsFieldsMatchOpenApiSchemaTest.php`
+(contrat SENS UNIQUE + enum perdu + `DECLARED_ENUM_DRIFTS`) et à ses deux cousins `OpenApiSnapshotMatchesTheLiveContractTest.php`/
+`TsUnionsMatchPhpEnumsTest.php` ; confirmé au passage que ces trois gardes group `contract` ne figurent
+PAS dans `docs/testing/blocking-tests.md` (à raison — seul `blocking-tests`/CI fait foi, cf. `CLAUDE.md`
+§4) et n'apparaissaient nulle part ailleurs dans ce fichier avant cette passe. Reste du fichier non
+re-vérifié cette passe. Historique des passes : `git log -p --follow docs/testing/testing-strategy.md`
+— un stamp REMPLACE, il ne s'empile pas (DOC-33).)
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique) and [`../project-map.md`](../project-map.md).
 
@@ -79,6 +79,27 @@ Groups (PHP attributes): `#[Group('phase1')]`, `#[Group('integration')]`, `#[Gro
 | `Security/SuperAdminAccessTest` | club JWT rejected · password without TOTP rejected · MFA session isolated from tenants · disabled/expired admin rejected · logout protected by CSRF · IP rate limit · runtime DB role has no admin-table privilege |
 
 `ContractSchemaTest` is the **only** guardrail for the manually-synced backend↔engine contract (no codegen). Any change to engine Pydantic schemas or the backend payload must keep it green.
+
+### `CrossStack/` — backend↔frontend contract guards (group `contract`, not `phase1`)
+
+The frontend has **no codegen**: its API types are hand-written interfaces in `features/*/api.ts`.
+Three `CrossStack/` tests guard that hand-sync from three distinct angles, each blind to what the
+others catch:
+- `OpenApiSnapshotMatchesTheLiveContractTest` — the committed snapshot (`specs/courantes/openapi-snapshot.json`)
+  matches the live backend contract. Says nothing about whether the frontend actually followed.
+- `TsUnionsMatchPhpEnumsTest` — every TS union declared in its `MIRRORED` registry matches its PHP enum.
+  Only looks at unions, never at interface field types.
+- `TsFieldsMatchOpenApiSchemaTest` — per declared TS-interface ↔ OpenAPI-schema pair (`PAIRS`, extensible
+  one entry at a time): every TS field must exist in the schema (one-way — a schema field the frontend
+  ignores is not a drift), and a schema field constrained by an `enum` must not be typed as a bare
+  `string` on the TS side. Declared exceptions live in `DECLARED_ENUM_DRIFTS` and must each carry a
+  reason (guarded by its own test). Optionality (`required`) is intentionally not checked in v1 — the
+  snapshot's read schemas the frontend consumes carry no `required` array at all (only `*Input`
+  write-schemas do); extending the guard to `X.XInput` pairs is the documented escape hatch.
+
+These three run in the `contract` group (`engine-semantics` CI job — a required check of `main`,
+**not** part of `blocking-tests`/`unit-tests`; see `docs/testing/blocking-tests.md` for what
+actually gates the merge).
 
 ---
 
