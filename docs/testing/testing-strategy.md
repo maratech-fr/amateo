@@ -1,9 +1,12 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-08-27 (la liste canonique des blocking-tests DÉMÉNAGE de `CLAUDE.md` §4 vers
-[`blocking-tests.md`](blocking-tests.md) — allègement de l'index, contenu verbatim ; §1 continue
-de pointer la maison unique sans nommer les tests, `BlockingTestsListMatchesCiTest` suit le
-déménagement et compare toujours dans les deux sens. Historique des passes : `git log -p --follow
+Last verified @ 2026-08-29 (`documentation-update`, rotation — reconfronté à `.github/workflows/ci.yml` :
+les **SEPT** jobs sans `needs` (`frontend`, `secrets-scan`, `semgrep`, `dependency-audit`, `rector`,
+`engine-semantics`, `smoke-tests`) le sont toujours, `phpstan`/`engine-tests` restent exclus de cette
+liste à raison (ils alimentent respectivement `blocking-tests` et `build-docker`/`engine-perf`) ;
+`build-docker` a bien `needs: [blocking-tests, engine-tests]` ; les 4 gardes `backend/tests/Unit/Documentation/
+{DocPlacementTest,DocStampFreshnessTest,RoadmapIdentityTest,BlockingTestsListMatchesCiTest}.php`
+existent. Reste du fichier non re-vérifié cette passe. Historique des passes : `git log -p --follow
 docs/testing/testing-strategy.md` — un stamp REMPLACE, il ne s'empile pas (DOC-33).)
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique) and [`../project-map.md`](../project-map.md).

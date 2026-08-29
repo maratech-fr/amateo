@@ -1,6 +1,9 @@
 # Living Specs System
 
-Last verified @ 2026-08-27 (recalage de pointeur : la liste canonique des blocking-tests déménage de `CLAUDE.md` §4 vers `docs/testing/blocking-tests.md`, `BlockingTestsListMatchesCiTest` repointé — la mention §54 suit. Passe précédente (2026-08-25, rotation de fraîcheur) : les quatre gardes `backend/tests/Unit/Documentation/{DocPlacementTest,DocStampFreshnessTest,RoadmapIdentityTest,BlockingTestsListMatchesCiTest}.php` existent ✓ · « Files Overview » à jour ✓ · compteur roadmap re-confronté par grep.)
+Last verified @ 2026-08-29 (`documentation-update`, rotation — les quatre gardes
+`backend/tests/Unit/Documentation/{DocPlacementTest,DocStampFreshnessTest,RoadmapIdentityTest,BlockingTestsListMatchesCiTest}.php`
+existent toujours ; `docs/testing/blocking-tests.md` reste la maison canonique pointée par
+`CLAUDE.md` §4. Reste du fichier (3-tier structure, audiences) non re-vérifié cette passe.)
 
 ## 3-Tier Structure
 
