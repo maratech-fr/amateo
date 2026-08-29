@@ -71,7 +71,13 @@ export interface FfbbEngagement {
   ffbbPouleId: string;
   pouleName: string;
   category: string | null;
-  level: TeamLevel | null;
+  /**
+   * ⚠ Le libellé FFBB BRUT (« Régional », « Pré régionale »), PAS l'enum `TeamLevel`.
+   * C'est ce que l'API fédérale sert, affiché tel quel dans le sous-titre du dialogue ;
+   * la correspondance vers `TeamLevel` se fait à l'appariement, pas ici (P4-148 : ce champ
+   * avait été resserré à tort, la CI l'a attrapé sur « Régional »).
+   */
+  level: string | null;
   gender: string | null;
   pouleSize: number;
   pouleOpponents: string[];
