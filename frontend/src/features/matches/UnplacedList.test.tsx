@@ -51,3 +51,12 @@ describe("UnplacedList — la raison persistante venue_lost (P2-52)", () => {
     expect(screen.getByText("Aucun créneau d'accès ce jour-là")).toBeInTheDocument();
   });
 });
+
+describe("UnplacedList — la date est formatée FR, jamais l'ISO brut (UXC-19)", () => {
+  it("rend « sam. 3 oct. » et non « 2026-10-03 »", () => {
+    render(<UnplacedList fixtures={[fixture()]} teams={teams} selectedFixtureId={null} onSelect={vi.fn()} />);
+    // 2026-10-03 est un samedi. Falsification : rendre `fixture.matchDate` brut casse ces deux lignes.
+    expect(screen.getByText(/sam\. 3 oct\./)).toBeInTheDocument();
+    expect(screen.queryByText(/2026-10-03/)).toBeNull();
+  });
+});

@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { frDateWeekdayNoYear } from "@/shared/lib/date";
 
 import type { Fixture, OpponentTravel, Team, TeamMatchHabit } from "./api";
 import { AwayTravelChip } from "./AwayTravelChip";
@@ -18,10 +19,6 @@ interface AwayListProps {
   travel?: OpponentTravel[];
   onEdit: (fixture: Fixture) => void;
   onDelete: (fixture: Fixture) => void;
-}
-
-function frDate(ymd: string): string {
-  return new Date(`${ymd}T12:00:00Z`).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
 }
 
 /**
@@ -55,14 +52,14 @@ export function AwayList({ fixtures, teams, habits, travel = [], onEdit, onDelet
           // L'heure (et son badge « estimée ») portent les conflits de coach et sont en QUEUE de
           // ligne (§6bis B5) : on n'enroule plus jamais dans une troncature, et un `title` de
           // secours rend la ligne entière lisible dans la colonne étroite.
-          const awayLine = `${teamLabel} · ${frDate(fixture.matchDate)} · à ${fixture.opponentLabel}${null !== fixture.fbiVenueLabel ? ` (${fixture.fbiVenueLabel})` : ""}${null !== hour ? ` · ${hour}` : " · heure inconnue"}${estimated ? " · heure estimée" : ""} · ${awayTravelTitle(travelInfo)}${null !== fixture.externalRef ? ` · n° ${fixture.externalRef}` : ""}`;
+          const awayLine = `${teamLabel} · ${frDateWeekdayNoYear(fixture.matchDate)} · à ${fixture.opponentLabel}${null !== fixture.fbiVenueLabel ? ` (${fixture.fbiVenueLabel})` : ""}${null !== hour ? ` · ${hour}` : " · heure inconnue"}${estimated ? " · heure estimée" : ""} · ${awayTravelTitle(travelInfo)}${null !== fixture.externalRef ? ` · n° ${fixture.externalRef}` : ""}`;
           return (
             <li key={fixture.id} className="flex items-center justify-between gap-2 text-sm">
               <span className="min-w-0" title={awayLine}>
                 <span className="font-medium">{teamLabel}</span>
                 <span className="text-muted-foreground">
                   {" "}
-                  · {frDate(fixture.matchDate)} · à {fixture.opponentLabel}
+                  · {frDateWeekdayNoYear(fixture.matchDate)} · à {fixture.opponentLabel}
                   {null !== fixture.fbiVenueLabel ? ` (${fixture.fbiVenueLabel})` : ""}
                   {null !== hour ? ` · ${hour}` : " · heure inconnue"}
                   {/* RMM-1 PR3 (L7) — n° de rencontre : repère discret, jamais une clé. */}

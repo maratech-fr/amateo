@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { frDateWeekdayNoYear } from "@/shared/lib/date";
 
 import type { Fixture, PlaceFixtureInput, TeamMatchHabit, Venue, VenueMatchWindow, VenueUnavailability } from "./api";
 import { isInEnvelope, isoWeekday } from "./lib/envelope";
@@ -143,7 +144,7 @@ export function PlacementPanel({
       <CardContent className="pt-0">
         <Row label="Catégorie" value={categoryLabel} />
         <Row label="Adversaire" value={fixture.opponentLabel} />
-        <Row label="Date" value={fixture.matchDate} />
+        <Row label="Date" value={frDateWeekdayNoYear(fixture.matchDate)} />
 
         {submitted ? (
           <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">

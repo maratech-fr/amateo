@@ -474,7 +474,7 @@ export function MatchesPage() {
           className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
         >
           <Info className="size-4 shrink-0" />
-          {dateless.length} signalement{dateless.length > 1 ? "s" : ""} hors semaine (compétition incomplète…) — voir les litiges
+          {dateless.length} conflit{dateless.length > 1 ? "s" : ""} hors semaine (compétition incomplète…) — voir le détail
         </button>
       ) : null}
 

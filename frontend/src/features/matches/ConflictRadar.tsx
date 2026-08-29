@@ -121,7 +121,7 @@ export function ConflictRadar({ conflicts, teams, coaches, newFingerprints }: Co
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <AlertTriangle className="size-4 text-warning" />
-          Diagnostic
+          Conflits
           {conflicts.length > 0 ? <span className="rounded-full bg-warning/15 px-2 text-xs text-warning">{conflicts.length}</span> : null}
         </CardTitle>
       </CardHeader>
