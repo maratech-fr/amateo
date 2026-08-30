@@ -1,14 +1,14 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-08-29 (rotation `documentation-update`, FRT-28 — re-confronté au code : les 18
-cibles de la table (`test`, `tests-complete`, `phpunit`, `db-init`/`db-init-test`,
-`db-reset`/`db-reset-test`, `fixtures`, `phpstan`/`cs`/`cs-fix`/`rector`, `lint`,
-`migration-diff`/`migration-migrate`, `fix-perms`, `exec`, `jwt-keys`, `install`) toutes présentes
-dans `backend/Makefile` ✓ ; `app:schedules:reconcile-stuck` confronté à
-`ReconcileStuckSchedulesCommand.php` (existe) ✓. Tout juste, rien à corriger. Non re-sondé cette
-passe : horaires exacts du catalogue de jobs, pièges RLS des commandes Doctrine, le motif `.pdf`
-seul d'`app:exports:purge`, le détail des scripts `backend/scripts/*.sh` — un stamp REMPLACE,
-l'historique des passes vit dans git : `git log -p --follow backend/docs/commands.md`.
+Last verified @ 2026-08-30 (rotation `documentation-update`, P4-149 — sans rapport avec le sujet de
+la PR. Re-confronté au code : les cibles citées (`test`, `tests-complete`, `phpunit`,
+`db-init`/`db-init-test`, `db-reset`/`db-reset-test`, `fixtures`, `phpstan`/`cs`/`cs-fix`/`rector`,
+`lint`, `migration-diff`/`migration-migrate`, `fix-perms`, `exec`, `jwt-keys`, `install`, `play`,
+`sandbox`, `seed-bccl`) toutes présentes dans `backend/Makefile` ✓ ; `app:schedules:reconcile-stuck`
+confronté à `ReconcileStuckSchedulesCommand.php:40` (existe) ✓. Tout juste, rien à corriger. Non
+re-sondé cette passe : horaires exacts du catalogue de jobs, pièges RLS des commandes Doctrine, le
+motif `.pdf` seul d'`app:exports:purge`, le détail des scripts `backend/scripts/*.sh` — un stamp
+REMPLACE, l'historique des passes vit dans git : `git log -p --follow backend/docs/commands.md`.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).
