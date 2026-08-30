@@ -78,7 +78,7 @@ describe("ContainersSection", () => {
 
     const chip = await screen.findByText("Indisponible");
     expect(chip).toBeInTheDocument();
-    expect(chip.className).toContain("text-red-300");
+    expect(chip.className).toContain("text-console-danger");
   });
 
   it("renders a green status chip for an up container", async () => {
@@ -89,7 +89,7 @@ describe("ContainersSection", () => {
 
     const chip = await screen.findByText("Opérationnel");
     expect(chip).toBeInTheDocument();
-    expect(chip.className).toContain("text-emerald-300");
+    expect(chip.className).toContain("text-console-success");
   });
 
   it("shows the panel error when health fails", async () => {

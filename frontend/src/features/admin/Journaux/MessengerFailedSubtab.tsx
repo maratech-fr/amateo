@@ -29,7 +29,7 @@ export function MessengerFailedSubtab() {
   if (query.isPending) {
     return (
       <div className="flex min-h-40 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03]" role="status">
-        <Spinner className="text-cyan-300" />
+        <Spinner className="text-console-accent" />
         <span className="sr-only">Chargement des messages en échec</span>
       </div>
     );
@@ -37,13 +37,13 @@ export function MessengerFailedSubtab() {
 
   if (query.isError) {
     return (
-      <div className="flex flex-col items-start gap-4 rounded-xl border border-amber-300/20 bg-amber-300/[0.05] p-5" role="alert">
-        <p className="text-sm text-amber-100">Les messages en échec sont indisponibles.</p>
+      <div className="flex flex-col items-start gap-4 rounded-xl border border-console-warning/20 bg-console-warning/[0.05] p-5" role="alert">
+        <p className="text-sm text-console-warning-bright">Les messages en échec sont indisponibles.</p>
         <Button
           type="button"
           size="sm"
           variant="outline"
-          className="border-amber-300/20 text-amber-100 hover:bg-amber-300/10"
+          className="border-console-warning/20 text-console-warning-bright hover:bg-console-warning/10"
           onClick={() => void query.refetch()}
         >
           Réessayer
@@ -58,10 +58,10 @@ export function MessengerFailedSubtab() {
     <section aria-labelledby="messenger-failed-heading" className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">File d’erreurs Messenger</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">File d’erreurs Messenger</p>
           <h2 id="messenger-failed-heading" className="mt-2 text-xl font-semibold text-white">Messages en échec</h2>
         </div>
-        <p className="text-xs text-slate-500">Rafraîchi toutes les 60 s</p>
+        <p className="text-xs text-console-muted">Rafraîchi toutes les 60 s</p>
       </div>
 
       {data && data.items.length > 0 ? (
@@ -71,7 +71,7 @@ export function MessengerFailedSubtab() {
           onPageChange={setPage}
         />
       ) : (
-        <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-slate-500">
+        <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-console-muted">
           Aucun message en échec — le système est sain
         </div>
       )}
@@ -96,7 +96,7 @@ function FailedTable({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
           <caption className="sr-only">Messages Messenger en échec (retry épuisé)</caption>
-          <thead className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-slate-500">
+          <thead className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-console-muted">
             <tr>
               <th className="px-5 py-4 font-medium">Classe</th>
               <th className="px-4 py-4 font-medium">Date d’échec</th>
@@ -105,13 +105,13 @@ function FailedTable({
           </thead>
           <tbody className="divide-y divide-white/10">
             {items.map((item) => (
-              <tr key={item.id} className="align-top text-slate-300 hover:bg-white/[0.025]">
+              <tr key={item.id} className="align-top text-console-text hover:bg-white/[0.025]">
                 <td className="px-5 py-4">
-                  <p className="font-mono text-xs text-slate-400">{item.class}</p>
+                  <p className="font-mono text-xs text-console-text-dim">{item.class}</p>
                 </td>
                 <td className="px-4 py-4 tabular-nums">{formatDateTime(item.failedAt)}</td>
                 <td className="px-4 py-4">
-                  <p className="text-slate-300">{item.lastErrorMessage}</p>
+                  <p className="text-console-text">{item.lastErrorMessage}</p>
                 </td>
               </tr>
             ))}
@@ -119,7 +119,7 @@ function FailedTable({
         </table>
       </div>
       <div className="flex items-center justify-between gap-4 border-t border-white/10 px-5 py-4">
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-console-muted">
           {integerFormatter.format(total)} message{total > 1 ? "s" : ""} · page {page} sur {Math.max(pages, 1)}
         </p>
         <div className="flex gap-2">
@@ -127,7 +127,7 @@ function FailedTable({
             type="button"
             size="sm"
             variant="ghost"
-            className="text-slate-300 hover:bg-white/10"
+            className="text-console-text hover:bg-white/10"
             aria-label="Page précédente"
             disabled={page <= 1 || loading}
             onClick={() => onPageChange(page - 1)}
@@ -138,7 +138,7 @@ function FailedTable({
             type="button"
             size="sm"
             variant="ghost"
-            className="text-slate-300 hover:bg-white/10"
+            className="text-console-text hover:bg-white/10"
             aria-label="Page suivante"
             disabled={page >= pages || loading}
             onClick={() => onPageChange(page + 1)}

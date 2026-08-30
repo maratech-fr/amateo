@@ -1,14 +1,19 @@
 # FORWARD Components Spec — Pages & Shared Components (hors wizard)
 
-Last verified @ 2026-08-30 (`documentation-update`, UXC-10 — ligne `EmptyState`/`EmptyBlock`/
-`EmptyHint` complétée de la règle de choix entre les trois étages, après ralliement de 21 sites
-inline sur `EmptyHint` hors `features/admin/`. Re-confirmé au passage : `empty-hint.tsx` porte
-toujours exactement ces trois exports, aucune quatrième variante. Plus tôt dans la même journée
-(rotation `documentation-update`) : la convention snake_case des paths API Platform tenait —
-`priority_tiers`, `schedule_diagnostics`, `schedule_slot_templates`, `sport_categories`,
-`team_coaches`, `venue_training_slots`, `/api/venue_travel_rule_settings/{ruleKey}`, tous
-re-confirmés dans `specs/courantes/openapi-snapshot.json`. Le bloc « Historique » (sections 2-9)
-reste superseded, non re-vérifié — il ne prétend à aucune autorité)
+Last verified @ 2026-08-30 (`documentation-update`, P4-151 — ligne `Onglets` complétée du patron
+`TabsVariant` réutilisable (`shared/components/ui/tabs.tsx`, confirmé : deux peaux `console`/`app`
+symétriques, la peau console a rejoint les jetons `--console-*` dans ce même lot) + nouvelle ligne
+`Palette console` (jetons `--console-*` de `src/index.css`, aliasing + bijection confirmés au
+code, gardés par `consolePalette.guard.test.ts` — présence du fichier vérifiée). Plus tôt le
+2026-08-30 (`documentation-update`, UXC-10) : ligne `EmptyState`/`EmptyBlock`/`EmptyHint`
+complétée de la règle de choix entre les trois étages, après ralliement de 21 sites inline sur
+`EmptyHint` hors `features/admin/` — `empty-hint.tsx` porte toujours exactement ces trois exports.
+Plus tôt encore (rotation `documentation-update`) : la convention snake_case des paths API
+Platform tenait — `priority_tiers`, `schedule_diagnostics`, `schedule_slot_templates`,
+`sport_categories`, `team_coaches`, `venue_training_slots`,
+`/api/venue_travel_rule_settings/{ruleKey}`, tous re-confirmés dans
+`specs/courantes/openapi-snapshot.json`. Le bloc « Historique » (sections 2-9) reste superseded,
+non re-vérifié — il ne prétend à aucune autorité)
 
 > 🛑 **Ce document est SUPERSEDED. Il ne décrit pas le frontend livré.**
 >
@@ -26,7 +31,8 @@ reste superseded, non re-vérifié — il ne prétend à aucune autorité)
 > | Cockpit (accueil temporel, radar) | [`accueil-cockpit-temporel.md`](../../specs/courantes/accueil-cockpit-temporel.md) |
 > | Module matchs | [`module-matchs.md`](../../specs/courantes/module-matchs.md) |
 > | Doléances coachs (#10) — dont la page publique `/doleances/{token}` | [`types-de-planning.md`](../../specs/courantes/types-de-planning.md) §E5 |
-> | **Onglets** (`shared/components/ui/tabs.tsx`) — motif WAI-ARIA (roving tabindex, flèches/Home/End), deux peaux : `console` (admin, sombre) et `app` (club, **défaut**). Déplacé de `features/admin/` le 2026-08-01 quand la modale de sollicitation en a eu besoin. ⚠ **Des onglets dans une MODALE demandent deux précautions** (revue #346) : le piège à focus de `useModalA11y` ignore désormais les sous-arbres `hidden` — sans quoi le « dernier » focusable est un bouton du panneau inactif et Tab sort du dialogue — et toute bascule d'onglet PROGRAMMATIQUE doit emporter le focus, sinon il retombe sur `<body>` et le piège comme Échap cessent d'agir | — |
+> | **Onglets** (`shared/components/ui/tabs.tsx`) — motif WAI-ARIA (roving tabindex, flèches/Home/End), deux peaux : `console` (admin, sombre) et `app` (club, **défaut**). Déplacé de `features/admin/` le 2026-08-01 quand la modale de sollicitation en a eu besoin. ⚠ **Des onglets dans une MODALE demandent deux précautions** (revue #346) : le piège à focus de `useModalA11y` ignore désormais les sous-arbres `hidden` — sans quoi le « dernier » focusable est un bouton du panneau inactif et Tab sort du dialogue — et toute bascule d'onglet PROGRAMMATIQUE doit emporter le focus, sinon il retombe sur `<body>` et le piège comme Échap cessent d'agir. **Patron réutilisable** (P4-151, 2026-08-30) : `TabsVariant` (`"console" \| "app"`, table `TAB_SKINS`) est le patron à suivre pour donner une peau console à toute autre primitive partagée qui doit rendre sur les deux surfaces sans décolorer l'une des deux — c'est le geste qui débloquerait `EmptyHint`/`EmptyBlock` pour la console (roadmap P4-149) | — |
+> | **Palette console** — jetons `--console-*` (`src/index.css`, bloc « Console superadmin », décision UXC-12/P4-151, 2026-08-30). Chaque nuance Tailwind consommée par `features/admin/` a un jeton NOMMÉ par son rôle sémantique, construit par **ALIASING** (`--console-muted: var(--color-slate-500)`) — jamais une valeur `oklch` recopiée à la main, donc un rendu identique par construction — en **BIJECTION** stricte (une nuance Tailwind = un jeton ; deux nuances proches, ex. `emerald-400`/`emerald-500`, ne sont jamais fondues en un seul jeton, ce serait un changement visuel). Cette surface est **hors** du système de thème clair/sombre de l'app plus haut dans le même fichier (`--background`/`--foreground`…) — la console garde une esthétique sombre fixe, décision fermée ([`etat-des-lieux.md`](../../specs/courantes/etat-des-lieux.md) §2). `white`/`black` restent des classes littérales (ancres absolues, hors échelle numérique — même décision fermée). Gardé par `consolePalette.guard.test.ts` (`features/admin/`) : rougit si une classe de palette Tailwind brute réapparaît dans le source du module | — |
 > | Console superadmin (`/admin`) | [`superadmin-auth.md`](../../specs/courantes/superadmin-auth.md) |
 > | Conventions agent, pièges, primitives partagées | [`../../frontend/AGENTS.md`](../../frontend/AGENTS.md) |
 >

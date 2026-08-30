@@ -1,21 +1,13 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-08-29 (rotation `documentation-update`, FRT-28 — `engine/CONTRACT_VERSION`
-= **2.16** re-confirmé (fichier `engine/CONTRACT_VERSION`, distinct de `engine/.env`'s `CONTRACT_VERSION=2.0`
-qui n'est pas la source). **File:line recalés, cette fois pour de bon** : ENG-39 (2026-08-28, même
-jour que la passe précédente de ce fichier) a converti `app/solver/objective.py` et
-`app/solver/result_builder.py` en PAQUETS le jour même où ce fichier avait été vérifié — les deux
-modules monolithiques n'existent plus. `SCORE_FORMULA_VERSION` (toujours **V12**, valeur
-`"T24_LEVEL_2_FIXED_WEIGHTS_V12"` inchangée) vit désormais dans `app/solver/objective/weights.py:23`
-(pas `objective.py:46`) ; `LEVEL_2_OBJECTIVE_WEIGHTS` même fichier. `coach_overload`/`maxDaysOverride` :
-le seuil (`_coach_threshold`) est défini dans `app/solver/result_builder/helpers.py:199`, son
-application/comptage dans `app/solver/result_builder/diagnostics.py:359-382`
-(`_diagnose_coach_overload`) — pas `result_builder.py:566`/`:1797-1801`. `/implicit-constraints`
-vit maintenant à `app/main.py:865` (a de nouveau bougé depuis le `:822` de la passe précédente).
-Contre le code par ailleurs, inchangé : verrou par club qui attend sans 503 ✓ · chainage plafonne a
-8 (`CHAINING_TIER_WEIGHTS`, S8/A6/B4/C2/D1) ✓ · semantique 2.8 de `session_below_effective_min` ✓.
-⚑ **Leçon** : un stamp daté J n'est plus une garantie si le code bouge en J (même refactor pur,
-déplacement sans changement de comportement) — la seule preuve est de relire au moment de pousser.
+Last verified @ 2026-08-30 (rotation `documentation-update` — tous les repères ré-confrontés au
+code, aucun changement depuis la passe précédente : `engine/CONTRACT_VERSION` **2.16** ✓,
+`SCORE_FORMULA_VERSION` **V12** toujours `app/solver/objective/weights.py:23` ✓,
+`_coach_threshold` toujours `app/solver/result_builder/helpers.py:199` ✓,
+`_diagnose_coach_overload` toujours `app/solver/result_builder/diagnostics.py:359` ✓,
+`/implicit-constraints` toujours `app/main.py:865` ✓. ⚑ **Leçon retenue de la passe précédente** :
+un stamp daté J n'est pas une garantie si le code bouge en J (même refactor pur) — seule la
+relecture au moment de pousser fait foi.
 
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 

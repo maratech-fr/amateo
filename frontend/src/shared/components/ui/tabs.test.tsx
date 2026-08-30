@@ -211,7 +211,7 @@ describe("Tabs", () => {
     renderHarness();
 
     const active = screen.getByRole("tab", { name: /Vue d'ensemble/ });
-    expect(active.className).toContain("border-cyan-300");
+    expect(active.className).toContain("border-console-accent");
     expect(active.className).toContain("text-white");
     expect(active.className).not.toContain("border-accent");
   });

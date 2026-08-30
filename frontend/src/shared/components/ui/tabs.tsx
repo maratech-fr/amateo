@@ -18,10 +18,10 @@ export type TabsVariant = "console" | "app";
 const TAB_SKINS: Record<TabsVariant, { list: string; base: string; active: string; idle: string; panel: string }> = {
   console: {
     list: "border-white/10",
-    base: "focus-visible:ring-cyan-300/40 focus-visible:ring-offset-slate-950",
-    active: "border-cyan-300 text-white",
-    idle: "border-transparent text-slate-400 hover:text-white hover:border-white/10",
-    panel: "focus-visible:ring-cyan-300/20",
+    base: "focus-visible:ring-console-accent/40 focus-visible:ring-offset-console-surface",
+    active: "border-console-accent text-white",
+    idle: "border-transparent text-console-text-dim hover:text-white hover:border-white/10",
+    panel: "focus-visible:ring-console-accent/20",
   },
   app: {
     list: "border-border",

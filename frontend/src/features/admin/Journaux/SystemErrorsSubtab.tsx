@@ -22,9 +22,9 @@ const SEVERITY_LABELS: Record<Severity, string> = {
 };
 
 const SEVERITY_STYLES: Record<Severity, string> = {
-  error: "bg-red-500/15 text-red-300",
-  warning: "bg-amber-400/15 text-amber-300",
-  info: "bg-sky-500/15 text-sky-300",
+  error: "bg-console-danger-surface/15 text-console-danger",
+  warning: "bg-console-warning-tint/15 text-console-warning",
+  info: "bg-console-info-surface/15 text-console-info",
 };
 
 function isSeverity(value: string): value is Severity {
@@ -42,7 +42,7 @@ export function SystemErrorsSubtab() {
   if (errors.isPending) {
     return (
       <div className="flex min-h-40 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03]" role="status">
-        <Spinner className="text-cyan-300" />
+        <Spinner className="text-console-accent" />
         <span className="sr-only">Chargement des erreurs système</span>
       </div>
     );
@@ -50,13 +50,13 @@ export function SystemErrorsSubtab() {
 
   if (errors.isError) {
     return (
-      <div className="flex flex-col items-start gap-4 rounded-xl border border-amber-300/20 bg-amber-300/[0.05] p-5" role="alert">
-        <p className="text-sm text-amber-100">Les erreurs système sont indisponibles.</p>
+      <div className="flex flex-col items-start gap-4 rounded-xl border border-console-warning/20 bg-console-warning/[0.05] p-5" role="alert">
+        <p className="text-sm text-console-warning-bright">Les erreurs système sont indisponibles.</p>
         <Button
           type="button"
           size="sm"
           variant="outline"
-          className="border-amber-300/20 text-amber-100 hover:bg-amber-300/10"
+          className="border-console-warning/20 text-console-warning-bright hover:bg-console-warning/10"
           onClick={() => void errors.refetch()}
         >
           Réessayer
@@ -68,7 +68,7 @@ export function SystemErrorsSubtab() {
   const data = errors.data;
   if (!data || data.items.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-slate-500">
+      <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-console-muted">
         Aucune erreur système enregistrée
       </div>
     );
@@ -83,7 +83,7 @@ export function SystemErrorsSubtab() {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[860px] text-left text-sm">
           <caption className="sr-only">Erreurs système agrégées par source</caption>
-          <thead className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-slate-500">
+          <thead className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-console-muted">
             <tr>
               <th className="px-5 py-4 font-medium">Source</th>
               <th className="px-4 py-4 font-medium">Message</th>
@@ -99,7 +99,7 @@ export function SystemErrorsSubtab() {
         </table>
       </div>
       <div className="flex items-center justify-between gap-4 border-t border-white/10 px-5 py-4">
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-console-muted">
           {integerFormatter.format(pagination.total)} erreur{pagination.total > 1 ? "s" : ""} · page {pagination.page} sur {pages}
         </p>
         <div className="flex gap-2">
@@ -107,7 +107,7 @@ export function SystemErrorsSubtab() {
             type="button"
             size="sm"
             variant="ghost"
-            className="text-slate-300 hover:bg-white/10"
+            className="text-console-text hover:bg-white/10"
             aria-label="Page précédente"
             disabled={pagination.page <= 1 || loading}
             onClick={() => setPage(pagination.page - 1)}
@@ -118,7 +118,7 @@ export function SystemErrorsSubtab() {
             type="button"
             size="sm"
             variant="ghost"
-            className="text-slate-300 hover:bg-white/10"
+            className="text-console-text hover:bg-white/10"
             aria-label="Page suivante"
             disabled={pagination.page >= pagination.pages || loading}
             onClick={() => setPage(pagination.page + 1)}
@@ -134,19 +134,19 @@ export function SystemErrorsSubtab() {
 function SystemErrorRow({ item }: { item: AdminSystemErrorItem }) {
   const sev = severityOf(item.severity);
   return (
-    <tr className="align-top text-slate-300 hover:bg-white/[0.025]">
+    <tr className="align-top text-console-text hover:bg-white/[0.025]">
       <td className="px-5 py-5">
-        <p className="font-mono text-xs text-slate-400">{item.source}</p>
+        <p className="font-mono text-xs text-console-text-dim">{item.source}</p>
       </td>
       <td className="px-4 py-5">
-        <p className="text-slate-200">{item.message}</p>
+        <p className="text-console-text-bright">{item.message}</p>
       </td>
       <td className="px-4 py-5">
         <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold", SEVERITY_STYLES[sev])}>
           {SEVERITY_LABELS[sev]}
         </span>
       </td>
-      <td className="px-4 py-5 tabular-nums text-slate-400">{dateTimeFormatter.format(new Date(item.createdAt))}</td>
+      <td className="px-4 py-5 tabular-nums text-console-text-dim">{dateTimeFormatter.format(new Date(item.createdAt))}</td>
     </tr>
   );
 }

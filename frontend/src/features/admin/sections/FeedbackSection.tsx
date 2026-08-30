@@ -56,7 +56,7 @@ export function FeedbackSection() {
   return (
     <section aria-labelledby="feedback-heading" className="space-y-6">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Retours terrain</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Retours terrain</p>
         <h2 id="feedback-heading" className="mt-2 text-xl font-semibold text-white">Signalements</h2>
       </div>
 
@@ -70,7 +70,7 @@ export function FeedbackSection() {
               type="button"
               size="sm"
               variant={filter === f.id ? "default" : "outline"}
-              className={cn(filter === f.id && "bg-cyan-300 text-slate-950 hover:bg-cyan-200")}
+              className={cn(filter === f.id && "bg-console-accent text-console-surface hover:bg-console-accent-hover")}
               aria-pressed={filter === f.id}
               onClick={() => setFilter(f.id)}
             >
@@ -80,14 +80,14 @@ export function FeedbackSection() {
         </div>
 
         {feedback.isPending ? (
-          <p className="flex items-center gap-2 text-sm text-slate-400"><Spinner className="size-4" /> Chargement…</p>
+          <p className="flex items-center gap-2 text-sm text-console-text-dim"><Spinner className="size-4" /> Chargement…</p>
         ) : feedback.isError ? (
-          <p className="text-sm text-rose-300">
+          <p className="text-sm text-console-destructive">
             La liste n'a pas pu être lue.{" "}
             <button type="button" className="underline" onClick={() => void feedback.refetch()}>Réessayer</button>
           </p>
         ) : 0 === items.length ? (
-          <p className="text-sm text-slate-400">Aucun signalement.</p>
+          <p className="text-sm text-console-text-dim">Aucun signalement.</p>
         ) : (
           <ul className="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/[0.03]">
             {items.map((item) => (
@@ -98,11 +98,11 @@ export function FeedbackSection() {
                   onClick={() => setOpenItem(item)}
                   className="flex w-full flex-col gap-1 p-4 text-left transition-colors hover:bg-white/[0.04] md:flex-row md:items-center md:gap-4"
                 >
-                  <span className="shrink-0 text-xs text-slate-500 md:w-40">{fmtDate(item.createdAt)}</span>
+                  <span className="shrink-0 text-xs text-console-muted md:w-40">{fmtDate(item.createdAt)}</span>
                   <span className="shrink-0 font-medium text-white md:w-48 md:truncate">{item.clubName ?? "Club inconnu"}</span>
-                  <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-200 md:w-40 md:text-center">{TOPIC_LABELS[item.topic]}</span>
-                  <span className="min-w-0 flex-1 truncate text-sm text-slate-300">{item.message}</span>
-                  <span className={cn("shrink-0 text-xs font-medium", "untreated" === item.status ? "text-amber-300" : "text-emerald-300")}>{STATUS_LABELS[item.status]}</span>
+                  <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-xs text-console-text-bright md:w-40 md:text-center">{TOPIC_LABELS[item.topic]}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-console-text">{item.message}</span>
+                  <span className={cn("shrink-0 text-xs font-medium", "untreated" === item.status ? "text-console-warning" : "text-console-success")}>{STATUS_LABELS[item.status]}</span>
                 </button>
               </li>
             ))}
@@ -126,12 +126,12 @@ function QosPanel({ qos }: { qos: AdminFeedbackQos }) {
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Délai dépôt → traité (par mois)</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-console-muted">Délai dépôt → traité (par mois)</p>
           {0 === qos.treatDelayByMonth.length ? (
-            <p className="mt-2 text-xs text-slate-500">—</p>
+            <p className="mt-2 text-xs text-console-muted">—</p>
           ) : (
-            <table className="mt-2 w-full text-left text-xs text-slate-300">
-              <thead className="text-slate-500">
+            <table className="mt-2 w-full text-left text-xs text-console-text">
+              <thead className="text-console-muted">
                 <tr>
                   <th className="py-1 font-medium">Mois</th>
                   <th className="py-1 font-medium">Moyenne</th>
@@ -152,12 +152,12 @@ function QosPanel({ qos }: { qos: AdminFeedbackQos }) {
         </div>
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Volume par type (par mois)</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-console-muted">Volume par type (par mois)</p>
           {0 === qos.volumeByTopicMonth.length ? (
-            <p className="mt-2 text-xs text-slate-500">—</p>
+            <p className="mt-2 text-xs text-console-muted">—</p>
           ) : (
-            <table className="mt-2 w-full text-left text-xs text-slate-300">
-              <thead className="text-slate-500">
+            <table className="mt-2 w-full text-left text-xs text-console-text">
+              <thead className="text-console-muted">
                 <tr>
                   <th className="py-1 font-medium">Mois</th>
                   <th className="py-1 font-medium">Type</th>
@@ -184,8 +184,8 @@ function QosPanel({ qos }: { qos: AdminFeedbackQos }) {
 function SmallMetric({ label, value, tone }: { label: string; value: string; tone?: "danger" }) {
   return (
     <div>
-      <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className={cn("mt-1 text-lg font-semibold tabular-nums text-white", "danger" === tone && "text-amber-300")}>{value}</dd>
+      <dt className="text-xs text-console-muted">{label}</dt>
+      <dd className={cn("mt-1 text-lg font-semibold tabular-nums text-white", "danger" === tone && "text-console-warning")}>{value}</dd>
     </div>
   );
 }

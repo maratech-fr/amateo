@@ -4,7 +4,7 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-08-29 (rotation `documentation-update`, hors sujet de la PR — sondage des
+Last verified @ 2026-08-30 (rotation `documentation-update`, hors sujet de la PR — sondage des
 stamps les plus anciens du dépôt). Re-confronté au code : `status < 500` toujours à
 `errorMessage.ts:32` ✓ · `new ValidationException(` toujours confiné à
 `AbstractStateProcessor.php` (aucune autre occurrence dans `src/`) ✓ ·

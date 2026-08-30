@@ -17,7 +17,7 @@ export function ExternalDepsSection() {
   if (health.isPending) {
     return (
       <div className="flex min-h-40 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03]" role="status">
-        <Spinner className="text-cyan-300" />
+        <Spinner className="text-console-accent" />
         <span className="sr-only">Chargement des dépendances externes</span>
       </div>
     );
@@ -25,8 +25,8 @@ export function ExternalDepsSection() {
 
   if (health.isError || !health.data) {
     return (
-      <div className="rounded-xl border border-amber-300/20 bg-amber-300/[0.05] p-5" role="alert">
-        <p className="text-sm text-amber-100">Les dépendances externes sont indisponibles.</p>
+      <div className="rounded-xl border border-console-warning/20 bg-console-warning/[0.05] p-5" role="alert">
+        <p className="text-sm text-console-warning-bright">Les dépendances externes sont indisponibles.</p>
       </div>
     );
   }
@@ -36,11 +36,11 @@ export function ExternalDepsSection() {
   return (
     <section aria-labelledby="external-deps-heading" className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Dépendances externes</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Dépendances externes</p>
         <h2 id="external-deps-heading" className="mt-2 text-xl font-semibold text-white">Services externes</h2>
       </div>
       {deps.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-slate-500">
+        <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-console-muted">
           Aucune dépendance externe configurée.
         </div>
       ) : (
@@ -48,7 +48,7 @@ export function ExternalDepsSection() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left text-sm">
               <caption className="sr-only">État des dépendances externes</caption>
-              <thead className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-slate-500">
+              <thead className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-console-muted">
                 <tr>
                   <th className="px-5 py-4 font-medium">Service</th>
                   <th className="px-4 py-4 font-medium">Statut</th>
@@ -73,10 +73,10 @@ function ExternalDepRow({ dep }: { dep: AdminHealthExternalDependency }) {
   const Icon = isUp ? CheckCircle2 : AlertTriangle;
 
   return (
-    <tr className="align-top text-slate-300 hover:bg-white/[0.025]">
+    <tr className="align-top text-console-text hover:bg-white/[0.025]">
       <td className="px-5 py-5">
         <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-slate-500">
+          <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-console-muted">
             <Globe className="size-4" aria-hidden="true" />
           </div>
           <p className="font-medium text-white">{dep.name}</p>
@@ -86,7 +86,7 @@ function ExternalDepRow({ dep }: { dep: AdminHealthExternalDependency }) {
         <span
           className={cn(
             "inline-flex items-center gap-1.5 text-xs font-medium",
-            isUp ? "text-emerald-300" : "text-red-400",
+            isUp ? "text-console-success" : "text-console-danger-deep",
           )}
         >
           <Icon className="size-3.5" aria-hidden="true" />

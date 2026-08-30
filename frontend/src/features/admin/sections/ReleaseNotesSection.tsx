@@ -53,47 +53,47 @@ export function ReleaseNotesSection() {
   return (
     <section aria-labelledby="release-notes-heading" className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Communication</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Communication</p>
         <h2 id="release-notes-heading" className="mt-2 text-xl font-semibold text-white">Journal de nouveautés</h2>
-        <p className="mt-1 text-sm text-slate-400">Ce que les membres voient dans « Nouveautés » et la modale « quoi de neuf ». Un brouillon reste invisible jusqu'à sa publication.</p>
+        <p className="mt-1 text-sm text-console-text-dim">Ce que les membres voient dans « Nouveautés » et la modale « quoi de neuf ». Un brouillon reste invisible jusqu'à sa publication.</p>
       </div>
 
       <form onSubmit={submit} className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
         <div className="grid gap-3 md:grid-cols-[1fr_auto]">
           <div className="space-y-1">
-            <label htmlFor="release-note-title" className="block text-xs text-slate-400">Titre</label>
+            <label htmlFor="release-note-title" className="block text-xs text-console-text-dim">Titre</label>
             <input
               id="release-note-title"
               type="text"
               maxLength={160}
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              className="h-10 w-full rounded-md border border-white/15 bg-white/[0.04] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-cyan-300/70 focus:ring-2 focus:ring-cyan-300/20"
+              className="h-10 w-full rounded-md border border-white/15 bg-white/[0.04] px-3 text-sm text-white outline-none placeholder:text-console-text-faint focus:border-console-accent/70 focus:ring-2 focus:ring-console-accent/20"
             />
           </div>
           <div className="space-y-1">
-            <label htmlFor="release-note-date" className="block text-xs text-slate-400">Date</label>
+            <label htmlFor="release-note-date" className="block text-xs text-console-text-dim">Date</label>
             <input
               id="release-note-date"
               type="date"
               value={noteDate}
               onChange={(event) => setNoteDate(event.target.value)}
-              className="h-10 rounded-md border border-white/15 bg-white/[0.04] px-3 text-sm text-white outline-none focus:border-cyan-300/70 focus:ring-2 focus:ring-cyan-300/20"
+              className="h-10 rounded-md border border-white/15 bg-white/[0.04] px-3 text-sm text-white outline-none focus:border-console-accent/70 focus:ring-2 focus:ring-console-accent/20"
             />
           </div>
         </div>
         <div className="space-y-1">
-          <label htmlFor="release-note-body" className="block text-xs text-slate-400">Contenu</label>
+          <label htmlFor="release-note-body" className="block text-xs text-console-text-dim">Contenu</label>
           <textarea
             id="release-note-body"
             rows={4}
             value={body}
             onChange={(event) => setBody(event.target.value)}
-            className="w-full rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white outline-none placeholder:text-slate-600 focus:border-cyan-300/70 focus:ring-2 focus:ring-cyan-300/20"
+            className="w-full rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white outline-none placeholder:text-console-text-faint focus:border-console-accent/70 focus:ring-2 focus:ring-console-accent/20"
           />
         </div>
         <div className="flex justify-end">
-          <Button type="submit" className="bg-cyan-300 text-slate-950 hover:bg-cyan-200" disabled={!canSubmit}>
+          <Button type="submit" className="bg-console-accent text-console-surface hover:bg-console-accent-hover" disabled={!canSubmit}>
             {create.isPending ? <Spinner className="size-4" /> : null}
             Enregistrer
           </Button>
@@ -101,14 +101,14 @@ export function ReleaseNotesSection() {
       </form>
 
       {notes.isPending ? (
-        <p className="flex items-center gap-2 text-sm text-slate-400"><Spinner className="size-4" /> Chargement…</p>
+        <p className="flex items-center gap-2 text-sm text-console-text-dim"><Spinner className="size-4" /> Chargement…</p>
       ) : notes.isError ? (
-        <p className="text-sm text-rose-300">
+        <p className="text-sm text-console-destructive">
           La liste n'a pas pu être lue.{" "}
           <button type="button" className="underline" onClick={() => void notes.refetch()}>Réessayer</button>
         </p>
       ) : 0 === items.length ? (
-        <p className="text-sm text-slate-400">Aucune note pour le moment.</p>
+        <p className="text-sm text-console-text-dim">Aucune note pour le moment.</p>
       ) : (
         <ul className="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/[0.03]">
           {items.map((note) => (
@@ -140,22 +140,22 @@ function ReleaseNoteRow({ note, publishing, removing, onPublish, onRemove }: {
         <p className="flex items-center gap-2 text-sm font-medium text-white">
           {note.title}
           {null === note.publishedAt ? (
-            <span className="rounded bg-slate-500/20 px-1.5 py-0.5 text-xs font-semibold uppercase text-slate-300">Brouillon</span>
+            <span className="rounded bg-console-muted/20 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-text">Brouillon</span>
           ) : (
-            <span className="rounded bg-emerald-400/15 px-1.5 py-0.5 text-xs font-semibold uppercase text-emerald-300">Publiée</span>
+            <span className="rounded bg-console-success-tint/15 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-success">Publiée</span>
           )}
         </p>
-        <p className="mt-0.5 text-xs text-slate-500">{formatDate(note.date)}</p>
-        <p className="mt-2 whitespace-pre-line text-sm text-slate-300">{note.body}</p>
+        <p className="mt-0.5 text-xs text-console-muted">{formatDate(note.date)}</p>
+        <p className="mt-2 whitespace-pre-line text-sm text-console-text">{note.body}</p>
       </div>
       <div className="flex shrink-0 gap-2">
         {null === note.publishedAt ? (
-          <Button type="button" size="sm" className="bg-cyan-300 text-slate-950 hover:bg-cyan-200" disabled={publishing} onClick={onPublish}>
+          <Button type="button" size="sm" className="bg-console-accent text-console-surface hover:bg-console-accent-hover" disabled={publishing} onClick={onPublish}>
             {publishing ? <Spinner className="size-3.5" /> : null}
             Publier
           </Button>
         ) : null}
-        <Button type="button" size="sm" variant="outline" className="border-rose-400/40 text-rose-300 hover:bg-rose-500/10" disabled={removing} onClick={onRemove}>
+        <Button type="button" size="sm" variant="outline" className="border-console-destructive-edge/40 text-console-destructive hover:bg-console-destructive-surface/10" disabled={removing} onClick={onRemove}>
           Supprimer
         </Button>
       </div>

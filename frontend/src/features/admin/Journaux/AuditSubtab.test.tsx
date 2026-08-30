@@ -125,9 +125,9 @@ describe("AuditSubtab", () => {
 
     const chip = screen.getByText("Erreur");
     expect(chip).toBeInTheDocument();
-    // The red style is applied to the status chip (bg-red-500/15 text-red-300).
-    expect(chip.className).toContain("bg-red-500/15");
-    expect(chip.className).toContain("text-red-300");
+    // The red style is applied to the status chip (bg-console-danger-surface/15 text-console-danger).
+    expect(chip.className).toContain("bg-console-danger-surface/15");
+    expect(chip.className).toContain("text-console-danger");
   });
 
   it("renders a success status chip with the green style", () => {
@@ -137,8 +137,8 @@ describe("AuditSubtab", () => {
 
     const chip = screen.getByText("Succès");
     expect(chip).toBeInTheDocument();
-    expect(chip.className).toContain("bg-emerald-500/15");
-    expect(chip.className).toContain("text-emerald-300");
+    expect(chip.className).toContain("bg-console-success-surface/15");
+    expect(chip.className).toContain("text-console-success");
   });
 
   it("maps a >=400 status code to Erreur and shows the code (never a false Succès)", () => {
