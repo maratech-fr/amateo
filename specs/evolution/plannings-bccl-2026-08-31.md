@@ -53,6 +53,8 @@ Conduite : chaque écriture en base annoncée AVANT, GO par GO (base de jeu du f
 | D3 | **La durée d'une indisponibilité devient modifiable, dans LES DEUX SENS** | étendre ET rétrécir. Aujourd'hui figée par construction dès qu'un plan existe (`CalendarEntryStateProcessor:118` — « Supprimez la période puis recréez-la », choix ADR-0002 : grille copiée à la naissance). Rétrécir pose la question des créneaux orphelins hors fenêtre. Axe §7.1 planning lifecycle — cadrage dédié. |
 | D4 | **Semaine charnière : le gestionnaire CHOISIT le type qui la couvre** | une semaine à cheval vacances/saison (ex. 31/08) est proposée en reprise OU en overlay **tant qu'elle n'est gérée par aucun** ; dès qu'un la prend, l'autre ne la propose plus. Motif fondateur : « pour un humain, il est impensable que la semaine du 31 août ne soit pas la semaine de reprise — mais d'autres structures peuvent voir l'inverse. D'où le choix. » |
 | D5 | **Les mutualisations « comme le gestionnaire l'entend » = P2-51, déjà cadré** | Reconfirmé le 2026-08-31 (« je dois pouvoir faire mes mutualisations comme je l'entends ») — voir §4 : le cadrage du 2026-08-25 tient, ses décisions sont figées, le lot entre dans ce programme. |
+| D7 | **P2-51 AVANT les exercices solveur** | pas de palliatif par groupes déclarés — l'exercice mesurerait un écart contre un modèle faux. |
+| D8 | **Pas de libellé sur les paires mutualisées** | seuls les CEC sont nommés, parce que le club les nomme. L'empilé est le rendu voulu. |
 | D6 | Le nom d'équipe `Veterans` reste sans accent | les fichiers du fondateur l'écrivent de deux façons (`Vétérans`/`Véterans`) ; renommer toucherait 5 sites pour du cosmétique. À rouvrir s'il y tient. |
 
 ## 4. Les mutualisations : le lot P2-51, déjà cadré — PAS un nouveau chantier
@@ -74,14 +76,15 @@ figées, à ne pas re-discuter :
 Les 3 **CEC** du mercredi restent correctement AFFICHÉS par le `groupLabel` du créneau (P2-17,
 `BcclSeeder:394-396,491`) — mais leur sémantique solveur attend, elle aussi, P2-51.
 
-**Conséquence de séquencement (à trancher au démarrage du lot suivant)** : l'exercice solveur des
-reprises (§2) a besoin d'une sémantique de mutualisation pour être fidèle. Deux voies —
-attendre P2-51 (effort L), ou un palliatif provisoire par groupes déclarés là où il est SAIN
-(paires sans imbrication ni multi-appartenance uniquement). Non tranché le 2026-08-31.
+**Séquencement (tranché le 2026-08-31, D7)** : **P2-51 se fait AVANT l'exercice solveur des
+reprises** — pas de palliatif provisoire par groupes déclarés. L'exercice a besoin de la vraie
+sémantique de mutualisation pour être fidèle ; un palliatif aurait mesuré un écart contre un
+modèle qu'on sait faux.
 
-**Question OUVERTE (c)** : libellé sur les 5 créneaux des paires pour l'affichage fusionné (la
-grille ne fusionne que les créneaux libellés — `grid.ts:100,343`) ? Un groupe déclaré ou un
-partage P2-51 change le solveur, PAS la fusion visuelle. Non tranché.
+**Question (c) fermée le 2026-08-31 (D8)** : **PAS de libellé** sur les 5 créneaux des paires —
+« si je ne l'ai pas déclaré, c'est que je n'en veux pas » (fondateur). Seuls les 3 CEC portent un
+libellé, parce que le club les NOMME ainsi. L'affichage empilé des autres paires est le rendu
+voulu ; ne pas « harmoniser » vers la fusion.
 
 ## 5. Défauts et travaux connexes relevés en chemin
 
@@ -109,8 +112,8 @@ partage P2-51 change le solveur, PAS la fusion visuelle. Non tranché.
 | Diff seeder ↔ fichier saison (90=90) | ✅ vérifié |
 | Consignation du programme (ce fichier) | ✅ |
 | PR seeder : drapeaux « périmé » (+ passerelles P5-23 si le fondateur valide) | ⬜ suivant |
-| P2-51 mutualisation par créneau — démarrage (cadrage déjà fait) | ⬜ |
-| Exercice solveur reprise 17 août | ⬜ séquencement §4 à trancher |
+| P2-51 mutualisation par créneau — démarrage (cadrage déjà fait) | ⬜ **suivant** (D7) |
+| Exercice solveur reprise 17 août | ⬜ après P2-51 |
 | Exercice solveur reprise 24 août | ⬜ |
 | Overlay Mateo 31/08→16/10 (D2, D1) + exercice | ⬜ |
 | Semaine charnière au choix (D4) — cadrage | ⬜ |
