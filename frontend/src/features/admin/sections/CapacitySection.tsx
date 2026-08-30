@@ -1,3 +1,4 @@
+import { EmptyBlock, EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { cn } from "@/shared/lib/utils";
 
@@ -46,9 +47,7 @@ export function CapacitySection() {
       </div>
 
       {data.totalSolves === 0 ? (
-        <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-console-muted">
-          Aucun solve sur la fenêtre de {integerFormatter.format(data.windowDays)} jours — rien à mesurer pour l’instant.
-        </div>
+        <EmptyBlock variant="console">Aucun solve sur la fenêtre de {integerFormatter.format(data.windowDays)} jours — rien à mesurer pour l’instant.</EmptyBlock>
       ) : (
         <>
           <div className="grid gap-4 lg:grid-cols-2">
@@ -81,7 +80,7 @@ function VolumePanel({ volume }: { volume: AdminCapacityResponse["volume"] }) {
       <div className="mt-6 border-t border-white/10 pt-4">
         <p className="text-xs font-medium text-console-text-dim">Profil horaire (heure locale)</p>
         {volume.hourly.length === 0 ? (
-          <p className="mt-2 text-sm text-console-muted">Aucune heure de mise en file connue.</p>
+          <EmptyHint variant="console" className="mt-2">Aucune heure de mise en file connue.</EmptyHint>
         ) : (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[16rem] text-left text-sm">
@@ -131,7 +130,7 @@ function SizePanel({ bySize }: { bySize: AdminCapacityResponse["bySize"] }) {
       <p className="text-sm font-medium text-white">Durée par tranche</p>
       <p className="mt-1 text-xs text-console-muted">Tranches de taille = équipes × gymnases (tiers du moteur)</p>
       {bySize.length === 0 ? (
-        <p className="mt-4 text-sm text-console-muted">Aucune tentative dimensionnée sur la fenêtre.</p>
+        <EmptyHint variant="console" className="mt-4">Aucune tentative dimensionnée sur la fenêtre.</EmptyHint>
       ) : (
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[40rem] text-left text-sm">
@@ -194,7 +193,7 @@ function IssuesPanel({ issues, totalSolves }: { issues: AdminCapacityResponse["i
     <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
       <p className="text-sm font-medium text-white">Issues</p>
       <dl className="mt-5 space-y-4">
-        {issues.byStatus.length === 0 ? <p className="text-sm text-console-muted">Aucune issue enregistrée.</p> : null}
+        {issues.byStatus.length === 0 ? <EmptyHint variant="console">Aucune issue enregistrée.</EmptyHint> : null}
         {issues.byStatus.map((row) => (
           <div key={row.status} className="flex items-baseline justify-between gap-3">
             <dt className="text-sm text-console-text-dim">{row.status}</dt>

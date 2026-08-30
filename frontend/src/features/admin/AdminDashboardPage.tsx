@@ -23,6 +23,7 @@ import { useSearchParams } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { EmptyBlock, EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Modal } from "@/shared/components/ui/modal";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { cn } from "@/shared/lib/utils";
@@ -299,7 +300,7 @@ function UsageSection({ data, loading, error, retry }: DataSectionProps<AdminOve
           <p className="text-sm font-medium text-white">Plans par type</p>
           <p className="mt-1 text-xs text-console-muted">Parc actuel — un reset ou un effacement retire ses plans</p>
           <dl className="mt-5 space-y-4">
-            {usage.plansByType.length === 0 ? <p className="text-sm text-console-muted">Aucun plan.</p> : null}
+            {usage.plansByType.length === 0 ? <EmptyHint variant="console">Aucun plan.</EmptyHint> : null}
             {usage.plansByType.map((row) => (
               <div key={row.type} className="flex items-baseline justify-between gap-3">
                 <dt className="text-sm text-console-text-dim">{planTypeLabel(row.type)}</dt>
@@ -327,7 +328,7 @@ function UsageSection({ data, loading, error, retry }: DataSectionProps<AdminOve
         <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
           <p className="text-sm font-medium text-white">Solveur par type · 30 j</p>
           <dl className="mt-5 space-y-4">
-            {usage.solverByPlanType.length === 0 ? <p className="text-sm text-console-muted">Aucune génération sur la fenêtre.</p> : null}
+            {usage.solverByPlanType.length === 0 ? <EmptyHint variant="console">Aucune génération sur la fenêtre.</EmptyHint> : null}
             {usage.solverByPlanType.map((row) => (
               <div key={row.planType} className="flex items-baseline justify-between gap-3">
                 <dt className="text-sm text-console-text-dim">{planTypeLabel(row.planType)}</dt>
@@ -400,7 +401,7 @@ function SolverChart({ solver }: { solver: AdminOverviewResponse["solver"] }) {
             {solver.daily.map((day) => `${day.date} : ${day.generations} générations`).join(" ; ")}
           </figcaption>
         </>
-      ) : <p className="mt-10 text-sm text-console-muted">Aucune génération sur cette période.</p>}
+      ) : <EmptyHint variant="console" className="mt-10">Aucune génération sur cette période.</EmptyHint>}
     </figure>
   );
 }
@@ -489,7 +490,7 @@ function JobsSection({ data, loading, error, retry }: DataSectionProps<AdminJobs
         <p className="text-xs text-console-muted">Cadence, prochain passage et dernière exécution connue</p>
       </div>
       {data.items.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-console-muted">Aucun job opérationnel configuré.</div>
+        <EmptyBlock variant="console">Aucun job opérationnel configuré.</EmptyBlock>
       ) : (
         <div className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
           <div className="overflow-x-auto">
@@ -594,7 +595,7 @@ function ClubsTable({ clubs, page, pages, total, query, loading, onPageChange }:
   const [actionClub, setActionClub] = useState<AdminClub | null>(null);
 
   if (clubs.length === 0) {
-    return <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-console-muted">{query ? `Aucun club ne correspond à « ${query} ».` : "Aucun club à afficher."}</div>;
+    return <EmptyBlock variant="console">{query ? `Aucun club ne correspond à « ${query} ».` : "Aucun club à afficher."}</EmptyBlock>;
   }
 
   return (

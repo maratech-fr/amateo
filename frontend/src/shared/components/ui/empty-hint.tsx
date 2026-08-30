@@ -2,23 +2,42 @@ import { CalendarX2, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Card, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
+import type { SurfaceSkin } from "@/shared/lib/surfaceSkin";
 import { cn } from "@/shared/lib/utils";
+
+/**
+ * Deux PEAUX pour le vide, comme les onglets (`ui/tabs.tsx`, `TAB_SKINS`). `app` suit les
+ * jetons du thème club ; `console` parle les jetons `--console-*` de la surface superadmin
+ * (P4-151), sinon rallier ces écrans les décolorerait. La forme des couleurs (jamais la
+ * structure) diffère par peau ; le squelette partagé reste dans la classe de base.
+ */
+const EMPTY_HINT_SKINS: Record<SurfaceSkin, string> = {
+  app: "text-muted-foreground",
+  console: "text-console-muted",
+};
+
+const EMPTY_BLOCK_SKINS: Record<SurfaceSkin, string> = {
+  app: "rounded-lg border-border bg-card p-8 text-muted-foreground",
+  console: "rounded-xl border-white/15 px-6 py-12 text-console-muted",
+};
 
 /**
  * Inline empty-list message ("Aucun…") — the small muted paragraph re-invented
  * across ~14 screens. One home so the empty state reads the same everywhere.
+ * `variant="console"` for the superadmin console; `app` (theme) by default.
  */
-export function EmptyHint({ children, className }: { children: ReactNode; className?: string }) {
-  return <p className={cn("text-sm text-muted-foreground", className)}>{children}</p>;
+export function EmptyHint({ children, className, variant = "app" }: { children: ReactNode; className?: string; variant?: SurfaceSkin }) {
+  return <p className={cn("text-sm", EMPTY_HINT_SKINS[variant], className)}>{children}</p>;
 }
 
 /**
  * Dashed-card empty block for a grid/panel with nothing to show yet (the timetable
  * grids re-implemented the exact same markup inline). Sits between the inline
  * `EmptyHint` and PlanningPage's full-view `EmptyState` Card.
+ * `variant="console"` for the superadmin console; `app` (theme) by default.
  */
-export function EmptyBlock({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("rounded-lg border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground", className)}>{children}</div>;
+export function EmptyBlock({ children, className, variant = "app" }: { children: ReactNode; className?: string; variant?: SurfaceSkin }) {
+  return <div className={cn("border border-dashed text-center text-sm", EMPTY_BLOCK_SKINS[variant], className)}>{children}</div>;
 }
 
 /**

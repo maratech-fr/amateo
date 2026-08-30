@@ -1,5 +1,6 @@
 import { type KeyboardEvent, type ReactNode, useRef } from "react";
 
+import type { SurfaceSkin } from "@/shared/lib/surfaceSkin";
 import { cn } from "@/shared/lib/utils";
 
 export interface TabItem {
@@ -12,10 +13,10 @@ export interface TabItem {
  * Deux PEAUX, un seul comportement. La console superadmin est sombre (`slate-950`,
  * `cyan-300`), l'application club suit les tokens du thème. Extraire le composant sans
  * cette distinction aurait repeint la console — on déplace la logique ARIA, pas le style.
+ * La notion de peau elle-même vit dans `shared/lib/surfaceSkin.ts` (`SurfaceSkin`), pas
+ * ici : elle est partagée avec les autres primitives à double peau (états vides…).
  */
-export type TabsVariant = "console" | "app";
-
-const TAB_SKINS: Record<TabsVariant, { list: string; base: string; active: string; idle: string; panel: string }> = {
+const TAB_SKINS: Record<SurfaceSkin, { list: string; base: string; active: string; idle: string; panel: string }> = {
   console: {
     list: "border-white/10",
     base: "focus-visible:ring-console-accent/40 focus-visible:ring-offset-console-surface",
@@ -41,7 +42,7 @@ export interface TabsProps {
   idPrefix: string;
   /** Peau : `app` par DÉFAUT (l'application club) ; la console superadmin doit passer
    *  `console` explicitement — l'oublier peint des tokens clairs sur fond sombre. */
-  variant?: TabsVariant;
+  variant?: SurfaceSkin;
 }
 
 /**
@@ -140,7 +141,7 @@ export interface TabPanelProps {
   /** Optional label for screen readers when the panel has no visible heading. */
   ariaLabel?: string;
   className?: string;
-  variant?: TabsVariant;
+  variant?: SurfaceSkin;
 }
 
 export function TabPanel({ tabId, idPrefix, active, children, ariaLabel, className, variant = "app" }: TabPanelProps) {

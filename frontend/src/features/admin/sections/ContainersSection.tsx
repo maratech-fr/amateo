@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { EmptyBlock } from "@/shared/components/ui/empty-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { cn } from "@/shared/lib/utils";
 
@@ -27,9 +28,7 @@ export function ContainersSection() {
         <h2 id="containers-heading" className="mt-2 text-xl font-semibold text-white">Conteneurs</h2>
       </div>
       {containers.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-console-muted">
-          Aucun conteneur à monitorer.
-        </div>
+        <EmptyBlock variant="console">Aucun conteneur à monitorer.</EmptyBlock>
       ) : (
         <div className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] p-5">
           <div className="overflow-x-auto">

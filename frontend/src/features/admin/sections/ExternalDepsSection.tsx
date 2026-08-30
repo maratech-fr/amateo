@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, Globe } from "lucide-react";
 
+import { EmptyBlock } from "@/shared/components/ui/empty-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { cn } from "@/shared/lib/utils";
 
@@ -40,9 +41,7 @@ export function ExternalDepsSection() {
         <h2 id="external-deps-heading" className="mt-2 text-xl font-semibold text-white">Services externes</h2>
       </div>
       {deps.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-console-muted">
-          Aucune dépendance externe configurée.
-        </div>
+        <EmptyBlock variant="console">Aucune dépendance externe configurée.</EmptyBlock>
       ) : (
         <div className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
           <div className="overflow-x-auto">

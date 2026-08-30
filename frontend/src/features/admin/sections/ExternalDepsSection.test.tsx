@@ -100,4 +100,18 @@ describe("ExternalDepsSection", () => {
 
     expect(await screen.findByText("Aucune dépendance externe configurée.")).toBeInTheDocument();
   });
+
+  // P4-149 — l'état vide est rallié sur la primitive `EmptyBlock` en peau `console`. Ce test
+  // ÉPINGLE le site : un `variant="console"` oublié ferait retomber le bloc sur les jetons
+  // clairs de l'app (`text-muted-foreground`, `bg-card`) sur fond sombre, et aucun autre test
+  // ni le garde de palette (qui n'attrape que les nuances Tailwind brutes) ne le verrait.
+  it("rend l'état vide dans la peau console (jetons --console-*, pas ceux du thème)", async () => {
+    mockHealth.mockResolvedValue(baseHealth);
+
+    renderWithProviders(<ExternalDepsSection />, { route: "/admin" });
+
+    const empty = await screen.findByText("Aucune dépendance externe configurée.");
+    expect(empty.className).toContain("text-console-muted");
+    expect(empty.className).not.toContain("text-muted-foreground");
+  });
 });
