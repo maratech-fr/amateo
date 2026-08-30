@@ -39,3 +39,43 @@ describe("EmptyHint / EmptyBlock — les deux étages existants restent intacts"
     expect(screen.getByText("Rien à afficher.")).toBeInTheDocument();
   });
 });
+
+/**
+ * P4-149 — les deux étages inline/bloc portent désormais une PEAU (`SurfaceSkin`), comme les
+ * onglets (`tabs.tsx`). `app` (défaut, jetons du thème) et `console` (jetons `--console-*`)
+ * doivent rendre des couleurs DISTINCTES : sans ce filet, un `variant="console"` oublié sur un
+ * site de la console retomberait sur les jetons clairs de l'app SANS que rien ne rougisse
+ * (le garde de palette n'attrape que les nuances Tailwind BRUTES, pas un jeton de thème).
+ */
+describe("EmptyHint / EmptyBlock — la peau (SurfaceSkin) app vs console", () => {
+  it("EmptyHint app (défaut) porte le jeton du thème, pas celui de la console", () => {
+    render(<EmptyHint>Aucune équipe.</EmptyHint>);
+    const el = screen.getByText("Aucune équipe.");
+    expect(el.className).toContain("text-muted-foreground");
+    expect(el.className).not.toContain("text-console-muted");
+  });
+
+  it("EmptyHint console porte le jeton --console-*, pas celui du thème", () => {
+    render(<EmptyHint variant="console">Aucun plan.</EmptyHint>);
+    const el = screen.getByText("Aucun plan.");
+    expect(el.className).toContain("text-console-muted");
+    expect(el.className).not.toContain("text-muted-foreground");
+  });
+
+  it("EmptyBlock app (défaut) garde fond de carte et bordure du thème", () => {
+    render(<EmptyBlock>Rien à afficher.</EmptyBlock>);
+    const el = screen.getByText("Rien à afficher.");
+    expect(el.className).toContain("bg-card");
+    expect(el.className).toContain("border-border");
+    expect(el.className).toContain("text-muted-foreground");
+  });
+
+  it("EmptyBlock console porte les jetons de la console, sans fond de carte", () => {
+    render(<EmptyBlock variant="console">Aucun conteneur à monitorer.</EmptyBlock>);
+    const el = screen.getByText("Aucun conteneur à monitorer.");
+    expect(el.className).toContain("text-console-muted");
+    expect(el.className).toContain("border-white/15");
+    expect(el.className).not.toContain("bg-card");
+    expect(el.className).not.toContain("text-muted-foreground");
+  });
+});

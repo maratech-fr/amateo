@@ -1,12 +1,16 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-08-30 (`documentation-update`, P4-151 — paragraphe palette console mis à jour
-après tokenisation : `AdminShell.tsx`/`AdminAuthLayout.tsx` câblent désormais `bg-console-surface`/
+Last verified @ 2026-08-30 (`documentation-update`, P4-149 — paragraphe palette console corrigé :
+une primitive qui consomme les jetons de thème par défaut (`EmptyHint`/`EmptyBlock`) demande sa
+peau `console` via la prop `variant` (`SurfaceSkin`, `shared/lib/surfaceSkin.ts`) — la majorité des
+empty states admin l'ont fait, 4 sites restent en arbitrage visuel (`roadmap.md` P4-149), confirmé
+au code (`empty-hint.tsx`, `AdminDashboardPage.tsx`, `CapacitySection.tsx`). Plus tôt le même jour
+(P4-151) : `AdminShell.tsx`/`AdminAuthLayout.tsx` câblent `bg-console-surface`/
 `text-console-text-strong` + jetons `--console-*` (plus aucune classe `slate`/`cyan`/`amber`
-brute, vérifié par grep) — la surface reste fixe/non-adaptative, seule la MÉTHODE a changé (jeton
-nommé au lieu de littéral répété). Re-confronté au code avant de redater : le firewall `admin`
-couvre `^/api/admin` avec `super_admin_provider` et n'est **pas** `stateless`, contrairement au
-firewall `api` (`backend/config/packages/security.yaml:33-48`) ✓ · l'entité `SuperAdmin` existe
+brute) — la surface reste fixe/non-adaptative, seule la MÉTHODE a changé (jeton nommé au lieu de
+littéral répété). Re-confronté au code avant de redater : le firewall `admin` couvre `^/api/admin`
+avec `super_admin_provider` et n'est **pas** `stateless`, contrairement au firewall `api`
+(`backend/config/packages/security.yaml:33-48`) ✓ · l'entité `SuperAdmin` existe
 (`backend/src/Entity/SuperAdmin.php`) ✓ · `TenantFilterListener` retourne immédiatement sur
 `/api/admin` (`TenantFilterListener.php:81`) ✓ · les **deux** routes `PUBLIC_ACCESS` du périmètre
 admin tiennent (`security.yaml:45-46`) ✓)
@@ -33,10 +37,11 @@ d'aliasing dans [`frontend-components.md`](../../frontend/docs/frontend-componen
 sur `--background`/`--foreground` (`src/index.css`) qui varient avec le mode clair/sombre
 applicatif — c'est une esthétique assumée pour une surface à persona fondateur, pas une dérive
 (décision fermée, [`etat-des-lieux.md`](etat-des-lieux.md) §2). Conséquence directe : une
-primitive partagée qui consomme les jetons de **thème** (ex. `EmptyHint`/`EmptyBlock`,
-`text-muted-foreground`) ne peut pas être ralliée telle quelle par `features/admin/` sans
-décolorer la console — voir [`roadmap.md`](../evolution/roadmap.md) P4-149 (le geste restant :
-une peau `console` sur la primitive, patron `TabsVariant`). `AdminAuthLayout` n'offre donc
+primitive partagée qui consomme les jetons de **thème** par défaut (ex. `EmptyHint`/`EmptyBlock`,
+`text-muted-foreground`) doit demander sa peau `console` explicitement (prop `variant`, foyer
+`shared/lib/surfaceSkin.ts::SurfaceSkin`, même patron que les onglets) pour rendre juste sur cette
+surface — la majorité des empty states admin l'ont fait (P4-149, 2026-08-30) ; 4 sites restent en
+arbitrage visuel, voir [`roadmap.md`](../evolution/roadmap.md) P4-149. `AdminAuthLayout` n'offre donc
 **aucune** bascule de thème (retirée le 2026-08-30 : elle basculait bien `.dark` sans rien
 changer à l'écran) ; les bascules publique (`AuthLayout`) et applicative (`AppLayout`) restent,
 hors de cette surface.

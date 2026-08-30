@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { EmptyBlock } from "@/shared/components/ui/empty-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { cn } from "@/shared/lib/utils";
 
@@ -68,9 +69,7 @@ export function SystemErrorsSubtab() {
   const data = errors.data;
   if (!data || data.items.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-console-muted">
-        Aucune erreur système enregistrée
-      </div>
+      <EmptyBlock variant="console">Aucune erreur système enregistrée</EmptyBlock>
     );
   }
 
