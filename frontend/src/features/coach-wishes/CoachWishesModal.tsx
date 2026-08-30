@@ -10,6 +10,7 @@ import { dayLabel } from "@/features/wizard/lib/days";
 import { groupedCoaches } from "@/features/wizard/lib/ranking";
 import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { Button } from "@/shared/components/ui/button";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Modal } from "@/shared/components/ui/modal";
 import { cn } from "@/shared/lib/utils";
 
@@ -164,7 +165,7 @@ export function CoachWishesModal({ mother, weekFilter, onClose }: { mother: Cale
             <section key={week.monday}>
               {null === weekFilter ? <h3 className="mb-1 text-xs font-semibold text-muted-foreground">Semaine du {week.startDate}</h3> : null}
               {0 === items.length ? (
-                <p className="text-xs text-muted-foreground">Aucune doléance pour cette semaine.</p>
+                <EmptyHint className="text-xs">Aucune doléance pour cette semaine.</EmptyHint>
               ) : (
                 <ul className="space-y-1">
                   {items.map((w) => (

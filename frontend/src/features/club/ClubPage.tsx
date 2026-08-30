@@ -9,6 +9,7 @@ import { MembersSection } from "@/features/club/MembersSection";
 import { AccordionSection } from "@/shared/components/ui/accordion";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { FichePage } from "@/shared/components/ui/fiche-page";
 import { Input } from "@/shared/components/ui/input";
 import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
@@ -527,7 +528,7 @@ function VenueStatsSection({ me }: { me: MeResponse }) {
       </div>
 
       {0 === venueRows.length ? (
-        <p className="text-sm text-muted-foreground">Le planning en vigueur ne place aucune séance sur cette plage.</p>
+        <EmptyHint>Le planning en vigueur ne place aucune séance sur cette plage.</EmptyHint>
       ) : (
         <>
           <UsageTable caption="Par gymnase" firstColHeader="Gymnase" rows={venueRows} totalByDay={data.totalByDay} grandTotal={data.grandTotal} days={days} />

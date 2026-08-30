@@ -2,6 +2,7 @@ import { ChevronDown, ChevronUp, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 import { errorMessage } from "@/shared/lib/errorMessage";
@@ -62,7 +63,7 @@ export function MatchSlotRotationsEditor<T extends TeamLike>({ teams, tiers, ven
       {rotationsQuery.isError ? <p className="text-sm text-destructive">Les créneaux partagés n'ont pas pu être chargés.</p> : null}
 
       {0 === rotations.length && !rotationsQuery.isLoading ? (
-        <p className="text-xs text-muted-foreground">Aucun créneau partagé déclaré — ajoutez-en un ci-dessous si deux équipes se relaient sur un même créneau.</p>
+        <EmptyHint className="text-xs">Aucun créneau partagé déclaré — ajoutez-en un ci-dessous si deux équipes se relaient sur un même créneau.</EmptyHint>
       ) : null}
 
       <ul className="flex flex-col gap-2">

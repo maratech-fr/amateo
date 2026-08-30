@@ -2,6 +2,7 @@ import { AlertTriangle, Lock, Trash2, Undo2, Users } from "lucide-react";
 import { useId, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Modal } from "@/shared/components/ui/modal";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 import { apiErrorMessage } from "@/shared/api/errors";
@@ -453,7 +454,7 @@ export function SlotReservationModal({
             ) : null}
           </>
         ) : (
-          <p className="text-xs text-muted-foreground">Aucune équipe disponible (toutes ont atteint leur nombre de séances ou sont déjà sur ce créneau).</p>
+          <EmptyHint className="text-xs">Aucune équipe disponible (toutes ont atteint leur nombre de séances ou sont déjà sur ce créneau).</EmptyHint>
         )
       ) : (
         <div className="text-xs text-muted-foreground">

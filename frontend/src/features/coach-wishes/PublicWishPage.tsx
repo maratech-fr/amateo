@@ -4,6 +4,7 @@ import { useParams } from "react-router";
 
 import { AuthLayout } from "@/features/auth/AuthLayout";
 import { Button } from "@/shared/components/ui/button";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
 
 import { getPublicWishContext, isPublicWishError, submitPublicWishes, type PublicWishContext, type PublicWishSubmission } from "./publicApi";
@@ -139,7 +140,7 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
   if (0 === context.teams.length) {
     return (
       <AuthLayout title="Aucune équipe concernée" description={context.periodTitle}>
-        <p className="text-sm text-muted-foreground">Aucune de vos équipes n'est concernée par cette collecte pour le moment. Rapprochez-vous de votre club.</p>
+        <EmptyHint>Aucune de vos équipes n'est concernée par cette collecte pour le moment. Rapprochez-vous de votre club.</EmptyHint>
       </AuthLayout>
     );
   }

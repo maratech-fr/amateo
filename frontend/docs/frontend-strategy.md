@@ -1,13 +1,9 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-08-29 (`documentation-update`, clôture du lot FRT-20/P4-117 — 5 modules
-`queries.ts` sur 12 ont désormais leur `queries.test.tsx` dédié : `cockpit` (déjà avant le lot),
-`wizard`, `matches`, `planning`, `auth` (dernière tranche, ce commit) ; `admin` reste
-délibérément non couvert (persona fondateur, `etat-des-lieux.md` §2). §1 gagne la leçon de
-méthode qui a payé (preuve d'EFFET sur le cache, pas de l'appel à `invalidateQueries`) et son
-pointeur vers `etat-des-lieux.md` remplace le renvoi à `roadmap.md` (AUD-FRT-20/P4-117 en sont
-sortis — item livré, plus de home dans l'ouvert). Reste non re-touché cette passe : versions/
-plafonds §1-§2 (vérifiés le 2026-08-27, rien ne les a fait bouger depuis). Historique des
+Last verified @ 2026-08-30 (rotation `documentation-update`, passe UXC-10 — fichier hors sujet de la
+PR. Re-confronté au code : les cinq `queries.test.tsx` cités (`cockpit`/`wizard`/`matches`/
+`planning`/`auth`) existent toujours, `admin/queries.test.tsx` n'existe toujours pas (abandon
+délibéré inchangé) ✓. Reste non re-touché cette passe : versions/plafonds §1-§2. Historique des
 passes : `git log -p --follow frontend/docs/frontend-strategy.md`.)
 
 > **Statut : le rebuild est LIVRÉ.** Les formulations « pour le rebuild » ci-dessous sont

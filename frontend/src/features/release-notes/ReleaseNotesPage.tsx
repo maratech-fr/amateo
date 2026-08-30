@@ -1,5 +1,6 @@
 import { Spinner } from "@/shared/components/ui/spinner";
 import { FichePage } from "@/shared/components/ui/fiche-page";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 
 import { useReleaseNotes } from "./queries";
 
@@ -30,7 +31,7 @@ export function ReleaseNotesPage() {
           </button>
         </p>
       ) : 0 === data.items.length ? (
-        <p className="text-sm text-muted-foreground">Aucune nouveauté pour le moment.</p>
+        <EmptyHint>Aucune nouveauté pour le moment.</EmptyHint>
       ) : (
         <ul className="space-y-6">
           {data.items.map((item) => (

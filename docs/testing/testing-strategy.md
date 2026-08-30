@@ -1,13 +1,15 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-08-29 (`documentation-update`, FRT-28 — nouveau §2 « `CrossStack/` — backend↔frontend
-contract guards » ajouté et confronté à `backend/tests/CrossStack/TsFieldsMatchOpenApiSchemaTest.php`
-(contrat SENS UNIQUE + enum perdu + `DECLARED_ENUM_DRIFTS`) et à ses deux cousins `OpenApiSnapshotMatchesTheLiveContractTest.php`/
-`TsUnionsMatchPhpEnumsTest.php` ; confirmé au passage que ces trois gardes group `contract` ne figurent
-PAS dans `docs/testing/blocking-tests.md` (à raison — seul `blocking-tests`/CI fait foi, cf. `CLAUDE.md`
-§4) et n'apparaissaient nulle part ailleurs dans ce fichier avant cette passe. Reste du fichier non
-re-vérifié cette passe. Historique des passes : `git log -p --follow docs/testing/testing-strategy.md`
-— un stamp REMPLACE, il ne s'empile pas (DOC-33).)
+Last verified @ 2026-08-30 (rotation `documentation-update`, passe UXC-10 — fichier hors sujet de la
+PR. Re-confronté à `.github/workflows/ci.yml` : les SEPT jobs sans `needs` sont toujours exactement
+`frontend`/`dependency-audit`/`rector`/`secrets-scan`/`semgrep`/`engine-semantics`/`smoke-tests`
+(`grep -n "needs:"` ne retourne que `blocking-tests`/`unit-tests`/`engine-perf`/`e2e`/`build-docker`)
+✓ ; `phpunit.xml.dist` déclare toujours exactement trois testsuites `Unit`/`Integration`/`Contract`
+✓ ; les sept dossiers hors testsuites déclarées existent tels que listés —
+`Api`/`Command`/`Double`/`EventListener`/`MessageHandler`/`OpenApi`/`Validator` (`ls backend/tests/`)
+✓. Reste du fichier non re-vérifié cette passe. Historique des passes :
+`git log -p --follow docs/testing/testing-strategy.md` — un stamp REMPLACE, il ne s'empile pas
+(DOC-33).)
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique) and [`../project-map.md`](../project-map.md).
 

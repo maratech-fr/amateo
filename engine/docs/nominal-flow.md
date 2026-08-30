@@ -1,19 +1,17 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-08-29 (rotation `documentation-update`, passe P4-95 — fichier hors sujet de la
-PR, contrôle de fraîcheur. `engine/CONTRACT_VERSION` = **2.16** re-confirmé (`engine/CONTRACT_VERSION`).
-**Drift trouvé et corrigé** : trois `file:line` étaient périmés (dérive de lignes, pas de
-comportement) — verrou asyncio par club `_club_locks`+garde est en `app/main.py:130-131` (pas
-128-129), `_adaptive_workers` (paliers 1/8 au seuil 200) est défini `app/main.py:445` (pas 443),
-`lockLevel` chaîne libre est `app/schemas/input_schema.py:294` (pas 249) et
-`solverTimeoutSeconds` défaut 650 est `app/schemas/input_schema.py:307` (pas 262). **Fait plus
-significatif** : le module objectif a continué sa migration — ce n'est plus `app/solver/objective.py`
-(déjà signalé PAS `app/objective.py` à la passe précédente) mais le **paquet**
-`app/solver/objective/` (`__init__.py`/`normalise.py`/`terms.py`/`weights.py`). Reste vérifié sans
-écart : module modèle `app/solver/model.py` (paquet non éclaté) ✓ · `venue_minimum_unreachable`
-existe (`app/solver/constraints/targeting.py:320`) ✓ · `solver_version` = version("ortools"), pin
-`>=9.11,<10` (`pyproject.toml:14`) ✓ · topic `club:{clubId}:schedule:{scheduleId}`
-(`backend/src/Mercure/MercureTopic.php`) ✓.
+Last verified @ 2026-08-30 (rotation `documentation-update`, passe UXC-10 — fichier hors sujet de
+la PR, contrôle de fraîcheur ciblé sur le résidu de nom trouvé au balayage `clubscheduler-*`).
+**Drift trouvé et corrigé** : le hub Mercure était encore nommé `clubscheduler-mercure` — nom mort
+depuis le renommage d'infrastructure P4-142 (2026-08-28) ; corrigé en `amateo-mercure` (conteneur
+réel, `docker-compose.yml:325`). Reste vérifié sans écart cette passe : `engine/CONTRACT_VERSION`
+= **2.16** ✓ ; verrou asyncio par club `_club_locks`/`_club_locks_guard` en `app/main.py:130-131` ✓ ;
+`_adaptive_workers` (paliers 1/8 au seuil 200) en `app/main.py:445` ✓ ; `lockLevel` chaîne libre en
+`app/schemas/input_schema.py:294` ✓ ; `solverTimeoutSeconds` défaut 650 en
+`app/schemas/input_schema.py:307` ✓ ; module objectif toujours le paquet `app/solver/objective/`
+(`__init__.py`/`normalise.py`/`terms.py`/`weights.py`, pas un fichier plat) ✓ ; module modèle
+`app/solver/model.py` non éclaté ✓ ; `venue_minimum_unreachable` en
+`app/solver/constraints/targeting.py:320` ✓.
 
 > Ce document decrit le chemin complet d'une requete de generation d'emploi du temps, du moment ou le backend construit le payload jusqu'a la notification en temps reel du frontend. Destine aux developpeurs travaillant sur l'integration backend/engine.
 
@@ -341,7 +339,7 @@ Le backend met a jour le statut du `Schedule` :
 
 ### Notification Mercure SSE
 
-Le backend publie un evenement sur le hub Mercure (`clubscheduler-mercure`) sur le topic :
+Le backend publie un evenement sur le hub Mercure (conteneur `amateo-mercure`) sur le topic :
 
 ```
 club:{clubId}:schedule:{scheduleId}

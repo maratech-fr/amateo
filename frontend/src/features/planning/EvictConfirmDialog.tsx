@@ -3,6 +3,7 @@ import { useId, useRef } from "react";
 import { createPortal } from "react-dom";
 
 import { Button } from "@/shared/components/ui/button";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { MODAL_WIDTH } from "@/shared/components/ui/modal-width";
 import { useModalA11y } from "@/shared/lib/useModalA11y";
 import { cn } from "@/shared/lib/utils";
@@ -107,7 +108,7 @@ export function EvictConfirmDialog({ open, phase, occupantName, compromises, vio
               <p className="text-muted-foreground">
                 Ce créneau est occupé par <span className="font-medium text-foreground">{occupantName}</span>. La déplacer d'ici ? Elle passera dans les séances à replacer.
               </p>
-              {compromises.length > 0 ? <CompromiseList compromises={compromises} /> : <p className="text-muted-foreground">Aucun compromis détecté.</p>}
+              {compromises.length > 0 ? <CompromiseList compromises={compromises} /> : <EmptyHint>Aucun compromis détecté.</EmptyHint>}
             </div>
           ) : null}
 

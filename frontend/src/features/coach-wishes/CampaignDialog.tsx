@@ -7,6 +7,7 @@ import type { Team } from "@/features/wizard/api";
 import { addDays, isActionableWeek, periodAdjustWeeks, todayISO } from "@/features/cockpit/lib/date";
 import { usePriorityTiers, useUpdateCoach, useWizardTeamCoaches, useWizardTeams } from "@/features/wizard/queries";
 import { Button } from "@/shared/components/ui/button";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
 import { TabPanel, Tabs } from "@/shared/components/ui/tabs";
@@ -266,7 +267,7 @@ export function CampaignDialog({ entry, season, existing, onClose }: CampaignDia
           <legend className="text-sm font-medium">Semaines</legend>
           <div className="mt-1 space-y-1">
             {0 === availableWeeks.length ? (
-              <p className="text-sm text-muted-foreground">Aucune semaine disponible sur cette période.</p>
+              <EmptyHint>Aucune semaine disponible sur cette période.</EmptyHint>
             ) : (
               availableWeeks.map((w) => (
                 <label key={w.monday} className="flex items-center gap-2 text-sm">
@@ -455,9 +456,9 @@ function CoachLinks({ campaign, onEmailSaved, onCampaignRefreshed }: { campaign:
       ) : null}
 
       {0 === campaign.coaches.length ? (
-        <p className="mt-1 text-sm text-muted-foreground">Aucun coach sur le périmètre choisi.</p>
+        <EmptyHint className="mt-1">Aucun coach sur le périmètre choisi.</EmptyHint>
       ) : 0 === visibleCoaches.length ? (
-        <p className="mt-2 text-sm text-muted-foreground">Aucun coach pour ce filtre.</p>
+        <EmptyHint className="mt-2">Aucun coach pour ce filtre.</EmptyHint>
       ) : (
         <ul className="mt-2 space-y-2">
           {visibleCoaches.map((coach) => (
