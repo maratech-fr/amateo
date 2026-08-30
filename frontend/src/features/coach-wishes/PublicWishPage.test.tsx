@@ -196,6 +196,13 @@ describe("PublicWishPage — parcours en étapes", () => {
     await waitFor(() => expect(sessionStorage.getItem(DRAFT_KEY("abc"))).toBeNull());
   });
 
+  // P4-150 — aucune équipe concernée : la copie d'écran de l'état vide est assertée.
+  it("affiche « aucune de vos équipes n'est concernée » quand le contexte ne porte aucune équipe", async () => {
+    h.getContext.mockResolvedValue(context({ teams: [] }));
+    renderAt();
+    expect(await screen.findByText(/Aucune de vos équipes n'est concernée par cette collecte pour le moment\. Rapprochez-vous de votre club\./)).toBeInTheDocument();
+  });
+
   it("affiche « lien invalide » sur 404", async () => {
     h.getContext.mockRejectedValue(httpError(404));
     renderAt();

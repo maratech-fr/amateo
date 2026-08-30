@@ -272,6 +272,26 @@ describe("ClubPage", () => {
     expect(screen.getByText(/du 01\/09\/2026 au 30\/06\/2027/)).toBeInTheDocument();
   });
 
+  // P4-150 — planning EN VIGUEUR mais aucune séance sur la plage : la copie d'écran de
+  // l'état vide est assertée (distincte de « sans planning en vigueur » ci-dessous).
+  it("Stats gymnases : planning en vigueur sans séance sur la plage → la copie d'écran de l'état vide", async () => {
+    withSeasonPlan();
+    venueStats.data = {
+      range: { from: "2026-09-01", to: "2027-06-30", today: "2026-08-17" },
+      zone: "A",
+      venues: [],
+      totalByDay: [],
+      byLevel: [],
+      grandTotal: { real: 0, projected: 0, total: 0 },
+    };
+    const user = userEvent.setup();
+    render(<ClubPage />);
+    await user.click(screen.getByRole("button", { name: /Statistiques des gymnases/ }));
+
+    expect(screen.getByText("Le planning en vigueur ne place aucune séance sur cette plage.")).toBeInTheDocument();
+    expect(screen.queryByText("Par gymnase")).toBeNull();
+  });
+
   it("Stats gymnases : sans planning en vigueur, la section explique au lieu d'afficher des zéros", async () => {
     me.data = {
       role: "admin",

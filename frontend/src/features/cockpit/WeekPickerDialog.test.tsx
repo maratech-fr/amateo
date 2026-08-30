@@ -217,6 +217,8 @@ describe("WeekPickerDialog — chevauchement vacances (P2-40)", () => {
 
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /créer/i })).not.toBeInTheDocument();
+    // P4-150 — la copie d'écran de l'état vide « tout est sous vacances » est assertée.
+    expect(screen.getByText("Toutes les semaines de cette indisponibilité sont couvertes par des vacances — il n'y a rien à ajuster en dehors.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /consigner l'indisponibilité/i }));
     expect(onRecordOnly).toHaveBeenCalled();
   });

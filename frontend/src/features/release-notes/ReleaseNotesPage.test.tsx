@@ -35,7 +35,9 @@ describe("ReleaseNotesPage", () => {
     mockGet.mockResolvedValue({ seenUpTo: null, items: [] });
     renderWithProviders(<ReleaseNotesPage />);
 
-    expect(await screen.findByText(/aucune nouveauté/i)).toBeInTheDocument();
+    // P4-150 — la copie d'écran EXACTE est assertée (une altération du libellé rougit,
+    // pas seulement sa disparition).
+    expect(await screen.findByText("Aucune nouveauté pour le moment.")).toBeInTheDocument();
   });
 });
 

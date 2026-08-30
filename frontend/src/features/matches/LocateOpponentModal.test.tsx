@@ -71,6 +71,16 @@ describe("LocateOpponentModal — la correction manuelle du lieu (P2-54 PR-3)", 
     });
   });
 
+  // P4-150 — code postal complet, lecture RÉUSSIE mais zéro salle : la copie d'écran de
+  // l'état vide est assertée (distincte de l'échec FFBB, cf. LoadErrorHint).
+  it("annonce « Aucune salle trouvée » quand la recherche aboutit à zéro salle", async () => {
+    sallesState.data = { postalCode: "69330", salles: [] };
+    renderWithProviders(<LocateOpponentModal opponent={OPPONENT} onClose={vi.fn()} />);
+
+    await userEvent.type(screen.getByLabelText("Commune (code postal)"), "69330");
+    expect(screen.getByText("Aucune salle trouvée pour ce code postal.")).toBeInTheDocument();
+  });
+
   it("une salle sans coordonnées ne peut pas être choisie", async () => {
     sallesState.data = { postalCode: "69330", salles: [salle({ latitude: null, longitude: null })] };
     renderWithProviders(<LocateOpponentModal opponent={OPPONENT} onClose={vi.fn()} />);
