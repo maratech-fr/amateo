@@ -1,11 +1,10 @@
 # Accueil « cockpit temporel » — mise au clair (préliminaire calendriers secondaires)
 
-Last verified @ 2026-08-29 (`documentation-update`, FRT-29 — corrigé après coup : le tableau
-`routes` a quitté `app/router.tsx` pour `app/routes.tsx` (déplacement pur, résorption d'un warning
-`react-refresh/only-export-components`), `/` sert toujours `CockpitPage`, référence recalée en
-`frontend/src/app/routes.tsx:134`. Reconfronté au passage : `frontend/src/features/wizard/steps/PeriodStructure.tsx:400,
-728,788` — toujours les DEUX `<fieldset disabled>` gelés sur `isDisabled` seul ✓ · les modules cités
-ailleurs dans ce document (`RadarPanel.tsx`, `RecapStep.tsx`, `cockpit/lib/date.ts`,
+Last verified @ 2026-08-30 (rotation `documentation-update`, P4-152 — zone non touchée par cette
+PR, contrôle de fraîcheur). Re-confronté au code : `/` sert toujours `CockpitPage`
+(`frontend/src/app/routes.tsx:134`) ✓ · `frontend/src/features/wizard/steps/PeriodStructure.tsx`
+porte toujours les DEUX `<fieldset disabled>` gelés sur `isDisabled` seul (`:728`, `:788`) ✓ · les
+modules cités ailleurs dans ce document (`RadarPanel.tsx`, `RecapStep.tsx`, `cockpit/lib/date.ts`,
 `cockpit/lib/useWeekAdapt.ts`, `shared/lib/clock.ts`, `wizard/lib/venueDays.ts`) existent toujours
 aux chemins nommés. L'historique des passes précédentes vit dans `git log -p --follow` ce fichier
 et ses traces datées dans `etat-des-lieux.md` §3.

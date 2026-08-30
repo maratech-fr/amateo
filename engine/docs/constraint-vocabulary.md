@@ -1,15 +1,15 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-08-30 (rotation `documentation-update`, passe P4-132 — zone non touchée par
-cette PR (le lot touche un seul fichier de test), contrôle de fraîcheur. Re-confronté au code :
-la « parité génération⇄verdict » que ce fichier décrit (§Trajet, ligne 193) ne vaut QUE pour
-`travelTime`/`sharedTrainings` — elle n'est PAS générale : `add_venue_minimum_constraints`
-(`main.py:584`, seul appelant) n'est jamais appelée par `_apply_hard`
-(`validate_assignments.py:301`), asymétrie désormais gardée et déclarée par
-`engine/tests/test_hard_layer_parity_registry.py` (P4-132) plutôt que silencieuse. `_apply_hard`
-consomme toujours `venueTravelTimes` (`:334`) et `_travel_time_move_violation` (`:192`) résorbe
-ENG-37 côté miroir ✓. Reste du document non re-parcouru ligne à ligne cette passe (rotation
-précédente : `app/solver/constraints/` paquet §familles config, `parse_v2_constraints`,
+Last verified @ 2026-08-30 (P4-152, `documentation-update`). Re-confronté au code : la « parité
+génération⇄verdict » que ce fichier décrit vaut désormais pour `travelTime` (§Trajet) ET
+`minAtVenueId`/`minAtVenueCount` (§FACILITY) — `add_venue_minimum_constraints` est appelée par
+`_apply_hard` (`validate_assignments.py:419`) au même titre que `/generate` (`main.py:584`), et
+un déplacement qui casse le plancher est nommé par le miroir déterministe
+`_venue_minimum_move_violation` (`validate_assignments.py:270`). Le registre
+`engine/tests/test_hard_layer_parity_registry.py` tient `DECLARED_ASYMMETRIES` **VIDE** —
+aucune asymétrie connue à ce jour, mais ce n'est pas une garantie générale à toutes les familles
+futures, seulement l'état mesuré. Reste du document non re-parcouru ligne à ligne cette passe
+(rotation précédente : `app/solver/constraints/` paquet §familles config, `parse_v2_constraints`,
 `constraint_not_honored`, `maxEndTime`).
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
@@ -80,6 +80,20 @@ précédente : `app/solver/constraints/` paquet §familles config, `parse_v2_con
 | `minAtVenueId` (uuid) + `minAtVenueCount` (int, défaut 1) | **au moins N** séances dans ce gymnase (plancher, ≠ forçage) | pose `somme(vars de l'équipe dans ce gymnase) ≥ N` ; les autres séances restent libres | — **HARD-only** |
 
 - **`minAtVenueId`** (ALIGN-05) est un **plancher**, pas un forçage : contrairement à `forcedVenueId` (TOUTES les séances), il garantit `≥ N` séances ici et laisse le reste libre. **Fail-soft** : si l'équipe a moins de **jours distincts** disponibles dans ce gymnase que `N` (elle joue ≤ 1 séance/jour, donc deux créneaux le même jour ne comptent que pour une séance), l'engine **n'ajoute pas** la contrainte et émet un diagnostic `venue_minimum_unreachable` (sévérité ERROR) au lieu d'un INFEASIBLE. Le backend refuse en amont `N > séances/semaine de l'équipe` (fail-fast avant génération).
+- **Parité génération⇄verdict (P4-152)** : `/validate-assignments` pose la même contrainte HARD
+  dans `_apply_hard` (`add_venue_minimum_constraints`) — mais poser le HARD seul ne suffit **pas**
+  pour NOMMER un refus : les créneaux non-baseline du verdict restent libres, donc le solveur
+  placerait une séance fantôme ailleurs dans le gymnase pour tenir `somme ≥ N` et répondrait
+  « valide » à tort (même faille que le trajet, ENG-36). Le miroir déterministe
+  `_venue_minimum_move_violation` juge donc l'état concret AVANT le solve et refuse, motif NOMMÉ
+  `venue_minimum_infeasible` (gymnase, équipe, plancher exigé, état résultant). **Garde
+  anti-enfermement** : il ne refuse QUE si le plancher était **satisfait avant** le déplacement
+  (`current_at_venue >= minimum and final_at_venue < minimum`) — un plancher **déjà cassé** (planning
+  généré avant la pose de la contrainte, ou créneau supprimé depuis) laisse passer le déplacement,
+  sinon le gestionnaire serait enfermé sans pouvoir rien bouger. Deux gardes distincts, aucun
+  redondant : retirer la pose HARD fait rougir `test_hard_layer_parity_registry.py` (registre de
+  parité) sans faire rougir le NR (le miroir refuse encore) ; désactiver le miroir fait rougir
+  `test_validate_venue_minimum.py` sans faire rougir le registre (la pose HARD reste là).
 - **Exclusivité groupe** : `CLUB + targetTag + (forcedVenueId ou preferredVenueId HARD)` → le backend force le tag ET **interdit le gymnase hors tag** → gymnase **réservé** au groupe.
 - **Fermeture datée** (`config.type = "venue_closed"`, période cockpit) → le backend l'**étend** en `forbiddenVenueId` HARD par équipe sur la fenêtre.
 

@@ -1,13 +1,11 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-08-29 (rotation `documentation-update`, FRT-20/P4-117 — zone non touchée par
-cette PR, contrôle de fraîcheur). Re-confronté au code : `ConstraintConfigValidator` porte
-toujours `minStartTime`/`maxEndTime` en type `time`, `minAtVenueCount` en `count`, `fromTime` en
-`time` ✓ · `TeamTagResolver::resolveConstraintTeamIds` existe (`:278`) ✓ ·
-`ConstraintKeysAreHonouredByEngineTest` existe (`backend/tests/CrossStack/`) et le job
-`engine-semantics` aussi (`ci.yml:867`) ✓ · migration `Version20260807190000` présente ✓ ·
-`PlanVenueClosures::effectiveStateForPlan` existe (`:212`) ✓ · `POST /api/constraints/validate`
-posé sur `ValidateConstraintsController::__invoke` (`:64-65`) ✓)
+Last verified @ 2026-08-30 (rotation `documentation-update`, P4-152 — zone non touchée par cette
+PR, contrôle de fraîcheur). Re-confronté au code : `ConstraintConfigValidator` porte toujours
+`minStartTime`/`maxEndTime` en type `time`, `minAtVenueCount` en `count`, `fromTime` en `time` ✓ ·
+`TeamTagResolver::resolveConstraintTeamIds` existe (`:278`) ✓ · migration
+`Version20260807190000.php` présente ✓ · `ValidateConstraintsController::__invoke` existe
+(`:65`) ✓)
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.

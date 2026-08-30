@@ -40,12 +40,12 @@ compose l'agrégateur — dans une autre fonction du chemin `/generate` —, (b)
 familles connues sont attrapés par la sentinelle ; le reste est le prix d'un recensement statique,
 et c'est pour ça que l'ancre échoue fort au moindre glissement de l'agrégateur.
 
-── L'asymétrie réelle du jour ────────────────────────────────────────────────────────────────
+── État des asymétries ─────────────────────────────────────────────────────────────────────
 
-``add_venue_minimum_constraints`` est posée sur `/generate` (main.py) et JAMAIS par le verdict.
-C'est une asymétrie RÉELLE, déclarée ici avec sa raison — PAS corrigée : l'ajouter au verdict
-changerait son comportement sur l'axe structurant backend↔engine (§7.1), une décision du
-fondateur, pas un effet de bord de ce lot. Elle est tracée pour arbitrage.
+``DECLARED_ASYMMETRIES`` est VIDE : aucune famille HARD n'est aujourd'hui posée d'un seul côté.
+``add_venue_minimum_constraints`` (le plancher de gymnase) était la dernière asymétrie déclarée ;
+P4-152 l'a fermée — le verdict la pose désormais dans ``_apply_hard`` et NOMME via
+``_venue_minimum_move_violation`` le déplacement qui casse un plancher, sur le patron d'ENG-36.
 """
 
 from __future__ import annotations
@@ -86,18 +86,12 @@ KNOWN_GENERATE_FAMILIES = frozenset(
 # La raison est OBLIGATOIRE (gardée par test_every_declared_asymmetry_carries_a_reason) et doit
 # décrire une asymétrie RÉELLE (gardée par test_declared_asymmetries_are_real) — jamais une
 # exemption fantôme qui ne masque rien.
-DECLARED_ASYMMETRIES: dict[str, str] = {
-    "add_venue_minimum_constraints": (
-        "Asymétrie RÉELLE connue, NON corrigée dans ce lot (P4-132). Posée sur /generate "
-        "(main.py) et jamais par le verdict `_apply_hard`. La corriger — ajouter "
-        "add_venue_minimum_constraints au verdict — changerait le comportement du verdict sur "
-        "l'axe structurant backend↔engine (§7.1) : un déplacement manuel qui viole un minimum "
-        "de créneaux par gymnase deviendrait INVALIDE là où il est aujourd'hui jugé valide. "
-        "C'est une décision du fondateur, pas un effet de bord de ce registre. Tracée pour "
-        "arbitrage — quand elle sera corrigée, cette entrée doit disparaître (le garde "
-        "test_declared_asymmetries_are_real l'exigera)."
-    ),
-}
+#
+# P4-152 — ``add_venue_minimum_constraints`` a QUITTÉ cette carte : le verdict la pose désormais
+# dans ``_apply_hard`` (parité rétablie), et le refus d'un déplacement qui casse un plancher de
+# gymnase est NOMMÉ par le miroir déterministe ``_venue_minimum_move_violation``. L'asymétrie est
+# fermée — la laisser ici désarmerait le registre (``test_declared_asymmetries_are_real`` l'exige).
+DECLARED_ASYMMETRIES: dict[str, str] = {}
 
 
 def _module(path: pathlib.Path) -> ast.Module:

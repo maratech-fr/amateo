@@ -1,10 +1,9 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-08-30 (P4-132 — nouveau §3 `test_hard_layer_parity_registry.py`, écrit en
-confrontant directement le code : `app/main.py` a une fonction unique composant
-`add_level_1_hard_constraints` (`_solve`, `main.py:454`), qui appelle `add_venue_minimum_constraints`
-en `main.py:584` — seul appelant du dépôt ; `validate_assignments.py::_apply_hard` (`:301`) ne
-l'appelle jamais. Reste du fichier non re-vérifié cette passe. Historique des passes :
+Last verified @ 2026-08-30 (P4-152 — `test_hard_layer_parity_registry.py` §3 re-confronté au code :
+`add_venue_minimum_constraints` (`main.py:584`) est désormais appelée aussi par
+`validate_assignments.py::_apply_hard` (`:419`) — la dernière asymétrie `DECLARED_ASYMMETRIES`
+est fermée, la carte est vide. Reste du fichier non re-vérifié cette passe. Historique des passes :
 `git log -p --follow docs/testing/testing-strategy.md` — un stamp REMPLACE, il ne s'empile pas
 (DOC-33).)
 
@@ -127,10 +126,12 @@ PR #779). This guard makes a *next* asymmetry impossible to miss, rather than fi
   than this known set, it fails hard (scanner regression or real removal) rather than staying quiet.
 - **`DECLARED_ASYMMETRIES`** carries named, reasoned exceptions (own test enforces a reason is
   present, and another enforces no declared exception has gone stale — i.e. the family is now
-  actually symmetric and the entry should be removed). One real asymmetry stands today:
-  `add_venue_minimum_constraints` is posed on `/generate` (`main.py:584`) and never mirrored by
-  `_apply_hard` — deliberately **not** fixed (fixing it would change verdict behaviour on the
-  backend↔engine contract structuring axis, CLAUDE.md §7.1); tracked as `P4-152` in the roadmap.
+  actually symmetric and the entry should be removed). **Empty today**: the one real asymmetry
+  found at birth, `add_venue_minimum_constraints` (posed on `/generate`, never mirrored by
+  `_apply_hard`), was closed by P4-152 — the verdict now poses the same HARD constraint **and**
+  names a refusal via the deterministic mirror `_venue_minimum_move_violation` (same pattern as
+  `_travel_time_move_violation`/ENG-36, since the HARD layer alone lets the solver plant a phantom
+  session elsewhere in the venue to satisfy the floor and answer "valid" regardless).
 - Assumed fragility: a HARD block posed outside the anchor function, via an indirect call, or
   under a name outside the `add_*_constraints` convention would escape this static census — the
   sentinels above catch the cases that touch a *known* family; the rest is the cost of a static

@@ -15,10 +15,13 @@ class AssignmentViolationSchema(SerializableModel):
     (« le coach Dupont a deja les U15 a 20h »).
     """
 
+    # Motifs servis (liste INDICATIVE, pas une contrainte de schema : `rule` est un `str`
+    # libre, c'est voulu — un nouveau motif ne doit pas casser le contrat) :
     # coach_no_overlap | team_no_overlap | coach_player_no_overlap | venue_capacity |
     # coach_no_rest_day | one_session_per_day | time_window | day_rule |
     # coach_unavailable | forbidden_venue | forced_venue | slot_unavailable |
-    # baseline_infeasible | unknown_hard_conflict | shared_training_broken | team_link_broken
+    # baseline_infeasible | unknown_hard_conflict | shared_training_broken | team_link_broken |
+    # travel_time_infeasible (ENG-36) | venue_minimum_infeasible (P4-152)
     rule: str
     message: str
     team_id: str | None = Field(default=None, alias="teamId")

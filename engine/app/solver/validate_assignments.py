@@ -16,6 +16,7 @@ from app.solver.constraints import (
     add_level_1_hard_constraints,
     add_time_window_constraints,
     add_travel_time_penalty,
+    add_venue_minimum_constraints,
     build_travel_matrix,
     diagnose_candidate_conflicts,
     parse_v2_constraints,
@@ -266,6 +267,80 @@ def _travel_time_move_violation(
     return None
 
 
+def _venue_minimum_move_violation(
+    venue_minimums: list[dict[str, Any]],
+    baseline_slots: list[dict[str, Any]],
+    candidate: dict[str, Any],
+    reference: CandidateAssignmentSchema | None,
+    team_names: dict[str, str],
+    venue_names: dict[str, str],
+) -> dict[str, Any] | None:
+    """P4-152 — refus NOMMÉ (MIROIR DÉTERMINISTE) quand un déplacement fait passer une équipe SOUS
+    son plancher « au moins N séances au gymnase V » (patron ``_travel_time_move_violation``).
+
+    Le HARD posé dans ``_apply_hard`` ne peut PAS refuser ce déplacement à lui seul : les autres
+    créneaux du modèle restent libres, le solveur place une séance fantôme ailleurs à V pour tenir
+    ``sum >= N`` et conclut « valide » à tort (même faille que la mutualisation). On juge donc
+    l'ÉTAT CONCRET, de façon déterministe.
+
+    ⚠ LE PLANNING DÉJÀ EN INFRACTION : on ne refuse QUE si le plancher était SATISFAIT AVANT le
+    déplacement et cesse de l'être APRÈS. L'état « avant » = baseline gelée (elle EXCLUT déjà la
+    source, cf. MoveSlotService) + la source ré-ajoutée (``reference``). Si le plancher était DÉJÀ
+    cassé (``current < N``), le déplacement n'en est pas la cause : on laisse passer — sans quoi le
+    gestionnaire serait ENFERMÉ, incapable de corriger un planning généré avant la contrainte ou
+    amputé d'un créneau (condition d'arrêt fondateur : jamais un blocage total).
+
+    Message français nommant le gymnase, l'équipe, le plancher exigé et l'état résultant ; aucun
+    identifiant interne. ``None`` si rien à dire."""
+    if not venue_minimums:
+        return None
+
+    c_team = str(candidate["team_id"])
+    c_venue = str(candidate["venue_id"])
+    ref_team = str(reference.team_id) if reference is not None else None
+    ref_venue = str(reference.venue_id) if reference is not None else None
+
+    # Nombre de séances de chaque (équipe, gymnase) dans la baseline GELÉE — elle exclut déjà la
+    # source du déplacement (MoveSlotService.baselineWithoutSiblings). Les séances HARD-verrouillées
+    # sont comptées : elles créditent le plancher (parité ``add_venue_minimum_constraints``).
+    base_count: dict[tuple[str, str], int] = {}
+    for slot in baseline_slots:
+        key = (str(slot["team_id"]), str(slot["venue_id"]))
+        base_count[key] = base_count.get(key, 0) + 1
+
+    def _team_name(team_id: str) -> str:
+        return team_names.get(team_id) or team_id
+
+    def _venue_name(venue_id: str) -> str:
+        return venue_names.get(venue_id) or venue_id
+
+    for rule in venue_minimums:
+        team_id = str(rule.get("scope_target_id"))
+        venue_id = str(rule.get("venue_id"))
+        minimum = int(rule.get("min") or 1)
+        if team_id != c_team:
+            continue  # un déplacement ne touche que les comptes de l'équipe déplacée.
+
+        base_at_venue = base_count.get((team_id, venue_id), 0)
+        # « avant » = baseline + source ré-ajoutée ; « après » = baseline + candidat.
+        current_at_venue = base_at_venue + (1 if ref_team == team_id and ref_venue == venue_id else 0)
+        final_at_venue = base_at_venue + (1 if c_venue == venue_id else 0)
+        if current_at_venue >= minimum and final_at_venue < minimum:
+            return {
+                "rule": "venue_minimum_infeasible",
+                "message": (
+                    f"Ce déplacement ferait passer {_team_name(team_id)} sous son minimum de séances "
+                    f"à {_venue_name(venue_id)} : {minimum} séance(s) y sont exigée(s), or ce placement "
+                    f"n'en laisserait plus que {final_at_venue}."
+                ),
+                "team_id": team_id,
+                "venue_id": venue_id,
+                "day_of_week": int(candidate["day"]),
+                "start_time": str(candidate["start_time"]),
+            }
+    return None
+
+
 def _build_assignments(
     model: ScheduleCpModel,
     team_coach_map: dict[str, list[str]],
@@ -334,6 +409,14 @@ def _apply_hard(
         venue_travel_times=data.get("venueTravelTimes", []),
     )
     add_time_window_constraints(model, model.x, parsed["time_windows"])
+    # P4-152 — le PLANCHER de gymnase (« au moins N séances au gymnase V ») est POSÉ ici comme sur
+    # ``/generate`` (main.py) : parité de la couche HARD, gardée par le registre
+    # ``test_hard_layer_parity_registry``. Il ne peut PAS, à lui seul, NOMMER un déplacement fautif
+    # — les autres créneaux restent libres et le solveur place une séance fantôme pour tenir le
+    # plancher (verdict « valide » à tort). C'est le miroir déterministe
+    # ``_venue_minimum_move_violation`` (avant le solve) qui juge l'état concret et NOMME le refus,
+    # exactement comme le trajet (ENG-36).
+    add_venue_minimum_constraints(model, model.x, parsed.get("venue_minimums", []))
     return stats
 
 
@@ -672,6 +755,23 @@ def validate_assignment(
     )
     if travel_violation is not None:
         return {"valid": False, "violations": [travel_violation], "compromises": [], "metrics": metrics}
+
+    # P4-152 — miroir déterministe du PLANCHER de gymnase : un déplacement qui fait passer une
+    # équipe sous « au moins N séances au gymnase V » est refusé, NOMMÉ (motif
+    # `venue_minimum_infeasible`). Le HARD posé dans `_apply_hard` ne saurait pas l'attribuer (le
+    # solveur tiendrait le plancher avec une séance fantôme ailleurs). ⚠ On ne refuse QUE si le
+    # plancher était satisfait AVANT le déplacement : un planning déjà en infraction laisse le
+    # gestionnaire continuer à bouger (jamais un blocage total).
+    venue_minimum_violation = _venue_minimum_move_violation(
+        parsed.get("venue_minimums", []),
+        baseline_slots,
+        {"team_id": c_team, "venue_id": c_venue, "day": c_day, "start_time": c_start_text},
+        input_data.reference,
+        team_names,
+        venue_names,
+    )
+    if venue_minimum_violation is not None:
+        return {"valid": False, "violations": [venue_minimum_violation], "compromises": [], "metrics": metrics}
 
     assignments = _build_assignments(model, team_coach_map, frozen_keys)
     # Le candidat est epingle SEPAREMENT du gel de baseline (model.Add, pas
