@@ -98,6 +98,13 @@ describe("CoachWishesModal", () => {
     expect(screen.getByText("SM1", { exact: false })).toBeInTheDocument();
   });
 
+  // P4-150 — la copie d'écran de l'état vide (semaine sans aucune doléance) est assertée.
+  it("annonce « Aucune doléance pour cette semaine. » quand la semaine filtrée est vide", () => {
+    wishesState.data = [];
+    render(<CoachWishesModal mother={mother} weekFilter="2026-02-16" onClose={() => {}} />);
+    expect(screen.getByText("Aucune doléance pour cette semaine.")).toBeInTheDocument();
+  });
+
   it("ne montre qu'une semaine quand weekFilter est posé (vue wizard d'un plan de semaine)", () => {
     wishesState.data = [wish({ id: "w1", weekStart: "2026-02-16" }), wish({ id: "w2", teamId: "t2", weekStart: "2026-02-23" })];
     render(<CoachWishesModal mother={mother} weekFilter="2026-02-23" onClose={() => {}} />);

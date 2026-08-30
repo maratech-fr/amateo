@@ -556,6 +556,25 @@ describe("CampaignDialog", () => {
     expect(sendMut.mock.calls[0][0]).toEqual({ id: "camp1" });
   });
 
+  // P4-150 — une campagne rouverte s'ouvre sur l'onglet Coachs ; sans aucun coach au
+  // périmètre, la copie d'écran de l'état vide est assertée.
+  it("annonce « Aucun coach sur le périmètre choisi. » quand la campagne ne porte aucun coach", () => {
+    const existing: CoachWishCampaign = {
+      id: "camp1",
+      calendarEntryId: "e1",
+      deadline: "2027-06-30",
+      weeks: ["2026-02-16"],
+      teamIds: ["t1"],
+      totalCoachCount: 0,
+      respondedCoachCount: 0,
+      openWishCount: 0,
+      lastReminderAt: null,
+      coaches: [],
+    };
+    render(<CampaignDialog entry={entry} season={season} existing={existing} onClose={vi.fn()} />);
+    expect(screen.getByText("Aucun coach sur le périmètre choisi.")).toBeInTheDocument();
+  });
+
   it("filtre la liste des coachs par équipe et par statut (D1-D5)", async () => {
     const existing: CoachWishCampaign = {
       id: "camp1",
@@ -588,6 +607,11 @@ describe("CampaignDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "Pas d'email" }));
     expect(screen.getByText("Mara U13")).toBeInTheDocument();
     expect(screen.queryByText("Maxime SM1")).not.toBeInTheDocument();
+
+    // P4-150 — équipe SM1 (Maxime, qui A un email) + statut « Pas d'email » → aucun coach
+    // visible : la copie d'écran de l'état vide filtré est assertée.
+    await userEvent.click(screen.getByRole("button", { name: "SM1", pressed: false }));
+    expect(screen.getByText("Aucun coach pour ce filtre.")).toBeInTheDocument();
   });
 
   it("classe un répondant SANS email en « Répondu », pas « Pas d'email » (WhatsApp)", async () => {

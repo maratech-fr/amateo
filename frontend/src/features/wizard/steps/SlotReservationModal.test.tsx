@@ -123,6 +123,13 @@ describe("SlotReservationModal — mutualisation (P2-46 PR-3)", () => {
     expect(groupMut).not.toHaveBeenCalled();
   });
 
+  // P4-150 — sur un créneau libre où aucune équipe ni aucun groupe n'est proposable,
+  // la copie d'écran de l'état vide est assertée (elle ne s'affiche QUE dans ce cas).
+  it("annonce « Aucune équipe disponible » quand rien n'est proposable sur un créneau libre", () => {
+    renderModal({ teams: [], sharedTrainingGroups: [] });
+    expect(screen.getByText("Aucune équipe disponible (toutes ont atteint leur nombre de séances ou sont déjà sur ce créneau).")).toBeInTheDocument();
+  });
+
   it("un groupe ayant atteint ses K séances communes n'est PAS offert, avec sa raison", () => {
     // Une case complète {a,b} ailleurs dans la portée → K(1) atteint.
     renderModal({ reservations: [resa("a", "v1", 3, "20:00"), resa("b", "v1", 3, "20:00")] });

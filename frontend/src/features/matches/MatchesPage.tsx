@@ -5,8 +5,10 @@ import { FeedbackButton } from "@/features/feedback/FeedbackButton";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
+import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { StepRail } from "@/shared/components/ui/step-rail";
+import { readFailed, readLoading } from "@/shared/lib/readState";
 
 import type { Category, Coach, Competition, Fixture, Team, Venue } from "./api";
 import { AwayList } from "./AwayList";
@@ -219,10 +221,35 @@ export function MatchesPage() {
     setSelectedFixtureId(fixtureId);
   }
 
-  if (fixtures.isLoading || teams.isLoading || venues.isLoading) {
+  // Les trois lectures FONDATRICES de l'écran : sans elles, tout le reste dérive
+  // d'un `data ?? []` — et `fixtures` en panne fabrique le faux « Aucun match
+  // importé ». Doctrine `readState` : `readLoading` (premier chargement, rien en
+  // cache) → spinner de page ; JAMAIS en dériver un vide.
+  if (readLoading(fixtures) || readLoading(teams) || readLoading(venues)) {
     // Chargement de PAGE = `FullPageSpinner`, comme cockpit/planning/profil/club
     // (cohérence UX — jamais un spinner nu par-dessus une demi-page).
     return <FullPageSpinner />;
+  }
+
+  // CHARGER ≠ ÉCHOUER (doctrine `readState`, cf. RadarPanel) : `readFailed` =
+  // lecture ratée ET rien en cache — le seul cas où l'écran doit céder la place à
+  // un message d'erreur. Un refetch d'arrière-plan raté (donnée en cache intacte)
+  // n'est PAS `readFailed` : on garde l'écran qui fonctionne. Sans cette garde,
+  // une panne de lecture des rencontres/équipes/gymnases tombait dans l'EmptyState
+  // « Aucun match importé » — le gestionnaire ré-importait par-dessus des données
+  // qui existent.
+  if (readFailed(fixtures) || readFailed(teams) || readFailed(venues)) {
+    return (
+      <div className="flex flex-col gap-4">
+        <LoadErrorHint
+          onRetry={() => {
+            void fixtures.refetch();
+            void teams.refetch();
+            void venues.refetch();
+          }}
+        />
+      </div>
+    );
   }
 
   // ── Shared blocks reused across the step views ─────────────────────────────

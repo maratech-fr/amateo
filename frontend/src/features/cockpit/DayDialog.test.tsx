@@ -401,7 +401,8 @@ describe("DayDialog — holiday awareness (Lot B)", () => {
   // bouton mort inexpliqué (revue #260 round 2).
   it("explains instead of a dead button when the holiday is fully outside the season", () => {
     renderDialog([], { holiday: schoolHoliday({ id: "sh-out", label: "Vacances lointaines", startDate: "2027-10-01", endDate: "2027-10-15" }) });
-    expect(screen.getByText(/Hors de la saison en cours/)).toBeInTheDocument();
+    // P4-150 — copie d'écran EXACTE (le « rien à adapter » est protégé, pas seulement l'entête).
+    expect(screen.getByText("Hors de la saison en cours — rien à adapter.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Adapter" })).not.toBeInTheDocument();
   });
 

@@ -330,4 +330,28 @@ describe("MatchesPage — la boucle guidée (RMM-1 PR3)", () => {
     renderWithProviders(<MatchesPage />);
     expect(await screen.findByText(/Dernier dépôt FBI/i)).toBeInTheDocument();
   });
+
+  // ── P4-133 — un échec de chargement ne se déguise PAS en « Aucun match importé » ──
+  it("P4-133 — une lecture des rencontres en échec DIT l'échec, jamais « Aucun match importé »", async () => {
+    // getFixtures échoue sans rien en cache → `readFailed(fixtures)` : l'écran doit
+    // céder la place à un message d'erreur avec retry, PAS au faux vide « Aucun
+    // match importé » (au-dessus duquel le gestionnaire ré-importerait).
+    vi.mocked(matchesApi.getFixtures).mockRejectedValueOnce(new Error("réseau"));
+    renderWithProviders(<MatchesPage />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Le chargement a échoué.");
+    expect(within(alert).getByRole("button", { name: "Réessayer" })).toBeInTheDocument();
+    // Le faux vide ne s'affiche PAS quand la lecture a échoué.
+    expect(screen.queryByText("Aucun match importé")).not.toBeInTheDocument();
+  });
+
+  it("P4-133 — un échec de lecture des gymnases cède aussi la place au message d'échec", async () => {
+    // Les gymnases sont une lecture FONDATRICE de l'écran (grille de placement) :
+    // sa panne sans cache doit dire l'échec, pas rendre une page trompeuse.
+    vi.mocked(matchesApi.getVenues).mockRejectedValueOnce(new Error("réseau"));
+    renderWithProviders(<MatchesPage />);
+
+    expect(await screen.findByText("Le chargement a échoué.")).toBeInTheDocument();
+  });
 });
