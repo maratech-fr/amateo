@@ -1,11 +1,14 @@
 # FORWARD Components Spec — Pages & Shared Components (hors wizard)
 
-Last verified @ 2026-08-30 (rotation `documentation-update`) — la convention snake_case
-des paths API Platform tient toujours : `priority_tiers`, `schedule_diagnostics`,
-`schedule_slot_templates`, `sport_categories`, `team_coaches`, `venue_training_slots`, tous
-re-confirmés dans `specs/courantes/openapi-snapshot.json`, ainsi que
-`/api/venue_travel_rule_settings/{ruleKey}`. Tout juste. Le bloc « Historique »
-(sections 2-9) reste superseded, non re-vérifié — il ne prétend à aucune autorité)
+Last verified @ 2026-08-30 (`documentation-update`, UXC-10 — ligne `EmptyState`/`EmptyBlock`/
+`EmptyHint` complétée de la règle de choix entre les trois étages, après ralliement de 21 sites
+inline sur `EmptyHint` hors `features/admin/`. Re-confirmé au passage : `empty-hint.tsx` porte
+toujours exactement ces trois exports, aucune quatrième variante. Plus tôt dans la même journée
+(rotation `documentation-update`) : la convention snake_case des paths API Platform tenait —
+`priority_tiers`, `schedule_diagnostics`, `schedule_slot_templates`, `sport_categories`,
+`team_coaches`, `venue_training_slots`, `/api/venue_travel_rule_settings/{ruleKey}`, tous
+re-confirmés dans `specs/courantes/openapi-snapshot.json`. Le bloc « Historique » (sections 2-9)
+reste superseded, non re-vérifié — il ne prétend à aucune autorité)
 
 > 🛑 **Ce document est SUPERSEDED. Il ne décrit pas le frontend livré.**
 >
@@ -541,7 +544,7 @@ de la présentation + accessibilité.
 | `Spinner` | Spinner de chargement accessible | `size`, `label` | GenerateButton, ExportPdfButton, tous loaders |
 | `Skeleton` | Skeleton loader pour chargement initial | `lines`, `width`, `height` | ScheduleViewPage, DiagnosticsPage, TierListPage |
 | `ErrorBoundary` | Error boundary React avec message + "Réessayer" | `children`, `onRetry` | Toutes les pages (wrap de contenu) |
-| `EmptyState` / `EmptyBlock` / `EmptyHint` | Les TROIS étages du vide, une seule maison (`empty-hint.tsx`, UXC-17) : la Card « vue entière vide » (pointillés, icône + titre + description) · le bloc pointillé de grille/panneau · le paragraphe discret en ligne | `EmptyState` : `icon` (défaut `CalendarX2`), `title`, `description` — pas de prop `action` (l'ancienne ligne en promettait une qui n'a jamais existé) ; les deux autres : `children`, `className` | PlanningPage (State) · grilles horaires (Block) · ~15 écrans (Hint) |
+| `EmptyState` / `EmptyBlock` / `EmptyHint` | Les TROIS étages du vide, une seule maison (`empty-hint.tsx`, UXC-17). **Règle de choix** (UXC-10, tranchée en ralliant les sites inline) : une **vue entière** sans rien à montrer → `EmptyState` (Card pointillée) ; une **grille/panneau** vide dans un écran par ailleurs peuplé → `EmptyBlock` (bloc pointillé) ; une **liste/résultat de filtre** vide, en ligne dans le flux → `EmptyHint` (paragraphe discret) | `EmptyState` : `icon` (défaut `CalendarX2`), `title`, `description` — pas de prop `action` (l'ancienne ligne en promettait une qui n'a jamais existé) ; les deux autres : `children`, `className` | PlanningPage (State) · grilles horaires (Block) · la plupart des listes/filtres vides (Hint) — exceptions structurelles (balisage `<li>`/`<ul>`, valeur italique porteuse de sens, espacement centré délibéré) : décision fermée `specs/courantes/etat-des-lieux.md` §2 |
 | `Menu` / `MenuItem` | Dropdown accessible (burger, motif APG menu-button) — focus au 1er item à l'ouverture, flèches ↑/↓ (roving), Esc/Tab ferment + rendent le focus au déclencheur, clic-dehors, `z-50` au-dessus du plein écran wizard, sans dépendance | `label`, `trigger`, `children` / `onSelect` \| `to` (NavLink, état actif), `icon` | AppLayout (menu compte : Club · Profil · Thème · Logout) |
 | `AccordionSection` | Section dépliable (`aria-expanded`/`aria-controls`, chevron) | `title`, `defaultOpen`, `children` | ClubPage (sections Demandes / Visuel) |
 | `Modal` | Modal accessible (focus trap, Escape, backdrop), **hauteur bornée + contenu défilant**, **largeur par palier nommé**, **pied d'actions ÉPINGLÉ hors défilement** (P4-127 d — la règle de partage : le pied reçoit les actions et le microcopy qui les qualifie, les conséquences restent dans le corps) | `label`, `title`, `onClose`, `children`, `footer`, `size` (`sm`\|`md`\|`lg`\|`xl`, défaut `md`) | cockpit, wizard, matchs, planning, admin |
