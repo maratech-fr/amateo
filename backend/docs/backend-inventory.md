@@ -3,12 +3,15 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-08-29 (rotation `documentation-update`, zone non touchée par la PR du jour —
-contrôle de fraîcheur. Re-confronté au code : le rôle applicatif runtime reste `amateo_app`
-(`docs/security/rls.md:8,41-42` — connexion runtime `amateo_app`, NOSUPERUSER, distincte
-d'`amateo_owner`), aucun commit postérieur au 2026-08-28 ne le renomme ni ne rétablit `app_user`.
-Reste antérieur (le reste de l'inventaire, hors ce fait) non re-vérifié cette passe — un stamp
-REMPLACE, l'historique vit dans git : `git log -p --follow backend/docs/backend-inventory.md`)
+Last verified @ 2026-08-30 (P4-138, `documentation-update` — nouvelle section 3 « OpenAPI des
+routes custom » : `CustomRoutesOpenApiFactory` mesuré à 86 lignes (`wc -l`, était 2981), 16
+`CustomPathContributor` confirmés dans `backend/src/OpenApi/PathContributor/` et composés dans
+cet ordre exact par la factory ; `OpenApiSchemas::jsonBody/jsonResponse` confirmés injectés
+partout, les 3 helpers `coachWishSchema`/`paginationSchema`/`healthProbeSchema` confirmés à
+un seul consommateur chacun (`grep`) ; `AccountSessionPaths` (363 l.) et `UncoveredCustomPaths`
+(444 l.) confirmés > 300 lignes, décision de les laisser tels quels tracée dans
+`etat-des-lieux.md` §2. Reste antérieur (le reste de l'inventaire) non re-vérifié cette passe —
+un stamp REMPLACE, l'historique vit dans git : `git log -p --follow backend/docs/backend-inventory.md`)
 
 ---
 
@@ -54,7 +57,7 @@ backend/
 │   ├── Clock/                # DevClockStore (Redis) + SimulatedClock — horloge dev globale, distincte de Club::$demoToday (§3 Module démo)
 │   ├── Seed/                 # BcclSeeder + BcclSeedProfile (club de démo permanent)
 │   ├── Export/                # ScheduleExportData(Provider) — table plate consommée par l'export Excel/PDF
-│   ├── OpenApi/               # CustomRoutesOpenApiFactory (documente les routes Symfony hors API Platform)
+│   ├── OpenApi/               # CustomRoutesOpenApiFactory (composeur) + PathContributor/ (un par domaine, §3)
 │   └── DataFixtures/         # Jeux de données de test
 ├── config/
 │   ├── packages/security.yaml
@@ -145,6 +148,36 @@ réponses collections suivent le format JSON-LD (`hydra:member`, `hydra:totalIte
 Les contrôleurs personnalisés vivent dans `backend/src/Controller/`. Certains sont déclarés
 comme opérations custom API Platform (sur la ressource), d'autres comme routes Symfony
 classiques avec `#[Route]`.
+
+### OpenAPI des routes custom (`src/OpenApi/`, P4-138)
+
+Une route `#[Route]` classique (pas une opération API Platform) est **invisible** de `/api/docs`
+et du snapshot tant qu'elle n'est pas déclarée manuellement — `EveryCustomRouteIsDocumentedTest`
+confronte le contrat au ROUTEUR dans les deux sens et rougit sur tout écart. Depuis P4-138
+(2026-08-30), cette déclaration est éclatée **par domaine** :
+
+- `CustomRoutesOpenApiFactory` (86 lignes) n'est plus qu'un **composeur** : il instancie
+  `OpenApiSchemas` puis appelle `contribute(Paths $paths)` sur 16 `CustomPathContributor`, dans
+  un ORDRE fixe et significatif (`Paths::addPath()` est un append, `openapi-snapshot.json` fige
+  l'ordre exact des chemins).
+- Chaque domaine cohérent a sa classe dans `backend/src/OpenApi/PathContributor/`
+  (implémente `CustomPathContributor::contribute()`) : session/compte, admin (auth,
+  supervision, jobs, support, journal, modération), FFBB (proxy, engagement), vacances/fériés,
+  édition manuelle, trajet adverse, pages publiques à token, notes de version/feedback,
+  saison/matchs, et un fourre-tout `UncoveredCustomPaths` pour ce qui n'a pas encore de domaine
+  nommé.
+- `OpenApiSchemas` est le **foyer unique** de `jsonBody()`/`jsonResponse()`, injecté dans chaque
+  contributeur — aucun helper dupliqué. Trois helpers ne servent qu'**un seul** domaine
+  (`coachWishSchema` dans `PublicTokenPaths`, `paginationSchema` dans `AdminJournalPaths`,
+  `healthProbeSchema` dans `AdminMonitoringPaths`) : restés privés là, pas de foyer partagé pour
+  un seul consommateur.
+- **Deux contributeurs dépassent 300 lignes** (`AccountSessionPaths` 363, `UncoveredCustomPaths`
+  444) et **le restent délibérément** : leurs routes s'entrelacent dans l'ordre exact du contrat,
+  les découper davantage réordonnerait des chemins et casserait le snapshot. Décision fermée :
+  [`etat-des-lieux.md`](../../specs/courantes/etat-des-lieux.md) §2.
+- **Instruction opérationnelle** : une nouvelle route `#[Route]` custom s'ajoute à son
+  `CustomPathContributor` de domaine (ou à `UncoveredCustomPaths` si aucun domaine n'existe
+  encore) — **plus jamais à `CustomRoutesOpenApiFactory`**, qui ne fait que composer.
 
 ### Authentification (`AuthController.php`)
 

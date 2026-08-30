@@ -1,17 +1,18 @@
-Last verified @ 2026-08-29 (date recalée — le contenu ci-dessous a été écrit le 2026-08-28, le
-commit qui le porte (#779) a atterri le lendemain, décalage d'horloge de session sans rapport avec
-le contenu. Re-confronté avant de redater : **189 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`)
+Last verified @ 2026-08-30 (P4-138, `documentation-update` — la factory OpenAPI des routes custom
+est devenue un composeur de 16 `CustomPathContributor` par domaine ; **+0 path, snapshot NON
+régénéré** — déplacement pur confirmé par l'absence de ce fichier dans le diff de la PR. Corrigé
+au passage : la citation `CustomRoutesOpenApiFactory.php:841` de l'entrée BCK-22 ci-dessous est
+devenue stale par ce déplacement, remplacée par son nouvel emplacement
+`PathContributor/OpponentTravelPaths.php:56`. **189 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`)
 ✓ · SHA-256 `ee365910ca75f482a6078373d59749e07bb688804cea05b51d6032a3e4bedd08` (`sha256sum`
-conforme) ✓. **Reste du texte inchangé depuis le 2026-08-28** : BCK-22 — l'autofill de trajet gagne
-une 3ᵉ raison servie : **+0 path**, l'ENUM inline `reason` de `POST /api/venue-travel-times/autofill`
-(`CustomRoutesOpenApiFactory.php:841`) gagne `budget_exceeded` — le seul consommateur qui déclarait
-cette valeur close était sous-spécifié depuis que `IgnRoutingClient::travelMinutesBatch` la sert,
-aucun test cross-stack ne la couvrait (pas un schéma nommé). Journal borné à 8 entrées depuis
-l'audit DOC-34 ; l'historique complet vit dans git, les livraisons dans `etat-des-lieux.md`.)
+conforme) ✓ — inchangé, confirmant l'absence de régénération. Reste du journal non re-confronté
+au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
 - **BCK-22 — le budget global de l'autofill de trajet (2026-08-28)** : **+0 path** — pas de route ni
-  de DTO nouveau, un **ENUM inline** existant se complète : `POST /api/venue-travel-times/autofill`
+  de DTO nouveau, un **ENUM inline** existant se complète (déclaré dans
+  `PathContributor/OpponentTravelPaths.php:56` depuis P4-138, 2026-08-30 ; ex-`CustomRoutesOpenApiFactory.php:841`
+  avant l'éclatement par domaine) : `POST /api/venue-travel-times/autofill`
   peut désormais rendre `unresolved[].reason = "budget_exceeded"` (lot interrompu par
   `IgnRoutingClient::BATCH_BUDGET_SECONDS`, distinct de `missing_geo`/`routing_failed` — « relancez
   pour continuer », pas un échec). 189 → **189 paths**. Backend + frontend (`reasonLabel` devient une
@@ -95,6 +96,9 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.14, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
-dans l'export que si elle est déclarée dans `CustomRoutesOpenApiFactory`. Le journal
-ci-dessus est BORNÉ à 8 entrées (audit DOC-34, 2026-08-27) : chaque ajout retire la plus
-ancienne — l'historique vit dans git, jamais ici.
+dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine
+(`backend/src/OpenApi/PathContributor/`), composé par `CustomRoutesOpenApiFactory` — depuis
+P4-138 (2026-08-30), **ajouter une entrée directement à la factory ne fait plus rien** : elle
+ne fait que composer les contributeurs dans un ordre significatif (`backend/docs/backend-inventory.md`
+§OpenAPI). Le journal ci-dessus est BORNÉ à 8 entrées (audit DOC-34, 2026-08-27) : chaque ajout
+retire la plus ancienne — l'historique vit dans git, jamais ici.

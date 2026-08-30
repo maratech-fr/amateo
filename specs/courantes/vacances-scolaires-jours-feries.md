@@ -1,6 +1,6 @@
 # Vacances scolaires & jours fériés — référentiels calendaires
 
-Last verified @ 2026-08-29 (rotation de fraîcheur, hors sujet de la PR — re-vérifié contre le code : `AdminJobCatalog` déclare toujours `import-school-holidays`/`import-public-holidays` en `quarterly(4)`/`quarterly(4, 30)`, `manualTriggerAllowed: true` (`backend/src/AdminJob/AdminJobCatalog.php:63-64`) ✓ ; `SchoolZoneResolver::ZONES` porte toujours exactement les 13 codes listés (`A`/`B`/`C`/`CORSE` + 9 DOM/TOM) ✓ ; les deux routes custom `GET /api/school-holidays` et `GET /api/public-holidays` existent bien dans `CustomRoutesOpenApiFactory` ✓. `SchoolHolidayPeriod`/`Club.schoolZone`/« display-only » non re-contrôlés cette passe. Rien de faux ce passage) — *(historique des passes : `git log -p --follow specs/courantes/vacances-scolaires-jours-feries.md`)*
+Last verified @ 2026-08-30 (P4-138, `documentation-update` — la mention « documentées via `CustomRoutesOpenApiFactory` » était devenue imprécise : la factory compose désormais 16 `CustomPathContributor` par domaine, les deux routes vivent dans `HolidayPaths::contribute()` — corrigé ci-dessous. Re-confronté au code : `AdminJobCatalog` déclare toujours `import-school-holidays`/`import-public-holidays` en `quarterly(4)`/`quarterly(4, 30)`, `manualTriggerAllowed: true` (`backend/src/AdminJob/AdminJobCatalog.php:63-64`) ✓ ; `SchoolZoneResolver::ZONES` porte toujours exactement les 13 codes listés (`A`/`B`/`C`/`CORSE` + 9 DOM/TOM) ✓. `SchoolHolidayPeriod`/`Club.schoolZone`/« display-only » non re-contrôlés cette passe) — *(historique des passes : `git log -p --follow specs/courantes/vacances-scolaires-jours-feries.md`)*
 
 Feed d'affichage du cockpit (accueil temporel) : vacances scolaires de la zone du club + jours fériés applicables. **Display-only — jamais consommé par le solveur** : si un férié ou une vacance gêne un entraînement, le gestionnaire pose une période (`CalendarEntry` `closure`/`holiday`), il n'y a aucune règle implicite.
 
@@ -41,7 +41,9 @@ et la route refuse tout job qui ne le porte pas).
 
 ## Lecture (API)
 
-Deux routes custom `GET`, documentées dans l'OpenAPI via `CustomRoutesOpenApiFactory` :
+Deux routes custom `GET`, documentées dans l'OpenAPI via le contributeur `HolidayPaths`
+(`backend/src/OpenApi/PathContributor/HolidayPaths.php`, composé par `CustomRoutesOpenApiFactory`
+depuis P4-138) :
 
 | Route | Comportement |
 |-------|--------------|

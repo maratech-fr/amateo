@@ -1,19 +1,11 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-08-30 (`documentation-update`, P4-149 — paragraphe palette console corrigé :
-une primitive qui consomme les jetons de thème par défaut (`EmptyHint`/`EmptyBlock`) demande sa
-peau `console` via la prop `variant` (`SurfaceSkin`, `shared/lib/surfaceSkin.ts`) — la majorité des
-empty states admin l'ont fait, 4 sites restent en arbitrage visuel (`roadmap.md` P4-149), confirmé
-au code (`empty-hint.tsx`, `AdminDashboardPage.tsx`, `CapacitySection.tsx`). Plus tôt le même jour
-(P4-151) : `AdminShell.tsx`/`AdminAuthLayout.tsx` câblent `bg-console-surface`/
-`text-console-text-strong` + jetons `--console-*` (plus aucune classe `slate`/`cyan`/`amber`
-brute) — la surface reste fixe/non-adaptative, seule la MÉTHODE a changé (jeton nommé au lieu de
-littéral répété). Re-confronté au code avant de redater : le firewall `admin` couvre `^/api/admin`
-avec `super_admin_provider` et n'est **pas** `stateless`, contrairement au firewall `api`
-(`backend/config/packages/security.yaml:33-48`) ✓ · l'entité `SuperAdmin` existe
-(`backend/src/Entity/SuperAdmin.php`) ✓ · `TenantFilterListener` retourne immédiatement sur
-`/api/admin` (`TenantFilterListener.php:81`) ✓ · les **deux** routes `PUBLIC_ACCESS` du périmètre
-admin tiennent (`security.yaml:45-46`) ✓)
+Last verified @ 2026-08-30 (`documentation-update`, P4-138 — la mention `CustomRoutesOpenApiFactory::adminJournalPaths()`
+était devenue fausse : la factory est devenue un composeur de 16 `CustomPathContributor` par
+domaine, la déclaration des 3 routes journal/audit vit désormais dans `AdminJournalPaths::contribute()`
+(`backend/src/OpenApi/PathContributor/AdminJournalPaths.php`) — corrigé ci-dessous. Reste du fichier
+non re-confronté au code cette passe hormis ce point ; l'historique des vérifications précédentes
+vit dans `git log -p --follow specs/courantes/superadmin-auth.md`)
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle
 > d'historisation SA3-A, la supervision SA3-B, la planification fiable SA3-C et
@@ -360,7 +352,9 @@ atteindre PostgreSQL. `GET /api/admin/health` a par ailleurs été étendu de fa
 **append-only** par `containers[]` et `externalDependencies[]`.
 
 Ces trois routes sont des **contrôleurs purs**, donc invisibles de l'export tant qu'une
-entrée ne les déclare pas — elles le sont depuis le 2026-08-11 (P4-47, soldée) dans
-`CustomRoutesOpenApiFactory::adminJournalPaths()`, avec toute la surface `/api/admin/**`.
+entrée ne les déclare pas — elles le sont depuis le 2026-08-11 (P4-47, soldée), avec toute
+la surface `/api/admin/**`, dans `AdminJournalPaths::contribute()` (un des 16 contributeurs
+par domaine que `CustomRoutesOpenApiFactory` compose depuis P4-138, 2026-08-30 —
+`backend/docs/backend-inventory.md` §OpenAPI).
 ⚠ Le contrat de `/api/admin/messenger/failed` porte explicitement que le **body d'un message
 n'est jamais rendu** (PII) : seuls la classe, l'horodatage et le message d'erreur sortent.
