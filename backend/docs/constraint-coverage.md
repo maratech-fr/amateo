@@ -1,7 +1,7 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-08-29 (rotation `documentation-update`, FRT-20/P4-117 — zone non touchée par
-cette PR, contrôle de fraîcheur, tout juste). Re-confronté au code : `maxEndTime` toujours HARD
+Last verified @ 2026-08-30 (rotation `documentation-update` — zone non touchée par cette PR,
+contrôle de fraîcheur, tout juste). Re-confronté au code : `maxEndTime` toujours HARD
 (`ConstraintConfigValidator`, type `time`) ✓ · `maxConsecutiveDays` toujours posé dur
 (`engine/app/solver/constraints/wellness.py::add_max_consecutive_days_constraints`, `:494`) ✓ ·
 `forcedDays` toujours posé (`engine/app/solver/constraints/targeting.py:213`,

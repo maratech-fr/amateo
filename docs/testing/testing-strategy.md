@@ -1,11 +1,14 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-08-30 (P4-152 — `test_hard_layer_parity_registry.py` §3 re-confronté au code :
-`add_venue_minimum_constraints` (`main.py:584`) est désormais appelée aussi par
-`validate_assignments.py::_apply_hard` (`:419`) — la dernière asymétrie `DECLARED_ASYMMETRIES`
-est fermée, la carte est vide. Reste du fichier non re-vérifié cette passe. Historique des passes :
-`git log -p --follow docs/testing/testing-strategy.md` — un stamp REMPLACE, il ne s'empile pas
-(DOC-33).)
+Last verified @ 2026-08-30 (registre d'arguments — `test_hard_layer_parity_registry.py` §3
+re-confronté au code : le registre compare désormais aussi, argument par argument, l'expression
+source passée à `add_level_1_hard_constraints` (`ast.unparse`) — pas seulement les familles
+appelées ; seule divergence déclarée `min_sessions_by_team` (`adjusted_min_by_team or None` côté
+`/generate` vs `min_by_team or None` côté verdict, `main.py:574`/`validate_assignments.py`) ;
+transparence d'alias plain-`Assign` étroite vérifiée sur `resolved_implicit_rules` (`main.py:479`,
+consommée 7 fois : `:480,575,669,677,709,717`) — aucun code de production touché. Reste du fichier
+non re-vérifié cette passe. Historique des passes : `git log -p --follow
+docs/testing/testing-strategy.md` — un stamp REMPLACE, il ne s'empile pas (DOC-33).)
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique) and [`../project-map.md`](../project-map.md).
 
@@ -136,6 +139,29 @@ PR #779). This guard makes a *next* asymmetry impossible to miss, rather than fi
   under a name outside the `add_*_constraints` convention would escape this static census — the
   sentinels above catch the cases that touch a *known* family; the rest is the cost of a static
   scan, which is why both anchors fail loud on drift instead of rendering an empty, lying diff.
+
+**Second level — argument parity, not just family presence.** The family diff above has a blind
+spot: it sees a family *missing*, never a family present on **both** paths but fed **empty** (a
+verdict-side `shared_trainings=[]` where `/generate` passes `data.get("sharedTrainings", [])`
+would make the rule mute and the verdict lie, while the family diff stays green). A second guard
+compares, argument by argument, the **source expression** feeding the single call to
+`add_level_1_hard_constraints` on each side (`ast.unparse`) — comparing keyword *names* alone would
+miss exactly that substitution:
+- **Narrow alias transparency**: a value that is a bare `Name` resolves through a **single**
+  plain `x = <expr>` assignment (`ast.Assign`, one target, one binding) before comparison — this is
+  what makes `resolved_implicit_rules` (an alias assigned once in `main.py`, then passed) compare
+  equal to the verdict's inline `resolve_implicit_rules(...)`. **Annotated locals (`AnnAssign`) and
+  parameters are never resolved** — doing so would fabricate false divergences for values that
+  `/generate` holds as annotated locals but the verdict receives as parameters
+  (`model`, `assignments`, `team_coach_map`, `team_player_map`).
+- **`DECLARED_ARG_DIVERGENCES`** carries named, reasoned exceptions (same two-test pattern: a
+  reason is mandatory, a stale entry — the argument is no longer actually divergent — fails).
+  **One entry today**: `min_sessions_by_team` — `/generate` passes the real per-team floors
+  (`adjusted_min_by_team`, a soft target carried by the solver's objective), the verdict passes a
+  dict of zeros (the verdict has no objective, it is a feasibility test only); giving it real
+  floors would make the verdict **stricter** than generation itself.
+- Fails loud, never silent, on a `*args`/`**kwargs` splat (individual keyword feeds become
+  unreadable) or on the anchor call count drifting from exactly one.
 
 Run: `cd engine && make test` (pytest + ruff + mypy, inside the engine container).
 

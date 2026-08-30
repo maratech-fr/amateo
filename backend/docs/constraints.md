@@ -1,6 +1,6 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-08-29 (rotation `documentation-update`, zone non touchée par cette PR —
+Last verified @ 2026-08-30 (rotation `documentation-update`, zone non touchée par cette PR —
 contrôle de fraîcheur. Re-confronté au code : tags système présents dans `TeamTagService`
 (`EMB`, `PRE_REGION`, `LOISIR_JEUNE`, `HONNEUR`, `PROMOTION`, `MIXTE`) ✓ · `FACILITY_CAPACITY`
 retirée des trois couches, ne subsiste qu'en commentaires historiques
