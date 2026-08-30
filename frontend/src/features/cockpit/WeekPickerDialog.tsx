@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Modal } from "@/shared/components/ui/modal";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { WarningPanel } from "@/shared/components/ui/warning-panel";
@@ -279,7 +280,7 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, bus
         ) : (
           // Fenêtre 100 % gouvernée (déjà planifiée) : les encarts ci-dessus disent par qui, il ne
           // reste rien à cocher ici.
-          <p className="mt-2 text-sm text-muted-foreground">Aucune semaine de cette indisponibilité ne reste à ajuster ici.</p>
+          <EmptyHint className="mt-2">Aucune semaine de cette indisponibilité ne reste à ajuster ici.</EmptyHint>
         )
       ) : null}
 
@@ -301,7 +302,7 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, bus
               {segmentList}
             </>
           ) : (
-            <p className="text-muted-foreground">Toutes les semaines de cette indisponibilité sont couvertes par des vacances — il n'y a rien à ajuster en dehors.</p>
+            <EmptyHint>Toutes les semaines de cette indisponibilité sont couvertes par des vacances — il n'y a rien à ajuster en dehors.</EmptyHint>
           )}
         </div>
       ) : null}

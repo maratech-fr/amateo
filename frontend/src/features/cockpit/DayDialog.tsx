@@ -7,6 +7,7 @@ import { usePlanningStore } from "@/features/planning/store";
 import { useWizardStore } from "@/features/wizard/store";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Modal } from "@/shared/components/ui/modal";
 import { toast } from "@/shared/stores/toastStore";
 
@@ -229,7 +230,7 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onClose }: { entri
           `deletable` peut être vide alors que le bloc vacances ci-dessus tient la
           journée — dire « la semaine type tourne normalement » se contredirait. */}
       {deletable.length === 0 && !holiday ? (
-        <p className="text-sm text-muted-foreground">Rien ce jour-là — la semaine type tourne normalement.</p>
+        <EmptyHint>Rien ce jour-là — la semaine type tourne normalement.</EmptyHint>
       ) : null}
 
       <ConfirmDialog
@@ -496,7 +497,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
         // chargée) : un bouton mort sans explication serait pire que l'ancien
         // message (revue #260 round 2). Saison encore en vol → bouton désactivé
         // bref, ci-dessous.
-        <p className="text-xs text-muted-foreground">Hors de la saison en cours — rien à adapter.</p>
+        <EmptyHint className="text-xs">Hors de la saison en cours — rien à adapter.</EmptyHint>
       ) : (
         <div className="flex justify-end">
           <Button

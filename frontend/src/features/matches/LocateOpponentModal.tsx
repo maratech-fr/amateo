@@ -2,6 +2,7 @@ import { MapPin } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Modal } from "@/shared/components/ui/modal";
@@ -71,7 +72,7 @@ export function LocateOpponentModal({ opponent, onClose }: { opponent: OpponentT
           <LoadErrorHint onRetry={() => void sallesQuery.refetch()}>FFBB indisponible, réessayez plus tard.</LoadErrorHint>
         ) : null}
         {cpReady && "ready" === state && 0 === salles.length ? (
-          <p className="text-sm text-muted-foreground">Aucune salle trouvée pour ce code postal.</p>
+          <EmptyHint>Aucune salle trouvée pour ce code postal.</EmptyHint>
         ) : null}
         {salles.length > 0 ? (
           <ul aria-label={`Salles FFBB à ${cp}`} className="max-h-64 overflow-y-auto rounded-md border border-border bg-background py-1 text-sm">

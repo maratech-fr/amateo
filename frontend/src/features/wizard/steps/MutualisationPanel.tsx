@@ -212,7 +212,7 @@ export function MutualisationPanel({
                 </p>
                 {0 === filtered.length ? (
                   // Témoin, jamais une liste vide muette : la requête est NOMMÉE.
-                  <p className="text-sm text-muted-foreground">Aucune équipe ne correspond à « {query.trim()} ».</p>
+                  <EmptyHint>Aucune équipe ne correspond à « {query.trim()} ».</EmptyHint>
                 ) : (
                   <div className="flex flex-col gap-1">{filtered.map(candidateRow)}</div>
                 )}

@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { WizardStepLink } from "@/features/wizard/WizardStepLink";
 
 import type { Constraint, LockOrigin, MoveViolation, Slot, Venue } from "./api";
@@ -188,7 +189,7 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
                 {clubConstraints.length > 0 ? <ConstraintList label="Tout le club" items={clubConstraints} describe={describe} /> : null}
               </div>
             ) : (
-              <p className="mt-1 text-xs text-muted-foreground">Aucune contrainte spécifique à ce créneau.</p>
+              <EmptyHint className="mt-1 text-xs">Aucune contrainte spécifique à ce créneau.</EmptyHint>
             )
           ) : null}
         </div>

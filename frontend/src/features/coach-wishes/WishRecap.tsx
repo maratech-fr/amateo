@@ -1,4 +1,5 @@
 import { Button } from "@/shared/components/ui/button";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 
 import { DAY_LABELS, frDate, isSectionDirty, sectionKey, type SectionState } from "./wishSections";
 
@@ -37,7 +38,7 @@ export function WishRecap({ teams, weeks, sections, initial, onEditTeam }: WishR
               <div className="min-w-0">
                 <p className="text-sm font-medium">{team.name}</p>
                 {0 === changedWeeks.length ? (
-                  <p className="mt-0.5 text-sm text-muted-foreground">aucune modification</p>
+                  <EmptyHint className="mt-0.5">aucune modification</EmptyHint>
                 ) : (
                   <ul className="mt-0.5 space-y-0.5 text-sm text-muted-foreground">
                     {changedWeeks.map((week) => (

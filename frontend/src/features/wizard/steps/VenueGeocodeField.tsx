@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { apiErrorMessage } from "@/shared/api/errors";
 import { Button } from "@/shared/components/ui/button";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
 import { Spinner } from "@/shared/components/ui/spinner";
 
@@ -122,7 +123,7 @@ export function VenueGeocodeField({
       ) : null}
 
       {null !== candidates && 0 === candidates.length ? (
-        <p className="text-sm text-muted-foreground">Aucune adresse trouvée pour « {searched} ». Vérifiez l'orthographe ou ajoutez la ville.</p>
+        <EmptyHint>Aucune adresse trouvée pour « {searched} ». Vérifiez l'orthographe ou ajoutez la ville.</EmptyHint>
       ) : null}
 
       {null !== candidates && candidates.length > 0 ? (

@@ -2,6 +2,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 import type { TeamLike, TierLike } from "@/shared/lib/teamTiers";
@@ -64,7 +65,7 @@ function ReadOnlyLinks({ links, teamName, filtered }: { links: TeamLink[]; teamN
       {/* La raison, en information et non en panne : pleine lisibilité, ton muet, jamais grisé. */}
       <p className="text-xs text-muted-foreground">Les passerelles se déclarent au niveau de la saison — elles s’appliquent à toutes les périodes.</p>
       {0 === links.length ? (
-        <p className="text-xs text-muted-foreground">{filtered ? "Aucune passerelle pour cette équipe." : "Aucune passerelle déclarée."}</p>
+        <EmptyHint className="text-xs">{filtered ? "Aucune passerelle pour cette équipe." : "Aucune passerelle déclarée."}</EmptyHint>
       ) : (
         <ul className="flex flex-col gap-1">
           {links.map((link) => (

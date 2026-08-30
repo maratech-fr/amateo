@@ -7,6 +7,7 @@ import { useSchedules, useSlots } from "@/features/planning/queries";
 import { usePlanningStore } from "@/features/planning/store";
 import { useWizardStore } from "@/features/wizard/store";
 import { Button } from "@/shared/components/ui/button";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import { cn } from "@/shared/lib/utils";
 
@@ -750,7 +751,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
         </p>
       ) : null}
 
-      {isEmpty ? <p className="text-sm text-muted-foreground">Rien à l'horizon. Tout roule.</p> : null}
+      {isEmpty ? <EmptyHint>Rien à l'horizon. Tout roule.</EmptyHint> : null}
 
       {/* Vacance PAS encore matérialisée : picker sur une mère synthétique (aucune
           création tant que non confirmé — annuler ne laisse aucun fantôme). */}
