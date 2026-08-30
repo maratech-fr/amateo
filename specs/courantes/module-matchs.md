@@ -1,10 +1,9 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-30 (`documentation-update`, UXC-18 — le module matchs dit désormais UN mot,
-« conflit », partout : carte `ConflictRadar` titrée « Conflits » (plus « Diagnostic »), rail
-`loopSteps.ts` « Conflits (n) » (plus « Litiges (n) », id technique `disputes` inchangé),
-bandeau `MatchesPage.tsx` aligné. Les deux occurrences de « Litiges » relevées en §Boucle
-matchs corrigées en conséquence. Le reste du fichier non re-confronté cette passe — un stamp
+Last verified @ 2026-08-30 (`documentation-update`, P4-133 — nouvelle section « Lecture des
+fondations » confrontée à `MatchesPage.tsx` (garde `readLoading`/`readFailed` sur
+fixtures/teams/venues, `conflicts.isError` resté brut) et `MatchesPage.test.tsx` (les deux NR
+rencontres/gymnases en échec). Le reste du fichier non re-confronté cette passe — un stamp
 REMPLACE, l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
@@ -620,6 +619,25 @@ honorées** ici (les décisions 1 « SOFT jamais bloquant » et 4 « FICTIF, auc
   mapper ») — le dialog n'a pas de geste de re-mapping, une écriture fautive collerait. Deux mappings
   (équipe, division) identiques dans un même lot = une seule `Competition` (dedupe en mémoire, le
   lookup DB ne voit pas les frères non flushés).
+
+## Lecture des fondations — `readState` sur `MatchesPage` (P4-133, 2026-08-30)
+
+- **Trois lectures FONDATRICES** (`fixtures`, `teams`, `venues` — sans elles tout le reste de
+  l'écran dérive d'un `data ?? []`) passent par la doctrine partagée `shared/lib/readState.ts`
+  (`frontend/AGENTS.md` §readState) : `readLoading` sur l'une des trois → `FullPageSpinner`
+  (chargement de PAGE, jamais un vide dérivé du premier chargement) ; `readFailed` (échec ET rien
+  en cache — le seul cas où l'écran cède la place) → `LoadErrorHint` avec un `onRetry` qui refetch
+  les trois d'un coup. Un refetch d'arrière-plan raté sur cache intact reste `ready` : l'écran qui
+  fonctionne n'est pas détruit. **Avant ce lot**, seules ces trois lectures n'étaient PAS gardées
+  (`data ?? []` direct) — un échec fixtures/teams/venues tombait dans l'`EmptyState` « Aucun match
+  importé » de l'étape « batch », confondant échec et vide, et pouvait pousser à ré-importer
+  par-dessus des données existantes.
+- **`conflicts.isError` reste BRUT, volontairement PAS passé sur `readFailed`** (bloc
+  `conflictErrorBlock`, message « Les conflits n'ont pas pu être vérifiés — rechargez la page avant
+  de placer un match ») : c'est un avertissement de **sûreté** avant un geste d'écriture (placer un
+  match contre une image des conflits potentiellement PÉRIMÉE), pas un état de chargement de page —
+  décision fermée, [`etat-des-lieux.md`](etat-des-lieux.md) §2.
+- Tests : `MatchesPage.test.tsx` (rencontres en échec, gymnases en échec → `LoadErrorHint`).
 
 ## Vérifs / gardes
 
