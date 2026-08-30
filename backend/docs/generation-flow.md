@@ -1,9 +1,9 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-08-29 (rotation `documentation-update`, passe P4-95 — fichier hors sujet de la
+Last verified @ 2026-08-30 (rotation `documentation-update`, passe P4-138 — fichier hors sujet de la
 PR, contrôle de fraîcheur. Re-confirmé sans écart : `ScheduleConstraintBuilder::CONTRACT_VERSION` =
 **`2.16`** (`ScheduleConstraintBuilder.php:64`) ✓ · `toArray(false)` sans exception HTTP
-(`EngineClient.php:39,58`) ✓ · `engine_timeout`/`engine_error` émis par le handler
+(`EngineClient.php:39,58,78`) ✓ · `engine_timeout`/`engine_error` émis par le handler
 (`GenerateScheduleHandler.php:290,298`) ✓ · verrou Redis `nx`/`ex` (`ClubGenerationLock.php:26`) ✓.
 Le reste du fichier (SSE, sélecteur de topic club, §6) non re-confronté cette passe — un stamp
 REMPLACE, l'historique vit dans git : `git log -p --follow backend/docs/generation-flow.md`.
