@@ -1,14 +1,16 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-08-29 (rotation `documentation-update`, passe P4-147 — zone non touchée par
-cette PR, contrôle de fraîcheur. Ce fichier cite `result_builder._diagnose_travel_times` et
-`travel.py:iter_travel_pairs_from_placements` **au niveau module**, pas `fichier:ligne` — les deux
-survivent tels quels au découpage en paquets d'ENG-39 (2026-08-28), `_diagnose_travel_times` reste
-ré-exporté par `app/solver/result_builder/__init__.py:70`, `travel.py` n'a pas bougé de
-`constraints/`. Re-confronté au code : `validate_assignments.py:_apply_hard` consomme toujours
-`venueTravelTimes` (`:334`) et `_travel_time_move_violation` (`:192`) résorbe ENG-37 côté miroir
-✓. Reste du document non re-parcouru ligne à ligne cette passe (rotation précédente : `app/solver/constraints/`
-paquet §familles config, `parse_v2_constraints`, `constraint_not_honored`, `maxEndTime`).
+Last verified @ 2026-08-30 (rotation `documentation-update`, passe P4-132 — zone non touchée par
+cette PR (le lot touche un seul fichier de test), contrôle de fraîcheur. Re-confronté au code :
+la « parité génération⇄verdict » que ce fichier décrit (§Trajet, ligne 193) ne vaut QUE pour
+`travelTime`/`sharedTrainings` — elle n'est PAS générale : `add_venue_minimum_constraints`
+(`main.py:584`, seul appelant) n'est jamais appelée par `_apply_hard`
+(`validate_assignments.py:301`), asymétrie désormais gardée et déclarée par
+`engine/tests/test_hard_layer_parity_registry.py` (P4-132) plutôt que silencieuse. `_apply_hard`
+consomme toujours `venueTravelTimes` (`:334`) et `_travel_time_move_violation` (`:192`) résorbe
+ENG-37 côté miroir ✓. Reste du document non re-parcouru ligne à ligne cette passe (rotation
+précédente : `app/solver/constraints/` paquet §familles config, `parse_v2_constraints`,
+`constraint_not_honored`, `maxEndTime`).
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.

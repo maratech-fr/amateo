@@ -1,13 +1,10 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-08-30 (rotation `documentation-update`, passe UXC-10 — fichier hors sujet de la
-PR. Re-confronté à `.github/workflows/ci.yml` : les SEPT jobs sans `needs` sont toujours exactement
-`frontend`/`dependency-audit`/`rector`/`secrets-scan`/`semgrep`/`engine-semantics`/`smoke-tests`
-(`grep -n "needs:"` ne retourne que `blocking-tests`/`unit-tests`/`engine-perf`/`e2e`/`build-docker`)
-✓ ; `phpunit.xml.dist` déclare toujours exactement trois testsuites `Unit`/`Integration`/`Contract`
-✓ ; les sept dossiers hors testsuites déclarées existent tels que listés —
-`Api`/`Command`/`Double`/`EventListener`/`MessageHandler`/`OpenApi`/`Validator` (`ls backend/tests/`)
-✓. Reste du fichier non re-vérifié cette passe. Historique des passes :
+Last verified @ 2026-08-30 (P4-132 — nouveau §3 `test_hard_layer_parity_registry.py`, écrit en
+confrontant directement le code : `app/main.py` a une fonction unique composant
+`add_level_1_hard_constraints` (`_solve`, `main.py:454`), qui appelle `add_venue_minimum_constraints`
+en `main.py:584` — seul appelant du dépôt ; `validate_assignments.py::_apply_hard` (`:301`) ne
+l'appelle jamais. Reste du fichier non re-vérifié cette passe. Historique des passes :
 `git log -p --follow docs/testing/testing-strategy.md` — un stamp REMPLACE, il ne s'empile pas
 (DOC-33).)
 
@@ -112,6 +109,32 @@ actually gates the merge).
 - **Invariants** (`tests/invariants/test_invariants.py`): post-solve checks — no team/coach overlaps, venue capacity respected, hard locks honored.
 - **Fixtures** (`tests/fixtures/`): JSON club configs (simple, medium, dense, bccl_regression, overlap_*, no_rest_*, vacation_week, impossible, score_hard_only_teams…) — `ls engine/tests/fixtures/` for the current set.
 - Property-based tests via hypothesis; `pytest-timeout` guards runaway solves.
+
+### `test_hard_layer_parity_registry.py` — HARD-layer parity guard (`/generate` ⇄ verdict)
+
+`/generate` and `POST /validate-assignments` (the verdict on a manual move) must apply the same
+HARD layer — a HARD family born on one path without its mirror on the other lets a manual move
+that breaks it be judged **valid** in silence (exactly ENG-36, the travel-time finding, fixed in
+PR #779). This guard makes a *next* asymmetry impossible to miss, rather than fixing one:
+- **AST, not regex** — parses `app/main.py` and `validate_assignments.py`; resistant to reformatting.
+- **Anchor = the aggregator** `add_level_1_hard_constraints`: both paths call it. The `/generate`
+  side is the **single** function of `main.py` that composes it (today `_solve`); the verdict side
+  is `_apply_hard`, checked to still compose the aggregator. Either anchor failing hard (0 or
+  several composing functions) beats silently diffing the wrong function.
+- **HARD family convention**: `^add_.*_constraints$` — excludes SOFT terms (`_penalty`/`_bonus`)
+  and diagnostics (`diagnose_*`) by construction.
+- **`KNOWN_GENERATE_FAMILIES`** is a floor sentinel: if the scanner sees fewer `/generate` families
+  than this known set, it fails hard (scanner regression or real removal) rather than staying quiet.
+- **`DECLARED_ASYMMETRIES`** carries named, reasoned exceptions (own test enforces a reason is
+  present, and another enforces no declared exception has gone stale — i.e. the family is now
+  actually symmetric and the entry should be removed). One real asymmetry stands today:
+  `add_venue_minimum_constraints` is posed on `/generate` (`main.py:584`) and never mirrored by
+  `_apply_hard` — deliberately **not** fixed (fixing it would change verdict behaviour on the
+  backend↔engine contract structuring axis, CLAUDE.md §7.1); tracked as `P4-152` in the roadmap.
+- Assumed fragility: a HARD block posed outside the anchor function, via an indirect call, or
+  under a name outside the `add_*_constraints` convention would escape this static census — the
+  sentinels above catch the cases that touch a *known* family; the rest is the cost of a static
+  scan, which is why both anchors fail loud on drift instead of rendering an empty, lying diff.
 
 Run: `cd engine && make test` (pytest + ruff + mypy, inside the engine container).
 
