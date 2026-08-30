@@ -77,7 +77,7 @@
  *   2. BIJECTION — 1 nuance Tailwind = 1 jeton. Une nuance qui sert deux rôles reste le
  *      MÊME jeton aux deux endroits (c'est la même couleur) ; fondre deux nuances en un
  *      jeton est interdit (ce serait un changement visuel).
- * Gardé par `FrontConsolePaletteTokens.test.ts` : aucune classe de palette brute ne doit
+ * Gardé par `features/admin/consolePalette.guard.test.ts` : aucune classe de palette brute ne doit
  * réapparaître dans `features/admin/`.
  */
 :root {
