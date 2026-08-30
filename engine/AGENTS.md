@@ -11,7 +11,7 @@
 
 ## Endpoints (verify in `app/main.py` before relying on this)
 
-`GET /` (health + contract) · `GET /health` · `POST /generate` (main) · `POST /implicit-constraints` (validation warnings for the wizard) · `POST /place-matches` (dated match placement, P1-4 PR D — solver in `app/solver/match_placement.py`, schemas `match_input_schema.py`/`match_output_schema.py`, ADR-0003; single worker + seed, golden-pinned like the weekly solve).
+`GET /` (health + contract) · `GET /health` · `POST /generate` (main) · `POST /implicit-constraints` (validation warnings for the wizard) · `POST /place-matches` (dated match placement, P1-4 PR D — solver in `app/solver/match_placement.py`, schemas `match_input_schema.py`/`match_output_schema.py`, ADR-0003; single worker + seed, golden-pinned like the weekly solve) · `POST /validate-assignments` (the verdict on a manual move — rebuilds the HARD layer via `_apply_hard` in `app/solver/validate_assignments.py`; parity with `/generate` guarded by `tests/test_hard_layer_parity_registry.py`, `docs/testing/testing-strategy.md` §3).
 
 ## Zone gotchas (facts not in the root docs)
 
