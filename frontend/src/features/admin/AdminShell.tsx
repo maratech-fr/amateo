@@ -37,23 +37,23 @@ export function AdminShell() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-white/10 bg-slate-950/90">
+    <div className="min-h-screen bg-console-surface text-console-text-strong">
+      <header className="border-b border-white/10 bg-console-surface/90">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-cyan-300/10 text-cyan-200"><ShieldCheck className="size-5" aria-hidden="true" /></div>
-            <div><p className="font-semibold text-white">Console superadmin</p><p className="text-xs text-slate-500">Surface d’exploitation transverse</p></div>
+            <div className="flex size-9 items-center justify-center rounded-lg bg-console-accent/10 text-console-accent-hover"><ShieldCheck className="size-5" aria-hidden="true" /></div>
+            <div><p className="font-semibold text-white">Console superadmin</p><p className="text-xs text-console-muted">Surface d’exploitation transverse</p></div>
           </div>
           <div className="flex items-center gap-4">
-            <span className="hidden text-sm text-slate-400 sm:inline">{identity?.email}</span>
-            <Button variant="ghost" size="sm" className="text-slate-300 hover:bg-white/10 hover:text-white" onClick={logout} disabled={pending}>
+            <span className="hidden text-sm text-console-text-dim sm:inline">{identity?.email}</span>
+            <Button variant="ghost" size="sm" className="text-console-text hover:bg-white/10 hover:text-white" onClick={logout} disabled={pending}>
               {pending ? <Spinner className="size-4" /> : <LogOut className="size-4" aria-hidden="true" />}
               Sortir
             </Button>
           </div>
         </div>
       </header>
-      {error ? <div className="border-b border-red-300/20 bg-red-400/10 px-6 py-3 text-center text-sm text-red-200" role="alert">{error}</div> : null}
+      {error ? <div className="border-b border-console-danger/20 bg-console-danger-deep/10 px-6 py-3 text-center text-sm text-console-danger-bright" role="alert">{error}</div> : null}
       <main className="mx-auto max-w-7xl px-6 py-10"><Outlet /></main>
     </div>
   );

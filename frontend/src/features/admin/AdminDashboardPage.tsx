@@ -118,22 +118,22 @@ export function AdminDashboardPage() {
     <div className="space-y-8">
       <section className="flex flex-col justify-between gap-5 border-b border-white/10 pb-8 lg:flex-row lg:items-end">
         <div className="max-w-3xl">
-          <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">
+          <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-console-accent">
             <Activity className="size-4" aria-hidden="true" /> Supervision temps réel
           </p>
           <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">État de la plateforme</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-console-text-dim">
             Santé technique, activité du parc et comportement du solveur réunis dans une vue en lecture seule.
           </p>
         </div>
         <Button
           type="button"
           variant="outline"
-          className="self-start border-white/15 text-slate-200 hover:bg-white/10 lg:self-auto"
+          className="self-start border-white/15 text-console-text-bright hover:bg-white/10 lg:self-auto"
           disabled={refreshing}
           onClick={refreshAll}
         >
-          {refreshing ? <Spinner className="size-4 text-slate-300" /> : <RefreshCw aria-hidden="true" />}
+          {refreshing ? <Spinner className="size-4 text-console-text" /> : <RefreshCw aria-hidden="true" />}
           Actualiser
         </Button>
       </section>
@@ -167,13 +167,13 @@ export function AdminDashboardPage() {
         <section aria-labelledby="clubs-heading" className="space-y-4">
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Parc client</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Parc client</p>
               <h2 id="clubs-heading" className="mt-2 text-xl font-semibold text-white">Comptes clubs</h2>
             </div>
             <form className="flex w-full gap-2 md:max-w-md" role="search" onSubmit={submitSearch}>
               <label className="sr-only" htmlFor="club-search">Rechercher un club</label>
               <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" aria-hidden="true" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-console-muted" aria-hidden="true" />
                 <input
                   id="club-search"
                   type="search"
@@ -181,10 +181,10 @@ export function AdminDashboardPage() {
                   maxLength={100}
                   onChange={(event) => setQueryDraft(event.target.value)}
                   placeholder="Nom, slug ou code FFBB"
-                  className="h-10 w-full rounded-md border border-white/15 bg-white/[0.04] pl-10 pr-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-cyan-300/70 focus:ring-2 focus:ring-cyan-300/20"
+                  className="h-10 w-full rounded-md border border-white/15 bg-white/[0.04] pl-10 pr-3 text-sm text-white outline-none placeholder:text-console-text-faint focus:border-console-accent/70 focus:ring-2 focus:ring-console-accent/20"
                 />
               </div>
-              <Button type="submit" className="bg-cyan-300 text-slate-950 hover:bg-cyan-200">Rechercher</Button>
+              <Button type="submit" className="bg-console-accent text-console-surface hover:bg-console-accent-hover">Rechercher</Button>
             </form>
           </div>
 
@@ -238,7 +238,7 @@ function OverviewSection({ data, loading, error, retry }: DataSectionProps<Admin
   return (
     <section aria-labelledby="activity-heading" className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Activité globale</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Activité globale</p>
         <h2 id="activity-heading" className="mt-2 text-xl font-semibold text-white">Parc et solveur</h2>
       </div>
       <div className="grid gap-px overflow-hidden rounded-xl border border-white/10 bg-white/10 sm:grid-cols-2 xl:grid-cols-4">
@@ -254,7 +254,7 @@ function OverviewSection({ data, loading, error, retry }: DataSectionProps<Admin
             <SmallMetric label="Durée médiane" value={formatDuration(data.solver.p50WallTimeMs)} />
             <SmallMetric label="P95" value={formatDuration(data.solver.p95WallTimeMs)} />
           </dl>
-          <div className="mt-6 border-t border-white/10 pt-4 text-xs text-slate-500">
+          <div className="mt-6 border-t border-white/10 pt-4 text-xs text-console-muted">
             {integerFormatter.format(data.clubs.unsubscribed)} compte{data.clubs.unsubscribed > 1 ? "s" : ""} désabonné{data.clubs.unsubscribed > 1 ? "s" : ""}
           </div>
         </article>
@@ -291,21 +291,21 @@ function UsageSection({ data, loading, error, retry }: DataSectionProps<AdminOve
   return (
     <section aria-labelledby="usage-heading" className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Usage produit</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Usage produit</p>
         <h2 id="usage-heading" className="mt-2 text-xl font-semibold text-white">Plans, clôtures et tailles de clubs</h2>
       </div>
       <div className="grid gap-4 lg:grid-cols-3">
         <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
           <p className="text-sm font-medium text-white">Plans par type</p>
-          <p className="mt-1 text-xs text-slate-500">Parc actuel — un reset ou un effacement retire ses plans</p>
+          <p className="mt-1 text-xs text-console-muted">Parc actuel — un reset ou un effacement retire ses plans</p>
           <dl className="mt-5 space-y-4">
-            {usage.plansByType.length === 0 ? <p className="text-sm text-slate-500">Aucun plan.</p> : null}
+            {usage.plansByType.length === 0 ? <p className="text-sm text-console-muted">Aucun plan.</p> : null}
             {usage.plansByType.map((row) => (
               <div key={row.type} className="flex items-baseline justify-between gap-3">
-                <dt className="text-sm text-slate-400">{planTypeLabel(row.type)}</dt>
+                <dt className="text-sm text-console-text-dim">{planTypeLabel(row.type)}</dt>
                 <dd className="text-sm text-white">
                   {integerFormatter.format(row.total)}
-                  <span className="ml-2 text-xs text-slate-500">dont {integerFormatter.format(row.validated)} validé{row.validated > 1 ? "s" : ""}</span>
+                  <span className="ml-2 text-xs text-console-muted">dont {integerFormatter.format(row.validated)} validé{row.validated > 1 ? "s" : ""}</span>
                 </dd>
               </div>
             ))}
@@ -313,27 +313,27 @@ function UsageSection({ data, loading, error, retry }: DataSectionProps<AdminOve
         </article>
         <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
           <p className="text-sm font-medium text-white">Temps de clôture</p>
-          <p className="mt-1 text-xs text-slate-500">Création du plan → première validation</p>
+          <p className="mt-1 text-xs text-console-muted">Création du plan → première validation</p>
           <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-6">
             <SmallMetric label="Saison · médiane" value={formatMinutes(usage.timeToFirstValidation.season.p50Minutes)} />
             <SmallMetric label="Saison · P95" value={formatMinutes(usage.timeToFirstValidation.season.p95Minutes)} />
             <SmallMetric label="Périodes · médiane" value={formatMinutes(usage.timeToFirstValidation.period.p50Minutes)} />
             <SmallMetric label="Périodes · P95" value={formatMinutes(usage.timeToFirstValidation.period.p95Minutes)} />
           </dl>
-          <div className="mt-6 border-t border-white/10 pt-4 text-xs text-slate-500">
+          <div className="mt-6 border-t border-white/10 pt-4 text-xs text-console-muted">
             {integerFormatter.format(usage.timeToFirstValidation.season.count)} saison{usage.timeToFirstValidation.season.count > 1 ? "s" : ""} · {integerFormatter.format(usage.timeToFirstValidation.period.count)} période{usage.timeToFirstValidation.period.count > 1 ? "s" : ""} clôturée{usage.timeToFirstValidation.period.count > 1 ? "s" : ""}
           </div>
         </article>
         <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
           <p className="text-sm font-medium text-white">Solveur par type · 30 j</p>
           <dl className="mt-5 space-y-4">
-            {usage.solverByPlanType.length === 0 ? <p className="text-sm text-slate-500">Aucune génération sur la fenêtre.</p> : null}
+            {usage.solverByPlanType.length === 0 ? <p className="text-sm text-console-muted">Aucune génération sur la fenêtre.</p> : null}
             {usage.solverByPlanType.map((row) => (
               <div key={row.planType} className="flex items-baseline justify-between gap-3">
-                <dt className="text-sm text-slate-400">{planTypeLabel(row.planType)}</dt>
+                <dt className="text-sm text-console-text-dim">{planTypeLabel(row.planType)}</dt>
                 <dd className="text-sm text-white">
                   {integerFormatter.format(row.generations)}
-                  <span className="ml-2 text-xs text-slate-500">méd. {formatDuration(row.p50WallTimeMs)} · P95 {formatDuration(row.p95WallTimeMs)}</span>
+                  <span className="ml-2 text-xs text-console-muted">méd. {formatDuration(row.p50WallTimeMs)} · P95 {formatDuration(row.p95WallTimeMs)}</span>
                 </dd>
               </div>
             ))}
@@ -342,11 +342,11 @@ function UsageSection({ data, loading, error, retry }: DataSectionProps<AdminOve
       </div>
       <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
         <p className="text-sm font-medium text-white">Tailles de clubs</p>
-        <p className="mt-1 text-xs text-slate-500">Équipes actives de la saison courante, parc non désabonné</p>
+        <p className="mt-1 text-xs text-console-muted">Équipes actives de la saison courante, parc non désabonné</p>
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[24rem] text-left text-sm">
             <thead>
-              <tr className="text-xs uppercase tracking-wide text-slate-500">
+              <tr className="text-xs uppercase tracking-wide text-console-muted">
                 <th className="py-2 pr-4 font-medium">Équipes</th>
                 <th className="py-2 pr-4 font-medium">Clubs</th>
                 <th className="py-2 font-medium">Gymnases (médiane)</th>
@@ -354,7 +354,7 @@ function UsageSection({ data, loading, error, retry }: DataSectionProps<AdminOve
             </thead>
             <tbody>
               {usage.clubSizes.map((row) => (
-                <tr key={row.bucket} className="border-t border-white/10 text-slate-300">
+                <tr key={row.bucket} className="border-t border-white/10 text-console-text">
                   <td className="py-2 pr-4">{row.bucket}</td>
                   <td className="py-2 pr-4 text-white">{integerFormatter.format(row.clubs)}</td>
                   <td className="py-2">{null === row.medianVenues ? "—" : integerFormatter.format(row.medianVenues)}</td>
@@ -376,9 +376,9 @@ function SolverChart({ solver }: { solver: AdminOverviewResponse["solver"] }) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-white">Volume quotidien</p>
-          <p className="mt-1 text-xs text-slate-500">Générations sur les {solver.windowDays} derniers jours</p>
+          <p className="mt-1 text-xs text-console-muted">Générations sur les {solver.windowDays} derniers jours</p>
         </div>
-        <span className="flex items-center gap-2 text-xs text-slate-500"><span className="size-2 bg-cyan-300" /> Générations</span>
+        <span className="flex items-center gap-2 text-xs text-console-muted"><span className="size-2 bg-console-accent" /> Générations</span>
       </div>
       {solver.daily.length > 0 ? (
         <>
@@ -386,13 +386,13 @@ function SolverChart({ solver }: { solver: AdminOverviewResponse["solver"] }) {
             {solver.daily.map((day) => (
               <div key={day.date} className="group relative flex h-full min-w-0 flex-1 items-end">
                 <div
-                  className="w-full min-w-1 bg-cyan-300/60 transition-colors group-hover:bg-cyan-200"
+                  className="w-full min-w-1 bg-console-accent/60 transition-colors group-hover:bg-console-accent-hover"
                   style={{ height: `${Math.max((day.generations / max) * 100, day.generations > 0 ? 4 : 1)}%` }}
                 />
               </div>
             ))}
           </div>
-          <div className="mt-2 flex justify-between text-xs text-slate-600">
+          <div className="mt-2 flex justify-between text-xs text-console-text-faint">
             <span>{formatShortDate(solver.daily[0]?.date)}</span>
             <span>{formatShortDate(solver.daily.at(-1)?.date)}</span>
           </div>
@@ -400,7 +400,7 @@ function SolverChart({ solver }: { solver: AdminOverviewResponse["solver"] }) {
             {solver.daily.map((day) => `${day.date} : ${day.generations} générations`).join(" ; ")}
           </figcaption>
         </>
-      ) : <p className="mt-10 text-sm text-slate-500">Aucune génération sur cette période.</p>}
+      ) : <p className="mt-10 text-sm text-console-muted">Aucune génération sur cette période.</p>}
     </figure>
   );
 }
@@ -420,22 +420,22 @@ function HealthSection({ data, loading, error, retry }: DataSectionProps<AdminHe
     <section aria-labelledby="health-heading" className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Infrastructure</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Infrastructure</p>
           <h2 id="health-heading" className="mt-2 text-xl font-semibold text-white">Santé technique</h2>
         </div>
-        <p className="text-xs text-slate-500">Vérifié le {formatDateTime(data.checkedAt)}</p>
+        <p className="text-xs text-console-muted">Vérifié le {formatDateTime(data.checkedAt)}</p>
       </div>
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(20rem,1fr)]">
         <article className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]">
           <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-            <div className="flex items-center gap-3"><Server className="size-4 text-slate-500" aria-hidden="true" /><span className="text-sm font-medium text-white">Dépendances</span></div>
+            <div className="flex items-center gap-3"><Server className="size-4 text-console-muted" aria-hidden="true" /><span className="text-sm font-medium text-white">Dépendances</span></div>
             <StatusChip status={data.status === "healthy" ? "up" : "degraded"} />
           </div>
           <ul className="grid sm:grid-cols-2">
             {services.map(({ key, label, icon: Icon, status, latencyMs }) => (
               <li key={key} className="flex items-center justify-between gap-4 border-b border-white/10 px-5 py-4 last:border-b-0 sm:odd:border-r sm:[&:nth-last-child(-n+2)]:border-b-0">
-                <div className="flex items-center gap-3"><Icon className="size-4 text-slate-500" aria-hidden="true" /><span className="text-sm text-slate-300">{label}</span></div>
-                <div className="text-right"><StatusChip status={status} /><p className="mt-1 text-xs text-slate-600">{latencyMs === null ? "—" : `${latencyMs} ms`}</p></div>
+                <div className="flex items-center gap-3"><Icon className="size-4 text-console-muted" aria-hidden="true" /><span className="text-sm text-console-text">{label}</span></div>
+                <div className="text-right"><StatusChip status={status} /><p className="mt-1 text-xs text-console-text-faint">{latencyMs === null ? "—" : `${latencyMs} ms`}</p></div>
               </li>
             ))}
           </ul>
@@ -443,7 +443,7 @@ function HealthSection({ data, loading, error, retry }: DataSectionProps<AdminHe
 
         <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3"><Workflow className="size-4 text-slate-500" aria-hidden="true" /><span className="text-sm font-medium text-white">Traitements asynchrones</span></div>
+            <div className="flex items-center gap-3"><Workflow className="size-4 text-console-muted" aria-hidden="true" /><span className="text-sm font-medium text-white">Traitements asynchrones</span></div>
             <StatusChip status={data.messenger.status} />
           </div>
           <dl className="mt-5 grid grid-cols-3 gap-3 border-b border-white/10 pb-5">
@@ -452,7 +452,7 @@ function HealthSection({ data, loading, error, retry }: DataSectionProps<AdminHe
             <SmallMetric label="Retries" value={nullableInteger(data.messenger.retriesToday)} />
           </dl>
           <div className="mt-5 flex items-start justify-between gap-4">
-            <div><p className="text-xs text-slate-500">Worker</p><p className="mt-1 text-sm text-slate-300">{formatHeartbeat(data.services.worker)}</p></div>
+            <div><p className="text-xs text-console-muted">Worker</p><p className="mt-1 text-sm text-console-text">{formatHeartbeat(data.services.worker)}</p></div>
             <StatusChip status={data.services.worker.status} />
           </div>
         </article>
@@ -483,19 +483,19 @@ function JobsSection({ data, loading, error, retry }: DataSectionProps<AdminJobs
     <section aria-labelledby="jobs-heading" className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Exploitation</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Exploitation</p>
           <h2 id="jobs-heading" className="mt-2 text-xl font-semibold text-white">Jobs opérationnels</h2>
         </div>
-        <p className="text-xs text-slate-500">Cadence, prochain passage et dernière exécution connue</p>
+        <p className="text-xs text-console-muted">Cadence, prochain passage et dernière exécution connue</p>
       </div>
       {data.items.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-slate-500">Aucun job opérationnel configuré.</div>
+        <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-console-muted">Aucun job opérationnel configuré.</div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1180px] text-left text-sm">
               <caption className="sr-only">État des jobs opérationnels allowlistés</caption>
-              <thead className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-slate-500">
+              <thead className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-console-muted">
                 <tr><th className="px-5 py-4 font-medium">Job</th><th className="px-4 py-4 font-medium">Cadence</th><th className="px-4 py-4 font-medium">Prochain passage</th><th className="px-4 py-4 font-medium">Dernière exécution</th><th className="px-4 py-4 font-medium">Durée</th><th className="px-4 py-4 font-medium">Résultat</th><th className="px-4 py-4 font-medium">Action</th></tr>
               </thead>
               <tbody className="divide-y divide-white/10">
@@ -520,30 +520,30 @@ function JobsSection({ data, loading, error, retry }: DataSectionProps<AdminJobs
 
 function JobRow({ job, running, onRun }: { job: AdminJob; running: boolean; onRun: () => void }) {
   return (
-    <tr className="align-top text-slate-300 hover:bg-white/[0.025]">
-      <td className="px-5 py-5"><div className="flex items-start gap-3"><div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-slate-500"><History className="size-4" aria-hidden="true" /></div><div><p className="font-medium text-white">{job.label}</p><p className="mt-1 font-mono text-xs text-slate-600">{job.command}</p></div></div></td>
+    <tr className="align-top text-console-text hover:bg-white/[0.025]">
+      <td className="px-5 py-5"><div className="flex items-start gap-3"><div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-console-muted"><History className="size-4" aria-hidden="true" /></div><div><p className="font-medium text-white">{job.label}</p><p className="mt-1 font-mono text-xs text-console-text-faint">{job.command}</p></div></div></td>
       <td className="px-4 py-5">{formatCadence(job.cadence)}</td>
       <td className="px-4 py-5"><NextRun value={job.nextRunAt} /></td>
-      <td className="px-4 py-5">{job.latestRun ? <><p>{formatDateTime(job.latestRun.startedAt)}</p><p className="mt-1 text-xs text-slate-600">{formatJobSource(job.latestRun.source)}</p></> : <span className="text-slate-500">Jamais exécuté</span>}</td>
+      <td className="px-4 py-5">{job.latestRun ? <><p>{formatDateTime(job.latestRun.startedAt)}</p><p className="mt-1 text-xs text-console-text-faint">{formatJobSource(job.latestRun.source)}</p></> : <span className="text-console-muted">Jamais exécuté</span>}</td>
       <td className="px-4 py-5 tabular-nums">{job.latestRun ? formatDuration(job.latestRun.durationMs) : "—"}</td>
-      <td className="px-4 py-5"><JobStatus status={job.latestRun?.status ?? null} />{job.latestRun?.exitCode !== null && job.latestRun?.exitCode !== undefined ? <p className="mt-1 text-xs text-slate-600">Code {job.latestRun.exitCode}</p> : null}</td>
-      <td className="px-4 py-5">{job.manualTriggerAllowed ? <Button type="button" size="sm" variant="outline" className="border-white/15 text-slate-200 hover:bg-white/10" disabled={running} onClick={onRun}>{running ? <Spinner className="size-3.5" /> : <RotateCw className="size-3.5" aria-hidden="true" />} {running ? "Exécution…" : "Relancer"}</Button> : <span className="text-xs text-slate-600">Supervision seule</span>}</td>
+      <td className="px-4 py-5"><JobStatus status={job.latestRun?.status ?? null} />{job.latestRun?.exitCode !== null && job.latestRun?.exitCode !== undefined ? <p className="mt-1 text-xs text-console-text-faint">Code {job.latestRun.exitCode}</p> : null}</td>
+      <td className="px-4 py-5">{job.manualTriggerAllowed ? <Button type="button" size="sm" variant="outline" className="border-white/15 text-console-text-bright hover:bg-white/10" disabled={running} onClick={onRun}>{running ? <Spinner className="size-3.5" /> : <RotateCw className="size-3.5" aria-hidden="true" />} {running ? "Exécution…" : "Relancer"}</Button> : <span className="text-xs text-console-text-faint">Supervision seule</span>}</td>
     </tr>
   );
 }
 
 function NextRun({ value }: { value: string }) {
-  return <p className="text-slate-300">{formatDateTime(value)}</p>;
+  return <p className="text-console-text">{formatDateTime(value)}</p>;
 }
 
 function JobStatus({ status }: { status: AdminJobStatus | null }) {
   const labels: Record<AdminJobStatus, string> = { running: "En cours", succeeded: "Réussi", failed: "Échec", interrupted: "Interrompu" };
-  if (status === null) return <span className="text-xs font-medium text-slate-500">Sans historique</span>;
+  if (status === null) return <span className="text-xs font-medium text-console-muted">Sans historique</span>;
 
   const successful = status === "succeeded";
   const running = status === "running";
   const Icon = successful ? CheckCircle2 : status === "failed" ? AlertTriangle : History;
-  return <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", successful ? "text-emerald-300" : running ? "text-cyan-300" : status === "failed" ? "text-amber-300" : "text-slate-400")}><Icon className="size-3.5" aria-hidden="true" />{labels[status]}</span>;
+  return <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", successful ? "text-console-success" : running ? "text-console-accent" : status === "failed" ? "text-console-warning" : "text-console-text-dim")}><Icon className="size-3.5" aria-hidden="true" />{labels[status]}</span>;
 }
 
 /**
@@ -558,7 +558,7 @@ function FreshnessSection({ data, loading, error, retry }: DataSectionProps<Admi
   return (
     <section aria-labelledby="freshness-heading" className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Données de référence</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Données de référence</p>
         <h2 id="freshness-heading" className="mt-2 text-xl font-semibold text-white">Fraîcheur des données</h2>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -566,14 +566,14 @@ function FreshnessSection({ data, loading, error, retry }: DataSectionProps<Admi
           <article key={item.key} className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-medium text-white">{item.label}</p>
-              <span className={cn("shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold", item.stale ? "bg-amber-400/15 text-amber-300" : "bg-emerald-400/15 text-emerald-300")}>
+              <span className={cn("shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold", item.stale ? "bg-console-warning-tint/15 text-console-warning" : "bg-console-success-tint/15 text-console-success")}>
                 {item.stale ? "Périmé" : "À jour"}
               </span>
             </div>
-            <p className="mt-3 text-xs text-slate-500">
+            <p className="mt-3 text-xs text-console-muted">
               {item.lastUpdatedAt ? `Dernière mise à jour : ${formatDate(item.lastUpdatedAt)}` : "Jamais importé"}
             </p>
-            <p className="mt-1 text-xs text-slate-600">Seuil : {integerFormatter.format(item.staleAfterDays)} jours</p>
+            <p className="mt-1 text-xs text-console-text-faint">Seuil : {integerFormatter.format(item.staleAfterDays)} jours</p>
           </article>
         ))}
       </div>
@@ -594,7 +594,7 @@ function ClubsTable({ clubs, page, pages, total, query, loading, onPageChange }:
   const [actionClub, setActionClub] = useState<AdminClub | null>(null);
 
   if (clubs.length === 0) {
-    return <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-slate-500">{query ? `Aucun club ne correspond à « ${query} ».` : "Aucun club à afficher."}</div>;
+    return <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-console-muted">{query ? `Aucun club ne correspond à « ${query} ».` : "Aucun club à afficher."}</div>;
   }
 
   return (
@@ -602,7 +602,7 @@ function ClubsTable({ clubs, page, pages, total, query, loading, onPageChange }:
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1120px] text-left text-sm">
           <caption className="sr-only">Liste des comptes clubs et de leurs métriques</caption>
-          <thead className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-slate-500">
+          <thead className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-console-muted">
             <tr><th className="px-5 py-4 font-medium">Club</th><th className="px-4 py-4 font-medium">Activité</th><th className="px-4 py-4 font-medium">Offre</th><th className="px-4 py-4 font-medium">Saison / volume</th><th className="px-4 py-4 font-medium">Solveur · 30 j</th><th className="px-4 py-4 font-medium">Support</th></tr>
           </thead>
           <tbody className="divide-y divide-white/10">
@@ -612,10 +612,10 @@ function ClubsTable({ clubs, page, pages, total, query, loading, onPageChange }:
       </div>
       {actionClub ? <ClubActionsDialog club={actionClub} onClose={() => setActionClub(null)} /> : null}
       <div className="flex items-center justify-between gap-4 border-t border-white/10 px-5 py-4">
-        <p className="text-xs text-slate-500">{integerFormatter.format(total)} compte{total > 1 ? "s" : ""} · page {page} sur {Math.max(pages, 1)}</p>
+        <p className="text-xs text-console-muted">{integerFormatter.format(total)} compte{total > 1 ? "s" : ""} · page {page} sur {Math.max(pages, 1)}</p>
         <div className="flex gap-2">
-          <Button type="button" size="sm" variant="ghost" className="text-slate-300 hover:bg-white/10" aria-label="Page précédente" disabled={page <= 1 || loading} onClick={() => onPageChange(page - 1)}><ChevronLeft aria-hidden="true" /></Button>
-          <Button type="button" size="sm" variant="ghost" className="text-slate-300 hover:bg-white/10" aria-label="Page suivante" disabled={page >= pages || loading} onClick={() => onPageChange(page + 1)}><ChevronRight aria-hidden="true" /></Button>
+          <Button type="button" size="sm" variant="ghost" className="text-console-text hover:bg-white/10" aria-label="Page précédente" disabled={page <= 1 || loading} onClick={() => onPageChange(page - 1)}><ChevronLeft aria-hidden="true" /></Button>
+          <Button type="button" size="sm" variant="ghost" className="text-console-text hover:bg-white/10" aria-label="Page suivante" disabled={page >= pages || loading} onClick={() => onPageChange(page + 1)}><ChevronRight aria-hidden="true" /></Button>
         </div>
       </div>
     </div>
@@ -624,14 +624,14 @@ function ClubsTable({ clubs, page, pages, total, query, loading, onPageChange }:
 
 function ClubRow({ club, onActions }: { club: AdminClub; onActions: () => void }) {
   return (
-    <tr className="align-top text-slate-300 hover:bg-white/[0.025]">
-      <td className="px-5 py-5"><div className="flex items-start gap-3"><div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-slate-500"><Building2 className="size-4" aria-hidden="true" /></div><div><p className="font-medium text-white">{club.name}</p><p className="mt-1 text-xs text-slate-600">{club.ffbbClubCode ?? club.slug}</p>{club.isDemo ? <span className="mt-2 mr-2 inline-block rounded bg-violet-500/20 px-1.5 py-0.5 text-xs font-medium text-violet-300">Démo</span> : null}{club.unsubscribed ? <span className="mt-2 inline-block text-xs font-medium text-amber-300">Désabonné</span> : null}</div></div></td>
-      <td className="px-4 py-5"><p>{club.lastActivityAt ? formatDate(club.lastActivityAt) : "Jamais"}</p><p className="mt-1 text-xs text-slate-600">Créé le {formatDate(club.createdAt)}</p></td>
-      <td className="px-4 py-5"><p className="text-white">{club.effectivePlan.name}</p>{club.plan && club.plan.code !== club.effectivePlan.code ? <p className="mt-1 text-xs text-amber-300">{club.plan.name} posée — saison non réglée</p> : null}<p className="mt-1 text-xs text-slate-600">{club.generationCountSeason} génération{club.generationCountSeason > 1 ? "s" : ""}{club.billingCycle ? ` · ${club.billingCycle}` : ""}</p></td>
-      <td className="px-4 py-5"><p>{club.currentSeason?.name ?? "Aucune saison"}</p><p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600"><span className="flex items-center gap-1"><Users className="size-3" aria-hidden="true" />{club.volumes.teams} équipes · {club.volumes.coaches} coachs</span><span className="flex items-center gap-1"><MapPin className="size-3" aria-hidden="true" />{club.volumes.venues} salles</span><span>{club.volumes.constraints} contraintes</span></p></td>
-      <td className="px-4 py-5"><p><span className="font-medium text-white">{club.solver.generations}</span> générations · {formatRate(club.solver.infeasibleRate)} inf.</p><p className="mt-1 text-xs text-slate-600">P50 {formatDuration(club.solver.p50WallTimeMs)} · P95 {formatDuration(club.solver.p95WallTimeMs)}</p>{club.solver.latestStatus ? <p className="mt-2 text-xs text-slate-500">Dernière : {club.solver.latestStatus}</p> : null}</td>
+    <tr className="align-top text-console-text hover:bg-white/[0.025]">
+      <td className="px-5 py-5"><div className="flex items-start gap-3"><div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-console-muted"><Building2 className="size-4" aria-hidden="true" /></div><div><p className="font-medium text-white">{club.name}</p><p className="mt-1 text-xs text-console-text-faint">{club.ffbbClubCode ?? club.slug}</p>{club.isDemo ? <span className="mt-2 mr-2 inline-block rounded bg-console-demo-surface/20 px-1.5 py-0.5 text-xs font-medium text-console-demo">Démo</span> : null}{club.unsubscribed ? <span className="mt-2 inline-block text-xs font-medium text-console-warning">Désabonné</span> : null}</div></div></td>
+      <td className="px-4 py-5"><p>{club.lastActivityAt ? formatDate(club.lastActivityAt) : "Jamais"}</p><p className="mt-1 text-xs text-console-text-faint">Créé le {formatDate(club.createdAt)}</p></td>
+      <td className="px-4 py-5"><p className="text-white">{club.effectivePlan.name}</p>{club.plan && club.plan.code !== club.effectivePlan.code ? <p className="mt-1 text-xs text-console-warning">{club.plan.name} posée — saison non réglée</p> : null}<p className="mt-1 text-xs text-console-text-faint">{club.generationCountSeason} génération{club.generationCountSeason > 1 ? "s" : ""}{club.billingCycle ? ` · ${club.billingCycle}` : ""}</p></td>
+      <td className="px-4 py-5"><p>{club.currentSeason?.name ?? "Aucune saison"}</p><p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-console-text-faint"><span className="flex items-center gap-1"><Users className="size-3" aria-hidden="true" />{club.volumes.teams} équipes · {club.volumes.coaches} coachs</span><span className="flex items-center gap-1"><MapPin className="size-3" aria-hidden="true" />{club.volumes.venues} salles</span><span>{club.volumes.constraints} contraintes</span></p></td>
+      <td className="px-4 py-5"><p><span className="font-medium text-white">{club.solver.generations}</span> générations · {formatRate(club.solver.infeasibleRate)} inf.</p><p className="mt-1 text-xs text-console-text-faint">P50 {formatDuration(club.solver.p50WallTimeMs)} · P95 {formatDuration(club.solver.p95WallTimeMs)}</p>{club.solver.latestStatus ? <p className="mt-2 text-xs text-console-muted">Dernière : {club.solver.latestStatus}</p> : null}</td>
       <td className="px-4 py-5">
-        <Button type="button" size="sm" variant="outline" className="border-white/15 text-slate-200 hover:bg-white/10" onClick={onActions}>
+        <Button type="button" size="sm" variant="outline" className="border-white/15 text-console-text-bright hover:bg-white/10" onClick={onActions}>
           Actions
         </Button>
       </td>
@@ -850,26 +850,26 @@ function ClubActionsDialog({ club, onClose }: { club: AdminClub; onClose: () => 
 }
 
 function Metric({ label, value, detail }: { label: string; value: number | string; detail: string }) {
-  return <article className="bg-slate-950 p-5"><p className="text-xs text-slate-500">{label}</p><p className="mt-3 text-2xl font-semibold tabular-nums text-white">{typeof value === "number" ? integerFormatter.format(value) : value}</p><p className="mt-1 text-xs text-slate-600">{detail}</p></article>;
+  return <article className="bg-console-surface p-5"><p className="text-xs text-console-muted">{label}</p><p className="mt-3 text-2xl font-semibold tabular-nums text-white">{typeof value === "number" ? integerFormatter.format(value) : value}</p><p className="mt-1 text-xs text-console-text-faint">{detail}</p></article>;
 }
 
 function SmallMetric({ label, value, tone }: { label: string; value: number | string; tone?: "danger" }) {
-  return <div><dt className="text-xs text-slate-500">{label}</dt><dd className={cn("mt-1 text-lg font-semibold tabular-nums text-white", tone === "danger" && "text-amber-300")}>{typeof value === "number" ? integerFormatter.format(value) : value}</dd></div>;
+  return <div><dt className="text-xs text-console-muted">{label}</dt><dd className={cn("mt-1 text-lg font-semibold tabular-nums text-white", tone === "danger" && "text-console-warning")}>{typeof value === "number" ? integerFormatter.format(value) : value}</dd></div>;
 }
 
 function StatusChip({ status }: { status: "up" | "down" | "unknown" | "degraded" }) {
   const labels = { up: "Opérationnel", down: "Indisponible", unknown: "Inconnu", degraded: "Dégradé" };
   const healthy = status === "up";
   const Icon = healthy ? CheckCircle2 : AlertTriangle;
-  return <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", healthy ? "text-emerald-300" : status === "unknown" ? "text-slate-400" : "text-amber-300")}><Icon className="size-3.5" aria-hidden="true" />{labels[status]}</span>;
+  return <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", healthy ? "text-console-success" : status === "unknown" ? "text-console-text-dim" : "text-console-warning")}><Icon className="size-3.5" aria-hidden="true" />{labels[status]}</span>;
 }
 
 function PanelLoading({ label }: { label: string }) {
-  return <div className="flex min-h-40 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03]" role="status"><Spinner className="text-cyan-300" /><span className="sr-only">{label}</span></div>;
+  return <div className="flex min-h-40 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03]" role="status"><Spinner className="text-console-accent" /><span className="sr-only">{label}</span></div>;
 }
 
 function PanelError({ label, retry }: { label: string; retry: () => void }) {
-  return <div className="flex flex-col items-start gap-4 rounded-xl border border-amber-300/20 bg-amber-300/[0.05] p-5" role="alert"><p className="text-sm text-amber-100">{label}</p><Button type="button" size="sm" variant="outline" className="border-amber-300/20 text-amber-100 hover:bg-amber-300/10" onClick={retry}>Réessayer</Button></div>;
+  return <div className="flex flex-col items-start gap-4 rounded-xl border border-console-warning/20 bg-console-warning/[0.05] p-5" role="alert"><p className="text-sm text-console-warning-bright">{label}</p><Button type="button" size="sm" variant="outline" className="border-console-warning/20 text-console-warning-bright hover:bg-console-warning/10" onClick={retry}>Réessayer</Button></div>;
 }
 
 interface DataSectionProps<T> {

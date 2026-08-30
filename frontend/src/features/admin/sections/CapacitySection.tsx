@@ -34,19 +34,19 @@ export function CapacitySection() {
     <section aria-labelledby="capacity-heading" className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Charge &amp; capacité</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Charge &amp; capacité</p>
           <h2 id="capacity-heading" className="mt-2 text-xl font-semibold text-white">
             Capacité — {integerFormatter.format(data.windowDays)} derniers jours
           </h2>
         </div>
         <div className="text-right">
           <p className="text-2xl font-semibold tabular-nums text-white">{integerFormatter.format(data.totalSolves)}</p>
-          <p className="text-xs text-slate-500">solve{data.totalSolves > 1 ? "s" : ""} sur la fenêtre</p>
+          <p className="text-xs text-console-muted">solve{data.totalSolves > 1 ? "s" : ""} sur la fenêtre</p>
         </div>
       </div>
 
       {data.totalSolves === 0 ? (
-        <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-slate-500">
+        <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-console-muted">
           Aucun solve sur la fenêtre de {integerFormatter.format(data.windowDays)} jours — rien à mesurer pour l’instant.
         </div>
       ) : (
@@ -79,22 +79,22 @@ function VolumePanel({ volume }: { volume: AdminCapacityResponse["volume"] }) {
         />
       </dl>
       <div className="mt-6 border-t border-white/10 pt-4">
-        <p className="text-xs font-medium text-slate-400">Profil horaire (heure locale)</p>
+        <p className="text-xs font-medium text-console-text-dim">Profil horaire (heure locale)</p>
         {volume.hourly.length === 0 ? (
-          <p className="mt-2 text-sm text-slate-500">Aucune heure de mise en file connue.</p>
+          <p className="mt-2 text-sm text-console-muted">Aucune heure de mise en file connue.</p>
         ) : (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[16rem] text-left text-sm">
               <caption className="sr-only">Nombre de solves par heure de mise en file</caption>
               <thead>
-                <tr className="text-xs uppercase tracking-wide text-slate-500">
+                <tr className="text-xs uppercase tracking-wide text-console-muted">
                   <th className="py-2 pr-4 font-medium">Heure</th>
                   <th className="py-2 font-medium">Solves</th>
                 </tr>
               </thead>
               <tbody>
                 {volume.hourly.map((row) => (
-                  <tr key={row.hour} className="border-t border-white/10 text-slate-300">
+                  <tr key={row.hour} className="border-t border-white/10 text-console-text">
                     <td className="py-2 pr-4 tabular-nums">{formatHour(row.hour)}</td>
                     <td className="py-2 tabular-nums text-white">{integerFormatter.format(row.solves)}</td>
                   </tr>
@@ -112,14 +112,14 @@ function WaitPanel({ wait }: { wait: AdminCapacityResponse["wait"] }) {
   return (
     <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
       <p className="text-sm font-medium text-white">Attente en file</p>
-      <p className="mt-1 text-xs text-slate-500">De la mise en file au démarrage du solve</p>
+      <p className="mt-1 text-xs text-console-muted">De la mise en file au démarrage du solve</p>
       <dl className="mt-5 grid grid-cols-3 gap-3">
         <SmallMetric label="Médiane" value={formatDuration(wait.queueP50Ms)} />
         <SmallMetric label="P95" value={formatDuration(wait.queueP95Ms)} />
         <SmallMetric label="Max" value={formatDuration(wait.queueMaxMs)} />
       </dl>
-      <div className="mt-6 border-t border-white/10 pt-4 text-xs text-slate-500">
-        Côté engine (sémaphore) · P95 <span className="ml-1 font-medium text-slate-300">{formatDuration(wait.engineWaitP95Ms)}</span>
+      <div className="mt-6 border-t border-white/10 pt-4 text-xs text-console-muted">
+        Côté engine (sémaphore) · P95 <span className="ml-1 font-medium text-console-text">{formatDuration(wait.engineWaitP95Ms)}</span>
       </div>
     </article>
   );
@@ -129,15 +129,15 @@ function SizePanel({ bySize }: { bySize: AdminCapacityResponse["bySize"] }) {
   return (
     <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
       <p className="text-sm font-medium text-white">Durée par tranche</p>
-      <p className="mt-1 text-xs text-slate-500">Tranches de taille = équipes × gymnases (tiers du moteur)</p>
+      <p className="mt-1 text-xs text-console-muted">Tranches de taille = équipes × gymnases (tiers du moteur)</p>
       {bySize.length === 0 ? (
-        <p className="mt-4 text-sm text-slate-500">Aucune tentative dimensionnée sur la fenêtre.</p>
+        <p className="mt-4 text-sm text-console-muted">Aucune tentative dimensionnée sur la fenêtre.</p>
       ) : (
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[40rem] text-left text-sm">
             <caption className="sr-only">Durée par tranche de taille de problème</caption>
             <thead>
-              <tr className="text-xs uppercase tracking-wide text-slate-500">
+              <tr className="text-xs uppercase tracking-wide text-console-muted">
                 <th className="py-2 pr-4 font-medium">Tranche</th>
                 <th className="py-2 pr-4 font-medium">Solves</th>
                 <th className="py-2 pr-4 font-medium">P50 durée</th>
@@ -148,7 +148,7 @@ function SizePanel({ bySize }: { bySize: AdminCapacityResponse["bySize"] }) {
             </thead>
             <tbody>
               {bySize.map((row) => (
-                <tr key={row.bucket} className="border-t border-white/10 text-slate-300">
+                <tr key={row.bucket} className="border-t border-white/10 text-console-text">
                   <td className="py-2 pr-4 font-medium text-white">{bucketLabel(row.bucket)}</td>
                   <td className="py-2 pr-4 tabular-nums">{integerFormatter.format(row.solves)}</td>
                   <td className="py-2 pr-4 tabular-nums">{formatDuration(row.p50WallTimeMs)}</td>
@@ -161,7 +161,7 @@ function SizePanel({ bySize }: { bySize: AdminCapacityResponse["bySize"] }) {
           </table>
         </div>
       )}
-      <p className="mt-4 text-xs text-slate-600">
+      <p className="mt-4 text-xs text-console-text-faint">
         Taille = celle du club (saison entière) ; un overlay ne résout qu’un sous-ensemble mais porte le compte saison.
       </p>
     </article>
@@ -172,7 +172,7 @@ function MemoryPanel({ memory }: { memory: AdminCapacityResponse["memory"] }) {
   return (
     <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
       <p className="text-sm font-medium text-white">Mémoire engine</p>
-      <p className="mt-1 text-xs text-slate-500">Pic RSS du solve · limite prod {integerFormatter.format(PROD_MEMORY_LIMIT_MIB)} MiB</p>
+      <p className="mt-1 text-xs text-console-muted">Pic RSS du solve · limite prod {integerFormatter.format(PROD_MEMORY_LIMIT_MIB)} MiB</p>
       <dl className="mt-5 grid grid-cols-3 gap-3">
         <SmallMetric label="Médiane" value={formatMib(memory.peakP50Mb)} />
         <SmallMetric label="P95" value={formatMib(memory.peakP95Mb)} />
@@ -182,8 +182,8 @@ function MemoryPanel({ memory }: { memory: AdminCapacityResponse["memory"] }) {
           tone={memory.peakMaxMb !== null && memory.peakMaxMb > PROD_MEMORY_LIMIT_MIB ? "danger" : undefined}
         />
       </dl>
-      <div className="mt-6 border-t border-white/10 pt-4 text-xs text-slate-500">
-        Baseline du process (avant solve) <span className="ml-1 font-medium text-slate-300">{formatMib(memory.lastBaselineMb)}</span>
+      <div className="mt-6 border-t border-white/10 pt-4 text-xs text-console-muted">
+        Baseline du process (avant solve) <span className="ml-1 font-medium text-console-text">{formatMib(memory.lastBaselineMb)}</span>
       </div>
     </article>
   );
@@ -194,19 +194,19 @@ function IssuesPanel({ issues, totalSolves }: { issues: AdminCapacityResponse["i
     <article className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
       <p className="text-sm font-medium text-white">Issues</p>
       <dl className="mt-5 space-y-4">
-        {issues.byStatus.length === 0 ? <p className="text-sm text-slate-500">Aucune issue enregistrée.</p> : null}
+        {issues.byStatus.length === 0 ? <p className="text-sm text-console-muted">Aucune issue enregistrée.</p> : null}
         {issues.byStatus.map((row) => (
           <div key={row.status} className="flex items-baseline justify-between gap-3">
-            <dt className="text-sm text-slate-400">{row.status}</dt>
+            <dt className="text-sm text-console-text-dim">{row.status}</dt>
             <dd className="text-sm text-white">
               {integerFormatter.format(row.solves)}
-              <span className="ml-2 text-xs text-slate-500">{formatRate(totalSolves === 0 ? 0 : row.solves / totalSolves)}</span>
+              <span className="ml-2 text-xs text-console-muted">{formatRate(totalSolves === 0 ? 0 : row.solves / totalSolves)}</span>
             </dd>
           </div>
         ))}
       </dl>
-      <div className="mt-6 border-t border-white/10 pt-4 text-xs text-slate-500">
-        Payload engine · P95 <span className="ml-1 font-medium text-slate-300">{formatBytes(issues.payloadP95Bytes)}</span>
+      <div className="mt-6 border-t border-white/10 pt-4 text-xs text-console-muted">
+        Payload engine · P95 <span className="ml-1 font-medium text-console-text">{formatBytes(issues.payloadP95Bytes)}</span>
       </div>
     </article>
   );
@@ -215,11 +215,11 @@ function IssuesPanel({ issues, totalSolves }: { issues: AdminCapacityResponse["i
 function SmallMetric({ label, value, detail, tone }: { label: string; value: number | string; detail?: string; tone?: "danger" }) {
   return (
     <div>
-      <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className={cn("mt-1 text-lg font-semibold tabular-nums text-white", tone === "danger" && "text-amber-300")}>
+      <dt className="text-xs text-console-muted">{label}</dt>
+      <dd className={cn("mt-1 text-lg font-semibold tabular-nums text-white", tone === "danger" && "text-console-warning")}>
         {typeof value === "number" ? integerFormatter.format(value) : value}
       </dd>
-      {detail ? <p className="mt-0.5 text-xs text-slate-600">{detail}</p> : null}
+      {detail ? <p className="mt-0.5 text-xs text-console-text-faint">{detail}</p> : null}
     </div>
   );
 }
@@ -227,7 +227,7 @@ function SmallMetric({ label, value, detail, tone }: { label: string; value: num
 function PanelLoading({ label }: { label: string }) {
   return (
     <div className="flex min-h-40 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03]" role="status">
-      <Spinner className="text-cyan-300" />
+      <Spinner className="text-console-accent" />
       <span className="sr-only">{label}</span>
     </div>
   );
@@ -235,11 +235,11 @@ function PanelLoading({ label }: { label: string }) {
 
 function PanelError({ label, retry }: { label: string; retry: () => void }) {
   return (
-    <div className="flex flex-col items-start gap-4 rounded-xl border border-amber-300/20 bg-amber-300/[0.05] p-5" role="alert">
-      <p className="text-sm text-amber-100">{label}</p>
+    <div className="flex flex-col items-start gap-4 rounded-xl border border-console-warning/20 bg-console-warning/[0.05] p-5" role="alert">
+      <p className="text-sm text-console-warning-bright">{label}</p>
       <button
         type="button"
-        className="rounded-md border border-amber-300/20 px-3 py-1.5 text-sm text-amber-100 hover:bg-amber-300/10"
+        className="rounded-md border border-console-warning/20 px-3 py-1.5 text-sm text-console-warning-bright hover:bg-console-warning/10"
         onClick={retry}
       >
         Réessayer

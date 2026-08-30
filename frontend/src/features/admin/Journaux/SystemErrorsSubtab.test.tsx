@@ -92,8 +92,8 @@ describe("SystemErrorsSubtab", () => {
 
     const chip = screen.getByText("Erreur");
     expect(chip).toBeInTheDocument();
-    // The red style is applied to the severity chip (bg-red-500/15 text-red-300).
-    expect(chip.className).toContain("bg-red-500/15");
-    expect(chip.className).toContain("text-red-300");
+    // The red style is applied to the severity chip (bg-console-danger-surface/15 text-console-danger).
+    expect(chip.className).toContain("bg-console-danger-surface/15");
+    expect(chip.className).toContain("text-console-danger");
   });
 });

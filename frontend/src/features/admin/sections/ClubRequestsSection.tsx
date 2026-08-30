@@ -27,7 +27,7 @@ export function ClubRequestsSection() {
   return (
     <section aria-labelledby="club-requests-heading" className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Arbitrages</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Arbitrages</p>
         <h2 id="club-requests-heading" className="mt-2 text-xl font-semibold text-white">
           Demandes de création & adhésions en attente
         </h2>
@@ -35,28 +35,28 @@ export function ClubRequestsSection() {
 
       <div className="rounded-xl border border-white/10 bg-white/5 p-4">
         <h3 className="text-sm font-semibold text-white">Demandes de création de club</h3>
-        <p className="mt-1 text-xs text-slate-400">
+        <p className="mt-1 text-xs text-console-text-dim">
           Sans mail FFBB (aucun lien envoyé) ou expirées : la console est la seule voie. Approuver crée l'espace du club.
         </p>
         {requests.isPending ? (
-          <p className="mt-3 flex items-center gap-2 text-sm text-slate-400"><Spinner className="size-4" /> Chargement…</p>
+          <p className="mt-3 flex items-center gap-2 text-sm text-console-text-dim"><Spinner className="size-4" /> Chargement…</p>
         ) : requests.isError ? (
-          <p className="mt-3 text-sm text-rose-300">
+          <p className="mt-3 text-sm text-console-destructive">
             La liste n'a pas pu être lue.{" "}
             <button type="button" className="underline" onClick={() => void requests.refetch()}>Réessayer</button>
           </p>
         ) : 0 === requestItems.length ? (
-          <p className="mt-3 text-sm text-slate-400">Aucune demande en attente.</p>
+          <p className="mt-3 text-sm text-console-text-dim">Aucune demande en attente.</p>
         ) : (
           <ul className="mt-3 divide-y divide-white/10">
             {requestItems.map((item) => (
               <li key={item.id} className="flex flex-col gap-2 py-3 md:flex-row md:items-center md:justify-between">
-                <div className="text-sm text-slate-200">
+                <div className="text-sm text-console-text-bright">
                   <span className="font-medium text-white">{item.clubName}</span>{" "}
-                  <span className="text-slate-400">({item.ara})</span>
-                  {"expired" === item.status ? <span className="ml-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold uppercase text-amber-300">Expirée</span> : null}
-                  {null === item.clubEmail ? <span className="ml-2 rounded bg-slate-500/20 px-1.5 py-0.5 text-xs font-semibold uppercase text-slate-300">Sans mail FFBB</span> : null}
-                  <div className="text-xs text-slate-400">
+                  <span className="text-console-text-dim">({item.ara})</span>
+                  {"expired" === item.status ? <span className="ml-2 rounded bg-console-warning-surface/15 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-warning">Expirée</span> : null}
+                  {null === item.clubEmail ? <span className="ml-2 rounded bg-console-muted/20 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-text">Sans mail FFBB</span> : null}
+                  <div className="text-xs text-console-text-dim">
                     Demandé par {item.requesterName} ({item.requesterEmail}) le {item.createdAt} — expire le {item.expiresAt}
                   </div>
                 </div>
@@ -73,7 +73,7 @@ export function ClubRequestsSection() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="border-rose-400/40 text-rose-300 hover:bg-rose-500/10"
+                    className="border-console-destructive-edge/40 text-console-destructive hover:bg-console-destructive-surface/10"
                     disabled={decide.isPending}
                     onClick={() => {
                       if (confirmRefuseId === item.id) {
@@ -95,26 +95,26 @@ export function ClubRequestsSection() {
 
       <div className="rounded-xl border border-white/10 bg-white/5 p-4">
         <h3 className="text-sm font-semibold text-white">Adhésions en attente</h3>
-        <p className="mt-1 text-xs text-slate-400">
+        <p className="mt-1 text-xs text-console-text-dim">
           Normalement approuvées par un gestionnaire du club — activer ici quand la passation n'a pas lieu.
         </p>
         {memberships.isPending ? (
-          <p className="mt-3 flex items-center gap-2 text-sm text-slate-400"><Spinner className="size-4" /> Chargement…</p>
+          <p className="mt-3 flex items-center gap-2 text-sm text-console-text-dim"><Spinner className="size-4" /> Chargement…</p>
         ) : memberships.isError ? (
-          <p className="mt-3 text-sm text-rose-300">
+          <p className="mt-3 text-sm text-console-destructive">
             La liste n'a pas pu être lue.{" "}
             <button type="button" className="underline" onClick={() => void memberships.refetch()}>Réessayer</button>
           </p>
         ) : 0 === membershipItems.length ? (
-          <p className="mt-3 text-sm text-slate-400">Aucune adhésion en attente.</p>
+          <p className="mt-3 text-sm text-console-text-dim">Aucune adhésion en attente.</p>
         ) : (
           <ul className="mt-3 divide-y divide-white/10">
             {membershipItems.map((item) => (
               <li key={item.id} className="flex flex-col gap-2 py-3 md:flex-row md:items-center md:justify-between">
-                <div className="text-sm text-slate-200">
+                <div className="text-sm text-console-text-bright">
                   <span className="font-medium text-white">{item.userName}</span>{" "}
-                  <span className="text-slate-400">({item.userEmail})</span>
-                  <div className="text-xs text-slate-400">
+                  <span className="text-console-text-dim">({item.userEmail})</span>
+                  <div className="text-xs text-console-text-dim">
                     → {item.clubName} ({item.ara}) — demandé le {item.createdAt}
                   </div>
                 </div>

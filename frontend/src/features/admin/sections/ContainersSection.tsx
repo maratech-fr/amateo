@@ -23,11 +23,11 @@ export function ContainersSection() {
   return (
     <section aria-labelledby="containers-heading" className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Infrastructure</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-console-muted">Infrastructure</p>
         <h2 id="containers-heading" className="mt-2 text-xl font-semibold text-white">Conteneurs</h2>
       </div>
       {containers.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-slate-500">
+        <div className="rounded-xl border border-dashed border-white/15 px-6 py-12 text-center text-sm text-console-muted">
           Aucun conteneur à monitorer.
         </div>
       ) : (
@@ -35,7 +35,7 @@ export function ContainersSection() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[36rem] text-left text-sm">
               <caption className="sr-only">État des conteneurs monitorés</caption>
-              <thead className="border-b border-white/10 text-xs uppercase tracking-wider text-slate-500">
+              <thead className="border-b border-white/10 text-xs uppercase tracking-wider text-console-muted">
                 <tr>
                   <th className="py-3 pr-4 font-medium">Service</th>
                   <th className="py-3 pr-4 font-medium">Statut</th>
@@ -57,10 +57,10 @@ export function ContainersSection() {
 
 function ContainerRow({ container }: { container: AdminHealthContainer }) {
   return (
-    <tr className="text-slate-300 hover:bg-white/[0.025]">
+    <tr className="text-console-text hover:bg-white/[0.025]">
       <td className="py-3 pr-4 font-medium text-white">{container.name}</td>
       <td className="py-3 pr-4"><StatusChip status={container.status} /></td>
-      <td className="py-3 text-slate-400">{formatSignal(container)}</td>
+      <td className="py-3 text-console-text-dim">{formatSignal(container)}</td>
     </tr>
   );
 }
@@ -73,7 +73,7 @@ function StatusChip({ status }: { status: "up" | "down" | "unknown" }) {
     <span
       className={cn(
         "inline-flex items-center gap-1.5 text-xs font-medium",
-        healthy ? "text-emerald-300" : status === "unknown" ? "text-slate-400" : "text-red-300",
+        healthy ? "text-console-success" : status === "unknown" ? "text-console-text-dim" : "text-console-danger",
       )}
     >
       <Icon className="size-3.5" aria-hidden="true" />
@@ -95,7 +95,7 @@ function formatSignal(container: AdminHealthContainer): ReactNode {
 function PanelLoading({ label }: { label: string }) {
   return (
     <div className="flex min-h-40 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03]" role="status">
-      <Spinner className="text-cyan-300" />
+      <Spinner className="text-console-accent" />
       <span className="sr-only">{label}</span>
     </div>
   );
@@ -103,11 +103,11 @@ function PanelLoading({ label }: { label: string }) {
 
 function PanelError({ label, retry }: { label: string; retry: () => void }) {
   return (
-    <div className="flex flex-col items-start gap-4 rounded-xl border border-amber-300/20 bg-amber-300/[0.05] p-5" role="alert">
-      <p className="text-sm text-amber-100">{label}</p>
+    <div className="flex flex-col items-start gap-4 rounded-xl border border-console-warning/20 bg-console-warning/[0.05] p-5" role="alert">
+      <p className="text-sm text-console-warning-bright">{label}</p>
       <button
         type="button"
-        className="rounded-md border border-amber-300/20 px-3 py-1.5 text-sm text-amber-100 hover:bg-amber-300/10"
+        className="rounded-md border border-console-warning/20 px-3 py-1.5 text-sm text-console-warning-bright hover:bg-console-warning/10"
         onClick={retry}
       >
         Réessayer

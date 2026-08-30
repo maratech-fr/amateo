@@ -61,6 +61,74 @@
   --ring: var(--accent);
 }
 
+/*
+ * Console superadmin — jetons de palette (décision UXC-12, fondateur 2026-08-30).
+ * Cette surface GARDE volontairement son identité sombre : elle N'est PAS adaptative
+ * au thème (aucune variante `.dark`), c'est une esthétique assumée, hors du système de
+ * tokens clair/sombre défini plus haut. Le but de ce bloc est la MAINTENABILITÉ :
+ * centraliser les centaines de classes de palette Tailwind éparpillées dans
+ * `features/admin/` en une poignée de jetons nommés par leur RÔLE.
+ *
+ * Deux règles de construction rendent le geste sûr (aucun garde visuel n'existe sur
+ * cette surface) :
+ *   1. ALIAS, jamais transcription — chaque jeton pointe la variable de palette de
+ *      Tailwind elle-même (`var(--color-slate-500)`), jamais une valeur oklch recopiée
+ *      à la main : zéro transcription ⇒ zéro erreur de transcription.
+ *   2. BIJECTION — 1 nuance Tailwind = 1 jeton. Une nuance qui sert deux rôles reste le
+ *      MÊME jeton aux deux endroits (c'est la même couleur) ; fondre deux nuances en un
+ *      jeton est interdit (ce serait un changement visuel).
+ * Gardé par `FrontConsolePaletteTokens.test.ts` : aucune classe de palette brute ne doit
+ * réapparaître dans `features/admin/`.
+ */
+:root {
+  /* Neutres — échelle de texte sur fond sombre (du plus clair au plus faible) + surface profonde */
+  --console-text-strong: var(--color-slate-100);
+  --console-text-bright: var(--color-slate-200);
+  --console-text: var(--color-slate-300);
+  --console-text-dim: var(--color-slate-400);
+  --console-muted: var(--color-slate-500);
+  --console-text-faint: var(--color-slate-600);
+  --console-surface: var(--color-slate-950);
+
+  /* Accent primaire — cyan (liens, boutons, anneaux de focus ; -hover pour l'état survolé) */
+  --console-accent: var(--color-cyan-300);
+  --console-accent-hover: var(--color-cyan-200);
+  --console-accent-glow: var(--color-cyan-400);
+
+  /* Avertissement / mise en avant — amber */
+  --console-warning: var(--color-amber-300);
+  --console-warning-bright: var(--color-amber-100);
+  --console-warning-tint: var(--color-amber-400);
+  --console-warning-surface: var(--color-amber-500);
+
+  /* Erreur — red */
+  --console-danger: var(--color-red-300);
+  --console-danger-bright: var(--color-red-200);
+  --console-danger-deep: var(--color-red-400);
+  --console-danger-surface: var(--color-red-500);
+
+  /* Action destructive (bouton supprimer) — rose */
+  --console-destructive: var(--color-rose-300);
+  --console-destructive-edge: var(--color-rose-400);
+  --console-destructive-surface: var(--color-rose-500);
+
+  /* Succès — emerald */
+  --console-success: var(--color-emerald-300);
+  --console-success-tint: var(--color-emerald-400);
+  --console-success-surface: var(--color-emerald-500);
+
+  /* Statut « démo » — violet */
+  --console-demo: var(--color-violet-300);
+  --console-demo-surface: var(--color-violet-500);
+
+  /* Statut « info » — sky */
+  --console-info: var(--color-sky-300);
+  --console-info-surface: var(--color-sky-500);
+
+  /* Halo décoratif secondaire (AdminAuthLayout) — indigo */
+  --console-glow: var(--color-indigo-500);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -76,6 +144,40 @@
   --color-warning: var(--warning);
   --color-success: var(--success);
   --color-ring: var(--ring);
+
+  /* Console superadmin (décision UXC-12) — enregistre les jetons du bloc `:root` dédié
+     plus haut pour engendrer les utilitaires `text-console-*` / `bg-console-*` /
+     `border-console-*` / `ring-console-*` (les modificateurs d'opacité `…/70` marchent
+     comme sur toute couleur). Surface hors système de thème : voir ce bloc `:root`. */
+  --color-console-text-strong: var(--console-text-strong);
+  --color-console-text-bright: var(--console-text-bright);
+  --color-console-text: var(--console-text);
+  --color-console-text-dim: var(--console-text-dim);
+  --color-console-muted: var(--console-muted);
+  --color-console-text-faint: var(--console-text-faint);
+  --color-console-surface: var(--console-surface);
+  --color-console-accent: var(--console-accent);
+  --color-console-accent-hover: var(--console-accent-hover);
+  --color-console-accent-glow: var(--console-accent-glow);
+  --color-console-warning: var(--console-warning);
+  --color-console-warning-bright: var(--console-warning-bright);
+  --color-console-warning-tint: var(--console-warning-tint);
+  --color-console-warning-surface: var(--console-warning-surface);
+  --color-console-danger: var(--console-danger);
+  --color-console-danger-bright: var(--console-danger-bright);
+  --color-console-danger-deep: var(--console-danger-deep);
+  --color-console-danger-surface: var(--console-danger-surface);
+  --color-console-destructive: var(--console-destructive);
+  --color-console-destructive-edge: var(--console-destructive-edge);
+  --color-console-destructive-surface: var(--console-destructive-surface);
+  --color-console-success: var(--console-success);
+  --color-console-success-tint: var(--console-success-tint);
+  --color-console-success-surface: var(--console-success-surface);
+  --color-console-demo: var(--console-demo);
+  --color-console-demo-surface: var(--console-demo-surface);
+  --color-console-info: var(--console-info);
+  --color-console-info-surface: var(--console-info-surface);
+  --color-console-glow: var(--console-glow);
 
   /* P4-107 (3ᵉ tranche) — largeur des pages « fiche » (Club, Profil, Nouveautés).
      52rem = 832 px : entre `max-w-3xl` (768) et `max-w-4xl` (896), valeur testée à la main

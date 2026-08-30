@@ -75,7 +75,7 @@ describe("ExternalDepsSection", () => {
     expect(await screen.findByText("API ODS Éducation")).toBeInTheDocument();
     const downStatus = screen.getByText("Indisponible");
     expect(downStatus).toBeInTheDocument();
-    expect(downStatus.closest("span")).toHaveClass("text-red-400");
+    expect(downStatus.closest("span")).toHaveClass("text-console-danger-deep");
     expect(screen.getByText("2000 ms")).toBeInTheDocument();
   });
 
