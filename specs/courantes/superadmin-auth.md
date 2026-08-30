@@ -1,15 +1,13 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-08-29 (date recalée — le contenu ci-dessous a été écrit le 2026-08-28, le
-commit qui le porte (#779) a atterri le lendemain, décalage d'horloge de session sans rapport avec
-le contenu. Re-confronté avant de redater : le firewall `admin` couvre `^/api/admin` avec son
-`super_admin_provider` et n'est **pas** `stateless` — contrairement au firewall `api` qui l'est
-(`backend/config/packages/security.yaml:33-39`) ✓. **Reste du texte inchangé depuis le
-2026-08-28** : l'entité `SuperAdmin` existe (`backend/src/Entity/SuperAdmin.php`), identité séparée
-du `User` ✓ · le `TenantFilterListener` retourne immédiatement sur `/api/admin` et ne pose donc
-jamais `app.club_id` sous identité admin (`TenantFilterListener.php:81`, gardé par
-`AdminRequestBoundaryTest`) ✓ · les **deux** routes `PUBLIC_ACCESS` du périmètre admin tiennent
-toujours (`security.yaml:45-46` : `/api/admin/auth/password` et `/api/admin/auth/totp`) ✓)
+Last verified @ 2026-08-30 (`documentation-update`, UXC-12 — ajout du paragraphe palette console
+hors jetons de thème + retrait de la bascule de thème d'`AdminAuthLayout`. Re-confronté au code
+avant de redater : le firewall `admin` couvre `^/api/admin` avec `super_admin_provider` et n'est
+**pas** `stateless`, contrairement au firewall `api` (`backend/config/packages/security.yaml:33-48`)
+✓ · l'entité `SuperAdmin` existe (`backend/src/Entity/SuperAdmin.php`) ✓ · `TenantFilterListener`
+retourne immédiatement sur `/api/admin` (`TenantFilterListener.php:81`) ✓ · les **deux** routes
+`PUBLIC_ACCESS` du périmètre admin tiennent (`security.yaml:45-46`) ✓ · `AdminShell.tsx:40` câble
+bien `bg-slate-950 text-slate-100` en dur ✓)
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle
 > d'historisation SA3-A, la supervision SA3-B, la planification fiable SA3-C et
@@ -25,6 +23,18 @@ toujours (`security.yaml:45-46` : `/api/admin/auth/password` et `/api/admin/auth
 Le frontend React SA0 est désormais livré sur `/admin` : client HTTP à cookie de session
 séparé, store admin en mémoire uniquement, login mot de passe/TOTP, garde de route, shell
 de console et logout CSRF. Il ne lit ni ne persiste le JWT club.
+
+**La console a une palette PROPRE, hors du système de jetons de thème de l'app.** `AdminShell`
+et `AdminAuthLayout` sont câblés en dur sur `bg-slate-950`/`text-slate-100` + accents
+`cyan`/`amber` (`AdminShell.tsx:40`), pas sur `--background`/`--foreground` (`src/index.css`)
+qui varient avec le mode clair/sombre applicatif — c'est une esthétique assumée pour une
+surface à persona fondateur, pas une dérive (décision fermée, [`etat-des-lieux.md`](etat-des-lieux.md)
+§2). Conséquence directe : une primitive partagée qui consomme les jetons de thème (ex.
+`EmptyHint`/`EmptyBlock`, `text-muted-foreground`) ne peut pas être ralliée telle quelle par
+`features/admin/` sans décolorer la console — voir [`roadmap.md`](../evolution/roadmap.md)
+P4-149/P4-151. `AdminAuthLayout` n'offre donc **aucune** bascule de thème (retirée le
+2026-08-30 : elle basculait bien `.dark` sans rien changer à l'écran) ; les bascules
+publique (`AuthLayout`) et applicative (`AppLayout`) restent, hors de cette surface.
 
 ## Identité et frontière de sécurité
 

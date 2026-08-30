@@ -1,4 +1,4 @@
-# Roadmap (49) — ce qui reste à faire
+# Roadmap (50) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -130,7 +130,8 @@
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
-| P4-149 | **UXC-12 — console superadmin hors design system, avec le résidu admin de UXC-10** | ⚪ | M | UXC-10 (21 sites ralliés sur `EmptyHint` hors `features/admin/`) laisse `features/admin/` de côté à dessein : ~9 empty states y réinventent encore le balisage inline, et le module tout entier vit sur une palette `slate-*`/`cyan-*` en dur (audit UXC-12, confirmé 2026-08-27 : 563 occurrences de couleurs brutes). Décision fondateur 2026-08-30 : traiter l'ensemble des UXC, y compris celui-ci — à faire EN UN lot (mêmes fichiers que le ralliement empty-state, éviter deux passages) |
+| P4-149 | **UXC-12 — le ralliement empty-state de la console admin est BLOQUÉ par sa palette figée** | ⚪ | M | UXC-10 (21 sites ralliés hors `features/admin/`) laisse le module de côté à dessein : ~9 empty states y réinventent encore le balisage inline, tous peignant une couleur de console (`text-slate-400`/`text-slate-500`). **Le lot « un seul passage » décidé le 2026-08-30 s'est révélé inexécutable tel quel, vérifié au code le jour même** : `EmptyHint` impose `text-muted-foreground` et `EmptyBlock` ajoute `border-border`+`bg-card` (`shared/components/ui/empty-hint.tsx`) — trois jetons **dépendants du thème app** (`src/index.css:19,45`), jamais égaux aux gris fixes de la console. La console **garde** son identité sombre à dessein (décision fermée, [`etat-des-lieux.md`](../courantes/etat-des-lieux.md) §2) : rallier ces 9 sites sur la primitive partagée telle quelle la **décolorerait**. **Dépend de P4-151** (jetons console nommés par aliasing) — dans cet ordre, jamais l'inverse : une fois les couleurs de la console elles-mêmes nommées, la primitive peut recevoir une variante « console » (patron déjà en place : les onglets ont une peau `console` distincte de la peau `app`, [`frontend-components.md`](../../frontend/docs/frontend-components.md)) qui s'appuie dessus sans décolorer. **Alternative envisagée et écartée** : passer `className="text-slate-400"` en écrasement (`twMerge` gagnerait, rendu identique) — écartée, utiliser une primitive en neutralisant sa propriété visuelle principale la vide de son sens |
+| P4-151 | **Centraliser la palette console (`features/admin/`) en jetons nommés — par ALIASING, rendu identique par construction** | ⚪ | M | Prérequis de P4-149. Chaque classe couleur brute (`slate-*`/`cyan-*`/`amber-*`/…, plusieurs centaines d'occurrences sur une quinzaine de fichiers — audit UXC-12 du 2026-08-27, ordre de grandeur reconfirmé le 2026-08-30) devient un jeton NOMMÉ qui porte EXACTEMENT la valeur qu'il remplace. **Ce n'est PAS** une bascule vers les jetons de thème partagés (`--muted-foreground` etc., qui varient clair/sombre, `src/index.css`) : la console reste fixe (décision fermée, [`etat-des-lieux.md`](../courantes/etat-des-lieux.md) §2) — le gain est la **maintenabilité** (une seule source par rôle sémantique), pas l'adaptativité. ⚠ **Aucun garde visuel n'existe sur cette surface** (pas de test de rendu de couleur, pas de snapshot) : un aliasing qui se trompe de valeur passerait tous les tests actuels sans rougir — à instrumenter avant ou pendant le geste, pas après |
 | P4-150 | **Empty states sans témoin — une dizaine de copies d'écran qu'aucun test n'asserte** | ⚪ | XS | Relevé en ralliant UXC-10 sur `EmptyHint` (2026-08-30) : `ClubPage.tsx:531`, `CoachWishesModal.tsx:168`, `DayDialog.tsx:500`, `SlotReservationModal.tsx:457`, `WeekPickerDialog.tsx:305`, `ReleaseNotesPage.tsx:34`, `LocateOpponentModal.tsx:75`, `PublicWishPage.tsx:143`, `CampaignDialog.tsx:459`/`461` — aucun test ne fait un `getByText` sur ces messages précis, donc rien ne rougirait si le texte se décalait ou disparaissait par erreur. Pas un défaut de comportement (le rendu est correct aujourd'hui), une lacune de filet ; effort = ajouter l'assertion `getByText` au test existant de l'écran, site par site |
 
 ### Retour terrain du 2026-08-14 (planning — boucle de correction des contraintes)
@@ -236,10 +237,13 @@
 > (`frontend/shared/components/ui/empty-hint.tsx`). **4 exceptions structurelles gardées** — le
 > composant ne rend pas l'intention du site, détail et raison en décision fermée
 > [`etat-des-lieux.md`](../courantes/etat-des-lieux.md) §2. **`features/admin/`** (persona
-> fondateur, hors gestionnaire) reste à traiter, **avec `UXC-12`** (console hors design system,
-> mêmes fichiers) — décision fondateur du 2026-08-30 : traiter l'ensemble des UXC, plus de résidu
-> laissé « volontairement » de côté. Ligne de backlog : **P4-149**. Le résidu `INF-02` (hook
-> off-site des backups) a rejoint la checklist Avant PROD (**P5-2**) le 2026-08-09.
+> fondateur, hors gestionnaire) reste à traiter, **avec `UXC-12`** (console hors design system).
+> ⚠ **Le « même lot, mêmes fichiers » décidé ce jour-là ne tient pas** — vérifié au code plus tard
+> le même 2026-08-30 : la console garde son identité sombre à dessein (décision fermée §2 plus
+> haut) et `EmptyHint`/`EmptyBlock` sont câblés sur les jetons de thème app, jamais égaux à ses
+> gris fixes. Le ralliement (**P4-149**) est donc **bloqué par** la tokenisation de la palette
+> console (**P4-151**, nouvelle ligne), dans cet ordre. Le résidu `INF-02` (hook off-site des
+> backups) a rejoint la checklist Avant PROD (**P5-2**) le 2026-08-09.
 > Ces sujets restent lisibles dans l'édition d'audit, qui est la mémoire longue.
 
 ---
