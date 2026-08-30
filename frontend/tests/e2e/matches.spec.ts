@@ -147,12 +147,13 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Matchs" })).toBeVisible();
 
   // RMM-1 PR3 — l'écran est désormais une BOUCLE GUIDÉE : un rail de 5 vues (le
-  // même geste que le wizard). Le radar vit dans la vue « Litiges » ; la liste
+  // même geste que le wizard). Le radar vit dans la vue « Conflits » ; la liste
   // « à placer », le panneau et la grille dans « Domiciles posés ». On NAVIGUE
   // donc explicitement (les boutons du rail portent le libellé de l'étape). Le
   // radar reste un témoin : présent dans sa vue.
-  await page.getByRole("button", { name: /Litiges/ }).click();
-  await expect(page.getByText(/^Diagnostic/)).toBeVisible();
+  await page.getByRole("button", { name: /Conflits/ }).click();
+  // Le titre de la carte radar (un <h2>) — distinct du bouton « Conflits (n) » du rail.
+  await expect(page.getByRole("heading", { name: /Conflits/, level: 2 })).toBeVisible();
 
   // Manual entry (« Nouveau match » est dans la barre du haut, dispo partout).
   await page.getByRole("button", { name: /Nouveau match/i }).click();

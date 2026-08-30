@@ -18,7 +18,7 @@ export type LoopStepId = "batch" | "model" | "disputes" | "homeSlots" | "fbiEntr
 
 export interface LoopStep {
   id: LoopStepId;
-  /** Libellé FR, comptes INCLUS (« Litiges (3) ») — le rail ne porte pas de badge à part. */
+  /** Libellé FR, comptes INCLUS (« Conflits (3) ») — le rail ne porte pas de badge à part. */
   label: string;
   done: boolean;
 }
@@ -117,7 +117,7 @@ export function deriveLoopSteps({ weekFixtures, habits, conflicts }: LoopStepsIn
   return [
     { id: "batch", label: "Batch importé", done: weekFixtures.length > 0 },
     { id: "model", label: "Placés au modèle", done: 0 === homeUnplacedWithHabit.length },
-    { id: "disputes", label: `Litiges (${conflictCount})`, done: 0 === conflictCount },
+    { id: "disputes", label: `Conflits (${conflictCount})`, done: 0 === conflictCount },
     { id: "homeSlots", label: "Domiciles posés", done: 0 === homeUnplaced.length },
     { id: "fbiEntry", label: `Saisi dans FBI (${submitted.length}/${home.length})`, done: home.length > 0 && submitted.length === home.length },
   ];

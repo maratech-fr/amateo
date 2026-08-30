@@ -4,13 +4,13 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-08-29 (`documentation-update`, P4-95 volet A — §6.2 confronté au diff de
-`grid.ts`/`DiagnosticsPanel.tsx` (commit `ea1d5c45`) et aux champs réels posés par
-`engine/app/solver/result_builder/diagnostics.py` pour `diag-conflict-venue-*`/`diag-conflict-coach-*` :
-le resserrement `conflict` prend désormais jour+heure+un discriminant (pas seulement `venueId`), et
-l'ouverture ne se déclenche que si les créneaux visés tiennent dans une seule case. Le reste du
-fichier (routes, primitives, stack, §6.9) non re-vérifié cette passe — un stamp REMPLACE,
-l'historique vit dans git : `git log -p --follow frontend/docs/frontend-spec.md`)
+Last verified @ 2026-08-30 (`documentation-update`, UXC-18/19 — l'arborescence `shared/lib/`
+(§ci-dessous) gagne `date.ts` (foyer unique du formatage de date FR, descendu de `cockpit/lib/date.ts`)
+confronté au code (`frontend/src/shared/lib/date.ts`, `cockpit/lib/date.ts` qui ré-exporte) ; le
+miroir « Radar de conflits » (§ci-dessous, `matches/lib/matchAccess.ts`) relu — le formatage de
+date y est de la présentation, pas le prédicat mirroré, rien de faux. Le reste du fichier (routes,
+primitives, stack, §6.9) non re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git :
+`git log -p --follow frontend/docs/frontend-spec.md`)
 
 ---
 
@@ -1293,7 +1293,10 @@ frontend/src/
 │   │                           # download, clipboard, passwordPolicy, useModalA11y, queryClient, utils,
 │   │                           # teamIdentity (Gender/TeamLevel — foyer unique des deux axes
 │   │                           # d'identité FFBB d'une équipe, descendu de wizard/ le 2026-08-29,
-│   │                           # P4-148 ; wizard/api.ts les ré-exporte)
+│   │                           # P4-148 ; wizard/api.ts les ré-exporte), date (foyer unique du
+│   │                           # formatage de date FR — 4 formats distincts nommés par leur rendu,
+│   │                           # descendu de cockpit/ le 2026-08-30, UXC-19 ; cockpit/lib/date.ts
+│   │                           # ré-exporte les 3 formateurs qu'il consommait)
 │   └── stores/                 # authStore, themeStore, seasonStore, toastStore, transitionUiStore
 └── test/                       # setup vitest, helpers de rendu, suite a11y
 ```

@@ -295,4 +295,12 @@ describe("PlacementPanel", () => {
     expect(screen.queryByRole("button", { name: "Marquer saisi dans FBI" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Déplacer" })).not.toBeInTheDocument();
   });
+
+  it("affiche la date formatée FR sur la ligne « Date », jamais l'ISO brut (UXC-19)", () => {
+    // matchDate 2026-10-03 est un samedi. Falsification : rendre `fixture.matchDate` brut casse ce test.
+    renderPanel(openEnvelope);
+
+    expect(screen.getByText("sam. 3 oct.")).toBeInTheDocument();
+    expect(screen.queryByText("2026-10-03")).toBeNull();
+  });
 });

@@ -128,16 +128,16 @@ describe("MatchesPage — la boucle guidée (RMM-1 PR3)", () => {
     expect(screen.getByLabelText("Chargement")).toHaveClass("size-8");
   });
 
-  it("dérive un rail de 5 étapes ; le premier trou (Litiges) est la vue par défaut", async () => {
+  it("dérive un rail de 5 étapes ; le premier trou (Conflits) est la vue par défaut", async () => {
     renderWithProviders(<MatchesPage />);
     const rail = await screen.findByRole("navigation");
-    // Les 5 étapes, comptes DANS le label (Litiges (1) : le conflit de W ; Saisi 0/2).
+    // Les 5 étapes, comptes DANS le label (Conflits (1) : le conflit de W ; Saisi 0/2).
     expect(within(rail).getByRole("button", { name: /Batch importé/ })).toBeInTheDocument();
     expect(within(rail).getByRole("button", { name: /Placés au modèle/ })).toBeInTheDocument();
-    expect(within(rail).getByRole("button", { name: /Litiges \(1\)/ })).toBeInTheDocument();
+    expect(within(rail).getByRole("button", { name: /Conflits \(1\)/ })).toBeInTheDocument();
     expect(within(rail).getByRole("button", { name: /Domiciles posés/ })).toBeInTheDocument();
     expect(within(rail).getByRole("button", { name: /Saisi dans FBI \(0\/2\)/ })).toBeInTheDocument();
-    // Premier trou = Litiges (batch+model done) → la vue radar est à l'écran d'emblée.
+    // Premier trou = Conflits (batch+model done) → la vue radar est à l'écran d'emblée.
     expect(await screen.findByText("Jean Dupont")).toBeInTheDocument();
     expect(screen.getByText(/U13 et Seniors/)).toBeInTheDocument();
   });
@@ -145,7 +145,7 @@ describe("MatchesPage — la boucle guidée (RMM-1 PR3)", () => {
   it("cliquer une étape change la VUE ; la vue sélectionnée reste même si elle est « done »", async () => {
     const user = userEvent.setup();
     renderWithProviders(<MatchesPage />);
-    // « Placés au modèle » est DONE (défaut = Litiges) — le sélectionner l'affiche
+    // « Placés au modèle » est DONE (défaut = Conflits) — le sélectionner l'affiche
     // quand même : le rail ne saute jamais sous le choix de l'utilisateur.
     await gotoStep(user, /Placés au modèle/);
     // Vue modèle : la grille (le domicile placé) est là, plus le radar.
@@ -218,14 +218,14 @@ describe("MatchesPage — la boucle guidée (RMM-1 PR3)", () => {
     expect(place).toBeEnabled();
   });
 
-  it("montre la bande extérieur et le radar gradué (vues Domiciles puis Litiges)", async () => {
+  it("montre la bande extérieur et le radar gradué (vues Domiciles puis Conflits)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<MatchesPage />);
     // Bande extérieur : présente dans la vue Domiciles (comme dans la vue modèle).
     await gotoStep(user, /Domiciles posés/);
     expect(await screen.findByText(/à Grenoble \(Halle Clemenceau\)/)).toBeInTheDocument();
-    // Radar gradué : vue Litiges (groupe sévérité 3 = coach principal en double).
-    await gotoStep(user, /Litiges/);
+    // Radar gradué : vue Conflits (groupe sévérité 3 = coach principal en double).
+    await gotoStep(user, /Conflits/);
     expect(await screen.findByText("Coach principal en double")).toBeInTheDocument();
   });
 
@@ -285,7 +285,7 @@ describe("MatchesPage — la boucle guidée (RMM-1 PR3)", () => {
     // La barre du haut : Nouveau match seulement. « Placer auto » / « Importer FBI »
     // ne sont PAS dans la barre — ils sont l'action primaire de LEUR étape.
     expect(screen.getByRole("button", { name: /Nouveau match/ })).toBeInTheDocument();
-    // Vue par défaut = Litiges : ni placer auto ni importer visibles.
+    // Vue par défaut = Conflits : ni placer auto ni importer visibles.
     expect(screen.queryByRole("button", { name: /Placer automatiquement/ })).not.toBeInTheDocument();
     // Étape Batch → « Importer FBI » primaire ; étape Domiciles → « Placer auto » primaire.
     await gotoStep(user, /Batch importé/);
@@ -318,7 +318,7 @@ describe("MatchesPage — la boucle guidée (RMM-1 PR3)", () => {
     const rail = await screen.findByRole("navigation");
     expect(within(rail).getByRole("button", { name: /Batch importé/ })).toBeInTheDocument();
     expect(within(rail).getByRole("button", { name: /Placés au modèle/ })).toBeInTheDocument();
-    expect(within(rail).getByRole("button", { name: /Litiges \(1\)/ })).toBeInTheDocument();
+    expect(within(rail).getByRole("button", { name: /Conflits \(1\)/ })).toBeInTheDocument();
     expect(within(rail).getByRole("button", { name: /Domiciles posés/ })).toBeInTheDocument();
     expect(within(rail).getByRole("button", { name: /Saisi dans FBI \(0\/2\)/ })).toBeInTheDocument();
     // Le rail ne porte aucune chip « Nouveau ».

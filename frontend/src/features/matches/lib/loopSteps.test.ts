@@ -71,17 +71,17 @@ describe("deriveLoopSteps — les 5 états DÉRIVÉS de la semaine (zéro état 
     expect(id(steps, "homeSlots").done).toBe(true);
   });
 
-  it("étape 3 (Litiges) : un conflit rattaché à un fixture de W compte ; un conflit SANS date NON", () => {
+  it("étape 3 (Conflits) : un conflit rattaché à un fixture de W compte ; un conflit SANS date NON", () => {
     const weekFixtures = [fx({ id: "w1" })];
     // Conflit sur w1 (dans W) → compte, non-done, count dans le label.
     const withDate = deriveLoopSteps({ weekFixtures, habits: [], conflicts: [conflictOn("w1")] });
     expect(id(withDate, "disputes").done).toBe(false);
-    expect(id(withDate, "disputes").label).toBe("Litiges (1)");
+    expect(id(withDate, "disputes").label).toBe("Conflits (1)");
     // Conflit SANS fixture (COMPETITION_INCOMPLETE) → hors compte hebdo, done.
     const dateless: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, competitionId: "c", teamId: "team-1", imported: 3, expected: 6 };
     const withoutDate = deriveLoopSteps({ weekFixtures, habits: [], conflicts: [dateless] });
     expect(id(withoutDate, "disputes").done).toBe(true);
-    expect(id(withoutDate, "disputes").label).toBe("Litiges (0)");
+    expect(id(withoutDate, "disputes").label).toBe("Conflits (0)");
     // Conflit sur un fixture d'une AUTRE semaine → pas dans le compte de W.
     const otherWeek = deriveLoopSteps({ weekFixtures, habits: [], conflicts: [conflictOn("not-in-w")] });
     expect(id(otherWeek, "disputes").done).toBe(true);
@@ -206,6 +206,6 @@ describe("le SIGNAL ne rend JAMAIS une étape non-done, et les LABELS du rail re
     // …et pourtant le rail est intact : les rotations n'entrent NULLE PART dans deriveLoopSteps.
     const steps = deriveLoopSteps({ weekFixtures: [home1, home2], habits: [], conflicts: [] });
     expect(steps.every((s) => s.done)).toBe(true);
-    expect(steps.map((s) => s.label)).toEqual(["Batch importé", "Placés au modèle", "Litiges (0)", "Domiciles posés", "Saisi dans FBI (2/2)"]);
+    expect(steps.map((s) => s.label)).toEqual(["Batch importé", "Placés au modèle", "Conflits (0)", "Domiciles posés", "Saisi dans FBI (2/2)"]);
   });
 });

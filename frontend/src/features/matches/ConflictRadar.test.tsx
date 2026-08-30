@@ -53,3 +53,12 @@ describe("ConflictRadar — chip « Nouveau » (RMM-3, ornement pur)", () => {
     expect(screen.getAllByText("Deux matchs sur le même créneau")).toHaveLength(2);
   });
 });
+
+describe("ConflictRadar — le titre dit « Conflits » (mot unique, UXC-18)", () => {
+  it("intitule la carte « Conflits », jamais « Diagnostic »", () => {
+    render(<ConflictRadar conflicts={conflictsFixture()} teams={teams} coaches={coaches} />);
+    // Le titre est un <h2> (CardTitle). Falsification : remettre « Diagnostic » casse ce test.
+    expect(screen.getByRole("heading", { level: 2, name: /Conflits/ })).toBeInTheDocument();
+    expect(screen.queryByText("Diagnostic")).toBeNull();
+  });
+});
