@@ -1,6 +1,11 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-08-29 (ENG-39 fermé sans livraison le 2026-08-29, décision fondateur — `result_builder/diagnostics.py` reste à 1525 l., détail et preuves : `specs/courantes/etat-des-lieux.md` §2. Corrigé ce jour : §« Hard locks » citait encore `result_builder.py` — le monolithe a disparu au paquet depuis ENG-39, le diagnostic over-capacity vit dans `result_builder/diagnostics.py::_diagnose_conflicts`, corrigé. Non re-vérifié au-delà de ce point et de la ligne §1 sur le paquet `result_builder/` (déjà à jour, laissée telle quelle) : le reste de l'inventaire n'a pas été confronté ligne à ligne cette passe.)
+Last verified @ 2026-08-30 (rotation `documentation-update`, passe P4-132. Corrigé ce jour : §POST
+/validate-assignments affirmait « mêmes builders HARD que `/generate` » pour `_evaluate_state` —
+faux depuis toujours en fait, `_evaluate_state` appelle `_apply_hard` (`validate_assignments.py:415`)
+qui n'est PAS byte-identique à `/generate` (`add_venue_minimum_constraints`, `main.py:584`, jamais
+mirroré) ; corrigé pour citer `_apply_hard` et l'asymétrie connue. Le reste de l'inventaire n'a pas
+été confronté ligne à ligne cette passe.)
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
 > Source de vérité : `engine/app/main.py`, `engine/app/schemas/input_schema.py`, `engine/app/schemas/output_schema.py`, `engine/app/solver/{model,constraints,objective,result_builder}.py`, `engine/app/core/config.py`.
@@ -116,7 +121,10 @@ produit côté backend/front : `backend-inventory.md` §route `move`/`place-slot
   `_compromises_for` (`validate_assignments.py`) ; le chemin refus n'appelle jamais le solveur une
   deuxième fois.
 - **Deux états FIGÉS, évalués par LE SOLVEUR** (`_evaluate_state`) : le modèle est reconstruit à
-  chaque appel (mêmes builders HARD que `/generate`), **toutes** les variables hors des slots
+  chaque appel (mêmes builders HARD que le verdict, `_apply_hard` — **pas byte-identique à
+  `/generate`** : `add_venue_minimum_constraints` n'y est jamais mirroré, asymétrie déclarée et
+  gardée par `engine/tests/test_hard_layer_parity_registry.py`, P4-132/P4-152), **toutes** les
+  variables hors des slots
   épinglés sont forcées à 0 (`model.Add(var == 0)`) — sans quoi un `Maximize` placerait des
   séances fantômes pour gonfler le score de confort — puis on ajoute les MÊMES termes soft que
   `/generate` (préférences gymnase/jour/heure, repos après match, spacing, plafond de jours coach,
