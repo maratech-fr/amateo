@@ -1,8 +1,6 @@
 import { ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { useThemeStore } from "@/shared/stores/themeStore";
-import { Button } from "@/shared/components/ui/button";
 import { PRODUCT_NAME } from "@/shared/lib/product";
 
 interface AdminAuthLayoutProps {
@@ -12,9 +10,6 @@ interface AdminAuthLayoutProps {
 }
 
 export function AdminAuthLayout({ title, description, children }: AdminAuthLayoutProps) {
-  const mode = useThemeStore((state) => state.mode);
-  const toggleMode = useThemeStore((state) => state.toggleMode);
-
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-950 p-6 text-slate-100">
       <div className="pointer-events-none absolute -left-24 -top-24 size-80 rounded-full bg-cyan-400/10 blur-3xl" />
@@ -30,9 +25,6 @@ export function AdminAuthLayout({ title, description, children }: AdminAuthLayou
               <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Console sécurisée</p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" className="text-slate-300 hover:bg-white/10 hover:text-white" aria-label={`Activer le thème ${mode === "dark" ? "clair" : "sombre"}`} onClick={toggleMode}>
-            <span aria-hidden="true">{mode === "dark" ? "☼" : "◐"}</span>
-          </Button>
         </div>
         <section className="rounded-2xl border border-white/10 bg-white/[0.06] p-1 shadow-2xl shadow-black/30 backdrop-blur-xl">
           <div className="rounded-[0.85rem] border border-white/10 bg-slate-950/70 p-7">
