@@ -44,6 +44,17 @@ class ScheduleCpModel(cp_model.CpModel):
         # tienne dans une case capacité 1. Bloc ``sharedBlocks`` absent/vide ⇒ carte vide ⇒ chemin
         # byte-identique (goldens inchangés).
         self.shared_block_room_relief: dict[tuple[str, str], list[tuple[Any, int]]] = {}
+        # Exemption coach-joueur sur la SÉANCE DE BLOC — les variables de décision ``b`` de chaque
+        # bloc, indexées par la case ``(venue_id, slot_id)`` (slot_id == "day:HH:MM", mêmes clés que
+        # ``shared_block_room_relief``). Chaque entrée porte l'ENSEMBLE des équipes membres du bloc et
+        # son ``b`` : ``add_coach_player_non_overlap`` s'en sert pour relâcher l'anti-chevauchement
+        # (coach-joueur, joueur-joueur) d'une paire {A,B} contenue dans un bloc de la case, sous la
+        # SEULE condition que la séance de bloc y soit ACTIVE — la borne passe de ``≤ 1`` à ``≤ 1 + Σb``.
+        # Écrite par ``add_shared_block_constraints`` (au fil de la création de chaque ``b``), lue par
+        # ``add_coach_player_non_overlap``. On garde la RÉFÉRENCE du dict (même vide), comme pour
+        # ``room_relief`` : un ``... or {}`` fabriquerait un dict jetable que le lecteur ne verrait pas.
+        # Bloc absent/vide ⇒ carte vide ⇒ borne stricte partout (chemin byte-identique, goldens).
+        self.shared_block_case_bvars: dict[tuple[str, str], list[tuple[frozenset[str], Any]]] = {}
         # P4-99 — la cause MESURÉE d'un candidat fermé, indexée par la variable OR-Tools
         # (``var.Index()``, entier stable). Remplie par les sites de pose de `constraints.py`
         # au moment EXACT où ils forcent un candidat à 0 (décision B : jamais reconstituée
