@@ -1,16 +1,12 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, passe P2-51 PR-5b — zone non touchée
-par cette PR, contrôle de fraîcheur). Re-confronté au code : `UNPLACED_PENALTY = 100000`
-(`app/solver/objective/weights.py:118`) ✓ · tiers S 10000/A 1000/B 100/C 10/D 1 fixes
-(`objective/weights.py:27-59`) ✓ · budget adaptatif 60/180/600 s (`_adaptive_timeout`,
-`app/main.py:413`) ✓ · `soft_lock_moved` existe (`app/solver/result_builder/diagnostics.py:314`,
-fonction `_diagnose_soft_lock_moved`) ✓ · `orToolsWeight` toujours requis et ignoré du solve
-(`input_schema.py:79`, alias `orToolsWeight`) ✓ — deux lignes recalées (dérive mineure :
-`:340`→`:314`, `:72`→`:79`) ; **drift trouvé et corrigé** : §Priorités citait `app/solver/objective.py`,
-un fichier qui n'existe plus (module éclaté en paquet `app/solver/objective/` depuis P4-132) —
-recalé en `app/solver/objective/weights.py`. Capacité de créneau backend et `MIN_SESSIONS`/ENG-18
-non re-confrontées cette passe.)
+Last verified @ 2026-09-01 (exemption coach-joueur sur case de bloc active, `documentation-update`).
+Ligne `COACH_PLAYER_NO_OVERLAP` du tableau des règles dures amendée et confrontée au code : exemption
+réifiée `≤ 1 + Σb` posée par `add_coach_player_non_overlap` (`app/solver/constraints/structural.py`,
+carte `shared_block_case_bvars` écrite par `add_shared_block_constraints`) — exemption sous séance de
+bloc ACTIVE seulement, même gymnase + même heure de début ; coïncidence solo (b=0), débuts différents
+et gymnases différents restent des conflits ✓. Reste du fichier non re-vérifié cette passe —
+historique : `git log -p --follow engine/docs/business.md`.
 
 > Ce document explique le domaine de la planification sportive et ce que le moteur `engine` resout. Destine aux nouveaux developpeurs rejoignant le projet ClubScheduler.
 

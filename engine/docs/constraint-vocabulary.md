@@ -1,19 +1,13 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-08-31 (P2-51 PR-7, `documentation-update`). Le modèle groupe {équipes, K}
-(`sharedTrainings`, `add_shared_training_constraints`) est **RETIRÉ du code** — confirmé absent de
-`targeting.py` (seuls `add_shared_block_constraints` et `team_share_declared_pairs` y survivent) et
-du `Literal` de diagnostics (`output_schema.py` — plus de `shared_training_not_honored`). Le
-**bloc de mutualisation (`sharedBlocks`)** devient la SEULE notion : section réécrite pour retirer
-toute mention de coexistence avec un groupe K (exclusion `y ≤ 1 − b`, disparue avec lui) ; liage
-`x[membre,case] ≥ b[case]` + `Σ b == commonSessions` sans réification depuis la co-présence
-(`add_shared_block_constraints`, `targeting.py:371-490`) ; dé-comptage capacité `(n_libres−1)·b`
-(`add_room_at_most_one`, `structural.py:40`) ; exemption passerelle (`team_share_declared_pairs`,
-`targeting.py:546-560`) ; diagnostic `shared_block_not_honored` (`_diagnose_shared_blocks`,
-`result_builder/diagnostics.py:824-902`) ; miroir verdict `_shared_block_move_violation`
-(`validate_assignments.py:70-150`). Reste du document non re-parcouru ligne à ligne cette passe
-(rotation précédente 2026-08-30, P4-152 : parité génération⇄verdict `travelTime`/`minAtVenueId` —
-toujours vraie, non re-confrontée aujourd'hui).
+Last verified @ 2026-09-01 (exemption coach-joueur sur case de bloc active, `documentation-update`).
+Ligne `COACH_PLAYER_NO_OVERLAP` (§règles dures) et nouvelle ligne `shared_block_case_bvars` (§tableau
+bloc) confrontées au code : borne réifiée `≤ 1 + Σb` sous séance de bloc active dans les 3 mécanismes
+d'`add_coach_player_non_overlap` (`structural.py` — clé-temps, intervalles, libre-vs-verrou `var ≤ Σb`),
+carte exposée sur `ScheduleCpModel` (`model.py`, patron `room_relief`), garde de distinctness bornant
+Σb ≤ 1 (`targeting.py:494-497`) ✓. Le retrait du modèle groupe K (passe précédente) reste vrai :
+`add_shared_block_constraints` et `team_share_declared_pairs` seuls dans `targeting.py` ✓. Reste non
+re-vérifié cette passe — historique : `git log -p --follow engine/docs/constraint-vocabulary.md`.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
