@@ -1,11 +1,13 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-08-30 (`documentation-update`, P4-138 — la mention `CustomRoutesOpenApiFactory::adminJournalPaths()`
-était devenue fausse : la factory est devenue un composeur de 16 `CustomPathContributor` par
-domaine, la déclaration des 3 routes journal/audit vit désormais dans `AdminJournalPaths::contribute()`
-(`backend/src/OpenApi/PathContributor/AdminJournalPaths.php`) — corrigé ci-dessous. Reste du fichier
-non re-confronté au code cette passe hormis ce point ; l'historique des vérifications précédentes
-vit dans `git log -p --follow specs/courantes/superadmin-auth.md`)
+Last verified @ 2026-08-31 (rotation `documentation-update`, hors sujet de la PR P2-51 PR-5).
+Re-confronté au code : firewall `admin` = `pattern: ^/api/admin`, `provider: super_admin_provider`
+(`backend/config/packages/security.yaml:33-35`) ✓ ; `AdminCsrfListener` toujours à la priorité 6
+(`#[AsEventListener(event: KernelEvents::REQUEST, priority: 6)]`) ✓ ; politique de mot de passe
+12 caractères + majuscule + caractère spécial toujours dans `PasswordPolicy::MIN_LENGTH`/
+`REQUIREMENT_FR` (`backend/src/Service/PasswordPolicy.php:15-18`) ✓. Reste du fichier non
+re-confronté cette passe ; l'historique des vérifications précédentes vit dans
+`git log -p --follow specs/courantes/superadmin-auth.md`)
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle
 > d'historisation SA3-A, la supervision SA3-B, la planification fiable SA3-C et

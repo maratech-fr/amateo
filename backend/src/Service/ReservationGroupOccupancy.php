@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Reservation;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\SharedTrainingGroup;
 use App\Entity\SharedTrainingGroupTeam;
 use App\Entity\Team;
@@ -39,6 +41,11 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  *
  * La PORTÉE (socle `null` vs plan de période) borne toutes les lectures : deux mondes distincts,
  * jamais d'union (le filtre tenant Doctrine ajoute le club + la saison courants).
+ *
+ * P2-51 PR-5 — le rail batch se RÉ-ANCRE sur le {@see SharedTrainingBlock} ({@see assertBlockReservationAllowed}) :
+ * les MÊMES 5 règles, à l'identique (le plafond (c) borne alors `commonSessions` du bloc). Les
+ * règles (b)/(e) du rail unitaire comptent un BLOC complet comme UN occupant, exactement comme un
+ * groupe. Le groupe {@see SharedTrainingGroup} reste géré à côté (transition douce, PR-7).
  */
 final class ReservationGroupOccupancy
 {
@@ -141,6 +148,54 @@ final class ReservationGroupOccupancy
     }
 
     /**
+     * P2-51 — RÉ-ANCRAGE du rail batch sur le BLOC (PR-5). Les MÊMES 5 gardes que le groupe, à
+     * l'identique : le bloc se comporte comme une équipe, mais côté RÉSERVATION une séance de bloc
+     * s'éclate elle aussi en N verrous d'UNE case et doit rester UNE occupation. Règles (a)
+     * exclusivité, (c) plafond `commonSessions`, (d) plafond par membre — parité stricte avec
+     * {@see assertGroupReservationAllowed}. Les règles (b)/(e) du rail unitaire comptent en plus un
+     * BLOC complet comme UN occupant ({@see occupantCount}, {@see reservedSetMatchesABlock}).
+     *
+     * ⚠ Le plafond (c) réutilise {@see groupCompleteCaseCount} — pur, indexé sur le JEU DE MEMBRES,
+     * pas sur l'identité groupe : « cases dont l'ensemble réservé est EXACTEMENT ces membres ».
+     *
+     * @param list<string> $memberTeamIds
+     */
+    public function assertBlockReservationAllowed(
+        SharedTrainingBlock $block,
+        array $memberTeamIds,
+        string $venueId,
+        int $dayOfWeek,
+        DateTimeImmutable $startTime,
+        ?string $schedulePlanId,
+    ): void {
+        // (a) EXCLUSIVITÉ — le créneau visé doit être VIDE de toute autre réservation.
+        if ([] !== $this->reservationsOnCase($venueId, $dayOfWeek, $startTime, $schedulePlanId)) {
+            throw new UnprocessableEntityHttpException('Ce créneau est déjà occupé par d\'autres réservations : un entraînement mutualisé demande un créneau entièrement libre. Choisissez un créneau vide, ou retirez d\'abord les réservations en place.');
+        }
+
+        // (c) PLAFOND — la case visée est vide (règle a), elle deviendra « bloc-complète » : les
+        // cases déjà complètes + celle-ci ne doivent pas dépasser le nombre de séances communes.
+        $memberSet = array_fill_keys($memberTeamIds, true);
+        if ($this->groupCompleteCaseCount($memberSet, $schedulePlanId) + 1 > $block->getCommonSessions()) {
+            throw new UnprocessableEntityHttpException(\sprintf('Cette mutualisation a déjà ses %d séance(s) commune(s) placée(s) : vous ne pouvez pas en réserver davantage. Retirez une séance mutualisée avant d\'en ajouter une autre.', $block->getCommonSessions()));
+        }
+
+        // (d) PLAFOND MEMBRE — la séance ajoute une réservation à CHAQUE membre : aucun ne doit
+        // franchir son nombre de séances hebdomadaires effectif.
+        $teamRepository = $this->entityManager->getRepository(Team::class);
+        foreach ($memberTeamIds as $teamId) {
+            $team = $teamRepository->findOneBy(['id' => $teamId]);
+            if (!$team instanceof Team) {
+                continue; // le contrôleur a résolu les membres sous le tenant ; défense de contrat.
+            }
+            $ceiling = $this->effectiveTeamSessions->perWeek($team, $schedulePlanId);
+            if ($this->teamReservationCount($teamId, $schedulePlanId) + 1 > $ceiling) {
+                throw new UnprocessableEntityHttpException(\sprintf('L\'équipe « %s » atteint déjà son nombre de séances par semaine (%d) : cette séance mutualisée le dépasserait. Réduisez ses autres réservations, ou augmentez son nombre de séances.', $team->getName(), $ceiling));
+            }
+        }
+    }
+
+    /**
      * Rail UNITAIRE : règles (b) réciproque, (e) capacité.
      */
     public function assertIndividualReservationAllowed(
@@ -152,8 +207,11 @@ final class ReservationGroupOccupancy
     ): void {
         $reserved = $this->reservedTeamSetOnCase($venueId, $dayOfWeek, $startTime, $schedulePlanId);
 
-        // (b) RÉCIPROQUE — la case porte-t-elle DÉJÀ un groupe complet ? (dérivé, pas stocké)
-        if ($this->completeGroupOn($reserved, $schedulePlanId) instanceof SharedTrainingGroup) {
+        // (b) RÉCIPROQUE — la case porte-t-elle DÉJÀ un groupe OU un BLOC complet ? (dérivé, pas
+        // stocké : l'ensemble réservé est EXACTEMENT le jeu de membres d'une mutualisation de la
+        // même portée). P2-51 : un bloc réservé occupe la case en entier, comme un groupe.
+        if ($this->completeGroupOn($reserved, $schedulePlanId) instanceof SharedTrainingGroup
+            || $this->reservedSetMatchesABlock($reserved, $schedulePlanId)) {
             throw new UnprocessableEntityHttpException('Ce créneau est réservé à un entraînement mutualisé — le groupe l\'occupe en entier : aucune autre équipe ne peut s\'y ajouter. Choisissez un autre créneau.');
         }
 
@@ -271,6 +329,36 @@ final class ReservationGroupOccupancy
             }
         }
 
+        // P2-51 — un BLOC entièrement présent compte AUSSI pour UN occupant (parité groupe). La
+        // multi-appartenance est permise : on ne re-compte pas un bloc dont TOUS les membres sont
+        // déjà attribués (à un groupe ou à un bloc déjà folié), sinon une même case physique
+        // pèserait deux fois. Aucun bloc en portée ⇒ boucle vide ⇒ comptage byte-identique.
+        foreach ($this->blockMemberSetsInScope($schedulePlanId) as $memberSet) {
+            if ([] === $memberSet) {
+                continue;
+            }
+            $fullyPresent = true;
+            foreach (array_keys($memberSet) as $teamId) {
+                if (!isset($teamSet[$teamId])) {
+                    $fullyPresent = false;
+                    break;
+                }
+            }
+            if (!$fullyPresent) {
+                continue;
+            }
+            $newlyAccounted = false;
+            foreach (array_keys($memberSet) as $teamId) {
+                if (!isset($accountedFor[$teamId])) {
+                    $newlyAccounted = true;
+                }
+                $accountedFor[$teamId] = true;
+            }
+            if ($newlyAccounted) {
+                ++$groupCount;
+            }
+        }
+
         $loners = 0;
         foreach (array_keys($teamSet) as $teamId) {
             if (!isset($accountedFor[$teamId])) {
@@ -355,6 +443,55 @@ final class ReservationGroupOccupancy
         }
 
         return $result;
+    }
+
+    /**
+     * Les jeux de membres des BLOCS de la portée (P2-51). Le filtre tenant borne club + saison ;
+     * la multi-appartenance est permise, d'où des jeux qui peuvent se recouvrir — les lecteurs
+     * ({@see occupantCount}, {@see reservedSetMatchesABlock}) gèrent le recouvrement par case.
+     *
+     * @return list<array<string, true>>
+     */
+    private function blockMemberSetsInScope(?string $schedulePlanId): array
+    {
+        $qb = $this->entityManager->getRepository(SharedTrainingBlock::class)->createQueryBuilder('b');
+        $this->scopePlan($qb, 'b', $schedulePlanId);
+        /** @var list<SharedTrainingBlock> $blocks */
+        $blocks = $qb->getQuery()->getResult();
+
+        $result = [];
+        $memberRepository = $this->entityManager->getRepository(SharedTrainingBlockTeam::class);
+        foreach ($blocks as $block) {
+            $set = [];
+            foreach ($memberRepository->findBy(['blockId' => $block->getId()]) as $member) {
+                $set[$member->getTeamId()] = true;
+            }
+            if ([] !== $set) {
+                $result[] = $set;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * L'ensemble réservé sur la case est-il EXACTEMENT le jeu de membres d'un bloc de la portée ?
+     * (règle b, versant bloc — dérivé, jamais un marqueur stocké, patron {@see completeGroupOn}.).
+     *
+     * @param array<string, true> $reservedSet
+     */
+    private function reservedSetMatchesABlock(array $reservedSet, ?string $schedulePlanId): bool
+    {
+        if ([] === $reservedSet) {
+            return false;
+        }
+        foreach ($this->blockMemberSetsInScope($schedulePlanId) as $memberSet) {
+            if (self::setsEqual($memberSet, $reservedSet)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function teamReservationCount(string $teamId, ?string $schedulePlanId): int

@@ -1,12 +1,18 @@
-Last verified @ 2026-08-31 (P2-51 PR-1, `documentation-update` — régénéré depuis le backend en
+Last verified @ 2026-08-31 (P2-51 PR-5, `documentation-update` — régénéré depuis le backend en
 tournant : `docker compose exec php-fpm php bin/console api:openapi:export`, après
 `docker compose restart php-fpm` (opcache). **191 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`)
-✓ · SHA-256 `a1a459fec4a058de85f0e9807715b524382f347c9c1abcfca87bf8906e9f392a` (`sha256sum`) —
-189 → 191, les 2 nouveaux paths sont `/api/shared_training_blocks` et
-`/api/shared_training_blocks/{id}` (vérifié `grep -n`). Reste du journal non re-confronté au code
-cette passe.)
+✓, count INCHANGÉ (aucun path ajouté/retiré, le body du POST existant a changé) · SHA-256
+`7cfb3662e1c3ed379d01b68c74e71ac217c7fadbd1dd6159be2fb00ce39ddda4` (`sha256sum`) · `TsFieldsMatchOpenApiSchemaTest`
+et `CrossStack/OpenApiSnapshotMatchesTheLiveContractTest` verts sur ce snapshot. Reste du journal
+non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **P2-51 PR-5 — `POST /api/reservations/group` se ré-ancre sur le bloc (2026-08-31)** : **+0 path** —
+  le corps du POST existant gagne `sharedTrainingBlockId` (résolu EN PREMIER, `SharedTrainingBlock`),
+  `sharedTrainingGroupId` devient le repli legacy (transitoire jusqu'à la PR-6 frontend/PR-7
+  nettoyage) ; aucun des deux n'est plus `required` isolément (au moins un doit être fourni, sinon
+  400). Déclaré dans `PathContributor/UncoveredCustomPaths.php`. 191 → **191 paths**. Backend PUR,
+  contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.17, ce rail n'appelle pas le moteur).
 - **P2-51 PR-1 — le modèle du bloc de mutualisation (2026-08-31)** : **+2 paths** — CRUD API Platform
   de la ressource `SharedTrainingBlock` : `GET/POST /api/shared_training_blocks` (liste **scope
   club+saison**, filtrable par `schedulePlanId` — NULL = socle saison, UUID = plan de période) +

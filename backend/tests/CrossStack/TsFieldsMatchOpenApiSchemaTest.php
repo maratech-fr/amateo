@@ -80,6 +80,8 @@ final class TsFieldsMatchOpenApiSchemaTest extends TestCase
         'planning/Team' => ['ts' => 'planning/api.ts', 'interface' => 'Team', 'schema' => 'Team'],
         // Les 4 APIs de FRT-28.
         'wizard/VenueTravelTime' => ['ts' => 'wizard/api.ts', 'interface' => 'VenueTravelTime', 'schema' => 'VenueTravelTime'],
+        // P4-154 (P2-51) — le bloc de mutualisation, type miroir écrit à la main côté wizard.
+        'wizard/SharedTrainingBlock' => ['ts' => 'wizard/api.ts', 'interface' => 'SharedTrainingBlock', 'schema' => 'SharedTrainingBlock'],
         'matches/DeadlineOutlook' => ['ts' => 'matches/api.ts', 'interface' => 'DeadlineOutlook', 'response' => ['GET', '/api/matches/deadline-outlook']],
         'planning/ValidateImpact' => ['ts' => 'planning/api.ts', 'interface' => 'ValidateImpact', 'response' => ['GET', '/api/schedules/{id}/validate-impact']],
         'matches/FfbbRencontresResult' => ['ts' => 'matches/api.ts', 'interface' => 'FfbbRencontresResult', 'response' => ['GET', '/api/ffbb/rencontres']],

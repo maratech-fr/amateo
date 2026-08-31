@@ -1,16 +1,13 @@
 # Living Specs System
 
-Last verified @ 2026-08-30 (`documentation-update`, rotation — les quatre gardes
+Last verified @ 2026-08-31 (rotation `documentation-update`, hors sujet de la PR P2-51 PR-5 —
+sondage des stamps les plus anciens du dépôt. Re-confronté : les quatre gardes
 `backend/tests/Unit/Documentation/{DocPlacementTest,DocStampFreshnessTest,RoadmapIdentityTest,BlockingTestsListMatchesCiTest}.php`
-existent toujours ; `docs/testing/blocking-tests.md` reste la maison canonique pointée par
-`CLAUDE.md` §4. Le sommaire `Files Overview` de `specs/courantes/` re-confronté au dossier réel :
-les 12 entrées (`etat-des-lieux.md`, `planning-lifecycle-validated.md`, `types-de-planning.md`,
-`superadmin-auth.md`, `identite-visuelle-club.md`, `vacances-scolaires-jours-feries.md`,
-`accueil-cockpit-temporel.md`, `module-matchs.md`, `canal-signalement.md`,
-`generation-pipeline.md`, `openapi-snapshot.json`+`.meta.md`) existent toutes, aucune orpheline.
-Les trois fichiers dits absorbés (`features-futures.md`, `backend-gaps.md`,
-`contraintes-modele-cible.md`) confirmés absents de `specs/evolution/`. Reste du fichier
-(3-tier structure, audiences) non re-vérifié cette passe.)
+existent toujours (`ls backend/tests/Unit/Documentation/`) ; le sommaire `Files Overview` de
+`specs/courantes/` re-confronté au dossier réel : les 12 entrées existent toutes (`ls
+specs/courantes/`), aucune orpheline. Les trois fichiers dits absorbés (`features-futures.md`,
+`backend-gaps.md`, `contraintes-modele-cible.md`) confirmés absents de `specs/evolution/`. Reste du
+fichier (3-tier structure, audiences) non re-vérifié cette passe.)
 
 ## 3-Tier Structure
 

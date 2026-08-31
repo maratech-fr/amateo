@@ -12523,7 +12523,7 @@
                 ],
                 "responses": {
                     "201": {
-                        "description": "Shared-training group reserved on one slot: N reservations (one per member) written in a single flush; the response carries their ids",
+                        "description": "Shared-training block or group reserved on one slot: N reservations (one per member) written in a single flush; the response carries their ids",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -12545,7 +12545,7 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid JSON, or a missing/malformed field"
+                        "description": "Invalid JSON, or a missing/malformed field (neither sharedTrainingBlockId nor sharedTrainingGroupId given)"
                     },
                     "401": {
                         "description": "Unauthorized"
@@ -12554,31 +12554,36 @@
                         "description": "Not a management member"
                     },
                     "404": {
-                        "description": "Unknown shared-training group (or another club's \u2014 never an existence oracle)"
+                        "description": "Unknown shared-training group (or another club's \u2014 never an existence oracle); a block id that resolves to no block falls back to the group lookup"
                     },
                     "409": {
                         "description": "Archived season (read-only)"
                     },
                     "422": {
-                        "description": "Scope mismatch (group not declared for this plan), closed venue, occupied slot (exclusivity), shared-sessions ceiling reached, a member over its weekly sessions, or unknown schedule plan"
+                        "description": "Scope mismatch (block/group not declared for this plan), closed venue, occupied slot (exclusivity), shared-sessions ceiling reached, a member over its weekly sessions, or unknown schedule plan"
                     }
                 },
-                "summary": "Reserve a shared-training group on one slot (atomic batch write of one HARD reservation per member)",
+                "summary": "Reserve a shared-training block or group on one slot (atomic batch write of one HARD reservation per member)",
                 "requestBody": {
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
                                 "required": [
-                                    "sharedTrainingGroupId",
                                     "venueId",
                                     "dayOfWeek",
                                     "startTime"
                                 ],
                                 "properties": {
+                                    "sharedTrainingBlockId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "description": "Resolved FIRST if provided (a set of teams that behaves as one team)"
+                                    },
                                     "sharedTrainingGroupId": {
                                         "type": "string",
-                                        "format": "uuid"
+                                        "format": "uuid",
+                                        "description": "Legacy fallback, resolved only when sharedTrainingBlockId is absent or does not resolve \u2014 transitional, kept until the frontend fully migrates to blocks"
                                     },
                                     "venueId": {
                                         "type": "string",
@@ -12601,7 +12606,7 @@
                                         "type": "string",
                                         "format": "uuid",
                                         "nullable": true,
-                                        "description": "NULL = base (season) plan; set = a period overlay \u2014 must match the group's own scope"
+                                        "description": "NULL = base (season) plan; set = a period overlay \u2014 must match the block's or group's own scope"
                                     }
                                 }
                             }
