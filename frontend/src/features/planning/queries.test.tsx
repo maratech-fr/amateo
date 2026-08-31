@@ -16,6 +16,7 @@ import {
   useGenerate,
   useLockSlot,
   useMoveDryRun,
+  useMoveGroup,
   useMoveSlot,
   usePlaceSlot,
   useRegenerate,
@@ -71,6 +72,7 @@ vi.mock("./api", async (importOriginal) => {
     // écritures
     lockSlot: vi.fn().mockResolvedValue({}),
     moveSlot: vi.fn().mockResolvedValue({ valid: true, compromises: [] }),
+    moveGroup: vi.fn().mockResolvedValue({ valid: true, compromises: [], movedSlotIds: [] }),
     placeSlot: vi.fn().mockResolvedValue({ valid: true, compromises: [] }),
     generateSchedule: vi.fn().mockResolvedValue({}),
     validateSchedule: vi.fn().mockResolvedValue({}),
@@ -132,6 +134,36 @@ describe("planning queries — le paquet move/place accepté rafraîchit les 4 l
     await waitFor(() => expect(result.current.move.isSuccess).toBe(true));
     // Les QUATRE lecteurs vivants refetchent : si l'un des quatre était une clé fantôme (mauvais
     // préfixe / oubli), il resterait bloqué à 1 — comme le radar de la 2ᵉ tranche.
+    await waitFor(() => expect(planningApi.getSlots).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(planningApi.listSchedules).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(planningApi.getDiagnostics).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(planningApi.getSocleDeviation).toHaveBeenCalledTimes(2));
+  });
+
+  // P2-51 PR-6 (falsification b) — le déplacement de GROUPE partage EXACTEMENT le même paquet : les
+  // 4 lecteurs vivants refetchent par l'EFFET (pas un espion). Retirer une clé de `invalidateMovePacket`
+  // (foyer unique) fait chuter CE test comme ceux de move/place — la garde tient sur les trois rails.
+  it("useMoveGroup accepté → refetche slots, schedules, diagnostics ET socle-deviation (même paquet)", async () => {
+    const client = makeClient();
+    const { result } = renderHook(
+      () => ({
+        slots: useSlots(SID),
+        schedules: useSchedules(),
+        diagnostics: useDiagnostics(SID),
+        deviation: useSocleDeviation(SID),
+        moveGroup: useMoveGroup(),
+      }),
+      { wrapper: wrapperFor(client) },
+    );
+
+    await waitFor(() => expect(result.current.slots.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.schedules.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.diagnostics.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.deviation.isSuccess).toBe(true));
+
+    result.current.moveGroup.mutate({ scheduleId: SID, blockId: "blk", source: {} as never, target: {} as never });
+
+    await waitFor(() => expect(result.current.moveGroup.isSuccess).toBe(true));
     await waitFor(() => expect(planningApi.getSlots).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(planningApi.listSchedules).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(planningApi.getDiagnostics).toHaveBeenCalledTimes(2));

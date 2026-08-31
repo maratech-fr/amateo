@@ -679,6 +679,73 @@ export async function placeSlot(scheduleId: string, body: PlaceSlotBody, signal?
   }
 }
 
+/** Une case {venueId, jour, heure} — la SOURCE (séance de bloc à déplacer) et la CIBLE d'un
+ *  déplacement de groupe (P2-51 PR-6). `startTime` au format « H:i » (ex. « 17:30 »). */
+export interface MoveGroupCase {
+  venueId: string;
+  dayOfWeek: number;
+  startTime: string;
+}
+
+/**
+ * Corps d'un déplacement de GROUPE (P2-51 PR-6, D11) : le bloc entier bouge d'une case à l'autre.
+ * Le serveur résout LUI-MÊME les créneaux membres (jamais de slotIds client) — les teamIds du bloc
+ * siégeant EXACTEMENT à la case source.
+ */
+export interface MoveGroupBody {
+  scheduleId: string;
+  blockId: string;
+  source: MoveGroupCase;
+  target: MoveGroupCase;
+}
+
+/**
+ * Réponse d'un déplacement de groupe. Accepté → `valid: true` + `compromises` + `movedSlotIds` (les
+ * N créneaux déplacés). Refus RÉEL → 422 → {@link MoveRejectedError} (mêmes clés que /move) ; case
+ * source vide / cible fermée → 422 `slot_unavailable` → {@link SlotEditError}. `compromises` est
+ * normalisé à `[]` par le parseur.
+ */
+export interface MoveGroupResult {
+  valid: boolean;
+  compromises: Compromise[];
+  violations?: MoveViolation[];
+  movedSlotIds?: string[];
+}
+
+/**
+ * Déplacer TOUTES les séances d'un bloc de mutualisation d'une case à l'autre, EN BLOC et
+ * ATOMIQUEMENT, sous le verdict du moteur (P2-51 PR-6). Même modèle d'erreurs que {@link moveSlot}
+ * (hormis le verrou de cible / l'éviction, absents de ce rail) : 422 `violations` → verdict refusé,
+ * 422 `slot_unavailable` → {@link SlotEditError}, 409 → {@link GenerationInProgressError}, 504
+ * `engine_timeout` → {@link EngineTimeoutError}. Un abandon client → {@link VerdictAbandonedError}.
+ */
+export async function moveGroup(body: MoveGroupBody, signal?: AbortSignal): Promise<MoveGroupResult> {
+  try {
+    const result = await api.post("schedule-slots/move-group", { json: body, timeout: MOVE_VERDICT_TIMEOUT_MS, signal }).json<MoveGroupResult>();
+    return { ...result, compromises: result.compromises ?? [] };
+  } catch (error) {
+    if (isClientInterruption(error)) {
+      throw true === signal?.aborted ? new VerdictAbandonedError() : new EngineVerificationInterruptedError();
+    }
+    if (error instanceof HTTPError) {
+      const data = ((error as { data?: unknown }).data ?? {}) as { code?: string; error?: string; violations?: MoveViolation[] };
+      if (422 === error.response.status) {
+        if (undefined !== data.code) {
+          throw new SlotEditError(data.code, data.error ?? "Le déplacement du groupe n'a pas pu être appliqué.");
+        }
+        throw new MoveRejectedError(data.violations ?? []);
+      }
+      if (409 === error.response.status && "generation_in_progress" === data.code) {
+        throw new GenerationInProgressError();
+      }
+      if (504 === error.response.status && "engine_timeout" === data.code) {
+        throw new EngineTimeoutError(data.error ?? "Le moteur n'a pas répondu à temps — réessayez.");
+      }
+    }
+    throw error;
+  }
+}
+
 /** Queue a (re)generation of the schedule (202). Locked slots survive; the rest reshuffles. */
 export const generateSchedule = (id: string): Promise<unknown> => api.post(`schedules/${id}/generate`).json();
 

@@ -73,6 +73,44 @@ export function groupContainingTeam(groups: SharedTrainingGroup[], teamId: strin
   return groups.find((group) => group.id !== excludeGroupId && group.teamIds.includes(teamId));
 }
 
+/**
+ * P2-51 PR-6 — la sous-ligne « Mutualisée avec … » d'une équipe, fusionnant les DEUX sources
+ * pendant la transition : le groupe {équipes, K} historique ET le nouveau bloc de mutualisation.
+ * Les co-équipières des deux sources s'unissent SANS doublon (une partenaire présente dans les deux
+ * n'est nommée qu'une fois), l'ordre d'insertion préservé (groupes d'abord, puis blocs). `null` si
+ * l'équipe n'appartient à AUCUNE mutualisation (ni groupe ni bloc). Présentation pure (patron
+ * `matches/lib/diagnostic.ts`) : le serveur reste seul maître de la mutualisation, l'écran la reflète.
+ * PR-7 retirera la source groupe et cette fusion redeviendra une source unique. Types STRUCTURELS
+ * `{ teamIds }` pour lire groupe et bloc par leur forme sans coupler ce lib à l'une des deux entités.
+ */
+export function mutualisedTeammateLabel(
+  teamId: string,
+  groups: readonly { teamIds: string[] }[],
+  blocks: readonly { teamIds: string[] }[],
+  teamName: (id: string) => string,
+): string | null {
+  const others: string[] = [];
+  const seen = new Set<string>();
+  let member = false;
+  for (const src of [...groups, ...blocks]) {
+    if (!src.teamIds.includes(teamId)) {
+      continue;
+    }
+    member = true;
+    for (const id of src.teamIds) {
+      if (id !== teamId && !seen.has(id)) {
+        seen.add(id);
+        others.push(id);
+      }
+    }
+  }
+  if (!member) {
+    return null;
+  }
+
+  return others.length > 0 ? `Mutualisée avec ${others.map(teamName).join(", ")}` : "Mutualisée";
+}
+
 /** Libellé d'un groupe : « SM1 + SM2 — 1 séance commune » (pluriel géré). */
 export function sharedGroupLabel(teamIds: string[], commonSessions: number, teamName: (id: string) => string): string {
   const names = teamIds.map(teamName).join(" + ");

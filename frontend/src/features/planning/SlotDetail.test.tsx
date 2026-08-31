@@ -79,6 +79,7 @@ function renderDetail(
     cell?: Partial<ReturnType<typeof cell>>;
     armed?: boolean;
     onArmMove?: () => void;
+    groupSession?: { memberCount: number } | null;
   } = {},
 ) {
   const s = slot(over.slot);
@@ -95,6 +96,7 @@ function renderDetail(
       busy={false}
       moveState={over.moveState}
       armed={over.armed}
+      groupSession={over.groupSession}
       onClose={vi.fn()}
       onToggleLock={vi.fn()}
       onArmMove={over.onArmMove ?? vi.fn()}
@@ -346,5 +348,30 @@ describe("SlotDetail — verdict du déplacement (F2b)", () => {
   it("invite à réessayer quand le moteur n'a pas répondu", () => {
     renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, moveState: { status: "error" } });
     expect(screen.getByText(/réessay/i)).toBeInTheDocument();
+  });
+});
+
+describe("SlotDetail — déplacer le GROUPE de mutualisation (P2-51 PR-6, D11)", () => {
+  it("sur une séance de bloc, « Déplacer » devient « Déplacer le groupe » (le déplacement individuel n'est PAS proposé)", () => {
+    renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, groupSession: { memberCount: 3 } });
+    // Le bouton porte le geste de GROUPE, avec le compte de membres dans son nom accessible.
+    expect(screen.getByRole("button", { name: "Déplacer le groupe, 3 équipes" })).toBeInTheDocument();
+    // Le déplacement d'UNE seule équipe n'est plus offert (le moteur le refuserait).
+    expect(screen.queryByRole("button", { name: "Déplacer" })).toBeNull();
+    // La conséquence est annoncée AVANT le geste.
+    expect(screen.getByText(/Déplace les 3 équipes du groupe ensemble/)).toBeInTheDocument();
+  });
+
+  it("armer le déplacement de groupe déclenche onArmMove et bascule le bouton sur la consigne de cible", () => {
+    const onArmMove = vi.fn();
+    renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, groupSession: { memberCount: 2 }, armed: true, onArmMove });
+    expect(screen.getByRole("button", { name: /Choisir la case cible/ })).toBeInTheDocument();
+    expect(screen.getByText(/déplacer tout le groupe/)).toBeInTheDocument();
+  });
+
+  it("un créneau ordinaire garde « Déplacer » (aucune régression)", () => {
+    renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null } });
+    expect(screen.getByRole("button", { name: "Déplacer" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Déplacer le groupe/ })).toBeNull();
   });
 });

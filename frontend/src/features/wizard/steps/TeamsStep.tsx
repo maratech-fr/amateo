@@ -18,10 +18,11 @@ import { cn } from "@/shared/lib/utils";
 
 import { TEAM_COLUMNS } from "../lib/teamColumns";
 
-import type { Gender, PriorityTier, SharedTrainingGroup, SportCategory, Team, TeamLevel, TeamPayload } from "../api";
+import type { Gender, PriorityTier, SportCategory, Team, TeamLevel, TeamPayload } from "../api";
 import { useWizardFooter } from "../lib/footerSlot";
 import { orderedTeams, teamsOfTier } from "../lib/ranking";
-import { useCreateTeam, useDeleteTeam, useDeletionImpact, usePriorityTiers, useReorderTeams, useSharedTrainingGroups, useSportCategories, useUpdateTeam, useWizardTeams } from "../queries";
+import { mutualisedTeammateLabel } from "../lib/sharedTraining";
+import { useCreateTeam, useDeleteTeam, useDeletionImpact, usePriorityTiers, useReorderTeams, useSharedTrainingBlocks, useSharedTrainingGroups, useSportCategories, useUpdateTeam, useWizardTeams } from "../queries";
 import { useWizardStore } from "../store";
 import { PeriodTeams } from "./PeriodStructure";
 import { TeamLinksModal } from "./TeamLinksModal";
@@ -372,6 +373,9 @@ function TeamsEditor() {
   // P2-27 — le repère « mutualisée » sur chaque ligne : les groupes du SOCLE (l'éditeur de saison
   // ne travaille jamais une période). Sans param le provider renvoie socle ET périodes → on filtre.
   const { data: sharedGroups = [] } = useSharedTrainingGroups(null);
+  // P2-51 PR-6 — la sous-ligne « Mutualisée avec … » lit AUSSI les blocs de mutualisation (nouveau
+  // modèle) pendant la transition : mêmes blocs du SOCLE (provider socle+périodes → on filtre).
+  const { data: sharedBlocks = [] } = useSharedTrainingBlocks(null);
   // P2-45 — les passerelles du club+saison, SERVIES par le module matchs (régime 1, aucune
   // redérivation) : elles nourrissent la sous-ligne « Passerelle avec … » et la modale Liens.
   const { data: teamLinks = [] } = useTeamLinks();
@@ -450,22 +454,13 @@ function TeamsEditor() {
     return { short: tier?.label ?? "?", full: tierGroupLabel(tier ?? null) };
   };
   // Repère « mutualisée avec … » par équipe — nommer les co-équipières, jamais un simple pictogramme.
+  // Portée SOCLE seule (l'éditeur de saison ne travaille jamais une période), pour les DEUX sources.
   const baseGroups = sharedGroups.filter((g) => null === g.schedulePlanId);
-  const groupOfTeam = new Map<string, SharedTrainingGroup>();
-  for (const g of baseGroups) {
-    for (const id of g.teamIds) {
-      groupOfTeam.set(id, g);
-    }
-  }
+  const baseBlocks = sharedBlocks.filter((b) => null === b.schedulePlanId);
   const teamNameById = new Map(teams.map((t) => [t.id, t.name]));
-  const mutualiseLabelOf = (teamId: string): string | null => {
-    const g = groupOfTeam.get(teamId);
-    if (undefined === g) {
-      return null;
-    }
-    const others = g.teamIds.filter((x) => x !== teamId).map((x) => teamNameById.get(x) ?? "?");
-    return others.length > 0 ? `Mutualisée avec ${others.join(", ")}` : "Mutualisée";
-  };
+  const nameOf = (id: string): string => teamNameById.get(id) ?? "?";
+  // P2-51 PR-6 — la sous-ligne fusionne groupe K ET bloc, sans doublon (helper pur, testé).
+  const mutualiseLabelOf = (teamId: string): string | null => mutualisedTeammateLabel(teamId, baseGroups, baseBlocks, nameOf);
   // P2-45 — le repère « passerelle » : nomme la co-équipière ET l'INTENSITÉ (tranchage fondateur),
   // lue telle quelle du lien servi (jamais recalculée). Une équipe peut être passerelée à plusieurs.
   const bridgeLabelOf = (teamId: string): string | null => {

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
 
-import type { Constraint, ImplicitRuleSetting, SharedTrainingGroup } from "../api";
+import type { Constraint, ImplicitRuleSetting, SharedTrainingBlock, SharedTrainingGroup } from "../api";
 import { PRODUCT_RULES, WELLBEING_RULES } from "../lib/implicitRules";
 
 const RESOLVED_IMPLICIT_RULES: ImplicitRuleSetting[] = [
@@ -33,6 +33,8 @@ const h = vi.hoisted(() => ({
   implicitRules: [] as ImplicitRuleSetting[],
   // P2-27 — les groupes de mutualisation + leurs mutations (portée courante).
   sharedGroups: [] as SharedTrainingGroup[],
+  // P2-51 PR-6 — les blocs de mutualisation (nouveau modèle), posables dans Réserver.
+  sharedBlocks: [] as SharedTrainingBlock[],
   stgCreate: vi.fn(),
   stgUpdate: vi.fn(),
   stgDelete: vi.fn(),
@@ -107,6 +109,8 @@ vi.mock("../queries", () => ({
   // P2-27 — la mutualisation. Le mock HONORE `enabled` (comme useReservations) : une période
   // non résolue ne doit pas servir les groupes du SOCLE.
   useSharedTrainingGroups: (_planId?: string | null, enabled?: boolean) => ({ data: false === enabled ? [] : h.sharedGroups }),
+  // P2-51 PR-6 — même contrat que les groupes (honore `enabled`) : les blocs posables dans Réserver.
+  useSharedTrainingBlocks: (_planId?: string | null, enabled?: boolean) => ({ data: false === enabled ? [] : h.sharedBlocks }),
   useCreateSharedTrainingGroup: () => ({ mutateAsync: h.stgCreate, isPending: false }),
   useUpdateSharedTrainingGroup: () => ({ mutateAsync: h.stgUpdate, isPending: false }),
   useDeleteSharedTrainingGroup: () => ({ mutate: h.stgDelete }),

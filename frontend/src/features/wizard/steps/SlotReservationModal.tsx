@@ -9,7 +9,7 @@ import { apiErrorMessage } from "@/shared/api/errors";
 
 import type { Closure } from "@/features/cockpit/api";
 
-import type { PriorityTier, Reservation, SharedTrainingGroup, Team, TeamCoach, Venue, VenueTrainingSlot } from "../api";
+import type { PriorityTier, Reservation, SharedTrainingBlock, SharedTrainingGroup, Team, TeamCoach, Venue, VenueTrainingSlot } from "../api";
 import { conflictingReservation, mainCoachByTeam } from "../lib/coachDoubleBooking";
 import { dayLabel, hhmm } from "../lib/days";
 import { closureLabel } from "../lib/venueClosures";
@@ -20,6 +20,11 @@ import { WizardStepLink } from "../WizardStepLink";
 
 /** Préfixe des valeurs de la section « Entraînements mutualisés » du sélecteur (P2-46 PR-3). */
 const GROUP_VALUE_PREFIX = "group:";
+/** P2-51 PR-6 — préfixe des BLOCS de mutualisation (nouveau modèle) dans le MÊME sélecteur. */
+const BLOCK_VALUE_PREFIX = "block:";
+
+/** Signature stable d'un ensemble d'équipes (ordre indifférent) — pour dédoublonner bloc↔groupe K. */
+const teamSetSignature = (teamIds: string[]): string => [...teamIds].sort().join("|");
 
 interface Props {
   slot: VenueTrainingSlot;
@@ -49,6 +54,9 @@ interface Props {
   venueCanSplit: Map<string, boolean>;
   /** Les groupes de mutualisation de la PORTÉE courante (P2-46 PR-3) — posables sur un créneau libre. */
   sharedTrainingGroups?: SharedTrainingGroup[];
+  /** P2-51 PR-6 — les BLOCS de mutualisation (nouveau modèle) de la PORTÉE courante, posables comme
+   *  une équipe à part entière : une entrée par bloc, qui réserve la case pour tous ses membres. */
+  sharedTrainingBlocks?: SharedTrainingBlock[];
   schedulePlanId: string | null;
   onClose: () => void;
 }
@@ -89,6 +97,7 @@ export function SlotReservationModal({
   venueClosures = [],
   venueCanSplit,
   sharedTrainingGroups = [],
+  sharedTrainingBlocks = [],
   schedulePlanId,
   onClose,
 }: Props) {
@@ -101,6 +110,8 @@ export function SlotReservationModal({
   const [added, setAdded] = useState<string[]>([]);
   // Groupes de mutualisation posés dans le brouillon (P2-46 PR-3) — un seul appel au rail batch au submit.
   const [addedGroups, setAddedGroups] = useState<string[]>([]);
+  // P2-51 PR-6 — BLOCS de mutualisation posés dans le brouillon (rail batch, champ `sharedTrainingBlockId`).
+  const [addedBlocks, setAddedBlocks] = useState<string[]>([]);
   const [removed, setRemoved] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -155,21 +166,39 @@ export function SlotReservationModal({
   const offerable = undefined === pausedTeamIds ? teams : teams.filter((t) => !pausedTeamIds.has(t.id));
   const pickable = blockAdd ? [] : assignableTeams(offerable, tiers, slot, draftReservations, venueCanSplit);
 
-  // MUTUALISATION (P2-46 PR-3). Un groupe occupe la case SEUL : il exige un créneau libre dans le
-  // brouillon (retraits déjà pris en compte — c'est ce qui rend « retirer SM4 + poser le groupe »
-  // faisable en UNE validation), et une fois posé, aucune autre équipe ne s'y ajoute.
-  const groupById = new Map(sharedTrainingGroups.map((g) => [g.id, g]));
-  const postedLot = postedGroupOnSlot(onSlot, sharedTrainingGroups);
-  const hasDraftedGroup = addedGroups.length > 0;
-  // La case est occupée par un groupe : lot DÉJÀ écrit, ou lot dans le brouillon.
-  const groupOccupies = null !== postedLot || hasDraftedGroup;
-  const slotEmptyInDraft = 0 === onSlot.length && 0 === added.length && !hasDraftedGroup;
-  const groupOffer = blockAdd ? { offerable: [], blocked: [] } : offerableGroups(sharedTrainingGroups, teams, draftReservations, slotEmptyInDraft, pausedTeamIds);
-  const mutualisationOptions = groupOffer.offerable.map((g) => ({ value: `${GROUP_VALUE_PREFIX}${g.id}`, label: g.label }));
-  // Guide (b) : la case porte des équipes individuelles alors que des groupes existent — dire
-  // POURQUOI aucun groupe n'est proposé et COMMENT débloquer (retirer les équipes). Une absence
-  // muette serait le pire cas (le gestionnaire chercherait sans comprendre).
-  const showGroupGuide = guardReady && !blockAdd && !groupOccupies && sharedTrainingGroups.length > 0 && !slotEmptyInDraft;
+  // MUTUALISATION (P2-46 PR-3 · bloc P2-51 PR-6). Un groupe/bloc occupe la case SEUL : il exige un
+  // créneau libre dans le brouillon (retraits déjà pris en compte — c'est ce qui rend « retirer SM4
+  // + poser le groupe » faisable en UNE validation), et une fois posé, aucune autre équipe ne s'y ajoute.
+  // ⚠ D13 : à l'écran, bloc et groupe K sont LA MÊME notion — une SEULE section « Entraînements
+  // mutualisés ». Pendant la transition, un bloc et un groupe K peuvent porter le même ensemble
+  // d'équipes : on dédoublonne alors (le BLOC gagne, c'est le modèle de demain — PR-7 retirera le K).
+  const blockSignatures = new Set(sharedTrainingBlocks.map((b) => teamSetSignature(b.teamIds)));
+  const dedupedGroups = sharedTrainingGroups.filter((g) => !blockSignatures.has(teamSetSignature(g.teamIds)));
+  const groupById = new Map(dedupedGroups.map((g) => [g.id, g]));
+  const blockById = new Map(sharedTrainingBlocks.map((b) => [b.id, b]));
+  // Blocs D'ABORD dans la source du lot posé : sur un ensemble d'équipes couvert par les deux, le
+  // bloc est retenu (dédoublonnage). Un lot posé se lit indifféremment (seul `teamIds` sert au rendu).
+  const postedLot = postedGroupOnSlot(onSlot, [...sharedTrainingBlocks, ...dedupedGroups]);
+  const hasDraftedMutualisation = addedGroups.length > 0 || addedBlocks.length > 0;
+  // La case est occupée par une mutualisation : lot DÉJÀ écrit, ou lot dans le brouillon.
+  const groupOccupies = null !== postedLot || hasDraftedMutualisation;
+  const slotEmptyInDraft = 0 === onSlot.length && 0 === added.length && !hasDraftedMutualisation;
+  // Les deux offres, MÊMES règles d'ergonomie (capacité, K/séances communes, membre en pause) via le
+  // patron `offerableGroups` — un bloc se comporte comme un groupe K pour l'offre (structurel `GroupLike`).
+  const blockOffer = blockAdd ? { offerable: [], blocked: [] } : offerableGroups(sharedTrainingBlocks, teams, draftReservations, slotEmptyInDraft, pausedTeamIds);
+  const groupOffer = blockAdd ? { offerable: [], blocked: [] } : offerableGroups(dedupedGroups, teams, draftReservations, slotEmptyInDraft, pausedTeamIds);
+  // UNE seule section « Entraînements mutualisés » (D13), blocs en tête, valeurs préfixées pour aiguiller
+  // le rail au submit (`block:` → `sharedTrainingBlockId`, `group:` → `sharedTrainingGroupId`).
+  const mutualisationOptions = [
+    ...blockOffer.offerable.map((g) => ({ value: `${BLOCK_VALUE_PREFIX}${g.id}`, label: g.label })),
+    ...groupOffer.offerable.map((g) => ({ value: `${GROUP_VALUE_PREFIX}${g.id}`, label: g.label })),
+  ];
+  const blockedMutualisations = [...blockOffer.blocked, ...groupOffer.blocked];
+  const hasAnyMutualisation = sharedTrainingBlocks.length + dedupedGroups.length > 0;
+  // Guide (b) : la case porte des équipes individuelles alors que des mutualisations existent — dire
+  // POURQUOI aucune n'est proposée et COMMENT débloquer (retirer les équipes). Une absence muette
+  // serait le pire cas (le gestionnaire chercherait sans comprendre).
+  const showGroupGuide = guardReady && !blockAdd && !groupOccupies && hasAnyMutualisation && !slotEmptyInDraft;
 
   const lotLabel = (teamIds: string[]): string => teamIds.map((id) => teamName.get(id) ?? "?").join(" + ");
 
@@ -195,6 +224,12 @@ export function SlotReservationModal({
   // Le sélecteur porte deux sémantiques d'écriture (ajouter UNE équipe, ou poser TOUT un groupe) :
   // la valeur préfixée `group:` aiguille vers le rail batch, tout le reste reste un ajout unitaire.
   const onSelect = (value: string) => {
+    if (value.startsWith(BLOCK_VALUE_PREFIX)) {
+      setError(null);
+      setAddedBlocks((prev) => [...prev, value.slice(BLOCK_VALUE_PREFIX.length)]);
+
+      return;
+    }
     if (value.startsWith(GROUP_VALUE_PREFIX)) {
       setError(null);
       setAddedGroups((prev) => [...prev, value.slice(GROUP_VALUE_PREFIX.length)]);
@@ -240,6 +275,11 @@ export function SlotReservationModal({
         await createGroup.mutateAsync({ sharedTrainingGroupId: groupId, venueId: slot.venueId, dayOfWeek: slot.dayOfWeek, startTime: hhmm(slot.startTime), durationMinutes: slot.durationMinutes, schedulePlanId });
         setAddedGroups((prev) => prev.filter((pending) => pending !== groupId));
       }
+      // P2-51 PR-6 — un bloc part par le MÊME rail batch, sous le champ `sharedTrainingBlockId`.
+      for (const blockId of [...addedBlocks]) {
+        await createGroup.mutateAsync({ sharedTrainingBlockId: blockId, venueId: slot.venueId, dayOfWeek: slot.dayOfWeek, startTime: hhmm(slot.startTime), durationMinutes: slot.durationMinutes, schedulePlanId });
+        setAddedBlocks((prev) => prev.filter((pending) => pending !== blockId));
+      }
     } catch (e) {
       setSubmitError(await apiErrorMessage(e));
 
@@ -249,7 +289,7 @@ export function SlotReservationModal({
   };
 
   const busy = create.isPending || del.isPending || createGroup.isPending;
-  const dirty = added.length > 0 || removed.length > 0 || addedGroups.length > 0;
+  const dirty = added.length > 0 || removed.length > 0 || addedGroups.length > 0 || addedBlocks.length > 0;
   // Fermer pendant l'envoi laisserait des mutations en vol s'appliquer sans trace à l'écran.
   const dismiss = () => {
     if (!busy) {
@@ -277,7 +317,7 @@ export function SlotReservationModal({
         Fixe une équipe sur ce créneau (verrou pris en compte à chaque génération). Ce créneau accepte {capacity} équipe{capacity > 1 ? "s" : ""}.
       </p>
 
-      {onSlot.length > 0 || added.length > 0 || removed.length > 0 || addedGroups.length > 0 ? (
+      {onSlot.length > 0 || added.length > 0 || removed.length > 0 || addedGroups.length > 0 || addedBlocks.length > 0 ? (
         <ul className="mb-3 flex flex-col gap-1">
           {/* Un lot mutualisé DÉJÀ écrit = UNE ligne (membres nommés), pas N verrous anonymes : son
               retrait empile les N `DELETE`. Sinon, les réservations individuelles ligne à ligne. */}
@@ -385,6 +425,32 @@ export function SlotReservationModal({
               </li>
             );
           })}
+          {/* P2-51 PR-6 — un BLOC posé dans le brouillon : même ligne « à valider » qu'un groupe K
+              (membres nommés), l'annuler le retire du brouillon (rien n'est écrit). */}
+          {addedBlocks.map((blockId) => {
+            const members = blockById.get(blockId)?.teamIds ?? [];
+
+            return (
+              <li key={`draft-block-${blockId}`} className="flex items-start gap-2 rounded-md border border-dashed border-accent/60 bg-accent/5 px-3 py-1.5 text-sm">
+                <Users className="mt-0.5 size-3.5 shrink-0 text-accent" />
+                <span className="flex-1 font-medium">
+                  {lotLabel(members)} <span className="font-normal text-muted-foreground">· entraînement mutualisé</span>
+                </span>
+                <span className="text-xs text-muted-foreground">à valider</span>
+                <button
+                  type="button"
+                  aria-label={`Annuler l'ajout de l'entraînement mutualisé ${lotLabel(members)}`}
+                  className="rounded p-1 text-muted-foreground hover:text-destructive"
+                  onClick={() => {
+                    setError(null);
+                    setAddedBlocks((prev) => prev.filter((id) => id !== blockId));
+                  }}
+                >
+                  <Undo2 className="size-4" />
+                </button>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
 
@@ -430,7 +496,7 @@ export function SlotReservationModal({
                 mutualisés » vient EN TÊTE (P2-46 PR-3), avant les paliers, valeurs préfixées `group:`. */}
             <TeamSelect
               aria-label="Ajouter une équipe"
-              aria-describedby={groupOffer.blocked.length > 0 ? blockedGroupsDescId : undefined}
+              aria-describedby={blockedMutualisations.length > 0 ? blockedGroupsDescId : undefined}
               className="h-9 w-full"
               value=""
               onChange={(e) => onSelect(e.target.value)}
@@ -443,9 +509,9 @@ export function SlotReservationModal({
             {/* Raison NOMMÉE par groupe indisponible (K atteint, membre en pause, membre au plafond) :
                 liste muette interdite. Contenu STATIQUE au rendu (pas une région live) — relié au
                 sélecteur par `aria-describedby` pour qu'un lecteur d'écran l'entende en arrivant dessus. */}
-            {groupOffer.blocked.length > 0 ? (
+            {blockedMutualisations.length > 0 ? (
               <ul id={blockedGroupsDescId} className="mt-2 flex flex-col gap-0.5">
-                {groupOffer.blocked.map((g) => (
+                {blockedMutualisations.map((g) => (
                   <li key={g.id} className="text-xs text-muted-foreground">
                     {g.label} — {g.reason} <span className="font-medium">· indisponible</span>
                   </li>

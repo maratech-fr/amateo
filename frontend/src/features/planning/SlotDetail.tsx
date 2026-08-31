@@ -52,10 +52,16 @@ interface SlotDetailProps {
   /** P2-30 geste 1 : ce créneau est la SOURCE d'un mode cible armé — le bouton bascule sur
    *  une consigne de choix de cible, et une aide « Échap pour annuler » s'affiche. */
   armed?: boolean;
+  /** P2-51 PR-6 (D11) — ce créneau appartient à une séance de BLOC de mutualisation (tous les
+   *  membres co-localisés sur sa case) : « Déplacer » devient « Déplacer le groupe » (le déplacement
+   *  individuel n'est plus proposé — le moteur le refuse). `memberCount` = nombre d'équipes du bloc,
+   *  annoncé sur le bouton et en note. `null`/absent = créneau ordinaire. */
+  groupSession?: { memberCount: number } | null;
   onClose: () => void;
   onToggleLock: () => void;
   /** P2-30 : « Déplacer » n'ouvre plus de formulaire — il ARME le mode cible click-click (la
-   *  cible se choisit sur la grille). Rappeler quand c'est armé = annuler (toggle côté page). */
+   *  cible se choisit sur la grille). Rappeler quand c'est armé = annuler (toggle côté page).
+   *  P2-51 PR-6 : sur une séance de bloc, la page route ce geste vers le déplacement de GROUPE. */
   onArmMove: () => void;
 }
 
@@ -109,7 +115,7 @@ function ConstraintList({ label, items, describe }: { label: string; items: Cons
 
 const noName = (): string | undefined => undefined;
 
-export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tagTeamIds = NO_TAGS, teamName = noName, coachName = noName, busy, moveState = { status: "idle" }, readOnly = false, armed = false, onClose, onToggleLock, onArmMove }: SlotDetailProps) {
+export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tagTeamIds = NO_TAGS, teamName = noName, coachName = noName, busy, moveState = { status: "idle" }, readOnly = false, armed = false, groupSession = null, onClose, onToggleLock, onArmMove }: SlotDetailProps) {
   // Repliées par défaut : ouvrir un créneau ne doit pas agrandir l'aside (retour fondateur).
   // Le compte reste visible replié pour savoir s'il y a quelque chose à ouvrir.
   const [constraintsOpen, setConstraintsOpen] = useState(false);
@@ -200,9 +206,19 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
         <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
           {/* P2-30 (D11) : plus de formulaire jour/heure/gymnase — « Déplacer » ARME le mode
               cible click-click, la cible se choisit sur la grille. Armé, le bouton bascule sur
-              une consigne, et une aide « Échap pour annuler » apparaît. */}
+              une consigne, et une aide « Échap pour annuler » apparaît.
+              P2-51 PR-6 (D11) : sur une séance de BLOC, ce bouton devient « Déplacer le groupe »
+              (le déplacement d'une seule équipe serait refusé par le moteur — on ne le propose pas).
+              L'action reste le MÊME geste click-click (la page l'aiguille vers le rail move-group). */}
           <div className="flex gap-2">
-            <Button size="sm" variant={armed ? "default" : "outline"} className="flex-1" disabled={busy} onClick={onArmMove}>
+            <Button
+              size="sm"
+              variant={armed ? "default" : "outline"}
+              className="flex-1"
+              disabled={busy}
+              onClick={onArmMove}
+              aria-label={null !== groupSession && !armed ? `Déplacer le groupe, ${groupSession.memberCount} équipes` : undefined}
+            >
               {"pending" === moveState.status ? (
                 <>
                   <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -211,7 +227,7 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
               ) : (
                 <>
                   <Move className="size-4" aria-hidden="true" />
-                  {armed ? "Choisir la case cible…" : "Déplacer"}
+                  {armed ? "Choisir la case cible…" : null !== groupSession ? "Déplacer le groupe" : "Déplacer"}
                 </>
               )}
             </Button>
@@ -221,9 +237,18 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
             </Button>
           </div>
 
+          {/* Sur une séance de bloc, dire AVANT le geste que déplacer cette case bouge TOUT le groupe
+              (retour design : la conséquence se révèle au point d'action). Masquée pendant le ciblage. */}
+          {null !== groupSession && !armed ? (
+            <p className="text-xs text-muted-foreground">Déplace les {groupSession.memberCount} équipes du groupe ensemble.</p>
+          ) : null}
+
           {armed ? (
             <p className="rounded-md border border-accent/40 bg-accent/10 p-2 text-xs text-muted-foreground">
-              Cliquez une case libre de la grille pour y déplacer ce créneau, ou une séance à évincer. <span className="font-medium text-foreground">Échap</span> pour annuler.
+              {null !== groupSession
+                ? "Cliquez la case cible de la grille pour y déplacer tout le groupe."
+                : "Cliquez une case libre de la grille pour y déplacer ce créneau, ou une séance à évincer."}{" "}
+              <span className="font-medium text-foreground">Échap</span> pour annuler.
             </p>
           ) : null}
 

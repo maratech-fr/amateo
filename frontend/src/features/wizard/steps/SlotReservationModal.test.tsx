@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
 
-import type { PriorityTier, Reservation, SharedTrainingGroup, Team, Venue, VenueTrainingSlot } from "../api";
+import type { PriorityTier, Reservation, SharedTrainingBlock, SharedTrainingGroup, Team, Venue, VenueTrainingSlot } from "../api";
 
 // Les mutations sont mockées : le test porte sur le GESTE (quel rail est appelé, dans quel ordre),
 // pas sur react-query. Patron identique à MutualisationPanel.test.
@@ -32,6 +32,9 @@ const SLOT: VenueTrainingSlot = { id: "slot1", venueId: "v1", dayOfWeek: 1, star
 const group = (id: string, teamIds: string[], commonSessions = 1): SharedTrainingGroup =>
   ({ id, version: 1, createdAt: "2026-08-23T00:00:00+00:00", updatedAt: "2026-08-23T00:00:00+00:00", schedulePlanId: null, teamIds, commonSessions });
 
+const block = (id: string, teamIds: string[], commonSessions = 1): SharedTrainingBlock =>
+  ({ id, version: 1, createdAt: "2026-08-31T00:00:00+00:00", updatedAt: "2026-08-31T00:00:00+00:00", schedulePlanId: null, teamIds, commonSessions });
+
 const resa = (teamId: string, venueId: string, dayOfWeek: number, startTime: string): Reservation =>
   ({ id: `${teamId}-${venueId}-${dayOfWeek}-${startTime}`, schedulePlanId: null, teamId, venueId, dayOfWeek, startTime, durationMinutes: 90 });
 
@@ -50,6 +53,7 @@ function renderModal(overrides: Partial<Parameters<typeof SlotReservationModal>[
       venues={[VENUE]}
       venueCanSplit={new Map([["v1", true]])}
       sharedTrainingGroups={[group("g", ["a", "b"])]}
+      sharedTrainingBlocks={[]}
       schedulePlanId={null}
       onClose={vi.fn()}
       {...overrides}
@@ -136,5 +140,44 @@ describe("SlotReservationModal — mutualisation (P2-46 PR-3)", () => {
     expect(within(selector()).queryByRole("option", { name: "SM1 + SM2 — 1 séance commune" })).toBeNull();
     expect(screen.getByText(/séance commune est déjà posée/i)).toBeInTheDocument();
     expect(screen.getByText(/indisponible/i)).toBeInTheDocument();
+  });
+});
+
+describe("SlotReservationModal — BLOC de mutualisation (P2-51 PR-6)", () => {
+  it("offre le bloc dans la MÊME section « Entraînements mutualisés » sur un créneau LIBRE", () => {
+    renderModal({ sharedTrainingGroups: [], sharedTrainingBlocks: [block("blk", ["a", "b", "c"])] });
+    const option = within(selector()).getByRole("option", { name: "SM1 + SM2 + SM3 — 1 séance commune" });
+    expect(option).toBeInTheDocument();
+    expect(option.closest("optgroup")?.label).toBe("Entraînements mutualisés");
+  });
+
+  // Falsification (a) — poser le bloc réserve TOUS ses membres : le lot posté nomme les 3 équipes,
+  // et le submit part en UN appel au rail batch avec `sharedTrainingBlockId` (le serveur réserve les
+  // N membres). Retrancher un membre du rendu (ou du bloc) casse ce test.
+  it("poser le bloc = ses TROIS membres nommés dans le brouillon, un seul appel `sharedTrainingBlockId` au submit", async () => {
+    const onClose = vi.fn();
+    renderModal({ sharedTrainingGroups: [], sharedTrainingBlocks: [block("blk", ["a", "b", "c"])], onClose });
+
+    await userEvent.selectOptions(selector(), "block:blk");
+    // Le lot en brouillon nomme TOUS les membres (SM1 + SM2 + SM3), pas un sous-ensemble.
+    expect(screen.getByText(/SM1 \+ SM2 \+ SM3/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Valider" }));
+
+    expect(groupMut).toHaveBeenCalledTimes(1);
+    expect(groupMut).toHaveBeenCalledWith({ sharedTrainingBlockId: "blk", venueId: "v1", dayOfWeek: 1, startTime: "18:00", durationMinutes: 90, schedulePlanId: null });
+    expect(createMut).not.toHaveBeenCalled(); // JAMAIS N POST individuels
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  // D13 — bloc et groupe K de MÊME ensemble d'équipes : UNE seule entrée (le bloc), pas de doublon.
+  it("dédoublonne un bloc et un groupe K portant le même ensemble : une seule option (le bloc)", async () => {
+    renderModal({ sharedTrainingGroups: [group("g", ["a", "b"])], sharedTrainingBlocks: [block("blk", ["a", "b"])] });
+    // Une seule option pour {SM1, SM2}.
+    expect(within(selector()).getAllByRole("option", { name: "SM1 + SM2 — 1 séance commune" })).toHaveLength(1);
+    // Et c'est le BLOC qui est retenu : la sélectionner poste `sharedTrainingBlockId`.
+    await userEvent.selectOptions(selector(), "block:blk");
+    await userEvent.click(screen.getByRole("button", { name: "Valider" }));
+    expect(groupMut).toHaveBeenCalledWith({ sharedTrainingBlockId: "blk", venueId: "v1", dayOfWeek: 1, startTime: "18:00", durationMinutes: 90, schedulePlanId: null });
   });
 });

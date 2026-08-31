@@ -12,7 +12,7 @@ import { useWizardStore } from "@/features/wizard/store";
 import { usePriorityTiers } from "@/features/matches/queries";
 import { DeletePlanningButton } from "@/features/cockpit/DeletePlanningButton";
 import { useEntryConflicts, useSchedulePlans } from "@/features/cockpit/queries";
-import { useReservations, useTeamPeriodOverrides, useWizardTeamTagAssignments, useWizardTeamTags } from "@/features/wizard/queries";
+import { useReservations, useSharedTrainingBlocks, useTeamPeriodOverrides, useWizardTeamTagAssignments, useWizardTeamTags } from "@/features/wizard/queries";
 import { coachFullName } from "@/shared/lib/coachName";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import { armNavTransition } from "@/shared/stores/navTransitionStore";
@@ -41,7 +41,8 @@ import { buildClubView } from "./lib/clubView";
 import { ClubViewTable } from "./ClubViewTable";
 import { availableResourceGroups, buildGrid, DAYS, type Lookups, slotGroupKey, toHourMinute } from "./lib/grid";
 import { PlanningToolbar } from "./PlanningToolbar";
-import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useLockSlot, useMoveDryRun, useMoveSlot, usePlaceSlot, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useReopenSchedule, useSchedules, useSlots, useSocleDeviation, useTeamCoaches, useTeams, useTrainingSlots, useValidateImpact, useValidateSchedule, useVenues } from "./queries";
+import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useLockSlot, useMoveDryRun, useMoveGroup, useMoveSlot, usePlaceSlot, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useReopenSchedule, useSchedules, useSlots, useSocleDeviation, useTeamCoaches, useTeams, useTrainingSlots, useValidateImpact, useValidateSchedule, useVenues } from "./queries";
+import { blocksForSlot } from "./lib/blockSession";
 import { ResourceFilter } from "./ResourceFilter";
 import { SlotDetail, type MoveFeedback } from "./SlotDetail";
 
@@ -109,7 +110,14 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // P4-119 (d) : un placement porte le CONTEXTE où il fut armé (version + vue) — son ancre est
   // l'entrée de dérive du bandeau, pas un panneau de créneau ; changer de vue ou de version le fait
   // tomber comme le panneau ferme un déplacement (cf. le désarmement en phase de rendu plus bas).
-  const [targetMode, setTargetMode] = useState<{ kind: "move"; sourceSlotId: string } | { kind: "place"; teamId: string; scheduleId: string | null; view: ViewMode } | null>(null);
+  const [targetMode, setTargetMode] = useState<
+    | { kind: "move"; sourceSlotId: string }
+    // P2-51 PR-6 (D11) — déplacer un BLOC entier : ancré au créneau source (comme « move »), il porte
+    // le bloc et sa case source (le serveur résout les créneaux membres depuis la case).
+    | { kind: "move-group"; sourceSlotId: string; blockId: string; source: { venueId: string; dayOfWeek: number; startTime: string } }
+    | { kind: "place"; teamId: string; scheduleId: string | null; view: ViewMode }
+    | null
+  >(null);
   // P2-32 (D6) — la modale d'éviction, désormais alimentée par un ESSAI (dry-run). `checking`
   // pendant que le moteur juge, `accepted` (compromis nommés) ou `refused` (motifs) ensuite.
   // Rien n'est ÉCRIT tant qu'on n'a pas confirmé un état `accepted`.
@@ -290,6 +298,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const navigate = useNavigate();
   const lockMutation = useLockSlot();
   const moveMutation = useMoveSlot();
+  const moveGroupMutation = useMoveGroup();
   const dryRunMutation = useMoveDryRun();
   const placeMutation = usePlaceSlot();
   const regenerateMutation = useRegenerate();
@@ -485,6 +494,23 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
 
   const selectedSlot = slots.find((s) => s.id === selectedSlotId) ?? null;
 
+  // P2-51 PR-6 (D11) — les BLOCS de mutualisation de la portée affichée (socle si `slotLayerId` nul,
+  // sinon le plan de période) : sur le socle le provider renvoie socle ET périodes → on filtre. Ils
+  // servent à DÉRIVER (fail-safe) si le créneau sélectionné est une séance de bloc — le `Slot` ne
+  // porte aucun marqueur d'appartenance, le serveur reste seul juge (rail `move-group`).
+  const { data: allSharedBlocks = [] } = useSharedTrainingBlocks(slotLayerId);
+  const sharedBlocks = useMemo(
+    () => (null === slotLayerId ? allSharedBlocks.filter((b) => null === b.schedulePlanId) : allSharedBlocks),
+    [allSharedBlocks, slotLayerId],
+  );
+  // Le bloc dont le créneau sélectionné est une séance (tous les membres co-localisés sur sa case).
+  // Le premier suffit : une même case portant DEUX blocs pleins recouvrant cette équipe est un cas
+  // dégénéré — le serveur trancherait de toute façon. `null` = créneau ordinaire (déplacement simple).
+  const selectedSlotBlock = useMemo(
+    () => (null === selectedSlot ? null : (blocksForSlot(selectedSlot, sharedBlocks, slots)[0] ?? null)),
+    [selectedSlot, sharedBlocks, slots],
+  );
+
   // PR 3 — les créneaux verrouillés À LA MAIN (le compteur toolbar + la liste du panneau).
   // SEULS les MANUAL comptent : ni les réservations de gymnase (RESERVATION), ni les verrous
   // d'origine indécidable (UNKNOWN) — c'est le « travail de verrouillage » du gestionnaire.
@@ -534,22 +560,44 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               ? { status: "error" }
               : { status: "idle" };
 
+  // P2-51 PR-6 — le verdict du dernier déplacement de GROUPE, même dérivation que `moveState` (un
+  // refus 422 → rejected ; slot_unavailable/verrou → toasté, panneau idle ; interruption → nommée).
+  const moveGroupReset = moveGroupMutation.reset;
+  const moveGroupState: MoveFeedback = moveGroupMutation.isPending
+    ? { status: "pending" }
+    : moveGroupMutation.error instanceof MoveRejectedError
+      ? { status: "rejected", violations: moveGroupMutation.error.violations }
+      : moveGroupMutation.error instanceof GenerationInProgressError
+        ? { status: "blocked" }
+        : moveGroupMutation.error instanceof EngineVerificationInterruptedError
+          ? { status: "interrupted" }
+          : moveGroupMutation.error instanceof TargetLockedError || moveGroupMutation.error instanceof SlotEditError
+            ? { status: "idle" }
+            : null !== moveGroupMutation.error && undefined !== moveGroupMutation.error
+              ? { status: "error" }
+              : { status: "idle" };
+
   // Changer de créneau sélectionné efface le verdict du précédent — sinon un refus resterait
   // affiché sous un autre créneau.
   useEffect(() => {
     moveReset();
-  }, [selectedSlotId, moveReset]);
+    moveGroupReset();
+  }, [selectedSlotId, moveReset, moveGroupReset]);
 
   // Un déplacement REFUSÉ surligne le créneau de l'équipe EN CONFLIT (le moteur l'a nommée) —
   // présentation pure, on retrouve juste où elle siège dans le cache affiché. Ajustement en
   // phase de rendu (le lint du dépôt interdit setState dans un effet), clé = l'instance
   // d'erreur : au reset (changement de créneau, nouvel essai), moveState quitte « rejected »
   // et le surlignage s'efface — sans jamais écraser un surlignage venu d'un diagnostic.
+  // P2-51 PR-6 — le déplacement de GROUPE surligne ses conflits de la MÊME façon : on suit le refus
+  // ACTIF (déplacement simple OU de groupe — jamais les deux à la fois : un seul geste est en vol).
   const [rejectionHandled, setRejectionHandled] = useState<unknown>(null);
-  if ("rejected" === moveState.status && moveMutation.error !== rejectionHandled) {
-    setRejectionHandled(moveMutation.error);
-    setHighlightSlotIds(violationHighlightSlotIds(moveState.violations, slots));
-  } else if ("rejected" !== moveState.status && null !== rejectionHandled) {
+  const activeRejection = "rejected" === moveState.status ? moveMutation.error : "rejected" === moveGroupState.status ? moveGroupMutation.error : null;
+  const activeRejectionViolations = "rejected" === moveState.status ? moveState.violations : "rejected" === moveGroupState.status ? moveGroupState.violations : [];
+  if (null !== activeRejection && activeRejection !== rejectionHandled) {
+    setRejectionHandled(activeRejection);
+    setHighlightSlotIds(violationHighlightSlotIds(activeRejectionViolations, slots));
+  } else if (null === activeRejection && null !== rejectionHandled) {
     setRejectionHandled(null);
     setHighlightSlotIds(new Set());
   }
@@ -666,7 +714,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // même idiome que `rejectionHandled` plus bas) ; converge (une fois null, la condition est fausse).
   if (null !== targetMode) {
     const stale =
-      "move" === targetMode.kind
+      "move" === targetMode.kind || "move-group" === targetMode.kind
         ? targetMode.sourceSlotId !== selectedSlotId
         : targetMode.scheduleId !== validScheduleId || targetMode.view !== viewMode || !driftEntries.some((d) => d.teamId === targetMode.teamId);
     if (stale) {
@@ -675,7 +723,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   }
 
   const cancelTarget = () => {
-    const source = targetMode?.kind === "move" ? targetMode.sourceSlotId : null;
+    const source = targetMode?.kind === "move" || targetMode?.kind === "move-group" ? targetMode.sourceSlotId : null;
     setTargetMode(null);
     // Le focus revient sur la source (a11y) — best-effort, inerte en jsdom.
     if (null !== source) {
@@ -698,6 +746,14 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
       return;
     }
     setTargetMode((cur) => (cur?.kind === "move" && cur.sourceSlotId === slotId ? null : { kind: "move", sourceSlotId: slotId }));
+  };
+  // P2-51 PR-6 (D11) — armer/désarmer le déplacement d'un BLOC entier depuis le panneau d'une de ses
+  // séances. La case source est celle du créneau ; le serveur résout les créneaux membres.
+  const armMoveGroup = (slotId: string, blockId: string, source: { venueId: string; dayOfWeek: number; startTime: string }) => {
+    if (!guardArm()) {
+      return;
+    }
+    setTargetMode((cur) => (cur?.kind === "move-group" && cur.sourceSlotId === slotId ? null : { kind: "move-group", sourceSlotId: slotId, blockId, source }));
   };
   // Armer le placement d'une équipe à la dérive (le panneau de détail se ferme : pas de source).
   // On fige le contexte (version + vue) pour que le geste tombe si l'un change (P4-119 d).
@@ -747,6 +803,47 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           }
           // Un refus de légalité (MoveRejectedError) s'affiche dans le panneau (moveState) et
           // surligne le conflit (phase de rendu) — le mode cible reste armé pour réessayer.
+        },
+      },
+    );
+  };
+
+  // P2-51 PR-6 (D11) — déplacer TOUT un bloc de mutualisation vers une case, atomiquement, sous le
+  // verdict moteur. Le serveur résout les créneaux membres depuis la case source (jamais de slotIds
+  // client). Un refus de légalité s'affiche dans le panneau (`moveGroupState`) + surligne le conflit ;
+  // verrou de cible / cible incohérente / moteur trop lent sont toastés (message serveur), mode armé.
+  const doMoveGroup = (blockId: string, source: { venueId: string; dayOfWeek: number; startTime: string }, target: { venueId: string; dayOfWeek: number; startTime: string }) => {
+    if (null === validScheduleId) {
+      return;
+    }
+    moveGroupMutation.mutate(
+      {
+        scheduleId: validScheduleId,
+        blockId,
+        source: { venueId: source.venueId, dayOfWeek: source.dayOfWeek, startTime: toHourMinute(source.startTime) },
+        target: { venueId: target.venueId, dayOfWeek: target.dayOfWeek, startTime: toHourMinute(target.startTime) },
+      },
+      {
+        onSuccess: (result) => {
+          setTargetMode(null);
+          // Un déplacement de groupe n'a pas d'inverse d'un clic (il faudrait rejouer move-group) :
+          // on n'arme aucun undo, et on invalide un éventuel undo d'un geste simple précédent.
+          setUndo(null);
+          setEvictionNotice(null);
+          setHighlightSlotIds(new Set());
+          const compromises = result.compromises ?? [];
+          setCompromiseNotice(compromises.length > 0 ? compromises : null);
+          toast.success(compromises.length > 0 ? `Groupe déplacé — ${compromises.length} compromis` : "Groupe déplacé.");
+        },
+        onError: (error) => {
+          if (error instanceof VerdictAbandonedError) {
+            return; // déjà nommé + resynchronisé par le hook
+          }
+          if (error instanceof TargetLockedError || error instanceof SlotEditError || error instanceof EngineTimeoutError) {
+            toast.error(error.message);
+          }
+          // MoveRejectedError / GenerationInProgress / interruption : rendus par le panneau
+          // (`moveGroupState`) + surlignage — le mode cible reste armé pour réessayer ailleurs.
         },
       },
     );
@@ -868,6 +965,35 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
     if (null === targetMode) {
       return;
     }
+    // P2-51 PR-6 (D11) — déplacement de GROUPE : la case cible (fenêtre libre OU occupée) part au
+    // rail move-group. Pas d'éviction ici (le rail n'en porte pas) : le moteur tranche, violations
+    // affichées telles quelles. Cliquer la case SOURCE (une de ses séances membres) annule.
+    if (targetMode.kind === "move-group") {
+      const { blockId, source } = targetMode;
+      let targetCase: { venueId: string; dayOfWeek: number; startTime: string } | null = null;
+      if (isEmptySlotId(cellSlotId)) {
+        const win = gridSlots.find((s) => s.id === cellSlotId);
+        if (undefined !== win && !isClosedTarget(win.venueId, win.dayOfWeek)) {
+          targetCase = { venueId: win.venueId, dayOfWeek: win.dayOfWeek, startTime: toHourMinute(win.startTime) };
+        }
+      } else {
+        const targetSlot = slots.find((s) => s.id === cellSlotId);
+        if (undefined !== targetSlot && !isClosedTarget(targetSlot.venueId, targetSlot.dayOfWeek)) {
+          targetCase = { venueId: targetSlot.venueId, dayOfWeek: targetSlot.dayOfWeek, startTime: toHourMinute(targetSlot.startTime) };
+        }
+      }
+      if (null === targetCase) {
+        return;
+      }
+      const srcKey = `${source.venueId}|${source.dayOfWeek}|${toHourMinute(source.startTime)}`;
+      const tgtKey = `${targetCase.venueId}|${targetCase.dayOfWeek}|${targetCase.startTime}`;
+      if (srcKey === tgtKey) {
+        cancelTarget();
+        return;
+      }
+      doMoveGroup(blockId, source, targetCase);
+      return;
+    }
     if (targetMode.kind === "move" && cellSlotId === targetMode.sourceSlotId) {
       cancelTarget();
       return;
@@ -901,6 +1027,18 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
       doPlace(targetMode.teamId, { dayOfWeek: targetSlot.dayOfWeek, startTime: toHourMinute(targetSlot.startTime), venueId: targetSlot.venueId });
     }
   };
+
+  // P2-30 · P2-51 PR-6 — l'état du mode cible passé à la grille (jamais sur un planning lecture
+  // seule/FAILED). Un déplacement (simple OU de groupe) marque sa SOURCE et propose des cibles
+  // (variante « move ») ; un placement à la dérive n'a pas de source (variante « place »).
+  const gridTargetMode =
+    null !== targetMode && !isReadOnly && !isFailed
+      ? {
+          active: true as const,
+          sourceSlotId: targetMode.kind === "move" || targetMode.kind === "move-group" ? targetMode.sourceSlotId : null,
+          variant: (targetMode.kind === "place" ? "place" : "move") as "move" | "place",
+        }
+      : undefined;
 
   // Annuler le dernier geste (profondeur 1). Move simple = move inverse ; move-éviction = move
   // inverse PUIS replacement de l'évincée (2 verdicts) ; échec partiel = toast honnête.
@@ -1502,11 +1640,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                             highlightSlotIds={highlightSlotIds}
                             onToggleLock={isReadOnly || isFailed ? undefined : requestToggleLock}
                             lockLens={lockLens}
-                            targetMode={
-                              null !== targetMode && !isReadOnly && !isFailed
-                                ? { active: true, sourceSlotId: targetMode.kind === "move" ? targetMode.sourceSlotId : null, variant: targetMode.kind === "move" ? "move" : "place" }
-                                : undefined
-                            }
+                            targetMode={gridTargetMode}
                             onPickTarget={onPickTarget}
                             onCancelTarget={cancelTarget}
                           />
@@ -1521,11 +1655,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                           onToggleLock={isReadOnly || isFailed ? undefined : requestToggleLock}
                           lockLens={lockLens}
                           // P2-30 — mode cible click-click (jamais sur un planning lecture seule/FAILED).
-                          targetMode={
-                            null !== targetMode && !isReadOnly && !isFailed
-                              ? { active: true, sourceSlotId: targetMode.kind === "move" ? targetMode.sourceSlotId : null, variant: targetMode.kind === "move" ? "move" : "place" }
-                              : undefined
-                          }
+                          targetMode={gridTargetMode}
                           onPickTarget={onPickTarget}
                           onCancelTarget={cancelTarget}
                           // P2-43 volet (v) — les couples fermés de la période : cases vides
@@ -1581,18 +1711,31 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                             return undefined === c ? undefined : coachFullName(c);
                           }}
                           busy={busy}
-                          moveState={moveState}
+                          // P2-51 PR-6 : sur une séance de bloc, le panneau montre l'état du geste
+                          // de GROUPE (verdict move-group), sinon celui du déplacement simple.
+                          moveState={null !== selectedSlotBlock ? moveGroupState : moveState}
                           // Un pseudo-créneau de réservation (planning FAILED) n'existe pas
                           // côté serveur : déplacer/verrouiller le viserait dans le vide.
                           readOnly={isReadOnly || isFailed}
-                          // P2-30 : ce créneau est-il la source d'un mode cible armé ?
-                          armed={targetMode?.kind === "move" && targetMode.sourceSlotId === selectedSlot.id}
+                          // P2-30 · PR-6 : ce créneau est-il la source du mode cible armé (simple ou groupe) ?
+                          armed={
+                            null !== selectedSlotBlock
+                              ? targetMode?.kind === "move-group" && targetMode.sourceSlotId === selectedSlot.id
+                              : targetMode?.kind === "move" && targetMode.sourceSlotId === selectedSlot.id
+                          }
+                          // P2-51 PR-6 (D11) : séance de bloc → « Déplacer le groupe » (compte de membres).
+                          groupSession={null !== selectedSlotBlock ? { memberCount: selectedSlotBlock.teamIds.length } : null}
                           onClose={() => setSelectedSlotId(null)}
                           // Même point d'entrée que le cadenas de la grille : la règle
                           // RÉSERVATION (confirmation) vit dans `requestToggleLock`, pas ici.
                           onToggleLock={() => requestToggleLock(selectedSlot.id)}
-                          // « Déplacer » arme (ou désarme) le mode cible click-click.
-                          onArmMove={() => armMove(selectedSlot.id)}
+                          // « Déplacer » arme le mode cible click-click ; sur une séance de bloc, il
+                          // arme le déplacement de GROUPE (la case source = celle du créneau).
+                          onArmMove={() =>
+                            null !== selectedSlotBlock
+                              ? armMoveGroup(selectedSlot.id, selectedSlotBlock.id, { venueId: selectedSlot.venueId, dayOfWeek: selectedSlot.dayOfWeek, startTime: selectedSlot.startTime })
+                              : armMove(selectedSlot.id)
+                          }
                         />
                       ) : null}
                       {showDiagnostics ? (
