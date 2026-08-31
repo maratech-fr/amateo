@@ -5,6 +5,7 @@ from datetime import time
 from pydantic import Field
 
 from app.schemas.input_schema import (
+    MAX_SHARED_TRAINING_BLOCKS,
     MAX_SHARED_TRAINING_GROUPS,
     MAX_TEAM_LINKS,
     MAX_VENUE_TRAVEL_TIMES,
@@ -14,6 +15,7 @@ from app.schemas.input_schema import (
     PriorityTierSchema,
     ScheduleSlotTemplateSchema,
     SerializableModel,
+    SharedTrainingBlockSchema,
     SharedTrainingGroupSchema,
     TeamLinkSchema,
     TeamSchema,
@@ -79,6 +81,12 @@ class ValidateAssignmentsInputSchema(SerializableModel):
     # motif nommé. Absent/vide ⇒ aucun effet (rétro-compat).
     shared_trainings: list[SharedTrainingGroupSchema] = Field(
         default_factory=list, alias="sharedTrainings", max_length=MAX_SHARED_TRAINING_GROUPS
+    )
+    # P2-51 — le verdict accepte AUSSI le bloc `sharedBlocks` (parité de vocabulaire avec
+    # /generate : le backend émet le même dialecte). ACCEPTÉ mais NON consommé en PR-2 : absent/vide
+    # ⇒ aucun effet (rétro-compat) — la sémantique de déplacement-en-bloc est PR-3.
+    shared_blocks: list[SharedTrainingBlockSchema] = Field(
+        default_factory=list, alias="sharedBlocks", max_length=MAX_SHARED_TRAINING_BLOCKS
     )
     # Lot PASSERELLES — le verdict accepte AUSSI le bloc `teamLinks` (parité de vocabulaire avec
     # /generate). ACCEPTÉ mais NON consommé en PR-1. Absent/vide ⇒ aucun effet (rétro-compat).

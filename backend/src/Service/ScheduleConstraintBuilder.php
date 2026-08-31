@@ -15,6 +15,8 @@ use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\SharedTrainingGroup;
 use App\Entity\SharedTrainingGroupTeam;
 use App\Entity\SportCategory;
@@ -61,7 +63,7 @@ final class ScheduleConstraintBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '2.16';
+    public const string CONTRACT_VERSION = '2.17';
     private const CACHE_TTL_SECONDS = 14_400;
     private const DEFAULT_SOLVER_SEED = 42;
     /**
@@ -212,6 +214,9 @@ final class ScheduleConstraintBuilder
             reservations: $em->getRepository(Reservation::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => null], ['id' => 'ASC']),
             // Base-plan mutualisation groups (schedulePlanId IS NULL, P2-27).
             sharedTrainingGroups: $em->getRepository(SharedTrainingGroup::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => null], ['id' => 'ASC']),
+            // Base-plan mutualisation blocks (schedulePlanId IS NULL, P2-51). Un membre en pause
+            // est filtré au roster dans serializeSharedBlocks.
+            sharedBlocks: $em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => null], ['id' => 'ASC']),
             // Passerelles (lot PASSERELLES) : STRUCTURE de club+saison (patron Team/Coach, PAS
             // ancré au plan) — la même déclaration nourrit socle et périodes. Filtrée au roster
             // dans serializeTeamLinks. Inerte en PR-1 (le moteur l'accepte, ne la consomme pas).
@@ -414,6 +419,9 @@ final class ScheduleConstraintBuilder
             // Period mutualisation groups: this plan's own (schedulePlanId = planId, P2-27). Un
             // membre désactivé pour la période est filtré au roster dans serializeSharedTrainings.
             sharedTrainingGroups: $em->getRepository(SharedTrainingGroup::class)->findBy(['schedulePlanId' => $schedulePlanId], ['id' => 'ASC']),
+            // Period mutualisation blocks: this plan's own (schedulePlanId = planId, P2-51). Un
+            // membre désactivé pour la période est filtré au roster dans serializeSharedBlocks.
+            sharedBlocks: $em->getRepository(SharedTrainingBlock::class)->findBy(['schedulePlanId' => $schedulePlanId], ['id' => 'ASC']),
             // Passerelles : STRUCTURE de club+saison (patron Team/Coach) — mêmes lignes que le
             // socle, jamais des copies ancrées au plan. Le roster de période filtre : une équipe
             // désactivée pour la période sort du payload, son lien est abandonné (serializeTeamLinks).
@@ -541,6 +549,7 @@ final class ScheduleConstraintBuilder
      * @param array<Constraint>            $constraints
      * @param array<Reservation>           $reservations           persistent team→slot HARD pins (base/overlay)
      * @param array<SharedTrainingGroup>   $sharedTrainingGroups   P2-27 mutualisation groups (base: plan NULL / period: = planId)
+     * @param array<SharedTrainingBlock>   $sharedBlocks           P2-51 mutualisation blocks (base: plan NULL / period: = planId)
      * @param array<TeamLink>              $teamLinks              lot PASSERELLES — club+season bridges (roster-filtered)
      * @param array<VenueTravelTime>       $venueTravelTimes       P2-53 RMM-8 — travel matrix rows (club+season, symmetric)
      *
@@ -560,6 +569,7 @@ final class ScheduleConstraintBuilder
         array $constraints = [],
         array $reservations = [],
         array $sharedTrainingGroups = [],
+        array $sharedBlocks = [],
         array $teamLinks = [],
         array $venueTravelTimes = [],
         ?string $schedulePlanId = null,
@@ -631,6 +641,12 @@ final class ScheduleConstraintBuilder
             // bloc `sharedTrainings` du payload. Vide (aucun groupe) ⇒ [] : chemin byte-identique
             // côté moteur (default_factory=list). Gardé par SharedTrainingPayloadParityTest.
             'sharedTrainings' => $this->serializeSharedTrainings($sharedTrainingGroups, $teams),
+            // P2-51 — mutualisation par BLOC : ce que le club STOCKE (blocs {équipes, K}, ancrés
+            // au plan) devient le bloc `sharedBlocks` du payload, FILTRÉ au roster (une équipe en
+            // pause sort, un bloc réduit à <2 est abandonné). Vide (aucun bloc) ⇒ [] : chemin
+            // byte-identique côté moteur (default_factory=list). INERTE en PR-2 (accepté par le
+            // schéma, non consommé par le solveur — PR-3). Gardé par SharedBlockPayloadParityTest.
+            'sharedBlocks' => $this->serializeSharedBlocks($sharedBlocks, $teams),
             // Lot PASSERELLES — ce que le club STOCKE (passerelles club+saison) devient le bloc
             // `teamLinks` du payload, FILTRÉ au roster (les deux équipes présentes). Vide ⇒ [] :
             // chemin byte-identique côté moteur (default_factory=list). Inerte en PR-1 (accepté,
@@ -806,6 +822,53 @@ final class ScheduleConstraintBuilder
                 'id' => $group->getId(),
                 'teamIds' => $teamIds,
                 'commonSessions' => $group->getCommonSessions(),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Sérialise les blocs de mutualisation (P2-51) en `{id, teamIds, commonSessions}`. Les membres
+     * sont filtrés au ROSTER du payload (une équipe désactivée pour la période sort du payload,
+     * son id serait fantôme dans le bloc) ; un bloc qui tombe sous 2 membres actifs est ABANDONNÉ
+     * (le schéma moteur exige ≥ 2). teamIds triés = déterminisme du hash de snapshot. Miroir exact
+     * de serializeSharedTrainings — le bloc est un modèle indépendant du groupe {équipes, K}.
+     *
+     * @param array<SharedTrainingBlock> $blocks
+     * @param array<Team>                $teams
+     *
+     * @return array<int, array{id: string, teamIds: list<string>, commonSessions: int}>
+     */
+    private function serializeSharedBlocks(array $blocks, array $teams): array
+    {
+        if ([] === $blocks || !$this->entityManager instanceof EntityManagerInterface) {
+            return [];
+        }
+
+        $rosterIds = [];
+        foreach ($teams as $team) {
+            $rosterIds[$team->getId()] = true;
+        }
+
+        $result = [];
+        foreach ($blocks as $block) {
+            $rows = $this->entityManager->getRepository(SharedTrainingBlockTeam::class)
+                ->findBy(['blockId' => $block->getId()], ['teamId' => 'ASC']);
+            $teamIds = [];
+            foreach ($rows as $row) {
+                if (isset($rosterIds[$row->getTeamId()])) {
+                    $teamIds[] = $row->getTeamId();
+                }
+            }
+            sort($teamIds);
+            if (\count($teamIds) < 2) {
+                continue; // moins de 2 membres actifs : le bloc n'a plus de sens
+            }
+            $result[] = [
+                'id' => $block->getId(),
+                'teamIds' => $teamIds,
+                'commonSessions' => $block->getCommonSessions(),
             ];
         }
 
