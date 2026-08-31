@@ -138,6 +138,9 @@ voulu ; ne pas « harmoniser » vers la fusion.
 | P2-51 PR-2 (payload/contrat — bloc `sharedBlocks`, CONTRACT_VERSION 2.17, INERTE) | ✅ 2026-08-31 |
 | P2-51 PR-3 (sémantique solveur — le bloc est CONSOMMÉ, verdict refuse la casse) | ✅ 2026-08-31 |
 | P2-51 PR-4 (frontend : geste DÉCLARER livré ; gestes POSER/déplacer bloqués backend, arbitrage fondateur en attente) | 🟠 partielle 2026-08-31 |
+| P2-51 PR-5 (rail 1 — réservation groupée ré-ancrée sur le bloc, geste POSER débloqué) | ✅ 2026-08-31 |
+| P2-51 PR-5 (rail 2 — déplacement groupé, bump contrat 2.18 requis) | 🔴 STOP, arbitrage fondateur en cours |
+| P2-51 PR-6 (écran : bascule sur `sharedTrainingBlockId`) / PR-7 (retrait du repli groupe) | ⬜ |
 | Exercice solveur reprise 17 août | ⬜ après P2-51 |
 | Exercice solveur reprise 24 août | ⬜ |
 | Overlay Mateo 31/08→16/10 (D2, D1) + exercice | ⬜ |

@@ -66,12 +66,15 @@ d'entités) ; l'ÉCRAN, lui, a tranché en faveur d'UNE seule notion visible (D1
 
 **Avancement** : PR-1 (modèle backend seul : entités, migration RLS, API CRUD, gardes, cascades,
 staleness, purges), PR-2 (émission payload/contrat — bloc `sharedBlocks`, `CONTRACT_VERSION`
-2.16→2.17, schémas moteur alors INERTES) et **PR-3 (sémantique solveur + verdict de refus de
-casse — livrée 2026-08-31, détail §0bis)** **livrées** — trace `specs/courantes/etat-des-lieux.md`
-§3, inventaires `backend/docs/backend-inventory.md` et `engine/docs/engine-inventory.md` (changelog
-contrat), vocabulaire `engine/docs/constraint-vocabulary.md`. **PR-4 (frontend) livrée en PARTIE
-le 2026-08-31** : le geste DÉCLARER est livré, les gestes POSER et déplacer le bloc restent
-BLOQUÉS côté backend (analyse §0ter) — arbitrage fondateur en attente sur le séquencement.
+2.16→2.17, schémas moteur alors INERTES), **PR-3 (sémantique solveur + verdict de refus de
+casse — détail §0bis)** et **PR-4 (frontend, geste DÉCLARER — détail §0ter) livrées** —
+trace `specs/courantes/etat-des-lieux.md` §3, inventaires `backend/docs/backend-inventory.md` et
+`engine/docs/engine-inventory.md` (changelog contrat), vocabulaire
+`engine/docs/constraint-vocabulary.md`. **PR-5 (2026-08-31) livre le RAIL 1** (réservation groupée
+ré-ancrée sur le bloc, détail §0quater) ; le **RAIL 2** (déplacement groupé atomique) est **STOPPÉ
+sur un constat de contrat** (`candidate` singulier dans `/validate-assignments`, bump 2.18 requis)
+— arbitrage fondateur en cours. PR-6 (écran : le front bascule sur `sharedTrainingBlockId`) et PR-7
+(retrait du repli `sharedTrainingGroupId`) restent à faire.
 
 ## 0bis. PR-3 (2026-08-31) — la modélisation retenue : le LIAGE
 
@@ -121,24 +124,54 @@ plus que deux liens (passerelles, mutualisation). Le comportement du geste DÉCL
 `MoveViolation.message` génériquement (`<li>{v.message}</li>`), donc le refus nommé
 `shared_block_broken` du verdict PR-3 s'affiche sans changement.
 
-**BLOQUÉ backend — geste 2 (POSER dans Réserver)** : D9 prévoit le bloc « sélectionnable dans
-Réserver comme une équipe ordinaire », mais le seul rail d'écriture BATCH,
-`POST /api/reservations/group` (`GroupReservationController.php`), résout STRICTEMENT un
-`SharedTrainingGroup` — `findOneBy(SharedTrainingGroup::class, ['id' => $groupId])`, 404 sinon
-(`GroupReservationController.php:114`). Aucun rail de réservation de bloc n'existe. Poser en N
-`POST /api/reservations` séquentiels perdrait l'atomicité (une moitié posée, l'autre refusée) —
-contournement écarté.
+**Était BLOQUÉ backend — geste 2 (POSER dans Réserver)** : au moment de PR-4, le seul rail
+d'écriture BATCH, `POST /api/reservations/group`, résolvait STRICTEMENT un `SharedTrainingGroup` —
+404 sinon. **Débloqué par PR-5 (§0quater, 2026-08-31)** : le rail se ré-ancre sur le bloc.
 
 **BLOQUÉ backend — geste 3b (déplacer le bloc entier)** : D11 exige un déplacement EN BLOC, jamais
 une équipe seule. Le seul rail de déplacement, `POST /api/schedule-slots/{id}/move`
 (`ManualEditController.php:111`), ne déplace qu'UN créneau sous UN verdict. N appels séquentiels
 sans échec atomique casseraient le bloc à mi-chemin (le premier déplacement le rendrait
 `shared_block_broken`, le verdict PR-3 refuserait alors le second) — c'est le cas d'arrêt prévu,
-pas un bug.
+pas un bug. **Reste bloqué après PR-5** (§0quater) : le blocage n'est plus « aucun rail n'existe »
+mais un constat de CONTRAT précis (`candidate` singulier de `/validate-assignments`), arbitrage
+fondateur en cours.
 
-**Conséquence, non arbitrée** : PR-4 a besoin d'une extension backend (rail de réservation de bloc
-+ rail de déplacement groupé atomique) avant de clore les gestes 2 et 3b. Le séquencement
-(nouvelle PR backend avant/après P2-58, priorité relative) appartient au fondateur.
+**Conséquence** : PR-5 a résolu le geste 2 (rail 1, réservation). Le geste 3b (rail 2, déplacement)
+reste en attente d'arbitrage sur le bump `CONTRACT_VERSION` 2.18 — détail §0quater.
+
+## 0quater. PR-5 (2026-08-31) — rail 1 livré (réservation ré-ancrée), rail 2 STOPPÉ sur un constat de contrat
+
+**Rail 1 — livré.** `POST /api/reservations/group` résout désormais un `SharedTrainingBlock`
+D'ABORD (nouveau champ body `sharedTrainingBlockId`), avec repli sur `SharedTrainingGroup` (champ
+legacy `sharedTrainingGroupId`) — **option (a), transition douce** : le front actuel
+(`SlotReservationModal.tsx:240`) poste encore des groupes K, une bascule sèche aurait cassé toutes
+les réservations groupées AVANT la PR-6 (écran). Parité stricte avec le rail groupe historique : N
+réservations / 1 flush / atomique, les 5 gardes P2-46 appliquées au bloc
+(`ReservationGroupOccupancy::assertBlockReservationAllowed`, plafond borné par `commonSessions` du
+bloc), règles (b)/(e) : un bloc complet compte comme UN occupant. Détail complet, route et gardes :
+`backend/docs/backend-inventory.md` §« Réservation groupée ».
+
+**Constat sémantique, pas un trou** : une réservation de bloc = N verrous HARD sur une case ;
+`add_room_at_most_one` laisse une case toute-verrouillée non contrainte, et le diagnostic de
+sur-capacité replie déjà les blocs PAR CASE (câblé en PR-3). Aucun crédit manquant.
+
+**Rail 2 — STOPPÉ, arbitrage fondateur requis.** Le schéma du verdict
+(`engine/app/schemas/validate_input_schema.py:101`, champ `candidate:
+CandidateAssignmentSchema`) déclare le candidat **au singulier, obligatoire** — un déplacement
+groupé (N sources + N candidats sous UN verdict) exige un **bump de contrat 2.18** : une liste de
+candidats côté schéma, et la généralisation du miroir `_shared_block_move_violation`
+(`engine/app/solver/validate_assignments.py:131`) à un jugement N-déplacements (aujourd'hui, il ne
+juge qu'UN déplacement avant/après via `reference`). Non implémenté, non bumpé — conforme au
+cadrage (le rail 2 n'était pas dans le périmètre tant que le constat de contrat n'était pas posé).
+
+**Garde P4-154 soldée dans cette même PR** : la paire `wizard/SharedTrainingBlock` (type TS miroir
+↔ schéma OpenAPI) est enrôlée dans `TsFieldsMatchOpenApiSchemaTest::PAIRS`, sans exemption, sans
+divergence trouvée.
+
+**Reste après PR-5** : PR-6 (l'écran bascule sur `sharedTrainingBlockId`, retire le repli du POST
+côté front) et PR-7 (retrait du repli `sharedTrainingGroupId` côté backend + rail 2 une fois
+l'arbitrage du bump 2.18 tranché).
 
 ## 1. Le besoin, dans les mots du terrain
 

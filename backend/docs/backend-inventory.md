@@ -3,14 +3,14 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-08-31 (P2-51 PR-2, `documentation-update` — ligne `SharedTrainingBlock` étendue
-au payload : `ScheduleConstraintBuilder::serializeSharedBlocks` (`:843-876`) confrontée au code —
-filtre roster, abandon <2 membres, `teamIds` triés, portée socle (`schedulePlanId` NULL) ET
-période ; `CONTRACT_VERSION` = `2.17` (`engine/CONTRACT_VERSION`) ; gating
-`CrossStack/SharedBlockPayloadParityTest` présent en step `ci.yml` + ligne
-`docs/testing/blocking-tests.md`. Reste antérieur (PR-1 : entités, migration RLS, API CRUD, gardes,
-cascades) non re-vérifié cette passe, vérifié lors de la passe P2-51 PR-1 précédente. Un stamp
-REMPLACE, l'historique vit dans git : `git log -p --follow backend/docs/backend-inventory.md`)
+Last verified @ 2026-08-31 (P2-51 PR-5, `documentation-update` — nouvelle section « Réservation
+groupée (`GroupReservationController.php`) » confrontée au code : le rail se ré-ancre D'ABORD sur
+`SharedTrainingBlock` (`__invoke` :133-136), retombe sur `SharedTrainingGroup` (:140-171) si le
+bloc ne résout pas — les deux portées écrivent via `persistReservations`, N réservations/1 flush,
+gardées par les 5 règles de `ReservationGroupOccupancy` (`assertBlockReservationAllowed`/
+`assertGroupReservationAllowed`, mêmes plafonds). `SharedTrainingBlock` (ligne ci-dessous) reste
+vraie telle quelle (PR-1/PR-2, non re-vérifiée cette passe). Un stamp REMPLACE, l'historique vit
+dans git : `git log -p --follow backend/docs/backend-inventory.md`)
 
 ---
 
@@ -278,6 +278,43 @@ les deux sens ; `snapshotHash` reste structure-only).
 | Route | Méthode | Contrôleur | Description |
 |-------|---------|------------|-------------|
 | `/api/teams/reorder` | POST | `ReorderTeamsController` | Bulk atomique : body `{ items: [{ id, priorityTierId, tierOrder }] }` (ou liste nue), applique `(priorityTierId, tierOrder)` sur chaque équipe en une transaction (un seul flush). Remplace les N `PUT /api/teams/{id}` concurrents du mode tri (course sur le lock optimiste). 403 si une équipe n'appartient pas au club courant. Retourne `{ updated }`. |
+
+### Réservation groupée (`GroupReservationController.php`)
+
+Rail d'ÉCRITURE BATCH d'une mutualisation posée sur UNE case : N réservations (une par membre) en
+UN SEUL flush — l'atomicité rend la règle d'exclusivité (case entièrement libre ou entièrement au
+groupe/bloc) vérifiable, une écriture semi-faite ne serait ni « libre » ni « complète ». Né P2-46
+(2026-08-23, `ReservationGroupOccupancy`, 5 gardes : exclusivité, réciproque, plafond K, plafond
+membre, capacité).
+
+**P2-51 PR-5 (2026-08-31) — RÉ-ANCRAGE sur le bloc, option (a) transition douce** : le corps accepte
+désormais `sharedTrainingBlockId` (nouveau, résolu **EN PREMIER**) et `sharedTrainingGroupId`
+(**repli**, résolu seulement si l'id de bloc est absent ou ne résout à rien). Le repli existe parce
+que le front (`SlotReservationModal.tsx`) poste encore `sharedTrainingGroupId` au moment de cette
+PR — la PR-6 (écran) le fera basculer sur `sharedTrainingBlockId`, la PR-7 retirera le repli. Les
+deux portées passent par la MÊME méthode `persistReservations` (N réservations/1 flush) et sont
+gardées par les MÊMES 5 règles, appliquées au bloc à l'identique
+(`ReservationGroupOccupancy::assertBlockReservationAllowed` — exclusivité, plafond `commonSessions`
+du bloc, plafond membre ; règles réciproque/capacité comptent un bloc complet comme UN occupant,
+patron `occupantCount`/`reservedSetMatchesABlock`).
+
+| Route | Méthode | Description |
+|-------|---------|-------------|
+| `/api/reservations/group` | POST | Body `{ sharedTrainingBlockId? \| sharedTrainingGroupId?, venueId, dayOfWeek, startTime, durationMinutes?, schedulePlanId? }` — au moins un des deux ids, 400 sinon. UUID pré-validé en forme (jamais un id malformé jusqu'à Postgres — un `WHERE id = 'abc'` sur colonne `uuid` lève un 500, classe de défaut documentée ailleurs dans le dépôt). 404 si ni bloc ni groupe ne résout. 422 : portée du bloc/groupe ≠ portée demandée (socle vs plan de période), gymnase fermé, l'une des 5 gardes d'occupation. 409 saison archivée. Retourne `{ ids, count }`. |
+
+**Constat sémantique du même lot (pas un trou)** : une réservation de bloc s'éclate en N verrous
+HARD sur une case ; `add_room_at_most_one` (moteur) laisse une case toute-verrouillée non
+contrainte, et le diagnostic de sur-capacité replie déjà les blocs PAR CASE (PR-3, folding déjà
+câblé côté `result_builder/diagnostics.py`) — aucun crédit manquant côté moteur pour cette
+réservation.
+
+**Rail de DÉPLACEMENT groupé, lui, reste BLOQUÉ (STOP contrat, PR-5)** : `/validate-assignments`
+(`engine/app/schemas/validate_input_schema.py`) déclare `candidate: CandidateAssignmentSchema` au
+**singulier, obligatoire** — un déplacement de bloc entier (N sources + N candidats sous UN
+verdict) exige N candidats, donc un bump `CONTRACT_VERSION` 2.18 (liste de candidats + généralisation
+du miroir `_shared_block_move_violation`, `engine/app/solver/validate_assignments.py:131`, à un
+jugement N-déplacements). Arbitrage fondateur en cours — détail
+[`../../specs/evolution/mutualisation-par-creneau.md`](../../specs/evolution/mutualisation-par-creneau.md) §0quater.
 
 ### Approbation des membres (`MembershipController.php`)
 
