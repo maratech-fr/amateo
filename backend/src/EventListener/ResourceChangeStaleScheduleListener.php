@@ -12,6 +12,8 @@ use App\Entity\MatchSlotRotationTeam;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\SharedTrainingGroup;
 use App\Entity\SharedTrainingGroupTeam;
 use App\Entity\Team;
@@ -172,6 +174,11 @@ use Doctrine\ORM\Events;
 #[AsEntityListener(event: Events::postRemove, method: 'sharedTrainingGroupTouched', entity: SharedTrainingGroup::class)]
 #[AsEntityListener(event: Events::postPersist, method: 'sharedTrainingGroupTeamTouched', entity: SharedTrainingGroupTeam::class)]
 #[AsEntityListener(event: Events::postRemove, method: 'sharedTrainingGroupTeamTouched', entity: SharedTrainingGroupTeam::class)]
+#[AsEntityListener(event: Events::postPersist, method: 'sharedTrainingBlockTouched', entity: SharedTrainingBlock::class)]
+#[AsEntityListener(event: Events::postUpdate, method: 'sharedTrainingBlockTouched', entity: SharedTrainingBlock::class)]
+#[AsEntityListener(event: Events::postRemove, method: 'sharedTrainingBlockTouched', entity: SharedTrainingBlock::class)]
+#[AsEntityListener(event: Events::postPersist, method: 'sharedTrainingBlockTeamTouched', entity: SharedTrainingBlockTeam::class)]
+#[AsEntityListener(event: Events::postRemove, method: 'sharedTrainingBlockTeamTouched', entity: SharedTrainingBlockTeam::class)]
 #[AsEntityListener(event: Events::postPersist, method: 'teamMatchHabitTouched', entity: TeamMatchHabit::class)]
 #[AsEntityListener(event: Events::postUpdate, method: 'teamMatchHabitTouched', entity: TeamMatchHabit::class)]
 #[AsEntityListener(event: Events::postRemove, method: 'teamMatchHabitTouched', entity: TeamMatchHabit::class)]
@@ -329,6 +336,29 @@ final class ResourceChangeStaleScheduleListener
     {
         // Ajouter/retirer un membre change la composition du groupe → même périmètre que le parent
         // (colonnes dénormalisées : le listener n'a pas à joindre).
+        $clubId = $entity->getClubId();
+        if (null === $clubId) {
+            return;
+        }
+        $this->markPlanScoped($entity->getSchedulePlanId(), $clubId, $entity->getSeasonId());
+    }
+
+    public function sharedTrainingBlockTouched(SharedTrainingBlock $entity): void
+    {
+        // P2-51 — schedule_plan_id NULLABLE (patron du groupe) : plan si non-NULL, sinon le plan
+        // SEASON du club+saison (jamais les copies de période, ADR-0002).
+        $clubId = $entity->getClubId();
+        if (null === $clubId) {
+            return;
+        }
+        $this->markPlanScoped($entity->getSchedulePlanId(), $clubId, $entity->getSeasonId());
+    }
+
+    public function sharedTrainingBlockTeamTouched(SharedTrainingBlockTeam $entity): void
+    {
+        // Ajouter/retirer un membre change la composition du bloc → même périmètre que le parent
+        // (colonnes dénormalisées : le listener n'a pas à joindre ; écriture = delete+recreate,
+        // patron SharedTrainingGroupTeam : postPersist + postRemove suffisent).
         $clubId = $entity->getClubId();
         if (null === $clubId) {
             return;

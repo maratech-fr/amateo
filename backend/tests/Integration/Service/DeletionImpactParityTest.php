@@ -16,6 +16,8 @@ use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\SharedTrainingGroup;
 use App\Entity\SharedTrainingGroupTeam;
 use App\Entity\Team;
@@ -322,6 +324,45 @@ final class DeletionImpactParityTest extends KernelTestCase
      * P2-46 PR-4 — l'autre sens de la parité : supprimer une équipe qui n'est dans AUCUN groupe
      * ne touche à aucun groupe ni à aucune réservation de lot. Rien n'est annoncé, rien ne tombe.
      */
+    public function testDeletingATeamKillsEveryBlockItBelongsToEntirely(): void
+    {
+        [$club, $season] = $this->seed();
+        $venue = $this->venue($club, $season, 'Matéo');
+        $doomed = $this->team($club, $season, forcedVenueId: $venue->getId());
+        $mate = $this->team($club, $season, forcedVenueId: $venue->getId());
+        $third = $this->team($club, $season, forcedVenueId: $venue->getId());
+        $stranger = $this->team($club, $season, forcedVenueId: $venue->getId());
+
+        // Un duo et un trio où l'équipe supprimée FIGURE ; un bloc étranger où elle n'est pas.
+        $duo = $this->sharedBlock($club, $season, [$doomed, $mate]);
+        $trio = $this->sharedBlock($club, $season, [$doomed, $mate, $third]);
+        $untouched = $this->sharedBlock($club, $season, [$mate, $stranger]);
+        $this->em->flush();
+
+        $impact = self::getContainer()->get(DeletionImpactCounter::class)->forTeam($doomed);
+        $announced = [];
+        foreach ($impact->lines as $line) {
+            $announced[$line['key']] = $line['count'];
+        }
+        // Le compte annoncé == exactement ce qui sera détruit (les 2 blocs où elle figure, pas le 3e).
+        self::assertSame(2, $announced['team_shared_block'] ?? 0, 'les 2 blocs où elle figure sont annoncés, pas le 3e');
+
+        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfTeam($doomed);
+        $this->em->flush();
+        $this->em->clear();
+
+        // Le duo ET le trio sont partis — bloc ET toutes leurs lignes, survivants compris.
+        self::assertNull($this->em->getRepository(SharedTrainingBlock::class)->find($duo), 'un duo amputé meurt entier');
+        self::assertSame(0, $this->countBy(SharedTrainingBlockTeam::class, 'blockId', $duo), 'ses lignes partent avec lui, celle du survivant comprise');
+        self::assertNull($this->em->getRepository(SharedTrainingBlock::class)->find($trio), 'un trio amputé meurt entier : pas de seuil de survie');
+        self::assertSame(0, $this->countBy(SharedTrainingBlockTeam::class, 'blockId', $trio), 'toutes ses lignes partent');
+
+        // Le bloc étranger n'a pas bougé d'un pouce.
+        self::assertNotNull($this->em->getRepository(SharedTrainingBlock::class)->find($untouched));
+        self::assertSame(2, $this->countBy(SharedTrainingBlockTeam::class, 'blockId', $untouched), 'un bloc sans elle ne perd rien');
+        self::assertSame(0, $this->countBy(SharedTrainingBlockTeam::class, 'teamId', $doomed->getId()));
+    }
+
     public function testDeletingATeamOutsideAnyGroupTouchesNoGroup(): void
     {
         [$club, $season] = $this->seed();
@@ -826,6 +867,23 @@ final class DeletionImpactParityTest extends KernelTestCase
         $this->em->flush();
 
         return $group->getId();
+    }
+
+    /** Un bloc de mutualisation et ses membres. @param list<Team> $teams */
+    private function sharedBlock(Club $club, Season $season, array $teams): string
+    {
+        $block = (new SharedTrainingBlock)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setCommonSessions(1);
+        $this->em->persist($block);
+        $this->em->flush();
+
+        foreach ($teams as $team) {
+            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($club->getId())->setSeasonId($season->getId())
+                ->setBlockId($block->getId())->setTeamId($team->getId()));
+        }
+        $this->em->flush();
+
+        return $block->getId();
     }
 
     /** Un créneau de match partagé (rotation A/B) et ses membres ordonnés. @param list<Team> $teams */
