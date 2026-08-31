@@ -1,17 +1,19 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-08-31 (P2-51 PR-3, `documentation-update`). Nouvelle section **Bloc de
-mutualisation (`sharedBlocks`)** ajoutée, confrontée au code : liage `x[membre,case] ≥ b[case]` +
-`Σ b == commonSessions` sans réification depuis la co-présence (`add_shared_block_constraints`,
-`targeting.py:510-652`) ; dé-comptage capacité `(n_libres−1)·b` (`add_room_at_most_one`,
-`structural.py:40`) ; exclusion dynamique `y ≤ 1 − b` du comptage exact-K des groupes
-(`targeting.py:432-434,472-482`) ; exemption passerelle étendue aux blocs
-(`team_share_declared_pairs`, `targeting.py:690-709`) ; diagnostic `shared_block_not_honored`
-(`_diagnose_shared_blocks`, `result_builder/diagnostics.py:836-916`) ; miroir verdict
-`_shared_block_move_violation` (`validate_assignments.py:131-217`). Exemption passerelle
-« mutualisée déclarée » (§Passerelles) recalée pour citer aussi les blocs. Reste du document non
-re-parcouru ligne à ligne cette passe (rotation précédente 2026-08-30, P4-152 : parité
-génération⇄verdict `travelTime`/`minAtVenueId` — toujours vraie, non re-confrontée aujourd'hui).
+Last verified @ 2026-08-31 (P2-51 PR-7, `documentation-update`). Le modèle groupe {équipes, K}
+(`sharedTrainings`, `add_shared_training_constraints`) est **RETIRÉ du code** — confirmé absent de
+`targeting.py` (seuls `add_shared_block_constraints` et `team_share_declared_pairs` y survivent) et
+du `Literal` de diagnostics (`output_schema.py` — plus de `shared_training_not_honored`). Le
+**bloc de mutualisation (`sharedBlocks`)** devient la SEULE notion : section réécrite pour retirer
+toute mention de coexistence avec un groupe K (exclusion `y ≤ 1 − b`, disparue avec lui) ; liage
+`x[membre,case] ≥ b[case]` + `Σ b == commonSessions` sans réification depuis la co-présence
+(`add_shared_block_constraints`, `targeting.py:371-490`) ; dé-comptage capacité `(n_libres−1)·b`
+(`add_room_at_most_one`, `structural.py:40`) ; exemption passerelle (`team_share_declared_pairs`,
+`targeting.py:546-560`) ; diagnostic `shared_block_not_honored` (`_diagnose_shared_blocks`,
+`result_builder/diagnostics.py:824-902`) ; miroir verdict `_shared_block_move_violation`
+(`validate_assignments.py:70-150`). Reste du document non re-parcouru ligne à ligne cette passe
+(rotation précédente 2026-08-30, P4-152 : parité génération⇄verdict `travelTime`/`minAtVenueId` —
+toujours vraie, non re-confrontée aujourd'hui).
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -190,9 +192,9 @@ insensible à ce réglage (arbitrage fondateur n°1). Deux régimes :
 | `MANDATORY` | **dur** : les séances des deux équipes ne se chevauchent JAMAIS dans le temps (`var_a + var_b ≤ 1`) — plus strict que la tolérance coach D-14 (`same_venue_allowed=False`) | `add_team_link_constraints` |
 | `PREFERRED` (défaut) | **soft** : malus `−TEAM_LINK_TIER_WEIGHTS[tier]` par chevauchement, `tier` = la PLUS HAUTE des deux équipes (S 8 · A 6 · B 4 · C 2 · D 1) — deux fanions qui coïncident coûtent plus que deux réserves ; oriente sans jamais SUPPRIMER une séance | `objective.add_team_link_penalty` |
 
-- **Exemption unique** : une séance **mutualisée DÉCLARÉE** (même case, groupe `sharedTrainings`
-  **ou bloc `sharedBlocks`** partagé — `team_share_declared_pairs`, P2-51 arbitrage n°6) n'est
-  jamais comptée comme chevauchement — dans les deux régimes.
+- **Exemption unique** : une séance **mutualisée DÉCLARÉE** (même case, bloc `sharedBlocks`
+  partagé — `team_share_declared_pairs`, P2-51 arbitrage n°6) n'est jamais comptée comme
+  chevauchement — dans les deux régimes.
 - **La simultanéité n'est jamais une décision du solveur** : sur `MANDATORY`, le seul chevauchement
   résiduel possible est **deux verrous HARD** que le gestionnaire a posés lui-même (aucune contrainte
   entre deux constantes — poser `1+1 ≤ 1` rendrait INFEASIBLE muet) ; sur `PREFERRED`, c'est un malus
@@ -201,24 +203,25 @@ insensible à ce réglage (arbitrage fondateur n°1). Deux régimes :
   jamais avalé.
 - `teamLinks` vide (ou aucune passerelle du régime visé) ⇒ chemin byte-identique, goldens inchangés.
 
-## Bloc de mutualisation (`sharedBlocks`) — un ensemble d'équipes qui se comporte comme UNE équipe (P2-51 PR-3)
+## Bloc de mutualisation (`sharedBlocks`) — un ensemble d'équipes qui se comporte comme UNE équipe (P2-51)
 
-Bloc d'entrée `sharedBlocks[]` (`{id, teamIds 2..10, commonSessions≥1}`, cap 50 blocs) — **AJOUT**
-au groupe historique `sharedTrainings` (P2-27, `add_shared_training_constraints` — exact-K par
-groupe, pas décrit en section dédiée ici, ce fichier catalogue les clés `config` et les blocs
-d'entrée v2+), **pas un remplacement**. Un bloc arbitre différemment le même besoin terrain
-(mutualisations imbriquées) : ses séances **lui appartiennent**, exactement comme celles d'une
-équipe — le solveur les PLACE, il ne les DÉDUIT pas d'une co-présence.
+Bloc d'entrée `sharedBlocks[]` (`{id, teamIds 2..10, commonSessions≥1}`, cap 50 blocs) — **SEULE
+notion de mutualisation depuis le retrait du modèle groupe {équipes, K} (`sharedTrainings`, P2-27)
+par PR-7 (2026-08-31)** : l'ancien exact-K par co-présence (`add_shared_training_constraints`) est
+supprimé du solveur, du contrat et de l'écran. Un bloc arbitre le besoin terrain (mutualisations
+imbriquées) sans le double-comptage que le groupe K portait sur les groupes recouvrants : ses
+séances **lui appartiennent**, exactement comme celles d'une équipe — le solveur les PLACE, il ne
+les DÉDUIT pas d'une co-présence.
 
 **Modélisation retenue — le LIAGE, et pourquoi.** Pour chaque case candidate `(gymnase, jour,
 heure)` où tous les membres ont une variable ou un verrou, une variable de DÉCISION propre au bloc
 `b[case]` est créée, reliée à chaque membre par l'implication **UNIDIRECTIONNELLE**
 `x[membre, case] ≥ b[case]` (« si le bloc tient sa séance ici, tous les membres y sont »), puis
 `Σ b == commonSessions`. **`b` n'est PAS réifié depuis la co-présence** (pas de `b ⇔ tous
-présents`, contrairement à `y_s` du groupe `sharedTrainings` ci-dessous) — c'est ce refus,
-précisément, qui dissout le mur du double-comptage du modèle groupe (`add_shared_training_constraints`
-compte `y_s` pour CHAQUE groupe imbriqué candidat sur la même case, faisant compter une case deux
-fois pour deux groupes qui se recouvrent) : deux blocs qui partagent une équipe ont des `b`
+présents`, contrairement à `y_s` de l'ancien modèle groupe `sharedTrainings`, retiré par PR-7) —
+c'est ce refus, précisément, qui dissolvait le mur du double-comptage de ce modèle (il comptait
+`y_s` pour CHAQUE groupe imbriqué candidat sur la même case, faisant compter une case deux fois
+pour deux groupes qui se recouvrent) : deux blocs qui partagent une équipe ont des `b`
 INDÉPENDANTS, leurs séances sont distinctes par construction. Et comme `b ⟹ x=1`, une séance de
 bloc EST une séance `x` normale du membre : elle **consomme gratuitement** une de ses
 séances/semaine, compte pour `one_session_per_day`, le repos coach, les enchaînements et
@@ -231,26 +234,19 @@ patron du crédit des verrouillés P4-97). Une garde de distinctness inter-blocs
 (`Σ_{blocs ∋ membre} b[membre, case] ≤ 1`) empêche deux blocs partageant un membre de s'effondrer
 sur la MÊME case (sinon une séance physique compterait pour deux blocs).
 
-**Coexistence avec le groupe `sharedTrainings` (arbitrage n°3)** : une case où siège une séance de
-bloc dont les membres CONTIENNENT tout un groupe exact-K est **exclue dynamiquement** du comptage
-de ce groupe (`y ≤ 1 − b` dans `add_shared_training_constraints`, posé APRÈS le bloc dans
-l'agrégateur) — un groupe strictement inclus dans un bloc coexiste proprement, sans que la
-co-présence forcée par le bloc ne fausse le `Σ y_s == K` du groupe.
-
 | Où | Effet |
 |---|---|
-| `add_shared_block_constraints` (`targeting.py`, posé en tête d'`add_level_1_hard_constraints`, AVANT capacité et exact-K) | liage `x ≥ b` par membre, `Σ b == commonSessions` par bloc, distinctness inter-blocs |
+| `add_shared_block_constraints` (`targeting.py`, posé en tête d'`add_level_1_hard_constraints`, AVANT capacité) | liage `x ≥ b` par membre, `Σ b == commonSessions` par bloc, distinctness inter-blocs |
 | `add_room_at_most_one` | dé-compte `(n_libres−1)·b` — une séance de bloc = une occupation |
-| `add_shared_training_constraints` | exclusion dynamique `y ≤ 1 − b` des cases de bloc sur-ensemble |
 | `team_share_declared_pairs` | co-présence des membres exemptée de l'anti-chevauchement passerelle (§ci-dessus) |
 | Diagnostic post-solve (`_diagnose_shared_blocks`) | `shared_block_not_honored` — INFEASIBLE : moins de cases communes candidates que de séances demandées (cause certaine) ; solve abouti : défense en profondeur si le compte réel diverge |
 | Sur-capacité gymnase (post-solve) | attribuée **PAR CASE** (multi-appartenance permise, `_fold_case_occupant_identity`) — jamais « premier bloc gagne » via une carte globale, contrairement au groupe historique (unicité un-groupe-par-équipe) |
 | `/validate-assignments` | miroir déterministe `_shared_block_move_violation` (D11) — refuse NOMMÉ `shared_block_broken` un déplacement qui RETIRE un membre d'une séance de bloc jusque-là honorée ; **garde anti-enfermement** (patron `_venue_minimum_move_violation`/P4-152) : un bloc DÉJÀ cassé dans la baseline ne bloque pas les déplacements |
 
 `sharedBlocks` vide/absent ⇒ `add_shared_block_constraints` retourne 0 sans poser de variable,
-chemin byte-identique, goldens inchangés (aucun golden avec bloc). ⚠ **PR-3 livre la sémantique
-solveur + le REFUS de casser un bloc — pas le geste « déplacer le bloc entier »** (rail de
-retouche, PR-4, frontend).
+chemin byte-identique, goldens inchangés (aucun golden avec bloc). Les 3 gestes (déclarer, poser,
+déplacer le bloc entier) sont livrés — `POST /api/schedule-slots/move-group` (D11, contrat 2.18)
+consomme le miroir `_shared_block_move_violation` ci-dessus.
 
 ## Trajet entre gymnases (`travelTime`) — départage + battement (P2-53 RMM-8)
 

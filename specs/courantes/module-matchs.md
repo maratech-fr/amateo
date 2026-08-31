@@ -1,13 +1,15 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, zone non touchée par cette PR —
-contrôle de fraîcheur. Re-confronté au code : `MatchesPage.tsx` garde toujours
+Last verified @ 2026-08-31 (P2-51 PR-7, `documentation-update` — citation `patron
+SharedTrainingGroup` corrigée en `SharedTrainingBlock` §« RGPD / reset saison » : l'entité groupe
+K est retirée, `SeasonDataPurger.php:125-126` purge désormais `SharedTrainingBlockTeam`/
+`SharedTrainingBlock` dans cet ordre. Re-confronté au code : `MatchesPage.tsx` garde toujours
 `readLoading`/`readFailed` sur fixtures/teams/venues et laisse `conflicts.isError` brut ✓ ;
-`engine/CONTRACT_VERSION` porte désormais **2.18** (bump P2-51 PR-5b, 2026-08-31 — un seul
-contrat pour `/generate`/`/place-matches`/`/validate-assignments`, la ligne « même contrat » de ce
-fichier tient toujours) ✓ ; `POST /place-matches` toujours déclaré dans `engine/app/main.py` ✓. Le
-reste du fichier non re-confronté cette passe — un stamp REMPLACE, l'historique vit dans git :
-`git log -p --follow specs/courantes/module-matchs.md`
+`engine/CONTRACT_VERSION` porte désormais **2.19** (retrait du modèle groupe {équipes, K},
+P2-51 PR-7, 2026-08-31 — un seul contrat pour `/generate`/`/place-matches`/`/validate-assignments`,
+la ligne « même contrat » de ce fichier tient toujours) ✓ ; `POST /place-matches` toujours déclaré
+dans `engine/app/main.py` ✓. Le reste du fichier non re-confronté cette passe — un stamp REMPLACE,
+l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
 > [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés
@@ -360,7 +362,7 @@ fichier backend/engine, contrat inchangé.
   ancrage (non recopiée) ; une rotation tombée sous 2 membres après remap perd son sens (non
   recopiée) ; les positions survivantes se recompactent (déterministe).
 - **RGPD / reset saison** (`SeasonDataPurger`) : les deux tables purgées avec la saison (membres
-  avant le parent, patron `SharedTrainingGroup`).
+  avant le parent, patron `SharedTrainingBlock`).
 
 ### Le SOFT de placement — RMM-5 PR-2 (2026-08-25)
 

@@ -1,10 +1,10 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-08-31 (P2-51 PR-2 — mentions du contrat recalées 2.16→2.17, confrontées à `engine/CONTRACT_VERSION` et `ScheduleConstraintBuilder.php` ; P4-138, `documentation-update` — le paragraphe OpenAPI/routes custom
-recalé : `CustomRoutesOpenApiFactory` compose désormais 16 `CustomPathContributor` par domaine
-(`backend/src/OpenApi/PathContributor/`), déplacement pur confirmé (snapshot absent du diff,
-`OpenApiSnapshotMatchesTheLiveContractTest` vert). ⚠ Vérification volontairement ÉTROITE : le
-reste de la carte n'a pas été reconfronté au code ce jour)
+Last verified @ 2026-08-31 (P2-51 PR-7, `documentation-update` — mention du contrat recalée
+2.18→2.19, confrontée à `engine/CONTRACT_VERSION` : le modèle groupe {équipes, K}
+(`sharedTrainings`/`SharedTrainingGroupSchema`) est retiré des deux endpoints qui le portaient,
+`sharedBlocks` devient la SEULE mutualisation. ⚠ Vérification volontairement ÉTROITE : le reste de
+la carte n'a pas été reconfronté au code ce jour)
 
 Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `feedback` (bouton + dialogue de signalement), `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes) ; voir `../frontend/docs/frontend-wizard.md` et `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 

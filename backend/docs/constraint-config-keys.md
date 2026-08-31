@@ -1,8 +1,9 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, P2-51 PR-2 — zone non touchée par cette
+Last verified @ 2026-08-31 (rotation `documentation-update`, P2-51 PR-7 — zone non touchée par cette
 PR, contrôle de fraîcheur. **Vérifié explicitement que cette page n'est PAS la maison des blocs de
-payload racine** (`sharedTrainings`/`sharedBlocks`/`teamLinks`/`venueTravelTimes`…) — elle liste les
+payload racine** (`sharedBlocks`/`teamLinks`/`venueTravelTimes`… — `sharedTrainings` retiré du
+contrat par PR-7) — elle liste les
 clés du `config` d'UNE contrainte, un objet différent, imbriqué dans `constraints[]` ; les blocs
 racine du contrat vivent dans `engine/docs/engine-inventory.md` (changelog `CONTRACT_VERSION`).
 Re-confronté au code : `ConstraintConfigValidator` porte toujours `minStartTime`/`maxEndTime` en

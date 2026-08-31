@@ -68,38 +68,33 @@ multi-appartenances (U9F1, U9F2, U9M1, U9M2, U13F2). Le fondateur l'a reconfirm�
 le planning réel est la spécification, l'app doit savoir le dire.
 
 **Ce besoin a été cadré le 2026-08-25, puis son MODÈLE amendé le 2026-08-31** (pendant la
-validation du plan de PR-1) : [`mutualisation-par-creneau.md`](mutualisation-par-creneau.md) §0
-tient le détail — la même liste de 8 partages, verbatim, reste le besoin de référence. Ce que
-l'amendement change :
+validation du plan de PR-1) — la même liste de 8 partages, verbatim, reste le besoin de référence.
+Le fichier de cadrage `mutualisation-par-creneau.md` est **supprimé** depuis la clôture du lot le
+2026-08-31 (le comportement livré vit dans `backend/docs/backend-inventory.md` §SharedTrainingBlock
+et `engine/docs/constraint-vocabulary.md` §Bloc de mutualisation ; l'historique complet du cadrage
+et des 7 PR reste lisible dans git). Ce que l'amendement change :
 - motif profond, revérifié indépendamment le 2026-08-31 : lever l'unicité un-groupe-par-équipe ne
   suffirait PAS — l'exact-K du solveur **se double-compte sur les partages imbriqués** (la séance
   du trio CEC compte aussi pour la paire incluse). La représentation par groupes est
   structurellement incapable de dire le terrain — **ce diagnostic tient toujours**.
 - ~~la mutualisation **par créneau** s'AJOUTE, patron `MatchSlotRotation`~~ → **abandonné** : le
   modèle retenu est le **BLOC** (D9) — un ensemble d'équipes qui se comporte comme UNE équipe,
-  ses séances lui appartiennent (pas d'ancrage à une case gymnase/jour/heure). Le groupe
-  {équipes, K} existant **reste intact** (AJOUT confirmé, seule la forme du nouveau modèle a
-  changé) ; fait de PLAN (D10), déplacé en bloc (D11), meurt entier à la suppression d'un membre
-  (D12).
-- **PR-1, PR-2 et PR-3 livrées le 2026-08-31** : PR-1 = entités `SharedTrainingBlock`/
+  ses séances lui appartiennent (pas d'ancrage à une case gymnase/jour/heure) ; fait de PLAN (D10),
+  déplacé en bloc (D11), meurt entier à la suppression d'un membre (D12).
+- **PR-1 à PR-6 + PR-5b livrées le 2026-08-31** : PR-1 = entités `SharedTrainingBlock`/
   `SharedTrainingBlockTeam`, migration RLS, API CRUD, gardes (garde centrale Σ comprise), cascades,
-  staleness, purges ; PR-2 = payload/contrat (`sharedBlocks`, `CONTRACT_VERSION` 2.17) ; PR-3 = le
-  solveur CONSOMME le bloc (modélisation LIAGE) et le verdict refuse un déplacement qui le casse.
-  Traces : `specs/courantes/etat-des-lieux.md` §3, `backend/docs/backend-inventory.md`,
-  `engine/docs/constraint-vocabulary.md`. **PR-4 livrée en PARTIE le 2026-08-31** : le geste
-  DÉCLARER est fait (modale « Liens » de l'étape Équipes) ; les gestes POSER (Réserver) et
-  déplacer le bloc entier restaient BLOQUÉS à l'époque — aucun rail backend atomique n'existait
-  pour l'un ni l'autre (analyse : `mutualisation-par-creneau.md` §0ter). **D13 (correction
-  fondateur reçue pendant cette même passe)** : à l'écran, mutualisation et bloc SONT la même
-  notion — un seul lien « Mutualisation » dans la modale « Liens », le panneau du groupe
-  historique {équipes, K} en sort (détail `mutualisation-par-creneau.md` §0, D13). **PR-5 et PR-5b
-  (2026-08-31) débloquent les deux rails** (réservation groupée ré-ancrée sur le bloc, déplacement
-  groupé atomique contrat 2.18) ; **PR-6 (2026-08-31) branche les 3 gestes à l'écran** — le picker
-  de Réserver offre bloc ET groupe K dans la même section D13 (dédoublonnés), « Déplacer » devient
-  « Déplacer le groupe » sur une séance de bloc (appartenance dérivée FAIL-SAFE côté front, le
-  serveur reste juge), la sous-ligne « Mutualisée avec … » fusionne les deux sources sans doublon
-  (détail `mutualisation-par-creneau.md` §0sexies). Reste **PR-7** (retrait du repli
-  `sharedTrainingGroupId` + du modèle groupe K).
+  staleness, purges ; PR-2 = payload/contrat (`sharedBlocks`) ; PR-3 = le solveur CONSOMME le bloc
+  (modélisation LIAGE) et le verdict refuse un déplacement qui le casse ; PR-4 = geste DÉCLARER à
+  l'écran ; **D13 (correction fondateur reçue pendant PR-4)** : à l'écran, mutualisation et bloc
+  SONT la même notion — un seul lien « Mutualisation » dans la modale « Liens » ; PR-5 = geste
+  POSER débloqué (réservation groupée ré-ancrée sur le bloc) ; PR-5b = geste DÉPLACER débloqué
+  (déplacement groupé atomique, contrat 2.18, `POST /api/schedule-slots/move-group`) ; PR-6 = les
+  3 gestes branchés à l'écran. **PR-7 (2026-08-31) CLÔT LE LOT** : le modèle groupe {équipes, K}
+  (`SharedTrainingGroup`, cadrage P2-27 d'origine) est **retiré entièrement** — backend, contrat
+  (→ **2.19**), moteur, écran, seeder ; une migration CONVERTIT chaque groupe existant en bloc
+  avant DROP des tables. Le BLOC est désormais la SEULE notion de mutualisation, partout.
+  Traces : `specs/courantes/etat-des-lieux.md` §2 (décision fermée) et §3 · `backend/docs/backend-inventory.md`
+  §SharedTrainingBlock · `engine/docs/constraint-vocabulary.md` §Bloc de mutualisation.
 
 Les 3 **CEC** du mercredi restent correctement AFFICHÉS par le `groupLabel` du créneau (P2-17,
 `BcclSeeder:394-396,491`) — mais leur sémantique solveur attend, elle aussi, P2-51.
@@ -147,8 +142,9 @@ voulu ; ne pas « harmoniser » vers la fusion.
 | P2-51 PR-5 (rail 1 — réservation groupée ré-ancrée sur le bloc, geste POSER débloqué) | ✅ 2026-08-31 |
 | P2-51 PR-5b (rail 2 — déplacement groupé, contrat 2.18, `POST /api/schedule-slots/move-group`) | ✅ 2026-08-31 |
 | P2-51 PR-6 (écran : bascule sur `sharedTrainingBlockId`, propose le geste déplacer-en-bloc) | ✅ 2026-08-31 |
-| P2-51 PR-7 (retrait du repli `sharedTrainingGroupId` côté backend + modèle groupe K) | ⬜ |
-| Exercice solveur reprise 17 août | ⬜ après P2-51 |
+| P2-51 PR-7 (retrait du repli `sharedTrainingGroupId` côté backend + modèle groupe K) | ✅ 2026-08-31 — **P2-51 SOLDÉ EN ENTIER** |
+| Recalage seeder : les 8 partages réels (blocs BCCL, suite à P5-23/§5) | ⬜ suivant |
+| Exercice solveur reprise 17 août | ⬜ |
 | Exercice solveur reprise 24 août | ⬜ |
 | Overlay Mateo 31/08→16/10 (D2, D1) + exercice | ⬜ |
 | Semaine charnière au choix (D4) — cadrage | ⬜ |
