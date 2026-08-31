@@ -1,12 +1,12 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-08-31 (P2-51 PR-3, `documentation-update`). §4.4 gagne l'item **13bis**
-`shared_block` (modélisation LIAGE, confrontée à `add_shared_block_constraints`,
-`targeting.py:510-652`) ; §POST /validate-assignments gagne le paragraphe `shared_block`
-(`_shared_block_move_violation`, `validate_assignments.py:131-217`) ; §Types valides recalée
-(liste complète du `Literal`, `output_schema.py:69-95` — manquait déjà `team_link_not_honored`/
-`travel_time_infeasible` avant ce jour, corrigé) ; changelog contrat 2.17 amendé (consommation
-PR-3, sans bump). Le reste de l'inventaire n'a pas été confronté ligne à ligne cette passe.
+Last verified @ 2026-08-31 (P2-51 PR-5b, `documentation-update`). §POST /validate-assignments
+recalée pour le contrat 2.18 (`candidates`/`references` LISTES remplacent le singulier — vérifié
+contre `validate_input_schema.py` + `validate_assignments.py:740-1067`) : verdict sur N
+déplacements sous UN verdict jugeant l'état final, les 5 miroirs déterministes généralisés au
+pluriel (mutualisation, bloc, passerelle, trajet, plancher gymnase), `_apply_hard` inchangé.
+Ligne du tableau §2 (`/validate-assignments`) et changelog contrat (bullet **2.18**) recalés en
+même temps. Le reste de l'inventaire n'a pas été confronté ligne à ligne cette passe.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
 > Source de vérité : `engine/app/main.py`, `engine/app/schemas/input_schema.py`, `engine/app/schemas/output_schema.py`, `engine/app/solver/{model,constraints,objective,result_builder}.py`, `engine/app/core/config.py`.
@@ -47,7 +47,7 @@ PR-3, sans bump). Le reste de l'inventaire n'a pas été confronté ligne à lig
 | `/health` | GET | Health simple | `{"status":"ok"}` |
 | `/generate` | POST | **Principal** — résout un planning hebdomadaire | `ScheduleOutputSchema` |
 | `/place-matches` | POST | **Second problème** — place des matchs DATÉS (P1-4 PR D, ADR-0003) | `MatchPlacementOutputSchema` |
-| `/validate-assignments` | POST | **Verdict sur UN candidat** (P2-2 F2a) — « puis-je mettre cette équipe sur ce créneau ? ». Baseline **entièrement figée** via `add_fixed_slots`, candidat épinglé à part : le solve du verdict ne fait qu'un test de faisabilité. ⚠ **Le gel EST le verdict** — baseline non figée, le solveur déplace la séance en conflit et rend `valid=True` (falsifié). Mono-candidat ⇒ 1 worker ⇒ déterministe. Budget 2 s par défaut, plafond 10 s ; mesuré **~500 ms** sur 49 équipes (le build du modèle domine, pas le solve). Un « non » **nomme les règles cassées** (`diagnose_candidate_conflicts`) ; `baseline_infeasible` distingue une baseline déjà invalide d'un conflit non nommé. Un « oui » (P2-32) déclenche **jusqu'à deux solves de plus** pour nommer les **compromis** — voir §POST /validate-assignments | `ValidateAssignmentOutputSchema` |
+| `/validate-assignments` | POST | **Verdict sur N candidats sous UN verdict** (P2-2 F2a, généralisé P2-51 PR-5b, contrat 2.18) — « puis-je poser ces N déplacements ? » (N=1 pour le rail `/move`/`/place-slot`, N=membres d'un bloc pour `/move-group`). Baseline **entièrement figée** via `add_fixed_slots`, les N candidats épinglés à part : le solve du verdict ne fait qu'un test de faisabilité sur l'**état final** (jamais N jugements séquentiels d'un état intermédiaire faux). ⚠ **Le gel EST le verdict** — baseline non figée, le solveur déplace la séance en conflit et rend `valid=True` (falsifié). 1 seul worker (déterministe) quel que soit N. Budget 2 s par défaut, plafond 10 s ; mesuré **~500 ms** sur 49 équipes (le build du modèle domine, pas le solve). Un « non » **nomme les règles cassées** (`diagnose_candidate_conflicts`, chaque candidat diagnostiqué contre la baseline augmentée des AUTRES candidats) ; `baseline_infeasible` distingue une baseline déjà invalide d'un conflit non nommé. Un « oui » (P2-32) déclenche **jusqu'à deux solves de plus** pour nommer les **compromis** — voir §POST /validate-assignments | `ValidateAssignmentOutputSchema` |
 | `/implicit-constraints` | POST | Sync règles implicites backend↔engine | `JSONResponse` (200 synchronized / 409 desynchronized) |
 
 ### POST /place-matches
@@ -113,12 +113,12 @@ jeton, l'autre vérifie que deux placements restent sérialisés.
 ### POST /validate-assignments
 
 Le verdict F2a (§ci-dessus) plus, depuis **P2-32 PR A (2026-08-16, contrat 2.10)**, les
-**compromis nommés** d'un candidat ACCEPTÉ. Ce qui change, propre à l'engine (comportement
+**compromis nommés** d'un verdict ACCEPTÉ. Ce qui change, propre à l'engine (comportement
 produit côté backend/front : `backend-inventory.md` §route `move`/`place-slot`) :
 
 - **Périmètre** : un compromis est le delta de confort d'un déplacement, **jamais** un verdict —
-  le booléen `valid` continue de venir SEUL du test de faisabilité HARD (`_apply_hard` sur le
-  candidat épinglé). Les compromis ne sont calculés **qu'après** un `valid=True`, dans
+  le booléen `valid` continue de venir SEUL du test de faisabilité HARD (`_apply_hard` sur les N
+  candidats épinglés). Les compromis ne sont calculés **qu'après** un `valid=True`, dans
   `_compromises_for` (`validate_assignments.py`) ; le chemin refus n'appelle jamais le solveur une
   deuxième fois.
 - **Deux états FIGÉS, évalués par LE SOLVEUR** (`_evaluate_state`) : le modèle est reconstruit à
@@ -132,11 +132,11 @@ produit côté backend/front : `backend-inventory.md` §route `move`/`place-slot
   règles implicites, chaînage) et on **maximise**. Aucune recherche de placement : tout est déjà
   épinglé, la maximisation ne fait que résoudre les littéraux réifiés (dont le littéral `chained`,
   qui a besoin de l'objectif pour se réifier — cf. `objective.py`).
-  - **« avant »** = baseline gelée + `reference` épinglé (nouveau champ d'entrée optionnel,
-    `CandidateAssignmentSchema | None`) — le backend le pose au placement d'ORIGINE de la source
-    pour un déplacement ; absent pour une création à la dérive (`place()`), auquel cas « avant » =
-    baseline nue.
-  - **« après »** = baseline gelée + candidat épinglé.
+  - **« avant »** = baseline gelée + les `references` épinglées, une par candidat déplacé, appariées
+    PAR INDEX (`references[i]` = l'origine de `candidates[i]`) — le backend les pose au placement
+    d'ORIGINE de chaque source ; `references` VIDE pour une création à la dérive (`place()`),
+    auquel cas « avant » = baseline nue.
+  - **« après »** = baseline gelée + les N candidats épinglés.
 - **Le delta** (`compute_compromises`, `solver/compromise.py`) : pour chaque terme soft, replié par
   clé LOGIQUE (équipe/gymnase/jour/coach — les familles per-slot s'agrègent PAR ÉQUIPE pour éviter
   le double-compte d'un déplacement au sein des créneaux déjà préférés), on compte les termes
@@ -150,7 +150,7 @@ produit côté backend/front : `backend-inventory.md` §route `move`/`place-slot
   les tables de noms du club envoyées dans le payload — un lookup manqué retombe sur un libellé
   générique (« une équipe », « un coach », « un gymnase »), **jamais l'id brut** (nit corrigé en
   revue de sécurité avant merge, commit `187bb706`).
-- **Coût** : un candidat ACCEPTÉ passe de 1 à **3 solves** (verdict + avant + après), chacun sous
+- **Coût** : un verdict ACCEPTÉ passe de 1 à **3 solves** (verdict + avant + après), chacun sous
   le même budget court que le verdict (`solverTimeoutSeconds`, 2 s par défaut) et le même régime
   déterministe (mono-candidat, 1 worker). Le timeout **HTTP** côté backend est monté à **20 s**
   (`MoveSlotService::VALIDATE_HTTP_TIMEOUT_SECONDS`, voir `backend-inventory.md`) — le budget
@@ -200,6 +200,22 @@ produit côté backend/front : `backend-inventory.md` §route `move`/`place-slot
   juge l'état concret AVANT tout solve, en miroir du liage. **Garde anti-enfermement** (leçon
   P4-152) : un bloc DÉJÀ cassé dans la baseline ne bloque pas les déplacements — seul un bloc
   HONORÉ avant et rompu après refuse. Refus nommé `"rule": "shared_block_broken"`.
+- **P2-51 PR-5b (contrat 2.18) — le verdict juge N déplacements sous UN verdict, sur l'ÉTAT
+  FINAL** : `candidates`/`references` deviennent des **LISTES** appariées par index (forme UNIQUE,
+  aucun champ mort de compat — une liste à 1 élément EST le cas single, un seul chemin de code
+  `validate_assignment`). Rail `/move`/`/place-slot` : N=1. Rail `POST /api/schedule-slots/move-group`
+  (le déplacement d'un bloc de mutualisation entier) : N = les membres du bloc, les N sources déjà
+  retirées de la baseline côté backend. Les **5 miroirs déterministes** ci-dessus
+  (`_shared_training_move_violation`, `_shared_block_move_violation`, `_team_link_move_violation`,
+  `_travel_time_move_violation`, `_venue_minimum_move_violation`) sont tous généralisés au pluriel
+  et jugent l'**état final proposé** (baseline − N sources + N candidats), **jamais N jugements
+  séquentiels d'un état intermédiaire faux** : déplacer TOUS les membres d'un bloc vers une même
+  case reste ACCEPTÉ (le bloc s'y reconstitue), en déplacer UN SEUL reste refusé
+  `shared_block_broken`. Le refus HARD non nommé (`diagnose_candidate_conflicts`) diagnostique
+  chaque candidat contre la baseline **augmentée des autres candidats du même geste**, pour nommer
+  un conflit HARD *entre deux déplacements du même geste* (pas seulement candidat-contre-baseline).
+  `_apply_hard` **INCHANGÉ** (le registre de parité `test_hard_layer_parity_registry` reste vert
+  sans modification). Goldens `/generate` inchangés — le bump ne touche que le verdict.
 
 ---
 

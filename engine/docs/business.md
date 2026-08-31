@@ -1,15 +1,16 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-08-30 (rotation `documentation-update`, P4-152 — zone non touchée par cette
-PR, contrôle de fraîcheur). Re-confronté au code : `UNPLACED_PENALTY = 100000`
+Last verified @ 2026-08-31 (rotation `documentation-update`, passe P2-51 PR-5b — zone non touchée
+par cette PR, contrôle de fraîcheur). Re-confronté au code : `UNPLACED_PENALTY = 100000`
 (`app/solver/objective/weights.py:118`) ✓ · tiers S 10000/A 1000/B 100/C 10/D 1 fixes
 (`objective/weights.py:27-59`) ✓ · budget adaptatif 60/180/600 s (`_adaptive_timeout`,
-`app/main.py:413`) ✓ · capacité de créneau dérivée backend `canSplit ? capacity : 1`
-(`ScheduleConstraintBuilder.php:979`) ✓ · `soft_lock_moved` existe
-(`app/solver/result_builder/diagnostics.py:340`, fonction `_diagnose_soft_lock_moved`) ✓ ·
-MIN_SESSIONS cible soft ENG-18 (docblock d'`add_level_1_hard_constraints`,
-`constraints/__init__.py:255`) ✓ · `orToolsWeight` toujours requis et ignoré du solve
-(`input_schema.py:72`) ✓)
+`app/main.py:413`) ✓ · `soft_lock_moved` existe (`app/solver/result_builder/diagnostics.py:314`,
+fonction `_diagnose_soft_lock_moved`) ✓ · `orToolsWeight` toujours requis et ignoré du solve
+(`input_schema.py:79`, alias `orToolsWeight`) ✓ — deux lignes recalées (dérive mineure :
+`:340`→`:314`, `:72`→`:79`) ; **drift trouvé et corrigé** : §Priorités citait `app/solver/objective.py`,
+un fichier qui n'existe plus (module éclaté en paquet `app/solver/objective/` depuis P4-132) —
+recalé en `app/solver/objective/weights.py`. Capacité de créneau backend et `MIN_SESSIONS`/ENG-18
+non re-confrontées cette passe.)
 
 > Ce document explique le domaine de la planification sportive et ce que le moteur `engine` resout. Destine aux nouveaux developpeurs rejoignant le projet ClubScheduler.
 
@@ -135,7 +136,7 @@ Les equipes sont classees par tiers. Quand les ressources sont rares, les equipe
 
 Le poids determine combien de points rapporte chaque seance placee. Placer une seance du SM1 (S) rapporte 10 000 points. Placer une seance d'une equipe D rapporte 1 point. Ainsi, si le Gymnase A n'a qu'un seul creneau libre le lundi a 19h00, le moteur le donnera au SM1 plutot qu'a l'ecole de basket.
 
-Ces poids sont **fixes et codes en dur** dans le solveur (`app/solver/objective.py`, garantie de priorite stricte S ≫ A ≫ B ≫ C ≫ D). Ils ne sont **pas** parametrables par club : le champ `orToolsWeight` est toujours **present et requis** dans le payload (`app/schemas/input_schema.py`, `PriorityTierSchema`) mais **aucun code ne le lit** — accepte puis ignore. Le retirer du schema serait un changement de contrat (version a bumper), pas un nettoyage silencieux.
+Ces poids sont **fixes et codes en dur** dans le solveur (`app/solver/objective/weights.py`, garantie de priorite stricte S ≫ A ≫ B ≫ C ≫ D). Ils ne sont **pas** parametrables par club : le champ `orToolsWeight` est toujours **present et requis** dans le payload (`app/schemas/input_schema.py`, `PriorityTierSchema`) mais **aucun code ne le lit** — accepte puis ignore. Le retirer du schema serait un changement de contrat (version a bumper), pas un nettoyage silencieux.
 
 ---
 
