@@ -8,7 +8,7 @@ import { TEAM_COLUMNS } from "../lib/teamColumns";
 
 import type { TeamLink } from "@/features/matches/api";
 
-import type { SharedTrainingGroup, Team } from "../api";
+import type { SharedTrainingBlock, SharedTrainingGroup, Team } from "../api";
 
 const baseTeam: Team = {
   id: "t1", name: "SM3", sportCategoryId: "cat1", priorityTierId: 5, tierOrder: 0,
@@ -27,6 +27,8 @@ const CATEGORIES = [
 
 // P2-27 — les groupes de mutualisation (repère « Mutualisée avec … » par ligne).
 const sharedGroupsState: { data: SharedTrainingGroup[] } = { data: [] };
+// P2-51 PR-6 — les blocs de mutualisation (nouveau modèle) : la sous-ligne les lit AUSSI.
+const sharedBlocksState: { data: SharedTrainingBlock[] } = { data: [] };
 // P2-45 — les passerelles (repère « Passerelle avec … » + la modale Liens ouverte par ligne).
 const teamLinksState: { data: TeamLink[] } = { data: [] };
 const stgCreate = vi.fn();
@@ -76,7 +78,8 @@ vi.mock("../queries", () => ({
   useUpdateSharedTrainingGroup: () => ({ mutateAsync: stgUpdate, isPending: false }),
   useDeleteSharedTrainingGroup: () => ({ mutate: stgDelete }),
   // P2-51 / D13 — la modale Liens rend la section « Mutualisation » via SharedTrainingBlockPanel.
-  useSharedTrainingBlocks: () => ({ data: [] }),
+  // PR-6 — la sous-ligne « Mutualisée avec … » les lit aussi : état pilotable comme les groupes.
+  useSharedTrainingBlocks: () => ({ data: sharedBlocksState.data }),
   useCreateSharedTrainingBlock: () => ({ mutateAsync: stbCreate, isPending: false }),
   useUpdateSharedTrainingBlock: () => ({ mutateAsync: vi.fn(() => Promise.resolve({})), isPending: false }),
   useDeleteSharedTrainingBlock: () => ({ mutate: vi.fn() }),
@@ -109,6 +112,7 @@ describe("TeamsStep", () => {
     team = baseTeam;
     teamsState.data = null;
     sharedGroupsState.data = [];
+    sharedBlocksState.data = [];
     teamLinksState.data = [];
     stgCreate.mockClear();
     stgUpdate.mockClear();
@@ -176,6 +180,18 @@ describe("TeamsStep", () => {
     teamsState.data = [baseTeam, { ...baseTeam, id: "t2", name: "SM4" }];
     sharedGroupsState.data = [
       { id: "g1", version: 1, createdAt: "2026-08-17T00:00:00+00:00", updatedAt: "2026-08-17T00:00:00+00:00", schedulePlanId: null, teamIds: ["t1", "t2"], commonSessions: 1 },
+    ];
+    renderWithProviders(<TeamsStep />);
+
+    expect(screen.getByText(/Mutualisée avec SM4/)).toBeInTheDocument();
+  });
+
+  // P2-51 PR-6 — la sous-ligne lit AUSSI le nouveau modèle (bloc de mutualisation), pas seulement
+  // le groupe K. Une équipe membre d'un BLOC (et d'AUCUN groupe) doit afficher « Mutualisée avec … ».
+  it("marks a team mutualised through a BLOCK (new model), naming the co-team", () => {
+    teamsState.data = [baseTeam, { ...baseTeam, id: "t2", name: "SM4" }];
+    sharedBlocksState.data = [
+      { id: "b1", version: 1, createdAt: "2026-08-31T00:00:00+00:00", updatedAt: "2026-08-31T00:00:00+00:00", schedulePlanId: null, teamIds: ["t1", "t2"], commonSessions: 1 },
     ];
     renderWithProviders(<TeamsStep />);
 

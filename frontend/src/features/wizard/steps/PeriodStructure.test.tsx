@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Closure } from "@/features/cockpit/api";
 import type { TeamLink } from "@/features/matches/api";
 
-import type { Constraint, SharedTrainingGroup } from "../api";
+import type { Constraint, SharedTrainingBlock, SharedTrainingGroup } from "../api";
 
 const createOverride = vi.fn();
 const updateOverride = vi.fn();
@@ -91,6 +91,8 @@ const tiersState: { data: Array<{ id: number; label: string; name: string; color
 };
 // P2-27 — les groupes de mutualisation de la période (défaut vide : aucun repère).
 const sharedGroupsState: { data: SharedTrainingGroup[] } = { data: [] };
+// P2-51 PR-6 — les blocs de mutualisation de la période : la sous-ligne « Mutualisée avec … » les lit AUSSI.
+const sharedBlocksState: { data: SharedTrainingBlock[] } = { data: [] };
 // P2-45 — mutualisation ouverte depuis la modale Liens ; passerelles servies par le module matchs.
 const stgCreate = vi.fn();
 // P2-51 / D13 — la section « Mutualisation » de la modale est SharedTrainingBlockPanel : créer y
@@ -173,7 +175,8 @@ vi.mock("../queries", () => ({
   useUpdateSharedTrainingGroup: () => ({ mutateAsync: stgUpdate, isPending: false }),
   useDeleteSharedTrainingGroup: () => ({ mutate: stgDelete }),
   // P2-51 / D13 — la modale Liens de période rend la section « Mutualisation » via SharedTrainingBlockPanel.
-  useSharedTrainingBlocks: () => ({ data: [] }),
+  // PR-6 — la sous-ligne les lit aussi : état pilotable comme les groupes.
+  useSharedTrainingBlocks: () => ({ data: sharedBlocksState.data }),
   useCreateSharedTrainingBlock: () => ({ mutateAsync: stbCreate, isPending: false }),
   useUpdateSharedTrainingBlock: () => ({ mutateAsync: vi.fn(() => Promise.resolve({})), isPending: false }),
   useDeleteSharedTrainingBlock: () => ({ mutate: vi.fn() }),
@@ -227,6 +230,7 @@ afterEach(() => {
   vi.clearAllMocks();
   resetPeriodSeed();
   sharedGroupsState.data = [];
+  sharedBlocksState.data = [];
   teamLinksState.data = [];
   extraVenuesState.value = [];
   overridesState.data = [];
@@ -436,6 +440,17 @@ describe("PeriodTeams — repère de mutualisation (P2-27)", () => {
 
     // Sans ce repère EN PÉRIODE, la mutualisation mentirait par omission (elle n'apparaîtrait
     // qu'en saison). SM1 (t1) est mutualisée avec U13 (t2).
+    expect(screen.getByText(/Mutualisée avec U13/)).toBeInTheDocument();
+  });
+
+  // P2-51 PR-6 — en période aussi, la sous-ligne lit le NOUVEAU modèle (bloc), pas que le groupe K.
+  it("marque une équipe mutualisée via un BLOC (nouveau modèle) en période", () => {
+    overridesState.data = [{ id: "o2", teamId: "t2", isActive: true, sessionsPerWeek: null, schedulePlanId: "plan-1" }];
+    sharedBlocksState.data = [
+      { id: "b1", version: 1, createdAt: "2026-08-31T00:00:00+00:00", updatedAt: "2026-08-31T00:00:00+00:00", schedulePlanId: "plan-1", teamIds: ["t1", "t2"], commonSessions: 1 },
+    ];
+    render(<PeriodTeams calendarEntryId="mutualise-block-marker" />);
+
     expect(screen.getByText(/Mutualisée avec U13/)).toBeInTheDocument();
   });
 });

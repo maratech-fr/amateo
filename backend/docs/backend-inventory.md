@@ -3,14 +3,18 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-08-31 (P2-51 PR-5b, `documentation-update` — nouvelle ligne
-`POST /api/schedule-slots/move-group` (§Édition manuelle) confrontée au code :
-`ManualEditController::moveGroup` (:358-434) + `MoveSlotService::moveGroup` (:340-425) —
-résolution serveur des membres/créneaux à la case source, baseline figée sans les N sources,
-`candidates`/`references` en LISTES appariées par index vers `/validate-assignments` (contrat
-2.18), atomicité (refus = rien bougé, accord = N mutations + 1 flush), gardes management/409/502/
-504 identiques à `/move`. Reste de l'inventaire non re-vérifié cette passe. Un stamp REMPLACE,
-l'historique vit dans git : `git log -p --follow backend/docs/backend-inventory.md`)
+Last verified @ 2026-08-31 (P2-51 PR-6, `documentation-update` — §« Réservation groupée » corrigée :
+depuis PR-6 le front poste `sharedTrainingBlockId` pour un bloc et ne retombe sur
+`sharedTrainingGroupId` que pour un groupe K sans bloc jumeau dans la portée (le picker
+dédoublonne, le bloc gagne) — confronté à `SlotReservationModal.tsx` (préfixes `block:`/`group:`,
+`teamSetSignature`). Plus tôt le même jour (P2-51 PR-5b) : ligne `POST /api/schedule-slots/move-group`
+(§Édition manuelle) confrontée au code : `ManualEditController::moveGroup` (:358-434) +
+`MoveSlotService::moveGroup` (:340-425) — résolution serveur des membres/créneaux à la case
+source, baseline figée sans les N sources, `candidates`/`references` en LISTES appariées par
+index vers `/validate-assignments` (contrat 2.18), atomicité (refus = rien bougé, accord = N
+mutations + 1 flush), gardes management/409/502/504 identiques à `/move`. Reste de l'inventaire
+non re-vérifié cette passe. Un stamp REMPLACE, l'historique vit dans git :
+`git log -p --follow backend/docs/backend-inventory.md`)
 
 ---
 
@@ -289,10 +293,12 @@ membre, capacité).
 
 **P2-51 PR-5 (2026-08-31) — RÉ-ANCRAGE sur le bloc, option (a) transition douce** : le corps accepte
 désormais `sharedTrainingBlockId` (nouveau, résolu **EN PREMIER**) et `sharedTrainingGroupId`
-(**repli**, résolu seulement si l'id de bloc est absent ou ne résout à rien). Le repli existe parce
-que le front (`SlotReservationModal.tsx`) poste encore `sharedTrainingGroupId` au moment de cette
-PR — la PR-6 (écran) le fera basculer sur `sharedTrainingBlockId`, la PR-7 retirera le repli. Les
-deux portées passent par la MÊME méthode `persistReservations` (N réservations/1 flush) et sont
+(**repli**, résolu seulement si l'id de bloc est absent ou ne résout à rien). **Depuis PR-6
+(2026-08-31)**, le front (`SlotReservationModal.tsx`) poste `sharedTrainingBlockId` pour un bloc et
+`sharedTrainingGroupId` pour un groupe K restant sans bloc équivalent dans la portée (le picker
+dédoublonne, le bloc gagne sur un même ensemble d'équipes) — le repli groupe reste donc VIVANT côté
+serveur pour les groupes K sans bloc jumeau ; PR-7 le retirera avec le modèle groupe K lui-même.
+Les deux portées passent par la MÊME méthode `persistReservations` (N réservations/1 flush) et sont
 gardées par les MÊMES 5 règles, appliquées au bloc à l'identique
 (`ReservationGroupOccupancy::assertBlockReservationAllowed` — exclusivité, plafond `commonSessions`
 du bloc, plafond membre ; règles réciproque/capacité comptent un bloc complet comme UN occupant,

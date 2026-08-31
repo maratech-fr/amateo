@@ -7,6 +7,7 @@ import {
   filterCandidates,
   groupContainingTeam,
   maxCommonSessions,
+  mutualisedTeammateLabel,
   sharedGroupLabel,
   splitByLinks,
   teamsLinkedTo,
@@ -180,5 +181,30 @@ describe("filterCandidates — recherche texte insensible casse+accents, coché 
   it("préserve l'ordre des candidats", () => {
     const ids = filterCandidates(teams, "U15", new Set()).map((t) => t.id);
     expect(ids).toEqual(["t1", "t2"]);
+  });
+});
+
+describe("mutualisedTeammateLabel — la sous-ligne fusionne groupe K ET bloc (P2-51 PR-6)", () => {
+  const nameOf = (id: string): string => ({ t1: "SM1", t2: "SM2", t3: "U13F2", t4: "U13F3" })[id] ?? "?";
+
+  it("nomme la co-équipière du GROUPE historique", () => {
+    const groups = [{ teamIds: ["t1", "t2"] }];
+    expect(mutualisedTeammateLabel("t1", groups, [], nameOf)).toBe("Mutualisée avec SM2");
+  });
+
+  it("nomme la co-équipière du BLOC nouveau modèle (source neuve, seule)", () => {
+    const blocks = [{ teamIds: ["t3", "t4"] }];
+    expect(mutualisedTeammateLabel("t3", [], blocks, nameOf)).toBe("Mutualisée avec U13F3");
+  });
+
+  it("fusionne les deux sources SANS doublon (partenaire commune nommée une seule fois)", () => {
+    // t1 est dans un groupe {t1,t2} ET dans un bloc {t1,t2,t3} : t2 ne doit pas être doublée.
+    const groups = [{ teamIds: ["t1", "t2"] }];
+    const blocks = [{ teamIds: ["t1", "t2", "t3"] }];
+    expect(mutualisedTeammateLabel("t1", groups, blocks, nameOf)).toBe("Mutualisée avec SM2, U13F2");
+  });
+
+  it("rend null quand l'équipe n'est ni dans un groupe ni dans un bloc", () => {
+    expect(mutualisedTeammateLabel("t9", [{ teamIds: ["t1", "t2"] }], [{ teamIds: ["t3", "t4"] }], nameOf)).toBeNull();
   });
 });

@@ -25,11 +25,12 @@ import { toast } from "@/shared/stores/toastStore";
 
 import type { Closure } from "@/features/cockpit/api";
 
-import type { Constraint, ConstraintRuleType, SharedTrainingGroup, Team, TeamPeriodOverride, Venue, VenuePeriodOverride, VenueTrainingSlot } from "../api";
+import type { Constraint, ConstraintRuleType, Team, TeamPeriodOverride, Venue, VenuePeriodOverride, VenueTrainingSlot } from "../api";
 import { DAYS, DURATIONS, durationOptions, hhmm } from "../lib/days";
 import { closuresByVenue, closurePeriodLabel } from "../lib/venueClosures";
 import { computeDayMaskToggle, manualClosedWeekdays } from "../lib/venueDays";
 import type { DayMask } from "../lib/venueDays";
+import { mutualisedTeammateLabel } from "../lib/sharedTraining";
 import { slotPlacementError } from "../lib/slotOverlap";
 import {
   useCreatePeriodConstraintOverride,
@@ -48,6 +49,7 @@ import {
   useReservations,
   useResetVenuePeriodGrid,
   useSetVenuePeriodMode,
+  useSharedTrainingBlocks,
   useSharedTrainingGroups,
   useUpdatePeriodSlot,
   useVenuePeriodOverrides,
@@ -117,24 +119,16 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
   // P2-27 — le repère « mutualisée » DOIT figurer aussi en période, sinon il mentirait par
   // omission : les groupes de CETTE période (schedulePlanId concret derrière PeriodAnchorGate).
   const { data: sharedGroups = [] } = useSharedTrainingGroups(schedulePlanId);
+  // P2-51 PR-6 — la sous-ligne « Mutualisée avec … » lit AUSSI les blocs de mutualisation (nouveau
+  // modèle) de CETTE période, sinon elle mentirait par omission pendant la transition.
+  const { data: sharedBlocks = [] } = useSharedTrainingBlocks(schedulePlanId);
   // P2-45 — les passerelles du club+saison (SERVIES par le module matchs) : le repère « passerelle »
   // et la modale Liens. En période elles sont en LECTURE SEULE (structure de saison).
   const { data: teamLinks = [] } = useTeamLinks();
   const [linksTeam, setLinksTeam] = useState<Team | null>(null);
-  const mutualiseGroupOfTeam = new Map<string, SharedTrainingGroup>();
-  for (const g of sharedGroups) {
-    for (const id of g.teamIds) {
-      mutualiseGroupOfTeam.set(id, g);
-    }
-  }
-  const mutualiseLabelOf = (teamId: string): string | null => {
-    const g = mutualiseGroupOfTeam.get(teamId);
-    if (undefined === g) {
-      return null;
-    }
-    const others = g.teamIds.filter((x) => x !== teamId).map((x) => teams.find((t) => t.id === x)?.name ?? "?");
-    return others.length > 0 ? `Mutualisée avec ${others.join(", ")}` : "Mutualisée";
-  };
+  const nameOf = (id: string): string => teams.find((t) => t.id === id)?.name ?? "?";
+  // P2-51 PR-6 — groupe K ET bloc fusionnés, sans doublon (helper pur, testé).
+  const mutualiseLabelOf = (teamId: string): string | null => mutualisedTeammateLabel(teamId, sharedGroups, sharedBlocks, nameOf);
   // P2-45 — le repère « passerelle », intensité comprise (lue telle quelle du lien, jamais recalculée).
   const bridgeLabelOf = (teamId: string): string | null => {
     const parts = teamLinks

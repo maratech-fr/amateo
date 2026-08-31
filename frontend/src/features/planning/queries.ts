@@ -274,6 +274,24 @@ export function usePlaceSlot() {
   });
 }
 
+/**
+ * P2-51 PR-6 (D11) — déplacer un BLOC de mutualisation ENTIER sous le verdict du moteur. MÊME paquet
+ * d'invalidation que {@link useMoveSlot} (`invalidateMovePacket` : slots, schedules, diagnostics,
+ * socle-deviation) — un déplacement de groupe change N placements, périme le score et fait rejuger la
+ * légalité. Le hook POSSÈDE son feedback (le filet global ne double pas les refus métier) ; un
+ * ABANDON resynchronise et se NOMME. Le toast/undo contextuel vit côté page (noms d'équipes).
+ */
+export function useMoveGroup() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    // Traitement LONG (verdict moteur, comme move) : voile non relâchable au chrono, bouton d'abandon.
+    meta: { veil: "long" },
+    mutationFn: (body: planningApi.MoveGroupBody) => runLongAction((signal) => planningApi.moveGroup(body, signal)),
+    onSuccess: () => invalidateMovePacket(queryClient),
+    onError: (error) => onSlotEditError(queryClient, error),
+  });
+}
+
 export function useGenerate() {
   const queryClient = useQueryClient();
   return useMutation({

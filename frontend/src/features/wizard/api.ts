@@ -300,9 +300,14 @@ export const deleteReservation = (id: string): Promise<void> => api.delete(`rese
 /**
  * Rail BATCH de mutualisation (P2-46 PR-2) : poser UN groupe sur UNE case écrit ses N réservations
  * en un seul flush atomique. Le retrait n'a pas de route dédiée — c'est N `deleteReservation`.
+ *
+ * P2-51 PR-6 — le rail résout D'ABORD un BLOC (`sharedTrainingBlockId`), avec repli sur le groupe K
+ * historique (`sharedTrainingGroupId`) — transition douce jusqu'à PR-7. On envoie l'UN des deux,
+ * jamais les deux ; le serveur reste seul juge (422 affiché tel quel).
  */
 export interface GroupReservationPayload {
-  sharedTrainingGroupId: string;
+  sharedTrainingBlockId?: string;
+  sharedTrainingGroupId?: string;
   venueId: string;
   dayOfWeek: number;
   startTime: string;
