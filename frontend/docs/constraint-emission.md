@@ -1,11 +1,11 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-08-30 (rotation `documentation-update`, zone non touchée par cette PR —
+Last verified @ 2026-08-31 (rotation `documentation-update`, zone non touchée par cette PR —
 contrôle de fraîcheur. Re-confronté au code : `resolveTravelRuleIntensity`
-(`ScheduleConstraintBuilder.php:891-895`) émet toujours le réglage stocké, repli
-`TeamLinkIntensity::PREFERRED` ✓ ; `forcedDays` toujours câblé sur les 3 couches
-(`ConstraintValidationService.php:79`, `ConstraintConfigValidator.php:74`,
-`ConstraintsStep.tsx:357-458`, `engine/app/solver/constraints/targeting.py:74`) ✓. Rien de faux
+(`ScheduleConstraintBuilder.php:894`, repli `TeamLinkIntensity::PREFERRED`) toujours le seul point
+de résolution de l'intensité `travelTime` ✓ ; `forcedDays` toujours câblé sur les 3 couches
+(`ConstraintValidationService.php:71-74`, `ConstraintConfigValidator.php:74`,
+`ConstraintsStep.tsx:357`, `engine/app/solver/constraints/targeting.py:74`) ✓. Rien de faux
 trouvé cette passe. Passe précédente
 (P2-53 RMM-8 PR-4 — la ligne `travelTime` §2 devient **alignée** : `TravelRuleNotice`
 (`ImplicitRulesPanel.tsx`) sélecteur Préféré/Obligatoire qui poste sur `VenueTravelRuleSetting`).

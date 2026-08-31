@@ -1,10 +1,11 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-08-30 (rotation `documentation-update`, passe UXC-10 — fichier hors sujet de la
-PR. Re-confronté au code : les cinq `queries.test.tsx` cités (`cockpit`/`wizard`/`matches`/
-`planning`/`auth`) existent toujours, `admin/queries.test.tsx` n'existe toujours pas (abandon
-délibéré inchangé) ✓. Reste non re-touché cette passe : versions/plafonds §1-§2. Historique des
-passes : `git log -p --follow frontend/docs/frontend-strategy.md`.)
+Last verified @ 2026-08-31 (rotation `documentation-update`, fichier hors sujet de la PR
+(recalage seed BCCL, backend seul). Re-confronté au code : les cinq `queries.test.tsx` cités
+(`cockpit`/`wizard`/`matches`/`planning`/`auth`) existent toujours, `admin/queries.test.tsx`
+n'existe toujours pas (abandon délibéré inchangé) ✓. Reste non re-touché cette passe :
+versions/plafonds §1-§2. Historique des passes : `git log -p --follow
+frontend/docs/frontend-strategy.md`.)
 
 > **Statut : le rebuild est LIVRÉ.** Les formulations « pour le rebuild » ci-dessous sont
 > historiques ; le document reste la référence vivante des **versions de la stack**, des

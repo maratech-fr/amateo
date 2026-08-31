@@ -124,8 +124,8 @@ voulu ; ne pas « harmoniser » vers la fusion.
   sont DÉJÀ identiques au seeder (diff mécanique, seul écart l'accent Veterans), la correction
   Anna U11M1 est faite (`BcclSeeder:810`). Les mutualisations « à recaler » = la représentation P2-51 (§4), pas les créneaux.
 
-- **Les 10 passerelles réelles ne sont pas seedées** (P5-23, déjà tracée) : le modèle `TeamLink`
-  les porte depuis P2-34, indépendantes de P2-51 — peuvent entrer au seeder à tout moment.
+- **Les 10 passerelles réelles sont désormais seedées** (P5-23, livrée 2026-09-01) : le modèle
+  `TeamLink` les porte depuis P2-34 — voir §6, trace `etat-des-lieux.md` §3.
 
 ## 6. État d'avancement
 
@@ -134,7 +134,7 @@ voulu ; ne pas « harmoniser » vers la fusion.
 | Base de jeu = BCCL réel + plannings (via `make fixtures`) | ✅ 2026-08-31 |
 | Diff seeder ↔ fichier saison (90=90) | ✅ vérifié |
 | Consignation du programme (ce fichier) | ✅ |
-| PR seeder : drapeaux « périmé » (+ passerelles P5-23 si le fondateur valide) | ⬜ suivant |
+| PR seeder : drapeaux « périmé » sur base fraîche | ⬜ suivant |
 | P2-51 modèle amendé (D9-D12) — PR-1 modèle bloc (backend seul) | ✅ 2026-08-31 |
 | P2-51 PR-2 (payload/contrat — bloc `sharedBlocks`, CONTRACT_VERSION 2.17, INERTE) | ✅ 2026-08-31 |
 | P2-51 PR-3 (sémantique solveur — le bloc est CONSOMMÉ, verdict refuse la casse) | ✅ 2026-08-31 |
@@ -143,8 +143,9 @@ voulu ; ne pas « harmoniser » vers la fusion.
 | P2-51 PR-5b (rail 2 — déplacement groupé, contrat 2.18, `POST /api/schedule-slots/move-group`) | ✅ 2026-08-31 |
 | P2-51 PR-6 (écran : bascule sur `sharedTrainingBlockId`, propose le geste déplacer-en-bloc) | ✅ 2026-08-31 |
 | P2-51 PR-7 (retrait du repli `sharedTrainingGroupId` côté backend + modèle groupe K) | ✅ 2026-08-31 — **P2-51 SOLDÉ EN ENTIER** |
-| Recalage seeder : les 8 partages réels (blocs BCCL, suite à P5-23/§5) | ⬜ suivant |
-| Exercice solveur reprise 17 août | ⬜ |
+| Recalage seeder : les 8 partages réels (blocs BCCL, suite à P5-23/§5) | ✅ 2026-09-01 |
+| **P5-23 passerelles au seeder** | ✅ 2026-09-01 — **P5-23 SOLDÉE** |
+| **Exercice solveur reprise 17 août** | ⬜ **suivant** (reprise du fil principal du programme) |
 | Exercice solveur reprise 24 août | ⬜ |
 | Overlay Mateo 31/08→16/10 (D2, D1) + exercice | ⬜ |
 | Semaine charnière au choix (D4) — cadrage | ⬜ |
