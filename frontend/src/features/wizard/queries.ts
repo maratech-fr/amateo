@@ -711,6 +711,45 @@ export function useDeleteSharedTrainingGroup() {
   });
 }
 
+/**
+ * Les BLOCS de mutualisation (P2-51) de la portée courante — socle (`schedulePlanId` null) ou
+ * période (un UUID). Même patron que `useSharedTrainingGroups`, y compris l'ambiguïté du `null`
+ * (`enabled` non déductible de `schedulePlanId`). En portée socle le provider renvoie socle ET
+ * périodes : le consommateur filtre `null === schedulePlanId`.
+ */
+export function useSharedTrainingBlocks(schedulePlanId?: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ["wizard", "shared_training_blocks", schedulePlanId ?? "base"],
+    queryFn: () => wizardApi.listSharedTrainingBlocks(schedulePlanId ? { schedulePlanId } : undefined),
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateSharedTrainingBlock() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: wizardApi.SharedTrainingBlockPayload) => wizardApi.createSharedTrainingBlock(body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_blocks"] }),
+  });
+}
+
+export function useUpdateSharedTrainingBlock() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: { teamIds: string[]; commonSessions: number } }) => wizardApi.updateSharedTrainingBlock(id, body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_blocks"] }),
+  });
+}
+
+export function useDeleteSharedTrainingBlock() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => wizardApi.deleteSharedTrainingBlock(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_blocks"] }),
+  });
+}
+
 export function useWizardTeamTags() {
   return useQuery({ queryKey: ["wizard", "team_tags"], queryFn: wizardApi.listTeamTags, staleTime: 30_000 });
 }

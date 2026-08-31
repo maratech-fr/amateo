@@ -5,9 +5,10 @@ import { renderWithProviders } from "@/test/utils";
 
 import type { TeamLink } from "@/features/matches/api";
 
-import type { PriorityTier, SharedTrainingGroup, Team } from "../api";
+import type { PriorityTier, SharedTrainingBlock, SharedTrainingGroup, Team } from "../api";
 
 const sharedGroupsState: { data: SharedTrainingGroup[] } = { data: [] };
+const blocksState: { data: SharedTrainingBlock[] } = { data: [] };
 const teamLinksState: { data: TeamLink[] } = { data: [] };
 
 vi.mock("../queries", () => ({
@@ -16,6 +17,11 @@ vi.mock("../queries", () => ({
   useCreateSharedTrainingGroup: () => ({ mutateAsync: vi.fn(() => Promise.resolve({})), isPending: false }),
   useUpdateSharedTrainingGroup: () => ({ mutateAsync: vi.fn(() => Promise.resolve({})), isPending: false }),
   useDeleteSharedTrainingGroup: () => ({ mutate: vi.fn() }),
+  // P2-51 — le BLOC est une notion sœur montée dans la même modale.
+  useSharedTrainingBlocks: () => ({ data: blocksState.data }),
+  useCreateSharedTrainingBlock: () => ({ mutateAsync: vi.fn(() => Promise.resolve({})), isPending: false }),
+  useUpdateSharedTrainingBlock: () => ({ mutateAsync: vi.fn(() => Promise.resolve({})), isPending: false }),
+  useDeleteSharedTrainingBlock: () => ({ mutate: vi.fn() }),
 }));
 vi.mock("@/features/matches/queries", () => ({
   useTeamLinks: () => ({ data: teamLinksState.data, isError: false }),
@@ -49,6 +55,7 @@ const renderModal = (readOnlyLinks = false, schedulePlanId: string | null = null
 
 beforeEach(() => {
   sharedGroupsState.data = [];
+  blocksState.data = [];
   teamLinksState.data = [];
 });
 
@@ -59,8 +66,12 @@ describe("TeamLinksModal — deux sections dans l'ordre passerelles → mutualis
     const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
     const passIdx = headings.indexOf("Passerelles entre équipes");
     const mutIdx = headings.indexOf("Mutualisation");
+    const blockIdx = headings.indexOf("Bloc d'équipes");
     expect(passIdx).toBeGreaterThanOrEqual(0);
     expect(mutIdx).toBeGreaterThan(passIdx);
+    // P2-51 — le bloc, notion sœur DISTINCTE, suit la mutualisation (titre propre, jamais un
+    // second « Mutualisation »).
+    expect(blockIdx).toBeGreaterThan(mutIdx);
   });
 
   it("jamais un dialog dans le dialog : « Gérer les passerelles » est absent", () => {

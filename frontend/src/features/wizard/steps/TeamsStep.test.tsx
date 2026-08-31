@@ -72,6 +72,11 @@ vi.mock("../queries", () => ({
   useCreateSharedTrainingGroup: () => ({ mutateAsync: stgCreate, isPending: false }),
   useUpdateSharedTrainingGroup: () => ({ mutateAsync: stgUpdate, isPending: false }),
   useDeleteSharedTrainingGroup: () => ({ mutate: stgDelete }),
+  // P2-51 — la même modale Liens embarque désormais SharedTrainingBlockPanel (notion sœur).
+  useSharedTrainingBlocks: () => ({ data: [] }),
+  useCreateSharedTrainingBlock: () => ({ mutateAsync: vi.fn(() => Promise.resolve({})), isPending: false }),
+  useUpdateSharedTrainingBlock: () => ({ mutateAsync: vi.fn(() => Promise.resolve({})), isPending: false }),
+  useDeleteSharedTrainingBlock: () => ({ mutate: vi.fn() }),
   useTeamPeriodOverrides: () => ({ data: [] }),
   // P3-16 — l'impact d'une suppression est calculé par le SERVEUR : le mock rend une
   // réponse résolue et vide, l'écran n'en dérive plus aucun compte.
@@ -202,8 +207,10 @@ describe("TeamsStep", () => {
     renderWithProviders(<TeamsStep />);
 
     await user.click(screen.getByRole("button", { name: "Liens de SM3" }));
-    // La modale : SM3 est pré-cochée (initialTeamId), on ajoute SM4 puis on crée.
-    await user.click(screen.getByRole("checkbox", { name: "SM4" }));
+    // La modale : SM3 est pré-cochée (initialTeamId), on ajoute SM4 puis on crée. P2-51 — la case
+    // « SM4 » existe DEUX fois (groupe K + bloc, notions sœurs) : on cible la section Mutualisation.
+    const mutSection = screen.getByRole("heading", { name: "Mutualisation" }).closest("section") as HTMLElement;
+    await user.click(within(mutSection).getByRole("checkbox", { name: "SM4" }));
     await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
 
     expect(stgCreate).toHaveBeenCalledOnce();

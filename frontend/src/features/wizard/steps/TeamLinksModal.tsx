@@ -3,6 +3,7 @@ import { TeamLinksSection } from "@/features/matches/TeamLinksSection";
 
 import type { PriorityTier, Team } from "../api";
 import { MutualisationPanel } from "./MutualisationPanel";
+import { SharedTrainingBlockPanel } from "./SharedTrainingBlockPanel";
 
 /**
  * Liens d'une équipe (P2-45) — l'écran unique par équipe : passerelles PUIS mutualisation.
@@ -43,6 +44,15 @@ export function TeamLinksModal({
         <section className="flex flex-col gap-2 border-t border-border pt-4">
           <h3 className="text-sm font-semibold">Mutualisation</h3>
           <MutualisationPanel teams={teams} tiers={tiers} pausedTeamIds={pausedTeamIds} schedulePlanId={schedulePlanId} initialTeamId={team.id} hideLinksManager />
+        </section>
+
+        {/* P2-51 — le BLOC est une notion DISTINCTE (D9), sœur de la mutualisation ci-dessus mais
+            jamais la même vérité : les deux coexistent. Titre propre (« Bloc d'équipes », jamais un
+            second « Mutualisation ») + son propre helper pour que le gestionnaire sache d'un coup
+            d'œil laquelle utiliser (garde-fou UX du cadrage §3). */}
+        <section className="flex flex-col gap-2 border-t border-border pt-4">
+          <h3 className="text-sm font-semibold">Bloc d'équipes</h3>
+          <SharedTrainingBlockPanel teams={teams} tiers={tiers} pausedTeamIds={pausedTeamIds} schedulePlanId={schedulePlanId} initialTeamId={team.id} />
         </section>
       </div>
     </Modal>

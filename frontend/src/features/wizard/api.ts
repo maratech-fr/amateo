@@ -350,6 +350,49 @@ export const updateSharedTrainingGroup = (id: string, body: { teamIds: string[];
   api.put(`shared_training_groups/${id}`, { json: body }).json();
 export const deleteSharedTrainingGroup = (id: string): Promise<void> => api.delete(`shared_training_groups/${id}`).then(() => undefined);
 
+// --- Shared training blocks (P2-51) : N teams behave like ONE team, with their OWN common sessions ---
+
+/**
+ * Un BLOC de mutualisation (P2-51, D9) : un ensemble de 2..10 équipes qui se comporte comme UNE
+ * équipe, déclaré avec son propre nombre de séances communes (`commonSessions`) — le solveur les
+ * place comme celles d'une équipe (PR-3). Club+saison, filtrable par `schedulePlanId` (null = socle
+ * saison, un UUID = plan de période — patron `SharedTrainingGroup`).
+ *
+ * ⚠ NOTION DISTINCTE du groupe {équipes, K} : les deux coexistent (D9). La multi-appartenance ENTRE
+ * blocs est PERMISE (une équipe peut figurer dans plusieurs blocs) ; la garde centrale Σ des séances
+ * communes ≤ séances/semaine effectives est tranchée par le serveur
+ * (`SharedTrainingBlockStateProcessor::assertBlockValid`), jamais ici — un 422 reste affiché tel quel.
+ *
+ * ⚠ Dérive de champs : ce type miroir de la ressource `SharedTrainingBlockResource` n'est PAS encore
+ * enrôlé dans `TsFieldsMatchOpenApiSchemaTest::PAIRS` (backend, hors zone frontend) — à signaler pour
+ * un suivi backend si l'on veut le garder.
+ */
+export interface SharedTrainingBlock {
+  id: string;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  schedulePlanId: string | null;
+  teamIds: string[];
+  commonSessions: number;
+}
+
+/** POST porte la portée (`schedulePlanId`) ; PUT ne la remappe jamais (le plan est figé à la création). */
+export interface SharedTrainingBlockPayload {
+  teamIds: string[];
+  commonSessions: number;
+  schedulePlanId?: string | null;
+}
+
+/** Sans `schedulePlanId`, le provider renvoie socle ET périodes (le front trie) — patron `SharedTrainingGroup`. */
+export const listSharedTrainingBlocks = (params?: Record<string, string>): Promise<SharedTrainingBlock[]> =>
+  collectionAll<SharedTrainingBlock>("shared_training_blocks", params);
+export const createSharedTrainingBlock = (body: SharedTrainingBlockPayload): Promise<SharedTrainingBlock> =>
+  api.post("shared_training_blocks", { json: body }).json();
+export const updateSharedTrainingBlock = (id: string, body: { teamIds: string[]; commonSessions: number }): Promise<SharedTrainingBlock> =>
+  api.put(`shared_training_blocks/${id}`, { json: body }).json();
+export const deleteSharedTrainingBlock = (id: string): Promise<void> => api.delete(`shared_training_blocks/${id}`).then(() => undefined);
+
 // --- Coaches + links (W3) ---
 
 export type TeamCoachRole = "MAIN" | "ASSISTANT";

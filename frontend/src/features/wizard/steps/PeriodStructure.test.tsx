@@ -169,6 +169,11 @@ vi.mock("../queries", () => ({
   useCreateSharedTrainingGroup: () => ({ mutateAsync: stgCreate, isPending: false }),
   useUpdateSharedTrainingGroup: () => ({ mutateAsync: stgUpdate, isPending: false }),
   useDeleteSharedTrainingGroup: () => ({ mutate: stgDelete }),
+  // P2-51 — la modale Liens de période embarque aussi SharedTrainingBlockPanel (notion sœur).
+  useSharedTrainingBlocks: () => ({ data: [] }),
+  useCreateSharedTrainingBlock: () => ({ mutateAsync: vi.fn(() => Promise.resolve({})), isPending: false }),
+  useUpdateSharedTrainingBlock: () => ({ mutateAsync: vi.fn(() => Promise.resolve({})), isPending: false }),
+  useDeleteSharedTrainingBlock: () => ({ mutate: vi.fn() }),
 }));
 // P2-45 — passerelles SERVIES par le module matchs (lecture seule en période). On pilote ses hooks.
 vi.mock("@/features/matches/queries", () => ({
@@ -452,8 +457,10 @@ describe("PeriodTeams — liens par équipe (P2-45)", () => {
     render(<PeriodTeams calendarEntryId="period-anchor" />);
 
     await user.click(screen.getByRole("button", { name: "Liens de SM1" }));
-    // SM1 pré-cochée (initialTeamId) ; on ajoute U13 puis on crée.
-    await user.click(screen.getByRole("checkbox", { name: "U13" }));
+    // SM1 pré-cochée (initialTeamId) ; on ajoute U13 puis on crée. P2-51 — « U13 » existe dans les
+    // DEUX panneaux sœurs (groupe K + bloc) : on cible la section Mutualisation.
+    const mutSection = screen.getByRole("heading", { name: "Mutualisation" }).closest("section") as HTMLElement;
+    await user.click(within(mutSection).getByRole("checkbox", { name: "U13" }));
     await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
 
     expect(stgCreate).toHaveBeenCalledOnce();
