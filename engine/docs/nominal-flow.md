@@ -1,6 +1,6 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-08-30 (rotation `documentation-update`, passe UXC-10 — fichier hors sujet de
+Last verified @ 2026-08-31 (P2-51 PR-2 — mentions du contrat recalées 2.16→2.17, confrontées à `engine/CONTRACT_VERSION` et `ScheduleConstraintBuilder.php` ; rotation `documentation-update`, passe UXC-10 — fichier hors sujet de
 la PR, contrôle de fraîcheur ciblé sur le résidu de nom trouvé au balayage `clubscheduler-*`).
 **Drift trouvé et corrigé** : le hub Mercure était encore nommé `clubscheduler-mercure` — nom mort
 depuis le renommage d'infrastructure P4-142 (2026-08-28) ; corrigé en `amateo-mercure` (conteneur

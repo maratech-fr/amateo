@@ -1,6 +1,6 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-08-30 (P4-152, `documentation-update`). §POST /validate-assignments corrigé
+Last verified @ 2026-08-31 (P2-51 PR-2 — mentions du contrat recalées 2.16→2.17, confrontées à `engine/CONTRACT_VERSION` et `ScheduleConstraintBuilder.php` ; P4-152, `documentation-update`). §POST /validate-assignments corrigé
 ce jour : `_evaluate_state` appelle `_apply_hard` (`validate_assignments.py:415`), qui est
 désormais **byte-identique** à `/generate` sur les familles connues — `add_venue_minimum_constraints`
 (`main.py:584`) est appelée dans `_apply_hard` (`validate_assignments.py:419`) au même titre, et

@@ -1,6 +1,6 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-08-30 (P4-138, `documentation-update` — le paragraphe OpenAPI/routes custom
+Last verified @ 2026-08-31 (P2-51 PR-2 — mentions du contrat recalées 2.16→2.17, confrontées à `engine/CONTRACT_VERSION` et `ScheduleConstraintBuilder.php` ; P4-138, `documentation-update` — le paragraphe OpenAPI/routes custom
 recalé : `CustomRoutesOpenApiFactory` compose désormais 16 `CustomPathContributor` par domaine
 (`backend/src/OpenApi/PathContributor/`), déplacement pur confirmé (snapshot absent du diff,
 `OpenApiSnapshotMatchesTheLiveContractTest` vert). ⚠ Vérification volontairement ÉTROITE : le

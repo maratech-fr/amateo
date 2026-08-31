@@ -1,6 +1,6 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-08-30 (rotation `documentation-update` — tous les repères ré-confrontés au
+Last verified @ 2026-08-31 (P2-51 PR-2 — mentions du contrat recalées 2.16→2.17, confrontées à `engine/CONTRACT_VERSION` et `ScheduleConstraintBuilder.php` ; rotation `documentation-update` — tous les repères ré-confrontés au
 code, aucun changement depuis la passe précédente : `engine/CONTRACT_VERSION` **2.17** ✓,
 `SCORE_FORMULA_VERSION` **V12** toujours `app/solver/objective/weights.py:23` ✓,
 `_coach_threshold` toujours `app/solver/result_builder/helpers.py:199` ✓,

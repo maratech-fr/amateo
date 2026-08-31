@@ -1,6 +1,6 @@
 # Guide de génération de planning — ClubScheduler
 
-Last verified @ 2026-08-30 (rotation `documentation-update`) — re-confronté au code : `CONTRACT_VERSION`
+Last verified @ 2026-08-31 (P2-51 PR-2 — mentions du contrat recalées 2.16→2.17, confrontées à `engine/CONTRACT_VERSION` et `ScheduleConstraintBuilder.php` ; rotation `documentation-update`) — re-confronté au code : `CONTRACT_VERSION`
 **2.17** (`ScheduleConstraintBuilder.php:64`) ✓ ; les dix `container_name` de `docker-compose.yml`
 sont tous `amateo-*` ✓ — **drift trouvé et corrigé** : ce guide citait encore `clubscheduler-nginx`/
 `clubscheduler-engine`/`clubscheduler-mercure`/`clubscheduler-mailpit` (2 lignes, § « Vérifier que

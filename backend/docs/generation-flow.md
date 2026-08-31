@@ -1,6 +1,6 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-08-30 (rotation `documentation-update`, passe P4-138 — fichier hors sujet de la
+Last verified @ 2026-08-31 (P2-51 PR-2 — mentions du contrat recalées 2.16→2.17, confrontées à `engine/CONTRACT_VERSION` et `ScheduleConstraintBuilder.php` ; rotation `documentation-update`, passe P4-138 — fichier hors sujet de la
 PR, contrôle de fraîcheur. Re-confirmé sans écart : `ScheduleConstraintBuilder::CONTRACT_VERSION` =
 **`2.17`** (`ScheduleConstraintBuilder.php:64`) ✓ · `toArray(false)` sans exception HTTP
 (`EngineClient.php:39,58,78`) ✓ · `engine_timeout`/`engine_error` émis par le handler
