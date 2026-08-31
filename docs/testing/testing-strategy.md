@@ -1,14 +1,14 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-08-30 (registre d'arguments — `test_hard_layer_parity_registry.py` §3
-re-confronté au code : le registre compare désormais aussi, argument par argument, l'expression
-source passée à `add_level_1_hard_constraints` (`ast.unparse`) — pas seulement les familles
-appelées ; seule divergence déclarée `min_sessions_by_team` (`adjusted_min_by_team or None` côté
-`/generate` vs `min_by_team or None` côté verdict, `main.py:574`/`validate_assignments.py`) ;
-transparence d'alias plain-`Assign` étroite vérifiée sur `resolved_implicit_rules` (`main.py:479`,
-consommée 7 fois : `:480,575,669,677,709,717`) — aucun code de production touché. Reste du fichier
-non re-vérifié cette passe. Historique des passes : `git log -p --follow
-docs/testing/testing-strategy.md` — un stamp REMPLACE, il ne s'empile pas (DOC-33).)
+Last verified @ 2026-08-31 (rotation `documentation-update`, P2-51 PR-3 — sans rapport direct avec
+le sujet de la PR, sauf §`CrossStack/`). Re-confronté au code : `DECLARED_ASYMMETRIES` reste **VIDE**
+(`test_hard_layer_parity_registry.py:94`) ✓ — le nouveau NR `CrossStack/SharedBlockHonouredByEngineTest`
+tourne bien dans le groupe `contract` (`#[Group('contract')]`) au même job CI « Engine semantics »
+que décrit ici (§`CrossStack/`, `ci.yml:874` `engine-semantics`, un required check hors
+`blocking-tests`/`unit-tests`) — aucune ligne à ajouter ici, ce paragraphe décrit le MÉCANISME de
+groupe, pas chaque test qui l'utilise. Reste du fichier non re-vérifié cette passe. Historique des
+passes : `git log -p --follow docs/testing/testing-strategy.md` — un stamp REMPLACE, il ne
+s'empile pas (DOC-33).)
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique) and [`../project-map.md`](../project-map.md).
 

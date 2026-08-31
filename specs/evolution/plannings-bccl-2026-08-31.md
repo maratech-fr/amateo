@@ -81,11 +81,13 @@ l'amendement change :
   {équipes, K} existant **reste intact** (AJOUT confirmé, seule la forme du nouveau modèle a
   changé) ; fait de PLAN (D10), déplacé en bloc (D11), meurt entier à la suppression d'un membre
   (D12).
-- **PR-1 (modèle backend seul) livrée le 2026-08-31** : entités `SharedTrainingBlock`/
+- **PR-1, PR-2 et PR-3 livrées le 2026-08-31** : PR-1 = entités `SharedTrainingBlock`/
   `SharedTrainingBlockTeam`, migration RLS, API CRUD, gardes (garde centrale Σ comprise), cascades,
-  staleness, purges. Traces : `specs/courantes/etat-des-lieux.md` §3,
-  `backend/docs/backend-inventory.md`. Restent PR-2 (payload/contrat), PR-3 (sémantique solveur +
-  verdict de déplacement-en-bloc), PR-4 (frontend).
+  staleness, purges ; PR-2 = payload/contrat (`sharedBlocks`, `CONTRACT_VERSION` 2.17) ; PR-3 = le
+  solveur CONSOMME le bloc (modélisation LIAGE) et le verdict refuse un déplacement qui le casse.
+  Traces : `specs/courantes/etat-des-lieux.md` §3, `backend/docs/backend-inventory.md`,
+  `engine/docs/constraint-vocabulary.md`. **Reste PR-4** (frontend : saisie du bloc + le geste
+  « déplacer le bloc entier »).
 
 Les 3 **CEC** du mercredi restent correctement AFFICHÉS par le `groupLabel` du créneau (P2-17,
 `BcclSeeder:394-396,491`) — mais leur sémantique solveur attend, elle aussi, P2-51.
@@ -128,7 +130,8 @@ voulu ; ne pas « harmoniser » vers la fusion.
 | PR seeder : drapeaux « périmé » (+ passerelles P5-23 si le fondateur valide) | ⬜ suivant |
 | P2-51 modèle amendé (D9-D12) — PR-1 modèle bloc (backend seul) | ✅ 2026-08-31 |
 | P2-51 PR-2 (payload/contrat — bloc `sharedBlocks`, CONTRACT_VERSION 2.17, INERTE) | ✅ 2026-08-31 |
-| P2-51 PR-3 (sémantique solveur + déplacement-en-bloc) · PR-4 (frontend) | ⬜ **suivant** (D7) |
+| P2-51 PR-3 (sémantique solveur — le bloc est CONSOMMÉ, verdict refuse la casse) | ✅ 2026-08-31 |
+| P2-51 PR-4 (frontend : saisie du bloc + geste « déplacer le bloc entier ») | ⬜ **suivant** (D7) |
 | Exercice solveur reprise 17 août | ⬜ après P2-51 |
 | Exercice solveur reprise 24 août | ⬜ |
 | Overlay Mateo 31/08→16/10 (D2, D1) + exercice | ⬜ |
