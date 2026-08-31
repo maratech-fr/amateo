@@ -1,14 +1,20 @@
-Last verified @ 2026-08-30 (P4-138, `documentation-update` — la factory OpenAPI des routes custom
-est devenue un composeur de 16 `CustomPathContributor` par domaine ; **+0 path, snapshot NON
-régénéré** — déplacement pur confirmé par l'absence de ce fichier dans le diff de la PR. Corrigé
-au passage : la citation `CustomRoutesOpenApiFactory.php:841` de l'entrée BCK-22 ci-dessous est
-devenue stale par ce déplacement, remplacée par son nouvel emplacement
-`PathContributor/OpponentTravelPaths.php:56`. **189 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`)
-✓ · SHA-256 `ee365910ca75f482a6078373d59749e07bb688804cea05b51d6032a3e4bedd08` (`sha256sum`
-conforme) ✓ — inchangé, confirmant l'absence de régénération. Reste du journal non re-confronté
-au code cette passe.)
+Last verified @ 2026-08-31 (P2-51 PR-1, `documentation-update` — régénéré depuis le backend en
+tournant : `docker compose exec php-fpm php bin/console api:openapi:export`, après
+`docker compose restart php-fpm` (opcache). **191 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`)
+✓ · SHA-256 `a1a459fec4a058de85f0e9807715b524382f347c9c1abcfca87bf8906e9f392a` (`sha256sum`) —
+189 → 191, les 2 nouveaux paths sont `/api/shared_training_blocks` et
+`/api/shared_training_blocks/{id}` (vérifié `grep -n`). Reste du journal non re-confronté au code
+cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **P2-51 PR-1 — le modèle du bloc de mutualisation (2026-08-31)** : **+2 paths** — CRUD API Platform
+  de la ressource `SharedTrainingBlock` : `GET/POST /api/shared_training_blocks` (liste **scope
+  club+saison**, filtrable par `schedulePlanId` — NULL = socle saison, UUID = plan de période) +
+  `GET/PUT/DELETE /api/shared_training_blocks/{id}`. Corps : `teamIds` (2..10), `commonSessions`,
+  `schedulePlanId`. Écriture management (`SharedTrainingBlockStateProcessor`) — voir
+  `backend-inventory.md` pour les gardes. 189 → **191 paths**. Backend PUR, **modèle seul** (PR-1
+  d'un lot à 4 PR — PR-2 émettra le bloc au payload moteur) : contrat backend⇄engine **inchangé**
+  (`CONTRACT_VERSION` 2.16, aucun appel moteur à ce stade).
 - **BCK-22 — le budget global de l'autofill de trajet (2026-08-28)** : **+0 path** — pas de route ni
   de DTO nouveau, un **ENUM inline** existant se complète (déclaré dans
   `PathContributor/OpponentTravelPaths.php:56` depuis P4-138, 2026-08-30 ; ex-`CustomRoutesOpenApiFactory.php:841`
@@ -81,19 +87,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   `unplacedReason` (`venue_lost` quand le gymnase n'est plus affilié, sinon `null` ; distinct de la
   raison volatile d'auto-placement, non exposée). 178 → **179 paths**. Backend + frontend, contrat
   backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.15, `unplacedReason` ne voyage jamais au moteur).
-- **RMM-6 PR-1 — échéances ligue/comité (2026-08-25)** : **+2 paths** —
-  `POST /api/competitions/entry-deadlines` (200 : `{updated[], deadline|null}` — pose ou efface
-  UNE échéance sur un lot de compétitions ; **management** SEC-07 ; 409 saison archivée ; 422 aucune
-  compétition / date malformée / compétition inconnue-étrangère, rien écrit) et
-  `GET /api/matches/deadline-outlook` (200 : `{windows[], guardianDelta?}` — chaque échéance
-  effective encore due (valeur club, sinon défaut communautaire) avec ses compétitions, le nombre de
-  domiciles restant à saisir et si la fenêtre J-7 est ouverte ; le bloc gardien n'est joint que
-  fenêtre ouverte ET référence de visite existante, SANS stamper ; **ouvert au Membre** ; 400 sans
-  club). **Champs ADDITIFS** en LECTURE sur le schéma `Competition` : `entryDeadline` (valeur club),
-  `effectiveEntryDeadline` (club ?? défaut communautaire) et `deadlineSource` (`club`|`community`|`null`)
-  — la règle « club gagne » servie par le backend. Défaut communautaire = table PARTAGÉE hors-tenant
-  `shared_competition_deadline` (aucune donnée club-identifiante). 176 → **178 paths**. Backend PUR,
-  contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.14, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

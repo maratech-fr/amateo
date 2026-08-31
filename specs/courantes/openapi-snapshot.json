@@ -15070,6 +15070,404 @@
                 ]
             }
         },
+        "/api/shared_training_blocks": {
+            "get": {
+                "operationId": "api_shared_training_blocks_get_collection",
+                "tags": [
+                    "SharedTrainingBlock"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SharedTrainingBlock collection",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "type": "object",
+                                    "description": "SharedTrainingBlock.jsonld collection.",
+                                    "allOf": [
+                                        {
+                                            "$ref": "#/components/schemas/HydraCollectionBaseSchemaNoPagination"
+                                        },
+                                        {
+                                            "type": "object",
+                                            "required": [
+                                                "member"
+                                            ],
+                                            "properties": {
+                                                "member": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/SharedTrainingBlock.jsonld"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/SharedTrainingBlock"
+                                    }
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/SharedTrainingBlock.html"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "summary": "Retrieves the collection of SharedTrainingBlock resources.",
+                "description": "Retrieves the collection of SharedTrainingBlock resources.",
+                "parameters": []
+            },
+            "post": {
+                "operationId": "api_shared_training_blocks_post",
+                "tags": [
+                    "SharedTrainingBlock"
+                ],
+                "responses": {
+                    "201": {
+                        "description": "SharedTrainingBlock resource created",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SharedTrainingBlock.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SharedTrainingBlock"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SharedTrainingBlock.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Creates a SharedTrainingBlock resource.",
+                "description": "Creates a SharedTrainingBlock resource.",
+                "parameters": [],
+                "requestBody": {
+                    "description": "The new SharedTrainingBlock resource",
+                    "content": {
+                        "application/ld+json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SharedTrainingBlock.SharedTrainingBlockInput"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SharedTrainingBlock.SharedTrainingBlockInput"
+                            }
+                        },
+                        "text/html": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SharedTrainingBlock.SharedTrainingBlockInput"
+                            }
+                        }
+                    },
+                    "required": true
+                }
+            }
+        },
+        "/api/shared_training_blocks/{id}": {
+            "get": {
+                "operationId": "api_shared_training_blocks_id_get",
+                "tags": [
+                    "SharedTrainingBlock"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SharedTrainingBlock resource",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SharedTrainingBlock.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SharedTrainingBlock"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SharedTrainingBlock.html"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Retrieves a SharedTrainingBlock resource.",
+                "description": "Retrieves a SharedTrainingBlock resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "SharedTrainingBlock identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ]
+            },
+            "put": {
+                "operationId": "api_shared_training_blocks_id_put",
+                "tags": [
+                    "SharedTrainingBlock"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SharedTrainingBlock resource updated",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SharedTrainingBlock.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SharedTrainingBlock"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SharedTrainingBlock.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Replaces the SharedTrainingBlock resource.",
+                "description": "Replaces the SharedTrainingBlock resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "SharedTrainingBlock identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ],
+                "requestBody": {
+                    "description": "The updated SharedTrainingBlock resource",
+                    "content": {
+                        "application/ld+json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SharedTrainingBlock.SharedTrainingBlockInput"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SharedTrainingBlock.SharedTrainingBlockInput"
+                            }
+                        },
+                        "text/html": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SharedTrainingBlock.SharedTrainingBlockInput"
+                            }
+                        }
+                    },
+                    "required": true
+                }
+            },
+            "delete": {
+                "operationId": "api_shared_training_blocks_id_delete",
+                "tags": [
+                    "SharedTrainingBlock"
+                ],
+                "responses": {
+                    "204": {
+                        "description": "SharedTrainingBlock resource deleted"
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Removes the SharedTrainingBlock resource.",
+                "description": "Removes the SharedTrainingBlock resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "SharedTrainingBlock identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ]
+            }
+        },
         "/api/shared_training_groups": {
             "get": {
                 "operationId": "api_shared_training_groups_get_collection",
@@ -27553,6 +27951,166 @@
                     }
                 ]
             },
+            "SharedTrainingBlock": {
+                "type": "object",
+                "description": "Le bloc de mutualisation : d\u00e9clarer un ensemble d'\u00e9quipes qui se comporte comme UNE \u00e9quipe,\navec son propre nombre de s\u00e9ances communes (``commonSessions``). Scop\u00e9 club+saison, filtrable\npar ``schedulePlanId`` (NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au\nmanagement.",
+                "properties": {
+                    "id": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "version": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "schedulePlanId": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "teamIds": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "commonSessions": {
+                        "default": 0,
+                        "type": "integer"
+                    }
+                }
+            },
+            "SharedTrainingBlock.SharedTrainingBlockInput": {
+                "type": "object",
+                "description": "Le bloc de mutualisation : d\u00e9clarer un ensemble d'\u00e9quipes qui se comporte comme UNE \u00e9quipe,\navec son propre nombre de s\u00e9ances communes (``commonSessions``). Scop\u00e9 club+saison, filtrable\npar ``schedulePlanId`` (NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au\nmanagement.",
+                "properties": {
+                    "schedulePlanId": {
+                        "format": "uuid",
+                        "description": "NULL = socle saison ; un UUID = plan de p\u00e9riode.",
+                        "externalDocs": {
+                            "url": "https://schema.org/identifier"
+                        },
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "teamIds": {
+                        "minItems": 2,
+                        "maxItems": 10,
+                        "uniqueItems": true,
+                        "description": "De 2 (minimum m\u00e9tier) \u00e0 10 \u00e9quipes (cap technique fondateur). Chaque id UUID, aucun doublon\nDANS le bloc (la multi-appartenance ENTRE blocs, elle, est permise \u2014 v\u00e9rifi\u00e9e c\u00f4t\u00e9 base).",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "commonSessions": {
+                        "minimum": 0,
+                        "exclusiveMinimum": 0,
+                        "description": "Nombre de s\u00e9ances communes du bloc (\u2265 1 ; la garde \u03a3 c\u00f4t\u00e9 processor borne le cumul par \u00e9quipe).",
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "commonSessions"
+                ]
+            },
+            "SharedTrainingBlock.html": {
+                "type": "object",
+                "description": "Le bloc de mutualisation : d\u00e9clarer un ensemble d'\u00e9quipes qui se comporte comme UNE \u00e9quipe,\navec son propre nombre de s\u00e9ances communes (``commonSessions``). Scop\u00e9 club+saison, filtrable\npar ``schedulePlanId`` (NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au\nmanagement.",
+                "properties": {
+                    "id": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "version": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "schedulePlanId": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "teamIds": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "commonSessions": {
+                        "default": 0,
+                        "type": "integer"
+                    }
+                }
+            },
+            "SharedTrainingBlock.jsonld": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/HydraItemBaseSchema"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "version": {
+                                "default": 0,
+                                "type": "integer"
+                            },
+                            "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            "updatedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            "schedulePlanId": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "teamIds": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "commonSessions": {
+                                "default": 0,
+                                "type": "integer"
+                            }
+                        }
+                    }
+                ],
+                "description": "Le bloc de mutualisation : d\u00e9clarer un ensemble d'\u00e9quipes qui se comporte comme UNE \u00e9quipe,\navec son propre nombre de s\u00e9ances communes (``commonSessions``). Scop\u00e9 club+saison, filtrable\npar ``schedulePlanId`` (NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au\nmanagement."
+            },
             "SharedTrainingGroup": {
                 "type": "object",
                 "description": "Mutualisation : d\u00e9clarer que N \u00e9quipes s'entra\u00eenent ENSEMBLE, avec EXACTEMENT\n``commonSessions`` s\u00e9ances communes. Scop\u00e9 club+saison, filtrable par ``schedulePlanId``\n(NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au management.",
@@ -31310,6 +31868,10 @@
         {
             "name": "Season",
             "description": "Resource 'Season' operations."
+        },
+        {
+            "name": "SharedTrainingBlock",
+            "description": "Le bloc de mutualisation : d\u00e9clarer un ensemble d'\u00e9quipes qui se comporte comme UNE \u00e9quipe,\navec son propre nombre de s\u00e9ances communes (``commonSessions``). Scop\u00e9 club+saison, filtrable\npar ``schedulePlanId`` (NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au\nmanagement."
         },
         {
             "name": "SharedTrainingGroup",
