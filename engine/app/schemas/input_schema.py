@@ -22,13 +22,6 @@ MAX_PRIORITY_TIERS = 20
 MAX_SLOTS_PER_VENUE = 1000
 MAX_SLOTS_TOTAL = 3000
 MAX_TAGS_PER_TEAM = 50
-# P2-27 — mutualisation : plafonds du bloc `sharedTrainings`. 50 groupes (~10x un gros club
-# FFBB), 2..10 équipes par groupe (cap technique fondateur, minimum métier 2). ⚠ La FORME
-# (2..10, doublons) est bornée à la saisie backend, mais le NOMBRE de groupes ne l'est PAS
-# (mesuré 2026-08-22) : ce cap au bord est la SEULE borne du compte — dette P4, roadmap.
-MAX_SHARED_TRAINING_GROUPS = 50
-MIN_TEAMS_PER_SHARED_GROUP = 2
-MAX_TEAMS_PER_SHARED_GROUP = 10
 # P2-51 — mutualisation par BLOC : plafonds du bloc `sharedBlocks`. Un bloc se comporte comme UNE
 # équipe (ses séances lui appartiennent, ``commonSessions``), 2..10 équipes membres (cap technique
 # fondateur, minimum métier 2). 50 blocs = défense en profondeur au bord (le backend ne borne pas
@@ -239,37 +232,14 @@ class PreviousAssignmentSchema(SerializableModel):
     start_time: str = Field(alias="startTime")  # "19:00"
 
 
-class SharedTrainingGroupSchema(SerializableModel):
-    """P2-27 — mutualisation : N équipes déclarées s'entraîner ENSEMBLE.
-
-    ``common_sessions`` = le nombre EXACT de séances partagées (même gymnase, même jour,
-    même heure) — ni « au moins » ni « au plus » : la déclaration dit combien de séances sont
-    communes, le solveur les réifie DANS LES DEUX SENS (chaque membre présent ⇔ séance
-    comptée) puis pose l'égalité. ``team_ids`` : de 2 (minimum métier) à 10 équipes (cap
-    technique). Un bloc ``sharedTrainings`` absent/vide ⇒ chemin de code byte-identique
-    (patron ``implicitRules``/``previousAssignments``) : aucun ``y`` posé, goldens inchangés.
-    """
-
-    id: str
-    team_ids: list[str] = Field(
-        alias="teamIds",
-        min_length=MIN_TEAMS_PER_SHARED_GROUP,
-        max_length=MAX_TEAMS_PER_SHARED_GROUP,
-    )
-    common_sessions: int = Field(alias="commonSessions", ge=1)
-
-
 class SharedTrainingBlockSchema(SerializableModel):
     """P2-51 — mutualisation par BLOC : un ensemble d'équipes qui se comporte comme UNE équipe.
 
-    À la différence du groupe {équipes, K} (``SharedTrainingGroupSchema``, qui réifie K séances
-    communes DÉDUITES de la co-présence), le bloc POSSÈDE ses ``common_sessions`` : ses séances
-    lui appartiennent, le solveur les placera comme celles d'une équipe (PR-3) — ce qui dissout
-    structurellement le double-comptage des groupes imbriqués. ``team_ids`` : de 2 (minimum
-    métier) à 10 équipes (cap technique) ; la multi-appartenance (une équipe dans plusieurs blocs)
-    est permise. En PR-2 le bloc est ACCEPTÉ mais PAS consommé : aucune variable posée, goldens
-    inchangés. Un bloc ``sharedBlocks`` absent/vide ⇒ chemin byte-identique (patron
-    ``sharedTrainings``/``teamLinks``).
+    Le bloc POSSÈDE ses ``common_sessions`` : ses séances lui appartiennent, le solveur les place
+        comme celles d'une équipe — ce qui dissout structurellement le double-comptage des partages
+        imbriqués. ``team_ids`` : de 2 (minimum métier) à 10 équipes (cap technique) ; la
+        multi-appartenance (une équipe dans plusieurs blocs) est permise. Un bloc ``sharedBlocks``
+        absent/vide ⇒ chemin byte-identique (patron ``teamLinks``).
     """
 
     id: str
@@ -285,9 +255,8 @@ class TeamLinkSchema(SerializableModel):
     """Lot PASSERELLES — deux équipes déclarées partager des joueurs (« passerelle »).
 
     ``intensity`` gouverne le CÔTÉ ENTRAÎNEMENT uniquement : ``PREFERRED`` (objectif souple)
-    ou ``MANDATORY`` (contrainte dure). En PR-1 le bloc est ACCEPTÉ mais PAS consommé : aucun
-    ``y`` posé, goldens inchangés. Un bloc ``teamLinks`` absent/vide ⇒ chemin byte-identique
-    (patron ``sharedTrainings``).
+    ou ``MANDATORY`` (contrainte dure). Un bloc ``teamLinks`` absent/vide ⇒ chemin byte-identique
+    (patron ``previousAssignments``).
     """
 
     id: str
@@ -356,22 +325,15 @@ class ScheduleInputSchema(SerializableModel):
     previous_assignments: list[PreviousAssignmentSchema] = Field(
         default_factory=list, alias="previousAssignments", max_length=MAX_SLOT_TEMPLATES
     )
-    # P2-27 — mutualisation : groupes d'équipes déclarées ensemble (EXACTEMENT K séances
-    # communes chacun). Absent/vide ⇒ chemin byte-identique (patron implicitRules). Cap 50
-    # groupes = défense en profondeur au bord (le backend borne déjà à la saisie).
-    shared_trainings: list[SharedTrainingGroupSchema] = Field(
-        default_factory=list, alias="sharedTrainings", max_length=MAX_SHARED_TRAINING_GROUPS
-    )
     # P2-51 — mutualisation par BLOC : blocs d'équipes se comportant comme UNE équipe (leurs
-    # séances leur appartiennent). ACCEPTÉ mais NON consommé en PR-2 : absent/vide ⇒ payload
-    # byte-identique (patron sharedTrainings), goldens inchangés — la sémantique est PR-3. Cap 50
-    # blocs = défense en profondeur au bord.
+    # séances leur appartiennent). Absent/vide ⇒ payload byte-identique (patron teamLinks),
+    # goldens inchangés. Cap 50 blocs = défense en profondeur au bord.
     shared_blocks: list[SharedTrainingBlockSchema] = Field(
         default_factory=list, alias="sharedBlocks", max_length=MAX_SHARED_TRAINING_BLOCKS
     )
-    # Lot PASSERELLES — passerelles déclarées (deux équipes partageant des joueurs). ACCEPTÉ mais
-    # NON consommé en PR-1 : absent/vide ⇒ payload byte-identique (patron sharedTrainings), goldens
-    # et score inchangés. Cap 50 miroité à la saisie backend (TeamLinkStateProcessor).
+    # Lot PASSERELLES — passerelles déclarées (deux équipes partageant des joueurs). Absent/vide
+    # ⇒ payload byte-identique (patron teamLinks), goldens et score inchangés. Cap 50 miroité à la
+    # saisie backend (TeamLinkStateProcessor).
     team_links: list[TeamLinkSchema] = Field(default_factory=list, alias="teamLinks", max_length=MAX_TEAM_LINKS)
     # P2-53 RMM-8 PR-2 — matrice de trajet entre gymnases (barème voiture/à pied par couple).
     # Absent/vide ⇒ payload byte-identique (patron teamLinks), goldens inchangés. Cap 150 =

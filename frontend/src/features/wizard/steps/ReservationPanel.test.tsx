@@ -9,7 +9,6 @@ import { ReservationPanel } from "./ReservationPanel";
 vi.mock("../queries", () => ({
   useGridSlots: () => ({ data: [] }),
   useReservations: () => ({ data: [] }),
-  useSharedTrainingGroups: () => ({ data: [] }),
   useSharedTrainingBlocks: () => ({ data: [] }),
   useWizardTeamCoaches: () => ({ data: new Map(), isPending: false, isError: false, refetch: vi.fn() }),
 }));

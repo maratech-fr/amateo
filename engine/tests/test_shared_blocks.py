@@ -1,6 +1,6 @@
 """P2-51 — le bloc `sharedBlocks` est ACCEPTÉ par le contrat (bornes 2..10 équipes,
 commonSessions ≥ 1, plafond 50 blocs, défaut liste vide), et un bloc ABSENT/VIDE laisse le
-chemin de code byte-identique (patron `sharedTrainings`/`teamLinks`).
+chemin de code byte-identique (patron `teamLinks`).
 
 ⚠ PR-3 : le bloc est désormais CONSOMMÉ par le solveur (il place ses séances comme une équipe).
 Ce fichier garde l'ACCEPTATION du schéma, ses REJETS de forme, et le fait qu'un bloc VIDE laisse
@@ -90,7 +90,7 @@ class TestSchemaRejects:
 class TestEmptyEqualsAbsent:
     def test_empty_shared_blocks_block_matches_no_block(self) -> None:
         # Le SEUL garde d'inertie encore vrai en PR-3 : un bloc VIDE laisse le solve byte-identique
-        # (patron `sharedTrainings`/`teamLinks`). Un bloc PEUPLÉ, lui, est désormais consommé — sa
+        # (patron `teamLinks`). Un bloc PEUPLÉ, lui, est désormais consommé — sa
         # sémantique est prouvée dans tests/semantic/test_shared_block_semantics.py.
         teams, venues = _fixture()
         without = solve_payload(make_payload(teams=teams, venues=venues))

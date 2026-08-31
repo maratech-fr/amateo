@@ -14,7 +14,7 @@ const blocksState: { data: SharedTrainingBlock[] } = { data: [] };
 const overridesState: { data: TeamPeriodOverride[] } = { data: [] };
 
 // Le mock IGNORE `schedulePlanId` (le provider renvoie socle+périodes) : c'est le PANNEAU qui
-// filtre le socle — patron `MutualisationPanel.test`.
+// filtre le socle.
 vi.mock("../queries", () => ({
   useSharedTrainingBlocks: () => ({ data: blocksState.data }),
   useTeamPeriodOverrides: () => ({ data: overridesState.data }),

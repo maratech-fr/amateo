@@ -14,9 +14,9 @@ use Doctrine\ORM\EntityManagerInterface;
  * « cet ensemble d'équipes se comporte comme une équipe » n'a plus de sens quand l'une d'elles
  * disparaît (décision fondateur 2026-08-31 : « tout défaire puis recréer ») : le bloc part avec
  * TOUTES ses lignes {@see SharedTrainingBlockTeam}, pas seulement celle de l'équipe supprimée.
- * MÊME patron que {@see SharedTrainingGroupPruneStep} — mort entière, PAS le seuil de survie à 2
- * de la rotation match. PR-1 : le bloc n'a aucune réservation/placement (PR-3/4), rien d'autre à
- * emporter.
+ * Mort ENTIÈRE, PAS le seuil de survie à 2 de la rotation match. Le bloc part avec ses seules
+ * lignes membres ; ses éventuelles réservations « bloc-complètes » suivent le rail des
+ * réservations d'équipe (`team_reservation`).
  *
  * Le COMPTE annoncé — le nombre de blocs où l'équipe figure — est EXACTEMENT ce qui est détruit
  * (chaque bloc où elle figure meurt), sans règle de survie à rejouer côté compteur.

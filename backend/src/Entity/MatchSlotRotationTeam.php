@@ -8,7 +8,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 /**
  * RMM-5 (P2-49) — un membre ORDONNÉ d'une {@see MatchSlotRotation}. Le lien rotation → équipe,
- * avec club/saison DÉNORMALISÉS (patron {@see SharedTrainingGroupTeam}) : RLS et les listeners
+ * avec club/saison DÉNORMALISÉS (patron {@see SharedTrainingBlockTeam}) : RLS et les listeners
  * lisent la colonne, jamais une jointure. Écrit une fois, jamais mis à jour — une modification
  * de composition = suppression + recréation des lignes (même patron).
  *

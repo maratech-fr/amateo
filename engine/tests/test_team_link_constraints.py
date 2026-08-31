@@ -4,7 +4,7 @@ Sémantique (arbitrages fondateur) :
   * MANDATORY (dur) : les séances des deux équipes ne se chevauchent JAMAIS (cross-gymnase compris) ;
   * PREFERRED (souple) : un malus par chevauchement, dérivé du tier — sépare quand c'est possible
     sans jamais SUPPRIMER une séance ;
-  * EXEMPTION : une séance MUTUALISÉE DÉCLARÉE (même case + groupe ``sharedTrainings``) est la
+  * EXEMPTION : une séance MUTUALISÉE DÉCLARÉE (même case + bloc ``sharedBlocks``) est la
     SEULE simultanéité autorisée — c'est PLUS STRICT que la tolérance coach D-14 (doctrine n°3) ;
   * deux VERROUS HARD qui se chevauchent sur une MANDATORY = acte volontaire contradictoire :
     COMPLETED + diagnostic ``team_link_not_honored``, jamais INFEASIBLE muet (CLAUDE.md §6).
@@ -29,8 +29,8 @@ def _link(link_id: str, team_a: str, team_b: str, intensity: str) -> dict[str, A
     return {"id": link_id, "teamAId": team_a, "teamBId": team_b, "intensity": intensity}
 
 
-def _shared_group(group_id: str, team_ids: list[str], common_sessions: int) -> dict[str, Any]:
-    return {"id": group_id, "teamIds": team_ids, "commonSessions": common_sessions}
+def _shared_block(block_id: str, team_ids: list[str], common_sessions: int) -> dict[str, Any]:
+    return {"id": block_id, "teamIds": team_ids, "commonSessions": common_sessions}
 
 
 def _mins(hhmm: str) -> int:
@@ -122,7 +122,7 @@ class TestPose:
             model,
             assignments,
             team_links=[_link("l", "t1", "t2", "MANDATORY")],
-            shared_trainings=[_shared_group("g", ["t1", "t2"], 1)],
+            shared_blocks=[_shared_block("g", ["t1", "t2"], 1)],
         )
         assert added == 0
         # Falsification doctrine : MÊME gymnase, même heure, SANS groupe déclaré → chevauchement.
@@ -259,7 +259,7 @@ class TestSemanticMandatory:
         assert not _teams_overlap(result, T1, T2), "MANDATORY doit interdire tout chevauchement"
         assert len(_cases_of(result, T1)) == 1 and len(_cases_of(result, T2)) == 1
 
-    def test_mandatory_with_declared_shared_group_stays_feasible_and_co_located(self) -> None:
+    def test_mandatory_with_declared_shared_block_stays_feasible_and_co_located(self) -> None:
         """EXEMPTION : MANDATORY + mutualisation K=1 déclarée → la séance commune est autorisée.
 
         Falsification : SANS l'exemption, mutualisation (co-localisation forcée) et MANDATORY
@@ -269,7 +269,7 @@ class TestSemanticMandatory:
             venues=[make_venue(VS, [(1, "18:00")], capacity=2)],
         )
         payload["teamLinks"] = [_link("l", T1, T2, "MANDATORY")]
-        payload["sharedTrainings"] = [_shared_group("g", [T1, T2], 1)]
+        payload["sharedBlocks"] = [_shared_block("g", [T1, T2], 1)]
         result = solve_payload(payload, timeout=15)
         assert result["status"] == "completed", "l'exemption doit rendre le scénario faisable"
         assert _cases_of(result, T1) == _cases_of(result, T2), "la séance mutualisée déclarée doit co-localiser"

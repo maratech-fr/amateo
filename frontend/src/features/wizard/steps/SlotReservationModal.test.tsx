@@ -4,10 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
 
-import type { PriorityTier, Reservation, SharedTrainingBlock, SharedTrainingGroup, Team, Venue, VenueTrainingSlot } from "../api";
+import type { PriorityTier, Reservation, SharedTrainingBlock, Team, Venue, VenueTrainingSlot } from "../api";
 
 // Les mutations sont mockées : le test porte sur le GESTE (quel rail est appelé, dans quel ordre),
-// pas sur react-query. Patron identique à MutualisationPanel.test.
+// pas sur react-query.
 const createMut = vi.fn();
 const delMut = vi.fn();
 const groupMut = vi.fn();
@@ -29,9 +29,6 @@ const TIERS: PriorityTier[] = [{ id: 1, label: "S", name: "Fanion", color: null 
 const VENUE: Venue = { id: "v1", name: "Gymnase A", color: null, canSplit: true, isActive: true };
 const SLOT: VenueTrainingSlot = { id: "slot1", venueId: "v1", dayOfWeek: 1, startTime: "18:00", durationMinutes: 90, capacity: 2 };
 
-const group = (id: string, teamIds: string[], commonSessions = 1): SharedTrainingGroup =>
-  ({ id, version: 1, createdAt: "2026-08-23T00:00:00+00:00", updatedAt: "2026-08-23T00:00:00+00:00", schedulePlanId: null, teamIds, commonSessions });
-
 const block = (id: string, teamIds: string[], commonSessions = 1): SharedTrainingBlock =>
   ({ id, version: 1, createdAt: "2026-08-31T00:00:00+00:00", updatedAt: "2026-08-31T00:00:00+00:00", schedulePlanId: null, teamIds, commonSessions });
 
@@ -52,8 +49,7 @@ function renderModal(overrides: Partial<Parameters<typeof SlotReservationModal>[
       onRetryCoaches={vi.fn()}
       venues={[VENUE]}
       venueCanSplit={new Map([["v1", true]])}
-      sharedTrainingGroups={[group("g", ["a", "b"])]}
-      sharedTrainingBlocks={[]}
+      sharedTrainingBlocks={[block("g", ["a", "b"])]}
       schedulePlanId={null}
       onClose={vi.fn()}
       {...overrides}
@@ -74,23 +70,23 @@ beforeEach(() => {
   });
 });
 
-describe("SlotReservationModal — mutualisation (P2-46 PR-3)", () => {
-  it("offre le groupe sous « Entraînements mutualisés » sur un créneau LIBRE", () => {
+describe("SlotReservationModal — mutualisation par bloc (P2-51)", () => {
+  it("offre le bloc sous « Entraînements mutualisés » sur un créneau LIBRE", () => {
     renderModal();
     const option = within(selector()).getByRole("option", { name: "SM1 + SM2 — 1 séance commune" });
     expect(option).toBeInTheDocument();
     expect(option.closest("optgroup")?.label).toBe("Entraînements mutualisés");
   });
 
-  it("n'offre PAS le groupe sur un créneau occupé, et dit POURQUOI (raison visible)", () => {
+  it("n'offre PAS le bloc sur un créneau occupé, et dit POURQUOI (raison visible)", () => {
     renderModal({ reservations: [resa("c", "v1", 1, "18:00")] });
     expect(within(selector()).queryByRole("option", { name: "SM1 + SM2 — 1 séance commune" })).toBeNull();
     expect(screen.getByText(/ne se pose que sur un créneau libre/i)).toBeInTheDocument();
   });
 
-  it("un groupe posé dans le brouillon ferme le sélecteur sur une raison NOMMÉE", async () => {
+  it("un bloc posé dans le brouillon ferme le sélecteur sur une raison NOMMÉE", async () => {
     renderModal();
-    await userEvent.selectOptions(selector(), "group:g");
+    await userEvent.selectOptions(selector(), "block:g");
     expect(screen.getByText(/occupe seul ce créneau/i)).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Ajouter une équipe" })).toBeNull();
     // Le lot en brouillon est nommé et « à valider ».
@@ -98,18 +94,18 @@ describe("SlotReservationModal — mutualisation (P2-46 PR-3)", () => {
     expect(screen.getByText("à valider")).toBeInTheDocument();
   });
 
-  it("« retirer SM4 + poser le groupe » passe en UNE validation, retraits AVANT ajouts, un seul appel au rail groupe", async () => {
+  it("« retirer SM4 + poser le bloc » passe en UNE validation, retraits AVANT ajouts, un seul appel au rail bloc", async () => {
     const onClose = vi.fn();
     renderModal({ reservations: [resa("d", "v1", 1, "18:00")], onClose });
 
     await userEvent.click(screen.getByRole("button", { name: "Retirer SM4" }));
-    await userEvent.selectOptions(selector(), "group:g");
+    await userEvent.selectOptions(selector(), "block:g");
     await userEvent.click(screen.getByRole("button", { name: "Valider" }));
 
-    expect(callOrder).toEqual(["del", "group"]); // le retrait libère la case AVANT que le groupe s'y pose
+    expect(callOrder).toEqual(["del", "group"]); // le retrait libère la case AVANT que le bloc s'y pose
     expect(delMut).toHaveBeenCalledWith("d-v1-1-18:00");
     expect(groupMut).toHaveBeenCalledTimes(1);
-    expect(groupMut).toHaveBeenCalledWith({ sharedTrainingGroupId: "g", venueId: "v1", dayOfWeek: 1, startTime: "18:00", durationMinutes: 90, schedulePlanId: null });
+    expect(groupMut).toHaveBeenCalledWith({ sharedTrainingBlockId: "g", venueId: "v1", dayOfWeek: 1, startTime: "18:00", durationMinutes: 90, schedulePlanId: null });
     expect(createMut).not.toHaveBeenCalled(); // JAMAIS N POST individuels
     expect(onClose).toHaveBeenCalled();
   });
@@ -130,12 +126,12 @@ describe("SlotReservationModal — mutualisation (P2-46 PR-3)", () => {
   // P4-150 — sur un créneau libre où aucune équipe ni aucun groupe n'est proposable,
   // la copie d'écran de l'état vide est assertée (elle ne s'affiche QUE dans ce cas).
   it("annonce « Aucune équipe disponible » quand rien n'est proposable sur un créneau libre", () => {
-    renderModal({ teams: [], sharedTrainingGroups: [] });
+    renderModal({ teams: [], sharedTrainingBlocks: [] });
     expect(screen.getByText("Aucune équipe disponible (toutes ont atteint leur nombre de séances ou sont déjà sur ce créneau).")).toBeInTheDocument();
   });
 
-  it("un groupe ayant atteint ses K séances communes n'est PAS offert, avec sa raison", () => {
-    // Une case complète {a,b} ailleurs dans la portée → K(1) atteint.
+  it("un bloc ayant atteint ses séances communes n'est PAS offert, avec sa raison", () => {
+    // Une case complète {a,b} ailleurs dans la portée → séances communes (1) atteintes.
     renderModal({ reservations: [resa("a", "v1", 3, "20:00"), resa("b", "v1", 3, "20:00")] });
     expect(within(selector()).queryByRole("option", { name: "SM1 + SM2 — 1 séance commune" })).toBeNull();
     expect(screen.getByText(/séance commune est déjà posée/i)).toBeInTheDocument();
@@ -143,41 +139,3 @@ describe("SlotReservationModal — mutualisation (P2-46 PR-3)", () => {
   });
 });
 
-describe("SlotReservationModal — BLOC de mutualisation (P2-51 PR-6)", () => {
-  it("offre le bloc dans la MÊME section « Entraînements mutualisés » sur un créneau LIBRE", () => {
-    renderModal({ sharedTrainingGroups: [], sharedTrainingBlocks: [block("blk", ["a", "b", "c"])] });
-    const option = within(selector()).getByRole("option", { name: "SM1 + SM2 + SM3 — 1 séance commune" });
-    expect(option).toBeInTheDocument();
-    expect(option.closest("optgroup")?.label).toBe("Entraînements mutualisés");
-  });
-
-  // Falsification (a) — poser le bloc réserve TOUS ses membres : le lot posté nomme les 3 équipes,
-  // et le submit part en UN appel au rail batch avec `sharedTrainingBlockId` (le serveur réserve les
-  // N membres). Retrancher un membre du rendu (ou du bloc) casse ce test.
-  it("poser le bloc = ses TROIS membres nommés dans le brouillon, un seul appel `sharedTrainingBlockId` au submit", async () => {
-    const onClose = vi.fn();
-    renderModal({ sharedTrainingGroups: [], sharedTrainingBlocks: [block("blk", ["a", "b", "c"])], onClose });
-
-    await userEvent.selectOptions(selector(), "block:blk");
-    // Le lot en brouillon nomme TOUS les membres (SM1 + SM2 + SM3), pas un sous-ensemble.
-    expect(screen.getByText(/SM1 \+ SM2 \+ SM3/)).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "Valider" }));
-
-    expect(groupMut).toHaveBeenCalledTimes(1);
-    expect(groupMut).toHaveBeenCalledWith({ sharedTrainingBlockId: "blk", venueId: "v1", dayOfWeek: 1, startTime: "18:00", durationMinutes: 90, schedulePlanId: null });
-    expect(createMut).not.toHaveBeenCalled(); // JAMAIS N POST individuels
-    expect(onClose).toHaveBeenCalled();
-  });
-
-  // D13 — bloc et groupe K de MÊME ensemble d'équipes : UNE seule entrée (le bloc), pas de doublon.
-  it("dédoublonne un bloc et un groupe K portant le même ensemble : une seule option (le bloc)", async () => {
-    renderModal({ sharedTrainingGroups: [group("g", ["a", "b"])], sharedTrainingBlocks: [block("blk", ["a", "b"])] });
-    // Une seule option pour {SM1, SM2}.
-    expect(within(selector()).getAllByRole("option", { name: "SM1 + SM2 — 1 séance commune" })).toHaveLength(1);
-    // Et c'est le BLOC qui est retenu : la sélectionner poste `sharedTrainingBlockId`.
-    await userEvent.selectOptions(selector(), "block:blk");
-    await userEvent.click(screen.getByRole("button", { name: "Valider" }));
-    expect(groupMut).toHaveBeenCalledWith({ sharedTrainingBlockId: "blk", venueId: "v1", dayOfWeek: 1, startTime: "18:00", durationMinutes: 90, schedulePlanId: null });
-  });
-});

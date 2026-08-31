@@ -192,9 +192,6 @@ class HardConstraintStats:
     salarie_distribution: int = 0
     max_consecutive_sessions: int = 0
     max_consecutive_days: int = 0
-    # P2-27 — contraintes de mutualisation (réification + égalité EXACTE) posées. 0 quand le
-    # bloc ``sharedTrainings`` est absent/vide (chemin byte-identique, goldens inchangés).
-    shared_training: int = 0
     # P2-51 — contraintes de mutualisation par BLOC (liage ``x >= b`` par membre + ``Σb ==
     # commonSessions`` + garde de distinctness inter-blocs) posées. 0 quand le bloc
     # ``sharedBlocks`` est absent/vide (chemin byte-identique, goldens inchangés).
@@ -237,7 +234,6 @@ class HardConstraintStats:
             + self.coach_rest_day
             + self.salarie_distribution
             + self.max_consecutive_sessions
-            + self.shared_training
             + self.shared_block
             + self.team_link
             + self.travel_time

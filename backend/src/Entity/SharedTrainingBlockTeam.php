@@ -12,7 +12,7 @@ use Doctrine\ORM\Mapping as ORM;
  * club/saison/plan DÉNORMALISÉS : le listener de péremption
  * ({@see ResourceChangeStaleScheduleListener}) et RLS lisent la colonne,
  * jamais une jointure. Écrit une fois, jamais mis à jour (une modification de composition =
- * suppression + recréation des lignes — patron {@see SharedTrainingGroupTeam}).
+ * suppression + recréation des lignes).
  *
  * ⚠ Multi-appartenance PERMISE (décision 2026-08-31) : une équipe peut figurer dans PLUSIEURS
  * blocs — l'unicité porte sur le couple ``(block_id, team_id)`` (pas de doublon DANS un bloc),

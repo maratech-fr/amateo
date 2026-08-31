@@ -103,7 +103,6 @@ def _generate_diagnostics(
         )
         diagnostics.extend(_diagnose_unused_slots(model_data, slots))
     diagnostics.extend(_diagnose_conflicts(model_data, solver_status, slots, slot_capacities=slot_capacities))
-    diagnostics.extend(_diagnose_shared_trainings(model_data, solver_status, slots))
     diagnostics.extend(_diagnose_shared_blocks(model_data, solver_status, slots))
     diagnostics.extend(_diagnose_team_links(model_data, solver_status, slots))
     diagnostics.extend(_diagnose_travel_times(model_data, solver_status, slots, team_coach_map or {}))
@@ -635,23 +634,12 @@ def _diagnose_conflicts(
 
     _caps: dict[Any, int] = slot_capacities or {}
 
-    # P2-46 — mutualisation : N verrous d'un MÊME groupe déclaré sur une case sont UNE séance
-    # commune, pas N séances. Une réservation de groupe s'éclate en N `Reservation` (une par
-    # membre, même case) → N verrous HARD sur cette case ; les compter comme N occupants
-    # distincts crierait faussement à la sur-capacité (« accueille 3 équipes… capacité 2 ») alors
-    # que le gestionnaire a réservé UNE séance partagée. Même esprit que l'exemption passerelle
-    # « une séance mutualisée déclarée n'est jamais une violation » (constraints.py) et la
-    # tolérance coach D-14. L'exemption est CONDITIONNÉE à la déclaration : un membre est
-    # rabattu sur l'identité de SON groupe, une équipe hors de tout groupe garde la sienne, si
-    # bien que trois équipes sur une case SANS groupe déclaré restent une violation, et un
-    # mélange (2 membres d'un groupe + 1 équipe étrangère) compte 2 — le groupe pour 1,
-    # l'étrangère pour 1. Bloc `sharedTrainings` absent ⇒ map vide ⇒ occupants == équipes
-    # distinctes ⇒ chemin byte-identique (goldens inchangés).
+    # P2-51 — mutualisation par BLOC : une séance de bloc = UNE occupation d'une case (pas N).
+    # Une réservation de bloc s'éclate en N `Reservation` (une par membre, même case) → N verrous
+    # HARD ; les compter comme N occupants distincts crierait faussement à la sur-capacité. Le
+    # ``team_to_group`` (exemption du modèle groupe K) a disparu avec ce modèle : il reste une carte
+    # VIDE que le repli des blocs ({@see _fold_case_occupant_identity}) consomme sans effet.
     team_to_group: dict[str, str] = {}
-    for group_index, group in enumerate(_collection(model_data, "sharedTrainings", "shared_trainings")):
-        group_key = f"__shared_group__{_get(group, 'id', default=group_index)}"
-        for member in _get(group, "teamIds", "team_ids", default=[]) or []:
-            team_to_group.setdefault(str(member), group_key)
 
     # P2-51 — mutualisation par BLOC : une séance de bloc = UNE occupation de la case (pas N). La
     # multi-appartenance étant permise (une équipe dans plusieurs blocs), l'attribution se fait PAR
@@ -839,7 +827,7 @@ def _diagnose_shared_blocks(
     slots: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """P2-51 (arbitrage n°7) — mutualisation par BLOC : nommer le bloc quand il n'est pas honoré,
-    code ``shared_block_not_honored`` (severity ERROR), patron ``_diagnose_shared_trainings``.
+    code ``shared_block_not_honored`` (severity ERROR).
 
       * INFEASIBLE — cause PROUVÉE : le bloc a MOINS de cases communes candidates (gymnase, jour,
         heure où TOUS ses membres ont un créneau disponible) que ses ``commonSessions`` — il ne
@@ -925,103 +913,6 @@ def _diagnose_shared_blocks(
     return diagnostics
 
 
-def _diagnose_shared_trainings(
-    model_data: Mapping[str, Any] | Any,
-    solver_status: int,
-    slots: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """P2-27 — mutualisation : nommer la déclaration quand elle n'est pas honorée.
-
-    Deux régimes, un seul code de diagnostic ``shared_training_not_honored`` (severity ERROR) :
-
-      * INFEASIBLE — cause CERTAINE : aucune fenêtre de gymnase n'a une capacité ≥ la taille du
-        groupe, donc ces N équipes ne pourront JAMAIS partager une case. On nomme le groupe (le
-        message ``diag-infeasible`` générique reste, celui-ci l'attribue). On reste PRUDENT : on
-        ne prétend PAS que le groupe est la cause dès qu'il y a un autre motif — seulement quand
-        la capacité l'exclut de façon prouvée.
-      * OPTIMAL/FEASIBLE — défense en profondeur : la contrainte est dure, un solve abouti devrait
-        l'honorer ; si le nombre RÉEL de séances communes du groupe (dans les slots finaux) diffère
-        du K déclaré, on le signale (patron ``_diagnose_implicit_rule_violations``).
-
-    Message français nommant les équipes réelles ; aucun identifiant interne.
-    """
-    groups = _collection(model_data, "sharedTrainings", "shared_trainings")
-    if not groups:
-        return []
-
-    team_names = _team_name_map(model_data)
-    diagnostics: list[dict[str, Any]] = []
-
-    if solver_status == cp_model.INFEASIBLE:
-        max_capacity = 0
-        for venue in _collection(model_data, "venues"):
-            for slot in _collection(venue, "training_slots", "trainingSlots"):
-                raw = _get(slot, "capacity", default=1)
-                try:
-                    cap = int(raw) if raw is not None else 1
-                except (TypeError, ValueError):
-                    cap = 1
-                max_capacity = max(max_capacity, cap)
-        for index, group in enumerate(groups):
-            members = [str(t) for t in (_get(group, "teamIds", "team_ids", default=[]) or [])]
-            if len(members) < 2:
-                continue
-            if max_capacity < len(members):
-                diagnostics.append(
-                    {
-                        "id": f"shared-training-infeasible-{_get(group, 'id', default=index)}",
-                        "type": "shared_training_not_honored",
-                        "severity": "ERROR",
-                        "message": (
-                            f"Les équipes déclarées ensemble ({_named_list(members, team_names)}) ne peuvent "
-                            f"pas partager de séance : aucun créneau de gymnase n'accueille {len(members)} équipes "
-                            "en même temps. Augmentez la capacité d'un créneau ou réduisez le groupe."
-                        ),
-                        "suggestions": [
-                            "Augmentez la capacité d'un créneau de gymnase (gymnase divisible).",
-                            "Retirez une équipe du groupe mutualisé.",
-                        ],
-                        "createdAt": datetime.now(UTC).isoformat(),
-                    }
-                )
-        return diagnostics
-
-    if solver_status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        return []
-
-    # Défense en profondeur : compter les séances communes RÉELLES dans les slots finaux.
-    occupancy: dict[str, set[tuple[str, int, str]]] = defaultdict(set)
-    for slot in slots:
-        day = _slot_day(slot)
-        if day is None:
-            continue
-        occupancy[str(slot["teamId"])].add((str(slot["venueId"]), day, str(slot["startTime"])[:5]))
-
-    for index, group in enumerate(groups):
-        members = [str(t) for t in (_get(group, "teamIds", "team_ids", default=[]) or [])]
-        if len(members) < 2:
-            continue
-        common_sessions = int(_get(group, "commonSessions", "common_sessions", default=0) or 0)
-        member_sets = [occupancy.get(member, set()) for member in members]
-        common = set.intersection(*member_sets) if member_sets else set()
-        if len(common) != common_sessions:
-            diagnostics.append(
-                {
-                    "id": f"shared-training-not-honored-{_get(group, 'id', default=index)}",
-                    "type": "shared_training_not_honored",
-                    "severity": "ERROR",
-                    "message": (
-                        f"La mutualisation déclarée n'est pas respectée : les équipes "
-                        f"{_named_list(members, team_names)} devraient partager {common_sessions} séance(s) "
-                        f"commune(s) mais en partagent {len(common)}."
-                    ),
-                    "suggestions": ["Vérifiez les disponibilités communes de ces équipes ou ajustez la déclaration."],
-                    "createdAt": datetime.now(UTC).isoformat(),
-                }
-            )
-    return diagnostics
-
-
 def _team_link_placements_from_slots(slots: list[dict[str, Any]]) -> dict[str, list[tuple[int, int, int, str, None]]]:
     """Les PLACES finales par équipe, au format ``iter_team_link_overlaps`` (var toujours None :
     on juge la solution posée, pas des variables). ``(start, end, day, venue, None)``."""
@@ -1063,10 +954,7 @@ def _diagnose_team_links(
         return []
 
     team_names = _team_name_map(model_data)
-    share_pairs = team_share_declared_pairs(
-        _collection(model_data, "sharedTrainings", "shared_trainings"),
-        _collection(model_data, "sharedBlocks", "shared_blocks"),
-    )
+    share_pairs = team_share_declared_pairs(_collection(model_data, "sharedBlocks", "shared_blocks"))
     placements = _team_link_placements_from_slots(slots)
 
     diagnostics: list[dict[str, Any]] = []

@@ -384,7 +384,7 @@ Voici chaque panne possible, avec son symptôme, sa cause, sa vérification, sa 
 | **Symptôme** | Le statut passe à `FAILED` avec un diagnostic `engine_failed`. Il n'existe **pas** de type `engine_validation_error`. |
 | **Cause** | Le moteur a retourné une réponse JSON **sans clé `status`** (par exemple un corps d'erreur 422 de Pydantic). `EngineClient` lit la réponse avec `toArray(false)` (aucune exception sur un statut HTTP d'erreur) et le handler traite toute réponse sans `status` comme `failed`. Un 422 est improbable en pratique : le payload est construit par `ScheduleConstraintBuilder`, pas saisi à la main. |
 | **Vérification** | `make logs SERVICE=engine` + inspecte le champ `snapshot_data` de la table `schedule` (payload exact envoyé). |
-| **Correction** | Compare le `snapshot_data` au schéma du contrat engine (v2.18, `extra="forbid"`) ; corrige la donnée source incriminée. |
+| **Correction** | Compare le `snapshot_data` au schéma du contrat engine (v2.19, `extra="forbid"`) ; corrige la donnée source incriminée. |
 | **Prévention** | `ContractSchemaTest` garde la synchronisation backend ⇄ engine ; le gate `POST /api/constraints/validate` attrape les configs incohérentes avant le solve. |
 
 ### Cas 7 : COMPLETED mais 0 créneau généré

@@ -29,8 +29,6 @@ use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
-use App\Entity\SharedTrainingGroup;
-use App\Entity\SharedTrainingGroupTeam;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\TeamLink;
@@ -122,11 +120,8 @@ final class SeasonDataPurger
             TeamPeriodOverride::class,
             ConstraintPeriodOverride::class,
             VenuePeriodOverride::class,
-            // P2-27 — mutualisation : les lignes membres avant le parent (aucune FK, ordre
-            // cosmétique). Deux tables club_id+season_id, purgées avec la saison.
-            SharedTrainingGroupTeam::class,
-            SharedTrainingGroup::class,
-            // P2-51 — le bloc de mutualisation : mêmes règles (membres avant parent, aucune FK).
+            // P2-51 — mutualisation par BLOC : les lignes membres avant le parent (aucune FK,
+            // ordre cosmétique). Deux tables club_id+season_id, purgées avec la saison.
             SharedTrainingBlockTeam::class,
             SharedTrainingBlock::class,
             // RMM-5 — rotation A/B : les lignes membres avant le parent (aucune FK, ordre

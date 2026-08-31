@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { SharedTrainingGroup, Team, TeamPeriodOverride } from "../api";
+import type { Team, TeamPeriodOverride } from "../api";
 import {
-  alreadyGroupedTeamIds,
   effectiveSessionsPerWeek,
   filterCandidates,
-  groupContainingTeam,
   maxCommonSessions,
   mutualisedTeammateLabel,
   sharedGroupLabel,
@@ -22,16 +20,6 @@ const team = (over: Partial<Team> & Pick<Team, "id" | "name">): Team => ({
   sessionsPerWeek: 2,
   isActive: true,
   ...over,
-});
-
-const group = (id: string, teamIds: string[], commonSessions = 1, schedulePlanId: string | null = null): SharedTrainingGroup => ({
-  id,
-  version: 1,
-  createdAt: "2026-08-17T00:00:00+00:00",
-  updatedAt: "2026-08-17T00:00:00+00:00",
-  schedulePlanId,
-  teamIds,
-  commonSessions,
 });
 
 describe("effectiveSessionsPerWeek — the period override is priority (mirror of the processor)", () => {
@@ -66,23 +54,6 @@ describe("maxCommonSessions — the smallest effective sessionsPerWeek of the se
 
   it("is 0 for an empty selection", () => {
     expect(maxCommonSessions([], new Map())).toBe(0);
-  });
-});
-
-describe("alreadyGroupedTeamIds / groupContainingTeam — a team belongs to at most one group of a scope", () => {
-  const groups = [group("g1", ["t1", "t2"]), group("g2", ["t3", "t4"])];
-
-  it("collects every grouped team of the scope", () => {
-    expect(alreadyGroupedTeamIds(groups, null)).toEqual(new Set(["t1", "t2", "t3", "t4"]));
-  });
-
-  it("excludes the group currently being edited (its members stay free)", () => {
-    expect(alreadyGroupedTeamIds(groups, "g1")).toEqual(new Set(["t3", "t4"]));
-  });
-
-  it("finds the OTHER group a team belongs to, for a reason label", () => {
-    expect(groupContainingTeam(groups, "t3", null)?.id).toBe("g2");
-    expect(groupContainingTeam(groups, "t3", "g2")).toBeUndefined();
   });
 });
 
@@ -184,27 +155,21 @@ describe("filterCandidates — recherche texte insensible casse+accents, coché 
   });
 });
 
-describe("mutualisedTeammateLabel — la sous-ligne fusionne groupe K ET bloc (P2-51 PR-6)", () => {
+describe("mutualisedTeammateLabel — la sous-ligne tirée des blocs de mutualisation (P2-51)", () => {
   const nameOf = (id: string): string => ({ t1: "SM1", t2: "SM2", t3: "U13F2", t4: "U13F3" })[id] ?? "?";
 
-  it("nomme la co-équipière du GROUPE historique", () => {
-    const groups = [{ teamIds: ["t1", "t2"] }];
-    expect(mutualisedTeammateLabel("t1", groups, [], nameOf)).toBe("Mutualisée avec SM2");
-  });
-
-  it("nomme la co-équipière du BLOC nouveau modèle (source neuve, seule)", () => {
+  it("nomme la co-équipière du bloc", () => {
     const blocks = [{ teamIds: ["t3", "t4"] }];
-    expect(mutualisedTeammateLabel("t3", [], blocks, nameOf)).toBe("Mutualisée avec U13F3");
+    expect(mutualisedTeammateLabel("t3", blocks, nameOf)).toBe("Mutualisée avec U13F3");
   });
 
-  it("fusionne les deux sources SANS doublon (partenaire commune nommée une seule fois)", () => {
-    // t1 est dans un groupe {t1,t2} ET dans un bloc {t1,t2,t3} : t2 ne doit pas être doublée.
-    const groups = [{ teamIds: ["t1", "t2"] }];
-    const blocks = [{ teamIds: ["t1", "t2", "t3"] }];
-    expect(mutualisedTeammateLabel("t1", groups, blocks, nameOf)).toBe("Mutualisée avec SM2, U13F2");
+  it("fusionne plusieurs blocs SANS doublon (partenaire commune nommée une seule fois)", () => {
+    // t1 est dans deux blocs {t1,t2} ET {t1,t2,t3} : t2 ne doit pas être doublée.
+    const blocks = [{ teamIds: ["t1", "t2"] }, { teamIds: ["t1", "t2", "t3"] }];
+    expect(mutualisedTeammateLabel("t1", blocks, nameOf)).toBe("Mutualisée avec SM2, U13F2");
   });
 
-  it("rend null quand l'équipe n'est ni dans un groupe ni dans un bloc", () => {
-    expect(mutualisedTeammateLabel("t9", [{ teamIds: ["t1", "t2"] }], [{ teamIds: ["t3", "t4"] }], nameOf)).toBeNull();
+  it("rend null quand l'équipe n'est dans aucun bloc", () => {
+    expect(mutualisedTeammateLabel("t9", [{ teamIds: ["t1", "t2"] }, { teamIds: ["t3", "t4"] }], nameOf)).toBeNull();
   });
 });

@@ -135,7 +135,7 @@ class SlotRotationSchema(SerializableModel):
     terms, and the slot's window is protected on member-free dates. The backend
     already applies the SUPPLÉANCE: a member's same-day habit is dropped from
     `teams[].habits`, so a member gets rotation OR habit that day, never both. An
-    absent/empty block ⇒ byte-identical code path (pattern `sharedTrainings`)."""
+    absent/empty block ⇒ byte-identical code path (pattern `teamLinks`)."""
 
     venue_id: str = Field(alias="venueId")
     day_of_week: int = Field(alias="dayOfWeek", ge=1, le=7)

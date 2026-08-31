@@ -205,7 +205,6 @@ from .targeting import TeamLinkPlacement as TeamLinkPlacement
 from .targeting import _forced_venue_id as _forced_venue_id
 from .targeting import add_forced_venue_constraints as add_forced_venue_constraints
 from .targeting import add_shared_block_constraints as add_shared_block_constraints
-from .targeting import add_shared_training_constraints as add_shared_training_constraints
 from .targeting import add_team_link_constraints as add_team_link_constraints
 from .targeting import add_time_window_constraints as add_time_window_constraints
 from .targeting import add_venue_minimum_constraints as add_venue_minimum_constraints
@@ -242,7 +241,6 @@ def add_level_1_hard_constraints(
     implicit_rules: ResolvedImplicitRules | None = None,
     team_coach_map: dict[str, list[str]] | None = None,
     team_player_map: dict[str, list[str]] | None = None,
-    shared_trainings: Iterable[Any] = (),
     shared_blocks: Iterable[Any] = (),
     team_links: Iterable[Any] = (),
     venue_travel_times: Iterable[Any] = (),
@@ -397,14 +395,10 @@ def add_level_1_hard_constraints(
         soft_term_info_out=soft_info,
     )
 
-    # 13. P2-27 — mutualisation : chaque groupe déclaré partage EXACTEMENT K séances. Vide ⇒
-    # aucune pose (chemin byte-identique, goldens inchangés).
-    stats.shared_training = add_shared_training_constraints(model, assignment_list, shared_trainings=shared_trainings)
-
-    # 14. Lot PASSERELLES — anti-chevauchement DUR des passerelles MANDATORY. Vide/tout PREFERRED
+    # 13. Lot PASSERELLES — anti-chevauchement DUR des passerelles MANDATORY. Vide/tout PREFERRED
     # ⇒ aucune pose (chemin byte-identique). Les PREFERRED vivent dans l'objectif.
     stats.team_link = add_team_link_constraints(
-        model, assignment_list, team_links=team_links, shared_trainings=shared_trainings, shared_blocks=shared_blocks
+        model, assignment_list, team_links=team_links, shared_blocks=shared_blocks
     )
 
     # 15. P2-53 RMM-8 — trajet MANDATORY : INTERDIT DUR les enchaînements au battement trop court.
@@ -442,7 +436,6 @@ __all__ = [
     "add_room_at_most_one",
     "add_salarie_distribution_constraints",
     "add_shared_block_constraints",
-    "add_shared_training_constraints",
     "add_team_link_constraints",
     "add_team_no_overlap",
     "add_time_window_constraints",

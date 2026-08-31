@@ -9,8 +9,7 @@ import { SharedTrainingBlockPanel } from "./SharedTrainingBlockPanel";
  * Ouvert depuis l'étape Équipes (saison via `TeamsEditor`, période via `PeriodTeamsPanel`).
  *
  * Deux liens, deux sections (correction fondateur D13 : mutualisation et « bloc » = UNE seule
- * notion ; l'ancien `MutualisationPanel` du modèle {équipes, K} ne se monte plus ici — il vit encore
- * sous le capot jusqu'au nettoyage PR-7) :
+ * notion — le modèle groupe {équipes, K} a été retiré, le BLOC est la seule mutualisation) :
  *  - les PASSERELLES sont de la structure de SAISON — éditables en saison, LECTURE SEULE en
  *    période/vacances (`readOnlyLinks`), filtrées à l'équipe d'ouverture ;
  *  - la MUTUALISATION (rendue par `SharedTrainingBlockPanel` — « bloc » est l'image interne côté

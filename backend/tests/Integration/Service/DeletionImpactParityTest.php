@@ -18,8 +18,6 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
-use App\Entity\SharedTrainingGroup;
-use App\Entity\SharedTrainingGroupTeam;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
@@ -36,14 +34,12 @@ use App\Enum\TeamCoachRole;
 use App\Service\EntityCascadeDeleter;
 use App\Service\FixtureVenueLossMarker;
 use App\Service\OrphanedFixtureFinder;
-use App\State\Processor\SharedTrainingGroupStateProcessor;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use ReflectionClass;
-use ReflectionMethod;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
@@ -240,89 +236,10 @@ final class DeletionImpactParityTest extends KernelTestCase
     }
 
     /**
-     * P2-46 PR-4 — la cascade d'une ÉQUIPE, EXÉCUTÉE en base, avec sa règle métier propre :
-     * supprimer une équipe membre TUE le groupe entier (décision fondateur), et les réservations
-     * de lot des AUTRES membres partent avec — sinon les verrous HARD restants déclencheraient un
-     * diagnostic de sur-capacité fantôme à la génération suivante.
-     *
-     * L'annonce doit dire TOUT ce qui tombe et RIEN de plus (parité) :
-     *   - `team_shared_group` = les 2 groupes où elle FIGURE (pas le 3e) → tous deux détruits ;
-     *   - `team_shared_reservation` = les réservations des AUTRES membres sur les cases
-     *     « groupe-complètes » (celle de l'équipe supprimée est comptée par `team_reservation`) ;
-     *   - `team_reservation` = ses propres réservations.
-     *
-     * Falsifiable dans les deux sens : une réservation INDIVIDUELLE d'un survivant (case NON
-     * complète) doit SURVIVRE — la détruire serait une destruction non annoncée ; l'annoncer sans
-     * la détruire ferait mentir le compte.
-     */
-    public function testDeletingATeamKillsEveryGroupItBelongsToAndTheBatchReservations(): void
-    {
-        [$club, $season] = $this->seed();
-        $venue = $this->venue($club, $season, 'Matéo');
-        $doomed = $this->team($club, $season, forcedVenueId: $venue->getId());
-        $mate = $this->team($club, $season, forcedVenueId: $venue->getId());
-        $third = $this->team($club, $season, forcedVenueId: $venue->getId());
-        $stranger = $this->team($club, $season, forcedVenueId: $venue->getId());
-
-        // Un duo et un trio où l'équipe supprimée FIGURE ; un duo étranger où elle n'est pas.
-        $duo = $this->sharedGroup($club, $season, [$doomed, $mate]);
-        $trio = $this->sharedGroup($club, $season, [$doomed, $mate, $third]);
-        $untouched = $this->sharedGroup($club, $season, [$mate, $stranger]);
-
-        // Case « groupe-complète » du DUO : {doomed, mate} exactement.
-        $this->reservation($club, $season, $doomed, $venue, day: 1, at: '18:00');
-        $duoMate = $this->reservation($club, $season, $mate, $venue, day: 1, at: '18:00');
-        // Case « groupe-complète » du TRIO : {doomed, mate, third} exactement.
-        $this->reservation($club, $season, $doomed, $venue, day: 2, at: '19:00');
-        $trioMate = $this->reservation($club, $season, $mate, $venue, day: 2, at: '19:00');
-        $trioThird = $this->reservation($club, $season, $third, $venue, day: 2, at: '19:00');
-        // Réservations INDIVIDUELLES (cases NON complètes) : elles doivent survivre.
-        $mateSolo = $this->reservation($club, $season, $mate, $venue, day: 3, at: '20:00');
-        $strangerSolo = $this->reservation($club, $season, $stranger, $venue, day: 4, at: '21:00');
-        $this->em->flush();
-
-        $impact = self::getContainer()->get(DeletionImpactCounter::class)->forTeam($doomed);
-        $announced = [];
-        foreach ($impact->lines as $line) {
-            $announced[$line['key']] = $line['count'];
-        }
-
-        // Le compte annoncé == exactement ce qui sera détruit (la parité se lit d'un trait).
-        self::assertSame(2, $announced['team_shared_group'] ?? 0, 'les 2 groupes où elle figure sont annoncés, pas le 3e');
-        self::assertSame(3, $announced['team_shared_reservation'] ?? 0, 'les réservations des autres membres sur les cases complètes : mate(duo) + mate(trio) + third(trio)');
-        self::assertSame(2, $announced['team_reservation'] ?? 0, 'ses deux réservations propres sont annoncées à part');
-
-        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfTeam($doomed);
-        $this->em->flush();
-        $this->em->clear();
-
-        // Le duo ET le trio sont partis — groupe ET toutes leurs lignes, survivants compris.
-        self::assertNull($this->em->getRepository(SharedTrainingGroup::class)->find($duo), 'un duo amputé n\'a plus de sens : il part');
-        self::assertSame(0, $this->countBy(SharedTrainingGroupTeam::class, 'groupId', $duo), 'ses lignes partent avec lui, celle du survivant comprise');
-        self::assertNull($this->em->getRepository(SharedTrainingGroup::class)->find($trio), 'un trio amputé meurt aussi : le groupe entier tombe, pas de seuil de survie');
-        self::assertSame(0, $this->countBy(SharedTrainingGroupTeam::class, 'groupId', $trio), 'toutes ses lignes partent');
-
-        // Le groupe étranger n'a pas bougé d'un pouce.
-        self::assertNotNull($this->em->getRepository(SharedTrainingGroup::class)->find($untouched));
-        self::assertSame(2, $this->countBy(SharedTrainingGroupTeam::class, 'groupId', $untouched), 'un groupe sans elle ne perd rien');
-
-        // Les réservations de lot des AUTRES membres ont disparu…
-        self::assertNull($this->em->getRepository(Reservation::class)->find($duoMate), 'la réservation de mate sur la case du duo part avec le groupe');
-        self::assertNull($this->em->getRepository(Reservation::class)->find($trioMate), 'idem sur la case du trio');
-        self::assertNull($this->em->getRepository(Reservation::class)->find($trioThird), 'et celle de third sur la même case');
-        // …mais PAS les réservations individuelles (cases non complètes) : elles survivent.
-        self::assertNotNull($this->em->getRepository(Reservation::class)->find($mateSolo), 'la réservation individuelle de mate n\'est pas une séance mutualisée : elle reste');
-        self::assertNotNull($this->em->getRepository(Reservation::class)->find($strangerSolo), 'la réservation de l\'étrangère reste');
-        self::assertSame(1, $this->countBy(Reservation::class, 'teamId', $mate->getId()), 'à mate il ne reste QUE sa réservation individuelle');
-
-        // Et l'équipe supprimée ne figure plus nulle part.
-        self::assertSame(0, $this->countBy(SharedTrainingGroupTeam::class, 'teamId', $doomed->getId()));
-        self::assertSame(0, $this->countBy(Reservation::class, 'teamId', $doomed->getId()));
-    }
-
-    /**
-     * P2-46 PR-4 — l'autre sens de la parité : supprimer une équipe qui n'est dans AUCUN groupe
-     * ne touche à aucun groupe ni à aucune réservation de lot. Rien n'est annoncé, rien ne tombe.
+     * P2-51 — la cascade d'une ÉQUIPE membre de BLOCS, EXÉCUTÉE en base : supprimer une équipe TUE
+     * le bloc entier (décision fondateur, D12), pas seulement sa ligne. L'annonce dit TOUT ce qui
+     * tombe et RIEN de plus : `team_shared_block` = les blocs où elle FIGURE (pas les autres) →
+     * tous détruits, avec toutes leurs lignes (survivants compris) ; un bloc sans elle ne bouge pas.
      */
     public function testDeletingATeamKillsEveryBlockItBelongsToEntirely(): void
     {
@@ -361,75 +278,6 @@ final class DeletionImpactParityTest extends KernelTestCase
         self::assertNotNull($this->em->getRepository(SharedTrainingBlock::class)->find($untouched));
         self::assertSame(2, $this->countBy(SharedTrainingBlockTeam::class, 'blockId', $untouched), 'un bloc sans elle ne perd rien');
         self::assertSame(0, $this->countBy(SharedTrainingBlockTeam::class, 'teamId', $doomed->getId()));
-    }
-
-    public function testDeletingATeamOutsideAnyGroupTouchesNoGroup(): void
-    {
-        [$club, $season] = $this->seed();
-        $venue = $this->venue($club, $season, 'Matéo');
-        $loner = $this->team($club, $season, forcedVenueId: $venue->getId());
-        $a = $this->team($club, $season, forcedVenueId: $venue->getId());
-        $b = $this->team($club, $season, forcedVenueId: $venue->getId());
-
-        // Un groupe qui ne contient PAS l'équipe supprimée, avec sa case complète.
-        $group = $this->sharedGroup($club, $season, [$a, $b]);
-        $this->reservation($club, $season, $a, $venue, day: 1, at: '18:00');
-        $this->reservation($club, $season, $b, $venue, day: 1, at: '18:00');
-        $this->em->flush();
-
-        $impact = self::getContainer()->get(DeletionImpactCounter::class)->forTeam($loner);
-        $announced = [];
-        foreach ($impact->lines as $line) {
-            $announced[$line['key']] = $line['count'];
-        }
-        self::assertSame(0, $announced['team_shared_group'] ?? 0, 'aucune ligne de groupe : elle n\'en a pas');
-        self::assertSame(0, $announced['team_shared_reservation'] ?? 0, 'aucune réservation de lot annoncée');
-
-        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfTeam($loner);
-        $this->em->flush();
-        $this->em->clear();
-
-        self::assertNotNull($this->em->getRepository(SharedTrainingGroup::class)->find($group), 'un groupe sans elle survit intact');
-        self::assertSame(2, $this->countBy(SharedTrainingGroupTeam::class, 'groupId', $group));
-        self::assertSame(2, (int) $this->em->createQueryBuilder()->select('COUNT(e.id)')->from(Reservation::class, 'e')
-            ->where('e.venueId = :v')->setParameter('v', $venue->getId())->getQuery()->getSingleScalarResult(), 'les deux réservations de la case complète restent');
-    }
-
-    /**
-     * P2-46 PR-4 — supprimer un groupe DIRECTEMENT (l'API `DELETE`, pas via une équipe) doit lui
-     * faire emporter le MÊME lot : ses réservations de cases complètes, par la MÊME dérivation
-     * ({@see ReservationGroupOccupancy}) — pas une seconde logique. Une réservation individuelle
-     * hors case complète survit.
-     */
-    public function testDeletingAGroupDirectlyTakesItsBatchReservations(): void
-    {
-        [$club, $season] = $this->seed();
-        $venue = $this->venue($club, $season, 'Matéo');
-        $a = $this->team($club, $season, forcedVenueId: $venue->getId());
-        $b = $this->team($club, $season, forcedVenueId: $venue->getId());
-        $group = $this->sharedGroup($club, $season, [$a, $b]);
-
-        // Case complète {a, b} + une réservation individuelle de a (case non complète).
-        $aShared = $this->reservation($club, $season, $a, $venue, day: 1, at: '18:00');
-        $bShared = $this->reservation($club, $season, $b, $venue, day: 1, at: '18:00');
-        $aSolo = $this->reservation($club, $season, $a, $venue, day: 2, at: '19:00');
-        $this->em->flush();
-
-        $entity = $this->em->getRepository(SharedTrainingGroup::class)->find($group);
-        self::assertNotNull($entity);
-        $processor = self::getContainer()->get(SharedTrainingGroupStateProcessor::class);
-        $cascade = new ReflectionMethod($processor, 'cascadeBeforeDelete');
-        $cascade->invoke($processor, $entity);
-        $this->em->remove($entity);
-        $this->em->flush();
-        $this->em->clear();
-
-        // Le lot part avec le groupe…
-        self::assertNull($this->em->getRepository(Reservation::class)->find($aShared), 'la réservation partagée de a part avec le groupe');
-        self::assertNull($this->em->getRepository(Reservation::class)->find($bShared), 'celle de b aussi — le groupe entier disparaît');
-        self::assertSame(0, $this->countBy(SharedTrainingGroupTeam::class, 'groupId', $group), 'ses lignes membres sont purgées');
-        // …mais la réservation individuelle survit.
-        self::assertNotNull($this->em->getRepository(Reservation::class)->find($aSolo), 'une réservation hors case complète n\'est pas une séance mutualisée : elle reste');
     }
 
     /**
@@ -850,23 +698,6 @@ final class DeletionImpactParityTest extends KernelTestCase
         $this->em->persist($reservation);
 
         return $reservation->getId();
-    }
-
-    /** Un groupe de mutualisation et ses membres. @param list<Team> $teams */
-    private function sharedGroup(Club $club, Season $season, array $teams): string
-    {
-        $group = (new SharedTrainingGroup)->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setCommonSessions(1);
-        $this->em->persist($group);
-        $this->em->flush();
-
-        foreach ($teams as $team) {
-            $this->em->persist((new SharedTrainingGroupTeam)->setClubId($club->getId())->setSeasonId($season->getId())
-                ->setGroupId($group->getId())->setTeamId($team->getId()));
-        }
-        $this->em->flush();
-
-        return $group->getId();
     }
 
     /** Un bloc de mutualisation et ses membres. @param list<Team> $teams */

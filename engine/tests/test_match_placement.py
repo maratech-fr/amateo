@@ -308,7 +308,7 @@ def test_rotation_window_is_protected_when_no_member_plays() -> None:
 
 def test_empty_rotation_block_is_a_noop() -> None:
     # An absent/empty slotRotations block must not perturb the objective — the
-    # world before RMM-5 is byte-identical (pattern sharedTrainings).
+    # world before RMM-5 is byte-identical (pattern teamLinks).
     base = {
         "matches": [to_place()],
         "venues": [venue("v1"), venue("v2")],

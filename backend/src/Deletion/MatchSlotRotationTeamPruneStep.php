@@ -15,7 +15,7 @@ use Doctrine\ORM\EntityManagerInterface;
  * Deux gestes, une seule règle : la rotation qui GARDE au moins 2 membres SURVIT — l'équipe
  * la quitte, rien d'autre ne change (« purge du membre ») ; la rotation qui tomberait à 1
  * membre MEURT, parent et lignes membres (« groupe < 2 → supprimé »). C'est la différence
- * avec {@see SharedTrainingGroupPruneStep}, où le groupe entier meurt sans seuil de survie.
+ * avec {@see SharedTrainingBlockPruneStep}, où le bloc entier meurt sans seuil de survie.
  *
  * ⚑ Ce que la ligne d'impact ANNONCE et COMPTE, c'est le nombre de créneaux partagés
  * SUPPRIMÉS (ceux qui tombent < 2). Le retrait de l'équipe d'un créneau qui survit n'est pas

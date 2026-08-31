@@ -368,145 +368,6 @@ def _forced_venue_id(assignment: AssignmentVariable, forced_venues: Mapping[Any,
     return None
 
 
-def add_shared_training_constraints(
-    model: Any,
-    assignments: Sequence[AssignmentVariable],
-    *,
-    shared_trainings: Iterable[Any] = (),
-) -> int:
-    """P2-27 — mutualisation : chaque groupe déclaré partage EXACTEMENT ``commonSessions`` séances.
-
-    Une « séance commune » d'un groupe = une case ``(gymnase, jour, heure)`` où TOUTES les
-    équipes du groupe sont présentes. Pour chaque case candidate ``s`` on réifie un littéral
-    ``y_s`` ⇔ « tous les membres sont sur ``s`` », DANS LES DEUX SENS (décision fondateur) :
-
-      * ``y_s ≤ x[tᵢ, s]`` pour chaque membre (présence de tous ⇐ y),
-      * ``y_s ≥ Σᵢ x[tᵢ, s] − (m−1)`` (y ⇐ présence de tous),
-
-    où ``m`` est le nombre de membres à VARIABLE sur ``s`` (les membres VERROUILLÉS sur ``s``
-    comptent comme constante 1 — leur séance est pré-placée hors solveur, ``model.py`` ne leur
-    crée pas de variable ; sans ce crédit, une séance pourtant commune ne serait « pas comptée »
-    et l'exactitude serait fausse, leçon P4-97). Puis ``Σ_s y_s == K``.
-
-    Un membre SANS variable et NON verrouillé sur ``s`` (place bloquée par un verrou d'une autre
-    équipe) ne peut y être : ``y_s`` est alors impossible → la case n'est pas candidate.
-
-    ⚠ ``shared_trainings`` vide ⇒ retour immédiat, AUCUNE variable ni contrainte posée : le
-    chemin de code reste byte-identique (goldens inchangés). Défensif comme les autres poseurs :
-    un modèle nu sans ``hard_slot_keys`` dégrade proprement (``getattr`` avec défaut).
-    """
-    groups = list(shared_trainings)
-    if not groups:
-        return 0
-
-    # (team_id, venue_id, slot_id) -> var  — slot_id == "day:start" (idiome des assignments).
-    var_by_team_slot: dict[tuple[str, str, str], BoolVarLike] = {}
-    for assignment in assignments:
-        team_id = assignment.team_id
-        venue_id = assignment.venue_id
-        slot_id = assignment.slot_id
-        if team_id is None or venue_id is None or slot_id is None:
-            continue
-        var_by_team_slot[(str(team_id), str(venue_id), str(slot_id))] = assignment.var
-
-    # (team_id, venue_id, slot_id) des séances VERROUILLÉES : présence constante 1. Source =
-    # ``model.locked_slots`` (UNE entrée par séance verrouillée, à son DÉBUT réel) et NON
-    # ``hard_slot_keys`` (qui éclate chaque séance en sous-créneaux de 15 min — les compter tous
-    # gonflerait faussement le nombre de séances communes). Le début du verrou coïncide avec le
-    # début de la fenêtre d'entraînement, donc la case candidate est bien ``"day:start"``.
-    locked_team_slots: set[tuple[str, str, str]] = set()
-    for locked in getattr(model, "locked_slots", ()) or ():
-        team_id_l = _get(locked, "team_id", "teamId", default=None)
-        venue_id_l = _get(locked, "venue_id", "venueId", default=None)
-        day_l = _get(locked, "day_of_week", "dayOfWeek", default=None)
-        start_l = _get(locked, "start_time", "startTime", default=None)
-        if team_id_l is None or venue_id_l is None or day_l is None or start_l is None:
-            continue
-        slot_id_l = f"{int(day_l)}:{_format_time(_time_to_minutes(start_l))}"
-        locked_team_slots.add((str(team_id_l), str(venue_id_l), slot_id_l))
-
-    # P2-51 arbitrage n°3 — les séances de BLOC posées AVANT (agrégateur), par case
-    # ``(venue_id, slot_id)`` → ``[(b_var, frozenset(membres))]``. Une case où siège une séance de
-    # bloc dont les membres CONTIENNENT tout le groupe est EXCLUE du comptage exact-K : la
-    # co-présence y serait imposée par le bloc, pas choisie par le groupe — sans quoi le bloc
-    # fausserait l'exact-K d'un groupe imbriqué. Bloc absent ⇒ carte vide ⇒ chemin byte-identique.
-    block_sessions_by_case: Mapping[tuple[str, str], list[tuple[Any, frozenset[str]]]] = (
-        getattr(model, "shared_block_sessions_by_case", None) or {}
-    )
-
-    added = 0
-    for group_index, group in enumerate(groups):
-        member_ids = [str(t) for t in (_get(group, "teamIds", "team_ids", default=()) or ())]
-        common_sessions = int(_get(group, "commonSessions", "common_sessions", default=0) or 0)
-        group_id = str(_get(group, "id", default=group_index) or group_index)
-        if len(member_ids) < 2:
-            continue
-        member_set = frozenset(member_ids)
-
-        # Cases candidates = union, par membre, des cases à variable ET des cases verrouillées.
-        candidate_slots: set[tuple[str, str]] = set()
-        for team_id, venue_id, slot_id in var_by_team_slot:
-            if team_id in member_ids:
-                candidate_slots.add((venue_id, slot_id))
-        for team_id, venue_id, slot_id in locked_team_slots:
-            if team_id in member_ids:
-                candidate_slots.add((venue_id, slot_id))
-
-        y_list: list[BoolVarLike] = []
-        for venue_id, slot_id in sorted(candidate_slots):
-            var_terms: list[BoolVarLike] = []
-            const_present = 0
-            feasible = True
-            for team_id in member_ids:
-                key = (team_id, venue_id, slot_id)
-                if key in var_by_team_slot:
-                    var_terms.append(var_by_team_slot[key])
-                elif key in locked_team_slots:
-                    const_present += 1
-                else:
-                    feasible = False
-                    break
-            if not feasible:
-                continue
-
-            # Blocs SUR-ENSEMBLES du groupe siégeant sur cette case : leur ``b`` DÉSARME ``y``.
-            block_bvars = [
-                b for b, members in block_sessions_by_case.get((venue_id, slot_id), []) if member_set <= members
-            ]
-
-            y = cast(Any, model).NewBoolVar(f"shared_{group_id}_{venue_id}_{slot_id}".replace(":", "_"))
-            for term in var_terms:
-                cast(Any, model).Add(y <= term)
-            # y=0 dès qu'une séance de bloc sur-ensemble est active ici (exclusion, n°3).
-            for b in block_bvars:
-                cast(Any, model).Add(y <= 1 - b)
-            m = len(var_terms)
-            if m == 0:
-                # Tous les membres verrouillés sur cette case : présence commune constante (sauf
-                # si un bloc sur-ensemble y siège, auquel cas les ``y <= 1 - b`` ci-dessus tranchent).
-                cast(Any, model).Add(y == 1)
-            else:
-                cast(Any, model).Add(
-                    y >= sum(cast(Any, v) for v in var_terms) - (m - 1) - sum(cast(Any, b) for b in block_bvars)
-                )
-            y_list.append(y)
-            added += 1
-
-        if y_list:
-            cast(Any, model).Add(sum(cast(Any, v) for v in y_list) == common_sessions)
-            added += 1
-        elif common_sessions >= 1:
-            # Aucune case où le groupe peut être ensemble et K≥1 séances exigées → déclaration
-            # insatisfiable. On pose une contradiction propre (jamais un `Add(0 == K)` fragile) ;
-            # la génération sort INFEASIBLE, le diagnostic `shared_training_not_honored` nomme le groupe.
-            infeasible = cast(Any, model).NewBoolVar(f"shared_{group_id}_infeasible")
-            cast(Any, model).Add(infeasible == 1)
-            cast(Any, model).Add(infeasible == 0)
-            added += 1
-
-    return added
-
-
 def add_shared_block_constraints(
     model: Any,
     assignments: Sequence[AssignmentVariable],
@@ -562,17 +423,14 @@ def add_shared_block_constraints(
         slot_id_l = f"{int(day_l)}:{_format_time(_time_to_minutes(start_l))}"
         locked_team_slots.add((str(team_id_l), str(venue_id_l), slot_id_l))
 
-    # Cartes ÉCRITES ici, LUES par la capacité gymnase (dé-comptage) et le comptage exact-K
-    # (exclusion n°3). ⚠ On garde la RÉFÉRENCE du dict porté par le modèle (même vide) : un
-    # ``... or {}`` fabriquerait un dict jetable quand le modèle en porte un vide, et les
-    # lecteurs ne verraient jamais nos écritures. Défensif : un ``cp_model.CpModel`` nu (tests de
-    # pose) n'a pas l'attribut → ``None`` → dict local (aucun lecteur dans ce cas).
+    # Carte ÉCRITE ici, LUE par la capacité gymnase (dé-comptage). ⚠ On garde la RÉFÉRENCE du dict
+    # porté par le modèle (même vide) : un ``... or {}`` fabriquerait un dict jetable quand le
+    # modèle en porte un vide, et ``add_room_at_most_one`` ne verrait jamais nos écritures.
+    # Défensif : un ``cp_model.CpModel`` nu (tests de pose) n'a pas l'attribut → ``None`` → dict
+    # local (aucun lecteur dans ce cas).
     room_relief = getattr(model, "shared_block_room_relief", None)
     if room_relief is None:
         room_relief = {}
-    sessions_by_case = getattr(model, "shared_block_sessions_by_case", None)
-    if sessions_by_case is None:
-        sessions_by_case = {}
 
     # Distinctness inter-blocs : (membre, case) → les ``b`` des DIFFÉRENTS blocs qui y siègent.
     member_case_bvars: dict[tuple[str, str, str], list[BoolVarLike]] = defaultdict(list)
@@ -584,7 +442,6 @@ def add_shared_block_constraints(
         block_id = str(_get(block, "id", default=block_index) or block_index)
         if len(member_ids) < 2:
             continue
-        member_set = frozenset(member_ids)
 
         candidate_slots: set[tuple[str, str]] = set()
         for team_id, venue_id, slot_id in var_by_team_slot:
@@ -618,7 +475,6 @@ def add_shared_block_constraints(
             if n_free >= 2:
                 # La co-présence des ``n_free`` membres libres tient dans UNE occupation.
                 room_relief.setdefault((venue_id, slot_id), []).append((b, n_free - 1))
-            sessions_by_case.setdefault((venue_id, slot_id), []).append((b, member_set))
             for team_id in member_ids:
                 member_case_bvars[(team_id, venue_id, slot_id)].append(b)
             b_list.append(b)
@@ -687,19 +543,16 @@ def team_link_placements_by_team(
     return by_team
 
 
-def team_share_declared_pairs(
-    shared_trainings: Iterable[Any], shared_blocks: Iterable[Any] = ()
-) -> set[frozenset[str]]:
-    """Les paires d'équipes déclarées MUTUALISÉES — membres d'un même groupe ``sharedTrainings``
-    OU d'un même bloc ``sharedBlocks`` (P2-51, arbitrage n°6).
+def team_share_declared_pairs(shared_blocks: Iterable[Any] = ()) -> set[frozenset[str]]:
+    """Les paires d'équipes déclarées MUTUALISÉES — membres d'un même bloc ``sharedBlocks``.
 
     C'est l'unique condition de l'EXEMPTION doctrinale passerelle : deux séances de deux équipes
     passerelées ne sont exemptes de l'anti-chevauchement QUE si elles sont sur la MÊME case
-    (gymnase, jour, heure) ET que ces deux équipes partagent un groupe OU un bloc déclaré — la
-    co-présence des membres d'un bloc sur leur séance n'est pas un chevauchement fautif. Renvoie le
-    set des ``frozenset({tA, tB})`` de tous les couples intra-groupe ET intra-bloc."""
+    (gymnase, jour, heure) ET que ces deux équipes partagent un bloc déclaré — la co-présence des
+    membres d'un bloc sur leur séance n'est pas un chevauchement fautif. Renvoie le set des
+    ``frozenset({tA, tB})`` de tous les couples intra-bloc."""
     pairs: set[frozenset[str]] = set()
-    for declaration in list(shared_trainings or ()) + list(shared_blocks or ()):
+    for declaration in list(shared_blocks or ()):
         members = [str(t) for t in (_get(declaration, "teamIds", "team_ids", default=()) or ())]
         for i in range(len(members)):
             for j in range(i + 1, len(members)):
@@ -739,7 +592,6 @@ def add_team_link_constraints(
     assignments: Sequence[AssignmentVariable],
     *,
     team_links: Iterable[Any] = (),
-    shared_trainings: Iterable[Any] = (),
     shared_blocks: Iterable[Any] = (),
 ) -> int:
     """Lot PASSERELLES — anti-chevauchement DUR des passerelles ``MANDATORY``.
@@ -760,7 +612,7 @@ def add_team_link_constraints(
         souverain mais diagnostiqué », CLAUDE.md §6).
 
     ``team_links`` vide (ou aucune MANDATORY) ⇒ retour immédiat, chemin byte-identique (patron
-    ``add_shared_training_constraints``). Les passerelles ``PREFERRED`` ne sont PAS traitées ici :
+    ``add_shared_block_constraints``). Les passerelles ``PREFERRED`` ne sont PAS traitées ici :
     elles vivent dans l'objectif (``objective.add_team_link_penalty``).
     """
     mandatory = [link for link in (team_links or ()) if str(_get(link, "intensity", default=PREFERRED)) == MANDATORY]
@@ -768,7 +620,7 @@ def add_team_link_constraints(
         return 0
 
     placements = team_link_placements_by_team(assignments, getattr(model, "locked_slots", ()) or ())
-    share_pairs = team_share_declared_pairs(shared_trainings, shared_blocks)
+    share_pairs = team_share_declared_pairs(shared_blocks)
 
     added = 0
     for link in mandatory:

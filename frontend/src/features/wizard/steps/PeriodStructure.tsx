@@ -50,7 +50,6 @@ import {
   useResetVenuePeriodGrid,
   useSetVenuePeriodMode,
   useSharedTrainingBlocks,
-  useSharedTrainingGroups,
   useUpdatePeriodSlot,
   useVenuePeriodOverrides,
   useWizardTeamTagAssignments,
@@ -116,19 +115,16 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
   const update = useUpdateTeamPeriodOverride(schedulePlanId);
   const del = useDeleteTeamPeriodOverride(schedulePlanId);
   const [busy, setBusy] = useState(false);
-  // P2-27 — le repère « mutualisée » DOIT figurer aussi en période, sinon il mentirait par
-  // omission : les groupes de CETTE période (schedulePlanId concret derrière PeriodAnchorGate).
-  const { data: sharedGroups = [] } = useSharedTrainingGroups(schedulePlanId);
-  // P2-51 PR-6 — la sous-ligne « Mutualisée avec … » lit AUSSI les blocs de mutualisation (nouveau
-  // modèle) de CETTE période, sinon elle mentirait par omission pendant la transition.
+  // P2-51 — le repère « mutualisée » DOIT figurer aussi en période, sinon il mentirait par
+  // omission : les blocs de mutualisation de CETTE période (schedulePlanId derrière PeriodAnchorGate).
   const { data: sharedBlocks = [] } = useSharedTrainingBlocks(schedulePlanId);
   // P2-45 — les passerelles du club+saison (SERVIES par le module matchs) : le repère « passerelle »
   // et la modale Liens. En période elles sont en LECTURE SEULE (structure de saison).
   const { data: teamLinks = [] } = useTeamLinks();
   const [linksTeam, setLinksTeam] = useState<Team | null>(null);
   const nameOf = (id: string): string => teams.find((t) => t.id === id)?.name ?? "?";
-  // P2-51 PR-6 — groupe K ET bloc fusionnés, sans doublon (helper pur, testé).
-  const mutualiseLabelOf = (teamId: string): string | null => mutualisedTeammateLabel(teamId, sharedGroups, sharedBlocks, nameOf);
+  // P2-51 — la sous-ligne « Mutualisée avec … » tirée des blocs (helper pur, testé).
+  const mutualiseLabelOf = (teamId: string): string | null => mutualisedTeammateLabel(teamId, sharedBlocks, nameOf);
   // P2-45 — le repère « passerelle », intensité comprise (lue telle quelle du lien, jamais recalculée).
   const bridgeLabelOf = (teamId: string): string | null => {
     const parts = teamLinks

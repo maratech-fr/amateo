@@ -669,51 +669,9 @@ export function useCreateGroupReservation() {
   });
 }
 
-// --- Shared training groups (P2-27) : N teams train TOGETHER, K common sessions ---
-
-/**
- * Les groupes de mutualisation de la portée courante — socle (`schedulePlanId` null) ou période
- * (un UUID). Même patron que `useReservations`, y compris l'ambiguïté du `null` : `enabled` n'est
- * PAS déductible de `schedulePlanId` (`null` est à la fois l'ancre socle légitime ET un plan pas
- * encore résolu), donc l'appelant en mode période tranche avec le `ready` de l'ancre. En portée
- * socle le provider renvoie socle ET périodes : le consommateur filtre `null === schedulePlanId`.
- */
-export function useSharedTrainingGroups(schedulePlanId?: string | null, enabled = true) {
-  return useQuery({
-    queryKey: ["wizard", "shared_training_groups", schedulePlanId ?? "base"],
-    queryFn: () => wizardApi.listSharedTrainingGroups(schedulePlanId ? { schedulePlanId } : undefined),
-    enabled,
-    staleTime: 30_000,
-  });
-}
-
-export function useCreateSharedTrainingGroup() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (body: wizardApi.SharedTrainingGroupPayload) => wizardApi.createSharedTrainingGroup(body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_groups"] }),
-  });
-}
-
-export function useUpdateSharedTrainingGroup() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: { teamIds: string[]; commonSessions: number } }) => wizardApi.updateSharedTrainingGroup(id, body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_groups"] }),
-  });
-}
-
-export function useDeleteSharedTrainingGroup() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => wizardApi.deleteSharedTrainingGroup(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_groups"] }),
-  });
-}
-
 /**
  * Les BLOCS de mutualisation (P2-51) de la portée courante — socle (`schedulePlanId` null) ou
- * période (un UUID). Même patron que `useSharedTrainingGroups`, y compris l'ambiguïté du `null`
+ * période (un UUID). Même patron que `useReservations`, y compris l'ambiguïté du `null`
  * (`enabled` non déductible de `schedulePlanId`). En portée socle le provider renvoie socle ET
  * périodes : le consommateur filtre `null === schedulePlanId`.
  */
@@ -798,7 +756,7 @@ export function useDeleteConstraint() {
  *
  * ⚠ La portée entre dans la CLÉ DE CACHE (`… ?? "season"`) — sans quoi le cache de saison et celui
  * d'une période se contamineraient l'un l'autre (le panneau afficherait les valeurs de l'autre en
- * basculant). Même patron que `useReservations`/`useSharedTrainingGroups`.
+ * basculant). Même patron que `useReservations`/`useSharedTrainingBlocks`.
  */
 export function useImplicitRuleSettings(schedulePlanId: string | null = null) {
   return useQuery({

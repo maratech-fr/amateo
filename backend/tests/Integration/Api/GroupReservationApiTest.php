@@ -11,8 +11,6 @@ use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
-use App\Entity\SharedTrainingGroup;
-use App\Entity\SharedTrainingGroupTeam;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
@@ -37,10 +35,10 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * empêche le solveur de sortir INFEASIBLE loin de sa cause (le constat vit côté moteur,
  * `engine/tests/semantic/test_shared_group_over_reserved_is_infeasible.py`).
  *
- * P2-51 PR-5 — le rail se RÉ-ANCRE sur le {@see SharedTrainingBlock} (option a : bloc d'abord, puis
- * repli sur le groupe). Les tests `testBlock*` éprouvent les 5 gardes sur le BLOC à l'identique,
- * l'éclatement en N réservations, l'atomicité sur échec, la portée et le tenant ; les tests groupe
- * inchangés restent verts, PREUVE que le repli (front actuel postant `sharedTrainingGroupId`) tient.
+ * P2-51 PR-7 — le rail est ANCRÉ sur le {@see SharedTrainingBlock}, SEULE notion de mutualisation
+ * (le modèle groupe K est retiré). Les tests `testBlock*` éprouvent les 5 gardes sur le BLOC,
+ * l'éclatement en N réservations, l'atomicité sur échec, la portée et le tenant ; les gardes
+ * génériques (saison archivée, id malformé, bornes, péremption) postent `sharedTrainingBlockId`.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -64,90 +62,11 @@ final class GroupReservationApiTest extends WebTestCase
 
     // ── (a) EXCLUSIVITÉ ──────────────────────────────────────────────────────────
 
-    public function testGroupOnAnEmptyCaseSucceeds(): void
-    {
-        [$t1, $t2] = [$this->team(2), $this->team(2)];
-        $venue = $this->venue(false);
-        $group = $this->group(null, [$t1, $t2], 2);
-
-        $this->postGroup($group->getId(), $venue->getId(), 2, '18:00', null);
-        self::assertResponseStatusCodeSame(201);
-        self::assertSame(2, $this->reservationCountOnCase($venue->getId(), 2, '18:00'));
-    }
-
-    public function testGroupOnACaseAlreadyHoldingAReservationIsRefused(): void
-    {
-        [$t1, $t2, $t3] = [$this->team(2), $this->team(2), $this->team(2)];
-        $venue = $this->venue(false);
-        $group = $this->group(null, [$t1, $t2], 2);
-
-        // Une réservation individuelle occupe déjà la case.
-        $this->postIndividual($t3->getId(), $venue->getId(), 3, '18:00', null);
-        self::assertResponseStatusCodeSame(201);
-
-        $this->postGroup($group->getId(), $venue->getId(), 3, '18:00', null);
-        self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('déjà occupé', $this->body());
-        // Aucune réservation du groupe n'a été écrite (la case ne porte que l'individuelle).
-        self::assertSame(1, $this->reservationCountOnCase($venue->getId(), 3, '18:00'));
-    }
-
     // ── (b) RÉCIPROQUE ───────────────────────────────────────────────────────────
-
-    public function testIndividualOnACaseHoldingACompleteGroupIsRefused(): void
-    {
-        [$t1, $t2, $t3] = [$this->team(2), $this->team(2), $this->team(2)];
-        $venue = $this->venue(false);
-        $group = $this->group(null, [$t1, $t2], 1);
-
-        $this->postGroup($group->getId(), $venue->getId(), 2, '18:00', null);
-        self::assertResponseStatusCodeSame(201);
-
-        // Une équipe étrangère tente de rejoindre la case déjà groupe-complète.
-        $this->postIndividual($t3->getId(), $venue->getId(), 2, '18:00', null);
-        self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('mutualisé', $this->body());
-        self::assertSame(2, $this->reservationCountOnCase($venue->getId(), 2, '18:00'));
-    }
 
     // ── (c) PLAFOND K ────────────────────────────────────────────────────────────
 
-    public function testGroupBeyondItsCommonSessionsIsRefused(): void
-    {
-        [$t1, $t2] = [$this->team(3), $this->team(3)];
-        $venue = $this->venue(false);
-        $group = $this->group(null, [$t1, $t2], 1); // K = 1
-
-        $this->postGroup($group->getId(), $venue->getId(), 2, '18:00', null);
-        self::assertResponseStatusCodeSame(201);
-
-        // 2ᵉ case pour un groupe à K=1 : au-delà de commonSessions.
-        $this->postGroup($group->getId(), $venue->getId(), 4, '18:00', null);
-        self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('séance', $this->body());
-        self::assertStringContainsString('commune', $this->body());
-        self::assertSame(0, $this->reservationCountOnCase($venue->getId(), 4, '18:00'));
-    }
-
     // ── (d) PLAFOND PAR MEMBRE ───────────────────────────────────────────────────
-
-    public function testGroupPushingAMemberOverItsWeeklySessionsIsRefused(): void
-    {
-        $t1 = $this->team(1); // une seule séance par semaine
-        $t2 = $this->team(3);
-        $venue = $this->venue(false);
-        $group = $this->group(null, [$t1, $t2], 1);
-
-        // t1 a déjà consommé sa séance ailleurs.
-        $this->postIndividual($t1->getId(), $venue->getId(), 5, '18:00', null);
-        self::assertResponseStatusCodeSame(201);
-
-        $this->postGroup($group->getId(), $venue->getId(), 2, '18:00', null);
-        self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('séances par semaine', $this->body());
-        // Atomicité : ni t1 ni t2 n'a été écrit sur la case du groupe.
-        self::assertSame(0, $this->reservationCountOnCase($venue->getId(), 2, '18:00'));
-    }
 
     // ── (e) CAPACITÉ (la dette, enfin gardée serveur) ────────────────────────────
 
@@ -183,62 +102,7 @@ final class GroupReservationApiTest extends WebTestCase
 
     // ── PORTÉE socle / période ───────────────────────────────────────────────────
 
-    public function testASocleGroupReservedInAPeriodIsRefusedForScopeMismatch(): void
-    {
-        [$t1, $t2] = [$this->team(2), $this->team(2)];
-        $venue = $this->venue(false);
-        $socleGroup = $this->group(null, [$t1, $t2], 2); // groupe du SOCLE
-        $planId = $this->createPeriodPlan($this->club->getId(), $this->season->getId());
-
-        $this->postGroup($socleGroup->getId(), $venue->getId(), 2, '18:00', $planId);
-        self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('n\'appartient pas à ce planning', $this->body());
-        self::assertSame(0, $this->reservationCountOnCase($venue->getId(), 2, '18:00'));
-    }
-
-    public function testAPeriodGroupReservedOnTheSocleIsRefusedForScopeMismatch(): void
-    {
-        [$t1, $t2] = [$this->team(2), $this->team(2)];
-        $venue = $this->venue(false);
-        $planId = $this->createPeriodPlan($this->club->getId(), $this->season->getId());
-        $periodGroup = $this->group($planId, [$t1, $t2], 2); // groupe de PÉRIODE
-
-        $this->postGroup($periodGroup->getId(), $venue->getId(), 2, '18:00', null);
-        self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('n\'appartient pas à ce planning', $this->body());
-    }
-
-    public function testAPeriodGroupReservedInItsOwnPeriodSucceeds(): void
-    {
-        [$t1, $t2] = [$this->team(2), $this->team(2)];
-        $venue = $this->venue(false);
-        $planId = $this->createPeriodPlan($this->club->getId(), $this->season->getId());
-        $periodGroup = $this->group($planId, [$t1, $t2], 2);
-
-        $this->postGroup($periodGroup->getId(), $venue->getId(), 2, '18:00', $planId);
-        self::assertResponseStatusCodeSame(201);
-        self::assertSame(2, $this->reservationCountOnCaseScoped($venue->getId(), 2, '18:00', $planId));
-    }
-
     // ── TENANT ───────────────────────────────────────────────────────────────────
-
-    public function testAGroupOfAnotherClubIsInvisibleAndWritesNothing(): void
-    {
-        // Club B, avec son propre groupe, dans son propre tenant.
-        [$clubB, $seasonB] = $this->makeOtherClub();
-        $this->scopeGucToClub($clubB->getId());
-        $tb1 = $this->teamFor($clubB, $seasonB, 2);
-        $tb2 = $this->teamFor($clubB, $seasonB, 2);
-        $foreignGroup = $this->groupFor($clubB, $seasonB, null, [$tb1, $tb2], 2);
-        $venueB = $this->venueFor($clubB, $seasonB, false);
-        $this->em->flush();
-        // On repasse le GUC sur le club A (le client HTTP, lui, dérive son tenant du JWT de A).
-        $this->scopeGucToClub($this->club->getId());
-
-        $this->postGroup($foreignGroup->getId(), $venueB->getId(), 2, '18:00', null);
-        self::assertResponseStatusCodeSame(404);
-        self::assertSame(0, $this->reservationCountAll());
-    }
 
     // ── SAISON ARCHIVÉE ──────────────────────────────────────────────────────────
 
@@ -253,7 +117,7 @@ final class GroupReservationApiTest extends WebTestCase
             'HTTP_X-Season-Id' => $past->getId(),
             'CONTENT_TYPE' => 'application/json',
         ], json_encode([
-            'sharedTrainingGroupId' => '11111111-1111-4111-8111-111111111111',
+            'sharedTrainingBlockId' => '11111111-1111-4111-8111-111111111111',
             'venueId' => '22222222-2222-4222-8222-222222222222',
             'dayOfWeek' => 2, 'startTime' => '18:00',
         ], \JSON_THROW_ON_ERROR));
@@ -266,7 +130,7 @@ final class GroupReservationApiTest extends WebTestCase
     {
         [$t1, $t2] = [$this->team(2), $this->team(2)];
         $venue = $this->venue(false);
-        $group = $this->group(null, [$t1, $t2], 2);
+        $block = $this->block(null, [$t1, $t2], 2);
 
         // Un planning COMPLETED du plan SEASON, marqueur remis à zéro.
         $schedule = (new Schedule)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
@@ -280,7 +144,7 @@ final class GroupReservationApiTest extends WebTestCase
         $this->em->flush();
         $this->em->clear();
 
-        $this->postGroup($group->getId(), $venue->getId(), 2, '18:00', null);
+        $this->postBlock($block->getId(), $venue->getId(), 2, '18:00', null);
         self::assertResponseStatusCodeSame(201);
 
         $this->em->clear();
@@ -302,20 +166,20 @@ final class GroupReservationApiTest extends WebTestCase
     {
         [$t1, $t2] = [$this->team(2), $this->team(2)];
         $venue = $this->venue(false);
-        $group = $this->group(null, [$t1, $t2], 2);
+        $block = $this->block(null, [$t1, $t2], 2);
 
-        foreach ([['abc', $venue->getId()], [$group->getId(), 'not-a-uuid'], ['', $venue->getId()]] as [$groupId, $venueId]) {
+        foreach ([['abc', $venue->getId()], [$block->getId(), 'not-a-uuid'], ['', $venue->getId()]] as [$blockId, $venueId]) {
             $this->client->request('POST', '/api/reservations/group', [], [], [
                 'HTTP_X-Club-Id' => $this->club->getId(),
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
                 'CONTENT_TYPE' => 'application/json',
             ], json_encode([
-                'sharedTrainingGroupId' => $groupId,
+                'sharedTrainingBlockId' => $blockId,
                 'venueId' => $venueId,
                 'dayOfWeek' => 2, 'startTime' => '18:00',
             ], \JSON_THROW_ON_ERROR));
 
-            self::assertResponseStatusCodeSame(400, \sprintf('id « %s »/« %s » : attendu 400, jamais un 500 Postgres', $groupId, $venueId));
+            self::assertResponseStatusCodeSame(400, \sprintf('id « %s »/« %s » : attendu 400, jamais un 500 Postgres', $blockId, $venueId));
         }
         self::assertCount(0, $this->em->getRepository(Reservation::class)->findBy(['clubId' => $this->club->getId()]));
     }
@@ -330,11 +194,11 @@ final class GroupReservationApiTest extends WebTestCase
     {
         [$t1, $t2] = [$this->team(2), $this->team(2)];
         $venue = $this->venue(false);
-        $group = $this->group(null, [$t1, $t2], 2);
+        $block = $this->block(null, [$t1, $t2], 2);
 
         foreach ([['dayOfWeek' => 8], ['dayOfWeek' => 0], ['durationMinutes' => 5000], ['durationMinutes' => 5]] as $override) {
             $body = [
-                'sharedTrainingGroupId' => $group->getId(),
+                'sharedTrainingBlockId' => $block->getId(),
                 'venueId' => $venue->getId(),
                 'dayOfWeek' => 2, 'startTime' => '18:00', 'durationMinutes' => 90,
             ];
@@ -350,22 +214,6 @@ final class GroupReservationApiTest extends WebTestCase
     }
 
     // ── SEC-07 : parité stricte avec POST /reservations ──────────────────────────
-
-    public function testNonManagementMemberIsForbidden(): void
-    {
-        $editorToken = $this->addActiveMember($this->club->getId(), 'member');
-
-        $this->client->request('POST', '/api/reservations/group', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $editorToken,
-            'CONTENT_TYPE' => 'application/json',
-        ], json_encode([
-            'sharedTrainingGroupId' => '11111111-1111-4111-8111-111111111111',
-            'venueId' => '22222222-2222-4222-8222-222222222222',
-            'dayOfWeek' => 2, 'startTime' => '18:00',
-        ], \JSON_THROW_ON_ERROR));
-        self::assertResponseStatusCodeSame(403);
-    }
 
     // ══════════════════════════════════════════════════════════════════════════════
     // P2-51 PR-5 — RÉ-ANCRAGE sur le BLOC (les 5 gardes à l'identique + éclatement + atomicité)
@@ -613,36 +461,6 @@ final class GroupReservationApiTest extends WebTestCase
     /**
      * @param list<Team> $teams
      */
-    private function group(?string $planId, array $teams, int $commonSessions): SharedTrainingGroup
-    {
-        $group = $this->groupFor($this->club, $this->season, $planId, $teams, $commonSessions);
-        $this->em->flush();
-
-        return $group;
-    }
-
-    /**
-     * @param list<Team> $teams
-     */
-    private function groupFor(Club $club, Season $season, ?string $planId, array $teams, int $commonSessions): SharedTrainingGroup
-    {
-        $group = (new SharedTrainingGroup)
-            ->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setSchedulePlanId($planId)->setCommonSessions($commonSessions);
-        $this->em->persist($group);
-        foreach ($teams as $team) {
-            $member = (new SharedTrainingGroupTeam)
-                ->setClubId($club->getId())->setSeasonId($season->getId())
-                ->setSchedulePlanId($planId)->setGroupId($group->getId())->setTeamId($team->getId());
-            $this->em->persist($member);
-        }
-
-        return $group;
-    }
-
-    /**
-     * @param list<Team> $teams
-     */
     private function block(?string $planId, array $teams, int $commonSessions): SharedTrainingBlock
     {
         $block = $this->blockFor($this->club, $this->season, $planId, $teams, $commonSessions);
@@ -783,22 +601,6 @@ final class GroupReservationApiTest extends WebTestCase
         $this->em->flush();
 
         return $container->get(JWTTokenManagerInterface::class)->create($user);
-    }
-
-    private function postGroup(string $groupId, string $venueId, int $dayOfWeek, string $startTime, ?string $planId): void
-    {
-        $this->client->request('POST', '/api/reservations/group', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
-            'CONTENT_TYPE' => 'application/json',
-        ], json_encode([
-            'sharedTrainingGroupId' => $groupId,
-            'venueId' => $venueId,
-            'dayOfWeek' => $dayOfWeek,
-            'startTime' => $startTime,
-            'durationMinutes' => 90,
-            'schedulePlanId' => $planId,
-        ], \JSON_THROW_ON_ERROR));
     }
 
     private function postIndividual(string $teamId, string $venueId, int $dayOfWeek, string $startTime, ?string $planId): void

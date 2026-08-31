@@ -8,7 +8,7 @@ import { TEAM_COLUMNS } from "../lib/teamColumns";
 
 import type { TeamLink } from "@/features/matches/api";
 
-import type { SharedTrainingBlock, SharedTrainingGroup, Team } from "../api";
+import type { SharedTrainingBlock, Team } from "../api";
 
 const baseTeam: Team = {
   id: "t1", name: "SM3", sportCategoryId: "cat1", priorityTierId: 5, tierOrder: 0,
@@ -25,17 +25,12 @@ const CATEGORIES = [
   { id: "catU11", name: "U11", sortOrder: 6 },
 ];
 
-// P2-27 — les groupes de mutualisation (repère « Mutualisée avec … » par ligne).
-const sharedGroupsState: { data: SharedTrainingGroup[] } = { data: [] };
-// P2-51 PR-6 — les blocs de mutualisation (nouveau modèle) : la sous-ligne les lit AUSSI.
+// P2-51 — les blocs de mutualisation (repère « Mutualisée avec … » par ligne).
 const sharedBlocksState: { data: SharedTrainingBlock[] } = { data: [] };
 // P2-45 — les passerelles (repère « Passerelle avec … » + la modale Liens ouverte par ligne).
 const teamLinksState: { data: TeamLink[] } = { data: [] };
-const stgCreate = vi.fn();
-const stgUpdate = vi.fn();
-const stgDelete = vi.fn();
-// P2-51 / D13 — la section « Mutualisation » de la modale est désormais SharedTrainingBlockPanel :
-// créer y appelle `useCreateSharedTrainingBlock` (un « bloc » côté backend), plus le groupe K.
+// P2-51 / D13 — la section « Mutualisation » de la modale est SharedTrainingBlockPanel : créer y
+// appelle `useCreateSharedTrainingBlock`.
 const stbCreate = vi.fn();
 const createMut = vi.fn();
 const updateMut = vi.fn();
@@ -72,13 +67,8 @@ vi.mock("../queries", () => ({
   useReservations: () => ({ data: [{ id: "r1", teamId: "t1", venueId: "v1", dayOfWeek: 2, startTime: "20:30", durationMinutes: 90, calendarEntryId: null }] }),
   useWizardTeamCoaches: () => ({ data: [] }),
   useWizardCoachPlayers: () => ({ data: [] }),
-  useSharedTrainingGroups: () => ({ data: sharedGroupsState.data }),
-  // P2-45 — la modale Liens embarque MutualisationPanel : ses hooks vivent dans le même provider.
-  useCreateSharedTrainingGroup: () => ({ mutateAsync: stgCreate, isPending: false }),
-  useUpdateSharedTrainingGroup: () => ({ mutateAsync: stgUpdate, isPending: false }),
-  useDeleteSharedTrainingGroup: () => ({ mutate: stgDelete }),
-  // P2-51 / D13 — la modale Liens rend la section « Mutualisation » via SharedTrainingBlockPanel.
-  // PR-6 — la sous-ligne « Mutualisée avec … » les lit aussi : état pilotable comme les groupes.
+  // P2-51 / D13 — la modale Liens rend la section « Mutualisation » via SharedTrainingBlockPanel ;
+  // la sous-ligne « Mutualisée avec … » lit ces blocs.
   useSharedTrainingBlocks: () => ({ data: sharedBlocksState.data }),
   useCreateSharedTrainingBlock: () => ({ mutateAsync: stbCreate, isPending: false }),
   useUpdateSharedTrainingBlock: () => ({ mutateAsync: vi.fn(() => Promise.resolve({})), isPending: false }),
@@ -111,12 +101,8 @@ describe("TeamsStep", () => {
   beforeEach(() => {
     team = baseTeam;
     teamsState.data = null;
-    sharedGroupsState.data = [];
     sharedBlocksState.data = [];
     teamLinksState.data = [];
-    stgCreate.mockClear();
-    stgUpdate.mockClear();
-    stgDelete.mockClear();
     stbCreate.mockClear();
     reorderMut.mockClear();
     reorderPending.value = false;
@@ -176,19 +162,9 @@ describe("TeamsStep", () => {
 
   // P2-27 — le repère « mutualisée » sur la ligne, nommant les co-équipières (jamais un simple
   // pictogramme). Les groupes du SOCLE (l'éditeur de saison ne travaille jamais une période).
-  it("marks a team that is mutualised, naming the co-teams", () => {
-    teamsState.data = [baseTeam, { ...baseTeam, id: "t2", name: "SM4" }];
-    sharedGroupsState.data = [
-      { id: "g1", version: 1, createdAt: "2026-08-17T00:00:00+00:00", updatedAt: "2026-08-17T00:00:00+00:00", schedulePlanId: null, teamIds: ["t1", "t2"], commonSessions: 1 },
-    ];
-    renderWithProviders(<TeamsStep />);
-
-    expect(screen.getByText(/Mutualisée avec SM4/)).toBeInTheDocument();
-  });
-
-  // P2-51 PR-6 — la sous-ligne lit AUSSI le nouveau modèle (bloc de mutualisation), pas seulement
-  // le groupe K. Une équipe membre d'un BLOC (et d'AUCUN groupe) doit afficher « Mutualisée avec … ».
-  it("marks a team mutualised through a BLOCK (new model), naming the co-team", () => {
+  // P2-51 — la sous-ligne « Mutualisée avec … » lit les blocs de mutualisation. Une équipe membre
+  // d'un BLOC doit afficher « Mutualisée avec … » en nommant ses co-équipières.
+  it("marks a team mutualised through a block, naming the co-team", () => {
     teamsState.data = [baseTeam, { ...baseTeam, id: "t2", name: "SM4" }];
     sharedBlocksState.data = [
       { id: "b1", version: 1, createdAt: "2026-08-31T00:00:00+00:00", updatedAt: "2026-08-31T00:00:00+00:00", schedulePlanId: null, teamIds: ["t1", "t2"], commonSessions: 1 },

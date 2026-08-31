@@ -7,7 +7,6 @@ from pydantic import Field, model_validator
 
 from app.schemas.input_schema import (
     MAX_SHARED_TRAINING_BLOCKS,
-    MAX_SHARED_TRAINING_GROUPS,
     MAX_TEAM_LINKS,
     MAX_VENUE_TRAVEL_TIMES,
     CoachSchema,
@@ -17,7 +16,6 @@ from app.schemas.input_schema import (
     ScheduleSlotTemplateSchema,
     SerializableModel,
     SharedTrainingBlockSchema,
-    SharedTrainingGroupSchema,
     TeamLinkSchema,
     TeamSchema,
     VenueSchema,
@@ -81,12 +79,6 @@ class ValidateAssignmentsInputSchema(SerializableModel):
     )
     priority_tiers: list[PriorityTierSchema] = Field(
         default_factory=list, alias="priorityTiers", max_length=MAX_PRIORITY_TIERS
-    )
-    # P2-27 — parité génération ⇄ verdict : la déclaration de mutualisation entre AUSSI ici.
-    # Un déplacement qui sort une équipe d'une case commune (EXACTEMENT K rompue) est refusé,
-    # motif nommé. Absent/vide ⇒ aucun effet (rétro-compat).
-    shared_trainings: list[SharedTrainingGroupSchema] = Field(
-        default_factory=list, alias="sharedTrainings", max_length=MAX_SHARED_TRAINING_GROUPS
     )
     # P2-51 — le verdict accepte AUSSI le bloc `sharedBlocks` (parité de vocabulaire avec
     # /generate : le backend émet le même dialecte). ACCEPTÉ mais NON consommé en PR-2 : absent/vide
