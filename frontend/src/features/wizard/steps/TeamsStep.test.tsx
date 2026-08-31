@@ -32,6 +32,9 @@ const teamLinksState: { data: TeamLink[] } = { data: [] };
 const stgCreate = vi.fn();
 const stgUpdate = vi.fn();
 const stgDelete = vi.fn();
+// P2-51 / D13 — la section « Mutualisation » de la modale est désormais SharedTrainingBlockPanel :
+// créer y appelle `useCreateSharedTrainingBlock` (un « bloc » côté backend), plus le groupe K.
+const stbCreate = vi.fn();
 const createMut = vi.fn();
 const updateMut = vi.fn();
 const reorderMut = vi.fn();
@@ -72,6 +75,11 @@ vi.mock("../queries", () => ({
   useCreateSharedTrainingGroup: () => ({ mutateAsync: stgCreate, isPending: false }),
   useUpdateSharedTrainingGroup: () => ({ mutateAsync: stgUpdate, isPending: false }),
   useDeleteSharedTrainingGroup: () => ({ mutate: stgDelete }),
+  // P2-51 / D13 — la modale Liens rend la section « Mutualisation » via SharedTrainingBlockPanel.
+  useSharedTrainingBlocks: () => ({ data: [] }),
+  useCreateSharedTrainingBlock: () => ({ mutateAsync: stbCreate, isPending: false }),
+  useUpdateSharedTrainingBlock: () => ({ mutateAsync: vi.fn(() => Promise.resolve({})), isPending: false }),
+  useDeleteSharedTrainingBlock: () => ({ mutate: vi.fn() }),
   useTeamPeriodOverrides: () => ({ data: [] }),
   // P3-16 — l'impact d'une suppression est calculé par le SERVEUR : le mock rend une
   // réponse résolue et vide, l'écran n'en dérive plus aucun compte.
@@ -105,6 +113,7 @@ describe("TeamsStep", () => {
     stgCreate.mockClear();
     stgUpdate.mockClear();
     stgDelete.mockClear();
+    stbCreate.mockClear();
     reorderMut.mockClear();
     reorderPending.value = false;
     createMut.mockClear();
@@ -202,12 +211,13 @@ describe("TeamsStep", () => {
     renderWithProviders(<TeamsStep />);
 
     await user.click(screen.getByRole("button", { name: "Liens de SM3" }));
-    // La modale : SM3 est pré-cochée (initialTeamId), on ajoute SM4 puis on crée.
+    // La modale : SM3 est pré-cochée (initialTeamId), on ajoute SM4 puis on crée. D13 — la
+    // « Mutualisation » est rendue par SharedTrainingBlockPanel : créer écrit un « bloc ».
     await user.click(screen.getByRole("checkbox", { name: "SM4" }));
     await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
 
-    expect(stgCreate).toHaveBeenCalledOnce();
-    const arg = stgCreate.mock.calls[0][0] as { schedulePlanId: string | null; teamIds: string[] };
+    expect(stbCreate).toHaveBeenCalledOnce();
+    const arg = stbCreate.mock.calls[0][0] as { schedulePlanId: string | null; teamIds: string[] };
     expect(arg.schedulePlanId).toBeNull();
     expect([...arg.teamIds].sort()).toEqual(["t1", "t2"]);
   });

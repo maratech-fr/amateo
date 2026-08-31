@@ -93,6 +93,9 @@ const tiersState: { data: Array<{ id: number; label: string; name: string; color
 const sharedGroupsState: { data: SharedTrainingGroup[] } = { data: [] };
 // P2-45 — mutualisation ouverte depuis la modale Liens ; passerelles servies par le module matchs.
 const stgCreate = vi.fn();
+// P2-51 / D13 — la section « Mutualisation » de la modale est SharedTrainingBlockPanel : créer y
+// appelle `useCreateSharedTrainingBlock` (un « bloc » côté backend), plus le groupe K.
+const stbCreate = vi.fn();
 const stgUpdate = vi.fn();
 const stgDelete = vi.fn();
 const teamLinksState: { data: TeamLink[] } = { data: [] };
@@ -169,6 +172,11 @@ vi.mock("../queries", () => ({
   useCreateSharedTrainingGroup: () => ({ mutateAsync: stgCreate, isPending: false }),
   useUpdateSharedTrainingGroup: () => ({ mutateAsync: stgUpdate, isPending: false }),
   useDeleteSharedTrainingGroup: () => ({ mutate: stgDelete }),
+  // P2-51 / D13 — la modale Liens de période rend la section « Mutualisation » via SharedTrainingBlockPanel.
+  useSharedTrainingBlocks: () => ({ data: [] }),
+  useCreateSharedTrainingBlock: () => ({ mutateAsync: stbCreate, isPending: false }),
+  useUpdateSharedTrainingBlock: () => ({ mutateAsync: vi.fn(() => Promise.resolve({})), isPending: false }),
+  useDeleteSharedTrainingBlock: () => ({ mutate: vi.fn() }),
 }));
 // P2-45 — passerelles SERVIES par le module matchs (lecture seule en période). On pilote ses hooks.
 vi.mock("@/features/matches/queries", () => ({
@@ -251,6 +259,7 @@ afterEach(() => {
   clearMode.mockClear();
   resetGrid.mockClear();
   clearGrid.mockClear();
+  stbCreate.mockClear();
   entryState.data = { periodType: "closure" };
     planState.data = { id: "plan-1", teamSelectionInitialized: false };
   teamsState.data = [T1, T2];
@@ -452,12 +461,13 @@ describe("PeriodTeams — liens par équipe (P2-45)", () => {
     render(<PeriodTeams calendarEntryId="period-anchor" />);
 
     await user.click(screen.getByRole("button", { name: "Liens de SM1" }));
-    // SM1 pré-cochée (initialTeamId) ; on ajoute U13 puis on crée.
+    // SM1 pré-cochée (initialTeamId) ; on ajoute U13 puis on crée. D13 — la « Mutualisation » est
+    // rendue par SharedTrainingBlockPanel : créer écrit un « bloc » ancré au plan de période.
     await user.click(screen.getByRole("checkbox", { name: "U13" }));
     await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
 
-    expect(stgCreate).toHaveBeenCalledOnce();
-    expect(stgCreate.mock.calls[0][0]).toMatchObject({ schedulePlanId: "plan-1" });
+    expect(stbCreate).toHaveBeenCalledOnce();
+    expect(stbCreate.mock.calls[0][0]).toMatchObject({ schedulePlanId: "plan-1" });
   });
 
   // Falsification #5 — en période, les passerelles sont en LECTURE SEULE : la liste + l'intensité

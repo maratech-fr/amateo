@@ -1,9 +1,7 @@
-Last verified @ 2026-08-30 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
-cette PR. Re-confronté au code : `frontend/src/shared/api/client.ts:48` pose bien un
-`X-Request-Id` sur chaque requête ; `EventListener/RequestIdListener.php` +
-`Messenger/RequestIdMiddleware.php` existent (backend+bus) ; `POST /api/feedback`
-(`backend/src/Controller/FeedbackController.php`) existe ; `monolog-bundle` est bien dans
-`composer.json`. Tout juste)
+Last verified @ 2026-08-31 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+cette PR. Re-confronté au code : `POST /api/feedback` route bien à `FeedbackController.php:66` ;
+`EventListener/RequestIdListener.php` + `Messenger/RequestIdMiddleware.php` existent toujours
+(backend+bus) ; `monolog-bundle` toujours dans `composer.json:31`. Tout juste)
 
 # Canal signalement, support & reproduction
 

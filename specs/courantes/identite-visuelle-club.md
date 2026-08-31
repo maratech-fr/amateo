@@ -1,6 +1,6 @@
 # Identité visuelle par club (logo + couleur d'accent)
 
-Last verified @ 2026-08-30 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+Last verified @ 2026-08-31 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
 cette PR — re-vérifié contre le code, tout juste : `Club.logoUrl`/`accentColorDark`/`accentPalette`
 dans l'entité (`backend/src/Entity/Club.php:138-154`) ✓, `PATCH /api/club/appearance`
 (`ClubAppearanceController.php:34`) ✓, `useApplyClubTheme.ts` lit `accentColor`/`accentColorDark`/
