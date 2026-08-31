@@ -47,23 +47,31 @@ Décisions arbitrées (remplacent la « Direction de modèle » de §3) :
   être membre de plusieurs blocs à la fois — l'unicité historique un-groupe-par-équipe
   (`SharedTrainingGroupStateProcessor.php:196`) n'est PAS reconduite sur le bloc ; c'est la garde
   Σ, pas l'unicité, qui borne le cumul.
+- **D13 — à l'ÉCRAN, mutualisation et bloc sont LA MÊME notion** (correction fondateur du
+  2026-08-31, reçue pendant la revue de la passe frontend PR-4 ; verbatim : « mutualisation et
+  bloc équipe c'est la même chose — j'ai les passerelles qui sont un lien et les mutualisations
+  (bloc équipe) qui sont un autre lien c'est tout »). Ceci **résout** le garde-fou UX posé en §3
+  (« deux notions à l'écran = risque deux-maisons-pour-une-vérité ») : la modale « Liens » porte
+  exactement **deux** liens — passerelles, et mutualisation (= le bloc) — jamais trois. Le panneau
+  du groupe historique {équipes, K} **quitte cette modale** ; le bloc EST désormais ce que
+  l'écran appelle « Mutualisation ». ⚠ **Ceci tranche l'écran, pas le modèle** : `SharedTrainingGroup`
+  (entité, contrat, seeder) reste intact pour l'instant — retirer le MODÈLE groupe K est un lot de
+  nettoyage séparé, à arbitrer.
 
 **Ce qui NE change pas de ce cadrage** : le besoin terrain (§1, les 8 partages + 5 équipes
 multi-appartenances), le diagnostic du mur (§2, `targeting.py:376-388` — toujours la preuve que le
-modèle groupe {équipes, K} ne peut pas dire le terrain), l'AJOUT (pas remplacement — le groupe
-`SharedTrainingGroup` reste intact, c'est une nouvelle paire d'entités), le garde-fou UX « deux
-notions, un coup d'œil » (§3).
+modèle groupe {équipes, K} ne peut pas dire le terrain), l'AJOUT au MODÈLE (pas remplacement — le
+groupe `SharedTrainingGroup` reste intact au niveau entité/contrat, c'est une nouvelle paire
+d'entités) ; l'ÉCRAN, lui, a tranché en faveur d'UNE seule notion visible (D13, ci-dessus).
 
 **Avancement** : PR-1 (modèle backend seul : entités, migration RLS, API CRUD, gardes, cascades,
 staleness, purges), PR-2 (émission payload/contrat — bloc `sharedBlocks`, `CONTRACT_VERSION`
 2.16→2.17, schémas moteur alors INERTES) et **PR-3 (sémantique solveur + verdict de refus de
 casse — livrée 2026-08-31, détail §0bis)** **livrées** — trace `specs/courantes/etat-des-lieux.md`
 §3, inventaires `backend/docs/backend-inventory.md` et `engine/docs/engine-inventory.md` (changelog
-contrat), vocabulaire `engine/docs/constraint-vocabulary.md`. **Reste PR-4** (frontend : saisie du
-bloc au wizard + le geste « déplacer le bloc entier » du rail de retouche — le verdict de PR-3
-REFUSE déjà un déplacement individuel qui casserait un bloc, il ne fournit pas encore l'action de
-déplacement groupé). Détail de programme et séquencement :
-[`plannings-bccl-2026-08-31.md`](plannings-bccl-2026-08-31.md) §4/§6.
+contrat), vocabulaire `engine/docs/constraint-vocabulary.md`. **PR-4 (frontend) livrée en PARTIE
+le 2026-08-31** : le geste DÉCLARER est livré, les gestes POSER et déplacer le bloc restent
+BLOQUÉS côté backend (analyse §0ter) — arbitrage fondateur en attente sur le séquencement.
 
 ## 0bis. PR-3 (2026-08-31) — la modélisation retenue : le LIAGE
 
@@ -89,6 +97,48 @@ verrouillés (P4-97).
 
 Détail moteur complet (capacité, exclusion dynamique de l'exact-K des groupes, exemption
 passerelle, diagnostic, verdict) : `engine/docs/constraint-vocabulary.md` §Bloc de mutualisation.
+
+## 0ter. PR-4 (2026-08-31) — geste DÉCLARER livré, gestes POSER/DÉPLACER bloqués backend
+
+**Livré — geste 1 (DÉCLARER)** : le bloc se saisit dans la modale « Liens » de l'étape Équipes
+(`TeamLinksModal.tsx`) via un nouveau panneau `SharedTrainingBlockPanel`. 2..10 équipes, **liste
+déroulante** (verbatim fondateur, D9) des séances communes bornée `1..min(séances effectives des
+membres, override de période inclus)` — plafond de CONFORT calculé côté front
+(`wizard/lib/sharedTrainingBlock.ts::blockCommonSessionOptions`), le serveur reste seul juge
+(garde Σ de `SharedTrainingBlockStateProcessor::assertBlockValid`, son 422 affiché tel quel).
+Multi-appartenance PERMISE (D9/D12) avec un repère informatif « déjà dans N blocs »
+(`blockMembershipCount`), sans verrou.
+
+⚠ **Rendu ÉCRAN livré par cette PR : TRANSITOIRE.** Au commit `ffb07ff1`, la modale affiche ce
+nouveau panneau **à côté** du panneau du groupe historique {équipes, K} (`MutualisationPanel`),
+sous deux titres distincts — c'est l'état visible au moment de cette passe de documentation, PAS
+l'état voulu. **D13 (§0) le corrige sur la même branche, juste après** : le panneau bloc DEVIENT
+la section « Mutualisation », le panneau groupe K quitte la modale — la modale « Liens » ne porte
+plus que deux liens (passerelles, mutualisation). Le comportement du geste DÉCLARER lui-même
+(bornes, garde Σ, multi-appartenance) ne change pas ; seul son HABILLAGE à l'écran est corrigé.
+
+**Livré sans code — geste 3a (afficher le refus)** : `SlotDetail.tsx:240` rend déjà chaque
+`MoveViolation.message` génériquement (`<li>{v.message}</li>`), donc le refus nommé
+`shared_block_broken` du verdict PR-3 s'affiche sans changement.
+
+**BLOQUÉ backend — geste 2 (POSER dans Réserver)** : D9 prévoit le bloc « sélectionnable dans
+Réserver comme une équipe ordinaire », mais le seul rail d'écriture BATCH,
+`POST /api/reservations/group` (`GroupReservationController.php`), résout STRICTEMENT un
+`SharedTrainingGroup` — `findOneBy(SharedTrainingGroup::class, ['id' => $groupId])`, 404 sinon
+(`GroupReservationController.php:114`). Aucun rail de réservation de bloc n'existe. Poser en N
+`POST /api/reservations` séquentiels perdrait l'atomicité (une moitié posée, l'autre refusée) —
+contournement écarté.
+
+**BLOQUÉ backend — geste 3b (déplacer le bloc entier)** : D11 exige un déplacement EN BLOC, jamais
+une équipe seule. Le seul rail de déplacement, `POST /api/schedule-slots/{id}/move`
+(`ManualEditController.php:111`), ne déplace qu'UN créneau sous UN verdict. N appels séquentiels
+sans échec atomique casseraient le bloc à mi-chemin (le premier déplacement le rendrait
+`shared_block_broken`, le verdict PR-3 refuserait alors le second) — c'est le cas d'arrêt prévu,
+pas un bug.
+
+**Conséquence, non arbitrée** : PR-4 a besoin d'une extension backend (rail de réservation de bloc
++ rail de déplacement groupé atomique) avant de clore les gestes 2 et 3b. Le séquencement
+(nouvelle PR backend avant/après P2-58, priorité relative) appartient au fondateur.
 
 ## 1. Le besoin, dans les mots du terrain
 
@@ -145,10 +195,12 @@ Le modèle P2-27 (`SharedTrainingGroup` {équipes, K}) dit « ces N équipes s'e
   RMM-5). Le fondateur a tranché différemment à la validation du plan : **le bloc se comporte
   comme une équipe** (§0, D9) — ses séances lui appartiennent, elles ne sont pas ancrées à une
   case (gymnase, jour, heure) précise.
-- **Garde-fou UX à la passe design** : deux notions de mutualisation à l'écran = risque « deux
-  maisons pour une vérité » — le gestionnaire doit comprendre d'un coup d'œil quand utiliser
-  l'une ou l'autre. Et si le cadrage révèle que le co-placement libre n'a AUCUN cas terrain
-  restant, la question « le retirer ? » revient au fondateur explicitement, jamais en silence.
+- **Garde-fou UX à la passe design — RÉSOLU par D13 (§0), 2026-08-31** : deux notions de
+  mutualisation à l'écran = risque « deux maisons pour une vérité » — le gestionnaire doit
+  comprendre d'un coup d'œil quand utiliser l'une ou l'autre. Le fondateur a tranché À L'ÉCRAN
+  (D13) : mutualisation et bloc SONT la même notion pour le gestionnaire ; le groupe {équipes, K}
+  quitte la modale « Liens », le bloc en devient la seule section « Mutualisation ». Le retrait du
+  MODÈLE groupe K, lui, reste une question ouverte (lot de nettoyage séparé).
 - **Le seeder BCCL suit, ne précède pas** : le recalage complet (les 8 partages + suppression des
   capacités-palliatifs) attend ce lot ; seules les 10 passerelles pourraient entrer avant
   (indépendantes).
