@@ -16,17 +16,20 @@ import { blockCommonSessionOptions, blockMembershipCount } from "../lib/sharedTr
 import { useCreateSharedTrainingBlock, useDeleteSharedTrainingBlock, useSharedTrainingBlocks, useTeamPeriodOverrides, useUpdateSharedTrainingBlock } from "../queries";
 
 /**
- * « Bloc d'équipes » (P2-51 PR-4, geste DÉCLARER) : déclarer un ensemble d'équipes qui se comporte
- * comme UNE équipe, avec SON propre nombre de séances communes (liste déroulante bornée). Notion
- * DISTINCTE du groupe {équipes, K} de `MutualisationPanel` — les deux coexistent (D9). Même ancrage
- * de portée (`schedulePlanId` null = socle, un UUID = période).
+ * La section « Mutualisation » de la modale « Liens » (P2-51 PR-4, geste DÉCLARER) : déclarer un
+ * « groupe à mutualiser » — un ensemble d'équipes qui se comporte comme UNE équipe, avec SON propre
+ * nombre de séances communes (liste déroulante bornée). Même ancrage de portée (`schedulePlanId`
+ * null = socle, un UUID = période).
+ *
+ * ⚠ Vocabulaire écran (correction fondateur D13) : mutualisation et « bloc » sont LA MÊME notion —
+ * l'écran ne dit jamais « bloc », il dit « groupe » ; « bloc » n'est qu'une image interne (nom des
+ * fichiers/composants/types/entité backend `SharedTrainingBlock`). Le modèle {équipes, K} de
+ * `MutualisationPanel` vit encore sous le capot (nettoyage en PR-7) mais ne se saisit plus ici.
  *
  * Le serveur (`SharedTrainingBlockStateProcessor`) est seul juge ; tout ici (borne de la liste
- * déroulante, repère « déjà dans N blocs ») est FAIL-SAFE — un 422 reste affiché via `errorMessage`
- * (lit `detail` + `violations[].message`, la forme d'un 422 API Platform).
- *
- * ⚠ Différences ASSUMÉES avec le groupe K (elles ENSEIGNENT la distinction) : la multi-appartenance
- * est PERMISE (aucun verrou « déjà dans un autre bloc », juste un repère informatif), et les séances
+ * déroulante, repère « déjà dans N groupes ») est FAIL-SAFE — un 422 reste affiché via `errorMessage`
+ * (lit `detail` + `violations[].message`, la forme d'un 422 API Platform). La multi-appartenance est
+ * PERMISE (aucun verrou « déjà dans un autre groupe », juste un repère informatif), et les séances
  * communes se choisissent en LISTE DÉROULANTE (verbatim fondateur), pas en saisie libre.
  */
 export function SharedTrainingBlockPanel({
@@ -150,7 +153,7 @@ export function SharedTrainingBlockPanel({
           <span className="text-xs text-muted-foreground">équipe de référence</span>
         ) : otherBlocks > 0 ? (
           <span className="text-xs text-muted-foreground">
-            déjà dans {otherBlocks} bloc{otherBlocks > 1 ? "s" : ""}
+            déjà dans {otherBlocks} groupe{otherBlocks > 1 ? "s" : ""}
           </span>
         ) : null}
       </div>
@@ -161,11 +164,11 @@ export function SharedTrainingBlockPanel({
     <div>
       <p className="mb-3 text-sm text-muted-foreground">
         Un ensemble d'équipes qui se comporte comme <strong>une seule</strong> : cochez-les, puis choisissez son nombre de <strong>séances communes</strong>. Une équipe
-        peut appartenir à plusieurs blocs.
+        peut appartenir à plusieurs groupes.
       </p>
 
       <div className="mb-4 rounded-lg border border-border bg-card p-3">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{null !== editingId ? "Modifier le bloc" : "Nouveau bloc"}</p>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{null !== editingId ? "Modifier le groupe" : "Nouveau groupe"}</p>
 
         {0 === candidates.length ? (
           <EmptyHint>Ajoutez d'abord des équipes pour pouvoir les mutualiser.</EmptyHint>
@@ -239,7 +242,7 @@ export function SharedTrainingBlockPanel({
                 onClick={() => void submit()}
               >
                 {null !== editingId ? <Check className="size-4" /> : <Plus className="size-4" />}
-                {null !== editingId ? "Enregistrer le bloc" : "Créer le bloc"}
+                {null !== editingId ? "Enregistrer le groupe" : "Créer le groupe"}
               </Button>
             </div>
             {!enoughTeams ? <p className="mt-1 text-xs text-muted-foreground">Cochez au moins deux équipes.</p> : null}
@@ -253,16 +256,16 @@ export function SharedTrainingBlockPanel({
       </div>
 
       {0 === scopeBlocks.length ? (
-        <EmptyHint>Aucun bloc déclaré.</EmptyHint>
+        <EmptyHint>Aucun groupe déclaré.</EmptyHint>
       ) : (
         <ul className="flex flex-col gap-1">
           {scopeBlocks.map((b) => (
             <li key={b.id} className={cn("flex items-center gap-2 rounded-md border bg-card px-3 py-1.5 text-sm", editingId === b.id ? "border-accent ring-1 ring-accent" : "border-border")}>
               <span className="flex-1">{sharedGroupLabel(b.teamIds, b.commonSessions, nameOf)}</span>
-              <button type="button" aria-label={`Modifier le bloc ${blockNames(b.teamIds)}`} className="rounded p-1 text-muted-foreground hover:text-foreground" onClick={() => editBlock(b)}>
+              <button type="button" aria-label={`Modifier le groupe ${blockNames(b.teamIds)}`} className="rounded p-1 text-muted-foreground hover:text-foreground" onClick={() => editBlock(b)}>
                 <Pencil className="size-4" />
               </button>
-              <button type="button" aria-label={`Supprimer le bloc ${blockNames(b.teamIds)}`} className="rounded p-1 text-muted-foreground hover:text-destructive" onClick={() => setPendingDelete(b)}>
+              <button type="button" aria-label={`Supprimer le groupe ${blockNames(b.teamIds)}`} className="rounded p-1 text-muted-foreground hover:text-destructive" onClick={() => setPendingDelete(b)}>
                 <Trash2 className="size-4" />
               </button>
             </li>
@@ -272,7 +275,7 @@ export function SharedTrainingBlockPanel({
 
       <ConfirmDialog
         open={pendingDelete !== null}
-        title="Supprimer ce bloc ?"
+        title="Supprimer ce groupe ?"
         description={pendingDelete ? <>« {sharedGroupLabel(pendingDelete.teamIds, pendingDelete.commonSessions, nameOf)} » sera supprimé. Les équipes ne seront plus placées ensemble.</> : null}
         confirmLabel="Supprimer"
         onCancel={() => setPendingDelete(null)}

@@ -110,7 +110,7 @@ describe("SharedTrainingBlockPanel — multi-appartenance PERMISE (jamais de ver
     // Multi-appartenance permise : jamais désactivée (contraste avec le groupe K).
     expect(u9f1).toBeEnabled();
     const row = u9f1.closest("div") as HTMLElement;
-    expect(within(row).getByText(/déjà dans 1 bloc/)).toBeInTheDocument();
+    expect(within(row).getByText(/déjà dans 1 groupe/)).toBeInTheDocument();
   });
 });
 
@@ -122,7 +122,7 @@ describe("SharedTrainingBlockPanel — créer / modifier / supprimer", () => {
     await user.click(screen.getByRole("checkbox", { name: "U9F1" }));
     await user.click(screen.getByRole("checkbox", { name: "U9F2" }));
     await user.selectOptions(screen.getByRole("combobox", { name: "Séances communes" }), "2");
-    await user.click(screen.getByRole("button", { name: "Créer le bloc" }));
+    await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
 
     expect(stbCreate).toHaveBeenCalledOnce();
     const arg = stbCreate.mock.calls[0][0] as { schedulePlanId: string | null; teamIds: string[]; commonSessions: number };
@@ -135,7 +135,7 @@ describe("SharedTrainingBlockPanel — créer / modifier / supprimer", () => {
     const user = userEvent.setup();
     renderPanel();
     await user.click(screen.getByRole("checkbox", { name: "U9F1" }));
-    expect(screen.getByRole("button", { name: "Créer le bloc" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Créer le groupe" })).toBeDisabled();
   });
 
   it("modifie un bloc existant : préremplissage puis PUT { teamIds, commonSessions } sur le même id", async () => {
@@ -143,8 +143,8 @@ describe("SharedTrainingBlockPanel — créer / modifier / supprimer", () => {
     blocksState.data = [block("b1", ["t1", "t2"], 2)];
     renderPanel();
 
-    await user.click(screen.getByRole("button", { name: /Modifier le bloc/ }));
-    await user.click(screen.getByRole("button", { name: "Enregistrer le bloc" }));
+    await user.click(screen.getByRole("button", { name: /Modifier le groupe/ }));
+    await user.click(screen.getByRole("button", { name: "Enregistrer le groupe" }));
 
     expect(stbUpdate).toHaveBeenCalledOnce();
     const arg = stbUpdate.mock.calls[0][0] as { id: string; body: { teamIds: string[]; commonSessions: number } };
@@ -158,7 +158,7 @@ describe("SharedTrainingBlockPanel — créer / modifier / supprimer", () => {
     blocksState.data = [block("b1", ["t1", "t2"], 1)];
     renderPanel();
 
-    await user.click(screen.getByRole("button", { name: /Supprimer le bloc/ }));
+    await user.click(screen.getByRole("button", { name: /Supprimer le groupe/ }));
     await user.click(screen.getByRole("button", { name: "Supprimer" }));
     expect(stbDelete).toHaveBeenCalledWith("b1");
   });
@@ -173,7 +173,7 @@ describe("SharedTrainingBlockPanel — créer / modifier / supprimer", () => {
 
     await user.click(screen.getByRole("checkbox", { name: "U9F1" }));
     await user.click(screen.getByRole("checkbox", { name: "U9F2" }));
-    await user.click(screen.getByRole("button", { name: "Créer le bloc" }));
+    await user.click(screen.getByRole("button", { name: "Créer le groupe" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(message);
     // La sélection est CONSERVÉE pour retenter (patron error-recovery).

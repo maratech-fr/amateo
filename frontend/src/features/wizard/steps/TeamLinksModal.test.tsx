@@ -66,12 +66,11 @@ describe("TeamLinksModal — deux sections dans l'ordre passerelles → mutualis
     const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
     const passIdx = headings.indexOf("Passerelles entre équipes");
     const mutIdx = headings.indexOf("Mutualisation");
-    const blockIdx = headings.indexOf("Bloc d'équipes");
     expect(passIdx).toBeGreaterThanOrEqual(0);
     expect(mutIdx).toBeGreaterThan(passIdx);
-    // P2-51 — le bloc, notion sœur DISTINCTE, suit la mutualisation (titre propre, jamais un
-    // second « Mutualisation »).
-    expect(blockIdx).toBeGreaterThan(mutIdx);
+    // D13 (correction fondateur) — UNE seule section « Mutualisation » (rendue par
+    // `SharedTrainingBlockPanel`) : plus de second panneau, plus de titre « Bloc d'équipes ».
+    expect(headings).not.toContain("Bloc d'équipes");
   });
 
   it("jamais un dialog dans le dialog : « Gérer les passerelles » est absent", () => {
