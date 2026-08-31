@@ -1,16 +1,12 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, passe P2-51 PR-5b — zone non touchée
-par cette PR, contrôle de fraîcheur). Re-confronté au code : `UNPLACED_PENALTY = 100000`
-(`app/solver/objective/weights.py:118`) ✓ · tiers S 10000/A 1000/B 100/C 10/D 1 fixes
-(`objective/weights.py:27-59`) ✓ · budget adaptatif 60/180/600 s (`_adaptive_timeout`,
-`app/main.py:413`) ✓ · `soft_lock_moved` existe (`app/solver/result_builder/diagnostics.py:314`,
-fonction `_diagnose_soft_lock_moved`) ✓ · `orToolsWeight` toujours requis et ignoré du solve
-(`input_schema.py:79`, alias `orToolsWeight`) ✓ — deux lignes recalées (dérive mineure :
-`:340`→`:314`, `:72`→`:79`) ; **drift trouvé et corrigé** : §Priorités citait `app/solver/objective.py`,
-un fichier qui n'existe plus (module éclaté en paquet `app/solver/objective/` depuis P4-132) —
-recalé en `app/solver/objective/weights.py`. Capacité de créneau backend et `MIN_SESSIONS`/ENG-18
-non re-confrontées cette passe.)
+Last verified @ 2026-09-01 (exemption coach-joueur sur case de bloc active, `documentation-update`).
+Ligne `COACH_PLAYER_NO_OVERLAP` du tableau des règles dures amendée et confrontée au code : exemption
+réifiée `≤ 1 + Σb` posée par `add_coach_player_non_overlap` (`app/solver/constraints/structural.py`,
+carte `shared_block_case_bvars` écrite par `add_shared_block_constraints`) — exemption sous séance de
+bloc ACTIVE seulement, même gymnase + même heure de début ; coïncidence solo (b=0), débuts différents
+et gymnases différents restent des conflits ✓. Reste du fichier non re-vérifié cette passe —
+historique : `git log -p --follow engine/docs/business.md`.
 
 > Ce document explique le domaine de la planification sportive et ce que le moteur `engine` resout. Destine aux nouveaux developpeurs rejoignant le projet ClubScheduler.
 
@@ -95,7 +91,7 @@ payload, elle est `OFF`.
 |------------|-------------|
 | `VENUE_AT_MOST_ONE` | Un creneau de gymnase accueille au plus sa **capacite** d'equipes : 1 pour un gymnase non divisible (deux equipes ne peuvent pas le partager au meme moment), N pour un gymnase divisible a N terrains |
 | `COACH_NO_OVERLAP` | Un entraineur **principal** = une equipe a la fois. Maxime Dupont ne peut pas diriger le SM1 et l'U15M1 en meme temps. Seul le coach `MAIN` est concerne (l'assistant est optionnel et ne bloque pas) |
-| `COACH_PLAYER_NO_OVERLAP` | Un entraineur-joueur ne peut pas etre a deux endroits simultanement. S'il entraine le SM1 a 19h00, il ne peut pas jouer avec les Seniors 2 a la meme heure |
+| `COACH_PLAYER_NO_OVERLAP` | Un entraineur-joueur ne peut pas etre a deux endroits simultanement. S'il entraine le SM1 a 19h00, il ne peut pas jouer avec les Seniors 2 a la meme heure. **Exception** : si le SM1 et les Seniors 2 sont reunis dans un bloc de mutualisation et que leur seance commune est active sur cette case (meme gymnase, meme heure), les deux equipes s'entrainent physiquement ensemble — la personne double-role n'y tient qu'un role, l'anti-chevauchement s'y efface. Une simple coincidence hors seance de bloc, un chevauchement a horaires differents ou un autre gymnase restent interdits |
 | `TEAM_NO_OVERLAP` | Une equipe ne peut pas avoir deux seances en meme temps. Le SM1 ne peut pas s'entrainer a 19h00 au Gymnase A et a 19h00 au Gymnase B simultanement |
 | `MIN_SESSIONS` | Chaque equipe **vise** son nombre de seances : c'est une **cible soft** (bonus dans l'objectif, audit ENG-18), jamais une garantie dure — le plancher dur est 0 en production. Si le SM1 demande 3 seances, le moteur est fortement incite a les placer, mais peut en placer moins quand les ressources manquent |
 | `COACH_REST_DAY` | Chaque entraineur garde au moins un jour de repos du lundi au vendredi (au plus 4 jours travailles). Ignore pour un entraineur dont le maximum de jours declare est deja inferieur ou egal a 4 |

@@ -432,6 +432,14 @@ def add_shared_block_constraints(
     if room_relief is None:
         room_relief = {}
 
+    # Carte ÉCRITE ici, LUE par l'exemption coach-joueur (``add_coach_player_non_overlap``) : la case
+    # ``(venue_id, slot_id)`` → ``[(frozenset(membres), b)]``. Même précaution de RÉFÉRENCE que
+    # ``room_relief`` (jamais ``... or {}``) ; modèle nu des tests de pose ⇒ ``None`` ⇒ dict local
+    # jetable (aucun lecteur dans ce cas — la pose reste strictement inchangée).
+    case_bvars = getattr(model, "shared_block_case_bvars", None)
+    if case_bvars is None:
+        case_bvars = {}
+
     # Distinctness inter-blocs : (membre, case) → les ``b`` des DIFFÉRENTS blocs qui y siègent.
     member_case_bvars: dict[tuple[str, str, str], list[BoolVarLike]] = defaultdict(list)
 
@@ -475,6 +483,9 @@ def add_shared_block_constraints(
             if n_free >= 2:
                 # La co-présence des ``n_free`` membres libres tient dans UNE occupation.
                 room_relief.setdefault((venue_id, slot_id), []).append((b, n_free - 1))
+            # L'exemption coach-joueur lira ce ``b`` (avec l'ensemble des membres du bloc) pour
+            # relâcher l'anti-chevauchement d'une paire {A,B} de la case QUAND la séance est active.
+            case_bvars.setdefault((venue_id, slot_id), []).append((frozenset(member_ids), b))
             for team_id in member_ids:
                 member_case_bvars[(team_id, venue_id, slot_id)].append(b)
             b_list.append(b)

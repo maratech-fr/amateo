@@ -1,13 +1,14 @@
 # Accueil « cockpit temporel » — mise au clair (préliminaire calendriers secondaires)
 
-Last verified @ 2026-08-30 (rotation `documentation-update`, P4-152 — zone non touchée par cette
-PR, contrôle de fraîcheur). Re-confronté au code : `/` sert toujours `CockpitPage`
+Last verified @ 2026-09-01 (rotation `documentation-update`, chantier coach-joueur×bloc — zone non
+touchée par cette PR, contrôle de fraîcheur). Re-confronté au code : `/` sert toujours `CockpitPage`
 (`frontend/src/app/routes.tsx:134`) ✓ · `frontend/src/features/wizard/steps/PeriodStructure.tsx`
-porte toujours les DEUX `<fieldset disabled>` gelés sur `isDisabled` seul (`:728`, `:788`) ✓ · les
-modules cités ailleurs dans ce document (`RadarPanel.tsx`, `RecapStep.tsx`, `cockpit/lib/date.ts`,
-`cockpit/lib/useWeekAdapt.ts`, `shared/lib/clock.ts`, `wizard/lib/venueDays.ts`) existent toujours
-aux chemins nommés. L'historique des passes précédentes vit dans `git log -p --follow` ce fichier
-et ses traces datées dans `etat-des-lieux.md` §3.
+porte toujours les DEUX `<fieldset disabled>` gelés sur `isDisabled` seul — **lignes recalées
+`:718` et `:778`** (étaient :728/:788) ✓ · les modules cités ailleurs dans ce document
+(`RadarPanel.tsx`, `RecapStep.tsx`, `cockpit/lib/date.ts`, `cockpit/lib/useWeekAdapt.ts`,
+`shared/lib/clock.ts`, `wizard/lib/venueDays.ts`) existent toujours aux chemins nommés ✓.
+L'historique des passes vit dans `git log -p --follow` ce fichier et ses traces datées dans
+`etat-des-lieux.md` §3.
 
 > **Statut** : **approche arrêtée** (décisions tranchées §9) — **livrée** ; cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2.
 > **Pas un plan** — pas de tâches, pas d'effort chiffré ; l'exécution se planifiera palier par palier (§8).

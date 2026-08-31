@@ -1,19 +1,13 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-08-31 (P2-51 PR-7, `documentation-update`). Le modèle groupe {équipes, K}
-(`sharedTrainings`, `add_shared_training_constraints`) est **RETIRÉ du code** — confirmé absent de
-`targeting.py` (seuls `add_shared_block_constraints` et `team_share_declared_pairs` y survivent) et
-du `Literal` de diagnostics (`output_schema.py` — plus de `shared_training_not_honored`). Le
-**bloc de mutualisation (`sharedBlocks`)** devient la SEULE notion : section réécrite pour retirer
-toute mention de coexistence avec un groupe K (exclusion `y ≤ 1 − b`, disparue avec lui) ; liage
-`x[membre,case] ≥ b[case]` + `Σ b == commonSessions` sans réification depuis la co-présence
-(`add_shared_block_constraints`, `targeting.py:371-490`) ; dé-comptage capacité `(n_libres−1)·b`
-(`add_room_at_most_one`, `structural.py:40`) ; exemption passerelle (`team_share_declared_pairs`,
-`targeting.py:546-560`) ; diagnostic `shared_block_not_honored` (`_diagnose_shared_blocks`,
-`result_builder/diagnostics.py:824-902`) ; miroir verdict `_shared_block_move_violation`
-(`validate_assignments.py:70-150`). Reste du document non re-parcouru ligne à ligne cette passe
-(rotation précédente 2026-08-30, P4-152 : parité génération⇄verdict `travelTime`/`minAtVenueId` —
-toujours vraie, non re-confrontée aujourd'hui).
+Last verified @ 2026-09-01 (exemption coach-joueur sur case de bloc active, `documentation-update`).
+Ligne `COACH_PLAYER_NO_OVERLAP` (§règles dures) et nouvelle ligne `shared_block_case_bvars` (§tableau
+bloc) confrontées au code : borne réifiée `≤ 1 + Σb` sous séance de bloc active dans les 3 mécanismes
+d'`add_coach_player_non_overlap` (`structural.py` — clé-temps, intervalles, libre-vs-verrou `var ≤ Σb`),
+carte exposée sur `ScheduleCpModel` (`model.py`, patron `room_relief`), garde de distinctness bornant
+Σb ≤ 1 (`targeting.py:494-497`) ✓. Le retrait du modèle groupe K (passe précédente) reste vrai :
+`add_shared_block_constraints` et `team_share_declared_pairs` seuls dans `targeting.py` ✓. Reste non
+re-vérifié cette passe — historique : `git log -p --follow engine/docs/constraint-vocabulary.md`.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -170,7 +164,7 @@ supérieur l'emporte dans l'objectif. Le **minimum de séances** du rang est une
 | `VENUE_AT_MOST_ONE` / capacité | jamais 2 équipes sur le même créneau d'un gymnase non divisible |
 | `TEAM_NO_OVERLAP` | une équipe jamais 2 séances en même temps |
 | `COACH_NO_OVERLAP` | un coach jamais sur 2 séances simultanées |
-| `COACH_PLAYER_NO_OVERLAP` | un coach qui **joue** aussi n'est jamais convoqué à 2 séances simultanées (ex. Mathis coach U13M2 + joueur U21M1) |
+| `COACH_PLAYER_NO_OVERLAP` | un coach qui **joue** aussi n'est jamais convoqué à 2 séances simultanées (ex. Mathis coach U13M2 + joueur U21M1). **Exemption séance de bloc** : sur une case où une séance de bloc est ACTIVE, les deux équipes s'entraînent physiquement ENSEMBLE — la personne double-rôle n'y tient qu'un rôle à la fois, l'anti-chevauchement s'y efface (borne `≤ 1 + Σb`). L'exemption exige la MÊME case (même gymnase + même heure de début) ET une séance de bloc active : une coïncidence solo (case sans séance de bloc), un chevauchement à débuts différents ou un autre gymnase restent des conflits |
 | `MIN_SESSIONS` | chaque équipe vise son nombre de séances/semaine (**cible soft**, cf. ENG-18) |
 | `COACH_REST_DAY` | **dur** : chaque coach a ≥ 1 jour de repos du lundi au vendredi (≤ 4 jours travaillés). Ignoré pour un coach dont le `maxDaysOverride` est déjà ≤ 4 |
 | `SALARIE_DISTRIBUTION` | **dur** : au moins un coach salarié (`isEmployee`) présent chaque jour lun-ven. Inactif si le club compte moins de 2 salariés |
@@ -239,6 +233,7 @@ sur la MÊME case (sinon une séance physique compterait pour deux blocs).
 | `add_shared_block_constraints` (`targeting.py`, posé en tête d'`add_level_1_hard_constraints`, AVANT capacité) | liage `x ≥ b` par membre, `Σ b == commonSessions` par bloc, distinctness inter-blocs |
 | `add_room_at_most_one` | dé-compte `(n_libres−1)·b` — une séance de bloc = une occupation |
 | `team_share_declared_pairs` | co-présence des membres exemptée de l'anti-chevauchement passerelle (§ci-dessus) |
+| `shared_block_case_bvars` → `add_coach_player_non_overlap` | co-présence des membres exemptée de l'anti-chevauchement coach-joueur/joueur-joueur QUAND la séance de bloc de la case est active (borne `≤ 1 + Σb`) — voir `COACH_PLAYER_NO_OVERLAP` ci-dessus |
 | Diagnostic post-solve (`_diagnose_shared_blocks`) | `shared_block_not_honored` — INFEASIBLE : moins de cases communes candidates que de séances demandées (cause certaine) ; solve abouti : défense en profondeur si le compte réel diverge |
 | Sur-capacité gymnase (post-solve) | attribuée **PAR CASE** (multi-appartenance permise, `_fold_case_occupant_identity`) — jamais « premier bloc gagne » via une carte globale, contrairement au groupe historique (unicité un-groupe-par-équipe) |
 | `/validate-assignments` | miroir déterministe `_shared_block_move_violation` (D11) — refuse NOMMÉ `shared_block_broken` un déplacement qui RETIRE un membre d'une séance de bloc jusque-là honorée ; **garde anti-enfermement** (patron `_venue_minimum_move_violation`/P4-152) : un bloc DÉJÀ cassé dans la baseline ne bloque pas les déplacements |

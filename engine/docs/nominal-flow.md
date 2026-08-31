@@ -1,17 +1,11 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-08-31 (P2-51 PR-2 — mentions du contrat recalées 2.16→2.17, confrontées à `engine/CONTRACT_VERSION` et `ScheduleConstraintBuilder.php` ; rotation `documentation-update`, passe UXC-10 — fichier hors sujet de
-la PR, contrôle de fraîcheur ciblé sur le résidu de nom trouvé au balayage `clubscheduler-*`).
-**Drift trouvé et corrigé** : le hub Mercure était encore nommé `clubscheduler-mercure` — nom mort
-depuis le renommage d'infrastructure P4-142 (2026-08-28) ; corrigé en `amateo-mercure` (conteneur
-réel, `docker-compose.yml:325`). Reste vérifié sans écart cette passe : `engine/CONTRACT_VERSION`
-= **2.18** ✓ ; verrou asyncio par club `_club_locks`/`_club_locks_guard` en `app/main.py:130-131` ✓ ;
-`_adaptive_workers` (paliers 1/8 au seuil 200) en `app/main.py:445` ✓ ; `lockLevel` chaîne libre en
-`app/schemas/input_schema.py:294` ✓ ; `solverTimeoutSeconds` défaut 650 en
-`app/schemas/input_schema.py:307` ✓ ; module objectif toujours le paquet `app/solver/objective/`
-(`__init__.py`/`normalise.py`/`terms.py`/`weights.py`, pas un fichier plat) ✓ ; module modèle
-`app/solver/model.py` non éclaté ✓ ; `venue_minimum_unreachable` en
-`app/solver/constraints/targeting.py:320` ✓.
+Last verified @ 2026-09-01 (exemption coach-joueur sur case de bloc active, `documentation-update`).
+Étape `COACH_PLAYER_NO_OVERLAP` de la couche dure amendée et confrontée au code : borne `≤ 1 + Σb`
+hors case de bloc active (`add_coach_player_non_overlap`, `structural.py`) ✓ ; `engine/CONTRACT_VERSION`
+= **2.19** ✓ (recalé — la passe précédente disait 2.18) ; verrou asyncio par club
+`_club_locks`/`_club_locks_guard` en `app/main.py:130-131` ✓. Reste non re-vérifié cette passe —
+historique : `git log -p --follow engine/docs/nominal-flow.md`.
 
 > Ce document decrit le chemin complet d'une requete de generation d'emploi du temps, du moment ou le backend construit le payload jusqu'a la notification en temps reel du frontend. Destine aux developpeurs travaillant sur l'integration backend/engine.
 
@@ -197,7 +191,7 @@ Ces contraintes doivent etre satisfaites pour que la solution soit **faisable**.
 
 1. **VENUE_AT_MOST_ONE** : pour chaque salle, jour et slot, la somme des variables est inferieure ou egale a la **capacite declaree du creneau** (1 pour un gymnase non divisible). Deux equipes ne peuvent pas partager le Gymnase A le lundi a 19h00 s'il n'est pas divisible ; un gymnase a 3 terrains en accueille 3.
 2. **COACH_NO_OVERLAP** : pour chaque entraineur, jour et slot, la somme des equipes qu'il entraine est inferieure ou egale a 1. Maxime Dupont ne peut pas diriger deux equipes en meme temps.
-3. **COACH_PLAYER_NO_OVERLAP** : pour chaque entraineur-joueur, la somme de ses seances d'entrainement et de ses seances de joueur est inferieure ou egale a 1.
+3. **COACH_PLAYER_NO_OVERLAP** : pour chaque entraineur-joueur, la somme de ses seances d'entrainement et de ses seances de joueur est inferieure ou egale a 1 **hors case de bloc active** — sur une case ou une seance de bloc reunit ses deux equipes, la borne devient `1 + Σb` et l'exemption s'applique quand la seance de bloc est posee (meme gymnase + meme heure de debut uniquement).
 4. **TEAM_NO_OVERLAP** : pour chaque equipe, jour et slot, la somme est inferieure ou egale a 1. Le SM1 ne peut pas avoir deux seances a 19h00.
 5. **FIXED_SLOTS** : chemin residuel. La collection `fixed_slots` n'est alimentee par aucune branche de `parse_v2_constraints` aujourd'hui, donc cette contrainte ne pose rien en production. Les verrous `HARD` ne passent **pas** par la : ils sont pre-places hors du modele (voir etape 1).
 6. **FORBIDDEN_ASSIGNMENTS** : pour chaque contrainte `HARD` de type interdiction, la variable vaut 0. Exemple : si le SM1 a une contrainte "pas le vendredi", toutes les variables `x[t-sm1, *, 5, *]` valent 0.

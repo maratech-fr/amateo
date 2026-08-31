@@ -291,17 +291,18 @@ def _locked_person_day_occupations(
     model: Any,
     team_coach_map: dict[str, list[str]] | None,
     team_player_map: dict[str, list[str]] | None,
-) -> dict[str, dict[int, list[tuple[int, int, str | None, str]]]]:
-    """Comme ``_locked_person_day_intervals`` mais AVEC le gymnase et le RÔLE de chaque
+) -> dict[str, dict[int, list[tuple[int, int, str | None, str, str]]]]:
+    """Comme ``_locked_person_day_intervals`` mais AVEC le gymnase, le RÔLE et l'ÉQUIPE de chaque
     occupation verrouillée — de quoi opposer un placement LIBRE à un verrou sous la règle
-    D-14 (P4-97 bis).
+    D-14 (P4-97 bis), et exempter la paire quand elle siège sur une case de bloc active.
 
-    Retourne ``person_id -> weekday(int) -> [(start, end, venue, role), …]`` où ``role`` vaut
+    Retourne ``person_id -> weekday(int) -> [(start, end, venue, role, team), …]`` où ``role`` vaut
     ``"coach"`` (via ``team_coach_map``, ASSISTANT déjà filtré) ou ``"player"`` (via
-    ``team_player_map`` — le joueur l'emporte, on ne joue pas en coachant). Source unique :
+    ``team_player_map`` — le joueur l'emporte, on ne joue pas en coachant), et ``team`` est l'équipe
+    verrouillée (nécessaire à l'exemption coach-joueur de bloc). Source unique :
     ``model.locked_slots`` × les cartes — JAMAIS ``slot.coachId``.
     """
-    result: dict[str, dict[int, list[tuple[int, int, str | None, str]]]] = defaultdict(lambda: defaultdict(list))
+    result: dict[str, dict[int, list[tuple[int, int, str | None, str, str]]]] = defaultdict(lambda: defaultdict(list))
     coach_map = team_coach_map or {}
     player_map = team_player_map or {}
     for locked in getattr(model, "locked_slots", ()) or ():
@@ -326,7 +327,7 @@ def _locked_person_day_occupations(
         for player_id in player_map.get(team_id, ()):
             roles[str(player_id)] = "player"  # jouer l'emporte sur coacher (D-14)
         for person, role in roles.items():
-            result[person][day].append((start, end, venue, role))
+            result[person][day].append((start, end, venue, role, team_id))
     return result
 
 

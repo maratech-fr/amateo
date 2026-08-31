@@ -28,6 +28,31 @@ from .common import (
     _scalar_id,
 )
 
+# Exemption coach-joueur sur la SÉANCE DE BLOC — carte ``(venue_id, slot_id)`` (slot_id ==
+# "day:HH:MM") → ``[(frozenset(membres du bloc), b)]``, remplie par ``add_shared_block_constraints``
+# et portée par le modèle (``ScheduleCpModel.shared_block_case_bvars``). ``None`` (modèle nu des
+# tests de pose) ou vide (aucun bloc) ⇒ aucune exemption, borne stricte partout (byte-identique).
+CaseBvars = Mapping[tuple[str, str], list[tuple[frozenset[str], BoolVarLike]]]
+
+
+def _block_case_exemption_bvars(
+    case_bvars: CaseBvars | None,
+    team_a: str | None,
+    team_b: str | None,
+    venue: str | None,
+    slot_id: str,
+) -> list[BoolVarLike]:
+    """Les ``b`` des blocs qui, sur la case ``(venue, slot_id)``, réunissent À LA FOIS ``team_a`` et
+    ``team_b``. L'appelant relâche alors l'anti-chevauchement de la paire en ``≤ 1 + Σb`` : la borne
+    s'efface QUAND la séance de bloc est active (b=1), et RESTE stricte sinon (b=0). La garde de
+    distinctness ``Σb ≤ 1`` par membre-et-case (``add_shared_block_constraints``) borne cette somme à
+    1 pour une paire donnée. Carte absente/vide, gymnase inconnu (None) ou paire hors de tout bloc de
+    la case ⇒ liste vide ⇒ borne stricte inchangée."""
+    if not case_bvars or team_a is None or team_b is None or venue is None:
+        return []
+    pair = {team_a, team_b}
+    return [b for members, b in case_bvars.get((venue, slot_id), ()) if pair <= members]
+
 
 def add_room_at_most_one(model: Any, assignments: Sequence[AssignmentVariable]) -> int:
     """Constraint 1: one room/venue can host at most capacity teams per time slot."""
@@ -124,7 +149,7 @@ def add_coach_at_most_one(
     """
 
     groups: dict[tuple[Any, Any], list[tuple[BoolVarLike, str | None]]] = defaultdict(list)
-    person_entries: dict[str, list[tuple[int, int, BoolVarLike, str, str | None, str]]] = defaultdict(list)
+    person_entries: dict[str, list[tuple[int, int, BoolVarLike, str, str | None, str, str | None]]] = defaultdict(list)
 
     for assignment in assignments:
         time_key = _assignment_time_key(assignment)
@@ -155,7 +180,7 @@ def add_coach_at_most_one(
         start, end, day = _extract_interval(assignment)
         if start is not None and end is not None and day is not None:
             for coach_id in coach_ids:
-                person_entries[str(coach_id)].append((start, end, var, day, venue_id, "coach"))
+                person_entries[str(coach_id)].append((start, end, var, day, venue_id, "coach", team_id_str))
 
     time_key_added = _add_cross_venue_at_most_one(model, groups)
     interval_added = _add_interval_at_most_one(model, person_entries, same_venue_allowed=True)
@@ -186,11 +211,25 @@ def add_coach_player_non_overlap(
     different start times but overlapping intervals are also prevented. The
     interval check covers ALL role combinations for the same person
     (coach-coach, coach-player, player-player).
+
+    ⚑ Exemption SÉANCE DE BLOC — sur une case où une séance de bloc est ACTIVE, les deux équipes
+    s'entraînent PHYSIQUEMENT ENSEMBLE en UNE séance : une personne qui coache l'une et joue dans
+    l'autre n'y tient qu'un rôle à la fois du point de vue du planning. La borne d'anti-chevauchement
+    de la paire passe donc de ``≤ 1`` à ``≤ 1 + Σb`` (``b`` = variable de séance du bloc de la case,
+    lue dans ``model.shared_block_case_bvars``) — elle s'efface QUAND ``b = 1`` et RESTE stricte
+    sinon. C'est plus strict que la tolérance coach-coach D-14 : l'exemption exige la MÊME case
+    (même gymnase + même heure de DÉBUT) ET une séance de bloc active — une simple coïncidence solo
+    (b=0), un chevauchement à débuts différents ou un autre gymnase restent des conflits. Aucun bloc
+    ⇒ ``case_bvars`` vide ⇒ borne stricte partout, chemin byte-identique.
     """
 
-    coach_groups: dict[tuple[Any, Any], list[BoolVarLike]] = defaultdict(list)
-    player_groups: dict[tuple[Any, Any], list[BoolVarLike]] = defaultdict(list)
-    person_entries: dict[str, list[tuple[int, int, BoolVarLike, str, str | None, str]]] = defaultdict(list)
+    case_bvars: CaseBvars | None = getattr(model, "shared_block_case_bvars", None)
+
+    # Groupes clé-temps : chaque entrée porte ``(var, gymnase, équipe)`` pour permettre l'exemption
+    # PAIRE À PAIRE. Le gymnase reste HORS de la clé (piège ``_add_cross_venue_at_most_one``).
+    coach_groups: dict[tuple[Any, Any], list[tuple[BoolVarLike, str | None, str | None]]] = defaultdict(list)
+    player_groups: dict[tuple[Any, Any], list[tuple[BoolVarLike, str | None, str | None]]] = defaultdict(list)
+    person_entries: dict[str, list[tuple[int, int, BoolVarLike, str, str | None, str, str | None]]] = defaultdict(list)
 
     for assignment in assignments:
         time_key = _assignment_time_key(assignment)
@@ -199,6 +238,8 @@ def add_coach_player_non_overlap(
 
         team_id = assignment.team_id
         team_id_str = str(team_id) if team_id is not None else None
+        var = assignment.var
+        venue_id = str(assignment.venue_id) if assignment.venue_id is not None else None
 
         # D-14 : le RÔLE est retenu, pas seulement la personne. Une même personne peut être
         # coach ici et joueuse là ; seule la paire coach-coach tolère le même gymnase, et
@@ -208,83 +249,169 @@ def add_coach_player_non_overlap(
 
         if team_coach_map is not None and team_id_str is not None and team_id_str in team_coach_map:
             for coach_id in team_coach_map[team_id_str]:
-                coach_groups[(coach_id, time_key)].append(assignment.var)
+                coach_groups[(coach_id, time_key)].append((var, venue_id, team_id_str))
                 all_person_ids.add(str(coach_id))
                 person_roles.setdefault(str(coach_id), "coach")
         else:
             single_coach = assignment.coach_id
             if single_coach is not None:
-                coach_groups[(single_coach, time_key)].append(assignment.var)
+                coach_groups[(single_coach, time_key)].append((var, venue_id, team_id_str))
                 all_person_ids.add(str(single_coach))
                 person_roles.setdefault(str(single_coach), "coach")
 
         if team_player_map is not None and team_id_str is not None and team_id_str in team_player_map:
             for player_id in team_player_map[team_id_str]:
-                player_groups[(player_id, time_key)].append(assignment.var)
+                player_groups[(player_id, time_key)].append((var, venue_id, team_id_str))
                 all_person_ids.add(str(player_id))
                 person_roles[str(player_id)] = "player"
         else:
             for player_id in assignment.player_ids:
-                player_groups[(player_id, time_key)].append(assignment.var)
+                player_groups[(player_id, time_key)].append((var, venue_id, team_id_str))
                 all_person_ids.add(str(player_id))
                 person_roles[str(player_id)] = "player"
 
-        var = assignment.var
         start, end, day = _extract_interval(assignment)
         if start is not None and end is not None and day is not None:
-            venue_id = str(assignment.venue_id) if assignment.venue_id is not None else None
             for person_id in all_person_ids:
                 person_entries[person_id].append(
-                    (start, end, var, day, venue_id, person_roles.get(person_id, "player"))
+                    (start, end, var, day, venue_id, person_roles.get(person_id, "player"), team_id_str)
                 )
 
-    overlap_groups = (coach_groups[key] + player_groups[key] for key in coach_groups.keys() & player_groups.keys())
-    time_key_added = _add_at_most_one_groups(model, overlap_groups)
+    if case_bvars:
+        # Un bloc existe : chemin PAIRE À PAIRE avec exemption (équivalent at-most-one, sauf la paire
+        # exemptable de la case).
+        time_key_added = _add_coach_player_time_key_pairs(model, coach_groups, player_groups, case_bvars)
+    else:
+        # Aucun bloc : chemin d'origine STRICTEMENT inchangé (``add_at_most_one`` sur l'union des
+        # variables) — garantie byte-identique, goldens intacts.
+        overlap_groups = (
+            [entry[0] for entry in coach_groups[key]] + [entry[0] for entry in player_groups[key]]
+            for key in coach_groups.keys() & player_groups.keys()
+        )
+        time_key_added = _add_at_most_one_groups(model, overlap_groups)
     # D-14 : le drapeau est levé ici AUSSI, mais il ne relâche que les paires coach-coach —
-    # que la contrainte 2 possède déjà. Coach-joueur et joueur-joueur restent opposés.
-    interval_added = _add_interval_at_most_one(model, person_entries, same_venue_allowed=True)
+    # que la contrainte 2 possède déjà. Coach-joueur et joueur-joueur restent opposés, SAUF sur une
+    # case de bloc active (``case_bvars``).
+    interval_added = _add_interval_at_most_one(model, person_entries, same_venue_allowed=True, case_bvars=case_bvars)
 
     # P4-97 bis — le CAS RÉEL (BCCL) : « Mara » coache une équipe LIBRE pendant qu'elle JOUE
     # dans une équipe VERROUILLÉE au même moment dans un AUTRE gymnase. Le verrou occupe la
     # personne ; le placement libre incompatible est refusé (toutes combinaisons de rôles, avec
     # la seule exemption coach-coach même-gymnase de D-14). Source : les cartes, jamais slot.coachId.
+    # ``case_bvars`` ajoute l'exemption bloc : un verrou de bloc réunit les deux équipes → la séance
+    # libre tient (``var ≤ Σb``) au lieu d'être fermée.
     locked_occ = _locked_person_day_occupations(model, team_coach_map, team_player_map)
-    locked_added = _add_free_vs_locked_interval_conflicts(model, person_entries, locked_occ)
+    locked_added = _add_free_vs_locked_interval_conflicts(model, person_entries, locked_occ, case_bvars=case_bvars)
     return time_key_added + interval_added + locked_added
+
+
+def _add_coach_player_time_key_pairs(
+    model: Any,
+    coach_groups: dict[tuple[Any, Any], list[tuple[BoolVarLike, str | None, str | None]]],
+    player_groups: dict[tuple[Any, Any], list[tuple[BoolVarLike, str | None, str | None]]],
+    case_bvars: CaseBvars,
+) -> int:
+    """Version PAIRE À PAIRE de l'at-most-one clé-temps de la contrainte 3, avec exemption bloc.
+
+    N'est empruntée QUE lorsqu'un bloc existe (``case_bvars`` non vide). La clé de groupe reste
+    ``(personne, slot_id)`` SANS gymnase (le porter dans la clé serait le piège documenté de
+    ``_add_cross_venue_at_most_one``) ; ``slot_id`` == le ``time_key`` de la clé (== "day:HH:MM").
+    Chaque paire de la MÊME case (même gymnase non-None, même slot_id) dont les deux équipes
+    partagent un bloc de la case voit sa borne passer à ``≤ 1 + Σb`` (elle s'efface quand la séance
+    de bloc est active) ; toute autre paire garde ``≤ 1`` — équivalent strict de l'at-most-one."""
+    added = 0
+    for key in coach_groups.keys() & player_groups.keys():
+        _person, time_key = key
+        entries = _dedupe_meta_entries(coach_groups[key] + player_groups[key])
+        for i in range(len(entries)):
+            var_a, venue_a, team_a = entries[i]
+            for j in range(i + 1, len(entries)):
+                var_b, venue_b, team_b = entries[j]
+                if var_a is var_b:
+                    continue
+                bs = (
+                    _block_case_exemption_bvars(case_bvars, team_a, team_b, venue_a, str(time_key))
+                    if venue_a is not None and venue_a == venue_b
+                    else []
+                )
+                if bs:
+                    model.Add(var_a + var_b <= 1 + sum(bs))
+                else:
+                    model.Add(var_a + var_b <= 1)
+                added += 1
+    return added
+
+
+def _dedupe_meta_entries(
+    entries: list[tuple[BoolVarLike, str | None, str | None]],
+) -> list[tuple[BoolVarLike, str | None, str | None]]:
+    """Comme ``_dedupe_variables`` mais sur des entrées ``(var, gymnase, équipe)`` : garde la première
+    occurrence de chaque variable (une personne coach ET joueuse de la MÊME séance y apparaît deux
+    fois)."""
+    seen: set[Any] = set()
+    unique: list[tuple[BoolVarLike, str | None, str | None]] = []
+    for entry in entries:
+        var = entry[0]
+        marker = var.Index() if hasattr(var, "Index") else id(var)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        unique.append(entry)
+    return unique
 
 
 def _add_free_vs_locked_interval_conflicts(
     model: Any,
-    free_entries: dict[str, list[tuple[int, int, BoolVarLike, str, str | None, str]]],
-    locked_occupations: dict[str, dict[int, list[tuple[int, int, str | None, str]]]],
+    free_entries: dict[str, list[tuple[int, int, BoolVarLike, str, str | None, str, str | None]]],
+    locked_occupations: dict[str, dict[int, list[tuple[int, int, str | None, str, str]]]],
+    *,
+    case_bvars: CaseBvars | None = None,
 ) -> int:
     """Force à 0 tout créneau LIBRE d'une personne qui chevauche une de ses occupations
-    VERROUILLÉES, sous l'exemption D-14 (P4-97 bis).
+    VERROUILLÉES, sous l'exemption D-14 et l'exemption SÉANCE DE BLOC (P4-97 bis).
 
-    ``free_entries`` : ``person -> [(start, end, var, day, venue, role)]`` (le ``day`` est une
+    ``free_entries`` : ``person -> [(start, end, var, day, venue, role, team)]`` (le ``day`` est une
     chaîne, comme le produit ``_extract_interval``). ``locked_occupations`` :
-    ``person -> weekday(int) -> [(start, end, venue, role)]`` (cf. ``_locked_person_day_occupations``).
+    ``person -> weekday(int) -> [(start, end, venue, role, team)]`` (cf.
+    ``_locked_person_day_occupations``).
 
     D-14 (arbitrage fondateur) : deux occupations **coach-coach dans le MÊME gymnase** ne
     s'opposent pas (le coach surveille deux groupes, présent une fois) ; tout le reste —
     gymnases différents, ou l'un des deux rôles ``player`` — est une impossibilité physique.
     Le verrou est souverain : on ne touche QUE le créneau libre, jamais le verrou.
+
+    Exemption bloc : si le verrou et le créneau libre sont la MÊME case (même gymnase + même début)
+    et que leurs deux équipes partagent un bloc de la case, la séance libre tient QUAND la séance de
+    bloc est active — ``var ≤ Σb`` remplace ``var == 0``. Ce chemin réifié ne pose AUCUNE fermeture
+    (le rail P4-99 ne porte que les fermetures inconditionnelles) ; le chemin inconditionnel garde
+    sa cause ``hard_lock``.
     """
     added = 0
     for person, entries in free_entries.items():
         locked_days = locked_occupations.get(person)
         if not locked_days:
             continue
-        for start, end, var, day, venue, role in entries:
+        for start, end, var, day, venue, role, team in entries:
             try:
                 day_int = int(day)
             except (TypeError, ValueError):
                 continue
-            for l_start, l_end, l_venue, l_role in locked_days.get(day_int, ()):
+            for l_start, l_end, l_venue, l_role, l_team in locked_days.get(day_int, ()):
                 if not _intervals_overlap(start, end, l_start, l_end):
                     continue
                 both_coaching = role == "coach" and l_role == "coach"
                 if both_coaching and venue is not None and venue == l_venue:
+                    continue
+                bs = (
+                    _block_case_exemption_bvars(case_bvars, team, l_team, venue, f"{day_int}:{_format_time(start)}")
+                    if venue is not None and venue == l_venue and start == l_start
+                    else []
+                )
+                if bs:
+                    # Case de bloc RÉIFIÉE : la séance libre tient si la séance de bloc est active.
+                    # PAS de fermeture ici (le rail P4-99 ne porte que l'inconditionnel).
+                    model.Add(var <= sum(bs))
+                    added += 1
                     continue
                 model.Add(var == 0)
                 added += 1
@@ -548,19 +675,24 @@ def _add_cross_venue_at_most_one(
 
 def _add_interval_at_most_one(
     model: Any,
-    person_entries: dict[str, list[tuple[int, int, BoolVarLike, str, str | None, str]]],
+    person_entries: dict[str, list[tuple[int, int, BoolVarLike, str, str | None, str, str | None]]],
     *,
     same_venue_allowed: bool = False,
+    case_bvars: CaseBvars | None = None,
 ) -> int:
     """Add pairwise ``varA + varB <= 1`` for overlapping intervals per person per day.
 
     Args:
         model: CP-SAT model.
-        person_entries: ``dict[person_id, list[(start, end, var, day, venue, role)]]`` où
+        person_entries: ``dict[person_id, list[(start, end, var, day, venue, role, team)]]`` où
             ``role`` vaut ``"coach"`` ou ``"player"``.
         same_venue_allowed: quand True, deux intervalles qui se chevauchent **dans le même
             gymnase** ne sont PAS opposés — mais UNIQUEMENT si les deux entrées sont des
             rôles ``"coach"``. Voir D-14 ci-dessous.
+        case_bvars: carte des séances de bloc par case. Quand deux intervalles partagent la MÊME
+            case (même gymnase + même début) et que leurs équipes partagent un bloc de la case, la
+            borne passe à ``≤ 1 + Σb`` : elle s'efface quand la séance de bloc est active. ``None`` /
+            vide (chemin coach de la contrainte 2, ou aucun bloc) ⇒ borne stricte, byte-identique.
 
     Returns: number of pairwise constraints added.
 
@@ -584,23 +716,34 @@ def _add_interval_at_most_one(
     """
     added = 0
     for entries in person_entries.values():
-        by_day: dict[str, list[tuple[int, int, BoolVarLike, str | None, str]]] = defaultdict(list)
-        for start, end, var, day, venue, role in entries:
-            by_day[day].append((start, end, var, venue, role))
+        by_day: dict[str, list[tuple[int, int, BoolVarLike, str | None, str, str | None]]] = defaultdict(list)
+        for start, end, var, day, venue, role, team in entries:
+            by_day[day].append((start, end, var, venue, role, team))
 
-        for day_entries in by_day.values():
+        for day, day_entries in by_day.items():
             for i in range(len(day_entries)):
-                a_start, a_end, var_a, a_venue, a_role = day_entries[i]
+                a_start, a_end, var_a, a_venue, a_role, a_team = day_entries[i]
                 for j in range(i + 1, len(day_entries)):
-                    b_start, b_end, var_b, b_venue, b_role = day_entries[j]
+                    b_start, b_end, var_b, b_venue, b_role, b_team = day_entries[j]
                     if var_a is var_b:
                         continue
                     both_coaching = a_role == "coach" and b_role == "coach"
                     if same_venue_allowed and both_coaching and a_venue is not None and a_venue == b_venue:
                         continue
-                    if _intervals_overlap(a_start, a_end, b_start, b_end):
+                    if not _intervals_overlap(a_start, a_end, b_start, b_end):
+                        continue
+                    bs = (
+                        _block_case_exemption_bvars(
+                            case_bvars, a_team, b_team, a_venue, f"{day}:{_format_time(a_start)}"
+                        )
+                        if a_venue is not None and a_venue == b_venue and a_start == b_start
+                        else []
+                    )
+                    if bs:
+                        model.Add(var_a + var_b <= 1 + sum(bs))
+                    else:
                         model.Add(var_a + var_b <= 1)
-                        added += 1
+                    added += 1
     return added
 
 
