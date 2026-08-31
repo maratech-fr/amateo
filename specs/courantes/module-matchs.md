@@ -1,10 +1,13 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-30 (`documentation-update`, P4-133 — nouvelle section « Lecture des
-fondations » confrontée à `MatchesPage.tsx` (garde `readLoading`/`readFailed` sur
-fixtures/teams/venues, `conflicts.isError` resté brut) et `MatchesPage.test.tsx` (les deux NR
-rencontres/gymnases en échec). Le reste du fichier non re-confronté cette passe — un stamp
-REMPLACE, l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
+Last verified @ 2026-08-31 (rotation `documentation-update`, zone non touchée par cette PR —
+contrôle de fraîcheur. Re-confronté au code : `MatchesPage.tsx` garde toujours
+`readLoading`/`readFailed` sur fixtures/teams/venues et laisse `conflicts.isError` brut ✓ ;
+`engine/CONTRACT_VERSION` porte désormais **2.18** (bump P2-51 PR-5b, 2026-08-31 — un seul
+contrat pour `/generate`/`/place-matches`/`/validate-assignments`, la ligne « même contrat » de ce
+fichier tient toujours) ✓ ; `POST /place-matches` toujours déclaré dans `engine/app/main.py` ✓. Le
+reste du fichier non re-confronté cette passe — un stamp REMPLACE, l'historique vit dans git :
+`git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
 > [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés

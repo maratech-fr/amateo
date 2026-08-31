@@ -1,18 +1,11 @@
 # FORWARD Components Spec — Pages & Shared Components (hors wizard)
 
-Last verified @ 2026-08-30 (`documentation-update`, P4-149 — ligne `Onglets` corrigée : le type
-portant la distinction console/app, décrit ici sous le nom `TabsVariant`, a quitté `tabs.tsx` pour
-le foyer partagé `shared/lib/surfaceSkin.ts` (`SurfaceSkin`) ; ligne `EmptyState`/`EmptyBlock`/
-`EmptyHint` complétée de la prop `variant` (`SurfaceSkin`, `app` par défaut) — confirmé au code,
-`empty-hint.tsx` porte toujours exactement ces trois exports. Plus tôt le même jour
-(`documentation-update`, P4-151) : ligne `Palette console` (jetons `--console-*` de
-`src/index.css`, aliasing + bijection confirmés au code, gardés par `consolePalette.guard.test.ts`
-— présence du fichier vérifiée). Plus tôt encore (rotation `documentation-update`) : la convention
-snake_case des paths API Platform tenait — `priority_tiers`, `schedule_diagnostics`,
-`schedule_slot_templates`, `sport_categories`, `team_coaches`, `venue_training_slots`,
-`/api/venue_travel_rule_settings/{ruleKey}`, tous re-confirmés dans
-`specs/courantes/openapi-snapshot.json`. Le bloc « Historique » (sections 2-9) reste superseded,
-non re-vérifié — il ne prétend à aucune autorité)
+Last verified @ 2026-08-31 (rotation `documentation-update`, zone non touchée par cette PR —
+contrôle de fraîcheur. Re-confronté au code : `SurfaceSkin = "console" | "app"` toujours défini
+dans `shared/lib/surfaceSkin.ts` et consommé par `tabs.tsx` (`TAB_SKINS`) ✓ ; `empty-hint.tsx`
+porte toujours `EmptyHint`/`EmptyBlock` avec `variant?: SurfaceSkin` par défaut `"app"` ✓ ;
+`consolePalette.guard.test.ts` existe bien sous `features/admin/` ✓. Le bloc « Historique »
+(sections 2-9) reste superseded, non re-vérifié — il ne prétend à aucune autorité)
 
 > 🛑 **Ce document est SUPERSEDED. Il ne décrit pas le frontend livré.**
 >

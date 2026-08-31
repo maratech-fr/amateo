@@ -4,12 +4,13 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-08-30 (`documentation-update`, UXC-18/19 — l'arborescence `shared/lib/`
-(§ci-dessous) gagne `date.ts` (foyer unique du formatage de date FR, descendu de `cockpit/lib/date.ts`)
-confronté au code (`frontend/src/shared/lib/date.ts`, `cockpit/lib/date.ts` qui ré-exporte) ; le
-miroir « Radar de conflits » (§ci-dessous, `matches/lib/matchAccess.ts`) relu — le formatage de
-date y est de la présentation, pas le prédicat mirroré, rien de faux. Le reste du fichier (routes,
-primitives, stack, §6.9) non re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git :
+Last verified @ 2026-08-31 (`documentation-update`, P2-51 PR-6 — nouveau geste « Déplacer le
+groupe » ajouté §6.7, confronté au code : `SlotDetail.tsx` (libellé/note/message armé),
+`PlanningPage.tsx` (`armMoveGroup`, `targetMode.kind === "move-group"`, `doMoveGroup`,
+`moveGroupState`), `planning/lib/blockSession.ts` (dérivation FAIL-SAFE), `planning/api.ts`
+(`moveGroup`, `POST /schedule-slots/move-group`) et `planning/queries.ts` (`useMoveGroup`, même
+paquet d'invalidation que `useMoveSlot`). Reste du fichier (routes, primitives, stack, §6.9) non
+re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git :
 `git log -p --follow frontend/docs/frontend-spec.md`)
 
 ---
@@ -569,6 +570,26 @@ par un CRUD brut sur la ressource :
     accepter à côté). *Option b (évincer au placement) reste délibérément hors scope — on
     n'itère que si le terrain le réclame, décision fondateur.* Un refus toast la première
     violation et surligne le conflit ; le mode placement reste armé.
+- **Déplacer le GROUPE — même mode cible, rail dédié (P2-51 PR-6, 2026-08-31, D11)** : sur une
+  séance de bloc de mutualisation (tous ses membres co-localisés sur la même case), le bouton
+  « Déplacer » de `SlotDetail` devient **« Déplacer le groupe »** (compte de membres annoncé, note
+  de conséquence « Déplace les N équipes du groupe ensemble. ») — pas de déplacement individuel
+  proposé, le verdict le refuserait (`shared_block_broken`). **L'appartenance à un bloc n'est
+  PORTÉE PAR AUCUN champ du `Slot`** (le backend n'en expose pas) : elle est **dérivée FAIL-SAFE**
+  côté front (`frontend/src/features/planning/lib/blockSession.ts::blocksForSlot` — un bloc
+  « siège » sur une case quand TOUS ses membres y ont un créneau), le serveur restant seul juge —
+  la dérivation ne décide QUE de PROPOSER le geste, jamais de l'accepter (une case source devenue
+  fausse répond `slot_unavailable`, affiché tel quel). Même mode cible click-click que le
+  déplacement simple (armé par `armMoveGroup`, `targetMode.kind === "move-group"`) ; case cible
+  libre OU occupée envoyée telle quelle au rail — **aucune éviction** sur ce rail (le moteur
+  tranche, violations affichées telles quelles). `POST /api/schedule-slots/move-group`
+  (`useMoveGroup`, MÊME paquet d'invalidation que `useMoveSlot`) : le serveur résout LUI-MÊME les
+  créneaux membres depuis la case source (jamais de slotIds client). Accepté → toast (suffixé
+  « — N compromis » si `compromises.length > 0`) ; refusé (422) → violations NOMMÉES dans le
+  panneau + surlignage du conflit (même dérivation que `moveState`, présentation
+  `moveGroupState`) ; 409/502/504 toastés, mode cible reste armé. **Pas d'undo** (geste 4) pour un
+  déplacement de groupe — il faudrait rejouer `move-group`, hors scope de cette PR ; un éventuel
+  undo d'un geste simple précédent est invalidé au succès.
 - **Bandeau « Séances à replacer » (`DriftBanner`, geste 3)** — présentation pure
   (`lib/drift.ts`, module PUR) : les équipes qui ont **moins** de séances placées que le seuil
   attendu, sur un planning **`COMPLETED`** seulement (hors génération). Un bouton par équipe

@@ -88,12 +88,18 @@ l'amendement change :
   Traces : `specs/courantes/etat-des-lieux.md` §3, `backend/docs/backend-inventory.md`,
   `engine/docs/constraint-vocabulary.md`. **PR-4 livrée en PARTIE le 2026-08-31** : le geste
   DÉCLARER est fait (modale « Liens » de l'étape Équipes) ; les gestes POSER (Réserver) et
-  déplacer le bloc entier restent BLOQUÉS — aucun rail backend atomique n'existe pour l'un ni
-  l'autre (analyse : `mutualisation-par-creneau.md` §0ter). **D13 (correction fondateur reçue
-  pendant cette même passe)** : à l'écran, mutualisation et bloc SONT la même notion — un seul
-  lien « Mutualisation » dans la modale « Liens », le panneau du groupe historique {équipes, K}
-  en sort ; correctif en cours sur la même branche (détail `mutualisation-par-creneau.md` §0,
-  D13).
+  déplacer le bloc entier restaient BLOQUÉS à l'époque — aucun rail backend atomique n'existait
+  pour l'un ni l'autre (analyse : `mutualisation-par-creneau.md` §0ter). **D13 (correction
+  fondateur reçue pendant cette même passe)** : à l'écran, mutualisation et bloc SONT la même
+  notion — un seul lien « Mutualisation » dans la modale « Liens », le panneau du groupe
+  historique {équipes, K} en sort (détail `mutualisation-par-creneau.md` §0, D13). **PR-5 et PR-5b
+  (2026-08-31) débloquent les deux rails** (réservation groupée ré-ancrée sur le bloc, déplacement
+  groupé atomique contrat 2.18) ; **PR-6 (2026-08-31) branche les 3 gestes à l'écran** — le picker
+  de Réserver offre bloc ET groupe K dans la même section D13 (dédoublonnés), « Déplacer » devient
+  « Déplacer le groupe » sur une séance de bloc (appartenance dérivée FAIL-SAFE côté front, le
+  serveur reste juge), la sous-ligne « Mutualisée avec … » fusionne les deux sources sans doublon
+  (détail `mutualisation-par-creneau.md` §0sexies). Reste **PR-7** (retrait du repli
+  `sharedTrainingGroupId` + du modèle groupe K).
 
 Les 3 **CEC** du mercredi restent correctement AFFICHÉS par le `groupLabel` du créneau (P2-17,
 `BcclSeeder:394-396,491`) — mais leur sémantique solveur attend, elle aussi, P2-51.
@@ -140,7 +146,8 @@ voulu ; ne pas « harmoniser » vers la fusion.
 | P2-51 PR-4 (frontend : geste DÉCLARER livré ; gestes POSER/déplacer bloqués backend, arbitrage fondateur en attente) | 🟠 partielle 2026-08-31 |
 | P2-51 PR-5 (rail 1 — réservation groupée ré-ancrée sur le bloc, geste POSER débloqué) | ✅ 2026-08-31 |
 | P2-51 PR-5b (rail 2 — déplacement groupé, contrat 2.18, `POST /api/schedule-slots/move-group`) | ✅ 2026-08-31 |
-| P2-51 PR-6 (écran : bascule sur `sharedTrainingBlockId`, propose le geste déplacer-en-bloc) / PR-7 (retrait du repli groupe) | ⬜ |
+| P2-51 PR-6 (écran : bascule sur `sharedTrainingBlockId`, propose le geste déplacer-en-bloc) | ✅ 2026-08-31 |
+| P2-51 PR-7 (retrait du repli `sharedTrainingGroupId` côté backend + modèle groupe K) | ⬜ |
 | Exercice solveur reprise 17 août | ⬜ après P2-51 |
 | Exercice solveur reprise 24 août | ⬜ |
 | Overlay Mateo 31/08→16/10 (D2, D1) + exercice | ⬜ |

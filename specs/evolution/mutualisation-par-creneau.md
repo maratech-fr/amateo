@@ -73,8 +73,9 @@ trace `specs/courantes/etat-des-lieux.md` §3, inventaires `backend/docs/backend
 `engine/docs/constraint-vocabulary.md`. **PR-5 (2026-08-31) livre le RAIL 1** (réservation groupée
 ré-ancrée sur le bloc, détail §0quater) ; **PR-5b (2026-08-31) LÈVE le STOP et livre le RAIL 2**
 (déplacement groupé atomique, `POST /api/schedule-slots/move-group`, contrat 2.18 — détail
-§0quinquies). PR-6 (écran : le front bascule sur `sharedTrainingBlockId`, ajoute le geste
-déplacer-en-bloc) et PR-7 (retrait du repli `sharedTrainingGroupId`) restent à faire.
+§0quinquies). **PR-6 (2026-08-31) livre les 3 gestes à l'écran** (poser, déplacer-en-bloc,
+sous-ligne fusionnée — détail §0sexies). Reste **PR-7** (retrait du repli `sharedTrainingGroupId`
+côté backend, et du modèle groupe K devenu mort à l'écran).
 
 ## 0bis. PR-3 (2026-08-31) — la modélisation retenue : le LIAGE
 
@@ -206,6 +207,45 @@ parité `test_hard_layer_parity_registry` reste vert SANS modification) ; les go
 
 **Reste après PR-5b** : PR-6 (l'écran propose le geste « déplacer le bloc » et bascule sur
 `sharedTrainingBlockId`) et PR-7 (retrait du repli `sharedTrainingGroupId` côté backend).
+
+## 0sexies. PR-6 (2026-08-31) — l'écran branche les 3 gestes, D13 tenue de bout en bout
+
+**Les 3 gestes des rails 1/2 (PR-5, PR-5b) sont désormais OFFERTS à l'écran.** Sous D13 (§0) : le
+bloc n'a JAMAIS de section à part, il rejoint la même section « Entraînements mutualisés » que le
+groupe K partout où celle-ci apparaît déjà.
+
+**Geste 1 — POSER** (`SlotReservationModal.tsx`) : le picker offre blocs ET groupes K dans la MÊME
+section, préfixes de valeur distincts (`block:`/`group:`) aiguillant vers le MÊME rail batch
+(`POST /api/reservations/group`, `sharedTrainingBlockId`/`sharedTrainingGroupId`) — mêmes règles
+d'offre pour les deux (`offerableGroups`, capacité/K-`commonSessions`/membre en pause, raison
+NOMMÉE si bloqué). **Dédoublonnage sur l'ensemble d'équipes exact** (`teamSetSignature`, tri +
+jointure) : un bloc et un groupe K couvrant les MÊMES équipes ne posent qu'UNE entrée — le BLOC
+gagne (c'est le modèle qui reste après PR-7). `ReservationPanel` fetch les deux collections et les
+passe au picker.
+
+**Geste 2 — DÉPLACER** (`SlotDetail.tsx` + `PlanningPage.tsx`) : sur une séance de bloc, « Déplacer »
+est **REMPLACÉ** par « Déplacer le groupe » (compte de membres, note de conséquence) — AUCUN
+déplacement individuel offert, le verdict le refuserait (`shared_block_broken`). ⚠ **Le `Slot` ne
+porte AUCUN marqueur d'appartenance à un bloc** (le backend n'en expose pas) : l'appartenance est
+**dérivée FAIL-SAFE côté front** (`frontend/src/features/planning/lib/blockSession.ts` —
+`blocksForSlot`/`blocksAtCase` : un bloc « siège » sur une case quand TOUS ses membres y sont
+co-localisés), le serveur restant seul juge de l'écriture — la dérivation ne décide QUE d'OFFRIR le
+geste, jamais de l'accepter (une case source devenue fausse répond `slot_unavailable`, affiché tel
+quel). Même mode cible click-click que le déplacement simple ; nouveau rail
+`POST /api/schedule-slots/move-group` (`useMoveGroup`), même paquet d'invalidation que
+`useMoveSlot` ; refus 422 → violations NOMMÉES + surlignage du conflit (même dérivation que le
+déplacement simple) ; aucune éviction sur ce rail (le moteur tranche, la case cible part telle
+quelle) ; pas d'undo (rejouer `move-group` serait nécessaire, hors scope).
+
+**Geste 3 — SOUS-LIGNE** (`TeamsStep.tsx` + `PeriodStructure.tsx`) : « Mutualisée avec … » fusionne
+groupe K ET bloc **sans doublon** (helper pur `mutualisedTeammateLabel`,
+`frontend/src/features/wizard/lib/sharedTraining.ts`) — le trou de transition ouvert par PR-4 (une
+équipe déclarée via le nouveau panneau bloc n'apparaissait pas encore dans la sous-ligne) est
+**fermé**.
+
+**Ce qui reste APRÈS PR-6** : PR-7 seule — retirer le repli `sharedTrainingGroupId` côté backend
+(rail 1) et le modèle groupe K (entité/contrat/seeder), devenu mort à l'écran depuis D13 mais
+toujours vivant sous le capot.
 
 ## 1. Le besoin, dans les mots du terrain
 
