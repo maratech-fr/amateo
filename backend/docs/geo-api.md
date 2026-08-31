@@ -1,20 +1,12 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-08-29 (date recalée — le contenu ci-dessous a été écrit le 2026-08-28, le
-commit qui le porte (#779) a atterri le lendemain, décalage d'horloge de session sans rapport avec
-le contenu. Re-confronté au code avant de redater : `IgnRoutingClient::BATCH_BUDGET_SECONDS = 30.0`
-toujours vrai (`backend/src/Service/Geo/IgnRoutingClient.php:42`) ✓. **Reste du texte inchangé
-depuis le 2026-08-28** : BCK-22 — le budget global de l'autofill confronté au code : la 1ʳᵉ fenêtre
-part toujours puis dispatch stoppé passé le budget, clés restantes → `budgetExceededKeys` ✓ ;
-`VenueTravelTimeAutofillService::autofill` mappe ces clés sur la raison `budget_exceeded`
-(distincte de `routing_failed`) ✓ ; plafonds prod cités (`docker/php/Dockerfile:105`
-`max_execution_time=60`, `docker/nginx/default.conf:46` `fastcgi_read_timeout 60s`) ✓ ;
-`OpponentTravelResolver::resolve` consomme la même forme ET `budgetExceededKeys` : un code jamais
-tenté laisse sa ligne INTACTE (ni écriture ni création) et revient seulement `unresolved` ✓ —
-l'écraser par `null` était une régression de BCK-22, levée par la revue sécurité et gardée par
-`OpponentTravelResolverTest::testABudgetSkippedCodeKeepsItsExistingAutoValue`. Hosts BAN/IGN en dur
-+ `max_redirects: 0`, cap dur 120 paires, rate-limit `venue_travel_time_autofill` non re-sondés
-cette passe.
+Last verified @ 2026-08-31 (rotation `documentation-update`, hors sujet de la PR — sondage des
+stamps les plus anciens du dépôt). Re-confronté au code : hosts BAN/IGN en constantes dures
+(`Service/Geo/BanGeocodingClient.php` / `Service/Geo/IgnRoutingClient.php`) ✓ ·
+`IgnRoutingClient::BATCH_BUDGET_SECONDS = 30.0` toujours vrai (`IgnRoutingClient.php:42`) ✓. Non
+re-sondé cette passe : le détail du dispatch de budget, `OpponentTravelResolver::resolve`, les
+plafonds prod (`docker/php/Dockerfile`, `docker/nginx/default.conf`), le cap dur 120 paires, le
+rate-limit `venue_travel_time_autofill`.
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,

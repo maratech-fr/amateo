@@ -52,26 +52,40 @@ Conduite : chaque écriture en base annoncée AVANT, GO par GO (base de jeu du f
 | D2 | **L'incident seedé est REMPLACÉ** | « Matéo indisponible (travaux) » 18/08→30/09 → « incident » 31/08→16/10. Pas de coexistence. |
 | D3 | **La durée d'une indisponibilité devient modifiable, dans LES DEUX SENS** | étendre ET rétrécir. Aujourd'hui figée par construction dès qu'un plan existe (`CalendarEntryStateProcessor:118` — « Supprimez la période puis recréez-la », choix ADR-0002 : grille copiée à la naissance). Rétrécir pose la question des créneaux orphelins hors fenêtre. Axe §7.1 planning lifecycle — cadrage dédié. |
 | D4 | **Semaine charnière : le gestionnaire CHOISIT le type qui la couvre** | une semaine à cheval vacances/saison (ex. 31/08) est proposée en reprise OU en overlay **tant qu'elle n'est gérée par aucun** ; dès qu'un la prend, l'autre ne la propose plus. Motif fondateur : « pour un humain, il est impensable que la semaine du 31 août ne soit pas la semaine de reprise — mais d'autres structures peuvent voir l'inverse. D'où le choix. » |
-| D5 | **Les mutualisations « comme le gestionnaire l'entend » = P2-51, déjà cadré** | Reconfirmé le 2026-08-31 (« je dois pouvoir faire mes mutualisations comme je l'entends ») — voir §4 : le cadrage du 2026-08-25 tient, ses décisions sont figées, le lot entre dans ce programme. |
+| D5 | **Les mutualisations « comme le gestionnaire l'entend » = P2-51, déjà cadré** | Reconfirmé le 2026-08-31 (« je dois pouvoir faire mes mutualisations comme je l'entends ») — voir §4 : le besoin du cadrage du 2026-08-25 tient (les 8 partages), son MODÈLE est amendé le même jour en bloc (D9-D12), le lot entre dans ce programme. |
 | D7 | **P2-51 AVANT les exercices solveur** | pas de palliatif par groupes déclarés — l'exercice mesurerait un écart contre un modèle faux. |
 | D8 | **Pas de libellé sur les paires mutualisées** | seuls les CEC sont nommés, parce que le club les nomme. L'empilé est le rendu voulu. |
 | D6 | Le nom d'équipe `Veterans` reste sans accent | les fichiers du fondateur l'écrivent de deux façons (`Vétérans`/`Véterans`) ; renommer toucherait 5 sites pour du cosmétique. À rouvrir s'il y tient. |
+| D9 | **Le bloc de mutualisation se déclare comme une équipe** | amende le cadrage P2-51 du 2026-08-25 (ancrage au créneau, abandonné) : un ensemble d'équipes qui se comporte comme UNE équipe, avec son propre nombre de séances communes (liste déroulante bornée) — « la déclaration est identique à déclarer les créneaux dans une équipe » (verbatim). Sélectionnable dans Réserver comme une équipe ; ses séances lui appartiennent, le solveur les placera comme celles d'une équipe (PR-3) — dissout structurellement le double-comptage du modèle groupe. |
+| D10 | **Le bloc est un fait de PLAN, pas de saison** | question posée par l'agent de doc, tranchée par le fondateur : « je ne m'attends pas à ce qu'il survive aux vacances ». Pas de persistance-avec-désactivation. Coût assumé : redéclarer ~8 blocs par overlay ; « recopier les blocs du socle » = extension future explicite. |
+| D11 | **Un bloc se déplace ENTIER, jamais une équipe seule** | « si je dois le déplacer je bouge les 2 équipes d'un coup » (verbatim). Le verdict (PR-3) refusera le déplacement individuel d'un membre ; le rail de retouche gagnera « déplacer le bloc ». |
+| D12 | **Un bloc meurt ENTIER à la suppression d'un membre** | « je préfère tout défaire puis recréer que de retirer du groupe — la suppression d'une équipe est lourde de conséquence » (verbatim). Inverse le patron de survie-à-2 de la rotation match ; implémenté `SharedTrainingBlockPruneStep`. |
 
-## 4. Les mutualisations : le lot P2-51, déjà cadré — PAS un nouveau chantier
+## 4. Les mutualisations : le lot P2-51, cadré PUIS amendé — PAS un nouveau chantier
 
 **Le réel** : 8 partages de créneau (lignes « + » du fichier saison), 5 équipes
 multi-appartenances (U9F1, U9F2, U9M1, U9M2, U13F2). Le fondateur l'a reconfirmé le 2026-08-31 :
 le planning réel est la spécification, l'app doit savoir le dire.
 
-**Ce besoin est DÉJÀ cadré : [`mutualisation-par-creneau.md`](mutualisation-par-creneau.md)
-(P2-51, 2026-08-25)** — la même liste de 8 partages, verbatim, y figure. Ses décisions sont
-figées, à ne pas re-discuter :
-- la mutualisation **par créneau** s'AJOUTE (« ce créneau précis est partagé par ces équipes »),
-  patron `MatchSlotRotation` ; le groupe {équipes, K} existant **reste intact** ;
+**Ce besoin a été cadré le 2026-08-25, puis son MODÈLE amendé le 2026-08-31** (pendant la
+validation du plan de PR-1) : [`mutualisation-par-creneau.md`](mutualisation-par-creneau.md) §0
+tient le détail — la même liste de 8 partages, verbatim, reste le besoin de référence. Ce que
+l'amendement change :
 - motif profond, revérifié indépendamment le 2026-08-31 : lever l'unicité un-groupe-par-équipe ne
   suffirait PAS — l'exact-K du solveur **se double-compte sur les partages imbriqués** (la séance
   du trio CEC compte aussi pour la paire incluse). La représentation par groupes est
-  structurellement incapable de dire le terrain.
+  structurellement incapable de dire le terrain — **ce diagnostic tient toujours**.
+- ~~la mutualisation **par créneau** s'AJOUTE, patron `MatchSlotRotation`~~ → **abandonné** : le
+  modèle retenu est le **BLOC** (D9) — un ensemble d'équipes qui se comporte comme UNE équipe,
+  ses séances lui appartiennent (pas d'ancrage à une case gymnase/jour/heure). Le groupe
+  {équipes, K} existant **reste intact** (AJOUT confirmé, seule la forme du nouveau modèle a
+  changé) ; fait de PLAN (D10), déplacé en bloc (D11), meurt entier à la suppression d'un membre
+  (D12).
+- **PR-1 (modèle backend seul) livrée le 2026-08-31** : entités `SharedTrainingBlock`/
+  `SharedTrainingBlockTeam`, migration RLS, API CRUD, gardes (garde centrale Σ comprise), cascades,
+  staleness, purges. Traces : `specs/courantes/etat-des-lieux.md` §3,
+  `backend/docs/backend-inventory.md`. Restent PR-2 (payload/contrat), PR-3 (sémantique solveur +
+  verdict de déplacement-en-bloc), PR-4 (frontend).
 
 Les 3 **CEC** du mercredi restent correctement AFFICHÉS par le `groupLabel` du créneau (P2-17,
 `BcclSeeder:394-396,491`) — mais leur sémantique solveur attend, elle aussi, P2-51.
@@ -112,7 +126,8 @@ voulu ; ne pas « harmoniser » vers la fusion.
 | Diff seeder ↔ fichier saison (90=90) | ✅ vérifié |
 | Consignation du programme (ce fichier) | ✅ |
 | PR seeder : drapeaux « périmé » (+ passerelles P5-23 si le fondateur valide) | ⬜ suivant |
-| P2-51 mutualisation par créneau — démarrage (cadrage déjà fait) | ⬜ **suivant** (D7) |
+| P2-51 modèle amendé (D9-D12) — PR-1 modèle bloc (backend seul) | ✅ 2026-08-31 |
+| P2-51 PR-2 (payload/contrat) · PR-3 (sémantique solveur + déplacement-en-bloc) · PR-4 (frontend) | ⬜ **suivant** (D7) |
 | Exercice solveur reprise 17 août | ⬜ après P2-51 |
 | Exercice solveur reprise 24 août | ⬜ |
 | Overlay Mateo 31/08→16/10 (D2, D1) + exercice | ⬜ |

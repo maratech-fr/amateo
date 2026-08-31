@@ -27,6 +27,8 @@ use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\SharedTrainingGroup;
 use App\Entity\SharedTrainingGroupTeam;
 use App\Entity\Team;
@@ -124,6 +126,9 @@ final class SeasonDataPurger
             // cosmétique). Deux tables club_id+season_id, purgées avec la saison.
             SharedTrainingGroupTeam::class,
             SharedTrainingGroup::class,
+            // P2-51 — le bloc de mutualisation : mêmes règles (membres avant parent, aucune FK).
+            SharedTrainingBlockTeam::class,
+            SharedTrainingBlock::class,
             // RMM-5 — rotation A/B : les lignes membres avant le parent (aucune FK, ordre
             // cosmétique). Deux tables club_id+season_id, purgées avec la saison.
             MatchSlotRotationTeam::class,

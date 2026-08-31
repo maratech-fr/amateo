@@ -12,6 +12,7 @@ use App\Entity\MatchSlotRotationTeam;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingGroup;
 use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
@@ -579,6 +580,29 @@ final class ResourceChangeStaleScheduleTest extends KernelTestCase
         );
     }
 
+    public function testASharedTrainingBlockChangeMarksTheSeasonPlan(): void
+    {
+        [$club, $season] = $this->seed();
+        $schedule = $this->seasonSchedule($club, $season);
+
+        $otherSeason = $this->season($club, '2026-2027', '2026-09-01', '2027-06-30');
+        $otherSchedule = $this->seasonSchedule($club, $otherSeason);
+        $this->em->flush();
+
+        // Un bloc de mutualisation SOCLE (plan NULL) change ce que le solveur place → le plan
+        // SEASON du club+saison est périmé. Portée dérivée du plan (ADR-0002) : la N+1 est intacte.
+        $this->storeSharedTrainingBlock($club, $season, null, 1);
+
+        self::assertTrue(
+            $this->reload($schedule)->isResourcesChangedSinceGeneration(),
+            'Un bloc de mutualisation socle périme le plan SEASON du club+saison.',
+        );
+        self::assertFalse(
+            $this->reload($otherSchedule)->isResourcesChangedSinceGeneration(),
+            'La frontière saison tient : un bloc de la saison N ne périme pas la saison N+1.',
+        );
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -748,6 +772,18 @@ final class ResourceChangeStaleScheduleTest extends KernelTestCase
             ->setSchedulePlanId($schedulePlanId)
             ->setCommonSessions($commonSessions);
         $this->em->persist($group);
+        $this->em->flush();
+        $this->em->clear();
+    }
+
+    private function storeSharedTrainingBlock(Club $club, Season $season, ?string $schedulePlanId, int $commonSessions): void
+    {
+        $block = (new SharedTrainingBlock)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setSchedulePlanId($schedulePlanId)
+            ->setCommonSessions($commonSessions);
+        $this->em->persist($block);
         $this->em->flush();
         $this->em->clear();
     }

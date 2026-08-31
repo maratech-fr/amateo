@@ -1,13 +1,11 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-08-29 (date recalée — le contenu ci-dessous a été écrit le 2026-08-28, le
-commit qui le porte (#779) a atterri le lendemain, décalage d'horloge de session sans rapport avec
-le contenu. Re-confronté avant de redater : topic
-`club:{clubId}:schedule:{scheduleId}` (`backend/src/Mercure/MercureTopic.php:29`)
-✓ · verrou par club `ClubGenerationLock::acquire` — `$redis->set(..., ['nx', 'ex' => $ttlSeconds])`
-(`backend/src/Service/ClubGenerationLock.php:26`) ✓ · l'abonné Mercure frontend vit toujours à
-`frontend/src/features/planning/lib/scheduleStream.ts` ✓. Tout juste, rien à corriger) — *(historique des passes retiré le 2026-08-19,
-audit DOC-33 ; il vit dans git : `git log -p --follow specs/courantes/generation-pipeline.md`)*
+Last verified @ 2026-08-31 (rotation `documentation-update`, hors sujet de la PR — sondage des
+stamps les plus anciens du dépôt). Re-confronté au code : topic
+`club:{clubId}:schedule:{scheduleId}` (`backend/src/Mercure/MercureTopic.php:29`) ✓ · verrou par
+club `ClubGenerationLock::acquire` (`backend/src/Service/ClubGenerationLock.php:26`) ✓. Tout juste,
+rien à corriger — *(historique des passes retiré le 2026-08-19, audit DOC-33 ; il vit dans git :
+`git log -p --follow specs/courantes/generation-pipeline.md`)*
 
 > Vérité courante. Décrit ce qui **doit** se passer, zone par zone, quand un
 > gestionnaire lance une génération : ce que fait le frontend, ce que fait le

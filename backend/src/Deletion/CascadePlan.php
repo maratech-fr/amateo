@@ -76,6 +76,9 @@ final class CascadePlan
             new DeleteByFieldStep(CoachWish::class, 'teamId', new ImpactLabel('team_coach_wish', 'demande de coach', 'demandes de coach')),
             new ScopedConstraintStep(ConstraintScope::TEAM, new ImpactLabel('team_constraint', 'contrainte visant cette équipe', 'contraintes visant cette équipe')),
             new SharedTrainingGroupPruneStep(new ImpactLabel('team_shared_group', 'groupe de mutualisation', 'groupes de mutualisation')),
+            // P2-51 — le bloc de mutualisation meurt ENTIER quand une équipe membre part (comme
+            // le groupe ci-dessus). PR-1 : aucune réservation/placement à emporter (PR-3/4).
+            new SharedTrainingBlockPruneStep(new ImpactLabel('team_shared_block', 'bloc de mutualisation', 'blocs de mutualisation')),
             // RMM-5 — l'équipe quitte ses créneaux de match partagés ; ceux qui tombent < 2
             // membres sont SUPPRIMÉS (annoncés). Les survivants gardent leurs autres équipes.
             new MatchSlotRotationTeamPruneStep(new ImpactLabel('team_match_slot_rotation', 'créneau de match partagé', 'créneaux de match partagés')),
