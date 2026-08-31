@@ -15,8 +15,9 @@ use Doctrine\ORM\EntityManagerInterface;
  * disparaît (décision fondateur 2026-08-31 : « tout défaire puis recréer ») : le bloc part avec
  * TOUTES ses lignes {@see SharedTrainingBlockTeam}, pas seulement celle de l'équipe supprimée.
  * Mort ENTIÈRE, PAS le seuil de survie à 2 de la rotation match. Le bloc part avec ses seules
- * lignes membres ; ses éventuelles réservations « bloc-complètes » suivent le rail des
- * réservations d'équipe (`team_reservation`).
+ * lignes membres ; ses réservations « bloc-complètes » partent, elles, par deux rails
+ * complémentaires : celle de l'équipe supprimée par `team_reservation`, celles des AUTRES membres
+ * par {@see SharedBlockReservationPruneStep} (qui passe AVANT, tant que la case est encore complète).
  *
  * Le COMPTE annoncé — le nombre de blocs où l'équipe figure — est EXACTEMENT ce qui est détruit
  * (chaque bloc où elle figure meurt), sans règle de survie à rejouer côté compteur.

@@ -281,6 +281,83 @@ final class DeletionImpactParityTest extends KernelTestCase
     }
 
     /**
+     * P2-51 PR-7 — la cascade d'une ÉQUIPE membre de BLOCS emporte aussi les RÉSERVATIONS de bloc,
+     * EXÉCUTÉE en base. Supprimer une équipe tue le bloc entier (D12), et les réservations de lot
+     * des AUTRES membres partent avec — sinon les verrous HARD restants déclencheraient un
+     * diagnostic de sur-capacité fantôme à la génération suivante.
+     *
+     * L'annonce doit dire TOUT ce qui tombe et RIEN de plus (parité) :
+     *   - `team_shared_block` = les 2 blocs où elle FIGURE (pas le 3e) → tous deux détruits ;
+     *   - `team_shared_reservation` = les réservations des AUTRES membres sur les cases
+     *     « bloc-complètes » (celle de l'équipe supprimée est comptée par `team_reservation`) ;
+     *   - `team_reservation` = ses propres réservations.
+     *
+     * Falsifiable dans les deux sens : une réservation INDIVIDUELLE d'un membre survivant (case NON
+     * complète, posée à la main) doit SURVIVRE — la détruire serait une destruction non annoncée ;
+     * l'annoncer sans la détruire ferait mentir le compte.
+     */
+    public function testDeletingATeamKillsEveryBlockItBelongsToAndTheBatchReservations(): void
+    {
+        [$club, $season] = $this->seed();
+        $venue = $this->venue($club, $season, 'Matéo');
+        $doomed = $this->team($club, $season, forcedVenueId: $venue->getId());
+        $mate = $this->team($club, $season, forcedVenueId: $venue->getId());
+        $third = $this->team($club, $season, forcedVenueId: $venue->getId());
+        $stranger = $this->team($club, $season, forcedVenueId: $venue->getId());
+
+        // Un duo et un trio où l'équipe supprimée FIGURE ; un bloc étranger où elle n'est pas.
+        $duo = $this->sharedBlock($club, $season, [$doomed, $mate]);
+        $trio = $this->sharedBlock($club, $season, [$doomed, $mate, $third]);
+        $untouched = $this->sharedBlock($club, $season, [$mate, $stranger]);
+
+        // Case « bloc-complète » du DUO : {doomed, mate} exactement.
+        $this->reservation($club, $season, $doomed, $venue, day: 1, at: '18:00');
+        $duoMate = $this->reservation($club, $season, $mate, $venue, day: 1, at: '18:00');
+        // Case « bloc-complète » du TRIO : {doomed, mate, third} exactement.
+        $this->reservation($club, $season, $doomed, $venue, day: 2, at: '19:00');
+        $trioMate = $this->reservation($club, $season, $mate, $venue, day: 2, at: '19:00');
+        $trioThird = $this->reservation($club, $season, $third, $venue, day: 2, at: '19:00');
+        // Réservations INDIVIDUELLES (cases NON complètes) : elles doivent survivre.
+        $mateSolo = $this->reservation($club, $season, $mate, $venue, day: 3, at: '20:00');
+        $strangerSolo = $this->reservation($club, $season, $stranger, $venue, day: 4, at: '21:00');
+        $this->em->flush();
+
+        $impact = self::getContainer()->get(DeletionImpactCounter::class)->forTeam($doomed);
+        $announced = [];
+        foreach ($impact->lines as $line) {
+            $announced[$line['key']] = $line['count'];
+        }
+
+        // Le compte annoncé == exactement ce qui sera détruit (la parité se lit d'un trait).
+        self::assertSame(2, $announced['team_shared_block'] ?? 0, 'les 2 blocs où elle figure sont annoncés, pas le 3e');
+        self::assertSame(3, $announced['team_shared_reservation'] ?? 0, 'les réservations des autres membres sur les cases complètes : mate(duo) + mate(trio) + third(trio)');
+        self::assertSame(2, $announced['team_reservation'] ?? 0, 'ses deux réservations propres sont annoncées à part');
+
+        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfTeam($doomed);
+        $this->em->flush();
+        $this->em->clear();
+
+        // Le duo ET le trio sont partis — bloc ET toutes leurs lignes, survivants compris.
+        self::assertNull($this->em->getRepository(SharedTrainingBlock::class)->find($duo), 'un duo amputé meurt entier');
+        self::assertNull($this->em->getRepository(SharedTrainingBlock::class)->find($trio), 'un trio amputé meurt entier : pas de seuil de survie');
+        // Le bloc étranger n'a pas bougé d'un pouce.
+        self::assertNotNull($this->em->getRepository(SharedTrainingBlock::class)->find($untouched));
+
+        // Les réservations de lot des AUTRES membres ont disparu…
+        self::assertNull($this->em->getRepository(Reservation::class)->find($duoMate), 'la réservation de mate sur la case du duo part avec le bloc');
+        self::assertNull($this->em->getRepository(Reservation::class)->find($trioMate), 'idem sur la case du trio');
+        self::assertNull($this->em->getRepository(Reservation::class)->find($trioThird), 'et celle de third sur la même case');
+        // …mais PAS les réservations individuelles (cases non complètes) : elles survivent.
+        self::assertNotNull($this->em->getRepository(Reservation::class)->find($mateSolo), 'la réservation individuelle de mate n\'est pas une séance mutualisée : elle reste');
+        self::assertNotNull($this->em->getRepository(Reservation::class)->find($strangerSolo), 'la réservation de l\'étrangère reste');
+        self::assertSame(1, $this->countBy(Reservation::class, 'teamId', $mate->getId()), 'à mate il ne reste QUE sa réservation individuelle');
+
+        // Et l'équipe supprimée ne figure plus nulle part.
+        self::assertSame(0, $this->countBy(SharedTrainingBlockTeam::class, 'teamId', $doomed->getId()));
+        self::assertSame(0, $this->countBy(Reservation::class, 'teamId', $doomed->getId()));
+    }
+
+    /**
      * AUD-BCK-15 — la cascade d'un COACH, exécutée en base.
      *
      * Son plan mêle deux gestes que la structure seule ne distingue pas : ce qui est
