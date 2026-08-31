@@ -12578,7 +12578,7 @@
                                     "sharedTrainingBlockId": {
                                         "type": "string",
                                         "format": "uuid",
-                                        "description": "Resolved FIRST if provided (the block a set of teams that behaves as one team, P2-51)"
+                                        "description": "Resolved FIRST if provided (a set of teams that behaves as one team)"
                                     },
                                     "sharedTrainingGroupId": {
                                         "type": "string",

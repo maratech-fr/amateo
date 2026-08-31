@@ -2,7 +2,7 @@ Last verified @ 2026-08-31 (P2-51 PR-5, `documentation-update` — régénéré 
 tournant : `docker compose exec php-fpm php bin/console api:openapi:export`, après
 `docker compose restart php-fpm` (opcache). **191 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`)
 ✓, count INCHANGÉ (aucun path ajouté/retiré, le body du POST existant a changé) · SHA-256
-`b978864db636ffe57c67b19afe0b26fb618fe39609d4c46897b0fac689591d8e` (`sha256sum`) · `TsFieldsMatchOpenApiSchemaTest`
+`7cfb3662e1c3ed379d01b68c74e71ac217c7fadbd1dd6159be2fb00ce39ddda4` (`sha256sum`) · `TsFieldsMatchOpenApiSchemaTest`
 et `CrossStack/OpenApiSnapshotMatchesTheLiveContractTest` verts sur ce snapshot. Reste du journal
 non re-confronté au code cette passe.)
 

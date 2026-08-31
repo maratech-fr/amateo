@@ -191,7 +191,7 @@ final readonly class UncoveredCustomPaths implements CustomPathContributor
                     'type' => 'object',
                     'required' => ['venueId', 'dayOfWeek', 'startTime'],
                     'properties' => [
-                        'sharedTrainingBlockId' => ['type' => 'string', 'format' => 'uuid', 'description' => 'Resolved FIRST if provided (the block a set of teams that behaves as one team, P2-51)'],
+                        'sharedTrainingBlockId' => ['type' => 'string', 'format' => 'uuid', 'description' => 'Resolved FIRST if provided (a set of teams that behaves as one team)'],
                         'sharedTrainingGroupId' => ['type' => 'string', 'format' => 'uuid', 'description' => 'Legacy fallback, resolved only when sharedTrainingBlockId is absent or does not resolve — transitional, kept until the frontend fully migrates to blocks'],
                         'venueId' => ['type' => 'string', 'format' => 'uuid'],
                         'dayOfWeek' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 7],
