@@ -127,7 +127,8 @@ voulu ; ne pas « harmoniser » vers la fusion.
 | Consignation du programme (ce fichier) | ✅ |
 | PR seeder : drapeaux « périmé » (+ passerelles P5-23 si le fondateur valide) | ⬜ suivant |
 | P2-51 modèle amendé (D9-D12) — PR-1 modèle bloc (backend seul) | ✅ 2026-08-31 |
-| P2-51 PR-2 (payload/contrat) · PR-3 (sémantique solveur + déplacement-en-bloc) · PR-4 (frontend) | ⬜ **suivant** (D7) |
+| P2-51 PR-2 (payload/contrat — bloc `sharedBlocks`, CONTRACT_VERSION 2.17, INERTE) | ✅ 2026-08-31 |
+| P2-51 PR-3 (sémantique solveur + déplacement-en-bloc) · PR-4 (frontend) | ⬜ **suivant** (D7) |
 | Exercice solveur reprise 17 août | ⬜ après P2-51 |
 | Exercice solveur reprise 24 août | ⬜ |
 | Overlay Mateo 31/08→16/10 (D2, D1) + exercice | ⬜ |

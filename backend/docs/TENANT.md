@@ -1,6 +1,11 @@
 # ClubScheduler — Tenant Isolation Architecture
 
-Last verified @ 2026-08-30 (rotation documentation-update, sans rapport avec le sujet de la PR (P4-138). Re-confronté au code : priorité 7 (`TenantFilterListener.php:55`, `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · connexion runtime `amateo_app` (`doctrine.yaml:5`, `docker/postgres/init/02-users.sh:32` `NOSUPERUSER`) et connexion admin `amateo_owner` (superuser, bypasses RLS, `doctrine.yaml:11`) ✓ · `Version20260731090000` (drop `migration_user`) présente et inchangée ✓ · `SeasonAccessGuard`/`WriteTargetSeasonResolver` existent toujours sous `backend/src/Service/` ✓. Rien à corriger ce jour)
+Last verified @ 2026-08-31 (rotation `documentation-update`, sans rapport avec le sujet de la PR
+(P2-51 PR-2). Re-confronté au code : priorité 7 (`TenantFilterListener.php:55`,
+`KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · connexion runtime `amateo_app`
+(`doctrine.yaml:5`, `docker/postgres/init/02-users.sh:32` `NOSUPERUSER`) et connexion admin
+`amateo_owner` (superuser, bypasses RLS, `doctrine.yaml:11`) ✓ · `TenantOwnedInterfaceCompletenessTest`
+présent (`backend/tests/Security/TenantOwnedInterfaceCompletenessTest.php`) ✓. Rien à corriger ce jour)
 
 ## Overview
 

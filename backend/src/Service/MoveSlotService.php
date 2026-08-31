@@ -45,7 +45,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 final class MoveSlotService
 {
     /** Contrat backend⇄engine du endpoint de validation (F2a). Un seul contrat, 3 endpoints. */
-    private const string CONTRACT_VERSION = '2.16';
+    private const string CONTRACT_VERSION = '2.17';
 
     /**
      * Budget SOLVEUR court PAR solve : la baseline est entièrement figée, le moteur ne place

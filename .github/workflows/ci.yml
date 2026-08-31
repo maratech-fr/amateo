@@ -542,6 +542,13 @@ jobs:
       - name: SharedTrainingPayloadParityTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/SharedTrainingPayloadParityTest.php --group phase1'
 
+      # P2-51 PR-2 : ce qui est STOCKÉ (blocs de mutualisation {équipes, K}, ancrés au plan) == le
+      # bloc `sharedBlocks` émis au moteur, socle ET période, portée dérivée du plan (ADR-0002),
+      # membre hors roster filtré + bloc tombé sous 2 abandonné — falsifié dans les deux sens (un
+      # bloc stocké apparaît, un bloc d'une autre portée ne fuit pas).
+      - name: SharedBlockPayloadParityTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/SharedBlockPayloadParityTest.php --group phase1'
+
       # Lot PASSERELLES PR-1 : ce qui est STOCKÉ (passerelles club+saison {teamAId, teamBId,
       # intensity}) == le bloc `teamLinks` émis au moteur, socle ET période, FILTRÉ au roster —
       # falsifié dans les deux sens (une passerelle stockée apparaît avec son intensité, un lien

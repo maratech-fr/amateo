@@ -29,6 +29,13 @@ MAX_TAGS_PER_TEAM = 50
 MAX_SHARED_TRAINING_GROUPS = 50
 MIN_TEAMS_PER_SHARED_GROUP = 2
 MAX_TEAMS_PER_SHARED_GROUP = 10
+# P2-51 — mutualisation par BLOC : plafonds du bloc `sharedBlocks`. Un bloc se comporte comme UNE
+# équipe (ses séances lui appartiennent, ``commonSessions``), 2..10 équipes membres (cap technique
+# fondateur, minimum métier 2). 50 blocs = défense en profondeur au bord (le backend ne borne pas
+# le NOMBRE de blocs à la saisie). ACCEPTÉ mais NON consommé en PR-2 : la sémantique est PR-3.
+MAX_SHARED_TRAINING_BLOCKS = 50
+MIN_TEAMS_PER_SHARED_BLOCK = 2
+MAX_TEAMS_PER_SHARED_BLOCK = 10
 # Lot PASSERELLES — plafond du bloc `teamLinks` : 50 passerelles (~10x un gros club FFBB).
 # Défense en profondeur : le backend borne à la SAISIE (TeamLinkStateProcessor::MAX_TEAM_LINKS,
 # miroir manuel de cette constante), ceci est la dernière ligne au bord.
@@ -252,6 +259,28 @@ class SharedTrainingGroupSchema(SerializableModel):
     common_sessions: int = Field(alias="commonSessions", ge=1)
 
 
+class SharedTrainingBlockSchema(SerializableModel):
+    """P2-51 — mutualisation par BLOC : un ensemble d'équipes qui se comporte comme UNE équipe.
+
+    À la différence du groupe {équipes, K} (``SharedTrainingGroupSchema``, qui réifie K séances
+    communes DÉDUITES de la co-présence), le bloc POSSÈDE ses ``common_sessions`` : ses séances
+    lui appartiennent, le solveur les placera comme celles d'une équipe (PR-3) — ce qui dissout
+    structurellement le double-comptage des groupes imbriqués. ``team_ids`` : de 2 (minimum
+    métier) à 10 équipes (cap technique) ; la multi-appartenance (une équipe dans plusieurs blocs)
+    est permise. En PR-2 le bloc est ACCEPTÉ mais PAS consommé : aucune variable posée, goldens
+    inchangés. Un bloc ``sharedBlocks`` absent/vide ⇒ chemin byte-identique (patron
+    ``sharedTrainings``/``teamLinks``).
+    """
+
+    id: str
+    team_ids: list[str] = Field(
+        alias="teamIds",
+        min_length=MIN_TEAMS_PER_SHARED_BLOCK,
+        max_length=MAX_TEAMS_PER_SHARED_BLOCK,
+    )
+    common_sessions: int = Field(alias="commonSessions", ge=1)
+
+
 class TeamLinkSchema(SerializableModel):
     """Lot PASSERELLES — deux équipes déclarées partager des joueurs (« passerelle »).
 
@@ -332,6 +361,13 @@ class ScheduleInputSchema(SerializableModel):
     # groupes = défense en profondeur au bord (le backend borne déjà à la saisie).
     shared_trainings: list[SharedTrainingGroupSchema] = Field(
         default_factory=list, alias="sharedTrainings", max_length=MAX_SHARED_TRAINING_GROUPS
+    )
+    # P2-51 — mutualisation par BLOC : blocs d'équipes se comportant comme UNE équipe (leurs
+    # séances leur appartiennent). ACCEPTÉ mais NON consommé en PR-2 : absent/vide ⇒ payload
+    # byte-identique (patron sharedTrainings), goldens inchangés — la sémantique est PR-3. Cap 50
+    # blocs = défense en profondeur au bord.
+    shared_blocks: list[SharedTrainingBlockSchema] = Field(
+        default_factory=list, alias="sharedBlocks", max_length=MAX_SHARED_TRAINING_BLOCKS
     )
     # Lot PASSERELLES — passerelles déclarées (deux équipes partageant des joueurs). ACCEPTÉ mais
     # NON consommé en PR-1 : absent/vide ⇒ payload byte-identique (patron sharedTrainings), goldens

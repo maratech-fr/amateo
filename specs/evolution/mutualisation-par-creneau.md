@@ -55,9 +55,11 @@ modèle groupe {équipes, K} ne peut pas dire le terrain), l'AJOUT (pas remplace
 notions, un coup d'œil » (§3).
 
 **Avancement** : PR-1 (modèle backend seul : entités, migration RLS, API CRUD, gardes, cascades,
-staleness, purges) **livrée** — trace `specs/courantes/etat-des-lieux.md` §3, inventaire
-`backend/docs/backend-inventory.md`. Restent PR-2 (émission payload/contrat), PR-3 (sémantique
-solveur + verdict de déplacement-en-bloc), PR-4 (frontend). Détail de programme et séquencement :
+staleness, purges) et PR-2 (émission payload/contrat — bloc `sharedBlocks`, `CONTRACT_VERSION`
+2.16→2.17, schémas moteur INERTES : accepté mais non consommé, goldens inchangés) **livrées** —
+trace `specs/courantes/etat-des-lieux.md` §3, inventaires `backend/docs/backend-inventory.md` et
+`engine/docs/engine-inventory.md` (changelog contrat). Restent PR-3 (sémantique solveur + verdict
+de déplacement-en-bloc), PR-4 (frontend). Détail de programme et séquencement :
 [`plannings-bccl-2026-08-31.md`](plannings-bccl-2026-08-31.md) §4/§6.
 
 ## 1. Le besoin, dans les mots du terrain
@@ -136,10 +138,12 @@ mémoire, avec leur réponse effective :
 - ~~La sémantique solveur : ancré vs contrainte souple~~ → **ni l'un ni l'autre** : le bloc se
   comporte comme une équipe, ses séances lui appartiennent (D9) — tranché pour PR-3, pas encore
   implémenté (PR-1 = modèle seul).
-- Le bloc contrat (bump probable) et la parité stocké⇄émis (patron `SharedTrainingPayloadParityTest`)
-  — reste ouvert, périmètre PR-2.
-- Axes §7.1 : **contrat backend⇄engine** ET **sémantique de contrainte** → NR + smoke obligatoires
-  quand PR-2/PR-3 les touchent (PR-1 = modèle backend seul, aucun payload ni engine).
+- ~~Le bloc contrat (bump probable) et la parité stocké⇄émis (patron `SharedTrainingPayloadParityTest`)~~
+  → **livré PR-2** : bloc `sharedBlocks`, `CONTRACT_VERSION` 2.17, gating
+  `CrossStack/SharedBlockPayloadParityTest`.
+- Axes §7.1 : **contrat backend⇄engine** — NR + smoke faits en PR-2 (contrat 2.17, schémas moteur
+  inertes, goldens inchangés). **Sémantique de contrainte** reste à faire en PR-3 (le bloc n'est
+  pas encore consommé par le solveur).
 
 ## 5. Impacts recensés (consommateurs du modèle actuel, tous vérifiés le 2026-08-25)
 
