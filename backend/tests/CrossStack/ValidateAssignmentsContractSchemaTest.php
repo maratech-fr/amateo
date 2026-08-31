@@ -171,24 +171,26 @@ final class ValidateAssignmentsContractSchemaTest extends TestCase
         // alors que le contrat était passé à 2.11).
         $payload['version'] = $this->currentContractVersion();
         $payload['solverTimeoutSeconds'] = 2;
-        $payload['candidate'] = [
+        // Contrat 2.18 — `candidates` est une LISTE (P2-51 PR-5b) : le verdict juge N déplacements
+        // sous UN verdict. Ici un seul (le rail simple `MoveSlotService::move()`).
+        $payload['candidates'] = [[
             'teamId' => 'team-1',
             'venueId' => 'venue-1',
             'dayOfWeek' => 4,
             'startTime' => '20:00',
             'durationMinutes' => 90,
-        ];
-        // P2-32 — `reference` (l'état « avant » du candidat, même forme que `candidate`) fait
-        // partie du contrat de verdict : `MoveSlotService::move()` le pose pour le DELTA de
-        // compromis. Optionnel (une création n'en pose pas) ; ici on prouve que le moteur RÉEL
+        ]];
+        // P2-32 — `references` (l'état « avant » de chaque candidat, même forme que `candidates`,
+        // appariée par index) fait partie du contrat de verdict : `MoveSlotService::move()` la pose
+        // pour le DELTA de compromis. Vide pour une création ; ici on prouve que le moteur RÉEL
         // l'accepte (schéma `extra="forbid"`).
-        $payload['reference'] = [
+        $payload['references'] = [[
             'teamId' => 'team-1',
             'venueId' => 'venue-1',
             'dayOfWeek' => 2,
             'startTime' => '18:00',
             'durationMinutes' => 90,
-        ];
+        ]];
 
         return $payload;
     }
@@ -217,17 +219,22 @@ final class ValidateAssignmentsContractSchemaTest extends TestCase
             self::assertIsArray($payload[$key]);
         }
 
-        self::assertArrayHasKey('candidate', $payload);
-        $candidate = $payload['candidate'];
+        // Contrat 2.18 — `candidates` est une LISTE (un déplacement simple = une liste à 1 élément).
+        self::assertArrayHasKey('candidates', $payload);
+        self::assertIsArray($payload['candidates']);
+        self::assertCount(1, $payload['candidates']);
+        $candidate = $payload['candidates'][0];
         self::assertIsArray($candidate);
         foreach (['teamId', 'venueId', 'dayOfWeek', 'startTime', 'durationMinutes'] as $key) {
             self::assertArrayHasKey($key, $candidate);
         }
         self::assertSame('team-1', $candidate['teamId']);
 
-        // P2-32 — `reference` a la MÊME forme que `candidate` (l'état « avant » du candidat).
-        self::assertArrayHasKey('reference', $payload);
-        $reference = $payload['reference'];
+        // P2-32 / 2.18 — `references` a la MÊME forme (liste appariée par index), l'état « avant ».
+        self::assertArrayHasKey('references', $payload);
+        self::assertIsArray($payload['references']);
+        self::assertCount(1, $payload['references']);
+        $reference = $payload['references'][0];
         self::assertIsArray($reference);
         foreach (['teamId', 'venueId', 'dayOfWeek', 'startTime', 'durationMinutes'] as $key) {
             self::assertArrayHasKey($key, $reference);

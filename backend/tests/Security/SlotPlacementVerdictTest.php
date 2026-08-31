@@ -182,10 +182,12 @@ final class SlotPlacementVerdictTest extends WebTestCase
         $this->service($client)->place($ctx['schedule'], $ctx['teamId'], 4, new DateTimeImmutable('20:00'), $ctx['venue2']);
 
         self::assertIsArray($captured);
-        self::assertArrayHasKey('candidate', $captured);
-        self::assertSame($ctx['teamId'], $captured['candidate']['teamId']);
+        // Contrat 2.18 — `candidates` est une LISTE (une création = une liste à 1 élément).
+        self::assertArrayHasKey('candidates', $captured);
+        self::assertCount(1, $captured['candidates']);
+        self::assertSame($ctx['teamId'], $captured['candidates'][0]['teamId']);
         // La durée du candidat envoyé au moteur vient de la fenêtre, pas du client.
-        self::assertSame(self::WINDOW_DURATION, $captured['candidate']['durationMinutes']);
+        self::assertSame(self::WINDOW_DURATION, $captured['candidates'][0]['durationMinutes']);
         self::assertArrayHasKey('slotTemplates', $captured);
         $ids = array_map(static fn (array $t): string => (string) ($t['id'] ?? ''), $captured['slotTemplates']);
         self::assertContains($existing->getId(), $ids, 'les séances déjà en place restent dans la baseline (complète)');

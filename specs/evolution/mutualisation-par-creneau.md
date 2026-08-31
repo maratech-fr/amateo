@@ -71,10 +71,10 @@ casse — détail §0bis)** et **PR-4 (frontend, geste DÉCLARER — détail §0
 trace `specs/courantes/etat-des-lieux.md` §3, inventaires `backend/docs/backend-inventory.md` et
 `engine/docs/engine-inventory.md` (changelog contrat), vocabulaire
 `engine/docs/constraint-vocabulary.md`. **PR-5 (2026-08-31) livre le RAIL 1** (réservation groupée
-ré-ancrée sur le bloc, détail §0quater) ; le **RAIL 2** (déplacement groupé atomique) est **STOPPÉ
-sur un constat de contrat** (`candidate` singulier dans `/validate-assignments`, bump 2.18 requis)
-— arbitrage fondateur en cours. PR-6 (écran : le front bascule sur `sharedTrainingBlockId`) et PR-7
-(retrait du repli `sharedTrainingGroupId`) restent à faire.
+ré-ancrée sur le bloc, détail §0quater) ; **PR-5b (2026-08-31) LÈVE le STOP et livre le RAIL 2**
+(déplacement groupé atomique, `POST /api/schedule-slots/move-group`, contrat 2.18 — détail
+§0quinquies). PR-6 (écran : le front bascule sur `sharedTrainingBlockId`, ajoute le geste
+déplacer-en-bloc) et PR-7 (retrait du repli `sharedTrainingGroupId`) restent à faire.
 
 ## 0bis. PR-3 (2026-08-31) — la modélisation retenue : le LIAGE
 
@@ -128,19 +128,19 @@ plus que deux liens (passerelles, mutualisation). Le comportement du geste DÉCL
 d'écriture BATCH, `POST /api/reservations/group`, résolvait STRICTEMENT un `SharedTrainingGroup` —
 404 sinon. **Débloqué par PR-5 (§0quater, 2026-08-31)** : le rail se ré-ancre sur le bloc.
 
-**BLOQUÉ backend — geste 3b (déplacer le bloc entier)** : D11 exige un déplacement EN BLOC, jamais
-une équipe seule. Le seul rail de déplacement, `POST /api/schedule-slots/{id}/move`
+**Était BLOQUÉ backend — geste 3b (déplacer le bloc entier)** : D11 exige un déplacement EN BLOC,
+jamais une équipe seule. Le seul rail de déplacement, `POST /api/schedule-slots/{id}/move`
 (`ManualEditController.php:111`), ne déplace qu'UN créneau sous UN verdict. N appels séquentiels
 sans échec atomique casseraient le bloc à mi-chemin (le premier déplacement le rendrait
 `shared_block_broken`, le verdict PR-3 refuserait alors le second) — c'est le cas d'arrêt prévu,
-pas un bug. **Reste bloqué après PR-5** (§0quater) : le blocage n'est plus « aucun rail n'existe »
-mais un constat de CONTRAT précis (`candidate` singulier de `/validate-assignments`), arbitrage
-fondateur en cours.
+pas un bug. **Débloqué par PR-5b** (§0quinquies, 2026-08-31, GO fondateur explicite) : nouveau rail
+`POST /api/schedule-slots/move-group`, contrat 2.18.
 
-**Conséquence** : PR-5 a résolu le geste 2 (rail 1, réservation). Le geste 3b (rail 2, déplacement)
-reste en attente d'arbitrage sur le bump `CONTRACT_VERSION` 2.18 — détail §0quater.
+**Conséquence** : PR-5 a résolu le geste 2 (rail 1, réservation) ; PR-5b résout le geste 3b (rail 2,
+déplacement) — détail §0quinquies. Reste : PR-6 (l'écran propose le geste) et PR-7 (nettoyage du
+repli `sharedTrainingGroupId`).
 
-## 0quater. PR-5 (2026-08-31) — rail 1 livré (réservation ré-ancrée), rail 2 STOPPÉ sur un constat de contrat
+## 0quater. PR-5 (2026-08-31) — rail 1 livré (réservation ré-ancrée), rail 2 STOPPÉ (levé en PR-5b, §0quinquies)
 
 **Rail 1 — livré.** `POST /api/reservations/group` résout désormais un `SharedTrainingBlock`
 D'ABORD (nouveau champ body `sharedTrainingBlockId`), avec repli sur `SharedTrainingGroup` (champ
@@ -156,22 +156,56 @@ bloc), règles (b)/(e) : un bloc complet compte comme UN occupant. Détail compl
 `add_room_at_most_one` laisse une case toute-verrouillée non contrainte, et le diagnostic de
 sur-capacité replie déjà les blocs PAR CASE (câblé en PR-3). Aucun crédit manquant.
 
-**Rail 2 — STOPPÉ, arbitrage fondateur requis.** Le schéma du verdict
+**Rail 2 — STOPPÉ à l'issue de cette PR, arbitrage fondateur requis.** Le schéma du verdict
 (`engine/app/schemas/validate_input_schema.py:101`, champ `candidate:
-CandidateAssignmentSchema`) déclare le candidat **au singulier, obligatoire** — un déplacement
-groupé (N sources + N candidats sous UN verdict) exige un **bump de contrat 2.18** : une liste de
+CandidateAssignmentSchema`) déclarait le candidat **au singulier, obligatoire** — un déplacement
+groupé (N sources + N candidats sous UN verdict) exigeait un **bump de contrat 2.18** : une liste de
 candidats côté schéma, et la généralisation du miroir `_shared_block_move_violation`
-(`engine/app/solver/validate_assignments.py:131`) à un jugement N-déplacements (aujourd'hui, il ne
-juge qu'UN déplacement avant/après via `reference`). Non implémenté, non bumpé — conforme au
-cadrage (le rail 2 n'était pas dans le périmètre tant que le constat de contrat n'était pas posé).
+(`engine/app/solver/validate_assignments.py:131`) à un jugement N-déplacements (à l'époque, il ne
+jugeait qu'UN déplacement avant/après via `reference`). Non implémenté, non bumpé à ce stade —
+conforme au cadrage (le rail 2 n'était pas dans le périmètre tant que le constat de contrat
+n'était pas posé). **Levé le même jour par PR-5b, GO fondateur explicite — détail §0quinquies.**
 
 **Garde P4-154 soldée dans cette même PR** : la paire `wizard/SharedTrainingBlock` (type TS miroir
 ↔ schéma OpenAPI) est enrôlée dans `TsFieldsMatchOpenApiSchemaTest::PAIRS`, sans exemption, sans
 divergence trouvée.
 
-**Reste après PR-5** : PR-6 (l'écran bascule sur `sharedTrainingBlockId`, retire le repli du POST
-côté front) et PR-7 (retrait du repli `sharedTrainingGroupId` côté backend + rail 2 une fois
-l'arbitrage du bump 2.18 tranché).
+## 0quinquies. PR-5b (2026-08-31) — rail 2 livré : contrat 2.18, verdict sur N déplacements, `POST /api/schedule-slots/move-group`
+
+**Le bump tranché.** `candidate`/`reference` (singuliers, `validate_input_schema.py`) sont
+**REMPLACÉS** par `candidates`/`references` (LISTES appariées par index) — forme UNIQUE, aucun
+champ mort de compat (style maison « sync manuelle », les deux côtés du contrat bougent ensemble).
+Une liste à 1 élément **EST** le cas single (rails `/move`/`/place-slot`, N=1) : un seul chemin de
+code côté engine (`validate_assignment`), pas un dialecte de plus. `references` reste optionnelle
+(vide = créations pures) mais, si présente, doit apparier `candidates` élément pour élément
+(`model_validator`, refuse une longueur intermédiaire à la construction).
+
+**Le principe sémantique qui gouverne les 5 miroirs.** Les miroirs déterministes
+(`_shared_training_move_violation`, `_shared_block_move_violation`, `_team_link_move_violation`,
+`_travel_time_move_violation`, `_venue_minimum_move_violation`) jugent désormais l'**ÉTAT FINAL**
+des N déplacements (baseline − N sources + N candidats), **jamais N jugements séquentiels d'un
+état intermédiaire faux**. Le cas canonique qui motive tout le lot : déplacer **TOUS** les membres
+d'un bloc vers une même case cible est **ACCEPTÉ** (le bloc s'y reconstitue) — juger chaque
+déplacement isolément aurait vu le PREMIER « casser » le bloc que le second reconstruit, et aurait
+donc refusé à tort un geste parfaitement légitime. En déplacer **UN SEUL** reste refusé,
+`shared_block_broken`. Détail engine : `engine/docs/engine-inventory.md` §POST /validate-assignments.
+
+**Le rail** : `POST /api/schedule-slots/move-group` — `{scheduleId, blockId, source{venueId,
+dayOfWeek, startTime}, target{…}}`. Le serveur résout LUI-MÊME les créneaux membres (jamais de
+slotIds client, D11) : les teamIds du bloc, puis les `ScheduleSlotTemplate` de CE planning qui
+siègent EXACTEMENT à la case source parmi ces équipes — une séance de bloc à `commonSessions > 1`
+en a plusieurs, la case source désigne CELLE à déplacer. UN verdict à N candidats, UNE transaction
+Doctrine tout-ou-rien (refus = rien bougé ; accord = N mutations + 1 flush). Refus 422 avec les
+violations telles quelles (mêmes clés que `/move`). Gardes identiques à `/move`/`place-slot` :
+management (SEC-07), 409 génération/plan choisi, 502/504 moteur, tenant/season-scopé. Détail
+complet : `backend/docs/backend-inventory.md` §Édition manuelle.
+
+**Ce qui n'a PAS bougé** : `_apply_hard` (le HARD posé au solve reste inchangé, le registre de
+parité `test_hard_layer_parity_registry` reste vert SANS modification) ; les goldens `/generate`
+(le bump ne touche que le verdict). Snapshot OpenAPI régénéré (+1 path, 192).
+
+**Reste après PR-5b** : PR-6 (l'écran propose le geste « déplacer le bloc » et bascule sur
+`sharedTrainingBlockId`) et PR-7 (retrait du repli `sharedTrainingGroupId` côté backend).
 
 ## 1. Le besoin, dans les mots du terrain
 

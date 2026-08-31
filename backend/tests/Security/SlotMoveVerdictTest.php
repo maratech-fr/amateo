@@ -169,19 +169,22 @@ final class SlotMoveVerdictTest extends KernelTestCase
         $this->service($client)->move($slot, 4, new DateTimeImmutable('20:00'), $ctx['venue2']);
 
         self::assertIsArray($captured);
-        self::assertArrayHasKey('candidate', $captured);
-        self::assertSame($slot->getTeamId(), $captured['candidate']['teamId']);
+        // Contrat 2.18 — `candidates` est une LISTE (un déplacement simple = une liste à 1 élément).
+        self::assertArrayHasKey('candidates', $captured);
+        self::assertCount(1, $captured['candidates']);
+        self::assertSame($slot->getTeamId(), $captured['candidates'][0]['teamId']);
         self::assertArrayHasKey('slotTemplates', $captured);
         $ids = array_map(static fn (array $t): string => (string) ($t['id'] ?? ''), $captured['slotTemplates']);
         self::assertNotContains($slot->getId(), $ids, 'la SOURCE doit être retirée de la baseline avant le verdict');
 
-        // P2-32 — le payload porte `reference` = le placement d'ORIGINE de la source (état « avant »
-        // du DELTA de compromis), pas la cible du déplacement.
-        self::assertArrayHasKey('reference', $captured);
-        self::assertSame($slot->getTeamId(), $captured['reference']['teamId']);
-        self::assertSame($ctx['venue1'], $captured['reference']['venueId'], 'reference = le gymnase D\'ORIGINE');
-        self::assertSame(2, $captured['reference']['dayOfWeek'], 'reference = le jour D\'ORIGINE (mardi)');
-        self::assertSame('18:00', $captured['reference']['startTime']);
+        // P2-32 / 2.18 — le payload porte `references` (liste appariée) = le placement d'ORIGINE de
+        // la source (état « avant » du DELTA de compromis), pas la cible du déplacement.
+        self::assertArrayHasKey('references', $captured);
+        self::assertCount(1, $captured['references']);
+        self::assertSame($slot->getTeamId(), $captured['references'][0]['teamId']);
+        self::assertSame($ctx['venue1'], $captured['references'][0]['venueId'], 'reference = le gymnase D\'ORIGINE');
+        self::assertSame(2, $captured['references'][0]['dayOfWeek'], 'reference = le jour D\'ORIGINE (mardi)');
+        self::assertSame('18:00', $captured['references'][0]['startTime']);
     }
 
     /**

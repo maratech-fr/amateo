@@ -7,6 +7,8 @@ namespace App\Service;
 use App\Entity\CalendarEntry;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Enum\LockLevel;
 use App\Exception\DurationMismatchException;
 use App\Exception\EngineTimeoutException;
@@ -45,7 +47,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 final class MoveSlotService
 {
     /** Contrat backend⇄engine du endpoint de validation (F2a). Un seul contrat, 3 endpoints. */
-    private const string CONTRACT_VERSION = '2.17';
+    private const string CONTRACT_VERSION = '2.18';
 
     /**
      * Budget SOLVEUR court PAR solve : la baseline est entièrement figée, le moteur ne place
@@ -146,23 +148,25 @@ final class MoveSlotService
         // (3) Le candidat : l'équipe posée dans l'emplacement de destination, à la durée de la
         //     FENÊTRE. Le solveur ne lit pas `candidate.durationMinutes` (il dérive tout de la
         //     grille) — cette valeur ne sert qu'à l'écriture serveur qui suivra un « oui ».
-        $payload['candidate'] = [
+        //     Contrat 2.18 : `candidates` est une LISTE (ici à UN élément — un déplacement simple).
+        $payload['candidates'] = [[
             'teamId' => $slot->getTeamId(),
             'venueId' => $venueId,
             'dayOfWeek' => $dayOfWeek,
             'startTime' => $startTime->format('H:i'),
             'durationMinutes' => $durationMinutes,
-        ];
+        ]];
         // P2-32 — l'état « AVANT » du candidat pour le DELTA de compromis : le placement d'ORIGINE
         // de la source (elle est retirée de la baseline, cf. buildBasePayload). Lu du slot AVANT
-        // toute mutation. Une CRÉATION (place()) n'en pose pas → « avant » = baseline nue.
-        $payload['reference'] = [
+        // toute mutation. Contrat 2.18 : `references` est une LISTE appariée par index à
+        // `candidates` (ici un seul couple). Une CRÉATION (place()) n'en pose aucune → baseline nue.
+        $payload['references'] = [[
             'teamId' => $slot->getTeamId(),
             'venueId' => $slot->getVenueId(),
             'dayOfWeek' => $slot->getDayOfWeek(),
             'startTime' => $slot->getStartTime()->format('H:i'),
             'durationMinutes' => $slot->getDurationMinutes(),
-        ];
+        ]];
         $result = $this->validateUnderTimeout($payload);
 
         if (true !== ($result['valid'] ?? false)) {
@@ -262,13 +266,15 @@ final class MoveSlotService
             throw new DurationMismatchException;
         }
 
-        $payload['candidate'] = [
+        // Contrat 2.18 : `candidates` est une LISTE (ici à UN élément — une création à la dérive) ;
+        // aucune `references` (pas de source d'origine → « avant » = baseline nue).
+        $payload['candidates'] = [[
             'teamId' => $teamId,
             'venueId' => $venueId,
             'dayOfWeek' => $dayOfWeek,
             'startTime' => $startTime->format('H:i'),
             'durationMinutes' => $durationMinutes,
-        ];
+        ]];
         $result = $this->validateUnderTimeout($payload);
 
         if (true !== ($result['valid'] ?? false)) {
@@ -306,6 +312,153 @@ final class MoveSlotService
         $this->progressPublisher->publishSafely($schedule, []);
 
         return ['valid' => true, 'violations' => [], 'compromises' => $compromises, 'slotId' => $slot->getId()];
+    }
+
+    /**
+     * DÉPLACER UNE SÉANCE DE BLOC ENTIÈRE (P2-51 D11, PR-5b) — les N créneaux des membres du bloc
+     * qui siègent à la case SOURCE, d'un coup vers la case CIBLE, SOUS UN SEUL VERDICT et en UNE
+     * transaction (tout-ou-rien). D11 interdit de déplacer un membre seul : le rail simple `move()`
+     * refuserait le premier déplacement (`shared_block_broken`) au deuxième appel séquentiel — d'où
+     * ce rail ATOMIQUE, un verdict à N candidats (contrat 2.18).
+     *
+     * ⚠ Le serveur résout LUI-MÊME les créneaux de la séance (jamais des slotIds clients) : les
+     * membres du bloc qui siègent EXACTEMENT à `(sourceVenueId, sourceDayOfWeek, sourceStartTime)`
+     * dans CE planning. Un bloc à `commonSessions > 1` a plusieurs séances : la case source désigne
+     * CELLE à déplacer. Aucun créneau à cette case → 422 `slot_unavailable` (rien à déplacer).
+     *
+     * La durée écrite est celle de la FENÊTRE cible (LA RÈGLE), pas celle des sources. Refus verdict
+     * → 422, RIEN déplacé. Accepté → les N créneaux mutés puis UN flush (atomicité Doctrine), le
+     * marqueur « retouché » et la publication Mercure.
+     *
+     * @throws ScheduleGenerationInProgressException une génération tourne pour ce club (→ 409)
+     * @throws SlotUnavailableException              aucune séance de bloc à la source, ou fenêtre cible absente (→ 422)
+     * @throws EngineTimeoutException                le moteur a été trop lent (→ 504)
+     * @throws TransportExceptionInterface           le moteur est injoignable/cassé (→ 502)
+     *
+     * @return array{valid: bool, violations: list<array{rule: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string, conflictingTeamId: ?string}>, compromises: list<array{family: string, effect: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string}>, movedSlotIds?: list<string>}
+     */
+    public function moveGroup(
+        Schedule $schedule,
+        SharedTrainingBlock $block,
+        int $sourceDayOfWeek,
+        DateTimeImmutable $sourceStartTime,
+        string $sourceVenueId,
+        int $dayOfWeek,
+        DateTimeImmutable $startTime,
+        string $venueId,
+    ): array {
+        // (1) Une génération réécrit le planning : déplacer maintenant écraserait un résultat en vol.
+        if ($this->clubGenerationLock->isGenerating($schedule->getClubId())) {
+            throw new ScheduleGenerationInProgressException;
+        }
+
+        // (2) Les membres du bloc, puis les créneaux de CE planning qui siègent à la case source.
+        //     C'est le serveur qui résout la séance — jamais des slotIds du client (D11).
+        $memberTeamIds = $this->blockMemberTeamIds($block);
+        $sources = $this->sourceSlotsAtCase($schedule, $memberTeamIds, $sourceVenueId, $sourceDayOfWeek, $sourceStartTime);
+        if ([] === $sources) {
+            // Aucun membre du bloc à cette case : il n'y a pas de séance de bloc à déplacer ici.
+            throw new SlotUnavailableException;
+        }
+
+        // (3) Baseline figée SANS les N sources (sinon chaque membre entrerait en conflit avec
+        //     lui-même) + la grille de gymnase, d'où l'on tire la durée de la fenêtre CIBLE.
+        $sourceIds = array_map(static fn (ScheduleSlotTemplate $s): string => $s->getId(), $sources);
+        $payload = $this->buildBasePayloadExcluding($schedule, $sourceIds);
+
+        $durationMinutes = $this->resolveWindowDurationMinutes($payload, $venueId, $dayOfWeek, $startTime);
+        if (null === $durationMinutes) {
+            throw new SlotUnavailableException;
+        }
+
+        // (4) UN verdict, N candidats : chaque membre posé à la case cible, chaque référence = sa
+        //     case d'origine (appariées par index, contrat 2.18). Le solveur ne lit pas
+        //     `durationMinutes` du candidat (il dérive tout de la grille) — il ne sert qu'à l'écriture.
+        $candidates = [];
+        $references = [];
+        foreach ($sources as $source) {
+            $candidates[] = [
+                'teamId' => $source->getTeamId(),
+                'venueId' => $venueId,
+                'dayOfWeek' => $dayOfWeek,
+                'startTime' => $startTime->format('H:i'),
+                'durationMinutes' => $durationMinutes,
+            ];
+            $references[] = [
+                'teamId' => $source->getTeamId(),
+                'venueId' => $source->getVenueId(),
+                'dayOfWeek' => $source->getDayOfWeek(),
+                'startTime' => $source->getStartTime()->format('H:i'),
+                'durationMinutes' => $source->getDurationMinutes(),
+            ];
+        }
+        $payload['candidates'] = $candidates;
+        $payload['references'] = $references;
+
+        $result = $this->validateUnderTimeout($payload);
+
+        if (true !== ($result['valid'] ?? false)) {
+            // (5a) Le déplacement N'A PAS LIEU — aucun des N créneaux ne bouge (atomicité par le refus).
+            return ['valid' => false, 'violations' => $this->namedViolations($result), 'compromises' => []];
+        }
+
+        // (5b) Écrire les N déplacements puis UN SEUL flush : Doctrine les enveloppe dans UNE
+        //      transaction (tout-ou-rien). La durée écrite est TOUJOURS celle de la fenêtre cible.
+        foreach ($sources as $source) {
+            $source
+                ->setDayOfWeek($dayOfWeek)
+                ->setStartTime($startTime)
+                ->setVenueId($venueId)
+                ->setDurationMinutes($durationMinutes);
+        }
+        $schedule->setManuallyEditedSinceGeneration(true);
+        $this->entityManager->flush();
+
+        $this->progressPublisher->publishSafely($schedule, []);
+
+        return [
+            'valid' => true,
+            'violations' => [],
+            'compromises' => $this->namedCompromises($result),
+            'movedSlotIds' => $sourceIds,
+        ];
+    }
+
+    /**
+     * Les ids d'équipe membres d'un bloc (patron `GroupReservationController::blockMemberTeamIds`).
+     *
+     * @return list<string>
+     */
+    private function blockMemberTeamIds(SharedTrainingBlock $block): array
+    {
+        return array_map(
+            static fn (SharedTrainingBlockTeam $row): string => $row->getTeamId(),
+            $this->entityManager->getRepository(SharedTrainingBlockTeam::class)
+                ->findBy(['blockId' => $block->getId()], ['teamId' => 'ASC']),
+        );
+    }
+
+    /**
+     * Les créneaux de CE planning qui siègent EXACTEMENT à la case source, parmi les équipes
+     * données — la séance de bloc à déplacer. Tenant-scopé par le filtre Doctrine.
+     *
+     * @param list<string> $teamIds
+     *
+     * @return list<ScheduleSlotTemplate>
+     */
+    private function sourceSlotsAtCase(Schedule $schedule, array $teamIds, string $venueId, int $dayOfWeek, DateTimeImmutable $startTime): array
+    {
+        if ([] === $teamIds) {
+            return [];
+        }
+
+        return $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy([
+            'scheduleId' => $schedule->getId(),
+            'venueId' => $venueId,
+            'dayOfWeek' => $dayOfWeek,
+            'startTime' => $startTime,
+            'teamId' => $teamIds,
+        ]);
     }
 
     /**
@@ -418,6 +571,29 @@ final class MoveSlotService
      */
     private function buildBasePayload(Schedule $schedule, ?ScheduleSlotTemplate $source, ?ScheduleSlotTemplate $evicted): array
     {
+        $excludedIds = [];
+        if ($source instanceof ScheduleSlotTemplate) {
+            $excludedIds[] = $source->getId();
+        }
+        if ($evicted instanceof ScheduleSlotTemplate) {
+            $excludedIds[] = $evicted->getId();
+        }
+
+        return $this->buildBasePayloadExcluding($schedule, $excludedIds);
+    }
+
+    /**
+     * Le même payload de base que {@see buildBasePayload}, mais en retirant de la baseline un
+     * ENSEMBLE d'ids (une seule source pour le rail simple ; les N sources d'une séance de bloc pour
+     * le rail `move-group`). C'est la maison unique de l'assemblage — le rail de groupe ne réécrit
+     * pas la construction, il ne fait que fournir SES ids exclus.
+     *
+     * @param list<string> $excludedIds
+     *
+     * @return array<string, mixed>
+     */
+    private function buildBasePayloadExcluding(Schedule $schedule, array $excludedIds): array
+    {
         $overlayEntryId = $this->schedulePlanProvisioner->periodEntryIdOf($schedule);
         $overlayEntry = null === $overlayEntryId
             ? null
@@ -426,14 +602,6 @@ final class MoveSlotService
         $payload = $overlayEntry instanceof CalendarEntry
             ? $this->constraintBuilder->buildForOverlay($schedule, $overlayEntry)
             : $this->constraintBuilder->buildForClubSeason($schedule->getClubId(), $schedule->getSeasonId());
-
-        $excludedIds = [];
-        if ($source instanceof ScheduleSlotTemplate) {
-            $excludedIds[] = $source->getId();
-        }
-        if ($evicted instanceof ScheduleSlotTemplate) {
-            $excludedIds[] = $evicted->getId();
-        }
 
         $currentSlotTemplates = \is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : [];
         $payload['slotTemplates'] = $this->baselineWithoutSiblings($currentSlotTemplates, $schedule, $excludedIds);

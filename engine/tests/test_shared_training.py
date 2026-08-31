@@ -21,7 +21,14 @@ from ortools.sat.python import cp_model
 from app.schemas.validate_input_schema import ValidateAssignmentsInputSchema
 from app.solver.constraints import AssignmentVariable, add_shared_training_constraints
 from app.solver.validate_assignments import validate_assignment
-from tests.support.pipeline import make_payload, make_team, make_venue, solve_payload, team_constraint
+from tests.support.pipeline import (
+    as_validate_payload,
+    make_payload,
+    make_team,
+    make_venue,
+    solve_payload,
+    team_constraint,
+)
 
 
 def _shared_group(group_id: str, team_ids: list[str], common_sessions: int) -> dict[str, Any]:
@@ -221,7 +228,7 @@ class TestMoveVerdict:
             "sharedTrainings": over.get("sharedTrainings", [_shared_group("g", ["U13", "U15"], 1)]),
             "candidate": candidate,
         }
-        return payload
+        return as_validate_payload(payload)
 
     def test_moving_a_member_out_of_the_common_case_is_refused(self) -> None:
         # U13 + U15 partagent A/18:00 (K=1) ; on déplace U13 vers A/20:00 (seul). La source est

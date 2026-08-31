@@ -104,7 +104,7 @@ final class SlotMoveGridParityTest extends KernelTestCase
         self::assertSame(1, $requests, 'une fenêtre existe : le moteur EST consulté');
         // Le candidat émis au moteur porte déjà la durée de la fenêtre (60), pas celle de la source (90).
         self::assertIsArray($captured);
-        self::assertSame(60, $captured['candidate']['durationMinutes'], 'le candidat émis prend la durée de la FENÊTRE');
+        self::assertSame(60, $captured['candidates'][0]['durationMinutes'], 'le candidat émis prend la durée de la FENÊTRE');
 
         $this->em->clear();
         $this->scopeGucToClub($ctx['clubId']);

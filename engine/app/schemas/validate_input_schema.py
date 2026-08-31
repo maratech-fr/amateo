@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import time
+from typing import Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from app.schemas.input_schema import (
     MAX_SHARED_TRAINING_BLOCKS,
@@ -23,16 +24,21 @@ from app.schemas.input_schema import (
     VenueTravelTimeSchema,
 )
 
-# P2-2 F2a — verdict moteur sur UN candidat de deplacement (mono-candidat, pas de
-# batch : la decision fondateur exige un candidat par appel). Le vocabulaire est
-# celui de /generate — on ne reinvente pas un dialecte : venues/teams/coaches/
-# constraints/priorityTiers arrivent tels quels, et `slotTemplates` porte le
-# planning courant a FIGER (baseline). Le candidat est la seule chose libre.
+# P2-2 F2a / P2-51 PR-5b — verdict moteur sur N deplacements sous UN verdict (contrat 2.18).
+# Le vocabulaire est celui de /generate — on ne reinvente pas un dialecte : venues/teams/
+# coaches/constraints/priorityTiers arrivent tels quels, et `slotTemplates` porte le planning
+# courant a FIGER (baseline). Les candidats sont la seule chose libre : `candidates` est une
+# LISTE (un deplacement simple = une liste a UN element ; un deplacement de bloc = N sources
+# retirees de la baseline + N candidats juges ENSEMBLE, etat final, sous UN verdict). Un seul
+# chemin de code cote engine — la liste a 1 element EST le cas single.
 MAX_VENUES = 50
 MAX_TEAMS = 200
 MAX_COACHES = 200
 MAX_SLOT_TEMPLATES = 2000
 MAX_PRIORITY_TIERS = 20
+# Un deplacement de bloc reunit au plus les membres d'un bloc (2..10) ; ce plafond laisse de la
+# marge sans jamais laisser un batch non borne.
+MAX_CANDIDATES = 50
 # Budget de temps volontairement COURT (cible UX 2-3 s cote gestionnaire) : la
 # baseline est entierement figee, le solveur ne cherche qu'a placer UN candidat
 # deja epingle — un budget long ne masquerait qu'un defaut de modelisation.
@@ -98,10 +104,31 @@ class ValidateAssignmentsInputSchema(SerializableModel):
     venue_travel_times: list[VenueTravelTimeSchema] = Field(
         default_factory=list, alias="venueTravelTimes", max_length=MAX_VENUE_TRAVEL_TIMES
     )
-    candidate: CandidateAssignmentSchema
-    # P2-32 — l'état « AVANT » du candidat, pour le DELTA de compromis. Pour un DÉPLACEMENT le
-    # backend y pose le placement d'origine de la source (même forme que ``candidate``) : « avant »
-    # = baseline figée + ``reference``. Absent (une CRÉATION à la dérive) → « avant » = baseline
-    # nue. N'entre JAMAIS dans le verdict booléen (feasibility) : il ne sert qu'à la lecture des
-    # compromis post-acceptation.
-    reference: CandidateAssignmentSchema | None = None
+    # P2-51 PR-5b — les candidats à valider, sous UN verdict. Une liste à UN élément = le
+    # déplacement simple (rail ``/move``, création ``/place-slot``) ; N éléments = un déplacement
+    # de bloc atomique (rail ``/move-group``). Le solveur les épingle TOUS et juge l'état FINAL
+    # (baseline − N sources + N candidats), jamais N jugements séquentiels d'un état intermédiaire
+    # faux : déplacer les 2 membres d'un bloc vers la MÊME case est valide (le bloc s'y reconstitue),
+    # alors que juger chaque déplacement isolément verrait chacun « casser » le bloc que l'autre
+    # reconstruit.
+    candidates: list[CandidateAssignmentSchema] = Field(min_length=1, max_length=MAX_CANDIDATES)
+    # P2-32 — l'état « AVANT » de chaque candidat, pour le DELTA de compromis ET l'anti-enfermement
+    # des miroirs (un bloc/plancher DÉJÀ cassé dans la baseline ne bloque pas). Pour un DÉPLACEMENT
+    # le backend y pose le placement d'origine de la source (même forme que ``candidates``),
+    # APPARIÉ PAR INDEX : ``references[i]`` est le « avant » de ``candidates[i]``. Une CRÉATION à la
+    # dérive n'en pose aucune → ``references`` VIDE ⇒ « avant » = baseline nue. Quand présente, la
+    # liste a EXACTEMENT la longueur de ``candidates`` (gardée ci-dessous). N'entre JAMAIS dans le
+    # verdict booléen (feasibility) : elle ne sert qu'aux compromis et à l'anti-enfermement.
+    references: list[CandidateAssignmentSchema] = Field(default_factory=list, max_length=MAX_CANDIDATES)
+
+    @model_validator(mode="after")
+    def _references_match_candidates(self) -> Self:
+        """``references`` est soit VIDE (que des créations), soit appariée un-pour-un à
+        ``candidates`` (même longueur, index par index). Une longueur intermédiaire est une
+        entrée malformée — on la refuse à la construction plutôt que d'apparier au hasard."""
+        if self.references and len(self.references) != len(self.candidates):
+            raise ValueError(
+                f"references must be empty or match candidates length "
+                f"({len(self.references)} references for {len(self.candidates)} candidates)"
+            )
+        return self

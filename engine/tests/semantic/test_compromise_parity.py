@@ -16,7 +16,14 @@ from typing import Any
 
 from app.schemas.validate_input_schema import ValidateAssignmentsInputSchema
 from app.solver.validate_assignments import validate_assignment
-from tests.support.pipeline import make_payload, make_team, make_venue, read_contract_version, solve_payload
+from tests.support.pipeline import (
+    as_validate_payload,
+    make_payload,
+    make_team,
+    make_venue,
+    read_contract_version,
+    solve_payload,
+)
 
 
 def _preferred_venue_constraint(team_id: str, venue_id: str) -> dict[str, Any]:
@@ -60,7 +67,7 @@ def _validate_move_out_of_a(*, with_preference: bool) -> dict[str, Any]:
         "candidate": {"teamId": "U13", "venueId": "B", "dayOfWeek": 4, "startTime": "20:00", "durationMinutes": 90},
         "reference": {"teamId": "U13", "venueId": "A", "dayOfWeek": 4, "startTime": "20:00", "durationMinutes": 90},
     }
-    return validate_assignment(ValidateAssignmentsInputSchema.model_validate(payload))
+    return validate_assignment(ValidateAssignmentsInputSchema.model_validate(as_validate_payload(payload)))
 
 
 def test_generation_honors_the_preference_and_the_move_out_names_it() -> None:

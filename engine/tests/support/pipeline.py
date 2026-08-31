@@ -45,6 +45,24 @@ def solve_payload(data: dict[str, Any], *, timeout: int | None = None) -> dict[s
     return output.model_dump(mode="json", by_alias=True)
 
 
+def as_validate_payload(data: dict[str, Any]) -> dict[str, Any]:
+    """Shim de CONFORT des tests du verdict : traduit la saisie SINGULIÈRE historique
+    (``candidate`` / ``reference``) vers la forme de contrat 2.18 (``candidates`` / ``references``,
+    des LISTES). Le schéma de production n'accepte QUE la forme liste (``extra="forbid"``, aucun
+    champ mort de compat gardé — décision de forme (a), bump 2.18) ; ce shim vit CÔTÉ TESTS pour ne
+    pas réécrire des dizaines de payloads mono-candidat existants. Les tests N-candidats du
+    déplacement de bloc, eux, écrivent ``candidates=[...]`` en clair (la vraie forme du contrat).
+
+    Idempotent : un payload déjà en ``candidates`` traverse sans changement.
+    """
+    payload = dict(data)
+    if "candidate" in payload:
+        payload["candidates"] = [payload.pop("candidate")]
+    if "reference" in payload:
+        payload["references"] = [payload.pop("reference")]
+    return payload
+
+
 def make_venue(
     venue_id: str,
     slots: list[tuple[int, str]],

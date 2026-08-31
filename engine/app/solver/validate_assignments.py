@@ -70,19 +70,24 @@ def _coach_label(coach: dict[str, Any]) -> str:
 def _shared_training_move_violation(
     shared_trainings: list[dict[str, Any]],
     baseline_slots: list[dict[str, Any]],
-    candidate: dict[str, Any],
+    moved: list[dict[str, Any]],
     team_names: dict[str, str],
 ) -> dict[str, Any] | None:
-    """P2-27 — refus NOMMÉ quand le candidat sort une équipe d'une case commune.
+    """P2-27 — refus NOMMÉ quand un déplacement sort une équipe d'une case commune.
 
-    Le verdict du solveur ne peut PAS produire ce refus tout seul : la baseline retire la
-    source mais le modèle laisse la variable de l'ancienne case LIBRE ; sans plafond de séances,
-    le solveur remet l'équipe sur son ancienne case pour tenir ``== K`` et conclut « oui » à
-    tort. On juge donc l'ÉTAT CONCRET proposé (baseline sans la source + candidat), de façon
-    déterministe : c'est le miroir de la contrainte ``add_shared_training_constraints``.
+    Le verdict du solveur ne peut PAS produire ce refus tout seul : la baseline retire les
+    sources mais le modèle laisse les variables des anciennes cases LIBRES ; sans plafond de
+    séances, le solveur remet l'équipe sur son ancienne case pour tenir ``== K`` et conclut
+    « oui » à tort. On juge donc l'ÉTAT FINAL proposé (baseline sans les N sources + les N
+    candidats), de façon déterministe : c'est le miroir de la contrainte
+    ``add_shared_training_constraints``.
 
-    On n'évalue QUE les groupes dont l'équipe DÉPLACÉE est membre (déplacer une équipe hors
-    d'un groupe ne doit jamais être refusé au prétexte qu'un AUTRE groupe serait déjà rompu —
+    ⚠ N déplacements jugés ENSEMBLE (P2-51 PR-5b) : l'occupation est reconstruite avec TOUS les
+    candidats avant d'évaluer un seul groupe — deux équipes d'un même groupe déplacées vers une
+    même case le laissent honoré, alors que juger chaque déplacement isolément le verrait rompu.
+
+    On n'évalue QUE les groupes dont AU MOINS une équipe DÉPLACÉE est membre (déplacer une équipe
+    hors d'un groupe ne doit jamais être refusé au prétexte qu'un AUTRE groupe serait déjà rompu —
     ex. déclaration ajoutée après génération). Le résultat != K pour un tel groupe → refus.
 
     Message français nommant les équipes (jamais d'identifiant interne). ``None`` si rien à dire.
@@ -90,28 +95,29 @@ def _shared_training_move_violation(
     if not shared_trainings:
         return None
 
-    c_team = str(candidate["team_id"])
-    # équipe -> ensemble des cases (gymnase, jour, heure) occupées dans l'état proposé
+    moved_teams = {str(m["team_id"]) for m in moved}
+    moved_case_by_team = {str(m["team_id"]): (str(m["venue_id"]), int(m["day"]), str(m["start_time"])) for m in moved}
+    # équipe -> ensemble des cases (gymnase, jour, heure) occupées dans l'état FINAL proposé
     occupancy: dict[str, set[tuple[str, int, str]]] = {}
     for slot in baseline_slots:
         occupancy.setdefault(str(slot["team_id"]), set()).add(
             (str(slot["venue_id"]), int(slot["day"]), str(slot["start_time"]))
         )
-    occupancy.setdefault(c_team, set()).add(
-        (str(candidate["venue_id"]), int(candidate["day"]), str(candidate["start_time"]))
-    )
+    for team_id, case in moved_case_by_team.items():
+        occupancy.setdefault(team_id, set()).add(case)
 
     def _team_name(team_id: str) -> str:
         return team_names.get(team_id) or team_id
 
     for group in shared_trainings:
         members = [str(t) for t in (group.get("teamIds") or group.get("team_ids") or [])]
-        if len(members) < 2 or c_team not in members:
+        if len(members) < 2 or not (moved_teams & set(members)):
             continue
         common_sessions = int(group.get("commonSessions") or group.get("common_sessions") or 0)
         member_sets = [occupancy.get(member, set()) for member in members]
         common = set.intersection(*member_sets) if member_sets else set()
         if len(common) != common_sessions:
+            offender = next(m for m in moved if str(m["team_id"]) in members)
             named = ", ".join(_team_name(member) for member in members)
             return {
                 "rule": "shared_training_broken",
@@ -120,10 +126,10 @@ def _shared_training_move_violation(
                     f"partager exactement {common_sessions} séance(s) commune(s), or ce placement en "
                     f"laisse {len(common)}."
                 ),
-                "team_id": c_team,
-                "venue_id": str(candidate["venue_id"]),
-                "day_of_week": int(candidate["day"]),
-                "start_time": str(candidate["start_time"]),
+                "team_id": str(offender["team_id"]),
+                "venue_id": str(offender["venue_id"]),
+                "day_of_week": int(offender["day"]),
+                "start_time": str(offender["start_time"]),
             }
     return None
 
@@ -131,8 +137,8 @@ def _shared_training_move_violation(
 def _shared_block_move_violation(
     shared_blocks: list[dict[str, Any]],
     baseline_slots: list[dict[str, Any]],
-    candidate: dict[str, Any],
-    reference: CandidateAssignmentSchema | None,
+    moved: list[dict[str, Any]],
+    ref_case_by_team: dict[str, tuple[str, int, str]],
     team_names: dict[str, str],
     venue_names: dict[str, str],
 ) -> dict[str, Any] | None:
@@ -143,37 +149,34 @@ def _shared_block_move_violation(
     Le HARD posé dans ``_apply_hard`` (``add_shared_block_constraints``) NE SUFFIT PAS : les
     variables de l'ancienne case restent LIBRES → le solveur réinvente la séance de bloc ailleurs
     pour tenir ``Σb == commonSessions`` et conclut « valide » à tort (même faille qu'ENG-36 / la
-    mutualisation / le plancher de gymnase). On juge donc l'ÉTAT CONCRET proposé, de façon
+    mutualisation / le plancher de gymnase). On juge donc l'ÉTAT FINAL proposé, de façon
     déterministe : c'est le miroir de la contrainte.
 
+    ⚠ N déplacements jugés ENSEMBLE, sur l'état FINAL (P2-51 PR-5b) — c'est le CŒUR du rail
+    « déplacer le bloc ». « avant » = baseline gelée (elle EXCLUT déjà les N sources) + chaque
+    source ré-ajoutée à SA case d'origine (``ref_case_by_team``) ; « après » = baseline + les N
+    candidats à leurs cases cibles. Déplacer les 2 membres d'un bloc vers la MÊME case le laisse
+    HONORÉ (le bloc s'y reconstitue) — le refus séquentiel (juger t1 seul verrait le bloc rompu)
+    est précisément ce qu'il faut ÉVITER. En retirer UN SEUL le casse → refus.
+
     ⚠ GARDE ANTI-ENFERMEMENT (leçon P4-152) : un bloc DÉJÀ cassé dans la baseline ne bloque pas
-    les déplacements. « avant » = baseline gelée (elle EXCLUT déjà la source) + la source
-    ré-ajoutée (``reference``) ; « après » = baseline + candidat. On ne refuse QUE si le bloc était
-    HONORÉ avant (≥ commonSessions cases communes) et CESSE de l'être après. On n'évalue QUE les
-    blocs dont l'équipe DÉPLACÉE est membre.
+    les déplacements. On ne refuse QUE si le bloc était HONORÉ avant (≥ commonSessions cases
+    communes) et CESSE de l'être après. On n'évalue QUE les blocs dont AU MOINS une équipe
+    DÉPLACÉE est membre.
 
     Message français nommant les équipes du bloc, le nombre de séances communes exigé, la case
     rompue ; aucun identifiant interne. ``None`` si rien à dire."""
     if not shared_blocks:
         return None
 
-    c_team = str(candidate["team_id"])
-    ref_team = str(reference.team_id) if reference is not None else None
+    moved_teams = {str(m["team_id"]) for m in moved}
+    cand_case_by_team = {str(m["team_id"]): (str(m["venue_id"]), int(m["day"]), str(m["start_time"])) for m in moved}
 
-    # équipe -> cases (gymnase, jour, heure) occupées dans la baseline GELÉE (source exclue).
+    # équipe -> cases (gymnase, jour, heure) occupées dans la baseline GELÉE (sources exclues).
     base_occupancy: dict[str, set[tuple[str, int, str]]] = {}
     for slot in baseline_slots:
         base_occupancy.setdefault(str(slot["team_id"]), set()).add(
             (str(slot["venue_id"]), int(slot["day"]), str(slot["start_time"]))
-        )
-
-    candidate_case = (str(candidate["venue_id"]), int(candidate["day"]), str(candidate["start_time"]))
-    reference_case: tuple[str, int, str] | None = None
-    if reference is not None:
-        reference_case = (
-            str(reference.venue_id),
-            int(reference.day_of_week),
-            _format_time(_time_to_minutes(reference.start_time)),
         )
 
     def _team_name(team_id: str) -> str:
@@ -182,25 +185,28 @@ def _shared_block_move_violation(
     def _venue_name(venue_id: str) -> str:
         return venue_names.get(venue_id) or venue_id
 
-    def _common(members: list[str], moved_case: tuple[str, int, str] | None) -> set[tuple[str, int, str]]:
-        # Cases où TOUS les membres sont ensemble ; pour l'équipe déplacée, sa case = ``moved_case``
-        # AJOUTÉE à sa baseline (avant = référence ré-ajoutée, après = candidat).
+    def _common(members: list[str], *, use_reference: bool) -> set[tuple[str, int, str]]:
+        # Cases où TOUS les membres sont ensemble ; pour CHAQUE équipe déplacée, sa case (référence
+        # ré-ajoutée pour « avant », candidat pour « après ») est AJOUTÉE à sa baseline gelée.
         sets: list[set[tuple[str, int, str]]] = []
         for member in members:
             occ = set(base_occupancy.get(member, set()))
-            if member == c_team and moved_case is not None:
-                occ.add(moved_case)
+            if member in moved_teams:
+                case = ref_case_by_team.get(member) if use_reference else cand_case_by_team.get(member)
+                if case is not None:
+                    occ.add(case)
             sets.append(occ)
         return set.intersection(*sets) if sets else set()
 
     for block in shared_blocks:
         members = [str(t) for t in (block.get("teamIds") or block.get("team_ids") or [])]
-        if len(members) < 2 or c_team not in members:
+        if len(members) < 2 or not (moved_teams & set(members)):
             continue
         common_sessions = int(block.get("commonSessions") or block.get("common_sessions") or 0)
-        before = _common(members, reference_case if ref_team == c_team else None)
-        after = _common(members, candidate_case)
+        before = _common(members, use_reference=True)
+        after = _common(members, use_reference=False)
         if len(before) >= common_sessions and len(after) < common_sessions:
+            offender = next(m for m in moved if str(m["team_id"]) in members)
             named = ", ".join(_team_name(member) for member in members)
             broken = sorted(before - after)
             where = ""
@@ -212,12 +218,12 @@ def _shared_block_move_violation(
                 "message": (
                     f"Ce déplacement casse le bloc de mutualisation : les équipes {named} doivent "
                     f"partager {common_sessions} séance(s) commune(s) en bloc{where}, or retirer "
-                    f"{_team_name(c_team)} de sa séance n'en laisserait plus que {len(after)}."
+                    f"{_team_name(str(offender['team_id']))} de sa séance n'en laisserait plus que {len(after)}."
                 ),
-                "team_id": c_team,
-                "venue_id": str(candidate["venue_id"]),
-                "day_of_week": int(candidate["day"]),
-                "start_time": str(candidate["start_time"]),
+                "team_id": str(offender["team_id"]),
+                "venue_id": str(offender["venue_id"]),
+                "day_of_week": int(offender["day"]),
+                "start_time": str(offender["start_time"]),
             }
     return None
 
@@ -227,18 +233,22 @@ def _team_link_move_violation(
     shared_trainings: list[dict[str, Any]],
     shared_blocks: list[dict[str, Any]],
     baseline_slots: list[dict[str, Any]],
-    candidate: dict[str, Any],
+    moved: list[dict[str, Any]],
     team_names: dict[str, str],
 ) -> dict[str, Any] | None:
     """Lot PASSERELLES PR-2 — refus NOMMÉ (MIROIR MANDATORY) quand un déplacement CRÉE un
     chevauchement sur une passerelle ``MANDATORY`` (patron ``_shared_training_move_violation``).
 
-    On juge l'ÉTAT CONCRET proposé (baseline gelée + candidat) de façon déterministe : la séance
-    candidate de ``c_team`` chevauche-t-elle une séance de l'équipe LIÉE, même jour, intervalles
-    intersectés (cross-gymnase compris, doctrine n°2) ? EXEMPTION : même case (gymnase, jour,
-    heure) ET les deux équipes partagent un groupe ``sharedTrainings`` déclaré. Le HARD posé dans
-    ``_apply_hard`` rendrait bien le solve INFEASIBLE, mais ``diagnose_candidate_conflicts`` ne
-    saurait pas l'attribuer — ce miroir le NOMME avant le solve.
+    On juge l'ÉTAT FINAL proposé (baseline gelée + les N candidats) de façon déterministe : deux
+    séances de deux équipes passerelées MANDATORY se chevauchent-elles (même jour, intervalles
+    intersectés, cross-gymnase compris — doctrine n°2) ? On ne refuse QUE si le chevauchement
+    IMPLIQUE au moins un candidat (créé/aggravé par le déplacement) — deux séances déjà présentes
+    dans la baseline ne sont jamais imputées au geste (anti-enfermement). ⚠ N déplacements jugés
+    ENSEMBLE (P2-51 PR-5b) : un chevauchement créé entre les séances de DEUX équipes déplacées est
+    vu, pas seulement candidat-contre-baseline. EXEMPTION : même case (gymnase, jour, heure) ET les
+    deux équipes partagent un groupe/bloc déclaré. Le HARD posé dans ``_apply_hard`` rendrait bien
+    le solve INFEASIBLE, mais ``diagnose_candidate_conflicts`` ne saurait pas l'attribuer — ce
+    miroir le NOMME avant le solve.
 
     Message français nommant les deux équipes ; aucun identifiant interne. ``None`` si rien à dire.
     """
@@ -246,17 +256,19 @@ def _team_link_move_violation(
     if not mandatory:
         return None
 
-    c_team = str(candidate["team_id"])
-    c_start = int(candidate["start"])
-    c_end = int(candidate["end"])
-    c_day = int(candidate["day"])
-    c_venue = str(candidate["venue_id"])
+    moved_teams = {str(m["team_id"]) for m in moved}
     share_pairs = team_share_declared_pairs(shared_trainings, shared_blocks)
 
-    by_team: dict[str, list[tuple[int, int, int, str]]] = {}
+    # état FINAL par équipe : baseline gelée + candidats. Le 5e champ marque une séance CANDIDATE
+    # (créée par le déplacement) — un chevauchement n'est imputé au geste que s'il en implique une.
+    by_team: dict[str, list[tuple[int, int, int, str, bool]]] = {}
     for slot in baseline_slots:
         by_team.setdefault(str(slot["team_id"]), []).append(
-            (int(slot["start"]), int(slot["end"]), int(slot["day"]), str(slot["venue_id"]))
+            (int(slot["start"]), int(slot["end"]), int(slot["day"]), str(slot["venue_id"]), False)
+        )
+    for m in moved:
+        by_team.setdefault(str(m["team_id"]), []).append(
+            (int(m["start"]), int(m["end"]), int(m["day"]), str(m["venue_id"]), True)
         )
 
     def _team_name(team_id: str) -> str:
@@ -265,27 +277,33 @@ def _team_link_move_violation(
     for link in mandatory:
         team_a = str(link.get("teamAId") or link.get("team_a_id") or "")
         team_b = str(link.get("teamBId") or link.get("team_b_id") or "")
-        if c_team not in (team_a, team_b) or team_a == team_b or not team_a or not team_b:
+        if team_a == team_b or not team_a or not team_b or not (moved_teams & {team_a, team_b}):
             continue
-        other = team_b if c_team == team_a else team_a
         share_declared = frozenset({team_a, team_b}) in share_pairs
-        for o_start, o_end, o_day, o_venue in by_team.get(other, []):
-            if o_day != c_day or not (c_start < o_end and o_start < c_end):
-                continue
-            if o_venue == c_venue and o_start == c_start and share_declared:
-                continue  # séance mutualisée déclarée : chevauchement volontaire, autorisé.
-            return {
-                "rule": "team_link_broken",
-                "message": (
-                    f"Ce déplacement fait chevaucher {_team_name(c_team)} et {_team_name(other)}, "
-                    "déclarées en passerelle obligatoire : elles partagent des joueurs et ne peuvent "
-                    "pas s'entraîner en même temps."
-                ),
-                "team_id": c_team,
-                "venue_id": c_venue,
-                "day_of_week": c_day,
-                "start_time": str(candidate["start_time"]),
-            }
+        for a_start, a_end, a_day, a_venue, a_cand in by_team.get(team_a, []):
+            for b_start, b_end, b_day, b_venue, b_cand in by_team.get(team_b, []):
+                if a_day != b_day or not (a_start < b_end and b_start < a_end):
+                    continue
+                if a_venue == b_venue and a_start == b_start and share_declared:
+                    continue  # séance mutualisée déclarée : chevauchement volontaire, autorisé.
+                if not (a_cand or b_cand):
+                    continue  # chevauchement PRÉEXISTANT (baseline seule) : jamais imputé au geste.
+                # Nommer le côté DÉPLACÉ (celui dont le candidat crée le conflit) en premier.
+                culprit = team_a if a_cand else team_b
+                other = team_b if a_cand else team_a
+                offender = next(m for m in moved if str(m["team_id"]) == culprit)
+                return {
+                    "rule": "team_link_broken",
+                    "message": (
+                        f"Ce déplacement fait chevaucher {_team_name(culprit)} et {_team_name(other)}, "
+                        "déclarées en passerelle obligatoire : elles partagent des joueurs et ne peuvent "
+                        "pas s'entraîner en même temps."
+                    ),
+                    "team_id": culprit,
+                    "venue_id": str(offender["venue_id"]),
+                    "day_of_week": int(offender["day"]),
+                    "start_time": str(offender["start_time"]),
+                }
     return None
 
 
@@ -293,7 +311,7 @@ def _travel_time_move_violation(
     venue_travel_times: list[dict[str, Any]],
     resolved_rules: ResolvedImplicitRules,
     baseline_slots: list[dict[str, Any]],
-    candidate: dict[str, Any],
+    moved: list[dict[str, Any]],
     coaches: list[dict[str, Any]],
     team_coach_map: dict[str, list[str]],
     coach_names: dict[str, str],
@@ -302,14 +320,16 @@ def _travel_time_move_violation(
     """P2-55 (ENG-36) — refus NOMMÉ (MIROIR MANDATORY) quand un déplacement crée un enchaînement au
     battement trop court pour le coach (patron ``_team_link_move_violation``).
 
-    Ne s'arme que sous ``travelTime`` MANDATORY, matrice présente. On juge l'ÉTAT CONCRET (baseline
-    gelée + candidat) de façon déterministe, en RÉUTILISANT le prédicat géométrique de ``travel.py``
-    (``iter_travel_pairs_from_placements`` — gap/barème JAMAIS recalculés ici, résorbe ENG-37 côté
-    verdict) : un enchaînement cross-gymnase du MÊME coach dont l'écart est plus court que le barème
-    (voiture/à pied selon ``isVehicled``) et qui IMPLIQUE le candidat → refus. Le HARD posé dans
-    ``_apply_hard`` rendrait bien le solve INFEASIBLE, mais ``diagnose_candidate_conflicts`` ne
-    saurait pas l'attribuer — ce miroir le NOMME (motif ``travel_time_infeasible``, aligné sur le
-    diagnostic du rail ``/generate``).
+    Ne s'arme que sous ``travelTime`` MANDATORY, matrice présente. On juge l'ÉTAT FINAL (baseline
+    gelée + les N candidats) de façon déterministe, en RÉUTILISANT le prédicat géométrique de
+    ``travel.py`` (``iter_travel_pairs_from_placements`` — gap/barème JAMAIS recalculés ici, résorbe
+    ENG-37 côté verdict) : un enchaînement cross-gymnase du MÊME coach dont l'écart est plus court
+    que le barème (voiture/à pied selon ``isVehicled``) et qui IMPLIQUE au moins un candidat → refus.
+    ⚠ N déplacements jugés ENSEMBLE (P2-51 PR-5b) : un enchaînement trop serré créé par le
+    déplacement de DEUX équipes DIFFÉRENTES d'un même coach est vu (les deux séances sont
+    candidates). Le HARD posé dans ``_apply_hard`` rendrait bien le solve INFEASIBLE, mais
+    ``diagnose_candidate_conflicts`` ne saurait pas l'attribuer — ce miroir le NOMME (motif
+    ``travel_time_infeasible``, aligné sur le diagnostic du rail ``/generate``).
 
     Message français nommant le coach + les deux gymnases/heures ; aucun identifiant interne dans le
     texte. ``None`` si rien à dire."""
@@ -324,14 +344,21 @@ def _travel_time_move_violation(
         placements_by_team.setdefault(str(slot["team_id"]), []).append(
             (int(slot["start"]), int(slot["end"]), int(slot["day"]), str(slot["venue_id"]), None)
         )
-    candidate_placement: TravelPlacement = (
-        int(candidate["start"]),
-        int(candidate["end"]),
-        int(candidate["day"]),
-        str(candidate["venue_id"]),
-        None,
-    )
-    placements_by_team.setdefault(str(candidate["team_id"]), []).append(candidate_placement)
+    # Chaque candidat pose SA séance ; on garde l'identité (``id``) pour distinguer, dans les paires
+    # énumérées, celles qui IMPLIQUENT un déplacement de celles déjà présentes dans la baseline.
+    placement_by_moved_index: list[TravelPlacement] = []
+    for m in moved:
+        placement: TravelPlacement = (
+            int(m["start"]),
+            int(m["end"]),
+            int(m["day"]),
+            str(m["venue_id"]),
+            None,
+        )
+        placements_by_team.setdefault(str(m["team_id"]), []).append(placement)
+        placement_by_moved_index.append(placement)
+    candidate_ids = {id(p) for p in placement_by_moved_index}
+    moved_by_placement_id = {id(p): moved[i] for i, p in enumerate(placement_by_moved_index)}
 
     for traveler_key, gap, barometer, pa, pb in iter_travel_pairs_from_placements(
         placements_by_team,
@@ -343,10 +370,13 @@ def _travel_time_move_violation(
     ):
         if gap >= barometer:
             continue  # battement suffisant : la pose ne poserait rien ici non plus.
-        if pa is not candidate_placement and pb is not candidate_placement:
+        if id(pa) not in candidate_ids and id(pb) not in candidate_ids:
             continue  # enchaînement PRÉEXISTANT (baseline seule) : jamais imputé au déplacement.
         coach_id = traveler_key.split(":", 1)[1]
         first, second = (pa, pb) if pa[0] <= pb[0] else (pb, pa)
+        # Attribuer à un candidat impliqué (le déplacé) : c'est lui que l'UI surligne.
+        culprit = pa if id(pa) in candidate_ids else pb
+        offender = moved_by_placement_id[id(culprit)]
         coach_label = coach_names.get(coach_id) or "Le coach"
         first_venue = venue_names.get(first[3]) or first[3]
         second_venue = venue_names.get(second[3]) or second[3]
@@ -358,10 +388,10 @@ def _travel_time_move_violation(
                 "rejoindre le gymnase suivant."
             ),
             "coach_id": coach_id,
-            "team_id": str(candidate["team_id"]),
-            "venue_id": str(candidate["venue_id"]),
-            "day_of_week": int(candidate["day"]),
-            "start_time": str(candidate["start_time"]),
+            "team_id": str(offender["team_id"]),
+            "venue_id": str(offender["venue_id"]),
+            "day_of_week": int(offender["day"]),
+            "start_time": str(offender["start_time"]),
         }
     return None
 
@@ -369,8 +399,8 @@ def _travel_time_move_violation(
 def _venue_minimum_move_violation(
     venue_minimums: list[dict[str, Any]],
     baseline_slots: list[dict[str, Any]],
-    candidate: dict[str, Any],
-    reference: CandidateAssignmentSchema | None,
+    moved: list[dict[str, Any]],
+    ref_case_by_team: dict[str, tuple[str, int, str]],
     team_names: dict[str, str],
     venue_names: dict[str, str],
 ) -> dict[str, Any] | None:
@@ -382,25 +412,26 @@ def _venue_minimum_move_violation(
     ``sum >= N`` et conclut « valide » à tort (même faille que la mutualisation). On juge donc
     l'ÉTAT CONCRET, de façon déterministe.
 
+    ⚠ N déplacements (P2-51 PR-5b) : le plancher d'une équipe ne dépend QUE de ses propres séances,
+    on évalue donc CHAQUE équipe déplacée indépendamment sur la baseline gelée (qui exclut déjà les
+    N sources). L'état « avant » d'une équipe déplacée = baseline + SA source ré-ajoutée
+    (``ref_case_by_team``) ; « après » = baseline + SON candidat.
+
     ⚠ LE PLANNING DÉJÀ EN INFRACTION : on ne refuse QUE si le plancher était SATISFAIT AVANT le
-    déplacement et cesse de l'être APRÈS. L'état « avant » = baseline gelée (elle EXCLUT déjà la
-    source, cf. MoveSlotService) + la source ré-ajoutée (``reference``). Si le plancher était DÉJÀ
-    cassé (``current < N``), le déplacement n'en est pas la cause : on laisse passer — sans quoi le
-    gestionnaire serait ENFERMÉ, incapable de corriger un planning généré avant la contrainte ou
-    amputé d'un créneau (condition d'arrêt fondateur : jamais un blocage total).
+    déplacement et cesse de l'être APRÈS. Si le plancher était DÉJÀ cassé (``current < N``), le
+    déplacement n'en est pas la cause : on laisse passer — sans quoi le gestionnaire serait ENFERMÉ,
+    incapable de corriger un planning généré avant la contrainte ou amputé d'un créneau (condition
+    d'arrêt fondateur : jamais un blocage total).
 
     Message français nommant le gymnase, l'équipe, le plancher exigé et l'état résultant ; aucun
     identifiant interne. ``None`` si rien à dire."""
     if not venue_minimums:
         return None
 
-    c_team = str(candidate["team_id"])
-    c_venue = str(candidate["venue_id"])
-    ref_team = str(reference.team_id) if reference is not None else None
-    ref_venue = str(reference.venue_id) if reference is not None else None
+    moved_by_team = {str(m["team_id"]): m for m in moved}
 
-    # Nombre de séances de chaque (équipe, gymnase) dans la baseline GELÉE — elle exclut déjà la
-    # source du déplacement (MoveSlotService.baselineWithoutSiblings). Les séances HARD-verrouillées
+    # Nombre de séances de chaque (équipe, gymnase) dans la baseline GELÉE — elle exclut déjà les
+    # sources des déplacements (MoveSlotService.baselineWithoutSiblings). Les séances HARD-verrouillées
     # sont comptées : elles créditent le plancher (parité ``add_venue_minimum_constraints``).
     base_count: dict[tuple[str, str], int] = {}
     for slot in baseline_slots:
@@ -417,13 +448,15 @@ def _venue_minimum_move_violation(
         team_id = str(rule.get("scope_target_id"))
         venue_id = str(rule.get("venue_id"))
         minimum = int(rule.get("min") or 1)
-        if team_id != c_team:
-            continue  # un déplacement ne touche que les comptes de l'équipe déplacée.
+        moved_slot = moved_by_team.get(team_id)
+        if moved_slot is None:
+            continue  # un déplacement ne touche que les comptes des équipes déplacées.
 
         base_at_venue = base_count.get((team_id, venue_id), 0)
+        ref_case = ref_case_by_team.get(team_id)
         # « avant » = baseline + source ré-ajoutée ; « après » = baseline + candidat.
-        current_at_venue = base_at_venue + (1 if ref_team == team_id and ref_venue == venue_id else 0)
-        final_at_venue = base_at_venue + (1 if c_venue == venue_id else 0)
+        current_at_venue = base_at_venue + (1 if ref_case is not None and ref_case[0] == venue_id else 0)
+        final_at_venue = base_at_venue + (1 if str(moved_slot["venue_id"]) == venue_id else 0)
         if current_at_venue >= minimum and final_at_venue < minimum:
             return {
                 "rule": "venue_minimum_infeasible",
@@ -434,8 +467,8 @@ def _venue_minimum_move_violation(
                 ),
                 "team_id": team_id,
                 "venue_id": venue_id,
-                "day_of_week": int(candidate["day"]),
-                "start_time": str(candidate["start_time"]),
+                "day_of_week": int(moved_slot["day"]),
+                "start_time": str(moved_slot["start_time"]),
             }
     return None
 
@@ -672,24 +705,22 @@ def _compromises_for(
     team_coach_map: dict[str, list[str]],
     team_player_map: dict[str, list[str]],
     frozen_keys: set[SlotKey],
-    candidate_key: SlotKey,
-    reference: CandidateAssignmentSchema | None,
+    candidate_keys: set[SlotKey],
+    reference_keys: set[SlotKey],
     names: dict[str, dict[str, str]],
     *,
     timeout_seconds: int,
     seed: int,
 ) -> list[dict[str, Any]]:
-    """Le DELTA de confort entre « avant » (baseline + référence, ou baseline nue) et « après »
-    (baseline + candidat) — appelé UNIQUEMENT sur un candidat accepté."""
-    reference_key = _slot_key_of(reference)
-    before_pins: set[SlotKey] = {reference_key} if reference_key is not None else set()
+    """Le DELTA de confort entre « avant » (baseline + les N références, ou baseline nue) et
+    « après » (baseline + les N candidats) — appelé UNIQUEMENT sur un déplacement accepté."""
     after = _evaluate_state(
         data,
         parsed,
         team_coach_map,
         team_player_map,
         frozen_keys,
-        {candidate_key},
+        candidate_keys,
         timeout_seconds=timeout_seconds,
         seed=seed,
     )
@@ -699,7 +730,7 @@ def _compromises_for(
         team_coach_map,
         team_player_map,
         frozen_keys,
-        before_pins,
+        reference_keys,
         timeout_seconds=timeout_seconds,
         seed=seed,
     )
@@ -711,13 +742,18 @@ def validate_assignment(
     *,
     contract_version: str | None = None,
 ) -> dict[str, Any]:
-    """Verdict moteur sur UN candidat de deplacement (P2-2 F2a).
+    """Verdict moteur sur N deplacements sous UN verdict (P2-2 F2a / P2-51 PR-5b).
 
-    Le reste du planning est FIGE via ``add_fixed_slots`` ; on epingle le candidat
+    Le reste du planning est FIGE via ``add_fixed_slots`` ; on epingle les N candidats
     et on demande au moteur si le modele HARD reste faisable. La reponse booleenne
     vient donc du SOLVEUR (« ce que le solveur applique vraiment ») ; les regles
     cassees sont ensuite NOMMEES pour l'UI. Sans le gel de baseline, le solveur
     pourrait tout redeplacer et le verdict ne voudrait plus rien dire.
+
+    Un deplacement simple = une liste ``candidates`` a UN element ; un deplacement de bloc
+    = N candidats (les N sources deja retirees de la baseline cote backend). Les miroirs
+    deterministes jugent l'ETAT FINAL (baseline + les N candidats), jamais N jugements
+    sequentiels d'un etat intermediaire faux.
     """
     started = time.monotonic()
     data: dict[str, Any] = input_data.model_dump(by_alias=True)
@@ -728,14 +764,42 @@ def validate_assignment(
     model = build_model(data)
     model.team_coach_map = team_coach_map
 
-    candidate = input_data.candidate
-    c_team = str(candidate.team_id)
-    c_venue = str(candidate.venue_id)
-    c_day = int(candidate.day_of_week)
-    c_start_min = _time_to_minutes(candidate.start_time)
-    c_start_text = _format_time(c_start_min)
-    c_end_min = c_start_min + int(candidate.duration_minutes)
-    candidate_key: SlotKey = (c_team, c_venue, c_day, c_start_text)
+    # Les N candidats, dérivés une fois : un dict par déplacement (le langage des miroirs) + la
+    # SlotKey pinnée dans model.x. Une liste à 1 élément EST le cas single — un seul chemin.
+    moved: list[dict[str, Any]] = []
+    candidate_keys: list[SlotKey] = []
+    for candidate in input_data.candidates:
+        c_team = str(candidate.team_id)
+        c_venue = str(candidate.venue_id)
+        c_day = int(candidate.day_of_week)
+        c_start_min = _time_to_minutes(candidate.start_time)
+        c_start_text = _format_time(c_start_min)
+        c_end_min = c_start_min + int(candidate.duration_minutes)
+        moved.append(
+            {
+                "team_id": c_team,
+                "venue_id": c_venue,
+                "day": c_day,
+                "start": c_start_min,
+                "end": c_end_min,
+                "start_time": c_start_text,
+            }
+        )
+        candidate_keys.append((c_team, c_venue, c_day, c_start_text))
+
+    # Références appariées PAR INDEX à ``candidates`` (le validateur de schéma garantit la longueur
+    # 0 ou N). ``ref_case_by_team`` : la case d'ORIGINE d'une équipe déplacée, clé sur l'équipe de la
+    # référence — l'anti-enfermement des miroirs bloc/plancher en dépend. ``reference_keys`` :
+    # les SlotKeys « avant » pour le DELTA de compromis.
+    ref_case_by_team: dict[str, tuple[str, int, str]] = {}
+    reference_keys: set[SlotKey] = set()
+    for reference in input_data.references:
+        r_team = str(reference.team_id)
+        r_start_text = _format_time(_time_to_minutes(reference.start_time))
+        ref_case_by_team[r_team] = (str(reference.venue_id), int(reference.day_of_week), r_start_text)
+        key = _slot_key_of(reference)
+        if key is not None:
+            reference_keys.add(key)
 
     team_names = {str(t.get("id")): str(t.get("name") or t.get("id")) for t in data.get("teams", [])}
     coach_names = {str(c.get("id")): _coach_label(c) for c in data.get("coaches", [])}
@@ -766,9 +830,9 @@ def validate_assignment(
         )
         lock_level = str(tmpl.get("lockLevel") or tmpl.get("lock_level") or "").upper()
         if lock_level != HARD_LOCK_LEVEL:
-            key: SlotKey = (t_team, t_venue, t_day, t_start_text)
-            if key in model.x:
-                frozen_keys.add(key)
+            baseline_key: SlotKey = (t_team, t_venue, t_day, t_start_text)
+            if baseline_key in model.x:
+                frozen_keys.add(baseline_key)
 
     metrics = {
         "solver_version": "cp-sat",
@@ -778,36 +842,38 @@ def validate_assignment(
         "constraint_version": contract_version,
     }
 
-    # The target must be a real, currently-empty slot: no variable = it is not an
-    # available training slot, or a HARD lock already holds it. Either way the move
-    # is impossible — a named verdict, no solve needed.
-    if candidate_key not in model.x:
-        return {
-            "valid": False,
-            "violations": [
-                {
-                    "rule": "slot_unavailable",
-                    "message": (
-                        f"{venue_names.get(c_venue, c_venue)} à {c_start_text} n'est pas un créneau "
-                        f"libre pour {team_names.get(c_team, c_team)} (créneau inexistant ou déjà verrouillé)."
-                    ),
-                    "team_id": c_team,
-                    "venue_id": c_venue,
-                    "day_of_week": c_day,
-                    "start_time": c_start_text,
-                }
-            ],
-            "compromises": [],
-            "metrics": metrics,
-        }
+    # Chaque cible doit être un créneau réel actuellement libre : pas de variable = ce n'est pas un
+    # créneau d'entraînement disponible, ou un verrou HARD l'occupe déjà. Le déplacement est alors
+    # impossible — verdict NOMMÉ (sur le candidat fautif), sans solve. Un seul faux suffit à refuser.
+    for candidate_key, m in zip(candidate_keys, moved, strict=True):
+        if candidate_key not in model.x:
+            return {
+                "valid": False,
+                "violations": [
+                    {
+                        "rule": "slot_unavailable",
+                        "message": (
+                            f"{venue_names.get(str(m['venue_id']), str(m['venue_id']))} à {m['start_time']} "
+                            f"n'est pas un créneau libre pour {team_names.get(str(m['team_id']), str(m['team_id']))} "
+                            f"(créneau inexistant ou déjà verrouillé)."
+                        ),
+                        "team_id": str(m["team_id"]),
+                        "venue_id": str(m["venue_id"]),
+                        "day_of_week": int(m["day"]),
+                        "start_time": str(m["start_time"]),
+                    }
+                ],
+                "compromises": [],
+                "metrics": metrics,
+            }
 
     # P2-27 — miroir déterministe de la mutualisation : le solveur ne peut pas refuser à lui
     # seul un déplacement qui SORT une équipe d'une case commune (il remettrait l'équipe sur son
-    # ancienne case, faute de plafond de séances). On juge l'état concret proposé.
+    # ancienne case, faute de plafond de séances). On juge l'état FINAL proposé (les N candidats).
     shared_violation = _shared_training_move_violation(
         data.get("sharedTrainings", []) or [],
         baseline_slots,
-        {"team_id": c_team, "venue_id": c_venue, "day": c_day, "start_time": c_start_text},
+        moved,
         team_names,
     )
     if shared_violation is not None:
@@ -816,13 +882,14 @@ def validate_assignment(
     # P2-51 (D11) — miroir déterministe du BLOC : un déplacement qui RETIRE une équipe d'une séance
     # de bloc jusque-là honorée est refusé, NOMMÉ (`shared_block_broken`). Le HARD posé dans
     # `_apply_hard` ne saurait pas l'attribuer (le solveur réinventerait la séance de bloc ailleurs
-    # pour tenir Σb == commonSessions). ⚠ Anti-enfermement (P4-152) : un bloc déjà cassé dans la
-    # baseline ne bloque pas — on refuse SEULEMENT si le déplacement casse un bloc jusque-là honoré.
+    # pour tenir Σb == commonSessions). ⚠ N candidats jugés ENSEMBLE : déplacer les N membres d'un
+    # bloc vers une MÊME case le laisse honoré. ⚠ Anti-enfermement (P4-152) : un bloc déjà cassé dans
+    # la baseline ne bloque pas — on refuse SEULEMENT si le déplacement casse un bloc jusque-là honoré.
     shared_block_violation = _shared_block_move_violation(
         data.get("sharedBlocks", []) or [],
         baseline_slots,
-        {"team_id": c_team, "venue_id": c_venue, "day": c_day, "start_time": c_start_text},
-        input_data.reference,
+        moved,
+        ref_case_by_team,
         team_names,
         venue_names,
     )
@@ -837,14 +904,7 @@ def validate_assignment(
         data.get("sharedTrainings", []) or [],
         data.get("sharedBlocks", []) or [],
         baseline_slots,
-        {
-            "team_id": c_team,
-            "venue_id": c_venue,
-            "day": c_day,
-            "start": c_start_min,
-            "end": c_end_min,
-            "start_time": c_start_text,
-        },
+        moved,
         team_names,
     )
     if team_link_violation is not None:
@@ -858,14 +918,7 @@ def validate_assignment(
         data.get("venueTravelTimes", []) or [],
         resolve_implicit_rules(data.get("implicitRules")),
         baseline_slots,
-        {
-            "team_id": c_team,
-            "venue_id": c_venue,
-            "day": c_day,
-            "start": c_start_min,
-            "end": c_end_min,
-            "start_time": c_start_text,
-        },
+        moved,
         data.get("coaches", []),
         team_coach_map,
         coach_names,
@@ -883,8 +936,8 @@ def validate_assignment(
     venue_minimum_violation = _venue_minimum_move_violation(
         parsed.get("venue_minimums", []),
         baseline_slots,
-        {"team_id": c_team, "venue_id": c_venue, "day": c_day, "start_time": c_start_text},
-        input_data.reference,
+        moved,
+        ref_case_by_team,
         team_names,
         venue_names,
     )
@@ -892,11 +945,12 @@ def validate_assignment(
         return {"valid": False, "violations": [venue_minimum_violation], "compromises": [], "metrics": metrics}
 
     assignments = _build_assignments(model, team_coach_map, frozen_keys)
-    # Le candidat est epingle SEPAREMENT du gel de baseline (model.Add, pas
-    # fixed=True) : neutraliser le gel libere le reste du planning MAIS garde le
-    # candidat epingle — sans quoi le solveur mettrait tout a 0, verdict toujours
+    # Les N candidats sont epingles SEPAREMENT du gel de baseline (model.Add, pas
+    # fixed=True) : neutraliser le gel libere le reste du planning MAIS garde les
+    # candidats epingles — sans quoi le solveur mettrait tout a 0, verdict toujours
     # « valide » (falsification 2).
-    cast(Any, model).Add(model.x[candidate_key] == 1)
+    for candidate_key in candidate_keys:
+        cast(Any, model).Add(model.x[candidate_key] == 1)
     _apply_hard(model, assignments, data, parsed, team_coach_map, team_player_map)
 
     status, solver = _solve(model, timeout_seconds=input_data.solver_timeout_seconds, seed=input_data.solver_seed)
@@ -908,23 +962,26 @@ def validate_assignment(
 
     violations: list[dict[str, Any]] = []
     if not valid:
-        violations = diagnose_candidate_conflicts(
-            candidate={
-                "team_id": c_team,
-                "venue_id": c_venue,
-                "day": c_day,
-                "start": c_start_min,
-                "end": c_end_min,
-                "start_time": c_start_text,
-            },
-            baseline_slots=baseline_slots,
-            parsed=parsed,
-            coaches=data.get("coaches", []),
-            slot_capacities=model.slot_capacities,
-            team_names=team_names,
-            coach_names=coach_names,
-            venue_names=venue_names,
-        )
+        # Chaque candidat est diagnostiqué contre la baseline gelée AUGMENTÉE des AUTRES candidats :
+        # un conflit HARD entre deux déplacements du même geste (coach en double sur deux gymnases,
+        # capacité…) est alors NOMMÉ, pas seulement candidat-contre-baseline.
+        seen: set[tuple[str, str]] = set()
+        for i, m in enumerate(moved):
+            augmented = baseline_slots + [other for j, other in enumerate(moved) if j != i]
+            for violation in diagnose_candidate_conflicts(
+                candidate=m,
+                baseline_slots=augmented,
+                parsed=parsed,
+                coaches=data.get("coaches", []),
+                slot_capacities=model.slot_capacities,
+                team_names=team_names,
+                coach_names=coach_names,
+                venue_names=venue_names,
+            ):
+                dedupe_key = (str(violation.get("rule")), str(violation.get("message")))
+                if dedupe_key not in seen:
+                    seen.add(dedupe_key)
+                    violations.append(violation)
         if not violations:
             # Infaisable, mais aucun mirror n'a su l'attribuer : distinguer une
             # baseline deja invalide (condition d'arret) d'un conflit HARD reel
@@ -966,14 +1023,15 @@ def validate_assignment(
     # jamais mourir de son habillage explicatif. Si le calcul échoue (budget épuisé → aucune
     # solution à lire, ou toute autre panne du solveur), on répond quand même le verdict, avec des
     # compromis vides. La FORME de la réponse ne change pas (contrat inchangé) — seul le contenu.
+    log_teams = ",".join(str(m["team_id"]) for m in moved)
     compromises: list[dict[str, Any]] = []
     elapsed = time.monotonic() - started
     if valid and elapsed > COMPROMISE_ELAPSED_BUDGET_SECONDS:
         logger.warning(
-            "verdict took %.1fs for club=%s team=%s; skipping compromises to answer in time",
+            "verdict took %.1fs for club=%s teams=%s; skipping compromises to answer in time",
             elapsed,
             input_data.club_id,
-            c_team,
+            log_teams,
         )
     elif valid:
         try:
@@ -983,25 +1041,25 @@ def validate_assignment(
                 team_coach_map,
                 team_player_map,
                 frozen_keys,
-                candidate_key,
-                input_data.reference,
+                set(candidate_keys),
+                reference_keys,
                 {"teams": team_names, "coaches": coach_names, "venues": venue_names},
                 timeout_seconds=input_data.solver_timeout_seconds,
                 seed=input_data.solver_seed,
             )
         except Exception:
             logger.warning(
-                "compromise computation failed for club=%s team=%s; returning the verdict without compromises",
+                "compromise computation failed for club=%s teams=%s; returning the verdict without compromises",
                 input_data.club_id,
-                c_team,
+                log_teams,
                 exc_info=True,
             )
             compromises = []
 
     logger.info(
-        "validate club=%s team=%s -> %s valid=%s violations=%d compromises=%d",
+        "validate club=%s teams=%s -> %s valid=%s violations=%d compromises=%d",
         input_data.club_id,
-        c_team,
+        log_teams,
         solver.status_name(status),
         valid,
         len(violations),

@@ -206,6 +206,60 @@ final readonly class ManualEditPaths implements CustomPathContributor
                     ],
                 ]),
             )),
+            '/api/schedule-slots/move-group' => new PathItem(post: new Operation(
+                operationId: 'postScheduleSlotMoveGroup',
+                tags: ['ManualEdit'],
+                responses: [
+                    '200' => $this->schemas->jsonResponse('The whole block session was accepted by the solver and its member slots were moved together (schedule flagged manually edited, score now stale), carrying the named comfort trade-offs', [
+                        'type' => 'object',
+                        'properties' => [
+                            'message' => ['type' => 'string'],
+                            'valid' => ['type' => 'boolean'],
+                            'compromises' => $compromises,
+                            'movedSlotIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Ids of the member slots that were moved as one'],
+                        ],
+                    ]),
+                    '400' => new Response('Missing or invalid field (scheduleId, blockId, source or target case)'),
+                    '404' => new Response('Schedule or mutualisation block not found'),
+                    '409' => new Response('Schedule is validated (read-only), or a generation is running for the club (body carries code=generation_in_progress)'),
+                    '422' => $this->schemas->jsonResponse('Refused with NOTHING moved (all-or-nothing): the solver refused the group move (broken rules named for display — e.g. shared_block_broken when the move would split the block), OR no block session sits at the source case / the target window is closed (body carries code=slot_unavailable)', [
+                        'type' => 'object',
+                        'properties' => [
+                            'valid' => ['type' => 'boolean', 'enum' => [false]],
+                            'code' => ['type' => 'string', 'nullable' => true, 'description' => 'slot_unavailable when a server pre-check refused (no engine call)'],
+                            'error' => ['type' => 'string', 'nullable' => true],
+                            'violations' => $dryViolations,
+                        ],
+                    ]),
+                    '502' => new Response('Engine unreachable — nothing was moved, retry'),
+                    '504' => $this->schemas->jsonResponse('The engine answered too slowly and the verdict was dropped — nothing was moved. Distinct from 502: the engine works, it merely exceeded the transport ceiling. Retrying is the right move (body carries code=engine_timeout)', [
+                        'type' => 'object',
+                        'properties' => [
+                            'code' => ['type' => 'string', 'enum' => ['engine_timeout']],
+                            'error' => ['type' => 'string', 'description' => 'Human message naming the timeout'],
+                        ],
+                    ]),
+                ],
+                summary: 'Move a WHOLE mutualisation-block session (all its member slots at the source case) to the target case, under ONE solver verdict and in one transaction (all-or-nothing). The server resolves the member slots itself from the block and the source case — never client slot ids. A block declared with commonSessions > 1 has several sessions; the source case designates the one to move',
+                requestBody: $this->schemas->jsonBody([
+                    'type' => 'object',
+                    'required' => ['scheduleId', 'blockId', 'source', 'target'],
+                    'properties' => [
+                        'scheduleId' => ['type' => 'string', 'description' => 'The schedule (version) being edited'],
+                        'blockId' => ['type' => 'string', 'description' => 'The mutualisation block whose session moves'],
+                        'source' => ['type' => 'object', 'description' => 'The case the block session currently sits at', 'required' => ['venueId', 'dayOfWeek', 'startTime'], 'properties' => [
+                            'venueId' => ['type' => 'string'],
+                            'dayOfWeek' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 7],
+                            'startTime' => ['type' => 'string', 'example' => '18:00'],
+                        ]],
+                        'target' => ['type' => 'object', 'description' => 'The case to move the block session to', 'required' => ['venueId', 'dayOfWeek', 'startTime'], 'properties' => [
+                            'venueId' => ['type' => 'string'],
+                            'dayOfWeek' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 7],
+                            'startTime' => ['type' => 'string', 'example' => '20:00'],
+                        ]],
+                    ],
+                ]),
+            )),
         ];
     }
 }

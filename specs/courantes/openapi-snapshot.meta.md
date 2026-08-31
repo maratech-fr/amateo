@@ -1,12 +1,22 @@
-Last verified @ 2026-08-31 (P2-51 PR-5, `documentation-update` — régénéré depuis le backend en
+Last verified @ 2026-08-31 (P2-51 PR-5b, `coder` — régénéré depuis le backend en
 tournant : `docker compose exec php-fpm php bin/console api:openapi:export`, après
-`docker compose restart php-fpm` (opcache). **191 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`)
-✓, count INCHANGÉ (aucun path ajouté/retiré, le body du POST existant a changé) · SHA-256
-`7cfb3662e1c3ed379d01b68c74e71ac217c7fadbd1dd6159be2fb00ce39ddda4` (`sha256sum`) · `TsFieldsMatchOpenApiSchemaTest`
+`docker compose restart php-fpm` (opcache). **192 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`)
+✓, +1 path (le rail de déplacement de bloc `POST /api/schedule-slots/move-group`) · SHA-256
+`d68870f2f1def62f6a3e226bc98da6c5a83fba375c6330f73b57ce3a4cb8139f` (`sha256sum`) · `TsFieldsMatchOpenApiSchemaTest`
 et `CrossStack/OpenApiSnapshotMatchesTheLiveContractTest` verts sur ce snapshot. Reste du journal
 non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **P2-51 PR-5b — `POST /api/schedule-slots/move-group` (2026-08-31)** : **+1 path** — le rail de
+  DÉPLACEMENT de bloc atomique (D11) : déplace la séance d'un bloc (tous ses créneaux membres à la
+  case source) vers une case cible, sous UN verdict et en une transaction (tout-ou-nothing). Corps
+  `{scheduleId, blockId, source{venueId,dayOfWeek,startTime}, target{…}}` — le serveur résout
+  lui-même les créneaux membres (jamais de slotIds clients). 200 (`movedSlotIds`) / 422 refus nommé
+  (`shared_block_broken` si le geste casse le bloc) ou `slot_unavailable` / 409 génération ou plan
+  choisi. Déclaré dans `PathContributor/ManualEditPaths.php`. 191 → **192 paths**. Backend + contrat
+  backend⇄engine **bumpé 2.17 → 2.18** : `/validate-assignments` juge désormais N déplacements sous
+  UN verdict (`candidates`/`references` LISTES remplacent le singulier — le déplacement de bloc les
+  émet à N, le rail simple à 1).
 - **P2-51 PR-5 — `POST /api/reservations/group` se ré-ancre sur le bloc (2026-08-31)** : **+0 path** —
   le corps du POST existant gagne `sharedTrainingBlockId` (résolu EN PREMIER, `SharedTrainingBlock`),
   `sharedTrainingGroupId` devient le repli legacy (transitoire jusqu'à la PR-6 frontend/PR-7
@@ -83,16 +93,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   `walkingSource` `AUTO`|`MANUAL`), scopé club+saison. **Champs ADDITIFS** en LECTURE : `Venue.address`
   et `Coach.isVehicled` (défaut false). 179 → **183 paths**. Backend PUR : le bloc payload et le
   moteur sont la PR-2, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.15, aucun appel moteur).
-- **P2-52 RMM-10 — un match déclaré ne perd plus sa salle en silence (2026-08-26)** : **+1 path** —
-  `GET /api/schedules/{id}/validate-impact` (200 : `{orphanedFixtures, declaredOrphanedFixtures}` —
-  combien de matchs domicile perdront leur salle si l'on valide ce planning, car ils pointent un
-  gymnase qui n'est plus affilié au club, et combien parmi eux sont déjà déclarés à la fédération ;
-  **ouvert au Membre**, lecture seule ; 403 club étranger, 404 inconnu). Le MÊME prédicat sert la
-  VALIDATION, qui dépointe alors ces matchs (« à placer » + raison persistante `venue_lost`, heure
-  conservée) — parité par construction. **Champ ADDITIF** en LECTURE sur le schéma `Fixture` :
-  `unplacedReason` (`venue_lost` quand le gymnase n'est plus affilié, sinon `null` ; distinct de la
-  raison volatile d'auto-placement, non exposée). 178 → **179 paths**. Backend + frontend, contrat
-  backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.15, `unplacedReason` ne voyage jamais au moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

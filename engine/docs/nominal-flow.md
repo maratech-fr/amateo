@@ -5,7 +5,7 @@ la PR, contrôle de fraîcheur ciblé sur le résidu de nom trouvé au balayage 
 **Drift trouvé et corrigé** : le hub Mercure était encore nommé `clubscheduler-mercure` — nom mort
 depuis le renommage d'infrastructure P4-142 (2026-08-28) ; corrigé en `amateo-mercure` (conteneur
 réel, `docker-compose.yml:325`). Reste vérifié sans écart cette passe : `engine/CONTRACT_VERSION`
-= **2.17** ✓ ; verrou asyncio par club `_club_locks`/`_club_locks_guard` en `app/main.py:130-131` ✓ ;
+= **2.18** ✓ ; verrou asyncio par club `_club_locks`/`_club_locks_guard` en `app/main.py:130-131` ✓ ;
 `_adaptive_workers` (paliers 1/8 au seuil 200) en `app/main.py:445` ✓ ; `lockLevel` chaîne libre en
 `app/schemas/input_schema.py:294` ✓ ; `solverTimeoutSeconds` défaut 650 en
 `app/schemas/input_schema.py:307` ✓ ; module objectif toujours le paquet `app/solver/objective/`
@@ -17,13 +17,13 @@ réel, `docker-compose.yml:325`). Reste vérifié sans écart cette passe : `eng
 
 ---
 
-## 1. Le backend construit le payload (contrat 2.17)
+## 1. Le backend construit le payload (contrat 2.18)
 
-Quand un utilisateur clique sur "Generer l'emploi du temps" dans le frontend, le backend assemble un objet JSON conforme au schema `ScheduleInputSchema` (version de contrat **2.17**, fichier `engine/CONTRACT_VERSION`). Voici la structure complete, avec des explications inline.
+Quand un utilisateur clique sur "Generer l'emploi du temps" dans le frontend, le backend assemble un objet JSON conforme au schema `ScheduleInputSchema` (version de contrat **2.18**, fichier `engine/CONTRACT_VERSION`). Voici la structure complete, avec des explications inline.
 
 ```json
 {
-  "version": "2.17",
+  "version": "2.18",
   "clubId": "550e8400-e29b-41d4-a716-446655440000",
   "seasonId": "660e8400-e29b-41d4-a716-446655440001",
 
@@ -138,7 +138,7 @@ Quand un utilisateur clique sur "Generer l'emploi du temps" dans le frontend, le
 
 ### Explications par section
 
-- **`version`** : version du contrat (actuellement `2.17`). Le moteur ne compare que le **MAJOR** : `"2.0"` et `"2.1"` passent tous les deux ; un payload `1.x` ou `3.x` est refuse.
+- **`version`** : version du contrat (actuellement `2.18`). Le moteur ne compare que le **MAJOR** : `"2.0"` et `"2.1"` passent tous les deux ; un payload `1.x` ou `3.x` est refuse.
 - **`clubId` / `seasonId`** : identifiants du club et de la saison en cours. Le moteur ne les utilise pas pour le calcul, mais les inclut dans les logs et les diagnostics.
 - **`venues`** : liste des salles. Chaque salle porte ses **creneaux d'entrainement** explicites dans la cle `trainingSlots` : `{dayOfWeek, startTime, durationMinutes, capacity}`. Il n'existe **ni** cle `availability` **ni** champ `endTime` (la fin se deduit de `startTime + durationMinutes`) — les schemas Pydantic sont `extra=forbid`, donc une cle inconnue provoque un `422`. La `capacity` indique combien d'equipes peuvent occuper le creneau simultanement (gymnase divisible : le backend envoie `canSplit ? capacity : 1`).
 - **`teams`** : liste des equipes. Le champ `sportCategoryId` est **requis** (son absence provoque un `422`). Le `priorityTierId` identifie le rang de priorite (1 = S ... 5 = D), dont le poids est code en dur cote moteur.
@@ -169,7 +169,7 @@ Avant de lancer le solveur, le moteur acquiert un verrou asyncio specifique au `
 
 ### Verification de version
 
-Le moteur verifie que le **MAJOR** de `version` correspond au MAJOR de son contrat (`2` pour le contrat `2.17`) : `"2.0"` comme `"2.17"` sont acceptes — le MINOR est ignore. C'est pourquoi la version que le PAYLOAD s'attribue (constante PHP du builder) DOIT valoir exactement `engine/CONTRACT_VERSION` et non « un `2.x` quelconque » : sinon un changement de forme du payload sans bump de MAJOR passerait inapercu des deux cotes. Cette egalite stricte est gardee par `PayloadVersionMatchesContractVersionTest`. Si le MAJOR differe, le moteur retourne une erreur indiquant la version attendue et la version recue.
+Le moteur verifie que le **MAJOR** de `version` correspond au MAJOR de son contrat (`2` pour le contrat `2.18`) : `"2.0"` comme `"2.18"` sont acceptes — le MINOR est ignore. C'est pourquoi la version que le PAYLOAD s'attribue (constante PHP du builder) DOIT valoir exactement `engine/CONTRACT_VERSION` et non « un `2.x` quelconque » : sinon un changement de forme du payload sans bump de MAJOR passerait inapercu des deux cotes. Cette egalite stricte est gardee par `PayloadVersionMatchesContractVersionTest`. Si le MAJOR differe, le moteur retourne une erreur indiquant la version attendue et la version recue.
 
 ---
 
@@ -351,7 +351,7 @@ Le frontend ecoute ce topic via `EventSource`. Des que l'evenement arrive, le fr
 
 ## Resume du flux en 5 etapes
 
-1. **Backend** : construit le payload (contrat 2.17) a partir des entites du club (equipes, salles, entraineurs, contraintes)
+1. **Backend** : construit le payload (contrat 2.18) a partir des entites du club (equipes, salles, entraineurs, contraintes)
 2. **Moteur** : valide le payload, acquiert le verrou club, verifie le MAJOR de la version
 3. **Solveur** : construit le modele, ajoute les contraintes HARD, definit l'objectif, resout dans le budget adaptatif (60/180/600 s selon la taille du probleme)
 4. **Moteur** : retourne `ScheduleOutputSchema` avec creneaux, diagnostics, metriques
