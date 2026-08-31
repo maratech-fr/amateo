@@ -58,6 +58,9 @@ from .diagnostics import (
     _diagnose_session_below_effective_min as _diagnose_session_below_effective_min,
 )
 from .diagnostics import (
+    _diagnose_shared_blocks as _diagnose_shared_blocks,
+)
+from .diagnostics import (
     _diagnose_shared_trainings as _diagnose_shared_trainings,
 )
 from .diagnostics import (

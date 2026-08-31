@@ -204,6 +204,7 @@ from .structural import add_team_no_overlap as add_team_no_overlap
 from .targeting import TeamLinkPlacement as TeamLinkPlacement
 from .targeting import _forced_venue_id as _forced_venue_id
 from .targeting import add_forced_venue_constraints as add_forced_venue_constraints
+from .targeting import add_shared_block_constraints as add_shared_block_constraints
 from .targeting import add_shared_training_constraints as add_shared_training_constraints
 from .targeting import add_team_link_constraints as add_team_link_constraints
 from .targeting import add_time_window_constraints as add_time_window_constraints
@@ -242,6 +243,7 @@ def add_level_1_hard_constraints(
     team_coach_map: dict[str, list[str]] | None = None,
     team_player_map: dict[str, list[str]] | None = None,
     shared_trainings: Iterable[Any] = (),
+    shared_blocks: Iterable[Any] = (),
     team_links: Iterable[Any] = (),
     venue_travel_times: Iterable[Any] = (),
 ) -> HardConstraintStats:
@@ -286,6 +288,12 @@ def add_level_1_hard_constraints(
     # N'ajoute AUCUNE variable ni contrainte au modèle — le solve (et donc les goldens) est
     # rigoureusement inchangé, qu'on la collecte ou non.
     soft_info: list[CompromiseTermInfo] = stats.implicit_soft_info
+
+    # 0. P2-51 — mutualisation par BLOC : créer les variables de séance du bloc + le liage
+    # ``x >= b`` AVANT la capacité gymnase (elle en a besoin pour dé-compter la co-présence d'un
+    # bloc en UNE occupation) et AVANT le comptage exact-K des groupes (exclusion arbitrage n°3).
+    # Vide ⇒ aucune pose, cartes de dé-comptage/exclusion vides (chemin byte-identique, goldens).
+    stats.shared_block = add_shared_block_constraints(model, assignment_list, shared_blocks=shared_blocks)
 
     # 1. One venue hosts at most one team at a time.
     stats.room_at_most_one = add_room_at_most_one(model, assignment_list)
@@ -396,7 +404,7 @@ def add_level_1_hard_constraints(
     # 14. Lot PASSERELLES — anti-chevauchement DUR des passerelles MANDATORY. Vide/tout PREFERRED
     # ⇒ aucune pose (chemin byte-identique). Les PREFERRED vivent dans l'objectif.
     stats.team_link = add_team_link_constraints(
-        model, assignment_list, team_links=team_links, shared_trainings=shared_trainings
+        model, assignment_list, team_links=team_links, shared_trainings=shared_trainings, shared_blocks=shared_blocks
     )
 
     # 15. P2-53 RMM-8 — trajet MANDATORY : INTERDIT DUR les enchaînements au battement trop court.
@@ -433,6 +441,7 @@ __all__ = [
     "add_one_session_per_day_constraints",
     "add_room_at_most_one",
     "add_salarie_distribution_constraints",
+    "add_shared_block_constraints",
     "add_shared_training_constraints",
     "add_team_link_constraints",
     "add_team_no_overlap",

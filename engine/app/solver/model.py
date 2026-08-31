@@ -36,6 +36,19 @@ class ScheduleCpModel(cp_model.CpModel):
         # Typé ``Any`` ici pour éviter un cycle d'import avec ``constraints`` (qui importe model).
         self.implicit_rules: Any = None
         self.slot_capacities: dict[VenueSlotKey, int] = {}
+        # P2-51 — mutualisation par BLOC. ``add_shared_block_constraints`` (posé AVANT la
+        # capacité gymnase dans l'agrégateur) remplit ces deux cartes, indexées par la case
+        # ``(venue_id, slot_id)`` (slot_id == "day:HH:MM", l'idiome des assignments) :
+        #   * ``shared_block_room_relief`` — ``[(b_var, n_free-1)]`` : une séance de bloc occupe la
+        #     case pour UN, pas pour ses N membres libres ; ``add_room_at_most_one`` dé-compte
+        #     ``(n_free-1)·b`` de la somme pour que la co-présence tienne dans une case capacité 1 ;
+        #   * ``shared_block_sessions_by_case`` — ``[(b_var, frozenset(members))]`` : lu par
+        #     ``add_shared_training_constraints`` pour EXCLURE une case de bloc du comptage exact-K
+        #     d'un groupe {équipes, K} dont les membres sont TOUS dans le bloc (une séance de bloc
+        #     ne fausse pas l'exact-K d'un groupe imbriqué, arbitrage n°3).
+        # Bloc ``sharedBlocks`` absent/vide ⇒ cartes vides ⇒ chemin byte-identique (goldens inchangés).
+        self.shared_block_room_relief: dict[tuple[str, str], list[tuple[Any, int]]] = {}
+        self.shared_block_sessions_by_case: dict[tuple[str, str], list[tuple[Any, frozenset[str]]]] = {}
         # P4-99 — la cause MESURÉE d'un candidat fermé, indexée par la variable OR-Tools
         # (``var.Index()``, entier stable). Remplie par les sites de pose de `constraints.py`
         # au moment EXACT où ils forcent un candidat à 0 (décision B : jamais reconstituée

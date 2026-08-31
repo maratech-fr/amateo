@@ -74,6 +74,10 @@ class DiagnosticSchema(SerializableModel):
         "implicit_rule_not_honored",
         "session_below_effective_min",
         "shared_training_not_honored",
+        # P2-51 PR-3 — mutualisation par BLOC : le bloc n'a pas pu placer ses séances communes
+        # (INFEASIBLE : moins de cases communes candidates que de séances demandées) ou le compte
+        # réel de séances communes du bloc diffère du déclaré (défense en profondeur post-solve).
+        "shared_block_not_honored",
         # Lot PASSERELLES PR-2 — deux équipes déclarées passerelle (partage de joueurs) ont des
         # séances qui se chevauchent dans le temps : SOFT concédé (PREFERRED) ou verrous HARD qui
         # se chevauchent sur une MANDATORY (jamais INFEASIBLE muet — CLAUDE.md §6).
