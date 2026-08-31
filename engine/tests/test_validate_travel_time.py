@@ -23,11 +23,11 @@ from typing import Any
 
 from app.schemas.validate_input_schema import ValidateAssignmentsInputSchema
 from app.solver.validate_assignments import validate_assignment
-from tests.support.pipeline import make_team, make_venue, team_coach
+from tests.support.pipeline import as_validate_payload, make_team, make_venue, team_coach
 
 
 def _run(payload: dict[str, Any]) -> dict[str, Any]:
-    return validate_assignment(ValidateAssignmentsInputSchema.model_validate(payload))
+    return validate_assignment(ValidateAssignmentsInputSchema.model_validate(as_validate_payload(payload)))
 
 
 def _coach(coach_id: str, *, vehicled: bool = False) -> dict[str, Any]:
@@ -116,3 +116,44 @@ class TestPreferredTravelVerdict:
         result = _run(_payload(intensity="PREFERRED", t1_start="17:00", t1_slots=[(1, "17:00")]))
         assert result["valid"] is True
         assert "travel_time" not in {c["family"] for c in result["compromises"]}
+
+
+class TestMandatoryTravelVerdictGroupMove:
+    """P2-51 PR-5b — le miroir du trajet AU PLURIEL : un enchaînement trop serré créé par le
+    déplacement de DEUX équipes DIFFÉRENTES du même coach, sous UN verdict. Jugé sur l'état FINAL,
+    jamais N jugements séquentiels."""
+
+    def test_two_moves_of_the_same_coach_create_a_tight_chain_and_are_refused(self) -> None:
+        """Falsification (d) — LE cas N du trajet. Coach c1 (à pied) tient t1 ET t2. Un déplacement
+        de groupe pose t1 à V1/lundi 18:20 (fin 19:50) et t2 à V2/lundi 20:00 : 10 min pour V1→V2
+        (barème 30) → REFUS ``travel_time_infeasible``. Les DEUX sources sont hors baseline (comme
+        MoveGroupService), donc l'enchaînement n'existe QUE parce que les deux candidats sont jugés
+        ENSEMBLE. Si le miroir re-sérialise le jugement (un candidat à la fois, l'autre absent),
+        aucune paire ne se forme → verdict « valide » à tort → ce test ROUGIT."""
+        payload = {
+            "clubId": "c",
+            "seasonId": "s",
+            "venues": [make_venue("V1", [(1, "18:20")]), make_venue("V2", [(1, "20:00")])],
+            "teams": [make_team("t1"), make_team("t2")],
+            "coaches": [_coach("c1")],
+            "constraints": [team_coach("tc1", "t1", "c1"), team_coach("tc2", "t2", "c1")],
+            "implicitRules": {"travelTime": {"intensity": "MANDATORY"}},
+            "venueTravelTimes": [_row("V1", "V2", 5, 30)],
+            "slotTemplates": [],  # les deux sources retirées : le chaînage naît des seuls candidats
+            "candidates": [
+                {"teamId": "t1", "venueId": "V1", "dayOfWeek": 1, "startTime": "18:20", "durationMinutes": 90},
+                {"teamId": "t2", "venueId": "V2", "dayOfWeek": 1, "startTime": "20:00", "durationMinutes": 90},
+            ],
+            "references": [
+                {"teamId": "t1", "venueId": "V1", "dayOfWeek": 2, "startTime": "18:20", "durationMinutes": 90},
+                {"teamId": "t2", "venueId": "V2", "dayOfWeek": 3, "startTime": "20:00", "durationMinutes": 90},
+            ],
+        }
+        result = validate_assignment(ValidateAssignmentsInputSchema.model_validate(payload))
+        assert result["valid"] is False, (
+            f"deux déplacements créant un battement 10 < 30 doivent être REFUSÉS; got {result}"
+        )
+        assert result["violations"][0]["rule"] == "travel_time_infeasible", (
+            f"le refus doit NOMMER le trajet; got {result['violations']}"
+        )
+        assert result["violations"][0]["coach_id"] == "c1"

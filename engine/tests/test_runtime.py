@@ -15,7 +15,7 @@ import app.main as main
 from app.schemas.input_schema import ScheduleInputSchema
 from app.schemas.validate_input_schema import ValidateAssignmentsInputSchema
 from app.solver.constraints import parse_v2_constraints
-from tests.support.pipeline import make_team, make_venue
+from tests.support.pipeline import as_validate_payload, make_team, make_venue
 
 _MINIMAL_OUTPUT = {
     "status": "completed",
@@ -222,16 +222,24 @@ def test_a_placement_never_waits_behind_a_running_generate() -> None:
 def _verdict_input() -> ValidateAssignmentsInputSchema:
     """L'entrée la plus petite qui soit VALIDE — le sujet est l'attente, pas le contenu."""
     return ValidateAssignmentsInputSchema.model_validate(
-        {
-            "clubId": "club-b",
-            "seasonId": "season",
-            "venues": [make_venue("A", [(4, "18:00")])],
-            "teams": [make_team("U13")],
-            "coaches": [],
-            "constraints": [],
-            "slotTemplates": [],
-            "candidate": {"teamId": "U13", "venueId": "A", "dayOfWeek": 4, "startTime": "18:00", "durationMinutes": 90},
-        }
+        as_validate_payload(
+            {
+                "clubId": "club-b",
+                "seasonId": "season",
+                "venues": [make_venue("A", [(4, "18:00")])],
+                "teams": [make_team("U13")],
+                "coaches": [],
+                "constraints": [],
+                "slotTemplates": [],
+                "candidate": {
+                    "teamId": "U13",
+                    "venueId": "A",
+                    "dayOfWeek": 4,
+                    "startTime": "18:00",
+                    "durationMinutes": 90,
+                },
+            }
+        )
     )
 
 

@@ -13,7 +13,7 @@ paths:
   invariants post-solve (`tests/invariants/`) + hypothesis ; `pytest-timeout` contre les solves
   fous. Les golden dépendent du **worker unique déterministe** (≤200 de complexité) — ne pas
   toucher `_adaptive_workers` sans les re-jouer.
-- Le contrat backend⇄engine est **synchronisé À LA MAIN** (`engine/CONTRACT_VERSION`, 2.17, un seul
+- Le contrat backend⇄engine est **synchronisé À LA MAIN** (`engine/CONTRACT_VERSION`, 2.18, un seul
   contrat pour `/generate`, `/place-matches` ET `/validate-assignments`) : toute modif des schemas
   Pydantic doit garder verts `ContractSchemaTest` + `MatchPlacementContractSchemaTest` +
   `ValidateAssignmentsContractSchemaTest` côté backend.

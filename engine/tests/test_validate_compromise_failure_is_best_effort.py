@@ -21,7 +21,7 @@ import pytest
 from app.schemas.validate_input_schema import ValidateAssignmentsInputSchema
 from app.solver import validate_assignments
 from app.solver.validate_assignments import validate_assignment
-from tests.support.pipeline import make_team, make_venue
+from tests.support.pipeline import as_validate_payload, make_team, make_venue
 
 
 def _accepting_payload_with_a_broken_preference() -> dict[str, Any]:
@@ -58,7 +58,9 @@ def test_compromise_failure_still_yields_the_verdict(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(validate_assignments, "_compromises_for", _boom)
 
     result = validate_assignment(
-        ValidateAssignmentsInputSchema.model_validate(_accepting_payload_with_a_broken_preference())
+        ValidateAssignmentsInputSchema.model_validate(
+            as_validate_payload(_accepting_payload_with_a_broken_preference())
+        )
     )
 
     # Le verdict SORT quand même (accepté), et la réponse garde sa forme exacte.
@@ -90,7 +92,9 @@ def test_compromises_are_skipped_when_the_verdict_already_ate_the_budget(monkeyp
     monkeypatch.setattr(validate_assignments, "COMPROMISE_ELAPSED_BUDGET_SECONDS", 0.0)
 
     result = validate_assignment(
-        ValidateAssignmentsInputSchema.model_validate(_accepting_payload_with_a_broken_preference())
+        ValidateAssignmentsInputSchema.model_validate(
+            as_validate_payload(_accepting_payload_with_a_broken_preference())
+        )
     )
 
     assert result["valid"] is True

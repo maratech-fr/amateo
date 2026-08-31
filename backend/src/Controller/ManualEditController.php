@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
+use App\Entity\SharedTrainingBlock;
 use App\Entity\Team;
 use App\Enum\LockLevel;
 use App\Exception\DurationMismatchException;
@@ -44,10 +45,20 @@ final class ManualEditController extends AbstractController implements SeasonSco
 
     /**
      * SEC-13 — la cible dépend du geste : place-slot vise un Schedule (id = schedule),
-     * lock/move visent un créneau (id = schedule-slot). On branche sur le nom de route.
+     * lock/move visent un créneau (id = schedule-slot), move-group vise un Schedule dont
+     * l'id vit dans le CORPS (route sans `{id}`). On branche sur le nom de route.
      */
     public function writeTargetSeasonId(Request $request): ?string
     {
+        if ('api_schedule_slot_move_group' === $request->attributes->get('_route')) {
+            $data = json_decode($request->getContent(), true);
+            $scheduleId = \is_array($data) && isset($data['scheduleId']) && \is_string($data['scheduleId'])
+                ? $data['scheduleId']
+                : null;
+
+            return null === $scheduleId ? null : $this->writeTargetSeasonResolver->ofSchedule($scheduleId);
+        }
+
         $id = $request->attributes->get('id');
         if (!\is_string($id)) {
             return null;
@@ -335,6 +346,137 @@ final class ManualEditController extends AbstractController implements SeasonSco
         }
 
         return $this->json(['valid' => true, 'slotId' => $result['slotId'] ?? null, 'compromises' => $result['compromises']], Response::HTTP_OK);
+    }
+
+    /**
+     * DÉPLACER UNE SÉANCE DE BLOC ENTIÈRE (P2-51 D11) — les N créneaux des membres du bloc qui
+     * siègent à la case SOURCE, d'un coup vers la case CIBLE, SOUS UN SEUL VERDICT et en une
+     * transaction (tout-ou-rien). D11 interdit de déplacer un membre seul ; ce rail atomique est le
+     * seul geste « déplacer le bloc ». Le serveur résout lui-même les créneaux (jamais des slotIds
+     * clients) : le corps ne porte que le bloc, la case source et la case cible.
+     */
+    #[Route('/api/schedule-slots/move-group', name: 'api_schedule_slot_move_group', methods: ['POST'])]
+    public function moveGroup(Request $request): JsonResponse
+    {
+        $this->managementAccessGuard->assertManager(); // SEC-07
+
+        $data = json_decode($request->getContent(), true);
+        if (!\is_array($data)) {
+            return $this->json(['error' => 'Invalid JSON body.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $scheduleId = isset($data['scheduleId']) && \is_string($data['scheduleId']) ? $data['scheduleId'] : '';
+        if ('' === $scheduleId) {
+            return $this->json(['error' => 'Missing required field: scheduleId.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $schedule = $this->findSchedule($scheduleId);
+        if (!$schedule instanceof Schedule) {
+            return $this->json(['error' => 'Planning introuvable.'], Response::HTTP_NOT_FOUND);
+        }
+
+        // ADR-0002 inv. 1 : la version choisie du plan est le calendrier — lecture seule.
+        if ($this->schedulePlanProvisioner->isChosen($schedule->getId())) {
+            return $this->json(['error' => 'Ce planning est validé (lecture seule) — rouvrez-le avant de le modifier.'], Response::HTTP_CONFLICT);
+        }
+
+        $blockId = isset($data['blockId']) && \is_string($data['blockId']) ? $data['blockId'] : '';
+        if ('' === $blockId) {
+            return $this->json(['error' => 'Missing required field: blockId.'], Response::HTTP_BAD_REQUEST);
+        }
+        $block = $this->findBlock($blockId);
+        if (!$block instanceof SharedTrainingBlock) {
+            return $this->json(['error' => 'Bloc de mutualisation introuvable.'], Response::HTTP_NOT_FOUND);
+        }
+
+        // La case SOURCE (la séance à déplacer) et la case CIBLE, chacune {venueId, dayOfWeek, startTime}.
+        $source = $this->parseCase(\is_array($data['source'] ?? null) ? $data['source'] : []);
+        if (null === $source) {
+            return $this->json(['error' => 'Missing or invalid field: source (venueId, dayOfWeek, startTime).'], Response::HTTP_BAD_REQUEST);
+        }
+        $target = $this->parseCase(\is_array($data['target'] ?? null) ? $data['target'] : []);
+        if (null === $target) {
+            return $this->json(['error' => 'Missing or invalid field: target (venueId, dayOfWeek, startTime).'], Response::HTTP_BAD_REQUEST);
+        }
+
+        try {
+            $result = $this->moveSlotService->moveGroup(
+                $schedule,
+                $block,
+                $source['dayOfWeek'],
+                $source['startTime'],
+                $source['venueId'],
+                $target['dayOfWeek'],
+                $target['startTime'],
+                $target['venueId'],
+            );
+        } catch (ScheduleGenerationInProgressException) {
+            return $this->json(['code' => 'generation_in_progress'], Response::HTTP_CONFLICT);
+        } catch (SlotUnavailableException) {
+            return $this->json(['code' => 'slot_unavailable', 'error' => 'Aucune séance de bloc à déplacer à cet horaire, ou créneau cible fermé.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (EngineTimeoutException $e) {
+            $this->logger->error('Group move validation timed out on the engine.', ['exception' => $e]);
+
+            return $this->json(['code' => EngineTimeoutException::CODE, 'error' => 'The engine did not answer in time — please retry.'], Response::HTTP_GATEWAY_TIMEOUT);
+        } catch (TransportExceptionInterface $e) {
+            $this->logger->error('Group move validation could not reach the engine.', ['exception' => $e]);
+
+            return $this->json(['error' => 'The engine did not respond — please retry.'], Response::HTTP_BAD_GATEWAY);
+        } catch (Throwable $e) {
+            $this->logger->error('Group slot move failed.', ['exception' => $e]);
+
+            return $this->json(['error' => 'The request could not be processed.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        if (false === $result['valid']) {
+            // Le moteur refuse : 422 + les règles violées — AUCUN des N créneaux n'a bougé (atomicité).
+            return $this->json(['valid' => false, 'violations' => $result['violations']], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        return $this->json([
+            'message' => 'Group slot moved.',
+            'valid' => true,
+            'compromises' => $result['compromises'],
+            'movedSlotIds' => $result['movedSlotIds'] ?? [],
+        ], Response::HTTP_OK);
+    }
+
+    /**
+     * Une case {venueId, dayOfWeek 1..7, startTime "H:i"} lue d'un sous-objet du corps, ou null si
+     * l'un des trois manque/est invalide.
+     *
+     * @param array<mixed> $raw
+     *
+     * @return array{venueId: string, dayOfWeek: int, startTime: DateTimeImmutable}|null
+     */
+    private function parseCase(array $raw): ?array
+    {
+        $venueId = isset($raw['venueId']) && \is_string($raw['venueId']) && '' !== $raw['venueId'] ? $raw['venueId'] : null;
+        $dayOfWeek = isset($raw['dayOfWeek']) ? (int) $raw['dayOfWeek'] : 0;
+        $startTime = null;
+        if (isset($raw['startTime']) && \is_string($raw['startTime'])) {
+            $startTime = DateTimeImmutable::createFromFormat('!H:i', $raw['startTime'])
+                ?: DateTimeImmutable::createFromFormat('!H:i:s', $raw['startTime'])
+                ?: null;
+        }
+
+        if (null === $venueId || $dayOfWeek < 1 || $dayOfWeek > 7 || !$startTime instanceof DateTimeImmutable) {
+            return null;
+        }
+
+        return ['venueId' => $venueId, 'dayOfWeek' => $dayOfWeek, 'startTime' => $startTime];
+    }
+
+    /** Le bloc ciblé, tenant-scopé par le filtre Doctrine : un bloc d'un autre club est invisible (→ 404). */
+    private function findBlock(string $id): ?SharedTrainingBlock
+    {
+        try {
+            $block = $this->entityManager->getRepository(SharedTrainingBlock::class)->findOneBy(['id' => $id]);
+        } catch (Throwable) {
+            $block = null;
+        }
+
+        return $block instanceof SharedTrainingBlock ? $block : null;
     }
 
     private function findSlot(string $id): ?ScheduleSlotTemplate

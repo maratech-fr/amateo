@@ -9564,6 +9564,275 @@
                 }
             }
         },
+        "/api/schedule-slots/move-group": {
+            "post": {
+                "operationId": "postScheduleSlotMoveGroup",
+                "tags": [
+                    "ManualEdit"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The whole block session was accepted by the solver and its member slots were moved together (schedule flagged manually edited, score now stale), carrying the named comfort trade-offs",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "valid": {
+                                            "type": "boolean"
+                                        },
+                                        "compromises": {
+                                            "type": "array",
+                                            "description": "Named comfort trade-offs of an ACCEPTED candidate (empty on refusal): what the move BREAKS or GAINS, ready to display",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "family": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "chaining",
+                                                            "venue_preference",
+                                                            "day_preference",
+                                                            "time_preference",
+                                                            "match_rest",
+                                                            "spacing",
+                                                            "coach_day_cap",
+                                                            "implicit_rule"
+                                                        ],
+                                                        "description": "Which comfort family the trade-off belongs to"
+                                                    },
+                                                    "effect": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "broken",
+                                                            "gained"
+                                                        ],
+                                                        "description": "broken = a preference honored before no longer is; gained = the reverse"
+                                                    },
+                                                    "message": {
+                                                        "type": "string",
+                                                        "description": "Ready-to-display sentence naming the team/coach/venue (no internal identifier)"
+                                                    },
+                                                    "teamId": {
+                                                        "type": "string",
+                                                        "nullable": true,
+                                                        "description": "Team the trade-off is about (grid highlighting)"
+                                                    },
+                                                    "coachId": {
+                                                        "type": "string",
+                                                        "nullable": true,
+                                                        "description": "Coach involved, when the family concerns one"
+                                                    },
+                                                    "venueId": {
+                                                        "type": "string",
+                                                        "nullable": true,
+                                                        "description": "Venue involved, when the family concerns one"
+                                                    },
+                                                    "dayOfWeek": {
+                                                        "type": "integer",
+                                                        "nullable": true,
+                                                        "description": "ISO day (1-7) involved, when relevant"
+                                                    },
+                                                    "startTime": {
+                                                        "type": "string",
+                                                        "nullable": true,
+                                                        "description": "Start time (HH:MM) involved, when relevant"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "movedSlotIds": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            },
+                                            "description": "Ids of the member slots that were moved as one"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Missing or invalid field (scheduleId, blockId, source or target case)"
+                    },
+                    "404": {
+                        "description": "Schedule or mutualisation block not found"
+                    },
+                    "409": {
+                        "description": "Schedule is validated (read-only), or a generation is running for the club (body carries code=generation_in_progress)"
+                    },
+                    "422": {
+                        "description": "Refused with NOTHING moved (all-or-nothing): the solver refused the group move (broken rules named for display \u2014 e.g. shared_block_broken when the move would split the block), OR no block session sits at the source case / the target window is closed (body carries code=slot_unavailable)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "valid": {
+                                            "type": "boolean",
+                                            "enum": [
+                                                false
+                                            ]
+                                        },
+                                        "code": {
+                                            "type": "string",
+                                            "nullable": true,
+                                            "description": "slot_unavailable when a server pre-check refused (no engine call)"
+                                        },
+                                        "error": {
+                                            "type": "string",
+                                            "nullable": true
+                                        },
+                                        "violations": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "rule": {
+                                                        "type": "string",
+                                                        "description": "Machine code of the broken rule (UI branches on it)"
+                                                    },
+                                                    "message": {
+                                                        "type": "string",
+                                                        "description": "Human sentence naming the coach/venue/time in conflict"
+                                                    },
+                                                    "teamId": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "coachId": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "venueId": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "dayOfWeek": {
+                                                        "type": "integer",
+                                                        "nullable": true
+                                                    },
+                                                    "startTime": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "conflictingTeamId": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Engine unreachable \u2014 nothing was moved, retry"
+                    },
+                    "504": {
+                        "description": "The engine answered too slowly and the verdict was dropped \u2014 nothing was moved. Distinct from 502: the engine works, it merely exceeded the transport ceiling. Retrying is the right move (body carries code=engine_timeout)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": {
+                                            "type": "string",
+                                            "enum": [
+                                                "engine_timeout"
+                                            ]
+                                        },
+                                        "error": {
+                                            "type": "string",
+                                            "description": "Human message naming the timeout"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "summary": "Move a WHOLE mutualisation-block session (all its member slots at the source case) to the target case, under ONE solver verdict and in one transaction (all-or-nothing). The server resolves the member slots itself from the block and the source case \u2014 never client slot ids. A block declared with commonSessions > 1 has several sessions; the source case designates the one to move",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "scheduleId",
+                                    "blockId",
+                                    "source",
+                                    "target"
+                                ],
+                                "properties": {
+                                    "scheduleId": {
+                                        "type": "string",
+                                        "description": "The schedule (version) being edited"
+                                    },
+                                    "blockId": {
+                                        "type": "string",
+                                        "description": "The mutualisation block whose session moves"
+                                    },
+                                    "source": {
+                                        "type": "object",
+                                        "description": "The case the block session currently sits at",
+                                        "required": [
+                                            "venueId",
+                                            "dayOfWeek",
+                                            "startTime"
+                                        ],
+                                        "properties": {
+                                            "venueId": {
+                                                "type": "string"
+                                            },
+                                            "dayOfWeek": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 7
+                                            },
+                                            "startTime": {
+                                                "type": "string",
+                                                "example": "18:00"
+                                            }
+                                        }
+                                    },
+                                    "target": {
+                                        "type": "object",
+                                        "description": "The case to move the block session to",
+                                        "required": [
+                                            "venueId",
+                                            "dayOfWeek",
+                                            "startTime"
+                                        ],
+                                        "properties": {
+                                            "venueId": {
+                                                "type": "string"
+                                            },
+                                            "dayOfWeek": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 7
+                                            },
+                                            "startTime": {
+                                                "type": "string",
+                                                "example": "20:00"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
         "/api/schedule-slots/{id}/manual-edit/lock": {
             "post": {
                 "operationId": "postManualEditLock",

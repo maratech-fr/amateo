@@ -237,10 +237,42 @@ def _verdict_payload(
         "constraints": [],
         "slotTemplates": slot_templates,
         "sharedBlocks": blocks,
-        "candidate": candidate,
+        "candidates": [candidate],
     }
     if reference is not None:
-        payload["reference"] = reference
+        payload["references"] = [reference]
+    return payload
+
+
+def _verdict_payload_multi(
+    candidates: list[dict[str, Any]],
+    slot_templates: list[dict[str, Any]],
+    *,
+    blocks: list[dict[str, Any]],
+    teams: list[dict[str, Any]],
+    references: list[dict[str, Any]] | None = None,
+    venues: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Comme ``_verdict_payload`` mais N candidats sous UN verdict (déplacement de bloc, P2-51
+    PR-5b) : ``candidates`` / ``references`` sont des LISTES appariées par index — la vraie forme du
+    contrat 2.18, écrite en clair (pas de shim ici)."""
+    payload: dict[str, Any] = {
+        "clubId": "club",
+        "seasonId": "season",
+        "venues": venues
+        or [
+            make_venue("A", [(3, "18:00"), (3, "20:00")], capacity=2),
+            make_venue("B", [(4, "18:00")], capacity=2),
+        ],
+        "teams": teams,
+        "coaches": [],
+        "constraints": [],
+        "slotTemplates": slot_templates,
+        "sharedBlocks": blocks,
+        "candidates": candidates,
+    }
+    if references is not None:
+        payload["references"] = references
     return payload
 
 
@@ -338,3 +370,65 @@ class TestMoveVerdict:
             )
         )
         assert not any(v["rule"] == "shared_block_broken" for v in result["violations"])
+
+
+# ── P2-51 PR-5b — LE VERDICT DE GROUPE (D11) : N déplacements sous UN verdict, état FINAL ─────────
+
+
+class TestBlockGroupMoveVerdict:
+    """Le déplacement du BLOC ENTIER (rail ``/move-group``) : N candidats jugés ENSEMBLE, sur l'état
+    FINAL. C'est le cœur de PR-5b — juger chaque déplacement isolément verrait le bloc « cassé » à
+    chaque étape, alors qu'il se RECONSTITUE à la nouvelle case."""
+
+    def test_moving_all_members_together_to_one_new_case_is_accepted(self) -> None:
+        """Falsification (c) — LE test du rail. Bloc {t1,t2} 1 séance à A/mercredi 18:00. On déplace
+        les DEUX membres vers A/mercredi 20:00 (même nouvelle case, capacité 2). Les deux sources
+        sont exclues de la baseline (comme MoveGroupService) ; les deux candidats posent la séance de
+        bloc au nouvel endroit → le bloc reste HONORÉ, verdict ``valid: True``. Si la généralisation
+        est cassée (le miroir re-sérialise le jugement, ne voyant qu'UN candidat à la fois), t2
+        n'aurait aucune case et le bloc paraîtrait rompu → refus ``shared_block_broken`` à tort, ce
+        test ROUGIT."""
+        result = validate_assignment(
+            ValidateAssignmentsInputSchema.model_validate(
+                _verdict_payload_multi(
+                    candidates=[
+                        {"teamId": "t1", "venueId": "A", "dayOfWeek": 3, "startTime": "20:00", "durationMinutes": 90},
+                        {"teamId": "t2", "venueId": "A", "dayOfWeek": 3, "startTime": "20:00", "durationMinutes": 90},
+                    ],
+                    slot_templates=[],  # les DEUX sources retirées de la baseline (déplacement de bloc)
+                    blocks=[_block("b", ["t1", "t2"], 1)],
+                    teams=[make_team("t1", sessions_per_week=1), make_team("t2", sessions_per_week=1)],
+                    references=[
+                        {"teamId": "t1", "venueId": "A", "dayOfWeek": 3, "startTime": "18:00", "durationMinutes": 90},
+                        {"teamId": "t2", "venueId": "A", "dayOfWeek": 3, "startTime": "18:00", "durationMinutes": 90},
+                    ],
+                )
+            )
+        )
+        assert result["valid"] is True, "déplacer TOUT le bloc vers une même case le reconstitue — accepté"
+        assert not any(v["rule"] == "shared_block_broken" for v in result["violations"])
+
+    def test_moving_the_members_to_two_different_cases_breaks_the_block(self) -> None:
+        """Le pendant : déplacer les deux membres vers des cases DIFFÉRENTES (t1→A/mercredi 20:00,
+        t2→B/jeudi 18:00) casse la séance commune → refus ``shared_block_broken`` (l'état final n'a
+        plus aucune case partagée). Prouve que le verdict de groupe REFUSE toujours une vraie
+        rupture, pas seulement qu'il accepte tout."""
+        result = validate_assignment(
+            ValidateAssignmentsInputSchema.model_validate(
+                _verdict_payload_multi(
+                    candidates=[
+                        {"teamId": "t1", "venueId": "A", "dayOfWeek": 3, "startTime": "20:00", "durationMinutes": 90},
+                        {"teamId": "t2", "venueId": "B", "dayOfWeek": 4, "startTime": "18:00", "durationMinutes": 90},
+                    ],
+                    slot_templates=[],
+                    blocks=[_block("b", ["t1", "t2"], 1)],
+                    teams=[make_team("t1", sessions_per_week=1), make_team("t2", sessions_per_week=1)],
+                    references=[
+                        {"teamId": "t1", "venueId": "A", "dayOfWeek": 3, "startTime": "18:00", "durationMinutes": 90},
+                        {"teamId": "t2", "venueId": "A", "dayOfWeek": 3, "startTime": "18:00", "durationMinutes": 90},
+                    ],
+                )
+            )
+        )
+        assert result["valid"] is False
+        assert any(v["rule"] == "shared_block_broken" for v in result["violations"])

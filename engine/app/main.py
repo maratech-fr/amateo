@@ -842,9 +842,10 @@ async def place_matches(input_data: MatchPlacementInputSchema) -> MatchPlacement
 
 @app.post("/validate-assignments", response_model=ValidateAssignmentsOutputSchema)
 async def validate_assignments(input_data: ValidateAssignmentsInputSchema) -> ValidateAssignmentsOutputSchema:
-    """P2-2 F2a — verdict moteur sur UN candidat de déplacement (mono-candidat).
+    """P2-2 F2a / P2-51 PR-5b — verdict moteur sur N déplacements sous UN verdict.
 
-    Le reste du planning est FIGÉ via ``add_fixed_slots`` ; on épingle le candidat
+    Le reste du planning est FIGÉ via ``add_fixed_slots`` ; on épingle les N candidats
+    (une liste à 1 élément = un déplacement simple ; N = un déplacement de bloc atomique)
     et on demande au solveur si le modèle HARD reste faisable. Réponse booléenne du
     MOTEUR + règles cassées NOMMÉES pour l'UI. Même garde de version MAJOR-only que
     les deux autres endpoints (un seul contrat). Le verrou club est préfixé pour ne

@@ -31,11 +31,11 @@ from typing import Any
 
 from app.schemas.validate_input_schema import ValidateAssignmentsInputSchema
 from app.solver.validate_assignments import validate_assignment
-from tests.support.pipeline import make_team, make_venue, team_constraint
+from tests.support.pipeline import as_validate_payload, make_team, make_venue, team_constraint
 
 
 def _run(payload: dict[str, Any]) -> dict[str, Any]:
-    return validate_assignment(ValidateAssignmentsInputSchema.model_validate(payload))
+    return validate_assignment(ValidateAssignmentsInputSchema.model_validate(as_validate_payload(payload)))
 
 
 def _template(team_id: str, venue_id: str, day: int, start: str) -> dict[str, Any]:
