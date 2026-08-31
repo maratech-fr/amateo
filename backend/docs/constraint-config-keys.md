@@ -1,8 +1,12 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-08-30 (rotation `documentation-update`, P4-152 — zone non touchée par cette
-PR, contrôle de fraîcheur). Re-confronté au code : `ConstraintConfigValidator` porte toujours
-`minStartTime`/`maxEndTime` en type `time`, `minAtVenueCount` en `count`, `fromTime` en `time` ✓ ·
+Last verified @ 2026-08-31 (rotation `documentation-update`, P2-51 PR-2 — zone non touchée par cette
+PR, contrôle de fraîcheur. **Vérifié explicitement que cette page n'est PAS la maison des blocs de
+payload racine** (`sharedTrainings`/`sharedBlocks`/`teamLinks`/`venueTravelTimes`…) — elle liste les
+clés du `config` d'UNE contrainte, un objet différent, imbriqué dans `constraints[]` ; les blocs
+racine du contrat vivent dans `engine/docs/engine-inventory.md` (changelog `CONTRACT_VERSION`).
+Re-confronté au code : `ConstraintConfigValidator` porte toujours `minStartTime`/`maxEndTime` en
+type `time`, `minAtVenueCount` en `count`, `fromTime` en `time` ✓ ·
 `TeamTagResolver::resolveConstraintTeamIds` existe (`:278`) ✓ · migration
 `Version20260807190000.php` présente ✓ · `ValidateConstraintsController::__invoke` existe
 (`:65`) ✓)
