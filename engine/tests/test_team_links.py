@@ -1,5 +1,5 @@
 """Lot PASSERELLES — le bloc `teamLinks` est ACCEPTÉ par le contrat, et un bloc ABSENT/VIDE
-laisse le chemin de code byte-identique (patron `sharedTrainings`/`previousAssignments`).
+laisse le chemin de code byte-identique (patron `previousAssignments`).
 
 ⚠ Depuis PR-2 (sémantique moteur) un bloc PEUPLÉ n'est PLUS inerte : une passerelle MANDATORY
 sépare deux équipes, une PREFERRED les pénalise si elles se chevauchent — c'est le sujet de

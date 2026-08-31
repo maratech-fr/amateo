@@ -59,7 +59,7 @@ class SharedTrainingBlockStateProvider extends AbstractStateProvider
         /** @var list<SharedTrainingBlock> $blocks */
         $blocks = $qb->getQuery()->getResult();
 
-        // Les membres des blocs en UNE requête, pas une par bloc (patron SharedTrainingGroup).
+        // Les membres des blocs en UNE requête, pas une par bloc.
         $teamIdsByBlock = $this->teamIdsOfMany(array_map(static fn (SharedTrainingBlock $b): string => $b->getId(), $blocks));
 
         return array_map(

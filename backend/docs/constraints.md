@@ -1,14 +1,12 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-08-30 (rotation `documentation-update`, zone non touchée par cette PR —
+Last verified @ 2026-08-31 (rotation `documentation-update`, zone non touchée par cette PR —
 contrôle de fraîcheur. Re-confronté au code : tags système présents dans `TeamTagService`
 (`EMB`, `PRE_REGION`, `LOISIR_JEUNE`, `HONNEUR`, `PROMOTION`, `MIXTE`) ✓ · `FACILITY_CAPACITY`
 retirée des trois couches, ne subsiste qu'en commentaires historiques
-(`ScheduleConstraintBuilder.php:1324`, `ValidateConstraintsController.php:254`,
+(`ScheduleConstraintBuilder.php:1327`, `ValidateConstraintsController.php:254`,
 `engine/app/main.py:486`) ✓ · `ConstraintValidationService` toujours appelé par le SEUL
-`ValidateConstraintsController` (grep) ✓ · aucune clé `config.coachId` sur `Constraint` (les
-`coachId` restants du grep appartiennent à d'autres structures — `slotTemplates`/`teamCoach`,
-pas au JSON `config` d'une contrainte) ✓. Rien de faux trouvé cette passe.)
+`ValidateConstraintsController` (grep) ✓. Rien de faux trouvé cette passe.)
 
 > ClubScheduler — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 

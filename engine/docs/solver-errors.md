@@ -1,13 +1,13 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-08-31 (P2-51 PR-3, `documentation-update`). Nouvelle ligne `shared_block_not_honored`
-ajoutée (le bloc de mutualisation est désormais CONSOMMÉ, PR-3) — confrontée à `_diagnose_shared_blocks`
-(`app/solver/result_builder/diagnostics.py:836-916`), patron exact de `shared_training_not_honored`.
-⚠ **Écart connu, hors périmètre de cette passe** : `team_link_not_honored` et `travel_time_infeasible`
-sont des types de diagnostic du contrat (`output_schema.py` §Literal, au même titre que
-`shared_training_not_honored`/`shared_block_not_honored`) mais n'ont **jamais** eu leur ligne dans
-ce tableau — signalé, pas corrigé ici (voir roadmap P4). Reste du document non re-parcouru ligne à
-ligne cette passe.
+Last verified @ 2026-08-31 (P2-51 PR-7, `documentation-update`). La ligne `shared_training_not_honored`
+est **RETIRÉE** — le type n'existe plus dans le `Literal` du contrat (`output_schema.py`, PR-7 a
+supprimé le modèle groupe {équipes, K} et son diagnostic) ; `shared_block_not_honored` (confrontée
+à `_diagnose_shared_blocks`, `app/solver/result_builder/diagnostics.py:824-902`) est désormais la
+SEULE ligne de mutualisation. ⚠ **Écart connu, hors périmètre de cette passe** : `team_link_not_honored`
+et `travel_time_infeasible` sont des types de diagnostic valides du contrat (`output_schema.py`
+§Literal) mais n'ont **jamais** eu leur ligne dans ce tableau — signalé, pas corrigé ici (P4-153).
+Reste du document non re-parcouru ligne à ligne cette passe.
 
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 
@@ -26,7 +26,7 @@ Ces erreurs sont retournees directement par l'API FastAPI, avant meme que le sol
 - `sessionsPerWeek: "trois"` au lieu d'un entier
 - Champ `sportCategoryId` manquant sur une equipe (requis)
 - Cle inconnue dans le payload (les schemas sont `extra=forbid`)
-- `version: "1.0"` alors que le moteur parle le **MAJOR 2** du contrat `2.18` (`"2.0"` comme `"2.1"` passent)
+- `version: "1.0"` alors que le moteur parle le **MAJOR 2** du contrat `2.19` (`"2.0"` comme `"2.1"` passent)
 
 **Attention — deux pieges qui ne provoquent PAS de 422** : `lockLevel` est une **chaine libre**, pas un enum (un `"FORT"` est accepte et simplement traite comme non-`HARD`), et le `dayOfWeek` d'un creneau de gymnase (`VenueTrainingSlotSchema`) est un entier **sans borne** — un `8` passe la validation (d'autres schemas du meme payload, eux, sont bornes `ge=1, le=7` : la tolerance n'est pas une regle generale).
 
@@ -79,8 +79,7 @@ Les diagnostics apparaissent dans le tableau `diagnostics[]` de la reponse. Ils 
 | `unplaced_match` | ERROR | Un match n'a pas pu etre place | Emis par `/place-matches` (rail synchrone, ADR-0003), pas par le solve hebdomadaire. | Ouvrir un creneau compatible, ou revoir la fenetre de la journee. |
 | `day_constraint_conflict` | ERROR | Les regles de jours d'une equipe se contredisent | Un jour est a la fois impose (`forcedDays`) et interdit (`forbiddenDays`), ou tous les jours de la liste blanche (`allowedDays`) sont interdits. L'equipe est alors forcee a 0 seance. | Retirer le recouvrement entre la regle "uniquement / impose" et la regle "evite". |
 | `venue_minimum_unreachable` | ERROR | Un plancher "au moins N seances dans ce gymnase" est inatteignable | Le gymnase offre a l'equipe moins de **jours distincts** que N (elle joue au plus une seance par jour). | Baisser N, ou ouvrir des creneaux sur d'autres jours dans ce gymnase. |
-| `shared_training_not_honored` | ERROR | Un groupe de mutualisation (K seances communes) n'est pas honore | Deux regimes, un seul code : sur INFEASIBLE, cause **certaine** — aucune fenetre de gymnase n'a une capacite ≥ la taille du groupe (le moteur ne l'affirme que quand la capacite l'exclut de facon prouvee) ; sur un solve abouti, defense en profondeur — le nombre reel de seances communes differe du K declare. | Ouvrir un creneau assez capacitaire pour le groupe, ou reduire K / la taille du groupe. |
-| `shared_block_not_honored` | ERROR | Un BLOC de mutualisation (P2-51 PR-3 — un ensemble d'equipes qui se comporte comme UNE equipe) n'a pas pu placer ses `commonSessions` seances communes | Meme patron que `shared_training_not_honored`, applique au bloc : sur INFEASIBLE, cause **certaine** — moins de cases (gymnase, jour, heure) communes candidates que de seances demandees ; sur un solve abouti, defense en profondeur — le compte reel de seances communes du bloc diverge du declare. **Distinct du verdict** `shared_block_broken` (`/validate-assignments`, refus d'un DEPLACEMENT qui casserait un bloc deja honore) — celui-ci n'est pas un diagnostic de generation. | Ouvrir un creneau commun aux equipes du bloc, ou reduire son nombre de seances communes. |
+| `shared_block_not_honored` | ERROR | Un BLOC de mutualisation (P2-51 — un ensemble d'equipes qui se comporte comme UNE equipe, SEULE notion depuis le retrait du modele groupe {equipes, K} par PR-7, 2026-08-31) n'a pas pu placer ses `commonSessions` seances communes | Sur INFEASIBLE, cause **certaine** — moins de cases (gymnase, jour, heure) communes candidates que de seances demandees ; sur un solve abouti, defense en profondeur — le compte reel de seances communes du bloc diverge du declare. **Distinct du verdict** `shared_block_broken` (`/validate-assignments`, refus d'un DEPLACEMENT qui casserait un bloc deja honore) — celui-ci n'est pas un diagnostic de generation. | Ouvrir un creneau commun aux equipes du bloc, ou reduire son nombre de seances communes. |
 | `constraint_not_honored` | INFO / WARNING | Une contrainte saisie n'a pas pu etre appliquee | **INFO** : un verrou HARD l'a ecrasee (P2-9) — indisponibilite coach, fenetre horaire, jour exclu, gymnase interdit. Le verrou prime, la contrainte devient inatteignable. **WARNING** : la contrainte est arrivee sans equipe cible et n'a donc pu etre appliquee a personne. | INFO : retirer le verrou, ou assumer qu'il prime — c'est une decision de gestionnaire, pas une erreur. WARNING : verifier le ciblage de la regle cote backend. |
 
 ---

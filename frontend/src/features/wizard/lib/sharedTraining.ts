@@ -1,14 +1,14 @@
-import type { SharedTrainingGroup, Team, TeamPeriodOverride } from "../api";
+import type { Team, TeamPeriodOverride } from "../api";
 
 /**
  * P2-27 PR B — helpers PURS de la saisie de mutualisation au wizard (N équipes ensemble,
- * K séances communes).
+ * séances communes).
  *
  * 🔴 RIEN ICI N'AUTORISE NI N'INTERDIT — le serveur reste seul juge. La pré-validation de ce
- * module (K plafonné, équipe déjà mutualisée) est FAIL-SAFE : elle guide la saisie sans jamais
- * remplacer le verdict serveur `App\State\Processor\SharedTrainingGroupStateProcessor::assertDeclarationValid`
- * (2..10 équipes, doublon, K > min sessionsPerWeek effectif, équipe d'un autre groupe du même
- * plan). Un 422 doit rester géré et affiché côté écran, jamais supposé impossible.
+ * module (séances communes plafonnées) est FAIL-SAFE : elle guide la saisie sans jamais remplacer
+ * le verdict serveur `App\State\Processor\SharedTrainingBlockStateProcessor::assertBlockValid`
+ * (2..10 équipes, doublon, Σ des séances communes > sessionsPerWeek effectif). Un 422 doit rester
+ * géré et affiché côté écran, jamais supposé impossible.
  *
  * ⚠ Le CLASSEMENT des candidats (`splitByLinks`) est un ORDRE D'AFFICHAGE, jamais une permission :
  * « équipes liées » remonte en tête les équipes PASSERELÉES à l'ancre — une donnée SERVIE par le
@@ -25,7 +25,7 @@ import type { SharedTrainingGroup, Team, TeamPeriodOverride } from "../api";
 
 /**
  * Séances/semaine EFFECTIVES d'une équipe — l'override de période est PRIORITAIRE. Miroir de
- * `SharedTrainingGroupStateProcessor::effectiveSessionsPerWeek` : un override qui porte un
+ * `EffectiveTeamSessions::perWeek` : un override qui porte un
  * `sessionsPerWeek` non nul l'emporte, sinon on retombe sur la valeur de saison. En portée socle
  * il n'y a pas d'override (la carte est vide) → toujours la valeur de saison.
  */
@@ -51,48 +51,22 @@ export function maxCommonSessions(teams: Team[], overrideByTeamId: ReadonlyMap<s
 }
 
 /**
- * Les ids d'équipe déjà pris dans un groupe de la PORTÉE COURANTE, hormis le groupe en cours
- * d'édition (`excludeGroupId`) — dont les membres doivent rester libres de leur propre formulaire.
- */
-export function alreadyGroupedTeamIds(groups: SharedTrainingGroup[], excludeGroupId: string | null): Set<string> {
-  const taken = new Set<string>();
-  for (const group of groups) {
-    if (group.id === excludeGroupId) {
-      continue;
-    }
-    for (const teamId of group.teamIds) {
-      taken.add(teamId);
-    }
-  }
-
-  return taken;
-}
-
-/** Le groupe (AUTRE que celui édité) auquel une équipe appartient — pour nommer la raison « déjà mutualisée avec … ». */
-export function groupContainingTeam(groups: SharedTrainingGroup[], teamId: string, excludeGroupId: string | null): SharedTrainingGroup | undefined {
-  return groups.find((group) => group.id !== excludeGroupId && group.teamIds.includes(teamId));
-}
-
-/**
- * P2-51 PR-6 — la sous-ligne « Mutualisée avec … » d'une équipe, fusionnant les DEUX sources
- * pendant la transition : le groupe {équipes, K} historique ET le nouveau bloc de mutualisation.
- * Les co-équipières des deux sources s'unissent SANS doublon (une partenaire présente dans les deux
- * n'est nommée qu'une fois), l'ordre d'insertion préservé (groupes d'abord, puis blocs). `null` si
- * l'équipe n'appartient à AUCUNE mutualisation (ni groupe ni bloc). Présentation pure (patron
- * `matches/lib/diagnostic.ts`) : le serveur reste seul maître de la mutualisation, l'écran la reflète.
- * PR-7 retirera la source groupe et cette fusion redeviendra une source unique. Types STRUCTURELS
- * `{ teamIds }` pour lire groupe et bloc par leur forme sans coupler ce lib à l'une des deux entités.
+ * P2-51 — la sous-ligne « Mutualisée avec … » d'une équipe, tirée des BLOCS de mutualisation (SEULE
+ * notion depuis PR-7). Les co-équipières de tous les blocs où l'équipe figure s'unissent SANS
+ * doublon (une partenaire présente dans plusieurs blocs n'est nommée qu'une fois), l'ordre
+ * d'insertion préservé. `null` si l'équipe n'appartient à AUCUN bloc. Présentation pure (patron
+ * `matches/lib/diagnostic.ts`) : le serveur reste seul maître de la mutualisation, l'écran la
+ * reflète. Type STRUCTUREL `{ teamIds }` pour lire le bloc par sa forme sans coupler ce lib à l'entité.
  */
 export function mutualisedTeammateLabel(
   teamId: string,
-  groups: readonly { teamIds: string[] }[],
   blocks: readonly { teamIds: string[] }[],
   teamName: (id: string) => string,
 ): string | null {
   const others: string[] = [];
   const seen = new Set<string>();
   let member = false;
-  for (const src of [...groups, ...blocks]) {
+  for (const src of blocks) {
     if (!src.teamIds.includes(teamId)) {
       continue;
     }

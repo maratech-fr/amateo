@@ -46,7 +46,6 @@ final class DiagnosticMessageBuilder
             'coach_overload' => '' !== $engineMessage ? $engineMessage : $this->buildCoachOverload($diagnostic, $coachNames),
             'soft_lock_moved' => $this->buildSoftLockMoved($diagnostic, $teamNames, $venueNames),
             'unused_slot' => $this->buildUnusedSlot($diagnostic, $venueNames),
-            'shared_training_not_honored' => '' !== $engineMessage ? $engineMessage : $this->buildSharedTrainingNotHonored(),
             default => '' !== $engineMessage ? $engineMessage : 'Diagnostic inconnu.',
         };
     }
@@ -180,15 +179,6 @@ final class DiagnosticMessageBuilder
             $venueName,
             '' !== $when ? \sprintf(' (%s)', $when) : '',
         );
-    }
-
-    /**
-     * P2-27 — repli quand le moteur n'a pas fourni de message riche. Le moteur nomme
-     * normalement les équipes ; ce repli reste générique et SANS identifiant interne.
-     */
-    private function buildSharedTrainingNotHonored(): string
-    {
-        return 'La mutualisation déclarée n\'a pas pu être respectée : les équipes concernées ne partagent pas le nombre de séances communes demandé. Vérifiez leurs disponibilités communes ou ajustez la déclaration.';
     }
 
     private function hhmm(string $time): string

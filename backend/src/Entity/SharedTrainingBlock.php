@@ -13,12 +13,13 @@ use Doctrine\ORM\Mapping as ORM;
  * part entière. Il se déclare comme une équipe, avec son propre nombre de séances communes
  * (``commonSessions``) : ses séances lui APPARTIENNENT (le solveur les placera comme celles d'une
  * équipe, PR-3), on ne déduit plus une séance commune de la co-présence — c'était la source du
- * double-comptage du modèle groupe ({@see SharedTrainingGroup}, qui reste INTACT à côté).
+ * double-comptage de l'ancien modèle groupe (retiré en PR-7 : le bloc est la SEULE
+ * mutualisation).
  *
  * Modèle arbitré par le fondateur le 2026-08-31 (amende le cadrage du 2026-08-25 — le bloc
  * remplace l'ancrage au créneau). Décisions figées :
  *  - fait de PLAN : ``schedulePlanId`` NULLABLE (NULL = socle saison, non-null = plan de période),
- *    patron exact de {@see SharedTrainingGroup} ; pas de copie socle→période ;
+ *    patron `Reservation`/`VenueTrainingSlot` ; pas de copie socle→période ;
  *  - multi-appartenance PERMISE : une équipe peut être membre de PLUSIEURS blocs (pas d'unicité
  *    un-bloc-par-équipe) — c'est LA capacité qui manquait au modèle groupe ;
  *  - garde centrale (côté processor) : pour chaque équipe, Σ des ``commonSessions`` de ses blocs

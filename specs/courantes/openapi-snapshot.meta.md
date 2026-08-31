@@ -1,12 +1,18 @@
-Last verified @ 2026-08-31 (P2-51 PR-5b, `coder` — régénéré depuis le backend en
-tournant : `docker compose exec php-fpm php bin/console api:openapi:export`, après
-`docker compose restart php-fpm` (opcache). **192 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`)
-✓, +1 path (le rail de déplacement de bloc `POST /api/schedule-slots/move-group`) · SHA-256
-`d68870f2f1def62f6a3e226bc98da6c5a83fba375c6330f73b57ce3a4cb8139f` (`sha256sum`) · `TsFieldsMatchOpenApiSchemaTest`
-et `CrossStack/OpenApiSnapshotMatchesTheLiveContractTest` verts sur ce snapshot. Reste du journal
-non re-confronté au code cette passe.)
+Last verified @ 2026-08-31 (P2-51 PR-7, `documentation-update` — snapshot déjà régénéré par le
+`coder` dans le même commit (54d13154), stamp resté en retard d'une entrée : recalé ici. **190 paths**
+(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **−2 paths** (la ressource
+`SharedTrainingGroup` — `/api/shared_training_groups` collection + `/{id}` item — retirée avec le
+modèle groupe K) · SHA-256 `04db02e384e7c8fed094eb7b198bab38c4fc85c33a8b26e86909de1978d5edab`
+(`sha256sum`, confirmé sur le fichier committé, aucun diff local). Reste du journal non re-confronté
+au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **P2-51 PR-7 — retrait de `SharedTrainingGroup` (2026-08-31)** : **−2 paths** — le modèle groupe
+  {équipes, K} est retiré entièrement (backend/contrat/moteur/écran/seeder), `SharedTrainingBlock`
+  devient la SEULE mutualisation. `GET/POST /api/shared_training_groups` et
+  `GET/PUT/DELETE /api/shared_training_groups/{id}` disparaissent du snapshot. 192 → **190 paths**.
+  Contrat backend⇄engine bumpé **2.19** (retrait de `sharedTrainings`/`SharedTrainingGroupSchema`
+  des deux endpoints qui les portaient).
 - **P2-51 PR-5b — `POST /api/schedule-slots/move-group` (2026-08-31)** : **+1 path** — le rail de
   DÉPLACEMENT de bloc atomique (D11) : déplace la séance d'un bloc (tous ses créneaux membres à la
   case source) vers une case cible, sous UN verdict et en une transaction (tout-ou-nothing). Corps
@@ -72,27 +78,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   l'empreinte du radar (`MatchFootprint`, changement de comportement assumé). 184 → **184 paths**.
   Backend + frontend léger, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.16, aucun appel
   moteur — le radar recalcule côté serveur, le solveur de placement garde ses 105 min figés).
-- **P2-53 RMM-8 PR-4 — le levier Obligatoire de la règle de trajet (2026-08-26)** : **+1 path** —
-  ressource API Platform singleton `VenueTravelRuleSetting` : `GET /api/venue_travel_rule_settings/{ruleKey}`
-  (200 : `{ruleKey, intensity, isDefault}` — résout l'intensité stockée OU le défaut `PREFERRED`) +
-  `PUT` (upsert `PREFERRED`|`MANDATORY` ; **management** SEC-07 ; 409 saison archivée ; 422 sur un
-  vocabulaire bien-être HARD/OFF). Identifiant FIXE `travelTime` (le nom de la règle gouvernée), scope
-  club+saison. Store DÉDIÉ (vocabulaire des passerelles), PAS une 6ᵉ clé `implicit_rule_setting`.
-  183 → **184 paths**. Backend + front léger ; contrat backend⇄engine **inchangé** (`CONTRACT_VERSION`
-  2.16, le moteur consomme déjà MANDATORY depuis la PR-2).
-- **P2-53 RMM-8 PR-1 — la géo + le modèle de la matrice de trajet (2026-08-26)** : **+4 paths** —
-  `GET /api/geocode` (200 : `{candidates[]}` — candidats {label, latitude, longitude, score} de la
-  Base Adresse Nationale pour poser la lat/long d'un gymnase ; **management** SEC-07 ; 422 requête
-  vide/trop longue ; 502 service indisponible), `POST /api/venue-travel-times/autofill`
-  (200 : `{filled, unresolved[], skippedManual}` — remplit AUTO les minutes voiture/à pied de chaque
-  paire de gymnases géolocalisés via l'itinéraire IGN, **sans JAMAIS écraser une valeur MANUAL** ;
-  **management** ; 409 saison archivée ; 422 au-delà du cap de paires ; 429 rate-limit) et le CRUD
-  API Platform `VenueTravelTime` : `GET/POST /api/venue_travel_times` (liste **ouverte au Membre**,
-  création management) + `GET/PUT/DELETE /api/venue_travel_times/{id}`. Un barème de trajet par couple
-  de gymnases (`venueAId < venueBId`, `drivingMinutes`/`walkingMinutes` nullables + `drivingSource`/
-  `walkingSource` `AUTO`|`MANUAL`), scopé club+saison. **Champs ADDITIFS** en LECTURE : `Venue.address`
-  et `Coach.isVehicled` (défaut false). 179 → **183 paths**. Backend PUR : le bloc payload et le
-  moteur sont la PR-2, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.15, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

@@ -47,9 +47,10 @@ final class CascadePlan
     public static function forTeam(): array
     {
         return [
-            // ⚠ AVANT la purge des réservations de l'équipe : une case n'est « groupe-complète »
-            // que tant que la réservation de l'équipe supprimée y figure encore (P2-46 PR-4).
-            new SharedGroupReservationPruneStep(new ImpactLabel('team_shared_reservation', 'réservation d\'entraînement mutualisé', 'réservations d\'entraînement mutualisé')),
+            // ⚠ AVANT la purge des réservations de l'équipe : une case n'est « bloc-complète »
+            // que tant que la réservation de l'équipe supprimée y figure encore (P2-51 PR-7). Ne
+            // supprime que les réservations des AUTRES membres ; celle de l'équipe part ci-dessous.
+            new SharedBlockReservationPruneStep(new ImpactLabel('team_shared_reservation', 'réservation d\'entraînement mutualisé', 'réservations d\'entraînement mutualisé')),
             new DeleteByFieldStep(Reservation::class, 'teamId', new ImpactLabel('team_reservation', 'créneau réservé', 'créneaux réservés')),
             new DeleteByFieldStep(TeamCoach::class, 'teamId', new ImpactLabel('team_coach', 'coach lié', 'coachs liés')),
             new DeleteByFieldStep(CoachPlayerMembership::class, 'teamId', new ImpactLabel('team_coach_player', 'coach-joueur lié', 'coach-joueurs liés')),
@@ -75,9 +76,8 @@ final class CascadePlan
             // #10 — sans équipe, une doléance n'a plus de sens : elle part.
             new DeleteByFieldStep(CoachWish::class, 'teamId', new ImpactLabel('team_coach_wish', 'demande de coach', 'demandes de coach')),
             new ScopedConstraintStep(ConstraintScope::TEAM, new ImpactLabel('team_constraint', 'contrainte visant cette équipe', 'contraintes visant cette équipe')),
-            new SharedTrainingGroupPruneStep(new ImpactLabel('team_shared_group', 'groupe de mutualisation', 'groupes de mutualisation')),
-            // P2-51 — le bloc de mutualisation meurt ENTIER quand une équipe membre part (comme
-            // le groupe ci-dessus). PR-1 : aucune réservation/placement à emporter (PR-3/4).
+            // P2-51 — le bloc de mutualisation (SEULE notion de mutualisation depuis PR-7) meurt
+            // ENTIER quand une équipe membre part : toutes ses lignes membres + le bloc lui-même.
             new SharedTrainingBlockPruneStep(new ImpactLabel('team_shared_block', 'bloc de mutualisation', 'blocs de mutualisation')),
             // RMM-5 — l'équipe quitte ses créneaux de match partagés ; ceux qui tombent < 2
             // membres sont SUPPRIMÉS (annoncés). Les survivants gardent leurs autres équipes.

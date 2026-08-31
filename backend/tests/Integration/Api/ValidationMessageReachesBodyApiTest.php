@@ -53,30 +53,6 @@ final class ValidationMessageReachesBodyApiTest extends WebTestCase
 
     private string $token;
 
-    public function testSharedTrainingGroupDuplicateTeamCarriesFrenchViolation(): void
-    {
-        $t1 = $this->team();
-        $t2 = $this->team();
-
-        // Premier groupe socle {t1, t2} : accepté.
-        $this->post('/api/shared_training_groups', ['schedulePlanId' => null, 'teamIds' => [$t1, $t2], 'commonSessions' => 1]);
-        self::assertResponseStatusCodeSame(201);
-
-        // Re-déclarer {t1, t2} : t1 est déjà mutualisée → refus PARLANT.
-        $this->post('/api/shared_training_groups', ['schedulePlanId' => null, 'teamIds' => [$t1, $t2], 'commonSessions' => 1]);
-        self::assertResponseStatusCodeSame(422);
-
-        $message = 'Une équipe fait déjà partie d\'un autre groupe mutualisé pour cette portée.';
-        $body = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
-        self::assertIsArray($body);
-        // Le front lit `detail` PUIS `violations[].message` : les deux doivent porter le motif,
-        // c'est exactement ce que le constructeur-chaîne d'API Platform laissait vides.
-        self::assertIsArray($body['violations'] ?? null, 'un 422 muet rendrait violations: []');
-        self::assertSame($message, $body['violations'][0]['message'] ?? null);
-        self::assertIsString($body['detail'] ?? null);
-        self::assertStringContainsString($message, $body['detail']);
-    }
-
     public function testTeamMatchHabitUnknownTeamCarriesFrenchViolation(): void
     {
         $this->post('/api/team_match_habits', ['teamId' => $this->uuid(), 'dayOfWeek' => 3, 'kickoffTime' => '10:00']);

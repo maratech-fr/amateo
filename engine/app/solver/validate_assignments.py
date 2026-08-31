@@ -67,73 +67,6 @@ def _coach_label(coach: dict[str, Any]) -> str:
     return full or str(coach.get("id"))
 
 
-def _shared_training_move_violation(
-    shared_trainings: list[dict[str, Any]],
-    baseline_slots: list[dict[str, Any]],
-    moved: list[dict[str, Any]],
-    team_names: dict[str, str],
-) -> dict[str, Any] | None:
-    """P2-27 — refus NOMMÉ quand un déplacement sort une équipe d'une case commune.
-
-    Le verdict du solveur ne peut PAS produire ce refus tout seul : la baseline retire les
-    sources mais le modèle laisse les variables des anciennes cases LIBRES ; sans plafond de
-    séances, le solveur remet l'équipe sur son ancienne case pour tenir ``== K`` et conclut
-    « oui » à tort. On juge donc l'ÉTAT FINAL proposé (baseline sans les N sources + les N
-    candidats), de façon déterministe : c'est le miroir de la contrainte
-    ``add_shared_training_constraints``.
-
-    ⚠ N déplacements jugés ENSEMBLE (P2-51 PR-5b) : l'occupation est reconstruite avec TOUS les
-    candidats avant d'évaluer un seul groupe — deux équipes d'un même groupe déplacées vers une
-    même case le laissent honoré, alors que juger chaque déplacement isolément le verrait rompu.
-
-    On n'évalue QUE les groupes dont AU MOINS une équipe DÉPLACÉE est membre (déplacer une équipe
-    hors d'un groupe ne doit jamais être refusé au prétexte qu'un AUTRE groupe serait déjà rompu —
-    ex. déclaration ajoutée après génération). Le résultat != K pour un tel groupe → refus.
-
-    Message français nommant les équipes (jamais d'identifiant interne). ``None`` si rien à dire.
-    """
-    if not shared_trainings:
-        return None
-
-    moved_teams = {str(m["team_id"]) for m in moved}
-    moved_case_by_team = {str(m["team_id"]): (str(m["venue_id"]), int(m["day"]), str(m["start_time"])) for m in moved}
-    # équipe -> ensemble des cases (gymnase, jour, heure) occupées dans l'état FINAL proposé
-    occupancy: dict[str, set[tuple[str, int, str]]] = {}
-    for slot in baseline_slots:
-        occupancy.setdefault(str(slot["team_id"]), set()).add(
-            (str(slot["venue_id"]), int(slot["day"]), str(slot["start_time"]))
-        )
-    for team_id, case in moved_case_by_team.items():
-        occupancy.setdefault(team_id, set()).add(case)
-
-    def _team_name(team_id: str) -> str:
-        return team_names.get(team_id) or team_id
-
-    for group in shared_trainings:
-        members = [str(t) for t in (group.get("teamIds") or group.get("team_ids") or [])]
-        if len(members) < 2 or not (moved_teams & set(members)):
-            continue
-        common_sessions = int(group.get("commonSessions") or group.get("common_sessions") or 0)
-        member_sets = [occupancy.get(member, set()) for member in members]
-        common = set.intersection(*member_sets) if member_sets else set()
-        if len(common) != common_sessions:
-            offender = next(m for m in moved if str(m["team_id"]) in members)
-            named = ", ".join(_team_name(member) for member in members)
-            return {
-                "rule": "shared_training_broken",
-                "message": (
-                    f"Ce déplacement rompt la mutualisation déclarée : les équipes {named} doivent "
-                    f"partager exactement {common_sessions} séance(s) commune(s), or ce placement en "
-                    f"laisse {len(common)}."
-                ),
-                "team_id": str(offender["team_id"]),
-                "venue_id": str(offender["venue_id"]),
-                "day_of_week": int(offender["day"]),
-                "start_time": str(offender["start_time"]),
-            }
-    return None
-
-
 def _shared_block_move_violation(
     shared_blocks: list[dict[str, Any]],
     baseline_slots: list[dict[str, Any]],
@@ -143,8 +76,8 @@ def _shared_block_move_violation(
     venue_names: dict[str, str],
 ) -> dict[str, Any] | None:
     """P2-51 (D11) — refus NOMMÉ ``shared_block_broken`` quand un déplacement RETIRE une équipe
-    d'une séance de BLOC jusque-là honorée (patron ``_shared_training_move_violation`` +
-    anti-enfermement ``_venue_minimum_move_violation``).
+    d'une séance de BLOC jusque-là honorée (miroir déterministe + anti-enfermement, patron
+    ``_venue_minimum_move_violation``).
 
     Le HARD posé dans ``_apply_hard`` (``add_shared_block_constraints``) NE SUFFIT PAS : les
     variables de l'ancienne case restent LIBRES → le solveur réinvente la séance de bloc ailleurs
@@ -230,14 +163,13 @@ def _shared_block_move_violation(
 
 def _team_link_move_violation(
     team_links: list[dict[str, Any]],
-    shared_trainings: list[dict[str, Any]],
     shared_blocks: list[dict[str, Any]],
     baseline_slots: list[dict[str, Any]],
     moved: list[dict[str, Any]],
     team_names: dict[str, str],
 ) -> dict[str, Any] | None:
     """Lot PASSERELLES PR-2 — refus NOMMÉ (MIROIR MANDATORY) quand un déplacement CRÉE un
-    chevauchement sur une passerelle ``MANDATORY`` (patron ``_shared_training_move_violation``).
+    chevauchement sur une passerelle ``MANDATORY`` (patron ``_shared_block_move_violation``).
 
     On juge l'ÉTAT FINAL proposé (baseline gelée + les N candidats) de façon déterministe : deux
     séances de deux équipes passerelées MANDATORY se chevauchent-elles (même jour, intervalles
@@ -257,7 +189,7 @@ def _team_link_move_violation(
         return None
 
     moved_teams = {str(m["team_id"]) for m in moved}
-    share_pairs = team_share_declared_pairs(shared_trainings, shared_blocks)
+    share_pairs = team_share_declared_pairs(shared_blocks)
 
     # état FINAL par équipe : baseline gelée + candidats. Le 5e champ marque une séance CANDIDATE
     # (créée par le déplacement) — un chevauchement n'est imputé au geste que s'il en implique une.
@@ -536,7 +468,6 @@ def _apply_hard(
         implicit_rules=resolve_implicit_rules(data.get("implicitRules")),
         team_coach_map=team_coach_map,
         team_player_map=team_player_map,
-        shared_trainings=data.get("sharedTrainings", []),
         shared_blocks=data.get("sharedBlocks", []),
         team_links=data.get("teamLinks", []),
         venue_travel_times=data.get("venueTravelTimes", []),
@@ -658,7 +589,6 @@ def _evaluate_state(
         model,
         assignments,
         team_links=data.get("teamLinks", []),
-        shared_trainings=data.get("sharedTrainings", []),
         shared_blocks=data.get("sharedBlocks", []),
         teams=data.get("teams", []),
         info_out=info,
@@ -867,18 +797,6 @@ def validate_assignment(
                 "metrics": metrics,
             }
 
-    # P2-27 — miroir déterministe de la mutualisation : le solveur ne peut pas refuser à lui
-    # seul un déplacement qui SORT une équipe d'une case commune (il remettrait l'équipe sur son
-    # ancienne case, faute de plafond de séances). On juge l'état FINAL proposé (les N candidats).
-    shared_violation = _shared_training_move_violation(
-        data.get("sharedTrainings", []) or [],
-        baseline_slots,
-        moved,
-        team_names,
-    )
-    if shared_violation is not None:
-        return {"valid": False, "violations": [shared_violation], "compromises": [], "metrics": metrics}
-
     # P2-51 (D11) — miroir déterministe du BLOC : un déplacement qui RETIRE une équipe d'une séance
     # de bloc jusque-là honorée est refusé, NOMMÉ (`shared_block_broken`). Le HARD posé dans
     # `_apply_hard` ne saurait pas l'attribuer (le solveur réinventerait la séance de bloc ailleurs
@@ -901,7 +819,6 @@ def validate_assignment(
     # sans l'attribuer). Patron du miroir mutualisation ci-dessus.
     team_link_violation = _team_link_move_violation(
         data.get("teamLinks", []) or [],
-        data.get("sharedTrainings", []) or [],
         data.get("sharedBlocks", []) or [],
         baseline_slots,
         moved,

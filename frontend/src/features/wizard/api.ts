@@ -301,13 +301,11 @@ export const deleteReservation = (id: string): Promise<void> => api.delete(`rese
  * Rail BATCH de mutualisation (P2-46 PR-2) : poser UN groupe sur UNE case écrit ses N réservations
  * en un seul flush atomique. Le retrait n'a pas de route dédiée — c'est N `deleteReservation`.
  *
- * P2-51 PR-6 — le rail résout D'ABORD un BLOC (`sharedTrainingBlockId`), avec repli sur le groupe K
- * historique (`sharedTrainingGroupId`) — transition douce jusqu'à PR-7. On envoie l'UN des deux,
- * jamais les deux ; le serveur reste seul juge (422 affiché tel quel).
+ * P2-51 PR-7 — le rail résout le BLOC (`sharedTrainingBlockId`), SEULE notion de mutualisation ; le
+ * serveur reste seul juge (422 affiché tel quel).
  */
 export interface GroupReservationPayload {
   sharedTrainingBlockId?: string;
-  sharedTrainingGroupId?: string;
   venueId: string;
   dayOfWeek: number;
   startTime: string;
@@ -318,53 +316,16 @@ export interface GroupReservationPayload {
 export const createGroupReservation = (body: GroupReservationPayload): Promise<{ ids: string[]; count: number }> =>
   api.post("reservations/group", { json: body }).json();
 
-// --- Shared training groups (P2-27) : N teams train TOGETHER, K common sessions ---
-
-/**
- * A mutualisation declaration: N teams (2..10) train together with EXACTLY
- * `commonSessions` common sessions. Club+season scoped, filtered by
- * `schedulePlanId` (null = season socle, a UUID = a period plan). Server-backed;
- * the server is the sole judge of validity (see the DTO + processor).
- */
-export interface SharedTrainingGroup {
-  id: string;
-  version: number;
-  createdAt: string;
-  updatedAt: string;
-  schedulePlanId: string | null;
-  teamIds: string[];
-  commonSessions: number;
-}
-
-/** POST carries the scope (`schedulePlanId`); PUT never remaps it (the plan is fixed at creation). */
-export interface SharedTrainingGroupPayload {
-  teamIds: string[];
-  commonSessions: number;
-  schedulePlanId?: string | null;
-}
-
-/**
- * Sans `schedulePlanId`, le provider renvoie le socle ET les périodes (le front trie) :
- * pour la portée socle on liste sans param puis on filtre `null === schedulePlanId`.
- */
-export const listSharedTrainingGroups = (params?: Record<string, string>): Promise<SharedTrainingGroup[]> =>
-  collectionAll<SharedTrainingGroup>("shared_training_groups", params);
-export const createSharedTrainingGroup = (body: SharedTrainingGroupPayload): Promise<SharedTrainingGroup> =>
-  api.post("shared_training_groups", { json: body }).json();
-export const updateSharedTrainingGroup = (id: string, body: { teamIds: string[]; commonSessions: number }): Promise<SharedTrainingGroup> =>
-  api.put(`shared_training_groups/${id}`, { json: body }).json();
-export const deleteSharedTrainingGroup = (id: string): Promise<void> => api.delete(`shared_training_groups/${id}`).then(() => undefined);
-
 // --- Shared training blocks (P2-51) : N teams behave like ONE team, with their OWN common sessions ---
 
 /**
  * Un BLOC de mutualisation (P2-51, D9) : un ensemble de 2..10 équipes qui se comporte comme UNE
  * équipe, déclaré avec son propre nombre de séances communes (`commonSessions`) — le solveur les
  * place comme celles d'une équipe (PR-3). Club+saison, filtrable par `schedulePlanId` (null = socle
- * saison, un UUID = plan de période — patron `SharedTrainingGroup`).
+ * saison, un UUID = plan de période).
  *
- * ⚠ NOTION DISTINCTE du groupe {équipes, K} : les deux coexistent (D9). La multi-appartenance ENTRE
- * blocs est PERMISE (une équipe peut figurer dans plusieurs blocs) ; la garde centrale Σ des séances
+ * La multi-appartenance ENTRE blocs est PERMISE (une équipe peut figurer dans plusieurs blocs) ;
+ * la garde centrale Σ des séances
  * communes ≤ séances/semaine effectives est tranchée par le serveur
  * (`SharedTrainingBlockStateProcessor::assertBlockValid`), jamais ici — un 422 reste affiché tel quel.
  *
@@ -389,7 +350,7 @@ export interface SharedTrainingBlockPayload {
   schedulePlanId?: string | null;
 }
 
-/** Sans `schedulePlanId`, le provider renvoie socle ET périodes (le front trie) — patron `SharedTrainingGroup`. */
+/** Sans `schedulePlanId`, le provider renvoie socle ET périodes (le front trie). */
 export const listSharedTrainingBlocks = (params?: Record<string, string>): Promise<SharedTrainingBlock[]> =>
   collectionAll<SharedTrainingBlock>("shared_training_blocks", params);
 export const createSharedTrainingBlock = (body: SharedTrainingBlockPayload): Promise<SharedTrainingBlock> =>

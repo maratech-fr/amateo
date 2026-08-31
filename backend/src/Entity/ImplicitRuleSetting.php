@@ -58,7 +58,7 @@ class ImplicitRuleSetting implements TenantOwnedInterface
     /**
      * L'ancre de portée (ADR-0002 inv. 5). NULL = réglage de SAISON (base + repli legacy) ;
      * un UUID = réglage d'un plan de période (sa copie matérialisée). Colonne guid nue, PAS de
-     * FK (patron `venue_training_slot`/`reservation`/`shared_training_group`) : un plan supprimé
+     * FK (patron `venue_training_slot`/`reservation`/`shared_training_block`) : un plan supprimé
      * emporte ses lignes par la purge applicative, pas par une cascade base.
      */
     #[ORM\Column(type: 'guid', nullable: true)]

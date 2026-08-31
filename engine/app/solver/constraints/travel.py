@@ -26,7 +26,7 @@ Deux termes en découlent (arbitrage fondateur 2026-08-26) :
 Le MÊME gymnase n'est JAMAIS concerné (le prédicat exige des gymnases différents) : l'exemption
 coach-coach même-gymnase (D-14, ``structural``) reste intacte par construction. Un bloc
 ``venueTravelTimes`` absent/vide OU une règle inactive ⇒ AUCUNE variable posée : chemin
-byte-identique, goldens inchangés (patron ``teamLinks``/``sharedTrainings``).
+byte-identique, goldens inchangés (patron ``teamLinks``).
 
 ⚠ Ce module est NEUF ; il ne touche NI ``_adaptive_workers`` NI les stubs ``common`` (jamais
 posés). Son compteur dédié est ``HardConstraintStats.travel_time``.

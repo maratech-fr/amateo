@@ -277,31 +277,31 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             self::assertSame('COMPLETED', (string) $row['status'], \sprintf('« %s » pointe une version COMPLETED', $planName));
             self::assertSame($expectedSlots, (int) $row['slot_count'], \sprintf('« %s » transcrit %d séances', $planName, $expectedSlots));
 
-            $groupCount = (int) $this->connection->fetchOne(
-                'SELECT COUNT(*) FROM shared_training_group g JOIN schedule_plan sp ON sp.id = g.schedule_plan_id '
+            $blockCount = (int) $this->connection->fetchOne(
+                'SELECT COUNT(*) FROM shared_training_block b JOIN schedule_plan sp ON sp.id = b.schedule_plan_id '
                 . 'WHERE sp.club_id = ? AND sp.name = ?',
                 [$club->getId(), $planName],
             );
-            self::assertSame($expectedGroups, $groupCount, \sprintf('« %s » porte %d groupe(s) de mutualisation', $planName, $expectedGroups));
+            self::assertSame($expectedGroups, $blockCount, \sprintf('« %s » porte %d bloc(s) de mutualisation', $planName, $expectedGroups));
         }
 
-        // {SF1,SF2} n'est mutualisé QUE la semaine du 17 : aucun groupe de la semaine du 24 ne
+        // {SF1,SF2} n'est mutualisé QUE la semaine du 17 : aucun bloc de la semaine du 24 ne
         // contient SF1 ni SF2 (elles s'y entraînent séparément).
         $sfGroupsWeek24 = (int) $this->connection->fetchOne(
-            'SELECT COUNT(DISTINCT gt.group_id) FROM shared_training_group_team gt '
-            . 'JOIN schedule_plan sp ON sp.id = gt.schedule_plan_id '
-            . 'JOIN team t ON t.id = gt.team_id '
+            'SELECT COUNT(DISTINCT bt.block_id) FROM shared_training_block_team bt '
+            . 'JOIN schedule_plan sp ON sp.id = bt.schedule_plan_id '
+            . 'JOIN team t ON t.id = bt.team_id '
             . 'WHERE sp.club_id = ? AND sp.name = ? AND t.name IN (\'SF1\', \'SF2\')',
             [$club->getId(), 'Reprise du 24 août'],
         );
         self::assertSame(0, $sfGroupsWeek24, 'SF1/SF2 ne sont pas mutualisées la semaine du 24 août');
 
-        // {SM1,SM2} l'est LES DEUX semaines : chaque plan a un groupe couvrant exactement SM1 et SM2.
+        // {SM1,SM2} l'est LES DEUX semaines : chaque plan a un bloc couvrant exactement SM1 et SM2.
         foreach (['Reprise du 17 août', 'Reprise du 24 août'] as $planName) {
             $smMembers = (int) $this->connection->fetchOne(
-                'SELECT COUNT(*) FROM shared_training_group_team gt '
-                . 'JOIN schedule_plan sp ON sp.id = gt.schedule_plan_id '
-                . 'JOIN team t ON t.id = gt.team_id '
+                'SELECT COUNT(*) FROM shared_training_block_team bt '
+                . 'JOIN schedule_plan sp ON sp.id = bt.schedule_plan_id '
+                . 'JOIN team t ON t.id = bt.team_id '
                 . 'WHERE sp.club_id = ? AND sp.name = ? AND t.name IN (\'SM1\', \'SM2\')',
                 [$club->getId(), $planName],
             );
@@ -671,8 +671,8 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             'clubUsers' => $this->rowsIn('club_user'),
             'calendarEntries' => $this->rowsIn('calendar_entry'),
             'schedulePlans' => $this->rowsIn('schedule_plan'),
-            'sharedGroups' => $this->rowsIn('shared_training_group'),
-            'sharedGroupTeams' => $this->rowsIn('shared_training_group_team'),
+            'sharedBlocks' => $this->rowsIn('shared_training_block'),
+            'sharedBlockTeams' => $this->rowsIn('shared_training_block_team'),
             'venuePeriodOverrides' => $this->rowsIn('venue_period_override'),
             'teamPeriodOverrides' => $this->rowsIn('team_period_override'),
             'constraintPeriodOverrides' => $this->rowsIn('constraint_period_override'),

@@ -102,7 +102,7 @@ class TestMandatoryMoveMirror:
 
     def test_move_onto_declared_shared_case_is_not_refused(self) -> None:
         """EXEMPTION : déplacer t1 sur la case commune déclarée (même gymnase/heure que t2, groupe
-        ``sharedTrainings``) n'est PAS refusé — c'est la simultanéité VOLONTAIRE autorisée."""
+        ``sharedBlocks``) n'est PAS refusé — c'est la simultanéité VOLONTAIRE autorisée."""
         result = _run(
             {
                 "clubId": "c",
@@ -111,7 +111,7 @@ class TestMandatoryMoveMirror:
                 "teams": [make_team("t1"), make_team("t2")],
                 "constraints": [],
                 "teamLinks": [_link("l", "t1", "t2", "MANDATORY")],
-                "sharedTrainings": [{"id": "g", "teamIds": ["t1", "t2"], "commonSessions": 1}],
+                "sharedBlocks": [{"id": "g", "teamIds": ["t1", "t2"], "commonSessions": 1}],
                 "slotTemplates": [_template("t2", "vS", 4, "20:00")],
                 "candidate": {
                     "teamId": "t1",

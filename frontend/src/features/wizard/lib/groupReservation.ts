@@ -21,7 +21,7 @@ import { sharedGroupLabel } from "./sharedTraining";
  * `sharedTraining.ts`.)
  */
 
-/** La forme structurelle d'un groupe de mutualisation dont ce module a besoin (voir `SharedTrainingGroup`). */
+/** La forme structurelle d'un bloc de mutualisation dont ce module a besoin (voir `SharedTrainingBlock`). */
 export interface GroupLike {
   id: string;
   teamIds: string[];

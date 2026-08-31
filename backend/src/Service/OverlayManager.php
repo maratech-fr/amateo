@@ -15,8 +15,6 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
-use App\Entity\SharedTrainingGroup;
-use App\Entity\SharedTrainingGroupTeam;
 use App\Entity\TeamPeriodOverride;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
@@ -104,11 +102,10 @@ final class OverlayManager
      */
     public function purgePlanAnchoredSettings(string $schedulePlanId): void
     {
-        // P2-27 — SharedTrainingGroupTeam (membres) avant SharedTrainingGroup (parent) : les deux
+        // P2-51 — SharedTrainingBlockTeam (membres) avant SharedTrainingBlock (parent) : les deux
         // portent schedulePlanId (dénormalisé côté membre), la déclaration de période part avec le plan.
-        // P2-51 — idem pour le bloc de mutualisation : SharedTrainingBlockTeam avant SharedTrainingBlock.
         // ImplicitRuleSetting : la copie des 4 règles bien-être matérialisée à la naissance du plan.
-        foreach ([TeamPeriodOverride::class, ConstraintPeriodOverride::class, VenueTrainingSlot::class, Reservation::class, VenuePeriodOverride::class, SharedTrainingGroupTeam::class, SharedTrainingGroup::class, SharedTrainingBlockTeam::class, SharedTrainingBlock::class, ImplicitRuleSetting::class] as $class) {
+        foreach ([TeamPeriodOverride::class, ConstraintPeriodOverride::class, VenueTrainingSlot::class, Reservation::class, VenuePeriodOverride::class, SharedTrainingBlockTeam::class, SharedTrainingBlock::class, ImplicitRuleSetting::class] as $class) {
             foreach ($this->entityManager->getRepository($class)->findBy(['schedulePlanId' => $schedulePlanId]) as $row) {
                 $this->entityManager->remove($row);
             }

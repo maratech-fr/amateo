@@ -575,7 +575,6 @@ def _solve(
         implicit_rules=resolved_implicit_rules,
         team_coach_map=team_coach_map,
         team_player_map=team_player_map,
-        shared_trainings=data.get("sharedTrainings", []),
         shared_blocks=data.get("sharedBlocks", []),
         team_links=data.get("teamLinks", []),
         venue_travel_times=data.get("venueTravelTimes", []),
@@ -658,7 +657,6 @@ def _solve(
         model,
         assignments,
         team_links=data.get("teamLinks", []),
-        shared_trainings=data.get("sharedTrainings", []),
         shared_blocks=data.get("sharedBlocks", []),
         teams=data.get("teams", []),
     )

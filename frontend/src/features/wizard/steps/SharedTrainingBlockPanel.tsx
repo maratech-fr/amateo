@@ -23,8 +23,8 @@ import { useCreateSharedTrainingBlock, useDeleteSharedTrainingBlock, useSharedTr
  *
  * ⚠ Vocabulaire écran (correction fondateur D13) : mutualisation et « bloc » sont LA MÊME notion —
  * l'écran ne dit jamais « bloc », il dit « groupe » ; « bloc » n'est qu'une image interne (nom des
- * fichiers/composants/types/entité backend `SharedTrainingBlock`). Le modèle {équipes, K} de
- * `MutualisationPanel` vit encore sous le capot (nettoyage en PR-7) mais ne se saisit plus ici.
+ * fichiers/composants/types/entité backend `SharedTrainingBlock`). C'est la SEULE notion de
+ * mutualisation depuis le retrait du modèle groupe {équipes, K}.
  *
  * Le serveur (`SharedTrainingBlockStateProcessor`) est seul juge ; tout ici (borne de la liste
  * déroulante, repère « déjà dans N groupes ») est FAIL-SAFE — un 422 reste affiché via `errorMessage`
@@ -140,7 +140,7 @@ export function SharedTrainingBlockPanel({
     // blocs contiennent déjà l'équipe — jamais un warning (ce n'est pas un problème).
     const otherBlocks = blockMembershipCount(scopeBlocks, t.id, editingId);
     // L'ancre (la fiche ouverte) reste dans SON bloc : on ne la décoche pas sans le voir. Verrou sur
-    // le GESTE de décocher (cochée), pas un forçage permanent — patron `MutualisationPanel`.
+    // le GESTE de décocher (cochée), pas un forçage permanent.
     const anchorLocked = t.id === initialTeamId && checked.has(t.id);
 
     return (

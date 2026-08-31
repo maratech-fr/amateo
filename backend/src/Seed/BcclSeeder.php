@@ -17,8 +17,8 @@ use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
-use App\Entity\SharedTrainingGroup;
-use App\Entity\SharedTrainingGroupTeam;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\SubscriptionPlan;
@@ -1741,28 +1741,31 @@ final class BcclSeeder
         $manager->flush();
         $this->schedulePlanProvisioner->markPlanTeamSelectionInitialized($planId);
 
-        // --- Mutualisation : groupes {équipes, K} ANCRÉS au plan. Purge + recréation (les
-        // membres n'ont pas de clé naturelle par-composition, purger est le plus sûr). ---
-        foreach ($manager->getRepository(SharedTrainingGroup::class)->findBy(['schedulePlanId' => $planId]) as $existingGroup) {
-            foreach ($manager->getRepository(SharedTrainingGroupTeam::class)->findBy(['groupId' => $existingGroup->getId()]) as $existingMember) {
+        // --- Mutualisation : blocs {équipes, commonSessions} ANCRÉS au plan. Purge + recréation
+        // (les membres n'ont pas de clé naturelle par-composition, purger est le plus sûr). La
+        // garde Σ (commonSessions ≤ séances/semaine effectives de chaque membre) est vérifiée
+        // à la transcription : chaque bloc reste à la borne (SM1/SM2 = 3 séances pour K=3, SF1/SF2
+        // = 2 pour K=2) — le processor la re-jugerait, le seeder l'écrit en direct. ---
+        foreach ($manager->getRepository(SharedTrainingBlock::class)->findBy(['schedulePlanId' => $planId]) as $existingBlock) {
+            foreach ($manager->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $existingBlock->getId()]) as $existingMember) {
                 $manager->remove($existingMember);
             }
-            $manager->remove($existingGroup);
+            $manager->remove($existingBlock);
         }
         $manager->flush();
         foreach ($week['groups'] as $group) {
-            $sharedGroup = new SharedTrainingGroup;
-            $sharedGroup->setClubId($clubId);
-            $sharedGroup->setSeasonId($season->getId());
-            $sharedGroup->setSchedulePlanId($planId);
-            $sharedGroup->setCommonSessions($group['k']);
-            $manager->persist($sharedGroup);
+            $sharedBlock = new SharedTrainingBlock;
+            $sharedBlock->setClubId($clubId);
+            $sharedBlock->setSeasonId($season->getId());
+            $sharedBlock->setSchedulePlanId($planId);
+            $sharedBlock->setCommonSessions($group['k']);
+            $manager->persist($sharedBlock);
             foreach ($group['teams'] as $teamName) {
-                $member = new SharedTrainingGroupTeam;
+                $member = new SharedTrainingBlockTeam;
                 $member->setClubId($clubId);
                 $member->setSeasonId($season->getId());
                 $member->setSchedulePlanId($planId);
-                $member->setGroupId($sharedGroup->getId());
+                $member->setBlockId($sharedBlock->getId());
                 $member->setTeamId($teams[$teamName]->getId());
                 $manager->persist($member);
             }

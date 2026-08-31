@@ -122,36 +122,6 @@ class TestNestedBlocksDoNotDoubleCount:
         assert len(pair - trio) == 1, "la séance du bloc paire est DISTINCTE de celle du bloc trio"
 
 
-# ── Arbitrage n°3 — une séance de bloc ne fausse pas l'exact-K d'un groupe imbriqué ──────────────
-
-
-class TestBlockDoesNotFoulInnerGroupExactK:
-    def test_a_block_over_a_group_leaves_the_group_its_own_common_session(self) -> None:
-        """Groupe {A,B} K=1 ET bloc {A,B,C} 1 séance. La séance de bloc (A,B,C ensemble) NE compte
-        PAS pour l'exact-K du groupe (exclusion arbitrage n°3) : le groupe garde SA séance commune,
-        distincte. Résultat : A/B ensemble DEUX fois (la séance de bloc + la séance de groupe).
-        SANS l'exclusion, la co-présence imposée par le bloc satisferait le K du groupe et A/B ne
-        seraient ensemble qu'une fois (ce test tomberait)."""
-        teams = [
-            make_team("A", sessions_per_week=2),
-            make_team("B", sessions_per_week=2),
-            make_team("C", sessions_per_week=1),
-        ]
-        venues = [
-            make_venue("vb", [(1, "18:00"), (2, "18:00")], capacity=1),  # cases de BLOC (dé-comptées)
-            make_venue("vg", [(3, "18:00")], capacity=2),  # case de GROUPE (les groupes n'ont pas de dé-comptage)
-        ]
-        payload = make_payload(teams=teams, venues=venues)
-        payload["sharedBlocks"] = [_block("z", ["A", "B", "C"], 1)]
-        payload["sharedTrainings"] = [{"id": "g", "teamIds": ["A", "B"], "commonSessions": 1}]
-        result = solve_payload(payload)
-        assert result["status"] == "completed"
-        trio = _common(result, ["A", "B", "C"])
-        pair = _common(result, ["A", "B"])
-        assert len(trio) == 1, "le bloc place sa séance A,B,C"
-        assert len(pair) == 2, "le groupe garde SA séance A,B, distincte de la séance de bloc"
-
-
 # ── Arbitrage n°5 — la séance de bloc COMPTE pour les règles bien-être (one_session_per_day) ──────
 
 

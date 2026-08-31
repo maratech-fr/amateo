@@ -24,8 +24,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
  * management.
  */
 // `?schedulePlanId=` est lu DANS le state provider, pas par un `ApiFilter` Doctrine
-// (la ressource a son propre provider, l'extension Doctrine ne tourne jamais) — patron
-// SharedTrainingGroup.
+// (la ressource a son propre provider, l'extension Doctrine ne tourne jamais).
 #[ApiResource(shortName: 'SharedTrainingBlock', operations: [
     new GetCollection,
     new Get,

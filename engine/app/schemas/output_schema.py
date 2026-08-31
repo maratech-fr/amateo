@@ -73,7 +73,6 @@ class DiagnosticSchema(SerializableModel):
         "day_constraint_conflict",
         "implicit_rule_not_honored",
         "session_below_effective_min",
-        "shared_training_not_honored",
         # P2-51 PR-3 — mutualisation par BLOC : le bloc n'a pas pu placer ses séances communes
         # (INFEASIBLE : moins de cases communes candidates que de séances demandées) ou le compte
         # réel de séances communes du bloc diffère du déclaré (défense en profondeur post-solve).

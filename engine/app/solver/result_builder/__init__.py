@@ -61,9 +61,6 @@ from .diagnostics import (
     _diagnose_shared_blocks as _diagnose_shared_blocks,
 )
 from .diagnostics import (
-    _diagnose_shared_trainings as _diagnose_shared_trainings,
-)
-from .diagnostics import (
     _diagnose_soft_lock_moved as _diagnose_soft_lock_moved,
 )
 from .diagnostics import (

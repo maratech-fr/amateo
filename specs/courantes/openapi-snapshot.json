@@ -12814,7 +12814,7 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid JSON, or a missing/malformed field (neither sharedTrainingBlockId nor sharedTrainingGroupId given)"
+                        "description": "Invalid JSON, or a missing/malformed field (no sharedTrainingBlockId given)"
                     },
                     "401": {
                         "description": "Unauthorized"
@@ -12823,22 +12823,23 @@
                         "description": "Not a management member"
                     },
                     "404": {
-                        "description": "Unknown shared-training group (or another club's \u2014 never an existence oracle); a block id that resolves to no block falls back to the group lookup"
+                        "description": "Unknown mutualisation block (or another club's \u2014 never an existence oracle)"
                     },
                     "409": {
                         "description": "Archived season (read-only)"
                     },
                     "422": {
-                        "description": "Scope mismatch (block/group not declared for this plan), closed venue, occupied slot (exclusivity), shared-sessions ceiling reached, a member over its weekly sessions, or unknown schedule plan"
+                        "description": "Scope mismatch (block not declared for this plan), closed venue, occupied slot (exclusivity), shared-sessions ceiling reached, a member over its weekly sessions, or unknown schedule plan"
                     }
                 },
-                "summary": "Reserve a shared-training block or group on one slot (atomic batch write of one HARD reservation per member)",
+                "summary": "Reserve a mutualisation block on one slot (atomic batch write of one HARD reservation per member)",
                 "requestBody": {
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
                                 "required": [
+                                    "sharedTrainingBlockId",
                                     "venueId",
                                     "dayOfWeek",
                                     "startTime"
@@ -12847,12 +12848,7 @@
                                     "sharedTrainingBlockId": {
                                         "type": "string",
                                         "format": "uuid",
-                                        "description": "Resolved FIRST if provided (a set of teams that behaves as one team)"
-                                    },
-                                    "sharedTrainingGroupId": {
-                                        "type": "string",
-                                        "format": "uuid",
-                                        "description": "Legacy fallback, resolved only when sharedTrainingBlockId is absent or does not resolve \u2014 transitional, kept until the frontend fully migrates to blocks"
+                                        "description": "The mutualisation block (a set of teams that behaves as one team)"
                                     },
                                     "venueId": {
                                         "type": "string",
@@ -12875,7 +12871,7 @@
                                         "type": "string",
                                         "format": "uuid",
                                         "nullable": true,
-                                        "description": "NULL = base (season) plan; set = a period overlay \u2014 must match the block's or group's own scope"
+                                        "description": "NULL = base (season) plan; set = a period overlay \u2014 must match the block's own scope"
                                     }
                                 }
                             }
@@ -15731,404 +15727,6 @@
                         "name": "id",
                         "in": "path",
                         "description": "SharedTrainingBlock identifier",
-                        "required": true,
-                        "deprecated": false,
-                        "schema": {
-                            "type": "string"
-                        },
-                        "style": "simple",
-                        "explode": false
-                    }
-                ]
-            }
-        },
-        "/api/shared_training_groups": {
-            "get": {
-                "operationId": "api_shared_training_groups_get_collection",
-                "tags": [
-                    "SharedTrainingGroup"
-                ],
-                "responses": {
-                    "200": {
-                        "description": "SharedTrainingGroup collection",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "type": "object",
-                                    "description": "SharedTrainingGroup.jsonld collection.",
-                                    "allOf": [
-                                        {
-                                            "$ref": "#/components/schemas/HydraCollectionBaseSchemaNoPagination"
-                                        },
-                                        {
-                                            "type": "object",
-                                            "required": [
-                                                "member"
-                                            ],
-                                            "properties": {
-                                                "member": {
-                                                    "type": "array",
-                                                    "items": {
-                                                        "$ref": "#/components/schemas/SharedTrainingGroup.jsonld"
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    ]
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {
-                                        "$ref": "#/components/schemas/SharedTrainingGroup"
-                                    }
-                                }
-                            },
-                            "text/html": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {
-                                        "$ref": "#/components/schemas/SharedTrainingGroup.html"
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                "summary": "Retrieves the collection of SharedTrainingGroup resources.",
-                "description": "Retrieves the collection of SharedTrainingGroup resources.",
-                "parameters": []
-            },
-            "post": {
-                "operationId": "api_shared_training_groups_post",
-                "tags": [
-                    "SharedTrainingGroup"
-                ],
-                "responses": {
-                    "201": {
-                        "description": "SharedTrainingGroup resource created",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/SharedTrainingGroup.jsonld"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/SharedTrainingGroup"
-                                }
-                            },
-                            "text/html": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/SharedTrainingGroup.html"
-                                }
-                            }
-                        },
-                        "links": {}
-                    },
-                    "400": {
-                        "description": "Invalid input",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error.jsonld"
-                                }
-                            },
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            }
-                        },
-                        "links": {}
-                    },
-                    "422": {
-                        "description": "An error occurred",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
-                                }
-                            },
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ConstraintViolation"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ConstraintViolation"
-                                }
-                            }
-                        },
-                        "links": {}
-                    }
-                },
-                "summary": "Creates a SharedTrainingGroup resource.",
-                "description": "Creates a SharedTrainingGroup resource.",
-                "parameters": [],
-                "requestBody": {
-                    "description": "The new SharedTrainingGroup resource",
-                    "content": {
-                        "application/ld+json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/SharedTrainingGroup.SharedTrainingGroupInput"
-                            }
-                        },
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/SharedTrainingGroup.SharedTrainingGroupInput"
-                            }
-                        },
-                        "text/html": {
-                            "schema": {
-                                "$ref": "#/components/schemas/SharedTrainingGroup.SharedTrainingGroupInput"
-                            }
-                        }
-                    },
-                    "required": true
-                }
-            }
-        },
-        "/api/shared_training_groups/{id}": {
-            "get": {
-                "operationId": "api_shared_training_groups_id_get",
-                "tags": [
-                    "SharedTrainingGroup"
-                ],
-                "responses": {
-                    "200": {
-                        "description": "SharedTrainingGroup resource",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/SharedTrainingGroup.jsonld"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/SharedTrainingGroup"
-                                }
-                            },
-                            "text/html": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/SharedTrainingGroup.html"
-                                }
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not found",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error.jsonld"
-                                }
-                            },
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            }
-                        },
-                        "links": {}
-                    }
-                },
-                "summary": "Retrieves a SharedTrainingGroup resource.",
-                "description": "Retrieves a SharedTrainingGroup resource.",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "description": "SharedTrainingGroup identifier",
-                        "required": true,
-                        "deprecated": false,
-                        "schema": {
-                            "type": "string"
-                        },
-                        "style": "simple",
-                        "explode": false
-                    }
-                ]
-            },
-            "put": {
-                "operationId": "api_shared_training_groups_id_put",
-                "tags": [
-                    "SharedTrainingGroup"
-                ],
-                "responses": {
-                    "200": {
-                        "description": "SharedTrainingGroup resource updated",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/SharedTrainingGroup.jsonld"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/SharedTrainingGroup"
-                                }
-                            },
-                            "text/html": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/SharedTrainingGroup.html"
-                                }
-                            }
-                        },
-                        "links": {}
-                    },
-                    "400": {
-                        "description": "Invalid input",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error.jsonld"
-                                }
-                            },
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            }
-                        },
-                        "links": {}
-                    },
-                    "422": {
-                        "description": "An error occurred",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
-                                }
-                            },
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ConstraintViolation"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ConstraintViolation"
-                                }
-                            }
-                        },
-                        "links": {}
-                    },
-                    "404": {
-                        "description": "Not found",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error.jsonld"
-                                }
-                            },
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            }
-                        },
-                        "links": {}
-                    }
-                },
-                "summary": "Replaces the SharedTrainingGroup resource.",
-                "description": "Replaces the SharedTrainingGroup resource.",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "description": "SharedTrainingGroup identifier",
-                        "required": true,
-                        "deprecated": false,
-                        "schema": {
-                            "type": "string"
-                        },
-                        "style": "simple",
-                        "explode": false
-                    }
-                ],
-                "requestBody": {
-                    "description": "The updated SharedTrainingGroup resource",
-                    "content": {
-                        "application/ld+json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/SharedTrainingGroup.SharedTrainingGroupInput"
-                            }
-                        },
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/SharedTrainingGroup.SharedTrainingGroupInput"
-                            }
-                        },
-                        "text/html": {
-                            "schema": {
-                                "$ref": "#/components/schemas/SharedTrainingGroup.SharedTrainingGroupInput"
-                            }
-                        }
-                    },
-                    "required": true
-                }
-            },
-            "delete": {
-                "operationId": "api_shared_training_groups_id_delete",
-                "tags": [
-                    "SharedTrainingGroup"
-                ],
-                "responses": {
-                    "204": {
-                        "description": "SharedTrainingGroup resource deleted"
-                    },
-                    "404": {
-                        "description": "Not found",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error.jsonld"
-                                }
-                            },
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            }
-                        },
-                        "links": {}
-                    }
-                },
-                "summary": "Removes the SharedTrainingGroup resource.",
-                "description": "Removes the SharedTrainingGroup resource.",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "description": "SharedTrainingGroup identifier",
                         "required": true,
                         "deprecated": false,
                         "schema": {
@@ -28385,166 +27983,6 @@
                 ],
                 "description": "Le bloc de mutualisation : d\u00e9clarer un ensemble d'\u00e9quipes qui se comporte comme UNE \u00e9quipe,\navec son propre nombre de s\u00e9ances communes (``commonSessions``). Scop\u00e9 club+saison, filtrable\npar ``schedulePlanId`` (NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au\nmanagement."
             },
-            "SharedTrainingGroup": {
-                "type": "object",
-                "description": "Mutualisation : d\u00e9clarer que N \u00e9quipes s'entra\u00eenent ENSEMBLE, avec EXACTEMENT\n``commonSessions`` s\u00e9ances communes. Scop\u00e9 club+saison, filtrable par ``schedulePlanId``\n(NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au management.",
-                "properties": {
-                    "id": {
-                        "default": "",
-                        "type": "string"
-                    },
-                    "version": {
-                        "default": 0,
-                        "type": "integer"
-                    },
-                    "createdAt": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    "updatedAt": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    "schedulePlanId": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
-                    "teamIds": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        }
-                    },
-                    "commonSessions": {
-                        "default": 0,
-                        "type": "integer"
-                    }
-                }
-            },
-            "SharedTrainingGroup.SharedTrainingGroupInput": {
-                "type": "object",
-                "description": "Mutualisation : d\u00e9clarer que N \u00e9quipes s'entra\u00eenent ENSEMBLE, avec EXACTEMENT\n``commonSessions`` s\u00e9ances communes. Scop\u00e9 club+saison, filtrable par ``schedulePlanId``\n(NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au management.",
-                "properties": {
-                    "schedulePlanId": {
-                        "format": "uuid",
-                        "description": "NULL = socle saison ; un UUID = plan de p\u00e9riode.",
-                        "externalDocs": {
-                            "url": "https://schema.org/identifier"
-                        },
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
-                    "teamIds": {
-                        "minItems": 2,
-                        "maxItems": 10,
-                        "uniqueItems": true,
-                        "description": "De 2 (minimum m\u00e9tier) \u00e0 10 \u00e9quipes (cap technique fondateur). Chaque id UUID, aucun doublon.",
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        }
-                    },
-                    "commonSessions": {
-                        "minimum": 0,
-                        "exclusiveMinimum": 0,
-                        "description": "Nombre EXACT de s\u00e9ances communes (\u2265 1 ; \u2264 min sessionsPerWeek effectif, v\u00e9rifi\u00e9 c\u00f4t\u00e9 processor).",
-                        "type": [
-                            "integer",
-                            "null"
-                        ]
-                    }
-                },
-                "required": [
-                    "commonSessions"
-                ]
-            },
-            "SharedTrainingGroup.html": {
-                "type": "object",
-                "description": "Mutualisation : d\u00e9clarer que N \u00e9quipes s'entra\u00eenent ENSEMBLE, avec EXACTEMENT\n``commonSessions`` s\u00e9ances communes. Scop\u00e9 club+saison, filtrable par ``schedulePlanId``\n(NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au management.",
-                "properties": {
-                    "id": {
-                        "default": "",
-                        "type": "string"
-                    },
-                    "version": {
-                        "default": 0,
-                        "type": "integer"
-                    },
-                    "createdAt": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    "updatedAt": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    "schedulePlanId": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
-                    "teamIds": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        }
-                    },
-                    "commonSessions": {
-                        "default": 0,
-                        "type": "integer"
-                    }
-                }
-            },
-            "SharedTrainingGroup.jsonld": {
-                "allOf": [
-                    {
-                        "$ref": "#/components/schemas/HydraItemBaseSchema"
-                    },
-                    {
-                        "type": "object",
-                        "properties": {
-                            "id": {
-                                "default": "",
-                                "type": "string"
-                            },
-                            "version": {
-                                "default": 0,
-                                "type": "integer"
-                            },
-                            "createdAt": {
-                                "type": "string",
-                                "format": "date-time"
-                            },
-                            "updatedAt": {
-                                "type": "string",
-                                "format": "date-time"
-                            },
-                            "schedulePlanId": {
-                                "type": [
-                                    "string",
-                                    "null"
-                                ]
-                            },
-                            "teamIds": {
-                                "type": "array",
-                                "items": {
-                                    "type": "string"
-                                }
-                            },
-                            "commonSessions": {
-                                "default": 0,
-                                "type": "integer"
-                            }
-                        }
-                    }
-                ],
-                "description": "Mutualisation : d\u00e9clarer que N \u00e9quipes s'entra\u00eenent ENSEMBLE, avec EXACTEMENT\n``commonSessions`` s\u00e9ances communes. Scop\u00e9 club+saison, filtrable par ``schedulePlanId``\n(NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au management."
-            },
             "Sport": {
                 "type": "object",
                 "properties": {
@@ -32146,10 +31584,6 @@
         {
             "name": "SharedTrainingBlock",
             "description": "Le bloc de mutualisation : d\u00e9clarer un ensemble d'\u00e9quipes qui se comporte comme UNE \u00e9quipe,\navec son propre nombre de s\u00e9ances communes (``commonSessions``). Scop\u00e9 club+saison, filtrable\npar ``schedulePlanId`` (NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au\nmanagement."
-        },
-        {
-            "name": "SharedTrainingGroup",
-            "description": "Mutualisation : d\u00e9clarer que N \u00e9quipes s'entra\u00eenent ENSEMBLE, avec EXACTEMENT\n``commonSessions`` s\u00e9ances communes. Scop\u00e9 club+saison, filtrable par ``schedulePlanId``\n(NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au management."
         },
         {
             "name": "SportCategory",

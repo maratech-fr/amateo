@@ -277,7 +277,6 @@ def add_team_link_penalty(
     assignments: Iterable[AssignmentLike] | Mapping[Any, BoolVarLike],
     *,
     team_links: Iterable[Any] = (),
-    shared_trainings: Iterable[Any] = (),
     shared_blocks: Iterable[Any] = (),
     teams: Iterable[Any] = (),
     info_out: list[CompromiseTermInfo] | None = None,
@@ -308,7 +307,7 @@ def add_team_link_penalty(
         return []
 
     placements = team_link_placements_by_team(assignments, getattr(model, "locked_slots", ()) or ())
-    share_pairs = team_share_declared_pairs(shared_trainings, shared_blocks)
+    share_pairs = team_share_declared_pairs(shared_blocks)
     teams_by_id = _teams_by_id(teams)
 
     def _tier_of(team_id: str) -> str:

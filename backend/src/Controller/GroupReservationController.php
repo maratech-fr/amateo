@@ -7,8 +7,6 @@ namespace App\Controller;
 use App\Entity\Reservation;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
-use App\Entity\SharedTrainingGroup;
-use App\Entity\SharedTrainingGroupTeam;
 use App\Service\ManagementAccessGuard;
 use App\Service\PlanVenueClosures;
 use App\Service\ReservationGroupOccupancy;
@@ -25,10 +23,10 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 use Symfony\Component\Routing\Attribute\Route;
 
 /**
- * P2-46 PR-2 — LE RAIL D'ÉCRITURE BATCH d'un entraînement mutualisé : poser un groupe sur UNE
+ * P2-46 PR-2 — LE RAIL D'ÉCRITURE BATCH d'un entraînement mutualisé : poser un bloc sur UNE
  * case, c'est écrire N réservations (une par membre) en UN SEUL flush. L'atomicité n'est pas un
  * confort : sans elle, un état semi-écrit rendrait l'exclusivité (règle a) invérifiable — une case
- * à moitié occupée par le groupe n'est ni « libre » ni « groupe-complète ».
+ * à moitié occupée par le bloc n'est ni « libre » ni « bloc-complète ».
  *
  * Le RETRAIT n'a pas de route dédiée : le lot se retire par N `DELETE /reservations/{id}` existants
  * (c'est l'écran qui empilera, PR-3).
@@ -38,13 +36,9 @@ use Symfony\Component\Routing\Attribute\Route;
  * de rôle d'`AbstractStateProcessor` (SEC-07, via `ManagementAccessGuard`) et le garde de saison
  * archivée (`SeasonScopedWriteInterface`) — parité stricte avec `POST /reservations`.
  *
- * P2-51 PR-5 — RÉ-ANCRAGE sur le {@see SharedTrainingBlock} (convergence PR-5/PR-7). Le rail vise
- * D'ABORD un bloc, puis RETOMBE sur un {@see SharedTrainingGroup} (transition douce, option a) : le
- * front actuel poste encore des groupes K sous `sharedTrainingGroupId` (`SlotReservationModal.tsx`,
- * PR-6 non encore livrée), une bascule sèche les casserait AVANT la PR-6. Un id de bloc arrive sous
- * le nouveau champ `sharedTrainingBlockId` (PR-6) ; le retrait du modèle groupe est PR-7. Les deux
- * portées, les deux jeux de gardes (`assertBlockReservationAllowed`/`assertGroupReservationAllowed`)
- * et l'atomicité N-réservations/1-flush sont IDENTIQUES entre bloc et groupe.
+ * P2-51 PR-7 — le rail vise le {@see SharedTrainingBlock}, SEULE notion de mutualisation (le modèle
+ * groupe K et son repli `sharedTrainingGroupId` sont retirés). Un id de bloc arrive sous
+ * `sharedTrainingBlockId` ; garde `assertBlockReservationAllowed` + atomicité N-réservations/1-flush.
  */
 #[AsController]
 final class GroupReservationController extends AbstractController implements SeasonScopedWriteInterface
@@ -81,24 +75,16 @@ final class GroupReservationController extends AbstractController implements Sea
         }
 
         $blockId = $data['sharedTrainingBlockId'] ?? null;
-        $groupId = $data['sharedTrainingGroupId'] ?? null;
         $venueId = $data['venueId'] ?? null;
         $dayOfWeek = $data['dayOfWeek'] ?? null;
         $startTimeRaw = $data['startTime'] ?? null;
         $durationRaw = $data['durationMinutes'] ?? 90;
         $schedulePlanId = $data['schedulePlanId'] ?? null;
 
-        // Option (a) transition PR-5/PR-7 — un id arrive sous `sharedTrainingBlockId` (PR-6) OU, le
-        // temps de la transition, sous `sharedTrainingGroupId` (front actuel). Le bloc a priorité.
-        $targetId = null;
-        if (\is_string($blockId) && '' !== $blockId) {
-            $targetId = $blockId;
-        } elseif (\is_string($groupId) && '' !== $groupId) {
-            $targetId = $groupId;
-        }
+        $targetId = (\is_string($blockId) && '' !== $blockId) ? $blockId : null;
 
         if (null === $targetId || !\is_string($venueId) || !\is_int($dayOfWeek) || !\is_string($startTimeRaw)) {
-            return $this->json(['error' => 'Missing required field: sharedTrainingBlockId (or sharedTrainingGroupId), venueId, dayOfWeek, startTime.'], Response::HTTP_BAD_REQUEST);
+            return $this->json(['error' => 'Missing required field: sharedTrainingBlockId, venueId, dayOfWeek, startTime.'], Response::HTTP_BAD_REQUEST);
         }
         // ⚠ FORME de l'UUID pré-validée : un id malformé ne doit JAMAIS atteindre Postgres.
         // Les colonnes visées sont des `uuid` natifs — `WHERE id = 'abc'` y lève un 22P02, donc
@@ -129,45 +115,14 @@ final class GroupReservationController extends AbstractController implements Sea
             return $this->json(['error' => 'startTime must be a valid time (HH:MM).'], Response::HTTP_BAD_REQUEST);
         }
 
-        // Option (a) — le BLOC d'abord (sous le filtre tenant), sinon on retombe sur le GROUPE.
-        $block = $this->entityManager->getRepository(SharedTrainingBlock::class)->findOneBy(['id' => $targetId]);
-        if ($block instanceof SharedTrainingBlock) {
-            return $this->reserveBlock($block, $venueId, $dayOfWeek, $startTime, $durationMinutes, $schedulePlanId);
-        }
-
-        // Groupe résolu SOUS le filtre tenant (findOneBy, jamais find — un groupe d'un AUTRE club
+        // Bloc résolu SOUS le filtre tenant (findOneBy, jamais find — un bloc d'un AUTRE club
         // devient introuvable, jamais un oracle d'existence). Leçon TeamLink « PR B ».
-        $group = $this->entityManager->getRepository(SharedTrainingGroup::class)->findOneBy(['id' => $targetId]);
-        if (!$group instanceof SharedTrainingGroup) {
-            return $this->json(['error' => 'Groupe mutualisé introuvable.'], Response::HTTP_NOT_FOUND);
+        $block = $this->entityManager->getRepository(SharedTrainingBlock::class)->findOneBy(['id' => $targetId]);
+        if (!$block instanceof SharedTrainingBlock) {
+            return $this->json(['error' => 'Mutualisation introuvable.'], Response::HTTP_NOT_FOUND);
         }
 
-        // PORTÉE : le groupe doit être celui de CE planning (socle null ↔ null, période ↔ même
-        // plan). ⚠ Un groupe socle réservé en période produirait N verrous SANS bloc `sharedTrainings`
-        // dans le payload de période (ScheduleConstraintBuilder ne lit que les groupes DU plan) —
-        // exactement le faux diagnostic de sur-capacité que PR-1 vient d'éteindre.
-        if ($group->getSchedulePlanId() !== $schedulePlanId) {
-            return $this->json(['error' => 'Ce groupe mutualisé n\'appartient pas à ce planning : il a été déclaré pour une autre portée. Déclarez-le sur ce planning avant de le réserver ici.'], Response::HTTP_UNPROCESSABLE_ENTITY);
-        }
-
-        $members = $this->memberTeamIds($group->getId());
-
-        try {
-            $this->assertSchedulePlanExists($this->entityManager, $schedulePlanId);
-            $this->planVenueClosures->assertVenueOpenForPlan($schedulePlanId, $venueId, $dayOfWeek);
-            $this->reservationGroupOccupancy->assertGroupReservationAllowed($group, $members, $venueId, $dayOfWeek, $startTime, $schedulePlanId);
-
-            // Écriture ATOMIQUE : N réservations, UN flush. La transaction annule tout à la moindre
-            // erreur ; le filet FK (suppression de plan CONCURRENTE) reprend le patron du processor
-            // de réservation. Toute validation ayant précédé le persist, un refus laisse ZÉRO ligne.
-            $ids = $this->rejectingConcurrentPlanDeletion(fn (): array => $this->entityManager->wrapInTransaction(
-                fn (): array => $this->persistReservations((string) $group->getClubId(), $group->getSeasonId(), $members, $venueId, $dayOfWeek, $startTime, $durationMinutes, $schedulePlanId),
-            ));
-        } catch (UnprocessableEntityHttpException $e) {
-            return $this->json(['error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
-        }
-
-        return $this->json(['ids' => $ids, 'count' => \count($ids)], Response::HTTP_CREATED);
+        return $this->reserveBlock($block, $venueId, $dayOfWeek, $startTime, $durationMinutes, $schedulePlanId);
     }
 
     /**
@@ -214,26 +169,15 @@ final class GroupReservationController extends AbstractController implements Sea
     }
 
     /**
-     * @return list<string>
-     */
-    private function memberTeamIds(string $groupId): array
-    {
-        return array_map(
-            static fn (SharedTrainingGroupTeam $row): string => $row->getTeamId(),
-            $this->entityManager->getRepository(SharedTrainingGroupTeam::class)->findBy(['groupId' => $groupId], ['teamId' => 'ASC']),
-        );
-    }
-
-    /**
-     * Réserver un BLOC (P2-51 PR-5) : parité STRICTE avec le rail groupe inline — même portée, même
-     * jeu de gardes, même atomicité N-réservations/1-flush. Seuls diffèrent l'entité résolue, le
-     * chargement des membres et le garde d'occupation ({@see ReservationGroupOccupancy::assertBlockReservationAllowed}).
+     * Réserver un BLOC (P2-51) : résolution du bloc, portée du plan, garde d'occupation
+     * ({@see ReservationGroupOccupancy::assertBlockReservationAllowed}), puis écriture ATOMIQUE
+     * N-réservations/1-flush.
      */
     private function reserveBlock(SharedTrainingBlock $block, string $venueId, int $dayOfWeek, DateTimeImmutable $startTime, int $durationMinutes, ?string $schedulePlanId): JsonResponse
     {
         // PORTÉE : le bloc doit être celui de CE planning (socle null ↔ null, période ↔ même plan) —
         // un bloc socle réservé en période produirait N verrous SANS son bloc `sharedBlocks` dans le
-        // payload de période (faux diagnostic de sur-capacité), exactement comme le groupe.
+        // payload de période (faux diagnostic de sur-capacité).
         if ($block->getSchedulePlanId() !== $schedulePlanId) {
             return $this->json(['error' => 'Cette mutualisation n\'appartient pas à ce planning : elle a été déclarée pour une autre portée. Déclarez-la sur ce planning avant de la réserver ici.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
@@ -245,7 +189,7 @@ final class GroupReservationController extends AbstractController implements Sea
             $this->planVenueClosures->assertVenueOpenForPlan($schedulePlanId, $venueId, $dayOfWeek);
             $this->reservationGroupOccupancy->assertBlockReservationAllowed($block, $members, $venueId, $dayOfWeek, $startTime, $schedulePlanId);
 
-            // Écriture ATOMIQUE : N réservations, UN flush (patron du rail groupe). Un refus laisse ZÉRO ligne.
+            // Écriture ATOMIQUE : N réservations, UN flush. Un refus laisse ZÉRO ligne.
             $ids = $this->rejectingConcurrentPlanDeletion(fn (): array => $this->entityManager->wrapInTransaction(
                 fn (): array => $this->persistReservations((string) $block->getClubId(), $block->getSeasonId(), $members, $venueId, $dayOfWeek, $startTime, $durationMinutes, $schedulePlanId),
             ));

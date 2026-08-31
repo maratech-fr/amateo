@@ -535,13 +535,6 @@ jobs:
       - name: PreviousAssignmentsPayloadParityTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/PreviousAssignmentsPayloadParityTest.php --group phase1'
 
-      # P2-27 PR A — la mutualisation STOCKÉE (groupes {équipes, K}, ancrés au plan) doit être
-      # EXACTEMENT le bloc `sharedTrainings` émis au moteur, socle ET période (portée dérivée du
-      # plan, ADR-0002) — falsifié dans les deux sens (un groupe stocké apparaît, un groupe d'une
-      # autre portée ne fuit pas).
-      - name: SharedTrainingPayloadParityTest
-        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/SharedTrainingPayloadParityTest.php --group phase1'
-
       # P2-51 PR-2 : ce qui est STOCKÉ (blocs de mutualisation {équipes, K}, ancrés au plan) == le
       # bloc `sharedBlocks` émis au moteur, socle ET période, portée dérivée du plan (ADR-0002),
       # membre hors roster filtré + bloc tombé sous 2 abandonné — falsifié dans les deux sens (un

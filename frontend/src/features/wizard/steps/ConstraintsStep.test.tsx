@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
 
-import type { Constraint, ImplicitRuleSetting, SharedTrainingBlock, SharedTrainingGroup } from "../api";
+import type { Constraint, ImplicitRuleSetting, SharedTrainingBlock } from "../api";
 import { PRODUCT_RULES, WELLBEING_RULES } from "../lib/implicitRules";
 
 const RESOLVED_IMPLICIT_RULES: ImplicitRuleSetting[] = [
@@ -31,13 +31,8 @@ const h = vi.hoisted(() => ({
   tags: [] as { id: string; name: string; color: string | null; isSystem: boolean; axis: "GENRE" | "NIVEAU" | "AGE" | null }[],
   tagAssignments: [] as { id: string; teamId: string; tagId: string; seasonId: string }[],
   implicitRules: [] as ImplicitRuleSetting[],
-  // P2-27 — les groupes de mutualisation + leurs mutations (portée courante).
-  sharedGroups: [] as SharedTrainingGroup[],
-  // P2-51 PR-6 — les blocs de mutualisation (nouveau modèle), posables dans Réserver.
+  // P2-51 — les blocs de mutualisation, posables dans Réserver.
   sharedBlocks: [] as SharedTrainingBlock[],
-  stgCreate: vi.fn(),
-  stgUpdate: vi.fn(),
-  stgDelete: vi.fn(),
 }));
 
 const SEASON_TEAMS = [
@@ -106,14 +101,9 @@ vi.mock("../queries", () => ({
   useCreateReservation: () => ({ mutateAsync: h.resCreate, isPending: false }),
   useDeleteReservation: () => ({ mutateAsync: h.resDelete, isPending: false }),
   useCreateGroupReservation: () => ({ mutateAsync: h.resGroupCreate, isPending: false }),
-  // P2-27 — la mutualisation. Le mock HONORE `enabled` (comme useReservations) : une période
-  // non résolue ne doit pas servir les groupes du SOCLE.
-  useSharedTrainingGroups: (_planId?: string | null, enabled?: boolean) => ({ data: false === enabled ? [] : h.sharedGroups }),
-  // P2-51 PR-6 — même contrat que les groupes (honore `enabled`) : les blocs posables dans Réserver.
+  // P2-51 — la mutualisation par bloc. Le mock HONORE `enabled` (comme useReservations) : une
+  // période non résolue ne doit pas servir les blocs du SOCLE.
   useSharedTrainingBlocks: (_planId?: string | null, enabled?: boolean) => ({ data: false === enabled ? [] : h.sharedBlocks }),
-  useCreateSharedTrainingGroup: () => ({ mutateAsync: h.stgCreate, isPending: false }),
-  useUpdateSharedTrainingGroup: () => ({ mutateAsync: h.stgUpdate, isPending: false }),
-  useDeleteSharedTrainingGroup: () => ({ mutate: h.stgDelete }),
   useTeamPeriodOverrides: () => ({ data: [] }),
   // P2-28 — les 4 règles bien-être résolues + leurs mutations (le détail du panneau est
   // couvert par ImplicitRulesPanel.test ; ici on ne garde que le CÂBLAGE dans l'étape).
@@ -1516,8 +1506,6 @@ describe("ConstraintsStep — affiner un groupe (targetTags / excludeTags)", () 
 describe("ConstraintsStep — l'onglet Mutualisation a déménagé (P2-45)", () => {
   beforeEach(() => {
     h.list = [];
-    h.sharedGroups = [];
-    h.stgCreate.mockClear();
     periodAnchorReady.value = true;
     activeTeamsState.pausedIds = new Set();
     useWizardStore.getState().exitPeriodMode();
