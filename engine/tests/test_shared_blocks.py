@@ -2,10 +2,10 @@
 commonSessions ≥ 1, plafond 50 blocs, défaut liste vide), et un bloc ABSENT/VIDE laisse le
 chemin de code byte-identique (patron `sharedTrainings`/`teamLinks`).
 
-⚠ PR-2 : le bloc est INERTE — accepté par le schéma mais PAS consommé par le solveur. La
-sémantique (le bloc se place comme une équipe, verdict de déplacement-en-bloc) est PR-3. Ce
-fichier ne garde donc que l'ACCEPTATION du schéma, ses REJETS de forme, et l'inertie du bloc
-peuplé comme du bloc vide."""
+⚠ PR-3 : le bloc est désormais CONSOMMÉ par le solveur (il place ses séances comme une équipe).
+Ce fichier garde l'ACCEPTATION du schéma, ses REJETS de forme, et le fait qu'un bloc VIDE laisse
+le solve byte-identique (le seul garde d'inertie encore vrai) — la SÉMANTIQUE (co-placement,
+double-comptage, verdict de déplacement-en-bloc) vit dans `tests/semantic/test_shared_block_semantics.py`."""
 
 from __future__ import annotations
 
@@ -87,8 +87,11 @@ class TestSchemaRejects:
             )
 
 
-class TestInertness:
+class TestEmptyEqualsAbsent:
     def test_empty_shared_blocks_block_matches_no_block(self) -> None:
+        # Le SEUL garde d'inertie encore vrai en PR-3 : un bloc VIDE laisse le solve byte-identique
+        # (patron `sharedTrainings`/`teamLinks`). Un bloc PEUPLÉ, lui, est désormais consommé — sa
+        # sémantique est prouvée dans tests/semantic/test_shared_block_semantics.py.
         teams, venues = _fixture()
         without = solve_payload(make_payload(teams=teams, venues=venues))
         with_empty_payload = make_payload(teams=teams, venues=venues)
@@ -96,13 +99,3 @@ class TestInertness:
         with_empty = solve_payload(with_empty_payload)
         assert without["slots"] == with_empty["slots"]
         assert without["score"] == with_empty["score"]
-
-    def test_populated_shared_blocks_do_not_change_the_solve(self) -> None:
-        # PR-2 : le bloc est INERTE — un bloc PEUPLÉ produit le MÊME solve qu'aucun bloc.
-        teams, venues = _fixture()
-        without = solve_payload(make_payload(teams=teams, venues=venues))
-        with_block_payload = make_payload(teams=teams, venues=venues)
-        with_block_payload["sharedBlocks"] = [_block("b1", ["t1", "t2"], 1)]
-        with_block = solve_payload(with_block_payload)
-        assert without["slots"] == with_block["slots"]
-        assert without["score"] == with_block["score"]

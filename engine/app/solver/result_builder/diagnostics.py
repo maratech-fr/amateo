@@ -104,6 +104,7 @@ def _generate_diagnostics(
         diagnostics.extend(_diagnose_unused_slots(model_data, slots))
     diagnostics.extend(_diagnose_conflicts(model_data, solver_status, slots, slot_capacities=slot_capacities))
     diagnostics.extend(_diagnose_shared_trainings(model_data, solver_status, slots))
+    diagnostics.extend(_diagnose_shared_blocks(model_data, solver_status, slots))
     diagnostics.extend(_diagnose_team_links(model_data, solver_status, slots))
     diagnostics.extend(_diagnose_travel_times(model_data, solver_status, slots, team_coach_map or {}))
     return diagnostics
@@ -652,6 +653,17 @@ def _diagnose_conflicts(
         for member in _get(group, "teamIds", "team_ids", default=[]) or []:
             team_to_group.setdefault(str(member), group_key)
 
+    # P2-51 — mutualisation par BLOC : une séance de bloc = UNE occupation de la case (pas N). La
+    # multi-appartenance étant permise (une équipe dans plusieurs blocs), l'attribution se fait PAR
+    # CASE (un bloc dont TOUS les membres siègent ICI se fond en un occupant), jamais « premier bloc
+    # gagne » via une carte globale. Bloc `sharedBlocks` absent ⇒ liste vide ⇒ comptage == groupes
+    # ⇒ chemin byte-identique (goldens inchangés).
+    blocks: list[tuple[str, frozenset[str]]] = []
+    for block_index, block in enumerate(_collection(model_data, "sharedBlocks", "shared_blocks")):
+        block_members = frozenset(str(m) for m in (_get(block, "teamIds", "team_ids", default=[]) or []))
+        if len(block_members) >= 2:
+            blocks.append((f"__shared_block__{_get(block, 'id', default=block_index)}", block_members))
+
     # Post-solve safety check: venue over-capacity.
     venue_bookings: dict[tuple[str, int, str], list[str]] = defaultdict(list)
     venue_durations: dict[tuple[str, int, str], int] = {}
@@ -665,9 +677,16 @@ def _diagnose_conflicts(
         # is the duplicate-slot artifact, not over-capacity (audit ENG-09).
         team_ids = list(dict.fromkeys(booked))
         capacity = _caps.get((venue_id, day_of_week, start_time), 1)
-        # P2-46 — chaque membre d'un groupe déclaré compte pour l'identité de son groupe : les
-        # membres co-localisés se fondent en UN occupant. Sans groupe, `occupants == team_ids`.
-        occupants = {team_to_group.get(team_id, team_id) for team_id in team_ids}
+        # P2-46 / P2-51 — chaque membre d'un groupe OU d'un bloc co-localisé se fond en UN occupant.
+        # Groupes : carte globale (unicité). Blocs : fondus PAR CASE (multi-appartenance). Sans
+        # groupe ni bloc, `occupants == team_ids` (chemin byte-identique).
+        if blocks:
+            identity, block_keys_here = _fold_case_occupant_identity(team_ids, team_to_group, blocks)
+            occupants = set(identity.values())
+            occupant_text = _occupant_list_with_blocks(team_ids, identity, block_keys_here, team_names)
+        else:
+            occupants = {team_to_group.get(team_id, team_id) for team_id in team_ids}
+            occupant_text = _occupant_list(team_ids, team_to_group, team_names)
         if len(occupants) > capacity:
             when = f"{_day_label(day_of_week)} {_time_range(start_time, venue_durations.get((venue_id, day_of_week, start_time)))}"
             diagnostics.append(
@@ -687,7 +706,7 @@ def _diagnose_conflicts(
                         f"Le gymnase {_label(venue_id, venue_names)} accueille {len(occupants)} "
                         f"{'occupant' if len(occupants) == 1 else 'occupants'} en même temps le {when} "
                         f"alors que sa capacité est de {capacity} : "
-                        f"{_occupant_list(team_ids, team_to_group, team_names)}."
+                        f"{occupant_text}."
                     ),
                     "suggestions": [
                         "Déplacez l'une des séances sur un autre horaire ou un autre gymnase.",
@@ -764,6 +783,145 @@ def _diagnose_conflicts(
                     }
                 )
 
+    return diagnostics
+
+
+def _fold_case_occupant_identity(
+    team_ids: list[str], team_to_group: Mapping[str, str], blocks: list[tuple[str, frozenset[str]]]
+) -> tuple[dict[str, str], set[str]]:
+    """P2-51 — PAR CASE : identité d'occupant de chaque équipe présente. Un BLOC dont TOUS les
+    membres siègent ICI se fond en une entrée (multi-appartenance ⇒ attribution par case, jamais
+    « premier bloc gagne ») ; sinon l'équipe retombe sur son GROUPE mutualisé (unicité) ou
+    elle-même. Renvoie ``(identity: équipe → clé d'occupant, clés de bloc effectivement fondues)``."""
+    present = set(team_ids)
+    identity: dict[str, str] = {}
+    covered: set[str] = set()
+    block_keys: set[str] = set()
+    for block_key, members in sorted(blocks):
+        if members <= present and not (members & covered):
+            for member in members:
+                identity[member] = block_key
+            covered |= members
+            block_keys.add(block_key)
+    for team_id in team_ids:
+        if team_id in covered:
+            continue
+        identity[team_id] = team_to_group.get(team_id, team_id)
+    return identity, block_keys
+
+
+def _occupant_list_with_blocks(
+    team_ids: list[str], identity: Mapping[str, str], block_keys: set[str], names: Mapping[str, str]
+) -> str:
+    """Miroir de ``_occupant_list`` étendu aux blocs : une clé de bloc fondue s'énonce « le bloc
+    mutualisé (A, B) », une clé de groupe « le groupe mutualisé (…) », le reste équipe par équipe."""
+    parts: list[str] = []
+    seen: set[str] = set()
+    for team_id in team_ids:
+        key = identity.get(team_id, team_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        if key in block_keys:
+            members = [_label(other, names) for other in team_ids if identity.get(other) == key]
+            parts.append(f"le bloc mutualisé ({', '.join(members)})")
+        elif isinstance(key, str) and key.startswith("__shared_group__"):
+            members = [_label(other, names) for other in team_ids if identity.get(other) == key]
+            parts.append(f"le groupe mutualisé ({', '.join(members)})")
+        else:
+            parts.append(_label(team_id, names))
+    return ", ".join(parts)
+
+
+def _diagnose_shared_blocks(
+    model_data: Mapping[str, Any] | Any,
+    solver_status: int,
+    slots: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """P2-51 (arbitrage n°7) — mutualisation par BLOC : nommer le bloc quand il n'est pas honoré,
+    code ``shared_block_not_honored`` (severity ERROR), patron ``_diagnose_shared_trainings``.
+
+      * INFEASIBLE — cause PROUVÉE : le bloc a MOINS de cases communes candidates (gymnase, jour,
+        heure où TOUS ses membres ont un créneau disponible) que ses ``commonSessions`` — il ne
+        pourra jamais placer ses séances. On nomme le bloc (le message ``diag-infeasible`` reste,
+        celui-ci l'attribue). Prudent : on n'accuse que quand le compte de cases l'exclut.
+      * OPTIMAL/FEASIBLE — défense en profondeur : si le nombre RÉEL de séances communes du bloc
+        (co-présence de TOUS ses membres dans les slots finaux) diffère de ``commonSessions``.
+
+    Message français nommant les équipes réelles du bloc ; aucun identifiant interne."""
+    blocks = _collection(model_data, "sharedBlocks", "shared_blocks")
+    if not blocks:
+        return []
+
+    team_names = _team_name_map(model_data)
+    diagnostics: list[dict[str, Any]] = []
+
+    if solver_status == cp_model.INFEASIBLE:
+        # Cases (gymnase, jour, heure) qui EXISTENT — n'importe quelle équipe peut y siéger, donc
+        # ce sont les cases communes candidates d'un bloc. Un bloc qui en a moins que sa demande de
+        # séances est provablement non plaçable (miroir du ``Σb == commonSessions`` insatisfiable).
+        candidate_cases = 0
+        for venue in _collection(model_data, "venues"):
+            for _slot in _collection(venue, "training_slots", "trainingSlots"):
+                candidate_cases += 1
+        for index, block in enumerate(blocks):
+            members = [str(t) for t in (_get(block, "teamIds", "team_ids", default=[]) or [])]
+            if len(members) < 2:
+                continue
+            common_sessions = int(_get(block, "commonSessions", "common_sessions", default=0) or 0)
+            if candidate_cases < common_sessions:
+                diagnostics.append(
+                    {
+                        "id": f"shared-block-infeasible-{_get(block, 'id', default=index)}",
+                        "type": "shared_block_not_honored",
+                        "severity": "ERROR",
+                        "message": (
+                            f"Le bloc de mutualisation ({_named_list(members, team_names)}) ne peut pas placer "
+                            f"ses {common_sessions} séance(s) commune(s) : il n'existe que {candidate_cases} "
+                            "créneau(x) de gymnase où réunir ses équipes. Ajoutez des créneaux communs ou "
+                            "réduisez le nombre de séances communes du bloc."
+                        ),
+                        "suggestions": [
+                            "Ajoutez des créneaux de gymnase où toutes les équipes du bloc peuvent se réunir.",
+                            "Réduisez le nombre de séances communes déclarées pour le bloc.",
+                        ],
+                        "createdAt": datetime.now(UTC).isoformat(),
+                    }
+                )
+        return diagnostics
+
+    if solver_status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return []
+
+    occupancy: dict[str, set[tuple[str, int, str]]] = defaultdict(set)
+    for slot in slots:
+        day = _slot_day(slot)
+        if day is None:
+            continue
+        occupancy[str(slot["teamId"])].add((str(slot["venueId"]), day, str(slot["startTime"])[:5]))
+
+    for index, block in enumerate(blocks):
+        members = [str(t) for t in (_get(block, "teamIds", "team_ids", default=[]) or [])]
+        if len(members) < 2:
+            continue
+        common_sessions = int(_get(block, "commonSessions", "common_sessions", default=0) or 0)
+        member_sets = [occupancy.get(member, set()) for member in members]
+        common = set.intersection(*member_sets) if member_sets else set()
+        if len(common) != common_sessions:
+            diagnostics.append(
+                {
+                    "id": f"shared-block-not-honored-{_get(block, 'id', default=index)}",
+                    "type": "shared_block_not_honored",
+                    "severity": "ERROR",
+                    "message": (
+                        f"Le bloc de mutualisation n'est pas respecté : les équipes "
+                        f"{_named_list(members, team_names)} devraient partager {common_sessions} séance(s) "
+                        f"commune(s) en bloc mais en partagent {len(common)}."
+                    ),
+                    "suggestions": ["Vérifiez les disponibilités communes de ces équipes ou ajustez le bloc."],
+                    "createdAt": datetime.now(UTC).isoformat(),
+                }
+            )
     return diagnostics
 
 
@@ -905,7 +1063,10 @@ def _diagnose_team_links(
         return []
 
     team_names = _team_name_map(model_data)
-    share_pairs = team_share_declared_pairs(_collection(model_data, "sharedTrainings", "shared_trainings"))
+    share_pairs = team_share_declared_pairs(
+        _collection(model_data, "sharedTrainings", "shared_trainings"),
+        _collection(model_data, "sharedBlocks", "shared_blocks"),
+    )
     placements = _team_link_placements_from_slots(slots)
 
     diagnostics: list[dict[str, Any]] = []

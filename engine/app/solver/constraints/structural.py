@@ -33,6 +33,11 @@ def add_room_at_most_one(model: Any, assignments: Sequence[AssignmentVariable]) 
     """Constraint 1: one room/venue can host at most capacity teams per time slot."""
 
     slot_capacities: dict[Any, int] = getattr(model, "slot_capacities", {})
+    # P2-51 — dé-comptage des séances de BLOC : ``(venue_id, slot_id)`` → ``[(b_var, n_free-1)]``.
+    # Une séance de bloc réunit ``n_free`` membres LIBRES sur la case mais n'y occupe qu'UNE place ;
+    # on retranche ``(n_free-1)·b`` de la somme pour que la co-présence tienne en capacité 1. Bloc
+    # absent (ou modèle nu des tests de pose) ⇒ carte vide ⇒ contrainte byte-identique (goldens).
+    room_relief: dict[Any, list[tuple[Any, int]]] = getattr(model, "shared_block_room_relief", None) or {}
     groups: dict[tuple[Any, Any], list[BoolVarLike]] = defaultdict(list)
     for assignment in assignments:
         venue_id = assignment.venue_id
@@ -51,7 +56,11 @@ def add_room_at_most_one(model: Any, assignments: Sequence[AssignmentVariable]) 
             cap = slot_capacities.get((venue_id, int(parts[0]), parts[1]), 1)
         else:
             cap = 1
-        model.Add(sum(deduped) <= cap)
+        relief = room_relief.get((venue_id, time_key))
+        if relief:
+            model.Add(sum(deduped) - sum(coef * b for b, coef in relief) <= cap)
+        else:
+            model.Add(sum(deduped) <= cap)
         added += 1
 
     # P4-97 bis — un verrou occupe une place de la capacité. ``build_model`` retire déjà les

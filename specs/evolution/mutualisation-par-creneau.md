@@ -55,12 +55,40 @@ modèle groupe {équipes, K} ne peut pas dire le terrain), l'AJOUT (pas remplace
 notions, un coup d'œil » (§3).
 
 **Avancement** : PR-1 (modèle backend seul : entités, migration RLS, API CRUD, gardes, cascades,
-staleness, purges) et PR-2 (émission payload/contrat — bloc `sharedBlocks`, `CONTRACT_VERSION`
-2.16→2.17, schémas moteur INERTES : accepté mais non consommé, goldens inchangés) **livrées** —
-trace `specs/courantes/etat-des-lieux.md` §3, inventaires `backend/docs/backend-inventory.md` et
-`engine/docs/engine-inventory.md` (changelog contrat). Restent PR-3 (sémantique solveur + verdict
-de déplacement-en-bloc), PR-4 (frontend). Détail de programme et séquencement :
+staleness, purges), PR-2 (émission payload/contrat — bloc `sharedBlocks`, `CONTRACT_VERSION`
+2.16→2.17, schémas moteur alors INERTES) et **PR-3 (sémantique solveur + verdict de refus de
+casse — livrée 2026-08-31, détail §0bis)** **livrées** — trace `specs/courantes/etat-des-lieux.md`
+§3, inventaires `backend/docs/backend-inventory.md` et `engine/docs/engine-inventory.md` (changelog
+contrat), vocabulaire `engine/docs/constraint-vocabulary.md`. **Reste PR-4** (frontend : saisie du
+bloc au wizard + le geste « déplacer le bloc entier » du rail de retouche — le verdict de PR-3
+REFUSE déjà un déplacement individuel qui casserait un bloc, il ne fournit pas encore l'action de
+déplacement groupé). Détail de programme et séquencement :
 [`plannings-bccl-2026-08-31.md`](plannings-bccl-2026-08-31.md) §4/§6.
+
+## 0bis. PR-3 (2026-08-31) — la modélisation retenue : le LIAGE
+
+**La décision qui porte tout le reste.** Chaque bloc possède, pour chaque case candidate
+`(gymnase, jour, heure)`, une variable de DÉCISION propre au bloc `b[case]` — liée à chaque membre
+par l'implication **UNIDIRECTIONNELLE** `x[membre, case] ≥ b[case]` (« si le bloc tient sa séance
+ici, tous les membres y sont »), avec `Σ b == commonSessions`.
+
+**On ne réifie PAS `b` depuis la co-présence** (pas de `b ⇔ tous présents`, contrairement au
+littéral `y_s` du groupe historique `sharedTrainings`) — c'est ce refus, précisément, qui **dissout
+structurellement** le mur du double-comptage décrit en §2 : deux blocs qui partagent une équipe ont
+des `b` INDÉPENDANTS, chacun compte SES séances, sans jamais faire compter une même case deux fois
+pour deux blocs qui se recouvrent.
+
+Et parce que `b ⟹ x=1`, une séance de bloc **EST** une séance `x` normale du membre : elle
+consomme une de ses séances/semaine, compte pour `one_session_per_day`, le repos coach, les
+enchaînements, `team_no_overlap` et l'objectif de placement — tous déjà exprimés sur `x`, donc
+**gratuitement**, sans aucun crédit à câbler à la main (à l'inverse d'une pseudo-équipe découplée,
+qui aurait dû faire créditer chacun de ces postes séparément). La seule chirurgie nécessaire est la
+**capacité de gymnase** : une séance de bloc réunissant `n` membres libres sur une case n'y occupe
+qu'**UNE** place — allègement `(n_libres−1)·b` dans `add_room_at_most_one`, patron du crédit des
+verrouillés (P4-97).
+
+Détail moteur complet (capacité, exclusion dynamique de l'exact-K des groupes, exemption
+passerelle, diagnostic, verdict) : `engine/docs/constraint-vocabulary.md` §Bloc de mutualisation.
 
 ## 1. Le besoin, dans les mots du terrain
 
@@ -142,8 +170,9 @@ mémoire, avec leur réponse effective :
   → **livré PR-2** : bloc `sharedBlocks`, `CONTRACT_VERSION` 2.17, gating
   `CrossStack/SharedBlockPayloadParityTest`.
 - Axes §7.1 : **contrat backend⇄engine** — NR + smoke faits en PR-2 (contrat 2.17, schémas moteur
-  inertes, goldens inchangés). **Sémantique de contrainte** reste à faire en PR-3 (le bloc n'est
-  pas encore consommé par le solveur).
+  inertes, goldens inchangés). **Sémantique de contrainte** — livrée en PR-3 (modélisation LIAGE,
+  §0bis) : le bloc est CONSOMMÉ par le solveur, NR cross-stack `CrossStack/SharedBlockHonouredByEngineTest`
+  (groupe `contract`, job `engine-semantics`).
 
 ## 5. Impacts recensés (consommateurs du modèle actuel, tous vérifiés le 2026-08-25)
 

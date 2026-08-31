@@ -55,6 +55,10 @@ logger = logging.getLogger("engine.validate_assignments")
 # compromis vides.
 COMPROMISE_ELAPSED_BUDGET_SECONDS = 8.0
 
+# Libellés FR des jours (1 = lundi … 7 = dimanche), pour NOMMER la case rompue d'un bloc dans le
+# message du verdict sans dépendre du paquet ``result_builder`` (qui a son propre ``_day_label``).
+_DAY_LABELS_FR = {1: "lundi", 2: "mardi", 3: "mercredi", 4: "jeudi", 5: "vendredi", 6: "samedi", 7: "dimanche"}
+
 
 def _coach_label(coach: dict[str, Any]) -> str:
     first = str(coach.get("first_name") or coach.get("firstName") or "").strip()
@@ -124,9 +128,104 @@ def _shared_training_move_violation(
     return None
 
 
+def _shared_block_move_violation(
+    shared_blocks: list[dict[str, Any]],
+    baseline_slots: list[dict[str, Any]],
+    candidate: dict[str, Any],
+    reference: CandidateAssignmentSchema | None,
+    team_names: dict[str, str],
+    venue_names: dict[str, str],
+) -> dict[str, Any] | None:
+    """P2-51 (D11) — refus NOMMÉ ``shared_block_broken`` quand un déplacement RETIRE une équipe
+    d'une séance de BLOC jusque-là honorée (patron ``_shared_training_move_violation`` +
+    anti-enfermement ``_venue_minimum_move_violation``).
+
+    Le HARD posé dans ``_apply_hard`` (``add_shared_block_constraints``) NE SUFFIT PAS : les
+    variables de l'ancienne case restent LIBRES → le solveur réinvente la séance de bloc ailleurs
+    pour tenir ``Σb == commonSessions`` et conclut « valide » à tort (même faille qu'ENG-36 / la
+    mutualisation / le plancher de gymnase). On juge donc l'ÉTAT CONCRET proposé, de façon
+    déterministe : c'est le miroir de la contrainte.
+
+    ⚠ GARDE ANTI-ENFERMEMENT (leçon P4-152) : un bloc DÉJÀ cassé dans la baseline ne bloque pas
+    les déplacements. « avant » = baseline gelée (elle EXCLUT déjà la source) + la source
+    ré-ajoutée (``reference``) ; « après » = baseline + candidat. On ne refuse QUE si le bloc était
+    HONORÉ avant (≥ commonSessions cases communes) et CESSE de l'être après. On n'évalue QUE les
+    blocs dont l'équipe DÉPLACÉE est membre.
+
+    Message français nommant les équipes du bloc, le nombre de séances communes exigé, la case
+    rompue ; aucun identifiant interne. ``None`` si rien à dire."""
+    if not shared_blocks:
+        return None
+
+    c_team = str(candidate["team_id"])
+    ref_team = str(reference.team_id) if reference is not None else None
+
+    # équipe -> cases (gymnase, jour, heure) occupées dans la baseline GELÉE (source exclue).
+    base_occupancy: dict[str, set[tuple[str, int, str]]] = {}
+    for slot in baseline_slots:
+        base_occupancy.setdefault(str(slot["team_id"]), set()).add(
+            (str(slot["venue_id"]), int(slot["day"]), str(slot["start_time"]))
+        )
+
+    candidate_case = (str(candidate["venue_id"]), int(candidate["day"]), str(candidate["start_time"]))
+    reference_case: tuple[str, int, str] | None = None
+    if reference is not None:
+        reference_case = (
+            str(reference.venue_id),
+            int(reference.day_of_week),
+            _format_time(_time_to_minutes(reference.start_time)),
+        )
+
+    def _team_name(team_id: str) -> str:
+        return team_names.get(team_id) or team_id
+
+    def _venue_name(venue_id: str) -> str:
+        return venue_names.get(venue_id) or venue_id
+
+    def _common(members: list[str], moved_case: tuple[str, int, str] | None) -> set[tuple[str, int, str]]:
+        # Cases où TOUS les membres sont ensemble ; pour l'équipe déplacée, sa case = ``moved_case``
+        # AJOUTÉE à sa baseline (avant = référence ré-ajoutée, après = candidat).
+        sets: list[set[tuple[str, int, str]]] = []
+        for member in members:
+            occ = set(base_occupancy.get(member, set()))
+            if member == c_team and moved_case is not None:
+                occ.add(moved_case)
+            sets.append(occ)
+        return set.intersection(*sets) if sets else set()
+
+    for block in shared_blocks:
+        members = [str(t) for t in (block.get("teamIds") or block.get("team_ids") or [])]
+        if len(members) < 2 or c_team not in members:
+            continue
+        common_sessions = int(block.get("commonSessions") or block.get("common_sessions") or 0)
+        before = _common(members, reference_case if ref_team == c_team else None)
+        after = _common(members, candidate_case)
+        if len(before) >= common_sessions and len(after) < common_sessions:
+            named = ", ".join(_team_name(member) for member in members)
+            broken = sorted(before - after)
+            where = ""
+            if broken:
+                b_venue, b_day, b_start = broken[0]
+                where = f" (séance commune du {_DAY_LABELS_FR[b_day] if 1 <= b_day <= 7 else f'jour {b_day}'} à {str(b_start)[:5]} au gymnase {_venue_name(b_venue)})"
+            return {
+                "rule": "shared_block_broken",
+                "message": (
+                    f"Ce déplacement casse le bloc de mutualisation : les équipes {named} doivent "
+                    f"partager {common_sessions} séance(s) commune(s) en bloc{where}, or retirer "
+                    f"{_team_name(c_team)} de sa séance n'en laisserait plus que {len(after)}."
+                ),
+                "team_id": c_team,
+                "venue_id": str(candidate["venue_id"]),
+                "day_of_week": int(candidate["day"]),
+                "start_time": str(candidate["start_time"]),
+            }
+    return None
+
+
 def _team_link_move_violation(
     team_links: list[dict[str, Any]],
     shared_trainings: list[dict[str, Any]],
+    shared_blocks: list[dict[str, Any]],
     baseline_slots: list[dict[str, Any]],
     candidate: dict[str, Any],
     team_names: dict[str, str],
@@ -152,7 +251,7 @@ def _team_link_move_violation(
     c_end = int(candidate["end"])
     c_day = int(candidate["day"])
     c_venue = str(candidate["venue_id"])
-    share_pairs = team_share_declared_pairs(shared_trainings)
+    share_pairs = team_share_declared_pairs(shared_trainings, shared_blocks)
 
     by_team: dict[str, list[tuple[int, int, int, str]]] = {}
     for slot in baseline_slots:
@@ -405,6 +504,7 @@ def _apply_hard(
         team_coach_map=team_coach_map,
         team_player_map=team_player_map,
         shared_trainings=data.get("sharedTrainings", []),
+        shared_blocks=data.get("sharedBlocks", []),
         team_links=data.get("teamLinks", []),
         venue_travel_times=data.get("venueTravelTimes", []),
     )
@@ -526,6 +626,7 @@ def _evaluate_state(
         assignments,
         team_links=data.get("teamLinks", []),
         shared_trainings=data.get("sharedTrainings", []),
+        shared_blocks=data.get("sharedBlocks", []),
         teams=data.get("teams", []),
         info_out=info,
     )
@@ -712,12 +813,29 @@ def validate_assignment(
     if shared_violation is not None:
         return {"valid": False, "violations": [shared_violation], "compromises": [], "metrics": metrics}
 
+    # P2-51 (D11) — miroir déterministe du BLOC : un déplacement qui RETIRE une équipe d'une séance
+    # de bloc jusque-là honorée est refusé, NOMMÉ (`shared_block_broken`). Le HARD posé dans
+    # `_apply_hard` ne saurait pas l'attribuer (le solveur réinventerait la séance de bloc ailleurs
+    # pour tenir Σb == commonSessions). ⚠ Anti-enfermement (P4-152) : un bloc déjà cassé dans la
+    # baseline ne bloque pas — on refuse SEULEMENT si le déplacement casse un bloc jusque-là honoré.
+    shared_block_violation = _shared_block_move_violation(
+        data.get("sharedBlocks", []) or [],
+        baseline_slots,
+        {"team_id": c_team, "venue_id": c_venue, "day": c_day, "start_time": c_start_text},
+        input_data.reference,
+        team_names,
+        venue_names,
+    )
+    if shared_block_violation is not None:
+        return {"valid": False, "violations": [shared_block_violation], "compromises": [], "metrics": metrics}
+
     # Lot PASSERELLES PR-2 — miroir MANDATORY : un déplacement qui fait chevaucher deux équipes
     # passerelées obligatoires est refusé, NOMMÉ (le HARD posé plus bas le rendrait INFEASIBLE mais
     # sans l'attribuer). Patron du miroir mutualisation ci-dessus.
     team_link_violation = _team_link_move_violation(
         data.get("teamLinks", []) or [],
         data.get("sharedTrainings", []) or [],
+        data.get("sharedBlocks", []) or [],
         baseline_slots,
         {
             "team_id": c_team,

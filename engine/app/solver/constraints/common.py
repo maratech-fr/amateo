@@ -195,6 +195,10 @@ class HardConstraintStats:
     # P2-27 — contraintes de mutualisation (réification + égalité EXACTE) posées. 0 quand le
     # bloc ``sharedTrainings`` est absent/vide (chemin byte-identique, goldens inchangés).
     shared_training: int = 0
+    # P2-51 — contraintes de mutualisation par BLOC (liage ``x >= b`` par membre + ``Σb ==
+    # commonSessions`` + garde de distinctness inter-blocs) posées. 0 quand le bloc
+    # ``sharedBlocks`` est absent/vide (chemin byte-identique, goldens inchangés).
+    shared_block: int = 0
     # Lot PASSERELLES — contraintes d'anti-chevauchement DUR des passerelles MANDATORY posées. 0
     # quand le bloc ``teamLinks`` est absent/vide ou tout PREFERRED (chemin byte-identique).
     team_link: int = 0
@@ -234,6 +238,7 @@ class HardConstraintStats:
             + self.salarie_distribution
             + self.max_consecutive_sessions
             + self.shared_training
+            + self.shared_block
             + self.team_link
             + self.travel_time
         )
