@@ -138,6 +138,17 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         self::assertSame('COMPLETED', (string) $row['status'], 'la version pointée est COMPLETED');
         self::assertSame('seed-transcription', (string) $row['solver_version'], 'la provenance est la transcription du seed');
         self::assertSame(90, (int) $row['slot_count'], 'la transcription pose exactement 90 créneaux (lundi→samedi)');
+
+        // Section 14 — une base FRAÎCHE naît sans bandeau « périmé » : le seed continue
+        // d'insérer APRÈS la transcription (liens, blocs, incident) et les écouteurs de
+        // péremption estampillaient les versions transcrites ; le dernier geste du run les
+        // remet à zéro. Le défaut (programme plannings-bccl §5) rougirait ici.
+        $stale = $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM schedule s JOIN schedule_plan sp ON sp.id = s.schedule_plan_id '
+            . 'WHERE sp.club_id = ? AND (s.constraints_changed_since_generation = true OR s.resources_changed_since_generation = true)',
+            [$club->getId()],
+        );
+        self::assertSame(0, (int) $stale, 'aucune version seedée ne naît « périmée »');
     }
 
     /**
@@ -252,6 +263,130 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         }
 
         self::assertSame([], array_values(array_unique($violations)), 'une règle dure du seed contredit le planning réel qu\'il transcrit');
+    }
+
+    /**
+     * NR — LES 8 MUTUALISATIONS SOCLE ADOSSENT LES CAPACITÉS REDESCENDUES (P2-51, recalage
+     * 2026-09-01).
+     *
+     * Les 8 partages réels du club (paires jeunes + 3 CEC du mercredi) portaient des capacités
+     * 2/3 posées comme PALLIATIF à la mutualisation. Elles sont redescendues à 1 : le partage se
+     * dit désormais par un bloc de mutualisation SOCLE (schedulePlanId NULL), un groupe complet
+     * comptant pour UN occupant. L'invariant qui rend cette descente sûre : sur CHAQUE case
+     * partagée, (a) le créneau socle est en capacité 1, (b) l'ensemble des équipes RÉSERVÉES y est
+     * EXACTEMENT les membres d'un bloc socle (`reservedSetMatchesABlock`) — sans quoi une
+     * génération verrait N pins HARD sur une case cap 1 SANS exemption de bloc, donc INFEASIBLE.
+     *
+     * Falsifiable dans les deux sens : remonter une capacité à 2 (palliatif ressuscité) OU retirer
+     * un bloc / en changer un membre rend ce test ROUGE en nommant la case fautive.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testSocleSharedBlocksBackTheDescendedCapacities(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+
+        // [gymnase, jour ISO, HH:MM, membres attendus] — les 8 cases partagées.
+        /** @var list<array{string, int, string, list<string>}> $cases */
+        $cases = [
+            ['Matéo', 1, '17:30', ['U9F1', 'U9F2']],
+            ['Matéo', 3, '16:00', ['U11F2', 'U9M1']],
+            ['Matéo', 3, '17:30', ['U11F1', 'U11M2']],
+            ['JDR', 2, '17:30', ['U13F2', 'U13F3']],
+            ['JDR', 4, '17:30', ['U9M1', 'U9M2']],
+            ['Armand', 1, '17:30', ['U13M1', 'U13M2']],
+            ['Armand', 3, '14:00', ['U13F1', 'U13F2']],
+            ['ADN', 3, '17:30', ['U9F1', 'U9F2', 'U9M2']],
+        ];
+
+        // Les ensembles d'équipes des blocs SOCLE (schedulePlanId NULL), par nom d'équipe.
+        /** @var list<array{block_id: string, name: string, common_sessions: int}> $blockRows */
+        $blockRows = $this->connection->fetchAllAssociative(
+            'SELECT b.id AS block_id, b.common_sessions, t.name '
+            . 'FROM shared_training_block b '
+            . 'JOIN shared_training_block_team bt ON bt.block_id = b.id '
+            . 'JOIN team t ON t.id = bt.team_id '
+            . 'WHERE b.club_id = ? AND b.schedule_plan_id IS NULL',
+            [$club->getId()],
+        );
+        $blockSets = [];
+        foreach ($blockRows as $row) {
+            self::assertSame(1, (int) $row['common_sessions'], 'un bloc socle porte 1 séance commune');
+            $blockSets[(string) $row['block_id']][] = (string) $row['name'];
+        }
+        $normalizedBlockSets = [];
+        foreach ($blockSets as $names) {
+            sort($names);
+            $normalizedBlockSets[] = $names;
+        }
+        self::assertCount(8, $normalizedBlockSets, 'le socle porte exactement 8 blocs de mutualisation');
+
+        foreach ($cases as [$venueName, $day, $start, $members]) {
+            // (a) la case socle est en capacité 1 (plus de palliatif).
+            $capacity = $this->connection->fetchOne(
+                'SELECT s.capacity FROM venue_training_slot s JOIN venue v ON v.id = s.venue_id '
+                . 'WHERE s.club_id = ? AND s.schedule_plan_id IS NULL AND v.name = ? '
+                . 'AND s.day_of_week = ? AND to_char(s.start_time, \'HH24:MI\') = ?',
+                [$club->getId(), $venueName, $day, $start],
+            );
+            self::assertSame(1, false === $capacity ? -1 : (int) $capacity, \sprintf('%s %d %s : le créneau socle est en capacité 1', $venueName, $day, $start));
+
+            // (b) l'ensemble RÉSERVÉ sur la case (plan NULL) est exactement les membres attendus.
+            $reserved = $this->connection->fetchFirstColumn(
+                'SELECT t.name FROM reservation r JOIN team t ON t.id = r.team_id JOIN venue v ON v.id = r.venue_id '
+                . 'WHERE r.club_id = ? AND r.schedule_plan_id IS NULL AND v.name = ? '
+                . 'AND r.day_of_week = ? AND to_char(r.start_time, \'HH24:MI\') = ?',
+                [$club->getId(), $venueName, $day, $start],
+            );
+            $reserved = array_map('strval', $reserved);
+            sort($reserved);
+            $expected = $members;
+            sort($expected);
+            self::assertSame($expected, $reserved, \sprintf('%s %d %s : l\'ensemble réservé est exactement les membres du bloc', $venueName, $day, $start));
+
+            // (c) un bloc socle porte EXACTEMENT cet ensemble (reservedSetMatchesABlock).
+            self::assertContains($expected, $normalizedBlockSets, \sprintf('%s %d %s : un bloc socle couvre exactement %s', $venueName, $day, $start, implode('/', $expected)));
+        }
+    }
+
+    /**
+     * NR — LES 10 PASSERELLES RÉELLES SONT SEMÉES (P5-23). « partagent des joueurs » ⇒
+     * NOT_SIMULTANEOUS, intensité côté entraînement au défaut PREFERRED (fondateur non précisé).
+     * Idempotent : le find-or-create sur le couple normalisé ne double pas au second passage.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testSeedDeclaresTheTenRealTeamLinks(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+
+        /** @var list<array{a: string, b: string, link_type: string, training_intensity: string}> $rows */
+        $rows = $this->connection->fetchAllAssociative(
+            'SELECT ta.name AS a, tb.name AS b, l.link_type, l.training_intensity '
+            . 'FROM team_link l JOIN team ta ON ta.id = l.team_a_id JOIN team tb ON tb.id = l.team_b_id '
+            . 'WHERE l.club_id = ?',
+            [$club->getId()],
+        );
+        self::assertCount(10, $rows, 'le socle déclare exactement 10 passerelles');
+
+        $couples = [];
+        foreach ($rows as $row) {
+            self::assertSame('NOT_SIMULTANEOUS', (string) $row['link_type'], 'une passerelle « partage de joueurs » est NOT_SIMULTANEOUS');
+            self::assertSame('PREFERRED', (string) $row['training_intensity'], 'l\'intensité entraînement reste au défaut PREFERRED');
+            $pair = [(string) $row['a'], (string) $row['b']];
+            sort($pair);
+            $couples[] = implode('–', $pair);
+        }
+        sort($couples);
+
+        $expected = [];
+        foreach ([['SM1', 'SM2'], ['SM1', 'U21M1'], ['U18M1', 'U18M2'], ['U15M1', 'U15M2'], ['U13M1', 'U13M2'], ['SF1', 'SF2'], ['SF1', 'U18F1'], ['U18F2', 'U18F1'], ['U15F1', 'U15F2'], ['U13F1', 'U13F2']] as $pair) {
+            sort($pair);
+            $expected[] = implode('–', $pair);
+        }
+        sort($expected);
+
+        self::assertSame($expected, $couples, 'les 10 couples réels sont présents, aucun de plus');
     }
 
     /**
@@ -650,7 +785,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
-     * @return array{clubs:int, teams:int, slots:int, reservations:int, schedules:int, slotTemplates:int, clubUsers:int, calendarEntries:int, schedulePlans:int, sharedGroups:int, sharedGroupTeams:int, venuePeriodOverrides:int, teamPeriodOverrides:int, constraintPeriodOverrides:int}
+     * @return array{clubs:int, teams:int, slots:int, reservations:int, schedules:int, slotTemplates:int, clubUsers:int, calendarEntries:int, schedulePlans:int, sharedBlocks:int, sharedBlockTeams:int, teamLinks:int, venuePeriodOverrides:int, teamPeriodOverrides:int, constraintPeriodOverrides:int}
      */
     private function counts(): array
     {
@@ -673,6 +808,9 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             'schedulePlans' => $this->rowsIn('schedule_plan'),
             'sharedBlocks' => $this->rowsIn('shared_training_block'),
             'sharedBlockTeams' => $this->rowsIn('shared_training_block_team'),
+            // P5-23/P2-51 (recalage 2026-09-01) : les 10 passerelles (find-or-create couple
+            // normalisé) et les 8 blocs SOCLE (purge+recréation) entrent dans la mesure.
+            'teamLinks' => $this->rowsIn('team_link'),
             'venuePeriodOverrides' => $this->rowsIn('venue_period_override'),
             'teamPeriodOverrides' => $this->rowsIn('team_period_override'),
             'constraintPeriodOverrides' => $this->rowsIn('constraint_period_override'),

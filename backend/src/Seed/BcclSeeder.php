@@ -15,6 +15,7 @@ use App\Entity\ImplicitRuleSetting;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
+use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
@@ -24,6 +25,7 @@ use App\Entity\SportCategory;
 use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
+use App\Entity\TeamLink;
 use App\Entity\TeamPeriodOverride;
 use App\Entity\TeamTag;
 use App\Entity\TeamTagAssignment;
@@ -46,6 +48,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
+use App\Enum\TeamLinkType;
 use App\Enum\VenuePeriodMode;
 use App\Repository\SchoolHolidayPeriodRepository;
 use App\Service\Basketball\CategoryCatalog;
@@ -377,12 +380,14 @@ final class BcclSeeder
         $manager->flush();
 
         // [venue_var, day, startTime, durationMinutes, capacity]
-        // capacity=2 on slots shared by youth pairs (U13M1/M2, U9F1/F2, U9M1/M2)
+        // Capacité 1 partout : les créneaux jadis en cap 2/3 (paires jeunes, CEC) étaient un
+        // PALLIATIF à la mutualisation. Le partage se dit désormais par un bloc socle (P2-51,
+        // seedTeamLinksAndSharedBlocks) — un groupe complet compte pour UN occupant.
         /** @var list<array{string, int, string, int, int}> $trainingSlots */
         $trainingSlots = [
             // Matéo — Mon
             ['vMateo', 1, '16:00', 90, 1],
-            ['vMateo', 1, '17:30', 90, 2],
+            ['vMateo', 1, '17:30', 90, 1], // bloc {U9F1, U9F2}
             ['vMateo', 1, '19:00', 90, 1],
             ['vMateo', 1, '20:30', 120, 1],
             // Matéo — Tue
@@ -391,9 +396,9 @@ final class BcclSeeder
             ['vMateo', 2, '20:45', 105, 1],
             // Matéo — Wed
             ['vMateo', 3, '09:30', 75, 1],
-            // Mer 16:00 partagé U11F2/U9M1, 17:30 partagé U11F1/U11M2 (ex-CEC, Matéo divisible en 2).
-            ['vMateo', 3, '16:00', 90, 2, 'CEC'],
-            ['vMateo', 3, '17:30', 90, 2, 'CEC'],
+            // Mer 16:00 bloc CEC2 {U9M1, U11F2}, 17:30 bloc CEC3 {U11M2, U11F1} — libellé CEC gardé (D8).
+            ['vMateo', 3, '16:00', 90, 1, 'CEC'],
+            ['vMateo', 3, '17:30', 90, 1, 'CEC'],
             ['vMateo', 3, '19:00', 90, 1],
             ['vMateo', 3, '20:30', 120, 1],
             // Matéo — Thu
@@ -415,11 +420,11 @@ final class BcclSeeder
             ['vCamus', 4, '20:00', 150, 1],
             ['vCamus', 5, '20:00', 150, 1],
             // JDR — Tue
-            ['vJdr', 2, '17:30', 90, 2],
+            ['vJdr', 2, '17:30', 90, 1], // bloc {U13F2, U13F3}
             ['vJdr', 2, '19:00', 90, 1],
             ['vJdr', 2, '20:30', 120, 1],
             // JDR — Thu
-            ['vJdr', 4, '17:30', 90, 2],
+            ['vJdr', 4, '17:30', 90, 1], // bloc {U9M1, U9M2}
             ['vJdr', 4, '19:00', 90, 1],
             ['vJdr', 4, '20:30', 120, 1],
             // JDR — Sat (Académie)
@@ -427,15 +432,15 @@ final class BcclSeeder
             ['vJdr', 6, '10:15', 75, 1],
             ['vJdr', 6, '11:30', 75, 1],
             // Armand — Mon
-            ['vArmand', 1, '17:30', 90, 2],
+            ['vArmand', 1, '17:30', 90, 1], // bloc {U13M1, U13M2}
             ['vArmand', 1, '19:00', 90, 1],
             ['vArmand', 1, '20:30', 120, 1],
             // Armand — Tue
             ['vArmand', 2, '17:30', 90, 1],
             ['vArmand', 2, '19:00', 90, 1],
             // Armand — Wed
-            // Mer après-midi réel 2026-08-05 : 14:00 (105', partagé U13F1/F2) puis 15:45.
-            ['vArmand', 3, '14:00', 105, 2],
+            // Mer après-midi réel 2026-08-05 : 14:00 (105', bloc {U13F1, U13F2}) puis 15:45.
+            ['vArmand', 3, '14:00', 105, 1],
             ['vArmand', 3, '15:45', 90, 1],
             ['vArmand', 3, '17:15', 90, 1],
             ['vArmand', 3, '18:45', 90, 1],
@@ -487,8 +492,8 @@ final class BcclSeeder
             // Annexe — Fri
             ['vDebarrosAnnexe', 5, '19:00', 90, 1],
             // ADN — Wed
-            // Mer 17:30 partagé U9F1/U9F2/U9M2 (ex-CEC, ADN divisible en 3, en travers).
-            ['vAdn', 3, '17:30', 90, 3, 'CEC'],
+            // Mer 17:30 bloc CEC1 {U9F1, U9F2, U9M2} — libellé CEC gardé (D8).
+            ['vAdn', 3, '17:30', 90, 1, 'CEC'],
             ['vAdn', 3, '19:00', 90, 1],
             ['vAdn', 3, '20:30', 120, 1],
         ];
@@ -1170,9 +1175,10 @@ final class BcclSeeder
             ['team' => $microBasket, 'venue' => 'vMateo', 'day' => 6, 'startTime' => '09:00', 'duration' => 45, 'lock' => LockLevel::HARD],
             ['team' => $baby1, 'venue' => 'vMateo', 'day' => 6, 'startTime' => '09:45', 'duration' => 60, 'lock' => LockLevel::HARD],
             ['team' => $baby2, 'venue' => 'vMateo', 'day' => 6, 'startTime' => '10:45', 'duration' => 60, 'lock' => LockLevel::HARD],
-            // Mercredi jeunes (ex-CEC, désormais des séances d'équipe individuelles sur
-            // des courts partagés) — ADN 17:30 en 3 (U9F1/U9F2/U9M2), Matéo 16:00 en 2
-            // (U11F2/U9M1) et Matéo 17:30 en 2 (U11F1/U11M2), d'où les capacités 3/2/2.
+            // Mercredi jeunes — blocs de mutualisation socle (P2-51) : ADN 17:30 = CEC1
+            // {U9F1/U9F2/U9M2}, Matéo 16:00 = CEC2 {U11F2/U9M1}, Matéo 17:30 = CEC3
+            // {U11F1/U11M2}. Chaque case en cap 1 : le bloc y compte pour UN occupant, et
+            // l'ensemble réservé égale EXACTEMENT ses membres (reservedSetMatchesABlock).
             ['team' => $teams['U9F1'], 'venue' => 'vAdn', 'day' => 3, 'startTime' => '17:30', 'duration' => 90, 'lock' => LockLevel::HARD],
             ['team' => $teams['U9F2'], 'venue' => 'vAdn', 'day' => 3, 'startTime' => '17:30', 'duration' => 90, 'lock' => LockLevel::HARD],
             ['team' => $teams['U9M2'], 'venue' => 'vAdn', 'day' => 3, 'startTime' => '17:30', 'duration' => 90, 'lock' => LockLevel::HARD],
@@ -1255,6 +1261,14 @@ final class BcclSeeder
         $manager->flush();
 
         // ============================================================
+        // SECTION 10b — PASSERELLES (P5-23) & MUTUALISATIONS SOCLE (P2-51)
+        // ============================================================
+        // Les 10 liens d'équipes réels et les 8 blocs de mutualisation de SAISON (socle,
+        // schedulePlanId NULL). Données fondateur (session du 2026-08-31) : posées telles
+        // quelles. Le MODÈLE s'enrichit — la transcription (90 placements) ne bouge pas.
+        $this->seedTeamLinksAndSharedBlocks($manager, $season, $clubId, $teams);
+
+        // ============================================================
         // SECTION 11 — TRANSCRIPTION DU PLANNING RÉEL (P5-17, profil dev)
         // ============================================================
         // Le plan SEASON pointe une version COMPLETED transcrivant, à la lettre, le
@@ -1285,7 +1299,118 @@ final class BcclSeeder
             $this->seedMateoIncident($manager, $club, $season, $clubId, $teams, $venues);
         }
 
+        // ============================================================
+        // SECTION 14 — LES VERSIONS TRANSCRITES NAISSENT FRAÎCHES
+        // ============================================================
+        // Le seed crée les versions transcrites (sections 11-12) PUIS continue d'insérer
+        // (incident, liens, blocs…) : chaque écriture post-transcription déclenche les
+        // écouteurs de péremption (Constraint/ResourceChangeStaleScheduleListener), et une
+        // base FRAÎCHE naissait avec ses 3 plannings marqués « périmés » — faux par
+        // construction, la transcription égale l'état FINAL seedé (défaut consigné au
+        // programme plannings-bccl, §5). Dernier geste du run : remise à zéro des deux
+        // drapeaux sur TOUTES les versions du club. En exploitation réelle rien ne repasse
+        // par ici — les écouteurs gardent leur plein sens hors seed.
+        $manager->flush();
+        $manager->createQuery(
+            'UPDATE ' . Schedule::class . ' s
+             SET s.constraintsChangedSinceGeneration = false, s.resourcesChangedSinceGeneration = false
+             WHERE s.schedulePlanId IN (SELECT sp.id FROM ' . SchedulePlan::class . ' sp WHERE sp.clubId = :clubId)',
+        )->setParameter('clubId', $clubId)->execute();
+
         return $club;
+    }
+
+    /**
+     * P5-23 (passerelles) + P2-51 (mutualisations SOCLE) — les 10 liens d'équipes réels du BCCL
+     * et ses 8 blocs de mutualisation de saison (schedulePlanId NULL). Données fondateur (session
+     * du 2026-08-31) : posées à la lettre, sans interprétation.
+     *
+     * Passerelles : le club DÉCLARE des équipes qui « partagent des joueurs » ⇒
+     * {@see TeamLinkType::NOT_SIMULTANEOUS} (le type de base de la passerelle, cf. docblock
+     * {@see TeamLink}). Intensité côté entraînement laissée au défaut du modèle (PREFERRED,
+     * fondateur non précisé). Find-or-create sur le couple normalisé (teamAId < teamBId),
+     * l'unicité DB (club, saison, A, B) faisant la clé.
+     *
+     * Blocs socle : commonSessions = 1 chacun ; les membres sont EXACTEMENT l'ensemble réservé
+     * sur la case physique (garde `reservedSetMatchesABlock` du rail unitaire), dont la capacité
+     * est redescendue à 1 — le bloc y compte pour UN occupant (plus de palliatif). La garde Σ du
+     * processor tient (pour chaque équipe, Σ des commonSessions de ses blocs socle ≤ ses
+     * séances/semaine). Purge+recréation des blocs socle (pas de clé naturelle par composition ;
+     * les blocs de PÉRIODE, ancrés à un plan, ne sont pas touchés).
+     *
+     * @param array<string, Team> $teams
+     */
+    private function seedTeamLinksAndSharedBlocks(EntityManagerInterface $manager, Season $season, string $clubId, array $teams): void
+    {
+        // --- 10 passerelles (find-or-create, couple normalisé A<B). ---
+        /** @var list<array{string, string}> $links */
+        $links = [
+            ['SM1', 'SM2'], ['SM1', 'U21M1'], ['U18M1', 'U18M2'], ['U15M1', 'U15M2'],
+            ['U13M1', 'U13M2'], ['SF1', 'SF2'], ['SF1', 'U18F1'], ['U18F2', 'U18F1'],
+            ['U15F1', 'U15F2'], ['U13F1', 'U13F2'],
+        ];
+        foreach ($links as [$nameA, $nameB]) {
+            $idA = $teams[$nameA]->getId();
+            $idB = $teams[$nameB]->getId();
+            [$teamAId, $teamBId] = $idA < $idB ? [$idA, $idB] : [$idB, $idA];
+            $existing = $manager->getRepository(TeamLink::class)->findOneBy([
+                'clubId' => $clubId,
+                'seasonId' => $season->getId(),
+                'teamAId' => $teamAId,
+                'teamBId' => $teamBId,
+            ]);
+            if ($existing instanceof TeamLink) {
+                continue;
+            }
+            $link = new TeamLink;
+            $link->setClubId($clubId);
+            $link->setSeasonId($season->getId());
+            $link->setTeamAId($teamAId);
+            $link->setTeamBId($teamBId);
+            $link->setLinkType(TeamLinkType::NOT_SIMULTANEOUS);
+            // trainingIntensity laissée au défaut PREFERRED (fondateur non précisé).
+            $manager->persist($link);
+        }
+        $manager->flush();
+
+        // --- 8 mutualisations SOCLE : purge des blocs de socle puis recréation. ---
+        foreach ($manager->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $clubId, 'seasonId' => $season->getId(), 'schedulePlanId' => null]) as $existingBlock) {
+            foreach ($manager->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $existingBlock->getId()]) as $existingMember) {
+                $manager->remove($existingMember);
+            }
+            $manager->remove($existingBlock);
+        }
+        $manager->flush();
+
+        /** @var list<list<string>> $blocks */
+        $blocks = [
+            ['U9M2', 'U9F1', 'U9F2'], // CEC1 — ADN mer 17:30
+            ['U9M1', 'U11F2'],        // CEC2 — Matéo mer 16:00
+            ['U11M2', 'U11F1'],       // CEC3 — Matéo mer 17:30
+            ['U9F1', 'U9F2'],         // Matéo lun 17:30
+            ['U13M1', 'U13M2'],       // Armand lun 17:30
+            ['U13F2', 'U13F3'],       // JDR mar 17:30
+            ['U13F1', 'U13F2'],       // Armand mer 14:00
+            ['U9M1', 'U9M2'],         // JDR jeu 17:30
+        ];
+        foreach ($blocks as $members) {
+            $block = new SharedTrainingBlock;
+            $block->setClubId($clubId);
+            $block->setSeasonId($season->getId());
+            $block->setSchedulePlanId(null);
+            $block->setCommonSessions(1);
+            $manager->persist($block);
+            foreach ($members as $teamName) {
+                $member = new SharedTrainingBlockTeam;
+                $member->setClubId($clubId);
+                $member->setSeasonId($season->getId());
+                $member->setSchedulePlanId(null);
+                $member->setBlockId($block->getId());
+                $member->setTeamId($teams[$teamName]->getId());
+                $manager->persist($member);
+            }
+        }
+        $manager->flush();
     }
 
     /**
