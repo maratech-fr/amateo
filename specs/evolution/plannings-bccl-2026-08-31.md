@@ -60,6 +60,7 @@ Conduite : chaque écriture en base annoncée AVANT, GO par GO (base de jeu du f
 | D10 | **Le bloc est un fait de PLAN, pas de saison** | question posée par l'agent de doc, tranchée par le fondateur : « je ne m'attends pas à ce qu'il survive aux vacances ». Pas de persistance-avec-désactivation. Coût assumé : redéclarer ~8 blocs par overlay ; « recopier les blocs du socle » = extension future explicite. |
 | D11 | **Un bloc se déplace ENTIER, jamais une équipe seule** | « si je dois le déplacer je bouge les 2 équipes d'un coup » (verbatim). Le verdict (PR-3) refusera le déplacement individuel d'un membre ; le rail de retouche gagnera « déplacer le bloc ». |
 | D12 | **Un bloc meurt ENTIER à la suppression d'un membre** | « je préfère tout défaire puis recréer que de retirer du groupe — la suppression d'une équipe est lourde de conséquence » (verbatim). Inverse le patron de survie-à-2 de la rotation match ; implémenté `SharedTrainingBlockPruneStep`. |
+| D14 | **La case de bloc ACTIVE exempte le conflit coach-joueur** (2026-09-01) | une personne coach d'une équipe d'un bloc et joueuse d'une autre équipe du MÊME bloc n'est pas en conflit sur la séance de bloc (une seule séance, un seul rôle tenu — le cas « coach de B, joueur de B » passait déjà). Arbitrage explicite : les 2 cas se distinguent — l'exemption est **réifiée sur b[case]=1** ; une coïncidence de deux séances SOLO de membres au même gymnase+heure (capacité ≥2, b=0) RESTE un conflit, et deux séances à débuts ou gymnases différents aussi. Toutes paires de rôles exemptées sous b=1 (coach-joueur, joueur-joueur). Déclencheur : exercice reprise-17 — Maxime Dionnet (coach SM1, joueur SM2, bloc SM1+SM2) rendait la génération INFEASIBLE. |
 
 ## 4. Les mutualisations : le lot P2-51, cadré PUIS amendé — PAS un nouveau chantier
 
@@ -145,7 +146,10 @@ voulu ; ne pas « harmoniser » vers la fusion.
 | P2-51 PR-7 (retrait du repli `sharedTrainingGroupId` côté backend + modèle groupe K) | ✅ 2026-08-31 — **P2-51 SOLDÉ EN ENTIER** |
 | Recalage seeder : les 8 partages réels (blocs BCCL, suite à P5-23/§5) | ✅ 2026-09-01 |
 | **P5-23 passerelles au seeder** | ✅ 2026-09-01 — **P5-23 SOLDÉE** |
-| **Exercice solveur reprise 17 août** | ⬜ **suivant** (reprise du fil principal du programme) |
+| **Exercice solveur reprise 17 août — 1ʳᵉ passe (sandbox)** | ✅ 2026-09-01 — INFEASIBLE à froid, 3 causes bisectées : conflit coach-joueur×bloc (→ D14, chantier livré), 2 indispos coach violées par la cible (Nicolas·jeudi/U18M1, Thomas·vendredi/U15M1), capacité 2 restée sur les 5 cases mutualisées de la grille de reprise. Mesure : cible = optimum − 18 pts (espace dégénéré) ; « coller au plan » recadré par le fondateur : pas de règles inventées, on arbitre l'application. |
+| Exemption coach-joueur sur case de bloc active (D14) — moteur | ✅ 2026-09-01 (branche `feat/bloc-coach-joueur-exemption`, PR en cours) — payload d'origine de l'exercice re-solvé COMPLETED |
+| Décisions seed reprise EN ATTENTE fondateur : désactiver par plan les 2 indispos coach (comme « SF2 · pas vendredi ») ? capacités des grilles de reprise → 1 (post-bloc) ? | ⬜ |
+| Exercice solveur reprise 17 août — 2ᵉ passe (après décisions seed) + déplacements manuels | ⬜ |
 | Exercice solveur reprise 24 août | ⬜ |
 | Overlay Mateo 31/08→16/10 (D2, D1) + exercice | ⬜ |
 | Semaine charnière au choix (D4) — cadrage | ⬜ |
