@@ -15,6 +15,7 @@ use App\Entity\ImplicitRuleSetting;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
+use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
@@ -1297,6 +1298,24 @@ final class BcclSeeder
         if ($profile->seedMateoIncident) {
             $this->seedMateoIncident($manager, $club, $season, $clubId, $teams, $venues);
         }
+
+        // ============================================================
+        // SECTION 14 — LES VERSIONS TRANSCRITES NAISSENT FRAÎCHES
+        // ============================================================
+        // Le seed crée les versions transcrites (sections 11-12) PUIS continue d'insérer
+        // (incident, liens, blocs…) : chaque écriture post-transcription déclenche les
+        // écouteurs de péremption (Constraint/ResourceChangeStaleScheduleListener), et une
+        // base FRAÎCHE naissait avec ses 3 plannings marqués « périmés » — faux par
+        // construction, la transcription égale l'état FINAL seedé (défaut consigné au
+        // programme plannings-bccl, §5). Dernier geste du run : remise à zéro des deux
+        // drapeaux sur TOUTES les versions du club. En exploitation réelle rien ne repasse
+        // par ici — les écouteurs gardent leur plein sens hors seed.
+        $manager->flush();
+        $manager->createQuery(
+            'UPDATE ' . Schedule::class . ' s
+             SET s.constraintsChangedSinceGeneration = false, s.resourcesChangedSinceGeneration = false
+             WHERE s.schedulePlanId IN (SELECT sp.id FROM ' . SchedulePlan::class . ' sp WHERE sp.clubId = :clubId)',
+        )->setParameter('clubId', $clubId)->execute();
 
         return $club;
     }

@@ -138,6 +138,17 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         self::assertSame('COMPLETED', (string) $row['status'], 'la version pointée est COMPLETED');
         self::assertSame('seed-transcription', (string) $row['solver_version'], 'la provenance est la transcription du seed');
         self::assertSame(90, (int) $row['slot_count'], 'la transcription pose exactement 90 créneaux (lundi→samedi)');
+
+        // Section 14 — une base FRAÎCHE naît sans bandeau « périmé » : le seed continue
+        // d'insérer APRÈS la transcription (liens, blocs, incident) et les écouteurs de
+        // péremption estampillaient les versions transcrites ; le dernier geste du run les
+        // remet à zéro. Le défaut (programme plannings-bccl §5) rougirait ici.
+        $stale = $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM schedule s JOIN schedule_plan sp ON sp.id = s.schedule_plan_id '
+            . 'WHERE sp.club_id = ? AND (s.constraints_changed_since_generation = true OR s.resources_changed_since_generation = true)',
+            [$club->getId()],
+        );
+        self::assertSame(0, (int) $stale, 'aucune version seedée ne naît « périmée »');
     }
 
     /**
