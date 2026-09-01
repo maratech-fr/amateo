@@ -80,7 +80,11 @@ final class AdminFeedbackTest extends WebTestCase
             'snapshot' => ['weeks' => [['index' => 1]]],
             'diagnostics' => [['type' => 'VENUE_OVERBOOKED']],
         ]);
-        $this->seedFeedback($clubB, null, 'bug', 'Autre bug', 'untreated', new DateTimeImmutable('-1 hour')->format(DateTimeImmutable::ATOM), null);
+        // Date FIXE d'août, pas `now-1h` : l'assertion QoS compte les bugs du mois 2026-08 en
+        // dur — un semis relatif bascule de mois au passage de minuit le 1er (rouge CI du
+        // 2026-09-01, PR #811). Rien n'exige sa fraîcheur : le « plus vieux non traité ≥ 2 h »
+        // est porté par le feedback à -3 h ci-dessus.
+        $this->seedFeedback($clubB, null, 'bug', 'Autre bug', 'untreated', '2026-08-05T10:00:00+00:00', null);
 
         $this->authenticateSuperAdmin('feedback-list@example.test');
 
