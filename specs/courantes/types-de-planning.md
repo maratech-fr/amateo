@@ -1,13 +1,13 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-08-31 (rotation de fraîcheur `documentation-update`, zone non touchée par cette
-PR (recalage seed BCCL, backend seul) — re-vérifié contre le code :
-`SchedulePlanProvisioner::ensurePeriodPlanId` (`SchedulePlanProvisioner.php:714`) ✓ ·
-`TranscribePeriodPlanController` (`POST /api/schedule_plans/{id}/transcribe-from-socle`) existe
-toujours ✓ · le défaut auto-transcription sur fermeture (P2-44 PR-4, §2) tient au code front —
-`GenerateStep.tsx:52` détecte `"closure" === periodEntry?.periodType` et déclenche
-`transcribe.mutateAsync` sans clic ✓ · `PeriodWindowUniquenessGuard` toujours la maison du 409
-`window_already_planned` ✓. Rien de faux ce passage)
+Last verified @ 2026-09-02 (lot overlay Mateo PR-1, `documentation-update`). Exemple de nom de
+plan de fermeture recalé (l'ancien incident « travaux — semaines du 7 sept. » remplacé par
+« Matéo indisponible (incident) — du 31 août 2026 au 16 oct. 2026 », D2). Re-confronté au code :
+`SchedulePlanProvisioner::ensurePeriodPlanId` (**:716**, recalé de :714) ✓ ·
+`TranscribePeriodPlanController` (`POST /api/schedule_plans/{id}/transcribe-from-socle`) existe ✓ ·
+défaut auto-transcription sur fermeture au front (`GenerateStep.tsx:52`, `"closure" === periodType`) ✓ ·
+`PeriodWindowUniquenessGuard` maison du 409 `window_already_planned` ✓. **Nouveau (D10bis)** : la
+naissance d'un plan de FERMETURE copie aussi les blocs de mutualisation du socle.
 
 > **Rôle de ce document** : la trace durable du modèle métier des plannings, validé avec le
 > fondateur le 2026-07-12. C'est LA référence à consulter avant tout travail sur la
@@ -31,7 +31,7 @@ toujours ✓ · le défaut auto-transcription sur fermeture (P2-44 PR-4, §2) ti
 | **Structure** | Saisie complète (wizard) | **Verrouillée** : équipes, gymnases/créneaux, coachs non modifiables — **exception : les séances/équipe sont ajustables** (3→2, 0 = pas de créneau cette semaine) | Équipes **cochables/décochables** (défaut : **Fanion + importantes**), créneaux gym **redéfinissables** (prêts mairie), coachs lecture seule |
 | **Contraintes** | Toutes (permanentes) | **C'est ce qui bouge** : héritées + datées, ajustables pour la semaine | Héritées avec défaut intelligent (suit les équipes) + propres à la période |
 | **Ce que ça comble** | Le plan de base de l'année — le process **le mieux rodé** | **Réparer un souci ponctuel** (gym fermé, coach absent) sans toucher le socle | La **reprise progressive** semaine par semaine (vacances, effectif réduit) |
-| **Nom par défaut** | `Planning de la saison 20XX-20XX` | **le TITRE de son entrée de calendrier** (décision fondateur 2026-08-23 — une seule identité ; ex. `Matéo indisponible (travaux) — semaines du 7 sept. 2026 au 27 sept. 2026`) | **le TITRE de son entrée** (ex. `Vacances de la Toussaint — du 20 oct. 2026 au 2 nov. 2026`) |
+| **Nom par défaut** | `Planning de la saison 20XX-20XX` | **le TITRE de son entrée de calendrier** (décision fondateur 2026-08-23 — une seule identité ; ex. `Matéo indisponible (incident) — du 31 août 2026 au 16 oct. 2026`) | **le TITRE de son entrée** (ex. `Vacances de la Toussaint — du 20 oct. 2026 au 2 nov. 2026`) |
 
 ## Règle transverse : le SEGMENT est l'unité
 
