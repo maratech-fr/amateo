@@ -6,6 +6,7 @@ namespace App\State\Processor;
 
 use App\ApiResource\ConstraintPeriodOverrideResource;
 use App\Dto\ConstraintPeriodOverrideInput;
+use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
 
 /**
@@ -41,6 +42,16 @@ class ConstraintPeriodOverrideStateProcessor extends AbstractStateProcessor
         // surface as a 500 on a double-submit; give a clean 422 instead (edit via PUT).
         if (!\in_array(null, [$input->schedulePlanId, $input->constraintId, $this->entityManager->getRepository(ConstraintPeriodOverride::class)->findOneBy(['schedulePlanId' => $input->schedulePlanId, 'constraintId' => $input->constraintId])], true)) {
             $this->refuse('Cette contrainte a déjà un réglage pour cette période — modifiez-le.');
+        }
+
+        // P2-59 — modèle FAIT/GENÈSE : une contrainte DATÉE (portant un calendarEntryId)
+        // appartient à sa période, elle n'est jamais décochée par override — un fait est un
+        // fait, une genèse ne vaut que pour son plan. Seules les PERMANENTES se décochent.
+        if (null !== $input->constraintId) {
+            $constraint = $this->entityManager->getRepository(Constraint::class)->find($input->constraintId);
+            if ($constraint instanceof Constraint && null !== $constraint->getCalendarEntryId()) {
+                $this->refuse('Une contrainte datée appartient à sa période : modifiez-la ou supprimez-la — elle ne se décoche pas.');
+            }
         }
 
         $entity = new ConstraintPeriodOverride;

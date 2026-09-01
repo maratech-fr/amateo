@@ -3,13 +3,13 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-08-31 (recalage seed BCCL, `documentation-update` — §« Module démo » confronté
-au code : `BcclSeeder::seedTeamLinksAndSharedBlocks` (`src/Seed/BcclSeeder.php:1305-1370`) sème
-bien 10 `TeamLink` (couple normalisé, `NOT_SIMULTANEOUS`, intensité par défaut `PREFERRED`) et
-8 `SharedTrainingBlock` de socle (`schedulePlanId` NULL, `commonSessions=1`), et les 8 cases
-partagées portent `capacity=1` dans les `VenueTrainingSlot` du seed (grep de la table du profil
-dev) ✓. Reste de l'inventaire non re-vérifié cette passe. Un stamp REMPLACE, l'historique vit dans
-git : `git log -p --follow backend/docs/backend-inventory.md`)
+Last verified @ 2026-09-01 (rotation `documentation-update`, P2-59 PR-1). §« Module démo »
+re-confronté au code : `BcclSeeder::seedTeamLinksAndSharedBlocks` — **ligne recalée `:1343`**
+(était :1305, décalée par les lots seed reprise) — sème toujours 10 `TeamLink` et 8
+`SharedTrainingBlock` de socle ✓ ; les grilles de reprise dérivent désormais leur capacité en
+OCCUPANT-UNIQUE (un groupe mutualisé = un occupant, `seedRepriseWeek`) et la semaine du 17 porte
+3 contraintes de GENÈSE pendues à son entrée-enfant (P2-59 PR-1) ✓. Reste de l'inventaire non
+re-vérifié cette passe. Un stamp REMPLACE, l'historique vit dans git.
 
 ---
 

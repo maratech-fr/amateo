@@ -204,7 +204,7 @@ final class CalendarEntryConflictsTest extends WebTestCase
         [$user, $club, $season] = $this->seed('CF7');
         // Mère = bloc de 3 semaines ; fermeture (legacy, tout le bloc) posée sur la mère.
         $mother = $this->closure($club, $season, self::VENUE_X, '2026-05-04', '2026-05-24');
-        // Enfant = lun 05-11 → mer 05-13, rattachée à la mère (datedConstraintSourceId).
+        // Enfant = lun 05-11 → mer 05-13 ; le fait posé sur la mère est lu par l'union (datedConstraintSourceIds).
         $child = new CalendarEntry;
         $child->setClubId($club->getId());
         $child->setSeasonId($season->getId());

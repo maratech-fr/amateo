@@ -68,10 +68,11 @@ final class PeriodConstraintSelector
             throw new LogicException('Period constraint selection supports only closure and holiday periods.');
         }
 
-        // P2-5 E1 : les datées d'une SEMAINE enfant vivent sur sa MÈRE (source unique
-        // CalendarEntry::datedConstraintSourceId).
+        // P2-59 — modèle FAIT/GENÈSE : un plan lit SES genèses (pendues à l'entrée-enfant)
+        // ∪ les faits de SA mère (source unique CalendarEntry::datedConstraintSourceIds).
+        // Une racine lit ses seules datées. findBy avec une liste → IN.
         /** @var list<Constraint> $dated */
-        $dated = $this->constraintRepository->findBy(['calendarEntryId' => $entry->datedConstraintSourceId(), 'clubId' => $clubId]);
+        $dated = $this->constraintRepository->findBy(['calendarEntryId' => $entry->datedConstraintSourceIds(), 'clubId' => $clubId]);
 
         $overrides = [];
         foreach ($this->entityManager->getRepository(ConstraintPeriodOverride::class)->findBy(['schedulePlanId' => $schedulePlanId]) as $override) {

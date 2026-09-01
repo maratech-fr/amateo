@@ -239,13 +239,20 @@ class CalendarEntry implements TenantOwnedInterface
     }
 
     /**
-     * P2-5 E1 — SOURCE UNIQUE de la règle d'héritage : les contraintes datées d'une
-     * semaine ENFANT vivent sur sa période MÈRE (le venue_closed décrit l'incident,
-     * pas la réponse). Entrée racine → elle-même.
+     * P2-59 — SOURCE UNIQUE du modèle FAIT/GENÈSE : la lecture des contraintes datées d'un
+     * plan de période est l'UNION de deux natures.
+     *  - un FAIT vit sur la MÈRE (l'incident : `venue_closed` décrit le fait, pas la réponse)
+     *    et vaut pour toutes ses semaines ;
+     *  - une GENÈSE vit sur l'entrée-ENFANT (la semaine) et ne vaut que pour ce plan seul.
+     * Une entrée-ENFANT lit donc SES genèses ∪ les faits de SA mère → `[id, parentEntryId]` ;
+     * une entrée RACINE ne porte que ses propres datées → `[id]` (byte-identique à l'ancien
+     * modèle : elle est sa propre source).
+     *
+     * @return non-empty-list<string>
      */
-    public function datedConstraintSourceId(): string
+    public function datedConstraintSourceIds(): array
     {
-        return $this->parentEntryId ?? $this->id;
+        return null === $this->parentEntryId ? [$this->id] : [$this->id, $this->parentEntryId];
     }
 
     public function setParentEntryId(?string $parentEntryId): self

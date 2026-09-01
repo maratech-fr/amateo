@@ -100,8 +100,9 @@ final class CalendarEntryConflictsController extends AbstractController
         // entrées confondues, chacune bornée à sa propre entrée porteuse ∩ la fenêtre), comme
         // le payload et OrphanPinGuard : sinon les jours barrés à l'écran ignoreraient la
         // fermeture déclarée sur une autre entrée qui recoupe la période. Une entrée SANS plan
-        // (jamais adaptée) garde le périmètre par-entrée historique (P2-5 E1 : les datées d'une
-        // semaine ENFANT vivent sur sa MÈRE — CalendarEntry::datedConstraintSourceId).
+        // (jamais adaptée) garde le périmètre par-entrée historique, désormais l'UNION du modèle
+        // FAIT/GENÈSE (P2-59 : une entrée-enfant lit SES genèses ∪ les faits de SA mère —
+        // CalendarEntry::datedConstraintSourceIds).
         //
         // Ces trois sorties (`venueIds`, `closures`, `fullyClosedVenueIds`) sont servies sur
         // TOUTES les sorties, y compris sans plan choisi — une fermeture est un fait déclaré,
@@ -115,7 +116,7 @@ final class CalendarEntryConflictsController extends AbstractController
         } else {
             /** @var list<Constraint> $facilityConstraints */
             $facilityConstraints = $this->entityManager->getRepository(Constraint::class)->findBy([
-                'calendarEntryId' => $entry->datedConstraintSourceId(),
+                'calendarEntryId' => $entry->datedConstraintSourceIds(),
                 'family' => ConstraintFamily::FACILITY,
                 'isActive' => true,
             ]);

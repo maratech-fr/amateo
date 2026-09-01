@@ -831,11 +831,104 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         self::assertContains('Facility perm', $names, 'a closure keeps all permanent constraints by default (B3+F2 unchanged)');
     }
 
+    /**
+     * P2-59 (axes constraint semantics + planning lifecycle) — LE TEST DU LOT : le modèle
+     * FAIT/GENÈSE au payload.
+     *
+     * Une GENÈSE pendue à l'entrée-ENFANT A (calendar_entry_id = A) part dans le payload du plan
+     * de A et SEULEMENT lui — la semaine sœur B ne la voit jamais (plans indépendants). Un FAIT
+     * de la MÈRE (calendar_entry_id = la mère) est hérité par les DEUX plans-enfants. Une entrée
+     * RACINE reste inchangée : elle ne lit que ses propres datées (byte-identique à l'ancien
+     * modèle).
+     *
+     * Falsifiable : sous l'ancien modèle (une datée d'enfant vit sur la mère), la genèse de A
+     * serait attachée à la mère et fuiterait donc vers B — l'assertion « B ne voit pas la genèse
+     * de A » tombe ROUGE.
+     */
+    public function testGenesisShipsToItsOwnPlanOnlyWhileAMotherFactIsInheritedByEverySister(): void
+    {
+        [$club, $season] = $this->seed();
+        $team = $this->team($club, $season, 'SM1');
+
+        // Mère (racine holiday) — porte un FAIT ; deux semaines sœurs A et B nées d'elle.
+        $mother = $this->holidayPeriod($club, $season); // 2026-05-04 → 2026-05-10
+        $this->em->flush();
+        $entryA = $this->childHolidayWeek($club, $season, $mother, '2026-05-04', '2026-05-10');
+        $entryB = $this->childHolidayWeek($club, $season, $mother, '2026-05-11', '2026-05-17');
+        $this->em->flush();
+
+        $this->datedClubTimeConstraint($club, $season, $entryA, 'Genèse semaine A');
+        $this->datedClubTimeConstraint($club, $season, $mother, 'Fait de la mère');
+        $this->em->flush();
+
+        $namesA = $this->payloadConstraintNames($this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $this->planIdOf($entryA), $entryA));
+        $namesB = $this->payloadConstraintNames($this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $this->planIdOf($entryB), $entryB));
+        $namesMother = $this->payloadConstraintNames($this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $this->planIdOf($mother), $mother));
+
+        // Plan de A : sa genèse + le fait de la mère.
+        self::assertContains('Genèse semaine A', $namesA, 'la genèse pendue à A part dans le payload de A');
+        self::assertContains('Fait de la mère', $namesA, 'le fait de la mère est hérité par le plan de A');
+
+        // Plan de B (sœur) : le fait de la mère, JAMAIS la genèse de A.
+        self::assertContains('Fait de la mère', $namesB, 'le fait de la mère est hérité par le plan de B');
+        self::assertNotContains('Genèse semaine A', $namesB, 'une sœur ne voit jamais la genèse d’une autre semaine');
+
+        // Racine (la mère) : inchangée — elle ne lit que SES propres datées (byte-identique).
+        self::assertContains('Fait de la mère', $namesMother, 'une racine lit ses propres datées');
+        self::assertNotContains('Genèse semaine A', $namesMother, 'une racine ne lit pas les genèses de ses enfants');
+        self::assertNotSame('', $team->getId(), 'garde : l’équipe existe (le club/saison est peuplé)');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $this->builder = self::getContainer()->get(ScheduleConstraintBuilder::class);
+    }
+
+    /** Une semaine-enfant (holiday) née d'une mère — parentEntryId posé. */
+    private function childHolidayWeek(Club $club, Season $season, CalendarEntry $mother, string $start, string $end): CalendarEntry
+    {
+        $entry = new CalendarEntry;
+        $entry->setClubId($club->getId());
+        $entry->setSeasonId($season->getId());
+        $entry->setKind(CalendarEntryKind::PERIOD);
+        $entry->setPeriodType(CalendarEntryPeriodType::HOLIDAY);
+        $entry->setTitle('Semaine ' . $start);
+        $entry->setStartDate(new DateTimeImmutable($start));
+        $entry->setEndDate(new DateTimeImmutable($end));
+        $entry->setParentEntryId($mother->getId());
+        $this->em->persist($entry);
+
+        return $entry;
+    }
+
+    /** Une contrainte DATÉE (CLUB/TIME/HARD) pendue à une entrée — genèse (enfant) ou fait (mère). */
+    private function datedClubTimeConstraint(Club $club, Season $season, CalendarEntry $entry, string $name): void
+    {
+        $c = new Constraint;
+        $c->setClubId($club->getId());
+        $c->setSeasonId($season->getId());
+        $c->setCalendarEntryId($entry->getId());
+        $c->setName($name);
+        $c->setScope(ConstraintScope::CLUB);
+        $c->setFamily(ConstraintFamily::TIME);
+        $c->setRuleType(ConstraintRuleType::HARD);
+        $c->setConfig(['minStartTime' => '20:00']);
+        $this->em->persist($c);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return list<string>
+     */
+    private function payloadConstraintNames(array $payload): array
+    {
+        /** @var list<array<string, mixed>> $constraints */
+        $constraints = $payload['constraints'] ?? [];
+
+        return array_map(static fn (array $c): string => (string) ($c['name'] ?? ''), $constraints);
     }
 
     /**

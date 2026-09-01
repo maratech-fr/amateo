@@ -325,6 +325,43 @@ final class CalendarEntryApiTest extends WebTestCase
         self::assertStringContainsString('Cette contrainte a déjà un réglage pour cette période — modifiez-le.', (string) $this->client->getResponse()->getContent());
     }
 
+    /**
+     * P2-59 (D4) — une contrainte DATÉE (portant un calendarEntryId : fait ou genèse) appartient
+     * à sa période, elle ne se décoche PAS par override. Poser un `ConstraintPeriodOverride` sur
+     * elle rend un 422 PARLANT, jamais un 201 muet. Le motif voyage dans le corps que le front lit.
+     */
+    public function testOverrideOnADatedConstraintIsRefused(): void
+    {
+        [$user, $club] = $this->seed('CE13d');
+
+        $this->post($user, $club, ['kind' => 'period', 'title' => 'Fermeture', 'startDate' => '2026-05-04', 'endDate' => '2026-05-10', 'periodType' => 'closure']);
+        $entryId = json_decode((string) $this->client->getResponse()->getContent(), true)['id'];
+
+        // Une contrainte DATÉE (calendarEntryId non nul) : elle appartient à sa période.
+        $this->client->request('POST', '/api/constraints', [], [], [
+            ...$this->authHeaders($user, $club),
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], json_encode(['name' => 'Barros fermé', 'scope' => 'FACILITY', 'family' => 'FACILITY', 'ruleType' => 'HARD', 'calendarEntryId' => $entryId], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $constraintId = json_decode((string) $this->client->getResponse()->getContent(), true)['id'];
+
+        $this->client->request('POST', '/api/schedule_plans', [], [], [
+            ...$this->authHeaders($user, $club),
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], json_encode(['calendarEntryId' => $entryId], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $planId = self::getContainer()->get(SchedulePlanProvisioner::class)->periodPlanId($entryId);
+        self::assertIsString($planId);
+
+        // Décocher une datée → 422 propre et PARLANT (pas un 201 muet).
+        $this->client->request('POST', '/api/constraint_period_overrides', [], [], [
+            ...$this->authHeaders($user, $club),
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], json_encode(['schedulePlanId' => $planId, 'constraintId' => $constraintId, 'isActive' => false], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('elle ne se décoche pas', (string) $this->client->getResponse()->getContent());
+    }
+
     public function testCollectionScopedToActiveSeason(): void
     {
         [$user, $club] = $this->seed('CE14');

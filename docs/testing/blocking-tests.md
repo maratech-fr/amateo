@@ -39,7 +39,7 @@ refusé 409, route sous les gardes rôle+tenant) ·
 `Security/PeriodGatePayloadParityTest` (gate pré-solve == payload) ·
 `Security/RecapCapacityWarningTest` (capacité du récap lue du payload) ·
 `Security/CoachDoubleBookingTest` (verrous HARD dédoublant un coach) ·
-`Integration/ScheduleConstraintBuilderOverlayTest` (le build overlay n'écrit pas) ·
+`Integration/ScheduleConstraintBuilderOverlayTest` (le build overlay n'écrit pas ; modèle FAIT/GENÈSE : une genèse ne part qu'au payload de son plan, un fait de la mère est hérité par toutes ses semaines) ·
 `Security/PlanEntitlementsTest` (crédits Découverte + caps payants) ·
 `Security/MemberRoleTest` (rôles Gestionnaire/Membre, dernier gestionnaire) ·
 `Security/ScheduleCapabilityParityTest` (capacité affichée == verdict) ·

@@ -267,6 +267,45 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         self::assertNotNull($this->em->getRepository(Venue::class)->find($venue->getId()));
     }
 
+    /**
+     * P2-59 (axes constraint semantics + planning lifecycle §7.1) — gate ⇄ payload s'accordent
+     * sur l'UNION du modèle FAIT/GENÈSE.
+     *
+     * Une GENÈSE pendue à l'entrée-ENFANT (le plan) ET un FAIT de sa MÈRE composent le jeu de
+     * datées d'un plan de reprise. Le sélecteur (gate) retient EXACTEMENT ces deux entités, et le
+     * builder (payload) sérialise EXACTEMENT ces deux entités — la parité tient sur l'union, pas
+     * sur les seules datées de la mère (ancien modèle).
+     *
+     * Falsifiable : sous l'ancien modèle, la genèse (sur l'enfant) ne serait pas chargée par le
+     * sélecteur — `kept` ne contiendrait que le fait, et l'assertion tombe ROUGE.
+     */
+    public function testGateAndPayloadAgreeOnTheGenesisMotherUnion(): void
+    {
+        [$club, $season, $child, $planId, $genesisId, $factId] = $this->seedGenesisUnionScenario();
+
+        $selection = self::getContainer()->get(PeriodConstraintSelector::class)
+            ->selectForPeriodPlan($club->getId(), $season->getId(), $planId, $child);
+        $keptIds = array_map(static fn (Constraint $c): string => $c->getId(), $selection->kept);
+        sort($keptIds);
+        $expected = [$genesisId, $factId];
+        sort($expected);
+        self::assertSame($expected, $keptIds, 'la sélection retient l\'union genèse (enfant) + fait (mère)');
+
+        $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)
+            ->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $child);
+        $payloadRootIds = [];
+        foreach ($payload['constraints'] as $row) {
+            self::assertIsArray($row);
+            $rootId = explode(':', (string) $row['id'])[0];
+            if (1 === preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $rootId)) {
+                $payloadRootIds[$rootId] = true;
+            }
+        }
+        $payloadRootIds = array_keys($payloadRootIds);
+        sort($payloadRootIds);
+        self::assertSame($expected, $payloadRootIds, 'le payload sérialise EXACTEMENT l\'union que le gate a retenue');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -274,6 +313,104 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         $this->em = $container->get(EntityManagerInterface::class);
         $this->hasher = $container->get(UserPasswordHasherInterface::class);
         $this->jwt = $container->get(JWTTokenManagerInterface::class);
+    }
+
+    /**
+     * Un club/saison, une mère (racine holiday) portant un FAIT (CLUB/TIME/HARD), et une
+     * semaine-enfant née d'elle portant une GENÈSE (CLUB/TIME/HARD) — chacune avec son plan.
+     *
+     * @return array{0: Club, 1: Season, 2: CalendarEntry, 3: string, 4: string, 5: string}
+     */
+    private function seedGenesisUnionScenario(): array
+    {
+        $uid = uniqid('', true);
+
+        $club = new Club;
+        $club->setName('Club genèse ' . $uid);
+        $club->setSlug('genese-' . $uid);
+        $club->setTimezone('Europe/Paris');
+        $club->setLocale('fr');
+        $club->setOnboardingCompleted(true);
+        $club->setFfbbClubCode('GEN' . strtoupper(substr(md5($uid), 0, 10)));
+        $this->em->persist($club);
+        $this->em->flush();
+
+        $this->scopeGucToClub($club->getId());
+
+        $season = new Season;
+        $season->setClubId($club->getId());
+        $season->setName('2025-2026');
+        $season->setStartDate(new DateTimeImmutable('2025-09-01'));
+        $season->setEndDate(new DateTimeImmutable('2026-06-30'));
+        $season->setStatus(SeasonStatus::ACTIVE);
+        $this->em->persist($season);
+
+        // Une équipe (via sport/catégorie/rang) : une contrainte CLUB TIME s'expanse PAR ÉQUIPE
+        // dans le payload — sans équipe, elle ne produirait aucune ligne et la parité serait creuse.
+        $sport = new Sport;
+        $sport->setName('Basketball');
+        $sport->setSlug('genese-' . $uid);
+        $sport->setIsActive(true);
+        $this->em->persist($sport);
+        $this->em->flush();
+
+        $category = new SportCategory;
+        $category->setClubId($club->getId());
+        $category->setSportId($sport->getId());
+        $category->setName('U11');
+        $category->setIsCustom(false);
+        $category->setSortOrder(0);
+        $this->em->persist($category);
+
+        $tier = $this->em->getRepository(PriorityTier::class)->find(1);
+        if (!$tier instanceof PriorityTier) {
+            $tier = new PriorityTier;
+            $tier->setId(1);
+            $tier->setLabel('S');
+            $tier->setName('Senior');
+            $tier->setColor('#FF0000');
+            $tier->setOrToolsWeight(100);
+            $tier->setDefaultMinSessions(2);
+            $this->em->persist($tier);
+        }
+        $this->em->flush();
+
+        $this->team($club, $season, $category, 'Équipe A');
+
+        // Mère (racine holiday) : porte le FAIT.
+        $mother = new CalendarEntry;
+        $mother->setClubId($club->getId());
+        $mother->setSeasonId($season->getId());
+        $mother->setKind(CalendarEntryKind::PERIOD);
+        $mother->setPeriodType(CalendarEntryPeriodType::HOLIDAY);
+        $mother->setTitle('Vacances');
+        $mother->setStartDate(new DateTimeImmutable('2026-05-04'));
+        $mother->setEndDate(new DateTimeImmutable('2026-05-24'));
+        $mother->setStatus(CalendarEntryStatus::ACTIVE);
+        $this->em->persist($mother);
+        $this->em->flush();
+
+        // Semaine-enfant : porte la GENÈSE, née de la mère.
+        $child = new CalendarEntry;
+        $child->setClubId($club->getId());
+        $child->setSeasonId($season->getId());
+        $child->setKind(CalendarEntryKind::PERIOD);
+        $child->setPeriodType(CalendarEntryPeriodType::HOLIDAY);
+        $child->setTitle('Semaine 1');
+        $child->setStartDate(new DateTimeImmutable('2026-05-04'));
+        $child->setEndDate(new DateTimeImmutable('2026-05-10'));
+        $child->setParentEntryId($mother->getId());
+        $child->setStatus(CalendarEntryStatus::ACTIVE);
+        $this->em->persist($child);
+        $this->em->flush();
+
+        $planId = $this->planIdOf($child); // le plan naît du geste
+
+        $genesis = $this->constraint($club, $season, ConstraintScope::CLUB, null, ConstraintFamily::TIME, ['minStartTime' => '20:00'], $child->getId());
+        $fact = $this->constraint($club, $season, ConstraintScope::CLUB, null, ConstraintFamily::TIME, ['minStartTime' => '18:00'], $mother->getId());
+        $this->em->flush();
+
+        return [$club, $season, $child, $planId, $genesis->getId(), $fact->getId()];
     }
 
     /**

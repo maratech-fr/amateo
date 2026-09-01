@@ -478,7 +478,7 @@ final class ValidateConstraintsController extends AbstractController
         // sur une donnée antérieure au lot C1 (le plan naît du geste).
         $datedOnly = function () use ($clubId, $calendarEntry): array {
             /** @var list<Constraint> $dated */
-            $dated = $this->constraintRepository->findBy(['calendarEntryId' => $calendarEntry->datedConstraintSourceId(), 'clubId' => $clubId]);
+            $dated = $this->constraintRepository->findBy(['calendarEntryId' => $calendarEntry->datedConstraintSourceIds(), 'clubId' => $clubId]);
 
             return ['constraints' => $dated, 'warnings' => [], 'selection' => null];
         };

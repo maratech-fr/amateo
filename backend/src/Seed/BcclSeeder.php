@@ -1285,7 +1285,7 @@ final class BcclSeeder
         // de PÉRIODE (semaines 17 et 24 août) sous une mère « Vacances d'été » sans plan,
         // chacun né avec son plan, sa grille reconstruite, ses overrides et sa version pointée.
         if ($profile->seedReprisePeriods) {
-            $this->seedReprisePeriods($manager, $club, $season, $clubId, $teams, $venues);
+            $this->seedReprisePeriods($manager, $club, $season, $clubId, $teams, $venues, $coaches);
         }
 
         // ============================================================
@@ -1674,8 +1674,9 @@ final class BcclSeeder
      *
      * @param array<string, Team>  $teams
      * @param array<string, Venue> $venues
+     * @param array<string, Coach> $coaches index « prénom nom » → coach (cible d'une genèse COACH)
      */
-    private function seedReprisePeriods(EntityManagerInterface $manager, Club $club, Season $season, string $clubId, array $teams, array $venues): void
+    private function seedReprisePeriods(EntityManagerInterface $manager, Club $club, Season $season, string $clubId, array $teams, array $venues, array $coaches): void
     {
         // Fenêtre de la mère : les vacances d'été, clampées à la saison (jamais hors de ses
         // bornes). La mère est une entrée RACINE sans plan — la garde d'unicité de fenêtre ne
@@ -1736,7 +1737,7 @@ final class BcclSeeder
         }
 
         foreach ($this->repriseWeeks() as $week) {
-            $this->seedRepriseWeek($manager, $season, $clubId, $teams, $venues, $mother->getId(), $week);
+            $this->seedRepriseWeek($manager, $season, $clubId, $teams, $venues, $coaches, $mother->getId(), $week);
         }
     }
 
@@ -1745,11 +1746,12 @@ final class BcclSeeder
      * overrides gymnase/équipe/contrainte, groupes de mutualisation, réservations, puis la
      * version transcrite pointée (validée). Tout idempotent.
      *
-     * @param array<string, Team>                                                                                                                                                                                                                                                                             $teams
-     * @param array<string, Venue>                                                                                                                                                                                                                                                                            $venues
-     * @param array{title: string, monday: string, sunday: string, activeVenues: list<string>, sessions: list<array{string, string, int, string, int}>, reservations?: list<array{string, string, int, string, int}>, groups: list<array{teams: list<string>, k: int}>, deactivatedConstraints: list<string>} $week
+     * @param array<string, Team>                                                                                                                                                                                                                                                                                                                                                                                                                                                $teams
+     * @param array<string, Venue>                                                                                                                                                                                                                                                                                                                                                                                                                                               $venues
+     * @param array<string, Coach>                                                                                                                                                                                                                                                                                                                                                                                                                                               $coaches
+     * @param array{title: string, monday: string, sunday: string, activeVenues: list<string>, sessions: list<array{string, string, int, string, int}>, reservations?: list<array{string, string, int, string, int}>, groups: list<array{teams: list<string>, k: int}>, deactivatedConstraints: list<string>, constraints?: list<array{name: string, scope: ConstraintScope, target: string, family: ConstraintFamily, rule: ConstraintRuleType, config: array<string, mixed>}>} $week
      */
-    private function seedRepriseWeek(EntityManagerInterface $manager, Season $season, string $clubId, array $teams, array $venues, string $motherId, array $week): void
+    private function seedRepriseWeek(EntityManagerInterface $manager, Season $season, string $clubId, array $teams, array $venues, array $coaches, string $motherId, array $week): void
     {
         $monday = new DateTimeImmutable($week['monday']);
         $sunday = new DateTimeImmutable($week['sunday']);
@@ -1927,6 +1929,42 @@ final class BcclSeeder
                 $manager->persist($constraintOverride);
             }
             $constraintOverride->setIsActive(false);
+        }
+        $manager->flush();
+
+        // --- Contraintes de GENÈSE (P2-59) : pendues à l'entrée-ENFANT (calendarEntryId =
+        // $child->getId()), elles ne valent que pour CE plan (le sélecteur d'un plan lit ses
+        // genèses ∪ les faits de sa mère). Find-or-create idempotent — clé clubId +
+        // calendarEntryId + name + scopeTargetId (deux genèses homonymes se distinguent par leur
+        // cible, ex. le bloc SM mutualisé posé sur SM1 ET SM2). La cible dépend du scope : TEAM →
+        // équipe nommée, COACH → coach indexé « prénom nom ». Un membre introuvable LÈVE (une
+        // genèse qui ne vise rien serait muette). Libellé au format wizard « <cible> · <prédicat> ». ---
+        foreach ($week['constraints'] ?? [] as $genesis) {
+            $targetId = match ($genesis['scope']) {
+                ConstraintScope::TEAM => ($teams[$genesis['target']] ?? throw new RuntimeException(\sprintf('Genèse « %s » : équipe « %s » introuvable.', $genesis['name'], $genesis['target'])))->getId(),
+                ConstraintScope::COACH => ($coaches[$genesis['target']] ?? throw new RuntimeException(\sprintf('Genèse « %s » : coach « %s » introuvable.', $genesis['name'], $genesis['target'])))->getId(),
+                default => throw new RuntimeException(\sprintf('Genèse « %s » : scope %s non géré par le seed.', $genesis['name'], $genesis['scope']->value)),
+            };
+            $genesisConstraint = $manager->getRepository(Constraint::class)->findOneBy([
+                'clubId' => $clubId,
+                'calendarEntryId' => $child->getId(),
+                'name' => $genesis['name'],
+                'scopeTargetId' => $targetId,
+            ]);
+            if (!$genesisConstraint instanceof Constraint) {
+                $genesisConstraint = new Constraint;
+                $genesisConstraint->setClubId($clubId);
+                $genesisConstraint->setSeasonId($season->getId());
+                $genesisConstraint->setCalendarEntryId($child->getId());
+                $genesisConstraint->setScope($genesis['scope']);
+                $genesisConstraint->setScopeTargetId($targetId);
+                $genesisConstraint->setFamily($genesis['family']);
+                $genesisConstraint->setRuleType($genesis['rule']);
+                $genesisConstraint->setName($genesis['name']);
+                $manager->persist($genesisConstraint);
+            }
+            $genesisConstraint->setConfig($genesis['config']);
+            $genesisConstraint->setIsActive(true);
         }
         $manager->flush();
 
@@ -2258,7 +2296,7 @@ final class BcclSeeder
      * future = une entrée de plus ici, pas du code. Séances : [équipe, gymnase, jour ISO,
      * 'HH:MM', durée]. capacity de grille et sessionsPerWeek se DÉRIVENT des séances.
      *
-     * @return list<array{title: string, monday: string, sunday: string, activeVenues: list<string>, sessions: list<array{string, string, int, string, int}>, reservations?: list<array{string, string, int, string, int}>, groups: list<array{teams: list<string>, k: int}>, deactivatedConstraints: list<string>}>
+     * @return list<array{title: string, monday: string, sunday: string, activeVenues: list<string>, sessions: list<array{string, string, int, string, int}>, reservations?: list<array{string, string, int, string, int}>, groups: list<array{teams: list<string>, k: int}>, deactivatedConstraints: list<string>, constraints?: list<array{name: string, scope: ConstraintScope, target: string, family: ConstraintFamily, rule: ConstraintRuleType, config: array<string, mixed>}>}>
      */
     private function repriseWeeks(): array
     {
@@ -2305,6 +2343,16 @@ final class BcclSeeder
                 'groups' => [
                     ['teams' => ['SM1', 'SM2'], 'k' => 3],
                     ['teams' => ['SF1', 'SF2'], 'k' => 2],
+                ],
+                // Contraintes de GENÈSE de CETTE semaine (P2-59, construites pendant l'exercice
+                // solveur du 2026-09-01, validées fondateur) : elles pendent à l'entrée-enfant du
+                // 17, invisibles de la semaine du 24. Le bloc SM mutualisé ne démarre pas avant
+                // 20:30 (la transcription le pose à 20:45 ≥ 20:30, honorée), Nico Barilleau est
+                // indispo lundi + vendredi (U18M1, son équipe, ne s'entraîne que mardi/jeudi).
+                'constraints' => [
+                    ['name' => 'Séniors masculins mutualisés · pas avant 20:30', 'scope' => ConstraintScope::TEAM, 'target' => 'SM1', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['minStartTime' => '20:30']],
+                    ['name' => 'Séniors masculins mutualisés · pas avant 20:30', 'scope' => ConstraintScope::TEAM, 'target' => 'SM2', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['minStartTime' => '20:30']],
+                    ['name' => 'Nicolas Barilleau · indispo lundi, vendredi', 'scope' => ConstraintScope::COACH, 'target' => 'Nicolas Barilleau', 'family' => ConstraintFamily::COACH_AVAILABILITY, 'rule' => ConstraintRuleType::HARD, 'config' => ['unavailableDays' => [1, 5]]],
                 ],
                 // Seuls les créneaux CHOISIS sont figés (équipes fanion — « on les impose au
                 // modèle car ça nous arrange », exercice solveur du 2026-09-01) : les deux blocs

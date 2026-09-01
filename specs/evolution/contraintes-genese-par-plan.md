@@ -2,8 +2,11 @@
 
 > Détail de la ligne roadmap **P2-59**. Ouvert le 2026-09-01, pendant l'exercice solveur de la
 > reprise du 17 août (programme [`plannings-bccl-2026-08-31.md`](plannings-bccl-2026-08-31.md)).
-> Statut : **besoin reformulé, 4 questions en attente d'arbitrage fondateur** — pas de plan tant
-> qu'elles ne sont pas tranchées.
+> Statut : **arbitré le 2026-09-01** (faits = incidents seulement ; zéro migration, reset+fixtures ;
+> pas de décochage des datées ; racine inchangée) — **PR-1 backend LIVRÉE** (lecture union
+> genèses∪faits, garde 422 sur le décochage d'une datée, les 3 genèses du 17 au seed pendues à
+> l'enfant). Reste PR-2 frontend (création→semaine, liste faits badgés lecture-seule + genèses
+> éditables) puis graduation en courantes.
 
 ## 1. Le constat (vérifié au code le 2026-09-01)
 
