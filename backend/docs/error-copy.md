@@ -4,13 +4,12 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, hors sujet de la PR — sondage des
-stamps les plus anciens du dépôt). Re-confronté au code : `status < 500` toujours à
-`errorMessage.ts:32` ✓ · `new ValidationException(` toujours confiné à
-`AbstractStateProcessor.php` (aucune autre occurrence dans `src/`) ✓ ·
-`ValidationExceptionCarriesViolationsTest` (`tests/Unit/`) et
-`PublicTextIsFreeOfInternalIdentifiersTest` (`tests/OpenApi/`) existent bien sous ces noms ✓.
-Rien de faux trouvé.
+Last verified @ 2026-09-02 (rotation `documentation-update`, PR-0 lot overlay — hors sujet de la
+PR, contrôle de fraîcheur). Re-confronté au code : `status < 500` toujours à `errorMessage.ts:32` ✓ ·
+`new ValidationException(` toujours confiné à `AbstractStateProcessor.php` (seule occurrence de
+`src/`) ✓ · `ValidationExceptionCarriesViolationsTest` (`tests/Unit/`) et
+`PublicTextIsFreeOfInternalIdentifiersTest` (`tests/OpenApi/`) existent sous ces noms ✓. Rien de
+faux trouvé.
 
 ## La règle
 
