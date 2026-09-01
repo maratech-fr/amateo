@@ -1,15 +1,13 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, P2-51 PR-3 — sans rapport avec le sujet
-de la PR (engine, solveur). Re-confronté au code : les cibles `test`/`tests-complete`/`phpunit`/
+Last verified @ 2026-09-01 (rotation `documentation-update`, P2-59 PR-1 — fichier hors sujet de la
+PR, contrôle de fraîcheur). Re-confronté au code : les cibles `test`/`tests-complete`/`phpunit`/
 `db-init`/`db-init-test`/`db-reset`/`db-reset-test`/`fixtures`/`phpstan`/`cs`/`cs-fix`/`rector`/
 `lint`/`migration-diff`/`migration-migrate`/`fix-perms`/`exec`/`jwt-keys`/`install`/`seed-bccl`
-toutes présentes dans `backend/Makefile` ✓ ; `play`/`sandbox` présentes dans le `Makefile` racine
-✓ ; `app:schedules:reconcile-stuck` confronté à `ReconcileStuckSchedulesCommand.php` (existe) ✓.
-Tout juste, rien à corriger. Non re-sondé cette passe : horaires exacts du catalogue de jobs,
-pièges RLS des commandes Doctrine, le motif `.pdf` seul d'`app:exports:purge`, le détail des
-scripts `backend/scripts/*.sh` — un stamp
-REMPLACE, l'historique des passes vit dans git : `git log -p --follow backend/docs/commands.md`.
+toutes présentes dans `backend/Makefile` ✓ ; `play`/`sandbox` dans le `Makefile` racine ✓ ;
+`app:schedules:reconcile-stuck` ↔ `ReconcileStuckSchedulesCommand.php` ✓. Rien à corriger. Non
+re-sondé cette passe : horaires du catalogue de jobs, pièges RLS Doctrine, scripts
+`backend/scripts/*.sh` — un stamp REMPLACE, l'historique vit dans git.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).
