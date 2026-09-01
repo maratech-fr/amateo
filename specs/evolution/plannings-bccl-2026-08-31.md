@@ -161,4 +161,5 @@ voulu ; ne pas « harmoniser » vers la fusion.
 | Overlay Mateo 31/08→16/10 (D2, D1) — cible ANALYSÉE et validée (76 cases, 8 gymnases, 13 mutualisations, Basket Santé ×2 assumé, Training Individuel sacrifié ; erreurs du doc détectées et corrigées par le fondateur) ; reste : seed du nouvel incident + exercice | 🟠 |
 | Semaine charnière au choix (D4) — cadrage | ⬜ |
 | Durée d'indispo modifiable (D3) — cadrage | ⬜ |
+| **Répartition des week-ends de MATCHS au seeder** (« Répartition WE prévisionnel.xlsx », `business/5-donnees/plannings-bccl/`, importé le 2026-09-02) — le planning de matchs réel du BCCL en **Semaine A / Semaine B**, à consigner au seeder APRÈS la fin du lot overlay ; cadrage à faire (format xlsx à dépouiller, mapping vers le module matchs — rotations/fenêtres) | ⬜ demande fondateur 2026-09-02 |
 | PR seeder finale : overlay transcrit + `make play` complet | ⬜ |
