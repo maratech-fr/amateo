@@ -28,7 +28,10 @@
 `Security/SuperAdminAccessTest` (frontière SA0) ·
 `Security/EngagedTeamGuardTest` (périmètre engagé ; depuis P2-52, garde aussi qu'un match dépointé « salle perdue » par l'une ou l'autre gâchette EXISTE toujours, donc l'équipe reste engagée — DELETE → 409) ·
 `Security/PeriodPlanBirthTest` (naissance du plan — ADR-0002 ; depuis P2-38, garde aussi le refus
-409 `window_already_planned` dans les deux sens quand deux plans de période se chevauchent) ·
+409 `window_already_planned` dans les deux sens quand deux plans de période se chevauchent ; depuis
+D10bis, garde la COPIE des blocs de mutualisation du socle à la naissance d'un plan de FERMETURE —
+contenu exact, instantané bidirectionnel, zéro copie pour un plan de vacances, pas de doublon au
+geste rejoué, cascade de suppression) ·
 `Security/PeriodCopyBirthTest` (l'adaptation naît comme une COPIE du socle : la V1 d'un plan de
 période transcrit la version POINTÉE du socle filtrée des réglages/fermetures — falsifié dans les
 deux sens ; séance saine copiée+verrouillée, jour fermé/gymnase désactivé/équipe réduite « à

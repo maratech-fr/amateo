@@ -1,12 +1,11 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, zone non touchée par cette PR —
-contrôle de fraîcheur. Re-confronté au code : tags système présents dans `TeamTagService`
-(`EMB`, `PRE_REGION`, `LOISIR_JEUNE`, `HONNEUR`, `PROMOTION`, `MIXTE`) ✓ · `FACILITY_CAPACITY`
-retirée des trois couches, ne subsiste qu'en commentaires historiques
-(`ScheduleConstraintBuilder.php:1327`, `ValidateConstraintsController.php:254`,
-`engine/app/main.py:486`) ✓ · `ConstraintValidationService` toujours appelé par le SEUL
-`ValidateConstraintsController` (grep) ✓. Rien de faux trouvé cette passe.)
+Last verified @ 2026-09-02 (rotation `documentation-update`, PR-0 lot overlay — zone non touchée
+par cette PR, contrôle de fraîcheur). Re-confronté au code : tags système présents dans
+`TeamTagService` (`EMB` :27, axes AGE) ✓ · `FACILITY_CAPACITY` ne subsiste qu'en commentaires
+historiques (1 occurrence par couche : `ScheduleConstraintBuilder.php`,
+`ValidateConstraintsController.php`, `engine/app/main.py`) ✓. Reste non re-sondé cette passe —
+historique : `git log -p --follow` ce fichier.
 
 > ClubScheduler — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
