@@ -28,6 +28,7 @@ from ..constraints import (
     iter_team_link_overlaps,
     team_share_declared_pairs,
 )
+from ..constraints.common import _fold_case_occupant_identity
 from ..model import (
     DEFAULT_SESSION_MINUTES,
     ScheduleCpModel,
@@ -772,30 +773,6 @@ def _diagnose_conflicts(
                 )
 
     return diagnostics
-
-
-def _fold_case_occupant_identity(
-    team_ids: list[str], team_to_group: Mapping[str, str], blocks: list[tuple[str, frozenset[str]]]
-) -> tuple[dict[str, str], set[str]]:
-    """P2-51 — PAR CASE : identité d'occupant de chaque équipe présente. Un BLOC dont TOUS les
-    membres siègent ICI se fond en une entrée (multi-appartenance ⇒ attribution par case, jamais
-    « premier bloc gagne ») ; sinon l'équipe retombe sur son GROUPE mutualisé (unicité) ou
-    elle-même. Renvoie ``(identity: équipe → clé d'occupant, clés de bloc effectivement fondues)``."""
-    present = set(team_ids)
-    identity: dict[str, str] = {}
-    covered: set[str] = set()
-    block_keys: set[str] = set()
-    for block_key, members in sorted(blocks):
-        if members <= present and not (members & covered):
-            for member in members:
-                identity[member] = block_key
-            covered |= members
-            block_keys.add(block_key)
-    for team_id in team_ids:
-        if team_id in covered:
-            continue
-        identity[team_id] = team_to_group.get(team_id, team_id)
-    return identity, block_keys
 
 
 def _occupant_list_with_blocks(

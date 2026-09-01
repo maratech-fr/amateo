@@ -915,6 +915,7 @@ def validate_assignment(
                 coach_names=coach_names,
                 venue_names=venue_names,
                 resolved_rules=diag_rules,
+                shared_blocks=data.get("sharedBlocks", []) or [],
             ):
                 dedupe_key = (str(violation.get("rule")), str(violation.get("message")))
                 if dedupe_key not in seen:
