@@ -2402,7 +2402,7 @@ final class BcclSeeder
                 'sessions' => [
                     // LUNDI
                     ['U13F1', 'vArmand', 1, '17:30', 90],
-                    ['U21M1', 'vArmand', 1, '19:30', 90],
+                    ['U21M1', 'vArmand', 1, '19:00', 90],
                     ['SM1', 'vArmand', 1, '20:30', 90],
                     ['SM2', 'vArmand', 1, '20:30', 90],
                     ['U15M1', 'vJdr', 1, '17:15', 60],
@@ -2411,7 +2411,7 @@ final class BcclSeeder
                     ['SF2', 'vJdr', 1, '20:45', 75],
                     // MARDI
                     ['U13M1', 'vArmand', 2, '17:30', 90],
-                    ['U18M1', 'vArmand', 2, '19:30', 90],
+                    ['U18M1', 'vArmand', 2, '19:00', 90],
                     ['SF2', 'vArmand', 2, '20:30', 90],
                     ['U15M2', 'vJdr', 2, '17:15', 60],
                     ['U15F1', 'vJdr', 2, '18:15', 75],
@@ -2420,7 +2420,7 @@ final class BcclSeeder
                     ['SM2', 'vJdr', 2, '20:45', 75],
                     // MERCREDI
                     ['U15M1', 'vArmand', 3, '17:30', 90],
-                    ['U21M1', 'vArmand', 3, '19:30', 90],
+                    ['U21M1', 'vArmand', 3, '19:00', 90],
                     ['SM3', 'vArmand', 3, '20:30', 90],
                     ['U15F1', 'vJdr', 3, '17:15', 60],
                     ['U18M1', 'vJdr', 3, '18:15', 75],
@@ -2428,7 +2428,7 @@ final class BcclSeeder
                     ['SF1', 'vJdr', 3, '20:45', 75],
                     // JEUDI
                     ['U13F2', 'vArmand', 4, '17:30', 90],
-                    ['U18M1', 'vArmand', 4, '19:30', 90],
+                    ['U18M1', 'vArmand', 4, '19:00', 90],
                     ['U18F2', 'vArmand', 4, '20:30', 90],
                     ['U13M1', 'vJdr', 4, '17:15', 60],
                     ['U13F1', 'vJdr', 4, '18:15', 75],
@@ -2437,7 +2437,7 @@ final class BcclSeeder
                     ['SM2', 'vJdr', 4, '20:45', 105],
                     // VENDREDI
                     ['U15F2', 'vArmand', 5, '17:30', 90],
-                    ['U15F1', 'vArmand', 5, '19:30', 90],
+                    ['U15F1', 'vArmand', 5, '19:00', 90],
                     ['SM3', 'vArmand', 5, '20:30', 90],
                     ['U13F1', 'vJdr', 5, '17:15', 60],
                     ['U15M1', 'vJdr', 5, '18:15', 75],
