@@ -617,11 +617,20 @@ export function useDeleteCoachPlayer() {
 
 // --- Constraints (W4) ---
 
-/** In period mode, list the period's dated constraints; else base-plan (permanent) constraints. */
-export function useWizardConstraints(calendarEntryId?: string | null) {
+/**
+ * In period mode, list the period's dated constraints; else base-plan (permanent) constraints.
+ *
+ * P2-59 — le modèle FAIT/GENÈSE lit DEUX natures par deux appels : les GENÈSES d'une semaine
+ * (`calendarEntryId` = la semaine) et les FAITS de sa mère (`calendarEntryId` = la mère). Une
+ * entrée RACINE n'a pas de mère : l'appel « faits » est alors DÉSACTIVÉ (`enabled = false`) pour
+ * ne pas retomber sur la clé « base » (contraintes permanentes de saison) — l'appelant écarte
+ * de toute façon sa donnée, mais couper la requête évite un fetch inutile.
+ */
+export function useWizardConstraints(calendarEntryId?: string | null, enabled = true) {
   return useQuery({
     queryKey: ["wizard", "constraints", calendarEntryId ?? "base"],
     queryFn: () => wizardApi.listConstraints(calendarEntryId ? { calendarEntryId } : { permanent: "1" }),
+    enabled,
     staleTime: 30_000,
   });
 }

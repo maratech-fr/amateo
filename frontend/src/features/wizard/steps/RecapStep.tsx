@@ -113,12 +113,16 @@ export function RecapStep() {
   const { data: allTeams = [] } = useWizardTeams();
   const { data: allVenues = [] } = useWizardVenues();
   const { data: slots = [] } = useGridSlots(layerPlanId);
-  // D5 (P2-22) — miroir de `CalendarEntry::datedConstraintSourceId()` : les datées d'une
-  // semaine ENFANT pendent à sa MÈRE (`parentEntryId ?? id`). Lire par l'enfant en rendrait
-  // la liste vide au récap.
+  // P2-59 — union GENÈSES (datées de l'entrée) ∪ FAITS (datés de la mère), miroir de
+  // `CalendarEntry::datedConstraintSourceIds()`. Read-only ici (le récap n'édite pas) : on ne
+  // distingue donc pas les natures, on affiche/compte l'union — exactement ce que le solveur
+  // lira pour cette semaine. Une entrée RACINE n'a pas de mère (l'appel « faits » est coupé).
   const { data: recapEntry } = useCalendarEntry(periodEntryId);
-  const sourceEntryId = null !== periodEntryId ? (recapEntry?.parentEntryId ?? periodEntryId) : null;
-  const { data: constraints = [] } = useWizardConstraints(sourceEntryId);
+  const motherEntryId = recapEntry?.parentEntryId ?? null;
+  const { data: genesisConstraints = [] } = useWizardConstraints(periodEntryId);
+  const factQuery = useWizardConstraints(motherEntryId, null !== motherEntryId);
+  const factConstraints = useMemo(() => (null !== motherEntryId ? (factQuery.data ?? []) : []), [motherEntryId, factQuery.data]);
+  const constraints = useMemo(() => [...genesisConstraints, ...factConstraints], [genesisConstraints, factConstraints]);
   // Les réservations pendent au PLAN (inv. 5, lot C3) — les contraintes, elles, restent
   // lues par l'entrée (elles décrivent le FAIT).
   // `ready` faux = plan pas encore résolu : ne PAS lire, sinon on sert le socle.

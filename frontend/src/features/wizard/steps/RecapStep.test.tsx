@@ -15,14 +15,18 @@ const team = (id: string, name: string, tier: number): TeamRow => ({ id, name, s
 
 // P2-15 : la COUCHE que le récap décrit — période (équipes/gymnases actifs) ou socle.
 const deleteReservationMock = vi.hoisted(() => vi.fn());
-const { recapLayer, anchorState, storeState, constraintsState, constraintsArg, calendarEntryState, conflictsState } = vi.hoisted(() => ({
+const { recapLayer, anchorState, storeState, constraintsState, constraintsArg, constraintsByEntry, calendarEntryState, calendarEntryById, conflictsState } = vi.hoisted(() => ({
   anchorState: { value: { state: "period", planId: "plan-1" } as { state: string; planId: string | null } },
   storeState: { value: { mode: "season", calendarEntryId: null } as { mode: string; calendarEntryId: string | null } },
-  // P2-22 — les contraintes affichées (D4) + l'id que le récap passe à useWizardConstraints,
-  // qui doit être la MÈRE pour une semaine enfant (D5).
+  // P2-22 / P2-59 — les contraintes affichées (D4) + le dernier id passé à useWizardConstraints.
   constraintsState: { data: [] as Array<Record<string, unknown>> },
   constraintsArg: { value: undefined as string | null | undefined },
+  // P2-59 — genèses/faits lus PAR entrée : la semaine pour ses genèses, la mère pour ses faits.
+  // Vide → repli sur `constraintsState.data`.
+  constraintsByEntry: { map: {} as Record<string, Array<Record<string, unknown>>> },
   calendarEntryState: { data: { parentEntryId: null } as { parentEntryId: string | null } | undefined },
+  // P2-59 — les entrées de calendrier par id (la mère porte son parentEntryId null).
+  calendarEntryById: { map: {} as Record<string, { parentEntryId: string | null; title?: string }> },
   // P2-37 D5/D6 + indispo INFORMATIVE (2026-08-18) — les fermetures servies par /conflicts :
   // `closures` porte le motif, `fullyClosedVenueIds` un gymnase entièrement fermé, et
   // `effectiveClosedWeekdays` l'ÉTAT EFFECTIF jour par jour (un jour rouvert n'y figure PAS).
@@ -42,7 +46,7 @@ vi.mock("@/features/cockpit/queries", () => ({
   useSchedulePlanForEntry: () => ({ data: { id: "plan-1" }, isLoading: false }),
   usePeriodAnchor: () => anchorState.value,
   anchorIsWritable: (a: { state: string }) => "period" === a.state || "base" === a.state,
-  useCalendarEntry: () => ({ data: calendarEntryState.data }),
+  useCalendarEntry: (id: string | null) => ({ data: null != id && id in calendarEntryById.map ? calendarEntryById.map[id] : calendarEntryState.data }),
   useEntryConflicts: () => ({ data: conflictsState.data, isError: false, refetch: vi.fn() }),
 }));
 vi.mock("../queries", () => ({
@@ -61,8 +65,14 @@ vi.mock("../queries", () => ({
   useWizardCoaches: () => ({ data: [] }),
   useWizardCoachPlayers: () => ({ data: [] }),
   useWizardTeamCoaches: () => ({ data: [] }),
-  useWizardConstraints: (entryId?: string | null) => {
+  useWizardConstraints: (entryId?: string | null, enabled = true) => {
     constraintsArg.value = entryId;
+    if (false === enabled) {
+      return { data: [] };
+    }
+    if (null != entryId && entryId in constraintsByEntry.map) {
+      return { data: constraintsByEntry.map[entryId] };
+    }
     return { data: constraintsState.data };
   },
   useWizardTeamTags: () => ({ data: [] }),
@@ -336,6 +346,8 @@ describe("RecapStep — fermetures de gymnase et semaine enfant", () => {
     anchorState.value = { state: "period", planId: "plan-1" };
     storeState.value = { mode: "season", calendarEntryId: null };
     constraintsState.data = [];
+    constraintsByEntry.map = {};
+    calendarEntryById.map = {};
     calendarEntryState.data = { parentEntryId: null };
   });
 
@@ -350,11 +362,22 @@ describe("RecapStep — fermetures de gymnase et semaine enfant", () => {
     expect(screen.getByText(/du 1 mai 2026 au 10 mai 2026/)).toBeInTheDocument();
   });
 
-  it("lit les datées par la MÈRE depuis une semaine enfant (D5)", () => {
+  // P2-59 — le récap d'une semaine enfant affiche l'UNION genèses (datées de la semaine) ∪
+  // faits (datés de la mère), miroir de CalendarEntry::datedConstraintSourceIds. Read-only ici.
+  it("affiche l'union genèses (semaine) ∪ faits (mère) depuis une semaine enfant (P2-59)", async () => {
     storeState.value = { mode: "period", calendarEntryId: "child-week" };
     calendarEntryState.data = { parentEntryId: "mother-1" };
+    calendarEntryById.map = { "mother-1": { parentEntryId: null, title: "Vacances d'été" } };
+    constraintsByEntry.map = {
+      "child-week": [{ id: "g1", name: "Genèse de la semaine", scope: "CLUB", scopeTargetId: null, family: "DAY", ruleType: "HARD", config: { forbiddenDays: [1] }, isActive: true }],
+      "mother-1": [{ id: "f1", name: "Fait de la mère", scope: "CLUB", scopeTargetId: null, family: "DAY", ruleType: "HARD", config: { forbiddenDays: [7] }, isActive: true }],
+    };
+    const user = userEvent.setup();
     renderWithProviders(<RecapStep />);
-    expect(constraintsArg.value).toBe("mother-1");
+
+    await user.click(screen.getByRole("button", { name: /Contraintes/ }));
+    expect(screen.getByText("Genèse de la semaine")).toBeInTheDocument();
+    expect(screen.getByText("Fait de la mère")).toBeInTheDocument();
   });
 
   // P2-51 — une section « Mutualisation » à côté des réservations : une ligne par bloc de la

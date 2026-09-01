@@ -93,13 +93,22 @@ export function ConstraintsStep() {
   // `usePeriodAnchor` porte le pourquoi : `null` est une ancre LÉGITIME (= base), donc un
   // `?? null` nu poserait la réservation sur le socle pendant le chargement du plan.
   const anchor = usePeriodAnchor(periodEntryId);
-  // D5 (P2-22) — MIROIR de `CalendarEntry::datedConstraintSourceId()` (backend) : les
-  // contraintes DATÉES d'une semaine ENFANT pendent à sa MÈRE (`parentEntryId ?? id`). Lister
-  // ET créer par l'id de l'enfant les rendrait invisibles à `PeriodConstraintSelector`. Les
-  // FERMETURES, elles, sont déjà résolues serveur (on interroge l'enfant pour les conflits).
+  // P2-59 — MODÈLE FAIT/GENÈSE, MIROIR de `CalendarEntry::datedConstraintSourceIds()` (backend).
+  // Une entrée-ENFANT (semaine) porte deux natures : ses GENÈSES (datées de la semaine, éditables
+  // ici) ∪ les FAITS de sa MÈRE (datés de l'incident, affichés mais réglés à la source). On lit
+  // donc deux fois : la semaine pour ses genèses, la mère pour ses faits. Une entrée RACINE n'a
+  // pas de mère : ses datées SONT ses genèses, aucun fait hérité (l'appel « faits » est coupé).
+  // Les FERMETURES, elles, sont déjà résolues serveur (on interroge l'enfant pour les conflits).
   const { data: currentEntry } = useCalendarEntry(periodEntryId);
-  const sourceEntryId = null !== periodEntryId ? (currentEntry?.parentEntryId ?? periodEntryId) : null;
-  const { data: constraints = [] } = useWizardConstraints(sourceEntryId);
+  const motherEntryId = currentEntry?.parentEntryId ?? null;
+  const { data: motherEntry } = useCalendarEntry(motherEntryId);
+  const { data: genesisConstraints = [] } = useWizardConstraints(periodEntryId);
+  const factQuery = useWizardConstraints(motherEntryId, null !== motherEntryId);
+  const factConstraints = useMemo(() => (null !== motherEntryId ? (factQuery.data ?? []) : []), [motherEntryId, factQuery.data]);
+  const factIds = useMemo(() => new Set(factConstraints.map((c) => c.id)), [factConstraints]);
+  // Titre de la mère pour le badge des faits (« Toutes les semaines de … »).
+  const motherTitle = motherEntry?.title ?? "";
+  const constraints = useMemo(() => [...genesisConstraints, ...factConstraints], [genesisConstraints, factConstraints]);
   const { data: allTeams = [] } = useWizardTeams();
   const { data: tiers = [] } = usePriorityTiers();
   const { data: tags = [] } = useWizardTeamTags();
@@ -438,10 +447,11 @@ export function ConstraintsStep() {
       return;
     }
     // Create: keep the target/rule for rapid multi-add, clear only the values.
-    // In period mode, attach the constraint to the entry → dated (excluded from base). D5 :
-    // une datée créée depuis une semaine ENFANT porte l'id de la MÈRE (`sourceEntryId`), sinon
-    // `PeriodConstraintSelector` (qui lit `datedConstraintSourceId`) ne la voit jamais.
-    create.mutate(null !== sourceEntryId ? { ...payload, calendarEntryId: sourceEntryId } : payload, { onSuccess: clearInputs });
+    // P2-59 — en mode période, on attache la contrainte à L'ENTRÉE COURANTE (la semaine
+    // elle-même), jamais à sa mère : c'est une GENÈSE de ce plan seul. `PeriodConstraintSelector`
+    // (qui lit `datedConstraintSourceIds`) la voit par la semaine ; deux semaines sœurs ne
+    // partagent donc plus toutes leurs règles (modèle d'indépendance des plans).
+    create.mutate(null !== periodEntryId ? { ...payload, calendarEntryId: periodEntryId } : payload, { onSuccess: clearInputs });
   };
 
   // Load an existing constraint into the shared form (reverse of build()): resolve
@@ -566,7 +576,9 @@ export function ConstraintsStep() {
     if (null === editTarget || consumedEditRef.current === editTarget) {
       return;
     }
-    const target = constraints.find((c) => c.id === editTarget);
+    // P2-59 — seules les GENÈSES sont éditables ici ; un fait de la mère ne s'ouvre pas dans
+    // l'éditeur (il se règle à la source), donc on le cherche parmi les genèses uniquement.
+    const target = genesisConstraints.find((c) => c.id === editTarget);
     if (undefined === target) {
       return;
     }
@@ -579,7 +591,7 @@ export function ConstraintsStep() {
     // (qui a déjà programmé le scroll du formulaire) → il gagne, la ligne finit centrée. Appel de
     // méthode optionnel : `scrollIntoView` n'existe pas en jsdom (même garde que P4-66).
     requestAnimationFrame(() => document.querySelector(`[data-constraint-id="${editTarget}"]`)?.scrollIntoView?.({ block: "center", behavior: "smooth" }));
-  }, [editTarget, constraints]);
+  }, [editTarget, genesisConstraints]);
 
   const teamPicker = (
     <Select aria-label="Cible" title="Qui est concerné : tout le club, un groupe (tag), ou une équipe précise" className="h-8 w-48" value={target} onChange={(e) => changeTarget(e.target.value)}>
@@ -999,6 +1011,10 @@ export function ConstraintsStep() {
                   // qui peut être périmé ou copié d'une autre règle (docblock du module).
                   const parts = constraintPredicateParts(c, (id) => venueName.get(id));
                   const target = constraintTarget(c, { venueName: (id) => venueName.get(id), teamName: (id) => teamName.get(id), coachName: (id) => coachName.get(id), tagLabel });
+                  // P2-59 — un FAIT de la mère : décrit un incident qui vaut pour TOUTES ses
+                  // semaines. Il s'affiche mais ne se règle pas d'ici (on ajuste l'incident à la
+                  // source) — d'où le badge à la place des actions, pas un bouton désactivé.
+                  const isFact = factIds.has(c.id);
 
                   return (
                     <tr key={c.id} data-constraint-id={c.id} className={cn("border-b border-border/60 last:border-0", editingId === c.id ? "bg-accent/10 ring-1 ring-inset ring-accent" : "")}>
@@ -1026,17 +1042,29 @@ export function ConstraintsStep() {
                         <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{RULE_LABEL[c.ruleType]}</span>
                       </td>
                       <td className="px-3 py-2 align-top">
-                        {/* `p-1.5 -m-1.5` : 28 px cliquables autour d'une icône de 16, SANS
-                            épaissir la ligne — la passe de design nommait `w-6 h-6` comme le
-                            mauvais exemple de cible de clic. */}
-                        <div className="flex items-center justify-end gap-1">
-                          <button type="button" aria-label="Modifier" className="-m-1.5 rounded p-1.5 text-muted-foreground hover:text-foreground" onClick={() => editConstraint(c)}>
-                            <Pencil className="size-4" />
-                          </button>
-                          <button type="button" aria-label="Supprimer" className="-m-1.5 rounded p-1.5 text-muted-foreground hover:text-destructive" onClick={() => setPendingDelete(c)}>
-                            <Trash2 className="size-4" />
-                          </button>
-                        </div>
+                        {isFact ? (
+                          // Fait de la mère : lecture seule ici. Le badge DIT pourquoi (texte
+                          // lisible, pas qu'une couleur) et où le régler — même idiome de badge
+                          // que la colonne « Niveau ».
+                          <span
+                            className="inline-block rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+                            title={motherTitle ? `Cette règle décrit un fait de « ${motherTitle} » : elle s'applique à toutes ses semaines et se règle à la source.` : undefined}
+                          >
+                            {motherTitle ? `Toutes les semaines de ${motherTitle}` : "Toutes les semaines"}
+                          </span>
+                        ) : (
+                          // `p-1.5 -m-1.5` : 28 px cliquables autour d'une icône de 16, SANS
+                          // épaissir la ligne — la passe de design nommait `w-6 h-6` comme le
+                          // mauvais exemple de cible de clic.
+                          <div className="flex items-center justify-end gap-1">
+                            <button type="button" aria-label="Modifier" className="-m-1.5 rounded p-1.5 text-muted-foreground hover:text-foreground" onClick={() => editConstraint(c)}>
+                              <Pencil className="size-4" />
+                            </button>
+                            <button type="button" aria-label="Supprimer" className="-m-1.5 rounded p-1.5 text-muted-foreground hover:text-destructive" onClick={() => setPendingDelete(c)}>
+                              <Trash2 className="size-4" />
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );

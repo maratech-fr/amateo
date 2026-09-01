@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Api;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
+use App\Entity\ConstraintPeriodOverride;
 use App\Entity\PriorityTier;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -18,6 +19,7 @@ use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\Gender;
 use App\Enum\SeasonStatus;
+use App\Tests\CreatesPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -30,6 +32,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 #[Group('integration')]
 final class ConstraintApiTest extends WebTestCase
 {
+    use CreatesPeriodPlanTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -343,6 +346,71 @@ final class ConstraintApiTest extends WebTestCase
         self::assertFalse($data['isActive']);
         self::assertSame(5, $data['sortOrder']);
         self::assertSame([6, 7], $data['config']['forbiddenDays']);
+    }
+
+    /**
+     * P2-59 (revue sécurité #814) — garde SYMÉTRIQUE : l'interdiction de décocher une datée est
+     * contournable par l'ORDRE (décocher une PERMANENTE puis la dater). On la ferme dans le
+     * chemin UPDATE : dater une contrainte qui porte ≥1 décochage par plan est refusé (422),
+     * sinon le décochage devient orphelin sur une datée — état que le modèle FAIT/GENÈSE proscrit.
+     */
+    public function testDatingAConstraintThatHasPeriodOverridesIsRefused(): void
+    {
+        $client = $this->client;
+        $client->loginUser($this->user);
+
+        $constraint = $this->createConstraint('Permanente décochée', 'CLUB');
+        $planId = $this->createPeriodPlan($this->club->getId(), $this->season->getId());
+        $this->em->persist((new ConstraintPeriodOverride)
+            ->setClubId($this->club->getId())
+            ->setSeasonId($this->season->getId())
+            ->setSchedulePlanId($planId)
+            ->setConstraintId($constraint->getId())
+            ->setIsActive(false));
+        $this->em->flush();
+
+        $client->request('PUT', \sprintf('/api/constraints/%s', $constraint->getId()), [], [], [
+            'HTTP_X-Club-Id' => $this->club->getId(),
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], json_encode([
+            'name' => 'Permanente décochée',
+            'scope' => 'CLUB',
+            'family' => 'DAY',
+            'ruleType' => 'HARD',
+            'config' => ['forbiddenDays' => [6]],
+            'calendarEntryId' => '22222222-2222-4222-8222-222222222222',
+        ], \JSON_THROW_ON_ERROR));
+
+        self::assertSame(422, $client->getResponse()->getStatusCode(), 'dater une contrainte qui porte un décochage par plan doit être refusé — sinon l\'override reste orpheline sur une datée.');
+        self::assertStringContainsString('décochages', (string) $client->getResponse()->getContent(), 'le message doit dire au gestionnaire de retirer les décochages avant de dater.');
+    }
+
+    /**
+     * P2-59 — cas NOMINAL : dater une contrainte SANS aucun décochage passe (200) et pose bien
+     * le calendarEntryId. La garde ne freine que l'état contradictoire (datée + décochée).
+     */
+    public function testDatingAConstraintWithoutOverridesIsAccepted(): void
+    {
+        $client = $this->client;
+        $client->loginUser($this->user);
+
+        $constraint = $this->createConstraint('Permanente à dater', 'CLUB');
+
+        $client->request('PUT', \sprintf('/api/constraints/%s', $constraint->getId()), [], [], [
+            'HTTP_X-Club-Id' => $this->club->getId(),
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], json_encode([
+            'name' => 'Permanente à dater',
+            'scope' => 'CLUB',
+            'family' => 'DAY',
+            'ruleType' => 'HARD',
+            'config' => ['forbiddenDays' => [6]],
+            'calendarEntryId' => '22222222-2222-4222-8222-222222222222',
+        ], \JSON_THROW_ON_ERROR));
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode((string) $client->getResponse()->getContent(), true);
+        self::assertSame('22222222-2222-4222-8222-222222222222', $data['calendarEntryId']);
     }
 
     public function testDeleteConstraint(): void

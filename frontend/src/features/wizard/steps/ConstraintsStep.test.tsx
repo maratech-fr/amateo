@@ -33,6 +33,9 @@ const h = vi.hoisted(() => ({
   implicitRules: [] as ImplicitRuleSetting[],
   // P2-51 — les blocs de mutualisation, posables dans Réserver.
   sharedBlocks: [] as SharedTrainingBlock[],
+  // P2-59 — genèses/faits lus PAR entrée : la clé est l'id passé à useWizardConstraints
+  // (la semaine pour ses genèses, la mère pour ses faits). Vide → repli sur `list`.
+  byEntry: {} as Record<string, Constraint[]>,
 }));
 
 const SEASON_TEAMS = [
@@ -40,7 +43,7 @@ const SEASON_TEAMS = [
   { id: "t2", name: "Fanion", sportCategoryId: "cat", priorityTierId: 1, tierOrder: 0, gender: null, level: null, sessionsPerWeek: 2, isActive: true },
 ];
 
-const { activeVenuesState, activeTeamsState, reservationArgs, entryConflictsState, calendarEntryState, constraintsArg } = vi.hoisted(() => ({
+const { activeVenuesState, activeTeamsState, reservationArgs, entryConflictsState, calendarEntryState, constraintsArg, calendarEntryById } = vi.hoisted(() => ({
   activeVenuesState: {
     venues: [{ id: "v1", name: "Gymnase A", isActive: true }, { id: "v2", name: "Gymnase B", isActive: true }] as { id: string; name: string; isActive: boolean }[],
     disabledIds: new Set<string>(),
@@ -51,9 +54,11 @@ const { activeVenuesState, activeTeamsState, reservationArgs, entryConflictsStat
   // courante (D5, parentEntryId). Défauts neutres : aucune fermeture, entrée racine.
   entryConflictsState: { data: { entryId: "e", venueIds: [], conflicts: [], closures: [], seasonPlanChosen: true } as unknown, isError: false },
   calendarEntryState: { data: { parentEntryId: null } as { parentEntryId: string | null } | undefined },
-  // Capture l'id passé à useWizardConstraints — c'est par lui que le composant doit résoudre
-  // la MÈRE d'une semaine enfant (D5) ; les deux ids sont des string, tsc est muet.
+  // Capture le dernier id passé à useWizardConstraints (le composant appelle genèses puis faits).
   constraintsArg: { value: undefined as string | null | undefined },
+  // P2-59 — les entrées de calendrier PAR id : la mère porte son `title` (pour le badge des
+  // faits), l'enfant son `parentEntryId`. Absent → repli sur `calendarEntryState.data`.
+  calendarEntryById: { map: {} as Record<string, { parentEntryId: string | null; title?: string }> },
   // ⚠ Le mock HONORE ses arguments : `useReservations(planId, enabled)` porte la garde qui
   // empêche une période non résolue de servir les réservations du SOCLE. Un mock qui rend
   // une constante rendait cette garde inobservable — c'est ainsi que l'issue de secours
@@ -62,8 +67,14 @@ const { activeVenuesState, activeTeamsState, reservationArgs, entryConflictsStat
 }));
 
 vi.mock("../queries", () => ({
-  useWizardConstraints: (entryId?: string | null) => {
+  useWizardConstraints: (entryId?: string | null, enabled = true) => {
     constraintsArg.value = entryId;
+    if (false === enabled) {
+      return { data: [] };
+    }
+    if (null != entryId && entryId in h.byEntry) {
+      return { data: h.byEntry[entryId] };
+    }
     return { data: h.list };
   },
   useWizardTeams: () => ({ data: SEASON_TEAMS }),
@@ -136,7 +147,7 @@ vi.mock("@/features/cockpit/queries", () => ({
           : { state: "loading", planId: null },
   anchorIsWritable: (a: { state: string }) => "period" === a.state || "base" === a.state,
   useEntryConflicts: () => ({ data: entryConflictsState.data, isError: entryConflictsState.isError, refetch: vi.fn() }),
-  useCalendarEntry: () => ({ data: calendarEntryState.data }),
+  useCalendarEntry: (id: string | null) => ({ data: null != id && id in calendarEntryById.map ? calendarEntryById.map[id] : calendarEntryState.data }),
 }));
 // Stub : le comportement interne de PeriodConstraints est couvert par
 // PeriodStructure.test — ici on ne teste que son PLACEMENT par onglet (#9).
@@ -1249,14 +1260,23 @@ describe("ConstraintsStep — Réserver : fermetures de gymnase (D2)", () => {
 });
 
 /**
- * D5 (P2-22) — une semaine ENFANT partage les contraintes DATÉES de sa MÈRE. Le front résout
- * `sourceEntryId = entry.parentEntryId ?? periodEntryId` (miroir de
- * CalendarEntry::datedConstraintSourceId) AVANT de lister ET de créer, sinon une datée créée
- * depuis l'enfant porte le mauvais calendarEntryId et PeriodConstraintSelector ne la voit jamais.
+ * P2-59 — modèle FAIT/GENÈSE (miroir de CalendarEntry::datedConstraintSourceIds). Sur l'écran
+ * d'une SEMAINE enfant :
+ *  - ses GENÈSES (datées de la semaine) sont éditables — modifier / supprimer ;
+ *  - les FAITS de sa MÈRE (datés de l'incident) sont AFFICHÉS mais badgés « Toutes les semaines
+ *    de {mère} », SANS action : on ne les règle qu'à la source.
+ * Créer une contrainte depuis la semaine l'attache à LA SEMAINE (jamais à la mère) — sinon deux
+ * semaines sœurs partageraient toutes leurs règles, ce que le modèle d'indépendance refuse. Une
+ * entrée RACINE n'a pas de mère : ses datées sont ses genèses, aucun fait hérité, aucun badge.
  */
-describe("ConstraintsStep — datées d'une semaine enfant (D5)", () => {
+describe("ConstraintsStep — genèses de la semaine vs faits de la mère (P2-59)", () => {
+  const GENESIS = { id: "g1", name: "Fanion · pas lundi", scope: "TEAM", scopeTargetId: "t2", family: "DAY", ruleType: "HARD", config: { forbiddenDays: [1] }, isActive: true } as Constraint;
+  const FACT = { id: "f1", name: "SM1 · pas dimanche", scope: "TEAM", scopeTargetId: "t1", family: "DAY", ruleType: "HARD", config: { forbiddenDays: [7] }, isActive: true } as Constraint;
+
   beforeEach(() => {
     h.list = [];
+    h.byEntry = {};
+    calendarEntryById.map = {};
     h.createMut.mockClear();
     periodAnchorReady.value = true;
     activeVenuesState.venues = [{ id: "v1", name: "Gymnase A", isActive: true }, { id: "v2", name: "Gymnase B", isActive: true }];
@@ -1264,20 +1284,20 @@ describe("ConstraintsStep — datées d'une semaine enfant (D5)", () => {
     activeTeamsState.pausedIds = new Set();
     entryConflictsState.data = { entryId: "e", venueIds: [], conflicts: [], closures: [], seasonPlanChosen: true };
     entryConflictsState.isError = false;
+    // La semaine "child-week" pend à la mère "mother-1" (titrée « Vacances d'été »).
     calendarEntryState.data = { parentEntryId: "mother-1" };
+    calendarEntryById.map = { "mother-1": { parentEntryId: null, title: "Vacances d'été" } };
+    h.byEntry = { "child-week": [GENESIS], "mother-1": [FACT] };
     useWizardStore.getState().startPeriodMode("child-week");
   });
   afterEach(() => {
     useWizardStore.getState().exitPeriodMode();
+    h.byEntry = {};
+    calendarEntryById.map = {};
     calendarEntryState.data = { parentEntryId: null };
   });
 
-  it("liste les datées par la MÈRE (parentEntryId), pas par la semaine enfant", () => {
-    renderWithProviders(<ConstraintsStep />);
-    expect(constraintsArg.value).toBe("mother-1");
-  });
-
-  it("crée une datée en la rattachant à la MÈRE (sinon PeriodConstraintSelector ne la voit pas)", async () => {
+  it("crée une datée en la rattachant à LA SEMAINE (child), jamais à la mère", async () => {
     const user = userEvent.setup();
     renderWithProviders(<ConstraintsStep />);
 
@@ -1285,7 +1305,40 @@ describe("ConstraintsStep — datées d'une semaine enfant (D5)", () => {
     await user.click(screen.getByRole("button", { name: "Mer" }));
     await user.click(screen.getByRole("button", { name: "Ajouter la contrainte" }));
 
-    expect(h.createMut.mock.calls[0][0].calendarEntryId).toBe("mother-1");
+    expect(h.createMut.mock.calls[0][0].calendarEntryId).toBe("child-week");
+  });
+
+  it("liste la genèse (éditable) et le fait de la mère (badgé, sans action)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConstraintsStep />);
+    await user.click(screen.getByRole("button", { name: "Jours" }));
+
+    const genesisRow = document.querySelector('[data-constraint-id="g1"]') as HTMLElement;
+    const factRow = document.querySelector('[data-constraint-id="f1"]') as HTMLElement;
+    expect(genesisRow).not.toBeNull();
+    expect(factRow).not.toBeNull();
+
+    // Genèse : modifiable et supprimable ici.
+    expect(within(genesisRow).getByRole("button", { name: "Modifier" })).toBeInTheDocument();
+    expect(within(genesisRow).getByRole("button", { name: "Supprimer" })).toBeInTheDocument();
+
+    // Fait : badge lisible « Toutes les semaines de {mère} », AUCUNE action.
+    expect(within(factRow).getByText(/Toutes les semaines de Vacances d'été/)).toBeInTheDocument();
+    expect(within(factRow).queryByRole("button", { name: "Modifier" })).toBeNull();
+    expect(within(factRow).queryByRole("button", { name: "Supprimer" })).toBeNull();
+  });
+
+  it("entrée RACINE : ses datées restent éditables, aucun badge de mère", async () => {
+    const user = userEvent.setup();
+    calendarEntryState.data = { parentEntryId: null };
+    calendarEntryById.map = {};
+    h.byEntry = { "child-week": [GENESIS] };
+    renderWithProviders(<ConstraintsStep />);
+    await user.click(screen.getByRole("button", { name: "Jours" }));
+
+    const genesisRow = document.querySelector('[data-constraint-id="g1"]') as HTMLElement;
+    expect(within(genesisRow).getByRole("button", { name: "Modifier" })).toBeInTheDocument();
+    expect(screen.queryByText(/Toutes les semaines de/)).toBeNull();
   });
 });
 
