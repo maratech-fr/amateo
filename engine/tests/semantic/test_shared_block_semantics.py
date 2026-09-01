@@ -402,3 +402,99 @@ class TestBlockGroupMoveVerdict:
         )
         assert result["valid"] is False
         assert any(v["rule"] == "shared_block_broken" for v in result["violations"])
+
+
+# ── NR-B — le miroir de bloc raisonne sur l'ÉTAT FINAL COMPLET (ensembles de cases par équipe) ────
+
+
+def _block_venue() -> dict[str, Any]:
+    """Un gymnase A, capacité 2, offrant les cases 19:30 des jours 1/3/4/5 — de quoi rejouer le lot
+    réel refusé à tort (U18F1/U18F2)."""
+    return make_venue("A", [(1, "19:30"), (3, "19:30"), (4, "19:30"), (5, "19:30")], capacity=2, duration_minutes=90)
+
+
+class TestBlockGroupMoveFinalStateSets:
+    """Un membre peut être déplacé PLUSIEURS fois dans le MÊME lot (ses deux séances bougent). Le
+    miroir raisonne alors sur des ENSEMBLES de cases par équipe (toutes les références ré-ajoutées,
+    tous les candidats), pas une seule case par équipe (dernière gagne). Le ``dict`` collapsant
+    perdait les autres cases et déclarait le bloc rompu à tort."""
+
+    def test_a_member_moved_twice_keeps_the_block_honored(self) -> None:
+        """LE cas réel refusé à tort (U18F1/U18F2, K=2). Baseline gelée : t1 {(A,4),(A,5)}, t2 {(A,4)}.
+        t2 est déplacée DEUX fois. « avant » (baseline + toutes les références) : commun {(A,4),(A,5)}=2.
+        « après » (baseline + tous les candidats) : commun {(A,4),(A,1)}=2 — le bloc RESTE honoré → accepté.
+        Si le miroir garde « une case par équipe » (dernière gagne), le candidat co-localisé (A,1,19:30)
+        de t2 disparaît et l'après tombe à 1 → refus ``shared_block_broken`` à tort : ce test ROUGIT."""
+        result = validate_assignment(
+            ValidateAssignmentsInputSchema.model_validate(
+                _verdict_payload_multi(
+                    candidates=[
+                        {"teamId": "t1", "venueId": "A", "dayOfWeek": 1, "startTime": "19:30", "durationMinutes": 90},
+                        {"teamId": "t2", "venueId": "A", "dayOfWeek": 1, "startTime": "19:30", "durationMinutes": 90},
+                        {"teamId": "t2", "venueId": "A", "dayOfWeek": 3, "startTime": "19:30", "durationMinutes": 90},
+                    ],
+                    slot_templates=[
+                        _tmpl("t1", "A", 4, "19:30"),
+                        _tmpl("t1", "A", 5, "19:30"),
+                        _tmpl("t2", "A", 4, "19:30"),
+                    ],
+                    blocks=[_block("b", ["t1", "t2"], 2)],
+                    teams=[make_team("t1", sessions_per_week=3), make_team("t2", sessions_per_week=3)],
+                    references=[
+                        {"teamId": "t1", "venueId": "A", "dayOfWeek": 2, "startTime": "18:15", "durationMinutes": 90},
+                        {"teamId": "t2", "venueId": "A", "dayOfWeek": 2, "startTime": "19:30", "durationMinutes": 90},
+                        {"teamId": "t2", "venueId": "A", "dayOfWeek": 5, "startTime": "19:30", "durationMinutes": 90},
+                    ],
+                    venues=[_block_venue()],
+                )
+            )
+        )
+        assert result["valid"] is True, "le bloc se reconstitue sur l'état final complet — accepté"
+        assert not any(v["rule"] == "shared_block_broken" for v in result["violations"])
+
+    def test_a_moved_member_rejoining_a_partners_untouched_session_is_credited(self) -> None:
+        """Reformation CRÉDITÉE : t2 n'est pas déplacée (deux séances baseline (A,3),(A,4)). t1 quitte
+        (A,3) — où elle était avec t2 — pour (A,4), l'AUTRE séance baseline de t2 : elle reforme la
+        commune ailleurs. « après » commun = {(A,4)} = 1 ≥ 1 → accepté. Sans créditer le candidat qui
+        atterrit sur une séance baseline non déplacée du partenaire, l'après tomberait à 0 → refus."""
+        result = validate_assignment(
+            ValidateAssignmentsInputSchema.model_validate(
+                _verdict_payload_multi(
+                    candidates=[
+                        {"teamId": "t1", "venueId": "A", "dayOfWeek": 4, "startTime": "19:30", "durationMinutes": 90},
+                    ],
+                    slot_templates=[_tmpl("t2", "A", 3, "19:30"), _tmpl("t2", "A", 4, "19:30")],
+                    blocks=[_block("b", ["t1", "t2"], 1)],
+                    teams=[make_team("t1", sessions_per_week=1), make_team("t2", sessions_per_week=2)],
+                    references=[
+                        {"teamId": "t1", "venueId": "A", "dayOfWeek": 3, "startTime": "19:30", "durationMinutes": 90},
+                    ],
+                    venues=[_block_venue()],
+                )
+            )
+        )
+        assert result["valid"] is True
+        assert not any(v["rule"] == "shared_block_broken" for v in result["violations"])
+
+    def test_removing_a_member_from_an_honored_common_without_reforming_is_still_refused(self) -> None:
+        """Non-régression : le fix des ensembles ne doit PAS relâcher le refus légitime. t1 et t2
+        partagent (A,4) (bloc K=1) ; t1 part vers (A,1) SANS reformer (t2 reste seule sur (A,4)) →
+        l'après n'a plus de commune → refus ``shared_block_broken`` maintenu."""
+        result = validate_assignment(
+            ValidateAssignmentsInputSchema.model_validate(
+                _verdict_payload_multi(
+                    candidates=[
+                        {"teamId": "t1", "venueId": "A", "dayOfWeek": 1, "startTime": "19:30", "durationMinutes": 90},
+                    ],
+                    slot_templates=[_tmpl("t2", "A", 4, "19:30")],
+                    blocks=[_block("b", ["t1", "t2"], 1)],
+                    teams=[make_team("t1", sessions_per_week=1), make_team("t2", sessions_per_week=1)],
+                    references=[
+                        {"teamId": "t1", "venueId": "A", "dayOfWeek": 4, "startTime": "19:30", "durationMinutes": 90},
+                    ],
+                    venues=[_block_venue()],
+                )
+            )
+        )
+        assert result["valid"] is False
+        assert any(v["rule"] == "shared_block_broken" for v in result["violations"])
