@@ -1745,9 +1745,9 @@ final class BcclSeeder
      * overrides gymnase/équipe/contrainte, groupes de mutualisation, réservations, puis la
      * version transcrite pointée (validée). Tout idempotent.
      *
-     * @param array<string, Team>                                                                                                                                                                                                               $teams
-     * @param array<string, Venue>                                                                                                                                                                                                              $venues
-     * @param array{title: string, monday: string, sunday: string, activeVenues: list<string>, sessions: list<array{string, string, int, string, int}>, groups: list<array{teams: list<string>, k: int}>, deactivatedConstraints: list<string>} $week
+     * @param array<string, Team>                                                                                                                                                                                                                                                                             $teams
+     * @param array<string, Venue>                                                                                                                                                                                                                                                                            $venues
+     * @param array{title: string, monday: string, sunday: string, activeVenues: list<string>, sessions: list<array{string, string, int, string, int}>, reservations?: list<array{string, string, int, string, int}>, groups: list<array{teams: list<string>, k: int}>, deactivatedConstraints: list<string>} $week
      */
     private function seedRepriseWeek(EntityManagerInterface $manager, Season $season, string $clubId, array $teams, array $venues, string $motherId, array $week): void
     {
@@ -1788,20 +1788,29 @@ final class BcclSeeder
         // club/saison (section « VENUE TRAINING SLOTS ») emporte les copies de plan, et
         // provisionPeriodPlan ne re-copie qu'à la NAISSANCE : sans reconstruction, la grille
         // serait vide (2e run) ou aux horaires de saison (1er run). On purge la grille du plan
-        // et on insère celle de la semaine — capacity = nombre de séances sur le créneau (2 sur
-        // un créneau mutualisé). ---
+        // et on insère celle de la semaine — capacity = nombre d'OCCUPANTS du créneau : les
+        // équipes d'un même groupe mutualisé (`$week['groups']`) comptent pour UN (le bloc est
+        // un occupant unique depuis le modèle bloc) ; capacité 2 ne subsisterait que pour deux
+        // occupants réellement distincts, cas absent des semaines transcrites. Les groupes des
+        // reprises sont des paires disjointes — pas d'imbrication à arbitrer ici. ---
         foreach ($manager->getRepository(VenueTrainingSlot::class)->findBy(['schedulePlanId' => $planId]) as $planSlot) {
             $manager->remove($planSlot);
         }
         $manager->flush();
-        /** @var array<string, array{venue: string, day: int, start: string, duration: int, capacity: int}> $gridSlots */
+        $occupantLabel = [];
+        foreach ($week['groups'] as $groupIndex => $group) {
+            foreach ($group['teams'] as $memberName) {
+                $occupantLabel[$memberName] = 'group#' . $groupIndex;
+            }
+        }
+        /** @var array<string, array{venue: string, day: int, start: string, duration: int, occupants: array<string, true>}> $gridSlots */
         $gridSlots = [];
         foreach ($week['sessions'] as [$teamName, $venueVar, $day, $start, $duration]) {
             $key = $venueVar . '|' . $day . '|' . $start;
             if (!isset($gridSlots[$key])) {
-                $gridSlots[$key] = ['venue' => $venueVar, 'day' => $day, 'start' => $start, 'duration' => $duration, 'capacity' => 0];
+                $gridSlots[$key] = ['venue' => $venueVar, 'day' => $day, 'start' => $start, 'duration' => $duration, 'occupants' => []];
             }
-            ++$gridSlots[$key]['capacity'];
+            $gridSlots[$key]['occupants'][$occupantLabel[$teamName] ?? $teamName] = true;
         }
         foreach ($gridSlots as $gridSlot) {
             $slot = new VenueTrainingSlot;
@@ -1811,7 +1820,7 @@ final class BcclSeeder
             $slot->setDayOfWeek($gridSlot['day']);
             $slot->setStartTime(new DateTimeImmutable($gridSlot['start']));
             $slot->setDurationMinutes($gridSlot['duration']);
-            $slot->setCapacity($gridSlot['capacity']);
+            $slot->setCapacity(\count($gridSlot['occupants']));
             $slot->setGroupLabel(null);
             $slot->setSchedulePlanId($planId);
             $manager->persist($slot);
@@ -1921,29 +1930,28 @@ final class BcclSeeder
         }
         $manager->flush();
 
-        // --- Réservations : une par séance-équipe, clé PORTANT le schedulePlanId (une réservation
-        // de base, plan NULL, ne doit pas être confondue avec celle d'une reprise). ---
-        foreach ($week['sessions'] as [$teamName, $venueVar, $day, $start, $duration]) {
-            $startTime = new DateTimeImmutable($start);
-            $existing = $manager->getRepository(Reservation::class)->findOneBy([
-                'schedulePlanId' => $planId,
-                'teamId' => $teams[$teamName]->getId(),
-                'venueId' => $venues[$venueVar]->getId(),
-                'dayOfWeek' => $day,
-                'startTime' => $startTime,
-            ]);
-            if (!$existing instanceof Reservation) {
-                $reservation = new Reservation;
-                $reservation->setClubId($clubId);
-                $reservation->setSeasonId($season->getId());
-                $reservation->setSchedulePlanId($planId);
-                $reservation->setTeamId($teams[$teamName]->getId());
-                $reservation->setVenueId($venues[$venueVar]->getId());
-                $reservation->setDayOfWeek($day);
-                $reservation->setStartTime($startTime);
-                $reservation->setDurationMinutes($duration);
-                $manager->persist($reservation);
-            }
+        // --- Réservations : clé PORTANT le schedulePlanId (une réservation de base, plan NULL,
+        // ne doit pas être confondue avec celle d'une reprise). Par défaut une par séance-équipe
+        // (transcription intégrale) ; une semaine peut déclarer `reservations` pour ne figer que
+        // les créneaux CHOISIS (arbitrage fondateur 2026-09-01 sur la reprise du 17 : seuls les
+        // blocs fanion sont réservés, le reste appartient au solveur + contraintes). PURGE avant
+        // ré-insertion : une réservation retirée de la liste doit disparaître au re-run. ---
+        $reservedRows = $week['reservations'] ?? $week['sessions'];
+        foreach ($manager->getRepository(Reservation::class)->findBy(['schedulePlanId' => $planId]) as $staleReservation) {
+            $manager->remove($staleReservation);
+        }
+        $manager->flush();
+        foreach ($reservedRows as [$teamName, $venueVar, $day, $start, $duration]) {
+            $reservation = new Reservation;
+            $reservation->setClubId($clubId);
+            $reservation->setSeasonId($season->getId());
+            $reservation->setSchedulePlanId($planId);
+            $reservation->setTeamId($teams[$teamName]->getId());
+            $reservation->setVenueId($venues[$venueVar]->getId());
+            $reservation->setDayOfWeek($day);
+            $reservation->setStartTime(new DateTimeImmutable($start));
+            $reservation->setDurationMinutes($duration);
+            $manager->persist($reservation);
         }
         $manager->flush();
 
@@ -2250,7 +2258,7 @@ final class BcclSeeder
      * future = une entrée de plus ici, pas du code. Séances : [équipe, gymnase, jour ISO,
      * 'HH:MM', durée]. capacity de grille et sessionsPerWeek se DÉRIVENT des séances.
      *
-     * @return list<array{title: string, monday: string, sunday: string, activeVenues: list<string>, sessions: list<array{string, string, int, string, int}>, groups: list<array{teams: list<string>, k: int}>, deactivatedConstraints: list<string>}>
+     * @return list<array{title: string, monday: string, sunday: string, activeVenues: list<string>, sessions: list<array{string, string, int, string, int}>, reservations?: list<array{string, string, int, string, int}>, groups: list<array{teams: list<string>, k: int}>, deactivatedConstraints: list<string>}>
      */
     private function repriseWeeks(): array
     {
@@ -2298,16 +2306,42 @@ final class BcclSeeder
                     ['teams' => ['SM1', 'SM2'], 'k' => 3],
                     ['teams' => ['SF1', 'SF2'], 'k' => 2],
                 ],
+                // Seuls les créneaux CHOISIS sont figés (équipes fanion — « on les impose au
+                // modèle car ça nous arrange », exercice solveur du 2026-09-01) : les deux blocs
+                // mutualisés. Le reste du planning appartient au solveur + contraintes — le
+                // fondateur a explicitement refusé le tout-en-réservation.
+                'reservations' => [
+                    ['SM1', 'vArmand', 1, '20:45', 75],
+                    ['SM2', 'vArmand', 1, '20:45', 75],
+                    ['SM1', 'vArmand', 2, '20:45', 75],
+                    ['SM2', 'vArmand', 2, '20:45', 75],
+                    ['SM1', 'vArmand', 4, '20:45', 75],
+                    ['SM2', 'vArmand', 4, '20:45', 75],
+                    ['SF1', 'vArmand', 3, '19:30', 75],
+                    ['SF2', 'vArmand', 3, '19:30', 75],
+                    ['SF1', 'vArmand', 5, '19:30', 75],
+                    ['SF2', 'vArmand', 5, '19:30', 75],
+                ],
                 // Règles de saison que le réel de la semaine contredit (vérifiées séance par séance) :
                 //  - SM1 · uniquement mardi, jeudi : SM1 s'entraîne aussi le LUNDI.
                 //  - Senior +22 Compétition ≥ 20:00 : SM3/SF1/SF2 à 19:30.
                 //  - SF2 · pas vendredi : SF2 s'entraîne le vendredi.
                 //  - SM2 · au moins 1 à Matéo : Matéo est fermé (0 séance possible à Matéo).
+                //  - Nicolas Barilleau · indispo jeudi : U18M1 (son équipe) s'entraîne le JEUDI 18:15.
+                //  - Thomas Francon · indispo vendredi : U15M1 (son équipe) s'entraîne le VENDREDI 17:00.
+                //    (Les deux indispos sont des faits de SAISON hérités, pas de la semaine de reprise —
+                //    arbitrage fondateur 2026-09-01, révélé par l'exercice solveur : sans décochage la
+                //    génération ne peut pas atteindre le planning réel.)
                 'deactivatedConstraints' => [
                     'SM1 · uniquement mardi, jeudi',
                     'Groupe Senior (+ de 22) + Compétition (hors loisir) · pas avant 20:00',
                     'SF2 · pas vendredi',
                     'SM2 · au moins 1 à Matéo',
+                    'Nicolas Barilleau · indispo jeudi',
+                    'Thomas Francon · indispo vendredi',
+                    // Le bloc SM1+SM2 est figé lun/mar/jeu par réservation — la règle héritée
+                    // « pas vendredi » n'a plus d'objet et gênerait le solveur pour rien.
+                    'SM2 · pas vendredi',
                 ],
             ],
             // ===================== SEMAINE DU 24 AOÛT — Armand + JDR =====================

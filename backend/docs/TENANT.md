@@ -1,11 +1,11 @@
 # ClubScheduler — Tenant Isolation Architecture
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, sans rapport avec le sujet de la PR
-(P2-51 PR-2). Re-confronté au code : priorité 7 (`TenantFilterListener.php:55`,
-`KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · connexion runtime `amateo_app`
-(`doctrine.yaml:5`, `docker/postgres/init/02-users.sh:32` `NOSUPERUSER`) et connexion admin
-`amateo_owner` (superuser, bypasses RLS, `doctrine.yaml:11`) ✓ · `TenantOwnedInterfaceCompletenessTest`
-présent (`backend/tests/Security/TenantOwnedInterfaceCompletenessTest.php`) ✓. Rien à corriger ce jour)
+Last verified @ 2026-09-01 (rotation `documentation-update`, passe seed reprise-17 — fichier hors
+sujet de la PR, contrôle de fraîcheur). Re-confronté au code : priorité 7
+(`TenantFilterListener.php:55`, `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · connexion
+runtime `amateo_app` (`doctrine.yaml:5`, `02-users.sh` `NOSUPERUSER NOCREATEDB NOCREATEROLE`) ✓ ·
+`TenantOwnedInterfaceCompletenessTest` présent (`backend/tests/Security/`) ✓. Rien à corriger ce
+jour.
 
 ## Overview
 

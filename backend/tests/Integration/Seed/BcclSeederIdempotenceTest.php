@@ -445,6 +445,104 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
+     * Post-modèle bloc (arbitrage fondateur 2026-09-01) — les grilles des semaines de REPRISE
+     * comptent un groupe mutualisé pour UN occupant : plus aucune case en capacité 2 (le
+     * palliatif d'avant les blocs laissait le solveur y glisser une équipe de plus). Et la
+     * semaine du 17 décoche AUSSI les deux indisponibilités coach héritées de la saison que le
+     * réel de la semaine contredit (U18M1 s'entraîne le jeudi de Nicolas Barilleau, U15M1 le
+     * vendredi de Thomas Francon) — sans quoi la génération ne peut pas atteindre le planning
+     * transcrit. Falsifiable : remettre `++capacity` par séance, ou retirer un des deux noms de
+     * `deactivatedConstraints`, rend ce test ROUGE en nommant l'invariant.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testRepriseGridsCountBlockAsOneOccupantAndDeactivateInheritedIndispos(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+
+        // 25 séances − 5 cases mutualisées = 20 créneaux le 17 ; 38 − 3 = 35 le 24.
+        foreach ([['Reprise du 17 août', 20], ['Reprise du 24 août', 35]] as [$planName, $expectedSlots]) {
+            $grid = $this->connection->fetchAssociative(
+                'SELECT COUNT(*) AS slots, MAX(s.capacity) AS max_capacity '
+                . 'FROM venue_training_slot s JOIN schedule_plan sp ON sp.id = s.schedule_plan_id '
+                . 'WHERE sp.club_id = ? AND sp.name = ?',
+                [$club->getId(), $planName],
+            );
+            self::assertNotFalse($grid);
+            self::assertSame($expectedSlots, (int) $grid['slots'], \sprintf('« %s » : la grille du plan compte %d créneaux (une case mutualisée = un créneau)', $planName, $expectedSlots));
+            self::assertSame(1, (int) $grid['max_capacity'], \sprintf('« %s » : aucune case au-dessus de la capacité 1 — un bloc mutualisé est UN occupant', $planName));
+        }
+
+        $deactivated = $this->connection->fetchFirstColumn(
+            'SELECT c.name FROM constraint_period_override o '
+            . 'JOIN "constraint" c ON c.id = o.constraint_id '
+            . 'JOIN schedule_plan sp ON sp.id = o.schedule_plan_id '
+            . 'WHERE sp.club_id = ? AND sp.name = ? AND o.is_active = false '
+            . 'AND c.name IN (\'Nicolas Barilleau · indispo jeudi\', \'Thomas Francon · indispo vendredi\', \'SM2 · pas vendredi\') '
+            . 'ORDER BY c.name',
+            [$club->getId(), 'Reprise du 17 août'],
+        );
+        self::assertSame(
+            ['Nicolas Barilleau · indispo jeudi', 'SM2 · pas vendredi', 'Thomas Francon · indispo vendredi'],
+            array_map('strval', $deactivated),
+            'la semaine du 17 décoche les deux indisponibilités coach héritées ET « SM2 · pas vendredi » (le bloc est figé lun/mar/jeu par réservation)',
+        );
+    }
+
+    /**
+     * Arbitrage fondateur 2026-09-01 (exercice solveur reprise-17) — les réservations du plan du
+     * 17 ne transcrivent PLUS tout le planning : seuls les créneaux CHOISIS des équipes fanion
+     * sont figés (bloc SM1+SM2 lun/mar/jeu 20:45, bloc SF1+SF2 mer/ven 19:30 — 10 lignes), le
+     * reste appartient au solveur + contraintes (« je ne veux pas tout mettre en réservation »).
+     * La semaine du 24 garde sa transcription intégrale (38 lignes) en attendant SON exercice.
+     * Idempotence stricte : purge-puis-réinsertion — une ligne retirée de la liste ne survit pas
+     * à un re-run sur base déjà seedée. Falsifiable : re-brancher `$week['sessions']` comme
+     * source des réservations du 17 rend ce test ROUGE (25 ≠ 10).
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testReprise17ReservationsPinOnlyChosenFanionBlocks(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+
+        $rows = $this->connection->fetchAllAssociative(
+            'SELECT t.name AS team, r.day_of_week, to_char(r.start_time, \'HH24:MI\') AS start '
+            . 'FROM reservation r JOIN team t ON t.id = r.team_id '
+            . 'JOIN schedule_plan sp ON sp.id = r.schedule_plan_id '
+            . 'WHERE sp.club_id = ? AND sp.name = ? ORDER BY r.day_of_week, start, t.name',
+            [$club->getId(), 'Reprise du 17 août'],
+        );
+        $expected = [
+            ['SM1', 1, '20:45'], ['SM2', 1, '20:45'],
+            ['SM1', 2, '20:45'], ['SM2', 2, '20:45'],
+            ['SF1', 3, '19:30'], ['SF2', 3, '19:30'],
+            ['SM1', 4, '20:45'], ['SM2', 4, '20:45'],
+            ['SF1', 5, '19:30'], ['SF2', 5, '19:30'],
+        ];
+        self::assertSame(
+            $expected,
+            array_map(static fn (array $row): array => [(string) $row['team'], (int) $row['day_of_week'], (string) $row['start']], $rows),
+            'les réservations du 17 sont exactement les 10 créneaux fanion (blocs SM et SF) — rien d\'autre',
+        );
+
+        $week24 = (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM reservation r JOIN schedule_plan sp ON sp.id = r.schedule_plan_id '
+            . 'WHERE sp.club_id = ? AND sp.name = ?',
+            [$club->getId(), 'Reprise du 24 août'],
+        );
+        self::assertSame(38, $week24, 'la semaine du 24 garde sa transcription intégrale en réservations (son exercice viendra)');
+
+        // Idempotence : un second run purge-réinsère, mêmes comptes, pas de résurrection.
+        $this->seeder->run($this->em, BcclSeedProfile::dev());
+        $count17 = (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM reservation r JOIN schedule_plan sp ON sp.id = r.schedule_plan_id '
+            . 'WHERE sp.club_id = ? AND sp.name = ?',
+            [$club->getId(), 'Reprise du 17 août'],
+        );
+        self::assertSame(10, $count17, 'un second seed laisse exactement 10 réservations sur le 17');
+    }
+
+    /**
      * Défaut 4 (doublon « Vacances d'été ») — la mère « Vacances d'été » est un ANCRAGE de
      * vacances scolaires : elle porte `school_holiday_id` pointant la vacance « été » de la ZONE
      * du club (dépt 69 → A), et sa fenêtre est celle de la vacance CLAMPÉE à la saison. Sans ce
