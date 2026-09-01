@@ -71,7 +71,7 @@ def _shared_block_move_violation(
     shared_blocks: list[dict[str, Any]],
     baseline_slots: list[dict[str, Any]],
     moved: list[dict[str, Any]],
-    ref_case_by_team: dict[str, tuple[str, int, str]],
+    ref_cases_by_team: dict[str, set[tuple[str, int, str]]],
     team_names: dict[str, str],
     venue_names: dict[str, str],
 ) -> dict[str, Any] | None:
@@ -87,10 +87,16 @@ def _shared_block_move_violation(
 
     ⚠ N déplacements jugés ENSEMBLE, sur l'état FINAL (P2-51 PR-5b) — c'est le CŒUR du rail
     « déplacer le bloc ». « avant » = baseline gelée (elle EXCLUT déjà les N sources) + chaque
-    source ré-ajoutée à SA case d'origine (``ref_case_by_team``) ; « après » = baseline + les N
+    source ré-ajoutée à SA case d'origine (``ref_cases_by_team``) ; « après » = baseline + les N
     candidats à leurs cases cibles. Déplacer les 2 membres d'un bloc vers la MÊME case le laisse
     HONORÉ (le bloc s'y reconstitue) — le refus séquentiel (juger t1 seul verrait le bloc rompu)
     est précisément ce qu'il faut ÉVITER. En retirer UN SEUL le casse → refus.
+
+    ⚠ Une équipe peut être déplacée PLUSIEURS fois dans le MÊME lot (ses deux séances bougent) :
+    on raisonne donc en ENSEMBLES de cases par équipe — TOUTES ses références ré-ajoutées pour
+    « avant », TOUS ses candidats pour « après ». Un ``dict`` « une case par équipe » (dernière
+    gagne) perdait ses autres cases et déclarait le bloc rompu à tort (le candidat co-localisé
+    avec le partenaire disparaissait). C'est le bug corrigé ici.
 
     ⚠ GARDE ANTI-ENFERMEMENT (leçon P4-152) : un bloc DÉJÀ cassé dans la baseline ne bloque pas
     les déplacements. On ne refuse QUE si le bloc était HONORÉ avant (≥ commonSessions cases
@@ -103,7 +109,12 @@ def _shared_block_move_violation(
         return None
 
     moved_teams = {str(m["team_id"]) for m in moved}
-    cand_case_by_team = {str(m["team_id"]): (str(m["venue_id"]), int(m["day"]), str(m["start_time"])) for m in moved}
+    # ENSEMBLES de cases (toutes les cibles d'une équipe déplacée N fois), pas une seule case.
+    cand_cases_by_team: dict[str, set[tuple[str, int, str]]] = {}
+    for m in moved:
+        cand_cases_by_team.setdefault(str(m["team_id"]), set()).add(
+            (str(m["venue_id"]), int(m["day"]), str(m["start_time"]))
+        )
 
     # équipe -> cases (gymnase, jour, heure) occupées dans la baseline GELÉE (sources exclues).
     base_occupancy: dict[str, set[tuple[str, int, str]]] = {}
@@ -119,15 +130,16 @@ def _shared_block_move_violation(
         return venue_names.get(venue_id) or venue_id
 
     def _common(members: list[str], *, use_reference: bool) -> set[tuple[str, int, str]]:
-        # Cases où TOUS les membres sont ensemble ; pour CHAQUE équipe déplacée, sa case (référence
-        # ré-ajoutée pour « avant », candidat pour « après ») est AJOUTÉE à sa baseline gelée.
+        # Cases où TOUS les membres sont ensemble ; pour CHAQUE équipe déplacée, TOUTES ses cases
+        # (références ré-ajoutées pour « avant », candidats pour « après ») sont AJOUTÉES à sa
+        # baseline gelée. Un membre déplacé qui REJOINT une séance baseline non déplacée de son
+        # partenaire reforme ainsi la commune — l'intersection baseline+candidat la compte.
         sets: list[set[tuple[str, int, str]]] = []
         for member in members:
             occ = set(base_occupancy.get(member, set()))
             if member in moved_teams:
-                case = ref_case_by_team.get(member) if use_reference else cand_case_by_team.get(member)
-                if case is not None:
-                    occ.add(case)
+                cases = ref_cases_by_team.get(member) if use_reference else cand_cases_by_team.get(member)
+                occ |= cases or set()
             sets.append(occ)
         return set.intersection(*sets) if sets else set()
 
@@ -719,14 +731,19 @@ def validate_assignment(
 
     # Références appariées PAR INDEX à ``candidates`` (le validateur de schéma garantit la longueur
     # 0 ou N). ``ref_case_by_team`` : la case d'ORIGINE d'une équipe déplacée, clé sur l'équipe de la
-    # référence — l'anti-enfermement des miroirs bloc/plancher en dépend. ``reference_keys`` :
-    # les SlotKeys « avant » pour le DELTA de compromis.
+    # référence — l'anti-enfermement du miroir plancher en dépend. ``ref_cases_by_team`` : l'ENSEMBLE
+    # des cases d'origine d'une équipe (elle peut être déplacée PLUSIEURS fois dans le même lot), pour
+    # le miroir de BLOC qui raisonne sur l'état FINAL complet. ``reference_keys`` : les SlotKeys
+    # « avant » pour le DELTA de compromis.
     ref_case_by_team: dict[str, tuple[str, int, str]] = {}
+    ref_cases_by_team: dict[str, set[tuple[str, int, str]]] = {}
     reference_keys: set[SlotKey] = set()
     for reference in input_data.references:
         r_team = str(reference.team_id)
         r_start_text = _format_time(_time_to_minutes(reference.start_time))
-        ref_case_by_team[r_team] = (str(reference.venue_id), int(reference.day_of_week), r_start_text)
+        r_case = (str(reference.venue_id), int(reference.day_of_week), r_start_text)
+        ref_case_by_team[r_team] = r_case
+        ref_cases_by_team.setdefault(r_team, set()).add(r_case)
         key = _slot_key_of(reference)
         if key is not None:
             reference_keys.add(key)
@@ -807,7 +824,7 @@ def validate_assignment(
         data.get("sharedBlocks", []) or [],
         baseline_slots,
         moved,
-        ref_case_by_team,
+        ref_cases_by_team,
         team_names,
         venue_names,
     )
@@ -883,6 +900,9 @@ def validate_assignment(
         # un conflit HARD entre deux déplacements du même geste (coach en double sur deux gymnases,
         # capacité…) est alors NOMMÉ, pas seulement candidat-contre-baseline.
         seen: set[tuple[str, str]] = set()
+        # PARITÉ D'INTENSITÉ (A) : le diagnostic doit connaître le réglage des règles implicites —
+        # coachRestDay PREFERRED n'est pas un interdit dur, il ne doit pas NOMMER coach_no_rest_day.
+        diag_rules = resolve_implicit_rules(data.get("implicitRules"))
         for i, m in enumerate(moved):
             augmented = baseline_slots + [other for j, other in enumerate(moved) if j != i]
             for violation in diagnose_candidate_conflicts(
@@ -894,6 +914,8 @@ def validate_assignment(
                 team_names=team_names,
                 coach_names=coach_names,
                 venue_names=venue_names,
+                resolved_rules=diag_rules,
+                shared_blocks=data.get("sharedBlocks", []) or [],
             ):
                 dedupe_key = (str(violation.get("rule")), str(violation.get("message")))
                 if dedupe_key not in seen:

@@ -9,7 +9,16 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from ..model import DEFAULT_SESSION_MINUTES, _time_to_minutes
-from .common import _day_int_set, _get, _intervals_overlap, _not_honored_warning, _scalar_id
+from .common import (
+    HARD,
+    ResolvedImplicitRules,
+    _day_int_set,
+    _fold_case_occupant_identity,
+    _get,
+    _intervals_overlap,
+    _not_honored_warning,
+    _scalar_id,
+)
 
 _DAY_LABELS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
 
@@ -322,6 +331,8 @@ def diagnose_candidate_conflicts(
     team_names: Mapping[str, str] | None = None,
     coach_names: Mapping[str, str] | None = None,
     venue_names: Mapping[str, str] | None = None,
+    resolved_rules: ResolvedImplicitRules | None = None,
+    shared_blocks: Sequence[Mapping[str, Any]] = (),
 ) -> list[dict[str, Any]]:
     """Name the HARD rules a move candidate would break (P2-2 F2a).
 
@@ -450,16 +461,37 @@ def diagnose_candidate_conflicts(
                         start_time=c_start_text,
                     )
 
-    # Venue capacity: mirror add_room_at_most_one (grouped by venue + exact slot start).
-    same_slot_occupants = sum(
-        1
+    # Venue capacity: mirror add_room_at_most_one (grouped by venue + exact slot start), BLOC-AWARE.
+    # P2-58 (C) — une séance de bloc = UN occupant (le solveur la dé-compte via ``add_room_at_most_one``,
+    # la grille l'applique). Compter les membres d'un même bloc comme N occupants crierait faussement
+    # à la sur-capacité : dans le rail « déplacer le bloc », les membres arrivent ENSEMBLE sur leur
+    # case commune (candidat contre candidat via ``baseline_slots`` augmentée, ou candidat contre un
+    # partenaire déjà en baseline). On REPLIE donc l'identité d'occupant PAR CASE avec le même
+    # ``_fold_case_occupant_identity`` que le sur-solde post-solve (maison unique). Deux équipes SANS
+    # bloc commun restent deux occupants → refus inchangé.
+    present_here = [
+        str(slot["team_id"])
         for slot in baseline_slots
         if str(slot["venue_id"]) == c_venue
         and int(slot["day"]) == c_day
         and str(slot.get("start_time")) == c_start_text
-    )
+    ]
+    present_here.append(c_team)
+    # Équipes DISTINCTES (la même équipe deux fois est un artefact de créneau dupliqué, pas une
+    # sur-capacité — parité avec le sur-solde post-solve).
+    distinct_here = list(dict.fromkeys(present_here))
+    blocks: list[tuple[str, frozenset[str]]] = []
+    for block_index, block in enumerate(shared_blocks):
+        members = frozenset(str(m) for m in (_get(block, "teamIds", "team_ids", default=[]) or []))
+        if len(members) >= 2:
+            blocks.append((f"__shared_block__{_get(block, 'id', default=block_index)}", members))
+    if blocks:
+        identity, _block_keys = _fold_case_occupant_identity(distinct_here, {}, blocks)
+        occupant_count = len(set(identity.values()))
+    else:
+        occupant_count = len(distinct_here)
     capacity = int(caps.get((c_venue, c_day, c_start_text), 1))
-    if same_slot_occupants + 1 > capacity:
+    if occupant_count > capacity:
         _emit(
             "venue_capacity",
             f"{_venue(c_venue)} le {_day_label(c_day)} à {c_start_text} est déjà à sa capacité "
@@ -472,7 +504,16 @@ def diagnose_candidate_conflicts(
 
     # Coach rest day: mirror add_coach_rest_day — at most 4 working days Mon-Fri,
     # for every coach present in the payload (no override exemption since P4-51).
-    if 1 <= c_day <= 5:
+    # PARITÉ D'INTENSITÉ (verdict = génération) : ce n'est un INTERDIT DUR que sous
+    # coachRestDay=HARD. En PREFERRED, la génération PLACE en payant le malus (−3/−6) et le
+    # verdict doit ACCEPTER de même — la concession remonte alors comme COMPROMIS (famille
+    # implicit_rule, chemin ``_compromises_for``) sur le candidat retenu, jamais comme violation
+    # bloquante ici. Sans ce garde, le verdict était PLUS STRICT que la génération (rupture de
+    # parité) : il refusait un 5ᵉ jour de coach que la génération concède. ``coachRestDay`` est la
+    # SEULE des 5 règles implicites réglables à avoir un pré-check nommé dans ce fichier ; les
+    # quatre autres (salarié, dos-à-dos, jours consécutifs, âge croissant) n'y miroitent rien.
+    coach_rest_is_hard = (resolved_rules or ResolvedImplicitRules()).coach_rest_day_intensity == HARD
+    if coach_rest_is_hard and 1 <= c_day <= 5:
         for cid in c_coaches:
             if cid not in coach_ids_in_payload:
                 continue

@@ -227,6 +227,21 @@ def parse_v2_constraints(constraints: list[dict[str, Any]]) -> ParsedConstraints
                 result["team_coach_map"].setdefault(team_id_str, []).append(coach_id_str)
 
         elif c_type == "COACH_PLAYER_UNAVAILABILITY":
+            # D — l'interrupteur du lien coach-joueur. Le backend émet ``severity: HARD`` quand le
+            # lien est ACTIF, ``SOFT`` quand il est désactivé (``getIsActive()`` →
+            # ``ScheduleConstraintBuilder::serializeCoachPlayerMembershipConstraints``), et redouble
+            # le signal dans ``metadata.isActive``. Un lien INACTIF ne doit PAS entrer dans le web
+            # dur (``team_player_map``) — ni ici, ni ailleurs : le MÊME parseur sert la génération ET
+            # le verdict, la parité est donc automatique, et AUCUN terme soft n'est ajouté (objectif
+            # et goldens intacts). Critère : ``severity`` fait foi — canonique, toujours émis,
+            # vocabulaire HARD/SOFT du moteur ; ``metadata.isActive is False`` le redouble par
+            # sécurité. Les DEUX signaux ABSENTS (fixture legacy) ⇒ ACTIF (byte-identique : les
+            # lignes actives des goldens portent severity=HARD ET metadata.isActive=True).
+            severity = str(c.get("severity") or "").upper()
+            meta_active = metadata.get("isActive")
+            if meta_active is None:
+                meta_active = metadata.get("is_active")
+            link_inactive = (severity != "" and severity != "HARD") or meta_active is False
             team_id = (
                 metadata.get("teamId")
                 or metadata.get("team_id")
@@ -235,7 +250,7 @@ def parse_v2_constraints(constraints: list[dict[str, Any]]) -> ParsedConstraints
                 or scope_target_id
             )
             coach_id = metadata.get("coachId") or metadata.get("coach_id") or c.get("value")
-            if team_id and coach_id:
+            if team_id and coach_id and not link_inactive:
                 team_id_str = str(team_id)
                 coach_id_str = str(coach_id)
                 result["team_player_map"].setdefault(team_id_str, []).append(coach_id_str)

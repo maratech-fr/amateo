@@ -139,6 +139,36 @@ def _record_closure(model: Any, var: BoolVarLike, cause: dict[str, Any]) -> None
     closures.setdefault(index, []).append(cause)
 
 
+def _fold_case_occupant_identity(
+    team_ids: list[str], team_to_group: Mapping[str, str], blocks: list[tuple[str, frozenset[str]]]
+) -> tuple[dict[str, str], set[str]]:
+    """P2-51 — PAR CASE : identité d'occupant de chaque équipe présente. Un BLOC dont TOUS les
+    membres siègent ICI se fond en une entrée (multi-appartenance ⇒ attribution par case, jamais
+    « premier bloc gagne ») ; sinon l'équipe retombe sur son GROUPE mutualisé (unicité) ou
+    elle-même. Renvoie ``(identity: équipe → clé d'occupant, clés de bloc effectivement fondues)``.
+
+    MAISON UNIQUE (P2-58 C) : le repli d'occupant du sur-solde post-solve
+    (``result_builder._diagnose_conflicts``) ET le pré-check de capacité du verdict
+    (``diagnose_candidate_conflicts``) le partagent — un bloc = UN occupant, calculé une seule
+    fois, aux deux endroits. Vivait dans ``result_builder.diagnostics`` ; remonté ici (base de la
+    DAG ``constraints``) pour être importable des deux côtés sans cycle."""
+    present = set(team_ids)
+    identity: dict[str, str] = {}
+    covered: set[str] = set()
+    block_keys: set[str] = set()
+    for block_key, members in sorted(blocks):
+        if members <= present and not (members & covered):
+            for member in members:
+                identity[member] = block_key
+            covered |= members
+            block_keys.add(block_key)
+    for team_id in team_ids:
+        if team_id in covered:
+            continue
+        identity[team_id] = team_to_group.get(team_id, team_id)
+    return identity, block_keys
+
+
 @dataclass(frozen=True)
 class ResolvedImplicitRules:
     """Réglage EFFECTIF des 4 règles implicites, seuils inclus, défauts appliqués.
