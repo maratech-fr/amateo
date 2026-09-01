@@ -74,9 +74,10 @@ final readonly class BcclSeedProfile
      *                                                                                                                  d'été » (dev SEULEMENT)
      * @param bool                                                                              $seedMateoIncident      P5-13 « incident Matéo » : à `true`, le seed pose
      *                                                                                                                  l'incident de fermeture de Matéo (entrée racine +
-     *                                                                                                                  datée `venue_closed`) et son plan d'adaptation EN
-     *                                                                                                                  COURS (segment né avec son plan, réglages posés,
-     *                                                                                                                  NON validé, sans version) (dev SEULEMENT)
+     *                                                                                                                  datée `venue_closed`, 31/08→16/10) et son plan de
+     *                                                                                                                  fermeture SUR LA RACINE, pointant une version
+     *                                                                                                                  COMPLETED qui transcrit le planning d'overlay réel
+     *                                                                                                                  (dev SEULEMENT)
      * @param list<array{email: string, firstName: string, lastName: string, password: string}> $additionalManagers     gestionnaires (User + ClubUser admin) EN PLUS du
      *                                                                                                                  gestionnaire principal — find-or-create par email,
      *                                                                                                                  jamais écrasés (dev SEULEMENT ; [] ailleurs)

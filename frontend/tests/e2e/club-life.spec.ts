@@ -11,16 +11,16 @@ import { settleVeil } from "./support";
  *
  * ⚑ **Pourquoi le club SEEDÉ, et pourquoi l'incident QUI EXISTE DÉJÀ** (mesuré, pas supposé) :
  * le seed porte exactement la matière du parcours — deux plannings de **reprise** (17-23 et 24-30
- * août, une version COMPLETED chacun) et l'**incident Matéo** (fermeture du 7 au 27 septembre,
- * plan créé, **zéro version**). C'est le préalable que P5-13 a livré aux fixtures pour ce test.
+ * août, une version COMPLETED chacun) et l'**incident Matéo** (fermeture du 31/08 au 16/10, plan
+ * créé DIRECTEMENT SUR LA RACINE et **VALIDÉ** — il pointe une version COMPLETED transcrivant le
+ * planning d'overlay réel). C'est le préalable que P5-13 a livré aux fixtures pour ce test.
  *
- * ⚠ **Le premier jet DÉCLARAIT son propre incident, et c'était une impasse** — consigné pour que
- * personne ne recommence : sur ce seed, il n'existe **aucune semaine libre dans l'horizon du
- * radar**. L'horizon vaut 30 jours (`VENUE_UNAVAILABILITY_HORIZON_DAYS`, `RadarPanel.tsx`) ; à
- * partir du 22/08 il court jusqu'au 21/09 — or les vacances d'été tiennent jusqu'au 31/08 (donc la
- * semaine du 31/08 au 06/09 est écartée EN ENTIER, l'exclusion est hebdomadaire) et l'incident
- * Matéo gouverne du 07 au 27/09. Toute fenêtre inventée tombe soit sous les vacances, soit sur un
- * plan existant. Trois fenêtres essayées avant de comprendre qu'il fallait lire la base.
+ * ⚠ **DEPUIS L'ARBITRAGE FONDATEUR 2026-09-02, l'incident n'est plus « à faire » mais DÉJÀ VALIDÉ**
+ * et sans segment intermédiaire : la carte du radar est une fermeture VALIDÉE (`activeByEntry` ⇒
+ * `visibleClosures`), donc son action mène à VOIR l'overlay, pas à un chip « sem. du … · à faire »
+ * (ceux-ci ne naissent que d'une mère DÉCOUPÉE en semaines — cas de l'ancien segment, disparu). Le
+ * cœur du parcours (bornage de l'overlay au socle) reste vrai, mais l'ENCHAÎNEMENT de gestes ci-
+ * dessous a été écrit pour un incident À GÉNÉRER : il doit être revu sur un run réel avant de gater.
  *
  * Le socle et la génération « from scratch », eux, restent couverts par `journey.spec.ts`, qui
  * les fait sur un club neuf, de l'inscription jusqu'à la réouverture.
@@ -36,9 +36,9 @@ const EMAIL = "mara.mb@bccl.fr";
 const PASSWORD = "maraboubccl";
 
 /**
- * L'incident du seed : la fermeture du gymnase Matéo (7 → 27 septembre 2026), plan créé et
- * **aucune version** — c'est LUI que ce parcours mène jusqu'à son overlay. On le désigne par un
- * fragment de son titre, stable d'un seed à l'autre.
+ * L'incident du seed : la fermeture du gymnase Matéo (31 août → 16 octobre 2026), plan créé SUR LA
+ * RACINE et VALIDÉ (une version COMPLETED transcrite) — c'est LUI que ce parcours mène jusqu'à son
+ * overlay. On le désigne par un fragment de son titre, stable d'un seed à l'autre.
  */
 const INCIDENT = "Matéo";
 
@@ -137,7 +137,7 @@ test("un incident déclaré ouvre un overlay borné à SON plan, sans toucher au
   //         un `<p>` à l'intérieur d'un conteneur bordé : le filtrer par son texte désigne LA
   //         carte, quel que soit l'ordre d'affichage.
   // ⚠ Borner au REPÈRE d'abord : « Matéo » apparaît aussi dans chaque case du calendrier du mois
-  // (« 18 Août … Matéo indisponible (travaux) »), donc un filtre sur toute la page attrape le
+  // (« 31 Août … Matéo indisponible (incident) »), donc un filtre sur toute la page attrape le
   // calendrier et jamais la carte. Le radar est un `<aside>` — repère `complementary`.
   const radar = page.getByRole("complementary").filter({ hasText: "À traiter" });
   const card = radar.locator("div.rounded-md.border").filter({ hasText: INCIDENT });
@@ -221,7 +221,7 @@ test("un incident déclaré ouvre un overlay borné à SON plan, sans toucher au
   // Mais la base e2e peut encore porter des plans nés sous l'ANCIEN gabarit serveur (« Ajustement
   // gymnase — … »), au nom distinct du titre — s'appuyer sur la fenêtre traverse les deux ères
   // sans jamais mentir.
-  await expect(plannings, "l'overlay de l'incident doit être listé à côté du socle").toContainText("07-09-2026 → 27-09-2026");
+  await expect(plannings, "l'overlay de l'incident doit être listé à côté du socle").toContainText("31-08-2026 → 16-10-2026");
   // Les DEUX reprises du seed sont là aussi : trois plannings distincts coexistent, chacun avec
   // sa lignée — c'est la « réalité d'un club » que ce parcours doit attester (P4-122).
   await expect(plannings, "les plannings de reprise doivent cohabiter avec le socle et l'overlay").toContainText("Reprise");

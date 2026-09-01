@@ -53,6 +53,7 @@ use App\Enum\VenuePeriodMode;
 use App\Repository\SchoolHolidayPeriodRepository;
 use App\Service\Basketball\CategoryCatalog;
 use App\Service\LeagueResolver;
+use App\Service\OverlayManager;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SchoolZoneResolver;
@@ -96,6 +97,7 @@ final class BcclSeeder
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly ScheduleConstraintBuilder $constraintBuilder,
         private readonly SchoolHolidayPeriodRepository $schoolHolidayRepository,
+        private readonly OverlayManager $overlayManager,
     ) {}
 
     public function run(EntityManagerInterface $manager, BcclSeedProfile $profile): Club
@@ -2095,25 +2097,19 @@ final class BcclSeeder
     }
 
     /**
-     * P5-13 « incident Matéo » — l'état d'adaptation EN COURS du gestionnaire, relevé de la base
-     * réelle du club (2026-08-18) : le FAIT (une entrée RACINE `closure` « Matéo indisponible
-     * (travaux) » + sa datée `venue_closed`, sans plan — une racine ne provisionne rien) et sa
-     * RÉPONSE ENTAMÉE (un segment-enfant de 3 semaines né AVEC son plan d'ajustement, réglages
-     * posés mais NON validé et SANS version — un travail en cours, prêt à générer).
+     * P5-13 « incident Matéo » (arbitrage fondateur 2026-09-02) — le seed dev transcrit le PLANNING
+     * d'overlay réel que le gestionnaire a construit face à un nouvel incident : Matéo indisponible
+     * du 31/08 au 16/10. Le plan de FERMETURE naît DIRECTEMENT SUR LA RACINE (plus de segment
+     * intermédiaire) et POINTE une version COMPLETED qui transcrit ce planning (8 gymnases, Matéo
+     * ABSENT, samedi-dimanche compris) : 76 cases · 90 séances-équipe.
      *
-     * Les versions générées par le fondateur pendant ses tests sont des artefacts VOLATILES,
-     * délibérément NON seedés : on fige l'état « avant génération », pas ses essais.
-     *
-     * Tout est find-or-create / purge-recréation à chaque run (idempotent). La grille du plan est
-     * la COPIE de la grille de saison (Matéo compris) pour TOUS les gymnases SAUF JDR, dont la
-     * grille de plan est EXPLICITE — retouches réelles du gestionnaire figées le 2026-08-19
-     * (re-snapshot, pas une invention) : 18 créneaux réinsérés après la copie. Contrairement aux
-     * reprises (section 12) qui reconstruisent la grille de TOUS les gymnases : ici seul JDR est
-     * retouché ; la fermeture de Matéo agit par l'ÉTAT EFFECTIF (la datée
-     * `venue_closed`), pas par la grille. La purge de VenueTrainingSlot par club/saison
-     * (section « VENUE TRAINING SLOTS ») emporte la copie de plan et provisionPeriodPlan ne
-     * re-copie qu'à la NAISSANCE : on re-matérialise donc la copie saison à chaque run (sinon la
-     * grille serait vide au 2e).
+     * Remplace l'ANCIEN incident « (travaux) » (racine sans plan + segment 07→27/09 né avec un plan
+     * NON validé) : sur une base VIVANTE les deux ne doivent pas coexister — d'où la PURGE nominale
+     * de l'ancien en tête, DE BOUT EN BOUT (le teardown canonique {@see OverlayManager::
+     * deletePeriodPlanForEntry} : versions + grille + overrides + blocs hérités + réglages bien-être,
+     * que la seule cascade FK laisserait derrière). Le reste est find-or-create / purge-recréation
+     * (idempotent). La fermeture de Matéo agit par l'ÉTAT EFFECTIF (la datée `venue_closed`), jamais
+     * par un VenuePeriodOverride.
      *
      * @param array<string, Team>  $teams
      * @param array<string, Venue> $venues
@@ -2121,9 +2117,35 @@ final class BcclSeeder
     private function seedMateoIncident(EntityManagerInterface $manager, Club $club, Season $season, string $clubId, array $teams, array $venues): void
     {
         $mateo = $venues['vMateo'];
-        $incidentTitle = 'Matéo indisponible (travaux)';
 
-        // --- Le FAIT : entrée RACINE `closure`, sans plan (une racine ne provisionne rien). ---
+        // --- 1 · PURGE NOMINALE de l'ANCIEN incident « (travaux) » (vital sur base VIVANTE : pas de
+        // coexistence — le club réel n'en porte qu'un). Sa racine portait sa datée `venue_closed` et
+        // un segment-enfant (07→27/09) né avec son plan. On détruit le plan du segment DE BOUT EN
+        // BOUT via le teardown canonique (versions + grille + overrides + blocs hérités + réglages
+        // bien-être — la seule cascade FK laisserait blocs socle et copie bien-être derrière), puis
+        // l'entrée-segment, la datée et la racine. Absent (2e run, ou club neuf) ⇒ no-op. ---
+        $staleRoot = $manager->getRepository(CalendarEntry::class)->findOneBy([
+            'clubId' => $clubId,
+            'seasonId' => $season->getId(),
+            'title' => 'Matéo indisponible (travaux)',
+            'parentEntryId' => null,
+        ]);
+        if ($staleRoot instanceof CalendarEntry) {
+            foreach ($manager->getRepository(CalendarEntry::class)->findBy(['clubId' => $clubId, 'parentEntryId' => $staleRoot->getId()]) as $staleSegment) {
+                $this->overlayManager->deletePeriodPlanForEntry($staleSegment, force: true);
+                $manager->remove($staleSegment);
+            }
+            foreach ($manager->getRepository(Constraint::class)->findBy(['clubId' => $clubId, 'calendarEntryId' => $staleRoot->getId()]) as $staleClosure) {
+                $manager->remove($staleClosure);
+            }
+            $manager->remove($staleRoot);
+            $manager->flush();
+        }
+
+        // --- 2 · La NOUVELLE racine `closure` « Matéo indisponible (incident) » 31/08→16/10. Le
+        // titre PORTE sa fenêtre (convention `types-de-planning.md` — un titre de période nomme sa
+        // fenêtre « — du … au … » ; le plan naît nommé du titre). Find-or-create. ---
+        $incidentTitle = 'Matéo indisponible (incident) — du 31 août 2026 au 16 oct. 2026';
         $incident = $manager->getRepository(CalendarEntry::class)->findOneBy([
             'clubId' => $clubId,
             'seasonId' => $season->getId(),
@@ -2137,18 +2159,15 @@ final class BcclSeeder
             $incident->setKind(CalendarEntryKind::PERIOD);
             $incident->setPeriodType(CalendarEntryPeriodType::CLOSURE);
             $incident->setTitle($incidentTitle);
-            $incident->setStartDate(new DateTimeImmutable('2026-08-18'));
-            $incident->setEndDate(new DateTimeImmutable('2026-09-30'));
+            $incident->setStartDate(new DateTimeImmutable('2026-08-31'));
+            $incident->setEndDate(new DateTimeImmutable('2026-10-16'));
             $incident->setStatus(CalendarEntryStatus::ACTIVE);
             $manager->persist($incident);
             $manager->flush();
         }
 
-        // --- Sa datée `venue_closed` : FACILITY/HARD sur Matéo, rattachée à l'entrée. Le front
-        // fait 2 POST (entrée puis contrainte) et NOMME la contrainte comme le titre de l'entrée
-        // (useCreateVenueClosure). Le plan de période naît NOMMÉ du TITRE de son entrée
-        // (décision fondateur 2026-08-23) : plus de nom générique ni de recalage sur Matéo.
-        // Find-or-create par (club, entrée). ---
+        // --- Sa datée `venue_closed` : FACILITY/HARD sur Matéo, rattachée à la racine et NOMMÉE du
+        // titre de son entrée (convention `useCreateVenueClosure`). Find-or-create par (club, entrée). ---
         $closure = $manager->getRepository(Constraint::class)->findOneBy([
             'clubId' => $clubId,
             'calendarEntryId' => $incident->getId(),
@@ -2162,103 +2181,66 @@ final class BcclSeeder
             $closure->setFamily(ConstraintFamily::FACILITY);
             $closure->setRuleType(ConstraintRuleType::HARD);
             $closure->setName($incidentTitle);
-            $closure->setConfig(['type' => 'venue_closed', 'startDate' => '2026-08-18', 'endDate' => '2026-09-30']);
+            $closure->setConfig(['type' => 'venue_closed', 'startDate' => '2026-08-31', 'endDate' => '2026-10-16']);
             $closure->setCalendarEntryId($incident->getId());
             $closure->setIsActive(true);
             $manager->persist($closure);
             $manager->flush();
         }
 
-        // --- La RÉPONSE ENTAMÉE : segment-enfant (parent = l'incident), 3 semaines pleines
-        // lun→dim, né AVEC son plan. Find-or-create par (club, parent, début). ---
-        $segmentStart = new DateTimeImmutable('2026-09-07');
-        $segment = $manager->getRepository(CalendarEntry::class)->findOneBy([
-            'clubId' => $clubId,
-            'parentEntryId' => $incident->getId(),
-            'startDate' => $segmentStart,
-        ]);
-        if (!$segment instanceof CalendarEntry) {
-            $segment = new CalendarEntry;
-            $segment->setClubId($clubId);
-            $segment->setSeasonId($season->getId());
-            $segment->setKind(CalendarEntryKind::PERIOD);
-            $segment->setPeriodType(CalendarEntryPeriodType::CLOSURE);
-            $segment->setTitle('Matéo indisponible (travaux) — semaines du 7 sept. 2026 au 27 sept. 2026');
-            $segment->setStartDate($segmentStart);
-            $segment->setEndDate(new DateTimeImmutable('2026-09-27'));
-            $segment->setParentEntryId($incident->getId());
-            $segment->setStatus(CalendarEntryStatus::ACTIVE);
-            $manager->persist($segment);
-            $manager->flush();
-        }
-
-        // --- Le plan d'ajustement (naissance seule : copie la grille de saison + les 4 règles
-        // bien-être, ancre les réglages). Il naît NOMMÉ du titre de son segment-enfant
-        // (« Matéo indisponible (travaux) — semaines du 7 sept. 2026 au 27 sept. 2026 »,
-        // décision fondateur 2026-08-23). PAS de version, PAS de pointeur — travail EN COURS. ---
-        $planId = $this->schedulePlanProvisioner->provisionPeriodPlan($segment->getId());
+        // --- 3 · Le plan naît SUR LA RACINE (geste « Adapter » — PeriodPlanBirthTest prouve le
+        // chemin). Type CLOSURE ⇒ provisionPeriodPlan copie la grille de saison + les 8 blocs SOCLE
+        // (D10bis) + les 4 règles bien-être. ---
+        $planId = $this->schedulePlanProvisioner->provisionPeriodPlan($incident->getId());
         if (null === $planId) {
-            throw new RuntimeException('Le segment d\'ajustement de l\'incident Matéo n\'a pas reçu de plan.');
+            throw new RuntimeException('L\'incident Matéo (racine) n\'a pas reçu de plan.');
         }
 
-        // --- Grille du plan = COPIE de la grille de saison (Matéo compris), re-matérialisée à
-        // chaque run (voir docblock). On NE reconstruit PAS de grille custom : c'est la datée
-        // `venue_closed` qui ferme Matéo par l'état effectif, pas la grille. ---
+        $planning = $this->mateoIncidentPlanning();
+
+        // --- 4 · Grille du plan RECONSTRUITE : purge + 76 cases dérivées du fichier. Capacité =
+        // occupant-unique PAR ENSEMBLE EXACT (une case dont les équipes sont EXACTEMENT les membres
+        // d'un bloc déclaré, ou une case mono-équipe, compte pour UN ; recouvrement PARTIEL avec un
+        // bloc ⇒ on lève). Aucun créneau Matéo (le fichier n'en porte pas). ---
         foreach ($manager->getRepository(VenueTrainingSlot::class)->findBy(['schedulePlanId' => $planId]) as $planSlot) {
             $manager->remove($planSlot);
         }
         $manager->flush();
-        foreach ($venues as $venue) {
-            $this->schedulePlanProvisioner->copySeasonalSlotsForVenue($planId, $venue->getId());
+        $blocSets = array_map(fn (array $blocTeams): array => $this->normalizedTeamSet($blocTeams), $planning['blocs']);
+        /** @var array<string, array{venue: string, day: int, start: string, duration: int, teams: array<string, true>}> $gridSlots */
+        $gridSlots = [];
+        foreach ($planning['sessions'] as [$teamName, $venueVar, $day, $start, $duration]) {
+            $key = $venueVar . '|' . $day . '|' . $start;
+            if (!isset($gridSlots[$key])) {
+                $gridSlots[$key] = ['venue' => $venueVar, 'day' => $day, 'start' => $start, 'duration' => $duration, 'teams' => []];
+            }
+            $gridSlots[$key]['teams'][$teamName] = true;
         }
-
-        // --- Sauf JDR : sa grille de plan est EXPLICITE (19 créneaux). Retouches réelles du
-        // gestionnaire (2026-08-19) — la copie de saison ne suffit plus pour JDR ; re-snapshot,
-        // pas une invention. On purge les copies JDR et on réinsère (idempotent : purge+réinsertion
-        // à chaque run, comme la section 12). [jour ISO, 'HH:MM', durée, capacity] :
-        //  - lun→ven (1-5) : 17:30 (90, cap 2) · 19:00 (90, cap 2) · 20:30 (120, cap 1) ;
-        //  - mer (3)       : 16:00 (90, cap 1) — créneau ajouté par le gestionnaire ;
-        //  - sam (6)       : 09:00 · 10:15 · 11:30 (75, cap 1). ---
-        $jdr = $venues['vJdr'];
-        foreach ($manager->getRepository(VenueTrainingSlot::class)->findBy(['schedulePlanId' => $planId, 'venueId' => $jdr->getId()]) as $jdrPlanSlot) {
-            $manager->remove($jdrPlanSlot);
-        }
-        $manager->flush();
-        /** @var list<array{int, string, int, int}> $jdrGrid */
-        $jdrGrid = [[6, '09:00', 75, 1], [6, '10:15', 75, 1], [6, '11:30', 75, 1], [3, '16:00', 90, 1]];
-        foreach ([1, 2, 3, 4, 5] as $day) {
-            $jdrGrid[] = [$day, '17:30', 90, 2];
-            $jdrGrid[] = [$day, '19:00', 90, 2];
-            $jdrGrid[] = [$day, '20:30', 120, 1];
-        }
-        foreach ($jdrGrid as [$day, $start, $duration, $capacity]) {
+        foreach ($gridSlots as $gridSlot) {
             $slot = new VenueTrainingSlot;
             $slot->setClubId($clubId);
             $slot->setSeasonId($season->getId());
-            $slot->setVenueId($jdr->getId());
-            $slot->setDayOfWeek($day);
-            $slot->setStartTime(new DateTimeImmutable($start));
-            $slot->setDurationMinutes($duration);
-            $slot->setCapacity($capacity);
+            $slot->setVenueId($venues[$gridSlot['venue']]->getId());
+            $slot->setDayOfWeek($gridSlot['day']);
+            $slot->setStartTime(new DateTimeImmutable($gridSlot['start']));
+            $slot->setDurationMinutes($gridSlot['duration']);
+            $slot->setCapacity($this->incidentCaseCapacity(array_keys($gridSlot['teams']), $blocSets));
             $slot->setGroupLabel(null);
             $slot->setSchedulePlanId($planId);
             $manager->persist($slot);
         }
         $manager->flush();
 
-        // --- Réglages EN COURS (find-or-create par (plan, équipe)) : 8 équipes actives à 2
-        // séances/semaine ; « Training Individuel » ET les 3 équipes « Academie » décochées (BYE
-        // pendant l'incident). AUCUNE autre ligne (12 au total). Le plan est marqué « sélection
-        // d'équipes initialisée » pour que l'ouverture du wizard ne re-seede pas son défaut
-        // par-dessus (sinon ces 12 lignes seraient écrasées). ---
-        $teamOverrides = [
-            'U18F1' => true, 'U18M1' => true, 'U15M1' => true, 'U15F1' => true,
-            'U13M1' => true, 'U13F1' => true, 'U13F2' => true, 'U13M2' => true,
-            'Training Individuel' => false,
-            'Academie U9-U11' => false, 'Academie U13-U15' => false, 'Academie U18' => false,
-        ];
-        foreach ($teamOverrides as $teamName => $isActive) {
-            $team = $teams[$teamName];
+        // --- 5 · Réglages d'équipes (find-or-create par (plan, équipe)) : chaque équipe qui figure
+        // au planning est active à son nombre de séances DÉRIVÉ ; les autres (ici « Training
+        // Individuel » seule) sont décochées. 50 lignes = 49 actives + 1. Plan marqué « sélection
+        // initialisée » (le wizard ne re-seede pas son défaut par-dessus). ---
+        $sessionsPerTeam = [];
+        foreach ($planning['sessions'] as [$teamName]) {
+            $sessionsPerTeam[$teamName] = ($sessionsPerTeam[$teamName] ?? 0) + 1;
+        }
+        foreach ($teams as $teamName => $team) {
+            $isActive = isset($sessionsPerTeam[$teamName]);
             $teamOverride = $manager->getRepository(TeamPeriodOverride::class)->findOneBy([
                 'schedulePlanId' => $planId,
                 'teamId' => $team->getId(),
@@ -2272,15 +2254,45 @@ final class BcclSeeder
                 $manager->persist($teamOverride);
             }
             $teamOverride->setIsActive($isActive);
-            $teamOverride->setSessionsPerWeek($isActive ? 2 : null);
+            $teamOverride->setSessionsPerWeek($isActive ? $sessionsPerTeam[$teamName] : null);
         }
         $manager->flush();
         $this->schedulePlanProvisioner->markPlanTeamSelectionInitialized($planId);
 
-        // --- Une contrainte de saison décochée PAR PLAN : « SM2 · au moins 1 à Matéo » — le
-        // gestionnaire l'a décochée puisque Matéo est fermé (ConstraintPeriodOverride
-        // isActive=false ; la saison reste intacte). Le nom fait la clé — introuvable ⇒ on LÈVE
-        // (un décochage qui ne vise rien serait muet). AUCUN autre override de contrainte. ---
+        // --- 6 · Mutualisation : le plan a hérité les 8 blocs SOCLE (D10bis) à sa naissance ; le
+        // gestionnaire les garde TOUS À L'IDENTIQUE et en AJOUTE 5, soit les 13 ensembles réels.
+        // Purge-puis-déclare est la mécanique idempotente (les membres n'ont pas de clé naturelle
+        // par composition). Chaque bloc à commonSessions=1. La multi-appartenance est permise
+        // (l'unicité DB porte sur (block_id, team_id), pas sur l'équipe seule). ---
+        foreach ($manager->getRepository(SharedTrainingBlock::class)->findBy(['schedulePlanId' => $planId]) as $existingBlock) {
+            foreach ($manager->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $existingBlock->getId()]) as $existingMember) {
+                $manager->remove($existingMember);
+            }
+            $manager->remove($existingBlock);
+        }
+        $manager->flush();
+        foreach ($planning['blocs'] as $blocTeams) {
+            $sharedBlock = new SharedTrainingBlock;
+            $sharedBlock->setClubId($clubId);
+            $sharedBlock->setSeasonId($season->getId());
+            $sharedBlock->setSchedulePlanId($planId);
+            $sharedBlock->setCommonSessions(1);
+            $manager->persist($sharedBlock);
+            foreach ($blocTeams as $teamName) {
+                $member = new SharedTrainingBlockTeam;
+                $member->setClubId($clubId);
+                $member->setSeasonId($season->getId());
+                $member->setSchedulePlanId($planId);
+                $member->setBlockId($sharedBlock->getId());
+                $member->setTeamId($teams[$teamName]->getId());
+                $manager->persist($member);
+            }
+        }
+        $manager->flush();
+
+        // --- 7 · Décochage : « SM2 · au moins 1 à Matéo » SEULE (Matéo est fermé). Le nom fait la
+        // clé — introuvable ⇒ on LÈVE (un décochage qui ne vise rien serait muet). AUCUN autre
+        // override de contrainte. ---
         $sm2AtMateo = 'SM2 · au moins 1 à ' . $mateo->getName();
         $constraint = $manager->getRepository(Constraint::class)->findOneBy(['clubId' => $clubId, 'name' => $sm2AtMateo]);
         if (!$constraint instanceof Constraint) {
@@ -2301,10 +2313,204 @@ final class BcclSeeder
         $constraintOverride->setIsActive(false);
         $manager->flush();
 
+        // --- 8 · ZÉRO réservation : purge de toute réservation résiduelle du plan, aucune insertion.
+        // Les fanions viendront d'un exercice solveur ultérieur (arbitrage fondateur) : l'annotation
+        // « (créneau réserver) » du fichier s'IGNORE ici. ---
+        foreach ($manager->getRepository(Reservation::class)->findBy(['schedulePlanId' => $planId]) as $staleReservation) {
+            $manager->remove($staleReservation);
+        }
+        $manager->flush();
+
+        // --- 9 · Version transcrite POINTÉE (COMPLETED, 90 créneaux LockLevel::NONE — aucune
+        // réservation ⇒ aucun verrou). Réutilise le pointeur des reprises TEL QUEL : l'entrée qui
+        // porte le plan est ici la RACINE. ---
+        $this->pointPeriodPlanAtReprise($manager, $season, $clubId, $planId, $incident, $planning['sessions'], $teams, $venues);
+
         // VenuePeriodOverride : AUCUN, délibérément. Le défaut vivant dérive la fermeture de Matéo
         // depuis la datée `venue_closed` de l'incident (VenueClosureDays) — poser un override
-        // serait doubler le mécanisme. Plan laissé NON validé (chosenScheduleId NULL) et SANS
-        // version : on n'appelle donc ni linkSchedule ni choose.
+        // serait doubler le mécanisme.
+    }
+
+    /**
+     * Un ensemble d'équipes normalisé (dédupliqué, trié) — pour comparer une case du plan à un bloc
+     * déclaré indépendamment de l'ordre de saisie.
+     *
+     * @param list<string> $teamNames
+     *
+     * @return list<string>
+     */
+    private function normalizedTeamSet(array $teamNames): array
+    {
+        $set = array_values(array_unique($teamNames));
+        sort($set, \SORT_STRING);
+
+        return $set;
+    }
+
+    /**
+     * Capacité d'une case du plan d'incident : occupant-unique par ENSEMBLE EXACT. Une case
+     * mono-équipe, ou dont les équipes sont EXACTEMENT les membres d'un bloc déclaré, compte pour UN
+     * occupant (le bloc EST un occupant unique). Sinon la capacité serait le nombre d'équipes — mais
+     * une intersection PARTIELLE avec un bloc (recouvrement sans égalité) trahit une transcription
+     * fautive et LÈVE (défensif : sur les données réelles chaque case multi-équipes égale un bloc,
+     * donc toutes les cases tombent à 1).
+     *
+     * @param list<string>       $caseTeams
+     * @param list<list<string>> $blocSets  ensembles de blocs, déjà normalisés
+     */
+    private function incidentCaseCapacity(array $caseTeams, array $blocSets): int
+    {
+        $case = $this->normalizedTeamSet($caseTeams);
+        if (\count($case) <= 1) {
+            return 1;
+        }
+        foreach ($blocSets as $bloc) {
+            if ($bloc === $case) {
+                return 1;
+            }
+        }
+        foreach ($blocSets as $bloc) {
+            if ([] !== array_intersect($case, $bloc)) {
+                throw new RuntimeException(\sprintf('Incident Matéo : la case {%s} recouvre partiellement un bloc déclaré sans l\'égaler — transcription à revoir.', implode(', ', $case)));
+            }
+        }
+
+        return \count($case);
+    }
+
+    /**
+     * Le PLANNING d'overlay de l'incident Matéo, EN DONNÉE (transcription VERBATIM de
+     * business/5-donnees/plannings-bccl/planning-overlay-mateoindisponible.txt, 31/08→16/10).
+     * Miroir de {@see repriseWeeks()} : la méthode dédiée DÉRIVE tout des séances (grille + capacité
+     * occupant-unique, séances/semaine) et de la liste des blocs. Séances : [équipe, gymnase, jour
+     * ISO, 'HH:MM', durée]. Noms normalisés vers le seed (« Section Jean Macé » → « Section J.Macé »,
+     * « Micro basket » → « Micro Basket », « Basket santé » → « Basket Santé », « Véterans » →
+     * « Veterans », « Loisir F » → « Loisir Feminine », « Mercredi Basket » → « Mercredi Shark
+     * U9-U11 »). 76 cases · 90 séances-équipe · 8 gymnases (Matéo ABSENT) · samedi-dimanche compris.
+     *
+     * @return array{sessions: list<array{string, string, int, string, int}>, blocs: list<list<string>>}
+     */
+    private function mateoIncidentPlanning(): array
+    {
+        return [
+            'sessions' => [
+                // LUNDI (jour ISO 1)
+                ['Section J.Macé', 'vArmand', 1, '16:00', 90],
+                ['U13M1', 'vArmand', 1, '17:30', 90],
+                ['U13M2', 'vArmand', 1, '17:30', 90],
+                ['U18M1', 'vArmand', 1, '19:00', 90],
+                ['U18F1', 'vArmand', 1, '19:00', 90],
+                ['SM2', 'vArmand', 1, '20:30', 120],
+                ['U13F2', 'vTonkin', 1, '19:00', 90],
+                ['U9F1', 'vJdr', 1, '17:30', 90],
+                ['U9F2', 'vJdr', 1, '17:30', 90],
+                ['U15M1', 'vJdr', 1, '19:00', 90],
+                ['U15F1', 'vJdr', 1, '19:00', 90],
+                ['U21M1', 'vJdr', 1, '20:30', 120],
+                ['U13F1', 'vDebarros', 1, '17:30', 90],
+                ['U18F3', 'vDebarros', 1, '19:00', 90],
+                ['SF3', 'vDebarrosAnnexe', 1, '20:30', 120],
+                // MARDI (jour ISO 2)
+                ['U15M2', 'vJeanVilar', 2, '18:45', 105],
+                ['SM4', 'vJeanVilar', 2, '20:30', 120],
+                ['U13F2', 'vArmand', 2, '17:30', 90],
+                ['U13F3', 'vArmand', 2, '17:30', 90],
+                ['U18M2', 'vArmand', 2, '19:00', 90],
+                ['Loisir 1', 'vCamus', 2, '20:00', 150],
+                ['U11M2', 'vJdr', 2, '17:30', 90],
+                ['U11F2', 'vJdr', 2, '17:30', 90],
+                ['U18F2', 'vJdr', 2, '19:00', 90],
+                ['SM1', 'vJdr', 2, '20:30', 120],
+                ['U13F1', 'vDebarros', 2, '17:30', 90],
+                ['U18F1', 'vDebarros', 2, '19:00', 90],
+                ['SF1', 'vDebarros', 2, '20:30', 120],
+                ['U15F2', 'vDebarrosAnnexe', 2, '19:30', 60],
+                ['U15F3', 'vDebarrosAnnexe', 2, '19:30', 60],
+                // MERCREDI (jour ISO 3)
+                ['U13F3', 'vTonkin', 3, '16:00', 90],
+                ['U13M2', 'vTonkin', 3, '17:30', 90],
+                ['U18F2', 'vTonkin', 3, '19:00', 90],
+                ['SF2', 'vTonkin', 3, '20:30', 120],
+                ['U13F1', 'vArmand', 3, '14:00', 105],
+                ['U13F2', 'vArmand', 3, '14:00', 105],
+                ['U13M1', 'vArmand', 3, '15:45', 90],
+                ['U15M1', 'vArmand', 3, '17:15', 90],
+                ['U18M1', 'vArmand', 3, '18:45', 90],
+                ['SM3', 'vArmand', 3, '20:15', 135],
+                ['U9M1', 'vJdr', 3, '16:00', 90],
+                ['U11F2', 'vJdr', 3, '16:00', 90],
+                ['U11F1', 'vJdr', 3, '17:30', 90],
+                ['U11M2', 'vJdr', 3, '17:30', 90],
+                ['U15F1', 'vJdr', 3, '19:00', 90],
+                ['SF1', 'vJdr', 3, '20:30', 120],
+                ['Mercredi Shark U9-U11', 'vDebarrosAnnexe', 3, '09:30', 75],
+                ['Basket Santé', 'vDebarrosAnnexe', 3, '10:45', 75],
+                ['U11M1', 'vDebarrosAnnexe', 3, '17:30', 90],
+                ['U15F3', 'vDebarrosAnnexe', 3, '19:00', 90],
+                ['SF3', 'vDebarrosAnnexe', 3, '20:30', 120],
+                ['U9M2', 'vAdn', 3, '17:30', 90],
+                ['U9F1', 'vAdn', 3, '17:30', 90],
+                ['U9F2', 'vAdn', 3, '17:30', 90],
+                ['U15F2', 'vAdn', 3, '19:00', 90],
+                ['3x3', 'vAdn', 3, '20:30', 120],
+                // JEUDI (jour ISO 4)
+                ['U18M2', 'vJeanVilar', 4, '19:00', 90],
+                ['U21M2', 'vJeanVilar', 4, '20:30', 120],
+                ['Section J.Macé', 'vArmand', 4, '16:00', 90],
+                ['U11M1', 'vArmand', 4, '17:30', 90],
+                ['U9M1', 'vJdr', 4, '17:30', 90],
+                ['U9M2', 'vJdr', 4, '17:30', 90],
+                ['SM2', 'vJdr', 4, '19:00', 90],
+                ['SM1', 'vJdr', 4, '20:30', 120],
+                ['U18F Fays', 'vDebarros', 4, '16:00', 90],
+                ['U15M1', 'vDebarros', 4, '17:30', 90],
+                ['U21M1', 'vDebarros', 4, '19:00', 90],
+                ['SF2', 'vDebarros', 4, '20:30', 120],
+                ['Loisir 3', 'vCamus', 4, '20:00', 150],
+                // VENDREDI (jour ISO 5)
+                ['Section J.Macé', 'vArmand', 5, '16:00', 90],
+                ['U11F1', 'vArmand', 5, '17:30', 90],
+                ['U15M2', 'vArmand', 5, '19:00', 90],
+                ['U18F3', 'vArmand', 5, '20:30', 120],
+                ['U13M1', 'vJdr', 5, '17:30', 90],
+                ['U18M1', 'vJdr', 5, '19:00', 90],
+                ['Loisir Feminine', 'vJdr', 5, '20:30', 120],
+                ['Veterans', 'vJdr', 5, '20:30', 120],
+                ['U18M Fays', 'vDebarros', 5, '16:00', 90],
+                ['U13M2', 'vDebarros', 5, '17:30', 90],
+                ['U15F1', 'vDebarros', 5, '19:00', 90],
+                ['U21M2', 'vDebarros', 5, '20:30', 120],
+                ['U18F1', 'vDebarrosAnnexe', 5, '19:00', 90],
+                ['Loisir 2', 'vCamus', 5, '20:00', 150],
+                // SAMEDI (jour ISO 6)
+                ['Basket Santé', 'vJdr', 6, '09:00', 75],
+                ['Micro Basket', 'vArmand', 6, '09:00', 45],
+                ['Baby 1', 'vArmand', 6, '09:45', 60],
+                ['Baby 2', 'vArmand', 6, '10:45', 60],
+                // DIMANCHE (jour ISO 7)
+                ['Academie U9-U11', 'vAdn', 7, '09:00', 75],
+                ['Academie U13-U15', 'vAdn', 7, '10:15', 75],
+                ['Academie U18', 'vAdn', 7, '11:30', 75],
+            ],
+            // Les 13 ensembles mutualisés réels : les 8 SOCLE hérités (D10bis) + 5 AJOUTÉS par le
+            // gestionnaire. Chaque case multi-équipes du planning ci-dessus égale EXACTEMENT l'un
+            // d'eux (d'où les 76 cases toutes à capacité 1).
+            'blocs' => [
+                ['U13M1', 'U13M2'],
+                ['U18M1', 'U18F1'],
+                ['U9F1', 'U9F2'],
+                ['U15M1', 'U15F1'],
+                ['U13F2', 'U13F3'],
+                ['U11M2', 'U11F2'],
+                ['U15F2', 'U15F3'],
+                ['U13F1', 'U13F2'],
+                ['U9M1', 'U11F2'],
+                ['U11F1', 'U11M2'],
+                ['U9M2', 'U9F1', 'U9F2'],
+                ['U9M1', 'U9M2'],
+                ['Loisir Feminine', 'Veterans'],
+            ],
+        ];
     }
 
     /**
