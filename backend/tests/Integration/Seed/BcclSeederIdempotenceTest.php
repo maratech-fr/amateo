@@ -733,6 +733,11 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             ],
         ];
 
+        // Même tri que la requête (name, scope_target_id) : les deux lignes SM partagent le NOM,
+        // leur ordre relatif dépend des UUID d'équipes — aléatoires à chaque seed. Sans ce tri,
+        // l'assertion est une pièce de monnaie (constaté : vert puis rouge sur deux runs).
+        usort($expected17, static fn (array $a, array $b): int => [$a['name'], $a['scope_target_id']] <=> [$b['name'], $b['scope_target_id']]);
+
         $assertMatches = function (array $rows) use ($expected17): void {
             self::assertCount(3, $rows, 'la semaine du 17 porte exactement 3 genèses');
             foreach ($rows as $i => $row) {
