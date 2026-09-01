@@ -460,45 +460,6 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
-     * NR (arbitrage fondateur 2026-09-01) — QUATRE liens coach-joueur naissent DÉCOCHÉS.
-     *
-     * « Le coach n'y joue pas quand ça coince » : Enzo Camerino (joue SM1), Emerick Creantor et
-     * Mara (SM2), Thomas Francon (SM3) portent is_active=false dès la création. L'interrupteur est
-     * GLOBAL (il vaut aussi pour la saison, assumé) ; le moteur l'honore depuis le recalage du
-     * verdict des retouches manuelles. Exactement ces quatre liens sont décochés, aucun autre ; un
-     * second run les garde décochés (find-or-create, pas de résurrection).
-     */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testFourCoachPlayerMembershipsAreSeededInactive(): void
-    {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
-
-        $inactive = fn (): array => array_map(
-            static fn (array $row): array => [(string) $row['first_name'], (string) $row['last_name'], (string) $row['team']],
-            $this->connection->fetchAllAssociative(
-                'SELECT c.first_name, c.last_name, t.name AS team '
-                . 'FROM coach_player_membership m '
-                . 'JOIN coach c ON c.id = m.coach_id '
-                . 'JOIN team t ON t.id = m.team_id '
-                . 'WHERE m.club_id = ? AND m.is_active = false ORDER BY t.name, c.first_name',
-                [$club->getId()],
-            ),
-        );
-        $expected = [
-            ['Enzo', 'Camerino', 'SM1'],
-            ['Emerick', 'Creantor', 'SM2'],
-            ['Mara', '', 'SM2'],
-            ['Thomas', 'Francon', 'SM3'],
-        ];
-        self::assertSame($expected, $inactive(), 'exactement les quatre liens coach-joueur arbitrés naissent décochés');
-
-        // Idempotence : un second run ne les réactive pas et n'en décoche pas d'autres.
-        $this->seeder->run($this->em, BcclSeedProfile::dev());
-        self::assertSame($expected, $inactive(), 'un second run garde exactement ces quatre liens décochés');
-    }
-
-    /**
      * Post-modèle bloc (arbitrage fondateur 2026-09-01) — les grilles des semaines de REPRISE
      * comptent un groupe mutualisé pour UN occupant : plus aucune case en capacité 2 (le
      * palliatif d'avant les blocs laissait le solveur y glisser une équipe de plus). Et la

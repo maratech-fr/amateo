@@ -862,20 +862,21 @@ final class BcclSeeder
         // ============================================================
         // SECTION 7 — NEW COACH-PLAYER MEMBERSHIPS
         // ============================================================
-        // Arbitrage fondateur 2026-09-01 (« le coach n'y joue pas quand ça coince ») : quatre liens
-        // coach-joueur naissent DÉCOCHÉS (isActive=false) — Enzo Camerino (joue SM1), Emerick
-        // Creantor / Mara (SM2), Thomas Francon (SM3). L'interrupteur est GLOBAL (il vaut aussi
-        // pour la saison, assumé) ; le moteur l'honore depuis le recalage du verdict des retouches
-        // manuelles (case de bloc active exemptant le rôle coach-joueur). Défaut = actif.
+        // Doctrine fondateur (2026-09-01, définitive) : un lien coach-joueur ne se coupe JAMAIS —
+        // ni globalement, ni par plan. Quand le réel le contredit (reprises : Enzo, Emerick, Mara,
+        // Thomas), le gestionnaire IMPOSE le créneau par RÉSERVATION : le verrou est souverain,
+        // le moteur crie en diagnostic, et ce cri est pleinement assumé — « si ça crie, c'est que
+        // j'ai fait une réservation, donc un geste volontaire ». Le planning transcrit pointé
+        // s'affiche tel quel ; une régénération libre, elle, respecte les liens.
         /** @var list<array{coach: Coach, team: Team, active?: bool}> $newPlayerLinks */
         $newPlayerLinks = [
-            ['coach' => $coachEnzo, 'team' => $sm1, 'active' => false],
+            ['coach' => $coachEnzo, 'team' => $sm1],
             ['coach' => $coachLuca, 'team' => $sm1],
             ['coach' => $coachNicolasBarilleau, 'team' => $sm2],
             ['coach' => $coachMaxime, 'team' => $sm2],
-            ['coach' => $coachMara, 'team' => $sm2, 'active' => false],
-            ['coach' => $coachEmerick, 'team' => $sm2, 'active' => false],
-            ['coach' => $coachThomas, 'team' => $sm3, 'active' => false],
+            ['coach' => $coachMara, 'team' => $sm2],
+            ['coach' => $coachEmerick, 'team' => $sm2],
+            ['coach' => $coachThomas, 'team' => $sm3],
             ['coach' => $coachInes, 'team' => $sf2],
             ['coach' => $coachThalie, 'team' => $sf3],
             ['coach' => $coachAela, 'team' => $sf3],
