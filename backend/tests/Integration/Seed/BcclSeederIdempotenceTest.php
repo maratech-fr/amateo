@@ -603,8 +603,15 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      * PORTÉE ASSUMÉE (identique au test de saison) : seules les contraintes de portée ÉQUIPE
      * sont couvertes ; la résolution des règles CLUB par tag vit dans le builder, pas dans le seed.
      *
+     * P2-59 — le moissonneur lit l'UNION du modèle FAIT/GENÈSE, pas les seules permanentes de
+     * saison : une règle dure d'équipe PENDUE au plan lui-même (genèse, calendar_entry_id = l'entrée
+     * du plan) ou aux FAITS de sa mère (calendar_entry_id = le parent de l'entrée du plan) doit
+     * elle aussi être satisfaite par la transcription. C'est ce qui garde la genèse « Séniors
+     * masculins mutualisés · pas avant 20:30 » du 17 (transcrite à 20:45 ≥ 20:30).
+     *
      * Falsifiable : retirer un décochage du seed (p. ex. « SM1 · uniquement mardi, jeudi » de la
-     * semaine du 17) rend ce test ROUGE en nommant la séance du lundi de SM1.
+     * semaine du 17) rend ce test ROUGE en nommant la séance du lundi de SM1 ; poser la genèse SM
+     * à 21:00 (> 20:45) le rendrait ROUGE aussi.
      */
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
@@ -621,7 +628,11 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             . 'JOIN schedule_slot_template s ON s.team_id = t.id '
             . 'JOIN schedule sc ON sc.id = s.schedule_id '
             . 'JOIN schedule_plan p ON p.id = sc.schedule_plan_id AND p.type = \'HOLIDAY\' AND sc.id = p.chosen_schedule_id '
-            . 'WHERE c.calendar_entry_id IS NULL AND c.scope = \'TEAM\' AND c.rule_type = \'HARD\' '
+            . 'JOIN calendar_entry pe ON pe.id = p.calendar_entry_id '
+            // Union FAIT/GENÈSE (P2-59) : permanentes de saison (calendar_entry_id NULL) ∪ genèses
+            // pendues au plan (= l'entrée du plan) ∪ faits de sa mère (= le parent de l'entrée).
+            . 'WHERE (c.calendar_entry_id IS NULL OR c.calendar_entry_id = p.calendar_entry_id OR c.calendar_entry_id = pe.parent_entry_id) '
+            . 'AND c.scope = \'TEAM\' AND c.rule_type = \'HARD\' '
             . 'AND c.family IN (\'DAY\', \'TIME\') '
             // Une règle DÉCOCHÉE pour ce plan (isActive=false) n'est pas exigée.
             . 'AND NOT EXISTS (SELECT 1 FROM constraint_period_override o '
@@ -655,6 +666,93 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         }
 
         self::assertSame([], array_values(array_unique($violations)), 'une règle dure NON décochée du seed contredit une semaine de reprise transcrite');
+    }
+
+    /**
+     * NR (P2-59) — LES CONTRAINTES DE GENÈSE DE LA SEMAINE DU 17 PENDENT À SON ENTRÉE-ENFANT.
+     *
+     * Le modèle FAIT/GENÈSE : une contrainte de genèse vit sur l'entrée-ENFANT (la semaine), pas
+     * sur la mère. Les 3 genèses construites pendant l'exercice solveur du 2026-09-01 (le bloc SM
+     * mutualisé ≥ 20:30 sur SM1 ET SM2, l'indispo lun/ven de Nicolas Barilleau) portent donc
+     * calendar_entry_id = l'entrée du 17, avec leurs configs exactes ; la semaine du 24 n'en porte
+     * AUCUNE, et un second run est stable (find-or-create, zéro doublon).
+     *
+     * Falsifiable : attacher une genèse à la mère (au lieu de l'enfant), altérer une config, ou en
+     * poser une sur le 24 rend ce test ROUGE.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testRepriseGenesisConstraintsHangOnTheChildWeekOfTheSeventeenth(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+        $clubId = $club->getId();
+
+        $motherId = (string) $this->connection->fetchOne(
+            'SELECT id FROM calendar_entry WHERE club_id = ? AND parent_entry_id IS NULL AND title = ?',
+            [$clubId, 'Vacances d\'été'],
+        );
+        $child17 = (string) $this->connection->fetchOne(
+            'SELECT id FROM calendar_entry WHERE club_id = ? AND parent_entry_id = ? AND start_date = ?',
+            [$clubId, $motherId, '2026-08-17'],
+        );
+        $child24 = (string) $this->connection->fetchOne(
+            'SELECT id FROM calendar_entry WHERE club_id = ? AND parent_entry_id = ? AND start_date = ?',
+            [$clubId, $motherId, '2026-08-24'],
+        );
+        self::assertNotSame('', $child17, 'l\'entrée-enfant du 17 existe');
+        self::assertNotSame('', $child24, 'l\'entrée-enfant du 24 existe');
+
+        $sm1 = (string) $this->connection->fetchOne('SELECT id FROM team WHERE club_id = ? AND name = ?', [$clubId, 'SM1']);
+        $sm2 = (string) $this->connection->fetchOne('SELECT id FROM team WHERE club_id = ? AND name = ?', [$clubId, 'SM2']);
+        $nico = (string) $this->connection->fetchOne(
+            'SELECT id FROM coach WHERE club_id = ? AND first_name = ? AND last_name = ?',
+            [$clubId, 'Nicolas', 'Barilleau'],
+        );
+
+        $genesisRows = fn (string $entryId): array => $this->connection->fetchAllAssociative(
+            'SELECT name, scope, family, rule_type, scope_target_id, config::text AS config '
+            . 'FROM "constraint" WHERE club_id = ? AND calendar_entry_id = ? ORDER BY name, scope_target_id',
+            [$clubId, $entryId],
+        );
+
+        $expected17 = [
+            [
+                'name' => 'Nicolas Barilleau · indispo lundi, vendredi',
+                'scope' => 'COACH', 'family' => 'COACH_AVAILABILITY', 'rule_type' => 'HARD',
+                'scope_target_id' => $nico, 'config' => ['unavailableDays' => [1, 5]],
+            ],
+            [
+                'name' => 'Séniors masculins mutualisés · pas avant 20:30',
+                'scope' => 'TEAM', 'family' => 'TIME', 'rule_type' => 'HARD',
+                'scope_target_id' => $sm1, 'config' => ['minStartTime' => '20:30'],
+            ],
+            [
+                'name' => 'Séniors masculins mutualisés · pas avant 20:30',
+                'scope' => 'TEAM', 'family' => 'TIME', 'rule_type' => 'HARD',
+                'scope_target_id' => $sm2, 'config' => ['minStartTime' => '20:30'],
+            ],
+        ];
+
+        $assertMatches = function (array $rows) use ($expected17): void {
+            self::assertCount(3, $rows, 'la semaine du 17 porte exactement 3 genèses');
+            foreach ($rows as $i => $row) {
+                $exp = $expected17[$i];
+                self::assertSame($exp['name'], (string) $row['name']);
+                self::assertSame($exp['scope'], (string) $row['scope']);
+                self::assertSame($exp['family'], (string) $row['family']);
+                self::assertSame($exp['rule_type'], (string) $row['rule_type']);
+                self::assertSame($exp['scope_target_id'], (string) $row['scope_target_id'], \sprintf('« %s » vise la bonne cible', $exp['name']));
+                self::assertSame($exp['config'], json_decode((string) $row['config'], true, 512, \JSON_THROW_ON_ERROR), \sprintf('« %s » porte sa config exacte', $exp['name']));
+            }
+        };
+
+        $assertMatches($genesisRows($child17));
+        self::assertSame([], $genesisRows($child24), 'la semaine du 24 ne porte aucune genèse');
+
+        // Idempotence : un second run ne duplique rien et garde les mêmes cibles.
+        $this->seeder->run($this->em, BcclSeedProfile::dev());
+        $assertMatches($genesisRows($child17));
+        self::assertSame([], $genesisRows($child24), 'un second run laisse le 24 sans genèse');
     }
 
     /**
