@@ -862,6 +862,13 @@ final class BcclSeeder
         // ============================================================
         // SECTION 7 — NEW COACH-PLAYER MEMBERSHIPS
         // ============================================================
+        // Doctrine fondateur (2026-09-01, définitive) : un lien coach-joueur ne se coupe JAMAIS —
+        // ni globalement, ni par plan. Quand le réel le contredit (reprises : Enzo, Emerick, Mara,
+        // Thomas), le gestionnaire IMPOSE le créneau par RÉSERVATION : le verrou est souverain,
+        // le moteur crie en diagnostic, et ce cri est pleinement assumé — « si ça crie, c'est que
+        // j'ai fait une réservation, donc un geste volontaire ». Le planning transcrit pointé
+        // s'affiche tel quel ; une régénération libre, elle, respecte les liens.
+        /** @var list<array{coach: Coach, team: Team, active?: bool}> $newPlayerLinks */
         $newPlayerLinks = [
             ['coach' => $coachEnzo, 'team' => $sm1],
             ['coach' => $coachLuca, 'team' => $sm1],
@@ -895,7 +902,7 @@ final class BcclSeeder
                 $membership->setSeasonId($season->getId());
                 $membership->setCoachId($link['coach']->getId());
                 $membership->setTeamId($link['team']->getId());
-                $membership->setIsActive(true);
+                $membership->setIsActive($link['active'] ?? true);
                 $manager->persist($membership);
             }
         }
@@ -1963,7 +1970,17 @@ final class BcclSeeder
                 $genesisConstraint->setName($genesis['name']);
                 $manager->persist($genesisConstraint);
             }
-            $genesisConstraint->setConfig($genesis['config']);
+            // Genèse FACILITY : la config statique porte un `preferredVenueVar` (variable de
+            // gymnase — repriseWeeks() n'a pas les ids), résolu ici depuis $venues en
+            // `preferredVenueId`, comme le fait le wizard. Les autres familles passent la config
+            // telle quelle.
+            $config = $genesis['config'];
+            $preferredVenueVar = $config['preferredVenueVar'] ?? null;
+            if (\is_string($preferredVenueVar)) {
+                $config['preferredVenueId'] = ($venues[$preferredVenueVar] ?? throw new RuntimeException(\sprintf('Genèse « %s » : gymnase « %s » introuvable.', $genesis['name'], $preferredVenueVar)))->getId();
+                unset($config['preferredVenueVar']);
+            }
+            $genesisConstraint->setConfig($config);
             $genesisConstraint->setIsActive(true);
         }
         $manager->flush();
@@ -2393,7 +2410,9 @@ final class BcclSeeder
                 ],
             ],
             // ===================== SEMAINE DU 24 AOÛT — Armand + JDR =====================
-            // 35 créneaux, 38 séances-équipe, 16 équipes.
+            // Transcription de business/5-donnees/plannings-bccl/planning-reprise-24-aout.txt
+            // (exercice solveur CLOS le 2026-09-01, gestes validés un à un en sandbox, chemin
+            // manuel prouvé). 35 cases, 40 séances-équipe, 16 équipes.
             [
                 'title' => 'Reprise du 24 août',
                 'monday' => '2026-08-24',
@@ -2408,16 +2427,17 @@ final class BcclSeeder
                     ['U15M1', 'vJdr', 1, '17:15', 60],
                     ['U15M2', 'vJdr', 1, '18:15', 75],
                     ['U18F1', 'vJdr', 1, '19:30', 75],
+                    ['U18F2', 'vJdr', 1, '19:30', 75],
                     ['SF2', 'vJdr', 1, '20:45', 75],
                     // MARDI
                     ['U13M1', 'vArmand', 2, '17:30', 90],
                     ['U18M1', 'vArmand', 2, '19:00', 90],
-                    ['SF2', 'vArmand', 2, '20:30', 90],
+                    ['SM1', 'vArmand', 2, '20:30', 90],
+                    ['SM2', 'vArmand', 2, '20:30', 90],
                     ['U15M2', 'vJdr', 2, '17:15', 60],
                     ['U15F1', 'vJdr', 2, '18:15', 75],
                     ['SF1', 'vJdr', 2, '19:30', 75],
-                    ['SM1', 'vJdr', 2, '20:45', 75],
-                    ['SM2', 'vJdr', 2, '20:45', 75],
+                    ['SF2', 'vJdr', 2, '20:45', 75],
                     // MERCREDI
                     ['U15M1', 'vArmand', 3, '17:30', 90],
                     ['U21M1', 'vArmand', 3, '19:00', 90],
@@ -2426,13 +2446,16 @@ final class BcclSeeder
                     ['U18M1', 'vJdr', 3, '18:15', 75],
                     ['U18F2', 'vJdr', 3, '19:30', 75],
                     ['SF1', 'vJdr', 3, '20:45', 75],
-                    // JEUDI
+                    // JEUDI — Armand 20:30 = SM2 SOLO, en plus du bloc SM à JDR 20:45 (même équipe
+                    // deux fois le même soir, chevauchement ASSUMÉ par le fondateur ; les verrous
+                    // et la transcription le portent).
                     ['U13F2', 'vArmand', 4, '17:30', 90],
                     ['U18M1', 'vArmand', 4, '19:00', 90],
-                    ['U18F2', 'vArmand', 4, '20:30', 90],
+                    ['SM2', 'vArmand', 4, '20:30', 90],
                     ['U13M1', 'vJdr', 4, '17:15', 60],
                     ['U13F1', 'vJdr', 4, '18:15', 75],
                     ['U18F1', 'vJdr', 4, '19:30', 75],
+                    ['U18F2', 'vJdr', 4, '19:30', 75],
                     ['SM1', 'vJdr', 4, '20:45', 105],
                     ['SM2', 'vJdr', 4, '20:45', 105],
                     // VENDREDI
@@ -2445,21 +2468,75 @@ final class BcclSeeder
                     ['U21M1', 'vJdr', 5, '20:45', 75],
                 ],
                 'groups' => [
-                    // SF1/SF2 sont SÉPARÉES cette semaine : seul {SM1,SM2} reste mutualisé.
+                    // {SM1,SM2} reste mutualisé (Armand lun/mar 20:30, JDR jeu 20:45). {U18F1,U18F2}
+                    // l'est aussi cette semaine (JDR lun/jeu 19:30). SF1/SF2 sont SÉPARÉES le 24.
                     ['teams' => ['SM1', 'SM2'], 'k' => 3],
+                    ['teams' => ['U18F1', 'U18F2'], 'k' => 2],
                 ],
-                // Règles de saison contredites (vérifiées séance par séance) :
+                // Contraintes de GENÈSE de CETTE semaine (P2-59, construites pendant l'exercice
+                // solveur du 2026-09-01), pendues à l'entrée-enfant du 24. Vérifiées à la main face
+                // à la transcription : tous les mineurs commencent ≤ 19:30 (≤ 19:50 OK), U15M ≤
+                // 18:15, SF1 ne s'entraîne pas vendredi. Les gymnases se résolvent depuis $venues
+                // (preferredVenueVar → preferredVenueId dans seedRepriseWeek).
+                'constraints' => [
+                    // Mineurs (U13/U15/U18 actifs de la semaine) · pas après 19:50 — une par équipe.
+                    ['name' => 'Mineurs · pas après 19:50', 'scope' => ConstraintScope::TEAM, 'target' => 'U13F1', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['maxStartTime' => '19:50']],
+                    ['name' => 'Mineurs · pas après 19:50', 'scope' => ConstraintScope::TEAM, 'target' => 'U13F2', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['maxStartTime' => '19:50']],
+                    ['name' => 'Mineurs · pas après 19:50', 'scope' => ConstraintScope::TEAM, 'target' => 'U13M1', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['maxStartTime' => '19:50']],
+                    ['name' => 'Mineurs · pas après 19:50', 'scope' => ConstraintScope::TEAM, 'target' => 'U15F1', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['maxStartTime' => '19:50']],
+                    ['name' => 'Mineurs · pas après 19:50', 'scope' => ConstraintScope::TEAM, 'target' => 'U15F2', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['maxStartTime' => '19:50']],
+                    ['name' => 'Mineurs · pas après 19:50', 'scope' => ConstraintScope::TEAM, 'target' => 'U15M1', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['maxStartTime' => '19:50']],
+                    ['name' => 'Mineurs · pas après 19:50', 'scope' => ConstraintScope::TEAM, 'target' => 'U15M2', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['maxStartTime' => '19:50']],
+                    ['name' => 'Mineurs · pas après 19:50', 'scope' => ConstraintScope::TEAM, 'target' => 'U18F1', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['maxStartTime' => '19:50']],
+                    ['name' => 'Mineurs · pas après 19:50', 'scope' => ConstraintScope::TEAM, 'target' => 'U18F2', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['maxStartTime' => '19:50']],
+                    ['name' => 'Mineurs · pas après 19:50', 'scope' => ConstraintScope::TEAM, 'target' => 'U18M1', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['maxStartTime' => '19:50']],
+                    // U15M · pas après 18:15 (les deux U15 masculins).
+                    ['name' => 'U15M · pas après 18:15', 'scope' => ConstraintScope::TEAM, 'target' => 'U15M1', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['maxStartTime' => '18:15']],
+                    ['name' => 'U15M · pas après 18:15', 'scope' => ConstraintScope::TEAM, 'target' => 'U15M2', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['maxStartTime' => '18:15']],
+                    // U18F · gymnase préféré JDR (PREFERRED, une par équipe — libellé par équipe).
+                    ['name' => 'U18F1 · préfère JDR', 'scope' => ConstraintScope::TEAM, 'target' => 'U18F1', 'family' => ConstraintFamily::FACILITY, 'rule' => ConstraintRuleType::PREFERRED, 'config' => ['preferredVenueVar' => 'vJdr']],
+                    ['name' => 'U18F2 · préfère JDR', 'scope' => ConstraintScope::TEAM, 'target' => 'U18F2', 'family' => ConstraintFamily::FACILITY, 'rule' => ConstraintRuleType::PREFERRED, 'config' => ['preferredVenueVar' => 'vJdr']],
+                    // SF1 · pas vendredi (SF1 ne s'entraîne pas le vendredi cette semaine).
+                    ['name' => 'SF1 · pas vendredi', 'scope' => ConstraintScope::TEAM, 'target' => 'SF1', 'family' => ConstraintFamily::DAY, 'rule' => ConstraintRuleType::HARD, 'config' => ['forbiddenDays' => [5]]],
+                    // SM3 · gymnase préféré Armand (PREFERRED).
+                    ['name' => 'SM3 · préfère Armand', 'scope' => ConstraintScope::TEAM, 'target' => 'SM3', 'family' => ConstraintFamily::FACILITY, 'rule' => ConstraintRuleType::PREFERRED, 'config' => ['preferredVenueVar' => 'vArmand']],
+                ],
+                // Seuls les créneaux CHOISIS sont figés (blocs fanion — « on les impose au modèle »,
+                // exercice solveur du 2026-09-01) : le bloc SM (lun/mar Armand 20:30 + jeu JDR
+                // 20:45), la séance SOLO de SM2 jeu Armand 20:30, et les deux SF2 (lun/mar JDR
+                // 20:45). Le reste appartient au solveur + contraintes — 9 lignes exactement.
+                'reservations' => [
+                    ['SM1', 'vArmand', 1, '20:30', 90],
+                    ['SM2', 'vArmand', 1, '20:30', 90],
+                    ['SM1', 'vArmand', 2, '20:30', 90],
+                    ['SM2', 'vArmand', 2, '20:30', 90],
+                    ['SM1', 'vJdr', 4, '20:45', 105],
+                    ['SM2', 'vJdr', 4, '20:45', 105],
+                    ['SM2', 'vArmand', 4, '20:30', 90],
+                    ['SF2', 'vJdr', 1, '20:45', 75],
+                    ['SF2', 'vJdr', 2, '20:45', 75],
+                ],
+                // Règles de saison relâchées pour la semaine (le socle reste intact, seul CE plan
+                // les décoche) :
                 //  - SM1 · uniquement mardi, jeudi : SM1 s'entraîne aussi le LUNDI.
-                //  - Senior +22 Compétition ≥ 20:00 : SF1 à 19:30 (mardi).
-                //  - Groupe U15 · pas après 19:00 : U15F1 à 19:30 (vendredi).
-                //  - Groupe Jeune (U13-U18) · pas après 19:50 : U18F2 à 20:30 (jeudi).
+                //  - Senior +22 Compétition ≥ 20:00 : SF1 à 19:30 (mardi/mercredi).
+                //  - Groupe U15 · pas après 19:00 : relâchée (la genèse « U15M · pas après 18:15 »
+                //    reprend la main sur les U15 masculins ; les U15 féminines sont laissées libres).
+                //  - Groupe Jeune (U13-U18) · pas après 19:50 : remplacée par la genèse « Mineurs ».
                 //  - SM2 · au moins 1 à Matéo : Matéo est fermé.
+                //  - Indisponibilités coach de SAISON que le réel contredit (arbitrage fondateur
+                //    2026-09-01) : Nicolas Barilleau indispo jeudi (U18M1 s'entraîne jeudi), Enzo
+                //    Camerino indispo vendredi (U13F1/U18F1 vendredi), Thomas Francon indispo
+                //    vendredi (U15M1/U21M1 vendredi).
                 'deactivatedConstraints' => [
                     'SM1 · uniquement mardi, jeudi',
                     'Groupe Senior (+ de 22) + Compétition (hors loisir) · pas avant 20:00',
                     'Groupe U15 · pas après 19:00',
                     'Groupe Jeune (U13-U18) · pas après 19:50',
                     'SM2 · au moins 1 à Matéo',
+                    'Nicolas Barilleau · indispo jeudi',
+                    'Enzo Camerino · indispo vendredi',
+                    'Thomas Francon · indispo vendredi',
                 ],
             ],
         ];

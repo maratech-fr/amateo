@@ -1,14 +1,11 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, passe P2-51 PR-5b — zone non touchée
-par cette PR, contrôle de fraîcheur). Re-confronté au code : `maxEndTime` toujours HARD
-(`ConstraintConfigValidator.php:65`, type `time`) ✓ · `maxConsecutiveDays` toujours posé dur
-(`engine/app/solver/constraints/wellness.py::add_max_consecutive_days_constraints`, `:494`) ✓ ·
-`forcedDays` toujours posé (`engine/app/solver/constraints/targeting.py:213`,
-`model.Add(sum(forced_day_vars) >= 1)`) ✓ · **drift trouvé et corrigé** :
-`ScheduleConstraintBuilder::resolveTravelRuleIntensity` a dérivé de la ligne citée (`:891` →
-**`:954`**, `backend/src/Service/ScheduleConstraintBuilder.php`), méthode toujours présente.
-Historique des passes : `git log -p --follow backend/docs/constraint-coverage.md`.)
+Last verified @ 2026-09-01 (rotation `documentation-update`, consignation reprise-24 — fichier hors
+sujet de la PR, contrôle de fraîcheur). Re-confronté au code : `maxEndTime` toujours HARD
+(`ConstraintConfigValidator.php:65`, type `time`) ✓ · `add_max_consecutive_days_constraints`
+toujours à `wellness.py:494` ✓ · `forced_day_vars` toujours posé (`targeting.py:209-213`) ✓ ·
+`resolveTravelRuleIntensity` — **ligne recalée `:894`** (le stamp précédent disait :954) ✓. Reste
+non re-sondé cette passe — historique : `git log -p --follow` ce fichier.
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels

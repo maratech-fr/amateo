@@ -1,16 +1,11 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, P2-51 PR-7 — zone non touchée par cette
-PR, contrôle de fraîcheur. **Vérifié explicitement que cette page n'est PAS la maison des blocs de
-payload racine** (`sharedBlocks`/`teamLinks`/`venueTravelTimes`… — `sharedTrainings` retiré du
-contrat par PR-7) — elle liste les
-clés du `config` d'UNE contrainte, un objet différent, imbriqué dans `constraints[]` ; les blocs
-racine du contrat vivent dans `engine/docs/engine-inventory.md` (changelog `CONTRACT_VERSION`).
-Re-confronté au code : `ConstraintConfigValidator` porte toujours `minStartTime`/`maxEndTime` en
-type `time`, `minAtVenueCount` en `count`, `fromTime` en `time` ✓ ·
-`TeamTagResolver::resolveConstraintTeamIds` existe (`:278`) ✓ · migration
-`Version20260807190000.php` présente ✓ · `ValidateConstraintsController::__invoke` existe
-(`:65`) ✓)
+Last verified @ 2026-09-01 (rotation `documentation-update`, consignation reprise-24 — fichier hors
+sujet de la PR, contrôle de fraîcheur). Re-confronté au code : `ConstraintConfigValidator` porte
+toujours `minStartTime` (`:63`) / `maxEndTime` (`:65`) en type `time`, `minAtVenueCount` (`:86`) en
+`count` ✓ ; cette page reste la maison des clés du `config` d'UNE contrainte — les blocs racine du
+contrat (`sharedBlocks`, `teamLinks`…) vivent dans `engine/docs/engine-inventory.md` ✓. Reste non
+re-sondé cette passe — historique : `git log -p --follow` ce fichier.
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.
