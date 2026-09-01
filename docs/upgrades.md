@@ -5,6 +5,41 @@
 > l'upgrade apporte, et ce qu'il a fallu adapter chez nous. But : comprendre les mises à jour,
 > pas les subir. Ordre antichronologique.
 
+## 2026-09-01 — lot Dependabot
+
+### Groupe frontend-npm — 20 montées + browserslist 4.28.8 (PR #813)
+
+**C'est quoi** : vingt briques de la partie visible (mineurs/correctifs), plus `browserslist`
+(la table « quels navigateurs supporter » utilisée par la chaîne de build), poussée à la main
+dans le même lot.
+
+**Ça apporte** : deux failles publiées LE JOUR MÊME sur browserslist (dont une « high » —
+croissance mémoire non bornée) faisaient rougir l'audit de sécurité de TOUTES les PRs du dépôt ;
+corrigées en 4.28.7, on embarque la 4.28.8. Le reste : suivi de routine.
+
+**Adapté chez nous** : rien — 2299 tests frontend verts, build Vite vert, audit à zéro.
+
+### Groupe backend-composer — 6 montées (PR #812)
+
+**C'est quoi** : le pont temps réel Mercure (`symfony/mercure-bundle` 0.4→0.5, qui pousse les
+mises à jour de génération à l'écran) et trois outils de qualité de code (php-cs-fixer, phpstan,
+rector).
+
+**Ça apporte** : suivi de routine ; mercure-bundle 0.5 = la branche maintenue.
+
+**Adapté chez nous** : le piège Flex documenté a mordu comme prévu — Dependabot résout hors de
+notre conteneur et 9 briques Symfony avaient sauté en 8.0.x ; ramenées sur la LTS 7.4 par le
+correctif canonique (`composer update` ciblé dans le conteneur, jamais de pin). Miroir CI complet
+vert (1962 tests), rector vert, smoke solveur vert.
+
+### github-actions — docker/setup-buildx-action 4.2 → 4.3 (PR #746)
+
+**C'est quoi** : l'action qui prépare le constructeur d'images Docker du déploiement.
+
+**Ça apporte** : mineure de routine, épinglée par empreinte (vérifiée en amont).
+
+**Adapté chez nous** : rien.
+
 ## 2026-08-18 — lot Dependabot
 
 ### Groupe frontend-npm — 7 montées (PR #617)
