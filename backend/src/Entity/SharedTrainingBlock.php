@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Service\EffectiveTeamSessions;
+use App\Service\SchedulePlanProvisioner;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -19,7 +20,10 @@ use Doctrine\ORM\Mapping as ORM;
  * Modèle arbitré par le fondateur le 2026-08-31 (amende le cadrage du 2026-08-25 — le bloc
  * remplace l'ancrage au créneau). Décisions figées :
  *  - fait de PLAN : ``schedulePlanId`` NULLABLE (NULL = socle saison, non-null = plan de période),
- *    patron `Reservation`/`VenueTrainingSlot` ; pas de copie socle→période ;
+ *    patron `Reservation`/`VenueTrainingSlot`. Copie socle→période à la NAISSANCE d'un plan de
+ *    FERMETURE (CLOSURE) seulement — le gestionnaire hérite ce que le club mutualise, puis diverge
+ *    (D10 affinée 2026-09-02, {@see SchedulePlanProvisioner::copySocleSharedBlocks}) ;
+ *    un plan de vacances (HOLIDAY) ne copie JAMAIS ;
  *  - multi-appartenance PERMISE : une équipe peut être membre de PLUSIEURS blocs (pas d'unicité
  *    un-bloc-par-équipe) — c'est LA capacité qui manquait au modèle groupe ;
  *  - garde centrale (côté processor) : pour chaque équipe, Σ des ``commonSessions`` de ses blocs

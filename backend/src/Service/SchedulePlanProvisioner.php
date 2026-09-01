@@ -7,6 +7,8 @@ namespace App\Service;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Enum\SchedulePlanType;
 use App\Repository\ImplicitRuleSettingRepository;
 use DateTimeImmutable;
@@ -766,6 +768,11 @@ final class SchedulePlanProvisioner
         $this->entityManager->persist($plan);
         $this->entityManager->flush(); // l'id du plan doit exister avant les copies ci-dessous
         $this->copySeasonalSlots($plan);
+        // D10 affinée (décision fondateur 2026-09-02) — un plan de FERMETURE hérite des blocs de
+        // mutualisation du socle à sa naissance ; un plan de vacances (HOLIDAY) ne copie RIEN.
+        if (SchedulePlanType::CLOSURE === $type) {
+            $this->copySocleSharedBlocks($plan);
+        }
         // ADR-0002 inv. 5 — le plan reçoit AUSSI sa copie des 4 règles bien-être (valeur saison
         // ou défaut). Copie TOTALE : un plan « tout au défaut » garde ses 4 lignes, donc reste
         // distinguable d'un plan legacy sans copie (dont la lecture retombe sur la saison).
@@ -804,6 +811,69 @@ final class SchedulePlanProvisioner
             $params['venueId'] = $venueId;
         }
         $this->entityManager->getConnection()->executeStatement($sql, $params);
+    }
+
+    /**
+     * D10 affinée (décision fondateur 2026-09-02) — un plan de FERMETURE (CLOSURE) NAÎT avec une
+     * COPIE des blocs de mutualisation du socle : le gestionnaire qui ajuste une fermeture doit
+     * VOIR ce que le club mutualise habituellement, hérité tel quel, pour le retoucher. Un plan de
+     * vacances (HOLIDAY) ne copie rien (gardé par l'appelant). Instantané : la copie diverge ensuite
+     * librement du socle, dans les deux sens (patron « la période possède sa grille », copySeasonalSlots).
+     *
+     * Copie VERBATIM (patron {@see SharedTrainingBlockStateProcessor::addMembers}) : mêmes séances
+     * communes, mêmes équipes membres, nouvel UUID par bloc/membre, dénormalisation club/saison/plan.
+     * La garde Σ n'est PAS rejouée — à la naissance aucun TeamPeriodOverride n'existe, le Σ socle
+     * déjà validé vaut ; aucun filtrage au roster non plus — la divergence ultérieure (un membre
+     * désactivé pour la période) est déjà gérée au payload par serializeSharedBlocks, qui abandonne
+     * un bloc tombé sous 2 membres actifs.
+     *
+     * SQL brut en LECTURE : `season_filter` épingle les lectures ORM à la saison ACTIVE de la
+     * requête, or un plan peut naître pour une autre saison (transition). Socle = `schedule_plan_id
+     * IS NULL`, même club + saison. RLS scope le club ; les INSERTs (persist) ne sont jamais filtrés.
+     * Volume ~8 blocs : boucle PHP pour mapper ancien→nouveau bloc côté membres.
+     */
+    private function copySocleSharedBlocks(SchedulePlan $plan): void
+    {
+        $clubId = (string) $plan->getClubId();
+        $seasonId = $plan->getSeasonId();
+        $planId = $plan->getId();
+
+        $connection = $this->entityManager->getConnection();
+        $socleBlocks = $connection->fetchAllAssociative(
+            'SELECT id, common_sessions FROM shared_training_block WHERE club_id = :clubId AND season_id = :seasonId AND schedule_plan_id IS NULL',
+            ['clubId' => $clubId, 'seasonId' => $seasonId],
+        );
+        if ([] === $socleBlocks) {
+            return;
+        }
+
+        $socleMembers = $connection->fetchAllAssociative(
+            'SELECT block_id, team_id FROM shared_training_block_team WHERE club_id = :clubId AND season_id = :seasonId AND schedule_plan_id IS NULL',
+            ['clubId' => $clubId, 'seasonId' => $seasonId],
+        );
+        $teamsBySocleBlock = [];
+        foreach ($socleMembers as $member) {
+            $teamsBySocleBlock[(string) $member['block_id']][] = (string) $member['team_id'];
+        }
+
+        foreach ($socleBlocks as $socleBlock) {
+            $copy = (new SharedTrainingBlock)
+                ->setClubId($clubId)
+                ->setSeasonId($seasonId)
+                ->setSchedulePlanId($planId)
+                ->setCommonSessions((int) $socleBlock['common_sessions']);
+            $this->entityManager->persist($copy);
+
+            foreach ($teamsBySocleBlock[(string) $socleBlock['id']] ?? [] as $teamId) {
+                $memberCopy = (new SharedTrainingBlockTeam)
+                    ->setClubId($clubId)
+                    ->setSeasonId($seasonId)
+                    ->setSchedulePlanId($planId)
+                    ->setBlockId($copy->getId())
+                    ->setTeamId($teamId);
+                $this->entityManager->persist($memberCopy);
+            }
+        }
     }
 
     private function findSeasonPlanId(string $seasonId): ?string

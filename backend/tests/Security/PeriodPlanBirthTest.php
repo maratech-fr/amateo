@@ -11,6 +11,8 @@ use App\Entity\ImplicitRuleSetting;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
@@ -163,6 +165,189 @@ final class PeriodPlanBirthTest extends WebTestCase
         $plan = $this->planOf($club->getId(), $entryId);
         self::assertInstanceOf(SchedulePlan::class, $plan);
         self::assertSame(SchedulePlanType::CLOSURE, $plan->getType());
+    }
+
+    /**
+     * NR — D10 affinée (décision fondateur 2026-09-02), axe *planning lifecycle* : un plan de
+     * FERMETURE (CLOSURE) NAÎT avec une COPIE des blocs de mutualisation du socle. Le gestionnaire
+     * qui adapte une fermeture doit VOIR ce que le club mutualise habituellement, hérité tel quel.
+     *
+     * Copie VERBATIM : mêmes équipes membres, mêmes séances communes, ids NOUVEAUX,
+     * schedulePlanId = le plan. Falsification : ôter la garde CLOSURE de l'appelant OU ne pas
+     * appeler la copie rougit ici (0 bloc au lieu de 2).
+     */
+    public function testAdaptGestureOnAClosureCopiesTheSocleSharedBlocks(): void
+    {
+        [$user, $club, $season] = $this->createClubWithSeason();
+
+        $teamA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+        $teamB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+        $teamC = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+        $socleId = $this->createSocleBlock($club, $season, [$teamA, $teamB], 2);
+        $this->createSocleBlock($club, $season, [$teamC], 1);
+
+        $entryId = $this->postPeriod($user, 'closure', 'Gymnase en travaux');
+        $planId = $this->adaptPeriod($user, $entryId);
+
+        $copies = $this->planBlocks($club->getId(), $planId);
+        self::assertCount(2, $copies, 'une fermeture hérite des deux blocs de mutualisation du socle');
+
+        $sessionsByTeams = [];
+        foreach ($copies as $copy) {
+            self::assertSame($planId, $copy->getSchedulePlanId(), 'la copie pend au plan de période');
+            self::assertNotSame($socleId, $copy->getId(), 'la copie a un id NOUVEAU, jamais celui du bloc socle');
+            $sessionsByTeams[implode(',', $this->blockTeamIds($copy->getId()))] = $copy->getCommonSessions();
+        }
+        // Mêmes équipes + mêmes séances communes que le socle, verbatim.
+        self::assertArrayHasKey($teamA . ',' . $teamB, $sessionsByTeams, 'le bloc à 2 équipes est copié');
+        self::assertSame(2, $sessionsByTeams[$teamA . ',' . $teamB], 'commonSessions copié verbatim (2)');
+        self::assertArrayHasKey($teamC, $sessionsByTeams, 'le bloc à 1 équipe est copié');
+        self::assertSame(1, $sessionsByTeams[$teamC], 'commonSessions copié verbatim (1)');
+
+        // Les membres portent la dénormalisation club/saison/plan.
+        $this->scopeGucToClub($club->getId());
+        $memberCopies = $this->em->getRepository(SharedTrainingBlockTeam::class)->findBy(['schedulePlanId' => $planId]);
+        self::assertCount(3, $memberCopies, 'chaque membre du socle est copié (2 + 1)');
+        foreach ($memberCopies as $member) {
+            self::assertSame($club->getId(), $member->getClubId());
+            self::assertSame($season->getId(), $member->getSeasonId());
+        }
+    }
+
+    /**
+     * NR — D10 affinée : un plan de VACANCES (HOLIDAY) ne copie AUCUN bloc du socle (la mission
+     * de la fermeture — retoucher la mutualisation d'un incident — ne vaut pas pour des vacances,
+     * où toutes les équipes sont de toute façon en pause).
+     */
+    public function testAdaptGestureOnAHolidayCopiesNoSharedBlock(): void
+    {
+        [$user, $club, $season] = $this->createClubWithSeason();
+        $this->createSocleBlock($club, $season, ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'], 1);
+
+        $entryId = $this->postPeriod($user, 'holiday', 'Vacances');
+        $planId = $this->adaptPeriod($user, $entryId);
+
+        self::assertCount(0, $this->planBlocks($club->getId(), $planId), 'un plan de vacances ne copie AUCUN bloc du socle');
+    }
+
+    /**
+     * NR — la copie est un INSTANTANÉ : elle se découple du socle dès la naissance, dans les deux
+     * sens. Muter le socle après coup ne réécrit pas la copie ; muter la copie ne réécrit pas le
+     * socle. (Patron « la période possède sa grille ».).
+     */
+    public function testTheClosureCopyIsASnapshotDecoupledFromTheSocle(): void
+    {
+        [$user, $club, $season] = $this->createClubWithSeason();
+        $teamA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+        $teamB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+        $socleId = $this->createSocleBlock($club, $season, [$teamA, $teamB], 2);
+
+        $entryId = $this->postPeriod($user, 'closure', 'Gymnase en travaux');
+        $planId = $this->adaptPeriod($user, $entryId);
+
+        $copies = $this->planBlocks($club->getId(), $planId);
+        self::assertCount(1, $copies);
+        $copyId = $copies[0]->getId();
+
+        // (a) Muter le SOCLE après la naissance : commonSessions changé + un membre retiré.
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        $socle = $this->em->getRepository(SharedTrainingBlock::class)->find($socleId);
+        self::assertInstanceOf(SharedTrainingBlock::class, $socle);
+        $socle->setCommonSessions(9);
+        foreach ($this->em->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $socleId, 'teamId' => $teamB]) as $row) {
+            $this->em->remove($row);
+        }
+        $this->em->flush();
+
+        $copies = $this->planBlocks($club->getId(), $planId);
+        self::assertCount(1, $copies, 'la copie survit à la mutation du socle');
+        self::assertSame(2, $copies[0]->getCommonSessions(), 'la copie ignore le commonSessions changé du socle');
+        self::assertSame([$teamA, $teamB], $this->blockTeamIds($copies[0]->getId()), 'la copie garde ses deux membres malgré le retrait côté socle');
+
+        // (b) Muter la COPIE ne touche pas le socle.
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        $copy = $this->em->getRepository(SharedTrainingBlock::class)->find($copyId);
+        self::assertInstanceOf(SharedTrainingBlock::class, $copy);
+        $copy->setCommonSessions(4);
+        $this->em->flush();
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        $socleAfter = $this->em->getRepository(SharedTrainingBlock::class)->find($socleId);
+        self::assertInstanceOf(SharedTrainingBlock::class, $socleAfter);
+        self::assertSame(9, $socleAfter->getCommonSessions(), 'muter la copie ne réécrit pas le socle');
+    }
+
+    /**
+     * NR — le geste rejoué (POST /schedule_plans deux fois) rend le MÊME plan (idempotence
+     * d'ensurePeriodPlanId) : il ne re-copie donc pas les blocs. Étend le contrat d'idempotence
+     * du plan à ses blocs hérités.
+     */
+    public function testTheClosureGestureReplayedDoesNotDuplicateTheCopiedBlocks(): void
+    {
+        [$user, $club, $season] = $this->createClubWithSeason();
+        $this->createSocleBlock($club, $season, ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'], 1);
+
+        $entryId = $this->postPeriod($user, 'closure', 'Gymnase en travaux');
+        $firstPlanId = $this->adaptPeriod($user, $entryId);
+        $secondPlanId = $this->adaptPeriod($user, $entryId, 201);
+        self::assertSame($firstPlanId, $secondPlanId, 'le geste rejoué rend le même plan');
+
+        self::assertCount(1, $this->planBlocks($club->getId(), $firstPlanId), 'le geste rejoué ne re-copie pas les blocs hérités');
+    }
+
+    /**
+     * NR — une semaine-enfant d'une mère CLOSURE hérite du type de sa mère et naît AVEC son plan :
+     * elle hérite donc, elle aussi, les blocs du socle. Une semaine-enfant HOLIDAY, non.
+     */
+    public function testWeekChildInheritsSocleBlocksForClosureButNotForHoliday(): void
+    {
+        [$user, $club, $season] = $this->createClubWithSeason();
+        $this->createSocleBlock($club, $season, ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'], 1);
+
+        // Mère CLOSURE (non adaptée : le geste = cocher la semaine) → l'enfant est CLOSURE.
+        $closureMother = $this->postPeriodDated($user, 'closure', 'Gymnase en travaux', '2026-10-19', '2026-11-08');
+        $closureChild = $this->postWeekChild($user, $closureMother, '2026-10-19', '2026-10-25', 'closure');
+        $closureChildPlan = $this->planOf($club->getId(), $closureChild);
+        self::assertInstanceOf(SchedulePlan::class, $closureChildPlan);
+        self::assertSame(SchedulePlanType::CLOSURE, $closureChildPlan->getType());
+        self::assertCount(1, $this->planBlocks($club->getId(), $closureChildPlan->getId()), 'la semaine-enfant d’une fermeture hérite les blocs du socle');
+
+        // Mère HOLIDAY → l'enfant est HOLIDAY → aucune copie. Fenêtre disjointe de la précédente.
+        $holidayMother = $this->postPeriodDated($user, 'holiday', 'Vacances de Noël', '2026-12-19', '2027-01-04');
+        $holidayChild = $this->postWeekChild($user, $holidayMother, '2026-12-21', '2026-12-27');
+        $holidayChildPlan = $this->planOf($club->getId(), $holidayChild);
+        self::assertInstanceOf(SchedulePlan::class, $holidayChildPlan);
+        self::assertCount(0, $this->planBlocks($club->getId(), $holidayChildPlan->getId()), 'la semaine-enfant de vacances ne copie aucun bloc');
+    }
+
+    /**
+     * NR — supprimer la période emporte ses blocs copiés (cascade existante
+     * OverlayManager::purgePlanAnchoredSettings) ; le socle survit.
+     */
+    public function testDeletingAClosurePeriodRemovesItsCopiedBlocks(): void
+    {
+        [$user, $club, $season] = $this->createClubWithSeason();
+        $this->createSocleBlock($club, $season, ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'], 1);
+
+        $entryId = $this->postPeriod($user, 'closure', 'Gymnase en travaux');
+        $planId = $this->adaptPeriod($user, $entryId);
+        self::assertCount(1, $this->planBlocks($club->getId(), $planId));
+
+        $this->client->request('DELETE', '/api/calendar_entries/' . $entryId, [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(204);
+
+        self::assertCount(0, $this->planBlocks($club->getId(), $planId), 'supprimer la période emporte ses blocs copiés');
+
+        // Le socle, lui, est intact.
+        $this->scopeGucToClub($club->getId());
+        self::assertCount(
+            1,
+            $this->em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $club->getId(), 'schedulePlanId' => null]),
+            'le socle survit à la suppression de la période',
+        );
     }
 
     /**
@@ -820,7 +1005,7 @@ final class PeriodPlanBirthTest extends WebTestCase
     }
 
     /** POST d'une entrée-SEMAINE (P2-5 E1) — elle naît AVEC son plan (le geste = cocher). */
-    private function postWeekChild(User $user, string $motherId, string $start, string $end): string
+    private function postWeekChild(User $user, string $motherId, string $start, string $end, string $periodType = 'holiday'): string
     {
         $this->client->request('POST', '/api/calendar_entries', [], [], $this->authHeaders($user) + [
             'CONTENT_TYPE' => 'application/json',
@@ -829,7 +1014,7 @@ final class PeriodPlanBirthTest extends WebTestCase
             'title' => 'Semaine du ' . $start,
             'startDate' => $start,
             'endDate' => $end,
-            'periodType' => 'holiday',
+            'periodType' => $periodType,
             'parentEntryId' => $motherId,
         ], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(201);
@@ -965,6 +1150,65 @@ final class PeriodPlanBirthTest extends WebTestCase
             return;
         }
         self::assertResponseStatusCodeSame($status);
+    }
+
+    /**
+     * Pose un bloc de mutualisation SOCLE (schedulePlanId NULL) pour le club/saison, avec ses
+     * équipes membres. teamIds opaques : le sujet est la COPIE, pas l'existence de l'équipe.
+     *
+     * @param list<string> $teamIds
+     *
+     * @return string l'id du bloc socle
+     */
+    private function createSocleBlock(Club $club, Season $season, array $teamIds, int $commonSessions = 1): string
+    {
+        $this->scopeGucToClub($club->getId());
+        $block = (new SharedTrainingBlock)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setSchedulePlanId(null)
+            ->setCommonSessions($commonSessions);
+        $this->em->persist($block);
+        foreach ($teamIds as $teamId) {
+            $member = (new SharedTrainingBlockTeam)
+                ->setClubId($club->getId())
+                ->setSeasonId($season->getId())
+                ->setSchedulePlanId(null)
+                ->setBlockId($block->getId())
+                ->setTeamId($teamId);
+            $this->em->persist($member);
+        }
+        $this->em->flush();
+
+        return $block->getId();
+    }
+
+    /**
+     * Les blocs de mutualisation ancrés à un plan de période. clear() : la requête HTTP a écrit
+     * dans son propre UnitOfWork, on relit depuis la base.
+     *
+     * @return list<SharedTrainingBlock>
+     */
+    private function planBlocks(string $clubId, string $planId): array
+    {
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+
+        return array_values($this->em->getRepository(SharedTrainingBlock::class)->findBy(['schedulePlanId' => $planId]));
+    }
+
+    /**
+     * Les teamIds d'un bloc, triés — pour comparer un contenu VERBATIM sans dépendre de l'ordre.
+     *
+     * @return list<string>
+     */
+    private function blockTeamIds(string $blockId): array
+    {
+        $rows = $this->em->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $blockId]);
+        $ids = array_map(static fn (SharedTrainingBlockTeam $row): string => $row->getTeamId(), $rows);
+        sort($ids);
+
+        return array_values($ids);
     }
 
     private function planOf(string $clubId, string $calendarEntryId): ?SchedulePlan
