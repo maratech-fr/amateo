@@ -391,9 +391,9 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
 
     /**
      * P5-13 — chaque plan de REPRISE pointe (chosen) une version COMPLETED transcrivant sa
-     * semaine au bon nombre de créneaux (25 pour le 17 août, 38 pour le 24 août), et porte ses
-     * groupes de mutualisation ANCRÉS au plan : {SM1,SM2}+{SF1,SF2} le 17 (SF séparées ⇒ absentes
-     * le 24), {SM1,SM2} seul le 24.
+     * semaine au bon nombre de créneaux (25 pour le 17 août, 40 pour le 24 août), et porte ses
+     * groupes de mutualisation ANCRÉS au plan : {SM1,SM2}+{SF1,SF2} le 17 ; {SM1,SM2}+{U18F1,U18F2}
+     * le 24 (SF1/SF2 s'y entraînent séparément).
      */
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
@@ -401,7 +401,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     {
         $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
 
-        foreach ([['Reprise du 17 août', 25, 2], ['Reprise du 24 août', 38, 1]] as [$planName, $expectedSlots, $expectedGroups]) {
+        foreach ([['Reprise du 17 août', 25, 2], ['Reprise du 24 août', 40, 2]] as [$planName, $expectedSlots, $expectedGroups]) {
             $row = $this->connection->fetchAssociative(
                 'SELECT s.status, (SELECT COUNT(*) FROM schedule_slot_template t WHERE t.schedule_id = s.id) AS slot_count '
                 . 'FROM schedule_plan sp JOIN schedule s ON s.id = sp.chosen_schedule_id '
@@ -442,6 +442,60 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             );
             self::assertSame(2, $smMembers, \sprintf('« %s » mutualise SM1 et SM2', $planName));
         }
+
+        // {U18F1,U18F2} est mutualisé la semaine du 24 (JDR lun/jeu 19:30) : un bloc de k=2 séances
+        // communes couvrant exactement les deux équipes.
+        $u18fBlock = $this->connection->fetchAssociative(
+            'SELECT b.common_sessions, COUNT(bt.id) AS members '
+            . 'FROM shared_training_block b '
+            . 'JOIN schedule_plan sp ON sp.id = b.schedule_plan_id '
+            . 'JOIN shared_training_block_team bt ON bt.block_id = b.id '
+            . 'JOIN team t ON t.id = bt.team_id AND t.name IN (\'U18F1\', \'U18F2\') '
+            . 'WHERE sp.club_id = ? AND sp.name = ? GROUP BY b.id, b.common_sessions',
+            [$club->getId(), 'Reprise du 24 août'],
+        );
+        self::assertNotFalse($u18fBlock, 'la semaine du 24 mutualise U18F1 et U18F2');
+        self::assertSame(2, (int) $u18fBlock['members'], 'le bloc U18F du 24 couvre exactement U18F1 et U18F2');
+        self::assertSame(2, (int) $u18fBlock['common_sessions'], 'le bloc U18F du 24 porte k=2 séances communes');
+    }
+
+    /**
+     * NR (arbitrage fondateur 2026-09-01) — QUATRE liens coach-joueur naissent DÉCOCHÉS.
+     *
+     * « Le coach n'y joue pas quand ça coince » : Enzo Camerino (joue SM1), Emerick Creantor et
+     * Mara (SM2), Thomas Francon (SM3) portent is_active=false dès la création. L'interrupteur est
+     * GLOBAL (il vaut aussi pour la saison, assumé) ; le moteur l'honore depuis le recalage du
+     * verdict des retouches manuelles. Exactement ces quatre liens sont décochés, aucun autre ; un
+     * second run les garde décochés (find-or-create, pas de résurrection).
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testFourCoachPlayerMembershipsAreSeededInactive(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+
+        $inactive = fn (): array => array_map(
+            static fn (array $row): array => [(string) $row['first_name'], (string) $row['last_name'], (string) $row['team']],
+            $this->connection->fetchAllAssociative(
+                'SELECT c.first_name, c.last_name, t.name AS team '
+                . 'FROM coach_player_membership m '
+                . 'JOIN coach c ON c.id = m.coach_id '
+                . 'JOIN team t ON t.id = m.team_id '
+                . 'WHERE m.club_id = ? AND m.is_active = false ORDER BY t.name, c.first_name',
+                [$club->getId()],
+            ),
+        );
+        $expected = [
+            ['Enzo', 'Camerino', 'SM1'],
+            ['Emerick', 'Creantor', 'SM2'],
+            ['Mara', '', 'SM2'],
+            ['Thomas', 'Francon', 'SM3'],
+        ];
+        self::assertSame($expected, $inactive(), 'exactement les quatre liens coach-joueur arbitrés naissent décochés');
+
+        // Idempotence : un second run ne les réactive pas et n'en décoche pas d'autres.
+        $this->seeder->run($this->em, BcclSeedProfile::dev());
+        self::assertSame($expected, $inactive(), 'un second run garde exactement ces quatre liens décochés');
     }
 
     /**
@@ -460,7 +514,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     {
         $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
 
-        // 25 séances − 5 cases mutualisées = 20 créneaux le 17 ; 38 − 3 = 35 le 24.
+        // 25 séances − 5 cases mutualisées = 20 créneaux le 17 ; 40 − 5 = 35 le 24.
         foreach ([['Reprise du 17 août', 20], ['Reprise du 24 août', 35]] as [$planName, $expectedSlots]) {
             $grid = $this->connection->fetchAssociative(
                 'SELECT COUNT(*) AS slots, MAX(s.capacity) AS max_capacity '
@@ -494,7 +548,9 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      * 17 ne transcrivent PLUS tout le planning : seuls les créneaux CHOISIS des équipes fanion
      * sont figés (bloc SM1+SM2 lun/mar/jeu 20:45, bloc SF1+SF2 mer/ven 19:30 — 10 lignes), le
      * reste appartient au solveur + contraintes (« je ne veux pas tout mettre en réservation »).
-     * La semaine du 24 garde sa transcription intégrale (38 lignes) en attendant SON exercice.
+     * La semaine du 24 (exercice solveur CLOS le 2026-09-01) ne fige elle aussi que ses créneaux
+     * fanion : le bloc SM (lun/mar Armand 20:30 + jeu JDR 20:45), la séance SOLO de SM2 (jeu Armand
+     * 20:30) et les deux SF2 (lun/mar JDR 20:45) — 9 lignes exactement, plus les 38 d'antan.
      * Idempotence stricte : purge-puis-réinsertion — une ligne retirée de la liste ne survit pas
      * à un re-run sur base déjà seedée. Falsifiable : re-brancher `$week['sessions']` comme
      * source des réservations du 17 rend ce test ROUGE (25 ≠ 10).
@@ -525,21 +581,34 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             'les réservations du 17 sont exactement les 10 créneaux fanion (blocs SM et SF) — rien d\'autre',
         );
 
-        $week24 = (int) $this->connection->fetchOne(
-            'SELECT COUNT(*) FROM reservation r JOIN schedule_plan sp ON sp.id = r.schedule_plan_id '
-            . 'WHERE sp.club_id = ? AND sp.name = ?',
+        $rows24 = $this->connection->fetchAllAssociative(
+            'SELECT t.name AS team, r.day_of_week, to_char(r.start_time, \'HH24:MI\') AS start '
+            . 'FROM reservation r JOIN team t ON t.id = r.team_id '
+            . 'JOIN schedule_plan sp ON sp.id = r.schedule_plan_id '
+            . 'WHERE sp.club_id = ? AND sp.name = ? ORDER BY r.day_of_week, start, t.name',
             [$club->getId(), 'Reprise du 24 août'],
         );
-        self::assertSame(38, $week24, 'la semaine du 24 garde sa transcription intégrale en réservations (son exercice viendra)');
+        $expected24 = [
+            ['SM1', 1, '20:30'], ['SM2', 1, '20:30'], ['SF2', 1, '20:45'],
+            ['SM1', 2, '20:30'], ['SM2', 2, '20:30'], ['SF2', 2, '20:45'],
+            ['SM2', 4, '20:30'], ['SM1', 4, '20:45'], ['SM2', 4, '20:45'],
+        ];
+        self::assertSame(
+            $expected24,
+            array_map(static fn (array $row): array => [(string) $row['team'], (int) $row['day_of_week'], (string) $row['start']], $rows24),
+            'les réservations du 24 sont exactement les 9 créneaux fanion (bloc SM lun/mar/jeu, SM2 solo jeudi, SF2 lun/mar) — rien d\'autre',
+        );
 
         // Idempotence : un second run purge-réinsère, mêmes comptes, pas de résurrection.
         $this->seeder->run($this->em, BcclSeedProfile::dev());
-        $count17 = (int) $this->connection->fetchOne(
-            'SELECT COUNT(*) FROM reservation r JOIN schedule_plan sp ON sp.id = r.schedule_plan_id '
-            . 'WHERE sp.club_id = ? AND sp.name = ?',
-            [$club->getId(), 'Reprise du 17 août'],
-        );
-        self::assertSame(10, $count17, 'un second seed laisse exactement 10 réservations sur le 17');
+        foreach ([['Reprise du 17 août', 10], ['Reprise du 24 août', 9]] as [$planName, $expectedCount]) {
+            $count = (int) $this->connection->fetchOne(
+                'SELECT COUNT(*) FROM reservation r JOIN schedule_plan sp ON sp.id = r.schedule_plan_id '
+                . 'WHERE sp.club_id = ? AND sp.name = ?',
+                [$club->getId(), $planName],
+            );
+            self::assertSame($expectedCount, $count, \sprintf('un second seed laisse exactement %d réservations sur « %s »', $expectedCount, $planName));
+        }
     }
 
     /**
@@ -669,16 +738,19 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
-     * NR (P2-59) — LES CONTRAINTES DE GENÈSE DE LA SEMAINE DU 17 PENDENT À SON ENTRÉE-ENFANT.
+     * NR (P2-59) — LES CONTRAINTES DE GENÈSE DES SEMAINES DE REPRISE PENDENT À LEUR ENTRÉE-ENFANT.
      *
      * Le modèle FAIT/GENÈSE : une contrainte de genèse vit sur l'entrée-ENFANT (la semaine), pas
-     * sur la mère. Les 3 genèses construites pendant l'exercice solveur du 2026-09-01 (le bloc SM
-     * mutualisé ≥ 20:30 sur SM1 ET SM2, l'indispo lun/ven de Nicolas Barilleau) portent donc
-     * calendar_entry_id = l'entrée du 17, avec leurs configs exactes ; la semaine du 24 n'en porte
-     * AUCUNE, et un second run est stable (find-or-create, zéro doublon).
+     * sur la mère. Les 3 genèses du 17 (le bloc SM mutualisé ≥ 20:30 sur SM1 ET SM2, l'indispo
+     * lun/ven de Nicolas Barilleau) portent calendar_entry_id = l'entrée du 17, avec leurs configs
+     * exactes. La semaine du 24 (exercice solveur CLOS le 2026-09-01) porte SES 16 genèses sur SON
+     * entrée-enfant — « Mineurs · pas après 19:50 » (10 équipes), « U15M · pas après 18:15 » (2),
+     * « U18F{1,2} · préfère JDR » (FACILITY PREFERRED), « SF1 · pas vendredi », « SM3 · préfère
+     * Armand » — chacune invisible de l'autre semaine, et un second run est stable (find-or-create,
+     * zéro doublon).
      *
-     * Falsifiable : attacher une genèse à la mère (au lieu de l'enfant), altérer une config, ou en
-     * poser une sur le 24 rend ce test ROUGE.
+     * Falsifiable : attacher une genèse à la mère (au lieu de l'enfant), altérer une config, ou
+     * croiser les genèses des deux semaines rend ce test ROUGE.
      */
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
@@ -708,6 +780,8 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             'SELECT id FROM coach WHERE club_id = ? AND first_name = ? AND last_name = ?',
             [$clubId, 'Nicolas', 'Barilleau'],
         );
+        $jdrId = (string) $this->connection->fetchOne('SELECT id FROM venue WHERE club_id = ? AND name = ?', [$clubId, 'JDR']);
+        $armandId = (string) $this->connection->fetchOne('SELECT id FROM venue WHERE club_id = ? AND name = ?', [$clubId, 'Armand']);
 
         $genesisRows = fn (string $entryId): array => $this->connection->fetchAllAssociative(
             'SELECT name, scope, family, rule_type, scope_target_id, config::text AS config '
@@ -751,13 +825,40 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             }
         };
 
+        // La semaine du 24 porte SES 16 genèses (comptes par nom + configs sondées), sans jamais
+        // recouper celles du 17.
+        $probe = static fn (array $row): array => [
+            (string) $row['scope'], (string) $row['family'], (string) $row['rule_type'],
+            json_decode((string) $row['config'], true, 512, \JSON_THROW_ON_ERROR),
+        ];
+        $assertWeek24 = function (array $rows) use ($probe, $jdrId, $armandId): void {
+            self::assertCount(16, $rows, 'la semaine du 24 porte exactement 16 genèses');
+            $byName = [];
+            foreach ($rows as $row) {
+                $byName[(string) $row['name']][] = $row;
+            }
+            // Multiplicités exactes : 10 + 2 + 1 + 1 + 1 + 1 = 16.
+            self::assertCount(10, $byName['Mineurs · pas après 19:50'] ?? [], '10 genèses « Mineurs · pas après 19:50 »');
+            self::assertCount(2, $byName['U15M · pas après 18:15'] ?? [], '2 genèses « U15M · pas après 18:15 »');
+            self::assertCount(1, $byName['U18F1 · préfère JDR'] ?? [], '1 genèse « U18F1 · préfère JDR »');
+            self::assertCount(1, $byName['U18F2 · préfère JDR'] ?? [], '1 genèse « U18F2 · préfère JDR »');
+            self::assertCount(1, $byName['SF1 · pas vendredi'] ?? [], '1 genèse « SF1 · pas vendredi »');
+            self::assertCount(1, $byName['SM3 · préfère Armand'] ?? [], '1 genèse « SM3 · préfère Armand »');
+            // Configs sondées (scope, famille, type de règle, config).
+            self::assertSame(['TEAM', 'TIME', 'HARD', ['maxStartTime' => '19:50']], $probe($byName['Mineurs · pas après 19:50'][0]), 'une genèse « Mineurs » est TIME/HARD à 19:50');
+            self::assertSame(['TEAM', 'TIME', 'HARD', ['maxStartTime' => '18:15']], $probe($byName['U15M · pas après 18:15'][0]), '« U15M » est TIME/HARD à 18:15');
+            self::assertSame(['TEAM', 'DAY', 'HARD', ['forbiddenDays' => [5]]], $probe($byName['SF1 · pas vendredi'][0]), '« SF1 · pas vendredi » est DAY/HARD forbiddenDays [5]');
+            self::assertSame(['TEAM', 'FACILITY', 'PREFERRED', ['preferredVenueId' => $jdrId]], $probe($byName['U18F1 · préfère JDR'][0]), '« U18F1 · préfère JDR » vise JDR (id résolu depuis $venues)');
+            self::assertSame(['TEAM', 'FACILITY', 'PREFERRED', ['preferredVenueId' => $armandId]], $probe($byName['SM3 · préfère Armand'][0]), '« SM3 · préfère Armand » vise Armand');
+        };
+
         $assertMatches($genesisRows($child17));
-        self::assertSame([], $genesisRows($child24), 'la semaine du 24 ne porte aucune genèse');
+        $assertWeek24($genesisRows($child24));
 
         // Idempotence : un second run ne duplique rien et garde les mêmes cibles.
         $this->seeder->run($this->em, BcclSeedProfile::dev());
         $assertMatches($genesisRows($child17));
-        self::assertSame([], $genesisRows($child24), 'un second run laisse le 24 sans genèse');
+        $assertWeek24($genesisRows($child24));
     }
 
     /**
