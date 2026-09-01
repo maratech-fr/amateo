@@ -9,7 +9,15 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from ..model import DEFAULT_SESSION_MINUTES, _time_to_minutes
-from .common import _day_int_set, _get, _intervals_overlap, _not_honored_warning, _scalar_id
+from .common import (
+    HARD,
+    ResolvedImplicitRules,
+    _day_int_set,
+    _get,
+    _intervals_overlap,
+    _not_honored_warning,
+    _scalar_id,
+)
 
 _DAY_LABELS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
 
@@ -322,6 +330,7 @@ def diagnose_candidate_conflicts(
     team_names: Mapping[str, str] | None = None,
     coach_names: Mapping[str, str] | None = None,
     venue_names: Mapping[str, str] | None = None,
+    resolved_rules: ResolvedImplicitRules | None = None,
 ) -> list[dict[str, Any]]:
     """Name the HARD rules a move candidate would break (P2-2 F2a).
 
@@ -472,7 +481,16 @@ def diagnose_candidate_conflicts(
 
     # Coach rest day: mirror add_coach_rest_day — at most 4 working days Mon-Fri,
     # for every coach present in the payload (no override exemption since P4-51).
-    if 1 <= c_day <= 5:
+    # PARITÉ D'INTENSITÉ (verdict = génération) : ce n'est un INTERDIT DUR que sous
+    # coachRestDay=HARD. En PREFERRED, la génération PLACE en payant le malus (−3/−6) et le
+    # verdict doit ACCEPTER de même — la concession remonte alors comme COMPROMIS (famille
+    # implicit_rule, chemin ``_compromises_for``) sur le candidat retenu, jamais comme violation
+    # bloquante ici. Sans ce garde, le verdict était PLUS STRICT que la génération (rupture de
+    # parité) : il refusait un 5ᵉ jour de coach que la génération concède. ``coachRestDay`` est la
+    # SEULE des 5 règles implicites réglables à avoir un pré-check nommé dans ce fichier ; les
+    # quatre autres (salarié, dos-à-dos, jours consécutifs, âge croissant) n'y miroitent rien.
+    coach_rest_is_hard = (resolved_rules or ResolvedImplicitRules()).coach_rest_day_intensity == HARD
+    if coach_rest_is_hard and 1 <= c_day <= 5:
         for cid in c_coaches:
             if cid not in coach_ids_in_payload:
                 continue

@@ -883,6 +883,9 @@ def validate_assignment(
         # un conflit HARD entre deux déplacements du même geste (coach en double sur deux gymnases,
         # capacité…) est alors NOMMÉ, pas seulement candidat-contre-baseline.
         seen: set[tuple[str, str]] = set()
+        # PARITÉ D'INTENSITÉ (A) : le diagnostic doit connaître le réglage des règles implicites —
+        # coachRestDay PREFERRED n'est pas un interdit dur, il ne doit pas NOMMER coach_no_rest_day.
+        diag_rules = resolve_implicit_rules(data.get("implicitRules"))
         for i, m in enumerate(moved):
             augmented = baseline_slots + [other for j, other in enumerate(moved) if j != i]
             for violation in diagnose_candidate_conflicts(
@@ -894,6 +897,7 @@ def validate_assignment(
                 team_names=team_names,
                 coach_names=coach_names,
                 venue_names=venue_names,
+                resolved_rules=diag_rules,
             ):
                 dedupe_key = (str(violation.get("rule")), str(violation.get("message")))
                 if dedupe_key not in seen:
