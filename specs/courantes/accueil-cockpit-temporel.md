@@ -1,14 +1,12 @@
 # Accueil « cockpit temporel » — mise au clair (préliminaire calendriers secondaires)
 
-Last verified @ 2026-09-01 (rotation `documentation-update`, chantier coach-joueur×bloc — zone non
-touchée par cette PR, contrôle de fraîcheur). Re-confronté au code : `/` sert toujours `CockpitPage`
-(`frontend/src/app/routes.tsx:134`) ✓ · `frontend/src/features/wizard/steps/PeriodStructure.tsx`
-porte toujours les DEUX `<fieldset disabled>` gelés sur `isDisabled` seul — **lignes recalées
-`:718` et `:778`** (étaient :728/:788) ✓ · les modules cités ailleurs dans ce document
-(`RadarPanel.tsx`, `RecapStep.tsx`, `cockpit/lib/date.ts`, `cockpit/lib/useWeekAdapt.ts`,
-`shared/lib/clock.ts`, `wizard/lib/venueDays.ts`) existent toujours aux chemins nommés ✓.
-L'historique des passes vit dans `git log -p --follow` ce fichier et ses traces datées dans
-`etat-des-lieux.md` §3.
+Last verified @ 2026-09-01 (P2-59 livrée, `documentation-update` — §c et §e amendés au modèle
+FAIT/GENÈSE et confrontés au code : `CalendarEntry::datedConstraintSourceIds()` (`[id]` racine,
+`[id, parentEntryId]` enfant) consommée par le sélecteur de période, le gate pré-solve et le
+radar ✓ · création wizard → entrée du plan, faits de la mère badgés lecture-seule
+(`ConstraintsStep.tsx`) ✓ · double 422 anti-décochage (`ConstraintPeriodOverrideStateProcessor`,
+`ConstraintStateProcessor` chemin update) ✓. Reste du fichier non re-vérifié cette passe —
+historique : `git log -p --follow` ce fichier.
 
 > **Statut** : **approche arrêtée** (décisions tranchées §9) — **livrée** ; cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2.
 > **Pas un plan** — pas de tâches, pas d'effort chiffré ; l'exécution se planifiera palier par palier (§8).
@@ -877,10 +875,20 @@ CalendarEntry
 
 - **Contrainte datée = la `Constraint` existante + un FK nullable `calendarEntryId`.**
   Une contrainte est soit **permanente** (`calendarEntryId = null`, le plan de base), soit
-  **de période** (`calendarEntryId` renseigné). Le wizard **mode période** édite les contraintes
-  de la période — **c'est l'étape Contraintes existante, filtrée sur ce FK**. Une « fermeture de
-  salle » = une `Constraint` `family=FACILITY` rattachée à l'entrée. **On ne réinvente pas les
-  contraintes.**
+  **de période** (`calendarEntryId` renseigné). Une « fermeture de salle » = une `Constraint`
+  `family=FACILITY` rattachée à l'entrée. **On ne réinvente pas les contraintes.**
+  **Deux natures de datées (modèle FAIT/GENÈSE, arbitrage fondateur 2026-09-01)** : le **FAIT**
+  décrit l'incident et pend à la **mère** — il s'impose à toutes ses semaines ; la **GENÈSE**
+  répond aux doléances d'UNE semaine et pend à l'entrée-**enfant** — elle n'existe que pour ce
+  plan (« chaque plan est indépendant ; si je voulais les mêmes règles j'aurais couvert la zone
+  d'un seul plan »). La lecture est l'**union** : un plan lit ses genèses + les faits de sa mère
+  (`CalendarEntry::datedConstraintSourceIds()` — `[id]` racine, `[id, parentEntryId]` enfant),
+  côté payload solveur, gate pré-solve ET radar. Le wizard d'une semaine **crée en genèse**
+  (l'entrée du plan) et liste les deux : genèses éditables, **faits en lecture seule** badgés
+  « Toutes les semaines de {mère} » (un fait se modifie à sa source — l'incident — jamais depuis
+  une semaine, qui muterait ses sœurs en silence). Une datée **ne se décoche pas** par plan
+  (422 dans les deux sens : poser un override sur une datée, ou dater une contrainte qui a des
+  overrides) — elle se modifie ou se supprime.
 - **Overlay = le `Schedule` existant + un lien vers la `CalendarEntry` + la fenêtre.** Ses slots
   sont des `ScheduleSlotTemplate` bornés à la fenêtre. **On ne réinvente pas le planning.**
 - **Pas de table `schedule_slot_occurrences` per-date au départ.** L'override se fait au grain
@@ -931,8 +939,9 @@ l'autre — la période est PROPRIÉTAIRE.**
   défaut intelligent qui suit la sélection d'équipes (club/coach gardées, équipe gardée si
   l'équipe reprend, gymnase décochée). Diff épars `ConstraintPeriodOverride` : une ligne
   n'existe que pour une **déviation** du défaut.
-- **Contraintes datées** : inchangées, elles restent portées par la `CalendarEntry` — elles
-  décrivent le **fait** (« Barros fermé »), pas un réglage de plan.
+- **Contraintes datées** : portées par la `CalendarEntry` — le **fait** (« Barros fermé ») par
+  la mère, la **genèse** d'une semaine par son entrée-enfant (modèle FAIT/GENÈSE, §c) ; jamais
+  décochables par plan, un réglage de plan n'est pas leur affaire.
 - `cutoff` et `mutualisation` ne portent pas de plan de période.
 
 Corollaire opérationnel : un épinglage HARD qui ne retombe sur aucun créneau de la grille de la

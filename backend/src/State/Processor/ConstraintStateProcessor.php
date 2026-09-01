@@ -124,6 +124,14 @@ class ConstraintStateProcessor extends AbstractStateProcessor
             $entity->setSourceOccurrenceId($input->sourceOccurrenceId);
         }
         if (null !== $input->calendarEntryId) {
+            // P2-59 — garde SYMÉTRIQUE de ConstraintPeriodOverrideStateProcessor (revue #814).
+            // L'ordre inverse la contournait : créer un décochage (ConstraintPeriodOverride) sur
+            // une contrainte PERMANENTE, PUIS la dater, laissait un override orphelin sur une
+            // datée. Une datée n'est jamais décochée (modèle FAIT/GENÈSE) : on refuse de la dater
+            // tant qu'elle porte un décochage.
+            if ($this->entityManager->getRepository(ConstraintPeriodOverride::class)->count(['constraintId' => $entity->getId()]) > 0) {
+                $this->refuse('Cette contrainte a des décochages par plan : retirez-les avant de la dater.');
+            }
             $entity->setCalendarEntryId($input->calendarEntryId);
         }
         if (null !== $input->isActive) {
