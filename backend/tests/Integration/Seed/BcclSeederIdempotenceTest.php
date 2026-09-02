@@ -823,44 +823,47 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
-     * P5-13 « incident Matéo » — le seed dev fige l'état d'ADAPTATION EN COURS du gestionnaire :
+     * P5-13 « incident Matéo » (arbitrage fondateur 2026-09-02) — le seed dev fige l'overlay RÉEL
+     * que le gestionnaire a construit face au nouvel incident :
      *
-     *  - le FAIT : une entrée RACINE `closure` « Matéo indisponible (travaux) » (18/08→30/09) SANS
-     *    plan, portant sa datée `venue_closed` (FACILITY/HARD sur Matéo, config datée) ;
-     *  - la RÉPONSE ENTAMÉE : un segment-enfant (parent = l'incident, 07→27/09) né AVEC son plan
-     *    CLOSURE, plan NON validé (chosen NULL) et SANS version (0 schedule) — un travail en cours ;
-     *  - ses réglages : 12 TeamPeriodOverride (8 équipes actives à 2 séances/sem, « Training
-     *    Individuel » + les 3 équipes « Academie » décochées — BYE pendant l'incident),
-     *    1 ConstraintPeriodOverride (« SM2 · au moins 1 à Matéo » décochée), 0 VenuePeriodOverride
-     *    (la fermeture agit par l'état effectif, pas par un override).
+     *  - le FAIT : une entrée RACINE `closure` « Matéo indisponible (incident) — du 31 août… »
+     *    (31/08→16/10), portant sa datée `venue_closed` (FACILITY/HARD sur Matéo, config datée) ;
+     *  - la RÉPONSE : le plan naît DIRECTEMENT SUR LA RACINE (plus de segment), VALIDÉ — il POINTE
+     *    une version COMPLETED (`seed-transcription`) transcrivant le planning d'overlay, 90 créneaux ;
+     *  - ses réglages : 50 TeamPeriodOverride (49 équipes actives à leur nombre de séances DÉRIVÉ,
+     *    Σ = 90 ; « Training Individuel » seule décochée), 1 ConstraintPeriodOverride (« SM2 · au
+     *    moins 1 à Matéo » décochée), 0 VenuePeriodOverride (la fermeture agit par l'état effectif),
+     *    0 réservation ;
+     *  - l'ANCIEN incident « (travaux) » a DISPARU (pas de coexistence sur base vivante).
      *
-     * Falsifiable : retirer le décochage de « SM2 · au moins 1 à Matéo » du seed, ou une des 12
-     * lignes d'équipe (les 3 « Academie » comprises), ou la datée `venue_closed`, rend ce test
-     * ROUGE en nommant l'invariant.
+     * Falsifiable : retirer le décochage de « SM2 · au moins 1 à Matéo », changer le nombre de
+     * séances d'une équipe (Σ ≠ 90), ou laisser survivre l'ancien incident, rend ce test ROUGE.
      */
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
-    public function testDevSeedCarriesMateoIncidentAdaptationInProgress(): void
+    public function testDevSeedCarriesMateoIncidentValidatedOverlay(): void
     {
         $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+        $incidentTitle = 'Matéo indisponible (incident) — du 31 août 2026 au 16 oct. 2026';
 
-        // --- L'incident (entrée racine closure, sans plan) + sa datée venue_closed ---
+        // --- L'ANCIEN incident « (travaux) » a été purgé : ni racine ni segment ne subsistent ---
+        $staleEntries = (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM calendar_entry WHERE club_id = ? AND title LIKE ?',
+            [$club->getId(), 'Matéo indisponible (travaux)%'],
+        );
+        self::assertSame(0, $staleEntries, 'l\'ancien incident « (travaux) » (racine + segment 07→27/09) a disparu — pas de coexistence');
+
+        // --- La NOUVELLE racine closure + sa datée venue_closed ---
         $incident = $this->connection->fetchAssociative(
             'SELECT id, period_type, to_char(start_date, \'YYYY-MM-DD\') AS s, to_char(end_date, \'YYYY-MM-DD\') AS e '
             . 'FROM calendar_entry WHERE club_id = ? AND parent_entry_id IS NULL AND title = ?',
-            [$club->getId(), 'Matéo indisponible (travaux)'],
+            [$club->getId(), $incidentTitle],
         );
-        self::assertNotFalse($incident, 'l\'incident racine « Matéo indisponible (travaux) » existe');
+        self::assertNotFalse($incident, 'la racine « Matéo indisponible (incident) — … » existe');
         self::assertSame('closure', (string) $incident['period_type'], 'l\'incident est une fermeture');
-        self::assertSame('2026-08-18', (string) $incident['s'], 'la fermeture débute le 18 août');
-        self::assertSame('2026-09-30', (string) $incident['e'], 'la fermeture court jusqu\'au 30 septembre');
+        self::assertSame('2026-08-31', (string) $incident['s'], 'la fermeture débute le 31 août');
+        self::assertSame('2026-10-16', (string) $incident['e'], 'la fermeture court jusqu\'au 16 octobre');
         $incidentId = (string) $incident['id'];
-
-        $rootPlans = (int) $this->connection->fetchOne(
-            'SELECT COUNT(*) FROM schedule_plan WHERE calendar_entry_id = ?',
-            [$incidentId],
-        );
-        self::assertSame(0, $rootPlans, 'une entrée racine ne provisionne aucun plan');
 
         $closure = $this->connection->fetchAssociative(
             'SELECT c.scope, c.rule_type, c.family, v.name AS venue, c.config::text AS config '
@@ -875,64 +878,57 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         /** @var array<string, mixed> $closureConfig */
         $closureConfig = json_decode((string) $closure['config'], true, 512, \JSON_THROW_ON_ERROR);
         self::assertSame('venue_closed', $closureConfig['type'] ?? null, 'la datée est une fermeture de gymnase');
-        self::assertSame('2026-08-18', $closureConfig['startDate'] ?? null, 'la fermeture datée débute le 18 août');
-        self::assertSame('2026-09-30', $closureConfig['endDate'] ?? null, 'la fermeture datée court jusqu\'au 30 septembre');
+        self::assertSame('2026-08-31', $closureConfig['startDate'] ?? null, 'la fermeture datée débute le 31 août');
+        self::assertSame('2026-10-16', $closureConfig['endDate'] ?? null, 'la fermeture datée court jusqu\'au 16 octobre');
 
-        // --- Le segment-enfant né avec son plan CLOSURE, NON validé, SANS version ---
-        $segment = $this->connection->fetchAssociative(
-            'SELECT id, period_type, to_char(start_date, \'YYYY-MM-DD\') AS s, to_char(end_date, \'YYYY-MM-DD\') AS e '
-            . 'FROM calendar_entry WHERE club_id = ? AND parent_entry_id = ?',
-            [$club->getId(), $incidentId],
-        );
-        self::assertNotFalse($segment, 'le segment-enfant d\'adaptation existe');
-        self::assertSame('closure', (string) $segment['period_type'], 'le segment est une fermeture');
-        self::assertSame('2026-09-07', (string) $segment['s'], 'le segment couvre du 7 septembre');
-        self::assertSame('2026-09-27', (string) $segment['e'], 'le segment couvre jusqu\'au 27 septembre');
-        $segmentId = (string) $segment['id'];
-
+        // --- Le plan naît SUR LA RACINE, VALIDÉ (chosen), pointant une version COMPLETED transcrite ---
         $plan = $this->connection->fetchAssociative(
             'SELECT id, name, type, chosen_schedule_id, team_selection_initialized '
             . 'FROM schedule_plan WHERE calendar_entry_id = ?',
-            [$segmentId],
+            [$incidentId],
         );
-        self::assertNotFalse($plan, 'le segment est né AVEC son plan');
+        self::assertNotFalse($plan, 'la RACINE porte son plan (le plan naît sur la racine, plus de segment)');
         self::assertSame('CLOSURE', (string) $plan['type'], 'le plan est de type CLOSURE');
-        self::assertSame('Matéo indisponible (travaux) — semaines du 7 sept. 2026 au 27 sept. 2026', (string) $plan['name'], 'le plan de période naît nommé du TITRE de son segment-enfant (décision fondateur 2026-08-23)');
-        self::assertNull($plan['chosen_schedule_id'], 'le plan n\'est PAS validé (aucune version pointée)');
+        self::assertSame($incidentTitle, (string) $plan['name'], 'le plan naît nommé du TITRE de son entrée-racine');
+        self::assertNotNull($plan['chosen_schedule_id'], 'le plan EST validé (il pointe une version)');
         self::assertTrue((bool) $plan['team_selection_initialized'], 'la sélection d\'équipes est initialisée (le wizard ne re-seede pas)');
         $planId = (string) $plan['id'];
 
-        $versions = (int) $this->connection->fetchOne(
-            'SELECT COUNT(*) FROM schedule WHERE schedule_plan_id = ?',
-            [$planId],
+        $version = $this->connection->fetchAssociative(
+            'SELECT s.status, s.solver_version, '
+            . '(SELECT COUNT(*) FROM schedule_slot_template t WHERE t.schedule_id = s.id) AS slot_count '
+            . 'FROM schedule s WHERE s.id = ?',
+            [(string) $plan['chosen_schedule_id']],
         );
-        self::assertSame(0, $versions, 'le plan d\'adaptation ne porte AUCUNE version (travail en cours)');
+        self::assertNotFalse($version, 'la version pointée existe');
+        self::assertSame('COMPLETED', (string) $version['status'], 'la version pointée est COMPLETED');
+        self::assertSame('seed-transcription', (string) $version['solver_version'], 'la provenance est la transcription du seed');
+        self::assertSame(90, (int) $version['slot_count'], 'la transcription pose exactement 90 créneaux');
 
-        // --- Réglages : 9 TPO (8 actives spw=2, 1 décochée), 1 CPO, 0 VPO ---
-        $activeTpo = $this->connection->fetchFirstColumn(
-            'SELECT t.name FROM team_period_override o JOIN team t ON t.id = o.team_id '
-            . 'WHERE o.schedule_plan_id = ? AND o.is_active = true AND o.sessions_per_week = 2 ORDER BY t.name',
-            [$planId],
-        );
-        self::assertSame(
-            ['U13F1', 'U13F2', 'U13M1', 'U13M2', 'U15F1', 'U15M1', 'U18F1', 'U18M1'],
-            array_map('strval', $activeTpo),
-            'exactement les 8 équipes actives à 2 séances/semaine',
-        );
+        // --- Réglages : 50 TPO (49 actives, Σ séances = 90 ; Training Individuel seule décochée) ---
+        $totalTpo = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM team_period_override WHERE schedule_plan_id = ?', [$planId]);
+        self::assertSame(50, $totalTpo, '50 lignes d\'équipe (49 actives + 1 décochée)');
+        $activeTpo = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM team_period_override WHERE schedule_plan_id = ? AND is_active = true', [$planId]);
+        self::assertSame(49, $activeTpo, '49 équipes actives (celles qui figurent au planning)');
+        $spwSum = (int) $this->connection->fetchOne('SELECT COALESCE(SUM(sessions_per_week), 0) FROM team_period_override WHERE schedule_plan_id = ? AND is_active = true', [$planId]);
+        self::assertSame(90, $spwSum, 'la somme des séances/semaine actives vaut 90 (le total des séances-équipe)');
+
         $inactiveTpo = array_map('strval', $this->connection->fetchFirstColumn(
             'SELECT t.name FROM team_period_override o JOIN team t ON t.id = o.team_id '
             . 'WHERE o.schedule_plan_id = ? AND o.is_active = false',
             [$planId],
         ));
-        sort($inactiveTpo, \SORT_STRING);
-        self::assertSame(
-            ['Academie U13-U15', 'Academie U18', 'Academie U9-U11', 'Training Individuel'],
-            $inactiveTpo,
-            '« Training Individuel » et les 3 équipes « Academie » sont décochées (BYE pendant l\'incident)',
-        );
-        $totalTpo = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM team_period_override WHERE schedule_plan_id = ?', [$planId]);
-        self::assertSame(12, $totalTpo, 'aucune autre ligne d\'équipe que ces 12 (8 actives + 4 décochées)');
+        self::assertSame(['Training Individuel'], $inactiveTpo, '« Training Individuel » est la SEULE équipe décochée');
 
+        $spwOf = fn (string $name): int => (int) $this->connection->fetchOne(
+            'SELECT o.sessions_per_week FROM team_period_override o JOIN team t ON t.id = o.team_id '
+            . 'WHERE o.schedule_plan_id = ? AND t.name = ?',
+            [$planId, $name],
+        );
+        self::assertSame(3, $spwOf('Section J.Macé'), 'Section J.Macé s\'entraîne 3 fois (lun, jeu, ven)');
+        self::assertSame(2, $spwOf('Basket Santé'), 'Basket Santé s\'entraîne 2 fois (mer annexe, sam JDR)');
+
+        // --- 1 CPO (« SM2 · au moins 1 à Matéo »), 0 VPO, 0 réservation ---
         $deactivated = $this->connection->fetchFirstColumn(
             'SELECT c.name FROM constraint_period_override o JOIN "constraint" c ON c.id = o.constraint_id '
             . 'WHERE o.schedule_plan_id = ? AND o.is_active = false',
@@ -944,48 +940,61 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
 
         $vpo = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM venue_period_override WHERE schedule_plan_id = ?', [$planId]);
         self::assertSame(0, $vpo, 'aucun VenuePeriodOverride : la fermeture agit par l\'état effectif');
+
+        $reservations = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM reservation WHERE schedule_plan_id = ?', [$planId]);
+        self::assertSame(0, $reservations, 'ZÉRO réservation : les fanions viendront d\'un exercice ultérieur');
     }
 
     /**
-     * « Incident Matéo » — la grille du plan d'adaptation reste la COPIE de saison pour tous les
-     * gymnases SAUF JDR, dont la grille de plan est EXPLICITE (retouches réelles du gestionnaire,
-     * re-snapshot du 2026-08-19) : exactement 19 créneaux JDR portés PAR CE PLAN, dont les caps 2
-     * sur lun→ven à 17:30 et à 19:00, ET le nouveau créneau MERCREDI 16:00→17:30 (90 min, cap 1).
-     * Idempotence : deux runs laissent 19 créneaux (purge+réinsertion).
+     * « Incident Matéo » — la grille du plan est RECONSTRUITE depuis le planning d'overlay : 76
+     * cases (venue+jour+heure), TOUTES à capacité 1 (occupant-unique — une case multi-équipes est
+     * EXACTEMENT les membres d'un bloc déclaré, donc un occupant unique), ZÉRO créneau Matéo (le
+     * gymnase est fermé). La mutualisation compte 13 blocs (les 8 socle hérités + 5 ajoutés),
+     * chacun à commonSessions=1, aux ensembles réels. Idempotence : deux runs laissent 76 cases et
+     * 13 blocs, sans doublon ni résurrection de l'ancien incident.
      *
-     * Falsifiable : remettre la capacity de JDR lun→ven 19:00 à 1, ou retirer le créneau mercredi
-     * 16:00, rend ce test ROUGE en nommant l'invariant manquant.
+     * Falsifiable : remonter une case à capacité 2, réintroduire un créneau Matéo, ou changer un
+     * bloc (membre ou compte), rend ce test ROUGE.
      */
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
-    public function testMateoIncidentPlanCarriesExplicitJdrGrid(): void
+    public function testMateoIncidentPlanCarriesReconstructedSingleOccupancyGrid(): void
     {
         $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
         $planId = $this->mateoIncidentPlanId($club->getId());
 
-        self::assertSame(19, $this->jdrPlanSlotCount($planId), 'la grille de plan JDR compte exactement 19 créneaux explicites');
-
-        $capTwoAt = fn (string $start): int => (int) $this->connection->fetchOne(
-            'SELECT COUNT(*) FROM venue_training_slot s JOIN venue v ON v.id = s.venue_id '
-            . 'WHERE s.schedule_plan_id = ? AND v.name = \'JDR\' AND s.day_of_week BETWEEN 1 AND 5 '
-            . 'AND to_char(s.start_time, \'HH24:MI\') = ? AND s.capacity = 2',
-            [$planId, $start],
-        );
-        self::assertSame(5, $capTwoAt('17:30'), 'lun→ven à 17:30 : un créneau JDR à cap 2 par jour ouvré');
-        self::assertSame(5, $capTwoAt('19:00'), 'lun→ven à 19:00 : un créneau JDR à cap 2 par jour ouvré');
-
-        // Le nouveau créneau du gestionnaire : mercredi (jour ISO 3) 16:00→17:30, 90 min, cap 1.
-        $wed1600 = (int) $this->connection->fetchOne(
-            'SELECT COUNT(*) FROM venue_training_slot s JOIN venue v ON v.id = s.venue_id '
-            . 'WHERE s.schedule_plan_id = ? AND v.name = \'JDR\' AND s.day_of_week = 3 '
-            . 'AND to_char(s.start_time, \'HH24:MI\') = \'16:00\' AND s.duration_minutes = 90 AND s.capacity = 1',
+        self::assertSame(76, $this->incidentPlanSlotCount($planId), 'la grille du plan compte exactement 76 cases (venue+jour+heure)');
+        $notOne = (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM venue_training_slot WHERE schedule_plan_id = ? AND capacity <> 1',
             [$planId],
         );
-        self::assertSame(1, $wed1600, 'la grille JDR porte le créneau mercredi 16:00→17:30 (90 min, cap 1)');
+        self::assertSame(0, $notOne, 'les 76 cases sont TOUTES à capacité 1 (occupant-unique par ensemble exact)');
+        $mateoSlots = (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM venue_training_slot s JOIN venue v ON v.id = s.venue_id '
+            . 'WHERE s.schedule_plan_id = ? AND v.name = \'Matéo\'',
+            [$planId],
+        );
+        self::assertSame(0, $mateoSlots, 'aucun créneau Matéo dans la grille du plan (le gymnase est fermé)');
 
-        // Idempotence : un second run purge+réinsère, la grille JDR reste à 19 (pas de doublon).
+        self::assertSame($this->expectedIncidentBlocs(), $this->incidentBlocSets($planId), 'les 13 blocs de mutualisation portent les ensembles réels');
+        $notCommonOne = (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM shared_training_block WHERE schedule_plan_id = ? AND common_sessions <> 1',
+            [$planId],
+        );
+        self::assertSame(0, $notCommonOne, 'chaque bloc d\'incident est à commonSessions = 1');
+
+        // Idempotence : un second run purge+réinsère, la grille reste à 76 et les 13 blocs tiennent,
+        // sans doublon ni résurrection de l'ancien incident « (travaux) ».
         $this->seeder->run($this->em, BcclSeedProfile::dev());
-        self::assertSame(19, $this->jdrPlanSlotCount($this->mateoIncidentPlanId($club->getId())), 'un second seed laisse 19 créneaux JDR de plan');
+        $planId2 = $this->mateoIncidentPlanId($club->getId());
+        self::assertSame(76, $this->incidentPlanSlotCount($planId2), 'un second seed laisse 76 cases de plan');
+        self::assertSame($this->expectedIncidentBlocs(), $this->incidentBlocSets($planId2), 'un second seed laisse les 13 mêmes blocs');
+        self::assertSame([], $this->duplicateSlots(), 'aucun créneau en doublon après le second run');
+        $staleEntries = (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM calendar_entry WHERE club_id = ? AND title LIKE ?',
+            [$club->getId(), 'Matéo indisponible (travaux)%'],
+        );
+        self::assertSame(0, $staleEntries, 'l\'ancien incident ne ressuscite pas au second run');
     }
 
     /**
@@ -1086,30 +1095,90 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
-     * Le plan d'ajustement de l'incident Matéo : porté par le segment-enfant (parent = l'entrée
-     * racine « Matéo indisponible (travaux) »).
+     * Le plan de fermeture de l'incident Matéo : porté DIRECTEMENT par l'entrée-racine « Matéo
+     * indisponible (incident) — … » (plus de segment intermédiaire depuis l'arbitrage 2026-09-02).
      */
     private function mateoIncidentPlanId(string $clubId): string
     {
         $planId = $this->connection->fetchOne(
             'SELECT sp.id FROM schedule_plan sp '
-            . 'JOIN calendar_entry seg ON seg.id = sp.calendar_entry_id '
-            . 'JOIN calendar_entry root ON root.id = seg.parent_entry_id '
-            . 'WHERE sp.club_id = ? AND root.title = ? AND root.parent_entry_id IS NULL',
-            [$clubId, 'Matéo indisponible (travaux)'],
+            . 'JOIN calendar_entry root ON root.id = sp.calendar_entry_id '
+            . 'WHERE sp.club_id = ? AND root.parent_entry_id IS NULL AND root.title LIKE ?',
+            [$clubId, 'Matéo indisponible (incident)%'],
         );
-        self::assertNotFalse($planId, 'le plan d\'ajustement de l\'incident Matéo existe');
+        self::assertNotFalse($planId, 'le plan de fermeture de l\'incident Matéo existe (porté par sa racine)');
 
         return (string) $planId;
     }
 
-    private function jdrPlanSlotCount(string $planId): int
+    private function incidentPlanSlotCount(string $planId): int
     {
         return (int) $this->connection->fetchOne(
-            'SELECT COUNT(*) FROM venue_training_slot s JOIN venue v ON v.id = s.venue_id '
-            . 'WHERE s.schedule_plan_id = ? AND v.name = \'JDR\'',
+            'SELECT COUNT(*) FROM venue_training_slot WHERE schedule_plan_id = ?',
             [$planId],
         );
+    }
+
+    /**
+     * Les ensembles d'équipes des blocs du plan d'incident, chaque bloc trié, la liste triée — pour
+     * comparer indépendamment de l'ordre.
+     *
+     * @return list<list<string>>
+     */
+    private function incidentBlocSets(string $planId): array
+    {
+        /** @var list<array{block_id: string, name: string}> $rows */
+        $rows = $this->connection->fetchAllAssociative(
+            'SELECT b.id AS block_id, t.name FROM shared_training_block b '
+            . 'JOIN shared_training_block_team bt ON bt.block_id = b.id '
+            . 'JOIN team t ON t.id = bt.team_id '
+            . 'WHERE b.schedule_plan_id = ?',
+            [$planId],
+        );
+        $byBlock = [];
+        foreach ($rows as $row) {
+            $byBlock[(string) $row['block_id']][] = (string) $row['name'];
+        }
+        $sets = [];
+        foreach ($byBlock as $members) {
+            sort($members, \SORT_STRING);
+            $sets[] = $members;
+        }
+        sort($sets);
+
+        return $sets;
+    }
+
+    /**
+     * Les 13 ensembles mutualisés attendus (8 socle hérités + 5 ajoutés), normalisés comme
+     * {@see incidentBlocSets()}.
+     *
+     * @return list<list<string>>
+     */
+    private function expectedIncidentBlocs(): array
+    {
+        $sets = [
+            ['U13M1', 'U13M2'],
+            ['U18M1', 'U18F1'],
+            ['U9F1', 'U9F2'],
+            ['U15M1', 'U15F1'],
+            ['U13F2', 'U13F3'],
+            ['U11M2', 'U11F2'],
+            ['U15F2', 'U15F3'],
+            ['U13F1', 'U13F2'],
+            ['U9M1', 'U11F2'],
+            ['U11F1', 'U11M2'],
+            ['U9M2', 'U9F1', 'U9F2'],
+            ['U9M1', 'U9M2'],
+            ['Loisir Feminine', 'Veterans'],
+        ];
+        foreach ($sets as &$members) {
+            sort($members, \SORT_STRING);
+        }
+        unset($members);
+        sort($sets);
+
+        return $sets;
     }
 
     /**
