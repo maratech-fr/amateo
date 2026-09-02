@@ -1,6 +1,9 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-01 (exemption coach-joueur sur case de bloc active, `documentation-update`).
+Last verified @ 2026-09-02 (PR balayage bloc-aware, `documentation-update`) : §bloc recalée — le
+dé-comptage capacité couvre désormais le partenaire VERROUILLÉ du même bloc (deux étages,
+`model.py` + `structural.py`), vérifié contre le code et
+`tests/semantic/test_fill_pinned_block_partner.py`.
 Ligne `COACH_PLAYER_NO_OVERLAP` (§règles dures) et nouvelle ligne `shared_block_case_bvars` (§tableau
 bloc) confrontées au code : borne réifiée `≤ 1 + Σb` sous séance de bloc active dans les 3 mécanismes
 d'`add_coach_player_non_overlap` (`structural.py` — clé-temps, intervalles, libre-vs-verrou `var ≤ Σb`),

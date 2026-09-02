@@ -1,12 +1,10 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-08-31 (P2-51 PR-5b, `documentation-update`). §POST /validate-assignments
-recalée pour le contrat 2.18 (`candidates`/`references` LISTES remplacent le singulier — vérifié
-contre `validate_input_schema.py` + `validate_assignments.py:740-1067`) : verdict sur N
-déplacements sous UN verdict jugeant l'état final, les 5 miroirs déterministes généralisés au
-pluriel (mutualisation, bloc, passerelle, trajet, plancher gymnase), `_apply_hard` inchangé.
-Ligne du tableau §2 (`/validate-assignments`) et changelog contrat (bullet **2.18**) recalés en
-même temps. Le reste de l'inventaire n'a pas été confronté ligne à ligne cette passe.
+Last verified @ 2026-09-02 (PR balayage bloc-aware, `documentation-update`). §Hard locks recalée
+contre le code du jour : l'exemption du partenaire de bloc épinglé (décision fondateur, deux sites
+— candidats `model.py` `_block_partners`/`_hard_locks_by_case`, balayage `structural.py`) vérifiée
+contre les sources et son test `tests/semantic/test_fill_pinned_block_partner.py` ; ALIGN-07
+inchangé hors bloc. Le reste de l'inventaire n'a pas été confronté ligne à ligne cette passe.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
 > Source de vérité : `engine/app/main.py`, `engine/app/schemas/input_schema.py`, `engine/app/schemas/output_schema.py`, `engine/app/solver/{model,constraints,objective,result_builder}.py`, `engine/app/core/config.py`.
