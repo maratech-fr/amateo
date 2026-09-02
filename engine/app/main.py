@@ -45,6 +45,7 @@ from app.solver.objective import (
     add_missing_session_penalty,
     add_preferred_day_bonus,
     add_preferred_time_bonus,
+    add_socle_reference_bonus,
     add_spacing_penalty,
     add_team_link_penalty,
     add_venue_preference_bonus,
@@ -677,6 +678,17 @@ def _solve(
             default_minutes=resolved_implicit_rules.travel_time_default_minutes,
         )
 
+    # PR-3 (comblement) — BONUS de référence socle (poids par tier), plié dans le PLACEMENT
+    # (phase 1, patron du malus passerelle) : une séance comblée qui retrouve le jour+heure de la
+    # version pointée du socle (gymnase libre) porte +poids. N'oriente que des séances réellement
+    # à placer (un HARD n'a pas de variable). ``socleReferenceAssignments`` absent/vide ⇒ []
+    # (chemin byte-identique) — le backend ne l'émet QU'en comblement.
+    socle_reference_terms = add_socle_reference_bonus(
+        model.x,
+        data.get("socleReferenceAssignments", []),
+        teams=data.get("teams", []),
+    )
+
     # Phase 1 installs the PLACEMENT objective only; the chaining terms are built
     # into the model but kept out of the objective (apply_chaining=False) so their
     # tiny coefficients never wreck the placement optimality proof.
@@ -687,7 +699,7 @@ def _solve(
         soft_terms=soft_terms,
         hard_satisfied_team_ids=hard_satisfied_team_ids,
         apply_chaining=False,
-        extra_placement_terms=[*team_link_penalty_terms, *travel_battement_terms],
+        extra_placement_terms=[*team_link_penalty_terms, *travel_battement_terms, *socle_reference_terms],
         # A person chains a back-to-back pair as coach OR as player of the team;
         # the map is built once from the constraint links (l.446) and the chaining
         # terms are built once here, so phase 2 (which reuses chaining_terms) is

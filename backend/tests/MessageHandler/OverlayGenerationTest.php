@@ -9,6 +9,7 @@ use App\Entity\Club;
 use App\Entity\Constraint;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
+use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\Team;
@@ -155,6 +156,23 @@ final class OverlayGenerationTest extends KernelTestCase
         self::assertIsString($teamId);
 
         $planId = $this->planIdOf($entry);
+
+        // Un comblement n'existe QU'avec un socle en vigueur (SocleGuard en amont, CLAUDE.md §6) :
+        // le handler lève sur un socle sans version pointée plutôt que de combler sans référence.
+        // La fixture doit donc être réaliste — une version COMPLETED du plan SEASON, pointée.
+        $socle = new Schedule;
+        $socle->setClubId($club->getId());
+        $socle->setSeasonId($season->getId());
+        $socle->setName('Socle');
+        $socle->setStatus(ScheduleStatus::COMPLETED);
+        $socle->setSchedulePlanId($this->seasonPlanIdOf($season));
+        $socle->setVersionNumber(1);
+        $em->persist($socle);
+        $em->flush();
+        $seasonPlan = $em->getRepository(SchedulePlan::class)->find($this->seasonPlanIdOf($season));
+        self::assertInstanceOf(SchedulePlan::class, $seasonPlan);
+        $seasonPlan->setChosenScheduleId($socle->getId());
+        $em->flush();
 
         // La version SOURCE (COMPLETED) et SON placement — c'est lui qu'on doit retrouver épinglé.
         $source = new Schedule;

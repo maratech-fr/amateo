@@ -858,7 +858,7 @@ de `specs/audit/`. Livrés notables non détaillés ci-dessus : **SEC-07** (gate
 cockpit), **SEC-11** (throttle API par utilisateur), **BG G1/G2** (draft serveur — abandonné), **BG G3** (fermetures
 de salle), **BG G4/G5/G6** (doc OpenAPI + naming snake_case), **FF#2** (périodes d'exception), **FF#3** (transition de
 saison), **FF#7** (`solver_metrics`), **FF#9** (invalidation de cache ciblée), **FF#13** (e2e Playwright), **ALIGN-06**
-(poids `spacing` de la formule de score — `engine/app/solver/objective.py` fait foi).
+(poids `spacing` de la formule de score — `engine/app/solver/objective/weights.py` fait foi).
 
 ### Dette soldée (avant la fusion du 2026-07-11)
 

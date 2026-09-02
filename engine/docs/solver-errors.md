@@ -1,6 +1,6 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-08-31 (P2-51 PR-7, `documentation-update`). La ligne `shared_training_not_honored`
+Last verified @ 2026-09-02 (PR-3 comblement — contrat recalé 2.19→2.20, confronté à `engine/CONTRACT_VERSION`). La ligne `shared_training_not_honored`
 est **RETIRÉE** — le type n'existe plus dans le `Literal` du contrat (`output_schema.py`, PR-7 a
 supprimé le modèle groupe {équipes, K} et son diagnostic) ; `shared_block_not_honored` (confrontée
 à `_diagnose_shared_blocks`, `app/solver/result_builder/diagnostics.py:824-902`) est désormais la
@@ -26,7 +26,7 @@ Ces erreurs sont retournees directement par l'API FastAPI, avant meme que le sol
 - `sessionsPerWeek: "trois"` au lieu d'un entier
 - Champ `sportCategoryId` manquant sur une equipe (requis)
 - Cle inconnue dans le payload (les schemas sont `extra=forbid`)
-- `version: "1.0"` alors que le moteur parle le **MAJOR 2** du contrat `2.19` (`"2.0"` comme `"2.1"` passent)
+- `version: "1.0"` alors que le moteur parle le **MAJOR 2** du contrat `2.20` (`"2.0"` comme `"2.1"` passent)
 
 **Attention — deux pieges qui ne provoquent PAS de 422** : `lockLevel` est une **chaine libre**, pas un enum (un `"FORT"` est accepte et simplement traite comme non-`HARD`), et le `dayOfWeek` d'un creneau de gymnase (`VenueTrainingSlotSchema`) est un entier **sans borne** — un `8` passe la validation (d'autres schemas du meme payload, eux, sont bornes `ge=1, le=7` : la tolerance n'est pas une regle generale).
 
@@ -144,7 +144,7 @@ Le score est un nombre entier qui reflete la qualite globale de la solution.
 La version actuelle de la formule est :
 
 ```
-SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V12"
+SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"
 ```
 
 ⚠ Cette constante bouge plus vite que la prose : en cas de doute, `app/solver/objective/weights.py` fait foi — c'est elle qu'il faut lire, pas ce fichier.

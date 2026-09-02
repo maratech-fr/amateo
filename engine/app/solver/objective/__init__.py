@@ -111,6 +111,9 @@ from .terms import (
     add_preferred_time_bonus as add_preferred_time_bonus,
 )
 from .terms import (
+    add_socle_reference_bonus as add_socle_reference_bonus,
+)
+from .terms import (
     add_spacing_penalty as add_spacing_penalty,
 )
 from .terms import (
@@ -160,6 +163,9 @@ from .weights import (
 )
 from .weights import (
     SCORE_FORMULA_VERSION as SCORE_FORMULA_VERSION,
+)
+from .weights import (
+    SOCLE_REFERENCE_TIER_WEIGHTS as SOCLE_REFERENCE_TIER_WEIGHTS,
 )
 from .weights import (
     STABILITY_TERM_WEIGHT as STABILITY_TERM_WEIGHT,
@@ -350,6 +356,7 @@ __all__ = [
     "CHAINING_TIER_WEIGHTS",
     "LEVEL_2_OBJECTIVE_WEIGHTS",
     "SCORE_FORMULA_VERSION",
+    "SOCLE_REFERENCE_TIER_WEIGHTS",
     "STABILITY_TERM_WEIGHT",
     "TEAM_LINK_TIER_WEIGHTS",
     "TIER_WEIGHT_NAMES",
@@ -359,6 +366,7 @@ __all__ = [
     "add_level_2_objective",
     "add_missing_session_penalty",
     "add_preferred_day_bonus",
+    "add_socle_reference_bonus",
     "add_team_link_penalty",
     "add_venue_preference_bonus",
     "build_stability_terms",

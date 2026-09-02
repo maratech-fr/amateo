@@ -535,6 +535,13 @@ jobs:
       - name: PreviousAssignmentsPayloadParityTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/PreviousAssignmentsPayloadParityTest.php --group phase1'
 
+      # PR-3 (axes generation pipeline + backend↔engine contract) : en COMBLEMENT seulement, la
+      # référence socle ÉMISE au moteur == les placements de la version POINTÉE du socle (cross-plan),
+      # {teamId, dayOfWeek, startTime} SANS venueId ; hors fill, rien n'est émis ; et le bloc N'ENTRE
+      # PAS dans le hash de snapshot — falsifié dans les deux sens.
+      - name: SocleReferencePayloadParityTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/SocleReferencePayloadParityTest.php --group phase1'
+
       # P2-51 PR-2 : ce qui est STOCKÉ (blocs de mutualisation {équipes, K}, ancrés au plan) == le
       # bloc `sharedBlocks` émis au moteur, socle ET période, portée dérivée du plan (ADR-0002),
       # membre hors roster filtré + bloc tombé sous 2 abandonné — falsifié dans les deux sens (un

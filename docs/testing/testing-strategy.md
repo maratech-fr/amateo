@@ -1,14 +1,14 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, P2-51 PR-3 — sans rapport direct avec
-le sujet de la PR, sauf §`CrossStack/`). Re-confronté au code : `DECLARED_ASYMMETRIES` reste **VIDE**
-(`test_hard_layer_parity_registry.py:94`) ✓ — le nouveau NR `CrossStack/SharedBlockHonouredByEngineTest`
-tourne bien dans le groupe `contract` (`#[Group('contract')]`) au même job CI « Engine semantics »
-que décrit ici (§`CrossStack/`, `ci.yml:874` `engine-semantics`, un required check hors
-`blocking-tests`/`unit-tests`) — aucune ligne à ajouter ici, ce paragraphe décrit le MÉCANISME de
-groupe, pas chaque test qui l'utilise. Reste du fichier non re-vérifié cette passe. Historique des
-passes : `git log -p --follow docs/testing/testing-strategy.md` — un stamp REMPLACE, il ne
-s'empile pas (DOC-33).)
+Last verified @ 2026-09-02 (rotation `documentation-update`, PR-3 lot overlay — sans rapport direct
+avec le sujet de la PR). Re-confronté au code : les **SEPT jobs sans `needs`** (`frontend`,
+`dependency-audit`, `rector`, `secrets-scan`, `semgrep`, `engine-semantics`, `smoke-tests`)
+recomptés contre `ci.yml` ✓ ; `unit-tests` lance bien `phpunit tests/ --exclude-group contract`
+(le dossier entier, pas la testsuite `Unit`, `ci.yml:653`) ✓ ; `build-docker` `needs: [blocking-tests,
+engine-tests]` seulement (`ci.yml:993`) ✓ ; `DECLARED_ASYMMETRIES` reste **VIDE**
+(`test_hard_layer_parity_registry.py:94`) ✓. Reste du fichier non re-vérifié cette passe.
+Historique des passes : `git log -p --follow docs/testing/testing-strategy.md` — un stamp
+REMPLACE, il ne s'empile pas (DOC-33).
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique) and [`../project-map.md`](../project-map.md).
 

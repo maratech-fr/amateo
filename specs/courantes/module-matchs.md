@@ -1,13 +1,17 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-08-31 (P2-51 PR-7, `documentation-update` — citation `patron
+Last verified @ 2026-09-02 (PR-3 lot overlay, `documentation-update`). **Dérive pré-existante
+corrigée** : la citation `engine/app/solver/objective.py` (formule `rest_day`) pointait un fichier
+disparu — recalée vers `objective/terms.py` (`add_match_day_rest_bonus`), le module a été éclaté
+en paquet. Passe précédente (2026-08-31, P2-51 PR-7) : citation `patron
 SharedTrainingGroup` corrigée en `SharedTrainingBlock` §« RGPD / reset saison » : l'entité groupe
 K est retirée, `SeasonDataPurger.php:125-126` purge désormais `SharedTrainingBlockTeam`/
 `SharedTrainingBlock` dans cet ordre. Re-confronté au code : `MatchesPage.tsx` garde toujours
 `readLoading`/`readFailed` sur fixtures/teams/venues et laisse `conflicts.isError` brut ✓ ;
-`engine/CONTRACT_VERSION` porte désormais **2.19** (retrait du modèle groupe {équipes, K},
+`engine/CONTRACT_VERSION` portait alors **2.19** (retrait du modèle groupe {équipes, K},
 P2-51 PR-7, 2026-08-31 — un seul contrat pour `/generate`/`/place-matches`/`/validate-assignments`,
-la ligne « même contrat » de ce fichier tient toujours) ✓ ; `POST /place-matches` toujours déclaré
+la ligne « même contrat » de ce fichier tient toujours ; contrat courant 2.20, PR-3) ✓ ;
+`POST /place-matches` toujours déclaré
 dans `engine/app/main.py` ✓. Le reste du fichier non re-confronté cette passe — un stamp REMPLACE,
 l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
 
@@ -417,7 +421,8 @@ change ce que reçoit le solveur d'ENTRAÎNEMENT pour son bonus « jour de repos
 - **Repli sans image** (ni habitude ni rotation) : le champ déclaré `Team.matchDay`, stocké
   **0-based** (0 = lundi, `TeamInput.php` `Range(0,6)`, jamais exposé à l'écran), **converti en ISO
   (+1)** à l'émission pour alimenter la MÊME formule moteur que la valeur dérivée
-  (`rest_day = match_day % 7 + 1`, juste en ISO uniquement — `engine/app/solver/objective.py`).
+  (`rest_day = match_day % 7 + 1`, juste en ISO uniquement — `engine/app/solver/objective/terms.py`,
+  `add_match_day_rest_bonus`).
   **Corrige le bug dormant D-11** ([`../evolution/duplications-de-verite.md`](../evolution/duplications-de-verite.md)) :
   sans cette conversion, un `matchDay` déclaré samedi (5, 0-based) produisait un repos calculé
   samedi au lieu de dimanche — dormant faute d'écran écrivant le champ, jamais observé en

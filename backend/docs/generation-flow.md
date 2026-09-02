@@ -1,13 +1,12 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-09-02 (rotation `documentation-update`, PR balayage bloc-aware — fichier hors
-sujet de la PR, contrôle de fraîcheur. **Dérive corrigée** : les mentions du contrat disaient 2.17,
-le code dit **`2.19`** (`ScheduleConstraintBuilder.php:64` ⇄ `engine/CONTRACT_VERSION`) — les 3
-occurrences recalées, balayage complet zéro résidu. Re-confirmé au passage : `engine_timeout`/
-`engine_error` émis par le handler (`GenerateScheduleHandler.php:290,298`) ✓ · verrou Redis
-`nx`/`ex` (`ClubGenerationLock.php:26`) ✓. Le reste (SSE, sélecteur de topic club, §6) non
-re-confronté cette passe — un stamp REMPLACE, l'historique vit dans git :
-`git log -p --follow backend/docs/generation-flow.md`.
+Last verified @ 2026-09-02 (PR-3 lot overlay, `documentation-update`). **Dérive corrigée** : les
+mentions du contrat disaient encore 2.19, le code dit **`2.20`** (`ScheduleConstraintBuilder.php:64`
+⇄ `engine/CONTRACT_VERSION`) — les occurrences recalées, balayage complet zéro résidu. §3b complétée
+d'une note sur la branche fill (référence socle, `GenerateScheduleHandler::socleReferenceSlots`) —
+le §3b décrivait déjà les deux branches base/overlay mais pas le comblement. Le reste (SSE,
+sélecteur de topic club, §6) non re-confronté cette passe — un stamp REMPLACE, l'historique vit
+dans git : `git log -p --follow backend/docs/generation-flow.md`.
 
 > ClubScheduler — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
@@ -109,6 +108,8 @@ Il n'y a donc **pas d'échec** pour l'utilisateur, et le diagnostic `engine_busy
 Le verrou acquis, `ScheduleConstraintBuilder` construit le payload JSON destiné au moteur.
 
 > ⚠️ **Deux branches.** Ce qui suit décrit `buildForClubSeason` (plan de base). Si le `Schedule` est l'**overlay d'une période** (`calendarEntryId` renseigné), le handler bascule sur `buildForOverlay`, qui **contourne le cache d'entrées** et lit **la grille de la période et elle seule** — les `VenueTrainingSlot` ancrés à son `schedulePlanId`, **jamais d'union** avec les créneaux de saison (feature #8). Détail dans `backend/AGENTS.md`.
+>
+> **Cas comblement (fill).** Sur une génération de comblement (`GenerateScheduleMessage::fillSourceScheduleId` posé), le handler greffe en plus, APRÈS le hash de snapshot (§3c), le bloc `socleReferenceAssignments` — les placements `{teamId, dayOfWeek, startTime}` (sans `venueId`) de la version **pointée** du plan SEASON (`GenerateScheduleHandler::socleReferenceSlots`, `ScheduleConstraintBuilder::withSocleReferenceAssignments`). Le solveur y répond par un bonus d'objectif de **phase 1** par tier (`add_socle_reference_bonus`, `SOCLE_REFERENCE_TIER_WEIGHTS`, engine `weights.py`) — détail : `backend/docs/backend-inventory.md` (section « Référence socle du comblement »).
 
 Voici ce que fait la branche de base, dans l'ordre :
 
@@ -132,7 +133,7 @@ Voici ce que fait la branche de base, dans l'ordre :
 
 6. **Niveaux de priorité** : il n'y a **pas** de clé `priorityTiers` top-level dans le payload. Les `PriorityTier` du club (S, A, B, C, D) sont sérialisés comme des **contraintes** de type `PRIORITY_TIER` dans `constraints[]`. Leurs poids ne sont pas envoyés (`orToolsWeight` volontairement omis) : le solveur applique des poids **codés en dur** côté engine — S=10000, A=1000, B=100, C=10, D=1 — un poids par tier serait accepté puis ignoré.
 
-7. **Métadonnées** : ajoute `version: "2.19"` (`ScheduleConstraintBuilder::CONTRACT_VERSION`, alignée sur `engine/CONTRACT_VERSION`), `clubId`, `seasonId`, `solverSeed` et `solverTimeoutSeconds`.
+7. **Métadonnées** : ajoute `version: "2.20"` (`ScheduleConstraintBuilder::CONTRACT_VERSION`, alignée sur `engine/CONTRACT_VERSION`), `clubId`, `seasonId`, `solverSeed` et `solverTimeoutSeconds`.
 
 Le payload complet pèse généralement entre 50 et 200 Ko de JSON selon la taille du club.
 
@@ -159,7 +160,7 @@ POST http://engine:8000/generate
 Content-Type: application/json
 
 {
-  "version": "2.19",
+  "version": "2.20",
   "clubId": "bccl-uuid",
   "seasonId": "2025-2026-uuid",
   "solverSeed": 42,
@@ -385,7 +386,7 @@ Voici un tableau récapitulatif de tous les cas d'erreur possibles, avec leur ca
 | **Épinglage orphelin** | `OrphanPinGuard` (#8) : un verrou ou une réservation ne correspond plus à aucun créneau de la grille de période | — (refus synchrone **422**) | Aucun | Le message nomme le gymnase et le jour : redéfinir les créneaux, ou retirer l'épinglage |
 | **Club déjà en génération** | Verrou Redis `schedule_generation:club:{clubId}` tenu par un autre worker | `PENDING` (retry Messenger via `RecoverableMessageHandlingException`) | Aucun | Rien à faire : la demande sera rejouée automatiquement à la fin de la génération en cours |
 | **Timeout HTTP (> 650 s)** | Problème trop complexe pour le solveur CP-SAT (budget adaptatif 60/180/600 s dépassé côté engine) | `FAILED` | `engine_timeout` | Simplifier les contraintes `HARD`, augmenter le nombre de salles, ou réduire le nombre d'équipes |
-| **Payload invalide (422)** | Réponse engine sans clé `status` (corps d'erreur Pydantic) — improbable car le payload est construit par `ScheduleConstraintBuilder` | `FAILED` | `engine_failed` | Comparer le `snapshotData` au schéma engine (contrat 2.19, `engine/CONTRACT_VERSION`) |
+| **Payload invalide (422)** | Réponse engine sans clé `status` (corps d'erreur Pydantic) — improbable car le payload est construit par `ScheduleConstraintBuilder` | `FAILED` | `engine_failed` | Comparer le `snapshotData` au schéma engine (contrat 2.20, `engine/CONTRACT_VERSION`) |
 | **Engine inaccessible** | Conteneur `engine` arrêté ou crash | `FAILED` | `engine_error` | Vérifier l'état des conteneurs Docker (`make logs SERVICE=engine`) |
 | **Planning infaisable** | Contraintes `HARD` mutuellement exclusives | `FAILED` | `conflict` + liste équipes non placées | Relâcher une contrainte `HARD` en `PREFERRED`, ou ajouter des ressources (salle, coach) |
 | **Partiellement résolu** | Ressources insuffisantes pour toutes les équipes | `COMPLETED` (score bas) | `unplaced` diagnostics | Accepter le planning incomplet, ou ajouter des créneaux/salles |
