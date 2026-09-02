@@ -450,11 +450,12 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
           }
           const selected = cell.slotId === selectedSlotId;
           const closedReason = closedReasonOf(cell.venueId, cell.day);
-          // P2-44 PR-4 — écart au socle. Le CONFLIT prime (une carte surlignée en conflit garde
-          // l'anneau `warning`, jamais `diff`), la SÉLECTION prime (`ring-accent`), un anneau de
-          // lentille prime — mais le symbole ⇄ reste dans tous les cas (source auto-explicite, même
-          // principe que la lentille, cf. props `lockLens`/`highlightSlotIds` ci-dessus). Le
-          // `flagged` d'une carte occupée = elle FAIT partie du surlignage conflit courant.
+          // P2-44 PR-4 — écart au socle. Le CONFLIT prime : une carte occupée qui fait partie du
+          // surlignage conflit n'a JAMAIS porté d'anneau (le surlignage = l'estompe des autres,
+          // cf. `dimmed`), elle n'en gagne pas un `diff` non plus. La SÉLECTION prime
+          // (`ring-accent`), un anneau de lentille prime — mais le symbole ⇄ reste dans tous les
+          // cas (source auto-explicite, même principe que la lentille, cf. props `lockLens`/
+          // `highlightSlotIds` ci-dessus).
           const deviatedOrigin = deviatedSlots?.get(cell.slotId);
           const deviated = undefined !== deviatedOrigin;
           const flagged = highlighting && (highlightSlotIds?.has(cell.slotId) ?? false);
@@ -478,9 +479,8 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                 // Lentille : sans verrou → estompé ; verrouillé → anneau de sa catégorie.
                 lensActive && null === cell.lockOrigin ? "opacity-40" : "",
                 lensActive && null !== cell.lockOrigin ? LOCK_LENS_META[cell.lockOrigin].ringClass : "",
-                // Écart au socle : anneau `diff`. Le conflit prime (flagged → warning seul), la
-                // sélection et un anneau de lentille priment aussi ; le symbole ⇄, lui, reste.
-                deviated && flagged ? "ring-1 ring-warning" : "",
+                // Écart au socle : anneau `diff`, sauf conflit (aucun anneau, comme toute carte
+                // occupée surlignée), sélection ou anneau de lentille ; le symbole ⇄, lui, reste.
                 deviated && !flagged && !selected && !lensRing ? "ring-1 ring-diff" : "",
               )}
               style={{

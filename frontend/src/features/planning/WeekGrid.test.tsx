@@ -376,7 +376,7 @@ describe("WeekGrid", () => {
       expect(container.querySelector(".bg-diff")).toBeNull();
     });
 
-    it("carte déviée ET en conflit (flagged) : anneau `warning`, jamais `diff` — le symbole reste", () => {
+    it("carte déviée ET en conflit (flagged) : aucun anneau `diff` (une carte occupée surlignée n'en porte aucun) — le symbole reste", () => {
       // Deux créneaux (deux jours) pour que le surlignage conflit soit décisif : « a » est surligné.
       const other: Slot = { ...slot, id: "b", dayOfWeek: 3 };
       const model = buildGrid([slot, other], "gymnase", lookups);
@@ -385,8 +385,10 @@ describe("WeekGrid", () => {
       );
 
       const card = container.querySelector('[data-slot-id="a"]');
-      expect(card?.className).toContain("ring-warning");
+      expect(card?.className).not.toContain("ring-warning");
       expect(card?.className).not.toContain("ring-diff");
+      // Le surlignage conflit reste ce qu'il a toujours été : l'AUTRE carte s'estompe.
+      expect(container.querySelector('[data-slot-id="b"]')?.className).toContain("opacity-30");
       // Le symbole ⇄ subsiste malgré le conflit (l'écart reste vrai).
       expect(card?.querySelector(".bg-diff")).not.toBeNull();
     });

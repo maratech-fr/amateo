@@ -52,6 +52,7 @@ import type { ToReplaceEntry } from "./lib/toReplaceReason";
 import { isSeasonPlanType, planRepresentative, visibleOverlayVersions, visibleSeasonPlans } from "./lib/versions";
 import { SeasonComparisonModal } from "./SeasonComparisonModal";
 import { ValidateDialog } from "./ValidateDialog";
+import { capacityShortfallSentence } from "./lib/capacityShortfall";
 import { deviatedSlots } from "./lib/socleDeviationCells";
 import { usePlanningStore, type ViewMode } from "./store";
 import { SocleDeviationPanel } from "./SocleDeviationPanel";
@@ -63,18 +64,6 @@ const IN_FLIGHT: readonly string[] = IN_FLIGHT_STATUSES;
 
 /** jour ISO → abréviation, pour le libellé du raccourci d'éviction (« Lun 18:00 »). */
 const DAY_ABBR = new Map(DAYS.map((d) => [d.n, d.label]));
-
-const plural = (n: number, singular: string, plural: string): string => `${n} ${1 === n ? singular : plural}`;
-
-/**
- * P2-44 PR-4 — le COMPTEUR DE CARENCE : une phrase factuelle et neutre (jamais une alarme) qui dit
- * au démarrage d'une FERMETURE combien de places manquent. Les nombres viennent du récap serveur
- * (`capacity.demand` bloc-aware / `capacity.offer`), présentation pure. Singulier/pluriel corrects.
- */
-export function capacityShortfallSentence(demand: number, offer: number): string {
-  const base = `${plural(demand, "séance demandée", "séances demandées")} pour ${plural(offer, "place disponible", "places disponibles")}`;
-  return demand > offer ? `${base} — il manque ${plural(demand - offer, "place", "places")}.` : `${base}.`;
-}
 
 /** `embedded` = rendered inside the wizard's Génération step, where the sticky
  *  wizard header + footer eat extra vertical space, so the grid must be shorter.
