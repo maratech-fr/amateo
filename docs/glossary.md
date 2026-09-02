@@ -62,6 +62,7 @@
 | **Snapshot figé** | Photo des données au moment du dispatch — le solve est **rejouable**, insensible aux éditions concurrentes. |
 | **Réservation** (`Reservation`) | Épingle durable équipe→créneau (HARD), envoyée à l'engine en `slotTemplates`. ≠ `ScheduleSlotTemplate` (résultat de solve). |
 | **Diagnostic** | Explication structurée d'un échec/compromis solveur (`ScheduleDiagnostic`, ex. `day_constraint_conflict`, `venue_minimum_unreachable`). |
+| **Écart au socle** (`SocleDeviation`) | Comparaison créneau par créneau entre le socle et une version de FERMETURE `COMPLETED` : `moved[]` (appariement chronologique socle→période, `to.slotId` vise la carte de la grille) et `unplaced[]` (reliquat sans contrepartie, `reason` motivée ou nulle). Calculé par `SocleDeviationCalculator`, servi en LECTURE par `GET /api/schedules/{id}/socle-deviation`. Marqué dans la grille par un symbole ⇄ (token `--diff`, violet) AVANT le nom d'équipe — jamais un mot à l'écran, jamais de légende. |
 
 ## Payload backend↔engine (contrat `CONTRACT_VERSION`, actuel 2.20)
 

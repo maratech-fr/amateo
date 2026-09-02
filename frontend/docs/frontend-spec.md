@@ -4,14 +4,16 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-08-31 (`documentation-update`, P2-51 PR-6 — nouveau geste « Déplacer le
-groupe » ajouté §6.7, confronté au code : `SlotDetail.tsx` (libellé/note/message armé),
-`PlanningPage.tsx` (`armMoveGroup`, `targetMode.kind === "move-group"`, `doMoveGroup`,
-`moveGroupState`), `planning/lib/blockSession.ts` (dérivation FAIL-SAFE), `planning/api.ts`
-(`moveGroup`, `POST /schedule-slots/move-group`) et `planning/queries.ts` (`useMoveGroup`, même
-paquet d'invalidation que `useMoveSlot`). Reste du fichier (routes, primitives, stack, §6.9) non
-re-vérifié cette passe — un stamp REMPLACE, l'historique vit dans git :
-`git log -p --follow frontend/docs/frontend-spec.md`)
+Last verified @ 2026-09-02 (`documentation-update`, P2-44 PR-4 — §6.7 bis étendue, confronté au
+code : `WeekGrid.tsx` (prop `deviatedSlots`, pastille `ArrowLeftRight` sur `bg-diff`, anneau
+`ring-diff` cédant à sélection/lentille/conflit, chip par membre sur carte fusionnée),
+`index.css` (tokens `--diff`/`--diff-foreground` + `--color-diff`), `tests/e2e/a11y-contrast.spec.ts`
+(paire non-texte ≥ 3:1), `SocleDeviationPanel.tsx` (ligne « déplacée » = `<button onSelectSlot>`),
+`PlanningPage.tsx` (`socleDeviatedSlots`, `capacityArmed`/`useConstraintValidation`, phrase du
+compteur), `lib/socleDeviationCells.ts`/`lib/capacityShortfall.ts` (nouveaux), `planning/api.ts`
+(`SocleDeviationMoved.to.slotId`), `wizard/api.ts` (`ValidateResult.capacity`). Reste du fichier
+(routes, primitives, stack, §6.9) non re-vérifié cette passe — un stamp REMPLACE, l'historique vit
+dans git : `git log -p --follow frontend/docs/frontend-spec.md`)
 
 ---
 
@@ -769,6 +771,42 @@ arbitrage fondateur « les deux affichés pour le moment » — d'où deux titre
 distincts : « **Écarts avec le planning de saison** » (le neuf, qui porte en plus les **déplacées**)
 vs « Séances non reprises du planning de saison » (l'existant, session d'écran). Sur une **vacance**
 la route n'est **jamais appelée** : le comportement PR-2 reste intact à l'octet.
+
+**Le symbole ⇄ dans la grille, panneau cliquable, compteur de carence (P2-44 PR-4, lot « overlay =
+la saison au moindre effort », 2026-09-02)** :
+
+- **Marquage DANS la grille.** `WeekGrid` reçoit `deviatedSlots?: Map<slotId, libellé d'origine>`
+  (`frontend/src/features/planning/lib/socleDeviationCells.ts`, maison unique partagée avec
+  `SocleDeviationPanel` pour le libellé « Mar 18h30 Matéo »). Une carte dont le `slotId` est dans la
+  map porte, **avant le nom de l'équipe**, une pastille `ArrowLeftRight` (fond `bg-diff`,
+  `text-diff-foreground`) — **jamais le mot « déplacée » à l'écran** (le symbole est auto-explicite) ;
+  le sens accessible vit en `sr-only` (« déplacée — en saison : {origine} ») et en suffixe du
+  `title` de la carte. Un anneau `ring-1 ring-diff` habille la carte, mais **cède le pas** à la
+  sélection (`ring-accent`), à l'anneau de la lentille verrous et au surlignage conflit — une carte
+  occupée surlignée par un conflit ne porte **jamais** d'anneau, qu'elle soit déviée ou non ; le
+  symbole, lui, reste dans tous les cas. Une carte FUSIONNÉE (bloc) porte le symbole **par membre
+  dévié**, pas globalement sur la cellule. Armé seulement sur une **FERMETURE** (`isClosurePeriod`)
+  avec une version `COMPLETED` — jamais de légende ni de bascule d'affichage.
+- **Token `--diff`** (`frontend/src/index.css`) : rôle sémantique à part entière (violet,
+  `oklch(0.52 0.19 305)` clair / `oklch(0.78 0.16 305)` sombre), hors des 4 rôles existants
+  (accent/warning/destructive/success) — « ceci diffère du socle », jamais une erreur. Exposé
+  `--color-diff`/`--color-diff-foreground`. `tests/e2e/a11y-contrast.spec.ts` mesure ses paires
+  non-texte (pastille sur carte/fond, foreground sur pastille) à ≥ 3:1 dans les deux thèmes (WCAG
+  1.4.11) — le seuil non-texte, pas le 4.5:1 du texte.
+- **Lignes du panneau cliquables (D6-d, seule sous-décision étiquetée dans le code).** Chaque ligne « déplacée » de `SocleDeviationPanel` est un
+  `<button>` (prop `onSelectSlot`, câblée à `openSlot` de `PlanningPage`) qui vise directement la
+  carte dans la grille — même recette que `LocksPanel`. Nécessite `entry.to.slotId` sur la réponse
+  backend (`SocleDeviationCalculator`/`SocleDeviationResult`, le `slotId` du créneau de PÉRIODE que
+  la grille rend). Les lignes « à replacer » restent du texte (aucune carte à viser).
+- **Compteur de carence.** Sur une FERMETURE seulement, `PlanningPage` affiche une phrase
+  factuelle et neutre (jamais une alarme, pas d'`aria-live`) au-dessus de la grille —
+  `capacityShortfallSentence` (`lib/capacityShortfall.ts`) : « N séances demandées pour M places
+  disponibles — il manque K places. » (ou sans la dernière proposition si la demande tient dans
+  l'offre). Les nombres viennent de `ValidateResult.capacity {demand, offer}`, une clé ADDITIVE de
+  `POST /api/constraints/validate` — présentation pure, le calcul reste serveur (`demand` est
+  bloc-aware : une séance de bloc de mutualisation réunit N membres sur UNE place, cf.
+  `PayloadCapacityMirror::demand`). Rien sur une vacance (`capacityArmed` exclut HOLIDAY) ou sans
+  payload.
 
 ### 6.8 Loading states, error boundaries et ÉCRANS SYSTÈME (P5-14, 2026-08-21)
 
