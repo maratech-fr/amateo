@@ -1,16 +1,12 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-02 (PR balayage bloc-aware, `documentation-update`) : §bloc recalée — le
-dé-comptage capacité couvre désormais le partenaire VERROUILLÉ du même bloc (deux étages,
-`model.py` + `structural.py`), vérifié contre le code et
-`tests/semantic/test_fill_pinned_block_partner.py`.
-Ligne `COACH_PLAYER_NO_OVERLAP` (§règles dures) et nouvelle ligne `shared_block_case_bvars` (§tableau
-bloc) confrontées au code : borne réifiée `≤ 1 + Σb` sous séance de bloc active dans les 3 mécanismes
-d'`add_coach_player_non_overlap` (`structural.py` — clé-temps, intervalles, libre-vs-verrou `var ≤ Σb`),
-carte exposée sur `ScheduleCpModel` (`model.py`, patron `room_relief`), garde de distinctness bornant
-Σb ≤ 1 (`targeting.py:494-497`) ✓. Le retrait du modèle groupe K (passe précédente) reste vrai :
-`add_shared_block_constraints` et `team_share_declared_pairs` seuls dans `targeting.py` ✓. Reste non
-re-vérifié cette passe — historique : `git log -p --follow engine/docs/constraint-vocabulary.md`.
+Last verified @ 2026-09-02 (PR-3 lot overlay, `documentation-update`) : nouvelle section
+`socleReferenceAssignments` (référence socle du comblement, bonus de PLACEMENT phase 1 par tier)
+ajoutée et confrontée au code — `ScheduleConstraintBuilder::withSocleReferenceAssignments`
+(backend), `add_socle_reference_bonus` + `SOCLE_REFERENCE_TIER_WEIGHTS`
+(`engine/app/solver/objective/{terms,weights}.py`), `SCORE_FORMULA_VERSION` V13, contrat 2.20.
+Reste du document non re-vérifié cette passe — historique :
+`git log -p --follow engine/docs/constraint-vocabulary.md`.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -286,6 +282,29 @@ comme les 5 règles de bien-être : le trajet suggère ou interdit, il ne « dur
 de confort. Le MÊME gymnase n'est jamais concerné (l'exemption coach-coach même-gymnase D-14 reste
 intacte). `venueTravelTimes` absent/vide OU règle inactive ⇒ aucune variable posée, chemin
 byte-identique, goldens inchangés.
+
+## Référence socle du comblement (`socleReferenceAssignments`) — bonus de PLACEMENT par tier (PR-3)
+
+Bloc d'entrée `socleReferenceAssignments[]` (`{teamId, dayOfWeek, startTime}`, **sans** `venueId`,
+cap `MAX_SLOT_TEMPLATES`) — émis **uniquement en comblement** (`ScheduleConstraintBuilder::
+withSocleReferenceAssignments`, backend) : les placements de la version **pointée** du plan SEASON
+(le socle), injectés APRÈS le hash de snapshot comme `previousAssignments` (préférence de
+convergence, jamais une donnée de structure).
+
+`add_socle_reference_bonus` (`engine/app/solver/objective/terms.py`) ajoute, dans l'objectif de
+**PLACEMENT** (phase 1, patron du malus passerelle `extra_placement_terms` — **pas** le tie-break
+de phase 2 comme `build_stability_terms`), un bonus `+SOCLE_REFERENCE_TIER_WEIGHTS[tier]` sur
+chaque variable `model.x[(team, venue, day, start)]` dont `(team, day, start)` — **gymnase
+ignoré** — matche une entrée du bloc. Poids par tier (`weights.py`) : `S=20 · A=18 · B=16 · C=14 ·
+D=12` — le club tient plus fort l'horaire de socle d'une équipe fanion qu'une équipe secondaire.
+Un créneau HARD n'a pas de variable dans `model.x` → naturellement ignoré, la référence n'oriente
+que les trous du comblement. `socleReferenceAssignments` absent/vide ⇒ `[]`, chemin
+byte-identique (le backend ne l'émet qu'en comblement, en génération pleine il est absent).
+
+`SCORE_FORMULA_VERSION` = **`T24_LEVEL_2_FIXED_WEIGHTS_V13`** (V12 sans le terme, INERTE tant
+qu'aucune référence n'est émise). `sharedBlocks`/`slotTemplates` — miroir `MAX_SLOT_TEMPLATES` sur
+le cap de la liste. Contrat backend⇄engine **2.20**. Gardé côté backend par
+`CrossStack/SocleReferencePayloadParityTest`.
 
 ## Ce qu'un verrou HARD écrase (P2-9)
 

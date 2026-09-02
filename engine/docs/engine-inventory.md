@@ -1,9 +1,13 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-09-02 (PR-3 comblement référencé au socle). Contrat recalé **2.19 → 2.20**
-(champ optionnel `socleReferenceAssignments` sur `/generate` — bonus de référence socle par tier,
-`SCORE_FORMULA_VERSION` V12→V13) : version active et historique des bumps ci-dessous mis à jour. Le
-reste de l'inventaire n'a pas été confronté ligne à ligne cette passe.
+Last verified @ 2026-09-02 (PR-3 comblement référencé au socle, `documentation-update`). Contrat
+recalé **2.19 → 2.20** (champ optionnel `socleReferenceAssignments` sur `/generate` — bonus de
+référence socle par tier, `SCORE_FORMULA_VERSION` V12→V13) : version active et historique des
+bumps ci-dessous mis à jour. **Dérive pré-existante corrigée** : la ligne « Objectif Level-2 »
+citait encore `SCORE_FORMULA_VERSION` **V10** comme version courante (héritage de la note
+« gravé en V10 » qu'elle précède) — le code dit **V13** (`weights.py`), recalé sans toucher la
+note historique du principe fondateur. Le reste de l'inventaire n'a pas été confronté ligne à
+ligne cette passe.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
 > Source de vérité : `engine/app/main.py`, `engine/app/schemas/input_schema.py`, `engine/app/schemas/output_schema.py`, `engine/app/solver/{model,constraints,objective,result_builder}.py`, `engine/app/core/config.py`.
@@ -384,7 +388,9 @@ catalogue « extensions futures », `engine/implicit_rules.json` — gouvernance
   `tests/test_harness_speaks_the_real_contract.py`.
 - **Workers** : `num_search_workers` **adaptatif** (`_adaptive_workers`, main.py) — complexité `n_teams×n_venues` ≤200 → **1** (déterministe, dont dépendent les goldens petits) · else → **8** (le worker unique trouve l'optimum en ~2s sur les problèmes denses riches en soft mais ne le prouve pas — 612s de blocage sur BCCL ; le portfolio 8 workers ferme la preuve en ~2s, même valeur d'objectif, assignation non-déterministe mais valeur stable). Appliqué aux deux phases.
   - ⚠️ **Réconciliation spec** : `specs/initiales/…contraintes_v2.md §2` promet « même entrée + même `solver_seed` + même version → planning **exactement** identique ». Depuis les workers adaptatifs, cette garantie n'est plus **exacte** qu'en dessous du seuil (≤200 complexité, 1 worker) ; au-dessus, seule la **valeur d'objectif** (score) est reproductible, pas l'arrangement exact (décision produit 2026-07-07, cf. roadmap §1 — le gestionnaire ajuste de toute façon). Les initiales étant gelées, la réconciliation vit ici.
-- **Objectif Level-2** : `SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V10"`. Maximise somme pondérée.
+- **Objectif Level-2** : `SCORE_FORMULA_VERSION` **actuel = `T24_LEVEL_2_FIXED_WEIGHTS_V13`**
+  (`weights.py` — bump le plus récent : V13 = PR-3 comblement référencé au socle, §bumps
+  `CONTRACT_VERSION` 2.20 ci-dessus). Maximise somme pondérée.
   ⚑ **Principe fondateur gravé en V10 (2026-08-15) : LE REMPLISSAGE PRIME SUR LE CONFORT.** Une séance
   placée — même dans un gymnase, un jour ou à une heure non préférés — vaut TOUJOURS mieux qu'un trou ;
   le confort ne sert qu'à départager des solutions qui placent le MÊME nombre de séances. Deux garde-fous :

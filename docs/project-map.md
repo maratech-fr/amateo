@@ -1,8 +1,11 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-09-02 (PR-3 comblement — mention du contrat recalée 2.19→2.20, confrontée à
-`engine/CONTRACT_VERSION` : champ `socleReferenceAssignments`. La passe P2-51 PR-7 avait recalé
-2.18→2.19 : le modèle groupe {équipes, K}
+Last verified @ 2026-09-02 (PR-3 comblement, `documentation-update` — mention du contrat recalée
+2.19→2.20, confrontée à `engine/CONTRACT_VERSION` : champ `socleReferenceAssignments`. **Dérive
+pré-existante corrigée** : la ligne `app/solver/objective.py` du §3.1 citait un fichier disparu —
+le module est un **paquet** depuis le refactor `weights.py`/`terms.py`/`normalise.py` (`ls
+engine/app/solver/objective/`), recalée sur le patron de la ligne `constraints/` juste au-dessus.
+La passe P2-51 PR-7 avait recalé 2.18→2.19 : le modèle groupe {équipes, K}
 (`sharedTrainings`/`SharedTrainingGroupSchema`) est retiré des deux endpoints qui le portaient,
 `sharedBlocks` devient la SEULE mutualisation. ⚠ Vérification volontairement ÉTROITE : le reste de
 la carte n'a pas été reconfronté au code ce jour)
@@ -135,7 +138,7 @@ All services share the Docker network `amateo_network`.
 | `app/schemas/output_schema.py` | `ScheduleOutputSchema`, `ScheduleSlotSchema`, `DiagnosticSchema`, `SolverMetricsSchema` |
 | `app/solver/model.py` | `ScheduleCpModel(cp_model.CpModel)`, `build_model`, slot/lock/capacity extraction |
 | `app/solver/constraints/` | **Paquet** (ENG-32) : Level-1 hard constraints (`structural`/`wellness`/`targeting`), `parse_v2_constraints()` (`parsing`), `diagnose_locked_slot_violations()` (`diagnostics`) — façade `__init__` à surface d'import inchangée, orchestrateur inclus (couture de test) |
-| `app/solver/objective.py` | Level-2 soft objective, tiered placement scoring, bonuses, `SCORE_FORMULA_VERSION` |
+| `app/solver/objective/` | **Paquet** (`weights.py`/`terms.py`/`normalise.py`, façade `__init__`) : Level-2 soft objective, tiered placement scoring, bonuses (dont la référence socle du comblement, PR-3), `SCORE_FORMULA_VERSION` |
 | `app/solver/result_builder.py` | CP-SAT solution → output schema + diagnostics |
 | `app/solver/helpers.py` | shared sentinels/utilities (deduplicated out of constraints/objective) |
 

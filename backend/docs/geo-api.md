@@ -1,12 +1,14 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, hors sujet de la PR — sondage des
-stamps les plus anciens du dépôt). Re-confronté au code : hosts BAN/IGN en constantes dures
-(`Service/Geo/BanGeocodingClient.php` / `Service/Geo/IgnRoutingClient.php`) ✓ ·
-`IgnRoutingClient::BATCH_BUDGET_SECONDS = 30.0` toujours vrai (`IgnRoutingClient.php:42`) ✓. Non
+Last verified @ 2026-09-02 (rotation `documentation-update`, PR-3 lot overlay — fichier hors sujet
+de la PR, sondage des stamps les plus anciens du dépôt). Re-confronté au code : hosts BAN/IGN en
+constantes dures (`BanGeocodingClient::SEARCH_URL`, `IgnRoutingClient::ITINERARY_URL`) ✓ ·
+`IgnRoutingClient::BATCH_BUDGET_SECONDS = 30.0` (`IgnRoutingClient.php:42`) ✓ · profils `car`/
+`pedestrian` seuls, `bike` absent (`IgnRoutingClient.php:21,25-26`) ✓ ·
+`VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS = 120` (`VenueTravelTimeAutofillService.php:27`)
+✓ · rate-limit `venue_travel_time_autofill` 10/h sliding window (`rate_limiter.yaml:59-62`) ✓. Non
 re-sondé cette passe : le détail du dispatch de budget, `OpponentTravelResolver::resolve`, les
-plafonds prod (`docker/php/Dockerfile`, `docker/nginx/default.conf`), le cap dur 120 paires, le
-rate-limit `venue_travel_time_autofill`.
+plafonds prod (`docker/php/Dockerfile`, `docker/nginx/default.conf`).
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,

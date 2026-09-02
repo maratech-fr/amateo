@@ -214,7 +214,10 @@ d'ici là, le réglage se fait par l'API.
 | Expansion CLUB→équipes | `backend/tests/Unit/Service/ScheduleConstraintBuilderTest.php` |
 
 Contrat backend↔engine **inchangé** (config = dict opaque, warnings via `diagnostics` existants) —
-pas de bump `CONTRACT_VERSION`. **`SCORE_FORMULA_VERSION` actuel : V7** (`engine/app/solver/objective.py`)
+pas de bump `CONTRACT_VERSION`. **`SCORE_FORMULA_VERSION` à ce lot (P2-28/ALIGN-06) : V7**
+(`engine/app/solver/objective/weights.py` — module éclaté en `objective/` depuis, le fichier
+`objective.py` n'existe plus ; **la version COURANTE se lit dans
+`engine/docs/engine-inventory.md`, jamais figée ici**, ce paragraphe est un historique de bump daté)
 — V5→V6 : nouveau poids `avoided_venue = −60` (vrai malus sur le créneau du gymnase évité — un
 bonus-complément sur les autres gymnases biaisait l'arbitrage inter-équipes) ; V6→V7 : poids
 `spacing` (ALIGN-06). Sémantiques d'agrégation : indispos coach =

@@ -1,11 +1,11 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-09-01 (rotation `documentation-update`, consignation reprise-24 — fichier hors
-sujet de la PR, contrôle de fraîcheur). Re-confronté au code : `maxEndTime` toujours HARD
-(`ConstraintConfigValidator.php:65`, type `time`) ✓ · `add_max_consecutive_days_constraints`
-toujours à `wellness.py:494` ✓ · `forced_day_vars` toujours posé (`targeting.py:209-213`) ✓ ·
-`resolveTravelRuleIntensity` — **ligne recalée `:894`** (le stamp précédent disait :954) ✓. Reste
-non re-sondé cette passe — historique : `git log -p --follow` ce fichier.
+Last verified @ 2026-09-02 (PR-3 lot overlay, `documentation-update`). **Dérive pré-existante
+corrigée** : deux citations `engine/app/solver/objective.py` pointaient un fichier disparu — le
+module est un **paquet** (`weights.py`/`terms.py`/`normalise.py`) depuis un refactor antérieur,
+recalées vers `objective/weights.py`. Reste non re-sondé cette passe (dernière passe complète :
+`maxEndTime` HARD, `add_max_consecutive_days_constraints`, `forced_day_vars`,
+`resolveTravelRuleIntensity` — voir historique `git log -p --follow` ce fichier).
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels
@@ -41,7 +41,7 @@ non re-sondé cette passe — historique : `git log -p --follow` ce fichier.
 | « Cette équipe joue dans tel gymnase (obligatoire) » | FACILITY `forcedVenueId` (HARD) | ✅ | SM4 → Jean Vilar |
 | « Réserver un gymnase à un groupe (exclusif) » | FACILITY `forcedVenueId`/`preferredVenueId` HARD + `targetTag` → interdit hors tag | ✅ | Camus réservé Loisir 1/2/3 |
 | « Éviter tel gymnase » (dur) | FACILITY `forbiddenVenueId` (HARD) | ✅ | Vétérans interdits sur 5 gymnases |
-| « Préférer tel gymnase » | FACILITY `preferredVenueId` (PREFERRED, +10 — recalé sous la valeur d'une séance nue depuis V10 « le remplissage prime », `engine/app/solver/objective.py`) | ✅ soft | Matéo préféré aux Régionales |
+| « Préférer tel gymnase » | FACILITY `preferredVenueId` (PREFERRED, +10 — recalé sous la valeur d'une séance nue depuis V10 « le remplissage prime », `engine/app/solver/objective/weights.py`) | ✅ soft | Matéo préféré aux Régionales |
 | « Pas ce type d'équipe dans ce gymnase » | FACILITY `forbiddenVenueId` + `targetTag` | ✅ | Jean Vilar pas de féminines |
 | « Gymnase fermé sur une période » | période cockpit `venue_closed` → **retrait des créneaux** du gymnase les jours fermés (`VenueClosureDays`, 5b #263 ; l'ancienne expansion `forbiddenVenueId` est supprimée) — sur-ferme sur tout le bloc si un jour se répète, jamais sous-ferme | ✅ | (calendrier cockpit) |
 | **« Au moins une séance dans tel gymnase »** | FACILITY `minAtVenueId` + `minAtVenueCount` (HARD, mode « au moins N ») — plancher, ≠ forçage ; les autres séances restent libres | ✅ *(ALIGN-05)* | « au moins 1 séance à Armand » ; fail-fast backend si N > séances/semaine |
@@ -63,7 +63,7 @@ non re-sondé cette passe — historique : `git log -p --follow` ce fichier.
 
 | Besoin | Mécanisme | Statut | Exemple BCCL |
 |---|---|---|---|
-| « Servir d'abord les équipes importantes » | tiers S=10000…D=1, poids **codés en dur** dans le moteur (`objective.py` — le champ `orToolsWeight` du payload est requis mais IGNORÉ) | ✅ soft | rangs S/A/B/C/D |
+| « Servir d'abord les équipes importantes » | tiers S=10000…D=1, poids **codés en dur** dans le moteur (`objective/weights.py` — le champ `orToolsWeight` du payload est requis mais IGNORÉ) | ✅ soft | rangs S/A/B/C/D |
 | « Garantir N séances/semaine par équipe » | `MIN_SESSIONS` — **cible soft**, pas un plancher dur | 🟡 | ⚠ « minimum » non garanti (audit ENG-18) |
 | « Jamais 2 équipes sur le même créneau » | `VENUE_AT_MOST_ONE` / capacité (implicite) | ✅ | — |
 | « Jour de repos après un match » | bonus soft `add_match_day_rest_bonus` ; le `matchDay` émis est DÉRIVÉ de l'image A/B côté backend (`ScheduleConstraintBuilder::deriveMatchDay`, RMM-5 PR-3) | ✅ soft | — |
