@@ -1,7 +1,7 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, hors sujet de la PR — sondage des
-stamps les plus anciens du dépôt). Re-confronté au code : hosts en constantes dures
+Last verified @ 2026-09-02 (rotation `documentation-update`, hors sujet de la PR — sondage des
+stamps les plus anciens du dépôt). Re-confronté au code, sans écart : hosts en constantes dures
 (`Service/Basketball/FfbbApiClient.php:24-25`, `CONFIG_URL`/`SEARCH_URL`) ✓ · routes
 `GET /api/ffbb/rencontres` + `POST /api/ffbb/rencontres/apply`
 (`Controller/Basketball/FfbbRencontresController.php:66,87`) ✓. Non re-sondé cette passe : le

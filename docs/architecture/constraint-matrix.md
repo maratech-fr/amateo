@@ -150,6 +150,11 @@ coach mono-gymnase, coach-joueur, une séance/jour). Trouvé sur données réell
 gymnase pendant qu'elle en coachait un autre à la même heure, et une équipe avait deux séances le même
 jour — planning COMPLETED, aucun diagnostic.
 
+Nuance bloc (2026-09-02) : pour la **capacité gymnase**, un verrou d'un membre de bloc partagé compte
+comme l'occupation UNIQUE du bloc — ses partenaires libres peuvent rejoindre la case (eux seuls),
+sinon la transcription du socle rendait tout comblement infaisable
+(`engine/tests/semantic/test_fill_pinned_block_partner.py`).
+
 **Depuis P2-28 (2026-08-14), les règles se rangent en DEUX FAMILLES** — né de la reproduction du
 planning réel BCCL (P5-13) : le planning du club, 100 % verrouillé, était INFEASIBLE parce que deux
 règles « de bon sens » sont plus strictes que la réalité (un coach-joueur enchaîne 3 créneaux dont

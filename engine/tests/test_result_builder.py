@@ -459,6 +459,32 @@ class DiagnosticPrecisionTest(unittest.TestCase):
         self.assertIn("capacité est insuffisante", message)
         self.assertIn("3 place(s) de créneau", message)
 
+    def test_infeasible_message_demand_is_bloc_aware(self) -> None:
+        # P2-51 — une séance de bloc réunit N membres sur UNE place : la demande de places
+        # retranche (n_membres − 1) × commonSessions par bloc. Sans ce repli, 3 séances brutes
+        # pour 2 places crierait « capacité insuffisante » alors que le bloc de 2 (1 commune) les
+        # fait tenir. Le repli NE doit PAS masquer une vraie pénurie (second cas).
+        from app.solver.result_builder import _infeasible_message
+
+        model_data: dict[str, Any] = {
+            "teams": [{"id": "t1", "sessionsPerWeek": 1}, {"id": "t2", "sessionsPerWeek": 1}],
+            "venues": [
+                {
+                    "id": "v1",
+                    "trainingSlots": [
+                        {"dayOfWeek": 1, "startTime": "18:00", "capacity": 1},
+                    ],
+                }
+            ],
+            "sharedBlocks": [{"id": "b", "teamIds": ["t1", "t2"], "commonSessions": 1}],
+        }
+        # demand 2 − (2−1)×1 = 1 place, 1 place disponible → aucune accusation de pénurie.
+        self.assertNotIn("capacité est insuffisante", _infeasible_message(model_data))
+
+        # Sans bloc, la même demande brute (2) dépasse la place unique → pénurie honnête.
+        del model_data["sharedBlocks"]
+        self.assertIn("capacité est insuffisante", _infeasible_message(model_data))
+
     def test_infeasible_message_dedupes_slot_triplets_like_the_model(self) -> None:
         from app.solver.result_builder import _infeasible_message
 

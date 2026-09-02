@@ -55,6 +55,12 @@ class ScheduleCpModel(cp_model.CpModel):
         # ``room_relief`` : un ``... or {}`` fabriquerait un dict jetable que le lecteur ne verrait pas.
         # Bloc absent/vide ⇒ carte vide ⇒ borne stricte partout (chemin byte-identique, goldens).
         self.shared_block_case_bvars: dict[tuple[str, str], list[tuple[frozenset[str], Any]]] = {}
+        # P2-51 (comblement) — équipe → ENSEMBLE de ses partenaires de bloc (co-membres d'un même
+        # ``sharedBlocks``). Posée par ``build_model`` depuis le payload, lue par la capacité gymnase
+        # (``add_room_at_most_one``) : un partenaire ÉPINGLÉ sur une case laisse le membre LIBRE du
+        # MÊME bloc s'y poser (une séance de bloc = UNE occupation), et à lui SEUL. Bloc absent/vide
+        # ⇒ carte vide ⇒ aucun dé-compte, chemin byte-identique (goldens inchangés).
+        self.block_partners: dict[str, set[str]] = {}
         # P4-99 — la cause MESURÉE d'un candidat fermé, indexée par la variable OR-Tools
         # (``var.Index()``, entier stable). Remplie par les sites de pose de `constraints.py`
         # au moment EXACT où ils forcent un candidat à 0 (décision B : jamais reconstituée
@@ -93,6 +99,13 @@ def build_model(data: Mapping[str, Any] | Any) -> ScheduleCpModel:
     model.hard_slot_keys = hard_slot_keys
     model.blocked_venue_slots = blocked_venue_slots
 
+    # P2-51 (comblement) — partenaires de bloc + verrous par case, pour que le membre LIBRE d'un
+    # bloc dont un partenaire est ÉPINGLÉ sur une case ne soit PAS supprimé au montage (ci-dessous)
+    # ni retranché à tort de la capacité (``add_room_at_most_one``). Vide sans ``sharedBlocks``.
+    block_partners = _block_partners(_collection(data, "sharedBlocks", "shared_blocks"))
+    model.block_partners = block_partners
+    locks_by_case = _hard_locks_by_case(locked_slots) if block_partners else {}
+
     for venue in _collection(data, "venues"):
         venue_id = str(_required(venue, "id"))
         for ts in _collection(venue, "training_slots", "trainingSlots"):
@@ -116,8 +129,19 @@ def build_model(data: Mapping[str, Any] | Any) -> ScheduleCpModel:
             if slot_key in hard_slot_keys:
                 continue
             if venue_slot_key in blocked_venue_slots:
-                model.lock_removed_candidates[slot_key] = {"kind": "hard_lock"}
-                continue
+                # P2-51 (comblement) — un verrou d'une AUTRE équipe occupe la case. On garde
+                # quand même le candidat SI cette autre équipe est un PARTENAIRE DE BLOC épinglé
+                # sur CETTE case exacte (même début) : le membre libre rejoint la séance de bloc,
+                # les deux tiennent en UNE occupation. La capacité réelle (balayage verrous +
+                # dé-compte) tranche ensuite le nombre ; un verrou non-partenaire (ou à un autre
+                # début) laisse la suppression — « à eux SEULS ».
+                partners_here = block_partners.get(team_id) or set()
+                joins_pinned_partner = any(
+                    locked_team in partners_here for locked_team, _end in locks_by_case.get(venue_slot_key, ())
+                )
+                if not joins_pinned_partner:
+                    model.lock_removed_candidates[slot_key] = {"kind": "hard_lock"}
+                    continue
 
             model.x[slot_key] = cast(Any, model).NewBoolVar(_variable_name(slot_key))
 
@@ -198,6 +222,43 @@ def _extract_hard_locks(
             blocked_venue_slots.add((venue_id, day_of_week, normalized_start))
 
     return tuple(locked_slots), frozenset(hard_slot_keys), frozenset(blocked_venue_slots)
+
+
+def _block_partners(shared_blocks: Iterable[Any]) -> dict[str, set[str]]:
+    """``team_id -> ensemble de ses co-membres`` sur l'UNION des blocs ``sharedBlocks`` (P2-51
+    comblement). Un partenaire de bloc est toute AUTRE équipe partageant au moins un bloc déclaré.
+    Sert à laisser le membre LIBRE d'un bloc se poser sur la case d'un partenaire ÉPINGLÉ (et à lui
+    SEUL). Multi-appartenance gérée : l'ensemble cumule tous les blocs de l'équipe. Liste
+    absente/vide ou bloc < 2 membres ⇒ carte vide ⇒ chemin byte-identique."""
+    partners: dict[str, set[str]] = {}
+    for block in shared_blocks or ():
+        members = [str(t) for t in (_value(block, "teamIds", "team_ids", default=()) or ())]
+        if len(members) < 2:
+            continue
+        member_set = set(members)
+        for member in members:
+            partners.setdefault(member, set()).update(member_set - {member})
+    return partners
+
+
+def _hard_locks_by_case(locked_slots: Iterable[Mapping[str, Any]]) -> dict[VenueSlotKey, list[tuple[str, int]]]:
+    """``(venue, day, "HH:MM") -> [(team_id, end_minute)]`` pour chaque verrou HARD dont le DÉBUT
+    tombe EXACTEMENT sur cette case (P2-51 comblement). La co-présence de bloc exige la même case
+    (même gymnase + même jour + même heure de début) : on n'indexe donc que par le début réel du
+    verrou, jamais par ses sous-créneaux. Consomme la sortie NORMALISÉE de ``_extract_hard_locks``
+    (clés snake, début déjà formaté)."""
+    by_case: dict[VenueSlotKey, list[tuple[str, int]]] = {}
+    for locked in locked_slots or ():
+        team_id = str(locked.get("team_id") or "")
+        venue_id = str(locked.get("venue_id") or "")
+        day = locked.get("day_of_week")
+        start_time = locked.get("start_time")
+        if not team_id or not venue_id or day is None or start_time is None:
+            continue
+        start = _time_to_minutes(start_time)
+        duration = int(locked.get("duration_minutes") or DEFAULT_SESSION_MINUTES)
+        by_case.setdefault((venue_id, int(day), _format_time(start)), []).append((team_id, start + duration))
+    return by_case
 
 
 def _slot_templates(data: Mapping[str, Any] | Any) -> Iterable[Mapping[str, Any] | Any]:

@@ -11,7 +11,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-from ..model import SLOT_MINUTES, _format_time
+from ..model import SLOT_MINUTES, _format_time, _hard_locks_by_case
 from .common import (
     AssignmentVariable,
     BoolVarLike,
@@ -96,6 +96,13 @@ def add_room_at_most_one(model: Any, assignments: Sequence[AssignmentVariable]) 
     # déjà la capacité. (Un conflit entre verrous SEULS est laissé au diagnostic post-solve.)
     locked_counts = _locked_venue_substart_counts(model)
     if locked_counts:
+        # P2-51 (comblement) — verrous par case + partenaires de bloc : un partenaire ÉPINGLÉ sur
+        # une case accueille le membre LIBRE du MÊME bloc en UNE occupation ; on dé-compte SON
+        # verrou du balayage pour ne pas fermer le candidat. Cartes vides sans ``sharedBlocks`` ⇒
+        # aucun dé-compte, chemin byte-identique. La borne du ``room_relief`` ci-dessus ne couvre
+        # que le regroupement par début EXACT ; ce dé-compte-ci vise les verrous chevauchants.
+        block_partners: dict[str, set[str]] = getattr(model, "block_partners", None) or {}
+        locks_by_case = _hard_locks_by_case(getattr(model, "locked_slots", ()) or ()) if block_partners else {}
         for assignment in assignments:
             venue_id = assignment.venue_id
             start = assignment.start
@@ -108,10 +115,23 @@ def add_room_at_most_one(model: Any, assignments: Sequence[AssignmentVariable]) 
             start_min = int(start)
             end_min = int(end)
             cap = slot_capacities.get((venue_id, day, _format_time(start_min)), 1)
+            # Verrous de PARTENAIRES de bloc épinglés sur CETTE case exacte (même début) : leurs
+            # fins de séance, à dé-compter du balayage (à eux SEULS — un verrou non-partenaire ou à
+            # un autre début compte plein).
+            partner_lock_ends: list[int] = []
+            team_partners = block_partners.get(str(assignment.team_id)) if block_partners else None
+            if team_partners:
+                partner_lock_ends = [
+                    lock_end
+                    for locked_team, lock_end in locks_by_case.get((str(venue_id), day, _format_time(start_min)), ())
+                    if locked_team in team_partners
+                ]
             max_locked = 0
             minute = start_min
             while minute < end_min:
                 occupied = locked_counts.get((str(venue_id), day, minute), 0)
+                if partner_lock_ends:
+                    occupied -= sum(1 for lock_end in partner_lock_ends if minute < lock_end)
                 if occupied > max_locked:
                     max_locked = occupied
                 minute += SLOT_MINUTES
