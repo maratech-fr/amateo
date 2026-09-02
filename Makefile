@@ -52,10 +52,11 @@ restart: .env ## Restart all services (ne réinstalle pas — un redémarrage n'
 # ⚠ NON DESTRUCTEUR : `seed-bccl-if-absent` ne touche à rien si le club existe
 # déjà — le travail du fondateur sur BCCL survit à un re-`make play`. Le geste
 # de RESET explicite reste `make -C backend seed-bccl` (créer OU reset, voulu).
-play: .env ## Bascule vers la base de JEU du fondateur (amateo_local) + seed BCCL si absent
+play: .env ## Bascule vers la base de JEU du fondateur (amateo_local) + seed BCCL si absent + vacances
 	$(MAKE) -C backend play-env
 	$(MAKE) -C backend db-init
 	$(MAKE) -C backend seed-bccl-if-absent
+	$(MAKE) -C backend seed-holidays
 	$(DOCKER_COMPOSE) restart messenger-worker cron-runner
 
 sandbox: .env ## Revient au bac à sable de l'IA (amateo_dev) : retire backend/.env.local

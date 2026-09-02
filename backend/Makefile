@@ -158,28 +158,56 @@ seed-bccl:
 	@scripts/lib/mutation-confirm.sh seed-bccl
 	$(FIG) exec -e APP_ENV=$(APP_ENV) -e DATABASE_URL='$(DB_ADMIN_URL)' -u $(USERID):$(GROUPID) php-fpm php bin/console app:demo:seed-bccl --password='$(DEMO_BCCL_PASSWORD)' --no-interaction
 
-# `app:demo:seed-bccl` est « créer OU RESET » : il PURGE le workspace du club de
-# démo (ErasedClubPurger) avant de re-seeder. Appelé inconditionnellement par
-# `make play`, il détruisait le travail du fondateur sur BCCL à chaque bascule.
-# Cette cible n'appelle le seed QUE si le club de démo (code FFBB ARA9999999) est
-# ABSENT de la base VISÉE — sinon elle ne touche à RIEN. La base est résolue
-# dynamiquement (current_database via php-fpm → respecte .env.local et toute la
-# précédence dotenv) ; l'existence est lue par la connexion ADMIN (amateo_owner,
-# hors RLS, sinon 0 ligne sans GUC de club). Table `club` absente (base neuve
-# juste migrée) → club absent → seed. Le RESET explicite reste `make seed-bccl`.
-# CONFIRM=yes sur le sous-make : `seed-bccl` porte la garde interactive P4-145 (elle
-# demande confirmation sur amateo_local), mais ici le club est ABSENT — rien à
-# détruire, et `make play` ne doit pas s'interrompre pour une question. Le bypass ne
-# lève JAMAIS le refus prod (la garde le tranche avant CONFIRM).
-.PHONY: seed-bccl-if-absent ## Seed BCCL seulement si le club de démo est ABSENT (non destructeur — `make play`)
+# Club dev BCCL RÉEL (identités réelles, sans flag démo) — CREATE-ONLY : la
+# commande REFUSE si le club existe déjà (jamais reset). Le RESET délibéré reste
+# `make fixtures` sur une base jetable. Connexion admin (traverse la RLS), comme
+# `fixtures`/`seed-bccl`.
+.PHONY: seed-bccl-dev ## Seed the real BCCL dev club (create-only, admin connection like `fixtures`)
+seed-bccl-dev: APP_ENV = dev
+seed-bccl-dev:
+	@scripts/lib/mutation-confirm.sh seed-bccl-dev
+	$(FIG) exec -e APP_ENV=$(APP_ENV) -e DATABASE_URL='$(DB_ADMIN_URL)' -u $(USERID):$(GROUPID) php-fpm php bin/console app:seed:bccl-dev --no-interaction
+
+# Données de référence des vacances : scolaires (vacances) ET fériés (jours
+# fériés — 14 juillet, etc.). GLOBALES (non-tenant), pas de connexion admin
+# requise. Idempotentes (source JSON offline). `make play` les rejoue pour que le
+# calendrier du club dev ne montre pas un été vide.
+.PHONY: seed-holidays ## Seed the school + public holiday reference data (global, non-tenant)
+seed-holidays: APP_ENV = dev
+seed-holidays:
+	$(FIG) exec -e APP_ENV=$(APP_ENV) -u $(USERID):$(GROUPID) php-fpm php bin/console app:school-holidays:seed --no-interaction
+	$(FIG) exec -e APP_ENV=$(APP_ENV) -u $(USERID):$(GROUPID) php-fpm php bin/console app:public-holidays:seed --no-interaction
+
+# `make play` seede DEUX clubs si absents : le club dev BCCL RÉEL (ARA0069036, via
+# `seed-bccl-dev`, create-only) ET le club de démo permanent (ARA9999999, via
+# `seed-bccl`, « créer OU RESET » qui PURGE le workspace via ErasedClubPurger).
+# Appelé inconditionnellement par `make play`, ce dernier détruisait le travail du
+# fondateur à chaque bascule. Cette cible ne seede CHAQUE club QUE s'il est ABSENT
+# de la base VISÉE — sinon elle ne touche à RIEN. La base est résolue dynamiquement
+# (current_database via php-fpm → respecte .env.local et toute la précédence dotenv) ;
+# l'existence est lue par la connexion ADMIN (amateo_owner, hors RLS, sinon 0 ligne
+# sans GUC de club). Table `club` absente (base neuve juste migrée) → clubs absents
+# → seed. Les RESET explicites restent `make seed-bccl-dev` / `make seed-bccl`.
+# CONFIRM=yes sur les sous-make : `seed-bccl-dev`/`seed-bccl` portent la garde
+# interactive (elle demande confirmation sur amateo_local), mais ici le club est
+# ABSENT — rien à détruire, et `make play` ne doit pas s'interrompre pour une
+# question. Le bypass ne lève JAMAIS le refus prod (la garde le tranche avant CONFIRM).
+.PHONY: seed-bccl-if-absent ## Seed BCCL (réel + démo) seulement si absents (non destructeur — `make play`)
 seed-bccl-if-absent: APP_ENV = dev
 seed-bccl-if-absent:
 	@db=$$($(FIG) exec -T -e APP_ENV=dev php-fpm sh -c 'cd /app/backend && php bin/console dbal:run-sql "SELECT current_database() AS db"' 2>/dev/null | sed -E 's/[[:space:]]//g' | grep -vE '^-*$$' | grep -vxE 'db' | head -1); \
 	if [ -z "$$db" ]; then echo "seed-bccl-if-absent: base non résolue — la stack est-elle démarrée (make start) ?" >&2; exit 1; fi; \
 	tbl=$$($(FIG) exec -T postgres psql -U amateo_owner -d "$$db" -tAc "SELECT to_regclass('public.club') IS NOT NULL" 2>/dev/null | tr -d '[:space:]'); \
 	if [ "$$tbl" = "t" ]; then \
+		real=$$($(FIG) exec -T postgres psql -U amateo_owner -d "$$db" -tAc "SELECT count(*) FROM club WHERE ffbb_club_code = 'ARA0069036'" 2>/dev/null | tr -d '[:space:]'); \
 		count=$$($(FIG) exec -T postgres psql -U amateo_owner -d "$$db" -tAc "SELECT count(*) FROM club WHERE ffbb_club_code = 'ARA9999999'" 2>/dev/null | tr -d '[:space:]'); \
-	else count=0; fi; \
+	else real=0; count=0; fi; \
+	if [ "$${real:-0}" = "0" ]; then \
+		echo "BCCL réel absent sur $$db — seed initial (BCCL dev)."; \
+		$(MAKE) APP_ENV=dev CONFIRM=yes seed-bccl-dev; \
+	else \
+		echo "BCCL réel déjà présent sur $$db — aucune donnée touchée."; \
+	fi; \
 	if [ "$${count:-0}" = "0" ]; then \
 		echo "club de démo absent sur $$db — seed initial (BCCL)."; \
 		$(MAKE) APP_ENV=dev CONFIRM=yes seed-bccl; \

@@ -34,6 +34,7 @@ final class MutationTargetsAreGuardedTest extends TestCase
         yield 'fixtures' => ['fixtures'];
         yield 'db-reset' => ['db-reset'];
         yield 'seed-bccl' => ['seed-bccl'];
+        yield 'seed-bccl-dev' => ['seed-bccl-dev'];
     }
 
     public function testTheConfirmationLibraryExists(): void
