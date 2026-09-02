@@ -109,8 +109,12 @@ final readonly class SocleDeviationCalculator
             for ($i = 0; $i < $pairs; ++$i) {
                 $moved[] = [
                     'teamId' => $teamId,
+                    // `from` = le socle, non affiché par la grille (pas de slotId). `to` = la
+                    // séance de PÉRIODE que la grille rend : elle porte son `slotId` (l'id du
+                    // ScheduleSlotTemplate de la période, ce que la carte expose en `cell.slotId`)
+                    // pour que le front sache QUELLE carte marquer.
                     'from' => $this->placement($socleRemaining[$i]),
-                    'to' => $this->placement($periodRemaining[$i]),
+                    'to' => [...$this->placement($periodRemaining[$i]), 'slotId' => $periodRemaining[$i]->getId()],
                 ];
             }
 

@@ -11,6 +11,8 @@ use App\Entity\Constraint;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
@@ -227,6 +229,32 @@ final class RecapCapacityWarningTest extends WebTestCase
         self::assertSame([], $body['warnings'], 'demande 2 (surcharge de période) = offre 2 (grille copiée du plan) : silence — les nombres de saison (3 vs 2) auraient déclenché la sous-capacité');
     }
 
+    /**
+     * PR-4 — la demande est BLOC-AWARE : une séance de bloc de mutualisation réunit N membres sur
+     * UNE place, donc (n_membres − 1) × commonSessions sortent de la demande (miroir du moteur,
+     * `PayloadCapacityMirror::demand`). 2 équipes à 1 séance (demande BRUTE 2) pour 1 seule place :
+     * sans bloc, `testSeasonUnderCapacityIsAnnouncedAsAtLeast` prouve que le récap crie la
+     * sous-capacité ; avec un bloc {t1,t2} commonSessions=1, la demande repliée (1) = l'offre (1)
+     * → PLUS d'avertissement de sous-capacité. Le nombre vient du payload réel, jamais d'un recalcul.
+     */
+    public function testBlocAwareDemandSilencesAFalseUnderCapacityWarning(): void
+    {
+        [$user, $club, $season] = $this->seedClubSeason('CAPB');
+        $t1 = $this->team($club, $season, 1);
+        $t2 = $this->team($club, $season, 1);
+        $venue = $this->venue($club, $season);
+        $this->slot($club, $season, $venue, '18:00', 1); // offre 1
+
+        $this->sharedBlock($club, $season, [$t1, $t2], 1);
+
+        $body = $this->validate($user, $club, null);
+
+        $all = implode(' | ', array_map(strval(...), $body['warnings']));
+        self::assertStringNotContainsString('n\'en offrent que', $all, 'le bloc replie la demande à 1 = offre 1 : aucune sous-capacité, là où la demande BRUTE (2) l\'aurait déclenchée');
+        // Le volet chiffré ADDITIF reflète la demande BLOC-AWARE (1), pas la brute (2).
+        self::assertSame(['demand' => 1, 'offer' => 1], $body['capacity'] ?? null);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -375,7 +403,7 @@ final class RecapCapacityWarningTest extends WebTestCase
     }
 
     /**
-     * @return array{valid: bool, warnings: list<string>}
+     * @return array{valid: bool, warnings: list<string>, capacity: array{demand: int, offer: int}|null}
      */
     private function validate(User $user, Club $club, ?string $calendarEntryId): array
     {
@@ -386,7 +414,34 @@ final class RecapCapacityWarningTest extends WebTestCase
         ], json_encode(null === $calendarEntryId ? [] : ['calendarEntryId' => $calendarEntryId], \JSON_THROW_ON_ERROR));
         self::assertResponseIsSuccessful();
 
-        /* @var array{valid: bool, warnings: list<string>} */
+        /* @var array{valid: bool, warnings: list<string>, capacity: array{demand: int, offer: int}|null} */
         return json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * Un bloc de mutualisation {équipes} avec ses séances communes, ancré au SOCLE
+     * (`schedulePlanId = null`) — ce que `buildForClubSeason` lit pour le payload de saison.
+     *
+     * @param list<Team> $teams
+     */
+    private function sharedBlock(Club $club, Season $season, array $teams, int $commonSessions): void
+    {
+        $block = new SharedTrainingBlock;
+        $block->setClubId($club->getId());
+        $block->setSeasonId($season->getId());
+        $block->setSchedulePlanId(null);
+        $block->setCommonSessions($commonSessions);
+        $this->em->persist($block);
+
+        foreach ($teams as $team) {
+            $member = new SharedTrainingBlockTeam;
+            $member->setClubId($club->getId());
+            $member->setSeasonId($season->getId());
+            $member->setSchedulePlanId(null);
+            $member->setBlockId($block->getId());
+            $member->setTeamId($team->getId());
+            $this->em->persist($member);
+        }
+        $this->em->flush();
     }
 }

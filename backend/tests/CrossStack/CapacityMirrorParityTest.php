@@ -229,6 +229,50 @@ final class CapacityMirrorParityTest extends TestCase
         );
     }
 
+    /**
+     * PR-4 — la DEMANDE est BLOC-AWARE : une séance de bloc réunit N membres sur UNE place, donc
+     * (n_membres − 1) × commonSessions sortent de la demande. Falsifiable dans les deux sens sur le
+     * VRAI moteur : le bloc replie la demande EXACTEMENT comme il fait TENIR le roster sur une seule
+     * place. (La sous-capacité seule est SOFT — le moteur laisse une séance non placée sans échouer ;
+     * ce n'est donc PAS le statut qu'on observe, mais le NOMBRE de séances RÉELLEMENT placées.).
+     *
+     * 2 équipes à 1 séance pour 1 SEULE place. Avec un bloc {t1,t2} commonSessions=1, le moteur
+     * CO-PLACE les deux sur cette place (2 séances placées) — leur demande repliée (1) tient dans
+     * l'offre (1). SANS le bloc, une seule tient (1 séance placée, l'autre à la dérive) — la demande
+     * brute (2) dépasse l'offre. Le miroir doit rendre 1 avec bloc, 2 sans : sinon le récap ment.
+     */
+    public function testDemandIsBlocAwareLikeTheEngine(): void
+    {
+        $venues = [[
+            'id' => 'v1', 'name' => 'V1', 'isActive' => true,
+            'trainingSlots' => [
+                ['dayOfWeek' => 1, 'startTime' => '18:00', 'durationMinutes' => 90, 'capacity' => 1],
+            ],
+        ]];
+        $blockPayload = $this->basePayload(
+            teams: $this->teams(2),
+            venues: $venues,
+            sharedBlocks: [['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => 1]],
+        );
+
+        self::assertSame(1, $this->mirror->demand($blockPayload), 'le bloc replie la demande : 2 − (2−1)×1 = 1');
+        $blockResult = $this->solve($blockPayload);
+        self::assertSame('completed', $blockResult['status']);
+        self::assertCount(
+            2,
+            $blockResult['slots'],
+            'PARITÉ ROMPUE : le bloc fond ses membres sur UNE place — le moteur doit CO-PLACER les deux '
+            . '(2 séances sur l\'unique créneau). Son algèbre de bloc a changé : aligner App\Service\PayloadCapacityMirror::demand.',
+        );
+
+        // TÉMOIN — sans le bloc, les deux séances se disputent la place unique : une seule tient.
+        // Les DEUX côtés basculent ensemble (miroir = 2 > offre 1 ; moteur ne place qu'UNE des deux),
+        // preuve que c'est bien le bloc qui replie la demande, pas un artefact du payload.
+        $rawPayload = $this->basePayload(teams: $this->teams(2), venues: $venues);
+        self::assertSame(2, $this->mirror->demand($rawPayload), 'sans bloc : Σ sessionsPerWeek brut');
+        self::assertCount(1, $this->solve($rawPayload)['slots'], 'sans bloc, l\'unique place ne tient qu\'une séance');
+    }
+
     protected function setUp(): void
     {
         $this->mirror = new PayloadCapacityMirror;
@@ -298,10 +342,11 @@ final class CapacityMirrorParityTest extends TestCase
      * @param list<array<string, mixed>> $venues
      * @param list<array<string, mixed>> $constraints
      * @param list<array<string, mixed>> $slotTemplates
+     * @param list<array<string, mixed>> $sharedBlocks
      *
      * @return array<string, mixed>
      */
-    private function basePayload(array $teams, array $venues, array $constraints = [], array $slotTemplates = []): array
+    private function basePayload(array $teams, array $venues, array $constraints = [], array $slotTemplates = [], array $sharedBlocks = []): array
     {
         return [
             'version' => ScheduleConstraintBuilder::CONTRACT_VERSION,
@@ -313,6 +358,7 @@ final class CapacityMirrorParityTest extends TestCase
             'coaches' => [],
             'constraints' => $constraints,
             'slotTemplates' => $slotTemplates,
+            'sharedBlocks' => $sharedBlocks,
         ];
     }
 }

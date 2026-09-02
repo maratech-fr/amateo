@@ -1,4 +1,4 @@
-Last verified @ 2026-08-31 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+Last verified @ 2026-09-02 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
 cette PR. Re-confronté au code : `POST /api/feedback` route bien à `FeedbackController.php:66` ;
 `EventListener/RequestIdListener.php` + `Messenger/RequestIdMiddleware.php` existent toujours
 (backend+bus) ; `monolog-bundle` toujours dans `composer.json:31`. Tout juste)

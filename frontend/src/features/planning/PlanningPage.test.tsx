@@ -153,7 +153,7 @@ vi.mock("@/features/planning/lib/scheduleStream", () => ({
   isScheduleStreamConnected: () => false,
 }));
 
-const { meState, renameSpy, plansState, conflictsState, reservationsState, teamOverridesState } = vi.hoisted(() => ({
+const { meState, renameSpy, plansState, conflictsState, reservationsState, teamOverridesState, capacityState, capacityGateEnabled } = vi.hoisted(() => ({
   meState: { chosenScheduleId: null as string | null },
   renameSpy: vi.fn(),
   // Typé sur le VRAI contrat : un type inline recopié laisserait passer un champ ajouté à
@@ -167,6 +167,10 @@ const { meState, renameSpy, plansState, conflictsState, reservationsState, teamO
   reservationsState: { rows: [] as { id: string; schedulePlanId: string | null; teamId: string; venueId: string; dayOfWeek: number; startTime: string; durationMinutes: number }[] },
   // P2-30 : les overrides d'équipe de la période (seuil/désactivation de dérive).
   teamOverridesState: { rows: [] as { id: string; schedulePlanId: string; teamId: string; isActive: boolean; sessionsPerWeek: number | null }[] },
+  // P2-44 PR-4 : le récap de capacité (compteur de carence). `data` porte `capacity` ou rien.
+  capacityState: { data: undefined as { capacity?: { demand: number; offer: number } | null } | undefined },
+  // Enregistre les valeurs d'`enabled` reçues par le gate de capacité (preuve d'armement).
+  capacityGateEnabled: [] as boolean[],
 }));
 
 // P2-15 : les réglages de gymnases de la période — un gymnase DÉSACTIVÉ garde ses
@@ -180,6 +184,12 @@ vi.mock("@/features/wizard/queries", async (orig) => ({
   // ici, la résolution tag→équipes est gardée par applicableConstraints/SlotDetail.
   useWizardTeamTags: () => ({ data: [] }),
   useWizardTeamTagAssignments: () => ({ data: [] }),
+  // P2-44 PR-4 : le gate de capacité. `enabled` reflète l'armement (surface FERMETURE) — on le
+  // capture pour prouver que HOLIDAY ne l'arme JAMAIS ; `data` porte la capacité servie.
+  useConstraintValidation: (enabled: boolean) => {
+    capacityGateEnabled.push(enabled);
+    return { data: enabled ? capacityState.data : undefined };
+  },
 }));
 
 // Partiel : seul `useSchedulePlans` est simulé (l'en-tête y lit le nom du plan
@@ -233,6 +243,8 @@ beforeEach(() => {
   conflictsState.isError = false;
   reservationsState.rows = [];
   teamOverridesState.rows = [];
+  capacityState.data = undefined;
+  capacityGateEnabled.length = 0;
   // Ré-armement explicite : ces trois-là sont réécrits par des cas (couche de période,
   // gymnase désactivé) et `mockResolvedValue` SURVIT au test suivant — une fuite qui
   // rendrait un échec ultérieur incompréhensible.
@@ -1918,7 +1930,7 @@ describe("PlanningPage — écarts NOMMÉS vs le socle (P2-44 PR-5)", () => {
   const toReplace = [{ teamId: "team-1", dayOfWeek: 3, startTime: "18:00:00", venueId: "venue-1", reason: "venue_closed" }];
   const deviation = {
     socleScheduleId: "socle",
-    moved: [{ teamId: "team-1", from: { dayOfWeek: 2, startTime: "18:30", venueId: "venue-1" }, to: { dayOfWeek: 4, startTime: "19:00", venueId: "venue-1" } }],
+    moved: [{ teamId: "team-1", from: { dayOfWeek: 2, startTime: "18:30", venueId: "venue-1" }, to: { dayOfWeek: 4, startTime: "19:00", venueId: "venue-1", slotId: "slot-1" } }],
     unplaced: [{ teamId: "team-1", dayOfWeek: 5, startTime: "20:00", venueId: "venue-1", reason: "team_reduced" }],
   };
 
@@ -1958,6 +1970,53 @@ describe("PlanningPage — écarts NOMMÉS vs le socle (P2-44 PR-5)", () => {
     await screen.findByText("Planning A");
     expect(screen.queryByRole("region", { name: /écarts avec le planning de saison/i })).not.toBeInTheDocument();
     expect(vi.mocked(getSocleDeviation)).not.toHaveBeenCalled();
+  });
+});
+
+describe("PlanningPage — compteur de carence (P2-44 PR-4)", () => {
+  const closureV: Schedule = { id: "ov-1", name: "Toussaint", status: "COMPLETED", score: null, createdAt: "2026-09-10T00:00:00Z", updatedAt: "2026-09-10T00:00:00Z", planType: "CLOSURE", schedulePlanId: "ete-plan" };
+
+  beforeEach(() => {
+    vi.mocked(listSchedules).mockResolvedValue([closureV]);
+  });
+
+  it("FERMETURE, sous-capacité : phrase factuelle « il manque », pluriel correct", async () => {
+    capacityState.data = { capacity: { demand: 5, offer: 3 } };
+    renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" calendarEntryId="e-p" isClosurePeriod />);
+
+    expect(await screen.findByText("5 séances demandées pour 3 places disponibles — il manque 2 places.")).toBeInTheDocument();
+  });
+
+  it("FERMETURE, singulier : « 1 séance demandée … il manque 1 place »", async () => {
+    capacityState.data = { capacity: { demand: 1, offer: 0 } };
+    renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" calendarEntryId="e-p" isClosurePeriod />);
+
+    expect(await screen.findByText("1 séance demandée pour 0 places disponibles — il manque 1 place.")).toBeInTheDocument();
+  });
+
+  it("FERMETURE, offre ≥ demande : la phrase ne parle PAS de manque", async () => {
+    capacityState.data = { capacity: { demand: 2, offer: 4 } };
+    renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" calendarEntryId="e-p" isClosurePeriod />);
+
+    expect(await screen.findByText("2 séances demandées pour 4 places disponibles.")).toBeInTheDocument();
+    expect(screen.queryByText(/il manque/)).not.toBeInTheDocument();
+  });
+
+  it("capacité inconnue (aucun payload) : rien ne s'affiche", async () => {
+    capacityState.data = { capacity: null };
+    renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" calendarEntryId="e-p" isClosurePeriod />);
+
+    await screen.findByText("U11");
+    expect(screen.queryByText(/places disponibles/)).not.toBeInTheDocument();
+  });
+
+  it("VACANCE (isClosurePeriod faux) : le gate n'est JAMAIS armé, aucune phrase", async () => {
+    capacityState.data = { capacity: { demand: 5, offer: 3 } };
+    renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" calendarEntryId="e-p" />);
+
+    await screen.findByText("U11");
+    expect(capacityGateEnabled.some((v) => v)).toBe(false);
+    expect(screen.queryByText(/places disponibles/)).not.toBeInTheDocument();
   });
 });
 

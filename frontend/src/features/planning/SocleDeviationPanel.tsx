@@ -1,22 +1,22 @@
 import { ArrowLeftRight } from "lucide-react";
 
-import { DAYS, toHourMinute } from "./lib/grid";
+import { cn } from "@/shared/lib/utils";
+
+import { placementLabel } from "./lib/socleDeviationCells";
 import { toReplaceReasonLabel } from "./lib/toReplaceReason";
 import type { SocleDeviationMoved, SocleDeviationUnplaced } from "./api";
-
-const DAY_LABEL = new Map(DAYS.map((d) => [d.n, d.label]));
-
-/** « 18:30 » → « 18h30 » : le format du fondateur pour ces lignes (présentation pure). */
-const hLabel = (time: string): string => toHourMinute(time).replace(":", "h");
-
-/** « Mar 18h30 Matéo » — un placement lisible (jour, heure, gymnase). */
-const placementLabel = (day: number, time: string, venue: string): string => `${DAY_LABEL.get(day) ?? "?"} ${hLabel(time)} ${venue}`;
 
 interface SocleDeviationPanelProps {
   moved: SocleDeviationMoved[];
   unplaced: SocleDeviationUnplaced[];
   teamName: (teamId: string) => string;
   venueName: (venueId: string) => string;
+  /**
+   * D6-d — cliquer une ligne « déplacée » sélectionne (et fait défiler jusqu'à) SA carte dans la
+   * grille : `onSelectSlot(entry.to.slotId)`, même recette que `LocksPanel`/les diagnostics. Les
+   * lignes « à replacer » restent du texte (aucune carte à viser). Absent = lignes non cliquables.
+   */
+  onSelectSlot?: (slotId: string) => void;
 }
 
 /**
@@ -31,7 +31,7 @@ interface SocleDeviationPanelProps {
  * warning), et il porte en plus les DÉPLACÉES que l'autre n'a jamais eues. Une raison NULLE (absence
  * inexpliquée par la sélection) est rendue SANS étiquette — jamais une raison inventée.
  */
-export function SocleDeviationPanel({ moved, unplaced, teamName, venueName }: SocleDeviationPanelProps) {
+export function SocleDeviationPanel({ moved, unplaced, teamName, venueName, onSelectSlot }: SocleDeviationPanelProps) {
   if (0 === moved.length && 0 === unplaced.length) {
     return null;
   }
@@ -52,15 +52,34 @@ export function SocleDeviationPanel({ moved, unplaced, teamName, venueName }: So
       </p>
       <p className="mt-0.5 text-xs text-muted-foreground">{parts.join(" · ")}</p>
       <ul className="mt-1.5 flex flex-col gap-1">
-        {moved.map((entry, i) => (
-          <li key={`m-${entry.teamId}-${i}`} className="flex flex-wrap items-center gap-y-0.5">
-            <span className="font-medium text-foreground">{teamName(entry.teamId)}</span>
-            {" · "}
-            <span className="text-muted-foreground">{placementLabel(entry.from.dayOfWeek, entry.from.startTime, venueName(entry.from.venueId))}</span>
-            {" → "}
-            <span className="text-foreground">{placementLabel(entry.to.dayOfWeek, entry.to.startTime, venueName(entry.to.venueId))}</span>
-          </li>
-        ))}
+        {moved.map((entry, i) => {
+          const content = (
+            <>
+              <span className="font-medium text-foreground">{teamName(entry.teamId)}</span>
+              {" · "}
+              <span className="text-muted-foreground">{placementLabel(entry.from.dayOfWeek, entry.from.startTime, venueName(entry.from.venueId))}</span>
+              {" → "}
+              <span className="text-foreground">{placementLabel(entry.to.dayOfWeek, entry.to.startTime, venueName(entry.to.venueId))}</span>
+            </>
+          );
+          return (
+            <li key={`m-${entry.teamId}-${i}`}>
+              {undefined !== onSelectSlot ? (
+                // D6-d — bouton nu qui vise la carte dans la grille (mêmes classes que les lignes
+                // cliquables de LocksPanel). Le contenu est INCHANGÉ (présentation pure).
+                <button
+                  type="button"
+                  onClick={() => onSelectSlot(entry.to.slotId)}
+                  className={cn("flex w-full flex-wrap items-center gap-y-0.5 rounded-md px-1 py-0.5 text-left transition hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent")}
+                >
+                  {content}
+                </button>
+              ) : (
+                <span className="flex flex-wrap items-center gap-y-0.5">{content}</span>
+              )}
+            </li>
+          );
+        })}
         {unplaced.map((entry, i) => (
           <li key={`u-${entry.teamId}-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
             <span className="font-medium text-foreground">{teamName(entry.teamId)}</span>

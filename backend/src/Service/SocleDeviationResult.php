@@ -18,8 +18,8 @@ namespace App\Service;
 final readonly class SocleDeviationResult
 {
     /**
-     * @param list<array{teamId: string, from: array{dayOfWeek: int, startTime: string, venueId: string}, to: array{dayOfWeek: int, startTime: string, venueId: string}}> $moved    séance du socle → séance de la période (appariement chronologique)
-     * @param list<array{teamId: string, dayOfWeek: int, startTime: string, venueId: string, reason: string|null}>                                                        $unplaced reliquat du socle sans contrepartie ; `reason` NULL quand la sélection ne l'explique pas (jamais fabriquée)
+     * @param list<array{teamId: string, from: array{dayOfWeek: int, startTime: string, venueId: string}, to: array{dayOfWeek: int, startTime: string, venueId: string, slotId: string}}> $moved    séance du socle → séance de la période (appariement chronologique) ; `to` porte le `slotId` du créneau de PÉRIODE (celui que la grille affiche), `from` n'en a pas (socle, non affiché)
+     * @param list<array{teamId: string, dayOfWeek: int, startTime: string, venueId: string, reason: string|null}>                                                                        $unplaced reliquat du socle sans contrepartie ; `reason` NULL quand la sélection ne l'explique pas (jamais fabriquée)
      */
     public function __construct(
         public string $socleScheduleId,

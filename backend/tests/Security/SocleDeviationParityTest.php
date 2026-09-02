@@ -122,10 +122,10 @@ final class SocleDeviationParityTest extends WebTestCase
 
         // La version affichée du plan de période (COMPLETED) — ce que le gestionnaire voit.
         $period = $this->periodVersion($club, $season, $planId, ScheduleStatus::COMPLETED);
-        $this->slot($period, $teamUnchanged, $vHealthy, 1, '18:00');  // identique
-        $this->slot($period, $teamMoved, $vAlt, 4, '19:00');          // déplacée
-        $this->slot($period, $teamNew, $vHealthy, 1, '17:00');        // nouvelle
-        $this->slot($period, $teamReduced, $vHealthy, 1, '18:00');    // la conservée
+        $this->slot($period, $teamUnchanged, $vHealthy, 1, '18:00');            // identique
+        $periodMovedSlot = $this->slot($period, $teamMoved, $vAlt, 4, '19:00'); // déplacée
+        $this->slot($period, $teamNew, $vHealthy, 1, '17:00');                  // nouvelle
+        $this->slot($period, $teamReduced, $vHealthy, 1, '18:00');              // la conservée
         $this->em->flush();
 
         $body = $this->deviation($user, $club, $season, $period->getId());
@@ -145,6 +145,10 @@ final class SocleDeviationParityTest extends WebTestCase
         self::assertSame(4, $mv['to']['dayOfWeek']);
         self::assertSame('19:00', $mv['to']['startTime']);
         self::assertSame($vAlt->getId(), $mv['to']['venueId']);
+        // PR-4 — `to` porte le slotId du créneau de PÉRIODE (celui que la grille affiche) pour
+        // que le front marque LA carte déviée ; `from` (socle, non affiché) n'en a pas.
+        self::assertSame($periodMovedSlot->getId(), $mv['to']['slotId'], 'le slotId servi = l\'id du slot de PÉRIODE');
+        self::assertArrayNotHasKey('slotId', $mv['from'], 'le placement du socle n\'a pas de slotId (il n\'est pas affiché dans la grille)');
 
         // Falsification : une INCHANGÉE et une NOUVELLE ne sont JAMAIS déplacées.
         self::assertArrayNotHasKey($teamUnchanged->getId(), $movedByTeam, 'une inchangée n\'est pas déplacée');
@@ -349,7 +353,7 @@ final class SocleDeviationParityTest extends WebTestCase
         return $schedule;
     }
 
-    private function slot(Schedule $schedule, Team $team, Venue $venue, int $day, string $start): void
+    private function slot(Schedule $schedule, Team $team, Venue $venue, int $day, string $start): ScheduleSlotTemplate
     {
         $slot = (new ScheduleSlotTemplate)
             ->setClubId($schedule->getClubId())
@@ -363,6 +367,8 @@ final class SocleDeviationParityTest extends WebTestCase
             ->setDurationMinutes(90)
             ->setLockLevel(LockLevel::NONE);
         $this->em->persist($slot);
+
+        return $slot;
     }
 
     private function period(Club $club, Season $season, CalendarEntryPeriodType $type): CalendarEntry

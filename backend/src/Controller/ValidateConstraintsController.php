@@ -231,8 +231,17 @@ final class ValidateConstraintsController extends AbstractController
         // sont l'exact contraire d'un avertissement.
         $valid = [] === $errors && [] === $conflicts && [] === $blockers;
 
+        // Le volet CAPACITÉ chiffré, ADDITIF : la demande (bloc-aware) et l'offre lues sur le
+        // MÊME payload que les avertissements — la source unique du récap. `null` quand aucun
+        // payload n'existe (période non génératrice, données antérieures au lot C1, ou build en
+        // échec) : le front n'affiche alors rien plutôt qu'un compte inventé. Sert le compteur de
+        // carence sur la surface de FERMETURE (PR-4), sans dupliquer le calcul côté front.
+        $capacity = null !== $capacityPayload
+            ? ['demand' => $this->capacityMirror->demand($capacityPayload), 'offer' => $this->capacityMirror->offer($capacityPayload)]
+            : null;
+
         return $this->json(
-            ['valid' => $valid, 'errors' => $errors, 'conflicts' => $conflicts, 'warnings' => $warnings, 'blockers' => $blockers],
+            ['valid' => $valid, 'errors' => $errors, 'conflicts' => $conflicts, 'warnings' => $warnings, 'blockers' => $blockers, 'capacity' => $capacity],
             $valid ? Response::HTTP_OK : Response::HTTP_UNPROCESSABLE_ENTITY,
         );
     }
@@ -272,10 +281,9 @@ final class ValidateConstraintsController extends AbstractController
      */
     private function capacityWarnings(array $payload): array
     {
-        $demand = 0;
-        foreach (\is_array($payload['teams'] ?? null) ? $payload['teams'] : [] as $team) {
-            $demand += (int) ($team['sessionsPerWeek'] ?? 0);
-        }
+        // La demande vit dans le MIROIR partagé (bloc-aware — une séance de bloc réunit N membres
+        // sur UNE place, cf. `PayloadCapacityMirror::demand`), gardé par le test de parité.
+        $demand = $this->capacityMirror->demand($payload);
 
         // Aucune équipe : la demande vaut 0 et tout « surplus » serait du bruit sur un club
         // vide — le récap bloque déjà en amont sur « Ajoutez au moins une équipe ».

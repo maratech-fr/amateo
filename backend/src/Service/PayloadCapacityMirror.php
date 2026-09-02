@@ -61,6 +61,37 @@ final class PayloadCapacityMirror
     }
 
     /**
+     * La DEMANDE de places du payload — Σ `sessionsPerWeek` des équipes, MOINS le repli des
+     * blocs de mutualisation : une séance de bloc réunit N membres sur UNE place de gymnase, donc
+     * (n_membres − 1) × `commonSessions` sortent de la demande par bloc (plancher 0). MIROIR
+     * LITTÉRAL de la branche moteur (`engine/app/solver/result_builder/diagnostics.py`,
+     * `_infeasible_message`), gardé par {@see App\Tests\CrossStack\CapacityMirrorParityTest}. Un
+     * bloc de moins de 2 membres ou à `commonSessions` nul ne replie rien (chemin inchangé).
+     *
+     * @param array<string, mixed> $payload
+     */
+    public function demand(array $payload): int
+    {
+        $demand = 0;
+        foreach (\is_array($payload['teams'] ?? null) ? $payload['teams'] : [] as $team) {
+            $demand += (int) (\is_array($team) ? ($team['sessionsPerWeek'] ?? 0) : 0);
+        }
+
+        foreach (\is_array($payload['sharedBlocks'] ?? null) ? $payload['sharedBlocks'] : [] as $block) {
+            if (!\is_array($block)) {
+                continue;
+            }
+            $memberIds = \is_array($block['teamIds'] ?? null) ? $block['teamIds'] : [];
+            $commonSessions = (int) ($block['commonSessions'] ?? 0);
+            if (\count($memberIds) >= 2 && $commonSessions > 0) {
+                $demand -= (\count($memberIds) - 1) * $commonSessions;
+            }
+        }
+
+        return max(0, $demand);
+    }
+
+    /**
      * Saturation des « au moins N ici » PAR GYMNASE — miroir dans le sens SÛR :
      *
      * - la DEMANDE est le Σ des minimums (par équipe×gymnase, le MAX quand plusieurs
