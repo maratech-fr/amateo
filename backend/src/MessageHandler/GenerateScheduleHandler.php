@@ -251,6 +251,17 @@ final class GenerateScheduleHandler
                 $scheduleInput,
                 $this->resolvePreviousAssignmentSlots($schedule, $message),
             );
+        } else {
+            // PR-3 (comblement) — RÉFÉRENCE de comblement : les placements de la version POINTÉE du
+            // socle (plan SEASON) sont émis pour que le solveur GARDE le jour+heure de référence des
+            // séances comblées (gymnase libre). Comme `previousAssignments` : APRÈS le hash (une
+            // préférence de convergence, pas une donnée de structure — sinon `snapshotHash`
+            // divergerait de `currentStructureHash`). Distinct des épingles HARD (`withPinnedAssignments`,
+            // AVANT le hash) : celles-ci FIGENT le déjà-placé, la référence ORIENTE les trous.
+            $scheduleInput = $this->constraintBuilder->withSocleReferenceAssignments(
+                $scheduleInput,
+                $this->socleReferenceSlots($schedule),
+            );
         }
 
         $this->diagnosticsRecorder->purgePrevious($schedule);
@@ -416,6 +427,29 @@ final class GenerateScheduleHandler
 
         return $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy(
             ['scheduleId' => $source->getId()],
+            ['id' => 'ASC'],
+        );
+    }
+
+    /**
+     * PR-3 (comblement) — les placements de la version POINTÉE du socle (plan SEASON de la saison),
+     * RÉFÉRENCE du comblement émise au moteur en `socleReferenceAssignments`. En comblement le socle
+     * est GARANTI en vigueur (SocleGuard, `FillPeriodPlanController`) : le pointeur est non-null.
+     * Le `null ===` ci-dessous n'est donc PAS un repli métier (« et si pas de version » est un cas
+     * IMPOSSIBLE en fill) — c'est un simple rétrécissement de type ; sans version pointée il n'y a
+     * rien à référencer, on rend `[]` (chemin byte-identique, aucune greffe).
+     *
+     * @return array<ScheduleSlotTemplate>
+     */
+    private function socleReferenceSlots(Schedule $schedule): array
+    {
+        $socleScheduleId = $this->schedulePlanProvisioner->chosenOfSeasonPlan($schedule->getSeasonId());
+        if (null === $socleScheduleId) {
+            return [];
+        }
+
+        return $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy(
+            ['scheduleId' => $socleScheduleId],
             ['id' => 'ASC'],
         );
     }

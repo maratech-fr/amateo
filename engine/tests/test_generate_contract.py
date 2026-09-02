@@ -479,3 +479,36 @@ class TestGenerateContract:
         assert len(previous) == 1
         assert previous[0].team_id == "t1"
         assert previous[0].day_of_week == 3
+
+    def test_socle_reference_assignments_is_accepted_and_defaults_to_empty(self) -> None:
+        """PR-3 — le champ optionnel ``socleReferenceAssignments`` est recevable (défaut []),
+        SANS ``venueId`` (le gymnase est libre), et un payload sans le champ le garde vide."""
+        without = ScheduleInputSchema.model_validate({"clubId": "club-sr", "seasonId": "season-sr"})
+        assert without.socle_reference_assignments == []
+
+        withfield = ScheduleInputSchema.model_validate(
+            {
+                "clubId": "club-sr",
+                "seasonId": "season-sr",
+                "socleReferenceAssignments": [
+                    {"teamId": "t1", "dayOfWeek": 3, "startTime": "19:00"},
+                ],
+            }
+        )
+        socle = withfield.socle_reference_assignments
+        assert len(socle) == 1
+        assert socle[0].team_id == "t1"
+        assert socle[0].day_of_week == 3
+        assert socle[0].start_time == "19:00"
+        # Pas de venueId sur le schéma de référence socle (gymnase libre).
+        assert not hasattr(socle[0], "venue_id")
+
+    def test_current_contract_version_is_2_20_and_payload_stays_recevable(self) -> None:
+        """PR-3 — le contrat courant est 2.20 (fichier source de vérité) et un payload qui
+        s'attribue cette version est recevable comme un payload qui n'annonce rien."""
+        from app.main import read_contract_version
+
+        assert read_contract_version() == "2.20"
+
+        stamped = ScheduleInputSchema.model_validate({"clubId": "club-v", "seasonId": "season-v", "version": "2.20"})
+        assert stamped.version == "2.20"

@@ -43,7 +43,7 @@ L'**engine** est un microservice Python qui reçoit un contexte complet (clubs, 
 
 ### `POST /generate`
 
-**Request** : `ScheduleInputSchema` (contrat `"2.19"`, fichier `engine/CONTRACT_VERSION` — seul le **MAJOR** est comparé, donc `"2.0"` passe aussi)
+**Request** : `ScheduleInputSchema` (contrat `"2.20"`, fichier `engine/CONTRACT_VERSION` — seul le **MAJOR** est comparé, donc `"2.0"` passe aussi)
 
 ```json
 {

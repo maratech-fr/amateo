@@ -61,7 +61,7 @@ final class ScheduleConstraintBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '2.19';
+    public const string CONTRACT_VERSION = '2.20';
     private const CACHE_TTL_SECONDS = 14_400;
     private const DEFAULT_SOLVER_SEED = 42;
     /**
@@ -685,6 +685,77 @@ final class ScheduleConstraintBuilder
             ],
             array_values($sourceSlots),
         );
+
+        return $payload;
+    }
+
+    /**
+     * PR-3 (comblement référencé au socle) — greffe le bloc `socleReferenceAssignments` (RÉFÉRENCE
+     * de comblement : le solveur reçoit un BONUS par tier quand une séance comblée retrouve le
+     * jour+heure d'un placement de la version pointée du socle) sur un payload d'overlay DÉJÀ
+     * construit. « Combler en faisant bouger le planning de référence LE MOINS POSSIBLE ».
+     *
+     * DIFFÉRENCES avec `withPreviousAssignments` (à ne pas confondre) :
+     *  - la référence est le SOCLE (cross-plan, la version pointée du plan SEASON), pas la lignée
+     *    du plan de période — c'est la SEULE greffe qui traverse la frontière socle→période ;
+     *  - chaque entrée est `{teamId, dayOfWeek, startTime}` SANS `venueId` : le gymnase est LIBRE
+     *    (changer de gymnase est acceptable, changer de jour/heure est coûteux) ;
+     *  - le terme moteur est un BONUS de PHASE 1 (placement), pas le tie-break de phase 2.
+     *
+     * Comme `withPreviousAssignments`, ce bloc n'entre PAS dans `buildPayload`/le snapshot : le
+     * handler l'injecte APRÈS le hash de snapshot — c'est une préférence de CONVERGENCE, jamais
+     * une donnée de STRUCTURE (sinon `snapshotHash` divergerait de `currentStructureHash`).
+     *
+     * FILTRÉ au ROSTER du payload (équipes seulement — pas de gymnase dans la clé) : une référence
+     * dont l'équipe est hors sélection de période serait un id fantôme côté moteur. DÉDUPLIQUÉ par
+     * `(teamId, dayOfWeek, startTime)` (heure normalisée H:i) : le socle peut porter plusieurs
+     * slots au même horaire pour une équipe (multi-gymnases), la référence n'en garde qu'un.
+     * Liste vide (ou tout hors roster) ⇒ clé absente : chemin byte-identique.
+     *
+     * @param array<string, mixed>        $payload
+     * @param array<ScheduleSlotTemplate> $socleSlots placements de la version pointée du socle
+     *
+     * @return array<string, mixed>
+     */
+    public function withSocleReferenceAssignments(array $payload, array $socleSlots): array
+    {
+        if ([] === $socleSlots) {
+            return $payload;
+        }
+
+        $rosterTeams = [];
+        foreach ($payload['teams'] ?? [] as $team) {
+            if (\is_array($team) && isset($team['id'])) {
+                $rosterTeams[(string) $team['id']] = true;
+            }
+        }
+
+        $seen = [];
+        $entries = [];
+        foreach ($socleSlots as $slot) {
+            $teamId = $slot->getTeamId();
+            if (!isset($rosterTeams[$teamId])) {
+                continue; // équipe hors sélection de période : jamais un id fantôme au moteur
+            }
+            $dayOfWeek = $slot->getDayOfWeek();
+            $startTime = $slot->getStartTime()->format('H:i:s');
+            $key = $teamId . '|' . $dayOfWeek . '|' . substr($startTime, 0, 5);
+            if (isset($seen[$key])) {
+                continue; // même horaire déjà référencé (le socle peut le porter sur 2 gymnases)
+            }
+            $seen[$key] = true;
+            $entries[] = [
+                'teamId' => $teamId,
+                'dayOfWeek' => $dayOfWeek,
+                'startTime' => $startTime,
+            ];
+        }
+
+        if ([] === $entries) {
+            return $payload;
+        }
+
+        $payload['socleReferenceAssignments'] = $entries;
 
         return $payload;
     }

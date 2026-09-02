@@ -49,7 +49,7 @@ class LevelTwoObjectiveTest(unittest.TestCase):
 
     def test_fixed_weights_and_formula_version_are_locked(self):
         self.assertEqual(EXPECTED_WEIGHTS, dict(LEVEL_2_OBJECTIVE_WEIGHTS))
-        self.assertEqual("T24_LEVEL_2_FIXED_WEIGHTS_V12", SCORE_FORMULA_VERSION)
+        self.assertEqual("T24_LEVEL_2_FIXED_WEIGHTS_V13", SCORE_FORMULA_VERSION)
 
         with self.assertRaises(TypeError):
             LEVEL_2_OBJECTIVE_WEIGHTS["S"] = 1

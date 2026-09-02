@@ -20,7 +20,15 @@ from ..helpers import MISSING
 # Le bump suit la même règle que V10/V11 : dès qu'un terme peut faire BOUGER le score rapporté,
 # l'identifiant du barème doit changer. INERTE par défaut (aucun ``teamLinks`` PREFERRED ⇒
 # aucune pénalité, goldens et score byte-identiques), mais présent dès qu'une passerelle l'est.
-SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V12"
+# V13 (PR-3 comblement référencé au socle) — l'objectif de PLACEMENT gagne le BONUS de
+# référence socle (``add_socle_reference_bonus``, poids dérivé du tier via
+# ``SOCLE_REFERENCE_TIER_WEIGHTS``) : en mode comblement, une séance comblée qui retrouve le
+# jour+heure de sa version pointée du socle (quel que soit le gymnase) porte +poids dans le
+# placement. Même règle de bump que V12 : dès qu'un terme peut faire BOUGER le score rapporté,
+# l'identifiant du barème change. INERTE par défaut (aucun ``socleReferenceAssignments`` émis ⇒
+# aucun bonus, goldens et score byte-identiques) — le backend ne l'émet QU'en comblement —,
+# mais présent dès qu'une référence l'est.
+SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"
 
 LEVEL_2_OBJECTIVE_WEIGHTS = MappingProxyType(
     {
@@ -199,6 +207,53 @@ TEAM_LINK_TIER_WEIGHTS = MappingProxyType(
         "B": 4,
         "C": 2,
         "D": 1,
+    }
+)
+
+# PR-3 (comblement référencé au socle) — BONUS d'objectif par séance comblée qui RETROUVE le
+# jour+heure de sa version pointée du socle, QUEL QUE SOIT le gymnase (la référence est
+# ``(team, day, start)`` SANS venue : « changer de gymnase = pas grave ; changer de jour/heure =
+# coûteux »). Table DÉDIÉE sur le patron de ``TEAM_LINK_TIER_WEIGHTS`` : le bonus d'une variable
+# ``model.x[(team, venue, day, start)]`` dont ``(team, day, start)`` figure dans
+# ``socleReferenceAssignments`` = ``SOCLE_REFERENCE_TIER_WEIGHTS[tier(team)]``, appliqué
+# POSITIVEMENT dans l'objectif de PLACEMENT (phase 1, patron ``extra_placement_terms`` du malus
+# passerelle). Le poids CROÎT avec le tier (S>A>B>C>D) : une équipe fanion tient plus fort son
+# horaire de socle, une équipe secondaire absorbe le déplacement (arbitrage produit).
+#
+# Fenêtre imposée : chaque poids > 10 (``preferred``) et < 21 (tier D 1 + session_count 20).
+# Choix 12/14/16/18/20 (pas de 2, tous dans 11..20, strictement décroissants).
+#
+# Preuve d'empilement (patron des « ceilings » CHAINING_TIER_WEIGHTS / TEAM_LINK_TIER_WEIGHTS) :
+#   0. Une séance PLACÉE vaut au minimum 21 (tier D 1 + session_count 20) ; retirer une séance
+#      d'une équipe SOUS son quota déclenche ``missing_session`` (−1000) : le plancher réel d'une
+#      suppression est ≥ 1021.
+#   1. LE BONUS NE SUPPRIME JAMAIS UNE SÉANCE. Le bonus n'existe QUE sur une variable POSÉE (il
+#      s'ajoute quand ``model.x[...] == 1``) ; le retirer coûte donc ≥ 21 (le placement lui-même,
+#      + le bonus jusqu'à 20, + 1000 si l'équipe passe sous quota). Un bonus ≤ 20 ne peut donc
+#      jamais rentabiliser la suppression d'une séance — il n'oriente QUE le placement d'une
+#      séance qui SERA de toute façon posée. Chaque variable ne porte qu'UN bonus socle (sa
+#      propre clé ``(team, day, start)`` y est ou n'y est pas), donc pas d'empilement > 20 sur
+#      une seule séance.
+#   2. L'ORDRE DES TIERS POUR LE PLACEMENT RESTE S>A>B>C>D. Deux équipes qui se disputent UN
+#      créneau départagent d'abord sur le placement : les écarts de tier posés sont
+#      S−A = 9000, A−B = 900, B−C = 90 (``tier + session_count`` : 10020/1020/120/30). Un bonus
+#      ≤ 20 est très loin de combler le plus petit de ces trois écarts (90) : jamais une équipe
+#      de tier strictement inférieur (jusqu'à C) ne prend le créneau d'une équipe de tier
+#      supérieur (jusqu'à B) grâce au bonus socle. Le SEUL couple à écart < bonus est C−D = 9
+#      (30 vs 21) : là, comme le fait DÉJÀ le confort (``preferred`` 10 > 9), le bonus socle peut
+#      réallouer un créneau entre C et D. C'est le « wobble C↔D » que ce module DÉCLARE ACCEPTÉ
+#      (voir CHAINING_TIER_WEIGHTS : « the club treats C/D as indifferent ») — et il sert ici
+#      l'intention : à horaire de socle disputé, le bonus décroissant (C 14 > D 12) fait tenir le
+#      tier SUPÉRIEUR (test « à une place pour deux »). Aucune inversion S>A / A>B / B>C possible.
+#   3. Discriminance : à tier D le bonus 12 > ``preferred`` 10, donc garder le jour+heure de socle
+#      (venue libre) bat une simple préférence de gymnase — l'objet même de la référence.
+SOCLE_REFERENCE_TIER_WEIGHTS = MappingProxyType(
+    {
+        "S": 20,
+        "A": 18,
+        "B": 16,
+        "C": 14,
+        "D": 12,
     }
 )
 

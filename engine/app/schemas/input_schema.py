@@ -232,6 +232,20 @@ class PreviousAssignmentSchema(SerializableModel):
     start_time: str = Field(alias="startTime")  # "19:00"
 
 
+class SocleReferenceAssignmentSchema(SerializableModel):
+    """PR-3 (comblement) — un placement de la version POINTÉE du socle, référence de comblement.
+
+    Chaque entrée désigne ``(teamId, dayOfWeek, startTime)`` — SANS ``venueId`` : le gymnase est
+    LIBRE (« changer de gymnase = pas grave ; changer de jour/heure = coûteux »). En comblement,
+    le solveur reçoit un bonus PAR TIER (``add_socle_reference_bonus``) quand une séance comblée
+    retrouve ce jour+heure, quel que soit le gymnase. Le champ est INERTE tant que le backend ne
+    l'émet pas (patron ``previousAssignments``) : absent/vide ⇒ chemin byte-identique."""
+
+    team_id: str = Field(alias="teamId")
+    day_of_week: int = Field(alias="dayOfWeek", ge=1, le=7)
+    start_time: str = Field(alias="startTime")  # "19:00"
+
+
 class SharedTrainingBlockSchema(SerializableModel):
     """P2-51 — mutualisation par BLOC : un ensemble d'équipes qui se comporte comme UNE équipe.
 
@@ -324,6 +338,13 @@ class ScheduleInputSchema(SerializableModel):
     # 2000 = miroir de MAX_SLOT_TEMPLATES (un placement par séance, même ordre de grandeur).
     previous_assignments: list[PreviousAssignmentSchema] = Field(
         default_factory=list, alias="previousAssignments", max_length=MAX_SLOT_TEMPLATES
+    )
+    # PR-3 — placements de la version POINTÉE du socle {teamId, dayOfWeek, startTime}, référence
+    # du comblement (bonus par tier, gymnase libre). Absent/vide ⇒ chemin byte-identique (patron
+    # previousAssignments) : le backend ne l'émet QU'en comblement. Cap 2000 = miroir de
+    # MAX_SLOT_TEMPLATES (un placement par séance).
+    socle_reference_assignments: list[SocleReferenceAssignmentSchema] = Field(
+        default_factory=list, alias="socleReferenceAssignments", max_length=MAX_SLOT_TEMPLATES
     )
     # P2-51 — mutualisation par BLOC : blocs d'équipes se comportant comme UNE équipe (leurs
     # séances leur appartiennent). Absent/vide ⇒ payload byte-identique (patron teamLinks),

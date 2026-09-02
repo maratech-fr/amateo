@@ -30,15 +30,15 @@ def _starts(result: dict[str, Any], team_id: str) -> set[str]:
     return {str(s["startTime"])[:5] for s in result["slots"] if s["teamId"] == team_id}
 
 
-def test_score_formula_version_is_v12() -> None:
-    assert SCORE_FORMULA_VERSION == "T24_LEVEL_2_FIXED_WEIGHTS_V12"
+def test_score_formula_version_is_v13() -> None:
+    assert SCORE_FORMULA_VERSION == "T24_LEVEL_2_FIXED_WEIGHTS_V13"
     result = solve_payload(
         make_payload(
             teams=[_team("t")],
             venues=[make_venue("v", [(2, "18:00")])],
         )
     )
-    assert result["metrics"]["scoreFormulaVersion"] == "T24_LEVEL_2_FIXED_WEIGHTS_V12"
+    assert result["metrics"]["scoreFormulaVersion"] == "T24_LEVEL_2_FIXED_WEIGHTS_V13"
 
 
 def test_match_day_rest_day_left_free_when_possible() -> None:
