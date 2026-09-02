@@ -1176,6 +1176,16 @@ def _infeasible_message(model_data: Mapping[str, Any] | Any) -> str:
             demand += int(spw) if spw is not None else 0
         except (TypeError, ValueError):
             continue
+    # P2-51 — une séance de bloc réunit N membres sur UNE place de gymnase : les N séances des
+    # membres se replient en 1 occupation. La DEMANDE de places retranche donc (n_membres − 1) ×
+    # commonSessions par bloc — sinon le message crie « 90 séances pour 76 places » alors que les
+    # blocs rendent le compte faisable. Bloc absent ⇒ demande inchangée (chemin byte-identique).
+    for block in _collection(model_data, "sharedBlocks", "shared_blocks"):
+        member_ids = _get(block, "teamIds", "team_ids", default=[]) or []
+        common_sessions = int(_get(block, "commonSessions", "common_sessions", default=0) or 0)
+        if len(member_ids) >= 2 and common_sessions > 0:
+            demand -= (len(member_ids) - 1) * common_sessions
+    demand = max(demand, 0)
     capacities = _slot_capacity_by_key(model_data)
     supply = sum(capacities.values())
 

@@ -99,3 +99,50 @@ class TestEmptyEqualsAbsent:
         with_empty = solve_payload(with_empty_payload)
         assert without["slots"] == with_empty["slots"]
         assert without["score"] == with_empty["score"]
+
+
+def _hard_lock(team_id: str, venue_id: str, day: int, start: str) -> dict[str, Any]:
+    return {
+        "id": f"lock-{team_id}",
+        "teamId": team_id,
+        "venueId": venue_id,
+        "dayOfWeek": day,
+        "startTime": start,
+        "durationMinutes": 90,
+        "lockLevel": "HARD",
+    }
+
+
+def _cases(output: dict[str, Any], team_id: str) -> set[tuple[str, int, str]]:
+    return {
+        (str(s["venueId"]), int(s["dayOfWeek"]), str(s["startTime"])[:5])
+        for s in output["slots"]
+        if str(s["teamId"]) == team_id
+    }
+
+
+class TestPinnedPartnerFreesTheCaseForBlockMembers:
+    """P2-51 (comblement) — le relâchement capacité est BLOC-AWARE et scopé aux blocs seuls.
+
+    Le comportement fin (co-présence, refus à un autre début, « à eux seuls ») vit dans
+    tests/semantic/test_fill_pinned_block_partner.py ; ici on garde le HEADLINE et son INERTIE :
+    un pin sans bloc partagé continue de fermer le candidat libre chevauchant."""
+
+    def test_a_block_whose_partner_is_hard_pinned_still_solves(self) -> None:
+        teams = [make_team("t1", sessions_per_week=1), make_team("t2", sessions_per_week=1)]
+        venues = [make_venue("V", [(1, "19:30")], capacity=1)]
+        payload = make_payload(teams=teams, venues=venues, slot_templates=[_hard_lock("t2", "V", 1, "19:30")])
+        payload["sharedBlocks"] = [_block("b", ["t1", "t2"], 1)]
+        result = solve_payload(payload)
+        assert result["status"] == "completed"
+        assert _cases(result, "t1") == {("V", 1, "19:30")} == _cases(result, "t2")
+
+    def test_a_pin_without_a_shared_block_still_drops_the_overlapping_free_candidate(self) -> None:
+        # INERTIE : sans bloc partagé, le pin de t2 rend l'unique case indisponible à t1 (P4-97 bis).
+        # Le relâchement ne doit bénéficier QU'aux partenaires de bloc.
+        teams = [make_team("t1", sessions_per_week=1), make_team("t2", sessions_per_week=1)]
+        venues = [make_venue("V", [(1, "19:30")], capacity=1)]
+        payload = make_payload(teams=teams, venues=venues, slot_templates=[_hard_lock("t2", "V", 1, "19:30")])
+        result = solve_payload(payload)
+        assert result["status"] == "completed"
+        assert _cases(result, "t1") == set(), "sans bloc, le candidat libre chevauchant reste fermé"
