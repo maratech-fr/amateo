@@ -3,13 +3,11 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-02 (PR-4 lot overlay, `documentation-update`). Deux lignes re-confrontées au
-code : `/api/constraints/validate` — `PayloadCapacityMirror::demand()` est désormais BLOC-AWARE
-(`PayloadCapacityMirror.php:60-90`, réplique le repli du moteur pour les blocs de mutualisation) et
-sert aussi la clé additive `capacity {demand, offer}` (`ValidateConstraintsController.php:231-245`,
-gardée par `RecapCapacityWarningTest`/`CapacityMirrorParityTest`) ; `/api/schedules/{id}/socle-deviation`
-— `moved[].to` porte désormais `slotId` (`SocleDeviationCalculator.php:109-117`,
-`SocleDeviationResult.php`). Reste de l'inventaire non re-vérifié cette passe. Un stamp REMPLACE,
+Last verified @ 2026-09-03 (P2-58 « PR seeder finale », `documentation-update`). Module démo
+re-confronté au code : `app:seed:bccl-dev` (`SeedBcclDevCommand.php`) créé pour seeder le club dev
+BCCL RÉEL en CREATE-ONLY (refuse si présent) ; exclu de `services.yaml`, déclaré dans
+`services_dev.yaml`/`services_test.yaml` seulement ✓ ; distinct d'`app:demo:seed-bccl` (créer OU
+RESET) toujours vrai. Reste de l'inventaire non re-vérifié cette passe. Un stamp REMPLACE,
 l'historique vit dans git.
 
 ---
@@ -535,6 +533,16 @@ ligne club) est posée. La route est exposée au front SEULEMENT en debug par
 invoqué depuis `Kernel::boot()`) refuse désormais de démarrer en environnement `prod` avec
 `APP_DEBUG` résolu à `1`/`true` — un verrou qui couvre cette route ET les deux précédentes d'un
 seul coup, indépendamment d'un oubli de garde individuelle.
+
+Distinct du club de démonstration : `app:seed:bccl-dev` (`src/Command/SeedBcclDevCommand.php`)
+seede le club **dev BCCL RÉEL** (identités réelles, `mara.mb@bccl.fr`, code FFBB ARA0069036) via
+le même `BcclSeeder` + `BcclSeedProfile::dev()`. **CREATE-ONLY** — à l'inverse d'`app:demo:seed-bccl`
+(créer OU RESET, purge le workspace à chaque appel) : cette commande **refuse tout net** (exit
+`FAILURE`, aucune écriture) si le club existe déjà ; le reset délibéré passe par `make fixtures`
+sur une base jetable. Exclue de l'auto-enregistrement (`services.yaml:96-99`), déclarée seulement
+dans `services_dev.yaml`/`services_test.yaml` (jamais dans le conteneur de prod) et gardée en
+runtime (refuse hors `dev`/`test`) : invisible en prod par construction. Connexion admin requise,
+comme `make fixtures`/`app:demo:seed-bccl`. Appelée par `make play` (`backend/docs/commands.md`).
 
 ### Cockpit temporel (overlays période/événement)
 
