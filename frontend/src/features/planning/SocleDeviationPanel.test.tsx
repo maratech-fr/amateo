@@ -1,5 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 
 import { SocleDeviationPanel } from "./SocleDeviationPanel";
@@ -9,7 +9,7 @@ const teamName = (id: string) => ({ t1: "U13F1", t2: "Séniors F", t3: "U15M2" }
 const venueName = (id: string) => ({ vX: "Matéo", vY: "JDR", vZ: "Salle Bleue", vW: "Gymnase Nord" })[id] ?? id;
 
 const moved: SocleDeviationMoved[] = [
-  { teamId: "t1", from: { dayOfWeek: 2, startTime: "18:30", venueId: "vX" }, to: { dayOfWeek: 4, startTime: "19:00", venueId: "vY" } },
+  { teamId: "t1", from: { dayOfWeek: 2, startTime: "18:30", venueId: "vX" }, to: { dayOfWeek: 4, startTime: "19:00", venueId: "vY", slotId: "slot-A" } },
 ];
 const unplaced: SocleDeviationUnplaced[] = [
   { teamId: "t2", dayOfWeek: 5, startTime: "20:00", venueId: "vZ", reason: "venue_closed" },
@@ -45,6 +45,25 @@ describe("SocleDeviationPanel", () => {
     expect(nullItem).toBeDefined();
     expect(nullItem).toHaveTextContent(/U15M2/);
     expect(nullItem?.textContent).not.toMatch(/réduites|Fermeture|désactivé|Non reprise/i);
+  });
+
+  it("D6-d — cliquer une ligne déplacée vise SA carte dans la grille (onSelectSlot avec to.slotId)", () => {
+    const onSelectSlot = vi.fn();
+    render(<SocleDeviationPanel moved={moved} unplaced={unplaced} teamName={teamName} venueName={venueName} onSelectSlot={onSelectSlot} />);
+    const region = screen.getByRole("region", { name: /écarts avec le planning de saison/i });
+
+    const movedButton = within(region).getByRole("button", { name: /U13F1/ });
+    movedButton.click();
+    expect(onSelectSlot).toHaveBeenCalledWith("slot-A");
+
+    // Les lignes « à replacer » restent du texte : aucune n'est un bouton.
+    expect(within(region).queryByRole("button", { name: /Séniors F/ })).not.toBeInTheDocument();
+  });
+
+  it("sans onSelectSlot, les lignes déplacées restent du texte (pas de bouton)", () => {
+    render(<SocleDeviationPanel moved={moved} unplaced={unplaced} teamName={teamName} venueName={venueName} />);
+    const region = screen.getByRole("region", { name: /écarts avec le planning de saison/i });
+    expect(within(region).queryByRole("button")).not.toBeInTheDocument();
   });
 
   it("aucun écart (deux listes vides) → ne rend RIEN (pas de région fantôme)", () => {

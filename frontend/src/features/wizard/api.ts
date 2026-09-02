@@ -642,6 +642,13 @@ export interface ValidateResult {
    * Optionnel : un serveur plus ancien ne renvoie pas la clé.
    */
   warnings?: string[];
+  /**
+   * P2-9 / PR-4 — le volet CAPACITÉ chiffré, lu sur le payload que le solveur recevra : `demand`
+   * (bloc-aware — une séance de bloc réunit N membres sur UNE place) vs `offer` (places de créneau,
+   * un majorant). `null` (ou clé absente) quand aucun payload n'existe (période non génératrice,
+   * ou build en échec) : rien à afficher. Sert le compteur de carence de la surface de FERMETURE.
+   */
+  capacity?: { demand: number; offer: number } | null;
 }
 
 /**

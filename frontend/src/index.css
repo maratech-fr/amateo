@@ -33,6 +33,14 @@
   --warning: oklch(0.55 0.16 62);
   --success: oklch(0.52 0.14 160);
 
+  /* --diff (P2-44 PR-4) : la couleur d'un ÉCART avec le socle (violet), rôle sémantique
+     à part entière, hors des 4 rôles existants (accent/warning/destructive/success). Ce
+     n'est JAMAIS une erreur — juste « ceci diffère du planning de saison ». Sert de FOND à
+     la pastille du symbole ⇄ (non-texte, WCAG 1.4.11 : ≥ 3:1 vs card/background, gardé par
+     a11y-contrast). */
+  --diff: oklch(0.52 0.19 305);
+  --diff-foreground: oklch(0.99 0 0);
+
   --ring: var(--accent);
 }
 
@@ -57,6 +65,11 @@
 
   --warning: oklch(0.83 0.15 78);
   --success: oklch(0.76 0.16 163);
+
+  /* --diff : violet clair sur fond sombre (même rôle « écart au socle ») ; le foreground
+     redevient sombre pour tenir le contraste sur la pastille. */
+  --diff: oklch(0.78 0.16 305);
+  --diff-foreground: oklch(0.17 0.02 260);
 
   --ring: var(--accent);
 }
@@ -143,6 +156,9 @@
   --color-destructive: var(--destructive);
   --color-warning: var(--warning);
   --color-success: var(--success);
+  /* Écart au socle (P2-44 PR-4) : engendre `bg-diff` / `text-diff-foreground` / `ring-diff`. */
+  --color-diff: var(--diff);
+  --color-diff-foreground: var(--diff-foreground);
   --color-ring: var(--ring);
 
   /* Console superadmin (décision UXC-12) — enregistre les jetons du bloc `:root` dédié

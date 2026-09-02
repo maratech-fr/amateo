@@ -349,6 +349,81 @@ describe("WeekGrid", () => {
     });
   });
 
+  // P2-44 (PR-4) — écarts au socle DANS la grille : un symbole ⇄ (violet, `--diff`) AVANT le nom,
+  // l'origine de saison en `sr-only`, jamais le mot « déplacée » à l'écran. Le conflit prime.
+  describe("écart au socle (deviatedSlots, P2-44 PR-4)", () => {
+    it("carte déviée : symbole ⇄ AVANT le nom + origine en sr-only ; carte non déviée : rien", () => {
+      const model = buildGrid([slot], "gymnase", lookups);
+      const { container } = render(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} deviatedSlots={new Map([["a", "Mar 18h30 Matéo"]])} />);
+
+      const card = container.querySelector('[data-slot-id="a"]');
+      const chip = card?.querySelector(".bg-diff");
+      expect(chip, "la carte déviée porte la pastille d'écart").not.toBeNull();
+      // AVANT le nom : la pastille précède le libellé d'équipe dans le DOM.
+      const name = screen.getByText("U11");
+      expect(chip && (chip.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0).toBe(true);
+      // L'origine (place de saison) est portée pour le lecteur d'écran — jamais le mot « déplacée » à l'écran visuellement.
+      expect(screen.getByText(/déplacée — en saison : Mar 18h30 Matéo/)).toHaveClass("sr-only");
+    });
+
+    it("aucun deviatedSlots (ou slotId absent du set) : aucune pastille d'écart", () => {
+      const model = buildGrid([slot], "gymnase", lookups);
+      const { container, rerender } = render(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} />);
+      expect(container.querySelector(".bg-diff")).toBeNull();
+
+      // Un set qui ne contient PAS ce créneau ne marque rien non plus.
+      rerender(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} deviatedSlots={new Map([["autre", "Lun 18h00 X"]])} />);
+      expect(container.querySelector(".bg-diff")).toBeNull();
+    });
+
+    it("carte déviée ET en conflit (flagged) : anneau `warning`, jamais `diff` — le symbole reste", () => {
+      // Deux créneaux (deux jours) pour que le surlignage conflit soit décisif : « a » est surligné.
+      const other: Slot = { ...slot, id: "b", dayOfWeek: 3 };
+      const model = buildGrid([slot, other], "gymnase", lookups);
+      const { container } = render(
+        <WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} deviatedSlots={new Map([["a", "Mar 18h30 Matéo"]])} highlightSlotIds={new Set(["a"])} />,
+      );
+
+      const card = container.querySelector('[data-slot-id="a"]');
+      expect(card?.className).toContain("ring-warning");
+      expect(card?.className).not.toContain("ring-diff");
+      // Le symbole ⇄ subsiste malgré le conflit (l'écart reste vrai).
+      expect(card?.querySelector(".bg-diff")).not.toBeNull();
+    });
+
+    it("carte déviée SANS conflit : anneau `diff`", () => {
+      const model = buildGrid([slot], "gymnase", lookups);
+      const { container } = render(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} deviatedSlots={new Map([["a", "Mar 18h30 Matéo"]])} />);
+      expect(container.querySelector('[data-slot-id="a"]')?.className).toContain("ring-diff");
+    });
+
+    it("carte fusionnée : chaque membre dévié est marqué INDIVIDUELLEMENT", () => {
+      const mergeLookups: Lookups = {
+        teams: new Map<string, Team>([
+          ["t1", { id: "t1", name: "U11", sportCategoryId: "c", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 2 }],
+          ["t2", { id: "t2", name: "U13", sportCategoryId: "c", priorityTierId: 2, tierOrder: 0, sessionsPerWeek: 2 }],
+        ]),
+        venues: new Map<string, Venue>([["v1", { id: "v1", name: "Gymnase Alpha", color: "#00aa00" }]]),
+        coaches: new Map<string, Coach>(),
+        teamCoach: new Map<string, string>(),
+        teamPlayerCoaches: new Map<string, string[]>(),
+        groupLabels: new Map<string, string>([["v1|1|1080", "CEC3"]]),
+      };
+      const slots: Slot[] = [
+        { ...slot, id: "s1", teamId: "t1" },
+        { ...slot, id: "s2", teamId: "t2" },
+      ];
+      const model = buildGrid(slots, "gymnase", mergeLookups);
+      const { container } = render(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} deviatedSlots={new Map([["s2", "Jeu 19h00 JDR"]])} />);
+
+      // Seul le membre s2 (dévié) porte la pastille, dans SON bouton.
+      const s2 = container.querySelector('[data-slot-id="s2"]');
+      expect(s2?.querySelector(".bg-diff")).not.toBeNull();
+      const s1 = container.querySelector('[data-slot-id="s1"]');
+      expect(s1?.querySelector(".bg-diff")).toBeNull();
+    });
+  });
+
   it("names the venue as TEXT in every view, not colour only (A11Y-01, WCAG 1.4.1)", async () => {
     // In the team ('equipe') view the venue is no longer a column header — it must
     // still be readable as text on the cell (not conveyed by the border/tint colour

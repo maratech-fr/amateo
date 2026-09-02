@@ -12,7 +12,7 @@ import { useWizardStore } from "@/features/wizard/store";
 import { usePriorityTiers } from "@/features/matches/queries";
 import { DeletePlanningButton } from "@/features/cockpit/DeletePlanningButton";
 import { useEntryConflicts, useSchedulePlans } from "@/features/cockpit/queries";
-import { useReservations, useSharedTrainingBlocks, useTeamPeriodOverrides, useWizardTeamTagAssignments, useWizardTeamTags } from "@/features/wizard/queries";
+import { useConstraintValidation, useReservations, useSharedTrainingBlocks, useTeamPeriodOverrides, useWizardTeamTagAssignments, useWizardTeamTags } from "@/features/wizard/queries";
 import { coachFullName } from "@/shared/lib/coachName";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import { armNavTransition } from "@/shared/stores/navTransitionStore";
@@ -52,6 +52,7 @@ import type { ToReplaceEntry } from "./lib/toReplaceReason";
 import { isSeasonPlanType, planRepresentative, visibleOverlayVersions, visibleSeasonPlans } from "./lib/versions";
 import { SeasonComparisonModal } from "./SeasonComparisonModal";
 import { ValidateDialog } from "./ValidateDialog";
+import { deviatedSlots } from "./lib/socleDeviationCells";
 import { usePlanningStore, type ViewMode } from "./store";
 import { SocleDeviationPanel } from "./SocleDeviationPanel";
 import { ToReplaceList } from "./ToReplaceList";
@@ -62,6 +63,18 @@ const IN_FLIGHT: readonly string[] = IN_FLIGHT_STATUSES;
 
 /** jour ISO → abréviation, pour le libellé du raccourci d'éviction (« Lun 18:00 »). */
 const DAY_ABBR = new Map(DAYS.map((d) => [d.n, d.label]));
+
+const plural = (n: number, singular: string, plural: string): string => `${n} ${1 === n ? singular : plural}`;
+
+/**
+ * P2-44 PR-4 — le COMPTEUR DE CARENCE : une phrase factuelle et neutre (jamais une alarme) qui dit
+ * au démarrage d'une FERMETURE combien de places manquent. Les nombres viennent du récap serveur
+ * (`capacity.demand` bloc-aware / `capacity.offer`), présentation pure. Singulier/pluriel corrects.
+ */
+export function capacityShortfallSentence(demand: number, offer: number): string {
+  const base = `${plural(demand, "séance demandée", "séances demandées")} pour ${plural(offer, "place disponible", "places disponibles")}`;
+  return demand > offer ? `${base} — il manque ${plural(demand - offer, "place", "places")}.` : `${base}.`;
+}
 
 /** `embedded` = rendered inside the wizard's Génération step, where the sticky
  *  wizard header + footer eat extra vertical space, so the grid must be shorter.
@@ -196,6 +209,13 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // n'est JAMAIS appelée. Le calcul est SERVI ; le front NOMME (agrégat + lignes), il ne redérive rien.
   const socleDeviationArmed = embedded && scoped && isClosurePeriod && null !== displayed && "COMPLETED" === displayed.status;
   const { data: socleDeviation = null } = useSocleDeviation(socleDeviationArmed ? validScheduleId : null);
+
+  // P2-44 PR-4 — le compteur de carence : la capacité chiffrée du récap, sur la surface de
+  // FERMETURE seulement (HOLIDAY : jamais appelée). Le gate serveur reste la source unique du
+  // calcul (bloc-aware) ; on ne fait qu'AFFICHER `capacity`.
+  const capacityArmed = embedded && scoped && isClosurePeriod && null !== calendarEntryId;
+  const { data: capacityValidation } = useConstraintValidation(capacityArmed, calendarEntryId);
+  const capacity = capacityValidation?.capacity ?? null;
 
   // Requête des créneaux de la version affichée. On garde la requête ENTIÈRE (pas juste
   // `data`) : son `isFetching` voile la grille pendant qu'elle (re)charge — sinon, en
@@ -1259,6 +1279,10 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const seasonComparisonId = transcriptionSurface ? (planRepresentative(visibleSeasonPlans(schedules))?.id ?? null) : null;
   const venueNameOf = (venueId: string): string => lookups.venues.get(venueId)?.name ?? "Gymnase";
 
+  // P2-44 PR-4 — la table `slotId → origine de saison` des créneaux déviés, pour marquer la grille.
+  // Présentation pure : le backend a déjà décidé l'écart (`socleDeviation.moved`).
+  const socleDeviatedSlots = deviatedSlots(socleDeviation, venueNameOf);
+
   const planningTitle = displayedPlanName ?? "Planning";
   // Nom du fichier exporté = nom du PLAN affiché (retour fondateur 2026-07-18).
   // Il lisait `selectedSchedule.name`, c'est-à-dire le nom de la VERSION — que les
@@ -1420,6 +1444,14 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
             />
           </div>
 
+          {/* P2-44 (PR-4) — le compteur de carence : au démarrage d'une FERMETURE, une phrase
+              factuelle et neutre dit combien de places manquent (jamais une alarme). Statique
+              (pas d'aria-live) : elle est là dès l'arrivée, elle ne s'annonce pas. Rien si la
+              capacité n'est pas connue (aucun payload). */}
+          {null !== capacity ? (
+            <p className="mb-4 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm tabular-nums">{capacityShortfallSentence(capacity.demand, capacity.offer)}</p>
+          ) : null}
+
           {/* P2-44 (PR-2) — après une transcription depuis le socle : la comparaison avec le
               planning de saison (consultation) et la liste « à replacer » servie par la route.
               Le bouton apparaît dès qu'un socle est consultable ; le panneau, quand la route a
@@ -1440,7 +1472,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               route ; le panneau s'AJOUTE à « à replacer » (décision fondateur : les deux affichés).
               Ne rend rien tant qu'il n'y a aucun écart. */}
           {null !== socleDeviation ? (
-            <SocleDeviationPanel moved={socleDeviation.moved} unplaced={socleDeviation.unplaced} teamName={teamNameOf} venueName={venueNameOf} />
+            <SocleDeviationPanel moved={socleDeviation.moved} unplaced={socleDeviation.unplaced} teamName={teamNameOf} venueName={venueNameOf} onSelectSlot={openSlot} />
           ) : null}
 
           {/* P2-30 (geste 3) — les équipes à la dérive : un clic ARME le placement (mode cible).
@@ -1664,6 +1696,8 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                           // P2-44 (PR-2) — après une transcription, les « trous » sont mis en
                           // évidence (jamais les cases fermées) pour qu'on voie où combler.
                           emphasizeEmpty={emphasizeEmpty}
+                          // P2-44 (PR-4) — les créneaux qui s'écartent du socle, marqués DANS la grille.
+                          deviatedSlots={socleDeviatedSlots}
                         />
                         )}
                       </div>

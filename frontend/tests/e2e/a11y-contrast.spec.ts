@@ -129,6 +129,64 @@ for (const mode of MODES) {
 }
 
 /**
+ * P2-44 PR-4 — le symbole ⇄ d'ÉCART au socle (`bg-diff`, sur la carte de la grille) est un
+ * élément GRAPHIQUE non-textuel : WCAG 1.4.11 exige 3:1 contre les surfaces adjacentes (la carte
+ * et le fond), pas 4.5:1. Comme le token n'est peint que sur l'écran de génération d'une fermeture
+ * (que ce spec public ne visite pas), on mesure ses paires DIRECTEMENT, dans les deux thèmes :
+ * la pastille contre `bg-card`/`bg-background`, et son foreground SUR la pastille. Un token qui
+ * dériverait sous 3:1 rougirait ici — on ajuste alors sa valeur oklch (jamais le seuil).
+ */
+for (const mode of MODES) {
+  test(`contrast — diff marker (non-text, WCAG 1.4.11) tokens (${mode})`, async ({ page }) => {
+    await forceTheme(page, mode);
+    await page.goto("/login");
+
+    const ratios = await page.evaluate(() => {
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = 1;
+      const ctx = cv.getContext("2d")!;
+      const probe = document.createElement("div");
+      document.body.appendChild(probe);
+      const toRgb = (color: string): [number, number, number] => {
+        ctx.clearRect(0, 0, 1, 1);
+        ctx.fillStyle = color;
+        ctx.fillRect(0, 0, 1, 1);
+        const d = ctx.getImageData(0, 0, 1, 1).data;
+        return [d[0], d[1], d[2]];
+      };
+      const of = (cls: string, prop: "color" | "backgroundColor"): [number, number, number] => {
+        probe.className = cls;
+        return toRgb(getComputedStyle(probe)[prop]);
+      };
+      const lum = ([r, g, b]: [number, number, number]): number => {
+        const c = [r, g, b].map((v) => {
+          const x = v / 255;
+          return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+      };
+      const ratio = (a: [number, number, number], b: [number, number, number]): number => {
+        const [l1, l2] = [lum(a), lum(b)].sort((x, y) => y - x);
+        return (l1 + 0.05) / (l2 + 0.05);
+      };
+      const bg = of("bg-background", "backgroundColor");
+      const card = of("bg-card", "backgroundColor");
+      const diff = of("bg-diff", "backgroundColor");
+      const diffFg = of("text-diff-foreground", "color");
+      return {
+        "bg-diff on card": ratio(diff, card),
+        "bg-diff on background": ratio(diff, bg),
+        "text-diff-foreground on bg-diff": ratio(diffFg, diff),
+      };
+    });
+
+    for (const [pair, ratio] of Object.entries(ratios)) {
+      expect(ratio, `${pair} (${mode}) = ${ratio.toFixed(2)}:1, needs ≥ 3 for a non-text graphic`).toBeGreaterThanOrEqual(3);
+    }
+  });
+}
+
+/**
  * Keyboard reachability + visible focus on the public forms (WCAG 2.1.1 / 2.4.7):
  * tabbing from the top reaches the email + password fields and the NAMED submit
  * control, and each focused control gains a FOCUS-INDUCED ring — an outline, or a

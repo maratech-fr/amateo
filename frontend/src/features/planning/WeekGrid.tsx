@@ -1,4 +1,4 @@
-import { Lock, LockOpen } from "lucide-react";
+import { ArrowLeftRight, Lock, LockOpen } from "lucide-react";
 import { type UIEvent, useEffect, useRef } from "react";
 
 import { EmptyBlock } from "@/shared/components/ui/empty-hint";
@@ -73,6 +73,15 @@ interface WeekGridProps {
    * rendu strictement inchangé.
    */
   emphasizeEmpty?: boolean;
+  /**
+   * P2-44 (PR-4) — les créneaux de PÉRIODE qui S'ÉCARTENT du planning de saison, servis par la
+   * route `socle-deviation` : `slotId → libellé d'origine` (« Mar 18h30 Matéo », la place de
+   * saison). Le backend a DÉJÀ décidé l'écart (règle d'or) ; la grille NOMME — un symbole ⇄
+   * (violet, `--diff`) AVANT le nom d'équipe + l'origine en `sr-only`/`title`, jamais le mot
+   * « déplacée » à l'écran. Le CONFLIT et la SÉLECTION priment sur l'anneau, le symbole reste.
+   * Absent = aucun écart (vacance, `/planning` autonome, version non COMPLETED).
+   */
+  deviatedSlots?: Map<string, string>;
 }
 
 /**
@@ -81,7 +90,7 @@ interface WeekGridProps {
  * a sticky grid item is clamped to its own cell, so it detaches once that narrow
  * cell scrolls out of view.
  */
-export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds, onToggleLock, lockLens = false, targetMode, onPickTarget, onCancelTarget, closedWindows, emphasizeEmpty = false }: WeekGridProps) {
+export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds, onToggleLock, lockLens = false, targetMode, onPickTarget, onCancelTarget, closedWindows, emphasizeEmpty = false, deviatedSlots }: WeekGridProps) {
   const { columns, dayGroups, rows, cells } = model;
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -158,6 +167,19 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
       </span>
     );
   };
+
+  // P2-44 (PR-4) — le symbole d'ÉCART au socle : une pastille ⇄ violette (fond `--diff`), AVANT le
+  // nom d'équipe, dans le flux du bouton. Auto-explicite (décision fondateur : pas de légende, pas
+  // de tooltip porteur de sens) ; le SENS accessible vit en `sr-only` + le title de la carte. Le
+  // mot « déplacée » ne paraît JAMAIS à l'écran. `origin` = la place de saison (« Mar 18h30 Matéo »).
+  const renderDeviationChip = (origin: string) => (
+    <>
+      <span aria-hidden="true" className="shrink-0 rounded-sm bg-diff px-0.5 text-diff-foreground">
+        <ArrowLeftRight className="size-3" />
+      </span>
+      <span className="sr-only">déplacée — en saison : {origin}</span>
+    </>
+  );
 
   // Le cadenas d'une carte : un bouton FRÈRE, en surimpression coin haut-droit. Éditable
   // (onToggleLock fourni) → bascule le verrou sans sélectionner (zone de clic ≥ 24px,
@@ -382,6 +404,10 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                 <span className="truncate px-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide">{cell.groupLabel}</span>
                 {cell.members.map((member) => {
                   const memberSelected = member.slotId === selectedSlotId;
+                  // P2-44 PR-4 — écart au socle, par membre. L'anneau `diff` cède à la sélection
+                  // et à un anneau de lentille (le symbole, lui, reste dans tous les cas).
+                  const memberDeviatedOrigin = deviatedSlots?.get(member.slotId);
+                  const memberLensRing = lensActive && null === uniformOrigin && null !== member.lockOrigin;
                   return (
                     // Wrapper positionné : le cadenas est un bouton FRÈRE du bouton d'équipe
                     // (jamais imbriqué). `group` scope le survol/focus au membre. La lentille
@@ -392,7 +418,9 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                         "group relative flex w-full items-center",
                         lensActive && null === member.lockOrigin ? "opacity-40" : "",
                         // Anneau par membre seulement en situation MIXTE — uniforme = anneau de carte.
-                        lensActive && null === uniformOrigin && null !== member.lockOrigin ? LOCK_LENS_META[member.lockOrigin].ringClass : "",
+                        memberLensRing && null !== member.lockOrigin ? LOCK_LENS_META[member.lockOrigin].ringClass : "",
+                        // Écart au socle : anneau `diff`, sauf si sélection ou anneau de lentille prime.
+                        undefined !== memberDeviatedOrigin && !memberSelected && !memberLensRing ? "ring-1 ring-diff" : "",
                       )}
                     >
                       <button
@@ -401,13 +429,14 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                         data-target-source={isSource(member.slotId) ? "true" : undefined}
                         onClick={() => activateSlot(member.slotId, member.locked, cellClosedReason)}
                         disabled={targetDisabled(member.slotId, member.locked, cellClosedReason)}
-                        title={cardTitle(member.slotId, member.locked, cellClosedReason, `${member.teamLabel} · ${cell.groupLabel} · ${cell.venueLabel} · ${member.coachLabel} · ${cell.startLabel}–${cell.endLabel}`)}
+                        title={cardTitle(member.slotId, member.locked, cellClosedReason, `${member.teamLabel} · ${cell.groupLabel} · ${cell.venueLabel} · ${member.coachLabel} · ${cell.startLabel}–${cell.endLabel}${undefined !== memberDeviatedOrigin ? ` · en saison : ${memberDeviatedOrigin}` : ""}`)}
                         className={cn(
                           "flex w-full items-center gap-1 px-1 py-0.5 pr-6 text-left font-medium hover:ring-1 hover:ring-accent disabled:cursor-not-allowed disabled:opacity-50",
                           memberSelected ? "ring-1 ring-accent" : "",
                           isSource(member.slotId) ? "animate-pulse ring-2 ring-accent" : "",
                         )}
                       >
+                        {undefined !== memberDeviatedOrigin ? renderDeviationChip(memberDeviatedOrigin) : null}
                         {lensActive && null === uniformOrigin && null !== member.lockOrigin ? renderLensInline(member.lockOrigin) : null}
                         <span className="truncate">{member.teamLabel}</span>
                       </button>
@@ -421,6 +450,15 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
           }
           const selected = cell.slotId === selectedSlotId;
           const closedReason = closedReasonOf(cell.venueId, cell.day);
+          // P2-44 PR-4 — écart au socle. Le CONFLIT prime (une carte surlignée en conflit garde
+          // l'anneau `warning`, jamais `diff`), la SÉLECTION prime (`ring-accent`), un anneau de
+          // lentille prime — mais le symbole ⇄ reste dans tous les cas (source auto-explicite, même
+          // principe que la lentille, cf. props `lockLens`/`highlightSlotIds` ci-dessus). Le
+          // `flagged` d'une carte occupée = elle FAIT partie du surlignage conflit courant.
+          const deviatedOrigin = deviatedSlots?.get(cell.slotId);
+          const deviated = undefined !== deviatedOrigin;
+          const flagged = highlighting && (highlightSlotIds?.has(cell.slotId) ?? false);
+          const lensRing = lensActive && null !== cell.lockOrigin;
           return (
             // Wrapper positionné : la CARTE (bouton de sélection) et le CADENAS (bouton de
             // verrou) sont deux boutons FRÈRES — jamais l'un dans l'autre (HTML invalide). Le
@@ -440,6 +478,10 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                 // Lentille : sans verrou → estompé ; verrouillé → anneau de sa catégorie.
                 lensActive && null === cell.lockOrigin ? "opacity-40" : "",
                 lensActive && null !== cell.lockOrigin ? LOCK_LENS_META[cell.lockOrigin].ringClass : "",
+                // Écart au socle : anneau `diff`. Le conflit prime (flagged → warning seul), la
+                // sélection et un anneau de lentille priment aussi ; le symbole ⇄, lui, reste.
+                deviated && flagged ? "ring-1 ring-warning" : "",
+                deviated && !flagged && !selected && !lensRing ? "ring-1 ring-diff" : "",
               )}
               style={{
                 gridColumn: cell.gridColumn,
@@ -455,10 +497,11 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                 type="button"
                 onClick={() => activateSlot(cell.slotId, cell.locked, closedReason)}
                 disabled={targetDisabled(cell.slotId, cell.locked, closedReason)}
-                title={cardTitle(cell.slotId, cell.locked, closedReason, `${cell.teamLabel} · ${cell.venueLabel} · ${cell.coachLabel} · ${cell.startLabel}–${cell.endLabel}`)}
+                title={cardTitle(cell.slotId, cell.locked, closedReason, `${cell.teamLabel} · ${cell.venueLabel} · ${cell.coachLabel} · ${cell.startLabel}–${cell.endLabel}${deviated ? ` · en saison : ${deviatedOrigin}` : ""}`)}
                 className="flex min-w-0 flex-1 flex-col items-start px-1 py-0.5 text-left leading-tight disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <span className="flex w-full items-center gap-1 pr-5 font-medium">
+                  {undefined !== deviatedOrigin ? renderDeviationChip(deviatedOrigin) : null}
                   <span className="truncate">{cell.primaryLabel}</span>
                   {/* Opaque accent chip: the translucent bg-accent/20 was dark-on-dark
                       in dark mode (sub-AA). Solid bg-accent reuses the AA-guaranteed

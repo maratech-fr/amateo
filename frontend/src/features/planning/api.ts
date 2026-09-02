@@ -197,11 +197,15 @@ export interface SocleDeviationPlacement {
   venueId: string;
 }
 
-/** Une séance DÉPLACÉE : du placement du socle (`from`) vers celui de la période (`to`). */
+/**
+ * Une séance DÉPLACÉE : du placement du socle (`from`) vers celui de la période (`to`). `to` porte
+ * en plus le `slotId` du créneau de PÉRIODE (celui que la grille affiche en `cell.slotId`) — de quoi
+ * marquer LA carte déviée. `from` (socle, non affiché dans la grille) n'a pas de slotId.
+ */
 export interface SocleDeviationMoved {
   teamId: string;
   from: SocleDeviationPlacement;
-  to: SocleDeviationPlacement;
+  to: SocleDeviationPlacement & { slotId: string };
 }
 
 /**
