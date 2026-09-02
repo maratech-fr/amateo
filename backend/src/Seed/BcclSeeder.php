@@ -1023,6 +1023,9 @@ final class BcclSeeder
         foreach (['vCamus', 'vJdr', 'vJeanVilar', 'vTonkin', 'vAdn'] as $venueVar) {
             $staleNames[] = 'Veterans - Interdit ' . $venues[$venueVar]->getId();
         }
+        // Interdit JDR supprimé de la base réelle (erreur de saisie du planning de saison,
+        // décision fondateur 2026-09-02) : purgé des bases déjà seedées.
+        $staleNames[] = 'Veterans · évite JDR';
         // « Jean Vilar préféré » n'existe plus que pour les équipes départementales -2.
         foreach ([$u15m1, $u18m1, $u21m1] as $droppedTeam) {
             $staleNames[] = $droppedTeam->getName() . ' - Jean Vilar préféré';
@@ -1112,8 +1115,10 @@ final class BcclSeeder
         foreach (['Loisir 1', 'Loisir 2', 'Loisir 3'] as $loisirName) {
             $addConstraint($loisirName . ' · impose ' . $venues['vCamus']->getName(), ConstraintScope::TEAM, $teams[$loisirName]->getId(), ConstraintFamily::FACILITY, ConstraintRuleType::HARD, ['forcedVenueId' => $venues['vCamus']->getId()]);
         }
-        // Veterans interdits sur Camus/JDR/Jean Vilar/Tonkin/ADN (nom auto « Veterans · évite <gymnase> »).
-        foreach (['vCamus', 'vJdr', 'vJeanVilar', 'vTonkin', 'vAdn'] as $venueVar) {
+        // Veterans interdits sur Camus/Jean Vilar/Tonkin/ADN (nom auto « Veterans · évite <gymnase> »).
+        // JDR retiré de la liste (décision fondateur 2026-09-02) : l'interdit était une erreur du
+        // planning de saison — l'overlay Matéo place précisément Veterans à JDR le vendredi 20:30.
+        foreach (['vCamus', 'vJeanVilar', 'vTonkin', 'vAdn'] as $venueVar) {
             $venue = $venues[$venueVar];
             $addConstraint('Veterans · évite ' . $venue->getName(), ConstraintScope::TEAM, $teams['Veterans']->getId(), ConstraintFamily::FACILITY, ConstraintRuleType::HARD, ['forbiddenVenueId' => $venue->getId()]);
         }
@@ -2424,8 +2429,11 @@ final class BcclSeeder
                 ['U13F1', 'vDebarros', 2, '17:30', 90],
                 ['U18F1', 'vDebarros', 2, '19:00', 90],
                 ['SF1', 'vDebarros', 2, '20:30', 120],
-                ['U15F2', 'vDebarrosAnnexe', 2, '19:30', 60],
-                ['U15F3', 'vDebarrosAnnexe', 2, '19:30', 60],
+                // Écart assumé avec le fichier source (19:30/60) : erreur de saisie constatée par le
+                // fondateur le 2026-09-02 — le créneau réel de l'Annexe est 19:00→20:30, comme au
+                // socle de saison, et la règle « U15 · pas après 19:00 » reste donc honorée.
+                ['U15F2', 'vDebarrosAnnexe', 2, '19:00', 90],
+                ['U15F3', 'vDebarrosAnnexe', 2, '19:00', 90],
                 // MERCREDI (jour ISO 3)
                 ['U13F3', 'vTonkin', 3, '16:00', 90],
                 ['U13M2', 'vTonkin', 3, '17:30', 90],
