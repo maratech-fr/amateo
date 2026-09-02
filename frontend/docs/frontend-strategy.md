@@ -1,10 +1,14 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, fichier hors sujet de la PR
-(recalage seed BCCL, backend seul). Re-confronté au code : les cinq `queries.test.tsx` cités
-(`cockpit`/`wizard`/`matches`/`planning`/`auth`) existent toujours, `admin/queries.test.tsx`
-n'existe toujours pas (abandon délibéré inchangé) ✓. Reste non re-touché cette passe :
-versions/plafonds §1-§2. Historique des passes : `git log -p --follow
+Last verified @ 2026-09-03 (rotation `documentation-update`, fichier hors sujet de la PR
+(seed BCCL/`make play`, backend seul). Re-confronté au code : les cinq `queries.test.tsx` cités
+(`cockpit`/`wizard`/`matches`/`planning`/`auth`) existent toujours, les six modules listés sans
+test dédié (`club`, `coach-wishes`, `feedback`, `profile`, `release-notes`, `shared/session`)
+restent sans `queries.test.tsx`, `admin/queries.test.tsx` n'existe toujours pas (abandon délibéré
+inchangé) ✓ ; la table des majeures (§ Outils de test) confrontée à `frontend/package.json` —
+`vitest`/`@vitest/*` 4.x, `@testing-library/react` 16.x, `jest-dom` 7.x, `jsdom` 30.x, `msw` 2.x,
+`@playwright/test` 1.x, `vitest-axe` 0.x, `@axe-core/playwright` 4.x, `storybook`/`@storybook/*`
+10.x : toutes justes, rien à corriger. Historique des passes : `git log -p --follow
 frontend/docs/frontend-strategy.md`.)
 
 > **Statut : le rebuild est LIVRÉ.** Les formulations « pour le rebuild » ci-dessous sont

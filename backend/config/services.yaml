@@ -93,6 +93,10 @@ services:
             # Dev-only load-test harness command — registered in services_dev.yaml
             # so it never reaches the prod/test container (nor `bin/console list`).
             - '../src/Command/LoadTestSeedClubsCommand.php'
+            # Dev/test-only BCCL create-only seed — registered in services_dev.yaml
+            # + services_test.yaml so it never reaches the prod container (nor
+            # `bin/console list` there); a runtime guard also refuses prod.
+            - '../src/Command/SeedBcclDevCommand.php'
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

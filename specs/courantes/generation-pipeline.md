@@ -1,11 +1,15 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, hors sujet de la PR — sondage des
+Last verified @ 2026-09-03 (rotation `documentation-update`, hors sujet de la PR — sondage des
 stamps les plus anciens du dépôt). Re-confronté au code : topic
-`club:{clubId}:schedule:{scheduleId}` (`backend/src/Mercure/MercureTopic.php:29`) ✓ · verrou par
-club `ClubGenerationLock::acquire` (`backend/src/Service/ClubGenerationLock.php:26`) ✓. Tout juste,
-rien à corriger — *(historique des passes retiré le 2026-08-19, audit DOC-33 ; il vit dans git :
-`git log -p --follow specs/courantes/generation-pipeline.md`)*
+`club:{clubId}:schedule:{scheduleId}` (`backend/src/Mercure/MercureTopic.php:27`) ✓ · verrou par
+club `ClubGenerationLock::acquire` (`backend/src/Service/ClubGenerationLock.php:20`, lignes
+décalées depuis la dernière passe) ✓. **Drift trouvé et corrigé** : §5.1 décrivait encore le champ
+`calendarEntryId`, **retiré du contrat depuis** — le champ nullable normalisé à la frontière
+(`frontend/src/features/planning/api.ts:847`) est désormais `planType`/`schedulePlanId`/`score`,
+gardé par `api.test.ts` ; le garde-fou client de `GenerateStep.tsx:37` vaut **20 min**
+(`TIMEOUT_MS = 20 * 60 * 1000`), pas 5 comme écrit avant — *(historique des passes retiré le
+2026-08-19, audit DOC-33 ; il vit dans git : `git log -p --follow specs/courantes/generation-pipeline.md`)*
 
 > Vérité courante. Décrit ce qui **doit** se passer, zone par zone, quand un
 > gestionnaire lance une génération : ce que fait le frontend, ce que fait le
@@ -50,7 +54,7 @@ via `POST /generate` ; backend → frontend via Mercure SSE `club:{clubId}:sched
   `/api/slot_templates` — la ressource s'appelle `/api/schedule_slot_templates`.
 - **Attente** (`features/wizard/steps/GenerateStep.tsx` + `useScheduleStatus`) : poll
   `GET /api/schedules/{id}` tant que le statut ∈ `{PENDING, GENERATING}`. Garde-fou
-  client `TIMEOUT_MS = 5 min` → sinon écran d'échec + réessai.
+  client `TIMEOUT_MS = 20 min` (`GenerateStep.tsx:37`) → sinon écran d'échec + réessai.
 - **Le frontend CONSOMME désormais Mercure** (FRT-04) — `features/planning/lib/scheduleStream.ts` ouvre
   **UN EventSource par session**, abonné au TEMPLATE du club (`club:{clubId}:schedule:{id}` tel
   quel : le hub matche chaque topic exact contre lui), donc toutes les générations du club
@@ -124,23 +128,24 @@ via `POST /generate` ; backend → frontend via Mercure SSE `club:{clubId}:sched
 Ces invariants ne cassent **pas** un test « le schedule atteint COMPLETED » : le
 pipeline réussit, mais l'UI n'affiche rien. Ils exigent des tests dédiés.
 
-### 5.1 `calendarEntryId` : `null` omis par API Platform (régression UX-02)
+### 5.1 `planType`/`schedulePlanId` : `null` omis par API Platform (régression UX-02)
 
-**API Platform 4 omet les champs `null` du JSON.** Un plan de saison a
-`calendarEntryId = null` en base → le champ arrive **ABSENT** côté frontend
-(`undefined`), pas `null`. Tout test `null === s.calendarEntryId` (« est-ce un plan
-de saison ? ») échoue alors silencieusement : `pickLandingScheduleId` renvoie `null`,
-le planning s'ouvre sur rien après une génération réussie.
+**API Platform 4 omet les champs `null` du JSON.** ⚠ Le champ d'origine de cette illustration,
+`calendarEntryId`, a depuis été **retiré du contrat** (remplacé par `planType` — ADR-0002) ; le
+piège lui-même reste réel sur les champs qui l'ont remplacé. Un plan de saison a
+`planType = null` en base → le champ arrive **ABSENT** côté frontend (`undefined`), pas `null`.
+Tout test `null === s.planType` (« est-ce un plan de saison ? ») échoue alors silencieusement :
+`pickLandingScheduleId` renvoie `null`, le planning s'ouvre sur rien après une génération réussie.
 
 - **Conduite normalisée** : normaliser à la **frontière**. `listSchedules`
-  (`features/planning/api.ts`) mappe les champs nullable (`calendarEntryId`, `score`)
-  en `?? null` → le type redevient honnête, **tous** les consommateurs voient un vrai
-  `null`. Même piège pour `score` : un plan sans score (DRAFT/en vol) affichait sinon
-  le littéral « score undefined ». ⚠ **Amendé 2026-08-01 (P4-39)** : plus aucun écran
-  n'affiche le score, donc cette illustration est **historique** — la normalisation, elle,
-  reste en place (`planning/api.ts:285`) — non plus pour corriger un affichage, mais pour
-  garder le type honnête (`score: number | null`) sur un champ que l'API sert toujours et
-  que **plus aucun code frontend ne lit**.
+  (`features/planning/api.ts:846-848`) mappe les champs nullable (`planType`, `schedulePlanId`,
+  `score`) en `?? null` → le type redevient honnête, **tous** les consommateurs voient un vrai
+  `null` (gardé par `api.test.ts`). Même piège pour `score` : un plan sans score (DRAFT/en vol)
+  affichait sinon le littéral « score undefined ». ⚠ **Amendé 2026-08-01 (P4-39)** : plus aucun
+  écran n'affiche le score, donc cette illustration est **historique** — la normalisation, elle,
+  reste en place — non plus pour corriger un affichage, mais pour garder le type honnête
+  (`score: number | null`) sur un champ que l'API sert toujours et que **plus aucun code
+  frontend ne lit**.
 - **Règle générale** : tout champ nullable consommé côté frontend via une comparaison
   `=== null` doit être normalisé à la frontière de son endpoint, ou testé avec un
   check *nullish* (`!x` / `== null`), jamais `=== null` seul.
@@ -156,7 +161,7 @@ le planning s'ouvre sur rien après une génération réussie.
 
 | Erreur | Test garde |
 |--------|-----------|
-| `calendarEntryId` absent (`undefined`) non normalisé | `frontend/src/features/planning/api.test.ts` (mappe absent → `null`) |
+| `planType`/`schedulePlanId` absents (`undefined`) non normalisés | `frontend/src/features/planning/api.test.ts` (mappe absent → `null`) |
 | Atterrissage planning cassé (overlay/undefined) | `frontend/src/features/planning/pickLanding.test.ts` |
 | Génération qui n'affiche pas le plan (bout en bout) | `frontend/tests/e2e/journey.spec.ts` (wizard → génération réelle → planning affiché → validé → cockpit) |
 | Contrat schémas engine⇄backend | `backend` `CrossStack/ContractSchemaTest` |
