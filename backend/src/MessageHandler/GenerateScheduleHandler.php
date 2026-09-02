@@ -26,6 +26,7 @@ use App\Service\StructureSnapshotter;
 use App\Service\TenantConnectionContext;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use LogicException;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\Exception\RecoverableMessageHandlingException;
@@ -435,9 +436,9 @@ final class GenerateScheduleHandler
      * PR-3 (comblement) — les placements de la version POINTÉE du socle (plan SEASON de la saison),
      * RÉFÉRENCE du comblement émise au moteur en `socleReferenceAssignments`. En comblement le socle
      * est GARANTI en vigueur (SocleGuard, `FillPeriodPlanController`) : le pointeur est non-null.
-     * Le `null ===` ci-dessous n'est donc PAS un repli métier (« et si pas de version » est un cas
-     * IMPOSSIBLE en fill) — c'est un simple rétrécissement de type ; sans version pointée il n'y a
-     * rien à référencer, on rend `[]` (chemin byte-identique, aucune greffe).
+     * « Et si le socle n'a pas de version ? » est un cas IMPOSSIBLE en fill (CLAUDE.md §6) — pas un
+     * repli à écrire : on échoue BRUYAMMENT (le plan passe FAILED avec ce message) plutôt que de
+     * combler en silence sans référence.
      *
      * @return array<ScheduleSlotTemplate>
      */
@@ -445,7 +446,7 @@ final class GenerateScheduleHandler
     {
         $socleScheduleId = $this->schedulePlanProvisioner->chosenOfSeasonPlan($schedule->getSeasonId());
         if (null === $socleScheduleId) {
-            return [];
+            throw new LogicException(\sprintf('Comblement du plan %s sans version pointée du socle : SocleGuard aurait dû refuser le fill en amont.', $schedule->getId()));
         }
 
         return $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy(
