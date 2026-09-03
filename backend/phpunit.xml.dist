@@ -6,6 +6,9 @@
  >
     <extensions>
         <bootstrap class="DAMA\DoctrineTestBundle\PHPUnit\PHPUnitExtension"/>
+        <!-- Après DAMA : relâche la transaction du parent avant une classe de tests isolés
+             (#[RunInSeparateProcess]) — sinon l'enfant attend les verrous du parent. -->
+        <bootstrap class="App\Tests\ReleasesParentTransactionBeforeIsolatedTests"/>
     </extensions>
     <testsuites>
         <testsuite name="Unit">
