@@ -159,7 +159,9 @@ make cs-fix           # CS-Fixer (auto-format)
 make db-init-test     # crée + migre la base de TEST (requis avant `make phpunit`)
 make phpunit          # PHPUnit --group phase1 (le gate bloquant)
 make db-init          # crée + migre la base de dev — idempotent, ne détruit rien
-make db-reset         # drop + recreate + migre la base de dev (DESTRUCTIF)
+make db-empty         # drop + recreate + migre la base de dev VISÉE (DESTRUCTIF, gardé — commands.md)
+make seed-bccl        # club dev BCCL réel (create-only, no-op si présent — commands.md)
+make seed-demo        # club de démo (créer OU reset — commands.md)
 make jwt-keys         # génère le keypair JWT s'il est absent (config/jwt/*.pem, gitignoré)
 make migration-diff   # génère une migration depuis le diff d'entités
 make migration-migrate # applique les migrations en attente (suit APP_ENV)

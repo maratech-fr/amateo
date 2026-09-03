@@ -8,7 +8,7 @@
 # REFUSES to let the script proceed unless that database is the AI sandbox
 # (`amateo_dev`) or a test database (`*_test`).
 #
-# Why it exists: the mutating scripts purge/seed at will (`doctrine:fixtures:load`,
+# Why it exists: the mutating scripts purge/seed at will (`app:demo:seed`,
 # club creation, deletions). One dev database used to be BOTH the founder's play
 # base AND the AI's playground — a single smoke could wipe the founder's data.
 # The split gives the founder `amateo_local` (via `make play`); this guard is

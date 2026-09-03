@@ -67,11 +67,11 @@ cloudflared tunnel --url http://localhost:8081
 envoie. Fin de démo : **CTRL+C** dans la fenêtre PowerShell → l'URL ne répond plus. La stack Docker,
 elle, continue de tourner en local (`docker compose down` si on veut aussi l'arrêter).
 
-Données de démo : la base est vide par défaut, `make -C backend fixtures` seede un club complet.
+Données de démo : la base est vide par défaut, `make -C backend seed-demo` seede le club de démo complet.
 
 ## 4bis. La démo en rendez-vous se joue en DEUX temps (P2-4, 2026-08-20)
 
-1. **Le club de démonstration seedé** (« Démo Basket Club », `app:demo:seed-bccl` — structure
+1. **Le club de démonstration seedé** (« Démo Basket Club », `app:demo:seed` — structure
    terrain du BCCL sous identités FICTIVES) montre l'appli déjà peuplée.
 2. **Le club DU PROSPECT naît devant lui, depuis le vrai formulaire d'inscription** —
    `/register`, code FFBB du prospect, adresse démo fixe (`demo@amateo.fr`). Le rail register reste

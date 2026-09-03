@@ -17,10 +17,9 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
 /**
  * Seeds the GLOBAL holiday reference tables (vacances scolaires + jours fériés)
  * from versioned offline JSON — no network. Idempotent upsert by natural key.
- * Shared by the `app:{school,public}-holidays:seed` commands AND the data
- * fixtures, so **every** fixture-load path (make fixtures, doctrine:fixtures:load,
- * smoke, CI) populates them — a seeded club's school zone then actually shows
- * holidays (before this, the seed lived only in `make fixtures`).
+ * Driven by the `app:{school,public}-holidays:seed` commands, which every seed
+ * path runs (`make seed-holidays`, `make play`, the smoke, CI) — a seeded club's
+ * school zone then actually shows holidays.
  *
  * @phpstan-type SeedResult array{created: int, updated: int, skipped: int}
  */

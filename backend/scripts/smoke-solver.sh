@@ -41,9 +41,9 @@ if ! php 'test -f config/jwt/private.pem && echo yes' | grep -q yes; then
   php 'php bin/console lexik:jwt:generate-keypair --overwrite --no-interaction' >/dev/null
 fi
 
-# 3. Dev fixtures — need a seeded club the smoke USER belongs to. Multiple
-#    clubs exist in fixtures (BCCL + the demo club), so pick the club tied to
-#    USER_EMAIL's membership — a bare "club LIMIT 1" can return a club the
+# 3. Dev seed — need a seeded club the smoke USER belongs to. The smoke user
+#    (mara.mb@bccl.fr) is the manager of the REAL BCCL dev club; pick the club
+#    tied to USER_EMAIL's membership — a bare "club LIMIT 1" can return a club the
 #    token user isn't a member of, yielding a 403 at generate time.
 club_for_user() {
   php "php bin/console dbal:run-sql \"SELECT c.id FROM club c JOIN club_user cu ON cu.club_id = c.id JOIN app_user u ON u.id = cu.user_id WHERE u.email = '$USER_EMAIL' LIMIT 1\"" \
@@ -51,24 +51,26 @@ club_for_user() {
 }
 CLUB_ID=$(club_for_user)
 if [[ -z "$CLUB_ID" ]]; then
-  warn "no club for $USER_EMAIL — loading fixtures"
-  # Fixtures purge+reseed via the ADMIN connection, NEVER the runtime amateo_app:
-  # BasketballInit refuses it, and the purge would hit tables whose DELETE is
-  # revoked for the app role (opponent_directory, shared_competition_deadline),
-  # dying with « permission denied ». Inject DATABASE_ADMIN_URL exactly like
-  # `make fixtures` / the CI « Load dev fixtures » step (read .env then .env.local,
-  # last wins) — resolved INSIDE the container so it honours the same dotenv the
-  # sandbox guard resolved. --purge-exclusions=subscription_plan: the offer
-  # catalogue is GLOBAL (seeded by migration), purging it breaks the beta pin.
+  warn "no club for $USER_EMAIL — seeding the real BCCL dev club + holiday reference data"
+  # All three seeds are IDEMPOTENT: app:bccl:seed is create-only (no-op if the
+  # club is already there), the holiday seeds upsert by natural key. The BCCL
+  # seeder traverses the RLS and REFUSES the runtime amateo_app connection (its
+  # superuser guard fails fast); inject DATABASE_ADMIN_URL exactly like
+  # `make seed-bccl` (read .env then .env.local, last wins) — resolved INSIDE the
+  # container so it honours the same dotenv the sandbox guard resolved. The holiday
+  # tables are GLOBAL (no club_id, no RLS), so their seeds run on the plain
+  # connection.
   dc exec -T -e APP_ENV=dev -u 1000:1000 php-fpm sh -c '
     cd /app/backend
     DBU=$(cat .env .env.local 2>/dev/null | sed -n "s/^DATABASE_ADMIN_URL=//p" | tail -n1 | tr -d "\"")
-    [ -n "$DBU" ] || { echo "DATABASE_ADMIN_URL introuvable dans backend/.env — fixtures ne peuvent pas tourner sur la connexion admin" >&2; exit 1; }
-    DATABASE_URL="$DBU" php bin/console doctrine:fixtures:load --no-interaction --purge-exclusions=subscription_plan
+    [ -n "$DBU" ] || { echo "DATABASE_ADMIN_URL introuvable dans backend/.env — le seed ne peut pas tourner sur la connexion admin" >&2; exit 1; }
+    DATABASE_URL="$DBU" php bin/console app:bccl:seed --no-interaction
+    php bin/console app:school-holidays:seed --no-interaction
+    php bin/console app:public-holidays:seed --no-interaction
   ' >/dev/null
   CLUB_ID=$(club_for_user)
 fi
-[[ -n "$CLUB_ID" ]] || die "could not resolve a club id (fixtures failed?)"
+[[ -n "$CLUB_ID" ]] || die "could not resolve a club id for $USER_EMAIL — the sandbox DB may be half-seeded (club present but no membership). Empty it and retry: backend/scripts/with-sandbox.sh sh -c 'make -C backend CONFIRM=yes db-empty' then re-run this smoke."
 ok "club id: $CLUB_ID"
 
 # 3bis. A club whose SEASON plan POINTS a version refuses a new one (409, ADR-0002

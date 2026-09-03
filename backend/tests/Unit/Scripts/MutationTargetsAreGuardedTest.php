@@ -13,7 +13,7 @@ use PHPUnit\Framework\TestCase;
  * `scripts/lib/mutation-confirm.sh`.
  *
  * Le garde fail-closed (sandbox-guard.sh) couvre les SCRIPTS de l'IA, PAS les
- * cibles Make : `make fixtures`, `make db-reset`, `make seed-bccl` mutaient/
+ * cibles Make : `make db-empty`, `make seed-demo`, `make seed-bccl` mutaient/
  * purgeaient la base VISÉE sans aucune vérification — en mode play, elles
  * détruisaient amateo_local. La correction attache à chacune une confirmation
  * (silencieuse sur amateo_dev/*_test, refus sec sur la prod, question sur
@@ -31,10 +31,9 @@ final class MutationTargetsAreGuardedTest extends TestCase
      */
     public static function destructiveTargets(): iterable
     {
-        yield 'fixtures' => ['fixtures'];
-        yield 'db-reset' => ['db-reset'];
+        yield 'db-empty' => ['db-empty'];
+        yield 'seed-demo' => ['seed-demo'];
         yield 'seed-bccl' => ['seed-bccl'];
-        yield 'seed-bccl-dev' => ['seed-bccl-dev'];
     }
 
     public function testTheConfirmationLibraryExists(): void

@@ -14,7 +14,7 @@
   | Requête HTTP | `TenantFilterListener` (clear en début de requête, set après résolution du club) |
   | Register (anonyme) | `AuthController` dans les closures `wrapInTransaction`, dès que le club est connu ; `clear()` en `finally` |
   | Worker messenger | `GenerateScheduleHandler` / `ExportPdfHandler` : `setClubId($message->getClubId())` en 1re instruction, `clear()` en `finally` (le message porte le `clubId`) |
-  | Fixtures | `BasketballInit` (tournent en admin de toute façon) |
+  | Seed dev/démo | `BcclSeeder` (`app:bccl:seed`/`app:demo:seed`, garde superuser explicite — tournent en admin de toute façon, pas de fixtures Doctrine depuis le 2026-09-03) |
   | **Page publique doléances (anonyme, #10)** | `PublicCoachWishController` : `setClubId()` depuis le `club_id` porté par le `CoachWishToken`, dès qu'il est résolu ; `clear()` en `finally`. Route `PUBLIC_ACCESS` — **aucun JWT**, le token EST le porteur du tenant |
 
 ## Exceptions au modèle — les trois tables qui ne suivent pas le motif
@@ -47,7 +47,7 @@ du journal reste tenue contre `amateo_app`). Supervision totale via
 - `php bin/console dbal:run-sql --connection admin "…"`,
 - le futur dashboard super-admin (P2) devra utiliser cette connexion.
 
-`DATABASE_ADMIN_URL` alimente la connexion Doctrine `admin` — utilisée par les **migrations** (`doctrine_migrations.connection: admin`, donc aussi `make migration-migrate` et `make bootstrap`), `db-init`/`db-init-test`/`db-reset*` et `make fixtures` (le purge DELETE serait silencieusement partiel sous RLS). **Ne jamais pointer `DATABASE_URL` runtime dessus** — `RlsIsolationTest::testConnectionUserIsNotSuperuser` le garde.
+`DATABASE_ADMIN_URL` alimente la connexion Doctrine `admin` — utilisée par les **migrations** (`doctrine_migrations.connection: admin`, donc aussi `make migration-migrate` et `make bootstrap`), `db-init`/`db-init-test`/`db-empty*` et les commandes de seed `app:bccl:seed`/`app:demo:seed` (le purge DELETE d'`app:demo:seed` serait silencieusement partiel sous RLS sans elle). **Ne jamais pointer `DATABASE_URL` runtime dessus** — `RlsIsolationTest::testConnectionUserIsNotSuperuser` le garde.
 
 ## Caveats
 

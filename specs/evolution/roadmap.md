@@ -1,4 +1,4 @@
-# Roadmap (55) — ce qui reste à faire
+# Roadmap (56) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -122,6 +122,12 @@
 ---
 
 ## P4 — Dette & polish (avant GA, par lots opportunistes)
+
+### Lot commandes seed/reset, 2026-09-03 (un seul chemin de remplissage)
+
+| # | Sujet | Impact | Effort | Note |
+|---|-------|:---:|:---:|---|
+| P4-163 | **`doctrine/doctrine-fixtures-bundle` n'a plus aucun appelant — à retirer** | ⚪ | XS | Le lot du 2026-09-03 (renommage `app:bccl:seed`/`app:demo:seed`, suppression de `BasketballInit`/`HolidayReferenceFixtures`/`make fixtures`) a fait disparaître le dernier appel à `doctrine:fixtures:load` — vérifié : aucune classe `src/DataFixtures/` n'implémente plus `FixtureInterface`, `rtk grep -rn "doctrine:fixtures:load\|Doctrine\\\\Bundle\\\\FixturesBundle"` sur `backend/src` ne rend que l'entité métier `Fixture` (rencontre sportive, sans rapport). Le bundle reste néanmoins déclaré (`backend/composer.json:105`, `backend/config/bundles.php:13`, `dev`+`test` seulement). Retrait = PR dédiée (désinstaller le paquet, retirer la ligne `bundles.php`), volontairement pas fait dans le même lot pour ne pas mélanger une suppression de commandes et un retrait de dépendance |
 
 ### Fiabilité CI, 2026-08-31 (deux flakes récurrents)
 

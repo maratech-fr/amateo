@@ -46,22 +46,38 @@ restart: .env ## Restart all services (ne réinstalle pas — un redémarrage n'
 # `amateo_dev` = bac à sable de l'IA (défaut committé). `amateo_local` = base de
 # JEU du fondateur, que les scripts mutateurs de l'IA REFUSENT (sandbox-guard).
 # `make play` bascule toute la stack dev vers amateo_local (backend/.env.local,
-# gitignoré), la crée/migre et — SEULEMENT si le club de démo BCCL est ABSENT —
-# la seede ; `make sandbox` retire la surcharge et revient à amateo_dev. Les
-# workers long-lived sont redémarrés car ils tiennent la config DB en mémoire.
-# ⚠ NON DESTRUCTEUR : `seed-bccl-if-absent` ne touche à rien si le club existe
-# déjà — le travail du fondateur sur BCCL survit à un re-`make play`. Le geste
-# de RESET explicite reste `make -C backend seed-bccl` (créer OU reset, voulu).
-play: .env ## Bascule vers la base de JEU du fondateur (amateo_local) + seed BCCL si absent + vacances
+# gitignoré), la crée/migre puis la seede ; `make sandbox` retire la surcharge et
+# revient à amateo_dev. Les workers long-lived sont redémarrés car ils tiennent la
+# config DB en mémoire.
+# ⚠ NON DESTRUCTEUR : `seed-bccl` (club réel) est create-only, no-op s'il existe
+# déjà ; `IF_ABSENT=1 seed-demo` ne seede la démo que si elle est absente. Le
+# travail du fondateur survit donc à un re-`make play`. Le RESET explicite de la
+# démo reste `make -C backend seed-demo` (créer OU reset, voulu) ; vider la base
+# entière = `make db-empty` / `make reset`.
+play: .env ## Bascule vers la base de JEU du fondateur (amateo_local) + seed BCCL/démo si absents + vacances
 	$(MAKE) -C backend play-env
 	$(MAKE) -C backend db-init
-	$(MAKE) -C backend seed-bccl-if-absent
+	$(MAKE) -C backend CONFIRM=yes seed-bccl
+	$(MAKE) -C backend CONFIRM=yes IF_ABSENT=1 seed-demo
 	$(MAKE) -C backend seed-holidays
 	$(DOCKER_COMPOSE) restart messenger-worker cron-runner
 
 sandbox: .env ## Revient au bac à sable de l'IA (amateo_dev) : retire backend/.env.local
 	$(MAKE) -C backend sandbox-env
 	$(DOCKER_COMPOSE) restart messenger-worker cron-runner
+
+# Vide la base ACTUELLEMENT visée (drop + create + migrate, aucun seed). En mode
+# play c'est amateo_local ; en bac à sable, amateo_dev — la garde interactive
+# (mutation-confirm) nomme la base avant de détruire.
+db-empty: .env ## Vide (drop+create+migrate) la base dev ACTUELLEMENT visée — aucun seed
+	$(MAKE) -C backend db-empty
+
+# `reset` = composition littérale : vide la base visée PUIS `make play`. En bac à
+# sable, cela vide amateo_dev puis bascule + seede amateo_local (amateo_dev reste
+# alors vide) ; en mode play, cela vide amateo_local puis la re-seede à neuf.
+reset: .env ## Vide la base visée puis rebascule en mode play (db-empty + play)
+	$(MAKE) db-empty
+	$(MAKE) play
 
 install: .env ## Install backend and engine development dependencies
 	$(MAKE) -C backend install

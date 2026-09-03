@@ -6,7 +6,7 @@ namespace App\Service\Basketball;
 
 /**
  * Canonical basketball sport-category catalog — the single source of truth for
- * both the dev fixtures (BasketballInit) and per-club seeding at registration
+ * both the dev seed (BcclSeeder) and per-club seeding at registration
  * (AuthController::seedNewClub), which used to diverge (18 vs 9 categories,
  * "Senior M" vs "Seniors M", gendered vs not).
  *

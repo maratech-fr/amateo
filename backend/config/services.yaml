@@ -96,7 +96,7 @@ services:
             # Dev/test-only BCCL create-only seed — registered in services_dev.yaml
             # + services_test.yaml so it never reaches the prod container (nor
             # `bin/console list` there); a runtime guard also refuses prod.
-            - '../src/Command/SeedBcclDevCommand.php'
+            - '../src/Command/BcclSeedCommand.php'
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

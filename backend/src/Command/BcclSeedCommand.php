@@ -21,9 +21,10 @@ use Symfony\Component\HttpKernel\KernelInterface;
  * exploitable.
  *
  * CREATE-ONLY, jamais reset. La base de jeu du fondateur EST son travail : cette
- * commande ne seede QUE si le club est absent, et refuse tout net sinon —
- * contrairement à `app:demo:seed-bccl` (créer OU RESET, qui purge le workspace).
- * Le RESET délibéré passe par `make fixtures` sur une base jetable.
+ * commande ne seede QUE si le club est absent ; s'il existe déjà, elle NE FAIT
+ * RIEN (no-op, SUCCESS) — contrairement à `app:demo:seed` (créer OU RESET, qui
+ * purge le workspace). Le no-op est ce qui permet à `make play` de la rappeler à
+ * chaque bascule sans détruire le travail du fondateur.
  *
  * Dev/test seulement, sur DEUX couches : cette classe est exclue de l'auto-
  * enregistrement (`services.yaml`) et n'est déclarée que dans `services_dev.yaml`
@@ -32,15 +33,15 @@ use Symfony\Component\HttpKernel\KernelInterface;
  * Le club porte des identités RÉELLES (nom, coachs, gestionnaire `mara.mb@bccl.fr`) :
  * invisible en prod par construction, il n'expose donc aucune donnée personnelle.
  *
- * ⚠ Comme `make fixtures` et `app:demo:seed-bccl`, le seeder traverse la RLS et
- * exige la connexion ADMIN : lancer sous `DATABASE_URL=$DATABASE_ADMIN_URL` — le
- * garde superuser du seeder échoue vite sinon.
+ * ⚠ Comme `app:demo:seed`, le seeder traverse la RLS et exige la connexion ADMIN :
+ * lancer sous `DATABASE_URL=$DATABASE_ADMIN_URL` — le garde superuser du seeder
+ * échoue vite sinon. `make seed-bccl` injecte l'URL admin.
  */
 #[AsCommand(
-    name: 'app:seed:bccl-dev',
-    description: 'Seed the real BCCL dev club (create-only, never resets). Needs the admin connection, like make fixtures.',
+    name: 'app:bccl:seed',
+    description: 'Seed the real BCCL dev club (create-only, no-op if already present). Needs the admin connection.',
 )]
-final class SeedBcclDevCommand extends Command
+final class BcclSeedCommand extends Command
 {
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -65,9 +66,9 @@ final class SeedBcclDevCommand extends Command
 
         $existing = $this->entityManager->getRepository(Club::class)->findOneBy(['ffbbClubCode' => $profile->ffbbCode]);
         if ($existing instanceof Club) {
-            $io->error('The BCCL dev club already exists — nothing touched. This command only creates, it never resets; use make fixtures on a disposable database.');
+            $io->success('The BCCL dev club is already present — nothing touched (create-only, never resets).');
 
-            return Command::FAILURE;
+            return Command::SUCCESS;
         }
 
         $club = $this->seeder->run($this->entityManager, $profile);

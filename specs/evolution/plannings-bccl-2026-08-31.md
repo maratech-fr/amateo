@@ -121,9 +121,10 @@ voulu ; ne pas « harmoniser » vers la fusion.
   (`BcclSeeder.php:1316-1332`) — une base fraîche ne naît plus « périmée » (gardé par
   `BcclSeederIdempotenceTest.php:142-151`).
 - ✅ **`make play` seede désormais le club dev BCCL RÉEL (avec plannings) + le club démo — corrigé
-  (P2-58 « PR seeder finale », PR ouverte, non mergée)** : `app:seed:bccl-dev` (create-only, refuse
-  si le club existe) fait naître le BCCL réel via `BcclSeedProfile::dev()` ; `make play` l'appelle
-  quand le club est absent (`seed-bccl-if-absent`), en plus du club de démo. Détail :
+  (P2-58 « PR seeder finale », PR ouverte, non mergée)** : `app:bccl:seed` (create-only, renommée le
+  2026-09-03, ex `app:seed:bccl-dev` — ne fait RIEN si le club existe) fait naître le BCCL réel via
+  `BcclSeedProfile::dev()` ; `make play` l'appelle directement (`seed-bccl`), et pose le club de
+  démo via `IF_ABSENT=1 seed-demo` (`app:demo:seed --if-absent`). Détail :
   [`backend/docs/commands.md`](../../backend/docs/commands.md).
 - **La mémoire « recalage seed à faire » était périmée** : les 90 placements du fichier saison
   sont DÉJÀ identiques au seeder (diff mécanique, seul écart l'accent Veterans), la correction
@@ -136,7 +137,7 @@ voulu ; ne pas « harmoniser » vers la fusion.
 
 | étape | état |
 |---|---|
-| Base de jeu = BCCL réel + plannings (via `make fixtures`) | ✅ 2026-08-31 |
+| Base de jeu = BCCL réel + plannings (via le seed dev — fixtures Doctrine supprimées depuis, cf. ligne PR seeder finale) | ✅ 2026-08-31 |
 | Diff seeder ↔ fichier saison (90=90) | ✅ vérifié |
 | Consignation du programme (ce fichier) | ✅ |
 | PR seeder : drapeaux « périmé » sur base fraîche | ✅ 2026-09-01 (P5-23, #809) — remise à zéro en fin de seed, `BcclSeeder.php:1316-1332` |
@@ -153,7 +154,7 @@ voulu ; ne pas « harmoniser » vers la fusion.
 | **Exercice solveur reprise 17 août — 1ʳᵉ passe (sandbox)** | ✅ 2026-09-01 — INFEASIBLE à froid, 3 causes bisectées : conflit coach-joueur×bloc (→ D14, chantier livré), 2 indispos coach violées par la cible (Nicolas·jeudi/U18M1, Thomas·vendredi/U15M1), capacité 2 restée sur les 5 cases mutualisées de la grille de reprise. Mesure : cible = optimum − 18 pts (espace dégénéré) ; « coller au plan » recadré par le fondateur : pas de règles inventées, on arbitre l'application. |
 | Exemption coach-joueur sur case de bloc active (D14) — moteur | ✅ 2026-09-01 (#810, mergée) — payload d'origine de l'exercice re-solvé COMPLETED |
 | **Exercice solveur reprise 17 août — 2ᵉ passe (gestes construits)** | ✅ 2026-09-01 — méthode « comparer la réalité à l'application et en déduire des contraintes réalistes » : décochages (Thomas·ven, Nicolas·jeu, SM2·ven), règle « SM mutualisés ≥ 20:30 », indispo « Nicolas lun+ven », réservations fanion (bloc SM lun/mar/jeu 20:45, bloc SF mer/ven 19:30), capacités → 1. Résultat : **17/25**, adultes 100 % ; les 8 déplacements restants jugés EN LOT par le verdict moteur : `valid: true`, zéro violation (compromis informatifs seulement). Barre ≤ 20 % de manuel : 8/25 = 32 %, assumé par le fondateur — la boucle est FERMÉE. |
-| Consignation seed des gestes du 17 — COMPLÈTE | ✅ 2026-09-01 — réservations fanion, capacités occupant-unique, 3 décochages de permanentes (PR #811), puis les **3 contraintes de genèse** pendues à l'entrée-enfant de la semaine (P2-59 PR-1, #814). `make fixtures` reproduit l'état construit entier |
+| Consignation seed des gestes du 17 — COMPLÈTE | ✅ 2026-09-01 — réservations fanion, capacités occupant-unique, 3 décochages de permanentes (PR #811), puis les **3 contraintes de genèse** pendues à l'entrée-enfant de la semaine (P2-59 PR-1, #814). Le seed dev (`app:bccl:seed`) reproduit l'état construit entier |
 | P2-59 modèle FAIT/GENÈSE (2 PRs backend+frontend) | ✅ 2026-09-01 — **SOLDÉE**, trace `etat-des-lieux.md` §3, comportement gradué `accueil-cockpit-temporel.md` §9ter.c/e |
 | P2-60 unité de placement = bloc ([`unite-de-placement-bloc.md`](unite-de-placement-bloc.md)) | ⬜ règle validée, GO d'implémentation fondateur attendu |
 | **Exercice solveur reprise 24 août + consignation** | ✅ 2026-09-01 — document corrigé par le fondateur en route (grille 19:00, mardi, bloc U18F, SM2 ×4), gestes construits (réservations fanion, 16 genèses, 3 décochages, liens joueurs INTACTS (doctrine : jamais coupés — la réservation impose, le cri du moteur est assumé)), généré 40/40 OPTIMAL (19/40 exacts), chemin manuel PROUVÉ (24 déplacements en 3 lots, verdict vert à chaque pas — après les 4 correctifs verdict #817). Seed consigné (#819, mergée). Trouvailles tracées : P2-61 (stabilité vs version validée), P4-158/159/160 |
@@ -166,4 +167,4 @@ voulu ; ne pas « harmoniser » vers la fusion.
 | Semaine charnière au choix (D4) — cadrage | ⬜ |
 | Durée d'indispo modifiable (D3) — cadrage | ⬜ |
 | **Répartition des week-ends de MATCHS au seeder** (« Répartition WE prévisionnel.xlsx », `business/5-donnees/plannings-bccl/`, importé le 2026-09-02) — le planning de matchs réel du BCCL en **Semaine A / Semaine B**, à consigner au seeder APRÈS la fin du lot overlay ; cadrage à faire (format xlsx à dépouiller, mapping vers le module matchs — rotations/fenêtres) | ⬜ demande fondateur 2026-09-02 |
-| PR seeder finale : overlay transcrit + `make play` complet | ✅ 2026-09-03 (PR ouverte, non mergée) — overlay transcrit livré au lot précédent (§ ci-dessus) ; `make play` seede désormais le club BCCL réel (create-only, `app:seed:bccl-dev`) EN PLUS du club de démo, et rejoue les vacances scolaires/fériés (`seed-holidays`) — non destructif, ne touche rien si les deux clubs existent déjà. Détail : [`backend/docs/commands.md`](../../backend/docs/commands.md) |
+| PR seeder finale : overlay transcrit + `make play` complet | ✅ 2026-09-03 (PR ouverte, non mergée) — overlay transcrit livré au lot précédent (§ ci-dessus) ; `make play` seede désormais le club BCCL réel (create-only, `app:bccl:seed`) EN PLUS du club de démo (`IF_ABSENT=1 seed-demo`), et rejoue les vacances scolaires/fériés (`seed-holidays`) — non destructif, ne touche rien si les deux clubs existent déjà. Un seul chemin de remplissage reste : les fixtures Doctrine (`BasketballInit`, `make fixtures`) sont supprimées. Détail : [`backend/docs/commands.md`](../../backend/docs/commands.md) |

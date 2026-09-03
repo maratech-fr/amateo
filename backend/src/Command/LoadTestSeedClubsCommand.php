@@ -24,13 +24,13 @@ use Symfony\Component\HttpKernel\KernelInterface;
  * (absent from the prod/test container, so absent from `bin/console list`
  * there), AND a runtime guard refuses any environment other than `dev`.
  *
- * ⚠ Like `make fixtures` and `app:demo:seed-bccl`, needs the ADMIN connection
- * (seed traverses the RLS): run under `DATABASE_URL=$DATABASE_ADMIN_URL` —
- * the seeder's superuser guard fails fast otherwise.
+ * ⚠ Like `app:demo:seed`, needs the ADMIN connection (seed traverses the RLS):
+ * run under `DATABASE_URL=$DATABASE_ADMIN_URL` — the seeder's superuser guard
+ * fails fast otherwise.
  */
 #[AsCommand(
     name: 'app:load-test:seed-clubs',
-    description: 'Seed N throwaway load-test clubs (dev only). Needs the admin connection, like make fixtures.',
+    description: 'Seed N throwaway load-test clubs (dev only). Needs the admin connection.',
 )]
 final class LoadTestSeedClubsCommand extends Command
 {

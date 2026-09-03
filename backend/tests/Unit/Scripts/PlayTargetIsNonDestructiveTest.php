@@ -10,17 +10,17 @@ use PHPUnit\Framework\TestCase;
 /**
  * P4-141 addendum — `make play` doit être NON DESTRUCTEUR.
  *
- * `app:demo:seed-bccl` est « créer OU RESET » : il PURGE le workspace du club de
- * démo (ErasedClubPurger) avant de re-seeder. La cible racine `make play`
- * l'appelait INCONDITIONNELLEMENT → chaque re-`make play` détruisait le travail
- * du fondateur sur BCCL. La correction : `make play` passe par
- * `seed-bccl-if-absent`, qui ne seede QUE si le club de démo est absent.
- *
- * Ce test lit la recette du target `play` dans le Makefile RACINE et exige :
- *   - qu'elle invoque `seed-bccl-if-absent` (le chemin non destructeur) ;
- *   - qu'elle n'invoque JAMAIS le seed destructeur `seed-bccl` en direct.
- * Avec l'ancien comportement (`$(MAKE) -C backend seed-bccl`), les deux
- * assertions ROUGISSENT — le test falsifie bien la régression.
+ * `app:demo:seed` est « créer OU RESET » : il PURGE le workspace du club de démo
+ * (ErasedClubPurger) avant de re-seeder — SAUF avec `--if-absent`, qui ne seede
+ * que si le club est absent et ne touche à rien sinon. `app:bccl:seed` (le club
+ * réel) est create-only : no-op si le club est déjà là. La cible racine
+ * `make play` doit donc :
+ *   - seeder le club réel via `seed-bccl` (create-only, no-op si présent) ;
+ *   - seeder la démo via le mécanisme if-absent (`IF_ABSENT=1 seed-demo`), JAMAIS
+ *     `seed-demo` nu (qui purgerait le workspace de démo à chaque re-`make play`) ;
+ *   - ne JAMAIS vider la base (`db-empty`) ni recharger des fixtures.
+ * Avec un `seed-demo` nu, l'assertion à lookbehind ROUGIT — le test falsifie bien
+ * la régression.
  *
  * NON gatant (pas un axe §7.1) : tourne dans `unit-tests`, ni dans `ci.yml`
  * (job `blocking-tests`) ni dans `docs/testing/blocking-tests.md`.
@@ -40,17 +40,37 @@ final class PlayTargetIsNonDestructiveTest extends TestCase
         $recipe = $this->extractRecipe($contents, 'play');
         self::assertNotSame('', $recipe, 'Le target `play` doit exister dans le Makefile racine.');
 
+        // Le club réel : create-only, no-op si présent — appelé directement.
         self::assertStringContainsString(
-            'seed-bccl-if-absent',
+            'seed-bccl',
             $recipe,
-            '`make play` doit passer par `seed-bccl-if-absent` (non destructeur), pas par le seed direct.',
+            '`make play` doit poser le club réel via `seed-bccl` (create-only, no-op si présent).',
         );
 
-        // `seed-bccl` NON suivi de `-if-absent` = le seed destructeur (créer OU RESET).
-        self::assertDoesNotMatchRegularExpression(
-            '/seed-bccl(?!-if-absent)/',
+        // La démo : uniquement via le mécanisme if-absent (non destructeur).
+        self::assertStringContainsString(
+            'IF_ABSENT=1 seed-demo',
             $recipe,
-            '`make play` ne doit JAMAIS invoquer le seed destructeur `seed-bccl` en direct (il purge BCCL).',
+            '`make play` doit seeder la démo via `IF_ABSENT=1 seed-demo` (non destructeur).',
+        );
+
+        // Aucun `seed-demo` sans le préfixe `IF_ABSENT=1 ` (le seed destructeur créer OU RESET).
+        self::assertDoesNotMatchRegularExpression(
+            '/(?<!IF_ABSENT=1 )seed-demo/',
+            $recipe,
+            '`make play` ne doit JAMAIS invoquer `seed-demo` nu (il purge le workspace de démo).',
+        );
+
+        // Aucune purge de base ni rechargement de fixtures dans `make play`.
+        self::assertStringNotContainsString(
+            'db-empty',
+            $recipe,
+            '`make play` ne doit JAMAIS vider la base (`db-empty`) — il ne fait que créer/migrer + seeder si absent.',
+        );
+        self::assertStringNotContainsString(
+            'fixtures',
+            $recipe,
+            '`make play` ne doit plus charger de fixtures — un seul chemin de remplissage (seed).',
         );
     }
 

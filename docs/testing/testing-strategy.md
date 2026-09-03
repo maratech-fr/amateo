@@ -1,12 +1,12 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-02 (rotation `documentation-update`, PR-3 lot overlay — sans rapport direct
-avec le sujet de la PR). Re-confronté au code : les **SEPT jobs sans `needs`** (`frontend`,
-`dependency-audit`, `rector`, `secrets-scan`, `semgrep`, `engine-semantics`, `smoke-tests`)
-recomptés contre `ci.yml` ✓ ; `unit-tests` lance bien `phpunit tests/ --exclude-group contract`
-(le dossier entier, pas la testsuite `Unit`, `ci.yml:653`) ✓ ; `build-docker` `needs: [blocking-tests,
-engine-tests]` seulement (`ci.yml:993`) ✓ ; `DECLARED_ASYMMETRIES` reste **VIDE**
-(`test_hard_layer_parity_registry.py:94`) ✓. Reste du fichier non re-vérifié cette passe.
+Last verified @ 2026-09-03 (lot « un seul chemin de remplissage » + garde DAMA/isolation,
+`documentation-update`). Re-confronté au code : `App\Tests\ReleasesParentTransactionBeforeIsolatedTests`
+déclarée dans `phpunit.xml.dist` juste après l'extension DAMA (`backend/phpunit.xml.dist:7-11`) ✓ ;
+`backend/tests/ReleasesParentTransactionBeforeIsolatedTests.php` fait `DamaExtension::rollBack()`
+sur `TestSuite\Started` pour toute classe portant `#[RunInSeparateProcess]`/
+`#[RunTestsInSeparateProcesses]` ✓. Reste du fichier non re-sondé cette passe (le décompte des jobs
+CI, `DECLARED_ASYMMETRIES`, etc. datent de la passe du 2026-09-02, non re-vérifiés ici).
 Historique des passes : `git log -p --follow docs/testing/testing-strategy.md` — un stamp
 REMPLACE, il ne s'empile pas (DOC-33).
 
@@ -69,6 +69,8 @@ Layout: `Unit/` (Entity, Enum, Service — no DB) · `Integration/Api/` · `Secu
 ⚠️ **Le piège** : `phpunit.xml.dist` ne déclare que trois testsuites (`Unit`, `Integration`, `Contract`), or le job CI `unit-tests` lance **`phpunit tests/`, le dossier entier**. Valider en local avec `make -C backend test` (testsuite `Unit` seule) ou `make -C backend phpunit` (`--group phase1` seul) **laisse ces sept dossiers hors de vue** — deux échecs y ont dormi jusqu'à la CI. **Avant de pousser : `make -C backend tests-complete`**, miroir exact de la CI.
 
 Groups (PHP attributes): `#[Group('phase1')]`, `#[Group('integration')]`, `#[Group('contract')]`, `#[Group('unit')]`. Test isolation via DAMA DoctrineTestBundle; bootstrap `tests/bootstrap.php`.
+
+**Un test isolé (`#[RunInSeparateProcess]`/`#[RunTestsInSeparateProcesses]`) ne gèle plus le reste de la suite (2026-09-03).** `App\Tests\ReleasesParentTransactionBeforeIsolatedTests` (`backend/tests/ReleasesParentTransactionBeforeIsolatedTests.php`), extension PHPUnit déclarée dans `phpunit.xml.dist` juste APRÈS l'extension DAMA : au `TestSuite\Started` d'une classe portant un test isolé, elle force `DamaExtension::rollBack()` sur la transaction du processus PARENT. Pourquoi ce correctif : DAMA n'annule la transaction du test précédent qu'au `PreparationStarted` du SUIVANT — pour un test isolé, cet événement naît dans le processus ENFANT et n'atteint le parent qu'à la fin de l'enfant, donc le parent garde ses écritures non commitées (et leurs verrous) pendant toute la vie de l'enfant. Si l'enfant touche la même clé (constaté sur `priority_tier` id 1, créé par des tests API et retrouvé par `BcclSeeder` en find-or-create), c'est un **interblocage muet**, tranché seulement par `idle_in_transaction_session_timeout` (60 s sur `amateo_test`, réglé par `make db-init-test`, PR #281) qui tue la connexion du parent — et fait cascader tout le reste de la suite en « no connection to the server » (772 erreurs constatées le 2026-09-03 sur l'ordre `VenueUsageStatsApiTest` puis `BcclSeedCommandTest`). Détail complet (repro exacte, mécanique) : docblock du fichier.
 
 ### Blocking guardrails (`phase1`)
 | Test | Asserts |
