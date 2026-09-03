@@ -115,6 +115,30 @@ vi.mock("../queries", () => ({
   // P2-51 — la mutualisation par bloc. Le mock HONORE `enabled` (comme useReservations) : une
   // période non résolue ne doit pas servir les blocs du SOCLE.
   useSharedTrainingBlocks: (_planId?: string | null, enabled?: boolean) => ({ data: false === enabled ? [] : h.sharedBlocks }),
+  // P2-60 — le budget solo est DÉRIVÉ (miroir backend pour le test) des réservations et des blocs :
+  // residual = séances hebdo − séances de bloc ; individualUsed = réservations de l'équipe. Le front
+  // ne recalcule rien, il AFFICHE ce budget. Honore `enabled` comme useReservations.
+  useTeamSoloBudgets: (_planId?: string | null, enabled?: boolean) => ({
+    data:
+      false === enabled
+        ? []
+        : SEASON_TEAMS.map((t) => {
+            const blockSessions = h.sharedBlocks.filter((b) => b.teamIds.includes(t.id)).reduce((n, b) => n + b.commonSessions, 0);
+
+            return {
+              teamId: t.id,
+              schedulePlanId: null,
+              effectiveSessions: t.sessionsPerWeek,
+              blockSessions,
+              residual: t.sessionsPerWeek - blockSessions,
+              individualUsed: h.reservations.filter((r) => r.teamId === t.id).length,
+              inBlock: blockSessions > 0,
+            };
+          }),
+    isPending: false,
+    isError: false,
+    refetch: vi.fn(),
+  }),
   useTeamPeriodOverrides: () => ({ data: [] }),
   // P2-28 — les 4 règles bien-être résolues + leurs mutations (le détail du panneau est
   // couvert par ImplicitRulesPanel.test ; ici on ne garde que le CÂBLAGE dans l'étape).
@@ -794,7 +818,9 @@ describe("ConstraintsStep — Réserver tab (slot grid + modal)", () => {
     await user.selectOptions(screen.getByLabelText("Ajouter une équipe"), "t2");
     await user.click(screen.getByRole("button", { name: "Valider" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/n'a pas pu être enregistrée/);
+    // D3 (P2-60) — la phase 1 passe désormais par `apiErrorMessage` (comme le rail groupe) : une
+    // erreur réseau nue (pas un 422 porteur de message) retombe sur le message générique du helper.
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Une erreur est survenue/);
     expect(screen.getByRole("button", { name: "Valider" })).toBeInTheDocument(); // reste ouverte
 
     // Reprise : seule la création restante repart, le retrait déjà passé n'est PAS rejoué.
@@ -804,8 +830,9 @@ describe("ConstraintsStep — Réserver tab (slot grid + modal)", () => {
     expect(h.resCreate).toHaveBeenCalledTimes(2);
   });
 
-  it("hides a team that reached its sessionsPerWeek from the picker", async () => {
-    // t2 (Fanion) has 2 sessions and 2 reservations elsewhere → maxed, absent from the picker.
+  it("hides a team whose solo budget is exhausted, and labels the rest with its residual (P2-60)", async () => {
+    // t2 (Fanion) : budget solo épuisé (residual 2, 2 réservations individuelles → 0 restant) →
+    // absent du picker ; SM1 reste, étiquetée de son résidu (D2).
     h.reservations = [
       { id: "ra", calendarEntryId: null, teamId: "t2", venueId: "v1", dayOfWeek: 3, startTime: "18:00", durationMinutes: 90 },
       { id: "rb", calendarEntryId: null, teamId: "t2", venueId: "v1", dayOfWeek: 4, startTime: "18:00", durationMinutes: 90 },
@@ -815,8 +842,8 @@ describe("ConstraintsStep — Réserver tab (slot grid + modal)", () => {
 
     await openSlot(user);
     const picker = screen.getByLabelText("Ajouter une équipe");
-    expect(within(picker).queryByRole("option", { name: "Fanion" })).toBeNull();
-    expect(within(picker).getByRole("option", { name: "SM1" })).toBeInTheDocument();
+    expect(within(picker).queryByRole("option", { name: /^Fanion/ })).toBeNull();
+    expect(within(picker).getByRole("option", { name: "SM1 — reste 2 créneaux" })).toBeInTheDocument();
   });
 });
 

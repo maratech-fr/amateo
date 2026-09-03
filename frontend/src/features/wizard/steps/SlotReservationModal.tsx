@@ -9,7 +9,7 @@ import { apiErrorMessage } from "@/shared/api/errors";
 
 import type { Closure } from "@/features/cockpit/api";
 
-import type { PriorityTier, Reservation, SharedTrainingBlock, Team, TeamCoach, Venue, VenueTrainingSlot } from "../api";
+import type { PriorityTier, Reservation, SharedTrainingBlock, Team, TeamCoach, TeamSoloBudget, Venue, VenueTrainingSlot } from "../api";
 import { conflictingReservation, mainCoachByTeam } from "../lib/coachDoubleBooking";
 import { dayLabel, hhmm } from "../lib/days";
 import { closureLabel } from "../lib/venueClosures";
@@ -50,6 +50,13 @@ interface Props {
   /** P2-51 — les BLOCS de mutualisation de la PORTÉE courante, posables comme une équipe à part
    *  entière : une entrée par bloc, qui réserve la case pour tous ses membres. */
   sharedTrainingBlocks?: SharedTrainingBlock[];
+  /** P2-60 — le budget solo par équipe servi par le backend (résidu R(T), posées, appartenance à un
+   *  bloc). `null` = pas connu (chargement ou échec) : la saisie est FERMÉE (fail-closed), jamais un
+   *  repli sur `sessionsPerWeek`. Le sélecteur AFFICHE ce budget, il ne l'invente pas. */
+  teamSoloBudgets: TeamSoloBudget[] | null;
+  budgetsPending: boolean;
+  budgetsFailed: boolean;
+  onRetryBudgets: () => void;
   schedulePlanId: string | null;
   onClose: () => void;
 }
@@ -90,6 +97,10 @@ export function SlotReservationModal({
   venueClosures = [],
   venueCanSplit,
   sharedTrainingBlocks = [],
+  teamSoloBudgets,
+  budgetsPending,
+  budgetsFailed,
+  onRetryBudgets,
   schedulePlanId,
   onClose,
 }: Props) {
@@ -112,6 +123,10 @@ export function SlotReservationModal({
   // La règle ne peut pas s'appliquer sans les liens équipe→coach : une Map vide ne trouve
   // AUCUN conflit. Plutôt que d'autoriser en aveugle (fail-open), on ferme la saisie.
   const guardReady = null !== teamCoaches;
+  // P2-60 — le budget solo doit être chargé pour offrir (et étiqueter) une réservation individuelle.
+  // Sans lui : FERMÉ (fail-closed), jamais un repli sur `sessionsPerWeek` (le front n'invente pas la règle).
+  const budgetReady = null !== teamSoloBudgets;
+  const budgetByTeam = new Map((teamSoloBudgets ?? []).map((b) => [b.teamId, b]));
   const key = slotKey(slot.venueId, slot.dayOfWeek, slot.startTime);
   const capacity = effectiveSlotCapacity(slot, venueCanSplit);
 
@@ -154,7 +169,21 @@ export function SlotReservationModal({
   // Le libellé des fermetures du gymnase (titre + bornes) — même substance que le refus serveur.
   const closureText = venueClosures.map(closureLabel).join(" · ");
   const offerable = undefined === pausedTeamIds ? teams : teams.filter((t) => !pausedTeamIds.has(t.id));
-  const pickable = blockAdd ? [] : assignableTeams(offerable, tiers, slot, draftReservations, venueCanSplit);
+  // P2-60 — équipes offrables individuellement, chacune avec N (résidu restant). `added` est le
+  // brouillon d'ajouts non sauvés (retiré de N côté client). Vide tant que le budget n'est pas prêt.
+  const assignable = blockAdd || !budgetReady ? [] : assignableTeams(offerable, tiers, slot, draftReservations, venueCanSplit, budgetByTeam, added);
+  const pickable = assignable.map((a) => a.team);
+  const remainingByTeam = new Map(assignable.map((a) => [a.team.id, a.remaining]));
+  // D2 — libellé d'option = suffixe de résidu pour TOUTES les équipes ; « hors groupe » quand
+  // l'équipe est membre d'un bloc (une partie de ses séances vient du groupe). Zéro n'apparaît
+  // jamais (retiré en amont). Présentation pure : la valeur de l'option reste `team.id`.
+  const optionLabelFor = (team: Team): string => {
+    const n = remainingByTeam.get(team.id) ?? 0;
+    const unit = n > 1 ? "créneaux" : "créneau";
+    const suffix = true === budgetByTeam.get(team.id)?.inBlock ? " hors groupe" : "";
+
+    return `${team.name} — reste ${n} ${unit}${suffix}`;
+  };
 
   // MUTUALISATION (P2-51). Un bloc occupe la case SEUL : il exige un créneau libre dans le brouillon
   // (retraits déjà pris en compte — c'est ce qui rend « retirer SM4 + poser le bloc » faisable en UNE
@@ -168,7 +197,7 @@ export function SlotReservationModal({
   const slotEmptyInDraft = 0 === onSlot.length && 0 === added.length && !hasDraftedMutualisation;
   // L'offre des blocs, avec ses règles d'ergonomie (capacité, séances communes, membre en pause) via
   // le patron `offerableGroups` (structurel `GroupLike`).
-  const blockOffer = blockAdd ? { offerable: [], blocked: [] } : offerableGroups(sharedTrainingBlocks, teams, draftReservations, slotEmptyInDraft, pausedTeamIds);
+  const blockOffer = blockAdd ? { offerable: [], blocked: [] } : offerableGroups(sharedTrainingBlocks, teams, draftReservations, slotEmptyInDraft, budgetByTeam, pausedTeamIds);
   // La section « Entraînements mutualisés », valeurs préfixées `block:` → `sharedTrainingBlockId`.
   const mutualisationOptions = blockOffer.offerable.map((g) => ({ value: `${BLOCK_VALUE_PREFIX}${g.id}`, label: g.label }));
   const blockedMutualisations = blockOffer.blocked;
@@ -176,7 +205,7 @@ export function SlotReservationModal({
   // Guide (b) : la case porte des équipes individuelles alors que des mutualisations existent — dire
   // POURQUOI aucune n'est proposée et COMMENT débloquer (retirer les équipes). Une absence muette
   // serait le pire cas (le gestionnaire chercherait sans comprendre).
-  const showGroupGuide = guardReady && !blockAdd && !groupOccupies && hasAnyMutualisation && !slotEmptyInDraft;
+  const showGroupGuide = guardReady && budgetReady && !blockAdd && !groupOccupies && hasAnyMutualisation && !slotEmptyInDraft;
 
   const lotLabel = (teamIds: string[]): string => teamIds.map((id) => teamName.get(id) ?? "?").join(" + ");
 
@@ -232,10 +261,12 @@ export function SlotReservationModal({
         await create.mutateAsync({ teamId, venueId: slot.venueId, dayOfWeek: slot.dayOfWeek, startTime: hhmm(slot.startTime), durationMinutes: slot.durationMinutes, schedulePlanId });
         setAdded((prev) => prev.filter((pending) => pending !== teamId));
       }
-    } catch {
-      // La modale RESTE ouverte, avec ce qui n'est pas passé : sans ce message le
-      // gestionnaire ne saurait pas qu'une partie de son lot est partie et l'autre non.
-      setSubmitError("Une partie des modifications n'a pas pu être enregistrée. Ce qui reste affiché n'est pas encore appliqué — réessayez.");
+    } catch (e) {
+      // La modale RESTE ouverte, avec ce qui n'est pas passé (l'ajout refusé garde sa ligne « à
+      // valider » et son Undo). D3 (P2-60) : un 422 sur un ajout unitaire (ex. résidu solo dépassé)
+      // porte un message parlant du serveur — on l'affiche tel quel via `apiErrorMessage`, comme le
+      // rail groupe, sans déplacer le focus. Le budget est FAIL-SAFE : le verdict reste au serveur.
+      setSubmitError(await apiErrorMessage(e));
 
       return;
     }
@@ -424,6 +455,22 @@ export function SlotReservationModal({
             </>
           )}
         </p>
+      ) : !budgetReady ? (
+        // P2-60 — FAIL-CLOSED : sans le budget solo, on ne peut ni offrir ni étiqueter une
+        // réservation individuelle sans risquer un dépassement de résidu. On ferme la saisie
+        // (comme la garde coach) plutôt que de retomber sur `sessionsPerWeek`. `status` poli + retry.
+        <p role="status" className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          {budgetsPending ? (
+            "Chargement des créneaux réservables…"
+          ) : (
+            <>
+              {budgetsFailed ? "Impossible de charger les créneaux réservables" : "Créneaux réservables indisponibles"} — la saisie est bloquée pour ne pas dépasser le nombre de créneaux libres d'une équipe.{" "}
+              <button type="button" className="underline" onClick={onRetryBudgets}>
+                Réessayer
+              </button>
+            </>
+          )}
+        </p>
       ) : groupOccupies ? (
         // Un groupe occupe la case SEUL (règle b) : plus d'ajout individuel. Le lot ci-dessus le
         // nomme, la ligne reste donc sans libellé. `status` poli : c'est un état issu du brouillon.
@@ -445,6 +492,7 @@ export function SlotReservationModal({
               disabled={busy}
               teams={pickable}
               tiers={tiers}
+              optionLabel={optionLabelFor}
               mutualisationGroups={mutualisationOptions}
               placeholder="— ajouter une équipe —"
             />
@@ -462,7 +510,11 @@ export function SlotReservationModal({
             ) : null}
           </>
         ) : (
-          <EmptyHint className="text-xs">Aucune équipe disponible (toutes ont atteint leur nombre de séances ou sont déjà sur ce créneau).</EmptyHint>
+          // D1 (P2-60) — `role="status"` : l'invite REMPLACE le contrôle quand le dernier résidu est
+          // consommé ; un lecteur d'écran doit l'entendre. Couvre aussi « uniquement en groupe ».
+          <EmptyHint role="status" className="text-xs">
+            Aucune équipe disponible (toutes ont atteint leur nombre de créneaux, sont déjà sur ce créneau, ou s'entraînent uniquement en groupe).
+          </EmptyHint>
         )
       ) : (
         <div className="text-xs text-muted-foreground">

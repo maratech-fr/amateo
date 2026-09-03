@@ -359,6 +359,36 @@ export const updateSharedTrainingBlock = (id: string, body: { teamIds: string[];
   api.put(`shared_training_blocks/${id}`, { json: body }).json();
 export const deleteSharedTrainingBlock = (id: string): Promise<void> => api.delete(`shared_training_blocks/${id}`).then(() => undefined);
 
+// --- Budget de réservation individuelle par équipe (P2-60) : lecture seule, servie par le backend ---
+
+/**
+ * Le budget de réservation INDIVIDUELLE d'une équipe sur une portée (socle ou plan de période). Le
+ * front n'INVENTE PAS la règle « une équipe qui s'entraîne uniquement en groupe ne se réserve plus
+ * seule » — il AFFICHE ce budget (`GET /api/team_solo_budgets`). Maison serveur : `SoloReservationBudget`.
+ *
+ * ⚠ Champs miroir de `TeamSoloBudgetResource` (SÉRIALISÉS : `effectiveSessions`/`blockSessions`, pas
+ * les noms internes `effective`/`block` du DTO serveur `SoloBudget`). L'identifiant de la ligne est
+ * `teamId` (pas d'`id`), donc la ressource est lue via `collection()` — non paginée côté serveur.
+ */
+export interface TeamSoloBudget {
+  teamId: string;
+  schedulePlanId: string | null;
+  /** S(T) — séances hebdomadaires effectives (override de période inclus). */
+  effectiveSessions: number;
+  /** B(T) — Σ des séances communes des blocs de la portée contenant l'équipe. */
+  blockSessions: number;
+  /** R(T) = S(T) − B(T) — le nombre maximal de réservations individuelles. */
+  residual: number;
+  /** Réservations individuelles déjà posées (hors cases bloc-complètes). */
+  individualUsed: number;
+  /** L'équipe est membre d'au moins un bloc de la portée. */
+  inBlock: boolean;
+}
+
+/** `null` = socle saison (aucun paramètre) ; un UUID = plan de période. Ressource non paginée → `collection`. */
+export const listTeamSoloBudgets = (schedulePlanId: string | null): Promise<TeamSoloBudget[]> =>
+  collection<TeamSoloBudget>("team_solo_budgets", schedulePlanId ? { schedulePlanId } : undefined);
+
 // --- Coaches + links (W3) ---
 
 export type TeamCoachRole = "MAIN" | "ASSISTANT";

@@ -9,7 +9,7 @@ import { readFailed } from "@/shared/lib/readState";
 import type { PriorityTier, Team, Venue, VenueTrainingSlot } from "../api";
 import { reservedTeamsBySlot, effectiveSlotCapacity, slotKey } from "../lib/reservationSlots";
 import { closuresByVenue, closurePeriodLabel, isSlotClosed } from "../lib/venueClosures";
-import { useGridSlots, useReservations, useSharedTrainingBlocks, useWizardTeamCoaches } from "../queries";
+import { useGridSlots, useReservations, useSharedTrainingBlocks, useTeamSoloBudgets, useWizardTeamCoaches } from "../queries";
 import { ReservationGrid } from "./ReservationGrid";
 import { SlotReservationModal } from "./SlotReservationModal";
 
@@ -62,6 +62,10 @@ export function ReservationPanel({
   // silencieux éteindrait donc le contrôle pendant le chargement ou après un échec — un
   // fail-OPEN sur la garde même que ce lot ajoute. La modale doit savoir qu'elle ne sait pas.
   const { data: teamCoaches, isPending: coachesPending, isError: coachesFailed, refetch: refetchCoaches } = useWizardTeamCoaches();
+  // P2-60 — le budget solo par équipe de la portée courante (résidu R(T), posées, appartenance à un
+  // bloc), calculé et servi par le backend. La modale l'AFFICHE ; sans lui elle ferme la saisie
+  // (fail-closed) — on passe donc l'état de la requête, jamais un `= []` de confort.
+  const { data: teamSoloBudgets, isPending: budgetsPending, isError: budgetsFailed, refetch: refetchBudgets } = useTeamSoloBudgets(schedulePlanId);
   const [venueId, setVenueId] = useState("");
   const [activeSlot, setActiveSlot] = useState<VenueTrainingSlot | null>(null);
 
@@ -164,6 +168,10 @@ export function ReservationPanel({
           venueClosures={closuresOfVenue}
           venueCanSplit={venueCanSplit}
           sharedTrainingBlocks={sharedBlocks}
+          teamSoloBudgets={teamSoloBudgets ?? null}
+          budgetsPending={budgetsPending}
+          budgetsFailed={budgetsFailed}
+          onRetryBudgets={() => void refetchBudgets()}
           schedulePlanId={schedulePlanId}
           onClose={() => setActiveSlot(null)}
         />

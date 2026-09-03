@@ -26,8 +26,12 @@ const EMPTY_BLOCK_SKINS: Record<SurfaceSkin, string> = {
  * across ~14 screens. One home so the empty state reads the same everywhere.
  * `variant="console"` for the superadmin console; `app` (theme) by default.
  */
-export function EmptyHint({ children, className, variant = "app" }: { children: ReactNode; className?: string; variant?: SurfaceSkin }) {
-  return <p className={cn("text-sm", EMPTY_HINT_SKINS[variant], className)}>{children}</p>;
+export function EmptyHint({ children, className, variant = "app", role }: { children: ReactNode; className?: string; variant?: SurfaceSkin; role?: string }) {
+  return (
+    <p role={role} className={cn("text-sm", EMPTY_HINT_SKINS[variant], className)}>
+      {children}
+    </p>
+  );
 }
 
 /**

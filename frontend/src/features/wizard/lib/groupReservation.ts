@@ -1,4 +1,4 @@
-import type { Reservation, Team } from "../api";
+import type { Reservation, Team, TeamSoloBudget } from "../api";
 import { reservedTeamsBySlot, teamReservationCount } from "./reservationSlots";
 import { sharedGroupLabel } from "./sharedTraining";
 
@@ -77,6 +77,7 @@ export function offerableGroups(
   teams: Team[],
   reservations: Reservation[],
   slotEmptyInDraft: boolean,
+  budgetByTeam: Map<string, TeamSoloBudget>,
   pausedTeamIds?: ReadonlySet<string>,
 ): GroupOfferResult {
   if (!slotEmptyInDraft) {
@@ -100,10 +101,13 @@ export function offerableGroups(
       blocked.push({ id: group.id, label, reason });
       continue;
     }
+    // D4 (P2-60) — le plafond hebdomadaire lu est le budget EFFECTIF servi par le backend
+    // (`effectiveSessions`, override de période inclus), pas `team.sessionsPerWeek` : même forme,
+    // source qui fait foi. Sans ligne de budget (dérive), on ne bloque pas sur ce motif.
     const maxedMember = group.teamIds.find((id) => {
-      const team = teamById.get(id);
+      const budget = budgetByTeam.get(id);
 
-      return undefined !== team && (counts.get(id) ?? 0) >= team.sessionsPerWeek;
+      return undefined !== budget && (counts.get(id) ?? 0) >= budget.effectiveSessions;
     });
     if (undefined !== maxedMember) {
       blocked.push({ id: group.id, label, reason: `${nameOf(maxedMember)} a déjà toutes ses séances de la semaine.` });
