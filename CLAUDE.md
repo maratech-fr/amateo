@@ -49,7 +49,8 @@ make -C frontend e2e        # Playwright entièrement dockerisé — exige stack
 
 ## 4. CI — ce qui gate quoi
 
-Graphe des jobs, rôles et pièges : **`docs/testing/testing-strategy.md` §1** (canonique).
+Graphe des jobs, rôles et pièges : **`docs/testing/testing-strategy.md` §1** (canonique). Qui teste
+quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
 
 - **Bloquant = step NOMMÉ du job `blocking-tests` dans `.github/workflows/ci.yml`** — jamais
   l'annotation `#[Group('phase1')]` (bien plus de fichiers la portent que le job n'a de steps).
