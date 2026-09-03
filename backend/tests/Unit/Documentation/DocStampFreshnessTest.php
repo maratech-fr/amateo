@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Documentation;
 
+use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Process\Process;
@@ -105,7 +106,7 @@ final class DocStampFreshnessTest extends TestCase
             }
 
             $lastEdit = $this->lastCommitDate($relative);
-            if (null !== $lastEdit && $lastEdit > $stamp) {
+            if (null !== $lastEdit && !$this->stampCoversEdit($stamp, $lastEdit)) {
                 $liars[] = \sprintf('%s (stamp=%s, dernière édition=%s)', $relative, $stamp, $lastEdit);
             }
         }
@@ -117,6 +118,16 @@ final class DocStampFreshnessTest extends TestCase
             . '(cf. specs/README.md §« La règle du stamp »).',
             implode("\n  - ", $liars),
         ));
+    }
+
+    public function testAStampCoversAnEditOfTheSameDayOrTheNextDayOnly(): void
+    {
+        self::assertTrue($this->stampCoversEdit('2026-09-03', '2026-09-03'), 'même jour');
+        self::assertTrue($this->stampCoversEdit('2026-09-03', '2026-09-04'), 'squash-merge après minuit (#840)');
+        self::assertTrue($this->stampCoversEdit('2026-09-03', '2026-09-01'), 'stamp postérieur à l\'édition');
+        self::assertFalse($this->stampCoversEdit('2026-09-03', '2026-09-05'), 'deux jours : le stamp ment');
+        self::assertFalse($this->stampCoversEdit('2026-08-31', '2026-09-02'), 'changement de mois, deux jours');
+        self::assertTrue($this->stampCoversEdit('2026-08-31', '2026-09-01'), 'changement de mois, un jour');
     }
 
     /** @return array<string, string> chemin relatif au dépôt => chemin absolu */
@@ -136,6 +147,25 @@ final class DocStampFreshnessTest extends TestCase
         self::assertNotEmpty($files, 'Aucun document surveillé trouvé — self::WATCHED pointe-t-il encore quelque part ?');
 
         return $files;
+    }
+
+    /**
+     * Un stamp couvre une édition si elle n'est pas postérieure au LENDEMAIN du stamp.
+     *
+     * Tolérance J+1 (P4-170, 2026-09-04) : la date git d'un fichier est celle du commit qui
+     * l'a posé sur `main`, et sur une squash-merge c'est l'heure du merge, pas celle de
+     * l'édition. La PR #840 a été mergée le 2026-09-04 à 00:23 : quatre fichiers stampés
+     * « 2026-09-03 » (vérifiés et datés le 03, à raison) sont devenus des « menteurs » à
+     * minuit, et `unit-tests` a rougi sur `main` sans qu'aucun contenu n'ait bougé. Un jour
+     * de tolérance ne cache rien de ce que ce garde vise (des stamps en retard de semaines) ;
+     * il retire seulement le faux rouge de bord de journée.
+     */
+    private function stampCoversEdit(string $stamp, string $lastEdit): bool
+    {
+        $stampDay = new DateTimeImmutable($stamp);
+        $editDay = new DateTimeImmutable($lastEdit);
+
+        return $editDay <= $stampDay->modify('+1 day');
     }
 
     private function relativePath(string $absolute): string
