@@ -37,10 +37,10 @@ règle « jamais merger sans go » reste en vigueur pour tout le reste).
      container si le paquet touche la chaîne de build.
    - `backend/` : dans le container — `composer install`, puis `make -C backend tests-complete`
      (PHPStan + CS-Fixer + `phpunit tests/`, miroir exact du job CI ; il enchaîne lui-même
-     `db-init-test`). ⚠️ **Pas `make test`**, qui ne lance que la testsuite `Unit` et laisse
-     7 dossiers hors de vue (cf. CLAUDE.md §10.2). Si le lot touche php-cs-fixer, phpstan ou
-     rector, lancer AUSSI `make -C backend rector` : ces trois-là sont des gates CI distincts et
-     peuvent rougir sur du code inchangé.
+     `db-init-test`). ⚠️ **Pas `make test`**, qui ne lance que la testsuite `Unit` (rapide, sans
+     DB) — `Integration` et `Contract` restent hors de vue par construction (cf. CLAUDE.md §10.1).
+     Si le lot touche php-cs-fixer, phpstan ou rector, lancer AUSSI `make -C backend rector` : ces
+     trois-là sont des gates CI distincts et peuvent rougir sur du code inchangé.
    - `engine/` : dans le container — `make test` (ruff + mypy + bandit + pytest)
    - `ci` (github-actions) : pas de tests locaux — vérifier que les versions d'actions existent et
      lire le diff (breaking inputs renommés/supprimés).

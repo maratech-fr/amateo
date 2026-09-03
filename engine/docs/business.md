@@ -1,12 +1,11 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-09-01 (exemption coach-joueur sur case de bloc active, `documentation-update`).
-Ligne `COACH_PLAYER_NO_OVERLAP` du tableau des règles dures amendée et confrontée au code : exemption
-réifiée `≤ 1 + Σb` posée par `add_coach_player_non_overlap` (`app/solver/constraints/structural.py`,
-carte `shared_block_case_bvars` écrite par `add_shared_block_constraints`) — exemption sous séance de
-bloc ACTIVE seulement, même gymnase + même heure de début ; coïncidence solo (b=0), débuts différents
-et gymnases différents restent des conflits ✓. Reste du fichier non re-vérifié cette passe —
-historique : `git log -p --follow engine/docs/business.md`.
+Last verified @ 2026-09-03 (rotation fraîcheur, `documentation-update`). Re-confronté au code : la ligne
+`COACH_PLAYER_NO_OVERLAP` toujours vraie (`add_coach_player_non_overlap`,
+`app/solver/constraints/structural.py:216`, exemption via `shared_block_case_bvars`) ; les champs
+`Team` cités (`sessionsPerWeek`, `priorityTier`) toujours ceux du schéma Pydantic
+(`app/schemas/input_schema.py:82-86`, `sessions_per_week`/`priority_tier_id`). Reste du fichier non
+re-vérifié cette passe — historique : `git log -p --follow engine/docs/business.md`.
 
 > Ce document explique le domaine de la planification sportive et ce que le moteur `engine` resout. Destine aux nouveaux developpeurs rejoignant le projet ClubScheduler.
 

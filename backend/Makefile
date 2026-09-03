@@ -37,10 +37,11 @@ test:
 	$(EXEC) php vendor/bin/phpunit --testsuite Unit
 
 # `phpunit tests/` — le DOSSIER, exactement comme le job CI `Unit Tests`. Ne PAS
-# repasser par --testsuite : les suites déclarées ne couvrent que Unit/Integration/
-# Security/Queue/CrossStack, alors que tests/ contient aussi Api, Command, Double,
-# EventListener, MessageHandler, OpenApi et Validator — 7 dossiers qu'aucune cible
-# locale n'atteignait, et que seule la CI voyait (lot C2 : deux échecs y ont dormi).
+# repasser par --testsuite : `Integration` (+ Security/Queue/Api/Command/OpenApi/
+# Validator/MessageHandler/EventListener) et `Contract` (CrossStack) restent hors de
+# `make test` (testsuite Unit seule) PAR CONSTRUCTION — chaque dossier est bien dans
+# UNE testsuite (garde Unit/TestsuitesCoverEveryTestDirectoryTest, P4-169), mais
+# `make test` reste volontairement la suite rapide, pas le miroir CI.
 .PHONY: tests-complete ## Run the FULL suite, exactly like CI (phpstan + cs + tous les tests)
 tests-complete: APP_ENV = test
 tests-complete: db-init-test

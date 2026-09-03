@@ -1,12 +1,11 @@
 # Accueil « cockpit temporel » — mise au clair (préliminaire calendriers secondaires)
 
-Last verified @ 2026-09-01 (P2-59 livrée, `documentation-update` — §c et §e amendés au modèle
-FAIT/GENÈSE et confrontés au code : `CalendarEntry::datedConstraintSourceIds()` (`[id]` racine,
-`[id, parentEntryId]` enfant) consommée par le sélecteur de période, le gate pré-solve et le
-radar ✓ · création wizard → entrée du plan, faits de la mère badgés lecture-seule
-(`ConstraintsStep.tsx`) ✓ · double 422 anti-décochage (`ConstraintPeriodOverrideStateProcessor`,
-`ConstraintStateProcessor` chemin update) ✓. Reste du fichier non re-vérifié cette passe —
-historique : `git log -p --follow` ce fichier.
+Last verified @ 2026-09-03 (rotation fraîcheur, `documentation-update`). Re-confronté au code : les
+symboles cités du modèle FAIT/GENÈSE existent toujours — `CalendarEntry::datedConstraintSourceIds()`
+(`backend/src/Entity/CalendarEntry.php:253`), `ConstraintsStep.tsx`
+(`frontend/src/features/wizard/steps/`), `ConstraintPeriodOverrideStateProcessor` et
+`ConstraintStateProcessor` (`backend/src/State/Processor/`) ✓. Reste du fichier non re-vérifié cette
+passe — historique : `git log -p --follow` ce fichier.
 
 > **Statut** : **approche arrêtée** (décisions tranchées §9) — **livrée** ; cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2.
 > **Pas un plan** — pas de tâches, pas d'effort chiffré ; l'exécution se planifiera palier par palier (§8).
