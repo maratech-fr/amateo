@@ -12,6 +12,8 @@ use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\ImplicitRuleSetting;
+use App\Entity\MatchSlotRotation;
+use App\Entity\MatchSlotRotationTeam;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
@@ -26,11 +28,13 @@ use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\TeamLink;
+use App\Entity\TeamMatchHabit;
 use App\Entity\TeamPeriodOverride;
 use App\Entity\TeamTag;
 use App\Entity\TeamTagAssignment;
 use App\Entity\User;
 use App\Entity\Venue;
+use App\Entity\VenueMatchWindow;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
@@ -1314,6 +1318,18 @@ final class BcclSeeder
         }
 
         // ============================================================
+        // SECTION 13bis — RÉPARTITION WE DES MATCHS (profil dev)
+        // ============================================================
+        // L'état terrain du week-end : fenêtres d'accès match des gymnases, habitudes de match des
+        // équipes et créneaux de match partagés (rotations A/B). Placée AVANT la remise à zéro des
+        // drapeaux de péremption (section 14) : ces trois entités sont écoutées par
+        // ResourceChangeStaleScheduleListener — écrire APRÈS ferait naître les versions transcrites
+        // « périmées ». Démo/charge restent sans donnée WE (drapeau à false).
+        if ($profile->seedWeekendMatchLayout) {
+            $this->seedWeekendMatchLayout($manager, $season, $clubId, $teams, $venues);
+        }
+
+        // ============================================================
         // SECTION 14 — LES VERSIONS TRANSCRITES NAISSENT FRAÎCHES
         // ============================================================
         // Le seed crée les versions transcrites (sections 11-12) PUIS continue d'insérer
@@ -1332,6 +1348,146 @@ final class BcclSeeder
         )->setParameter('clubId', $clubId)->execute();
 
         return $club;
+    }
+
+    /**
+     * Répartition WE des matchs (données fondateur, xlsx importé le 2026-09-02) — l'état terrain du
+     * week-end du club, en trois entités du module matchs (toutes saison-scopées, hors plan) :
+     *
+     *  1. 4 {@see VenueMatchWindow} — les fenêtres d'accès match des gymnases : Matéo sam 13:00→22:30
+     *     et dim 09:00→18:30, Armand sam 10:45→21:00, Debarros sam 13:00→18:30. Cette table n'a
+     *     AUCUNE unicité DB : idempotence par PURGE des fenêtres du club/saison puis recréation
+     *     (patron des créneaux d'entraînement).
+     *  2. 32 {@see TeamMatchHabit} — l'habitude de match (jour + heure de coup d'envoi + gymnase)
+     *     de chaque équipe qui reçoit le WE. Find-or-create sur la clé unique (club, saison, équipe,
+     *     jour) ; heure + gymnase réappliqués au re-run. Aucune équipe ne reçoit deux fois le même
+     *     jour, donc une habitude par équipe.
+     *  3. 8 {@see MatchSlotRotation} + 16 {@see MatchSlotRotationTeam} — les créneaux partagés A/B
+     *     d'Armand et Debarros (mêmes heures en semaine A et B, deux équipes en alternance) :
+     *     position 0 = équipe de la semaine A, 1 = semaine B. Matéo ne porte AUCUNE rotation (ses
+     *     heures diffèrent d'une semaine à l'autre). Purge des membres puis des rotations du
+     *     club/saison, puis recréation — sémantique du {@see MatchSlotRotationStateProcessor}.
+     *
+     * @param array<string, Team>  $teams
+     * @param array<string, Venue> $venues
+     */
+    private function seedWeekendMatchLayout(EntityManagerInterface $manager, Season $season, string $clubId, array $teams, array $venues): void
+    {
+        $seasonId = $season->getId();
+
+        // 1. Fenêtres d'accès match — purge du club/saison (table sans unicité DB) puis recréation.
+        foreach ($manager->getRepository(VenueMatchWindow::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $existingWindow) {
+            $manager->remove($existingWindow);
+        }
+        $manager->flush();
+
+        // [gymnase, jour ISO, début, fin] — horaires exacts, aucun arrondi.
+        /** @var list<array{string, int, string, string}> $windows */
+        $windows = [
+            ['vMateo', 6, '13:00', '22:30'],
+            ['vMateo', 7, '09:00', '18:30'],
+            ['vArmand', 6, '10:45', '21:00'],
+            ['vDebarros', 6, '13:00', '18:30'],
+        ];
+        foreach ($windows as [$venueVar, $day, $start, $end]) {
+            $window = new VenueMatchWindow;
+            $window->setClubId($clubId);
+            $window->setSeasonId($seasonId);
+            $window->setVenueId($venues[$venueVar]->getId());
+            $window->setDayOfWeek($day);
+            $window->setStartTime(new DateTimeImmutable($start));
+            $window->setEndTime(new DateTimeImmutable($end));
+            $manager->persist($window);
+        }
+        $manager->flush();
+
+        // 2. Habitudes de match — find-or-create sur (club, saison, équipe, jour), heure + gymnase
+        // réappliqués. [équipe, jour ISO, coup d'envoi, gymnase].
+        /** @var list<array{string, int, string, string}> $habits */
+        $habits = [
+            // Semaine A — samedi Matéo
+            ['U13F1', 6, '13:00', 'vMateo'], ['U18F2', 6, '15:00', 'vMateo'], ['U13M1', 6, '17:00', 'vMateo'], ['U18M2', 6, '19:00', 'vMateo'],
+            // Semaine A — samedi Armand
+            ['U9F2', 6, '10:45', 'vArmand'], ['U9F1', 6, '12:15', 'vArmand'], ['U11F1', 6, '13:45', 'vArmand'], ['U11M2', 6, '15:30', 'vArmand'], ['U18F3', 6, '17:15', 'vArmand'],
+            // Semaine A — samedi Debarros
+            ['U13M2', 6, '13:00', 'vDebarros'], ['U13F3', 6, '15:00', 'vDebarros'], ['U15F3', 6, '17:00', 'vDebarros'],
+            // Semaine A — dimanche Matéo
+            ['SM3', 7, '10:00', 'vMateo'], ['U18M1', 7, '12:00', 'vMateo'], ['U18F1', 7, '14:15', 'vMateo'], ['SF3', 7, '16:30', 'vMateo'],
+            // Semaine B — samedi Matéo
+            ['U15F1', 6, '13:45', 'vMateo'], ['U15M1', 6, '16:00', 'vMateo'], ['SF1', 6, '18:30', 'vMateo'], ['SM1', 6, '20:45', 'vMateo'],
+            // Semaine B — samedi Armand
+            ['U9M1', 6, '10:45', 'vArmand'], ['U9M2', 6, '12:15', 'vArmand'], ['U11F2', 6, '13:45', 'vArmand'], ['U11M1', 6, '15:30', 'vArmand'], ['U21M2', 6, '17:15', 'vArmand'],
+            // Semaine B — samedi Debarros
+            ['U15M2', 6, '13:00', 'vDebarros'], ['U13F2', 6, '15:00', 'vDebarros'], ['U15F2', 6, '17:00', 'vDebarros'],
+            // Semaine B — dimanche Matéo
+            ['SM4', 7, '09:00', 'vMateo'], ['SF2', 7, '11:00', 'vMateo'], ['U21M1', 7, '13:15', 'vMateo'], ['SM2', 7, '15:30', 'vMateo'],
+        ];
+        foreach ($habits as [$teamName, $day, $kickoff, $venueVar]) {
+            $teamId = $teams[$teamName]->getId();
+            $venueId = $venues[$venueVar]->getId();
+            $existing = $manager->getRepository(TeamMatchHabit::class)->findOneBy([
+                'clubId' => $clubId,
+                'seasonId' => $seasonId,
+                'teamId' => $teamId,
+                'dayOfWeek' => $day,
+            ]);
+            $habit = $existing instanceof TeamMatchHabit ? $existing : new TeamMatchHabit;
+            if (!$existing instanceof TeamMatchHabit) {
+                $habit->setClubId($clubId);
+                $habit->setSeasonId($seasonId);
+                $habit->setTeamId($teamId);
+                $habit->setDayOfWeek($day);
+                $manager->persist($habit);
+            }
+            $habit->setKickoffTime(new DateTimeImmutable($kickoff));
+            $habit->setVenueId($venueId);
+        }
+        $manager->flush();
+
+        // 3. Créneaux partagés A/B — purge des membres puis des rotations du club/saison, puis
+        // recréation (sémantique du processor : pas de clé naturelle par composition).
+        foreach ($manager->getRepository(MatchSlotRotation::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $existingRotation) {
+            foreach ($manager->getRepository(MatchSlotRotationTeam::class)->findBy(['rotationId' => $existingRotation->getId()]) as $existingMember) {
+                $manager->remove($existingMember);
+            }
+            $manager->remove($existingRotation);
+        }
+        $manager->flush();
+
+        // [gymnase, jour ISO, coup d'envoi, [équipe semaine A, équipe semaine B]] — position 0 = A,
+        // 1 = B. Matéo n'a aucune rotation (heures A ≠ B). Les heures d'une paire sont identiques
+        // en A et B, ce qui EST le créneau physique partagé.
+        /** @var list<array{string, int, string, array{string, string}}> $rotations */
+        $rotations = [
+            ['vArmand', 6, '10:45', ['U9F2', 'U9M1']],
+            ['vArmand', 6, '12:15', ['U9F1', 'U9M2']],
+            ['vArmand', 6, '13:45', ['U11F1', 'U11F2']],
+            ['vArmand', 6, '15:30', ['U11M2', 'U11M1']],
+            ['vArmand', 6, '17:15', ['U18F3', 'U21M2']],
+            ['vDebarros', 6, '13:00', ['U13M2', 'U15M2']],
+            ['vDebarros', 6, '15:00', ['U13F3', 'U13F2']],
+            ['vDebarros', 6, '17:00', ['U15F3', 'U15F2']],
+        ];
+        foreach ($rotations as [$venueVar, $day, $kickoff, $memberNames]) {
+            $rotation = new MatchSlotRotation;
+            $rotation->setClubId($clubId);
+            $rotation->setSeasonId($seasonId);
+            $rotation->setVenueId($venues[$venueVar]->getId());
+            $rotation->setDayOfWeek($day);
+            $rotation->setKickoffTime(new DateTimeImmutable($kickoff));
+            $manager->persist($rotation);
+
+            foreach ($memberNames as $position => $memberName) {
+                $member = new MatchSlotRotationTeam;
+                $member->setClubId($clubId);
+                $member->setSeasonId($seasonId);
+                $member->setRotationId($rotation->getId());
+                $member->setTeamId($teams[$memberName]->getId());
+                $member->setPosition($position);
+                $manager->persist($member);
+            }
+        }
+        $manager->flush();
     }
 
     /**

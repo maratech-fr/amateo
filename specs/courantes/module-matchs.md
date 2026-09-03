@@ -1,19 +1,14 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-02 (PR-3 lot overlay, `documentation-update`). **Dérive pré-existante
-corrigée** : la citation `engine/app/solver/objective.py` (formule `rest_day`) pointait un fichier
-disparu — recalée vers `objective/terms.py` (`add_match_day_rest_bonus`), le module a été éclaté
-en paquet. Passe précédente (2026-08-31, P2-51 PR-7) : citation `patron
-SharedTrainingGroup` corrigée en `SharedTrainingBlock` §« RGPD / reset saison » : l'entité groupe
-K est retirée, `SeasonDataPurger.php:125-126` purge désormais `SharedTrainingBlockTeam`/
-`SharedTrainingBlock` dans cet ordre. Re-confronté au code : `MatchesPage.tsx` garde toujours
-`readLoading`/`readFailed` sur fixtures/teams/venues et laisse `conflicts.isError` brut ✓ ;
-`engine/CONTRACT_VERSION` portait alors **2.19** (retrait du modèle groupe {équipes, K},
-P2-51 PR-7, 2026-08-31 — un seul contrat pour `/generate`/`/place-matches`/`/validate-assignments`,
-la ligne « même contrat » de ce fichier tient toujours ; contrat courant 2.20, PR-3) ✓ ;
-`POST /place-matches` toujours déclaré
-dans `engine/app/main.py` ✓. Le reste du fichier non re-confronté cette passe — un stamp REMPLACE,
-l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
+Last verified @ 2026-09-03 (répartition WE des matchs au seed dev, `documentation-update`).
+Confronté au code cette passe : `BcclSeeder::seedWeekendMatchLayout` (4 `VenueMatchWindow`, 32
+`TeamMatchHabit`, 8 `MatchSlotRotation`/16 `MatchSlotRotationTeam`, gardé par le drapeau
+`BcclSeedProfile::seedWeekendMatchLayout`, dev SEULEMENT) ✓ ; `backend/Makefile` cible `seed-league`
+et son appel par `make play`/`make reset` (racine) ✓ ; `backend/scripts/smoke-place-matches.sh`
+auto-suffisant (équipes/gymnase jetables, fenêtres dominicales neutralisées puis restaurées) ✓ ;
+`no_access_window` club-wide en itérant tous les gymnases du club, `engine/app/solver/
+match_placement.py:113-118` ✓. Le reste du fichier non re-confronté cette passe — un stamp
+REMPLACE, l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
 > [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés
@@ -72,7 +67,10 @@ level × gender`. **Hors tenant** (pas de club_id/season_id, pas de RLS — patr
 `app:league-windows:seed` depuis `backend/data/league-match-windows.aura.json`. **Seed AURA = base par défaut
 de TOUT club** (couche 1 des 3 couches). Ligue dérivée du `ffbbClubCode` par **`LeagueResolver`** (préfixe
 3 lettres) → `Club.league` (posé au register). `GET /api/league-match-windows` → l'envelope héritée, fallback
-AURA si la ligue n'est pas cataloguée.
+AURA si la ligue n'est pas cataloguée. Rejoué par la cible `make play`/`make reset` (racine) depuis
+le 2026-09-03 (`backend/Makefile` cible `seed-league`, idempotent — upsert par clé naturelle,
+`app:league-windows:seed`) : avant, la commande existait mais n'était appelée par aucune chaîne
+automatisée, la table restait vide tant que personne ne la lançait à la main.
 
 ### Annuaire adverse — `OpponentDirectoryEntry` (table GLOBALE, P2-54 RMM-9 PR-2, 2026-08-28)
 
@@ -489,6 +487,37 @@ honorées** ici (les décisions 1 « SOFT jamais bloquant » et 4 « FICTIF, auc
   (patron des autres mutations du module) ; aucune route ni schéma neufs, tout consomme le CRUD
   livré PR-1.
 
+### Seed BCCL dev — répartition WE des matchs (2026-09-03)
+
+Le seed du club dev réel (`app:bccl:seed`, profil `dev` SEULEMENT — drapeau
+`BcclSeedProfile::seedWeekendMatchLayout`, `false` en démo et en charge) porte désormais l'état
+terrain complet du week-end du club, données fondateur (xlsx importé le 2026-09-02),
+`BcclSeeder::seedWeekendMatchLayout` :
+
+- **4 `VenueMatchWindow`** : Matéo samedi 13:00→22:30 et dimanche 09:00→18:30, Armand samedi
+  10:45→21:00, Debarros samedi 13:00→18:30.
+- **32 `TeamMatchHabit`** — une par équipe qui reçoit le week-end, jour + coup d'envoi + gymnase
+  exacts du gestionnaire (aucun arrondi).
+- **8 `MatchSlotRotation` + 16 `MatchSlotRotationTeam`** sur les créneaux physiquement partagés
+  d'Armand (×5) et Debarros (×3) — position 0 = équipe semaine A, 1 = semaine B. **Matéo ne porte
+  aucune rotation** (ses heures diffèrent d'une semaine à l'autre, donc aucun créneau physique
+  n'est réellement partagé).
+- **Zéro `Fixture`** : les équipes ne sont pas encore engagées tant que le calendrier FFBB n'est
+  pas importé — le seed ne crée aucun match.
+
+Idempotent (patron des créneaux d'entraînement) : purge+recréation des fenêtres et des rotations
+(+ leurs membres), find-or-create des habitudes sur `(club, saison, équipe, jour)`. Gardé par
+`BcclSeederIdempotenceTest::testDevSeedCarriesWeekendMatchLayout` (chaque fenêtre/habitude/paire
+de rotation épinglée par sa valeur exacte) + l'extension du test démo (les 4 tables restent à zéro
+hors profil dev).
+
+**Conséquences** : `TypicalWeekendGrid` affiche les onglets Semaine A/Semaine B dès qu'une rotation
+existe (§ « Le SET-UP A/B et le signal » ci-dessus) — les habitudes Matéo apparaissent dans les
+deux semaines, sans onglet propre puisqu'aucune rotation n'y siège. Côté génération
+d'entraînement, `ScheduleConstraintBuilder::deriveMatchDay` dérive l'image A/B des habitudes et
+rotations : les 32 équipes du club dev émettent désormais un `matchDay` au moteur (règle implicite
+SOFT « repos après jour de match »).
+
 ## Solveur de placement — P1-4 PR D (2026-08-03, [ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md))
 
 - **Second problème solveur engine** : `POST /place-matches` (`engine/app/solver/match_placement.py`,
@@ -714,7 +743,13 @@ honorées** ici (les décisions 1 « SOFT jamais bloquant » et 4 « FICTIF, auc
 - Unit : `MatchFootprintTest`, `LeagueResolverTest`. Command : `SeedLeagueWindowsCommandTest`. Api :
   `FixtureApiTest`.
 - Smokes : `backend/scripts/smoke-place-matches.sh` (bout-en-bout SÉMANTIQUE : samedi placé
-  SOLVER dans la fenêtre d'accès, dimanche non plaçable NOMMÉ — restaure le pointeur socle qu'il pose) **et**
+  SOLVER dans la fenêtre d'accès, dimanche non plaçable NOMMÉ). **Auto-suffisant** (2026-09-03) :
+  crée ses propres équipes jetables + son propre gymnase jetable (le seed dev porte désormais la
+  répartition WE réelle du club — un vrai gymnase/équipe pourrait offrir une habitude/rotation
+  concurrente qui casse le déterminisme des assertions), neutralise le temps du placement les
+  fenêtres dominicales du club (`no_access_window` est CLUB-WIDE, `engine/app/solver/
+  match_placement.py:113-118`) puis les restaure au trap — no-op sur un club sans donnée WE.
+  Nettoyage en cascade : matchs → rotation → fenêtre → équipes → gymnase. **et**
   smoke-solveur COMPLETED (le pipeline hebdo survit au bump 2.2 ; payload hebdo inchangé).
 
 ## Le périmètre engagé — `TeamEngagementGuard` (2026-07-16)

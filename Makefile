@@ -54,12 +54,13 @@ restart: .env ## Restart all services (ne réinstalle pas — un redémarrage n'
 # travail du fondateur survit donc à un re-`make play`. Le RESET explicite de la
 # démo reste `make -C backend seed-demo` (créer OU reset, voulu) ; vider la base
 # entière = `make db-empty` / `make reset`.
-play: .env ## Bascule vers la base de JEU du fondateur (amateo_local) + seed BCCL/démo si absents + vacances
+play: .env ## Bascule vers la base de JEU du fondateur (amateo_local) + seed BCCL/démo si absents + vacances + catalogue ligue
 	$(MAKE) -C backend play-env
 	$(MAKE) -C backend db-init
 	$(MAKE) -C backend CONFIRM=yes seed-bccl
 	$(MAKE) -C backend CONFIRM=yes IF_ABSENT=1 seed-demo
 	$(MAKE) -C backend seed-holidays
+	$(MAKE) -C backend seed-league
 	$(DOCKER_COMPOSE) restart messenger-worker cron-runner
 
 sandbox: .env ## Revient au bac à sable de l'IA (amateo_dev) : retire backend/.env.local

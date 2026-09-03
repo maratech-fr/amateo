@@ -1000,7 +1000,8 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     /**
      * P5-13 — les reprises et le compte Nicolas ne visent QUE le profil dev. Le club de
      * DÉMONSTRATION ne porte aucun plan de période (HOLIDAY/CLOSURE), aucune entrée calendrier
-     * (l'incident Matéo compris), et le compte gestionnaire Nicolas n'existe pas.
+     * (l'incident Matéo compris), et le compte gestionnaire Nicolas n'existe pas. La répartition WE
+     * des matchs est dev-only aussi : aucune fenêtre d'accès match, habitude de match ou rotation.
      */
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
@@ -1025,6 +1026,136 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             ['nicolas.barilleau@bccl.fr'],
         );
         self::assertFalse($nicolas, 'la démo ne crée pas le compte gestionnaire Nicolas');
+
+        foreach (['team_match_habit', 'match_slot_rotation', 'match_slot_rotation_team', 'venue_match_window'] as $table) {
+            $count = (int) $this->connection->fetchOne(
+                'SELECT COUNT(*) FROM ' . $table . ' WHERE club_id = ?',
+                [$club->getId()],
+            );
+            self::assertSame(0, $count, \sprintf('la démo ne pose aucune ligne dans %s (répartition WE dev-only)', $table));
+        }
+    }
+
+    /**
+     * Répartition WE des matchs (données fondateur, xlsx du 2026-09-02) — le seed dev pose l'état
+     * terrain du week-end en trois entités du module matchs :
+     *
+     *  - 4 fenêtres d'accès match (Matéo sam 13:00→22:30 + dim 09:00→18:30, Armand sam 10:45→21:00,
+     *    Debarros sam 13:00→18:30) ;
+     *  - 32 habitudes de match (une par équipe qui reçoit le WE : jour + coup d'envoi + gymnase) ;
+     *  - 8 créneaux partagés A/B (Armand ×5, Debarros ×3), chacun avec sa paire ORDONNÉE (position
+     *    0 = équipe semaine A, 1 = semaine B) ; Matéo n'en porte AUCUN (heures A ≠ B).
+     *
+     * Le seed ne crée aucun match (0 ligne `fixture`). Falsifiable : changer une heure, un gymnase,
+     * l'ordre d'une paire, ajouter une rotation à Matéo, ou créer un match, rend ce test ROUGE.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testDevSeedCarriesWeekendMatchLayout(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+        $clubId = $club->getId();
+
+        // --- 4 fenêtres d'accès match (gymnase, jour, début, fin). ---
+        $windowRows = $this->connection->fetchAllAssociative(
+            'SELECT v.name AS venue, w.day_of_week AS day, to_char(w.start_time, \'HH24:MI\') AS s, '
+            . 'to_char(w.end_time, \'HH24:MI\') AS e FROM venue_match_window w '
+            . 'JOIN venue v ON v.id = w.venue_id WHERE w.club_id = ? ORDER BY v.name, w.day_of_week',
+            [$clubId],
+        );
+        $windows = array_map(
+            static fn (array $r): array => [(string) $r['venue'], (int) $r['day'], (string) $r['s'], (string) $r['e']],
+            $windowRows,
+        );
+        self::assertSame(
+            [
+                ['Armand', 6, '10:45', '21:00'],
+                ['Debarros', 6, '13:00', '18:30'],
+                ['Matéo', 6, '13:00', '22:30'],
+                ['Matéo', 7, '09:00', '18:30'],
+            ],
+            $windows,
+            'les 4 fenêtres d\'accès match sont exactement celles du terrain',
+        );
+
+        // --- 32 habitudes de match (équipe, jour, coup d'envoi, gymnase). ---
+        $habitRows = $this->connection->fetchAllAssociative(
+            'SELECT t.name AS team, h.day_of_week AS day, to_char(h.kickoff_time, \'HH24:MI\') AS k, '
+            . 'v.name AS venue FROM team_match_habit h JOIN team t ON t.id = h.team_id '
+            . 'JOIN venue v ON v.id = h.venue_id WHERE h.club_id = ? ORDER BY t.name',
+            [$clubId],
+        );
+        $habits = array_map(
+            static fn (array $r): array => [(string) $r['team'], (int) $r['day'], (string) $r['k'], (string) $r['venue']],
+            $habitRows,
+        );
+        // Tri PHP des deux côtés (par nom d'équipe, total sur 32 équipes distinctes) : la
+        // comparaison ne dépend plus de la collation Postgres de l'ORDER BY.
+        usort($habits, static fn (array $a, array $b): int => $a[0] <=> $b[0]);
+        $expectedHabits = [
+            ['SF1', 6, '18:30', 'Matéo'], ['SF2', 7, '11:00', 'Matéo'], ['SF3', 7, '16:30', 'Matéo'],
+            ['SM1', 6, '20:45', 'Matéo'], ['SM2', 7, '15:30', 'Matéo'], ['SM3', 7, '10:00', 'Matéo'], ['SM4', 7, '09:00', 'Matéo'],
+            ['U11F1', 6, '13:45', 'Armand'], ['U11F2', 6, '13:45', 'Armand'], ['U11M1', 6, '15:30', 'Armand'], ['U11M2', 6, '15:30', 'Armand'],
+            ['U13F1', 6, '13:00', 'Matéo'], ['U13F2', 6, '15:00', 'Debarros'], ['U13F3', 6, '15:00', 'Debarros'],
+            ['U13M1', 6, '17:00', 'Matéo'], ['U13M2', 6, '13:00', 'Debarros'],
+            ['U15F1', 6, '13:45', 'Matéo'], ['U15F2', 6, '17:00', 'Debarros'], ['U15F3', 6, '17:00', 'Debarros'],
+            ['U15M1', 6, '16:00', 'Matéo'], ['U15M2', 6, '13:00', 'Debarros'],
+            ['U18F1', 7, '14:15', 'Matéo'], ['U18F2', 6, '15:00', 'Matéo'], ['U18F3', 6, '17:15', 'Armand'],
+            ['U18M1', 7, '12:00', 'Matéo'], ['U18M2', 6, '19:00', 'Matéo'],
+            ['U21M1', 7, '13:15', 'Matéo'], ['U21M2', 6, '17:15', 'Armand'],
+            ['U9F1', 6, '12:15', 'Armand'], ['U9F2', 6, '10:45', 'Armand'], ['U9M1', 6, '10:45', 'Armand'], ['U9M2', 6, '12:15', 'Armand'],
+        ];
+        usort($expectedHabits, static fn (array $a, array $b): int => $a[0] <=> $b[0]);
+        self::assertCount(32, $habits, 'le seed pose exactement 32 habitudes de match');
+        self::assertSame($expectedHabits, $habits, 'chaque habitude porte son jour, son coup d\'envoi et son gymnase exacts');
+
+        // --- 8 créneaux partagés A/B, chacun avec sa paire ORDONNÉE (position 0 = A, 1 = B). ---
+        $rotationRows = $this->connection->fetchAllAssociative(
+            'SELECT v.name AS venue, r.day_of_week AS day, to_char(r.kickoff_time, \'HH24:MI\') AS k, '
+            . 'rt.position AS pos, t.name AS team FROM match_slot_rotation r '
+            . 'JOIN venue v ON v.id = r.venue_id '
+            . 'JOIN match_slot_rotation_team rt ON rt.rotation_id = r.id '
+            . 'JOIN team t ON t.id = rt.team_id WHERE r.club_id = ? '
+            . 'ORDER BY v.name, r.kickoff_time, rt.position',
+            [$clubId],
+        );
+        $membersBySlot = [];
+        foreach ($rotationRows as $r) {
+            $key = \sprintf('%s|%d|%s', (string) $r['venue'], (int) $r['day'], (string) $r['k']);
+            $membersBySlot[$key][(int) $r['pos']] = (string) $r['team'];
+        }
+        $rotations = [];
+        foreach ($membersBySlot as $key => $members) {
+            ksort($members);
+            [$venue, $day, $kickoff] = explode('|', $key);
+            $rotations[] = [$venue, (int) $day, $kickoff, array_values($members)];
+        }
+        self::assertSame(
+            [
+                ['Armand', 6, '10:45', ['U9F2', 'U9M1']],
+                ['Armand', 6, '12:15', ['U9F1', 'U9M2']],
+                ['Armand', 6, '13:45', ['U11F1', 'U11F2']],
+                ['Armand', 6, '15:30', ['U11M2', 'U11M1']],
+                ['Armand', 6, '17:15', ['U18F3', 'U21M2']],
+                ['Debarros', 6, '13:00', ['U13M2', 'U15M2']],
+                ['Debarros', 6, '15:00', ['U13F3', 'U13F2']],
+                ['Debarros', 6, '17:00', ['U15F3', 'U15F2']],
+            ],
+            $rotations,
+            'les 8 créneaux partagés portent leur paire ordonnée (A puis B), Armand ×5 et Debarros ×3',
+        );
+
+        // Matéo ne porte AUCUNE rotation (ses heures diffèrent d'une semaine à l'autre).
+        $mateoRotations = (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM match_slot_rotation r JOIN venue v ON v.id = r.venue_id '
+            . 'WHERE r.club_id = ? AND v.name = ?',
+            [$clubId, 'Matéo'],
+        );
+        self::assertSame(0, $mateoRotations, 'Matéo ne porte aucune rotation (heures semaine A ≠ semaine B)');
+
+        // Le seed ne crée aucun match.
+        $fixtures = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM fixture WHERE club_id = ?', [$clubId]);
+        self::assertSame(0, $fixtures, 'le seed ne crée aucun match (fixture)');
     }
 
     protected function setUp(): void
@@ -1057,7 +1188,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
-     * @return array{clubs:int, teams:int, slots:int, reservations:int, schedules:int, slotTemplates:int, clubUsers:int, calendarEntries:int, schedulePlans:int, sharedBlocks:int, sharedBlockTeams:int, teamLinks:int, venuePeriodOverrides:int, teamPeriodOverrides:int, constraintPeriodOverrides:int}
+     * @return array{clubs:int, teams:int, slots:int, reservations:int, schedules:int, slotTemplates:int, clubUsers:int, calendarEntries:int, schedulePlans:int, sharedBlocks:int, sharedBlockTeams:int, teamLinks:int, venuePeriodOverrides:int, teamPeriodOverrides:int, constraintPeriodOverrides:int, teamMatchHabits:int, matchSlotRotations:int, matchSlotRotationTeams:int, venueMatchWindows:int}
      */
     private function counts(): array
     {
@@ -1086,6 +1217,13 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             'venuePeriodOverrides' => $this->rowsIn('venue_period_override'),
             'teamPeriodOverrides' => $this->rowsIn('team_period_override'),
             'constraintPeriodOverrides' => $this->rowsIn('constraint_period_override'),
+            // Répartition WE des matchs (profil dev) : les 32 habitudes (find-or-create sur
+            // (club, saison, équipe, jour)), les 8 rotations + 16 membres et les 4 fenêtres d'accès
+            // (purge+recréation) entrent dans la mesure — deux runs = mêmes comptes.
+            'teamMatchHabits' => $this->rowsIn('team_match_habit'),
+            'matchSlotRotations' => $this->rowsIn('match_slot_rotation'),
+            'matchSlotRotationTeams' => $this->rowsIn('match_slot_rotation_team'),
+            'venueMatchWindows' => $this->rowsIn('venue_match_window'),
         ];
     }
 
