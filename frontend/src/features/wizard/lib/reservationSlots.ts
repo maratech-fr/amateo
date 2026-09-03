@@ -1,6 +1,6 @@
 import { groupTeamsByTier, type TierLike } from "@/shared/lib/teamTiers";
 
-import type { Reservation, Team, VenueTrainingSlot } from "../api";
+import type { Reservation, Team, TeamSoloBudget, VenueTrainingSlot } from "../api";
 import { hhmm } from "./days";
 
 /** A reservation and a slot refer to the same physical time-slot when venue +
@@ -103,12 +103,26 @@ export function sharedSlotStatuses(
   return statuses;
 }
 
+/** Une équipe offrable individuellement, avec N — son résidu solo encore réservable (P2-60, D2). */
+export interface AssignableTeam {
+  team: Team;
+  /** N = R(T) − réservations individuelles posées − ajouts du brouillon. Toujours > 0 ici. */
+  remaining: number;
+}
+
 /**
- * Teams the manager may still assign to `slot`, in canonical rank order (fanion
- * S → A → B → C → D). Excludes: teams already on the slot, and teams that reached
- * their ceiling of `sessionsPerWeek` reservations (a team at N sessions with N
- * reservations disappears everywhere). Returns [] when the slot is already full,
- * so the modal never offers a seat that doesn't exist.
+ * Teams the manager may still assign to `slot` INDIVIDUALLY, in canonical rank order (fanion
+ * S → A → B → C → D), each carrying N — its remaining solo budget.
+ *
+ * 🔴 Le front n'INVENTE pas la règle : le budget R(T) (résidu solo) vient du backend
+ * (`budgetByTeam`, `GET /api/team_solo_budgets`). La seule arithmétique locale est le retrait des
+ * ajouts NON sauvés du brouillon (`draftAdded`, état client pur). L'ancien plafond
+ * `< sessionsPerWeek` — une redérivation silencieuse — a DISPARU.
+ *
+ * Exclut : les équipes déjà sur la case, et toute équipe dont N = R(T) − posées − brouillon ≤ 0 —
+ * membre de bloc à résidu épuisé compris (D1 : elle reste proposée via son bloc, jamais ici). Une
+ * équipe sans ligne de budget n'est pas offerte (fail-closed sur une dérive). Renvoie [] quand la
+ * case est pleine.
  */
 export function assignableTeams(
   teams: Team[],
@@ -116,12 +130,32 @@ export function assignableTeams(
   slot: VenueTrainingSlot,
   reservations: Reservation[],
   venueCanSplit: Map<string, boolean>,
-): Team[] {
+  budgetByTeam: Map<string, TeamSoloBudget>,
+  draftAdded: string[],
+): AssignableTeam[] {
   const onSlot = new Set(reservedTeamsBySlot(reservations).get(slotKey(slot.venueId, slot.dayOfWeek, slot.startTime)) ?? []);
   if (onSlot.size >= effectiveSlotCapacity(slot, venueCanSplit)) {
     return [];
   }
-  const counts = teamReservationCount(reservations);
+  const draftAddedCount = new Map<string, number>();
+  for (const teamId of draftAdded) {
+    draftAddedCount.set(teamId, (draftAddedCount.get(teamId) ?? 0) + 1);
+  }
   const rankOrdered = groupTeamsByTier(teams, tiers).flatMap((group) => group.teams);
-  return rankOrdered.filter((team) => !onSlot.has(team.id) && (counts.get(team.id) ?? 0) < team.sessionsPerWeek);
+  const assignable: AssignableTeam[] = [];
+  for (const team of rankOrdered) {
+    if (onSlot.has(team.id)) {
+      continue;
+    }
+    const budget = budgetByTeam.get(team.id);
+    if (undefined === budget) {
+      continue;
+    }
+    const remaining = budget.residual - budget.individualUsed - (draftAddedCount.get(team.id) ?? 0);
+    if (remaining <= 0) {
+      continue;
+    }
+    assignable.push({ team, remaining });
+  }
+  return assignable;
 }

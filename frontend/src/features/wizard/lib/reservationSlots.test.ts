@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { PriorityTier, Reservation, Team, VenueTrainingSlot } from "../api";
+import type { PriorityTier, Reservation, Team, TeamSoloBudget, VenueTrainingSlot } from "../api";
 import { assignableTeams, effectiveSlotCapacity, reservedTeamsBySlot, sharedSlotStatuses, splitCascadePreview, teamReservationCount } from "./reservationSlots";
 
 const slot = (id: string, venueId: string, dayOfWeek: number, startTime: string, capacity = 1): VenueTrainingSlot =>
@@ -19,6 +19,11 @@ const TIERS: PriorityTier[] = [
 
 const NON_SPLIT = new Map([["v1", false]]);
 const SPLIT = new Map([["v1", true]]);
+
+/** Budget solo servi par le backend (P2-60) — R(T), posées, appartenance à un bloc. */
+const soloBudget = (teamId: string, residual: number, individualUsed = 0, inBlock = false): TeamSoloBudget =>
+  ({ teamId, schedulePlanId: null, effectiveSessions: residual, blockSessions: 0, residual, individualUsed, inBlock });
+const budgets = (...bs: TeamSoloBudget[]): Map<string, TeamSoloBudget> => new Map(bs.map((b) => [b.teamId, b]));
 
 describe("effectiveSlotCapacity", () => {
   it("caps a known non-divisible gym at 1, else trusts slot.capacity", () => {
@@ -57,30 +62,52 @@ describe("reservedTeamsBySlot / teamReservationCount", () => {
 describe("assignableTeams", () => {
   const teams = [team("d1", "Alpha", 5, 2), team("s1", "Zoulou", 1, 2)]; // Alpha=D, Zoulou=S(fanion)
 
-  it("orders by rank (fanion first), not alphabetically", () => {
-    expect(assignableTeams(teams, TIERS, slot("s", "v1", 2, "18:00"), [], NON_SPLIT).map((t) => t.id)).toEqual(["s1", "d1"]);
+  it("orders by rank (fanion first), not alphabetically, and carries N = résidu − posées", () => {
+    const res = assignableTeams(teams, TIERS, slot("s", "v1", 2, "18:00"), [], NON_SPLIT, budgets(soloBudget("d1", 2), soloBudget("s1", 2)), []);
+    expect(res.map((a) => a.team.id)).toEqual(["s1", "d1"]);
+    expect(res.map((a) => a.remaining)).toEqual([2, 2]);
   });
 
   it("excludes a team already reserved on the slot", () => {
     const reservations = [resa("s1", "v1", 2, "18:00")];
     // capacity 1 → slot full after one team → nothing offered
-    expect(assignableTeams(teams, TIERS, slot("s", "v1", 2, "18:00", 1), reservations, NON_SPLIT)).toEqual([]);
+    expect(assignableTeams(teams, TIERS, slot("s", "v1", 2, "18:00", 1), reservations, NON_SPLIT, budgets(soloBudget("d1", 2), soloBudget("s1", 2)), [])).toEqual([]);
   });
 
   it("keeps the free seat of a divisible slot for the OTHER team", () => {
     const reservations = [resa("s1", "v1", 2, "18:00")];
-    expect(assignableTeams(teams, TIERS, slot("s", "v1", 2, "18:00", 2), reservations, SPLIT).map((t) => t.id)).toEqual(["d1"]);
+    expect(assignableTeams(teams, TIERS, slot("s", "v1", 2, "18:00", 2), reservations, SPLIT, budgets(soloBudget("d1", 2), soloBudget("s1", 2)), []).map((a) => a.team.id)).toEqual(["d1"]);
   });
 
-  it("drops a team that reached its sessionsPerWeek ceiling — even on a different free slot", () => {
-    // Zoulou (2 sessions) already has 2 reservations elsewhere → gone everywhere.
-    const reservations = [resa("s1", "v1", 3, "18:00"), resa("s1", "v1", 5, "18:00")];
-    expect(assignableTeams(teams, TIERS, slot("s", "v1", 2, "18:00"), reservations, NON_SPLIT).map((t) => t.id)).toEqual(["d1"]);
+  it("retire une équipe dont le budget solo est épuisé (résidu − posées ≤ 0)", () => {
+    // Zoulou : résidu 2 mais 2 réservations individuelles déjà posées (backend) → budget nul, retiré.
+    expect(assignableTeams(teams, TIERS, slot("s", "v1", 2, "18:00"), [], NON_SPLIT, budgets(soloBudget("d1", 2), soloBudget("s1", 2, 2)), []).map((a) => a.team.id)).toEqual(["d1"]);
+  });
+
+  it("retire un membre de bloc à résidu nul (residual 0 && inBlock) — proposé via son bloc, pas individuellement", () => {
+    expect(assignableTeams(teams, TIERS, slot("s", "v1", 2, "18:00"), [], NON_SPLIT, budgets(soloBudget("d1", 2), soloBudget("s1", 0, 0, true)), []).map((a) => a.team.id)).toEqual(["d1"]);
+  });
+
+  it("décrémente N des ajouts du brouillon, et retire l'équipe quand le brouillon épuise le résidu", () => {
+    const one = assignableTeams(teams, TIERS, slot("s", "v1", 2, "18:00"), [], NON_SPLIT, budgets(soloBudget("d1", 2), soloBudget("s1", 2)), ["s1"]);
+    expect(one.find((a) => a.team.id === "s1")?.remaining).toBe(1);
+    const none = assignableTeams(teams, TIERS, slot("s", "v1", 2, "18:00"), [], NON_SPLIT, budgets(soloBudget("d1", 2), soloBudget("s1", 2)), ["s1", "s1"]);
+    expect(none.map((a) => a.team.id)).toEqual(["d1"]);
+  });
+
+  it("porte dans N le résidu servi par le backend (override de période inclus via effective)", () => {
+    // Un override de période a relevé S(T), donc le résidu, à 3 : N reflète ce résidu, pas sessionsPerWeek (2).
+    const res = assignableTeams(teams, TIERS, slot("s", "v1", 2, "18:00"), [], NON_SPLIT, budgets(soloBudget("d1", 2), soloBudget("s1", 3)), []);
+    expect(res.find((a) => a.team.id === "s1")?.remaining).toBe(3);
+  });
+
+  it("n'offre pas une équipe sans ligne de budget (fail-closed sur une dérive)", () => {
+    expect(assignableTeams(teams, TIERS, slot("s", "v1", 2, "18:00"), [], NON_SPLIT, budgets(soloBudget("d1", 2)), []).map((a) => a.team.id)).toEqual(["d1"]);
   });
 
   it("offers nothing once the slot is full", () => {
     const reservations = [resa("a", "v1", 2, "18:00"), resa("b", "v1", 2, "18:00")];
-    expect(assignableTeams(teams, TIERS, slot("s", "v1", 2, "18:00", 2), reservations, SPLIT)).toEqual([]);
+    expect(assignableTeams(teams, TIERS, slot("s", "v1", 2, "18:00", 2), reservations, SPLIT, budgets(soloBudget("d1", 2), soloBudget("s1", 2)), [])).toEqual([]);
   });
 
   it("matches an ISO/seconds slot start against an HH:MM reservation (prod shape)", () => {
@@ -88,7 +115,7 @@ describe("assignableTeams", () => {
     // collide so a team already pinned isn't re-offered on the same physical slot.
     const isoSlot = slot("s", "v1", 2, "1970-01-01T20:30:00+00:00", 1);
     const reservations = [resa("s1", "v1", 2, "20:30")];
-    expect(assignableTeams(teams, TIERS, isoSlot, reservations, NON_SPLIT)).toEqual([]); // slot full via the HH:MM reservation
+    expect(assignableTeams(teams, TIERS, isoSlot, reservations, NON_SPLIT, budgets(soloBudget("d1", 2), soloBudget("s1", 2)), [])).toEqual([]); // slot full via the HH:MM reservation
   });
 });
 

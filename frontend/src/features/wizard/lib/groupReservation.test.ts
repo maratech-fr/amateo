@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Reservation, Team } from "../api";
+import type { Reservation, Team, TeamSoloBudget } from "../api";
 import { completedGroupCaseCount, type GroupLike, offerableGroups, postedGroupOnSlot } from "./groupReservation";
 
 const team = (id: string, name: string, sessionsPerWeek = 2): Team => ({ id, name, priorityTierId: 1, tierOrder: 0, sessionsPerWeek, sportCategoryId: "c" }) as Team;
@@ -10,7 +10,14 @@ const resa = (teamId: string, venueId: string, dayOfWeek: number, startTime: str
 
 const group = (id: string, teamIds: string[], commonSessions = 1): GroupLike => ({ id, teamIds, commonSessions });
 
+/** Budget solo servi par le backend (P2-60) — la garde bloc D4 lit `effectiveSessions` (override de période inclus). */
+const soloBudget = (teamId: string, effectiveSessions: number, residual = effectiveSessions, individualUsed = 0, inBlock = false): TeamSoloBudget =>
+  ({ teamId, schedulePlanId: null, effectiveSessions, blockSessions: effectiveSessions - residual, residual, individualUsed, inBlock });
+const budgets = (...bs: TeamSoloBudget[]): Map<string, TeamSoloBudget> => new Map(bs.map((b) => [b.teamId, b]));
+
 const TEAMS = [team("a", "SM1"), team("b", "SM2"), team("c", "SM3")];
+/** Budgets larges par défaut : aucun membre au plafond effectif (les tests qui l'exercent passent le leur). */
+const BUDGETS = budgets(soloBudget("a", 5), soloBudget("b", 5), soloBudget("c", 5));
 
 describe("completedGroupCaseCount", () => {
   it("counts the scope slots whose reserved set is EXACTLY the group members", () => {
@@ -24,14 +31,14 @@ describe("completedGroupCaseCount", () => {
 
 describe("offerableGroups", () => {
   it("offers a group on an EMPTY draft slot", () => {
-    const result = offerableGroups([group("g", ["a", "b"])], TEAMS, [], true);
+    const result = offerableGroups([group("g", ["a", "b"])], TEAMS, [], true, BUDGETS);
     expect(result.offerable.map((o) => o.id)).toEqual(["g"]);
     expect(result.offerable[0]?.label).toBe("SM1 + SM2 — 1 séance commune");
     expect(result.blocked).toEqual([]);
   });
 
   it("offers NOTHING when the draft slot is not empty (rule a — needs a free slot)", () => {
-    const result = offerableGroups([group("g", ["a", "b"])], TEAMS, [], false);
+    const result = offerableGroups([group("g", ["a", "b"])], TEAMS, [], false, BUDGETS);
     expect(result.offerable).toEqual([]);
     expect(result.blocked).toEqual([]);
   });
@@ -40,25 +47,34 @@ describe("offerableGroups", () => {
     const g = group("g", ["a", "b"], 1);
     // One case already complete for {a,b} → K(1) reached elsewhere in scope.
     const reservations = [resa("a", "v1", 1, "18:00"), resa("b", "v1", 1, "18:00")];
-    const result = offerableGroups([g], TEAMS, reservations, true);
+    const result = offerableGroups([g], TEAMS, reservations, true, BUDGETS);
     expect(result.offerable).toEqual([]);
     expect(result.blocked.map((b) => b.id)).toEqual(["g"]);
     expect(result.blocked[0]?.reason).toContain("séance");
   });
 
   it("does NOT offer a group whose member is paused — named reason", () => {
-    const result = offerableGroups([group("g", ["a", "b"])], TEAMS, [], true, new Set(["b"]));
+    const result = offerableGroups([group("g", ["a", "b"])], TEAMS, [], true, BUDGETS, new Set(["b"]));
     expect(result.offerable).toEqual([]);
     expect(result.blocked[0]?.reason).toContain("SM2");
   });
 
-  it("does NOT offer a group whose member already has all its weekly sessions", () => {
+  it("D4 — n'offre PAS un groupe dont un membre a atteint ses séances EFFECTIVES (budget, pas sessionsPerWeek) — raison nommée", () => {
     const g = group("g", ["a", "b"]);
-    // team a has sessionsPerWeek 2 and already 2 reservations elsewhere → maxed.
+    // a : override de période à 2 séances effectives et déjà 2 réservations → au plafond effectif,
+    // alors que son sessionsPerWeek d'équipe vaut 5 : c'est bien le budget qui tranche.
     const reservations = [resa("a", "v1", 2, "17:00"), resa("a", "v1", 4, "17:00")];
-    const result = offerableGroups([g], [team("a", "SM1", 2), team("b", "SM2", 2)], reservations, true);
+    const result = offerableGroups([g], [team("a", "SM1", 5), team("b", "SM2", 5)], reservations, true, budgets(soloBudget("a", 2), soloBudget("b", 5)));
     expect(result.offerable).toEqual([]);
     expect(result.blocked[0]?.reason).toContain("SM1");
+  });
+
+  it("D4 — offre un groupe quand un override de période RELÈVE les séances effectives au-dessus de sessionsPerWeek", () => {
+    const g = group("g", ["a", "b"]);
+    // a : sessionsPerWeek d'équipe = 1, mais override de période à 3 séances effectives → 2 réservations n'atteignent PAS le plafond.
+    const reservations = [resa("a", "v1", 2, "17:00"), resa("a", "v1", 4, "17:00")];
+    const result = offerableGroups([g], [team("a", "SM1", 1), team("b", "SM2", 1)], reservations, true, budgets(soloBudget("a", 3), soloBudget("b", 3)));
+    expect(result.offerable.map((o) => o.id)).toEqual(["g"]);
   });
 });
 

@@ -487,7 +487,11 @@ export function useCreateTeamPeriodOverride(schedulePlanId: string | null) {
     // but in-session re-seed is already guarded by seededPeriods + a non-empty overrides
     // list, and reload re-fetches the plan fresh — so mirroring the flip into cache on
     // every create only buys N redundant refetches.
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "team_period_overrides", schedulePlanId] }),
+    // P2-60 — un override de séances change S(T), donc R(T) : invalider aussi le budget solo.
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "team_period_overrides", schedulePlanId] });
+      invalidateSoloBudgets(queryClient);
+    },
   });
 }
 
@@ -495,7 +499,10 @@ export function useUpdateTeamPeriodOverride(schedulePlanId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: wizardApi.TeamPeriodOverridePayload }) => wizardApi.updateTeamPeriodOverride(id, body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "team_period_overrides", schedulePlanId] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "team_period_overrides", schedulePlanId] });
+      invalidateSoloBudgets(queryClient);
+    },
   });
 }
 
@@ -503,7 +510,10 @@ export function useDeleteTeamPeriodOverride(schedulePlanId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => wizardApi.deleteTeamPeriodOverride(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "team_period_overrides", schedulePlanId] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "team_period_overrides", schedulePlanId] });
+      invalidateSoloBudgets(queryClient);
+    },
   });
 }
 
@@ -657,7 +667,10 @@ export function useCreateReservation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: wizardApi.ReservationPayload) => wizardApi.createReservation(body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "reservations"] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "reservations"] });
+      invalidateSoloBudgets(queryClient);
+    },
   });
 }
 
@@ -665,7 +678,10 @@ export function useDeleteReservation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => wizardApi.deleteReservation(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "reservations"] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "reservations"] });
+      invalidateSoloBudgets(queryClient);
+    },
   });
 }
 
@@ -674,7 +690,10 @@ export function useCreateGroupReservation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: wizardApi.GroupReservationPayload) => wizardApi.createGroupReservation(body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "reservations"] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "reservations"] });
+      invalidateSoloBudgets(queryClient);
+    },
   });
 }
 
@@ -697,7 +716,10 @@ export function useCreateSharedTrainingBlock() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: wizardApi.SharedTrainingBlockPayload) => wizardApi.createSharedTrainingBlock(body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_blocks"] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_blocks"] });
+      invalidateSoloBudgets(queryClient);
+    },
   });
 }
 
@@ -705,7 +727,10 @@ export function useUpdateSharedTrainingBlock() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: { teamIds: string[]; commonSessions: number } }) => wizardApi.updateSharedTrainingBlock(id, body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_blocks"] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_blocks"] });
+      invalidateSoloBudgets(queryClient);
+    },
   });
 }
 
@@ -713,8 +738,36 @@ export function useDeleteSharedTrainingBlock() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => wizardApi.deleteSharedTrainingBlock(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_blocks"] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_blocks"] });
+      invalidateSoloBudgets(queryClient);
+    },
   });
+}
+
+/**
+ * P2-60 — le budget de réservation individuelle par équipe (résidu R(T), posées, appartenance à un
+ * bloc), servi par le backend. Même patron que `useSharedTrainingBlocks`, y compris l'ambiguïté du
+ * `null` (`enabled` non déductible de `schedulePlanId`). Le sélecteur de Réservation l'AFFICHE : le
+ * front n'invente pas la règle « s'entraîne uniquement en groupe ».
+ */
+export function useTeamSoloBudgets(schedulePlanId?: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ["wizard", "team_solo_budgets", schedulePlanId ?? "base"],
+    queryFn: () => wizardApi.listTeamSoloBudgets(schedulePlanId ?? null),
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * P2-60 — invalide le budget solo après TOUT geste qui déplace R(T) : réservation individuelle
+ * (create/delete), réservation de groupe, déclaration/édition/suppression d'un bloc, et override de
+ * séances de période (change S(T), donc le résidu). Clé ciblée (patron `invalidateConstraints`),
+ * jamais `invalidateEverywhere` (qui ne connaît que teams/venues/coaches).
+ */
+function invalidateSoloBudgets(queryClient: ReturnType<typeof useQueryClient>): void {
+  void queryClient.invalidateQueries({ queryKey: ["wizard", "team_solo_budgets"] });
 }
 
 export function useWizardTeamTags() {

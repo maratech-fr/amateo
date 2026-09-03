@@ -17,6 +17,13 @@ interface TeamSelectProps<T extends TeamLike> extends Omit<SelectHTMLAttributes<
    * reste STRICTEMENT inchangé.
    */
   mutualisationGroups?: { value: string; label: string }[];
+  /**
+   * OPT-IN (P2-60) — libellé d'option par équipe (ex. « SM3 — reste 2 créneaux hors groupe »). Par
+   * défaut l'option affiche `team.name`. La VALEUR de l'option reste `team.id` (inchangée) : seul le
+   * texte visible change. Les autres consommateurs (contraintes, coachs, matchs, import FBI) n'en
+   * passent pas — leur rendu reste STRICTEMENT `team.name`.
+   */
+  optionLabel?: (team: T) => string;
 }
 
 /**
@@ -24,7 +31,8 @@ interface TeamSelectProps<T extends TeamLike> extends Omit<SelectHTMLAttributes<
  * same découpage as the teams step — so the selector order mirrors the manager's
  * ranking. Falls back to a flat list when the tiers are not loaded yet.
  */
-export function TeamSelect<T extends TeamLike>({ teams, tiers, placeholder, mutualisationGroups, ...props }: TeamSelectProps<T>) {
+export function TeamSelect<T extends TeamLike>({ teams, tiers, placeholder, mutualisationGroups, optionLabel, ...props }: TeamSelectProps<T>) {
+  const labelOf = (team: T): string => optionLabel?.(team) ?? team.name;
   const groups = groupTeamsByTier(teams, tiers);
   // Group only once real tiers are loaded; until then (or if none match) show a
   // flat list rather than a single "Autres" optgroup. Either way NO team is
@@ -47,14 +55,14 @@ export function TeamSelect<T extends TeamLike>({ teams, tiers, placeholder, mutu
             <optgroup key={group.tier?.id ?? "orphan"} label={tierGroupLabel(group.tier)}>
               {group.teams.map((team) => (
                 <option key={team.id} value={team.id}>
-                  {team.name}
+                  {labelOf(team)}
                 </option>
               ))}
             </optgroup>
           ))
         : teams.map((team) => (
             <option key={team.id} value={team.id}>
-              {team.name}
+              {labelOf(team)}
             </option>
           ))}
     </Select>
