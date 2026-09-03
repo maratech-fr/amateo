@@ -1,16 +1,14 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-03 (lot « un seul chemin de remplissage » + garde DAMA/isolation,
-`documentation-update`). Re-confronté au code : `App\Tests\ReleasesParentTransactionBeforeIsolatedTests`
-déclarée dans `phpunit.xml.dist` juste après l'extension DAMA (`backend/phpunit.xml.dist:7-11`) ✓ ;
-`backend/tests/ReleasesParentTransactionBeforeIsolatedTests.php` fait `DamaExtension::rollBack()`
-sur `TestSuite\Started` pour toute classe portant `#[RunInSeparateProcess]`/
-`#[RunTestsInSeparateProcesses]` ✓. Reste du fichier non re-sondé cette passe (le décompte des jobs
-CI, `DECLARED_ASYMMETRIES`, etc. datent de la passe du 2026-09-02, non re-vérifiés ici).
-Historique des passes : `git log -p --follow docs/testing/testing-strategy.md` — un stamp
-REMPLACE, il ne s'empile pas (DOC-33).
+Last verified @ 2026-09-03 (création de `test-coverage-map.md`, relevé complet). Re-confronté au code :
+le graphe §1 contre `.github/workflows/ci.yml` — `blocking-tests` needs `[lint, phpstan]`, `unit-tests` et
+`e2e` needs `blocking-tests`, `engine-perf` needs `engine-tests` et `if: github.ref == 'refs/heads/main'`,
+`build-docker` needs `[blocking-tests, engine-tests]`, six jobs sans `needs` (`rector`, `dependency-audit`,
+`secrets-scan`, `semgrep`, `smoke-tests`, `engine-semantics`) ✓ ; `phpunit.xml.dist` : 3 testsuites + DAMA puis
+`ReleasesParentTransactionBeforeIsolatedTests` ✓ ; les 5 smokes de `backend/scripts/` = les 5 steps du job
+`smoke-tests` ✓. `DECLARED_ASYMMETRIES` non re-sondé cette passe.
 
-Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique) and [`../project-map.md`](../project-map.md).
+Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique), [`test-coverage-map.md`](test-coverage-map.md) (qui teste quoi, angles morts) and [`../project-map.md`](../project-map.md).
 
 ---
 
