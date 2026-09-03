@@ -92,9 +92,14 @@ make dev         # Dockerized Vite dev server (5173)
 make build       # Production image (tsc + Vite + Nginx, served on 8081)
 make lint        # ESLint + TypeScript, in Docker
 make test        # make lint, then Vitest
+make coverage    # Coverage + ratchet (needs `make install` first, plancher `../coverage-floor.json`, ~4-5 min)
 make exec        # Shell inside the tooling image
 make start | stop | logs | shell | status   # Docker Compose helpers
 ```
+
+⚠ **`coverageFloor.test.ts` anchors on `__dirname`, not `import.meta.url`** — under
+`vitest run --coverage` the latter is not always `file:`-scheme, and `new URL(...,
+import.meta.url)` throws `ERR_INVALID_URL_SCHEME`.
 
 ### ⚠ Trap: never `tsc --noEmit`
 

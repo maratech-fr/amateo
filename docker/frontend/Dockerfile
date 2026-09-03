@@ -8,6 +8,10 @@ RUN npm ci --legacy-peer-deps
 COPY frontend/ ./
 COPY docker/frontend/ /app/docker/frontend/
 COPY docker/nginx/default.conf /app/docker/nginx/default.conf
+# P4-166 (B3) — le cliquet de couverture lit le plancher dans la maison UNIQUE à la
+# racine du dépôt ; l'image tooling COPIE le code, il faut donc l'y copier pour que
+# `../coverage-floor.json` (relatif à /app/frontend) résolve comme sur l'hôte et en CI.
+COPY coverage-floor.json /app/coverage-floor.json
 
 FROM tooling AS build
 

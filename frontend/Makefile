@@ -50,6 +50,15 @@ test: ## Run frontend checks and tests in Docker
 	$(MAKE) lint
 	$(FIG) --profile tools run --rm --no-deps frontend-tooling npm run test -- --maxWorkers=2
 
+# P4-166 — couverture de code + cliquet, miroir du job CI frontend-coverage. Le plancher
+# est lu de ../coverage-floor.json par vitest.config.ts (thresholds.lines) ; `install`
+# rebâtit l'image tooling (qui COPIE le code ET coverage-floor.json). Séparé de `test` :
+# `npm run test` reste sans couverture. `.PHONY` — vitest écrit un dossier `coverage/`
+# homonyme sur l'hôte (via le job CI / npm run direct), qui ferait croire la cible à jour.
+.PHONY: coverage
+coverage: install ## Couverture de code + cliquet (plancher lu de ../coverage-floor.json, B3)
+	$(FIG) --profile tools run --rm --no-deps frontend-tooling npm run test:coverage -- --maxWorkers=2
+
 # P4-33 — e2e Playwright dockerisé : plus AUCUN Node requis sur l'hôte. Exige la
 # stack complète (`make start` à la racine) + le Vite dev (`make dev` ici) :
 # les specs s'exécutent contre http://frontend-dev:5173 (code vivant), Mailpit
