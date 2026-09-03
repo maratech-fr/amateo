@@ -53,6 +53,8 @@ export default mergeConfig(viteConfig, defineConfig({
         'src/test/**',
         '**/*.stories.*',
         'src/**/*.d.ts',
+        // Une feuille de style n'a pas de lignes exécutables : v8 la compterait à 0 %.
+        'src/**/*.css',
         'src/main.tsx',
         'src/vite-env.d.ts',
       ],
