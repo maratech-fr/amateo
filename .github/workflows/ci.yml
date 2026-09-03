@@ -783,6 +783,55 @@ jobs:
         if: steps.engine_changed.outputs.changed == 'true'
         run: docker compose run --rm -e PERF_BUDGET_SECONDS=${{ env.PERF_PR_BUDGET }} engine pytest -m perf -k dense_club --durations=0 -rA
 
+  # Couverture de code de l'engine + cliquet (P4-166, décisions B2/B3/B5).
+  #
+  # `needs: engine-tests` mais PAS dans les `needs` de `build-docker` : le cliquet
+  # (« on a perdu 1 % ») ne doit JAMAIS bloquer une image de prod sans décision
+  # humaine (B5). Le plancher est lu de `coverage-floor.json` à la racine — une seule
+  # maison, remontée dans la MÊME PR quand la mesure s'améliore ; jamais un chiffre
+  # magique en dur. `--cov-fail-under` fait rougir CE job (et lui seul).
+  #
+  # Restitution (B2) : artefact `coverage-engine` (xml + résumé texte), aucun service
+  # tiers. `set -euo pipefail` pour que le `| tee` ne masque pas l'échec du seuil.
+  # `-u` mappe l'uid du runner : l'engine tourne sinon en uid 1000 (SEC-15) et ne
+  # pourrait pas écrire le rapport dans le bind-mount possédé par le runner.
+  engine-coverage:
+    name: Engine Coverage (cliquet)
+    runs-on: ubuntu-latest
+    # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
+    # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
+    timeout-minutes: 15
+    needs: engine-tests
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Prepare .env
+        run: |
+          cp .env.dist .env
+          printf 'USER_ID=%s\nGROUP_ID=%s\n' "$(id -u)" "$(id -g)" >> .env
+
+      - name: Build engine
+        run: docker compose build engine
+
+      - name: Coverage (engine) + cliquet
+        run: |
+          set -euo pipefail
+          FLOOR=$(python3 -c "import json; print(json.load(open('coverage-floor.json'))['engine'])")
+          echo "Plancher engine (coverage-floor.json) : ${FLOOR}%"
+          mkdir -p engine/coverage
+          docker compose run --rm -u "$(id -u):$(id -g)" engine \
+            pytest --cov=app --cov-report=term-missing \
+              --cov-report=xml:coverage/engine.xml \
+              --cov-fail-under="${FLOOR}" | tee engine/coverage/engine.txt
+
+      - name: Upload coverage report (engine)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: coverage-engine
+          path: engine/coverage/
+          retention-days: 7
+
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest

@@ -42,6 +42,23 @@ markers = [
   "perf: slow performance-gate tests (dense-club budget); excluded by default, run on CI main (dense + BCCL) and on PR when engine/ changes (dense only, job engine-perf-pr)",
 ]
 
+# Couverture (P4-166) — le plancher (cliquet B3) vit dans `coverage-floor.json` à la
+# racine, PAS ici : une seule maison, passée par `--cov-fail-under` (voir la cible
+# `coverage` du Makefile et le job CI `engine-coverage`). Ne PAS ajouter `fail_under`.
+[tool.coverage.run]
+source = ["app"]
+branch = false
+# B4 — exclusions déclarées, pas implicites. `--cov=app` exclut déjà `tests/`. Aucun
+# fichier généré ni `__main__` dans `app/` (l'entrée FastAPI est `app/main.py`, du
+# domaine) : rien à retirer aujourd'hui. La liste reste explicite pour que tout ajout
+# futur (code généré, script d'entrée hors domaine) soit un choix visible en diff.
+omit = []
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+precision = 1
+
 [tool.ruff]
 line-length = 120
 target-version = "py312"
