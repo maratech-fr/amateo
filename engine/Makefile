@@ -1,4 +1,7 @@
 .DEFAULT_GOAL := help
+# `coverage` est un but, pas un fichier : la cible écrit un dossier `coverage/`
+# (rapport xml), et sans .PHONY make le prendrait pour à jour dès sa 2ᵉ exécution.
+.PHONY: exec install test coverage lint format help
 
 FIG := docker compose -f ../docker-compose.yml
 APP_ENV ?= $(shell awk -F= '$$1=="APP_ENV" {print $$2}' .env 2>/dev/null | tail -n 1)
@@ -21,13 +24,17 @@ install: ## Install Python dependencies — they live in the IMAGE (rebuild), ne
 	$(FIG) build engine
 	$(FIG) up -d engine
 
-test: ## Run pytest
+test: ## Run pytest (couverture : cible `coverage` dédiée, plus dans `test` — P4-166)
 	$(RUN) ruff check .
 	$(RUN) ruff format --check .
 	$(RUN) mypy
 	$(RUN) bandit -r app/
 	$(RUN) pytest
-	$(RUN) pytest --cov=app --cov-report=term-missing
+
+coverage: ## Couverture + cliquet — plancher lu de ../coverage-floor.json (B3), miroir du job CI engine-coverage
+	@FLOOR=$$(python3 -c "import json; print(json.load(open('../coverage-floor.json'))['engine'])"); \
+	echo "== Couverture engine — plancher (coverage-floor.json) : $$FLOOR %"; \
+	$(RUN) pytest --cov=app --cov-report=term-missing --cov-report=xml:coverage/engine.xml --cov-fail-under=$$FLOOR
 
 lint: ## Run ruff + mypy
 	$(RUN) ruff check .
