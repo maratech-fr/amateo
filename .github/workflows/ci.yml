@@ -694,6 +694,8 @@ jobs:
     # Perf gate is main-only. It guards the MVP "< 3 min" exit criterion and,
     # since the multi-worker fix, ratchets the large tier (dense + BCCL) to a
     # 60s budget so a regression to the single-worker prove-stall (612s) fails.
+    # PRs get a cheaper, earlier signal from `engine-perf-pr` below (dense only,
+    # only when engine/ moved, higher budget) — this job keeps main honest at 60s.
     if: github.ref == 'refs/heads/main'
     needs: engine-tests
     steps:
@@ -709,6 +711,69 @@ jobs:
 
       - name: Run perf gate
         run: docker compose run --rm engine pytest -m perf
+
+  engine-perf-pr:
+    name: Engine Perf (PR, dense only)
+    runs-on: ubuntu-latest
+    # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
+    # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
+    timeout-minutes: 15
+    # Earlier, cheaper perf signal ON PRS (main keeps the full gate above).
+    # Only the dense tier (BCCL stays on main), and only when engine/ moved
+    # (a backend-only PR does not pay it) — P4-167, decisions C1-C3.
+    if: github.event_name == 'pull_request'
+    needs: engine-tests
+    # Provisoire : budget PR ≥ 1,5 × la médiane mesurée (C2). 90 s est un point de
+    # départ prudent — valeur à fixer après 5 runs sur runners GitHub (C1 : mesurer
+    # la variance AVANT de resserrer ; on ne « réessaie » jamais un flake en CI).
+    env:
+      PERF_PR_BUDGET: "90"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # need base..HEAD to diff which paths changed on this PR
+          fetch-depth: 0
+
+      # Path filter WITHOUT a third-party action: the repo pins every external
+      # action by SHA and gates supply chain with semgrep/secrets-scan, so the
+      # filter is a plain git diff, not `dorny/paths-filter` or `tj-actions`.
+      - name: Engine changed?
+        id: engine_changed
+        run: |
+          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" \
+              | grep -qE '^(engine/|docker/engine/)'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # When engine is untouched the job still finishes GREEN in seconds: a
+      # required check that is a green-empty job differs from one that never ran
+      # (a "missing" required check blocks the merge — we want the passing one).
+      - name: Skipped, engine untouched
+        if: steps.engine_changed.outputs.changed != 'true'
+        run: |
+          echo "Skipped: engine untouched — no engine/ or docker/engine/ change on this PR."
+
+      - name: Prepare .env
+        if: steps.engine_changed.outputs.changed == 'true'
+        run: |
+          cp .env.dist .env
+          printf 'USER_ID=%s\nGROUP_ID=%s\n' "$(id -u)" "$(id -g)" >> .env
+
+      - name: Build engine
+        if: steps.engine_changed.outputs.changed == 'true'
+        run: docker compose build engine
+
+      # Dense tier only (BCCL stays on main — C2/C3). The selector is `dense_club`,
+      # not `dense`: pytest -k matches the full node id, and the FILE is
+      # test_perf_dense.py, so `-k dense` would also drag in the BCCL test. The
+      # dense test function is test_dense_club_… — `dense_club` isolates it.
+      # --durations=0 + -rA surface the measured solve time in the log: this run
+      # is also the C1 measurement point (variance before we tighten the budget).
+      - name: Run perf gate (dense)
+        if: steps.engine_changed.outputs.changed == 'true'
+        run: docker compose run --rm -e PERF_BUDGET_SECONDS=${{ env.PERF_PR_BUDGET }} engine pytest -m perf -k dense_club --durations=0 -rA
 
   e2e:
     name: E2E (Playwright)
