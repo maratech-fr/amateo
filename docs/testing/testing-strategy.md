@@ -1,10 +1,12 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-03 (P4-166 PR 2/3). Graphe §1 re-confronté à `.github/workflows/ci.yml` :
-nouveau job `frontend-coverage` (`needs: frontend`, `timeout-minutes: 15`, `thresholds.lines` lu de
-`coverage-floor.json`, **absent des `needs` de `build-docker`** — B5, même patron
-qu'`engine-coverage`, ajouté en PR 1/3). `build-docker` needs `[blocking-tests, engine-tests]`
-toujours confirmé inchangé (`frontend-coverage`, comme `frontend`, n'y figure pas). Le reste du
+Last verified @ 2026-09-04 (P4-166 PR 3/3 — lot P4-166 SOLDÉ, les trois zones sont mesurées et
+gardées). Graphe §1 re-confronté à `.github/workflows/ci.yml` : nouveau job `backend-coverage`
+(`needs: blocking-tests`, `timeout-minutes: 45`, cliquet lu de `coverage-floor.json` via
+`backend/scripts/coverage-gate.php`, **absent des `needs` de `build-docker`** — même patron
+qu'`engine-coverage`/`frontend-coverage` (décision fermée, `specs/courantes/etat-des-lieux.md` §2).
+`build-docker` needs `[blocking-tests, engine-tests]` toujours confirmé inchangé
+(`backend-coverage`, comme `unit-tests`/`e2e`, n'y figure pas). Le reste du
 graphe (`blocking-tests` needs `[lint, phpstan]`, `unit-tests`/`e2e` needs `blocking-tests`,
 `engine-perf`/`engine-perf-pr`, sept jobs sans `needs`) et `backend/phpunit.xml.dist` (3 testsuites,
 `Unit/TestsuitesCoverEveryTestDirectoryTest`) non re-sondés cette passe (voir `git log -p --follow
@@ -35,24 +37,40 @@ engine-perf         (dense + BCCL solve < 60 s)             — needs engine-tes
 engine-perf-pr      (dense solve, PR budget = 60 s)         — needs engine-tests ; PR only, skipped when engine/ untouched
 engine-coverage     (couverture engine + cliquet)           — needs engine-tests ; does NOT gate build-docker
 frontend-coverage   (couverture frontend + cliquet)         — needs frontend ; does NOT gate build-docker
+backend-coverage    (couverture backend + cliquet)          — needs blocking-tests ; does NOT gate build-docker
 ```
 
 **`engine-coverage`** (P4-166 PR 1/3, 2026-09-03) mesure `pytest --cov=app` en CI et la garde par un
 cliquet : `needs: engine-tests`, `timeout-minutes: 15`, `--cov-fail-under` lu de `coverage-floor.json`
-(racine, clé `engine`) — jamais un seuil en dur. **Absent des `needs` de `build-docker`** (décision B5,
-`specs/evolution/couverture-de-tests-cadrage.md`) : une régression de couverture rougit ce job seul,
-jamais l'image de prod. Artefact `coverage-engine` (xml + résumé texte), `upload-artifact` avec
-`if: always()`. Le plancher versionné et sa règle de cliquet sont détaillés dans
-[`test-coverage-map.md`](test-coverage-map.md) (§ `coverage-floor.json`).
+(racine, clé `engine`) — jamais un seuil en dur. **Absent des `needs` de `build-docker`** : une
+régression de couverture rougit ce job seul, jamais l'image de prod (décision fermée,
+`specs/courantes/etat-des-lieux.md` §2). Artefact `coverage-engine` (xml + résumé texte),
+`upload-artifact` avec `if: always()`. Le plancher versionné et sa règle de cliquet sont détaillés
+dans [`test-coverage-map.md`](test-coverage-map.md) (§ `coverage-floor.json`).
 
 **`frontend-coverage`** (P4-166 PR 2/3, 2026-09-03) mesure `npm run test:coverage` (Vitest
 `--coverage`) en CI et la garde par le même patron de cliquet : `needs: frontend`,
 `timeout-minutes: 15`, `thresholds.lines` lu de `coverage-floor.json` (racine, clé `frontend`) —
-jamais un seuil en dur. **Absent des `needs` de `build-docker`** (décision B5). Artefact
+jamais un seuil en dur. **Absent des `needs` de `build-docker`** (décision fermée,
+`specs/courantes/etat-des-lieux.md` §2). Artefact
 `coverage-frontend` (`frontend/coverage/`, `upload-artifact` avec `if: always()`). Détail
 d'implémentation (exclusions déclarées, piège `__dirname` sous `--coverage`) :
-[`test-coverage-map.md`](test-coverage-map.md) (§ `coverage-floor.json`) et
-`specs/evolution/couverture-de-tests-cadrage.md` §B.
+[`test-coverage-map.md`](test-coverage-map.md) (§ `coverage-floor.json`).
+
+**`backend-coverage`** (P4-166 PR 3/3, 2026-09-04 — **lot P4-166 SOLDÉ**) mesure `phpunit tests/
+--exclude-group contract` en CI, instrumenté par le driver `pcov` (`-d pcov.enabled=1`), et la
+garde par le même patron de cliquet : `needs: blocking-tests`, `timeout-minutes: 45`. PHPUnit 11
+n'a pas de seuil natif (pas de `--fail-under`) : le gate est `backend/scripts/coverage-gate.php`
+(sans dépendance, lit le clover produit par `--coverage-clover`, compare au plancher `backend` de
+`coverage-floor.json`, sort 1 sous le plancher). `pcov` est **chargé mais INERTE**
+(`pcov.enabled = 0` par défaut dans l'image, `docker/php/Dockerfile`) : `unit-tests` et
+`blocking-tests` ne paient aucun coût d'instrumentation, seul ce job l'active. Le driver n'existe
+QUE dans l'image dev/test (`ARG WITH_PCOV=0` par défaut, mis à `1` par `docker-compose.yml` et
+l'action CI `build-php-cached`) — l'image de PROD (`docker-compose.prod.yml`, cible `prod`) ne
+reçoit jamais cet arg et n'embarque jamais `pcov`. **Absent des `needs` de `build-docker`** (décision
+fermée, `specs/courantes/etat-des-lieux.md` §2). Artefact `coverage-backend` (`backend/coverage/`,
+`upload-artifact` avec `if: always()`). Le plancher versionné et sa règle de cliquet sont détaillés dans
+[`test-coverage-map.md`](test-coverage-map.md) (§ `coverage-floor.json`).
 
 **`engine-perf-pr`** (P4-167, 2026-09-03) donne un signal de perf plus tôt et moins cher sur les PR sans
 dupliquer `engine-perf` : `if: github.event_name == 'pull_request'`, `needs: engine-tests`,
@@ -86,6 +104,7 @@ All PHP test jobs first **create + migrate the test DB** (`doctrine:database:cre
 | `rector` (**Rector (style gate)**) | `composer rector -- --dry-run` (P4-24). Job **dédié, sans `needs`**, dépendance d'aucun autre — mais le contexte « Rector (style gate) » fait partie des **required status checks de `main`** (depuis le 2026-07-27), donc **il bloque le merge**. Corriger en local : `docker compose exec php-fpm sh -c 'cd /app/backend && composer rector'` (`make -C backend rector` est un dry-run : il montre, il ne fixe pas) |
 | `blocking-tests` | les tests sécurité/queue/contrat lancés en **steps nommés**, chacun avec `--group phase1` — **gate du reste de la suite PHP** et de `build-docker`. ⚠ **La liste vit dans [`blocking-tests.md`](blocking-tests.md), et NULLE PART AILLEURS** : elle était recopiée ici et les deux copies ont dérivé l'une de l'autre (audit DOC-16 puis DOC-26, 3 éditions). Deux endroits pour une même vérité finissent par diverger — la copie est supprimée, pas resynchronisée. ⚠ **`--group phase1` ≠ le gate** : bien plus de fichiers `backend/tests/` portent l'annotation que le job n'a de steps nommés ; un fichier `phase1` non listé tourne dans `unit-tests`, donc après le gate et sans bloquer `build-docker`. La vérité exécutable est `.github/workflows/ci.yml` |
 | `unit-tests` | full PHPUnit `tests/` (does NOT gate build-docker) |
+| `backend-coverage` | `phpunit tests/ --exclude-group contract --coverage-clover` (pcov, `-d pcov.enabled=1`) + `scripts/coverage-gate.php` (plancher `backend` de `coverage-floor.json`, PHPUnit 11 n'a pas de `--fail-under` natif), needs `blocking-tests`, does **NOT** gate `build-docker` (P4-166 PR 3/3) |
 | `e2e` | Playwright (full stack + Vite), needs blocking-tests. ⚠ **Deux cibles, pas une** : la suite tourne contre le **dev server** (:5173), puis un step dédié rejoue `security-headers.spec.ts` contre l'**image nginx** (:8081) avec `E2E_A17_REQUIRED=1`. Sans ce second passage, les tests A17 (CSP, HSTS, X-Frame-Options, nosniff) se **skippaient à chaque run** — les en-têtes n'existent que sur le build nginx — et le contrôle n'a jamais tourné en CI (audit D-04). La variable interdit au skip de revenir en silence : viser un dev server là devient un échec |
 | `smoke-tests` | **Les 5 smokes sémantiques** (`backend/scripts/` : onboarding · smoke-solver · smoke-place-matches · smoke-overlay · smoke-coach-wishes) sur une vraie stack. **Aucun `needs`** — ils répondent « la fonctionnalité marche-t-elle ? », indépendamment des suites unitaires, et n'installent ni npm ni Chromium : le verdict tombe ~2× plus tôt. Chacun est autosuffisant (JWT auto, données créées/nettoyées, pointeur socle rouvert PUIS restauré) : l'ordre est un confort, jamais une dépendance |
 | `engine-tests` | `pytest` + `ruff check .` + `mypy` (in the engine container) |

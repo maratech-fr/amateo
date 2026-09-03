@@ -1,7 +1,8 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-09-03 (rotation `documentation-update`, hors sujet de la PR (couverture
-frontend, P4-166) — sondage des stamps les plus anciens du dépôt). Re-confronté au code, sans
+Last verified @ 2026-09-04 (rotation `documentation-update`, hors sujet de la PR (couverture
+backend, P4-166 PR 3/3) — recalage du stamp daté du 2026-09-03 dont le squash-merge #840 est
+tombé après minuit, cf. `specs/evolution/roadmap.md` P4-170). Re-confronté au code, sans
 écart : hosts en constantes dures (`Service/Basketball/FfbbApiClient.php:24-25`,
 `CONFIG_URL`/`SEARCH_URL`) ✓ · routes `GET /api/ffbb/rencontres` + `POST
 /api/ffbb/rencontres/apply` (`Controller/Basketball/FfbbRencontresController.php:66,87`) ✓. Non

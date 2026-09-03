@@ -49,6 +49,18 @@ tests-complete: db-init-test
 	$(MAKE) APP_ENV=$(APP_ENV) cs
 	$(EXEC) php vendor/bin/phpunit tests/ --exclude-group contract
 
+# P4-166 (B1-B3-B5) — couverture backend + cliquet, SÉPARÉ de tests-complete (pcov
+# ralentit, unit-tests/blocking-tests restent sans instrumentation). `.PHONY` explicite :
+# le dossier `coverage/` homonyme (rapport écrit ici, gitignoré) ferait sinon voir la
+# cible « à jour » à make. pcov est CHARGÉ mais INERTE dans l'image (pcov.enabled=0) —
+# ce `-d pcov.enabled=1` est le seul endroit qui l'active. Le gate lit coverage/backend.xml
+# et le plancher `backend` de coverage-floor.json (racine), sort 1 si la mesure est dessous.
+.PHONY: coverage ## Mesure la couverture backend (pcov) + cliquet (coverage-floor.json)
+coverage: APP_ENV = test
+coverage: db-init-test
+	$(EXEC) php -d pcov.enabled=1 vendor/bin/phpunit tests/ --exclude-group contract --coverage-text --coverage-clover coverage/backend.xml
+	$(EXEC) php scripts/coverage-gate.php
+
 .PHONY: tests-engine-semantics ## Les tests qui interrogent le VRAI moteur (job CI « Engine semantics »)
 tests-engine-semantics: APP_ENV = test
 tests-engine-semantics:

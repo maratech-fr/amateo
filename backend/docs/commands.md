@@ -1,19 +1,14 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-03 (chaîne `make play` + catalogue ligue + smoke placement,
-`documentation-update`). Re-confronté au code : `backend/Makefile` cible `seed-league`
-(`app:league-windows:seed --no-interaction`) ✓ ; `Makefile` racine `play` enchaîne `seed-bccl` →
-`IF_ABSENT=1 seed-demo` → `seed-holidays` → `seed-league` → redémarrage des workers ✓ ;
-`backend/scripts/smoke-place-matches.sh` crée ses propres équipes+gymnase jetables et
-neutralise/restaure les fenêtres dominicales du club (le seed dev porte désormais la répartition
-WE réelle) ✓. Passe précédente (lot « un seul chemin de remplissage ») : `BcclSeedCommand`/
-`DemoSeedCommand` (`backend/src/Command/`, noms de commande `app:bccl:seed`/`app:demo:seed`),
-`BcclSeedCommand` SEUL exclu de l'auto-enregistrement (`services.yaml:96-99` +
-`services_dev.yaml`/`services_test.yaml` + garde runtime dev/test), `DemoSeedCommand` sans
-restriction d'environnement, `MutationTargetsAreGuardedTest`/`PlayTargetIsNonDestructiveTest`,
-`.github/workflows/ci.yml` + `smoke-solver.sh` appellent `app:bccl:seed` directement — non
-re-sondés cette passe. Non re-sondé cette passe non plus : horaires du catalogue de jobs, pièges
-RLS Doctrine — un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-04 (P4-166 PR 3/3 — ajout `make coverage` + note PHPStan `scripts/` non
+analysé). Re-confronté au code : `backend/Makefile` cible `coverage` (`db-init-test` puis
+`phpunit tests/ --exclude-group contract -d pcov.enabled=1 --coverage-clover` puis
+`scripts/coverage-gate.php`) ✓ ; `backend/phpstan.neon` `paths: [src]` seul (`scripts/` absent) ✓ ;
+cible `seed-league` (`app:league-windows:seed --no-interaction`) ✓ ; `Makefile` racine `play`
+enchaîne `seed-bccl` → `IF_ABSENT=1 seed-demo` → `seed-holidays` → `seed-league` → redémarrage des
+workers ✓. Non re-sondé cette passe : `backend/scripts/smoke-place-matches.sh`, les commandes
+`BcclSeedCommand`/`DemoSeedCommand`, `MutationTargetsAreGuardedTest`/`PlayTargetIsNonDestructiveTest`,
+horaires du catalogue de jobs, pièges RLS Doctrine — un stamp REMPLACE, l'historique vit dans git.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).
@@ -70,6 +65,7 @@ Une stack pointe **une base à la fois**. Le défaut committé est le **bac à s
 | `make tests-complete` | PHPStan + CS-Fixer + **`phpunit tests/`** (le DOSSIER entier — miroir EXACT du job CI `Unit Tests` ; seule cible qui joue aussi les testsuites `Integration` et `Contract`, cf. `phpunit.xml.dist`) |
 | `make phpunit` | PHPUnit **`--group phase1`** seul (`APP_ENV=test` injecté) — ⚠ **ce n'est pas « le gate »** : le groupe compte plusieurs fois plus de fichiers que le job CI `blocking-tests` n'a de steps nommés (les décomptes exacts pourrissent en jours — `ci.yml` fait foi). La cible **couvre** le gate mais ne s'y réduit pas (liste : `docs/testing/blocking-tests.md`) |
 | `make tests-engine-semantics` | PHPUnit **`--group contract`** — les tests qui interrogent le **VRAI moteur** (job CI dédié et bloquant « Engine semantics ») : chaque clé de la liste blanche `config` doit **CHANGER** le résultat du solveur, le miroir de capacité doit rendre le même verdict que lui, le payload doit rester recevable. ⚠ `tests-complete` les **exclut** (`--exclude-group contract`), exactement comme `unit-tests` en CI : sans cette cible, ils ne tournent jamais en local |
+| `make coverage` | Couverture backend (`phpunit tests/ --exclude-group contract`, driver `pcov`, `-d pcov.enabled=1`) + cliquet `scripts/coverage-gate.php` (plancher `backend` de `coverage-floor.json` racine — PHPUnit 11 n'a pas de seuil natif). Séparée de `tests-complete` (pcov ralentit) ; miroir du job CI `backend-coverage` (`needs: blocking-tests`, hors des `needs` de `build-docker`) |
 | `make db-init` | Crée + migre la base de **dev** — idempotent, ne détruit rien |
 | `make db-init-test` | Crée + migre la base de test (**pré-requis de toute suite**), pose `idle_in_transaction_session_timeout = 60s` sur `amateo_test` (purge les transactions DAMA zombies d'un phpunit tué) |
 | `make jwt-keys` | Génère le keypair JWT s'il est absent (`config/jwt/*.pem`, gitignoré) — idempotent |
@@ -79,7 +75,7 @@ Une stack pointe **une base à la fois**. Le défaut committé est le **bac à s
 | `make seed-demo` | Seed/reset le club de DÉMONSTRATION permanent (ARA9999999, `app:demo:seed`) — **créer OU RESET** par défaut (purge le workspace puis re-seed) ; `IF_ABSENT=1 make seed-demo` ajoute `--if-absent` (no-op si présent) — connexion admin, gardé par `mutation-confirm.sh`. `DEMO_BCCL_PASSWORD` (défaut `DemoBccl!2026`, non secret) est passé en `--password` |
 | `make seed-holidays` | Rejoue les référentiels vacances scolaires + jours fériés (globaux, non-tenant, idempotents) — pas de connexion admin, non gardé |
 | `make seed-league` | Rejoue le catalogue des fenêtres de matchs de la ligue (global, non-tenant, `app:league-windows:seed`, idempotent — upsert par clé naturelle) — pas de connexion admin, non gardé |
-| `make phpstan` / `make cs` / `make cs-fix` / `make rector` | Analyses (cs/rector en dry-run, `cs-fix` applique) |
+| `make phpstan` / `make cs` / `make cs-fix` / `make rector` | Analyses (cs/rector en dry-run, `cs-fix` applique). ⚠ PHPStan (`phpstan.neon`) a `paths: [src]` **seul** — `scripts/` (dont `coverage-gate.php`) n'est PAS analysé |
 | `make lint` | PHPStan + CS + Rector (tout en dry-run) |
 | `make migration-diff` / `make migration-migrate` | Diff / applique les migrations (connexion **admin**) |
 | `make fix-perms` | Répare les droits de `var/generate` (rapports lisibles côté host) |

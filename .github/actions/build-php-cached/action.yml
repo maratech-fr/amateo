@@ -32,9 +32,16 @@ runs:
         context: .
         file: docker/php/Dockerfile
         load: true
+        # WITH_PCOV=1 — cette image est celle des jobs CI (dev/test), dont
+        # `backend-coverage` qui a besoin du driver pcov (P4-166 B1). pcov est
+        # CHARGÉ mais INERTE (pcov.enabled=0 dans le Dockerfile) : `unit-tests`,
+        # `blocking-tests` et `e2e` ne paient aucun coût ; seul `backend-coverage`
+        # l'active (`-d pcov.enabled=1`). L'image de PROD (job `build-docker`, target
+        # prod, n'utilise PAS cette action) ne reçoit jamais cet arg.
         build-args: |
           UID=${{ steps.ids.outputs.uid }}
           GID=${{ steps.ids.outputs.gid }}
+          WITH_PCOV=1
         tags: |
           scheduler-php-fpm:latest
           scheduler-messenger-worker:latest

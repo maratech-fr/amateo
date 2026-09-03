@@ -58,6 +58,32 @@ RUN apt-get update \
     && echo "max_execution_time = 0" >> /usr/local/etc/php/conf.d/zz-memory.ini \
     && rm -rf /var/lib/apt/lists/*
 
+# P4-166 — driver de couverture pcov, DEV/TEST UNIQUEMENT (décision B1).
+# `ARG WITH_PCOV` vaut 0 par défaut : l'étage `prod` ci-dessous (`FROM base`, sans
+# cet arg) le laisse à 0, donc l'image de PROD publiée n'embarque JAMAIS pcov —
+# Trivy et `php -m` prod inchangés. `docker-compose.yml` (dev) passe WITH_PCOV=1 et
+# l'action CI `build-php-cached` (images dev/test) aussi ; l'installation n'a lieu
+# que dans ce cas. Même robustesse réseau que redis ci-dessus (miroir PECL, 3
+# essais, back-off, purge du cache tronqué avant chaque essai, pas de `--force`).
+# `pcov.enabled = 0` par défaut : l'extension est CHARGÉE mais INERTE — `unit-tests`
+# et `blocking-tests` ne paient aucun coût d'instrumentation ; seuls la cible
+# `make -C backend coverage` et le job `backend-coverage` l'activent (`-d
+# pcov.enabled=1`). `pcov.directory` borne la mesure au code applicatif.
+ARG WITH_PCOV=0
+RUN if [ "$WITH_PCOV" = "1" ]; then \
+      for attempt in 1 2 3; do \
+        rm -rf /tmp/pear/download; \
+        if pecl install pcov-1.0.12; then break; fi; \
+        if [ "$attempt" = 3 ]; then echo "pecl install pcov: échec après 3 essais" >&2; exit 1; fi; \
+        sleep $((attempt * 10)); \
+      done \
+      && docker-php-ext-enable pcov \
+      && { \
+           echo "pcov.enabled = 0"; \
+           echo "pcov.directory = /app/backend/src"; \
+         } > /usr/local/etc/php/conf.d/zz-pcov.ini; \
+    fi
+
 # Client PostgreSQL 16 (pg_dump/pg_restore/psql) pour app:db:backup / restore-check :
 # le client Debian par défaut est en 15 et pg_dump refuse un serveur plus récent —
 # on prend la version EXACTE du serveur (postgres:16) via le dépôt PGDG officiel.

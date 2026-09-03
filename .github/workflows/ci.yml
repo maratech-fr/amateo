@@ -869,6 +869,64 @@ jobs:
           path: engine/coverage/
           retention-days: 7
 
+  # Couverture de code du backend + cliquet (P4-166, décisions B1/B2/B3/B5).
+  #
+  # `needs: blocking-tests` (comme `unit-tests`) mais PAS dans les `needs` de
+  # `build-docker` : le cliquet (« on a perdu 1 % ») ne doit JAMAIS bloquer une image
+  # de prod sans décision humaine (B5). Job SÉPARÉ d'`unit-tests` : pcov instrumente,
+  # donc coûte — la boucle courte reste sans couverture. Le driver pcov est présent
+  # UNIQUEMENT dans l'image dev/test (build-php-cached, WITH_PCOV=1) et INERTE par
+  # défaut (pcov.enabled=0) : ce job seul l'active via `-d pcov.enabled=1`.
+  #
+  # Le plancher est lu de `coverage-floor.json` (racine) par scripts/coverage-gate.php
+  # (PHPUnit 11 n'a pas de --fail-under natif). Restitution (B2) : artefact
+  # `coverage-backend` (clover + résumé texte), aucun service tiers.
+  backend-coverage:
+    name: Backend Coverage (cliquet)
+    runs-on: ubuntu-latest
+    # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
+    # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
+    timeout-minutes: 45
+    needs: blocking-tests
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Prepare .env
+        run: |
+          cp .env.dist .env
+          printf 'USER_ID=%s\nGROUP_ID=%s\n' "$(id -u)" "$(id -g)" >> .env
+
+      # P4-90 — la couche chère de l'image php vient du cache GHA (pcov compris,
+      # WITH_PCOV=1 dans l'action : image dev/test).
+      - name: Pre-build php image (GHA cache)
+        uses: ./.github/actions/build-php-cached
+
+      - name: Start services
+        run: docker compose up -d --wait php-fpm engine
+
+      - name: Install PHP deps (cached + retried)
+        uses: ./.github/actions/composer-install-cached
+
+      - name: Generate JWT keys
+        run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console lexik:jwt:generate-keypair --skip-if-exists --no-interaction'
+
+      - name: Init test database
+        run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console doctrine:database:create --if-not-exists --connection admin --env=test && php bin/console doctrine:migrations:migrate --no-interaction --env=test'
+
+      # Couverture sur la MÊME suite que `unit-tests` (`phpunit tests/ --exclude-group
+      # contract`), instrumentée par pcov. Le clover est écrit AVANT le gate : l'artefact
+      # part même si le cliquet (ou un test) rougit (`if: always()` plus bas).
+      - name: Coverage (backend) + cliquet
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php -d pcov.enabled=1 vendor/bin/phpunit tests/ --exclude-group contract --coverage-text --coverage-clover coverage/backend.xml && php scripts/coverage-gate.php'
+
+      - name: Upload coverage report (backend)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: coverage-backend
+          path: backend/coverage/
+          retention-days: 7
+
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest
