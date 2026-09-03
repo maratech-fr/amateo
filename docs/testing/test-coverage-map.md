@@ -1,11 +1,10 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-03 (P4-168 : angle mort « canal Mercure » retiré du §4 — re-vérifié
-`frontend/src/features/planning/lib/scheduleStream.ts` (diagnostic `eventsReceived` monotone,
-`getScheduleStreamDiagnostics`) et `frontend/src/features/planning/ScheduleStreamWitness.tsx`
-(témoin DOM `data-schedule-stream*`, monté dans `PlanningPage.tsx`) ; `frontend/tests/e2e/journey.spec.ts`
-exige désormais l'ouverture SSE avant le clic ET `data-schedule-stream-events ≥ 1` après l'arrivée du
-planning, message nommé dans les deux cas ; sa trace vit dans `specs/courantes/etat-des-lieux.md` §3).
+Last verified @ 2026-09-03 (P4-167 : angle mort « perf sur main seulement » retiré du §4 — re-vérifié
+`.github/workflows/ci.yml` (job `engine-perf-pr`, `if: github.event_name == 'pull_request'`, `needs:
+engine-tests`, filtre de chemins `engine/`/`docker/engine/` via un `git diff` en step dédié) et
+`engine/tests/perf/test_perf_dense.py` (`_budget_seconds()`, override `PERF_BUDGET_SECONDS`, défaut
+60 s) ; sa trace vit dans `specs/courantes/etat-des-lieux.md` §3).
 Un stamp REMPLACE, l'historique vit dans git : `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
@@ -22,7 +21,7 @@ Un stamp REMPLACE, l'historique vit dans git : `git log -p --follow docs/testing
 | PHPUnit `Integration/` | backend | `WebTestCase`/`KernelTestCase` sur DB réelle (DAMA, RLS) : API (`Api/`), services, commandes console (`Command/`), contrôleurs, listeners (`EventListener/`, `MessageHandler/`), OpenAPI, validateurs — la testsuite `Integration` couvre `tests/Integration/` + `Security/` + `Queue/` + `Api/` + `Command/` + `OpenApi/` + `Validator/` + `MessageHandler/` + `EventListener/` | `backend/tests/Integration/` | `make -C backend tests-complete` (miroir CI) | `unit-tests` + quelques steps de `blocking-tests` |
 | PHPUnit `Security/` | backend | isolation tenant / saison / rôles / RLS / rate-limit / superadmin / verrous de période | `backend/tests/Security/` | idem | **la majorité des steps de `blocking-tests`** |
 | PHPUnit `CrossStack/` | backend ⇄ engine, backend ⇄ frontend | contrats : forme du payload ⇄ Pydantic (`*ContractSchemaTest`), `CONTRACT_VERSION`, parités de payload, **miroirs front déclarés** (`FrontRederivationRegistryTest`, `CapacityMirrorParityTest`) | `backend/tests/CrossStack/` | `phpunit --group contract` | steps de `blocking-tests` + `engine-semantics` (groupe `contract` **contre le vrai engine**) |
-| pytest | engine | unitaires du solveur (racine), **sémantiques** (`tests/semantic/` : une contrainte saisie est honorée, pas juste `COMPLETED`), goldens (`tests/golden/`, BCCL d'acceptation compris), invariants, perf (`-m perf`) | `engine/tests/` | `make -C engine test` (ruff + format + mypy + bandit + pytest) | `engine-tests` ; `engine-perf` |
+| pytest | engine | unitaires du solveur (racine), **sémantiques** (`tests/semantic/` : une contrainte saisie est honorée, pas juste `COMPLETED`), goldens (`tests/golden/`, BCCL d'acceptation compris), invariants, perf (`-m perf`, budget lu par `_budget_seconds()` — `PERF_BUDGET_SECONDS` en override) | `engine/tests/` | `make -C engine test` (ruff + format + mypy + bandit + pytest) | `engine-tests` ; `engine-perf` (main, dense + BCCL, 60 s) ; `engine-perf-pr` (PR, dense seul, quand `engine/**` ou `docker/engine/**` bouge) |
 | Vitest + RTL | frontend | composants, hooks react-query, lib pure (`vi.mock` des queries) ; jsdom — **aucune mise en page** (`.claude/rules/frontend.md`) | `frontend/src/**/*.test.ts*` | `make -C frontend test` (image tooling à rebâtir avant) | `frontend` |
 | Playwright | frontend + stack complète | 11 parcours nommés en §2 — dont **le seul test UI → API → engine → planning** (`journey.spec.ts`, qui prouve aussi la livraison PAR SSE : témoin Mercure, échec nommé si le hub reste muet — P4-168) et 4 specs **axe** (contraste 2 thèmes, reflow, voile, écrans système) | `frontend/tests/e2e/` | `make -C frontend e2e` | `e2e` |
 | Smokes bash | stack complète | 5 preuves sémantiques de bout en bout (§2), chacune autosuffisante (JWT, données, restauration) | `backend/scripts/*smoke*.sh` | `backend/scripts/<smoke>.sh` (sous `with-sandbox.sh` en mode play) | `smoke-tests` |
@@ -62,7 +61,11 @@ Recalculer les tailles : `find backend/tests -name '*Test.php' | awk -F/ '{print
   depuis le dépôt.
 - `build-docker` needs `[blocking-tests, engine-tests]` seulement ; `unit-tests` et `e2e` needs
   `blocking-tests` ; `engine-perf` needs `engine-tests` **et ne tourne que sur `main`**
-  (`if: github.ref == 'refs/heads/main'`).
+  (`if: github.ref == 'refs/heads/main'`) : palier dense + BCCL, budget 60 s. `engine-perf-pr`
+  needs `engine-tests` aussi, **ne tourne que sur PR** (`if: github.event_name == 'pull_request'`)
+  et seulement quand `engine/` a bougé (`git diff --name-only origin/<base>...HEAD`, base via l'ENV,
+  jamais interpolée dans le shell) : palier dense SEUL, budget PR = 60 s (même valeur que `main` —
+  décision fermée, `specs/courantes/etat-des-lieux.md` §2, P4-167).
 
 ## 4. Ce que personne ne prouve (angles morts constatés, pas devinés)
 
@@ -71,9 +74,7 @@ Recalculer les tailles : `find backend/tests -name '*Test.php' | awk -F/ '{print
    dans `engine/Makefile` (second passage de `make test`) mais **absent de la CI et sans seuil**
    (`--cov-fail-under`). Frontend : `@vitest/coverage-v8` en devDependency, **aucune config `test.coverage`**,
    aucun script. Conséquence : on sait ce qui est testé, pas ce qui n'est **jamais exécuté**.
-2. **La perf du solveur ne gate pas les PR** (roadmap **P4-167**) : `engine-perf` sur `main` seulement ; le marqueur `perf` est
-   exclu par défaut (`addopts = "-m 'not perf'"` dans `engine/pyproject.toml`).
-3. **Rien n'est lisible par un non-développeur** : aucun `.feature`, aucun scénario en français. Les trois
+2. **Rien n'est lisible par un non-développeur** : aucun `.feature`, aucun scénario en français. Les trois
    formats fonctionnels (PHPUnit `WebTestCase`, bash, Playwright) sont des formats de développeur — le
    fondateur ne peut ni relire ni proposer un scénario. Ouvert : roadmap **P4-165** (Behat/Gherkin, à cadrer).
 

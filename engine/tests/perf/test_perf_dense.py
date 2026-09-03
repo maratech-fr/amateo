@@ -1,9 +1,10 @@
 """Performance gate (PERF-01): the reference dense clubs must solve within budget.
 
-Marked ``perf`` so it is EXCLUDED from the default suite (addopts -m 'not perf')
-and run only on CI main. Without this gate a solver regression (a new quadratic
-encoding, an unbounded constraint) would silently blow the 3-minute MVP exit
-criterion until a client complains.
+Marked ``perf`` so it is EXCLUDED from the default suite (addopts -m 'not perf').
+Runs on CI main (both tiers, ``engine-perf`` job) and on PR (dense tier only, when
+``engine/`` moved — ``engine-perf-pr`` job, P4-167). Without this gate a solver
+regression (a new quadratic encoding, an unbounded constraint) would silently blow
+the 3-minute MVP exit criterion until a client complains.
 
 Ratchet (2026-07-07): the multi-worker fix (``_adaptive_workers``) closes the
 optimality proof on the stall-prone tier in seconds instead of burning the full
