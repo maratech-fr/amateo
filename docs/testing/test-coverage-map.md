@@ -1,9 +1,11 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-03 (P4-169 : re-vérifié `backend/phpunit.xml.dist` — les 3 testsuites couvrent
-désormais tous les dossiers de `backend/tests/` portant un `*Test.php`, gardé par
-`Unit/TestsuitesCoverEveryTestDirectoryTest` ; angle mort n° 5 supprimé, sa trace vit dans
-`specs/courantes/etat-des-lieux.md` §3).
+Last verified @ 2026-09-03 (P4-168 : angle mort « canal Mercure » retiré du §4 — re-vérifié
+`frontend/src/features/planning/lib/scheduleStream.ts` (diagnostic `eventsReceived` monotone,
+`getScheduleStreamDiagnostics`) et `frontend/src/features/planning/ScheduleStreamWitness.tsx`
+(témoin DOM `data-schedule-stream*`, monté dans `PlanningPage.tsx`) ; `frontend/tests/e2e/journey.spec.ts`
+exige désormais l'ouverture SSE avant le clic ET `data-schedule-stream-events ≥ 1` après l'arrivée du
+planning, message nommé dans les deux cas ; sa trace vit dans `specs/courantes/etat-des-lieux.md` §3).
 Un stamp REMPLACE, l'historique vit dans git : `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
@@ -22,7 +24,7 @@ Un stamp REMPLACE, l'historique vit dans git : `git log -p --follow docs/testing
 | PHPUnit `CrossStack/` | backend ⇄ engine, backend ⇄ frontend | contrats : forme du payload ⇄ Pydantic (`*ContractSchemaTest`), `CONTRACT_VERSION`, parités de payload, **miroirs front déclarés** (`FrontRederivationRegistryTest`, `CapacityMirrorParityTest`) | `backend/tests/CrossStack/` | `phpunit --group contract` | steps de `blocking-tests` + `engine-semantics` (groupe `contract` **contre le vrai engine**) |
 | pytest | engine | unitaires du solveur (racine), **sémantiques** (`tests/semantic/` : une contrainte saisie est honorée, pas juste `COMPLETED`), goldens (`tests/golden/`, BCCL d'acceptation compris), invariants, perf (`-m perf`) | `engine/tests/` | `make -C engine test` (ruff + format + mypy + bandit + pytest) | `engine-tests` ; `engine-perf` |
 | Vitest + RTL | frontend | composants, hooks react-query, lib pure (`vi.mock` des queries) ; jsdom — **aucune mise en page** (`.claude/rules/frontend.md`) | `frontend/src/**/*.test.ts*` | `make -C frontend test` (image tooling à rebâtir avant) | `frontend` |
-| Playwright | frontend + stack complète | 11 parcours nommés en §2 — dont **le seul test UI → API → engine → planning** (`journey.spec.ts`) et 4 specs **axe** (contraste 2 thèmes, reflow, voile, écrans système) | `frontend/tests/e2e/` | `make -C frontend e2e` | `e2e` |
+| Playwright | frontend + stack complète | 11 parcours nommés en §2 — dont **le seul test UI → API → engine → planning** (`journey.spec.ts`, qui prouve aussi la livraison PAR SSE : témoin Mercure, échec nommé si le hub reste muet — P4-168) et 4 specs **axe** (contraste 2 thèmes, reflow, voile, écrans système) | `frontend/tests/e2e/` | `make -C frontend e2e` | `e2e` |
 | Smokes bash | stack complète | 5 preuves sémantiques de bout en bout (§2), chacune autosuffisante (JWT, données, restauration) | `backend/scripts/*smoke*.sh` | `backend/scripts/<smoke>.sh` (sous `with-sandbox.sh` en mode play) | `smoke-tests` |
 | Statique | 3 zones | PHPStan 8 · CS-Fixer · Rector — ruff · `ruff format` · mypy strict · bandit — eslint · `tsc -b --force` | Makefiles | `make lint` | `phpstan`, `rector`, `engine-tests`, `frontend` |
 | Sécurité | dépôt, images | gitleaks (historique entier), semgrep, `composer`/`npm`/`pip audit`, Trivy CRITICAL sur les images prod | `.github/workflows/` | — | `secrets-scan`, `semgrep`, `dependency-audit`, `build-docker` + cron hebdo `security-weekly.yml` |
@@ -40,7 +42,7 @@ Recalculer les tailles : `find backend/tests -name '*Test.php' | awk -F/ '{print
 | Axe | Preuve principale | Où |
 |---|---|---|
 | Isolation tenant | `TenantIsolationTest`, `RlsIsolationTest`, `TenantCacheIsolationTest`, `MatchTenantIsolationTest` | `blocking-tests` |
-| Pipeline de génération | `ConcurrentGenerationTest` (verrou) ; **`journey.spec.ts`** (wizard → génération CP-SAT réelle → planning validé → cockpit) ; smokes `smoke-solver.sh` (rail async → `COMPLETED`) et `onboarding-smoke.sh` (club neuf → minimum → `COMPLETED`) | `blocking-tests`, `e2e`, `smoke-tests` |
+| Pipeline de génération | `ConcurrentGenerationTest` (verrou) ; **`journey.spec.ts`** (wizard → génération CP-SAT réelle → planning validé → cockpit — **et livrée PAR le canal Mercure/SSE**, pas seulement par le repli polling : témoin `ScheduleStreamWitness`, `data-schedule-stream-events` ≥ 1 exigé, P4-168) ; smokes `smoke-solver.sh` (rail async → `COMPLETED`) et `onboarding-smoke.sh` (club neuf → minimum → `COMPLETED`) | `blocking-tests`, `e2e`, `smoke-tests` |
 | Sémantique des contraintes | `engine/tests/semantic/` ; `engine-semantics` (clés, miroir capacité, forme du contrat contre le vrai engine) ; `smoke-place-matches.sh` (samedi PLACED dans sa fenêtre, dimanche UNPLACED `no_access_window`) | `engine-tests`, `engine-semantics`, `smoke-tests` |
 | Cycle de vie des plans (ADR-0002) | `PeriodPlanBirthTest`, `PeriodCopyBirthTest`, `SeasonPlanInForceTest`, `SocleDeviationParityTest`, `ScheduleConstraintBuilderOverlayTest` ; `smoke-overlay.sh` (période → plan → overlay → `COMPLETED`) ; `club-life.spec.ts` (incident borné à SON plan) | `blocking-tests`, `smoke-tests`, `e2e` |
 | Périmètre engagé | `EngagedTeamGuardTest` ; `matches.spec.ts` (matchs verrouillés tant que le plan principal n'est pas validé) | `blocking-tests`, `e2e` |
@@ -71,11 +73,7 @@ Recalculer les tailles : `find backend/tests -name '*Test.php' | awk -F/ '{print
    aucun script. Conséquence : on sait ce qui est testé, pas ce qui n'est **jamais exécuté**.
 2. **La perf du solveur ne gate pas les PR** (roadmap **P4-167**) : `engine-perf` sur `main` seulement ; le marqueur `perf` est
    exclu par défaut (`addopts = "-m 'not perf'"` dans `engine/pyproject.toml`).
-3. **Le canal Mercure n'est pas asserté** (roadmap **P4-168**) : `journey.spec.ts` attend le planning placé, aucune assertion
-   ne nomme SSE, et `frontend/src/features/planning/queries.ts` a un repli polling
-   (`isScheduleStreamConnected`) — un hub Mercure mort ne rougit pas ce test. `MercureHardeningTest` est un garde
-   STATIQUE de `docker-compose.yml` (pas d'`anonymous`, pas de CORS joker), pas une preuve de livraison.
-4. **Rien n'est lisible par un non-développeur** : aucun `.feature`, aucun scénario en français. Les trois
+3. **Rien n'est lisible par un non-développeur** : aucun `.feature`, aucun scénario en français. Les trois
    formats fonctionnels (PHPUnit `WebTestCase`, bash, Playwright) sont des formats de développeur — le
    fondateur ne peut ni relire ni proposer un scénario. Ouvert : roadmap **P4-165** (Behat/Gherkin, à cadrer).
 

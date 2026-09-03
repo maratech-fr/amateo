@@ -1,14 +1,17 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-03 (P4-169). Re-confronté au code : `backend/phpunit.xml.dist` — les 3 testsuites
-(`Unit`, `Integration`, `Contract`) couvrent désormais tous les sous-dossiers de `backend/tests/` portant
-un `*Test.php` (rangement PAR NATURE), gardé par `Unit/TestsuitesCoverEveryTestDirectoryTest` — le §2 (qui
-disait sept dossiers hors testsuite) est corrigé en conséquence ; le graphe §1 contre
-`.github/workflows/ci.yml` — `blocking-tests` needs `[lint, phpstan]`, `unit-tests` et `e2e` needs
-`blocking-tests`, `engine-perf` needs `engine-tests` et `if: github.ref == 'refs/heads/main'`,
-`build-docker` needs `[blocking-tests, engine-tests]`, six jobs sans `needs` (`rector`, `dependency-audit`,
-`secrets-scan`, `semgrep`, `smoke-tests`, `engine-semantics`) ✓ ; les 5 smokes de `backend/scripts/` = les
-5 steps du job `smoke-tests` ✓. `DECLARED_ASYMMETRIES` non re-sondé cette passe.
+Last verified @ 2026-09-03 (P4-169 + P4-168). Re-confronté au code : `backend/phpunit.xml.dist` — les 3
+testsuites (`Unit`, `Integration`, `Contract`) couvrent désormais tous les sous-dossiers de
+`backend/tests/` portant un `*Test.php` (rangement PAR NATURE), gardé par
+`Unit/TestsuitesCoverEveryTestDirectoryTest` — le §2 (qui disait sept dossiers hors testsuite) est
+corrigé en conséquence ; le graphe §1 contre `.github/workflows/ci.yml` — `blocking-tests` needs
+`[lint, phpstan]`, `unit-tests` et `e2e` needs `blocking-tests`, `engine-perf` needs `engine-tests` et
+`if: github.ref == 'refs/heads/main'`, `build-docker` needs `[blocking-tests, engine-tests]`, six jobs
+sans `needs` (`rector`, `dependency-audit`, `secrets-scan`, `semgrep`, `smoke-tests`, `engine-semantics`)
+✓ ; les 5 smokes de `backend/scripts/` = les 5 steps du job `smoke-tests` ✓. `DECLARED_ASYMMETRIES` non
+re-sondé cette passe. §3bis : ajout du patron TÉMOIN, re-vérifié contre `journey.spec.ts` (armement
+`waitForResponse` sur `/.well-known/mercure` avant le clic, assertion `data-schedule-stream-events ≥ 1`
+après l'arrivée du planning) et `ScheduleStreamWitness.tsx`.
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique), [`test-coverage-map.md`](test-coverage-map.md) (qui teste quoi, angles morts) and [`../project-map.md`](../project-map.md).
 
@@ -192,6 +195,14 @@ refusé, s'il a répondu 422, ou si c'est la liste qui n'a pas suivi. Deux enqu�
 ⚠ **Ce n'est pas une assertion, délibérément.** Des 4xx légitimes traversent ces parcours (gardes
 fail-closed, refus de rôle, 404 anti-énumération des pages à token) : en faire un échec
 transformerait un comportement voulu en faux rouge. **On collecte, on n'accuse pas.**
+
+⚑ **Patron du TÉMOIN** : un parcours qui peut devenir vide sans le dire est un faux vert — donnez-lui
+un signal qui ÉCHOUE en le disant. Deux instances vécues : `modal-reachability.spec.ts` (§4 ci-dessous)
+échoue si RIEN ne déborde au lieu de laisser passer un test qui ne teste rien ; `journey.spec.ts`
+(P4-168, 2026-09-03) distingue « le planning est arrivé PAR le flux SSE » de « … par le repli polling,
+hub muet » via un témoin DOM sans rendu (`ScheduleStreamWitness`, `data-schedule-stream-events`) — le
+compteur d'événements survit à la fermeture normale du flux en fin de génération, contrairement à l'état
+`connected` seul, qui retomberait avant que le témoin ne soit lu.
 
 ⚠ **Un piège d'environnement à connaître avant d'accuser le code** : les mails partent par le bus,
 donc par le conteneur `messenger-worker` — qui **s'arrête sur son time-limit horaire**. Worker
