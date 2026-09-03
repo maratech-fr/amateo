@@ -18476,6 +18476,65 @@
                 ]
             }
         },
+        "/api/team_solo_budgets": {
+            "get": {
+                "operationId": "api_team_solo_budgets_get_collection",
+                "tags": [
+                    "TeamSoloBudget"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "TeamSoloBudget collection",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "type": "object",
+                                    "description": "TeamSoloBudget.jsonld collection.",
+                                    "allOf": [
+                                        {
+                                            "$ref": "#/components/schemas/HydraCollectionBaseSchemaNoPagination"
+                                        },
+                                        {
+                                            "type": "object",
+                                            "required": [
+                                                "member"
+                                            ],
+                                            "properties": {
+                                                "member": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/TeamSoloBudget.jsonld"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/TeamSoloBudget"
+                                    }
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/TeamSoloBudget.html"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "summary": "Retrieves the collection of TeamSoloBudget resources.",
+                "description": "Retrieves the collection of TeamSoloBudget resources.",
+                "parameters": []
+            }
+        },
         "/api/team_tags": {
             "get": {
                 "operationId": "api_team_tags_get_collection",
@@ -29658,6 +29717,139 @@
                 ],
                 "description": "Period-editable structure: a sparse per-(period, team) override \u2014 the team is\noff for the period, or trains a different number of sessions. No row = seasonal\ndefaults. The overlay build reads these; the base plan is never touched."
             },
+            "TeamSoloBudget": {
+                "type": "object",
+                "description": "Le budget de r\u00e9servation INDIVIDUELLE d'une \u00e9quipe, par port\u00e9e. Lecture seule, scop\u00e9e club+saison\net filtr\u00e9e par ``schedulePlanId`` (absent/NULL = socle saison ; un UUID = plan de p\u00e9riode, deux\nmondes distincts). Le front s'en sert pour n'offrir en r\u00e9servation individuelle que ce qui reste\nr\u00e9servable : une \u00e9quipe dont toutes les s\u00e9ances viennent de ses blocs (``residual`` 0 et\n``inBlock``) n'appara\u00eet que via ses blocs ; sinon elle porte son ``residual`` en \u00e9tiquette.",
+                "properties": {
+                    "teamId": {
+                        "description": "L'\u00e9quipe \u2014 identifiant de la ligne dans la port\u00e9e demand\u00e9e.",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "schedulePlanId": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "effectiveSessions": {
+                        "description": "S(T) \u2014 s\u00e9ances hebdomadaires effectives (override de p\u00e9riode inclus).",
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "blockSessions": {
+                        "description": "B(T) \u2014 \u03a3 des s\u00e9ances communes des blocs de la port\u00e9e contenant l'\u00e9quipe.",
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "residual": {
+                        "description": "R(T) = S(T) \u2212 B(T) \u2014 le nombre maximal de r\u00e9servations individuelles.",
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "individualUsed": {
+                        "description": "R\u00e9servations individuelles d\u00e9j\u00e0 pos\u00e9es (hors cases bloc-compl\u00e8tes).",
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "inBlock": {
+                        "description": "L'\u00e9quipe est membre d'au moins un bloc de la port\u00e9e.",
+                        "default": false,
+                        "type": "boolean"
+                    }
+                }
+            },
+            "TeamSoloBudget.html": {
+                "type": "object",
+                "description": "Le budget de r\u00e9servation INDIVIDUELLE d'une \u00e9quipe, par port\u00e9e. Lecture seule, scop\u00e9e club+saison\net filtr\u00e9e par ``schedulePlanId`` (absent/NULL = socle saison ; un UUID = plan de p\u00e9riode, deux\nmondes distincts). Le front s'en sert pour n'offrir en r\u00e9servation individuelle que ce qui reste\nr\u00e9servable : une \u00e9quipe dont toutes les s\u00e9ances viennent de ses blocs (``residual`` 0 et\n``inBlock``) n'appara\u00eet que via ses blocs ; sinon elle porte son ``residual`` en \u00e9tiquette.",
+                "properties": {
+                    "teamId": {
+                        "description": "L'\u00e9quipe \u2014 identifiant de la ligne dans la port\u00e9e demand\u00e9e.",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "schedulePlanId": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "effectiveSessions": {
+                        "description": "S(T) \u2014 s\u00e9ances hebdomadaires effectives (override de p\u00e9riode inclus).",
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "blockSessions": {
+                        "description": "B(T) \u2014 \u03a3 des s\u00e9ances communes des blocs de la port\u00e9e contenant l'\u00e9quipe.",
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "residual": {
+                        "description": "R(T) = S(T) \u2212 B(T) \u2014 le nombre maximal de r\u00e9servations individuelles.",
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "individualUsed": {
+                        "description": "R\u00e9servations individuelles d\u00e9j\u00e0 pos\u00e9es (hors cases bloc-compl\u00e8tes).",
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "inBlock": {
+                        "description": "L'\u00e9quipe est membre d'au moins un bloc de la port\u00e9e.",
+                        "default": false,
+                        "type": "boolean"
+                    }
+                }
+            },
+            "TeamSoloBudget.jsonld": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/HydraItemBaseSchema"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "teamId": {
+                                "description": "L'\u00e9quipe \u2014 identifiant de la ligne dans la port\u00e9e demand\u00e9e.",
+                                "default": "",
+                                "type": "string"
+                            },
+                            "schedulePlanId": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "effectiveSessions": {
+                                "description": "S(T) \u2014 s\u00e9ances hebdomadaires effectives (override de p\u00e9riode inclus).",
+                                "default": 0,
+                                "type": "integer"
+                            },
+                            "blockSessions": {
+                                "description": "B(T) \u2014 \u03a3 des s\u00e9ances communes des blocs de la port\u00e9e contenant l'\u00e9quipe.",
+                                "default": 0,
+                                "type": "integer"
+                            },
+                            "residual": {
+                                "description": "R(T) = S(T) \u2212 B(T) \u2014 le nombre maximal de r\u00e9servations individuelles.",
+                                "default": 0,
+                                "type": "integer"
+                            },
+                            "individualUsed": {
+                                "description": "R\u00e9servations individuelles d\u00e9j\u00e0 pos\u00e9es (hors cases bloc-compl\u00e8tes).",
+                                "default": 0,
+                                "type": "integer"
+                            },
+                            "inBlock": {
+                                "description": "L'\u00e9quipe est membre d'au moins un bloc de la port\u00e9e.",
+                                "default": false,
+                                "type": "boolean"
+                            }
+                        }
+                    }
+                ],
+                "description": "Le budget de r\u00e9servation INDIVIDUELLE d'une \u00e9quipe, par port\u00e9e. Lecture seule, scop\u00e9e club+saison\net filtr\u00e9e par ``schedulePlanId`` (absent/NULL = socle saison ; un UUID = plan de p\u00e9riode, deux\nmondes distincts). Le front s'en sert pour n'offrir en r\u00e9servation individuelle que ce qui reste\nr\u00e9servable : une \u00e9quipe dont toutes les s\u00e9ances viennent de ses blocs (``residual`` 0 et\n``inBlock``) n'appara\u00eet que via ses blocs ; sinon elle porte son ``residual`` en \u00e9tiquette."
+            },
             "TeamTag": {
                 "type": "object",
                 "properties": {
@@ -31616,6 +31808,10 @@
         {
             "name": "Team",
             "description": "Resource 'Team' operations."
+        },
+        {
+            "name": "TeamSoloBudget",
+            "description": "Le budget de r\u00e9servation INDIVIDUELLE d'une \u00e9quipe, par port\u00e9e. Lecture seule, scop\u00e9e club+saison\net filtr\u00e9e par ``schedulePlanId`` (absent/NULL = socle saison ; un UUID = plan de p\u00e9riode, deux\nmondes distincts). Le front s'en sert pour n'offrir en r\u00e9servation individuelle que ce qui reste\nr\u00e9servable : une \u00e9quipe dont toutes les s\u00e9ances viennent de ses blocs (``residual`` 0 et\n``inBlock``) n'appara\u00eet que via ses blocs ; sinon elle porte son ``residual`` en \u00e9tiquette."
         },
         {
             "name": "TeamTagAssignment",
