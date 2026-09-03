@@ -1,10 +1,12 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-03 (P4-166 PR 1/3 : angle mort n° 1 §4 recalé « engine mesuré et gardé » —
-re-vérifié `.github/workflows/ci.yml` (job `engine-coverage`, `needs: engine-tests`, absent des
-`needs` de `build-docker`, `--cov-fail-under` lu de `coverage-floor.json`), `engine/Makefile` (cible
-`coverage`, `.PHONY`, `make test` n'exécute plus `--cov`) et `coverage-floor.json` (racine) ; sa
-trace vit dans `specs/courantes/etat-des-lieux.md` §3).
+Last verified @ 2026-09-03 (P4-166 PR 2/3 : angle mort n° 1 §4 recalé « engine et frontend mesurés
+et gardés, reste backend » — re-vérifié `.github/workflows/ci.yml` (jobs `engine-coverage`
+et `frontend-coverage`, chacun `needs` son job de zone, absents des `needs` de `build-docker`),
+`engine/Makefile` (cible `coverage`), `frontend/vitest.config.ts` (bloc `coverage`, `thresholds.lines`
+lu de `../coverage-floor.json`), `frontend/Makefile` (cible `coverage`, `.PHONY`) et
+`coverage-floor.json` (racine, clé `frontend` renseignée) ; sa trace vit dans
+`specs/courantes/etat-des-lieux.md` §3).
 Un stamp REMPLACE, l'historique vit dans git : `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
@@ -22,7 +24,7 @@ Un stamp REMPLACE, l'historique vit dans git : `git log -p --follow docs/testing
 | PHPUnit `Security/` | backend | isolation tenant / saison / rôles / RLS / rate-limit / superadmin / verrous de période | `backend/tests/Security/` | idem | **la majorité des steps de `blocking-tests`** |
 | PHPUnit `CrossStack/` | backend ⇄ engine, backend ⇄ frontend | contrats : forme du payload ⇄ Pydantic (`*ContractSchemaTest`), `CONTRACT_VERSION`, parités de payload, **miroirs front déclarés** (`FrontRederivationRegistryTest`, `CapacityMirrorParityTest`) | `backend/tests/CrossStack/` | `phpunit --group contract` | steps de `blocking-tests` + `engine-semantics` (groupe `contract` **contre le vrai engine**) |
 | pytest | engine | unitaires du solveur (racine), **sémantiques** (`tests/semantic/` : une contrainte saisie est honorée, pas juste `COMPLETED`), goldens (`tests/golden/`, BCCL d'acceptation compris), invariants, perf (`-m perf`, budget lu par `_budget_seconds()` — `PERF_BUDGET_SECONDS` en override) ; **couverture + cliquet** (`make -C engine coverage`, plancher lu de `coverage-floor.json`, artefact `coverage-engine`) | `engine/tests/` | `make -C engine test` (ruff + format + mypy + bandit + pytest, **sans** couverture depuis P4-166) · `make -C engine coverage` (couverture + cliquet, séparé) | `engine-tests` ; `engine-coverage` (couverture, `needs: engine-tests`, hors `needs` de `build-docker`) ; `engine-perf` (main, dense + BCCL, 60 s) ; `engine-perf-pr` (PR, dense seul, quand `engine/**` ou `docker/engine/**` bouge) |
-| Vitest + RTL | frontend | composants, hooks react-query, lib pure (`vi.mock` des queries) ; jsdom — **aucune mise en page** (`.claude/rules/frontend.md`) | `frontend/src/**/*.test.ts*` | `make -C frontend test` (image tooling à rebâtir avant) | `frontend` |
+| Vitest + RTL | frontend | composants, hooks react-query, lib pure (`vi.mock` des queries) ; jsdom — **aucune mise en page** (`.claude/rules/frontend.md`) ; **couverture + cliquet** (`make -C frontend coverage`, plancher lu de `coverage-floor.json`, artefact `coverage-frontend`) | `frontend/src/**/*.test.ts*` | `make -C frontend test` (image tooling à rebâtir avant) · `make -C frontend coverage` (couverture, séparé — suite complète instrumentée, hors boucle courte) | `frontend` ; `frontend-coverage` (couverture, `needs: frontend`, hors `needs` de `build-docker`) |
 | Playwright | frontend + stack complète | 11 parcours nommés en §2 — dont **le seul test UI → API → engine → planning** (`journey.spec.ts`, qui prouve aussi la livraison PAR SSE : témoin Mercure, échec nommé si le hub reste muet — P4-168) et 4 specs **axe** (contraste 2 thèmes, reflow, voile, écrans système) | `frontend/tests/e2e/` | `make -C frontend e2e` | `e2e` |
 | Smokes bash | stack complète | 5 preuves sémantiques de bout en bout (§2), chacune autosuffisante (JWT, données, restauration) | `backend/scripts/*smoke*.sh` | `backend/scripts/<smoke>.sh` (sous `with-sandbox.sh` en mode play) | `smoke-tests` |
 | Statique | 3 zones | PHPStan 8 · CS-Fixer · Rector — ruff · `ruff format` · mypy strict · bandit — eslint · `tsc -b --force` | Makefiles | `make lint` | `phpstan`, `rector`, `engine-tests`, `frontend` |
@@ -70,37 +72,47 @@ Recalculer les tailles : `find backend/tests -name '*Test.php' | awk -F/ '{print
   `build-docker`** : le cliquet de couverture (`--cov-fail-under`, plancher lu de
   `coverage-floor.json`) est un required check à part, jamais une porte vers l'image de prod (B5,
   `couverture-de-tests-cadrage.md`). Rougit seul, ne bloque ni `blocking-tests` ni `build-docker`.
+- **`frontend-coverage`** (P4-166 PR 2/3, 2026-09-03) needs `frontend`, **PAS dans les `needs` de
+  `build-docker`** — même patron qu'`engine-coverage` : `npm run test:coverage` (Vitest
+  `--coverage`), cliquet `thresholds.lines` lu de `coverage-floor.json` (clé `frontend`), artefact
+  `coverage-frontend` (`frontend/coverage/`, `if: always()`).
 
 ## 4. Ce que personne ne prouve (angles morts constatés, pas devinés)
 
-1. **Mesure de couverture de code — engine mesuré et gardé ; backend et frontend restent** (roadmap
-   **P4-166**, PR 1/3 livrée le 2026-09-03). Engine : mesuré et gardé — job `engine-coverage`,
-   plancher versionné dans `coverage-floor.json`, artefact `coverage-engine` (voir §3, et le §
-   « `coverage-floor.json` » ci-dessous). Backend : pas de `<coverage>` dans `phpunit.xml.dist`, pas
-   de driver (pcov/xdebug) dans l'image. Frontend : `@vitest/coverage-v8` en devDependency, **aucune
-   config `test.coverage`**, aucun script. Conséquence pour ces deux zones : on sait ce qui est
-   testé, pas ce qui n'est **jamais exécuté**.
+1. **Mesure de couverture de code — engine et frontend mesurés et gardés ; backend reste** (roadmap
+   **P4-166**, PR 1/3 et 2/3 livrées le 2026-09-03). Engine : mesuré et gardé — job
+   `engine-coverage`, plancher versionné dans `coverage-floor.json`, artefact `coverage-engine`
+   (voir §3, et le § « `coverage-floor.json` » ci-dessous). Frontend : mesuré et gardé — job
+   `frontend-coverage`, bloc `coverage` dans `vitest.config.ts`, artefact `coverage-frontend`.
+   Backend : pas de `<coverage>` dans `phpunit.xml.dist`, pas de driver (pcov/xdebug) dans l'image.
+   Conséquence pour cette zone : on sait ce qui est testé, pas ce qui n'est **jamais exécuté**.
 2. **Rien n'est lisible par un non-développeur** : aucun `.feature`, aucun scénario en français. Les trois
    formats fonctionnels (PHPUnit `WebTestCase`, bash, Playwright) sont des formats de développeur — le
    fondateur ne peut ni relire ni proposer un scénario. Ouvert : roadmap **P4-165** (Behat/Gherkin, à cadrer).
 
 ## `coverage-floor.json` — la couture des trois zones (P4-166)
 
-Fichier versionné à la **racine du dépôt** (pas dans `engine/`, `backend/` ou `frontend/`) :
-`{"engine": 91, "frontend": null, "backend": null}`. Une valeur par zone — c'est la maison UNIQUE du
-**cliquet de couverture** (décision B3, `../../specs/evolution/couverture-de-tests-cadrage.md`) :
+Fichier versionné à la **racine du dépôt** (pas dans `engine/`, `backend/` ou `frontend/`) : une clé
+par zone (`engine`, `frontend`, `backend` — voir le fichier pour les valeurs courantes, jamais
+recopiées ici). C'est la maison UNIQUE du **cliquet de couverture** (décision B3,
+`../../specs/evolution/couverture-de-tests-cadrage.md`) :
 - **Rôle** : le plancher en dessous duquel le job de couverture de la zone rougit
-  (`--cov-fail-under` côté engine ; PHPUnit et vitest suivront le même patron pour backend/frontend).
-  `null` = zone pas encore mesurée (sa PR n'est pas livrée).
+  (`--cov-fail-under` côté engine, `thresholds.lines` côté frontend ; PHPUnit suivra le même patron
+  pour backend). `null` = zone pas encore mesurée (sa PR n'est pas livrée) — `frontend/vitest.config.ts`
+  lève une erreur explicite si sa clé est `null`, plutôt qu'un défaut silencieux.
 - **La règle du cliquet** : le plancher ne descend **jamais** ; une PR qui améliore la mesure d'une
   zone **remonte son plancher dans la même PR** — jamais un chiffre magique choisi a priori. Le
   plancher n'est pas la mesure brute : `floor(mesure) − 1` (marge pour la variance des tests
-  paramétrés/hypothesis — décision d'implémentation engine, consignée dans le cadrage).
-- **Qui le lit** : aujourd'hui `engine/Makefile` (cible `coverage`) et le job CI `engine-coverage`
-  (tous deux lisent la clé `engine`, jamais un chiffre en dur) ; backend et frontend liront `backend`/
-  `frontend` de la même façon quand leurs PR (2/3, 3/3) livreront.
-- **Gardé par** `engine/tests/test_coverage_floor.py` côté engine (le fichier existe, est du JSON, la
-  clé `engine` est un entier 0-100) ; backend/frontend auront leur garde équivalente à leur PR.
+  paramétrés/hypothesis — décision d'implémentation engine, reprise côté frontend, consignée dans
+  le cadrage).
+- **Qui le lit** : `engine/Makefile` (cible `coverage`) et le job CI `engine-coverage` (clé
+  `engine`) ; `frontend/vitest.config.ts` (bloc `coverage.thresholds`) et le job CI
+  `frontend-coverage` (clé `frontend`) ; backend lira `backend` de la même façon quand sa PR (3/3)
+  livrera. Jamais un chiffre en dur dans le code de mesure lui-même.
+- **Gardé par** `engine/tests/test_coverage_floor.py` côté engine et
+  `frontend/src/test/coverageFloor.test.ts` côté frontend (même contrat : le fichier existe, est
+  du JSON, la clé de la zone est un entier 0-100, jamais `null`) ; backend aura sa garde
+  équivalente à sa PR.
 
 ## 5. Behat — ce qu'il ajouterait, ce qu'il n'ajouterait pas (cadrage P4-165)
 

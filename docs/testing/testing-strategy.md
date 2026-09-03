@@ -1,11 +1,12 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-03 (P4-166 PR 1/3). Graphe §1 re-confronté à `.github/workflows/ci.yml` :
-nouveau job `engine-coverage` (`needs: engine-tests`, `timeout-minutes: 15`, `--cov-fail-under` lu de
-`coverage-floor.json`, **absent des `needs` de `build-docker`** — B5). `build-docker` needs
-`[blocking-tests, engine-tests]` toujours confirmé inchangé. Le reste du graphe (`blocking-tests` needs
-`[lint, phpstan]`, `unit-tests`/`e2e` needs `blocking-tests`, `engine-perf`/`engine-perf-pr`,
-sept jobs sans `needs`) et `backend/phpunit.xml.dist` (3 testsuites,
+Last verified @ 2026-09-03 (P4-166 PR 2/3). Graphe §1 re-confronté à `.github/workflows/ci.yml` :
+nouveau job `frontend-coverage` (`needs: frontend`, `timeout-minutes: 15`, `thresholds.lines` lu de
+`coverage-floor.json`, **absent des `needs` de `build-docker`** — B5, même patron
+qu'`engine-coverage`, ajouté en PR 1/3). `build-docker` needs `[blocking-tests, engine-tests]`
+toujours confirmé inchangé (`frontend-coverage`, comme `frontend`, n'y figure pas). Le reste du
+graphe (`blocking-tests` needs `[lint, phpstan]`, `unit-tests`/`e2e` needs `blocking-tests`,
+`engine-perf`/`engine-perf-pr`, sept jobs sans `needs`) et `backend/phpunit.xml.dist` (3 testsuites,
 `Unit/TestsuitesCoverEveryTestDirectoryTest`) non re-sondés cette passe (voir `git log -p --follow
 docs/testing/testing-strategy.md` pour l'historique des passes).
 
@@ -33,6 +34,7 @@ smoke-tests         (5 smokes sémantiques)                 — parallel, no nee
 engine-perf         (dense + BCCL solve < 60 s)             — needs engine-tests ; main only
 engine-perf-pr      (dense solve, PR budget = 60 s)         — needs engine-tests ; PR only, skipped when engine/ untouched
 engine-coverage     (couverture engine + cliquet)           — needs engine-tests ; does NOT gate build-docker
+frontend-coverage   (couverture frontend + cliquet)         — needs frontend ; does NOT gate build-docker
 ```
 
 **`engine-coverage`** (P4-166 PR 1/3, 2026-09-03) mesure `pytest --cov=app` en CI et la garde par un
@@ -42,6 +44,15 @@ cliquet : `needs: engine-tests`, `timeout-minutes: 15`, `--cov-fail-under` lu de
 jamais l'image de prod. Artefact `coverage-engine` (xml + résumé texte), `upload-artifact` avec
 `if: always()`. Le plancher versionné et sa règle de cliquet sont détaillés dans
 [`test-coverage-map.md`](test-coverage-map.md) (§ `coverage-floor.json`).
+
+**`frontend-coverage`** (P4-166 PR 2/3, 2026-09-03) mesure `npm run test:coverage` (Vitest
+`--coverage`) en CI et la garde par le même patron de cliquet : `needs: frontend`,
+`timeout-minutes: 15`, `thresholds.lines` lu de `coverage-floor.json` (racine, clé `frontend`) —
+jamais un seuil en dur. **Absent des `needs` de `build-docker`** (décision B5). Artefact
+`coverage-frontend` (`frontend/coverage/`, `upload-artifact` avec `if: always()`). Détail
+d'implémentation (exclusions déclarées, piège `__dirname` sous `--coverage`) :
+[`test-coverage-map.md`](test-coverage-map.md) (§ `coverage-floor.json`) et
+`specs/evolution/couverture-de-tests-cadrage.md` §B.
 
 **`engine-perf-pr`** (P4-167, 2026-09-03) donne un signal de perf plus tôt et moins cher sur les PR sans
 dupliquer `engine-perf` : `if: github.event_name == 'pull_request'`, `needs: engine-tests`,
@@ -80,6 +91,7 @@ All PHP test jobs first **create + migrate the test DB** (`doctrine:database:cre
 | `engine-tests` | `pytest` + `ruff check .` + `mypy` (in the engine container) |
 | `engine-coverage` | `pytest --cov=app --cov-fail-under=$FLOOR` (`$FLOOR` read from `coverage-floor.json`, key `engine`), needs `engine-tests`, does **NOT** gate `build-docker` (P4-166 PR 1/3) |
 | `frontend` | `npm run lint` (dont `eslint-plugin-jsx-a11y`, §4bis) + `tsc -b` + `vite build` + `vitest` (parallel, no needs) |
+| `frontend-coverage` | `npm run test:coverage` (`vitest run --coverage`, `thresholds.lines` lu de `coverage-floor.json`, clé `frontend`), needs `frontend`, does **NOT** gate `build-docker` (P4-166 PR 2/3) |
 | `dependency-audit` | `composer audit` / `npm audit --audit-level=high` / `pip-audit` (A18, blocking, parallel, no needs) |
 | `build-docker` | `docker compose build` (needs **blocking + engine** tests only) |
 

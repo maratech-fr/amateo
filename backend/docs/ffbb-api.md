@@ -1,13 +1,13 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-09-02 (rotation `documentation-update`, hors sujet de la PR — sondage des
-stamps les plus anciens du dépôt). Re-confronté au code, sans écart : hosts en constantes dures
-(`Service/Basketball/FfbbApiClient.php:24-25`, `CONFIG_URL`/`SEARCH_URL`) ✓ · routes
-`GET /api/ffbb/rencontres` + `POST /api/ffbb/rencontres/apply`
-(`Controller/Basketball/FfbbRencontresController.php:66,87`) ✓. Non re-sondé cette passe : le
-filtre strict serveur de `searchRencontres`, fallback `FFBB_MEILISEARCH_TOKEN`,
-`FfbbClubPopulator::applyClub`, `FfbbEngagementsController`, le cadrage archivé, la mesure
-« 36 hits BCCL / 1 052 documents » (donnée externe, non re-sondée).
+Last verified @ 2026-09-03 (rotation `documentation-update`, hors sujet de la PR (couverture
+frontend, P4-166) — sondage des stamps les plus anciens du dépôt). Re-confronté au code, sans
+écart : hosts en constantes dures (`Service/Basketball/FfbbApiClient.php:24-25`,
+`CONFIG_URL`/`SEARCH_URL`) ✓ · routes `GET /api/ffbb/rencontres` + `POST
+/api/ffbb/rencontres/apply` (`Controller/Basketball/FfbbRencontresController.php:66,87`) ✓. Non
+re-sondé cette passe : le filtre strict serveur de `searchRencontres`, fallback
+`FFBB_MEILISEARCH_TOKEN`, `FfbbClubPopulator::applyClub`, `FfbbEngagementsController`, le cadrage
+archivé, la mesure « 36 hits BCCL / 1 052 documents » (donnée externe, non re-sondée).
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit rester dans la **liste blanche de hosts** du client (SSRF, A12). Vérifié le 2026-07-10 sur le code réel `ARA0069036` (BCCL).
 

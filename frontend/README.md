@@ -19,6 +19,7 @@ make dev               # Vite Docker, http://localhost:5173
 make build             # image frontend de production (tsc + Vite + Nginx)
 make lint              # ESLint + TypeScript dans Docker
 make test              # Vitest dans Docker (inclut lint + typecheck)
+make coverage          # couverture + cliquet (suite complète instrumentée, ~4-5 min — hors boucle courte)
 make exec              # shell dans l'image de tooling Node
 
 # Les e2e Playwright restent pilotés par la CI.

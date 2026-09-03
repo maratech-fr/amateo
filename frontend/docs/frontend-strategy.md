@@ -1,14 +1,12 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-09-03 (rotation `documentation-update`, fichier hors sujet de la PR
-(seed BCCL/`make play`, backend seul). Re-confronté au code : les cinq `queries.test.tsx` cités
-(`cockpit`/`wizard`/`matches`/`planning`/`auth`) existent toujours, les six modules listés sans
-test dédié (`club`, `coach-wishes`, `feedback`, `profile`, `release-notes`, `shared/session`)
-restent sans `queries.test.tsx`, `admin/queries.test.tsx` n'existe toujours pas (abandon délibéré
-inchangé) ✓ ; la table des majeures (§ Outils de test) confrontée à `frontend/package.json` —
+Last verified @ 2026-09-03 (P4-166 PR 2/3 — la ligne `@vitest/coverage-v8` gagne un pointeur vers
+`docs/testing/test-coverage-map.md`, re-confronté à `frontend/vitest.config.ts` : le bloc
+`coverage` existe, `make coverage`/job CI `frontend-coverage` sont réels). Reste de la table des
+majeures (§ Outils de test) confronté à `frontend/package.json` lors de la passe précédente —
 `vitest`/`@vitest/*` 4.x, `@testing-library/react` 16.x, `jest-dom` 7.x, `jsdom` 30.x, `msw` 2.x,
 `@playwright/test` 1.x, `vitest-axe` 0.x, `@axe-core/playwright` 4.x, `storybook`/`@storybook/*`
-10.x : toutes justes, rien à corriger. Historique des passes : `git log -p --follow
+10.x, non re-sondé cette passe. Historique des passes : `git log -p --follow
 frontend/docs/frontend-strategy.md`.)
 
 > **Statut : le rebuild est LIVRÉ.** Les formulations « pour le rebuild » ci-dessous sont
@@ -96,7 +94,7 @@ au-delà de 3 s est colorié dans le rapport : c'est là qu'on regarde si le sc�
 | Outil | Version (`frontend/package.json`) | Rôle |
 |------|---------|------|
 | Vitest | 4.x | Runner de test (config `vitest.config.ts` : jsdom, `globals`, setup `src/test/setup.ts`, exclut `tests/e2e/`) |
-| @vitest/coverage-v8 · @vitest/ui | 4.x | Couverture · UI de debug |
+| @vitest/coverage-v8 · @vitest/ui | 4.x | Couverture (`vitest run --coverage`, `make coverage`, job CI `frontend-coverage` — mesure et cliquet détaillés dans `docs/testing/test-coverage-map.md`) · UI de debug |
 | @testing-library/react | 16.x | Rendu et queries DOM |
 | @testing-library/user-event | 14.x | Simulation d'interaction |
 | @testing-library/jest-dom | 7.x | Matchers DOM |
