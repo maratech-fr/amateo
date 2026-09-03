@@ -1,12 +1,14 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-03 (création de `test-coverage-map.md`, relevé complet). Re-confronté au code :
-le graphe §1 contre `.github/workflows/ci.yml` — `blocking-tests` needs `[lint, phpstan]`, `unit-tests` et
-`e2e` needs `blocking-tests`, `engine-perf` needs `engine-tests` et `if: github.ref == 'refs/heads/main'`,
+Last verified @ 2026-09-03 (P4-169). Re-confronté au code : `backend/phpunit.xml.dist` — les 3 testsuites
+(`Unit`, `Integration`, `Contract`) couvrent désormais tous les sous-dossiers de `backend/tests/` portant
+un `*Test.php` (rangement PAR NATURE), gardé par `Unit/TestsuitesCoverEveryTestDirectoryTest` — le §2 (qui
+disait sept dossiers hors testsuite) est corrigé en conséquence ; le graphe §1 contre
+`.github/workflows/ci.yml` — `blocking-tests` needs `[lint, phpstan]`, `unit-tests` et `e2e` needs
+`blocking-tests`, `engine-perf` needs `engine-tests` et `if: github.ref == 'refs/heads/main'`,
 `build-docker` needs `[blocking-tests, engine-tests]`, six jobs sans `needs` (`rector`, `dependency-audit`,
-`secrets-scan`, `semgrep`, `smoke-tests`, `engine-semantics`) ✓ ; `phpunit.xml.dist` : 3 testsuites + DAMA puis
-`ReleasesParentTransactionBeforeIsolatedTests` ✓ ; les 5 smokes de `backend/scripts/` = les 5 steps du job
-`smoke-tests` ✓. `DECLARED_ASYMMETRIES` non re-sondé cette passe.
+`secrets-scan`, `semgrep`, `smoke-tests`, `engine-semantics`) ✓ ; les 5 smokes de `backend/scripts/` = les
+5 steps du job `smoke-tests` ✓. `DECLARED_ASYMMETRIES` non re-sondé cette passe.
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique), [`test-coverage-map.md`](test-coverage-map.md) (qui teste quoi, angles morts) and [`../project-map.md`](../project-map.md).
 
@@ -62,9 +64,17 @@ All PHP jobs invoke `vendor/bin/phpunit` (PHPUnit 11, the direct `phpunit/phpuni
 
 ## 2. Backend tests (`backend/tests/`)
 
-Layout: `Unit/` (Entity, Enum, Service — no DB) · `Integration/Api/` · `Security/` · `Queue/` · `CrossStack/` — **et sept dossiers HORS des testsuites déclarées** : `Api/`, `Command/`, `Double/`, `EventListener/`, `MessageHandler/`, `OpenApi/`, `Validator/`.
+Layout, rangé PAR NATURE dans les 3 testsuites de `phpunit.xml.dist` (`Unit` : `Unit/`, `Logging/`,
+`Messenger/` — sans conteneur ; `Integration` : `Integration/`, `Security/`, `Queue/`, `Api/`,
+`Command/`, `OpenApi/`, `Validator/`, `MessageHandler/`, `EventListener/` — `Kernel`/`WebTestCase` ;
+`Contract` : `CrossStack/`). Chaque sous-dossier de `tests/` portant un `*Test.php` appartient à
+exactement une testsuite, gardé par `Unit/TestsuitesCoverEveryTestDirectoryTest` (P4-169, 2026-09-03).
 
-⚠️ **Le piège** : `phpunit.xml.dist` ne déclare que trois testsuites (`Unit`, `Integration`, `Contract`), or le job CI `unit-tests` lance **`phpunit tests/`, le dossier entier**. Valider en local avec `make -C backend test` (testsuite `Unit` seule) ou `make -C backend phpunit` (`--group phase1` seul) **laisse ces sept dossiers hors de vue** — deux échecs y ont dormi jusqu'à la CI. **Avant de pousser : `make -C backend tests-complete`**, miroir exact de la CI.
+⚠️ **Le piège reste réel malgré ce rangement** : le job CI `unit-tests` lance **`phpunit tests/`, le
+dossier entier**, alors que `make -C backend test` ne joue que la testsuite `Unit` (rapide, sans DB)
+et `make -C backend phpunit` que `--group phase1`. Les deux couvrent désormais TOUS les dossiers par
+testsuite (rien n'y échappe en silence), mais `Integration`/`Contract` restent hors de `make test` par
+construction. **Avant de pousser : `make -C backend tests-complete`**, miroir exact de la CI.
 
 Groups (PHP attributes): `#[Group('phase1')]`, `#[Group('integration')]`, `#[Group('contract')]`, `#[Group('unit')]`. Test isolation via DAMA DoctrineTestBundle; bootstrap `tests/bootstrap.php`.
 

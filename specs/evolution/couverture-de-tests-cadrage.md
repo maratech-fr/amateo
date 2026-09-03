@@ -1,21 +1,22 @@
-# Couverture de tests — cadrage des angles morts (P4-165 → P4-169)
+# Couverture de tests — cadrage des angles morts (P4-165 → P4-168)
 
 > **Fichier de détail ouvert** (référencé depuis [`roadmap.md`](roadmap.md)). Il porte le cadrage
-> des cinq items nés du relevé du 2026-09-03 ([`../../docs/testing/test-coverage-map.md`](../../docs/testing/test-coverage-map.md)
+> des items nés du relevé du 2026-09-03 ([`../../docs/testing/test-coverage-map.md`](../../docs/testing/test-coverage-map.md)
 > §4) : besoin, constat vérifié, options, recommandation, **décisions à trancher par le fondateur avec un
 > exemple concret chacune**, et ce qui est délibérément hors scope. Quand un item est livré, sa ligne
 > quitte la roadmap, sa trace va dans l'état des lieux, son comportement dans `docs/testing/` — et sa
-> section ici est supprimée. Statut : **cadrage proposé le 2026-09-03, en attente de validation**.
+> section ici est supprimée. **P4-169 (section E, testsuites PHPUnit complètes) livré le 2026-09-03**
+> (trace : `specs/courantes/etat-des-lieux.md` §3). Statut : **cadrage proposé le 2026-09-03, en attente
+> de validation pour A-D**.
 
 ## Ordre proposé (du moins cher au plus structurant)
 
 | # | Item | Effort | Pourquoi cet ordre |
 |---|---|---|---|
-| 1 | P4-169 testsuites PHPUnit complètes | S · 1 PR | mécanique, supprime un gotcha entretenu depuis des mois |
-| 2 | P4-168 témoin Mercure | S · 1 PR | un spec, une règle du dépôt déjà écrite (faux vert) |
-| 3 | P4-167 perf sur PR | S · 1 PR | `ci.yml` seul, à condition de mesurer la variance d'abord |
-| 4 | P4-166 couverture de code | M · 3 PR (une par zone) | chaque zone a son outillage ; le cliquet vient après la première mesure |
-| 5 | P4-165 Behat | L · lot phasé | dépend des décisions A1-A5 ; les smokes migrés sont le premier palier |
+| 1 | P4-168 témoin Mercure | S · 1 PR | un spec, une règle du dépôt déjà écrite (faux vert) |
+| 2 | P4-167 perf sur PR | S · 1 PR | `ci.yml` seul, à condition de mesurer la variance d'abord |
+| 3 | P4-166 couverture de code | M · 3 PR (une par zone) | chaque zone a son outillage ; le cliquet vient après la première mesure |
+| 4 | P4-165 Behat | L · lot phasé | dépend des décisions A1-A5 ; les smokes migrés sont le premier palier |
 
 ## A — P4-165 · Tests fonctionnels en Behat (Gherkin)
 
@@ -67,7 +68,7 @@ le scénario que le fondateur relit, pas la traduction) ; un runner Behat côté
 **Besoin.** Savoir quelles lignes ne sont JAMAIS exécutées par un test — la carte dit ce qui est testé, pas
 ce qui ne l'est pas. Sans mesure, un audit de couverture est un jugement, pas un relevé.
 
-**Constat vérifié.** Backend : `backend/phpunit.xml.dist:14-22` sans `<coverage>`, `php -m` dans `php-fpm`
+**Constat vérifié.** Backend : `backend/phpunit.xml.dist:18-38` sans `<coverage>`, `php -m` dans `php-fpm`
 sans pcov ni xdebug. Engine : `engine/Makefile:30` `pytest --cov=app` en local, `engine/pyproject.toml:23`
 `pytest-cov`, step CI « Run pytest » nu, aucun `--cov-fail-under`. Frontend : `frontend/package.json:54`
 `@vitest/coverage-v8` installé, aucun bloc `test.coverage`, aucun script.
@@ -155,26 +156,3 @@ plus tard, s'il existe un besoin produit d'afficher « connexion temps réel per
 
 **Hors scope.** Test de charge du hub ; reconnexion après expiration de cookie (déjà géré, `scheduleStream.ts:135`).
 
-## E — P4-169 · Testsuites PHPUnit complètes
-
-**Besoin.** Chaque dossier de `backend/tests/` appartient à une testsuite, gardé par un test, pour que
-`--testsuite` et `make test` ne sautent plus rien en silence — et que le gotcha §10.1 de `CLAUDE.md` cesse
-d'être entretenu.
-
-**Constat vérifié.** `backend/phpunit.xml.dist:14-22` : `Unit`, `Integration` (+ Security + Queue),
-`Contract` (CrossStack) ; huit dossiers hors suite (`Api/`, `Command/`, `OpenApi/`, `Validator/`,
-`MessageHandler/`, `EventListener/`, `Logging/`, `Messenger/`) ; `backend/Makefile:33-34` `make test` = `Unit`.
-
-**Options.** (a) Ranger chaque dossier selon sa nature (`TestCase` pur → `Unit`, `KernelTestCase`/`WebTestCase`
-→ `Integration`). (b) Une testsuite `Other` fourre-tout. (c) Ne rien ranger, documenter.
-
-**Reco.** (a) + un garde `TestsuitesCoverEveryTestDirectoryTest` (patron `BlockingTestsListMatchesCiTest`).
-
-**Décisions à trancher.**
-- **E1 — rangement par nature, pas par nom de dossier.** Exemple : `tests/Api/VenueCollectionOrderTest.php`
-  (`WebTestCase`) → `Integration` ; `tests/Validator/*` (`TestCase`) → `Unit`. Le coder lit chaque `extends`.
-- **E2 — `make test` reste « Unit seule, rapide »** ; `tests-complete` reste le miroir CI. Exemple : après
-  rangement, `make test` gagne les validators purs (rapides) et perd rien ; le gotcha §10.1 reste vrai mais
-  cesse d'avoir des trous invisibles par testsuite.
-
-**Hors scope.** Fusionner `make test` et `tests-complete` ; paralléliser PHPUnit (`paratest`) — idée, pas ici.

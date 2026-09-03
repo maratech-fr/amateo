@@ -168,7 +168,8 @@ maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir l
 
 1. ⚠ **`make phpunit` = `--group phase1` seul · `make test` = testsuite `Unit` seule** — or la CI
    `unit-tests` lance `phpunit tests/` ENTIER. **Avant de pousser :
-   `make -C backend tests-complete`** (miroir CI — détail : `backend/docs/commands.md`).
+   `make -C backend tests-complete`** (miroir CI — détail : `backend/docs/commands.md`). Chaque
+   dossier de `tests/` est dans une testsuite (garde `TestsuitesCoverEveryTestDirectoryTest`).
 2. `contracts/` et `tests/` racine = placeholders vides (les tests cross-stack vivent dans
    `backend/tests/`).
 3. Tenant résolu côté serveur depuis le JWT : le front n'envoie **aucun** header `X-Club-Id`.
