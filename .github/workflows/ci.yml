@@ -723,11 +723,14 @@ jobs:
     # (a backend-only PR does not pay it) — P4-167, decisions C1-C3.
     if: github.event_name == 'pull_request'
     needs: engine-tests
-    # Provisoire : budget PR ≥ 1,5 × la médiane mesurée (C2). 90 s est un point de
-    # départ prudent — valeur à fixer après 5 runs sur runners GitHub (C1 : mesurer
-    # la variance AVANT de resserrer ; on ne « réessaie » jamais un flake en CI).
+    # Budget PR = budget main (60 s), décision C2 du 2026-09-03 : la variance a été
+    # mesurée AVANT (C1, 5 runs sur runners GitHub, dense de l'ordre de 0,2-0,3 s,
+    # valeurs dans la PR #838) — 60 s est ≥ 1,5 × la médiane par deux ordres de
+    # grandeur, et la régression visée est le prove-stall mono-worker (612 s).
+    # Une seule vérité PR/main plutôt qu'un seuil dérivé qui dériverait tout seul.
+    # On ne « réessaie » jamais un flake en CI : si ce gate rougit, on mesure.
     env:
-      PERF_PR_BUDGET: "90"
+      PERF_PR_BUDGET: "60"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
