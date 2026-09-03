@@ -151,6 +151,8 @@ vi.mock("react-router", async (orig) => ({ ...(await orig<typeof import("react-r
 vi.mock("@/features/planning/lib/scheduleStream", () => ({
   useScheduleStream: () => false,
   isScheduleStreamConnected: () => false,
+  // P4-168 — le témoin (ScheduleStreamWitness), rendu par PlanningPage, lit ce diagnostic.
+  useScheduleStreamDiagnostics: () => ({ connected: false, eventsReceived: 0 }),
 }));
 
 const { meState, renameSpy, plansState, conflictsState, reservationsState, teamOverridesState, capacityState, capacityGateEnabled } = vi.hoisted(() => ({

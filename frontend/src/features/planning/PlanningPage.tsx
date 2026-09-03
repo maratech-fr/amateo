@@ -31,6 +31,7 @@ import { EvictConfirmDialog, type EvictDialogPhase, type EvictFailureKind } from
 import { LocksPanel } from "./LocksPanel";
 import { ExportMenu } from "./ExportMenu";
 import { GenerationWaiting } from "./GenerationWaiting";
+import { ScheduleStreamWitness } from "./ScheduleStreamWitness";
 import { buildTagTeamIds } from "./lib/applicableConstraints";
 import { topSeveritySummary } from "./lib/diagnosticsSummary";
 import { computeDrift } from "./lib/drift";
@@ -1286,6 +1287,9 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
 
   return (
     <div>
+      {/* P4-168 — témoin (sans rendu) du canal de livraison : c'est l'écran qui affiche le
+          planning, donc l'endroit où l'e2e lit « livré par SSE » vs « livré par polling ». */}
+      <ScheduleStreamWitness />
       <div className="mb-4 flex items-center gap-3">
         {me?.club?.logoUrl ? <img src={me.club.logoUrl} alt="" className="size-8 shrink-0 rounded object-contain" /> : null}
         {null !== editingPlanningName ? (

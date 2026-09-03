@@ -1,7 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { acquireScheduleStream, invalidationKeysFor, isScheduleStreamConnected, parseScheduleEvent } from "./scheduleStream";
+import { acquireScheduleStream, getScheduleStreamDiagnostics, invalidationKeysFor, isScheduleStreamConnected, parseScheduleEvent } from "./scheduleStream";
 
 // Couche API mockée = module VOISIN (le mock ESM n'intercepte pas l'intra-module).
 vi.mock("@/shared/api/client", () => ({ api: { get: vi.fn() } }));
@@ -180,5 +180,35 @@ describe("acquireScheduleStream — FRT-04", () => {
     vi.advanceTimersByTime(10_000);
     await flush();
     expect(api.get).toHaveBeenCalledTimes(1);
+  });
+
+  // P4-168 — le TÉMOIN qui prouve que le planning est livré par SSE, pas par le polling de secours.
+  // `eventsReceived` est un compteur monotone qui SURVIT à la fermeture du flux (le flux se relâche
+  // dès que la génération quitte l'état « en vol », GenerateStep.tsx:141) : au moment où l'écran
+  // affiche le planning, `connected` est déjà retombé, mais `eventsReceived >= 1` prouve encore
+  // qu'un événement Mercure a bien été reçu. C'est LUI le témoin robuste (D2), pas `connected`.
+  it("ouverture → connected ; message → eventsReceived+1 (payload illisible non compté) ; erreur → connected false, compteur CONSERVÉ", async () => {
+    authResolvesWith(TEMPLATE);
+    const release = acquire();
+    await flush();
+
+    expect(getScheduleStreamDiagnostics().connected).toBe(false);
+    const before = getScheduleStreamDiagnostics().eventsReceived;
+
+    FakeEventSource.instances[0]!.onopen?.();
+    expect(getScheduleStreamDiagnostics().connected).toBe(true);
+
+    FakeEventSource.instances[0]!.onmessage?.({ data: JSON.stringify({ scheduleId: "s1", status: "GENERATING" }) } as MessageEvent<string>);
+    expect(getScheduleStreamDiagnostics().eventsReceived).toBe(before + 1);
+
+    // Un payload illisible n'est PAS un événement d'avancement : il ne fait pas bouger le témoin.
+    FakeEventSource.instances[0]!.onmessage?.({ data: "pas du json" } as MessageEvent<string>);
+    expect(getScheduleStreamDiagnostics().eventsReceived).toBe(before + 1);
+
+    // Le flux tombe : `connected` retombe, mais le témoin d'avancement RESTE (livraison SSE prouvée).
+    FakeEventSource.instances[0]!.onerror?.();
+    expect(getScheduleStreamDiagnostics().connected).toBe(false);
+    expect(getScheduleStreamDiagnostics().eventsReceived).toBe(before + 1);
+    release();
   });
 });
