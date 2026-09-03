@@ -3,15 +3,19 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-03 (lot « un seul chemin de remplissage », `documentation-update`). Module
-démo re-confronté au code : `app:bccl:seed` (`BcclSeedCommand.php`, renommée le 2026-09-03, ex
+Last verified @ 2026-09-03 (section 13bis — répartition WE des matchs au seed dev,
+`documentation-update`). Module démo re-confronté au code cette passe :
+`BcclSeeder::seedWeekendMatchLayout` (4 `VenueMatchWindow`, 32 `TeamMatchHabit`, 8
+`MatchSlotRotation`/16 `MatchSlotRotationTeam`, zéro `Fixture`) gardé par
+`BcclSeedProfile::seedWeekendMatchLayout` (`true` dev SEULEMENT, `false` démo/charge) ✓. Passe
+précédente (lot « un seul chemin de remplissage ») : `app:bccl:seed` (`BcclSeedCommand.php`, ex
 `app:seed:bccl-dev`) seede le club dev BCCL RÉEL en CREATE-ONLY (SUCCESS no-op si présent) ; SEULE
 commande exclue de `services.yaml` (`services.yaml:96-99`), déclarée dans
-`services_dev.yaml`/`services_test.yaml` seulement + garde runtime ✓ ; distincte d'`app:demo:seed`
-(`DemoSeedCommand.php`, renommée le même jour, ex `app:demo:seed-bccl`) — créer OU RESET,
-`--if-absent` en no-op, **sans aucune restriction d'environnement** (pas d'exclusion, pas de garde
-runtime — disponible en prod comme son ancêtre) ✓. Reste de l'inventaire non re-vérifié cette
-passe. Un stamp REMPLACE, l'historique vit dans git.
+`services_dev.yaml`/`services_test.yaml` seulement + garde runtime ; distincte d'`app:demo:seed`
+(`DemoSeedCommand.php`, ex `app:demo:seed-bccl`) — créer OU RESET, `--if-absent` en no-op, **sans
+aucune restriction d'environnement** (pas d'exclusion, pas de garde runtime — disponible en prod
+comme son ancêtre) — non re-sondée cette passe. Reste de l'inventaire non re-vérifié cette passe.
+Un stamp REMPLACE, l'historique vit dans git.
 
 ---
 
@@ -509,7 +513,18 @@ joueurs, intensité entraînement au défaut `PREFERRED`) et **8 `SharedTraining
 purgés et recréés à chaque run, idempotent). Les créneaux `VenueTrainingSlot` des 8 cases
 partagées portent une **capacité de 1** (pas de palliatif de capacité 2/3 — un bloc complet
 compte pour UN occupant, `ReservationGroupOccupancy` §SharedTrainingBlock ci-dessus) et les
-réservations socle posées sur ces cases sont EXACTEMENT les membres du bloc correspondant. Un club de démonstration **prospect** (à partir d'un code
+réservations socle posées sur ces cases sont EXACTEMENT les membres du bloc correspondant.
+
+Le profil **dev** SEUL porte aussi, depuis le 2026-09-03 (section 13bis de `BcclSeeder`,
+`BcclSeedProfile::seedWeekendMatchLayout`, `false` en démo et en charge), la **répartition WE
+réelle des matchs** du club (données fondateur, xlsx importé le 2026-09-02) : 4
+`VenueMatchWindow` (fenêtres d'accès match des gymnases), 32 `TeamMatchHabit` (jour + coup d'envoi
++ gymnase exacts par équipe qui reçoit le week-end) et 8 `MatchSlotRotation` + 16
+`MatchSlotRotationTeam` (créneaux physiquement partagés d'Armand et Debarros, alternance
+semaine A/B) — zéro `Fixture` (les équipes ne sont pas engagées tant que le calendrier FFBB n'est
+pas importé). Idempotent (purge+recréation des fenêtres et des rotations, find-or-create des
+habitudes). Détail complet : [`module-matchs.md`](../../specs/courantes/module-matchs.md)
+§ « Seed BCCL dev — répartition WE des matchs ». Un club de démonstration **prospect** (à partir d'un code
 FFBB réel) se crée par `app:demo:create` (`src/Command/DemoCreateCommand.php`, options
 `--ffbb`, `--name`, `--animator-email`, `--animator-password`), dont le cœur (déplacement de
 l'animateur, provisioning, populate FFBB + import des équipes engagées, best-effort synchrone)

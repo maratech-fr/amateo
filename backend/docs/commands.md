@@ -1,18 +1,19 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-03 (lot « un seul chemin de remplissage », `documentation-update`).
-Re-confronté au code : `BcclSeedCommand`/`DemoSeedCommand` (`backend/src/Command/`, noms de
-commande `app:bccl:seed`/`app:demo:seed`) ✓ ; `backend/Makefile` (`seed-bccl`, `seed-demo`,
-`db-empty`, `db-empty-test`, plus de `fixtures`/`db-reset`/`seed-bccl-if-absent`/`seed-bccl-dev`) ✓ ;
-`Makefile` racine (`play` enchaîne `seed-bccl` puis `IF_ABSENT=1 seed-demo`, `reset` = `db-empty` +
-`play`) ✓ ; `BcclSeedCommand` SEUL exclu de l'auto-enregistrement (`services.yaml:96-99` +
-`services_dev.yaml`/`services_test.yaml` + garde runtime dev/test) — `DemoSeedCommand` n'a AUCUNE
-restriction d'environnement (disponible en prod aussi, comme son ancêtre `app:demo:seed-bccl`) ✓ ;
-`MutationTargetsAreGuardedTest` couvre `db-empty`/`seed-demo`/`seed-bccl` ✓ ;
-`PlayTargetIsNonDestructiveTest` interdit `seed-demo` nu/`db-empty`/`fixtures` dans `play` ✓ ;
-`.github/workflows/ci.yml` et `backend/scripts/smoke-solver.sh` appellent `app:bccl:seed`
-directement ✓. Non re-sondé cette passe : horaires du catalogue de jobs, pièges RLS Doctrine —
-un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-03 (chaîne `make play` + catalogue ligue + smoke placement,
+`documentation-update`). Re-confronté au code : `backend/Makefile` cible `seed-league`
+(`app:league-windows:seed --no-interaction`) ✓ ; `Makefile` racine `play` enchaîne `seed-bccl` →
+`IF_ABSENT=1 seed-demo` → `seed-holidays` → `seed-league` → redémarrage des workers ✓ ;
+`backend/scripts/smoke-place-matches.sh` crée ses propres équipes+gymnase jetables et
+neutralise/restaure les fenêtres dominicales du club (le seed dev porte désormais la répartition
+WE réelle) ✓. Passe précédente (lot « un seul chemin de remplissage ») : `BcclSeedCommand`/
+`DemoSeedCommand` (`backend/src/Command/`, noms de commande `app:bccl:seed`/`app:demo:seed`),
+`BcclSeedCommand` SEUL exclu de l'auto-enregistrement (`services.yaml:96-99` +
+`services_dev.yaml`/`services_test.yaml` + garde runtime dev/test), `DemoSeedCommand` sans
+restriction d'environnement, `MutationTargetsAreGuardedTest`/`PlayTargetIsNonDestructiveTest`,
+`.github/workflows/ci.yml` + `smoke-solver.sh` appellent `app:bccl:seed` directement — non
+re-sondés cette passe. Non re-sondé cette passe non plus : horaires du catalogue de jobs, pièges
+RLS Doctrine — un stamp REMPLACE, l'historique vit dans git.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).
@@ -22,7 +23,7 @@ un stamp REMPLACE, l'historique vit dans git.
 
 | Je veux… | Je lance |
 |---|---|
-| Une base de jeu complète (BCCL réel + démo + vacances), sans rien détruire | `make play` (racine) |
+| Une base de jeu complète (BCCL réel + démo + vacances + catalogue ligue), sans rien détruire | `make play` (racine) |
 | Repartir de zéro puis retrouver une base de jeu complète | `make reset` (racine) — composition littérale : `db-empty` + `play` |
 | Juste vider la base ACTUELLEMENT visée (aucun seed) | `make db-empty` (racine) ou `make -C backend db-empty` |
 | Remettre le club de démo à neuf (démonstration prospect) — purge + re-seed | `make -C backend seed-demo` |
@@ -32,6 +33,7 @@ un stamp REMPLACE, l'historique vit dans git.
 | CI / smoke-solver | appellent `app:bccl:seed --no-interaction` directement (idempotent — voir §CI plus bas) |
 | Base de test phpunit | `make -C backend db-init-test` (idempotent) / `make -C backend db-empty-test` (vide) |
 | Rejouer seulement les référentiels vacances/fériés (globaux) | `make -C backend seed-holidays` |
+| Rejouer seulement le catalogue des fenêtres de matchs de la ligue (global) | `make -C backend seed-league` |
 
 ## Les 3 bases locales — et les deux commandes qui basculent (P4-141, 2026-08-28)
 
@@ -44,7 +46,7 @@ Une stack pointe **une base à la fois**. Le défaut committé est le **bac à s
 | `amateo_test` | tests unitaires (DAMA, transactionnelle) | phpunit — **même en mode play** (`.env.test` garde la main dans l'ordre dotenv) |
 | `amateo` | base de PROD | rien en local |
 
-- **`make play`** — bascule sur la base de jeu : écrit `backend/.env.local` (gitignoré), crée `amateo_local` si absente, migre, **pose le club dev BCCL RÉEL (ARA0069036, avec ses plannings) via `seed-bccl` (create-only) ET le club de démo (ARA9999999) via `IF_ABSENT=1 seed-demo` (seed uniquement s'il est absent)**, rejoue les référentiels vacances scolaires/jours fériés (`seed-holidays`), et redémarre `messenger-worker`+`cron-runner` (ils tiennent la config en mémoire). 🔴 **NON DESTRUCTEUR — à relancer autant qu'on veut** : si un club existe, **aucune donnée n'est touchée** (le message le dit à l'écran). C'était un défaut du premier jet (avant P4-141) : `make play` appelait l'ancêtre « créer OU RESET » sans garde — relancer `play` effaçait le travail fait sur la démo.
+- **`make play`** — bascule sur la base de jeu : écrit `backend/.env.local` (gitignoré), crée `amateo_local` si absente, migre, **pose le club dev BCCL RÉEL (ARA0069036, avec ses plannings) via `seed-bccl` (create-only) ET le club de démo (ARA9999999) via `IF_ABSENT=1 seed-demo` (seed uniquement s'il est absent)**, rejoue les référentiels vacances scolaires/jours fériés (`seed-holidays`) **et le catalogue des fenêtres de matchs de la ligue** (`seed-league`, depuis 2026-09-03), et redémarre `messenger-worker`+`cron-runner` (ils tiennent la config en mémoire). 🔴 **NON DESTRUCTEUR — à relancer autant qu'on veut** : si un club existe, **aucune donnée n'est touchée** (le message le dit à l'écran). C'était un défaut du premier jet (avant P4-141) : `make play` appelait l'ancêtre « créer OU RESET » sans garde — relancer `play` effaçait le travail fait sur la démo.
   - Le club BCCL RÉEL naît via `make -C backend seed-bccl` (`app:bccl:seed`) — **CREATE-ONLY**, ne fait RIEN (SUCCESS) si le club existe déjà.
   - **Pour remettre le club de démo à neuf** (geste de démonstration prospect) : `make -C backend seed-demo` — sémantique « créer **ou RESET** » : purge le workspace (`ErasedClubPurger`, la fiche club survit) puis re-seed.
   - **Pour repartir de zéro** : `make reset` (racine) — vide la base actuellement visée (`db-empty`) puis relance `make play`.
@@ -76,6 +78,7 @@ Une stack pointe **une base à la fois**. Le défaut committé est le **bac à s
 | `make seed-bccl` | Seed le club dev BCCL RÉEL (ARA0069036, `app:bccl:seed`) — **CREATE-ONLY**, ne fait RIEN si le club existe déjà — connexion admin, gardé par `mutation-confirm.sh` |
 | `make seed-demo` | Seed/reset le club de DÉMONSTRATION permanent (ARA9999999, `app:demo:seed`) — **créer OU RESET** par défaut (purge le workspace puis re-seed) ; `IF_ABSENT=1 make seed-demo` ajoute `--if-absent` (no-op si présent) — connexion admin, gardé par `mutation-confirm.sh`. `DEMO_BCCL_PASSWORD` (défaut `DemoBccl!2026`, non secret) est passé en `--password` |
 | `make seed-holidays` | Rejoue les référentiels vacances scolaires + jours fériés (globaux, non-tenant, idempotents) — pas de connexion admin, non gardé |
+| `make seed-league` | Rejoue le catalogue des fenêtres de matchs de la ligue (global, non-tenant, `app:league-windows:seed`, idempotent — upsert par clé naturelle) — pas de connexion admin, non gardé |
 | `make phpstan` / `make cs` / `make cs-fix` / `make rector` | Analyses (cs/rector en dry-run, `cs-fix` applique) |
 | `make lint` | PHPStan + CS + Rector (tout en dry-run) |
 | `make migration-diff` / `make migration-migrate` | Diff / applique les migrations (connexion **admin**) |
@@ -86,7 +89,7 @@ Une stack pointe **une base à la fois**. Le défaut committé est le **bac à s
 
 | Cible | Effet |
 |-------|-------|
-| `make play` | Bascule vers `amateo_local` (base de jeu du fondateur) : `play-env` → `db-init` → `seed-bccl` → `IF_ABSENT=1 seed-demo` → `seed-holidays` → redémarre `messenger-worker`/`cron-runner`. **Non destructeur**, rejouable à volonté |
+| `make play` | Bascule vers `amateo_local` (base de jeu du fondateur) : `play-env` → `db-init` → `seed-bccl` → `IF_ABSENT=1 seed-demo` → `seed-holidays` → `seed-league` → redémarre `messenger-worker`/`cron-runner`. **Non destructeur**, rejouable à volonté |
 | `make sandbox` | Retire `backend/.env.local` → retour à `amateo_dev` (bac à sable) + même redémarrage |
 | `make db-empty` | Vide (drop+create+migrate) la base **actuellement visée** — `amateo_local` en mode play, `amateo_dev` en bac à sable — aucun seed |
 | `make reset` | Composition littérale : `db-empty` puis `play` — repart de zéro et retrouve une base de jeu complète |
@@ -115,7 +118,7 @@ Toutes manuelles sauf mention. Détail : `ls backend/src/Command/`.
 | `app:seasons:remind-transition` | Emails J-61/J-30/J-14 avant le pivot du 15 juillet : saison N+1 non préparée — **auto, quotidien à 08:00** |
 | `app:public-holidays:seed` / `app:public-holidays:import` | Jours fériés : seed offline (JSON embarqué) / import API etalab — idempotents ; import **auto trimestriel (1er janv./avr./juil./oct. à 04:30)** |
 | `app:school-holidays:seed` / `app:school-holidays:import` | Vacances scolaires : seed offline / import API Éducation nationale — idempotents ; import **auto trimestriel (1er janv./avr./juil./oct. à 04:00)** |
-| `app:league-windows:seed` | Catalogue des fenêtres de matchs par ligue (JSON AURA) — idempotent |
+| `app:league-windows:seed` | Catalogue des fenêtres de matchs par ligue (JSON AURA) — idempotent. Appelée par `make -C backend seed-league`, rejouée par `make play`/`make reset` (racine) depuis 2026-09-03 |
 | `app:clubs:backfill-school-zone` | Déduit `Club.schoolZone` du code FFBB (dry-run sans `--apply`) |
 | `app:club-approvals:digest` | P3-4 PR B : relance les demandes de création de club (3 j restants + jour J) et expire les échues (la console superadmin garde la main) ; `--dry-run`, `--date` — **auto, quotidien à 08:30** |
 | `app:clubs:ffbb-resync` | SA4/P2-18 : ré-importe l'identité FFBB de `--club=<id>` (FfbbClubPopulator refresh — nom, coordonnées, logo, comité/ligue) ; échec franc si organisme introuvable — action support, aussi déclenchable depuis la console admin |
@@ -150,5 +153,5 @@ Toutes manuelles sauf mention. Détail : `ls backend/src/Command/`.
 | `generate-schedule-test.sh` | Auto-test de `generate-schedule.sh` (PASS/FAIL sur son propre comportement) |
 | `onboarding-smoke.sh` | Flux club neuf : register → données minimales → generate → `COMPLETED` |
 | `smoke-overlay.sh` | Smoke sémantique de l'overlay de période (ADR-0002) : fermeture → plan né de l'Adapter → version → build overlay (grille propre à la période, jamais l'union avec la saison) → `COMPLETED` |
-| `smoke-place-matches.sh` | Smoke sémantique du solveur de placement matchs (P1-4 PR D, `POST /api/fixtures/place`) : un domicile dans sa fenêtre d'accès revient `PLACED` dans l'empreinte-temps, un domicile sans fenêtre revient `UNPLACED` avec la raison nommée `no_access_window` |
+| `smoke-place-matches.sh` | Smoke sémantique du solveur de placement matchs (P1-4 PR D, `POST /api/fixtures/place`) : un domicile dans sa fenêtre d'accès revient `PLACED` dans l'empreinte-temps, un domicile sans fenêtre revient `UNPLACED` avec la raison nommée `no_access_window`. **Auto-suffisant** (2026-09-03) : crée ses propres équipes + gymnase jetables (le club dev porte la répartition WE réelle depuis le seed, § `module-matchs.md` § « Seed BCCL dev »), neutralise puis restaure les fenêtres dominicales du club le temps du placement (`no_access_window` est club-wide) |
 | `smoke-coach-wishes.sh` | Smoke sémantique du rail de sollicitation coach (#10) — le seul chemin `/api` non authentifié : campagne → token → page publique pré-remplie → `CoachWish` persisté |
