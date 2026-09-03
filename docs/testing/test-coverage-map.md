@@ -59,21 +59,21 @@ Recalculer les tailles : `find backend/tests -name '*Test.php' | awk -F/ '{print
 
 ## 4. Ce que personne ne prouve (angles morts constatés, pas devinés)
 
-1. **Aucune mesure de couverture de code, sur les trois zones.** Backend : pas de `<coverage>` dans
+1. **Aucune mesure de couverture de code, sur les trois zones** (roadmap **P4-166**). Backend : pas de `<coverage>` dans
    `phpunit.xml.dist`, pas de driver (pcov/xdebug) dans l'image. Engine : `pytest --cov=app` outillé
    dans `engine/Makefile` (second passage de `make test`) mais **absent de la CI et sans seuil**
    (`--cov-fail-under`). Frontend : `@vitest/coverage-v8` en devDependency, **aucune config `test.coverage`**,
    aucun script. Conséquence : on sait ce qui est testé, pas ce qui n'est **jamais exécuté**.
-2. **La perf du solveur ne gate pas les PR** : `engine-perf` sur `main` seulement ; le marqueur `perf` est
+2. **La perf du solveur ne gate pas les PR** (roadmap **P4-167**) : `engine-perf` sur `main` seulement ; le marqueur `perf` est
    exclu par défaut (`addopts = "-m 'not perf'"` dans `engine/pyproject.toml`).
-3. **Le canal Mercure n'est pas asserté** : `journey.spec.ts` attend le planning placé, aucune assertion
+3. **Le canal Mercure n'est pas asserté** (roadmap **P4-168**) : `journey.spec.ts` attend le planning placé, aucune assertion
    ne nomme SSE, et `frontend/src/features/planning/queries.ts` a un repli polling
    (`isScheduleStreamConnected`) — un hub Mercure mort ne rougit pas ce test. `MercureHardeningTest` est un garde
    STATIQUE de `docker-compose.yml` (pas d'`anonymous`, pas de CORS joker), pas une preuve de livraison.
 4. **Rien n'est lisible par un non-développeur** : aucun `.feature`, aucun scénario en français. Les trois
    formats fonctionnels (PHPUnit `WebTestCase`, bash, Playwright) sont des formats de développeur — le
    fondateur ne peut ni relire ni proposer un scénario. Ouvert : roadmap **P4-165** (Behat/Gherkin, à cadrer).
-5. **Sept dossiers de `backend/tests/` hors des trois testsuites** de `phpunit.xml.dist` (`Unit`,
+5. **Sept dossiers de `backend/tests/` hors des trois testsuites** (roadmap **P4-169**) de `phpunit.xml.dist` (`Unit`,
    `Integration` = Integration+Security+Queue, `Contract` = CrossStack) : `Api/`, `Command/`, `OpenApi/`,
    `Validator/`, `MessageHandler/`, `EventListener/`, `Logging/`, `Messenger/`. Couverts en CI (le job
    `unit-tests` lance `phpunit tests/` entier) mais **invisibles de `make -C backend test`** — d'où
