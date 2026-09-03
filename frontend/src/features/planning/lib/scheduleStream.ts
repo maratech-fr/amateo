@@ -88,18 +88,62 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let connected = false;
 const connectedListeners = new Set<() => void>();
 
+/**
+ * P4-168 — diagnostic OBSERVABLE du flux, pour qu'un témoin (DOM + e2e) prouve que le
+ * planning est livré par SSE et non par le polling de secours.
+ *
+ * `eventsReceived` est un compteur MONOTONE des événements Mercure reçus. Il ne se remet
+ * jamais à zéro — surtout pas à la fermeture du flux : quand la génération se termine, le
+ * flux se relâche (plus rien « en vol », `useScheduleStream(false)`), donc `connected`
+ * retombe AVANT que l'écran n'affiche le planning. Seul un compteur qui SURVIT à cette
+ * fermeture peut encore témoigner, à ce moment-là, qu'un événement SSE a bien été délivré.
+ * C'est lui le témoin robuste : `eventsReceived >= 1` ⇔ livré par SSE ; `0` ⇔ livré par le
+ * repli polling (hub muet). `connected` seul serait un faux négatif post-livraison.
+ */
+export type ScheduleStreamDiagnostics = { connected: boolean; eventsReceived: number };
+
+let eventsReceived = 0;
+// Snapshot STABLE (même référence entre deux changements) : requis par `useSyncExternalStore`,
+// qui compare par `Object.is` — un objet neuf à chaque lecture bouclerait.
+let diagnostics: ScheduleStreamDiagnostics = { connected, eventsReceived };
+const EMPTY_DIAGNOSTICS: ScheduleStreamDiagnostics = { connected: false, eventsReceived: 0 };
+const diagnosticsListeners = new Set<() => void>();
+
+function publishDiagnostics(): void {
+  diagnostics = { connected, eventsReceived };
+  for (const listener of diagnosticsListeners) {
+    listener();
+  }
+}
+
 function setConnected(value: boolean): void {
   if (connected !== value) {
     connected = value;
     for (const listener of connectedListeners) {
       listener();
     }
+    publishDiagnostics();
   }
 }
 
 /** Lu par les `refetchInterval` : flux connecté → le polling passe en fallback lent. */
 export function isScheduleStreamConnected(): boolean {
   return connected;
+}
+
+/** Diagnostic courant du flux (état pur côté client — aucune règle métier). */
+export function getScheduleStreamDiagnostics(): ScheduleStreamDiagnostics {
+  return diagnostics;
+}
+
+function subscribeScheduleStreamDiagnostics(listener: () => void): () => void {
+  diagnosticsListeners.add(listener);
+  return () => diagnosticsListeners.delete(listener);
+}
+
+/** Abonnement React au diagnostic du flux (pour le témoin DOM). */
+export function useScheduleStreamDiagnostics(): ScheduleStreamDiagnostics {
+  return useSyncExternalStore(subscribeScheduleStreamDiagnostics, getScheduleStreamDiagnostics, () => EMPTY_DIAGNOSTICS);
 }
 
 function subscribeConnected(listener: () => void): () => void {
@@ -143,6 +187,10 @@ async function open(queryClient: QueryClient): Promise<void> {
     stream.onmessage = (event: MessageEvent<string>) => {
       const parsed = parseScheduleEvent(event.data);
       if (null !== parsed) {
+        // P4-168 — un événement d'avancement REÇU : le témoin monte. Un payload illisible
+        // (parsed === null) n'est pas un événement du hub, il ne compte pas.
+        eventsReceived += 1;
+        publishDiagnostics();
         for (const queryKey of invalidationKeysFor(parsed)) {
           void queryClient.invalidateQueries({ queryKey });
         }

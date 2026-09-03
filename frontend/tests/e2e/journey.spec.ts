@@ -84,9 +84,44 @@ test("full journey: wizard → generation → validated planning → cockpit", a
 
   // --- Step 6 · launch a REAL generation and wait for the placed planning.
   await expect(page.getByRole("heading", { name: /Étape 6\/6/ })).toBeVisible();
+
+  // P4-168 — TÉMOIN Mercure, volet (a) : armé AVANT le clic, il prouve qu'un flux SSE s'est
+  // OUVERT (réponse `/.well-known/mercure`, `text/event-stream`, 200) sur le lancement — pas
+  // que le hub est simplement joignable. Sans lui, un hub mort passerait par le repli polling
+  // sans que rien ne le dise (D1 : hub éteint/muet = ÉCHEC, jamais un skip).
+  const mercureStream = page
+    .waitForResponse(
+      (r) =>
+        /\/\.well-known\/mercure/.test(r.url())
+        && 200 === r.status()
+        && (r.headers()["content-type"] ?? "").includes("text/event-stream"),
+      { timeout: 15_000 },
+    )
+    .catch(() => null);
   await page.getByRole("button", { name: "Lancer la génération" }).click();
+  expect(
+    await mercureStream,
+    "Mercure : aucun flux SSE ouvert après le lancement — hub absent ou bloqué (D1 : échec, pas skip)",
+  ).not.toBeNull();
+
   // The embedded planning replaces the launcher once a schedule is COMPLETED.
   await expect(page.getByText("SM1").first()).toBeVisible({ timeout: 180_000 });
+
+  // P4-168 — TÉMOIN Mercure, volet (b) : le planning est là. Le compteur d'événements SSE
+  // (`data-schedule-stream-events`, exposé par ScheduleStreamWitness) prouve que la livraison
+  // est passée par le FLUX et non par le repli polling. C'est le témoin ROBUSTE : le flux se
+  // relâche dès la fin de génération, donc `data-schedule-stream` est déjà « disconnected » ici
+  // (état lu pour enrichir le message), tandis que le compteur, monotone, survit. `events === 0`
+  // ⇒ livré par polling, hub muet : ni jamais ouvert, ni ouvert-puis-coupé-avant-livraison
+  // (les deux régressions D2 retombent sur un compteur à zéro).
+  const witness = page.locator("[data-schedule-stream]").first();
+  await expect(witness).toHaveCount(1);
+  const streamState = await witness.getAttribute("data-schedule-stream");
+  const eventsReceived = Number(await witness.getAttribute("data-schedule-stream-events"));
+  expect(
+    eventsReceived,
+    `Planning livré SANS événement Mercure : le repli polling a masqué un hub muet (D2). État du flux à l'arrivée : ${streamState}, événements SSE reçus : ${eventsReceived}.`,
+  ).toBeGreaterThanOrEqual(1);
 
   // --- Valider INSIDE the embedded wizard (generation step) — Valider is the
   // workspace's EXIT (2026-08-20, symétrie stricte Valider ↔ Rouvrir). The confirm

@@ -1,22 +1,21 @@
-# Couverture de tests — cadrage des angles morts (P4-165 → P4-168)
+# Couverture de tests — cadrage des angles morts (P4-165 → P4-167)
 
 > **Fichier de détail ouvert** (référencé depuis [`roadmap.md`](roadmap.md)). Il porte le cadrage
 > des items nés du relevé du 2026-09-03 ([`../../docs/testing/test-coverage-map.md`](../../docs/testing/test-coverage-map.md)
 > §4) : besoin, constat vérifié, options, recommandation, **décisions à trancher par le fondateur avec un
 > exemple concret chacune**, et ce qui est délibérément hors scope. Quand un item est livré, sa ligne
 > quitte la roadmap, sa trace va dans l'état des lieux, son comportement dans `docs/testing/` — et sa
-> section ici est supprimée. **P4-169 (section E, testsuites PHPUnit complètes) livré le 2026-09-03**
-> (trace : `specs/courantes/etat-des-lieux.md` §3). Statut : **cadrage proposé le 2026-09-03, en attente
-> de validation pour A-D**.
+> section ici est supprimée. **P4-169 (section E, testsuites PHPUnit complètes) et P4-168 (section D,
+> témoin Mercure) livrés le 2026-09-03** (traces : `specs/courantes/etat-des-lieux.md` §3). Statut :
+> **cadrage proposé le 2026-09-03, en attente de validation pour A-C**.
 
 ## Ordre proposé (du moins cher au plus structurant)
 
 | # | Item | Effort | Pourquoi cet ordre |
 |---|---|---|---|
-| 1 | P4-168 témoin Mercure | S · 1 PR | un spec, une règle du dépôt déjà écrite (faux vert) |
-| 2 | P4-167 perf sur PR | S · 1 PR | `ci.yml` seul, à condition de mesurer la variance d'abord |
-| 3 | P4-166 couverture de code | M · 3 PR (une par zone) | chaque zone a son outillage ; le cliquet vient après la première mesure |
-| 4 | P4-165 Behat | L · lot phasé | dépend des décisions A1-A5 ; les smokes migrés sont le premier palier |
+| 1 | P4-167 perf sur PR | S · 1 PR | `ci.yml` seul, à condition de mesurer la variance d'abord |
+| 2 | P4-166 couverture de code | M · 3 PR (une par zone) | chaque zone a son outillage ; le cliquet vient après la première mesure |
+| 3 | P4-165 Behat | L · lot phasé | dépend des décisions A1-A5 ; les smokes migrés sont le premier palier |
 
 ## A — P4-165 · Tests fonctionnels en Behat (Gherkin)
 
@@ -126,33 +125,4 @@ palier dense (37 équipes · 8 gymnases) et BCCL ; marqueur `perf` exclu par dé
 
 **Hors scope.** Benchmarks historisés (tendance dans le temps) — vision ; perf du backend (PHP) et du
 frontend (Lighthouse) — autres sujets.
-
-## D — P4-168 · Le canal Mercure asserté par un témoin
-
-**Besoin.** Le seul test de bout en bout (`journey.spec.ts`) doit distinguer « le planning est arrivé par
-SSE » de « le planning est arrivé par le polling de secours » — sinon un hub Mercure mort en prod passe
-inaperçu jusqu'au premier client.
-
-**Constat vérifié.** `frontend/tests/e2e/journey.spec.ts:87-89` attend le texte « SM1 » (180 s) sans nommer
-SSE ; `frontend/src/features/planning/queries.ts:96` polle à 2,5 s quand `isScheduleStreamConnected()`
-(`scheduleStream.ts:101`) est faux ; `MercureHardeningTest` est statique (config compose). Le hub tourne bien
-en CI (`docker compose up -d --wait` du globalSetup) mais rien ne prouve qu'il livre.
-
-**Options.** (a) Dans `journey.spec.ts`, intercepter la réponse `/.well-known/mercure` (`text/event-stream`)
-et exiger qu'elle soit ouverte avant l'arrivée du planning. (b) Exposer l'état du flux dans le DOM
-(`data-stream="connected|polling"` sur le lanceur) et l'asserter. (c) Un spec dédié « hub coupé → l'app
-prévient » (comportement produit, pas seulement témoin).
-
-**Reco.** (a) + (b) dans `journey.spec.ts` — (b) donne un message d'échec qui DIT « livré par polling, hub
-muet » (règle du faux vert, `.claude/rules/frontend.md`) ; (a) prouve que c'est bien le canal réseau. (c)
-plus tard, s'il existe un besoin produit d'afficher « connexion temps réel perdue ».
-
-**Décisions à trancher.**
-- **D1 — comportement en CI hub éteint : ÉCHEC, pas skip.** Exemple : si `mercure` n'est pas healthy, le
-  spec échoue avec « Mercure absent : le témoin ne peut rien prouver » — jamais un `test.skip` silencieux.
-- **D2 — le repli polling reste un choix produit et n'est pas interdit** : le témoin échoue seulement si le
-  planning est arrivé SANS flux ouvert. Exemple : flux ouvert + livraison → vert ; flux jamais ouvert +
-  livraison par polling → rouge « hub muet » ; flux ouvert puis coupé → rouge aussi (c'est une régression).
-
-**Hors scope.** Test de charge du hub ; reconnexion après expiration de cookie (déjà géré, `scheduleStream.ts:135`).
 

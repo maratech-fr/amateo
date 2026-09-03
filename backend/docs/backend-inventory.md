@@ -717,7 +717,7 @@ part en **cookie httpOnly** `mercureAuthorization` (`path: /.well-known/mercure`
 `secure` piloté par la MÊME variable `JWT_COOKIE_SECURE` que le cookie JWT applicatif — jamais
 `$request->isSecure()`, TTL 3600 s), jamais rendu au JS (même raisonnement que SEC-16 : pas de
 second jeton lisible en plus du JWT applicatif). Le frontend consomme
-(`frontend/src/shared/lib/scheduleStream.ts`) : un seul `EventSource` par session sur
+(`frontend/src/features/planning/lib/scheduleStream.ts`) : un seul `EventSource` par session sur
 `/.well-known/mercure?topic={topicTemplate}`, reçoit ainsi les mises à jour de TOUTES ses
 générations.
 

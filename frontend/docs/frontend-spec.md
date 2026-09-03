@@ -4,16 +4,22 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-09-02 (`documentation-update`, P2-44 PR-4 — §6.7 bis étendue, confronté au
-code : `WeekGrid.tsx` (prop `deviatedSlots`, pastille `ArrowLeftRight` sur `bg-diff`, anneau
-`ring-diff` cédant à sélection/lentille/conflit, chip par membre sur carte fusionnée),
-`index.css` (tokens `--diff`/`--diff-foreground` + `--color-diff`), `tests/e2e/a11y-contrast.spec.ts`
-(paire non-texte ≥ 3:1), `SocleDeviationPanel.tsx` (ligne « déplacée » = `<button onSelectSlot>`),
-`PlanningPage.tsx` (`socleDeviatedSlots`, `capacityArmed`/`useConstraintValidation`, phrase du
-compteur), `lib/socleDeviationCells.ts`/`lib/capacityShortfall.ts` (nouveaux), `planning/api.ts`
-(`SocleDeviationMoved.to.slotId`), `wizard/api.ts` (`ValidateResult.capacity`). Reste du fichier
+Last verified @ 2026-09-03 (`documentation-update`, P4-168). §5 corrigée : **dérive pré-existante
+trouvée et fixée** — elle affirmait « le frontend ne consomme PAS Mercure » alors que FRT-04
+(2026-08-07) l'a livré et `etat-des-lieux.md` §1.9 le dit déjà correctement. Re-confronté au code :
+`features/planning/lib/scheduleStream.ts` (`EventSource` sur `/.well-known/mercure`, diagnostic
+`eventsReceived` monotone), `ScheduleStreamWitness.tsx` (témoin DOM, monté dans `PlanningPage.tsx`),
+`queries.ts:94-96` (`refetchInterval` 2 500/15 000 ms selon `isScheduleStreamConnected()`).
+§6.7 bis non re-sondée cette passe (dernière passe complète 2026-09-02, confronté au code :
+`WeekGrid.tsx` (prop `deviatedSlots`, pastille `ArrowLeftRight` sur `bg-diff`, anneau `ring-diff`
+cédant à sélection/lentille/conflit, chip par membre sur carte fusionnée), `index.css` (tokens
+`--diff`/`--diff-foreground` + `--color-diff`), `tests/e2e/a11y-contrast.spec.ts` (paire non-texte
+≥ 3:1), `SocleDeviationPanel.tsx` (ligne « déplacée » = `<button onSelectSlot>`), `PlanningPage.tsx`
+(`socleDeviatedSlots`, `capacityArmed`/`useConstraintValidation`, phrase du compteur),
+`lib/socleDeviationCells.ts`/`lib/capacityShortfall.ts` (nouveaux), `planning/api.ts`
+(`SocleDeviationMoved.to.slotId`), `wizard/api.ts` (`ValidateResult.capacity`)). Reste du fichier
 (routes, primitives, stack, §6.9) non re-vérifié cette passe — un stamp REMPLACE, l'historique vit
-dans git : `git log -p --follow frontend/docs/frontend-spec.md`)
+dans git : `git log -p --follow frontend/docs/frontend-spec.md`.
 
 ---
 
@@ -238,22 +244,35 @@ En production, le Nginx frontend proxy `/api` → backend Nginx, `/exports` → 
 
 ---
 
-## 5. Suivi temps réel de la génération — Polling (Mercure non consommé)
+## 5. Suivi temps réel de la génération — flux Mercure (SSE), polling en repli
 
-**État livré : le frontend ne consomme PAS Mercure.** Aucun `EventSource` dans `frontend/src/`.
-Le suivi de génération se fait par **polling TanStack Query** (`src/features/planning/queries.ts`) :
-la query des schedules a un `refetchInterval` de **2 500 ms tant qu'un planning est en vol**
-(statut `PENDING`/`GENERATING`), désactivé sinon. `WaitingApprovalPage` poll `/api/me` toutes les 5 s.
+**État livré (FRT-04, 2026-08-07) : le frontend consomme Mercure.** `features/planning/lib/scheduleStream.ts`
+ouvre un `EventSource` unique, ref-compté par session, sur `/.well-known/mercure?topic={topicTemplate}`
+(l'auth passe par un cookie httpOnly posé par `GET /api/mercure/auth`, jamais un jeton lisible par le
+JS — `backend-inventory.md` §5). Chaque événement lisible **invalide** les caches react-query concernés
+(jamais de mutation directe du cache sauf le drapeau `connected`) ; un statut terminal invalide aussi
+créneaux et diagnostics.
 
-Côté infra, le backend publie bien sur Mercure (topic `club:{clubId}:schedule:{scheduleId}`,
-voir `backend-inventory.md` §5) et les proxies existent (Vite dev et Nginx prod exposent
-`/.well-known/mercure`) — la bascule polling → SSE reste donc possible sans changement d'infra.
+Le **polling reste le repli** (`src/features/planning/queries.ts`) : `refetchInterval` de 2 500 ms tant
+qu'un planning est en vol et que le flux n'est pas connecté (`isScheduleStreamConnected()`), ralenti à
+15 s quand le flux est connecté — le publieur Mercure est **best-effort** (le backend avale ses échecs
+de publication), donc le poll ne meurt jamais. `WaitingApprovalPage` poll `/api/me` toutes les 5 s
+(canal séparé, non concerné par Mercure).
 
-### Règles (si la consommation SSE est introduite un jour)
+**Diagnostic observable (P4-168, 2026-09-03)** : `getScheduleStreamDiagnostics()`/
+`useScheduleStreamDiagnostics()` exposent `{ connected, eventsReceived }` — `eventsReceived` est un
+compteur **monotone**, jamais remis à zéro (y compris à la fermeture normale du flux en fin de
+génération), pensé pour survivre au moment où `connected` est déjà retombé. `ScheduleStreamWitness.tsx`
+en fait un témoin **DOM sans rendu** (`hidden`), monté dans `PlanningPage.tsx` : attributs
+`data-schedule-stream="connected|disconnected"` et `data-schedule-stream-events="N"`, lus par
+`frontend/tests/e2e/journey.spec.ts` pour distinguer une livraison PAR SSE d'une livraison par le repli
+polling (hub muet).
+
+### Règles
 
 - **EventSource sur `/.well-known/mercure`.** Jamais d'URL hardcodée vers le hub Mercure directement.
 - **Invalidation Query sur événement**, pas de mutation directe du cache sauf pour le statut.
-- Tant que ce n'est pas fait, le polling à 2,5 s pendant la génération est la référence.
+- Le polling à 2,5 s pendant la génération reste actif tant que le flux SSE n'est pas connecté.
 
 ---
 
@@ -1272,11 +1291,11 @@ Référence : `backend-inventory.md` §3 (AuthController, PasswordController, Me
 | Étape | Endpoint | Statut HTTP | Frontend |
 |-------|----------|-------------|----------|
 | Lancer | `POST /api/schedules/{id}/generate` | 202 | Mutation TanStack Query, écran `GenerationWaiting` |
-| Suivi | `GET /api/schedules` (polling) | 200 | `refetchInterval` 2 500 ms tant que `PENDING`/`GENERATING` (§5) |
-| Résultat | `GET /api/schedule_slot_templates?scheduleId={id}` | 200 | Re-fetch slots à la fin du polling |
+| Suivi | `GET /api/schedules` — invalidé par le flux Mercure, sinon `polling` | 200 | Flux SSE + `refetchInterval` 2 500/15 000 ms selon connexion (§5) |
+| Résultat | `GET /api/schedule_slot_templates?scheduleId={id}` | 200 | Re-fetch slots sur événement terminal (SSE ou polling) |
 | Diagnostics | `GET /api/schedule_diagnostics?scheduleId={id}` | 200 | Afficher rapport (`DiagnosticsPanel`) |
 
-Référence : `backend-inventory.md` §3 (GenerateScheduleController) + §5 (Mercure, publié mais non consommé côté frontend).
+Référence : `backend-inventory.md` §3 (GenerateScheduleController) + §5 (Mercure, publié ET consommé côté frontend).
 
 ### Édition manuelle
 
