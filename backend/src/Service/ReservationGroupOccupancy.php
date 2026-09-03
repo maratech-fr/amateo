@@ -35,7 +35,12 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  *                       ({@see EffectiveTeamSessions}, override de période inclus) ;
  *  (e) CAPACITÉ       — une réservation individuelle ne dépasse pas la capacité du créneau, même
  *                       sémantique que le front (`capacity` sur gymnase divisible, sinon 1) — un
- *                       bloc complet compte pour UN occupant (cohérent avec l'exemption moteur).
+ *                       bloc complet compte pour UN occupant (cohérent avec l'exemption moteur) ;
+ *  (f) BUDGET SOLO    — (P2-60) une réservation individuelle ne dépasse pas le résidu solo de
+ *                       l'équipe R(T) = S(T) − B(T) ({@see SoloReservationBudget}). Réserver une
+ *                       équipe dont TOUTES les séances viennent d'un bloc est un geste sans objet
+ *                       que le moteur rendrait INFEASIBLE — on l'interdit à la source. Une
+ *                       réservation qui COMPLÈTE une case bloc n'est pas individuelle (exemptée).
  *
  * La PORTÉE (socle `null` vs plan de période) borne toutes les lectures : deux mondes distincts,
  * jamais d'union (le filtre tenant Doctrine ajoute le club + la saison courants).
@@ -48,6 +53,7 @@ final class ReservationGroupOccupancy
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly EffectiveTeamSessions $effectiveTeamSessions,
+        private readonly SoloReservationBudget $soloReservationBudget,
     ) {}
 
     /**
@@ -145,7 +151,10 @@ final class ReservationGroupOccupancy
     }
 
     /**
-     * Rail UNITAIRE : règles (b) réciproque, (e) capacité.
+     * Rail UNITAIRE : règles (b) réciproque, (e) capacité, (f) budget solo (P2-60).
+     *
+     * `$clubId`/`$seasonId` bornent le budget solo (règle f) ; `null` (contexte non-HTTP) la
+     * neutralise, faute de portée club+saison à opposer.
      */
     public function assertIndividualReservationAllowed(
         string $teamId,
@@ -153,6 +162,8 @@ final class ReservationGroupOccupancy
         int $dayOfWeek,
         DateTimeImmutable $startTime,
         ?string $schedulePlanId,
+        ?string $clubId = null,
+        ?string $seasonId = null,
     ): void {
         $reserved = $this->reservedTeamSetOnCase($venueId, $dayOfWeek, $startTime, $schedulePlanId);
 
@@ -171,6 +182,80 @@ final class ReservationGroupOccupancy
         if ($this->occupantCount($finalSet, $schedulePlanId) > $capacity) {
             throw new UnprocessableEntityHttpException(\sprintf('Ce créneau est déjà plein (capacité %d) : aucune équipe supplémentaire ne peut y être réservée. Choisissez un autre créneau, ou activez le partage de ce gymnase.', $capacity));
         }
+
+        $this->assertSoloBudgetAllows($teamId, $finalSet, $schedulePlanId, $clubId, $seasonId);
+    }
+
+    /**
+     * (f) BUDGET SOLO (P2-60) — une réservation INDIVIDUELLE ne dépasse pas le résidu solo de
+     * l'équipe R(T) = S(T) − B(T) ({@see SoloReservationBudget}, MAISON UNIQUE de R).
+     *
+     * ⚠ Exception : la réservation posée ne compte comme individuelle que si elle RESTE
+     * individuelle APRÈS ajout. Si `$finalSet` (l'ensemble réservé une fois cette équipe ajoutée)
+     * égale EXACTEMENT les membres d'un bloc, elle COMPLÈTE une case bloc (SF2 rejoint SF1 déjà
+     * posée) — ce n'est pas un créneau individuel, on ne l'oppose pas au résidu.
+     *
+     * @param array<string, true> $finalSet
+     */
+    private function assertSoloBudgetAllows(string $teamId, array $finalSet, ?string $schedulePlanId, ?string $clubId, ?string $seasonId): void
+    {
+        if (null === $clubId || null === $seasonId) {
+            return; // hors portée club+saison (non-HTTP) : rien à opposer.
+        }
+        if ($this->reservedSetMatchesABlock($finalSet, $schedulePlanId)) {
+            return; // cette réservation COMPLÈTE une case bloc : elle n'est pas individuelle.
+        }
+
+        $budget = $this->soloReservationBudget->forTeam($teamId, $clubId, $seasonId, $schedulePlanId);
+        if (!$budget instanceof SoloBudget) {
+            return; // équipe inconnue de la portée : défense de contrat.
+        }
+
+        if (0 === $budget->residual && $budget->inBlock) {
+            throw new UnprocessableEntityHttpException($this->soloOnlyBlockMessage($teamId, $schedulePlanId));
+        }
+        if ($budget->individualUsed + 1 > $budget->residual) {
+            throw new UnprocessableEntityHttpException(\sprintf('L\'équipe « %s » a déjà %d créneau(x) individuel(s) sur %d possible(s) : elle ne peut pas en réserver davantage. Retirez un créneau, ou augmentez son nombre de séances.', $this->teamName($teamId), $budget->individualUsed, $budget->residual));
+        }
+    }
+
+    /**
+     * « SF1 s'entraîne uniquement en groupe SF1 + SF2 : réservez le groupe » — le message de la
+     * règle (f) quand le résidu est nul et l'équipe membre d'un bloc. Noms d'équipes, jamais d'ids.
+     */
+    private function soloOnlyBlockMessage(string $teamId, ?string $schedulePlanId): string
+    {
+        $groups = [];
+        foreach ($this->blockMemberSetsInScope($schedulePlanId) as $memberSet) {
+            if (!isset($memberSet[$teamId])) {
+                continue;
+            }
+            $names = array_values(array_filter(array_map(
+                fn (string $id): string => $this->teamName($id),
+                array_keys($memberSet),
+            )));
+            sort($names);
+            if ([] !== $names) {
+                $groups[] = implode(' + ', $names);
+            }
+        }
+
+        if ([] === $groups) {
+            return \sprintf('L\'équipe « %s » s\'entraîne uniquement en groupe : réservez le groupe plutôt qu\'un créneau individuel.', $this->teamName($teamId));
+        }
+
+        return \sprintf(
+            'L\'équipe « %s » s\'entraîne uniquement en groupe (%s) : réservez le groupe plutôt qu\'un créneau individuel.',
+            $this->teamName($teamId),
+            implode(', ', $groups),
+        );
+    }
+
+    private function teamName(string $teamId): string
+    {
+        $team = $this->entityManager->getRepository(Team::class)->findOneBy(['id' => $teamId]);
+
+        return $team instanceof Team ? $team->getName() : 'Cette équipe';
     }
 
     /**

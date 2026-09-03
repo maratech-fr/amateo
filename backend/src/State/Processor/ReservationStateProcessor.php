@@ -184,10 +184,14 @@ class ReservationStateProcessor extends AbstractStateProcessor
     }
 
     /**
-     * Rules (b)+(e) via la MAISON UNIQUE {@see ReservationGroupOccupancy}. Quatre retours anticipés
-     * SÉPARÉS (et non un `&&` que Rector réécrirait en `in_array`, perdant le narrowing non-null
-     * dont a besoin `assertIndividualReservationAllowed(string, …)`) : les champs SONT non-null ici,
-     * validés par `ReservationInput` avant le processor, mais le garde reste explicite pour PHPStan.
+     * Rules (b)+(e)+(f) via la MAISON UNIQUE {@see ReservationGroupOccupancy}. Quatre retours
+     * anticipés SÉPARÉS (et non un `&&` que Rector réécrirait en `in_array`, perdant le narrowing
+     * non-null dont a besoin `assertIndividualReservationAllowed(string, …)`) : les champs SONT
+     * non-null ici, validés par `ReservationInput` avant le processor, mais le garde reste explicite
+     * pour PHPStan.
+     *
+     * P2-60 — la règle (f) budget solo a besoin de la portée club+saison : on la relit de la requête
+     * (le tenant/season résolus côté serveur), comme {@see AbstractStateProcessor::process}.
      */
     private function assertOccupancy(ReservationInput $input): void
     {
@@ -203,6 +207,21 @@ class ReservationStateProcessor extends AbstractStateProcessor
         if (!$input->startTime instanceof DateTimeImmutable) {
             return;
         }
-        $this->reservationGroupOccupancy->assertIndividualReservationAllowed($input->teamId, $input->venueId, $input->dayOfWeek, $input->startTime, $input->schedulePlanId);
+
+        $request = $this->requestStack->getCurrentRequest();
+        $clubIdRaw = $request?->attributes->get('_club_id') ?? $request?->headers->get('X-Club-Id');
+        $seasonIdRaw = $request?->attributes->get('_season_id') ?? $request?->headers->get('X-Season-Id');
+        $clubId = \is_string($clubIdRaw) ? $clubIdRaw : null;
+        $seasonId = $this->resolveSeasonId($clubId, \is_string($seasonIdRaw) ? $seasonIdRaw : null);
+
+        $this->reservationGroupOccupancy->assertIndividualReservationAllowed(
+            $input->teamId,
+            $input->venueId,
+            $input->dayOfWeek,
+            $input->startTime,
+            $input->schedulePlanId,
+            $clubId,
+            $seasonId,
+        );
     }
 }

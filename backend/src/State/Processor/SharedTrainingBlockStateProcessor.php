@@ -9,7 +9,7 @@ use App\Dto\SharedTrainingBlockInput;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
-use App\Service\EffectiveTeamSessions;
+use App\Service\SoloReservationBudget;
 use Symfony\Contracts\Service\Attribute\Required;
 
 /**
@@ -35,12 +35,12 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
 {
     use AssertsSchedulePlanExistsTrait;
 
-    private EffectiveTeamSessions $effectiveTeamSessions;
+    private SoloReservationBudget $soloReservationBudget;
 
     #[Required]
-    public function setEffectiveTeamSessions(EffectiveTeamSessions $effectiveTeamSessions): void
+    public function setSoloReservationBudget(SoloReservationBudget $soloReservationBudget): void
     {
-        $this->effectiveTeamSessions = $effectiveTeamSessions;
+        $this->soloReservationBudget = $soloReservationBudget;
     }
 
     protected function getEntityClass(): string
@@ -152,8 +152,6 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
         }
 
         $teamRepo = $this->entityManager->getRepository(Team::class);
-        $existingSums = $this->existingSessionSumByTeam($clubId, $seasonId, $planId, $teamIds, $excludeBlockId);
-
         foreach ($teamIds as $teamId) {
             $team = $teamRepo->findOneBy(['id' => $teamId, 'clubId' => $clubId, 'seasonId' => $seasonId]);
             if (!$team instanceof Team) {
@@ -162,15 +160,32 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
             if (!$team->getIsActive()) {
                 $this->refuse('Une équipe du bloc est inactive et ne peut pas être mutualisée.');
             }
+        }
 
-            // GARDE CENTRALE — Σ des séances communes des blocs de l'équipe (celui-ci compris) ≤
-            // ses séances EFFECTIVES. L'override de PÉRIODE peut RÉDUIRE ce nombre : la borne suit
-            // (EffectiveTeamSessions), sinon on laisserait passer un cumul que le solveur refusera.
-            $effective = $this->effectiveTeamSessions->perWeek($team, $planId);
-            $total = ($existingSums[$teamId] ?? 0) + $commonSessions;
-            if ($total > $effective) {
-                $this->refuse(\sprintf('Le total des séances communes des blocs d\'une équipe (%d) dépasse son nombre de séances hebdomadaires (%d).', $total, $effective));
+        // État POST-changement de la portée : le jeu de blocs réel avec CE bloc substitué
+        // ({@see SoloReservationBudget}, MAISON UNIQUE de B(T) et R(T) — P2-60).
+        $budgets = $this->soloReservationBudget->forTeamsWithBlockSubstituted($teamIds, $clubId, $seasonId, $planId, $excludeBlockId, $commonSessions);
+
+        // GARDE CENTRALE — Σ des séances communes des blocs de l'équipe (celui-ci compris) ≤ ses
+        // séances EFFECTIVES (B(T) ≤ S(T)). L'override de PÉRIODE peut RÉDUIRE S : le budget le suit,
+        // sinon on laisserait passer un cumul que le solveur refusera.
+        foreach ($budgets as $budget) {
+            if ($budget->block > $budget->effective) {
+                $this->refuse(\sprintf('Le total des séances communes des blocs d\'une équipe (%d) dépasse son nombre de séances hebdomadaires (%d).', $budget->block, $budget->effective));
             }
+        }
+
+        // P2-60 — le nouveau B(T) ne doit pas faire passer des réservations INDIVIDUELLES
+        // EXISTANTES au-dessus du résidu (sinon l'infaisabilité entrerait par l'autre porte).
+        $overflow = [];
+        foreach ($budgets as $budget) {
+            if ($budget->individualUsed > $budget->residual) {
+                $overflow[] = $this->teamName($budget->teamId, $clubId, $seasonId);
+            }
+        }
+        if ([] !== $overflow) {
+            sort($overflow);
+            $this->refuse(\sprintf('Cette mutualisation ferait passer des créneaux individuels existants au-dessus du résidu autorisé pour : %s. Retirez ces réservations individuelles avant de mutualiser.', implode(', ', $overflow)));
         }
 
         // Deux blocs au MÊME ensemble d'équipes dans la même portée sèmeraient la confusion : 422.
@@ -179,54 +194,11 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
         }
     }
 
-    /**
-     * Σ des ``commonSessions`` des blocs EXISTANTS (le bloc en cours d'édition EXCLU) de MÊME
-     * portée, par équipe demandée. Une seule requête ; le cumul du bloc écrit est ajouté par
-     * l'appelant.
-     *
-     * @param list<string> $teamIds
-     *
-     * @return array<string, int> teamId => Σ des commonSessions de ses autres blocs (même portée)
-     */
-    private function existingSessionSumByTeam(string $clubId, string $seasonId, ?string $planId, array $teamIds, ?string $excludeBlockId): array
+    private function teamName(string $teamId, string $clubId, string $seasonId): string
     {
-        if ([] === $teamIds) {
-            return [];
-        }
+        $team = $this->entityManager->getRepository(Team::class)->findOneBy(['id' => $teamId, 'clubId' => $clubId, 'seasonId' => $seasonId]);
 
-        $qb = $this->entityManager->createQueryBuilder()
-            ->select('t.teamId AS teamId', 'SUM(b.commonSessions) AS total')
-            ->from(SharedTrainingBlockTeam::class, 't')
-            ->from(SharedTrainingBlock::class, 'b')
-            ->where('b.id = t.blockId')
-            ->andWhere('t.clubId = :clubId')
-            ->andWhere('t.seasonId = :seasonId')
-            ->andWhere('t.teamId IN (:teamIds)')
-            ->setParameter('clubId', $clubId)
-            ->setParameter('seasonId', $seasonId)
-            ->setParameter('teamIds', $teamIds)
-            ->groupBy('t.teamId');
-
-        // Même portée de plan : NULL (socle) et un UUID (période) sont deux mondes distincts.
-        if (null === $planId) {
-            $qb->andWhere('t.schedulePlanId IS NULL');
-        } else {
-            $qb->andWhere('t.schedulePlanId = :planId')->setParameter('planId', $planId);
-        }
-
-        if (null !== $excludeBlockId) {
-            $qb->andWhere('t.blockId <> :excludeBlockId')->setParameter('excludeBlockId', $excludeBlockId);
-        }
-
-        /** @var list<array{teamId: string, total: string|int}> $rows */
-        $rows = $qb->getQuery()->getScalarResult();
-
-        $sums = [];
-        foreach ($rows as $row) {
-            $sums[$row['teamId']] = (int) $row['total'];
-        }
-
-        return $sums;
+        return $team instanceof Team ? $team->getName() : 'une équipe';
     }
 
     /**

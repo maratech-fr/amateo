@@ -11,6 +11,9 @@ use App\Entity\Constraint;
 use App\Entity\Reservation;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
+use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\VenuePeriodOverride;
 use App\Enum\CalendarEntryKind;
@@ -176,6 +179,68 @@ final class ReservationApiTest extends WebTestCase
         self::assertStringContainsString('décoché', (string) $this->client->getResponse()->getContent(), 'la cause « jour décoché » est distinguée de l’indisponibilité déclarée');
     }
 
+    // ── P2-60 : l'unité de placement est le bloc — garde de réservation INDIVIDUELLE (règle f) ──
+
+    public function testIndividualReservationForATeamWithNoSoloResidualIsRefused(): void
+    {
+        // SF1+SF2 mutualisées, toutes les séances dans le bloc socle : R(SF1)=0 → réserver SF1
+        // seule est un geste sans objet, refusé à la source (le moteur le rendrait INFEASIBLE).
+        $t1 = $this->makeTeam(1);
+        $t2 = $this->makeTeam(1);
+        $this->makeBlock(null, [$t1, $t2], 1);
+
+        self::assertSame(422, $this->postTeam($t1->getId(), 3, '18:00', null));
+        self::assertStringContainsString('uniquement en groupe', (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testIndividualReservationBeyondThePartialResidualIsRefused(): void
+    {
+        // R(SM3) = 2 − 1 = 1 : un créneau individuel passe, le second dépasse le résidu.
+        $t1 = $this->makeTeam(2);
+        $t2 = $this->makeTeam(2);
+        $this->makeBlock(null, [$t1, $t2], 1);
+
+        self::assertSame(201, $this->postTeam($t1->getId(), 3, '18:00', null));
+        self::assertSame(422, $this->postTeam($t1->getId(), 4, '18:00', null));
+        self::assertStringContainsString('possible(s)', (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testAReservationCompletingABlockCaseIsAllowedEvenAtZeroResidual(): void
+    {
+        // t2 a R=0 (toutes ses séances en bloc), mais REJOINDRE t1 sur la même case COMPLÈTE le
+        // bloc : la réservation n'est plus individuelle, elle n'est pas opposée au résidu.
+        $t1 = $this->makeTeam(2); // R(t1)=1
+        $t2 = $this->makeTeam(1); // R(t2)=0
+        $this->makeBlock(null, [$t1, $t2], 1);
+
+        self::assertSame(201, $this->postTeam($t1->getId(), 3, '18:00', null));
+        self::assertSame(201, $this->postTeam($t2->getId(), 3, '18:00', null), 'la N-ième équipe complète la case bloc : autorisée');
+    }
+
+    public function testATeamOutsideAnyBlockIsCappedAtItsSessions(): void
+    {
+        // Hors bloc : R = S = 2. Deux créneaux passent, le troisième dépasse.
+        $t = $this->makeTeam(2);
+
+        self::assertSame(201, $this->postTeam($t->getId(), 3, '18:00', null));
+        self::assertSame(201, $this->postTeam($t->getId(), 4, '18:00', null));
+        self::assertSame(422, $this->postTeam($t->getId(), 5, '18:00', null));
+        self::assertStringContainsString('possible(s)', (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testSocleAndPeriodScopesAreIndependent(): void
+    {
+        // Bloc SOCLE {t1,t2}@1 (R socle(t1)=0), mais AUCUN bloc dans le plan de période : R(t1)=1.
+        $t1 = $this->makeTeam(1);
+        $t2 = $this->makeTeam(1);
+        $this->makeBlock(null, [$t1, $t2], 1);
+
+        self::assertSame(422, $this->postTeam($t1->getId(), 3, '18:00', null), 'socle : R=0, refusé');
+
+        $planId = $this->createPeriodPlan($this->club->getId(), $this->season->getId());
+        self::assertSame(201, $this->postTeam($t1->getId(), 3, '18:00', $planId), 'période sans bloc : R=1, passé');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -301,6 +366,60 @@ final class ReservationApiTest extends WebTestCase
     {
         $query = null !== $schedulePlanId ? '?schedulePlanId=' . $schedulePlanId : '';
         $this->client->request('GET', '/api/reservations' . $query, [], [], $this->headers());
+    }
+
+    private function makeTeam(int $sessionsPerWeek): Team
+    {
+        $team = (new Team)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setSportCategoryId($this->makeUuid())->setPriorityTierId(3)
+            ->setName('T' . substr($this->makeUuid(), 0, 6))
+            ->setSessionsPerWeek($sessionsPerWeek)->setIsActive(true);
+        $this->em->persist($team);
+        $this->em->flush();
+
+        return $team;
+    }
+
+    /**
+     * @param list<Team> $teams
+     */
+    private function makeBlock(?string $planId, array $teams, int $commonSessions): void
+    {
+        $block = (new SharedTrainingBlock)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setSchedulePlanId($planId)->setCommonSessions($commonSessions);
+        $this->em->persist($block);
+        foreach ($teams as $team) {
+            $member = (new SharedTrainingBlockTeam)
+                ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+                ->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId($team->getId());
+            $this->em->persist($member);
+        }
+        $this->em->flush();
+    }
+
+    private function postTeam(string $teamId, int $dayOfWeek, string $startTime, ?string $schedulePlanId): int
+    {
+        $this->client->request('POST', '/api/reservations', [], [], $this->headers(), json_encode([
+            'teamId' => $teamId,
+            'venueId' => self::VENUE,
+            'dayOfWeek' => $dayOfWeek,
+            'startTime' => $startTime,
+            'durationMinutes' => 90,
+            'schedulePlanId' => $schedulePlanId,
+        ], \JSON_THROW_ON_ERROR));
+
+        return $this->client->getResponse()->getStatusCode();
+    }
+
+    private function makeUuid(): string
+    {
+        $bytes = random_bytes(16);
+        $bytes[6] = \chr((\ord($bytes[6]) & 0x0F) | 0x40);
+        $bytes[8] = \chr((\ord($bytes[8]) & 0x3F) | 0x80);
+
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
     }
 
     /** @return array<int, array<string, mixed>> */

@@ -6,6 +6,7 @@ namespace App\Tests\Integration\Seed;
 
 use App\Seed\BcclSeeder;
 use App\Seed\BcclSeedProfile;
+use App\Service\SoloReservationBudget;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
@@ -1156,6 +1157,68 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         // Le seed ne crée aucun match.
         $fixtures = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM fixture WHERE club_id = ?', [$clubId]);
         self::assertSame(0, $fixtures, 'le seed ne crée aucun match (fixture)');
+    }
+
+    /**
+     * P2-60 — L'INVARIANT « unité de placement = le bloc » TIENT SUR LA DONNÉE SEMÉE : sur le socle
+     * ET sur CHAQUE plan de période, pour chaque équipe, ses réservations INDIVIDUELLES (hors cases
+     * bloc-complètes) ≤ son résidu solo R(T) = S(T) − B(T) ({@see SoloReservationBudget}, maison
+     * unique de R). Sinon une génération sur cette portée rendrait le solveur INFEASIBLE — le geste
+     * même que P2-60 interdit désormais aux deux portes d'écriture.
+     *
+     * ⚠ Si ce test rougit, le seed BCCL (club RÉEL du fondateur) viole déjà l'invariant : le message
+     * nomme la portée, l'équipe et son S/B/R/individualUsed — à RAPPORTER, pas à corriger d'office.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testEverySeededScopeSatisfiesTheSoloBudgetInvariant(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+        $clubId = $club->getId();
+
+        $seasonId = (string) $this->connection->fetchOne(
+            'SELECT id FROM season WHERE club_id = ? AND name = \'2026-2027\'',
+            [$clubId],
+        );
+        self::assertNotSame('', $seasonId, 'la saison 2026-2027 du club dev existe');
+
+        /** @var array<string, string> $teamNames */
+        $teamNames = [];
+        foreach ($this->connection->fetchAllAssociative('SELECT id, name FROM team WHERE club_id = ?', [$clubId]) as $row) {
+            $teamNames[(string) $row['id']] = (string) $row['name'];
+        }
+
+        // Socle (planId NULL) + chaque plan de période (reprises, incident — tout sauf SEASON).
+        $planIds = [null];
+        foreach ($this->connection->fetchFirstColumn(
+            'SELECT id FROM schedule_plan WHERE club_id = ? AND type <> \'SEASON\'',
+            [$clubId],
+        ) as $planId) {
+            $planIds[] = (string) $planId;
+        }
+
+        $budgetService = self::getContainer()->get(SoloReservationBudget::class);
+        self::assertInstanceOf(SoloReservationBudget::class, $budgetService);
+
+        $violations = [];
+        foreach ($planIds as $planId) {
+            $scope = null === $planId ? 'socle' : ('plan ' . $planId);
+            foreach ($budgetService->forScope($clubId, $seasonId, $planId) as $budget) {
+                if ($budget->individualUsed > $budget->residual) {
+                    $violations[] = \sprintf(
+                        '%s — %s : S=%d B=%d R=%d individualUsed=%d',
+                        $scope,
+                        $teamNames[$budget->teamId] ?? $budget->teamId,
+                        $budget->effective,
+                        $budget->block,
+                        $budget->residual,
+                        $budget->individualUsed,
+                    );
+                }
+            }
+        }
+
+        self::assertSame([], $violations, "le seed BCCL viole l'invariant solo (réservations individuelles > résidu) — RAPPORTER au fondateur, ne pas corriger le seed :\n  - " . implode("\n  - ", $violations));
     }
 
     protected function setUp(): void

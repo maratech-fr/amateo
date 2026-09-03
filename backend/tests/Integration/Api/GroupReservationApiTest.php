@@ -231,6 +231,19 @@ final class GroupReservationApiTest extends WebTestCase
         self::assertSame(3, $this->reservationCountOnCase($venue->getId(), 2, '18:00'), 'un bloc de 3 membres pose 3 réservations sur la même case');
     }
 
+    public function testBlockRailStillPassesWhenMembersHaveNoSoloResidual(): void
+    {
+        // P2-60 — SF1+SF2, toutes leurs séances dans le bloc (R=0). La garde solo (règle f) ne
+        // s'applique qu'au rail UNITAIRE : le rail BLOC reste passant, c'est l'unité de placement.
+        [$t1, $t2] = [$this->team(1), $this->team(1)];
+        $venue = $this->venue(false);
+        $block = $this->block(null, [$t1, $t2], 1);
+
+        $this->postBlock($block->getId(), $venue->getId(), 2, '18:00', null);
+        self::assertResponseStatusCodeSame(201, 'le rail bloc reste passant même quand R(T)=0');
+        self::assertSame(2, $this->reservationCountOnCase($venue->getId(), 2, '18:00'));
+    }
+
     // ── (a) EXCLUSIVITÉ ──────────────────────────────────────────────────────────
 
     public function testBlockOnACaseAlreadyHoldingAReservationIsRefused(): void
@@ -292,8 +305,14 @@ final class GroupReservationApiTest extends WebTestCase
         $venue = $this->venue(false);
         $block = $this->block(null, [$t1, $t2], 1);
 
-        $this->postIndividual($t1->getId(), $venue->getId(), 5, '18:00', null);
-        self::assertResponseStatusCodeSame(201);
+        // P2-60 : t1 (R=0, membre du bloc) ne peut plus recevoir de réservation INDIVIDUELLE par
+        // l'API (règle f). Sa réservation préalable est posée directement en base — c'est le plafond
+        // par membre (d) du rail BLOC, et son atomicité, qu'on éprouve ici, pas le rail unitaire.
+        $this->em->persist((new Reservation)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setTeamId($t1->getId())->setVenueId($venue->getId())
+            ->setDayOfWeek(5)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90));
+        $this->em->flush();
 
         $this->postBlock($block->getId(), $venue->getId(), 2, '18:00', null);
         self::assertResponseStatusCodeSame(422);

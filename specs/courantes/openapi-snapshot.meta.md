@@ -1,12 +1,19 @@
-Last verified @ 2026-08-31 (P2-51 PR-7, `documentation-update` — snapshot déjà régénéré par le
-`coder` dans le même commit (54d13154), stamp resté en retard d'une entrée : recalé ici. **190 paths**
-(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **−2 paths** (la ressource
-`SharedTrainingGroup` — `/api/shared_training_groups` collection + `/{id}` item — retirée avec le
-modèle groupe K) · SHA-256 `04db02e384e7c8fed094eb7b198bab38c4fc85c33a8b26e86909de1978d5edab`
-(`sha256sum`, confirmé sur le fichier committé, aucun diff local). Reste du journal non re-confronté
+Last verified @ 2026-09-03 (P2-60 PR-1, `coder` — snapshot régénéré dans le même commit. **191 paths**
+(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** (la ressource lecture seule
+`TeamSoloBudget` — `GET /api/team_solo_budgets` collection, filtrable par `schedulePlanId`, pas d'item)
+· SHA-256 `702e8d9b6afc841d626af6518c993e668531aa8c35def32d44d6a9dd6b35f6ed`
+(`sha256sum`, confirmé sur le fichier régénéré, aucun diff local). Reste du journal non re-confronté
 au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **P2-60 PR-1 — le budget solo en lecture (`GET /api/team_solo_budgets`) (2026-09-03)** : **+1 path** —
+  ressource LECTURE SEULE `TeamSoloBudget` (GetCollection uniquement, pas d'item) : le budget de
+  réservation individuelle de chaque équipe par portée — `teamId`, `schedulePlanId`, `effectiveSessions`
+  (S), `blockSessions` (B), `residual` (R = S − B), `individualUsed`, `inBlock`. Filtrable par
+  `?schedulePlanId=` (absent/NULL = socle, UUID = plan de période ; malformé → 400, inexistant/étranger
+  → 422). Provider dédié `TeamSoloBudgetStateProvider` (délègue à `SoloReservationBudget`, maison unique
+  de R), pagination désactivée. 190 → **191 paths**. Backend PUR, contrat backend⇄engine **inchangé**
+  (`CONTRACT_VERSION` 2.20, aucun appel moteur — garde d'écriture à la source).
 - **P2-51 PR-7 — retrait de `SharedTrainingGroup` (2026-08-31)** : **−2 paths** — le modèle groupe
   {équipes, K} est retiré entièrement (backend/contrat/moteur/écran/seeder), `SharedTrainingBlock`
   devient la SEULE mutualisation. `GET/POST /api/shared_training_groups` et
@@ -68,16 +75,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   par utilisateur). Les hooks post-import xlsx et post-apply FFBB remplissent l'annuaire tout seuls
   (aucune route). Contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.16, aucun appel moteur —
   index Meilisearch `ffbbserver_salles`/`ffbbserver_organismes` + géocodage BAN).
-- **P2-54 RMM-9 PR-1 — la durée de match devient un réglage par catégorie (2026-08-27)** : **+0 path**
-  (ressource API Platform `SportCategory` existante). **Champs ADDITIFS en LECTURE** sur le schéma
-  `SportCategory` : `matchMinutes`/`warmupMinutes` (l'override propre de la catégorie, `null` = héritée)
-  et `defaultMatchMinutes`/`defaultWarmupMinutes` (le défaut de FAMILLE résolu SERVEUR par
-  `MatchDurationResolver` — le front l'affiche, ne le recalcule pas). **Champs ADDITIFS en ÉCRITURE**
-  sur `SportCategory.SportCategoryInput` : `matchMinutes` (borné 30–240, `Assert\Range`) et
-  `warmupMinutes` (0–120) ; `null` = revient au défaut de famille. La douche/battement sortent de
-  l'empreinte du radar (`MatchFootprint`, changement de comportement assumé). 184 → **184 paths**.
-  Backend + frontend léger, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.16, aucun appel
-  moteur — le radar recalcule côté serveur, le solveur de placement garde ses 105 min figés).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

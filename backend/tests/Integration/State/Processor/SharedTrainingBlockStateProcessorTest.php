@@ -9,17 +9,19 @@ use App\ApiResource\SharedTrainingBlockResource;
 use App\Dto\SharedTrainingBlockInput;
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Reservation;
 use App\Entity\SchedulePlan;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
 use App\Entity\Team;
 use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
 use App\Enum\SchedulePlanType;
 use App\Enum\SeasonStatus;
-use App\Service\EffectiveTeamSessions;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
+use App\Service\SoloReservationBudget;
 use App\State\Processor\SharedTrainingBlockStateProcessor;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -153,6 +155,60 @@ final class SharedTrainingBlockStateProcessorTest extends KernelTestCase
         $this->post($this->input([$t1->getId(), $t2->getId()], 1, null), $club, $season);
     }
 
+    // ── P2-60 : porte 2 — un bloc ne fait pas déborder des réservations INDIVIDUELLES existantes ──
+
+    public function testACreationThatWouldOverflowExistingIndividualReservationsIsRefused(): void
+    {
+        [$club, $season] = $this->seed();
+        $t1 = $this->team($club, $season, 1); // 1 séance
+        $t2 = $this->team($club, $season, 1);
+        $this->em->flush();
+
+        // t1 a DÉJÀ un créneau individuel (seule sur sa case → non bloc-complète).
+        $this->reservation($club, $season, $t1, 2, '18:00', null);
+        $this->em->flush();
+
+        // Déclarer {t1,t2}@1 : B(t1)=1 → R(t1)=0, mais individualUsed(t1)=1 > 0 → refusé, t1 nommée.
+        $this->expectException(ValidationException::class);
+        $this->expectExceptionMessage('Cette mutualisation ferait passer des créneaux individuels existants au-dessus du résidu autorisé pour');
+        $this->post($this->input([$t1->getId(), $t2->getId()], 1, null), $club, $season);
+    }
+
+    public function testAModificationThatWouldOverflowIsRefused(): void
+    {
+        [$club, $season] = $this->seed();
+        $t1 = $this->team($club, $season, 2); // 2 séances
+        $t2 = $this->team($club, $season, 2);
+        $this->em->flush();
+
+        // Bloc {t1,t2}@1 : R(t1)=1. t1 pose son unique créneau individuel (autorisé).
+        $block = $this->post($this->input([$t1->getId(), $t2->getId()], 1, null), $club, $season);
+        $this->reservation($club, $season, $t1, 2, '18:00', null);
+        $this->em->flush();
+
+        // PUT le bloc à commonSessions=2 : B(t1)=2 → R(t1)=0, individualUsed(t1)=1 > 0 → refusé.
+        $this->expectException(ValidationException::class);
+        $this->expectExceptionMessage('Cette mutualisation ferait passer des créneaux individuels existants au-dessus du résidu autorisé pour');
+        $this->put($block->id, $this->input([$t1->getId(), $t2->getId()], 2, null), $club, $season);
+    }
+
+    public function testDeletingABlockIsNeverBlockedByTheSoloBudget(): void
+    {
+        [$club, $season] = $this->seed();
+        $t1 = $this->team($club, $season, 1);
+        $t2 = $this->team($club, $season, 1);
+        $this->em->flush();
+
+        $block = $this->post($this->input([$t1->getId(), $t2->getId()], 1, null), $club, $season);
+        // État déjà incohérent en base (créneau individuel de t1 au-delà de R=0, P2-61) : la
+        // suppression LIBÈRE du résidu, elle n'est JAMAIS bloquée par la garde solo.
+        $this->reservation($club, $season, $t1, 2, '18:00', null);
+        $this->em->flush();
+
+        $this->delete($block->id, $club);
+        self::assertNull($this->em->getRepository(SharedTrainingBlock::class)->find($block->id), 'le bloc est supprimé sans que la garde solo s\'y oppose');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -166,7 +222,7 @@ final class SharedTrainingBlockStateProcessorTest extends KernelTestCase
             $container->get(ManagementAccessGuard::class),
         );
         // Dépendance #[Required] : câblée à la main puisque le processor est instancié hors conteneur.
-        $this->processor->setEffectiveTeamSessions($container->get(EffectiveTeamSessions::class));
+        $this->processor->setSoloReservationBudget($container->get(SoloReservationBudget::class));
     }
 
     private function post(SharedTrainingBlockInput $input, Club $club, Season $season): SharedTrainingBlockResource
@@ -176,6 +232,35 @@ final class SharedTrainingBlockStateProcessorTest extends KernelTestCase
         self::assertInstanceOf(SharedTrainingBlockResource::class, $result);
 
         return $result;
+    }
+
+    private function put(string $blockId, SharedTrainingBlockInput $input, Club $club, Season $season): SharedTrainingBlockResource
+    {
+        $method = new ReflectionMethod($this->processor, 'processPut');
+        $result = $method->invoke($this->processor, $input, ['id' => $blockId], $club->getId(), $season->getId());
+        self::assertInstanceOf(SharedTrainingBlockResource::class, $result);
+
+        return $result;
+    }
+
+    private function delete(string $blockId, Club $club): void
+    {
+        $method = new ReflectionMethod($this->processor, 'processDelete');
+        $method->invoke($this->processor, ['id' => $blockId], $club->getId());
+    }
+
+    private function reservation(Club $club, Season $season, Team $team, int $dayOfWeek, string $startTime, ?string $planId): void
+    {
+        $reservation = (new Reservation)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setSchedulePlanId($planId)
+            ->setTeamId($team->getId())
+            ->setVenueId($this->uuid())
+            ->setDayOfWeek($dayOfWeek)
+            ->setStartTime(new DateTimeImmutable($startTime))
+            ->setDurationMinutes(90);
+        $this->em->persist($reservation);
     }
 
     /**

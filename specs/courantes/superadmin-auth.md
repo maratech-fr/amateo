@@ -1,12 +1,15 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, hors sujet de la PR P2-51 PR-5).
+Last verified @ 2026-09-03 (rotation `documentation-update`, hors sujet de la PR P2-60 PR-1).
 Re-confronté au code : firewall `admin` = `pattern: ^/api/admin`, `provider: super_admin_provider`
 (`backend/config/packages/security.yaml:33-35`) ✓ ; `AdminCsrfListener` toujours à la priorité 6
 (`#[AsEventListener(event: KernelEvents::REQUEST, priority: 6)]`) ✓ ; politique de mot de passe
 12 caractères + majuscule + caractère spécial toujours dans `PasswordPolicy::MIN_LENGTH`/
-`REQUIREMENT_FR` (`backend/src/Service/PasswordPolicy.php:15-18`) ✓. Reste du fichier non
-re-confronté cette passe ; l'historique des vérifications précédentes vit dans
+`REQUIREMENT_FR` (`backend/src/Service/PasswordPolicy.php:15-18`) ✓ ; challenge de session
+password→TOTP toujours borné à 5 minutes (`time() - $startedAt > 300`,
+`backend/src/Controller/AdminAuthController.php:72`) ✓ ; entité `SuperAdmin` toujours séparée
+(`backend/src/Entity/SuperAdmin.php:13`) ✓. Reste du fichier non re-confronté cette passe ;
+l'historique des vérifications précédentes vit dans
 `git log -p --follow specs/courantes/superadmin-auth.md`)
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle
