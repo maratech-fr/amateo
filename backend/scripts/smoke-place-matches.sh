@@ -10,11 +10,27 @@
 #      15:30 — proving the SOFT rotation attraction fires end-to-end.
 #
 # Self-sufficient for local dev: mints a token for the fixtures user, settles
-# the season plan pointer if needed (dev DB only), creates its own venue window
-# and fixtures, and cleans them up afterwards.
+# the season plan pointer if needed (dev DB only), creates its OWN throwaway
+# teams + venue + window + fixtures + rotation, and cleans them up afterwards.
+#
+# Why throwaway teams AND a throwaway venue (not the club's first team/venue):
+# the dev seed now carries the club's REAL weekend match layout — Saturday/Sunday
+# access windows on real venues, match habits on real teams, and A/B rotations on
+# real venues. Reusing a real team could give the home match a competing Saturday
+# habit whose (venue, kickoff) attraction ties with our rotation; reusing a real
+# venue could collide with a seeded rotation at our kickoff (409). Owning brand-new
+# resources keeps assertions 1 & 3 deterministic: the ONLY pull toward 15:30 is our
+# rotation on OUR venue, so (our venue, 15:30) is the unique objective maximum even
+# with the seeded Saturday windows widening the domain.
+#
+# Assertion 2 is club-wide: `no_access_window` fires only when NO club venue has a
+# match window that day. The seed opens a Sunday window (Matéo), so the smoke saves
+# then deletes every Sunday window of the club before placing, and the trap recreates
+# them. On a club WITHOUT the weekend data this is a no-op — green either way (CI runs
+# this on a fresh seed).
 #
 # Usage: backend/scripts/smoke-place-matches.sh
-# Exit: 0 = both assertions hold, 1 = any failure.
+# Exit: 0 = all three assertions hold, 1 = any failure.
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -67,27 +83,50 @@ if [ -z "$CHOSEN" ]; then
   POINTER_SET_BY_SMOKE=1
 fi
 
-TEAMS=$(curl -sf "$API_BASE/teams?itemsPerPage=2" "${auth[@]}")
-TEAM_ID=$(echo "$TEAMS" | jget member.0.id)
-SECOND_TEAM_ID=$(echo "$TEAMS" | jget member.1.id)
-VENUE_ID=$(curl -sf "$API_BASE/venues?itemsPerPage=1" "${auth[@]}" | jget member.0.id)
-[ "$TEAM_ID" != "null" ] && [ "$VENUE_ID" != "null" ] || die "dev club has no team/venue"
-[ "$SECOND_TEAM_ID" != "null" ] || die "dev club needs a 2nd team for the rotation volet"
-
 # Next Saturday / Sunday (dates in the future keep the data obviously smoke-ish).
 SATURDAY=$(date -d "next saturday" +%Y-%m-%d)
 SUNDAY=$(date -d "$SATURDAY + 1 day" +%Y-%m-%d)
 
+# Recreate the club Sunday windows we removed for assertion 2 (see below).
+restore_sunday_windows() {
+  [ -n "${SUNDAY_WINDOWS:-}" ] || return 0
+  while IFS='|' read -r _ vid st en; do
+    [ -n "$vid" ] || continue
+    curl -s -X POST "$API_BASE/venue_match_windows" "${auth[@]}" \
+      -d "{\"venueId\":\"$vid\",\"dayOfWeek\":7,\"startTime\":\"$st\",\"endTime\":\"$en\"}" >/dev/null || true
+  done <<< "$SUNDAY_WINDOWS"
+}
+
 cleanup() {
+  # Fixtures FIRST: a team with a fixture is "engaged" and refuses deletion.
   for id in ${FX_SAT:-} ${FX_SUN:-}; do curl -s -X DELETE "$API_BASE/fixtures/$id" "${auth[@]}" >/dev/null || true; done
   [ -n "${ROTATION_ID:-}" ] && curl -s -X DELETE "$API_BASE/match_slot_rotations/$ROTATION_ID" "${auth[@]}" >/dev/null || true
   [ -n "${WINDOW_ID:-}" ] && curl -s -X DELETE "$API_BASE/venue_match_windows/$WINDOW_ID" "${auth[@]}" >/dev/null || true
+  for id in ${TEAM_ID:-} ${SECOND_TEAM_ID:-}; do [ "$id" != "null" ] && curl -s -X DELETE "$API_BASE/teams/$id" "${auth[@]}" >/dev/null || true; done
+  [ -n "${VENUE_ID:-}" ] && [ "${VENUE_ID:-}" != "null" ] && curl -s -X DELETE "$API_BASE/venues/$VENUE_ID" "${auth[@]}" >/dev/null || true
+  restore_sunday_windows
   # A pointer WE settled would 409 the weekly smoke's schedule creation — undo it.
   if [ "$POINTER_SET_BY_SMOKE" = 1 ]; then
     psql_dev "UPDATE schedule_plan SET chosen_schedule_id=NULL WHERE club_id='$CLUB_ID' AND type='SEASON'" >/dev/null || true
   fi
 }
 trap cleanup EXIT
+
+# Throwaway teams + venue (see the header): the smoke owns every resource the
+# assertions depend on, so the seeded weekend layout on real teams/venues cannot
+# perturb them. Created AFTER the trap so a mid-way failure still cleans up.
+info "creating two throwaway teams + a throwaway venue"
+CAT=$(curl -sf "$API_BASE/sport_categories" "${auth[@]}" | jget member.0.id)
+[ -n "$CAT" ] && [ "$CAT" != "null" ] || die "no sport category to build a throwaway team"
+TEAM_ID=$(curl -sf -X POST "$API_BASE/teams" "${auth[@]}" \
+  -d "{\"name\":\"Smoke Place A\",\"sportCategoryId\":\"$CAT\",\"priorityTierId\":1}" | jget id)
+SECOND_TEAM_ID=$(curl -sf -X POST "$API_BASE/teams" "${auth[@]}" \
+  -d "{\"name\":\"Smoke Place B\",\"sportCategoryId\":\"$CAT\",\"priorityTierId\":1}" | jget id)
+VENUE_ID=$(curl -sf -X POST "$API_BASE/venues" "${auth[@]}" \
+  -d "{\"name\":\"Smoke Place Gym\",\"source\":\"manual\"}" | jget id)
+[ -n "$TEAM_ID" ] && [ "$TEAM_ID" != "null" ] || die "throwaway team A creation failed"
+[ -n "$SECOND_TEAM_ID" ] && [ "$SECOND_TEAM_ID" != "null" ] || die "throwaway team B creation failed"
+[ -n "$VENUE_ID" ] && [ "$VENUE_ID" != "null" ] || die "throwaway venue creation failed"
 
 info "creating a Saturday 14:00-18:00 access window + two home fixtures"
 WINDOW_ID=$(curl -sf -X POST "$API_BASE/venue_match_windows" "${auth[@]}" \
@@ -105,6 +144,22 @@ info "declaring a Saturday 15:30 rotation on the venue (members: home team + one
 ROTATION_ID=$(curl -sf -X POST "$API_BASE/match_slot_rotations" "${auth[@]}" \
   -d "{\"venueId\":\"$VENUE_ID\",\"dayOfWeek\":6,\"kickoffTime\":\"15:30\",\"teamIds\":[\"$TEAM_ID\",\"$SECOND_TEAM_ID\"]}" | jget id)
 [ -n "$ROTATION_ID" ] && [ "$ROTATION_ID" != "null" ] || die "rotation declaration failed"
+
+# Assertion 2 needs the Sunday match to have NO access window ANYWHERE in the club
+# (no_access_window is club-wide). Save then delete every Sunday (dayOfWeek=7)
+# window of the club; the trap recreates them. No-op on a club without weekend data.
+SUNDAY_WINDOWS=$(curl -sf "$API_BASE/venue_match_windows?itemsPerPage=100" "${auth[@]}" | python3 -c "import json,sys
+d=json.load(sys.stdin)
+rows=d.get('member', d if isinstance(d,list) else [])
+for w in rows:
+    if w.get('dayOfWeek')==7:
+        print('%s|%s|%s|%s' % (w['id'], w['venueId'], w['startTime'], w['endTime']))")
+if [ -n "$SUNDAY_WINDOWS" ]; then
+  info "removing the club's Sunday access window(s) for assertion 2 (restored on exit)"
+  while IFS='|' read -r wid _ _ _; do
+    [ -n "$wid" ] && curl -s -X DELETE "$API_BASE/venue_match_windows/$wid" "${auth[@]}" >/dev/null || true
+  done <<< "$SUNDAY_WINDOWS"
+fi
 
 info "POST /api/fixtures/place"
 RESULT=$(curl -sf -X POST "$API_BASE/fixtures/place" "${auth[@]}") || die "placement call failed"
