@@ -78,6 +78,11 @@ final readonly class BcclSeedProfile
      *                                                                                                                  fermeture SUR LA RACINE, pointant une version
      *                                                                                                                  COMPLETED qui transcrit le planning d'overlay réel
      *                                                                                                                  (dev SEULEMENT)
+     * @param bool                                                                              $seedWeekendMatchLayout la répartition WE des matchs du club : à `true`, le
+     *                                                                                                                  seed pose les fenêtres d'accès match des gymnases,
+     *                                                                                                                  les habitudes de match des équipes et les créneaux
+     *                                                                                                                  de match partagés (rotations A/B) — l'état terrain
+     *                                                                                                                  du week-end (dev SEULEMENT)
      * @param list<array{email: string, firstName: string, lastName: string, password: string}> $additionalManagers     gestionnaires (User + ClubUser admin) EN PLUS du
      *                                                                                                                  gestionnaire principal — find-or-create par email,
      *                                                                                                                  jamais écrasés (dev SEULEMENT ; [] ailleurs)
@@ -96,6 +101,7 @@ final readonly class BcclSeedProfile
         public bool $transcribeRealSchedule,
         public bool $seedReprisePeriods,
         public bool $seedMateoIncident,
+        public bool $seedWeekendMatchLayout,
         public array $additionalManagers,
     ) {}
 
@@ -119,6 +125,9 @@ final readonly class BcclSeedProfile
             // P5-13 « incident Matéo » — le club dev porte aussi l'état d'adaptation EN COURS du
             // gestionnaire (fermeture de Matéo + son plan d'ajustement non validé). Dev SEULEMENT.
             seedMateoIncident: true,
+            // Répartition WE des matchs — le club dev porte l'état terrain du week-end (fenêtres
+            // d'accès match, habitudes de match des équipes, créneaux partagés A/B). Dev SEULEMENT.
+            seedWeekendMatchLayout: true,
             additionalManagers: [
                 // Mot de passe EN CLAIR, hashé au seed (patron du gestionnaire principal
                 // ci-dessus). Find-or-create par email, jamais écrasé s'il existe déjà.
@@ -163,6 +172,8 @@ final readonly class BcclSeedProfile
             seedReprisePeriods: false,
             // Ni incident Matéo : la charge mesure la génération, pas un état d'adaptation figé.
             seedMateoIncident: false,
+            // Ni répartition WE des matchs : la charge mesure la génération d'entraînements.
+            seedWeekendMatchLayout: false,
             additionalManagers: [],
         );
     }
@@ -190,6 +201,8 @@ final readonly class BcclSeedProfile
             seedReprisePeriods: false,
             // La démo ne porte pas l'incident Matéo (dev SEULEMENT — elle reste vierge de calendrier).
             seedMateoIncident: false,
+            // La démo ne porte pas la répartition WE des matchs (dev SEULEMENT).
+            seedWeekendMatchLayout: false,
             additionalManagers: [],
         );
     }
