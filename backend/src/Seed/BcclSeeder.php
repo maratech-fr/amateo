@@ -69,11 +69,11 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 /**
  * P2-4 PR 2bis — le SEED BCCL, extrait des fixtures pour être appelable en PROD.
  *
- * `doctrine-fixtures` est en require-dev : la classe fixture (FixtureInterface)
- * n'existe pas dans l'image de prod, or le club de démonstration permanent doit
- * s'y (re)seeder (`app:demo:seed-bccl`). Ce service porte donc TOUTE la logique ;
- * `BasketballInit` (dev) n'est plus qu'un habillage qui l'appelle avec les profils
- * `dev()` PUIS `demo()`. L'identité (club, gestionnaire, coachs, logo) vient du
+ * Extrait des fixtures pour être appelable en PROD : le club de démonstration
+ * permanent doit s'y (re)seeder (`app:demo:seed`). Ce service porte donc TOUTE la
+ * logique ; les commandes ne sont que des habillages qui l'appellent avec un
+ * profil — `app:bccl:seed` pour `dev()` (le club réel), `app:demo:seed` pour
+ * `demo()`. L'identité (club, gestionnaire, coachs, logo) vient du
  * {@see BcclSeedProfile} — le corps du seed est identique pour les deux visages.
  */
 final class BcclSeeder
@@ -109,7 +109,7 @@ final class BcclSeeder
             'SELECT usesuper FROM pg_user WHERE usename = current_user',
         );
         if (!$superuser) {
-            throw new RuntimeException('Fixtures must run on the admin connection (RLS silently breaks the purge as amateo_app). Use `make fixtures`, which injects DATABASE_URL=<DATABASE_ADMIN_URL>.');
+            throw new RuntimeException('The seed must run on the admin connection (RLS silently breaks the purge as amateo_app). Use `make seed-bccl` / `make seed-demo`, which inject DATABASE_URL=<DATABASE_ADMIN_URL>.');
         }
 
         // --- Club ---
@@ -1631,7 +1631,7 @@ final class BcclSeeder
         $manager->flush();
 
         // Miroir de ScheduleResultImporter (remise à zéro des 3 marqueurs) : un résultat
-        // fraîchement transcrit n'est pas périmé — sinon un 2e make fixtures afficherait
+        // fraîchement transcrit n'est pas périmé — sinon un 2e seed afficherait
         // « planning périmé » sans raison.
         $schedule->setManuallyEditedSinceGeneration(false);
         $schedule->setConstraintsChangedSinceGeneration(false);

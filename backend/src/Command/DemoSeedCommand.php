@@ -28,15 +28,19 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * l'état de base » (fondateur, 2026-08-07) : tout ce qui a été bidouillé en
  * démo disparaît, y compris les plannings générés.
  *
- * ⚠ COMME `make fixtures`, exige la CONNEXION ADMIN (la purge et le seed
- * traversent la RLS) : `DATABASE_URL=$DATABASE_ADMIN_URL php bin/console
- * app:demo:seed-bccl …` — le garde du seeder refuse sinon, fail-fast.
+ * `--if-absent` neutralise ce RESET : si le club de démo existe déjà, la commande
+ * NE FAIT RIEN (no-op, SUCCESS). C'est le chemin qu'emprunte `make play` pour
+ * poser la démo sans jamais détruire un workspace existant.
+ *
+ * ⚠ Exige la CONNEXION ADMIN (la purge et le seed traversent la RLS) :
+ * `DATABASE_URL=$DATABASE_ADMIN_URL php bin/console app:demo:seed …` — le garde du
+ * seeder refuse sinon, fail-fast. `make seed-demo` injecte l'URL admin.
  */
 #[AsCommand(
-    name: 'app:demo:seed-bccl',
-    description: 'Create or RESET the permanent anonymised BCCL demo club. Needs the admin connection, like make fixtures.',
+    name: 'app:demo:seed',
+    description: 'Create or RESET the permanent anonymised BCCL demo club (--if-absent: no-op if it exists). Needs the admin connection.',
 )]
-final class DemoSeedBcclCommand extends Command
+final class DemoSeedCommand extends Command
 {
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -51,6 +55,7 @@ final class DemoSeedBcclCommand extends Command
     {
         $this->addOption('password', null, InputOption::VALUE_REQUIRED, 'Password of the demo manager account (min 12 chars). Required at first creation, optional on reset.');
         $this->addOption('email', null, InputOption::VALUE_REQUIRED, 'Demo manager login.', 'demo-bccl@amateo.fr');
+        $this->addOption('if-absent', null, InputOption::VALUE_NONE, 'Only create when absent: if the demo club already exists, do nothing (no reset).');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -64,6 +69,15 @@ final class DemoSeedBcclCommand extends Command
         // code FFBB et repart d'une base vide. Sans club existant : création.
         $profile = BcclSeedProfile::demo(\is_string($password) ? $password : 'unused-on-reset', $email);
         $existing = $this->entityManager->getRepository(Club::class)->findOneBy(['ffbbClubCode' => 'ARA9999999']);
+
+        // --if-absent : le club existe déjà → on ne touche à RIEN (no-op). C'est le
+        // chemin non destructeur de `make play`, qui rappelle le seed à chaque bascule.
+        if ($existing instanceof Club && $input->getOption('if-absent')) {
+            $io->success('The demo club is already present — nothing touched (--if-absent).');
+
+            return Command::SUCCESS;
+        }
+
         if ($existing instanceof Club) {
             if (!$existing->isDemo()) {
                 $io->error('The club holding ARA9999999 is NOT a demo club — refusing to purge it.');

@@ -122,7 +122,7 @@ final class SchoolHolidaysApiTest extends WebTestCase
         // These tests assert on the FULL holiday set returned for a zone (e.g.
         // "every item is toussaint") and seed exactly what they need, so they
         // require an isolated table. Any pre-existing rows — the shipped JSON seed
-        // (HolidayReferenceFixtures / app:school-holidays:seed) or a leftover from
+        // (app:school-holidays:seed) or a leftover from
         // another run — would both duplicate the natural key (unique violation) and
         // pollute the assertions. `school_holiday_period` is global (no club_id, no
         // RLS), so a plain DELETE clears it deterministically before each test.

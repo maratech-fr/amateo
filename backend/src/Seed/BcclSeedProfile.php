@@ -11,7 +11,7 @@ use InvalidArgumentException;
  * gymnases, créneaux, contraintes, réservations — l'état terrain), sous deux
  * visages.
  *
- * - `dev()` : le BCCL réel (logo compris) — le club dev de `make fixtures`.
+ * - `dev()` : le BCCL réel (logo compris) — le club dev de `make seed-bccl`.
  * - `demo(password)` : le club de DÉMONSTRATION permanent — noms de club et de
  *   coachs FICTIFS (RGPD : l'écran part en rendez-vous), pas de logo BCCL, flag
  *   `is_demo` posé.

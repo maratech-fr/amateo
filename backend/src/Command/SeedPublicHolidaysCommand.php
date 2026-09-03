@@ -49,7 +49,7 @@ final class SeedPublicHolidaysCommand extends Command
         }
 
         // Fail LOUD on a malformed row (typo'd date/empty label) — else a broken JSON
-        // edit seeds a calendar silently missing a férié while `make fixtures` stays green.
+        // edit seeds a calendar silently missing a férié while the seed stays green.
         if ($result['skipped'] > 0) {
             $io->warning(\sprintf('%d malformed row(s) skipped.', $result['skipped']));
 

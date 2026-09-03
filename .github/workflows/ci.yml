@@ -747,22 +747,24 @@ jobs:
       - name: Migrate dev database
         run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console doctrine:migrations:migrate --no-interaction'
 
-      # matches.spec logs in as the BasketballInit-seeded club — append-load the
-      # dev fixtures (idempotent, existing rows are reused, never purged).
-      # BasketballInit REFUSES the amateo_app connection (RLS silently breaks the
-      # purge — see the guard in BasketballInit::load): inject the admin URL, like
-      # `make fixtures` (reads .env then .env.local, last wins), so the loader runs
-      # as the superuser. Kept --append (never purge the seeded club) instead of
-      # calling `make fixtures`, which reloads from scratch. Fail fast if the key
-      # is missing — an empty DATABASE_URL suppresses the Dotenv fallback and would
-      # abort with an opaque DSN error deep in the loader instead.
-      - name: Load dev fixtures
+      # matches.spec logs in as the real BCCL dev club — seed it (create-only,
+      # no-op if already there) plus the global holiday reference data. The BCCL
+      # seeder REFUSES the amateo_app connection (RLS silently breaks the purge —
+      # see the superuser guard in BcclSeeder::run): inject the admin URL, like
+      # `make seed-bccl` (reads .env then .env.local, last wins), so it runs as the
+      # superuser. Fail fast if the key is missing — an empty DATABASE_URL
+      # suppresses the Dotenv fallback and would abort with an opaque DSN error deep
+      # in the seeder instead. The holiday tables are global (no RLS) → plain
+      # connection.
+      - name: Seed dev data
         run: |
           docker compose exec -T php-fpm sh -c '
             cd /app/backend
             DBU=$(cat .env .env.local 2>/dev/null | sed -n "s/^DATABASE_ADMIN_URL=//p" | tail -n1 | tr -d "\"")
-            [ -n "$DBU" ] || { echo "DATABASE_ADMIN_URL introuvable dans backend/.env — fixtures ne peuvent pas tourner sur la connexion admin"; exit 1; }
-            DATABASE_URL="$DBU" php bin/console doctrine:fixtures:load --append --no-interaction
+            [ -n "$DBU" ] || { echo "DATABASE_ADMIN_URL introuvable dans backend/.env — le seed ne peut pas tourner sur la connexion admin"; exit 1; }
+            DATABASE_URL="$DBU" php bin/console app:bccl:seed --no-interaction
+            php bin/console app:school-holidays:seed --no-interaction
+            php bin/console app:public-holidays:seed --no-interaction
           '
 
       - name: Start messenger worker
@@ -956,14 +958,16 @@ jobs:
         run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console doctrine:migrations:migrate --no-interaction'
 
       # The seeded club the solver/matches/overlay smokes drive. Same admin-URL
-      # dance as the e2e job (BasketballInit refuses the amateo_app connection).
-      - name: Load dev fixtures
+      # dance as the e2e job (the BCCL seeder refuses the amateo_app connection).
+      - name: Seed dev data
         run: |
           docker compose exec -T php-fpm sh -c '
             cd /app/backend
             DBU=$(cat .env .env.local 2>/dev/null | sed -n "s/^DATABASE_ADMIN_URL=//p" | tail -n1 | tr -d "\"")
-            [ -n "$DBU" ] || { echo "DATABASE_ADMIN_URL introuvable dans backend/.env — fixtures ne peuvent pas tourner sur la connexion admin"; exit 1; }
-            DATABASE_URL="$DBU" php bin/console doctrine:fixtures:load --append --no-interaction
+            [ -n "$DBU" ] || { echo "DATABASE_ADMIN_URL introuvable dans backend/.env — le seed ne peut pas tourner sur la connexion admin"; exit 1; }
+            DATABASE_URL="$DBU" php bin/console app:bccl:seed --no-interaction
+            php bin/console app:school-holidays:seed --no-interaction
+            php bin/console app:public-holidays:seed --no-interaction
           '
 
       - name: Start messenger worker

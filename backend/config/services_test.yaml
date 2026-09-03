@@ -2,7 +2,7 @@ services:
     # Dev/test-only: create-only seed of the real BCCL dev club. Excluded from
     # autoregistration in services.yaml; declared here so the integration test can
     # exercise it, and in services_dev.yaml for `make play` — never in prod.
-    App\Command\SeedBcclDevCommand:
+    App\Command\BcclSeedCommand:
         autowire: true
         autoconfigure: true
 

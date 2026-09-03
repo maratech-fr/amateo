@@ -56,7 +56,7 @@ final class Version20260731090000 extends AbstractMigration
         // Volontairement NON réversible. Recréer le rôle demanderait de réinventer un mot de
         // passe (celui d'origine venait de MIGRATION_USER_PASSWORD, retiré des compose par le
         // même lot) et rétablirait la surface qu'on vient de supprimer. Le rollback attendu
-        // d'une base de dev est `make db-reset` ; en prod, la restauration d'un dump.
+        // d'une base de dev est `make db-empty` ; en prod, la restauration d'un dump.
         $this->throwIrreversibleMigrationException(
             'Le rôle migration_user est supprimé définitivement (compte dormant à droits larges). '
             . 'Restaurer un dump si un retour arrière est réellement nécessaire.',

@@ -49,7 +49,7 @@ final class SeedSchoolHolidaysCommand extends Command
         }
 
         // Fail LOUD on a malformed row — else a broken JSON edit seeds a calendar
-        // silently missing a holiday while `make fixtures` stays green.
+        // silently missing a holiday while the seed stays green.
         if ($result['skipped'] > 0) {
             $io->warning(\sprintf('%d malformed row(s) skipped.', $result['skipped']));
 

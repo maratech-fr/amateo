@@ -3,7 +3,7 @@
 #
 # Le garde fail-closed sandbox-guard.sh protège les SCRIPTS de l'IA (smoke/e2e/
 # démo) : il MEURT sur toute cible ≠ amateo_dev/*_test. Mais les cibles Make
-# destructrices (`make fixtures`, `make db-reset`, `make seed-bccl`) sont AUSSI
+# destructrices (`make db-empty`, `make seed-demo`, `make seed-bccl`) sont AUSSI
 # les gestes LÉGITIMES du fondateur sur sa base de jeu (amateo_local) — un refus
 # sec y serait faux. Il faut un TROISIÈME comportement que la garde n'offre pas :
 # la CONFIRMATION. D'où cette lib séparée (on NE source PAS sandbox-guard.sh, qui
@@ -21,7 +21,7 @@
 #     CONFIRMATION interactive nommant la base et ce qui va être détruit.
 #
 # Contournement non interactif (CI, automatisation, chemins non destructeurs
-# comme `seed-bccl-if-absent`) : CONFIRM=yes. Il NE lève PAS le refus prod.
+# comme `IF_ABSENT=1 seed-demo`) : CONFIRM=yes. Il NE lève PAS le refus prod.
 
 set -euo pipefail
 

@@ -15,15 +15,17 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
 
 /**
- * `app:seed:bccl-dev` — le raccourci CREATE-ONLY qui pose le club dev BCCL RÉEL
+ * `app:bccl:seed` — le raccourci CREATE-ONLY qui pose le club dev BCCL RÉEL
  * (identités réelles, sans flag démo) pour `make play`. Deux propriétés font sa
  * sûreté :
  *
  *  1. sur une base VIERGE, il seede le vrai BCCL (code FFBB ARA0069036), club
  *     NON démo, avec l'adhésion du gestionnaire principal et le plan SEASON
  *     pointant la transcription COMPLETED du planning réel ;
- *  2. sur une base qui le porte DÉJÀ, il REFUSE tout net (create-only, jamais
- *     reset) et n'écrit RIEN — la base de jeu du fondateur est son travail.
+ *  2. sur une base qui le porte DÉJÀ, il NE FAIT RIEN (no-op) : il sort en
+ *     SUCCESS avec un message « déjà présent, rien touché » et n'écrit RIEN — la
+ *     base de jeu du fondateur est son travail, et `make play` peut le rappeler
+ *     sans risque.
  *
  * Comme le seeder purge/insère à travers la RLS, il exige la connexion SUPERUSER :
  * on bascule `DATABASE_URL` sur l'URL admin AVANT de booter, exactement comme
@@ -34,12 +36,12 @@ use Symfony\Component\Console\Tester\CommandTester;
  *
  * NON gatant (pas un axe §7.1) : tourne dans `unit-tests`, ni dans `ci.yml`
  * (job `blocking-tests`) ni dans `docs/testing/blocking-tests.md`. Ce qu'il garde :
- * le contrat create-only de la commande (seede si absent, refuse sinon, zéro
- * écriture au refus) — la propriété non destructrice sur laquelle `make play`
- * s'appuie.
+ * le contrat create-only de la commande (seede si absent, no-op sinon, zéro
+ * écriture au second passage) — la propriété non destructrice sur laquelle
+ * `make play` s'appuie.
  */
 #[Group('integration')]
-final class SeedBcclDevCommandTest extends KernelTestCase
+final class BcclSeedCommandTest extends KernelTestCase
 {
     private EntityManagerInterface $em;
 
@@ -88,18 +90,18 @@ final class SeedBcclDevCommandTest extends KernelTestCase
 
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
-    public function testSecondRunIsRefusedAndTouchesNothing(): void
+    public function testSecondRunIsANoOpAndTouchesNothing(): void
     {
         self::assertSame(0, $this->tester->execute([]), $this->tester->getDisplay());
 
         $before = $this->counts();
 
-        self::assertNotSame(0, $this->tester->execute([]), 'un second run doit ÉCHOUER (create-only, jamais reset)');
-        self::assertStringContainsString('already exists', $this->tester->getDisplay(), 'le refus nomme la raison');
-        self::assertStringContainsString('nothing touched', $this->tester->getDisplay(), 'le refus dit qu\'il n\'a rien touché');
+        self::assertSame(0, $this->tester->execute([]), 'un second run doit RÉUSSIR sans rien faire (create-only, no-op si présent)');
+        self::assertStringContainsString('already present', $this->tester->getDisplay(), 'le no-op nomme la raison');
+        self::assertStringContainsString('nothing touched', $this->tester->getDisplay(), 'le no-op dit qu\'il n\'a rien touché');
 
         $after = $this->counts();
-        self::assertSame($before, $after, 'le second run (refusé) n\'écrit RIEN : tous les comptes sont identiques');
+        self::assertSame($before, $after, 'le second run (no-op) n\'écrit RIEN : tous les comptes sont identiques');
     }
 
     protected function setUp(): void
@@ -118,7 +120,7 @@ final class SeedBcclDevCommandTest extends KernelTestCase
         // du seeder — on l'affirme tôt (patron BcclSeederIdempotenceTest).
         self::assertSame('amateo_owner', $this->connection->fetchOne('SELECT current_user'));
 
-        $this->tester = new CommandTester(new Application(self::$kernel)->find('app:seed:bccl-dev'));
+        $this->tester = new CommandTester(new Application(self::$kernel)->find('app:bccl:seed'));
 
         // Filet de rollback : tout le seed vit dans cette transaction (la statique
         // DAMA ne couvre pas cette connexion admin reconstruite).
