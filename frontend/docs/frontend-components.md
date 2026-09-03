@@ -1,11 +1,12 @@
 # FORWARD Components Spec — Pages & Shared Components (hors wizard)
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, zone non touchée par cette PR —
-contrôle de fraîcheur. Re-confronté au code : `SurfaceSkin = "console" | "app"` toujours défini
-dans `shared/lib/surfaceSkin.ts` et consommé par `tabs.tsx` (`TAB_SKINS`) ✓ ; `empty-hint.tsx`
+Last verified @ 2026-09-03 (rotation `documentation-update`, zone non touchée par cette PR —
+contrôle de fraîcheur). Re-confronté au code : `SurfaceSkin = "console" | "app"` toujours défini
+dans `shared/lib/surfaceSkin.ts:12` et consommé par `tabs.tsx` (`TAB_SKINS`) ✓ ; `empty-hint.tsx`
 porte toujours `EmptyHint`/`EmptyBlock` avec `variant?: SurfaceSkin` par défaut `"app"` ✓ ;
-`consolePalette.guard.test.ts` existe bien sous `features/admin/` ✓. Le bloc « Historique »
-(sections 2-9) reste superseded, non re-vérifié — il ne prétend à aucune autorité)
+`consolePalette.guard.test.ts` existe bien sous `features/admin/` ✓. Rien de faux trouvé cette
+passe. Le bloc « Historique » (sections 2-9) reste superseded, non re-vérifié — il ne prétend à
+aucune autorité.
 
 > 🛑 **Ce document est SUPERSEDED. Il ne décrit pas le frontend livré.**
 >

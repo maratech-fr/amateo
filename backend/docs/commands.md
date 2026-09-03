@@ -1,17 +1,37 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-03 (P2-58 « PR seeder finale », `documentation-update`). Re-confronté au
-code : `seed-bccl-dev`/`seed-holidays`/`seed-bccl-if-absent` (`backend/Makefile:158-210`) ↔
-`app:seed:bccl-dev` (`SeedBcclDevCommand.php`, CREATE-ONLY, garde runtime dev/test) et
-`app:school-holidays:seed`/`app:public-holidays:seed` ✓ ; `play` (`Makefile` racine) enchaîne
-`play-env` → `db-init` → `seed-bccl-if-absent` → `seed-holidays` → restart workers ✓ ;
-`MutationTargetsAreGuardedTest` couvre bien `seed-bccl-dev` ✓. Non re-sondé cette passe : horaires
-du catalogue de jobs, pièges RLS Doctrine, scripts `backend/scripts/*.sh` — un stamp REMPLACE,
-l'historique vit dans git.
+Last verified @ 2026-09-03 (lot « un seul chemin de remplissage », `documentation-update`).
+Re-confronté au code : `BcclSeedCommand`/`DemoSeedCommand` (`backend/src/Command/`, noms de
+commande `app:bccl:seed`/`app:demo:seed`) ✓ ; `backend/Makefile` (`seed-bccl`, `seed-demo`,
+`db-empty`, `db-empty-test`, plus de `fixtures`/`db-reset`/`seed-bccl-if-absent`/`seed-bccl-dev`) ✓ ;
+`Makefile` racine (`play` enchaîne `seed-bccl` puis `IF_ABSENT=1 seed-demo`, `reset` = `db-empty` +
+`play`) ✓ ; `BcclSeedCommand` SEUL exclu de l'auto-enregistrement (`services.yaml:96-99` +
+`services_dev.yaml`/`services_test.yaml` + garde runtime dev/test) — `DemoSeedCommand` n'a AUCUNE
+restriction d'environnement (disponible en prod aussi, comme son ancêtre `app:demo:seed-bccl`) ✓ ;
+`MutationTargetsAreGuardedTest` couvre `db-empty`/`seed-demo`/`seed-bccl` ✓ ;
+`PlayTargetIsNonDestructiveTest` interdit `seed-demo` nu/`db-empty`/`fixtures` dans `play` ✓ ;
+`.github/workflows/ci.yml` et `backend/scripts/smoke-solver.sh` appellent `app:bccl:seed`
+directement ✓. Non re-sondé cette passe : horaires du catalogue de jobs, pièges RLS Doctrine —
+un stamp REMPLACE, l'historique vit dans git.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).
 > La base : `make help` affiche cette liste côté Makefile.
+
+## Une situation, une commande
+
+| Je veux… | Je lance |
+|---|---|
+| Une base de jeu complète (BCCL réel + démo + vacances), sans rien détruire | `make play` (racine) |
+| Repartir de zéro puis retrouver une base de jeu complète | `make reset` (racine) — composition littérale : `db-empty` + `play` |
+| Juste vider la base ACTUELLEMENT visée (aucun seed) | `make db-empty` (racine) ou `make -C backend db-empty` |
+| Remettre le club de démo à neuf (démonstration prospect) — purge + re-seed | `make -C backend seed-demo` |
+| Poser le club de démo SANS toucher un workspace démo existant | `make -C backend IF_ABSENT=1 seed-demo` |
+| Poser le club dev BCCL réel (no-op s'il existe déjà) | `make -C backend seed-bccl` |
+| Bac à sable IA (`amateo_dev`), sans toucher la base de jeu du fondateur | `make sandbox` ; wrapper ponctuel : `backend/scripts/with-sandbox.sh <commande…>` |
+| CI / smoke-solver | appellent `app:bccl:seed --no-interaction` directement (idempotent — voir §CI plus bas) |
+| Base de test phpunit | `make -C backend db-init-test` (idempotent) / `make -C backend db-empty-test` (vide) |
+| Rejouer seulement les référentiels vacances/fériés (globaux) | `make -C backend seed-holidays` |
 
 ## Les 3 bases locales — et les deux commandes qui basculent (P4-141, 2026-08-28)
 
@@ -24,16 +44,16 @@ Une stack pointe **une base à la fois**. Le défaut committé est le **bac à s
 | `amateo_test` | tests unitaires (DAMA, transactionnelle) | phpunit — **même en mode play** (`.env.test` garde la main dans l'ordre dotenv) |
 | `amateo` | base de PROD | rien en local |
 
-- **`make play`** — bascule sur la base de jeu : écrit `backend/.env.local` (gitignoré), crée `amateo_local` si absente, migre, **seede le club dev BCCL RÉEL (ARA0069036, avec ses plannings) ET le club de démo (ARA9999999) SEULEMENT s'ils sont ABSENTS**, rejoue les référentiels vacances scolaires/jours fériés (`seed-holidays`), et redémarre `messenger-worker`+`cron-runner` (ils tiennent la config en mémoire). 🔴 **NON DESTRUCTEUR — à relancer autant qu'on veut** : si un club existe, **aucune donnée n'est touchée** (le message le dit à l'écran). C'était un défaut du premier jet : `make play` appelait `seed-bccl` inconditionnellement, or cette commande **purge** le workspace du club de démo avant de re-seeder — relancer `play` effaçait donc le travail fait sur BCCL.
-  - Le club BCCL RÉEL naît via `make -C backend seed-bccl-dev` (`app:seed:bccl-dev`) — **CREATE-ONLY**, refuse tout net (rien touché) si le club existe déjà ; le RESET délibéré passe par `make -C backend db-reset` (ou `make fixtures`) puis `make play`.
-  - **Pour remettre VRAIMENT le club de démo à neuf** (geste de démonstration prospect) : `make -C backend seed-bccl` — sémantique « créer **ou RESET** » intacte, elle purge et re-seede.
-  - **Pour repartir de zéro** : vider la base (`make -C backend db-reset`) puis `make play`.
+- **`make play`** — bascule sur la base de jeu : écrit `backend/.env.local` (gitignoré), crée `amateo_local` si absente, migre, **pose le club dev BCCL RÉEL (ARA0069036, avec ses plannings) via `seed-bccl` (create-only) ET le club de démo (ARA9999999) via `IF_ABSENT=1 seed-demo` (seed uniquement s'il est absent)**, rejoue les référentiels vacances scolaires/jours fériés (`seed-holidays`), et redémarre `messenger-worker`+`cron-runner` (ils tiennent la config en mémoire). 🔴 **NON DESTRUCTEUR — à relancer autant qu'on veut** : si un club existe, **aucune donnée n'est touchée** (le message le dit à l'écran). C'était un défaut du premier jet (avant P4-141) : `make play` appelait l'ancêtre « créer OU RESET » sans garde — relancer `play` effaçait le travail fait sur la démo.
+  - Le club BCCL RÉEL naît via `make -C backend seed-bccl` (`app:bccl:seed`) — **CREATE-ONLY**, ne fait RIEN (SUCCESS) si le club existe déjà.
+  - **Pour remettre le club de démo à neuf** (geste de démonstration prospect) : `make -C backend seed-demo` — sémantique « créer **ou RESET** » : purge le workspace (`ErasedClubPurger`, la fiche club survit) puis re-seed.
+  - **Pour repartir de zéro** : `make reset` (racine) — vide la base actuellement visée (`db-empty`) puis relance `make play`.
 - **`make sandbox`** — retour au bac à sable : supprime `backend/.env.local` + même redémarrage.
 - La bascule vit **au niveau dotenv, jamais dans compose** : injecter `DATABASE_URL` par compose écraserait `.env.test` (env réel > dotenv) et enverrait phpunit sur la base de dev.
 
 🔴 **Le garde-fou (`backend/scripts/lib/sandbox-guard.sh`)** est sourcé par **tous** les scripts mutateurs. Il résout la base RÉELLEMENT visée (`SELECT current_database()` via php-fpm, donc il respecte toute la précédence dotenv) et **meurt** (`exit 1`) sauf si la cible est `amateo_dev` ou `*_test` — il refuse `amateo_local`, `amateo`, un nom inconnu, **et une base non résolue** (fail-closed). Lancer un smoke en mode play échoue bruyamment **sans rien écrire**. ⚠ Limite assumée : `SANDBOX_GUARD_LOADED=1` court-circuite la vérification (variable interne, héritée parent→enfant par conception) — le garde protège des ACCIDENTS, pas d'un contournement délibéré.
 
-🔴 **Les cibles Make destructrices sont GARDÉES aussi** (`backend/scripts/lib/mutation-confirm.sh`, sourcée par `fixtures`/`db-reset`/`seed-bccl`/`seed-bccl-dev`) — le garde des scripts ne les couvrait pas, et `make fixtures` en mode play aurait purgé la base de jeu. **Trois comportements**, pas un refus uniforme : bac à sable ou `*_test` → **passe en silence** · base de PROD → **refus sec** · `amateo_local` → **CONFIRMATION** nommant la base et ce qui va être détruit (`CONFIRM=yes` pour l'automatisation ; sans terminal et sans cette variable → refus, rien touché). Le refus sec des scripts n'est PAS copié ici : ces cibles sont aussi les gestes légitimes du fondateur (`seed-bccl` = son reset avant une démo ; `seed-bccl-dev` refuse de lui-même si le club existe, la confirmation ne joue que sur une base neuve). ⚑ `db-init` n'est **pas** gardé — il est non destructeur (create-if-not-exists + migrate) et `make play` l'appelle. `seed-holidays` n'est pas gardé non plus : référentiel global idempotent, rien à confirmer.
+🔴 **Les cibles Make destructrices sont GARDÉES aussi** (`backend/scripts/lib/mutation-confirm.sh`, sourcée par `db-empty`/`seed-demo`/`seed-bccl`) — le garde des scripts ne les couvrait pas, et un `seed-demo` nu en mode play aurait purgé la démo de la base de jeu. **Trois comportements**, pas un refus uniforme : bac à sable ou `*_test` → **passe en silence** · base de PROD → **refus sec** · `amateo_local` → **CONFIRMATION** nommant la base et ce qui va être détruit (`CONFIRM=yes` pour l'automatisation — c'est ce que `make play`/`make reset` injectent pour `seed-bccl`/`seed-demo`, puisque leurs chemins create-only/if-absent sont non destructeurs par construction ; sans terminal et sans cette variable → refus, rien touché). ⚑ `db-init`/`db-init-test`/`seed-holidays` ne sont **pas** gardés — non destructeurs (create-if-not-exists + migrate / référentiel global idempotent), rien à confirmer.
 
 **Le wrapper `backend/scripts/with-sandbox.sh <commande…>`** (opt-in) : bascule en bac à sable, exécute, puis **RESTAURE le mode play à la sortie — succès, échec ou Ctrl-C** (`trap EXIT INT TERM`), en remettant le `.env.local` **byte-identique** (sauvegardé, jamais régénéré depuis le template). C'est ce que l'IA utilise pour ne jamais laisser le fondateur en bac à sable. ⚠ L'opt-in est le fait d'invoquer le wrapper : un script mutateur lancé SANS lui continue de **mourir** (le fail-closed du garde reste la règle — on ne bascule jamais la base de quelqu'un dans son dos).
 
@@ -49,19 +69,27 @@ Une stack pointe **une base à la fois**. Le défaut committé est le **bac à s
 | `make phpunit` | PHPUnit **`--group phase1`** seul (`APP_ENV=test` injecté) — ⚠ **ce n'est pas « le gate »** : le groupe compte plusieurs fois plus de fichiers que le job CI `blocking-tests` n'a de steps nommés (les décomptes exacts pourrissent en jours — `ci.yml` fait foi). La cible **couvre** le gate mais ne s'y réduit pas (liste : `docs/testing/blocking-tests.md`) |
 | `make tests-engine-semantics` | PHPUnit **`--group contract`** — les tests qui interrogent le **VRAI moteur** (job CI dédié et bloquant « Engine semantics ») : chaque clé de la liste blanche `config` doit **CHANGER** le résultat du solveur, le miroir de capacité doit rendre le même verdict que lui, le payload doit rester recevable. ⚠ `tests-complete` les **exclut** (`--exclude-group contract`), exactement comme `unit-tests` en CI : sans cette cible, ils ne tournent jamais en local |
 | `make db-init` | Crée + migre la base de **dev** — idempotent, ne détruit rien |
-| `make db-init-test` | Crée + migre la base de test (**pré-requis de toute suite**) |
+| `make db-init-test` | Crée + migre la base de test (**pré-requis de toute suite**), pose `idle_in_transaction_session_timeout = 60s` sur `amateo_test` (purge les transactions DAMA zombies d'un phpunit tué) |
 | `make jwt-keys` | Génère le keypair JWT s'il est absent (`config/jwt/*.pem`, gitignoré) — idempotent |
-| `make db-reset` / `make db-reset-test` | Drop + recreate + migrate (dev / test) |
-| `make fixtures` | Fixtures dev + seed jours fériés/vacances — **injecte l'URL admin** (RLS : ne JAMAIS lancer `doctrine:fixtures:load` à la main, le purge silencieux casse) |
-| `make seed-bccl` | Seed le club de DÉMONSTRATION permanent (ARA9999999) — **créer OU RESET**, purge le workspace puis re-seed — connexion admin, gardé par `mutation-confirm.sh` |
-| `make seed-bccl-dev` | Seed le club dev BCCL RÉEL (ARA0069036, `app:seed:bccl-dev`) — **CREATE-ONLY**, refuse tout net si le club existe déjà — connexion admin, gardé par `mutation-confirm.sh` |
-| `make seed-holidays` | Rejoue les référentiels vacances scolaires + jours fériés (globaux, non-tenant, idempotents) — pas de connexion admin |
-| `make seed-bccl-if-absent` | Seed le club BCCL RÉEL **et** le club de démo, chacun SEULEMENT s'il est absent de la base visée — non destructeur ; c'est ce que `make play` appelle |
+| `make db-empty` | Drop + recreate + migrate la base de **dev ACTUELLEMENT VISÉE** (aucun seed) — gardé par `mutation-confirm.sh` |
+| `make db-empty-test` | Drop + recreate + migrate la base de **test** (aucun seed) — non gardé (base de test, jamais la base de jeu) |
+| `make seed-bccl` | Seed le club dev BCCL RÉEL (ARA0069036, `app:bccl:seed`) — **CREATE-ONLY**, ne fait RIEN si le club existe déjà — connexion admin, gardé par `mutation-confirm.sh` |
+| `make seed-demo` | Seed/reset le club de DÉMONSTRATION permanent (ARA9999999, `app:demo:seed`) — **créer OU RESET** par défaut (purge le workspace puis re-seed) ; `IF_ABSENT=1 make seed-demo` ajoute `--if-absent` (no-op si présent) — connexion admin, gardé par `mutation-confirm.sh`. `DEMO_BCCL_PASSWORD` (défaut `DemoBccl!2026`, non secret) est passé en `--password` |
+| `make seed-holidays` | Rejoue les référentiels vacances scolaires + jours fériés (globaux, non-tenant, idempotents) — pas de connexion admin, non gardé |
 | `make phpstan` / `make cs` / `make cs-fix` / `make rector` | Analyses (cs/rector en dry-run, `cs-fix` applique) |
 | `make lint` | PHPStan + CS + Rector (tout en dry-run) |
 | `make migration-diff` / `make migration-migrate` | Diff / applique les migrations (connexion **admin**) |
 | `make fix-perms` | Répare les droits de `var/generate` (rapports lisibles côté host) |
 | `make exec` | Shell dans le container php-fpm |
+
+## Cibles Make (racine, `Makefile`)
+
+| Cible | Effet |
+|-------|-------|
+| `make play` | Bascule vers `amateo_local` (base de jeu du fondateur) : `play-env` → `db-init` → `seed-bccl` → `IF_ABSENT=1 seed-demo` → `seed-holidays` → redémarre `messenger-worker`/`cron-runner`. **Non destructeur**, rejouable à volonté |
+| `make sandbox` | Retire `backend/.env.local` → retour à `amateo_dev` (bac à sable) + même redémarrage |
+| `make db-empty` | Vide (drop+create+migrate) la base **actuellement visée** — `amateo_local` en mode play, `amateo_dev` en bac à sable — aucun seed |
+| `make reset` | Composition littérale : `db-empty` puis `play` — repart de zéro et retrouve une base de jeu complète |
 
 ## Commandes console custom (`php bin/console app:…`)
 
@@ -91,8 +119,8 @@ Toutes manuelles sauf mention. Détail : `ls backend/src/Command/`.
 | `app:clubs:backfill-school-zone` | Déduit `Club.schoolZone` du code FFBB (dry-run sans `--apply`) |
 | `app:club-approvals:digest` | P3-4 PR B : relance les demandes de création de club (3 j restants + jour J) et expire les échues (la console superadmin garde la main) ; `--dry-run`, `--date` — **auto, quotidien à 08:30** |
 | `app:clubs:ffbb-resync` | SA4/P2-18 : ré-importe l'identité FFBB de `--club=<id>` (FfbbClubPopulator refresh — nom, coordonnées, logo, comité/ligue) ; échec franc si organisme introuvable — action support, aussi déclenchable depuis la console admin |
-| `app:demo:seed-bccl` | P2-4 : (re)crée le club de DÉMONSTRATION permanent « Démo Basket Club » — la structure terrain du BCCL sous identités FICTIVES (club, gestionnaire `--email` défaut demo-bccl@amateo.fr, autant d'identités fictives que de coachs du seed dev — anonymisation STRICTE, liste courte = refus). Reset = même geste : purge du workspace (`ErasedClubPurger`) + re-seed, retour exact à l'état de base. `--password` (min 12) requis à la PREMIÈRE création seulement. ⚠ Connexion ADMIN requise comme `make fixtures` (`DATABASE_URL=$DATABASE_ADMIN_URL`) — le garde superuser du seeder refuse sinon |
-| `app:seed:bccl-dev` | Seed le club **dev BCCL RÉEL** (identités réelles, `mara.mb@bccl.fr`, ARA0069036) — **CREATE-ONLY** (refuse tout net, rien touché, si le club existe déjà) — à l'inverse d'`app:demo:seed-bccl` (créer OU RESET). Appelée par `make play`/`make seed-bccl-dev`. DEV-ONLY : exclue de `services.yaml`, déclarée dans `services_dev.yaml`/`services_test.yaml` seulement + garde runtime. ⚠ Connexion ADMIN requise comme `make fixtures`. Détail : [`backend-inventory.md`](backend-inventory.md) §Module démo |
+| `app:demo:seed` | P2-4, renommée le 2026-09-03 (ex `app:demo:seed-bccl`) : (re)crée le club de DÉMONSTRATION permanent « Démo Basket Club » — la structure terrain du BCCL sous identités FICTIVES (club, gestionnaire `--email` défaut demo-bccl@amateo.fr, autant d'identités fictives que de coachs du seed dev — anonymisation STRICTE, liste courte = refus). **Créer OU RESET par défaut** : purge du workspace (`ErasedClubPurger`) + re-seed, retour exact à l'état de base. **`--if-absent`** neutralise le reset : club déjà présent → SUCCESS « The demo club is already present — nothing touched (--if-absent). », zéro écriture — c'est le chemin qu'emprunte `make play`. `--password` (min 12) requis à la PREMIÈRE création seulement. ⚠ Connexion ADMIN requise (`DATABASE_URL=$DATABASE_ADMIN_URL`) — le garde superuser du seeder refuse sinon. Aucune restriction d'environnement (disponible en prod, comme son ancêtre) |
+| `app:bccl:seed` | Renommée le 2026-09-03 (ex `app:seed:bccl-dev`) : seed le club **dev BCCL RÉEL** (identités réelles, `mara.mb@bccl.fr`, ARA0069036) — **CREATE-ONLY** : club déjà présent → SUCCESS « The BCCL dev club is already present — nothing touched (create-only, never resets). », zéro écriture — à l'inverse d'`app:demo:seed` (créer OU RESET). Appelée par `make play`/`make -C backend seed-bccl`. **DEV/TEST-ONLY** : exclue de `services.yaml`, déclarée dans `services_dev.yaml`/`services_test.yaml` seulement + garde runtime (refuse hors `dev`/`test`). ⚠ Connexion ADMIN requise. Détail : [`backend-inventory.md`](backend-inventory.md) §Module démo |
 | `app:load-test:seed-clubs` | Mesure de charge : seed `--count=N` (1..99) clubs JETABLES taille BCCL (`club-charge-N`, codes `ARA99990NN` hors plage réelle, coachs fictifs, offre Bêta posée par le seeder). **DEV-ONLY par construction** : non enregistrée hors env dev (services_dev.yaml) + garde runtime + garde superuser du seeder (connexion ADMIN requise). Consommée par `backend/scripts/load-test/run-load-test.sh` — procédure : `docs/ops/load-test.md` |
 | `app:demo:create` | P2-4 : crée un club de DÉMONSTRATION depuis `--ffbb=<code>` (`--name` requis) et y REPOINTE le compte animateur (`--animator-email`, défaut demo@amateo.fr ; `--animator-password` requis au premier passage) — adhésions précédentes supprimées (une seule active), populate FFBB synchrone best-effort **+ import des équipes engagées** (même étage que le vrai register — hors saison des poules : 0 équipe, no-op naturel), club non onboardé (le wizard guidé EST la démo). Le geste (`materialize()`) vit désormais dans `DemoClubMaterializer`, extrait pour être partagé avec la route dev `POST /api/dev/demo-register` (le raccourci démo du register, même compte animateur — détail : [`backend-inventory.md`](backend-inventory.md) §Module démo) : **deux** chemins posent `is_demo` depuis le 2026-08-20, plus un seul. Le flag exempte aussi la bascule de saison du gate paiement P1-5 (« abonnement illimité »). CLI seulement (arguments libres — hors catalogue console) |
 | `app:demo:clock` | P4-16/P2-4 : pose (`--date=YYYY-MM-DD`) ou relâche (`--clear`) l'« aujourd'hui » simulé de `--club=<id>` — serveur (DemoAwareClock) ET front (`/api/me` → clock.ts) vivent à cette date ; réservé aux clubs de démonstration (`is_demo`) — action support **CLI seulement** (le catalogue console n'injecte que `--club`, jamais de date) |
@@ -111,13 +139,13 @@ Toutes manuelles sauf mention. Détail : `ls backend/src/Command/`.
 |----------|-------|
 | `dbal:run-sql "…"` | Connexion `default` = `amateo_app` **sous RLS sans GUC → 0 ligne sur les tables tenant**. Ops/debug : `--connection admin`. *(doctrine-bundle 3 a supprimé l'ancien alias `doctrine:query:sql`.)* |
 | `doctrine:migrations:migrate` | Toujours via la connexion **admin** (les cibles make le font) |
-| `doctrine:fixtures:load` | **Interdit à la main** — garde applicatif (BasketballInit) : passe par `make fixtures` |
+| `doctrine:fixtures:load` | **Plus aucun appelant depuis le 2026-09-03** — les fixtures Doctrine (`BasketballInit`, `HolidayReferenceFixtures`) sont supprimées, `make fixtures` avec elles ; un seul chemin de remplissage reste : `app:bccl:seed`/`app:demo:seed`/`app:*-holidays:seed` ci-dessus. Le bundle `doctrine/doctrine-fixtures-bundle` reste installé (`composer.json`) mais n'est plus câblé à rien — retrait tracé roadmap P4-163 |
 
 ## Scripts (`backend/scripts/`)
 
 | Script | Effet |
 |--------|-------|
-| `smoke-solver.sh` | **Garde-fou solveur** : create → generate → poll, exige `COMPLETED`. Obligatoire quand engine/backend est touché (§7 CLAUDE.md) |
+| `smoke-solver.sh` | **Garde-fou solveur** : create → generate → poll, exige `COMPLETED`. Obligatoire quand engine/backend est touché (§7 CLAUDE.md). Si aucun club n'est trouvé pour l'utilisateur du smoke, il seede via `app:bccl:seed` (create-only, idempotent) + les seeds vacances puis relit. **Depuis le 2026-09-03, il ne répare plus un sandbox cassé par un rechargement complet** (l'ancien repli `doctrine:fixtures:load --purge-exclusions` a disparu avec les fixtures) : si la base reste sans club après le seed idempotent (club présent sans adhésion, sandbox incohérent), il `die` avec l'invite explicite (vider la base puis relancer) plutôt que de deviner |
 | `generate-schedule.sh` | Guide pratique : pilote une génération via l'API (debug du flux) |
 | `generate-schedule-test.sh` | Auto-test de `generate-schedule.sh` (PASS/FAIL sur son propre comportement) |
 | `onboarding-smoke.sh` | Flux club neuf : register → données minimales → generate → `COMPLETED` |

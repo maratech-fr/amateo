@@ -1,13 +1,12 @@
 # Guide de génération de planning — ClubScheduler
 
-Last verified @ 2026-09-02 (PR-3 comblement — mentions du contrat recalées vers 2.20, confrontées à `engine/CONTRACT_VERSION` et `ScheduleConstraintBuilder.php`) — re-confronté au code : `CONTRACT_VERSION`
-**2.20** (`ScheduleConstraintBuilder.php:64`) ✓ ; les dix `container_name` de `docker-compose.yml`
-sont tous `amateo-*` ✓ — **drift trouvé et corrigé** : ce guide citait encore `clubscheduler-nginx`/
-`clubscheduler-engine`/`clubscheduler-mercure`/`clubscheduler-mailpit` (2 lignes, § « Vérifier que
-tout tourne » et § logs), restes de l'ère pré-P4-142 que cette passe avait manqués ; port 8080 =
-`NGINX_PORT` (`.env:6`) ✓ ; rôle applicatif `amateo_app` (`docker/postgres/init/02-users.sh`,
-« Named amateo_app directly (no transitional legacy name) ») ✓ ; `pngExportUrl` toujours absent —
-`grep` vide sur `backend/src` et `frontend/src` ✓.
+Last verified @ 2026-09-03 (lot « un seul chemin de remplissage », `documentation-update`) —
+re-confronté au code : les fixtures Doctrine (`BasketballInit`, `make fixtures`,
+`doctrine:fixtures:load`) sont SUPPRIMÉES, remplacées par `app:bccl:seed`/`app:demo:seed`
+(`backend/src/Command/`) — le § « Pré-requis » et la checklist pré-vol recalés en conséquence ✓ ;
+`CONTRACT_VERSION` **2.20** (`ScheduleConstraintBuilder.php:64`) toujours vrai. Reste non re-sondé
+cette passe (`container_name` Docker, ports, rôle applicatif `amateo_app`) — un stamp REMPLACE,
+l'historique vit dans git.
 
 > Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend ClubScheduler. Il s'adresse aux développeurs juniors qui découvrent le projet.
 
@@ -33,13 +32,13 @@ docker ps
 
 Tu dois voir apparaître : `amateo-php-fpm`, `amateo-nginx`, `amateo-postgres`, `amateo-redis`, `amateo-engine`, `amateo-messenger-worker`, `amateo-mercure`, et éventuellement `amateo-mailpit`.
 
-### Charger les fixtures
+### Poser le club dev (seed)
 
 ```bash
-cd backend && make fixtures
+cd backend && make seed-bccl
 ```
 
-> ⚠️ **Ne lance JAMAIS `doctrine:fixtures:load` à la main.** Sous `amateo_app`, la phase de purge est silencieusement filtrée par RLS (elle supprime zéro ligne sur les tables tenant) et le rechargement collisionne alors avec les données survivantes — base à moitié purgée. La fixture s'en protège désormais et **lève une exception** si la connexion n'est pas celle du superutilisateur. Passe toujours par `make fixtures`, qui injecte la connexion `admin`.
+> ⚠️ **Ne lance JAMAIS une commande de seed à la main sans la connexion admin.** Sous `amateo_app`, une purge est silencieusement filtrée par RLS (elle supprime zéro ligne sur les tables tenant) et le rechargement collisionne alors avec les données survivantes — base à moitié purgée. Le seeder s'en protège et **lève une exception** si la connexion n'est pas celle du superutilisateur. Passe toujours par `make seed-bccl` (create-only, no-op si le club existe déjà) ou `make seed-demo` (créer OU reset la démo), qui injectent la connexion `admin`. Il n'y a plus de fixtures Doctrine (`doctrine:fixtures:load` n'a aucun appelant) — détail complet et table « situation → commande » : [`commands.md`](commands.md).
 
 ### Vérifier la santé du backend
 
@@ -49,15 +48,15 @@ curl http://localhost:8080/api/health
 
 Tu dois recevoir une réponse JSON avec `"status": "ok"`.
 
-### Ce que les fixtures créent
+### Ce que le seed crée
 
-Les fixtures injectent un jeu de données complet pour tester la génération :
+`app:bccl:seed` (`BcclSeeder` + `BcclSeedProfile::dev()`) injecte un jeu de données complet pour tester la génération :
 
 | Entité | Détail |
 |--------|--------|
-| Club | **BCCL** (B CHARPENNES CROIX LUIZET), code FFBB `ARA0069036` — l'id est **généré** ; les fixtures retrouvent le club par son `ffbbClubCode`, il n'y a pas d'UUID fixe |
+| Club | **BCCL** (B CHARPENNES CROIX LUIZET), code FFBB `ARA0069036` — l'id est **généré** ; le seed retrouve le club par son `ffbbClubCode`, il n'y a pas d'UUID fixe |
 | Saison | **2025-2026** (marquée comme active) |
-| Équipes | U9 à U21, seniors (SM…, SF…), Loisir, Vétérans et groupes CEC — avec tags et tiers de priorité (`$newTeamsData` dans `BasketballInit`) |
+| Équipes | U9 à U21, seniors (SM…, SF…), Loisir, Vétérans et groupes CEC — avec tags et tiers de priorité (`BcclSeeder`) |
 | Coachs | Liés aux équipes via `TeamCoach` ; certains sont aussi joueurs (`CoachPlayerMembership`) |
 | Salles | Armand, ADN, Debarros, Annexe, Jean Vilar, Tonkin, JDR, Matéo, Camus (JDR et Matéo divisibles) |
 | Contraintes | Disponibilités coachs, exclusions, préférences (regroupées par famille TIME · DAY · FACILITY · COACH) |
@@ -730,7 +729,7 @@ chaque régénération, dé-grisant le bouton « Régénérer » en permanence e
 Avant chaque génération, parcours cette liste pour éviter les pannes évidentes.
 
 - [ ] La stack Docker est démarrée (`make start`)
-- [ ] Les fixtures sont chargées (`make fixtures`)
+- [ ] Le club dev est seedé (`make -C backend seed-bccl`, ou `make play` racine)
 - [ ] Le worker Messenger tourne (`docker ps \| grep messenger`)
 - [ ] Le moteur Python tourne (`docker ps \| grep engine`)
 - [ ] Le hub Mercure tourne (`docker ps \| grep mercure`)

@@ -1,18 +1,17 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-08-31 (rotation `documentation-update`, zone non touchée par cette PR —
-contrôle de fraîcheur. Re-confronté au code : `resolveTravelRuleIntensity`
-(`ScheduleConstraintBuilder.php:894`, repli `TeamLinkIntensity::PREFERRED`) toujours le seul point
-de résolution de l'intensité `travelTime` ✓ ; `forcedDays` toujours câblé sur les 3 couches
-(`ConstraintValidationService.php:71-74`, `ConstraintConfigValidator.php:74`,
-`ConstraintsStep.tsx:357`, `engine/app/solver/constraints/targeting.py:74`) ✓. Rien de faux
-trouvé cette passe. Passe précédente
-(P2-53 RMM-8 PR-4 — la ligne `travelTime` §2 devient **alignée** : `TravelRuleNotice`
-(`ImplicitRulesPanel.tsx`) sélecteur Préféré/Obligatoire qui poste sur `VenueTravelRuleSetting`).
-Vérification antérieure toujours valable : table §2 et
-synthèse §3 confrontées à `ConstraintsStep.tsx:355-356,456-500`,
-`ConstraintsStep.test.tsx:435-446`, ne listent que `preferredDays` en scission A (DÉCISION FERMÉE
-ALIGN-09 confirmée dans `etat-des-lieux.md`).
+Last verified @ 2026-09-03 (rotation `documentation-update`, zone non touchée par cette PR —
+contrôle de fraîcheur). Re-confronté au code : `resolveTravelRuleIntensity`
+(`ScheduleConstraintBuilder.php:965`, repli `TeamLinkIntensity::PREFERRED` — **ligne recalée**,
+la passe précédente citait `:894`) toujours le seul point de résolution de l'intensité
+`travelTime` ✓ ; `forcedDays` toujours câblé sur les 3 couches (`ConstraintValidationService.php:71-77`,
+`ConstraintConfigValidator.php:74`, `ConstraintsStep.tsx:365-366`, `engine/app/solver/constraints/targeting.py:74`) ✓ ;
+la famille `FACILITY_CAPACITY` retirée du moteur — **ligne recalée** : le commentaire au passé vit
+désormais `engine/app/main.py:487-489` (la passe précédente citait `:291-294`) ✓. Rien d'autre de
+faux trouvé cette passe. Vérification antérieure toujours valable : table §2 et synthèse §3
+confrontées à `ConstraintsStep.tsx:355-356,456-500`, `ConstraintsStep.test.tsx:435-446`, ne
+listent que `preferredDays` en scission A (DÉCISION FERMÉE ALIGN-09 confirmée dans
+`etat-des-lieux.md`).
 
 > **But** : (1) lister ce que le **wizard émet** réellement, et (2) mettre les **3 couches côte à côte**
 > (frontend → backend → engine) pour repérer les **scissions** et les **angles morts** — les cas où
@@ -75,7 +74,7 @@ Colonnes : le **front** l'émet-il ? · le **backend** le transmet/transforme-t-
 | `forcedVenueId` | ✅ « impose » | + exclusivité tag | ✅ salle forcée | ✅ **aligné** |
 | `unavailableDays` | ✅ coach « indisponible » | passe | ✅ union, dur | ✅ **aligné** |
 | `availableDays` (coach « disponible **uniquement** ») | ✅ coach *(depuis ALIGN)* | passe | ✅ whitelist (intersection) | ✅ **aligné** |
-| `maxTeams` / famille `FACILITY_CAPACITY` | ❌ jamais émis (l'écran Gymnases n'émet pas de contrainte) | ❌ famille **retirée** le 2026-08-08 (SEC-13 PR C) — absente de la liste blanche | ❌ retirée du moteur le même jour (`main.py:291-294`, commentaire au passé) | ✅ **sans objet** : la divisibilité voyage **uniquement** par `trainingSlots[].capacity` (`canSplit ? capacity : 1`). La famille était honorée par le moteur alors qu'aucun chemin UI ne pouvait la créer — zéro ligne en base |
+| `maxTeams` / famille `FACILITY_CAPACITY` | ❌ jamais émis (l'écran Gymnases n'émet pas de contrainte) | ❌ famille **retirée** le 2026-08-08 (SEC-13 PR C) — absente de la liste blanche | ❌ retirée du moteur le même jour (`main.py:487-489`, commentaire au passé) | ✅ **sans objet** : la divisibilité voyage **uniquement** par `trainingSlots[].capacity` (`canSplit ? capacity : 1`). La famille était honorée par le moteur alors qu'aucun chemin UI ne pouvait la créer — zéro ligne en base |
 | `venue_closed` (période) | ✅ (cockpit) | → **retrait des créneaux** du gymnase les jours fermés (`VenueClosureDays`, P2-5 5b #263) | ✅ | ✅ **aligné** *(plus d'expansion `forbiddenVenueId` : `expandClosedVenues` supprimé — le créneau fermé est retiré du payload à la source)* |
 | `targetTag` (groupe) | ✅ | → N contraintes TEAM | ✅ (par équipe) | ✅ **aligné** |
 | `orToolsWeight` (tier) | ❌ jamais émis (nulle part dans `frontend/src`) | ❌ ne l'envoie pas (retiré volontairement) | poids **fixes codés en dur** (`LEVEL_2_OBJECTIVE_WEIGHTS`) | ✅ **sans objet** : la priorité S≫A≫B≫C≫D est garantie côté engine sans transport du poids |

@@ -3,12 +3,15 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-03 (P2-58 « PR seeder finale », `documentation-update`). Module démo
-re-confronté au code : `app:seed:bccl-dev` (`SeedBcclDevCommand.php`) créé pour seeder le club dev
-BCCL RÉEL en CREATE-ONLY (refuse si présent) ; exclu de `services.yaml`, déclaré dans
-`services_dev.yaml`/`services_test.yaml` seulement ✓ ; distinct d'`app:demo:seed-bccl` (créer OU
-RESET) toujours vrai. Reste de l'inventaire non re-vérifié cette passe. Un stamp REMPLACE,
-l'historique vit dans git.
+Last verified @ 2026-09-03 (lot « un seul chemin de remplissage », `documentation-update`). Module
+démo re-confronté au code : `app:bccl:seed` (`BcclSeedCommand.php`, renommée le 2026-09-03, ex
+`app:seed:bccl-dev`) seede le club dev BCCL RÉEL en CREATE-ONLY (SUCCESS no-op si présent) ; SEULE
+commande exclue de `services.yaml` (`services.yaml:96-99`), déclarée dans
+`services_dev.yaml`/`services_test.yaml` seulement + garde runtime ✓ ; distincte d'`app:demo:seed`
+(`DemoSeedCommand.php`, renommée le même jour, ex `app:demo:seed-bccl`) — créer OU RESET,
+`--if-absent` en no-op, **sans aucune restriction d'environnement** (pas d'exclusion, pas de garde
+runtime — disponible en prod comme son ancêtre) ✓. Reste de l'inventaire non re-vérifié cette
+passe. Un stamp REMPLACE, l'historique vit dans git.
 
 ---
 
@@ -492,8 +495,9 @@ Deux mécanismes distincts, à ne pas confondre :
    (`DevClockStore`), lue par `SimulatedClock` (alias de `ClockInterface` en dev). Gardé par
    `%kernel.debug%` — 404 en environnement non-debug (donc en prod).
 
-Le club de démonstration permanent (BCCL) est créé/réinitialisé par `app:demo:seed-bccl`
-(`src/Command/DemoSeedBcclCommand.php`, connexion `admin`, options `--password`/`--email`) via
+Le club de démonstration permanent (BCCL) est créé/réinitialisé par `app:demo:seed`
+(`src/Command/DemoSeedCommand.php`, renommée le 2026-09-03, connexion `admin`, options
+`--password`/`--email`/`--if-absent`) via
 `BcclSeeder` + `BcclSeedProfile` (`src/Seed/`, autant d'identités fictives que de coachs du
 seed dev, substituées de façon positionnelle et déterministe — liste courte = refus,
 `BcclSeedProfile::FICTIONAL_COACHES`). Le profil **dev** porte, en plus de la structure (équipes,
@@ -534,15 +538,18 @@ invoqué depuis `Kernel::boot()`) refuse désormais de démarrer en environnemen
 `APP_DEBUG` résolu à `1`/`true` — un verrou qui couvre cette route ET les deux précédentes d'un
 seul coup, indépendamment d'un oubli de garde individuelle.
 
-Distinct du club de démonstration : `app:seed:bccl-dev` (`src/Command/SeedBcclDevCommand.php`)
-seede le club **dev BCCL RÉEL** (identités réelles, `mara.mb@bccl.fr`, code FFBB ARA0069036) via
-le même `BcclSeeder` + `BcclSeedProfile::dev()`. **CREATE-ONLY** — à l'inverse d'`app:demo:seed-bccl`
-(créer OU RESET, purge le workspace à chaque appel) : cette commande **refuse tout net** (exit
-`FAILURE`, aucune écriture) si le club existe déjà ; le reset délibéré passe par `make fixtures`
-sur une base jetable. Exclue de l'auto-enregistrement (`services.yaml:96-99`), déclarée seulement
-dans `services_dev.yaml`/`services_test.yaml` (jamais dans le conteneur de prod) et gardée en
-runtime (refuse hors `dev`/`test`) : invisible en prod par construction. Connexion admin requise,
-comme `make fixtures`/`app:demo:seed-bccl`. Appelée par `make play` (`backend/docs/commands.md`).
+Distinct du club de démonstration : `app:bccl:seed` (`src/Command/BcclSeedCommand.php`, renommée le
+2026-09-03, ex `app:seed:bccl-dev`) seede le club **dev BCCL RÉEL** (identités réelles,
+`mara.mb@bccl.fr`, code FFBB ARA0069036) via le même `BcclSeeder` + `BcclSeedProfile::dev()`.
+**CREATE-ONLY** — à l'inverse d'`app:demo:seed` (créer OU RESET, purge le workspace à chaque appel
+sauf `--if-absent`) : cette commande ne fait RIEN (SUCCESS, aucune écriture) si le club existe déjà ;
+le reset délibéré passe par `make db-empty` (ou `make reset`, racine) sur une base jetable — les
+fixtures Doctrine qui portaient ce rôle avant le 2026-09-03 sont supprimées. Exclue de
+l'auto-enregistrement (`services.yaml:96-99`), déclarée seulement dans
+`services_dev.yaml`/`services_test.yaml` (jamais dans le conteneur de prod) et gardée en runtime
+(refuse hors `dev`/`test`) : invisible en prod par construction — **seule** commande démo/seed à
+porter cette restriction, `app:demo:seed` n'en a aucune. Connexion admin requise, comme
+`app:demo:seed`. Appelée par `make play` (`backend/docs/commands.md`).
 
 ### Cockpit temporel (overlays période/événement)
 
