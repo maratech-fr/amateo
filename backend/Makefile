@@ -165,6 +165,15 @@ seed-holidays:
 	$(FIG) exec -e APP_ENV=$(APP_ENV) -u $(USERID):$(GROUPID) php-fpm php bin/console app:school-holidays:seed --no-interaction
 	$(FIG) exec -e APP_ENV=$(APP_ENV) -u $(USERID):$(GROUPID) php-fpm php bin/console app:public-holidays:seed --no-interaction
 
+# Catalogue des fenêtres de match de la ligue (créneaux WE autorisés par catégorie/
+# niveau/genre). GLOBAL (non-tenant), pas de connexion admin requise. Idempotent
+# (source JSON offline, upsert par clé naturelle). `make play` le rejoue pour que
+# le module matchs connaisse les fenêtres de la ligue du club dev.
+.PHONY: seed-league ## Seed the league match-window catalog (global, non-tenant)
+seed-league: APP_ENV = dev
+seed-league:
+	$(FIG) exec -e APP_ENV=$(APP_ENV) -u $(USERID):$(GROUPID) php-fpm php bin/console app:league-windows:seed --no-interaction
+
 # OPTIONNEL, jamais lancé automatiquement (P4-141) : supprime les bases dev
 # héritées d'AVANT le découpage (clubscheduler / clubscheduler_test), restées
 # inertes dans le volume. Aucune donnée à préserver (BCCL se reseede via
