@@ -96,6 +96,9 @@ services:
       args:
         UID: ${USER_ID:-1000}
         GID: ${GROUP_ID:-1000}
+        # P4-166 (B1) — pcov dans l'image dev/test seulement : c'est le conteneur
+        # où tourne `make -C backend coverage`. L'étage prod ne reçoit pas cet arg.
+        WITH_PCOV: "1"
     container_name: amateo-php-fpm
     working_dir: /app/backend
     user: "${USER_ID:-1000}:${GROUP_ID:-1000}"

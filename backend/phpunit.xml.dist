@@ -41,4 +41,19 @@
         <server name="APP_ENV" value="test" />
         <server name="SYMFONY_DEPRECATIONS_HELPER" value="weak" />
     </php>
+    <!-- Périmètre de couverture (P4-166, décision B4) : le code applicatif `src`,
+         exclusions DÉCLARÉES (jamais implicites). PHPUnit 11 n'a pas de seuil natif
+         (option « fail-under » absente) : le cliquet vit dans scripts/coverage-gate.php,
+         lu de coverage-floor.json. Les migrations sont hors `src` (backend/migrations/)
+         donc déjà exclues sans avoir à les lister ici. -->
+    <source>
+        <include>
+            <directory>src</directory>
+        </include>
+        <exclude>
+            <file>src/Kernel.php</file>
+            <directory>src/Seed</directory>
+            <directory>src/DataFixtures</directory>
+        </exclude>
+    </source>
 </phpunit>
