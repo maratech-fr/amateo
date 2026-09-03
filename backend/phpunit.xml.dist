@@ -10,14 +10,27 @@
              (#[RunInSeparateProcess]) — sinon l'enfant attend les verrous du parent. -->
         <bootstrap class="App\Tests\ReleasesParentTransactionBeforeIsolatedTests"/>
     </extensions>
+    <!-- Rangement PAR NATURE (pas par nom de dossier) : un dossier qui contient au moins un test
+         conteneur (KernelTestCase/WebTestCase) va dans `Integration` ; un dossier 100 % `TestCase`
+         pur va dans `Unit`. Chaque sous-dossier de `tests/` doit figurer dans exactement UNE
+         testsuite, sinon une invocation par testsuite (et `make test`) le saute en silence. Gardé
+         par `Unit/TestsuitesCoverEveryTestDirectoryTest` (P4-169). -->
     <testsuites>
         <testsuite name="Unit">
             <directory>tests/Unit</directory>
+            <directory>tests/Logging</directory>
+            <directory>tests/Messenger</directory>
         </testsuite>
         <testsuite name="Integration">
             <directory>tests/Integration</directory>
             <directory>tests/Security</directory>
             <directory>tests/Queue</directory>
+            <directory>tests/Api</directory>
+            <directory>tests/Command</directory>
+            <directory>tests/OpenApi</directory>
+            <directory>tests/Validator</directory>
+            <directory>tests/MessageHandler</directory>
+            <directory>tests/EventListener</directory>
         </testsuite>
         <testsuite name="Contract">
             <directory>tests/CrossStack</directory>
