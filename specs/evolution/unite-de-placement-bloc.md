@@ -1,8 +1,11 @@
 # L'unité de placement est le bloc — règle complète (P2-60)
 
 > Détail de la ligne roadmap **P2-60**. Règle **validée par le fondateur le 2026-09-01**
-> (exercice solveur reprise-17, programme [`plannings-bccl-2026-08-31.md`](plannings-bccl-2026-08-31.md)) —
-> prête à planifier, implémentation sur GO.
+> (exercice solveur reprise-17, programme [`plannings-bccl-2026-08-31.md`](plannings-bccl-2026-08-31.md)).
+> **PR-1 backend LIVRÉE le 2026-09-03** (§4 ci-dessous — trace :
+> [`etat-des-lieux.md`](../courantes/etat-des-lieux.md) §3, détail :
+> [`backend-inventory.md`](../../backend/docs/backend-inventory.md)). **Reste PR-2 frontend**
+> (§3 ci-dessous, sélecteur de Réservation) — pas encore commencée.
 
 ## 1. Origine (preuve mesurée)
 
@@ -28,26 +31,36 @@ Par plan P et équipe T :
 **Invariant unique : sur un plan, pour chaque équipe, réservations individuelles ≤ R(T).**
 Tout le reste en découle.
 
-## 3. Frontend — sélecteur de Réservation
+## 3. Frontend — sélecteur de Réservation (PR-2, PAS ENCORE LIVRÉE)
 
 - R(T) = 0 et T membre d'un bloc → T **n'apparaît plus individuellement** ; seuls ses blocs sont
   proposés (« SF1 + SF2 »).
 - R(T) > 0 → T apparaît, **étiquetée de son résidu** (« SM3 — 3 créneaux libres ») pour prévenir
   le sur-réservage à la source.
 - Le bloc reste l'unité réservable (geste groupé livré en P2-51 PR-5).
+- Lecture prête côté serveur (`GET /api/team_solo_budgets?schedulePlanId=`, §4) — le sélecteur
+  reste à câbler dessus.
 
-## 4. Backend — la garantie, aux DEUX portes
+## 4. Backend — la garantie, aux DEUX portes (PR-1, LIVRÉE le 2026-09-03)
 
 - **Poser une réservation individuelle** : 422 si R(T) = 0 (« SF1 s'entraîne uniquement en groupe
   SF1 + SF2 : réservez le groupe ») ; 422 si les réservations individuelles existantes de T
-  atteignent déjà R(T) (le message donne le compte).
+  atteignent déjà R(T) (le message donne le compte) — `ReservationGroupOccupancy::assertSoloBudgetAllows`
+  (`backend/src/Service/ReservationGroupOccupancy.php:200`).
 - **Déclarer/modifier un bloc** : 422 si le nouveau B(T) ferait passer des réservations
   individuelles EXISTANTES au-dessus du résidu (le message les nomme) — sinon l'infaisabilité
-  entre par l'autre porte.
+  entre par l'autre porte — `SharedTrainingBlockStateProcessor::assertBlockValid`
+  (`backend/src/State/Processor/SharedTrainingBlockStateProcessor.php:167-188`).
 - Une réservation posée **via le bloc** n'est jamais comptée comme individuelle — même
   discernement ensemble-complet que le prune step existant
   (`backend/src/Deletion/SharedBlockReservationPruneStep.php`), **une seule maison** pour ce
-  discernement.
+  discernement (`ReservationGroupOccupancy::reservationsOnGroupCompleteCases`).
+- R(T)/B(T) calculés par la MAISON UNIQUE `SoloReservationBudget`
+  (`backend/src/Service/SoloReservationBudget.php:33`) — servie en lecture par
+  `GET /api/team_solo_budgets?schedulePlanId=` (`TeamSoloBudgetResource`, `TeamSoloBudgetStateProvider`).
+- **Angle mort trouvé au passage, non traité par cette PR** : supprimer une réservation d'une case
+  bloc-complète ne re-vérifie pas le résidu des autres membres qu'elle romprait — tracé
+  **P2-62** (roadmap).
 
 ## 5. Ce qui ne change pas
 
