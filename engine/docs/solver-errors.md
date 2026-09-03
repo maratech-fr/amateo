@@ -1,13 +1,14 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-09-02 (PR-3 comblement — contrat recalé 2.19→2.20, confronté à `engine/CONTRACT_VERSION`). La ligne `shared_training_not_honored`
-est **RETIRÉE** — le type n'existe plus dans le `Literal` du contrat (`output_schema.py`, PR-7 a
-supprimé le modèle groupe {équipes, K} et son diagnostic) ; `shared_block_not_honored` (confrontée
-à `_diagnose_shared_blocks`, `app/solver/result_builder/diagnostics.py:824-902`) est désormais la
-SEULE ligne de mutualisation. ⚠ **Écart connu, hors périmètre de cette passe** : `team_link_not_honored`
-et `travel_time_infeasible` sont des types de diagnostic valides du contrat (`output_schema.py`
-§Literal) mais n'ont **jamais** eu leur ligne dans ce tableau — signalé, pas corrigé ici (P4-153).
-Reste du document non re-parcouru ligne à ligne cette passe.
+Last verified @ 2026-09-03 (rotation fraîcheur, sans rapport au sujet de la PR). Re-confronté au code :
+`engine/CONTRACT_VERSION` = **2.20** ✓ ; `shared_block_not_honored` (`_diagnose_shared_blocks`,
+`app/solver/result_builder/diagnostics.py:801-`, INFEASIBLE = cause prouvée par comptage de cases
+communes candidates, FEASIBLE/OPTIMAL = défense en profondeur sur le compte réel) reste la SEULE ligne
+de mutualisation, `shared_training_not_honored` toujours absente du `Literal` du contrat. ⚠ **Écart
+connu, hors périmètre de cette passe** : `team_link_not_honored` et `travel_time_infeasible` sont des
+types de diagnostic valides du contrat (`output_schema.py` §Literal) mais n'ont **jamais** eu leur
+ligne dans ce tableau — signalé, pas corrigé ici (P4-153). Reste du document non re-parcouru ligne à
+ligne cette passe.
 
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 

@@ -1,21 +1,21 @@
-# Couverture de tests — cadrage des angles morts (P4-165 → P4-167)
+# Couverture de tests — cadrage des angles morts (P4-165 → P4-166)
 
 > **Fichier de détail ouvert** (référencé depuis [`roadmap.md`](roadmap.md)). Il porte le cadrage
 > des items nés du relevé du 2026-09-03 ([`../../docs/testing/test-coverage-map.md`](../../docs/testing/test-coverage-map.md)
 > §4) : besoin, constat vérifié, options, recommandation, **décisions à trancher par le fondateur avec un
 > exemple concret chacune**, et ce qui est délibérément hors scope. Quand un item est livré, sa ligne
 > quitte la roadmap, sa trace va dans l'état des lieux, son comportement dans `docs/testing/` — et sa
-> section ici est supprimée. **P4-169 (section E, testsuites PHPUnit complètes) et P4-168 (section D,
-> témoin Mercure) livrés le 2026-09-03** (traces : `specs/courantes/etat-des-lieux.md` §3). Statut :
-> **cadrage proposé le 2026-09-03, en attente de validation pour A-C**.
+> section ici est supprimée. **P4-169 (section E, testsuites PHPUnit complètes), P4-168 (section D,
+> témoin Mercure) et P4-167 (section C, perf sur PR) livrés le 2026-09-03** (traces :
+> `specs/courantes/etat-des-lieux.md` §3). Statut : **cadrage proposé le 2026-09-03, en attente de
+> validation pour A-B**.
 
 ## Ordre proposé (du moins cher au plus structurant)
 
 | # | Item | Effort | Pourquoi cet ordre |
 |---|---|---|---|
-| 1 | P4-167 perf sur PR | S · 1 PR | `ci.yml` seul, à condition de mesurer la variance d'abord |
-| 2 | P4-166 couverture de code | M · 3 PR (une par zone) | chaque zone a son outillage ; le cliquet vient après la première mesure |
-| 3 | P4-165 Behat | L · lot phasé | dépend des décisions A1-A5 ; les smokes migrés sont le premier palier |
+| 1 | P4-166 couverture de code | M · 3 PR (une par zone) | chaque zone a son outillage ; le cliquet vient après la première mesure |
+| 2 | P4-165 Behat | L · lot phasé | dépend des décisions A1-A5 ; les smokes migrés sont le premier palier |
 
 ## A — P4-165 · Tests fonctionnels en Behat (Gherkin)
 
@@ -97,32 +97,4 @@ magique fait écrire des tests pour le chiffre.
 
 **Hors scope.** Couverture des e2e Playwright (instrumentation du bundle — coût disproportionné) ; couverture
 de branches avant la couverture de lignes ; mutation testing (Infection, mutmut) — idée à garder, pas ici.
-
-## C — P4-167 · La perf du solveur sur les PR
-
-**Besoin.** Une régression de perf (retour au prove-stall mono-worker, 612 s mesurés) doit rougir la PR qui
-l'introduit, pas `main` après merge.
-
-**Constat vérifié.** `.github/workflows/ci.yml:697` `if: github.ref == 'refs/heads/main'`, needs
-`engine-tests`, `timeout-minutes: 30` ; `engine/tests/perf/test_perf_gate.py:30` `LARGE_CLUB_BUDGET_SECONDS = 60.0`,
-palier dense (37 équipes · 8 gymnases) et BCCL ; marqueur `perf` exclu par défaut (`addopts`).
-
-**Options.** (a) Le job complet sur toutes les PR (+30 min de runner par PR). (b) Un palier réduit sur PR
-(dense seul, ~1-2 min), plein sur `main`. (c) Sur PR seulement quand `engine/` change (filtre de chemins).
-(d) Déclenchement par label `perf`.
-
-**Reco.** (b) + (c) combinés : palier réduit, seulement si `engine/` a bougé. (d) en repli manuel.
-
-**Décisions à trancher.**
-- **C1 — mesurer la variance AVANT de gater** : 5 runs du palier dense sur runners GitHub, écart-type
-  noté dans la PR. Exemple : si dense oscille entre 25 et 55 s pour un budget de 60, le gate est un flake
-  annoncé — on relève le budget PR (90 s) ou on ne gate pas, on ne « réessaie » jamais en CI.
-- **C2 — palier PR = dense seul, budget PR ≥ 1,5 × la médiane mesurée** ; BCCL reste sur `main`.
-  Exemple : médiane 30 s → budget PR 60 s ; `main` garde 60 s sur les deux paliers.
-- **C3 — filtre de chemins : `engine/**` et `docker/engine/**`** ; une PR backend-only ne paie pas le job.
-  Exemple : la PR #831 (backend) n'aurait pas lancé le palier ; la PR #832 (Dockerfile engine via Makefile
-  engine) l'aurait lancé.
-
-**Hors scope.** Benchmarks historisés (tendance dans le temps) — vision ; perf du backend (PHP) et du
-frontend (Lighthouse) — autres sujets.
 

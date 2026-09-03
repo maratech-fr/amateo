@@ -1,11 +1,14 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-09-02 (PR-3 comblement — contrat recalé 2.19→2.20 : champ `socleReferenceAssignments`, confronté à `engine/CONTRACT_VERSION`). Exemption coach-joueur sur case de bloc active inchangée.
-Étape `COACH_PLAYER_NO_OVERLAP` de la couche dure amendée et confrontée au code : borne `≤ 1 + Σb`
-hors case de bloc active (`add_coach_player_non_overlap`, `structural.py`) ✓ ; `engine/CONTRACT_VERSION`
-= **2.20** ✓ (recalé 2.19→2.20 — PR-3 socleReferenceAssignments) ; verrou asyncio par club
-`_club_locks`/`_club_locks_guard` en `app/main.py:130-131` ✓. Reste non re-vérifié cette passe —
-historique : `git log -p --follow engine/docs/nominal-flow.md`.
+Last verified @ 2026-09-03 (rotation fraîcheur, sans rapport au sujet de la PR). Re-confronté au code :
+`engine/CONTRACT_VERSION` = **2.20** ✓ ; verrou asyncio par club `_club_locks`/`_club_locks_guard` —
+corrigé en `app/main.py:131-132` (était référencé `130-131`) ✓ ; seuils adaptatifs `_adaptive_timeout`
+(60/180/600 s pour complexité ≤50/≤200/plus, `app/main.py:414-429`) et `_adaptive_workers` (1 worker
+≤200, 8 au-delà, `app/main.py:446-452`) ✓ ; borne `COACH_PLAYER_NO_OVERLAP` `≤ 1 + Σb` hors case de bloc
+active (`add_coach_player_non_overlap`, `structural.py:216-244`) ✓. **Drift corrigé** : le résumé §5
+disait encore « contrat 2.18 » alors que le corps du document (§1) est à jour sur 2.20 depuis la passe
+précédente. Reste non re-parcouru ligne à ligne cette passe — historique :
+`git log -p --follow engine/docs/nominal-flow.md`.
 
 > Ce document decrit le chemin complet d'une requete de generation d'emploi du temps, du moment ou le backend construit le payload jusqu'a la notification en temps reel du frontend. Destine aux developpeurs travaillant sur l'integration backend/engine.
 
@@ -345,7 +348,7 @@ Le frontend ecoute ce topic via `EventSource`. Des que l'evenement arrive, le fr
 
 ## Resume du flux en 5 etapes
 
-1. **Backend** : construit le payload (contrat 2.18) a partir des entites du club (equipes, salles, entraineurs, contraintes)
+1. **Backend** : construit le payload (contrat 2.20) a partir des entites du club (equipes, salles, entraineurs, contraintes)
 2. **Moteur** : valide le payload, acquiert le verrou club, verifie le MAJOR de la version
 3. **Solveur** : construit le modele, ajoute les contraintes HARD, definit l'objectif, resout dans le budget adaptatif (60/180/600 s selon la taille du probleme)
 4. **Moteur** : retourne `ScheduleOutputSchema` avec creneaux, diagnostics, metriques

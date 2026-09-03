@@ -39,7 +39,7 @@ addopts = "-ra -m 'not perf'"
 testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
-  "perf: slow performance-gate tests (dense-club budget); excluded by default, run on CI main only",
+  "perf: slow performance-gate tests (dense-club budget); excluded by default, run on CI main (dense + BCCL) and on PR when engine/ changes (dense only, job engine-perf-pr)",
 ]
 
 [tool.ruff]

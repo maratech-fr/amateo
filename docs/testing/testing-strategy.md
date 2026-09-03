@@ -1,17 +1,15 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-03 (P4-169 + P4-168). Re-confronté au code : `backend/phpunit.xml.dist` — les 3
-testsuites (`Unit`, `Integration`, `Contract`) couvrent désormais tous les sous-dossiers de
-`backend/tests/` portant un `*Test.php` (rangement PAR NATURE), gardé par
-`Unit/TestsuitesCoverEveryTestDirectoryTest` — le §2 (qui disait sept dossiers hors testsuite) est
-corrigé en conséquence ; le graphe §1 contre `.github/workflows/ci.yml` — `blocking-tests` needs
-`[lint, phpstan]`, `unit-tests` et `e2e` needs `blocking-tests`, `engine-perf` needs `engine-tests` et
-`if: github.ref == 'refs/heads/main'`, `build-docker` needs `[blocking-tests, engine-tests]`, six jobs
-sans `needs` (`rector`, `dependency-audit`, `secrets-scan`, `semgrep`, `smoke-tests`, `engine-semantics`)
-✓ ; les 5 smokes de `backend/scripts/` = les 5 steps du job `smoke-tests` ✓. `DECLARED_ASYMMETRIES` non
-re-sondé cette passe. §3bis : ajout du patron TÉMOIN, re-vérifié contre `journey.spec.ts` (armement
-`waitForResponse` sur `/.well-known/mercure` avant le clic, assertion `data-schedule-stream-events ≥ 1`
-après l'arrivée du planning) et `ScheduleStreamWitness.tsx`.
+Last verified @ 2026-09-03 (P4-167). Graphe §1 re-confronté à `.github/workflows/ci.yml` : nouveau job
+`engine-perf-pr` (`if: github.event_name == 'pull_request'`, `needs: engine-tests`,
+`timeout-minutes: 15`, filtre de chemins `engine/`/`docker/engine/` via `git diff` avec `BASE_REF` en
+ENV) ; `engine-perf` (main) inchangé, `needs: engine-tests`, `if: github.ref == 'refs/heads/main'` ;
+sélecteur pytest `-k dense_club` confronté à `engine/tests/perf/test_perf_dense.py` (le piège `-k dense`
+matcherait aussi le fichier, donc le test BCCL). Le reste du graphe (`blocking-tests` needs
+`[lint, phpstan]`, `unit-tests`/`e2e` needs `blocking-tests`, `build-docker` needs
+`[blocking-tests, engine-tests]`, sept jobs sans `needs`) et `backend/phpunit.xml.dist` (3 testsuites,
+`Unit/TestsuitesCoverEveryTestDirectoryTest`) non re-sondés cette passe — dernière vérification P4-169 +
+P4-168 (2026-09-03, voir `git log -p --follow docs/testing/testing-strategy.md`).
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique), [`test-coverage-map.md`](test-coverage-map.md) (qui teste quoi, angles morts) and [`../project-map.md`](../project-map.md).
 
@@ -34,8 +32,24 @@ secrets-scan        (gitleaks)                             — parallel, no need
 semgrep             (security gate)                        — parallel, no needs, BLOCKS the merge
 engine-semantics    (groupe `contract`, cross-stack)       — parallel, no needs, BLOCKS the merge
 smoke-tests         (5 smokes sémantiques)                 — parallel, no needs, BLOCKS the merge
-engine-perf         (dense solve < 60 s)                   — needs engine-tests ; main only
+engine-perf         (dense + BCCL solve < 60 s)             — needs engine-tests ; main only
+engine-perf-pr      (dense solve, PR budget = 60 s)         — needs engine-tests ; PR only, skipped when engine/ untouched
 ```
+
+**`engine-perf-pr`** (P4-167, 2026-09-03) donne un signal de perf plus tôt et moins cher sur les PR sans
+dupliquer `engine-perf` : `if: github.event_name == 'pull_request'`, `needs: engine-tests`,
+`timeout-minutes: 15`. Un step dédié détermine si `engine/` a bougé (`git diff --name-only
+origin/${BASE_REF}...HEAD | grep -qE '^(engine/|docker/engine/)'`, `BASE_REF` passé par l'**ENV**,
+jamais interpolé dans le shell — un nom de branche est une entrée d'attaquant sur une PR de fork,
+finding semgrep `run-shell-injection`) : si rien n'a bougé le job finit vert en secondes (un required
+check absent bloquerait le merge autrement qu'un required check vert) ; sinon il build l'image engine et
+lance `pytest -m perf -k dense_club --durations=0 -rA` avec `PERF_BUDGET_SECONDS=60` (même budget que
+`main` — décision fermée, `specs/courantes/etat-des-lieux.md` §2). ⚠ **Piège du sélecteur** : `pytest -k`
+matche le node id ENTIER, et le fichier `engine/tests/perf/test_perf_dense.py` porte aussi le test BCCL
+— `-k dense` aurait donc aussi sélectionné `test_bccl_completes_under_budget` (le mot `dense` apparaît
+dans le nom du FICHIER). Le sélecteur correct est `-k dense_club`, qui isole
+`test_dense_club_completes_under_budget`. `engine-perf` (main) garde les deux paliers, dense et BCCL, au
+même budget 60 s.
 
 **SEPT jobs isolés sans `needs`** — `frontend`, `dependency-audit`, `rector`, `secrets-scan`, `semgrep`, `engine-semantics`, `smoke-tests` (compte re-vérifié contre `ci.yml` le 2026-08-19 ; le doc en annonçait TROIS, oubliant les quatre derniers, qui sont pourtant des **required checks** de `main`) : un signal qui peut
 rougir sur un commit qui n'a rien changé (une règle Rector élargie par un bump, une advisory publiée
