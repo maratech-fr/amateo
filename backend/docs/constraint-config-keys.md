@@ -1,11 +1,9 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-09-01 (rotation `documentation-update`, consignation reprise-24 — fichier hors
-sujet de la PR, contrôle de fraîcheur). Re-confronté au code : `ConstraintConfigValidator` porte
-toujours `minStartTime` (`:63`) / `maxEndTime` (`:65`) en type `time`, `minAtVenueCount` (`:86`) en
-`count` ✓ ; cette page reste la maison des clés du `config` d'UNE contrainte — les blocs racine du
-contrat (`sharedBlocks`, `teamLinks`…) vivent dans `engine/docs/engine-inventory.md` ✓. Reste non
-re-sondé cette passe — historique : `git log -p --follow` ce fichier.
+Last verified @ 2026-09-03 (rotation `documentation-update`, PR P2-60 PR-2 — fichier hors sujet de
+la PR, contrôle de fraîcheur). Re-confronté au code : `ConstraintConfigValidator` porte toujours
+`minStartTime` (`:63`) / `maxEndTime` (`:65`) en type `time`, `minAtVenueCount` (`:86`) en `count`
+✓. Reste non re-sondé cette passe — historique : `git log -p --follow` ce fichier.
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.
