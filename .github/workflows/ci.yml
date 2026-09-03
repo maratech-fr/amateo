@@ -739,8 +739,13 @@ jobs:
       # filter is a plain git diff, not `dorny/paths-filter` or `tj-actions`.
       - name: Engine changed?
         id: engine_changed
+        # base_ref passe par l'ENV, jamais interpolé dans le shell : un nom de
+        # branche est une entrée d'attaquant sur une PR de fork (semgrep
+        # run-shell-injection, gate `semgrep`).
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" \
+          if git diff --name-only "origin/${BASE_REF}...HEAD" \
               | grep -qE '^(engine/|docker/engine/)'; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
