@@ -88,7 +88,9 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   byte-identique, rate-limit IP ; le contrôleur pose lui-même `app.club_id` (relâché en
   `finally`). → `docs/security/rls.md`.
 - **Concurrence** : `ClubGenerationLock` Redis + verrou asyncio par club côté engine ; placement
-  matchs = rail **synchrone** avec son propre `MatchPlacementLock` (ADR-0003).
+  matchs = rail **synchrone** avec son propre `MatchPlacementLock` (ADR-0003) ; naissance/re-datage
+  d'une fenêtre de plan de période = `SchedulePlanProvisioner::lockClubWindows` (grain club+saison,
+  pris **avant** `lockPlanScope`, ordre club → entrée uniforme sur les trois écritures, P4-172).
 - **Génération async** : controller → Messenger (Redis) → handler (snapshot figé → POST engine →
   import → Mercure). Worker = conteneur `messenger-worker`.
 - **Grille de gymnase possédée par la période** (ADR-0002) : slots d'une période = **copie**
