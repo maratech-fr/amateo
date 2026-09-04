@@ -13,6 +13,7 @@ import { toISODate } from "@/shared/lib/clock";
 // consomme lui-même.
 export { frDateNumeric, frDateShort, frDateShortNoYear } from "@/shared/lib/date";
 import { frDateShort, frDateShortNoYear } from "@/shared/lib/date";
+import { holidayCoversWorkweek } from "./holidayWorkweek";
 
 const MONTH_LABELS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 
@@ -115,20 +116,15 @@ export function weeksCovering(start: string, end: string, season: { startDate: s
   return weeks;
 }
 
-/** La date `iso` tombe-t-elle Ven/Sam/Dim ? (mondayOffset : Lun=0 … Ven=4, Sam=5, Dim=6). */
-function startsLateInWeek(iso: string): boolean {
-  const [y, m, d] = iso.split("-").map(Number);
-  return mondayOffset(new Date(y, m - 1, d)) >= 4;
-}
-
 /**
- * Les semaines à AJUSTER d'une période. Cas particulier VACANCES (holiday) démarrant
- * Ven/Sam/Dim (retour fondateur 2026-07-19) : la semaine partielle de début n'a pas
- * d'impact réel (les vacances tombent le soir venu → l'impact est sur les semaines
- * SUIVANTES) — on l'écarte, l'ajustement commence au lundi suivant. Ex. Toussaint
- * ven 16 oct → 1er nov : on propose les semaines du 19–25 et 26–01, pas le 12–18.
- * Règle réservée aux vacances : fermetures/coupures gardent weeksCovering. La garde
- * `length > 1` évite de renvoyer vide (un week-end de vacances isolé garde sa semaine).
+ * Les semaines à AJUSTER d'une période. Cas particulier VACANCES (holiday) — décision
+ * fondateur 2026-09-04 : une semaine n'est « de vacances » (donc offerte en reprise) que si
+ * la vacance couvre TOUT son lundi→vendredi ; sinon c'est une semaine de saison, jamais
+ * offerte en reprise. Le week-end ne compte pas ; un jour hors saison compte comme couvert.
+ * Règle réservée aux vacances : fermetures/coupures gardent weeksCovering (une fermeture
+ * mer→mer offre toujours ses semaines partielles). La règle vit dans `holidayCoversWorkweek`,
+ * MIROIR MÉCANIQUE du backend `HolidayWorkweekRule::covers` (parité). Ex. Toussaint ven 16 oct
+ * → 1er nov : la semaine du 12–18 n'est pas couverte lun→ven → écartée.
  */
 /**
  * P3-13 — UNE SEMAINE EST ACTIONNABLE TANT QU'IL LUI RESTE DES JOURS DEVANT.
@@ -190,13 +186,13 @@ export function periodWeeksToAdjust(
 
 export function periodAdjustWeeks(start: string, end: string, season: { startDate: string; endDate: string }, periodType: string | null): WeekWindow[] {
   const weeks = weeksCovering(start, end, season);
-  // Garde `weeks[0].startDate === monday` (revue C F3) : on n'écarte QUE si la 1ʳᵉ
-  // semaine est PLEINE (lun→dim). Si la saison a rogné son début (vacance à cheval
-  // clampée à un début de saison qui tombe Ven/Sam/Dim), ce n'est pas le cas
-  // « la vacance commence en fin de semaine » du fondateur : on garde cette semaine
-  // en-saison réelle.
-  const dropFirst = "holiday" === periodType && weeks.length > 1 && startsLateInWeek(start) && weeks[0].startDate === weeks[0].monday;
-  return dropFirst ? weeks.slice(1) : weeks;
+  // VACANCES : ne garder que les semaines DE VACANCES (lundi→vendredi couvert). Une semaine
+  // dont la vacance ne couvre pas tout le lun→ven est une semaine de saison, pas offerte en
+  // reprise. Fermetures/coupures : toutes les semaines couvrantes, partielles comprises.
+  if ("holiday" === periodType) {
+    return weeks.filter((w) => holidayCoversWorkweek(w.monday, start, end, season.startDate, season.endDate));
+  }
+  return weeks;
 }
 
 /**
@@ -408,10 +404,10 @@ export function holidayWindows(
  * P2-40 — L'OFFRE de semaines d'une FERMETURE (indispo de gymnase) qui chevauche des vacances :
  * les semaines gouvernées par les vacances sont EXCLUES de l'offre (pas grisées) — le rappel vit
  * déjà dans le planning des vacances. Une semaine est exclue ssi son lundi est OFFERT par des
- * vacances : `periodAdjustWeeks(fenêtre vacances, "holiday")` (donc la règle dropFirst Ven/Sam/Dim
- * joue — une vacance démarrant vendredi n'offre pas sa semaine d'entame, qui reste offerte par la
- * fermeture). Foyer UNIQUE : les sites closure passent par ici ; les autres périodes gardent
- * `periodWeeksToAdjust`.
+ * vacances : `periodAdjustWeeks(fenêtre vacances, "holiday")` (donc la règle « de vacances » =
+ * lundi→vendredi couvert joue — une semaine que la vacance ne couvre pas entièrement lun→ven
+ * reste une semaine de saison, offerte par la fermeture). Foyer UNIQUE : les sites closure
+ * passent par ici ; les autres périodes gardent `periodWeeksToAdjust`.
  */
 export function closureWeeksOffer(
   start: string,

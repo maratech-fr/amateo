@@ -6,7 +6,9 @@ namespace App\Tests\Integration\Seed;
 
 use App\Seed\BcclSeeder;
 use App\Seed\BcclSeedProfile;
+use App\Service\HolidayWorkweekRule;
 use App\Service\SoloReservationBudget;
+use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
@@ -1219,6 +1221,48 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         }
 
         self::assertSame([], $violations, "le seed BCCL viole l'invariant solo (réservations individuelles > résidu) — RAPPORTER au fondateur, ne pas corriger le seed :\n  - " . implode("\n  - ", $violations));
+    }
+
+    /**
+     * NR (décision fondateur 2026-09-04) — TOUTE SEMAINE-ENFANT DE VACANCES SEMÉE EST « DE
+     * VACANCES » : son lundi→vendredi est entièrement couvert par sa mère (règle
+     * {@see HolidayWorkweekRule::covers}, celle-là même que garde le POST). Sans quoi le seed
+     * livrerait une semaine de reprise que l'app refuserait de recréer — une donnée qui « ne vient
+     * pas de l'app ». Falsifiable : décaler une reprise d'un jour hors de sa mère rend ce test ROUGE.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testEverySeededHolidayWeekChildCoversItsMotherWorkweek(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+
+        /** @var list<array{title: string, cs: string, ce: string, ms: string, me: string, ss: string, se: string}> $rows */
+        $rows = $this->connection->fetchAllAssociative(
+            'SELECT child.title AS title, '
+            . 'to_char(child.start_date, \'YYYY-MM-DD\') AS cs, to_char(child.end_date, \'YYYY-MM-DD\') AS ce, '
+            . 'to_char(mother.start_date, \'YYYY-MM-DD\') AS ms, to_char(mother.end_date, \'YYYY-MM-DD\') AS me, '
+            . 'to_char(s.start_date, \'YYYY-MM-DD\') AS ss, to_char(s.end_date, \'YYYY-MM-DD\') AS se '
+            . 'FROM calendar_entry child '
+            . 'JOIN calendar_entry mother ON mother.id = child.parent_entry_id '
+            . 'JOIN season s ON s.id = child.season_id '
+            . 'WHERE child.club_id = ? AND child.period_type = \'holiday\'',
+            [$club->getId()],
+        );
+        self::assertNotSame([], $rows, 'le seed dev pose bien des semaines-enfants de vacances (reprises)');
+
+        $violations = [];
+        foreach ($rows as $row) {
+            $weekMonday = new DateTimeImmutable($row['cs']);
+            $weekMonday = $weekMonday->modify(\sprintf('-%d days', (int) $weekMonday->format('N') - 1));
+            while ($weekMonday->format('Y-m-d') <= $row['ce']) {
+                if (!HolidayWorkweekRule::covers($weekMonday->format('Y-m-d'), $row['ms'], $row['me'], $row['ss'], $row['se'])) {
+                    $violations[] = \sprintf('« %s » : la semaine du %s n\'est pas entièrement en vacances', $row['title'], $weekMonday->format('Y-m-d'));
+                }
+                $weekMonday = $weekMonday->modify('+7 days');
+            }
+        }
+
+        self::assertSame([], $violations, 'chaque semaine-enfant de vacances seedée est entièrement de vacances (lun→ven)');
     }
 
     protected function setUp(): void
