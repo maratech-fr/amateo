@@ -103,7 +103,7 @@ describe("seasonPlannings — open plannings & plan name (founder feedback 2026-
       [s({ id: "v1", status: "COMPLETED" })],
       null,
       [sp({ id: "pl-mother", type: "HOLIDAY", name: "Vacances Toussaint", calendarEntryId: "m1" })],
-      [{ id: "w1", kind: "period", title: "S1", startDate: "", endDate: "", isDisruptive: false, periodType: "holiday", schoolHolidayId: null, parentEntryId: "m1", status: "active", createdBy: null }],
+      [{ id: "w1", kind: "period", title: "S1", startDate: "", endDate: "", isDisruptive: false, periodType: "holiday", schoolHolidayId: null, parentEntryId: "m1", status: "active", createdBy: null, redatable: false }],
     );
     expect(rows.some((r) => r.schedulePlanId === "pl-mother")).toBe(false);
   });

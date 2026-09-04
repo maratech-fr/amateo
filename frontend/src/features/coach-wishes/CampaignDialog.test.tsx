@@ -61,6 +61,7 @@ const entry: CalendarEntry = {
   parentEntryId: null,
   status: "active",
   createdBy: null,
+  redatable: false,
 };
 const season = { startDate: "2025-09-01", endDate: "2026-06-30" };
 

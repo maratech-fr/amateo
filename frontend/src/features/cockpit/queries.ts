@@ -480,3 +480,27 @@ export function useDeleteEntry() {
     },
   });
 }
+
+/**
+ * D3 v1 PR-2 — RE-DATER une racine fermeture à plan (PUT). Le serveur déplace le plan (les
+ * versions survivent, marquées à régénérer) et les contraintes appariées : on périme donc les
+ * mêmes clés que la suppression (calendar-entries, schedules, entry-conflicts) plus planned-windows
+ * (le verdict « déjà planifié » change avec la fenêtre). Le hook POSSÈDE son feedback (patron
+ * `ownWindowConflictFeedback`) : un refus de chevauchement (409 typé) est TU ici — le mode
+ * re-datage l'affiche comme une proposition (`WindowAlreadyPlannedNotice`) ; tout autre échec (422
+ * hors saison / fin avant début) remplace le toast du filet global par le message serveur.
+ */
+export function useRedateEntry() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { entry: CalendarEntry; startDate: string; endDate: string }) =>
+      cockpitApi.updateCalendarEntry(vars.entry, { startDate: vars.startDate, endDate: vars.endDate }),
+    onSuccess: () => {
+      invalidateEntries(queryClient);
+      void queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      void queryClient.invalidateQueries({ queryKey: ["entry-conflicts"] });
+      invalidatePlannedWindows(queryClient);
+    },
+    onError: ownWindowConflictFeedback,
+  });
+}

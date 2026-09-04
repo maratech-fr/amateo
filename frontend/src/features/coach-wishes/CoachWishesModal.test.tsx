@@ -61,6 +61,7 @@ const mother: CalendarEntry = {
   parentEntryId: null,
   status: "active",
   createdBy: null,
+  redatable: false,
 };
 
 const wish = (over: Record<string, unknown>) => ({

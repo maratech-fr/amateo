@@ -24,6 +24,9 @@ const weekChildrenMutate = vi.fn();
 // P2-38 : « Adapter » (DayList adaptRoot) crée le plan via mutateAsync — mock partagé pour qu'un
 // test le fasse REJETER avec un refus de chevauchement (409 window_already_planned).
 const periodPlanMutateAsync = vi.fn().mockResolvedValue({});
+// D3 v1 PR-2 — le geste « Modifier les dates » d'une fermeture : mutateAsync espionné (le corps du
+// PUT est construit et testé au niveau hook, `windowConflict.test.tsx`).
+const redateMutateAsync = vi.fn().mockResolvedValue({});
 // Plans couvrant le jour (B1) : DayList lit chosenScheduleId par calendarEntryId.
 let allPlansMock: { id: string; calendarEntryId: string | null; chosenScheduleId: string | null }[] = [];
 
@@ -52,6 +55,7 @@ vi.mock("./queries", () => ({
   useCreateHolidayPeriod: () => ({ mutate: vi.fn(), mutateAsync: holidayMutateAsync, isPending: false }),
   useCreateWeekChildren: () => ({ mutate: weekChildrenMutate, isPending: false }),
   useCreatePeriodPlan: () => ({ mutateAsync: periodPlanMutateAsync, isPending: false }),
+  useRedateEntry: () => ({ mutateAsync: redateMutateAsync, isPending: false }),
   useDeleteEntry: () => ({ mutate: deleteMutate, isPending: false }),
   useSchedulePlanForEntry: (id: string | null) => ({ data: null !== id && !queriesNoData ? (plansByEntry[id] ?? null) : undefined }),
   // P2-5 E1 : enfants de semaine — aucun par défaut dans ces tests (mutable pour l'encart).
@@ -97,6 +101,7 @@ const entry = (overrides: Partial<CalendarEntry>): CalendarEntry => ({
   parentEntryId: null,
   status: "active",
   createdBy: null,
+  redatable: false,
   ...overrides,
 });
 
@@ -813,5 +818,161 @@ describe("DayDialog — fermeture chevauchant des vacances (P2-40)", () => {
     expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Adapter toute la période d'un bloc/i })).toBeInTheDocument();
     expect(screen.queryByText(/couvertes par/)).not.toBeInTheDocument();
+  });
+});
+
+// ── D3 v1 PR-2 : le geste « Modifier les dates » d'une fermeture (re-datage) ──
+// L'unité UI d'un choix DÉJÀ permis par le backend (`CalendarEntry.redatable`) : le front n'a
+// rien à recalculer (règle d'or) — il rend le bouton si et seulement si le serveur dit re-datable,
+// laisse re-saisir la fenêtre, et le 409/422 reste le juge.
+describe("DayDialog — re-datage d'une fermeture (« Modifier les dates », D3 v1 PR-2)", () => {
+  const redateLabel = /Modifier les dates de Gymnase Matéo indisponible/;
+  const incident = (over: Partial<CalendarEntry> = {}): CalendarEntry =>
+    entry({ id: "inc", kind: "period", periodType: "closure", title: "Gymnase Matéo indisponible", startDate: "2026-05-12", endDate: "2026-06-16", redatable: true, ...over });
+
+  beforeEach(async () => {
+    redateMutateAsync.mockReset();
+    redateMutateAsync.mockResolvedValue({});
+    navigate.mockClear();
+    startPeriodMode.mockClear();
+    setSelectedScheduleId.mockClear();
+    const { toast } = await import("@/shared/stores/toastStore");
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.error).mockClear();
+    meData = { seasonPlan: { chosenScheduleId: "s-season" } };
+    allPlansMock = [];
+    plansByEntry = {};
+    schedulesData = [];
+    queriesNoData = false;
+    childEntriesData = [];
+  });
+
+  function renderWith(entries: CalendarEntry[], onClose = vi.fn()) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <DayDialog iso="2026-05-12" entries={entries} onClose={onClose} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    return onClose;
+  }
+
+  // Aucun levier n'existe pour une entrée que le serveur ne dit pas re-datable : le bouton est
+  // ABSENT (jamais désactivé — Supprimer est à côté). `redatable` vient du serveur, prédicat unique.
+  it("ne rend PAS le bouton « Modifier les dates » quand le serveur dit redatable=false", () => {
+    renderWith([incident({ redatable: false })]);
+    expect(screen.queryByRole("button", { name: redateLabel })).not.toBeInTheDocument();
+  });
+
+  it("rend le bouton « Modifier les dates » quand redatable=true", () => {
+    renderWith([incident()]);
+    expect(screen.getByRole("button", { name: redateLabel })).toBeInTheDocument();
+  });
+
+  it("ouvre un mode re-datage avec les dates SERVIES pré-remplies", async () => {
+    renderWith([incident()]);
+
+    await userEvent.click(screen.getByRole("button", { name: redateLabel }));
+
+    expect((screen.getByLabelText("Du") as HTMLInputElement).value).toBe("2026-05-12");
+    expect((screen.getByLabelText("Jusqu'au") as HTMLInputElement).value).toBe("2026-06-16");
+  });
+
+  it("désactive « Enregistrer » tant qu'aucune date n'a changé, avec une raison en title", async () => {
+    renderWith([incident()]);
+
+    await userEvent.click(screen.getByRole("button", { name: redateLabel }));
+    const save = screen.getByRole("button", { name: "Enregistrer" });
+    expect(save).toBeDisabled();
+    expect(save).toHaveAttribute("title");
+    expect(redateMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("désactive « Enregistrer » quand la fin précède le début", async () => {
+    renderWith([incident()]);
+
+    await userEvent.click(screen.getByRole("button", { name: redateLabel }));
+    const endInput = screen.getByLabelText("Jusqu'au");
+    await userEvent.clear(endInput);
+    await userEvent.type(endInput, "2026-05-01"); // avant le début servi (12 mai)
+    expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+  });
+
+  it("succès : appelle le re-datage avec la fenêtre saisie, ferme le dialogue et annonce la phrase unique", async () => {
+    const { toast } = await import("@/shared/stores/toastStore");
+    const onClose = renderWith([incident()]);
+
+    await userEvent.click(screen.getByRole("button", { name: redateLabel }));
+    const endInput = screen.getByLabelText("Jusqu'au");
+    await userEvent.clear(endInput);
+    await userEvent.type(endInput, "2026-06-20");
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+    await waitFor(() =>
+      expect(redateMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ entry: expect.objectContaining({ id: "inc" }), startDate: "2026-05-12", endDate: "2026-06-20" })),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Fermeture re-datée du 12 mai 2026 au 20 juin 2026 — planning à régénérer"));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("409 : rend la proposition serveur DANS le mode re-datage, garde le dialogue et les valeurs, déplace le focus sur « Ouvrir »", async () => {
+    const { WindowAlreadyPlannedError } = await import("./api");
+    const { toast } = await import("@/shared/stores/toastStore");
+    const conflictMessage = "Ces dates sont déjà planifiées par « Vacances de Toussaint ». Modifiez ce planning existant ou supprimez-le.";
+    redateMutateAsync.mockRejectedValueOnce(new WindowAlreadyPlannedError(conflictMessage, "toussaint-entry"));
+    renderWith([incident()]);
+
+    await userEvent.click(screen.getByRole("button", { name: redateLabel }));
+    const endInput = screen.getByLabelText("Jusqu'au");
+    await userEvent.clear(endInput);
+    await userEvent.type(endInput, "2026-06-20");
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+    // La proposition serveur s'affiche à l'endroit du geste ; aucun toast générique par-dessus.
+    expect(await screen.findByText(/déjà planifiées par « Vacances de Toussaint »/)).toBeInTheDocument();
+    expect(toast.error).not.toHaveBeenCalled();
+    // Le dialogue reste OUVERT, les valeurs conservées (on n'a pas fermé ni perdu la saisie).
+    expect((screen.getByLabelText("Jusqu'au") as HTMLInputElement).value).toBe("2026-06-20");
+    // Le focus part sur le bouton d'action de la notice.
+    const open = await screen.findByRole("button", { name: /ouvrir le planning en place/i });
+    await waitFor(() => expect(open).toHaveFocus());
+  });
+
+  it("« Ouvrir le planning en place » mène à la période reçue dans entryId (409)", async () => {
+    const { WindowAlreadyPlannedError } = await import("./api");
+    redateMutateAsync.mockRejectedValueOnce(new WindowAlreadyPlannedError("déjà planifié", "toussaint-entry"));
+    renderWith([incident()]);
+
+    await userEvent.click(screen.getByRole("button", { name: redateLabel }));
+    const endInput = screen.getByLabelText("Jusqu'au");
+    await userEvent.clear(endInput);
+    await userEvent.type(endInput, "2026-06-20");
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await userEvent.click(await screen.findByRole("button", { name: /ouvrir le planning en place/i }));
+
+    expect(startPeriodMode).toHaveBeenCalledWith("toussaint-entry");
+    expect(navigate).toHaveBeenCalledWith("/wizard");
+  });
+
+  it("le refus est RÉINITIALISÉ à la soumission suivante (une nouvelle tentative ne colle pas l'ancien refus)", async () => {
+    const { WindowAlreadyPlannedError } = await import("./api");
+    redateMutateAsync.mockRejectedValueOnce(new WindowAlreadyPlannedError("déjà planifié", "toussaint-entry"));
+    redateMutateAsync.mockResolvedValueOnce({});
+    renderWith([incident()]);
+
+    await userEvent.click(screen.getByRole("button", { name: redateLabel }));
+    const endInput = screen.getByLabelText("Jusqu'au");
+    await userEvent.clear(endInput);
+    await userEvent.type(endInput, "2026-06-20");
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    expect(await screen.findByRole("button", { name: /ouvrir le planning en place/i })).toBeInTheDocument();
+
+    // Deuxième tentative (résout) : la notice de refus disparaît.
+    await userEvent.clear(screen.getByLabelText("Jusqu'au"));
+    await userEvent.type(screen.getByLabelText("Jusqu'au"), "2026-06-21");
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /ouvrir le planning en place/i })).not.toBeInTheDocument());
   });
 });
