@@ -118,6 +118,55 @@ final class WeekChildEntryTest extends WebTestCase
         $this->postWeekChildExpecting(422, $user, $motherId, 'holiday', 'Mauvais type', '2026-11-09', '2026-11-15');
     }
 
+    /**
+     * NR (décision fondateur 2026-09-04), axe *planning lifecycle* : une semaine-enfant de
+     * VACANCES n'est valide que si la vacance (fenêtre de la mère) couvre TOUT son lundi→vendredi
+     * ; sinon c'est une semaine de saison, qui se planifie en fermeture/overlay, jamais en reprise.
+     * Le week-end ne compte pas ; un jour hors saison compte comme couvert. La règle vaut pour une
+     * mère HOLIDAY seulement — les enfants FERMETURE gardent leur enveloppe (semaines partielles
+     * admises). Miroir MÉCANIQUE du front `holidayCoversWorkweek` (HolidayWorkweekMirrorParityTest).
+     */
+    public function testAHolidayWeekChildMustBeFullyInHolidayMondayToFriday(): void
+    {
+        [$user] = $this->createClubWithSeason();
+        // Vacances du lun 17/08 au lun 31/08 (comme l'été BCCL borné) — saison 01/08 → 15/07.
+        $motherId = $this->postPeriod($user, 'holiday', 'Vacances d’été', '2026-08-17', '2026-08-31');
+
+        // La semaine du 24 (lun 24 → dim 30) est entièrement de vacances (lun→ven ⊂ 17→31) → 201.
+        $this->postWeekChild($user, $motherId, 'holiday', 'Semaine du 24 août', '2026-08-24', '2026-08-30');
+
+        // La semaine du 31/08 (lun 31 → dim 06/09) n'a que son lundi en vacances ; mar→ven sont en
+        // saison → semaine de saison, REFUSÉE en reprise avec un message parlant (pas d'identifiant).
+        $this->client->request('POST', '/api/calendar_entries', [], [], $this->authHeaders($user) + [
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode([
+            'kind' => 'period',
+            'title' => 'Semaine du 31 août',
+            'startDate' => '2026-08-31',
+            'endDate' => '2026-09-06',
+            'periodType' => 'holiday',
+            'parentEntryId' => $motherId,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('pas entièrement en vacances', (string) $this->client->getResponse()->getContent());
+    }
+
+    /**
+     * Corollaire de la règle ci-dessus : une FERMETURE garde son enveloppe — une semaine que la
+     * fermeture ne couvre pas entièrement lun→ven reste une semaine-enfant valide (201). La règle
+     * « de vacances » ne s'applique donc PAS aux mères closure.
+     */
+    public function testAClosureWeekChildIsAcceptedEvenWhenOnlyPartiallyCovered(): void
+    {
+        [$user] = $this->createClubWithSeason();
+        // Fermeture mer 11/11 → mer 18/11 : ses semaines-enfants pleines lun→dim ne sont couvertes
+        // que partiellement par la fermeture, et restent valides (contraste avec les vacances).
+        $motherId = $this->postPeriod($user, 'closure', 'Barros en travaux', '2026-11-11', '2026-11-18');
+
+        // Semaine du 09/11 (lun 09 → dim 15) : la fermeture ne la couvre que du mercredi → toujours 201.
+        $this->postWeekChild($user, $motherId, 'closure', 'Semaine du 9 nov', '2026-11-09', '2026-11-15');
+    }
+
     public function testAWeekChildCannotItselfBeSplit(): void
     {
         [$user] = $this->createClubWithSeason();

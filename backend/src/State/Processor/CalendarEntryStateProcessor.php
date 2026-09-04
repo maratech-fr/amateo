@@ -16,6 +16,7 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\CalendarEntryStatus;
 use App\Repository\SchoolHolidayPeriodRepository;
+use App\Service\HolidayWorkweekRule;
 use App\Service\ManagementAccessGuard;
 use App\Service\OverlayManager;
 use App\Service\PeriodWindowUniquenessGuard;
@@ -352,6 +353,26 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
         $endClamped = null !== $seasonEnd && $childEnd === $seasonEnd;
         if ((!$startsOnMonday && !$startClamped) || (!$endsOnSunday && !$endClamped)) {
             throw new UnprocessableEntityHttpException('Un bloc couvre des semaines entières, du lundi au dimanche.');
+        }
+        // VACANCES seulement (décision fondateur 2026-09-04) : une semaine n'est « de vacances »
+        // que si la vacance (= la fenêtre de la mère) couvre TOUT son lundi→vendredi ; sinon c'est
+        // une semaine de saison, qui se planifie en fermeture/overlay, jamais en reprise. Le
+        // week-end ne compte pas ; un jour hors saison compte comme couvert (tolérance clamp des
+        // vacances d'été). Chaque semaine du segment doit satisfaire la règle. Les enfants
+        // FERMETURE gardent leur enveloppe (semaines partielles admises) — d'où le filtre sur le
+        // type. Miroir MÉCANIQUE du front `holidayCoversWorkweek` (HolidayWorkweekMirrorParityTest).
+        // La saison est toujours présente ici (la mère porte un seasonId, FK garantie) — le
+        // `null !== $seasonEnd` ne fait que rassurer l'analyse (le début est déjà connu non nul).
+        if (CalendarEntryPeriodType::HOLIDAY === $parentType && null !== $seasonEnd) {
+            $holidayStart = $motherStart->format('Y-m-d');
+            $holidayEnd = $motherEnd->format('Y-m-d');
+            $weekMonday = $childStartDate->modify(\sprintf('-%d days', (int) $childStartDate->format('N') - 1));
+            while ($weekMonday->format('Y-m-d') <= $childEnd) {
+                if (!HolidayWorkweekRule::covers($weekMonday->format('Y-m-d'), $holidayStart, $holidayEnd, $seasonStart, $seasonEnd)) {
+                    $this->refuse('Cette semaine n’est pas entièrement en vacances (lundi-vendredi) : elle se planifie comme une semaine de saison.');
+                }
+                $weekMonday = $weekMonday->modify('+7 days');
+            }
         }
         // Anti-CHEVAUCHEMENT entre semaines d'une même mère (pas seulement le même
         // lundi) : deux plans de semaine qui se recouvrent = deux overlays actifs

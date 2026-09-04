@@ -1,0 +1,104 @@
+{
+  "_comment": "Cas de PARITÉ MÉCANIQUE de la règle « une semaine est-elle de vacances ? » (lundi→vendredi couvert). Consommé par holidayWorkweek.parity.test.ts (front, cockpit/lib/holidayWorkweek.ts::holidayCoversWorkweek) ET par HolidayWorkweekMirrorParityTest.php (backend, HolidayWorkweekRule::covers). Chaque `expected` est LE verdict attendu des deux implémentations : changer la règle d'un seul côté rougit le côté qui dérive. Le week-end ne compte pas ; un jour hors saison compte comme couvert (tolérance clamp des vacances d'été). Ne pas éditer une seule des deux implémentations sans porter le cas ici.",
+  "cases": [
+    {
+      "label": "vacances finissant le lundi de la semaine — le reste de lundi→vendredi est en saison",
+      "monday": "2026-10-19",
+      "holidayStart": "2026-10-05",
+      "holidayEnd": "2026-10-19",
+      "seasonStart": "2026-08-01",
+      "seasonEnd": "2027-07-15",
+      "expected": false
+    },
+    {
+      "label": "vacances finissant le jeudi — le vendredi reste en saison",
+      "monday": "2026-10-19",
+      "holidayStart": "2026-10-05",
+      "holidayEnd": "2026-10-22",
+      "seasonStart": "2026-08-01",
+      "seasonEnd": "2027-07-15",
+      "expected": false
+    },
+    {
+      "label": "vacances finissant le vendredi — tout lundi→vendredi est couvert",
+      "monday": "2026-10-19",
+      "holidayStart": "2026-10-05",
+      "holidayEnd": "2026-10-23",
+      "seasonStart": "2026-08-01",
+      "seasonEnd": "2027-07-15",
+      "expected": true
+    },
+    {
+      "label": "vacances finissant le samedi — le week-end en plus ne change rien",
+      "monday": "2026-10-19",
+      "holidayStart": "2026-10-05",
+      "holidayEnd": "2026-10-24",
+      "seasonStart": "2026-08-01",
+      "seasonEnd": "2027-07-15",
+      "expected": true
+    },
+    {
+      "label": "vacances finissant le dimanche — semaine pleinement de vacances",
+      "monday": "2026-10-19",
+      "holidayStart": "2026-10-05",
+      "holidayEnd": "2026-10-25",
+      "seasonStart": "2026-08-01",
+      "seasonEnd": "2027-07-15",
+      "expected": true
+    },
+    {
+      "label": "semaine entièrement à l'intérieur des vacances",
+      "monday": "2026-10-19",
+      "holidayStart": "2026-10-12",
+      "holidayEnd": "2026-11-08",
+      "seasonStart": "2026-08-01",
+      "seasonEnd": "2027-07-15",
+      "expected": true
+    },
+    {
+      "label": "semaine entièrement en dehors des vacances (les vacances arrivent après)",
+      "monday": "2026-10-19",
+      "holidayStart": "2026-11-09",
+      "holidayEnd": "2026-11-15",
+      "seasonStart": "2026-08-01",
+      "seasonEnd": "2027-07-15",
+      "expected": false
+    },
+    {
+      "label": "vacances démarrant le mercredi — la semaine d'entame garde lundi et mardi en saison",
+      "monday": "2026-10-19",
+      "holidayStart": "2026-10-21",
+      "holidayEnd": "2026-11-08",
+      "seasonStart": "2026-08-01",
+      "seasonEnd": "2027-07-15",
+      "expected": false
+    },
+    {
+      "label": "la saison démarre en cours de semaine pendant les vacances — les jours hors saison comptent comme couverts",
+      "monday": "2026-08-03",
+      "holidayStart": "2026-07-01",
+      "holidayEnd": "2026-08-31",
+      "seasonStart": "2026-08-05",
+      "seasonEnd": "2027-07-15",
+      "expected": true
+    },
+    {
+      "label": "vacances d'été : la semaine du 24 août est entièrement de vacances",
+      "monday": "2026-08-24",
+      "holidayStart": "2026-07-15",
+      "holidayEnd": "2026-08-31",
+      "seasonStart": "2026-08-01",
+      "seasonEnd": "2027-07-15",
+      "expected": true
+    },
+    {
+      "label": "vacances d'été finissant le lundi 31 août — la semaine du 31 août est une semaine de saison",
+      "monday": "2026-08-31",
+      "holidayStart": "2026-07-15",
+      "holidayEnd": "2026-08-31",
+      "seasonStart": "2026-08-01",
+      "seasonEnd": "2027-07-15",
+      "expected": false
+    }
+  ]
+}

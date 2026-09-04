@@ -334,7 +334,9 @@ describe("DayDialog — holiday awareness (Lot B)", () => {
   // → « Adapter » ouvre le CHOIX DES SEMAINES SANS matérialiser la mère (annuler ne
   // doit laisser aucun événement fantôme). La mère naît à la confirmation.
   it("shows the school-holiday info + « Adapter » opens the week picker WITHOUT creating anything on a multi-week holiday", async () => {
-    renderDialog([], { holiday: schoolHoliday() });
+    // Vacances 10/05 (dim) → 22/05 (ven) : DEUX semaines DE VACANCES (lun→ven couvert) — 11–17 et
+    // 18–24 (le vendredi 22 couvre la seconde) ; la semaine d'entame du 04–10 reste de saison.
+    renderDialog([], { holiday: schoolHoliday({ endDate: "2026-05-22" }) });
     expect(screen.getByText("Vacances")).toBeInTheDocument();
     expect(screen.getByText(/Vacances de Noël/)).toBeInTheDocument();
 
@@ -345,7 +347,7 @@ describe("DayDialog — holiday awareness (Lot B)", () => {
     expect(startPeriodMode).not.toHaveBeenCalled();
     // Le chemin « d'un bloc » matérialise ALORS la mère puis mène au wizard.
     await userEvent.click(screen.getByRole("button", { name: /d'un bloc/i }));
-    expect(holidayMutateAsync).toHaveBeenCalledWith({ schoolHolidayId: "sh1", label: "Vacances de Noël", startDate: "2026-05-10", endDate: "2026-05-20" });
+    expect(holidayMutateAsync).toHaveBeenCalledWith({ schoolHolidayId: "sh1", label: "Vacances de Noël", startDate: "2026-05-10", endDate: "2026-05-22" });
     await waitFor(() => expect(startPeriodMode).toHaveBeenCalledWith("created-hol"));
     expect(navigate).toHaveBeenCalledWith("/wizard");
   });
@@ -492,7 +494,7 @@ describe("DayDialog — holiday awareness (Lot B)", () => {
     weekChildrenMutate.mockImplementation((_payload: unknown, opts?: { onSuccess?: (r: { created: { id: string }[]; failedCount: number }) => void }) =>
       opts?.onSuccess?.({ created: [{ id: "wk-1" }, { id: "wk-2" }], failedCount: 0 }),
     );
-    renderDialog([], { holiday: schoolHoliday() }); // vacances multi-semaines
+    renderDialog([], { holiday: schoolHoliday({ endDate: "2026-05-22" }) }); // vacances multi-semaines (11–17 + 18–24 couvertes lun→ven)
 
     await userEvent.click(screen.getByRole("button", { name: "Adapter" })); // ouvre le picker (pending)
     await userEvent.click(screen.getByRole("button", { name: /^Créer les/ })); // confirme les semaines cochées
@@ -506,7 +508,7 @@ describe("DayDialog — holiday awareness (Lot B)", () => {
     weekChildrenMutate.mockImplementation((_payload: unknown, opts?: { onSuccess?: (r: { created: { id: string }[]; failedCount: number }) => void }) =>
       opts?.onSuccess?.({ created: [{ id: "wk-1" }], failedCount: 2 }),
     );
-    renderDialog([], { holiday: schoolHoliday() });
+    renderDialog([], { holiday: schoolHoliday({ endDate: "2026-05-22" }) }); // multi-semaines (couvertes lun→ven)
 
     await userEvent.click(screen.getByRole("button", { name: "Adapter" }));
     await userEvent.click(screen.getByRole("button", { name: /^Créer les/ }));
@@ -646,8 +648,9 @@ describe("DayDialog — refus de chevauchement sur « Adapter » (P2-38)", () =>
 // vacance MATÉRIALISÉE déjà générée d'un bloc ouvre le picker qui NOMME le fait, et propose la
 // découpe destructive (versions supprimées une par une, jamais le plan ni l'entrée).
 describe("DayDialog — P2-36 : le picker nomme l'état « bloc déjà généré »", () => {
-  // Vacance MATÉRIALISÉE multi-semaines, plan de bloc non validé portant une/des version(s).
-  const materialisedHoliday = () => entry({ id: "pe", kind: "period", periodType: "holiday", schoolHolidayId: "sh1", startDate: "2026-05-10", endDate: "2026-05-20" });
+  // Vacance MATÉRIALISÉE multi-semaines (10/05 dim → 22/05 ven : 11–17 + 18–24 couvertes lun→ven),
+  // plan de bloc non validé portant une/des version(s).
+  const materialisedHoliday = () => entry({ id: "pe", kind: "period", periodType: "holiday", schoolHolidayId: "sh1", startDate: "2026-05-10", endDate: "2026-05-22" });
 
   beforeEach(() => {
     holidayMutateAsync.mockClear();
