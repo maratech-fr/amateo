@@ -92,6 +92,9 @@ class ReservationStateProcessor extends AbstractStateProcessor
                 $clubId,
                 'Reservation',
                 $target->getId(),
+                // Une sœur emportée par la cascade dit d'où vient le geste : la trace répond à
+                // « qui a retiré la séance de SF2 ? » sans faire croire à un retrait direct.
+                $target->getId() === $reservation->getId() ? [] : ['cascade_from' => $reservation->getId()],
             );
         }
     }
