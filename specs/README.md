@@ -1,14 +1,10 @@
 # Living Specs System
 
-Last verified @ 2026-09-03 (rotation `documentation-update`, hors sujet de la PR — répartition WE
-des matchs au seed. Re-confronté : les quatre gardes
-`backend/tests/Unit/Documentation/{DocPlacementTest,DocStampFreshnessTest,RoadmapIdentityTest,BlockingTestsListMatchesCiTest}.php`
-existent toujours, aux côtés de six autres gardes sans rapport avec ce fichier (`ls
-backend/tests/Unit/Documentation/`) ; le sommaire `Files Overview` de `specs/courantes/`
-re-confronté au dossier réel : les 12 entrées existent toutes (`ls specs/courantes/`), aucune
-orpheline. Les trois fichiers dits absorbés (`features-futures.md`, `backend-gaps.md`,
-`contraintes-modele-cible.md`) confirmés absents de `specs/evolution/`. Reste du fichier (3-tier
-structure, audiences) non re-vérifié cette passe.)
+Last verified @ 2026-09-04 (P4-170 — tolérance J+1 du garde de stamps). Re-confronté : la règle du
+stamp ci-dessous correspond à `backend/tests/Unit/Documentation/DocStampFreshnessTest.php`
+(`stampCoversEdit()` : une édition datée du lendemain du stamp ne le rend pas menteur ; au-delà, oui) ;
+les quatre gardes `{DocPlacementTest,DocStampFreshnessTest,RoadmapIdentityTest,BlockingTestsListMatchesCiTest}.php`
+existent toujours (`ls backend/tests/Unit/Documentation/`). Reste du fichier non re-sondé cette passe.
 
 ## 3-Tier Structure
 
@@ -44,9 +40,12 @@ structure, audiences) non re-vérifié cette passe.)
 for f in specs/courantes/*.md docs/project-map.md docs/testing/testing-strategy.md specs/README.md; do
   s=$(grep -m1 -o 'Last verified @ [0-9-]*' "$f" | grep -o '[0-9-]*$'); [ -z "$s" ] && continue
   last=$(git log -1 --format=%ad --date=short -- "$f")
-  [[ "$last" > "$s" ]] && echo "STAMP MENTEUR: $f (stamp=$s commit=$last)"
+  # Tolérance d'UN jour : sur une squash-merge, la date git est celle du merge, pas de l'édition.
+  [[ "$last" > "$(date -d "$s + 1 day" +%F)" ]] && echo "STAMP MENTEUR: $f (stamp=$s commit=$last)"
 done
 ```
+
+**Tolérance J+1 (2026-09-04).** La date git d'un fichier est celle du commit qui le pose sur `main` : sur une squash-merge, c'est l'heure du merge. La PR #840 mergée à 00:23 a fait « mentir » quatre stamps du 03 pourtant justes, et `unit-tests` a rougi sur `main` sans qu'un contenu ait bougé. Le garde tolère donc une édition datée du **lendemain** du stamp — rien de ce qu'il vise (des stamps en retard de semaines) ne passe par ce trou.
 
 Le 2026-08-08, cette commande a sorti **9 fichiers sur 16** — dont un modifié le jour même sans bump. Aucun n'avait un contenu périmé : chacun avait été correctement recalé **par la PR qui livrait la feature**. Seul le stamp était resté figé. C'est exactement pour ça que le motif a survécu à six éditions d'audit (`AUD-DOC-04`) : personne ne voyait le mensonge, parce qu'il ne portait pas sur le fond.
 
