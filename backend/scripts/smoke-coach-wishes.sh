@@ -42,7 +42,7 @@ source "$SCRIPT_DIR/lib/sandbox-guard.sh"
 
 info "minting a dev token for $USER_EMAIL"
 TOKEN=$(php "php bin/console lexik:jwt:generate-token $USER_EMAIL --ttl=3600 --user-class='App\\Entity\\User'" | tr -d '[:space:]')
-[ -n "$TOKEN" ] || die "could not mint a JWT (run smoke-solver.sh once to seed the dev fixtures)"
+[ -n "$TOKEN" ] || die "could not mint a JWT (run `make -C backend behat` once — it seeds the dev fixtures)"
 auth=(-H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json")
 
 TEAM_ID=$(curl -sf "$API_BASE/teams?itemsPerPage=1" "${auth[@]}" | jget member.0.id)

@@ -58,7 +58,7 @@ async function ensureValidated(page: Page): Promise<void> {
   //  - club AVEC une version terminée → `guided` faux : aucun atterrissage, on reste
   //    sur l'étape par défaut du store (Équipes) mais le rail est OUVERT.
   // Mesuré le 2026-08-07 : le club seedé tombe dans le SECOND cas dès qu'un
-  // smoke-solver a tourné (2 plannings COMPLETED) — d'où l'échec, qui n'était donc
+  // la feature Behat de génération a tourné (2 plannings COMPLETED) — d'où l'échec, qui n'était donc
   // pas la « dérive de données » annoncée. On emprunte le rail quand il est ouvert.
   // ⚠ Le nom accessible du bouton d'étape n'est PAS son libellé : la pastille de
   // progression y entre (« 6 Génération »), et une étape terminée devient
@@ -112,7 +112,7 @@ async function ensureValidated(page: Page): Promise<void> {
     await cont.click();
   }
   // On ne LANCE une génération que s'il n'y a rien à valider : le club seedé a
-  // souvent déjà des versions COMPLETED (un smoke-solver a tourné). Cliquer
+  // souvent déjà des versions COMPLETED (la feature Behat de génération a tourné). Cliquer
   // « Lancer » dans ce cas attendait un bouton DÉSACTIVÉ jusqu'au timeout — le gate
   // pré-solve refuse à juste titre tant qu'un diagnostic d'erreur subsiste, alors
   // qu'une version parfaitement validable était déjà à l'écran.

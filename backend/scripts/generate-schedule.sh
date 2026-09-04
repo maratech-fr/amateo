@@ -193,7 +193,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# La garde vit APRÈS le parsing : --token (smoke-solver) surcharge TOKEN.
+# La garde vit APRÈS le parsing : --token (load-test, wrappers) surcharge TOKEN.
 if [[ -z "$TOKEN" ]]; then
   echo "Token requis : --token, SCHEDULER_TOKEN, ou SCHEDULER_EMAIL/SCHEDULER_PASSWORD." >&2
   exit 1
