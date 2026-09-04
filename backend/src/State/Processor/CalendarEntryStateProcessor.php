@@ -17,6 +17,7 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\CalendarEntryStatus;
 use App\Repository\SchoolHolidayPeriodRepository;
 use App\Service\CalendarEntryRedatability;
+use App\Service\ClosureSegmentation;
 use App\Service\HolidayWorkweekRule;
 use App\Service\ManagementAccessGuard;
 use App\Service\OverlayManager;
@@ -51,6 +52,7 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
         private readonly PeriodWindowUniquenessGuard $windowUniquenessGuard,
         private readonly SchoolHolidayPeriodRepository $schoolHolidayRepository,
         private readonly CalendarEntryRedatability $redatability,
+        private readonly ClosureSegmentation $closureSegmentation,
     ) {
         parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
     }
@@ -556,6 +558,34 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
         );
         if (false !== $overlap) {
             throw new UnprocessableEntityHttpException('Cette semaine chevauche une semaine déjà découpée pour cette période.');
+        }
+        // FERMETURE seulement (décision fondateur 2026-09-05) : l'enfant doit être EXACTEMENT un des
+        // segments début·milieu·fin calculés des semaines OFFERTES de la mère (miroir de
+        // `segmentsFromOffer` côté cockpit — parité WeekSegmentationMirrorParityTest). Jamais une
+        // semaine complète isolée, jamais un milieu tronqué, jamais un mélange partiel/complet. Les
+        // enfants de VACANCES gardent Scinder/Fusionner (leur règle est le lundi→vendredi couvert,
+        // gardée plus haut) — d'où le filtre sur le type. La tolérance des semaines révolues en tête
+        // vit dans le calcul de l'offre (endDate >= today).
+        if (CalendarEntryPeriodType::CLOSURE === $parentType) {
+            $segments = $this->closureSegmentation->segments(
+                $parent->getClubId(),
+                (string) $parent->getSeasonId(),
+                $parent->getId(),
+                $motherStart->format('Y-m-d'),
+                $motherEnd->format('Y-m-d'),
+                $seasonStart,
+                $seasonEnd,
+            );
+            $matchesASegment = false;
+            foreach ($segments as $segment) {
+                if ($segment['startDate'] === $childStart && $segment['endDate'] === $childEnd) {
+                    $matchesASegment = true;
+                    break;
+                }
+            }
+            if (!$matchesASegment) {
+                $this->refuse('Les semaines complètes d’une indisponibilité forment un seul plan : découpez-la en début, milieu, fin — ni une semaine complète isolée, ni un milieu tronqué.');
+            }
         }
     }
 

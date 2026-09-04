@@ -14,6 +14,7 @@ import { toISODate } from "@/shared/lib/clock";
 export { frDateNumeric, frDateShort, frDateShortNoYear } from "@/shared/lib/date";
 import { frDateShort, frDateShortNoYear } from "@/shared/lib/date";
 import { holidayCoversWorkweek } from "./holidayWorkweek";
+import { weekSegments } from "./weekSegmentation";
 
 const MONTH_LABELS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 
@@ -218,44 +219,17 @@ const makeSegment = (weeks: WeekWindow[], partial: boolean): WeekSegment => ({
   partial,
 });
 
-/** L'événement [start, end] couvre-t-il TOUTE la semaine calendaire (lun→dim) ? */
-const eventCoversFullWeek = (week: WeekWindow, eventStart: string, eventEnd: string): boolean =>
-  eventStart <= week.monday && eventEnd >= addDays(week.monday, 6);
-
 /**
- * P2-41 — LE DÉCOUPAGE en segments, aux ruptures GÉOMÉTRIQUES seulement (calculables des semaines
- * OFFERTES + de la fenêtre de l'événement, AUCUNE règle solveur redérivée) :
- *  (a) une semaine d'entame/de fin que l'événement ne couvre pas ENTIÈREMENT → segment de taille 1
- *      (le run de semaines pleines adjacent forme son propre segment) ;
- *  (b) une discontinuité de l'offre (trou d'exclusion vacances P2-40 ou du filtre temporel) → chaque
- *      run contigu = un segment.
- * Un run de semaines pleines contiguës sans rupture = UN segment multi-semaines.
+ * P2-41 / découpage début·milieu·fin (fondateur 2026-09-05) — LE DÉCOUPAGE en segments, délégué à
+ * `weekSegments` ({@link ./weekSegmentation}, MIROIR MÉCANIQUE du backend
+ * `WeekSegmentationRule::segments`, parité `WeekSegmentationMirrorParityTest`). Les ruptures sont
+ * GÉOMÉTRIQUES (semaines OFFERTES + fenêtre de l'événement, AUCUNE règle solveur redérivée) : une
+ * semaine d'entame/de fin partielle est un bout de taille 1, un run de semaines pleines contiguës
+ * un « milieu », une discontinuité de l'offre coupe le run. Ici on ne garde que la forme historique
+ * `WeekSegment` (`partial` = le segment n'est pas un milieu) attendue par les consommateurs.
  */
 export function segmentsFromOffer(offered: WeekWindow[], eventStart: string, eventEnd: string): WeekSegment[] {
-  const segments: WeekSegment[] = [];
-  let run: WeekWindow[] = [];
-  const flush = (): void => {
-    if (run.length > 0) {
-      segments.push(makeSegment(run, false));
-      run = [];
-    }
-  };
-  for (let i = 0; i < offered.length; i += 1) {
-    const week = offered[i];
-    const partial = !eventCoversFullWeek(week, eventStart, eventEnd);
-    if (partial) {
-      flush();
-      segments.push(makeSegment([week], true));
-      continue;
-    }
-    const gapBefore = i > 0 && week.monday !== addDays(offered[i - 1].monday, 7);
-    if (gapBefore) {
-      flush();
-    }
-    run.push(week);
-  }
-  flush();
-  return segments;
+  return weekSegments(offered, eventStart, eventEnd).map((s) => makeSegment(s.weeks, "middle" !== s.kind));
 }
 
 /** Le nombre de semaines calendaires que le segment COUVRE (span lundi→lundi, trou fusionné compris). */

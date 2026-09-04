@@ -1,0 +1,96 @@
+{
+  "_comment": "Cas de PARITÉ MÉCANIQUE du DÉCOUPAGE d'une indisponibilité en segments début·milieu·fin (règle fondateur 2026-09-05). Consommé par weekSegmentation.parity.test.ts (front, cockpit/lib/weekSegmentation.ts::weekSegments) ET par WeekSegmentationMirrorParityTest.php (backend, App\\Service\\WeekSegmentationRule::segments). Entrée = les semaines OFFERTES (WeekWindow lun→dim, déjà trouées des vacances lun→ven et des fenêtres planifiées, clamp saison porté par startDate/endDate) + la fenêtre de la mère (eventStart/eventEnd). Sortie = les segments {monday, startDate, endDate, kind, weeks} : un run de semaines PLEINES contiguës = UN 'middle' ; une semaine d'entame de tête (event commence après le lundi) = 'start' ; une semaine d'entame de queue (event finit avant le dimanche) = 'end' ; un trou de l'offre (vacances OU fenêtre planifiée) coupe le milieu en deux 'middle'. Changer la règle d'un seul côté rougit le côté qui dérive. Ne pas éditer une seule des deux implémentations sans porter le cas ici.",
+  "cases": [
+    {
+      "label": "mercredi→mardi : entame de tête + milieu + entame de queue = 3 segments",
+      "eventStart": "2026-11-11",
+      "eventEnd": "2026-11-24",
+      "offered": [
+        { "monday": "2026-11-09", "startDate": "2026-11-09", "endDate": "2026-11-15" },
+        { "monday": "2026-11-16", "startDate": "2026-11-16", "endDate": "2026-11-22" },
+        { "monday": "2026-11-23", "startDate": "2026-11-23", "endDate": "2026-11-29" }
+      ],
+      "expected": [
+        { "monday": "2026-11-09", "startDate": "2026-11-09", "endDate": "2026-11-15", "kind": "start", "weeks": ["2026-11-09"] },
+        { "monday": "2026-11-16", "startDate": "2026-11-16", "endDate": "2026-11-22", "kind": "middle", "weeks": ["2026-11-16"] },
+        { "monday": "2026-11-23", "startDate": "2026-11-23", "endDate": "2026-11-29", "kind": "end", "weeks": ["2026-11-23"] }
+      ]
+    },
+    {
+      "label": "lundi→vendredi : un seul bout (entame de queue, la semaine est cochée d'un bloc)",
+      "eventStart": "2026-11-09",
+      "eventEnd": "2026-11-13",
+      "offered": [
+        { "monday": "2026-11-09", "startDate": "2026-11-09", "endDate": "2026-11-15" }
+      ],
+      "expected": [
+        { "monday": "2026-11-09", "startDate": "2026-11-09", "endDate": "2026-11-15", "kind": "end", "weeks": ["2026-11-09"] }
+      ]
+    },
+    {
+      "label": "aligné lundi→dimanche sur deux semaines pleines : un seul milieu",
+      "eventStart": "2026-11-09",
+      "eventEnd": "2026-11-22",
+      "offered": [
+        { "monday": "2026-11-09", "startDate": "2026-11-09", "endDate": "2026-11-15" },
+        { "monday": "2026-11-16", "startDate": "2026-11-16", "endDate": "2026-11-22" }
+      ],
+      "expected": [
+        { "monday": "2026-11-09", "startDate": "2026-11-09", "endDate": "2026-11-22", "kind": "middle", "weeks": ["2026-11-09", "2026-11-16"] }
+      ]
+    },
+    {
+      "label": "trou de vacances au milieu : le milieu se coupe en deux milieux",
+      "eventStart": "2026-11-02",
+      "eventEnd": "2026-11-29",
+      "offered": [
+        { "monday": "2026-11-02", "startDate": "2026-11-02", "endDate": "2026-11-08" },
+        { "monday": "2026-11-09", "startDate": "2026-11-09", "endDate": "2026-11-15" },
+        { "monday": "2026-11-23", "startDate": "2026-11-23", "endDate": "2026-11-29" }
+      ],
+      "expected": [
+        { "monday": "2026-11-02", "startDate": "2026-11-02", "endDate": "2026-11-15", "kind": "middle", "weeks": ["2026-11-02", "2026-11-09"] },
+        { "monday": "2026-11-23", "startDate": "2026-11-23", "endDate": "2026-11-29", "kind": "middle", "weeks": ["2026-11-23"] }
+      ]
+    },
+    {
+      "label": "fenêtre déjà planifiée au milieu : le milieu se coupe en deux milieux",
+      "eventStart": "2026-11-02",
+      "eventEnd": "2026-12-06",
+      "offered": [
+        { "monday": "2026-11-02", "startDate": "2026-11-02", "endDate": "2026-11-08" },
+        { "monday": "2026-11-09", "startDate": "2026-11-09", "endDate": "2026-11-15" },
+        { "monday": "2026-11-23", "startDate": "2026-11-23", "endDate": "2026-11-29" },
+        { "monday": "2026-11-30", "startDate": "2026-11-30", "endDate": "2026-12-06" }
+      ],
+      "expected": [
+        { "monday": "2026-11-02", "startDate": "2026-11-02", "endDate": "2026-11-15", "kind": "middle", "weeks": ["2026-11-02", "2026-11-09"] },
+        { "monday": "2026-11-23", "startDate": "2026-11-23", "endDate": "2026-12-06", "kind": "middle", "weeks": ["2026-11-23", "2026-11-30"] }
+      ]
+    },
+    {
+      "label": "mère tenant dans une seule semaine partielle (mercredi→vendredi) : un seul bout",
+      "eventStart": "2026-11-11",
+      "eventEnd": "2026-11-13",
+      "offered": [
+        { "monday": "2026-11-09", "startDate": "2026-11-09", "endDate": "2026-11-15" }
+      ],
+      "expected": [
+        { "monday": "2026-11-09", "startDate": "2026-11-09", "endDate": "2026-11-15", "kind": "start", "weeks": ["2026-11-09"] }
+      ]
+    },
+    {
+      "label": "clamp saison : la semaine d'entame commence au 1er jour de saison (mercredi), sa borne portée par startDate",
+      "eventStart": "2026-08-05",
+      "eventEnd": "2026-08-16",
+      "offered": [
+        { "monday": "2026-08-03", "startDate": "2026-08-05", "endDate": "2026-08-09" },
+        { "monday": "2026-08-10", "startDate": "2026-08-10", "endDate": "2026-08-16" }
+      ],
+      "expected": [
+        { "monday": "2026-08-03", "startDate": "2026-08-05", "endDate": "2026-08-09", "kind": "start", "weeks": ["2026-08-03"] },
+        { "monday": "2026-08-10", "startDate": "2026-08-10", "endDate": "2026-08-16", "kind": "middle", "weeks": ["2026-08-10"] }
+      ]
+    }
+  ]
+}

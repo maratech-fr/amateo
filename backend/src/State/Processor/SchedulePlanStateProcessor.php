@@ -8,6 +8,7 @@ use App\ApiResource\SchedulePlanResource;
 use App\Dto\CreatePeriodPlanInput;
 use App\Dto\SchedulePlanInput;
 use App\Entity\SchedulePlan;
+use App\Service\ClosureSegmentation;
 use App\Service\ManagementAccessGuard;
 use App\Service\PeriodWindowUniquenessGuard;
 use App\Service\SchedulePlanProvisioner;
@@ -38,6 +39,7 @@ class SchedulePlanStateProcessor extends AbstractStateProcessor
         ManagementAccessGuard $managementAccessGuard,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly PeriodWindowUniquenessGuard $windowUniquenessGuard,
+        private readonly ClosureSegmentation $closureSegmentation,
     ) {
         parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
     }
@@ -121,6 +123,30 @@ class SchedulePlanStateProcessor extends AbstractStateProcessor
                 mb_substr($entry['start_date'], 0, 10),
                 mb_substr($entry['end_date'], 0, 10),
             );
+
+            // « D'un bloc » n'est permis pour une FERMETURE que si sa fenêtre se décompose en UN
+            // seul segment (décision fondateur 2026-09-05) : une indisponibilité qui a une semaine
+            // entamée (début + milieu, ou milieu + fin) doit être adaptée par début·milieu·fin, pas
+            // d'un bloc. Les VACANCES gardent le geste d'un bloc quel que soit leur découpage.
+            // Miroir de `useWeekAdapt` (bloc direct ssi la décomposition compte un élément).
+            if ('closure' === $entry['period_type']) {
+                $seasonRow = $this->entityManager->getConnection()->fetchAssociative(
+                    'SELECT start_date, end_date FROM season WHERE id = :sid',
+                    ['sid' => $entry['season_id']],
+                );
+                $segments = $this->closureSegmentation->segments(
+                    $entry['club_id'],
+                    $entry['season_id'],
+                    $entry['parent_entry_id'] ?? $entryId,
+                    mb_substr($entry['start_date'], 0, 10),
+                    mb_substr($entry['end_date'], 0, 10),
+                    false === $seasonRow ? null : mb_substr((string) $seasonRow['start_date'], 0, 10),
+                    false === $seasonRow ? null : mb_substr((string) $seasonRow['end_date'], 0, 10),
+                );
+                if (\count($segments) > 1) {
+                    $this->refuse('Cette indisponibilité a une semaine entamée : adaptez-la par début, milieu, fin.');
+                }
+            }
 
             $planId = $this->schedulePlanProvisioner->provisionPeriodPlan($entryId);
             if (null === $planId) {
