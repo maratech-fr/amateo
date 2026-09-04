@@ -1,11 +1,10 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-09-04 (PR D3 v1 backend — §2 recalé au code du geste de re-datage). Re-confronté
-au code : `CalendarEntryStateProcessor::updateEntityFromInput` dégèle `windowFrozen` pour une racine
-CLOSURE sans semaines-enfants (`:119-131`) ; `prepareClosureRootRedate` (`:321`) et
-`applyClosureRootRedate` (`:367`) orchestrent la resync ; `SchedulePlanProvisioner::
-resyncPeriodPlanWindow` (`:347`) et `renamePeriodPlanIfStillNamed` (`:363`) existent ✓. Reste du
-fichier (E1-E6, D1-D10bis, historique des décisions) non re-confronté ligne à ligne cette passe.
+Last verified @ 2026-09-04 (D3 v1 PR-2, `documentation-update`). §2 recalé : **v1 SOLDÉE
+ENTIÈRE** (PR-1 backend + PR-2 cockpit) — re-confronté `frontend/src/features/cockpit/DayDialog.tsx`
+(bouton « Modifier les dates » ssi `entry.redatable`, mode `redate`) et `api.ts`
+(`updateCalendarEntry`). Reste du fichier (E1-E6, D1-D10bis, historique des décisions) non
+re-confronté ligne à ligne cette passe.
 
 > **Rôle de ce document** : la trace durable du modèle métier des plannings, validé avec le
 > fondateur le 2026-07-12. C'est LA référence à consulter avant tout travail sur la
@@ -127,8 +126,10 @@ quelle que soit la largeur de son segment.
   scolaires), une mère découpée, une semaine-enfant. Le pivot **socle `startDate > today`** reste
   entier : re-dater une racine déplace mécaniquement son plan sous cette même règle — une racine
   commencée puis ramenée après aujourd'hui redevient balayable par une réouverture du socle, sans
-  champ ni geste dédié. **PR-1 backend seul livré** ; le geste d'édition à l'écran (PR-2, avec passe
-  design) reste ouvert. Détail complet : [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md)
+  champ ni geste dédié. **v1 SOLDÉE ENTIÈRE** (PR-1 backend puis PR-2 cockpit, 2026-09-04) : le
+  geste d'édition à l'écran vit dans la liste du jour du cockpit (`DayDialog.tsx`, bouton
+  « Modifier les dates de … » rendu ssi `entry.redatable`) — détail `accueil-cockpit-temporel.md`
+  §5bis. Détail complet : [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md)
   (amendement D3 v1) · `specs/evolution/plannings-bccl-2026-08-31.md` D3.
 - **État** : 🟢 rodé sur les axes livrés — découpage hebdo + granularité JOUR (E1/5b),
   contraintes héritées cochables (#211), **séances/équipe ajustables dans l'UI** (champ 1–7
