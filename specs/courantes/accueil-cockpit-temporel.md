@@ -1,11 +1,12 @@
 # Accueil « cockpit temporel » — mise au clair (préliminaire calendriers secondaires)
 
-Last verified @ 2026-09-03 (rotation fraîcheur, `documentation-update`). Re-confronté au code : les
-symboles cités du modèle FAIT/GENÈSE existent toujours — `CalendarEntry::datedConstraintSourceIds()`
-(`backend/src/Entity/CalendarEntry.php:253`), `ConstraintsStep.tsx`
-(`frontend/src/features/wizard/steps/`), `ConstraintPeriodOverrideStateProcessor` et
-`ConstraintStateProcessor` (`backend/src/State/Processor/`) ✓. Reste du fichier non re-vérifié cette
-passe — historique : `git log -p --follow` ce fichier.
+Last verified @ 2026-09-04 (D4, `documentation-update`). Re-confronté au code : §5bis (règle
+« semaine de vacances » P2-40) recalé sur `App\Service\HolidayWorkweekRule::covers`
+(`backend/src/Service/HolidayWorkweekRule.php`), la garde 422 de
+`CalendarEntryStateProcessor::assertValidWeekChild` (mère VACANCES seulement) et le miroir
+déclaré `frontend/src/features/cockpit/lib/holidayWorkweek.ts` (`holidayCoversWorkweek`,
+remplace `dropFirst`), tenus par `HolidayWorkweekMirrorParityTest` ✓. Reste du fichier non
+re-vérifié cette passe — historique : `git log -p --follow` ce fichier.
 
 > **Statut** : **approche arrêtée** (décisions tranchées §9) — **livrée** ; cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2.
 > **Pas un plan** — pas de tâches, pas d'effort chiffré ; l'exécution se planifiera palier par palier (§8).
@@ -481,24 +482,30 @@ l'horloge. Le **serveur** garde l'heure réelle (P4-16 reste ouverte pour lui).
     dans `lib/date.ts` portent la règle : `holidayWindows` (union du feed vacances scolaires ∪ des
     entrées calendrier `holiday` non ignorées, clampée à la saison) et `closureWeeksOffer` — foyer
     UNIQUE de l'offre d'une fermeture, une semaine est exclue **ssi son lundi est offert par**
-    `periodAdjustWeeks(fenêtre vacances, "holiday")` (la règle dropFirst Ven/Sam/Dim continue de
-    jouer : des vacances démarrant vendredi n'excluent pas leur semaine d'entame, qui reste offerte
-    par la fermeture). `decideWeekAdapt` (P2-36) gagne le fait `holidayCovered` : dès qu'une
-    exclusion existe, le picker s'ouvre **toujours** (jamais `single-week`/`already-split` en
+    `periodAdjustWeeks(fenêtre vacances, "holiday")` — depuis **D4 (2026-09-04)**, une semaine n'y
+    est offerte que si la vacance couvre TOUT son lundi→vendredi (`holidayCoversWorkweek`,
+    `lib/holidayWorkweek.ts` ; le week-end ne compte pas, un jour hors saison compte comme couvert).
+    Remplace l'ancien `dropFirst` (cas Ven/Sam/Dim seul). `decideWeekAdapt` (P2-36) gagne le fait
+    `holidayCovered` : dès qu'une exclusion existe, le picker s'ouvre **toujours** (jamais `single-week`/`already-split` en
     bloc direct) et **le chemin « adapter d'un bloc » disparaît** — un plan de bloc gouvernerait
     la fenêtre des vacances, ce que P2-38 refuse par ailleurs. Sans chevauchement : comportement
     strictement inchangé. Cas **100 % sous vacances** (aucune semaine offerte) : ligne d'info
     seule ; sur le chemin `pendingMother` (l'indispo n'est pas encore en base), un bouton
     **« Consigner l'indisponibilité »** crée le FAIT sans plan ni navigation — nécessaire, sinon
     le rappel promis par la ligne d'info n'existerait nulle part ; une entrée **déjà en base**
-    n'a rien à consigner, le bouton n'apparaît pas. **Écart assumé** (§2 de `etat-des-lieux.md`) :
-    la règle vit côté FRONT, sur les données SERVIES (`useSchoolHolidays` + `useCalendarEntries`)
-    — c'est une règle d'**OFFRE** de présentation, pas un miroir d'un calcul backend (aucun calcul
-    serveur « semaines offertes » n'existe à mirorer, `FrontRederivationRegistryTest` reste vert).
-    Par API directe, une semaine peut donc encore naître sous des vacances SANS plan — le filet
-    reste la garde P2-38 (409 `window_already_planned`, dans les deux sens) dès qu'un PLAN existe ;
-    la garde serveur n'est **pas** étendue (sa doctrine : « on ne borne que le PLAN, jamais le
-    FAIT »).
+    n'a rien à consigner, le bouton n'apparaît pas. **L'écart d'origine est CLOS (D4, 2026-09-04)** :
+    la règle vit toujours côté FRONT, sur les données SERVIES (`useSchoolHolidays` +
+    `useCalendarEntries`) — c'est une règle d'**OFFRE** de présentation, la même qu'auparavant —
+    mais elle est désormais un **miroir déclaré** d'un calcul backend qui existe réellement :
+    `App\Service\HolidayWorkweekRule::covers` (« une semaine est-elle de vacances ? », garde 422
+    de `CalendarEntryStateProcessor::assertValidWeekChild` pour une mère VACANCES) applique
+    EXACTEMENT la même règle lundi→vendredi que `holidayCoversWorkweek` (`lib/holidayWorkweek.ts`).
+    Les deux sont tenues alignées par une parité MÉCANIQUE (`holidayWorkweek.parity.json`, jouée
+    par vitest et par `HolidayWorkweekMirrorParityTest`), et le module figure au registre
+    `FrontRederivationRegistryTest`. Par API directe, une semaine peut toujours naître sous des
+    vacances SANS plan — le filet reste la garde P2-38 (409 `window_already_planned`, dans les
+    deux sens) dès qu'un PLAN existe ; la garde serveur du 422 ne borne que la naissance d'une
+    semaine-enfant sous une mère VACANCES, pas la création du FAIT lui-même.
   - **La carte de couverture d'une fermeture prolonge la même exclusion (A3, 2026-08-19).**
     P2-40 ne bornait que le PICKER ; la carte de couverture du radar/`DayDialog`
     (`motherWeekSlots`, `RadarPanel.tsx`) comptait encore TOUTES les semaines de la fenêtre, y
@@ -548,9 +555,11 @@ le serveur SERT le verdict (`GET /api/planned-windows`, `backend-inventory.md`),
   transitoire. La prévention est un confort, le refus est la garde.
 - ⚠ **Portée : la modale SEULE.** Les autres chemins de naissance (mère mono-semaine, chip
   « + créer » d'une semaine de couverture) gardent le 409 comme unique traitement.
-- ⚠ La phrase du cas VACANCES reste composée côté front : décision fermée P2-40 (aucun calcul
-  serveur de couverture vacances n'existe à mirorer). Reposée le 2026-08-22 par la passe de design,
-  retranchée dans le même sens.
+- La phrase du cas VACANCES reste composée côté front (pas de champ serveur dédié pour ce texte) ;
+  ce qu'elle qualifie (« semaine de vacances ») s'appuie depuis D4 (2026-09-04) sur un calcul
+  backend réel, mirroré mécaniquement — voir §5bis ci-dessus, l'ancien « aucun calcul serveur
+  n'existe à mirorer » (posé P2-40, reposé le 2026-08-22, retranché dans le même sens) ne tient
+  plus.
 
 **Refus de chevauchement sur « Adapter » (P2-38 PR3, 2026-08-18).** Le geste « Adapter » — mini
 popover d'une date, `WeekPickerDialog`, carte du radar — est sous la garde serveur (« une seule

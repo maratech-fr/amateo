@@ -1,11 +1,13 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-09-02 (rotation `documentation-update`, PR-0 lot overlay — zone non touchée
-par cette PR, contrôle de fraîcheur). Re-confronté au code : tags système présents dans
-`TeamTagService` (`EMB` :27, axes AGE) ✓ · `FACILITY_CAPACITY` ne subsiste qu'en commentaires
-historiques (1 occurrence par couche : `ScheduleConstraintBuilder.php`,
-`ValidateConstraintsController.php`, `engine/app/main.py`) ✓. Reste non re-sondé cette passe —
-historique : `git log -p --follow` ce fichier.
+Last verified @ 2026-09-04 (rotation fraîcheur, `documentation-update` — zone non touchée par la
+PR D4, contrôle de fraîcheur). Re-confronté au code : tags système présents dans `TeamTagService`
+(`EMB` :27, axes AGE) ✓ · `FACILITY_CAPACITY` ne subsiste qu'en commentaires historiques
+(`ScheduleConstraintBuilder.php:1398`, `ValidateConstraintsController.php:263`,
+`engine/app/main.py:487`, `PayloadCapacityMirror.php:30`) ✓ · `maxConsecutiveDays` (P2-42) reste
+opt-in, naît ÉTEINTE (`ImplicitConstraintConfig.php:127`, « absent from the payload, the rule is
+not applied at all ») ✓. Reste non re-sondé cette passe — historique : `git log -p --follow` ce
+fichier.
 
 > ClubScheduler — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 

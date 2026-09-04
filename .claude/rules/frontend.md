@@ -17,7 +17,9 @@ paths:
   duplication est assumée (réactivité sans aller-retour réseau), **déclarée en tête de fichier**
   ET gardée par un **test de parité** (patron : `CoachDoubleBookingDetector` ⇄
   `wizard/lib/coachDoubleBooking.ts` ; côté cross-stack `PayloadCapacityMirror` +
-  `CapacityMirrorParityTest`) ; **(3) redérivation silencieuse** — ❌ interdite. Signe d'alerte :
+  `CapacityMirrorParityTest` ; côté cockpit `App\Service\HolidayWorkweekRule` ⇄
+  `cockpit/lib/holidayWorkweek.ts`, parité `HolidayWorkweekMirrorParityTest`, D4 2026-09-04) ;
+  **(3) redérivation silencieuse** — ❌ interdite. Signe d'alerte :
   un `switch`/chaîne de conditions sur les valeurs d'un **enum métier partagé** (`scope`,
   `ruleType`, `family`, `lockLevel`, `status`…) pour **décider d'un comportement** (pas pour
   choisir un libellé — ça, c'est de la présentation, cf. `matches/lib/diagnostic.ts`). Cas fondateur

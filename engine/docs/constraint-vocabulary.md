@@ -1,11 +1,11 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-02 (PR-3 lot overlay, `documentation-update`) : nouvelle section
-`socleReferenceAssignments` (référence socle du comblement, bonus de PLACEMENT phase 1 par tier)
-ajoutée et confrontée au code — `ScheduleConstraintBuilder::withSocleReferenceAssignments`
-(backend), `add_socle_reference_bonus` + `SOCLE_REFERENCE_TIER_WEIGHTS`
-(`engine/app/solver/objective/{terms,weights}.py`), `SCORE_FORMULA_VERSION` V13, contrat 2.20.
-Reste du document non re-vérifié cette passe — historique :
+Last verified @ 2026-09-04 (rotation fraîcheur, `documentation-update` — zone non touchée par la
+PR D4). Re-confronté : `ScheduleConstraintBuilder::withSocleReferenceAssignments`
+(`backend/src/Service/ScheduleConstraintBuilder.php:720`), `add_socle_reference_bonus` +
+`SOCLE_REFERENCE_TIER_WEIGHTS` (`engine/app/solver/objective/weights.py:24-250`),
+`SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"` (`weights.py:31`), `engine/CONTRACT_VERSION`
+toujours `2.20` ✓. Reste du document non re-vérifié cette passe — historique :
 `git log -p --follow engine/docs/constraint-vocabulary.md`.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
