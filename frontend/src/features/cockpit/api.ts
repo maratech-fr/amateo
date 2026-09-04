@@ -236,7 +236,7 @@ export const deleteCalendarEntry = (id: string): Promise<unknown> => api.delete(
 /**
  * D3 v1 PR-2 — RE-DATER une racine fermeture à plan (PUT). Corps MINIMAL mais complet : le DTO
  * `CalendarEntryInput` porte `kind`/`title` en `NotBlank` (POST comme PUT), donc on renvoie les
- * valeurs SERVIES inchangées et seules les dates bougent (`periodType`/`schoolHolidayId` omis → le
+ * valeurs SERVIES inchangées et seules les dates bougent (`periodType` renvoyé tel quel : le DTO l'exige pour une entrée `period`, et le gel ne refuse qu'un CHANGEMENT ; `schoolHolidayId` omis → le
  * processor ne les touche pas). Le serveur déplace le plan et les contraintes `venue_closed`
  * appariées, recale le titre s'il portait le suffixe « — du … au … », refuse en 409
  * `window_already_planned` une fenêtre déjà prise (traduit ici comme au geste « Adapter »), et
@@ -246,7 +246,7 @@ export const deleteCalendarEntry = (id: string): Promise<unknown> => api.delete(
 export const updateCalendarEntry = async (entry: CalendarEntry, dates: { startDate: string; endDate: string }): Promise<CalendarEntry> => {
   try {
     return await api
-      .put(`calendar_entries/${entry.id}`, { json: { kind: entry.kind, title: entry.title, startDate: dates.startDate, endDate: dates.endDate } })
+      .put(`calendar_entries/${entry.id}`, { json: { kind: entry.kind, periodType: entry.periodType, title: entry.title, startDate: dates.startDate, endDate: dates.endDate } })
       .json<CalendarEntry>();
   } catch (error) {
     const conflict = asWindowAlreadyPlanned(error);
