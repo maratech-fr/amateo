@@ -112,7 +112,7 @@ describe("updateCalendarEntry — re-datage d'une fermeture (PUT, D3 v1 PR-2)", 
     await updateCalendarEntry(closureEntry(), { startDate: "2026-05-12", endDate: "2026-06-20" });
 
     expect(mockPut).toHaveBeenCalledWith("calendar_entries/inc", {
-      json: { kind: "period", title: "Gymnase Matéo indisponible", startDate: "2026-05-12", endDate: "2026-06-20" },
+      json: { kind: "period", periodType: "closure", title: "Gymnase Matéo indisponible", startDate: "2026-05-12", endDate: "2026-06-20" },
     });
   });
 
