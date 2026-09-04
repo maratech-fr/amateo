@@ -1255,9 +1255,6 @@ jobs:
       - name: Start messenger worker
         run: docker compose up -d --wait messenger-worker
 
-      - name: Smoke — coach wishes (campaign → public token → persisted wish)
-        run: backend/scripts/smoke-coach-wishes.sh
-
       - name: Dump service logs on failure
         if: failure()
         run: docker compose logs --tail 120 php-fpm engine messenger-worker

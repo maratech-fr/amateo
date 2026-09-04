@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Tests\Behat\CoachWishesContext;
 use App\Tests\Behat\MatchPlacementContext;
 use App\Tests\Behat\OnboardingContext;
 use App\Tests\Behat\PeriodOverlayContext;
@@ -41,5 +42,10 @@ return (new Config)
                 new Suite('overlay')
                     ->withPaths('%paths.base%/features/plan-de-periode-en-overlay.feature')
                     ->withContexts(PeriodOverlayContext::class),
+            )
+            ->withSuite(
+                new Suite('voeux')
+                    ->withPaths('%paths.base%/features/voeux-des-coachs.feature')
+                    ->withContexts(CoachWishesContext::class),
             ),
     );
