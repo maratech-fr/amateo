@@ -170,7 +170,8 @@ jobs:
           tools: composer:v2
       - name: Composer audit
         working-directory: backend
-        run: composer audit --locked --no-interaction --abandoned=ignore
+        # audit-retry : relance seulement sur endpoint indisponible, jamais sur une vulnérabilité (P4-171).
+        run: ../.github/scripts/audit-retry.sh composer audit --locked --no-interaction --abandoned=ignore
 
       # Node — reads package-lock, no install needed. All deps are scanned (a runtime lib
       # misfiled under devDependencies still ships to browsers), gated at high+ so an
@@ -182,7 +183,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: npm audit
         working-directory: frontend
-        run: npm audit --audit-level=high
+        run: ../.github/scripts/audit-retry.sh npm audit --audit-level=high
 
       # Python — audit the ENGINE IMAGE's actual installed versions (what ships), not a
       # fresh unpinned resolve. `pip freeze` omits pip/setuptools tooling by default, and
@@ -195,7 +196,7 @@ jobs:
         run: |
           docker compose build engine
           docker compose run --rm --no-deps engine pip freeze | grep -vE '^(-e |clubscheduler-engine)' > engine-deps.txt
-          pipx run pip-audit --requirement engine-deps.txt
+          .github/scripts/audit-retry.sh pipx run pip-audit --requirement engine-deps.txt
 
   # Static analysis AND code style. CS-Fixer lives here rather than in the `lint`
   # job because it needs the PHP container this job already pays for (that job has

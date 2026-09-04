@@ -111,7 +111,7 @@ All PHP test jobs first **create + migrate the test DB** (`doctrine:database:cre
 | `engine-coverage` | `pytest --cov=app --cov-fail-under=$FLOOR` (`$FLOOR` read from `coverage-floor.json`, key `engine`), needs `engine-tests`, does **NOT** gate `build-docker` (P4-166 PR 1/3) |
 | `frontend` | `npm run lint` (dont `eslint-plugin-jsx-a11y`, §4bis) + `tsc -b` + `vite build` + `vitest` (parallel, no needs) |
 | `frontend-coverage` | `npm run test:coverage` (`vitest run --coverage`, `thresholds.lines` lu de `coverage-floor.json`, clé `frontend`), needs `frontend`, does **NOT** gate `build-docker` (P4-166 PR 2/3) |
-| `dependency-audit` | `composer audit` / `npm audit --audit-level=high` / `pip-audit` (A18, blocking, parallel, no needs) |
+| `dependency-audit` | `composer audit` / `npm audit --audit-level=high` / `pip-audit` (A18, blocking, parallel, no needs). Les trois passent par `.github/scripts/audit-retry.sh` (P4-171) : 3 tentatives (10 s, 30 s) **seulement** quand la sortie porte une signature réseau (timeout, 5xx, DNS, `curl error`) — un `exit 1` d'audit sans cette signature est rendu tel quel, le gate ne s'aveugle pas |
 | `build-docker` | `docker compose build` (needs **blocking + engine** tests only) |
 
 All PHP jobs invoke `vendor/bin/phpunit` (PHPUnit 11, the direct `phpunit/phpunit` dep) — same binary as `Makefile` and `composer test`.
