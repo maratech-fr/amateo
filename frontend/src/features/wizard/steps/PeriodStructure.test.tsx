@@ -763,6 +763,26 @@ describe("PeriodVenues — la grille de la période, gymnase par gymnase", () =>
     expect(delReservation).toHaveBeenCalledWith("r1");
   });
 
+  // P2-62 — le déplacement retire les N réservations orphelines de la case. Le DELETE tolère le
+  // 404 (api.ts) : quand la 1ʳᵉ suppression a déjà emporté toute une case bloc-complète, la 2ᵉ sœur
+  // répond 404 SANS bruit — aucune erreur ne remonte à l'écran.
+  it("déplacer un créneau à deux réservations les retire toutes, sans toast d'erreur même si une sœur répond déjà 404", async () => {
+    reservationsState.data = [
+      { id: "r1", venueId: "v1", dayOfWeek: 3, startTime: "20:00:00" },
+      { id: "r2", venueId: "v1", dayOfWeek: 3, startTime: "20:00:00" },
+    ];
+    const user = userEvent.setup();
+    render(<PeriodVenues calendarEntryId="e1" />);
+    await user.click(screen.getByTitle(/^20:00 .*modifier$/));
+    await user.selectOptions(screen.getByLabelText("Jour"), "2");
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await user.click(screen.getByRole("button", { name: "Déplacer" }));
+
+    expect(delReservation).toHaveBeenCalledWith("r1");
+    expect(delReservation).toHaveBeenCalledWith("r2");
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
   it("autorise l'édition d'un créneau du soir qui finit après 22:00 (pas de borne côté période)", async () => {
     periodSlotOverride.value = [{ id: "ps1", venueId: "v1", dayOfWeek: 1, startTime: "21:00:00", durationMinutes: 90, capacity: 1, schedulePlanId: "plan-1" }];
     const user = userEvent.setup();

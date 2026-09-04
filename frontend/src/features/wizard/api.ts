@@ -295,7 +295,23 @@ export interface ReservationPayload {
 
 export const listReservations = (params?: Record<string, string>): Promise<Reservation[]> => collectionAll<Reservation>("reservations", params);
 export const createReservation = (body: ReservationPayload): Promise<Reservation> => api.post("reservations", { json: body }).json();
-export const deleteReservation = (id: string): Promise<void> => api.delete(`reservations/${id}`).then(() => undefined);
+/**
+ * P2-62 — MAISON UNIQUE de la tolérance 404 du retrait. Supprimer une réservation posée sur une
+ * case d'entraînement mutualisé emporte côté serveur TOUTE la case d'un coup : une sœur DÉJÀ
+ * emportée répond 404. Le résultat visé — la réservation n'existe plus — est alors ATTEINT, donc on
+ * RÉSOUT (les boucles de retrait, modale/récap/déplacement, enchaînent sans erreur). Tout AUTRE
+ * échec rejette (comportement inchangé). Pas de tolérance dispersée dans les appelants.
+ */
+export const deleteReservation = (id: string): Promise<void> =>
+  api
+    .delete(`reservations/${id}`)
+    .then(() => undefined)
+    .catch((error: unknown) => {
+      if (error instanceof HTTPError && 404 === error.response.status) {
+        return undefined;
+      }
+      throw error;
+    });
 
 /**
  * Rail BATCH de mutualisation (P2-46 PR-2) : poser UN groupe sur UNE case écrit ses N réservations
