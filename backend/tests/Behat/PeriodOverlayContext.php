@@ -54,6 +54,18 @@ final class PeriodOverlayContext extends BaseContext
 
     private string $freeTeam = '';
 
+    private string $redatePlanId = '';
+
+    private string $redateVersionId = '';
+
+    private string $redateTitle = '';
+
+    private string $redateStart = '';
+
+    private string $redateEnd = '';
+
+    private string $redateNewEnd = '';
+
     #[Given('le club de démonstration, connecté, dont le planning de saison est en vigueur')]
     public function leClubConnecteAvecSocleEnVigueur(): void
     {
@@ -224,6 +236,81 @@ final class PeriodOverlayContext extends BaseContext
 
         if ((int) $copresent < 1) {
             throw new RuntimeException('le membre de bloc libéré n\'a PAS recollé sur la case de son partenaire épinglé (balayage non bloc-aware)');
+        }
+    }
+
+    #[Given('une fermeture à venir avec une version overlay aboutie')]
+    public function uneFermetureAvecVersionAboutie(): void
+    {
+        // Fenêtre bien au-delà des périodes seedées ET des deux autres scénarios (+49/+63 j).
+        $this->redateStart = date('Y-m-d', (int) strtotime('next monday +77 days'));
+        $this->redateEnd = date('Y-m-d', (int) strtotime($this->redateStart . ' +4 days'));
+        $this->redateTitle = 'Fermeture à re-dater';
+
+        $this->entryId = $this->createClosurePeriod('next monday +77 days', $this->redateTitle);
+
+        $plan = $this->apiPost('schedule_plans', ['calendarEntryId' => $this->entryId], $this->token);
+        $this->redatePlanId = $this->idOf($plan, 'plan de période');
+
+        $version = $this->apiPost('schedules', ['schedulePlanId' => $this->redatePlanId, 'status' => 'DRAFT'], $this->token);
+        $this->redateVersionId = $this->idOf($version, 'version overlay');
+
+        $launched = $this->apiPost(\sprintf('schedules/%s/generate', $this->redateVersionId), [], $this->token);
+        if (202 !== $launched['status']) {
+            throw new RuntimeException(\sprintf('le déclenchement de la génération a répondu %d (202 attendu)', $launched['status']));
+        }
+        if ('COMPLETED' !== $this->pollUntilTerminal($this->redateVersionId)) {
+            throw new RuntimeException('la génération overlay de la fermeture à re-dater n\'a pas abouti');
+        }
+    }
+
+    #[When('je prolonge la fermeture de deux semaines')]
+    public function jeProlongeLaFermeture(): void
+    {
+        $this->redateNewEnd = date('Y-m-d', (int) strtotime($this->redateEnd . ' +14 days'));
+
+        $put = $this->apiPut(\sprintf('calendar_entries/%s', $this->entryId), [
+            'kind' => 'period',
+            'periodType' => 'closure',
+            'title' => $this->redateTitle,
+            'startDate' => $this->redateStart,
+            'endDate' => $this->redateNewEnd,
+        ], $this->token);
+        if (200 !== $put['status']) {
+            throw new RuntimeException(\sprintf('le re-datage a répondu %d (200 attendu)', $put['status']));
+        }
+    }
+
+    #[Then('la période porte les nouvelles dates, son plan aussi, la version existe toujours et le planning est signalé à régénérer')]
+    public function laPeriodeEtSonPlanPortentLesNouvellesDates(): void
+    {
+        $entry = $this->apiGet(\sprintf('calendar_entries/%s', $this->entryId), $this->token);
+        if (($entry['json']['endDate'] ?? '') !== $this->redateNewEnd) {
+            throw new RuntimeException(\sprintf('la période porte encore « %s » (attendu « %s »)', $entry['json']['endDate'] ?? '', $this->redateNewEnd));
+        }
+
+        $planEnd = $this->dbalScalar(
+            \sprintf('SELECT end_date::date AS behatval FROM schedule_plan WHERE id = \'%s\'', $this->redatePlanId),
+            admin: true,
+        );
+        if ($planEnd !== $this->redateNewEnd) {
+            throw new RuntimeException(\sprintf('le plan porte encore la fin « %s » (attendu « %s ») : la fenêtre n\'a pas été resynchronisée', $planEnd, $this->redateNewEnd));
+        }
+
+        $stillThere = $this->dbalScalar(
+            \sprintf('SELECT id AS behatval FROM schedule WHERE id = \'%s\'', $this->redateVersionId),
+            admin: true,
+        );
+        if ($this->redateVersionId !== $stillThere) {
+            throw new RuntimeException('la version overlay n\'a pas survécu au re-datage');
+        }
+
+        $stale = $this->dbalScalar(
+            \sprintf('SELECT CASE WHEN resources_changed_since_generation THEN \'oui\' ELSE \'non\' END AS behatval FROM schedule WHERE id = \'%s\'', $this->redateVersionId),
+            admin: true,
+        );
+        if ('oui' !== $stale) {
+            throw new RuntimeException('la version n\'est pas signalée à régénérer après le re-datage');
         }
     }
 

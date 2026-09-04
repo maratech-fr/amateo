@@ -144,6 +144,22 @@ abstract class BaseContext implements Context
     }
 
     /**
+     * @param array<mixed>          $body
+     * @param array<string, string> $headers
+     *
+     * @return array{status: int, json: array<mixed>}
+     */
+    protected function apiPut(string $path, array $body, string $token, array $headers = []): array
+    {
+        $options = ['headers' => $this->authHeaders($token, $headers)];
+        if ([] !== $body) {
+            $options['json'] = $body;
+        }
+
+        return $this->decode($this->client->request('PUT', ltrim($path, '/'), $options));
+    }
+
+    /**
      * @param array<string, string> $headers
      *
      * @return array{status: int, json: array<mixed>}

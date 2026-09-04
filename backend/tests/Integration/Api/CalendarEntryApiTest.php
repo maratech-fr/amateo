@@ -10,6 +10,7 @@ use App\Entity\ClubUser;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Schedule;
+use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SchoolHolidayPeriod;
 use App\Entity\Season;
@@ -540,10 +541,6 @@ final class CalendarEntryApiTest extends WebTestCase
         $this->put($user, $club, $id, [...$base, 'kind' => 'period', 'periodType' => 'holiday']);
         self::assertResponseStatusCodeSame(422, 'changing periodType under an overlay must be rejected');
 
-        // Window change → 422 (the overlay covers the old window).
-        $this->put($user, $club, $id, [...$base, 'kind' => 'period', 'periodType' => 'closure', 'endDate' => '2026-05-17']);
-        self::assertResponseStatusCodeSame(422, 'changing dates under an overlay must be rejected');
-
         // kind → event → 422 (would orphan the overlay).
         $this->put($user, $club, $id, [...$base, 'kind' => 'event']);
         self::assertResponseStatusCodeSame(422, 'converting to event under an overlay must be rejected');
@@ -553,6 +550,18 @@ final class CalendarEntryApiTest extends WebTestCase
         self::assertResponseIsSuccessful();
         $data = json_decode((string) $this->client->getResponse()->getContent(), true);
         self::assertSame('Gym Barros fermé', $data['title']);
+
+        // D3 v1 (décision fondateur 2026-09-04) — la FENÊTRE d'une racine CLOSURE n'est PLUS gelée.
+        // L'ancien cas « changer les dates sous un overlay → 422 » devient donc le comportement
+        // INVERSE : re-dater est autorisé et resynchronise la fenêtre du plan (couverture détaillée
+        // dans PeriodRedateTest ; la version survit, marquée à régénérer).
+        $this->put($user, $club, $id, [...$base, 'kind' => 'period', 'periodType' => 'closure', 'title' => 'Gym Barros fermé', 'endDate' => '2026-05-17']);
+        self::assertResponseIsSuccessful();
+        $this->em->clear();
+        $this->scopeGucToClub($club->getId());
+        $plan = $this->em->getRepository(SchedulePlan::class)->find($planId);
+        self::assertInstanceOf(SchedulePlan::class, $plan);
+        self::assertSame('2026-05-17', $plan->getEndDate()->format('Y-m-d'), 're-dating a closure root resyncs its plan window');
     }
 
     public function testForeignEntryIsInvisible(): void

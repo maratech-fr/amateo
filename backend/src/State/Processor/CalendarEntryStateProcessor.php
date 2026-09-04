@@ -115,8 +115,20 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
             // DayDialog). Le remapper laisserait la carte Toussaint proposer « Adapter »
             // sur le plan bâti pour février.
             $holidayChanged = null !== $input->schoolHolidayId && $input->schoolHolidayId !== $entity->getSchoolHolidayId();
-            if ($kindChanged || $periodTypeChanged || $startChanged || $endChanged || $holidayChanged) {
-                throw new UnprocessableEntityHttpException('Cette période porte un planning : son type, sa fenêtre et les vacances qu’elle adapte sont figés. Supprimez la période (son planning et ses versions partent avec) puis recréez-la.');
+
+            // D3 v1 (décision fondateur 2026-09-04) — une racine CLOSURE sans semaines-enfants
+            // DÉGÈLE sa fenêtre : le plan est un gabarit hebdo SANS dates, re-dater un incident
+            // « d'un bloc » déplace deux dates sans rien orpheliner (le déplacement du plan, des
+            // contraintes appariées et du titre est orchestré par processPut). Le reste de son
+            // identité (kind, type, vacances) reste figé, et TOUS les autres cas (racine HOLIDAY
+            // liée au référentiel, mère découpée, semaine-enfant) gardent aussi leur fenêtre gelée.
+            $redatableClosureRoot = CalendarEntryPeriodType::CLOSURE === $entity->getPeriodType()
+                && null === $entity->getParentEntryId()
+                && !$this->hasWeekChildren($entity->getId());
+            $windowFrozen = ($startChanged || $endChanged) && !$redatableClosureRoot;
+
+            if ($kindChanged || $periodTypeChanged || $windowFrozen || $holidayChanged) {
+                throw new UnprocessableEntityHttpException($redatableClosureRoot ? 'Cette période porte un planning : son type et les vacances qu’elle adapte sont figés (ses dates, elles, restent modifiables). Supprimez la période (son planning et ses versions partent avec) puis recréez-la pour en changer le type.' : 'Cette période porte un planning : son type, sa fenêtre et les vacances qu’elle adapte sont figés. Supprimez la période (son planning et ses versions partent avec) puis recréez-la.');
             }
         }
 
@@ -260,15 +272,151 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
                 $this->schedulePlanProvisioner->lockPlanScope($entryId);
             }
 
-            $output = parent::processPut($input, $uriVariables, $clubId, $seasonId);
+            // D3 v1 — re-dater une racine CLOSURE à plan « d'un bloc ». Tout se fait SOUS le verrou
+            // ci-dessus, dans la même transaction. La garde d'unicité de fenêtre passe AVANT toute
+            // mutation (409 franc, jamais de re-datage à moitié fait) ; le reste (resync du plan,
+            // des contraintes appariées, du titre) une fois l'entrée re-datée par le parent.
+            $redate = $this->prepareClosureRootRedate($input, $entryId);
+            if (null !== $redate) {
+                // Racine = l'entrée elle-même : sa propre famille (COALESCE(parent, id)) est exclue,
+                // seuls les AUTRES plans de période qui recoupent la nouvelle fenêtre déclenchent le 409.
+                $this->windowUniquenessGuard->assertWindowFree(
+                    $redate['clubId'],
+                    $redate['seasonId'],
+                    $redate['entryId'],
+                    $redate['newStart']->format('Y-m-d'),
+                    $redate['newEnd']->format('Y-m-d'),
+                );
+            }
 
-            return $output;
+            // Le parent applique l'update (dates comprises) et flushe — TOUJOURS d'abord, y
+            // compris pour le re-datage : applyClosureRootRedate resynchronise à partir de l'entrée
+            // déjà re-datée, puis re-map la sortie (le nom/titre a pu changer au passage).
+            if (null !== $redate) {
+                parent::processPut($input, $uriVariables, $clubId, $seasonId);
+
+                return $this->applyClosureRootRedate($redate);
+            }
+
+            return parent::processPut($input, $uriVariables, $clubId, $seasonId);
         });
     }
 
     protected function mapEntityToOutput(object $entity): CalendarEntryResource
     {
         return CalendarEntryResource::fromEntity($entity);
+    }
+
+    /**
+     * D3 v1 (décision fondateur 2026-09-04) — le PUT re-date-t-il une racine CLOSURE à plan « d'un
+     * bloc » ? Rend null (chemin PUT inchangé) sauf pour EXACTEMENT ce cas : une racine (pas
+     * d'enfant), de type CLOSURE, SANS semaines-enfants, PORTANT un plan, dont au moins une date
+     * bouge. Une racine HOLIDAY (liée au référentiel), une mère découpée et une semaine-enfant
+     * restent gelées (updateEntityFromInput). Une racine CLOSURE SANS plan (le simple FAIT déclaré)
+     * n'est pas concernée : sa fenêtre n'était déjà pas gelée, et rien ne gouverne encore de fenêtre
+     * à re-synchroniser — parité avec la naissance d'une racine, où la garde d'unicité ne joue pas.
+     *
+     * @return array{clubId: string, seasonId: string, entryId: string, oldTitle: string, oldStart: DateTimeImmutable, oldEnd: DateTimeImmutable, newStart: DateTimeImmutable, newEnd: DateTimeImmutable}|null
+     */
+    private function prepareClosureRootRedate(CalendarEntryInput $input, mixed $entryId): ?array
+    {
+        if (!\is_string($entryId)) {
+            return null;
+        }
+        $entity = $this->entityManager->getRepository(CalendarEntry::class)->find($entryId);
+        if (!$entity instanceof CalendarEntry) {
+            return null; // introuvable / autre club (RLS) — le parent tranchera (404/403)
+        }
+        if (CalendarEntryPeriodType::CLOSURE !== $entity->getPeriodType()
+            || null !== $entity->getParentEntryId()
+            || $this->hasWeekChildren($entity->getId())
+            || !$this->schedulePlanProvisioner->periodPlanExists($entity->getId())) {
+            return null;
+        }
+
+        $oldStart = $entity->getStartDate();
+        $oldEnd = $entity->getEndDate();
+        $newStart = null !== $input->startDate ? $this->parseDate($input->startDate) : $oldStart;
+        $newEnd = null !== $input->endDate ? $this->parseDate($input->endDate) : $oldEnd;
+        if ($newStart->format('Y-m-d') === $oldStart->format('Y-m-d')
+            && $newEnd->format('Y-m-d') === $oldEnd->format('Y-m-d')) {
+            return null; // aucune date ne bouge : rien à re-dater
+        }
+
+        return [
+            'clubId' => $entity->getClubId(),
+            'seasonId' => $entity->getSeasonId(),
+            'entryId' => $entity->getId(),
+            'oldTitle' => $entity->getTitle(),
+            'oldStart' => $oldStart,
+            'oldEnd' => $oldEnd,
+            'newStart' => $newStart,
+            'newEnd' => $newEnd,
+        ];
+    }
+
+    /**
+     * D3 v1 — une fois l'entrée re-datée par le parent : (3) resync la fenêtre du plan de période,
+     * (4) re-date les contraintes appariées (le venue_closed né du même geste), (5) recale le
+     * suffixe de fenêtre du titre puis, s'il coïncidait, le nom du plan. La péremption des versions
+     * COMPLETED (`resourcesChangedSinceGeneration`) est posée toute seule par
+     * ResourceChangeStaleScheduleListener au postUpdate de l'entrée — rien à écrire ici.
+     *
+     * @param array{clubId: string, seasonId: string, entryId: string, oldTitle: string, oldStart: DateTimeImmutable, oldEnd: DateTimeImmutable, newStart: DateTimeImmutable, newEnd: DateTimeImmutable} $redate
+     */
+    private function applyClosureRootRedate(array $redate): CalendarEntryResource
+    {
+        // 3. La fenêtre du plan suit celle de l'entrée (gabarit hebdo sans dates).
+        $this->schedulePlanProvisioner->resyncPeriodPlanWindow($redate['entryId'], $redate['newStart'], $redate['newEnd']);
+
+        // 4. Les contraintes de l'entrée dont le COUPLE config.startDate/endDate == l'ANCIENNE
+        //    fenêtre (le venue_closed apparié à la naissance, cockpit queries.ts) suivent le
+        //    déplacement ; une fermeture saisie plus finement (autres dates) reste intouchée.
+        $this->redateEntryPairedConstraints($redate);
+
+        // 5. Titre : le suffixe de fenêtre (convention « — du … au … », SchedulePlanProvisioner::
+        //    windowLabel) se recale s'il y était ; sinon le nom reste souverain. Puis le nom du
+        //    plan s'il portait encore l'ancien titre (renamePeriodPlanIfStillNamed).
+        $entity = $this->entityManager->getRepository(CalendarEntry::class)->find($redate['entryId']);
+        if (!$entity instanceof CalendarEntry) {
+            // Inatteignable : l'entrée vient d'être mise à jour dans cette transaction. Refus
+            // PARLANT par sécurité (idiome $this->refuse — jamais un 422 muet).
+            $this->refuse('La période a disparu pendant sa mise à jour.');
+        }
+        $oldSuffix = $this->schedulePlanProvisioner->windowLabel($redate['oldStart'], $redate['oldEnd']);
+        $newSuffix = $this->schedulePlanProvisioner->windowLabel($redate['newStart'], $redate['newEnd']);
+        $title = $entity->getTitle();
+        if (str_ends_with($title, $oldSuffix)) {
+            $entity->setTitle(substr($title, 0, -\strlen($oldSuffix)) . $newSuffix);
+        }
+        $this->schedulePlanProvisioner->renamePeriodPlanIfStillNamed($redate['entryId'], $redate['oldTitle'], $entity->getTitle());
+
+        $this->entityManager->flush();
+
+        return $this->mapEntityToOutput($entity);
+    }
+
+    /**
+     * @param array{clubId: string, seasonId: string, entryId: string, oldTitle: string, oldStart: DateTimeImmutable, oldEnd: DateTimeImmutable, newStart: DateTimeImmutable, newEnd: DateTimeImmutable} $redate
+     */
+    private function redateEntryPairedConstraints(array $redate): void
+    {
+        $oldStartDay = $redate['oldStart']->format('Y-m-d');
+        $oldEndDay = $redate['oldEnd']->format('Y-m-d');
+        $newStartDay = $redate['newStart']->format('Y-m-d');
+        $newEndDay = $redate['newEnd']->format('Y-m-d');
+
+        // Per-row via l'UnitOfWork (jamais un UPDATE DQL en masse : la table `constraint` est un
+        // mot réservé et le filtre tenant injecte un alias non quoté — même piège qu'à la cascade).
+        foreach ($this->entityManager->getRepository(Constraint::class)->findBy(['calendarEntryId' => $redate['entryId']]) as $constraint) {
+            $config = $constraint->getConfig();
+            if (($config['startDate'] ?? null) === $oldStartDay && ($config['endDate'] ?? null) === $oldEndDay) {
+                $config['startDate'] = $newStartDay;
+                $config['endDate'] = $newEndDay;
+                $constraint->setConfig($config);
+            }
+        }
+        // Le flush est porté par applyClosureRootRedate (avec le titre).
     }
 
     /**
