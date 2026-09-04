@@ -63,32 +63,37 @@ class ReservationStateProcessor extends AbstractStateProcessor
             throw new AccessDeniedHttpException('Accès refusé.');
         }
 
-        $materialised = $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy([
-            'clubId' => $reservation->getClubId(),
-            'seasonId' => $reservation->getSeasonId(),
-            'teamId' => $reservation->getTeamId(),
-            'venueId' => $reservation->getVenueId(),
-            'dayOfWeek' => $reservation->getDayOfWeek(),
-            'startTime' => $reservation->getStartTime(),
-            'lockLevel' => LockLevel::HARD,
-        ]);
-        foreach ($materialised as $template) {
-            $this->entityManager->remove($template);
+        // P2-62 — DÉCISION FONDATEUR « on ne retire pas une équipe d'un groupe, on supprime le
+        // groupe ». Si la réservation est posée sur une case « bloc-complète » (discernement de la
+        // MAISON UNIQUE {@see ReservationGroupOccupancy::blockCompleteCaseSiblings}, même portée
+        // socle/période), on emporte TOUTE la case — les réservations des membres du bloc + leurs
+        // verrous HARD matérialisés, même symétrie qu'une réservation individuelle — dans le flush
+        // atomique existant. Une réservation individuelle se supprime seule (liste = [$reservation]).
+        // Aucune route DELETE de groupe : une sœur déjà emportée répond 404, les boucles front le
+        // tolèrent.
+        $toRemove = $this->reservationGroupOccupancy->blockCompleteCaseSiblings($reservation);
+        if ([] === $toRemove) {
+            $toRemove = [$reservation];
         }
 
-        $this->entityManager->remove($reservation);
+        foreach ($toRemove as $target) {
+            $this->purgeMaterialisedHardTemplates($target);
+            $this->entityManager->remove($target);
+        }
         $this->entityManager->flush();
 
-        // Ce override court-circuite parent::processDelete → il doit émettre
-        // lui-même la trace RGPD (revue PR-4 : angle mort du choke point).
+        // Ce override court-circuite parent::processDelete → il doit émettre lui-même la trace RGPD
+        // (revue PR-4 : angle mort du choke point) — une par réservation effectivement supprimée.
         $actor = $this->actorSecurity?->getUser();
-        $this->auditTrail?->record(
-            AuditAction::ENTITY_DELETED,
-            $actor instanceof User ? $actor->getId() : null,
-            $clubId,
-            'Reservation',
-            $reservation->getId(),
-        );
+        foreach ($toRemove as $target) {
+            $this->auditTrail?->record(
+                AuditAction::ENTITY_DELETED,
+                $actor instanceof User ? $actor->getId() : null,
+                $clubId,
+                'Reservation',
+                $target->getId(),
+            );
+        }
     }
 
     /**
@@ -169,6 +174,27 @@ class ReservationStateProcessor extends AbstractStateProcessor
     protected function mapEntityToOutput(object $entity): ReservationResource
     {
         return ReservationResource::fromEntity($entity);
+    }
+
+    /**
+     * Deleting a reservation must UNDO its pin : purge the durable HARD ScheduleSlotTemplate(s)
+     * matérialisé(s) par ScheduleResultImporter sur la même case, sinon findBaseSlotTemplates
+     * réinjecte ce pin orphelin à chaque génération future.
+     */
+    private function purgeMaterialisedHardTemplates(Reservation $reservation): void
+    {
+        $materialised = $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy([
+            'clubId' => $reservation->getClubId(),
+            'seasonId' => $reservation->getSeasonId(),
+            'teamId' => $reservation->getTeamId(),
+            'venueId' => $reservation->getVenueId(),
+            'dayOfWeek' => $reservation->getDayOfWeek(),
+            'startTime' => $reservation->getStartTime(),
+            'lockLevel' => LockLevel::HARD,
+        ]);
+        foreach ($materialised as $template) {
+            $this->entityManager->remove($template);
+        }
     }
 
     /**

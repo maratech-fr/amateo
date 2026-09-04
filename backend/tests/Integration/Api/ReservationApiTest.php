@@ -241,6 +241,68 @@ final class ReservationApiTest extends WebTestCase
         self::assertSame(201, $this->postTeam($t1->getId(), 3, '18:00', $planId), 'période sans bloc : R=1, passé');
     }
 
+    // ── P2-62 : on ne retire jamais une équipe d'un groupe, on supprime le groupe ──
+    // Supprimer une réservation posée sur une case « bloc-complète » emporte TOUTE la case (les
+    // réservations des membres du bloc + leurs verrous HARD matérialisés) ; l'individuelle survit.
+
+    public function testDeletingABlockCompleteReservationEmptiesTheWholeCase(): void
+    {
+        $sf1 = $this->makeTeam(3);
+        $sf2 = $this->makeTeam(3);
+        $this->makeBlock(null, [$sf1, $sf2], 1);
+
+        // Case mardi 19:00 « bloc-complète » : l'ensemble réservé {SF1, SF2} == les membres du bloc.
+        $r1 = $this->persistReservation($sf1->getId(), 2, '19:00', null);
+        $tpl1 = $this->persistHardTemplate($sf1->getId(), 2, '19:00');
+        $r2 = $this->persistReservation($sf2->getId(), 2, '19:00', null);
+        $tpl2 = $this->persistHardTemplate($sf2->getId(), 2, '19:00');
+
+        // (b) une réservation INDIVIDUELLE de SF1 sur une AUTRE case (jeudi 18:00) : pas bloc-complète.
+        $solo = $this->persistReservation($sf1->getId(), 4, '18:00', null);
+
+        $r1Id = $r1->getId();
+        $r2Id = $r2->getId();
+        $soloId = $solo->getId();
+
+        // (a) DELETE de SF2 emporte toute la case + les deux verrous HARD.
+        $this->client->request('DELETE', '/api/reservations/' . $r2Id, [], [], $this->headers());
+        self::assertResponseStatusCodeSame(204);
+
+        $this->em->clear();
+        self::assertNull($this->em->getRepository(Reservation::class)->find($r2Id), 'la réservation supprimée a disparu');
+        self::assertNull($this->em->getRepository(Reservation::class)->find($r1Id), 'la sœur de la case bloc-complète est emportée');
+        self::assertNull($this->em->getRepository(ScheduleSlotTemplate::class)->find($tpl1), 'le verrou HARD de la sœur est purgé');
+        self::assertNull($this->em->getRepository(ScheduleSlotTemplate::class)->find($tpl2), 'le verrou HARD de la réservation supprimée est purgé');
+
+        // (b) l'individuelle sur l'autre case survit.
+        self::assertNotNull($this->em->getRepository(Reservation::class)->find($soloId), 'la réservation individuelle d\'une autre case survit');
+
+        // (d) DELETE d'une sœur DÉJÀ emportée → 404, la boucle front le tolère.
+        $this->client->request('DELETE', '/api/reservations/' . $r1Id, [], [], $this->headers());
+        self::assertResponseStatusCodeSame(404);
+    }
+
+    public function testDeletingAnIndividualReservationOnANonCompleteCaseRemovesOnlyIt(): void
+    {
+        // (c) Bloc {SF1, SF2} déclaré, mais SF1 réservée SEULE sur sa case (jeudi 18:00) :
+        // l'ensemble réservé {SF1} n'égale pas les membres → case NON complète → suppression solo.
+        $sf1 = $this->makeTeam(3);
+        $sf2 = $this->makeTeam(3);
+        $this->makeBlock(null, [$sf1, $sf2], 1);
+
+        $solo = $this->persistReservation($sf1->getId(), 4, '18:00', null);
+        $other = $this->persistReservation($sf2->getId(), 5, '20:00', null);
+        $soloId = $solo->getId();
+        $otherId = $other->getId();
+
+        $this->client->request('DELETE', '/api/reservations/' . $soloId, [], [], $this->headers());
+        self::assertResponseStatusCodeSame(204);
+
+        $this->em->clear();
+        self::assertNull($this->em->getRepository(Reservation::class)->find($soloId), 'l\'individuelle se supprime seule');
+        self::assertNotNull($this->em->getRepository(Reservation::class)->find($otherId), 'aucune autre réservation n\'est touchée');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -397,6 +459,33 @@ final class ReservationApiTest extends WebTestCase
             $this->em->persist($member);
         }
         $this->em->flush();
+    }
+
+    private function persistReservation(string $teamId, int $dayOfWeek, string $startTime, ?string $schedulePlanId): Reservation
+    {
+        $reservation = (new Reservation)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setTeamId($teamId)->setVenueId(self::VENUE)
+            ->setDayOfWeek($dayOfWeek)->setStartTime(new DateTimeImmutable($startTime))
+            ->setDurationMinutes(90)->setSchedulePlanId($schedulePlanId);
+        $this->em->persist($reservation);
+        $this->em->flush();
+
+        return $reservation;
+    }
+
+    private function persistHardTemplate(string $teamId, int $dayOfWeek, string $startTime): string
+    {
+        $template = (new ScheduleSlotTemplate)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setScheduleId($this->season->getId())
+            ->setTeamId($teamId)->setVenueId(self::VENUE)
+            ->setDayOfWeek($dayOfWeek)->setStartTime(new DateTimeImmutable($startTime))
+            ->setDurationMinutes(90)->setLockLevel(LockLevel::HARD);
+        $this->em->persist($template);
+        $this->em->flush();
+
+        return $template->getId();
     }
 
     private function postTeam(string $teamId, int $dayOfWeek, string $startTime, ?string $schedulePlanId): int

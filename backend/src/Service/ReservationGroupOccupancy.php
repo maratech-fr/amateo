@@ -22,7 +22,7 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  * entièrement verrouillée par un bloc déclaré comme UNE séance commune CERTAINE
  * (`add_shared_block_constraints`). Cinq règles gardent cette sémantique à l'ÉCRITURE,
  * là où le gestionnaire peut encore comprendre son geste — plutôt qu'en 422-FAILED du solve, loin
- * de sa cause (`engine/tests/semantic/test_shared_group_over_reserved_is_infeasible.py`) :
+ * de sa cause (`engine/tests/semantic/test_shared_block_semantics.py:170-179`) :
  *
  *  (a) EXCLUSIVITÉ    — une réservation de bloc exige un créneau VIDE de toute autre réservation
  *                       de la même portée ;
@@ -184,6 +184,48 @@ final class ReservationGroupOccupancy
         }
 
         $this->assertSoloBudgetAllows($teamId, $finalSet, $schedulePlanId, $clubId, $seasonId);
+    }
+
+    /**
+     * P2-62 — DÉCISION FONDATEUR « on ne retire pas une équipe d'un groupe, on supprime le groupe ».
+     * Les réservations SŒURS à emporter avec `$reservation` : si sa case (gymnase, jour, heure HH:MM)
+     * est « bloc-complète » pour un bloc de la portée dont son équipe est membre — l'ensemble réservé
+     * y est EXACTEMENT le jeu de membres ({@see reservationsOnGroupCompleteCases}, MAISON UNIQUE) —
+     * on rend TOUTES les réservations de cette case (les membres du bloc), `$reservation` comprise ;
+     * sinon `[]` : la réservation est INDIVIDUELLE, elle se supprime seule.
+     *
+     * La portée du plan de `$reservation` (socle `null` vs période) borne toutes les lectures — le
+     * filtre tenant Doctrine ajoute le club + la saison courants, comme {@see assertIndividualReservationAllowed}.
+     *
+     * @return list<Reservation>
+     */
+    public function blockCompleteCaseSiblings(Reservation $reservation): array
+    {
+        $schedulePlanId = $reservation->getSchedulePlanId();
+        $caseKey = $this->caseKey($reservation);
+        $reservationsInScope = $this->reservationsInScope($schedulePlanId);
+
+        foreach ($this->blockMemberSetsInScope($schedulePlanId) as $memberSet) {
+            if (!isset($memberSet[$reservation->getTeamId()])) {
+                continue;
+            }
+            $siblings = [];
+            foreach (self::reservationsOnGroupCompleteCases($reservationsInScope, $memberSet) as $onComplete) {
+                if ($this->caseKey($onComplete) === $caseKey) {
+                    $siblings[] = $onComplete;
+                }
+            }
+            if ([] !== $siblings) {
+                return $siblings;
+            }
+        }
+
+        return [];
+    }
+
+    private function caseKey(Reservation $reservation): string
+    {
+        return $reservation->getVenueId() . '|' . $reservation->getDayOfWeek() . '|' . $reservation->getStartTime()->format('H:i');
     }
 
     /**
