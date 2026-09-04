@@ -1,12 +1,13 @@
 # Guide de génération de planning — ClubScheduler
 
-Last verified @ 2026-09-03 (lot « un seul chemin de remplissage », `documentation-update`) —
-re-confronté au code : les fixtures Doctrine (`BasketballInit`, `make fixtures`,
-`doctrine:fixtures:load`) sont SUPPRIMÉES, remplacées par `app:bccl:seed`/`app:demo:seed`
-(`backend/src/Command/`) — le § « Pré-requis » et la checklist pré-vol recalés en conséquence ✓ ;
-`CONTRACT_VERSION` **2.20** (`ScheduleConstraintBuilder.php:64`) toujours vrai. Reste non re-sondé
-cette passe (`container_name` Docker, ports, rôle applicatif `amateo_app`) — un stamp REMPLACE,
-l'historique vit dans git.
+Last verified @ 2026-09-04 (rotation `documentation-update`, PR D3 v1 backend — fichier hors sujet
+de la PR, sondage des stamps les plus anciens du dépôt). Re-confronté au code : `CONTRACT_VERSION`
+toujours **2.20** (`ScheduleConstraintBuilder.php:64`) ✓ ; `make seed-bccl` existe toujours
+(`backend/Makefile:180-183`, create-only) ✓ ; les 10 `container_name` cités (`amateo-php-fpm`,
+`amateo-nginx`, `amateo-postgres`, `amateo-redis`, `amateo-engine`, `amateo-messenger-worker`,
+`amateo-mercure`, `amateo-mailpit`…) tiennent contre `docker-compose.yml` ✓. Reste non re-sondé
+cette passe (le corps du guide au-delà du § Pré-requis) — un stamp REMPLACE, l'historique vit dans
+git.
 
 > Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend ClubScheduler. Il s'adresse aux développeurs juniors qui découvrent le projet.
 

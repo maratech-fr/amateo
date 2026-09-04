@@ -1,12 +1,12 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-09-02 (PR-3 comblement référencé au socle, `documentation-update`). Contrat
-recalé **2.19 → 2.20** (champ optionnel `socleReferenceAssignments` sur `/generate` — bonus de
-référence socle par tier, `SCORE_FORMULA_VERSION` V12→V13) : version active et historique des
-bumps ci-dessous mis à jour. **Dérive pré-existante corrigée** : la ligne « Objectif Level-2 »
-citait encore `SCORE_FORMULA_VERSION` **V10** comme version courante (héritage de la note
-« gravé en V10 » qu'elle précède) — le code dit **V13** (`weights.py`), recalé sans toucher la
-note historique du principe fondateur. Le reste de l'inventaire n'a pas été confronté ligne à
+Last verified @ 2026-09-04 (rotation `documentation-update`, PR D3 v1 backend — fichier hors sujet
+de la PR, sondage des stamps les plus anciens du dépôt). Re-confronté au code : `CONTRACT_VERSION`
+toujours **2.20** (`engine/CONTRACT_VERSION`) ✓ ; `app/solver/constraints/` porte en réalité
+**8 fichiers**, pas 7 — `travel.py` (435 l., trajet/battement/départage, P2-53 RMM-8) manquait à la
+liste ci-dessous, corrigé cette passe ; `app/solver/objective/` et `app/solver/result_builder/`
+gardent leur découpe déclarée (`weights`/`normalise`/`terms` et `helpers`/`slots`/`diagnostics`) ✓ ;
+port 8000 confirmé (`docker-compose.yml:284-286`) ✓. Reste de l'inventaire non re-sondé ligne à
 ligne cette passe.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
@@ -28,7 +28,7 @@ ligne cette passe.
   - `app/schemas/input_schema.py` — `ScheduleInputSchema`.
   - `app/schemas/output_schema.py` — `ScheduleOutputSchema`.
   - `app/solver/model.py` — `ScheduleCpModel` (variables booléennes `x[team, venue, day, slot]`).
-  - `app/solver/constraints/` — **paquet** (ENG-32, 2026-08-24 — l'ancien monolithe de 3 870 l. découpé par métier, surface d'import inchangée) : `parsing.py` (lecture du payload + règles implicites) · `structural.py` (overlap/capacité/verrous) · `wellness.py` (bien-être) · `targeting.py` (fenêtres/gymnases/mutualisation/passerelles) · `diagnostics.py` (explications post-solve) · `common.py` (types, constantes, normalisation) · `__init__.py` (façade de ré-export **+ l'orchestrateur `add_level_1_hard_constraints`** — il y vit par contrainte de COUTURE DE TEST : le test des règles implicites patche les poseurs via le namespace du paquet).
+  - `app/solver/constraints/` — **paquet** (ENG-32, 2026-08-24 — l'ancien monolithe de 3 870 l. découpé par métier, surface d'import inchangée) : `parsing.py` (lecture du payload + règles implicites) · `structural.py` (overlap/capacité/verrous) · `wellness.py` (bien-être) · `targeting.py` (fenêtres/gymnases/mutualisation/passerelles) · `travel.py` (trajet — battement/départage, P2-53 RMM-8, ré-exporté par `__init__.py`) · `diagnostics.py` (explications post-solve) · `common.py` (types, constantes, normalisation) · `__init__.py` (façade de ré-export **+ l'orchestrateur `add_level_1_hard_constraints`** — il y vit par contrainte de COUTURE DE TEST : le test des règles implicites patche les poseurs via le namespace du paquet).
   - `app/solver/objective/` — objectif Level-2 (poids fixes T24), **paquet depuis ENG-39** : `weights` (tables/alias) → `normalise` (lecteurs) → `terms` (les `add_*`) ; l'agrégateur `__init__` ré-exporte tout (imports inchangés).
   - `app/solver/result_builder/` — solution → `ScheduleOutputSchema` + diagnostics, **paquet depuis ENG-39** : `helpers` → `slots` + `diagnostics` (les 13 `_diagnose_*`) ; l'agrégateur `__init__` ré-exporte tout (imports inchangés).
   - `app/solver/match_placement.py` — le SECOND problème (placement de matchs datés, ADR-0003).
