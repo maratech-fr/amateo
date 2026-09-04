@@ -2349,17 +2349,78 @@ final class BcclSeeder
             $manager->flush();
         }
 
-        // --- 3 · Le plan naît SUR LA RACINE (geste « Adapter » — PeriodPlanBirthTest prouve le
-        // chemin). Type CLOSURE ⇒ provisionPeriodPlan copie la grille de saison + les 8 blocs SOCLE
-        // (D10bis) + les 4 règles bien-être. ---
-        $planId = $this->schedulePlanProvisioner->provisionPeriodPlan($incident->getId());
-        if (null === $planId) {
-            throw new RuntimeException('L\'incident Matéo (racine) n\'a pas reçu de plan.');
+        // --- 3 · Migration depuis l'ANCIENNE forme (plan-bloc sur la RACINE) : le découpage
+        // début·milieu·fin (fondateur 2026-09-05) interdit désormais un plan-bloc sur une fermeture
+        // à semaine entamée — or 31/08→16/10 = milieu (6 semaines pleines) + fin (semaine entamée du
+        // 12/10). Si une base vivante porte encore un plan sur la racine, on le détruit DE BOUT EN
+        // BOUT ({@see OverlayManager::deletePeriodPlanForEntry}) ; le plan vit sur les enfants. ---
+        if ($this->schedulePlanProvisioner->periodPlanExists($incident->getId())) {
+            $this->overlayManager->deletePeriodPlanForEntry($incident, force: true);
+            $manager->flush();
         }
 
+        // --- 4 · DEUX enfants-segments (règle fondateur 2026-09-05) : MILIEU = les 6 semaines
+        // PLEINES 31/08→11/10 (un plan) ; FIN = la semaine entamée de queue du 12/10, dont la
+        // fenêtre est sa semaine calendaire lun→dim (12→18/10, la datée `venue_closed` bornant les
+        // jours réellement fermés). La racine ne porte PLUS de plan ; sa datée `venue_closed` (fait
+        // de la mère) est lue par les DEUX overlays. Chaque enfant reçoit la MÊME transcription (le
+        // gestionnaire a répété le planning sur les deux bouts). Find-or-create par (club, mère,
+        // début). Titre PORTANT sa fenêtre (convention `types-de-planning.md`). ---
         $planning = $this->mateoIncidentPlanning();
+        $childSegments = [
+            ['title' => 'Matéo indisponible (incident) — du 31 août 2026 au 11 oct. 2026', 'start' => '2026-08-31', 'end' => '2026-10-11'],
+            ['title' => 'Matéo indisponible (incident) — semaine du 12 oct. 2026', 'start' => '2026-10-12', 'end' => '2026-10-18'],
+        ];
+        foreach ($childSegments as $segment) {
+            $child = $manager->getRepository(CalendarEntry::class)->findOneBy([
+                'clubId' => $clubId,
+                'parentEntryId' => $incident->getId(),
+                'startDate' => new DateTimeImmutable($segment['start']),
+            ]);
+            if (!$child instanceof CalendarEntry) {
+                $child = new CalendarEntry;
+                $child->setClubId($clubId);
+                $child->setSeasonId($season->getId());
+                $child->setKind(CalendarEntryKind::PERIOD);
+                $child->setPeriodType(CalendarEntryPeriodType::CLOSURE);
+                $child->setTitle($segment['title']);
+                $child->setStartDate(new DateTimeImmutable($segment['start']));
+                $child->setEndDate(new DateTimeImmutable($segment['end']));
+                $child->setParentEntryId($incident->getId());
+                $child->setStatus(CalendarEntryStatus::ACTIVE);
+                $manager->persist($child);
+                $manager->flush();
+            }
 
-        // --- 4 · Grille du plan RECONSTRUITE : purge + 76 cases dérivées du fichier. Capacité =
+            // Type CLOSURE ⇒ provisionPeriodPlan copie la grille de saison + les 8 blocs SOCLE
+            // (D10bis) + les 4 règles bien-être ; le plan naît nommé du titre de l'enfant.
+            $planId = $this->schedulePlanProvisioner->provisionPeriodPlan($child->getId());
+            if (null === $planId) {
+                throw new RuntimeException(\sprintf('L\'enfant « %s » de l\'incident Matéo n\'a pas reçu de plan.', $segment['title']));
+            }
+            $this->transcribeMateoOverlayOntoPlan($manager, $season, $clubId, $planId, $child, $planning, $teams, $venues, $mateo);
+        }
+
+        // VenuePeriodOverride : AUCUN, délibérément. Le défaut vivant dérive la fermeture de Matéo
+        // depuis la datée `venue_closed` de l'incident (VenueClosureDays) — poser un override
+        // serait doubler le mécanisme.
+    }
+
+    /**
+     * Transcrit l'overlay de l'incident Matéo SUR UN PLAN — appelé pour les DEUX enfants (milieu,
+     * fin), qui portent le MÊME planning : grille 76 cases occupant-unique (aucun créneau Matéo),
+     * 50 réglages d'équipe (49 actives à leur nombre de séances DÉRIVÉ, Σ = 90 ; « Training
+     * Individuel » seule décochée), 13 blocs de mutualisation (8 socle hérités + 5 ajoutés, chacun
+     * commonSessions=1), décochage « SM2 · au moins 1 à Matéo », ZÉRO réservation, puis la version
+     * COMPLETED transcrite et POINTÉE. Tout idempotent (find-or-create / purge-recréation).
+     *
+     * @param array{sessions: list<array{string, string, int, string, int}>, blocs: list<list<string>>} $planning
+     * @param array<string, Team>                                                                       $teams
+     * @param array<string, Venue>                                                                      $venues
+     */
+    private function transcribeMateoOverlayOntoPlan(EntityManagerInterface $manager, Season $season, string $clubId, string $planId, CalendarEntry $child, array $planning, array $teams, array $venues, Venue $mateo): void
+    {
+        // --- Grille du plan RECONSTRUITE : purge + 76 cases dérivées du fichier. Capacité =
         // occupant-unique PAR ENSEMBLE EXACT (une case dont les équipes sont EXACTEMENT les membres
         // d'un bloc déclaré, ou une case mono-équipe, compte pour UN ; recouvrement PARTIEL avec un
         // bloc ⇒ on lève). Aucun créneau Matéo (le fichier n'en porte pas). ---
@@ -2392,8 +2453,8 @@ final class BcclSeeder
         }
         $manager->flush();
 
-        // --- 5 · Réglages d'équipes (find-or-create par (plan, équipe)) : chaque équipe qui figure
-        // au planning est active à son nombre de séances DÉRIVÉ ; les autres (ici « Training
+        // --- Réglages d'équipes (find-or-create par (plan, équipe)) : chaque équipe qui figure au
+        // planning est active à son nombre de séances DÉRIVÉ ; les autres (ici « Training
         // Individuel » seule) sont décochées. 50 lignes = 49 actives + 1. Plan marqué « sélection
         // initialisée » (le wizard ne re-seede pas son défaut par-dessus). ---
         $sessionsPerTeam = [];
@@ -2420,7 +2481,7 @@ final class BcclSeeder
         $manager->flush();
         $this->schedulePlanProvisioner->markPlanTeamSelectionInitialized($planId);
 
-        // --- 6 · Mutualisation : le plan a hérité les 8 blocs SOCLE (D10bis) à sa naissance ; le
+        // --- Mutualisation : le plan a hérité les 8 blocs SOCLE (D10bis) à sa naissance ; le
         // gestionnaire les garde TOUS À L'IDENTIQUE et en AJOUTE 5, soit les 13 ensembles réels.
         // Purge-puis-déclare est la mécanique idempotente (les membres n'ont pas de clé naturelle
         // par composition). Chaque bloc à commonSessions=1. La multi-appartenance est permise
@@ -2451,9 +2512,9 @@ final class BcclSeeder
         }
         $manager->flush();
 
-        // --- 7 · Décochage : « SM2 · au moins 1 à Matéo » SEULE (Matéo est fermé). Le nom fait la
-        // clé — introuvable ⇒ on LÈVE (un décochage qui ne vise rien serait muet). AUCUN autre
-        // override de contrainte. ---
+        // --- Décochage : « SM2 · au moins 1 à Matéo » SEULE (Matéo est fermé). Le nom fait la clé —
+        // introuvable ⇒ on LÈVE (un décochage qui ne vise rien serait muet). AUCUN autre override
+        // de contrainte. ---
         $sm2AtMateo = 'SM2 · au moins 1 à ' . $mateo->getName();
         $constraint = $manager->getRepository(Constraint::class)->findOneBy(['clubId' => $clubId, 'name' => $sm2AtMateo]);
         if (!$constraint instanceof Constraint) {
@@ -2474,7 +2535,7 @@ final class BcclSeeder
         $constraintOverride->setIsActive(false);
         $manager->flush();
 
-        // --- 8 · ZÉRO réservation : purge de toute réservation résiduelle du plan, aucune insertion.
+        // --- ZÉRO réservation : purge de toute réservation résiduelle du plan, aucune insertion.
         // Les fanions viendront d'un exercice solveur ultérieur (arbitrage fondateur) : l'annotation
         // « (créneau réserver) » du fichier s'IGNORE ici. ---
         foreach ($manager->getRepository(Reservation::class)->findBy(['schedulePlanId' => $planId]) as $staleReservation) {
@@ -2482,14 +2543,9 @@ final class BcclSeeder
         }
         $manager->flush();
 
-        // --- 9 · Version transcrite POINTÉE (COMPLETED, 90 créneaux LockLevel::NONE — aucune
-        // réservation ⇒ aucun verrou). Réutilise le pointeur des reprises TEL QUEL : l'entrée qui
-        // porte le plan est ici la RACINE. ---
-        $this->pointPeriodPlanAtReprise($manager, $season, $clubId, $planId, $incident, $planning['sessions'], $teams, $venues);
-
-        // VenuePeriodOverride : AUCUN, délibérément. Le défaut vivant dérive la fermeture de Matéo
-        // depuis la datée `venue_closed` de l'incident (VenueClosureDays) — poser un override
-        // serait doubler le mécanisme.
+        // --- Version transcrite POINTÉE (COMPLETED, 90 créneaux LockLevel::NONE — aucune
+        // réservation ⇒ aucun verrou). L'entrée qui porte le plan est l'enfant-segment. ---
+        $this->pointPeriodPlanAtReprise($manager, $season, $clubId, $planId, $child, $planning['sessions'], $teams, $venues);
     }
 
     /**
