@@ -156,8 +156,9 @@ final class PeriodRedateTest extends WebTestCase
     {
         [$user] = $this->createClubWithSeason();
         $motherId = $this->postPeriod($user, 'closure', 'Barros en travaux', '2026-05-04', '2026-05-17');
-        // La découper en une semaine-enfant → la mère devient une mère découpée (gel d'identité).
-        $this->postWeekChild($user, $motherId, 'closure', 'Semaine du 4 mai', '2026-05-04', '2026-05-10');
+        // La découper en un enfant-segment (le milieu entier : les semaines pleines d'une fermeture
+        // forment un seul plan, fondateur 2026-09-05) → la mère devient découpée (gel d'identité).
+        $this->postWeekChild($user, $motherId, 'closure', 'Semaines du 4 au 17 mai', '2026-05-04', '2026-05-17');
 
         $this->put($user, $motherId, ['kind' => 'period', 'periodType' => 'closure', 'title' => 'Barros en travaux', 'startDate' => '2026-05-04', 'endDate' => '2026-05-24']);
         self::assertResponseStatusCodeSame(422, 'une mère découpée garde sa fenêtre gelée');
@@ -168,9 +169,11 @@ final class PeriodRedateTest extends WebTestCase
     {
         [$user] = $this->createClubWithSeason();
         $motherId = $this->postPeriod($user, 'closure', 'Barros en travaux', '2026-05-04', '2026-05-17');
-        $childId = $this->postWeekChild($user, $motherId, 'closure', 'Semaine du 4 mai', '2026-05-04', '2026-05-10');
+        // Enfant-segment = le milieu entier (fondateur 2026-09-05 : une semaine complète isolée
+        // d'une fermeture serait refusée).
+        $childId = $this->postWeekChild($user, $motherId, 'closure', 'Semaines du 4 au 17 mai', '2026-05-04', '2026-05-17');
 
-        $this->put($user, $childId, ['kind' => 'period', 'periodType' => 'closure', 'title' => 'Semaine du 4 mai', 'startDate' => '2026-05-11', 'endDate' => '2026-05-17']);
+        $this->put($user, $childId, ['kind' => 'period', 'periodType' => 'closure', 'title' => 'Semaines du 4 au 17 mai', 'startDate' => '2026-05-11', 'endDate' => '2026-05-17']);
         self::assertResponseStatusCodeSame(422, 'une semaine-enfant garde sa fenêtre gelée');
         self::assertStringContainsString('figés', (string) $this->client->getResponse()->getContent());
     }
@@ -249,7 +252,8 @@ final class PeriodRedateTest extends WebTestCase
 
         // Une mère découpée en semaines : gelée par ses enfants, plus re-datable.
         $motherId = $this->postPeriod($user, 'closure', 'Colombier fermé', '2026-05-18', '2026-05-31');
-        $this->postWeekChild($user, $motherId, 'closure', 'Semaine du 18 mai', '2026-05-18', '2026-05-24');
+        // Le milieu entier (semaines pleines d'une fermeture = un seul plan, fondateur 2026-09-05).
+        $this->postWeekChild($user, $motherId, 'closure', 'Semaines du 18 au 31 mai', '2026-05-18', '2026-05-31');
         self::assertFalse($this->getEntry($user, $motherId)['redatable'], 'une mère découpée n’est pas re-datable');
     }
 
