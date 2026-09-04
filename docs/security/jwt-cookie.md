@@ -46,9 +46,9 @@ une copie lisible, et le jeton reviendrait en `localStorage`.
   qui lit **les mêmes paramètres** que le handler. Deux recettes d'attributs
   auraient dérivé.
 - **Extraction** : `token_extractors.cookie` **et** `authorization_header` sont
-  actifs. Le navigateur s'authentifie par le cookie ; les **scripts d'ops, smokes
-  et helpers e2e** continuent en `Bearer` — ils lisent le jeton dans l'en-tête
-  `Set-Cookie` (`backend/scripts/onboarding-smoke.sh`,
+  actifs. Le navigateur s'authentifie par le cookie ; les **scripts d'ops, contexts
+  Behat et helpers e2e** continuent en `Bearer` — ils lisent le jeton dans l'en-tête
+  `Set-Cookie` (`backend/tests/Behat/BaseContext.php` — `decodeWithHeaders`,
   `backend/scripts/generate-schedule.sh`). Ce n'est pas un reliquat : un script
   n'est pas un navigateur, et le vol de `localStorage` ne le concerne pas.
 - **`POST /api/logout`** (nouveau) — efface le cookie. Avec un cookie httpOnly,

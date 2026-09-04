@@ -222,8 +222,7 @@ backend/
 | Doc / script | Contenu |
 |--------------|---------|
 | [`scripts/generate-schedule.sh`](scripts/generate-schedule.sh) | **Guide pratique** — pilote create → generate → poll une génération via l'API (vraie aide pour tester/déboguer le flux). |
-| [`features/generation-du-planning-de-saison.feature`](features/generation-du-planning-de-saison.feature) | Test fonctionnel Behat (Gherkin FR) : assure qu'un planning atteint `COMPLETED` via le rail async réel (garde-fou solveur, `make behat`). Remplace l'ancien `scripts/smoke-solver.sh`. |
-| [`scripts/onboarding-smoke.sh`](scripts/onboarding-smoke.sh) | Flux club neuf : register → données minimales → generate → `COMPLETED`. |
+| [`features/`](features/) | **Tests fonctionnels Behat** (Gherkin FR, `make behat`) — 5 features métier jouées contre l'API réelle : génération du planning de saison, inscription et premier planning, placement des matchs, plan de période en overlay, vœux des coachs. Ont remplacé les smokes bash (`backend/scripts/*smoke*.sh`, supprimés — P4-165). |
 | [`docs/TENANT.md`](docs/TENANT.md) | **Isolation multi-tenant** (cœur sécurité) — `TenantFilter` + `TenantFilterListener` (priorité 7, après le firewall) + résolution du club depuis le JWT. |
 | [`docs/RLS.md`](docs/RLS.md) | PostgreSQL Row-Level Security : rôles DB, policies, activation sur une nouvelle table. |
 | [`docs/commands.md`](docs/commands.md) | **Référence complète des commandes** — cibles make, console `app:*`, pièges RLS (`dbal:run-sql`), scripts. |

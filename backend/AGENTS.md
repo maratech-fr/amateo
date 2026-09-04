@@ -7,7 +7,7 @@
 
 - `src/ApiResource/` resources · `src/Entity/` Doctrine entities · `src/Controller/` custom controllers · `src/State/{Provider,Processor}/` API Platform state layer · `src/Service/` domain services · `src/MessageHandler/` async handlers · `src/Dto/` inputs.
 - Deep-dives: [`docs/TENANT.md`](docs/TENANT.md) (tenant isolation), root [`docs/project-map.md`](../docs/project-map.md) §2 (flow + services), [`docs/testing/testing-strategy.md`](../docs/testing/testing-strategy.md).
-- Drive a real generation: `scripts/generate-schedule.sh` · functional test (Behat, replaced `smoke-solver.sh`): `make behat` (`features/generation-du-planning-de-saison.feature`, see CLAUDE.md §7).
+- Drive a real generation: `scripts/generate-schedule.sh` · functional tests (Behat, `features/`, replaced the bash smokes — P4-165): `make behat` (see CLAUDE.md §7).
 
 ## Zone gotchas (facts not in the root docs)
 

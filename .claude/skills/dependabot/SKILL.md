@@ -73,7 +73,7 @@ règle « jamais merger sans go » reste en vigueur pour tout le reste).
 
 ## Étape 3 — Par PR : merger
 
-1. Suite de zone verte (+ smoke si applicable) → `gh pr merge <n> --squash --delete-branch`.
+1. Suite de zone verte (+ `make -C backend behat` si applicable) → `gh pr merge <n> --squash --delete-branch`.
 2. `git checkout main && git pull` avant la PR suivante (chaque verdict se rend sur main à jour).
 3. La CI GitHub ne gate pas le merge (double-contrôle) — le verdict local fait foi.
 

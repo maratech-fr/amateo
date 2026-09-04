@@ -1,12 +1,11 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-04 (P4-165 palier 1 — ajout de la cible `make behat`, retrait de
-`scripts/smoke-solver.sh` (SUPPRIMÉ, migré en feature Behat)). Re-confronté au code :
-`backend/Makefile` cible `behat` (garde sandbox, `restart messenger-worker`, `vendor/bin/behat
---format=pretty --no-interaction`, `APP_ENV=dev`) ✓ ; `backend/behat.dist.php` (suite `generation`,
-`SeasonGenerationContext`) ✓ ; `backend/features/generation-du-planning-de-saison.feature` existe,
-`backend/scripts/smoke-solver.sh` n'existe plus ✓. Non re-sondé cette passe : `backend/scripts/
-smoke-place-matches.sh`, les commandes `BcclSeedCommand`/`DemoSeedCommand`,
+Last verified @ 2026-09-04 (P4-165 SOLDÉ — les 5 paliers Behat livrés d'un coup, les 5 smokes bash
+supprimés). Re-confronté au code : `backend/Makefile` cible `behat` (garde sandbox, `restart
+messenger-worker`, `vendor/bin/behat --format=pretty --no-interaction`, `APP_ENV=dev`) ✓ ;
+`backend/behat.dist.php` (5 suites, une par feature, chacune reliée à son propre context) ✓ ;
+`backend/features/` porte les 5 `.feature` ✓ ; `ls backend/scripts/` ne contient plus aucun
+`*smoke*.sh` ✓. Non re-sondé cette passe : les commandes `BcclSeedCommand`/`DemoSeedCommand`,
 `MutationTargetsAreGuardedTest`/`PlayTargetIsNonDestructiveTest`, horaires du catalogue de jobs,
 pièges RLS Doctrine — un stamp REMPLACE, l'historique vit dans git.
 
@@ -25,7 +24,7 @@ pièges RLS Doctrine — un stamp REMPLACE, l'historique vit dans git.
 | Poser le club de démo SANS toucher un workspace démo existant | `make -C backend IF_ABSENT=1 seed-demo` |
 | Poser le club dev BCCL réel (no-op s'il existe déjà) | `make -C backend seed-bccl` |
 | Bac à sable IA (`amateo_dev`), sans toucher la base de jeu du fondateur | `make sandbox` ; wrapper ponctuel : `backend/scripts/with-sandbox.sh <commande…>` |
-| CI / Behat (`functional-tests`) / smokes restants | appellent `app:bccl:seed --no-interaction` directement (idempotent — voir §CI plus bas) |
+| CI / Behat (`functional-tests`) | appellent `app:bccl:seed --no-interaction` directement (idempotent — voir §CI plus bas) |
 | Base de test phpunit | `make -C backend db-init-test` (idempotent) / `make -C backend db-empty-test` (vide) |
 | Rejouer seulement les référentiels vacances/fériés (globaux) | `make -C backend seed-holidays` |
 | Rejouer seulement le catalogue des fenêtres de matchs de la ligue (global) | `make -C backend seed-league` |
@@ -36,7 +35,7 @@ Une stack pointe **une base à la fois**. Le défaut committé est le **bac à s
 
 | Base | Rôle | Qui l'écrit |
 |---|---|---|
-| `amateo_dev` | **bac à sable** — seed/purge à volonté | l'IA : smokes, e2e, démos, parcours navigateur (**défaut committé**) |
+| `amateo_dev` | **bac à sable** — seed/purge à volonté | l'IA : Behat, e2e, démos, parcours navigateur (**défaut committé**) |
 | `amateo_local` | **base de jeu du fondateur** | le fondateur seulement — mes scripts la REFUSENT |
 | `amateo_test` | tests unitaires (DAMA, transactionnelle) | phpunit — **même en mode play** (`.env.test` garde la main dans l'ordre dotenv) |
 | `amateo` | base de PROD | rien en local |
@@ -48,7 +47,7 @@ Une stack pointe **une base à la fois**. Le défaut committé est le **bac à s
 - **`make sandbox`** — retour au bac à sable : supprime `backend/.env.local` + même redémarrage.
 - La bascule vit **au niveau dotenv, jamais dans compose** : injecter `DATABASE_URL` par compose écraserait `.env.test` (env réel > dotenv) et enverrait phpunit sur la base de dev.
 
-🔴 **Le garde-fou (`backend/scripts/lib/sandbox-guard.sh`)** est sourcé par **tous** les scripts mutateurs. Il résout la base RÉELLEMENT visée (`SELECT current_database()` via php-fpm, donc il respecte toute la précédence dotenv) et **meurt** (`exit 1`) sauf si la cible est `amateo_dev` ou `*_test` — il refuse `amateo_local`, `amateo`, un nom inconnu, **et une base non résolue** (fail-closed). Lancer un smoke en mode play échoue bruyamment **sans rien écrire**. ⚠ Limite assumée : `SANDBOX_GUARD_LOADED=1` court-circuite la vérification (variable interne, héritée parent→enfant par conception) — le garde protège des ACCIDENTS, pas d'un contournement délibéré.
+🔴 **Le garde-fou (`backend/scripts/lib/sandbox-guard.sh`)** est sourcé par **tous** les scripts mutateurs. Il résout la base RÉELLEMENT visée (`SELECT current_database()` via php-fpm, donc il respecte toute la précédence dotenv) et **meurt** (`exit 1`) sauf si la cible est `amateo_dev` ou `*_test` — il refuse `amateo_local`, `amateo`, un nom inconnu, **et une base non résolue** (fail-closed). Lancer un scénario Behat en mode play échoue bruyamment **sans rien écrire**. ⚠ Limite assumée : `SANDBOX_GUARD_LOADED=1` court-circuite la vérification (variable interne, héritée parent→enfant par conception) — le garde protège des ACCIDENTS, pas d'un contournement délibéré.
 
 🔴 **Les cibles Make destructrices sont GARDÉES aussi** (`backend/scripts/lib/mutation-confirm.sh`, sourcée par `db-empty`/`seed-demo`/`seed-bccl`) — le garde des scripts ne les couvrait pas, et un `seed-demo` nu en mode play aurait purgé la démo de la base de jeu. **Trois comportements**, pas un refus uniforme : bac à sable ou `*_test` → **passe en silence** · base de PROD → **refus sec** · `amateo_local` → **CONFIRMATION** nommant la base et ce qui va être détruit (`CONFIRM=yes` pour l'automatisation — c'est ce que `make play`/`make reset` injectent pour `seed-bccl`/`seed-demo`, puisque leurs chemins create-only/if-absent sont non destructeurs par construction ; sans terminal et sans cette variable → refus, rien touché). ⚑ `db-init`/`db-init-test`/`seed-holidays` ne sont **pas** gardés — non destructeurs (create-if-not-exists + migrate / référentiel global idempotent), rien à confirmer.
 
@@ -143,15 +142,13 @@ Toutes manuelles sauf mention. Détail : `ls backend/src/Command/`.
 
 ## Scripts (`backend/scripts/`)
 
-> ⚠ `smoke-solver.sh` (garde-fou solveur : create → generate → poll → `COMPLETED`) a **migré** en
-> feature Behat, `features/generation-du-planning-de-saison.feature` (`make behat` ci-dessus) —
-> P4-165 palier 1, 2026-09-04. Le `.sh` est supprimé.
+> ⚠ Les 5 smokes bash (`smoke-solver.sh`, `onboarding-smoke.sh`, `smoke-place-matches.sh`,
+> `smoke-overlay.sh`, `smoke-coach-wishes.sh`) ont **migré** en features Behat, `backend/features/`
+> (`make behat` ci-dessus) — P4-165, 2026-09-04. Les 5 `.sh` sont supprimés ; `ls backend/scripts/`
+> n'en porte plus aucun. Table des features et de ce que chacune prouve :
+> [`test-coverage-map.md`](../../docs/testing/test-coverage-map.md) §5.
 
 | Script | Effet |
 |--------|-------|
 | `generate-schedule.sh` | Guide pratique : pilote une génération via l'API (debug du flux) |
 | `generate-schedule-test.sh` | Auto-test de `generate-schedule.sh` (PASS/FAIL sur son propre comportement) |
-| `onboarding-smoke.sh` | Flux club neuf : register → données minimales → generate → `COMPLETED` |
-| `smoke-overlay.sh` | Smoke sémantique de l'overlay de période (ADR-0002) : fermeture → plan né de l'Adapter → version → build overlay (grille propre à la période, jamais l'union avec la saison) → `COMPLETED` |
-| `smoke-place-matches.sh` | Smoke sémantique du solveur de placement matchs (P1-4 PR D, `POST /api/fixtures/place`) : un domicile dans sa fenêtre d'accès revient `PLACED` dans l'empreinte-temps, un domicile sans fenêtre revient `UNPLACED` avec la raison nommée `no_access_window`. **Auto-suffisant** (2026-09-03) : crée ses propres équipes + gymnase jetables (le club dev porte la répartition WE réelle depuis le seed, § `module-matchs.md` § « Seed BCCL dev »), neutralise puis restaure les fenêtres dominicales du club le temps du placement (`no_access_window` est club-wide) |
-| `smoke-coach-wishes.sh` | Smoke sémantique du rail de sollicitation coach (#10) — le seul chemin `/api` non authentifié : campagne → token → page publique pré-remplie → `CoachWish` persisté |

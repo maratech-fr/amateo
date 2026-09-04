@@ -1,14 +1,18 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-09-02 (rotation `documentation-update`, PR-3 lot overlay — fichier hors sujet
-de la PR, sondage des stamps les plus anciens du dépôt). Re-confronté au code : hosts BAN/IGN en
-constantes dures (`BanGeocodingClient::SEARCH_URL`, `IgnRoutingClient::ITINERARY_URL`) ✓ ·
+Last verified @ 2026-09-04 (rotation `documentation-update`, P4-165 — fichier hors sujet de la PR,
+sondage des stamps les plus anciens du dépôt). Re-confronté au code : hosts BAN/IGN en constantes
+dures (`BanGeocodingClient::SEARCH_URL`, `IgnRoutingClient::ITINERARY_URL`) ✓ ·
 `IgnRoutingClient::BATCH_BUDGET_SECONDS = 30.0` (`IgnRoutingClient.php:42`) ✓ · profils `car`/
 `pedestrian` seuls, `bike` absent (`IgnRoutingClient.php:21,25-26`) ✓ ·
-`VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS = 120` (`VenueTravelTimeAutofillService.php:27`)
-✓ · rate-limit `venue_travel_time_autofill` 10/h sliding window (`rate_limiter.yaml:59-62`) ✓. Non
-re-sondé cette passe : le détail du dispatch de budget, `OpponentTravelResolver::resolve`, les
-plafonds prod (`docker/php/Dockerfile`, `docker/nginx/default.conf`).
+`VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS = 120`
+(`backend/src/Service/Geo/VenueTravelTimeAutofillService.php:27`) ✓ · rate-limit
+`venue_travel_time_autofill` 10/h sliding window (`rate_limiter.yaml:59-62`) ✓. **Corrigé cette
+passe** : `CONTRACT_VERSION` cité en dur comme « 2.16 » — dérivé depuis, la valeur courante vit dans
+`engine/CONTRACT_VERSION` (**2.20** au moment de cette vérification), jamais recopiée en dur ici
+désormais. Non re-sondé cette passe : le détail du dispatch de budget,
+`OpponentTravelResolver::resolve`, les plafonds prod (`docker/php/Dockerfile`,
+`docker/nginx/default.conf`).
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,
@@ -149,7 +153,8 @@ les 5 règles de bien-être. Décision consignée `etat-des-lieux.md` §2.
 
 - **Le solveur d'ENTRAÎNEMENT la lit** — `POST /generate` seul (jamais `/place-matches`) :
   `ScheduleConstraintBuilder` sérialise la matrice club+saison (TRIÉE) dans le bloc
-  `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION` 2.16**. Sa présence (≥1 ligne) —
+  `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION`** (`engine/CONTRACT_VERSION`, bumpé
+  depuis sans rapport avec ce bloc — voir le fichier pour la valeur courante). Sa présence (≥1 ligne) —
   ELLE SEULE — active la règle implicite `travelTime` côté moteur (opt-in au premier geste, jamais
   silencieux : un club sans matrice reçoit un payload byte-identique à avant) ; l'INTENSITÉ émise
   est le réglage stocké **?? PREFERRED** (`resolveTravelRuleIntensity`, § ci-dessus). Détail du

@@ -1,14 +1,14 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-03 (répartition WE des matchs au seed dev, `documentation-update`).
-Confronté au code cette passe : `BcclSeeder::seedWeekendMatchLayout` (4 `VenueMatchWindow`, 32
-`TeamMatchHabit`, 8 `MatchSlotRotation`/16 `MatchSlotRotationTeam`, gardé par le drapeau
-`BcclSeedProfile::seedWeekendMatchLayout`, dev SEULEMENT) ✓ ; `backend/Makefile` cible `seed-league`
-et son appel par `make play`/`make reset` (racine) ✓ ; `backend/scripts/smoke-place-matches.sh`
-auto-suffisant (équipes/gymnase jetables, fenêtres dominicales neutralisées puis restaurées) ✓ ;
-`no_access_window` club-wide en itérant tous les gymnases du club, `engine/app/solver/
-match_placement.py:113-118` ✓. Le reste du fichier non re-confronté cette passe — un stamp
-REMPLACE, l'historique vit dans git : `git log -p --follow specs/courantes/module-matchs.md`
+Last verified @ 2026-09-04 (P4-165 SOLDÉ — `smoke-place-matches.sh` remplacé par la feature Behat
+`placement-des-matchs.feature`, `documentation-update`). Confronté au code cette passe :
+`backend/tests/Behat/MatchPlacementContext.php` auto-suffisant (équipes/gymnase jetables, la raison
+`no_access_window` étant club-wide, les fenêtres dominicales de TOUS les gymnases du club sont
+neutralisées puis restaurées en `@AfterScenario`) ✓ ; `backend/scripts/smoke-place-matches.sh`
+n'existe plus ✓ ; `no_access_window` club-wide en itérant tous les gymnases du club, `engine/app/
+solver/match_placement.py:113-118` ✓. Le reste du fichier (répartition WE des matchs au seed dev,
+2026-09-03) non re-confronté cette passe — un stamp REMPLACE, l'historique vit dans git :
+`git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
 > [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés
@@ -396,10 +396,11 @@ parité stricte du mécanisme d'habitude.
 - **Scénario sémantique** (`test_ab_rotation_image_is_honoured_across_two_weekends`) : deux week-ends
   fédéraux successifs, SM1 reçoit le week-end A et SM2 le week-end B sur le MÊME créneau — les deux
   domiciles atterrissent sur le créneau partagé, sans violation HARD.
-- **Smoke** (`backend/scripts/smoke-place-matches.sh`, volet 3) : une rotation Samedi 15h30 déclarée
-  sur le gymnase de smoke (équipe de home + une seconde équipe), **sans habitude seedée** — le
-  placement du samedi doit atterrir SUR le créneau (gymnase + 15:30), preuve bout-en-bout que
-  l'attraction SOFT tire vraiment, pas seulement « une heure légale quelconque ».
+- **Feature Behat** (`backend/features/placement-des-matchs.feature`) : une rotation Samedi 15h30
+  déclarée sur le gymnase jetable du scénario (équipe de home + une seconde équipe), **sans
+  habitude seedée** — le placement du samedi doit atterrir SUR le créneau (gymnase + 15:30),
+  preuve bout-en-bout que l'attraction SOFT tire vraiment, pas seulement « une heure légale
+  quelconque ».
 - **Garde bloquante** : `CrossStack/SlotRotationPayloadParityTest` (STOCKÉ == ÉMIS + la
   suppléance même-jour, falsifiés dans les deux sens — liste canonique `docs/testing/blocking-tests.md`).
 
@@ -742,15 +743,17 @@ SOFT « repos après jour de match »).
   golden épinglé (`test_match_placement_golden.py` — chaîne BACK_TO_BACK sans trou sur ancre 20:30).
 - Unit : `MatchFootprintTest`, `LeagueResolverTest`. Command : `SeedLeagueWindowsCommandTest`. Api :
   `FixtureApiTest`.
-- Smokes : `backend/scripts/smoke-place-matches.sh` (bout-en-bout SÉMANTIQUE : samedi placé
-  SOLVER dans la fenêtre d'accès, dimanche non plaçable NOMMÉ). **Auto-suffisant** (2026-09-03) :
-  crée ses propres équipes jetables + son propre gymnase jetable (le seed dev porte désormais la
-  répartition WE réelle du club — un vrai gymnase/équipe pourrait offrir une habitude/rotation
-  concurrente qui casse le déterminisme des assertions), neutralise le temps du placement les
-  fenêtres dominicales du club (`no_access_window` est CLUB-WIDE, `engine/app/solver/
-  match_placement.py:113-118`) puis les restaure au trap — no-op sur un club sans donnée WE.
-  Nettoyage en cascade : matchs → rotation → fenêtre → équipes → gymnase. **et**
-  smoke-solveur COMPLETED (le pipeline hebdo survit au bump 2.2 ; payload hebdo inchangé).
+- Feature Behat : `backend/features/placement-des-matchs.feature`, context
+  `MatchPlacementContext` (bout-en-bout SÉMANTIQUE : samedi placé SOLVER dans la fenêtre d'accès,
+  dimanche non plaçable NOMMÉ) — remplace `smoke-place-matches.sh` (SUPPRIMÉ, P4-165), même
+  parité assertion par assertion. **Auto-suffisant** : crée ses propres équipes jetables + son
+  propre gymnase jetable (le seed dev porte désormais la répartition WE réelle du club — un vrai
+  gymnase/équipe pourrait offrir une habitude/rotation concurrente qui casse le déterminisme des
+  assertions), neutralise le temps du placement les fenêtres dominicales du club
+  (`no_access_window` est CLUB-WIDE, `engine/app/solver/match_placement.py:113-118`) puis les
+  restaure en `@AfterScenario` — no-op sur un club sans donnée WE. Nettoyage en cascade : matchs →
+  rotation → fenêtre → équipes → gymnase. **Et** la feature `generation-du-planning-de-saison.feature`
+  atteste `COMPLETED` (le pipeline hebdo survit au bump 2.2 ; payload hebdo inchangé).
 
 ## Le périmètre engagé — `TeamEngagementGuard` (2026-07-16)
 

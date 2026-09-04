@@ -1,15 +1,17 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-04 (P4-165 palier 1 — le job `functional-tests` (Behat) rejoint le graphe,
-`smoke-tests` passe de 5 à 4 smokes). Re-confronté à `.github/workflows/ci.yml` : job
-`functional-tests` sans `needs`, même préambule que `smoke-tests`, step Behat
-(`vendor/bin/behat --format=pretty --no-interaction`, `APP_ENV=dev`) ; step « Smoke — season
-solver » retiré de `smoke-tests`. HUIT jobs sans `needs` désormais (§1). Le reste du graphe
-(`blocking-tests` needs `[lint, phpstan]`, `unit-tests`/`e2e` needs `blocking-tests`,
-`backend-coverage`/`engine-coverage`/`frontend-coverage`, `engine-perf`/`engine-perf-pr`) et
-`backend/phpunit.xml.dist` (3 testsuites, `Unit/TestsuitesCoverEveryTestDirectoryTest`) non
-re-sondés cette passe (voir `git log -p --follow docs/testing/testing-strategy.md` pour
-l'historique des passes).
+Last verified @ 2026-09-04 (P4-165 SOLDÉ — les 4 paliers restants livrés d'un coup, le job
+`smoke-tests` est SUPPRIMÉ de `ci.yml`, `functional-tests` (Behat) le remplace intégralement).
+Re-confronté à `.github/workflows/ci.yml` : job `smoke-tests` n'existe plus (`grep -c
+"smoke-tests:" .github/workflows/ci.yml` → 0) ; job `functional-tests` sans `needs`, step unique
+`vendor/bin/behat --format=pretty --no-interaction` (`APP_ENV=dev`) jouant les 5 suites de
+`backend/behat.dist.php`. **SEPT jobs sans `needs` désormais** (§1, recompté contre `ci.yml` —
+`frontend`, `dependency-audit`, `rector`, `secrets-scan`, `semgrep`, `engine-semantics`,
+`functional-tests`). Le reste du graphe (`blocking-tests` needs `[lint, phpstan]`, `unit-tests`/`e2e`
+needs `blocking-tests`, `backend-coverage`/`engine-coverage`/`frontend-coverage`,
+`engine-perf`/`engine-perf-pr`) et `backend/phpunit.xml.dist` (3 testsuites,
+`Unit/TestsuitesCoverEveryTestDirectoryTest`) non re-sondés cette passe (voir `git log -p --follow
+docs/testing/testing-strategy.md` pour l'historique des passes).
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique), [`test-coverage-map.md`](test-coverage-map.md) (qui teste quoi, angles morts) and [`../project-map.md`](../project-map.md).
 
@@ -31,8 +33,7 @@ rector              (dry-run, style gate P4-24)            — parallel, no need
 secrets-scan        (gitleaks)                             — parallel, no needs, BLOCKS the merge
 semgrep             (security gate)                        — parallel, no needs, BLOCKS the merge
 engine-semantics    (groupe `contract`, cross-stack)       — parallel, no needs, BLOCKS the merge
-smoke-tests         (4 smokes sémantiques)                 — parallel, no needs, BLOCKS the merge
-functional-tests    (Behat, Gherkin FR, API-only)           — parallel, no needs, BLOCKS the merge (required check à ajouter côté GitHub)
+functional-tests    (Behat, Gherkin FR, API-only, 5 features) — parallel, no needs, BLOCKS the merge (required check à ajouter côté GitHub)
 engine-perf         (dense + BCCL solve < 60 s)             — needs engine-tests ; main only
 engine-perf-pr      (dense solve, PR budget = 60 s)         — needs engine-tests ; PR only, skipped when engine/ untouched
 engine-coverage     (couverture engine + cliquet)           — needs engine-tests ; does NOT gate build-docker
@@ -87,7 +88,7 @@ dans le nom du FICHIER). Le sélecteur correct est `-k dense_club`, qui isole
 `test_dense_club_completes_under_budget`. `engine-perf` (main) garde les deux paliers, dense et BCCL, au
 même budget 60 s.
 
-**HUIT jobs isolés sans `needs`** — `frontend`, `dependency-audit`, `rector`, `secrets-scan`, `semgrep`, `engine-semantics`, `smoke-tests`, `functional-tests` (Behat, ajouté P4-165 palier 1, 2026-09-04 — compte re-vérifié contre `ci.yml`) : un signal qui peut
+**SEPT jobs isolés sans `needs`** — `frontend`, `dependency-audit`, `rector`, `secrets-scan`, `semgrep`, `engine-semantics`, `functional-tests` (Behat, P4-165 SOLDÉ, 2026-09-04 — `smoke-tests` supprimé, compte re-vérifié contre `ci.yml`) : un signal qui peut
 rougir sur un commit qui n'a rien changé (une règle Rector élargie par un bump, une advisory publiée
 ce matin) ne doit pas prendre en otage `blocking-tests` — donc l'isolation tenant/RLS — ni
 `build-docker`, donc la livraison d'un correctif de sécurité. **Rougir ≠ ne rien bloquer** : `rector`
@@ -106,8 +107,7 @@ All PHP test jobs first **create + migrate the test DB** (`doctrine:database:cre
 | `unit-tests` | full PHPUnit `tests/` (does NOT gate build-docker) |
 | `backend-coverage` | `phpunit tests/ --exclude-group contract --coverage-clover` (pcov, `-d pcov.enabled=1`) + `scripts/coverage-gate.php` (plancher `backend` de `coverage-floor.json`, PHPUnit 11 n'a pas de `--fail-under` natif), needs `blocking-tests`, does **NOT** gate `build-docker` (P4-166 PR 3/3) |
 | `e2e` | Playwright (full stack + Vite), needs blocking-tests. ⚠ **Deux cibles, pas une** : la suite tourne contre le **dev server** (:5173), puis un step dédié rejoue `security-headers.spec.ts` contre l'**image nginx** (:8081) avec `E2E_A17_REQUIRED=1`. Sans ce second passage, les tests A17 (CSP, HSTS, X-Frame-Options, nosniff) se **skippaient à chaque run** — les en-têtes n'existent que sur le build nginx — et le contrôle n'a jamais tourné en CI (audit D-04). La variable interdit au skip de revenir en silence : viser un dev server là devient un échec |
-| `smoke-tests` | **Les 4 smokes sémantiques restants** (`backend/scripts/` : onboarding · smoke-place-matches · smoke-overlay · smoke-coach-wishes) sur une vraie stack. **Aucun `needs`** — ils répondent « la fonctionnalité marche-t-elle ? », indépendamment des suites unitaires, et n'installent ni npm ni Chromium : le verdict tombe ~2× plus tôt. Chacun est autosuffisant (JWT auto, données créées/nettoyées, pointeur socle rouvert PUIS restauré) : l'ordre est un confort, jamais une dépendance. Le 5ᵉ (season solver) a migré vers `functional-tests` (P4-165 palier 1) |
-| `functional-tests` | **Behat, Gherkin français, API seule** (`backend/features/`, contexts `backend/tests/Behat/`) — scénarios métier relus par le fondateur, joués contre la stack RÉELLE (nginx→php-fpm, vrai `messenger-worker`, vrai engine), sans navigateur ni noyau in-process. **Aucun `needs`**, même patron que `smoke-tests`. Une seule feature à ce jour (`generation-du-planning-de-saison.feature`, remplace `smoke-solver.sh` — parité prouvée, même verdict `COMPLETED`) ; il reste 4 smokes à migrer (P4-165, paliers 2-5) |
+| `functional-tests` | **Behat, Gherkin français, API seule** (`backend/features/`, contexts `backend/tests/Behat/`) — scénarios métier relus par le fondateur, joués contre la stack RÉELLE (nginx→php-fpm, vrai `messenger-worker`, vrai engine), sans navigateur ni noyau in-process. **Aucun `needs`** — ils répondent « la fonctionnalité marche-t-elle ? », indépendamment des suites unitaires, et n'installent ni npm ni Chromium : le verdict tombe plus tôt. Chaque feature est autosuffisante (JWT auto, données créées/nettoyées, pointeur socle rouvert PUIS restauré) : jouable seule et dans n'importe quel ordre. **Remplace intégralement les 5 smokes bash** (`smoke-solver.sh`, `onboarding-smoke.sh`, `smoke-place-matches.sh`, `smoke-overlay.sh`, `smoke-coach-wishes.sh`, tous SUPPRIMÉS — P4-165, 2026-09-04) — parité prouvée assertion par assertion, même verdicts. Table feature ↔ ce qu'elle prouve : [`test-coverage-map.md`](test-coverage-map.md) §5 |
 | `engine-tests` | `pytest` + `ruff check .` + `mypy` (in the engine container) |
 | `engine-coverage` | `pytest --cov=app --cov-fail-under=$FLOOR` (`$FLOOR` read from `coverage-floor.json`, key `engine`), needs `engine-tests`, does **NOT** gate `build-docker` (P4-166 PR 1/3) |
 | `frontend` | `npm run lint` (dont `eslint-plugin-jsx-a11y`, §4bis) + `tsc -b` + `vite build` + `vitest` (parallel, no needs) |

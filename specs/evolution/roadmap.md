@@ -1,4 +1,4 @@
-# Roadmap (58) — ce qui reste à faire
+# Roadmap (57) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -30,8 +30,7 @@
 > **Effort** : XS/S ≤ 1 PR · M 2-3 PR · L lot phasé · XL recherche + gros lot.
 > Cap de commercialisation : **mi-2027**.
 >
-> **Fichiers de détail actifs** : [`couverture-de-tests-cadrage.md`](couverture-de-tests-cadrage.md) (**P4-165 seul désormais** — cadrage des angles morts de la couverture de tests ; **P4-166 (section B, mesure de couverture, les trois zones) et P4-167/168/169 SOLDÉS et retirés du fichier** ; A1-A6 (Behat, section A) tranchées pour le palier 1, **palier 1/5 LIVRÉ**, restent les paliers 2-5) ·
-> [`plannings-bccl-2026-08-31.md`](plannings-bccl-2026-08-31.md) (P2-58 — le programme plannings BCCL : décisions D1-D6, méthode, avancement) ·
+> **Fichiers de détail actifs** : [`plannings-bccl-2026-08-31.md`](plannings-bccl-2026-08-31.md) (P2-58 — le programme plannings BCCL : décisions D1-D6, méthode, avancement) ·
 > [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) (module matchs — palier A livré (P1-4), **palier B
 > TRAJET+ANNUAIRE livré (RMM-8/P2-53 + RMM-9/P2-54, soldés 2026-08-28)** ; reste OUVERT : palier B
 > **dérogation** (§8, workflow tracker) et palier C (effet réseau — heures/tendances adverses cross-club) ;
@@ -135,7 +134,6 @@
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
 | P4-164 | **Listes déroulantes riches — composant select custom (couleur d'équipe, pictogramme bloc/équipe, sous-ligne « reste N », option indisponible avec motif lisible)** | ⚪ | L | Demande fondateur 2026-09-03, née du lot P2-60 PR-2 : le sélecteur d'équipes est un `<select>` NATIF stylé (`frontend/src/shared/components/ui/select.tsx:7`, `team-select.tsx` l'utilise via `optgroup`/`<option>`) — une `<option>` HTML ne porte que du TEXTE, ni couleur ni icône. C'est pourquoi P2-60 PR-2 étiquette le résidu en suffixe texte (« SM3 — reste 2 créneaux hors groupe ») et RETIRE (au lieu de désactiver avec un motif visible) les équipes au résidu 0 (`SlotReservationModal.tsx`, `optionLabelFor`). Piste : une listbox APG dans `shared/components/ui/` (patron `Menu APG` déjà livré, `menu.tsx` ; couleur via `VenueSwatch`, `venue-swatch.tsx`), tests Playwright OBLIGATOIRES (jsdom ne mesure ni layout ni popover, cf. `.claude/rules/frontend.md`). À ne faire que si le fondateur veut la couleur d'équipe/le pictogramme partout où `TeamSelect` est consommé (contraintes, coachs, matchs, import FBI, réservation) — sinon le texte suffixé actuel reste suffisant |
-| P4-165 | **Tests fonctionnels en Behat (Gherkin) — des scénarios métier lisibles par un gestionnaire de club, exécutables contre l'API** | ⚪ | M | **Palier 1/5 LIVRÉ** (2026-09-04) : squelette Behat (`backend/behat.dist.php`, contexts `backend/tests/Behat/`) + la première feature migrée, `generation-du-planning-de-saison.feature` (remplace `smoke-solver.sh`, SUPPRIMÉ), job CI `functional-tests`. Détail et décisions A1-A6 : `couverture-de-tests-cadrage.md` §A ; le choix de conception (HTTP contre la stack réelle plutôt que BrowserKit/kernel in-process) est une décision fermée, `specs/courantes/etat-des-lieux.md` §2. **Restent 4 paliers** : migrer `onboarding-smoke.sh`, `smoke-place-matches.sh`, `smoke-overlay.sh`, `smoke-coach-wishes.sh` en features (un `.sh` retiré par palier, une fois la parité prouvée) — même patron que le palier 1. Piège à garder en tête pour la suite : un scénario Gherkin qui ne fait que rejouer un test PHPUnit en français est du doublon (`specs/evolution/duplications-de-verite.md`) — la valeur est le scénario que le fondateur écrit ou relit, pas la traduction |
 
 ### Fiabilité CI, 2026-08-31 (deux flakes récurrents)
 
