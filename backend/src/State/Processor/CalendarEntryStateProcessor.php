@@ -221,6 +221,16 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
             // soit — sous le verrou de son plan-scope, pour sérialiser avec une
             // génération « en bloc » concurrente (exclusivité bloc/semaines).
             if (null !== $input->parentEntryId) {
+                // P4-172 — verrou club+saison AVANT le verrou d'entrée (club d'abord, entrée
+                // ensuite, ordre uniforme sur les trois chemins → pas d'ABBA). La semaine naît
+                // AVEC son plan (provisionIfPlanBearing plus bas) : sa fenêtre passe la même
+                // garde d'unicité (club entier) que « Adapter », donc doit se sérialiser au grain
+                // club+saison. Club/saison lus sur la MÈRE — la valeur qu'assertWindowNotAlready-
+                // Planned donne ensuite à la garde. Mère introuvable → assertValidWeekChild refuse.
+                $parent = $this->entityManager->getRepository(CalendarEntry::class)->find($input->parentEntryId);
+                if ($parent instanceof CalendarEntry) {
+                    $this->schedulePlanProvisioner->lockClubWindows($parent->getClubId(), $parent->getSeasonId());
+                }
                 $this->schedulePlanProvisioner->lockPlanScope($input->parentEntryId);
                 $this->assertValidWeekChild($input, $clubId, $seasonId);
                 $this->assertWindowNotAlreadyPlanned($input);
@@ -270,6 +280,17 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
             // même période formerait un cycle ABBA (Postgres en tuerait un en 40P01 → 500).
             $entryId = $uriVariables['id'] ?? null;
             if (\is_string($entryId)) {
+                // P4-172 — verrou club+saison AVANT le verrou d'entrée (club d'abord, entrée
+                // ensuite, ordre uniforme sur les trois chemins → pas d'ABBA). Un re-datage de
+                // racine CLOSURE appelle la garde d'unicité (club entier), il doit donc se
+                // sérialiser au grain club+saison avec toute autre création/re-datage de fenêtre
+                // du club. Pris inconditionnellement dès que l'entrée est résolue (et non selon un
+                // isRedatable lu avant les verrous, qui pourrait se périmer sous un POST de plan
+                // concurrent) : l'entrée est déjà chargée par le provider (identity-map, 0 requête).
+                $entity = $this->entityManager->getRepository(CalendarEntry::class)->find($entryId);
+                if ($entity instanceof CalendarEntry) {
+                    $this->schedulePlanProvisioner->lockClubWindows($entity->getClubId(), $entity->getSeasonId());
+                }
                 $this->schedulePlanProvisioner->lockPlanScope($entryId);
             }
 
