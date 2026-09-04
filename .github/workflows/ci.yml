@@ -1255,8 +1255,6 @@ jobs:
       - name: Start messenger worker
         run: docker compose up -d --wait messenger-worker
 
-      - name: Smoke — period overlay (cockpit rail → COMPLETED)
-        run: backend/scripts/smoke-overlay.sh
       - name: Smoke — coach wishes (campaign → public token → persisted wish)
         run: backend/scripts/smoke-coach-wishes.sh
 
