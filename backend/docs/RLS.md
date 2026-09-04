@@ -1,7 +1,7 @@
 # ClubScheduler — PostgreSQL Row-Level Security (RLS)
 
-Last verified @ 2026-09-03 (rotation `documentation-update`, PR P2-60 PR-1 — fichier hors sujet
-de la PR, contrôle de fraîcheur). Re-confronté au code : `TenantFilterListener` toujours
+Last verified @ 2026-09-04 (rotation `documentation-update`, PR P4-172 — fichier hors sujet de
+la PR, contrôle de fraîcheur). Re-confronté au code : `TenantFilterListener` toujours
 `KernelEvents::REQUEST => ['onKernelRequest', 7]` (priorité 7, APRÈS le firewall) ✓ ·
 `docker/postgres/init/02-users.sh` crée toujours `amateo_app` `NOSUPERUSER NOCREATEDB
 NOCREATEROLE` ✓ · `Version20260731090000.php` existe toujours ✓ · `RlsIsolationTest.php` garde

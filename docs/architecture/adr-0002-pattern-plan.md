@@ -735,8 +735,10 @@ validation du besoin → plan → code → NR phase1 → code-review → go util
   période du club+saison, **dans les deux sens** (peu importe lequel des deux gestes arrive en
   second). Règle du fondateur, verbatim : « un overlay d'incident ne touche JAMAIS une semaine
   de vacances ». La garde est prise **dans le verrou de scope** déjà posé par les deux
-  processors (`lockPlanScope`) : deux gestes concurrents sur des fenêtres qui se recoupent ne
-  peuvent pas passer tous deux devant un contrôle vide. **Rien n'est supprimé ni rétréci
+  processors (`lockPlanScope`) : deux gestes concurrents sur la MÊME entrée ne peuvent pas
+  passer tous deux devant un contrôle vide — mais `lockPlanScope` est keyé par ENTRÉE, pas par
+  club, donc deux gestes sur deux entrées DIFFÉRENTES du même club restaient, eux, non
+  sérialisés (trou comblé par P4-172, ci-dessous). **Rien n'est supprimé ni rétréci
   automatiquement** — le refus NOMME le plan déjà en place (le TITRE que le gestionnaire a
   écrit sur son `CalendarEntry`, plus sa fenêtre en clair via
   `SchedulePlanProvisioner::windowLabel`) et invite à modifier ce planning, à le supprimer, ou à
@@ -755,6 +757,32 @@ validation du besoin → plan → code → NR phase1 → code-review → go util
   deux sens, recouvrement PARTIEL nommé, et trois témoins (semaine dans sa mère jamais refusée,
   deux périodes disjointes s'adaptent toutes les deux, déclarer une fermeture par-dessus une
   période planifiée reste libre). Zéro migration, `engine/**` non touché, `CONTRACT_VERSION`
+  inchangé.
+
+  **P4-172 — le trou entre-entrées comblé par un verrou club+saison (livrée 2026-09-04).** Deux
+  écrivains simultanés sur DEUX ENTRÉES DIFFÉRENTES du même club passaient chacun
+  `assertWindowFree` avant que l'autre commite — deux verrous `lockPlanScope` disjoints,
+  puisque son grain est l'entrée, ne se contendaient jamais, malgré une garde qui compare des
+  fenêtres du club ENTIER pour une saison donnée. Correctif : `SchedulePlanProvisioner::
+  lockClubWindows(clubId, seasonId)` (même idiome que `lockPlanScope` —
+  `pg_advisory_xact_lock(hashtext('period-windows:'.club.':'.season))`, verrou de transaction,
+  ré-entrant), pris **avant** `lockPlanScope` dans les trois chemins qui écrivent une fenêtre :
+  POST « Adapter » (`SchedulePlanStateProcessor.php:100`), POST d'une entrée-semaine porteuse de
+  plan (`CalendarEntryStateProcessor.php:232`, club/saison lus sur la MÈRE) et PUT de re-datage
+  d'une racine CLOSURE (`CalendarEntryStateProcessor.php:292`). Ordre **uniforme club → entrée**
+  sur les trois sites — aucun ne prend l'entrée avant le club, donc pas d'ABBA ; la garde
+  elle-même ne prend jamais ce verrou (l'y poser aurait inversé l'ordre). Les lectures
+  (`PlannedWindowsController::governingWindows`) ne prennent jamais ce verrou non plus.
+  **Décision fermée** : une contrainte d'exclusion PostgreSQL (`EXCLUDE USING gist` sur
+  `schedule_plan`) — la « vraie maison » envisagée au cadrage initial de P4-172 — est écartée en
+  v1, infaisable sans une colonne `root_entry_id` (la garde tolère les chevauchements d'une même
+  famille mère/enfants/sœurs, qu'une contrainte SQL brute ne peut pas exempter sans elle) ; v2
+  possible si cette colonne naît. NR : `Security/PeriodWindowRaceTest` (2 tests, `phase1` +
+  `integration`, non bloquant) — grain club+saison prouvé par une seconde connexion DBAL tenant
+  la clé consultative (le chemin d'écriture attend, `statement_timeout` rend l'attente
+  observable ; sérialise le même club+saison, passe sans attendre sur une autre saison ou un
+  autre club), preuve de chute faite en retirant les trois appels `lockClubWindows` (201 au lieu
+  d'attendre/409 sans le verrou). Zéro migration, `engine/**` non touché, `CONTRACT_VERSION`
   inchangé.
 
   **PR3 — front (livrée 2026-08-18) ferme le lot.** Le refus 409 s'affiche désormais **à
