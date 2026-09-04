@@ -144,6 +144,63 @@ abstract class BaseContext implements Context
     }
 
     /**
+     * @param array<string, string> $headers
+     *
+     * @return array{status: int, json: array<mixed>}
+     */
+    protected function apiDelete(string $path, string $token, array $headers = []): array
+    {
+        return $this->decode($this->client->request('DELETE', ltrim($path, '/'), [
+            'headers' => $this->authHeaders($token, $headers),
+        ]));
+    }
+
+    /**
+     * Lecture publique SANS jeton — le chemin non authentifié (page publique de
+     * vœux). Aucun en-tête Authorization n'est posé : le token dans l'URL EST
+     * l'identité, jamais le JWT.
+     *
+     * @return array{status: int, json: array<mixed>}
+     */
+    protected function publicGet(string $path): array
+    {
+        return $this->decode($this->client->request('GET', ltrim($path, '/'), [
+            'headers' => ['Accept' => 'application/ld+json'],
+        ]));
+    }
+
+    /**
+     * Écriture publique SANS jeton — le seul chemin d'écriture /api non
+     * authentifié (soumission d'un vœu, inscription d'un club). On ne « répare »
+     * jamais l'appel avec un Bearer.
+     *
+     * @param array<mixed> $body
+     *
+     * @return array{status: int, json: array<mixed>, headers: array<string, list<string>>}
+     */
+    protected function publicPost(string $path, array $body): array
+    {
+        $options = ['headers' => ['Accept' => 'application/ld+json']];
+        if ([] !== $body) {
+            $options['json'] = $body;
+        }
+
+        return $this->decodeWithHeaders($this->client->request('POST', ltrim($path, '/'), $options));
+    }
+
+    /**
+     * Requête HTTP brute vers une URL ABSOLUE (hors API — ex. le webmail Mailpit,
+     * d'où l'inscription retire son lien de vérification). base_uri est ignoré
+     * quand l'URL est absolue.
+     *
+     * @return array{status: int, json: array<mixed>, headers: array<string, list<string>>}
+     */
+    protected function httpGet(string $url): array
+    {
+        return $this->decodeWithHeaders($this->client->request('GET', $url));
+    }
+
+    /**
      * @param array<string> $args
      */
     private function console(array $args): string
@@ -179,5 +236,25 @@ abstract class BaseContext implements Context
         $json = '' === $raw ? [] : json_decode($raw, true, 512, \JSON_THROW_ON_ERROR);
 
         return ['status' => $status, 'json' => \is_array($json) ? $json : []];
+    }
+
+    /**
+     * Comme decode(), mais rend aussi les en-têtes de réponse — indispensable
+     * pour lire le cookie httpOnly BEARER que /register/verify pose (ce n'est pas
+     * un navigateur : on le récupère dans Set-Cookie, exactement comme le smoke).
+     *
+     * @return array{status: int, json: array<mixed>, headers: array<string, list<string>>}
+     */
+    private function decodeWithHeaders(ResponseInterface $response): array
+    {
+        $status = $response->getStatusCode();
+        $raw = $response->getContent(false);
+        $decoded = '' === $raw ? [] : json_decode($raw, true, 512, \JSON_THROW_ON_ERROR);
+
+        return [
+            'status' => $status,
+            'json' => \is_array($decoded) ? $decoded : [],
+            'headers' => $response->getHeaders(false),
+        ];
     }
 }

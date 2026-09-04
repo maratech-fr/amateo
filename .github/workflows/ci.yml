@@ -1255,8 +1255,6 @@ jobs:
       - name: Start messenger worker
         run: docker compose up -d --wait messenger-worker
 
-      - name: Smoke — onboarding (register → minimum → COMPLETED)
-        run: backend/scripts/onboarding-smoke.sh
       - name: Smoke — match placement (sync rail, window honoured, named impossibility)
         run: backend/scripts/smoke-place-matches.sh
       - name: Smoke — period overlay (cockpit rail → COMPLETED)
