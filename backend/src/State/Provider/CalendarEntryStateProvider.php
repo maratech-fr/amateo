@@ -7,6 +7,7 @@ namespace App\State\Provider;
 use ApiPlatform\State\Pagination\Pagination;
 use App\ApiResource\CalendarEntryResource;
 use App\Entity\CalendarEntry;
+use App\Service\CalendarEntryRedatability;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
 use Symfony\Component\HttpFoundation\Request;
@@ -22,6 +23,7 @@ class CalendarEntryStateProvider extends AbstractStateProvider
         EntityManagerInterface $entityManager,
         RequestStack $requestStack,
         Pagination $pagination,
+        private readonly CalendarEntryRedatability $redatability,
     ) {
         parent::__construct($entityManager, $requestStack, $pagination);
     }
@@ -84,7 +86,9 @@ class CalendarEntryStateProvider extends AbstractStateProvider
      */
     protected function mapEntityToOutput(object $entity): CalendarEntryResource
     {
-        return CalendarEntryResource::fromEntity($entity);
+        // La re-databilité est lue UNE fois par requête (ensemble mémoïsé du club) : sur la
+        // collection, chaque entrée est un O(1), pas deux requêtes par ligne — anti-N+1.
+        return CalendarEntryResource::fromEntity($entity, $this->redatability->isRedatable($entity));
     }
 
     private function assertDate(string $value, string $param): string

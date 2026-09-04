@@ -22047,6 +22047,11 @@
                             "string",
                             "null"
                         ]
+                    },
+                    "redatable": {
+                        "description": "Vrai si les dates de cette p\u00e9riode peuvent \u00eatre d\u00e9plac\u00e9es ; les autres p\u00e9riodes gardent leur fen\u00eatre fig\u00e9e.",
+                        "default": false,
+                        "type": "boolean"
                     }
                 }
             },
@@ -22216,6 +22221,11 @@
                             "string",
                             "null"
                         ]
+                    },
+                    "redatable": {
+                        "description": "Vrai si les dates de cette p\u00e9riode peuvent \u00eatre d\u00e9plac\u00e9es ; les autres p\u00e9riodes gardent leur fen\u00eatre fig\u00e9e.",
+                        "default": false,
+                        "type": "boolean"
                     }
                 }
             },
@@ -22291,6 +22301,11 @@
                                     "string",
                                     "null"
                                 ]
+                            },
+                            "redatable": {
+                                "description": "Vrai si les dates de cette p\u00e9riode peuvent \u00eatre d\u00e9plac\u00e9es ; les autres p\u00e9riodes gardent leur fen\u00eatre fig\u00e9e.",
+                                "default": false,
+                                "type": "boolean"
                             }
                         }
                     }
