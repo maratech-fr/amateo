@@ -1,12 +1,12 @@
 # Accueil « cockpit temporel » — mise au clair (préliminaire calendriers secondaires)
 
-Last verified @ 2026-09-04 (D4, `documentation-update`). Re-confronté au code : §5bis (règle
-« semaine de vacances » P2-40) recalé sur `App\Service\HolidayWorkweekRule::covers`
-(`backend/src/Service/HolidayWorkweekRule.php`), la garde 422 de
-`CalendarEntryStateProcessor::assertValidWeekChild` (mère VACANCES seulement) et le miroir
-déclaré `frontend/src/features/cockpit/lib/holidayWorkweek.ts` (`holidayCoversWorkweek`,
-remplace `dropFirst`), tenus par `HolidayWorkweekMirrorParityTest` ✓. Reste du fichier non
-re-vérifié cette passe — historique : `git log -p --follow` ce fichier.
+Last verified @ 2026-09-04 (D3 v1 PR-2, `documentation-update`). Re-confronté au code : §5bis
+gagne le geste « Modifier les dates » — `entry.redatable` (`frontend/src/features/cockpit/api.ts`)
+rendu par `DayDialog.tsx` (bouton icône `CalendarRange` ssi servi, mode `redate` du même dialogue,
+`RedateForm` lignes 785-858), `useRedateEntry` (`cockpit/queries.ts`, invalidations
+`calendar-entries`/`schedules`/`entry-conflicts`/`planned-windows`), 409 via
+`WindowAlreadyPlannedNotice` ✓. Reste du fichier non re-vérifié cette passe (hors §5bis) —
+historique : `git log -p --follow` ce fichier.
 
 > **Statut** : **approche arrêtée** (décisions tranchées §9) — **livrée** ; cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2.
 > **Pas un plan** — pas de tâches, pas d'effort chiffré ; l'exécution se planifiera palier par palier (§8).
@@ -525,6 +525,27 @@ l'horloge. Le **serveur** garde l'heure réelle (P4-16 reste ouverte pour lui).
 - **Date avec entrée(s)** → le popover **liste** ce qui est là ; chaque entrée porte ses actions
   (voir / éditer / supprimer). Une indispo/période porte un **« Adapter → »** qui ouvre
   l'**écran dédié**.
+  - **« Modifier les dates de … » — re-dater une fermeture d'un bloc SANS la reconstruire
+    (D3 v1 PR-2, 2026-09-04).** Bouton dédié (icône `CalendarRange`), à gauche de Supprimer dans
+    la liste du jour (`DayDialog.tsx`), **rendu SEULEMENT si le serveur sert `entry.redatable`**
+    (prédicat unique côté backend, `App\Service\CalendarEntryRedatability::isRedatable`) — jamais
+    désactivé, jamais recalculé côté front (règle d'or). Le clic ouvre un **mode `redate` du même
+    dialogue** (pas une modale par-dessus) : un `RedateForm` réutilise les mêmes
+    `DateRangeFields`/`useDateRange` que les créations, avec un plancher `min(aujourd'hui, début
+    déjà servi)` — une fermeture déjà commencée peut bouger sa fin sans bouger son début — et un
+    plafond fin-de-saison ; ces bornes sont de la **présentation**, le 422 serveur reste le juge.
+    « Enregistrer » est désactivé, avec sa raison en `title`, tant qu'aucune date n'a changé ou que
+    la fin précède le début. Le hook **possède son feedback** (patron `ownWindowConflictFeedback`,
+    même famille que « Adapter ») : un 409 `window_already_planned` s'affiche **à l'endroit du
+    geste** via `WindowAlreadyPlannedNotice` (valeurs saisies conservées, focus porté sur « Ouvrir
+    le planning en place » — `frontend/src/features/cockpit/DayDialog.tsx:796-858`, `RedateForm`), tout autre
+    refus (422 hors saison / fin avant début) part au filet global. Un succès invalide les lectures
+    dérivées de la fenêtre (`calendar-entries`, `schedules`, `entry-conflicts`, `planned-windows`),
+    ferme le dialogue et annonce « Fermeture re-datée du … au … — planning à régénérer » —
+    **jamais** de mention du pivot socle dans ce toast (décision fermée, `etat-des-lieux.md` §2) :
+    la version pointée survit, seulement marquée périmée par la bannière de `/planning`
+    (`stalenessMessage`, `PlanningPage.tsx:1352-1372`) ; **le cockpit ne porte aucun badge
+    « périmé »** — non embarqué dans ce lot (roadmap **P4-173**).
 - **L'écran dédié « calendrier secondaire » = le wizard réutilisé en « mode période »**
   (voir §6bis). Pas un nouvel écran à apprendre : **les mêmes 6 étapes**, mais le roster/les
   gymnases restent **hérités** (non ré-éditables comme entités) — on les **surcharge pour la

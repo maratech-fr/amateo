@@ -1,14 +1,10 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-09-03 (rotation fraîcheur, sans rapport au sujet de la PR). Re-confronté au code :
-`engine/CONTRACT_VERSION` = **2.20** ✓ ; `shared_block_not_honored` (`_diagnose_shared_blocks`,
-`app/solver/result_builder/diagnostics.py:801-`, INFEASIBLE = cause prouvée par comptage de cases
-communes candidates, FEASIBLE/OPTIMAL = défense en profondeur sur le compte réel) reste la SEULE ligne
-de mutualisation, `shared_training_not_honored` toujours absente du `Literal` du contrat. ⚠ **Écart
-connu, hors périmètre de cette passe** : `team_link_not_honored` et `travel_time_infeasible` sont des
-types de diagnostic valides du contrat (`output_schema.py` §Literal) mais n'ont **jamais** eu leur
-ligne dans ce tableau — signalé, pas corrigé ici (P4-153). Reste du document non re-parcouru ligne à
-ligne cette passe.
+Last verified @ 2026-09-04 (rotation fraîcheur, sans rapport au sujet de la PR — D3 v1 cockpit).
+Re-confronté au code : `engine/CONTRACT_VERSION` = **2.20** ✓ ; `team_link_not_honored` et
+`travel_time_infeasible` figurent toujours dans le `Literal` du contrat (`output_schema.py:83,88`)
+sans ligne dans le tableau ci-dessous — **écart connu, toujours non corrigé (P4-153)**, signalé de
+nouveau plutôt que corrigé hors scope. Reste du document non re-parcouru ligne à ligne cette passe.
 
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 

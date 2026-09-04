@@ -555,8 +555,9 @@ validation du besoin → plan → code → NR phase1 → code-review → go util
   (`CalendarEntryStateProcessor.php:108-131`). NR : `Security/PeriodRedateTest` (8 cas) +
   `CalendarEntryApiTest::testPeriodWithOverlayCannotMutateIdentity` (le cas fenêtre est passé de
   422 à 200) + scénario Behat `plan-de-periode-en-overlay.feature` (« Je re-date l'incident »).
-  **PR-1 backend seul livré ce jour** ; le geste d'édition à l'écran (PR-2, avec passe design)
-  reste à faire — voir `specs/evolution/plannings-bccl-2026-08-31.md` D3.
+  **D3 v1 SOLDÉE ENTIÈRE le même jour** : PR-1 backend puis PR-2 cockpit — le geste d'édition
+  à l'écran vit dans la liste du jour du cockpit (`DayDialog.tsx`, bouton « Modifier les dates »
+  rendu ssi `entry.redatable`) — voir `specs/courantes/accueil-cockpit-temporel.md` §5bis.
 - **Lot C4** — LE SOCLE SE LIT DU PLAN, `Schedule.calendarEntryId` disparaît. Le champ était
   redondant avec `plan.calendarEntryId` (doublon d'ancre nullable — la classe de bug de C2/C3).
   Découpé en **3 PR**. **PR1 livré (2026-07-17)** : `plan.type === SEASON` remplace
