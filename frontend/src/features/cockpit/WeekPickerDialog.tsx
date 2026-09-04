@@ -7,7 +7,7 @@ import { Modal } from "@/shared/components/ui/modal";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { WarningPanel } from "@/shared/components/ui/warning-panel";
 
-import type { PlannedWindow } from "./api";
+import type { CalendarEntryPeriodType, PlannedWindow } from "./api";
 import { frDateShort, mergeSegments, segmentLabel, segmentsFromOffer, segmentWeekCount, splitSegment, type ExcludedWeekRange, type WeekSegment, type WeekWindow } from "./lib/date";
 import type { WeekPickerState, WindowConflict } from "./lib/useWeekAdapt";
 import { WindowAlreadyPlannedNotice } from "./WindowAlreadyPlannedNotice";
@@ -33,6 +33,12 @@ interface WeekPickerDialogProps {
   /** Fenêtre de la mère (pour segmenter : entame/fin partielles de l'événement). */
   startDate: string;
   endDate: string;
+  /**
+   * Type de la mère. Pour une FERMETURE (closure), le découpage début·milieu·fin est IMPOSÉ
+   * (règle fondateur 2026-09-05) : Scinder/Fusionner disparaissent, les segments restent cochables
+   * (créer le milieu maintenant, la fin plus tard). Les VACANCES gardent Scinder/Fusionner.
+   */
+  periodType?: CalendarEntryPeriodType | null;
   /** Semaines lun→dim OFFERTES couvrant la fenêtre de la mère, clampées à la saison. */
   weeks: WeekWindow[];
   /** A2 — la saison affichée : un libellé de segment DANS la saison omet l'année (sinon la garde). */
@@ -91,7 +97,10 @@ interface WeekPickerDialogProps {
  * P2-36 : le dialogue s'OUVRE toujours et NOMME sa raison (`state`) — « en chargement » ≠ « déjà
  * générée d'un bloc » — au lieu de basculer en bloc sans un mot.
  */
-export function WeekPickerDialog({ title, startDate, endDate, weeks, season, busy, state = "weeks", block, excludedRanges = [], plannedRanges = [], onPickSegments, onAdaptWhole, onRecordOnly, onClose, conflict, onOpenConflict }: WeekPickerDialogProps) {
+export function WeekPickerDialog({ title, startDate, endDate, weeks, season, periodType, busy, state = "weeks", block, excludedRanges = [], plannedRanges = [], onPickSegments, onAdaptWhole, onRecordOnly, onClose, conflict, onOpenConflict }: WeekPickerDialogProps) {
+  // FERMETURE : le découpage début·milieu·fin est IMPOSÉ, Scinder/Fusionner n'ont pas lieu d'être
+  // (le serveur ne validerait pas une frontière libre). Les VACANCES gardent l'édition manuelle.
+  const allowSegmentEditing = "closure" !== periodType;
   // Segments dérivés de l'offre + fenêtre, PUIS mutés localement par scinder/fusionner.
   const [segments, setSegments] = useState<WeekSegment[]>(() => segmentsFromOffer(weeks, startDate, endDate));
   const [checked, setChecked] = useState<Set<string>>(() => new Set(segments.map((s) => s.monday)));
@@ -168,11 +177,17 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, bus
   // `title=` (`button.tsx` pose `disabled:pointer-events-none`, l'infobulle native ne se déclenche
   // pas). L'état `block` (déjà généré d'un bloc) garde son propre chemin « Continuer d'un bloc ».
   const isBlockState = "block" === state;
-  const blockPathBlocked = !isBlockState && ("holiday" === state || plannedRanges.length > 0);
+  // FERMETURE à plusieurs segments (début·milieu·fin) : « d'un bloc » est INTERDIT côté serveur
+  // (WeekSegmentationRule ⇒ 422). Le front ne propose donc pas un geste que le backend refuse — il
+  // DÉSACTIVE le bouton avec sa raison, comme pour les vacances / le déjà-planifié.
+  const closureMultiSegment = "closure" === periodType && segments.length > 1;
+  const blockPathBlocked = !isBlockState && ("holiday" === state || plannedRanges.length > 0 || closureMultiSegment);
   const blockPathReason =
     plannedRanges.length > 0
       ? "Une partie de ces dates est déjà planifiée par ailleurs — adaptez les semaines restantes une à une."
-      : "Des vacances couvrent une partie de cette période — adaptez les semaines restantes une à une.";
+      : "holiday" === state
+        ? "Des vacances couvrent une partie de cette période — adaptez les semaines restantes une à une."
+        : "Cette indisponibilité a une semaine entamée — adaptez-la par début, milieu, fin.";
   // Le choix des semaines et le bloc « à consigner » ne sont offerts qu'en états DÉCIDÉS
   // (weeks / holiday), jamais en chargement ni en bloc.
   const decided = "weeks" === state || "holiday" === state;
@@ -198,12 +213,12 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, bus
                 </span>
               </label>
               <div className="flex shrink-0 gap-1">
-                {index > 0 ? (
+                {allowSegmentEditing && index > 0 ? (
                   <Button variant="ghost" size="sm" disabled={busy} aria-label={`Fusionner « ${label} » avec le segment précédent`} onClick={() => mergeWithPrevious(index)}>
                     Fusionner
                   </Button>
                 ) : null}
-                {multi ? (
+                {allowSegmentEditing && multi ? (
                   <Button variant="ghost" size="sm" disabled={busy} aria-label={`Scinder « ${label} » en semaines`} onClick={() => splitAt(index)}>
                     Scinder
                   </Button>

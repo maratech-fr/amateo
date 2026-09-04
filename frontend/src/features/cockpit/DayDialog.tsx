@@ -299,6 +299,7 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose 
           title={pickerFor.title}
           startDate={pickerFor.startDate}
           endDate={pickerFor.endDate}
+          periodType={pickerFor.periodType}
           weeks={pickerOffer.offered}
           season={workingSeason}
           excludedRanges={pickerOffer.excludedRanges}
@@ -585,6 +586,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
           title={pendingMother.label}
           startDate={pendingMother.startDate}
           endDate={pendingMother.endDate}
+          periodType={pendingMother.periodType}
           weeks={pendingOffer.offered}
           season={workingSeason}
           plannedRanges={pendingOffer.plannedRanges}
@@ -604,6 +606,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
           title={pickerFor.title}
           startDate={pickerFor.startDate}
           endDate={pickerFor.endDate}
+          periodType={pickerFor.periodType}
           weeks={pickerOffer.offered}
           season={workingSeason}
           plannedRanges={pickerOffer.plannedRanges}

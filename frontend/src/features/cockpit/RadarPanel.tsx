@@ -760,6 +760,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
           title={pendingMother.label}
           startDate={pendingMother.startDate}
           endDate={pendingMother.endDate}
+          periodType={pendingMother.periodType}
           weeks={pendingOffer.offered}
           season={workingSeason}
           excludedRanges={pendingOffer.excludedRanges}
@@ -780,6 +781,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
           title={pickerFor.title}
           startDate={pickerFor.startDate}
           endDate={pickerFor.endDate}
+          periodType={pickerFor.periodType}
           weeks={pickerOffer.offered}
           season={workingSeason}
           excludedRanges={pickerOffer.excludedRanges}

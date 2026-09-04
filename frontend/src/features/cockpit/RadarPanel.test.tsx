@@ -939,7 +939,7 @@ describe("RadarPanel", () => {
   // par la maison unique et OUVRE le choix des semaines AVANT toute création (l'entrée n'est
   // pas encore née) ; « d'un bloc » matérialise ALORS la fermeture par le geste EXISTANT
   // (createVenueClosure), sans réinventer de chemin parallèle.
-  it("alerte sur une indisponibilité MULTI-SEMAINES, chiffre l'impact, et « Adapter » ouvre le choix des semaines SANS rien créer", async () => {
+  it("alerte sur une indisponibilité MULTI-SEGMENTS, chiffre l'impact, « Adapter » ouvre le choix des semaines SANS rien créer et désactive « d'un bloc »", async () => {
     const user = userEvent.setup();
     const today = todayISO();
     unavailabilitiesData = [{ id: "u1", venueId: "gym-1", startDate: addDays(today, 12), endDate: addDays(today, 20), label: "travaux" }];
@@ -956,13 +956,10 @@ describe("RadarPanel", () => {
     expect(createVenueClosureMutate).not.toHaveBeenCalled();
     expect(createVenueClosureMutateAsync).not.toHaveBeenCalled();
 
-    // « d'un bloc » matérialise ALORS la fermeture, par le geste EXISTANT (createVenueClosure).
-    await user.click(screen.getByRole("button", { name: /Adapter toute la période d'un bloc/i }));
-    await waitFor(() =>
-      expect(createVenueClosureMutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ venueId: "gym-1", startDate: addDays(today, 12), endDate: addDays(today, 20) }),
-      ),
-    );
+    // Règle début·milieu·fin (fondateur 2026-09-05) : une fermeture à semaine entamée ne s'adapte
+    // PAS d'un bloc (le serveur refuserait) — le bouton est DÉSACTIVÉ. Le gestionnaire coche les
+    // segments début·milieu·fin, chacun devenant un planning.
+    expect(screen.getByRole("button", { name: /Adapter toute la période d'un bloc/i })).toBeDisabled();
   });
 
   // Témoin : une indispo d'UNE SEULE semaine calendaire n'a rien à choisir → création directe
