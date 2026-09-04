@@ -135,6 +135,7 @@ quelle que soit la largeur de son segment.
   + toggle = 0 séance, E4 via `TeamPeriodOverride`), **défaut = tout le club actif** (E3,
   structure verrouillée), **nom auto** = le titre de l'entrée (E6, recalé 2026-08-23). Reste la
   notification multi-semaines (cadrage à venir). Voir « Écarts » ci-dessous.
+- **Ce que l'API sert pour le geste** : `CalendarEntryResource.redatable` (bool) — vrai pour une racine de fermeture sans mère, avec plan, sans semaines-enfants (`App\Service\CalendarEntryRedatability::isRedatable()`, même prédicat que le processor, `CalendarEntryStateProvider`) ; le front n'a rien à recalculer. Au re-datage : 422 si la fenêtre sort de la saison (`CalendarEntryStateProcessor::assertWindowWithinSeason`) ou si la fin précède le début (`CalendarEntryInput::validateShape`, POST comme PUT).
 
 ## 3. Planning de reprise (vacances)
 
