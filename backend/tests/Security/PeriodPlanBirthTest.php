@@ -157,7 +157,9 @@ final class PeriodPlanBirthTest extends WebTestCase
     public function testAdaptGestureBirthsAClosurePlan(): void
     {
         [$user, $club] = $this->createClubWithSeason();
-        $entryId = $this->postPeriod($user, 'closure', 'Gymnase en travaux');
+        // Fenêtre lun→dim ALIGNÉE (deux semaines pleines = un seul segment « milieu ») : « d'un
+        // bloc » reste permis sur une fermeture qui ne se décompose qu'en UN segment (fondateur 2026-09-05).
+        $entryId = $this->postPeriodDated($user, 'closure', 'Gymnase en travaux', '2026-10-19', '2026-11-01');
         self::assertNull($this->planOf($club->getId(), $entryId), 'Signaler une indisponibilité ne crée pas de plan.');
 
         $this->adaptPeriod($user, $entryId);
@@ -165,6 +167,25 @@ final class PeriodPlanBirthTest extends WebTestCase
         $plan = $this->planOf($club->getId(), $entryId);
         self::assertInstanceOf(SchedulePlan::class, $plan);
         self::assertSame(SchedulePlanType::CLOSURE, $plan->getType());
+    }
+
+    /**
+     * NR (décision fondateur 2026-09-05), axe *planning lifecycle* : le geste « d'un bloc » (plan
+     * sur la racine) n'est permis pour une FERMETURE que si sa fenêtre se décompose en UN SEUL
+     * segment. Une fermeture qui a une semaine ENTAMÉE (ici lun 19/10 → lun 02/11 : deux semaines
+     * pleines + une entame de queue = milieu + fin) doit être adaptée par début·milieu·fin — le
+     * bloc est refusé (422, message parlant, sans identifiant interne). Le cas « 1 segment accepté »
+     * est gardé par {@see testAdaptGestureBirthsAClosurePlan}.
+     */
+    public function testAdaptDunBlocIsRefusedWhenAClosureHasAStartedWeek(): void
+    {
+        [$user, $club] = $this->createClubWithSeason();
+        // lun 19/10 → lun 02/11 : le milieu (19/10→01/11) + une entame de queue (02/11) = 2 segments.
+        $entryId = $this->postPeriodDated($user, 'closure', 'Gymnase en travaux prolongés', '2026-10-19', '2026-11-02');
+
+        $this->adaptPeriodExpecting(422, $user, $entryId);
+        self::assertStringContainsString('semaine entamée', (string) $this->client->getResponse()->getContent());
+        self::assertNull($this->planOf($club->getId(), $entryId), 'aucun plan-bloc n’est né sur une fermeture à semaine entamée');
     }
 
     /**
@@ -186,7 +207,9 @@ final class PeriodPlanBirthTest extends WebTestCase
         $socleId = $this->createSocleBlock($club, $season, [$teamA, $teamB], 2);
         $this->createSocleBlock($club, $season, [$teamC], 1);
 
-        $entryId = $this->postPeriod($user, 'closure', 'Gymnase en travaux');
+        // Fenêtre lun→dim ALIGNÉE (deux semaines pleines = un seul segment « milieu ») : « d'un
+        // bloc » reste permis sur une fermeture qui ne se décompose qu'en UN segment (fondateur 2026-09-05).
+        $entryId = $this->postPeriodDated($user, 'closure', 'Gymnase en travaux', '2026-10-19', '2026-11-01');
         $planId = $this->adaptPeriod($user, $entryId);
 
         $copies = $this->planBlocks($club->getId(), $planId);
@@ -242,7 +265,9 @@ final class PeriodPlanBirthTest extends WebTestCase
         $teamB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
         $socleId = $this->createSocleBlock($club, $season, [$teamA, $teamB], 2);
 
-        $entryId = $this->postPeriod($user, 'closure', 'Gymnase en travaux');
+        // Fenêtre lun→dim ALIGNÉE (deux semaines pleines = un seul segment « milieu ») : « d'un
+        // bloc » reste permis sur une fermeture qui ne se décompose qu'en UN segment (fondateur 2026-09-05).
+        $entryId = $this->postPeriodDated($user, 'closure', 'Gymnase en travaux', '2026-10-19', '2026-11-01');
         $planId = $this->adaptPeriod($user, $entryId);
 
         $copies = $this->planBlocks($club->getId(), $planId);
@@ -290,7 +315,9 @@ final class PeriodPlanBirthTest extends WebTestCase
         [$user, $club, $season] = $this->createClubWithSeason();
         $this->createSocleBlock($club, $season, ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'], 1);
 
-        $entryId = $this->postPeriod($user, 'closure', 'Gymnase en travaux');
+        // Fenêtre lun→dim ALIGNÉE (deux semaines pleines = un seul segment « milieu ») : « d'un
+        // bloc » reste permis sur une fermeture qui ne se décompose qu'en UN segment (fondateur 2026-09-05).
+        $entryId = $this->postPeriodDated($user, 'closure', 'Gymnase en travaux', '2026-10-19', '2026-11-01');
         $firstPlanId = $this->adaptPeriod($user, $entryId);
         $secondPlanId = $this->adaptPeriod($user, $entryId, 201);
         self::assertSame($firstPlanId, $secondPlanId, 'le geste rejoué rend le même plan');
@@ -309,7 +336,9 @@ final class PeriodPlanBirthTest extends WebTestCase
 
         // Mère CLOSURE (non adaptée : le geste = cocher la semaine) → l'enfant est CLOSURE.
         $closureMother = $this->postPeriodDated($user, 'closure', 'Gymnase en travaux', '2026-10-19', '2026-11-08');
-        $closureChild = $this->postWeekChild($user, $closureMother, '2026-10-19', '2026-10-25', 'closure');
+        // Le MILIEU ENTIER (fondateur 2026-09-05 : les semaines pleines d'une fermeture forment
+        // un seul plan) — une semaine complète isolée serait désormais refusée.
+        $closureChild = $this->postWeekChild($user, $closureMother, '2026-10-19', '2026-11-08', 'closure');
         $closureChildPlan = $this->planOf($club->getId(), $closureChild);
         self::assertInstanceOf(SchedulePlan::class, $closureChildPlan);
         self::assertSame(SchedulePlanType::CLOSURE, $closureChildPlan->getType());
@@ -332,7 +361,9 @@ final class PeriodPlanBirthTest extends WebTestCase
         [$user, $club, $season] = $this->createClubWithSeason();
         $this->createSocleBlock($club, $season, ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'], 1);
 
-        $entryId = $this->postPeriod($user, 'closure', 'Gymnase en travaux');
+        // Fenêtre lun→dim ALIGNÉE (deux semaines pleines = un seul segment « milieu ») : « d'un
+        // bloc » reste permis sur une fermeture qui ne se décompose qu'en UN segment (fondateur 2026-09-05).
+        $entryId = $this->postPeriodDated($user, 'closure', 'Gymnase en travaux', '2026-10-19', '2026-11-01');
         $planId = $this->adaptPeriod($user, $entryId);
         self::assertCount(1, $this->planBlocks($club->getId(), $planId));
 
@@ -780,7 +811,9 @@ final class PeriodPlanBirthTest extends WebTestCase
     public function testWeekChildIsRefusedInsideAWindowAlreadyPlannedByAnotherPeriod(): void
     {
         [$user] = $this->createClubWithSeason();
-        $incident = $this->postPeriodDated($user, 'closure', 'Gymnase indisponible', '2026-10-26', '2026-11-10');
+        // Fenêtre lun→dim ALIGNÉE (un seul segment) : « d'un bloc » permis (fondateur 2026-09-05) ;
+        // elle recoupe la fenêtre testée pour déclencher le refus « une seule planification ».
+        $incident = $this->postPeriodDated($user, 'closure', 'Gymnase indisponible', '2026-10-26', '2026-11-01');
         $this->adaptPeriod($user, $incident);
 
         $mere = $this->postPeriodDated($user, 'holiday', 'Vacances de Toussaint', '2026-10-19', '2026-11-02');
@@ -915,7 +948,9 @@ final class PeriodPlanBirthTest extends WebTestCase
     public function testASegmentIsRefusedInsideAWindowAlreadyPlannedByAnotherPeriod(): void
     {
         [$user] = $this->createClubWithSeason();
-        $incident = $this->postPeriodDated($user, 'closure', 'Gymnase indisponible', '2026-10-26', '2026-11-10');
+        // Fenêtre lun→dim ALIGNÉE (un seul segment) : « d'un bloc » permis (fondateur 2026-09-05) ;
+        // elle recoupe la fenêtre testée pour déclencher le refus « une seule planification ».
+        $incident = $this->postPeriodDated($user, 'closure', 'Gymnase indisponible', '2026-10-26', '2026-11-01');
         $this->adaptPeriod($user, $incident);
 
         $mere = $this->postPeriodDated($user, 'holiday', 'Vacances de Toussaint', '2026-10-19', '2026-11-08');

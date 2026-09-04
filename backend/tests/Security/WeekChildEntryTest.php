@@ -167,6 +167,88 @@ final class WeekChildEntryTest extends WebTestCase
         $this->postWeekChild($user, $motherId, 'closure', 'Semaine du 9 nov', '2026-11-09', '2026-11-15');
     }
 
+    /**
+     * NR (décision fondateur 2026-09-05), axe *planning lifecycle* : une indisponibilité (mère
+     * CLOSURE) se découpe en DÉBUT (semaine entamée de tête), MILIEU (semaines pleines contiguës) et
+     * FIN (semaine entamée de queue). Chaque bout est un enfant valide. Mère mer 11/11 → mar 24/11 :
+     * début = semaine du 09/11, milieu = semaine du 16/11, fin = semaine du 23/11.
+     */
+    public function testAClosureSplitsIntoStartMiddleEndSegments(): void
+    {
+        [$user] = $this->createClubWithSeason();
+        $motherId = $this->postPeriod($user, 'closure', 'Matéo en travaux', '2026-11-11', '2026-11-24');
+
+        $this->postWeekChild($user, $motherId, 'closure', 'Début', '2026-11-09', '2026-11-15');
+        $this->postWeekChild($user, $motherId, 'closure', 'Milieu', '2026-11-16', '2026-11-22');
+        $this->postWeekChild($user, $motherId, 'closure', 'Fin', '2026-11-23', '2026-11-29');
+    }
+
+    /**
+     * NR — le MILIEU est UN SEUL plan : jamais une semaine complète isolée, jamais un run tronqué.
+     * Mère lun 09/11 → dim 29/11 (3 semaines pleines contiguës = un seul milieu). Une semaine
+     * complète isolée (09/11→15/11) et un run non maximal (09/11→22/11) sont refusés ; seul le
+     * milieu ENTIER (09/11→29/11) est accepté.
+     */
+    public function testAClosureMiddleIsOneMaximalPlanNoIsolatedFullWeek(): void
+    {
+        [$user] = $this->createClubWithSeason();
+        $motherId = $this->postPeriod($user, 'closure', 'Travaux longs', '2026-11-09', '2026-11-29');
+
+        // Une semaine complète isolée du milieu → 422 (message parlant, pas d'identifiant interne).
+        $this->client->request('POST', '/api/calendar_entries', [], [], $this->authHeaders($user) + [
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode([
+            'kind' => 'period', 'title' => 'Semaine isolée', 'startDate' => '2026-11-09', 'endDate' => '2026-11-15',
+            'periodType' => 'closure', 'parentEntryId' => $motherId,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('un seul plan', (string) $this->client->getResponse()->getContent());
+
+        // Un run non maximal (2 des 3 semaines pleines) → 422.
+        $this->postWeekChildExpecting(422, $user, $motherId, 'closure', 'Run tronqué', '2026-11-09', '2026-11-22');
+
+        // Le milieu ENTIER → 201.
+        $this->postWeekChild($user, $motherId, 'closure', 'Milieu entier', '2026-11-09', '2026-11-29');
+    }
+
+    /**
+     * NR — un enfant ne MÉLANGE jamais partiel et complet. Mère mer 11/11 → dim 29/11 : début =
+     * semaine du 09/11 (entamée), milieu = semaines du 16/11 au 29/11. Un enfant qui recouvre le
+     * début + une semaine du milieu (09/11→22/11) est refusé ; début seul et milieu seul passent.
+     */
+    public function testAClosureChildNeverMixesPartialAndFullWeeks(): void
+    {
+        [$user] = $this->createClubWithSeason();
+        $motherId = $this->postPeriod($user, 'closure', 'Travaux mélange', '2026-11-11', '2026-11-29');
+
+        // Début (partiel) + une semaine du milieu → mélange → 422.
+        $this->postWeekChildExpecting(422, $user, $motherId, 'closure', 'Mélange', '2026-11-09', '2026-11-22');
+
+        // Le début seul et le milieu seul sont des segments valides (201).
+        $this->postWeekChild($user, $motherId, 'closure', 'Début seul', '2026-11-09', '2026-11-15');
+        $this->postWeekChild($user, $motherId, 'closure', 'Milieu seul', '2026-11-16', '2026-11-29');
+    }
+
+    /**
+     * NR — un TROU de vacances (lun→ven couvert) au milieu d'une fermeture coupe le milieu en DEUX
+     * runs, chacun un plan. Mère lun 09/11 → dim 29/11 ; des vacances gouvernent la semaine du 16/11.
+     * Le milieu ENTIER (09/11→29/11) est refusé ; les deux runs (09/11→15/11 et 23/11→29/11) passent.
+     */
+    public function testAClosureHolidayHoleYieldsTwoMiddleRuns(): void
+    {
+        [$user] = $this->createClubWithSeason();
+        $motherId = $this->postPeriod($user, 'closure', 'Travaux à trou', '2026-11-09', '2026-11-29');
+        // Une vacance racine couvre la semaine du 16/11 (lun→ven) : elle sort de l'offre fermeture.
+        $this->postPeriod($user, 'holiday', 'Vacances au milieu', '2026-11-16', '2026-11-22');
+
+        // Le milieu ENTIER n'existe plus (le trou l'a coupé) → 422.
+        $this->postWeekChildExpecting(422, $user, $motherId, 'closure', 'Milieu entier', '2026-11-09', '2026-11-29');
+
+        // Les deux runs de part et d'autre du trou → 201 chacun.
+        $this->postWeekChild($user, $motherId, 'closure', 'Run 1', '2026-11-09', '2026-11-15');
+        $this->postWeekChild($user, $motherId, 'closure', 'Run 2', '2026-11-23', '2026-11-29');
+    }
+
     public function testAWeekChildCannotItselfBeSplit(): void
     {
         [$user] = $this->createClubWithSeason();
@@ -211,7 +293,9 @@ final class WeekChildEntryTest extends WebTestCase
     public function testABlockGeneratedMotherRefusesWeekSplitting(): void
     {
         [$user, $club, $season] = $this->createClubWithSeason();
-        $motherId = $this->postPeriod($user, 'closure', 'Travaux déjà adaptés', '2026-11-12', '2026-11-18');
+        // Fenêtre lun→dim ALIGNÉE (un seul segment « milieu ») : « d'un bloc » reste permis sur une
+        // fermeture qui ne se décompose qu'en UN segment (décision fondateur 2026-09-05).
+        $motherId = $this->postPeriod($user, 'closure', 'Travaux déjà adaptés', '2026-11-09', '2026-11-15');
         $this->adaptPeriod($user, $motherId); // le plan-bloc naît du geste (amendement 2026-07-24)
         $motherPlan = $this->planOf($club->getId(), $motherId);
         self::assertInstanceOf(SchedulePlan::class, $motherPlan);
@@ -241,7 +325,8 @@ final class WeekChildEntryTest extends WebTestCase
     public function testASplitMotherRefusesBlockGeneration(): void
     {
         [$user, $club] = $this->createClubWithSeason();
-        $motherId = $this->postPeriod($user, 'closure', 'Travaux découpés', '2026-11-12', '2026-11-18');
+        // Fenêtre lun→dim ALIGNÉE (un seul segment) : « d'un bloc » permis, puis découpé.
+        $motherId = $this->postPeriod($user, 'closure', 'Travaux découpés', '2026-11-09', '2026-11-15');
         $motherPlanId = $this->adaptPeriod($user, $motherId); // chemin bloc commencé…
         $this->postWeekChild($user, $motherId, 'closure', 'Semaine 1', '2026-11-09', '2026-11-15'); // …puis découpé
         self::assertNull($this->planOf($club->getId(), $motherId), 'la découpe a supprimé le plan-bloc');

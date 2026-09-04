@@ -108,6 +108,11 @@ final class FrontRederivationRegistryTest extends TestCase
             'backendTruth' => 'App\\Service\\HolidayWorkweekRule::covers (garde du POST d\'une semaine-enfant de vacances)',
             'parityTest' => 'HolidayWorkweekMirrorParityTest.php',
         ],
+        'features/cockpit/lib/weekSegmentation.ts' => [
+            'decides' => 'le découpage d\'une indisponibilité en segments début·milieu·fin (un segment coché = un plan)',
+            'backendTruth' => 'App\\Service\\WeekSegmentationRule::segments (garde du POST d\'une semaine-enfant de fermeture et du geste « d\'un bloc »)',
+            'parityTest' => 'WeekSegmentationMirrorParityTest.php',
+        ],
     ];
 
     /**
