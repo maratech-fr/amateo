@@ -20,7 +20,8 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * (not loginUser). A brand-new club is empty (isolation), the manager enters the
  * minimum (team + gym slot + coach), creates a schedule and launches generation:
  * the club becomes onboarded and the schedule is queued. The COMPLETED plan
- * itself (engine solve) is covered by scripts/onboarding-smoke.sh.
+ * itself (engine solve) is covered by the Behat feature
+ * inscription-et-premier-planning.feature.
  */
 #[Group('phase1')]
 #[Group('integration')]
