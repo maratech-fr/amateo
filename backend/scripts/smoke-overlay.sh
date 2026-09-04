@@ -57,7 +57,7 @@ source "$SCRIPT_DIR/lib/sandbox-guard.sh"
 
 info "minting a dev token for $USER_EMAIL"
 TOKEN=$(php "php bin/console lexik:jwt:generate-token $USER_EMAIL --ttl=3600 --user-class='App\\Entity\\User'" | tr -d '[:space:]')
-[ -n "$TOKEN" ] || die "could not mint a JWT (run smoke-solver.sh once to seed the dev fixtures)"
+[ -n "$TOKEN" ] || die "could not mint a JWT (run `make -C backend behat` once — it seeds the dev fixtures)"
 auth=(-H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json")
 
 CLUB_ID=$(curl -sf "$API_BASE/me" "${auth[@]}" | jget club.id)
@@ -69,7 +69,7 @@ POINTER_SET_BY_SMOKE=0
 if [ -z "$CHOSEN" ]; then
   info "settling the season plan pointer (restored on exit)"
   SCHEDULE_ID=$(psql_dev "SELECT id FROM schedule WHERE club_id='$CLUB_ID' AND status='COMPLETED' AND schedule_plan_id=(SELECT id FROM schedule_plan WHERE club_id='$CLUB_ID' AND type='SEASON') ORDER BY created_at DESC LIMIT 1")
-  [ -n "$SCHEDULE_ID" ] || die "no COMPLETED season schedule — run smoke-solver.sh first"
+  [ -n "$SCHEDULE_ID" ] || die "no COMPLETED season schedule — run `make -C backend behat` first"
   psql_dev "UPDATE schedule_plan SET chosen_schedule_id='$SCHEDULE_ID' WHERE club_id='$CLUB_ID' AND type='SEASON'" >/dev/null
   POINTER_SET_BY_SMOKE=1
 fi

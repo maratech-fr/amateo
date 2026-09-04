@@ -11,7 +11,7 @@
 # par défaut — c'est le fait de l'invoquer qui vaut opt-in.
 #
 # Usage :  backend/scripts/with-sandbox.sh <commande…>
-#   ex.  backend/scripts/with-sandbox.sh ./scripts/smoke-solver.sh
+#   ex.  backend/scripts/with-sandbox.sh make -C backend behat
 #
 # Garanties :
 #   - Si le mode play était actif (backend/.env.local présent), il est suspendu

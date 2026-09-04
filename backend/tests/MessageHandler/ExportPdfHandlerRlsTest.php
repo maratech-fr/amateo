@@ -31,7 +31,7 @@ use Symfony\Component\Mercure\Update;
  * The GUC is cleared before invoking the handler: if the handler stops setting
  * it, findSchedule() comes back empty and the status assertion fails.
  * (GenerateScheduleHandler uses the identical pattern and is exercised
- * end-to-end under RLS by backend/scripts/smoke-solver.sh.)
+ * end-to-end under RLS by the Behat feature `backend/features/generation-du-planning-de-saison.feature`.)
  */
 #[Group('phase1')]
 #[Group('integration')]

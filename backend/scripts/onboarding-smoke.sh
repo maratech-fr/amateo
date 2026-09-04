@@ -2,7 +2,7 @@
 # Onboarding end-to-end smoke: register a brand-new club, enter the MINIMUM
 # (1 team + 1 gym with a slot + 1 coach), generate, and assert a COMPLETED plan.
 # Mirrors "I create my account, do the minimum, generate, and get my planning".
-# Complements smoke-solver.sh (which reuses the pre-seeded fixtures club).
+# Complements the Behat feature « génération du planning de saison » (which reuses the pre-seeded fixtures club).
 set -euo pipefail
 
 API="${API_BASE:-http://localhost:8080/api}"
@@ -25,7 +25,7 @@ EMAIL="onb-$ARA@smoke.fr"
 # the JWT itself comes back as an httpOnly cookie, not in the JSON body.
 # Async generation needs a CONSUMING worker: a queued message nobody consumes
 # leaves the schedule PENDING forever (the smoke then times out on a healthy
-# solver). Same guarantee as smoke-solver.sh — every smoke stands alone.
+# solver). Same guarantee as the Behat features — every smoke stands alone.
 docker compose -f "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/docker-compose.yml" up -d messenger-worker >/dev/null 2>&1 || true
 
 info "register new club $ARA (deferred verification)"
