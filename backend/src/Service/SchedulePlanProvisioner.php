@@ -336,6 +336,43 @@ final class SchedulePlanProvisioner
     }
 
     /**
+     * D3 v1 (décision fondateur 2026-09-04) — RE-DATER une racine CLOSURE « d'un bloc » déplace
+     * la fenêtre de son plan sur les nouvelles dates de l'entrée. Le plan reste un gabarit hebdo
+     * SANS dates ; seule sa fenêtre (start/end) bouge, comme {@see syncSeasonPlan} pour le socle —
+     * rien n'orpheline, le build recoupe le gabarit à la nouvelle fenêtre. Appelé SOUS le verrou de
+     * plan-scope pris par l'appelant (CalendarEntryStateProcessor::processPut). No-op si l'entrée
+     * ne porte pas de plan. SQL brut, comme toute écriture de plan ici : `season_filter` épingle les
+     * lectures ORM à la saison active, or un plan peut vivre pour une autre saison ; RLS scope le club.
+     */
+    public function resyncPeriodPlanWindow(string $calendarEntryId, DateTimeImmutable $start, DateTimeImmutable $end): void
+    {
+        $this->entityManager->getConnection()->executeStatement(
+            'UPDATE schedule_plan SET start_date = :start, end_date = :end, updated_at = now(), version = version + 1 '
+            . 'WHERE calendar_entry_id = :eid',
+            ['start' => $start, 'end' => $end, 'eid' => $calendarEntryId],
+            ['start' => Types::DATETIMETZ_IMMUTABLE, 'end' => Types::DATETIMETZ_IMMUTABLE],
+        );
+    }
+
+    /**
+     * D3 v1 — recale le NOM du plan de période sur le nouveau titre de l'entrée, MAIS seulement
+     * s'il porte encore l'ancien titre (le WHERE `name = :old`). Inv. 12 : le nom du plan naît du
+     * titre de l'entrée et un renommage manuel reste souverain — un plan déjà renommé à la main ne
+     * porte plus l'ancien titre, la garde le laisse donc intact. No-op si les deux noms coïncident.
+     */
+    public function renamePeriodPlanIfStillNamed(string $calendarEntryId, string $oldName, string $newName): void
+    {
+        if ($oldName === $newName) {
+            return;
+        }
+        $this->entityManager->getConnection()->executeStatement(
+            'UPDATE schedule_plan SET name = :new, updated_at = now(), version = version + 1 '
+            . 'WHERE calendar_entry_id = :eid AND name = :old',
+            ['new' => $newName, 'old' => $oldName, 'eid' => $calendarEntryId],
+        );
+    }
+
+    /**
      * Sérialise tout ce qui touche au plan d'un scope (une période, ou la saison).
      * Verrou de TRANSACTION : relâché au commit, ré-entrant (le reprendre plus bas
      * dans la même transaction est un no-op).

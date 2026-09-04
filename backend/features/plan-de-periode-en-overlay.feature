@@ -19,3 +19,9 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
     Et je libère un membre d'un bloc partagé en supprimant sa séance transcrite
     Quand je lance le remplissage de la période
     Alors le remplissage aboutit et le membre libéré partage de nouveau la case de son partenaire épinglé
+
+  Scénario: Je re-date l'incident : le plan survit et sa version est marquée à régénérer
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une fermeture à venir avec une version overlay aboutie
+    Quand je prolonge la fermeture de deux semaines
+    Alors la période porte les nouvelles dates, son plan aussi, la version existe toujours et le planning est signalé à régénérer
