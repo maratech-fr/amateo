@@ -9,7 +9,7 @@ import { toast } from "@/shared/stores/toastStore";
 import type { CalendarEntry, CalendarEntryPeriodType, PlannedWindow, SchedulePlan } from "../api";
 import { WindowAlreadyPlannedError } from "../api";
 import { useCalendarEntries, useCreateHolidayPeriod, useCreatePeriodPlan, useCreateWeekChildren, usePlannedWindows, useSchedulePlans, useSchoolHolidays, type PlannedWindowsRef, type WeekChildrenResult } from "../queries";
-import { closureWeeksOffer, holidayWindows, periodWeeksToAdjust, subtractPlannedWeeks, todayISO, type ClosureWeeksOffer, type WeekSegment, type WeekWindow } from "./date";
+import { closureWeeksOffer, holidayWindows, periodWeeksToAdjust, segmentsFromOffer, subtractPlannedWeeks, todayISO, type ClosureWeeksOffer, type WeekSegment, type WeekWindow } from "./date";
 
 /**
  * L'offre servie au picker : les semaines offertes + les blocs vacances écartés (P2-40) + les
@@ -239,9 +239,13 @@ export function useWeekAdapt(adapt: (entryId: string) => void, childrenResolved 
     const offer = offerFor(startDate, endDate, periodType);
     const holidayCovered = offer.excludedRanges.length > 0;
     const totalWeeks = null === workingSeason ? 0 : periodWeeksToAdjust(startDate, endDate, workingSeason, periodType, todayISO()).length;
-    // Fermeture aux vacances non résolues : on force `multiWeek` pour ne PAS court-circuiter en
-    // single-week — la décision retombe alors sur « chargement » (le picker s'ouvre et le dit).
-    const multiWeek = isClosure && !holidayResolved ? true : totalWeeks > 1;
+    // FERMETURE (règle fondateur 2026-09-05) : « d'un bloc » n'est direct que si la fenêtre se
+    // décompose en UN SEUL segment (une semaine alignée lun→dim, un bout entamé, OU un milieu
+    // aligné lun→dim). Dès qu'elle compte ≥2 segments (début·milieu·fin), le picker s'ouvre pour
+    // les créer un à un — miroir de la garde backend WeekSegmentationRule. Aux vacances non
+    // résolues, on force `multiWeek` pour ne PAS court-circuiter en single-week (la décision
+    // retombe sur « chargement »). Les autres types gardent le compte de semaines historique.
+    const multiWeek = isClosure ? (!holidayResolved || segmentsFromOffer(offer.offered, startDate, endDate).length > 1) : totalWeeks > 1;
     return decideWeekAdapt({ multiWeek, alreadySplit, resolved, blockGenerated, holidayCovered });
   };
 
@@ -259,7 +263,15 @@ export function useWeekAdapt(adapt: (entryId: string) => void, childrenResolved 
       return false;
     }
     const offer = offerFor(startDate, endDate, periodType);
-    return periodWeeksToAdjust(startDate, endDate, workingSeason, periodType, todayISO()).length > 1 || offer.excludedRanges.length > 0;
+    if (offer.excludedRanges.length > 0) {
+      return true;
+    }
+    // FERMETURE : le picker s'ouvre dès que le découpage compte ≥2 segments (début·milieu·fin) ;
+    // un seul segment (semaine alignée, bout entamé, milieu aligné) reste sur le chemin direct.
+    if ("closure" === periodType) {
+      return segmentsFromOffer(offer.offered, startDate, endDate).length > 1;
+    }
+    return periodWeeksToAdjust(startDate, endDate, workingSeason, periodType, todayISO()).length > 1;
   };
   // P2-38 — le refus de chevauchement affiché à l'endroit du geste (picker ouvert → dans le
   // picker ; sinon → dans l'encart). Un seul état : les deux cas s'excluent (un refus de picker

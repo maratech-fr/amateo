@@ -47,6 +47,33 @@ describe("WeekPickerDialog (P2-5 E1)", () => {
     }
     expect(screen.getByRole("button", { name: /créer/i })).toBeDisabled();
   });
+
+  // Découpage début·milieu·fin (fondateur 2026-09-05) : pour une FERMETURE, Scinder/Fusionner
+  // disparaissent (le serveur ne validerait pas une frontière libre) mais les segments imposés
+  // restent COCHABLES ; les VACANCES gardent l'édition manuelle.
+  it("fermeture : Scinder et Fusionner absents, les segments imposés restent cochables", async () => {
+    // Milieu aligné lun→dim (un segment multi-semaines) : Scinder apparaîtrait s'il était permis.
+    const aligned = render(<WeekPickerDialog title={mother.title} startDate="2026-11-09" endDate="2026-11-22" weeks={weeks} periodType="closure" busy={false} onPickSegments={vi.fn()} onAdaptWhole={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /scinder/i })).toBeNull();
+    // Le segment imposé reste cochable.
+    expect(screen.getByRole("checkbox")).toBeChecked();
+    aligned.unmount();
+
+    // Deux segments entamés (12→18) : Fusionner apparaîtrait sur le second s'il était permis.
+    render(<WeekPickerDialog title={mother.title} startDate="2026-11-12" endDate="2026-11-18" weeks={weeks} periodType="closure" busy={false} onPickSegments={vi.fn()} onAdaptWhole={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /fusionner/i })).toBeNull();
+  });
+
+  it("vacances : Scinder et Fusionner restent offerts", () => {
+    // Milieu aligné → Scinder offert.
+    const aligned = render(<WeekPickerDialog title={mother.title} startDate="2026-11-09" endDate="2026-11-22" weeks={weeks} periodType="holiday" busy={false} onPickSegments={vi.fn()} onAdaptWhole={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /scinder/i })).toBeInTheDocument();
+    aligned.unmount();
+
+    // Deux segments → Fusionner offert sur le second.
+    render(<WeekPickerDialog title={mother.title} startDate="2026-11-12" endDate="2026-11-18" weeks={weeks} periodType="holiday" busy={false} onPickSegments={vi.fn()} onAdaptWhole={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /fusionner/i })).toBeInTheDocument();
+  });
 });
 
 // P2-38 PR3 — un refus « une seule planification par fenêtre » (409 window_already_planned) sur la

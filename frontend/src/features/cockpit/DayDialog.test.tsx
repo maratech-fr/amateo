@@ -810,13 +810,27 @@ describe("DayDialog — fermeture chevauchant des vacances (P2-40)", () => {
     expect(screen.queryByRole("button", { name: /consigner l'indisponibilité/i })).not.toBeInTheDocument();
   });
 
-  it("témoin : la même fermeture SANS vacances garde le chemin d'un bloc (comportement inchangé)", async () => {
+  // Règle début·milieu·fin (fondateur 2026-09-05) : une fermeture ALIGNÉE lun→dim (un seul segment
+  // « milieu ») part DIRECTEMENT d'un bloc — pas de picker. La fermeture 11→31 mai est Mon→Sun.
+  it("témoin : une fermeture alignée lun→dim (un seul segment) part directement d'un bloc, sans picker", async () => {
     renderDialog([spanning()]);
 
     await userEvent.click(screen.getByRole("button", { name: "Adapter" }));
 
+    await waitFor(() => expect(periodPlanMutateAsync).toHaveBeenCalledWith("cl1"));
+    expect(screen.queryByText("Quelles semaines ajuster ?")).not.toBeInTheDocument();
+  });
+
+  // Une fermeture À SEMAINE ENTAMÉE (mardi 12 → dimanche 31 : début partiel + milieu) OUVRE le
+  // picker, et le chemin « d'un bloc » y est DÉSACTIVÉ (le serveur refuserait un bloc à semaine
+  // entamée — WeekSegmentationRule). Découpage début·milieu·fin imposé.
+  it("témoin : une fermeture à semaine entamée ouvre le picker, chemin d'un bloc désactivé", async () => {
+    renderDialog([spanning({ startDate: "2026-05-12" })]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Adapter" }));
+
     expect(screen.getByText("Quelles semaines ajuster ?")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Adapter toute la période d'un bloc/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Adapter toute la période d'un bloc/i })).toBeDisabled();
     expect(screen.queryByText(/couvertes par/)).not.toBeInTheDocument();
   });
 });
