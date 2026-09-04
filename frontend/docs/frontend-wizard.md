@@ -1,6 +1,10 @@
 # Wizard — saisie des données (tranche 3, LIVRÉ)
 
-Last verified @ 2026-09-03 (P2-60 PR-2, `documentation-update`. Recalé sur le picker de l'onglet Réserver : le plafond `sessionsPerWeek` redérivé localement a disparu, remplacé par le budget solo SERVI (`GET /api/team_solo_budgets`, `useTeamSoloBudgets`) — confronté à `frontend/src/features/wizard/lib/reservationSlots.ts`, `steps/SlotReservationModal.tsx` et `steps/ReservationPanel.tsx`. Reste du fichier non re-contrôlé ligne à ligne cette passe — un stamp REMPLACE, l'historique vit dans git)
+Last verified @ 2026-09-04 (rotation `documentation-update`, P4-165 — `onboarding-smoke.sh` cité en
+garantie de l'onboarding remplacé par la feature Behat `inscription-et-premier-planning.feature`,
+confronté à `backend/features/inscription-et-premier-planning.feature` et `ls backend/scripts/`
+(le `.sh` n'existe plus). Reste du fichier (P2-60 PR-2, picker Réserver) non re-contrôlé ligne à
+ligne cette passe — un stamp REMPLACE, l'historique vit dans git)
 
 > ⚠️ **Réalité livrée — canonique.** Le draft "4 étapes" plus bas est **historique/superseded** : le wizard a été reconstruit dans `frontend/src/features/wizard` avec un flux plus granulaire, décidé avec le PO. Les sections 1+ ci-dessous ne décrivent plus l'implémentation.
 
@@ -34,7 +38,7 @@ Last verified @ 2026-09-03 (P2-60 PR-2, `documentation-update`. Recalé sur le p
 - **Tenant** : le front n'envoie **aucun** header `X-Club-Id` (club résolu serveur depuis le JWT — voir `backend/docs/TENANT.md`).
 - **URIs API** : snake_case (`/api/team_coaches`, `/api/venue_training_slots`, `/api/sport_categories`, `/api/priority_tiers`…), **pas** les tirets du draft.
 - **Différé (évolution)** : import Excel/CSV, mode démo, fermetures exceptionnelles, rôles non-admin & gestion des membres — suivis en roadmap (**P3-7**, **P2-4**, **P1-1**) ; la transition de saison est livrée ([`etat-des-lieux.md`](../../specs/courantes/etat-des-lieux.md) §1.7).
-- Garanti par : `backend/tests/.../OnboardingFlowTest`, `backend/scripts/onboarding-smoke.sh`, `frontend/.../WizardPage.test`.
+- Garanti par : `backend/tests/.../OnboardingFlowTest`, feature Behat `backend/features/inscription-et-premier-planning.feature` (remplace `onboarding-smoke.sh`, supprimé — P4-165), `frontend/.../WizardPage.test`.
 
 ---
 

@@ -61,10 +61,10 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   unique, gardée par `BlockingTestsListMatchesCiTest` (⇄ `ci.yml`, les deux sens). Ce que chaque
   test garde en détail : **son propre docblock**.
 - Jobs sans `needs` mais **required checks de `main`** : `rector` (style gate) ·
-  `dependency-audit` · `secrets-scan` · `semgrep` · `smoke-tests` (4 smokes sémantiques) ·
-  `engine-semantics` (groupe `contract` cross-stack) · `functional-tests` (Behat, Gherkin FR —
-  required check à ajouter côté GitHub, comme `engine-semantics`). `build-docker` needs
-  **[blocking-tests, engine-tests] only**.
+  `dependency-audit` · `secrets-scan` · `semgrep` · `engine-semantics` (groupe `contract`
+  cross-stack) · `functional-tests` (Behat, Gherkin FR, 5 features — remplace intégralement les
+  smokes bash, supprimés, P4-165 — required check à ajouter côté GitHub, comme `engine-semantics`).
+  `build-docker` needs **[blocking-tests, engine-tests] only**.
 
 ## 5. Conventions (core — détail par zone dans `.claude/rules/`)
 
@@ -80,7 +80,7 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   providers ; le listener retourne immédiatement sur `/api/admin/**`. → `backend/docs/TENANT.md`
   + `docs/security/rls.md`.
 - **JWT applicatif en cookie httpOnly** — `Secure` piloté par `JWT_COOKIE_SECURE`, **jamais
-  `isSecure()`** ; Bearer accepté pour scripts/smokes. → `docs/security/jwt-cookie.md`.
+  `isSecure()`** ; Bearer accepté pour scripts/Behat. → `docs/security/jwt-cookie.md`.
 - **Superadmin SA0** : identité globale séparée, firewall stateful `/api/admin/**`, TOTP ; un JWT
   club ne franchit jamais ce firewall, la session admin ne pose jamais `app.club_id`. →
   `specs/courantes/superadmin-auth.md`.
@@ -131,8 +131,9 @@ branche puis PR ; **JAMAIS de merge sans le GO explicite du user** ; push libre,
 4. **NR obligatoire si axe §7.1 touché — même PR.** ⚠ `phase1` ne gate pas (§4) : un NR qui doit
    gater = step `ci.yml` **ET** ligne `docs/testing/blocking-tests.md`, même PR — sinon le dire.
 5. **Tests verts en local avant de proposer le merge** : `/validation-runner` (suite ciblée +
-   contrats cross-zone + **`make -C backend behat` (feature génération de saison) obligatoire si
-   engine/backend touché**, `COMPLETED` attendu).
+   contrats cross-zone + **`make -C backend behat` obligatoire si engine/backend touché** — la
+   feature pertinente dépend de la zone touchée, table `.claude/skills/validation-runner/SKILL.md`,
+   `COMPLETED` attendu).
 6. Résumé + **`documentation-update` (avant CHAQUE PR, les deux lanes)** — « rien d'impacté » se
    conclut en regardant, jamais en supposant.
 7. **`/code-review` : le fondateur seul le déclenche.** **`/security-review` RESTE systématique**

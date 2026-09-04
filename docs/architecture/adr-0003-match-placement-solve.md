@@ -85,5 +85,7 @@ aucun HARD + diagnostic INFO ; durcissement = dette roadmap (iv), PR E).
 
 - L'engine porte deux problèmes : gabarit hebdo (gros, async) et placement daté (petit, sync).
 - Tout changement de poids est un changement de PRODUIT : golden à ré-épingler consciemment.
-- NR : sémantique (`test_match_placement_semantics.py`), golden, contrat (phase1),
-  `smoke-place-matches.sh` (sens du placement de bout en bout), smoke hebdo (le planning survit au 2.2).
+- NR : sémantique (`test_match_placement_semantics.py`), golden, contrat (phase1), feature Behat
+  `placement-des-matchs.feature` (sens du placement de bout en bout, a remplacé
+  `smoke-place-matches.sh` — P4-165), feature `generation-du-planning-de-saison.feature` (le
+  planning hebdo survit au 2.2).

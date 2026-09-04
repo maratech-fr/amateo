@@ -1,13 +1,13 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-09-02 (lot overlay Mateo PR-1, `documentation-update`). Exemple de nom de
-plan de fermeture recalé (l'ancien incident « travaux — semaines du 7 sept. » remplacé par
-« Matéo indisponible (incident) — du 31 août 2026 au 16 oct. 2026 », D2). Re-confronté au code :
-`SchedulePlanProvisioner::ensurePeriodPlanId` (**:716**, recalé de :714) ✓ ·
-`TranscribePeriodPlanController` (`POST /api/schedule_plans/{id}/transcribe-from-socle`) existe ✓ ·
-défaut auto-transcription sur fermeture au front (`GenerateStep.tsx:52`, `"closure" === periodType`) ✓ ·
-`PeriodWindowUniquenessGuard` maison du 409 `window_already_planned` ✓. **Nouveau (D10bis)** : la
-naissance d'un plan de FERMETURE copie aussi les blocs de mutualisation du socle.
+Last verified @ 2026-09-04 (rotation `documentation-update`, P4-165 — fichier hors sujet de la PR,
+sondage des stamps les plus anciens du dépôt). Re-confronté au code, tout juste : `SchedulePlanProvisioner::ensurePeriodPlanId`
+(`backend/src/Service/SchedulePlanProvisioner.php:716`) ✓ · `TranscribePeriodPlanController`
+(`POST /api/schedule_plans/{id}/transcribe-from-socle`, `TranscribePeriodPlanController.php:52`)
+existe ✓ · défaut auto-transcription sur fermeture au front (`GenerateStep.tsx:52`,
+`"closure" === periodEntry?.periodType`) ✓ · `PeriodWindowUniquenessGuard` existe
+(`backend/src/Service/PeriodWindowUniquenessGuard.php:36`) ✓. Reste du fichier (E1-E6, D1-D10bis,
+historique des décisions) non re-confronté ligne à ligne cette passe.
 
 > **Rôle de ce document** : la trace durable du modèle métier des plannings, validé avec le
 > fondateur le 2026-07-12. C'est LA référence à consulter avant tout travail sur la

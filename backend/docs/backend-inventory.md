@@ -3,15 +3,14 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-03 (P2-60 PR-1 — budget solo aux deux portes de mutualisation,
-`documentation-update`). Re-confronté au code cette passe : `ReservationGroupOccupancy::assertSoloBudgetAllows`
-(`backend/src/Service/ReservationGroupOccupancy.php:200`, appelée par `assertIndividualReservationAllowed:159`)
-✓ · `SoloReservationBudget` MAISON UNIQUE de R(T) = S(T) − B(T), trois consommateurs
-(`backend/src/Service/SoloReservationBudget.php:33`) ✓ · `SharedTrainingBlockStateProcessor::assertBlockValid`
-substitue `SoloReservationBudget::forTeamsWithBlockSubstituted` à l'ancien calcul local (garde Σ + garde
-overflow, `SharedTrainingBlockStateProcessor.php:167-188`) ✓ · ressource lecture seule `TeamSoloBudget`
-(`GET /api/team_solo_budgets`, `TeamSoloBudgetResource.php:24` + `TeamSoloBudgetStateProvider.php:32`) ✓ ·
-snapshot OpenAPI régénéré, 191 paths (§OpenAPI, vérifié séparément). **PR-2 frontend (sélecteur de
+Last verified @ 2026-09-04 (rotation `documentation-update`, P4-165 — recalage de l'extracteur
+Bearer : contexts Behat au lieu des smokes bash supprimés). Reconfirmé : `backend/tests/Behat/
+BaseContext.php:63` (`mintToken`, jeton `lexik:jwt:generate-token` porté en `Bearer`) ✓. ⚠
+Vérification volontairement ÉTROITE : le reste de l'inventaire (P2-60 PR-1 — budget solo aux deux
+portes de mutualisation, `ReservationGroupOccupancy::assertSoloBudgetAllows`,
+`SoloReservationBudget`, `SharedTrainingBlockStateProcessor::assertBlockValid`, `TeamSoloBudget`,
+snapshot OpenAPI…) n'a pas été reconfronté au code ce jour — historique des passes :
+`git log -p --follow backend/docs/backend-inventory.md`. **PR-2 frontend (sélecteur de
 Réservation) livrée le 2026-09-03 — lot P2-60 SOLDÉ ENTIER**, comportement gradué dans
 `frontend/docs/frontend-wizard.md` §1 (item 4). Reste de l'inventaire non re-vérifié cette passe.
 Un stamp REMPLACE, l'historique vit dans git.
@@ -620,8 +619,9 @@ Détail : [`vacances-scolaires-jours-feries.md`] et roadmap. Bascule de saison a
   `username_path: email`, `password_path: password`. Succès/échec gérés par Lexik.
 - **SEC-16 — le jeton voyage en cookie httpOnly** : `set_cookies.BEARER` + `token_extractors.cookie`
   (`config/packages/lexik_jwt_authentication.yaml`). L'extracteur `authorization_header` reste
-  ACTIF : scripts d'ops, smokes et helpers e2e ne sont pas des navigateurs et continuent en
-  `Bearer`. `Secure` piloté par `JWT_COOKIE_SECURE` (défaut `true`, fail-closed).
+  ACTIF : scripts d'ops, contexts Behat (`backend/tests/Behat/BaseContext::mintToken`) et helpers
+  e2e ne sont pas des navigateurs et continuent en `Bearer`. `Secure` piloté par
+  `JWT_COOKIE_SECURE` (défaut `true`, fail-closed).
   Contrat + pièges : [`jwt-cookie.md`](../../docs/security/jwt-cookie.md).
 - Firewall `api` (`^/api`) : `stateless: true`, `provider: app_user_provider`, `jwt: ~`.
 - Provider : `app_user_provider` (entity `App\Entity\User`, property `email`).
