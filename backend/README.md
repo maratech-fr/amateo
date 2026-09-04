@@ -158,6 +158,7 @@ make phpstan          # PHPStan seul (niveau 8)
 make cs-fix           # CS-Fixer (auto-format)
 make db-init-test     # crée + migre la base de TEST (requis avant `make phpunit`)
 make phpunit          # PHPUnit --group phase1 (le gate bloquant)
+make behat            # Tests fonctionnels Gherkin FR (API réelle, features/) — with-sandbox.sh en mode play
 make coverage         # Couverture (pcov) + cliquet coverage-floor.json (commands.md)
 make db-init          # crée + migre la base de dev — idempotent, ne détruit rien
 make db-empty         # drop + recreate + migre la base de dev VISÉE (DESTRUCTIF, gardé — commands.md)
@@ -221,7 +222,7 @@ backend/
 | Doc / script | Contenu |
 |--------------|---------|
 | [`scripts/generate-schedule.sh`](scripts/generate-schedule.sh) | **Guide pratique** — pilote create → generate → poll une génération via l'API (vraie aide pour tester/déboguer le flux). |
-| [`scripts/smoke-solver.sh`](scripts/smoke-solver.sh) | Vérif end-to-end : assure qu'un planning atteint `COMPLETED` (garde-fou solveur, utilisé en validation). |
+| [`features/generation-du-planning-de-saison.feature`](features/generation-du-planning-de-saison.feature) | Test fonctionnel Behat (Gherkin FR) : assure qu'un planning atteint `COMPLETED` via le rail async réel (garde-fou solveur, `make behat`). Remplace l'ancien `scripts/smoke-solver.sh`. |
 | [`scripts/onboarding-smoke.sh`](scripts/onboarding-smoke.sh) | Flux club neuf : register → données minimales → generate → `COMPLETED`. |
 | [`docs/TENANT.md`](docs/TENANT.md) | **Isolation multi-tenant** (cœur sécurité) — `TenantFilter` + `TenantFilterListener` (priorité 7, après le firewall) + résolution du club depuis le JWT. |
 | [`docs/RLS.md`](docs/RLS.md) | PostgreSQL Row-Level Security : rôles DB, policies, activation sur une nouvelle table. |

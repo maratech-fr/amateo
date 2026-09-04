@@ -5,6 +5,28 @@
 > l'upgrade apporte, et ce qu'il a fallu adapter chez nous. But : comprendre les mises à jour,
 > pas les subir. Ordre antichronologique.
 
+## 2026-09-04 — behat/behat 3.32 (backend, hors Dependabot — P4-165 palier 1)
+
+**C'est quoi** : `behat/behat` (^3, v3.32.0 installée), le runner de tests fonctionnels Gherkin —
+un scénario `Étant donné / Quand / Alors` écrit en français devient un test PHP exécutable. Ajouté
+en `require-dev` du backend, pas par Dependabot : décision produit (le fondateur veut relire des
+scénarios métier avant le code).
+
+**Ça apporte** : la première couche de tests fonctionnels **lisible par un non-développeur**. La
+config vit dans `backend/behat.dist.php` (Gherkin `# language: fr`, une seule suite `generation`
+pour l'instant), les features dans `backend/features/`, les contexts dans `backend/tests/Behat/`.
+
+**Adapté chez nous** : les contexts (`BaseContext`, `SeasonGenerationContext`) parlent **HTTP à la
+stack qui tourne** (`http://nginx/api`) plutôt que d'ouvrir un noyau Symfony en mémoire — choix
+délibéré, pas une contrainte de la librairie : ni `FriendsOfBehat/SymfonyExtension`, ni
+`BrowserKit`, ni transaction DAMA. Le jeton JWT est minté via `bin/console lexik:jwt:generate-token`,
+la garde bac-à-sable (`BaseContext::guardSandbox`) est une jumelle de
+`backend/scripts/lib/sandbox-guard.sh`. Nouvelle cible `make -C backend behat` (redémarre
+`messenger-worker`, garde sandbox) et nouveau job CI `functional-tests` (sans `needs`, même
+préambule que `smoke-tests`). Le smoke `backend/scripts/smoke-solver.sh` est **supprimé** : la
+première feature (`generation-du-planning-de-saison.feature`) le remplace à parité prouvée (même
+verdict `COMPLETED`).
+
 ## 2026-09-01 — lot Dependabot
 
 ### Groupe frontend-npm — 20 montées + browserslist 4.28.8 (PR #813)

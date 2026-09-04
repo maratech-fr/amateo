@@ -30,7 +30,7 @@ Lance 5 agents d'analyse en parallèle (lecture seule, aucun test destructif) :
 - **Prod-readiness/observabilité** : Sentry câblé ? backups PostgreSQL (`pg_dump`/scripts/volumes) ? limites RAM appliquées ? healthchecks ? config prod distincte ?
 - **Secrets** : `git ls-files` sur les emplacements sensibles (`backend/config/jwt/`, `.env*`) — vérifier ce qui est réellement tracké avant d'affirmer une fuite.
 - **RGPD (statique)** : purge/rétention implémentées ? audit trail ? données de mineurs/coachs exposées ?
-- **Perf (si stack up)** : lancer `backend/scripts/smoke-solver.sh` et relever le wall-time. Sinon marquer l'axe `non couvert`.
+- **Perf (si stack up)** : lancer `make -C backend behat` (feature `generation-du-planning-de-saison.feature`) et relever le wall-time. Sinon marquer l'axe `non couvert`.
 - **UX** : traité à part en **Étape 2 ter** (axes additifs cohérence / simplicité / inclusivité).
 
 ## Étape 2 bis — Chasse aux angles morts (OBLIGATOIRE)

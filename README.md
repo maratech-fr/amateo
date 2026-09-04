@@ -90,8 +90,10 @@ The database comes up empty. Demo data is opt-in: `make -C backend fixtures` see
 teams and the holiday reference data — it purges the existing rows first.
 
 Per-zone commands live in `backend/Makefile` and `engine/Makefile` (e.g.
-`cd backend && make test`, `cd engine && make test`). A solver smoke test drives a full
-create → generate → completed run: `bash backend/scripts/smoke-solver.sh`.
+`cd backend && make test`, `cd engine && make test`). A functional test drives a full
+create → generate → completed run against the real stack (async rail, no browser, no
+in-process kernel): `make -C backend behat` (Behat, Gherkin FR,
+`features/generation-du-planning-de-saison.feature`).
 
 ## Layout
 

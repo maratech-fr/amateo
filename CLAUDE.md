@@ -42,6 +42,7 @@ make start | stop | install | test | lint     # root orchestration
 make bootstrap              # JWT keypair + create/migrate dev DB — re-run after a pull adds migrations
 cd backend && make test     # PHPStan(lvl8) + CS-Fixer + PHPUnit testsuite Unit SEULEMENT (§10.1)
 cd backend && make tests-complete             # miroir exact de la CI — à passer AVANT tout push backend
+cd backend && make behat    # tests fonctionnels Gherkin FR (API réelle) — `with-sandbox.sh` en mode play
 cd engine  && make test     # ruff (+format --check) + mypy + bandit + pytest   |  make format
 make -C frontend dev        # Dockerized Vite :5173 (proxies /api, /exports, /.well-known/mercure)
 make -C frontend e2e        # Playwright entièrement dockerisé — exige stack + dev lancés
@@ -60,8 +61,9 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   unique, gardée par `BlockingTestsListMatchesCiTest` (⇄ `ci.yml`, les deux sens). Ce que chaque
   test garde en détail : **son propre docblock**.
 - Jobs sans `needs` mais **required checks de `main`** : `rector` (style gate) ·
-  `dependency-audit` · `secrets-scan` · `semgrep` · `smoke-tests` (5 smokes sémantiques) ·
-  `engine-semantics` (groupe `contract` cross-stack). `build-docker` needs
+  `dependency-audit` · `secrets-scan` · `semgrep` · `smoke-tests` (4 smokes sémantiques) ·
+  `engine-semantics` (groupe `contract` cross-stack) · `functional-tests` (Behat, Gherkin FR —
+  required check à ajouter côté GitHub, comme `engine-semantics`). `build-docker` needs
   **[blocking-tests, engine-tests] only**.
 
 ## 5. Conventions (core — détail par zone dans `.claude/rules/`)
@@ -129,7 +131,8 @@ branche puis PR ; **JAMAIS de merge sans le GO explicite du user** ; push libre,
 4. **NR obligatoire si axe §7.1 touché — même PR.** ⚠ `phase1` ne gate pas (§4) : un NR qui doit
    gater = step `ci.yml` **ET** ligne `docs/testing/blocking-tests.md`, même PR — sinon le dire.
 5. **Tests verts en local avant de proposer le merge** : `/validation-runner` (suite ciblée +
-   contrats cross-zone + **smoke-solver obligatoire si engine/backend touché**, `COMPLETED` attendu).
+   contrats cross-zone + **`make -C backend behat` (feature génération de saison) obligatoire si
+   engine/backend touché**, `COMPLETED` attendu).
 6. Résumé + **`documentation-update` (avant CHAQUE PR, les deux lanes)** — « rien d'impacté » se
    conclut en regardant, jamais en supposant.
 7. **`/code-review` : le fondateur seul le déclenche.** **`/security-review` RESTE systématique**
@@ -161,8 +164,9 @@ l'état des lieux.
 ## 9. Scope checklist
 
 La checklist de cadrage (zone, dossiers autorisés/interdits, fichiers probables, doc à mettre à
-jour, axes §7.1 → NR, smoke-solver si engine/backend) **vit dans `.claude/agents/planner.md`** —
-maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir littéralement.
+jour, axes §7.1 → NR, feature Behat `make -C backend behat` si engine/backend) **vit dans
+`.claude/agents/planner.md`** — maison unique, c'est l'agent qui l'exécute. Tout plan produit doit
+la remplir littéralement.
 
 ## 10. Gotchas (top)
 
