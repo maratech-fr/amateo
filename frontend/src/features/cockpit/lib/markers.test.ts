@@ -22,6 +22,7 @@ const period = (over: Partial<CalendarEntry>): CalendarEntry => ({
   parentEntryId: null,
   status: "active",
   createdBy: null,
+  redatable: false,
   ...over,
 });
 

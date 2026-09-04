@@ -22,6 +22,7 @@ const entry: CalendarEntry = {
   parentEntryId: null,
   status: "active",
   createdBy: null,
+  redatable: false,
 };
 
 const campaign = (over: Partial<CoachWishCampaign> = {}): CoachWishCampaign => ({

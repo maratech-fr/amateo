@@ -1,5 +1,5 @@
-import { CalendarOff, Trash2 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { CalendarOff, CalendarRange, Trash2 } from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useSchedules, useVenues } from "@/features/planning/queries";
@@ -12,6 +12,8 @@ import { Modal } from "@/shared/components/ui/modal";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { CalendarEntry, PublicHoliday, SchedulePlan, SchoolHoliday } from "./api";
+import { WindowAlreadyPlannedError } from "./api";
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { useWorkingSeason } from "@/shared/session/queries";
 
 import { clampRangeToSeason, frDateShort, groupCoverageSlots, periodWeeksToAdjust, todayISO, weeksCovering } from "./lib/date";
@@ -20,10 +22,10 @@ import { useWeekAdapt } from "./lib/useWeekAdapt";
 import { WarningPanel } from "@/shared/components/ui/warning-panel";
 import { WindowAlreadyPlannedNotice } from "./WindowAlreadyPlannedNotice";
 import { entryIcon, entryLabel, holidayIcon, isHolidayAnchor, isHolidayWeekChild } from "./lib/markers";
-import { useCalendarEntries, useCreateCutoff, useCreateEvent, useCreateVenueClosure, useDeleteEntry, useSchedulePlanForEntry, useSchedulePlans } from "./queries";
+import { useCalendarEntries, useCreateCutoff, useCreateEvent, useCreateVenueClosure, useDeleteEntry, useRedateEntry, useSchedulePlanForEntry, useSchedulePlans } from "./queries";
 import { WeekPickerDialog } from "./WeekPickerDialog";
 
-type Mode = "list" | "event" | "closure" | "cutoff";
+type Mode = "list" | "event" | "closure" | "cutoff" | "redate";
 
 interface DayDialogProps {
   iso: string;
@@ -38,20 +40,28 @@ interface DayDialogProps {
 /** Lightweight day dialog (annotation = modal, spec §5bis): lists the day's entries and creates an event / venue closure. */
 export function DayDialog({ iso, entries, holiday, publicHoliday, onClose }: DayDialogProps) {
   const [mode, setMode] = useState<Mode>("list");
+  // D3 v1 PR-2 — le geste « Modifier les dates » ouvre un MODE du même dialogue (pas une modale
+  // par-dessus) : l'entrée visée est retenue le temps du re-datage.
+  const [redateEntry, setRedateEntry] = useState<CalendarEntry | null>(null);
+  const startRedate = (entry: CalendarEntry) => {
+    setRedateEntry(entry);
+    setMode("redate");
+  };
 
   return (
     <Modal label={`Jour ${iso}`} title={formatFrDate(iso)} onClose={onClose}>
       <div className="mt-4">
-        {mode === "list" ? <DayList entries={entries} holiday={holiday} publicHoliday={publicHoliday} onCreate={setMode} onClose={onClose} /> : null}
+        {mode === "list" ? <DayList entries={entries} holiday={holiday} publicHoliday={publicHoliday} onCreate={setMode} onRedate={startRedate} onClose={onClose} /> : null}
         {mode === "event" ? <EventForm iso={iso} onBack={() => setMode("list")} onDone={onClose} /> : null}
         {mode === "closure" ? <ClosureForm iso={iso} onBack={() => setMode("list")} onDone={onClose} /> : null}
         {mode === "cutoff" ? <CutoffForm iso={iso} onBack={() => setMode("list")} onDone={onClose} /> : null}
+        {mode === "redate" && null !== redateEntry ? <RedateForm entry={redateEntry} onBack={() => setMode("list")} onDone={onClose} /> : null}
       </div>
     </Modal>
   );
 }
 
-function DayList({ entries, holiday, publicHoliday, onCreate, onClose }: { entries: CalendarEntry[]; holiday?: SchoolHoliday; publicHoliday?: PublicHoliday; onCreate: (m: Mode) => void; onClose: () => void }) {
+function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose }: { entries: CalendarEntry[]; holiday?: SchoolHoliday; publicHoliday?: PublicHoliday; onCreate: (m: Mode) => void; onRedate: (entry: CalendarEntry) => void; onClose: () => void }) {
   const deleteEntry = useDeleteEntry();
   const schedulesQuery = useSchedules();
   const [toDelete, setToDelete] = useState<CalendarEntry | null>(null);
@@ -208,6 +218,19 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onClose }: { entri
                     <Button variant="outline" size="sm" disabled={!socleValidated || createPeriodPlan.isPending} title={!socleValidated ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
                       Adapter
                     </Button>
+                  ) : null}
+                  {/* D3 v1 PR-2 — « Modifier les dates » : rendu SEULEMENT si le serveur dit la
+                      période re-datable (`redatable`, prédicat unique). Absent sinon (jamais
+                      désactivé — aucun levier n'existe, Supprimer est à côté). */}
+                  {entry.redatable ? (
+                    <button
+                      type="button"
+                      aria-label={`Modifier les dates de ${entry.title}`}
+                      className="rounded p-1 text-muted-foreground hover:text-foreground"
+                      onClick={() => onRedate(entry)}
+                    >
+                      <CalendarRange className="size-4" />
+                    </button>
                   ) : null}
                   <button
                     type="button"
@@ -620,17 +643,20 @@ const fieldClass = "w-full rounded-md border border-input bg-background px-3 py-
  * (start ≥ today, end ≥ start). Changing the start bumps a now-earlier end so the
  * range never inverts.
  */
-function DateRangeFields({ startDate, endDate, onStart, onEnd }: { startDate: string; endDate: string; onStart: (value: string) => void; onEnd: (value: string) => void }) {
-  const today = todayISO();
+function DateRangeFields({ startDate, endDate, onStart, onEnd, minStart, max }: { startDate: string; endDate: string; onStart: (value: string) => void; onEnd: (value: string) => void; minStart?: string; max?: string }) {
+  // Plancher du début : `today` pour une CRÉATION (start ≥ aujourd'hui) ; paramétrable pour le
+  // re-datage d'une fermeture DÉJÀ commencée (elle peut bouger sa fin sans bouger son début). Ces
+  // bornes sont de la PRÉSENTATION — le 422 serveur reste le juge de la saison (règle d'or).
+  const floor = minStart ?? todayISO();
   return (
     <div className="grid grid-cols-2 gap-2">
       <label className="block text-xs text-muted-foreground">
         Du
-        <input type="date" className={`${fieldClass} mt-1`} value={startDate} min={today} onChange={(e) => onStart(e.target.value)} />
+        <input type="date" className={`${fieldClass} mt-1`} value={startDate} min={floor} max={max} onChange={(e) => onStart(e.target.value)} />
       </label>
       <label className="block text-xs text-muted-foreground">
         Jusqu'au
-        <input type="date" className={`${fieldClass} mt-1`} value={endDate} min={startDate} onChange={(e) => onEnd(e.target.value)} />
+        <input type="date" className={`${fieldClass} mt-1`} value={endDate} min={startDate} max={max} onChange={(e) => onEnd(e.target.value)} />
       </label>
     </div>
   );
@@ -642,15 +668,17 @@ function DateRangeFields({ startDate, endDate, onStart, onEnd }: { startDate: st
  * stays submittable). Moving the start past the end bumps the end so the range
  * never inverts. `valid` = today ≤ start ≤ end.
  */
-function useDateRange(iso: string) {
-  const [today] = useState(todayISO);
-  const [startDate, setStartDate] = useState(iso);
-  const [endDate, setEndDate] = useState(iso);
+function useDateRange(initialStart: string, initialEnd: string = initialStart, floor?: string) {
+  // `floor` gèle le plancher du début à la naissance (par défaut aujourd'hui, comme les trois
+  // créations ; le re-datage passe min(aujourd'hui, début servi) pour une fermeture déjà commencée).
+  const [minStart] = useState(() => floor ?? todayISO());
+  const [startDate, setStartDate] = useState(initialStart);
+  const [endDate, setEndDate] = useState(initialEnd);
   const setStart = (value: string) => {
     setStartDate(value);
     setEndDate((prev) => (prev < value ? value : prev));
   };
-  return { startDate, endDate, setStart, setEnd: setEndDate, valid: startDate >= today && endDate >= startDate };
+  return { startDate, endDate, minStart, setStart, setEnd: setEndDate, valid: startDate >= minStart && endDate >= startDate };
 }
 
 function EventForm({ iso, onBack, onDone }: { iso: string; onBack: () => void; onDone: () => void }) {
@@ -748,6 +776,81 @@ function CutoffForm({ iso, onBack, onDone }: { iso: string; onBack: () => void; 
       <DateRangeFields startDate={startDate} endDate={endDate} onStart={setStart} onEnd={setEnd} />
       <p className="text-xs text-muted-foreground">Rappel affiché au calendrier (🛑) et au radar — le planning de base reste inchangé, rien à générer.</p>
       <Button className="w-full" onClick={submit} disabled={createCutoff.isPending || !valid}>
+        Enregistrer
+      </Button>
+    </FormShell>
+  );
+}
+
+/**
+ * D3 v1 PR-2 — RE-DATER une fermeture (« Modifier les dates »). Le backend a déjà tranché que la
+ * période est re-datable (`entry.redatable`) : ce formulaire ne fait que RE-SAISIR la fenêtre. Le
+ * plancher du début est min(aujourd'hui, début servi) — une fermeture déjà commencée doit pouvoir
+ * bouger sa fin sans bouger son début — et le plafond est la fin de saison (présentation ; le 422
+ * serveur reste le juge). « Enregistrer » est désactivé, avec sa raison en title, tant qu'aucune
+ * date n'a changé ou que la fin précède le début (patron `adjustLocked`). Le hook possède son
+ * feedback : un 409 typé s'affiche ICI comme une proposition (`WindowAlreadyPlannedNotice`, focus
+ * porté sur son action), les autres échecs partent au filet ; le refus est réinitialisé à chaque
+ * tentative. Aucune règle métier recalculée (rien sur les enfants, le plan, la saison).
+ */
+function RedateForm({ entry, onBack, onDone }: { entry: CalendarEntry; onBack: () => void; onDone: () => void }) {
+  const navigate = useNavigate();
+  const startPeriodMode = useWizardStore((s) => s.startPeriodMode);
+  const setSelectedScheduleId = usePlanningStore((s) => s.setSelectedScheduleId);
+  const workingSeason = useWorkingSeason();
+  const redate = useRedateEntry();
+  const floor = entry.startDate < todayISO() ? entry.startDate : todayISO();
+  const { startDate, endDate, minStart, setStart, setEnd, valid } = useDateRange(entry.startDate, entry.endDate, floor);
+  const [windowConflict, setWindowConflict] = useState<{ message: string; entryId: string } | null>(null);
+  const conflictRef = useRef<HTMLDivElement>(null);
+  // Refus reçu → le focus part sur l'action de la notice (« Ouvrir le planning en place »).
+  useEffect(() => {
+    if (null !== windowConflict) {
+      conflictRef.current?.querySelector("button")?.focus();
+    }
+  }, [windowConflict]);
+
+  const openConflict = (entryId: string) => {
+    // Même ceinture que « Adapter » (bug fondateur 2026-08-19) : purge une sélection planning
+    // d'un autre écran avant d'entrer en mode période.
+    setSelectedScheduleId(null);
+    startPeriodMode(entryId);
+    onDone();
+    navigate("/wizard");
+  };
+
+  const changed = startDate !== entry.startDate || endDate !== entry.endDate;
+  const disabledReason = !changed ? "Aucune date n'a changé." : !valid ? "La fin doit suivre le début." : undefined;
+
+  const submit = async () => {
+    if (!changed || !valid) {
+      return;
+    }
+    setWindowConflict(null); // réinitialisé à chaque tentative (jamais un refus périmé collé au geste)
+    try {
+      await redate.mutateAsync({ entry, startDate, endDate });
+      toast.success(`Fermeture re-datée du ${frDateShort(startDate)} au ${frDateShort(endDate)} — planning à régénérer`);
+      onDone();
+    } catch (error) {
+      if (error instanceof WindowAlreadyPlannedError) {
+        setWindowConflict({ message: error.message, entryId: error.conflictingEntryId });
+        return;
+      }
+      // Tout autre échec (422 hors saison / fin avant début, transport) → filet : le message serveur.
+      toast.error(await errorMessage(error));
+    }
+  };
+
+  return (
+    <FormShell onBack={onBack}>
+      <p className="text-xs text-muted-foreground">Déplacez la fenêtre de cette fermeture. Son planning devra être régénéré.</p>
+      <DateRangeFields startDate={startDate} endDate={endDate} onStart={setStart} onEnd={setEnd} minStart={minStart} max={workingSeason?.endDate} />
+      {null !== windowConflict ? (
+        <div ref={conflictRef}>
+          <WindowAlreadyPlannedNotice message={windowConflict.message} onOpen={() => openConflict(windowConflict.entryId)} />
+        </div>
+      ) : null}
+      <Button className="w-full" onClick={() => void submit()} disabled={redate.isPending || !changed || !valid} title={disabledReason}>
         Enregistrer
       </Button>
     </FormShell>

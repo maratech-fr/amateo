@@ -53,6 +53,13 @@ export interface CalendarEntry {
   parentEntryId: string | null;
   status: CalendarEntryStatus;
   createdBy: string | null;
+  /**
+   * D3 v1 — vrai quand cette période peut être re-datée (racine de fermeture à plan, sans
+   * semaines-enfants). PRÉDICAT UNIQUE côté serveur (`CalendarEntryRedatability::isRedatable`) : le
+   * front ne recalcule RIEN (règle d'or), il rend le geste « Modifier les dates » ssi ce drapeau
+   * est vrai. Toujours servi (défaut `false`).
+   */
+  redatable: boolean;
 }
 
 export type SchedulePlanType = "SEASON" | "CLOSURE" | "HOLIDAY";
@@ -225,6 +232,30 @@ export const createCalendarEntry = (json: Record<string, unknown>): Promise<Cale
   api.post("calendar_entries", { json }).json();
 
 export const deleteCalendarEntry = (id: string): Promise<unknown> => api.delete(`calendar_entries/${id}`).json();
+
+/**
+ * D3 v1 PR-2 — RE-DATER une racine fermeture à plan (PUT). Corps MINIMAL mais complet : le DTO
+ * `CalendarEntryInput` porte `kind`/`title` en `NotBlank` (POST comme PUT), donc on renvoie les
+ * valeurs SERVIES inchangées et seules les dates bougent (`periodType`/`schoolHolidayId` omis → le
+ * processor ne les touche pas). Le serveur déplace le plan et les contraintes `venue_closed`
+ * appariées, recale le titre s'il portait le suffixe « — du … au … », refuse en 409
+ * `window_already_planned` une fenêtre déjà prise (traduit ici comme au geste « Adapter »), et
+ * répond 422 (hors saison / fin avant début / cas gelés) — que l'appelant relaie au filet. Le front
+ * ne recalcule aucune règle métier : `redatable` et ces codes disent tout.
+ */
+export const updateCalendarEntry = async (entry: CalendarEntry, dates: { startDate: string; endDate: string }): Promise<CalendarEntry> => {
+  try {
+    return await api
+      .put(`calendar_entries/${entry.id}`, { json: { kind: entry.kind, title: entry.title, startDate: dates.startDate, endDate: dates.endDate } })
+      .json<CalendarEntry>();
+  } catch (error) {
+    const conflict = asWindowAlreadyPlanned(error);
+    if (null !== conflict) {
+      throw conflict;
+    }
+    throw error;
+  }
+};
 
 export const getSchoolHolidays = (from?: string, to?: string): Promise<SchoolHolidaysResponse> =>
   api.get("school-holidays", from && to ? { searchParams: { from, to } } : undefined).json();
