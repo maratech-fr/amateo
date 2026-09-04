@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Tests\Behat\MatchPlacementContext;
 use App\Tests\Behat\OnboardingContext;
+use App\Tests\Behat\PeriodOverlayContext;
 use App\Tests\Behat\SeasonGenerationContext;
 use Behat\Config\Config;
 use Behat\Config\Profile;
@@ -35,5 +36,10 @@ return (new Config)
                 new Suite('placement')
                     ->withPaths('%paths.base%/features/placement-des-matchs.feature')
                     ->withContexts(MatchPlacementContext::class),
+            )
+            ->withSuite(
+                new Suite('overlay')
+                    ->withPaths('%paths.base%/features/plan-de-periode-en-overlay.feature')
+                    ->withContexts(PeriodOverlayContext::class),
             ),
     );
