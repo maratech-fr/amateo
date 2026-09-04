@@ -137,6 +137,37 @@ describe("SlotReservationModal — mutualisation par bloc (P2-51)", () => {
     expect(groupMut).not.toHaveBeenCalled();
   });
 
+  it("le retrait d'un lot posé s'annonce en UNE ligne « à valider », avec UN Undo qui restaure les deux (P2-62)", async () => {
+    renderModal({ reservations: [resa("a", "v1", 1, "18:00"), resa("b", "v1", 1, "18:00")] });
+
+    await userEvent.click(screen.getByRole("button", { name: "Retirer l'entraînement mutualisé SM1 + SM2" }));
+
+    // UNE ligne de lot « à valider » et UN Undo — jamais deux Undo par membre (un Undo partiel
+    // promettrait le retrait d'UN seul membre, que le serveur ne fait pas : il vide toute la case).
+    expect(screen.getByText(/retrait à valider/)).toBeInTheDocument();
+    const undo = screen.getByRole("button", { name: "Annuler le retrait de l'entraînement mutualisé SM1 + SM2" });
+    expect(screen.queryByRole("button", { name: "Annuler le retrait de SM1" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Annuler le retrait de SM2" })).toBeNull();
+
+    // L'Undo restaure les DEUX ids : la ligne posée du lot réapparaît.
+    await userEvent.click(undo);
+    expect(screen.getByRole("button", { name: "Retirer l'entraînement mutualisé SM1 + SM2" })).toBeInTheDocument();
+  });
+
+  it("valider le retrait d'un lot ferme la modale sans erreur, même si une sœur répond déjà 404 (P2-62)", async () => {
+    const onClose = vi.fn();
+    // Le DELETE tolère le 404 (api.ts, testé à part) : la 2ᵉ sœur, déjà emportée par la 1ʳᵉ, résout.
+    delMut.mockReset().mockResolvedValue(undefined);
+    renderModal({ reservations: [resa("a", "v1", 1, "18:00"), resa("b", "v1", 1, "18:00")], onClose });
+
+    await userEvent.click(screen.getByRole("button", { name: "Retirer l'entraînement mutualisé SM1 + SM2" }));
+    await userEvent.click(screen.getByRole("button", { name: "Valider" }));
+
+    expect(delMut).toHaveBeenCalledTimes(2);
+    expect(onClose).toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   // P4-150 — sur un créneau libre où aucune équipe ni aucun groupe n'est proposable,
   // la copie d'écran de l'état vide est assertée (elle ne s'affiche QUE dans ce cas).
   it("annonce « Aucune équipe disponible » quand rien n'est proposable sur un créneau libre", () => {

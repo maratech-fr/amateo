@@ -191,6 +191,12 @@ export function SlotReservationModal({
   const blockById = new Map(sharedTrainingBlocks.map((b) => [b.id, b]));
   // Un lot posé se lit par son `teamIds` (seul champ utile au rendu).
   const postedLot = postedGroupOnSlot(onSlot, sharedTrainingBlocks);
+  // P2-62 — le retrait en attente d'un lot entier s'affiche en UNE ligne (symétrique de la ligne
+  // posée) : les réservations `removed` de CETTE case dont l'ensemble égale un entraînement
+  // mutualisé forment un lot, restauré d'un seul Undo. `onSlot` filtrant déjà `removed`, on relit
+  // les réservations retirées ici plutôt que via `onSlot`.
+  const removedOnSlot = reservations.filter((r) => removed.includes(r.id) && slotKey(r.venueId, r.dayOfWeek, r.startTime) === key);
+  const removedLot = postedGroupOnSlot(removedOnSlot, sharedTrainingBlocks);
   const hasDraftedMutualisation = addedBlocks.length > 0;
   // La case est occupée par une mutualisation : lot DÉJÀ écrit, ou lot dans le brouillon.
   const groupOccupies = null !== postedLot || hasDraftedMutualisation;
@@ -357,11 +363,31 @@ export function SlotReservationModal({
               </li>
             ))
           )}
+          {/* P2-62 — un lot mutualisé retiré = UNE ligne « à valider » + UN Undo qui restaure les
+              N ids (symétrique de la ligne posée). Un Undo par membre promettait le retrait d'UNE
+              seule équipe, que le serveur ne fait pas : il vide toute la case bloc-complète. */}
+          {null !== removedLot ? (
+            <li key="removed-lot" className="flex items-start gap-2 rounded-md border border-dashed border-destructive/50 bg-destructive/5 px-3 py-1.5 text-sm">
+              <Trash2 className="mt-0.5 size-3.5 shrink-0 text-destructive" />
+              <span className="flex-1 font-medium line-through">
+                {lotLabel(removedLot.group.teamIds)} <span className="font-normal text-muted-foreground no-underline">· entraînement mutualisé</span>
+              </span>
+              <span className="text-xs text-muted-foreground">retrait à valider</span>
+              <button
+                type="button"
+                aria-label={`Annuler le retrait de l'entraînement mutualisé ${lotLabel(removedLot.group.teamIds)}`}
+                className="rounded p-1 text-muted-foreground hover:text-foreground"
+                onClick={() => setRemoved((prev) => prev.filter((id) => !removedLot.reservationIds.includes(id)))}
+              >
+                <Undo2 className="size-4" />
+              </button>
+            </li>
+          ) : null}
           {/* Un retrait en attente reste NOMMÉ et annulable : le remplacer par un compteur
               anonyme empêchait de savoir quelle équipe on avait retirée, et de revenir en
               arrière autrement qu'en fermant la modale — ce qui abandonnait aussi les ajouts. */}
           {reservations
-            .filter((r) => removed.includes(r.id))
+            .filter((r) => removed.includes(r.id) && (null === removedLot || !removedLot.reservationIds.includes(r.id)))
             .map((r) => (
               <li key={`removed-${r.id}`} className="flex items-center gap-2 rounded-md border border-dashed border-destructive/50 bg-destructive/5 px-3 py-1.5 text-sm">
                 <Trash2 className="size-3.5 text-destructive" />

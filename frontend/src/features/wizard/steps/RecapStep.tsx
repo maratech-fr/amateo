@@ -9,7 +9,9 @@ import { cn } from "@/shared/lib/utils";
 import { FAMILY_LABEL, FAMILY_ORDER, groupConstraints } from "../lib/constraintOrder";
 import { LEVEL_LABEL } from "../lib/labels";
 import { coachMeta, groupedCoaches } from "../lib/ranking";
-import { sharedSlotStatuses } from "../lib/reservationSlots";
+import { sharedSlotStatuses, slotKey } from "../lib/reservationSlots";
+import { postedGroupOnSlot, type PostedGroupLot } from "../lib/groupReservation";
+import { toast } from "@/shared/stores/toastStore";
 import { coachTeamNames, countSlotsByVenue } from "../lib/summary";
 import { useStepValidation } from "../lib/useStepValidation";
 import { BlockerList } from "./BlockerList";
@@ -64,6 +66,29 @@ function ReservationRow({
       action={
         unserved ? (
           <Button variant="ghost" size="icon" className="size-7" aria-label={`Retirer la réservation de ${label}`} disabled={busy} onClick={onRemove}>
+            <Trash2 className="size-4" />
+          </Button>
+        ) : undefined
+      }
+    />
+  );
+}
+
+/**
+ * P2-62 — les réservations NON SERVIES d'une même case formant un entraînement mutualisé se
+ * fondent en CETTE ligne : membres nommés, retirés EN LOT (on ne retire pas une équipe d'un groupe,
+ * on retire le groupe). Symétrique de {@link ReservationRow}, terminologie « entraînement mutualisé ».
+ */
+function MutualisationRemovalRow({ label, where, reason, onRemove, busy }: { label: string; where: string; reason: string | null; onRemove: () => void; busy: boolean }) {
+  const unserved = null !== reason;
+
+  return (
+    <SummaryRow
+      label={unserved ? <span className="text-destructive">{label} — {reason}</span> : label}
+      meta={<span className={unserved ? "text-destructive" : undefined}>{where}</span>}
+      action={
+        unserved ? (
+          <Button variant="ghost" size="icon" className="size-7" aria-label={`Retirer l'entraînement mutualisé ${label}`} disabled={busy} onClick={onRemove}>
             <Trash2 className="size-4" />
           </Button>
         ) : undefined
@@ -225,6 +250,57 @@ export function RecapStep() {
   const deleteReservation = useDeleteReservation();
 
   const sortedReservations = [...reservations].sort((a, b) => rankOf(a.teamId) - rankOf(b.teamId) || a.dayOfWeek - b.dayOfWeek || hhmm(a.startTime).localeCompare(hhmm(b.startTime)));
+
+  // P2-62 — on ne retire pas une équipe d'un groupe, on retire le groupe : les réservations NON
+  // SERVIES d'une même case dont l'ensemble égale un entraînement mutualisé se fondent en UNE ligne
+  // de lot, retirée en N `DELETE` (que le backend enchaîne en emportant toute la case). Présentation
+  // via `postedGroupOnSlot` (miroir de la dérivation serveur, jamais une permission).
+  const lotByReservationId = new Map<string, PostedGroupLot>();
+  const casesOfUnserved = new Map<string, typeof sortedReservations>();
+  for (const r of sortedReservations) {
+    if (!unservedIds.has(r.id)) {
+      continue;
+    }
+    const k = slotKey(r.venueId, r.dayOfWeek, r.startTime);
+    casesOfUnserved.set(k, [...(casesOfUnserved.get(k) ?? []), r]);
+  }
+  for (const caseReservations of casesOfUnserved.values()) {
+    const lot = postedGroupOnSlot(caseReservations, sharedBlocks);
+    if (null !== lot) {
+      for (const id of lot.reservationIds) {
+        lotByReservationId.set(id, lot);
+      }
+    }
+  }
+  // Le lot se rend UNE fois, à sa première réservation dans l'ordre trié ; les autres membres sont
+  // escamotés (déjà portés par la ligne de lot).
+  const lotAnchorIds = new Set<string>();
+  const anchored = new Set<PostedGroupLot>();
+  for (const r of sortedReservations) {
+    const lot = lotByReservationId.get(r.id);
+    if (lot && !anchored.has(lot)) {
+      anchored.add(lot);
+      lotAnchorIds.add(r.id);
+    }
+  }
+  const removeLot = async (lot: PostedGroupLot): Promise<void> => {
+    for (const id of lot.reservationIds) {
+      await deleteReservation.mutateAsync(id);
+    }
+    toast.success(`Entraînement mutualisé ${lot.group.teamIds.map((id) => teamName.get(id) ?? "?").join(" + ")} retiré`);
+  };
+  const renderReservationRow = (r: (typeof sortedReservations)[number]) => {
+    const lot = lotByReservationId.get(r.id);
+    if (lot) {
+      if (!lotAnchorIds.has(r.id)) {
+        return null; // membre non-ancre : porté par la ligne de lot rendue à l'ancre.
+      }
+      const lotName = lot.group.teamIds.map((id) => teamName.get(id) ?? "?").join(" + ");
+      const where = `${venueName.get(r.venueId) ?? "?"} · ${dayLabel(r.dayOfWeek)} ${hhmm(r.startTime)}`;
+      return <MutualisationRemovalRow key={`lot-${r.id}`} label={lotName} where={where} reason={reservationReason(r)} onRemove={() => void removeLot(lot)} busy={deleteReservation.isPending} />;
+    }
+    return <ReservationRow key={r.id} reservation={r} teamName={teamName} venueName={venueName} reason={reservationReason(r)} onRemove={() => deleteReservation.mutate(r.id)} busy={deleteReservation.isPending} />;
+  };
   // Coaches split into staffing groups (Salariés / Coachs-joueurs / Bénévoles),
   // each shown under its own header (user request — same as the constraint tab).
   const coachGroups = useMemo(() => {
@@ -401,17 +477,13 @@ export function RecapStep() {
                     {grouped.map(({ g, rows }) => (
                       <div key={g.tier?.id ?? "orphan"} className="mb-2 last:mb-0">
                         <p className="px-1 pb-0.5 pt-1 text-xs font-semibold text-muted-foreground">{tierGroupLabel(g.tier)}</p>
-                        {rows.map((r) => (
-                          <ReservationRow key={r.id} reservation={r} teamName={teamName} venueName={venueName} reason={reservationReason(r)} onRemove={() => deleteReservation.mutate(r.id)} busy={deleteReservation.isPending} />
-                        ))}
+                        {rows.map(renderReservationRow)}
                       </div>
                     ))}
                     {orphanRows.length > 0 ? (
                       <div className="mb-2 last:mb-0">
                         <p className="px-1 pb-0.5 pt-1 text-xs font-semibold text-muted-foreground">Autres</p>
-                        {orphanRows.map((r) => (
-                          <ReservationRow key={r.id} reservation={r} teamName={teamName} venueName={venueName} reason={reservationReason(r)} onRemove={() => deleteReservation.mutate(r.id)} busy={deleteReservation.isPending} />
-                        ))}
+                        {orphanRows.map(renderReservationRow)}
                       </div>
                     ) : null}
                   </>

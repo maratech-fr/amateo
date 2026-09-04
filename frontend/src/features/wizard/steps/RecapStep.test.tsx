@@ -15,6 +15,8 @@ const team = (id: string, name: string, tier: number): TeamRow => ({ id, name, s
 
 // P2-15 : la COUCHE que le récap décrit — période (équipes/gymnases actifs) ou socle.
 const deleteReservationMock = vi.hoisted(() => vi.fn());
+// P2-62 — le retrait EN LOT d'un entraînement mutualisé passe par `mutateAsync` (N DELETE séquentiels).
+const deleteReservationAsyncMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const { recapLayer, anchorState, storeState, constraintsState, constraintsArg, constraintsByEntry, calendarEntryState, calendarEntryById, conflictsState } = vi.hoisted(() => ({
   anchorState: { value: { state: "period", planId: "plan-1" } as { state: string; planId: string | null } },
   storeState: { value: { mode: "season", calendarEntryId: null } as { mode: string; calendarEntryId: string | null } },
@@ -77,7 +79,7 @@ vi.mock("../queries", () => ({
   },
   useWizardTeamTags: () => ({ data: [] }),
   // P4-44 — le récap peut retirer une réservation orpheline (seul écran capable de la montrer).
-  useDeleteReservation: () => ({ mutate: deleteReservationMock, isPending: false }),
+  useDeleteReservation: () => ({ mutate: deleteReservationMock, mutateAsync: deleteReservationAsyncMock, isPending: false }),
   useReservations: () => ({ data: h.reservations }),
   useSharedTrainingBlocks: () => ({ data: sharedBlocksState.data }),
   usePriorityTiers: () => ({
@@ -89,8 +91,14 @@ vi.mock("../queries", () => ({
 }));
 vi.mock("../lib/useStepValidation", () => ({ useStepValidation: () => ({ errors: [] }) }));
 vi.mock("../store", () => ({ useWizardStore: (sel: (s: { mode: string; calendarEntryId: string | null }) => unknown) => sel(storeState.value) }));
+vi.mock("@/shared/stores/toastStore", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import { RecapStep } from "./RecapStep";
+import { toast } from "@/shared/stores/toastStore";
+
+/** Un bloc de mutualisation de la portée courante (P2-51) — forme minimale pour le récap. */
+const recapBlock = (teamIds: string[]): SharedTrainingBlock =>
+  ({ id: "g", version: 1, createdAt: "2026-08-31T00:00:00+00:00", updatedAt: "2026-08-31T00:00:00+00:00", schedulePlanId: null, teamIds, commonSessions: 1 });
 
 describe("RecapStep — read-only summary", () => {
   beforeEach(() => {
@@ -98,6 +106,8 @@ describe("RecapStep — read-only summary", () => {
     sharedBlocksState.data = [];
     conflictsState.data = { closures: [], fullyClosedVenueIds: [] };
     deleteReservationMock.mockClear();
+    deleteReservationAsyncMock.mockClear();
+    vi.mocked(toast.success).mockClear();
     // Défaut : la couche décrit les mêmes équipes que la liste de saison, aucune en pause.
     recapLayer.teams = [team("t1", "SM1", 3), team("t2", "Fanion", 1)];
     recapLayer.pausedIds = [];
@@ -257,6 +267,51 @@ describe("RecapStep — read-only summary", () => {
 
     expect(screen.queryByText(/gymnase fermé/)).toBeNull();
     expect(screen.queryByRole("button", { name: /Retirer la réservation de SM1/ })).toBeNull();
+  });
+
+  // P2-62 — on ne retire pas une équipe d'un groupe, on retire le groupe : les réservations
+  // NON SERVIES d'une même case formant un entraînement mutualisé se fondent en UNE ligne de lot.
+  it("fond les réservations non servies d'un entraînement mutualisé en UNE ligne, retirée en lot", async () => {
+    recapLayer.slots = [{ id: "s1", venueId: "v1", dayOfWeek: 2, startTime: "18:30", durationMinutes: 90, capacity: 1 }];
+    h.reservations = [
+      { id: "rA", calendarEntryId: null, teamId: "t1", venueId: "v1", dayOfWeek: 2, startTime: "18:00", durationMinutes: 90 },
+      { id: "rB", calendarEntryId: null, teamId: "t2", venueId: "v1", dayOfWeek: 2, startTime: "18:00", durationMinutes: 90 },
+    ];
+    sharedBlocksState.data = [recapBlock(["t1", "t2"])];
+    const user = userEvent.setup();
+    renderWithProviders(<RecapStep />);
+
+    await user.click(screen.getByRole("button", { name: /Réservations/ }));
+
+    // UNE ligne de lot (membres nommés), UN bouton — pas deux verrous individuels.
+    const remove = screen.getByRole("button", { name: "Retirer l'entraînement mutualisé SM1 + Fanion" });
+    expect(screen.queryByRole("button", { name: "Retirer la réservation de SM1" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retirer la réservation de Fanion" })).toBeNull();
+
+    await user.click(remove);
+
+    // N DELETE séquentiels (mutateAsync) puis un toast de succès nommant le lot.
+    expect(deleteReservationAsyncMock).toHaveBeenCalledTimes(2);
+    expect(deleteReservationAsyncMock).toHaveBeenCalledWith("rA");
+    expect(deleteReservationAsyncMock).toHaveBeenCalledWith("rB");
+    expect(toast.success).toHaveBeenCalledWith("Entraînement mutualisé SM1 + Fanion retiré");
+  });
+
+  it("deux réservations non servies sur la même case SANS bloc restent DEUX lignes", async () => {
+    recapLayer.slots = [{ id: "s1", venueId: "v1", dayOfWeek: 2, startTime: "18:30", durationMinutes: 90, capacity: 1 }];
+    h.reservations = [
+      { id: "rA", calendarEntryId: null, teamId: "t1", venueId: "v1", dayOfWeek: 2, startTime: "18:00", durationMinutes: 90 },
+      { id: "rB", calendarEntryId: null, teamId: "t2", venueId: "v1", dayOfWeek: 2, startTime: "18:00", durationMinutes: 90 },
+    ];
+    sharedBlocksState.data = []; // aucun bloc : aucune fusion, chacune sa ligne.
+    const user = userEvent.setup();
+    renderWithProviders(<RecapStep />);
+
+    await user.click(screen.getByRole("button", { name: /Réservations/ }));
+
+    expect(screen.getByRole("button", { name: "Retirer la réservation de SM1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retirer la réservation de Fanion" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /entraînement mutualisé/ })).toBeNull();
   });
 
   it("shows the team tiers open by default (ranks visible at first glance)", async () => {
