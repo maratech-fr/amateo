@@ -101,6 +101,7 @@
         }
     },
     "require-dev": {
+        "behat/behat": "^3",
         "dama/doctrine-test-bundle": "^8.6",
         "doctrine/doctrine-fixtures-bundle": "^4.3",
         "friendsofphp/php-cs-fixer": "^3.95.24",

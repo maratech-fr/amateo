@@ -66,6 +66,21 @@ tests-engine-semantics: APP_ENV = test
 tests-engine-semantics:
 	$(EXEC) php vendor/bin/phpunit --group contract
 
+# Tests fonctionnels (Behat, Gherkin français) — scénarios métier exécutables,
+# API seule, joués contre la stack RÉELLE (rail asynchrone réel : Messenger →
+# worker → moteur → import). APP_ENV=dev comme les smokes qu'ils remplacent.
+# La garde bac-à-sable s'applique (elle MEURT en mode play, comme tout script
+# mutateur) : lancer via `backend/scripts/with-sandbox.sh make -C backend behat`
+# pour jouer dans le bac à sable amateo_dev depuis le mode play. Le worker est
+# redémarré avant (consommateur frais — évite la file bloquée).
+.PHONY: behat ## Run the functional tests (Behat, Gherkin FR, API-only, real stack)
+behat: APP_ENV = dev
+behat:
+	@bash scripts/lib/sandbox-guard.sh
+	$(FIG) up -d messenger-worker >/dev/null 2>&1 || true
+	$(FIG) restart messenger-worker >/dev/null 2>&1 || true
+	$(EXEC) php vendor/bin/behat --format=pretty --no-interaction
+
 .PHONY: phpunit ## Run blocking PHPUnit group
 phpunit: APP_ENV = test
 phpunit:
