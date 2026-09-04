@@ -521,6 +521,42 @@ validation du besoin → plan → code → NR phase1 → code-review → go util
     devient pas des vacances ») ; le gel d'identité s'étend aux mères découpées (**un plan OU
     des semaines-enfants** gèlent type/fenêtre/kind).
   Gardé par `PeriodPlanBirthTest` + `WeekChildEntryTest` (phase1, réécrits avec l'amendement).
+
+  ⚠️ **Amendement D3 v1 (décision fondateur, 2026-09-04) — le gel de FENÊTRE se lève pour UNE
+  racine CLOSURE sans semaines-enfants** : jusqu'ici, « l'identité d'une période qui porte un plan
+  est GELÉE » couvrait le type, le `kind` ET la fenêtre en bloc — se tromper de dates imposait de
+  supprimer la période (son plan et ses versions partent avec) puis de tout redéclarer. Retour
+  terrain (P2-57, gymnase indisponible « jusqu'aux vacances », travaux finis plus tôt) : c'était
+  disproportionné pour un geste qui ne change QUE deux dates. Le modèle mental qui déverrouille ce
+  cas précisément : **un plan est un gabarit hebdomadaire SANS dates + une fenêtre** — la fenêtre
+  coupe le gabarit à la construction (`TrainingCalendarContext`, `VenueClosureDays` recalculés à
+  chaque `build`), rien n'est ancré aux dates elles-mêmes. Déplacer la fenêtre d'un plan qui n'a
+  ni mère ni enfants n'orpheline donc STRUCTURELLEMENT rien — contrairement à « supprimer puis
+  recréer », qui détruisait le plan et ses versions pour un simple déplacement de bornes.
+  Précisément : `CalendarEntryPeriodType::CLOSURE`, `parentEntryId === null`, zéro semaine-enfant
+  (`hasWeekChildren`) — **PUT re-date dans les deux sens** (`CalendarEntryStateProcessor::
+  updateEntityFromInput` dégèle `windowFrozen` pour ce seul cas ; `processPut` orchestre
+  `prepareClosureRootRedate`/`applyClosureRootRedate`). Le geste, sous le MÊME verrou de scope que
+  la naissance d'un plan : (1) la garde d'unicité de fenêtre (`PeriodWindowUniquenessGuard::
+  assertWindowFree`, famille exclue) tranche AVANT toute mutation — 409 franc, jamais de re-datage
+  à moitié fait ; (2) le parent applique le PUT (dates comprises) ; (3) `SchedulePlanProvisioner::
+  resyncPeriodPlanWindow` déplace la fenêtre du plan (SQL direct, `start_date`/`end_date`,
+  `version + 1`) ; (4) les contraintes `venue_closed` NÉES du même geste (config `startDate`/
+  `endDate` == l'ANCIENNE fenêtre exactement) suivent — une fermeture datée plus finement par le
+  gestionnaire ne bouge pas ; (5) le suffixe « — du … au … » du titre se recale s'il y était, puis
+  `renamePeriodPlanIfStillNamed` recale le nom du plan s'il valait encore l'ancien titre (inv. 12
+  intact : un renommage manuel reste souverain). La péremption des versions `COMPLETED` n'a rien
+  de neuf à écrire : `ResourceChangeStaleScheduleListener` écoutait déjà le `postUpdate` de
+  `CalendarEntry`. **Tout le reste de l'identité reste gelé, pour TOUS les autres cas** : une
+  racine HOLIDAY (liée au référentiel des vacances scolaires), une mère découpée, une
+  semaine-enfant, et — même pour une racine CLOSURE redatable — `kind`/`periodType`/
+  `schoolHolidayId` restent 422. Message 422 distinct pour ce cas (« ses dates, elles, restent
+  modifiables ») vs le message générique des autres identités gelées
+  (`CalendarEntryStateProcessor.php:108-131`). NR : `Security/PeriodRedateTest` (8 cas) +
+  `CalendarEntryApiTest::testPeriodWithOverlayCannotMutateIdentity` (le cas fenêtre est passé de
+  422 à 200) + scénario Behat `plan-de-periode-en-overlay.feature` (« Je re-date l'incident »).
+  **PR-1 backend seul livré ce jour** ; le geste d'édition à l'écran (PR-2, avec passe design)
+  reste à faire — voir `specs/evolution/plannings-bccl-2026-08-31.md` D3.
 - **Lot C4** — LE SOCLE SE LIT DU PLAN, `Schedule.calendarEntryId` disparaît. Le champ était
   redondant avec `plan.calendarEntryId` (doublon d'ancre nullable — la classe de bug de C2/C3).
   Découpé en **3 PR**. **PR1 livré (2026-07-17)** : `plan.type === SEASON` remplace

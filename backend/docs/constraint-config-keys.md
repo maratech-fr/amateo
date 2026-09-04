@@ -1,9 +1,12 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-09-03 (rotation `documentation-update`, PR P2-60 PR-2 — fichier hors sujet de
-la PR, contrôle de fraîcheur). Re-confronté au code : `ConstraintConfigValidator` porte toujours
-`minStartTime` (`:63`) / `maxEndTime` (`:65`) en type `time`, `minAtVenueCount` (`:86`) en `count`
-✓. Reste non re-sondé cette passe — historique : `git log -p --follow` ce fichier.
+Last verified @ 2026-09-04 (PR D3 v1 backend — ligne `venue_closed` recalée : suit désormais le
+re-datage d'une racine CLOSURE). Re-confronté au code : `CalendarEntryStateProcessor::
+redateEntryPairedConstraints` existe et compare `config.startDate`/`endDate` à l'ANCIENNE fenêtre
+avant de les recaler ✓ ; `ConstraintConfigValidator` porte toujours `minStartTime`/`maxEndTime` en
+type `time`, `minAtVenueCount` en `count` (non re-sondés ligne à ligne cette passe, inchangés
+depuis la dernière vérification). Reste non re-sondé cette passe — historique : `git log -p
+--follow` ce fichier.
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.
@@ -24,7 +27,7 @@ avec le nom de la clé et les réglages acceptés pour la famille.
 | **DAY** | `preferredDays` `forbiddenDays` `forcedDays` `allowedDays` | liste d'entiers 1-7 (lundi = 1) | moteur (`constraints/`, `objective.py`) |
 | **FACILITY** | `forcedVenueId` `forbiddenVenueId` `preferredVenueId` `minAtVenueId` | UUID de gymnase | moteur (`constraints/` — paquet) |
 | **FACILITY** | `minAtVenueCount` | entier ≥ 1 | moteur |
-| **FACILITY** | `type` (`venue_closed`) · `startDate` · `endDate` | constante · `AAAA-MM-JJ` | **backend seul** (`VenueClosureDays`) — une fermeture datée DÉRIVE un défaut de jours fermés (jamais stockée telle quelle) ; le réglage du plan (`VenuePeriodOverride.mode`/`dayOverrides`) peut le contredire jour par jour — la composition des deux vit dans `PlanVenueClosures::effectiveStateForPlan/Entry` (décision fondateur 2026-08-18 : l'indisponibilité déclarée est INFORMATIVE), et c'est l'état EFFECTIF qui ne produit aucune ligne de payload pour les jours fermés |
+| **FACILITY** | `type` (`venue_closed`) · `startDate` · `endDate` | constante · `AAAA-MM-JJ` | **backend seul** (`VenueClosureDays`) — une fermeture datée DÉRIVE un défaut de jours fermés (jamais stockée telle quelle) ; le réglage du plan (`VenuePeriodOverride.mode`/`dayOverrides`) peut le contredire jour par jour — la composition des deux vit dans `PlanVenueClosures::effectiveStateForPlan/Entry` (décision fondateur 2026-08-18 : l'indisponibilité déclarée est INFORMATIVE), et c'est l'état EFFECTIF qui ne produit aucune ligne de payload pour les jours fermés. **Suit le re-datage d'une racine CLOSURE (D3 v1, 2026-09-04)** : quand `startDate`/`endDate` de cette contrainte valent EXACTEMENT l'ancienne fenêtre de l'entrée, ils sont recalés sur la nouvelle (`CalendarEntryStateProcessor::redateEntryPairedConstraints`) — une fermeture datée plus finement par le gestionnaire (dates différentes) reste intouchée |
 | **COACH_AVAILABILITY** | `unavailableDays` `availableDays` | liste d'entiers 1-7 | moteur (`constraints/` — paquet) |
 | **COACH_AVAILABILITY** | `fromTime` `untilTime` | `HH:MM` | moteur — bornent l'indisponibilité dans la journée |
 | **toutes** | `targetTag` | libellé de groupe non vide | **backend seul** — éclaté en N contraintes par équipe, puis RETIRÉ du payload (`ScheduleConstraintBuilder`). **Forme HISTORIQUE, toujours lue** : équivaut à `targetTags: [x]` |

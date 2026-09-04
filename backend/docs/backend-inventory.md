@@ -3,13 +3,12 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-04 (D4 — semaine charnière lundi→vendredi). Reconfirmé sur la ligne
-`CalendarEntry` : `App\Service\HolidayWorkweekRule::covers`
-(`backend/src/Service/HolidayWorkweekRule.php`), le filtre `CalendarEntryPeriodType::HOLIDAY`
-dans `CalendarEntryStateProcessor::assertValidWeekChild`, et le miroir front
-`holidayCoversWorkweek` (`frontend/src/features/cockpit/lib/holidayWorkweek.ts`) ✓. ⚠
-Vérification volontairement ÉTROITE : le reste de l'inventaire n'a pas été reconfronté au code ce
-jour — historique des passes : `git log -p --follow backend/docs/backend-inventory.md`.
+Last verified @ 2026-09-04 (D3 v1 PR-1, re-datage d'une racine CLOSURE). Reconfirmé sur la section
+« Cockpit temporel » : le dégel de fenêtre (`CalendarEntryStateProcessor::updateEntityFromInput`,
+`redatableClosureRoot`) et les deux méthodes `SchedulePlanProvisioner::resyncPeriodPlanWindow` /
+`renamePeriodPlanIfStillNamed` ✓. ⚠ Vérification volontairement ÉTROITE : le reste de l'inventaire
+n'a pas été reconfronté au code ce jour — historique des passes :
+`git log -p --follow backend/docs/backend-inventory.md`.
 Un stamp REMPLACE, l'historique vit dans git.
 
 ---
@@ -565,6 +564,8 @@ porter cette restriction, `app:demo:seed` n'en a aucune. Connexion admin requise
 ### Cockpit temporel (overlays période/événement)
 
 Détail : [`accueil-cockpit-temporel.md`](../../specs/courantes/accueil-cockpit-temporel.md). `CalendarEntry` (kind PERIOD/EVENT) est le **déclencheur daté** ; le planning de période est un `SchedulePlan` ancré à l'entrée, et c'est **le plan** qui pointe sa version (`chosenScheduleId`). Le pointeur inverse `overlayScheduleId` a été supprimé par ADR-0002 lot D-b.
+
+**Re-dater une racine CLOSURE « d'un bloc » (D3 v1, P2-57, 2026-09-04, PR-1 backend)** — une période qui porte un plan a normalement son identité GELÉE en écriture (`CalendarEntryStateProcessor::updateEntityFromInput`, 422 « Supprimez la période… ») ; ce cas précis se dégèle : `CalendarEntryPeriodType::CLOSURE`, `parentEntryId === null`, zéro semaine-enfant (`hasWeekChildren`). `PUT` change alors `startDate`/`endDate` dans les deux sens, sous le verrou de scope de `processPut` : (1) `PeriodWindowUniquenessGuard::assertWindowFree` tranche AVANT toute mutation (409 franc, famille exclue) ; (2) le parent applique le PUT ; (3) `SchedulePlanProvisioner::resyncPeriodPlanWindow` (SQL direct, `start_date`/`end_date`/`version+1`) déplace la fenêtre du plan — le plan reste un gabarit hebdo SANS dates ; (4) les contraintes `venue_closed` dont `config.startDate`/`endDate` == l'ANCIENNE fenêtre EXACTEMENT suivent (une fermeture datée plus finement par le gestionnaire ne bouge pas) ; (5) `SchedulePlanProvisioner::renamePeriodPlanIfStillNamed` recale le nom du plan si le titre de l'entrée portait encore l'ancien libellé (inv. 12 : un renommage manuel reste souverain). Rien de neuf à écrire pour la péremption : `ResourceChangeStaleScheduleListener` écoutait déjà le `postUpdate` de `CalendarEntry`. **Tous les autres cas restent gelés** (message 422 distinct) : une racine `holiday` (liée au référentiel des vacances scolaires), une mère découpée, une semaine-enfant, et — même sur une racine CLOSURE redatable — `kind`/`periodType`/`schoolHolidayId`. NR : `Security/PeriodRedateTest`. **PR-1 backend seul livré** ; le geste d'édition à l'écran (PR-2) reste ouvert — voir `specs/evolution/plannings-bccl-2026-08-31.md` D3.
 
 | Route | Méthode | Contrôleur | Description |
 |-------|---------|------------|-------------|

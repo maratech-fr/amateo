@@ -1,13 +1,11 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-09-04 (rotation `documentation-update`, P4-165 — fichier hors sujet de la PR,
-sondage des stamps les plus anciens du dépôt). Re-confronté au code, tout juste : `SchedulePlanProvisioner::ensurePeriodPlanId`
-(`backend/src/Service/SchedulePlanProvisioner.php:716`) ✓ · `TranscribePeriodPlanController`
-(`POST /api/schedule_plans/{id}/transcribe-from-socle`, `TranscribePeriodPlanController.php:52`)
-existe ✓ · défaut auto-transcription sur fermeture au front (`GenerateStep.tsx:52`,
-`"closure" === periodEntry?.periodType`) ✓ · `PeriodWindowUniquenessGuard` existe
-(`backend/src/Service/PeriodWindowUniquenessGuard.php:36`) ✓. Reste du fichier (E1-E6, D1-D10bis,
-historique des décisions) non re-confronté ligne à ligne cette passe.
+Last verified @ 2026-09-04 (PR D3 v1 backend — §2 recalé au code du geste de re-datage). Re-confronté
+au code : `CalendarEntryStateProcessor::updateEntityFromInput` dégèle `windowFrozen` pour une racine
+CLOSURE sans semaines-enfants (`:119-131`) ; `prepareClosureRootRedate` (`:321`) et
+`applyClosureRootRedate` (`:367`) orchestrent la resync ; `SchedulePlanProvisioner::
+resyncPeriodPlanWindow` (`:347`) et `renamePeriodPlanIfStillNamed` (`:363`) existent ✓. Reste du
+fichier (E1-E6, D1-D10bis, historique des décisions) non re-confronté ligne à ligne cette passe.
 
 > **Rôle de ce document** : la trace durable du modèle métier des plannings, validé avec le
 > fondateur le 2026-07-12. C'est LA référence à consulter avant tout travail sur la
@@ -112,6 +110,26 @@ quelle que soit la largeur de son segment.
   équipe loisir pour la semaine. Les **contraintes** sont l'outil principal d'ajustement.
 - **Résultat** : un calendrier secondaire borné à la semaine ; hors des jours d'indispo,
   les créneaux du socle restants **sont conservés**.
+- **Re-dater un incident d'un BLOC, dans les deux sens (D3 v1, décision fondateur 2026-09-04,
+  PR-1 backend)** : jusqu'ici, se tromper de dates sur une fermeture qui porte déjà un plan
+  imposait de supprimer la période (plan et versions partent avec) et de tout redéclarer — retour
+  terrain BCCL (gymnase « indisponible jusqu'aux vacances », travaux finis plus tôt). **Seul un cas
+  précis se dégèle** : une racine `closure` **sans semaines-enfants**, sans mère — `PUT` accepte
+  désormais un changement de `startDate`/`endDate` et resynchronise la fenêtre du plan
+  (`SchedulePlanProvisioner::resyncPeriodPlanWindow`), les contraintes `venue_closed` NÉES du même
+  geste (config == l'ancienne fenêtre exactement — une fermeture datée plus finement ne bouge pas),
+  et le titre/nom du plan s'ils portaient encore l'ancien libellé (inv. 12 intact). Une fenêtre déjà
+  gouvernée par un AUTRE plan reste refusée en 409, nommant ce plan (`PeriodWindowUniquenessGuard`,
+  même garde qu'à la naissance). La version pointée (le planning en vigueur) **survit** — elle est
+  seulement marquée à régénérer (`ResourceChangeStaleScheduleListener`, écoutait déjà ce cas).
+  **Tout le reste de l'identité reste figé** — `kind`, `periodType`, `schoolHolidayId` — et TOUS les
+  autres cas gardent leur fenêtre gelée : une racine `holiday` (liée au référentiel des vacances
+  scolaires), une mère découpée, une semaine-enfant. Le pivot **socle `startDate > today`** reste
+  entier : re-dater une racine déplace mécaniquement son plan sous cette même règle — une racine
+  commencée puis ramenée après aujourd'hui redevient balayable par une réouverture du socle, sans
+  champ ni geste dédié. **PR-1 backend seul livré** ; le geste d'édition à l'écran (PR-2, avec passe
+  design) reste ouvert. Détail complet : [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md)
+  (amendement D3 v1) · `specs/evolution/plannings-bccl-2026-08-31.md` D3.
 - **État** : 🟢 rodé sur les axes livrés — découpage hebdo + granularité JOUR (E1/5b),
   contraintes héritées cochables (#211), **séances/équipe ajustables dans l'UI** (champ 1–7
   + toggle = 0 séance, E4 via `TeamPeriodOverride`), **défaut = tout le club actif** (E3,
