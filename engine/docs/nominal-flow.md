@@ -1,13 +1,13 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-09-03 (rotation fraîcheur, sans rapport au sujet de la PR). Re-confronté au code :
-`engine/CONTRACT_VERSION` = **2.20** ✓ ; verrou asyncio par club `_club_locks`/`_club_locks_guard` —
-corrigé en `app/main.py:131-132` (était référencé `130-131`) ✓ ; seuils adaptatifs `_adaptive_timeout`
-(60/180/600 s pour complexité ≤50/≤200/plus, `app/main.py:414-429`) et `_adaptive_workers` (1 worker
-≤200, 8 au-delà, `app/main.py:446-452`) ✓ ; borne `COACH_PLAYER_NO_OVERLAP` `≤ 1 + Σb` hors case de bloc
-active (`add_coach_player_non_overlap`, `structural.py:216-244`) ✓. **Drift corrigé** : le résumé §5
-disait encore « contrat 2.18 » alors que le corps du document (§1) est à jour sur 2.20 depuis la passe
-précédente. Reste non re-parcouru ligne à ligne cette passe — historique :
+Last verified @ 2026-09-04 (rotation `documentation-update`, P2-62 — sans rapport au sujet de la PR).
+**Drift trouvé et corrigé** : §3 étape 8 décrivait encore `FACILITY_CAPACITY` comme une contrainte
+HARD active du pipeline — cette famille est **retirée depuis le 2026-08-08** (`ConstraintFamily`
+n'a plus que 4 cas, `backend/src/Enum/ConstraintFamily.php`), le moteur n'en garde qu'un commentaire
+mort (`engine/app/main.py:487-490`) ; corrigé pour dire l'état réel. Re-confronté au code par
+ailleurs : `DiagnosticSchema.id` toujours requis ✓ ; `LEVEL_2_OBJECTIVE_WEIGHTS` toujours consommé
+par `add_preferred_day_bonus`/`add_match_day_rest_bonus`/`add_spacing_penalty` (`app/main.py:631-634`) ✓.
+Reste non re-parcouru ligne à ligne cette passe — historique :
 `git log -p --follow engine/docs/nominal-flow.md`.
 
 > Ce document decrit le chemin complet d'une requete de generation d'emploi du temps, du moment ou le backend construit le payload jusqu'a la notification en temps reel du frontend. Destine aux developpeurs travaillant sur l'integration backend/engine.
@@ -199,7 +199,7 @@ Ces contraintes doivent etre satisfaites pour que la solution soit **faisable**.
 5. **FIXED_SLOTS** : chemin residuel. La collection `fixed_slots` n'est alimentee par aucune branche de `parse_v2_constraints` aujourd'hui, donc cette contrainte ne pose rien en production. Les verrous `HARD` ne passent **pas** par la : ils sont pre-places hors du modele (voir etape 1).
 6. **FORBIDDEN_ASSIGNMENTS** : pour chaque contrainte `HARD` de type interdiction, la variable vaut 0. Exemple : si le SM1 a une contrainte "pas le vendredi", toutes les variables `x[t-sm1, *, 5, *]` valent 0.
 7. **COACH_UNAVAILABILITY** : pour chaque contrainte `COACH_AVAILABILITY`, les variables correspondantes valent 0.
-8. **FACILITY_CAPACITY** : pour chaque contrainte `FACILITY_CAPACITY`, le nombre d'equipes **simultanees** sur un creneau de la salle est plafonne a `min(capacite du creneau, maxTeams)`. Ce n'est **pas** une fermeture de salle : les fermetures temporaires (`venue_closed`) sont expansees **cote backend** en contraintes `forbiddenVenueId` par equipe avant l'envoi.
+8. **FACILITY_CAPACITY** : **RETIREE le 2026-08-08** — cette famille de contrainte n'existe plus (`ConstraintFamily` ne porte que TIME/DAY/FACILITY/COACH_AVAILABILITY, `backend/src/Enum/ConstraintFamily.php`), aucun chemin UI ne la creait, zero ligne en base. Le rabot `min(capacite du creneau, maxTeams)` qu'elle posait a disparu du moteur (`engine/app/main.py:487-490`, commentaire seul) — la capacite se regle desormais **uniquement par CRENEAU** (`trainingSlots.capacity`, etape 1 ci-dessus). Ce n'etait de toute facon **pas** une fermeture de salle : les fermetures temporaires (`venue_closed`) sont expansees **cote backend** en contraintes `forbiddenVenueId` par equipe avant l'envoi.
 9. **MIN_SESSIONS** : attention, ce n'est **pas** une contrainte dure — c'est une **cible soft** (audit ENG-18). Le nombre de seances souhaite (`sessionsPerWeek`) est encourage via l'objectif, jamais impose (plancher dur 0 en production) : une equipe peut recevoir moins de seances que demande sans rendre l'instance infaisable.
 10. **FORCED_VENUES** : si une equipe a une contrainte `FACILITY` `HARD` l'obligeant a une salle specifique, toutes les variables `x[team, autre_salle, *, *]` valent 0.
 11. **COACH_REST_DAY** : chaque coach a au moins un jour de repos du lundi au vendredi (au plus 4 jours travailles). Ignore pour un coach dont le `maxDaysOverride` est deja inferieur ou egal a 4.

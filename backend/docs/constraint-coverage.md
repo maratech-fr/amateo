@@ -1,14 +1,14 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-09-03 (rotation `documentation-update`, P4-168 — zone non touchée par la PR,
-contrôle de fraîcheur). Re-confronté au code : `engine/app/solver/objective/weights.py` existe
-toujours en paquet (`__init__.py`/`normalise.py`/`terms.py`/`weights.py`) ✓ ; `VenueClosureDays`
-toujours en classe dédiée (`backend/src/Service/VenueClosureDays.php:33`) ✓ ; `MIN_SESSIONS`
-toujours une cible SOFT, jamais un plancher dur en production (`engine/app/solver/constraints/__init__.py:9,255`,
-`structural.py:619-621`) ✓ ; `add_match_day_rest_bonus` toujours consommé par `main.py` et
-`validate_assignments.py` ✓. Reste non re-sondé cette passe (dernière passe complète :
-`maxEndTime` HARD, `add_max_consecutive_days_constraints`, `forced_day_vars`,
-`resolveTravelRuleIntensity` — voir historique `git log -p --follow` ce fichier).
+Last verified @ 2026-09-04 (rotation `documentation-update`, P2-62 — zone non touchée par la PR,
+contrôle de fraîcheur). Re-confronté au code : `ConstraintFamily` (`backend/src/Enum/ConstraintFamily.php`)
+n'a toujours que 4 cas (TIME/DAY/FACILITY/COACH_AVAILABILITY), `FACILITY_CAPACITY` absent de l'enum
+✓ ; `ScheduleConstraintBuilder::VENUE_CONFIG_KEYS` porte toujours `minAtVenueId` ✓ ; les tests
+`engine/tests/semantic/test_hard_lock_divisible_slot.py` et `test_consecutive_days.py` existent
+toujours ✓. Reste non re-sondé cette passe (dernière passe complète : `maxEndTime` HARD,
+`add_max_consecutive_days_constraints`, `forced_day_vars`, `resolveTravelRuleIntensity`,
+`objective/weights.py`, `VenueClosureDays`, `MIN_SESSIONS` soft, `add_match_day_rest_bonus` — voir
+historique `git log -p --follow` ce fichier).
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels
