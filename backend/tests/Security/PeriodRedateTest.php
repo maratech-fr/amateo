@@ -40,7 +40,11 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *  f.   une semaine-enfant garde sa fenêtre GELÉE (422) ;
  *  g.   le suffixe de fenêtre du titre se recale (convention « — … »), un titre libre reste intact ;
  *  h.   les versions COMPLETED sont marquées à régénérer (`resourcesChangedSinceGeneration`) ;
- *  i.   changer le type ou le kind reste refusé (422), dates ou pas.
+ *  i.   changer le type ou le kind reste refusé (422), dates ou pas ;
+ *  j.   le champ servi `redatable` reflète EXACTEMENT « racine de fermeture à plan » (vrai après
+ *       adaptation, faux sans plan / pour une vacance / pour une mère découpée) ;
+ *  k.   fin avant début → 422 (même maison qu'à la création, CalendarEntryInput::validateShape) ;
+ *  l.   fenêtre re-datée hors de la saison → 422 parlant, la période reste intacte.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -226,6 +230,60 @@ final class PeriodRedateTest extends WebTestCase
         self::assertResponseStatusCodeSame(422, 'convertir en événement reste refusé');
     }
 
+    public function testRedatableFieldReflectsExactlyAClosureRootWithAPlan(): void
+    {
+        [$user] = $this->createClubWithSeason();
+
+        // Une racine de fermeture SANS plan : le simple fait déclaré — pas encore re-datable.
+        $noPlanId = $this->postPeriod($user, 'closure', 'Barros en travaux', '2026-05-04', '2026-05-10');
+        self::assertFalse($this->getEntry($user, $noPlanId)['redatable'], 'une fermeture sans plan n’est pas re-datable');
+
+        // La même, une fois adaptée (elle porte un plan) : re-datable.
+        $this->adaptPeriod($user, $noPlanId);
+        self::assertTrue($this->getEntry($user, $noPlanId)['redatable'], 'une racine de fermeture à plan est re-datable');
+
+        // Une racine de vacances à plan (liée au référentiel) : fenêtre gelée, jamais re-datable.
+        $holidayId = $this->postPeriod($user, 'holiday', 'Vacances de printemps', '2026-04-13', '2026-04-19');
+        $this->adaptPeriod($user, $holidayId);
+        self::assertFalse($this->getEntry($user, $holidayId)['redatable'], 'une racine de vacances n’est pas re-datable');
+
+        // Une mère découpée en semaines : gelée par ses enfants, plus re-datable.
+        $motherId = $this->postPeriod($user, 'closure', 'Colombier fermé', '2026-05-18', '2026-05-31');
+        $this->postWeekChild($user, $motherId, 'closure', 'Semaine du 18 mai', '2026-05-18', '2026-05-24');
+        self::assertFalse($this->getEntry($user, $motherId)['redatable'], 'une mère découpée n’est pas re-datable');
+    }
+
+    public function testRedatingWithEndBeforeStartIsRejected(): void
+    {
+        [$user] = $this->createClubWithSeason();
+        $entryId = $this->postPeriod($user, 'closure', 'Barros en travaux', '2026-05-04', '2026-05-10');
+        $this->adaptPeriod($user, $entryId);
+
+        // Fin AVANT début → 422 (refusé aussi à la création, même maison : CalendarEntryInput::validateShape).
+        $this->put($user, $entryId, ['kind' => 'period', 'periodType' => 'closure', 'title' => 'Barros en travaux', 'startDate' => '2026-05-17', 'endDate' => '2026-05-04']);
+        self::assertResponseStatusCodeSame(422, 'fin avant début reste refusé au re-datage');
+    }
+
+    public function testRedatingOutsideTheSeasonWindowIsRejected(): void
+    {
+        [$user, $club] = $this->createClubWithSeason();
+        // Saison : 2025-09-01 → 2026-06-30 (createClubWithSeason).
+        $entryId = $this->postPeriod($user, 'closure', 'Barros en travaux', '2026-05-04', '2026-05-10');
+        $this->adaptPeriod($user, $entryId);
+
+        // Étendre la fin APRÈS la fin de saison → 422 parlant.
+        $this->put($user, $entryId, ['kind' => 'period', 'periodType' => 'closure', 'title' => 'Barros en travaux', 'startDate' => '2026-05-04', 'endDate' => '2026-07-15']);
+        self::assertResponseStatusCodeSame(422, 'une fenêtre hors saison est refusée');
+        self::assertStringContainsString('saison', (string) $this->client->getResponse()->getContent());
+
+        // La période n'a pas bougé.
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        $entry = $this->em->getRepository(CalendarEntry::class)->find($entryId);
+        self::assertInstanceOf(CalendarEntry::class, $entry);
+        self::assertSame('2026-05-10', $entry->getEndDate()->format('Y-m-d'), 'le refus laisse la période intacte');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -327,6 +385,17 @@ final class PeriodRedateTest extends WebTestCase
         $this->client->request('PUT', '/api/calendar_entries/' . $entryId, [], [], $this->authHeaders($user) + [
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode($body, \JSON_THROW_ON_ERROR));
+    }
+
+    /** @return array<string, mixed> le corps JSON de GET /api/calendar_entries/{id} */
+    private function getEntry(User $user, string $entryId): array
+    {
+        $this->client->request('GET', '/api/calendar_entries/' . $entryId, [], [], $this->authHeaders($user));
+        self::assertResponseIsSuccessful();
+        $payload = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($payload);
+
+        return $payload;
     }
 
     /**

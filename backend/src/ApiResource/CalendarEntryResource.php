@@ -69,7 +69,11 @@ class CalendarEntryResource
     #[Groups(['read'])]
     public ?string $createdBy = null;
 
-    public static function fromEntity(CalendarEntry $entity): self
+    /** Vrai si les dates de cette période peuvent être déplacées ; les autres périodes gardent leur fenêtre figée. */
+    #[Groups(['read'])]
+    public bool $redatable = false;
+
+    public static function fromEntity(CalendarEntry $entity, bool $redatable = false): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
@@ -86,6 +90,7 @@ class CalendarEntryResource
         $dto->parentEntryId = $entity->getParentEntryId();
         $dto->status = $entity->getStatus()->value;
         $dto->createdBy = $entity->getCreatedBy();
+        $dto->redatable = $redatable;
 
         return $dto;
     }

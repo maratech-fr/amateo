@@ -16,6 +16,7 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\CalendarEntryStatus;
 use App\Repository\SchoolHolidayPeriodRepository;
+use App\Service\CalendarEntryRedatability;
 use App\Service\HolidayWorkweekRule;
 use App\Service\ManagementAccessGuard;
 use App\Service\OverlayManager;
@@ -49,6 +50,7 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly PeriodWindowUniquenessGuard $windowUniquenessGuard,
         private readonly SchoolHolidayPeriodRepository $schoolHolidayRepository,
+        private readonly CalendarEntryRedatability $redatability,
     ) {
         parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
     }
@@ -116,15 +118,14 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
             // sur le plan bâti pour février.
             $holidayChanged = null !== $input->schoolHolidayId && $input->schoolHolidayId !== $entity->getSchoolHolidayId();
 
-            // D3 v1 (décision fondateur 2026-09-04) — une racine CLOSURE sans semaines-enfants
+            // D3 v1 (décision fondateur 2026-09-04) — une racine CLOSURE à plan « d'un bloc »
             // DÉGÈLE sa fenêtre : le plan est un gabarit hebdo SANS dates, re-dater un incident
             // « d'un bloc » déplace deux dates sans rien orpheliner (le déplacement du plan, des
             // contraintes appariées et du titre est orchestré par processPut). Le reste de son
             // identité (kind, type, vacances) reste figé, et TOUS les autres cas (racine HOLIDAY
             // liée au référentiel, mère découpée, semaine-enfant) gardent aussi leur fenêtre gelée.
-            $redatableClosureRoot = CalendarEntryPeriodType::CLOSURE === $entity->getPeriodType()
-                && null === $entity->getParentEntryId()
-                && !$this->hasWeekChildren($entity->getId());
+            // LE prédicat de re-databilité vit dans un seul foyer, partagé avec le mapping de sortie.
+            $redatableClosureRoot = $this->redatability->isRedatable($entity);
             $windowFrozen = ($startChanged || $endChanged) && !$redatableClosureRoot;
 
             if ($kindChanged || $periodTypeChanged || $windowFrozen || $holidayChanged) {
@@ -278,6 +279,10 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
             // des contraintes appariées, du titre) une fois l'entrée re-datée par le parent.
             $redate = $this->prepareClosureRootRedate($input, $entryId);
             if (null !== $redate) {
+                // La nouvelle fenêtre reste DANS la saison : une période ne se re-date pas hors de
+                // la fenêtre de sa saison (refus PARLANT, jamais un 422 muet). Passe AVANT la garde
+                // d'unicité, aucune mutation encore faite.
+                $this->assertWindowWithinSeason($redate['seasonId'], $redate['newStart'], $redate['newEnd']);
                 // Racine = l'entrée elle-même : sa propre famille (COALESCE(parent, id)) est exclue,
                 // seuls les AUTRES plans de période qui recoupent la nouvelle fenêtre déclenchent le 409.
                 $this->windowUniquenessGuard->assertWindowFree(
@@ -304,7 +309,7 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
 
     protected function mapEntityToOutput(object $entity): CalendarEntryResource
     {
-        return CalendarEntryResource::fromEntity($entity);
+        return CalendarEntryResource::fromEntity($entity, $this->redatability->isRedatable($entity));
     }
 
     /**
@@ -327,10 +332,9 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
         if (!$entity instanceof CalendarEntry) {
             return null; // introuvable / autre club (RLS) — le parent tranchera (404/403)
         }
-        if (CalendarEntryPeriodType::CLOSURE !== $entity->getPeriodType()
-            || null !== $entity->getParentEntryId()
-            || $this->hasWeekChildren($entity->getId())
-            || !$this->schedulePlanProvisioner->periodPlanExists($entity->getId())) {
+        // MÊME prédicat que le dégel de fenêtre (updateEntityFromInput) et que le champ servi
+        // `redatable` — un seul foyer, jamais deux copies.
+        if (!$this->redatability->isRedatable($entity)) {
             return null;
         }
 
@@ -541,6 +545,32 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
             'SELECT 1 FROM schedule WHERE schedule_plan_id = :pid LIMIT 1',
             ['pid' => $schedulePlanId],
         );
+    }
+
+    /**
+     * D3 v1 — la fenêtre re-datée reste-t-elle DANS la saison ? Refus PARLANT sinon (idiome
+     * $this->refuse — jamais un 422 muet). SQL brut : `season_filter` épinglerait la lecture à la
+     * saison ACTIVE, or le plan re-daté peut vivre pour une autre saison ; RLS scope le club. Saison
+     * introuvable → on ne bloque pas (le parent tranchera), parité avec assertValidWeekChild.
+     */
+    private function assertWindowWithinSeason(?string $seasonId, DateTimeImmutable $start, DateTimeImmutable $end): void
+    {
+        if (null === $seasonId) {
+            return;
+        }
+        $seasonRow = $this->entityManager->getConnection()->fetchAssociative(
+            'SELECT start_date, end_date FROM season WHERE id = :sid',
+            ['sid' => $seasonId],
+        );
+        if (false === $seasonRow) {
+            return;
+        }
+        $seasonStart = (string) $seasonRow['start_date'];
+        $seasonEnd = (string) $seasonRow['end_date'];
+        // Comparaison en DATE (Y-m-d, sans ambiguïté de fuseau) : le champ season est un DATE.
+        if ($start->format('Y-m-d') < substr($seasonStart, 0, 10) || $end->format('Y-m-d') > substr($seasonEnd, 0, 10)) {
+            $this->refuse('Ces dates sortent de la saison : une période reste dans la fenêtre de la saison.');
+        }
     }
 
     /** La période a-t-elle des semaines-enfants ? Gel d'identité d'une mère découpée (même sans plan). */

@@ -85,6 +85,35 @@ final class CalendarEntryApiTest extends WebTestCase
         self::assertSame('closure', $data['periodType']);
     }
 
+    public function testRedatableFieldIsServedAndFalseWithoutAPlan(): void
+    {
+        [$user, $club] = $this->seed('CE2R');
+
+        // POST d'une fermeture : le champ est servi, et faux tant qu'aucun plan n'est né du
+        // geste d'adapter (la naissance du plan n'a pas lieu à la création — ADR-0002).
+        $this->post($user, $club, [
+            'kind' => 'period',
+            'title' => 'Gym Barros fermé',
+            'startDate' => '2026-05-04',
+            'endDate' => '2026-05-10',
+            'periodType' => 'closure',
+        ]);
+        self::assertResponseStatusCodeSame(201);
+        $created = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertArrayHasKey('redatable', $created, 'le champ redatable est servi');
+        self::assertFalse($created['redatable'], 'sans plan, une fermeture n’est pas re-datable');
+
+        // Et présent, cohérent, en collection (GET).
+        $this->client->request('GET', '/api/calendar_entries', [], [], $this->authHeaders($user, $club));
+        self::assertResponseIsSuccessful();
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertNotEmpty($data['member']);
+        foreach ($data['member'] as $entry) {
+            self::assertArrayHasKey('redatable', $entry, 'redatable est servi sur chaque entrée de la collection');
+            self::assertFalse($entry['redatable'], 'aucune entrée n’a de plan ici → toutes non re-datables');
+        }
+    }
+
     public function testEndDateBeforeStartDateIsRejected(): void
     {
         [$user, $club] = $this->seed('CE3');

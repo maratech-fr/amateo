@@ -1,11 +1,18 @@
-Last verified @ 2026-09-03 (P2-60 PR-1, `coder` — snapshot régénéré dans le même commit. **191 paths**
-(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** (la ressource lecture seule
-`TeamSoloBudget` — `GET /api/team_solo_budgets` collection, filtrable par `schedulePlanId`, pas d'item)
-· SHA-256 `702e8d9b6afc841d626af6518c993e668531aa8c35def32d44d6a9dd6b35f6ed`
+Last verified @ 2026-09-04 (D3 v1 PR-1 complément, `coder` — snapshot régénéré dans le même commit.
+**191 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (aucune route
+nouvelle : un champ de LECTURE `redatable` s'ajoute au schéma `CalendarEntry` — 3 variantes read/collection)
+· SHA-256 `51d0a1dd923c9db13765c992e046c005867279b6d3a23e3e5ba94ddae47caf93`
 (`sha256sum`, confirmé sur le fichier régénéré, aucun diff local). Reste du journal non re-confronté
 au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **D3 v1 PR-1 complément — le champ servi `redatable` sur `CalendarEntry` (2026-09-04)** : **+0 path** —
+  la ressource lecture `CalendarEntry` gagne une propriété booléenne `redatable` : vraie ssi l'entrée
+  est une racine de FERMETURE portant un plan « d'un bloc » (sans mère, sans semaines-enfants) — le
+  seul cas où le front peut proposer de déplacer les dates, les autres périodes gardant leur fenêtre
+  figée (règle d'or : le backend dit, le front affiche). Servie sur les 3 variantes du schéma read
+  (jsonld, collection). Prédicat UNIQUE (`CalendarEntryRedatability`) partagé avec le dégel de fenêtre
+  au PUT. Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.20, aucun appel moteur).
 - **P2-60 PR-1 — le budget solo en lecture (`GET /api/team_solo_budgets`) (2026-09-03)** : **+1 path** —
   ressource LECTURE SEULE `TeamSoloBudget` (GetCollection uniquement, pas d'item) : le budget de
   réservation individuelle de chaque équipe par portée — `teamId`, `schedulePlanId`, `effectiveSessions`
@@ -67,14 +74,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   AWAY dont le code organisme a été posé — la clé de jointure). 185 → **189 paths**. Backend + frontend,
   contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.16, aucun appel moteur — itinéraire IGN
   `data.geopf.fr`, hôte déjà en place).
-- **P2-54 RMM-9 PR-2 — l'annuaire adverse global (2026-08-27)** : **+1 path** — route custom
-  `POST /api/opponents/resolve` (rattrapage **management** SEC-07 : localise les adversaires AWAY du
-  club+saison dans la table PARTAGÉE `opponent_directory`, keyée sur le code organisme fédéral —
-  salle exacte du hit FFBB, appariement franc par nom de salle, ou repli ville géocodé BAN, best-effort ;
-  200 : `{resolved, unresolved[], skipped}` ; 422 au-delà de 60 adversaires distincts ; 429 rate-limit
-  par utilisateur). Les hooks post-import xlsx et post-apply FFBB remplissent l'annuaire tout seuls
-  (aucune route). Contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.16, aucun appel moteur —
-  index Meilisearch `ffbbserver_salles`/`ffbbserver_organismes` + géocodage BAN).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine
