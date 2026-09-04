@@ -92,6 +92,12 @@ class SchedulePlanStateProcessor extends AbstractStateProcessor
         }
 
         return $this->entityManager->wrapInTransaction(function () use ($entry, $entryId): SchedulePlanResource {
+            // P4-172 — verrou club+saison AVANT le verrou d'entrée (club d'abord, entrée
+            // ensuite) : deux gestes « Adapter » concurrents sur des entrées DIFFÉRENTES du
+            // même club se sérialisent ici, sinon chacun passe la garde d'unicité (qui compare
+            // des fenêtres du club entier) avant que l'autre commite → deux plans sur la même
+            // semaine. L'ordre club→entrée est le même sur les trois chemins (pas d'ABBA).
+            $this->schedulePlanProvisioner->lockClubWindows($entry['club_id'], $entry['season_id']);
             // Verrou AVANT la lecture des enfants : un POST de semaine concurrent
             // (même scope) est sérialisé — pas de plan-bloc minté pendant une découpe.
             $this->schedulePlanProvisioner->lockPlanScope($entryId);

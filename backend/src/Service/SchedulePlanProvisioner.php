@@ -389,6 +389,33 @@ final class SchedulePlanProvisioner
     }
 
     /**
+     * P4-172 — sérialise TOUTE création ou re-datage d'une fenêtre de plan de période d'un
+     * club+saison. Grain club+saison parce que la garde d'unicité ({@see
+     * PeriodWindowUniquenessGuard::assertWindowFree}) compare des fenêtres du club ENTIER pour
+     * une saison donnée (deux saisons ne se croisent jamais) : un verrou par ENTRÉE
+     * ({@see lockPlanScope}) ne les sérialise pas — deux écrivains sur des entrées DIFFÉRENTES du
+     * même club passaient chacun la garde avant que l'autre commite, d'où deux plans gouvernant la
+     * même semaine (que le 409 `window_already_planned` interdit en séquentiel).
+     *
+     * À prendre AVANT {@see lockPlanScope} (club d'abord, entrée ensuite) dans les TROIS chemins
+     * qui écrivent une fenêtre — POST /schedule_plans (« Adapter »), POST d'une entrée-semaine
+     * porteuse de plan, PUT re-datage d'une racine CLOSURE. Cet ordre est uniforme sur tous les
+     * chemins : aucun ne prend l'entrée AVANT le club, donc pas d'ABBA (le verrou club, partagé,
+     * ne laisse qu'un écrivain à la fois franchir la garde d'un club+saison).
+     *
+     * Verrou de TRANSACTION comme {@see lockPlanScope} : relâché au commit, ré-entrant. Doit donc
+     * tourner DANS une transaction (les trois appelants l'enveloppent), sinon il se relâcherait au
+     * statement suivant.
+     */
+    public function lockClubWindows(string $clubId, string $seasonId): void
+    {
+        $this->entityManager->getConnection()->executeStatement(
+            'SELECT pg_advisory_xact_lock(hashtext(:scope))',
+            ['scope' => 'period-windows:' . $clubId . ':' . $seasonId],
+        );
+    }
+
+    /**
      * A version is being removed OR reopened: if it is its plan's chosen version,
      * the plan loses its pointer and returns to "espace de travail" (inv. 2) — a
      * pointer must never name a deleted version. Raw SQL: filter-free, and the
