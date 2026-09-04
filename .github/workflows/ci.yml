@@ -1077,28 +1077,30 @@ jobs:
           path: frontend/test-results/
           retention-days: 7
 
-  # Semantic end-to-end smokes on a real stack — « les smokes doivent être joués
-  # automatiquement et par la CI pour que l'on s'assure que les fonctionnalités
-  # fonctionnent bien » (fondateur, 2026-08-03).
+  # Vérifs sémantiques de bout en bout sur une vraie stack — « il faut s'assurer
+  # automatiquement, par la CI, que les fonctionnalités fonctionnent bien »
+  # (fondateur, 2026-08-03). Deux jobs le portent : engine-semantics (le contrat
+  # backend⇄moteur contre le VRAI solveur) et functional-tests (les features
+  # Behat en Gherkin français, API contre la stack réelle — elles ont remplacé
+  # les smokes .sh, P4-165).
   #
-  # NO `needs`: they answer « la fonctionnalité marche-t-elle ? », a question
-  # independent of the unit/blocking suites — waiting for them only delayed the
-  # answer (~13 min behind the e2e job, measured). Same reason dependency-audit
-  # and rector have none. They need NO npm, NO Playwright, NO Vite: only the API
-  # + the solver, so the job boots in a fraction of the e2e setup.
+  # AUCUN `needs` : ils répondent « la fonctionnalité marche-t-elle ? », question
+  # indépendante des suites unitaires/bloquantes — les attendre ne faisait que
+  # retarder la réponse (~13 min derrière le job e2e, mesuré). Même raison que
+  # dependency-audit et rector. Ni npm, ni Playwright, ni Vite : seulement l'API
+  # + le solveur, donc le job démarre en une fraction du setup e2e.
   #
-  # Each script is self-sufficient (mints its JWT, creates AND cleans its data,
-  # re-opens then RESTORES the season-plan pointer) — order is a convenience,
-  # never a dependency. The seed ships a COMPLETED, pointed season schedule the
-  # placement/overlay smokes settle onto; the season-generation smoke has moved
-  # to the Behat functional-tests job.
+  # Chaque feature Behat est autosuffisante (forge son JWT, crée ET nettoie ses
+  # données, rouvre puis RESTAURE le pointeur du socle) — jouable seule et dans
+  # n'importe quel ordre. Le seed livre un planning de saison COMPLETED et pointé
+  # sur lequel les features placement/overlay s'appuient.
   engine-semantics:
     name: Engine semantics
     runs-on: ubuntu-latest
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 25
-    # AUCUN `needs`, comme smoke-tests : la question « ce que le backend croit du
+    # AUCUN `needs`, comme les tests fonctionnels : la question « ce que le backend croit du
     # moteur est-il vrai ? » ne dépend d'aucune suite unitaire, et démarrer à t=0
     # la fait répondre tôt. ⚠ À ajouter aux required status checks de `main` pour
     # qu'elle BLOQUE (décision fondateur 2026-08-07) — le réglage est côté GitHub.
@@ -1153,7 +1155,7 @@ jobs:
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 40
-    # AUCUN `needs`, comme smoke-tests : la question « la fonctionnalité marche-t-elle ? »
+    # AUCUN `needs`, comme engine-semantics et rector : la question « la fonctionnalité marche-t-elle ? »
     # ne dépend d'aucune suite unitaire, et démarrer à t=0 la fait répondre tôt.
     # ⚠ À ajouter aux required status checks de `main` pour qu'il BLOQUE — côté GitHub.
     steps:
@@ -1183,7 +1185,7 @@ jobs:
         run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console doctrine:migrations:migrate --no-interaction'
 
       # Le club dev seedé que la feature pilote. Même danse admin-URL que le job
-      # smoke-tests (le seeder BCCL refuse la connexion amateo_app).
+      # e2e (le seeder BCCL refuse la connexion amateo_app).
       - name: Seed dev data
         run: |
           docker compose exec -T php-fpm sh -c '
@@ -1200,60 +1202,6 @@ jobs:
 
       - name: Functional tests (Behat, Gherkin FR — API-only, real async rail)
         run: docker compose exec -T -e APP_ENV=dev php-fpm vendor/bin/behat --format=pretty --no-interaction
-
-      - name: Dump service logs on failure
-        if: failure()
-        run: docker compose logs --tail 120 php-fpm engine messenger-worker
-
-  smoke-tests:
-    name: Smoke Tests (semantic e2e)
-    runs-on: ubuntu-latest
-    # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
-    # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Prepare .env
-        run: |
-          cp .env.dist .env
-          printf 'USER_ID=%s\nGROUP_ID=%s\n' "$(id -u)" "$(id -g)" >> .env
-
-      # P4-90 — la couche chère de l'image php vient du cache GHA (voir l'action).
-      - name: Pre-build php image (GHA cache)
-        uses: ./.github/actions/build-php-cached
-
-      # mailpit rides along (php-fpm depends_on it) — the onboarding smoke pulls
-      # its verification link from it.
-      - name: Start services
-        run: docker compose up -d --wait php-fpm nginx engine mercure redis postgres
-
-      # P4-100 — cache de backend/vendor + retry : un 5xx du registre ne doit
-      # plus rougir une PR saine (voir l'action).
-      - name: Install PHP deps (cached + retried)
-        uses: ./.github/actions/composer-install-cached
-
-      - name: Generate JWT keys
-        run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console lexik:jwt:generate-keypair --skip-if-exists --no-interaction'
-
-      - name: Migrate dev database
-        run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console doctrine:migrations:migrate --no-interaction'
-
-      # The seeded club the solver/matches/overlay smokes drive. Same admin-URL
-      # dance as the e2e job (the BCCL seeder refuses the amateo_app connection).
-      - name: Seed dev data
-        run: |
-          docker compose exec -T php-fpm sh -c '
-            cd /app/backend
-            DBU=$(cat .env .env.local 2>/dev/null | sed -n "s/^DATABASE_ADMIN_URL=//p" | tail -n1 | tr -d "\"")
-            [ -n "$DBU" ] || { echo "DATABASE_ADMIN_URL introuvable dans backend/.env — le seed ne peut pas tourner sur la connexion admin"; exit 1; }
-            DATABASE_URL="$DBU" php bin/console app:bccl:seed --no-interaction
-            php bin/console app:school-holidays:seed --no-interaction
-            php bin/console app:public-holidays:seed --no-interaction
-          '
-
-      - name: Start messenger worker
-        run: docker compose up -d --wait messenger-worker
 
       - name: Dump service logs on failure
         if: failure()
