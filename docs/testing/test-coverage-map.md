@@ -1,12 +1,10 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-04 (P4-165 SOLDÉ — les 4 paliers restants livrés d'un coup, le job
-`smoke-tests` SUPPRIMÉ de `ci.yml`, angle mort n° 1 §4 RÉSORBÉ : re-vérifié
-`.github/workflows/ci.yml` (`smoke-tests` n'existe plus, `functional-tests` sans `needs`, step
-Behat unique), `backend/behat.dist.php` (5 suites), `backend/features/` (5 `.feature`),
-`backend/tests/Behat/` (5 contexts + `BaseContext`), `backend/Makefile` (cible `behat`),
-`ls backend/scripts/` (plus aucun `*smoke*.sh`) ; sa trace vit dans
-`specs/courantes/etat-des-lieux.md` §3).
+Last verified @ 2026-09-04 (D4 — semaine charnière lundi→vendredi). §2 axe « Cycle de vie des
+plans » recalé : `WeekChildEntryTest` (`backend/tests/Security/WeekChildEntryTest.php`, testsuite
+`Security`) et `HolidayWorkweekMirrorParityTest` (`backend/tests/CrossStack/`, groupe `contract`)
+ajoutés — re-vérifiés au diff `21b8d153` (`App\Service\HolidayWorkweekRule`,
+`CalendarEntryStateProcessor::assertValidWeekChild`, `frontend/src/features/cockpit/lib/holidayWorkweek.ts`) ✓.
 Un stamp REMPLACE, l'historique vit dans git : `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
@@ -45,7 +43,7 @@ Recalculer les tailles : `find backend/tests -name '*Test.php' | awk -F/ '{print
 | Isolation tenant | `TenantIsolationTest`, `RlsIsolationTest`, `TenantCacheIsolationTest`, `MatchTenantIsolationTest` | `blocking-tests` |
 | Pipeline de génération | `ConcurrentGenerationTest` (verrou) ; **`journey.spec.ts`** (wizard → génération CP-SAT réelle → planning validé → cockpit — **et livrée PAR le canal Mercure/SSE**, pas seulement par le repli polling : témoin `ScheduleStreamWitness`, `data-schedule-stream-events` ≥ 1 exigé, P4-168) ; feature Behat `generation-du-planning-de-saison.feature` (rail async → `COMPLETED`) et `inscription-et-premier-planning.feature` (club neuf → minimum → `COMPLETED`) | `blocking-tests`, `e2e`, `functional-tests` |
 | Sémantique des contraintes | `engine/tests/semantic/` ; `engine-semantics` (clés, miroir capacité, forme du contrat contre le vrai engine) ; feature Behat `placement-des-matchs.feature` (samedi PLACED dans sa fenêtre, dimanche UNPLACED `no_access_window`) | `engine-tests`, `engine-semantics`, `functional-tests` |
-| Cycle de vie des plans (ADR-0002) | `PeriodPlanBirthTest`, `PeriodCopyBirthTest`, `SeasonPlanInForceTest`, `SocleDeviationParityTest`, `ScheduleConstraintBuilderOverlayTest` ; feature Behat `plan-de-periode-en-overlay.feature` (période → plan → overlay → `COMPLETED` ; remplissage recolle un membre de bloc libéré) ; `club-life.spec.ts` (incident borné à SON plan) | `blocking-tests`, `functional-tests`, `e2e` |
+| Cycle de vie des plans (ADR-0002) | `PeriodPlanBirthTest`, `PeriodCopyBirthTest`, `SeasonPlanInForceTest`, `SocleDeviationParityTest`, `ScheduleConstraintBuilderOverlayTest` ; feature Behat `plan-de-periode-en-overlay.feature` (période → plan → overlay → `COMPLETED` ; remplissage recolle un membre de bloc libéré) ; `club-life.spec.ts` (incident borné à SON plan) ; `WeekChildEntryTest` (une semaine-enfant d'une mère VACANCES ne naît que si elle couvre tout son lundi→vendredi, 422 nommé sinon — D4, `App\Service\HolidayWorkweekRule`) et `HolidayWorkweekMirrorParityTest` (parité mécanique backend ⇄ front `holidayCoversWorkweek`, `holidayWorkweek.parity.json`, groupe `contract`) | `blocking-tests`, `functional-tests`, `e2e`, `unit-tests` |
 | Périmètre engagé | `EngagedTeamGuardTest` ; `matches.spec.ts` (matchs verrouillés tant que le plan principal n'est pas validé) | `blocking-tests`, `e2e` |
 | Contrat backend ⇄ engine | `ContractSchemaTest`, `ValidateAssignmentsContractSchemaTest`, `PayloadVersionMatchesContractVersionTest`, les `*PayloadParityTest` | `blocking-tests` |
 | Auth & memberships | `ClubUserAccessTests`, `MemberRoleTest`, `ManagementRoleTest`, `SuperAdminAccessTest`, `ApiRateLimitTest`, `PasswordResetEnumerationTest`, `RegisterTurnstileTest`, `MercureHardeningTest` ; `auth.spec.ts` ; feature Behat `voeux-des-coachs.feature` (seul chemin d'écriture non authentifié : token public → vœu persisté) | `blocking-tests`, `e2e`, `functional-tests` |
