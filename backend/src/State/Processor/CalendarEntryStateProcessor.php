@@ -566,8 +566,8 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
         // enfants de VACANCES gardent Scinder/Fusionner (leur règle est le lundi→vendredi couvert,
         // gardée plus haut) — d'où le filtre sur le type. La tolérance des semaines révolues en tête
         // vit dans le calcul de l'offre (endDate >= today).
-        if (CalendarEntryPeriodType::CLOSURE === $parentType) {
-            $segments = $this->closureSegmentation->segments(
+        if (CalendarEntryPeriodType::CLOSURE === $parentType
+            && !$this->closureSegmentation->childWindowIsValidSegment(
                 $parent->getClubId(),
                 (string) $parent->getSeasonId(),
                 $parent->getId(),
@@ -575,17 +575,10 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
                 $motherEnd->format('Y-m-d'),
                 $seasonStart,
                 $seasonEnd,
-            );
-            $matchesASegment = false;
-            foreach ($segments as $segment) {
-                if ($segment['startDate'] === $childStart && $segment['endDate'] === $childEnd) {
-                    $matchesASegment = true;
-                    break;
-                }
-            }
-            if (!$matchesASegment) {
-                $this->refuse('Les semaines complètes d’une indisponibilité forment un seul plan : découpez-la en début, milieu, fin — ni une semaine complète isolée, ni un milieu tronqué.');
-            }
+                $childStart,
+                $childEnd,
+            )) {
+            $this->refuse('Les semaines complètes d’une indisponibilité forment un seul plan : découpez-la en début, milieu, fin — ni une semaine complète isolée, ni un milieu tronqué.');
         }
     }
 

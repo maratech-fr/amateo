@@ -15,18 +15,20 @@ use Symfony\Component\Clock\ClockInterface;
  *
  * Reproduit ce que le cockpit calcule pour offrir le picker d'une fermeture (`closureWeeksOffer`
  * puis `subtractPlannedWeeks`, `date.ts`), à partir de ce que le SERVEUR SAIT :
- *  1. les semaines PLEINES lun→dim couvrant la mère, clampées à la saison, dont il reste des jours
- *     devant (les semaines révolues à l'horloge serveur en tête sont OMISES sans refus — c'est la
- *     tolérance `isActionableWeek` du front, endDate >= today) ;
+ *  1. les semaines PLEINES lun→dim couvrant la mère, clampées à la saison ;
  *  2. moins les semaines DE VACANCES (lundi→vendredi couvert, {@see HolidayWorkweekRule}) — vacances
  *     scolaires de la zone du club ∪ entrées HOLIDAY non ignorées ;
  *  3. moins les semaines qu'un AUTRE plan de période gouverne déjà
  *     ({@see PeriodWindowUniquenessGuard::governingWindows}, famille de la mère exclue).
  *
- * Le découpage lui-même est délégué au miroir pur {@see WeekSegmentationRule::segments}. Deux
- * appelants : {@see CalendarEntryStateProcessor::assertValidWeekChild} (l'enfant doit être
- * EXACTEMENT un segment) et {@see SchedulePlanStateProcessor} (« d'un bloc » permis ssi la
- * décomposition compte un seul segment).
+ * Le découpage lui-même est délégué au miroir pur {@see WeekSegmentationRule::segments}.
+ *
+ * TOLÉRANCE des semaines RÉVOLUES en tête (fondateur) : le picker n'offre que les semaines dont il
+ * reste un jour devant (`isActionableWeek`, endDate >= today), donc un enfant créé au cockpit couvre
+ * l'offre ACTIONNABLE (milieu rogné de sa tête révolue) ; un enfant seedé ou d'une période passée
+ * couvre la géométrie PLEINE. Les deux sont légitimes — les révolues « en tête sont omises SANS
+ * refus ». D'où deux vues : {@see segments} (actionnable, sert la décision « d'un bloc ») et
+ * {@see childWindowIsValidSegment} (plein OU actionnable — la garde du POST d'un enfant).
  */
 final class ClosureSegmentation
 {
@@ -38,7 +40,8 @@ final class ClosureSegmentation
     ) {}
 
     /**
-     * Les segments d'une mère CLOSURE. Bornes en Y-m-d (exactes au jour, sans ambiguïté de fuseau).
+     * Les segments ACTIONNABLES d'une mère CLOSURE (semaines révolues en tête omises — miroir du
+     * picker). Sert la décision « d'un bloc » (permis ssi un seul segment). Bornes en Y-m-d.
      *
      * @param string $rootEntryId l'ancêtre racine de la mère (elle-même : une mère est toujours racine) — sa famille est exclue des fenêtres gouvernantes
      *
@@ -53,26 +56,73 @@ final class ClosureSegmentation
         ?string $seasonStart,
         ?string $seasonEnd,
     ): array {
-        $today = $this->clock->now()->format('Y-m-d');
-        $offered = $this->offeredWeeks($motherStart, $motherEnd, $seasonStart, $seasonEnd, $today);
-        if ([] === $offered) {
-            return [];
+        $base = $this->baseOfferedWeeks($clubId, $seasonId, $rootEntryId, $motherStart, $motherEnd, $seasonStart, $seasonEnd);
+
+        return WeekSegmentationRule::segments($this->actionable($base), $motherStart, $motherEnd);
+    }
+
+    /**
+     * L'enfant [childStart, childEnd] est-il EXACTEMENT un segment de la mère CLOSURE ? Tolérant aux
+     * semaines révolues en tête : le segment PLEIN (géométrie entière) OU le segment ROGNÉ des
+     * révolues (ce que le picker a offert) est accepté — l'un naît d'une période passée / du seed,
+     * l'autre d'une création au cockpit.
+     */
+    public function childWindowIsValidSegment(
+        string $clubId,
+        string $seasonId,
+        string $rootEntryId,
+        string $motherStart,
+        string $motherEnd,
+        ?string $seasonStart,
+        ?string $seasonEnd,
+        string $childStart,
+        string $childEnd,
+    ): bool {
+        $base = $this->baseOfferedWeeks($clubId, $seasonId, $rootEntryId, $motherStart, $motherEnd, $seasonStart, $seasonEnd);
+        foreach ([$base, $this->actionable($base)] as $offered) {
+            foreach (WeekSegmentationRule::segments($offered, $motherStart, $motherEnd) as $segment) {
+                if ($segment['startDate'] === $childStart && $segment['endDate'] === $childEnd) {
+                    return true;
+                }
+            }
         }
 
-        $offered = $this->dropHolidayWeeks($offered, $clubId, $seasonId, $seasonStart, $seasonEnd);
-        $offered = $this->dropPlannedWeeks($offered, $clubId, $seasonId, $rootEntryId);
+        return false;
+    }
 
-        return WeekSegmentationRule::segments($offered, $motherStart, $motherEnd);
+    /**
+     * Les semaines PLEINES lun→dim couvrant [motherStart, motherEnd] — clampées à la saison (une
+     * semaine entièrement hors saison est omise), MOINS les semaines de vacances, MOINS les semaines
+     * déjà planifiées. AUCUN filtre temporel ici (la tolérance des révolues est appliquée par les
+     * appelants).
+     *
+     * @return list<array{monday: string, startDate: string, endDate: string}>
+     */
+    private function baseOfferedWeeks(
+        string $clubId,
+        string $seasonId,
+        string $rootEntryId,
+        string $motherStart,
+        string $motherEnd,
+        ?string $seasonStart,
+        ?string $seasonEnd,
+    ): array {
+        $weeks = $this->offeredWeeks($motherStart, $motherEnd, $seasonStart, $seasonEnd);
+        if ([] === $weeks) {
+            return [];
+        }
+        $weeks = $this->dropHolidayWeeks($weeks, $clubId, $seasonId, $seasonStart, $seasonEnd);
+
+        return $this->dropPlannedWeeks($weeks, $clubId, $seasonId, $rootEntryId);
     }
 
     /**
      * Les semaines PLEINES lun→dim couvrant [motherStart, motherEnd], chacune clampée à la saison
-     * (une semaine entièrement hors saison est omise) et gardée seulement s'il lui reste un jour
-     * devant (endDate >= today — miroir de `isActionableWeek`).
+     * (une semaine entièrement hors saison est omise).
      *
      * @return list<array{monday: string, startDate: string, endDate: string}>
      */
-    private function offeredWeeks(string $motherStart, string $motherEnd, ?string $seasonStart, ?string $seasonEnd, string $today): array
+    private function offeredWeeks(string $motherStart, string $motherEnd, ?string $seasonStart, ?string $seasonEnd): array
     {
         $weeks = [];
         $monday = new DateTimeImmutable($motherStart)->modify(\sprintf('-%d days', (int) new DateTimeImmutable($motherStart)->format('N') - 1));
@@ -81,13 +131,28 @@ final class ClosureSegmentation
             $sundayIso = $monday->modify('+6 days')->format('Y-m-d');
             $start = null === $seasonStart ? $mondayIso : max($mondayIso, $seasonStart);
             $end = null === $seasonEnd ? $sundayIso : min($sundayIso, $seasonEnd);
-            if ($start <= $end && $end >= $today) {
+            if ($start <= $end) {
                 $weeks[] = ['monday' => $mondayIso, 'startDate' => $start, 'endDate' => $end];
             }
             $monday = $monday->modify('+7 days');
         }
 
         return $weeks;
+    }
+
+    /**
+     * Ne garde que les semaines dont il reste un jour devant (endDate >= today) — miroir de
+     * `isActionableWeek`.
+     *
+     * @param list<array{monday: string, startDate: string, endDate: string}> $weeks
+     *
+     * @return list<array{monday: string, startDate: string, endDate: string}>
+     */
+    private function actionable(array $weeks): array
+    {
+        $today = $this->clock->now()->format('Y-m-d');
+
+        return array_values(array_filter($weeks, static fn (array $week): bool => $week['endDate'] >= $today));
     }
 
     /**
@@ -109,7 +174,7 @@ final class ClosureSegmentation
             return $offered;
         }
 
-        return array_values(array_filter($offered, function (array $week) use ($holidayWindows, $seasonStart, $seasonEnd): bool {
+        return array_values(array_filter($offered, static function (array $week) use ($holidayWindows, $seasonStart, $seasonEnd): bool {
             foreach ($holidayWindows as [$holStart, $holEnd]) {
                 if (HolidayWorkweekRule::covers($week['monday'], $holStart, $holEnd, $seasonStart, $seasonEnd)) {
                     return false;
@@ -130,9 +195,9 @@ final class ClosureSegmentation
         // Entrées calendrier de type vacances (SQL brut : season_filter épinglerait la lecture à la
         // saison active, RLS scope le club). Une IGNORÉE ne compte pas ; son schoolHolidayId retire
         // en plus la vacance scolaire correspondante du feed.
-        /** @var list<array{title: string, start_date: string, end_date: string, status: string, school_holiday_id: ?string}> $rows */
+        /** @var list<array{start_date: string, end_date: string, status: string, school_holiday_id: ?string}> $rows */
         $rows = $this->entityManager->getConnection()->fetchAllAssociative(
-            'SELECT title, start_date, end_date, status, school_holiday_id FROM calendar_entry '
+            'SELECT start_date, end_date, status, school_holiday_id FROM calendar_entry '
             . 'WHERE club_id = :club AND season_id = :season AND period_type = \'holiday\'',
             ['club' => $clubId, 'season' => $seasonId],
         );

@@ -130,8 +130,10 @@ final class SeasonVersionUniquenessTest extends WebTestCase
         ], json_encode([
             'kind' => 'period',
             'title' => 'Gymnase fermé',
+            // Fenêtre lun→dim ALIGNÉE (2 semaines pleines = un seul segment) : « d'un bloc » permis
+            // sur une fermeture qui ne se décompose qu'en UN segment (fondateur 2026-09-05).
             'startDate' => '2026-10-19',
-            'endDate' => '2026-11-02',
+            'endDate' => '2026-11-01',
             'periodType' => 'closure',
         ], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(201);
