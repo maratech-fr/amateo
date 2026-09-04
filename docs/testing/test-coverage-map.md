@@ -1,12 +1,9 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-04 (P4-166 PR 3/3 — **lot P4-166 SOLDÉ, angle mort n° 1 §4 DISPARAÎT** :
-les trois zones sont mesurées et gardées — re-vérifié `.github/workflows/ci.yml` (job
-`backend-coverage`, `needs: blocking-tests`, absent des `needs` de `build-docker`),
-`backend/phpunit.xml.dist` (bloc `<source>`, périmètre `src` avec exclusions déclarées),
-`backend/scripts/coverage-gate.php` (lit le clover, plancher `backend`, sans dépendance),
-`backend/Makefile` (cible `coverage`), `docker/php/Dockerfile` (`ARG WITH_PCOV=0`, pcov chargé
-INERTE, jamais dans l'étage `prod`) et `coverage-floor.json` (racine, clé `backend` renseignée) ;
+Last verified @ 2026-09-04 (P4-165 palier 1 — le job `functional-tests` (Behat) rejoint la carte, angle
+mort n° 1 §4 RECALÉ en « en cours » : re-vérifié `.github/workflows/ci.yml` (job `functional-tests`
+sans `needs`, step Behat), `backend/behat.dist.php`, `backend/features/`, `backend/tests/Behat/`,
+`backend/Makefile` (cible `behat`) ; `smoke-tests` passe de 5 à 4 smokes (`smoke-solver.sh` supprimé) ;
 sa trace vit dans `specs/courantes/etat-des-lieux.md` §3).
 Un stamp REMPLACE, l'historique vit dans git : `git log -p --follow docs/testing/test-coverage-map.md`.
 
@@ -27,7 +24,8 @@ Un stamp REMPLACE, l'historique vit dans git : `git log -p --follow docs/testing
 | pytest | engine | unitaires du solveur (racine), **sémantiques** (`tests/semantic/` : une contrainte saisie est honorée, pas juste `COMPLETED`), goldens (`tests/golden/`, BCCL d'acceptation compris), invariants, perf (`-m perf`, budget lu par `_budget_seconds()` — `PERF_BUDGET_SECONDS` en override) ; **couverture + cliquet** (`make -C engine coverage`, plancher lu de `coverage-floor.json`, artefact `coverage-engine`) | `engine/tests/` | `make -C engine test` (ruff + format + mypy + bandit + pytest, **sans** couverture depuis P4-166) · `make -C engine coverage` (couverture + cliquet, séparé) | `engine-tests` ; `engine-coverage` (couverture, `needs: engine-tests`, hors `needs` de `build-docker`) ; `engine-perf` (main, dense + BCCL, 60 s) ; `engine-perf-pr` (PR, dense seul, quand `engine/**` ou `docker/engine/**` bouge) |
 | Vitest + RTL | frontend | composants, hooks react-query, lib pure (`vi.mock` des queries) ; jsdom — **aucune mise en page** (`.claude/rules/frontend.md`) ; **couverture + cliquet** (`make -C frontend coverage`, plancher lu de `coverage-floor.json`, artefact `coverage-frontend`) | `frontend/src/**/*.test.ts*` | `make -C frontend test` (image tooling à rebâtir avant) · `make -C frontend coverage` (couverture, séparé — suite complète instrumentée, hors boucle courte) | `frontend` ; `frontend-coverage` (couverture, `needs: frontend`, hors `needs` de `build-docker`) |
 | Playwright | frontend + stack complète | 11 parcours nommés en §2 — dont **le seul test UI → API → engine → planning** (`journey.spec.ts`, qui prouve aussi la livraison PAR SSE : témoin Mercure, échec nommé si le hub reste muet — P4-168) et 4 specs **axe** (contraste 2 thèmes, reflow, voile, écrans système) | `frontend/tests/e2e/` | `make -C frontend e2e` | `e2e` |
-| Smokes bash | stack complète | 5 preuves sémantiques de bout en bout (§2), chacune autosuffisante (JWT, données, restauration) | `backend/scripts/*smoke*.sh` | `backend/scripts/<smoke>.sh` (sous `with-sandbox.sh` en mode play) | `smoke-tests` |
+| Smokes bash | stack complète | 4 preuves sémantiques de bout en bout (§2), chacune autosuffisante (JWT, données, restauration) — un 5ᵉ (season solver) a migré en feature Behat (P4-165 palier 1) | `backend/scripts/*smoke*.sh` | `backend/scripts/<smoke>.sh` (sous `with-sandbox.sh` en mode play) | `smoke-tests` |
+| Behat | stack complète | scénarios métier en français (Gherkin), lisibles et relisables par le fondateur, joués contre l'API réelle (aucun navigateur, aucun noyau in-process) — §5 : 1 feature livrée (génération du planning de saison), 4 restent à migrer (P4-165) | `backend/features/`, contexts `backend/tests/Behat/` | `make -C backend behat` (sous `with-sandbox.sh` en mode play) | `functional-tests` |
 | Statique | 3 zones | PHPStan 8 · CS-Fixer · Rector — ruff · `ruff format` · mypy strict · bandit — eslint · `tsc -b --force` | Makefiles | `make lint` | `phpstan`, `rector`, `engine-tests`, `frontend` |
 | Sécurité | dépôt, images | gitleaks (historique entier), semgrep, `composer`/`npm`/`pip audit` (retry sur endpoint indisponible seulement, `.github/scripts/audit-retry.sh`), Trivy CRITICAL sur les images prod | `.github/workflows/` | — | `secrets-scan`, `semgrep`, `dependency-audit`, `build-docker` + cron hebdo `security-weekly.yml` |
 
@@ -44,7 +42,7 @@ Recalculer les tailles : `find backend/tests -name '*Test.php' | awk -F/ '{print
 | Axe | Preuve principale | Où |
 |---|---|---|
 | Isolation tenant | `TenantIsolationTest`, `RlsIsolationTest`, `TenantCacheIsolationTest`, `MatchTenantIsolationTest` | `blocking-tests` |
-| Pipeline de génération | `ConcurrentGenerationTest` (verrou) ; **`journey.spec.ts`** (wizard → génération CP-SAT réelle → planning validé → cockpit — **et livrée PAR le canal Mercure/SSE**, pas seulement par le repli polling : témoin `ScheduleStreamWitness`, `data-schedule-stream-events` ≥ 1 exigé, P4-168) ; smokes `smoke-solver.sh` (rail async → `COMPLETED`) et `onboarding-smoke.sh` (club neuf → minimum → `COMPLETED`) | `blocking-tests`, `e2e`, `smoke-tests` |
+| Pipeline de génération | `ConcurrentGenerationTest` (verrou) ; **`journey.spec.ts`** (wizard → génération CP-SAT réelle → planning validé → cockpit — **et livrée PAR le canal Mercure/SSE**, pas seulement par le repli polling : témoin `ScheduleStreamWitness`, `data-schedule-stream-events` ≥ 1 exigé, P4-168) ; feature Behat `generation-du-planning-de-saison.feature` (rail async → `COMPLETED`, remplace `smoke-solver.sh`) et smoke `onboarding-smoke.sh` (club neuf → minimum → `COMPLETED`) | `blocking-tests`, `e2e`, `functional-tests`, `smoke-tests` |
 | Sémantique des contraintes | `engine/tests/semantic/` ; `engine-semantics` (clés, miroir capacité, forme du contrat contre le vrai engine) ; `smoke-place-matches.sh` (samedi PLACED dans sa fenêtre, dimanche UNPLACED `no_access_window`) | `engine-tests`, `engine-semantics`, `smoke-tests` |
 | Cycle de vie des plans (ADR-0002) | `PeriodPlanBirthTest`, `PeriodCopyBirthTest`, `SeasonPlanInForceTest`, `SocleDeviationParityTest`, `ScheduleConstraintBuilderOverlayTest` ; `smoke-overlay.sh` (période → plan → overlay → `COMPLETED`) ; `club-life.spec.ts` (incident borné à SON plan) | `blocking-tests`, `smoke-tests`, `e2e` |
 | Périmètre engagé | `EngagedTeamGuardTest` ; `matches.spec.ts` (matchs verrouillés tant que le plan principal n'est pas validé) | `blocking-tests`, `e2e` |
@@ -60,8 +58,8 @@ Recalculer les tailles : `find backend/tests -name '*Test.php' | awk -F/ '{print
   steps (`grep -rhoE "Group\('phase1'\)" backend/tests | wc -l` vs steps du job). Un test annoté mais non
   listé tourne dans `unit-tests`, APRÈS le gate.
 - **Required checks sans `needs`** : `rector`, `dependency-audit`, `secrets-scan`, `semgrep`, `smoke-tests`,
-  `engine-semantics` — ce dernier se règle **côté GitHub** (`ci.yml`, commentaire du job), non vérifiable
-  depuis le dépôt.
+  `engine-semantics`, `functional-tests` (Behat, P4-165 palier 1) — ces deux derniers se règlent **côté
+  GitHub** (`ci.yml`, commentaire du job), non vérifiable depuis le dépôt.
 - `build-docker` needs `[blocking-tests, engine-tests]` seulement ; `unit-tests` et `e2e` needs
   `blocking-tests` ; `engine-perf` needs `engine-tests` **et ne tourne que sur `main`**
   (`if: github.ref == 'refs/heads/main'`) : palier dense + BCCL, budget 60 s. `engine-perf-pr`
@@ -87,9 +85,11 @@ Recalculer les tailles : `find backend/tests -name '*Test.php' | awk -F/ '{print
 
 ## 4. Ce que personne ne prouve (angles morts constatés, pas devinés)
 
-1. **Rien n'est lisible par un non-développeur** : aucun `.feature`, aucun scénario en français. Les trois
-   formats fonctionnels (PHPUnit `WebTestCase`, bash, Playwright) sont des formats de développeur — le
-   fondateur ne peut ni relire ni proposer un scénario. Ouvert : roadmap **P4-165** (Behat/Gherkin, à cadrer).
+1. **En cours de résorption — palier 1/5 livré** : une feature Gherkin existe désormais
+   (`generation-du-planning-de-saison.feature`, lisible et relisable par le fondateur), mais les
+   quatre autres parcours fonctionnels (onboarding, placement des matchs, overlay de période,
+   vœux coachs) restent des formats de développeur (PHPUnit `WebTestCase`, bash, Playwright) —
+   aucun n'est encore lisible hors code. Ouvert : roadmap **P4-165** (paliers 2-5).
 
 ## `coverage-floor.json` — la couture des trois zones (P4-166)
 
@@ -116,11 +116,25 @@ fermées, `specs/courantes/etat-des-lieux.md` §2) :
   côté frontend et `backend/tests/Unit/CoverageFloorFileTest.php` côté backend (même contrat : le
   fichier existe, est du JSON, la clé de la zone est un entier 0-100, jamais `null`).
 
-## 5. Behat — ce qu'il ajouterait, ce qu'il n'ajouterait pas (cadrage P4-165)
+## 5. Behat — ce qui est livré, ce qui reste (P4-165)
 
-**Ajoute** : la couche **produit** au-dessus des rails existants — un scénario en français, relu ou écrit
-par le fondateur AVANT le code, exécutable, qui vaut spec courante. Exemple (règle P2-60, déjà testée dans
-`ReservationApiTest` mais illisible hors code) :
+**Livré (palier 1/5, 2026-09-04)** : `behat/behat` ^3 (v3.32) en require-dev, `backend/behat.dist.php`
+(Gherkin `# language: fr`), `backend/features/generation-du-planning-de-saison.feature`, contexts
+`backend/tests/Behat/` (`BaseContext` — socle commun, garde bac-à-sable jumelle de
+`sandbox-guard.sh`, jeton via `bin/console lexik:jwt:generate-token` ; `SeasonGenerationContext`).
+**Choix de conception (décision fermée, `specs/courantes/etat-des-lieux.md` §2)** : les features
+parlent **HTTP à la stack qui tourne** (client `HttpClient::create` vers `http://nginx/api`, vrai
+`messenger-worker`, vrai engine) — **ni kernel in-process, ni `BrowserKit`, ni DAMA, ni
+`friends-of-behat/*`** : c'est une déviation assumée de l'option (a) envisagée au cadrage (BrowserKit),
+retenue parce qu'elle prouve le rail ASYNC réel de bout en bout, ce qu'un transport in-process ou une
+transaction DAMA ne prouveraient plus. `generation-du-planning-de-saison.feature` remplace
+`backend/scripts/smoke-solver.sh` (SUPPRIMÉ) — parité prouvée (même verdict `COMPLETED`, même
+restauration du pointeur du socle en `@AfterScenario`).
+
+**Reste (paliers 2-5)** : migrer les quatre smokes restants (`smoke-place-matches.sh`,
+`smoke-overlay.sh`, `smoke-coach-wishes.sh`, `onboarding-smoke.sh`) en features, chacune suivie du
+retrait de son `.sh` une fois la parité prouvée. Exemple de feature future (règle P2-60, déjà testée
+dans `ReservationApiTest` mais illisible hors code) :
 
 ```gherkin
 Scénario : une équipe qui ne s'entraîne qu'en groupe ne se réserve pas seule
@@ -129,9 +143,5 @@ Scénario : une équipe qui ne s'entraîne qu'en groupe ne se réserve pas seule
   Alors la réservation est refusée : "SF1 s'entraîne uniquement en groupe SF1 + SF2 : réservez le groupe"
 ```
 
-Candidats naturels : les 5 smokes bash (déjà des scénarios de bout en bout, écrits en shell).
-
 **N'ajoute pas** : de couverture technique (mêmes rails que `WebTestCase`), de mesure de couverture (angle
-mort n° 1, indépendant), de test d'écran (Mink + navigateur = doublon de Playwright, à exclure). Coûts à
-cadrer : un runner CI de plus, et l'isolement (DAMA, RLS, rate-limiter Redis, JWT Bearer par requête,
-`APP_ENV=test`) à porter une fois dans les contexts — les mêmes pièges que `backend/tests/Integration/`.
+mort n° 1 §4, indépendant), de test d'écran (Mink + navigateur = doublon de Playwright, exclu).

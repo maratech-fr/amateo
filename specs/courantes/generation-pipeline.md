@@ -1,15 +1,11 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-09-03 (rotation `documentation-update`, hors sujet de la PR — sondage des
-stamps les plus anciens du dépôt). Re-confronté au code : topic
+Last verified @ 2026-09-04 (documentation-update, P4-165 palier 1 — le smoke `smoke-solver.sh`
+cité en §6 a migré en feature Behat, `backend/features/generation-du-planning-de-saison.feature`
+(`make -C backend behat`), même preuve `COMPLETED`). Reconfirmé sans écart : topic
 `club:{clubId}:schedule:{scheduleId}` (`backend/src/Mercure/MercureTopic.php:27`) ✓ · verrou par
-club `ClubGenerationLock::acquire` (`backend/src/Service/ClubGenerationLock.php:20`, lignes
-décalées depuis la dernière passe) ✓. **Drift trouvé et corrigé** : §5.1 décrivait encore le champ
-`calendarEntryId`, **retiré du contrat depuis** — le champ nullable normalisé à la frontière
-(`frontend/src/features/planning/api.ts:847`) est désormais `planType`/`schedulePlanId`/`score`,
-gardé par `api.test.ts` ; le garde-fou client de `GenerateStep.tsx:37` vaut **20 min**
-(`TIMEOUT_MS = 20 * 60 * 1000`), pas 5 comme écrit avant — *(historique des passes retiré le
-2026-08-19, audit DOC-33 ; il vit dans git : `git log -p --follow specs/courantes/generation-pipeline.md`)*
+club `ClubGenerationLock::acquire` (`backend/src/Service/ClubGenerationLock.php:20`) ✓ — *(historique
+des passes vit dans git : `git log -p --follow specs/courantes/generation-pipeline.md`)*
 
 > Vérité courante. Décrit ce qui **doit** se passer, zone par zone, quand un
 > gestionnaire lance une génération : ce que fait le frontend, ce que fait le
@@ -165,7 +161,7 @@ Tout test `null === s.planType` (« est-ce un plan de saison ? ») échoue alors
 | Atterrissage planning cassé (overlay/undefined) | `frontend/src/features/planning/pickLanding.test.ts` |
 | Génération qui n'affiche pas le plan (bout en bout) | `frontend/tests/e2e/journey.spec.ts` (wizard → génération réelle → planning affiché → validé → cockpit) |
 | Contrat schémas engine⇄backend | `backend` `CrossStack/ContractSchemaTest` |
-| Solveur répond et produit un plan | `backend/scripts/smoke-solver.sh` → COMPLETED |
+| Solveur répond et produit un plan | `backend/features/generation-du-planning-de-saison.feature` (Behat, `make -C backend behat`) → COMPLETED |
 | Verrou HARD qui fait taire une contrainte saisie | `engine/tests/semantic/test_hard_lock_announces_violations.py` (+ `test_constraint_matrix.py`) — un `constraint_not_honored` est attendu |
 
 **Principe** : un test de pipeline qui n'assert que le **statut** (`COMPLETED`) est

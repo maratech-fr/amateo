@@ -1,13 +1,11 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-09-03 (rotation de fraîcheur `documentation-update`, sans rapport avec le
-sujet de la PR — répartition WE des matchs au seed. **Drift trouvé et corrigé** : la citation
-`PlanningPage.tsx:298` pour l'appel de `useValidateSchedule()` avait glissé — le hook se lit
-désormais à `PlanningPage.tsx:316` (le fichier a grossi depuis, l'appelant/le câblage `onValidate`
-restent inchangés). Reconfirmé sans écart : `onValidate` câblé au bouton « Valider » de
-`PlanningToolbar` (`PlanningToolbar.tsx:74,194`) ✓ · badge pastille `STATUS_LABELS[selected.status]`
-(`PlanningToolbar.tsx:179`) + pastille « Période » (`:182`) ✓ · `SocleGuard::assertSeasonPlanChosen`
-présent (`SocleGuard.php:26`) ✓. Historique des passes vit dans git :
+Last verified @ 2026-09-04 (documentation-update, P4-165 palier 1 — §7 citait
+`backend/scripts/smoke-solver.sh`, migré en feature Behat, `make -C backend behat`
+(`features/generation-du-planning-de-saison.feature`), même preuve `COMPLETED`). Reconfirmé sans
+écart : `onValidate` câblé au bouton « Valider » de `PlanningToolbar`
+(`PlanningToolbar.tsx:74,194`) ✓ · `SocleGuard::assertSeasonPlanChosen` présent
+(`SocleGuard.php:26`) ✓. Historique des passes vit dans git :
 `git log -p --follow specs/courantes/planning-lifecycle-validated.md`)
 
 > **Bascule 2026-07-16 (ADR-0002, `docs/architecture/adr-0002-pattern-plan.md`)** : le **plan de
@@ -200,7 +198,7 @@ DRAFT ──generate──▶ PENDING ──▶ GENERATING ──▶ COMPLETED
 
 ## 7. Vérification (backend touché ⇒ obligatoire)
 - `cd backend && make test` (CS-Fixer + PHPStan lvl8 + PHPUnit)
-- **`backend/scripts/smoke-solver.sh` → planning `COMPLETED`**
+- **`make -C backend behat` (feature `generation-du-planning-de-saison.feature`) → planning `COMPLETED`**
 - `frontend` : `npm run test` + `npm run build`
 - Contrat engine inchangé (le pointeur est backend-only, l'engine ne le voit pas) — aucun bump `CONTRACT_VERSION`.
 

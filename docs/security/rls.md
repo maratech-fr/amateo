@@ -59,5 +59,5 @@ du journal reste tenue contre `amateo_app`). Supervision totale via
 ## Tests de non-régression (phase1)
 
 `tests/Security/RlsIsolationTest.php` — SQL brut sur la connexion runtime : isolation SELECT/UPDATE/DELETE, WITH CHECK rejette un `club_id` ≠ GUC, fail-closed sans GUC, bootstrap `club_user`, garde anti-superuser.
-`tests/MessageHandler/ExportPdfHandlerRlsTest.php` — un handler worker pose son propre GUC (GenerateScheduleHandler : même pattern, couvert e2e par `smoke-solver.sh`).
+`tests/MessageHandler/ExportPdfHandlerRlsTest.php` — un handler worker pose son propre GUC (GenerateScheduleHandler : même pattern, couvert e2e par la feature Behat `generation-du-planning-de-saison.feature`, `make -C backend behat`).
 Les suites Tenant* (HTTP, JWT réel) et `AuthFlowTest` (register) tournent intégralement sous RLS.

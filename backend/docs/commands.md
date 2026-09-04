@@ -1,14 +1,14 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-04 (P4-166 PR 3/3 — ajout `make coverage` + note PHPStan `scripts/` non
-analysé). Re-confronté au code : `backend/Makefile` cible `coverage` (`db-init-test` puis
-`phpunit tests/ --exclude-group contract -d pcov.enabled=1 --coverage-clover` puis
-`scripts/coverage-gate.php`) ✓ ; `backend/phpstan.neon` `paths: [src]` seul (`scripts/` absent) ✓ ;
-cible `seed-league` (`app:league-windows:seed --no-interaction`) ✓ ; `Makefile` racine `play`
-enchaîne `seed-bccl` → `IF_ABSENT=1 seed-demo` → `seed-holidays` → `seed-league` → redémarrage des
-workers ✓. Non re-sondé cette passe : `backend/scripts/smoke-place-matches.sh`, les commandes
-`BcclSeedCommand`/`DemoSeedCommand`, `MutationTargetsAreGuardedTest`/`PlayTargetIsNonDestructiveTest`,
-horaires du catalogue de jobs, pièges RLS Doctrine — un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-04 (P4-165 palier 1 — ajout de la cible `make behat`, retrait de
+`scripts/smoke-solver.sh` (SUPPRIMÉ, migré en feature Behat)). Re-confronté au code :
+`backend/Makefile` cible `behat` (garde sandbox, `restart messenger-worker`, `vendor/bin/behat
+--format=pretty --no-interaction`, `APP_ENV=dev`) ✓ ; `backend/behat.dist.php` (suite `generation`,
+`SeasonGenerationContext`) ✓ ; `backend/features/generation-du-planning-de-saison.feature` existe,
+`backend/scripts/smoke-solver.sh` n'existe plus ✓. Non re-sondé cette passe : `backend/scripts/
+smoke-place-matches.sh`, les commandes `BcclSeedCommand`/`DemoSeedCommand`,
+`MutationTargetsAreGuardedTest`/`PlayTargetIsNonDestructiveTest`, horaires du catalogue de jobs,
+pièges RLS Doctrine — un stamp REMPLACE, l'historique vit dans git.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).
@@ -25,7 +25,7 @@ horaires du catalogue de jobs, pièges RLS Doctrine — un stamp REMPLACE, l'his
 | Poser le club de démo SANS toucher un workspace démo existant | `make -C backend IF_ABSENT=1 seed-demo` |
 | Poser le club dev BCCL réel (no-op s'il existe déjà) | `make -C backend seed-bccl` |
 | Bac à sable IA (`amateo_dev`), sans toucher la base de jeu du fondateur | `make sandbox` ; wrapper ponctuel : `backend/scripts/with-sandbox.sh <commande…>` |
-| CI / smoke-solver | appellent `app:bccl:seed --no-interaction` directement (idempotent — voir §CI plus bas) |
+| CI / Behat (`functional-tests`) / smokes restants | appellent `app:bccl:seed --no-interaction` directement (idempotent — voir §CI plus bas) |
 | Base de test phpunit | `make -C backend db-init-test` (idempotent) / `make -C backend db-empty-test` (vide) |
 | Rejouer seulement les référentiels vacances/fériés (globaux) | `make -C backend seed-holidays` |
 | Rejouer seulement le catalogue des fenêtres de matchs de la ligue (global) | `make -C backend seed-league` |
@@ -65,6 +65,7 @@ Une stack pointe **une base à la fois**. Le défaut committé est le **bac à s
 | `make tests-complete` | PHPStan + CS-Fixer + **`phpunit tests/`** (le DOSSIER entier — miroir EXACT du job CI `Unit Tests` ; seule cible qui joue aussi les testsuites `Integration` et `Contract`, cf. `phpunit.xml.dist`) |
 | `make phpunit` | PHPUnit **`--group phase1`** seul (`APP_ENV=test` injecté) — ⚠ **ce n'est pas « le gate »** : le groupe compte plusieurs fois plus de fichiers que le job CI `blocking-tests` n'a de steps nommés (les décomptes exacts pourrissent en jours — `ci.yml` fait foi). La cible **couvre** le gate mais ne s'y réduit pas (liste : `docs/testing/blocking-tests.md`) |
 | `make tests-engine-semantics` | PHPUnit **`--group contract`** — les tests qui interrogent le **VRAI moteur** (job CI dédié et bloquant « Engine semantics ») : chaque clé de la liste blanche `config` doit **CHANGER** le résultat du solveur, le miroir de capacité doit rendre le même verdict que lui, le payload doit rester recevable. ⚠ `tests-complete` les **exclut** (`--exclude-group contract`), exactement comme `unit-tests` en CI : sans cette cible, ils ne tournent jamais en local |
+| `make behat` | Tests fonctionnels **Behat** (Gherkin français, `APP_ENV=dev`, `features/`) — scénarios métier joués contre l'API réelle (aucun navigateur, aucun noyau in-process), redémarre `messenger-worker` avant, gardé par la sandbox (`scripts/lib/sandbox-guard.sh`). En mode play : `backend/scripts/with-sandbox.sh make -C backend behat`. Miroir du job CI `functional-tests` |
 | `make coverage` | Couverture backend (`phpunit tests/ --exclude-group contract`, driver `pcov`, `-d pcov.enabled=1`) + cliquet `scripts/coverage-gate.php` (plancher `backend` de `coverage-floor.json` racine — PHPUnit 11 n'a pas de seuil natif). Séparée de `tests-complete` (pcov ralentit) ; miroir du job CI `backend-coverage` (`needs: blocking-tests`, hors des `needs` de `build-docker`) |
 | `make db-init` | Crée + migre la base de **dev** — idempotent, ne détruit rien |
 | `make db-init-test` | Crée + migre la base de test (**pré-requis de toute suite**), pose `idle_in_transaction_session_timeout = 60s` sur `amateo_test` (purge les transactions DAMA zombies d'un phpunit tué) |
@@ -142,9 +143,12 @@ Toutes manuelles sauf mention. Détail : `ls backend/src/Command/`.
 
 ## Scripts (`backend/scripts/`)
 
+> ⚠ `smoke-solver.sh` (garde-fou solveur : create → generate → poll → `COMPLETED`) a **migré** en
+> feature Behat, `features/generation-du-planning-de-saison.feature` (`make behat` ci-dessus) —
+> P4-165 palier 1, 2026-09-04. Le `.sh` est supprimé.
+
 | Script | Effet |
 |--------|-------|
-| `smoke-solver.sh` | **Garde-fou solveur** : create → generate → poll, exige `COMPLETED`. Obligatoire quand engine/backend est touché (§7 CLAUDE.md). Si aucun club n'est trouvé pour l'utilisateur du smoke, il seede via `app:bccl:seed` (create-only, idempotent) + les seeds vacances puis relit. **Depuis le 2026-09-03, il ne répare plus un sandbox cassé par un rechargement complet** (l'ancien repli `doctrine:fixtures:load --purge-exclusions` a disparu avec les fixtures) : si la base reste sans club après le seed idempotent (club présent sans adhésion, sandbox incohérent), il `die` avec l'invite explicite (vider la base puis relancer) plutôt que de deviner |
 | `generate-schedule.sh` | Guide pratique : pilote une génération via l'API (debug du flux) |
 | `generate-schedule-test.sh` | Auto-test de `generate-schedule.sh` (PASS/FAIL sur son propre comportement) |
 | `onboarding-smoke.sh` | Flux club neuf : register → données minimales → generate → `COMPLETED` |

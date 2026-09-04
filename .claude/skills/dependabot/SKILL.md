@@ -45,8 +45,8 @@ règle « jamais merger sans go » reste en vigueur pour tout le reste).
    - `ci` (github-actions) : pas de tests locaux — vérifier que les versions d'actions existent et
      lire le diff (breaking inputs renommés/supprimés).
 4. Dépendance **runtime** backend ou engine touchée (pas dev-only) → redémarrer les containers
-   longue durée (`docker compose restart engine messenger-worker`) puis **smoke-solveur**
-   `backend/scripts/smoke-solver.sh` (planning `COMPLETED` attendu).
+   longue durée (`docker compose restart engine messenger-worker`) puis la feature de génération
+   `make -C backend behat` (planning `COMPLETED` attendu).
 
 ## Étape 2 — Par PR : réparer si rouge
 
