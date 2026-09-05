@@ -11,7 +11,8 @@ import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import { cn } from "@/shared/lib/utils";
 
-import type { CalendarEntry, CalendarEntryPeriodType, PublicHoliday, SchoolHoliday } from "./api";
+import type { CalendarEntry, CalendarEntryPeriodType, PublicHoliday, SchedulePlanStaleness, SchoolHoliday } from "./api";
+import { StalenessPill } from "./StalenessPill";
 import { useCreateVenueClosure, useEntryConflicts, useEntryConflictsList, useSchedulePlans } from "./queries";
 import { clampRangeToSeason, daysUntil, frDateShort, groupCoverageSlots, isActionableWeek, todayISO, weeksCovering, type WeekWindow } from "./lib/date";
 import { isHolidayAnchor } from "./lib/markers";
@@ -134,9 +135,13 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   const plans = plansQuery.data;
   const plansUnresolved = undefined === plans;
   const activeByEntry = new Map<string, string>();
+  const stalenessByEntry = new Map<string, SchedulePlanStaleness | null>();
   for (const p of plans ?? []) {
     if (null !== p.calendarEntryId && null !== p.chosenScheduleId) {
       activeByEntry.set(p.calendarEntryId, p.chosenScheduleId);
+    }
+    if (null !== p.calendarEntryId) {
+      stalenessByEntry.set(p.calendarEntryId, p.staleness);
     }
   }
 
@@ -657,7 +662,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
         ? null
         : visibleClosures.map((e) => {
             const activeId = activeByEntry.get(e.id) ?? null;
-            return <ClosureRadarItem key={e.id} entry={e} activeScheduleId={activeId} inProgress={startedEntryIds.has(e.id)} seasonUnvalidated={!socleValidated} adaptTitle={lockTitle} onAdapt={() => requestAdapt(e)} onView={() => null !== activeId && viewOverlay(activeId)} />;
+            return <ClosureRadarItem key={e.id} entry={e} activeScheduleId={activeId} staleness={stalenessByEntry.get(e.id) ?? null} inProgress={startedEntryIds.has(e.id)} seasonUnvalidated={!socleValidated} adaptTitle={lockTitle} onAdapt={() => requestAdapt(e)} onView={() => null !== activeId && viewOverlay(activeId)} />;
           })}
 
       {cutoffs.map((e) => (
@@ -804,7 +809,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   );
 }
 
-function ClosureRadarItem({ entry, activeScheduleId, inProgress = false, seasonUnvalidated = false, adaptTitle, onAdapt, onView }: { entry: CalendarEntry; activeScheduleId: string | null; inProgress?: boolean; seasonUnvalidated?: boolean; adaptTitle?: string; onAdapt: () => void; onView: () => void }) {
+function ClosureRadarItem({ entry, activeScheduleId, staleness, inProgress = false, seasonUnvalidated = false, adaptTitle, onAdapt, onView }: { entry: CalendarEntry; activeScheduleId: string | null; staleness?: SchedulePlanStaleness | null; inProgress?: boolean; seasonUnvalidated?: boolean; adaptTitle?: string; onAdapt: () => void; onView: () => void }) {
   const { data } = useEntryConflicts(entry.id);
   const count = data?.conflicts.reduce((sum, c) => sum + c.dates.length, 0) ?? 0;
   // ADR-0002 lot D-b : « a un overlay » = le plan de la période est VALIDÉ (chosenScheduleId).
@@ -839,6 +844,7 @@ function ClosureRadarItem({ entry, activeScheduleId, inProgress = false, seasonU
       icon={<AlertTriangle className={hasOverlay ? "size-4 text-accent" : "size-4 text-destructive"} />}
       title={entry.title}
       detail={detail}
+      badge={<StalenessPill staleness={staleness} />}
     >
       {hasOverlay ? (
         <>
@@ -876,6 +882,7 @@ function RadarCard({
   icon,
   title,
   detail,
+  badge,
   collapsible = false,
   actions,
   children,
@@ -883,6 +890,8 @@ function RadarCard({
   icon: React.ReactNode;
   title: string;
   detail: string;
+  /** Pastille d'état (P4-173 « à régénérer ») à côté du détail — enveloppe, ne tronque pas. */
+  badge?: React.ReactNode;
   collapsible?: boolean;
   /** Rendu TOUJOURS, même carte repliée — pour ce qui doit se lire d'un coup d'œil. */
   actions?: React.ReactNode;
@@ -898,6 +907,7 @@ function RadarCard({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{title}</p>
           <p className="text-xs text-muted-foreground">{detail}</p>
+          {badge ? <div className="mt-1 flex flex-wrap">{badge}</div> : null}
         </div>
         {foldable ? (
           <button

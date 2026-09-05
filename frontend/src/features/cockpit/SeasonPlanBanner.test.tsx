@@ -15,7 +15,8 @@ vi.mock("./SeasonSchedulesModal", () => ({
   ),
 }));
 vi.mock("./seasonPlannings", () => ({ seasonPlanCounts: () => ({ total: 2, overlays: 1, openOverlays: 0 }) }));
-vi.mock("./queries", () => ({ useSchedulePlans: () => ({ data: [] }) }));
+let plansData: unknown[] = [];
+vi.mock("./queries", () => ({ useSchedulePlans: () => ({ data: plansData }) }));
 // Le bandeau lit le NOM du plan sur me.seasonPlan (retour fondateur 2026-07-18).
 vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: { seasonPlan: { name: "Planning de la saison 2026-2027" } } }) }));
 
@@ -33,6 +34,8 @@ function renderBanner() {
     </MemoryRouter>,
   );
 }
+
+const seasonPlan = (staleness: unknown) => ({ id: "season-plan", type: "SEASON", name: "Saison", startDate: "2026-07-15", calendarEntryId: null, chosenScheduleId: "b1", teamSelectionInitialized: false, staleness });
 
 describe("SeasonPlanBanner", () => {
   it("offers only « Ouvrir » (no « Modifier… » — modification happens on the planning page)", () => {
@@ -66,8 +69,21 @@ describe("SeasonPlanBanner", () => {
   });
 
   it("« Tous les plannings (N) » opens the plannings modal, counting distinct plannings", async () => {
+    plansData = [];
     renderBanner();
     await userEvent.click(screen.getByRole("button", { name: /Tous les plannings \(2\)/ }));
     expect(screen.getByRole("dialog")).toHaveTextContent("Plannings de la saison");
+  });
+
+  it("P4-173 — shows the « à régénérer » pill in the subtitle when the SEASON plan is stale", () => {
+    plansData = [seasonPlan({ manuallyEdited: false, constraintsChanged: true, resourcesChanged: false })];
+    renderBanner();
+    expect(screen.getByText("À régénérer — une contrainte a changé")).toBeInTheDocument();
+  });
+
+  it("P4-173 — no pill when the SEASON plan carries no staleness (null: unpointed / past)", () => {
+    plansData = [seasonPlan(null)];
+    renderBanner();
+    expect(screen.queryByText(/À régénérer/)).not.toBeInTheDocument();
   });
 });

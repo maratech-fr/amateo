@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { stalenessMessage } from "./staleness";
+import { stalenessBadge, stalenessMessage } from "./staleness";
 
 const NONE = { manuallyEdited: false, constraintsChanged: false, resourcesChanged: false, structureDiverged: false, readOnly: false };
 
@@ -62,5 +62,37 @@ describe("stalenessMessage", () => {
     // Un planning validé est en lecture seule : « Régénérer » seul l'enverrait dans un 409.
     expect(msg).toContain("Rouvrez ce planning");
     expect(msg).not.toMatch(/^Régénérez/);
+  });
+});
+
+const CLEAN = { manuallyEdited: false, constraintsChanged: false, resourcesChanged: false };
+
+describe("stalenessBadge (forme courte du cockpit)", () => {
+  it("returns null when nothing is stale (no pill)", () => {
+    expect(stalenessBadge(CLEAN)).toBeNull();
+  });
+
+  it("prefixes « À régénérer — » and names the single cause", () => {
+    expect(stalenessBadge({ ...CLEAN, constraintsChanged: true })).toBe("À régénérer — une contrainte a changé");
+  });
+
+  it("names a manual edit in short form", () => {
+    expect(stalenessBadge({ ...CLEAN, manuallyEdited: true })).toBe("À régénérer — modifié à la main");
+  });
+
+  it("names a club-data change in short form", () => {
+    expect(stalenessBadge({ ...CLEAN, resourcesChanged: true })).toBe("À régénérer — les données du club ont changé");
+  });
+
+  it("joins two causes with « et »", () => {
+    expect(stalenessBadge({ ...CLEAN, manuallyEdited: true, constraintsChanged: true })).toBe(
+      "À régénérer — modifié à la main et une contrainte a changé",
+    );
+  });
+
+  it("joins three causes with commas then « et » (single label, no structureDiverged)", () => {
+    expect(stalenessBadge({ manuallyEdited: true, constraintsChanged: true, resourcesChanged: true })).toBe(
+      "À régénérer — modifié à la main, une contrainte a changé et les données du club ont changé",
+    );
   });
 });

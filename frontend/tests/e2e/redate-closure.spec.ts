@@ -112,6 +112,29 @@ test("re-dater une fermeture d'un bloc depuis le cockpit marque son planning « 
       page.getByText(/Fermeture re-datée du .+ — planning à régénérer/),
       `le PUT de re-datage doit réussir et l'annoncer${failed.length ? ` — échecs API: ${failed.join(", ")}` : ""}`,
     ).toBeVisible({ timeout: 30_000 });
+
+    // P4-173 (témoin) — de retour au cockpit, le signal « à régénérer » est désormais VISIBLE : re-dater
+    // a touché une donnée du club, la version pointée du plan de saison devient périmée. Le cockpit le
+    // DIT (il était muet avant P4-173 — seul /planning le savait). La pastille porte la cause en clair.
+    await expect(page.getByText(/À régénérer/).first()).toBeVisible({ timeout: 30_000 });
+
+    // Reflow (WCAG 1.4.10) — à 375 px, la pastille ENVELOPPE (whitespace-normal + flex-wrap) : son
+    // bord droit ne dépasse JAMAIS la fenêtre, sur le cockpit ET dans la modale « Tous les plannings »
+    // (où elle jouxte l'état). Mesuré au vrai moteur (jsdom n'a pas de mise en page). On borne la
+    // pastille elle-même, pas la page entière (le cockpit dense scrolle par ailleurs ses grilles).
+    const pillOverflow = () =>
+      page.evaluate(() => {
+        const pills = [...document.querySelectorAll("span")].filter((s) => /^À régénérer/.test(s.textContent ?? ""));
+        if (0 === pills.length) {
+          return -1; // aucune pastille peinte → rien à mesurer (ne fait pas échouer)
+        }
+        return Math.max(...pills.map((p) => Math.ceil(p.getBoundingClientRect().right) - window.innerWidth));
+      });
+    await page.setViewportSize({ width: 375, height: 800 });
+    await expect.poll(pillOverflow).toBeLessThanOrEqual(0);
+    await page.getByRole("button", { name: /Tous les plannings/ }).click();
+    await expect(page.getByRole("dialog")).toBeVisible({ timeout: 15_000 });
+    await expect.poll(pillOverflow).toBeLessThanOrEqual(0);
   } finally {
     // IDEMPOTENCE : on retire la fermeture créée (cascade son plan) — aucun résidu dans la base e2e.
     if ("" !== entryId) {

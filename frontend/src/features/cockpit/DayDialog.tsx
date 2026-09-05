@@ -24,6 +24,7 @@ import { WindowAlreadyPlannedNotice } from "./WindowAlreadyPlannedNotice";
 import { entryIcon, entryLabel, holidayIcon, isHolidayAnchor, isHolidayWeekChild } from "./lib/markers";
 import { useCalendarEntries, useCreateCutoff, useCreateEvent, useCreateVenueClosure, useDeleteEntry, useRedateEntry, useSchedulePlanForEntry, useSchedulePlans } from "./queries";
 import { WeekPickerDialog } from "./WeekPickerDialog";
+import { StalenessPill } from "./StalenessPill";
 
 type Mode = "list" | "event" | "closure" | "cutoff" | "redate";
 
@@ -197,11 +198,13 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose 
             const adjustLocked = !socleValidated && !planHasVersions;
             return (
               <li key={entry.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm">
-                <span className="flex min-w-0 items-center gap-2">
+                <span className="flex min-w-0 flex-wrap items-center gap-2">
                   {/* Same emoji marker as the month calendar (decorative → aria-hidden;
                       the title/fallback text carries the meaning). */}
                   <span aria-hidden className="text-base leading-none">{entryIcon(entry)}</span>
                   <span className="truncate">{entry.title || entryLabel(entry)}</span>
+                  {/* P4-173 — « à régénérer » à côté du titre (frère du nœud tronqué, jamais dedans). */}
+                  <StalenessPill staleness={plan?.staleness ?? null} />
                 </span>
                 <span className="flex shrink-0 items-center gap-1">
                   {null !== plan ? (

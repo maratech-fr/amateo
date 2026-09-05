@@ -28,7 +28,7 @@ const periodPlanMutateAsync = vi.fn().mockResolvedValue({});
 // PUT est construit et testé au niveau hook, `windowConflict.test.tsx`).
 const redateMutateAsync = vi.fn().mockResolvedValue({});
 // Plans couvrant le jour (B1) : DayList lit chosenScheduleId par calendarEntryId.
-let allPlansMock: { id: string; calendarEntryId: string | null; chosenScheduleId: string | null }[] = [];
+let allPlansMock: { id: string; calendarEntryId: string | null; chosenScheduleId: string | null; staleness?: unknown }[] = [];
 
 // ADR-0002 lot D-b : « overlay validé » (HolidayBlock « Voir le planning ») = plan de
 // période avec chosenScheduleId ; « porte des versions » (garde destructive de suppression)
@@ -153,6 +153,23 @@ describe("DayDialog — deletion is always confirmed", () => {
 
     expect(deleteMutate).not.toHaveBeenCalled();
     expect(screen.queryByText(/Supprimer « AG du club » \?/)).not.toBeInTheDocument();
+  });
+
+  it("P4-173 — shows the « à régénérer » pill next to a stale period's title (outside the truncated node)", () => {
+    allPlansMock = [{ id: "plan-p1", calendarEntryId: "p1", chosenScheduleId: "ov1", staleness: { manuallyEdited: false, constraintsChanged: true, resourcesChanged: false } }];
+    renderDialog([entry({ id: "p1", kind: "period", periodType: "closure", title: "Gym fermé" })]);
+
+    const pill = screen.getByText("À régénérer — une contrainte a changé");
+    expect(pill).toBeInTheDocument();
+    // Jamais dans un nœud tronqué : la cause s'enveloppe, elle ne se coupe pas.
+    expect(pill.closest(".truncate")).toBeNull();
+  });
+
+  it("P4-173 — no pill when the period plan carries no staleness (null)", () => {
+    allPlansMock = [{ id: "plan-p1", calendarEntryId: "p1", chosenScheduleId: "ov1", staleness: null }];
+    renderDialog([entry({ id: "p1", kind: "period", periodType: "closure", title: "Gym fermé" })]);
+
+    expect(screen.queryByText(/À régénérer/)).not.toBeInTheDocument();
   });
 
   it("warns that deleting a period cascades to its plan and all its versions", async () => {
