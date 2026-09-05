@@ -338,6 +338,14 @@ product rules — reuse them instead of rolling your own:
 - **`team-select`** — every team picker in the app (constraints, coaches, matches, FBI import)
   goes through it: optgroups by rank, same order as the Teams step. Reranking a team updates
   the order **everywhere**.
+- **`badge`** (`StatusPill`) — the shared **pastille** (icon + text, border + tinted fill), variants
+  `warning`/`neutral`. `warning`'s text is `text-foreground` (not `text-warning` — measured at
+  4.30:1 on `bg-warning/10`, below AA), its icon stays `text-warning` (graphic element, 1.4.11 ≥
+  3:1) — pairs locked in `tests/e2e/a11y-contrast.spec.ts`. Wraps, never truncates (`whitespace-
+  normal`); its first consumer is `features/cockpit/StalenessPill.tsx` (P4-173). ⚠ Five local
+  pastilles predate it and are **not** migrated yet (`CreditBadge`, `CompromiseList`,
+  `MatchesPage`'s `offModelBadge`, `TravelMatrixModal`/`OpponentTravelCard`'s `SourceBadge`) —
+  tracked debt, `specs/evolution/roadmap.md` P4-177. A new pastille goes through `badge.tsx`.
 - **`step-rail`** — the left step rail (`<nav className="shrink-0 md:w-44">`), extracted from the
   wizard (RMM-2). Presentation **pure**: `done`/`locked` arrive **calculated** in the `steps`
   array (it knows nothing of validation gates, guided mode, business locks, or the nav veil);

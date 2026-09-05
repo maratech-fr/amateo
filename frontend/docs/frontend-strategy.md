@@ -1,15 +1,11 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-09-04 (rotation `documentation-update`, hors sujet de la PR (couverture
-backend, P4-166 PR 3/3) — recalage du stamp daté du 2026-09-03 dont le squash-merge #840 est
-tombé après minuit, cf. `specs/evolution/roadmap.md` P4-170. Re-confronté : la ligne
-`@vitest/coverage-v8`/`docs/testing/test-coverage-map.md`, `frontend/vitest.config.ts` (bloc
-`coverage` existe), `make coverage`/job CI `frontend-coverage` ✓ toujours réels). Reste de la
-table des majeures (§ Outils de test) confronté à `frontend/package.json` lors d'une passe
-antérieure — `vitest`/`@vitest/*` 4.x, `@testing-library/react` 16.x, `jest-dom` 7.x, `jsdom`
-30.x, `msw` 2.x, `@playwright/test` 1.x, `vitest-axe` 0.x, `@axe-core/playwright` 4.x,
-`storybook`/`@storybook/*` 10.x, non re-sondé cette passe. Historique des passes : `git log -p
---follow frontend/docs/frontend-strategy.md`.)
+Last verified @ 2026-09-05 (rotation `documentation-update`, hors sujet de la PR — P4-173).
+Re-confronté à `frontend/package.json` : `vitest`/`@vitest/coverage-v8` `^4.1.11`,
+`@testing-library/react` `^16.3.0`, `@testing-library/jest-dom` `^7.0.1`, `jsdom` `^30.0.1`,
+`msw` `^2.15.0`, `@playwright/test` `^1.62.1`, `vitest-axe` `^0.1.0`, `@axe-core/playwright`
+`^4.13.0`, `storybook`/`@storybook/*` `^10.5.10` — toutes les majeures citées (§ Outils de test)
+tiennent encore. Historique des passes : `git log -p --follow frontend/docs/frontend-strategy.md`.)
 
 > **Statut : le rebuild est LIVRÉ.** Les formulations « pour le rebuild » ci-dessous sont
 > historiques ; le document reste la référence vivante des **versions de la stack**, des
