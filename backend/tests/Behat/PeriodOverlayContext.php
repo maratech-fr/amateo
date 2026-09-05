@@ -66,6 +66,12 @@ final class PeriodOverlayContext extends BaseContext
 
     private string $redateNewEnd = '';
 
+    private string $splitStart = '';
+
+    private string $splitShortEnd = '';
+
+    private int $splitPreviewCount = 0;
+
     #[Given('le club de démonstration, connecté, dont le planning de saison est en vigueur')]
     public function leClubConnecteAvecSocleEnVigueur(): void
     {
@@ -315,6 +321,87 @@ final class PeriodOverlayContext extends BaseContext
         );
         if ('oui' !== $stale) {
             throw new RuntimeException('la version n\'est pas signalée à régénérer après le re-datage');
+        }
+    }
+
+    #[Given('une fermeture à venir découpée en trois semaines-segments, chacune avec son plan')]
+    public function uneFermetureDecoupeeEnTrois(): void
+    {
+        // Décor jetable, bien au-delà des périodes seedées, dans la même zone sans vacances que le
+        // scénario 3 (+77 j). Mère du MERCREDI de la semaine 1 au SAMEDI de la semaine 3 : découpée
+        // en début (semaine entamée de tête), milieu (semaine 2 pleine), fin (semaine entamée de queue).
+        $w1mon = (int) strtotime('next monday +77 days');
+        $d = static fn (int $off): string => date('Y-m-d', (int) strtotime(\sprintf('+%d days', $off), $w1mon));
+        $this->splitStart = $d(2);       // semaine 1, mercredi
+        $motherEnd = $d(19);             // semaine 3, samedi
+        $this->splitShortEnd = $d(12);   // semaine 2, samedi (raccourci d'une semaine)
+
+        $mother = $this->apiPost('calendar_entries', [
+            'kind' => 'period', 'periodType' => 'closure',
+            'title' => 'Incident découpé à re-dater', 'startDate' => $this->splitStart, 'endDate' => $motherEnd,
+        ], $this->token);
+        $this->entryId = $this->idOf($mother, 'mère découpée');
+
+        // Trois enfants-segments : chacun naît AVEC son plan (POST enfant porteur de plan).
+        foreach ([[$d(0), $d(6)], [$d(7), $d(13)], [$d(14), $d(20)]] as [$segStart, $segEnd]) {
+            $child = $this->apiPost('calendar_entries', [
+                'kind' => 'period', 'periodType' => 'closure', 'title' => 'Segment',
+                'startDate' => $segStart, 'endDate' => $segEnd, 'parentEntryId' => $this->entryId,
+            ], $this->token);
+            $this->idOf($child, 'semaine-segment');
+        }
+
+        $me = $this->apiGet(\sprintf('calendar_entries/%s', $this->entryId), $this->token);
+        if (true !== ($me['json']['redateNeedsPreview'] ?? null)) {
+            throw new RuntimeException('la mère n\'est pas reconnue comme découpée (redateNeedsPreview attendu vrai)');
+        }
+    }
+
+    #[When('je demande l\'aperçu du re-datage qui la raccourcit d\'une semaine, puis je confirme')]
+    public function jApercoisEtConfirme(): void
+    {
+        $preview = $this->apiPost(\sprintf('calendar_entries/%s/redate-preview', $this->entryId), [
+            'startDate' => $this->splitStart, 'endDate' => $this->splitShortEnd,
+        ], $this->token);
+        if (200 !== $preview['status']) {
+            throw new RuntimeException(\sprintf('l\'aperçu a répondu %d (200 attendu)', $preview['status']));
+        }
+        $effects = $preview['json']['effects'] ?? [];
+        $this->splitPreviewCount = \is_array($effects) ? \count($effects) : 0;
+        $token = $preview['json']['token'] ?? '';
+        if (!\is_string($token) || '' === $token) {
+            throw new RuntimeException('l\'aperçu n\'a pas renvoyé de jeton');
+        }
+
+        $put = $this->apiPut(\sprintf('calendar_entries/%s', $this->entryId), [
+            'kind' => 'period', 'periodType' => 'closure', 'title' => 'Incident découpé à re-dater',
+            'startDate' => $this->splitStart, 'endDate' => $this->splitShortEnd, 'previewToken' => $token,
+        ], $this->token);
+        if (200 !== $put['status']) {
+            throw new RuntimeException(\sprintf('la confirmation a répondu %d (200 attendu)', $put['status']));
+        }
+    }
+
+    #[Then('l\'aperçu annonçait plusieurs changements, la mère porte les nouvelles dates et ses semaines sont ré-appariées')]
+    public function laMereReAppariee(): void
+    {
+        if ($this->splitPreviewCount < 2) {
+            throw new RuntimeException(\sprintf('l\'aperçu n\'annonçait que %d changement(s) (au moins 2 attendus)', $this->splitPreviewCount));
+        }
+
+        $entry = $this->apiGet(\sprintf('calendar_entries/%s', $this->entryId), $this->token);
+        if (($entry['json']['endDate'] ?? '') !== $this->splitShortEnd) {
+            throw new RuntimeException(\sprintf('la mère porte encore « %s » (attendu « %s »)', $entry['json']['endDate'] ?? '', $this->splitShortEnd));
+        }
+
+        // Ré-appariement : début conservé + fin glissée ; le milieu, non recouvert par un segment de
+        // même rôle, est absorbé → deux semaines subsistent.
+        $children = (int) $this->dbalScalar(
+            \sprintf('SELECT COUNT(*) AS behatval FROM calendar_entry WHERE parent_entry_id = \'%s\'', $this->entryId),
+            admin: true,
+        );
+        if (2 !== $children) {
+            throw new RuntimeException(\sprintf('la mère porte %d semaines après re-datage (2 attendues : début conservé + fin glissée, milieu absorbé)', $children));
         }
     }
 

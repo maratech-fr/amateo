@@ -36,7 +36,9 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *       geste (config == ancienne fenêtre) suit, une fermeture saisie plus finement reste intacte ;
  *  c.   étendre sur une fenêtre qu'un AUTRE plan gouverne → 409 NOMMANT ce plan ;
  *  d.   une racine HOLIDAY (liée au référentiel) garde sa fenêtre GELÉE (422) ;
- *  e.   une mère découpée en semaines garde sa fenêtre GELÉE (422) ;
+ *  e.   une mère DÉCOUPÉE re-datée sans jeton d'aperçu → 422 « demandez l'aperçu » (D3 v2, P4-174 ;
+ *       le re-datage lui-même est verrouillé par SplitMotherRedateTest) ; son champ servi
+ *       `redateNeedsPreview` est vrai (exclusif de `redatable`) ;
  *  f.   une semaine-enfant garde sa fenêtre GELÉE (422) ;
  *  g.   le suffixe de fenêtre du titre se recale (convention « — … »), un titre libre reste intact ;
  *  h.   les versions COMPLETED sont marquées à régénérer (`resourcesChangedSinceGeneration`) ;
@@ -152,17 +154,38 @@ final class PeriodRedateTest extends WebTestCase
         self::assertNotNull($season->getId());
     }
 
-    public function testSplitMotherKeepsItsWindowFrozen(): void
+    public function testSplitMotherRedateWithoutTokenAsksForPreview(): void
     {
         [$user] = $this->createClubWithSeason();
         $motherId = $this->postPeriod($user, 'closure', 'Barros en travaux', '2026-05-04', '2026-05-17');
         // La découper en un enfant-segment (le milieu entier : les semaines pleines d'une fermeture
-        // forment un seul plan, fondateur 2026-09-05) → la mère devient découpée (gel d'identité).
+        // forment un seul plan, fondateur 2026-09-05) → la mère devient DÉCOUPÉE (D3 v2).
         $this->postWeekChild($user, $motherId, 'closure', 'Semaines du 4 au 17 mai', '2026-05-04', '2026-05-17');
 
+        // D3 v2 (P4-174) — re-dater une mère découpée SANS jeton d'aperçu est refusé : on annonce,
+        // on confirme, on applique. Le refus INVITE à demander l'aperçu (jamais un « figés » muet
+        // — sa fenêtre n'est plus gelée, elle attend une confirmation).
         $this->put($user, $motherId, ['kind' => 'period', 'periodType' => 'closure', 'title' => 'Barros en travaux', 'startDate' => '2026-05-04', 'endDate' => '2026-05-24']);
-        self::assertResponseStatusCodeSame(422, 'une mère découpée garde sa fenêtre gelée');
-        self::assertStringContainsString('figés', (string) $this->client->getResponse()->getContent());
+        self::assertResponseStatusCodeSame(422, 'une mère découpée re-datée sans jeton d’aperçu est refusée');
+        self::assertStringContainsString('aperçu', (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testRedateNeedsPreviewFieldReflectsExactlyASplitMother(): void
+    {
+        [$user] = $this->createClubWithSeason();
+
+        // Une racine de fermeture à plan « d'un bloc » (sans enfant) : re-datable directement, PAS d'aperçu.
+        $blockRootId = $this->postPeriod($user, 'closure', 'Barros en travaux', '2026-05-04', '2026-05-10');
+        $this->adaptPeriod($user, $blockRootId);
+        self::assertFalse($this->getEntry($user, $blockRootId)['redateNeedsPreview'], 'une racine à plan « d’un bloc » ne passe pas par l’aperçu');
+
+        // Une mère DÉCOUPÉE (≥ 1 enfant, sans plan-bloc) : re-datage sur aperçu.
+        $motherId = $this->postPeriod($user, 'closure', 'Colombier fermé', '2026-05-18', '2026-05-31');
+        $childId = $this->postWeekChild($user, $motherId, 'closure', 'Semaines du 18 au 31 mai', '2026-05-18', '2026-05-31');
+        self::assertTrue($this->getEntry($user, $motherId)['redateNeedsPreview'], 'une mère découpée passe par l’aperçu');
+        self::assertFalse($this->getEntry($user, $motherId)['redatable'], 'et n’est jamais re-datable directement (exclusif)');
+        // Une semaine-enfant : ni re-datable, ni aperçu.
+        self::assertFalse($this->getEntry($user, $childId)['redateNeedsPreview'], 'une semaine-enfant ne passe pas par l’aperçu');
     }
 
     public function testWeekChildKeepsItsWindowFrozen(): void
