@@ -6,6 +6,7 @@ use App\Tests\Behat\ClosureSegmentationContext;
 use App\Tests\Behat\CoachWishesContext;
 use App\Tests\Behat\ConstraintHonoredContext;
 use App\Tests\Behat\EngagedTeamContext;
+use App\Tests\Behat\ExportContext;
 use App\Tests\Behat\HolidayWeekContext;
 use App\Tests\Behat\LockContext;
 use App\Tests\Behat\MatchPlacementContext;
@@ -107,5 +108,10 @@ return (new Config)
                 new Suite('regenerer')
                     ->withPaths('%paths.base%/features/le-planning-se-dit-a-regenerer.feature')
                     ->withContexts(StaleScheduleContext::class),
+            )
+            ->withSuite(
+                new Suite('export')
+                    ->withPaths('%paths.base%/features/l-export-du-planning.feature')
+                    ->withContexts(ExportContext::class),
             ),
     );
