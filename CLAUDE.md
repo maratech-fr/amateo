@@ -62,8 +62,9 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   test garde en détail : **son propre docblock**.
 - Jobs sans `needs` mais **required checks de `main`** : `rector` (style gate) ·
   `dependency-audit` · `secrets-scan` · `semgrep` · `engine-semantics` (groupe `contract`
-  cross-stack) · `functional-tests` (Behat, Gherkin FR, 5 features — remplace intégralement les
-  smokes bash, supprimés, P4-165 — required check à ajouter côté GitHub, comme `engine-semantics`).
+  cross-stack) · `functional-tests` (Behat, Gherkin FR, une feature par promesse métier — a
+  remplacé intégralement les smokes bash, supprimés, P4-165 — required check à ajouter côté
+  GitHub, comme `engine-semantics`).
   `build-docker` needs **[blocking-tests, engine-tests] only**.
 
 ## 5. Conventions (core — détail par zone dans `.claude/rules/`)

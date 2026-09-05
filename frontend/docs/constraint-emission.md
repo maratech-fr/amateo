@@ -1,17 +1,13 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-09-03 (rotation `documentation-update`, zone non touchée par cette PR —
+Last verified @ 2026-09-05 (rotation `documentation-update`, zone non touchée par cette PR —
 contrôle de fraîcheur). Re-confronté au code : `resolveTravelRuleIntensity`
-(`ScheduleConstraintBuilder.php:965`, repli `TeamLinkIntensity::PREFERRED` — **ligne recalée**,
-la passe précédente citait `:894`) toujours le seul point de résolution de l'intensité
-`travelTime` ✓ ; `forcedDays` toujours câblé sur les 3 couches (`ConstraintValidationService.php:71-77`,
-`ConstraintConfigValidator.php:74`, `ConstraintsStep.tsx:365-366`, `engine/app/solver/constraints/targeting.py:74`) ✓ ;
-la famille `FACILITY_CAPACITY` retirée du moteur — **ligne recalée** : le commentaire au passé vit
-désormais `engine/app/main.py:487-489` (la passe précédente citait `:291-294`) ✓. Rien d'autre de
-faux trouvé cette passe. Vérification antérieure toujours valable : table §2 et synthèse §3
-confrontées à `ConstraintsStep.tsx:355-356,456-500`, `ConstraintsStep.test.tsx:435-446`, ne
-listent que `preferredDays` en scission A (DÉCISION FERMÉE ALIGN-09 confirmée dans
-`etat-des-lieux.md`).
+(`ScheduleConstraintBuilder.php:965`, repli `TeamLinkIntensity::PREFERRED`) toujours le seul point
+de résolution de l'intensité `travelTime` ✓ ; `forcedDays` toujours câblé sur les 3 couches
+(`ConstraintValidationService.php:71-79`, `ConstraintConfigValidator.php:74`,
+`ConstraintsStep.tsx:365-366`, `engine/app/solver/constraints/targeting.py:74`) ✓ ; la famille
+`FACILITY_CAPACITY` toujours retirée du moteur, le commentaire au passé toujours à
+`engine/app/main.py:487-489` ✓. Rien de faux trouvé cette passe.
 
 > **But** : (1) lister ce que le **wizard émet** réellement, et (2) mettre les **3 couches côte à côte**
 > (frontend → backend → engine) pour repérer les **scissions** et les **angles morts** — les cas où
