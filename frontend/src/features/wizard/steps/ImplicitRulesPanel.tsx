@@ -2,6 +2,7 @@ import { Check, Route } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { useWorkingSeason } from "@/shared/session/queries";
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Select } from "@/shared/components/ui/select";
@@ -261,10 +262,9 @@ export function TravelRuleNotice() {
       <div className="flex flex-wrap items-center gap-2">
         <Route className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <p className="text-sm font-medium text-foreground">Trajet entre gymnases</p>
-        <span className="inline-flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent">
-          <Check className="size-3" aria-hidden="true" />
+        <StatusPill variant="accent" icon={<Check className="size-3 text-accent" aria-hidden="true" />}>
           Actif
-        </span>
+        </StatusPill>
       </div>
       <p className="text-xs text-muted-foreground">
         Le planning cherche à enchaîner des gymnases dont le trajet reste dans les temps que vous avez indiqués (en voiture ou à pied selon le coach). Elle s'est activée parce que vous

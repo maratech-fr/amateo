@@ -6,6 +6,7 @@ import type { CalendarEntry } from "@/features/cockpit/api";
 import type { Team } from "@/features/wizard/api";
 import { addDays, isActionableWeek, periodAdjustWeeks, todayISO } from "@/features/cockpit/lib/date";
 import { usePriorityTiers, useUpdateCoach, useWizardTeamCoaches, useWizardTeams } from "@/features/wizard/queries";
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
@@ -430,7 +431,7 @@ function CoachLinks({ campaign, onEmailSaved, onCampaignRefreshed }: { campaign:
                   key={t.id}
                   type="button"
                   aria-pressed={teamFilter.has(t.id)}
-                  className={`rounded-full border px-2 py-0.5 text-xs ${teamFilter.has(t.id) ? "border-accent bg-accent/15 text-accent" : "border-border text-muted-foreground"}`}
+                  className={`rounded-full border px-2 py-0.5 text-xs ${teamFilter.has(t.id) ? "border-accent bg-accent/15 text-foreground" : "border-border text-muted-foreground"}`}
                   onClick={() => toggle(teamFilter, t.id, setTeamFilter)}
                 >
                   {t.name}
@@ -445,7 +446,7 @@ function CoachLinks({ campaign, onEmailSaved, onCampaignRefreshed }: { campaign:
                 key={s.key}
                 type="button"
                 aria-pressed={statusFilter.has(s.key)}
-                className={`rounded-full border px-2 py-0.5 text-xs ${statusFilter.has(s.key) ? "border-accent bg-accent/15 text-accent" : "border-border text-muted-foreground"}`}
+                className={`rounded-full border px-2 py-0.5 text-xs ${statusFilter.has(s.key) ? "border-accent bg-accent/15 text-foreground" : "border-border text-muted-foreground"}`}
                 onClick={() => toggle(statusFilter, s.key, setStatusFilter)}
               >
                 {s.label}
@@ -499,7 +500,11 @@ function CoachRow({ coach, campaignId, onEmailSaved, onCampaignRefreshed }: { co
         <span className="text-sm font-medium">
           {coach.firstName} {coach.lastName}
         </span>
-        {null !== coach.respondedAt ? <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent">✓ répondu le {frDate(coach.respondedAt.slice(0, 10))}</span> : null}
+        {null !== coach.respondedAt ? (
+          <StatusPill variant="accent" icon={<Check className="size-3 text-accent" aria-hidden="true" />}>
+            répondu le {frDate(coach.respondedAt.slice(0, 10))}
+          </StatusPill>
+        ) : null}
         {hasEmail ? null : <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">pas d'email</span>}
         {null !== coach.sentAt ? <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">envoyé le {frDate(coach.sentAt.slice(0, 10))}</span> : null}
         {hasEmail ? (
