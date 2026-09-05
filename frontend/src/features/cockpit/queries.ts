@@ -7,7 +7,7 @@ import { toast } from "@/shared/stores/toastStore";
 
 import * as cockpitApi from "./api";
 import type { CalendarEntry, CreateClosurePayload, CreateCutoffPayload, CreateEventPayload } from "./api";
-import { asWindowAlreadyPlanned, WindowAlreadyPlannedError } from "./api";
+import { asWindowAlreadyPlanned, PreviewTokenStaleError, WindowAlreadyPlannedError } from "./api";
 import { frDateShort, segmentWeekCount, type WeekSegment } from "./lib/date";
 
 /**
@@ -20,8 +20,10 @@ import { frDateShort, segmentWeekCount, type WeekSegment } from "./lib/date";
  * jamais le doublant.
  */
 function ownWindowConflictFeedback(error: unknown): void {
-  if (error instanceof WindowAlreadyPlannedError) {
-    return; // le dialogue du geste affiche le refus (WindowAlreadyPlannedNotice)
+  if (error instanceof WindowAlreadyPlannedError || error instanceof PreviewTokenStaleError) {
+    // Le dialogue du geste affiche ces deux refus lui-même (WindowAlreadyPlannedNotice pour le
+    // chevauchement ; WarningPanel + ré-aperçu pour le jeton périmé, D3 v2) — jamais un toast.
+    return;
   }
   void errorMessage(error).then((message) => toast.error(message));
 }
@@ -493,8 +495,8 @@ export function useDeleteEntry() {
 export function useRedateEntry() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { entry: CalendarEntry; startDate: string; endDate: string }) =>
-      cockpitApi.updateCalendarEntry(vars.entry, { startDate: vars.startDate, endDate: vars.endDate }),
+    mutationFn: (vars: { entry: CalendarEntry; startDate: string; endDate: string; previewToken?: string }) =>
+      cockpitApi.updateCalendarEntry(vars.entry, { startDate: vars.startDate, endDate: vars.endDate, previewToken: vars.previewToken }),
     onSuccess: () => {
       invalidateEntries(queryClient);
       void queryClient.invalidateQueries({ queryKey: ["schedules"] });
@@ -502,5 +504,17 @@ export function useRedateEntry() {
       invalidatePlannedWindows(queryClient);
     },
     onError: ownWindowConflictFeedback,
+  });
+}
+
+/**
+ * D3 v2 (P4-174) — l'APERÇU des effets du re-datage d'une mère découpée. Lecture pure : aucune
+ * invalidation de cache (rien n'est écrit tant que l'utilisateur n'a pas confirmé). Le geste
+ * possède son feedback (le 422 s'affiche DANS le formulaire), donc pas de onError de niveau hook.
+ */
+export function useRedatePreview() {
+  return useMutation({
+    mutationFn: (vars: { id: string; startDate: string; endDate: string }) =>
+      cockpitApi.previewRedate(vars.id, { startDate: vars.startDate, endDate: vars.endDate }),
   });
 }

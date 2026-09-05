@@ -132,7 +132,7 @@ const closure = (overrides: Partial<CalendarEntry>): CalendarEntry => ({
   parentEntryId: null,
   status: "active",
   createdBy: null,
-  redatable: false,
+  redatable: false, redateNeedsPreview: false,
   ...overrides,
 });
 
