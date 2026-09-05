@@ -1171,7 +1171,9 @@ jobs:
         uses: ./.github/actions/build-php-cached
 
       - name: Start services
-        run: docker compose up -d --wait php-fpm nginx engine mercure redis postgres
+        # pdf-worker : la feature « l'export du planning » attend un PDF réel (Puppeteer) — sans lui
+        # le worker d'export répond « failed » (attrapé au premier run CI de la feature, 2026-09-05).
+        run: docker compose up -d --wait php-fpm nginx engine mercure redis postgres pdf-worker
 
       # P4-100 — cache de backend/vendor + retry : un 5xx du registre ne doit
       # plus rougir une PR saine (voir l'action).
