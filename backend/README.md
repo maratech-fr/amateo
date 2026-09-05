@@ -158,7 +158,8 @@ make phpstan          # PHPStan seul (niveau 8)
 make cs-fix           # CS-Fixer (auto-format)
 make db-init-test     # crée + migre la base de TEST (requis avant `make phpunit`)
 make phpunit          # PHPUnit --group phase1 (le gate bloquant)
-make behat            # Tests fonctionnels Gherkin FR (API réelle, features/) — with-sandbox.sh en mode play
+make behat            # Toutes les features Gherkin FR (API réelle, quelques minutes, générations réelles) — with-sandbox.sh en mode play
+                      #   une feature seule : vendor/bin/behat features/<x>.feature (dans php-fpm)
 make coverage         # Couverture (pcov) + cliquet coverage-floor.json (commands.md)
 make db-init          # crée + migre la base de dev — idempotent, ne détruit rien
 make db-empty         # drop + recreate + migre la base de dev VISÉE (DESTRUCTIF, gardé — commands.md)
@@ -222,7 +223,7 @@ backend/
 | Doc / script | Contenu |
 |--------------|---------|
 | [`scripts/generate-schedule.sh`](scripts/generate-schedule.sh) | **Guide pratique** — pilote create → generate → poll une génération via l'API (vraie aide pour tester/déboguer le flux). |
-| [`features/`](features/) | **Tests fonctionnels Behat** (Gherkin FR, `make behat`) — 5 features métier jouées contre l'API réelle : génération du planning de saison, inscription et premier planning, placement des matchs, plan de période en overlay, vœux des coachs. Ont remplacé les smokes bash (`backend/scripts/*smoke*.sh`, supprimés — P4-165). |
+| [`features/`](features/) | **Tests fonctionnels Behat** (Gherkin FR) — une feature par promesse métier, jouées contre l'API réelle. `make behat` les joue toutes ; détail de chacune : [`docs/testing/test-coverage-map.md`](../docs/testing/test-coverage-map.md) §5. Les 5 premières ont remplacé les smokes bash (`backend/scripts/*smoke*.sh`, supprimés — P4-165) ; les suivantes (P4-175) couvrent les règles qui détruisent/refusent/isolent. |
 | [`docs/TENANT.md`](docs/TENANT.md) | **Isolation multi-tenant** (cœur sécurité) — `TenantFilter` + `TenantFilterListener` (priorité 7, après le firewall) + résolution du club depuis le JWT. |
 | [`docs/RLS.md`](docs/RLS.md) | PostgreSQL Row-Level Security : rôles DB, policies, activation sur une nouvelle table. |
 | [`docs/commands.md`](docs/commands.md) | **Référence complète des commandes** — cibles make, console `app:*`, pièges RLS (`dbal:run-sql`), scripts. |

@@ -1,11 +1,12 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-09-03 (rotation fraîcheur, `documentation-update`). Re-confronté au code : la ligne
-`COACH_PLAYER_NO_OVERLAP` toujours vraie (`add_coach_player_non_overlap`,
-`app/solver/constraints/structural.py:216`, exemption via `shared_block_case_bvars`) ; les champs
-`Team` cités (`sessionsPerWeek`, `priorityTier`) toujours ceux du schéma Pydantic
-(`app/schemas/input_schema.py:82-86`, `sessions_per_week`/`priority_tier_id`). Reste du fichier non
-re-vérifié cette passe — historique : `git log -p --follow engine/docs/business.md`.
+Last verified @ 2026-09-05 (rotation fraîcheur, `documentation-update`, programme Behat). Re-confronté
+au code : `add_coach_player_non_overlap` toujours à `app/solver/constraints/structural.py:216` ; les
+champs `Team` cités (`sessionsPerWeek`, `priorityTier`) toujours ceux du schéma Pydantic
+(`app/schemas/input_schema.py:82-86`, `sessions_per_week`/`priority_tier_id`) ; la dérivation de
+capacité `canSplit ? capacity : 1` toujours à `ScheduleConstraintBuilder.php:1053` ; le rôle `MAIN`
+toujours `App\Enum\TeamCoachRole::MAIN`. Reste du fichier non re-vérifié cette passe — historique :
+`git log -p --follow engine/docs/business.md`.
 
 > Ce document explique le domaine de la planification sportive et ce que le moteur `engine` resout. Destine aux nouveaux developpeurs rejoignant le projet ClubScheduler.
 

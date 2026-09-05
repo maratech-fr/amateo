@@ -1,13 +1,13 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-05 (découpage début·milieu·fin, `documentation-update`). §2 axe « Cycle de
-vie des plans » recalé : re-confronté `backend/tests/CrossStack/WeekSegmentationMirrorParityTest.php`
-(groupe `contract`), `backend/tests/Security/WeekChildEntryTest.php`,
-`backend/tests/Security/PeriodPlanBirthTest.php`, `backend/tests/Security/PeriodRedateTest.php`,
-`backend/tests/Integration/Seed/BcclSeederIdempotenceTest.php`,
-`frontend/tests/e2e/club-life.spec.ts`, `frontend/tests/e2e/redate-closure.spec.ts`.
-Un stamp REMPLACE, l'historique vit dans git :
-`git log -p --follow docs/testing/test-coverage-map.md`.
+Last verified @ 2026-09-05 (programme Behat, `documentation-update`). §5 réécrit contre les 16
+`.feature` de `backend/features/` et `backend/behat.dist.php` (16 suites) ; §2 complété pour que
+chaque axe `CLAUDE.md` §7.1 cite sa feature Behat (isolation tenant, sémantique des contraintes,
+cycle de vie des plans, périmètre engagé, auth & memberships — le contrat backend⇄engine reste
+sans feature dédiée, motif en ligne) ; §4 recalé sur l'exception P4-176 (verrou contredit par
+`forbiddenDays`, relocalisé plutôt que diagnostiqué — `engine/app/solver/constraints/diagnostics.py`,
+`engine/tests/semantic/test_hard_lock_announces_violations.py`). Un stamp REMPLACE, l'historique
+vit dans git : `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
 > prouve**, **par quel job CI**, et **ce que personne ne prouve**. Il ne remplace ni
@@ -26,7 +26,7 @@ Un stamp REMPLACE, l'historique vit dans git :
 | pytest | engine | unitaires du solveur (racine), **sémantiques** (`tests/semantic/` : une contrainte saisie est honorée, pas juste `COMPLETED`), goldens (`tests/golden/`, BCCL d'acceptation compris), invariants, perf (`-m perf`, budget lu par `_budget_seconds()` — `PERF_BUDGET_SECONDS` en override) ; **couverture + cliquet** (`make -C engine coverage`, plancher lu de `coverage-floor.json`, artefact `coverage-engine`) | `engine/tests/` | `make -C engine test` (ruff + format + mypy + bandit + pytest, **sans** couverture depuis P4-166) · `make -C engine coverage` (couverture + cliquet, séparé) | `engine-tests` ; `engine-coverage` (couverture, `needs: engine-tests`, hors `needs` de `build-docker`) ; `engine-perf` (main, dense + BCCL, 60 s) ; `engine-perf-pr` (PR, dense seul, quand `engine/**` ou `docker/engine/**` bouge) |
 | Vitest + RTL | frontend | composants, hooks react-query, lib pure (`vi.mock` des queries) ; jsdom — **aucune mise en page** (`.claude/rules/frontend.md`) ; **couverture + cliquet** (`make -C frontend coverage`, plancher lu de `coverage-floor.json`, artefact `coverage-frontend`) | `frontend/src/**/*.test.ts*` | `make -C frontend test` (image tooling à rebâtir avant) · `make -C frontend coverage` (couverture, séparé — suite complète instrumentée, hors boucle courte) | `frontend` ; `frontend-coverage` (couverture, `needs: frontend`, hors `needs` de `build-docker`) |
 | Playwright | frontend + stack complète | 11 parcours nommés en §2 — dont **le seul test UI → API → engine → planning** (`journey.spec.ts`, qui prouve aussi la livraison PAR SSE : témoin Mercure, échec nommé si le hub reste muet — P4-168) et 4 specs **axe** (contraste 2 thèmes, reflow, voile, écrans système) | `frontend/tests/e2e/` | `make -C frontend e2e` | `e2e` |
-| Behat | stack complète | scénarios métier en français (Gherkin), lisibles et relisables par le fondateur, joués contre l'API réelle (aucun navigateur, aucun noyau in-process) — §5 : 5 features livrées, remplacent intégralement les smokes bash (`backend/scripts/*smoke*.sh`, SUPPRIMÉS — P4-165) | `backend/features/`, contexts `backend/tests/Behat/` | `make -C backend behat` (sous `with-sandbox.sh` en mode play) | `functional-tests` |
+| Behat | stack complète | scénarios métier en français (Gherkin), une promesse par feature, lisibles et relisables par le fondateur, joués contre l'API réelle (aucun navigateur, aucun noyau in-process) — §5 : les 5 premières remplacent intégralement les smokes bash (`backend/scripts/*smoke*.sh`, SUPPRIMÉS — P4-165), les suivantes couvrent les règles qui détruisent/refusent/isolent (P4-175) | `backend/features/`, contexts `backend/tests/Behat/` | `make -C backend behat` (sous `with-sandbox.sh` en mode play) | `functional-tests` |
 | Statique | 3 zones | PHPStan 8 · CS-Fixer · Rector — ruff · `ruff format` · mypy strict · bandit — eslint · `tsc -b --force` | Makefiles | `make lint` | `phpstan`, `rector`, `engine-tests`, `frontend` |
 | Sécurité | dépôt, images | gitleaks (historique entier), semgrep, `composer`/`npm`/`pip audit` (retry sur endpoint indisponible seulement, `.github/scripts/audit-retry.sh`), Trivy CRITICAL sur les images prod | `.github/workflows/` | — | `secrets-scan`, `semgrep`, `dependency-audit`, `build-docker` + cron hebdo `security-weekly.yml` |
 
@@ -42,13 +42,13 @@ Recalculer les tailles : `find backend/tests -name '*Test.php' | awk -F/ '{print
 
 | Axe | Preuve principale | Où |
 |---|---|---|
-| Isolation tenant | `TenantIsolationTest`, `RlsIsolationTest`, `TenantCacheIsolationTest`, `MatchTenantIsolationTest` | `blocking-tests` |
+| Isolation tenant | `TenantIsolationTest`, `RlsIsolationTest`, `TenantCacheIsolationTest`, `MatchTenantIsolationTest` ; feature Behat `un-club-ne-voit-jamais-un-autre-club.feature` (un autre club ne liste/lit/supprime rien — 404, jamais 403 ; un membre sans rôle de gestion ne modifie rien) | `blocking-tests`, `functional-tests` |
 | Pipeline de génération | `ConcurrentGenerationTest` (verrou) ; **`journey.spec.ts`** (wizard → génération CP-SAT réelle → planning validé → cockpit — **et livrée PAR le canal Mercure/SSE**, pas seulement par le repli polling : témoin `ScheduleStreamWitness`, `data-schedule-stream-events` ≥ 1 exigé, P4-168) ; feature Behat `generation-du-planning-de-saison.feature` (rail async → `COMPLETED`) et `inscription-et-premier-planning.feature` (club neuf → minimum → `COMPLETED`) | `blocking-tests`, `e2e`, `functional-tests` |
-| Sémantique des contraintes | `engine/tests/semantic/` ; `engine-semantics` (clés, miroir capacité, forme du contrat contre le vrai engine) ; feature Behat `placement-des-matchs.feature` (samedi PLACED dans sa fenêtre, dimanche UNPLACED `no_access_window`) ; `ReservationApiTest::testDeletingABlockCompleteReservationEmptiesTheWholeCase`/`testDeletingAnIndividualReservationOnANonCompleteCaseRemovesOnlyIt` (P2-62 — supprimer une réservation d'une case bloc-complète emporte toute la case + les verrous HARD, une individuelle se supprime seule) | `engine-tests`, `engine-semantics`, `functional-tests`, `unit-tests` |
-| Cycle de vie des plans (ADR-0002) | `PeriodPlanBirthTest`, `PeriodCopyBirthTest`, `SeasonPlanInForceTest`, `SocleDeviationParityTest`, `ScheduleConstraintBuilderOverlayTest` ; feature Behat `plan-de-periode-en-overlay.feature` (période → plan → overlay → `COMPLETED` ; remplissage recolle un membre de bloc libéré ; **D3 v1 : re-dater l'incident, le plan survit et sa version est marquée à régénérer**) ; `club-life.spec.ts` (incident borné à SON plan) ; `WeekChildEntryTest` (une semaine-enfant d'une mère VACANCES ne naît que si elle couvre tout son lundi→vendredi, 422 nommé sinon — D4, `App\Service\HolidayWorkweekRule`) et `HolidayWorkweekMirrorParityTest` (parité mécanique backend ⇄ front `holidayCoversWorkweek`, `holidayWorkweek.parity.json`, groupe `contract`) ; `Security/PeriodRedateTest` (8 cas — D3 v1, ex-P2-57 : re-datage d'une racine CLOSURE dans les deux sens, fenêtre gelée pour tous les autres cas, 409 sur fenêtre déjà prise) ; **`redate-closure.spec.ts`** (D3 v1 PR-2 — chemin UI réel : cockpit → « Modifier les dates » → `PUT`, le toast de succès annonce le re-datage, `/planning` affiche la bannière « périmé » ; idempotent — re-date puis restaure la fenêtre d'origine, aucune course avec `club-life.spec.ts` qui en dépend) ; `Security/PeriodWindowRaceTest` (P4-172 — deux créations de plan de période concurrentes sur deux entrées du même club ne se chevauchent plus : grain club+saison du verrou `lockClubWindows` prouvé par une seconde connexion DBAL tenant la clé consultative, annoté `phase1`+`integration` mais **non listé dans `blocking-tests`**, tourne dans `unit-tests` seul) ; **découpage début·milieu·fin d'une fermeture (décision fondateur, 2026-09-05)** : `CrossStack/WeekSegmentationMirrorParityTest` (groupe `contract` — parité backend `WeekSegmentationRule::segments` ⇄ front `weekSegments` sur `weekSegmentation.parity.json`) ; `Security/WeekChildEntryTest` (étendu — une semaine-enfant de fermeture doit être EXACTEMENT un segment calculé, 422 nommé sinon, tolérance des semaines révolues en tête) ; `Security/PeriodPlanBirthTest` (« Adapter d'un bloc » une fermeture refuse en 422 dès que sa fenêtre compte >1 segment) ; `Security/PeriodRedateTest` (le re-datage D3 refuse en 422 une nouvelle fenêtre à plus d'un segment) ; `Integration/Seed/BcclSeederIdempotenceTest` (aucune racine seedée ne porte plus un plan à >1 segment — l'incident Matéo est désormais deux enfants CLOSURE, milieu + fin) ; **`club-life.spec.ts`** et **`redate-closure.spec.ts`** recalés sur la nouvelle forme (e2e) | `blocking-tests`, `functional-tests`, `e2e`, `unit-tests` |
-| Périmètre engagé | `EngagedTeamGuardTest` ; `matches.spec.ts` (matchs verrouillés tant que le plan principal n'est pas validé) | `blocking-tests`, `e2e` |
-| Contrat backend ⇄ engine | `ContractSchemaTest`, `ValidateAssignmentsContractSchemaTest`, `PayloadVersionMatchesContractVersionTest`, les `*PayloadParityTest` | `blocking-tests` |
-| Auth & memberships | `ClubUserAccessTests`, `MemberRoleTest`, `ManagementRoleTest`, `SuperAdminAccessTest`, `ApiRateLimitTest`, `PasswordResetEnumerationTest`, `RegisterTurnstileTest`, `MercureHardeningTest` ; `auth.spec.ts` ; feature Behat `voeux-des-coachs.feature` (seul chemin d'écriture non authentifié : token public → vœu persisté) | `blocking-tests`, `e2e`, `functional-tests` |
+| Sémantique des contraintes | `engine/tests/semantic/` ; `engine-semantics` (clés, miroir capacité, forme du contrat contre le vrai engine) ; feature Behat `placement-des-matchs.feature` (samedi PLACED dans sa fenêtre, dimanche UNPLACED `no_access_window`) ; feature Behat `une-contrainte-saisie-est-honoree.feature` (contrainte honorée, contrainte impossible → échec diagnostiqué) ; feature Behat `un-verrou-est-souverain.feature` (verrou HARD sovereign à la régénération, déplacement impossible refusé et nommé — **exception connue, §4 et P4-176**) ; feature Behat `l-unite-de-placement-est-le-bloc.feature` (l'unité de placement d'un entraînement mutualisé est le groupe) ; `ReservationApiTest::testDeletingABlockCompleteReservationEmptiesTheWholeCase`/`testDeletingAnIndividualReservationOnANonCompleteCaseRemovesOnlyIt` (P2-62 — supprimer une réservation d'une case bloc-complète emporte toute la case + les verrous HARD, une individuelle se supprime seule) | `engine-tests`, `engine-semantics`, `functional-tests`, `unit-tests` |
+| Cycle de vie des plans (ADR-0002) | `PeriodPlanBirthTest`, `PeriodCopyBirthTest`, `SeasonPlanInForceTest`, `SocleDeviationParityTest`, `ScheduleConstraintBuilderOverlayTest` ; feature Behat `le-socle-commande-les-plans.feature` (valider/rouvrir le socle efface les plans de période à venir, garde ceux déjà commencés ; aucune période sans socle en vigueur) ; feature Behat `le-planning-se-dit-a-regenerer.feature` (une contrainte ajoutée marque le planning en vigueur à régénérer, sans en effacer un créneau) ; feature Behat `la-semaine-de-reprise.feature` (détacher une semaine de vacances fait naître son plan, génération sur sa grille propre) ; feature Behat `une-semaine-de-vacances-couvre-lundi-vendredi.feature` (une semaine partielle ne devient jamais une semaine de reprise) ; feature Behat `une-indisponibilite-se-decoupe-en-debut-milieu-fin.feature` (découpage début·milieu·fin d'une fermeture) ; feature Behat `plan-de-periode-en-overlay.feature` (période → plan → overlay → `COMPLETED` ; remplissage recolle un membre de bloc libéré ; **D3 v1 : re-dater l'incident, le plan survit et sa version est marquée à régénérer**) ; `club-life.spec.ts` (incident borné à SON plan) ; `WeekChildEntryTest` (une semaine-enfant d'une mère VACANCES ne naît que si elle couvre tout son lundi→vendredi, 422 nommé sinon — D4, `App\Service\HolidayWorkweekRule`) et `HolidayWorkweekMirrorParityTest` (parité mécanique backend ⇄ front `holidayCoversWorkweek`, `holidayWorkweek.parity.json`, groupe `contract`) ; `Security/PeriodRedateTest` (8 cas — D3 v1, ex-P2-57 : re-datage d'une racine CLOSURE dans les deux sens, fenêtre gelée pour tous les autres cas, 409 sur fenêtre déjà prise) ; **`redate-closure.spec.ts`** (D3 v1 PR-2 — chemin UI réel : cockpit → « Modifier les dates » → `PUT`, le toast de succès annonce le re-datage, `/planning` affiche la bannière « périmé » ; idempotent — re-date puis restaure la fenêtre d'origine, aucune course avec `club-life.spec.ts` qui en dépend) ; `Security/PeriodWindowRaceTest` (P4-172 — deux créations de plan de période concurrentes sur deux entrées du même club ne se chevauchent plus : grain club+saison du verrou `lockClubWindows` prouvé par une seconde connexion DBAL tenant la clé consultative, annoté `phase1`+`integration` mais **non listé dans `blocking-tests`**, tourne dans `unit-tests` seul) ; **découpage début·milieu·fin d'une fermeture (décision fondateur, 2026-09-05)** : `CrossStack/WeekSegmentationMirrorParityTest` (groupe `contract` — parité backend `WeekSegmentationRule::segments` ⇄ front `weekSegments` sur `weekSegmentation.parity.json`) ; `Security/WeekChildEntryTest` (étendu — une semaine-enfant de fermeture doit être EXACTEMENT un segment calculé, 422 nommé sinon, tolérance des semaines révolues en tête) ; `Security/PeriodPlanBirthTest` (« Adapter d'un bloc » une fermeture refuse en 422 dès que sa fenêtre compte >1 segment) ; `Security/PeriodRedateTest` (le re-datage D3 refuse en 422 une nouvelle fenêtre à plus d'un segment) ; `Integration/Seed/BcclSeederIdempotenceTest` (aucune racine seedée ne porte plus un plan à >1 segment — l'incident Matéo est désormais deux enfants CLOSURE, milieu + fin) ; **`club-life.spec.ts`** et **`redate-closure.spec.ts`** recalés sur la nouvelle forme (e2e) | `blocking-tests`, `functional-tests`, `e2e`, `unit-tests` |
+| Périmètre engagé | `EngagedTeamGuardTest` ; `matches.spec.ts` (matchs verrouillés tant que le plan principal n'est pas validé) ; feature Behat `le-perimetre-engage-est-protege.feature` (équipe engagée ni supprimable ni changeable de niveau, une équipe qui ne joue pas reste libre) | `blocking-tests`, `e2e`, `functional-tests` |
+| Contrat backend ⇄ engine | `ContractSchemaTest`, `ValidateAssignmentsContractSchemaTest`, `PayloadVersionMatchesContractVersionTest`, les `*PayloadParityTest` — **aucune feature Behat dédiée** : la forme d'un payload/schéma n'est pas une promesse qu'un gestionnaire relit, le PHPUnit cross-stack reste la preuve directe | `blocking-tests` |
+| Auth & memberships | `ClubUserAccessTests`, `MemberRoleTest`, `ManagementRoleTest`, `SuperAdminAccessTest`, `ApiRateLimitTest`, `PasswordResetEnumerationTest`, `RegisterTurnstileTest`, `MercureHardeningTest` ; `auth.spec.ts` ; feature Behat `voeux-des-coachs.feature` (seul chemin d'écriture non authentifié : token public → vœu persisté) ; feature Behat `l-export-du-planning.feature` (l'export du planning est refusé sans session) | `blocking-tests`, `e2e`, `functional-tests` |
 | Accessibilité & rendu | `a11y-contrast`, `system-scene`, `modal-reachability`, `veil-double-click`, `width-calibration`, `security-headers` (A17 contre le build nginx, `E2E_A17_REQUIRED=1`) | `e2e` |
 
 ## 3. Ce qui gate `main`
@@ -86,9 +86,15 @@ Recalculer les tailles : `find backend/tests -name '*Test.php' | awk -F/ '{print
 
 ## 4. Ce que personne ne prouve (angles morts constatés, pas devinés)
 
-Aucun angle mort constaté au 2026-09-04. Le dernier recensé (les parcours fonctionnels illisibles
-hors code) s'est résorbé avec P4-165 (§5) : les 5 rails métier ont chacun leur feature Gherkin
-relisable par le fondateur. Cette section reste la maison des prochains angles morts trouvés.
+Le programme Behat du 2026-09-05 (P4-175, 11 features) a fermé le dernier angle mort recensé (les
+parcours fonctionnels illisibles hors code — les rails et règles qui détruisent/refusent/isolent
+ont désormais chacun une feature Gherkin relisable par le fondateur, §5). **Une exception connue
+reste ouverte** : un verrou HARD contredit par une règle HARD `forbiddenDays` n'a pas de scénario
+fidèle — le comportement observé (relocalisé, pas diagnostiqué) contredit l'invariant `CLAUDE.md`
+§6, et `un-verrou-est-souverain.feature` a été volontairement recadrée sur un autre cas (le verdict
+de placement) pour ne pas figer en Gherkin un comportement qu'on ne veut pas garantir tel quel —
+voir P4-176 (`specs/evolution/roadmap.md`). Cette section reste la maison des prochains angles
+morts trouvés.
 
 ## `coverage-floor.json` — la couture des trois zones (P4-166)
 
@@ -115,28 +121,68 @@ fermées, `specs/courantes/etat-des-lieux.md` §2) :
   côté frontend et `backend/tests/Unit/CoverageFloorFileTest.php` côté backend (même contrat : le
   fichier existe, est du JSON, la clé de la zone est un entier 0-100, jamais `null`).
 
-## 5. Behat — ce qui est en place (P4-165 SOLDÉ)
+## 5. Behat — ce qui est en place (P4-165 et P4-175 SOLDÉS)
 
-> **Ce qui reste à couvrir** (jugement du 2026-09-05, demande fondateur) vit dans
-> [`../../specs/evolution/behat-programme.md`](../../specs/evolution/behat-programme.md) (roadmap P4-175) :
-> 11 promesses sensibles — celles qui détruisent, refusent ou isolent — qui n'ont qu'une preuve technique.
-> Chaque feature livrée quitte ce dossier et gagne sa ligne ci-dessous.
+> **Programme du 2026-09-05 livré entier** (jugement fondateur, « couverture suffisante pour ne
+> pas avoir d'angle mort ») : les 11 promesses sensibles — celles qui détruisent, refusent ou
+> isolent — ont chacune leur feature. **Nouvelle promesse = nouvelle feature, une par PR** ; c'est
+> la règle d'entretien qui remplace le fichier de cadrage (`specs/evolution/behat-programme.md`,
+> supprimé — historique en git).
 
 `behat/behat` ^3 (v3.32) en require-dev, `backend/behat.dist.php` (Gherkin `# language: fr`, une
 suite par feature, chacune reliée à son propre context — aucune collision de définition de step
-possible entre features), 5 `.feature` dans `backend/features/`, contexts dans
+possible entre features), les `.feature` de `backend/features/`, contexts dans
 `backend/tests/Behat/` (`BaseContext` — socle commun : client HTTP, garde bac-à-sable jumelle de
 `sandbox-guard.sh`, jeton via `bin/console lexik:jwt:generate-token` ; un context dédié par
-feature). Chaque feature est jouable seule et dans n'importe quel ordre, et **remplace
-intégralement** le smoke bash qu'elle migre (5 `.sh` SUPPRIMÉS de `backend/scripts/`, parité
-prouvée assertion par assertion) :
+feature). Chaque feature est jouable seule et dans n'importe quel ordre. Les 5 premières
+**remplacent intégralement** le smoke bash qu'elles migrent (tous SUPPRIMÉS de
+`backend/scripts/`, parité prouvée assertion par assertion) ; les 11 suivantes couvrent des
+promesses qui n'avaient jusqu'ici qu'une preuve technique (PHPUnit/pytest, illisible hors code) :
+
+**Rail de génération**
 
 | Feature | Ce qu'elle prouve |
 |---|---|
 | `generation-du-planning-de-saison.feature` | le rail async de génération aboutit à `COMPLETED` (remplace `smoke-solver.sh`) |
+
+**Inscription**
+
+| Feature | Ce qu'elle prouve |
+|---|---|
 | `inscription-et-premier-planning.feature` | un club neuf inscrit + minimum saisi obtient son planning `COMPLETED` (remplace `onboarding-smoke.sh`) |
+
+**Matchs**
+
+| Feature | Ce qu'elle prouve |
+|---|---|
 | `placement-des-matchs.feature` | un match à domicile dans sa fenêtre d'accès est `PLACED`, un sans fenêtre reste `UNPLACED` avec la raison nommée `no_access_window` (remplace `smoke-place-matches.sh`) |
+
+**Période (overlay, reprise, découpage, vacances)**
+
+| Feature | Ce qu'elle prouve |
+|---|---|
 | `plan-de-periode-en-overlay.feature` | une période génère son plan en overlay sur sa propre grille, et le remplissage recolle un membre de bloc libéré sur la case de son partenaire épinglé (remplace `smoke-overlay.sh`) |
+| `la-semaine-de-reprise.feature` | détacher une semaine de vacances fait naître son plan, et sa génération aboutit sur la grille PROPRE de la semaine — jamais l'union avec le planning de saison |
+| `une-indisponibilite-se-decoupe-en-debut-milieu-fin.feature` | une fermeture à semaine entamée se découpe en début/milieu/fin (jamais une semaine complète isolée, jamais « d'un bloc ») ; les trois segments sont acceptés ensemble |
+| `une-semaine-de-vacances-couvre-lundi-vendredi.feature` | une semaine n'est de vacances que si tout son lundi→vendredi tombe dans les vacances — une semaine partielle se planifie comme une semaine de saison |
+
+**Règles métier (socle, contrainte, bloc, verrou, périmètre, à régénérer)**
+
+| Feature | Ce qu'elle prouve |
+|---|---|
+| `le-socle-commande-les-plans.feature` | valider ou rouvrir le planning de saison efface les plans de période ENTIÈREMENT à venir, jamais un déjà commencé ; aucune génération de période sans socle en vigueur |
+| `une-contrainte-saisie-est-honoree.feature` | une contrainte saisie est honorée par le solveur (aucune séance hors fenêtre) ; une contrainte impossible fait échouer la génération avec un diagnostic nommé, jamais un plan bricolé |
+| `l-unite-de-placement-est-le-bloc.feature` | une équipe qui ne s'entraîne qu'en groupe ne se réserve pas seule ; réserver le groupe pose la séance pour tout le monde ; retirer une séance du lot emporte le groupe entier |
+| `un-verrou-est-souverain.feature` | une séance verrouillée en dur reste à la même case après régénération ; un déplacement impossible (case sans créneau ouvert) est refusé et nommé, rien n'est écrit — **cas contredit connu, voir §4 et P4-176** |
+| `le-perimetre-engage-est-protege.feature` | une équipe engagée en compétition (elle a des matchs) n'est ni supprimable ni changeable de niveau ; une équipe qui ne joue pas reste libre |
+| `le-planning-se-dit-a-regenerer.feature` | ajouter une contrainte marque le planning en vigueur à régénérer, sans en effacer un seul créneau |
+
+**Sécurité & accès (isolation, export, vœux)**
+
+| Feature | Ce qu'elle prouve |
+|---|---|
+| `un-club-ne-voit-jamais-un-autre-club.feature` | un autre club ne liste, ne lit ni ne supprime une équipe qui n'est pas la sienne (404, jamais 403) ; un membre sans rôle de gestion ne modifie rien |
+| `l-export-du-planning.feature` | le planning en vigueur s'exporte en PDF non vide ; l'export est refusé sans session |
 | `voeux-des-coachs.feature` | une campagne envoie un lien, l'entraîneur répond sans compte, le vœu remonte côté gestionnaire (remplace `smoke-coach-wishes.sh`) |
 
 **Choix de conception (décision fermée, `specs/courantes/etat-des-lieux.md` §2)** : les features
