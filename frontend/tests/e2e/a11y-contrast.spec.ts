@@ -135,6 +135,13 @@ for (const mode of MODES) {
         return [d[0], d[1], d[2]];
       };
       out["text-foreground on bg-warning/10"] = ratio(of("text-foreground", "color"), composite("bg-warning/10", bg));
+      // P4-177 — le TEXTE de la pastille `accent` (StatusPill : « Gain » d'un compromis, source
+      // MANUEL) : `text-foreground` sur `bg-accent/10` (fond α 0.1 → composité sur `bg-background`).
+      // `text-accent` y tombe sous AA (cf. AGENTS.md gotcha #11) : le texte est donc `text-foreground`
+      // comme la variante warning ; l'icône reste `text-accent` (seuil graphique, test dédié plus bas).
+      // Les surfaces porteuses (compromis /planning, matrice de trajets) ne sont pas visitées par axe
+      // ici → on verrouille la paire dans les deux thèmes.
+      out["text-foreground on bg-accent/10"] = ratio(of("text-foreground", "color"), composite("bg-accent/10", bg));
       probe.remove();
       return out;
     });
@@ -208,6 +215,10 @@ for (const mode of MODES) {
         "bg-diff on background": ratio(diff, bg),
         "text-diff-foreground on bg-diff": ratio(diffFg, diff),
         "text-warning icon on bg-warning/10": ratio(of("text-warning", "color"), composite("bg-warning/10", bg)),
+        // P4-177 — l'ICÔNE `text-accent` de la pastille `accent` (StatusPill, source MANUEL), sur
+        // `bg-accent/10` (composité sur bg) : élément graphique, seuil 1.4.11 (≥ 3:1). Le TEXTE de
+        // cette variante est `text-foreground`, mesuré au seuil AA dans le test plus haut.
+        "text-accent icon on bg-accent/10": ratio(of("text-accent", "color"), composite("bg-accent/10", bg)),
       };
     });
 
