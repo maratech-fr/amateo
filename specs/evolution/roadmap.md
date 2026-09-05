@@ -1,4 +1,4 @@
-# Roadmap (57) — ce qui reste à faire
+# Roadmap (58) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -30,7 +30,8 @@
 > **Effort** : XS/S ≤ 1 PR · M 2-3 PR · L lot phasé · XL recherche + gros lot.
 > Cap de commercialisation : **mi-2027**.
 >
-> **Fichiers de détail actifs** : [`plannings-bccl-2026-08-31.md`](plannings-bccl-2026-08-31.md) (P2-58 — le programme plannings BCCL : décisions D1-D6, méthode, avancement) ·
+> **Fichiers de détail actifs** : [`behat-programme.md`](behat-programme.md) (**P4-175** — les 11 promesses à couvrir en Behat, par ordre) ·
+> [`plannings-bccl-2026-08-31.md`](plannings-bccl-2026-08-31.md) (P2-58 — le programme plannings BCCL : décisions D1-D6, méthode, avancement) ·
 > [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) (module matchs — palier A livré (P1-4), **palier B
 > TRAJET+ANNUAIRE livré (RMM-8/P2-53 + RMM-9/P2-54, soldés 2026-08-28)** ; reste OUVERT : palier B
 > **dérogation** (§8, workflow tracker) et palier C (effet réseau — heures/tendances adverses cross-club) ;
@@ -137,6 +138,7 @@
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
+| P4-175 | **Programme Behat — 11 promesses sensibles sans preuve lisible (socle qui détruit les plans futurs, contrainte honorée, isolation entre clubs, unité de placement, verrou souverain, périmètre engagé, découpage début·milieu·fin, semaine de vacances, semaine de reprise, planning à régénérer, export)** | ⚪ | L (11 × S) | Demande fondateur 2026-09-05 (« couverture suffisante pour ne pas avoir d'angle mort »). Constat : les 5 features de `backend/features/` prouvent le rail de génération, l'inscription, le placement des matchs, l'overlay et les vœux ; toutes les règles qui DÉTRUISENT, REFUSENT ou ISOLENT n'ont qu'une preuve technique (PHPUnit, souvent bloquante — `SocleGuard*`, `TenantIsolationTest`, `EngagedTeamGuardTest`, `LockOriginProvenanceTest`…) et aucun scénario qu'un gestionnaire puisse relire. Détail, ordre et règles d'écriture : `specs/evolution/behat-programme.md`. Une feature par PR ; chaque livraison quitte le dossier et rejoint `docs/testing/test-coverage-map.md` §5 |
 | P4-156 | **Deux flakes CI récurrents constatés sur 3 jours — pull Docker Hub anonyme + TOTP admin absent au premier passage** | 🟡 | S | Constaté `documentation-update` (clôture P2-51, 2026-08-31) sur les runs des PR #804/#806/#807. **(1) Pull Docker Hub anonyme** : `connection reset` en tirant une image de base, 2 occurrences en 3 jours (#784, #804) — piste : login authentifié Docker Hub en CI ou miroir `ghcr.io`. **(2) L'écran TOTP admin absent dans `modal-reachability`/`journey`** : 2 PR consécutives (#806 puis #807 tirées de la même branche) l'ont chacune vu échouer puis passer à la relance sans changement de code — suspect : le rate-limiter SA0 saturé par les retries du test lui-même (la connexion admin répétée dans la même fenêtre déclenche le throttle avant l'écran TOTP). Aucun des deux n'est un défaut produit — non cadré, à instruire (logs des runs cités en preuve) |
 | P4-157 | **`ReservationGroupOccupancy::occupantCount` compte différemment selon l'ORDRE d'itération quand un bloc de mutualisation en CONTIENT un autre** | 🟡 | S | Constaté `documentation-update` (recalage seed BCCL, 2026-09-01) en vérifiant le seed réel : le bloc CEC1 `{U9M2, U9F1, U9F2}` (3 équipes) contient le bloc `{U9F1, U9F2}` (2 équipes) seedé à un autre créneau. `occupantCount` (`backend/src/Service/ReservationGroupOccupancy.php:236-279`) itère `blockMemberSetsInScope` sans ordre garanti et marque `accountedFor` équipe par équipe : sur une case dont l'ensemble réservé égale les 3 membres de CEC1, si le bloc de 2 est visité EN PREMIER (fully-present lui aussi, puisque ses 2 membres ⊂ l'ensemble réservé), il compte pour 1 occupant PUIS CEC1, visité ensuite, ajoute l'équipe restante non-comptée et incrémente `groupCount` une seconde fois — la case pèse alors 2 occupants au lieu de 1 selon l'ordre. Propriété PRÉ-EXISTANTE du modèle (pas introduite par ce recalage — le seed n'avait simplement encore aucun bloc imbriqué avant), et le moteur produit `COMPLETED` sur les données réelles du BCCL malgré elle (la capacité effective des cases concernées n'est jamais serrée au point de faire basculer le refus). À durcir : dériver `occupantCount` sur les blocs MAXIMAUX (un bloc contenu dans un autre, entièrement présent, ne doit jamais compter en plus du conteneur), pas sur l'ordre d'itération |
 

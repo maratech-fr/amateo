@@ -117,6 +117,11 @@ fermées, `specs/courantes/etat-des-lieux.md` §2) :
 
 ## 5. Behat — ce qui est en place (P4-165 SOLDÉ)
 
+> **Ce qui reste à couvrir** (jugement du 2026-09-05, demande fondateur) vit dans
+> [`../../specs/evolution/behat-programme.md`](../../specs/evolution/behat-programme.md) (roadmap P4-175) :
+> 11 promesses sensibles — celles qui détruisent, refusent ou isolent — qui n'ont qu'une preuve technique.
+> Chaque feature livrée quitte ce dossier et gagne sa ligne ci-dessous.
+
 `behat/behat` ^3 (v3.32) en require-dev, `backend/behat.dist.php` (Gherkin `# language: fr`, une
 suite par feature, chacune reliée à son propre context — aucune collision de définition de step
 possible entre features), 5 `.feature` dans `backend/features/`, contexts dans
