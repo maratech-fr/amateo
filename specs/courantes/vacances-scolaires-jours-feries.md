@@ -1,6 +1,6 @@
 # Vacances scolaires & jours fériés — référentiels calendaires
 
-Last verified @ 2026-09-03 (rotation `documentation-update`, P4-168 — zone non touchée par la PR,
+Last verified @ 2026-09-05 (rotation `documentation-update`, P4-176 — zone non touchée par la PR,
 contrôle de fraîcheur). Re-confronté au code : `AdminJobCatalog` déclare toujours
 `import-school-holidays`/`import-public-holidays` en `quarterly(4)`/`quarterly(4, 30)`,
 `manualTriggerAllowed: true` (`backend/src/AdminJob/AdminJobCatalog.php:63-64`) ✓ ;
