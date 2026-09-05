@@ -1,3 +1,5 @@
+import { StatusPill } from "@/shared/components/ui/badge";
+
 import type { Compromise, CompromiseEffect } from "./api";
 
 /**
@@ -15,9 +17,12 @@ import type { Compromise, CompromiseEffect } from "./api";
 /** broken (une concession) en premier, gained (un gain) ensuite ; un effet inconnu à la fin. */
 const rank = (effect: string): number => ("broken" === effect ? 0 : "gained" === effect ? 1 : 2);
 
-const PILL: Record<CompromiseEffect, { label: string; className: string }> = {
-  broken: { label: "Concession", className: "bg-warning/15 text-warning" },
-  gained: { label: "Gain", className: "bg-accent/15 text-accent" },
+// La pastille partagée (`StatusPill`, P4-177) porte le jeton de couleur : `warning` pour une
+// concession cédée, `accent` (couleur du club) pour un gain rétabli. Pas d'icône — SOBRE, ce sont
+// des compromis LÉGAUX (cf. entête).
+const PILL: Record<CompromiseEffect, { label: string; variant: "warning" | "accent" }> = {
+  broken: { label: "Concession", variant: "warning" },
+  gained: { label: "Gain", variant: "accent" },
 };
 
 export function CompromiseList({ compromises }: { compromises: Compromise[] }) {
@@ -27,10 +32,12 @@ export function CompromiseList({ compromises }: { compromises: Compromise[] }) {
     <ul className="flex flex-col gap-1.5">
       {ordered.map((compromise, index) => {
         // Un effet hors des deux connus dégrade proprement (pastille neutre), jamais un plantage.
-        const pill = PILL[compromise.effect] ?? { label: "Compromis", className: "bg-muted text-muted-foreground" };
+        const pill = PILL[compromise.effect] ?? { label: "Compromis", variant: "neutral" as const };
         return (
           <li key={`${compromise.family}-${compromise.effect}-${index}`} className="flex items-start gap-2 text-sm">
-            <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${pill.className}`}>{pill.label}</span>
+            <StatusPill variant={pill.variant} className="mt-0.5 shrink-0">
+              {pill.label}
+            </StatusPill>
             <span className="text-foreground">{compromise.message}</span>
           </li>
         );
