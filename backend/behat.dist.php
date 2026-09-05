@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Tests\Behat\CoachWishesContext;
+use App\Tests\Behat\ConstraintHonoredContext;
 use App\Tests\Behat\MatchPlacementContext;
 use App\Tests\Behat\OnboardingContext;
 use App\Tests\Behat\PeriodOverlayContext;
@@ -65,5 +66,10 @@ return (new Config)
                 new Suite('isolation')
                     ->withPaths('%paths.base%/features/un-club-ne-voit-jamais-un-autre-club.feature')
                     ->withContexts(TenantIsolationContext::class),
+            )
+            ->withSuite(
+                new Suite('contrainte')
+                    ->withPaths('%paths.base%/features/une-contrainte-saisie-est-honoree.feature')
+                    ->withContexts(ConstraintHonoredContext::class),
             ),
     );
