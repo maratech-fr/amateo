@@ -1,12 +1,12 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-09-04 (rotation de fraîcheur `documentation-update`, sans rapport avec le
-sujet de la PR — recalage smoke-solver→Behat P4-165). Reconfirmé sans écart : PHPUnit
+Last verified @ 2026-09-06 (rotation de fraîcheur `documentation-update`, sans rapport avec le
+sujet de la PR — P4-178, StatusPill). Reconfirmé sans écart : PHPUnit
 **11.5.55** (`backend/composer.lock`) ✓ · `TenantFilterListener` priorité **7, APRÈS le firewall**
-(`backend/src/EventListener/TenantFilterListener.php:48-50`) ✓ · `ClubGenerationLock` — `SETEX NX`
-+ release Lua atomique (`backend/src/Service/ClubGenerationLock.php:26`) ✓ · `CONTRACT_VERSION`
-**2.20** des deux côtés ✓. ⚠ Vérification volontairement ÉTROITE : le reste de la carte n'a pas été
-reconfronté au code ce jour.)
+(`backend/src/EventListener/TenantFilterListener.php:55`) ✓ · `ClubGenerationLock` — `SET NX EX`
++ release par script Lua compare-and-delete (`backend/src/Service/ClubGenerationLock.php:24,54-58`) ✓ · `CONTRACT_VERSION`
+**2.20** des deux côtés (`engine/CONTRACT_VERSION`, `MatchPlacementPayloadBuilder::CONTRACT_VERSION`) ✓.
+⚠ Vérification volontairement ÉTROITE : le reste de la carte n'a pas été reconfronté au code ce jour.)
 
 Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `feedback` (bouton + dialogue de signalement), `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes) ; voir `../frontend/docs/frontend-wizard.md` et `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 
