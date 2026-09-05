@@ -1,11 +1,21 @@
-Last verified @ 2026-09-04 (D3 v1 PR-1 complément, `coder` — snapshot régénéré dans le même commit.
+Last verified @ 2026-09-05 (P4-173, `coder` — snapshot régénéré dans le même commit.
 **191 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (aucune route
-nouvelle : un champ de LECTURE `redatable` s'ajoute au schéma `CalendarEntry` — 3 variantes read/collection)
-· SHA-256 `51d0a1dd923c9db13765c992e046c005867279b6d3a23e3e5ba94ddae47caf93`
+nouvelle : un bloc de LECTURE `staleness` s'ajoute au schéma `SchedulePlan` — 3 variantes read/collection,
+plus le schéma `SchedulePlanStaleness`)
+· SHA-256 `d197df291c4592446913c858441cd38389fe71b53fee2694a92070ea573c831b`
 (`sha256sum`, confirmé sur le fichier régénéré, aucun diff local). Reste du journal non re-confronté
 au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **P4-173 — le bloc servi `staleness` sur `SchedulePlan` (2026-09-05)** : **+0 path** — le schéma
+  lecture `SchedulePlan` gagne une propriété `staleness` (nouveau schéma `SchedulePlanStaleness` :
+  `manuallyEdited`/`constraintsChanged`/`resourcesChanged`), ou `null`. Elle porte la péremption de
+  la version POINTÉE par le plan (les 3 drapeaux de `Schedule`), pour que le cockpit dise « à
+  régénérer » sans redériver la règle. `null` quand le plan ne pointe aucune version, ou que sa
+  fenêtre est révolue (`endDate` < aujourd'hui). Renseignée en batch (une requête `id IN (versions
+  pointées du club)`, mémoïsée par requête — `SchedulePlanStalenessResolver`, patron `redatable`) sur
+  les 3 variantes read (jsonld, collection). Backend PUR, contrat backend⇄engine **inchangé**
+  (`CONTRACT_VERSION` 2.20, aucun appel moteur).
 - **D3 v1 PR-1 complément — le champ servi `redatable` sur `CalendarEntry` (2026-09-04)** : **+0 path** —
   la ressource lecture `CalendarEntry` gagne une propriété booléenne `redatable` : vraie ssi l'entrée
   est une racine de FERMETURE portant un plan « d'un bloc » (sans mère, sans semaines-enfants) — le
@@ -60,20 +70,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   pour continuer », pas un échec). 189 → **189 paths**. Backend + frontend (`reasonLabel` devient une
   table exhaustive côté écran), contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.16, aucun
   appel moteur).
-- **P2-54 RMM-9 PR-3 — le radar de conflits devient SPATIAL (2026-08-28)** : **+4 paths** — les routes
-  custom du trajet adverse (tenant `opponent_travel`, keyé sur le code organisme) :
-  `GET /api/opponents/travel` (**ouvert au Membre**, affichage : par adversaire AWAY distinct, la
-  précision du lieu `VENUE`|`CITY`|`null`, le nom du lieu, le trajet aller simple voiture nullable,
-  le flag serveur `approximated` = ville, la source `AUTO`|`MANUAL` ; 400 hors contexte),
-  `POST /api/opponents/travel/manual` (**management** SEC-07 : épingle un gymnase choisi via
-  `/api/ffbb/salles` → surcharge MANUAL + recalcul du trajet ; 422 adversaire/gymnase invalide ou sans
-  rencontre extérieure), `POST /api/opponents/travel/auto` (**management** : retour à l'AUTO ; 422 sans
-  surcharge à rétablir) et `POST /api/opponents/travel/resolve` (**management** : recalcule TOUS les
-  trajets AUTO — le MANUAL jamais écrasé ; cap dur 60 avant réseau IGN ; 429 rate-limit dédié
-  `opponent_travel_resolve`). **Champ ADDITIF** sur `POST /api/opponents/resolve` : `stamped` (fixtures
-  AWAY dont le code organisme a été posé — la clé de jointure). 185 → **189 paths**. Backend + frontend,
-  contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.16, aucun appel moteur — itinéraire IGN
-  `data.geopf.fr`, hôte déjà en place).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

@@ -11,6 +11,7 @@ use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
 use App\Dto\CreatePeriodPlanInput;
 use App\Dto\SchedulePlanInput;
+use App\Dto\SchedulePlanStaleness;
 use App\Entity\SchedulePlan;
 use App\Enum\SchedulePlanType;
 use App\State\Processor\SchedulePlanStateProcessor;
@@ -86,7 +87,18 @@ class SchedulePlanResource
     #[Groups(['read'])]
     public bool $teamSelectionInitialized = false;
 
-    public static function fromEntity(SchedulePlan $entity): self
+    // Publié dans /api/docs (cf. ⚠️ en tête).
+    /**
+     * La version pointée par ce plan est-elle à régénérer, et pourquoi ? Le bloc porte les
+     * catégories de données qui ont changé depuis la génération de cette version (retouche à la
+     * main, contrainte, autre donnée du club) : le planning décrit un état antérieur — périmé,
+     * pas faux. `null` quand le plan ne pointe aucune version encore, ou que sa fenêtre est déjà
+     * passée (rien à régénérer pour du révolu). Renseigné en batch (une requête par collection).
+     */
+    #[Groups(['read'])]
+    public ?SchedulePlanStaleness $staleness = null;
+
+    public static function fromEntity(SchedulePlan $entity, ?SchedulePlanStaleness $staleness = null): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
@@ -101,6 +113,7 @@ class SchedulePlanResource
         $dto->calendarEntryId = $entity->getCalendarEntryId();
         $dto->chosenScheduleId = $entity->getChosenScheduleId();
         $dto->teamSelectionInitialized = $entity->isTeamSelectionInitialized();
+        $dto->staleness = $staleness;
 
         return $dto;
     }

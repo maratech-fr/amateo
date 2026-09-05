@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace App\State\Provider;
 
+use ApiPlatform\State\Pagination\Pagination;
 use App\ApiResource\SchedulePlanResource;
 use App\Entity\SchedulePlan;
 use App\Enum\SchedulePlanType;
+use App\Service\SchedulePlanStalenessResolver;
+use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 
 /**
@@ -17,6 +21,15 @@ use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 class SchedulePlanStateProvider extends AbstractStateProvider
 {
     use ReadsUuidQueryParamTrait;
+
+    public function __construct(
+        EntityManagerInterface $entityManager,
+        RequestStack $requestStack,
+        Pagination $pagination,
+        private readonly SchedulePlanStalenessResolver $staleness,
+    ) {
+        parent::__construct($entityManager, $requestStack, $pagination);
+    }
 
     protected function getEntityClass(): string
     {
@@ -28,7 +41,9 @@ class SchedulePlanStateProvider extends AbstractStateProvider
      */
     protected function mapEntityToOutput(object $entity): SchedulePlanResource
     {
-        return SchedulePlanResource::fromEntity($entity);
+        // La péremption est lue UNE fois par requête (ensemble mémoïsé des versions pointées du
+        // club) : sur la collection, chaque plan est un O(1), pas une requête par ligne — anti-N+1.
+        return SchedulePlanResource::fromEntity($entity, $this->staleness->stalenessFor($entity));
     }
 
     /**
