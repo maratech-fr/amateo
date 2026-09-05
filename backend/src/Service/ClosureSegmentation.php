@@ -62,6 +62,27 @@ final class ClosureSegmentation
     }
 
     /**
+     * Les segments de la GÉOMÉTRIE PLEINE (sans filtre temporel) — pour juger la FORME d'une
+     * fenêtre indépendamment de l'horloge (garde du re-datage D3 : une fenêtre qui « aurait une
+     * semaine entamée » se décompose en plus d'un segment, qu'elle soit passée ou à venir).
+     *
+     * @return list<array{monday: string, startDate: string, endDate: string, kind: 'start'|'middle'|'end', weeks: list<string>}>
+     */
+    public function fullSegments(
+        string $clubId,
+        string $seasonId,
+        string $rootEntryId,
+        string $motherStart,
+        string $motherEnd,
+        ?string $seasonStart,
+        ?string $seasonEnd,
+    ): array {
+        $base = $this->baseOfferedWeeks($clubId, $seasonId, $rootEntryId, $motherStart, $motherEnd, $seasonStart, $seasonEnd);
+
+        return WeekSegmentationRule::segments($base, $motherStart, $motherEnd);
+    }
+
+    /**
      * L'enfant [childStart, childEnd] est-il EXACTEMENT un segment de la mère CLOSURE ? Tolérant aux
      * semaines révolues en tête : le segment PLEIN (géométrie entière) OU le segment ROGNÉ des
      * révolues (ce que le picker a offert) est accepté — l'un naît d'une période passée / du seed,

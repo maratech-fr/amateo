@@ -315,6 +315,28 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
                     $redate['newStart']->format('Y-m-d'),
                     $redate['newEnd']->format('Y-m-d'),
                 );
+                // Découpage début·milieu·fin (fondateur 2026-09-05) : re-dater une racine à plan
+                // « d'un bloc » vers une fenêtre à SEMAINE ENTAMÉE (décomposition > 1 segment)
+                // contournerait la règle par D3 — on refuse (422 parlant). Géométrie PLEINE : la
+                // FORME de la nouvelle fenêtre, indépendante de l'horloge (une fixture passée aussi).
+                $newStartIso = $redate['newStart']->format('Y-m-d');
+                $newEndIso = $redate['newEnd']->format('Y-m-d');
+                $seasonRow = $this->entityManager->getConnection()->fetchAssociative(
+                    'SELECT start_date, end_date FROM season WHERE id = :sid',
+                    ['sid' => $redate['seasonId']],
+                );
+                $newWindowSegments = $this->closureSegmentation->fullSegments(
+                    $redate['clubId'],
+                    $redate['seasonId'],
+                    $redate['entryId'],
+                    $newStartIso,
+                    $newEndIso,
+                    false === $seasonRow ? null : mb_substr((string) $seasonRow['start_date'], 0, 10),
+                    false === $seasonRow ? null : mb_substr((string) $seasonRow['end_date'], 0, 10),
+                );
+                if (\count($newWindowSegments) > 1) {
+                    $this->refuse('Cette indisponibilité aurait une semaine entamée : re-datez-la sur des semaines complètes, ou adaptez-la par début, milieu, fin.');
+                }
             }
 
             // Le parent applique l'update (dates comprises) et flushe — TOUJOURS d'abord, y
