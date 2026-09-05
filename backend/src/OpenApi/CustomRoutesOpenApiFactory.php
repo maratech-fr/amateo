@@ -19,6 +19,7 @@ use App\OpenApi\PathContributor\HolidayPaths;
 use App\OpenApi\PathContributor\ManualEditPaths;
 use App\OpenApi\PathContributor\OpponentTravelPaths;
 use App\OpenApi\PathContributor\PublicTokenPaths;
+use App\OpenApi\PathContributor\RedatePreviewPaths;
 use App\OpenApi\PathContributor\ReleaseNoteAndFeedbackPaths;
 use App\OpenApi\PathContributor\SeasonAndFixturePaths;
 use App\OpenApi\PathContributor\UncoveredCustomPaths;
@@ -77,6 +78,7 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
             new SeasonAndFixturePaths($schemas),
             new FfbbEngagementPaths($schemas),
             new OpponentTravelPaths($schemas),
+            new RedatePreviewPaths($schemas),
         ] as $contributor) {
             $contributor->contribute($paths);
         }

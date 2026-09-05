@@ -73,7 +73,11 @@ class CalendarEntryResource
     #[Groups(['read'])]
     public bool $redatable = false;
 
-    public static function fromEntity(CalendarEntry $entity, bool $redatable = false): self
+    /** Vrai pour une indisponibilité DÉCOUPÉE : re-dater ses dates passe par un aperçu des effets, puis confirmation. Exclusif de `redatable`. */
+    #[Groups(['read'])]
+    public bool $redateNeedsPreview = false;
+
+    public static function fromEntity(CalendarEntry $entity, bool $redatable = false, bool $redateNeedsPreview = false): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
@@ -91,6 +95,7 @@ class CalendarEntryResource
         $dto->status = $entity->getStatus()->value;
         $dto->createdBy = $entity->getCreatedBy();
         $dto->redatable = $redatable;
+        $dto->redateNeedsPreview = $redateNeedsPreview;
 
         return $dto;
     }

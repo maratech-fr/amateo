@@ -86,9 +86,9 @@ class CalendarEntryStateProvider extends AbstractStateProvider
      */
     protected function mapEntityToOutput(object $entity): CalendarEntryResource
     {
-        // La re-databilité est lue UNE fois par requête (ensemble mémoïsé du club) : sur la
+        // La re-databilité est lue UNE fois par requête (ensembles mémoïsés du club) : sur la
         // collection, chaque entrée est un O(1), pas deux requêtes par ligne — anti-N+1.
-        return CalendarEntryResource::fromEntity($entity, $this->redatability->isRedatable($entity));
+        return CalendarEntryResource::fromEntity($entity, $this->redatability->isRedatable($entity), $this->redatability->redateNeedsPreview($entity));
     }
 
     private function assertDate(string $value, string $param): string
