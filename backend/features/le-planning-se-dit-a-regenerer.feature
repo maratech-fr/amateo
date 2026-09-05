@@ -10,3 +10,8 @@ Fonctionnalité: Le planning se dit à régénérer quand une contrainte change
     Quand j'ajoute une contrainte au club
     Alors le planning en vigueur est marqué à régénérer
     Et le planning en vigueur est intact, mêmes créneaux et même statut
+
+  Scénario: Le cockpit le sait : le plan sert lui-même sa péremption
+    Étant donné le club de démonstration, connecté, dont le planning de saison en vigueur n'est pas marqué
+    Quand j'ajoute une contrainte au club
+    Alors le cockpit le sait : le plan de saison sert lui-même sa péremption

@@ -39,6 +39,8 @@ final class StaleScheduleContext extends BaseContext
 
     private string $scheduleId = '';
 
+    private string $planId = '';
+
     /** Valeur du drapeau de péremption à l'entrée (à restaurer). */
     private bool $flagAtEntry = false;
 
@@ -84,6 +86,13 @@ final class StaleScheduleContext extends BaseContext
         if (1 !== preg_match('/^[0-9a-f-]{36}$/i', $this->scheduleId)) {
             throw new RuntimeException('aucun planning de saison COMPLETED — la base est-elle seedée ?');
         }
+
+        // Le plan de saison qui POINTE cette version : c'est lui qui sert sa péremption au cockpit
+        // (P4-173). Le socle du bac à sable pointe une version (profil dev) — sa fenêtre est devant.
+        $this->planId = $this->dbalScalar(
+            \sprintf('SELECT id AS behatval FROM schedule_plan WHERE club_id=\'%s\' AND type=\'SEASON\' AND chosen_schedule_id=\'%s\' LIMIT 1', $this->clubId, $this->scheduleId),
+            admin: true,
+        );
 
         // Photographie de l'état de départ, pour prouver l'intégrité ET restaurer en fin.
         $this->flagAtEntry = 'oui' === $this->dbalScalar(
@@ -157,6 +166,20 @@ final class StaleScheduleContext extends BaseContext
         );
         if ($status !== $this->statusAtEntry) {
             throw new RuntimeException(\sprintf('le statut du planning a changé (« %s » → « %s ») : marquer n\'est pas détruire', $this->statusAtEntry, $status));
+        }
+    }
+
+    #[Then('le cockpit le sait : le plan de saison sert lui-même sa péremption')]
+    public function leCockpitSaitViaLePlan(): void
+    {
+        if (1 !== preg_match('/^[0-9a-f-]{36}$/i', $this->planId)) {
+            throw new RuntimeException('le plan de saison ne pointe pas de version — le cockpit ne peut pas servir sa péremption (socle non validé ?)');
+        }
+
+        $seen = $this->apiGet(\sprintf('schedule_plans/%s', $this->planId), $this->token);
+        $staleness = $seen['json']['staleness'] ?? null;
+        if (!\is_array($staleness) || true !== ($staleness['constraintsChanged'] ?? null)) {
+            throw new RuntimeException('le plan de saison aurait dû servir staleness.constraintsChanged=vrai au cockpit après l\'ajout d\'une contrainte');
         }
     }
 

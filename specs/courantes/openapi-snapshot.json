@@ -27263,6 +27263,16 @@
                         "description": "La s\u00e9lection d'\u00e9quipes de ce plan a-t-elle d\u00e9j\u00e0 \u00e9t\u00e9 configur\u00e9e au moins une fois ?\nToujours faux sur un plan SEASON, qui n'a pas cette \u00e9tape.",
                         "default": false,
                         "type": "boolean"
+                    },
+                    "staleness": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/SchedulePlanStaleness"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 }
             },
@@ -27357,6 +27367,16 @@
                         "description": "La s\u00e9lection d'\u00e9quipes de ce plan a-t-elle d\u00e9j\u00e0 \u00e9t\u00e9 configur\u00e9e au moins une fois ?\nToujours faux sur un plan SEASON, qui n'a pas cette \u00e9tape.",
                         "default": false,
                         "type": "boolean"
+                    },
+                    "staleness": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/SchedulePlanStaleness.html"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 }
             },
@@ -27424,11 +27444,63 @@
                                 "description": "La s\u00e9lection d'\u00e9quipes de ce plan a-t-elle d\u00e9j\u00e0 \u00e9t\u00e9 configur\u00e9e au moins une fois ?\nToujours faux sur un plan SEASON, qui n'a pas cette \u00e9tape.",
                                 "default": false,
                                 "type": "boolean"
+                            },
+                            "staleness": {
+                                "anyOf": [
+                                    {
+                                        "$ref": "#/components/schemas/SchedulePlanStaleness.jsonld"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ]
                             }
                         }
                     }
                 ],
                 "description": "Le Plan \u2014 le conteneur nomm\u00e9 des versions d'une saison ou d'une p\u00e9riode. Le plan\nde saison et sa version choisie sont le calendrier de base de la saison.\n\nPOST cr\u00e9e le plan d'une p\u00e9riode closure/holiday : c'est le geste \u00ab adapter cette\np\u00e9riode \u00bb (idempotent \u2014 la p\u00e9riode a d\u00e9j\u00e0 son plan \u2192 il est rendu tel quel).\nLe plan de saison, lui, est cr\u00e9\u00e9 par le serveur. La version choisie se d\u00e9signe\nen validant cette version ; seul le nom est \u00e9ditable."
+            },
+            "SchedulePlanStaleness": {
+                "type": "object",
+                "properties": {
+                    "manuallyEdited": {
+                        "type": "boolean"
+                    },
+                    "constraintsChanged": {
+                        "type": "boolean"
+                    },
+                    "resourcesChanged": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "SchedulePlanStaleness.html": {
+                "type": "object",
+                "properties": {
+                    "manuallyEdited": {
+                        "type": "boolean"
+                    },
+                    "constraintsChanged": {
+                        "type": "boolean"
+                    },
+                    "resourcesChanged": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "SchedulePlanStaleness.jsonld": {
+                "type": "object",
+                "properties": {
+                    "manuallyEdited": {
+                        "type": "boolean"
+                    },
+                    "constraintsChanged": {
+                        "type": "boolean"
+                    },
+                    "resourcesChanged": {
+                        "type": "boolean"
+                    }
+                }
             },
             "ScheduleSlotTemplate": {
                 "type": "object",
