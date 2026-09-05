@@ -7,6 +7,7 @@ use App\Tests\Behat\MatchPlacementContext;
 use App\Tests\Behat\OnboardingContext;
 use App\Tests\Behat\PeriodOverlayContext;
 use App\Tests\Behat\SeasonGenerationContext;
+use App\Tests\Behat\SoclePlansContext;
 use Behat\Config\Config;
 use Behat\Config\Profile;
 use Behat\Config\Suite;
@@ -47,5 +48,10 @@ return (new Config)
                 new Suite('voeux')
                     ->withPaths('%paths.base%/features/voeux-des-coachs.feature')
                     ->withContexts(CoachWishesContext::class),
+            )
+            ->withSuite(
+                new Suite('socle')
+                    ->withPaths('%paths.base%/features/le-socle-commande-les-plans.feature')
+                    ->withContexts(SoclePlansContext::class),
             ),
     );
