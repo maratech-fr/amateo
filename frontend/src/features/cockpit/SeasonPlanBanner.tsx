@@ -11,6 +11,7 @@ import { SeasonSchedulesModal } from "./SeasonSchedulesModal";
 import { planRepresentative, visibleSeasonPlans } from "@/features/planning/lib/versions";
 
 import type { CalendarEntry } from "./api";
+import { StalenessPill } from "./StalenessPill";
 import { useSchedulePlans } from "./queries";
 import { seasonPlanCounts } from "./seasonPlannings";
 
@@ -46,6 +47,9 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
   // compteur colle à « tous les plannings » (retour fondateur 2026-07-19).
   const { data: plans } = useSchedulePlans();
   const { total: planCount, overlays: overlayCount, openOverlays: openOverlayCount } = seasonPlanCounts(schedules, plans ?? [], entries, !loading);
+  // P4-173 — la péremption du SOCLE vient du plan SEASON (calendarEntryId === null), servie par le
+  // backend ; null (donc pas de pastille) tant qu'aucune version n'est pointée ou fenêtre révolue.
+  const seasonStaleness = (plans ?? []).find((p) => null === p.calendarEntryId)?.staleness ?? null;
 
   // Validated (state 3) → consult the plan. Not yet (state 2) → back to the
   // wizard's generation step to finish/validate it.
@@ -71,11 +75,12 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
             (retour fondateur 2026-07-18 : « Planning de la saison » ici, « Planning
             principal » là = pas UX friendly). */}
         <p className="text-sm font-semibold">{me?.seasonPlan?.name ?? "Planning principal"}</p>
-        <p className="text-xs text-muted-foreground">
+        <p className="inline-flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           {chosen ? (
             <>
-              {STATUS_LABELS[chosen.status]}
-              {overlayCount > 0 ? ` · ${overlayCount} planning${overlayCount > 1 ? "s" : ""} secondaire${overlayCount > 1 ? "s" : ""}${openOverlayCount > 0 ? ` (${openOverlayCount} en cours)` : ""}` : ""}
+              <span>{STATUS_LABELS[chosen.status]}</span>
+              <StalenessPill staleness={seasonStaleness} />
+              {overlayCount > 0 ? <span>{` · ${overlayCount} planning${overlayCount > 1 ? "s" : ""} secondaire${overlayCount > 1 ? "s" : ""}${openOverlayCount > 0 ? ` (${openOverlayCount} en cours)` : ""}`}</span> : null}
             </>
           ) : loading ? (
             "Chargement…"

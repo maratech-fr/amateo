@@ -11,6 +11,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Modal } from "@/shared/components/ui/modal";
 import { frDateNumeric } from "./lib/date";
 import { useSchedulePlans } from "./queries";
+import { StalenessPill } from "./StalenessPill";
 import type { CalendarEntry } from "./api";
 import { DeletePlanningButton } from "./DeletePlanningButton";
 import { type PlanningRow, seasonPlannings } from "./seasonPlannings";
@@ -81,6 +82,8 @@ export function SeasonSchedulesModal({ schedules, entries = [], schedulesResolve
   // (le wizard mode période s'ancre sur l'ENTRÉE, pas sur le plan).
   const { data: plans } = useSchedulePlans();
   const entryByPlan = new Map((plans ?? []).filter((p) => null !== p.calendarEntryId).map((p) => [p.id, p.calendarEntryId as string]));
+  // P4-173 — péremption servie PAR PLAN (le backend a déjà écarté le passé et le non-pointé).
+  const stalenessByPlan = new Map((plans ?? []).map((p) => [p.id, p.staleness]));
   const rows = seasonPlannings(schedules, me?.seasonPlan?.name ?? null, plans ?? [], entries, schedulesResolved);
   // Suppression d'un planning SECONDAIRE : jamais le socle, jamais en saison archivée
   // (409 SeasonReadonly — revue B2 F2), jamais une version en vol (la cascade
@@ -169,7 +172,10 @@ export function SeasonSchedulesModal({ schedules, entries = [], schedulesResolve
                   {row.label}
                 </p>
                 {period ? <p className="truncate text-xs text-muted-foreground">{period}</p> : null}
-                <p className="text-xs text-muted-foreground">{stateLabel(row)}</p>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">{stateLabel(row)}</span>
+                  <StalenessPill staleness={null !== row.schedulePlanId ? (stalenessByPlan.get(row.schedulePlanId) ?? null) : null} />
+                </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {row.isOpen ? (

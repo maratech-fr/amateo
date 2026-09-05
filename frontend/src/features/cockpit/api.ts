@@ -69,6 +69,18 @@ export type SchedulePlanType = "SEASON" | "CLOSURE" | "HOLIDAY";
  * naît avec le geste « ajuster cette période » (= la création du CalendarEntry), donc
  * il existe dès qu'une période existe — pas besoin d'attendre une génération.
  */
+/**
+ * P4-173 — la péremption de la version POINTÉE par le plan, servie par `SchedulePlanResource`
+ * (le backend dit, le front affiche — pas de re-dérivation). Chaque drapeau nomme une catégorie
+ * de donnée qui a changé depuis la génération. `null` quand le plan ne pointe rien encore, ou que
+ * sa fenêtre est révolue (le backend filtre lui-même le passé — le front ne re-teste pas la date).
+ */
+export interface SchedulePlanStaleness {
+  manuallyEdited: boolean;
+  constraintsChanged: boolean;
+  resourcesChanged: boolean;
+}
+
 export interface SchedulePlan {
   id: string;
   type: SchedulePlanType;
@@ -81,6 +93,8 @@ export interface SchedulePlan {
   chosenScheduleId: string | null;
   /** Period-editable structure: has this plan's team selection been configured once (seed guard)? */
   teamSelectionInitialized: boolean;
+  /** P4-173 — péremption de la version pointée, ou null (rien de pointé / fenêtre révolue). */
+  staleness: SchedulePlanStaleness | null;
 }
 
 /** Le plan d'une période. null si l'entrée n'en porte pas (cutoff/mutualisation — inv. 9). */

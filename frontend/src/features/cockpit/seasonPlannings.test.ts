@@ -7,7 +7,7 @@ import { seasonPlannings } from "./seasonPlannings";
 
 const s = (over: Partial<Schedule>): Schedule => ({ id: "id", name: "Plan", status: "COMPLETED", score: null, createdAt: "2026-07-01T10:00:00+00:00", updatedAt: "", planType: "SEASON", schedulePlanId: "season-plan", ...over });
 
-const sp = (over: Partial<SchedulePlan>): SchedulePlan => ({ id: "pl", type: "HOLIDAY", name: "Plan", startDate: "2026-07-06", calendarEntryId: "e1", chosenScheduleId: null, teamSelectionInitialized: false, ...over });
+const sp = (over: Partial<SchedulePlan>): SchedulePlan => ({ id: "pl", type: "HOLIDAY", name: "Plan", startDate: "2026-07-06", calendarEntryId: "e1", chosenScheduleId: null, teamSelectionInitialized: false, staleness: null, ...over });
 
 describe("seasonPlannings — open plannings & plan name (founder feedback 2026-07-18)", () => {
   it("labels the season row with the plan's real name when provided", () => {
