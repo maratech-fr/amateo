@@ -1,11 +1,12 @@
 # Accueil « cockpit temporel » — mise au clair (préliminaire calendriers secondaires)
 
-Last verified @ 2026-09-04 (D3 v1 PR-2, `documentation-update`). Re-confronté au code : §5bis
-gagne le geste « Modifier les dates » — `entry.redatable` (`frontend/src/features/cockpit/api.ts`)
-rendu par `DayDialog.tsx` (bouton icône `CalendarRange` ssi servi, mode `redate` du même dialogue,
-`RedateForm` lignes 785-858), `useRedateEntry` (`cockpit/queries.ts`, invalidations
-`calendar-entries`/`schedules`/`entry-conflicts`/`planned-windows`), 409 via
-`WindowAlreadyPlannedNotice` ✓. Reste du fichier non re-vérifié cette passe (hors §5bis) —
+Last verified @ 2026-09-05 (découpage début·milieu·fin, `documentation-update`). §5bis recalé :
+re-confronté `frontend/src/features/cockpit/WeekPickerDialog.tsx` (`allowSegmentEditing = "closure"
+!== periodType`, `closureMultiSegment`, `blockPathReason`), `cockpit/lib/weekSegmentation.ts::
+weekSegments`, `useWeekAdapt.ts::decisionForWindow`/`needsPicker`,
+`App\Service\WeekSegmentationRule::segments`, `App\Service\ClosureSegmentation`,
+`CalendarEntryStateProcessor::assertValidWeekChild`/`processPut`,
+`SchedulePlanStateProcessor::processPost`. Reste du fichier non re-vérifié cette passe —
 historique : `git log -p --follow` ce fichier.
 
 > **Statut** : **approche arrêtée** (décisions tranchées §9) — **livrée** ; cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2.
@@ -474,6 +475,32 @@ l'horloge. Le **serveur** garde l'heure réelle (P4-16 reste ouverte pour lui).
     `window_already_planned` de P2-38 et le refus 422 de découper une mère déjà générée restent
     ceux du serveur) — ce lot rend un **choix déjà permis** visible côté UI, il ne déplace aucune
     frontière métier.
+  - **Le découpage d'une FERMETURE n'est plus LIBRE (décision fondateur, 2026-09-05) — remplace
+    « scinder/fusionner à la main » pour ce type SEUL.** Une closure se décompose désormais en au
+    plus trois segments IMPOSÉS : **début** (semaine entamée de tête), **milieu** (toutes les
+    semaines pleines lun→dim contiguës, UN SEUL plan — un trou de vacances ou une fenêtre déjà
+    planifiée coupe le milieu en deux runs) et **fin** (semaine entamée de queue) — jamais une
+    semaine complète isolée. `WeekPickerDialog` retire les boutons **Scinder**/**Fusionner** dès
+    que `periodType === "closure"` (`allowSegmentEditing`) ; les VACANCES les gardent, inchangées.
+    Le calcul est PUR et GÉOMÉTRIQUE (`cockpit/lib/weekSegmentation.ts::weekSegments`, MIROIR
+    MÉCANIQUE de `App\Service\WeekSegmentationRule::segments` — parité
+    `WeekSegmentationMirrorParityTest` sur `weekSegmentation.parity.json`, module au registre
+    `FrontRederivationRegistryTest`) ; `segmentsFromOffer` (`lib/date.ts`) en dérive désormais la
+    forme historique `WeekSegment`. **« Adapter toute la période d'un bloc » se DÉSACTIVE avec sa
+    raison** dès qu'une fermeture compte plus d'un segment (`closureMultiSegment`, même patron que
+    les deux autres causes de blocage — vacances, déjà planifié) : « Cette indisponibilité a une
+    semaine entamée — adaptez-la par début, milieu, fin. » Le serveur GARDE la règle aux deux
+    portes qui comptent (le front n'affiche que la conséquence) : `SchedulePlanStateProcessor::
+    processPost` (« Adapter » d'un bloc, 422 si >1 segment) et `CalendarEntryStateProcessor::
+    assertValidWeekChild` (une semaine-enfant de fermeture doit être EXACTEMENT un segment calculé
+    — 422 « ni une semaine complète isolée, ni un milieu tronqué » sinon ; tolère les semaines
+    révolues en tête, `App\Service\ClosureSegmentation`). `useWeekAdapt::decisionForWindow` reprend
+    le même calcul (`segmentsFromOffer(...).length > 1`) pour décider si le geste « Adapter » ouvre
+    direct (1 segment) ou passe par le picker (≥2). **Conséquence sur D3** : re-dater une racine
+    CLOSURE d'un bloc (§ ci-dessous) refuse désormais 422 une nouvelle fenêtre qui se
+    décomposerait en plus d'un segment — une mère déjà découpée en enfants n'est, elle, pas
+    re-datable par ce mécanisme (roadmap **D3 v2**). Détail : [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md)
+    (amendement découpage début·milieu·fin).
   - **Le picker EXCLUT les semaines gouvernées par des vacances (P2-40, 2026-08-18).** Décision
     fondateur (3 cas validés sur exemples) : quand une **indisponibilité de gymnase** (`closure`)
     chevauche des vacances, `WeekPickerDialog` n'offre plus ces semaines-là — **exclues, pas

@@ -18,7 +18,9 @@ paths:
   ET gardée par un **test de parité** (patron : `CoachDoubleBookingDetector` ⇄
   `wizard/lib/coachDoubleBooking.ts` ; côté cross-stack `PayloadCapacityMirror` +
   `CapacityMirrorParityTest` ; côté cockpit `App\Service\HolidayWorkweekRule` ⇄
-  `cockpit/lib/holidayWorkweek.ts`, parité `HolidayWorkweekMirrorParityTest`, D4 2026-09-04) ;
+  `cockpit/lib/holidayWorkweek.ts`, parité `HolidayWorkweekMirrorParityTest`, D4 2026-09-04 ;
+  `App\Service\WeekSegmentationRule` ⇄ `cockpit/lib/weekSegmentation.ts`, parité
+  `WeekSegmentationMirrorParityTest`, découpage début·milieu·fin, 2026-09-05) ;
   **(3) redérivation silencieuse** — ❌ interdite. Signe d'alerte :
   un `switch`/chaîne de conditions sur les valeurs d'un **enum métier partagé** (`scope`,
   `ruleType`, `family`, `lockLevel`, `status`…) pour **décider d'un comportement** (pas pour

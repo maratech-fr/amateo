@@ -558,6 +558,47 @@ validation du besoin → plan → code → NR phase1 → code-review → go util
   **D3 v1 SOLDÉE ENTIÈRE le même jour** : PR-1 backend puis PR-2 cockpit — le geste d'édition
   à l'écran vit dans la liste du jour du cockpit (`DayDialog.tsx`, bouton « Modifier les dates »
   rendu ssi `entry.redatable`) — voir `specs/courantes/accueil-cockpit-temporel.md` §5bis.
+
+  ⚠️ **Amendement découpage début·milieu·fin (décision fondateur, 2026-09-05) — le découpage
+  d'une FERMETURE en semaines-enfants n'est plus LIBRE** : P2-41 (2026-08-18/19) posait « le
+  SEGMENT est l'unité », scindable/fusionnable à la main sans autre borne que la contiguïté et
+  l'enveloppe de la mère. Retour terrain (BCCL, l'incident Matéo) : personne n'a jamais eu besoin
+  de ce découpage libre semaine par semaine, et il ouvrait des formes qu'un gestionnaire ne
+  choisirait jamais (un milieu tronqué, une semaine complète isolée). Pour une mère
+  `CalendarEntryPeriodType::CLOSURE` **seulement** — les VACANCES gardent Scinder/Fusionner
+  intacts, aucun changement pour elles —, le découpage est désormais **imposé** en au plus trois
+  segments : **DÉBUT** (semaine entamée de tête), **MILIEU** (toutes les semaines PLEINES lun→dim
+  contiguës, UN SEUL plan — un trou de vacances lun→ven ou une fenêtre déjà planifiée par un
+  AUTRE plan coupe le milieu en deux runs, chacun son propre plan) et **FIN** (semaine entamée de
+  queue). Jamais une semaine complète isolée, jamais un enfant qui mélange partiel et complet.
+  Algorithme PUR, aux ruptures GÉOMÉTRIQUES seulement (semaines OFFERTES + fenêtre de la mère,
+  aucune règle solveur redérivée) : `App\Service\WeekSegmentationRule::segments` (maison unique
+  côté serveur, appelée par `App\Service\ClosureSegmentation` qui reproduit côté serveur ce que le
+  cockpit sait déjà — semaines pleines clampées saison, moins les vacances (`HolidayWorkweekRule`),
+  moins les fenêtres qu'un autre plan gouverne déjà (`PeriodWindowUniquenessGuard::
+  governingWindows`)) ; miroir déclaré côté front `cockpit/lib/weekSegmentation.ts::weekSegments`,
+  parité mécanique `WeekSegmentationMirrorParityTest` sur `weekSegmentation.parity.json`, module au
+  registre `FrontRederivationRegistryTest`. Deux gardes 422 tiennent la règle CÔTÉ SERVEUR (le
+  front ne fait qu'afficher/désactiver en conséquence) : (1) `CalendarEntryStateProcessor::
+  assertValidWeekChild` — une semaine-enfant d'une mère CLOSURE doit être EXACTEMENT un des
+  segments calculés de l'offre (tolère les semaines révolues en tête : la géométrie PLEINE ou
+  l'offre ROGNÉE par l'horloge sont TOUTES DEUX acceptées, une naissant d'une période passée ou du
+  seed, l'autre d'une création au cockpit) ; (2) `SchedulePlanStateProcessor::processPost` —
+  « Adapter » d'un bloc une fermeture n'est permis que si sa fenêtre se décompose en **UN seul**
+  segment, sinon 422 (« Cette indisponibilité a une semaine entamée : adaptez-la par début,
+  milieu, fin »). **Conséquence sur D3** : re-dater une racine CLOSURE d'un bloc (v1 ci-dessus)
+  refuse désormais en 422 toute nouvelle fenêtre qui se décomposerait en plus d'un segment — le
+  re-datage contournerait sinon la règle par la porte D3. **Portée délibérément étroite** : une
+  mère déjà découpée en semaines-enfants (mixant début/milieu/fin) n'est PAS re-datable par ce
+  mécanisme — seule une racine SANS enfants l'est (même périmètre que D3 v1) ; recalculer les
+  segments d'une mère à enfants au re-datage est un second cadrage, **D3 v2** (`specs/evolution/
+  roadmap.md`). Seed BCCL migré dans la même passe : l'incident Matéo (31/08→16/10) portait un
+  plan-bloc SUR SA RACINE — désormais interdit (le 12/10 entame une semaine) — remplacé par deux
+  enfants CLOSURE (milieu 31/08→11/10, fin 12/10→18/10), chacun avec sa propre version COMPLETED
+  transcrite ; `BcclSeederIdempotenceTest` garde qu'aucune racine seedée ne porte plus de plan à
+  plus d'un segment. NR : `WeekSegmentationMirrorParityTest` (groupe `contract`),
+  `WeekChildEntryTest`, `PeriodPlanBirthTest`, `Security/PeriodRedateTest`. Détail produit :
+  `specs/courantes/types-de-planning.md` §2, `specs/courantes/accueil-cockpit-temporel.md` §5bis.
 - **Lot C4** — LE SOCLE SE LIT DU PLAN, `Schedule.calendarEntryId` disparaît. Le champ était
   redondant avec `plan.calendarEntryId` (doublon d'ancre nullable — la classe de bug de C2/C3).
   Découpé en **3 PR**. **PR1 livré (2026-07-17)** : `plan.type === SEASON` remplace

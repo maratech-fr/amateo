@@ -1,10 +1,11 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-09-04 (D3 v1 PR-2, `documentation-update`). §2 recalé : **v1 SOLDÉE
-ENTIÈRE** (PR-1 backend + PR-2 cockpit) — re-confronté `frontend/src/features/cockpit/DayDialog.tsx`
-(bouton « Modifier les dates » ssi `entry.redatable`, mode `redate`) et `api.ts`
-(`updateCalendarEntry`). Reste du fichier (E1-E6, D1-D10bis, historique des décisions) non
-re-confronté ligne à ligne cette passe.
+Last verified @ 2026-09-05 (découpage début·milieu·fin, `documentation-update`). §2 recalé : la
+liberté scinder/fusionner ne tient plus pour une FERMETURE (VACANCES inchangées) — re-confronté
+`App\Service\WeekSegmentationRule`, `App\Service\ClosureSegmentation`,
+`CalendarEntryStateProcessor::assertValidWeekChild`/`processPut`,
+`SchedulePlanStateProcessor::processPost`, `cockpit/lib/weekSegmentation.ts`. Reste du fichier
+(E1-E6, D1-D10bis, historique des décisions) non re-confronté ligne à ligne cette passe.
 
 > **Rôle de ce document** : la trace durable du modèle métier des plannings, validé avec le
 > fondateur le 2026-07-12. C'est LA référence à consulter avant tout travail sur la
@@ -41,10 +42,26 @@ l'offre (`segmentsFromOffer`, `frontend/src/features/cockpit/lib/date.ts`) — s
 partielle de l'événement, discontinuité de l'offre (exclusion vacances P2-40, filtre temporel) —
 **précochés**, avec deux gestes nommés : **SCISSION** (déplier un segment en ses semaines) et
 **FUSION** (assembler des segments adjacents dans l'offre, y compris par-dessus une rupture — le
-serveur ne borne que contiguïté + enveloppe, la liberté est donc totale). Un segment multi-semaines
-porte une phrase pédagogique de présentation (le sur-ferme du solveur sur des semaines qui
-diffèrent), jamais une décision. Un enfant naît toujours avec SON plan (rail 1 entrée = 1 plan),
-quelle que soit la largeur de son segment.
+serveur ne borne que contiguïté + enveloppe). Un segment multi-semaines porte une phrase
+pédagogique de présentation (le sur-ferme du solveur sur des semaines qui diffèrent), jamais une
+décision. Un enfant naît toujours avec SON plan (rail 1 entrée = 1 plan), quelle que soit la
+largeur de son segment.
+
+⚠ **Cette liberté (scinder/fusionner à la main) ne tient plus pour une FERMETURE (`closure`)**
+depuis la décision fondateur du 2026-09-05 — les VACANCES seules la gardent. Une fermeture se
+découpe désormais en au plus trois segments **IMPOSÉS** : **début** (semaine entamée de tête),
+**milieu** (les semaines pleines lun→dim contiguës, UN SEUL plan — un trou de vacances ou une
+fenêtre déjà planifiée par un autre plan coupe le milieu en deux runs, chacun son propre plan) et
+**fin** (semaine entamée de queue) — jamais une semaine complète isolée, jamais un milieu tronqué.
+`WeekPickerDialog` retire Scinder/Fusionner pour ce type ; « Adapter d'un bloc » n'est permis que
+si la fermeture ne compte qu'UN segment (422 serveur sinon : « Cette indisponibilité a une semaine
+entamée : adaptez-la par début, milieu, fin »). Calcul PUR aux ruptures géométriques seulement,
+tenu à la fois par `App\Service\WeekSegmentationRule::segments` (backend, garde 422 des deux
+portes) et son miroir déclaré `cockpit/lib/weekSegmentation.ts::weekSegments` (front, qualifie
+l'offre du picker), parité mécanique `WeekSegmentationMirrorParityTest`. Détail : « Règle
+transverse » ci-dessus reste vraie pour les VACANCES ; pour une FERMETURE, voir
+[ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md) (amendement découpage
+début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
 
 - **Overlay** : une indispo à cheval (jeudi → jeudi suivant) ⇒ **2 overlays auto** (un par
   semaine englobée). On gère le premier ; l'outil **notifie qu'un second planning est
@@ -119,7 +136,14 @@ quelle que soit la largeur de son segment.
   geste (config == l'ancienne fenêtre exactement — une fermeture datée plus finement ne bouge pas),
   et le titre/nom du plan s'ils portaient encore l'ancien libellé (inv. 12 intact). Une fenêtre déjà
   gouvernée par un AUTRE plan reste refusée en 409, nommant ce plan (`PeriodWindowUniquenessGuard`,
-  même garde qu'à la naissance). La version pointée (le planning en vigueur) **survit** — elle est
+  même garde qu'à la naissance). **Depuis le 2026-09-05, une nouvelle fenêtre qui se décomposerait
+  en plus d'un segment début·milieu·fin est refusée en 422** (« Cette indisponibilité aurait une
+  semaine entamée : re-datez-la sur des semaines complètes, ou adaptez-la par début, milieu, fin »)
+  — sur la géométrie PLEINE de la fenêtre visée, indépendante de l'horloge : re-dater un plan-bloc
+  vers une semaine entamée contournerait sinon la règle du découpage par la porte D3. Une mère
+  déjà découpée en semaines-enfants n'est, elle, pas re-datable par ce mécanisme (même périmètre
+  qu'avant) — recalculer les segments d'une mère à enfants au re-datage est un second cadrage,
+  **D3 v2** (`specs/evolution/roadmap.md`). La version pointée (le planning en vigueur) **survit** — elle est
   seulement marquée à régénérer (`ResourceChangeStaleScheduleListener`, écoutait déjà ce cas).
   **Tout le reste de l'identité reste figé** — `kind`, `periodType`, `schoolHolidayId` — et TOUS les
   autres cas gardent leur fenêtre gelée : une racine `holiday` (liée au référentiel des vacances

@@ -1,13 +1,10 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-04 (P4-165 SOLDÉ — les 5 paliers Behat livrés d'un coup, les 5 smokes bash
-supprimés). Re-confronté au code : `backend/Makefile` cible `behat` (garde sandbox, `restart
-messenger-worker`, `vendor/bin/behat --format=pretty --no-interaction`, `APP_ENV=dev`) ✓ ;
-`backend/behat.dist.php` (5 suites, une par feature, chacune reliée à son propre context) ✓ ;
-`backend/features/` porte les 5 `.feature` ✓ ; `ls backend/scripts/` ne contient plus aucun
-`*smoke*.sh` ✓. Non re-sondé cette passe : les commandes `BcclSeedCommand`/`DemoSeedCommand`,
-`MutationTargetsAreGuardedTest`/`PlayTargetIsNonDestructiveTest`, horaires du catalogue de jobs,
-pièges RLS Doctrine — un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-05 (découpage début·milieu·fin, `documentation-update`). Ajout de la note
+`.env.local.php`/`with-sandbox.sh` ci-dessous, re-confronté : `.env.local.php` absent
+(`backend/.gitignore:4`), jamais généré en dev ; `backend/.env:14` documente `composer dump-env
+prod` comme le geste qui le compilerait. Non re-sondé cette passe : le reste des commandes et
+gardes listées — un stamp REMPLACE, l'historique vit dans git.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).
@@ -51,7 +48,7 @@ Une stack pointe **une base à la fois**. Le défaut committé est le **bac à s
 
 🔴 **Les cibles Make destructrices sont GARDÉES aussi** (`backend/scripts/lib/mutation-confirm.sh`, sourcée par `db-empty`/`seed-demo`/`seed-bccl`) — le garde des scripts ne les couvrait pas, et un `seed-demo` nu en mode play aurait purgé la démo de la base de jeu. **Trois comportements**, pas un refus uniforme : bac à sable ou `*_test` → **passe en silence** · base de PROD → **refus sec** · `amateo_local` → **CONFIRMATION** nommant la base et ce qui va être détruit (`CONFIRM=yes` pour l'automatisation — c'est ce que `make play`/`make reset` injectent pour `seed-bccl`/`seed-demo`, puisque leurs chemins create-only/if-absent sont non destructeurs par construction ; sans terminal et sans cette variable → refus, rien touché). ⚑ `db-init`/`db-init-test`/`seed-holidays` ne sont **pas** gardés — non destructeurs (create-if-not-exists + migrate / référentiel global idempotent), rien à confirmer.
 
-**Le wrapper `backend/scripts/with-sandbox.sh <commande…>`** (opt-in) : bascule en bac à sable, exécute, puis **RESTAURE le mode play à la sortie — succès, échec ou Ctrl-C** (`trap EXIT INT TERM`), en remettant le `.env.local` **byte-identique** (sauvegardé, jamais régénéré depuis le template). C'est ce que l'IA utilise pour ne jamais laisser le fondateur en bac à sable. ⚠ L'opt-in est le fait d'invoquer le wrapper : un script mutateur lancé SANS lui continue de **mourir** (le fail-closed du garde reste la règle — on ne bascule jamais la base de quelqu'un dans son dos).
+**Le wrapper `backend/scripts/with-sandbox.sh <commande…>`** (opt-in) : bascule en bac à sable, exécute, puis **RESTAURE le mode play à la sortie — succès, échec ou Ctrl-C** (`trap EXIT INT TERM`), en remettant le `.env.local` **byte-identique** (sauvegardé, jamais régénéré depuis le template). C'est ce que l'IA utilise pour ne jamais laisser le fondateur en bac à sable. ⚠ L'opt-in est le fait d'invoquer le wrapper : un script mutateur lancé SANS lui continue de **mourir** (le fail-closed du garde reste la règle — on ne bascule jamais la base de quelqu'un dans son dos). En dev, ceci suffit pour un e2e **HTTP** (Behat, Playwright) : sans `.env.local.php` compilé (absent, `.gitignore:4`, jamais généré en dev), Symfony relit `.env.local` à CHAQUE requête — le bascule/restaure du wrapper est donc vu par la stack qui tourne sans redémarrage. Un `composer dump-env prod` changerait la donne (fige les variables dans un fichier PHP compilé, relu une fois) — non fait aujourd'hui.
 
 `make -C backend db-drop-legacy` (optionnelle) supprime les anciennes `clubscheduler`/`clubscheduler_test` restées inertes dans le volume.
 
