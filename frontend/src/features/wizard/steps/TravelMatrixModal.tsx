@@ -1,6 +1,7 @@
 import { AlertTriangle, ArrowRight, Car, Footprints, MapPinOff, Pencil, RefreshCw, Search, Wand2 } from "lucide-react";
 import { useState } from "react";
 
+import { SourceBadge } from "@/features/matches/SourceBadge";
 import { apiErrorMessage } from "@/shared/api/errors";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -54,21 +55,6 @@ const REASON_LABELS: Record<AutofillUnresolvedReason, string> = {
 
 function reasonLabel(reason: AutofillUnresolvedReason): string {
   return REASON_LABELS[reason];
-}
-
-/** Le badge d'origine d'une valeur : AUTO (calculée) ou MANUEL (saisie). Icône + texte. */
-function SourceBadge({ source }: { source: "AUTO" | "MANUAL" }) {
-  return "AUTO" === source ? (
-    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground">
-      <Wand2 className="size-3.5" aria-hidden="true" />
-      Auto
-    </span>
-  ) : (
-    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-accent">
-      <Pencil className="size-3.5" aria-hidden="true" />
-      Manuel
-    </span>
-  );
 }
 
 function TravelCell({
