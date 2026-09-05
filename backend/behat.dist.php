@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Tests\Behat\CoachWishesContext;
 use App\Tests\Behat\ConstraintHonoredContext;
+use App\Tests\Behat\LockContext;
 use App\Tests\Behat\MatchPlacementContext;
 use App\Tests\Behat\OnboardingContext;
 use App\Tests\Behat\PeriodOverlayContext;
@@ -71,5 +72,10 @@ return (new Config)
                 new Suite('contrainte')
                     ->withPaths('%paths.base%/features/une-contrainte-saisie-est-honoree.feature')
                     ->withContexts(ConstraintHonoredContext::class),
+            )
+            ->withSuite(
+                new Suite('verrou')
+                    ->withPaths('%paths.base%/features/un-verrou-est-souverain.feature')
+                    ->withContexts(LockContext::class),
             ),
     );
