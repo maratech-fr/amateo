@@ -1,4 +1,4 @@
-import { CalendarOff, CalendarRange, Trash2 } from "lucide-react";
+import { CalendarOff, CalendarRange, Minus, MoveRight, Plus, Sun, Trash2 } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -11,8 +11,8 @@ import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Modal } from "@/shared/components/ui/modal";
 import { toast } from "@/shared/stores/toastStore";
 
-import type { CalendarEntry, PublicHoliday, SchedulePlan, SchoolHoliday } from "./api";
-import { WindowAlreadyPlannedError } from "./api";
+import type { CalendarEntry, PublicHoliday, RedateEffect, RedateEffectKind, SchedulePlan, SchoolHoliday } from "./api";
+import { PreviewTokenStaleError, WindowAlreadyPlannedError } from "./api";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { useWorkingSeason } from "@/shared/session/queries";
 
@@ -22,7 +22,7 @@ import { useWeekAdapt } from "./lib/useWeekAdapt";
 import { WarningPanel } from "@/shared/components/ui/warning-panel";
 import { WindowAlreadyPlannedNotice } from "./WindowAlreadyPlannedNotice";
 import { entryIcon, entryLabel, holidayIcon, isHolidayAnchor, isHolidayWeekChild } from "./lib/markers";
-import { useCalendarEntries, useCreateCutoff, useCreateEvent, useCreateVenueClosure, useDeleteEntry, useRedateEntry, useSchedulePlanForEntry, useSchedulePlans } from "./queries";
+import { useCalendarEntries, useCreateCutoff, useCreateEvent, useCreateVenueClosure, useDeleteEntry, useRedateEntry, useRedatePreview, useSchedulePlanForEntry, useSchedulePlans } from "./queries";
 import { WeekPickerDialog } from "./WeekPickerDialog";
 import { StalenessPill } from "./StalenessPill";
 
@@ -56,7 +56,13 @@ export function DayDialog({ iso, entries, holiday, publicHoliday, onClose }: Day
         {mode === "event" ? <EventForm iso={iso} onBack={() => setMode("list")} onDone={onClose} /> : null}
         {mode === "closure" ? <ClosureForm iso={iso} onBack={() => setMode("list")} onDone={onClose} /> : null}
         {mode === "cutoff" ? <CutoffForm iso={iso} onBack={() => setMode("list")} onDone={onClose} /> : null}
-        {mode === "redate" && null !== redateEntry ? <RedateForm entry={redateEntry} onBack={() => setMode("list")} onDone={onClose} /> : null}
+        {mode === "redate" && null !== redateEntry ? (
+          redateEntry.redateNeedsPreview ? (
+            <RedateWithPreviewForm entry={redateEntry} onBack={() => setMode("list")} onDone={onClose} />
+          ) : (
+            <RedateForm entry={redateEntry} onBack={() => setMode("list")} onDone={onClose} />
+          )
+        ) : null}
       </div>
     </Modal>
   );
@@ -222,10 +228,11 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose 
                       Adapter
                     </Button>
                   ) : null}
-                  {/* D3 v1 PR-2 — « Modifier les dates » : rendu SEULEMENT si le serveur dit la
-                      période re-datable (`redatable`, prédicat unique). Absent sinon (jamais
-                      désactivé — aucun levier n'existe, Supprimer est à côté). */}
-                  {entry.redatable ? (
+                  {/* « Modifier les dates » : rendu SEULEMENT si le serveur dit la période
+                      re-datable — « d'un bloc » (`redatable`, D3 v1) OU découpée (`redateNeedsPreview`,
+                      D3 v2 : le mode affichera alors l'aperçu des effets avant confirmation). Absent
+                      sinon (jamais désactivé — aucun levier n'existe, Supprimer est à côté). */}
+                  {entry.redatable || entry.redateNeedsPreview ? (
                     <button
                       type="button"
                       aria-label={`Modifier les dates de ${entry.title}`}
@@ -858,6 +865,185 @@ function RedateForm({ entry, onBack, onDone }: { entry: CalendarEntry; onBack: (
       ) : null}
       <Button className="w-full" onClick={() => void submit()} disabled={redate.isPending || !changed || !valid} title={disabledReason}>
         Enregistrer
+      </Button>
+    </FormShell>
+  );
+}
+
+/** D3 v2 — icône DÉCORATIVE par verdict (le texte du label porte toujours le sens). Présentation
+ *  pure : ce n'est pas une décision de comportement sur un enum métier (règle d'or côté front). */
+function effectIcon(kind: RedateEffectKind): ReactNode {
+  switch (kind) {
+    case "shift":
+      return <MoveRight className="size-4" />;
+    case "birth":
+      return <Plus className="size-4" />;
+    case "holiday_takes_over":
+      return <Sun className="size-4" />;
+    case "absorb":
+    case "vanish":
+      return <Trash2 className="size-4 text-warning" />;
+    case "keep":
+    default:
+      return <Minus className="size-4 text-muted-foreground" />;
+  }
+}
+
+/**
+ * La liste chronologique des effets, servie TELLE QUELLE (aucun compte ni identifiant recalculé
+ * côté front). Quand un effet SUPPRIME un plan (absorb/vanish), toute la liste est encadrée par le
+ * `WarningPanel` (ambre = « attention, des plans seront ajustés » — jamais la couleur destructive
+ * pour des FAITS) ; sinon un cadre neutre.
+ */
+function RedateEffectsList({ effects }: { effects: RedateEffect[] }) {
+  const hasDeletion = effects.some((e) => "absorb" === e.kind || "vanish" === e.kind);
+  const list = (
+    <ul className="space-y-1">
+      {effects.map((effect) => (
+        <li key={effect.label} className="flex items-start gap-2 text-sm text-foreground">
+          <span aria-hidden className="mt-0.5 shrink-0 leading-none">
+            {effectIcon(effect.kind)}
+          </span>
+          <span>{effect.label}</span>
+        </li>
+      ))}
+    </ul>
+  );
+  return hasDeletion ? (
+    <WarningPanel message={<span className="font-medium">Effets de ce re-datage</span>}>{list}</WarningPanel>
+  ) : (
+    <div className="rounded-md border border-border bg-muted/40 px-3 py-2">{list}</div>
+  );
+}
+
+/**
+ * D3 v2 (P4-174, décision fondateur 2026-09-05) — RE-DATER une indisponibilité DÉCOUPÉE
+ * (`entry.redateNeedsPreview`) : on ANNONCE avant de détruire. Deux champs date, un bouton unique au
+ * MÊME nœud DOM — « Voir les effets » tant qu'aucun aperçu valide n'est chargé, « Confirmer » ensuite
+ * (déclenchement explicite au clic, jamais d'auto-fetch). Changer une date PÉRIME l'aperçu localement
+ * (le jeton n'est jamais réutilisé après). La liste d'effets est SERVIE telle quelle (règle d'or : le
+ * backend dit, le front affiche — aucun miroir de règle métier). Un 409 « jeton périmé »
+ * ({@link PreviewTokenStaleError}) affiche le message serveur et redemande l'aperçu (confirmation
+ * MANUELLE) ; un 409 de chevauchement s'affiche comme au v1 (`WindowAlreadyPlannedNotice`).
+ */
+function RedateWithPreviewForm({ entry, onBack, onDone }: { entry: CalendarEntry; onBack: () => void; onDone: () => void }) {
+  const navigate = useNavigate();
+  const startPeriodMode = useWizardStore((s) => s.startPeriodMode);
+  const setSelectedScheduleId = usePlanningStore((s) => s.setSelectedScheduleId);
+  const workingSeason = useWorkingSeason();
+  const preview = useRedatePreview();
+  const redate = useRedateEntry();
+  const floor = entry.startDate < todayISO() ? entry.startDate : todayISO();
+  const { startDate, endDate, minStart, setStart, setEnd, valid } = useDateRange(entry.startDate, entry.endDate, floor);
+  // L'aperçu chargé (pour les dates courantes) ; null = pas d'aperçu valide → bouton « Voir les effets ».
+  const [loaded, setLoaded] = useState<{ effects: RedateEffect[]; token: string } | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [staleWarning, setStaleWarning] = useState<string | null>(null);
+  const [windowConflict, setWindowConflict] = useState<{ message: string; entryId: string } | null>(null);
+  const conflictRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (null !== windowConflict) {
+      conflictRef.current?.querySelector("button")?.focus();
+    }
+  }, [windowConflict]);
+
+  const openConflict = (entryId: string) => {
+    setSelectedScheduleId(null);
+    startPeriodMode(entryId);
+    onDone();
+    navigate("/wizard");
+  };
+
+  // Toute retouche de date périme l'aperçu : la liste disparaît, le jeton n'est plus réutilisé.
+  const invalidatePreview = () => {
+    setLoaded(null);
+    setPreviewError(null);
+    setStaleWarning(null);
+    setWindowConflict(null);
+  };
+  const changeStart = (v: string) => {
+    setStart(v);
+    invalidatePreview();
+  };
+  const changeEnd = (v: string) => {
+    setEnd(v);
+    invalidatePreview();
+  };
+
+  const changed = startDate !== entry.startDate || endDate !== entry.endDate;
+  const previewValid = null !== loaded;
+  const busy = preview.isPending || redate.isPending;
+
+  const loadPreview = async () => {
+    if (!changed || !valid) {
+      return;
+    }
+    setPreviewError(null);
+    setWindowConflict(null);
+    try {
+      const result = await preview.mutateAsync({ id: entry.id, startDate, endDate });
+      setLoaded({ effects: result.effects, token: result.token });
+    } catch (error) {
+      setLoaded(null);
+      setPreviewError(await errorMessage(error)); // 422 servi tel quel, dans le même panneau
+    }
+  };
+
+  const confirm = async () => {
+    if (null === loaded) {
+      return;
+    }
+    const token = loaded.token;
+    const hasDeletion = loaded.effects.some((e) => "absorb" === e.kind || "vanish" === e.kind);
+    setWindowConflict(null);
+    try {
+      await redate.mutateAsync({ entry, startDate, endDate, previewToken: token });
+      toast.success(hasDeletion ? "Dates modifiées — plans de période ajustés, planning à régénérer." : `Fermeture re-datée du ${frDateShort(startDate)} au ${frDateShort(endDate)} — planning à régénérer`);
+      onDone();
+    } catch (error) {
+      if (error instanceof WindowAlreadyPlannedError) {
+        setWindowConflict({ message: error.message, entryId: error.conflictingEntryId });
+        return;
+      }
+      if (error instanceof PreviewTokenStaleError) {
+        // La période a bougé depuis l'aperçu : on l'annonce et on REDEMANDE l'aperçu (mêmes dates) ;
+        // la confirmation reste MANUELLE (le bouton redevient « Confirmer », l'utilisateur reclique).
+        setStaleWarning(error.message);
+        setLoaded(null);
+        try {
+          const fresh = await preview.mutateAsync({ id: entry.id, startDate, endDate });
+          setLoaded({ effects: fresh.effects, token: fresh.token });
+        } catch (refetchError) {
+          setPreviewError(await errorMessage(refetchError));
+        }
+        return;
+      }
+      toast.error(await errorMessage(error));
+    }
+  };
+
+  const deletionAhead = previewValid && loaded.effects.some((e) => "absorb" === e.kind || "vanish" === e.kind);
+  const actionLabel = previewValid ? "Confirmer" : "Voir les effets";
+  const actionDisabled = busy || (previewValid ? false : !changed || !valid);
+  const actionTitle = busy ? "Chargement de l'aperçu…" : previewValid ? undefined : !changed ? "Aucune date n'a changé." : !valid ? "La fin doit suivre le début." : undefined;
+
+  return (
+    <FormShell onBack={onBack}>
+      <p className="text-xs text-muted-foreground">Déplacez la fenêtre de cette indisponibilité découpée. Voyez d'abord les effets, puis confirmez.</p>
+      <DateRangeFields startDate={startDate} endDate={endDate} onStart={changeStart} onEnd={changeEnd} minStart={minStart} max={workingSeason?.endDate} />
+      {null !== staleWarning ? <WarningPanel message={staleWarning} /> : null}
+      {/* Région live PRÉSENTE dès le montage (vide au départ), aria-busy pendant le chargement ; jamais role="alert". */}
+      <div aria-live="polite" aria-busy={preview.isPending} className="space-y-2">
+        {null !== previewError ? <p className="text-sm text-destructive">{previewError}</p> : null}
+        {previewValid ? <RedateEffectsList effects={loaded.effects} /> : null}
+      </div>
+      {null !== windowConflict ? (
+        <div ref={conflictRef}>
+          <WindowAlreadyPlannedNotice message={windowConflict.message} onOpen={() => openConflict(windowConflict.entryId)} />
+        </div>
+      ) : null}
+      <Button className="w-full" variant={deletionAhead ? "destructive" : undefined} onClick={() => void (previewValid ? confirm() : loadPreview())} disabled={actionDisabled} title={actionTitle}>
+        {actionLabel}
       </Button>
     </FormShell>
   );

@@ -50,7 +50,7 @@ const closureEntry = (over: Partial<CalendarEntry> = {}): CalendarEntry => ({
   parentEntryId: null,
   status: "active",
   createdBy: null,
-  redatable: true,
+  redatable: true, redateNeedsPreview: false,
   ...over,
 });
 

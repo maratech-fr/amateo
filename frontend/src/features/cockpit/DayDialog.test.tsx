@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CalendarEntry, PublicHoliday, SchoolHoliday } from "./api";
+import type { CalendarEntry, PublicHoliday, RedateEffect, SchoolHoliday } from "./api";
 import { DayDialog } from "./DayDialog";
 
 const deleteMutate = vi.fn();
@@ -27,6 +27,8 @@ const periodPlanMutateAsync = vi.fn().mockResolvedValue({});
 // D3 v1 PR-2 — le geste « Modifier les dates » d'une fermeture : mutateAsync espionné (le corps du
 // PUT est construit et testé au niveau hook, `windowConflict.test.tsx`).
 const redateMutateAsync = vi.fn().mockResolvedValue({});
+// D3 v2 (P4-174) — l'aperçu du re-datage d'une mère découpée : mutateAsync espionné.
+const previewMutateAsync = vi.fn();
 // Plans couvrant le jour (B1) : DayList lit chosenScheduleId par calendarEntryId.
 let allPlansMock: { id: string; calendarEntryId: string | null; chosenScheduleId: string | null; staleness?: unknown }[] = [];
 
@@ -56,6 +58,7 @@ vi.mock("./queries", () => ({
   useCreateWeekChildren: () => ({ mutate: weekChildrenMutate, isPending: false }),
   useCreatePeriodPlan: () => ({ mutateAsync: periodPlanMutateAsync, isPending: false }),
   useRedateEntry: () => ({ mutateAsync: redateMutateAsync, isPending: false }),
+  useRedatePreview: () => ({ mutateAsync: previewMutateAsync, isPending: false }),
   useDeleteEntry: () => ({ mutate: deleteMutate, isPending: false }),
   useSchedulePlanForEntry: (id: string | null) => ({ data: null !== id && !queriesNoData ? (plansByEntry[id] ?? null) : undefined }),
   // P2-5 E1 : enfants de semaine — aucun par défaut dans ces tests (mutable pour l'encart).
@@ -101,7 +104,7 @@ const entry = (overrides: Partial<CalendarEntry>): CalendarEntry => ({
   parentEntryId: null,
   status: "active",
   createdBy: null,
-  redatable: false,
+  redatable: false, redateNeedsPreview: false,
   ...overrides,
 });
 
@@ -1005,5 +1008,207 @@ describe("DayDialog — re-datage d'une fermeture (« Modifier les dates », D3 
     await userEvent.type(screen.getByLabelText("Jusqu'au"), "2026-06-21");
     await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: /ouvrir le planning en place/i })).not.toBeInTheDocument());
+  });
+});
+
+// ── D3 v2 (P4-174) : re-dater une indisponibilité DÉCOUPÉE (« Modifier les dates » → aperçu → confirmation) ──
+// Le geste d'une mère découpée (`redateNeedsPreview`) : le front n'évalue RIEN (règle d'or) — il
+// affiche les effets SERVIS, confirme avec le jeton, et gère les refus (jeton périmé / chevauchement).
+describe("DayDialog — re-datage d'une indisponibilité découpée (« aperçu + confirmation », D3 v2)", () => {
+  const redateLabel = /Modifier les dates de Barros en travaux/;
+  const split = (over: Partial<CalendarEntry> = {}): CalendarEntry =>
+    entry({ id: "mother", kind: "period", periodType: "closure", title: "Barros en travaux", startDate: "2026-05-12", endDate: "2026-06-16", redatable: false, redateNeedsPreview: true, ...over });
+
+  beforeEach(async () => {
+    redateMutateAsync.mockReset();
+    redateMutateAsync.mockResolvedValue({});
+    previewMutateAsync.mockReset();
+    navigate.mockClear();
+    startPeriodMode.mockClear();
+    setSelectedScheduleId.mockClear();
+    const { toast } = await import("@/shared/stores/toastStore");
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.error).mockClear();
+    meData = { seasonPlan: { chosenScheduleId: "s-season" } };
+    allPlansMock = [];
+    plansByEntry = {};
+    schedulesData = [];
+    queriesNoData = false;
+    childEntriesData = [];
+  });
+
+  function renderWith(entries: CalendarEntry[], onClose = vi.fn()) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <DayDialog iso="2026-05-12" entries={entries} onClose={onClose} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    return onClose;
+  }
+
+  /** Ouvre le mode et amène l'aperçu à l'écran (change la fin, clique « Voir les effets »). */
+  async function openAndPreview(effects: RedateEffect[], token = "tok-1"): Promise<void> {
+    previewMutateAsync.mockResolvedValueOnce({ effects, token });
+    await userEvent.click(screen.getByRole("button", { name: redateLabel }));
+    const endInput = screen.getByLabelText("Jusqu'au");
+    await userEvent.clear(endInput);
+    await userEvent.type(endInput, "2026-06-20");
+    await userEvent.click(screen.getByRole("button", { name: "Voir les effets" }));
+  }
+
+  it("rend le bouton « Modifier les dates » quand le serveur dit redateNeedsPreview=true", () => {
+    renderWith([split()]);
+    expect(screen.getByRole("button", { name: redateLabel })).toBeInTheDocument();
+  });
+
+  it("la région live de l'aperçu est PRÉSENTE (et vide) dès le montage du formulaire", async () => {
+    renderWith([split()]);
+    await userEvent.click(screen.getByRole("button", { name: redateLabel }));
+    const live = document.body.querySelector('[aria-live="polite"]');
+    expect(live).not.toBeNull();
+    expect(live?.textContent).toBe("");
+  });
+
+  it("le bouton d'action passe de « Voir les effets » à « Confirmer » (même formulaire) une fois l'aperçu chargé", async () => {
+    renderWith([split()]);
+    await userEvent.click(screen.getByRole("button", { name: redateLabel }));
+    expect(screen.getByRole("button", { name: "Voir les effets" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Confirmer" })).not.toBeInTheDocument();
+
+    previewMutateAsync.mockResolvedValueOnce({ effects: [{ kind: "shift", label: "La semaine du 1 au 7 juin passe au 8 au 14 juin." }], token: "tok-1" });
+    const endInput = screen.getByLabelText("Jusqu'au");
+    await userEvent.clear(endInput);
+    await userEvent.type(endInput, "2026-06-20");
+    await userEvent.click(screen.getByRole("button", { name: "Voir les effets" }));
+
+    expect(await screen.findByRole("button", { name: "Confirmer" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Voir les effets" })).not.toBeInTheDocument();
+    expect(previewMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ id: "mother", startDate: "2026-05-12", endDate: "2026-06-20" }));
+    expect(redateMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("affiche les labels SERVIS tels quels, un par effet (aucune reformulation)", async () => {
+    const effects: RedateEffect[] = [
+      { kind: "keep", label: "La semaine du 12 au 17 mai ne bouge pas." },
+      { kind: "shift", label: "La semaine du 18 au 24 mai passe au 25 au 31 mai." },
+    ];
+    renderWith([split()]);
+    await openAndPreview(effects);
+    expect(await screen.findByText("La semaine du 12 au 17 mai ne bouge pas.")).toBeInTheDocument();
+    expect(screen.getByText("La semaine du 18 au 24 mai passe au 25 au 31 mai.")).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  });
+
+  it("« Confirmer » est en variante destructive SSI un effet supprime un plan (absorb|vanish)", async () => {
+    // Sans suppression : variante par défaut (pas destructive).
+    renderWith([split()]);
+    await openAndPreview([{ kind: "shift", label: "La semaine glisse." }]);
+    const confirmNeutral = await screen.findByRole("button", { name: "Confirmer" });
+    expect(confirmNeutral.className).not.toMatch(/destructive/);
+  });
+
+  it("« Confirmer » DEVIENT destructif quand l'aperçu porte une absorption", async () => {
+    renderWith([split()]);
+    await openAndPreview([
+      { kind: "shift", label: "La semaine du 12 au 17 mai passe au 8 au 14 juin." },
+      { kind: "absorb", label: "Le plan de la semaine du 15 au 21 juin est supprimé car absorbé." },
+    ]);
+    const confirm = await screen.findByRole("button", { name: "Confirmer" });
+    expect(confirm.className).toMatch(/destructive/);
+  });
+
+  it("changer une date PÉRIME l'aperçu : la liste disparaît, le bouton redevient « Voir les effets »", async () => {
+    renderWith([split()]);
+    await openAndPreview([{ kind: "shift", label: "La semaine glisse au 8 au 14 juin." }]);
+    expect(await screen.findByText("La semaine glisse au 8 au 14 juin.")).toBeInTheDocument();
+
+    const endInput = screen.getByLabelText("Jusqu'au");
+    await userEvent.clear(endInput);
+    await userEvent.type(endInput, "2026-06-21");
+    expect(screen.queryByText("La semaine glisse au 8 au 14 juin.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Voir les effets" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Confirmer" })).not.toBeInTheDocument();
+  });
+
+  it("succès sans suppression : confirme avec le jeton et annonce la phrase de re-datage", async () => {
+    const { toast } = await import("@/shared/stores/toastStore");
+    const onClose = renderWith([split()]);
+    await openAndPreview([{ kind: "shift", label: "La semaine glisse." }], "tok-42");
+    await userEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
+
+    await waitFor(() =>
+      expect(redateMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ entry: expect.objectContaining({ id: "mother" }), startDate: "2026-05-12", endDate: "2026-06-20", previewToken: "tok-42" })),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/planning à régénérer/)));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("succès AVEC suppression : le toast dit « plans de période ajustés, planning à régénérer »", async () => {
+    const { toast } = await import("@/shared/stores/toastStore");
+    renderWith([split()]);
+    await openAndPreview([{ kind: "vanish", label: "Le plan de la semaine du 15 au 21 juin est supprimé." }], "tok-9");
+    await userEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Dates modifiées — plans de période ajustés, planning à régénérer."));
+  });
+
+  it("422 à l'aperçu : le message serveur s'affiche DANS le panneau, aucune confirmation possible", async () => {
+    const { HTTPError } = await import("ky");
+    // Faux HTTPError 422 : prototype d'HTTPError (pour `instanceof`) + `data` parsé (ky 2.x) —
+    // exactement ce que `errorMessage` lit pour rendre le message serveur d'un 4xx.
+    const httpError = Object.assign(Object.create(HTTPError.prototype), {
+      response: { status: 422 },
+      data: { error: "Ces dates sortent de la saison : une période reste dans la fenêtre de la saison." },
+    }) as unknown;
+    previewMutateAsync.mockRejectedValueOnce(httpError);
+    renderWith([split()]);
+    await userEvent.click(screen.getByRole("button", { name: redateLabel }));
+    const endInput = screen.getByLabelText("Jusqu'au");
+    await userEvent.clear(endInput);
+    await userEvent.type(endInput, "2026-06-20");
+    await userEvent.click(screen.getByRole("button", { name: "Voir les effets" }));
+
+    expect(await screen.findByText(/sortent de la saison/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Confirmer" })).not.toBeInTheDocument();
+    expect(redateMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("409 jeton périmé au PUT : message serveur + ré-aperçu AUTOMATIQUE, mais confirmation MANUELLE (pas de 2e PUT auto)", async () => {
+    const { PreviewTokenStaleError } = await import("./api");
+    renderWith([split()]);
+    // 1er aperçu → jeton « périmé ». (openAndPreview enfile SA réponse ; on l'arme donc AVANT
+    // les mocks du ré-aperçu, pour que le FIFO de mockResolvedValueOnce reste dans l'ordre.)
+    await openAndPreview([{ kind: "shift", label: "La semaine glisse." }], "tok-stale");
+
+    // À la confirmation : le PUT rejette (jeton périmé), puis le ré-aperçu AUTOMATIQUE renvoie un NOUVEAU jeton.
+    redateMutateAsync.mockRejectedValueOnce(new PreviewTokenStaleError("La période a changé depuis l’aperçu : redemandez l’aperçu des effets avant de confirmer."));
+    previewMutateAsync.mockResolvedValueOnce({ effects: [{ kind: "shift", label: "La semaine glisse au 8 au 14 juin." }], token: "tok-fresh" });
+    await userEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
+
+    // Le message serveur s'affiche ; l'aperçu est redemandé automatiquement.
+    expect(await screen.findByText(/redemandez l’aperçu des effets/)).toBeInTheDocument();
+    await waitFor(() => expect(previewMutateAsync).toHaveBeenCalledTimes(2));
+    // UN seul PUT est parti (le ré-datage n'est PAS relancé automatiquement).
+    expect(redateMutateAsync).toHaveBeenCalledTimes(1);
+    // Le bouton est de retour à « Confirmer » (le nouveau jeton est chargé), l'utilisateur reclique.
+    expect(await screen.findByRole("button", { name: "Confirmer" })).toBeInTheDocument();
+
+    // Reclic : le 2e PUT part avec le NOUVEAU jeton.
+    await userEvent.click(screen.getByRole("button", { name: "Confirmer" }));
+    await waitFor(() => expect(redateMutateAsync).toHaveBeenLastCalledWith(expect.objectContaining({ previewToken: "tok-fresh" })));
+  });
+
+  it("409 de chevauchement au PUT : la proposition serveur s'affiche (comme au v1), pas un toast", async () => {
+    const { WindowAlreadyPlannedError } = await import("./api");
+    const { toast } = await import("@/shared/stores/toastStore");
+    redateMutateAsync.mockRejectedValueOnce(new WindowAlreadyPlannedError("Ces dates sont déjà planifiées par « Vacances de Toussaint ».", "toussaint-entry"));
+    renderWith([split()]);
+    await openAndPreview([{ kind: "shift", label: "La semaine glisse." }]);
+    await userEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
+
+    expect(await screen.findByText(/déjà planifiées par « Vacances de Toussaint »/)).toBeInTheDocument();
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });

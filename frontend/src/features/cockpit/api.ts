@@ -60,6 +60,28 @@ export interface CalendarEntry {
    * est vrai. Toujours servi (défaut `false`).
    */
   redatable: boolean;
+  /**
+   * D3 v2 (P4-174) — vrai pour une indisponibilité DÉCOUPÉE en semaines (mère de fermeture à ≥ 1
+   * enfant, sans plan-bloc) : re-dater passe alors par un APERÇU des effets puis confirmation, pas
+   * un PUT direct. PRÉDICAT UNIQUE côté serveur (`CalendarEntryRedatability::redateNeedsPreview`),
+   * EXCLUSIF de `redatable`. Toujours servi (défaut `false`).
+   */
+  redateNeedsPreview: boolean;
+}
+
+/** D3 v2 — le VERDICT d'un effet du re-datage d'une mère découpée (le backend le calcule, le front l'affiche). */
+export type RedateEffectKind = "keep" | "shift" | "absorb" | "vanish" | "birth" | "holiday_takes_over";
+
+/** Une ligne de l'aperçu : son `kind` (pour l'icône décorative) et son `label` français PRÊT À AFFICHER (aucune reformulation front). */
+export interface RedateEffect {
+  kind: RedateEffectKind;
+  label: string;
+}
+
+/** L'aperçu servi par `POST /redate-preview` : les effets (ordre chronologique) + le `token` d'état que le PUT renverra. */
+export interface RedatePreview {
+  effects: RedateEffect[];
+  token: string;
 }
 
 export type SchedulePlanType = "SEASON" | "CLOSURE" | "HOLIDAY";
@@ -257,19 +279,71 @@ export const deleteCalendarEntry = (id: string): Promise<unknown> => api.delete(
  * répond 422 (hors saison / fin avant début / cas gelés) — que l'appelant relaie au filet. Le front
  * ne recalcule aucune règle métier : `redatable` et ces codes disent tout.
  */
-export const updateCalendarEntry = async (entry: CalendarEntry, dates: { startDate: string; endDate: string }): Promise<CalendarEntry> => {
+export const updateCalendarEntry = async (entry: CalendarEntry, dates: { startDate: string; endDate: string; previewToken?: string }): Promise<CalendarEntry> => {
+  const json: Record<string, unknown> = { kind: entry.kind, periodType: entry.periodType, title: entry.title, startDate: dates.startDate, endDate: dates.endDate };
+  if (undefined !== dates.previewToken) {
+    json.previewToken = dates.previewToken; // D3 v2 : confirmer un aperçu de mère découpée
+  }
   try {
-    return await api
-      .put(`calendar_entries/${entry.id}`, { json: { kind: entry.kind, periodType: entry.periodType, title: entry.title, startDate: dates.startDate, endDate: dates.endDate } })
-      .json<CalendarEntry>();
+    return await api.put(`calendar_entries/${entry.id}`, { json }).json<CalendarEntry>();
   } catch (error) {
     const conflict = asWindowAlreadyPlanned(error);
     if (null !== conflict) {
       throw conflict;
     }
+    // D3 v2 — seul un PUT PORTANT un jeton peut se le voir périmer (409) ; le re-datage « d'un
+    // bloc » (v1, sans jeton) n'a pas ce cas, on ne réinterprète donc pas ses 409.
+    if (undefined !== dates.previewToken) {
+      const stale = asPreviewStale(error);
+      if (null !== stale) {
+        throw stale;
+      }
+    }
     throw error;
   }
 };
+
+/**
+ * D3 v2 (P4-174) — l'APERÇU des effets du re-datage d'une mère découpée : lecture pure, rien n'est
+ * écrit. Rend les `effects` (labels français prêts à afficher) et le `token` d'état que la
+ * confirmation (PUT `previewToken`) renverra. 422 (fin avant début / hors saison / dates
+ * mal formées / pas une mère découpée) part au filet de l'appelant tel quel.
+ */
+export const previewRedate = (id: string, dates: { startDate: string; endDate: string }): Promise<RedatePreview> =>
+  api.post(`calendar_entries/${id}/redate-preview`, { json: dates }).json<RedatePreview>();
+
+/**
+ * D3 v2 — le PUT de confirmation a rejeté le jeton d'aperçu : la période a CHANGÉ depuis l'aperçu
+ * (enfant ajouté/supprimé, version régénérée…) → 409 `ConflictHttpException`, message serveur dans
+ * `detail`. Distinct du 409 `window_already_planned` (charge `code`/`entryId`, {@link WindowAlreadyPlannedError}).
+ * Le geste redemande l'aperçu (mêmes dates) et laisse l'utilisateur re-confirmer.
+ */
+export class PreviewTokenStaleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PreviewTokenStaleError";
+  }
+}
+
+/**
+ * Traduit un 409 d'aperçu périmé en {@link PreviewTokenStaleError} ; le 409 `window_already_planned`
+ * (qui porte `code`) et tout autre échec → `null`. Lecture par `error.data` (ky 2.x, patron
+ * `asWindowAlreadyPlanned`) ; le message vit dans `detail` (rendu API Platform d'une HttpException nue).
+ */
+export function asPreviewStale(error: unknown): PreviewTokenStaleError | null {
+  if (error instanceof HTTPError && 409 === error.response.status) {
+    const body = ((error as { data?: unknown }).data ?? {}) as { code?: string; detail?: string; error?: string; message?: string };
+    if ("window_already_planned" === body.code) {
+      return null;
+    }
+    const message = body.detail ?? body.error ?? body.message;
+    if ("string" === typeof message && "" !== message) {
+      return new PreviewTokenStaleError(message);
+    }
+  }
+
+  return null;
+}
 
 export const getSchoolHolidays = (from?: string, to?: string): Promise<SchoolHolidaysResponse> =>
   api.get("school-holidays", from && to ? { searchParams: { from, to } } : undefined).json();
