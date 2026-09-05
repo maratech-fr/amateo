@@ -257,6 +257,31 @@ final class PeriodRedateTest extends WebTestCase
         self::assertFalse($this->getEntry($user, $motherId)['redatable'], 'une mère découpée n’est pas re-datable');
     }
 
+    /**
+     * NR (règle fondateur 2026-09-05), axe *planning lifecycle* : re-dater (D3) une racine CLOSURE
+     * à plan « d'un bloc » vers une fenêtre à SEMAINE ENTAMÉE (décomposition > 1 segment) est
+     * REFUSÉ (422 parlant) — sinon la règle « pas de plan-bloc sur une fermeture à semaine entamée »
+     * se contournerait par le re-datage. Une racine 1-segment avec plan reste re-datable vers une
+     * autre fenêtre à 1 segment.
+     */
+    public function testRedatingAClosureRootPlanToAStartedWeekWindowIsRefused(): void
+    {
+        [$user] = $this->createClubWithSeason();
+        // Racine lun→dim ALIGNÉE (un seul segment « milieu ») portant un plan « d'un bloc ».
+        $entryId = $this->postPeriod($user, 'closure', 'Barros en travaux', '2026-05-04', '2026-05-10');
+        $this->adaptPeriod($user, $entryId);
+
+        // Re-datée à un VENDREDI (04-10 pleine + 11-15 entamée = 2 segments) → 422, période intacte.
+        $this->put($user, $entryId, ['kind' => 'period', 'periodType' => 'closure', 'title' => 'Barros en travaux', 'startDate' => '2026-05-04', 'endDate' => '2026-05-15']);
+        self::assertResponseStatusCodeSame(422, 'une fermeture à plan ne se re-date pas vers une semaine entamée');
+        self::assertStringContainsString('semaine entamée', (string) $this->client->getResponse()->getContent());
+        self::assertSame('2026-05-10', $this->getEntry($user, $entryId)['endDate'], 'le refus laisse la fenêtre intacte (aucune mutation)');
+
+        // Re-datée à un autre DIMANCHE (04-17 = 2 semaines pleines alignées = 1 segment) → 200.
+        $this->put($user, $entryId, ['kind' => 'period', 'periodType' => 'closure', 'title' => 'Barros en travaux', 'startDate' => '2026-05-04', 'endDate' => '2026-05-17']);
+        self::assertResponseStatusCodeSame(200, 'une fenêtre à un seul segment reste re-datable');
+    }
+
     public function testRedatingWithEndBeforeStartIsRejected(): void
     {
         [$user] = $this->createClubWithSeason();

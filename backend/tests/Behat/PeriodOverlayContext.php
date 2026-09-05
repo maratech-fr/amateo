@@ -267,7 +267,11 @@ final class PeriodOverlayContext extends BaseContext
     #[When('je prolonge la fermeture de deux semaines')]
     public function jeProlongeLaFermeture(): void
     {
-        $this->redateNewEnd = date('Y-m-d', (int) strtotime($this->redateEnd . ' +14 days'));
+        // Découpage début·milieu·fin (fondateur 2026-09-05) : re-dater un plan « d'un bloc » ne se
+        // fait QUE vers une fenêtre à UN segment. On prolonge donc jusqu'au DIMANCHE de la 3ᵉ
+        // semaine (lun→dim aligné = un seul « milieu ») ; une fin au vendredi ferait une semaine
+        // entamée (2 segments), désormais refusée. La fenêtre part du lundi $redateStart.
+        $this->redateNewEnd = date('Y-m-d', (int) strtotime($this->redateStart . ' +20 days'));
 
         $put = $this->apiPut(\sprintf('calendar_entries/%s', $this->entryId), [
             'kind' => 'period',
