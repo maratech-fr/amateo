@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Send } from "lucide-react";
 
 import type { CalendarEntry } from "@/features/cockpit/api";
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 
 import type { CoachWishCampaign } from "./campaignApi";
@@ -29,9 +30,9 @@ export function RadarCoachWishAction({ entry, season, campaign }: RadarCoachWish
         Solliciter les coachs
       </Button>
       {null !== campaign ? (
-        <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent">
+        <StatusPill variant="accent">
           {campaign.respondedCoachCount}/{campaign.totalCoachCount} coachs ont répondu{campaign.openWishCount > 0 ? ` · ${campaign.openWishCount} à traiter` : ""}
-        </span>
+        </StatusPill>
       ) : null}
       {open ? <CampaignDialog entry={entry} season={season} existing={campaign} onClose={() => setOpen(false)} /> : null}
     </>

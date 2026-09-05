@@ -2,6 +2,7 @@ import { AlertTriangle, MapPin, MapPinCheck } from "lucide-react";
 import { useState } from "react";
 
 import { apiErrorMessage } from "@/shared/api/errors";
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
@@ -133,7 +134,11 @@ export function VenueGeocodeField({
               <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => pick(candidate)}>
                 <MapPin className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <span className="min-w-0 flex-1 truncate">{candidate.label}</span>
-                {0 === index ? <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent">Recommandé</span> : null}
+                {0 === index ? (
+                  <StatusPill variant="accent" className="shrink-0">
+                    Recommandé
+                  </StatusPill>
+                ) : null}
                 {candidate.score < LOW_SCORE ? (
                   <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
                     <AlertTriangle className="size-3.5" aria-hidden="true" />
