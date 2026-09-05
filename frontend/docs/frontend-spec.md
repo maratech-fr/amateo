@@ -4,13 +4,12 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-09-05 (rotation `documentation-update`, PR P4-177 — fichier hors sujet de la
-PR, contrôle de fraîcheur). Table §2 « Routes / Objectives » recalée contre
-`frontend/src/app/routes.tsx` : trois routes réellement livrées en manquaient —
-`/confirm-email/:token` (P4-74, `ConfirmEmailChangePage`), `/club-approval/:token` (P3-4 PR C,
-`ClubApprovalPage`) et `/nouveautes` (P5-12, `ReleaseNotesPage`) — ajoutées ci-dessous. Reste du
-fichier (API par route, primitives, stack, §6.7 bis, §6.9) non re-vérifié cette passe — un stamp
-REMPLACE, l'historique vit dans git : `git log -p --follow frontend/docs/frontend-spec.md`.
+Last verified @ 2026-09-05 (D3 v2, P4-174, `documentation-update`). §6.9 « API par route » recalée
+pour `/` (cockpit) : ajout de `POST /api/calendar_entries/{id}/redate-preview`, re-confronté à
+`frontend/src/features/cockpit/api.ts::previewRedate` et `DayDialog.tsx::RedateWithPreviewForm`.
+Reste du fichier (§2 « Routes / Objectives », primitives, stack, §6.7 bis) non re-vérifié cette
+passe — un stamp REMPLACE, l'historique vit dans git :
+`git log -p --follow frontend/docs/frontend-spec.md`.
 
 ---
 
@@ -1208,7 +1207,7 @@ type AuthState = {
 | `/forgot-password`, `/reset-password/:token` | `POST /api/password/forgot`, `POST /api/password/reset` |
 | `/waiting` | `GET /api/me` (poll 5 s jusqu'à `membershipStatus === "active"`) |
 | `/planning` | `GET /api/me`, `GET /api/schedules` (poll 2,5 s si génération en vol), `GET /api/schedule_slot_templates?scheduleId={id}`, `GET /api/schedule_diagnostics?scheduleId={id}`, `POST /api/schedules/{id}/generate`, `POST /api/schedules/{id}/validate`, `POST /api/schedules/{id}/reopen`, `POST /api/schedules/{id}/export-pdf` (`ExportMenu`), `PUT /api/schedule_plans/{id}` (renommage du plan), `PUT /api/schedules/{id}` (renommage de la version), `DELETE /api/schedules/{id}` (suppression d'une version de travail), `POST /api/schedule-slots/{id}/move` (déplacer/évincer, mode cible sous verdict moteur — §6.7), `POST /api/schedules/{id}/place-slot` (placer une séance à la dérive — §6.7), `POST /api/schedule-slots/{id}/manual-edit/lock` (verrouiller/déverrouiller — §6.7), collections référentiels (`teams`, `venues`, `coaches`, `sport_categories`, `team_coaches`, `coach_player_memberships`) |
-| `/` (cockpit) | `GET /api/me`, `GET /api/schedules`, `GET /api/schedule_plans`, `GET /api/calendar_entries` (+ conflits d'entrée), campagnes de doléances (badge radar), `GET /api/venue_unavailabilities` + `venue-unavailability-impact` (carte radar « gymnase indisponible » — P4-68), `PUT /api/calendar_entries/{id}` (re-dater une racine `closure` re-datable — bouton « Modifier les dates » de la liste du jour, D3 v1 PR-2) |
+| `/` (cockpit) | `GET /api/me`, `GET /api/schedules`, `GET /api/schedule_plans`, `GET /api/calendar_entries` (+ conflits d'entrée), campagnes de doléances (badge radar), `GET /api/venue_unavailabilities` + `venue-unavailability-impact` (carte radar « gymnase indisponible » — P4-68), `PUT /api/calendar_entries/{id}` (re-dater une racine `closure` re-datable — bouton « Modifier les dates » de la liste du jour, D3 v1 PR-2 ; ou, pour une mère DÉCOUPÉE, confirme un `POST /redate-preview` — D3 v2), `POST /api/calendar_entries/{id}/redate-preview` (aperçu des effets avant confirmation, mère découpée seulement — D3 v2, P4-174) |
 | `/matchs`, `/matchs/configuration`, `/matchs/reconciliation` | `POST /api/fixtures/import/analyze` (multipart `file` → mappings résolus + `deviations` RMM-4), `POST /api/fixtures/import` (multipart `file` + `mappings` + `decisions?` → rapport + `unresolvedDeviations`/`depositedAt`), `GET /api/fbi-ingestions/latest` (fraîcheur, Membre), `POST /api/matches/module-visit` (gardien RMM-3, un POST par ouverture), `GET /api/ffbb/rencontres` + `POST /api/ffbb/rencontres/apply` (canal API RMM-4 PR-3, à la demande — `useFfbbRencontres(enabled: false)`). ⚠ Catalogue **partiel** — le module porte aussi `fixtures` CRUD, `fixtures/conflicts`, `fixtures/place`, `league-match-windows`, `venue_match_windows`, `team_match_habits`, `team_links`, `ffbb/engagements`, `venue_unavailabilities` : non énumérés ici, ligne à compléter (signalé, pas corrigé cette passe — hors scope RMM-4) |
 | `/wizard` | CRUD `teams`/`venues`/`coaches`/`constraints`/`venue_training_slots`…, `GET /api/priority_tiers`, `GET /api/sport_categories`, `POST /api/teams/reorder` (mode tri), `POST /api/constraints/validate`, `POST /api/schedules` + `generate` (étape Génération) |
 | `/club` | `PATCH /api/club/appearance`, `POST/DELETE /api/club/logo`, `GET /api/clubs/{clubId}/logo` (public, cache-buster sur l'URL après upload), `PATCH /api/club/info` (fiche FFBB, management-gated), `GET /api/memberships/pending`, `POST /api/memberships/{id}/approve`, `POST /api/memberships/{id}/reject` (section « Demandes » — l'ancienne route `/pending-members` a été repliée ici), `GET /api/venue-usage-stats?from=&to=` (encart stats d'utilisation des gymnases — §6.6 quater) |

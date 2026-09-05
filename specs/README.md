@@ -1,9 +1,11 @@
 # Living Specs System
 
-Last verified @ 2026-09-04 (P4-170 — tolérance J+1 du garde de stamps). Re-confronté : la règle du
-stamp ci-dessous correspond à `backend/tests/Unit/Documentation/DocStampFreshnessTest.php`
-(`stampCoversEdit()` : une édition datée du lendemain du stamp ne le rend pas menteur ; au-delà, oui) ;
-les quatre gardes `{DocPlacementTest,DocStampFreshnessTest,RoadmapIdentityTest,BlockingTestsListMatchesCiTest}.php`
+Last verified @ 2026-09-05 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+cette PR — D3 v2, P4-174). Re-confronté, tout juste : la règle du stamp ci-dessous correspond
+toujours à `backend/tests/Unit/Documentation/DocStampFreshnessTest.php`
+(`stampCoversEdit()` : une édition datée du lendemain du stamp ne le rend pas menteur ; au-delà, oui,
+`testAStampCoversAnEditOfTheSameDayOrTheNextDayOnly`) ; les quatre gardes
+`{DocPlacementTest,DocStampFreshnessTest,RoadmapIdentityTest,BlockingTestsListMatchesCiTest}.php`
 existent toujours (`ls backend/tests/Unit/Documentation/`). Reste du fichier non re-sondé cette passe.
 
 ## 3-Tier Structure

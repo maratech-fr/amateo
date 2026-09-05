@@ -1,14 +1,10 @@
 # Accueil « cockpit temporel » — mise au clair (préliminaire calendriers secondaires)
 
-Last verified @ 2026-09-05 (P4-173, `documentation-update`). §5bis recalé : re-confronté
-`App\Dto\SchedulePlanStaleness`, `App\Service\SchedulePlanStalenessResolver::stalenessFor`
-(pointeur nul ou fenêtre révolue → `null`, sinon les trois drapeaux de la version pointée),
-`SchedulePlanResource::staleness`/`SchedulePlanStateProvider::mapEntityToOutput` ; front
-`frontend/src/features/planning/lib/staleness.ts::stalenessBadge`,
-`cockpit/StalenessPill.tsx`, et ses quatre appelants (`SeasonPlanBanner.tsx`, `RadarPanel.tsx`
-via `ClosureRadarItem`/`RadarCard`, `SeasonSchedulesModal.tsx`, `DayDialog.tsx`) ;
-`shared/components/ui/badge.tsx::StatusPill` (texte `text-foreground`, icône `text-warning`).
-Reste du fichier non re-vérifié cette passe — historique : `git log -p --follow` ce fichier.
+Last verified @ 2026-09-05 (D3 v2, `documentation-update`). §5bis recalé : re-confronté
+`RedatePreviewController`, `SplitMotherRedatePlanner`, `App\Service\CalendarEntryRedatability::redateNeedsPreview`,
+`frontend/src/features/cockpit/DayDialog.tsx::RedateWithPreviewForm`, `cockpit/api.ts` (`previewRedate`,
+`PreviewTokenStaleError`), `cockpit/queries.ts::useRedatePreview`. Reste du fichier non re-vérifié
+cette passe — historique : `git log -p --follow` ce fichier.
 
 > **Statut** : **approche arrêtée** (décisions tranchées §9) — **livrée** ; cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2.
 > **Pas un plan** — pas de tâches, pas d'effort chiffré ; l'exécution se planifiera palier par palier (§8).
@@ -589,6 +585,23 @@ l'horloge. Le **serveur** garde l'heure réelle (P4-16 reste ouverte pour lui).
     `border-warning/50 bg-warning/10` : le **texte** est en `text-foreground` (mesuré à 4,30:1 en
     `text-warning`, sous AA), l'**icône** reste `text-warning` (seuil graphique 1.4.11, ≥ 3:1) —
     même repli que la bannière `/planning`.
+  - **« Modifier les dates de … » sur une indisponibilité DÉCOUPÉE : aperçu puis confirmation
+    (D3 v2, 2026-09-05).** Même bouton, même liste du jour — mais rendu **si `entry.redateNeedsPreview`**
+    (mère `closure` déjà segmentée en début/milieu/fin, exclusif de `redatable`) : le mode `redate`
+    devient `RedateWithPreviewForm`. Le bouton s'intitule « Voir les effets » tant qu'aucun aperçu
+    n'est chargé ; le clic appelle `POST /redate-preview` et rend la liste servie (une ligne par
+    enfant + une par plan de vacances recoupé), dans une région `aria-live="polite"` (présente dès
+    le montage, `aria-busy` pendant le calcul — jamais `role="alert"`, l'aperçu n'est pas une
+    erreur). Dès qu'un effet supprime un planning (`absorb`/`vanish`), la liste est encadrée d'un
+    `WarningPanel` et le bouton devient sa variante `destructive` — le bouton se relabellise
+    « Confirmer » et déclenche le `PUT` avec le `previewToken` reçu. Toute retouche de date après
+    coup **périme l'aperçu** (la liste disparaît, retour à « Voir les effets »). Un 409 « le jeton a
+    expiré » (la période a bougé depuis l'aperçu) s'affiche puis **redemande l'aperçu
+    automatiquement** — la confirmation, elle, reste **manuelle** (l'utilisateur reclique). Un 409
+    de chevauchement de fenêtre se comporte comme en D3 v1 (`WindowAlreadyPlannedNotice`). Succès →
+    même toast « … — planning à régénérer » (variante « plans de période ajustés » si l'aperçu
+    portait une suppression). Détail complet : [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md)
+    (amendement D3 v2) · [`types-de-planning.md`](types-de-planning.md) §2.
 - **L'écran dédié « calendrier secondaire » = le wizard réutilisé en « mode période »**
   (voir §6bis). Pas un nouvel écran à apprendre : **les mêmes 6 étapes**, mais le roster/les
   gymnases restent **hérités** (non ré-éditables comme entités) — on les **surcharge pour la

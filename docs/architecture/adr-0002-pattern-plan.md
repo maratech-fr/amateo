@@ -590,14 +590,57 @@ validation du besoin → plan → code → NR phase1 → code-review → go util
   refuse désormais en 422 toute nouvelle fenêtre qui se décomposerait en plus d'un segment — le
   re-datage contournerait sinon la règle par la porte D3. **Portée délibérément étroite** : une
   mère déjà découpée en semaines-enfants (mixant début/milieu/fin) n'est PAS re-datable par ce
-  mécanisme — seule une racine SANS enfants l'est (même périmètre que D3 v1) ; recalculer les
-  segments d'une mère à enfants au re-datage est un second cadrage, **D3 v2** (`specs/evolution/
-  roadmap.md`). Seed BCCL migré dans la même passe : l'incident Matéo (31/08→16/10) portait un
-  plan-bloc SUR SA RACINE — désormais interdit (le 12/10 entame une semaine) — remplacé par deux
-  enfants CLOSURE (milieu 31/08→11/10, fin 12/10→18/10), chacun avec sa propre version COMPLETED
-  transcrite ; `BcclSeederIdempotenceTest` garde qu'aucune racine seedée ne porte plus de plan à
-  plus d'un segment. NR : `WeekSegmentationMirrorParityTest` (groupe `contract`),
-  `WeekChildEntryTest`, `PeriodPlanBirthTest`, `Security/PeriodRedateTest`. Détail produit :
+  mécanisme — seule une racine SANS enfants l'est (même périmètre que D3 v1) ; une mère à enfants
+  a son propre geste, **amendement D3 v2 ci-dessous**. Seed BCCL migré dans la même passe :
+  l'incident Matéo (31/08→16/10) portait un plan-bloc SUR SA RACINE — désormais interdit (le
+  12/10 entame une semaine) — remplacé par deux enfants CLOSURE (milieu 31/08→11/10, fin
+  12/10→18/10), chacun avec sa propre version COMPLETED transcrite ; `BcclSeederIdempotenceTest`
+  garde qu'aucune racine seedée ne porte plus de plan à plus d'un segment. NR :
+  `WeekSegmentationMirrorParityTest` (groupe `contract`), `WeekChildEntryTest`,
+  `PeriodPlanBirthTest`, `Security/PeriodRedateTest`. Détail produit :
+  `specs/courantes/types-de-planning.md` §2, `specs/courantes/accueil-cockpit-temporel.md` §5bis.
+
+  ⚠️ **Amendement D3 v2 (décision fondateur, 2026-09-05) — le gel de fenêtre se lève AUSSI pour
+  une mère DÉCOUPÉE, sous aperçu puis confirmation** : l'amendement découpage début·milieu·fin
+  ci-dessus laissait une mère à enfants hors d'atteinte du re-datage. Le modèle mental de D3 v1
+  (« un plan est un gabarit SANS dates + une fenêtre ») ne suffit plus seul dès qu'il y a une
+  FAMILLE : déplacer la fenêtre d'une mère découpée doit RECALCULER les segments (le nombre de
+  semaines pleines change), donc RÉ-APPARIER les enfants existants aux nouveaux segments — un
+  geste qui peut faire disparaître des plannings entiers (deux runs de milieu qui fusionnent en
+  un seul, par exemple). Décision fondateur, contre l'appliquer d'un coup comme D3 v1 :
+  **on annonce AVANT de confirmer, jamais de destruction silencieuse**. `POST
+  /api/calendar_entries/{id}/redate-preview` (`RedatePreviewController`, LECTURE PURE) rend
+  `{effects, token}` — le foyer unique `App\Service\SplitMotherRedatePlanner` (partagé, à
+  l'identique, avec l'apply) apparie chaque ancien enfant à un nouveau segment de la fenêtre
+  visée, le **RÔLE primant sur le chevauchement** (start↔start, end↔end sans condition ; les
+  milieux par recouvrement de lundis décroissant, égalité → chronologique), et rend un verdict
+  par ligne : `keep` (fenêtre identique), `shift` (l'enfant et son plan glissent, versions et
+  transcription conservées, marqués à régénérer), `absorb` (l'ancien enfant rejoint le planning
+  d'un nouveau segment, son propre plan est supprimé en cascade), `vanish` (plus aucun segment ne
+  le couvre, plan supprimé en cascade), `birth` (un nouveau segment sans enfant apparié — enfant +
+  plan neufs VIDES, JAMAIS une copie d'un plan voisin). **« Les vacances ont la main »** : si la
+  nouvelle fenêtre recoupe une entrée HOLIDAY à plan, aucun refus — `PeriodWindowUniquenessGuard::
+  governingWindows`/`assertWindowFree` gagnent un paramètre `closuresOnly` pour cet effet précis
+  (ne conflit qu'avec une autre FERMETURE), la portion vacances n'offre déjà aucun segment
+  (`ClosureSegmentation::fullSegments` la troue) et l'aperçu ajoute une ligne
+  `holiday_takes_over` par plan de vacances concerné, marqué à régénérer. La **confirmation**
+  applique EXACTEMENT le plan lu à l'aperçu, sous un `token` (sha256 canonique de l'état lu — mère,
+  ancienne/nouvelle fenêtre, par enfant trié) que le `PUT` renvoie en `previewToken` :
+  `CalendarEntryStateProcessor::prepareSplitMotherRedate`/`applySplitMotherRedate` — 422 sans
+  jeton (« demandez l'aperçu »), 409 si un recalcul SOUS VERROU diverge du jeton fourni (un enfant
+  ajouté/supprimé, une version régénérée, un plan validé, entre l'aperçu et la confirmation — la
+  période a bougé). `CalendarEntryResource.redateNeedsPreview` (bool, exclusif de `redatable`) sert
+  au front l'éligibilité — même patron anti-N+1 mémoïsé par requête HTTP que `redatable`
+  (`App\Service\CalendarEntryRedatability::redateNeedsPreview`). **Aucun rail de compatibilité
+  pour une forme antérieure à ces enfants** : décision fondateur (« 3 existe pas on va reset et
+  repartir sur du propre »), le seed BCCL était déjà à sa forme actuelle (2 enfants) depuis
+  l'amendement ci-dessus. Geste écran : `DayDialog.tsx` (`RedateWithPreviewForm`) — bouton unique
+  « Voir les effets » → « Confirmer », liste d'effets servie telle quelle (aucune règle
+  re-dérivée), `WarningPanel` dès qu'un effet supprime un planning, un 409 de jeton périmé
+  redemande l'aperçu automatiquement mais laisse la confirmation MANUELLE. NR bloquant
+  `Security/SplitMotherRedateTest` (step nommé `ci.yml` + `docs/testing/blocking-tests.md`) ;
+  `PeriodRedateTest::testSplitMotherKeepsItsWindowFrozen` renversé (422 « aperçu requis » plutôt
+  que gel muet) ; scénario Behat `plan-de-periode-en-overlay.feature`. Détail produit :
   `specs/courantes/types-de-planning.md` §2, `specs/courantes/accueil-cockpit-temporel.md` §5bis.
 - **Lot C4** — LE SOCLE SE LIT DU PLAN, `Schedule.calendarEntryId` disparaît. Le champ était
   redondant avec `plan.calendarEntryId` (doublon d'ancre nullable — la classe de bug de C2/C3).
