@@ -1,12 +1,21 @@
-Last verified @ 2026-09-05 (P4-173, `coder` — snapshot régénéré dans le même commit.
-**191 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (aucune route
-nouvelle : un bloc de LECTURE `staleness` s'ajoute au schéma `SchedulePlan` — 3 variantes read/collection,
-plus le schéma `SchedulePlanStaleness`)
-· SHA-256 `d197df291c4592446913c858441cd38389fe71b53fee2694a92070ea573c831b`
+Last verified @ 2026-09-05 (P4-174 D3 v2, `coder` — snapshot régénéré dans le même commit.
+**192 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** (la route
+d'aperçu `POST /api/calendar_entries/{id}/redate-preview`) et le schéma read `CalendarEntry` gagne
+la propriété booléenne `redateNeedsPreview`.
+· SHA-256 `e4df1b91f5956e16ece80b31baca0dbd179dcdba1420fd215c1c7727fbe392af`
 (`sha256sum`, confirmé sur le fichier régénéré, aucun diff local). Reste du journal non re-confronté
 au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **P4-174 D3 v2 — l'aperçu de re-datage d'une indisponibilité découpée (2026-09-05)** : **+1 path** —
+  nouvelle route de LECTURE `POST /api/calendar_entries/{id}/redate-preview` (`RedatePreviewController`,
+  management, aucune écriture) qui rend les EFFETS d'un re-datage de mère découpée (keep/shift/absorb/
+  vanish/birth/holiday_takes_over, chaque ligne avec son `label` français, dates en clair, aucun
+  identifiant interne) + un `token` d'état. Le PUT `CalendarEntry` gagne `previewToken` (corps write) :
+  une mère découpée sans jeton → 422 « demandez l'aperçu », jeton périmé → 409. Le schéma read
+  `CalendarEntry` gagne `redateNeedsPreview` (booléen, exclusif de `redatable`) sur les 3 variantes read.
+  Foyer unique `SplitMotherRedatePlanner` (aperçu ET apply). 191 → **192 paths**. Backend PUR, contrat
+  backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.20, aucun appel moteur).
 - **P4-173 — le bloc servi `staleness` sur `SchedulePlan` (2026-09-05)** : **+0 path** — le schéma
   lecture `SchedulePlan` gagne une propriété `staleness` (nouveau schéma `SchedulePlanStaleness` :
   `manuallyEdited`/`constraintsChanged`/`resourcesChanged`), ou `null`. Elle porte la péremption de
@@ -61,15 +70,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   `backend-inventory.md` pour les gardes. 189 → **191 paths**. Backend PUR, **modèle seul** (PR-1
   d'un lot à 4 PR — PR-2 émettra le bloc au payload moteur) : contrat backend⇄engine **inchangé**
   (`CONTRACT_VERSION` 2.16, aucun appel moteur à ce stade).
-- **BCK-22 — le budget global de l'autofill de trajet (2026-08-28)** : **+0 path** — pas de route ni
-  de DTO nouveau, un **ENUM inline** existant se complète (déclaré dans
-  `PathContributor/OpponentTravelPaths.php:56` depuis P4-138, 2026-08-30 ; ex-`CustomRoutesOpenApiFactory.php:841`
-  avant l'éclatement par domaine) : `POST /api/venue-travel-times/autofill`
-  peut désormais rendre `unresolved[].reason = "budget_exceeded"` (lot interrompu par
-  `IgnRoutingClient::BATCH_BUDGET_SECONDS`, distinct de `missing_geo`/`routing_failed` — « relancez
-  pour continuer », pas un échec). 189 → **189 paths**. Backend + frontend (`reasonLabel` devient une
-  table exhaustive côté écran), contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.16, aucun
-  appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

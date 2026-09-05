@@ -56,6 +56,12 @@ class CalendarEntryInput
     #[Groups(['write'])]
     public ?string $createdBy = null;
 
+    /** D3 v2 — jeton d'aperçu du re-datage d'une indisponibilité DÉCOUPÉE. Le PUT d'une mère
+     *  découpée l'exige (sans lui, 422 « demandez l'aperçu ») et le confronte au recalcul sous
+     *  verrous (différent → 409). Ignoré pour toute autre entrée. */
+    #[Groups(['write'])]
+    public ?string $previewToken = null;
+
     #[Assert\Callback]
     public function validateShape(ExecutionContextInterface $context): void
     {

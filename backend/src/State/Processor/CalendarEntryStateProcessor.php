@@ -25,9 +25,11 @@ use App\Service\PeriodWindowUniquenessGuard;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
+use App\Service\SplitMotherRedatePlanner;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 /**
@@ -53,6 +55,7 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
         private readonly SchoolHolidayPeriodRepository $schoolHolidayRepository,
         private readonly CalendarEntryRedatability $redatability,
         private readonly ClosureSegmentation $closureSegmentation,
+        private readonly SplitMotherRedatePlanner $splitMotherRedatePlanner,
     ) {
         parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
     }
@@ -128,7 +131,13 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
             // liée au référentiel, mère découpée, semaine-enfant) gardent aussi leur fenêtre gelée.
             // LE prédicat de re-databilité vit dans un seul foyer, partagé avec le mapping de sortie.
             $redatableClosureRoot = $this->redatability->isRedatable($entity);
-            $windowFrozen = ($startChanged || $endChanged) && !$redatableClosureRoot;
+            // D3 v2 (P4-174) — une mère DÉCOUPÉE dégèle AUSSI sa fenêtre : re-dater ré-apparie ses
+            // enfants (glissement/absorption/disparition/naissance). Le reste de son identité (kind,
+            // type, vacances) reste figé. La confirmation par jeton d'aperçu et l'orchestration de la
+            // ré-appariement vivent dans processPut (prepareSplitMotherRedate) — ici on ne fait que
+            // ne plus GELER la fenêtre pour ce cas, comme pour une racine à plan « d'un bloc ».
+            $splitMother = $this->redatability->redateNeedsPreview($entity);
+            $windowFrozen = ($startChanged || $endChanged) && !$redatableClosureRoot && !$splitMother;
 
             if ($kindChanged || $periodTypeChanged || $windowFrozen || $holidayChanged) {
                 throw new UnprocessableEntityHttpException($redatableClosureRoot ? 'Cette période porte un planning : son type et les vacances qu’elle adapte sont figés (ses dates, elles, restent modifiables). Supprimez la période (son planning et ses versions partent avec) puis recréez-la pour en changer le type.' : 'Cette période porte un planning : son type, sa fenêtre et les vacances qu’elle adapte sont figés. Supprimez la période (son planning et ses versions partent avec) puis recréez-la.');
@@ -348,13 +357,38 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
                 return $this->applyClosureRootRedate($redate);
             }
 
+            // D3 v2 (P4-174) — re-dater une indisponibilité DÉCOUPÉE : aperçu servi + confirmation.
+            // Tout SOUS les verrous ci-dessus, dans la même transaction. Sans jeton d'aperçu → refus
+            // parlant ; jeton périmé (recalcul différent) → 409 ; sinon on applique exactement le plan.
+            $split = $this->prepareSplitMotherRedate($input, $entryId);
+            if (null !== $split) {
+                if (null === $input->previewToken) {
+                    $this->refuse('Cette indisponibilité est découpée en semaines : demandez d’abord l’aperçu des effets, puis confirmez le re-datage.');
+                }
+                // Mêmes gardes de forme que le re-datage « d'un bloc », AVANT toute mutation. Le
+                // conflit de fenêtre ne joue QU'ENTRE FERMETURES (closuresOnly) : « les vacances ont
+                // la main » — re-dater par-dessus des vacances leur cède les semaines (annoncé par
+                // l'aperçu), jamais un 409.
+                $this->assertWindowWithinSeason($split['seasonId'], $split['newStart'], $split['newEnd']);
+                $this->windowUniquenessGuard->assertWindowFree(
+                    $split['clubId'],
+                    $split['seasonId'],
+                    $split['entryId'],
+                    $split['newStart']->format('Y-m-d'),
+                    $split['newEnd']->format('Y-m-d'),
+                    closuresOnly: true,
+                );
+
+                return $this->applySplitMotherRedate($input, $uriVariables, $clubId, $seasonId, $split);
+            }
+
             return parent::processPut($input, $uriVariables, $clubId, $seasonId);
         });
     }
 
     protected function mapEntityToOutput(object $entity): CalendarEntryResource
     {
-        return CalendarEntryResource::fromEntity($entity, $this->redatability->isRedatable($entity));
+        return CalendarEntryResource::fromEntity($entity, $this->redatability->isRedatable($entity), $this->redatability->redateNeedsPreview($entity));
     }
 
     /**
@@ -443,6 +477,163 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
         $this->entityManager->flush();
 
         return $this->mapEntityToOutput($entity);
+    }
+
+    /**
+     * D3 v2 (P4-174) — le PUT re-date-t-il une indisponibilité DÉCOUPÉE (mère CLOSURE à ≥ 1 enfant,
+     * sans plan-bloc) ? Rend null (chemin PUT inchangé) sauf pour EXACTEMENT ce cas, avec au moins
+     * une date qui bouge. Mutuellement exclusif de {@see prepareClosureRootRedate} (une racine à
+     * plan « d'un bloc » n'a pas d'enfant). MÊME prédicat servi que le champ `redateNeedsPreview`.
+     *
+     * @return array{clubId: string, seasonId: string, entryId: string, oldTitle: string, oldStart: DateTimeImmutable, oldEnd: DateTimeImmutable, newStart: DateTimeImmutable, newEnd: DateTimeImmutable}|null
+     */
+    private function prepareSplitMotherRedate(CalendarEntryInput $input, mixed $entryId): ?array
+    {
+        if (!\is_string($entryId)) {
+            return null;
+        }
+        $entity = $this->entityManager->getRepository(CalendarEntry::class)->find($entryId);
+        if (!$entity instanceof CalendarEntry) {
+            return null; // introuvable / autre club (RLS) — le parent tranchera (404/403)
+        }
+        if (!$this->redatability->redateNeedsPreview($entity)) {
+            return null;
+        }
+
+        $oldStart = $entity->getStartDate();
+        $oldEnd = $entity->getEndDate();
+        $newStart = null !== $input->startDate ? $this->parseDate($input->startDate) : $oldStart;
+        $newEnd = null !== $input->endDate ? $this->parseDate($input->endDate) : $oldEnd;
+        if ($newStart->format('Y-m-d') === $oldStart->format('Y-m-d')
+            && $newEnd->format('Y-m-d') === $oldEnd->format('Y-m-d')) {
+            return null; // aucune date ne bouge : rien à re-dater
+        }
+
+        return [
+            'clubId' => $entity->getClubId(),
+            'seasonId' => $entity->getSeasonId(),
+            'entryId' => $entity->getId(),
+            'oldTitle' => $entity->getTitle(),
+            'oldStart' => $oldStart,
+            'oldEnd' => $oldEnd,
+            'newStart' => $newStart,
+            'newEnd' => $newEnd,
+        ];
+    }
+
+    /**
+     * D3 v2 — applique le plan d'effets (calculé par le MÊME {@see SplitMotherRedatePlanner} que
+     * l'aperçu, ici sous les verrous). Jeton périmé → 409 parlant (la période a bougé depuis
+     * l'aperçu). Sinon, dans l'ordre : suppressions (absorption + disparition, cascade complète par
+     * enfant) → glissements (enfant + plan re-datés) → naissances (enfant + plan neufs vides) →
+     * re-datage de la MÈRE (parent::processPut, fenêtre dégelée) + ses contraintes appariées + son
+     * suffixe de titre. La péremption « à régénérer » est posée par ResourceChangeStaleScheduleListener.
+     *
+     * @param array<string, mixed>                                                                                                                                                                       $uriVariables
+     * @param array{clubId: string, seasonId: string, entryId: string, oldTitle: string, oldStart: DateTimeImmutable, oldEnd: DateTimeImmutable, newStart: DateTimeImmutable, newEnd: DateTimeImmutable} $split
+     */
+    private function applySplitMotherRedate(CalendarEntryInput $input, array $uriVariables, ?string $clubId, ?string $seasonId, array $split): CalendarEntryResource
+    {
+        $mother = $this->entityManager->getRepository(CalendarEntry::class)->find($split['entryId']);
+        if (!$mother instanceof CalendarEntry) {
+            $this->refuse('La période a disparu pendant sa mise à jour.');
+        }
+
+        // Recalcul SOUS verrous : le jeton d'aperçu doit coïncider, sinon la période a changé
+        // (enfant ajouté/supprimé, version régénérée, plan validé) depuis l'aperçu → 409.
+        $plan = $this->splitMotherRedatePlanner->plan($mother, $split['newStart'], $split['newEnd']);
+        if ($plan->token !== $input->previewToken) {
+            throw new ConflictHttpException('La période a changé depuis l’aperçu : redemandez l’aperçu des effets avant de confirmer.');
+        }
+
+        // 1. Suppressions (absorption + disparition) — cascade complète par enfant, dans la transaction.
+        foreach ($plan->deletions as $childId) {
+            $this->deleteEntryAndCascade(['id' => $childId], $clubId);
+        }
+        // 2. Glissements — l'enfant et son plan suivent la nouvelle fenêtre (versions conservées).
+        foreach ($plan->shifts as $shift) {
+            $this->redateChildSegment($shift, $clubId);
+        }
+        // 3. Naissances — un enfant + un plan neufs VIDES par nouveau segment sans apparié.
+        foreach ($plan->births as $birth) {
+            $this->birthChildSegment($mother, $birth);
+        }
+
+        // 4. La MÈRE : le parent applique ses nouvelles dates (fenêtre dégelée pour une mère
+        //    découpée), puis applyClosureRootRedate recale ses contraintes appariées et son titre
+        //    (son plan-bloc n'existe pas : les no-op resync/rename le confirment).
+        parent::processPut($input, $uriVariables, $clubId, $seasonId);
+
+        return $this->applyClosureRootRedate([
+            'clubId' => $split['clubId'],
+            'seasonId' => $split['seasonId'],
+            'entryId' => $split['entryId'],
+            'oldTitle' => $split['oldTitle'],
+            'oldStart' => $split['oldStart'],
+            'oldEnd' => $split['oldEnd'],
+            'newStart' => $split['newStart'],
+            'newEnd' => $split['newEnd'],
+        ]);
+    }
+
+    /**
+     * D3 v2 — un enfant-segment GLISSE : sa fenêtre (écrite en interne, hors garde du POST), la
+     * fenêtre de son plan ({@see SchedulePlanProvisioner::resyncPeriodPlanWindow}) et le suffixe de
+     * son titre/nom de plan suivent le déplacement. Versions et transcription CONSERVÉES.
+     *
+     * @param array{childId: string, start: string, end: string} $shift
+     */
+    private function redateChildSegment(array $shift, ?string $clubId): void
+    {
+        $child = $this->entityManager->getRepository(CalendarEntry::class)->find($shift['childId']);
+        if (!$child instanceof CalendarEntry || (null !== $clubId && $child->getClubId() !== $clubId)) {
+            return; // inatteignable (l'enfant vient d'être apparié) — garde défensive muette
+        }
+        $oldTitle = $child->getTitle();
+        $oldStart = $child->getStartDate();
+        $oldEnd = $child->getEndDate();
+        $newStart = new DateTimeImmutable($shift['start']);
+        $newEnd = new DateTimeImmutable($shift['end']);
+
+        $child->setStartDate($newStart);
+        $child->setEndDate($newEnd);
+        $this->schedulePlanProvisioner->resyncPeriodPlanWindow($shift['childId'], $newStart, $newEnd);
+
+        $oldSuffix = $this->schedulePlanProvisioner->windowLabel($oldStart, $oldEnd);
+        $newSuffix = $this->schedulePlanProvisioner->windowLabel($newStart, $newEnd);
+        if (str_ends_with($oldTitle, $oldSuffix)) {
+            $child->setTitle(substr($oldTitle, 0, -\strlen($oldSuffix)) . $newSuffix);
+        }
+        $this->schedulePlanProvisioner->renamePeriodPlanIfStillNamed($shift['childId'], $oldTitle, $child->getTitle());
+        $this->entityManager->flush();
+    }
+
+    /**
+     * D3 v2 — un nouveau segment NAÎT : un enfant + un plan neufs VIDES via provisionPeriodPlan
+     * (aucune copie plan→plan — l'enfant repart de la structure saison, comme toute naissance).
+     *
+     * @param array{start: string, end: string} $birth
+     */
+    private function birthChildSegment(CalendarEntry $mother, array $birth): void
+    {
+        $start = new DateTimeImmutable($birth['start']);
+        $end = new DateTimeImmutable($birth['end']);
+
+        $child = new CalendarEntry;
+        $child->setClubId($mother->getClubId());
+        $child->setSeasonId($mother->getSeasonId());
+        $child->setKind(CalendarEntryKind::PERIOD);
+        $child->setPeriodType(CalendarEntryPeriodType::CLOSURE);
+        $child->setTitle($this->schedulePlanProvisioner->windowLabel($start, $end));
+        $child->setStartDate($start);
+        $child->setEndDate($end);
+        $child->setIsDisruptive(false);
+        $child->setParentEntryId($mother->getId());
+        $child->setStatus(CalendarEntryStatus::ACTIVE);
+        $this->entityManager->persist($child);
+        $this->entityManager->flush(); // l'id doit être visible à la lecture SQL brute du provisioner
+
+        $this->schedulePlanProvisioner->provisionPeriodPlan($child->getId());
     }
 
     /**

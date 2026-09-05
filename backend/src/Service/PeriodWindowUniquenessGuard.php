@@ -73,10 +73,11 @@ final class PeriodWindowUniquenessGuard
      * @param string|null $excludedRootEntryId l'ancêtre racine à exclure (`COALESCE(parent_entry_id, id)`), ou null
      * @param string      $start               la borne basse de la fenêtre visée (Y-m-d)
      * @param string      $end                 la borne haute de la fenêtre visée (Y-m-d)
+     * @param bool        $closuresOnly        D3 v2 : ne renvoyer QUE les plans de FERMETURE (exclut les plans de vacances) — « les vacances ont la main » : re-dater une indisponibilité découpée par-dessus des vacances ne se refuse pas, la fenêtre leur est cédée (cf. {@see SplitMotherRedatePlanner}). Défaut false = comportement historique (fermeture ET vacances).
      *
      * @return list<array{entry_id: string, entry_title: string, start_date: string, end_date: string}>
      */
-    public function governingWindows(string $clubId, string $seasonId, ?string $excludedRootEntryId, string $start, string $end): array
+    public function governingWindows(string $clubId, string $seasonId, ?string $excludedRootEntryId, string $start, string $end, bool $closuresOnly = false): array
     {
         /** @var list<array{entry_id: string, entry_title: string, start_date: string, end_date: string}> $rows */
         $rows = $this->entityManager->getConnection()->fetchAllAssociative(
@@ -86,7 +87,10 @@ final class PeriodWindowUniquenessGuard
             // `p.club_id` et par RLS, et l'intégrité de la FK lie l'entrée au plan. On le REDIT
             // néanmoins sur l'entrée jointe — la frontière de club devient lisible dans le SQL
             // lui-même, au lieu de dépendre d'un raisonnement sur deux mécanismes distants.
-            . 'WHERE p.club_id = :club AND e.club_id = :club AND p.season_id = :season AND p.type <> \'SEASON\' '
+            . 'WHERE p.club_id = :club AND e.club_id = :club AND p.season_id = :season '
+            // D3 v2 : soit tout ce qui gouverne (fermeture + vacances, hors socle), soit les
+            // FERMETURES seules (« les vacances ont la main »).
+            . ($closuresOnly ? 'AND p.type = \'CLOSURE\' ' : 'AND p.type <> \'SEASON\' ')
             // Chevauchement (inclusion OU recouvrement partiel) : début ≤ fin de l'autre ET fin ≥ début.
             . 'AND e.start_date <= :bornEnd AND e.end_date >= :bornStart '
             // La FAMILLE (même ancêtre racine) est exclue : parent↔enfant et semaines sœurs sont
@@ -114,12 +118,13 @@ final class PeriodWindowUniquenessGuard
      * @param string $bornRootEntryId l'ancêtre racine de l'entrée qui naît : son parentEntryId, sinon son id
      * @param string $bornStart       la borne basse de la fenêtre qui naît (Y-m-d)
      * @param string $bornEnd         la borne haute de la fenêtre qui naît (Y-m-d)
+     * @param bool   $closuresOnly    D3 v2 : ne conflit qu'avec une autre FERMETURE (les vacances ont la main) — cf. {@see governingWindows}
      *
      * @throws WindowAlreadyPlannedException un autre plan de période gouverne tout ou partie de la fenêtre
      */
-    public function assertWindowFree(string $clubId, string $seasonId, string $bornRootEntryId, string $bornStart, string $bornEnd): void
+    public function assertWindowFree(string $clubId, string $seasonId, string $bornRootEntryId, string $bornStart, string $bornEnd, bool $closuresOnly = false): void
     {
-        $conflicts = $this->governingWindows($clubId, $seasonId, $bornRootEntryId, $bornStart, $bornEnd);
+        $conflicts = $this->governingWindows($clubId, $seasonId, $bornRootEntryId, $bornStart, $bornEnd, $closuresOnly);
         if ([] === $conflicts) {
             return;
         }
