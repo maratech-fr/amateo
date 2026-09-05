@@ -348,10 +348,9 @@ export function MatchesPage() {
   // une erreur — cohérente avec l'écart au modèle (« c'est un signal, pas bloquant »).
   const sameWeekendBadge =
     sameWeekendRotations > 0 ? (
-      <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
-        <Info className="size-3.5" />
+      <StatusPill className="w-fit" icon={<Info className="size-3.5" aria-hidden="true" />}>
         {sameWeekendRotations} créneau{sameWeekendRotations > 1 ? "x" : ""} partagé{sameWeekendRotations > 1 ? "s" : ""} : deux équipes reçoivent ce week-end
-      </span>
+      </StatusPill>
     ) : null;
 
   // ── The current step's VIEW (rail⇄vue : filtres de la même page) ────────────
