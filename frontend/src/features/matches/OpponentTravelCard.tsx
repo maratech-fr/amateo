@@ -1,4 +1,4 @@
-import { MapPinOff, Pencil, RotateCcw, RefreshCw, Wand2 } from "lucide-react";
+import { MapPinOff, RotateCcw, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
@@ -10,21 +10,7 @@ import type { OpponentTravel } from "./api";
 import { AwayTravelChip } from "./AwayTravelChip";
 import { LocateOpponentModal } from "./LocateOpponentModal";
 import { useOpponentTravel, useResolveOpponentTravel, useSetOpponentTravelAuto } from "./queries";
-
-/** AUTO vs MANUEL — icône + mot, jamais la couleur seule (patron SourceBadge de TravelMatrixModal). */
-function SourceBadge({ source }: { source: "AUTO" | "MANUAL" }) {
-  return "AUTO" === source ? (
-    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground">
-      <Wand2 className="size-3.5" aria-hidden="true" />
-      Auto
-    </span>
-  ) : (
-    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-accent">
-      <Pencil className="size-3.5" aria-hidden="true" />
-      Manuel
-    </span>
-  );
-}
+import { SourceBadge } from "./SourceBadge";
 
 /**
  * P2-54 RMM-9 PR-3 — l'écran SET-UP du trajet adverse : où joue chaque adversaire,
