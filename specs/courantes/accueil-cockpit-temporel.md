@@ -1,13 +1,14 @@
 # Accueil « cockpit temporel » — mise au clair (préliminaire calendriers secondaires)
 
-Last verified @ 2026-09-05 (découpage début·milieu·fin, `documentation-update`). §5bis recalé :
-re-confronté `frontend/src/features/cockpit/WeekPickerDialog.tsx` (`allowSegmentEditing = "closure"
-!== periodType`, `closureMultiSegment`, `blockPathReason`), `cockpit/lib/weekSegmentation.ts::
-weekSegments`, `useWeekAdapt.ts::decisionForWindow`/`needsPicker`,
-`App\Service\WeekSegmentationRule::segments`, `App\Service\ClosureSegmentation`,
-`CalendarEntryStateProcessor::assertValidWeekChild`/`processPut`,
-`SchedulePlanStateProcessor::processPost`. Reste du fichier non re-vérifié cette passe —
-historique : `git log -p --follow` ce fichier.
+Last verified @ 2026-09-05 (P4-173, `documentation-update`). §5bis recalé : re-confronté
+`App\Dto\SchedulePlanStaleness`, `App\Service\SchedulePlanStalenessResolver::stalenessFor`
+(pointeur nul ou fenêtre révolue → `null`, sinon les trois drapeaux de la version pointée),
+`SchedulePlanResource::staleness`/`SchedulePlanStateProvider::mapEntityToOutput` ; front
+`frontend/src/features/planning/lib/staleness.ts::stalenessBadge`,
+`cockpit/StalenessPill.tsx`, et ses quatre appelants (`SeasonPlanBanner.tsx`, `RadarPanel.tsx`
+via `ClosureRadarItem`/`RadarCard`, `SeasonSchedulesModal.tsx`, `DayDialog.tsx`) ;
+`shared/components/ui/badge.tsx::StatusPill` (texte `text-foreground`, icône `text-warning`).
+Reste du fichier non re-vérifié cette passe — historique : `git log -p --follow` ce fichier.
 
 > **Statut** : **approche arrêtée** (décisions tranchées §9) — **livrée** ; cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2.
 > **Pas un plan** — pas de tâches, pas d'effort chiffré ; l'exécution se planifiera palier par palier (§8).
@@ -571,8 +572,23 @@ l'horloge. Le **serveur** garde l'heure réelle (P4-16 reste ouverte pour lui).
     ferme le dialogue et annonce « Fermeture re-datée du … au … — planning à régénérer » —
     **jamais** de mention du pivot socle dans ce toast (décision fermée, `etat-des-lieux.md` §2) :
     la version pointée survit, seulement marquée périmée par la bannière de `/planning`
-    (`stalenessMessage`, `PlanningPage.tsx:1352-1372`) ; **le cockpit ne porte aucun badge
-    « périmé »** — non embarqué dans ce lot (roadmap **P4-173**).
+    (`stalenessMessage`, `PlanningPage.tsx:1352-1372`). **Le cockpit le dit désormais lui-même
+    (P4-173, 2026-09-05)** : `SchedulePlanResource.staleness` (`{manuallyEdited,
+    constraintsChanged, resourcesChanged} | null`) sert au cockpit la péremption de la version
+    **POINTÉE** par le plan — `null` tant que rien n'est pointé, ou dès que la fenêtre du plan est
+    révolue (`endDate` < aujourd'hui, horloge serveur : pas de faux « à régénérer » sur du passé).
+    `SchedulePlanStalenessResolver` lit UNE fois par requête HTTP l'ensemble des versions pointées
+    du club (mémoïsé, patron `CalendarEntryRedatability`) — la collection comme l'item restent
+    O(1) par plan. Le front **affiche sans redériver** (`StalenessPill`, forme courte
+    `stalenessBadge()` — « À régénérer — <cause(s)> », mêmes causes que `stalenessMessage` sans
+    `structureDiverged`) sur **quatre surfaces** : la carte Saison (`SeasonPlanBanner`), le radar
+    (`ClosureRadarItem`, slot `badge` de `RadarCard`), la modale « Tous les plannings »
+    (`SeasonSchedulesModal`, à côté de l'état) et la ligne du jour (`DayDialog`, frère du titre
+    tronqué, jamais dedans). Pastille **non cliquable** (chaque surface porte déjà son CTA), texte
+    visible = l'annonce (pas d'`aria-label`, pas de `role="alert"` — état stable). Jeton
+    `border-warning/50 bg-warning/10` : le **texte** est en `text-foreground` (mesuré à 4,30:1 en
+    `text-warning`, sous AA), l'**icône** reste `text-warning` (seuil graphique 1.4.11, ≥ 3:1) —
+    même repli que la bannière `/planning`.
 - **L'écran dédié « calendrier secondaire » = le wizard réutilisé en « mode période »**
   (voir §6bis). Pas un nouvel écran à apprendre : **les mêmes 6 étapes**, mais le roster/les
   gymnases restent **hérités** (non ré-éditables comme entités) — on les **surcharge pour la
