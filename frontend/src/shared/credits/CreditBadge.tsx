@@ -1,5 +1,6 @@
 import { Coins } from "lucide-react";
 
+import { StatusPill } from "@/shared/components/ui/badge";
 import { cn } from "@/shared/lib/utils";
 
 import { useCredits } from "./useCredits";
@@ -19,17 +20,17 @@ export function CreditBadge() {
   }
 
   const low = credits.remaining <= 5;
+  // ≤ 5 → AMBRE : variante `warning` de la pastille partagée (le texte passe `text-foreground` pour
+  // l'AA ; c'est l'ICÔNE qui porte l'ambre — cf. `badge.tsx`). Le compte a une annonce plus riche
+  // que son texte visible, donc on transmet `aria-label` et `title`.
   return (
-    <span
+    <StatusPill
+      variant={low ? "warning" : "neutral"}
       title={TOOLTIP}
       aria-label={`Crédits gratuits restants : ${credits.remaining} sur ${credits.max}. ${TOOLTIP}`}
-      className={cn(
-        "flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium",
-        low ? "border-warning/50 bg-warning/10 text-warning" : "border-border bg-muted text-muted-foreground",
-      )}
+      icon={<Coins className={cn("size-3.5", low && "text-warning")} aria-hidden="true" />}
     >
-      <Coins className="size-3.5" aria-hidden="true" />
       Crédits : {credits.remaining}/{credits.max}
-    </span>
+    </StatusPill>
   );
 }
