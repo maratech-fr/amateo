@@ -5,29 +5,42 @@ declare(strict_types=1);
 namespace App\Tests\Behat;
 
 use Behat\Hook\AfterScenario;
+use Behat\Hook\BeforeScenario;
 use Behat\Step\Given;
 use Behat\Step\Then;
 use Behat\Step\When;
 use RuntimeException;
+use Symfony\Component\Process\Process;
 
 /**
  * Un verrou HARD est souverain à la régénération (axes constraint semantics + planning lifecycle),
  * sur la stack qui tourne.
  *
- * Deux promesses, en HTTP contre la vraie API et le vrai moteur (rail asynchrone Messenger → worker
+ * Trois promesses, en HTTP contre la vraie API et le vrai moteur (rail asynchrone Messenger → worker
  * → moteur → import) :
  *   - une séance verrouillée en dur ne bouge pas : après régénération, l'équipe occupe la MÊME case
  *     (le payload re-fournit les créneaux HARD des versions de base comme épingles) ;
  *   - un déplacement IMPOSSIBLE — vers une case fermée (un gymnase sans aucun créneau ouvert) — est
  *     REFUSÉ et NOMMÉ (422, code `slot_unavailable`), jamais appliqué en silence : la séance ne
  *     bouge pas. C'est le verdict de placement que gardent `SlotMoveVerdictTest` /
- *     `SlotPlacementVerdictTest` (« l'impossible est nommé, rien n'est écrit »).
+ *     `SlotPlacementVerdictTest` (« l'impossible est nommé, rien n'est écrit ») ;
+ *   - une règle de jours qui CONTREDIT un verrou ne le déplace pas : le créneau reste à sa case, et
+ *     la règle violée est SIGNALÉE (diagnostic). Le verrou GAGNE — une vérité absolue — et l'on
+ *     informe des règles qu'il enfreint. Le verrou (`lockLevel: HARD`) ET la règle contraire voyagent
+ *     tous deux dans le payload : c'est le moteur qui arbitre, il fixe le verrou hors du solveur.
  *
- * Budget : une seule génération (le scénario a). Autosuffisant : on rouvre le socle (pointeur
- * dépointé) le temps du scénario, on verrouille UNE séance de la version en vigueur, et en fin de
- * scénario on restaure le verrou d'origine, on retire le gymnase jetable, on SUPPRIME les versions
- * nées de la régénération (créneaux + diagnostics + métriques + snapshots + conflits) et on restaure
- * le pointeur du socle — quoi qu'il arrive.
+ * Décor et nettoyage par l'API : verrou posé/retiré via `manual-edit/lock`, règle créée/supprimée via
+ * `/constraints`, versions nées supprimées via `DELETE /schedules/{id}` (le processeur purge ses
+ * séances/diagnostics et relâche le pointeur). SEUL le pointeur du socle est manipulé en SQL brut :
+ * la seule voie API pour dépointer (`/reopen`, `/validate`) DÉTRUIT au passage les plans de période
+ * FUTURS du club (invariant socle), ce qu'on ne veut pas infliger au seed. Comme cette écriture SQL
+ * échappe au listener Doctrine d'invalidation, un `@BeforeScenario` purge le pool `cache.schedule`
+ * (payload solveur) avant chaque scénario, pour qu'aucune régénération ne serve un payload périmé.
+ *
+ * Budget : deux générations (scénarios a et c ; le b est un déplacement synchrone). Autosuffisant :
+ * on rouvre le socle (pointeur dépointé), on verrouille UNE séance libre de la version en vigueur, et
+ * en fin de scénario on retire le verrou, la règle et le gymnase jetable, on SUPPRIME les versions
+ * nées de la régénération et on restaure le pointeur du socle — quoi qu'il arrive.
  */
 final class LockContext extends BaseContext
 {
@@ -36,6 +49,9 @@ final class LockContext extends BaseContext
     private const int POLL_INTERVAL_SECONDS = 5;
 
     private const int TIMEOUT_SECONDS = 650;
+
+    /** Nom distinctif de la règle de jours ajoutée (scénario c) — attendu dans le diagnostic. */
+    private const string DAY_RULE_NAME = 'Le verrou contredit ce jour (fonctionnel)';
 
     private string $token = '';
 
@@ -57,9 +73,8 @@ final class LockContext extends BaseContext
 
     private string $lockStartTime = '';
 
-    private string $slotOriginalLock = 'NONE';
-
-    private string $slotOriginalOrigin = '';
+    /** Règle de jours contraire au verrou (scénario c). */
+    private string $constraintId = '';
 
     /** Gymnase jetable SANS aucun créneau ouvert — la « case fermée » du scénario b. */
     private string $closedVenueId = '';
@@ -74,6 +89,27 @@ final class LockContext extends BaseContext
     private string $regeneratedId = '';
 
     private string $finalStatus = '';
+
+    /**
+     * Purge le pool `cache.schedule` (payload solveur) avant chaque scénario. Le pointeur du socle
+     * est toggle en SQL brut (voir l'en-tête de classe), écriture que le listener Doctrine
+     * d'invalidation ne voit pas : sans cette purge, une régénération pourrait servir un payload
+     * périmé d'un scénario précédent.
+     */
+    #[BeforeScenario]
+    public function purgerLeCachePayload(): void
+    {
+        $process = new Process(
+            ['php', 'bin/console', 'cache:pool:clear', 'cache.schedule'],
+            \dirname(__DIR__, 2),
+            ['APP_ENV' => 'dev'],
+        );
+        $process->setTimeout(60.0);
+        $process->run();
+        if (!$process->isSuccessful()) {
+            throw new RuntimeException('impossible de purger le cache du payload solveur avant le scénario');
+        }
+    }
 
     #[Given('le club de démonstration, connecté, avec une version de saison rouverte')]
     public function leClubAvecVersionRouverte(): void
@@ -99,27 +135,30 @@ final class LockContext extends BaseContext
 
         $this->preexistingVersionIds = $this->seasonVersionIds();
 
-        // Rouvrir : on dépointe le socle le temps du scénario (une version choisie est en lecture
-        // seule et non régénérable). Restauré en fin.
+        // Rouvrir : on dépointe le socle en SQL brut (la voie API détruirait les plans de période
+        // futurs — voir l'en-tête de classe). Une version choisie est en lecture seule et non
+        // régénérable ; restauré en fin de scénario.
         $this->pointSocleTo('');
     }
 
     #[Given('une séance de cette version verrouillée en dur')]
     public function uneSeanceVerrouilleeEnDur(): void
     {
+        // Une séance LIBRE (verrou NONE) : le verrou HARD et son retrait se font alors proprement par
+        // l'API, sans jamais toucher un verrou seedé (réservation) qu'on ne saurait pas restaurer.
         $row = $this->dbalScalar(
             \sprintf(
-                'SELECT id || \'|\' || team_id || \'|\' || venue_id || \'|\' || day_of_week || \'|\' || to_char(start_time, \'HH24:MI\') || \'|\' || lock_level || \'|\' || COALESCE(lock_origin, \'\') AS behatval'
-                . ' FROM schedule_slot_template WHERE schedule_id=\'%s\' ORDER BY id LIMIT 1',
+                'SELECT id || \'|\' || team_id || \'|\' || venue_id || \'|\' || day_of_week || \'|\' || to_char(start_time, \'HH24:MI\') AS behatval'
+                . ' FROM schedule_slot_template WHERE schedule_id=\'%s\' AND lock_level=\'NONE\' ORDER BY id LIMIT 1',
                 $this->socleVersionId,
             ),
             admin: true,
         );
         $parts = '' === $row ? [] : explode('|', $row);
-        if (7 !== \count($parts)) {
-            throw new RuntimeException('aucune séance sur la version de saison en vigueur — la base est-elle seedée ?');
+        if (5 !== \count($parts)) {
+            throw new RuntimeException('aucune séance libre sur la version de saison en vigueur — la base est-elle seedée ?');
         }
-        [$this->slotId, $this->lockTeamId, $this->lockVenueId, $day, $this->lockStartTime, $this->slotOriginalLock, $this->slotOriginalOrigin] = $parts;
+        [$this->slotId, $this->lockTeamId, $this->lockVenueId, $day, $this->lockStartTime] = $parts;
         $this->lockDay = (int) $day;
 
         $locked = $this->apiPost(
@@ -129,6 +168,27 @@ final class LockContext extends BaseContext
         );
         if (200 !== $locked['status']) {
             throw new RuntimeException(\sprintf('le verrouillage de la séance a répondu %d (200 attendu)', $locked['status']));
+        }
+    }
+
+    #[Given('une règle qui interdit à cette équipe de s\'entraîner ce jour-là')]
+    public function uneRegleQuiInterditCeJour(): void
+    {
+        $created = $this->apiPost('constraints', [
+            'name' => self::DAY_RULE_NAME,
+            'scope' => 'TEAM',
+            'scopeTargetId' => $this->lockTeamId,
+            'family' => 'DAY',
+            'ruleType' => 'HARD',
+            'config' => ['forbiddenDays' => [$this->lockDay]],
+            'isActive' => true,
+        ], $this->token);
+        if (!\in_array($created['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('la création de la règle de jours a répondu %d (201 attendu)', $created['status']));
+        }
+        $this->constraintId = (string) ($created['json']['id'] ?? '');
+        if ('' === $this->constraintId) {
+            throw new RuntimeException('la règle de jours n\'a pas rendu d\'identifiant');
         }
     }
 
@@ -181,19 +241,32 @@ final class LockContext extends BaseContext
             throw new RuntimeException(\sprintf('la régénération aurait dû aboutir (COMPLETED), statut obtenu « %s »', $this->finalStatus));
         }
 
-        $count = $this->dbalScalar(
+        $this->assertSeanceALaMemeCaseDans($this->regeneratedId);
+    }
+
+    #[Then('le verrou reste à sa case et la règle violée est signalée')]
+    public function leVerrouResteEtLaRegleEstSignalee(): void
+    {
+        if ('COMPLETED' !== $this->finalStatus) {
+            throw new RuntimeException(\sprintf('la régénération aurait dû aboutir (COMPLETED) : un verrou est souverain, il n\'échoue pas sur une règle contraire ; statut obtenu « %s »', $this->finalStatus));
+        }
+
+        // Le verrou GAGNE : la séance reste exactement à sa case malgré la règle qui l'interdit.
+        $this->assertSeanceALaMemeCaseDans($this->regeneratedId);
+
+        // La règle violée est SIGNALÉE : un diagnostic de la version régénérée, pour cette équipe,
+        // nomme la règle de jours entrée en conflit avec le verrou.
+        $signalements = (int) $this->dbalScalar(
             \sprintf(
-                'SELECT COUNT(*) AS behatval FROM schedule_slot_template WHERE schedule_id=\'%s\' AND team_id=\'%s\' AND venue_id=\'%s\' AND day_of_week=%d AND to_char(start_time, \'HH24:MI\')=\'%s\'',
+                'SELECT COUNT(*) AS behatval FROM schedule_diagnostic WHERE schedule_id=\'%s\' AND team_id=\'%s\' AND message LIKE \'%%%s%%\'',
                 $this->regeneratedId,
                 $this->lockTeamId,
-                $this->lockVenueId,
-                $this->lockDay,
-                $this->lockStartTime,
+                self::DAY_RULE_NAME,
             ),
             admin: true,
         );
-        if ((int) $count < 1) {
-            throw new RuntimeException('la séance verrouillée en dur aurait dû rester à la même case après régénération');
+        if ($signalements < 1) {
+            throw new RuntimeException('la règle de jours contredite par le verrou aurait dû être signalée par un diagnostic nommant la règle');
         }
     }
 
@@ -224,8 +297,9 @@ final class LockContext extends BaseContext
     }
 
     /**
-     * Retire la règle ajoutée, restaure le verrou d'origine, SUPPRIME les versions nées de la
-     * régénération (avec leurs enfants) et restaure le pointeur du socle. Quoi qu'il arrive.
+     * Retire la règle et le gymnase jetable, ENLÈVE le verrou de la séance libre (API), SUPPRIME les
+     * versions nées de la régénération (DELETE API : purge séances/diagnostics et relâche le pointeur)
+     * et restaure le pointeur du socle. Quoi qu'il arrive.
      */
     #[AfterScenario]
     public function nettoyer(): void
@@ -238,28 +312,31 @@ final class LockContext extends BaseContext
             $this->apiDelete(\sprintf('venues/%s', $this->closedVenueId), $this->token);
         }
 
-        // Restaure le verrou d'origine de la séance de la version en vigueur.
+        if ('' !== $this->constraintId) {
+            $this->apiDelete(\sprintf('constraints/%s', $this->constraintId), $this->token);
+        }
+
+        // La séance choisie était LIBRE : retirer le verrou la remet dans son état d'origine (NONE).
         if ('' !== $this->slotId) {
-            $origin = '' === $this->slotOriginalOrigin ? 'NULL' : \sprintf('\'%s\'', $this->slotOriginalOrigin);
-            $this->dbalExec(
-                \sprintf('UPDATE schedule_slot_template SET lock_level=\'%s\', lock_origin=%s WHERE id=\'%s\'', $this->slotOriginalLock, $origin, $this->slotId),
-                admin: true,
+            $this->apiPost(
+                \sprintf('schedule-slots/%s/manual-edit/lock', $this->slotId),
+                ['lockLevel' => 'NONE'],
+                $this->token,
             );
         }
 
-        // Supprime toute version de saison née depuis l'entrée (la régénération), enfants compris.
+        // Supprime toute version de saison née depuis l'entrée (la régénération). Le socle étant
+        // dépointé, la version née n'est pas la version choisie et n'est pas la SEULE terminée du
+        // plan (les préexistantes demeurent) : le DELETE API passe et purge ses enfants.
         foreach ($this->seasonVersionIds() as $versionId) {
             if (\in_array($versionId, $this->preexistingVersionIds, true)) {
                 continue;
             }
-            foreach (['constraint_conflict', 'schedule_structure_snapshot', 'schedule_slot_template', 'schedule_diagnostic', 'solver_metrics'] as $childTable) {
-                $this->dbalExec(\sprintf('DELETE FROM %s WHERE schedule_id=\'%s\'', $childTable, $versionId), admin: true);
-            }
-            $this->dbalExec(\sprintf('DELETE FROM schedule WHERE id=\'%s\'', $versionId), admin: true);
+            $this->apiDelete(\sprintf('schedules/%s', $versionId), $this->token);
         }
 
-        // Restaure « socle en vigueur » : la version d'entrée si elle existe encore, sinon la plus
-        // fraîche COMPLETED parmi les préexistantes.
+        // Restaure « socle en vigueur » (SQL brut, voir l'en-tête) : la version d'entrée si elle
+        // existe encore, sinon la plus fraîche COMPLETED parmi les préexistantes.
         $target = '';
         if ($this->isUuid($this->chosenAtEntry)
             && '1' === $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM schedule WHERE id=\'%s\'', $this->chosenAtEntry), admin: true)) {
@@ -270,6 +347,24 @@ final class LockContext extends BaseContext
         }
         if ('' !== $target) {
             $this->pointSocleTo($target);
+        }
+    }
+
+    private function assertSeanceALaMemeCaseDans(string $scheduleId): void
+    {
+        $count = $this->dbalScalar(
+            \sprintf(
+                'SELECT COUNT(*) AS behatval FROM schedule_slot_template WHERE schedule_id=\'%s\' AND team_id=\'%s\' AND venue_id=\'%s\' AND day_of_week=%d AND to_char(start_time, \'HH24:MI\')=\'%s\'',
+                $scheduleId,
+                $this->lockTeamId,
+                $this->lockVenueId,
+                $this->lockDay,
+                $this->lockStartTime,
+            ),
+            admin: true,
+        );
+        if ((int) $count < 1) {
+            throw new RuntimeException('la séance verrouillée en dur aurait dû rester à la même case après régénération');
         }
     }
 
