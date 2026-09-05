@@ -1,10 +1,11 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-05 (P4-173, `documentation-update`). §2 (planning lifecycle) recalé :
-`Integration/Api/SchedulePlanStalenessServedTest` (5 cas), scénario Behat étendu de
-`le-planning-se-dit-a-regenerer.feature` (« Le cockpit le sait »), paires de contraste
-`text-foreground on bg-warning/10` (AA) et `text-warning icon on bg-warning/10` (1.4.11) dans
-`tests/e2e/a11y-contrast.spec.ts`. Un stamp REMPLACE, l'historique vit dans git :
+Last verified @ 2026-09-05 (P4-177, `documentation-update`). §2 (accessibilité & rendu) recalé :
+`StatusPill` gagne la variante `accent` — paires de contraste `text-foreground on bg-accent/10`
+(AA) et `text-accent icon on bg-accent/10` (1.4.11) ajoutées dans `tests/e2e/a11y-contrast.spec.ts`
+(2 thèmes), aux côtés des paires `warning` posées par P4-173 (`text-foreground on bg-warning/10`,
+`text-warning icon on bg-warning/10`). Vitest `badge.test.tsx` (nouveau) garde le contrat des
+variantes/passthrough côté composant. Un stamp REMPLACE, l'historique vit dans git :
 `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
@@ -47,7 +48,7 @@ Recalculer les tailles : `find backend/tests -name '*Test.php' | awk -F/ '{print
 | Périmètre engagé | `EngagedTeamGuardTest` ; `matches.spec.ts` (matchs verrouillés tant que le plan principal n'est pas validé) ; feature Behat `le-perimetre-engage-est-protege.feature` (équipe engagée ni supprimable ni changeable de niveau, une équipe qui ne joue pas reste libre) | `blocking-tests`, `e2e`, `functional-tests` |
 | Contrat backend ⇄ engine | `ContractSchemaTest`, `ValidateAssignmentsContractSchemaTest`, `PayloadVersionMatchesContractVersionTest`, les `*PayloadParityTest` — **aucune feature Behat dédiée** : la forme d'un payload/schéma n'est pas une promesse qu'un gestionnaire relit, le PHPUnit cross-stack reste la preuve directe | `blocking-tests` |
 | Auth & memberships | `ClubUserAccessTests`, `MemberRoleTest`, `ManagementRoleTest`, `SuperAdminAccessTest`, `ApiRateLimitTest`, `PasswordResetEnumerationTest`, `RegisterTurnstileTest`, `MercureHardeningTest` ; `auth.spec.ts` ; feature Behat `voeux-des-coachs.feature` (seul chemin d'écriture non authentifié : token public → vœu persisté) ; feature Behat `l-export-du-planning.feature` (l'export du planning est refusé sans session) | `blocking-tests`, `e2e`, `functional-tests` |
-| Accessibilité & rendu | `a11y-contrast`, `system-scene`, `modal-reachability`, `veil-double-click`, `width-calibration`, `security-headers` (A17 contre le build nginx, `E2E_A17_REQUIRED=1`) | `e2e` |
+| Accessibilité & rendu | `a11y-contrast` (2 thèmes — paires `warning` P4-173 et `accent` P4-177 verrouillées : texte `text-foreground` sur fond teinté ≥ AA, icône de tonalité ≥ 1.4.11, `StatusPill`), `system-scene`, `modal-reachability`, `veil-double-click`, `width-calibration`, `security-headers` (A17 contre le build nginx, `E2E_A17_REQUIRED=1`) | `e2e` |
 
 ## 3. Ce qui gate `main`
 

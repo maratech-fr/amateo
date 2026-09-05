@@ -338,14 +338,20 @@ product rules — reuse them instead of rolling your own:
 - **`team-select`** — every team picker in the app (constraints, coaches, matches, FBI import)
   goes through it: optgroups by rank, same order as the Teams step. Reranking a team updates
   the order **everywhere**.
-- **`badge`** (`StatusPill`) — the shared **pastille** (icon + text, border + tinted fill), variants
-  `warning`/`neutral`. `warning`'s text is `text-foreground` (not `text-warning` — measured at
-  4.30:1 on `bg-warning/10`, below AA), its icon stays `text-warning` (graphic element, 1.4.11 ≥
-  3:1) — pairs locked in `tests/e2e/a11y-contrast.spec.ts`. Wraps, never truncates (`whitespace-
-  normal`); its first consumer is `features/cockpit/StalenessPill.tsx` (P4-173). ⚠ Five local
-  pastilles predate it and are **not** migrated yet (`CreditBadge`, `CompromiseList`,
-  `MatchesPage`'s `offModelBadge`, `TravelMatrixModal`/`OpponentTravelCard`'s `SourceBadge`) —
-  tracked debt, `specs/evolution/roadmap.md` P4-177. A new pastille goes through `badge.tsx`.
+- **`badge`** (`StatusPill`) — the **only** house for a coloured pastille (icon + text, border +
+  tinted fill), variants `warning`/`accent`/`neutral` (P4-173, `accent` added P4-177). Both tinted
+  variants keep their text `text-foreground`, never `text-warning`/`text-accent` (measured: both
+  drop below AA — 4.5:1 — on their own `/10` tint), the icon alone carries the tone colour
+  (graphic element, WCAG 1.4.11 ≥ 3:1) — pairs locked in `tests/e2e/a11y-contrast.spec.ts` for both
+  themes. Wraps, never truncates (`whitespace-normal`); passes through `title`/`aria-label` for a
+  caller whose announcement is richer than the visible text (e.g. `CreditBadge`). First consumer:
+  `features/cockpit/StalenessPill.tsx` (P4-173). All five pastilles that predated it have migrated
+  (P4-177): `CreditBadge`, `CompromiseList`, `MatchesPage`'s `offModelBadge`/`sameWeekendBadge`,
+  and `SourceBadge` — now a single shared component (`features/matches/SourceBadge.tsx`) consumed
+  by both `TravelMatrixModal` and `OpponentTravelCard`, which each used to carry their own copy.
+  ⚠ Some local pastilles with the **same sub-AA `text-accent`-on-tint defect** still remain outside
+  `StatusPill` — tracked debt, `specs/evolution/roadmap.md` P4-178. A new pastille goes through
+  `badge.tsx`.
 - **`step-rail`** — the left step rail (`<nav className="shrink-0 md:w-44">`), extracted from the
   wizard (RMM-2). Presentation **pure**: `done`/`locked` arrive **calculated** in the `steps`
   array (it knows nothing of validation gates, guided mode, business locks, or the nav veil);
@@ -413,9 +419,13 @@ believe empty.
     See `docs/frontend-wizard.md`.
 11. **Accent as TEXT needs a plain background.** `text-accent` clears 4.5:1 (WCAG 1.4.3) only
     on `bg-background`/`bg-card`: over `bg-accent/10` it drops to 4.18:1 in light mode, over
-    `bg-muted` to 4.37:1 — even `accent/05` fails. Tint the surface **or** colour the text,
-    never both. The token pairs are locked by `tests/e2e/a11y-contrast.spec.ts`; add any new
-    text token to its list rather than eyeballing the result.
+    `bg-muted` to 4.37:1 — even `accent/05` fails. Same story for `text-warning` on `bg-warning/10`
+    (4.30:1). Tint the surface **or** colour the text, never both. **The recipe: `StatusPill`**
+    (`shared/components/ui/badge.tsx`) — text stays `text-foreground`, the tone colour lives in the
+    border, the tint, and the icon (a graphic element, WCAG 1.4.11 ≥ 3:1 only). A new pastille on a
+    tinted surface goes through it rather than re-deriving the trade-off. The token pairs are
+    locked by `tests/e2e/a11y-contrast.spec.ts`; add any new text token to its list rather than
+    eyeballing the result.
 
 ---
 

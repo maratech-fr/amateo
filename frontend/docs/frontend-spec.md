@@ -4,21 +4,13 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-09-04 (D3 v1 PR-2, `documentation-update`). Table §« API par route » : ligne
-`/` (cockpit) gagne `PUT /api/calendar_entries/{id}` — re-vérifié contre
-`frontend/src/features/cockpit/api.ts` (`updateCalendarEntry`) et `DayDialog.tsx` (bouton
-« Modifier les dates », mode `redate`). Reste du fichier non re-parcouru cette passe — dernière
-vérification de fond : 2026-09-03, P4-168 (Mercure §5).
-§6.7 bis non re-sondée cette passe (dernière passe complète 2026-09-02, confronté au code :
-`WeekGrid.tsx` (prop `deviatedSlots`, pastille `ArrowLeftRight` sur `bg-diff`, anneau `ring-diff`
-cédant à sélection/lentille/conflit, chip par membre sur carte fusionnée), `index.css` (tokens
-`--diff`/`--diff-foreground` + `--color-diff`), `tests/e2e/a11y-contrast.spec.ts` (paire non-texte
-≥ 3:1), `SocleDeviationPanel.tsx` (ligne « déplacée » = `<button onSelectSlot>`), `PlanningPage.tsx`
-(`socleDeviatedSlots`, `capacityArmed`/`useConstraintValidation`, phrase du compteur),
-`lib/socleDeviationCells.ts`/`lib/capacityShortfall.ts` (nouveaux), `planning/api.ts`
-(`SocleDeviationMoved.to.slotId`), `wizard/api.ts` (`ValidateResult.capacity`)). Reste du fichier
-(routes, primitives, stack, §6.9) non re-vérifié cette passe — un stamp REMPLACE, l'historique vit
-dans git : `git log -p --follow frontend/docs/frontend-spec.md`.
+Last verified @ 2026-09-05 (rotation `documentation-update`, PR P4-177 — fichier hors sujet de la
+PR, contrôle de fraîcheur). Table §2 « Routes / Objectives » recalée contre
+`frontend/src/app/routes.tsx` : trois routes réellement livrées en manquaient —
+`/confirm-email/:token` (P4-74, `ConfirmEmailChangePage`), `/club-approval/:token` (P3-4 PR C,
+`ClubApprovalPage`) et `/nouveautes` (P5-12, `ReleaseNotesPage`) — ajoutées ci-dessous. Reste du
+fichier (API par route, primitives, stack, §6.7 bis, §6.9) non re-vérifié cette passe — un stamp
+REMPLACE, l'historique vit dans git : `git log -p --follow frontend/docs/frontend-spec.md`.
 
 ---
 
@@ -80,6 +72,8 @@ découpage sûr et **aucun n'est optionnel** quand on ajoute une route :
 | `/login` | Connexion gestionnaire (email + password) — **seule page eager** | Public | `AuthLayout` |
 | `/register` | Inscription (A3) : soumet le formulaire → écran « vérifie tes emails » (aucune session ; le club et le JWT sont créés à la vérification) | Public | `AuthLayout` |
 | `/verify-email/:token` | Consomme le lien email → crée/rejoint le club, connecte, redirige (`/waiting` si pending, sinon `/`) | Public | `AuthLayout` |
+| `/confirm-email/:token` | Consomme le lien de confirmation d'un **changement d'e-mail** (P4-74, `ConfirmEmailChangePage`) — miroir de `/verify-email/:token` : le token EST l'action, jouée au montage, le serveur repose un cookie frais pour la nouvelle identité | Public | `AuthLayout` |
+| `/club-approval/:token` | Page publique d'**approbation de création de club** (P3-4 PR C, `ClubApprovalPage`) — le token du mail officiel FFBB est l'identité, pas de compte ; Approuver crée l'espace, Refuser clôt ; 404 = lien invalide/déjà traité, 410 = expiré | Public | `AuthLayout` |
 | `/forgot-password` | Demande de réinitialisation de mot de passe (`POST /api/password/forgot`) | Public | `AuthLayout` |
 | `/reset-password/:token` | Saisie du nouveau mot de passe (`POST /api/password/reset`) | Public | `AuthLayout` |
 | `/waiting` | Attente d'approbation (`WaitingApprovalPage`) — poll `/api/me` toutes les 5 s, redirige vers `/` dès `membershipStatus === "active"` | Token requis | `AuthLayout` |
@@ -89,6 +83,7 @@ découpage sûr et **aucun n'est optionnel** quand on ajoute une route :
 | `/wizard` | Assistant de saisie 6 étapes : Équipes → Gymnases → Coachs → Contraintes → Récapitulatif → Génération (`AuthGuard` y redirige tant que `me.seasonPlan.hasFinishedVersion === false`, c.-à-d. tant que le club n'a jamais généré) | Required | `AppLayout` |
 | `/club` | Identité du club : logo (upload + recadrage `LogoCropper` + suppression), couleur d'accent (+ palette), **section « Informations du club »** (champs FFBB — voir ci-dessous, admin) **et section « Demandes »** (approbation des adhésions `pending`, admin — l'ancienne route `/pending-members` a été repliée ici) | Required | `AppLayout` |
 | `/profile` | Profil utilisateur | Required | `AppLayout` |
+| `/nouveautes` | Journal des notes de version publiées, les plus récentes d'abord (P5-12, `ReleaseNotesPage`) — corps en texte brut, aucun rendu markdown/html | Required | `AppLayout` |
 | `/confidentialite` | Politique de confidentialité (`PrivacyPage`) — atteignable depuis le menu compte | Public | aucun (autonome) |
 | **`/wizard`** | **Adressable depuis P2-25 (2026-08-12)** — `?step=<id>` + une cible : `&slot=<id>` (étape Gymnases **positionnée sur ce créneau** : gymnase sélectionné + éditeur ouvert), `&edit=<id>` (éditeur de contrainte **pré-rempli**), `&tab=reserve`, `&from=<origine>` (retour nommé). ⚑ **Arriver sur l'étape ne suffit pas — il faut arriver SUR l'objet**, sinon on a seulement raccourci le scroll. Paramètre inconnu (id supprimé, étape inexistante) → **atterrissage propre**, jamais d'écran cassé ni d'état vide silencieux. **`&edit=<id>` amène aussi la LIGNE ciblée à l'écran (P4-95, 2026-08-14)** : `data-constraint-id` + `scrollIntoView` centré, planifié APRÈS le scroll-formulaire de l'éditeur pré-rempli (celui-ci garde la priorité, la ligne finit centrée) ; le crayon manuel (édition directe depuis la liste) ne scrolle QUE le formulaire, comportement inchangé. ⚠ **Mode guidé** : un lien vers une étape verrouillée s'affiche **DÉSACTIVÉ avec sa raison** (`WizardStepLink` + `stepLockReason`) — jamais un saut qui casse l'invariant, jamais une disparition sans explication. **Retour nommé** (« ← Retour à… ») : affiché **seulement** si `from=` est présent, il **nomme** l'origine, et il est **éphémère** — effacé au changement d'étape ou dès qu'on a agi. Jamais persisté. | **Authentifié** | — |
 | **`/doleances/:token`** | **Page publique SANS login** (#10, lot C2 ; **stepper P2-24, 2026-08-11**) : parcours en ÉTAPES — intro (le pourquoi, + bandeau « déjà répondu le… » si `respondedAt`) → une étape PAR équipe (ses semaines, pré-remplies ; « Rien à signaler » avance sans rien modifier) → récap (« aucune modification » par équipe intacte, « Modifier » qui saute à l'équipe puis REVIENT au récap) qui porte la validation : « Valider et envoyer », ou « Confirmer sans modification » (envoie `submissions: []` — le coach passe ✓ répondu au lieu de rester silencieux). Envoi UNIQUE à la fin, seules les sections modifiées partent (payload inchangé, gardé par test NR) ; filet `sessionStorage` par token (restauré au montage, purgé au succès — jamais côté serveur). Route **plate, hors `AuthGuard`**. Contrat : `types-de-planning.md` §E5 | **Public** | aucun (autonome) |
