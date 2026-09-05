@@ -6,6 +6,7 @@ use App\Tests\Behat\ClosureSegmentationContext;
 use App\Tests\Behat\CoachWishesContext;
 use App\Tests\Behat\ConstraintHonoredContext;
 use App\Tests\Behat\EngagedTeamContext;
+use App\Tests\Behat\HolidayWeekContext;
 use App\Tests\Behat\LockContext;
 use App\Tests\Behat\MatchPlacementContext;
 use App\Tests\Behat\OnboardingContext;
@@ -89,5 +90,10 @@ return (new Config)
                 new Suite('decoupage')
                     ->withPaths('%paths.base%/features/une-indisponibilite-se-decoupe-en-debut-milieu-fin.feature')
                     ->withContexts(ClosureSegmentationContext::class),
+            )
+            ->withSuite(
+                new Suite('vacances')
+                    ->withPaths('%paths.base%/features/une-semaine-de-vacances-couvre-lundi-vendredi.feature')
+                    ->withContexts(HolidayWeekContext::class),
             ),
     );
