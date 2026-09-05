@@ -11,6 +11,7 @@ use App\Tests\Behat\LockContext;
 use App\Tests\Behat\MatchPlacementContext;
 use App\Tests\Behat\OnboardingContext;
 use App\Tests\Behat\PeriodOverlayContext;
+use App\Tests\Behat\RepriseWeekContext;
 use App\Tests\Behat\SeasonGenerationContext;
 use App\Tests\Behat\SoclePlansContext;
 use App\Tests\Behat\TenantIsolationContext;
@@ -95,5 +96,10 @@ return (new Config)
                 new Suite('vacances')
                     ->withPaths('%paths.base%/features/une-semaine-de-vacances-couvre-lundi-vendredi.feature')
                     ->withContexts(HolidayWeekContext::class),
+            )
+            ->withSuite(
+                new Suite('reprise')
+                    ->withPaths('%paths.base%/features/la-semaine-de-reprise.feature')
+                    ->withContexts(RepriseWeekContext::class),
             ),
     );
