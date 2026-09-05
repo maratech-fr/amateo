@@ -1,11 +1,11 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-09-05 (découpage début·milieu·fin, `documentation-update`). §2 recalé : la
-liberté scinder/fusionner ne tient plus pour une FERMETURE (VACANCES inchangées) — re-confronté
-`App\Service\WeekSegmentationRule`, `App\Service\ClosureSegmentation`,
-`CalendarEntryStateProcessor::assertValidWeekChild`/`processPut`,
-`SchedulePlanStateProcessor::processPost`, `cockpit/lib/weekSegmentation.ts`. Reste du fichier
-(E1-E6, D1-D10bis, historique des décisions) non re-confronté ligne à ligne cette passe.
+Last verified @ 2026-09-05 (D3 v2, `documentation-update`). §2 recalé : re-dater une mère
+découpée en début/milieu/fin passe désormais par un aperçu (`POST /redate-preview`) puis une
+confirmation (`PUT` + `previewToken`) — re-confronté `RedatePreviewController`,
+`SplitMotherRedatePlanner`, `CalendarEntryRedatability::redateNeedsPreview`,
+`CalendarEntryResource.redateNeedsPreview`. Reste du fichier (E1-E6, D1-D10bis, historique des
+décisions) non re-confronté ligne à ligne cette passe.
 
 > **Rôle de ce document** : la trace durable du modèle métier des plannings, validé avec le
 > fondateur le 2026-07-12. C'est LA référence à consulter avant tout travail sur la
@@ -142,8 +142,7 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
   — sur la géométrie PLEINE de la fenêtre visée, indépendante de l'horloge : re-dater un plan-bloc
   vers une semaine entamée contournerait sinon la règle du découpage par la porte D3. Une mère
   déjà découpée en semaines-enfants n'est, elle, pas re-datable par ce mécanisme (même périmètre
-  qu'avant) — recalculer les segments d'une mère à enfants au re-datage est un second cadrage,
-  **D3 v2** (`specs/evolution/roadmap.md`). La version pointée (le planning en vigueur) **survit** — elle est
+  qu'avant) — elle a son propre geste, **D3 v2** ci-dessous. La version pointée (le planning en vigueur) **survit** — elle est
   seulement marquée à régénérer (`ResourceChangeStaleScheduleListener`, écoutait déjà ce cas).
   **Tout le reste de l'identité reste figé** — `kind`, `periodType`, `schoolHolidayId` — et TOUS les
   autres cas gardent leur fenêtre gelée : une racine `holiday` (liée au référentiel des vacances
@@ -160,7 +159,30 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
   + toggle = 0 séance, E4 via `TeamPeriodOverride`), **défaut = tout le club actif** (E3,
   structure verrouillée), **nom auto** = le titre de l'entrée (E6, recalé 2026-08-23). Reste la
   notification multi-semaines (cadrage à venir). Voir « Écarts » ci-dessous.
-- **Ce que l'API sert pour le geste** : `CalendarEntryResource.redatable` (bool) — vrai pour une racine de fermeture sans mère, avec plan, sans semaines-enfants (`App\Service\CalendarEntryRedatability::isRedatable()`, même prédicat que le processor, `CalendarEntryStateProvider`) ; le front n'a rien à recalculer. Au re-datage : 422 si la fenêtre sort de la saison (`CalendarEntryStateProcessor::assertWindowWithinSeason`) ou si la fin précède le début (`CalendarEntryInput::validateShape`, POST comme PUT).
+- **Re-dater une indisponibilité DÉCOUPÉE, sous aperçu puis confirmation (D3 v2, décision fondateur
+  2026-09-05)** : une mère `closure` déjà segmentée en début/milieu/fin (donc sans plan-bloc à
+  elle) n'est pas hors d'atteinte pour autant — le geste passe par DEUX temps, jamais un `PUT`
+  direct. **Aperçu** : `POST /api/calendar_entries/{id}/redate-preview` (lecture pure, aucun
+  persist) rend `{effects, token}` — `SplitMotherRedatePlanner` (foyer unique, partagé avec
+  l'apply) APPARIE chaque ancien enfant à un nouveau segment de la fenêtre visée, le RÔLE
+  primant (start↔start, end↔end sans condition ; les milieux par recouvrement de lundis
+  décroissant), et rend un verdict par ligne : `keep` (fenêtre identique), `shift` (l'enfant et
+  son plan glissent, versions conservées, marqués à régénérer), `absorb` (l'ancien enfant
+  rejoint le planning d'un nouveau segment, son propre plan est supprimé), `vanish` (plus aucun
+  segment ne le couvre, plan supprimé), `birth` (un nouveau segment sans enfant apparié — enfant
+  + plan neufs VIDES, jamais une copie). **« Les vacances ont la main »** : si la nouvelle fenêtre
+  recoupe une entrée HOLIDAY à plan, aucun 409 — la portion vacances n'offre aucun segment
+  (`ClosureSegmentation` la troue déjà) et l'aperçu ajoute une ligne `holiday_takes_over` par plan
+  de vacances concerné, marqué à régénérer (`PeriodWindowUniquenessGuard::governingWindows`
+  gagne `closuresOnly` pour cet effet). **Confirmation** : le `PUT` applique EXACTEMENT le plan
+  sous le `previewToken` reçu — 422 sans jeton, 409 si un recalcul sous verrou diverge (la
+  période a bougé depuis l'aperçu : enfant ajouté/supprimé, version régénérée, plan validé — le
+  front redemande l'aperçu, la confirmation reste MANUELLE). Geste écran : `DayDialog.tsx`
+  (`RedateWithPreviewForm`), bouton unique « Voir les effets » → « Confirmer », liste d'effets
+  servie telle quelle (aucune règle re-dérivée côté front), `WarningPanel` dès qu'un effet
+  supprime un planning. Détail complet : [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md)
+  (amendement D3 v2).
+- **Ce que l'API sert pour le geste** : `CalendarEntryResource.redatable` (bool) — vrai pour une racine de fermeture sans mère, avec plan, sans semaines-enfants (`App\Service\CalendarEntryRedatability::isRedatable()`, même prédicat que le processor, `CalendarEntryStateProvider`) ; `redateNeedsPreview` (bool, exclusif de `redatable`) — vrai pour une racine de fermeture sans mère, ≥ 1 semaine-enfant, sans plan-bloc (`App\Service\CalendarEntryRedatability::redateNeedsPreview()`) ; le front n'a rien à recalculer dans les deux cas. Au re-datage : 422 si la fenêtre sort de la saison (`CalendarEntryStateProcessor::assertWindowWithinSeason`) ou si la fin précède le début (`CalendarEntryInput::validateShape`, POST comme PUT).
 
 ## 3. Planning de reprise (vacances)
 
