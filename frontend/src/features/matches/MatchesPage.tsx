@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight, Info, MousePointerClick, Plus, Upload, Wand2
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { FeedbackButton } from "@/features/feedback/FeedbackButton";
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
@@ -337,10 +338,9 @@ export function MatchesPage() {
   // bloquant » (verbatim fondateur).
   const offModelBadge =
     offModel > 0 ? (
-      <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
-        <Info className="size-3.5" />
+      <StatusPill className="w-fit" icon={<Info className="size-3.5" aria-hidden="true" />}>
         {offModel} match{offModel > 1 ? "s" : ""} hors modèle
-      </span>
+      </StatusPill>
     ) : null;
 
   // RMM-5 PR-4 — le signal « même week-end » : deux équipes d'un créneau partagé
