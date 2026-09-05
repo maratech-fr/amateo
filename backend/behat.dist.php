@@ -8,6 +8,7 @@ use App\Tests\Behat\OnboardingContext;
 use App\Tests\Behat\PeriodOverlayContext;
 use App\Tests\Behat\SeasonGenerationContext;
 use App\Tests\Behat\SoclePlansContext;
+use App\Tests\Behat\TenantIsolationContext;
 use App\Tests\Behat\TrainingBlockContext;
 use Behat\Config\Config;
 use Behat\Config\Profile;
@@ -59,5 +60,10 @@ return (new Config)
                 new Suite('bloc')
                     ->withPaths('%paths.base%/features/l-unite-de-placement-est-le-bloc.feature')
                     ->withContexts(TrainingBlockContext::class),
+            )
+            ->withSuite(
+                new Suite('isolation')
+                    ->withPaths('%paths.base%/features/un-club-ne-voit-jamais-un-autre-club.feature')
+                    ->withContexts(TenantIsolationContext::class),
             ),
     );
