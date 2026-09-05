@@ -1,11 +1,12 @@
 # ClubScheduler — PostgreSQL Row-Level Security (RLS)
 
-Last verified @ 2026-09-04 (rotation `documentation-update`, PR P4-172 — fichier hors sujet de
+Last verified @ 2026-09-06 (rotation `documentation-update`, PR P4-178 — fichier hors sujet de
 la PR, contrôle de fraîcheur). Re-confronté au code : `TenantFilterListener` toujours
-`KernelEvents::REQUEST => ['onKernelRequest', 7]` (priorité 7, APRÈS le firewall) ✓ ·
-`docker/postgres/init/02-users.sh` crée toujours `amateo_app` `NOSUPERUSER NOCREATEDB
-NOCREATEROLE` ✓ · `Version20260731090000.php` existe toujours ✓ · `RlsIsolationTest.php` garde
-toujours la policy `admin_all` (assertions `:195-198`) ✓.
+`KernelEvents::REQUEST => ['onKernelRequest', 7]` (priorité 7, APRÈS le firewall,
+`TenantFilterListener.php:55`) ✓ · `docker/postgres/init/02-users.sh` crée toujours `amateo_app`
+`NOSUPERUSER NOCREATEDB NOCREATEROLE` ✓ · `Version20260731090000.php` existe toujours ✓ ·
+`RlsIsolationTest.php` garde toujours la policy `admin_all` TO `amateo_owner` (assertions
+`:195-198`) ✓.
 
 > ✅ **STATUS: ACTIVE** since migration `Version20260703120000` (SEC-03 fixed). The migration — not the initdb scripts — is the source of truth for policies and grants: **every table carrying a `club_id` column** is under `FORCE ROW LEVEL SECURITY` with a `tenant_isolation` policy `TO amateo_app` (no hard count here — new tenant tables inherit the pattern via the migration helper; the count would rot). `club_user` and `coach_wish_token` carry the hybrid SELECT bootstrap policy (open only while NO tenant GUC is set — scoped to the tenant otherwise, SEC-12 residual closed by `Version20260804120000`; deliberate cross-tenant reads go through `TenantConnectionContext::runWithoutTenant()`). Runtime connects as `amateo_app`; the GUC is set via `TenantConnectionContext` (`set_config`, session-scoped). **This file = operator how-to (env, roles, troubleshooting). The effective architecture — who sets the GUC, the exception tables, the superadmin door — is `docs/security/rls.md`, and it is CANONICAL.** ⚑ La consigne précédente disait « garder les deux en phase » : c'est précisément ce qui a produit la dérive du prédicat corrigée le 2026-08-19. Deux fichiers qu'on maintient en phase à la main divergent — le seul garde-fou est de ne PAS redire ici ce que le canon dit là-bas : on pointe. The `01/02/03-*.sql` initdb scripts remain for fresh volumes only.
 

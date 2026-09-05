@@ -349,9 +349,16 @@ product rules — reuse them instead of rolling your own:
   (P4-177): `CreditBadge`, `CompromiseList`, `MatchesPage`'s `offModelBadge`/`sameWeekendBadge`,
   and `SourceBadge` — now a single shared component (`features/matches/SourceBadge.tsx`) consumed
   by both `TravelMatrixModal` and `OpponentTravelCard`, which each used to carry their own copy.
-  ⚠ Some local pastilles with the **same sub-AA `text-accent`-on-tint defect** still remain outside
-  `StatusPill` — tracked debt, `specs/evolution/roadmap.md` P4-178. A new pastille goes through
-  `badge.tsx`.
+  Seven more migrated (P4-178): `CoachesStep` ("Salarié" + preferred cap), `VenueGeocodeField`
+  ("Recommandé"), `ImplicitRulesPanel`'s `TravelRuleNotice` ("Actif"), `CampaignDialog` ("✓
+  répondu le …", the ✓ became a `Check` icon; its two filter buttons keep their accent
+  border/tint but their active-state text moved `text-accent` → `text-foreground`),
+  `RadarCoachWishAction` (the responded-count pill), `ConflictRadar` ("Nouveau" chip, size
+  preserved via `className`). ⚠ Three sites remain outside `StatusPill`, for a **different**
+  reason (not the sub-AA defect): `features/matches/MatchSlotRotationsEditor.tsx` and
+  `features/matches/EntryDeadlinesEditor.tsx` use `text-accent-foreground` on a plain accent
+  fill (not `text-accent` on a tint), and `features/planning/WeekGrid.tsx`'s emphasised-cell
+  border is not a pastille. A new pastille on a tinted surface goes through `badge.tsx`.
 - **`step-rail`** — the left step rail (`<nav className="shrink-0 md:w-44">`), extracted from the
   wizard (RMM-2). Presentation **pure**: `done`/`locked` arrive **calculated** in the `steps`
   array (it knows nothing of validation gates, guided mode, business locks, or the nav veil);

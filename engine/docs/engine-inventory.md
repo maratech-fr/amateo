@@ -1,12 +1,12 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-09-04 (rotation `documentation-update`, PR D3 v1 backend — fichier hors sujet
-de la PR, sondage des stamps les plus anciens du dépôt). Re-confronté au code : `CONTRACT_VERSION`
-toujours **2.20** (`engine/CONTRACT_VERSION`) ✓ ; `app/solver/constraints/` porte en réalité
-**8 fichiers**, pas 7 — `travel.py` (435 l., trajet/battement/départage, P2-53 RMM-8) manquait à la
-liste ci-dessous, corrigé cette passe ; `app/solver/objective/` et `app/solver/result_builder/`
+Last verified @ 2026-09-06 (rotation `documentation-update`, PR P4-178 frontend — fichier hors
+sujet de la PR, sondage des stamps les plus anciens du dépôt). Re-confronté au code :
+`CONTRACT_VERSION` toujours **2.20** (`engine/CONTRACT_VERSION`) ✓ ; `app/solver/constraints/`
+porte toujours ses **8 fichiers** (`__init__`, `common`, `diagnostics`, `parsing`, `structural`,
+`targeting`, `travel`, `wellness`) ✓ ; `app/solver/objective/` et `app/solver/result_builder/`
 gardent leur découpe déclarée (`weights`/`normalise`/`terms` et `helpers`/`slots`/`diagnostics`) ✓ ;
-port 8000 confirmé (`docker-compose.yml:284-286`) ✓. Reste de l'inventaire non re-sondé ligne à
+port 8000 confirmé (`docker-compose.yml:284,286`) ✓. Reste de l'inventaire non re-sondé ligne à
 ligne cette passe.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
