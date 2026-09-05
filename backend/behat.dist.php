@@ -14,6 +14,7 @@ use App\Tests\Behat\PeriodOverlayContext;
 use App\Tests\Behat\RepriseWeekContext;
 use App\Tests\Behat\SeasonGenerationContext;
 use App\Tests\Behat\SoclePlansContext;
+use App\Tests\Behat\StaleScheduleContext;
 use App\Tests\Behat\TenantIsolationContext;
 use App\Tests\Behat\TrainingBlockContext;
 use Behat\Config\Config;
@@ -101,5 +102,10 @@ return (new Config)
                 new Suite('reprise')
                     ->withPaths('%paths.base%/features/la-semaine-de-reprise.feature')
                     ->withContexts(RepriseWeekContext::class),
+            )
+            ->withSuite(
+                new Suite('regenerer')
+                    ->withPaths('%paths.base%/features/le-planning-se-dit-a-regenerer.feature')
+                    ->withContexts(StaleScheduleContext::class),
             ),
     );
