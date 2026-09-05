@@ -102,6 +102,10 @@ final class CalendarEntryApiTest extends WebTestCase
         $created = json_decode((string) $this->client->getResponse()->getContent(), true);
         self::assertArrayHasKey('redatable', $created, 'le champ redatable est servi');
         self::assertFalse($created['redatable'], 'sans plan, une fermeture n’est pas re-datable');
+        // D3 v2 (P4-174) — le champ jumeau `redateNeedsPreview` est servi lui aussi ; faux ici
+        // (racine simple, ni plan « d'un bloc » ni semaines-enfants).
+        self::assertArrayHasKey('redateNeedsPreview', $created, 'le champ redateNeedsPreview est servi');
+        self::assertFalse($created['redateNeedsPreview'], 'une racine simple ne passe pas par l’aperçu de re-datage');
 
         // Et présent, cohérent, en collection (GET).
         $this->client->request('GET', '/api/calendar_entries', [], [], $this->authHeaders($user, $club));
@@ -111,6 +115,8 @@ final class CalendarEntryApiTest extends WebTestCase
         foreach ($data['member'] as $entry) {
             self::assertArrayHasKey('redatable', $entry, 'redatable est servi sur chaque entrée de la collection');
             self::assertFalse($entry['redatable'], 'aucune entrée n’a de plan ici → toutes non re-datables');
+            self::assertArrayHasKey('redateNeedsPreview', $entry, 'redateNeedsPreview est servi sur chaque entrée');
+            self::assertFalse($entry['redateNeedsPreview'], 'aucune mère découpée ici → aucun aperçu requis');
         }
     }
 

@@ -426,6 +426,13 @@ jobs:
       - name: PlannedWindowsParityTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/PlannedWindowsParityTest.php --group phase1'
 
+      # D3 v2 (P4-174, axe planning lifecycle) : re-dater une indisponibilité DÉCOUPÉE = aperçu
+      # servi + confirmation. On apparie les anciens enfants aux nouveaux segments (rôle prime),
+      # verdicts keep/shift/absorb/vanish/birth + « les vacances ont la main » ; jeton d'aperçu
+      # confronté sous verrous (périmé → 409), PUT sans jeton → 422, aperçu == effets appliqués.
+      - name: SplitMotherRedateTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SplitMotherRedateTest.php --group phase1'
+
       # RMM-3 (axe constraint semantics — le radar de conflits) : le gardien à l'ouverture stampe une
       # référence de VISITE et sert le delta « depuis ta dernière visite ». L'empreinte d'un conflit est
       # son IDENTITÉ stable — une nature changée (autre paire, MATCH_MATCH→MATCH_TRAINING) est signalée,

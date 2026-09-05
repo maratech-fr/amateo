@@ -25,3 +25,9 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
     Et une fermeture à venir avec une version overlay aboutie
     Quand je prolonge la fermeture de deux semaines
     Alors la période porte les nouvelles dates, son plan aussi, la version existe toujours et le planning est signalé à régénérer
+
+  Scénario: Je re-date l'incident découpé : l'aperçu m'annonce ce qui change, je confirme
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une fermeture à venir découpée en trois semaines-segments, chacune avec son plan
+    Quand je demande l'aperçu du re-datage qui la raccourcit d'une semaine, puis je confirme
+    Alors l'aperçu annonçait plusieurs changements, la mère porte les nouvelles dates et ses semaines sont ré-appariées
