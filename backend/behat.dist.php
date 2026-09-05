@@ -8,6 +8,7 @@ use App\Tests\Behat\OnboardingContext;
 use App\Tests\Behat\PeriodOverlayContext;
 use App\Tests\Behat\SeasonGenerationContext;
 use App\Tests\Behat\SoclePlansContext;
+use App\Tests\Behat\TrainingBlockContext;
 use Behat\Config\Config;
 use Behat\Config\Profile;
 use Behat\Config\Suite;
@@ -53,5 +54,10 @@ return (new Config)
                 new Suite('socle')
                     ->withPaths('%paths.base%/features/le-socle-commande-les-plans.feature')
                     ->withContexts(SoclePlansContext::class),
+            )
+            ->withSuite(
+                new Suite('bloc')
+                    ->withPaths('%paths.base%/features/l-unite-de-placement-est-le-bloc.feature')
+                    ->withContexts(TrainingBlockContext::class),
             ),
     );
