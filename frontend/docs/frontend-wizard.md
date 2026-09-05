@@ -1,12 +1,12 @@
 # Wizard — saisie des données (tranche 3, LIVRÉ)
 
-Last verified @ 2026-09-04 (P2-62 — retrait d'un entraînement mutualisé posé). Onglet « Réserver »
-(`SlotReservationModal`) et Récapitulatif (`RecapStep`) recalés : retirer une réservation d'une
-case bloc-complète retire tout le groupe, jamais un seul membre — confronté à
-`frontend/src/features/wizard/steps/SlotReservationModal.tsx`, `RecapStep.tsx`,
-`frontend/src/features/wizard/api.ts` (`deleteReservation`, tolérance 404 MAISON UNIQUE) et
-`frontend/src/features/wizard/lib/groupReservation.ts` (`postedGroupOnSlot`). Reste du fichier non
-re-contrôlé ligne à ligne cette passe — un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-05 (rotation `documentation-update`, PR P4-177 — fichier hors sujet de la
+PR, contrôle de fraîcheur). Re-confronté au code : le flux réel reste 6 étapes dans l'ordre décrit
+(`frontend/src/features/wizard/lib/steps.ts:10-15` — Équipes/Gymnases/Coachs/Contraintes/
+Récapitulatif/Génération) ✓ ; le retrait d'un entraînement mutualisé au Récap (P2-62) tient toujours
+— `RecapStep.tsx` porte `MutualisationRemovalRow` (bouton « Retirer l'entraînement mutualisé … »)
+adossé à `lib/groupReservation.ts::postedGroupOnSlot` ✓. Reste du fichier non re-contrôlé ligne à
+ligne cette passe — un stamp REMPLACE, l'historique vit dans git.
 
 > ⚠️ **Réalité livrée — canonique.** Le draft "4 étapes" plus bas est **historique/superseded** : le wizard a été reconstruit dans `frontend/src/features/wizard` avec un flux plus granulaire, décidé avec le PO. Les sections 1+ ci-dessous ne décrivent plus l'implémentation.
 

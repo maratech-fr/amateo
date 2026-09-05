@@ -40,10 +40,11 @@ paths:
   `EmptyHint`/`EmptyBlock`/`EmptyState` (vide), `LoadErrorHint`+`readState` (échec de lecture avec
   retry), `ActionVeil` (voile de navigation/sauvegarde global — `app/ActionVeil.tsx`) ;
   **primitives** `shared/components/ui/*` (Button, Modal, Select, Input, Card, StepRail, Menu APG,
-  **StatusPill** — la pastille partagée, icône + texte, variantes warning/neutral, P4-173 —,
-  VenueSwatch…) ; ⚠ `SourceBadge` (AUTO/MANUEL) n'en fait PAS partie malgré le nom : deux
-  fonctions locales dupliquées (`TravelMatrixModal.tsx`, `OpponentTravelCard.tsx`), dette
-  `roadmap.md` P4-177 ; **couleurs/espacements** = tokens du thème (`text-warning`,
+  **StatusPill** — la pastille partagée, icône + texte, variantes warning/accent/neutral, P4-173
+  puis P4-177 —, VenueSwatch…) ; `SourceBadge` (AUTO/MANUEL) est désormais lui aussi une maison
+  unique — `features/matches/SourceBadge.tsx` (P4-177, adossée à `StatusPill`), consommée par
+  `TravelMatrixModal.tsx` et `OpponentTravelCard.tsx` (les deux copies locales ont disparu) ;
+  **couleurs/espacements** = tokens du thème (`text-warning`,
   `text-muted-foreground`, `bg-muted`, `border-border`…), **jamais un `#hex`** ni une classe sans
   jeton (`text-warning-foreground` était un no-op, P4-130). Recoder à la main un spinner nu, un
   encart d'erreur, une pastille inline **là où la primitive existe** = incohérence UX (« même
