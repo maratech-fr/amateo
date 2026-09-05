@@ -1,13 +1,11 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-05 (programme Behat, `documentation-update`). §5 réécrit contre les 16
-`.feature` de `backend/features/` et `backend/behat.dist.php` (16 suites) ; §2 complété pour que
-chaque axe `CLAUDE.md` §7.1 cite sa feature Behat (isolation tenant, sémantique des contraintes,
-cycle de vie des plans, périmètre engagé, auth & memberships — le contrat backend⇄engine reste
-sans feature dédiée, motif en ligne) ; §4 recalé sur l'exception P4-176 (verrou contredit par
-`forbiddenDays`, relocalisé plutôt que diagnostiqué — `engine/app/solver/constraints/diagnostics.py`,
-`engine/tests/semantic/test_hard_lock_announces_violations.py`). Un stamp REMPLACE, l'historique
-vit dans git : `git log -p --follow docs/testing/test-coverage-map.md`.
+Last verified @ 2026-09-05 (P4-176 SOLDÉ, `documentation-update`). §2/§5 recalés contre
+`un-verrou-est-souverain.feature` (3 scénarios désormais, dont la règle qui contredit un verrou) et
+`Integration/HardLockSurvivesPayloadTest` (bloquant, `ci.yml` + `blocking-tests.md`) ; §4 recalé —
+l'exception connue est CLOSE (rail réel prouvé conforme à `CLAUDE.md` §6, décision fondateur
+consignée `etat-des-lieux.md` §2). Un stamp REMPLACE, l'historique vit dans git :
+`git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
 > prouve**, **par quel job CI**, et **ce que personne ne prouve**. Il ne remplace ni
@@ -44,7 +42,7 @@ Recalculer les tailles : `find backend/tests -name '*Test.php' | awk -F/ '{print
 |---|---|---|
 | Isolation tenant | `TenantIsolationTest`, `RlsIsolationTest`, `TenantCacheIsolationTest`, `MatchTenantIsolationTest` ; feature Behat `un-club-ne-voit-jamais-un-autre-club.feature` (un autre club ne liste/lit/supprime rien — 404, jamais 403 ; un membre sans rôle de gestion ne modifie rien) | `blocking-tests`, `functional-tests` |
 | Pipeline de génération | `ConcurrentGenerationTest` (verrou) ; **`journey.spec.ts`** (wizard → génération CP-SAT réelle → planning validé → cockpit — **et livrée PAR le canal Mercure/SSE**, pas seulement par le repli polling : témoin `ScheduleStreamWitness`, `data-schedule-stream-events` ≥ 1 exigé, P4-168) ; feature Behat `generation-du-planning-de-saison.feature` (rail async → `COMPLETED`) et `inscription-et-premier-planning.feature` (club neuf → minimum → `COMPLETED`) | `blocking-tests`, `e2e`, `functional-tests` |
-| Sémantique des contraintes | `engine/tests/semantic/` ; `engine-semantics` (clés, miroir capacité, forme du contrat contre le vrai engine) ; feature Behat `placement-des-matchs.feature` (samedi PLACED dans sa fenêtre, dimanche UNPLACED `no_access_window`) ; feature Behat `une-contrainte-saisie-est-honoree.feature` (contrainte honorée, contrainte impossible → échec diagnostiqué) ; feature Behat `un-verrou-est-souverain.feature` (verrou HARD sovereign à la régénération, déplacement impossible refusé et nommé — **exception connue, §4 et P4-176**) ; feature Behat `l-unite-de-placement-est-le-bloc.feature` (l'unité de placement d'un entraînement mutualisé est le groupe) ; `ReservationApiTest::testDeletingABlockCompleteReservationEmptiesTheWholeCase`/`testDeletingAnIndividualReservationOnANonCompleteCaseRemovesOnlyIt` (P2-62 — supprimer une réservation d'une case bloc-complète emporte toute la case + les verrous HARD, une individuelle se supprime seule) | `engine-tests`, `engine-semantics`, `functional-tests`, `unit-tests` |
+| Sémantique des contraintes | `engine/tests/semantic/` ; `engine-semantics` (clés, miroir capacité, forme du contrat contre le vrai engine) ; feature Behat `placement-des-matchs.feature` (samedi PLACED dans sa fenêtre, dimanche UNPLACED `no_access_window`) ; feature Behat `une-contrainte-saisie-est-honoree.feature` (contrainte honorée, contrainte impossible → échec diagnostiqué) ; feature Behat `un-verrou-est-souverain.feature` (verrou HARD sovereign à la régénération, déplacement impossible refusé et nommé, règle contraire signalée sans déplacer le verrou — P4-176) ; `Integration/HardLockSurvivesPayloadTest` (bloquant — le payload de génération transporte le verrou HARD ET la règle de jours qui le contredit sans en dégrader ni en retirer aucun) ; feature Behat `l-unite-de-placement-est-le-bloc.feature` (l'unité de placement d'un entraînement mutualisé est le groupe) ; `ReservationApiTest::testDeletingABlockCompleteReservationEmptiesTheWholeCase`/`testDeletingAnIndividualReservationOnANonCompleteCaseRemovesOnlyIt` (P2-62 — supprimer une réservation d'une case bloc-complète emporte toute la case + les verrous HARD, une individuelle se supprime seule) | `engine-tests`, `engine-semantics`, `functional-tests`, `unit-tests` |
 | Cycle de vie des plans (ADR-0002) | `PeriodPlanBirthTest`, `PeriodCopyBirthTest`, `SeasonPlanInForceTest`, `SocleDeviationParityTest`, `ScheduleConstraintBuilderOverlayTest` ; feature Behat `le-socle-commande-les-plans.feature` (valider/rouvrir le socle efface les plans de période à venir, garde ceux déjà commencés ; aucune période sans socle en vigueur) ; feature Behat `le-planning-se-dit-a-regenerer.feature` (une contrainte ajoutée marque le planning en vigueur à régénérer, sans en effacer un créneau) ; feature Behat `la-semaine-de-reprise.feature` (détacher une semaine de vacances fait naître son plan, génération sur sa grille propre) ; feature Behat `une-semaine-de-vacances-couvre-lundi-vendredi.feature` (une semaine partielle ne devient jamais une semaine de reprise) ; feature Behat `une-indisponibilite-se-decoupe-en-debut-milieu-fin.feature` (découpage début·milieu·fin d'une fermeture) ; feature Behat `plan-de-periode-en-overlay.feature` (période → plan → overlay → `COMPLETED` ; remplissage recolle un membre de bloc libéré ; **D3 v1 : re-dater l'incident, le plan survit et sa version est marquée à régénérer**) ; `club-life.spec.ts` (incident borné à SON plan) ; `WeekChildEntryTest` (une semaine-enfant d'une mère VACANCES ne naît que si elle couvre tout son lundi→vendredi, 422 nommé sinon — D4, `App\Service\HolidayWorkweekRule`) et `HolidayWorkweekMirrorParityTest` (parité mécanique backend ⇄ front `holidayCoversWorkweek`, `holidayWorkweek.parity.json`, groupe `contract`) ; `Security/PeriodRedateTest` (8 cas — D3 v1, ex-P2-57 : re-datage d'une racine CLOSURE dans les deux sens, fenêtre gelée pour tous les autres cas, 409 sur fenêtre déjà prise) ; **`redate-closure.spec.ts`** (D3 v1 PR-2 — chemin UI réel : cockpit → « Modifier les dates » → `PUT`, le toast de succès annonce le re-datage, `/planning` affiche la bannière « périmé » ; idempotent — re-date puis restaure la fenêtre d'origine, aucune course avec `club-life.spec.ts` qui en dépend) ; `Security/PeriodWindowRaceTest` (P4-172 — deux créations de plan de période concurrentes sur deux entrées du même club ne se chevauchent plus : grain club+saison du verrou `lockClubWindows` prouvé par une seconde connexion DBAL tenant la clé consultative, annoté `phase1`+`integration` mais **non listé dans `blocking-tests`**, tourne dans `unit-tests` seul) ; **découpage début·milieu·fin d'une fermeture (décision fondateur, 2026-09-05)** : `CrossStack/WeekSegmentationMirrorParityTest` (groupe `contract` — parité backend `WeekSegmentationRule::segments` ⇄ front `weekSegments` sur `weekSegmentation.parity.json`) ; `Security/WeekChildEntryTest` (étendu — une semaine-enfant de fermeture doit être EXACTEMENT un segment calculé, 422 nommé sinon, tolérance des semaines révolues en tête) ; `Security/PeriodPlanBirthTest` (« Adapter d'un bloc » une fermeture refuse en 422 dès que sa fenêtre compte >1 segment) ; `Security/PeriodRedateTest` (le re-datage D3 refuse en 422 une nouvelle fenêtre à plus d'un segment) ; `Integration/Seed/BcclSeederIdempotenceTest` (aucune racine seedée ne porte plus un plan à >1 segment — l'incident Matéo est désormais deux enfants CLOSURE, milieu + fin) ; **`club-life.spec.ts`** et **`redate-closure.spec.ts`** recalés sur la nouvelle forme (e2e) | `blocking-tests`, `functional-tests`, `e2e`, `unit-tests` |
 | Périmètre engagé | `EngagedTeamGuardTest` ; `matches.spec.ts` (matchs verrouillés tant que le plan principal n'est pas validé) ; feature Behat `le-perimetre-engage-est-protege.feature` (équipe engagée ni supprimable ni changeable de niveau, une équipe qui ne joue pas reste libre) | `blocking-tests`, `e2e`, `functional-tests` |
 | Contrat backend ⇄ engine | `ContractSchemaTest`, `ValidateAssignmentsContractSchemaTest`, `PayloadVersionMatchesContractVersionTest`, les `*PayloadParityTest` — **aucune feature Behat dédiée** : la forme d'un payload/schéma n'est pas une promesse qu'un gestionnaire relit, le PHPUnit cross-stack reste la preuve directe | `blocking-tests` |
@@ -86,15 +84,15 @@ Recalculer les tailles : `find backend/tests -name '*Test.php' | awk -F/ '{print
 
 ## 4. Ce que personne ne prouve (angles morts constatés, pas devinés)
 
-Le programme Behat du 2026-09-05 (P4-175, 11 features) a fermé le dernier angle mort recensé (les
-parcours fonctionnels illisibles hors code — les rails et règles qui détruisent/refusent/isolent
-ont désormais chacun une feature Gherkin relisable par le fondateur, §5). **Une exception connue
-reste ouverte** : un verrou HARD contredit par une règle HARD `forbiddenDays` n'a pas de scénario
-fidèle — le comportement observé (relocalisé, pas diagnostiqué) contredit l'invariant `CLAUDE.md`
-§6, et `un-verrou-est-souverain.feature` a été volontairement recadrée sur un autre cas (le verdict
-de placement) pour ne pas figer en Gherkin un comportement qu'on ne veut pas garantir tel quel —
-voir P4-176 (`specs/evolution/roadmap.md`). Cette section reste la maison des prochains angles
-morts trouvés.
+Le programme Behat du 2026-09-05 (P4-175, 11 features, complété le même jour par P4-176) a fermé
+le dernier angle mort recensé (les parcours fonctionnels illisibles hors code — les rails et
+règles qui détruisent/refusent/isolent ont désormais chacun une feature Gherkin relisable par le
+fondateur, §5). L'exception qui restait ouverte (un verrou HARD contredit par une règle HARD
+`forbiddenDays`) a été instruite et close (§2 `etat-des-lieux.md`) : reproduite en API pure sur le
+rail réel, le comportement est conforme à l'invariant `CLAUDE.md` §6 (le verrou reste, la règle est
+diagnostiquée) — la relocalisation constatée au cadrage venait d'un cache de payload périmé, pas du
+produit. `un-verrou-est-souverain.feature` porte désormais ce scénario. Cette section reste la
+maison des prochains angles morts trouvés.
 
 ## `coverage-floor.json` — la couture des trois zones (P4-166)
 
@@ -173,7 +171,7 @@ promesses qui n'avaient jusqu'ici qu'une preuve technique (PHPUnit/pytest, illis
 | `le-socle-commande-les-plans.feature` | valider ou rouvrir le planning de saison efface les plans de période ENTIÈREMENT à venir, jamais un déjà commencé ; aucune génération de période sans socle en vigueur |
 | `une-contrainte-saisie-est-honoree.feature` | une contrainte saisie est honorée par le solveur (aucune séance hors fenêtre) ; une contrainte impossible fait échouer la génération avec un diagnostic nommé, jamais un plan bricolé |
 | `l-unite-de-placement-est-le-bloc.feature` | une équipe qui ne s'entraîne qu'en groupe ne se réserve pas seule ; réserver le groupe pose la séance pour tout le monde ; retirer une séance du lot emporte le groupe entier |
-| `un-verrou-est-souverain.feature` | une séance verrouillée en dur reste à la même case après régénération ; un déplacement impossible (case sans créneau ouvert) est refusé et nommé, rien n'est écrit — **cas contredit connu, voir §4 et P4-176** |
+| `un-verrou-est-souverain.feature` | une séance verrouillée en dur reste à la même case après régénération ; un déplacement impossible (case sans créneau ouvert) est refusé et nommé, rien n'est écrit ; une règle qui contredit un verrou ne le déplace pas, le créneau reste et la règle violée est signalée (P4-176) |
 | `le-perimetre-engage-est-protege.feature` | une équipe engagée en compétition (elle a des matchs) n'est ni supprimable ni changeable de niveau ; une équipe qui ne joue pas reste libre |
 | `le-planning-se-dit-a-regenerer.feature` | ajouter une contrainte marque le planning en vigueur à régénérer, sans en effacer un seul créneau |
 
