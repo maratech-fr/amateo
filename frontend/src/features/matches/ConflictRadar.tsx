@@ -2,6 +2,7 @@ import { AlertTriangle, ChevronDown, ChevronRight, ShieldCheck, Sparkles } from 
 import { useState } from "react";
 
 import { frDateShortNoYear } from "@/shared/lib/date";
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { cn } from "@/shared/lib/utils";
 
@@ -171,10 +172,9 @@ export function ConflictRadar({ conflicts, teams, coaches, newFingerprints }: Co
                           <p className="flex flex-wrap items-center gap-1.5 font-medium">
                             {conflictTitle(conflict, coaches)}
                             {isNew(conflict) ? (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide text-accent">
-                                <Sparkles className="size-3" aria-hidden="true" />
+                              <StatusPill variant="accent" className="border-accent/30 px-1.5 text-[0.65rem] uppercase tracking-wide" icon={<Sparkles className="size-3 text-accent" aria-hidden="true" />}>
                                 Nouveau
-                              </span>
+                              </StatusPill>
                             ) : null}
                           </p>
                           <p className="text-muted-foreground">

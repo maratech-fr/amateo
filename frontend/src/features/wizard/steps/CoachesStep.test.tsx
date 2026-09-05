@@ -79,3 +79,21 @@ describe("CoachesStep — statut véhiculé", () => {
     expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ id: "c1", body: expect.objectContaining({ isVehicled: false }) }));
   });
 });
+
+describe("CoachesStep — pastilles read-only (P4-178 : StatusPill accent, repli AA)", () => {
+  it("« Salarié » et le plafond préféré s'affichent SANS `text-accent` sur le texte (repli AA)", () => {
+    coachesState.data = [coach({ id: "c1", firstName: "Léa", isEmployee: true, maxDaysOverride: 3 })];
+    renderWithProviders(<CoachesStep />);
+
+    // « Salarié » apparaît aussi comme label de case dans le formulaire d'ajout : on cible le span-pastille.
+    const salarie = screen.getByText("Salarié", { selector: "span" });
+    expect(salarie).toBeInTheDocument();
+    expect(salarie).not.toHaveClass("text-accent");
+
+    const plafond = screen.getByText(/j\/sem/);
+    expect(plafond).toBeInTheDocument();
+    expect(plafond).not.toHaveClass("text-accent");
+    // Le `title` explicatif du plafond survit à la migration.
+    expect(plafond).toHaveAttribute("title", expect.stringContaining("Plafond préféré"));
+  });
+});

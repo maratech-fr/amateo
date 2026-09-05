@@ -54,6 +54,15 @@ describe("TravelRuleNotice — le levier Préféré/Obligatoire", () => {
     expect(screen.getByText(/au risque de rendre le planning infaisable si les enchaînements sont trop serrés/)).toBeInTheDocument();
   });
 
+  it("la pastille « Actif » n'a pas `text-accent` sur son texte (repli AA, StatusPill accent, P4-178)", () => {
+    matrixState.data = [row];
+    settingState.data = setting("PREFERRED");
+    renderWithProviders(<TravelRuleNotice />);
+    const actif = screen.getByText("Actif");
+    expect(actif).toBeInTheDocument();
+    expect(actif).not.toHaveClass("text-accent");
+  });
+
   it("reflète l'intensité stockée MANDATORY", () => {
     matrixState.data = [row];
     settingState.data = setting("MANDATORY");

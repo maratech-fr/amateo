@@ -34,7 +34,10 @@ describe("VenueGeocodeField — géocodage d'une adresse", () => {
     await waitFor(() => expect(vi.mocked(wizardApi.geocodeAddress)).toHaveBeenCalledWith("12 rue du sport"));
     const first = await screen.findByText("12 Rue du Sport, 69100 Villeurbanne");
     // Le premier candidat porte « Recommandé », le second (score faible) « correspondance approximative ».
-    expect(screen.getByText("Recommandé")).toBeInTheDocument();
+    const recommande = screen.getByText("Recommandé");
+    expect(recommande).toBeInTheDocument();
+    // P4-178 — repli AA : la pastille passe par StatusPill accent, le texte reste `text-foreground`.
+    expect(recommande).not.toHaveClass("text-accent");
     expect(screen.getByText("correspondance approximative")).toBeInTheDocument();
 
     fireEvent.click(first);

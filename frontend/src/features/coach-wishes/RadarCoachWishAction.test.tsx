@@ -48,7 +48,10 @@ describe("RadarCoachWishAction", () => {
 
   it("affiche le badge de suivi quand une campagne existe", () => {
     render(<RadarCoachWishAction entry={entry} season={null} campaign={campaign()} />);
-    expect(screen.getByText(/2\/3 coachs ont répondu · 1 à traiter/)).toBeInTheDocument();
+    const badge = screen.getByText(/2\/3 coachs ont répondu · 1 à traiter/);
+    expect(badge).toBeInTheDocument();
+    // P4-178 — repli AA : StatusPill accent, le texte reste `text-foreground`.
+    expect(badge).not.toHaveClass("text-accent");
   });
 
   it("omet « à traiter » quand rien n'est en attente", () => {

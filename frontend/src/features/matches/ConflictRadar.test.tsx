@@ -39,6 +39,8 @@ describe("ConflictRadar — chip « Nouveau » (RMM-3, ornement pur)", () => {
     render(<ConflictRadar conflicts={conflictsFixture()} teams={teams} coaches={coaches} newFingerprints={new Set(["fp-new"])} />);
     const chips = screen.getAllByText("Nouveau");
     expect(chips).toHaveLength(1);
+    // P4-178 — repli AA : StatusPill accent, le texte reste `text-foreground` (l'icône porte `text-accent`).
+    expect(chips[0]).not.toHaveClass("text-accent");
   });
 
   it("un conflit dont l'empreinte ∉ la liste n'a PAS de chip (falsification)", () => {

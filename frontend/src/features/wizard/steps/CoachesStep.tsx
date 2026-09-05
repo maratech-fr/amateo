@@ -1,6 +1,7 @@
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
 
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { DeleteConfirm } from "@/shared/components/ui/delete-confirm";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
@@ -176,11 +177,15 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks }: C
         // Read-only: everything on a single line — name, salarié, team links, actions.
         <div className="flex items-center gap-2">
           <span className="whitespace-nowrap text-sm font-medium">{`${coach.firstName} ${coach.lastName}`.trim()}</span>
-          {coach.isEmployee ? <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent">Salarié</span> : null}
+          {coach.isEmployee ? (
+            <StatusPill variant="accent" className="shrink-0">
+              Salarié
+            </StatusPill>
+          ) : null}
           {null !== coach.maxDaysOverride ? (
-            <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent" title="Plafond préféré : le solveur regroupe les séances quand c'est possible, le récap signale sinon.">
+            <StatusPill variant="accent" className="shrink-0" title="Plafond préféré : le solveur regroupe les séances quand c'est possible, le récap signale sinon.">
               ≤ {coach.maxDaysOverride} j/sem
-            </span>
+            </StatusPill>
           ) : null}
           <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
             {coachLinks.map((link) => (

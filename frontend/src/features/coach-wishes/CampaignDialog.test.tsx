@@ -192,6 +192,36 @@ describe("CampaignDialog", () => {
     expect(screen.getByRole("tab", { name: /Coachs/ })).toHaveAttribute("aria-selected", "true");
   });
 
+  // P4-178 — repli AA : la pastille « répondu le … » (StatusPill accent) et le filtre de statut
+  // actif gardent leur texte en `text-foreground`, jamais `text-accent` (sous 4,5:1 sur fond teinté).
+  it("pastille « répondu le » et filtre actif : pas de `text-accent` sur le texte lisible", async () => {
+    const user = userEvent.setup();
+    const existing: CoachWishCampaign = {
+      id: "camp1",
+      calendarEntryId: "e1",
+      deadline: "2027-06-30",
+      weeks: ["2026-02-16"],
+      teamIds: ["t1"],
+      totalCoachCount: 1,
+      respondedCoachCount: 1,
+      openWishCount: 0,
+      lastReminderAt: null,
+      coaches: [{ coachId: "c1", firstName: "Maxime", lastName: "Durand", email: "m@x.fr", token: "a".repeat(64), respondedAt: "2026-02-20T10:00:00+00:00", sentAt: "2026-02-18T09:00:00+00:00" }],
+    };
+    render(<CampaignDialog entry={entry} season={season} existing={existing} onClose={vi.fn()} />);
+
+    const responded = screen.getByText(/répondu le/);
+    expect(responded).toBeInTheDocument();
+    expect(responded).not.toHaveClass("text-accent");
+
+    // Le bouton de filtre statut, une fois ACTIF, garde son texte lisible (text-foreground).
+    const statusBtn = screen.getByRole("button", { name: "Répondu" });
+    expect(statusBtn).toHaveAttribute("aria-pressed", "false");
+    await user.click(statusBtn);
+    expect(statusBtn).toHaveAttribute("aria-pressed", "true");
+    expect(statusBtn).not.toHaveClass("text-accent");
+  });
+
   // ── P3-15 (c) : on ne sollicite un coach que pour ce qu'il RESTE (retour 2026-07-31) ──
 
   // « Les semaines passées et la semaine en cours sont proposées ET cochées par défaut » :
