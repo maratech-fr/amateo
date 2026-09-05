@@ -43,6 +43,7 @@ refusé 409, route sous les gardes rôle+tenant) ·
 `Security/RecapCapacityWarningTest` (capacité du récap lue du payload) ·
 `Security/CoachDoubleBookingTest` (verrous HARD dédoublant un coach) ·
 `Integration/ScheduleConstraintBuilderOverlayTest` (le build overlay n'écrit pas ; modèle FAIT/GENÈSE : une genèse ne part qu'au payload de son plan, un fait de la mère est hérité par toutes ses semaines) ·
+`Integration/HardLockSurvivesPayloadTest` (un verrou est une vérité absolue : le payload de génération transporte le verrou HARD ET la règle de jours qui le CONTREDIT — le créneau sort avec `lockLevel: HARD`, la règle reste dans les `constraints`, le builder ne dégrade ni ne retire rien ; c'est le moteur qui arbitre, le verrou gagne et la règle est diagnostiquée. Sans ce gate, un filtre dégradant le `lockLevel` rendrait le solveur libre de relocaliser le créneau en silence) ·
 `Security/PlanEntitlementsTest` (crédits Découverte + caps payants) ·
 `Security/MemberRoleTest` (rôles Gestionnaire/Membre, dernier gestionnaire) ·
 `Security/ScheduleCapabilityParityTest` (capacité affichée == verdict) ·
