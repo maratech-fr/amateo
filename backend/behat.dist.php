@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Tests\Behat\CoachWishesContext;
 use App\Tests\Behat\ConstraintHonoredContext;
+use App\Tests\Behat\EngagedTeamContext;
 use App\Tests\Behat\LockContext;
 use App\Tests\Behat\MatchPlacementContext;
 use App\Tests\Behat\OnboardingContext;
@@ -77,5 +78,10 @@ return (new Config)
                 new Suite('verrou')
                     ->withPaths('%paths.base%/features/un-verrou-est-souverain.feature')
                     ->withContexts(LockContext::class),
+            )
+            ->withSuite(
+                new Suite('perimetre')
+                    ->withPaths('%paths.base%/features/le-perimetre-engage-est-protege.feature')
+                    ->withContexts(EngagedTeamContext::class),
             ),
     );
