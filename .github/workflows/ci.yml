@@ -487,6 +487,16 @@ jobs:
       - name: ScheduleConstraintBuilderOverlayTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/ScheduleConstraintBuilderOverlayTest.php --group phase1'
 
+      # P4-176 (axes constraint semantics + planning lifecycle) — « un verrou est une vérité
+      # absolue ». Le payload de génération (buildForClubSeason) doit transporter le verrou HARD
+      # jusqu'au moteur MÊME quand une règle de jours le contredit : le créneau sort avec
+      # lockLevel HARD, la règle contraire reste dans les constraints — les deux voyagent, le
+      # moteur arbitre (le verrou gagne, la règle est diagnostiquée). Sans ce gate, un filtre qui
+      # dégraderait le lockLevel (ou retirerait la règle) rendrait le solveur libre de relocaliser
+      # le créneau, en silence.
+      - name: HardLockSurvivesPayloadTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/HardLockSurvivesPayloadTest.php --group phase1'
+
       # P1-3 PR B — le pool de crédits de sortie du plan Découverte + les caps payants aux
       # portes de création d'équipes. Axes generation pipeline + auth/périmètre : le refus
       # avant solve, le décompte au succès (pool PAR CLUB, partagé/isolé), et le cap payant.
