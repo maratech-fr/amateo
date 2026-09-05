@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Tests\Behat\ClosureSegmentationContext;
 use App\Tests\Behat\CoachWishesContext;
 use App\Tests\Behat\ConstraintHonoredContext;
 use App\Tests\Behat\EngagedTeamContext;
@@ -83,5 +84,10 @@ return (new Config)
                 new Suite('perimetre')
                     ->withPaths('%paths.base%/features/le-perimetre-engage-est-protege.feature')
                     ->withContexts(EngagedTeamContext::class),
+            )
+            ->withSuite(
+                new Suite('decoupage')
+                    ->withPaths('%paths.base%/features/une-indisponibilite-se-decoupe-en-debut-milieu-fin.feature')
+                    ->withContexts(ClosureSegmentationContext::class),
             ),
     );
