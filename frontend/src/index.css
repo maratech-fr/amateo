@@ -24,9 +24,15 @@
   --accent: oklch(0.55 0.16 255);
   --accent-foreground: oklch(0.99 0 0);
 
-  --destructive: oklch(0.58 0.22 27);
+  /* Assombri de L 0,58 → 0,50 (P4-181) : `text-destructive` vit en TEXTE sur des teintes
+     `bg-destructive/10|15` (badges de contrainte, jour férié, jour sélectionné, alerte de
+     réservation) et y tombait sous AA en clair (3,98:1 sur /10, 3,77:1 sur /15 — mesuré canvas,
+     même méthode que `a11y-contrast.spec.ts`). À 0,50 : 5,17:1 (/10 sur background), 4,81:1
+     (/15 sur card), le blanc du bouton monte à 6,21:1. Même recette que `--warning`/`--success`
+     (A11Y-06) : on assombrit le jeton, jamais les sites. Paires gardées en dur par le spec. */
+  --destructive: oklch(0.50 0.22 27);
   /* Texte posé sur le fond plein `bg-destructive` (bouton `destructive`). Blanc en clair
-     (inchangé visuellement : 4,78:1 sur `--destructive` clair, ≥ AA). Convention shadcn, comme
+     (6,21:1 sur `--destructive` clair depuis P4-181, ≥ AA). Convention shadcn, comme
      `--accent-foreground` — un jeton, jamais `text-white` en dur (P4-179 : le blanc tombait à
      4,03:1 sur le rouge SOMBRE). Le TEXTE rouge sur fond (`text-destructive`) reste `--destructive`. */
   --destructive-foreground: oklch(0.99 0 0);
@@ -66,10 +72,12 @@
   --accent: oklch(0.72 0.15 255);
   --accent-foreground: oklch(0.17 0.02 260);
 
-  /* Remonté de L 0.62 → 0.66 (P4-179) : le fond rouge sombre s'éclaire assez pour porter un
-     TEXTE SOMBRE (`--destructive-foreground`) à ≥ AA (≈ 5,58:1), et `text-destructive` sur fond
-     sombre y gagne aussi (le L plus haut = rouge plus clair, plus lisible). */
-  --destructive: oklch(0.66 0.21 27);
+  /* Remonté de L 0.62 → 0.66 (P4-179) puis → 0.72 (P4-181) : le fond rouge sombre s'éclaire
+     assez pour porter un TEXTE SOMBRE (`--destructive-foreground`) à ≥ AA (6,45:1), et
+     `text-destructive` en TEXTE sur les teintes `bg-destructive/10|15` passe AA sur CARD aussi
+     (4,42:1 → 5,03:1 sur /10, 4,16:1 → 4,68:1 sur /15 — le 4,90:1 de P4-179 n'était mesuré que
+     sur background). Paires gardées en dur par `a11y-contrast.spec.ts`, deux thèmes. */
+  --destructive: oklch(0.72 0.21 27);
   /* Texte sombre sur le rouge clair du bouton `destructive` en thème sombre (le blanc y tombait
      sous AA — P4-179). Même valeur que `--accent-foreground` sombre. */
   --destructive-foreground: oklch(0.17 0.02 260);

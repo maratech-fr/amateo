@@ -1,10 +1,12 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-09-04 (rotation fraîcheur, sans rapport au sujet de la PR — D3 v1 cockpit).
-Re-confronté au code : `engine/CONTRACT_VERSION` = **2.20** ✓ ; `team_link_not_honored` et
-`travel_time_infeasible` figurent toujours dans le `Literal` du contrat (`output_schema.py:83,88`)
-sans ligne dans le tableau ci-dessous — **écart connu, toujours non corrigé (P4-153)**, signalé de
-nouveau plutôt que corrigé hors scope. Reste du document non re-parcouru ligne à ligne cette passe.
+Last verified @ 2026-09-06 (rotation de fraîcheur `documentation-update`, PR P4-181 frontend —
+fichier hors sujet). Re-confronté au code : `engine/CONTRACT_VERSION` = **2.20** ✓ ; les 12 types
+du tableau ci-dessous sont tous des membres du `Literal[DiagnosticSchema.type]`
+(`app/schemas/output_schema.py:69-95`) ✓ ; `team_link_not_honored` et `travel_time_infeasible`
+figurent bien dans ce `Literal` (`output_schema.py:83,88`) sans ligne dans le tableau — écart
+toujours ouvert (`P4-153` dans `roadmap.md`) ✓ ; `SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"`
+(`app/solver/objective/weights.py:31`) ✓.
 
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 

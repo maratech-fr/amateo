@@ -470,9 +470,12 @@ believe empty.
     button variant: a literal `text-white` cleared AA in light but not in dark (4.02:1) — a token
     that flips per theme is the fix, never a hard-coded colour utility on a shared primitive. The
     token pairs are locked by `tests/e2e/a11y-contrast.spec.ts`; add any new text token to its list
-    rather than eyeballing the result. ⚠ **Still open**: `text-destructive` as TEXT on a
-    `bg-destructive/10|15` tint (constraint badges, the coach-wish day picker, the calendar's "F"
-    holiday badge) measures under AA in light theme — roadmap **P4-181**.
+    rather than eyeballing the result. **The one sanctioned exception is a token dark enough for
+    its own tints**: `text-destructive` as TEXT on `bg-destructive/10|15` (constraint badges, the
+    coach-wish day picker, the calendar's "F" holiday badge, the reservation alert) stays red — P4-181
+    darkened `--destructive` (light L 0.50, dark L 0.72) until every tint clears 4.5:1 on both
+    background and card, two themes, and the six pairs are hard gates in the spec. Reach for that
+    only when the tone has no icon to carry it (the "F" badge); otherwise `StatusPill`.
 
 ---
 
