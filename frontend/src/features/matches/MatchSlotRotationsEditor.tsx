@@ -5,6 +5,7 @@ import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
+import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import type { TeamLike, TierLike } from "@/shared/lib/teamTiers";
 
@@ -255,17 +256,19 @@ function NewRotationForm<T extends TeamLike>({
       <p className="text-xs font-medium text-muted-foreground">Nouveau créneau partagé</p>
 
       <div className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {/* div, pas label : le VenueSelect (Listbox) se nomme lui-même via aria-label ; le caption
+            visible reste une légende décorative. */}
+        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
           Gymnase
-          <Select aria-label="Gymnase du créneau partagé" className="w-40" value={venueId} onChange={(e) => setVenueId(e.target.value)}>
-            <option value="">Choisir…</option>
-            {venues.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-              </option>
-            ))}
-          </Select>
-        </label>
+          <VenueSelect
+            aria-label="Gymnase du créneau partagé"
+            wrapperClassName="w-40"
+            placeholder="Choisir…"
+            venues={venues.map((v) => ({ id: v.id, name: v.name, color: v.color }))}
+            value={venueId}
+            onValueChange={setVenueId}
+          />
+        </div>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Jour
           <Select aria-label="Jour du créneau partagé" className="w-32" value={dayOfWeek} onChange={(e) => setDayOfWeek(Number(e.target.value))}>

@@ -5,7 +5,7 @@ import { useNavigate } from "react-router";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Modal } from "@/shared/components/ui/modal";
-import { Select } from "@/shared/components/ui/select";
+import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { todayISO } from "@/shared/lib/clock";
 import { cn } from "@/shared/lib/utils";
 import { toast } from "@/shared/stores/toastStore";
@@ -227,13 +227,12 @@ export function ConfigurationPage() {
               Les créneaux accordés les jours de match — un gymnase sans fenêtre n'accueille pas de
               matchs. Même éditeur que l'étape Gymnases du wizard.
             </p>
-            <Select aria-label="Gymnase des accès match" value={accessVenueId} onChange={(e) => setAccessVenueId(e.target.value)}>
-              {(venues.data ?? []).map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                </option>
-              ))}
-            </Select>
+            <VenueSelect
+              aria-label="Gymnase des accès match"
+              venues={(venues.data ?? []).map((v) => ({ id: v.id, name: v.name, color: v.color }))}
+              value={accessVenueId}
+              onValueChange={setAccessVenueId}
+            />
             {"" !== accessVenueId ? <MatchWindowsEditor venueId={accessVenueId} /> : null}
           </div>
         </Modal>

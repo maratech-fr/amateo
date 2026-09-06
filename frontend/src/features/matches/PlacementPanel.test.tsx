@@ -2,6 +2,8 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { listboxTrigger, openListbox, pickListboxOption } from "@/test/pickListboxOption";
+
 import type { Fixture, TeamMatchHabit, Venue, VenueMatchWindow, VenueUnavailability } from "./api";
 import type { EnvelopeResult } from "./lib/envelope";
 import { PlacementPanel } from "./PlacementPanel";
@@ -93,7 +95,7 @@ describe("PlacementPanel", () => {
     const user = userEvent.setup();
     const onPlace = renderPanel(mappedEnvelope);
 
-    await user.selectOptions(screen.getByLabelText("Gymnase"), "venue-1");
+    await pickListboxOption(user, "Gymnase", "Gymnase Alpha");
     await user.type(screen.getByLabelText("Heure de coup d'envoi"), "20:00");
 
     expect(screen.getByText(/Hors fenêtre autorisée/)).toBeInTheDocument();
@@ -105,7 +107,7 @@ describe("PlacementPanel", () => {
     const user = userEvent.setup();
     const onPlace = renderPanel(mappedEnvelope);
 
-    await user.selectOptions(screen.getByLabelText("Gymnase"), "venue-1");
+    await pickListboxOption(user, "Gymnase", "Gymnase Alpha");
     await user.type(screen.getByLabelText("Heure de coup d'envoi"), "14:00");
 
     const place = screen.getByRole("button", { name: "Placer" });
@@ -118,7 +120,7 @@ describe("PlacementPanel", () => {
     const user = userEvent.setup();
     const onPlace = renderPanel(openEnvelope);
 
-    await user.selectOptions(screen.getByLabelText("Gymnase"), "venue-1");
+    await pickListboxOption(user, "Gymnase", "Gymnase Alpha");
     await user.type(screen.getByLabelText("Heure de coup d'envoi"), "23:00");
 
     expect(screen.getByRole("button", { name: "Placer" })).toBeEnabled();
@@ -135,10 +137,10 @@ describe("PlacementPanel", () => {
       matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, startTime: "14:00", endTime: "18:00" }],
     });
 
-    // The selector masks the CHOICE: training-only venue-2 is not offered.
-    expect(screen.queryByRole("option", { name: "Gymnase Beta" })).not.toBeInTheDocument();
-
-    await user.selectOptions(screen.getByLabelText("Gymnase"), "venue-1");
+    // The selector masks the CHOICE: training-only venue-2 is not offered (open the listbox to see).
+    const list = await openListbox(user, "Gymnase");
+    expect(within(list).queryByRole("option", { name: "Gymnase Beta" })).not.toBeInTheDocument();
+    await user.click(within(list).getByRole("option", { name: "Gymnase Alpha" }));
     await user.type(screen.getByLabelText("Heure de coup d'envoi"), "20:00");
     expect(screen.getByText(/Hors fenêtre d'accès match \(14:00–18:00\)/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Placer" })).toBeDisabled();
@@ -165,7 +167,7 @@ describe("PlacementPanel", () => {
     });
 
     expect(screen.getByText(/Habitude : 15:30 · Gymnase Beta/)).toBeInTheDocument();
-    expect(screen.getByLabelText("Gymnase")).toHaveValue("venue-2");
+    expect(listboxTrigger("Gymnase")).toHaveTextContent("Gymnase Beta");
     expect(screen.getByLabelText("Heure de coup d'envoi")).toHaveValue("15:30");
 
     await user.click(screen.getByRole("button", { name: "Placer" }));
@@ -180,15 +182,15 @@ describe("PlacementPanel", () => {
       unavailabilities: [{ id: "u1", venueId: "venue-1", startDate: "2026-10-01", endDate: "2026-10-05", label: "travaux" }],
     });
 
-    expect(screen.getByRole("option", { name: "Gymnase Beta" })).toBeInTheDocument();
-
-    await user.selectOptions(screen.getByLabelText("Gymnase"), "venue-1");
+    const list = await openListbox(user, "Gymnase");
+    expect(within(list).getByRole("option", { name: "Gymnase Beta" })).toBeInTheDocument();
+    await user.click(within(list).getByRole("option", { name: "Gymnase Alpha" }));
     await user.type(screen.getByLabelText("Heure de coup d'envoi"), "14:00");
     expect(screen.getByText(/indisponible du 1 oct\. au 5 oct\. \(travaux\)/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Placer" })).toBeDisabled();
 
     // The other venue stays placeable.
-    await user.selectOptions(screen.getByLabelText("Gymnase"), "venue-2");
+    await pickListboxOption(user, "Gymnase", "Gymnase Beta");
     expect(screen.getByRole("button", { name: "Placer" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "Placer" }));
     expect(onPlace).toHaveBeenCalledWith({ venueId: "venue-2", kickoffTime: "14:00" });

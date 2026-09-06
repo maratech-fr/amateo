@@ -893,9 +893,9 @@ export function ConstraintsStep() {
               className="h-8"
               wrapperClassName="w-48"
               placeholder="— gymnase —"
-              venues={sortByName(editVenues).map((v) => ({ id: v.id, name: v.name + (disabledIds.has(v.id) ? " (désactivé pour cette période)" : ""), color: v.color }))}
+              venues={sortByName(editVenues).map((v) => ({ id: v.id, name: v.name, color: v.color, sub: disabledIds.has(v.id) ? "désactivé pour cette période" : undefined }))}
               value={venueId}
-              onChange={(e) => setVenueId(e.target.value)}
+              onValueChange={setVenueId}
             />
           </>
         )}

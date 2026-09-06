@@ -177,14 +177,11 @@ export function PlacementPanel({
               <VenueSelect
                 aria-label="Gymnase"
                 className={fieldClass}
+                placeholder="Gymnase…"
                 venues={selectableVenues.map((v) => ({ id: v.id, name: v.name, color: v.color }))}
                 value={venueId}
-                onChange={(e) => setVenueId(e.target.value)}
-              >
-                <option value="" disabled hidden>
-                  Gymnase…
-                </option>
-              </VenueSelect>
+                onValueChange={setVenueId}
+              />
               <input aria-label="Heure de coup d'envoi" type="time" value={kickoff} onChange={(e) => setKickoff(e.target.value)} className={fieldClass} />
             </div>
 

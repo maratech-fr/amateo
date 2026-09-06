@@ -180,7 +180,10 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   // team's league envelope (real seeded data) — assert BOTH real outcomes:
   //  - in-envelope (or unmapped) → placement succeeds → leaves the to-do list;
   //  - out-of-envelope → the HARD guard disables placement and warns.
-  await page.getByLabel("Gymnase").selectOption({ index: 1 });
+  // Le picker de gymnase est le Listbox partagé (P4-164 PR-2) : ouvrir, sauter le placeholder
+  // « Gymnase… » (option 0), choisir le premier gymnase réel (option 1).
+  await page.locator('button[aria-haspopup="listbox"]').first().click();
+  await page.getByRole("option").nth(1).click();
   await page.getByLabel("Heure de coup d'envoi").fill("15:00");
   // exact: the page also carries the "Placer automatiquement" solver button (PR D).
   const place = page.getByRole("button", { name: "Placer", exact: true });

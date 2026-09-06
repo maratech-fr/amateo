@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { openListbox, pickListboxOption } from "@/test/pickListboxOption";
+import { listboxTrigger, openListbox, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
 import type { Constraint, ImplicitRuleSetting, SharedTrainingBlock } from "../api";
@@ -235,10 +235,10 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     renderWithProviders(<ConstraintsStep />);
 
     await user.click(screen.getByRole("button", { name: "Gymnase" }));
-    const picker = screen.getByLabelText("Gymnase");
-    const options = Array.from(picker.querySelectorAll("option")).map((o) => o.textContent);
-    expect(options).toContain("Gymnase A");
-    expect(options).not.toContain("Gymnase B");
+    // Le picker est vide (placeholder « — gymnase — ») : on ouvre la liste pour lire ses options.
+    const list = await openListbox(user, /— gymnase —/);
+    expect(within(list).getByRole("option", { name: "Gymnase A" })).toBeInTheDocument();
+    expect(within(list).queryByRole("option", { name: "Gymnase B" })).toBeNull();
   });
 
   it("only offers groups (tags) that have at least one assigned team", () => {
@@ -412,7 +412,7 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     renderWithProviders(<ConstraintsStep />);
 
     await user.click(screen.getByRole("button", { name: "Gymnase" }));
-    await user.selectOptions(screen.getByLabelText("Gymnase"), "v1");
+    await pickListboxOption(user, /— gymnase —/, "Gymnase A");
     await user.click(screen.getByRole("button", { name: "Ajouter la contrainte" }));
 
     expect(h.createMut.mock.calls[0][0]).toMatchObject({ family: "FACILITY", config: { preferredVenueId: "v1" } });
@@ -424,7 +424,7 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
 
     await user.click(screen.getByRole("button", { name: "Gymnase" }));
     await user.selectOptions(screen.getByLabelText("Préférence"), "forced");
-    await user.selectOptions(screen.getByLabelText("Gymnase"), "v1");
+    await pickListboxOption(user, /— gymnase —/, "Gymnase A");
     await user.click(screen.getByRole("button", { name: "Ajouter la contrainte" }));
 
     expect(h.createMut.mock.calls[0][0]).toMatchObject({ family: "FACILITY", ruleType: "HARD", config: { forcedVenueId: "v1" } });
@@ -449,7 +449,7 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     // "au moins N" is per-team → target a specific team (TEAM scope, the only shape the engine honors).
     await user.selectOptions(screen.getByLabelText("Cible"), "t1");
     await user.selectOptions(screen.getByLabelText("Préférence"), "min");
-    await user.selectOptions(screen.getByLabelText("Gymnase"), "v1");
+    await pickListboxOption(user, /— gymnase —/, "Gymnase A");
     await user.click(screen.getByRole("button", { name: "Ajouter la contrainte" }));
 
     expect(h.createMut.mock.calls[0][0]).toMatchObject({ family: "FACILITY", scope: "TEAM", ruleType: "HARD", config: { minAtVenueId: "v1", minAtVenueCount: 1 } });
@@ -561,7 +561,7 @@ describe("ConstraintsStep — edit an existing constraint", () => {
     // Enter edit mode → the form pre-fills from config.
     await user.click(screen.getByRole("button", { name: "Modifier" }));
     expect(screen.getByLabelText("Préférence")).toHaveValue("forced");
-    expect(screen.getByLabelText("Gymnase")).toHaveValue("v1");
+    expect(listboxTrigger(/Gymnase Gymnase A/)).toHaveTextContent("Gymnase A");
 
     await user.click(screen.getByRole("button", { name: "Enregistrer la contrainte" }));
 
@@ -596,7 +596,7 @@ describe("ConstraintsStep — edit an existing constraint", () => {
 
     await user.click(screen.getByRole("button", { name: "Gymnase" }));
     await user.click(screen.getByRole("button", { name: "Modifier" }));
-    await user.selectOptions(screen.getByLabelText("Gymnase"), "v2");
+    await pickListboxOption(user, /Gymnase Gymnase A/, "Gymnase B");
     await user.click(screen.getByRole("button", { name: "Enregistrer la contrainte" }));
 
     const arg = h.updateMut.mock.calls[0][0] as { body: Constraint };
@@ -908,7 +908,7 @@ describe("ConstraintsStep — inherited section lives inside the family tabs (pe
     expect(screen.queryByRole("button", { name: /Gymnase A.*cliquer pour gérer/ })).toBeNull();
 
     // Gymnase B porte celui de la période : c'est lui qu'on doit pouvoir réserver.
-    await user.selectOptions(screen.getByLabelText("Gymnase"), "v2");
+    await pickListboxOption(user, /Gymnase Gymnase/, "Gymnase B");
     expect(screen.getByRole("button", { name: /Gymnase B.*cliquer pour gérer/ })).toBeInTheDocument();
   });
 
@@ -976,7 +976,7 @@ describe("ConstraintsStep — période : choisir, nommer, atteindre", () => {
     expect(within(target).getByRole("option", { name: "SM1" })).toBeInTheDocument();
 
     await user.click(screen.getAllByRole("button", { name: /Réserver/ })[0]);
-    await user.selectOptions(screen.getByLabelText("Gymnase"), "v2");
+    await pickListboxOption(user, /Gymnase Gymnase/, "Gymnase B");
     await user.click(screen.getByRole("button", { name: /Gymnase B.*cliquer pour gérer/ }));
     // Équipe en pause : ni active, ni « à résidu nul » — simplement ABSENTE du picker (verrou décision).
     const list = await openListbox(user, "Ajouter une équipe");
@@ -994,8 +994,9 @@ describe("ConstraintsStep — période : choisir, nommer, atteindre", () => {
     renderWithProviders(<ConstraintsStep />);
 
     await user.click(screen.getAllByRole("button", { name: /Réserver/ })[0]);
-    const venuePicker = screen.getByLabelText("Gymnase");
-    expect(within(venuePicker).getByRole("option", { name: /Gymnase B \(désactivé pour cette période\)/ })).toBeInTheDocument();
+    // Le gymnase désactivé reste JOIGNABLE, marqué en sous-ligne (état déplacé du nom vers `sub`).
+    const list = await openListbox(user, /Gymnase Gymnase/);
+    expect(within(list).getByRole("option", { name: "Gymnase B" })).toHaveTextContent("désactivé pour cette période");
   });
 
   // …et PAS dans l'autre : le round 1 réadmettait une grille pleinement éditable, donc on
@@ -1008,7 +1009,7 @@ describe("ConstraintsStep — période : choisir, nommer, atteindre", () => {
     renderWithProviders(<ConstraintsStep />);
 
     await user.click(screen.getAllByRole("button", { name: /Réserver/ })[0]);
-    await user.selectOptions(screen.getByLabelText("Gymnase"), "v2");
+    await pickListboxOption(user, /Gymnase Gymnase/, "Gymnase B");
     await user.click(screen.getByRole("button", { name: /Gymnase B.*cliquer pour gérer/ }));
 
     expect(screen.queryByLabelText("Ajouter une équipe")).toBeNull();
@@ -1039,9 +1040,10 @@ describe("ConstraintsStep — période : choisir, nommer, atteindre", () => {
 
     await user.click(screen.getByRole("button", { name: "Gymnase" }));
     await user.click(screen.getByRole("button", { name: /modifier/i }));
-    const picker = screen.getByLabelText("Gymnase");
-    expect((picker as HTMLSelectElement).value).toBe("v2");
-    expect(within(picker).getByRole("option", { name: /Gymnase B \(désactivé pour cette période\)/ })).toBeInTheDocument();
+    // Le picker affiche SA valeur (v2 = Gymnase B), même désactivée ; l'état vit en sous-ligne.
+    expect(listboxTrigger(/Gymnase Gymnase B/)).toHaveTextContent("Gymnase B");
+    const list = await openListbox(user, /Gymnase Gymnase B/);
+    expect(within(list).getByRole("option", { name: "Gymnase B" })).toHaveTextContent("désactivé pour cette période");
   });
 
   it("ramène le formulaire à l'écran quand on édite une ligne éloignée (P4-66)", async () => {
@@ -1231,7 +1233,7 @@ describe("ConstraintsStep — Réserver : fermetures de gymnase (D2)", () => {
     renderWithProviders(<ConstraintsStep />);
 
     await user.click(screen.getAllByRole("button", { name: /Réserver/ })[0]);
-    await user.selectOptions(screen.getByLabelText("Gymnase"), "v2");
+    await pickListboxOption(user, /Gymnase Gymnase/, "Gymnase B");
 
     const slot = screen.getByRole("button", { name: /Jeu 19:00 · Gymnase B/ });
     expect(slot).toBeDisabled();
@@ -1245,7 +1247,7 @@ describe("ConstraintsStep — Réserver : fermetures de gymnase (D2)", () => {
     renderWithProviders(<ConstraintsStep />);
 
     await user.click(screen.getAllByRole("button", { name: /Réserver/ })[0]);
-    await user.selectOptions(screen.getByLabelText("Gymnase"), "v2");
+    await pickListboxOption(user, /Gymnase Gymnase/, "Gymnase B");
     await user.click(screen.getByRole("button", { name: /Jeu 19:00 · Gymnase B/ }));
 
     // Ajout fermé : pas de picker, un message qui dit pourquoi — aligné au refus serveur
@@ -1268,7 +1270,7 @@ describe("ConstraintsStep — Réserver : fermetures de gymnase (D2)", () => {
     renderWithProviders(<ConstraintsStep />);
 
     await user.click(screen.getAllByRole("button", { name: /Réserver/ })[0]);
-    await user.selectOptions(screen.getByLabelText("Gymnase"), "v2");
+    await pickListboxOption(user, /Gymnase Gymnase/, "Gymnase B");
     await user.click(screen.getByRole("button", { name: /Jeu 19:00 · Gymnase B/ }));
 
     expect(screen.queryByLabelText("Ajouter une équipe")).toBeNull();

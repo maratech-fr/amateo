@@ -57,7 +57,7 @@ describe("MatchSlotRotationsEditor — création d'un créneau partagé", () => 
   it("« Créer » reste inerte tant qu'il n'y a pas DEUX équipes", async () => {
     const user = userEvent.setup();
     renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
-    await user.selectOptions(screen.getByLabelText("Gymnase du créneau partagé"), "v1");
+    await pickListboxOption(user, "Gymnase du créneau partagé", "Coubertin");
     expect(screen.getByRole("button", { name: "Créer le créneau" })).toBeDisabled();
     await addTeamToDraft(user, "t1");
     expect(screen.getByRole("button", { name: "Créer le créneau" })).toBeDisabled(); // une seule équipe
@@ -68,7 +68,7 @@ describe("MatchSlotRotationsEditor — création d'un créneau partagé", () => 
   it("crée avec DEUX équipes, l'ordre saisi = l'ordre envoyé", async () => {
     const user = userEvent.setup();
     renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
-    await user.selectOptions(screen.getByLabelText("Gymnase du créneau partagé"), "v1");
+    await pickListboxOption(user, "Gymnase du créneau partagé", "Coubertin");
     await addTeamToDraft(user, "t1");
     await addTeamToDraft(user, "t2");
     await user.click(screen.getByRole("button", { name: "Créer le créneau" }));
@@ -80,7 +80,7 @@ describe("MatchSlotRotationsEditor — création d'un créneau partagé", () => 
   it("crée avec TROIS équipes (le N-aire marche au-delà de 2)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
-    await user.selectOptions(screen.getByLabelText("Gymnase du créneau partagé"), "v1");
+    await pickListboxOption(user, "Gymnase du créneau partagé", "Coubertin");
     await addTeamToDraft(user, "t1");
     await addTeamToDraft(user, "t2");
     await addTeamToDraft(user, "t3");
@@ -91,7 +91,7 @@ describe("MatchSlotRotationsEditor — création d'un créneau partagé", () => 
   it("réordonne le brouillon (monter) : l'ordre envoyé suit les flèches", async () => {
     const user = userEvent.setup();
     renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
-    await user.selectOptions(screen.getByLabelText("Gymnase du créneau partagé"), "v1");
+    await pickListboxOption(user, "Gymnase du créneau partagé", "Coubertin");
     await addTeamToDraft(user, "t1");
     await addTeamToDraft(user, "t2");
     await addTeamToDraft(user, "t3");
@@ -107,7 +107,7 @@ describe("MatchSlotRotationsEditor — création d'un créneau partagé", () => 
     });
     const user = userEvent.setup();
     renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
-    await user.selectOptions(screen.getByLabelText("Gymnase du créneau partagé"), "v1");
+    await pickListboxOption(user, "Gymnase du créneau partagé", "Coubertin");
     await addTeamToDraft(user, "t1");
     await addTeamToDraft(user, "t2");
     await user.click(screen.getByRole("button", { name: "Créer le créneau" }));

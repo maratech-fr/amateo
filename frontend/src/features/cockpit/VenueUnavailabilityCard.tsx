@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useCreateVenueUnavailability, useDeleteVenueUnavailability, useUnavailabilityImpact, useVenues, useVenueUnavailabilities } from "@/features/matches/queries";
 import { Button } from "@/shared/components/ui/button";
 import { Modal } from "@/shared/components/ui/modal";
-import { Select } from "@/shared/components/ui/select";
+import { VenueSelect } from "@/shared/components/ui/venue-select";
 
 /** « 4 févr. » from Y-m-d. */
 const frDate = (ymd: string): string => new Date(`${ymd}T12:00:00Z`).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
@@ -144,21 +144,18 @@ export function VenueUnavailabilityCard() {
             </p>
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted-foreground">Gymnase</span>
-              <Select aria-label="Gymnase indisponible" value={venueId} onChange={(e) => setVenueId(e.target.value)}>
-                {/* ⚠ L'option VIDE n'est pas un ornement : sans elle, `venueId` naît à "" sans
-                    correspondre à aucune option, et le navigateur affiche la PREMIÈRE comme
-                    sélectionnée. L'écran montrait donc un gymnase choisi pendant que l'état était
-                    vide — « Déclarer » restait mort, sans un mot. Pire : cliquer l'option déjà
-                    affichée ne déclenche pas `change`, donc le premier gymnase de la liste était
-                    INATTEIGNABLE. Mesuré par le parcours e2e « incident » (P4-122), qui a passé
-                    sept minutes sur ce bouton. Même forme que la liste jumelle de `DayDialog`. */}
-                <option value="">Gymnase indisponible…</option>
-                {venues.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name}
-                  </option>
-                ))}
-              </Select>
+              {/* ⚠ Le placeholder (valeur "") n'est pas un ornement : sans lui, `venueId` naît à ""
+                  sans correspondre à aucune option, et l'écran afficherait un gymnase choisi pendant
+                  que l'état est vide — « Déclarer » resterait mort, sans un mot. Le `Listbox` appelle
+                  `onValueChange` même en re-cliquant l'option déjà affichée, donc le 1er gymnase reste
+                  ATTEIGNABLE (le piège du <select> natif de P4-122 disparaît). Parcours e2e P4-122. */}
+              <VenueSelect
+                aria-label="Gymnase indisponible"
+                placeholder="Gymnase indisponible…"
+                venues={venues.map((v) => ({ id: v.id, name: v.name, color: v.color }))}
+                value={venueId}
+                onValueChange={setVenueId}
+              />
             </label>
             <div className="grid grid-cols-2 gap-2">
               <label className="flex flex-col gap-1 text-sm">

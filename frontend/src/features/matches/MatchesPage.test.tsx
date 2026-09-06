@@ -2,6 +2,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
 import * as matchesApi from "./api";
@@ -180,8 +181,8 @@ describe("MatchesPage — la boucle guidée (RMM-1 PR3)", () => {
 
     // Vue Domiciles : la liste « à placer ».
     await user.click(await screen.findByRole("button", { name: /vs Voisins/ }));
-    const venue = await screen.findByLabelText("Gymnase");
-    await user.selectOptions(venue, "venue-1");
+    await screen.findByRole("button", { name: /Gymnase/ }); // le panneau de placement est monté
+    await pickListboxOption(user, "Gymnase", "Gymnase Alpha");
     await user.type(screen.getByLabelText("Heure de coup d'envoi"), "15:00");
     await user.click(screen.getByRole("button", { name: "Placer" }));
 
