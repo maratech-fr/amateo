@@ -37,7 +37,8 @@ async function reachReservationPicker(page: import("@playwright/test").Page): Pr
   await expect(page.getByRole("heading", { name: /Étape 2\/6/ })).toBeVisible();
   await page.getByLabel("Nom du gymnase").fill("Gymnase LBX");
   await page.getByRole("button", { name: "Ajouter un gymnase" }).click();
-  await expect(page.getByLabel("Gymnase", { exact: true })).toHaveValue(/./);
+  // Le picker de gymnase (VenueSelect → Listbox, P4-164 PR-2) affiche le gymnase choisi dans son trigger.
+  await expect(page.locator("#venue-picker")).toContainText("Gymnase LBX", { timeout: 20_000 });
   await page.getByRole("button", { name: "Lun 18:00", exact: true }).click();
   await page.getByRole("button", { name: "Suivant" }).click();
 
@@ -124,5 +125,68 @@ for (const mode of ["dark", "light"] as const) {
     // L'option active est visible, et la liste tient DANS le viewport (la garantie du flip mesuré).
     await expect(page.locator('[role="option"]:focus')).toBeInViewport();
     await expect(page.getByRole("listbox")).toBeInViewport();
+  });
+}
+
+/**
+ * `VenueSelect` reconstruit sur `Listbox` (P4-164 PR-2) : la nouveauté propre au gymnase est la
+ * PASTILLE de couleur (`Venue.color`) — sur le trigger ET sur chaque option — là où l'ancienne
+ * limite « la liste ouverte reste textuelle » (une `<option>` HTML ne porte que du texte) vient de
+ * disparaître. On l'exerce sur l'étape « Gymnases » du wizard, seul écran où deux gymnases colorés
+ * sont atteignables sans générer un planning. jsdom ne peint rien : la pastille et le contraste de
+ * la liste ouverte ne se vérifient qu'ici.
+ */
+async function reachVenueSelect(page: import("@playwright/test").Page): Promise<void> {
+  const ara = uniqueAra("LBXV");
+  await registerAndVerify(page, { email: `listboxv-${ara}@e2e.fr`, ara, firstName: "Ven", lastName: "Sel", clubName: "Venue Listbox Club" });
+  await expect(page.getByRole("heading", { name: /Étape 1\/6/ })).toBeVisible({ timeout: 15_000 });
+
+  // Étape 1 · une équipe (sinon « Suivant » retombe sur le trou de l'étape 1).
+  await page.getByLabel("Nom de l'équipe").fill("SM1");
+  await page.getByLabel("Catégorie").selectOption({ label: "Senior" });
+  await page.getByRole("button", { name: "Ajouter l'équipe" }).click();
+  await expect(page.locator('input[value="SM1"]')).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: "Suivant" }).click();
+
+  // Étape 2 · DEUX gymnases → le picker porte deux options colorées.
+  await expect(page.getByRole("heading", { name: /Étape 2\/6/ })).toBeVisible();
+  await page.getByLabel("Nom du gymnase").fill("Gymnase Un");
+  await page.getByRole("button", { name: "Ajouter un gymnase" }).click();
+  await expect(page.locator("#venue-picker")).toContainText("Gymnase Un", { timeout: 20_000 });
+  await page.getByLabel("Nom du gymnase").fill("Gymnase Deux");
+  await page.getByRole("button", { name: "Ajouter un gymnase" }).click();
+  await expect(page.locator("#venue-picker")).toContainText("Gymnase Deux", { timeout: 20_000 });
+}
+
+for (const mode of ["dark", "light"] as const) {
+  test(`listbox venue — pastille couleur (trigger + options) + contraste liste ouverte (${mode})`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await forceTheme(page, mode);
+    await reachVenueSelect(page);
+
+    // Attendre que l'écran soit RENDU (pas inert/voilé) : axe saute un sous-arbre inert.
+    await settleVeil(page);
+
+    // Pastille du gymnase CHOISI sur le trigger (l'ancienne limite « liste textuelle » a disparu).
+    const trigger = page.locator("#venue-picker");
+    await expect(trigger.locator('span[style*="background"]')).toBeVisible();
+
+    await trigger.click();
+    const listbox = page.getByRole("listbox");
+    await expect(listbox).toBeVisible();
+    // Scoper AU listbox : `page.getByRole("option")` ramasserait aussi les <option> des <select>
+    // natifs de l'étape (« Durée à poser », « Jour de la fenêtre match »), sans pastille.
+    const options = listbox.getByRole("option");
+    // TÉMOIN : sans option, le scan axe passerait en ne vérifiant RIEN.
+    const count = await options.count();
+    expect(count, "témoin : liste vide = scan vide").toBeGreaterThan(0);
+
+    // Pastille couleur SUR chaque option (la couleur du gymnase, aria-hidden — élément graphique).
+    for (let i = 0; i < count; i++) {
+      await expect(options.nth(i).locator('span[style*="background"]')).toBeVisible();
+    }
+
+    // Contraste (WCAG 1.4.3) de la liste OUVERTE, rendue à l'utilisateur : nom d'option sur bg-card.
+    await expectNoContrastViolations(page, `venue listbox ouverte (${mode})`, '[role="listbox"]');
   });
 }

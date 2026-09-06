@@ -2,7 +2,7 @@ import { Download, FileSpreadsheet, FileText, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
-import { Select } from "@/shared/components/ui/select";
+import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { useCredits } from "@/shared/credits/useCredits";
 
 import type { Venue } from "./api";
@@ -97,14 +97,16 @@ export function ExportMenu({
           <label className="mb-1 block text-xs font-medium text-muted-foreground" htmlFor="export-scope">
             Périmètre
           </label>
-          <Select id="export-scope" aria-label="Périmètre de l'export" className="mb-3 h-9 w-full" value={scope} onChange={(e) => setScope(e.target.value)}>
-            <option value="">Tous les gymnases</option>
-            {venues.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-              </option>
-            ))}
-          </Select>
+          <VenueSelect
+            id="export-scope"
+            aria-label="Périmètre de l'export"
+            wrapperClassName="mb-3 w-full"
+            className="h-9"
+            placeholder="Tous les gymnases"
+            venues={venues.map((v) => ({ id: v.id, name: v.name, color: v.color }))}
+            value={scope}
+            onValueChange={setScope}
+          />
           <p className="mb-3 text-xs leading-tight text-muted-foreground">Chaque export contient les deux vues : la grille (jours × gymnases) et la vue par club (équipes × jours).</p>
           <div className="flex flex-col gap-1">
             {formats.map(({ key, label, icon: Icon }) => (

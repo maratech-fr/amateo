@@ -9,6 +9,7 @@ import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Modal } from "@/shared/components/ui/modal";
+import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { CalendarEntry, PublicHoliday, RedateEffect, RedateEffectKind, SchedulePlan, SchoolHoliday } from "./api";
@@ -750,15 +751,17 @@ function ClosureForm({ iso, onBack, onDone }: { iso: string; onBack: () => void;
 
   return (
     <FormShell onBack={onBack}>
-      {/* eslint-disable-next-line jsx-a11y/no-autofocus -- inside a Modal: focusing the first field on step change is intentional */}
-      <select className={fieldClass} aria-label="Gymnase indisponible" value={venueId} onChange={(e) => setVenueId(e.target.value)} autoFocus>
-        <option value="">Gymnase indisponible…</option>
-        {(venues ?? []).map((v) => (
-          <option key={v.id} value={v.id}>
-            {v.name}
-          </option>
-        ))}
-      </select>
+      {/* autoFocus (dans une Modal : focaliser le premier champ au changement d'étape est voulu) —
+          le trigger du Listbox est focusable ; la primitive porte déjà le disable en interne. */}
+      <VenueSelect
+        aria-label="Gymnase indisponible"
+        placeholder="Gymnase indisponible…"
+        // eslint-disable-next-line jsx-a11y/no-autofocus
+        autoFocus
+        venues={(venues ?? []).map((v) => ({ id: v.id, name: v.name, color: v.color }))}
+        value={venueId}
+        onValueChange={setVenueId}
+      />
       <input className={fieldClass} aria-label="Intitulé de l'indisponibilité (optionnel)" placeholder="Intitulé (optionnel)" maxLength={140} value={title} onChange={(e) => setTitle(e.target.value)} />
       <DateRangeFields startDate={startDate} endDate={endDate} onStart={setStart} onEnd={setEnd} />
       <Button className="w-full" onClick={submit} disabled={createClosure.isPending || venueId === "" || !valid}>

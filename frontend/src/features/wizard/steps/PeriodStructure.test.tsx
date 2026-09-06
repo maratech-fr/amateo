@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Closure } from "@/features/cockpit/api";
 import type { TeamLink } from "@/features/matches/api";
+import { openListbox, pickListboxOption } from "@/test/pickListboxOption";
 
 import type { Constraint, SharedTrainingBlock } from "../api";
 
@@ -539,7 +540,7 @@ describe("PeriodVenues — la grille de la période, gymnase par gymnase", () =>
     render(<PeriodVenues calendarEntryId="e1" />);
 
     await user.selectOptions(screen.getByLabelText("Dur\u00e9e \u00e0 poser"), "120");
-    await user.selectOptions(screen.getByLabelText("Gymnase"), "v2");
+    await pickListboxOption(user, "Gymnase", "Gymnase B");
 
     expect(screen.getByLabelText("Dur\u00e9e \u00e0 poser")).toHaveValue("120");
   });
@@ -1026,35 +1027,46 @@ describe("PeriodVenues — coches jour (indispo informative, 2026-08-18)", () =>
 // invisible, une fermeture partielle indistincte d'une totale. Chaque option porte désormais son
 // état effectif SERVI (désactivé / indisponible toute la période / fermé {jours} / rien).
 describe("PeriodVenues — le sélecteur de gymnase porte l'état effectif (P2-43 volet ii)", () => {
-  const picker = () => screen.getByLabelText("Gymnase");
-
-  it("annonce « désactivé » (mode DISABLED — invisible auparavant)", () => {
+  // L'état effectif vit désormais en SOUS-LIGNE de l'option (Listbox, P4-164 PR-2), le NOM reste
+  // intact — on ouvre la liste et on lit le texte de l'option (nom + sous-ligne).
+  it("annonce « désactivé » (mode DISABLED — invisible auparavant)", async () => {
     extraVenuesState.value = [{ id: "v2", name: "Gymnase B", color: null, canSplit: false, isActive: true }];
     conflictState.disabledVenueIds = ["v2"];
+    const user = userEvent.setup();
     render(<PeriodVenues calendarEntryId="e1" />);
 
-    expect(within(picker()).getByRole("option", { name: "Gymnase B — désactivé" })).toBeInTheDocument();
+    const opt = within(await openListbox(user, "Gymnase")).getByRole("option", { name: "Gymnase B" });
+    expect(opt).toHaveTextContent("désactivé");
   });
 
-  it("annonce « indisponible toute la période » (gymnase entièrement fermé)", () => {
+  it("annonce « indisponible toute la période » (gymnase entièrement fermé)", async () => {
     conflictState.fullyClosedVenueIds = ["v1"];
     conflictState.effectiveClosedWeekdays = { v1: { "1": "default-incident", "2": "default-incident", "3": "default-incident", "4": "default-incident", "5": "default-incident", "6": "default-incident", "7": "default-incident" } };
+    const user = userEvent.setup();
     render(<PeriodVenues calendarEntryId="e1" />);
 
-    expect(within(picker()).getByRole("option", { name: "Gymnase A — indisponible toute la période" })).toBeInTheDocument();
+    const opt = within(await openListbox(user, "Gymnase")).getByRole("option", { name: "Gymnase A" });
+    expect(opt).toHaveTextContent("indisponible toute la période");
   });
 
-  it("annonce « fermé {jours} » (fermeture partielle — masque manuel OU indispo déclarée)", () => {
+  it("annonce « fermé {jours} » (fermeture partielle — masque manuel OU indispo déclarée)", async () => {
     conflictState.effectiveClosedWeekdays = { v1: { "6": "default-incident", "7": "manual" } };
+    const user = userEvent.setup();
     render(<PeriodVenues calendarEntryId="e1" />);
 
-    expect(within(picker()).getByRole("option", { name: "Gymnase A — fermé samedi, dimanche" })).toBeInTheDocument();
+    const opt = within(await openListbox(user, "Gymnase")).getByRole("option", { name: "Gymnase A" });
+    expect(opt).toHaveTextContent("fermé samedi, dimanche");
   });
 
-  it("rien pour un gymnase OUVERT (pas de bruit)", () => {
+  it("rien pour un gymnase OUVERT (pas de bruit)", async () => {
+    const user = userEvent.setup();
     render(<PeriodVenues calendarEntryId="e1" />);
 
-    expect(within(picker()).getByRole("option", { name: "Gymnase A" })).toBeInTheDocument();
+    const opt = within(await openListbox(user, "Gymnase")).getByRole("option", { name: "Gymnase A" });
+    expect(opt).toHaveTextContent("Gymnase A");
+    expect(opt).not.toHaveTextContent("désactivé");
+    expect(opt).not.toHaveTextContent("fermé");
+    expect(opt).not.toHaveTextContent("indisponible");
   });
 });
 

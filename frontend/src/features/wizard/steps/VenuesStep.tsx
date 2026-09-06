@@ -592,7 +592,7 @@ function VenuesEditor() {
             <label className="text-sm font-medium" htmlFor="venue-picker">
               Gymnase :
             </label>
-            {/* Pastille AVANT le nom (demande fondateur 2026-08-05) — VenueSelect partagé. */}
+            {/* Pastille couleur dans chaque option ET le trigger — VenueSelect partagé (Listbox). */}
             <VenueSelect
               id="venue-picker"
               aria-label="Gymnase"
@@ -600,8 +600,8 @@ function VenuesEditor() {
               wrapperClassName="w-60"
               venues={venues.map((v) => ({ id: v.id, name: v.name, color: v.color ?? DEFAULT_VENUE_COLOR }))}
               value={selected.id}
-              onChange={(e) => {
-                setSelectedId(e.target.value);
+              onValueChange={(next) => {
+                setSelectedId(next);
                 setEditingSlot(null);
                 // Drop the rename buffer so switching gyms can't write the name
                 // typed for the previous one onto the newly selected gym.

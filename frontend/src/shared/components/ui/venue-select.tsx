@@ -1,48 +1,66 @@
-import type { ReactNode, SelectHTMLAttributes } from "react";
+import { Listbox, type ListboxOption } from "@/shared/components/ui/listbox";
 
-import { cn } from "@/shared/lib/utils";
-
-import { Select } from "./select";
-import { VenueSwatch } from "./venue-swatch";
-
-interface VenueLike {
+/** One venue row. `color` drives the pastille (null → neutral dot). */
+export interface VenueLike {
   id: string;
   name: string;
   color: string | null;
+  /** Second line under the name: an effective state ("désactivé", "fermé lundi…"). Name stays intact. */
+  sub?: string;
+  /** Reachable by keyboard but inert (Enter/click no-op, list stays open). */
+  disabled?: boolean;
 }
 
-interface VenueSelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, "children"> {
+/** A head option rendered before the venues (after the placeholder), e.g. a suggestion to clear. */
+export interface VenueLeadingOption {
+  value: string;
+  label: string;
+  disabled?: boolean;
+}
+
+interface VenueSelectProps {
   venues: VenueLike[];
-  /** Optional leading option (e.g. "— gymnase —") rendered before the venues. */
+  value: string;
+  onValueChange: (value: string) => void;
+  /** Selectable leading option (value ""), like `TeamSelect` — shown in the trigger when nothing is picked. */
   placeholder?: string;
-  /** Options de TÊTE rendues avant les gymnases (ex. placeholder disabled). */
-  children?: ReactNode;
-  /** Classes for the wrapping flex box (width lives here, not on the select). */
+  /** Head options rendered before the venues (after the placeholder). Replaces the old `<option>` children. */
+  leadingOptions?: VenueLeadingOption[];
+  /** Trigger width/height overrides (twMerge over the Listbox defaults). */
+  className?: string;
+  /** Wraps the field — width usually lives here (the popover matches the wrapper width). */
   wrapperClassName?: string;
+  disabled?: boolean;
+  autoFocus?: boolean;
+  title?: string;
+  id?: string;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
 }
 
 /**
- * Sélecteur de gymnase partagé (demande fondateur 2026-08-05) : la pastille de
- * couleur du gymnase SÉLECTIONNÉ est accolée au champ — l'identification d'un
- * coup d'œil, sans renoncer au `<select>` natif (clavier, mobile, tests).
- * ⚠ Limite assumée : les `<option>` natives ne peuvent pas porter de pastille —
- * la liste OUVERTE reste textuelle. La pastille DANS la liste n'existe que sur
- * les listes custom (ex. « Associer à… » du panneau salles à proximité).
+ * Sélecteur de gymnase partagé (demande fondateur 2026-08-05), reconstruit sur la primitive
+ * `Listbox` (P4-164 PR-2). La pastille `Venue.color` s'affiche **sur chaque option ET sur le
+ * trigger** (le `Listbox` peint la pastille de la valeur choisie) — l'identification d'un coup
+ * d'œil, dans le champ comme dans la liste ouverte.
+ *
+ * ⚠ L'ancienne limite « la liste OUVERTE reste textuelle » (une `<option>` HTML ne porte que du
+ * texte) N'EXISTE PLUS : le `Listbox` n'est pas un `<select>` natif. Une seule pastille désormais
+ * (celle du trigger), plus de `VenueSwatch` externe accolée au champ.
+ *
+ * L'état effectif d'un gymnase (désactivé / fermé {jours} / indisponible) passe par `sub` — nom
+ * intact, état en sous-ligne — au lieu d'être concaténé dans le libellé (`nom — état`).
  */
-export function VenueSelect({ venues, placeholder, children, className, wrapperClassName, ...props }: VenueSelectProps) {
-  const selected = venues.find((v) => v.id === String(props.value ?? ""));
+export function VenueSelect({ venues, leadingOptions, placeholder, className, wrapperClassName, ...listbox }: VenueSelectProps) {
+  const options: ListboxOption[] = [
+    ...(leadingOptions ?? []).map((o) => ({ value: o.value, label: o.label, disabled: o.disabled })),
+    ...venues.map((v) => ({ value: v.id, label: v.name, swatch: v.color, sub: v.sub, disabled: v.disabled })),
+  ];
+
   return (
-    <span className={cn("inline-flex items-center gap-1.5", wrapperClassName)}>
-      <VenueSwatch color={selected?.color ?? null} className="size-2.5" />
-      <Select className={cn("min-w-0 flex-1", className)} {...props}>
-        {placeholder !== undefined ? <option value="">{placeholder}</option> : null}
-        {children}
-        {venues.map((v) => (
-          <option key={v.id} value={v.id}>
-            {v.name}
-          </option>
-        ))}
-      </Select>
-    </span>
+    <div className={wrapperClassName}>
+      <Listbox {...listbox} options={options} placeholder={placeholder} className={className} />
+    </div>
   );
 }

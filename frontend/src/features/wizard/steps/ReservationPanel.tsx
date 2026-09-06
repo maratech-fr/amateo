@@ -111,11 +111,11 @@ export function ReservationPanel({
           aria-label="Gymnase"
           className="h-8"
           wrapperClassName="w-52"
-          venues={venues.map((v) => ({ id: v.id, name: v.name + (fullyClosed.has(v.id) ? " (fermé cette période)" : disabledVenueIds?.has(v.id) ? " (désactivé pour cette période)" : ""), color: v.color }))}
+          venues={venues.map((v) => ({ id: v.id, name: v.name, color: v.color, sub: fullyClosed.has(v.id) ? "fermé cette période" : disabledVenueIds?.has(v.id) ? "désactivé pour cette période" : undefined }))}
           value={selected.id}
-          onChange={(e) => {
+          onValueChange={(next) => {
             setActiveSlot(null); // never leave a modal open on a slot from the previous venue
-            setVenueId(e.target.value);
+            setVenueId(next);
           }}
         />
       </div>

@@ -5,6 +5,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Modal } from "@/shared/components/ui/modal";
 import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
+import { VenueSelect } from "@/shared/components/ui/venue-select";
 
 import type { Fixture, PriorityTier, Team, Venue } from "./api";
 import { inferHabits } from "./lib/habitInference";
@@ -139,17 +140,20 @@ export function HabitsLinksDialog({ teams, tiers, venues, fixtures, onClose }: H
               Heure
               <input aria-label="Heure de l'habitude" type="time" className="h-8 rounded-md border border-border bg-background px-2 text-sm" value={habitTime} onChange={(e) => setHabitTime(e.target.value)} />
             </label>
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {/* div, pas label : le VenueSelect (Listbox) se nomme lui-même via aria-label ; le
+                caption visible reste une légende décorative. */}
+            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
               Gymnase (optionnel)
-              <Select aria-label="Gymnase de l'habitude" className="h-8 w-36" value={habitVenueId} onChange={(e) => setHabitVenueId(e.target.value)}>
-                <option value="">—</option>
-                {venues.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name}
-                  </option>
-                ))}
-              </Select>
-            </label>
+              <VenueSelect
+                aria-label="Gymnase de l'habitude"
+                className="h-8"
+                wrapperClassName="w-36"
+                placeholder="—"
+                venues={venues.map((v) => ({ id: v.id, name: v.name, color: v.color }))}
+                value={habitVenueId}
+                onValueChange={setHabitVenueId}
+              />
+            </div>
             <Button size="icon" className="size-8" aria-label="Ajouter l'habitude" title="Ajouter l'habitude" disabled={"" === habitTeamId || "" === habitTime || createHabit.isPending} onClick={addHabit}>
               <Plus className="size-4" />
             </Button>

@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
 import { VenueUnavailabilityCard } from "./VenueUnavailabilityCard";
@@ -50,9 +51,12 @@ describe("VenueUnavailabilityCard — déclarer une indisponibilité", () => {
     venuesData = [{ id: "v-adn", name: "ADN" }, { id: "v-camus", name: "Camus" }];
     await user.type(screen.getByLabelText("Motif de l'indisponibilité"), "x");
 
-    // Sans l'option vide, le navigateur afficherait « ADN » alors que l'état est vide : l'écran
-    // mentirait, et « Déclarer » resterait mort sans que rien ne l'explique.
-    expect(await screen.findByRole("combobox", { name: "Gymnase indisponible" })).toHaveValue("");
+    // Sans le placeholder (valeur ""), l'écran afficherait « ADN » alors que l'état est vide : il
+    // mentirait, et « Déclarer » resterait mort sans que rien ne l'explique. Le trigger montre le
+    // placeholder tant que rien n'est choisi.
+    const trigger = await screen.findByRole("button", { name: /Gymnase indisponible/ });
+    expect(trigger).toHaveTextContent("Gymnase indisponible…");
+    expect(trigger).not.toHaveTextContent("ADN");
   });
 
   it("« Déclarer » s'active dès que le formulaire est réellement complet — 1er gymnase COMPRIS", async () => {
@@ -63,8 +67,10 @@ describe("VenueUnavailabilityCard — déclarer une indisponibilité", () => {
     const submit = screen.getAllByRole("button", { name: "Déclarer" }).at(-1)!;
     expect(submit).toBeDisabled();
 
-    // Le PREMIER gymnase — celui que le bug rendait inatteignable quand il s'affichait déjà.
-    await user.selectOptions(screen.getByRole("combobox", { name: "Gymnase indisponible" }), "v-adn");
+    // Le PREMIER gymnase — celui que le bug rendait inatteignable quand il s'affichait déjà. Le
+    // Listbox appelle `onValueChange` même en cliquant l'option déjà affichée, donc ADN est
+    // atteignable (le piège du <select> natif de P4-122 disparaît).
+    await pickListboxOption(user, "Gymnase indisponible", "ADN");
     await user.type(screen.getByLabelText("Début de l'indisponibilité"), "2026-09-01");
     await user.type(screen.getByLabelText("Fin de l'indisponibilité"), "2026-09-04");
 

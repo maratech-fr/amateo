@@ -2,6 +2,8 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { pickListboxOption } from "@/test/pickListboxOption";
+
 // On mocke les COUCHES VOISINES (export réseau, crédits) — la règle testée ici,
 // « l'export annonce son périmètre quand l'écran est filtré » (P4-62), vit dans
 // le composant, pas dans les mocks.
@@ -69,7 +71,7 @@ describe("ExportMenu — P4-62, l'export annonce son périmètre", () => {
 
     // Le périmètre annoncé suit le sélecteur de l'export, jamais le filtre d'écran :
     // c'est ce que le serveur rendra (le PDF ignore tout filtre client).
-    await user.selectOptions(screen.getByLabelText("Périmètre de l'export"), "v2");
+    await pickListboxOption(user, "Périmètre de l'export", "Tonkin");
     expect(screen.getByText(/L'écran est filtré/)).toHaveTextContent("Tonkin");
   });
 });

@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { pickListboxOption } from "@/test/pickListboxOption";
+
 import type { CalendarEntry, PublicHoliday, RedateEffect, SchoolHoliday } from "./api";
 import { DayDialog } from "./DayDialog";
 
@@ -262,11 +264,12 @@ describe("DayDialog — deletion is always confirmed", () => {
   });
 
   it("builds a structured '{venue} — {reason}' closure title, defaulting the reason to 'fermé'", async () => {
+    const user = userEvent.setup();
     renderDialog([]);
 
-    await userEvent.click(screen.getByRole("button", { name: "Signaler une indisponibilité" }));
-    await userEvent.selectOptions(screen.getByRole("combobox"), "v1");
-    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await user.click(screen.getByRole("button", { name: "Signaler une indisponibilité" }));
+    await pickListboxOption(user, "Gymnase indisponible", "Gymnase A");
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
 
     expect(closureMutate).toHaveBeenCalledWith(
       { title: "Gymnase A — fermé", startDate: "2026-05-12", endDate: "2026-05-12", venueId: "v1" },
@@ -275,12 +278,13 @@ describe("DayDialog — deletion is always confirmed", () => {
   });
 
   it("puts the typed reason after the venue in the closure title", async () => {
+    const user = userEvent.setup();
     renderDialog([]);
 
-    await userEvent.click(screen.getByRole("button", { name: "Signaler une indisponibilité" }));
-    await userEvent.selectOptions(screen.getByRole("combobox"), "v1");
-    await userEvent.type(screen.getByPlaceholderText(/Intitulé \(optionnel/), "Travaux");
-    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await user.click(screen.getByRole("button", { name: "Signaler une indisponibilité" }));
+    await pickListboxOption(user, "Gymnase indisponible", "Gymnase A");
+    await user.type(screen.getByPlaceholderText(/Intitulé \(optionnel/), "Travaux");
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
 
     expect(closureMutate).toHaveBeenCalledWith(
       { title: "Gymnase A — Travaux", startDate: "2026-05-12", endDate: "2026-05-12", venueId: "v1" },
@@ -289,12 +293,13 @@ describe("DayDialog — deletion is always confirmed", () => {
   });
 
   it("does not repeat the venue when the typed reason already names it", async () => {
+    const user = userEvent.setup();
     renderDialog([]);
 
-    await userEvent.click(screen.getByRole("button", { name: "Signaler une indisponibilité" }));
-    await userEvent.selectOptions(screen.getByRole("combobox"), "v1");
-    await userEvent.type(screen.getByPlaceholderText(/Intitulé \(optionnel/), "Gymnase A en travaux");
-    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await user.click(screen.getByRole("button", { name: "Signaler une indisponibilité" }));
+    await pickListboxOption(user, "Gymnase indisponible", "Gymnase A");
+    await user.type(screen.getByPlaceholderText(/Intitulé \(optionnel/), "Gymnase A en travaux");
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
 
     expect(closureMutate).toHaveBeenCalledWith(
       { title: "Gymnase A en travaux", startDate: "2026-05-12", endDate: "2026-05-12", venueId: "v1" },

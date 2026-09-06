@@ -16,7 +16,6 @@ import { Modal } from "@/shared/components/ui/modal";
 import { Select } from "@/shared/components/ui/select";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
-import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { buildTagTeamIds, resolveConstraintTeamIds, targetsTags } from "@/shared/lib/tagTeamIds";
 import { formatDuration } from "@/shared/lib/duration";
@@ -512,19 +511,18 @@ function PeriodVenuesPanel({ calendarEntryId, schedulePlanId }: { calendarEntryI
           aria-label="Gymnase"
           className="h-9"
           wrapperClassName="w-60"
-          // P2-43 volet (ii) — chaque option porte son état effectif (désactivé / indisponible
-          // toute la période / fermé {jours} / rien), plus seulement la fermeture totale.
+          // P2-43 volet (ii) — chaque option porte son état effectif en SOUS-LIGNE (désactivé /
+          // indisponible toute la période / fermé {jours} / rien), le nom reste intact.
           venues={venues.map((v) => {
             const state = pickerStateLabel(v.id);
-            return { id: v.id, name: "" === state ? v.name : `${v.name} — ${state}`, color: v.color };
+            return { id: v.id, name: v.name, color: v.color, sub: "" === state ? undefined : state };
           })}
           value={selected.id}
-          onChange={(e) => {
-            setSelectedId(e.target.value);
+          onValueChange={(next) => {
+            setSelectedId(next);
             setEditingSlot(null); // ne jamais laisser l'éditeur ouvert sur un créneau d'un autre gymnase
           }}
         />
-        <VenueSwatch color={selected.color ?? "transparent"} className="size-4 border border-input" />
       </div>
 
       {/* Indicateur d'ensemble : le badge par gymnase ne montre que le gymnase choisi, or
