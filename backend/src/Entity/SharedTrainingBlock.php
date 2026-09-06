@@ -30,7 +30,8 @@ use Doctrine\ORM\Mapping as ORM;
  *    de MÊME portée ≤ ses séances/semaine effectives ({@see EffectiveTeamSessions}) ;
  *  - meurt ENTIER : supprimer une équipe membre détruit tous ses blocs (patron du prune group).
  *
- * Détail : specs/evolution/mutualisation-par-creneau.md · specs/evolution/plannings-bccl-2026-08-31.md.
+ * Détail : docs/archive/plannings-bccl-2026-08-31.md §4 (cadrage d'origine `mutualisation-par-creneau.md`
+ * supprimé à la clôture du lot, historique git avant 05d1f7bb).
  */
 #[ORM\Entity]
 #[ORM\Table(name: 'shared_training_block')]
