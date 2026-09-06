@@ -158,7 +158,9 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   // Manual entry (« Nouveau match » est dans la barre du haut, dispo partout).
   await page.getByRole("button", { name: /Nouveau match/i }).click();
   await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeVisible();
-  await page.getByLabel("Équipe").selectOption({ index: 0 });
+  // « Équipe » est une listbox APG (P4-164) : on ouvre le trigger puis on choisit la 1re équipe.
+  await page.getByRole("button", { name: /^Équipe/ }).click();
+  await page.getByRole("option").first().click();
   await page.getByLabel("Date").fill("2027-03-06"); // a Saturday
   await page.getByLabel("Adversaire").fill(opponent);
   await page.getByRole("button", { name: "Créer" }).click();

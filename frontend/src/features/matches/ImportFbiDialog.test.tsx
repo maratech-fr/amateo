@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { listboxTrigger, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
 import type { Deviation, ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team } from "./api";
@@ -85,8 +86,8 @@ describe("ImportFbiDialog", () => {
     // The persisted PNM mapping is pre-filled (text, no select)…
     await waitFor(() => expect(screen.getByText("→ SM1")).toBeInTheDocument());
     // …and the unknown DF2 division offers the team picker.
-    expect(screen.getByLabelText("Équipe pour DF2")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Équipe pour PNM")).not.toBeInTheDocument();
+    expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Équipe pour PNM/ })).not.toBeInTheDocument();
   });
 
   it("imports in ONE pass: file + the new mappings only, then shows the report", async () => {
@@ -94,8 +95,8 @@ describe("ImportFbiDialog", () => {
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
     await pickFile(user);
-    await waitFor(() => expect(screen.getByLabelText("Équipe pour DF2")).toBeInTheDocument());
-    await user.selectOptions(screen.getByLabelText("Équipe pour DF2"), "team-2");
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
+    await pickListboxOption(user, "Équipe pour DF2", "SF3"); // team-2
     await user.click(screen.getByRole("button", { name: "Importer" }));
 
     expect(importFbiFixtures).toHaveBeenCalledOnce();
@@ -131,7 +132,7 @@ describe("ImportFbiDialog", () => {
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
     await pickFile(user);
-    await waitFor(() => expect(screen.getByLabelText("Équipe pour DF2")).toHaveValue("team-2"));
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toHaveAccessibleName(/SF3/)); // team-2
     expect(screen.getByText("proposé par la FFBB")).toBeInTheDocument();
 
     // What the select DISPLAYS is what gets imported — untouched suggestion
@@ -156,8 +157,8 @@ describe("ImportFbiDialog", () => {
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
     await pickFile(user);
-    await waitFor(() => expect(screen.getByLabelText("Équipe pour DF2")).toBeInTheDocument());
-    expect(screen.getByLabelText("Équipe pour DF2")).toHaveValue("");
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
+    expect(listboxTrigger(/Équipe pour DF2/)).toHaveAccessibleName(/Associer à/); // valeur vide → placeholder
     expect(screen.queryByText("proposé par la FFBB")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Importer" }));
@@ -200,14 +201,15 @@ describe("ImportFbiDialog", () => {
     await pickFile(user);
 
     // B3 — le nom de division + son fbiTeamLabel (qui n'existe QUE quand il est indispensable).
-    const label = await screen.findByText(/Division 2 Masculine Séniors/);
+    // `selector` : écarte le libellé sr-only de la listbox (aria-label repris en texte a11y).
+    const label = await screen.findByText(/Division 2 Masculine Séniors/, { selector: "span[title]" });
     expect(label).not.toHaveClass("truncate");
     expect(label.getAttribute("title")).toContain("Équipe 2");
 
     // B4 — la valeur pré-remplie du select se lit sans l'ouvrir (élargie + title de secours).
-    const select = screen.getByLabelText(/Équipe pour Division 2 Masculine Séniors/);
+    const select = screen.getByRole("button", { name: /Équipe pour Division 2 Masculine Séniors/ });
     expect(select).toHaveClass("w-52");
-    expect(select).toHaveAttribute("title", "SF3");
+    expect(select).toHaveAccessibleName(/SF3/); // la valeur pré-remplie se lit sans ouvrir la liste
   });
 
   it("reports the completeness of paired competitions after the import", async () => {
@@ -228,7 +230,7 @@ describe("ImportFbiDialog", () => {
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
     await pickFile(user);
-    await waitFor(() => expect(screen.getByLabelText("Équipe pour DF2")).toBeInTheDocument());
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Importer" }));
 
     await waitFor(() => expect(screen.getByText(/PNM : 9\/22 journées — fichier partiel ou phase pas encore sortie/)).toBeInTheDocument());
@@ -240,8 +242,8 @@ describe("ImportFbiDialog", () => {
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
     await pickFile(user);
-    await waitFor(() => expect(screen.getByLabelText("Équipe pour DF2")).toBeInTheDocument());
-    await user.selectOptions(screen.getByLabelText("Équipe pour DF2"), "team-2");
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
+    await pickListboxOption(user, "Équipe pour DF2", "SF3"); // team-2
 
     // Avant le rapport : aucun bouton de placement (l'offre naît du rapport réussi).
     expect(screen.queryByRole("button", { name: /Placer les matchs importés/ })).not.toBeInTheDocument();
@@ -263,8 +265,8 @@ describe("ImportFbiDialog", () => {
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
     await pickFile(user);
-    await waitFor(() => expect(screen.getByLabelText("Équipe pour DF2")).toBeInTheDocument());
-    await user.selectOptions(screen.getByLabelText("Équipe pour DF2"), "team-2");
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
+    await pickListboxOption(user, "Équipe pour DF2", "SF3"); // team-2
     await user.click(screen.getByRole("button", { name: "Importer" }));
     await waitFor(() => expect(screen.getByText(/22 créés/)).toBeInTheDocument());
 
@@ -319,7 +321,7 @@ describe("ImportFbiDialog", () => {
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
     await pickFile(user);
-    await waitFor(() => expect(screen.getByLabelText("Équipe pour DF2")).toBeInTheDocument());
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
     // FALSIFICATION — aucune bascule vers la vue quand il n'y a pas d'écart.
     expect(screen.queryByRole("button", { name: /Examiner/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Importer" })).toBeInTheDocument();

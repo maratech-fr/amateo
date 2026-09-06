@@ -2,6 +2,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { listboxTrigger, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
 import type { Competition, PriorityTier, Team } from "./api";
@@ -58,7 +59,7 @@ describe("FixtureFormDialog", () => {
 
     // team-1 is selected by default → pick its competition, then switch to team-2.
     await user.selectOptions(screen.getByLabelText("Compétition"), "comp-1");
-    await user.selectOptions(screen.getByLabelText("Équipe"), "team-2");
+    await pickListboxOption(user, "Équipe", "Seniors"); // team-2
     await user.type(screen.getByLabelText("Date"), "2026-11-01");
     await user.type(screen.getByLabelText("Adversaire"), "Amis");
     await user.click(screen.getByRole("button", { name: "Créer" }));
@@ -91,7 +92,7 @@ describe("FixtureFormDialog", () => {
     renderWithProviders(<FixtureFormDialog teams={teams} tiers={tiers} competitions={competitions} fixture={existing} onClose={vi.fn()} />);
 
     expect(screen.getByRole("heading", { name: "Modifier le match" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Équipe")).toBeDisabled(); // another team = another engagement
+    expect(listboxTrigger("Équipe")).toBeDisabled(); // another team = another engagement
     expect(screen.getByLabelText("Date")).toHaveValue("2026-11-08");
     expect(screen.getByLabelText("Adversaire")).toHaveValue("Rivaux");
 

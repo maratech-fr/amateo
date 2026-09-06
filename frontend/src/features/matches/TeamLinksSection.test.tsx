@@ -2,6 +2,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { listboxTrigger, openListbox, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
 import type { PriorityTier, Team, TeamLink } from "./api";
@@ -47,35 +48,37 @@ describe("TeamLinksSection — filtrage et pré-remplissage (filterTeamId)", () 
     // Comportement changé (fondateur) : ancrée à SM1, A n'est plus un champ modifiable mais un
     // FAIT affiché en texte. Un sélecteur A laisserait créer un lien qui ne concerne pas SM1.
     renderWithProviders(<TeamLinksSection teams={TEAMS} tiers={TIERS} filterTeamId="t1" />);
-    expect(screen.queryByLabelText("Première équipe du lien")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Première équipe du lien/ })).toBeNull();
     expect(screen.getByText("SM1")).toBeInTheDocument();
   });
 
   it("SANS filterTeamId (depuis /matchs), le sélecteur A EST là (comportement inchangé)", () => {
     renderWithProviders(<TeamLinksSection teams={TEAMS} tiers={TIERS} />);
-    expect(screen.getByLabelText("Première équipe du lien")).toBeInTheDocument();
+    expect(listboxTrigger("Première équipe du lien")).toBeInTheDocument();
   });
 });
 
 describe("TeamLinksSection — équipe B filtrée UNIQUEMENT dans la modale ancrée (2026-08-23)", () => {
-  it("ancrée : B ne propose plus une équipe DÉJÀ liée à A, ni A elle-même ; les autres restent", () => {
+  it("ancrée : B ne propose plus une équipe DÉJÀ liée à A, ni A elle-même ; les autres restent", async () => {
     // Lien SM1↔SM2 en état → SM2 absente du sélecteur B ; SF1 présente ; SM1 (=A) absente.
     linksState.data = [teamLink({ id: "l1", teamAId: "t1", teamBId: "t2" })];
+    const user = userEvent.setup();
     renderWithProviders(<TeamLinksSection teams={TEAMS} tiers={TIERS} filterTeamId="t1" />);
 
-    const bSelect = screen.getByLabelText("Seconde équipe du lien");
-    expect(within(bSelect).queryByRole("option", { name: "SM2" })).toBeNull();
-    expect(within(bSelect).queryByRole("option", { name: "SM1" })).toBeNull();
-    expect(within(bSelect).getByRole("option", { name: "SF1" })).toBeInTheDocument();
+    const bList = await openListbox(user, "Seconde équipe du lien");
+    expect(within(bList).queryByRole("option", { name: "SM2" })).toBeNull();
+    expect(within(bList).queryByRole("option", { name: "SM1" })).toBeNull();
+    expect(within(bList).getByRole("option", { name: "SF1" })).toBeInTheDocument();
   });
 
-  it("SANS filterTeamId : B n'est PAS filtrée — SM2 reste proposée même liée (décision fondateur)", () => {
+  it("SANS filterTeamId : B n'est PAS filtrée — SM2 reste proposée même liée (décision fondateur)", async () => {
     linksState.data = [teamLink({ id: "l1", teamAId: "t1", teamBId: "t2" })];
+    const user = userEvent.setup();
     renderWithProviders(<TeamLinksSection teams={TEAMS} tiers={TIERS} />);
 
-    const bSelect = screen.getByLabelText("Seconde équipe du lien");
-    expect(within(bSelect).getByRole("option", { name: "SM2" })).toBeInTheDocument();
-    expect(within(bSelect).getByRole("option", { name: "SM1" })).toBeInTheDocument();
+    const bList = await openListbox(user, "Seconde équipe du lien");
+    expect(within(bList).getByRole("option", { name: "SM2" })).toBeInTheDocument();
+    expect(within(bList).getByRole("option", { name: "SM1" })).toBeInTheDocument();
   });
 
   it("ancrée, une SEULE équipe (aucune autre à lier) : garde le formulaire, PAS la phrase « déjà liées »", () => {
@@ -138,7 +141,7 @@ describe("TeamLinksSection — lecture seule vs édition (P2-45, tranchage A)", 
     const user = userEvent.setup();
     renderWithProviders(<TeamLinksSection teams={TEAMS} tiers={TIERS} filterTeamId="t1" />);
 
-    await user.selectOptions(screen.getByLabelText("Seconde équipe du lien"), "t2");
+    await pickListboxOption(user, "Seconde équipe du lien", "SM2"); // t2
     await user.click(screen.getByRole("button", { name: "Ajouter la passerelle" }));
 
     expect(createLink).toHaveBeenCalledWith({ teamAId: "t1", teamBId: "t2", linkType: "NOT_SIMULTANEOUS", trainingIntensity: "PREFERRED" });

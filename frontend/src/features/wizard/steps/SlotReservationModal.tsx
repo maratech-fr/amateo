@@ -172,17 +172,46 @@ export function SlotReservationModal({
   // P2-60 — équipes offrables individuellement, chacune avec N (résidu restant). `added` est le
   // brouillon d'ajouts non sauvés (retiré de N côté client). Vide tant que le budget n'est pas prêt.
   const assignable = blockAdd || !budgetReady ? [] : assignableTeams(offerable, tiers, slot, draftReservations, venueCanSplit, budgetByTeam, added);
-  const pickable = assignable.map((a) => a.team);
+  const assignableIds = new Set(assignable.map((a) => a.team.id));
   const remainingByTeam = new Map(assignable.map((a) => [a.team.id, a.remaining]));
-  // D2 — libellé d'option = suffixe de résidu pour TOUTES les équipes ; « hors groupe » quand
-  // l'équipe est membre d'un bloc (une partie de ses séances vient du groupe). Zéro n'apparaît
-  // jamais (retiré en amont). Présentation pure : la valeur de l'option reste `team.id`.
-  const optionLabelFor = (team: Team): string => {
-    const n = remainingByTeam.get(team.id) ?? 0;
-    const unit = n > 1 ? "créneaux" : "créneau";
-    const suffix = true === budgetByTeam.get(team.id)?.inBlock ? " hors groupe" : "";
-
-    return `${team.name} — reste ${n} ${unit}${suffix}`;
+  // Occupantes de CETTE case (posées + brouillon d'ajouts) : ni proposées, ni montrées « à résidu
+  // nul » — elles sont déjà là.
+  const occupant = new Set<string>([...onSlot.map((r) => r.teamId), ...added]);
+  const draftAddedCount = new Map<string, number>();
+  for (const teamId of added) {
+    draftAddedCount.set(teamId, (draftAddedCount.get(teamId) ?? 0) + 1);
+  }
+  // P4-164 — RÉSIDU 0 VISIBLE : une équipe offrable dont tous les créneaux solo sont déjà posés
+  // RESTE dans la liste, mais DÉSACTIVÉE avec son motif (elle « disparaissait » avant, laissant le
+  // gestionnaire chercher pourquoi). Exclues : les occupantes de la case, et celles sans ligne de
+  // budget (fail-closed, dérive). Le front n'invente rien : le résidu vient du backend.
+  const residuExhausted = (team: Team): boolean => {
+    if (assignableIds.has(team.id) || occupant.has(team.id)) {
+      return false;
+    }
+    const budget = budgetByTeam.get(team.id);
+    if (undefined === budget) {
+      return false;
+    }
+    return budget.residual - budget.individualUsed - (draftAddedCount.get(team.id) ?? 0) <= 0;
+  };
+  const selectorTeams = blockAdd || !budgetReady ? [] : offerable.filter((t) => assignableIds.has(t.id) || residuExhausted(t));
+  // Le NOM du bloc d'une équipe (jamais son id) — pour aiguiller « passez par le groupe … ».
+  const blockNameOf = (teamId: string): string | null => {
+    const block = sharedTrainingBlocks.find((b) => b.teamIds.includes(teamId));
+    return undefined === block ? null : lotLabel(block.teamIds);
+  };
+  // D2/P4-164 — métadonnées d'option (présentation pure, la valeur reste `team.id`) : résidu à
+  // droite (« reste N créneau(x) »), « hors groupe » en sous-ligne pour un membre de bloc ; ou état
+  // désactivé + motif quand tous les créneaux solo sont posés.
+  const optionMetaFor = (team: Team): { count?: string; sub?: string; disabled?: boolean } => {
+    if (assignableIds.has(team.id)) {
+      const n = remainingByTeam.get(team.id) ?? 0;
+      const unit = n > 1 ? "créneaux" : "créneau";
+      return { count: `reste ${n} ${unit}`, sub: true === budgetByTeam.get(team.id)?.inBlock ? "hors groupe" : undefined };
+    }
+    const name = true === budgetByTeam.get(team.id)?.inBlock ? blockNameOf(team.id) : null;
+    return { disabled: true, sub: `Tous ses créneaux sont placés${null === name ? "" : ` — passez par le groupe ${name}`}` };
   };
 
   // MUTUALISATION (P2-51). Un bloc occupe la case SEUL : il exige un créneau libre dans le brouillon
@@ -504,7 +533,7 @@ export function SlotReservationModal({
           Un entraînement mutualisé occupe seul ce créneau. Retirez-le pour ajouter des équipes.
         </p>
       ) : occupied < capacity ? (
-        pickable.length > 0 || mutualisationOptions.length > 0 ? (
+        selectorTeams.length > 0 || mutualisationOptions.length > 0 ? (
           <>
             {/* Groupes par rang (demande fondateur 2026-08-04) : 49 équipes à plat sont illisibles —
                 TeamSelect est le home unique du découpage S/A/B/C/D. La section « Entraînements
@@ -514,11 +543,11 @@ export function SlotReservationModal({
               aria-describedby={blockedMutualisations.length > 0 ? blockedGroupsDescId : undefined}
               className="h-9 w-full"
               value=""
-              onChange={(e) => onSelect(e.target.value)}
+              onValueChange={onSelect}
               disabled={busy}
-              teams={pickable}
+              teams={selectorTeams}
               tiers={tiers}
-              optionLabel={optionLabelFor}
+              optionMeta={optionMetaFor}
               mutualisationGroups={mutualisationOptions}
               placeholder="— ajouter une équipe —"
             />

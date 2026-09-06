@@ -138,7 +138,7 @@ function RotationRow<T extends TeamLike>({
 
       {available.length > 0 ? (
         <div className="flex flex-wrap items-end gap-2">
-          <TeamSelect aria-label={`Ajouter une équipe au créneau ${slotLabel}`} className="w-40" teams={available} tiers={tiers} placeholder="Ajouter une équipe…" value={toAdd} onChange={(e) => setToAdd(e.target.value)} />
+          <TeamSelect aria-label={`Ajouter une équipe au créneau ${slotLabel}`} className="w-40" teams={available} tiers={tiers} placeholder="Ajouter une équipe…" value={toAdd} onValueChange={setToAdd} />
           <Button size="icon" className="size-9" aria-label={`Ajouter l'équipe au créneau ${slotLabel}`} title="Ajouter l'équipe" disabled={"" === toAdd || busy} onClick={addTeam}>
             <Plus className="size-4" />
           </Button>
@@ -295,7 +295,7 @@ function NewRotationForm<T extends TeamLike>({
       )}
 
       <div className="flex flex-wrap items-end gap-2">
-        <TeamSelect aria-label="Ajouter une équipe au nouveau créneau" className="w-40" teams={available} tiers={tiers} placeholder="Ajouter une équipe…" value={toAdd} onChange={(e) => setToAdd(e.target.value)} />
+        <TeamSelect aria-label="Ajouter une équipe au nouveau créneau" className="w-40" teams={available} tiers={tiers} placeholder="Ajouter une équipe…" value={toAdd} onValueChange={setToAdd} />
         <Button variant="outline" size="sm" aria-label="Ajouter l'équipe au nouveau créneau" disabled={"" === toAdd} onClick={addDraft}>
           <Plus className="size-4" />
           Ajouter

@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { openListbox, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
 import type { Constraint, ImplicitRuleSetting, SharedTrainingBlock } from "../api";
@@ -751,8 +752,9 @@ describe("ConstraintsStep — Réserver tab (slot grid + modal)", () => {
     renderWithProviders(<ConstraintsStep />);
 
     await openSlot(user);
-    // Picker is rank-ordered (Fanion=S before SM1=B); pick the fanion.
-    await user.selectOptions(screen.getByLabelText("Ajouter une équipe"), "t2");
+    // Picker is rank-ordered (Fanion=S before SM1=B); pick the fanion. La listbox APG (P4-164)
+    // remplace le <select> natif : on ouvre le trigger puis on clique l'option.
+    await pickListboxOption(user, "Ajouter une équipe", "Fanion"); // t2
     // P2-9 PR C : sélectionner ne réserve plus — la modale est transactionnelle, rien ne
     // part avant « Valider ». C'est ce qui laisse le contrôle s'interposer entre le choix
     // et l'écriture (décision fondateur : « le validator intervient au moment du ok »).
@@ -778,7 +780,7 @@ describe("ConstraintsStep — Réserver tab (slot grid + modal)", () => {
     renderWithProviders(<ConstraintsStep />);
 
     await openSlot(user);
-    await user.selectOptions(screen.getByLabelText("Ajouter une équipe"), "t2");
+    await pickListboxOption(user, "Ajouter une équipe", "Fanion"); // t2
 
     // Le message nomme l'équipe déjà coachée et l'heure : sans ça le gestionnaire sait
     // qu'on refuse, pas ce qu'il doit changer.
@@ -799,7 +801,7 @@ describe("ConstraintsStep — Réserver tab (slot grid + modal)", () => {
     renderWithProviders(<ConstraintsStep />);
 
     await openSlot(user);
-    expect(screen.queryByLabelText("Ajouter une équipe")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Ajouter une équipe/ })).not.toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent(/Vérification des coachs/);
   });
 
@@ -815,7 +817,7 @@ describe("ConstraintsStep — Réserver tab (slot grid + modal)", () => {
 
     await openSlot(user);
     await user.click(screen.getByRole("button", { name: "Retirer SM1" }));
-    await user.selectOptions(screen.getByLabelText("Ajouter une équipe"), "t2");
+    await pickListboxOption(user, "Ajouter une équipe", "Fanion"); // t2
     await user.click(screen.getByRole("button", { name: "Valider" }));
 
     // D3 (P2-60) — la phase 1 passe désormais par `apiErrorMessage` (comme le rail groupe) : une
@@ -830,9 +832,9 @@ describe("ConstraintsStep — Réserver tab (slot grid + modal)", () => {
     expect(h.resCreate).toHaveBeenCalledTimes(2);
   });
 
-  it("hides a team whose solo budget is exhausted, and labels the rest with its residual (P2-60)", async () => {
+  it("montre une équipe à budget solo épuisé en option DÉSACTIVÉE, et étiquette le reste de son résidu (P2-60/P4-164)", async () => {
     // t2 (Fanion) : budget solo épuisé (residual 2, 2 réservations individuelles → 0 restant) →
-    // absent du picker ; SM1 reste, étiquetée de son résidu (D2).
+    // RESTE dans le picker mais DÉSACTIVÉE (résidu 0 visible) ; SM1 reste active, résidu à droite.
     h.reservations = [
       { id: "ra", calendarEntryId: null, teamId: "t2", venueId: "v1", dayOfWeek: 3, startTime: "18:00", durationMinutes: 90 },
       { id: "rb", calendarEntryId: null, teamId: "t2", venueId: "v1", dayOfWeek: 4, startTime: "18:00", durationMinutes: 90 },
@@ -841,9 +843,12 @@ describe("ConstraintsStep — Réserver tab (slot grid + modal)", () => {
     renderWithProviders(<ConstraintsStep />);
 
     await openSlot(user);
-    const picker = screen.getByLabelText("Ajouter une équipe");
-    expect(within(picker).queryByRole("option", { name: /^Fanion/ })).toBeNull();
-    expect(within(picker).getByRole("option", { name: "SM1 — reste 2 créneaux" })).toBeInTheDocument();
+    const list = await openListbox(user, "Ajouter une équipe");
+    const fanion = within(list).getByRole("option", { name: "Fanion" });
+    expect(fanion).toHaveAttribute("aria-disabled", "true");
+    const sm1 = within(list).getByRole("option", { name: "SM1" });
+    expect(sm1).not.toHaveAttribute("aria-disabled");
+    expect(within(sm1).getByText("reste 2 créneaux")).toBeInTheDocument();
   });
 });
 
@@ -973,8 +978,9 @@ describe("ConstraintsStep — période : choisir, nommer, atteindre", () => {
     await user.click(screen.getAllByRole("button", { name: /Réserver/ })[0]);
     await user.selectOptions(screen.getByLabelText("Gymnase"), "v2");
     await user.click(screen.getByRole("button", { name: /Gymnase B.*cliquer pour gérer/ }));
-    const picker = screen.getByLabelText("Ajouter une équipe");
-    expect(within(picker).queryByRole("option", { name: "Fanion" })).toBeNull();
+    // Équipe en pause : ni active, ni « à résidu nul » — simplement ABSENTE du picker (verrou décision).
+    const list = await openListbox(user, "Ajouter une équipe");
+    expect(within(list).queryByRole("option", { name: "Fanion" })).toBeNull();
   });
 
   // ATTEINDRE — un gymnase désactivé qui porte ENCORE une réservation reste joignable,
