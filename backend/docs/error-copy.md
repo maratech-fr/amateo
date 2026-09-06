@@ -4,10 +4,10 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-09-04 (rotation `documentation-update`, PR D3 v1 cockpit — hors sujet de la
-PR, contrôle de fraîcheur). Re-confronté au code : `status < 500` toujours à `errorMessage.ts:32`
-✓ · `new ValidationException(` toujours confiné à `AbstractStateProcessor.php` (seule occurrence
-de `src/`) ✓ · `ValidationExceptionCarriesViolationsTest` (`tests/Unit/`) et
+Last verified @ 2026-09-06 (rotation `documentation-update`, PR P4-164 PR-1 — zone non touchée,
+contrôle de fraîcheur). Re-confronté au code : `status < 500` toujours à `errorMessage.ts:32` ✓ ·
+`new ValidationException(` toujours confiné à `AbstractStateProcessor.php` (grep `src/` : aucune
+autre occurrence) ✓ · `ValidationExceptionCarriesViolationsTest` (`tests/Unit/`) et
 `PublicTextIsFreeOfInternalIdentifiersTest` (`tests/OpenApi/`) existent sous ces noms ✓. Rien de
 faux trouvé.
 

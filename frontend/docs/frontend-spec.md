@@ -4,11 +4,12 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-09-05 (D3 v2, P4-174, `documentation-update`). §6.9 « API par route » recalée
-pour `/` (cockpit) : ajout de `POST /api/calendar_entries/{id}/redate-preview`, re-confronté à
-`frontend/src/features/cockpit/api.ts::previewRedate` et `DayDialog.tsx::RedateWithPreviewForm`.
-Reste du fichier (§2 « Routes / Objectives », primitives, stack, §6.7 bis) non re-vérifié cette
-passe — un stamp REMPLACE, l'historique vit dans git :
+Last verified @ 2026-09-06 (`documentation-update`, PR P4-164 PR-1). Recalé pour la primitive
+`Listbox` et `team-select` (arborescence `shared/components/ui/` + section « Trois pièces
+transverses ») : `listbox.tsx` et `team-select.tsx` reconfrontés au code, `onValueChange`/
+`optionMeta`/couleur du niveau vérifiés (`shared/components/ui/team-select.tsx`). Reste du fichier
+(§2 « Routes / Objectives », le reste des primitives, stack, §6.7 bis) non re-vérifié cette passe
+— un stamp REMPLACE, l'historique vit dans git :
 `git log -p --follow frontend/docs/frontend-spec.md`.
 
 ---
@@ -1358,7 +1359,8 @@ frontend/src/
 ├── shared/
 │   ├── api/                    # client ky, collection (JSON-LD clé `member`), errors
 │   ├── components/ui/          # Primitives (shadcn-style) — dont delete-confirm, load-error-hint,
-│   │                           # team-select, modal, menu, accordion, toaster, empty-hint
+│   │                           # listbox (APG single-select, P4-164), team-select (sur listbox),
+│   │                           # modal, menu, accordion, toaster, empty-hint
 │   ├── hooks/                  # useApplyTheme, useApplyClubTheme
 │   ├── lib/                    # readState, teamTiers, color, palette, duration, errorMessage,
 │   │                           # download, clipboard, passwordPolicy, useModalA11y, queryClient, utils,
@@ -1384,8 +1386,13 @@ frontend/src/
 - **`shared/components/ui/delete-confirm`** — confirmation destructive qui **annonce ses
   impacts** (« N réservations seront retirées »). À réutiliser plutôt qu'un `confirm()` nu.
 - **`shared/components/ui/team-select`** — tout sélecteur d'équipes de l'app (contraintes,
-  coachs, matchs, import FBI) passe par lui : optgroups par rang, même ordre que l'étape
-  Équipes. Reclasser une équipe met l'ordre à jour **partout**.
+  coachs, matchs, import FBI) passe par lui, construit depuis P4-164 sur la primitive
+  `listbox` (APG single-select maison, `Select` natif = les ~20 pickers simples sans couleur/
+  compte/sous-ligne) : groupes par rang, même ordre que l'étape Équipes, couleur du swatch =
+  celle du **niveau** (une équipe n'a pas de couleur propre, décision fermée, zéro champ
+  backend). Reclasser une équipe met l'ordre à jour **partout**. Signature `onValueChange`
+  (pas un `onChange` DOM), option enrichissable via `optionMeta(team)` (compte à droite,
+  sous-ligne, désactivée+motif) — voir `frontend/AGENTS.md` §Primitives.
 
 ### Alias
 

@@ -335,9 +335,23 @@ product rules — reuse them instead of rolling your own:
 - **`delete-confirm`** — destructive confirmation that *announces its impacts* ("N réservations
   seront retirées"). Deleting without stating what it takes away is the bug it exists to prevent.
 - **`load-error-hint`** — "the read failed, here is a retry". Pairs with `readState` below.
+- **`listbox`** (`Listbox`) — the shared APG single-select listbox: colour dot or icon, a
+  right-aligned count ("reste N"), a second reason/precision line, and a keyboard-reachable but
+  **disabled** option (visible + motivated, never dropped from the list). Built in-house because
+  the project ships no rich-option select; interaction decisions (roving `tabIndex` not
+  `aria-activedescendant`, Escape stops propagation so it never bubbles into a hosting modal, Tab
+  closes without selecting, flip measured once at open) live in the component's own docblock —
+  single home, don't re-decide them at a call site. The plain native `<select>` (`select.tsx`)
+  stays the house of the ~20 simple pickers (days, statuses, category, duration…) that carry no
+  colour/count/sub/disabled-with-reason. Test helper: `src/test/pickListboxOption.ts` (open +
+  choose by label). First and only consumer so far: `team-select` (P4-164 PR-1); `VenueSelect` +
+  the inline venue pickers are PR-2, not yet migrated.
 - **`team-select`** — every team picker in the app (constraints, coaches, matches, FBI import)
-  goes through it: optgroups by rank, same order as the Teams step. Reranking a team updates
-  the order **everywhere**.
+  goes through it, now built on `Listbox` (P4-164 PR-1): grouped by priority tier, same order as
+  the Teams step, tier **colour** as the swatch — a team has no colour of its own (founder
+  decision, no backend field, the tier's `color` is reused). Callers pass `onValueChange` (not a
+  DOM `onChange`) and, opt-in, `optionMeta(team)` for a right-aligned count/sub/disabled instead
+  of the old `optionLabel` text suffix. Reranking a team updates the order **everywhere**.
 - **`badge`** (`StatusPill`) — the **only** house for a coloured pastille (icon + text, border +
   tinted fill), variants `warning`/`accent`/`neutral` (P4-173, `accent` added P4-177). Both tinted
   variants keep their text `text-foreground`, never `text-warning`/`text-accent` (measured: both
