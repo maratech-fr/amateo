@@ -153,7 +153,7 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
   geste d'édition à l'écran vit dans la liste du jour du cockpit (`DayDialog.tsx`, bouton
   « Modifier les dates de … » rendu ssi `entry.redatable`) — détail `accueil-cockpit-temporel.md`
   §5bis. Détail complet : [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md)
-  (amendement D3 v1) · `specs/evolution/plannings-bccl-2026-08-31.md` D3.
+  (amendement D3 v1) · `docs/archive/plannings-bccl-2026-08-31.md` D3.
 - **État** : 🟢 rodé sur les axes livrés — découpage hebdo + granularité JOUR (E1/5b),
   contraintes héritées cochables (#211), **séances/équipe ajustables dans l'UI** (champ 1–7
   + toggle = 0 séance, E4 via `TeamPeriodOverride`), **défaut = tout le club actif** (E3,

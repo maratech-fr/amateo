@@ -30,7 +30,9 @@
 > **Effort** : XS/S ≤ 1 PR · M 2-3 PR · L lot phasé · XL recherche + gros lot.
 > Cap de commercialisation : **mi-2027**.
 >
-> **Fichiers de détail actifs** : [`plannings-bccl-2026-08-31.md`](plannings-bccl-2026-08-31.md) (P2-58 — le programme plannings BCCL : décisions D1-D6, méthode, avancement) ·
+> **Fichiers de détail actifs** : le programme plannings BCCL (ex-P2-58, **entièrement clos le 2026-09-06**) est
+> **archivé dans [`docs/archive/`](../../docs/archive/plannings-bccl-2026-08-31.md)** — ses décisions D1-D17 y restent lisibles, son seul
+> résidu ouvert est l'item **P4-182** ci-dessous ·
 > [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) (module matchs — palier A livré (P1-4), **palier B
 > TRAJET+ANNUAIRE livré (RMM-8/P2-53 + RMM-9/P2-54, soldés 2026-08-28)** ; reste OUVERT : palier B
 > **dérogation** (§8, workflow tracker) et palier C (effet réseau — heures/tendances adverses cross-club) ;
@@ -93,7 +95,6 @@
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
-| P2-58 | **Programme plannings BCCL — reprises, overlay « Mateo indisponible », exercice de vérité du solveur** | 🟠 | L | Cadré 2026-08-31 avec le fondateur, détail et décisions figées dans [`plannings-bccl-2026-08-31.md`](plannings-bccl-2026-08-31.md) (principe directeur : LE PLANNING RÉEL EST LA SPÉCIFICATION, l'app doit le tolérer — jamais l'inverse). **Les 4 plannings et leur exercice de vérité sont LIVRÉS** (saison, 2 reprises, overlay 31/08→16/10 — remplace l'incident « travaux » périmé), trace `etat-des-lieux.md` §3. Membres/dépendances : **P2-51** (le BLOC de mutualisation — SOLDÉ EN ENTIER le 2026-08-31), **P5-23** (passerelles au seeder — SOLDÉE le 2026-09-01), **D4 livrée le 2026-09-04** (SEMAINE CHARNIÈRE : le critère est lundi→vendredi couvert par la vacance, pas un choix du gestionnaire — trace `etat-des-lieux.md` §2/§3, détail `plannings-bccl-2026-08-31.md` D4), **D3 v1 SOLDÉ ENTIER le 2026-09-04** (re-datage d'un incident d'un bloc, backend + geste cockpit — ex-P2-57, trace `etat-des-lieux.md` §3), **découpage début·milieu·fin d'une fermeture LIVRÉ le 2026-09-05** (remplace l'idée « 3 blocs max » — trace `etat-des-lieux.md` §3, ADR-0002 amendé). Reste ouvert : l'idée non cadrée « gymnase principal » (`plannings-bccl-2026-08-31.md` §6) |
 | P2-61 | **La régénération COLLE à la version VALIDÉE — la stabilité peut peser contre le confort** | 🟠 | M | Demande fondateur récurrente des exercices solveur (2026-09-01, « ça donne l'impression que l'on change uniquement ce qui a besoin d'être changé »). Le socle EXISTE : P3-21 (livré 2026-08-17) épingle le précédent quand il reste un optimum — régénérer sans changement = 0 déplacement, une règle ajoutée ne déplace que la séance touchée. La LIMITE mesurée : une version VALIDÉE retouchée à la main score sous l'optimum (−6 le 24, −18 le 17) et le verrou d'optimalité de phase 1 (`placement ≥ optimum`, engine/app/main.py:753) l'EXCLUT — la stabilité (poids 1, 3ᵉ rang lexicographique) n'a plus rien à départager, tout rebat (26-48 % d'exacts mesurés). Besoin : quand la source est la version VALIDÉE du plan, la proximité doit pouvoir PESER contre quelques points de confort — cadrage à faire (poids ? tolérance de score ? opt-in ?), extension de P3-21, jamais un doublon |
 | P4-158 | **Miroir plancher gymnase : structures « une case par équipe » — collapse latent sur multi-déplacements** | ⚪ | S | Relevé pendant le chantier verdict (2026-09-01, PR #817) : `_venue_minimum_move_violation` (engine/app/solver/validate_assignments.py) garde `ref_case_by_team` SINGULIER + `moved_by_team` — le même défaut corrigé pour le miroir de bloc (une équipe déplacée 2+ fois dans un lot perd ses autres cases, faux verdict possible). À passer en ensembles comme le bloc (patron du fix B de #817) |
 | P4-159 | **Balayage d'intervalle des verrous : une épingle ALIGNÉE sur une case de grille tue ses voisines chevauchantes** | ⚪ | M | Autopsie du 2026-09-01 (exercice reprise-24, avant correction de la grille) : `engine/app/solver/constraints/structural.py:97-123` (« P4-97 bis ») ferme `var==0` toute case libre chevauchant un verrou, par sous-créneaux de 15′ — alors que les séances LIBRES entre elles ne se voient pas (cases = ressources indépendantes, add_room_at_most_one groupe par heure exacte). Incohérence : épingler l'exacte solution libre dégradait 38→36 placements sur une grille à rangées chevauchantes. Plus déclenchée par les données BCCL (grille corrigée #816) mais LATENTE pour tout club à rangées chevauchantes. Direction validée par l'autopsie : restreindre le balayage aux verrous NON alignés sur une case de la grille (un verrou aligné consomme SA case, déjà fait par blocked_venue_slots) |
@@ -120,6 +121,12 @@
 ---
 
 ## P4 — Dette & polish (avant GA, par lots opportunistes)
+
+### Résidu du programme plannings BCCL (clos le 2026-09-06, dossier archivé)
+
+| # | Sujet | Impact | Effort | Note |
+|---|-------|:---:|:---:|---|
+| P4-182 | **« Gymnase principal » — la notion implicite du terrain, à cadrer** | 🟡 | M | Idée fondateur du 2026-09-02, notée pendant l'exercice overlay (dossier archivé §6) : le gymnase des matchs, « celui où on vit » — les fanions y sont privilégiées, et si un incident le ferme (Matéo→JDR), les priorités de gymnase devraient SUIVRE. **Non cadrée, pas une décision** : aujourd'hui le palier jour+heure du comblement + la priorité d'équipe produisent déjà l'effet observé (SM1 garde ses créneaux en changeant de gymnase). À rouvrir SEULEMENT si une mesure du comblement montre que les fanions n'héritent pas naturellement du bon gymnase — sinon reste une idée. Cadrage attendu : une notion de gymnase principal par club (ou par équipe ?), son effet sur les préférences de gymnase (`venue_preference`) et sur le comblement, et ce qui se passe quand il est fermé |
 
 ### Lot commandes seed/reset, 2026-09-03 (un seul chemin de remplissage)
 
