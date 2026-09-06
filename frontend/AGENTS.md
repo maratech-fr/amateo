@@ -344,14 +344,28 @@ product rules — reuse them instead of rolling your own:
   single home, don't re-decide them at a call site. The plain native `<select>` (`select.tsx`)
   stays the house of the ~20 simple pickers (days, statuses, category, duration…) that carry no
   colour/count/sub/disabled-with-reason. Test helper: `src/test/pickListboxOption.ts` (open +
-  choose by label). First and only consumer so far: `team-select` (P4-164 PR-1); `VenueSelect` +
-  the inline venue pickers are PR-2, not yet migrated.
+  choose by label). Two consumers, both migrated (P4-164, PR-1 + PR-2): `team-select` and
+  `venue-select` — lot **closed**, no `<select>` gymnase/team left outside these two.
 - **`team-select`** — every team picker in the app (constraints, coaches, matches, FBI import)
   goes through it, now built on `Listbox` (P4-164 PR-1): grouped by priority tier, same order as
   the Teams step, tier **colour** as the swatch — a team has no colour of its own (founder
   decision, no backend field, the tier's `color` is reused). Callers pass `onValueChange` (not a
   DOM `onChange`) and, opt-in, `optionMeta(team)` for a right-aligned count/sub/disabled instead
   of the old `optionLabel` text suffix. Reranking a team updates the order **everywhere**.
+- **`venue-select`** (`VenueSelect`) — every venue picker in the app, rebuilt on `Listbox`
+  (P4-164 PR-2): `Venue.color` pastille on **every option AND the trigger** (the old "open list
+  stays text-only" limit, 2026-08-05, is gone — a native `<option>` couldn't carry a swatch, a
+  `Listbox` option can). API: `onValueChange`, a selectable `placeholder` (value `""`), typed
+  `leadingOptions` (replaces `<option>` children), a venue's effective period state (disabled /
+  closed weekday / unavailable) in `sub` — name stays intact, no more `"nom — état"` label
+  concatenation. One swatch now (the trigger's), the standalone `VenueSwatch` next to the field
+  is gone. 5 consumers migrated (`VenuesStep`, `PeriodStructure`, `ConstraintsStep`,
+  `ReservationPanel`, `PlacementPanel`) and the 6 inline `<select>` gymnase that used to bypass it
+  are rebased on it too: `cockpit/VenueUnavailabilityCard.tsx` (its load-bearing P4-122 empty
+  placeholder preserved), `cockpit/DayDialog.tsx`, `matches/ConfigurationPage.tsx`,
+  `matches/MatchSlotRotationsEditor.tsx`, `matches/HabitsLinksDialog.tsx`,
+  `planning/ExportMenu.tsx` (its "Tous les gymnases" head option). No `<select>` for a venue
+  exists outside this component anymore.
 - **`badge`** (`StatusPill`) — the **only** house for a coloured pastille (icon + text, border +
   tinted fill), variants `warning`/`accent`/`neutral` (P4-173, `accent` added P4-177). Both tinted
   variants keep their text `text-foreground`, never `text-warning`/`text-accent` (measured: both

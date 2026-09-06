@@ -1,4 +1,4 @@
-# Roadmap (57) — ce qui reste à faire
+# Roadmap (56) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -126,12 +126,6 @@
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
 | P4-163 | **`doctrine/doctrine-fixtures-bundle` n'a plus aucun appelant — à retirer** | ⚪ | XS | Le lot du 2026-09-03 (renommage `app:bccl:seed`/`app:demo:seed`, suppression de `BasketballInit`/`HolidayReferenceFixtures`/`make fixtures`) a fait disparaître le dernier appel à `doctrine:fixtures:load` — vérifié : aucune classe `src/DataFixtures/` n'implémente plus `FixtureInterface`, `rtk grep -rn "doctrine:fixtures:load\|Doctrine\\\\Bundle\\\\FixturesBundle"` sur `backend/src` ne rend que l'entité métier `Fixture` (rencontre sportive, sans rapport). Le bundle reste néanmoins déclaré (`backend/composer.json:105`, `backend/config/bundles.php:13`, `dev`+`test` seulement). Retrait = PR dédiée (désinstaller le paquet, retirer la ligne `bundles.php`), volontairement pas fait dans le même lot pour ne pas mélanger une suppression de commandes et un retrait de dépendance |
-
-### Demandes fondateur du 2026-09-03 (listes déroulantes riches · tests fonctionnels Behat · angles morts de la couverture de tests — `docs/testing/test-coverage-map.md` §4)
-
-| # | Sujet | Impact | Effort | Note |
-|---|-------|:---:|:---:|---|
-| P4-164 | **Listes déroulantes riches — reste PR-2 : migrer `VenueSelect` sur `Listbox`** | ⚪ | M | Demande fondateur 2026-09-03. **PR-1 LIVRÉE (2026-09-06)** : primitive `Listbox` (`frontend/src/shared/components/ui/listbox.tsx`) + `TeamSelect` reconstruit dessus (couleur du niveau, résidu 0 visible/désactivé/motivé) — détail : `frontend/AGENTS.md` §Primitives, `frontend/docs/frontend-wizard.md` item 4. **Reste PR-2** : `VenueSelect` (`shared/components/ui/venue-select.tsx`, consommé par les steps du wizard qui choisissent un gymnase — Contraintes, Réservation, Structure de période, Gymnases — et `features/matches/PlacementPanel`) est encore un `<select>` NATIF stylé : pastille de couleur accolée au champ mais pas DANS chaque option (une `<option>` HTML ne porte que du texte). Migrer sur `Listbox` (swatch = `VenueSwatch`, patron déjà posé par PR-1) **et rabattre sur `VenueSelect` les 6 `<select>` gymnase inline qui l'ignorent** : `features/cockpit/VenueUnavailabilityCard.tsx` (option vide de tête load-bearing, P4-122), `features/cockpit/DayDialog.tsx` (`<select>` brut, `autoFocus`), `features/matches/MatchSlotRotationsEditor.tsx`, `features/matches/ConfigurationPage.tsx`, `features/matches/HabitsLinksDialog.tsx`, `features/planning/ExportMenu.tsx` (option de tête « Tous les gymnases ») — preuve : `grep -rn 'v.id}>' frontend/src/features --include=*.tsx`. `PeriodStructure.tsx` fabrique des libellés « nom — état » : candidat sous-ligne |
 
 ### Programme Behat, 2026-09-05
 

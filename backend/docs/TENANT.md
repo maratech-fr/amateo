@@ -1,12 +1,13 @@
 # ClubScheduler — Tenant Isolation Architecture
 
-Last verified @ 2026-09-04 (rotation `documentation-update`, PR P4-172 — fichier hors sujet de
-la PR, contrôle de fraîcheur). Re-confronté au code : priorité 7 toujours en place
+Last verified @ 2026-09-06 (rotation `documentation-update`, PR P4-164 PR-2 (frontend) — fichier
+hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code : priorité 7 toujours en place
 (`TenantFilterListener.php:55`, `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ ·
 `TenantOwnedInterfaceCompletenessTest.php` présent (`backend/tests/Security/`) ✓ · RLS
 `FORCE ROW LEVEL SECURITY` toujours posée par `Version20260703120000` (`backend/migrations/`) ✓ ·
-`SeasonResolver::seasonYear` (pivot 15 juillet) toujours en place (`SeasonResolver.php:113`) ✓ ·
-`migration_user` toujours DROP (`Version20260731090000.php`) ✓. Rien à corriger ce jour.
+`SeasonResolver::TRANSITION_MONTH_DAY` (pivot 15 juillet) toujours en place
+(`SeasonResolver.php:31`) ✓ · `migration_user` toujours DROP (`Version20260731090000.php`) ✓.
+Rien à corriger ce jour.
 
 ## Overview
 
