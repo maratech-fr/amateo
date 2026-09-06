@@ -172,23 +172,23 @@ for (const mode of MODES) {
       const fg = of("text-foreground", "color");
       out["text-foreground on réservation cell (accent tint)"] = ratio(fg, cellFill("color-mix(in oklch, var(--accent) 30%, var(--card))"));
       out["text-foreground on réservation cell (bright venue tint)"] = ratio(fg, cellFill("color-mix(in oklch, #FFD21E 30%, var(--card))"));
-      // INFORMATIF (non bloquant) : `text-destructive` en TEXTE ne vit que sur des teintes
-      // `bg-destructive/10|15` (jamais sur `bg-muted`). Notre changement ne touche QUE le token SOMBRE
-      // (remonté), donc en sombre le texte rouge ne peut que gagner ; le clair est inchangé. On mesure
-      // pour documenter la non-régression sans transformer une éventuelle dette clair PRÉ-existante
-      // (hors P4-179/180) en gate dur.
-      const info: Record<string, number> = {
-        "text-destructive on background": ratio(of("text-destructive", "color"), bg),
-        "text-destructive on card": ratio(of("text-destructive", "color"), card),
-        "text-destructive on bg-destructive/10": ratio(of("text-destructive", "color"), composite("bg-destructive/10", bg)),
-      };
+      // P4-181 — `text-destructive` en TEXTE vit sur des teintes `bg-destructive/10|15` (badge de
+      // contrainte `PeriodStructure`, badge `ReconciliationPanel`, jour sélectionné `CoachWishForm`,
+      // « F » férié `MonthCalendar` en /15, alerte `SlotReservationModal`), sur card ET sur background.
+      // Mesuré INFORMATIF lors de P4-179/180 : 3,98:1 en clair sur /10 ; le sombre passait sur
+      // background (4,87) mais PAS sur card (4,42 en /10, 4,16 en /15). Les deux jetons `--destructive`
+      // sont recalés (clair L 0,50, sombre L 0,72) et les six paires deviennent des GATES DURS.
+      const td = of("text-destructive", "color");
+      out["text-destructive on background"] = ratio(td, bg);
+      out["text-destructive on card"] = ratio(td, card);
+      out["text-destructive on bg-destructive/10 (over background)"] = ratio(td, composite("bg-destructive/10", bg));
+      out["text-destructive on bg-destructive/10 (over card)"] = ratio(td, composite("bg-destructive/10", card));
+      out["text-destructive on bg-destructive/15 (over background)"] = ratio(td, composite("bg-destructive/15", bg));
+      out["text-destructive on bg-destructive/15 (over card)"] = ratio(td, composite("bg-destructive/15", card));
       probe.remove();
-      return { out, info };
+      return { out };
     });
 
-    for (const [pair, r] of Object.entries(ratios.info)) {
-      console.log(`INFO[${mode}] ${pair} = ${r.toFixed(2)}:1`);
-    }
     for (const [pair, r] of Object.entries(ratios.out)) {
       expect(r, `${pair} (${mode}) = ${r.toFixed(2)}:1, needs ≥ 4.5 for normal text`).toBeGreaterThanOrEqual(4.5);
     }
