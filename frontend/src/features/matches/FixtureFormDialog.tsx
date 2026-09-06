@@ -74,8 +74,8 @@ export function FixtureFormDialog({ teams, tiers, competitions, fixture = null, 
             tiers={tiers}
             value={teamId}
             disabled={editing}
-            onChange={(e) => {
-              setTeamId(e.target.value);
+            onValueChange={(v) => {
+              setTeamId(v);
               setCompetitionId(""); // the old team's competition no longer applies
             }}
           />

@@ -103,7 +103,7 @@ export function FfbbEngagementsDialog({ teams, tiers, onClose }: FfbbEngagements
                     tiers={tiers}
                     placeholder="Non rattachée"
                     value={chosen}
-                    onChange={(e) => setChoices({ ...choices, [row.ffbbCompetitionId]: e.target.value })}
+                    onValueChange={(v) => setChoices({ ...choices, [row.ffbbCompetitionId]: v })}
                   />
                 </li>
               );

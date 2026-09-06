@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
 import type { FfbbEngagement, PriorityTier, Team } from "./api";
@@ -57,7 +58,7 @@ describe("FfbbEngagementsDialog (P1-4 PR F)", () => {
     // Nothing chosen yet → nothing to confirm.
     expect(screen.getByRole("button", { name: /Confirmer/ })).toBeDisabled();
 
-    await user.selectOptions(screen.getByLabelText("Équipe pour Pré régionale masculine"), "team-sm2");
+    await pickListboxOption(user, "Équipe pour Pré régionale masculine", "SM2"); // team-sm2
     await user.click(screen.getByRole("button", { name: "Confirmer 1 appariement" }));
 
     expect(confirmFfbbPairings).toHaveBeenCalledWith([{ ffbbCompetitionId: "comp-1", teamId: "team-sm2" }]);
@@ -67,7 +68,8 @@ describe("FfbbEngagementsDialog (P1-4 PR F)", () => {
     getFfbbEngagements.mockResolvedValue({ engagements: [engagement({ suggestedTeamId: "team-sm1" })] });
     renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
-    expect(await screen.findByLabelText("Équipe pour Pré régionale masculine")).toHaveValue("team-sm1");
+    // La suggestion (team-sm1 = SM1) se lit sur le trigger sans ouvrir la liste.
+    expect(await screen.findByRole("button", { name: /Équipe pour Pré régionale masculine/ })).toHaveAccessibleName(/SM1/);
     expect(screen.getByRole("button", { name: "Confirmer 1 appariement" })).toBeEnabled();
   });
 
@@ -78,7 +80,8 @@ describe("FfbbEngagementsDialog (P1-4 PR F)", () => {
     });
     renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
-    await user.selectOptions(await screen.findByLabelText("Équipe pour Coupe"), "");
+    await screen.findByText("Coupe");
+    await pickListboxOption(user, "Équipe pour Coupe", "Non rattachée"); // le placeholder efface la suggestion
     await user.click(screen.getByRole("button", { name: "Confirmer 1 appariement" }));
 
     expect(confirmFfbbPairings).toHaveBeenCalledWith([{ ffbbCompetitionId: "comp-1", teamId: "team-sm1" }]);
@@ -119,9 +122,9 @@ describe("RMM-0 — lisibilité de l'appariement (B1/B2/B4)", () => {
     getFfbbEngagements.mockResolvedValue({ engagements: [engagement({ suggestedTeamId: "team-sm2" })] });
     renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
-    const select = await screen.findByLabelText("Équipe pour Pré régionale masculine");
+    const select = await screen.findByRole("button", { name: /Équipe pour Pré régionale masculine/ });
     expect(select).toHaveClass("w-52");
-    // La valeur pré-remplie se lit sans ouvrir le select.
-    expect(select).toHaveAttribute("title", "SM2");
+    // La valeur pré-remplie (SM2) se lit sur le trigger sans ouvrir la liste.
+    expect(select).toHaveAccessibleName(/SM2/);
   });
 });

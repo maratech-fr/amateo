@@ -157,8 +157,9 @@ describe("ReconciliationView — canal API FFBB (RMM-4 PR-3)", () => {
     renderWithProviders(<ReconciliationView />, { route: "/matchs/reconciliation" });
 
     // Je choisis une équipe pour A seulement ; B reste « Ne pas créer ».
-    await screen.findAllByRole("option", { name: "SM1" }); // les équipes se chargent async (une option par ligne)
-    await user.selectOptions(await screen.findByLabelText(/Créer le match vs BRON BASKET/i), "team-1");
+    // Les équipes se chargent async : on ouvre la liste puis on attend l'option (elle n'existe que la liste ouverte).
+    await user.click(await screen.findByRole("button", { name: /Créer le match vs BRON BASKET/i }));
+    await user.click(await screen.findByRole("option", { name: "SM1" })); // team-1
     await user.click(screen.getByRole("button", { name: /^Appliquer$/i }));
     // Résumé de confirmation AVANT d'écrire — le bouton du dialogue.
     const dialog = await screen.findByRole("dialog");

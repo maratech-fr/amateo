@@ -190,9 +190,9 @@ function EditableLinks<T extends TeamLike>({
               <span aria-hidden className="text-muted-foreground">↔</span>
             </span>
           ) : (
-            <TeamSelect aria-label="Première équipe du lien" className="w-32" teams={teams} tiers={tiers} placeholder="Équipe A…" value={selectedA} onChange={(e) => setSelectedA(e.target.value)} />
+            <TeamSelect aria-label="Première équipe du lien" className="w-32" teams={teams} tiers={tiers} placeholder="Équipe A…" value={selectedA} onValueChange={setSelectedA} />
           )}
-          <TeamSelect aria-label="Seconde équipe du lien" className="w-32" teams={bTeams} tiers={tiers} placeholder="Équipe B…" value={linkTeamBId} onChange={(e) => setLinkTeamBId(e.target.value)} />
+          <TeamSelect aria-label="Seconde équipe du lien" className="w-32" teams={bTeams} tiers={tiers} placeholder="Équipe B…" value={linkTeamBId} onValueChange={setLinkTeamBId} />
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             Matchs
             <Select aria-label="Type de lien côté matchs" className="h-9 w-44" value={linkType} onChange={(e) => setLinkType(e.target.value as TeamLinkType)}>

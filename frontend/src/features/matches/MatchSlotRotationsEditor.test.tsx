@@ -2,6 +2,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { openListbox, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
 import type { MatchSlotRotation, PriorityTier, Team, Venue } from "./api";
@@ -37,7 +38,8 @@ beforeEach(() => {
 });
 
 async function addTeamToDraft(user: ReturnType<typeof userEvent.setup>, value: string): Promise<void> {
-  await user.selectOptions(screen.getByLabelText("Ajouter une équipe au nouveau créneau"), value);
+  const name = TEAMS.find((t) => t.id === value)?.name ?? value;
+  await pickListboxOption(user, "Ajouter une équipe au nouveau créneau", name);
   await user.click(screen.getByRole("button", { name: "Ajouter l'équipe au nouveau créneau" }));
 }
 
@@ -163,10 +165,10 @@ describe("MatchSlotRotationsEditor — édition d'un créneau existant", () => {
     rotationsState.data = [rotation({ teamIds: ["t1", "t2"] })];
     const user = userEvent.setup();
     renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
-    const addSelect = screen.getByLabelText("Ajouter une équipe au créneau Samedi 20:30 · Coubertin");
+    const addList = await openListbox(user, "Ajouter une équipe au créneau Samedi 20:30 · Coubertin");
     // Seule SM3 est proposable (t1/t2 déjà membres).
-    expect(within(addSelect).getByRole("option", { name: "SM3" })).toBeInTheDocument();
-    await user.selectOptions(addSelect, "t3");
+    expect(within(addList).getByRole("option", { name: "SM3" })).toBeInTheDocument();
+    await user.click(within(addList).getByRole("option", { name: "SM3" }));
     await user.click(screen.getByRole("button", { name: "Ajouter l'équipe au créneau Samedi 20:30 · Coubertin" }));
     expect(updateMutate).toHaveBeenCalledWith({ id: "rot-1", input: { venueId: "v1", dayOfWeek: 6, kickoffTime: "20:30", teamIds: ["t1", "t2", "t3"] } });
   });

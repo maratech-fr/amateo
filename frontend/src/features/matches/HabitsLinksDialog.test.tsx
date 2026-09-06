@@ -2,6 +2,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
 import type { PriorityTier, Team, TeamLink, Venue } from "./api";
@@ -51,8 +52,8 @@ describe("HabitsLinksDialog — l'intensité d'entraînement d'une passerelle (l
     const user = userEvent.setup();
     renderWithProviders(<HabitsLinksDialog teams={TEAMS} tiers={TIERS} venues={VENUES} fixtures={[]} onClose={vi.fn()} />);
 
-    await user.selectOptions(screen.getByLabelText("Première équipe du lien"), "t1");
-    await user.selectOptions(screen.getByLabelText("Seconde équipe du lien"), "t2");
+    await pickListboxOption(user, "Première équipe du lien", "SM1"); // t1
+    await pickListboxOption(user, "Seconde équipe du lien", "SM2"); // t2
     await user.selectOptions(screen.getByLabelText("Intensité d'entraînement du lien"), "MANDATORY");
     await user.click(screen.getByRole("button", { name: "Ajouter la passerelle" }));
 

@@ -74,7 +74,7 @@ export function HabitsLinksDialog({ teams, tiers, venues, fixtures, onClose }: H
             estimée aux matchs extérieur sans horaire.
           </p>
 
-          <TeamSelect aria-label="Équipe de l'habitude" teams={teams} tiers={tiers} value={habitTeamId} onChange={(e) => setHabitTeamId(e.target.value)} />
+          <TeamSelect aria-label="Équipe de l'habitude" teams={teams} tiers={tiers} value={habitTeamId} onValueChange={setHabitTeamId} />
 
           {habitsQuery.isError ? <p className="text-sm text-destructive">Les habitudes n’ont pas pu être chargées.</p> : null}
 

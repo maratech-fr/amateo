@@ -297,7 +297,7 @@ function CreatableSection({
                     tiers={tiers}
                     placeholder="Ne pas créer"
                     value={chosen}
-                    onChange={(e) => onPick(c.rencontreId, e.target.value)}
+                    onValueChange={(v) => onPick(c.rencontreId, v)}
                   />
                 </div>
               </li>
