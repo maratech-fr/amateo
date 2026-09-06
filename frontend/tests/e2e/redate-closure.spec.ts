@@ -4,14 +4,15 @@ import { expect, test } from "./fixtures";
 import { forceTheme, settleVeil, watchFailedApiCalls } from "./support";
 
 /**
- * Contraste (WCAG 1.4.3) SCOPÉ à la région d'aperçu (`[aria-live]`) — le contenu que P4-174 ajoute :
- * liste d'effets + `WarningPanel` des effets destructifs. On ne scanne PAS toute la page : derrière
- * la modale, le calendrier laisse ses jours débordants (grisés `text-muted-foreground/50`) sous le
- * voile sombre — un faux positif pré-existant, étranger à ce geste ; et le bouton `bg-destructive`
- * partagé (blanc sur rouge, ~4.0) est une limite de JETON commune à toute l'app, hors de ce lot.
+ * Contraste (WCAG 1.4.3) PLEINE PAGE — élargi en P4-179 (l'aperçu D3 v2 était volontairement scopé à
+ * `[aria-live]` pour ne pas échouer sur deux défauts alors PRÉ-existants, désormais corrigés) : le
+ * bouton partagé `bg-destructive` (« Confirmer ») portait du blanc à ~4,0:1 en sombre (jeton
+ * `--destructive-foreground` + `--destructive` sombre remonté), et le calendrier DERRIÈRE la modale
+ * laissait ses jours hors-mois en `text-muted-foreground/50` (opacité sur texte, sous AA — passés en
+ * plein). Le scan pleine page valide donc les deux DANS LEUR CONTEXTE, dans les deux thèmes.
  */
 async function expectNoPreviewContrastViolations(page: import("./fixtures").Page, label: string): Promise<void> {
-  const results = await new AxeBuilder({ page }).include('[aria-live="polite"]').withRules(["color-contrast"]).analyze();
+  const results = await new AxeBuilder({ page }).withRules(["color-contrast"]).analyze();
   const offenders = results.violations.flatMap((v) => v.nodes.map((n) => `  ${n.target.join(" ")} — ${(n.failureSummary ?? "").split("\n").join(" ")}\n    HTML: ${n.html}`));
   expect(offenders, `${label}: colour-contrast (WCAG 1.4.3) violations:\n${offenders.join("\n")}`).toEqual([]);
 }

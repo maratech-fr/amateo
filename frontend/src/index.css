@@ -25,6 +25,11 @@
   --accent-foreground: oklch(0.99 0 0);
 
   --destructive: oklch(0.58 0.22 27);
+  /* Texte posé sur le fond plein `bg-destructive` (bouton `destructive`). Blanc en clair
+     (inchangé visuellement : 4,78:1 sur `--destructive` clair, ≥ AA). Convention shadcn, comme
+     `--accent-foreground` — un jeton, jamais `text-white` en dur (P4-179 : le blanc tombait à
+     4,03:1 sur le rouge SOMBRE). Le TEXTE rouge sur fond (`text-destructive`) reste `--destructive`. */
+  --destructive-foreground: oklch(0.99 0 0);
 
   /* semantic status (warning = amber-ish, success = emerald-ish) — themable.
      Darkened for light mode so text-warning/text-success clear WCAG AA (4.5:1)
@@ -61,7 +66,13 @@
   --accent: oklch(0.72 0.15 255);
   --accent-foreground: oklch(0.17 0.02 260);
 
-  --destructive: oklch(0.62 0.21 27);
+  /* Remonté de L 0.62 → 0.66 (P4-179) : le fond rouge sombre s'éclaire assez pour porter un
+     TEXTE SOMBRE (`--destructive-foreground`) à ≥ AA (≈ 5,58:1), et `text-destructive` sur fond
+     sombre y gagne aussi (le L plus haut = rouge plus clair, plus lisible). */
+  --destructive: oklch(0.66 0.21 27);
+  /* Texte sombre sur le rouge clair du bouton `destructive` en thème sombre (le blanc y tombait
+     sous AA — P4-179). Même valeur que `--accent-foreground` sombre. */
+  --destructive-foreground: oklch(0.17 0.02 260);
 
   --warning: oklch(0.83 0.15 78);
   --success: oklch(0.76 0.16 163);
@@ -154,6 +165,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-warning: var(--warning);
   --color-success: var(--success);
   /* Écart au socle (P2-44 PR-4) : engendre `bg-diff` / `text-diff-foreground` / `ring-diff`. */

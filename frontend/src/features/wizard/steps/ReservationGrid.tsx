@@ -76,7 +76,6 @@ export function ReservationGrid({ venue, slots, reservedTeams, slotKeyOf, capaci
           const span = Math.max(1, Math.round(slot.durationMinutes / STEP));
           const teams = reservedTeams.get(slotKeyOf(slot)) ?? [];
           const capacity = capacityOf(slot);
-          const full = teams.length >= capacity;
           const label = 0 === teams.length ? "libre" : teams.join(", ");
           const dayLabel = WEEK[di]?.label ?? "";
           // P2-17 — libellé de groupe du créneau mutualisé, affiché discrètement (pas de fusion
@@ -102,13 +101,17 @@ export function ReservationGrid({ venue, slots, reservedTeams, slotKeyOf, capaci
             >
               <span className="flex w-full items-center justify-between gap-1 font-medium">
                 <span>{hhmm(slot.startTime)}</span>
-                <span className={cn("shrink-0 tabular-nums", full ? "text-muted-foreground" : "text-accent")}>
+                {/* P4-180 — texte en `text-foreground`, jamais `text-accent`/`text-muted-foreground` : sur le
+                    fond TEINTÉ de la case (color-mix ci-dessous) ces jetons tombent sous AA (gotcha #11). La
+                    couleur d'accent reste réservée au GRAPHIQUE (bordure gauche, teinte de fond) ; la
+                    hiérarchie plein/libre passe par la graisse et le compteur lui-même, pas par la couleur. */}
+                <span className="shrink-0 tabular-nums text-foreground">
                   {teams.length}/{capacity}
                 </span>
               </span>
-              {"" !== groupLabel ? <span className="w-full truncate font-semibold uppercase tracking-wide text-muted-foreground">{groupLabel}</span> : null}
+              {"" !== groupLabel ? <span className="w-full truncate font-semibold uppercase tracking-wide text-foreground">{groupLabel}</span> : null}
               {closedBy ? <span className="w-full truncate">{closedText}</span> : null}
-              <span className={cn("truncate", 0 === teams.length ? "text-muted-foreground" : "font-medium")}>{label}</span>
+              <span className={cn("truncate text-foreground", 0 !== teams.length ? "font-medium" : "")}>{label}</span>
             </button>
           );
         })}

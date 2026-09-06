@@ -90,7 +90,10 @@ export function MonthCalendar({ year, month, entries, holidays, publicHolidays, 
               onClick={isPast ? undefined : () => setSelectedDay(cell.iso)}
               className={cn(
                 "flex min-h-14 flex-col items-start gap-1 rounded-md border p-1.5 text-left text-xs transition-colors",
-                cell.inMonth ? "border-border" : "border-transparent text-muted-foreground/50",
+                // Jours hors-mois : distingués par l'absence de bordure (in-month = `border-border`) et un
+                // texte `text-muted-foreground` — jamais une OPACITÉ sur le texte (P4-179 : `/50` tombait à
+                // 2,1:1 / 2,5:1, sous AA, y compris sous le voile d'une modale ; le token plein tient AA).
+                cell.inMonth ? "border-border" : "border-transparent text-muted-foreground",
                 !isPast && cell.inMonth ? "hover:bg-muted" : "",
                 // Past days are dimmed and non-interactive (we prepare the future).
                 isPast ? "cursor-not-allowed opacity-50" : "",
