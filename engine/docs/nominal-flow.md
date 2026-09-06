@@ -1,12 +1,11 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-09-04 (rotation `documentation-update`, P2-62 — sans rapport au sujet de la PR).
-**Drift trouvé et corrigé** : §3 étape 8 décrivait encore `FACILITY_CAPACITY` comme une contrainte
-HARD active du pipeline — cette famille est **retirée depuis le 2026-08-08** (`ConstraintFamily`
-n'a plus que 4 cas, `backend/src/Enum/ConstraintFamily.php`), le moteur n'en garde qu'un commentaire
-mort (`engine/app/main.py:487-490`) ; corrigé pour dire l'état réel. Re-confronté au code par
-ailleurs : `DiagnosticSchema.id` toujours requis ✓ ; `LEVEL_2_OBJECTIVE_WEIGHTS` toujours consommé
-par `add_preferred_day_bonus`/`add_match_day_rest_bonus`/`add_spacing_penalty` (`app/main.py:631-634`) ✓.
+Last verified @ 2026-09-06 (rotation `documentation-update`, PR P4-164 PR-1 — zone non touchée,
+contrôle de fraîcheur). Re-confronté au code : `engine/CONTRACT_VERSION` toujours `2.20` ✓ ;
+`DiagnosticSchema.id` toujours requis (`output_schema.py:61`) ✓ ; le commentaire mort
+`FACILITY_CAPACITY` toujours à `engine/app/main.py:488` (RETIRÉE le 2026-08-08, état inchangé) ✓ ;
+`LEVEL_2_OBJECTIVE_WEIGHTS` toujours consommé par `add_preferred_day_bonus`/`add_preferred_time_bonus`/
+`add_match_day_rest_bonus`/`add_spacing_penalty` (`app/main.py:631-634`) ✓. Rien de faux trouvé.
 Reste non re-parcouru ligne à ligne cette passe — historique :
 `git log -p --follow engine/docs/nominal-flow.md`.
 

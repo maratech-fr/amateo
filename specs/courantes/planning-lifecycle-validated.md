@@ -1,11 +1,9 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-09-04 (documentation-update, P4-165 palier 1 — §7 citait
-`backend/scripts/smoke-solver.sh`, migré en feature Behat, `make -C backend behat`
-(`features/generation-du-planning-de-saison.feature`), même preuve `COMPLETED`). Reconfirmé sans
-écart : `onValidate` câblé au bouton « Valider » de `PlanningToolbar`
-(`PlanningToolbar.tsx:74,194`) ✓ · `SocleGuard::assertSeasonPlanChosen` présent
-(`SocleGuard.php:26`) ✓. Historique des passes vit dans git :
+Last verified @ 2026-09-06 (rotation `documentation-update`, PR P4-164 PR-1 — zone non touchée,
+contrôle de fraîcheur). Reconfirmé sans écart : `onValidate` toujours câblé au bouton « Valider »
+de `PlanningToolbar` (`PlanningToolbar.tsx:74,194`) ✓ · `SocleGuard::assertSeasonPlanChosen`
+toujours présent (`SocleGuard.php:26`) ✓. Rien de faux trouvé. Historique des passes vit dans git :
 `git log -p --follow specs/courantes/planning-lifecycle-validated.md`)
 
 > **Bascule 2026-07-16 (ADR-0002, `docs/architecture/adr-0002-pattern-plan.md`)** : le **plan de

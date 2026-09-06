@@ -40,8 +40,10 @@ paths:
   `EmptyHint`/`EmptyBlock`/`EmptyState` (vide), `LoadErrorHint`+`readState` (échec de lecture avec
   retry), `ActionVeil` (voile de navigation/sauvegarde global — `app/ActionVeil.tsx`) ;
   **primitives** `shared/components/ui/*` (Button, Modal, Select, Input, Card, StepRail, Menu APG,
-  **StatusPill** — la pastille partagée, icône + texte, variantes warning/accent/neutral, P4-173
-  puis P4-177 —, VenueSwatch…) ; `SourceBadge` (AUTO/MANUEL) est désormais lui aussi une maison
+  **Listbox** — sélecteur riche à choix unique (couleur/icône, compte, sous-ligne, option
+  désactivée motivée), patron APG, P4-164 PR-1, maison des sélecteurs qui dépassent le `<select>`
+  natif —, **StatusPill** — la pastille partagée, icône + texte, variantes warning/accent/neutral,
+  P4-173 puis P4-177 —, VenueSwatch…) ; `SourceBadge` (AUTO/MANUEL) est désormais lui aussi une maison
   unique — `features/matches/SourceBadge.tsx` (P4-177, adossée à `StatusPill`), consommée par
   `TravelMatrixModal.tsx` et `OpponentTravelCard.tsx` (les deux copies locales ont disparu) ;
   **couleurs/espacements** = tokens du thème (`text-warning`,
