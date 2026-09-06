@@ -46,8 +46,9 @@ test("full journey: wizard → generation → validated planning → cockpit", a
   await expect(page.getByRole("heading", { name: /Étape 2\/6/ })).toBeVisible();
   await page.getByLabel("Nom du gymnase").fill("Gymnase E2E");
   await page.getByRole("button", { name: "Ajouter un gymnase" }).click();
-  // Created venue is auto-selected in the venue picker; the grid is open.
-  await expect(page.getByLabel("Gymnase", { exact: true })).toHaveValue(/./);
+  // Created venue is auto-selected in the venue picker; the grid is open. Le picker est le
+  // Listbox partagé (P4-164 PR-2) : un bouton, pas un <select> — la valeur se lit dans son texte.
+  await expect(page.getByLabel("Gymnase", { exact: true })).toContainText("Gymnase E2E");
   // P4-37 : la barre « À poser » dit enfin ce qu'on en fait — rien ne l'indiquait. Elle
   // ne vit qu'une fois un gymnase sélectionné, d'où sa place ICI et pas avant l'ajout.
   await expect(page.getByText(/cliquez la grille pour ajouter un créneau/i)).toBeVisible();
