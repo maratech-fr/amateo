@@ -452,15 +452,27 @@ believe empty.
     a read-only summary: the period's slots are a copy taken at plan birth and never unioned
     with the season's own. Same gestures as the season, barre « À poser » included (P4-43).
     See `docs/frontend-wizard.md`.
-11. **Accent as TEXT needs a plain background.** `text-accent` clears 4.5:1 (WCAG 1.4.3) only
-    on `bg-background`/`bg-card`: over `bg-accent/10` it drops to 4.18:1 in light mode, over
-    `bg-muted` to 4.37:1 — even `accent/05` fails. Same story for `text-warning` on `bg-warning/10`
-    (4.30:1). Tint the surface **or** colour the text, never both. **The recipe: `StatusPill`**
+11. **Accent as TEXT needs a plain background — and never an OPACITY either.** `text-accent`
+    clears 4.5:1 (WCAG 1.4.3) only on `bg-background`/`bg-card`: over `bg-accent/10` it drops to
+    4.18:1 in light mode, over `bg-muted` to 4.37:1 — even `accent/05` fails. Same story for
+    `text-warning` on `bg-warning/10` (4.30:1) and, on a `color-mix(…, var(--card))`-tinted cell,
+    for `text-accent`/`text-muted-foreground` (`ReservationGrid`, P4-180, 3.19–4.10:1). Tint the
+    surface **or** colour the text, never both. **The recipe: `StatusPill`**
     (`shared/components/ui/badge.tsx`) — text stays `text-foreground`, the tone colour lives in the
-    border, the tint, and the icon (a graphic element, WCAG 1.4.11 ≥ 3:1 only). A new pastille on a
-    tinted surface goes through it rather than re-deriving the trade-off. The token pairs are
-    locked by `tests/e2e/a11y-contrast.spec.ts`; add any new text token to its list rather than
-    eyeballing the result.
+    border, the tint, and the icon (a graphic element, WCAG 1.4.11 ≥ 3:1 only); `ReservationGrid`
+    now follows the same recipe for its counter/label text without going through the component
+    itself (same surface, not a pastille). A new pastille or tinted-cell text goes through this
+    trade-off rather than re-deriving it. **Corollary: opacity on TEXT is never a legitimate way to
+    dim it** — `text-muted-foreground/50` on the calendar's out-of-month days fell to 2.1:1/2.5:1
+    (`MonthCalendar.tsx`, P4-179); the fix uses the plain token and carries the distinction on
+    `border-transparent` instead. The shared `--destructive-foreground` token (mirror of
+    `--accent-foreground`, `frontend/src/index.css`) exists for the same reason on the `destructive`
+    button variant: a literal `text-white` cleared AA in light but not in dark (4.02:1) — a token
+    that flips per theme is the fix, never a hard-coded colour utility on a shared primitive. The
+    token pairs are locked by `tests/e2e/a11y-contrast.spec.ts`; add any new text token to its list
+    rather than eyeballing the result. ⚠ **Still open**: `text-destructive` as TEXT on a
+    `bg-destructive/10|15` tint (constraint badges, the coach-wish day picker, the calendar's "F"
+    holiday badge) measures under AA in light theme — roadmap **P4-181**.
 
 ---
 
