@@ -7,11 +7,14 @@ import type { UserEvent } from "@testing-library/user-event";
  *
  * A listbox trigger is a `<button>` whose accessible name is "<label> <selected value>", and its
  * options exist in the DOM only while it is open. `label` is matched as a SUBSTRING of the trigger
- * name (a plain string is escaped into a contains-regex), so callers pass the label they used to
- * pass to `getByLabelText`.
+ * name (a plain string becomes a `name.includes(label)` predicate — no `new RegExp(label)`, which
+ * Semgrep flags as a non-literal regex), so callers pass the label they used to pass to
+ * `getByLabelText`.
  */
-function nameMatcher(label: string | RegExp): RegExp {
-  return typeof label === "string" ? new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) : label;
+type NameMatcher = RegExp | ((accessibleName: string) => boolean);
+
+function nameMatcher(label: string | RegExp): NameMatcher {
+  return typeof label === "string" ? (accessibleName: string) => accessibleName.includes(label) : label;
 }
 
 /** Open the listbox whose trigger name contains `label`, and return its `role="listbox"` element. */
