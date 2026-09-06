@@ -7,11 +7,19 @@ from app.solver.objective import (
     CHAINING_STABILITY_MULTIPLIER,
     CHAINING_TIER_WEIGHTS,
     LEVEL_2_OBJECTIVE_WEIGHTS,
+    PLACEMENT_PROXIMITY_WEIGHT,
     SCORE_FORMULA_VERSION,
     STABILITY_TERM_WEIGHT,
     add_level_2_objective,
     build_stability_terms,
 )
+
+
+def _proximity_terms(stability_terms: list) -> list:
+    """P2-61 — dérivation EXACTE de main._solve : la proximité de placement rejoue les termes de
+    stabilité au poids PLACEMENT_PROXIMITY_WEIGHT (une variable posée = un bonus 9)."""
+    return [(var, PLACEMENT_PROXIMITY_WEIGHT) for var, _ in stability_terms]
+
 
 EXPECTED_WEIGHTS = {
     "S": 10000,
@@ -195,6 +203,28 @@ class StabilityTermsTest(unittest.TestCase):
         terms = build_stability_terms(x, [{"teamId": "t1", "venueId": "v1", "dayOfWeek": 5, "startTime": "18:00"}])
         self.assertEqual([], terms)
 
+    def test_proximity_derived_from_stability_matching_key(self):
+        # P2-61 — une clé retrouvée donne UN terme de proximité au poids 9 sur la même variable.
+        x = self._x()
+        stability = build_stability_terms(x, [{"teamId": "t1", "venueId": "v1", "dayOfWeek": 1, "startTime": "18:00"}])
+        proximity = _proximity_terms(stability)
+        self.assertEqual(1, len(proximity))
+        var, weight = proximity[0]
+        self.assertIs(x[("t1", "v1", 1, "18:00")], var)
+        self.assertEqual(PLACEMENT_PROXIMITY_WEIGHT, weight)
+
+    def test_proximity_is_empty_when_previous_absent(self):
+        # P2-61 — champ vide/absent ⇒ aucune stabilité ⇒ aucune proximité (chemin byte-identique).
+        self.assertEqual([], _proximity_terms(build_stability_terms(self._x(), [])))
+        self.assertEqual([], _proximity_terms(build_stability_terms(self._x(), None)))
+
+    def test_proximity_ignores_hard_absent_key(self):
+        # P2-61 — clé absente de x (créneau HARD) ⇒ pas de variable ⇒ proximité vide (patron
+        # test_absent_key_hard_or_unknown_is_ignored, propagé à la dérivation poids 9).
+        x = self._x()
+        stability = build_stability_terms(x, [{"teamId": "t1", "venueId": "v1", "dayOfWeek": 5, "startTime": "18:00"}])
+        self.assertEqual([], _proximity_terms(stability))
+
     def test_duplicate_previous_entries_are_deduplicated(self):
         x = self._x()
         prev = {"teamId": "t1", "venueId": "v1", "dayOfWeek": 1, "startTime": "18:00"}
@@ -206,6 +236,19 @@ class StabilityTermsTest(unittest.TestCase):
         # MAX de stabilité (2000 entrées × poids 1). C'est la borne codée dans main._solve.
         max_stability_mass = 2000 * STABILITY_TERM_WEIGHT
         self.assertGreater(CHAINING_STABILITY_MULTIPLIER * min(CHAINING_TIER_WEIGHTS.values()), max_stability_mass)
+
+    def test_placement_proximity_weight_sits_below_every_saisie_rule(self):
+        # P2-61 — les bornes de la preuve d'empilement, littérales et falsifiables :
+        self.assertEqual(9, PLACEMENT_PROXIMITY_WEIGHT)
+        # (c) perd contre un PREFERRED gymnase (10), STRICTEMENT.
+        self.assertLess(PLACEMENT_PROXIMITY_WEIGHT, LEVEL_2_OBJECTIVE_WEIGHTS["preferred"])
+        # (a) ne rentabilise jamais la suppression d'une séance nue (tier D 1 + session_count 20 = 21).
+        bare_session = LEVEL_2_OBJECTIVE_WEIGHTS["D"] + LEVEL_2_OBJECTIVE_WEIGHTS["session_count"]
+        self.assertEqual(21, bare_session)
+        self.assertLess(PLACEMENT_PROXIMITY_WEIGHT, bare_session)
+        # (b) frontière C−D : le poids réalise l'ÉGALITÉ EXACTE (C nue) − (D nue).
+        c_session = LEVEL_2_OBJECTIVE_WEIGHTS["C"] + LEVEL_2_OBJECTIVE_WEIGHTS["session_count"]
+        self.assertEqual(PLACEMENT_PROXIMITY_WEIGHT, c_session - bare_session)
 
 
 if __name__ == "__main__":

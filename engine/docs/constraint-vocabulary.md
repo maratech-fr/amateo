@@ -292,8 +292,8 @@ withSocleReferenceAssignments`, backend) : les placements de la version **point�
 convergence, jamais une donnée de structure).
 
 `add_socle_reference_bonus` (`engine/app/solver/objective/terms.py`) ajoute, dans l'objectif de
-**PLACEMENT** (phase 1, patron du malus passerelle `extra_placement_terms` — **pas** le tie-break
-de phase 2 comme `build_stability_terms`), un bonus `+SOCLE_REFERENCE_TIER_WEIGHTS[tier]` sur
+**PLACEMENT** (phase 1, patron du malus passerelle `extra_placement_terms` — comme la proximité
+P2-61 dérivée de `build_stability_terms`, poids 9, jamais co-émise avec ce bloc), un bonus `+SOCLE_REFERENCE_TIER_WEIGHTS[tier]` sur
 chaque variable `model.x[(team, venue, day, start)]` dont `(team, day, start)` — **gymnase
 ignoré** — matche une entrée du bloc. Poids par tier (`weights.py`) : `S=20 · A=18 · B=16 · C=14 ·
 D=12` — le club tient plus fort l'horaire de socle d'une équipe fanion qu'une équipe secondaire.

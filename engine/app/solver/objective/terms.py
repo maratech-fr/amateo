@@ -59,12 +59,16 @@ def build_stability_terms(
     previous_assignments: Iterable[Mapping[str, Any]] | None,
 ) -> list[tuple[BoolVarLike, int]]:
     """P3-21 — termes de stabilité : +STABILITY_TERM_WEIGHT par variable dont la clé
-    ``(team_id, venue_id, day_of_week, start)`` figure dans ``previous_assignments``.
+    ``(team_id, venue_id, day_of_week, start)`` figure dans ``previous_assignments``. P2-61 :
+    l'appelant DÉRIVE de ces mêmes termes (même clé) la PROXIMITÉ de PLACEMENT (phase 1, poids 9,
+    ``PLACEMENT_PROXIMITY_WEIGHT``) ; la stabilité renvoyée ici reste, elle, réservée à la SOUS-BANDE
+    de PHASE 2 (placement déjà verrouillé → départage des ex æquo exacts, jamais un arbitrage).
 
     La clé est normalisée EXACTEMENT comme ``model.x`` (start passé par
     ``_format_time(_time_to_minutes(...))``). Un créneau HARD est absent de ``x`` (pas de
     variable) → jamais compté : pas de double paiement d'un pin. Dédup par clé. Champ
-    vide/None → ``[]`` (aucun terme) : l'appelant garde alors le chemin phase-2 historique."""
+    vide/None → ``[]`` (aucun terme) : l'appelant n'installe alors NI proximité (phase 1) NI
+    stabilité (sous-bande phase 2) — chemin byte-identique."""
     terms: list[tuple[BoolVarLike, int]] = []
     if not previous_assignments:
         return terms

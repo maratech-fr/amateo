@@ -150,3 +150,49 @@ into the solver payload *after* `snapshotHash` is computed — the previous plac
 convergence preference, not a structure fact, so it must never enter the hash that gates
 the "structure changed" signal. Detail: `../../backend/docs/backend-inventory.md` §route
 `regenerate`, `../../engine/docs/engine-inventory.md` §POST /generate, §5 Solver.
+
+## Amendment (2026-09-06) — proximity to the previous placement enters PHASE 1 (P2-61)
+
+The 2026-08-17 stability tier only ever broke EXACT ties: placement was locked to the
+phase-1 optimum before phase 2 ran, so a source version that scored *below* the optimum
+(a validated schedule retouched by hand — measured −6 and −18 points on the BCCL
+exercises of 2026-09-01) had nothing left to converge to and everything reshuffled
+(26-48 % of sessions restored). Founder requirement: regenerating must give the feeling
+that "only what needed to change changed".
+
+**Decision.** The SAME `previousAssignments` keys (same builder, `build_stability_terms`,
+same `(teamId, venueId, dayOfWeek, startTime)` key, HARD pins skipped, deduplicated) now
+ALSO earn `PLACEMENT_PROXIMITY_WEIGHT = 9` inside the **phase-1 placement objective**
+(`extra_placement_terms`, the same pattern as the team-link malus and the fill
+socle-reference bonus). Always on when `previousAssignments` is present — no contract
+field (2.20 unchanged), no UI, no backend change (the emission of P3-21 PR B is untouched).
+
+**Why 9 — the stacking proof** (`weights.py`, `PLACEMENT_PROXIMITY_WEIGHT`): (a) never
+deletes a session (the bonus only exists on a POSED variable; dropping it costs ≥ 21 + the
+bonus + 1000 under quota); (b) never inverts S/A/B/C (smallest tier gap outside C/D is
+B−C = 90 ≫ 9; C−D = 9 gives an EXACT tie which the phase-2 stability sub-band then breaks
+towards the previous slot — the C/D wobble the module already declares accepted);
+(c) always loses to an ENTERED rule worth ≥ 10 (`preferred` venue 10, `avoided_venue` 10,
+`overload_day` 15, tiers, HARD) and to cumulated preferences (5+5, 6+6); an ISOLATED entered
+preference below 9 (`preferred_day`/`preferred_time` 5, a single well-being rule 6) now
+yields to proximity — an ASSUMED consequence (founder, 2026-09-06): a session placed "on
+purpose" against such a preference is held by a reservation (HARD), never by proximity;
+(d) the fill socle-reference bonus (12-20) is never co-emitted with `previousAssignments`
+(exclusive backend branches, `GenerateScheduleHandler`) — an hypothesis of the proof, to be
+re-proven if both ever coexist.
+
+**Phase 2 is byte-identical**: the `×4096` chaining tier and the weight-1 stability sub-band
+stay exactly as amended on 2026-08-17 — the sub-band is what settles the C/D tie above.
+
+**Reported score.** The proximity mass is folded into `placement_optimum`, so `_solve`
+SUBTRACTS it (Σ 9 × final value) before reporting, next to the sub-band exclusion already in
+place: versions remain comparable at the original weights and `SCORE_FORMULA_VERSION`
+(V13) is unchanged. Without `previousAssignments` the whole path is byte-identical (goldens
+and invariants carry no such field — verified).
+
+Guards: `engine/tests/semantic/test_stability_semantics.py` (a gap of 5 keeps the previous
+slot; a PREFERRED venue of 10 moves it; a HARD still wins; the C/D frontier holds through
+the sub-band), `engine/tests/test_stability_convergence.py` (never drops a session; reported
+score = score without previous − 5 exactly), `engine/tests/test_objective.py` (constants:
+9 < `preferred` 10 < 21, 9 = the C−D gap; HARD key never derived). Job `engine-tests`,
+`needs` of `build-docker`.

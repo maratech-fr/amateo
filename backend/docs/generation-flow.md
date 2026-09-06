@@ -1,15 +1,17 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-09-04 (rotation de fraîcheur `documentation-update`, sans rapport avec le
-sujet de la PR — recalage smoke-solver→Behat P4-165). Reconfirmé sans écart : `CONTRACT_VERSION`
-`2.20` des deux côtés (`ScheduleConstraintBuilder.php:64` ⇄ `engine/CONTRACT_VERSION`) ✓ · TTL du
-verrou = `timeoutSeconds + LOCK_TTL_MARGIN_SECONDS` (`GenerateScheduleHandler.php:117`, marge de
-60 s comme documenté §3a) ✓ · `ScheduleStatus` à cinq états exactement
+Last verified @ 2026-09-06 (rotation de fraîcheur `documentation-update`, PR P2-61 moteur —
+fichier hors sujet). Reconfirmé sans écart : `CONTRACT_VERSION` `2.20` des deux côtés
+(`ScheduleConstraintBuilder.php:64` ⇄ `engine/CONTRACT_VERSION`) ✓ · TTL du verrou =
+`timeoutSeconds + LOCK_TTL_MARGIN_SECONDS` (`GenerateScheduleHandler.php:62,117`, marge de 60 s
+comme documenté §3a) ✓ · `ScheduleStatus` à cinq états exactement
 (`backend/src/Enum/ScheduleStatus.php`) ✓ · les diagnostics `engine_timeout`/`engine_error`/
 `engine_failed` existent tels quels (`GenerateScheduleHandler.php:302,310`,
-`ScheduleDiagnosticsRecorder.php:65,75,85`) ✓. Le reste (SSE §6, sélecteur de topic club) non
-re-confronté cette passe — un stamp REMPLACE, l'historique vit dans git :
-`git log -p --follow backend/docs/generation-flow.md`.
+`ScheduleDiagnosticsRecorder.php:65,75,85`) ✓ · flux Mercure §6 confirmé contre le code :
+`MercureTopic::for`/`MercureTopic::selectorForClub` (`backend/src/Mercure/MercureTopic.php:27,38`)
+et les cinq champs `scheduleId`/`status`/`score`/`unplaced`/`warnings`
+(`ScheduleProgressPublisher.php:40-44`) ✓. Reste non re-confronté cette passe — un stamp
+REMPLACE, l'historique vit dans git : `git log -p --follow backend/docs/generation-flow.md`.
 
 > ClubScheduler — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 

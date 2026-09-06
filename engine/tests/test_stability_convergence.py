@@ -22,6 +22,10 @@ VENUE = "venue-1"
 SLOT_A = (1, "18:00")  # lundi
 SLOT_B = (3, "18:00")  # mercredi (non adjacent à lundi)
 
+# P2-61 — fixture « source sous l'optimum » : lundi 18:00 (le précédent) et mercredi 20:00 (que
+# la PREFERRED TIME favorise à +5). L'écart saisi (5) est SOUS le poids de proximité (9).
+PREF_SLOTS = [(1, "18:00"), (3, "20:00")]
+
 
 def _payload(previous: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     payload = make_payload(
@@ -73,6 +77,54 @@ def test_empty_previous_assignments_is_identical_to_absent() -> None:
     empty = solve_payload(_payload([]), timeout=10)
     assert absent["slots"] == empty["slots"]
     assert absent["score"] == empty["score"]
+
+
+# --- P2-61 : proximité de PLACEMENT (phase 1, poids 9) ---------------------------------
+
+
+def _pref_payload(previous: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Fixture « source sous l'optimum » : tier D, lundi 18:00 (précédent) vs mercredi 20:00
+    favorisé par une PREFERRED TIME (+5, sous le poids de proximité 9)."""
+    payload = make_payload(
+        teams=[make_team(TEAM, sessions_per_week=1, priority_tier_id=5)],
+        venues=[make_venue(VENUE, PREF_SLOTS)],
+        constraints=[
+            team_constraint(
+                constraint_id="prefer-late",
+                team_id=TEAM,
+                family="TIME",
+                rule_type="PREFERRED",
+                config={"minStartTime": "19:00"},
+            )
+        ],
+    )
+    if previous is not None:
+        payload["previousAssignments"] = previous
+    return payload
+
+
+def test_proximity_never_drops_a_session() -> None:
+    """P2-61 — patron « jamais de suppression » rejoué sous proximité (fixture source-sous-optimum) :
+    la séance reste PLACÉE (1 séance), la proximité ne fait que la ramener au lundi précédent."""
+    pinned = solve_payload(_pref_payload([_prev(1, "18:00")]), timeout=10)
+    assert pinned["status"] == "completed"
+    assert len(_placed_days(pinned)) == 1, "aucune séance supprimée pour la proximité"
+    assert _placed_days(pinned) == [1], "la proximité restitue le lundi précédent"
+
+
+def test_reported_score_excludes_the_proximity_bonus() -> None:
+    """P2-61 — score RAPPORTÉ aux poids d'ORIGINE, bonus de proximité EXCLU. Sans previous →
+    mercredi 20:00 (+5 preferred_time) ; avec previous=lundi → lundi 18:00 (pas de préférence). Le
+    score AVEC proximité vaut EXACTEMENT celui SANS, moins les 5 de préférence perdus : la
+    proximité (9) n'entre PAS dans le score rapporté."""
+    without = solve_payload(_pref_payload(), timeout=10)
+    with_prev = solve_payload(_pref_payload([_prev(1, "18:00")]), timeout=10)
+    assert without["status"] == with_prev["status"] == "completed"
+    assert _placed_days(without) == [3], "sans previous, la préférence (+5) fixe mercredi"
+    assert _placed_days(with_prev) == [1], "avec previous, la proximité fixe lundi"
+    assert with_prev["score"] == without["score"] - 5, (
+        f"le score doit exclure la proximité : {with_prev['score']} != {without['score']} - 5"
+    )
 
 
 # --- « une contrainte ajoutée ne bouge QUE ce qui doit » -------------------------------

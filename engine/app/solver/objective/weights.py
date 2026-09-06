@@ -151,6 +151,45 @@ UNPLACED_PENALTY = 100000
 STABILITY_TERM_WEIGHT = 1
 CHAINING_STABILITY_MULTIPLIER = 4096
 
+# P2-61 — PROXIMITÉ AU PRÉCÉDENT dans l'objectif de PLACEMENT (phase 1). Chaque variable
+# ``model.x[(team, venue, day, start)]`` dont la clé figure dans ``previousAssignments`` (la MÊME
+# clé et le MÊME builder ``build_stability_terms`` que la stabilité de phase 2) porte, EN PLUS,
+# +PLACEMENT_PROXIMITY_WEIGHT dans le PLACEMENT. But : faire tenir une séance à sa place précédente
+# même quand la version source score SOUS l'optimum (retouchée à la main) — la stabilité de phase 2
+# (poids 1 sous chaînage ×4096, après le verrou ``placement_expression >= optimum``) ne départage
+# que des ex æquo exacts et ne peut donc rien retenir dès que le placement rebat.
+#
+# Poids 9 (arbitrage fondateur 2026-09-06). Preuve d'empilement (patron des « ceilings »
+# CHAINING_TIER_WEIGHTS / SOCLE_REFERENCE_TIER_WEIGHTS de ce module) :
+#   (a) JAMAIS DE SUPPRESSION DE SÉANCE. Le bonus n'existe QUE sur une variable POSÉE (il s'ajoute
+#       quand ``model.x[...] == 1``) ; le retirer perd le placement lui-même (tier D 1 +
+#       session_count 20 = 21) + le bonus (≤ 9) + 1000 si l'équipe passe sous quota. Une variable
+#       ne porte qu'UN bonus de proximité (sa clé (team, venue, day, start) y est ou n'y est pas —
+#       dédup dans ``build_stability_terms``), donc aucun empilement > 9 sur une seule séance.
+#   (b) JAMAIS D'INVERSION S/A/B/C. Deux équipes qui se disputent un créneau départagent d'abord sur
+#       le placement : le plus petit écart de tier HORS C/D est B−C = 90 (``tier + session_count`` :
+#       120 vs 30) ≫ 9. La SEULE frontière atteignable est C−D = 9 (30 vs 21) : là, 9 réalise une
+#       ÉGALITÉ EXACTE (une séance D restituée à son créneau précédent vaut 21 + 9 = 30 = une séance
+#       C nue). L'égalité est tranchée en phase 2 par la sous-bande stabilité (+1 vers le précédent),
+#       donc le PRÉCÉDENT tient. C'est le « wobble C↔D » que ce module DÉCLARE ACCEPTÉ (voir
+#       CHAINING_TIER_WEIGHTS : « the club treats C/D as indifferent »).
+#   (c) PERD CONTRE UNE RÈGLE SAISIE ≥ 10. ``preferred`` (gymnase) 10 > 9 STRICT ; ``avoided_venue``
+#       et ``overload_day`` |−10|/|−15| > 9 ; les cumuls de préférences 5+5 (jour+heure) et 6+6
+#       (deux règles de bien-être) > 9. Les préférences saisies ISOLÉES < 9 (``preferred_day`` /
+#       ``preferred_time`` 5, un seul bien-être 6) CÈDENT à la proximité — conséquence ASSUMÉE
+#       (arbitrage fondateur 2026-09-06).
+#   (d) INTERACTIONS. Le bonus socle (SOCLE_REFERENCE_TIER_WEIGHTS 12-20) n'est JAMAIS coexistant :
+#       le backend émet ``previousAssignments`` et ``socleReferenceAssignments`` dans des branches
+#       EXCLUSIVES (``GenerateScheduleHandler``) — hypothèse de cette preuve, à REPROUVER si les deux
+#       coexistaient un jour (20 + 9 = 29 franchirait C−D et le confort). La passerelle PREFERRED
+#       (1-8) et le battement de trajet PREFERRED (6) < 9 : ils cèdent à la proximité. Le chaînage de
+#       phase 2 est SOUS le verrou de placement (×4096), inchangé.
+#
+# Le terme est EXCLU du score RAPPORTÉ (``main._solve`` le soustrait avant de reporter, aux poids
+# d'ORIGINE) : SCORE_FORMULA_VERSION est INCHANGÉ — la proximité oriente le placement sans altérer
+# le barème public.
+PLACEMENT_PROXIMITY_WEIGHT = 9
+
 
 # Small INTEGER tiebreaker weights for the same-venue same-day chaining bonus
 # (a PERSON present at both back-to-back sessions — coach OR player of the team).
