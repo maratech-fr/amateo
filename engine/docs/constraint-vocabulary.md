@@ -1,7 +1,7 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-04 (rotation fraîcheur, `documentation-update` — zone non touchée par la
-PR D4). Re-confronté : `ScheduleConstraintBuilder::withSocleReferenceAssignments`
+Last verified @ 2026-09-06 (rotation fraîcheur, `documentation-update` — P4-179/180, zone non
+touchée par la PR). Re-confronté : `ScheduleConstraintBuilder::withSocleReferenceAssignments`
 (`backend/src/Service/ScheduleConstraintBuilder.php:720`), `add_socle_reference_bonus` +
 `SOCLE_REFERENCE_TIER_WEIGHTS` (`engine/app/solver/objective/weights.py:24-250`),
 `SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"` (`weights.py:31`), `engine/CONTRACT_VERSION`
