@@ -22,6 +22,9 @@ lexicographique de l'objectif, [ADR-0001](adr-0001-single-pass-solve.md) amendé
 fait que **départager des ex æquo** une fois l'espace de solutions déjà exploré — elle n'empêche
 pas le solveur de reproposer une séance à un autre horaire strictement équivalent à ses yeux, mais
 pas aux yeux d'une famille qui a organisé sa semaine autour de l'ancien.
+*(Depuis P2-61, 2026-09-06, la proximité pèse aussi 9 points dans le placement — ADR-0001 amendé ;
+l'argument tient : une préférence saisie ≥ 10 ou un tier déplace toujours, seule la copie du socle
+garantit l'identique. En comblement, le backend n'émet d'ailleurs pas `previousAssignments`.)*
 
 ### Alternative instruite et écartée
 

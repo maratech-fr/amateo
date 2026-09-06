@@ -1,13 +1,13 @@
 # Guide de génération de planning — ClubScheduler
 
-Last verified @ 2026-09-04 (rotation `documentation-update`, PR D3 v1 backend — fichier hors sujet
-de la PR, sondage des stamps les plus anciens du dépôt). Re-confronté au code : `CONTRACT_VERSION`
-toujours **2.20** (`ScheduleConstraintBuilder.php:64`) ✓ ; `make seed-bccl` existe toujours
-(`backend/Makefile:180-183`, create-only) ✓ ; les 10 `container_name` cités (`amateo-php-fpm`,
-`amateo-nginx`, `amateo-postgres`, `amateo-redis`, `amateo-engine`, `amateo-messenger-worker`,
-`amateo-mercure`, `amateo-mailpit`…) tiennent contre `docker-compose.yml` ✓. Reste non re-sondé
-cette passe (le corps du guide au-delà du § Pré-requis) — un stamp REMPLACE, l'historique vit dans
-git.
+Last verified @ 2026-09-06 (P2-61, `documentation-update` — § Injection du placement précédent recalé : le
+moteur pèse aussi la proximité en phase 1, l'émission backend est inchangée). Re-confronté au code :
+`CONTRACT_VERSION` toujours **2.20** (`ScheduleConstraintBuilder.php:64`) ✓ ; `resolvePreviousAssignmentSlots`
+(`GenerateScheduleHandler.php:389`, source explicite de même lignée puis repli dernière COMPLETED) ✓ ;
+`withPreviousAssignments` (`ScheduleConstraintBuilder.php:673`, greffé après le hash) ✓ ; `sourceScheduleId`
+posé par `RegenerateController` sur la version REGARDÉE ✓ ; `make seed-bccl` (`backend/Makefile:181-184`,
+`app:bccl:seed` create-only) ✓ ; les `container_name` `amateo-*` cités tiennent contre `docker-compose.yml` ✓.
+Reste non re-sondé cette passe : le corps du guide hors § Pré-requis et § Injection.
 
 > Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend ClubScheduler. Il s'adresse aux développeurs juniors qui découvrent le projet.
 
@@ -688,7 +688,9 @@ Frontend (React)          Backend (Symfony)           Engine (Python)
 
 Entre l'étape « 1. Construit le payload » et l'appel au moteur, `GenerateScheduleHandler` greffe
 un bloc `previousAssignments` (terme de **stabilité** moteur, contrat 2.11 : à score égal, le
-solveur garde une équipe sur son créneau précédent plutôt que d'en tirer un autre au hasard) —
+solveur garde une équipe sur son créneau précédent plutôt que d'en tirer un autre au hasard —
+et, depuis P2-61 (2026-09-06), une **proximité** de poids 9 dans le placement lui-même : une règle
+saisie ≥ 10 prime, le confort interne cède, ADR-0001) —
 **après** avoir figé `snapshotData`/`snapshotHash`, jamais avant :
 
 1. Le payload est construit et **caché** par club+saison (`ScheduleConstraintBuilder::buildForClubSeason`/`buildForPeriodPlan`) et son hash (`snapshotHash`, comparé à `currentStructureHash` pour griser « Régénérer ») est calculé.
