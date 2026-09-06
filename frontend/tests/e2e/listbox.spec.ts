@@ -105,9 +105,11 @@ for (const mode of ["dark", "light"] as const) {
     await expect(listbox).toBeVisible();
     // TÉMOIN : sans option, le scan axe passerait en ne vérifiant RIEN.
     expect(await page.getByRole("option").count(), "témoin : liste vide = scan vide").toBeGreaterThan(0);
-    // Scope : la modale (listbox comprise). La grille de réservation DERRIÈRE la modale a sa propre
-    // dette de contraste (hors P4-164) — on vérifie CE que ce lot pose, pas l'écran entier.
-    await expectNoContrastViolations(page, `listbox ouverte (${mode})`, '[role="dialog"]');
+    // Scan PLEINE PAGE (élargi en P4-180) : la grille de réservation DERRIÈRE la modale portait sa
+    // dette de contraste (compteur `N/cap` en `text-accent`, « libre » en `text-muted-foreground` sur
+    // le fond teinté des cases, sous AA) — désormais en `text-foreground`. On vérifie donc la grille
+    // DANS SON CONTEXTE, plus seulement la modale, dans les deux thèmes.
+    await expectNoContrastViolations(page, `listbox ouverte + grille (${mode})`);
 
     // Reflow (WCAG 1.4.10) à 375×667 : rouvrir à la nouvelle taille (le flip se recalcule au resize).
     await page.keyboard.press("Escape");

@@ -113,7 +113,11 @@ for (const mode of MODES) {
       // `text-foreground` (lot C PR-2) : le texte du panneau du VOILE BLOQUANT — panneau `bg-card`,
       // bouton d'abandon `bg-background`. Le voile n'apparaît que le temps d'une mutation, donc axe
       // ne l'échantillonne JAMAIS sur un écran : on verrouille sa paire ici, dans les deux thèmes.
-      for (const token of ["text-warning", "text-success", "text-accent", "text-foreground"]) {
+      // `text-muted-foreground` (P4-179) : les jours HORS-MOIS du calendrier (`MonthCalendar`) le
+      // portent maintenant en PLEIN — l'ancien `/50` tombait à 2,1:1 / 2,5:1 (opacité sur du texte,
+      // sous AA, y compris derrière le voile d'une modale). Le calendrier n'est pas visité par axe
+      // sur les écrans publics → on verrouille sa paire ici. (Règle : jamais d'opacité sur du texte.)
+      for (const token of ["text-warning", "text-success", "text-accent", "text-foreground", "text-muted-foreground"]) {
         const fg = of(token, "color");
         out[`${token} on background`] = ratio(fg, bg);
         out[`${token} on card`] = ratio(fg, card);
@@ -146,12 +150,47 @@ for (const mode of MODES) {
       // active/survol (`bg-muted`, opaque) : la ligne active d'un sélecteur d'équipe n'est pas
       // toujours peinte quand axe scanne (liste fermée), on verrouille la paire ici, deux thèmes.
       out["text-foreground on bg-muted"] = ratio(of("text-foreground", "color"), of("bg-muted", "backgroundColor"));
+      // P4-179 — le TEXTE du bouton partagé `destructive` : `text-destructive-foreground` sur le fond
+      // plein `bg-destructive`. Le blanc en dur y tombait à 4,02:1 en SOMBRE (mesuré) : on a introduit
+      // le jeton `--destructive-foreground` (blanc en clair, texte sombre en sombre) et remonté
+      // `--destructive` sombre à L 0,66. Aucun écran public ne peint un bouton destructive → paire
+      // verrouillée ici, deux thèmes.
+      out["text-destructive-foreground on bg-destructive"] = ratio(of("text-destructive-foreground", "color"), of("bg-destructive", "backgroundColor"));
+      // P4-180 — le TEXTE d'une case de la grille de réservation (`ReservationGrid`) : compteur `N/cap`,
+      // « libre », libellé de groupe. Le fond de case est un `color-mix(in oklch, <couleur> 30%, card)` :
+      // `text-accent`/`text-muted-foreground` y tombaient sous AA (3,2–4,1 selon thème, mesuré) ; le texte
+      // est donc `text-foreground`. On mesure sur la couleur PAR DÉFAUT (accent) ET sur la couleur de
+      // gymnase la plus CLAIRE de la palette (`#FFD21E`, pire cas pour du texte clair en sombre). Aucun
+      // écran public ne peint cette grille → paires verrouillées ici, deux thèmes.
+      const cellFill = (mix: string): [number, number, number] => {
+        probe.className = "";
+        probe.style.backgroundColor = mix;
+        const rgb = toRgb(getComputedStyle(probe).backgroundColor);
+        probe.style.backgroundColor = "";
+        return rgb;
+      };
+      const fg = of("text-foreground", "color");
+      out["text-foreground on réservation cell (accent tint)"] = ratio(fg, cellFill("color-mix(in oklch, var(--accent) 30%, var(--card))"));
+      out["text-foreground on réservation cell (bright venue tint)"] = ratio(fg, cellFill("color-mix(in oklch, #FFD21E 30%, var(--card))"));
+      // INFORMATIF (non bloquant) : `text-destructive` en TEXTE ne vit que sur des teintes
+      // `bg-destructive/10|15` (jamais sur `bg-muted`). Notre changement ne touche QUE le token SOMBRE
+      // (remonté), donc en sombre le texte rouge ne peut que gagner ; le clair est inchangé. On mesure
+      // pour documenter la non-régression sans transformer une éventuelle dette clair PRÉ-existante
+      // (hors P4-179/180) en gate dur.
+      const info: Record<string, number> = {
+        "text-destructive on background": ratio(of("text-destructive", "color"), bg),
+        "text-destructive on card": ratio(of("text-destructive", "color"), card),
+        "text-destructive on bg-destructive/10": ratio(of("text-destructive", "color"), composite("bg-destructive/10", bg)),
+      };
       probe.remove();
-      return out;
+      return { out, info };
     });
 
-    for (const [pair, ratio] of Object.entries(ratios)) {
-      expect(ratio, `${pair} (${mode}) = ${ratio.toFixed(2)}:1, needs ≥ 4.5 for normal text`).toBeGreaterThanOrEqual(4.5);
+    for (const [pair, r] of Object.entries(ratios.info)) {
+      console.log(`INFO[${mode}] ${pair} = ${r.toFixed(2)}:1`);
+    }
+    for (const [pair, r] of Object.entries(ratios.out)) {
+      expect(r, `${pair} (${mode}) = ${r.toFixed(2)}:1, needs ≥ 4.5 for normal text`).toBeGreaterThanOrEqual(4.5);
     }
   });
 }
