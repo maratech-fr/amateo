@@ -41,14 +41,23 @@ async function reachReservationPicker(page: import("@playwright/test").Page): Pr
   await page.getByRole("button", { name: "Lun 18:00", exact: true }).click();
   await page.getByRole("button", { name: "Suivant" }).click();
 
-  // Step 3 · coach — skipped (an empty team→coach set is a loaded, valid state).
+  // Step 3 · a coach — REQUIRED so the guided wizard does not treat the step as a hole and
+  // jump back to it while we sit on step 4 (journey.spec adds one for the same reason).
   await expect(page.getByRole("heading", { name: /Étape 3\/6/ })).toBeVisible();
+  await page.getByLabel("Prénom").fill("Coa");
+  await page.getByLabel("Nom", { exact: true }).fill("Ch");
+  await page.getByRole("button", { name: "Ajouter le coach" }).click();
+  await expect(page.getByText("Coa Ch", { exact: true })).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Suivant" }).click();
 
-  // Step 4 · constraints → the « Réserver » family tab holds the per-venue slot grid.
+  // Step 4 · constraints → the « Réserver » family tab holds the per-venue slot grid. The slot
+  // cell's accessible name is "<jour> <HH:MM> · <gymnase> · N/cap réservé — cliquer pour gérer"
+  // (ReservationGrid). The only venue is auto-selected in the grid's venue picker.
   await expect(page.getByRole("heading", { name: /Étape 4\/6/ })).toBeVisible();
   await page.getByRole("button", { name: /Réserver/ }).first().click();
-  await page.getByRole("button", { name: /Gymnase LBX.*cliquer pour gérer/ }).first().click();
+  const slotCell = page.getByRole("button", { name: /Gymnase LBX.*cliquer pour gérer/ }).first();
+  await expect(slotCell).toBeVisible({ timeout: 15_000 });
+  await slotCell.click();
   await expect(page.getByRole("dialog", { name: "Réserver ce créneau" })).toBeVisible();
 }
 
@@ -95,7 +104,9 @@ for (const mode of ["dark", "light"] as const) {
     await expect(listbox).toBeVisible();
     // TÉMOIN : sans option, le scan axe passerait en ne vérifiant RIEN.
     expect(await page.getByRole("option").count(), "témoin : liste vide = scan vide").toBeGreaterThan(0);
-    await expectNoContrastViolations(page, `listbox ouverte (${mode})`);
+    // Scope : la modale (listbox comprise). La grille de réservation DERRIÈRE la modale a sa propre
+    // dette de contraste (hors P4-164) — on vérifie CE que ce lot pose, pas l'écran entier.
+    await expectNoContrastViolations(page, `listbox ouverte (${mode})`, '[role="dialog"]');
 
     // Reflow (WCAG 1.4.10) à 375×667 : rouvrir à la nouvelle taille (le flip se recalcule au resize).
     await page.keyboard.press("Escape");

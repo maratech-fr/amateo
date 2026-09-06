@@ -409,7 +409,9 @@ function Option({ opt, selected, onPick }: { opt: ListboxOption; selected: boole
         {opt.disabled ? <AlertTriangle className="text-warning" /> : <Glyph icon={opt.icon} swatch={opt.swatch} />}
       </span>
       <span className="min-w-0">
-        <span id={labelId} className={cn("block truncate font-medium", selected && "text-accent")}>
+        {/* Selection is conveyed by aria-selected + a heavier weight — NOT `text-accent`: as text on
+            the `bg-muted` highlight it drops to ~4.35:1 (< AA 4.5), AGENTS.md gotcha #11. */}
+        <span id={labelId} className={cn("block truncate", selected ? "font-semibold" : "font-medium")}>
           {opt.label}
         </span>
         {opt.sub !== undefined ? (

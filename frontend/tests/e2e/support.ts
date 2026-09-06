@@ -109,8 +109,11 @@ export async function registerAndVerify(page: Page, opts: RegisterOpts): Promise
  * is a precise, actionable failure (structural WCAG is the jsx-a11y + vitest-axe job).
  * `label` names the screen (+ theme) in the failure output.
  */
-export async function expectNoContrastViolations(page: Page, label: string): Promise<void> {
-  const results = await new AxeBuilder({ page }).withRules(["color-contrast"]).analyze();
+export async function expectNoContrastViolations(page: Page, label: string, include?: string): Promise<void> {
+  const builder = new AxeBuilder({ page }).withRules(["color-contrast"]);
+  // `include` scopes the scan to one subtree — e.g. a modal's own dialog, so what sits BEHIND
+  // it (a grid with its own, pre-existing contrast debt) is not attributed to this screen.
+  const results = await (include === undefined ? builder : builder.include(include)).analyze();
   const offenders = results.violations.flatMap((v) =>
     v.nodes.map((n) => `  ${n.target.join(" ")} — ${(n.failureSummary ?? "").split("\n").join(" ")}\n    HTML: ${n.html}`),
   );
