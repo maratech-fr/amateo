@@ -121,17 +121,17 @@
 
 ## P4 — Dette & polish (avant GA, par lots opportunistes)
 
-### Résidu du programme plannings BCCL (clos le 2026-09-06, dossier archivé)
-
-| # | Sujet | Impact | Effort | Note |
-|---|-------|:---:|:---:|---|
-| P4-182 | **« Gymnase principal » — la notion implicite du terrain, à cadrer** | 🟡 | M | Idée fondateur du 2026-09-02, notée pendant l'exercice overlay (dossier archivé §6) : le gymnase des matchs, « celui où on vit » — les fanions y sont privilégiées, et si un incident le ferme (Matéo→JDR), les priorités de gymnase devraient SUIVRE. **Non cadrée, pas une décision** : aujourd'hui le palier jour+heure du comblement + la priorité d'équipe produisent déjà l'effet observé (SM1 garde ses créneaux en changeant de gymnase). À rouvrir SEULEMENT si une mesure du comblement montre que les fanions n'héritent pas naturellement du bon gymnase — sinon reste une idée. Cadrage attendu : une notion de gymnase principal par club (ou par équipe ?), son effet sur les préférences de gymnase (`venue_preference`) et sur le comblement, et ce qui se passe quand il est fermé |
-
 ### Lot commandes seed/reset, 2026-09-03 (un seul chemin de remplissage)
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
 | P4-163 | **`doctrine/doctrine-fixtures-bundle` n'a plus aucun appelant — à retirer** | ⚪ | XS | Le lot du 2026-09-03 (renommage `app:bccl:seed`/`app:demo:seed`, suppression de `BasketballInit`/`HolidayReferenceFixtures`/`make fixtures`) a fait disparaître le dernier appel à `doctrine:fixtures:load` — vérifié : aucune classe `src/DataFixtures/` n'implémente plus `FixtureInterface`, `rtk grep -rn "doctrine:fixtures:load\|Doctrine\\\\Bundle\\\\FixturesBundle"` sur `backend/src` ne rend que l'entité métier `Fixture` (rencontre sportive, sans rapport). Le bundle reste néanmoins déclaré (`backend/composer.json:105`, `backend/config/bundles.php:13`, `dev`+`test` seulement). Retrait = PR dédiée (désinstaller le paquet, retirer la ligne `bundles.php`), volontairement pas fait dans le même lot pour ne pas mélanger une suppression de commandes et un retrait de dépendance |
+
+### Blocs de mutualisation imbriqués (mesure P4-182, 2026-09-07)
+
+| # | Sujet | Impact | Effort | Note |
+|---|-------|:---:|:---:|---|
+| P4-183 | **Deux diagnostics WARNING faux sur des blocs IMBRIQUÉS ({A,B} ⊂ {A,B,C}) réunis sur une même case** | ⚪ | S | Relevé en corrigeant le bloc épinglé en comblement (état des lieux §3, 2026-09-07) — le statut est juste (`completed`), les deux diagnostics ne le sont pas : (1) `shared_block_not_honored` (WARNING, branche solve abouti, `engine/app/solver/result_builder/diagnostics.py:~908-931`) compte la co-présence physique de A et B — la séance du bloc de 3 sur la case commune ET la séance du bloc de 2 ailleurs = 2 pour `commonSessions` 1 du bloc de 2, sans absorber la case attribuable au sur-bloc ; (2) `conflict` « N occupants pour 1 place » : `_fold_case_occupant_identity` (`engine/app/solver/constraints/common.py:142`) replie le PREMIER bloc qui matche ({A,B}) au lieu du bloc MAXIMAL ({A,B,C}), C reste un occupant séparé. Données réelles : BCCL {U9F1,U9F2} ⊂ {U9F1,U9F2,U9M2} sur ADN mer 17:30. Préexistant (le solveur, lui, attribue bien la case au bloc élu depuis le fix). Remède : replier le bloc maximal, et compter une co-présence pour le seul bloc élu (`b`) — gardé par `tests/semantic/test_fill_pinned_block_partner.py` (test « blocs imbriqués », qui documente les deux résidus inline) |
 
 ### Programme Behat, 2026-09-05
 

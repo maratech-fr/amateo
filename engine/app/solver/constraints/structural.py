@@ -127,13 +127,17 @@ def add_room_at_most_one(model: Any, assignments: Sequence[AssignmentVariable]) 
                     if locked_team in team_partners
                 ]
             max_locked = 0
+            max_locked_raw = 0  # occupation SANS le dé-compte des verrous partenaires.
             minute = start_min
             while minute < end_min:
-                occupied = locked_counts.get((str(venue_id), day, minute), 0)
+                raw = locked_counts.get((str(venue_id), day, minute), 0)
+                occupied = raw
                 if partner_lock_ends:
                     occupied -= sum(1 for lock_end in partner_lock_ends if minute < lock_end)
                 if occupied > max_locked:
                     max_locked = occupied
+                if raw > max_locked_raw:
+                    max_locked_raw = raw
                 minute += SLOT_MINUTES
             if max_locked >= cap:
                 model.Add(assignment.var == 0)
@@ -141,6 +145,23 @@ def add_room_at_most_one(model: Any, assignments: Sequence[AssignmentVariable]) 
                 # P4-99 — un verrou (d'une autre équipe) sature la capacité du gymnase sur ce
                 # sous-créneau : la vraie cause de ce candidat fermé est un verrou.
                 _record_closure(model, assignment.var, {"kind": "hard_lock"})
+            elif partner_lock_ends and max_locked_raw >= cap:
+                # P2-51 (comblement) — ce candidat LIBRE ne survit QUE grâce au dé-compte des verrous
+                # partenaires (sans dé-compte la case serait saturée). Le liage ``x >= b`` étant
+                # unidirectionnel, ``b = 0`` n'interdit pas ``x = 1`` : rien n'empêcherait sinon le
+                # membre libre de rejoindre l'épingle du partenaire HORS de toute séance de bloc active
+                # (double-comptage sur la solution du solveur, ``shared_block_not_honored`` post-solve).
+                # On borne ``x <= Σb`` des blocs de CETTE case qui contiennent l'équipe : rejoindre
+                # l'épingle d'un partenaire n'est permis QU'au titre d'une séance de bloc ACTIVE.
+                # Limite connue (porte générique préexistante, non touchée) : sur une case à capacité
+                # ≥ 2 réellement ouverte, deux membres peuvent toujours co-siéger hors bloc.
+                case_bvars = getattr(model, "shared_block_case_bvars", None) or {}
+                slot_id = f"{day}:{_format_time(start_min)}"
+                team_str = str(assignment.team_id)
+                block_bvars = [b for members, b in case_bvars.get((str(venue_id), slot_id), ()) if team_str in members]
+                if block_bvars:
+                    model.Add(assignment.var <= sum(block_bvars))
+                    added += 1
     return added
 
 

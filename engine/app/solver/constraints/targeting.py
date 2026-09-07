@@ -443,6 +443,10 @@ def add_shared_block_constraints(
     # Distinctness inter-blocs : (membre, case) → les ``b`` des DIFFÉRENTS blocs qui y siègent.
     member_case_bvars: dict[tuple[str, str, str], list[BoolVarLike]] = defaultdict(list)
 
+    # Comblement — case → les ``b`` des blocs qui y sont TOUTE-ÉPINGLÉS (aucun membre libre). Résolue
+    # APRÈS la boucle des blocs (une même case peut porter plusieurs blocs imbriqués), voir plus bas.
+    fully_pinned_case_bvars: dict[tuple[str, str], list[BoolVarLike]] = defaultdict(list)
+
     added = 0
     for block_index, block in enumerate(blocks):
         member_ids = [str(t) for t in (_get(block, "teamIds", "team_ids", default=()) or ())]
@@ -480,6 +484,19 @@ def add_shared_block_constraints(
                 cast(Any, model).Add(cast(Any, term) >= b)  # b=1 ⟹ le membre est présent ici.
                 added += 1
             n_free = len(var_terms)
+            if n_free == 0:
+                # Comblement — TOUS les membres sont ÉPINGLÉS ensemble sur cette case : aucun ``x``
+                # libre à lier, donc ``b`` FLOTTE (le liage ``x >= b`` est vide) et le solveur le
+                # mettrait à 0, satisfaisant ``Σb == commonSessions`` avec une AUTRE case pendant que
+                # cette case-ci porte AUSSI une co-présence réelle → double-comptage. On NE force PAS
+                # ``b == 1`` par bloc : deux blocs IMBRIQUÉS toute-épinglés sur la MÊME case (ex.
+                # {A,B} et {A,B,C}, cas BCCL) verraient chacun leur ``b == 1``, or la distinctness
+                # inter-blocs plafonne leur somme à 1 (ils partagent A,B) → ``1 + 1 <= 1`` INFEASIBLE
+                # à tort. On COLLECTE le ``b`` par case ; après la boucle, ``Σ b >= 1`` par case : une
+                # case où ≥1 bloc est toute-épinglé est une séance commune RÉALISÉE pour AU MOINS l'un
+                # d'eux (le solveur attribue, la distinctness plafonne à 1 pour les blocs partageant
+                # un membre ; deux blocs DISJOINTS peuvent tous deux valoir 1, la capacité le permet).
+                fully_pinned_case_bvars[(venue_id, slot_id)].append(b)
             if n_free >= 2:
                 # La co-présence des ``n_free`` membres libres tient dans UNE occupation.
                 room_relief.setdefault((venue_id, slot_id), []).append((b, n_free - 1))
@@ -501,6 +518,16 @@ def add_shared_block_constraints(
             cast(Any, model).Add(infeasible == 1)
             cast(Any, model).Add(infeasible == 0)
             added += 1
+
+    # Comblement — une case toute-épinglée doit porter une séance commune pour AU MOINS un des blocs
+    # qui y sont toute-épinglés (jamais ``b == 1`` par bloc, cf. la collecte ci-dessus). Le solveur
+    # attribue ; la distinctness ci-dessous plafonne à 1 pour les blocs imbriqués partageant un
+    # membre, tandis que deux blocs disjoints peuvent tous deux valoir 1 (capacité permettant). Un
+    # bloc dont la case toute-épinglée est attribuée à un autre bloc garde son budget pour une autre
+    # case — comportement voulu.
+    for _case, bvars in fully_pinned_case_bvars.items():
+        cast(Any, model).Add(sum(cast(Any, v) for v in bvars) >= 1)
+        added += 1
 
     # Garde de distinctness : deux blocs partageant un membre ne siègent pas sur la MÊME case.
     for (_team_id, _venue_id, _slot_id), bvars in member_case_bvars.items():

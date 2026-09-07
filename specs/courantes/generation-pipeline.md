@@ -1,11 +1,17 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-09-04 (documentation-update, P4-165 palier 1 — le smoke `smoke-solver.sh`
-cité en §6 a migré en feature Behat, `backend/features/generation-du-planning-de-saison.feature`
-(`make -C backend behat`), même preuve `COMPLETED`). Reconfirmé sans écart : topic
-`club:{clubId}:schedule:{scheduleId}` (`backend/src/Mercure/MercureTopic.php:27`) ✓ · verrou par
-club `ClubGenerationLock::acquire` (`backend/src/Service/ClubGenerationLock.php:20`) ✓ — *(historique
-des passes vit dans git : `git log -p --follow specs/courantes/generation-pipeline.md`)*
+Last verified @ 2026-09-07 (rotation de fraîcheur `documentation-update`, PR fix bloc épinglé en
+comblement — fichier hors sujet). Re-confronté au code : chaîne `GenerateScheduleController.php:30`
+→ Messenger → `GenerateScheduleHandler.php:44` (importe via `ScheduleResultImporter`, injecté
+`:67`) ✓ · verrou `ClubGenerationLock::acquire` (`ClubGenerationLock.php:20`) ✓ · topic
+`club:{clubId}:schedule:{scheduleId}` (`MercureTopic.php:27`) ✓ · `CONTRACT_VERSION = '2.20'`
+(`ScheduleConstraintBuilder.php:64`, même valeur `MoveSlotService.php:50` et
+`MatchPlacementPayloadBuilder.php:57`, `engine/CONTRACT_VERSION`) ✓ · `TIMEOUT_MS = 20 min`
+(`GenerateStep.tsx:37`) ✓ · mode comblement : épingles HARD **avant** le hash de snapshot,
+`previousAssignments`/`socleReferenceAssignments` greffés **après** (`GenerateScheduleHandler.php:210-266`)
+✓. Corrigé au passage : citation `api.ts:846-848` → **`845-848`** (la ligne `export const
+listSchedules` était omise) — *(historique des passes vit dans git :
+`git log -p --follow specs/courantes/generation-pipeline.md`)*
 
 > Vérité courante. Décrit ce qui **doit** se passer, zone par zone, quand un
 > gestionnaire lance une génération : ce que fait le frontend, ce que fait le
@@ -134,7 +140,7 @@ Tout test `null === s.planType` (« est-ce un plan de saison ? ») échoue alors
 `pickLandingScheduleId` renvoie `null`, le planning s'ouvre sur rien après une génération réussie.
 
 - **Conduite normalisée** : normaliser à la **frontière**. `listSchedules`
-  (`features/planning/api.ts:846-848`) mappe les champs nullable (`planType`, `schedulePlanId`,
+  (`features/planning/api.ts:845-848`) mappe les champs nullable (`planType`, `schedulePlanId`,
   `score`) en `?? null` → le type redevient honnête, **tous** les consommateurs voient un vrai
   `null` (gardé par `api.test.ts`). Même piège pour `score` : un plan sans score (DRAFT/en vol)
   affichait sinon le littéral « score undefined ». ⚠ **Amendé 2026-08-01 (P4-39)** : plus aucun

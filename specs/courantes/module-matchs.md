@@ -1,13 +1,17 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-04 (P4-165 SOLDÉ — `smoke-place-matches.sh` remplacé par la feature Behat
-`placement-des-matchs.feature`, `documentation-update`). Confronté au code cette passe :
-`backend/tests/Behat/MatchPlacementContext.php` auto-suffisant (équipes/gymnase jetables, la raison
-`no_access_window` étant club-wide, les fenêtres dominicales de TOUS les gymnases du club sont
-neutralisées puis restaurées en `@AfterScenario`) ✓ ; `backend/scripts/smoke-place-matches.sh`
-n'existe plus ✓ ; `no_access_window` club-wide en itérant tous les gymnases du club, `engine/app/
-solver/match_placement.py:113-118` ✓. Le reste du fichier (répartition WE des matchs au seed dev,
-2026-09-03) non re-confronté cette passe — un stamp REMPLACE, l'historique vit dans git :
+Last verified @ 2026-09-07 (rotation de fraîcheur `documentation-update`, PR fix bloc épinglé en
+comblement — fichier hors sujet). Re-confronté au code : route `POST /api/fixtures/place`
+(`PlaceMatchesController.php:60`, gate `ManagementAccessGuard` + `SocleGuard::assertSeasonPlanChosen`
+à `:71`) ✓ · `MatchPlacementLock` distinct du verrou de génération (`MatchPlacementLock.php:18`,
+injecté `PlaceMatchesController.php:52`) ✓ · endpoints engine `/generate`/`/place-matches`/
+`/validate-assignments` (`engine/app/main.py:833,854,874`) ✓ · entités `VenueMatchWindow`/
+`TeamMatchHabit`/`MatchSlotRotation` présentes telles que décrites (`backend/src/Entity/`) ✓ ·
+commande `app:league-windows:seed` (`SeedLeagueWindowsCommand.php:25`) ✓ · seed WE
+`BcclSeeder::seedWeekendMatchLayout` (`backend/src/Seed/BcclSeeder.php:1374`) ✓ · raison
+`no_access_window` toujours club-wide (`engine/app/solver/match_placement.py:117`, bracket
+113-118 toujours valide) ✓. Reste du fichier non re-balayé ligne à ligne cette passe (fichier
+long, hors sujet de la PR courante) — un stamp REMPLACE, l'historique vit dans git :
 `git log -p --follow specs/courantes/module-matchs.md`
 
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
