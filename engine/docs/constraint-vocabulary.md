@@ -1,13 +1,9 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-06 (rotation fraîcheur, `documentation-update` — P4-179/180, zone non
-touchée par la PR). Re-confronté : `ScheduleConstraintBuilder::withSocleReferenceAssignments`
-(`backend/src/Service/ScheduleConstraintBuilder.php:720`), `add_socle_reference_bonus` +
-`SOCLE_REFERENCE_TIER_WEIGHTS` (`engine/app/solver/objective/weights.py:24-250`),
-`SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"` (`weights.py:31`), `engine/CONTRACT_VERSION`
-toujours `2.20` ✓. Reste du document non re-vérifié cette passe — historique :
-`git log -p --follow engine/docs/constraint-vocabulary.md`.
-
+Last verified @ 2026-09-07 (fix bloc épinglé en comblement, `documentation-update` — §Bloc de mutualisation
+recalé : case toute-épinglée = `Σ b ≥ 1` (blocs imbriqués), membre libre borné `x ≤ Σ b` sur case saturée, seconde
+preuve INFEASIBLE ; le reste re-confronté au code : `add_shared_block_constraints` `targeting.py`,
+`add_room_at_most_one` `structural.py`, `_diagnose_shared_blocks` `diagnostics.py`, contrat 2.20 ✓).
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
 > Chaque entrée donne le **mécanisme** (dur/soft), le **ruleType** qui l'active, et un **exemple BCCL**.
@@ -227,17 +223,30 @@ patron du crédit des verrouillés P4-97). Depuis le 2026-09-02, ce dé-comptage
 **partenaire VERROUILLÉ** : un membre du bloc épinglé en HARD sur une case (transcription du
 socle) laisse la place aux membres libres du même bloc — et à eux seuls — aux deux étages
 (candidats de `model.py`, balayage par sous-départs de `structural.py`) ; gardé par
-`tests/semantic/test_fill_pinned_block_partner.py`. Une garde de distinctness inter-blocs
+`tests/semantic/test_fill_pinned_block_partner.py`. **Depuis le 2026-09-07 (bug mesuré sur le comblement BCCL)**,
+cette porte est CONDITIONNÉE à la séance de bloc : (1) une case où TOUS les membres d'un bloc sont
+épinglés ensemble est une séance commune RÉALISÉE pour AU MOINS un des blocs toute-épinglés sur
+cette case (`Σ b ≥ 1` par case, le solveur attribue ; la distinctness plafonne à 1 pour les blocs
+qui partagent un membre) — elle consomme le budget `Σ b == commonSessions` du bloc élu (avant, `b`
+sans aucun `x` libre à lier FLOTTAIT à 0 et le budget se dépensait ailleurs). ⚠ Pas `b == 1` PAR
+bloc : deux blocs IMBRIQUÉS ({U9F1,U9F2} ⊂ {U9F1,U9F2,U9M2} au club BCCL) toute-épinglés sur la
+même case rendaient tout INFEASIBLE (1 + 1 ≤ 1) — mesuré le 2026-09-07 sur le payload réel ; (2) un
+membre libre qui ne survit sur une case saturée QUE grâce au dé-compte du verrou partenaire reçoit
+`x ≤ Σ b` des blocs de la case (`structural.py`) — rejoindre l'épingle d'un partenaire n'est permis
+QU'au titre d'une séance de bloc active, jamais comme simple voisin (le liage `x ≥ b` est
+unidirectionnel, `b = 0` n'interdisait pas `x = 1`). Corollaire assumé : deux cases toute-épinglées
+EXCLUSIVES (aucun autre bloc n'y est toute-épinglé) pour `commonSessions = 1` ⇒ INFEASIBLE, le pin
+est souverain mais diagnostiqué. Une garde de distinctness inter-blocs
 (`Σ_{blocs ∋ membre} b[membre, case] ≤ 1`) empêche deux blocs partageant un membre de s'effondrer
 sur la MÊME case (sinon une séance physique compterait pour deux blocs).
 
 | Où | Effet |
 |---|---|
 | `add_shared_block_constraints` (`targeting.py`, posé en tête d'`add_level_1_hard_constraints`, AVANT capacité) | liage `x ≥ b` par membre, `Σ b == commonSessions` par bloc, distinctness inter-blocs |
-| `add_room_at_most_one` | dé-compte `(n_libres−1)·b` — une séance de bloc = une occupation |
+| `add_room_at_most_one` | dé-compte `(n_libres−1)·b` — une séance de bloc = une occupation ; depuis le 2026-09-07, `x ≤ Σ b` sur le membre libre qui ne tient sur la case que par le dé-compte d'un verrou partenaire |
 | `team_share_declared_pairs` | co-présence des membres exemptée de l'anti-chevauchement passerelle (§ci-dessus) |
 | `shared_block_case_bvars` → `add_coach_player_non_overlap` | co-présence des membres exemptée de l'anti-chevauchement coach-joueur/joueur-joueur QUAND la séance de bloc de la case est active (borne `≤ 1 + Σb`) — voir `COACH_PLAYER_NO_OVERLAP` ci-dessus |
-| Diagnostic post-solve (`_diagnose_shared_blocks`) | `shared_block_not_honored` — INFEASIBLE : moins de cases communes candidates que de séances demandées (cause certaine) ; solve abouti : défense en profondeur si le compte réel diverge |
+| Diagnostic post-solve (`_diagnose_shared_blocks`) | `shared_block_not_honored` — INFEASIBLE : moins de cases communes candidates que de séances demandées, OU (2026-09-07) plus de cases toute-épinglées EXCLUSIVES (aucun autre bloc toute-épinglé dessus) que de séances demandées (deux causes certaines, la seconde nomme le bloc sur-épinglé) ; solve abouti : défense en profondeur si le compte réel diverge |
 | Sur-capacité gymnase (post-solve) | attribuée **PAR CASE** (multi-appartenance permise, `_fold_case_occupant_identity`) — jamais « premier bloc gagne » via une carte globale, contrairement au groupe historique (unicité un-groupe-par-équipe) |
 | `/validate-assignments` | miroir déterministe `_shared_block_move_violation` (D11) — refuse NOMMÉ `shared_block_broken` un déplacement qui RETIRE un membre d'une séance de bloc jusque-là honorée ; **garde anti-enfermement** (patron `_venue_minimum_move_violation`/P4-152) : un bloc DÉJÀ cassé dans la baseline ne bloque pas les déplacements |
 

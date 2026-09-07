@@ -829,11 +829,44 @@ def _diagnose_shared_blocks(
         for venue in _collection(model_data, "venues"):
             for _slot in _collection(venue, "training_slots", "trainingSlots"):
                 candidate_cases += 1
-        for index, block in enumerate(blocks):
-            members = [str(t) for t in (_get(block, "teamIds", "team_ids", default=[]) or [])]
-            if len(members) < 2:
+        # Seconde preuve PRUDENTE — les cases où TOUS les membres du bloc sont ÉPINGLÉS HARD
+        # ENSEMBLE. Le moteur exige qu'une telle case porte une séance commune pour AU MOINS un des
+        # blocs qui y sont toute-épinglés (``Σ b >= 1`` par case, jamais ``b == 1`` par bloc). Donc
+        # une case toute-épinglée n'est une cause CERTAINE de sur-contrainte QUE si elle est
+        # EXCLUSIVE au bloc — aucun AUTRE bloc n'y est toute-épinglé, sinon le moteur peut l'attribuer
+        # à cet autre bloc. Blocs IMBRIQUÉS (ex. {A,B} sous {A,B,C}, cas BCCL) : leur case commune
+        # n'est exclusive à aucun → on n'accuse PERSONNE (le cas imbriqué aboutit, cf. test dédié).
+        # ``exclusives > commonSessions`` ⇒ le bloc est sur-contraint par ses PROPRES verrous →
+        # ``Σb == commonSessions`` insatisfiable — verrou souverain mais diagnostiqué.
+        pinned_teams_by_case: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+        for pin in _collection(model_data, "slotTemplates", "slot_templates"):
+            if _get(pin, "lockLevel", "lock_level", default=None) != "HARD":
                 continue
+            team = str(_get(pin, "teamId", "team_id", default=""))
+            if not team:
+                continue
+            case = (
+                str(_get(pin, "venueId", "venue_id", default="")),
+                str(_get(pin, "dayOfWeek", "day_of_week", default="")),
+                str(_get(pin, "startTime", "start_time", default=""))[:5],
+            )
+            pinned_teams_by_case[case].add(team)
+        # Blocs valides (≥2 membres) et leur ensemble de membres — indexés par position.
+        valid_blocks = [
+            (index, block, members, set(members))
+            for index, block in enumerate(blocks)
+            if len(members := [str(t) for t in (_get(block, "teamIds", "team_ids", default=[]) or [])]) >= 2
+        ]
+        # Pour chaque case toute-épinglée, les positions des blocs valides qui y sont toute-épinglés.
+        # Une case n'est exclusive à un bloc que si elle ne liste QUE lui.
+        fully_pinned_here: dict[tuple[str, str, str], list[int]] = {}
+        for case, teams in pinned_teams_by_case.items():
+            positions = [pos for pos, (_i, _b, _m, member_set) in enumerate(valid_blocks) if member_set <= teams]
+            if positions:
+                fully_pinned_here[case] = positions
+        for pos, (index, block, members, _member_set) in enumerate(valid_blocks):
             common_sessions = int(_get(block, "commonSessions", "common_sessions", default=0) or 0)
+            exclusives = sum(1 for these in fully_pinned_here.values() if these == [pos])
             if candidate_cases < common_sessions:
                 diagnostics.append(
                     {
@@ -849,6 +882,26 @@ def _diagnose_shared_blocks(
                         "suggestions": [
                             "Ajoutez des créneaux de gymnase où toutes les équipes du bloc peuvent se réunir.",
                             "Réduisez le nombre de séances communes déclarées pour le bloc.",
+                        ],
+                        "createdAt": datetime.now(UTC).isoformat(),
+                    }
+                )
+            elif exclusives > common_sessions:
+                diagnostics.append(
+                    {
+                        "id": f"shared-block-overpinned-{_get(block, 'id', default=index)}",
+                        "type": "shared_block_not_honored",
+                        "severity": "ERROR",
+                        "message": (
+                            f"Le bloc de mutualisation ({_named_list(members, team_names)}) est verrouillé sur "
+                            f"{exclusives} créneau(x) où toutes ses équipes sont épinglées ensemble, alors "
+                            f"qu'il ne doit partager que {common_sessions} séance(s) commune(s) : ses propres "
+                            "verrous se contredisent. Retirez un verrou commun ou augmentez le nombre de séances "
+                            "communes du bloc."
+                        ),
+                        "suggestions": [
+                            "Retirez l'un des verrous qui réunissent toutes les équipes du bloc sur une même case.",
+                            "Augmentez le nombre de séances communes déclarées pour le bloc.",
                         ],
                         "createdAt": datetime.now(UTC).isoformat(),
                     }

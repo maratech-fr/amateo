@@ -1,13 +1,9 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-09-06 (rotation de fraîcheur `documentation-update`, PR P4-181 frontend —
-fichier hors sujet). Re-confronté au code : `engine/CONTRACT_VERSION` = **2.20** ✓ ; les 12 types
-du tableau ci-dessous sont tous des membres du `Literal[DiagnosticSchema.type]`
-(`app/schemas/output_schema.py:69-95`) ✓ ; `team_link_not_honored` et `travel_time_infeasible`
-figurent bien dans ce `Literal` (`output_schema.py:83,88`) sans ligne dans le tableau — écart
-toujours ouvert (`P4-153` dans `roadmap.md`) ✓ ; `SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"`
-(`app/solver/objective/weights.py:31`) ✓.
-
+Last verified @ 2026-09-07 (fix bloc épinglé en comblement, `documentation-update` — ligne
+`shared_block_not_honored` recalée : seconde cause INFEASIBLE « bloc sur-épinglé » émise par
+`_diagnose_shared_blocks` (`diagnostics.py`, id `shared-block-overpinned-…`) ; codes du tableau
+re-confrontés au `Literal` de `output_schema.py`, contrat 2.20 ✓).
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 
 ---
@@ -78,7 +74,7 @@ Les diagnostics apparaissent dans le tableau `diagnostics[]` de la reponse. Ils 
 | `unplaced_match` | ERROR | Un match n'a pas pu etre place | Emis par `/place-matches` (rail synchrone, ADR-0003), pas par le solve hebdomadaire. | Ouvrir un creneau compatible, ou revoir la fenetre de la journee. |
 | `day_constraint_conflict` | ERROR | Les regles de jours d'une equipe se contredisent | Un jour est a la fois impose (`forcedDays`) et interdit (`forbiddenDays`), ou tous les jours de la liste blanche (`allowedDays`) sont interdits. L'equipe est alors forcee a 0 seance. | Retirer le recouvrement entre la regle "uniquement / impose" et la regle "evite". |
 | `venue_minimum_unreachable` | ERROR | Un plancher "au moins N seances dans ce gymnase" est inatteignable | Le gymnase offre a l'equipe moins de **jours distincts** que N (elle joue au plus une seance par jour). | Baisser N, ou ouvrir des creneaux sur d'autres jours dans ce gymnase. |
-| `shared_block_not_honored` | ERROR | Un BLOC de mutualisation (P2-51 — un ensemble d'equipes qui se comporte comme UNE equipe, SEULE notion depuis le retrait du modele groupe {equipes, K} par PR-7, 2026-08-31) n'a pas pu placer ses `commonSessions` seances communes | Sur INFEASIBLE, cause **certaine** — moins de cases (gymnase, jour, heure) communes candidates que de seances demandees ; sur un solve abouti, defense en profondeur — le compte reel de seances communes du bloc diverge du declare. **Distinct du verdict** `shared_block_broken` (`/validate-assignments`, refus d'un DEPLACEMENT qui casserait un bloc deja honore) — celui-ci n'est pas un diagnostic de generation. | Ouvrir un creneau commun aux equipes du bloc, ou reduire son nombre de seances communes. |
+| `shared_block_not_honored` | ERROR | Un BLOC de mutualisation (P2-51 — un ensemble d'equipes qui se comporte comme UNE equipe, SEULE notion depuis le retrait du modele groupe {equipes, K} par PR-7, 2026-08-31) n'a pas pu placer ses `commonSessions` seances communes | Sur INFEASIBLE, deux causes **certaines** — moins de cases (gymnase, jour, heure) communes candidates que de seances demandees, ou (2026-09-07) PLUS de cases EXCLUSIVES ou TOUS les membres sont epingles HARD ensemble (aucun autre bloc toute-epingle sur la case — deux blocs imbriques peuvent se partager une case) que de seances demandees (bloc sur-epingle : le pin est souverain, la sortie est de de-epingler une case) ; sur un solve abouti, defense en profondeur — le compte reel de seances communes du bloc diverge du declare. **Distinct du verdict** `shared_block_broken` (`/validate-assignments`, refus d'un DEPLACEMENT qui casserait un bloc deja honore) — celui-ci n'est pas un diagnostic de generation. | Ouvrir un creneau commun aux equipes du bloc, ou reduire son nombre de seances communes. |
 | `constraint_not_honored` | INFO / WARNING | Une contrainte saisie n'a pas pu etre appliquee | **INFO** : un verrou HARD l'a ecrasee (P2-9) — indisponibilite coach, fenetre horaire, jour exclu, gymnase interdit. Le verrou prime, la contrainte devient inatteignable. **WARNING** : la contrainte est arrivee sans equipe cible et n'a donc pu etre appliquee a personne. | INFO : retirer le verrou, ou assumer qu'il prime — c'est une decision de gestionnaire, pas une erreur. WARNING : verifier le ciblage de la regle cote backend. |
 
 ---
