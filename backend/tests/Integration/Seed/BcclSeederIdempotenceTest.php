@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Seed;
 
+use App\Repository\SchoolHolidayPeriodRepository;
 use App\Seed\BcclSeeder;
 use App\Seed\BcclSeedProfile;
 use App\Service\ClosureSegmentation;
 use App\Service\HolidayWorkweekRule;
+use App\Service\PeriodWindowUniquenessGuard;
 use App\Service\SoloReservationBudget;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
@@ -17,6 +19,7 @@ use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use RuntimeException;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\Clock\MockClock;
 
 /**
  * P4-84 — le seed BCCL est IDEMPOTENT : le relancer ne crée pas de doublon.
@@ -1041,14 +1044,26 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      * (WeekSegmentationRule via ClosureSegmentation), et AUCUNE racine CLOSURE à plusieurs segments
      * ne porte de plan-bloc. Falsifiable : re-porter un plan sur la racine de l'incident, ou seeder
      * un enfant dont la fenêtre n'est pas un segment, rend ce test ROUGE.
+     *
+     * ⚠ HORLOGE FIGÉE. `ClosureSegmentation::segments` ne garde que les semaines dont il reste un jour
+     * devant (`endDate >= today`) : joué à l'horloge réelle, ce test a rougi le lundi 2026-09-07 — la
+     * semaine du 31/08 était révolue, le premier segment devenait 07/09→11/10 et l'enfant seedé
+     * 31/08→11/10 (donnée fondateur, session du 2026-09-02) ne matchait plus rien. Les enfants seedés
+     * sont une photo datée : on les juge à la date de cette photo, pas à celle du run.
      */
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
     public function testMateoIncidentChildrenAreValidSegmentsAndRootCarriesNoBlockPlan(): void
     {
         $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
-        $segmentation = self::getContainer()->get(ClosureSegmentation::class);
-        self::assertInstanceOf(ClosureSegmentation::class, $segmentation);
+        // Horloge figée à la session fondateur qui a posé l'incident (voir le docblock) : le service
+        // du conteneur porte l'horloge réelle, on rebâtit la règle avec les mêmes dépendances.
+        $segmentation = new ClosureSegmentation(
+            $this->em,
+            self::getContainer()->get(SchoolHolidayPeriodRepository::class),
+            self::getContainer()->get(PeriodWindowUniquenessGuard::class),
+            new MockClock('2026-09-02'),
+        );
 
         /** @var array{id: string, season_id: string, s: string, e: string} $root */
         $root = $this->connection->fetchAssociative(
