@@ -1,10 +1,17 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-05 (découpage début·milieu·fin, `documentation-update`). Ajout de la note
-`.env.local.php`/`with-sandbox.sh` ci-dessous, re-confronté : `.env.local.php` absent
-(`backend/.gitignore:4`), jamais généré en dev ; `backend/.env:14` documente `composer dump-env
-prod` comme le geste qui le compilerait. Non re-sondé cette passe : le reste des commandes et
-gardes listées — un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-08 (rotation de fraîcheur `documentation-update`, PR-1 filtres module
+matchs — fichier hors sujet). Re-confronté au code, tout juste :
+- Cibles `backend/Makefile` : `test`/`tests-complete`/`behat`/`phpunit`/`db-empty`/`seed-bccl`/
+  `seed-demo`/`seed-holidays`/`seed-league`/`rector` (dry-run, `composer rector -- --dry-run`)
+  toutes présentes exactement sous ces noms ✓
+- Commandes console (`backend/src/Command/`) : `app:bccl:seed` (`BcclSeedCommand.php:41`),
+  `app:demo:seed` (`DemoSeedCommand.php:40`), `app:schedules:reconcile-stuck --older-than`
+  (`ReconcileStuckSchedulesCommand.php:40,59`), `app:league-windows:seed`
+  (`SeedLeagueWindowsCommand.php:25`), `app:public-holidays:seed`
+  (`SeedPublicHolidaysCommand.php:24`) — tous les noms `#[AsCommand]` collent au mot près ✓
+Non re-sondé cette passe : le reste des commandes et gardes listées — un stamp REMPLACE,
+l'historique vit dans git.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).

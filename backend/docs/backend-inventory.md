@@ -3,16 +3,25 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-05 (D3 v2, P4-174). §Cockpit temporel recalé : `redatable` (§2, table
-`SchedulePlan`) reste inchangé, `redateNeedsPreview` ajouté — confronté à
-`App\Controller\RedatePreviewController`, `App\Service\SplitMotherRedatePlanner`,
-`App\Service\CalendarEntryRedatability::redateNeedsPreview`,
-`App\State\Processor\CalendarEntryStateProcessor::prepareSplitMotherRedate`/`applySplitMotherRedate`.
-Reste du fichier non re-vérifié cette passe — historique des recalages précédents (P4-173,
-découpage début·milieu·fin, etc.) : `git log -p --follow` ce fichier.
-⚠ Vérification volontairement ÉTROITE au-delà de ce point : le reste de l'inventaire n'a pas été
-reconfronté au code ce jour — historique des passes : `git log -p --follow backend/docs/backend-inventory.md`.
-Un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-08 (rotation de fraîcheur `documentation-update`, PR-1 filtres module
+matchs — fichier hors sujet). Re-confronté au code, §module matchs + placement + cockpit
+temporel + contrat, tout juste **sauf une lacune trouvée** :
+- `/api/fixtures/place` (`PlaceMatchesController.php:596` de ce fichier), `/api/fixtures/conflicts`
+  (`FixtureConflictsController`), `/api/ffbb/rencontres` + `/apply` (`FfbbRencontresController`) ✓
+- ⚠ **`/api/ffbb/engagements` GET + `/api/ffbb/engagements/confirm` POST n'étaient PAS
+  inventoriés** — route réelle et active (`backend/src/Controller/Basketball/FfbbEngagementsController.php:62,109`,
+  déclarée à l'OpenAPI par `backend/src/OpenApi/PathContributor/FfbbEngagementPaths.php:21,53`) ;
+  ajoutée ci-dessous §Module matchs.
+- Placement précédent (P3-21) + proximité P2-61, poids 9 : `PLACEMENT_PROXIMITY_WEIGHT = 9`
+  (`engine/app/solver/objective/weights.py:191`) ✓
+- Cockpit temporel D3 v1/v2 : `App\Service\CalendarEntryRedatability::isRedatable`/`redateNeedsPreview`,
+  `App\Controller\RedatePreviewController`, `App\Service\SplitMotherRedatePlanner`,
+  `App\State\Processor\CalendarEntryStateProcessor::prepareSplitMotherRedate`/`applySplitMotherRedate`
+  (tous confirmés présents et nommés exactement ainsi) ✓
+- `CONTRACT_VERSION` = **2.20** des deux côtés (`backend/src/Service/ScheduleConstraintBuilder.php:64`,
+  `engine/CONTRACT_VERSION`) ✓
+Reste du fichier non re-vérifié cette passe — historique des recalages précédents : `git log -p
+--follow` ce fichier. Un stamp REMPLACE, l'historique vit dans git.
 
 ---
 
@@ -584,6 +593,8 @@ Détail : [`module-matchs.md`](../../specs/courantes/module-matchs.md). Placemen
 | Route | Méthode | Contrôleur | Description |
 |-------|---------|------------|-------------|
 | `/api/league-match-windows` | GET | `LeagueMatchWindowsController` | Fenêtres de match héritées de la ligue du club (`Club.league`, fallback fédé AURA). Catalogue global partagé. |
+| `/api/ffbb/engagements` | GET | `FfbbEngagementsController` | **P1-4 PR F** — les engagements du club (compétitions/poules) de la saison COURANTE lus à la demande sur la FFBB (`FfbbEngagementReader`, aucun cache/cron), chacun avec une suggestion de pré-remplissage (une `Competition` déjà appariée à cet id FFBB, sinon un match strict sur le nom canonique normalisé). SEC-07. 502 si la FFBB est injoignable. |
+| `/api/ffbb/engagements/confirm` | POST | `FfbbEngagementsController` | Écrit les références FFBB sur la `Competition` de chaque équipe appariée (réutilisée par `(teamId, nom canonique)` ou créée), fige `expectedMatchdays` = 2×(N−1) et la liste des clubs adverses de la poule — taille de poule et adversaires relus **côté serveur** (jamais depuis le client). Une compétition qui portait déjà ces refs pour un AUTRE id FFBB les perd (un engagement = une équipe). SEC-07 + saison écrivable + `SocleGuard`. |
 | `/api/venue_training_slots/{id}/deletion-impact` | GET | `DeletionImpactController` | **2026-08-18** — même contrat que les trois routes ci-dessous, pour un CRÉNEAU de disponibilité. Ses enfants ne citent jamais son id : réservations et verrous `HARD` matérialisés s'y rattachent par le **triplet** (gymnase, jour, heure) **et par la COUCHE** — les comptes sont donc bornés à la couche du créneau (grille de saison vs copie de période, invariant fondateur n°1). Les placements SOFT/NONE choisis par le solveur ne sont jamais visés : ce sont des RÉSULTATS. `blocked` toujours faux, `slotsInForce`/`declaredFixtures` toujours 0 (un créneau n'a ni séance en vigueur propre ni match). |
 | `/api/venues/{id}/deletion-impact` · `/api/teams/{id}/deletion-impact` · `/api/coaches/{id}/deletion-impact` | GET | `DeletionImpactController` | **P3-16 (2026-08-18)** — ce qu'une suppression VA détruire, calculé par le serveur : `{blocked, reason, lines[{key,count,one,many}], slotsInForce, declaredFixtures}`. Les lignes sont comptées en parcourant `App\Deletion\CascadePlan`, **la même liste** qu'`EntityCascadeDeleter` exécute (maison unique — ajouter une destruction sans son annonce est impossible, NR `DeletionImpactParityTest`). **Les libellés viennent du serveur** : gardés côté écran, une famille ajoutée à la cascade aurait disparu de la modale faute de traduction. `blocked` porte le refus du périmètre engagé (l'écran n'offre plus un geste qui rendrait 409) ; `slotsInForce` = séances touchées vivant dans une version POINTÉE (ADR-0002) ; `declaredFixtures` = les matchs `SUBMITTED`/`VALIDATED` qui perdront leur salle — annoncés, jamais bloquants ; le dépointage lui-même (`Fixture` visé par `venues/{id}/deletion-impact`) délègue à `FixtureVenueLossStep` → `FixtureVenueLossMarker` (RMM-10, P2-52), le MÊME foyer que la gâchette de validation (`/api/schedules/{id}/validate-impact` ci-dessus) — même état final « à placer » + raison `venue_lost`. Lecture seule ; frontière tenant explicite en plus de RLS. Déclarées dans `CustomRoutesOpenApiFactory` et présentes au **snapshot OpenAPI** — `EveryCustomRouteIsDocumentedTest` l'exige de TOUTE route custom (« une route absente du contrat n'existe pour personne »). |
 | `/api/fixtures/conflicts` | GET | `FixtureConflictsController` | Radar : conflits d'empreinte-temps coach/joueur entre rencontres et entraînements. Depuis RMM-3 (2026-08-24), chaque item porte un champ additif `fingerprint` (`ConflictFingerprinter`, maison unique) — l'identité stable du conflit, indépendante des champs gradués (severity, segment horaire, compteurs). |
