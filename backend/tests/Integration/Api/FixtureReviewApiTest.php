@@ -86,6 +86,18 @@ final class FixtureReviewApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
+    public function testMoreThanFiveHundredFixtureIdsIsRefusedAndNamesTheTeamGesture(): void
+    {
+        [, $user] = $this->createClubUser('rcap');
+
+        $ids = array_map(static fn (int $i): string => \sprintf('forged-%d', $i), range(1, 501));
+        $this->post($user, '/api/fixtures/review', ['fixtureIds' => $ids]);
+        self::assertResponseStatusCodeSame(422);
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertIsArray($body);
+        self::assertStringContainsString('geste par équipe', (string) $body['error']);
+    }
+
     public function testTakeSourceOnDateUnplacesAndReviews(): void
     {
         [$club, $user, $season] = $this->createClubUser('rt');
