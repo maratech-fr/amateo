@@ -677,7 +677,7 @@ final class EntryDeadlineShareTest extends WebTestCase
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv');
-        $fixture->setStatus($status);
+        $fixture->setStatus($status, new DateTimeImmutable);
         $this->em->persist($fixture);
         $this->em->flush();
 

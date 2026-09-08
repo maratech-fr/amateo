@@ -7,6 +7,7 @@ use App\Tests\Behat\CoachWishesContext;
 use App\Tests\Behat\ConstraintHonoredContext;
 use App\Tests\Behat\EngagedTeamContext;
 use App\Tests\Behat\ExportContext;
+use App\Tests\Behat\FixtureReviewContext;
 use App\Tests\Behat\HolidayWeekContext;
 use App\Tests\Behat\LockContext;
 use App\Tests\Behat\MatchPlacementContext;
@@ -48,6 +49,11 @@ return (new Config)
                 new Suite('placement')
                     ->withPaths('%paths.base%/features/placement-des-matchs.feature')
                     ->withContexts(MatchPlacementContext::class),
+            )
+            ->withSuite(
+                new Suite('traitement')
+                    ->withPaths('%paths.base%/features/une-rencontre-importee-dit-si-elle-est-traitee.feature')
+                    ->withContexts(FixtureReviewContext::class),
             )
             ->withSuite(
                 new Suite('overlay')

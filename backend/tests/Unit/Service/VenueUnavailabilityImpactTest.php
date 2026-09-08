@@ -140,7 +140,7 @@ final class VenueUnavailabilityImpactTest extends TestCase
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv');
         $fixture->setVenueId($venueId);
-        $fixture->setStatus(FixtureStatus::PLACED);
+        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
 
         return $fixture;
     }

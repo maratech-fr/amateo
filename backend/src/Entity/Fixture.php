@@ -6,6 +6,7 @@ namespace App\Entity;
 
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
+use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Repository\FixtureRepository;
@@ -20,6 +21,8 @@ use Doctrine\ORM\Mapping as ORM;
  *
  * The opponent is a plain label here — the enriched global opponent directory
  * (coords, travel) is palier B.
+ *
+ * @phpstan-type PendingDeviation array{field: 'date'|'kickoff'|'venue', appValue: string|null, sourceValue: string|null, channel: 'FBI_XLSX'|'FFBB_API', seenAt: string, autoApplied: bool}
  */
 #[ORM\Entity(repositoryClass: FixtureRepository::class)]
 #[ORM\Table(name: 'fixture')]
@@ -139,6 +142,31 @@ class Fixture implements TenantOwnedInterface
      */
     #[ORM\Column(length: 32, nullable: true, enumType: FixtureUnplacedReason::class)]
     private ?FixtureUnplacedReason $unplacedReason = null;
+
+    /**
+     * Le TRAITEMENT de la rencontre par le gestionnaire (espace « Importer »,
+     * PR-3a), distinct du placement {@see FixtureStatus}. Défaut NEW. Passé à
+     * REVIEWED par un geste explicite (trancher un écart, placer, créer à la
+     * main) ; OUT_OF_SYNC dès qu'un écart pendant subsiste.
+     */
+    #[ORM\Column(length: 20, enumType: FixtureReviewState::class, options: ['default' => 'NEW'])]
+    private FixtureReviewState $reviewState = FixtureReviewState::NEW;
+
+    /** Quand la rencontre a été traitée pour la dernière fois (null = jamais). */
+    #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
+    private ?DateTimeImmutable $reviewedAt = null;
+
+    /**
+     * Les écarts source⇄app encore ouverts sur CETTE rencontre — le pense-bête
+     * relu à chaque dépôt (la trace vit désormais sur la fixture, pas sur le
+     * dépôt FBI). Une entrée par champ divergent ; `seenAt` date la PREMIÈRE
+     * apparition de l'écart (conservé tant qu'il diverge), `autoApplied` marque
+     * une valeur appliquée d'office hors périmètre alors que le match était traité.
+     *
+     * @var list<PendingDeviation>
+     */
+    #[ORM\Column(type: 'json', options: ['default' => '[]'])]
+    private array $pendingDeviations = [];
 
     public function __construct()
     {
@@ -284,9 +312,104 @@ class Fixture implements TenantOwnedInterface
         return $this->status;
     }
 
-    public function setStatus(FixtureStatus $status): self
+    /**
+     * MAISON UNIQUE du statut (D6, « placer = traiter ») : passer à un statut
+     * placé (PLACED/SUBMITTED/VALIDATED) TRAITE la rencontre — REVIEWED + horodaté
+     * — sauf s'il lui reste un écart pendant (elle reste OUT_OF_SYNC). UNPLACED ne
+     * touche PAS le traitement. L'horloge est passée par l'appelant (jamais un
+     * `new DateTimeImmutable` nu ici : le mode démo/play a une horloge simulée).
+     */
+    public function setStatus(FixtureStatus $status, DateTimeImmutable $now): self
     {
         $this->status = $status;
+        if (FixtureStatus::UNPLACED !== $status && [] === $this->pendingDeviations) {
+            $this->markReviewed($now);
+        }
+
+        return $this;
+    }
+
+    public function getReviewState(): FixtureReviewState
+    {
+        return $this->reviewState;
+    }
+
+    public function setReviewState(FixtureReviewState $reviewState): self
+    {
+        $this->reviewState = $reviewState;
+
+        return $this;
+    }
+
+    public function getReviewedAt(): ?DateTimeImmutable
+    {
+        return $this->reviewedAt;
+    }
+
+    /** Trancher/placer/créer = traiter : REVIEWED + horodaté (horloge de l'appelant). */
+    public function markReviewed(DateTimeImmutable $at): self
+    {
+        $this->reviewState = FixtureReviewState::REVIEWED;
+        $this->reviewedAt = $at;
+
+        return $this;
+    }
+
+    /**
+     * @return list<PendingDeviation>
+     */
+    public function getPendingDeviations(): array
+    {
+        return $this->pendingDeviations;
+    }
+
+    public function hasPendingDeviations(): bool
+    {
+        return [] !== $this->pendingDeviations;
+    }
+
+    /**
+     * @return PendingDeviation|null
+     */
+    public function getPendingDeviation(string $field): ?array
+    {
+        foreach ($this->pendingDeviations as $entry) {
+            if ($entry['field'] === $field) {
+                return $entry;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Upsert par champ : remplace l'entrée du champ si elle existe, l'ajoute sinon.
+     * L'ordre canonique (date, kickoff, venue) est reconstruit pour un JSON stable.
+     *
+     * @param PendingDeviation $entry
+     */
+    public function putPendingDeviation(array $entry): self
+    {
+        $this->removePendingDeviation($entry['field']);
+        $this->pendingDeviations[] = $entry;
+        $this->sortPendingDeviations();
+
+        return $this;
+    }
+
+    public function removePendingDeviation(string $field): self
+    {
+        $this->pendingDeviations = array_values(array_filter(
+            $this->pendingDeviations,
+            static fn (array $entry): bool => $entry['field'] !== $field,
+        ));
+
+        return $this;
+    }
+
+    public function clearPendingDeviations(): self
+    {
+        $this->pendingDeviations = [];
 
         return $this;
     }
@@ -392,6 +515,16 @@ class Fixture implements TenantOwnedInterface
         $this->kickoffTime = $kickoffTime;
 
         return $this;
+    }
+
+    /** Ordre canonique date → kickoff → venue : le JSON persisté ne dépend pas de l'ordre d'insertion. */
+    private function sortPendingDeviations(): void
+    {
+        $rank = ['date' => 0, 'kickoff' => 1, 'venue' => 2];
+        usort(
+            $this->pendingDeviations,
+            static fn (array $a, array $b): int => $rank[$a['field']] <=> $rank[$b['field']],
+        );
     }
 
     private function newUuid(): string

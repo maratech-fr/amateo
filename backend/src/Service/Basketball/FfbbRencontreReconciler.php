@@ -69,6 +69,10 @@ final class FfbbRencontreReconciler
 
         /** @var list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}> $records */
         $records = [];
+        // « persisting » (dry-run) = the fixture already carries an open écart for
+        // that field (the trace lives on the fixture now, PR-3a D7).
+        /** @var array<string, true> $persistingSet */
+        $persistingSet = [];
         $creatable = [];
         $consumed = [];
 
@@ -85,13 +89,15 @@ final class FfbbRencontreReconciler
                 continue; // matched but no divergence (or out of the home-placed perimeter)
             }
             foreach ($fields as $field => $vals) {
+                if (null !== $fixture->getPendingDeviation($field)) {
+                    $persistingSet[$fixture->getId() . '|' . $field] = true;
+                }
                 $records[] = $this->importer->deviationRecord($fixture, $field, $vals, $row['competitionName'], 'none');
             }
         }
 
         return [
-            // The API never touches a trace → no persisting flag (empty set).
-            'deviations' => $this->importer->groupDeviations($records, []),
+            'deviations' => $this->importer->groupDeviations($records, $persistingSet),
             'creatable' => $creatable,
             'fetchedAt' => $this->now()->format(DateTimeImmutable::ATOM),
         ];
@@ -116,10 +122,14 @@ final class FfbbRencontreReconciler
         $venueNames = $this->importer->venueNamesById();
         $decisionMap = $this->importer->indexDecisions($decisions);
         $context = $this->matchingContext();
+        $now = $this->now();
 
         /** @var list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}> $records */
         $records = [];
-        $updated = 0;
+        /** @var array<string, true> $persistingSet */
+        $persistingSet = [];
+        /** @var list<array{type: string, division: string, externalRef: string, message: string}> $discardedWarnings the shared engine emits warnings; the API channel does not surface them */
+        $discardedWarnings = [];
         $consumed = [];
 
         foreach ($rows as $row) {
@@ -130,31 +140,28 @@ final class FfbbRencontreReconciler
             $consumed[$fixture->getId()] = true;
 
             $fields = $this->importer->detectFieldDeviations($fixture, $row, $venueNames);
-            if (null === $fields || [] === $fields) {
+            if (null === $fields) {
+                continue; // out of the home-placed perimeter — the API never auto-applies
+            }
+            // The SAME reconciliation engine as the xlsx import (never a copy):
+            // per-field decisions + pending-écart maintenance + reviewState, or D9
+            // (VALIDATED) when the source attests a placed match with no divergence.
+            if ([] === $fields) {
+                $this->importer->reconcileNoDivergence($fixture, $row, $venueNames, $now);
+
                 continue;
             }
-            $status = $fixture->getStatus()->value; // what the manager saw, before any mutation
-            foreach ($fields as $field => $vals) {
-                $choice = $decisionMap[$fixture->getId() . '|' . $field] ?? null;
-                $effect = 'none';
-                if ('take_file' === $choice) {
-                    $this->importer->applyFieldTakeFile($fixture, $field, $row);
-                    ++$updated;
-                    $effect = 'take_file';
-                } elseif ('keep_app' === $choice) {
-                    $effect = 'keep_app';
-                }
-                $records[] = $this->importer->deviationRecord($fixture, $field, $vals, $row['competitionName'], $effect, $status);
-            }
+            $this->importer->processPerimeterFields($fixture, $row, $fields, $decisionMap, FbiIngestionSource::FFBB_API->value, $row['competitionName'], $records, $persistingSet, $discardedWarnings, $now);
         }
 
         $created = $this->applyCreations($creations, $rowsByRencontreId, $context, $clubId, $seasonId);
 
         // The unresolved écarts (no decision) — reported, never overwritten.
         $unresolvedRecords = array_values(array_filter($records, static fn (array $r): bool => 'none' === $r['effect']));
-        $unresolved = $this->importer->groupDeviations($unresolvedRecords, []);
+        $unresolved = $this->importer->groupDeviations($unresolvedRecords, $persistingSet);
+        // « updated » = the écarts adopted from the source (take_file), as before.
+        $updated = \count(array_filter($records, static fn (array $r): bool => 'take_file' === $r['effect']));
 
-        $now = $this->now();
         $ingestion = new FbiIngestion(
             $clubId,
             $seasonId,
@@ -164,7 +171,6 @@ final class FfbbRencontreReconciler
             $updated,
             0,
             \count($records),
-            [], // FFBB_API never leaves a trace
         );
         $this->entityManager->persist($ingestion);
         $this->entityManager->flush();
@@ -246,8 +252,9 @@ final class FfbbRencontreReconciler
         $fixture->setFbiVenueLabel(\is_string($row['venueLabel'] ?? null) ? $row['venueLabel'] : null);
         $fixture->setFfbbRencontreId(\is_string($row['rencontreId'] ?? null) ? $row['rencontreId'] : null);
         // Status is always UNPLACED (placing a home match requires a CLUB venue +
-        // an explicit manager action — same rule as the FBI import).
-        $fixture->setStatus(FixtureStatus::UNPLACED);
+        // an explicit manager action — same rule as the FBI import). reviewState
+        // stays NEW by default — a freshly imported rencontre is « à traiter ».
+        $fixture->setStatus(FixtureStatus::UNPLACED, $this->now());
 
         return $fixture;
     }

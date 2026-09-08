@@ -198,7 +198,7 @@ final class VenueCapacityApiTest extends WebTestCase
         $fixture->setOpponentLabel('Adv');
         $fixture->setVenueId($venueId);
         if (null !== $venueId) {
-            $fixture->setStatus(FixtureStatus::PLACED);
+            $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
         }
         $this->em->persist($fixture);
         $this->em->flush();

@@ -14,9 +14,9 @@ use App\Entity\Venue;
 use App\Enum\CompetitionType;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
+use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Exception\ImportRejectedException;
-use App\Repository\FbiIngestionRepository;
 use App\Service\Basketball\FfbbRencontreReconciler;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -95,7 +95,6 @@ final class FbiFixtureImporter
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly FbiIngestionRepository $ingestionRepository,
         private readonly ClockInterface $clock,
     ) {}
 
@@ -126,7 +125,10 @@ final class FbiFixtureImporter
         // division can diverge — an unmapped one has no fixtures yet.
         $existingByTeamRef = $this->indexExistingByTeamRef();
         $venueNames = $this->venueNamesById();
-        $persistingSet = $this->persistingSet($this->lastDepositPending());
+        // « persisting » (dry-run) = la rencontre porte DÉJÀ un écart ouvert pour ce
+        // champ (dépôt antérieur). La trace vit sur la fixture (PR-3a D7).
+        /** @var array<string, true> $persistingSet */
+        $persistingSet = [];
         /** @var list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}> $records */
         $records = [];
         /** @var array<string, true> $seenFixtures one deviation object per fixture */
@@ -169,6 +171,9 @@ final class FbiFixtureImporter
                 }
                 $seenFixtures[$existing->getId()] = true;
                 foreach ($fields as $field => $vals) {
+                    if (null !== $existing->getPendingDeviation($field)) {
+                        $persistingSet[$existing->getId() . '|' . $field] = true;
+                    }
                     $records[] = $this->deviationRecord($existing, $field, $vals, $group['name'], 'none');
                 }
             }
@@ -215,13 +220,15 @@ final class FbiFixtureImporter
         $errors = $parsed['errors'];
         $groups = $this->groupRows($parsed['rows']);
 
-        // Reconciliation (RMM-4): verdicts keyed « fixtureId|field », the venue
-        // names for the fuzzy salle compare, and the écarts the last deposit left
-        // pending (to flag « persisting » and carry a still-diverging trace).
+        // Reconciliation (RMM-4): verdicts keyed « fixtureId|field » and the venue
+        // names for the fuzzy salle compare. The trace of open écarts lives on the
+        // fixtures themselves now (PR-3a D7) — « persisting » is captured per field
+        // as it is processed, before the fixture's entries are rewritten.
         $decisionMap = $this->indexDecisions($decisions);
         $venueNames = $this->venueNamesById();
-        $lastPending = $this->lastDepositPending();
-        $persistingSet = $this->persistingSet($lastPending);
+        $now = DateTimeImmutable::createFromInterface($this->clock->now());
+        /** @var array<string, true> $persistingSet */
+        $persistingSet = [];
         /** @var list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}> $deviationRecords */
         $deviationRecords = [];
 
@@ -299,7 +306,7 @@ final class FbiFixtureImporter
 
                 $existing = $existingByTeamRef[$key] ?? null;
                 if ($existing instanceof Fixture) {
-                    $outcome = $this->applyDiff($existing, $row, $group['name'], $warnings, $decisionMap, $venueNames, $deviationRecords);
+                    $outcome = $this->applyDiff($existing, $row, $group['name'], $warnings, $decisionMap, $venueNames, $deviationRecords, $persistingSet, $now);
                     if ('updated' === $outcome) {
                         ++$updated;
                     } else {
@@ -324,16 +331,13 @@ final class FbiFixtureImporter
             }
         }
 
-        // Reconciliation bookkeeping (RMM-4): the report's unresolved écarts and
-        // the trace this deposit leaves. A trace = a « garder l'app » écart, OR a
-        // previous trace that STILL diverges (persisting) — a take_file resolves
-        // it (the value is written), a file back to the app value / a deleted
-        // fixture drops it. Only THIS deposit (FBI_XLSX) tués/reports a trace.
+        // Reconciliation bookkeeping (RMM-4): the report's unresolved écarts (no
+        // decision) — left INTACT and reported, never overwritten by default. The
+        // open-écart trace itself lives on the fixtures (PR-3a D7), so this deposit
+        // no longer carries one; the ingestion keeps freshness + counters only.
         $unresolvedRecords = array_values(array_filter($deviationRecords, static fn (array $r): bool => 'none' === $r['effect']));
         $unresolvedDeviations = $this->groupDeviations($unresolvedRecords, $persistingSet);
-        $newPending = $this->carryForwardTrace($deviationRecords, $persistingSet, $lastPending);
 
-        $now = DateTimeImmutable::createFromInterface($this->clock->now());
         $ingestion = new FbiIngestion(
             $club->getId(),
             $seasonId ?? $this->resolveSeasonId($club, $groups),
@@ -343,7 +347,6 @@ final class FbiFixtureImporter
             $updated,
             $unchanged,
             \count($deviationRecords),
-            $newPending,
         );
         $this->entityManager->persist($ingestion);
         // The ingestion is always written (every deposit is a dated ingestion),
@@ -449,24 +452,24 @@ final class FbiFixtureImporter
      *
      * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
      */
-    public function applyFieldTakeFile(Fixture $existing, string $field, array $row): void
+    public function applyFieldTakeFile(Fixture $existing, string $field, array $row, DateTimeImmutable $now): void
     {
         switch ($field) {
             case 'date':
                 $existing->setMatchDate($row['matchDate']);
-                $this->unplace($existing);
+                $this->unplace($existing, $now);
                 break;
             case 'kickoff':
                 if ($row['kickoffTime'] instanceof DateTimeImmutable) {
                     $existing->setKickoffTime($row['kickoffTime']);
                 }
-                $this->demoteSubmitted($existing);
+                $this->demoteSubmitted($existing, $now);
                 break;
             case 'venue':
                 if (null !== $row['venueLabel']) {
                     $existing->setFbiVenueLabel($row['venueLabel']);
                 }
-                $this->unplace($existing);
+                $this->unplace($existing, $now);
                 break;
         }
     }
@@ -589,6 +592,126 @@ final class FbiFixtureImporter
         $lower = mb_strtolower(false === $ascii ? $value : $ascii, 'UTF-8');
 
         return trim((string) preg_replace('/\s+/', ' ', (string) preg_replace('/[^a-z0-9]+/', ' ', $lower)));
+    }
+
+    /**
+     * The SHARED reconciliation engine of a matched, in-perimeter fixture with at
+     * least one divergent field — used by BOTH channels (xlsx import + FFBB-API
+     * apply), never a second copy. Per field: a `take_file` writes the source value
+     * and RESOLVES the écart, a `keep_app` resolves it (the app value stays), and
+     * NO decision leaves it INTACT as an open pending entry (« déphasée »). Fields
+     * that stopped diverging drop their stale entry. The reviewState follows: still
+     * pending ⇒ OUT_OF_SYNC, all resolved ⇒ REVIEWED + horodaté (D5). Populates
+     * `$persistingSet` (before rewriting the entries) and the flat `$records`.
+     *
+     * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null}       $row
+     * @param array<string, array{app: string|null, file: string|null}>                                                                                                                 $fields        the CURRENT divergences (non-empty), keyed by field
+     * @param array<string, string>                                                                                                                                                     $decisions     fixtureId|field → keep_app|take_file
+     * @param 'FBI_XLSX'|'FFBB_API'                                                                                                                                                     $channel
+     * @param list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}> $records
+     * @param array<string, true>                                                                                                                                                       $persistingSet
+     * @param list<array{type: string, division: string, externalRef: string, message: string}>                                                                                         $warnings
+     */
+    public function processPerimeterFields(Fixture $existing, array $row, array $fields, array $decisions, string $channel, string $divisionName, array &$records, array &$persistingSet, array &$warnings, DateTimeImmutable $now): bool
+    {
+        $changed = false;
+        // The status the manager SAW — captured before any take_file mutates it.
+        $status = $existing->getStatus()->value;
+        foreach ($fields as $field => $vals) {
+            // « persisting » = the écart was already open before this deposit —
+            // captured BEFORE the entry is rewritten below.
+            if (null !== $existing->getPendingDeviation($field)) {
+                $persistingSet[$existing->getId() . '|' . $field] = true;
+            }
+            $choice = $decisions[$existing->getId() . '|' . $field] ?? null;
+            $effect = 'none';
+            if ('take_file' === $choice) {
+                // The only branch that mutates the rencontre DATA → « updated ».
+                $this->applyFieldTakeFile($existing, $field, $row, $now);
+                $warnings[] = $this->takeFileWarning($field, $divisionName, $row);
+                $existing->removePendingDeviation($field);
+                $changed = true;
+                $effect = 'take_file';
+            } elseif ('keep_app' === $choice) {
+                // Keep the app value: the écart is resolved but NO data changes
+                // (« unchanged » as far as the rencontre content goes).
+                $existing->removePendingDeviation($field);
+                $effect = 'keep_app';
+            } else {
+                $existing->putPendingDeviation($this->pendingEntry($existing, $field, $vals, $channel, $now, false));
+            }
+            $records[] = $this->deviationRecord($existing, $field, $vals, $divisionName, $effect, $status);
+        }
+
+        // A field that stopped diverging (the source came back to the app value)
+        // drops its stale pending entry — the écart resolved itself (no data change).
+        foreach (self::DEVIATION_FIELDS as $field) {
+            if (!isset($fields[$field]) && null !== $existing->getPendingDeviation($field)) {
+                $existing->removePendingDeviation($field);
+            }
+        }
+
+        $this->finalizeReview($existing, $now);
+
+        return $changed;
+    }
+
+    /**
+     * A matched, in-perimeter fixture whose source shows NO divergence. Two effects
+     * (shared by both channels): (1) D9 — a HOME match PLACED/SUBMITTED whose source
+     * positively attests date AND kickoff AND venue is ATTESTED by the federation →
+     * VALIDATED + traité; (2) any stale pending entry drops (the source agrees now),
+     * and if that resolves the last one, the match becomes REVIEWED.
+     *
+     * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
+     * @param array<string, string>                                                                                                                                               $venueNames
+     */
+    public function reconcileNoDivergence(Fixture $existing, array $row, array $venueNames, DateTimeImmutable $now): bool
+    {
+        $changed = false;
+        $hadPending = $existing->hasPendingDeviations();
+        foreach (self::DEVIATION_FIELDS as $field) {
+            if (null !== $existing->getPendingDeviation($field)) {
+                $existing->removePendingDeviation($field);
+                $changed = true;
+            }
+        }
+
+        $status = $existing->getStatus();
+        if ((FixtureStatus::PLACED === $status || FixtureStatus::SUBMITTED === $status)
+            && $this->sourceAttestsPlacement($existing, $row, $venueNames)) {
+            // D9 — the FBI/FFBB source attests the placed match verbatim.
+            $existing->setStatus(FixtureStatus::VALIDATED, $now);
+
+            return true;
+        }
+        if ($hadPending && !$existing->hasPendingDeviations()) {
+            // The last open écart resolved because the source returned to the app value.
+            $existing->markReviewed($now);
+            $changed = true;
+        }
+
+        return $changed;
+    }
+
+    /**
+     * D9 — the source positively attests the three placed fields: a real kickoff
+     * (not the 00:00 sentinel), a named salle that matches the placed Venue, and a
+     * date (always present in a valid row). Called only when there is NO divergence,
+     * so equality of the compared fields is already established.
+     *
+     * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
+     * @param array<string, string>                                                                                                                                               $venueNames
+     */
+    public function sourceAttestsPlacement(Fixture $existing, array $row, array $venueNames): bool
+    {
+        $venueId = $existing->getVenueId();
+
+        return FixtureHomeAway::HOME === $existing->getHomeAway()
+            && $row['kickoffTime'] instanceof DateTimeImmutable
+            && null !== $row['venueLabel']
+            && null !== $venueId
+            && isset($venueNames[$venueId]);
     }
 
     /**
@@ -753,25 +876,47 @@ final class FbiFixtureImporter
      *
      * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null}       $row
      * @param list<array{type: string, division: string, externalRef: string, message: string}>                                                                                         $warnings
-     * @param array<string, string>                                                                                                                                                     $decisions  fixtureId|field → keep_app|take_file
-     * @param array<string, string>                                                                                                                                                     $venueNames venueId → Venue name (for the fuzzy salle compare)
-     * @param list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}> $records    collected per-field deviation records
+     * @param array<string, string>                                                                                                                                                     $decisions     fixtureId|field → keep_app|take_file
+     * @param array<string, string>                                                                                                                                                     $venueNames    venueId → Venue name (for the fuzzy salle compare)
+     * @param list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}> $records       collected per-field deviation records
+     * @param array<string, true>                                                                                                                                                       $persistingSet « fixtureId|field » of écarts already open before this deposit (populated here)
      */
-    private function applyDiff(Fixture $existing, array $row, string $divisionName, array &$warnings, array $decisions, array $venueNames, array &$records): string
+    private function applyDiff(Fixture $existing, array $row, string $divisionName, array &$warnings, array $decisions, array $venueNames, array &$records, array &$persistingSet, DateTimeImmutable $now): string
     {
         $fields = $this->detectFieldDeviations($existing, $row, $venueNames);
         if (null !== $fields) {
-            return $this->applyDeviationMode($existing, $row, $divisionName, $fields, $warnings, $decisions, $records);
+            $changed = [] === $fields
+                ? $this->reconcileNoDivergence($existing, $row, $venueNames, $now)
+                : $this->processPerimeterFields($existing, $row, $fields, $decisions, FbiIngestionSource::FBI_XLSX->value, $divisionName, $records, $persistingSet, $warnings, $now);
+
+            // xlsx-only silent updates (D3): the opponent label always, the raw
+            // fbiVenueLabel only when the venue is not itself a divergence (a
+            // venue decision owns the label write).
+            if ($existing->getOpponentLabel() !== $row['opponentLabel']) {
+                $existing->setOpponentLabel($row['opponentLabel']);
+                $changed = true;
+            }
+            if (!isset($fields['venue']) && null !== $row['venueLabel'] && $existing->getFbiVenueLabel() !== $row['venueLabel']) {
+                $existing->setFbiVenueLabel($row['venueLabel']);
+                $changed = true;
+            }
+
+            return $changed ? 'updated' : 'unchanged';
         }
 
         // ── NOT the deviation perimeter → pre-RMM-4 behaviour, integral ──────
         $changed = false;
         $wasPlaced = FixtureStatus::UNPLACED !== $existing->getStatus();
+        // The three fields the source auto-applies out of the perimeter, captured
+        // old→new to leave an « auto-applied » trace when the match was treated.
+        /** @var array<string, array{app: string|null, file: string|null}> $autoApplied */
+        $autoApplied = [];
 
         if ($existing->getMatchDate()->format('Y-m-d') !== $row['matchDate']->format('Y-m-d')) {
+            $oldIso = $existing->getMatchDate()->format('Y-m-d');
             $oldDate = $existing->getMatchDate()->format('d/m/Y');
             $existing->setMatchDate($row['matchDate']);
-            $this->unplace($existing);
+            $this->unplace($existing, $now);
             $warnings[] = [
                 'type' => 'RESCHEDULED',
                 'division' => $divisionName,
@@ -785,12 +930,13 @@ final class FbiFixtureImporter
                     $wasPlaced ? ' — placement annulé' : '',
                 ),
             ];
+            $autoApplied['date'] = ['app' => $oldIso, 'file' => $row['matchDate']->format('Y-m-d')];
             $changed = true;
         }
 
         if ($existing->getHomeAway() !== $row['homeAway']) {
             $existing->setHomeAway($row['homeAway']);
-            $this->unplace($existing);
+            $this->unplace($existing, $now);
             $warnings[] = [
                 'type' => 'SWITCHED',
                 'division' => $divisionName,
@@ -816,6 +962,7 @@ final class FbiFixtureImporter
                         'message' => \sprintf('%s n°%s : la ligue enregistre %s comme heure de la rencontre.', $divisionName, $row['numero'], $row['kickoffTime']->format('H:i')),
                     ];
                 }
+                $autoApplied['kickoff'] = ['app' => $current?->format('H:i'), 'file' => $row['kickoffTime']->format('H:i')];
                 $changed = true;
             }
         }
@@ -829,68 +976,79 @@ final class FbiFixtureImporter
             $changed = true;
         }
 
+        $this->recordAutoApplied($existing, $autoApplied, FbiIngestionSource::FBI_XLSX->value, $now);
+
         return $changed ? 'updated' : 'unchanged';
     }
 
-    /** The league re-decided: the match goes back to « à placer ». */
-    private function unplace(Fixture $fixture): void
+    /**
+     * A match ALREADY treated (REVIEWED/OUT_OF_SYNC) whose source silently changed
+     * a value out of the perimeter goes back OUT_OF_SYNC, with an « auto-applied »
+     * entry per changed field so the manager sees what the league moved. A NEW
+     * match (never treated) keeps NEW — there is nothing to be out of sync with.
+     *
+     * @param array<string, array{app: string|null, file: string|null}> $autoApplied
+     * @param 'FBI_XLSX'|'FFBB_API'                                     $channel
+     */
+    private function recordAutoApplied(Fixture $existing, array $autoApplied, string $channel, DateTimeImmutable $now): void
     {
-        $fixture->setStatus(FixtureStatus::UNPLACED);
+        if ([] === $autoApplied || FixtureReviewState::NEW === $existing->getReviewState()) {
+            return;
+        }
+        foreach ($autoApplied as $field => $vals) {
+            $existing->putPendingDeviation($this->pendingEntry($existing, $field, $vals, $channel, $now, true));
+        }
+        $existing->setReviewState(FixtureReviewState::OUT_OF_SYNC);
+    }
+
+    /** The league re-decided: the match goes back to « à placer ». */
+    private function unplace(Fixture $fixture, DateTimeImmutable $now): void
+    {
+        $fixture->setStatus(FixtureStatus::UNPLACED, $now);
         $fixture->setVenueId(null);
     }
 
     /**
-     * Applies the manager's per-écart verdicts on a fixture inside the perimeter.
-     * A field WITHOUT a decision is left INTACT and recorded « none » (it will be
-     * reported unresolved — never an écrasement by default). The opponent label
-     * stays a silent update (D3, out of the screen), and the raw fbiVenueLabel is
-     * silently refreshed only when the venue is NOT itself under a decision.
+     * Build the pending-deviation entry for a field, preserving the ORIGINAL
+     * `seenAt` when the écart was already open for that field (« depuis quand »),
+     * fresh otherwise.
      *
-     * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null}       $row
-     * @param array<string, array{app: string|null, file: string|null}>                                                                                                                 $fields
-     * @param list<array{type: string, division: string, externalRef: string, message: string}>                                                                                         $warnings
-     * @param array<string, string>                                                                                                                                                     $decisions
-     * @param list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}> $records
+     * @param array{app: string|null, file: string|null} $vals
+     * @param 'FBI_XLSX'|'FFBB_API'                      $channel
+     *
+     * @return array{field: 'date'|'kickoff'|'venue', appValue: string|null, sourceValue: string|null, channel: 'FBI_XLSX'|'FFBB_API', seenAt: string, autoApplied: bool}
      */
-    private function applyDeviationMode(Fixture $existing, array $row, string $divisionName, array $fields, array &$warnings, array $decisions, array &$records): string
+    private function pendingEntry(Fixture $existing, string $field, array $vals, string $channel, DateTimeImmutable $now, bool $autoApplied): array
     {
-        $changed = false;
-        // The status the manager SAW — captured before any take_file mutates it.
-        $status = $existing->getStatus()->value;
-        foreach ($fields as $field => $vals) {
-            $choice = $decisions[$existing->getId() . '|' . $field] ?? null;
-            $effect = 'none';
-            if ('take_file' === $choice) {
-                $this->applyFieldTakeFile($existing, $field, $row);
-                $warnings[] = $this->takeFileWarning($field, $divisionName, $row);
-                $changed = true;
-                $effect = 'take_file';
-            } elseif ('keep_app' === $choice) {
-                $effect = 'keep_app';
-            }
-            $records[] = $this->deviationRecord($existing, $field, $vals, $divisionName, $effect, $status);
-        }
+        \assert('date' === $field || 'kickoff' === $field || 'venue' === $field);
+        $previous = $existing->getPendingDeviation($field);
 
-        // Opponent label drift stays a silent update (D3 — never a choice).
-        if ($existing->getOpponentLabel() !== $row['opponentLabel']) {
-            $existing->setOpponentLabel($row['opponentLabel']);
-            $changed = true;
-        }
-        // Raw FBI label: silently mirror it only when the venue is not itself a
-        // decided écart (a venue decision owns the label write).
-        if (!isset($fields['venue']) && null !== $row['venueLabel'] && $existing->getFbiVenueLabel() !== $row['venueLabel']) {
-            $existing->setFbiVenueLabel($row['venueLabel']);
-            $changed = true;
-        }
+        return [
+            'field' => $field,
+            'appValue' => $vals['app'],
+            'sourceValue' => $vals['file'],
+            'channel' => $channel,
+            'seenAt' => $previous['seenAt'] ?? $now->format(DateTimeImmutable::ATOM),
+            'autoApplied' => $autoApplied,
+        ];
+    }
 
-        return $changed ? 'updated' : 'unchanged';
+    /** Still pending ⇒ OUT_OF_SYNC ; all resolved ⇒ REVIEWED + horodaté (D5). */
+    private function finalizeReview(Fixture $existing, DateTimeImmutable $now): void
+    {
+        if ($existing->hasPendingDeviations()) {
+            $existing->setReviewState(FixtureReviewState::OUT_OF_SYNC);
+
+            return;
+        }
+        $existing->markReviewed($now);
     }
 
     /** D2: an in-place take_file un-submits a SUBMITTED/VALIDATED fixture to PLACED. */
-    private function demoteSubmitted(Fixture $fixture): void
+    private function demoteSubmitted(Fixture $fixture, DateTimeImmutable $now): void
     {
         if (FixtureStatus::SUBMITTED === $fixture->getStatus() || FixtureStatus::VALIDATED === $fixture->getStatus()) {
-            $fixture->setStatus(FixtureStatus::PLACED);
+            $fixture->setStatus(FixtureStatus::PLACED, $now);
         }
     }
 
@@ -931,48 +1089,6 @@ final class FbiFixtureImporter
     }
 
     /**
-     * The trace THIS deposit leaves for the next one: every écart still diverging
-     * after this import — a « garder l'app » verdict, or a previous trace that
-     * still diverges even undecided (persisting). A take_file resolves the écart
-     * (its value was written) so it is NOT carried; a file back to the app value
-     * or a deleted fixture simply never appears here. decidedAt is preserved for a
-     * carried-forward trace, fresh for a new keep_app.
-     *
-     * @param list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}> $records
-     * @param array<string, true>                                                                                                                                                       $persistingSet
-     * @param list<array{fixtureId: string, field: string, appValue: string|null, fileValue: string|null, decidedAt: string}>                                                           $lastPending
-     *
-     * @return list<array{fixtureId: string, field: string, appValue: string|null, fileValue: string|null, decidedAt: string}>
-     */
-    private function carryForwardTrace(array $records, array $persistingSet, array $lastPending): array
-    {
-        $previousDecidedAt = [];
-        foreach ($lastPending as $entry) {
-            $previousDecidedAt[$entry['fixtureId'] . '|' . $entry['field']] = $entry['decidedAt'];
-        }
-        $now = DateTimeImmutable::createFromInterface($this->clock->now())->format(DateTimeImmutable::ATOM);
-
-        $trace = [];
-        foreach ($records as $record) {
-            $key = $record['fixtureId'] . '|' . $record['field'];
-            $carry = 'keep_app' === $record['effect']
-                || ('none' === $record['effect'] && isset($persistingSet[$key]));
-            if (!$carry) {
-                continue;
-            }
-            $trace[] = [
-                'fixtureId' => $record['fixtureId'],
-                'field' => $record['field'],
-                'appValue' => $record['app'],
-                'fileValue' => $record['file'],
-                'decidedAt' => $previousDecidedAt[$key] ?? $now,
-            ];
-        }
-
-        return $trace;
-    }
-
-    /**
      * Existing FBI-referenced fixtures of the club+season, keyed « teamId|ref »
      * (fact F6: the number is only unique within its team). Shared by analyze
      * (read-only detection) and import.
@@ -989,32 +1105,6 @@ final class FbiFixtureImporter
         }
 
         return $index;
-    }
-
-    /**
-     * The écarts the last FBI deposit left pending — the source of the persisting
-     * flag and of the carried decidedAt.
-     *
-     * @return list<array{fixtureId: string, field: string, appValue: string|null, fileValue: string|null, decidedAt: string}>
-     */
-    private function lastDepositPending(): array
-    {
-        return $this->ingestionRepository->latestXlsx()?->getPendingDeviations() ?? [];
-    }
-
-    /**
-     * @param list<array{fixtureId: string, field: string, appValue: string|null, fileValue: string|null, decidedAt: string}> $lastPending
-     *
-     * @return array<string, true> « fixtureId|field » set
-     */
-    private function persistingSet(array $lastPending): array
-    {
-        $set = [];
-        foreach ($lastPending as $entry) {
-            $set[$entry['fixtureId'] . '|' . $entry['field']] = true;
-        }
-
-        return $set;
     }
 
     /**

@@ -118,7 +118,7 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         [, $fixture, $club, $season, $builder, $venue] = $this->buildFromSeededClub();
         $em = self::getContainer()->get('doctrine.orm.entity_manager');
 
-        $fixture->setStatus(FixtureStatus::PLACED);
+        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
         $fixture->setVenueId($venue->getId());
         $fixture->setKickoffTime(new DateTimeImmutable('15:30'));
         $fixture->setPlacementSource(FixturePlacementSource::SOLVER);

@@ -53,6 +53,47 @@ final class FixtureApiTest extends WebTestCase
         self::assertNull($data['kickoffTime'] ?? null);
     }
 
+    public function testAManualCreationIsTreatedAndExposesTheReviewFields(): void
+    {
+        // PR-3a — a hand-entered rencontre is a manager gesture → REVIEWED, and
+        // the resource serves reviewState/reviewedAt/pendingDeviations/ffbbRencontreId.
+        $data = $this->post([
+            'teamId' => self::TEAM_ID,
+            'matchDate' => '2026-11-01',
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Amical voisin',
+        ]);
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame('REVIEWED', $data['reviewState']);
+        self::assertNotNull($data['reviewedAt'] ?? null);
+        self::assertSame([], $data['pendingDeviations']);
+        self::assertNull($data['ffbbRencontreId'] ?? null);
+    }
+
+    public function testPuttingStatusPlacedTreatsTheFixtureAndCannotWriteReviewState(): void
+    {
+        $created = $this->post([
+            'teamId' => self::TEAM_ID,
+            'matchDate' => '2026-11-08',
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'À placer',
+        ]);
+        // A forged reviewState in the PUT body is ignored (FixtureInput has no such
+        // field); the D6 rule alone drives it — placing treats the fixture.
+        $this->putFixture($created['id'], [
+            'teamId' => self::TEAM_ID,
+            'matchDate' => '2026-11-08',
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'À placer',
+            'venueId' => '22222222-2222-4222-8222-222222222222',
+            'kickoffTime' => '16:30',
+            'status' => 'PLACED',
+            'reviewState' => 'NEW',
+        ]);
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame('REVIEWED', $this->responseData()['reviewState'], 'placing treats it (D6), the echoed reviewState is ignored');
+    }
+
     public function testPlacesAHomeFixtureWithVenueAndKickoff(): void
     {
         $created = $this->post([

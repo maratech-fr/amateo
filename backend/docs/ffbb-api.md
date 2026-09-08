@@ -1,15 +1,18 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-09-08 (rotation de fraîcheur `documentation-update`, PR-2a Consulter module
-matchs — fichier hors sujet). Re-confronté au code, sans écart : hosts en constantes dures
-(`Service/Basketball/FfbbApiClient.php:24-25`, `CONFIG_URL`/`SEARCH_URL`) ✓ · routes `GET
-/api/ffbb/rencontres` + `POST /api/ffbb/rencontres/apply`
-(`Controller/Basketball/FfbbRencontresController.php:66,87`) ✓ · routes `GET /api/ffbb/engagements`
+Last verified @ 2026-09-08 (PR-3a « espace Importer » — `documentation-update`). Re-confronté au
+code, sans écart : hosts en constantes dures (`Service/Basketball/FfbbApiClient.php:24-25`,
+`CONFIG_URL`/`SEARCH_URL`) ✓ · routes `GET /api/ffbb/rencontres` + `POST
+/api/ffbb/rencontres/apply` (`Controller/Basketball/FfbbRencontresController.php:66,87`) ✓ ·
+`FfbbRencontreReconciler::apply` partage désormais le moteur `processPerimeterFields`/
+`reconcileNoDivergence` de `FbiFixtureImporter` (pose `Fixture.reviewState`/`pendingDeviations`,
+applique D9) tandis que `check()` (le GET) reste lecture seule — écarts recalculés, rien écrit
+(`Service/Basketball/FfbbRencontreReconciler.php:60-100`) ✓ · routes `GET /api/ffbb/engagements`
 + `POST /api/ffbb/engagements/confirm` (`Controller/Basketball/FfbbEngagementsController.php:62,109`)
 ✓ · routes `GET /api/ffbb/salles` + `GET /api/ffbb/salles-proches`
 (`Controller/Basketball/FfbbSallesController.php:47,83`) ✓ · index unique partiel
 `uniq_fixture_ffbb_rencontre` sur `Fixture.ffbbRencontreId`
-(`Entity/Fixture.php:36`) ✓ · `PATCH /api/club/info` absent du code (grep zéro résultat) ✓. Non
+(`Entity/Fixture.php:39`) ✓ · `PATCH /api/club/info` absent du code (grep zéro résultat) ✓. Non
 re-sondé cette passe : le filtre strict serveur de `searchRencontres`, fallback
 `FFBB_MEILISEARCH_TOKEN`, `FfbbClubPopulator::applyClub`, le cadrage archivé, la mesure « 36 hits
 BCCL / 1 052 documents » (donnée externe, non re-sondée).
@@ -114,19 +117,25 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   aucun cron, même décision juridique que les autres canaux `search*`), les croise avec l'app et rend
   `{deviations[], creatable[], fetchedAt}` : `deviations` = même forme que l'analyse xlsx (les
   domiciles déjà placés dont date/heure/salle divergent) ; `creatable` = les rencontres publiées
-  SANS fixture correspondante (mesuré : uniquement des amicaux), proposées à la création.
+  SANS fixture correspondante (mesuré : uniquement des amicaux), proposées à la création. **N'écrit
+  rien** (comme `analyze()` côté xlsx) — le moteur ne fait que recalculer les écarts en lecture.
 - `POST /api/ffbb/rencontres/apply` — RE-FETCHE côté serveur (jamais les valeurs du client), applique
   les décisions par écart via le MÊME moteur que l'import xlsx (`FbiFixtureImporter`, réutilisé
   verbatim) et crée les rencontres choisies (idempotent sur `Fixture.ffbbRencontreId` — index unique
-  partiel `uniq_fixture_ffbb_rencontre`, une collision concurrente rend un 409 propre).
+  partiel `uniq_fixture_ffbb_rencontre`, une collision concurrente rend un 409 propre). **PR-3a
+  (2026-09-08)** : `apply` pose désormais l'ÉTAT DE TRAITEMENT de la rencontre au même titre que
+  l'import xlsx (`reviewState`/`pendingDeviations` sur `Fixture`, `processPerimeterFields`/
+  `reconcileNoDivergence`) et applique **D9** — un domicile `PLACED`/`SUBMITTED` que l'API renvoie
+  identique sur date + heure + salle passe `VALIDATED` + traité, exactement comme un dépôt xlsx.
 - **Filtre strict serveur** (`FfbbApiClient::searchRencontres`) : la recherche plein texte sur le
   code club rend du bruit (un hit « AMICAL PNM » ne concernant pas le club, mesuré) — ne sont
   gardés que les hits où le code club apparaît sur `idOrganismeEquipe1.code` OU
   `idOrganismeEquipe2.code`. Le filtre saison est appliqué en aval par `FfbbRencontreReader`
   (`saison.code` du hit).
-- **Ce canal ne touche jamais** la fraîcheur xlsx (`GET /api/fbi-ingestions/latest` ne lit que les
-  dépôts `source=FBI_XLSX`) ni la trace de réconciliation (`FbiIngestion.pendingDeviations`) — son
-  propre dépôt `FbiIngestion` est stampé `source=FFBB_API`, compteurs seuls.
+- **Ce canal ne touche jamais la fraîcheur xlsx** (`GET /api/fbi-ingestions/latest` ne lit que les
+  dépôts `source=FBI_XLSX`) — son propre dépôt `FbiIngestion` est stampé `source=FFBB_API`,
+  compteurs seuls. La trace des écarts, elle, n'est plus portée par `FbiIngestion` du tout depuis
+  PR-3a (D7) : elle vit sur `Fixture.pendingDeviations`, commune aux deux canaux.
 
 Détail produit complet (appariement 3 étages, front) : [`../../specs/courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) § « Réconciliation FBI (RMM-4) ».
 

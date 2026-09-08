@@ -1,12 +1,22 @@
-Last verified @ 2026-09-05 (P4-174 D3 v2, `coder` — snapshot régénéré dans le même commit.
-**192 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** (la route
-d'aperçu `POST /api/calendar_entries/{id}/redate-preview`) et le schéma read `CalendarEntry` gagne
-la propriété booléenne `redateNeedsPreview`.
-· SHA-256 `e4df1b91f5956e16ece80b31baca0dbd179dcdba1420fd215c1c7727fbe392af`
-(`sha256sum`, confirmé sur le fichier régénéré, aucun diff local). Reste du journal non re-confronté
-au code cette passe.)
+Last verified @ 2026-09-08 (PR-3a — espace « Importer », `coder` — snapshot régénéré dans le même commit.
+**194 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+2 paths** (les routes de
+traitement `POST /api/fixtures/review` et `POST /api/fixtures/review/deviations`) et le schéma read
+`Fixture` gagne `reviewState`, `reviewedAt`, `pendingDeviations` et `ffbbRencontreId`.
+· SHA-256 `96b627e177679cb93f22f5033985f3f5909c4baa6bf16747104d027463696ba4`
+(`sha256sum`, confirmé sur le fichier régénéré, diff purement additif +294 lignes). Reste du journal non
+re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **PR-3a — l'espace « Importer » : traiter les rencontres (2026-09-08)** : **+2 paths** — deux routes de
+  traitement (`ReviewFixturesController` + `ReviewFixtureDeviationController`, management + saison écrivable
+  + socle pointé) : `POST /api/fixtures/review` (corps `{fixtureIds?}` geste ligne — écarts vidés, REVIEWED —
+  ou `{teamId?}` geste masse — les rencontres à écarts pendants sautées et nommées ; réponse
+  `{reviewed, skipped[{fixtureId, reason}]}`) et `POST /api/fixtures/review/deviations` (corps
+  `{fixtureId, field: date|kickoff|venue, choice: keep_app|take_source}` — tranche UN écart, dernier retiré →
+  REVIEWED). Le schéma read `Fixture` gagne `reviewState` (NEW|OUT_OF_SYNC|REVIEWED), `reviewedAt`,
+  `pendingDeviations` (liste des écarts source⇄app ouverts) et `ffbbRencontreId`. 192 → **194 paths**. Backend
+  PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.20, aucun appel moteur). La trace des écarts
+  a MIGRÉ du dépôt (`fbi_ingestion.pending_deviations` supprimée) vers la rencontre (D7).
 - **P4-174 D3 v2 — l'aperçu de re-datage d'une indisponibilité découpée (2026-09-05)** : **+1 path** —
   nouvelle route de LECTURE `POST /api/calendar_entries/{id}/redate-preview` (`RedatePreviewController`,
   management, aucune écriture) qui rend les EFFETS d'un re-datage de mère découpée (keep/shift/absorb/
@@ -62,14 +72,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   nettoyage) ; aucun des deux n'est plus `required` isolément (au moins un doit être fourni, sinon
   400). Déclaré dans `PathContributor/UncoveredCustomPaths.php`. 191 → **191 paths**. Backend PUR,
   contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.17, ce rail n'appelle pas le moteur).
-- **P2-51 PR-1 — le modèle du bloc de mutualisation (2026-08-31)** : **+2 paths** — CRUD API Platform
-  de la ressource `SharedTrainingBlock` : `GET/POST /api/shared_training_blocks` (liste **scope
-  club+saison**, filtrable par `schedulePlanId` — NULL = socle saison, UUID = plan de période) +
-  `GET/PUT/DELETE /api/shared_training_blocks/{id}`. Corps : `teamIds` (2..10), `commonSessions`,
-  `schedulePlanId`. Écriture management (`SharedTrainingBlockStateProcessor`) — voir
-  `backend-inventory.md` pour les gardes. 189 → **191 paths**. Backend PUR, **modèle seul** (PR-1
-  d'un lot à 4 PR — PR-2 émettra le bloc au payload moteur) : contrat backend⇄engine **inchangé**
-  (`CONTRACT_VERSION` 2.16, aucun appel moteur à ce stade).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

@@ -1,8 +1,10 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-08 (PR-2b Mois · Phase, `documentation-update` — section « Onglet Consulter » étendue aux
-temporalités, confrontée à `ConsultPage.tsx`, `MatchRowsTable.tsx`, `lib/monthView.ts`, `lib/phaseView.ts`,
-`lib/urlState.ts`, `store.ts` ; sections PR-1, PR-2a et P4-190 du même jour re-confrontées).
+Last verified @ 2026-09-08 (PR-3a « espace Importer », `documentation-update` — nouvelle section
+ajoutée, confrontée à `FixtureReviewState`, `Fixture::setStatus`/`markReviewed`/
+`pendingDeviations`, `FbiFixtureImporter::processPerimeterFields`/`reconcileNoDivergence`/
+`sourceAttestsPlacement`, `ReviewFixturesController`, `ReviewFixtureDeviationController`,
+`FfbbRencontreReconciler::apply` ; sections RMM-4 (trace) et canal API amendées pour D7/D9).
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -23,8 +25,9 @@ temporalités, confrontée à `ConsultPage.tsx`, `MatchRowsTable.tsx`, `lib/mont
   (`CHAMPIONSHIP`/`CUP`/`BRASSAGE`), `startDate`/`endDate` nullables. N par équipe.
 - **`Fixture`** (`fixture` — `match` est un mot-clé PHP) : `teamId`, `competitionId` **nullable = amical**,
   `matchDate`, `homeAway` (`HOME`/`AWAY`), `opponentLabel` (label libre ; l'annuaire adverse global = palier B),
-  `status` (`UNPLACED → PLACED → SUBMITTED → VALIDATED`, cf. workflow 2-temps), `venueId`/`kickoffTime`
-  nullables (domicile posé, extérieur estimé).
+  `status` (`UNPLACED → PLACED → SUBMITTED → VALIDATED`, cf. workflow 2-temps — **VALIDATED n'est
+  plus un geste depuis PR-3a** : posé par l'import quand la source atteste le match placé, D9 ci-dessous),
+  `venueId`/`kickoffTime` nullables (domicile posé, extérieur estimé).
 - API Platform 5-fichiers pour chaque (Resource/Input/Processor/Provider) → CRUD `/api/competitions`,
   `/api/fixtures`, filtrage tenant+season **automatique** (filtres SQL) + garde readonly-saison héritée (409).
 
@@ -1097,14 +1100,16 @@ future.
   n'est jamais remis en cause) mais **rétrograde** un `SUBMITTED`/`VALIDATED` en `PLACED`
   (`demoteSubmitted`) — la case FBI était cochée sur une mauvaise heure, à re-saisir. « Garder
   l'app » n'écrit jamais rien.
-- **La trace — un pense-bête, pas un journal.** Chaque dépôt écrit une `FbiIngestion` datée
-  (`club_id`+`season_id`, PAS personnelle — RGPD/purges génériques) portant
-  `pendingDeviations` : les écarts « garder l'app » de CE dépôt, plus ceux d'un dépôt antérieur qui
-  divergent TOUJOURS. Au dépôt suivant, un écart encore présent dans cette liste porte
-  `persisting: true` (badge « Écart persistant ») ; un « prendre le fichier » RÉSOUT l'écart
-  (retiré de la trace) ; un fichier revenu à la valeur app ou un fixture disparu éteint la trace en
-  silence — **seul un dépôt `FBI_XLSX` touche une trace**, une ingestion `FFBB_API` future n'en
-  efface ni n'en reporte aucune (`FbiIngestionSource`).
+- **La trace — vit sur la rencontre depuis PR-3a (2026-09-08, D7), plus sur le dépôt.** Chaque
+  dépôt écrit toujours une `FbiIngestion` datée (`club_id`+`season_id`, PAS personnelle —
+  RGPD/purges génériques), mais elle ne porte plus que la FRAÎCHEUR et les COMPTEURS : les écarts
+  eux-mêmes vivent dans `Fixture.pendingDeviations` (un par champ, `seenAt` = première apparition
+  conservée tant qu'il diverge). Un écart encore présent au dépôt suivant porte `persisting: true`
+  (badge « Écart persistant », dérivé de la présence d'une entrée pendante) ; un « prendre le
+  fichier » RÉSOUT l'écart (retiré de `pendingDeviations`) ; un fichier revenu à la valeur app
+  l'éteint aussi ; un fixture disparu emporte sa trace avec lui (elle n'existe plus ailleurs). Détail
+  complet du workflow de traitement (NEW/OUT_OF_SYNC/REVIEWED, gestes de traitement, D9) :
+  § « Espace Importer — workflow de traitement (PR-3a) » plus bas.
 - **La fraîcheur — `GET /api/fbi-ingestions/latest`** (`FbiIngestionFreshnessController`, lecture
   ouverte au Membre, aucune garde management) : le dernier dépôt du club+saison (`null` = aucun).
   Front : `useLatestFbiIngestion` (invalidée après chaque import) alimente une carte dans
@@ -1178,10 +1183,13 @@ future.
   (`uniq_fixture_ffbb_rencontre` — club+saison+équipe+`ffbbRencontreId`, NULL exclus) pour un
   409 propre plutôt qu'un 500.
 - **Ce que le canal API n'affecte JAMAIS** : la fraîcheur xlsx (`GET /api/fbi-ingestions/latest`
-  ne lit que les dépôts `FBI_XLSX`) et la trace de réconciliation (`FbiIngestion.pendingDeviations`
-  — seul un dépôt `FBI_XLSX` la lit ou l'écrit). Chaque apply écrit sa propre `FbiIngestion` datée
-  `source=FFBB_API`, compteurs seuls, `pendingDeviations: []` — un pense-bête qui ne se mélange
-  jamais à celui du xlsx.
+  ne lit que les dépôts `FBI_XLSX`). Chaque apply écrit sa propre `FbiIngestion` datée
+  `source=FFBB_API`, compteurs seuls (la colonne `pendingDeviations` a disparu de `FbiIngestion`
+  aux deux canaux, PR-3a D7). **Depuis PR-3a, `apply` POSE le traitement** de la rencontre au même
+  titre que le xlsx (`reviewState`/`pendingDeviations` sur `Fixture`, moteur partagé
+  `processPerimeterFields`/`reconcileNoDivergence` — jamais une seconde copie) ; `GET
+  /api/ffbb/rencontres`, lui, reste un pur dry-run (rien écrit). Détail : § « Espace Importer »
+  ci-dessous.
 - **Robustesse (revue sécurité 2026-08-24, aucune vulnérabilité trouvée)** : les chaînes externes
   (libellés, id de rencontre) sont de la donnée FFBB non bornée, les colonnes le sont — clampées
   à la frontière du reader (`FfbbRencontreReader`) : labels tronqués à 180, une ligne dont l'id
@@ -1190,6 +1198,86 @@ future.
 - **Back** — tests : `FfbbRencontresApiTest.php` (les deux routes, gardes SEC-07/socle/tenant,
   re-fetch serveur, 409 doublon), `FfbbRencontreReaderTest.php` (mapping, filtre saison, clamp),
   `FfbbApiClientTest.php` (filtre strict serveur).
+
+## Espace Importer — workflow de traitement (PR-3a, backend, 2026-09-08)
+
+> Besoin d'origine : RMM-4 posait le CHOIX par écart (garder l'app / prendre le fichier) mais
+> aucune vue ne disait, rencontre par rencontre, « celle-là je l'ai déjà traitée, celle-là est
+> nouvelle, celle-là a re-divergé ». PR-3a ajoute cet axe — le TRAITEMENT — **backend seul** ; PR-3b
+> (frontend, à venir) branchera l'onglet Importer dessus. Deux axes désormais distincts sur une
+> `Fixture` : `status` (placement — où en est le match dans le cycle FBI) et `reviewState` (a-t-il
+> été EXAMINÉ par le gestionnaire).
+
+- **`FixtureReviewState`** (`App\Enum\FixtureReviewState`) — trois valeurs : **NEW** (jamais
+  examinée), **OUT_OF_SYNC** (déphasée — au moins un écart pendant subsiste), **REVIEWED**
+  (traitée — aucun écart pendant). `Fixture.reviewedAt` horodate le dernier traitement (`null` =
+  jamais). `Fixture.pendingDeviations` (JSON) porte les écarts encore ouverts, un par champ
+  (`date`/`kickoff`/`venue`) : `appValue`, `sourceValue`, `channel` (`FBI_XLSX`\|`FFBB_API`),
+  `seenAt` (première apparition, conservé tant que ça diverge), `autoApplied` (une valeur imposée
+  hors périmètre pendant que le match était traité — voir la ligne « absente/hors périmètre »
+  ci-dessous).
+- **Maison unique du statut — `Fixture::setStatus(FixtureStatus, DateTimeImmutable $now)`** (D6,
+  « placer = traiter ») : passer à un statut PLACÉ (`PLACED`/`SUBMITTED`/`VALIDATED`) traite la
+  rencontre — `REVIEWED` + horodatée — sauf s'il lui reste un écart pendant (elle reste
+  `OUT_OF_SYNC`). `UNPLACED` ne touche jamais le traitement. L'horloge est TOUJOURS passée par
+  l'appelant (jamais un `new DateTimeImmutable` nu) — le mode démo/play a une horloge simulée.
+- **Le tableau cas → effet** (identique aux deux canaux, xlsx et API — le moteur est le MÊME,
+  `FbiFixtureImporter::processPerimeterFields`/`reconcileNoDivergence`) :
+  - rencontre créée (nouvelle, ou hors périmètre — extérieur, ou domicile encore `UNPLACED`) → `NEW`.
+  - source identique à l'app, rien à traiter → rien ne bouge.
+  - **D9** — domicile `PLACED`/`SUBMITTED` que la source (xlsx OU API) renvoie identique sur
+    **date + heure + salle** (les trois présents : une heure réelle, pas la sentinelle FBI 00:00 ;
+    une salle nommée ET connue de l'app) → `VALIDATED` + traité (`sourceAttestsPlacement`,
+    `reconcileNoDivergence`). **VALIDATED n'est plus un geste du gestionnaire** — rien côté club
+    ne l'atteste ; c'est désormais un EFFET de l'import (décision fondateur 2026-09-08, revoit le
+    « la ligue possède ce statut » de RMM-1).
+  - un champ diverge sans décision → `OUT_OF_SYNC`, l'écart persisté (`pendingDeviations`), la
+    valeur app GARDÉE (jamais écrasée par défaut).
+  - une décision arrive (`keep_app` retire l'écart sans écrire, `take_file`/`take_source` adopte
+    la source et retire l'écart) → dernier écart retiré ⇒ `REVIEWED` + horodatée (D5).
+  - un champ HORS périmètre (`RESCHEDULED`/`SWITCHED`/heure auto-appliquée) change en silence sur
+    une rencontre DÉJÀ traitée → retombe `OUT_OF_SYNC`, avec une entrée `pendingDeviations`
+    `autoApplied: true` par champ touché (`FbiFixtureImporter::recordAutoApplied`) — une rencontre
+    `NEW` (jamais examinée) n'a rien à être « de nouveau » en désaccord, elle reste `NEW`.
+  - **une rencontre absente du dépôt n'est jamais touchée** (import partiel légitime, décision
+    fondateur — un fichier qui n'exporte qu'une poule ne doit pas faire disparaître ou geler les
+    autres) : ni son `status`, ni son `reviewState`, ni ses écarts ne bougent.
+  - création manuelle (POST `/api/fixtures`) → `REVIEWED` (le geste de saisie EST le traitement).
+- **Deux routes de traitement, gate management + saison écrivable + socle pointé (patron
+  `PlaceMatchesController`)** :
+  - **`POST /api/fixtures/review`** (`ReviewFixturesController`) — **exactement un** des deux :
+    `{fixtureIds}` (geste LIGNE : chaque rencontre listée est traitée, ses écarts pendants VIDÉS —
+    « garder l'app » implicite, D4) OU `{teamId}` (geste MASSE : toutes les rencontres de l'équipe
+    traitées, SAUF celles à écart pendant — sautées et nommées dans `skipped[{fixtureId, reason:
+    "pending_deviations"}]`, jamais tranchées en masse). Rend `{reviewed, skipped}`.
+  - **`POST /api/fixtures/review/deviations`** (`ReviewFixtureDeviationController`) — tranche UN
+    écart : `{fixtureId, field: date|kickoff|venue, choice: keep_app|take_source}`. `take_source`
+    REJOUE le moteur partagé (`FbiFixtureImporter::applyFieldTakeFile`) à partir de la valeur
+    **PERSISTÉE** de l'écart, jamais d'une valeur envoyée par le client — la conséquence par champ
+    est celle de RMM-4 (date/salle dé-placent, heure reste en place mais rétrograde un
+    `SUBMITTED`/`VALIDATED` en `PLACED`). Dernier écart retiré → `REVIEWED` + horodatée.
+- **La trace a changé de maison (D7)** : elle vivait sur le DÉPÔT (`FbiIngestion.pendingDeviations`,
+  un pense-bête relu au dépôt suivant) ; elle vit désormais **sur la rencontre**
+  (`Fixture.pendingDeviations`) — migration `Version20260908120000` supprime la colonne côté
+  `FbiIngestion` (backfill D2 : une rencontre déjà placée au moment de la migration, `status <>
+  UNPLACED`, est réputée traitée → `REVIEWED` ; `reviewedAt` reste `null`, jamais d'horodatage
+  rétroactif fabriqué). `FbiIngestion` reste la maison de la FRAÎCHEUR (`GET
+  /api/fbi-ingestions/latest`) et des compteurs (`created`/`updated`/`unchanged`) — les deux canaux
+  continuent d'écrire un dépôt daté à chaque passage.
+- **`FixtureResource`** expose `reviewState`, `reviewedAt`, `pendingDeviations`, `ffbbRencontreId`
+  en lecture ; `FixtureInput` (le corps du PUT) est INCHANGÉ — un PUT ne peut jamais écrire
+  `reviewState` directement, seul un geste de traitement le fait. Les compteurs par équipe (« N à
+  traiter ») sont **dérivés côté client** — pas d'endpoint agrégé (décision, pas un manque).
+- **PR-3b (frontend, à venir)** : onglet Importer (file de traitement par équipe), Configuration
+  allégée (P4-185/P4-186, encore ouverts), et le recalage du texte de `PlacementPanel.tsx` sur un
+  match `VALIDATED` (« La ligue a validé ce match. Il est définitif et ne se modifie plus ici. ») —
+  désormais inexact : un import peut poser `VALIDATED` (D9) et un écart peut l'en faire retomber.
+- **Tests** : `FixtureReviewApiTest.php` (les deux routes de traitement) ; `FbiFixtureImporterTest`
+  et `FfbbRencontresApiTest` étendus (D9, `autoApplied`, moteur partagé) ; `MatchTenantIsolationTest`
+  étendu (NR tenant isolation, déjà bloquant — aucun changement `ci.yml`) ; `ManagementRoleTest`
+  étendu (SEC-07 des deux nouvelles routes) ; Behat
+  `une-rencontre-importee-dit-si-elle-est-traitee.feature` (`FixtureReviewContext`) — le parcours
+  complet dépôt → traitement → re-dépôt → `VALIDATED` → déphasage → arbitrage.
 
 ## Échéances ligue/comité — RMM-6 (3 PR, 2026-08-25) — LIVRÉ EN ENTIER
 

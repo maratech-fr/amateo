@@ -119,6 +119,10 @@ class FixtureResource
     #[Groups(['read'])]
     public ?string $externalRef = null;
 
+    /** National FFBB rencontre id, when created from the FFBB-API channel — else null. */
+    #[Groups(['read'])]
+    public ?string $ffbbRencontreId = null;
+
     /** Raw FBI « Salle » label, HOME and AWAY — never a Venue reference. */
     #[Groups(['read'])]
     public ?string $fbiVenueLabel = null;
@@ -134,6 +138,25 @@ class FixtureResource
      */
     #[Groups(['read'])]
     public ?string $unplacedReason = null;
+
+    /**
+     * Le TRAITEMENT de la rencontre (espace « Importer ») : NEW (à traiter) ·
+     * OUT_OF_SYNC (déphasée) · REVIEWED (traité). Distinct du statut de placement.
+     */
+    #[Groups(['read'])]
+    public string $reviewState = '';
+
+    /** Quand la rencontre a été traitée pour la dernière fois — null si jamais. */
+    #[Groups(['read'])]
+    public ?DateTimeImmutable $reviewedAt = null;
+
+    /**
+     * Les écarts source⇄app encore ouverts (déphasage), un par champ divergent.
+     *
+     * @var list<array{field: string, appValue: string|null, sourceValue: string|null, channel: string, seenAt: string, autoApplied: bool}>
+     */
+    #[Groups(['read'])]
+    public array $pendingDeviations = [];
 
     public static function fromEntity(Fixture $entity): self
     {
@@ -152,9 +175,13 @@ class FixtureResource
         $dto->venueId = $entity->getVenueId();
         $dto->kickoffTime = $entity->getKickoffTime()?->format('H:i');
         $dto->externalRef = $entity->getExternalRef();
+        $dto->ffbbRencontreId = $entity->getFfbbRencontreId();
         $dto->fbiVenueLabel = $entity->getFbiVenueLabel();
         $dto->placementSource = $entity->getPlacementSource()?->value;
         $dto->unplacedReason = $entity->getUnplacedReason()?->value;
+        $dto->reviewState = $entity->getReviewState()->value;
+        $dto->reviewedAt = $entity->getReviewedAt();
+        $dto->pendingDeviations = $entity->getPendingDeviations();
 
         return $dto;
     }

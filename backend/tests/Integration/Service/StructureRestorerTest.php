@@ -214,7 +214,7 @@ final class StructureRestorerTest extends KernelTestCase
         $venueId = $venue->getId();
         $fixture = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
             ->setMatchDate(new DateTimeImmutable('2026-01-10'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adversaire')
-            ->setStatus(FixtureStatus::SUBMITTED)->setVenueId($venueId)->setKickoffTime(new DateTimeImmutable('15:30'));
+            ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId($venueId)->setKickoffTime(new DateTimeImmutable('15:30'));
         $this->em->persist($fixture);
         // Photo « avec gymnase » (V2), pour la deuxième moitié du scénario.
         $v2 = $this->makeSchedule($club, $season);

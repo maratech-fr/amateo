@@ -9,6 +9,7 @@ use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\Clock\ClockInterface;
 
 /**
  * Writes the engine's placements back (P1-4 PR D). Concurrency rule: each
@@ -19,7 +20,10 @@ use Doctrine\ORM\EntityManagerInterface;
  */
 final class MatchPlacementResultApplier
 {
-    public function __construct(private readonly EntityManagerInterface $entityManager) {}
+    public function __construct(
+        private readonly EntityManagerInterface $entityManager,
+        private readonly ClockInterface $clock,
+    ) {}
 
     /**
      * @param list<array{matchId: string, venueId: string, kickoff: string}> $placements
@@ -28,6 +32,7 @@ final class MatchPlacementResultApplier
      */
     public function apply(array $placements): array
     {
+        $now = DateTimeImmutable::createFromInterface($this->clock->now());
         $applied = 0;
         $skipped = 0;
         foreach ($placements as $placement) {
@@ -38,7 +43,8 @@ final class MatchPlacementResultApplier
             }
             $fixture->setVenueId($placement['venueId']);
             $fixture->setKickoffTime(new DateTimeImmutable($placement['kickoff']));
-            $fixture->setStatus(FixtureStatus::PLACED);
+            // Placer = traiter (D6) : setStatus pose REVIEWED + horodaté (sauf écart pendant).
+            $fixture->setStatus(FixtureStatus::PLACED, $now);
             $fixture->setPlacementSource(FixturePlacementSource::SOLVER);
             ++$applied;
         }

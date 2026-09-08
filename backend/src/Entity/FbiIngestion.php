@@ -24,11 +24,9 @@ use Doctrine\ORM\Mapping as ORM;
  * est TenantOwnedInterface), la purge de saison la supprime (SeasonDataPurger),
  * la purge de club effacé la suit (ErasedClubPurger passe par SeasonDataPurger).
  *
- * La TRACE (`pendingDeviations`) est un pense-bête, pas un journal : les écarts
- * « garder l'app » du dépôt, à re-vérifier au dépôt SUIVANT — le fichier redit la
- * valeur divergente → l'écart re-paraît `persisting` et la trace se REPORTE ; le
- * fichier est revenu à la valeur app, ou le fixture a disparu → la trace meurt en
- * silence. Seul un dépôt FBI_XLSX tue ou reporte une trace (cf. FbiIngestionSource).
+ * Elle porte la FRAÎCHEUR et les COMPTEURS du dépôt (les deux canaux l'écrivent).
+ * La trace des écarts, elle, vit désormais SUR la rencontre ({@see Fixture} :
+ * `pendingDeviations`), plus sur le dépôt (PR-3a D7).
  */
 #[ORM\Entity(repositoryClass: FbiIngestionRepository::class)]
 #[ORM\Table(name: 'fbi_ingestion')]
@@ -68,20 +66,6 @@ class FbiIngestion implements TenantOwnedInterface
     #[ORM\Column(type: 'integer')]
     private int $deviationsCount = 0;
 
-    /**
-     * Les écarts encore ouverts que ce dépôt reporte (« garder l'app » du dépôt +
-     * ceux d'un dépôt antérieur qui divergent toujours) — le pense-bête relu au
-     * dépôt suivant. Chaque entrée identifie l'écart (fixtureId, field) et garde
-     * la valeur pour l'affichage ; `field` ∈ {date, kickoff, venue}.
-     *
-     * @var list<array{fixtureId: string, field: string, appValue: string|null, fileValue: string|null, decidedAt: string}>
-     */
-    #[ORM\Column(type: 'json')]
-    private array $pendingDeviations = [];
-
-    /**
-     * @param list<array{fixtureId: string, field: string, appValue: string|null, fileValue: string|null, decidedAt: string}> $pendingDeviations
-     */
     public function __construct(
         string $clubId,
         string $seasonId,
@@ -91,7 +75,6 @@ class FbiIngestion implements TenantOwnedInterface
         int $updated,
         int $unchanged,
         int $deviationsCount,
-        array $pendingDeviations,
     ) {
         $this->id = $this->newUuid();
         $this->clubId = $clubId;
@@ -102,7 +85,6 @@ class FbiIngestion implements TenantOwnedInterface
         $this->updated = $updated;
         $this->unchanged = $unchanged;
         $this->deviationsCount = $deviationsCount;
-        $this->pendingDeviations = $pendingDeviations;
     }
 
     public function getId(): string
@@ -160,14 +142,6 @@ class FbiIngestion implements TenantOwnedInterface
     public function getDeviationsCount(): int
     {
         return $this->deviationsCount;
-    }
-
-    /**
-     * @return list<array{fixtureId: string, field: string, appValue: string|null, fileValue: string|null, decidedAt: string}>
-     */
-    public function getPendingDeviations(): array
-    {
-        return $this->pendingDeviations;
     }
 
     private function newUuid(): string

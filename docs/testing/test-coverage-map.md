@@ -1,15 +1,11 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-08 (rotation de fraîcheur `documentation-update`, PR-2a Consulter module
-matchs — fichier hors sujet). Re-confronté au code : `Security/SplitMotherRedateTest` est un step
-NOMMÉ de `blocking-tests` (`ci.yml:433-434`) ET listé dans `docs/testing/blocking-tests.md:69` ✓ ·
-`Security/PeriodRedateTest::testSplitMotherKeepsItsWindowFrozen` n'existe plus sous ce nom (le
-renversement tient — remplacé par `testSplitMotherRedateWithoutTokenAsksForPreview`,
-`backend/tests/Security/PeriodRedateTest.php:157`) ✓ · le scénario 4 de
-`plan-de-periode-en-overlay.feature` (« Je re-date l'incident découpé : l'aperçu m'annonce ce qui
-change, je confirme ») ✓ · `coverage-floor.json` est bien à la racine du dépôt (pas dans une zone)
-✓ · `engine-perf-pr` existe dans `ci.yml` (dense seul, PR only) ✓. Un stamp REMPLACE, l'historique
-vit dans git : `git log -p --follow docs/testing/test-coverage-map.md`.
+Last verified @ 2026-09-08 (PR-3a « espace Importer », `documentation-update`). Ajouté : la ligne
+`une-rencontre-importee-dit-si-elle-est-traitee.feature` (§5 Matchs) — feature réelle
+(`ls backend/features/`, 17 fichiers, compte confronté à `.claude/skills/validation-runner/SKILL.md`)
+et son context `FixtureReviewContext` (`backend/tests/Behat/`) existent ✓. Reste du fichier non
+re-sondé cette passe — l'historique des vérifications précédentes vit dans
+`git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
 > prouve**, **par quel job CI**, et **ce que personne ne prouve**. Il ne remplace ni
@@ -158,6 +154,7 @@ promesses qui n'avaient jusqu'ici qu'une preuve technique (PHPUnit/pytest, illis
 | Feature | Ce qu'elle prouve |
 |---|---|
 | `placement-des-matchs.feature` | un match à domicile dans sa fenêtre d'accès est `PLACED`, un sans fenêtre reste `UNPLACED` avec la raison nommée `no_access_window` (remplace `smoke-place-matches.sh`) |
+| `une-rencontre-importee-dit-si-elle-est-traitee.feature` (PR-3a, 2026-09-08) | du premier dépôt au traitement : une rencontre importée est « à traiter », placer la traite, un re-dépôt identique la fait passer « validée ligue » (D9), un re-dépôt divergent la rend « déphasée » sans écraser la valeur app, trancher l'écart la replace « à replacer » et de nouveau traitée ; une rencontre absente d'un dépôt reste intouchée |
 
 **Période (overlay, reprise, découpage, vacances)**
 
