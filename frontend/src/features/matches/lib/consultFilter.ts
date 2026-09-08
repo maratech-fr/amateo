@@ -108,6 +108,20 @@ export function scopeConflictsToWeek(conflicts: Conflict[], weekendKey: string |
     return conflicts;
   }
   const { monday, sunday } = weekBounds(weekendKey);
+  return scopeConflictsToRange(conflicts, monday, sunday);
+}
+
+/**
+ * Restreint les conflits à une plage calendaire `[from, to]` (Y-m-d, inclusive) —
+ * la dérivation générale derrière `scopeConflictsToWeek` (PR-2a) ET
+ * `scopeConflictsToMonth` (PR-2b, `monthView.ts`). Même règle de datage : un conflit
+ * daté (`start`, à défaut la `matchDate` d'une fixture référencée) est retenu ssi sa
+ * date tombe dans la plage ; un conflit SANS date (`datelessConflicts`, ex.
+ * COMPETITION_INCOMPLETE) est TOUJOURS retenu. Les dates ISO se comparent
+ * lexicographiquement ; un conflit non « dateless » a toujours une date (le repli
+ * `null` ne survient pas, on le garde plutôt que de le perdre en silence).
+ */
+export function scopeConflictsToRange(conflicts: Conflict[], from: string, to: string): Conflict[] {
   const dateless = new Set(datelessConflicts(conflicts));
   const dateOf = (conflict: Conflict): string | null => {
     if (undefined !== conflict.start) {
@@ -120,10 +134,7 @@ export function scopeConflictsToWeek(conflicts: Conflict[], weekendKey: string |
       return true;
     }
     const date = dateOf(conflict);
-    // Les dates ISO (Y-m-d) se comparent lexicographiquement. Un conflit non
-    // « dateless » a toujours une date (fixture ⇒ matchDate) ; le repli `null` ne
-    // survient pas, on le garde plutôt que de le perdre en silence.
-    return null === date || (date >= monday && date <= sunday);
+    return null === date || (date >= from && date <= to);
   });
 }
 

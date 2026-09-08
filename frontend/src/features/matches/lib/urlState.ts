@@ -51,20 +51,32 @@ export function applyFilterToParams(current: URLSearchParams, mode: MatchFilterM
 }
 
 /**
- * PR-2a — sérialisation des filtres de l'onglet Consulter, fonctions PURES (mêmes
+ * PR-2a/2b — sérialisation des filtres de l'onglet Consulter, fonctions PURES (mêmes
  * conventions que le filtre PR-1 : absent = défaut). `type` = types de compétition
  * cochés, `conflits` = familles de conflits cochées, `type_semaine=0|1` = semaine
- * type (absent = 1 = affichée), `temps` = temporalité (PR-2a n'accepte que
- * `semaine` ; 2b ajoutera mois/phase). `null` (kinds/families) = tout coché : rien
- * n'est écrit dans l'URL, comme le défaut.
+ * type (absent = 1 = affichée), `temps` = temporalité (`semaine` défaut · `mois` ·
+ * `phase`, PR-2b), `mois=YYYY-MM` (temporalité Mois), `phase=<competitionId>`
+ * (temporalité Phase). `null` (kinds/families) = tout coché : rien n'est écrit dans
+ * l'URL, comme le défaut ; `mois`/`phase` ne sont écrits que sous LEUR temporalité.
  */
-export type ConsultTemps = "semaine";
+export type ConsultTemps = "semaine" | "mois" | "phase";
+
+const TEMPS: ConsultTemps[] = ["semaine", "mois", "phase"];
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+function isTemps(value: string | null): value is ConsultTemps {
+  return null !== value && (TEMPS as string[]).includes(value);
+}
 
 export interface ConsultParams {
   kinds: Kind[] | null;
   families: ConflictType[] | null;
   typicalWeek: boolean;
   temps: ConsultTemps;
+  /** Mois affiché `YYYY-MM` (temporalité Mois) ; null = auto. */
+  month: string | null;
+  /** Compétition appariée affichée (temporalité Phase) ; null = auto/première. */
+  phaseId: string | null;
 }
 
 function decodeList<T extends string>(raw: string | null, valid: readonly T[]): T[] | null {
@@ -80,13 +92,19 @@ function decodeList<T extends string>(raw: string | null, valid: readonly T[]): 
 }
 
 export function decodeConsultParams(params: URLSearchParams): ConsultParams {
+  const rawMonth = params.get("mois");
+  const rawPhase = params.get("phase");
   return {
     kinds: decodeList(params.get("type"), KINDS),
     families: decodeList(params.get("conflits"), CONFLICT_FAMILIES),
     // absent ou "1" ⇒ affichée ; "0" ⇒ masquée.
     typicalWeek: "0" !== params.get("type_semaine"),
-    // PR-2a ne connaît que « semaine » ; toute autre valeur (2b) retombe dessus.
-    temps: "semaine",
+    // semaine · mois · phase ; toute autre valeur retombe sur semaine (défaut).
+    temps: isTemps(params.get("temps")) ? (params.get("temps") as ConsultTemps) : "semaine",
+    // `mois` doit être un YYYY-MM valide (une valeur bidon est ignorée) ; `phase` est
+    // un id brut, validé côté page contre les compétitions connues.
+    month: null !== rawMonth && MONTH_RE.test(rawMonth) ? rawMonth : null,
+    phaseId: null !== rawPhase && "" !== rawPhase ? rawPhase : null,
   };
 }
 
@@ -112,6 +130,22 @@ export function applyConsultToParams(current: URLSearchParams, consult: ConsultP
   } else {
     next.set("type_semaine", "0");
   }
-  next.delete("temps");
+  // `temps` absent quand semaine (défaut) ; `mois`/`phase` n'existent que sous LEUR
+  // temporalité (une sélection posée sous une autre temporalité ne pollue pas l'URL).
+  if ("semaine" === consult.temps) {
+    next.delete("temps");
+  } else {
+    next.set("temps", consult.temps);
+  }
+  if ("mois" === consult.temps && null !== consult.month) {
+    next.set("mois", consult.month);
+  } else {
+    next.delete("mois");
+  }
+  if ("phase" === consult.temps && null !== consult.phaseId) {
+    next.set("phase", consult.phaseId);
+  } else {
+    next.delete("phase");
+  }
   return next;
 }

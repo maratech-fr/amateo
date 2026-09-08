@@ -62,6 +62,16 @@ interface MatchesState {
   consultFamilies: ConflictType[] | null;
   /** Semaine type = les ghosts d'habitude sur la grille ; affichée par défaut. */
   consultTypicalWeek: boolean;
+  /**
+   * PR-2b — la temporalité de l'onglet Consulter : Semaine (défaut, byte-identique
+   * PR-2a) · Mois · Phase. `consultMonth` = le mois `YYYY-MM` affiché (Mois),
+   * `consultPhaseId` = la compétition appariée affichée (Phase) ; `null` = auto
+   * (premier ≥ courant / première phase). Non persisté (l'URL `?temps=&mois=&phase=`
+   * porte le deep-link).
+   */
+  consultTemporality: ConsultTemporality;
+  consultMonth: string | null;
+  consultPhaseId: string | null;
   setSelectedWeekend: (key: string | null) => void;
   setRailStep: (step: LoopStepId | null) => void;
   setUnplacedReasons: (reasons: Map<string, string>) => void;
@@ -76,7 +86,13 @@ interface MatchesState {
   setConsultKinds: (kinds: Kind[] | null) => void;
   setConsultFamilies: (families: ConflictType[] | null) => void;
   setConsultTypicalWeek: (typicalWeek: boolean) => void;
+  setConsultTemporality: (temporality: ConsultTemporality) => void;
+  setConsultMonth: (month: string | null) => void;
+  setConsultPhaseId: (phaseId: string | null) => void;
 }
+
+/** PR-2b — les trois temporalités de l'onglet Consulter. */
+export type ConsultTemporality = "semaine" | "mois" | "phase";
 
 /** Per-session UI state — nothing worth persisting (selections are ephemeral). */
 export const useMatchesStore = create<MatchesState>((set) => ({
@@ -93,6 +109,9 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   consultKinds: null,
   consultFamilies: null,
   consultTypicalWeek: true,
+  consultTemporality: "semaine",
+  consultMonth: null,
+  consultPhaseId: null,
   // Changer de semaine remet la vue à l'auto (le premier trou de la NOUVELLE
   // semaine) — le rail ne « saute » jamais SOUS l'utilisateur, mais une autre
   // semaine est un autre contexte : on repart de son premier trou. Les raisons
@@ -115,4 +134,7 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   setConsultKinds: (consultKinds) => set({ consultKinds }),
   setConsultFamilies: (consultFamilies) => set({ consultFamilies }),
   setConsultTypicalWeek: (consultTypicalWeek) => set({ consultTypicalWeek }),
+  setConsultTemporality: (consultTemporality) => set({ consultTemporality }),
+  setConsultMonth: (consultMonth) => set({ consultMonth }),
+  setConsultPhaseId: (consultPhaseId) => set({ consultPhaseId }),
 }));

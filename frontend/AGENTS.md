@@ -335,6 +335,10 @@ product rules — reuse them instead of rolling your own:
 - **`delete-confirm`** — destructive confirmation that *announces its impacts* ("N réservations
   seront retirées"). Deleting without stating what it takes away is the bug it exists to prevent.
 - **`load-error-hint`** — "the read failed, here is a retry". Pairs with `readState` below.
+- **`table`** (`Table`/`TableHeader`/`TableBody`/`TableRow`/`TableHead`/`TableCell`/`TableCaption`) —
+  the shared data table, born with the Consulter tab's month/phase lists (module matchs, 2026-09-08):
+  house tokens, `scope="col"` headers, `overflow-x-auto` container (a wide table scrolls inside itself,
+  the page never scrolls sideways). A new tabular list uses it; no `div` grid dressed as a table.
 - **`listbox`** (`Listbox`) — the shared APG single-select listbox: colour dot or icon, a
   right-aligned count ("reste N"), a second reason/precision line, and a keyboard-reachable but
   **disabled** option (visible + motivated, never dropped from the list). Built in-house because

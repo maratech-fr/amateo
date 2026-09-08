@@ -226,6 +226,31 @@ test("consulter: chips, semaine type, et filtre par famille de conflit", async (
     expect(await stepUntilVisible(prevWeek, cleanCell, 24), "la semaine de la rencontre isolée est atteignable").toBeTruthy();
     await expect(cleanCell).toBeVisible();
     await expect(familiesGroup.getByRole("button", { name: /^Collision de gymnase/ })).toHaveCount(0);
+
+    // ── PR-2b — temporalité MOIS ────────────────────────────────────────────
+    // On bascule sur la table du mois et on rejoint le mois de la collision. Les
+    // deux rencontres en collision (overlapA/B, le MÊME samedi ⇒ le même mois) y
+    // apparaissent, avec la puce « Collision de gymnase » sur le mois.
+    await page.getByRole("button", { name: "Mois", exact: true }).click();
+    const monthTable = page.getByRole("table");
+    await expect(monthTable).toBeVisible();
+    const nextMonth = page.getByRole("button", { name: "Mois suivant" });
+    const prevMonth = page.getByRole("button", { name: "Mois précédent" });
+    const overlapMonthCell = page.getByText(overlapA, { exact: false });
+    const foundMonth = (await stepUntilVisible(nextMonth, overlapMonthCell, 6)) || (await stepUntilVisible(prevMonth, overlapMonthCell, 12));
+    expect(foundMonth, "le mois de la collision est atteignable en vue Mois").toBeTruthy();
+    await expect(overlapMonthCell).toBeVisible();
+    await expect(page.getByText(overlapB, { exact: false })).toBeVisible();
+    await expect(page.getByRole("group", { name: "Familles de conflits" }).getByRole("button", { name: /^Collision de gymnase/ })).toBeVisible();
+
+    // ── PR-2b — temporalité PHASE ───────────────────────────────────────────
+    // Le club CI n'a peut-être aucune compétition appariée (nos rencontres sont des
+    // amicaux). Assertion ROBUSTE : soit l'empty state « Aucune compétition appariée »,
+    // soit le sélecteur de phase — l'un des deux DOIT être visible.
+    await page.getByRole("button", { name: "Phase", exact: true }).click();
+    const emptyPhase = page.getByText("Aucune compétition appariée");
+    const phaseSelect = page.getByRole("combobox", { name: /Phase|compétition/i });
+    await expect(emptyPhase.or(phaseSelect).first()).toBeVisible();
   } finally {
     for (const id of createdIds) {
       await page.request.delete(`/api/fixtures/${id}`).catch(() => undefined);
