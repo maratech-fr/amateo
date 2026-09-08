@@ -17,6 +17,7 @@ use App\Entity\Venue;
 use App\Enum\CompetitionType;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
+use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Exception\ImportRejectedException;
@@ -484,32 +485,52 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertSame(FixtureStatus::PLACED, $fixture?->getStatus());
     }
 
-    public function testKeepAppWritesNothingAndBornsATraceThatPersistsThenDies(): void
+    public function testUndecidedDivergenceBornsAPersistingTraceThenKeepAppResolvesIt(): void
     {
-        // Distinct deposit instants so « the last deposit » is unambiguous (in
-        // real life deposits are days apart; the DB timestamp is second-precise).
+        // PR-3a — the trace lives on the fixture now : an UNDECIDED perimeter écart
+        // borns a pending entry (OUT_OF_SYNC), reappears « persisting » next deposit
+        // with the SAME seenAt, and a keep_app DECISION resolves it (REVIEWED, D5).
+        // Distinct deposit instants so seenAt preservation is observable.
         $this->pinClock(new DateTimeImmutable('2026-09-01 10:00:00'));
         $this->importMapped([['D2', 'RD02', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
         $this->place('RD02');
         $id = $this->fixtureId('RD02');
 
-        // keep_app: nothing written, a trace is born (no unresolved — it was decided).
+        // Deposit 1, NO decision: nothing written, an écart is born — not yet persisting.
         $this->pinClock(new DateTimeImmutable('2026-09-08 10:00:00'));
-        $r1 = $this->importMapped(
+        $r1 = $this->importMapped([['D2', 'RD02', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']]);
+        self::assertSame(0, $r1['updated']);
+        self::assertCount(1, $r1['unresolvedDeviations']);
+        self::assertFalse($r1['unresolvedDeviations'][0]['persisting']);
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RD02']);
+        self::assertSame('2026-10-03', $fixture?->getMatchDate()->format('Y-m-d'), 'app value intact');
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState());
+        $bornSeenAt = $fixture?->getPendingDeviation('date')['seenAt'] ?? null;
+        self::assertNotNull($bornSeenAt);
+
+        // Deposit 2, still no decision, same divergence: persisting, seenAt conserved.
+        $this->pinClock(new DateTimeImmutable('2026-09-15 10:00:00'));
+        $r2 = $this->importMapped([['D2', 'RD02', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']]);
+        self::assertCount(1, $r2['unresolvedDeviations']);
+        self::assertTrue($r2['unresolvedDeviations'][0]['persisting']);
+        $this->em->clear();
+        $fixture2 = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RD02']);
+        self::assertSame($bornSeenAt, $fixture2?->getPendingDeviation('date')['seenAt'] ?? null, 'seenAt is preserved across deposits');
+
+        // Deposit 3, keep_app: the écart is RETIRED → REVIEWED, app value kept (D5).
+        $r3 = $this->importMapped(
             [['D2', 'RD02', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']],
             null,
             [['fixtureId' => $id, 'field' => 'date', 'choice' => 'keep_app']],
         );
-        self::assertSame(0, $r1['updated']);
-        self::assertSame([], $r1['unresolvedDeviations']);
-        self::assertSame('2026-10-03', $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RD02'])?->getMatchDate()->format('Y-m-d'));
+        self::assertSame([], $r3['unresolvedDeviations']);
+        $this->em->clear();
+        $fixture3 = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RD02']);
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture3?->getReviewState());
+        self::assertSame([], $fixture3?->getPendingDeviations());
+        self::assertSame('2026-10-03', $fixture3?->getMatchDate()->format('Y-m-d'), 'keep_app never writes the file value');
 
-        // Re-deposit the SAME divergent file: the écart re-appears, persisting.
-        $again = $this->importer->analyze($this->xlsx([['D2', 'RD02', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']]), $this->club);
-        self::assertCount(1, $again['deviations']);
-        self::assertTrue($again['deviations'][0]['persisting']);
-
-        // Re-deposit a CONFORMING file (date back to the app value): the trace dies.
+        // A conforming re-deposit: no deviation at all.
         $conform = $this->importer->analyze($this->xlsx([['D2', 'RD02', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]), $this->club);
         self::assertSame([], $conform['deviations']);
     }
@@ -547,7 +568,7 @@ final class FbiFixtureImporterTest extends KernelTestCase
         $this->importMapped([['D2', 'RA01', 'AS Voisins', 'BC TESTVILLE - 1', '03/10/2026', '15:30', 'Salle Adverse']]);
         $away = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RA01']);
         self::assertSame(FixtureHomeAway::AWAY, $away?->getHomeAway());
-        $away?->setStatus(FixtureStatus::PLACED);
+        $away?->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
         $this->em->flush();
 
         $result = $this->importMapped([['D2', 'RA01', 'AS Voisins', 'BC TESTVILLE - 1', '10/10/2026', '15:30', 'Salle Adverse']]);
@@ -654,6 +675,97 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertCount(1, $again['unresolvedDeviations']);
     }
 
+    // ── Review workflow (PR-3a) ─────────────────────────────────────────────
+
+    public function testAnImportedFixtureIsNewUntilTreated(): void
+    {
+        $this->importMapped([['D2', 'RN01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RN01']);
+        self::assertSame(FixtureReviewState::NEW, $fixture?->getReviewState());
+        self::assertNull($fixture?->getReviewedAt());
+        self::assertSame([], $fixture?->getPendingDeviations());
+    }
+
+    public function testAttestedPlacedHomeIsValidatedD9(): void
+    {
+        $venueId = $this->createVenue('GYMNASE MATEO');
+        $this->importMapped([['D2', 'RV9', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']]);
+        $this->placeAt('RV9', $venueId); // PLACED + REVIEWED
+
+        // Same file re-deposited: date AND kickoff AND salle attested → VALIDATED.
+        $result = $this->importMapped([['D2', 'RV9', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']]);
+        self::assertSame([], $result['unresolvedDeviations']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RV9']);
+        self::assertSame(FixtureStatus::VALIDATED, $fixture?->getStatus());
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+    }
+
+    public function testAttestedSubmittedHomeIsValidatedD9(): void
+    {
+        $venueId = $this->createVenue('GYMNASE MATEO');
+        $this->importMapped([['D2', 'RV8', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']]);
+        $this->placeAt('RV8', $venueId);
+        $this->setStatus('RV8', FixtureStatus::SUBMITTED);
+
+        $this->importMapped([['D2', 'RV8', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']]);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RV8']);
+        self::assertSame(FixtureStatus::VALIDATED, $fixture?->getStatus());
+    }
+
+    public function testNoD9WithoutARealKickoffOrWithoutASalle(): void
+    {
+        $venueId = $this->createVenue('GYMNASE MATEO');
+        // No kickoff attested (00:00 sentinel) → no D9.
+        $this->importMapped([['D2', 'RV7', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']]);
+        $this->placeAt('RV7', $venueId);
+        $this->importMapped([['D2', 'RV7', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '00:00', 'GYMNASE MATEO']]);
+        $this->em->clear();
+        self::assertSame(FixtureStatus::PLACED, $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RV7'])?->getStatus());
+
+        // No salle attested (empty « Salle ») → no D9.
+        $this->importMapped([['D2', 'RV6', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']]);
+        $this->placeAt('RV6', $venueId);
+        $this->importMapped([['D2', 'RV6', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->em->clear();
+        self::assertSame(FixtureStatus::PLACED, $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RV6'])?->getStatus());
+    }
+
+    public function testAutoAppliedChangeOnAReviewedFixtureMarksItOutOfSync(): void
+    {
+        // An AWAY fixture treated by the manager, then rescheduled by the league:
+        // the change is auto-applied (out of perimeter) but leaves an auto-applied
+        // pending entry and the fixture goes back OUT_OF_SYNC.
+        $this->importMapped([['D2', 'RA9', 'AS Voisins', 'BC TESTVILLE - 1', '03/10/2026', '15:30', 'Salle Adverse']]);
+        $away = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RA9']);
+        self::assertSame(FixtureHomeAway::AWAY, $away?->getHomeAway());
+        $away?->markReviewed(new DateTimeImmutable);
+        $this->em->flush();
+
+        $result = $this->importMapped([['D2', 'RA9', 'AS Voisins', 'BC TESTVILLE - 1', '10/10/2026', '15:30', 'Salle Adverse']]);
+        self::assertSame(1, $result['updated']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RA9']);
+        self::assertSame('2026-10-10', $fixture?->getMatchDate()->format('Y-m-d'));
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState());
+        $entry = $fixture?->getPendingDeviation('date');
+        self::assertNotNull($entry);
+        self::assertTrue($entry['autoApplied']);
+        self::assertSame('2026-10-10', $entry['sourceValue']);
+    }
+
+    public function testAutoAppliedChangeOnANewFixtureStaysNew(): void
+    {
+        // Never treated (NEW) → a reschedule stays NEW, no pending entry.
+        $this->importMapped([['D2', 'RA8', 'AS Voisins', 'BC TESTVILLE - 1', '03/10/2026', '15:30', 'Salle Adverse']]);
+        $this->importMapped([['D2', 'RA8', 'AS Voisins', 'BC TESTVILLE - 1', '10/10/2026', '15:30', 'Salle Adverse']]);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RA8']);
+        self::assertSame(FixtureReviewState::NEW, $fixture?->getReviewState());
+        self::assertSame([], $fixture?->getPendingDeviations());
+    }
+
     public function testEveryDepositWritesADatedIngestionAndOnlyXlsxIsTheLastDeposit(): void
     {
         $this->importMapped([['D2', 'RI01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
@@ -666,7 +778,7 @@ final class FbiFixtureImporterTest extends KernelTestCase
 
         // A (future) API ingestion must NOT count as the last deposit and never
         // kills/reports a trace — the repository only ever returns the xlsx one.
-        $api = new FbiIngestion($this->club->getId(), $this->team->getSeasonId(), FbiIngestionSource::FFBB_API, new DateTimeImmutable('+1 hour'), 0, 0, 0, 0, []);
+        $api = new FbiIngestion($this->club->getId(), $this->team->getSeasonId(), FbiIngestionSource::FFBB_API, new DateTimeImmutable('+1 hour'), 0, 0, 0, 0);
         $this->em->persist($api);
         $this->em->flush();
 
@@ -1043,7 +1155,7 @@ final class FbiFixtureImporterTest extends KernelTestCase
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
         self::assertNotNull($fixture);
         $venueId = '11111111-1111-4111-8111-111111111111';
-        $fixture->setStatus(FixtureStatus::PLACED);
+        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
         $fixture->setVenueId($venueId);
         $this->em->flush();
 
@@ -1055,7 +1167,7 @@ final class FbiFixtureImporterTest extends KernelTestCase
     {
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
         self::assertNotNull($fixture);
-        $fixture->setStatus(FixtureStatus::PLACED);
+        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
         $fixture->setVenueId($venueId);
         $this->em->flush();
     }
@@ -1064,7 +1176,7 @@ final class FbiFixtureImporterTest extends KernelTestCase
     {
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
         self::assertNotNull($fixture);
-        $fixture->setStatus($status);
+        $fixture->setStatus($status, new DateTimeImmutable);
         $this->em->flush();
     }
 

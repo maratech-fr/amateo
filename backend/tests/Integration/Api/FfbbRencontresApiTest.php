@@ -18,6 +18,7 @@ use App\Entity\Venue;
 use App\Enum\CompetitionType;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
+use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
@@ -133,6 +134,9 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertInstanceOf(Fixture::class, $fixture);
         self::assertSame($team->getId(), $fixture->getTeamId());
         self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus());
+        // A freshly created rencontre is « à traiter » (PR-3a).
+        self::assertSame(FixtureReviewState::NEW, $fixture->getReviewState());
+        self::assertNull($fixture->getReviewedAt());
         self::assertSame(FixtureHomeAway::HOME, $fixture->getHomeAway());
         self::assertSame(FfbbHttpClientStub::AMICAL_OPPONENT, $fixture->getOpponentLabel());
         self::assertNull($fixture->getCompetitionId(), 'an unpaired competition = a friendly (null competitionId)');
@@ -176,7 +180,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['ffbbRencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID]);
         self::assertInstanceOf(Fixture::class, $fixture);
-        $fixture->setStatus(FixtureStatus::PLACED);
+        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
         $fixture->setKickoffTime(new DateTimeImmutable('2000-01-01')->setTime(18, 0));
         $this->em->flush();
         $fixtureId = $fixture->getId();
@@ -198,6 +202,41 @@ final class FfbbRencontresApiTest extends WebTestCase
         $this->em->clear();
         $reloaded = $this->em->getRepository(Fixture::class)->find($fixtureId);
         self::assertSame(FfbbHttpClientStub::AMICAL_KICKOFF, $reloaded?->getKickoffTime()?->format('H:i'));
+        // take_file resolved the last écart → the fixture is treated (REVIEWED, D5).
+        self::assertSame(FixtureReviewState::REVIEWED, $reloaded?->getReviewState());
+        self::assertSame([], $reloaded?->getPendingDeviations());
+    }
+
+    public function testApplyWithoutDecisionMarksThePlacedHomeOutOfSync(): void
+    {
+        [$token, , $clubId] = $this->register('FRO');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+
+        $this->apply($token, [], [['rencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID, 'teamId' => $team->getId()]]);
+        $this->scopeGucToClub($clubId);
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['ffbbRencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID]);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        // Place at a kickoff DIFFERENT from the API's → a divergence, then treat it.
+        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $fixture->setKickoffTime(new DateTimeImmutable('2000-01-01')->setTime(18, 0));
+        $this->em->flush();
+        $fixtureId = $fixture->getId();
+
+        // apply WITHOUT any decision: the écart is not resolved → OUT_OF_SYNC + a
+        // pending kickoff entry, the app value untouched.
+        $result = $this->apply($token, [], []);
+        self::assertCount(1, $result['unresolvedDeviations']);
+
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Fixture::class)->find($fixtureId);
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $reloaded?->getReviewState());
+        self::assertSame('18:00', $reloaded?->getKickoffTime()?->format('H:i'), 'no decision never writes the source value');
+        $entry = $reloaded?->getPendingDeviation('kickoff');
+        self::assertNotNull($entry);
+        self::assertSame('FFBB_API', $entry['channel']);
+        self::assertSame(FfbbHttpClientStub::AMICAL_KICKOFF, $entry['sourceValue']);
     }
 
     public function testFfbbApiIngestionIsNotTheXlsxFreshnessAndDoesNotTouchATrace(): void
@@ -207,30 +246,27 @@ final class FfbbRencontresApiTest extends WebTestCase
         $team = $this->createTeam($clubId);
         $season = $this->seasonOf($clubId);
 
-        // A prior xlsx deposit with a live trace.
+        // A prior xlsx deposit (2 days ago) — the freshness reference.
         $this->scopeGucToClub($clubId);
-        $xlsx = new FbiIngestion($clubId, $season->getId(), FbiIngestionSource::FBI_XLSX, new DateTimeImmutable('-2 days'), 3, 0, 0, 1, [
-            ['fixtureId' => '11111111-1111-4111-8111-111111111111', 'field' => 'venue', 'appValue' => 'A', 'fileValue' => 'B', 'decidedAt' => '2026-08-20T10:00:00+00:00'],
-        ]);
+        $xlsx = new FbiIngestion($clubId, $season->getId(), FbiIngestionSource::FBI_XLSX, new DateTimeImmutable('-2 days'), 3, 0, 0, 1);
         $this->em->persist($xlsx);
         $this->em->flush();
-        $xlsxId = $xlsx->getId();
 
-        // An API apply that creates a rencontre.
+        // An API apply that creates a rencontre (writes an FFBB_API ingestion now).
         $this->apply($token, [], [['rencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID, 'teamId' => $team->getId()]]);
 
-        // Freshness still reads the xlsx deposit (latestXlsx ignores FFBB_API).
+        // Freshness still reads the xlsx deposit (latestXlsx ignores FFBB_API),
+        // even though the FFBB_API ingestion is more recent.
         $this->client->request('GET', '/api/fbi-ingestions/latest', [], [], $this->auth($token));
         self::assertResponseIsSuccessful();
         self::assertSame('FBI_XLSX', $this->json()['latest']['source'] ?? null, 'the FFBB_API ingestion is not the freshness deposit');
 
-        // The xlsx trace is untouched, and the FFBB_API ingestion carries none.
+        // The API apply did leave its own dated ingestion (counters/freshness only —
+        // the écart trace lives on the fixtures now, PR-3a D7).
         $this->scopeGucToClub($clubId);
         $this->em->clear();
-        $reloaded = $this->em->getRepository(FbiIngestion::class)->find($xlsxId);
-        self::assertNotEmpty($reloaded?->getPendingDeviations(), 'an API apply never kills an xlsx trace');
         $apiIngestion = $this->em->getRepository(FbiIngestion::class)->findOneBy(['source' => FbiIngestionSource::FFBB_API]);
-        self::assertSame([], $apiIngestion?->getPendingDeviations(), 'FFBB_API leaves no trace');
+        self::assertNotNull($apiIngestion, 'an API apply writes a dated FFBB_API ingestion');
     }
 
     public function testThePartialUniqueIndexRejectsADuplicateRencontre(): void
@@ -405,7 +441,7 @@ final class FfbbRencontresApiTest extends WebTestCase
     {
         $this->scopeGucToClub($clubId);
         $fixture = $this->buildFixture($clubId, $seasonId, $teamId, $date, $opponent, $home ? FixtureHomeAway::HOME : FixtureHomeAway::AWAY);
-        $fixture->setStatus($status);
+        $fixture->setStatus($status, new DateTimeImmutable);
         if (null !== $kickoff) {
             [$h, $m] = array_map('intval', explode(':', $kickoff));
             $fixture->setKickoffTime(new DateTimeImmutable('2000-01-01')->setTime($h, $m));

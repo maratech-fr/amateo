@@ -100,7 +100,7 @@ final class PlaceMatchesControllerTest extends WebTestCase
         $this->createWindow($clubId, $seasonId, $venue->getId(), 6, '14:00', '22:30');
         // Placed BY THE MANAGER at 20:30 — the solver must arrange around it.
         $anchor = $this->createFixture($clubId, $seasonId, $team->getId(), '2026-10-03');
-        $anchor->setStatus(FixtureStatus::PLACED);
+        $anchor->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
         $anchor->setPlacementSource(FixturePlacementSource::MANUAL);
         $anchor->setVenueId($venue->getId());
         $anchor->setKickoffTime(new DateTimeImmutable('20:30'));

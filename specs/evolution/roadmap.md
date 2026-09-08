@@ -130,8 +130,16 @@
 ### Module matchs — mesuré sur les 18 rencontres FFBB réelles du BCCL (2026-09-08)
 
 > Ordre fondateur : (1) Consulter — PR-1 filtres, PR-2a onglet et PR-2b Mois/Phase livrés ; puis
-> l'espace Importer (PR-3 : file de traitement persistée, reprise) ; (2) ergonomie P4-185/P4-186 ; (3) gymnase
-> depuis le libellé P4-187 ; puis le détecteur (P4-188/189/191/193).
+> l'espace Importer — **PR-3a (backend, 2026-09-08) livrée** : `FixtureReviewState`
+> (NEW/OUT_OF_SYNC/REVIEWED), `Fixture.pendingDeviations`/`reviewedAt`, `POST /api/fixtures/review`
+> + `/review/deviations`, moteur de traitement partagé xlsx⇄API (détail :
+> [`module-matchs.md`](../courantes/module-matchs.md) § « Espace Importer »). **Reste PR-3b
+> (frontend)** : onglet Importer (file de traitement par équipe), la Configuration allégée
+> (P4-185/P4-186 ci-dessous) et **recaler le texte du panneau `VALIDATED` de
+> `PlacementPanel.tsx`** (« La ligue a validé ce match. Il est définitif et ne se modifie plus
+> ici. ») — inexact depuis PR-3a : un import peut désormais poser `VALIDATED` (D9) et un écart peut
+> l'en faire retomber ; (2) ergonomie P4-185/P4-186 ; (3) gymnase depuis le libellé P4-187 ; puis le
+> détecteur (P4-188/189/191/193).
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|

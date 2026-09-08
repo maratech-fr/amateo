@@ -62,6 +62,10 @@ final class ManagementRoleTest extends WebTestCase
             // tout travail, un id/corps bidon suffit à atteindre le 403.
             ['GET', '/api/geocode?q=test'],
             ['POST', '/api/venue-travel-times/autofill'],
+            // PR-3a — traiter des rencontres est management-only : assertManager() tire AVANT
+            // toute lecture du corps, un corps quelconque atteint donc le 403.
+            ['POST', '/api/fixtures/review'],
+            ['POST', '/api/fixtures/review/deviations'],
         ];
     }
 

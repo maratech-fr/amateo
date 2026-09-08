@@ -244,5 +244,65 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
             ],
             summary: 'Auto-place the unplaced home matches (writes PLACED+SOLVER; manual anchors never move)',
         )));
+
+        $paths->addPath('/api/fixtures/review', new PathItem(post: new Operation(
+            operationId: 'reviewFixtures',
+            tags: ['Match'],
+            responses: [
+                '200' => $this->schemas->jsonResponse('Mark fixtures as reviewed (« traité »). One gesture per call: by fixtureIds (per line — pending deviations are cleared, keeping the app value) or by teamId (bulk — fixtures still carrying pending deviations are skipped and named, never arbitrated in bulk).', [
+                    'type' => 'object',
+                    'properties' => [
+                        'reviewed' => ['type' => 'integer', 'description' => 'How many fixtures were marked reviewed'],
+                        'skipped' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                            'fixtureId' => ['type' => 'string'],
+                            'reason' => ['type' => 'string', 'enum' => ['pending_deviations']],
+                        ]]],
+                    ],
+                ]),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+                '403' => new Response('Not a management member'),
+                '409' => new Response('Season plan not chosen, or archived season'),
+                '422' => new Response('Neither or both of fixtureIds and teamId were given'),
+            ],
+            summary: 'Mark fixtures as reviewed — by line (fixtureIds) or in bulk (teamId), management only',
+            requestBody: $this->schemas->jsonBody([
+                'type' => 'object',
+                'properties' => [
+                    'fixtureIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Per-line gesture: these fixtures are reviewed, their pending deviations cleared'],
+                    'teamId' => ['type' => 'string', 'description' => 'Bulk gesture: every fixture of the team is reviewed, except those still carrying pending deviations'],
+                ],
+            ]),
+        )));
+
+        $paths->addPath('/api/fixtures/review/deviations', new PathItem(post: new Operation(
+            operationId: 'reviewFixtureDeviation',
+            tags: ['Match'],
+            responses: [
+                '200' => $this->schemas->jsonResponse('Resolve ONE pending deviation of a fixture: keep_app drops it, take_source adopts the persisted source value (replayed server-side). When the last deviation is resolved, the fixture becomes reviewed.', [
+                    'type' => 'object',
+                    'properties' => [
+                        'fixtureId' => ['type' => 'string'],
+                        'reviewState' => ['type' => 'string', 'enum' => ['NEW', 'OUT_OF_SYNC', 'REVIEWED']],
+                        'reviewedAt' => ['type' => 'string', 'format' => 'date-time', 'nullable' => true],
+                        'pendingDeviations' => ['type' => 'array', 'items' => ['type' => 'object']],
+                    ],
+                ]),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+                '403' => new Response('Not a management member'),
+                '404' => new Response('Fixture not found (or another club\'s)'),
+                '409' => new Response('Season plan not chosen, or archived season'),
+                '422' => new Response('Malformed body, or no pending deviation on that field'),
+            ],
+            summary: 'Resolve one pending deviation of a fixture (keep_app | take_source), management only',
+            requestBody: $this->schemas->jsonBody([
+                'type' => 'object',
+                'required' => ['fixtureId', 'field', 'choice'],
+                'properties' => [
+                    'fixtureId' => ['type' => 'string'],
+                    'field' => ['type' => 'string', 'enum' => ['date', 'kickoff', 'venue']],
+                    'choice' => ['type' => 'string', 'enum' => ['keep_app', 'take_source']],
+                ],
+            ]),
+        )));
     }
 }

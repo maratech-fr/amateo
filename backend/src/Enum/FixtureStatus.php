@@ -10,9 +10,14 @@ namespace App\Enum;
  * the league) → VALIDATED (league confirmed).
  *
  * L'import FBI crée TOUT en UNPLACED — domicile ET extérieur (`FbiFixtureImporter` :
- * « Status is always UNPLACED »). Seul un geste explicite du gestionnaire
- * (`FixtureStateProcessor`) pose un autre statut ; une Heure FBI ne fait que
- * pré-remplir `kickoffTime`.
+ * « Status is always UNPLACED »). PLACED et SUBMITTED sont des gestes du gestionnaire
+ * (`FixtureStateProcessor`, ou le placeur pour PLACED) ; une Heure FBI ne fait que
+ * pré-remplir `kickoffTime`. VALIDATED n'est PAS un geste (rien côté club ne
+ * l'atteste, décision fondateur 2026-09-08, PR-3a) : un domicile PLACED/SUBMITTED
+ * que la source (xlsx FBI ou API FFBB) renvoie identique sur date + heure + salle,
+ * les trois présents, passe VALIDATED à l'intégration
+ * (`FbiFixtureImporter::reconcileNoDivergence`). Divergent → écart pendant, et
+ * « prendre la source » le fait retomber PLACED (`demoteSubmitted`).
  *
  * Ce statut ne dit RIEN de l'engagement de l'équipe : dès que l'import a fait
  * correspondre une rencontre à une de nos équipes, la fédération la connaît — elle est

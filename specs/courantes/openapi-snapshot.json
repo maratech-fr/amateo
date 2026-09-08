@@ -11257,6 +11257,180 @@
                 "summary": "Auto-place the unplaced home matches (writes PLACED+SOLVER; manual anchors never move)"
             }
         },
+        "/api/fixtures/review": {
+            "post": {
+                "operationId": "reviewFixtures",
+                "tags": [
+                    "Match"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Mark fixtures as reviewed (\u00ab trait\u00e9 \u00bb). One gesture per call: by fixtureIds (per line \u2014 pending deviations are cleared, keeping the app value) or by teamId (bulk \u2014 fixtures still carrying pending deviations are skipped and named, never arbitrated in bulk).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "reviewed": {
+                                            "type": "integer",
+                                            "description": "How many fixtures were marked reviewed"
+                                        },
+                                        "skipped": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "fixtureId": {
+                                                        "type": "string"
+                                                    },
+                                                    "reason": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "pending_deviations"
+                                                        ]
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "409": {
+                        "description": "Season plan not chosen, or archived season"
+                    },
+                    "422": {
+                        "description": "Neither or both of fixtureIds and teamId were given"
+                    }
+                },
+                "summary": "Mark fixtures as reviewed \u2014 by line (fixtureIds) or in bulk (teamId), management only",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "fixtureIds": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Per-line gesture: these fixtures are reviewed, their pending deviations cleared"
+                                    },
+                                    "teamId": {
+                                        "type": "string",
+                                        "description": "Bulk gesture: every fixture of the team is reviewed, except those still carrying pending deviations"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
+        "/api/fixtures/review/deviations": {
+            "post": {
+                "operationId": "reviewFixtureDeviation",
+                "tags": [
+                    "Match"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Resolve ONE pending deviation of a fixture: keep_app drops it, take_source adopts the persisted source value (replayed server-side). When the last deviation is resolved, the fixture becomes reviewed.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "fixtureId": {
+                                            "type": "string"
+                                        },
+                                        "reviewState": {
+                                            "type": "string",
+                                            "enum": [
+                                                "NEW",
+                                                "OUT_OF_SYNC",
+                                                "REVIEWED"
+                                            ]
+                                        },
+                                        "reviewedAt": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "nullable": true
+                                        },
+                                        "pendingDeviations": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "404": {
+                        "description": "Fixture not found (or another club's)"
+                    },
+                    "409": {
+                        "description": "Season plan not chosen, or archived season"
+                    },
+                    "422": {
+                        "description": "Malformed body, or no pending deviation on that field"
+                    }
+                },
+                "summary": "Resolve one pending deviation of a fixture (keep_app | take_source), management only",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "fixtureId",
+                                    "field",
+                                    "choice"
+                                ],
+                                "properties": {
+                                    "fixtureId": {
+                                        "type": "string"
+                                    },
+                                    "field": {
+                                        "type": "string",
+                                        "enum": [
+                                            "date",
+                                            "kickoff",
+                                            "venue"
+                                        ]
+                                    },
+                                    "choice": {
+                                        "type": "string",
+                                        "enum": [
+                                            "keep_app",
+                                            "take_source"
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
         "/api/league-match-windows": {
             "get": {
                 "operationId": "getLeagueMatchWindows",
@@ -25141,6 +25315,13 @@
                             "null"
                         ]
                     },
+                    "ffbbRencontreId": {
+                        "description": "National FFBB rencontre id, when created from the FFBB-API channel \u2014 else null.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "fbiVenueLabel": {
                         "description": "Raw FBI \u00ab Salle \u00bb label, HOME and AWAY \u2014 never a Venue reference.",
                         "type": [
@@ -25161,6 +25342,39 @@
                             "string",
                             "null"
                         ]
+                    },
+                    "reviewState": {
+                        "description": "Le TRAITEMENT de la rencontre (espace \u00ab Importer \u00bb) : NEW (\u00e0 traiter) \u00b7\nOUT_OF_SYNC (d\u00e9phas\u00e9e) \u00b7 REVIEWED (trait\u00e9). Distinct du statut de placement.",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "reviewedAt": {
+                        "description": "Quand la rencontre a \u00e9t\u00e9 trait\u00e9e pour la derni\u00e8re fois \u2014 null si jamais.",
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "pendingDeviations": {
+                        "description": "Les \u00e9carts source\u21c4app encore ouverts (d\u00e9phasage), un par champ divergent.",
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "anyOf": [
+                                    {
+                                        "type": "boolean"
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ]
+                            }
+                        }
                     }
                 }
             },
@@ -25329,6 +25543,13 @@
                             "null"
                         ]
                     },
+                    "ffbbRencontreId": {
+                        "description": "National FFBB rencontre id, when created from the FFBB-API channel \u2014 else null.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "fbiVenueLabel": {
                         "description": "Raw FBI \u00ab Salle \u00bb label, HOME and AWAY \u2014 never a Venue reference.",
                         "type": [
@@ -25349,6 +25570,39 @@
                             "string",
                             "null"
                         ]
+                    },
+                    "reviewState": {
+                        "description": "Le TRAITEMENT de la rencontre (espace \u00ab Importer \u00bb) : NEW (\u00e0 traiter) \u00b7\nOUT_OF_SYNC (d\u00e9phas\u00e9e) \u00b7 REVIEWED (trait\u00e9). Distinct du statut de placement.",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "reviewedAt": {
+                        "description": "Quand la rencontre a \u00e9t\u00e9 trait\u00e9e pour la derni\u00e8re fois \u2014 null si jamais.",
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "pendingDeviations": {
+                        "description": "Les \u00e9carts source\u21c4app encore ouverts (d\u00e9phasage), un par champ divergent.",
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "anyOf": [
+                                    {
+                                        "type": "boolean"
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ]
+                            }
+                        }
                     }
                 }
             },
@@ -25425,6 +25679,13 @@
                                     "null"
                                 ]
                             },
+                            "ffbbRencontreId": {
+                                "description": "National FFBB rencontre id, when created from the FFBB-API channel \u2014 else null.",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
                             "fbiVenueLabel": {
                                 "description": "Raw FBI \u00ab Salle \u00bb label, HOME and AWAY \u2014 never a Venue reference.",
                                 "type": [
@@ -25445,6 +25706,39 @@
                                     "string",
                                     "null"
                                 ]
+                            },
+                            "reviewState": {
+                                "description": "Le TRAITEMENT de la rencontre (espace \u00ab Importer \u00bb) : NEW (\u00e0 traiter) \u00b7\nOUT_OF_SYNC (d\u00e9phas\u00e9e) \u00b7 REVIEWED (trait\u00e9). Distinct du statut de placement.",
+                                "default": "",
+                                "type": "string"
+                            },
+                            "reviewedAt": {
+                                "description": "Quand la rencontre a \u00e9t\u00e9 trait\u00e9e pour la derni\u00e8re fois \u2014 null si jamais.",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "format": "date-time"
+                            },
+                            "pendingDeviations": {
+                                "description": "Les \u00e9carts source\u21c4app encore ouverts (d\u00e9phasage), un par champ divergent.",
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                        "anyOf": [
+                                            {
+                                                "type": "boolean"
+                                            },
+                                            {
+                                                "type": "string"
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    }
+                                }
                             }
                         }
                     }

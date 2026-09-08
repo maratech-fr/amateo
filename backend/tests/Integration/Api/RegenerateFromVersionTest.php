@@ -162,7 +162,7 @@ final class RegenerateFromVersionTest extends WebTestCase
             ->setMatchDate(new DateTimeImmutable('2026-10-04'))
             ->setHomeAway(FixtureHomeAway::HOME)
             ->setOpponentLabel('AS Voisins')
-            ->setStatus(FixtureStatus::PLACED);
+            ->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
         $this->em->persist($fixture);
         $this->em->flush();
 
@@ -187,7 +187,7 @@ final class RegenerateFromVersionTest extends WebTestCase
             ->setMatchDate(new DateTimeImmutable('2026-10-04'))
             ->setHomeAway(FixtureHomeAway::HOME)
             ->setOpponentLabel('AS Voisins')
-            ->setStatus(FixtureStatus::PLACED);
+            ->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
         $this->em->persist($fixture);
         $v1 = $this->makeSchedule(ScheduleStatus::COMPLETED, null);
         $this->em->flush();
@@ -224,7 +224,7 @@ final class RegenerateFromVersionTest extends WebTestCase
             ->setMatchDate(new DateTimeImmutable('2026-10-04'))
             ->setHomeAway(FixtureHomeAway::HOME)
             ->setOpponentLabel('AS Voisins')
-            ->setStatus(FixtureStatus::PLACED);
+            ->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
         $this->em->persist($fixture);
         $this->em->flush();
 
@@ -266,7 +266,7 @@ final class RegenerateFromVersionTest extends WebTestCase
             ->setMatchDate(new DateTimeImmutable('2026-10-04'))
             ->setHomeAway(FixtureHomeAway::HOME)
             ->setOpponentLabel('AS Voisins')
-            ->setStatus(FixtureStatus::PLACED)
+            ->setStatus(FixtureStatus::PLACED, new DateTimeImmutable)
             ->setVenueId($venueId);
         $this->em->persist($fixture);
         $this->em->flush();

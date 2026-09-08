@@ -25,6 +25,7 @@ use App\Entity\VenueUnavailability;
 use App\Enum\CompetitionType;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
+use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Enum\OpponentTravelSource;
 use App\Enum\SeasonStatus;
@@ -451,7 +452,7 @@ final class MatchTenantIsolationTest extends WebTestCase
     {
         [$clubA, , $seasonA] = $this->createClubUser('a');
         $this->scopeGucToClub($clubA->getId());
-        $this->em->persist(new FbiIngestion($clubA->getId(), $seasonA->getId(), FbiIngestionSource::FBI_XLSX, new DateTimeImmutable, 3, 1, 0, 0, []));
+        $this->em->persist(new FbiIngestion($clubA->getId(), $seasonA->getId(), FbiIngestionSource::FBI_XLSX, new DateTimeImmutable, 3, 1, 0, 0));
         $this->em->flush();
 
         [$clubB, $userB] = $this->createClubUser('b');
@@ -468,10 +469,69 @@ final class MatchTenantIsolationTest extends WebTestCase
         self::assertCount(0, $this->em->getRepository(FbiIngestion::class)->findBy(['clubId' => $clubA->getId()]));
     }
 
+    public function testReviewEndpointsNeverTouchAForeignClubsFixtures(): void
+    {
+        [$clubA, $userA] = $this->createClubUser('rvA');
+        [$clubB] = $this->createClubUser('rvB');
+        $foreign = $this->createDeviatedFixture($clubB, 'Adversaire B');
+
+        // Bulk/line review by fixtureIds: the foreign id is invisible → ignored.
+        $this->client->request('POST', '/api/fixtures/review', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], (string) json_encode([
+            'fixtureIds' => [$foreign->getId()],
+        ]));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(0, $this->responseData()['reviewed']);
+
+        // Per-deviation review on a foreign fixture: 404 (tenant), nothing written.
+        $this->client->request('POST', '/api/fixtures/review/deviations', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], (string) json_encode([
+            'fixtureId' => $foreign->getId(),
+            'field' => 'date',
+            'choice' => 'take_source',
+        ]));
+        self::assertResponseStatusCodeSame(404);
+
+        // Club B's fixture is untouched: still OUT_OF_SYNC with its écart, its
+        // date never adopted. Read raw (bypassing the ORM identity map) under B's
+        // scope, on the shared dama connection.
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $this->scopeGucToClub($clubB->getId());
+        $row = $em->getConnection()->fetchAssociative(
+            'SELECT review_state, match_date, pending_deviations FROM fixture WHERE id = ?',
+            [$foreign->getId()],
+        );
+        self::assertIsArray($row);
+        self::assertSame('OUT_OF_SYNC', $row['review_state']);
+        self::assertSame('2026-10-04', substr((string) $row['match_date'], 0, 10), 'take_source never fired cross-club');
+        self::assertNotSame('[]', (string) $row['pending_deviations'], 'the écart is untouched');
+
+        unset($clubA);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /** A placed HOME fixture carrying one open pending deviation (OUT_OF_SYNC). */
+    private function createDeviatedFixture(Club $club, string $opponent): Fixture
+    {
+        $fixture = $this->createFixture($club, $opponent);
+        $this->scopeGucToClub($club->getId());
+        $fixture->setVenueId('22222222-2222-4222-8222-222222222222');
+        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $fixture->putPendingDeviation([
+            'field' => 'date',
+            'appValue' => '2026-10-04',
+            'sourceValue' => '2026-10-11',
+            'channel' => 'FBI_XLSX',
+            'seenAt' => '2026-09-01T10:00:00+00:00',
+            'autoApplied' => false,
+        ]);
+        $fixture->setReviewState(FixtureReviewState::OUT_OF_SYNC);
+        $this->em->flush();
+
+        return $fixture;
     }
 
     private function seedManualTravel(Club $club, Season $season, string $code, int $minutes, string $venueLabel): void

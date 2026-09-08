@@ -134,7 +134,7 @@ final class DeletionImpactParityTest extends KernelTestCase
         // DOC-2 : un match DÉJÀ DÉCLARÉ à la fédération, posé dans ce gymnase.
         $declared = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
             ->setMatchDate(new DateTimeImmutable('2026-01-10'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adversaire')
-            ->setStatus(FixtureStatus::SUBMITTED)->setVenueId($venue->getId());
+            ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId($venue->getId());
         $this->em->persist($declared);
         // Un créneau du même club dans un AUTRE gymnase : il ne doit ni être compté ni partir.
         $this->em->persist((new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())
@@ -540,12 +540,12 @@ final class DeletionImpactParityTest extends KernelTestCase
 
         $orphan = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
             ->setMatchDate(new DateTimeImmutable('2026-01-10'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv')
-            ->setStatus(FixtureStatus::SUBMITTED)->setVenueId($ghostVenueId)->setKickoffTime(new DateTimeImmutable('15:30'));
+            ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId($ghostVenueId)->setKickoffTime(new DateTimeImmutable('15:30'));
         $this->em->persist($orphan);
         // Témoin : un match posé sur un VRAI gymnase — le prédicat ne doit pas le voir.
         $sound = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
             ->setMatchDate(new DateTimeImmutable('2026-01-17'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv2')
-            ->setStatus(FixtureStatus::PLACED)->setVenueId($realVenue->getId())->setKickoffTime(new DateTimeImmutable('16:00'));
+            ->setStatus(FixtureStatus::PLACED, new DateTimeImmutable)->setVenueId($realVenue->getId())->setKickoffTime(new DateTimeImmutable('16:00'));
         $this->em->persist($sound);
         $this->em->flush();
 
@@ -586,7 +586,7 @@ final class DeletionImpactParityTest extends KernelTestCase
         $venue = $this->venue($club, $season, 'Coubertin');
         $fixture = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
             ->setMatchDate(new DateTimeImmutable('2026-01-10'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv')
-            ->setStatus(FixtureStatus::SUBMITTED)->setVenueId($venue->getId())->setKickoffTime(new DateTimeImmutable('15:30'));
+            ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId($venue->getId())->setKickoffTime(new DateTimeImmutable('15:30'));
         $this->em->persist($fixture);
         $this->em->flush();
 
@@ -622,12 +622,12 @@ final class DeletionImpactParityTest extends KernelTestCase
         $venueA = $this->venue($club, $season, 'Matéo');
         $fixtureA = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
             ->setMatchDate(new DateTimeImmutable('2026-01-10'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv')
-            ->setStatus(FixtureStatus::SUBMITTED)->setVenueId($venueA->getId())->setKickoffTime(new DateTimeImmutable('15:30'));
+            ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId($venueA->getId())->setKickoffTime(new DateTimeImmutable('15:30'));
         $this->em->persist($fixtureA);
         // Chemin B — validation : le gymnase a déjà disparu (pointeur pendouillant).
         $fixtureB = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
             ->setMatchDate(new DateTimeImmutable('2026-01-10'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv')
-            ->setStatus(FixtureStatus::SUBMITTED)->setVenueId('33333333-3333-4333-8333-333333333333')->setKickoffTime(new DateTimeImmutable('15:30'));
+            ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId('33333333-3333-4333-8333-333333333333')->setKickoffTime(new DateTimeImmutable('15:30'));
         $this->em->persist($fixtureB);
         $this->em->flush();
 

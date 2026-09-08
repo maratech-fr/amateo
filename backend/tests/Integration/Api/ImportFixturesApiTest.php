@@ -13,6 +13,7 @@ use App\Enum\FixtureStatus;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -90,6 +91,12 @@ final class ImportFixturesApiTest extends WebTestCase
         self::assertSame('Gymnase X', $byRef['A9001']['fbiVenueLabel'] ?? null);
         self::assertTrue(\array_key_exists('kickoffTime', $byRef['A9002']), 'kickoffTime must be exposed');
         self::assertNull($byRef['A9002']['kickoffTime']);
+        // PR-3a — the review workflow fields are exposed; an imported rencontre is
+        // « à traiter » (NEW), with no open deviation. reviewedAt/ffbbRencontreId
+        // are null here, so omitted by skip_null_values (see FixtureApiTest for
+        // the non-null cases).
+        self::assertSame('NEW', $byRef['A9001']['reviewState'] ?? null);
+        self::assertSame([], $byRef['A9001']['pendingDeviations'] ?? null);
 
         // 3. RE-IMPORT with a rescheduled date — diff/update, not skip: the
         // mapping persisted, no « mappings » field needed anymore.
@@ -236,7 +243,7 @@ final class ImportFixturesApiTest extends WebTestCase
     {
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
         self::assertNotNull($fixture, 'imported fixture must exist');
-        $fixture->setStatus(FixtureStatus::PLACED);
+        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
         $fixture->setVenueId('11111111-1111-4111-8111-111111111111');
         $this->em->flush();
 

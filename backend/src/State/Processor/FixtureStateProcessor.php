@@ -15,6 +15,7 @@ use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Service\SocleGuard;
 use DateTimeImmutable;
+use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 use Symfony\Contracts\Service\Attribute\Required;
 
@@ -25,10 +26,18 @@ class FixtureStateProcessor extends AbstractStateProcessor
 {
     private SocleGuard $socleGuard;
 
+    private ClockInterface $clock;
+
     #[Required]
     public function setSocleGuard(SocleGuard $socleGuard): void
     {
         $this->socleGuard = $socleGuard;
+    }
+
+    #[Required]
+    public function setClock(ClockInterface $clock): void
+    {
+        $this->clock = $clock;
     }
 
     public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): mixed
@@ -54,6 +63,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
      */
     protected function createEntityFromInput(object $input): Fixture
     {
+        $now = DateTimeImmutable::createFromInterface($this->clock->now());
         $entity = new Fixture;
         if (null !== $input->teamId) {
             $entity->setTeamId($input->teamId);
@@ -72,7 +82,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
             $entity->setOpponentLabel($input->opponentLabel);
         }
         if (null !== $input->status) {
-            $entity->setStatus(FixtureStatus::from($input->status));
+            $entity->setStatus(FixtureStatus::from($input->status), $now);
             // P1-4 PR D — every status write through the API is the MANAGER's
             // gesture: a placement becomes a MANUAL anchor (the solver never
             // moves it again), an un-placement clears the marker.
@@ -86,6 +96,9 @@ class FixtureStateProcessor extends AbstractStateProcessor
             // A match born from a manager's POST is manual by definition.
             throw new UnprocessableEntityHttpException('Un match créé à la main est manuel — le solveur seul pose SOLVER.');
         }
+        // Saisie manuelle = geste du gestionnaire → la rencontre est TRAITÉE
+        // (PR-3a) : REVIEWED + horodaté, quel que soit le statut de placement.
+        $entity->markReviewed($now);
 
         return $entity;
     }
@@ -96,6 +109,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
      */
     protected function updateEntityFromInput(object $entity, object $input): void
     {
+        $now = DateTimeImmutable::createFromInterface($this->clock->now());
         $placementBefore = [
             $entity->getVenueId(),
             $entity->getKickoffTime()?->format('H:i'),
@@ -119,7 +133,9 @@ class FixtureStateProcessor extends AbstractStateProcessor
             $entity->setOpponentLabel($input->opponentLabel);
         }
         if (null !== $input->status) {
-            $entity->setStatus(FixtureStatus::from($input->status));
+            // D6 — « placer = traiter » : setStatus pose REVIEWED + horodaté quand
+            // le match passe placé sans écart pendant (UNPLACED ne change rien).
+            $entity->setStatus(FixtureStatus::from($input->status), $now);
             // P1-4 PR D — every status write through the API is the MANAGER's
             // gesture: a placement becomes a MANUAL anchor (the solver never
             // moves it again), an un-placement clears the marker.

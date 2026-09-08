@@ -624,7 +624,7 @@ final class EngagedTeamGuardTest extends WebTestCase
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel('AS Voisins');
-        $fixture->setStatus($status);
+        $fixture->setStatus($status, new DateTimeImmutable);
         $this->em->persist($fixture);
         $this->em->flush();
 
