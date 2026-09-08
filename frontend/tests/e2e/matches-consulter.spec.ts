@@ -7,10 +7,10 @@ import { expect, test } from "./fixtures";
  * interrupteur « Semaine type », et le filtre par famille de conflit (décocher
  * « Passerelle » retire sa carte du radar).
  *
- * ⚠ Écrit, PAS lancé par l'agent d'implémentation (le fondateur le joue). Suppose que
- * le seed BCCL porte au moins une passerelle (TEAM_LINK_OVERLAP) — sinon la chip
- * « Passerelle » n'apparaît pas et le test échoue en le disant (témoin volontaire,
- * pas un faux vert).
+ * ⚠ Le test S'AUTO-PROVISIONNE (comme `matches.spec.ts`) : il crée ses propres
+ * rencontres via l'API et les nettoie en `finally`, donc il ne suppose RIEN des
+ * données du seed (le club CI n'a aucune rencontre). Déterministe et sans dépendance
+ * au sandbox.
  */
 const EMAIL = "mara.mb@bccl.fr";
 const PASSWORD = "maraboubccl";
@@ -89,78 +89,146 @@ async function ensureValidated(page: Page): Promise<void> {
   await expect(page.getByRole("link", { name: "Matchs" })).toBeVisible({ timeout: 15_000 });
 }
 
+/** Local Y-m-d (jamais toISOString, qui bascule en UTC et peut changer le jour). */
+function ymd(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function addDays(ymdStr: string, n: number): string {
+  const d = new Date(`${ymdStr}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return ymd(d);
+}
+
+/** Le prochain samedi (Y-m-d) à au moins `minAhead` jours d'aujourd'hui. */
+function nextSaturdayAtLeast(minAhead: number): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + minAhead);
+  while (6 !== d.getDay()) {
+    d.setDate(d.getDate() + 1); // 6 = samedi
+  }
+  return ymd(d);
+}
+
+/** Amène la semaine affichée sur celle qui contient `text`, en cliquant `btn`
+ * (‹ ou ›) au plus `max` fois. Retourne vrai si `text` est visible à la fin. */
+async function stepUntilVisible(btn: import("@playwright/test").Locator, target: import("@playwright/test").Locator, max: number): Promise<boolean> {
+  if (await target.isVisible().catch(() => false)) {
+    return true;
+  }
+  for (let i = 0; i < max; i++) {
+    if (!(await btn.isEnabled())) {
+      break;
+    }
+    await btn.click();
+    if (await target.isVisible().catch(() => false)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 test("consulter: chips, semaine type, et filtre par famille de conflit", async ({ page }) => {
   test.setTimeout(240_000); // l'onboarding peut lancer une vraie génération CP-SAT
 
   await login(page);
   await ensureValidated(page);
 
-  await page.goto("/matchs/consulter");
-  await expect(page.getByRole("link", { name: "Consulter" })).toHaveAttribute("aria-current", "page");
+  // ── Auto-provisionnement (le club CI n'a AUCUNE rencontre) ───────────────────
+  // Les cookies du contexte suivent `page.request` (JWT httpOnly). On prend la 1ʳᵉ
+  // équipe + le 1ᵉʳ gymnase du club, puis on crée nos propres rencontres sur DEUX
+  // semaines FUTURES vides (le sandbox n'a rien au-delà de +7 j) — nettoyées en
+  // `finally`. Le détecteur émet VENUE_OVERLAP dès qu'un gymnase + un coup d'envoi
+  // sont posés (statut UNPLACED compris — `MatchConflictDetector::venueOverlapConflicts`).
+  const teamsRes = await page.request.get("/api/teams?itemsPerPage=100");
+  expect(teamsRes.ok(), "GET /api/teams").toBeTruthy();
+  const teamId = ((await teamsRes.json()).member?.[0]?.id ?? undefined) as string | undefined;
+  const venuesRes = await page.request.get("/api/venues?itemsPerPage=100");
+  expect(venuesRes.ok(), "GET /api/venues").toBeTruthy();
+  const venueId = ((await venuesRes.json()).member?.[0]?.id ?? undefined) as string | undefined;
+  expect(teamId, "le club seedé a au moins une équipe").toBeTruthy();
+  expect(venueId, "le club seedé a au moins un gymnase").toBeTruthy();
 
-  // Chips type de compétition — présentes, cochées par défaut.
-  for (const label of ["Amical", "Championnat", "Coupe", "Brassage"]) {
-    await expect(page.getByRole("button", { name: label, exact: true })).toHaveAttribute("aria-pressed", "true");
-  }
+  const ts = Date.now();
+  // W_clean = samedi ≥ aujourd'hui + 7 j (une rencontre isolée → un bucket SANS
+  // collision) ; W_overlap = le samedi suivant (deux domiciles même gymnase, même
+  // heure → VENUE_OVERLAP). Les deux sont futures ⇒ vierges de données sandbox.
+  const cleanSat = nextSaturdayAtLeast(7);
+  const overlapSat = addDays(cleanSat, 7);
+  const cleanOpp = `E2E-CONSULTER-${ts}-CLEAN`;
+  const overlapA = `E2E-CONSULTER-${ts}-A`;
+  const overlapB = `E2E-CONSULTER-${ts}-B`;
 
-  // Interrupteur « Semaine type » (role switch), coché par défaut ; on le bascule.
-  const semaineType = page.getByRole("switch", { name: /Semaine type/ });
-  await expect(semaineType).toHaveAttribute("aria-checked", "true");
-  await semaineType.click();
-  await expect(semaineType).toHaveAttribute("aria-checked", "false");
-  await expect(page).toHaveURL(/[?&]type_semaine=0/);
+  const createFixture = async (matchDate: string, opponentLabel: string): Promise<string> => {
+    const res = await page.request.post("/api/fixtures", {
+      data: { teamId, matchDate, homeAway: "HOME", opponentLabel, venueId, kickoffTime: "15:00", competitionId: null },
+    });
+    expect(res.ok(), `POST /api/fixtures ${opponentLabel}`).toBeTruthy();
+    return (await res.json()).id as string;
+  };
 
-  // ── Filtre par famille de conflit, sur la semaine affichée (bornage hebdo) ────
-  // On lit la PREMIÈRE famille PRÉSENTE (le contenu dépend de la semaine courante
-  // du sandbox : décocher-la doit retirer son GROUPE du radar, sans vider le test).
-  const familiesGroup = page.getByRole("group", { name: "Familles de conflits" });
-  // ⚠ `.getByRole({pressed:true}).first()` est PARESSEUX : après le clic il résout la
-  // puce SUIVANTE encore pressée. On fige donc la première puce par son NOM (label
-  // hors compteur) avant tout clic, puis on re-localise CETTE puce pour les gestes.
-  const firstPressed = familiesGroup.getByRole("button", { pressed: true }).first();
-  await expect(firstPressed).toBeVisible();
-  const firstText = (await firstPressed.innerText()).trim(); // ex. « Coach en double 1 »
-  const chipCount = firstText.match(/\d+/)?.[0] ?? "";
-  const label = firstText.replace(/\s*\d+\s*$/, "").trim(); // « Coach en double »
-  expect(chipCount).not.toBe("");
-  expect(label).not.toBe("");
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const chip = familiesGroup.getByRole("button", { name: new RegExp("^" + escaped) });
+  const createdIds: string[] = [];
+  try {
+    createdIds.push(await createFixture(cleanSat, cleanOpp));
+    createdIds.push(await createFixture(overlapSat, overlapA));
+    createdIds.push(await createFixture(overlapSat, overlapB));
 
-  // Les titres de GROUPE du radar (h3), hors bande extérieure (constante).
-  const radarTitles = page.getByRole("heading", { level: 3 }).filter({ hasNotText: "À l'extérieur ce week-end" });
-  const before = await radarTitles.allInnerTexts();
+    await page.goto("/matchs/consulter");
+    await expect(page.getByRole("link", { name: "Consulter" })).toHaveAttribute("aria-current", "page");
 
-  // (2) Décocher → (3) un titre de groupe disparaît, la puce garde son compteur.
-  await chip.click();
-  await expect(chip).toHaveAttribute("aria-pressed", "false");
-  await expect(chip).toContainText(chipCount);
-  const after = await radarTitles.allInnerTexts();
-  const gone = before.filter((t) => !after.includes(t));
-  expect(gone.length, "décocher une famille retire son groupe du radar").toBeGreaterThanOrEqual(1);
-  await expect(page).toHaveURL(/[?&]conflits=/);
-
-  // (4) Recocher → le(s) titre(s) reviennent.
-  await chip.click();
-  await expect(chip).toHaveAttribute("aria-pressed", "true");
-  const restored = await radarTitles.allInnerTexts();
-  for (const title of gone) {
-    expect(restored, "recocher restaure le groupe").toContain(title);
-  }
-
-  // ── Témoin VIVANT du bornage à la semaine : la « Passerelle » (seul TEAM_LINK_
-  // OVERLAP réel = mer. 2 sept.) n'existe pas sur la semaine courante, mais apparaît
-  // en reculant jusqu'à la semaine du 31 août au 6 sept. Assertion forte, pas un if.
-  const prevWeek = page.getByRole("button", { name: "Semaine précédente" });
-  for (let i = 0; i < 8; i++) {
-    if ((await page.getByText(/^Semaine du/).innerText()).includes("31 août")) {
-      break;
+    // Chips type de compétition — STATIQUES (les 4 `KINDS`), donc présentes même
+    // sans données ; cochées par défaut.
+    for (const label of ["Amical", "Championnat", "Coupe", "Brassage"]) {
+      await expect(page.getByRole("button", { name: label, exact: true })).toHaveAttribute("aria-pressed", "true");
     }
-    if (!(await prevWeek.isEnabled())) {
-      break;
+
+    // Interrupteur « Semaine type » (role switch), coché par défaut ; on le bascule.
+    const semaineType = page.getByRole("switch", { name: /Semaine type/ });
+    await expect(semaineType).toHaveAttribute("aria-checked", "true");
+    await semaineType.click();
+    await expect(semaineType).toHaveAttribute("aria-checked", "false");
+    await expect(page).toHaveURL(/[?&]type_semaine=0/);
+
+    // Va sur la semaine de la collision (repérée par notre rencontre créée). On
+    // cherche › puis ‹ : indépendant de l'horloge (potentiellement pilotée serveur).
+    const nextWeek = page.getByRole("button", { name: "Semaine suivante" });
+    const prevWeek = page.getByRole("button", { name: "Semaine précédente" });
+    const overlapCell = page.getByText(overlapA, { exact: false });
+    const found = (await stepUntilVisible(nextWeek, overlapCell, 12)) || (await stepUntilVisible(prevWeek, overlapCell, 24));
+    expect(found, "la semaine de la collision créée est atteignable").toBeTruthy();
+    await expect(overlapCell).toBeVisible();
+
+    // Puce « Collision de gymnase » présente, compteur ≥ 1.
+    const familiesGroup = page.getByRole("group", { name: "Familles de conflits" });
+    const collisionChip = familiesGroup.getByRole("button", { name: /^Collision de gymnase/ });
+    await expect(collisionChip).toBeVisible();
+    await expect(collisionChip).toHaveAttribute("aria-pressed", "true");
+    const chipCount = (await collisionChip.innerText()).match(/\d+/)?.[0] ?? "";
+    expect(Number(chipCount), "compteur de collisions ≥ 1").toBeGreaterThanOrEqual(1);
+
+    // Radar : le groupe « Collision de gymnase » (h3, sévérité 1). Décocher la puce
+    // le retire, la puce garde son compteur ; recocher le fait revenir.
+    const radarGroup = page.getByRole("heading", { level: 3, name: "Collision de gymnase" });
+    await expect(radarGroup).toBeVisible();
+    await collisionChip.click();
+    await expect(collisionChip).toHaveAttribute("aria-pressed", "false");
+    await expect(collisionChip).toContainText(chipCount);
+    await expect(radarGroup).toHaveCount(0);
+    await expect(page).toHaveURL(/[?&]conflits=/);
+    await collisionChip.click();
+    await expect(collisionChip).toHaveAttribute("aria-pressed", "true");
+    await expect(radarGroup).toBeVisible();
+
+    // Témoin du bornage à la SEMAINE : sur la semaine de la rencontre ISOLÉE
+    // (W_clean, un cran plus tôt), aucune collision. Assertion forte (`toHaveCount(0)`).
+    const cleanCell = page.getByText(cleanOpp, { exact: false });
+    expect(await stepUntilVisible(prevWeek, cleanCell, 24), "la semaine de la rencontre isolée est atteignable").toBeTruthy();
+    await expect(cleanCell).toBeVisible();
+    await expect(familiesGroup.getByRole("button", { name: /^Collision de gymnase/ })).toHaveCount(0);
+  } finally {
+    for (const id of createdIds) {
+      await page.request.delete(`/api/fixtures/${id}`).catch(() => undefined);
     }
-    await prevWeek.click();
   }
-  await expect(page.getByText("Semaine du 31 août au 6 sept.")).toBeVisible();
-  await expect(familiesGroup.getByRole("button", { name: /^Passerelle/ })).toBeVisible();
 });
