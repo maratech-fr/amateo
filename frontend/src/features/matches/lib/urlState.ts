@@ -149,3 +149,38 @@ export function applyConsultToParams(current: URLSearchParams, consult: ConsultP
   }
   return next;
 }
+
+/**
+ * P4-185 — ancrage de la section ouverte de `/matchs/configuration` (accordéon
+ * « une section = un écran »). `?section=<clé>` ; absent/inconnu ⇒ `gabarit`
+ * (défaut ouvert), `aucune` ⇒ `null` (tout replié). Écrire le défaut (`gabarit`)
+ * SUPPRIME le param ; `null` écrit `aucune` — sans quoi replier le gabarit
+ * (param absent) le rouvrirait au décodage. Mêmes conventions que `?vue=`/`?temps=`.
+ */
+export type ConfigSection = "gabarit" | "creneaux" | "echeances" | "durees" | "adversaires" | "reglages";
+
+const CONFIG_SECTIONS: ConfigSection[] = ["gabarit", "creneaux", "echeances", "durees", "adversaires", "reglages"];
+
+function isConfigSection(value: string | null): value is ConfigSection {
+  return null !== value && (CONFIG_SECTIONS as string[]).includes(value);
+}
+
+export function decodeSectionParam(params: URLSearchParams): ConfigSection | null {
+  const raw = params.get("section");
+  if ("aucune" === raw) {
+    return null;
+  }
+  return isConfigSection(raw) ? raw : "gabarit";
+}
+
+export function applySectionToParams(current: URLSearchParams, section: ConfigSection | null): URLSearchParams {
+  const next = new URLSearchParams(current);
+  if (null === section) {
+    next.set("section", "aucune");
+  } else if ("gabarit" === section) {
+    next.delete("section");
+  } else {
+    next.set("section", section);
+  }
+  return next;
+}

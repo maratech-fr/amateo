@@ -37,6 +37,16 @@ beforeEach(() => {
   rotationsState.isLoading = false;
 });
 
+/** Le formulaire de création vit derrière un bouton (P4-185) : l'ouvrir d'abord. */
+async function openForm(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByRole("button", { name: "Ajouter un créneau partagé" }));
+}
+
+/** Une rangée est compacte : la déplier révèle sa carte (MemberList + ajout). */
+async function expand(user: ReturnType<typeof userEvent.setup>, name: RegExp): Promise<void> {
+  await user.click(screen.getByRole("button", { name }));
+}
+
 async function addTeamToDraft(user: ReturnType<typeof userEvent.setup>, value: string): Promise<void> {
   const name = TEAMS.find((t) => t.id === value)?.name ?? value;
   await pickListboxOption(user, "Ajouter une équipe au nouveau créneau", name);
@@ -54,9 +64,18 @@ describe("MatchSlotRotationsEditor — création d'un créneau partagé", () => 
     expect(screen.getByText(/ne commande aucun calendrier/)).toBeInTheDocument();
   });
 
+  it("le formulaire de création est replié par défaut, s'ouvre par « Ajouter un créneau partagé »", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
+    expect(screen.queryByText("Nouveau créneau partagé")).not.toBeInTheDocument();
+    await openForm(user);
+    expect(screen.getByText("Nouveau créneau partagé")).toBeInTheDocument();
+  });
+
   it("« Créer » reste inerte tant qu'il n'y a pas DEUX équipes", async () => {
     const user = userEvent.setup();
     renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
+    await openForm(user);
     await pickListboxOption(user, "Gymnase du créneau partagé", "Coubertin");
     expect(screen.getByRole("button", { name: "Créer le créneau" })).toBeDisabled();
     await addTeamToDraft(user, "t1");
@@ -68,6 +87,7 @@ describe("MatchSlotRotationsEditor — création d'un créneau partagé", () => 
   it("crée avec DEUX équipes, l'ordre saisi = l'ordre envoyé", async () => {
     const user = userEvent.setup();
     renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
+    await openForm(user);
     await pickListboxOption(user, "Gymnase du créneau partagé", "Coubertin");
     await addTeamToDraft(user, "t1");
     await addTeamToDraft(user, "t2");
@@ -80,6 +100,7 @@ describe("MatchSlotRotationsEditor — création d'un créneau partagé", () => 
   it("crée avec TROIS équipes (le N-aire marche au-delà de 2)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
+    await openForm(user);
     await pickListboxOption(user, "Gymnase du créneau partagé", "Coubertin");
     await addTeamToDraft(user, "t1");
     await addTeamToDraft(user, "t2");
@@ -91,6 +112,7 @@ describe("MatchSlotRotationsEditor — création d'un créneau partagé", () => 
   it("réordonne le brouillon (monter) : l'ordre envoyé suit les flèches", async () => {
     const user = userEvent.setup();
     renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
+    await openForm(user);
     await pickListboxOption(user, "Gymnase du créneau partagé", "Coubertin");
     await addTeamToDraft(user, "t1");
     await addTeamToDraft(user, "t2");
@@ -101,12 +123,28 @@ describe("MatchSlotRotationsEditor — création d'un créneau partagé", () => 
     expect(createMutate.mock.calls[0][0].teamIds).toEqual(["t1", "t3", "t2"]);
   });
 
+  it("le formulaire se referme à la création réussie", async () => {
+    createMutate.mockImplementation((_input, opts?: { onSuccess?: () => void }) => {
+      opts?.onSuccess?.();
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
+    await openForm(user);
+    await pickListboxOption(user, "Gymnase du créneau partagé", "Coubertin");
+    await addTeamToDraft(user, "t1");
+    await addTeamToDraft(user, "t2");
+    await user.click(screen.getByRole("button", { name: "Créer le créneau" }));
+    expect(screen.queryByText("Nouveau créneau partagé")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ajouter un créneau partagé" })).toBeInTheDocument();
+  });
+
   it("une erreur de création s'affiche LISIBLEMENT sous le formulaire (role=alert)", async () => {
     createMutate.mockImplementation((_input, opts?: { onError?: (e: unknown) => void }) => {
       opts?.onError?.(new Error("boom"));
     });
     const user = userEvent.setup();
     renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
+    await openForm(user);
     await pickListboxOption(user, "Gymnase du créneau partagé", "Coubertin");
     await addTeamToDraft(user, "t1");
     await addTeamToDraft(user, "t2");
@@ -116,25 +154,53 @@ describe("MatchSlotRotationsEditor — création d'un créneau partagé", () => 
   });
 });
 
-describe("MatchSlotRotationsEditor — édition d'un créneau existant", () => {
-  it("liste le créneau lisible et ses membres ordonnés A/B/C", () => {
+describe("MatchSlotRotationsEditor — lignes compactes & dépliage", () => {
+  it("une ligne compacte par rotation : jour · heure · gymnase · équipes jointes par ⇄, repliée (pas de membres visibles)", () => {
     rotationsState.data = [rotation({ teamIds: ["t1", "t2", "t3"] })];
     renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
-    // Scopé à la RANGÉE du créneau (le nom d'équipe reparaît dans le sélecteur du formulaire du bas).
-    const row = screen.getByText("Samedi 20:30 · Coubertin").closest("li") as HTMLElement;
-    expect(row).not.toBeNull();
-    expect(within(row).getByText("SM1")).toBeInTheDocument();
-    expect(within(row).getByText("SM2")).toBeInTheDocument();
-    expect(within(row).getByText("SM3")).toBeInTheDocument();
-    // Badges de position A/B/C (aria-hidden, lus au texte).
+    expect(screen.getByRole("button", { name: "Samedi 20:30 · Coubertin · SM1 ⇄ SM2 ⇄ SM3" })).toBeInTheDocument();
+    // Repliée : les contrôles de membres ne sont pas montés.
+    expect(screen.queryByRole("button", { name: "Descendre SM1" })).not.toBeInTheDocument();
+  });
+
+  it("une seule rangée dépliée à la fois", async () => {
+    rotationsState.data = [rotation({ id: "rot-1", teamIds: ["t1", "t2"] }), rotation({ id: "rot-2", dayOfWeek: 5, kickoffTime: "18:00", teamIds: ["t1", "t3"] })];
+    const user = userEvent.setup();
+    renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
+    await expand(user, /Samedi 20:30 · Coubertin · SM1 ⇄ SM2/);
+    expect(screen.getByRole("button", { name: "Ajouter l'équipe au créneau Samedi 20:30 · Coubertin" })).toBeInTheDocument();
+    await expand(user, /Vendredi 18:00 · Coubertin · SM1 ⇄ SM3/);
+    expect(screen.queryByRole("button", { name: "Ajouter l'équipe au créneau Samedi 20:30 · Coubertin" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ajouter l'équipe au créneau Vendredi 18:00 · Coubertin" })).toBeInTheDocument();
+  });
+
+  it("le bouton Supprimer est un FRÈRE du dépliage (aria-expanded porté par le seul bouton d'en-tête)", () => {
+    rotationsState.data = [rotation()];
+    renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
+    expect(screen.getByRole("button", { name: "Samedi 20:30 · Coubertin · SM1 ⇄ SM2" })).toHaveAttribute("aria-expanded", "false");
+    // Supprimer ne porte pas d'aria-expanded : ce n'est pas un bouton de dépliage.
+    expect(screen.getByRole("button", { name: "Supprimer le créneau Samedi 20:30 · Coubertin" })).not.toHaveAttribute("aria-expanded");
+  });
+});
+
+describe("MatchSlotRotationsEditor — édition d'un créneau existant (déplié d'abord)", () => {
+  it("déplié : liste les membres ordonnés A/B/C", async () => {
+    rotationsState.data = [rotation({ teamIds: ["t1", "t2", "t3"] })];
+    const user = userEvent.setup();
+    renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
+    await expand(user, /Samedi 20:30 · Coubertin · SM1 ⇄ SM2 ⇄ SM3/);
+    const row = screen.getByRole("button", { name: "Samedi 20:30 · Coubertin · SM1 ⇄ SM2 ⇄ SM3" }).closest("li") as HTMLElement;
     expect(within(row).getByText("A")).toBeInTheDocument();
     expect(within(row).getByText("C")).toBeInTheDocument();
+    // Membres lisibles dans la liste ordonnée (position + nom).
+    expect(within(row).getByRole("button", { name: "Descendre SM1" })).toBeInTheDocument();
   });
 
   it("réordonne un membre existant (descendre) → PUT avec le nouvel ordre", async () => {
     rotationsState.data = [rotation({ teamIds: ["t1", "t2", "t3"] })];
     const user = userEvent.setup();
     renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
+    await expand(user, /Samedi 20:30 · Coubertin · SM1 ⇄ SM2 ⇄ SM3/);
     await user.click(screen.getByRole("button", { name: "Descendre SM1" }));
     expect(updateMutate).toHaveBeenCalledWith({ id: "rot-1", input: { venueId: "v1", dayOfWeek: 6, kickoffTime: "20:30", teamIds: ["t2", "t1", "t3"] } });
   });
@@ -143,17 +209,20 @@ describe("MatchSlotRotationsEditor — édition d'un créneau existant", () => {
     rotationsState.data = [rotation({ teamIds: ["t1", "t2", "t3"] })];
     const user = userEvent.setup();
     renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
+    await expand(user, /Samedi 20:30 · Coubertin · SM1 ⇄ SM2 ⇄ SM3/);
     await user.click(screen.getByRole("button", { name: "Retirer SM3 du créneau" }));
     expect(updateMutate).toHaveBeenCalledWith({ id: "rot-1", input: { venueId: "v1", dayOfWeek: 6, kickoffTime: "20:30", teamIds: ["t1", "t2"] } });
   });
 
-  it("à deux membres, le retrait est inerte (le créneau doit garder ≥ 2 équipes)", () => {
+  it("à deux membres, le retrait est inerte (le créneau doit garder ≥ 2 équipes)", async () => {
     rotationsState.data = [rotation({ teamIds: ["t1", "t2"] })];
+    const user = userEvent.setup();
     renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
+    await expand(user, /Samedi 20:30 · Coubertin · SM1 ⇄ SM2/);
     expect(screen.getByRole("button", { name: "Retirer SM1 du créneau" })).toBeDisabled();
   });
 
-  it("supprime un créneau → DELETE de son id", async () => {
+  it("supprime un créneau → DELETE de son id (sans dépliage)", async () => {
     rotationsState.data = [rotation()];
     const user = userEvent.setup();
     renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
@@ -165,6 +234,7 @@ describe("MatchSlotRotationsEditor — édition d'un créneau existant", () => {
     rotationsState.data = [rotation({ teamIds: ["t1", "t2"] })];
     const user = userEvent.setup();
     renderWithProviders(<MatchSlotRotationsEditor teams={TEAMS} tiers={TIERS} venues={VENUES} />);
+    await expand(user, /Samedi 20:30 · Coubertin · SM1 ⇄ SM2/);
     const addList = await openListbox(user, "Ajouter une équipe au créneau Samedi 20:30 · Coubertin");
     // Seule SM3 est proposable (t1/t2 déjà membres).
     expect(within(addList).getByRole("option", { name: "SM3" })).toBeInTheDocument();

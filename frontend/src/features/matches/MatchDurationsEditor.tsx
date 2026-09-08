@@ -4,6 +4,7 @@ import { useId, useMemo, useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 
 import type { SportCategoryDuration } from "./api";
 import { useUpdateSportCategoryDuration } from "./queries";
@@ -130,12 +131,11 @@ function CategoryRow({ category }: { category: SportCategoryDuration }) {
   const reset = (): void => update.mutate({ category, input: { matchMinutes: null, warmupMinutes: null } });
 
   return (
-    <li className="flex flex-wrap items-start gap-x-4 gap-y-2 rounded-md border border-border px-3 py-2 text-sm">
-      <span className="min-w-24 flex-1 self-center truncate font-medium">{category.name}</span>
-      {/* Légende visuelle de colonne : le champ porte déjà son propre aria-label,
-          d'où un <span> plutôt qu'un <label> (pas de double étiquetage). */}
-      <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-        <span>Match (min)</span>
+    <TableRow>
+      <TableCell className="font-medium">{category.name}</TableCell>
+      {/* Le champ porte son propre aria-label ; l'en-tête de colonne (`scope="col"`)
+          le complète — pas de double étiquetage. */}
+      <TableCell>
         <DurationField
           value={category.matchMinutes}
           placeholder={category.defaultMatchMinutes}
@@ -145,9 +145,8 @@ function CategoryRow({ category }: { category: SportCategoryDuration }) {
           errorText={`Entrez une durée de match entre ${MATCH_MIN} et ${MATCH_MAX} minutes.`}
           onCommit={(m) => commit("match", m)}
         />
-      </div>
-      <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-        <span>Échauffement (min)</span>
+      </TableCell>
+      <TableCell>
         <DurationField
           value={category.warmupMinutes}
           placeholder={category.defaultWarmupMinutes}
@@ -157,19 +156,21 @@ function CategoryRow({ category }: { category: SportCategoryDuration }) {
           errorText={`Entrez un échauffement entre ${WARMUP_MIN} et ${WARMUP_MAX} minutes.`}
           onCommit={(m) => commit("warmup", m)}
         />
-      </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="self-center text-muted-foreground"
-        aria-label={`Revenir au défaut — ${category.name}`}
-        disabled={atDefault || update.isPending}
-        onClick={reset}
-      >
-        <RotateCcw className="size-4" aria-hidden="true" />
-        Revenir au défaut
-      </Button>
-    </li>
+      </TableCell>
+      <TableCell>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+          aria-label={`Revenir au défaut — ${category.name}`}
+          disabled={atDefault || update.isPending}
+          onClick={reset}
+        >
+          <RotateCcw className="size-4" aria-hidden="true" />
+          Revenir au défaut
+        </Button>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -201,16 +202,24 @@ export function MatchDurationsEditor({ categories }: { categories: SportCategory
       ) : (
         <div className="flex flex-col gap-4">
           {groups.map((group) => (
-            <div key={`${group.match}|${group.warmup}`} className="flex flex-col gap-1.5">
-              <p className="text-xs font-medium text-muted-foreground">
+            <Table key={`${group.match}|${group.warmup}`}>
+              <TableCaption>
                 Défaut : {group.match} min de match + {group.warmup} min d'échauffement
-              </p>
-              <ul className="flex flex-col gap-1.5">
+              </TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Catégorie</TableHead>
+                  <TableHead>Match (min)</TableHead>
+                  <TableHead>Échauffement (min)</TableHead>
+                  <TableHead>Défaut</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {group.rows.map((category) => (
                   <CategoryRow key={category.id} category={category} />
                 ))}
-              </ul>
-            </div>
+              </TableBody>
+            </Table>
           ))}
         </div>
       )}

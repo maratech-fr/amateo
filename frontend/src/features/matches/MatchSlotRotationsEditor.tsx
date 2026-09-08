@@ -1,11 +1,12 @@
 import { ChevronDown, ChevronUp, Plus, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
+import { cn } from "@/shared/lib/utils";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import type { TeamLike, TierLike } from "@/shared/lib/teamTiers";
 
@@ -35,6 +36,11 @@ function reordered<T>(list: T[], from: number, to: number): T[] {
  * `TeamLinksSection` — liste bordée inline, réordonnancement par flèches (jamais du
  * drag : sans clavier ni cible tactile fiable pour un gestionnaire de 50 ans).
  *
+ * P4-185 — « une section = un écran » : chaque créneau est une LIGNE COMPACTE
+ * (jour · heure · gymnase · équipes jointes par ⇄), dépliable (une seule à la fois,
+ * état local `expandedId`) sur sa carte d'édition ; le formulaire de création vit
+ * derrière « Ajouter un créneau partagé » et se referme à la création réussie.
+ *
  * ⚠ L'ordre est FICTIF : il dessine l'alternance à l'écran, il ne commande AUCUN
  * calendrier (décision fondateur n°4, spec §8) — dit à l'écran, jamais tu.
  *
@@ -46,6 +52,9 @@ export function MatchSlotRotationsEditor<T extends TeamLike>({ teams, tiers, ven
   const create = useCreateMatchSlotRotation();
   const update = useUpdateMatchSlotRotation();
   const remove = useDeleteMatchSlotRotation();
+
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
 
   const rotations = rotationsQuery.data ?? [];
   const venueName = (id: string): string => venues.find((v) => v.id === id)?.name ?? "Gymnase ?";
@@ -76,6 +85,8 @@ export function MatchSlotRotationsEditor<T extends TeamLike>({ teams, tiers, ven
             tiers={tiers}
             venueName={venueName}
             teamName={teamName}
+            expanded={expandedId === rotation.id}
+            onToggle={() => setExpandedId((current) => (current === rotation.id ? null : rotation.id))}
             busy={update.isPending || remove.isPending}
             onUpdate={(teamIds) => update.mutate({ id: rotation.id, input: { venueId: rotation.venueId, dayOfWeek: rotation.dayOfWeek, kickoffTime: rotation.kickoffTime, teamIds } })}
             onDelete={() => remove.mutate(rotation.id)}
@@ -83,18 +94,27 @@ export function MatchSlotRotationsEditor<T extends TeamLike>({ teams, tiers, ven
         ))}
       </ul>
 
-      <NewRotationForm teams={teams} tiers={tiers} venues={venues} teamName={teamName} creating={create.isPending} onCreate={create} />
+      {adding ? (
+        <NewRotationForm teams={teams} tiers={tiers} venues={venues} teamName={teamName} creating={create.isPending} onCreate={create} onCreated={() => setAdding(false)} />
+      ) : (
+        <Button variant="outline" size="sm" className="self-start" onClick={() => setAdding(true)}>
+          <Plus className="size-4" />
+          Ajouter un créneau partagé
+        </Button>
+      )}
     </section>
   );
 }
 
-/** Une rotation existante : le créneau lisible + ses membres ordonnés, édités en place (PUT). */
+/** Une rotation existante : ligne compacte dépliable → le créneau lisible + ses membres ordonnés, édités en place (PUT). */
 function RotationRow<T extends TeamLike>({
   rotation,
   teams,
   tiers,
   venueName,
   teamName,
+  expanded,
+  onToggle,
   busy,
   onUpdate,
   onDelete,
@@ -104,13 +124,17 @@ function RotationRow<T extends TeamLike>({
   tiers: TierLike[];
   venueName: (id: string) => string;
   teamName: (id: string) => string;
+  expanded: boolean;
+  onToggle: () => void;
   busy: boolean;
   onUpdate: (teamIds: string[]) => void;
   onDelete: () => void;
 }) {
   const [toAdd, setToAdd] = useState("");
+  const bodyId = useId();
   const available = teams.filter((t) => !rotation.teamIds.includes(t.id));
   const slotLabel = `${DAY_LABELS[rotation.dayOfWeek] ?? "?"} ${rotation.kickoffTime} · ${venueName(rotation.venueId)}`;
+  const rowLabel = `${slotLabel} · ${rotation.teamIds.map(teamName).join(" ⇄ ")}`;
 
   const addTeam = (): void => {
     if ("" === toAdd) {
@@ -121,28 +145,43 @@ function RotationRow<T extends TeamLike>({
   };
 
   return (
-    <li className="flex flex-col gap-2 rounded-md border border-border px-3 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">{slotLabel}</span>
-        <Button variant="ghost" size="icon" className="size-7" aria-label={`Supprimer le créneau ${slotLabel}`} disabled={busy} onClick={onDelete}>
+    <li className="flex flex-col rounded-md border border-border">
+      <div className="flex items-center gap-1 pr-1">
+        {/* Le SEUL bouton de dépliage porte aria-expanded ; Supprimer est son FRÈRE
+            (jamais un bouton dans un bouton, patron ReviewQueue). */}
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={expanded ? bodyId : undefined}
+          onClick={onToggle}
+          className="group flex flex-1 items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", expanded ? "rotate-180" : "")} aria-hidden />
+          <span className="min-w-0 flex-1">{rowLabel}</span>
+        </button>
+        <Button variant="ghost" size="icon" className="size-9 shrink-0" aria-label={`Supprimer le créneau ${slotLabel}`} disabled={busy} onClick={onDelete}>
           <Trash2 className="size-4" />
         </Button>
       </div>
 
-      <MemberList
-        teamIds={rotation.teamIds}
-        teamName={teamName}
-        busy={busy}
-        onReorder={(from, to) => onUpdate(reordered(rotation.teamIds, from, to))}
-        onRemove={(index) => onUpdate(rotation.teamIds.filter((_, i) => i !== index))}
-      />
+      {expanded ? (
+        <div id={bodyId} className="flex flex-col gap-2 border-t border-border px-3 py-2">
+          <MemberList
+            teamIds={rotation.teamIds}
+            teamName={teamName}
+            busy={busy}
+            onReorder={(from, to) => onUpdate(reordered(rotation.teamIds, from, to))}
+            onRemove={(index) => onUpdate(rotation.teamIds.filter((_, i) => i !== index))}
+          />
 
-      {available.length > 0 ? (
-        <div className="flex flex-wrap items-end gap-2">
-          <TeamSelect aria-label={`Ajouter une équipe au créneau ${slotLabel}`} className="w-40" teams={available} tiers={tiers} placeholder="Ajouter une équipe…" value={toAdd} onValueChange={setToAdd} />
-          <Button size="icon" className="size-9" aria-label={`Ajouter l'équipe au créneau ${slotLabel}`} title="Ajouter l'équipe" disabled={"" === toAdd || busy} onClick={addTeam}>
-            <Plus className="size-4" />
-          </Button>
+          {available.length > 0 ? (
+            <div className="flex flex-wrap items-end gap-2">
+              <TeamSelect aria-label={`Ajouter une équipe au créneau ${slotLabel}`} className="w-40" teams={available} tiers={tiers} placeholder="Ajouter une équipe…" value={toAdd} onValueChange={setToAdd} />
+              <Button size="icon" className="size-9" aria-label={`Ajouter l'équipe au créneau ${slotLabel}`} title="Ajouter l'équipe" disabled={"" === toAdd || busy} onClick={addTeam}>
+                <Plus className="size-4" />
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </li>
@@ -205,6 +244,7 @@ function NewRotationForm<T extends TeamLike>({
   teamName,
   creating,
   onCreate,
+  onCreated,
 }: {
   teams: T[];
   tiers: TierLike[];
@@ -212,6 +252,7 @@ function NewRotationForm<T extends TeamLike>({
   teamName: (id: string) => string;
   creating: boolean;
   onCreate: ReturnType<typeof useCreateMatchSlotRotation>;
+  onCreated: () => void;
 }) {
   const [venueId, setVenueId] = useState("");
   const [dayOfWeek, setDayOfWeek] = useState(6);
@@ -243,6 +284,8 @@ function NewRotationForm<T extends TeamLike>({
           setDraftTeamIds([]);
           setToAdd("");
           setVenueId("");
+          // Le geste est fini : on referme le formulaire (P4-185).
+          onCreated();
         },
         // 422 lisible SUR le formulaire (en plus du toast global) — le geste échoué
         // reste sous les yeux, avec sa raison (créneau déjà pris, équipe étrangère…).
