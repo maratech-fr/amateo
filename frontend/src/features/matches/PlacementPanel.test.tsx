@@ -23,6 +23,10 @@ const fixture: Fixture = {
   fbiVenueLabel: null,
   placementSource: null,
   unplacedReason: null,
+  reviewState: "NEW" as const,
+  reviewedAt: null,
+  pendingDeviations: [],
+  ffbbRencontreId: null,
 };
 const venues: Venue[] = [
   { id: "venue-1", name: "Gymnase Alpha", color: null },
@@ -287,11 +291,11 @@ describe("PlacementPanel", () => {
     expect(onReopen).toHaveBeenCalledOnce();
   });
 
-  it("on a VALIDATED match: French status, finality sentence, and NO exit — the league owns it", () => {
+  it("on a VALIDATED match: French status, FBI-attested sentence, and NO exit here", () => {
     renderPanel(openEnvelope, vi.fn(), { fixture: { ...placedFixture, status: "VALIDATED" } });
 
-    expect(screen.getByText("Validé ligue")).toBeInTheDocument();
-    expect(screen.getByText(/La ligue a validé ce match/)).toBeInTheDocument();
+    expect(screen.getByText("Attesté FBI")).toBeInTheDocument();
+    expect(screen.getByText(/Attesté par FBI/)).toBeInTheDocument();
     // No exit at all — not even the repair path.
     expect(screen.queryByRole("button", { name: "Corriger — repasser en Placé" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Marquer saisi dans FBI" })).not.toBeInTheDocument();

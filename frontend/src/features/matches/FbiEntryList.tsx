@@ -11,6 +11,7 @@ import { cn } from "@/shared/lib/utils";
 
 import type { Competition, Fixture, FixtureStatus, Team, Venue } from "./api";
 import { deadlineDisplay } from "./lib/deadlineLabel";
+import { FIXTURE_STATUS_LABEL } from "./lib/fixtureStatusLabel";
 
 interface FbiEntryListProps {
   /** Fixtures of the active week (already bucketed by the page). */
@@ -215,7 +216,7 @@ export function FbiEntryList({ fixtures, teams, venues, competitions, today = to
                           Corriger
                         </Button>
                       ) : "VALIDATED" === f.status ? (
-                        <span className="shrink-0 text-xs text-muted-foreground">Validé ligue</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">{FIXTURE_STATUS_LABEL.VALIDATED}</span>
                       ) : null}
                     </li>
                   );

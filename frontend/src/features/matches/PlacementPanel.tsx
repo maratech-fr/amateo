@@ -117,8 +117,9 @@ export function PlacementPanel({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const placed = "PLACED" === fixture.status;
-  // Saisi dans FBI : ancré, sortie « Corriger » possible. Validé ligue : la
-  // ligue possède le match, aucune sortie. Les deux ferment l'édition.
+  // Saisi dans FBI : ancré, sortie « Corriger » possible. Attesté FBI : posé par
+  // l'import (la source atteste le match placé), aucune sortie. Les deux ferment
+  // l'édition — mais un futur import qui diverge peut faire retomber l'attestation.
   const submitted = "SUBMITTED" === fixture.status;
   const validated = "VALIDATED" === fixture.status;
   const locked = placed && "SOLVER" !== fixture.placementSource;
@@ -163,7 +164,7 @@ export function PlacementPanel({
         ) : validated ? (
           <div className="mt-3 border-t border-border pt-3">
             <p className="text-sm font-medium">{FIXTURE_STATUS_LABEL.VALIDATED}</p>
-            <p className="mt-1 text-xs text-muted-foreground">La ligue a validé ce match. Il est définitif et ne se modifie plus ici.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Attesté par FBI : date, heure et salle renvoyées identiques. Un futur import qui diverge le signalera dans Importer.</p>
           </div>
         ) : (
           <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">

@@ -1,27 +1,19 @@
-import { Clock, DoorOpen, Link2, Radar, Repeat, Upload } from "lucide-react";
+import { DoorOpen, Repeat } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Modal } from "@/shared/components/ui/modal";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
-import { todayISO } from "@/shared/lib/clock";
-import { cn } from "@/shared/lib/utils";
-import { toast } from "@/shared/stores/toastStore";
 
 import type { Team, Venue } from "./api";
-import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { HabitsLinksDialog } from "./HabitsLinksDialog";
-import { ImportFbiDialog } from "./ImportFbiDialog";
 import { EntryDeadlinesEditor } from "./EntryDeadlinesEditor";
-import { STALE_DAYS, depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
 import { MatchDurationsEditor } from "./MatchDurationsEditor";
 import { MatchSlotRotationsEditor } from "./MatchSlotRotationsEditor";
 import { OpponentTravelCard } from "./OpponentTravelCard";
 import { MatchWindowsEditor } from "./MatchWindowsEditor";
-import { useCompetitions, useFfbbRencontres, useFixtures, useLatestFbiIngestion, useMatchSlotRotations, usePriorityTiers, useSportCategoryDurations, useTeamMatchHabits, useTeams, useVenues } from "./queries";
-import { useMatchesStore } from "./store";
+import { useCompetitions, useFixtures, useMatchSlotRotations, usePriorityTiers, useSportCategoryDurations, useTeamMatchHabits, useTeams, useVenues } from "./queries";
 import { TypicalWeekendGrid } from "./TypicalWeekendGrid";
 
 function byId<T extends { id: string }>(rows: T[] | undefined): Map<string, T> {
@@ -31,13 +23,11 @@ function byId<T extends { id: string }>(rows: T[] | undefined): Map<string, T> {
 /**
  * RMM-1 PR2 — l'espace SET-UP (rare, cadrage §3.1 / §6ter). Ce qui ne sert PAS
  * chaque semaine vit ici, hors de la boucle : l'image A/B en VEDETTE (le gabarit
- * idéal, désormais un écran de plein droit et non plus derrière un toggle), les
- * trois réglages rares (engagements FFBB, accès match, habitudes & passerelles)
- * groupés comme un cluster « règles », et — bien séparé, car c'est une opération
- * de données périodique et non un réglage — la seconde entrée d'import FBI (le
- * dépôt saisonnier, même dialogue que l'étape 1 de la boucle).
- *
- * ⚠ Les dialogues NE CHANGENT PAS : ils déménagent d'ancrage, c'est tout.
+ * idéal), les créneaux partagés, les échéances, la durée des matchs, les
+ * adversaires à localiser, et les deux réglages rares (accès match, habitudes &
+ * passerelles). Depuis PR-3b (P4-186), tout ce qui touche les DONNÉES FBI/FFBB
+ * (dépôt saisonnier, canal API, engagements) a déménagé dans l'onglet Importer :
+ * la Configuration ne porte plus que des RÉGLAGES.
  */
 export function ConfigurationPage() {
   const teams = useTeams();
@@ -48,39 +38,13 @@ export function ConfigurationPage() {
   const habitsQuery = useTeamMatchHabits();
   const rotationsQuery = useMatchSlotRotations();
   const categoryDurations = useSportCategoryDurations();
-  const freshness = useLatestFbiIngestion();
-  const navigate = useNavigate();
-  const setReconciliation = useMatchesStore((s) => s.setReconciliation);
-  // RMM-4 PR-3 — le canal API FFBB, à la demande seulement (`enabled: false`).
-  const rencontres = useFfbbRencontres(false);
 
-  const [ffbbDialogOpen, setFfbbDialogOpen] = useState(false);
   const [habitsDialogOpen, setHabitsDialogOpen] = useState(false);
   const [accessDialogOpen, setAccessDialogOpen] = useState(false);
   const [accessVenueId, setAccessVenueId] = useState("");
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
 
   const teamsMap = useMemo<Map<string, Team>>(() => byId(teams.data), [teams.data]);
   const venuesMap = useMemo<Map<string, Venue>>(() => byId(venues.data), [venues.data]);
-
-  // RMM-4 — la fraîcheur : le dernier dépôt FBI, en relatif. Escalade en warning
-  // quand aucun dépôt cette saison ou que le dernier date de plus de 30 jours.
-  const latest = freshness.data?.latest ?? null;
-  const freshDays = null !== latest ? depositDaysAgo(latest.depositedAt, todayISO()) : null;
-  const staleFreshness = null === latest || (null !== freshDays && freshDays > STALE_DAYS);
-
-  // RMM-4 PR-3 — « Vérifier via l'API FFBB » : fetch à la demande, puis la MÊME
-  // vue de réconciliation (`/matchs/reconciliation`) avec un payload canal API.
-  // Panne FFBB → message propre, jamais un crash.
-  const checkViaApi = async (): Promise<void> => {
-    const res = await rencontres.refetch();
-    if (undefined === res.data) {
-      toast.error("La FFBB est indisponible pour le moment — réessayez plus tard.");
-      return;
-    }
-    setReconciliation({ channel: "api", deviations: res.data.deviations, creatable: res.data.creatable, fetchedAt: res.data.fetchedAt });
-    void navigate("/matchs/reconciliation");
-  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -140,7 +104,7 @@ export function ConfigurationPage() {
         </CardContent>
       </Card>
 
-      {/* 2. Les trois réglages rares, groupés. */}
+      {/* 2. Les réglages rares, groupés. */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Réglages de saison</CardTitle>
@@ -150,10 +114,6 @@ export function ConfigurationPage() {
             Ce qui se règle en début de saison — rarement retouché ensuite.
           </p>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => setFfbbDialogOpen(true)}>
-              <Link2 className="size-4" />
-              Engagements FFBB
-            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -173,43 +133,9 @@ export function ConfigurationPage() {
         </CardContent>
       </Card>
 
-      {/* 3. Le dépôt saisonnier FBI — opération de données, séparée des réglages. */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Dépôt saisonnier FBI</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="mb-3 text-sm text-muted-foreground">
-            L'export FBI complet du club, en début de saison ou de phase — même dialogue que
-            l'import de la boucle hebdomadaire.
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
-              <Upload className="size-4" />
-              Importer FBI
-            </Button>
-            {/* Canal API FFBB — un CONFORT secondaire ; l'import FBI reste la référence. */}
-            <Button variant="ghost" size="sm" disabled={rencontres.isFetching} onClick={() => void checkViaApi()}>
-              <Radar className="size-4" />
-              {rencontres.isFetching ? "Vérification…" : "Vérifier via l'API FFBB"}
-            </Button>
-          </div>
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            Pré-remplit les matchs publiés par la FFBB (souvent des amicaux) — l'import FBI fait foi.
-          </p>
-          {/* RMM-4 — la fraîcheur des données FBI, sous l'entrée de dépôt. */}
-          <p className={cn("mt-3 flex items-center gap-1.5 text-sm", staleFreshness ? "text-warning" : "text-muted-foreground")}>
-            <Clock className="size-4 shrink-0" aria-hidden="true" />
-            {null === latest || null === freshDays ? "Aucun dépôt FBI cette saison." : `Dernier dépôt FBI : ${relativeDepositLabel(freshDays)}.`}
-          </p>
-        </CardContent>
-      </Card>
-
-      {ffbbDialogOpen ?<FfbbEngagementsDialog teams={teams.data ?? []} tiers={tiers.data ?? []} onClose={() => setFfbbDialogOpen(false)} /> : null}
       {habitsDialogOpen ? (
         <HabitsLinksDialog teams={teams.data ?? []} tiers={tiers.data ?? []} venues={venues.data ?? []} fixtures={fixtures.data ?? []} onClose={() => setHabitsDialogOpen(false)} />
       ) : null}
-      {importDialogOpen ? <ImportFbiDialog teams={teams.data ?? []} tiers={tiers.data ?? []} onClose={() => setImportDialogOpen(false)} /> : null}
       {accessDialogOpen ? (
         <Modal
           label="Accès match"

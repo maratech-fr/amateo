@@ -339,6 +339,10 @@ product rules — reuse them instead of rolling your own:
   the shared data table, born with the Consulter tab's month/phase lists (module matchs, 2026-09-08):
   house tokens, `scope="col"` headers, `overflow-x-auto` container (a wide table scrolls inside itself,
   the page never scrolls sideways). A new tabular list uses it; no `div` grid dressed as a table.
+- **`accordion`** (`AccordionSection`) gained an opt-in **controlled mode** (`open`/`onToggle`,
+  backward-compatible — omit both to keep the old uncontrolled state) for a caller that mirrors the
+  open section in the URL. First consumer: the Importer tab's per-team review queue
+  (`features/matches/ReviewQueue.tsx`, `?equipe=`, module matchs PR-3b 2026-09-08).
 - **`listbox`** (`Listbox`) — the shared APG single-select listbox: colour dot or icon, a
   right-aligned count ("reste N"), a second reason/precision line, and a keyboard-reachable but
   **disabled** option (visible + motivated, never dropped from the list). Built in-house because

@@ -391,10 +391,10 @@ describe("MatchesPage — filtres (PR-1)", () => {
       { id: "hors", name: "HorsPerim", sportCategoryId: "c", level: null, gender: null, priorityTierId: 3, tierOrder: 1 },
     ]);
     vi.mocked(matchesApi.getFixtures).mockResolvedValueOnce([
-      { id: "fx-sm1", teamId: "sm1", seasonId: "s", competitionId: null, matchDate: "2026-10-04", homeAway: "HOME", opponentLabel: "AlphaOpp", status: "PLACED", venueId: "venue-1", kickoffTime: "14:00", externalRef: null, fbiVenueLabel: null, placementSource: null, unplacedReason: null },
-      { id: "fx-u15", teamId: "u15m1", seasonId: "s", competitionId: null, matchDate: "2026-10-04", homeAway: "HOME", opponentLabel: "BetaOpp", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: null, fbiVenueLabel: null, placementSource: null, unplacedReason: null },
-      { id: "fx-hors", teamId: "hors", seasonId: "s", competitionId: null, matchDate: "2026-10-04", homeAway: "HOME", opponentLabel: "GammaOpp", status: "PLACED", venueId: "venue-1", kickoffTime: "18:00", externalRef: null, fbiVenueLabel: null, placementSource: null, unplacedReason: null },
-      { id: "fx-sm1-away", teamId: "sm1", seasonId: "s", competitionId: null, matchDate: "2026-10-04", homeAway: "AWAY", opponentLabel: "DeltaOpp", status: "UNPLACED", venueId: null, kickoffTime: null, fbiVenueLabel: "Halle X", externalRef: null, placementSource: null, unplacedReason: null },
+      { id: "fx-sm1", teamId: "sm1", seasonId: "s", competitionId: null, matchDate: "2026-10-04", homeAway: "HOME", opponentLabel: "AlphaOpp", status: "PLACED", venueId: "venue-1", kickoffTime: "14:00", externalRef: null, fbiVenueLabel: null, placementSource: null, unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null },
+      { id: "fx-u15", teamId: "u15m1", seasonId: "s", competitionId: null, matchDate: "2026-10-04", homeAway: "HOME", opponentLabel: "BetaOpp", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: null, fbiVenueLabel: null, placementSource: null, unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null },
+      { id: "fx-hors", teamId: "hors", seasonId: "s", competitionId: null, matchDate: "2026-10-04", homeAway: "HOME", opponentLabel: "GammaOpp", status: "PLACED", venueId: "venue-1", kickoffTime: "18:00", externalRef: null, fbiVenueLabel: null, placementSource: null, unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null },
+      { id: "fx-sm1-away", teamId: "sm1", seasonId: "s", competitionId: null, matchDate: "2026-10-04", homeAway: "AWAY", opponentLabel: "DeltaOpp", status: "UNPLACED", venueId: null, kickoffTime: null, fbiVenueLabel: "Halle X", externalRef: null, placementSource: null, unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null },
     ]);
     vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({
       clubId: "c",
@@ -443,8 +443,8 @@ describe("MatchesPage — filtres (PR-1)", () => {
     // (2026-09-05) et une future (2026-09-19) : la page doit ouvrir la future.
     setTodayOverride("2026-09-10");
     vi.mocked(matchesApi.getFixtures).mockResolvedValueOnce([
-      { id: "fx-past", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-09-05", homeAway: "HOME", opponentLabel: "Anciens", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: null, fbiVenueLabel: null, placementSource: null, unplacedReason: null },
-      { id: "fx-future", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-09-19", homeAway: "HOME", opponentLabel: "Futurs", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: null, fbiVenueLabel: null, placementSource: null, unplacedReason: null },
+      { id: "fx-past", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-09-05", homeAway: "HOME", opponentLabel: "Anciens", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: null, fbiVenueLabel: null, placementSource: null, unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null },
+      { id: "fx-future", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-09-19", homeAway: "HOME", opponentLabel: "Futurs", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: null, fbiVenueLabel: null, placementSource: null, unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null },
     ]);
     vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: [] });
     renderWithProviders(<MatchesPage />);

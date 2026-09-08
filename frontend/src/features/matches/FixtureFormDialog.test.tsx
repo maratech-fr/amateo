@@ -85,6 +85,10 @@ describe("FixtureFormDialog", () => {
     fbiVenueLabel: null,
     placementSource: "MANUAL" as const,
     unplacedReason: null,
+    reviewState: "NEW" as const,
+    reviewedAt: null,
+    pendingDeviations: [],
+    ffbbRencontreId: null,
   };
 
   it("edit mode: prefilled fields, fixed team, submits the changed identity fields", async () => {

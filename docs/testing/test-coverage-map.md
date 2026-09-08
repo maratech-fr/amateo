@@ -1,11 +1,10 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-08 (PR-3a « espace Importer », `documentation-update`). Ajouté : la ligne
-`une-rencontre-importee-dit-si-elle-est-traitee.feature` (§5 Matchs) — feature réelle
-(`ls backend/features/`, 17 fichiers, compte confronté à `.claude/skills/validation-runner/SKILL.md`)
-et son context `FixtureReviewContext` (`backend/tests/Behat/`) existent ✓. Reste du fichier non
-re-sondé cette passe — l'historique des vérifications précédentes vit dans
-`git log -p --follow docs/testing/test-coverage-map.md`.
+Last verified @ 2026-09-08 (PR-3b « espace Importer, front », `documentation-update`). Ajouté sous
+§5 Matchs : la mention de `tests/e2e/matches-importer.spec.ts` (`ls frontend/tests/e2e/`, fichier
+réel ✓) et une note sur le vocabulaire « validée ligue »/« Attesté FBI » désormais divergent entre
+le pas Gherkin et l'écran. Reste du fichier non re-sondé cette passe — l'historique des
+vérifications précédentes vit dans `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
 > prouve**, **par quel job CI**, et **ce que personne ne prouve**. Il ne remplace ni
@@ -154,7 +153,13 @@ promesses qui n'avaient jusqu'ici qu'une preuve technique (PHPUnit/pytest, illis
 | Feature | Ce qu'elle prouve |
 |---|---|
 | `placement-des-matchs.feature` | un match à domicile dans sa fenêtre d'accès est `PLACED`, un sans fenêtre reste `UNPLACED` avec la raison nommée `no_access_window` (remplace `smoke-place-matches.sh`) |
-| `une-rencontre-importee-dit-si-elle-est-traitee.feature` (PR-3a, 2026-09-08) | du premier dépôt au traitement : une rencontre importée est « à traiter », placer la traite, un re-dépôt identique la fait passer « validée ligue » (D9), un re-dépôt divergent la rend « déphasée » sans écraser la valeur app, trancher l'écart la replace « à replacer » et de nouveau traitée ; une rencontre absente d'un dépôt reste intouchée |
+| `une-rencontre-importee-dit-si-elle-est-traitee.feature` (PR-3a, 2026-09-08) | du premier dépôt au traitement : une rencontre importée est « à traiter », placer la traite, un re-dépôt identique la fait passer « validée ligue » (D9 — libellé écran recalé en « Attesté FBI » côté front, PR-3b ; le pas Gherkin, lui, garde le vieux libellé, il vérifie `status === VALIDATED`), un re-dépôt divergent la rend « déphasée » sans écraser la valeur app, trancher l'écart la replace « à replacer » et de nouveau traitée ; une rencontre absente d'un dépôt reste intouchée |
+
+Côté frontend, PR-3b (2026-09-08, même jour) : **`tests/e2e/matches-importer.spec.ts`** — l'onglet
+Importer est atteint, son badge égale le compte serveur NEW+OUT_OF_SYNC (jamais `· 0`), la
+Configuration ne porte plus le dépôt FBI ni les Engagements FFBB (P4-186), et une rencontre créée à
+la main (auto-provisionnée, nettoyée en `finally`) est déjà TRAITÉE — invisible tant que
+« Afficher les traitées » n'est pas activé (témoin qui échoue si le geste n'exerce rien).
 
 **Période (overlay, reprise, découpage, vacances)**
 

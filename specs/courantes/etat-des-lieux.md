@@ -188,18 +188,26 @@ consommée par la garde d'écriture **et** par `TeamResource.isEngaged` que le f
   nouveaux conflits par empreinte STABLE, planning de saison qui a bougé) + des chips « Nouveau »
   sur le radar de conflits — persistance légère par visite, grâce glissante de 30 min, première
   visite muette.
-- **Réconciliation FBI + canal API (RMM-4, P2-48, soldée)** : un écran « état app VS état fichier »,
-  choix par écart (date/heure/salle, jamais un écrasement silencieux), alimenté par DEUX canaux — le
-  dépôt xlsx (la vérité) et, depuis PR-3, un canal API FFBB à la demande (`FfbbRencontreReconciler`,
-  appariement 3 étages + idempotence) qui croise les rencontres publiées et propose à la création
-  celles absentes de l'app (les amicaux, jamais imposées) ; ingestion datée (fraîcheur + compteurs).
-- **Espace Importer — workflow de traitement, PR-3a (backend, 2026-09-08)** : chaque rencontre dit
-  si elle est NEW / OUT_OF_SYNC (déphasée) / REVIEWED (traitée) — axe distinct du placement,
-  `Fixture.reviewState`/`reviewedAt`/`pendingDeviations` (la trace des écarts a QUITTÉ
-  `FbiIngestion` pour la rencontre elle-même) ; `POST /api/fixtures/review` (ligne/masse) et
-  `POST /api/fixtures/review/deviations` (un écart) ; **VALIDATED n'est plus un geste** — posé par
-  l'import quand la source atteste le match placé (D9). PR-3b (frontend : onglet Importer) reste à
-  livrer.
+- **Réconciliation FBI + canal API (RMM-4, P2-48, soldée)** : le CHOIX par écart (date/heure/salle,
+  jamais un écrasement silencieux) — dépôt xlsx (la vérité) et canal API FFBB à la demande
+  (`FfbbRencontreReconciler`, appariement 3 étages + idempotence) partagent le même moteur de
+  détection ; ingestion datée (fraîcheur + compteurs). **Depuis PR-3b (2026-09-08), l'écran
+  `/matchs/reconciliation` ne sert plus qu'au canal API pour ses rencontres CRÉABLES** (absentes de
+  l'app, proposées jamais imposées) — les écarts, eux, vivent désormais dans la file de traitement
+  de l'onglet Importer (ci-dessous), quel que soit le canal qui les a détectés.
+- **Espace Importer — workflow de traitement + onglet dédié (PR-3a backend + PR-3b frontend,
+  2026-09-08, LIVRÉ EN ENTIER — clôt P4-186)** : chaque rencontre dit si elle est NEW / OUT_OF_SYNC
+  (déphasée) / REVIEWED (traitée) — axe distinct du placement, `Fixture.reviewState`/`reviewedAt`/
+  `pendingDeviations` (la trace des écarts a QUITTÉ `FbiIngestion` pour la rencontre elle-même) ;
+  `POST /api/fixtures/review` (ligne/masse) et `POST /api/fixtures/review/deviations` (un écart) ;
+  **VALIDATED n'est plus un geste** — posé par l'import quand la source atteste le match placé (D9),
+  dit « Attesté FBI » à l'écran (plus « Validé ligue »). `/matchs/importer` (`ImportPage.tsx`)
+  réunit les entrées de données (dépôt FBI, canal API, engagements, fraîcheur) et la file de
+  traitement par équipe (`ReviewQueue.tsx`, accordéon par équipe, deep-link `?equipe=`, « Tout
+  valider », écarts arbitrés champ par champ) ; badge « Importer · N » sur l'onglet. Le dépôt xlsx a
+  perdu son détour « Examiner les écarts » : il importe toujours en une passe, les écarts sont
+  consignés sur les rencontres. `ConfigurationPage` a perdu tout ce qui touchait aux données
+  FBI/FFBB (P4-186), elle ne porte plus que des réglages de saison.
 - **Rotation A/B — créneau de match partagé (RMM-5, P2-49, soldée)** : le cas SM1/SM2 (pénurie de
   créneaux → alternance sur le MÊME gymnase/jour/heure). `MatchSlotRotation` + membres ORDONNÉS
   déclarés depuis `/matchs/configuration` (flèches ↑/↓, badge A/B/C, ordre purement fictif — dit à
@@ -494,6 +502,7 @@ interdit qui n'avait aucune raison d'être. Restant hors scope : le flux `Valida
 
 | Date | Id | Sujet | Documenté dans |
 |------|----|-------|----------------|
+| 2026-09-08 | P4-186 SOLDÉ — (module matchs, PR-3b, frontend) — **l'onglet Importer branché sur l'axe traitement, la Configuration allégée** | `/matchs/importer` (`ImportPage.tsx`) : carte « Données de match » (Importer FBI, Vérifier via l'API FFBB, Engagements FFBB, fraîcheur) + file de traitement par équipe (`ReviewQueue.tsx`/`ReviewQueueRow.tsx`, accordéon `?equipe=`, « Tout valider », écarts arbitrés champ par champ Amateo/source) ; `lib/reviewQueue.ts` dérive tout côté client du même cache `useFixtures`. Badge « Importer · N » sur l'onglet (`N` = NEW+OUT_OF_SYNC, jamais `· 0`). Le dépôt xlsx a perdu son détour « Examiner les écarts » — import toujours en une passe, écarts consignés sur les rencontres. `/matchs/reconciliation` (`ReconciliationPanel` SUPPRIMÉ) ne sert plus qu'au canal API pour ses rencontres créables ; `ReconciliationPayload` réduit à `{channel: "api", creatable, fetchedAt}`. `ConfigurationPage` a perdu tout ce qui touchait aux données FBI/FFBB (P4-186, décision fondateur 2026-09-07 « du RUN, pas de la configuration ») — réglages de saison seuls. Vocabulaire D9 : `VALIDATED` se dit « Attesté FBI » (`lib/fixtureStatusLabel.ts`, `PlacementPanel.tsx`), plus « Validé ligue ». `AccordionSection` gagne un mode contrôlé optionnel (`open`/`onToggle`, rétro-compatible), premier consommateur `ReviewQueue`. Tests : vitest (`lib/reviewQueue.test.ts`, `ImportPage.test.tsx`, layout, réconciliation, dialogue, configuration, panneau, accordéon), e2e `tests/e2e/matches-importer.spec.ts`. Frontend seul, aucun axe | [`module-matchs.md`](module-matchs.md) § « Espace Importer — workflow de traitement » · [`../../frontend/docs/frontend-spec.md`](../../frontend/docs/frontend-spec.md) route `/matchs` |
 | 2026-09-08 | — (module matchs, PR-3a, backend seul) — **l'espace « Importer » : chaque rencontre dit si elle est NEW / OUT_OF_SYNC / REVIEWED** | Axe TRAITEMENT distinct du placement — `FixtureReviewState`, `Fixture.reviewState`/`reviewedAt`/`pendingDeviations` (JSON, un par champ date/kickoff/venue) ; maison unique « placer = traiter » `Fixture::setStatus`. `POST /api/fixtures/review` (ligne `fixtureIds` ou masse `teamId`, écarts sautés en masse) et `POST /api/fixtures/review/deviations` (trancher un écart, `take_source` rejoue le moteur partagé depuis la valeur PERSISTÉE). **D9** : un domicile `PLACED`/`SUBMITTED` que la source (xlsx OU API) renvoie identique sur date+heure+salle passe `VALIDATED` + traité — VALIDATED n'est plus un geste. **D7** : la trace des écarts quitte `FbiIngestion.pendingDeviations` (colonne supprimée, migration `Version20260908120000`) pour `Fixture.pendingDeviations` — les deux canaux (xlsx, API) partagent désormais le même moteur de traitement (`FbiFixtureImporter::processPerimeterFields`/`reconcileNoDivergence`, réutilisé par `FfbbRencontreReconciler::apply`). Une rencontre absente d'un dépôt n'est jamais touchée. Backend seul ; PR-3b (frontend, onglet Importer) suit | [`module-matchs.md`](module-matchs.md) § « Espace Importer — workflow de traitement (PR-3a) » |
 | 2026-09-08 | — (module matchs, PR-2b) — **Consulter : temporalités Mois et Phase, primitive `table.tsx` partagée** | Suite de PR-2a : contrôle segmenté Semaine · Mois · Phase. Mois = table groupée par jour avec navigateur ‹ mois › et compteurs de familles sur le mois ; Phase = une compétition appariée (`<select>` natif), en-tête « importées / attendues » (conflit `COMPETITION_INCOMPLETE` sinon `count/expectedMatchdays`), journées par week-end ; ligne de match commune (`MatchRowsTable.tsx` : date/heure ou « heure non publiée », équipe + rôle, dom./ext., adversaire, gymnase résolu sinon libellé FFBB « non rattaché », statut, pastilles de familles), clic → Placer. Première primitive `Table` du dépôt (`shared/components/ui/table.tsx`). Semaine byte-identique. Libs pures testées (`monthView`, `phaseView`, `urlState`, store), page et table testées, e2e étendu. Frontend seul, aucun axe | [`module-matchs.md`](module-matchs.md) § « Onglet Consulter » · [`../../frontend/docs/frontend-spec.md`](../../frontend/docs/frontend-spec.md) route `/matchs` + store · [`../../frontend/AGENTS.md`](../../frontend/AGENTS.md) § Primitives |
 | 2026-09-08 | — (module matchs, PR-2a) — **l'onglet « Consulter » : le module sépare Importer · Placer · Consulter** | Décision fondateur (« voir les matchs placés et les bugs, c'est une fonctionnalité entière ; c'est différent de placer des matchs via import ou via API »). `/matchs/consulter` en lecture seule : filtre PR-1 partagé, type de compétition (amical / championnat / coupe / brassage), semaine type affichée ou non, familles de conflits en chips avec compteur sur la semaine affichée (9 familles, libellés en table, passerelle en info), grille et extérieurs en lecture, clic → Placer ; état porté par l'URL. Chaîne pure testée (`consultFilter`, `conflictLabels`, `urlState`, store), page et onglet testés, e2e `matches-consulter.spec.ts`. Frontend seul, aucun axe. Suite : Mois · Phase (PR-2b), espace Importer (PR-3) | [`module-matchs.md`](module-matchs.md) § « Onglet Consulter » · [`../../frontend/docs/frontend-spec.md`](../../frontend/docs/frontend-spec.md) route `/matchs` + store |

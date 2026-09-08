@@ -12,6 +12,28 @@ import type { Gender, TeamLevel } from "@/shared/lib/teamIdentity";
 export type HomeAway = "HOME" | "AWAY";
 export type FixtureStatus = "UNPLACED" | "PLACED" | "SUBMITTED" | "VALIDATED";
 
+/**
+ * PR-3a — l'axe TRAITEMENT d'une rencontre (a-t-elle été EXAMINÉE par le
+ * gestionnaire), distinct de `status` (le placement). NEW = jamais examinée,
+ * OUT_OF_SYNC = déphasée (un écart pendant subsiste), REVIEWED = traitée.
+ */
+export type FixtureReviewState = "NEW" | "OUT_OF_SYNC" | "REVIEWED";
+
+/**
+ * PR-3a — un écart encore ouvert sur une rencontre, un par champ du périmètre
+ * (`date`/`kickoff`/`venue`). `channel` = la source qui l'a fait apparaître ;
+ * `autoApplied` = une valeur imposée hors périmètre pendant que le match était
+ * traité (il retombe OUT_OF_SYNC, la valeur app a déjà été déplacée).
+ */
+export interface PendingDeviation {
+  field: DeviationField;
+  appValue: string | null;
+  sourceValue: string | null;
+  channel: "FBI_XLSX" | "FFBB_API";
+  seenAt: string;
+  autoApplied: boolean;
+}
+
 export interface Fixture {
   id: string;
   teamId: string;
@@ -36,6 +58,14 @@ export interface Fixture {
    * longer affiliated to the club), else null. Distinct from the volatile auto-placement reason.
    */
   unplacedReason: "venue_lost" | null;
+  /** PR-3a — l'état de TRAITEMENT (a-t-elle été examinée), distinct de `status`. */
+  reviewState: FixtureReviewState;
+  /** PR-3a — dernier traitement (ISO), null = jamais examinée. */
+  reviewedAt: string | null;
+  /** PR-3a — les écarts encore ouverts, un par champ ; [] quand en phase. */
+  pendingDeviations: PendingDeviation[];
+  /** PR-3a — la rencontre FFBB appariée (canal API), null sinon. */
+  ffbbRencontreId: string | null;
 }
 
 export interface Competition {
@@ -302,6 +332,9 @@ function normalizeFixture(raw: Fixture): Fixture {
     fbiVenueLabel: raw.fbiVenueLabel ?? null,
     placementSource: raw.placementSource ?? null,
     unplacedReason: raw.unplacedReason ?? null,
+    pendingDeviations: raw.pendingDeviations ?? [],
+    reviewedAt: raw.reviewedAt ?? null,
+    ffbbRencontreId: raw.ffbbRencontreId ?? null,
   };
 }
 
@@ -772,6 +805,50 @@ export const getFfbbRencontres = (): Promise<FfbbRencontresResult> =>
 
 export const applyFfbbRencontres = (decisions: DeviationDecision[], creations: RencontreCreation[]): Promise<ApplyRencontresResult> =>
   api.post("ffbb/rencontres/apply", { json: { decisions, creations } }).json<ApplyRencontresResult>();
+
+// ── Traitement des rencontres (PR-3a — la file « Importer ») ─────────────────
+// L'axe TRAITEMENT (`reviewState`) est écrit par deux gestes seulement ; un PUT
+// n'y touche jamais. Les compteurs par équipe sont dérivés côté client.
+
+/**
+ * PR-3a — le geste de traitement, EXACTEMENT un des deux : `{fixtureIds}` (geste
+ * LIGNE — chaque rencontre listée traitée, ses écarts pendants vidés, « garder
+ * l'app » implicite) OU `{teamId}` (geste MASSE — toutes les rencontres de
+ * l'équipe traitées SAUF celles à écart pendant, sautées et nommées dans
+ * `skipped`, jamais tranchées en masse).
+ */
+export type ReviewFixturesBody = { fixtureIds: string[] } | { teamId: string };
+
+export interface ReviewFixturesResult {
+  reviewed: number;
+  skipped: { fixtureId: string; reason: string }[];
+}
+
+export const reviewFixtures = (body: ReviewFixturesBody): Promise<ReviewFixturesResult> =>
+  api.post("fixtures/review", { json: body }).json<ReviewFixturesResult>();
+
+/**
+ * PR-3a — tranche UN écart pendant d'une rencontre. `take_source` REJOUE le
+ * moteur partagé côté serveur à partir de la valeur PERSISTÉE de l'écart (jamais
+ * une valeur du client) : date/salle dé-placent le match (UNPLACED), heure reste
+ * en place. `keep_app` retire l'écart sans écrire. Dernier écart retiré →
+ * REVIEWED + horodatée.
+ */
+export interface ResolveDeviationInput {
+  fixtureId: string;
+  field: DeviationField;
+  choice: "keep_app" | "take_source";
+}
+
+export interface ResolveDeviationResult {
+  fixtureId: string;
+  reviewState: FixtureReviewState;
+  reviewedAt: string | null;
+  pendingDeviations: PendingDeviation[];
+}
+
+export const resolveFixtureDeviation = (input: ResolveDeviationInput): Promise<ResolveDeviationResult> =>
+  api.post("fixtures/review/deviations", { json: input }).json<ResolveDeviationResult>();
 
 export const createFixture = (input: CreateFixtureInput): Promise<Fixture> =>
   api.post("fixtures", { json: { competitionId: null, ...input } }).json<Fixture>();
