@@ -10,6 +10,7 @@ use App\Service\FbiFixtureImporter;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SocleGuard;
+use DateMalformedStringException;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -83,7 +84,14 @@ final class ReviewFixtureDeviationController extends AbstractController
         $now = DateTimeImmutable::createFromInterface($this->clock->now());
         if ('take_source' === $choice) {
             // Rejoue le moteur partagé À PARTIR DE LA VALEUR PERSISTÉE (jamais du client).
-            $this->importer->applyFieldTakeFile($fixture, $field, $this->rowFromEntry($fixture, $field, $entry), $now);
+            try {
+                $row = $this->rowFromEntry($fixture, $field, $entry);
+            } catch (DateMalformedStringException) {
+                // La valeur persistée vient de l'import (Y-m-d / H:i) ; illisible = donnée
+                // corrompue, jamais un 500 (revue sécurité PR-3a).
+                return $this->json(['error' => 'La valeur de la source pour cet écart est illisible.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+            $this->importer->applyFieldTakeFile($fixture, $field, $row, $now);
         }
         $fixture->removePendingDeviation($field);
 

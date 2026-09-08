@@ -34,6 +34,9 @@ use Symfony\Component\Routing\Attribute\Route;
 #[AsController]
 final class ReviewFixturesController extends AbstractController
 {
+    /** Une saison de club tient en quelques centaines de rencontres : au-delà, geste d'équipe. */
+    private const MAX_FIXTURE_IDS = 500;
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly ManagementAccessGuard $managementAccessGuard,
@@ -58,6 +61,14 @@ final class ReviewFixturesController extends AbstractController
 
         $fixtureIds = $this->stringList($body['fixtureIds'] ?? null);
         $teamId = \is_string($body['teamId'] ?? null) && '' !== $body['teamId'] ? $body['teamId'] : null;
+
+        // Plafond par requête : au-delà, c'est un geste d'équipe (revue sécurité PR-3a).
+        if (null !== $fixtureIds && \count($fixtureIds) > self::MAX_FIXTURE_IDS) {
+            return $this->json(
+                ['error' => \sprintf('Au plus %d rencontres par requête — utilisez le geste par équipe.', self::MAX_FIXTURE_IDS)],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
 
         // Exactement un des deux gestes.
         if ((null !== $fixtureIds) === (null !== $teamId)) {
