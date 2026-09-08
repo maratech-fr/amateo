@@ -340,6 +340,7 @@ final class MatchConflictDetectorTest extends TestCase
         // team placed the same way stays SILENT (tolerant join, PR D decision).
         $mapped = $this->fixture('fx-1', self::TEAM_1, '2026-10-04', '17:30'); // Sunday
         $mapped->setVenueId('venue-mateo');
+        $mapped->setCompetitionId('comp-1'); // real competition → the league envelope applies (only friendlies are exempt, P4-190)
         $unmapped = $this->fixture('fx-2', self::TEAM_2, '2026-10-04', '17:30');
         $unmapped->setVenueId('venue-mateo');
         $envelope = [self::TEAM_1 => [$this->leagueWindow(6, '14:00', '20:00')], self::TEAM_2 => []];
@@ -353,6 +354,34 @@ final class MatchConflictDetectorTest extends TestCase
         $inside = $this->fixture('fx-3', self::TEAM_1, '2026-10-03', '15:00'); // Saturday
         $inside->setVenueId('venue-mateo');
         self::assertSame([], $this->detect([$inside, $unmapped], [], null, [], [], [], [], [], [], $envelope));
+    }
+
+    public function testAFriendlyIsNeverALeagueWindowViolation(): void
+    {
+        // P4-190 (fondateur, 2026-09-08): a friendly (competitionId null) answers
+        // to no FFBB league envelope. The real case: SM1 (paired PNM, Sat/Sun
+        // windows) with a HOME amical placed outside every window must NOT scream
+        // « Hors fenêtre autorisée par la ligue ».
+        $friendly = $this->fixture('fx-1', self::TEAM_1, '2026-10-04', '17:30'); // Sunday, competitionId null → amical
+        $friendly->setVenueId('venue-mateo');
+        $envelope = [self::TEAM_1 => [$this->leagueWindow(6, '14:00', '20:00')]]; // Saturday only
+
+        self::assertSame([], $this->detect([$friendly], [], null, [], [], [], [], [], [], $envelope));
+    }
+
+    public function testAFriendlyInAVenueCollisionStillScreamsButNeverForTheLeague(): void
+    {
+        // The amical is lifted from LEAGUE_WINDOW_VIOLATION only (P4-190) — every
+        // other family still applies: a gym clash still screams VENUE_OVERLAP.
+        $left = $this->fixture('fx-1', self::TEAM_1, '2026-10-04', '17:30'); // Sunday amical, outside the Saturday window
+        $left->setVenueId('venue-mateo');
+        $right = $this->fixture('fx-2', self::TEAM_2, '2026-10-04', '17:30');
+        $right->setVenueId('venue-mateo');
+        $envelope = [self::TEAM_1 => [$this->leagueWindow(6, '14:00', '20:00')]]; // Saturday only
+
+        $types = array_column($this->detect([$left, $right], [], null, [], [], [], [], [], [], $envelope), 'type');
+        self::assertContains('VENUE_OVERLAP', $types);
+        self::assertNotContains('LEAGUE_WINDOW_VIOLATION', $types);
     }
 
     public function testAccessWindowLostFollowsThePanelRule(): void

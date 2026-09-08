@@ -307,6 +307,13 @@ final class MatchConflictDetector
             if (FixtureHomeAway::HOME !== $fixture->getHomeAway() || !$kickoffTime instanceof DateTimeImmutable) {
                 continue;
             }
+            // Un amical (competitionId null) n'obéit à aucune enveloppe de ligue
+            // FFBB : il ne peut donc jamais être « hors fenêtre autorisée par la
+            // ligue » (décision fondateur, 2026-09-08, P4-190). Les autres
+            // familles (VENUE_OVERLAP, MATCH_MATCH…) continuent de s'appliquer.
+            if (null === $fixture->getCompetitionId()) {
+                continue;
+            }
             $windows = $envelope[$fixture->getTeamId()] ?? [];
             if ([] === $windows) {
                 continue;
