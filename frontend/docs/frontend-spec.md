@@ -4,13 +4,11 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-09-06 (`documentation-update`, PR P4-164 PR-1). Recalé pour la primitive
-`Listbox` et `team-select` (arborescence `shared/components/ui/` + section « Trois pièces
-transverses ») : `listbox.tsx` et `team-select.tsx` reconfrontés au code, `onValueChange`/
-`optionMeta`/couleur du niveau vérifiés (`shared/components/ui/team-select.tsx`). Reste du fichier
-(§2 « Routes / Objectives », le reste des primitives, stack, §6.7 bis) non re-vérifié cette passe
-— un stamp REMPLACE, l'historique vit dans git :
-`git log -p --follow frontend/docs/frontend-spec.md`.
+Last verified @ 2026-09-08 (`documentation-update`, PR-1 filtres du module matchs). Recalé : ligne de
+route `/matchs` (barre `MatchesFilterBar.tsx`, dérivation `lib/matchFilter.ts`, URL `lib/urlState.ts`,
+`resolveActiveWeekend` dans `lib/weekendGrid.ts`) et ligne du store `matches` (`filterMode`/`filterIds`)
+reconfrontées au code ; primitives `listbox.tsx`/`team-select.tsx` (P4-164) toujours présentes dans
+`shared/components/ui/`. Reste du fichier non re-sondé cette passe.
 
 ---
 
