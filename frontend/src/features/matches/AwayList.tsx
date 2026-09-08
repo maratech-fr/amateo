@@ -21,8 +21,12 @@ interface AwayListProps {
   travel?: OpponentTravel[];
   /** PR-1 — en vue coach : rôle du coach filtré sur l'équipe, affiché en pastille. */
   coachRoles?: Map<string, CoachTeamRole>;
-  onEdit: (fixture: Fixture) => void;
-  onDelete: (fixture: Fixture) => void;
+  /**
+   * PR-2a — actions OPTIONNELLES : l'onglet Consulter rend la bande en LECTURE
+   * SEULE (aucun handler ⇒ ni crayon ni corbeille). La boucle (Placer) les fournit.
+   */
+  onEdit?: (fixture: Fixture) => void;
+  onDelete?: (fixture: Fixture) => void;
 }
 
 /**
@@ -33,6 +37,7 @@ interface AwayListProps {
  * as FBI ships it (never one of our venues).
  */
 export function AwayList({ fixtures, teams, habits, travel = [], coachRoles, onEdit, onDelete }: AwayListProps) {
+  const readOnly = undefined === onEdit && undefined === onDelete;
   const [toDelete, setToDelete] = useState<Fixture | null>(null);
   const away = fixtures.filter((f) => "AWAY" === f.homeAway).sort((a, b) => a.matchDate.localeCompare(b.matchDate));
   const travelByOpponent = new Map(travel.map((t) => [t.opponentLabel.toLowerCase(), t]));
@@ -73,14 +78,20 @@ export function AwayList({ fixtures, teams, habits, travel = [], coachRoles, onE
                 {estimated ? <span className="ml-1 rounded bg-muted px-1 text-xs uppercase tracking-wide">heure estimée</span> : null}
                 <AwayTravelChip travel={travelInfo} />
               </span>
-              <span className="flex shrink-0 gap-1">
-                <Button variant="ghost" size="sm" aria-label={`Modifier le match contre ${fixture.opponentLabel}`} onClick={() => onEdit(fixture)}>
-                  <Pencil className="size-3.5" />
-                </Button>
-                <Button variant="ghost" size="sm" aria-label={`Supprimer le match contre ${fixture.opponentLabel}`} onClick={() => setToDelete(fixture)}>
-                  <Trash2 className="size-3.5" />
-                </Button>
-              </span>
+              {readOnly ? null : (
+                <span className="flex shrink-0 gap-1">
+                  {undefined !== onEdit ? (
+                    <Button variant="ghost" size="sm" aria-label={`Modifier le match contre ${fixture.opponentLabel}`} onClick={() => onEdit(fixture)}>
+                      <Pencil className="size-3.5" />
+                    </Button>
+                  ) : null}
+                  {undefined !== onDelete ? (
+                    <Button variant="ghost" size="sm" aria-label={`Supprimer le match contre ${fixture.opponentLabel}`} onClick={() => setToDelete(fixture)}>
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  ) : null}
+                </span>
+              )}
             </li>
           );
         })}
@@ -93,7 +104,7 @@ export function AwayList({ fixtures, teams, habits, travel = [], coachRoles, onE
         confirmLabel="Supprimer"
         destructive
         onConfirm={() => {
-          if (null !== toDelete) {
+          if (null !== toDelete && undefined !== onDelete) {
             onDelete(toDelete);
           }
           setToDelete(null);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyFilterToParams, decodeFilterParams } from "./urlState";
+import { applyConsultToParams, applyFilterToParams, decodeConsultParams, decodeFilterParams } from "./urlState";
 
 describe("decodeFilterParams", () => {
   it("params absents ⇒ equipe / aucune sélection", () => {
@@ -38,5 +38,49 @@ describe("applyFilterToParams", () => {
     expect(out.get("autre")).toBe("1");
     expect(out.get("vue")).toBe("coach");
     expect(out.get("filtre")).toBe("c1");
+  });
+});
+
+describe("decodeConsultParams (PR-2a)", () => {
+  it("params absents ⇒ kinds/families null (= tout), semaine type affichée, temps semaine", () => {
+    expect(decodeConsultParams(new URLSearchParams(""))).toEqual({ kinds: null, families: null, typicalWeek: true, temps: "semaine" });
+  });
+
+  it("type ⇒ liste filtrée sur les valeurs connues, dédoublonnée", () => {
+    expect(decodeConsultParams(new URLSearchParams("type=coupe,amical,coupe,ghost")).kinds).toEqual(["coupe", "amical"]);
+  });
+
+  it("conflits ⇒ liste de familles filtrée sur les valeurs connues", () => {
+    expect(decodeConsultParams(new URLSearchParams("conflits=MATCH_MATCH,GHOST,TEAM_LINK_OVERLAP")).families).toEqual(["MATCH_MATCH", "TEAM_LINK_OVERLAP"]);
+  });
+
+  it("type_semaine=0 ⇒ semaine type masquée ; 1/absent ⇒ affichée", () => {
+    expect(decodeConsultParams(new URLSearchParams("type_semaine=0")).typicalWeek).toBe(false);
+    expect(decodeConsultParams(new URLSearchParams("type_semaine=1")).typicalWeek).toBe(true);
+  });
+
+  it("temps n'accepte que semaine (valeur inconnue ⇒ repli semaine)", () => {
+    expect(decodeConsultParams(new URLSearchParams("temps=mois")).temps).toBe("semaine");
+  });
+});
+
+describe("applyConsultToParams (PR-2a)", () => {
+  it("défauts (tout coché, semaine type) ⇒ aucun param", () => {
+    expect(applyConsultToParams(new URLSearchParams(""), { kinds: null, families: null, typicalWeek: true, temps: "semaine" }).toString()).toBe("");
+  });
+
+  it("sélection partielle de types ⇒ type écrit ; semaine type masquée ⇒ type_semaine=0", () => {
+    const out = applyConsultToParams(new URLSearchParams(""), { kinds: ["amical", "coupe"], families: null, typicalWeek: false, temps: "semaine" });
+    expect(out.get("type")).toBe("amical,coupe");
+    expect(out.get("type_semaine")).toBe("0");
+    expect(out.get("conflits")).toBeNull();
+  });
+
+  it("familles partielles ⇒ conflits écrit", () => {
+    expect(applyConsultToParams(new URLSearchParams(""), { kinds: null, families: ["MATCH_MATCH"], typicalWeek: true, temps: "semaine" }).get("conflits")).toBe("MATCH_MATCH");
+  });
+
+  it("préserve les params sans rapport", () => {
+    expect(applyConsultToParams(new URLSearchParams("autre=1"), { kinds: null, families: null, typicalWeek: true, temps: "semaine" }).get("autre")).toBe("1");
   });
 });

@@ -85,3 +85,34 @@ describe("useMatchesStore — filtre de la vue Semaine (PR-1)", () => {
     expect(useMatchesStore.getState().filterMode).toBe("coach");
   });
 });
+
+describe("useMatchesStore — filtres Consulter (PR-2a)", () => {
+  beforeEach(() => {
+    useMatchesStore.setState({ consultKinds: null, consultFamilies: null, consultTypicalWeek: true });
+  });
+
+  it("défauts : kinds/families null (= tout), semaine type affichée", () => {
+    expect(useMatchesStore.getState().consultKinds).toBeNull();
+    expect(useMatchesStore.getState().consultFamilies).toBeNull();
+    expect(useMatchesStore.getState().consultTypicalWeek).toBe(true);
+  });
+
+  it("setConsultKinds pose la sélection de types de compétition", () => {
+    useMatchesStore.getState().setConsultKinds(["amical", "coupe"]);
+    expect(useMatchesStore.getState().consultKinds).toEqual(["amical", "coupe"]);
+    useMatchesStore.getState().setConsultKinds(null);
+    expect(useMatchesStore.getState().consultKinds).toBeNull();
+  });
+
+  it("setConsultFamilies pose la sélection de familles de conflits", () => {
+    useMatchesStore.getState().setConsultFamilies(["MATCH_MATCH"]);
+    expect(useMatchesStore.getState().consultFamilies).toEqual(["MATCH_MATCH"]);
+    useMatchesStore.getState().setConsultFamilies(null);
+    expect(useMatchesStore.getState().consultFamilies).toBeNull();
+  });
+
+  it("setConsultTypicalWeek bascule la semaine type", () => {
+    useMatchesStore.getState().setConsultTypicalWeek(false);
+    expect(useMatchesStore.getState().consultTypicalWeek).toBe(false);
+  });
+});

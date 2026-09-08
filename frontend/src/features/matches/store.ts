@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
-import type { Deviation, FbiMapping, RencontreCreatable } from "./api";
+import type { ConflictType, Deviation, FbiMapping, RencontreCreatable } from "./api";
+import type { Kind } from "./lib/consultFilter";
 import type { LoopStepId } from "./lib/loopSteps";
 import type { MatchFilterMode } from "./lib/matchFilter";
 
@@ -51,6 +52,16 @@ interface MatchesState {
    */
   filterMode: MatchFilterMode;
   filterIds: string[];
+  /**
+   * PR-2a — filtres de l'onglet Consulter. `null` = tout coché (le défaut, jamais
+   * sérialisé) ; un tableau = la sélection explicite (éventuellement vide). Non
+   * persisté (l'URL `?type=&conflits=&type_semaine=` porte le deep-link). Séparés
+   * du filtre PR-1 (`filterMode`/`filterIds`), qui vaut sur les DEUX routes.
+   */
+  consultKinds: Kind[] | null;
+  consultFamilies: ConflictType[] | null;
+  /** Semaine type = les ghosts d'habitude sur la grille ; affichée par défaut. */
+  consultTypicalWeek: boolean;
   setSelectedWeekend: (key: string | null) => void;
   setRailStep: (step: LoopStepId | null) => void;
   setUnplacedReasons: (reasons: Map<string, string>) => void;
@@ -62,6 +73,9 @@ interface MatchesState {
   setFilterMode: (mode: MatchFilterMode) => void;
   toggleFilterId: (id: string) => void;
   clearFilter: () => void;
+  setConsultKinds: (kinds: Kind[] | null) => void;
+  setConsultFamilies: (families: ConflictType[] | null) => void;
+  setConsultTypicalWeek: (typicalWeek: boolean) => void;
 }
 
 /** Per-session UI state — nothing worth persisting (selections are ephemeral). */
@@ -76,6 +90,9 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   reconciliation: null,
   filterMode: "equipe",
   filterIds: [],
+  consultKinds: null,
+  consultFamilies: null,
+  consultTypicalWeek: true,
   // Changer de semaine remet la vue à l'auto (le premier trou de la NOUVELLE
   // semaine) — le rail ne « saute » jamais SOUS l'utilisateur, mais une autre
   // semaine est un autre contexte : on repart de son premier trou. Les raisons
@@ -95,4 +112,7 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   toggleFilterId: (id) =>
     set((state) => ({ filterIds: state.filterIds.includes(id) ? state.filterIds.filter((x) => x !== id) : [...state.filterIds, id], railStep: null })),
   clearFilter: () => set({ filterIds: [] }),
+  setConsultKinds: (consultKinds) => set({ consultKinds }),
+  setConsultFamilies: (consultFamilies) => set({ consultFamilies }),
+  setConsultTypicalWeek: (consultTypicalWeek) => set({ consultTypicalWeek }),
 }));
