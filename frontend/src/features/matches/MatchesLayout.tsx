@@ -56,6 +56,11 @@ export function MatchesLayout() {
         <NavLink to="/matchs" end className={linkClass}>
           Semaine
         </NavLink>
+        {/* PR-2a — l'espace « se rendre compte » : matchs placés + conflits, filtrés,
+            en lecture seule (temporalité Semaine ; 2b ajoutera mois/phase). */}
+        <NavLink to="/matchs/consulter" className={linkClass}>
+          Consulter
+        </NavLink>
         <NavLink to="/matchs/configuration" className={linkClass}>
           Configuration
         </NavLink>

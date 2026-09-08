@@ -1,12 +1,18 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-09-05 (rotation `documentation-update`, hors sujet de la PR — P4-173). Re-confronté
-au code, sans écart : hosts en constantes dures (`Service/Basketball/FfbbApiClient.php:24-25`,
-`CONFIG_URL`/`SEARCH_URL`) ✓ · routes `GET /api/ffbb/rencontres` + `POST
-/api/ffbb/rencontres/apply` (`Controller/Basketball/FfbbRencontresController.php:66,87`) ✓. Non
+Last verified @ 2026-09-08 (rotation de fraîcheur `documentation-update`, PR-2a Consulter module
+matchs — fichier hors sujet). Re-confronté au code, sans écart : hosts en constantes dures
+(`Service/Basketball/FfbbApiClient.php:24-25`, `CONFIG_URL`/`SEARCH_URL`) ✓ · routes `GET
+/api/ffbb/rencontres` + `POST /api/ffbb/rencontres/apply`
+(`Controller/Basketball/FfbbRencontresController.php:66,87`) ✓ · routes `GET /api/ffbb/engagements`
++ `POST /api/ffbb/engagements/confirm` (`Controller/Basketball/FfbbEngagementsController.php:62,109`)
+✓ · routes `GET /api/ffbb/salles` + `GET /api/ffbb/salles-proches`
+(`Controller/Basketball/FfbbSallesController.php:47,83`) ✓ · index unique partiel
+`uniq_fixture_ffbb_rencontre` sur `Fixture.ffbbRencontreId`
+(`Entity/Fixture.php:36`) ✓ · `PATCH /api/club/info` absent du code (grep zéro résultat) ✓. Non
 re-sondé cette passe : le filtre strict serveur de `searchRencontres`, fallback
-`FFBB_MEILISEARCH_TOKEN`, `FfbbClubPopulator::applyClub`, `FfbbEngagementsController`, le cadrage
-archivé, la mesure « 36 hits BCCL / 1 052 documents » (donnée externe, non re-sondée).
+`FFBB_MEILISEARCH_TOKEN`, `FfbbClubPopulator::applyClub`, le cadrage archivé, la mesure « 36 hits
+BCCL / 1 052 documents » (donnée externe, non re-sondée).
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit rester dans la **liste blanche de hosts** du client (SSRF, A12). Vérifié le 2026-07-10 sur le code réel `ARA0069036` (BCCL).
 

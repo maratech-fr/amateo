@@ -42,17 +42,28 @@ export function weekendLabel(saturdayKey: string): string {
 }
 
 /**
- * RMM-1 PR3 (L7) — la SEMAINE calendaire est l'axe primaire : « Semaine du {lundi}
- * au {dimanche} », le grain réel du gestionnaire sur FBI. Le bucket reste le
- * samedi de la semaine Lun→Dim (`weekendKeyOf`) — on n'étiquette que ses bornes.
+ * Bornes calendaires (Y-m-d) de la semaine Lun→Dim contenant un bucket week-end
+ * (`saturdayKey` = son samedi) : lundi = samedi − 5, dimanche = samedi + 1. Maison
+ * unique de cette dérivation, partagée par `weekLabel` (l'étiquette) et le scoping
+ * des conflits de l'onglet Consulter (PR-2a) — pas de duplication du calcul lundi/dimanche.
  */
-export function weekLabel(saturdayKey: string): string {
+export function weekBounds(saturdayKey: string): { monday: string; sunday: string } {
   const saturday = new Date(`${saturdayKey}T00:00:00`);
   const monday = new Date(saturday);
   monday.setDate(saturday.getDate() - 5);
   const sunday = new Date(saturday);
   sunday.setDate(saturday.getDate() + 1);
-  const fmt = (d: Date): string => d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+  return { monday: toYmd(monday), sunday: toYmd(sunday) };
+}
+
+/**
+ * RMM-1 PR3 (L7) — la SEMAINE calendaire est l'axe primaire : « Semaine du {lundi}
+ * au {dimanche} », le grain réel du gestionnaire sur FBI. Le bucket reste le
+ * samedi de la semaine Lun→Dim (`weekendKeyOf`) — on n'étiquette que ses bornes.
+ */
+export function weekLabel(saturdayKey: string): string {
+  const { monday, sunday } = weekBounds(saturdayKey);
+  const fmt = (ymd: string): string => new Date(`${ymd}T00:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
   return `Semaine du ${fmt(monday)} au ${fmt(sunday)}`;
 }
 

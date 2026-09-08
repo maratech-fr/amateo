@@ -1,20 +1,8 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-08 (P4-190, `documentation-update` — § Détection : les amicaux échappent à la règle des
-fenêtres ligue, confronté à `MatchConflictDetector::leagueWindowViolations` ; section « Filtres par équipe /
-coach / gymnase » (PR-1, même jour) re-confrontée à `MatchesFilterBar.tsx`, `lib/matchFilter.ts`, `lib/urlState.ts`). Re-confronté au code : route `POST /api/fixtures/place`
-(`PlaceMatchesController.php:60`, gate `ManagementAccessGuard` + `SocleGuard::assertSeasonPlanChosen`
-à `:71`) ✓ · `MatchPlacementLock` distinct du verrou de génération (`MatchPlacementLock.php:18`,
-injecté `PlaceMatchesController.php:52`) ✓ · endpoints engine `/generate`/`/place-matches`/
-`/validate-assignments` (`engine/app/main.py:833,854,874`) ✓ · entités `VenueMatchWindow`/
-`TeamMatchHabit`/`MatchSlotRotation` présentes telles que décrites (`backend/src/Entity/`) ✓ ·
-commande `app:league-windows:seed` (`SeedLeagueWindowsCommand.php:25`) ✓ · seed WE
-`BcclSeeder::seedWeekendMatchLayout` (`backend/src/Seed/BcclSeeder.php:1374`) ✓ · raison
-`no_access_window` toujours club-wide (`engine/app/solver/match_placement.py:117`, bracket
-113-118 toujours valide) ✓. Reste du fichier non re-balayé ligne à ligne cette passe (fichier
-long, hors sujet de la PR courante) — un stamp REMPLACE, l'historique vit dans git :
-`git log -p --follow specs/courantes/module-matchs.md`
-
+Last verified @ 2026-09-08 (PR-2a Consulter, `documentation-update` — nouvelle section « Onglet Consulter »
+confrontée à `ConsultPage.tsx`, `lib/consultFilter.ts`, `lib/conflictLabels.ts`, `MatchesLayout.tsx`, `app/routes.tsx` ;
+sections « Filtres » (PR-1) et « Détection » (P4-190) du même jour re-confrontées).
 > Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
 > [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés
 > pour l'exécution le 2026-08-02** par
@@ -892,9 +880,39 @@ part : une barre de filtres sur la vue Semaine, même patron que `/planning`.
 - **URL** : `?vue=equipe|coach|gymnase&filtre=id,id` (`lib/urlState.ts`) — lu une fois au montage (patron deep-link du
   wizard), écrit en `replace` à chaque changement ; ids inconnus ignorés. Premier état de filtre du dépôt porté par
   l'URL (`/planning` reste sur son store seul).
-- **Lecture seule** : aucun geste nouveau. Suite prévue (PR-2) : temporalité Semaine · Mois · Phase.
+- **Lecture seule** : aucun geste nouveau. Suite : l'onglet Consulter (PR-2a, ci-dessous) puis Mois · Phase (PR-2b).
 - Dette relevée en chemin, hors périmètre : `Échap` ne ferme pas la puce `ResourceFilter` (fond de fermeture plein
   écran qui intercepte les clics) — roadmap **P4-184**.
+
+## Onglet « Consulter » — le module sépare Importer · Placer · Consulter (PR-2a, 2026-09-08)
+
+Décision fondateur (2026-09-08, après la mesure sur ses rencontres réelles) : **importer** (faire entrer les rencontres,
+FBI xlsx ou API FFBB — futur espace, PR-3), **placer** (la boucle Semaine) et **consulter** (« voir les matchs placés
+et les bugs, c'est une fonctionnalité entière ») sont trois espaces. Nav `MatchesLayout` : **Semaine · Consulter ·
+Configuration** ; l'onglet Importer naîtra avec sa page (un onglet mort serait pire que son absence).
+
+`/matchs/consulter` (`ConsultPage.tsx`) — **lecture seule** : aucune mutation, ni rail, ni panneau de placement.
+
+- **Filtre PR-1 partagé** avec Semaine (même `filterMode/filterIds`, même URL `?vue=&filtre=`) : « Thomas » suit le
+  gestionnaire d'un onglet à l'autre.
+- **Type de compétition** (chips multi, défaut tout) : amical = `competitionId` null ; championnat / coupe / brassage =
+  `Competition.competitionType`. ⚠ Une rencontre FFBB d'une compétition non appariée (coupes jeunes…) arrive sans
+  `competitionId` et se range donc sous « Amical » — roadmap P4-194. Un conflit suit ses rencontres référencées ; un calendrier incomplet suit sa
+  compétition ; un conflit sans rencontre ni compétition reste visible tant que « tout » est coché.
+- **Semaine type** (interrupteur, affichée par défaut) : la grille avec ou sans les cases « Habitude … ».
+- **Familles de conflits** (chips avec compteur, défaut tout coché) — les 9 `ConflictType`, libellés en table
+  (`lib/conflictLabels.ts`) : collision de gymnase, hors fenêtre ligue, coach en double, match × entraînement,
+  passerelle (info), placement fragilisé, calendrier incomplet, gymnase indisponible, extérieur sans heure. Le
+  **compteur porte sur la temporalité affichée** (la semaine lundi→dimanche du week-end actif ; un conflit sans
+  date est toujours compté) — le radar de Placer compte « tous ceux de la personne », son rail « ceux de la
+  semaine » : Consulter tranche. Une chip décochée garde son compteur (compté avant le filtre de famille).
+- **Chaîne pure** (`lib/consultFilter.ts`) : `applyMatchFilter` → `applyKindFilter` → `scopeConflictsToWeek` →
+  `countByFamily` → `applyFamilyFilter`, pass-through des mêmes références quand tout est coché.
+- **Grille + extérieurs en lecture** (`WeekendGrid`, `AwayList` sans ses actions), radar nourri des conflits filtrés ;
+  clic sur un match → Placer sur son week-end. Navigateur ‹ › et `resolveActiveWeekend` comme Semaine.
+- **URL** : `type=amical,championnat,coupe,brassage`, `conflits=<familles>`, `type_semaine=0|1` (absent = défaut).
+- Hors périmètre, à suivre : Mois · Phase (PR-2b, primitive `table.tsx` partagée à créer), Importer (PR-3 : file de
+  traitement persistée, reprise). P4-192 reste ouvert (l'atterrissage de Placer).
 
 ## Refonte UX — RMM-1 (P2-26, 4 PR entre 2026-08-23 et 2026-08-24)
 

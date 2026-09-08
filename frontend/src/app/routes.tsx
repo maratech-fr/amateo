@@ -151,6 +151,12 @@ export const routes: RouteObject[] = [
                 lazy: async () => ({ Component: (await import("@/features/matches/MatchesPage")).MatchesPage }),
               },
               {
+                // PR-2a — l'espace « Consulter » (lecture seule, temporalité Semaine).
+                // Route lazy sœur de la boucle ; garde socle héritée du layout.
+                path: "consulter",
+                lazy: async () => ({ Component: (await import("@/features/matches/ConsultPage")).ConsultPage }),
+              },
+              {
                 path: "configuration",
                 lazy: async () => ({ Component: (await import("@/features/matches/ConfigurationPage")).ConfigurationPage }),
               },

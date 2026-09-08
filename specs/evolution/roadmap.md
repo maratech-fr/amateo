@@ -1,4 +1,4 @@
-# Roadmap (62) — ce qui reste à faire
+# Roadmap (63) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -129,8 +129,9 @@
 
 ### Module matchs — mesuré sur les 18 rencontres FFBB réelles du BCCL (2026-09-08)
 
-> Ordre fondateur : (1) filtres + temporalité — PR-1 filtres livrée, PR-2 Mois/Phase à suivre ; (2) ergonomie
-> P4-185/P4-186 ; (3) gymnase depuis le libellé P4-187 ; puis le détecteur.
+> Ordre fondateur : (1) Consulter — PR-1 filtres et PR-2a onglet livrés, PR-2b Mois/Phase à suivre ; puis
+> l'espace Importer (PR-3 : file de traitement persistée, reprise) ; (2) ergonomie P4-185/P4-186 ; (3) gymnase
+> depuis le libellé P4-187 ; puis le détecteur (P4-188/189/191/193).
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
@@ -141,6 +142,7 @@
 | P4-188 | **Faux négatif match↔entraînement pendant une fermeture DÉCOUPÉE** : la racine sans plan capture la date | 🟠 | S | `EffectiveScheduleResolver::resolve` (`backend/src/Service/EffectiveScheduleResolver.php:30-33`) rend la PREMIÈRE période couvrant la date ; `findActivePeriodsOrdered` (`CalendarEntryRepository.php`, `ORDER BY startDate, id`) place la racine 31/08→16/10 (sans plan, `scheduleId` null) avant son enfant pointé → « aucun entraînement » sur les 7 semaines de l'incident Matéo. Mesuré : SM1 jeu 3 sept 20:45 domicile vs entraînement SM1 jeu 20:30 JDR non détecté. Remède : ignorer une période sans plan quand un enfant pointé couvre la date (ou ne charger que les feuilles) ; NR sur fermeture découpée |
 | P4-189 | **Coach en double : « principal des deux côtés = conflit ; assistant d'un côté = à surveiller »** (règle fondateur 2026-09-07) | 🟡 | S | `MatchConflictDetector::worstRole` (`MatchConflictDetector.php:701-710`, doc « MAIN on ANY involved team → severity 3 ») classe « principal en double » dès qu'il est principal sur l'une des deux équipes. Cas réel : Thomas Francon, assistant SM1 / principal U21M1 → « désagréable », pas bloquant ; U15M1/U21M1 (principal des deux) → conflit. Changer la règle = sévérité 5 sauf MAIN sur les DEUX ; libellé + NR |
 | P4-193 | **Le solveur de placement applique les fenêtres ligue de l'ÉQUIPE à ses amicaux aussi** (pendant côté moteur de P4-190, soldé au détecteur) | ⚪ | S | `MatchPlacementPayloadBuilder.php:~142-181` émet `teams[].leagueWindows` par équipe ; `engine/app/solver/match_placement.py:83-118` les applique à chaque match de l'équipe sans savoir qu'il est amical (`no_league_intersection`). Le payload `/place-matches` n'a aucun marqueur par match (`match_input_schema.py`) → il faut un champ (`matches[].friendly` ou `competitionId`), donc un bump de `CONTRACT_VERSION` (2.21) + parité + NR moteur. Décision fondateur 2026-09-08 : un amical n'est jamais soumis aux fenêtres ligue |
+| P4-194 | **Une rencontre FFBB d'une compétition NON appariée (coupes jeunes, coupe territoriale) est créée SANS compétition → l'app la classe « amical »** | 🟡 | S | Mesuré 2026-09-08 sur les 18 rencontres réelles : `POST /api/ffbb/rencontres/apply` crée U13/U15/U18 coupe du Rhône, coupe ARA U18, coupe territoriale SM3 avec `competitionId` null (aucun engagement remonté pour ces compétitions), donc indiscernables d'un amical — le filtre « type de compétition » de Consulter les range sous Amical, et P4-190 les exempte des fenêtres ligue à tort. Piste : créer la `Competition` (type CUP) depuis le libellé FFBB de la rencontre à la création, ou distinguer « sans compétition appariée » d'« amical » (l'amical FFBB porte « AMICAL » dans `competitionNom`) |
 | P4-191 | **Carte Conflits : bornes affichées avec +2 h** (SM1 20:45 → « 22:15 → 22:45 ») | ⚪ | S | `MatchFootprint::occupancyAt` (`MatchFootprint.php:66-69`) pose l'heure locale du club sur une date PHP en UTC (fuseau conteneur), le détecteur l'émet en ISO `+00:00` (`MatchConflictDetector.php:281-282`), `ConflictRadar.tsx:40` la rend dans le fuseau du navigateur. La grille lit `kickoffTime` brut et est juste. Remède : émettre l'heure murale sans offset (ou avec le fuseau du club) et la rendre sans conversion |
 | P4-192 | **À l'arrivée sur Semaine, les déplacements du week-end ne se voient pas** (atterrissage « Saisi dans FBI (0/0) ») | 🟡 | S | Mesuré 2026-09-08 : bandeau « 3 matchs arrivés » mais panneau « Aucun domicile à recopier » ; les 3 extérieurs (SF1, SM1, U21M1) vivent sous une autre étape. `defaultLoopStep` (`lib/loopSteps.ts`) choisit le premier trou : quand tout est fait sauf FBI (0/0), montrer plutôt la grille + la liste « À l'extérieur ce week-end » |
 

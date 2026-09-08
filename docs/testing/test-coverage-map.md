@@ -1,11 +1,15 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-05 (D3 v2, P4-174, `documentation-update`). §1 (« Cycle de vie des
-plans ») recalé : re-confronté `Security/SplitMotherRedateTest` (**bloquant**, présent en step
-nommé de `blocking-tests` dans `ci.yml` ET dans `docs/testing/blocking-tests.md`), le renversement
-de `Security/PeriodRedateTest::testSplitMotherKeepsItsWindowFrozen`, le scénario 4 de
-`plan-de-periode-en-overlay.feature`, et l'extension de `redate-closure.spec.ts`. Un stamp
-REMPLACE, l'historique vit dans git : `git log -p --follow docs/testing/test-coverage-map.md`.
+Last verified @ 2026-09-08 (rotation de fraîcheur `documentation-update`, PR-2a Consulter module
+matchs — fichier hors sujet). Re-confronté au code : `Security/SplitMotherRedateTest` est un step
+NOMMÉ de `blocking-tests` (`ci.yml:433-434`) ET listé dans `docs/testing/blocking-tests.md:69` ✓ ·
+`Security/PeriodRedateTest::testSplitMotherKeepsItsWindowFrozen` n'existe plus sous ce nom (le
+renversement tient — remplacé par `testSplitMotherRedateWithoutTokenAsksForPreview`,
+`backend/tests/Security/PeriodRedateTest.php:157`) ✓ · le scénario 4 de
+`plan-de-periode-en-overlay.feature` (« Je re-date l'incident découpé : l'aperçu m'annonce ce qui
+change, je confirme ») ✓ · `coverage-floor.json` est bien à la racine du dépôt (pas dans une zone)
+✓ · `engine-perf-pr` existe dans `ci.yml` (dense seul, PR only) ✓. Un stamp REMPLACE, l'historique
+vit dans git : `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
 > prouve**, **par quel job CI**, et **ce que personne ne prouve**. Il ne remplace ni

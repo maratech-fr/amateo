@@ -37,6 +37,7 @@ function renderAt(path: string) {
         <Routes>
           <Route path="/matchs" element={<MatchesLayout />}>
             <Route index element={<div>BOUCLE</div>} />
+            <Route path="consulter" element={<div>CONSULTER</div>} />
             <Route path="configuration" element={<div>CONFIG</div>} />
           </Route>
         </Routes>
@@ -52,6 +53,16 @@ describe("MatchesLayout (RMM-1 PR2 — deux espaces)", () => {
     expect(screen.getByText("BOUCLE")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Espaces matchs" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Configuration" })).toBeInTheDocument();
+  });
+
+  it("porte l'onglet Consulter et rend l'espace Consulter (PR-2a)", async () => {
+    meState.chosen = "s1";
+    const user = userEvent.setup();
+    renderAt("/matchs");
+    const consulterLink = screen.getByRole("link", { name: "Consulter" });
+    expect(consulterLink).toBeInTheDocument();
+    await user.click(consulterLink);
+    expect(screen.getByText("CONSULTER")).toBeInTheDocument();
   });
 
   it("le garde socle verrouille la BOUCLE sans version pointée", () => {

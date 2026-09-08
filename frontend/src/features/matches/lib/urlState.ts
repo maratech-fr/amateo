@@ -1,3 +1,6 @@
+import type { ConflictType } from "../api";
+import { CONFLICT_FAMILIES } from "./conflictLabels";
+import { KINDS, type Kind } from "./consultFilter";
 import type { MatchFilterMode } from "./matchFilter";
 
 /**
@@ -44,5 +47,71 @@ export function applyFilterToParams(current: URLSearchParams, mode: MatchFilterM
   } else {
     next.delete("filtre");
   }
+  return next;
+}
+
+/**
+ * PR-2a — sérialisation des filtres de l'onglet Consulter, fonctions PURES (mêmes
+ * conventions que le filtre PR-1 : absent = défaut). `type` = types de compétition
+ * cochés, `conflits` = familles de conflits cochées, `type_semaine=0|1` = semaine
+ * type (absent = 1 = affichée), `temps` = temporalité (PR-2a n'accepte que
+ * `semaine` ; 2b ajoutera mois/phase). `null` (kinds/families) = tout coché : rien
+ * n'est écrit dans l'URL, comme le défaut.
+ */
+export type ConsultTemps = "semaine";
+
+export interface ConsultParams {
+  kinds: Kind[] | null;
+  families: ConflictType[] | null;
+  typicalWeek: boolean;
+  temps: ConsultTemps;
+}
+
+function decodeList<T extends string>(raw: string | null, valid: readonly T[]): T[] | null {
+  if (null === raw) {
+    return null;
+  }
+  const allowed = new Set<string>(valid);
+  const parsed = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s): s is T => "" !== s && allowed.has(s));
+  return [...new Set(parsed)];
+}
+
+export function decodeConsultParams(params: URLSearchParams): ConsultParams {
+  return {
+    kinds: decodeList(params.get("type"), KINDS),
+    families: decodeList(params.get("conflits"), CONFLICT_FAMILIES),
+    // absent ou "1" ⇒ affichée ; "0" ⇒ masquée.
+    typicalWeek: "0" !== params.get("type_semaine"),
+    // PR-2a ne connaît que « semaine » ; toute autre valeur (2b) retombe dessus.
+    temps: "semaine",
+  };
+}
+
+/**
+ * Renvoie une NOUVELLE `URLSearchParams` (autres params préservés) portant les
+ * filtres Consulter. `null` OU la sélection PLEINE (les 4 types / les 9 familles) =
+ * défaut ⇒ param absent ; semaine type affichée (défaut) ⇒ `type_semaine` absent ;
+ * `temps` = `semaine` (défaut) ⇒ absent.
+ */
+export function applyConsultToParams(current: URLSearchParams, consult: ConsultParams): URLSearchParams {
+  const next = new URLSearchParams(current);
+  const writeList = (key: string, value: string[] | null, full: number): void => {
+    if (null === value || value.length === full) {
+      next.delete(key);
+    } else {
+      next.set(key, value.join(","));
+    }
+  };
+  writeList("type", consult.kinds, KINDS.length);
+  writeList("conflits", consult.families, CONFLICT_FAMILIES.length);
+  if (consult.typicalWeek) {
+    next.delete("type_semaine");
+  } else {
+    next.set("type_semaine", "0");
+  }
+  next.delete("temps");
   return next;
 }

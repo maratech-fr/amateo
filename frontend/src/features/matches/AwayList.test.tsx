@@ -71,6 +71,15 @@ describe("AwayList (P1-4 PR E2 — l'extérieur visible)", () => {
     expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: "fx-away" }));
   });
 
+  // ── PR-2a — variante LECTURE SEULE (Consulter) : sans onEdit/onDelete, aucun bouton ─────
+  it("sans onEdit/onDelete (lecture seule), n'affiche NI le crayon NI la corbeille", () => {
+    render(<AwayList fixtures={[away()]} teams={teams} habits={[]} />);
+
+    expect(screen.getByText("SM2")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Modifier le match contre Grenoble" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Supprimer le match contre Grenoble" })).not.toBeInTheDocument();
+  });
+
   // ── RMM-0 (§6bis B5) — l'heure porte les conflits de coach : jamais coupée sans secours ─────
   it("B5 — la ligne extérieur n'est plus tronquée et porte un title de secours avec l'heure", () => {
     render(<AwayList fixtures={[away({ kickoffTime: "15:30" })]} teams={teams} habits={[]} onEdit={vi.fn()} onDelete={vi.fn()} />);
