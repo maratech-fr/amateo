@@ -1,14 +1,16 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-08 (PR-3b « espace Importer, front », `documentation-update`). § « Espace
-Importer » complétée du volet frontend (`ImportPage.tsx`, `ReviewQueue.tsx`/`ReviewQueueRow.tsx`,
-`lib/reviewQueue.ts`, `ConfigurationPage.tsx` allégée) et P4-186 marqué SOLDÉ ; § « Réconciliation
-FBI (RMM-4) » et « Le canal API FFBB » recalées (le détour « Examiner… » et `ReconciliationPanel`
-ont disparu, `ReconciliationPayload` réduit au seul canal API créable) ; vocabulaire « Validé ligue »
-→ « Attesté FBI » recalé partout dans ce fichier sauf le pas Gherkin
-`une-rencontre-importee-dit-si-elle-est-traitee.feature` (fichier de test, signalé § « Espace
-Importer »), confronté au code livré (`MatchesLayout.tsx`, `routes.tsx`, `api.ts`, `store.ts`,
-`ImportFbiDialog.tsx`, `PlacementPanel.tsx`, `fixtureStatusLabel.ts`, `accordion.tsx`).
+Last verified @ 2026-09-09 (P4-185 « une section = un écran », `documentation-update`). § « Refonte
+UX — RMM-1 » et « Le SET-UP A/B et le signal — RMM-5 PR-4 » recalées : `ConfigurationPage.tsx` rend
+désormais ses six sections en `AccordionSection` CONTRÔLÉES (une seule ouverte, ancrée `?section=`,
+`lib/urlState.ts`), résumées en en-tête par `lib/configSummaries.ts` ; `MatchSlotRotationsEditor.tsx`
+en liste compacte dépliable (une rotation à la fois) ; `MatchDurationsEditor.tsx` en `Table` partagée
+par groupe de défaut servi — P4-185 marqué SOLDÉ (§ « Configuration — P4-185 » ci-dessous). Corrigé
+au passage : la mention d'« Engagements FFBB » comme geste hébergé par `ConfigurationPage` était
+restée d'avant P4-186 (déplacé vers Importer le 2026-09-08) — confronté au code livré
+(`ConfigurationPage.tsx`, `MatchSlotRotationsEditor.tsx`, `MatchDurationsEditor.tsx`,
+`lib/urlState.ts`, `lib/configSummaries.ts`, `accordion.tsx`). Reste du fichier (Espace Importer,
+canal API, réconciliation) non re-sondé cette passe — dernière vérification 2026-09-08.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -443,7 +445,12 @@ honorées** ici (les décisions 1 « SOFT jamais bloquant » et 4 « FICTIF, auc
   `/matchs/configuration`, frère de `MatchWindowsEditor`/`TeamLinksSection` : déclarer un créneau
   (gymnase + jour + heure) et ses N équipes membres, **dans l'ordre** — badge A/B/C… par position,
   réordonnancement par **flèches ↑/↓** (jamais de drag : sans clavier ni cible tactile fiable pour
-  un gestionnaire de 50 ans, patron déjà posé ailleurs dans le module). La phrase « l'ordre dessine
+  un gestionnaire de 50 ans, patron déjà posé ailleurs dans le module). **Depuis P4-185**, chaque
+  rotation est une **ligne-bouton compacte** (« Samedi 20:30 · Armand · U9F2 ⇄ U9M1 »), une seule
+  dépliée à la fois (état local `expandedId`, indépendant de l'accordéon de section qui l'englobe) ;
+  le bouton Supprimer est le FRÈRE du bouton de dépliage (jamais imbriqué, patron `ReviewQueue`) ;
+  le formulaire de création vit derrière « Ajouter un créneau partagé » et se referme à la création
+  réussie. La phrase « l'ordre dessine
   seulement l'alternance A/B/C ; il ne commande aucun calendrier » est **dite à l'écran**, jamais
   tu — honore la décision fondateur n°4 (`position` purement fictif, § PR-1 ci-dessus). Retrait
   d'un membre désactivé sous 2 équipes (un créneau partagé en compte au moins deux). Route CRUD
@@ -936,10 +943,12 @@ Importer · Configuration** ; l'onglet Importer a livré sa page en PR-3b, déta
 - **Deux espaces, deux routes** : `/matchs` (la boucle hebdo) et `/matchs/configuration` (le SET-UP
   rare) sont deux vraies routes sous `MatchesLayout.tsx` — nav en onglets (deep-link + bouton retour
   du navigateur), garde socle **commun** (`useSocleValidated`, même condition que `SocleGuard`
-  côté serveur) posé une seule fois autour de l'`Outlet`. `ConfigurationPage.tsx` héberge Engagements
-  FFBB, Accès match, Habitudes & passerelles et l'**image A/B en écran de plein droit**
-  (`TypicalWeekendGrid` — le toggle `typicalView` a disparu de la boucle). Import FBI reste
-  accessible des deux côtés (même dialogue, deux entrées).
+  côté serveur) posé une seule fois autour de l'`Outlet`. `ConfigurationPage.tsx` héberge Accès
+  match, Habitudes & passerelles et l'**image A/B en écran de plein droit** (`TypicalWeekendGrid` —
+  le toggle `typicalView` a disparu de la boucle) — Engagements FFBB, lui, a depuis quitté cette
+  page pour l'onglet Importer (P4-186, § « Espace Importer » plus bas) ; depuis P4-185 (§
+  « Configuration — P4-185 » plus bas), ces six gestes sont des `AccordionSection` CONTRÔLÉES, une
+  seule ouverte à la fois. Import FBI reste accessible des deux côtés (même dialogue, deux entrées).
 - **Le rail à 5 étapes DÉRIVÉES** (`features/matches/lib/loopSteps.ts`, `deriveLoopSteps`, fonction
   **pure** — zéro état stocké, zéro backend) : *batch importé* (des fixtures existent sur la
   semaine) → *placés au modèle* (0 domicile `UNPLACED` dont l'équipe a une `TeamMatchHabit`) →
@@ -1303,7 +1312,7 @@ future.
     ont quitté `ConfigurationPage.tsx` pour l'onglet Importer (décision fondateur 2026-09-07 : « du
     RUN, pas de la configuration ») ; `ConfigurationPage` ne porte plus que des réglages de saison
     (gabarit A/B, créneaux partagés, échéances, durées, adversaires, accès match, habitudes &
-    passerelles). P4-185 (repli visuel des sections restantes) reste ouvert.
+    passerelles). Le repli visuel des sections restantes est livré séparément — **P4-185, § ci-dessous.**
   - **Vocabulaire D9 recalé.** `lib/fixtureStatusLabel.ts` : `VALIDATED` se dit « Attesté FBI »
     (plus « Validé ligue ») ; `PlacementPanel.tsx` sur un match `VALIDATED` dit désormais « Attesté
     par FBI : date, heure et salle renvoyées identiques. Un futur import qui diverge le signalera
@@ -1327,6 +1336,53 @@ future.
   de cette feature dit encore « la rencontre est « validée ligue » » (vocabulaire pré-D9) — il
   vérifie `status === VALIDATED`, pas le libellé écran ; drift cosmétique signalé, non corrigé ici
   (fichier de test, hors périmètre de ce skill).
+
+## Configuration — repli visuel (P4-185, 2026-09-09) — LIVRÉ EN ENTIER
+
+> Besoin : mesurée à 5 078 px de haut avant P4-186 (fondateur 2026-09-07) ; P4-186 (ci-dessus) a
+> retiré le dépôt FBI/canal API/Engagements FFBB de la page, sans changer sa PRÉSENTATION — six
+> cartes toujours dépliées en pile (dont 8 rotations et 12 lignes de durées ouvertes en dur).
+> P4-185 règle la présentation : « une section = un écran ». **Zéro backend/engine, zéro
+> comportement métier, zéro API** — pur repli visuel.
+
+- **Les six sections deviennent des `AccordionSection` CONTRÔLÉES** (`ConfigurationPage.tsx`) : le
+  gabarit A/B, Créneaux partagés (alternance), Échéances de saisie, Durée des matchs, Adversaires à
+  localiser, Réglages de saison (Accès match + Habitudes & passerelles) — **une seule ouverte à la
+  fois**, l'ouverture d'une autre referme la précédente (`sectionProps` pose `open`/`onToggle` par
+  clé). Ancrée dans l'URL par `?section=<clé>` (`ConfigSection` = `gabarit|creneaux|echeances|
+  durees|adversaires|reglages`, `decodeSectionParam`/`applySectionToParams` dans
+  `features/matches/lib/urlState.ts`) : absent ou une valeur inconnue ⇒ `gabarit` ouvert par défaut
+  (le param est alors ABSENT de l'URL — écrire le défaut ne pollue pas le lien) ; `section=aucune`
+  ⇒ tout replié (encodage explicite : sans lui, replier le gabarit — param absent — le rouvrirait
+  au décodage suivant). Mêmes conventions que `?vue=`/`?temps=` des autres onglets du module.
+- **Un résumé discret dans le nom accessible du bouton** (`features/matches/lib/configSummaries.ts`,
+  fonctions PURES, comptent ce que le backend a déjà calculé — zéro règle métier côté front) :
+  « N rotation(s) » (`rotationsSummary`), « N sur M compétition(s) renseignée(s) » sur l'échéance
+  **effective** (club ou proposée par la communauté, jamais recalculée — `Competition.
+  effectiveEntryDeadline`) (`deadlinesSummary`), « défauts par catégorie » ou « N personnalisée(s) »
+  — une catégorie est personnalisée dès qu'une des deux durées a une valeur propre (`durationsSummary`)
+  —, « N à localiser sur M » (`opponentsSummary`). Une entrée `undefined` (chargement ou échec de
+  lecture) rend `null` ⇒ **aucun compte affiché**, jamais un « 0 » fabriqué qui laisserait croire à
+  un vide. Le résumé « Adversaires à localiser » réutilise la MÊME clé react-query que
+  `OpponentTravelCard` (`useOpponentTravel`, appelée une fois au niveau page) — zéro requête
+  supplémentaire.
+- **Repli = démontage** (`AccordionSection` non gardée en vie fermée) : un brouillon local perdu au
+  changement de section — cases cochées d'une échéance en cours d'édition, nouveau créneau partagé
+  pas encore créé — assumé (décision, pas un manque). Une durée en cours de frappe est déjà
+  sauvegardée au blur (`MatchDurationsEditor`), donc jamais perdue par un repli.
+- **`MatchSlotRotationsEditor.tsx`** : chaque rotation devient une ligne-bouton compacte au lieu
+  d'une carte toujours dépliée (détail § « Le SET-UP A/B et le signal — RMM-5 PR-4 » ci-dessus,
+  recalé) ; mutations CRUD inchangées.
+- **`MatchDurationsEditor.tsx`** : les catégories partageant le même défaut de famille SERVI
+  (`defaultMatchMinutes`/`defaultWarmupMinutes`) forment désormais une seule `Table` partagée
+  (`shared/components/ui/table.tsx`) au lieu d'une carte par catégorie — légende (`TableCaption`) =
+  la phrase de défaut du groupe, colonnes Catégorie · Match · Échauffement · Défaut. Mêmes routes
+  PUT (`useUpdateSportCategoryDuration`), même modèle éditeur non contrôlé re-semé par `key`.
+- **Front** — tests : `ConfigurationPage.test.tsx` (une section ouverte à la fois, ancrage
+  `?section=`, résumés d'en-tête), `MatchSlotRotationsEditor.test.tsx` (ligne compacte, dépliage
+  unique), `MatchDurationsEditor.test.tsx` (tableau par groupe), `lib/urlState.test.ts`,
+  `lib/configSummaries.test.ts` ; e2e `tests/e2e/matches-importer.spec.ts` recalé
+  (`?section=reglages`, une seule section — le gabarit — ouverte à l'arrivée sans paramètre).
 
 ## Échéances ligue/comité — RMM-6 (3 PR, 2026-08-25) — LIVRÉ EN ENTIER
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyConsultToParams, applyFilterToParams, decodeConsultParams, decodeFilterParams } from "./urlState";
+import { applyConsultToParams, applyFilterToParams, applySectionToParams, decodeConsultParams, decodeFilterParams, decodeSectionParam } from "./urlState";
 
 describe("decodeFilterParams", () => {
   it("params absents ⇒ equipe / aucune sélection", () => {
@@ -112,5 +112,52 @@ describe("applyConsultToParams (PR-2a/2b)", () => {
     expect(out.get("temps")).toBeNull();
     expect(out.get("mois")).toBeNull();
     expect(out.get("phase")).toBeNull();
+  });
+});
+
+describe("decodeSectionParam (P4-185 — accordéon Configuration)", () => {
+  it("absent ⇒ gabarit (défaut ouvert)", () => {
+    expect(decodeSectionParam(new URLSearchParams(""))).toBe("gabarit");
+  });
+
+  it("valeur inconnue ⇒ repli sur gabarit", () => {
+    expect(decodeSectionParam(new URLSearchParams("section=xxx"))).toBe("gabarit");
+  });
+
+  it("« aucune » ⇒ null (tout replié)", () => {
+    expect(decodeSectionParam(new URLSearchParams("section=aucune"))).toBeNull();
+  });
+
+  it("chacune des 6 clés est reconnue", () => {
+    for (const key of ["gabarit", "creneaux", "echeances", "durees", "adversaires", "reglages"] as const) {
+      expect(decodeSectionParam(new URLSearchParams(`section=${key}`))).toBe(key);
+    }
+  });
+});
+
+describe("applySectionToParams (P4-185)", () => {
+  it("gabarit (défaut) ⇒ param supprimé", () => {
+    expect(applySectionToParams(new URLSearchParams(""), "gabarit").toString()).toBe("");
+    expect(applySectionToParams(new URLSearchParams("section=reglages"), "gabarit").toString()).toBe("");
+  });
+
+  it("null (tout replié) ⇒ section=aucune", () => {
+    expect(applySectionToParams(new URLSearchParams(""), null).get("section")).toBe("aucune");
+  });
+
+  it("une autre section ⇒ écrite telle quelle", () => {
+    expect(applySectionToParams(new URLSearchParams(""), "durees").get("section")).toBe("durees");
+  });
+
+  it("préserve les params sans rapport", () => {
+    const out = applySectionToParams(new URLSearchParams("autre=1"), "creneaux");
+    expect(out.get("autre")).toBe("1");
+    expect(out.get("section")).toBe("creneaux");
+  });
+
+  it("aller-retour cohérent : encode(gabarit) se relit gabarit, encode(null) se relit null", () => {
+    expect(decodeSectionParam(applySectionToParams(new URLSearchParams(""), "gabarit"))).toBe("gabarit");
+    expect(decodeSectionParam(applySectionToParams(new URLSearchParams(""), null))).toBeNull();
+    expect(decodeSectionParam(applySectionToParams(new URLSearchParams(""), "echeances"))).toBe("echeances");
   });
 });

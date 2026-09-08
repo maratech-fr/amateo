@@ -144,8 +144,13 @@ test("importer: onglet, badge absent, configuration allégée, file de traitemen
     await expect(page.getByRole("button", { name: /à valider/ }).first()).toBeVisible();
   }
 
-  // ── Configuration allégée : les données FBI/FFBB ont migré vers Importer ──────
+  // ── Configuration : « une section = un écran » (P4-185) + données FBI/FFBB migrées (P4-186) ──
   await page.goto("/matchs/configuration");
+  // À l'arrivée, seul le gabarit est ouvert → « Accès match » (section Réglages) reste replié.
+  await expect(page.getByRole("button", { name: /Le gabarit idéal/ })).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("button", { name: "Accès match" })).toHaveCount(0);
+  // Deep-link direct sur la section Réglages → « Accès match » est visible.
+  await page.goto("/matchs/configuration?section=reglages");
   await expect(page.getByRole("button", { name: "Accès match" })).toBeVisible();
   await expect(page.getByText("Dépôt saisonnier FBI")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Engagements FFBB" })).toHaveCount(0);

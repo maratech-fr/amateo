@@ -1,4 +1,4 @@
-# Roadmap (63) — ce qui reste à faire
+# Roadmap (62) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -137,14 +137,15 @@
 > « Importer · N ») branché dessus — **P4-186 SOLDÉ** (le dépôt FBI/canal API ont quitté la
 > Configuration pour l'onglet Importer) et le texte de `PlacementPanel.tsx` sur `VALIDATED` recalé
 > (« Attesté par FBI… », plus « La ligue a validé ce match… ») ; détail :
-> [`module-matchs.md`](../courantes/module-matchs.md) § « Espace Importer ». Reste : (2) P4-185
-> (repli visuel de la Configuration — rotations/durées, P4-186 n'y était qu'une partie du poids) ;
+> [`module-matchs.md`](../courantes/module-matchs.md) § « Espace Importer » ; (2) le repli visuel de
+> la Configuration — **P4-185 SOLDÉ (2026-09-09)** : six sections en accordéons contrôlés ancrés
+> `?section=`, rotations en liste compacte, durées en tableau partagé, détail
+> [`module-matchs.md`](../courantes/module-matchs.md) § « Configuration — repli visuel ». Reste :
 > (3) gymnase depuis le libellé P4-187 ; puis le détecteur (P4-188/189/191/193).
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
 | P4-184 | **`Échap` ne ferme pas la puce `ResourceFilter`, et son fond de fermeture intercepte tous les clics** | ⚪ | XS | `frontend/src/features/planning/ResourceFilter.tsx:83` : fermeture par un `<button aria-hidden class="fixed inset-0 z-50">` seulement, aucun gestionnaire clavier — a11y (escape-routes) ; a bloqué les e2e de la PR-1 filtres matchs. Trois consommateurs (planning, vœux coach, matchs) : à corriger dans la puce, pas chez eux |
-| P4-185 | **Module matchs — la page Configuration reste trop longue à lire** (fondateur 2026-09-07 — mesurée à 5 078 px de haut avant P4-186) | 🟡 | M | `ConfigurationPage.tsx` empile gabarit A/B, **8 cartes de rotation dépliées**, échéances, **12 lignes de durées**, adversaires, réglages — le dépôt FBI/canal API qui pesait aussi dans la mesure d'origine a quitté la page (P4-186 soldé, 2026-09-08), le reste du problème demeure. Règle attendue : une section = un écran, le reste replié (accordéons / ancres), rotations en liste compacte, durées en tableau |
 | P4-187 | **Résoudre le gymnase d'un domicile FFBB depuis son libellé** (`fbiVenueLabel`) — sinon le match n'est ni placé ni vu par la collision de gymnase | 🟠 | M | Mesuré 2026-09-08 sur le canal API (`POST /api/ffbb/rencontres/apply`) : les 4 domiciles réels arrivent avec « GYMNASE JEANNE DESPARMET-RUELLO » / « GYMNASE MATEO » mais `venueId` null → UNPLACED, invisibles pour `VENUE_OVERLAP` et la fenêtre d'accès ; Matéo fermé le 12 sept. ne peut pas être signalé. La décision RMM-9 (« la précision VENUE vient du canal API seul, jamais d'un libellé xlsx ») visait le xlsx : ici le libellé vient de l'API. Piste : table de correspondance libellé FFBB → `Venue` du club, confirmée par le gestionnaire une fois |
 | P4-188 | **Faux négatif match↔entraînement pendant une fermeture DÉCOUPÉE** : la racine sans plan capture la date | 🟠 | S | `EffectiveScheduleResolver::resolve` (`backend/src/Service/EffectiveScheduleResolver.php:30-33`) rend la PREMIÈRE période couvrant la date ; `findActivePeriodsOrdered` (`CalendarEntryRepository.php`, `ORDER BY startDate, id`) place la racine 31/08→16/10 (sans plan, `scheduleId` null) avant son enfant pointé → « aucun entraînement » sur les 7 semaines de l'incident Matéo. Mesuré : SM1 jeu 3 sept 20:45 domicile vs entraînement SM1 jeu 20:30 JDR non détecté. Remède : ignorer une période sans plan quand un enfant pointé couvre la date (ou ne charger que les feuilles) ; NR sur fermeture découpée |
 | P4-189 | **Coach en double : « principal des deux côtés = conflit ; assistant d'un côté = à surveiller »** (règle fondateur 2026-09-07) | 🟡 | S | `MatchConflictDetector::worstRole` (`MatchConflictDetector.php:701-710`, doc « MAIN on ANY involved team → severity 3 ») classe « principal en double » dès qu'il est principal sur l'une des deux équipes. Cas réel : Thomas Francon, assistant SM1 / principal U21M1 → « désagréable », pas bloquant ; U15M1/U21M1 (principal des deux) → conflit. Changer la règle = sévérité 5 sauf MAIN sur les DEUX ; libellé + NR |

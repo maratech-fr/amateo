@@ -35,9 +35,25 @@ beforeEach(() => {
 });
 
 describe("MatchDurationsEditor — la durée de match par catégorie (P2-54 RMM-9)", () => {
-  it("énonce le défaut de famille SERVI une fois par groupe (jamais recalculé côté front)", () => {
+  it("un tableau par groupe de défaut, en-têtes de colonne scopés col", () => {
     renderWithProviders(<MatchDurationsEditor categories={CATEGORIES} />);
-    // Le serveur sert 90/30 pour U13 et 105/30 pour Seniors : deux en-têtes distincts.
+    // Deux familles servies ⇒ deux tableaux.
+    expect(screen.getAllByRole("table")).toHaveLength(2);
+    expect(screen.getAllByRole("columnheader", { name: "Catégorie" })).toHaveLength(2);
+    expect(screen.getAllByRole("columnheader", { name: "Match (min)" })).toHaveLength(2);
+    expect(screen.getAllByRole("columnheader", { name: "Échauffement (min)" })).toHaveLength(2);
+    expect(screen.getAllByRole("columnheader", { name: "Défaut" })).toHaveLength(2);
+  });
+
+  it("une ligne par catégorie (le nom en cellule)", () => {
+    renderWithProviders(<MatchDurationsEditor categories={CATEGORIES} />);
+    expect(screen.getByRole("cell", { name: "U13" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "Senior" })).toBeInTheDocument();
+  });
+
+  it("la légende du tableau énonce le défaut de famille SERVI (jamais recalculé côté front)", () => {
+    renderWithProviders(<MatchDurationsEditor categories={CATEGORIES} />);
+    // Le serveur sert 90/30 pour U13 et 105/30 pour Seniors : deux légendes distinctes.
     expect(screen.getByText(/90 min de match/)).toBeInTheDocument();
     expect(screen.getByText(/105 min de match/)).toBeInTheDocument();
   });
@@ -47,7 +63,7 @@ describe("MatchDurationsEditor — la durée de match par catégorie (P2-54 RMM-
     const matchField = screen.getByLabelText("Durée du match — U13") as HTMLInputElement;
     expect(matchField.value).toBe("");
     expect(matchField.placeholder).toBe("90");
-    const row = matchField.closest("li") as HTMLElement;
+    const row = matchField.closest("tr") as HTMLElement;
     expect(within(row).getAllByText(/défaut/i).length).toBeGreaterThan(0);
   });
 
@@ -55,7 +71,7 @@ describe("MatchDurationsEditor — la durée de match par catégorie (P2-54 RMM-
     renderWithProviders(<MatchDurationsEditor categories={CATEGORIES} />);
     const matchField = screen.getByLabelText("Durée du match — Senior") as HTMLInputElement;
     expect(matchField.value).toBe("100");
-    const row = matchField.closest("li") as HTMLElement;
+    const row = matchField.closest("tr") as HTMLElement;
     expect(within(row).getByText(/Ajusté/)).toBeInTheDocument();
   });
 
@@ -95,7 +111,7 @@ describe("MatchDurationsEditor — la durée de match par catégorie (P2-54 RMM-
     expect(updateMutate).not.toHaveBeenCalled();
     expect(field.value).toBe("20"); // la saisie n'est PAS restaurée en silence
     expect(field).toHaveAttribute("aria-invalid", "true");
-    expect(within(field.closest("li") as HTMLElement).getByRole("alert")).toHaveTextContent(/entre 30 et 240/);
+    expect(within(field.closest("tr") as HTMLElement).getByRole("alert")).toHaveTextContent(/entre 30 et 240/);
   });
 
   it("champ vidé sur blur → restaure la valeur servie, AUCUN PUT (le reset ne passe que par le bouton)", async () => {
