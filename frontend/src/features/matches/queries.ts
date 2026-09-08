@@ -323,6 +323,37 @@ export function useApplyFfbbRencontres() {
   });
 }
 
+// ── Traitement des rencontres (PR-3a — la file « Importer ») ─────────────────
+
+/**
+ * PR-3a — le geste de traitement (ligne ou masse). Invalide `["fixtures"]` : le
+ * `reviewState`/`pendingDeviations`/`reviewedAt` y vivent, donc la file et le
+ * badge se recalculent. Le toast des rencontres SAUTÉES (geste masse) est composé
+ * par l'appelant, qui seul connaît le nom d'équipe et les dates (jamais un id).
+ */
+export function useReviewFixtures() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: matchesApi.ReviewFixturesBody) => matchesApi.reviewFixtures(body),
+    onSuccess: () => invalidateFixtures(queryClient),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+/**
+ * PR-3a — tranche UN écart pendant. Le backend rejoue le moteur et renvoie l'état
+ * de traitement à jour ; on invalide `["fixtures"]` pour que la file et le badge
+ * suivent (un `take_source` sur date/salle dé-place le match — la vue Semaine bouge).
+ */
+export function useResolveFixtureDeviation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: matchesApi.ResolveDeviationInput) => matchesApi.resolveFixtureDeviation(input),
+    onSuccess: () => invalidateFixtures(queryClient),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
 // ── Capacity layer (P1-4 PR B) ───────────────────────────────────────────────
 
 /** Match access windows of the club's venues — consumed by the placement panel,

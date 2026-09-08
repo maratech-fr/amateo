@@ -11,7 +11,7 @@ const teams = new Map<string, Team>([
 ].map((t) => [t.id, t as Team]));
 const venues = new Map<string, Venue>([["v1", { id: "v1", name: "Gymnase Alpha", color: null }]]);
 
-const base = { seasonId: "s", competitionId: null, homeAway: "HOME" as const, fbiVenueLabel: null, placementSource: "MANUAL" as const, unplacedReason: null };
+const base = { seasonId: "s", competitionId: null, homeAway: "HOME" as const, fbiVenueLabel: null, placementSource: "MANUAL" as const, unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null };
 function build(): Fixture[] {
   return [
     // U13 : un domicile PLACÉ (à saisir) + un domicile déjà SAISI (rangé, corrigeable).

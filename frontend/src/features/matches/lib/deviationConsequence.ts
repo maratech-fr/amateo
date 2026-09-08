@@ -26,7 +26,7 @@ export interface FieldConsequence {
   releasesSlot: boolean;
 }
 
-const KEEP_APP = "Rien n'est écrit — un pense-bête gardera l'écart jusqu'au prochain dépôt, pour vérifier que la correction a bien été faite dans FBI.";
+const KEEP_APP = "Rien n'est écrit — la rencontre est traitée avec la valeur d'Amateo ; si le prochain dépôt diverge encore, l'écart reviendra ici.";
 
 const CONSEQUENCE: Record<DeviationField, FieldConsequence> = {
   date: {

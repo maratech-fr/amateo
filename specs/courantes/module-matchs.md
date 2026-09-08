@@ -1,10 +1,14 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-08 (PR-3a « espace Importer », `documentation-update` — nouvelle section
-ajoutée, confrontée à `FixtureReviewState`, `Fixture::setStatus`/`markReviewed`/
-`pendingDeviations`, `FbiFixtureImporter::processPerimeterFields`/`reconcileNoDivergence`/
-`sourceAttestsPlacement`, `ReviewFixturesController`, `ReviewFixtureDeviationController`,
-`FfbbRencontreReconciler::apply` ; sections RMM-4 (trace) et canal API amendées pour D7/D9).
+Last verified @ 2026-09-08 (PR-3b « espace Importer, front », `documentation-update`). § « Espace
+Importer » complétée du volet frontend (`ImportPage.tsx`, `ReviewQueue.tsx`/`ReviewQueueRow.tsx`,
+`lib/reviewQueue.ts`, `ConfigurationPage.tsx` allégée) et P4-186 marqué SOLDÉ ; § « Réconciliation
+FBI (RMM-4) » et « Le canal API FFBB » recalées (le détour « Examiner… » et `ReconciliationPanel`
+ont disparu, `ReconciliationPayload` réduit au seul canal API créable) ; vocabulaire « Validé ligue »
+→ « Attesté FBI » recalé partout dans ce fichier sauf le pas Gherkin
+`une-rencontre-importee-dit-si-elle-est-traitee.feature` (fichier de test, signalé § « Espace
+Importer »), confronté au code livré (`MatchesLayout.tsx`, `routes.tsx`, `api.ts`, `store.ts`,
+`ImportFbiDialog.tsx`, `PlacementPanel.tsx`, `fixtureStatusLabel.ts`, `accordion.tsx`).
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -880,9 +884,9 @@ part : une barre de filtres sur la vue Semaine, même patron que `/planning`.
 ## Onglet « Consulter » — le module sépare Importer · Placer · Consulter (PR-2a, 2026-09-08)
 
 Décision fondateur (2026-09-08, après la mesure sur ses rencontres réelles) : **importer** (faire entrer les rencontres,
-FBI xlsx ou API FFBB — futur espace, PR-3), **placer** (la boucle Semaine) et **consulter** (« voir les matchs placés
+FBI xlsx ou API FFBB), **placer** (la boucle Semaine) et **consulter** (« voir les matchs placés
 et les bugs, c'est une fonctionnalité entière ») sont trois espaces. Nav `MatchesLayout` : **Semaine · Consulter ·
-Configuration** ; l'onglet Importer naîtra avec sa page (un onglet mort serait pire que son absence).
+Importer · Configuration** ; l'onglet Importer a livré sa page en PR-3b, détail § « Espace Importer » plus bas.
 
 `/matchs/consulter` (`ConsultPage.tsx`) — **lecture seule** : aucune mutation, ni rail, ni panneau de placement.
 
@@ -917,8 +921,8 @@ Configuration** ; l'onglet Importer naîtra avec sa page (un onglet mort serait 
     publiée », équipe (+ rôle en vue coach), dom./ext., adversaire, gymnase résolu sinon `fbiVenueLabel` « non
     rattaché », statut, une pastille par famille de conflit présente ; clic → Placer sur le week-end du match.
   - URL : `temps=semaine|mois|phase`, `mois=YYYY-MM`, `phase=<competitionId>`.
-- Hors périmètre, à suivre : Importer (PR-3 : file de traitement persistée, reprise, compteurs par équipe — « SM1 :
-  5 matchs à valider, SM2 : 2 écarts, U18M1 : 5 nouveaux »). P4-192 reste ouvert (l'atterrissage de Placer).
+- Livré depuis, hors PR-2a : l'onglet Importer (PR-3a/PR-3b, § « Espace Importer » plus bas — file de
+  traitement par équipe, compteurs « N à valider »/« N écart(s) »). P4-192 reste ouvert (l'atterrissage de Placer).
 
 ## Refonte UX — RMM-1 (P2-26, 4 PR entre 2026-08-23 et 2026-08-24)
 
@@ -958,7 +962,8 @@ Configuration** ; l'onglet Importer naîtra avec sa page (un onglet mort serait 
   redevient `PLACED` par le même panel, ce qui en fait **le chemin de réparation** quand le
   gymnase d'un match déjà saisi meurt (suppression/indisponibilité, cf. § capacité ci-dessus).
   Vocabulaire FR unique (`lib/fixtureStatusLabel.ts`, table jamais un ternaire) : Importé · Placé ·
-  **Saisi dans FBI** · Validé ligue — jamais les codes d'enum affichés.
+  **Saisi dans FBI** · **Attesté FBI** (« Validé ligue » jusqu'à PR-3a/D9, 2026-09-08 — la ligue ne
+  « valide » rien, c'est la source qui répète la même valeur) — jamais les codes d'enum affichés.
 - **Hiérarchie d'actions** : l'action primaire est celle de l'étape courante du rail (Importer FBI /
   Placer automatiquement / rien en Conflits-fbiEntry) ; les gestes rares (Engagements FFBB, Accès
   match, Habitudes & passerelles, image A/B) ont quitté la barre plate pour `/matchs/configuration` ;
@@ -987,8 +992,8 @@ Configuration** ; l'onglet Importer naîtra avec sa page (un onglet mort serait 
   chaque groupe les lignes encore à saisir sont en tête, les rangées déjà saisies en dessous. Une
   ligne porte date + heure (ce que FBI demande pour un domicile), l'adversaire, la salle, et le n°
   de rencontre en repère. **Cocher une ligne** = le geste ci-dessus (`onSubmit`) ; une ligne saisie
-  garde un « Corriger » discret (`onReopen`, réversible) ; une `VALIDATED` (ligue) est en lecture
-  pure (« Validé ligue »). Filtrable **équipe** et **date**, indépendamment de la navigation
+  garde un « Corriger » discret (`onReopen`, réversible) ; une `VALIDATED` est en lecture pure
+  (« Attesté FBI », `FIXTURE_STATUS_LABEL.VALIDATED` — plus « Validé ligue » depuis D9). Filtrable **équipe** et **date**, indépendamment de la navigation
   semaine. « Tout marquer saisi » soumet en lot **UNIQUEMENT les lignes actuellement AFFICHÉES et
   encore `PLACED`** (le filtre en cours borne le lot — décision fondateur, plus sûr qu'un lot
   global), sous confirmation nommant le compte exact.
@@ -1120,39 +1125,38 @@ future.
 - **La vue dédiée `/matchs/reconciliation`** (décision fondateur 2026-08-24, passe de conception
   `ui-ux-pro-max` : l'écran de choix ne tient pas dans la modale d'import). Enfant de
   `MatchesLayout` — garde socle héritée, aucune route propre. **Zéro état serveur** : elle vit du
-  payload d'analyse porté EN MÉMOIRE par le store (`useMatchesStore().reconciliation` — `File` =
-  référence JS vivante, jamais sérialisée, jamais re-uploadée). Arriver ici sans payload (accès
-  direct, refresh, F5) est un **renvoi propre** vers la boucle (`EmptyState` + retour) — rien n'est
-  écrit ; quitter (« Abandonner ») abandonne sans rien écraser ; re-déposer le fichier re-présente
-  les écarts. `ImportFbiDialog` bascule ici (« Examiner… ») au lieu d'appeler `import()`
-  directement quand `analyze()` a rendu des écarts.
-- **`ReconciliationPanel`** — une carte PAR écart (fixture) : en-tête équipe/division/n° de
-  rencontre + statut FR + badge persistant ; **bande destructive `role="alert"`** quand le match
-  est déjà `SUBMITTED`/`VALIDATED` (signalement renforcé, `isDeposited`) ; par champ divergent, deux
-  colonnes (app / fichier, la divergence en teinte warning — jamais rouge, le rouge reste réservé à
-  la conséquence), un **toggle segmenté SANS défaut** (garder l'app / prendre le fichier,
-  `aria-pressed`), et la **conséquence TOUJOURS visible avant le choix**. Gestes de masse (« Tout
-  prendre du fichier », « Tout garder ») **pré-remplissent seulement** — aucune écriture avant
-  « Appliquer l'import », qui affiche un résumé de confirmation (N pris du fichier · N gardés · N
-  non tranchés, ces derniers explicitement annoncés « pas écrasés, re-présentés au prochain
-  dépôt »). L'import final réutilise le MÊME rail `importFbi.mutate` que le flux sans écart (fichier
-  + mappings + `decisions`).
-- **Front** — tests : `lib/deviationConsequence.test.ts`, `lib/fbiFreshness.test.ts`,
-  `ReconciliationPanel.test.tsx` (toggle sans défaut, gestes de masse,
-  bande destructive, conséquence), `ReconciliationView.test.tsx` (renvoi propre sans payload,
-  abandon, rapport avec écarts non tranchés, canal `api` compris), `ImportFbiDialog.test.tsx`
-  (bouton « Examiner » quand `deviations` non vide, flux inchangé sinon),
-  `ConfigurationPage.test.tsx`/`MatchesPage.test.tsx` (carte et rappel de fraîcheur, bouton
-  « Vérifier via l'API FFBB »).
+  payload porté EN MÉMOIRE par le store (`useMatchesStore().reconciliation`). Arriver ici sans
+  payload (accès direct, refresh, F5) est un **renvoi propre** vers l'onglet Importer (`EmptyState`
+  + retour) — rien n'est écrit.
+  > ⚠ **Recalé par PR-3b (2026-09-08) — le paragraphe ci-dessus décrit l'état RMM-4 d'origine,
+  > périmé sur deux points.** (1) `ImportFbiDialog` n'y bascule plus jamais : le dépôt xlsx envoie
+  > toujours `{file, mappings}` sans détour, les écarts sont désormais CONSIGNÉS sur les rencontres
+  > et traités dans la file de l'onglet Importer (§ « Espace Importer » plus bas). (2) La vue ne
+  > porte plus que le canal API et seulement ses rencontres **créables** (`ReconciliationPayload`
+  > réduit à `{channel: "api", creatable, fetchedAt}`) — plus aucun écart, xlsx ou API, n'y transite.
+- **`ReconciliationPanel` — SUPPRIMÉ en PR-3b.** Il portait la carte par écart (toggle segmenté
+  sans défaut, bande destructive sur un match déjà déposé, gestes de masse) décrite ci-dessus pour
+  RMM-4 ; ce rôle a disparu avec le détour « Examiner… ». Ce que `/matchs/reconciliation` fait
+  aujourd'hui — proposer à la création les rencontres FFBB créables, un `TeamSelect` par ligne — vit
+  dans `ReconciliationView.tsx` seul, détaillé § « Espace Importer ».
+- **Front** — tests (état courant, PR-3b) : `lib/deviationConsequence.test.ts`, `lib/fbiFreshness.test.ts`,
+  `ReconciliationView.test.tsx` (renvoi propre sans payload, abandon, création des rencontres
+  créables), `ImportFbiDialog.test.tsx` (flux `{file, mappings}` sans décisions, rapport « N écart(s)
+  consigné(s) dans Importer »), `ImportPage.test.tsx`/`lib/reviewQueue.test.ts` (carte « Données de
+  match », fraîcheur, `checkViaApi` en trois issues, file de traitement), `ConfigurationPage.test.tsx`
+  (réglages de saison seuls — plus de carte de fraîcheur ni de bouton API depuis P4-186).
 
 ### Le canal API FFBB (RMM-4 PR-3, 2026-08-24)
 
-- **Deux portes vers le MÊME écran, jamais deux écrans.** Le dépôt xlsx reste l'entrée normale
-  (`ImportFbiDialog`, canal `channel: "xlsx"` du store) ; `ConfigurationPage` ajoute un second
-  bouton — « Vérifier via l'API FFBB » (`useFfbbRencontres`, à la demande seulement, aucun cache
-  ni cron) — qui alimente `ReconciliationView`/`ReconciliationPanel` via `channel: "api"`. Le
-  panneau est le même composant : seule la provenance affichée change (badge « Source : API
-  FFBB » vs « Source : dépôt FBI (fichier) »).
+- **Une seule porte reste vers l'écran d'intégration, depuis PR-3b (2026-09-08).** Jusqu'à RMM-4
+  PR-3, le dépôt xlsx et le canal API partageaient `/matchs/reconciliation` sous deux variantes
+  `channel: "xlsx"|"api"` d'un même `ReconciliationPanel`. **Le dépôt xlsx ne bascule plus jamais
+  vers cette vue** : ses écarts sont consignés directement sur les rencontres (`Fixture.pendingDeviations`)
+  et traités dans la file de l'onglet Importer. Seul le bouton « Vérifier via l'API FFBB »
+  (`ImportPage`, `useFfbbRencontres`, à la demande seulement, aucun cache ni cron) peut encore
+  ouvrir `/matchs/reconciliation` — et seulement quand il y a des rencontres **créables** ;
+  `ReconciliationPayload` n'a plus qu'un variant, `{channel: "api", creatable, fetchedAt}`. Badge
+  fixe « Source : API FFBB ».
 - **La hiérarchie ne bouge pas : FBI (le xlsx) fait foi, l'API est un confort.** Un bandeau
   d'honnêteté `role="status"` rappelle à chaque ouverture du canal API « ce que la FFBB publie à
   cet instant » et que la couverture fédérale n'est **jamais garantie** — une équipe absente du
@@ -1199,14 +1203,15 @@ future.
   re-fetch serveur, 409 doublon), `FfbbRencontreReaderTest.php` (mapping, filtre saison, clamp),
   `FfbbApiClientTest.php` (filtre strict serveur).
 
-## Espace Importer — workflow de traitement (PR-3a, backend, 2026-09-08)
+## Espace Importer — workflow de traitement (PR-3a backend + PR-3b frontend, 2026-09-08 — LIVRÉ EN ENTIER)
 
 > Besoin d'origine : RMM-4 posait le CHOIX par écart (garder l'app / prendre le fichier) mais
 > aucune vue ne disait, rencontre par rencontre, « celle-là je l'ai déjà traitée, celle-là est
-> nouvelle, celle-là a re-divergé ». PR-3a ajoute cet axe — le TRAITEMENT — **backend seul** ; PR-3b
-> (frontend, à venir) branchera l'onglet Importer dessus. Deux axes désormais distincts sur une
-> `Fixture` : `status` (placement — où en est le match dans le cycle FBI) et `reviewState` (a-t-il
-> été EXAMINÉ par le gestionnaire).
+> nouvelle, celle-là a re-divergé ». PR-3a a ajouté cet axe — le TRAITEMENT — côté backend ; **PR-3b
+> (même jour) branche l'onglet Importer dessus** : la file de traitement par équipe, la
+> Configuration allégée (P4-186, qui quitte la roadmap) et le vocabulaire D9 (« Attesté FBI »).
+> Deux axes désormais distincts sur une `Fixture` : `status` (placement — où en est le match dans le
+> cycle FBI) et `reviewState` (a-t-il été EXAMINÉ par le gestionnaire).
 
 - **`FixtureReviewState`** (`App\Enum\FixtureReviewState`) — trois valeurs : **NEW** (jamais
   examinée), **OUT_OF_SYNC** (déphasée — au moins un écart pendant subsiste), **REVIEWED**
@@ -1268,16 +1273,60 @@ future.
   en lecture ; `FixtureInput` (le corps du PUT) est INCHANGÉ — un PUT ne peut jamais écrire
   `reviewState` directement, seul un geste de traitement le fait. Les compteurs par équipe (« N à
   traiter ») sont **dérivés côté client** — pas d'endpoint agrégé (décision, pas un manque).
-- **PR-3b (frontend, à venir)** : onglet Importer (file de traitement par équipe), Configuration
-  allégée (P4-185/P4-186, encore ouverts), et le recalage du texte de `PlacementPanel.tsx` sur un
-  match `VALIDATED` (« La ligue a validé ce match. Il est définitif et ne se modifie plus ici. ») —
-  désormais inexact : un import peut poser `VALIDATED` (D9) et un écart peut l'en faire retomber.
-- **Tests** : `FixtureReviewApiTest.php` (les deux routes de traitement) ; `FbiFixtureImporterTest`
-  et `FfbbRencontresApiTest` étendus (D9, `autoApplied`, moteur partagé) ; `MatchTenantIsolationTest`
-  étendu (NR tenant isolation, déjà bloquant — aucun changement `ci.yml`) ; `ManagementRoleTest`
-  étendu (SEC-07 des deux nouvelles routes) ; Behat
+- **PR-3b (frontend, livré le même jour)** — l'onglet Importer branché sur l'axe traitement :
+  - `/matchs/importer` (`ImportPage.tsx`) : carte « Données de match » (Importer FBI, Vérifier via
+    l'API FFBB, Engagements FFBB, fraîcheur `useLatestFbiIngestion`) + la file (`ReviewQueue.tsx`,
+    `lib/reviewQueue.ts` `buildReviewQueue`/`pendingReviewCount`, dérivée côté client du même cache
+    `useFixtures` — pas d'endpoint agrégé, décision assumée ci-dessus). Un accordéon PAR équipe
+    (`AccordionSection` en mode contrôlé, ouverture dans `?equipe=`), tri `compareTeamsByRank` ;
+    en-tête « SM1 · N à valider · N écart(s) » ; « Tout valider » (`POST /api/fixtures/review
+    {teamId}`, les rencontres à écart sautées sont NOMMÉES en toast, jamais tranchées en masse) ;
+    interrupteur « Afficher les traitées » (`?traitees=1`, masquées par défaut — une équipe sans
+    rencontre ouverte disparaît de la file tant qu'il n'est pas activé).
+  - `ReviewQueueRow.tsx` : une rencontre `NEW` (ou à seuls écarts `autoApplied`) se valide en un
+    clic (`onValidateLine`, « garder l'app » implicite) ; une rencontre à écart ARBITRABLE se
+    tranche champ par champ, deux colonnes Amateo / source (FBI ou API FFBB), boutons « Garder
+    Amateo » / « Prendre {source} » avec la conséquence de `lib/deviationConsequence.ts` toujours
+    visible (texte `keep_app` recalé : « la rencontre est traitée avec la valeur d'Amateo ») ;
+    un écart `autoApplied` (hors périmètre, imposé par la source pendant que le match était traité)
+    porte son propre bandeau (« La source a déplacé ce match … au … ») ; bouton « Placer » qui
+    pose le filtre équipe et le week-end du match puis renvoie à Semaine.
+  - **Le flux xlsx a perdu son détour.** `ImportFbiDialog` n'affiche plus « Examiner les écarts » :
+    « Importer » envoie toujours `{file, mappings}` sans décisions ; le rapport affiche « N
+    écart(s) consigné(s) dans Importer » + un bouton « Ouvrir la file » (au lieu de basculer vers
+    `/matchs/reconciliation`, dont le rôle a changé — voir § « Réconciliation FBI » ci-dessus). Le
+    canal API (`checkViaApi` dans `ImportPage`) route en trois issues : des rencontres créables →
+    la vue de réconciliation ; pas de créable mais des écarts → `apply` direct (toast « N écart(s)
+    consigné(s) dans la file ») ; rien → toast « Tout est en phase avec ce que la FFBB publie »
+    (aucun `apply`).
+  - **Configuration allégée — P4-186 SOLDÉ.** Le dépôt FBI, le canal API et les Engagements FFBB
+    ont quitté `ConfigurationPage.tsx` pour l'onglet Importer (décision fondateur 2026-09-07 : « du
+    RUN, pas de la configuration ») ; `ConfigurationPage` ne porte plus que des réglages de saison
+    (gabarit A/B, créneaux partagés, échéances, durées, adversaires, accès match, habitudes &
+    passerelles). P4-185 (repli visuel des sections restantes) reste ouvert.
+  - **Vocabulaire D9 recalé.** `lib/fixtureStatusLabel.ts` : `VALIDATED` se dit « Attesté FBI »
+    (plus « Validé ligue ») ; `PlacementPanel.tsx` sur un match `VALIDATED` dit désormais « Attesté
+    par FBI : date, heure et salle renvoyées identiques. Un futur import qui diverge le signalera
+    dans Importer » — l'ancien texte (« La ligue a validé ce match… ») était devenu inexact depuis
+    D9 (un import peut poser `VALIDATED`, et un écart peut l'en faire retomber).
+  - `AccordionSection` (`shared/components/ui/accordion.tsx`) gagne un mode CONTRÔLÉ optionnel
+    (`open`/`onToggle`, rétro-compatible — omis, elle reste non-contrôlée) : premier consommateur,
+    `ReviewQueue`, pour refléter l'équipe ouverte dans l'URL.
+  - **Front** — tests : `lib/reviewQueue.test.ts`, `ImportPage.test.tsx`, `MatchesLayout.test.tsx`
+    (badge `Importer · N`, jamais `· 0`), `ReconciliationView.test.tsx`/`ImportFbiDialog.test.tsx`/
+    `ConfigurationPage.test.tsx`/`PlacementPanel.test.tsx`/`accordion.test.tsx` recalés ; e2e
+    `tests/e2e/matches-importer.spec.ts` (onglet, badge = compte serveur, Configuration allégée,
+    témoin : une rencontre créée à la main est déjà traitée, visible seulement sous « Afficher les
+    traitées »).
+- **Tests (backend, PR-3a)** : `FixtureReviewApiTest.php` (les deux routes de traitement) ;
+  `FbiFixtureImporterTest` et `FfbbRencontresApiTest` étendus (D9, `autoApplied`, moteur partagé) ;
+  `MatchTenantIsolationTest` étendu (NR tenant isolation, déjà bloquant — aucun changement
+  `ci.yml`) ; `ManagementRoleTest` étendu (SEC-07 des deux nouvelles routes) ; Behat
   `une-rencontre-importee-dit-si-elle-est-traitee.feature` (`FixtureReviewContext`) — le parcours
-  complet dépôt → traitement → re-dépôt → `VALIDATED` → déphasage → arbitrage.
+  complet dépôt → traitement → re-dépôt → `VALIDATED` → déphasage → arbitrage. ⚠ Le pas Gherkin
+  de cette feature dit encore « la rencontre est « validée ligue » » (vocabulaire pré-D9) — il
+  vérifie `status === VALIDATED`, pas le libellé écran ; drift cosmétique signalé, non corrigé ici
+  (fichier de test, hors périmètre de ce skill).
 
 ## Échéances ligue/comité — RMM-6 (3 PR, 2026-08-25) — LIVRÉ EN ENTIER
 

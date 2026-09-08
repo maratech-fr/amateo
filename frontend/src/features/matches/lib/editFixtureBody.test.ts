@@ -17,7 +17,7 @@ const placed: Fixture = {
   externalRef: null,
   fbiVenueLabel: null,
   placementSource: "MANUAL",
-  unplacedReason: null,};
+  unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null };
 
 const edit = (over: Partial<EditFixtureInput> = {}): EditFixtureInput => ({
   matchDate: placed.matchDate,

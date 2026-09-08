@@ -157,6 +157,13 @@ export const routes: RouteObject[] = [
                 lazy: async () => ({ Component: (await import("@/features/matches/ConsultPage")).ConsultPage }),
               },
               {
+                // PR-3b — l'espace « Importer » : dépôt FBI / API FFBB + file de
+                // traitement des rencontres (à valider, écarts). Route lazy sœur,
+                // garde socle héritée du layout.
+                path: "importer",
+                lazy: async () => ({ Component: (await import("@/features/matches/ImportPage")).ImportPage }),
+              },
+              {
                 path: "configuration",
                 lazy: async () => ({ Component: (await import("@/features/matches/ConfigurationPage")).ConfigurationPage }),
               },

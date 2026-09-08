@@ -8,7 +8,7 @@ describe("FIXTURE_STATUS_LABEL (RMM-1 PR 1)", () => {
     expect(FIXTURE_STATUS_LABEL.UNPLACED).toBe("Importé");
     expect(FIXTURE_STATUS_LABEL.PLACED).toBe("Placé");
     expect(FIXTURE_STATUS_LABEL.SUBMITTED).toBe("Saisi dans FBI");
-    expect(FIXTURE_STATUS_LABEL.VALIDATED).toBe("Validé ligue");
+    expect(FIXTURE_STATUS_LABEL.VALIDATED).toBe("Attesté FBI");
   });
 
   it("covers every status value — no English code can leak", () => {

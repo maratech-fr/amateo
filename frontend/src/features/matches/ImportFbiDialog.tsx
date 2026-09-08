@@ -1,4 +1,4 @@
-import { Wand2 } from "lucide-react";
+import { Inbox, Wand2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -11,7 +11,6 @@ import { toast } from "@/shared/stores/toastStore";
 import type { FbiMapping, ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team } from "./api";
 import { placementToastMessage } from "./lib/placementToast";
 import { useAnalyzeFbiFixtures, useImportFbiFixtures, usePlaceMatches } from "./queries";
-import { useMatchesStore } from "./store";
 
 interface ImportFbiDialogProps {
   teams: Team[];
@@ -35,7 +34,6 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
   const analyzeFbi = useAnalyzeFbiFixtures();
   const importFbi = useImportFbiFixtures();
   const navigate = useNavigate();
-  const setReconciliation = useMatchesStore((s) => s.setReconciliation);
   // RMM-1 PR2 — au rapport RÉUSSI, on propose de placer les matchs importés en UN
   // clic (jamais automatique). Même rail et même gate crédits que le bouton
   // principal de la boucle : solde dans le libellé, grisé à 0 mais JAMAIS masqué
@@ -85,6 +83,10 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
         return [{ division: d.name, fbiTeamLabel: d.fbiTeamLabel, teamId, competitionId }];
       });
 
+  // PR-3b — l'import part TOUJOURS sans décisions (`{file, mappings}`, D2). Les
+  // écarts domicile ≠ fichier ne se tranchent plus dans un détour : ils sont
+  // PERSISTÉS sur les rencontres (état OUT_OF_SYNC) et se traitent dans la file de
+  // l'onglet Importer. Le rapport en place les COMPTE et propose d'ouvrir la file.
   const submit = (): void => {
     if (null === file || null === analysis) {
       return;
@@ -92,22 +94,6 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
     importFbi.mutate({ file, mappings: buildMappings(analysis) }, { onSuccess: setReport });
   };
 
-  // RMM-4 — des écarts domicile ≠ fichier : on NE PAS importe en silence. Le
-  // fichier + les mappings complétés + les deviations voyagent EN MÉMOIRE vers la
-  // vue dédiée (`/matchs/reconciliation`) où le gestionnaire tranche chaque écart
-  // puis lance l'« Appliquer l'import ». Le File est une référence vivante — pas
-  // de sérialisation, pas de re-upload.
-  const examine = (): void => {
-    if (null === file || null === analysis) {
-      return;
-    }
-    setReconciliation({ channel: "xlsx", file, mappings: buildMappings(analysis), deviations: analysis.deviations });
-    onClose();
-    void navigate("/matchs/reconciliation");
-  };
-
-  const deviationCount = analysis?.deviations.length ?? 0;
-  const hasDeviations = deviationCount > 0;
   const canImport = null !== file && null !== analysis && !importFbi.isPending && !analyzeFbi.isPending;
 
   return (
@@ -121,15 +107,11 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
           <Button variant="outline" size="sm" onClick={onClose}>
             Fermer
           </Button>
-          {hasDeviations && null === report ? (
-            <Button size="sm" disabled={!canImport} onClick={examine}>
-              {1 === deviationCount ? "Examiner l'écart" : `Examiner les ${deviationCount} écarts`}
-            </Button>
-          ) : (
+          {null === report ? (
             <Button size="sm" disabled={!canImport} onClick={submit}>
               Importer
             </Button>
-          )}
+          ) : null}
         </>
       }
     >
@@ -265,6 +247,28 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
                   <li key={i}>{error}</li>
                 ))}
               </ul>
+            ) : null}
+
+            {/* PR-3b (D2) — les écarts domicile ≠ fichier sont CONSIGNÉS sur les
+                rencontres (OUT_OF_SYNC) : on les compte et on ouvre la file. */}
+            {report.unresolvedDeviations.length > 0 ? (
+              <div className="mt-1 flex flex-col items-start gap-1 border-t border-border pt-2">
+                <p className="text-xs text-muted-foreground">
+                  {report.unresolvedDeviations.length} écart{report.unresolvedDeviations.length > 1 ? "s" : ""} consigné
+                  {report.unresolvedDeviations.length > 1 ? "s" : ""} dans Importer — à traiter dans la file.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    onClose();
+                    void navigate("/matchs/importer");
+                  }}
+                >
+                  <Inbox className="size-4" />
+                  Ouvrir la file
+                </Button>
+              </div>
             ) : null}
 
             {/* L'enchaînement naturel : les matchs viennent d'arriver UNPLACED,

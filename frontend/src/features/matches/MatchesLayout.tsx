@@ -4,7 +4,8 @@ import { NavLink, Outlet } from "react-router";
 import { cn } from "@/shared/lib/utils";
 import { useSocleValidated } from "@/shared/lib/socle";
 
-import { useModuleVisit } from "./queries";
+import { pendingReviewCount } from "./lib/reviewQueue";
+import { useFixtures, useModuleVisit } from "./queries";
 
 /**
  * RMM-1 PR2 — « deux espaces ». Le module matchs écrasait deux temps que le
@@ -28,6 +29,13 @@ export function MatchesLayout() {
   // depuis le cache react-query partagé. Le layout enveloppant LES DEUX routes, la
   // navigation boucle⇄configuration ne le remonte pas → pas de re-POST.
   useModuleVisit(socleValidated);
+
+  // PR-3b — le badge de l'onglet Importer : le nombre de rencontres à traiter
+  // (NEW + OUT_OF_SYNC), dérivé du MÊME cache que la boucle et la file (aucune
+  // requête en plus). En chargement/échec (pas encore de données), pas de compte —
+  // jamais « Importer · 0 ».
+  const fixtures = useFixtures();
+  const pending = undefined !== fixtures.data ? pendingReviewCount(fixtures.data) : 0;
 
   // Matchs verrouillés tant que le plan de saison ne pointe pas une version
   // (état cockpit 2) — même condition que le SocleGuard côté serveur. Le garde
@@ -60,6 +68,11 @@ export function MatchesLayout() {
             en lecture seule (temporalité Semaine ; 2b ajoutera mois/phase). */}
         <NavLink to="/matchs/consulter" className={linkClass}>
           Consulter
+        </NavLink>
+        {/* PR-3b — l'espace « Importer » : dépôt FBI / API + file de traitement par
+            équipe. Le compte de rencontres à traiter s'affiche quand il est > 0. */}
+        <NavLink to="/matchs/importer" className={linkClass}>
+          {pending > 0 ? `Importer · ${pending}` : "Importer"}
         </NavLink>
         <NavLink to="/matchs/configuration" className={linkClass}>
           Configuration

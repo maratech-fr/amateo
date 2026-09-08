@@ -18,5 +18,5 @@ export const FIXTURE_STATUS_LABEL: Record<FixtureStatus, string> = {
   UNPLACED: "Importé",
   PLACED: "Placé",
   SUBMITTED: "Saisi dans FBI",
-  VALIDATED: "Validé ligue",
+  VALIDATED: "Attesté FBI",
 };

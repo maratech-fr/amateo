@@ -19,6 +19,10 @@ function fixture(over: Partial<Fixture> & Pick<Fixture, "id" | "teamId">): Fixtu
     fbiVenueLabel: null,
     placementSource: null,
     unplacedReason: null,
+    reviewState: "NEW" as const,
+    reviewedAt: null,
+    pendingDeviations: [],
+    ffbbRencontreId: null,
     ...over,
   };
 }

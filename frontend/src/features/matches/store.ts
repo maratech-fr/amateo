@@ -1,22 +1,19 @@
 import { create } from "zustand";
 
-import type { ConflictType, Deviation, FbiMapping, RencontreCreatable } from "./api";
+import type { ConflictType, RencontreCreatable } from "./api";
 import type { Kind } from "./lib/consultFilter";
 import type { LoopStepId } from "./lib/loopSteps";
 import type { MatchFilterMode } from "./lib/matchFilter";
 
 /**
- * RMM-4 — le payload d'analyse porté EN MÉMOIRE vers la vue de réconciliation
- * dédiée (`/matchs/reconciliation`). DEUX canaux alimentent la MÊME vue (le
- * `ReconciliationPanel` est agnostique) : le dépôt xlsx (`channel: "xlsx"` — le
- * `File` voyage comme une référence JS vivante, jamais sérialisé ni re-uploadé)
- * et le canal API FFBB (`channel: "api"` — les rencontres publiées croisées avec
- * l'app, PR-3). `null` = aucune analyse en cours : arriver sur la vue (accès
- * direct/refresh) sans ce payload est un « renvoi propre » vers la boucle.
+ * PR-3a/PR-3b — le payload porté EN MÉMOIRE vers la vue de réconciliation
+ * (`/matchs/reconciliation`), désormais RÉDUIT au seul canal API FFBB pour ses
+ * rencontres À CRÉER (`creatable`). Les écarts, eux, ne transitent plus par cette
+ * vue : ils sont PERSISTÉS sur les rencontres (`Fixture.pendingDeviations`) et se
+ * tranchent dans la file de l'onglet Importer. `null` = rien à intégrer : arriver
+ * sur la vue (accès direct/refresh) sans payload est un « renvoi propre ».
  */
-export type ReconciliationPayload =
-  | { channel: "xlsx"; file: File; mappings: FbiMapping[]; deviations: Deviation[] }
-  | { channel: "api"; deviations: Deviation[]; creatable: RencontreCreatable[]; fetchedAt: string };
+export type ReconciliationPayload = { channel: "api"; creatable: RencontreCreatable[]; fetchedAt: string };
 
 interface MatchesState {
   /** Saturday key of the weekend shown on the grid; null = auto (first available). */

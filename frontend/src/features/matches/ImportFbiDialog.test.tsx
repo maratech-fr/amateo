@@ -5,9 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { listboxTrigger, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
-import type { Deviation, ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team } from "./api";
+import type { ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team } from "./api";
 import { ImportFbiDialog } from "./ImportFbiDialog";
-import { useMatchesStore } from "./store";
 
 const { analyzeFbiFixtures, importFbiFixtures, placeMatches } = vi.hoisted(() => ({
   analyzeFbiFixtures: vi.fn(() =>
@@ -66,7 +65,6 @@ beforeEach(() => {
   importFbiFixtures.mockClear();
   placeMatches.mockClear();
   meState.club = undefined;
-  useMatchesStore.setState({ reconciliation: null });
 });
 
 describe("ImportFbiDialog", () => {
@@ -276,55 +274,49 @@ describe("ImportFbiDialog", () => {
     expect(placeMatches).not.toHaveBeenCalled();
   });
 
-  // ── RMM-4 — la réconciliation FBI : la vue dédiée s'insère AVANT l'import ─────────
-  it("des écarts détectés → le dialogue mène à la vue (fichier+mappings+deviations portés), JAMAIS l'import direct", async () => {
+  // ── PR-3b (D2) — l'import CONSIGNE les écarts, plus de détour « Examiner » ────────
+  it("écarts détectés → import direct (jamais « Examiner »), le rapport les compte et ouvre la file", async () => {
     const user = userEvent.setup();
-    const deviation: Deviation = {
-      fixtureId: "fx-1",
-      externalRef: "101137",
-      division: "PNM",
-      teamId: "team-1",
-      status: "PLACED",
-      persisting: false,
-      fields: { date: { app: "2026-11-28", file: "2026-12-05" } },
-    };
-    analyzeFbiFixtures.mockResolvedValueOnce({
-      divisions: [{ name: "PNM", fbiTeamLabel: null, rowCount: 10, teamId: "team-1", competitionId: "comp-1", suggestedTeamId: null, suggestedCompetitionId: null, pouleError: null, pouleUnknownOpponents: [] }],
-      totalRows: 10,
+    importFbiFixtures.mockResolvedValueOnce({
+      message: "Import terminé.",
+      created: 0,
+      updated: 1,
+      unchanged: 9,
       exempted: 0,
       errors: [],
-      deviations: [deviation],
+      warnings: [],
+      unmappedDivisions: [],
+      completeness: [],
+      unresolvedDeviations: [
+        { fixtureId: "fx-1", externalRef: "101137", division: "PNM", teamId: "team-1", status: "PLACED", persisting: false, fields: { date: { app: "2026-11-28", file: "2026-12-05" } } },
+      ],
+      depositedAt: "2026-08-24T10:00:00+00:00",
     });
-    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+    const onClose = vi.fn();
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={onClose} />);
 
     await pickFile(user);
-    // L'action primaire devient « Examiner » — jamais « Importer » quand il y a des écarts.
-    const examine = await screen.findByRole("button", { name: /Examiner l['’]écart/i });
-    expect(screen.queryByRole("button", { name: "Importer" })).not.toBeInTheDocument();
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
+    // Plus jamais de bouton « Examiner » : l'action primaire reste « Importer ».
+    expect(screen.queryByRole("button", { name: /Examiner/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Importer" }));
 
-    await user.click(examine);
-
-    // FALSIFICATION — l'import n'est PAS lancé : la vue tranchera d'abord.
-    expect(importFbiFixtures).not.toHaveBeenCalled();
-    // Le File + les mappings + les deviations voyagent en mémoire vers la vue.
-    const carried = useMatchesStore.getState().reconciliation;
-    if (null === carried || "xlsx" !== carried.channel) {
-      throw new Error("payload canal xlsx attendu");
-    }
-    expect(carried.file).toBeInstanceOf(File);
-    expect(carried.mappings).toEqual([]); // PNM déjà mappé côté serveur → rien de neuf à envoyer
-    expect(carried.deviations).toEqual([deviation]);
+    // Le rapport COMPTE les écarts consignés dans la file et offre de l'ouvrir.
+    await waitFor(() => expect(screen.getByText(/1 écart consigné dans Importer/i)).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Ouvrir la file" }));
+    expect(onClose).toHaveBeenCalled();
   });
 
-  it("aucune deviation → flux INCHANGÉ (pas d'étape « Examiner », import direct)", async () => {
+  it("aucun écart → rapport sans « Ouvrir la file »", async () => {
     const user = userEvent.setup();
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
     await pickFile(user);
     await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
-    // FALSIFICATION — aucune bascule vers la vue quand il n'y a pas d'écart.
     expect(screen.queryByRole("button", { name: /Examiner/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Importer" })).toBeInTheDocument();
-    expect(useMatchesStore.getState().reconciliation).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Importer" }));
+    await waitFor(() => expect(screen.getByText(/22 créés/)).toBeInTheDocument());
+    // unresolvedDeviations vide (mock par défaut) → aucune file à ouvrir.
+    expect(screen.queryByRole("button", { name: "Ouvrir la file" })).not.toBeInTheDocument();
   });
 });

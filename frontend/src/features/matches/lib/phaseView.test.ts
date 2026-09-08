@@ -22,6 +22,10 @@ function fx(partial: Partial<Fixture> & Pick<Fixture, "id" | "matchDate" | "comp
     fbiVenueLabel: null,
     placementSource: null,
     unplacedReason: null,
+    reviewState: "NEW" as const,
+    reviewedAt: null,
+    pendingDeviations: [],
+    ffbbRencontreId: null,
     ...partial,
   };
 }

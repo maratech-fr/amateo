@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,15 +18,21 @@ vi.mock("@/shared/session/queries", () => ({
 // par montage du layout, jamais sur un module verrouillé, jamais au re-render ni à
 // la navigation boucle⇄configuration.
 const visit = vi.hoisted(() => ({ count: 0 }));
+// PR-3b — les rencontres nourrissent le badge de l'onglet Importer (pendingReviewCount).
+// Mutable par test pour piloter le compte (NEW/OUT_OF_SYNC/REVIEWED) et l'échec.
+const fixturesState = vi.hoisted(() => ({ rows: [] as { reviewState: string }[], fail: false }));
 vi.mock("./api", () => ({
   postModuleVisit: vi.fn(() => {
     visit.count += 1;
     return Promise.resolve({ firstVisit: true, newFixturesCount: 0, newConflictFingerprints: [], planningChanged: false, referenceTakenAt: "2026-08-24T10:00:00+00:00" });
   }),
+  getFixtures: vi.fn(() => (fixturesState.fail ? Promise.reject(new Error("boom")) : Promise.resolve(fixturesState.rows))),
 }));
 
 beforeEach(() => {
   visit.count = 0;
+  fixturesState.rows = [];
+  fixturesState.fail = false;
 });
 
 function renderAt(path: string) {
@@ -38,6 +44,7 @@ function renderAt(path: string) {
           <Route path="/matchs" element={<MatchesLayout />}>
             <Route index element={<div>BOUCLE</div>} />
             <Route path="consulter" element={<div>CONSULTER</div>} />
+            <Route path="importer" element={<div>IMPORTER</div>} />
             <Route path="configuration" element={<div>CONFIG</div>} />
           </Route>
         </Routes>
@@ -53,6 +60,16 @@ describe("MatchesLayout (RMM-1 PR2 — deux espaces)", () => {
     expect(screen.getByText("BOUCLE")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Espaces matchs" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Configuration" })).toBeInTheDocument();
+  });
+
+  it("porte les QUATRE onglets, dans l'ordre Semaine · Consulter · Importer · Configuration (PR-3b)", () => {
+    meState.chosen = "s1";
+    renderAt("/matchs");
+    const nav = screen.getByRole("navigation", { name: "Espaces matchs" });
+    const labels = within(nav)
+      .getAllByRole("link")
+      .map((l) => l.textContent);
+    expect(labels).toEqual(["Semaine", "Consulter", "Importer", "Configuration"]);
   });
 
   it("porte l'onglet Consulter et rend l'espace Consulter (PR-2a)", async () => {
@@ -83,6 +100,34 @@ describe("MatchesLayout (RMM-1 PR2 — deux espaces)", () => {
     meState.chosen = "s1";
     renderAt("/matchs/configuration");
     expect(screen.getByText("CONFIG")).toBeInTheDocument();
+  });
+});
+
+describe("MatchesLayout — le badge de l'onglet Importer (PR-3b)", () => {
+  it("affiche le compte quand des rencontres restent à traiter (« Importer · N »)", async () => {
+    meState.chosen = "s1";
+    fixturesState.rows = [{ reviewState: "NEW" }, { reviewState: "OUT_OF_SYNC" }, { reviewState: "REVIEWED" }];
+    renderAt("/matchs");
+    // Le compte arrive après le fetch (data absente au premier rendu).
+    expect(await screen.findByRole("link", { name: "Importer · 2" })).toBeInTheDocument();
+  });
+
+  it("aucun compte quand tout est traité — jamais « Importer · 0 »", async () => {
+    meState.chosen = "s1";
+    fixturesState.rows = [{ reviewState: "REVIEWED" }];
+    renderAt("/matchs");
+    await waitFor(() => expect(visit.count).toBe(1)); // laisse le fetch se poser
+    expect(screen.getByRole("link", { name: "Importer" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Importer · / })).not.toBeInTheDocument();
+  });
+
+  it("aucun compte en cas d'échec de lecture (pas de « · » sur données absentes)", async () => {
+    meState.chosen = "s1";
+    fixturesState.fail = true;
+    renderAt("/matchs");
+    await waitFor(() => expect(visit.count).toBe(1));
+    expect(screen.getByRole("link", { name: "Importer" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Importer · / })).not.toBeInTheDocument();
   });
 });
 
