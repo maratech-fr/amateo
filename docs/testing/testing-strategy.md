@@ -1,18 +1,19 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-05 (programme Behat P4-175 SOLDÉ — 11 features de plus, `functional-tests`
-inchangé côté CI). Re-confronté à `.github/workflows/ci.yml` : job `smoke-tests` n'existe plus
-(`grep -c "smoke-tests:" .github/workflows/ci.yml` → 0) ; job `functional-tests` sans `needs`, step
-unique `vendor/bin/behat --format=pretty --no-interaction` (`APP_ENV=dev`) jouant toutes les suites
-de `backend/behat.dist.php` (une par feature de `backend/features/`, un context dédié chacune —
-aucun compte ici, il rot en jours ; `grep -c withSuite backend/behat.dist.php` fait foi). **SEPT
-jobs sans `needs` désormais** (§1, recompté contre `ci.yml` —
-`frontend`, `dependency-audit`, `rector`, `secrets-scan`, `semgrep`, `engine-semantics`,
-`functional-tests`). Le reste du graphe (`blocking-tests` needs `[lint, phpstan]`, `unit-tests`/`e2e`
-needs `blocking-tests`, `backend-coverage`/`engine-coverage`/`frontend-coverage`,
-`engine-perf`/`engine-perf-pr`) et `backend/phpunit.xml.dist` (3 testsuites,
-`Unit/TestsuitesCoverEveryTestDirectoryTest`) non re-sondés cette passe (voir `git log -p --follow
-docs/testing/testing-strategy.md` pour l'historique des passes).
+Last verified @ 2026-09-08 (rotation de fraîcheur `documentation-update`, PR-2b Mois · Phase module
+matchs — fichier hors sujet). Re-confronté à `.github/workflows/ci.yml` : job `smoke-tests` toujours
+absent (`grep -c "smoke-tests:" .github/workflows/ci.yml` → 0) ; **SEPT jobs sans `needs`** confirmés
+un par un (`frontend`, `dependency-audit`, `rector`, `secrets-scan`, `semgrep`, `engine-semantics`,
+`functional-tests` — `lint`/`phpstan`/`engine-tests` sont aussi sans `needs` mais gatent d'autres
+jobs, catégorie distincte) ; `blocking-tests` toujours `needs: [lint, phpstan]` ; `unit-tests` et
+`e2e` toujours `needs: blocking-tests` ; `build-docker` toujours `needs: [blocking-tests,
+engine-tests]` seulement ; `functional-tests` toujours sans `needs`, step unique `docker compose exec
+… vendor/bin/behat --format=pretty --no-interaction` sous `APP_ENV=dev`, et démarre bien
+`pdf-worker` dans son étape `Start services` (l'export PDF réel, ajouté 2026-09-05) ;
+`backend/phpunit.xml.dist` toujours 3 `<testsuite>` (`Unit`, `Integration`, `Contract`) et
+`backend/tests/Unit/TestsuitesCoverEveryTestDirectoryTest.php` existe toujours. Reste du fichier non
+re-sondé cette passe (voir `git log -p --follow docs/testing/testing-strategy.md` pour l'historique
+des passes).
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique), [`test-coverage-map.md`](test-coverage-map.md) (qui teste quoi, angles morts) and [`../project-map.md`](../project-map.md).
 

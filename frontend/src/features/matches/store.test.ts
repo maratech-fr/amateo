@@ -116,3 +116,29 @@ describe("useMatchesStore — filtres Consulter (PR-2a)", () => {
     expect(useMatchesStore.getState().consultTypicalWeek).toBe(false);
   });
 });
+
+describe("useMatchesStore — temporalité Consulter (PR-2b)", () => {
+  beforeEach(() => {
+    useMatchesStore.setState({ consultTemporality: "semaine", consultMonth: null, consultPhaseId: null });
+  });
+
+  it("défauts : temporalité semaine, mois/phase null", () => {
+    expect(useMatchesStore.getState().consultTemporality).toBe("semaine");
+    expect(useMatchesStore.getState().consultMonth).toBeNull();
+    expect(useMatchesStore.getState().consultPhaseId).toBeNull();
+  });
+
+  it("setConsultTemporality bascule Semaine · Mois · Phase", () => {
+    useMatchesStore.getState().setConsultTemporality("mois");
+    expect(useMatchesStore.getState().consultTemporality).toBe("mois");
+    useMatchesStore.getState().setConsultTemporality("phase");
+    expect(useMatchesStore.getState().consultTemporality).toBe("phase");
+  });
+
+  it("setConsultMonth / setConsultPhaseId posent la sélection", () => {
+    useMatchesStore.getState().setConsultMonth("2026-10");
+    expect(useMatchesStore.getState().consultMonth).toBe("2026-10");
+    useMatchesStore.getState().setConsultPhaseId("comp-1");
+    expect(useMatchesStore.getState().consultPhaseId).toBe("comp-1");
+  });
+});

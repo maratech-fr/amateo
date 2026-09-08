@@ -42,8 +42,8 @@ describe("applyFilterToParams", () => {
 });
 
 describe("decodeConsultParams (PR-2a)", () => {
-  it("params absents ⇒ kinds/families null (= tout), semaine type affichée, temps semaine", () => {
-    expect(decodeConsultParams(new URLSearchParams(""))).toEqual({ kinds: null, families: null, typicalWeek: true, temps: "semaine" });
+  it("params absents ⇒ kinds/families null (= tout), semaine type affichée, temps semaine, mois/phase null", () => {
+    expect(decodeConsultParams(new URLSearchParams(""))).toEqual({ kinds: null, families: null, typicalWeek: true, temps: "semaine", month: null, phaseId: null });
   });
 
   it("type ⇒ liste filtrée sur les valeurs connues, dédoublonnée", () => {
@@ -59,28 +59,58 @@ describe("decodeConsultParams (PR-2a)", () => {
     expect(decodeConsultParams(new URLSearchParams("type_semaine=1")).typicalWeek).toBe(true);
   });
 
-  it("temps n'accepte que semaine (valeur inconnue ⇒ repli semaine)", () => {
-    expect(decodeConsultParams(new URLSearchParams("temps=mois")).temps).toBe("semaine");
+  it("temps accepte semaine · mois · phase (PR-2b) ; valeur inconnue ⇒ repli semaine", () => {
+    expect(decodeConsultParams(new URLSearchParams("temps=mois")).temps).toBe("mois");
+    expect(decodeConsultParams(new URLSearchParams("temps=phase")).temps).toBe("phase");
+    expect(decodeConsultParams(new URLSearchParams("temps=ghost")).temps).toBe("semaine");
+  });
+
+  it("mois = YYYY-MM valide (sinon null) ; phase = id brut", () => {
+    expect(decodeConsultParams(new URLSearchParams("mois=2026-10")).month).toBe("2026-10");
+    expect(decodeConsultParams(new URLSearchParams("mois=2026-13")).month).toBeNull();
+    expect(decodeConsultParams(new URLSearchParams("mois=nope")).month).toBeNull();
+    expect(decodeConsultParams(new URLSearchParams("phase=comp-1")).phaseId).toBe("comp-1");
   });
 });
 
-describe("applyConsultToParams (PR-2a)", () => {
-  it("défauts (tout coché, semaine type) ⇒ aucun param", () => {
-    expect(applyConsultToParams(new URLSearchParams(""), { kinds: null, families: null, typicalWeek: true, temps: "semaine" }).toString()).toBe("");
+describe("applyConsultToParams (PR-2a/2b)", () => {
+  it("défauts (tout coché, semaine type, temps semaine) ⇒ aucun param", () => {
+    expect(applyConsultToParams(new URLSearchParams(""), { kinds: null, families: null, typicalWeek: true, temps: "semaine", month: null, phaseId: null }).toString()).toBe("");
   });
 
   it("sélection partielle de types ⇒ type écrit ; semaine type masquée ⇒ type_semaine=0", () => {
-    const out = applyConsultToParams(new URLSearchParams(""), { kinds: ["amical", "coupe"], families: null, typicalWeek: false, temps: "semaine" });
+    const out = applyConsultToParams(new URLSearchParams(""), { kinds: ["amical", "coupe"], families: null, typicalWeek: false, temps: "semaine", month: null, phaseId: null });
     expect(out.get("type")).toBe("amical,coupe");
     expect(out.get("type_semaine")).toBe("0");
     expect(out.get("conflits")).toBeNull();
   });
 
   it("familles partielles ⇒ conflits écrit", () => {
-    expect(applyConsultToParams(new URLSearchParams(""), { kinds: null, families: ["MATCH_MATCH"], typicalWeek: true, temps: "semaine" }).get("conflits")).toBe("MATCH_MATCH");
+    expect(applyConsultToParams(new URLSearchParams(""), { kinds: null, families: ["MATCH_MATCH"], typicalWeek: true, temps: "semaine", month: null, phaseId: null }).get("conflits")).toBe("MATCH_MATCH");
   });
 
   it("préserve les params sans rapport", () => {
-    expect(applyConsultToParams(new URLSearchParams("autre=1"), { kinds: null, families: null, typicalWeek: true, temps: "semaine" }).get("autre")).toBe("1");
+    expect(applyConsultToParams(new URLSearchParams("autre=1"), { kinds: null, families: null, typicalWeek: true, temps: "semaine", month: null, phaseId: null }).get("autre")).toBe("1");
+  });
+
+  it("temps mois + mois écrit temps=mois & mois=YYYY-MM (phase absente)", () => {
+    const out = applyConsultToParams(new URLSearchParams(""), { kinds: null, families: null, typicalWeek: true, temps: "mois", month: "2026-10", phaseId: "comp-1" });
+    expect(out.get("temps")).toBe("mois");
+    expect(out.get("mois")).toBe("2026-10");
+    expect(out.get("phase")).toBeNull();
+  });
+
+  it("temps phase + phaseId écrit temps=phase & phase=<id> (mois absent)", () => {
+    const out = applyConsultToParams(new URLSearchParams(""), { kinds: null, families: null, typicalWeek: true, temps: "phase", month: "2026-10", phaseId: "comp-1" });
+    expect(out.get("temps")).toBe("phase");
+    expect(out.get("phase")).toBe("comp-1");
+    expect(out.get("mois")).toBeNull();
+  });
+
+  it("temps semaine ⇒ ni temps ni mois ni phase, même si month/phaseId posés", () => {
+    const out = applyConsultToParams(new URLSearchParams(""), { kinds: null, families: null, typicalWeek: true, temps: "semaine", month: "2026-10", phaseId: "comp-1" });
+    expect(out.get("temps")).toBeNull();
+    expect(out.get("mois")).toBeNull();
+    expect(out.get("phase")).toBeNull();
   });
 });

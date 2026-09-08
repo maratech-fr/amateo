@@ -28,7 +28,7 @@ vi.mock("./api", () => ({
       { id: "fx-home-w2", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-10-10", homeAway: "HOME", opponentLabel: "Lointains", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: null, fbiVenueLabel: null, placementSource: "MANUAL", unplacedReason: null },
     ]),
   ),
-  getCompetitions: vi.fn(() => Promise.resolve([{ id: "comp-coupe", teamId: "team-2", name: "Coupe AURA", competitionType: "CUP" }])),
+  getCompetitions: vi.fn(() => Promise.resolve([{ id: "comp-coupe", teamId: "team-2", name: "Coupe AURA", competitionType: "CUP", ffbbCompetitionId: "ffbb-1", expectedMatchdays: 8 }])),
   getTeams: vi.fn(() =>
     Promise.resolve([
       { id: "team-1", name: "U13", sportCategoryId: "cat-1", level: null, gender: null, priorityTierId: 3, tierOrder: 0 },
@@ -93,6 +93,9 @@ beforeEach(() => {
     consultKinds: null,
     consultFamilies: null,
     consultTypicalWeek: true,
+    consultTemporality: "semaine",
+    consultMonth: null,
+    consultPhaseId: null,
   });
 });
 
@@ -151,6 +154,52 @@ describe("ConsultPage (PR-2a — onglet Consulter, lecture seule)", () => {
     });
     await user.click(cell);
 
+    expect(screen.getByText("PLACER")).toBeInTheDocument();
+    expect(useMatchesStore.getState().selectedWeekend).toBe("2026-10-03");
+  });
+});
+
+describe("ConsultPage (PR-2b — temporalités Mois et Phase)", () => {
+  it("bascule Mois : table groupée par jour, compteurs sur le MOIS (les deux familles)", async () => {
+    const user = userEvent.setup();
+    renderConsult();
+    await user.click(await screen.findByRole("button", { name: "Mois" }));
+
+    // Table présente + jour d'octobre en en-tête de groupe.
+    expect(await screen.findByRole("table")).toBeInTheDocument();
+    // Les rencontres du mois apparaissent (grille par jour) — l'amical et la coupe.
+    expect(screen.getByText("Voisins")).toBeInTheDocument();
+    expect(screen.getByText("Rivaux")).toBeInTheDocument();
+    // Compteurs de familles sur le MOIS : la collision (10-03) ET l'indispo (10-10).
+    expect(screen.getByRole("button", { name: /Collision de gymnase/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Gymnase indisponible/ })).toBeInTheDocument();
+    // La semaine type n'est pas rendue hors Semaine.
+    expect(screen.queryByRole("switch", { name: /Semaine type/ })).not.toBeInTheDocument();
+  });
+
+  it("bascule Phase : sélecteur natif + complétude + journées de la compétition appariée", async () => {
+    const user = userEvent.setup();
+    renderConsult();
+    await user.click(await screen.findByRole("button", { name: "Phase" }));
+
+    // Sélecteur natif des compétitions appariées (Coupe AURA — Seniors).
+    const select = await screen.findByRole("combobox", { name: /Phase|compétition/i });
+    expect(select).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Coupe AURA — Seniors/ })).toBeInTheDocument();
+    // Complétude : 1 rencontre importée / 8 journées attendues.
+    expect(screen.getByText(/1\s*\/\s*8\s+journées importées/)).toBeInTheDocument();
+    // La rencontre de la phase (Rivaux, comp-coupe) dans la table.
+    expect(screen.getByText("Rivaux")).toBeInTheDocument();
+  });
+
+  it("cliquer une ligne de la table (Mois) renvoie vers Placer sur son week-end", async () => {
+    const user = userEvent.setup();
+    renderConsult();
+    await user.click(await screen.findByRole("button", { name: "Mois" }));
+    await screen.findByRole("table");
+    // Le bouton de ligne de l'amical (fx-home-amical, 2026-10-03).
+    const rowButton = screen.getByRole("button", { name: /Voisins/ });
+    await user.click(rowButton);
     expect(screen.getByText("PLACER")).toBeInTheDocument();
     expect(useMatchesStore.getState().selectedWeekend).toBe("2026-10-03");
   });

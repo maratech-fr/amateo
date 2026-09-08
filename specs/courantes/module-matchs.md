@@ -1,18 +1,8 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-08 (PR-2a Consulter, `documentation-update` — nouvelle section « Onglet Consulter »
-confrontée à `ConsultPage.tsx`, `lib/consultFilter.ts`, `lib/conflictLabels.ts`, `MatchesLayout.tsx`, `app/routes.tsx` ;
-sections « Filtres » (PR-1) et « Détection » (P4-190) du même jour re-confrontées).
-> Graduation du comportement livré (skill `documentation-update`). Le besoin et la vision restent dans
-> [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) (paliers A/B/C), **cadrés
-> pour l'exécution le 2026-08-02** par
-> [`../../docs/archive/p1-4-cadrage-module-matchs.md`](../../docs/archive/p1-4-cadrage-module-matchs.md) (P1-4 —
-> notamment : le format FBI livré ici est **invalidé par un vrai export**, et le placement devient
-> solveur + boucle manuelle). Ici = ce qui **existe** aujourd'hui. Module **fonctionnellement autonome** : ses entités, son moteur de conflits et sa
-> grille week-end ne dépendent pas du solveur d'entraînement, et rien de ce module n'entre dans le payload
-> du solve hebdo. Depuis la PR D il a **son propre solve** (`POST /place-matches`, second problème engine,
-> **même contrat backend⇄engine** que le solve hebdo — un seul `CONTRACT_VERSION`, cf. § Solveur de placement).
-
+Last verified @ 2026-09-08 (PR-2b Mois · Phase, `documentation-update` — section « Onglet Consulter » étendue aux
+temporalités, confrontée à `ConsultPage.tsx`, `MatchRowsTable.tsx`, `lib/monthView.ts`, `lib/phaseView.ts`,
+`lib/urlState.ts`, `store.ts` ; sections PR-1, PR-2a et P4-190 du même jour re-confrontées).
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -911,8 +901,21 @@ Configuration** ; l'onglet Importer naîtra avec sa page (un onglet mort serait 
 - **Grille + extérieurs en lecture** (`WeekendGrid`, `AwayList` sans ses actions), radar nourri des conflits filtrés ;
   clic sur un match → Placer sur son week-end. Navigateur ‹ › et `resolveActiveWeekend` comme Semaine.
 - **URL** : `type=amical,championnat,coupe,brassage`, `conflits=<familles>`, `type_semaine=0|1` (absent = défaut).
-- Hors périmètre, à suivre : Mois · Phase (PR-2b, primitive `table.tsx` partagée à créer), Importer (PR-3 : file de
-  traitement persistée, reprise). P4-192 reste ouvert (l'atterrissage de Placer).
+- **Temporalités Semaine · Mois · Phase** (PR-2b, 2026-09-08 — contrôle segmenté à côté du navigateur, Semaine par
+  défaut et byte-identique) :
+  - **Mois** : navigateur ‹ mois › (`resolveActiveMonth` : sélection si listée, sinon premier mois ≥ courant, sinon
+    dernier), table groupée par jour (`lib/monthView.ts`), compteurs de familles sur le mois, empty state « Aucun
+    match pour {libellé} en {mois} ».
+  - **Phase** = une compétition FFBB appariée (`Competition`) : `<select>` natif, en-tête « {importées} / {attendues}
+    journées » (⚠ sur une coupe le dénominateur 2×(N−1) n'a pas de sens — roadmap P4-195) (le conflit `COMPETITION_INCOMPLETE` de la compétition s'il existe, sinon `count/expectedMatchdays` —
+    comptage de présentation), journées groupées par week-end (`lib/phaseView.ts`), empty state « Aucune compétition
+    appariée » → Engagements FFBB.
+  - **Ligne de match** (`MatchRowsTable.tsx`, primitive partagée `table.tsx` née ici) : date + heure ou « heure non
+    publiée », équipe (+ rôle en vue coach), dom./ext., adversaire, gymnase résolu sinon `fbiVenueLabel` « non
+    rattaché », statut, une pastille par famille de conflit présente ; clic → Placer sur le week-end du match.
+  - URL : `temps=semaine|mois|phase`, `mois=YYYY-MM`, `phase=<competitionId>`.
+- Hors périmètre, à suivre : Importer (PR-3 : file de traitement persistée, reprise, compteurs par équipe — « SM1 :
+  5 matchs à valider, SM2 : 2 écarts, U18M1 : 5 nouveaux »). P4-192 reste ouvert (l'atterrissage de Placer).
 
 ## Refonte UX — RMM-1 (P2-26, 4 PR entre 2026-08-23 et 2026-08-24)
 
