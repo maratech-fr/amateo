@@ -140,6 +140,14 @@ when@dev:
             # La suite e2e enchaîne générations et exports sur un même club : les caps de
             # PROD y sont hors sujet. Ils restent des bornes réelles (un dev box exposé ne
             # devient pas une ferme à solves), mais assez larges pour une suite complète.
+            # `api` (SEC-11, 300/min par utilisateur en prod) : la suite e2e joue TOUT le club
+            # avec un seul utilisateur, spec après spec, dans la même minute glissante — mesuré le
+            # 2026-09-08 : l'ajout du spec Consulter a fait dépasser 300 et `redate-closure` a reçu
+            # un 429 en créant sa semaine-enfant. Borne dev large, jamais reprise en prod.
+            api:
+                policy: 'sliding_window'
+                limit: 3000
+                interval: '1 minute'
             schedule_generation:
                 policy: 'sliding_window'
                 limit: 200
