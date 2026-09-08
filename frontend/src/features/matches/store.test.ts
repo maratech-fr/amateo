@@ -41,3 +41,47 @@ describe("useMatchesStore — raisons de non-placement (RMM-1 PR4, L6)", () => {
     expect(useMatchesStore.getState().unplacedReasons.size, "changer de semaine vide les raisons").toBe(0);
   });
 });
+
+describe("useMatchesStore — filtre de la vue Semaine (PR-1)", () => {
+  beforeEach(() => {
+    useMatchesStore.setState({ filterMode: "equipe", filterIds: [], railStep: null });
+  });
+
+  it("défaut : mode equipe, aucune sélection", () => {
+    expect(useMatchesStore.getState().filterMode).toBe("equipe");
+    expect(useMatchesStore.getState().filterIds).toEqual([]);
+  });
+
+  it("setFilterMode change l'axe, VIDE la sélection et remet railStep à null", () => {
+    useMatchesStore.setState({ filterIds: ["a", "b"], railStep: "disputes" });
+    useMatchesStore.getState().setFilterMode("coach");
+    expect(useMatchesStore.getState().filterMode).toBe("coach");
+    expect(useMatchesStore.getState().filterIds).toEqual([]);
+    expect(useMatchesStore.getState().railStep).toBeNull();
+  });
+
+  it("toggleFilterId ajoute puis retire, et remet railStep à null", () => {
+    useMatchesStore.getState().toggleFilterId("t1");
+    expect(useMatchesStore.getState().filterIds).toEqual(["t1"]);
+    useMatchesStore.setState({ railStep: "model" });
+    useMatchesStore.getState().toggleFilterId("t2");
+    expect(useMatchesStore.getState().filterIds).toEqual(["t1", "t2"]);
+    expect(useMatchesStore.getState().railStep).toBeNull();
+    useMatchesStore.getState().toggleFilterId("t1");
+    expect(useMatchesStore.getState().filterIds).toEqual(["t2"]);
+  });
+
+  it("clearFilter vide la sélection sans changer l'axe", () => {
+    useMatchesStore.setState({ filterMode: "gymnase", filterIds: ["v1", "v2"] });
+    useMatchesStore.getState().clearFilter();
+    expect(useMatchesStore.getState().filterMode).toBe("gymnase");
+    expect(useMatchesStore.getState().filterIds).toEqual([]);
+  });
+
+  it("changer de semaine ne purge PAS le filtre", () => {
+    useMatchesStore.setState({ filterMode: "coach", filterIds: ["c1"] });
+    useMatchesStore.getState().setSelectedWeekend("2026-10-10");
+    expect(useMatchesStore.getState().filterIds).toEqual(["c1"]);
+    expect(useMatchesStore.getState().filterMode).toBe("coach");
+  });
+});

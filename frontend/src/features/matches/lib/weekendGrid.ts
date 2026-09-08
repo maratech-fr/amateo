@@ -61,6 +61,24 @@ export function listWeekends(fixtures: Fixture[]): string[] {
   return [...new Set(fixtures.map((f) => weekendKeyOf(f.matchDate)))].sort();
 }
 
+/**
+ * La semaine à afficher par défaut. Si la sélection est encore dans la liste, on
+ * la garde. Sinon (aucune sélection, ou une sélection retirée par un filtre) : la
+ * PREMIÈRE semaine ≥ la semaine courante (`todayKey` = `weekendKeyOf(today)`) —
+ * pour atterrir sur « maintenant », pas sur la plus vieille rencontre — sinon la
+ * dernière (tout est passé), sinon `null` (aucune semaine). `weekends` est trié
+ * croissant (cf. `listWeekends`), donc les clés se comparent lexicographiquement.
+ */
+export function resolveActiveWeekend(weekends: string[], selected: string | null, todayKey: string): string | null {
+  if (null !== selected && weekends.includes(selected)) {
+    return selected;
+  }
+  if (0 === weekends.length) {
+    return null;
+  }
+  return weekends.find((w) => w >= todayKey) ?? weekends[weekends.length - 1];
+}
+
 /** A placed home fixture = one we can lay on the dated grid (venue + kickoff known). */
 export function isPlacedOnGrid(fixture: Fixture): boolean {
   return "HOME" === fixture.homeAway && null !== fixture.venueId && null !== fixture.kickoffTime;

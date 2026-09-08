@@ -1,6 +1,8 @@
-import { ChevronLeft, ChevronRight, Info, MousePointerClick, Plus, Upload, Wand2 } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, Filter, Info, MousePointerClick, Plus, Upload, Wand2 } from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 
+import { useCoachPlayers, useTeamCoaches } from "@/features/planning/queries";
 import { FeedbackButton } from "@/features/feedback/FeedbackButton";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -19,11 +21,14 @@ import { FixtureFormDialog } from "./FixtureFormDialog";
 import { ImportFbiDialog } from "./ImportFbiDialog";
 import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
 import { depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
+import { applyMatchFilter } from "./lib/matchFilter";
+import { MatchesFilterBar } from "./MatchesFilterBar";
+import { applyFilterToParams, decodeFilterParams } from "./lib/urlState";
 import { datelessConflicts, defaultLoopStep, deriveLoopSteps, offModelCount, sameWeekendRotationCount } from "./lib/loopSteps";
 import { todayISO } from "@/shared/lib/clock";
 import { ModuleVisitBanner } from "./ModuleVisitBanner";
 import { placementToastMessage } from "./lib/placementToast";
-import { buildWeekendGrid, isPlacedOnGrid, listWeekends, weekendKeyOf, weekLabel } from "./lib/weekendGrid";
+import { buildWeekendGrid, isPlacedOnGrid, listWeekends, resolveActiveWeekend, weekendKeyOf, weekLabel } from "./lib/weekendGrid";
 import { PlacementPanel } from "./PlacementPanel";
 import { useCategories, useCoaches, useCompetitions, useConflicts, useDeleteFixture, useFixtures, useLatestFbiIngestion, useLeagueWindows, useLockFixture, useMatchSlotRotations, useModuleVisit, useMoveFixture, useOpponentTravel, usePlaceFixture, usePlaceMatches, usePriorityTiers, useReopenFixture, useSubmitFixture, useSwapFixtures, useTeamMatchHabits, useTeams, useUnlockFixture, useUnplaceFixture, useVenueMatchWindows, useVenues, useVenueUnavailabilities } from "./queries";
 import { toast } from "@/shared/stores/toastStore";
@@ -57,6 +62,10 @@ export function MatchesPage() {
   const habitsQuery = useTeamMatchHabits();
   const rotationsQuery = useMatchSlotRotations();
   const opponentTravel = useOpponentTravel();
+  // PR-1 — jointures coach⇄équipe pour l'expansion du filtre « par coach » (mêmes
+  // requêtes que /planning ; le front AFFICHE la jointure serveur, il ne la calcule pas).
+  const teamCoaches = useTeamCoaches();
+  const coachPlayers = useCoachPlayers();
   const placeFixture = usePlaceFixture();
   const placeMatches = usePlaceMatches();
   const moveFixture = useMoveFixture();
@@ -85,6 +94,11 @@ export function MatchesPage() {
     setSwapSourceId,
     setFixtureFormOpen,
     setImportDialogOpen,
+    filterMode,
+    filterIds,
+    setFilterMode,
+    toggleFilterId,
+    clearFilter,
   } = useMatchesStore();
 
   const teamsMap = useMemo<Map<string, Team>>(() => byId(teams.data), [teams.data]);
@@ -100,6 +114,65 @@ export function MatchesPage() {
   const habits = useMemo(() => habitsQuery.data ?? [], [habitsQuery.data]);
   const rotations = useMemo(() => rotationsQuery.data ?? [], [rotationsQuery.data]);
   const allConflicts = useMemo(() => conflicts.data?.conflicts ?? [], [conflicts.data]);
+
+  // PR-1 — le FILTRE de la vue Semaine (équipe/coach/gymnase), appliqué EN AMONT :
+  // `filteredFixtures`/`filteredConflicts` alimentent toute la suite (semaines,
+  // grille, listes, rail, radar). Filtre vide ⇒ mêmes références (pass-through),
+  // donc la vue sans filtre reste byte-identique.
+  const filtered = useMemo(
+    () => applyMatchFilter({ mode: filterMode, ids: filterIds, fixtures: allFixtures, conflicts: allConflicts, teamCoaches: teamCoaches.data ?? [], coachPlayers: coachPlayers.data ?? [] }),
+    [filterMode, filterIds, allFixtures, allConflicts, teamCoaches.data, coachPlayers.data],
+  );
+  const filteredFixtures = filtered.fixtures;
+  const filteredConflicts = filtered.conflicts;
+  const coachTeamRoles = filtered.coachTeamRoles ?? undefined;
+  const filterActive = filterIds.length > 0;
+  // Libellé humain de la sélection (pour l'état vide « Aucun match pour … »).
+  const filterLabel = useMemo(() => {
+    if (!filterActive) {
+      return "";
+    }
+    return filterIds
+      .map((id) => {
+        if ("coach" === filterMode) {
+          const coach = coachesMap.get(id);
+          return undefined === coach ? null : `${coach.firstName} ${coach.lastName}`.trim();
+        }
+        return ("gymnase" === filterMode ? venuesMap.get(id)?.name : teamsMap.get(id)?.name) ?? null;
+      })
+      .filter((name): name is string => null !== name)
+      .join(", ");
+  }, [filterActive, filterIds, filterMode, coachesMap, venuesMap, teamsMap]);
+
+  // PR-1 — deep-link : on LIT l'URL une seule fois (au montage, dès que les
+  // ressources sont chargées pour ignorer un id inconnu), puis on ÉCRIT à chaque
+  // changement (`replace`, pas d'entrée d'historique par clic de filtre).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current || undefined === teams.data || undefined === coaches.data || undefined === venues.data) {
+      return;
+    }
+    seededRef.current = true;
+    const { mode, ids } = decodeFilterParams(searchParams);
+    const known = new Set(("coach" === mode ? coaches.data : "gymnase" === mode ? venues.data : teams.data).map((r) => r.id));
+    const kept = ids.filter((id) => known.has(id));
+    // Seed uniquement si l'URL porte un filtre réel — sinon on n'écrit rien (le
+    // défaut du store est déjà « equipe / aucune sélection »).
+    if ("equipe" !== mode || kept.length > 0) {
+      setFilterMode(mode);
+      kept.forEach(toggleFilterId);
+    }
+  }, [teams.data, coaches.data, venues.data, searchParams, setFilterMode, toggleFilterId]);
+  useEffect(() => {
+    if (!seededRef.current) {
+      return;
+    }
+    const next = applyFilterToParams(searchParams, filterMode, filterIds);
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [filterMode, filterIds, searchParams, setSearchParams]);
 
   // RMM-3 — le « gardien » : le delta de visite est POSTé au montage du layout ;
   // ici on LIT le même cache (une seule requête pour tout le module). Le bandeau
@@ -129,13 +202,16 @@ export function MatchesPage() {
     return set;
   }, [allFixtures, resolvedTeamWindows, windows]);
 
-  const weekends = useMemo(() => listWeekends(allFixtures), [allFixtures]);
-  const activeWeekend = selectedWeekend ?? weekends[0] ?? null;
+  const weekends = useMemo(() => listWeekends(filteredFixtures), [filteredFixtures]);
+  // Le filtre peut retirer la semaine sélectionnée de la liste : repli sur la
+  // première semaine ≥ la semaine courante (atterrir sur « maintenant », pas sur
+  // la plus vieille rencontre), sinon la dernière — jamais une semaine fantôme vide.
+  const activeWeekend = resolveActiveWeekend(weekends, selectedWeekend, weekendKeyOf(todayISO()));
   const weekendIndex = null === activeWeekend ? -1 : weekends.indexOf(activeWeekend);
 
   const weekendFixtures = useMemo(
-    () => (null === activeWeekend ? [] : allFixtures.filter((f) => weekendKeyOf(f.matchDate) === activeWeekend)),
-    [allFixtures, activeWeekend],
+    () => (null === activeWeekend ? [] : filteredFixtures.filter((f) => weekendKeyOf(f.matchDate) === activeWeekend)),
+    [filteredFixtures, activeWeekend],
   );
 
   const grid = useMemo(
@@ -146,9 +222,9 @@ export function MatchesPage() {
   // RMM-1 PR3 (L3) — les 5 étapes de la boucle, DÉRIVÉES de la semaine affichée
   // (zéro état stocké). La vue courante = `railStep` posé par l'utilisateur, sinon
   // le premier trou recalculé en continu — le rail ne saute jamais SOUS un choix.
-  const steps = useMemo(() => deriveLoopSteps({ weekFixtures: weekendFixtures, habits, conflicts: allConflicts }), [weekendFixtures, habits, allConflicts]);
+  const steps = useMemo(() => deriveLoopSteps({ weekFixtures: weekendFixtures, habits, conflicts: filteredConflicts }), [weekendFixtures, habits, filteredConflicts]);
   const effectiveStep = railStep ?? defaultLoopStep(steps);
-  const dateless = useMemo(() => datelessConflicts(allConflicts), [allConflicts]);
+  const dateless = useMemo(() => datelessConflicts(filteredConflicts), [filteredConflicts]);
   const offModel = useMemo(() => offModelCount(weekendFixtures, habits, rotations), [weekendFixtures, habits, rotations]);
   // RMM-5 PR-4 — deux membres d'un même créneau partagé reçoivent le même week-end : signal neutre.
   const sameWeekendRotations = useMemo(() => sameWeekendRotationCount(weekendFixtures, rotations), [weekendFixtures, rotations]);
@@ -317,7 +393,7 @@ export function MatchesPage() {
   );
 
   const awayBlock = (
-    <AwayList fixtures={weekendFixtures} teams={teamsMap} habits={habits} travel={opponentTravel.data ?? []} onEdit={setEditFixture} onDelete={(fixture) => deleteFixture.mutate(fixture.id)} />
+    <AwayList fixtures={weekendFixtures} teams={teamsMap} habits={habits} travel={opponentTravel.data ?? []} coachRoles={coachTeamRoles} onEdit={setEditFixture} onDelete={(fixture) => deleteFixture.mutate(fixture.id)} />
   );
 
   // Trois états, jamais deux : « pas de conflit » ne doit pas se confondre avec
@@ -388,7 +464,7 @@ export function MatchesPage() {
     content = (
       <div className="flex flex-col gap-3">
         {conflictErrorBlock}
-        {undefined === conflicts.data ? null : <ConflictRadar conflicts={conflicts.data.conflicts} teams={teamsMap} coaches={coachesMap} newFingerprints={newConflictFingerprints} />}
+        {undefined === conflicts.data ? null : <ConflictRadar conflicts={filteredConflicts} teams={teamsMap} coaches={coachesMap} newFingerprints={newConflictFingerprints} />}
       </div>
     );
   } else if ("fbiEntry" === effectiveStep) {
@@ -438,7 +514,7 @@ export function MatchesPage() {
                 <CardTitle className="text-base">À placer</CardTitle>
               </CardHeader>
               <CardContent>
-                <UnplacedList fixtures={allFixtures} teams={teamsMap} selectedFixtureId={selectedFixtureId} unplacedReasons={unplacedReasons} onSelect={setSelectedFixtureId} />
+                <UnplacedList fixtures={filteredFixtures} teams={teamsMap} selectedFixtureId={selectedFixtureId} unplacedReasons={unplacedReasons} coachRoles={coachTeamRoles} onSelect={setSelectedFixtureId} />
               </CardContent>
             </Card>
             {panelSlot}
@@ -466,6 +542,20 @@ export function MatchesPage() {
         </Button>
       </div>
 
+      {/* PR-1 — la barre de filtres, au-dessus du navigateur de semaine : elle
+          recadre la vue (fixtures + conflits) sur un axe équipe/coach/gymnase. */}
+      <MatchesFilterBar
+        mode={filterMode}
+        selected={filterIds}
+        teams={teams.data ?? []}
+        coaches={coaches.data ?? []}
+        venues={venues.data ?? []}
+        tiers={priorityTiers.data ?? []}
+        onModeChange={setFilterMode}
+        onToggle={toggleFilterId}
+        onClear={clearFilter}
+      />
+
       {/* L7 — la SEMAINE calendaire est l'axe primaire. */}
       <div className="flex items-center gap-2">
         <Button variant="outline" size="sm" disabled={weekendIndex <= 0} onClick={() => setSelectedWeekend(weekends[weekendIndex - 1] ?? null)} aria-label="Semaine précédente">
@@ -484,6 +574,12 @@ export function MatchesPage() {
         {/* RMM-4 — rappel de fraîcheur DISCRET (muted, sans bordure ni icône). */}
         <span className="ml-auto text-xs text-muted-foreground">{depositReminder}</span>
       </div>
+
+      {/* PR-1 — le filtre vide la semaine affichée : on le DIT (jamais un écran
+          qui a l'air vide sans raison), avec le libellé du filtre. */}
+      {filterActive && 0 === weekendFixtures.length ? (
+        <EmptyState icon={Filter} title={`Aucun match pour ${filterLabel} cette semaine`} description="Aucun match de ce filtre sur la semaine affichée. Changez de semaine ou ajustez le filtre." />
+      ) : null}
 
       {/* RMM-3 — le « gardien » : en tête, un HEADS-UP amical de ce qui a bougé
           depuis la dernière visite (matchs arrivés, conflits neufs, planning changé).

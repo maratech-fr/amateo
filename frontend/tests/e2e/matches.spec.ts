@@ -159,7 +159,9 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   await page.getByRole("button", { name: /Nouveau match/i }).click();
   await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeVisible();
   // « Équipe » est une listbox APG (P4-164) : on ouvre le trigger puis on choisit la 1re équipe.
-  await page.getByRole("button", { name: /^Équipe/ }).click();
+  // Scopé au dialogue « Nouveau match » : depuis PR-1, la barre de filtres porte aussi une
+  // puce « Équipes : … » qui matcherait /^Équipe/ hors de ce contexte.
+  await page.getByRole("dialog").getByRole("button", { name: /^Équipe/ }).click();
   await page.getByRole("option").first().click();
   await page.getByLabel("Date").fill("2027-03-06"); // a Saturday
   await page.getByLabel("Adversaire").fill(opponent);
@@ -210,4 +212,44 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   } else {
     await expect(page.getByText(/Hors fenêtre autorisée/)).toBeVisible();
   }
+});
+
+/**
+ * PR-1 — la barre de filtres de la vue Semaine : passer « Par coach », ouvrir la
+ * puce, chercher un coach, le cocher → la sélection s'active (chip « 1
+ * sélectionné ») ET l'URL porte le deep-link (`?vue=coach&filtre=…`), preuve que
+ * le filtre recadre la vue sur le périmètre du coach. Suppose que le club seedé
+ * (BCCL) a un coach « Thomas » ; sinon, remplacer le terme de recherche.
+ */
+test("matches: filtre par coach recadre la vue et porte le deep-link", async ({ page }) => {
+  test.setTimeout(240_000); // onboarding may run a real CP-SAT generation
+  await login(page);
+  await ensureValidated(page);
+
+  await page.getByRole("link", { name: "Matchs" }).click();
+  await expect(page.getByRole("heading", { name: "Matchs" })).toBeVisible();
+
+  // Basculer l'axe du filtre sur « Par coach » (contrôle segmenté, aria-pressed).
+  const parCoach = page.getByRole("button", { name: "Par coach" });
+  await parCoach.click();
+  await expect(parCoach).toHaveAttribute("aria-pressed", "true");
+
+  // Ouvrir la puce de ressources et chercher le coach.
+  await page.getByRole("button", { name: /Coachs :/ }).click();
+  await page.getByPlaceholder("Rechercher…").fill("Thomas");
+  await page.getByRole("button", { name: /Thomas/ }).first().click();
+
+  // La sélection est active (chip « 1 sélectionné ») et l'URL porte le deep-link.
+  await expect(page.getByRole("button", { name: /Coachs : 1 sélectionné/ })).toBeVisible({ timeout: 15_000 });
+  await expect(page).toHaveURL(/[?&]vue=coach/);
+  await expect(page).toHaveURL(/[?&]filtre=/);
+
+  // ⚠ Fermer la puce AVANT de poursuivre : son fond de fermeture est un <button>
+  // invisible plein écran (z-50) qui intercepte tous les clics tant qu'elle est
+  // ouverte, et Échap ne la ferme pas (dette a11y côté planning/ResourceFilter).
+  await page.mouse.click(5, 5);
+
+  // La vue « Domiciles posés » rend la grille sans erreur, recadrée sur le coach.
+  await page.getByRole("button", { name: /Domiciles posés/ }).click();
+  await expect(page.getByRole("heading", { name: "À placer" })).toBeVisible();
 });

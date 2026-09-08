@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Fixture, Team, Venue } from "../api";
-import { buildWeekendGrid, isPlacedOnGrid, listWeekends, weekendKeyOf, weekLabel } from "./weekendGrid";
+import { buildWeekendGrid, isPlacedOnGrid, listWeekends, resolveActiveWeekend, weekendKeyOf, weekLabel } from "./weekendGrid";
 
 const fixture = (over: Partial<Fixture> = {}): Fixture => ({
   id: "fx-1",
@@ -148,5 +148,33 @@ describe("weekLabel — l'axe SEMAINE (L7)", () => {
   it("étiquette lundi→dimanche de la semaine du samedi bucket", () => {
     // 2026-10-03 est un samedi → semaine du lundi 28 sept. au dimanche 4 oct.
     expect(weekLabel("2026-10-03")).toBe("Semaine du 28 sept. au 4 oct.");
+  });
+});
+
+describe("resolveActiveWeekend — semaine par défaut (PR-1)", () => {
+  const weekends = ["2026-08-29", "2026-09-12", "2026-09-26"]; // samedis, triés
+
+  it("garde la sélection si elle est encore dans la liste", () => {
+    expect(resolveActiveWeekend(weekends, "2026-09-12", "2026-09-12")).toBe("2026-09-12");
+  });
+
+  it("sans sélection : première semaine ≥ la semaine courante (pas la plus vieille)", () => {
+    expect(resolveActiveWeekend(weekends, null, "2026-09-05")).toBe("2026-09-12");
+  });
+
+  it("sélection retirée par un filtre : repli sur la première semaine ≥ courante", () => {
+    expect(resolveActiveWeekend(weekends, "2026-11-07", "2026-09-05")).toBe("2026-09-12");
+  });
+
+  it("tout est passé : repli sur la dernière semaine", () => {
+    expect(resolveActiveWeekend(weekends, null, "2026-12-01")).toBe("2026-09-26");
+  });
+
+  it("une semaine dont la clé égale la semaine courante est éligible (≥, pas >)", () => {
+    expect(resolveActiveWeekend(weekends, null, "2026-08-29")).toBe("2026-08-29");
+  });
+
+  it("aucune semaine : null", () => {
+    expect(resolveActiveWeekend([], null, "2026-09-05")).toBeNull();
   });
 });

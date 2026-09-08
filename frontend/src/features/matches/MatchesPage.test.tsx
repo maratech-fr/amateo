@@ -2,6 +2,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { setTodayOverride } from "@/shared/lib/clock";
 import { pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
@@ -20,6 +21,14 @@ const { placeFixture, unplaceFixture, submitFixture } = vi.hoisted(() => ({
 const meState = vi.hoisted(() => ({ club: undefined as Record<string, unknown> | undefined }));
 vi.mock("@/shared/session/queries", () => ({
   useMe: () => ({ data: { seasonPlan: { id: "p1", name: "Planning", chosenScheduleId: "s1", hasFinishedVersion: true }, club: meState.club } }),
+}));
+
+// PR-1 — les jointures coach⇄équipe viennent de planning/queries. Mutables par test
+// (expansion du filtre « par coach »).
+const planningLinks = vi.hoisted(() => ({ teamCoaches: [] as unknown[], coachPlayers: [] as unknown[] }));
+vi.mock("@/features/planning/queries", () => ({
+  useTeamCoaches: () => ({ data: planningLinks.teamCoaches }),
+  useCoachPlayers: () => ({ data: planningLinks.coachPlayers }),
 }));
 
 vi.mock("./api", () => ({
@@ -109,7 +118,10 @@ beforeEach(() => {
   unplaceFixture.mockClear();
   submitFixture.mockClear();
   meState.club = undefined;
-  useMatchesStore.setState({ selectedWeekend: null, railStep: null, selectedFixtureId: null, swapSourceId: null, fixtureFormOpen: false, importDialogOpen: false });
+  planningLinks.teamCoaches = [];
+  planningLinks.coachPlayers = [];
+  setTodayOverride(null);
+  useMatchesStore.setState({ selectedWeekend: null, railStep: null, selectedFixtureId: null, swapSourceId: null, fixtureFormOpen: false, importDialogOpen: false, filterMode: "equipe", filterIds: [] });
 });
 
 /** Click a rail step by its label (the rail is the only <nav> here). */
@@ -354,5 +366,104 @@ describe("MatchesPage — la boucle guidée (RMM-1 PR3)", () => {
     renderWithProviders(<MatchesPage />);
 
     expect(await screen.findByText("Le chargement a échoué.")).toBeInTheDocument();
+  });
+});
+
+// ── PR-1 — filtres de la vue Semaine ────────────────────────────────────────
+describe("MatchesPage — filtres (PR-1)", () => {
+  it("sans filtre : axe « équipe » par défaut, rail et radar inchangés (pass-through)", async () => {
+    renderWithProviders(<MatchesPage />);
+    expect(await screen.findByRole("button", { name: "Par équipe" })).toHaveAttribute("aria-pressed", "true");
+    // La vue par défaut (Conflits) et le compte du rail restent ceux d'avant le filtre.
+    expect(await screen.findByText("Jean Dupont")).toBeInTheDocument();
+    const rail = await screen.findByRole("navigation");
+    expect(within(rail).getByRole("button", { name: /Conflits \(1\)/ })).toBeInTheDocument();
+  });
+
+  it("filtre « par coach » : grille, rail et radar recadrés sur le périmètre du coach", async () => {
+    vi.mocked(matchesApi.getCoaches).mockResolvedValueOnce([
+      { id: "thomas", firstName: "Thomas", lastName: "Martin" },
+      { id: "autre", firstName: "Autre", lastName: "Coach" },
+    ]);
+    vi.mocked(matchesApi.getTeams).mockResolvedValueOnce([
+      { id: "sm1", name: "SM1", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 },
+      { id: "u15m1", name: "U15M1", sportCategoryId: "c", level: null, gender: null, priorityTierId: 3, tierOrder: 0 },
+      { id: "hors", name: "HorsPerim", sportCategoryId: "c", level: null, gender: null, priorityTierId: 3, tierOrder: 1 },
+    ]);
+    vi.mocked(matchesApi.getFixtures).mockResolvedValueOnce([
+      { id: "fx-sm1", teamId: "sm1", seasonId: "s", competitionId: null, matchDate: "2026-10-04", homeAway: "HOME", opponentLabel: "AlphaOpp", status: "PLACED", venueId: "venue-1", kickoffTime: "14:00", externalRef: null, fbiVenueLabel: null, placementSource: null, unplacedReason: null },
+      { id: "fx-u15", teamId: "u15m1", seasonId: "s", competitionId: null, matchDate: "2026-10-04", homeAway: "HOME", opponentLabel: "BetaOpp", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: null, fbiVenueLabel: null, placementSource: null, unplacedReason: null },
+      { id: "fx-hors", teamId: "hors", seasonId: "s", competitionId: null, matchDate: "2026-10-04", homeAway: "HOME", opponentLabel: "GammaOpp", status: "PLACED", venueId: "venue-1", kickoffTime: "18:00", externalRef: null, fbiVenueLabel: null, placementSource: null, unplacedReason: null },
+      { id: "fx-sm1-away", teamId: "sm1", seasonId: "s", competitionId: null, matchDate: "2026-10-04", homeAway: "AWAY", opponentLabel: "DeltaOpp", status: "UNPLACED", venueId: null, kickoffTime: null, fbiVenueLabel: "Halle X", externalRef: null, placementSource: null, unplacedReason: null },
+    ]);
+    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({
+      clubId: "c",
+      seasonId: "s",
+      seasonPlanChosen: true,
+      conflicts: [
+        // Conflit du coach Thomas (SM1 × U15M1, même dimanche).
+        { type: "MATCH_MATCH", severity: 3, coachRole: "MAIN", coachId: "thomas", left: { fixtureId: "fx-sm1", teamId: "sm1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "14:00", windowStart: "", windowEnd: "" }, right: { fixtureId: "fx-u15", teamId: "u15m1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "16:00", windowStart: "", windowEnd: "" } },
+        // Conflit SANS lien avec Thomas (équipe hors-périmètre) → doit être exclu.
+        { type: "VENUE_OVERLAP", severity: 2, venueId: "venue-1", left: { fixtureId: "fx-hors", teamId: "hors", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "18:00", windowStart: "", windowEnd: "" }, right: { fixtureId: "fx-hors", teamId: "hors", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "18:00", windowStart: "", windowEnd: "" } },
+      ],
+    });
+    planningLinks.teamCoaches = [
+      { id: "tc1", teamId: "sm1", coachId: "thomas", role: "ASSISTANT" },
+      { id: "tc2", teamId: "u15m1", coachId: "thomas", role: "MAIN" },
+    ];
+
+    const user = userEvent.setup();
+    renderWithProviders(<MatchesPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Par coach" }));
+    await user.click(screen.getByRole("button", { name: /Coachs :/ }));
+    // L'option de la puce (un bouton) — « Thomas Martin » apparaît aussi comme titre
+    // du conflit dans le radar, d'où le ciblage par rôle bouton.
+    await user.click(await screen.findByRole("button", { name: "Thomas Martin" }));
+
+    // Radar (vue par défaut = Conflits) : le conflit du coach est là (résumé
+    // « SM1 et U15M1 »), le conflit hors-périmètre est exclu.
+    expect(await screen.findByText(/SM1 et U15M1/)).toBeInTheDocument();
+    expect(screen.queryByText("Deux matchs sur le même créneau")).not.toBeInTheDocument();
+    // Rail recadré : seul le conflit du coach compte (2 → 1).
+    const rail = await screen.findByRole("navigation");
+    expect(within(rail).getByRole("button", { name: /Conflits \(1\)/ })).toBeInTheDocument();
+
+    // Grille (vue Placés au modèle) : SM1 et U15M1, jamais l'équipe hors-périmètre.
+    await gotoStep(user, /Placés au modèle/);
+    expect(await screen.findByRole("button", { name: /SM1/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /U15M1/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /HorsPerim/ })).not.toBeInTheDocument();
+    // Le rôle est annoncé sur le match extérieur de SM1 (Thomas assistant).
+    expect(screen.getByText("assistant")).toBeInTheDocument();
+  });
+
+  it("semaine par défaut : la première semaine ≥ la semaine courante, pas la plus vieille", async () => {
+    // Aujourd'hui = 2026-09-10 (semaine du samedi 2026-09-12). Une rencontre passée
+    // (2026-09-05) et une future (2026-09-19) : la page doit ouvrir la future.
+    setTodayOverride("2026-09-10");
+    vi.mocked(matchesApi.getFixtures).mockResolvedValueOnce([
+      { id: "fx-past", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-09-05", homeAway: "HOME", opponentLabel: "Anciens", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: null, fbiVenueLabel: null, placementSource: null, unplacedReason: null },
+      { id: "fx-future", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-09-19", homeAway: "HOME", opponentLabel: "Futurs", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: null, fbiVenueLabel: null, placementSource: null, unplacedReason: null },
+    ]);
+    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: [] });
+    renderWithProviders(<MatchesPage />);
+    // Le navigateur ouvre la semaine du 14 au 20 sept. (celle du 19), pas celle du 5.
+    expect(await screen.findByText(/Semaine du 14 sept\. au 20 sept\./)).toBeInTheDocument();
+    expect(screen.queryByText(/au 6 sept\./)).not.toBeInTheDocument();
+  });
+
+  it("filtre « par gymnase » : les extérieurs (sans gymnase) sont exclus", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MatchesPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Par gymnase" }));
+    await user.click(screen.getByRole("button", { name: /Gymnases :/ }));
+    await user.click(await screen.findByText("Gymnase Alpha"));
+
+    await gotoStep(user, /Placés au modèle/);
+    // Le domicile posé à Gymnase Alpha reste ; l'extérieur (Grenoble, sans gymnase) disparaît.
+    expect(await screen.findByRole("button", { name: /Seniors.*Rivaux/ })).toBeInTheDocument();
+    expect(screen.queryByText(/à Grenoble/)).not.toBeInTheDocument();
   });
 });
