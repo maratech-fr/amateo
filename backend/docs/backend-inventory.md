@@ -666,7 +666,8 @@ valide (ou, sous `/api/admin`, une session superadmin séparée — jamais un JW
 Le firewall `login` applique en plus `login_throttling` (`max_attempts: 5`) ; `/api/register` et
 `/api/password/forgot` sont rate-limités par IP (`config/packages/rate_limiter.yaml`, sliding window 5/15 min).
 **SEC-11** : tout `^/api` **authentifié** est en plus limité **par utilisateur** (limiteur `api`,
-sliding window 300/min) via `ApiRateLimitSubscriber` (priorité 6, après firewall + tenant) → 429
+sliding window 300/min en prod ; **3000/min en `when@dev`** depuis le 2026-09-08, parce que la suite e2e joue tout le club
+sous un seul utilisateur dans la même minute — `rate_limiter.yaml`) via `ApiRateLimitSubscriber` (priorité 6, après firewall + tenant) → 429
 au-delà ; les endpoints publics (sans `User`) gardent leur limiteur par IP.
 
 ### Résolution du tenant (`TenantFilterListener`)
