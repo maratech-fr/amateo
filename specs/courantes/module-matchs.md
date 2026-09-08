@@ -1,8 +1,8 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-08 (PR-1 filtres du module matchs, `documentation-update` — nouvelle section « Filtres
-par équipe / coach / gymnase » confrontée à `MatchesFilterBar.tsx`, `lib/matchFilter.ts`, `lib/urlState.ts`,
-`lib/weekendGrid.ts` `resolveActiveWeekend`, `store.ts`). Re-confronté au code : route `POST /api/fixtures/place`
+Last verified @ 2026-09-08 (P4-190, `documentation-update` — § Détection : les amicaux échappent à la règle des
+fenêtres ligue, confronté à `MatchConflictDetector::leagueWindowViolations` ; section « Filtres par équipe /
+coach / gymnase » (PR-1, même jour) re-confrontée à `MatchesFilterBar.tsx`, `lib/matchFilter.ts`, `lib/urlState.ts`). Re-confronté au code : route `POST /api/fixtures/place`
 (`PlaceMatchesController.php:60`, gate `ManagementAccessGuard` + `SocleGuard::assertSeasonPlanChosen`
 à `:71`) ✓ · `MatchPlacementLock` distinct du verrou de génération (`MatchPlacementLock.php:18`,
 injecté `PlaceMatchesController.php:52`) ✓ · endpoints engine `/generate`/`/place-matches`/
@@ -165,6 +165,10 @@ Chevauchement demi-ouvert (créneaux jointifs = pas de conflit). Une empreinte q
 tardif) est vérifiée sur les **deux jours** qu'elle couvre. Périodes qui se chevauchent → résolution
 **déterministe** (ordre `startDate, id` via `CalendarEntryRepository::findActivePeriodsOrdered`). Un `Fixture`
 AWAY sans `kickoffTime` n'a pas d'empreinte (trajet = palier B) → il ne génère aucun conflit — voulu.
+
+**Amicaux (P4-190, 2026-09-08)** : une rencontre sans compétition (`competitionId` null) n'est jamais
+comparée aux fenêtres ligue de son équipe — `leagueWindowViolations` la saute ; elle reste soumise aux
+autres familles. Le solveur de placement, lui, applique encore les fenêtres par équipe (roadmap P4-193).
 
 ### Endpoint — `GET /api/fixtures/conflicts`
 
