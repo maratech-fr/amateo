@@ -1,7 +1,8 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-07 (rotation de fraîcheur `documentation-update`, PR fix bloc épinglé en
-comblement — fichier hors sujet). Re-confronté au code : route `POST /api/fixtures/place`
+Last verified @ 2026-09-08 (PR-1 filtres du module matchs, `documentation-update` — nouvelle section « Filtres
+par équipe / coach / gymnase » confrontée à `MatchesFilterBar.tsx`, `lib/matchFilter.ts`, `lib/urlState.ts`,
+`lib/weekendGrid.ts` `resolveActiveWeekend`, `store.ts`). Re-confronté au code : route `POST /api/fixtures/place`
 (`PlaceMatchesController.php:60`, gate `ManagementAccessGuard` + `SocleGuard::assertSeasonPlanChosen`
 à `:71`) ✓ · `MatchPlacementLock` distinct du verrou de génération (`MatchPlacementLock.php:18`,
 injecté `PlaceMatchesController.php:52`) ✓ · endpoints engine `/generate`/`/place-matches`/
@@ -860,6 +861,36 @@ NR : `Security/EngagedTeamGuardTest` (extension) · `Integration/Service/Deletio
 **explicitement dans la sous-requête** (pas seulement promise au docblock) — sans elle, hors
 contexte de requête (worker, CLI), un gymnase de n'importe quel club aurait pu « sauver » un
 fixture du marquage.
+
+## Filtres par équipe / coach / gymnase sur la vue Semaine (PR-1 « se rendre compte », 2026-09-08)
+
+Besoin fondateur n°1 du 2026-09-08 (mesure du module sur ses 18 rencontres FFBB réelles) : **filtrer pour se rendre
+compte** — « qu'est-ce que Thomas / SF2 / le JDR a comme matchs, et lesquels posent problème ? ». Pas un onglet à
+part : une barre de filtres sur la vue Semaine, même patron que `/planning`.
+
+- **Barre** (`MatchesFilterBar.tsx`) : segmenté « Par équipe · Par coach · Par gymnase » + la puce `ResourceFilter`
+  de `features/planning` réutilisée telle quelle. Changer d'axe vide la sélection.
+- **Coach** = ses équipes coachées (principal ET assistant, rôle affiché en pastille sur les listes « À placer » et
+  « À l'extérieur ») **+** les équipes où il est joueur actif (`CoachPlayerMembership`, badge « joueur ») — même
+  règle que la vue coach du planning. Ex. Mara → SF2 (coach) + SM2 (joueuse) ; Thomas Francon → U15M1, U21M1
+  (principal) + SM1 (assistant). La grille ne porte pas le rôle (le modèle de cellule ne le connaît pas — repli assumé).
+- **Appartenance** (`lib/matchFilter.ts`, dérivation pure testée) : un match est dans un filtre équipe/coach ssi son
+  équipe est dans l'ensemble ; dans un filtre gymnase ssi il y est POSÉ (les extérieurs, sans gymnase, en sortent —
+  assumé : la question est « que se passe-t-il au JDR ? »). Un conflit est retenu dès qu'**un acteur** est dans le
+  filtre : équipe d'un `left/right/fixture/training`, `teamId` d'un calendrier incomplet, `coachId` (vue coach),
+  `venueId`/`training.venueId` ou la fixture référencée posée au gymnase (vue gymnase).
+- **Application en amont** : `filteredFixtures`/`filteredConflicts` nourrissent la grille, `UnplacedList`, `AwayList`,
+  le radar ET le rail (`deriveLoopSteps` inchangé — les compteurs deviennent ceux du filtre). Sans filtre :
+  pass-through des mêmes références, vue Semaine byte-identique.
+- **Semaines** : le navigateur ‹ › parcourt les week-ends de la personne filtrée ; atterrissage
+  `resolveActiveWeekend` (`lib/weekendGrid.ts`) = sélection si encore listée, sinon première semaine ≥ semaine courante,
+  sinon la dernière. Empty state « Aucun match pour {libellé} cette semaine ».
+- **URL** : `?vue=equipe|coach|gymnase&filtre=id,id` (`lib/urlState.ts`) — lu une fois au montage (patron deep-link du
+  wizard), écrit en `replace` à chaque changement ; ids inconnus ignorés. Premier état de filtre du dépôt porté par
+  l'URL (`/planning` reste sur son store seul).
+- **Lecture seule** : aucun geste nouveau. Suite prévue (PR-2) : temporalité Semaine · Mois · Phase.
+- Dette relevée en chemin, hors périmètre : `Échap` ne ferme pas la puce `ResourceFilter` (fond de fermeture plein
+  écran qui intercepte les clics) — roadmap **P4-184**.
 
 ## Refonte UX — RMM-1 (P2-26, 4 PR entre 2026-08-23 et 2026-08-24)
 

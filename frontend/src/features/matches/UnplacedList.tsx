@@ -1,8 +1,10 @@
 import { AlertTriangle, MapPin, MapPinOff } from "lucide-react";
+import { StatusPill } from "@/shared/components/ui/badge";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
 
 import type { Fixture, Team } from "./api";
+import type { CoachTeamRole } from "./lib/matchFilter";
 import { unplacedReasonLabel } from "./lib/unplacedReasonLabel";
 
 interface UnplacedListProps {
@@ -12,6 +14,8 @@ interface UnplacedListProps {
   /** P1-4 PR D — per-fixture reason from the last auto-placement (« demandez
    * votre dérogation tôt »). Not persisted: lives until the next data refresh. */
   unplacedReasons?: Map<string, string>;
+  /** PR-1 — en vue coach : rôle du coach filtré sur l'équipe, affiché en pastille. */
+  coachRoles?: Map<string, CoachTeamRole>;
   onSelect: (id: string) => void;
 }
 
@@ -21,7 +25,7 @@ function isUnplacedHome(fixture: Fixture): boolean {
 }
 
 /** The to-do list of home matches to place — clicking one opens the placement panel. */
-export function UnplacedList({ fixtures, teams, selectedFixtureId, unplacedReasons, onSelect }: UnplacedListProps) {
+export function UnplacedList({ fixtures, teams, selectedFixtureId, unplacedReasons, coachRoles, onSelect }: UnplacedListProps) {
   const unplaced = fixtures.filter(isUnplacedHome).sort((a, b) => a.matchDate.localeCompare(b.matchDate));
 
   if (0 === unplaced.length) {
@@ -41,7 +45,10 @@ export function UnplacedList({ fixtures, teams, selectedFixtureId, unplacedReaso
             }`}
           >
             <span className="min-w-0">
-              <span className="block truncate font-medium">{teams.get(fixture.teamId)?.name ?? "Équipe ?"}</span>
+              <span className="flex items-center gap-1.5">
+                <span className="min-w-0 truncate font-medium">{teams.get(fixture.teamId)?.name ?? "Équipe ?"}</span>
+                {undefined !== coachRoles?.get(fixture.teamId) ? <StatusPill className="shrink-0 text-foreground">{coachRoles.get(fixture.teamId)}</StatusPill> : null}
+              </span>
               <span className="block truncate text-xs text-muted-foreground">
                 {frDateWeekdayNoYear(fixture.matchDate)} · vs {fixture.opponentLabel}
                 {/* RMM-1 PR3 (L7) — n° de rencontre : repère discret, jamais une clé. */}

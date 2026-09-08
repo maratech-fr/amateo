@@ -1,6 +1,7 @@
 import { Bus, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
@@ -9,6 +10,7 @@ import type { Fixture, OpponentTravel, Team, TeamMatchHabit } from "./api";
 import { AwayTravelChip } from "./AwayTravelChip";
 import { awayTravelTitle } from "./lib/awayTravelTitle";
 import { isoWeekday } from "./lib/envelope";
+import type { CoachTeamRole } from "./lib/matchFilter";
 
 interface AwayListProps {
   /** Fixtures of the ACTIVE weekend (already bucketed by the page). */
@@ -17,6 +19,8 @@ interface AwayListProps {
   habits: TeamMatchHabit[];
   /** Per-opponent travel (P2-54 PR-3), matched to a fixture by its opponent label. */
   travel?: OpponentTravel[];
+  /** PR-1 — en vue coach : rôle du coach filtré sur l'équipe, affiché en pastille. */
+  coachRoles?: Map<string, CoachTeamRole>;
   onEdit: (fixture: Fixture) => void;
   onDelete: (fixture: Fixture) => void;
 }
@@ -28,7 +32,7 @@ interface AwayListProps {
  * exactly the radar's estimation rule. `fbiVenueLabel` = the opponent's venue
  * as FBI ships it (never one of our venues).
  */
-export function AwayList({ fixtures, teams, habits, travel = [], onEdit, onDelete }: AwayListProps) {
+export function AwayList({ fixtures, teams, habits, travel = [], coachRoles, onEdit, onDelete }: AwayListProps) {
   const [toDelete, setToDelete] = useState<Fixture | null>(null);
   const away = fixtures.filter((f) => "AWAY" === f.homeAway).sort((a, b) => a.matchDate.localeCompare(b.matchDate));
   const travelByOpponent = new Map(travel.map((t) => [t.opponentLabel.toLowerCase(), t]));
@@ -57,6 +61,7 @@ export function AwayList({ fixtures, teams, habits, travel = [], onEdit, onDelet
             <li key={fixture.id} className="flex items-center justify-between gap-2 text-sm">
               <span className="min-w-0" title={awayLine}>
                 <span className="font-medium">{teamLabel}</span>
+                {undefined !== coachRoles?.get(fixture.teamId) ? <StatusPill className="ml-1.5 text-foreground">{coachRoles.get(fixture.teamId)}</StatusPill> : null}
                 <span className="text-muted-foreground">
                   {" "}
                   · {frDateWeekdayNoYear(fixture.matchDate)} · à {fixture.opponentLabel}

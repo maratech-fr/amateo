@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import type { Deviation, FbiMapping, RencontreCreatable } from "./api";
 import type { LoopStepId } from "./lib/loopSteps";
+import type { MatchFilterMode } from "./lib/matchFilter";
 
 /**
  * RMM-4 — le payload d'analyse porté EN MÉMOIRE vers la vue de réconciliation
@@ -42,6 +43,14 @@ interface MatchesState {
   importDialogOpen: boolean;
   /** RMM-4 — analysis payload carried in memory to the reconciliation view. */
   reconciliation: ReconciliationPayload | null;
+  /**
+   * PR-1 — filtre de la vue Semaine. `filterMode` = l'axe (équipe/coach/gymnase,
+   * défaut « equipe ») ; `filterIds` = les ressources cochées de cet axe. Changer
+   * d'axe VIDE la sélection. Non persisté (l'URL porte le deep-link). Changer de
+   * semaine ne le purge PAS (c'est un filtre transversal, pas un état de semaine).
+   */
+  filterMode: MatchFilterMode;
+  filterIds: string[];
   setSelectedWeekend: (key: string | null) => void;
   setRailStep: (step: LoopStepId | null) => void;
   setUnplacedReasons: (reasons: Map<string, string>) => void;
@@ -50,6 +59,9 @@ interface MatchesState {
   setFixtureFormOpen: (open: boolean) => void;
   setImportDialogOpen: (open: boolean) => void;
   setReconciliation: (payload: ReconciliationPayload | null) => void;
+  setFilterMode: (mode: MatchFilterMode) => void;
+  toggleFilterId: (id: string) => void;
+  clearFilter: () => void;
 }
 
 /** Per-session UI state — nothing worth persisting (selections are ephemeral). */
@@ -62,6 +74,8 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   fixtureFormOpen: false,
   importDialogOpen: false,
   reconciliation: null,
+  filterMode: "equipe",
+  filterIds: [],
   // Changer de semaine remet la vue à l'auto (le premier trou de la NOUVELLE
   // semaine) — le rail ne « saute » jamais SOUS l'utilisateur, mais une autre
   // semaine est un autre contexte : on repart de son premier trou. Les raisons
@@ -75,4 +89,10 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   setFixtureFormOpen: (fixtureFormOpen) => set({ fixtureFormOpen }),
   setImportDialogOpen: (importDialogOpen) => set({ importDialogOpen }),
   setReconciliation: (reconciliation) => set({ reconciliation }),
+  // Changer d'axe VIDE la sélection (les ids d'un axe n'ont pas de sens sur un
+  // autre) et remet la vue du rail à l'auto (le filtre recadre la semaine).
+  setFilterMode: (filterMode) => set({ filterMode, filterIds: [], railStep: null }),
+  toggleFilterId: (id) =>
+    set((state) => ({ filterIds: state.filterIds.includes(id) ? state.filterIds.filter((x) => x !== id) : [...state.filterIds, id], railStep: null })),
+  clearFilter: () => set({ filterIds: [] }),
 }));
