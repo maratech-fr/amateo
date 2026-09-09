@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Fixture, FixtureReviewState } from "../api";
-import { buildReviewQueue, pendingReviewCount } from "./reviewQueue";
+import { buildReviewQueue, isUnattachedHome, pendingReviewCount } from "./reviewQueue";
 
 let seq = 0;
 function fx(teamId: string, reviewState: FixtureReviewState, matchDate: string, extra: Partial<Fixture> = {}): Fixture {
@@ -25,6 +25,7 @@ function fx(teamId: string, reviewState: FixtureReviewState, matchDate: string, 
     reviewedAt: null,
     pendingDeviations: [],
     ffbbRencontreId: null,
+    suggestedVenueId: null,
     ...extra,
   };
 }
@@ -45,6 +46,23 @@ describe("buildReviewQueue (PR-3b — la file de traitement)", () => {
     const [q] = buildReviewQueue(fixtures, ["t1"]);
     expect(q.open.map((f) => f.matchDate)).toEqual(["2026-11-01", "2026-12-05"]);
     expect(q.treated.map((f) => f.reviewState)).toEqual(["REVIEWED"]);
+  });
+
+  it("unattachedCount compte les domiciles sans salle à libellé (ouvertes ET traitées), AWAY exclu", () => {
+    const fixtures = [
+      // Domicile importé sans gymnase, encore à traiter (NEW) → compte.
+      fx("t1", "NEW", "2026-11-01", { fbiVenueLabel: "GYMNASE MATEO" }),
+      // Domicile importé sans gymnase, DÉJÀ traité (REVIEWED) → compte aussi (confondues).
+      fx("t1", "REVIEWED", "2026-11-02", { fbiVenueLabel: "COUBERTIN" }),
+      // AWAY à libellé → jamais compté (pas un domicile à rattacher).
+      fx("t1", "NEW", "2026-11-03", { homeAway: "AWAY", fbiVenueLabel: "HALLE X" }),
+      // Domicile SANS libellé → rien à rattacher.
+      fx("t1", "NEW", "2026-11-04", { fbiVenueLabel: null }),
+      // Domicile DÉJÀ rattaché (venueId posé) → exclu.
+      fx("t1", "NEW", "2026-11-05", { fbiVenueLabel: "MATEO", venueId: "v1" }),
+    ];
+    const [q] = buildReviewQueue(fixtures, ["t1"]);
+    expect(q.unattachedCount).toBe(2);
   });
 
   it("toValidate compte les NEW ; deviationCount compte les rencontres OUT_OF_SYNC (une = une unité)", () => {
@@ -84,5 +102,23 @@ describe("pendingReviewCount (le badge)", () => {
 
   it("zéro quand tout est traité", () => {
     expect(pendingReviewCount([fx("t1", "REVIEWED", "2026-11-01")])).toBe(0);
+  });
+});
+
+describe("isUnattachedHome (le domicile importé sans gymnase)", () => {
+  it("HOME sans venueId AVEC libellé → true", () => {
+    expect(isUnattachedHome(fx("t1", "NEW", "2026-11-01", { fbiVenueLabel: "GYMNASE MATEO" }))).toBe(true);
+  });
+
+  it("AWAY (même avec libellé) → false", () => {
+    expect(isUnattachedHome(fx("t1", "NEW", "2026-11-01", { homeAway: "AWAY", fbiVenueLabel: "GYMNASE MATEO" }))).toBe(false);
+  });
+
+  it("libellé null → false", () => {
+    expect(isUnattachedHome(fx("t1", "NEW", "2026-11-01", { fbiVenueLabel: null }))).toBe(false);
+  });
+
+  it("venueId déjà posé → false (déjà rattaché)", () => {
+    expect(isUnattachedHome(fx("t1", "NEW", "2026-11-01", { fbiVenueLabel: "MATEO", venueId: "v1" }))).toBe(false);
   });
 });

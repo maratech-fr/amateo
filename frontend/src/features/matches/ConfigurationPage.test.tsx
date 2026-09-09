@@ -65,7 +65,7 @@ function Harness() {
 beforeEach(() => {
   state.teams = [{ id: "team-1", name: "U13", sportCategoryId: "cat-1", level: null, gender: null, priorityTierId: 3, tierOrder: 0 }];
   state.tiers = [{ id: 3, label: "B", name: "Moyenne", color: null }];
-  state.venues = [{ id: "venue-1", name: "Gymnase Alpha", color: "#00aa00" }];
+  state.venues = [{ id: "venue-1", name: "Gymnase Alpha", color: "#00aa00", externalLabels: [] }];
   state.competitions = [];
   state.habits = [];
   state.rotations = [];

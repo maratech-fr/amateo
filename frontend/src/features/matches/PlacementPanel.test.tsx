@@ -26,11 +26,11 @@ const fixture: Fixture = {
   reviewState: "NEW" as const,
   reviewedAt: null,
   pendingDeviations: [],
-  ffbbRencontreId: null,
+  ffbbRencontreId: null, suggestedVenueId: null,
 };
 const venues: Venue[] = [
-  { id: "venue-1", name: "Gymnase Alpha", color: null },
-  { id: "venue-2", name: "Gymnase Beta", color: null },
+  { id: "venue-1", name: "Gymnase Alpha", color: null, externalLabels: [] },
+  { id: "venue-2", name: "Gymnase Beta", color: null, externalLabels: [] },
 ];
 
 // Mapped envelope: 14:00 is inside, 20:00 is outside.

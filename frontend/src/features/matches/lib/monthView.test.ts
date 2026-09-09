@@ -20,7 +20,7 @@ function fx(partial: Partial<Fixture> & Pick<Fixture, "id" | "matchDate">): Fixt
     reviewState: "NEW" as const,
     reviewedAt: null,
     pendingDeviations: [],
-    ffbbRencontreId: null,
+    ffbbRencontreId: null, suggestedVenueId: null,
     ...partial,
   };
 }

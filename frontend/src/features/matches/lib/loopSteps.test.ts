@@ -28,6 +28,7 @@ function fx(over: Partial<Fixture> = {}): Fixture {
     reviewedAt: over.reviewedAt ?? null,
     pendingDeviations: over.pendingDeviations ?? [],
     ffbbRencontreId: over.ffbbRencontreId ?? null,
+    suggestedVenueId: over.suggestedVenueId ?? null,
     ...over,
   };
 }

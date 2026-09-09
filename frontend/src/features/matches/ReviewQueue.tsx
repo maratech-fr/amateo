@@ -9,8 +9,8 @@ import { frDateWeekdayNoYear } from "@/shared/lib/date";
 import { compareTeamsByRank } from "@/shared/lib/teamTiers";
 import { toast } from "@/shared/stores/toastStore";
 
-import type { Fixture, ResolveDeviationInput, Team } from "./api";
-import { useResolveFixtureDeviation, useReviewFixtures } from "./queries";
+import type { AttachVenueLabelInput, Fixture, ResolveDeviationInput, Team, Venue } from "./api";
+import { useAttachVenueLabel, useResolveFixtureDeviation, useReviewFixtures } from "./queries";
 import { buildReviewQueue } from "./lib/reviewQueue";
 import { ReviewQueueRow } from "./ReviewQueueRow";
 import { useMatchesStore } from "./store";
@@ -19,6 +19,8 @@ import { weekendKeyOf } from "./lib/weekendGrid";
 interface ReviewQueueProps {
   fixtures: Fixture[];
   teams: Team[];
+  /** Gymnases actifs — le geste « Rattacher » d'une ligne domicile sans salle en a besoin. */
+  venues: Venue[];
 }
 
 /**
@@ -30,7 +32,7 @@ interface ReviewQueueProps {
  * même que `TeamSelect`). Un interrupteur « Afficher les traitées » révèle les
  * rencontres déjà traitées (masquées par défaut).
  */
-export function ReviewQueue({ fixtures, teams }: ReviewQueueProps) {
+export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const setFilterMode = useMatchesStore((s) => s.setFilterMode);
@@ -38,18 +40,24 @@ export function ReviewQueue({ fixtures, teams }: ReviewQueueProps) {
   const setSelectedWeekend = useMatchesStore((s) => s.setSelectedWeekend);
   const reviewFixtures = useReviewFixtures();
   const resolveDeviation = useResolveFixtureDeviation();
+  const attachVenueLabel = useAttachVenueLabel();
 
   // L'interrupteur vit en état LOCAL, miroir de `?traitees=` : React Router 7 pose
   // l'URL dans une transition différée, et une case contrôlée par l'URL seule
   // revient « décochée » le temps de la transition (vu en e2e et à l'œil).
   const [showTreated, setShowTreated] = useState<boolean>(() => "1" === searchParams.get("traitees"));
   const openTeamId = searchParams.get("equipe");
-  const busy = reviewFixtures.isPending || resolveDeviation.isPending;
+  const busy = reviewFixtures.isPending || resolveDeviation.isPending || attachVenueLabel.isPending;
 
   const teamName = useMemo(() => {
     const byId = new Map(teams.map((t) => [t.id, t]));
     return (id: string): string => byId.get(id)?.name ?? "Équipe ?";
   }, [teams]);
+
+  const venueName = useMemo(() => {
+    const byId = new Map(venues.map((v) => [v.id, v]));
+    return (id: string): string => byId.get(id)?.name ?? "gymnase";
+  }, [venues]);
 
   const fixtureById = useMemo(() => new Map(fixtures.map((f) => [f.id, f])), [fixtures]);
 
@@ -88,6 +96,18 @@ export function ReviewQueue({ fixtures, teams }: ReviewQueueProps) {
 
   const onResolve = (input: ResolveDeviationInput): void => {
     resolveDeviation.mutate(input);
+  };
+
+  const onAttach = (input: AttachVenueLabelInput): void => {
+    attachVenueLabel.mutate(input, {
+      onSuccess: (r) => {
+        if (r.attached > 0) {
+          toast.success(`${r.attached} domicile${r.attached > 1 ? "s" : ""} rattaché${r.attached > 1 ? "s" : ""} à ${venueName(r.venueId)} (toutes équipes)`);
+        } else {
+          toast.info("Libellé confirmé — aucun nouveau domicile à rattacher");
+        }
+      },
+    });
   };
 
   const onValidateTeam = (teamId: string): void => {
@@ -129,6 +149,9 @@ export function ReviewQueue({ fixtures, teams }: ReviewQueueProps) {
         if (queue.deviationCount > 0) {
           headerParts.push(`${queue.deviationCount} écart${queue.deviationCount > 1 ? "s" : ""}`);
         }
+        if (queue.unattachedCount > 0) {
+          headerParts.push(`${queue.unattachedCount} sans gymnase`);
+        }
         return (
           <AccordionSection
             key={queue.teamId}
@@ -145,7 +168,7 @@ export function ReviewQueue({ fixtures, teams }: ReviewQueueProps) {
               ) : null}
               <ul className="flex flex-col gap-2">
                 {rows.map((fixture) => (
-                  <ReviewQueueRow key={fixture.id} fixture={fixture} onValidateLine={onValidateLine} onResolve={onResolve} onPlace={onPlace} busy={busy} />
+                  <ReviewQueueRow key={fixture.id} fixture={fixture} venues={venues} onValidateLine={onValidateLine} onResolve={onResolve} onPlace={onPlace} onAttach={onAttach} busy={busy} />
                 ))}
               </ul>
             </div>

@@ -88,7 +88,7 @@ describe("FixtureFormDialog", () => {
     reviewState: "NEW" as const,
     reviewedAt: null,
     pendingDeviations: [],
-    ffbbRencontreId: null,
+    ffbbRencontreId: null, suggestedVenueId: null,
   };
 
   it("edit mode: prefilled fields, fixed team, submits the changed identity fields", async () => {

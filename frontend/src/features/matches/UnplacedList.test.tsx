@@ -25,7 +25,7 @@ const fixture = (over: Partial<Fixture> = {}): Fixture => ({
   reviewState: "NEW" as const,
   reviewedAt: null,
   pendingDeviations: [],
-  ffbbRencontreId: null,
+  ffbbRencontreId: null, suggestedVenueId: null,
   ...over,
 });
 

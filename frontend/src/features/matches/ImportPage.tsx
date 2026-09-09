@@ -14,7 +14,7 @@ import { toast } from "@/shared/stores/toastStore";
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { ImportFbiDialog } from "./ImportFbiDialog";
 import { STALE_DAYS, depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
-import { useApplyFfbbRencontres, useFfbbRencontres, useFixtures, useLatestFbiIngestion, usePriorityTiers, useTeams } from "./queries";
+import { useApplyFfbbRencontres, useFfbbRencontres, useFixtures, useLatestFbiIngestion, usePriorityTiers, useTeams, useVenues } from "./queries";
 import { ReviewQueue } from "./ReviewQueue";
 import { useMatchesStore } from "./store";
 
@@ -29,6 +29,7 @@ export function ImportPage() {
   const teams = useTeams();
   const tiers = usePriorityTiers();
   const fixtures = useFixtures();
+  const venues = useVenues();
   const freshness = useLatestFbiIngestion();
   const rencontres = useFfbbRencontres(false);
   const applyFfbb = useApplyFfbbRencontres();
@@ -71,15 +72,16 @@ export function ImportPage() {
     toast.success("Tout est en phase avec ce que la FFBB publie.");
   };
 
-  if (readLoading(fixtures) || readLoading(teams)) {
+  if (readLoading(fixtures) || readLoading(teams) || readLoading(venues)) {
     return <FullPageSpinner />;
   }
-  if (readFailed(fixtures) || readFailed(teams)) {
+  if (readFailed(fixtures) || readFailed(teams) || readFailed(venues)) {
     return (
       <LoadErrorHint
         onRetry={() => {
           void fixtures.refetch();
           void teams.refetch();
+          void venues.refetch();
         }}
       />
     );
@@ -119,7 +121,7 @@ export function ImportPage() {
       </Card>
 
       {/* 2. La file de traitement, par équipe. */}
-      <ReviewQueue fixtures={fixtures.data ?? []} teams={teams.data ?? []} />
+      <ReviewQueue fixtures={fixtures.data ?? []} teams={teams.data ?? []} venues={venues.data ?? []} />
 
       {importDialogOpen ? <ImportFbiDialog teams={teams.data ?? []} tiers={tiers.data ?? []} onClose={() => setImportDialogOpen(false)} /> : null}
       {ffbbDialogOpen ? <FfbbEngagementsDialog teams={teams.data ?? []} tiers={tiers.data ?? []} onClose={() => setFfbbDialogOpen(false)} /> : null}

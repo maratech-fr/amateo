@@ -25,7 +25,7 @@ function fx(partial: Partial<Fixture> & Pick<Fixture, "id" | "matchDate" | "comp
     reviewState: "NEW" as const,
     reviewedAt: null,
     pendingDeviations: [],
-    ffbbRencontreId: null,
+    ffbbRencontreId: null, suggestedVenueId: null,
     ...partial,
   };
 }

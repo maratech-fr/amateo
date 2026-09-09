@@ -1,11 +1,14 @@
 # Vacances scolaires & jours fériés — référentiels calendaires
 
-Last verified @ 2026-09-05 (rotation `documentation-update`, P4-176 — zone non touchée par la PR,
+Last verified @ 2026-09-09 (rotation `documentation-update`, P4-187b — zone non touchée par la PR,
 contrôle de fraîcheur). Re-confronté au code : `AdminJobCatalog` déclare toujours
 `import-school-holidays`/`import-public-holidays` en `quarterly(4)`/`quarterly(4, 30)`,
 `manualTriggerAllowed: true` (`backend/src/AdminJob/AdminJobCatalog.php:63-64`) ✓ ;
-`SchoolZoneResolver::ZONES` (`backend/src/Service/SchoolZoneResolver.php:27`) porte toujours
-exactement les 13 codes listés (`A`/`B`/`C`/`CORSE` + 9 DOM/TOM) ✓. `SchoolHolidayPeriod`/
+`SchoolZoneResolver::ZONES` (`backend/src/Service/SchoolZoneResolver.php:27-32`) porte toujours
+exactement les 13 codes listés (`A`/`B`/`C`/`CORSE` + 9 DOM/TOM) ✓ ; `HolidayPaths` toujours composé
+par `CustomRoutesOpenApiFactory` (`:69`) ✓ ; le court-circuit zone `null` de `GET
+/api/school-holidays` (`{zone:null, items:[]}`) toujours en place (`SchoolHolidaysController.php:47`),
+`GET /api/public-holidays` pose bien `zone` (jamais de court-circuit) ✓. `SchoolHolidayPeriod`/
 `Club.schoolZone`/« display-only » non re-contrôlés cette passe — *(historique des passes :
 `git log -p --follow specs/courantes/vacances-scolaires-jours-feries.md`)*
 
