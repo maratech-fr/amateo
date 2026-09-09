@@ -1,16 +1,18 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-09 (P4-185 « une section = un écran », `documentation-update`). § « Refonte
-UX — RMM-1 » et « Le SET-UP A/B et le signal — RMM-5 PR-4 » recalées : `ConfigurationPage.tsx` rend
-désormais ses six sections en `AccordionSection` CONTRÔLÉES (une seule ouverte, ancrée `?section=`,
-`lib/urlState.ts`), résumées en en-tête par `lib/configSummaries.ts` ; `MatchSlotRotationsEditor.tsx`
-en liste compacte dépliable (une rotation à la fois) ; `MatchDurationsEditor.tsx` en `Table` partagée
-par groupe de défaut servi — P4-185 marqué SOLDÉ (§ « Configuration — P4-185 » ci-dessous). Corrigé
-au passage : la mention d'« Engagements FFBB » comme geste hébergé par `ConfigurationPage` était
-restée d'avant P4-186 (déplacé vers Importer le 2026-09-08) — confronté au code livré
-(`ConfigurationPage.tsx`, `MatchSlotRotationsEditor.tsx`, `MatchDurationsEditor.tsx`,
-`lib/urlState.ts`, `lib/configSummaries.ts`, `accordion.tsx`). Reste du fichier (Espace Importer,
-canal API, réconciliation) non re-sondé cette passe — dernière vérification 2026-09-08.
+Last verified @ 2026-09-09 (P4-187a « gymnase depuis le libellé », backend seul,
+`documentation-update`). Nouvelle § « Gymnase depuis le libellé — alias de salle FBI/FFBB »
+ajoutée et confrontée au code : `Venue.externalLabels` (`Venue.php:74`), `VenueLabelNormalizer`,
+`VenueAliasResolver` (`resolveConfirmed`/`suggest`), résolution automatique aux deux canaux
+(`FbiFixtureImporter::attachConfirmedVenue` `FbiFixtureImporter.php:734`,
+`FfbbRencontreReconciler::apply` `:139`/`:263`), routes `VenueExternalLabelController`, effet sur
+`MatchConflictDetector` (`:267`/`:507`), migration `Version20260909120000`. La décision RMM-9
+(§ « Annuaire adverse ») nuancée : sa réserve « précision VENUE = canal API seul » vise la table
+PARTAGÉE `opponent_directory`, pas le gymnase propre du club. Pas Gherkin de
+`une-rencontre-importee-dit-si-elle-est-traitee.feature` recalé (« attestée FBI », drift signalé en
+PR-3a désormais corrigé). Reste du fichier (Espace Importer, canal API, réconciliation,
+Configuration — P4-185) non re-sondé cette passe — dernière vérification 2026-09-09 (même jour,
+passe antérieure).
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -94,6 +96,15 @@ clubs, de façon **permanente** (premier-VENUE-gagne). L'étage « appariement f
 (schéma partagé — zéro colonne club, byte-identique, pas de DELETE) et `OpponentLocationResolverTest`
 (comportement — xlsx `directVenue=null` → CITY jamais VENUE ; API `directVenue` peuplé → VENUE ; falsifiés
 dans les deux sens).
+
+⚠ **Portée de l'invariant, nuancée par P4-187a (2026-09-09)** : cette réserve vise la table
+**partagée** `opponent_directory` (localisation d'un ADVERSAIRE, hors tenant, lue byte-identique
+par tous les clubs). Elle ne dit rien du gymnase **propre** d'un club, qui vit sur sa propre
+`Venue` (tenantée, RLS). Un libellé xlsx peut donc résoudre le gymnase du CLUB lui-même — jamais un
+adversaire — à condition de passer par un alias **confirmé explicitement par le gestionnaire du
+club** (§ « Gymnase depuis le libellé », ci-dessus), pas par une devinette de nom sur un dépôt
+xlsx brut. La devinette floue (`suggestedVenueId`) reste, elle, un affichage seul, jamais posée
+automatiquement.
 
 **Alimentation** : hook post-import xlsx (`ImportFixturesController`), hook post-apply canal API
 (`FfbbRencontresController`), et rattrapage `POST /api/opponents/resolve` (management SEC-07, cap dur avant
@@ -267,6 +278,71 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
 - **Source unique ADR-0002** : la règle « quel planning s'applique à telle date » est extraite en
   `EffectiveScheduleResolver` (pur) + `TrainingCalendarContext` (chargement scopé), consommés par le
   radar ET l'impact — deux copies auraient divergé.
+
+## Gymnase depuis le libellé — alias de salle FBI/FFBB (P4-187a, backend, 2026-09-09)
+
+> Mesuré 2026-09-08 sur le canal API (`POST /api/ffbb/rencontres/apply`, roadmap P4-187) : un
+> domicile importé porte un libellé de salle fédéral (`Fixture.fbiVenueLabel`) mais aucun
+> `venueId` — invisible de la collision de gymnase (`VENUE_OVERLAP`) et de la fermeture
+> (`VENUE_UNAVAILABLE`). Backend seul livré ici ; le geste « Rattacher » dans l'écran Importer et
+> la proposition pré-sélectionnée suivent en **P4-187b**.
+
+- **`Venue.externalLabels`** (`backend/src/Entity/Venue.php:74`, JSON `default '[]'`, liste
+  NORMALISÉE et dédupliquée — `setExternalLabels`/`addExternalLabel`/`removeExternalLabel`
+  idempotents, `Venue.php:283-322`) : les libellés FBI/FFBB **confirmés par le gestionnaire** qui
+  désignent ce gymnase. Migration `Version20260909120000`. Recopiés au rollover de saison comme
+  une convention permanente du gymnase, au même titre que son nom
+  (`SeasonTransitionService.php:190`).
+- **Normalisation — foyer unique `VenueLabelNormalizer`**
+  (`backend/src/Service/Basketball/VenueLabelNormalizer.php`) : translit ASCII, minuscule, tout
+  non-alphanumérique → espace, espaces multiples réduits. « GYMNASE MATEO » et « Gymnase Matéo »
+  normalisent à la même clé `gymnase mateo` ; « MATEO » seul reste une clé DIFFÉRENTE (jamais
+  confondue avec un mot qu'il contient). `FbiFixtureImporter::normalizeLabel`/`containsClub`/
+  `venueMatches` DÉLÈGUENT ici (plus de copie locale) — import xlsx et résolveur d'alias ne
+  peuvent plus diverger sur ce qu'est « le même libellé ».
+- **`VenueAliasResolver`** (`backend/src/Service/Basketball/VenueAliasResolver.php`), deux
+  niveaux, jamais un placement :
+  - `resolveConfirmed` — égalité STRICTE (normalisée) avec un alias CONFIRMÉ du gymnase. C'est ce
+    qui pose `venueId` automatiquement à l'intégration.
+  - `suggest` — proposition FLOUE (nom du gymnase OU alias, fuzzy) rendue en lecture
+    (`FixtureResource.suggestedVenueId`). **Ambiguïté ≥ 2 gymnases candidats → `null`** : jamais un
+    pari entre deux salles.
+  - Gymnases INACTIFS ignorés des deux côtés ; liste des gymnases actifs du club mémoïsée PAR
+    REQUÊTE (`ResetInterface::reset` vide la mémo entre deux requêtes d'un runtime long — worker,
+    tests — jamais les gymnases d'un autre club en cache).
+- **Résolution automatique à l'intégration, les DEUX canaux** — jamais un placement, le
+  `reviewState` reste intact :
+  - xlsx : `FbiFixtureImporter::attachConfirmedVenue` (`FbiFixtureImporter.php:734`), appelé à la
+    création d'un domicile et sur une rencontre existante toujours sans gymnase.
+  - Canal API : `FfbbRencontreReconciler::apply` (`FfbbRencontreReconciler.php:139` création,
+    `:263` mise à jour) appelle le MÊME `attachConfirmedVenue` — exception ÉTROITE, documentée
+    dans le code, au principe « l'API n'auto-applique jamais » : seul le `venueId` est posé, jamais
+    un statut, jamais une date, jamais sur un AWAY ni sur une rencontre qui a déjà un gymnase.
+- **Routes** (management SEC-07 + saison écrivable → 409 archivée + tenant → 404, contributeur
+  OpenAPI `VenueAliasPaths`, `backend/src/Controller/VenueExternalLabelController.php`) :
+  - `POST /api/venues/{id}/external-labels` `{label}` → `{venueId, label, attached}`. Ajoute
+    l'alias (normalisé, idempotent) PUIS backfille les domiciles du club encore SANS salle dont le
+    libellé égale l'alias (`attached` = nombre nouvellement rattaché, 0 sur un re-POST). Libellé
+    déjà porté par un AUTRE gymnase du club → 422 nommé (« retirez-le d'abord ») ; libellé vide
+    après normalisation → 422.
+  - `DELETE /api/venues/{id}/external-labels/{label}` → 204, idempotent, ne touche AUCUNE
+    rencontre déjà rattachée (le lien reste posé, seul l'alias qui l'a produit part).
+- **`VenueResource.externalLabels`** (lecture seule, jamais écrit par PUT) et
+  `FixtureResource.suggestedVenueId` (lecture seule, seulement pour un HOME sans `venueId` avec un
+  `fbiVenueLabel`) exposent les deux niveaux à l'écran.
+- **Effet immédiat sur le détecteur** : `MatchConflictDetector` compare sur `venueId` seul, jamais
+  le statut de placement (`venueOverlapConflicts` — `MatchConflictDetector.php:267`,
+  `venueUnavailableConflicts` — `:507`) — un domicile rattaché par alias reste UNPLACED mais
+  devient visible de `VENUE_OVERLAP` et `VENUE_UNAVAILABLE` dès que son `venueId` est posé.
+- **Tests** : `VenueLabelNormalizerTest` (normalisation), `MatchConflictDetectorTest` (+2 — un
+  UNPLACED à `venueId` voit la collision et la fermeture), `FbiFixtureImporterTest`,
+  `FfbbRencontresApiTest`, `VenueExternalLabelApiTest` (les deux routes), NR
+  `MatchTenantIsolationTest` (rattacher/backfiller n'échappe jamais le club — gymnase étranger →
+  404, un rattachement légitime ne backfille aucune rencontre d'un autre club) + `ManagementRoleTest`
+  (SEC-07 des deux routes) — les deux fichiers sont déjà des steps de `blocking-tests`, aucun
+  changement `ci.yml`. Behat `un-domicile-importe-retrouve-son-gymnase.feature`
+  (`VenueAliasContext`) : dépôt sans gymnase → rattachement → visible sans placement → re-dépôt au
+  même libellé rattaché d'office → fermeture détectée.
 
 ## Habitudes + passerelles (P1-4 PR C, 2026-08-03)
 
@@ -1332,10 +1408,10 @@ future.
   `MatchTenantIsolationTest` étendu (NR tenant isolation, déjà bloquant — aucun changement
   `ci.yml`) ; `ManagementRoleTest` étendu (SEC-07 des deux nouvelles routes) ; Behat
   `une-rencontre-importee-dit-si-elle-est-traitee.feature` (`FixtureReviewContext`) — le parcours
-  complet dépôt → traitement → re-dépôt → `VALIDATED` → déphasage → arbitrage. ⚠ Le pas Gherkin
-  de cette feature dit encore « la rencontre est « validée ligue » » (vocabulaire pré-D9) — il
-  vérifie `status === VALIDATED`, pas le libellé écran ; drift cosmétique signalé, non corrigé ici
-  (fichier de test, hors périmètre de ce skill).
+  complet dépôt → traitement → re-dépôt → `VALIDATED` → déphasage → arbitrage. Le pas Gherkin dit
+  désormais « la rencontre est « attestée FBI » » (`FixtureReviewContext::laRencontreEstAttesteeFbi`,
+  toujours `status === VALIDATED`) — le drift cosmétique signalé lors de PR-3a (vocabulaire pré-D9
+  laissé dans le pas) a été corrigé au passage par P4-187a.
 
 ## Configuration — repli visuel (P4-185, 2026-09-09) — LIVRÉ EN ENTIER
 

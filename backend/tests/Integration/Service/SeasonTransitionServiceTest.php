@@ -86,6 +86,9 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         // Venue lineage + slot remap.
         $newVenues = $this->em->getRepository(Venue::class)->findBy(['seasonId' => $target->getId()], ['name' => 'ASC']);
         self::assertSame([$refs['venueA']->getId(), $refs['venueB']->getId()], [$newVenues[0]->getParentVenueId(), $newVenues[1]->getParentVenueId()]);
+        // P4-187a — les alias de salle confirmés suivent la copie N+1.
+        self::assertSame(['gymnase mateo'], $newVenues[0]->getExternalLabels());
+        self::assertSame([], $newVenues[1]->getExternalLabels());
         $newSlot = $this->em->getRepository(VenueTrainingSlot::class)->findOneBy(['seasonId' => $target->getId()]);
         self::assertSame($newVenues[0]->getId(), $newSlot?->getVenueId());
 
@@ -404,6 +407,9 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $this->em->flush();
 
         $venueA = $this->venue($club, $season, 'Gym A');
+        // P4-187a — un alias de salle confirmé : la copie N+1 doit le porter.
+        $venueA->setExternalLabels(['gymnase mateo']);
+        $this->em->flush();
         $venueB = $this->venue($club, $season, 'Gym B');
 
         // P2-53 RMM-8 — un barème de trajet A↔B, valeur MANUAL : la recopie N+1 doit le

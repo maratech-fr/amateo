@@ -15,6 +15,7 @@ use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
+use App\Enum\FixtureStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLinkType;
 use App\Service\AwayKickoffEstimator;
@@ -332,6 +333,40 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame('VENUE_OVERLAP', $conflicts[0]['type']);
         self::assertSame(1, $conflicts[0]['severity']);
         self::assertSame('venue-mateo', $conflicts[0]['venueId']);
+    }
+
+    public function testUnplacedFixturesWithAVenueAndKickoffStillOverlap(): void
+    {
+        // P4-187a NR — un domicile IMPORTÉ reste UNPLACED mais porte un venueId
+        // (rattaché par alias) : la collision de gymnase le voit quand même. Le
+        // détecteur ne regarde que le venueId, jamais le statut de placement — c'est
+        // l'invariant sur lequel repose « rendre visible sans placer ».
+        $left = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00');
+        $left->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $left->setVenueId('venue-mateo');
+        $right = $this->fixture('fx-2', self::TEAM_2, '2026-10-03', '16:00');
+        $right->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $right->setVenueId('venue-mateo');
+
+        $conflicts = $this->detect([$left, $right], []);
+
+        self::assertSame(['VENUE_OVERLAP'], array_column($conflicts, 'type'));
+        self::assertSame('venue-mateo', $conflicts[0]['venueId']);
+    }
+
+    public function testUnplacedFixtureWithAVenueStillSeesAClosure(): void
+    {
+        // P4-187a NR — même chose pour la fermeture : un domicile UNPLACED rattaché
+        // par alias à un gymnase fermé à la date du match alerte VENUE_UNAVAILABLE
+        // (la DATE dans la plage suffit, statut et coup d'envoi indifférents).
+        $fixture = $this->fixture('fx-1', self::TEAM_1, '2027-02-14', null);
+        $fixture->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $fixture->setVenueId('venue-armand');
+
+        $conflicts = $this->detect([$fixture], [], null, [], [], [$this->unavailability('venue-armand', '2027-02-04', '2027-02-28', 'travaux')]);
+
+        self::assertSame(['VENUE_UNAVAILABLE'], array_column($conflicts, 'type'));
+        self::assertSame('fx-1', $conflicts[0]['fixture']['fixtureId']);
     }
 
     public function testLeagueWindowViolationOnlyForMappedTeams(): void

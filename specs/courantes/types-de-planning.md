@@ -1,11 +1,13 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-09-05 (D3 v2, `documentation-update`). §2 recalé : re-dater une mère
-découpée en début/milieu/fin passe désormais par un aperçu (`POST /redate-preview`) puis une
-confirmation (`PUT` + `previewToken`) — re-confronté `RedatePreviewController`,
-`SplitMotherRedatePlanner`, `CalendarEntryRedatability::redateNeedsPreview`,
-`CalendarEntryResource.redateNeedsPreview`. Reste du fichier (E1-E6, D1-D10bis, historique des
-décisions) non re-confronté ligne à ligne cette passe.
+Last verified @ 2026-09-09 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+cette PR — P4-187a, backend seul). Re-vérifié contre le code, tout juste : `RedatePreviewController`
+(`backend/src/Controller/RedatePreviewController.php:36`) ✓, `SplitMotherRedatePlanner`
+(`backend/src/Service/SplitMotherRedatePlanner.php:41`) ✓,
+`CalendarEntryRedatability::redateNeedsPreview` (`backend/src/Service/CalendarEntryRedatability.php:68`) ✓,
+`CalendarEntryResource.redateNeedsPreview` (`backend/src/ApiResource/CalendarEntryResource.php:78`) ✓.
+Reste du fichier (E1-E6, D1-D10bis, historique des décisions) non re-confronté ligne à ligne cette
+passe.
 
 > **Rôle de ce document** : la trace durable du modèle métier des plannings, validé avec le
 > fondateur le 2026-07-12. C'est LA référence à consulter avant tout travail sur la

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\VenueRepository;
+use App\Service\Basketball\VenueLabelNormalizer;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -62,6 +63,16 @@ class Venue implements TenantOwnedInterface
 
     #[ORM\Column(type: 'string', length: 180, nullable: true)]
     private ?string $externalRef = null;
+
+    /**
+     * Libellés FBI/FFBB confirmés qui désignent ce gymnase (P4-187a) — normalisés
+     * ({@see VenueLabelNormalizer}) et dédupliqués. Un
+     * domicile importé portant l'un d'eux retrouve son `venueId` automatiquement.
+     *
+     * @var list<string>
+     */
+    #[ORM\Column(type: 'json', options: ['default' => '[]'])]
+    private array $externalLabels = [];
 
     #[ORM\Column(type: 'boolean')]
     private bool $isActive = true;
@@ -264,6 +275,50 @@ class Venue implements TenantOwnedInterface
         $this->externalRef = $externalRef;
 
         return $this;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getExternalLabels(): array
+    {
+        return $this->externalLabels;
+    }
+
+    /**
+     * @param list<string> $externalLabels
+     */
+    public function setExternalLabels(array $externalLabels): self
+    {
+        $this->externalLabels = array_values(array_unique($externalLabels));
+
+        return $this;
+    }
+
+    /** Ajoute un alias déjà normalisé (idempotent). Vrai = nouvel alias posé. */
+    public function addExternalLabel(string $normalizedLabel): bool
+    {
+        if (\in_array($normalizedLabel, $this->externalLabels, true)) {
+            return false;
+        }
+        $this->externalLabels[] = $normalizedLabel;
+
+        return true;
+    }
+
+    /** Retire un alias déjà normalisé (idempotent). Vrai = un alias a été retiré. */
+    public function removeExternalLabel(string $normalizedLabel): bool
+    {
+        $filtered = array_values(array_filter(
+            $this->externalLabels,
+            static fn (string $label): bool => $label !== $normalizedLabel,
+        ));
+        if (\count($filtered) === \count($this->externalLabels)) {
+            return false;
+        }
+        $this->externalLabels = $filtered;
+
+        return true;
     }
 
     public function getIsActive(): bool

@@ -14,7 +14,7 @@ Fonctionnalité: Une rencontre importée dit si elle est traitée
     Quand je place la rencontre dans le gymnase « GYM BEHAT » à 15h30
     Alors la rencontre est « traitée »
     Quand je re-dépose le même fichier
-    Alors la rencontre est « validée ligue »
+    Alors la rencontre est « attestée FBI »
     Quand je re-dépose le fichier avec une date différente, sans trancher
     Alors la rencontre est « déphasée » et sa date d'origine est intacte
     Quand je tranche l'écart de date en adoptant la source

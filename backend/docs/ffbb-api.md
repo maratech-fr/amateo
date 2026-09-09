@@ -1,21 +1,12 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-09-08 (PR-3a « espace Importer » — `documentation-update`). Re-confronté au
-code, sans écart : hosts en constantes dures (`Service/Basketball/FfbbApiClient.php:24-25`,
-`CONFIG_URL`/`SEARCH_URL`) ✓ · routes `GET /api/ffbb/rencontres` + `POST
-/api/ffbb/rencontres/apply` (`Controller/Basketball/FfbbRencontresController.php:66,87`) ✓ ·
-`FfbbRencontreReconciler::apply` partage désormais le moteur `processPerimeterFields`/
-`reconcileNoDivergence` de `FbiFixtureImporter` (pose `Fixture.reviewState`/`pendingDeviations`,
-applique D9) tandis que `check()` (le GET) reste lecture seule — écarts recalculés, rien écrit
-(`Service/Basketball/FfbbRencontreReconciler.php:60-100`) ✓ · routes `GET /api/ffbb/engagements`
-+ `POST /api/ffbb/engagements/confirm` (`Controller/Basketball/FfbbEngagementsController.php:62,109`)
-✓ · routes `GET /api/ffbb/salles` + `GET /api/ffbb/salles-proches`
-(`Controller/Basketball/FfbbSallesController.php:47,83`) ✓ · index unique partiel
-`uniq_fixture_ffbb_rencontre` sur `Fixture.ffbbRencontreId`
-(`Entity/Fixture.php:39`) ✓ · `PATCH /api/club/info` absent du code (grep zéro résultat) ✓. Non
-re-sondé cette passe : le filtre strict serveur de `searchRencontres`, fallback
-`FFBB_MEILISEARCH_TOKEN`, `FfbbClubPopulator::applyClub`, le cadrage archivé, la mesure « 36 hits
-BCCL / 1 052 documents » (donnée externe, non re-sondée).
+Last verified @ 2026-09-09 (P4-187a « gymnase depuis le libellé », backend seul —
+`documentation-update`). Re-confronté au code : `FfbbRencontreReconciler::apply` appelle désormais
+aussi `FbiFixtureImporter::attachConfirmedVenue` (`FfbbRencontreReconciler.php:139` création,
+`:263` mise à jour) — un domicile encore sans salle dont le libellé égale un alias CONFIRMÉ
+(`Venue.externalLabels`) reçoit son `venueId` à l'apply, sans jamais être placé ✓. Reste non
+re-sondé cette passe : hosts en constantes dures, routes engagements/salles, filtre strict
+`searchRencontres` — voir stamp précédent (`git log -p --follow` ce fichier).
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit rester dans la **liste blanche de hosts** du client (SSRF, A12). Vérifié le 2026-07-10 sur le code réel `ARA0069036` (BCCL).
 
@@ -127,6 +118,12 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   l'import xlsx (`reviewState`/`pendingDeviations` sur `Fixture`, `processPerimeterFields`/
   `reconcileNoDivergence`) et applique **D9** — un domicile `PLACED`/`SUBMITTED` que l'API renvoie
   identique sur date + heure + salle passe `VALIDATED` + traité, exactement comme un dépôt xlsx.
+- **P4-187a (2026-09-09)** : `apply` pose aussi `venueId` par ALIAS CONFIRMÉ
+  (`FbiFixtureImporter::attachConfirmedVenue`, foyer partagé avec l'import xlsx) sur un domicile
+  encore sans salle dont le libellé FBI/FFBB égale un alias que le gestionnaire a rattaché à un
+  gymnase (`Venue.externalLabels`, `POST /api/venues/{id}/external-labels`) — la rencontre reste
+  UNPLACED, seule visible de `VENUE_OVERLAP`/`VENUE_UNAVAILABLE`. Détail :
+  [`module-matchs.md`](../../specs/courantes/module-matchs.md) § « Gymnase depuis le libellé ».
 - **Filtre strict serveur** (`FfbbApiClient::searchRencontres`) : la recherche plein texte sur le
   code club rend du bruit (un hit « AMICAL PNM » ne concernant pas le club, mesuré) — ne sont
   gardés que les hits où le code club apparaît sur `idOrganismeEquipe1.code` OU

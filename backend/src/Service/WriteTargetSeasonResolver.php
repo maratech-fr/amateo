@@ -44,6 +44,11 @@ final class WriteTargetSeasonResolver
         return $this->fetchSeasonId('SELECT season_id FROM schedule_slot_template WHERE id = :id', $id);
     }
 
+    public function ofVenue(string $id): ?string
+    {
+        return $this->fetchSeasonId('SELECT season_id FROM venue WHERE id = :id', $id);
+    }
+
     /**
      * ⚠ SÉCURITÉ — le garde doit résoudre EXACTEMENT ce que résout le chemin d'écriture.
      *

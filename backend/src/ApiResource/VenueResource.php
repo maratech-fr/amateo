@@ -68,6 +68,16 @@ class VenueResource
     #[Groups(['read'])]
     public ?string $externalRef = null;
 
+    /**
+     * Libellés FBI/FFBB confirmés qui désignent ce gymnase (P4-187a) — lecture
+     * seule, écrits par « Rattacher » (POST /venues/{id}/external-labels), jamais
+     * par un PUT.
+     *
+     * @var list<string>
+     */
+    #[Groups(['read'])]
+    public array $externalLabels = [];
+
     #[Groups(['read'])]
     public bool $isActive = false;
 
@@ -93,6 +103,7 @@ class VenueResource
         $dto->address = $entity->getAddress();
         $dto->source = $entity->getSource();
         $dto->externalRef = $entity->getExternalRef();
+        $dto->externalLabels = $entity->getExternalLabels();
         $dto->isActive = $entity->getIsActive();
         $dto->parentVenueId = $entity->getParentVenueId();
         $dto->canSplit = $entity->getCanSplit();

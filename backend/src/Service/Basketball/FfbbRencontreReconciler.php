@@ -139,9 +139,17 @@ final class FfbbRencontreReconciler
             }
             $consumed[$fixture->getId()] = true;
 
+            // P4-187a — exception ÉTROITE au « the API never auto-applies » : sur un
+            // domicile encore sans salle, on POSE le venueId depuis un alias confirmé
+            // (et RIEN d'autre — jamais un statut, jamais une date). La rencontre
+            // reste UNPLACED ; elle devient seulement visible de la collision et de
+            // la fermeture. Vaut même hors périmètre (fixture UNPLACED, ci-dessous).
+            $venueLabel = \is_string($row['venueLabel'] ?? null) ? $row['venueLabel'] : null;
+            $this->importer->attachConfirmedVenue($fixture, $venueLabel);
+
             $fields = $this->importer->detectFieldDeviations($fixture, $row, $venueNames);
             if (null === $fields) {
-                continue; // out of the home-placed perimeter — the API never auto-applies
+                continue; // out of the home-placed perimeter — the API never auto-applies (beyond the venue attach above)
             }
             // The SAME reconciliation engine as the xlsx import (never a copy):
             // per-field decisions + pending-écart maintenance + reviewState, or D9
@@ -255,6 +263,9 @@ final class FfbbRencontreReconciler
         // an explicit manager action — same rule as the FBI import). reviewState
         // stays NEW by default — a freshly imported rencontre is « à traiter ».
         $fixture->setStatus(FixtureStatus::UNPLACED, $this->now());
+        // P4-187a — un domicile dont le libellé égale un alias confirmé naît AVEC
+        // son gymnase (jamais placé pour autant : reste UNPLACED). Moteur partagé.
+        $this->importer->attachConfirmedVenue($fixture, \is_string($row['venueLabel'] ?? null) ? $row['venueLabel'] : null);
 
         return $fixture;
     }
