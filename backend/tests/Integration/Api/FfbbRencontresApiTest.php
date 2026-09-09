@@ -239,6 +239,54 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertSame(FfbbHttpClientStub::AMICAL_KICKOFF, $entry['sourceValue']);
     }
 
+    public function testApplyCreationAttachesTheVenueFromAConfirmedAliasButStaysUnplaced(): void
+    {
+        // P4-187a — le canal API pose aussi le gymnase depuis un alias confirmé. Le
+        // stub publie l'amical au « GYMNASE STUB » ; un gymnase du club porte cet
+        // alias → la rencontre créée naît AVEC son gymnase, mais reste UNPLACED.
+        [$token, , $clubId] = $this->register('FRV1');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $season = $this->seasonOf($clubId);
+        $venueId = $this->venueWithAlias($clubId, $season->getId(), 'Palais des Sports', ['gymnase stub']);
+
+        $this->apply($token, [], [['rencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID, 'teamId' => $team->getId()]]);
+
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['ffbbRencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID]);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        self::assertSame($venueId, $fixture->getVenueId(), 'l\'alias confirmé rattache le gymnase à la création');
+        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus(), 'jamais placé d\'office');
+    }
+
+    public function testApplyAttachesTheVenueOfAnExistingUnplacedHomeWithoutTouchingDateOrStatus(): void
+    {
+        // P4-187a — exception étroite au « the API never auto-applies » : sur un
+        // domicile matché encore sans salle, apply POSE le venueId (et rien d'autre).
+        [$token, , $clubId] = $this->register('FRV2');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $season = $this->seasonOf($clubId);
+        $this->pairTeamToStubCompetition($clubId, $season->getId(), $team->getId());
+        $venueId = $this->venueWithAlias($clubId, $season->getId(), 'Palais des Sports', ['gymnase stub']);
+
+        // Un domicile UNPLACED à la date exacte du championnat → tier 2 le matche.
+        $existing = $this->createFixture($clubId, $season->getId(), $team->getId(), $this->rencontreDate(), FfbbHttpClientStub::CHAMP_OPPONENT, true, FixtureStatus::UNPLACED, null);
+        $existingId = $existing->getId();
+        $dateBefore = $existing->getMatchDate()->format('Y-m-d');
+
+        $this->apply($token, [], []);
+
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Fixture::class)->find($existingId);
+        self::assertSame($venueId, $reloaded?->getVenueId(), 'le gymnase est rattaché depuis l\'alias');
+        self::assertSame(FixtureStatus::UNPLACED, $reloaded?->getStatus(), 'le statut ne bouge pas');
+        self::assertSame($dateBefore, $reloaded?->getMatchDate()->format('Y-m-d'), 'la date ne bouge pas');
+        self::assertSame(FixtureReviewState::NEW, $reloaded?->getReviewState(), 'aucun traitement induit');
+    }
+
     public function testFfbbApiIngestionIsNotTheXlsxFreshnessAndDoesNotTouchATrace(): void
     {
         [$token, , $clubId] = $this->register('FRG');
@@ -475,6 +523,26 @@ final class FfbbRencontresApiTest extends WebTestCase
         $venue->setSeasonId($seasonId);
         $venue->setName('GYMNASE APP');
         $venue->setSource('manual');
+        $this->em->persist($venue);
+        $this->em->flush();
+
+        return $venue->getId();
+    }
+
+    /**
+     * A club venue carrying confirmed FBI/FFBB aliases (P4-187a).
+     *
+     * @param list<string> $aliases already-normalized labels
+     */
+    private function venueWithAlias(string $clubId, string $seasonId, string $name, array $aliases): string
+    {
+        $this->scopeGucToClub($clubId);
+        $venue = new Venue;
+        $venue->setClubId($clubId);
+        $venue->setSeasonId($seasonId);
+        $venue->setName($name);
+        $venue->setSource('manual');
+        $venue->setExternalLabels($aliases);
         $this->em->persist($venue);
         $this->em->flush();
 

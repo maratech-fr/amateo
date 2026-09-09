@@ -1,12 +1,21 @@
-Last verified @ 2026-09-08 (PR-3a — espace « Importer », `coder` — snapshot régénéré dans le même commit.
-**194 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+2 paths** (les routes de
-traitement `POST /api/fixtures/review` et `POST /api/fixtures/review/deviations`) et le schéma read
-`Fixture` gagne `reviewState`, `reviewedAt`, `pendingDeviations` et `ffbbRencontreId`.
-· SHA-256 `96b627e177679cb93f22f5033985f3f5909c4baa6bf16747104d027463696ba4`
-(`sha256sum`, confirmé sur le fichier régénéré, diff purement additif +294 lignes). Reste du journal non
-re-confronté au code cette passe.)
+Last verified @ 2026-09-09 (P4-187a — rattacher un libellé de salle à un gymnase, `coder` — snapshot
+régénéré dans le même commit. **196 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓,
+**+2 paths** (les routes de rattachement `POST /api/venues/{id}/external-labels` et
+`DELETE /api/venues/{id}/external-labels/{label}`) ; le schéma read `Venue` gagne `externalLabels`
+(liste de libellés confirmés) et `Fixture` gagne `suggestedVenueId`.
+· SHA-256 `16aad8df6b122c422a8494db02680ce33c741a01e96be138912f82b1b7fe7632`
+(`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **P4-187a — un domicile importé retrouve son gymnase depuis le libellé FBI/FFBB (2026-09-09)** :
+  **+2 paths** — deux routes de rattachement (`VenueExternalLabelController`, management + saison écrivable) :
+  `POST /api/venues/{id}/external-labels` (corps `{label}` — ajoute l'alias normalisé, idempotent, puis
+  backfille les domiciles du club encore sans salle au même libellé ; réponse `{venueId, label, attached}` ;
+  422 libellé vide ou déjà porté par un autre gymnase) et `DELETE /api/venues/{id}/external-labels/{label}`
+  (retire l'alias, 204, ne dépointe aucune rencontre). Le schéma read `Venue` gagne `externalLabels`
+  (list<string>, lecture seule — jamais writable par le PUT) et `Fixture` gagne `suggestedVenueId`
+  (proposition floue en lecture pour un domicile importé sans salle). 194 → **196 paths**. Backend PUR,
+  contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.20, aucun appel moteur).
 - **PR-3a — l'espace « Importer » : traiter les rencontres (2026-09-08)** : **+2 paths** — deux routes de
   traitement (`ReviewFixturesController` + `ReviewFixtureDeviationController`, management + saison écrivable
   + socle pointé) : `POST /api/fixtures/review` (corps `{fixtureIds?}` geste ligne — écarts vidés, REVIEWED —
@@ -66,12 +75,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   backend⇄engine **bumpé 2.17 → 2.18** : `/validate-assignments` juge désormais N déplacements sous
   UN verdict (`candidates`/`references` LISTES remplacent le singulier — le déplacement de bloc les
   émet à N, le rail simple à 1).
-- **P2-51 PR-5 — `POST /api/reservations/group` se ré-ancre sur le bloc (2026-08-31)** : **+0 path** —
-  le corps du POST existant gagne `sharedTrainingBlockId` (résolu EN PREMIER, `SharedTrainingBlock`),
-  `sharedTrainingGroupId` devient le repli legacy (transitoire jusqu'à la PR-6 frontend/PR-7
-  nettoyage) ; aucun des deux n'est plus `required` isolément (au moins un doit être fourni, sinon
-  400). Déclaré dans `PathContributor/UncoveredCustomPaths.php`. 191 → **191 paths**. Backend PUR,
-  contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.17, ce rail n'appelle pas le moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

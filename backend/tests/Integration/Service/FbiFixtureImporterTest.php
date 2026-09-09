@@ -19,6 +19,7 @@ use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
+use App\Enum\FixtureUnplacedReason;
 use App\Enum\SeasonStatus;
 use App\Exception\ImportRejectedException;
 use App\Repository\FbiIngestionRepository;
@@ -985,6 +986,89 @@ final class FbiFixtureImporterTest extends KernelTestCase
         }
     }
 
+    // ── P4-187a : rattachement du gymnase depuis l'alias ────────────────────
+
+    public function testHomeImportWithAConfirmedAliasIsBornWithItsVenueButStaysUnplaced(): void
+    {
+        $venueId = $this->createVenueWithAliases('Gymnase Matéo', ['gymnase mateo']);
+
+        $this->importMapped([['D2', 'AL1', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']]);
+
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'AL1']);
+        self::assertNotNull($fixture);
+        self::assertSame($venueId, $fixture->getVenueId(), 'le gymnase est rattaché depuis l\'alias confirmé');
+        // …mais on ne place JAMAIS d'office : la rencontre reste à traiter et à placer.
+        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus());
+        self::assertSame(FixtureReviewState::NEW, $fixture->getReviewState());
+    }
+
+    public function testHomeImportWithoutAMatchingAliasHasNoVenue(): void
+    {
+        $this->createVenueWithAliases('Gymnase Matéo', ['gymnase mateo']);
+
+        $this->importMapped([['D2', 'AL2', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE INCONNUE']]);
+
+        self::assertNull($this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'AL2'])?->getVenueId());
+    }
+
+    public function testAnExistingUnplacedHomeIsBackfilledWhenTheAliasAppearsOnReDeposit(): void
+    {
+        $venue = $this->em->getRepository(Venue::class)->find($this->createVenue('Gymnase Matéo'));
+        self::assertNotNull($venue);
+
+        // Premier dépôt : pas encore d'alias → aucun gymnase.
+        $this->importMapped([['D2', 'AL3', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']]);
+        self::assertNull($this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'AL3'])?->getVenueId());
+
+        // L'alias est rattaché, puis un re-dépôt backfille le domicile resté sans salle.
+        $venue->setExternalLabels(['gymnase mateo']);
+        $this->em->flush();
+        $this->importMapped([['D2', 'AL3', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']], null);
+
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'AL3']);
+        self::assertSame($venue->getId(), $fixture?->getVenueId());
+        self::assertSame(FixtureStatus::UNPLACED, $fixture?->getStatus(), 'le backfill ne place pas la rencontre');
+    }
+
+    public function testAPlacedFixtureIsNeverMovedByAnAlias(): void
+    {
+        $aliased = $this->createVenue('Gymnase Matéo');
+        $placedVenue = $this->createVenue('Autre Gymnase');
+
+        // Domicile importé sans alias → sans salle, qu'on place à la main sur un AUTRE gymnase.
+        $this->importMapped([['D2', 'AL4', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']]);
+        $this->placeAt('AL4', $placedVenue);
+
+        // L'alias apparaît sur le premier gymnase ; un re-dépôt ne DOIT PAS déplacer un match déjà placé.
+        $this->em->getRepository(Venue::class)->find($aliased)?->setExternalLabels(['gymnase mateo']);
+        $this->em->flush();
+        $this->importMapped([['D2', 'AL4', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']], null);
+
+        self::assertSame($placedVenue, $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'AL4'])?->getVenueId());
+    }
+
+    public function testAttachingAVenueClearsAPersistedVenueLostReason(): void
+    {
+        $venue = $this->em->getRepository(Venue::class)->find($this->createVenue('Gymnase Matéo'));
+        self::assertNotNull($venue);
+        $venue->setExternalLabels(['gymnase mateo']);
+        $this->em->flush();
+
+        // Un domicile qui a perdu son gymnase (VENUE_LOST persisté) et redevient sans salle…
+        $this->importMapped([['D2', 'AL5', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']]);
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'AL5']);
+        self::assertNotNull($fixture);
+        $fixture->setVenueId(null);
+        $fixture->setUnplacedReason(FixtureUnplacedReason::VENUE_LOST);
+        $this->em->flush();
+
+        // …retrouve son gymnase au re-dépôt, et la raison de dépointage s'éteint (setVenueId).
+        $this->importMapped([['D2', 'AL5', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']], null);
+        $this->em->refresh($fixture);
+        self::assertSame($venue->getId(), $fixture->getVenueId());
+        self::assertNull($fixture->getUnplacedReason());
+    }
+
     // ── Setup & helpers ────────────────────────────────────────────────────
 
     protected function setUp(): void
@@ -1194,6 +1278,20 @@ final class FbiFixtureImporterTest extends KernelTestCase
         $this->em->flush();
 
         return $venue->getId();
+    }
+
+    /**
+     * A Venue carrying confirmed FBI/FFBB aliases (P4-187a); returns its id.
+     *
+     * @param list<string> $aliases already-normalized labels
+     */
+    private function createVenueWithAliases(string $name, array $aliases): string
+    {
+        $id = $this->createVenue($name);
+        $this->em->getRepository(Venue::class)->find($id)?->setExternalLabels($aliases);
+        $this->em->flush();
+
+        return $id;
     }
 
     /** @param list<list<string>> $rows real-format header (« N° de match » with its trailing space) */

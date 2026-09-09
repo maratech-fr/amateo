@@ -132,6 +132,15 @@ class FixtureResource
     public ?string $placementSource = null;
 
     /**
+     * Gymnase PROPOSÉ pour un domicile importé encore sans salle (P4-187a D6) :
+     * calculé en lecture par un rapprochement flou du libellé FBI/FFBB, seulement
+     * pour un HOME sans `venueId` et avec un `fbiVenueLabel`. Jamais un placement —
+     * une simple suggestion à confirmer (« Rattacher »). Null par défaut.
+     */
+    #[Groups(['read'])]
+    public ?string $suggestedVenueId = null;
+
+    /**
      * Why it went back to « à placer », when the reason must persist: `venue_lost`
      * (its venue is no longer affiliated to the club), else null. Distinct from the
      * volatile auto-placement reason held only in the UI.

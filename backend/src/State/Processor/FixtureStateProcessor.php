@@ -13,6 +13,7 @@ use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
+use App\Service\Basketball\VenueAliasResolver;
 use App\Service\SocleGuard;
 use DateTimeImmutable;
 use Symfony\Component\Clock\ClockInterface;
@@ -28,10 +29,18 @@ class FixtureStateProcessor extends AbstractStateProcessor
 
     private ClockInterface $clock;
 
+    private VenueAliasResolver $venueAliasResolver;
+
     #[Required]
     public function setSocleGuard(SocleGuard $socleGuard): void
     {
         $this->socleGuard = $socleGuard;
+    }
+
+    #[Required]
+    public function setVenueAliasResolver(VenueAliasResolver $venueAliasResolver): void
+    {
+        $this->venueAliasResolver = $venueAliasResolver;
     }
 
     #[Required]
@@ -162,7 +171,13 @@ class FixtureStateProcessor extends AbstractStateProcessor
      */
     protected function mapEntityToOutput(object $entity): FixtureResource
     {
-        return FixtureResource::fromEntity($entity);
+        $output = FixtureResource::fromEntity($entity);
+        // D6 — même proposition floue que le provider (second appelant de fromEntity).
+        if (FixtureHomeAway::HOME === $entity->getHomeAway() && null === $entity->getVenueId() && null !== $entity->getFbiVenueLabel()) {
+            $output->suggestedVenueId = $this->venueAliasResolver->suggest($entity->getFbiVenueLabel());
+        }
+
+        return $output;
     }
 
     /**

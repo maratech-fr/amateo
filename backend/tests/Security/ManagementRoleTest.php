@@ -66,6 +66,10 @@ final class ManagementRoleTest extends WebTestCase
             // toute lecture du corps, un corps quelconque atteint donc le 403.
             ['POST', '/api/fixtures/review'],
             ['POST', '/api/fixtures/review/deviations'],
+            // P4-187a — rattacher/retirer un libellé de salle est management-only :
+            // assertManager() tire AVANT toute lecture du gymnase, un id bidon atteint le 403.
+            ['POST', '/api/venues/' . self::DUMMY_ID . '/external-labels'],
+            ['DELETE', '/api/venues/' . self::DUMMY_ID . '/external-labels/gymnase-behat'],
         ];
     }
 

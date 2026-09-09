@@ -188,6 +188,34 @@ final class MatchTenantIsolationTest extends WebTestCase
         self::assertCount(0, $this->em->getRepository(VenueUnavailability::class)->findBy(['venueId' => $venueB->getId()]));
     }
 
+    public function testExternalLabelAttachCannotTargetAForeignVenueNorBackfillAcrossClubs(): void
+    {
+        // P4-187a NR (axe tenant §7.1) — rattacher un libellé sur le gymnase d'un
+        // AUTRE club est invisible → 404, zéro écriture ; et le backfill d'un rattachement
+        // légitime ne touche jamais les rencontres d'un autre club.
+        [$clubA, $userA, $seasonA] = $this->createClubUser('a');
+        $venueA = $this->createVenue($clubA, $seasonA, 'Gymnase A');
+        [$clubB, , $seasonB] = $this->createClubUser('b');
+        $venueB = $this->createVenue($clubB, $seasonB, 'Gymnase B');
+        $foreignFixtureId = $this->createHomeFixtureWithLabel($clubB, $seasonB, 'GYMNASE MATEO');
+
+        // (1) POST sur le gymnase de B, en tant que A → 404, rien écrit chez B.
+        $this->client->request('POST', '/api/venues/' . $venueB->getId() . '/external-labels', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode(['label' => 'GYMNASE MATEO'], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(404);
+
+        // (2) Un rattachement LÉGITIME chez A ne backfille aucune rencontre de B.
+        $this->client->request('POST', '/api/venues/' . $venueA->getId() . '/external-labels', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode(['label' => 'GYMNASE MATEO'], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+        self::assertSame(0, $this->responseData()['attached'] ?? -1, 'aucune rencontre de A ne porte ce libellé → 0 rattaché');
+
+        // Lecture BRUTE sous le scope de B (le season_filter épinglerait la lecture
+        // ORM à la saison de A ; la RLS scope le club sur la connexion dama partagée).
+        $this->scopeGucToClub($clubB->getId());
+        $connection = self::getContainer()->get(EntityManagerInterface::class)->getConnection();
+        self::assertSame('[]', (string) $connection->fetchOne('SELECT external_labels FROM venue WHERE id = ?', [$venueB->getId()]), 'le gymnase de B n\'a rien reçu');
+        self::assertNull($connection->fetchOne('SELECT venue_id FROM fixture WHERE id = ?', [$foreignFixtureId]) ?: null, 'la rencontre de B n\'est jamais backfillée par un rattachement de A');
+    }
+
     public function testVenueUnavailabilityIsManagementGatedAndSeasonGuarded(): void
     {
         [$clubA, $userA, $seasonA] = $this->createClubUser('a');
@@ -694,6 +722,23 @@ final class MatchTenantIsolationTest extends WebTestCase
         $this->em->flush();
 
         return $fixture;
+    }
+
+    private function createHomeFixtureWithLabel(Club $club, Season $season, string $venueLabel): string
+    {
+        $this->scopeGucToClub($club->getId());
+        $fixture = new Fixture;
+        $fixture->setClubId($club->getId());
+        $fixture->setSeasonId($season->getId());
+        $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
+        $fixture->setHomeAway(FixtureHomeAway::HOME);
+        $fixture->setOpponentLabel('Adversaire');
+        $fixture->setFbiVenueLabel($venueLabel);
+        $this->em->persist($fixture);
+        $this->em->flush();
+
+        return $fixture->getId();
     }
 
     private function createCompetition(Club $club, Season $season, string $name): Competition

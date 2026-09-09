@@ -3,26 +3,14 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-08 (PR-3a « espace Importer » — `documentation-update`). Re-confronté au
-code : `FixtureReviewState` (`backend/src/Enum/FixtureReviewState.php`), `Fixture::setStatus`/
-`markReviewed`/`pendingDeviations` (`backend/src/Entity/Fixture.php:322-415`),
-`ReviewFixturesController`/`ReviewFixtureDeviationController`, `FbiIngestion` (colonne
-`pendingDeviations` supprimée, migration `Version20260908120000`), §module matchs + placement +
-cockpit temporel + contrat, tout juste **sauf une lacune trouvée** :
-- `/api/fixtures/place` (`PlaceMatchesController.php:596` de ce fichier), `/api/fixtures/conflicts`
-  (`FixtureConflictsController`), `/api/ffbb/rencontres` + `/apply` (`FfbbRencontresController`) ✓
-- ⚠ **`/api/ffbb/engagements` GET + `/api/ffbb/engagements/confirm` POST n'étaient PAS
-  inventoriés** — route réelle et active (`backend/src/Controller/Basketball/FfbbEngagementsController.php:62,109`,
-  déclarée à l'OpenAPI par `backend/src/OpenApi/PathContributor/FfbbEngagementPaths.php:21,53`) ;
-  ajoutée ci-dessous §Module matchs.
-- Placement précédent (P3-21) + proximité P2-61, poids 9 : `PLACEMENT_PROXIMITY_WEIGHT = 9`
-  (`engine/app/solver/objective/weights.py:191`) ✓
-- Cockpit temporel D3 v1/v2 : `App\Service\CalendarEntryRedatability::isRedatable`/`redateNeedsPreview`,
-  `App\Controller\RedatePreviewController`, `App\Service\SplitMotherRedatePlanner`,
-  `App\State\Processor\CalendarEntryStateProcessor::prepareSplitMotherRedate`/`applySplitMotherRedate`
-  (tous confirmés présents et nommés exactement ainsi) ✓
-- `CONTRACT_VERSION` = **2.20** des deux côtés (`backend/src/Service/ScheduleConstraintBuilder.php:64`,
-  `engine/CONTRACT_VERSION`) ✓
+Last verified @ 2026-09-09 (P4-187a « gymnase depuis le libellé », backend seul —
+`documentation-update`). Re-confronté au code, tout juste : `Venue.externalLabels`
+(`backend/src/Entity/Venue.php:74`, migration `Version20260909120000`) ✓ ; `VenueLabelNormalizer`/
+`VenueAliasResolver` (`backend/src/Service/Basketball/`) ✓ ; `POST`/`DELETE
+/api/venues/{id}/external-labels[/{label}]` (`VenueExternalLabelController.php:62,115`, contributeur
+OpenAPI `VenueAliasPaths`) — ajoutées ci-dessous §Module matchs ✓ ; `VenueResource.externalLabels`
+et `FixtureResource.suggestedVenueId` (lecture seule) ✓ ; résolution automatique aux deux canaux
+(`FbiFixtureImporter::attachConfirmedVenue`, `FfbbRencontreReconciler::apply`) ✓.
 Reste du fichier non re-vérifié cette passe — historique des recalages précédents : `git log -p
 --follow` ce fichier. Un stamp REMPLACE, l'historique vit dans git.
 
@@ -111,7 +99,7 @@ Doctrine correspondantes vivent dans `backend/src/Entity/` et utilisent des UUID
 | 1 | Club | `/api/clubs` | Clubs / organisations | Opération custom `POST /clubs/{id}/import-teams` |
 | 2 | Season | `/api/seasons` | Saisons sportives | |
 | 3 | Team | `/api/teams` | Équipes (catégorie, priorité, créneaux) | |
-| 4 | Venue | `/api/venues` | Salles / lieux de pratique | `address` (P2-53 RMM-8, nullable) — l'adresse saisie qu'on géocode en `latitude`/`longitude` via `GET /api/geocode` (§3) |
+| 4 | Venue | `/api/venues` | Salles / lieux de pratique | `address` (P2-53 RMM-8, nullable) — l'adresse saisie qu'on géocode en `latitude`/`longitude` via `GET /api/geocode` (§3) ; `externalLabels` (P4-187a, lecture seule, jamais écrit par `PUT` — libellés FBI/FFBB confirmés, écrits par `POST /api/venues/{id}/external-labels`, §3) |
 | 5 | Coach | `/api/coaches` | Entraîneurs | `isVehicled` (P2-53 RMM-8, bool, défaut false) — véhiculé → barème voiture d'une paire de gymnases, sinon barème à pied ; consommé par le solveur en PR-2 |
 | 6 | User | `/api/users` | Utilisateurs | |
 | 7 | ClubUser | *(plus d'API)* | Membres du club (rôles) — la ressource générique a été **RETIRÉE le 2026-08-20 (P4-103)** : lecture seule, elle listait `userId`/`role`/`isActive` **sans aucun consommateur**, le front passant par `/api/memberships/*`. Surface retirée, garantie conservée par `MemberRoleTest` | |
@@ -612,6 +600,8 @@ Détail : [`module-matchs.md`](../../specs/courantes/module-matchs.md). Placemen
 | `/api/fixtures/review/deviations` | POST | `ReviewFixtureDeviationController` | **PR-3a (2026-09-08)** — trancher UN écart pendant. Corps `{fixtureId, field: date\|kickoff\|venue, choice: keep_app\|take_source}` — `keep_app` retire l'écart, `take_source` rejoue le moteur partagé (`FbiFixtureImporter::applyFieldTakeFile`) à partir de la valeur PERSISTÉE (jamais du client). Dernier écart retiré → `REVIEWED` + horodaté (D5). SEC-07 + saison écrivable + `SocleGuard` ; 404 rencontre invisible (tenant) ; 422 corps malformé ou champ sans écart en attente. |
 | `/api/ffbb/rencontres` | GET | `FfbbRencontresController` | **RMM-4 PR-3 (2026-08-24)** — le canal API FFBB de réconciliation : récupère à la demande les rencontres publiées du club (`FfbbApiClient::searchRencontres`, filtre STRICT serveur sur le code club, index `ffbbserver_rencontres`), les croise avec l'app (`FfbbRencontreReconciler`, appariement 3 étages + tier-0 idempotence sur `Fixture.ffbbRencontreId`) et rend `{deviations[], creatable[], fetchedAt}` — `deviations` réutilise VERBATIM le moteur `FbiFixtureImporter` (même périmètre : domiciles déjà placés) ; `creatable` = les rencontres publiées sans fixture correspondante (mesuré : uniquement des amicaux), proposées à la création, jamais imposées. SEC-07 + `SocleGuard` + tenant ; 422 club sans code FFBB ; 502 FFBB injoignable. |
 | `/api/ffbb/rencontres/apply` | POST | `FfbbRencontresController` | **RMM-4 PR-3 (2026-08-24)** — RE-FETCHE côté serveur (jamais les valeurs du client), applique les décisions par écart (mêmes `{fixtureId, field, choice}` que l'import xlsx) et crée les rencontres choisies (`{rencontreId, teamId}`, idempotent sur l'index unique partiel `uniq_fixture_ffbb_rencontre`). **PR-3a (2026-09-08)** : partage désormais le MÊME moteur de traitement que le xlsx (`processPerimeterFields`/`reconcileNoDivergence`) — pose `reviewState`/`pendingDeviations` sur la rencontre et applique D9 (VALIDATED) au même titre que le xlsx ; seuls les warnings du moteur partagé ne sont pas remontés par ce canal (non consommés par l'écran). Écrit une `FbiIngestion` datée `source=FFBB_API` (compteurs seuls — plus de `pendingDeviations`, PR-3a D7) — ne touche JAMAIS la fraîcheur xlsx (`fbi-ingestions/latest` ne lit que `FBI_XLSX`). SEC-07 + saison écrivable + `SocleGuard` + tenant ; 409 doublon concurrent (collision sur l'index unique). |
+| `/api/venues/{id}/external-labels` | POST | `VenueExternalLabelController` | **P4-187a (2026-09-09)** — « Rattacher » un libellé de salle FBI/FFBB à un gymnase : `{label}` → `{venueId, label, attached}`. Ajoute l'alias (normalisé — `VenueLabelNormalizer` — idempotent) PUIS backfille les domiciles du club encore sans salle dont le libellé égale l'alias, sans jamais les placer (`attached` = nombre nouvellement rattaché, 0 sur un re-POST). Libellé déjà porté par un AUTRE gymnase du club → 422 nommé ; vide après normalisation → 422. SEC-07 + saison écrivable (409) + tenant (gymnase étranger invisible → 404). |
+| `/api/venues/{id}/external-labels/{label}` | DELETE | `VenueExternalLabelController` | **P4-187a (2026-09-09)** — « Retirer » un alias (idempotent, 204) — ne touche AUCUNE rencontre déjà rattachée (le lien reste posé, seul l'alias qui l'a produit part). Mêmes gardes que le POST. |
 | `/api/competitions/entry-deadlines` | POST | `CompetitionEntryDeadlinesController` | **RMM-6 PR-1 (2026-08-25)** — saisie bulk `{competitionIds[], deadline}` : pose (ou efface, `deadline: null` **explicite**, clé absente → 422) UNE échéance sur un lot de compétitions du club+saison en une transaction ; un id inconnu/étranger → 422, rien écrit. Pour chaque compétition **appariée** (`ffbbCompetitionId` non null) et une date posée (jamais un effacement), upserte aussi `shared_competition_deadline` (dernière écriture gagne, un seul upsert même si deux compétitions du lot partagent le même id fédéral). SEC-07 (management) tire avant tout lookup ; saison archivée → 409. |
 | `/api/matches/deadline-outlook` | GET | `EntryDeadlineOutlookController` | **RMM-6 PR-1 (2026-08-25)** — l'outlook cockpit, lecture seule, ouvert au Membre : pour chaque échéance EFFECTIVE (club sinon défaut communautaire) encore due, ses compétitions, le nombre de domiciles restant à saisir et si la fenêtre J-7 (`EntryDeadlineOutlook::REMINDER_WINDOW_DAYS`) est ouverte. Une fenêtre ouverte ET une référence de visite existante joignent le delta gardien (`MatchModuleDeltaComputer`, réutilisé) **sans stamper** — maison unique du J-7, le front ne recalcule rien. |
 

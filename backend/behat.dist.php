@@ -19,6 +19,7 @@ use App\Tests\Behat\SoclePlansContext;
 use App\Tests\Behat\StaleScheduleContext;
 use App\Tests\Behat\TenantIsolationContext;
 use App\Tests\Behat\TrainingBlockContext;
+use App\Tests\Behat\VenueAliasContext;
 use Behat\Config\Config;
 use Behat\Config\Profile;
 use Behat\Config\Suite;
@@ -119,5 +120,10 @@ return (new Config)
                 new Suite('export')
                     ->withPaths('%paths.base%/features/l-export-du-planning.feature')
                     ->withContexts(ExportContext::class),
+            )
+            ->withSuite(
+                new Suite('alias-gymnase')
+                    ->withPaths('%paths.base%/features/un-domicile-importe-retrouve-son-gymnase.feature')
+                    ->withContexts(VenueAliasContext::class),
             ),
     );

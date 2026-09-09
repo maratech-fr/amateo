@@ -18,6 +18,8 @@ use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Exception\ImportRejectedException;
 use App\Service\Basketball\FfbbRencontreReconciler;
+use App\Service\Basketball\VenueAliasResolver;
+use App\Service\Basketball\VenueLabelNormalizer;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -96,6 +98,8 @@ final class FbiFixtureImporter
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly ClockInterface $clock,
+        private readonly VenueLabelNormalizer $labelNormalizer,
+        private readonly VenueAliasResolver $venueAliasResolver,
     ) {}
 
     /**
@@ -326,6 +330,9 @@ final class FbiFixtureImporter
                 $fixture->setKickoffTime($row['kickoffTime']);
                 $fixture->setExternalRef($row['numero']);
                 $fixture->setFbiVenueLabel($row['venueLabel']);
+                // P4-187a — un domicile dont le libellé égale un alias confirmé
+                // naît AVEC son gymnase (mais UNPLACED : jamais placé d'office).
+                $this->attachConfirmedVenue($fixture, $row['venueLabel']);
                 $this->entityManager->persist($fixture);
                 ++$created;
             }
@@ -579,19 +586,18 @@ final class FbiFixtureImporter
      */
     public function containsClub(string $label, string $clubNeedle): bool
     {
-        return str_contains(' ' . $this->normalizeLabel($label) . ' ', ' ' . $clubNeedle . ' ');
+        return $this->labelNormalizer->containsWord($label, $clubNeedle);
     }
 
     /**
      * Header labels AND team labels tolerate case/accents/spacing drift: FBI
-     * exports are not under our control.
+     * exports are not under our control. Délégué au foyer unique de normalisation
+     * ({@see VenueLabelNormalizer}) — signature publique conservée, appelants
+     * inchangés (P4-187a D1).
      */
     public function normalizeLabel(string $value): string
     {
-        $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
-        $lower = mb_strtolower(false === $ascii ? $value : $ascii, 'UTF-8');
-
-        return trim((string) preg_replace('/\s+/', ' ', (string) preg_replace('/[^a-z0-9]+/', ' ', $lower)));
+        return $this->labelNormalizer->normalize($value);
     }
 
     /**
@@ -712,6 +718,31 @@ final class FbiFixtureImporter
             && null !== $row['venueLabel']
             && null !== $venueId
             && isset($venueNames[$venueId]);
+    }
+
+    /**
+     * P4-187a D3 — un domicile sans salle retrouve son gymnase depuis un alias
+     * CONFIRMÉ ({@see VenueAliasResolver::resolveConfirmed}). Foyer UNIQUE de la
+     * résolution automatique, partagé par l'import xlsx et le canal API : on ne
+     * pose QUE le venueId — jamais un setStatus, jamais sur un AWAY, jamais sur une
+     * rencontre qui a déjà un gymnase. La rencontre reste UNPLACED et son
+     * reviewState intact ; on la rend seulement visible de la collision de gymnase
+     * (VENUE_OVERLAP) et de la fermeture (VENUE_UNAVAILABLE), statut indifférent.
+     *
+     * @return bool vrai = un gymnase a été rattaché (la rencontre a « changé »)
+     */
+    public function attachConfirmedVenue(Fixture $fixture, ?string $venueLabel): bool
+    {
+        if (FixtureHomeAway::HOME !== $fixture->getHomeAway() || null !== $fixture->getVenueId()) {
+            return false;
+        }
+        $venueId = $this->venueAliasResolver->resolveConfirmed($venueLabel);
+        if (null === $venueId) {
+            return false;
+        }
+        $fixture->setVenueId($venueId);
+
+        return true;
     }
 
     /**
@@ -900,6 +931,11 @@ final class FbiFixtureImporter
                 $existing->setFbiVenueLabel($row['venueLabel']);
                 $changed = true;
             }
+            // P4-187a — un domicile encore sans salle (donc jamais un écart venue)
+            // retrouve son gymnase depuis un alias confirmé, sans le placer.
+            if ($this->attachConfirmedVenue($existing, $existing->getFbiVenueLabel())) {
+                $changed = true;
+            }
 
             return $changed ? 'updated' : 'unchanged';
         }
@@ -977,6 +1013,12 @@ final class FbiFixtureImporter
         }
 
         $this->recordAutoApplied($existing, $autoApplied, FbiIngestionSource::FBI_XLSX->value, $now);
+
+        // P4-187a — un domicile UNPLACED (hors périmètre) dont le libellé égale un
+        // alias confirmé retrouve son gymnase, toujours sans le placer.
+        if ($this->attachConfirmedVenue($existing, $existing->getFbiVenueLabel())) {
+            $changed = true;
+        }
 
         return $changed ? 'updated' : 'unchanged';
     }
@@ -1079,13 +1121,7 @@ final class FbiFixtureImporter
      */
     private function venueMatches(string $appLabel, string $fileLabel): bool
     {
-        $a = $this->normalizeLabel($appLabel);
-        $b = $this->normalizeLabel($fileLabel);
-        if ('' === $a || '' === $b) {
-            return true;
-        }
-
-        return $a === $b || $this->containsClub($fileLabel, $a) || $this->containsClub($appLabel, $b);
+        return $this->labelNormalizer->fuzzyMatches($appLabel, $fileLabel);
     }
 
     /**

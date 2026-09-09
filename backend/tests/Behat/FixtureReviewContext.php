@@ -172,8 +172,8 @@ final class FixtureReviewContext extends BaseContext
         $this->deposit($this->matchDate, null);
     }
 
-    #[Then('la rencontre est « validée ligue »')]
-    public function laRencontreEstValideeLigue(): void
+    #[Then('la rencontre est « attestée FBI »')]
+    public function laRencontreEstAttesteeFbi(): void
     {
         $this->assertStatus('VALIDATED');
     }

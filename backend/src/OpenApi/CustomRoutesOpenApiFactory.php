@@ -23,6 +23,7 @@ use App\OpenApi\PathContributor\RedatePreviewPaths;
 use App\OpenApi\PathContributor\ReleaseNoteAndFeedbackPaths;
 use App\OpenApi\PathContributor\SeasonAndFixturePaths;
 use App\OpenApi\PathContributor\UncoveredCustomPaths;
+use App\OpenApi\PathContributor\VenueAliasPaths;
 use Symfony\Component\DependencyInjection\Attribute\AsDecorator;
 
 /**
@@ -79,6 +80,7 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
             new FfbbEngagementPaths($schemas),
             new OpponentTravelPaths($schemas),
             new RedatePreviewPaths($schemas),
+            new VenueAliasPaths($schemas),
         ] as $contributor) {
             $contributor->contribute($paths);
         }

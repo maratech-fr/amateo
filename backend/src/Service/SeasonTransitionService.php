@@ -188,6 +188,9 @@ final class SeasonTransitionService
             $copy->setAddress($venue->getAddress());
             $copy->setSource($venue->getSource());
             $copy->setExternalRef($venue->getExternalRef());
+            // P4-187a — les alias de salle confirmés sont une convention permanente
+            // du gymnase (comme son nom) : ils suivent la copie N+1.
+            $copy->setExternalLabels($venue->getExternalLabels());
             $copy->setIsActive($venue->getIsActive());
             $copy->setParentVenueId($venue->getId());
             $this->entityManager->persist($copy);

@@ -6,13 +6,24 @@ namespace App\State\Provider;
 
 use App\ApiResource\FixtureResource;
 use App\Entity\Fixture;
+use App\Enum\FixtureHomeAway;
+use App\Service\Basketball\VenueAliasResolver;
 use Doctrine\ORM\QueryBuilder;
+use Symfony\Contracts\Service\Attribute\Required;
 
 /**
  * @extends AbstractStateProvider<Fixture, FixtureResource>
  */
 class FixtureStateProvider extends AbstractStateProvider
 {
+    private VenueAliasResolver $venueAliasResolver;
+
+    #[Required]
+    public function setVenueAliasResolver(VenueAliasResolver $venueAliasResolver): void
+    {
+        $this->venueAliasResolver = $venueAliasResolver;
+    }
+
     protected function getEntityClass(): string
     {
         return Fixture::class;
@@ -41,6 +52,13 @@ class FixtureStateProvider extends AbstractStateProvider
      */
     protected function mapEntityToOutput(object $entity): FixtureResource
     {
-        return FixtureResource::fromEntity($entity);
+        $output = FixtureResource::fromEntity($entity);
+        // D6 — proposition floue d'un gymnase pour un domicile importé encore sans
+        // salle. Lecture seule, jamais un placement (venue mémoïsé par requête).
+        if (FixtureHomeAway::HOME === $entity->getHomeAway() && null === $entity->getVenueId() && null !== $entity->getFbiVenueLabel()) {
+            $output->suggestedVenueId = $this->venueAliasResolver->suggest($entity->getFbiVenueLabel());
+        }
+
+        return $output;
     }
 }

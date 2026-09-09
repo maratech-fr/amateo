@@ -19848,6 +19848,80 @@
                 ]
             }
         },
+        "/api/venues/{id}/external-labels": {
+            "post": {
+                "operationId": "attachVenueExternalLabel",
+                "tags": [
+                    "Venue"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Alias ajout\u00e9 (normalis\u00e9, idempotent) puis backfill des domiciles du club encore sans salle dont le libell\u00e9 \u00e9gale l'alias \u2014 le gymnase leur est pos\u00e9 sans les placer (`attached` = nombre de rencontres nouvellement rattach\u00e9es, 0 sur un re-POST)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "venueId": {
+                                            "type": "string"
+                                        },
+                                        "label": {
+                                            "type": "string",
+                                            "description": "Le libell\u00e9 normalis\u00e9 effectivement stock\u00e9"
+                                        },
+                                        "attached": {
+                                            "type": "integer"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "404": {
+                        "description": "Venue of another club (invisible) or unknown"
+                    },
+                    "409": {
+                        "description": "The venue's season is archived (read-only)"
+                    },
+                    "422": {
+                        "description": "Empty label after normalization, or the label already belongs to another venue of the club"
+                    }
+                },
+                "summary": "Rattacher un libell\u00e9 de salle FBI/FFBB \u00e0 un gymnase"
+            }
+        },
+        "/api/venues/{id}/external-labels/{label}": {
+            "delete": {
+                "operationId": "detachVenueExternalLabel",
+                "tags": [
+                    "Venue"
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Alias retir\u00e9 (idempotent) \u2014 aucune rencontre d\u00e9j\u00e0 rattach\u00e9e n'est touch\u00e9e"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "404": {
+                        "description": "Venue of another club (invisible) or unknown"
+                    },
+                    "409": {
+                        "description": "The venue's season is archived (read-only)"
+                    }
+                },
+                "summary": "Retirer un libell\u00e9 de salle rattach\u00e9 \u00e0 un gymnase"
+            }
+        },
         "/api/venue_match_windows": {
             "get": {
                 "operationId": "api_venue_match_windows_get_collection",
