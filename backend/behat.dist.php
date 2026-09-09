@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Tests\Behat\ClosureSegmentationContext;
 use App\Tests\Behat\CoachWishesContext;
+use App\Tests\Behat\ConflictTruthContext;
 use App\Tests\Behat\ConstraintHonoredContext;
 use App\Tests\Behat\EngagedTeamContext;
 use App\Tests\Behat\ExportContext;
@@ -125,5 +126,10 @@ return (new Config)
                 new Suite('alias-gymnase')
                     ->withPaths('%paths.base%/features/un-domicile-importe-retrouve-son-gymnase.feature')
                     ->withContexts(VenueAliasContext::class),
+            )
+            ->withSuite(
+                new Suite('conflits-verite')
+                    ->withPaths('%paths.base%/features/les-conflits-d-un-match-disent-la-verite.feature')
+                    ->withContexts(ConflictTruthContext::class),
             ),
     );

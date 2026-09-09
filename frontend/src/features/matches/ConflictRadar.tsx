@@ -42,7 +42,7 @@ function whenLabel(iso: string): string {
 
 function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string {
   if (undefined !== conflict.coachId) {
-    const role = "ASSISTANT" === conflict.coachRole ? " (assistant)" : "";
+    const role = "ASSISTANT" === conflict.coachRole ? " (assistant d'un côté)" : "";
     return `${coachName(coaches, conflict.coachId)}${role}`;
   }
   switch (conflict.type) {

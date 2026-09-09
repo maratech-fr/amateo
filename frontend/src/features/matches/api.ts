@@ -205,12 +205,17 @@ export interface Conflict {
   type: ConflictType;
   /** P1-4 PR E2 — gravity emitted by the SERVER (1 = worst … 7 = info). */
   severity: number;
-  /** MATCH_MATCH / MATCH_TRAINING — MAIN or ASSISTANT (worst engagement wins). */
+  /** MATCH_MATCH / MATCH_TRAINING — MAIN only when the coach is MAIN on every involved team, else ASSISTANT. */
   coachRole?: "MAIN" | "ASSISTANT";
   coachId?: string;
   /** TEAM_LINK_OVERLAP only. */
   teamLinkId?: string;
-  /** Overlap segment (ISO datetimes) — coach conflicts only. */
+  /**
+   * Overlap segment — coach conflicts only. ISO datetimes carrying the club's
+   * WALL-CLOCK time WITHOUT an offset (`2026-10-03T20:45:00`): the UI parses
+   * them as local and re-formats them, so the hour shown is the hour the club
+   * lives, whatever the viewer's timezone (P4-191).
+   */
   start?: string;
   end?: string;
   left?: ConflictFixtureView;

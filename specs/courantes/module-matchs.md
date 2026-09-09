@@ -1,17 +1,16 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-09 (P4-187 clos — 187a backend #874 + 187b écran, `documentation-update`).
-§ « Gymnase depuis le libellé » retitrée et complétée d'une sous-section « Écran » confrontée au
-code : `ReviewQueueRow.tsx` (bloc « Rattacher » replié/déplié, `VenueSelect` pré-sélectionné sur
-`Fixture.suggestedVenueId`), `ReviewQueue.tsx` (`onAttach`, toast attaché/aucun nouveau),
-`lib/reviewQueue.ts` (`isUnattachedHome`, `TeamQueue.unattachedCount`), `api.ts`
-(`AttachVenueLabelInput`, `attachVenueLabel`, `normalizeVenue`), `queries.ts`
-(`useAttachVenueLabel`, invalide `fixtures`+`venues`), `MatchRowsTable.tsx` (libellé « à rattacher
-dans Importer », drift trouvé et corrigé — la section disait encore « non rattaché ») ; confirmé
-qu'aucun `DELETE /api/venues/{id}/external-labels/{label}` n'a de consommateur front (roadmap
-P4-196) et que `POST /api/fixtures` n'accepte pas `fbiVenueLabel` (`FixtureInput.php`, zéro e2e
-possible par cette voie). Reste du fichier (Espace Importer, canal API, réconciliation,
-Configuration — P4-185) non re-sondé cette passe.
+Last verified @ 2026-09-09 (P4-188 + P4-189 + P4-191, `documentation-update`). § « Détection —
+`MatchConflictDetector` » recalée sur `EffectiveScheduleResolver::resolve` (`EffectiveScheduleResolver.php:38-54`,
+lu) : la période la plus ÉTROITE gagne (`end − start` minimal, égalité → première), un enfant plus étroit sans
+version pointée gagne quand même — remplace l'ancienne « première période de la liste » (faux négatif
+`MATCH_TRAINING` sur une fermeture découpée, P4-188). Règle coach (`MatchConflictDetector::pairRole`,
+`MatchConflictDetector.php:724-733`, lu) inversée : MAIN seulement si principal des DEUX équipes, sinon
+ASSISTANT — libellé front « (assistant d'un côté) » vérifié dans `ConflictRadar.tsx:45` (P4-189). Bornes de
+conflit (`start`/`end`/`windowStart`/`windowEnd`) en heure murale sans offset, `MatchConflictDetector::
+WALL_CLOCK_FORMAT = 'Y-m-d\TH:i:s'` (`MatchConflictDetector.php:90`, lu) — `ConflictFingerprinter.php` confirmé
+sans re-lecture de ces champs (P4-191). Reste du fichier (Espace Importer, canal API, réconciliation,
+Configuration, P4-185/187) non re-sondé cette passe.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -159,9 +158,15 @@ Croise l'empreinte-temps `MatchFootprint` d'un `Fixture` avec les autres occupat
   existe, sinon les coachs de l'équipe du créneau (pas de faux positif sur un co-coach qui ne tient pas la séance).
 
 Chevauchement demi-ouvert (créneaux jointifs = pas de conflit). Une empreinte qui **passe minuit** (coup d'envoi
-tardif) est vérifiée sur les **deux jours** qu'elle couvre. Périodes qui se chevauchent → résolution
-**déterministe** (ordre `startDate, id` via `CalendarEntryRepository::findActivePeriodsOrdered`). Un `Fixture`
-AWAY sans `kickoffTime` n'a pas d'empreinte (trajet = palier B) → il ne génère aucun conflit — voulu.
+tardif) est vérifiée sur les **deux jours** qu'elle couvre. Périodes qui se chevauchent (une fermeture racine
+découpée partage sa date de départ avec son enfant « milieu » — une racine qui part un lundi n'a pas de « début ») → résolution **déterministe
+par la plus ÉTROITE** (`EffectiveScheduleResolver::resolve`, `end − start` minimal, égalité → la première de la
+liste ; un enfant plus étroit qui ne pointe RIEN gagne quand même — la coupure suspend l'entraînement, jamais
+un repli silencieux sur la racine sans plan) : l'ordre de chargement (`CalendarEntryRepository::
+findActivePeriodsOrdered`, `ORDER BY startDate, id` — des UUIDv4 aléatoires) ne peut pas garantir qu'un enfant
+précède sa racine, la largeur si (P4-188 — corrige un faux négatif MATCH_TRAINING mesuré sur une fermeture
+découpée, incident du 3 sept. 2026). Un `Fixture` AWAY sans `kickoffTime` n'a pas d'empreinte (trajet = palier
+B) → il ne génère aucun conflit — voulu.
 
 **Amicaux (P4-190, 2026-09-08)** : une rencontre sans compétition (`competitionId` null) n'est jamais
 comparée aux fenêtres ligue de son équipe — `leagueWindowViolations` la saute ; elle reste soumise aux
@@ -173,7 +178,13 @@ Contrôleur invokable `FixtureConflictsController` (route `priority: 10` pour pa
 d'API Platform). Recalcul **à la volée** à chaque appel, **rien n'est persisté**. Charge fixtures + `TeamCoach`
 + périodes-overlay actives + slots du planning effectif via les repos (scope club+saison **automatique**).
 Réponse : `{ clubId, seasonId, conflicts: [{ type, coachId, start, end (segment de chevauchement),
-left/right | fixture/training }] }`.
+left/right | fixture/training }] }`. **Toutes les bornes datées** (`start`/`end`, `windowStart`/`windowEnd`
+du bloc `training`, `left.windowStart`/`right.windowEnd`…) sont l'heure MURALE du club, sans décalage
+(`Y-m-d\TH:i:s`, ni `Z` ni offset — constante `MatchConflictDetector::WALL_CLOCK_FORMAT`, P4-191) : un `+00:00`
+ATOM aurait laissé un navigateur d'un autre fuseau décaler l'heure affichée, `ConflictRadar.tsx` les
+parse et les rend en local sans conversion. `ConflictFingerprinter` exclut ces bornes de son empreinte
+(le fingerprint ne bouge pas avec le format d'affichage) — pas de vague de « Nouveau » causée par ce
+correctif.
 
 ## Palier A — PR-3 (grille week-end UI, 2026-07-07)
 
@@ -693,7 +704,11 @@ SOFT « repos après jour de match »).
 ## Diagnostic gradué + extérieur visible + week-end type — P1-4 PR E2 (2026-08-03)
 
 - **La sévérité est émise par le SERVEUR** (`MatchConflictDetector`, `severity` 1..7 + `coachRole`
-  MAIN/ASSISTANT — MAIN sur N'IMPORTE quelle équipe impliquée gagne) ; l'UI groupe et libelle
+  MAIN/ASSISTANT — MAIN seulement si le coach est principal sur les DEUX équipes impliquées, sinon
+  ASSISTANT : « (assistant d'un côté) » à l'écran, ex. assistant SM1 / principal U21M1 = à
+  surveiller, pas un conflit bloquant. Règle fondateur 2026-09-07, **inverse** l'ancienne (P4-189 —
+  avant, principal sur N'IMPORTE laquelle des deux équipes suffisait à gagner) ; `rolesByTeam`
+  (MAIN+ASSISTANT sur la MÊME équipe = MAIN) inchangé) ; l'UI groupe et libelle
   (`lib/diagnostic.ts`, pur), elle ne re-dérive JAMAIS la gravité. Groupes triés pire-d'abord, tons
   1-2 rouges / 3-5 warning / 7 neutre, **groupe 7 replié avec compteur** (40 extérieurs aveugles =
   une ligne, pas 40 cartes).
@@ -820,7 +835,8 @@ SOFT « repos après jour de match »).
   (pré-remplissage + gardes souveraines).
 - Diagnostic gradué (PR E2) : `MatchConflictDetectorTest` +4 (unit — VENUE_OVERLAP sévérité 1,
   LEAGUE_WINDOW_VIOLATION mappée-seulement, ACCESS_WINDOW_LOST parité panneau — dedans/demi-ouvert/
-  club-sans-fenêtre, coachRole MAIN-gagne-partout 3 vs 5 ; + l'ancien NR « AWAY sans habitude
+  club-sans-fenêtre, coachRole 3 vs 5 (règle inversée depuis, P4-189 — voir « Diagnostic gradué… »
+  ci-dessus) ; + l'ancien NR « AWAY sans habitude
   invisible » amendé : plus de conflit horaire mais AWAY_NO_FOOTPRINT nommé),
   `FixtureConflictsApiTest` (severity+coachRole au contrat HTTP, **phase1**),
   `LeagueMatchWindowsApiTest` +1 (**phase1** — `resolvedTeamWindows` : U13 mappée → ids du

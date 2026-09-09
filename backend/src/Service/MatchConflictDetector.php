@@ -51,9 +51,10 @@ use DateTimeImmutable;
  *
  * GRADED diagnostic (P1-4 PR E2, cadrage §8): every finding carries a
  * `severity` (1 = worst), emitted by the SERVER — the UI groups and labels, it
- * never re-derives gravity. Coach findings carry `coachRole`: MAIN when the
- * coach is MAIN on ANY involved team (the worst engagement counts) → severity
- * 3, else ASSISTANT → 5. New finding kinds:
+ * never re-derives gravity. Coach findings carry `coachRole`: MAIN only when
+ * the coach is MAIN on EVERY involved team → severity 3; a single ASSISTANT
+ * engagement on either side softens it to ASSISTANT → 5 (P4-189). New finding
+ * kinds:
  * - VENUE_OVERLAP (1): two placed fixtures, same venue, overlapping footprints —
  *   the manual loop never blocks a collision (founder decision), the diagnostic
  *   screams instead.
@@ -77,6 +78,17 @@ use DateTimeImmutable;
  */
 final class MatchConflictDetector
 {
+    /**
+     * Occupancy bounds are the club's WALL-CLOCK time, carried WITHOUT an
+     * offset (P4-191): `2026-10-03T15:00:00`, not the ATOM `…+02:00`. A match
+     * and a training are wall-clock facts of one club — appending the server
+     * offset let a browser in another zone shift « 20:45 » by an hour. The UI
+     * parses these as local and re-formats them, so no offset must ride along.
+     * Only these datetime bounds use it; `matchDate` (Y-m-d) and `kickoffTime`
+     * (H:i) are unaffected.
+     */
+    private const string WALL_CLOCK_FORMAT = 'Y-m-d\TH:i:s';
+
     public function __construct(
         private readonly MatchFootprint $footprint,
         private readonly EffectiveScheduleResolver $effectiveScheduleResolver,
@@ -278,8 +290,8 @@ final class MatchConflictDetector
                     'type' => 'VENUE_OVERLAP',
                     'severity' => 1,
                     'venueId' => $left['fixture']->getVenueId(),
-                    'start' => $this->maxMoment($left['window']['start'], $right['window']['start'])->format(DateTimeImmutable::ATOM),
-                    'end' => $this->minMoment($left['window']['end'], $right['window']['end'])->format(DateTimeImmutable::ATOM),
+                    'start' => $this->maxMoment($left['window']['start'], $right['window']['start'])->format(self::WALL_CLOCK_FORMAT),
+                    'end' => $this->minMoment($left['window']['end'], $right['window']['end'])->format(self::WALL_CLOCK_FORMAT),
                     'left' => $this->fixtureView($left['fixture'], $left['window'], $left['estimated']),
                     'right' => $this->fixtureView($right['fixture'], $right['window'], $right['estimated']),
                 ];
@@ -474,8 +486,8 @@ final class MatchConflictDetector
                         'type' => 'TEAM_LINK_OVERLAP',
                         'severity' => 5,
                         'teamLinkId' => $link->getId(),
-                        'start' => $this->maxMoment($left['window']['start'], $right['window']['start'])->format(DateTimeImmutable::ATOM),
-                        'end' => $this->minMoment($left['window']['end'], $right['window']['end'])->format(DateTimeImmutable::ATOM),
+                        'start' => $this->maxMoment($left['window']['start'], $right['window']['start'])->format(self::WALL_CLOCK_FORMAT),
+                        'end' => $this->minMoment($left['window']['end'], $right['window']['end'])->format(self::WALL_CLOCK_FORMAT),
                         'left' => $this->fixtureView($left['fixture'], $left['window'], $left['estimated']),
                         'right' => $this->fixtureView($right['fixture'], $right['window'], $right['estimated']),
                     ];
@@ -559,14 +571,14 @@ final class MatchConflictDetector
                 }
                 // A coach shared by both fixtures' teams is double-booked.
                 foreach (array_intersect($left['coachIds'], $right['coachIds']) as $coachId) {
-                    $role = $this->worstRole($rolesByTeam, $coachId, [$left['fixture']->getTeamId(), $right['fixture']->getTeamId()]);
+                    $role = $this->pairRole($rolesByTeam, $coachId, [$left['fixture']->getTeamId(), $right['fixture']->getTeamId()]);
                     $conflicts[] = [
                         'type' => 'MATCH_MATCH',
                         'severity' => TeamCoachRole::MAIN === $role ? 3 : 5,
                         'coachRole' => $role->value,
                         'coachId' => $coachId,
-                        'start' => $this->maxMoment($left['window']['start'], $right['window']['start'])->format(DateTimeImmutable::ATOM),
-                        'end' => $this->minMoment($left['window']['end'], $right['window']['end'])->format(DateTimeImmutable::ATOM),
+                        'start' => $this->maxMoment($left['window']['start'], $right['window']['start'])->format(self::WALL_CLOCK_FORMAT),
+                        'end' => $this->minMoment($left['window']['end'], $right['window']['end'])->format(self::WALL_CLOCK_FORMAT),
                         'left' => $this->fixtureView($left['fixture'], $left['window'], $left['estimated']),
                         'right' => $this->fixtureView($right['fixture'], $right['window'], $right['estimated']),
                     ];
@@ -627,14 +639,14 @@ final class MatchConflictDetector
                     }
 
                     foreach ($coachIds as $coachId) {
-                        $role = $this->worstRole($rolesByTeam, $coachId, [$view['fixture']->getTeamId(), $slot->getTeamId()]);
+                        $role = $this->pairRole($rolesByTeam, $coachId, [$view['fixture']->getTeamId(), $slot->getTeamId()]);
                         $conflicts[] = [
                             'type' => 'MATCH_TRAINING',
                             'severity' => TeamCoachRole::MAIN === $role ? 3 : 5,
                             'coachRole' => $role->value,
                             'coachId' => $coachId,
-                            'start' => $this->maxMoment($view['window']['start'], $trainingWindow['start'])->format(DateTimeImmutable::ATOM),
-                            'end' => $this->minMoment($view['window']['end'], $trainingWindow['end'])->format(DateTimeImmutable::ATOM),
+                            'start' => $this->maxMoment($view['window']['start'], $trainingWindow['start'])->format(self::WALL_CLOCK_FORMAT),
+                            'end' => $this->minMoment($view['window']['end'], $trainingWindow['end'])->format(self::WALL_CLOCK_FORMAT),
                             'fixture' => $this->fixtureView($view['fixture'], $view['window'], $view['estimated']),
                             'training' => [
                                 'slotTemplateId' => $slot->getId(),
@@ -644,8 +656,8 @@ final class MatchConflictDetector
                                 'dayOfWeek' => $slot->getDayOfWeek(),
                                 'startTime' => $slot->getStartTime()->format('H:i'),
                                 'durationMinutes' => $slot->getDurationMinutes(),
-                                'windowStart' => $trainingWindow['start']->format(DateTimeImmutable::ATOM),
-                                'windowEnd' => $trainingWindow['end']->format(DateTimeImmutable::ATOM),
+                                'windowStart' => $trainingWindow['start']->format(self::WALL_CLOCK_FORMAT),
+                                'windowEnd' => $trainingWindow['end']->format(self::WALL_CLOCK_FORMAT),
                             ],
                         ];
                     }
@@ -700,20 +712,24 @@ final class MatchConflictDetector
     }
 
     /**
-     * MAIN on ANY involved team beats ASSISTANT — the worst engagement counts.
+     * The role that grades a PAIR conflict: MAIN only when the coach is MAIN on
+     * EVERY involved team — a single ASSISTANT engagement is enough to soften
+     * the finding to ASSISTANT (severity 5). Rationale: if the coach is only
+     * an assistant on one of the two sides, a helper can hold that side, so the
+     * clash is less acute than a double head-coach booking (P4-189).
      *
      * @param array<string, array<string, TeamCoachRole>> $rolesByTeam
      * @param list<string>                                $teamIds
      */
-    private function worstRole(array $rolesByTeam, string $coachId, array $teamIds): TeamCoachRole
+    private function pairRole(array $rolesByTeam, string $coachId, array $teamIds): TeamCoachRole
     {
         foreach ($teamIds as $teamId) {
-            if (TeamCoachRole::MAIN === ($rolesByTeam[$teamId][$coachId] ?? null)) {
-                return TeamCoachRole::MAIN;
+            if (TeamCoachRole::MAIN !== ($rolesByTeam[$teamId][$coachId] ?? null)) {
+                return TeamCoachRole::ASSISTANT;
             }
         }
 
-        return TeamCoachRole::ASSISTANT;
+        return TeamCoachRole::MAIN;
     }
 
     private function maxMoment(DateTimeImmutable $a, DateTimeImmutable $b): DateTimeImmutable
@@ -742,8 +758,8 @@ final class MatchConflictDetector
             // P1-4 PR C — the window was built on the team's HABITUAL kickoff,
             // not a real hour: the UI must say « heure estimée ».
             'estimatedKickoff' => $estimated,
-            'windowStart' => $window['start']->format(DateTimeImmutable::ATOM),
-            'windowEnd' => $window['end']->format(DateTimeImmutable::ATOM),
+            'windowStart' => $window['start']->format(self::WALL_CLOCK_FORMAT),
+            'windowEnd' => $window['end']->format(self::WALL_CLOCK_FORMAT),
         ];
     }
 }

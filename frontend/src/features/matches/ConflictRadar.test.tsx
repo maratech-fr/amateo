@@ -64,3 +64,46 @@ describe("ConflictRadar — le titre dit « Conflits » (mot unique, UXC-18)", (
     expect(screen.queryByText("Diagnostic")).toBeNull();
   });
 });
+
+describe("ConflictRadar — rôle assistant nuancé (P4-189)", () => {
+  it("un conflit coach ASSISTANT est intitulé « (assistant d'un côté) »", () => {
+    // P4-189 — coachRole ASSISTANT désigne « MAIN d'un seul côté au plus » ; le
+    // libellé le dit sans mentir sur une double délégation.
+    const coachesMap = new Map<string, Coach>([["coach-a", { id: "coach-a", firstName: "Anna", lastName: "B" }]]);
+    const conflicts: Conflict[] = [
+      {
+        type: "MATCH_MATCH",
+        severity: 5,
+        coachId: "coach-a",
+        coachRole: "ASSISTANT",
+        left: side("fx-1", "team-1", "2026-10-03"),
+        right: side("fx-2", "team-2", "2026-10-03"),
+      },
+    ];
+    render(<ConflictRadar conflicts={conflicts} teams={teams} coaches={coachesMap} />);
+    expect(screen.getByText(/\(assistant d'un côté\)/)).toBeInTheDocument();
+    // Falsification : le vieux « (assistant) » nu ne doit plus être servi.
+    expect(screen.queryByText(/Anna B \(assistant\)$/)).toBeNull();
+  });
+});
+
+describe("ConflictRadar — heure murale sans offset (P4-191)", () => {
+  it("rend l'heure telle qu'écrite depuis une borne ISO sans décalage", () => {
+    // P4-191 — une borne `2026-09-03T20:45:00` (heure murale du club, sans
+    // offset) se lit en local puis se formate en local : l'heure 20:45 est
+    // conservée, quel que soit le fuseau du navigateur.
+    const conflicts: Conflict[] = [
+      {
+        type: "VENUE_OVERLAP",
+        severity: 1,
+        start: "2026-09-03T20:45:00",
+        end: "2026-09-03T22:30:00",
+        left: side("fx-1", "team-1", "2026-09-03"),
+        right: side("fx-2", "team-2", "2026-09-03"),
+      },
+    ];
+    render(<ConflictRadar conflicts={conflicts} teams={teams} coaches={coaches} />);
+    expect(screen.getByText(/20:45/)).toBeInTheDocument();
+    expect(screen.getByText(/22:30/)).toBeInTheDocument();
+  });
+});
