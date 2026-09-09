@@ -113,6 +113,42 @@ final class VenueUnavailabilityImpactTest extends TestCase
         self::assertSame(3, $items[0]['trainingSlotCount']);
     }
 
+    public function testNestedPeriodsCountTheNarrowestChildNotTheBroaderRoot(): void
+    {
+        // P4-188 — a root closure (wide, NO plan → null) split into a narrower
+        // child pointing at an overlay. On the Saturdays the child covers, the
+        // NARROWEST period wins: the overlay's slots count, the root's null does
+        // not suspend them. On the Saturdays only the root covers, nothing trains.
+        $overlayId = 'schedule-overlay';
+        $slotsBySchedule = [
+            self::BASELINE => [$this->slot('sl-1', self::BASELINE, self::VENUE, 6)],
+            $overlayId => [$this->slot('sl-2', $overlayId, self::VENUE, 6)],
+        ];
+        $root = [
+            'start' => new DateTimeImmutable('2027-02-01'),
+            'end' => new DateTimeImmutable('2027-02-28'),
+            'scheduleId' => null, // root closure, no plan
+        ];
+        $child = [
+            'start' => new DateTimeImmutable('2027-02-12'),
+            'end' => new DateTimeImmutable('2027-02-21'),
+            'scheduleId' => $overlayId, // captures Saturdays 13 & 20
+        ];
+
+        $items = $this->impact()->build(
+            [$this->unavailability('2027-02-04', '2027-02-28', null)],
+            [],
+            self::BASELINE,
+            [$root, $child], // root listed first: the narrow child must still win
+            $slotsBySchedule,
+        );
+
+        // Saturdays 6 & 27 → root only (null → no training). Saturdays 13 & 20 →
+        // narrowest child → 1 overlay slot each = 2 occurrences, 1 distinct slot.
+        self::assertSame(2, $items[0]['trainingOccurrences']);
+        self::assertSame(1, $items[0]['trainingSlotCount']);
+    }
+
     private function impact(): VenueUnavailabilityImpact
     {
         return new VenueUnavailabilityImpact(new EffectiveScheduleResolver);

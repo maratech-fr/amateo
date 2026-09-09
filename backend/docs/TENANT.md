@@ -1,13 +1,11 @@
 # ClubScheduler — Tenant Isolation Architecture
 
-Last verified @ 2026-09-06 (rotation `documentation-update`, PR P4-164 PR-2 (frontend) — fichier
+Last verified @ 2026-09-09 (rotation `documentation-update`, PR lot détecteur P4-188/189/191 — fichier
 hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code : priorité 7 toujours en place
-(`TenantFilterListener.php:55`, `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ ·
-`TenantOwnedInterfaceCompletenessTest.php` présent (`backend/tests/Security/`) ✓ · RLS
-`FORCE ROW LEVEL SECURITY` toujours posée par `Version20260703120000` (`backend/migrations/`) ✓ ·
-`SeasonResolver::TRANSITION_MONTH_DAY` (pivot 15 juillet) toujours en place
-(`SeasonResolver.php:31`) ✓ · `migration_user` toujours DROP (`Version20260731090000.php`) ✓.
-Rien à corriger ce jour.
+(`TenantFilterListener.php:55`, `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · sortie immédiate
+sur `/api/admin/**` (`TenantFilterListener.php:81`) ✓ · `TenantOwnedInterfaceCompletenessTest.php` présent
+(`backend/tests/Security/`) ✓ · les entités tenantées portent toutes le marqueur `TenantOwnedInterface`
+(`grep -rl` sur `src/Entity`, parité gardée par ce test) ✓. Rien à corriger.
 
 ## Overview
 

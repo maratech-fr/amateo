@@ -1,11 +1,11 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-09-06 (rotation `documentation-update`, PR P4-164 PR-2 (frontend) — fichier
+Last verified @ 2026-09-09 (rotation `documentation-update`, PR lot détecteur P4-188/189/191 — fichier
 hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code : `CalendarEntryStateProcessor::
-redateEntryPairedConstraints` (`CalendarEntryStateProcessor.php:642`, appelée `:458`) toujours
-présente ✓ ; `ConstraintConfigValidator` porte toujours `minStartTime`/`maxEndTime` en type `time`
-(`ConstraintConfigValidator.php:63,65`), `minAtVenueCount` en `count` (`:86`) ✓. Rien à corriger ce
-jour. Reste non re-sondé ligne à ligne cette passe — historique : `git log -p --follow` ce fichier.
+redateEntryPairedConstraints` (`CalendarEntryStateProcessor.php:642`, appelée `:458`) toujours présente ✓ ;
+`ConstraintConfigValidator` porte toujours `minStartTime`/`maxEndTime` en type `time`
+(`ConstraintConfigValidator.php:63,65`), `forbiddenDays`/`allowedDays` en `days` (`:73,75`), `minAtVenueCount`
+en `count` (`:86`) ✓. Rien à corriger.
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.

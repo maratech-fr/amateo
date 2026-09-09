@@ -189,6 +189,66 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame([], $this->detect($fixtures, $links, self::BASELINE, $activePeriods, [self::BASELINE => $slots]));
     }
 
+    public function testNarrowPointedChildBeatsABroaderUnpointedRootForTraining(): void
+    {
+        // P4-188 NR — the root period (large, no plan → scheduleId null) is
+        // listed BEFORE its narrow « début » child pointing at a version that
+        // carries the Sunday slot. The narrowest period wins, so the child's
+        // training is checked and the clash surfaces. A « first covering period
+        // wins » rule would have let the root's null suspend everything and
+        // hidden the MATCH_TRAINING (the founder's faux négatif).
+        $fixtures = [$this->fixture('fx-1', self::TEAM_1, '2026-10-04', '16:00')]; // Sunday, 15:30–17:45
+        $links = [$this->link(self::COACH_A, self::TEAM_1)];
+        $root = [
+            'start' => new DateTimeImmutable('2026-10-01'),
+            'end' => new DateTimeImmutable('2026-10-31'),
+            'scheduleId' => null, // root closure, no plan
+        ];
+        $child = [
+            'start' => new DateTimeImmutable('2026-10-01'),
+            'end' => new DateTimeImmutable('2026-10-07'),
+            'scheduleId' => self::OVERLAY,
+        ];
+        $slots = [self::OVERLAY => [$this->slot('sl-1', self::OVERLAY, self::TEAM_1, 7, '17:00', 90)]];
+
+        // Root listed first (the id-order hazard): the narrow child still wins.
+        $conflicts = $this->detect($fixtures, $links, self::BASELINE, [$root, $child], $slots);
+
+        self::assertCount(1, $conflicts);
+        self::assertSame('MATCH_TRAINING', $conflicts[0]['type']);
+        self::assertSame('sl-1', $conflicts[0]['training']['slotTemplateId']);
+    }
+
+    public function testOccupancyBoundsAreWallClockWithoutOffset(): void
+    {
+        // P4-191 — start/end/windowStart/windowEnd carry the club's WALL-CLOCK
+        // time WITHOUT a timezone offset (`2026-10-04T17:00:00`, never
+        // `…+02:00`), so a browser in another zone re-formats the very « 17:00 »
+        // it was handed. A 16:00 home match (15:30–17:45) clashing with a Sunday
+        // 17:00 training (–18:30) exposes every bound.
+        $fixtures = [$this->fixture('fx-1', self::TEAM_1, '2026-10-04', '16:00')];
+        $links = [$this->link(self::COACH_A, self::TEAM_1)];
+        $slots = [$this->slot('sl-1', self::BASELINE, self::TEAM_1, 7, '17:00', 90)];
+
+        $conflicts = $this->detect($fixtures, $links, self::BASELINE, [], [self::BASELINE => $slots]);
+
+        self::assertCount(1, $conflicts);
+        $conflict = $conflicts[0];
+        self::assertSame('MATCH_TRAINING', $conflict['type']);
+        // Overlap segment 17:00 → 17:45.
+        self::assertSame('2026-10-04T17:00:00', $conflict['start']);
+        self::assertSame('2026-10-04T17:45:00', $conflict['end']);
+        // The fixture footprint bounds.
+        self::assertSame('2026-10-04T15:30:00', $conflict['fixture']['windowStart']);
+        self::assertSame('2026-10-04T17:45:00', $conflict['fixture']['windowEnd']);
+        // The training window bounds.
+        self::assertSame('2026-10-04T17:00:00', $conflict['training']['windowStart']);
+        self::assertSame('2026-10-04T18:30:00', $conflict['training']['windowEnd']);
+        // Falsification: no offset rides along on ANY bound.
+        self::assertStringNotContainsString('+', $conflict['start']);
+        self::assertStringNotContainsString('+', $conflict['training']['windowStart']);
+    }
+
     public function testFootprintCrossingMidnightChecksNextDaySlots(): void
     {
         // Home match 23:00 on Sunday → footprint 22:30–00:45 (Monday). A Monday
@@ -440,26 +500,59 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame(['ACCESS_WINDOW_LOST'], array_column($this->detect([$placed], [], null, [], [], [], [], [], $atEnd), 'type'));
     }
 
-    public function testCoachRoleGradesTheSeverityAndMainWinsAnywhere(): void
+    public function testCoachRoleIsMainOnlyWhenMainOnEveryInvolvedTeam(): void
     {
-        // Same coach on both teams, ASSISTANT everywhere → severity 5; MAIN on
-        // ONE side → 3 (the worst engagement counts, cadrage §8).
+        // P4-189 — the per-PAIR role is MAIN only when the coach is MAIN on BOTH
+        // teams (severity 3). A single ASSISTANT engagement on either side
+        // softens the finding to ASSISTANT (severity 5): a helper can hold that
+        // side, so it is less acute than a double head-coach booking.
         $left = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00');
         $right = $this->fixture('fx-2', self::TEAM_2, '2026-10-03', '15:30');
 
+        // MAIN on both → severity 3, MAIN.
+        $mainMain = $this->detect([$left, $right], [
+            $this->link(self::COACH_A, self::TEAM_1, TeamCoachRole::MAIN),
+            $this->link(self::COACH_A, self::TEAM_2, TeamCoachRole::MAIN),
+        ]);
+        self::assertSame(3, $mainMain[0]['severity']);
+        self::assertSame('MAIN', $mainMain[0]['coachRole']);
+
+        // ASSISTANT on one side, MAIN on the other → ASSISTANT, severity 5. This
+        // is the case P4-189 REVERSES: MAIN no longer wins « anywhere ».
+        $assistantMain = $this->detect([$left, $right], [
+            $this->link(self::COACH_A, self::TEAM_1, TeamCoachRole::ASSISTANT),
+            $this->link(self::COACH_A, self::TEAM_2, TeamCoachRole::MAIN),
+        ]);
+        self::assertSame(5, $assistantMain[0]['severity']);
+        self::assertSame('ASSISTANT', $assistantMain[0]['coachRole']);
+
+        // ASSISTANT everywhere → ASSISTANT, severity 5.
         $assistant = $this->detect([$left, $right], [
             $this->link(self::COACH_A, self::TEAM_1, TeamCoachRole::ASSISTANT),
             $this->link(self::COACH_A, self::TEAM_2, TeamCoachRole::ASSISTANT),
         ]);
         self::assertSame(5, $assistant[0]['severity']);
         self::assertSame('ASSISTANT', $assistant[0]['coachRole']);
+    }
 
-        $mixed = $this->detect([$left, $right], [
+    public function testMainAndAssistantOnTheSameTeamStillCountsMain(): void
+    {
+        // The within-team « worst engagement wins » (rolesByTeam) is UNCHANGED
+        // by P4-189: a coach who is BOTH assistant and head on team-1, and head
+        // on team-2, is MAIN on each side → severity 3. Only the per-PAIR
+        // combination flipped, not the per-team resolution.
+        $left = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00');
+        $right = $this->fixture('fx-2', self::TEAM_2, '2026-10-03', '15:30');
+
+        $conflicts = $this->detect([$left, $right], [
             $this->link(self::COACH_A, self::TEAM_1, TeamCoachRole::ASSISTANT),
+            $this->link(self::COACH_A, self::TEAM_1, TeamCoachRole::MAIN),
             $this->link(self::COACH_A, self::TEAM_2, TeamCoachRole::MAIN),
         ]);
-        self::assertSame(3, $mixed[0]['severity']);
-        self::assertSame('MAIN', $mixed[0]['coachRole']);
+
+        self::assertCount(1, $conflicts);
+        self::assertSame(3, $conflicts[0]['severity']);
+        self::assertSame('MAIN', $conflicts[0]['coachRole']);
     }
 
     public function testAPairedCompetitionShortOfItsExpectationIsNamed(): void
@@ -641,11 +734,11 @@ final class MatchConflictDetectorTest extends TestCase
     }
 
     /**
-     * @param list<Fixture>                                                                     $fixtures
-     * @param list<TeamCoach>                                                                   $links
-     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string}> $overlayPeriods
-     * @param array<string, list<ScheduleSlotTemplate>>                                         $slotsBySchedule
-     * @param list<VenueUnavailability>                                                         $unavailabilities
+     * @param list<Fixture>                                                                          $fixtures
+     * @param list<TeamCoach>                                                                        $links
+     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}> $overlayPeriods
+     * @param array<string, list<ScheduleSlotTemplate>>                                              $slotsBySchedule
+     * @param list<VenueUnavailability>                                                              $unavailabilities
      *
      * @return list<array<string, mixed>>
      */
