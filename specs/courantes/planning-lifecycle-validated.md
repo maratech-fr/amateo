@@ -1,9 +1,12 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-09-06 (rotation `documentation-update`, PR P4-164 PR-1 — zone non touchée,
-contrôle de fraîcheur). Reconfirmé sans écart : `onValidate` toujours câblé au bouton « Valider »
-de `PlanningToolbar` (`PlanningToolbar.tsx:74,194`) ✓ · `SocleGuard::assertSeasonPlanChosen`
-toujours présent (`SocleGuard.php:26`) ✓. Rien de faux trouvé. Historique des passes vit dans git :
+Last verified @ 2026-09-09 (rotation `documentation-update`, PR P4-188/189/191 (détecteur de
+conflits) — zone non touchée, contrôle de fraîcheur). Reconfirmé : `ScheduleStatus` toujours
+`DRAFT/PENDING/GENERATING/COMPLETED/FAILED`, pas de `VALIDATED` (`ScheduleStatus.php:9-14`) ✓ ·
+`SocleGuard::assertSeasonPlanChosen` toujours présent (`SocleGuard.php:26`) ✓ · `onValidate`
+toujours câblé au bouton « Valider » de `PlanningToolbar` (`PlanningToolbar.tsx:74,194`) ✓.
+**Un écart de citation corrigé** : `useValidateSchedule()` est appelé depuis `PlanningPage.tsx:317`
+(§2, la ligne disait `:316` — décalage d'une ligne). Historique des passes vit dans git :
 `git log -p --follow specs/courantes/planning-lifecycle-validated.md`)
 
 > **Bascule 2026-07-16 (ADR-0002, `docs/architecture/adr-0002-pattern-plan.md`)** : le **plan de
@@ -59,7 +62,7 @@ Ancrages : `AuthGuard.tsx` (onboarding = `!seasonPlan.hasFinishedVersion`), `Coc
 | Chemins d'édition **sans garde de statut** | `GenerateScheduleController` (regen `:46`) · `ManualEditController` (constraint, lock, move) · `ScheduleStateProcessor` PUT (`name/status/solverSeed` `:48-61`) — `schedule_slot_templates` est **read-only depuis 2026-08-16** (P4-102), plus de CRUD brut à garder ici |
 | `ScheduleInput.status` | `Choice` = 5 statuts actuels (`Dto/ScheduleInput.php:17-19`) |
 | Contrat engine | `ScheduleInputSchema` **sans status** ; output engine = littéral `queued/generating/completed/failed` ≠ enum backend ; `ContractSchemaTest` le vérifie → **VALIDATED n'impacte pas l'engine** |
-| Front (instantané d'origine — **corrigé le 2026-08-29, plusieurs points avaient dérivé silencieusement**) | ⚠ **Faux, corrigé** : `validateSchedule()`+`useValidateSchedule()` ne sont plus « inutilisés » — le hook est appelé depuis `PlanningPage.tsx:316` et câblé au bouton « Valider » de `PlanningToolbar` (`onValidate`, §3.1). ⚠ **Faux, corrigé** : le badge de statut n'est plus un texte brut — pastille arrondie + icône verrou (`PlanningToolbar.tsx:177-180`, `STATUS_LABELS[selected.status]`) ; et il n'y a plus de paire Base/Secondaire — une seule pastille « Période » apparaît quand la version n'est PAS de saison (`:182`), son absence dit « saison ». **Toujours vrai, référence déplacée** : `pickDefaultSchedule` (désormais `planning/lib/pickLandingSchedule.ts`) ne matche que `COMPLETED`. **Toujours vrai, dette resorbée** : `IN_FLIGHT` a rejoint le foyer unique `shared/lib/scheduleStatus.ts` (D-31, 2026-08-08) **partout, y compris `planning/lib/pickLandingSchedule.ts`** — dernière copie littérale corrigée le jour même (`P4-147` SOLDÉE, `etat-des-lieux.md` §3). **Toujours vrai** : `SlotDetail`/`WeekGrid` restent sans conscience DIRECTE du statut, ils reçoivent un booléen `readOnly` déjà calculé par l'appelant |
+| Front (instantané d'origine — **corrigé le 2026-08-29, plusieurs points avaient dérivé silencieusement**) | ⚠ **Faux, corrigé** : `validateSchedule()`+`useValidateSchedule()` ne sont plus « inutilisés » — le hook est appelé depuis `PlanningPage.tsx:317` et câblé au bouton « Valider » de `PlanningToolbar` (`onValidate`, §3.1). ⚠ **Faux, corrigé** : le badge de statut n'est plus un texte brut — pastille arrondie + icône verrou (`PlanningToolbar.tsx:177-180`, `STATUS_LABELS[selected.status]`) ; et il n'y a plus de paire Base/Secondaire — une seule pastille « Période » apparaît quand la version n'est PAS de saison (`:182`), son absence dit « saison ». **Toujours vrai, référence déplacée** : `pickDefaultSchedule` (désormais `planning/lib/pickLandingSchedule.ts`) ne matche que `COMPLETED`. **Toujours vrai, dette resorbée** : `IN_FLIGHT` a rejoint le foyer unique `shared/lib/scheduleStatus.ts` (D-31, 2026-08-08) **partout, y compris `planning/lib/pickLandingSchedule.ts`** — dernière copie littérale corrigée le jour même (`P4-147` SOLDÉE, `etat-des-lieux.md` §3). **Toujours vrai** : `SlotDetail`/`WeekGrid` restent sans conscience DIRECTE du statut, ils reçoivent un booléen `readOnly` déjà calculé par l'appelant |
 
 ## 3. Décisions de conception
 
