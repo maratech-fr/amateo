@@ -11,7 +11,7 @@ const teams: Team[] = [
 ];
 const tiers: PriorityTier[] = [{ id: 1, label: "S", name: "Fanion", color: null }, { id: 3, label: "B", name: "Moyenne", color: null }];
 const coaches: Coach[] = [{ id: "thomas", firstName: "Thomas", lastName: "Martin" }, { id: "jean", firstName: "Jean", lastName: "Dupont" }];
-const venues: Venue[] = [{ id: "v1", name: "Gymnase Alpha", color: null }];
+const venues: Venue[] = [{ id: "v1", name: "Gymnase Alpha", color: null, externalLabels: [] }];
 
 function setup(over: Partial<Parameters<typeof MatchesFilterBar>[0]> = {}) {
   const onModeChange = vi.fn();

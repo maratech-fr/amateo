@@ -7,6 +7,7 @@ import * as matchesApi from "./api";
 import {
   useAnalyzeFbiFixtures,
   useApplyFfbbRencontres,
+  useAttachVenueLabel,
   useCompetitions,
   useConflicts,
   useCreateTeamMatchHabit,
@@ -30,6 +31,7 @@ import {
   useUnavailabilityImpact,
   useUpdateSportCategoryDuration,
   useVenueMatchWindows,
+  useVenues,
   useVenueUnavailabilities,
 } from "./queries";
 
@@ -52,6 +54,7 @@ vi.mock("./api", () => ({
   getLatestFbiIngestion: vi.fn().mockResolvedValue({ latest: null }),
   getVenueMatchWindows: vi.fn().mockResolvedValue([]),
   getSportCategoryDurations: vi.fn().mockResolvedValue([]),
+  getVenues: vi.fn().mockResolvedValue([]),
   listFfbbSalles: vi.fn().mockResolvedValue({ postalCode: null, salles: [] }),
 
   deleteFixture: vi.fn().mockResolvedValue(undefined),
@@ -71,6 +74,7 @@ vi.mock("./api", () => ({
   updateSportCategoryDuration: vi.fn().mockResolvedValue({ id: "s1", sportId: "sp", name: "U11", matchMinutes: 40, warmupMinutes: 10, defaultMatchMinutes: 40, defaultWarmupMinutes: 10 }),
   createVenueMatchWindow: vi.fn().mockResolvedValue({ id: "w1", venueId: "v", dayOfWeek: 6, startTime: "14:00", endTime: "20:00" }),
   deleteVenueMatchWindow: vi.fn().mockResolvedValue(undefined),
+  attachVenueLabel: vi.fn().mockResolvedValue({ venueId: "v1", label: "GYMNASE MATEO", attached: 1 }),
 }));
 
 function makeClient(): QueryClient {
@@ -320,6 +324,29 @@ describe("matches queries — imports/applications en masse", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // 5. EFFET RÉEL — les cas « en BOTH outcomes » et « dry-run »
 // ─────────────────────────────────────────────────────────────────────────────
+
+describe("matches queries — rattacher un libellé de salle (P4-187b)", () => {
+  it("useAttachVenueLabel refetche ['fixtures'] (suggestion + backfill) ET ['venues'] (nouvel alias)", async () => {
+    const client = makeClient();
+    const { result } = renderHook(
+      () => ({ fixtures: useFixtures(), venues: useVenues(), attach: useAttachVenueLabel() }),
+      { wrapper: wrapperFor(client) },
+    );
+
+    await waitFor(() => expect(result.current.fixtures.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.venues.isSuccess).toBe(true));
+    expect(matchesApi.getFixtures).toHaveBeenCalledTimes(1);
+    expect(matchesApi.getVenues).toHaveBeenCalledTimes(1);
+
+    result.current.attach.mutate({ venueId: "v1", label: "GYMNASE MATEO" });
+
+    await waitFor(() => expect(result.current.attach.isSuccess).toBe(true));
+    // Les DEUX lecteurs vivants refetchent : un rattachement pose un venueId (fixtures)
+    // ET ajoute un externalLabels (venues). Si l'un manquait, il resterait à 1.
+    await waitFor(() => expect(matchesApi.getFixtures).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(matchesApi.getVenues).toHaveBeenCalledTimes(2));
+  });
+});
 
 describe("matches queries — onSettled (échange) et dry-run", () => {
   it("useSwapFixtures refetche la grille MÊME quand le 2ᵉ PUT échoue (onSettled, pas onSuccess)", async () => {

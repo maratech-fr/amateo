@@ -24,12 +24,13 @@ function fx(partial: Partial<Fixture> & Pick<Fixture, "id">): Fixture {
     reviewedAt: null,
     pendingDeviations: [],
     ffbbRencontreId: null,
+    suggestedVenueId: null,
     ...partial,
   };
 }
 
 const teams = new Map<string, Team>([["team-1", { id: "team-1", name: "U13", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 }]]);
-const venues = new Map<string, Venue>([["venue-1", { id: "venue-1", name: "Gymnase Alpha", color: "#0a0" }]]);
+const venues = new Map<string, Venue>([["venue-1", { id: "venue-1", name: "Gymnase Alpha", color: "#0a0", externalLabels: [] }]]);
 
 function renderTable(props: Partial<Parameters<typeof MatchRowsTable>[0]> = {}) {
   const onSelectFixture = props.onSelectFixture ?? vi.fn();
@@ -64,10 +65,10 @@ describe("MatchRowsTable (PR-2b — ligne de match partagée Mois/Phase)", () =>
     expect(screen.getByText(/heure non publiée/)).toBeInTheDocument();
   });
 
-  it("gymnase non rattaché ⇒ fbiVenueLabel + « non rattaché »", () => {
+  it("gymnase non rattaché ⇒ fbiVenueLabel + « à rattacher dans Importer »", () => {
     renderTable({ groups: [{ key: "g", label: "g", fixtures: [fx({ id: "fx-1", venueId: null, fbiVenueLabel: "Halle Clemenceau" })] }] });
     expect(screen.getByText(/Halle Clemenceau/)).toBeInTheDocument();
-    expect(screen.getByText(/non rattaché/)).toBeInTheDocument();
+    expect(screen.getByText(/à rattacher dans Importer/)).toBeInTheDocument();
   });
 
   it("ni gymnase ni libellé FBI ⇒ « — »", () => {

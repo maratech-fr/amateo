@@ -25410,6 +25410,13 @@
                             "null"
                         ]
                     },
+                    "suggestedVenueId": {
+                        "description": "Gymnase PROPOS\u00c9 pour un domicile import\u00e9 encore sans salle (P4-187a D6) :\ncalcul\u00e9 en lecture par un rapprochement flou du libell\u00e9 FBI/FFBB, seulement\npour un HOME sans `venueId` et avec un `fbiVenueLabel`. Jamais un placement \u2014\nune simple suggestion \u00e0 confirmer (\u00ab Rattacher \u00bb). Null par d\u00e9faut.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "unplacedReason": {
                         "description": "Why it went back to \u00ab \u00e0 placer \u00bb, when the reason must persist: `venue_lost`\n(its venue is no longer affiliated to the club), else null. Distinct from the\nvolatile auto-placement reason held only in the UI.",
                         "type": [
@@ -25638,6 +25645,13 @@
                             "null"
                         ]
                     },
+                    "suggestedVenueId": {
+                        "description": "Gymnase PROPOS\u00c9 pour un domicile import\u00e9 encore sans salle (P4-187a D6) :\ncalcul\u00e9 en lecture par un rapprochement flou du libell\u00e9 FBI/FFBB, seulement\npour un HOME sans `venueId` et avec un `fbiVenueLabel`. Jamais un placement \u2014\nune simple suggestion \u00e0 confirmer (\u00ab Rattacher \u00bb). Null par d\u00e9faut.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "unplacedReason": {
                         "description": "Why it went back to \u00ab \u00e0 placer \u00bb, when the reason must persist: `venue_lost`\n(its venue is no longer affiliated to the club), else null. Distinct from the\nvolatile auto-placement reason held only in the UI.",
                         "type": [
@@ -25769,6 +25783,13 @@
                             },
                             "placementSource": {
                                 "description": "MANUAL | SOLVER | null \u2014 who placed it (re-solve anchor marker, PR D).",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "suggestedVenueId": {
+                                "description": "Gymnase PROPOS\u00c9 pour un domicile import\u00e9 encore sans salle (P4-187a D6) :\ncalcul\u00e9 en lecture par un rapprochement flou du libell\u00e9 FBI/FFBB, seulement\npour un HOME sans `venueId` et avec un `fbiVenueLabel`. Jamais un placement \u2014\nune simple suggestion \u00e0 confirmer (\u00ab Rattacher \u00bb). Null par d\u00e9faut.",
                                 "type": [
                                     "string",
                                     "null"
@@ -30877,6 +30898,13 @@
                             "null"
                         ]
                     },
+                    "externalLabels": {
+                        "description": "Libell\u00e9s FBI/FFBB confirm\u00e9s qui d\u00e9signent ce gymnase (P4-187a) \u2014 lecture\nseule, \u00e9crits par \u00ab Rattacher \u00bb (POST /venues/{id}/external-labels), jamais\npar un PUT.",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
                     "isActive": {
                         "default": false,
                         "type": "boolean"
@@ -31043,6 +31071,13 @@
                             "null"
                         ]
                     },
+                    "externalLabels": {
+                        "description": "Libell\u00e9s FBI/FFBB confirm\u00e9s qui d\u00e9signent ce gymnase (P4-187a) \u2014 lecture\nseule, \u00e9crits par \u00ab Rattacher \u00bb (POST /venues/{id}/external-labels), jamais\npar un PUT.",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
                     "isActive": {
                         "default": false,
                         "type": "boolean"
@@ -31126,6 +31161,13 @@
                                     "string",
                                     "null"
                                 ]
+                            },
+                            "externalLabels": {
+                                "description": "Libell\u00e9s FBI/FFBB confirm\u00e9s qui d\u00e9signent ce gymnase (P4-187a) \u2014 lecture\nseule, \u00e9crits par \u00ab Rattacher \u00bb (POST /venues/{id}/external-labels), jamais\npar un PUT.",
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
                             },
                             "isActive": {
                                 "default": false,

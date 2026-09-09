@@ -6,8 +6,8 @@ import type { MatchSlotRotation, Team, TeamMatchHabit, Venue } from "./api";
 import { TypicalWeekendGrid } from "./TypicalWeekendGrid";
 
 const VENUES = new Map<string, Venue>([
-  ["v1", { id: "v1", name: "Alpha", color: null }],
-  ["v9", { id: "v9", name: "Coubertin", color: null }],
+  ["v1", { id: "v1", name: "Alpha", color: null, externalLabels: [] }],
+  ["v9", { id: "v9", name: "Coubertin", color: null, externalLabels: [] }],
 ]);
 const TEAMS = new Map<string, Team>([
   ["ta", { id: "ta", name: "SM1", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 }],

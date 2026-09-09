@@ -24,7 +24,7 @@ vi.mock("./queries", () => ({
 const team = (id: string, name: string): Team => ({ id, name, sportCategoryId: "cat", level: null, gender: null, priorityTierId: 1, tierOrder: 0 });
 const TEAMS: Team[] = [team("t1", "SM1"), team("t2", "SM2"), team("t3", "SM3")];
 const TIERS: PriorityTier[] = [{ id: 1, label: "S", name: "Fanion", color: null }];
-const VENUES: Venue[] = [{ id: "v1", name: "Coubertin", color: null }];
+const VENUES: Venue[] = [{ id: "v1", name: "Coubertin", color: null, externalLabels: [] }];
 
 const rotation = (over: Partial<MatchSlotRotation> = {}): MatchSlotRotation => ({ id: "rot-1", venueId: "v1", dayOfWeek: 6, kickoffTime: "20:30", teamIds: ["t1", "t2"], ...over });
 

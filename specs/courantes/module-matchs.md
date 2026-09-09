@@ -1,18 +1,17 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-09 (P4-187a « gymnase depuis le libellé », backend seul,
-`documentation-update`). Nouvelle § « Gymnase depuis le libellé — alias de salle FBI/FFBB »
-ajoutée et confrontée au code : `Venue.externalLabels` (`Venue.php:74`), `VenueLabelNormalizer`,
-`VenueAliasResolver` (`resolveConfirmed`/`suggest`), résolution automatique aux deux canaux
-(`FbiFixtureImporter::attachConfirmedVenue` `FbiFixtureImporter.php:734`,
-`FfbbRencontreReconciler::apply` `:139`/`:263`), routes `VenueExternalLabelController`, effet sur
-`MatchConflictDetector` (`:267`/`:507`), migration `Version20260909120000`. La décision RMM-9
-(§ « Annuaire adverse ») nuancée : sa réserve « précision VENUE = canal API seul » vise la table
-PARTAGÉE `opponent_directory`, pas le gymnase propre du club. Pas Gherkin de
-`une-rencontre-importee-dit-si-elle-est-traitee.feature` recalé (« attestée FBI », drift signalé en
-PR-3a désormais corrigé). Reste du fichier (Espace Importer, canal API, réconciliation,
-Configuration — P4-185) non re-sondé cette passe — dernière vérification 2026-09-09 (même jour,
-passe antérieure).
+Last verified @ 2026-09-09 (P4-187 clos — 187a backend #874 + 187b écran, `documentation-update`).
+§ « Gymnase depuis le libellé » retitrée et complétée d'une sous-section « Écran » confrontée au
+code : `ReviewQueueRow.tsx` (bloc « Rattacher » replié/déplié, `VenueSelect` pré-sélectionné sur
+`Fixture.suggestedVenueId`), `ReviewQueue.tsx` (`onAttach`, toast attaché/aucun nouveau),
+`lib/reviewQueue.ts` (`isUnattachedHome`, `TeamQueue.unattachedCount`), `api.ts`
+(`AttachVenueLabelInput`, `attachVenueLabel`, `normalizeVenue`), `queries.ts`
+(`useAttachVenueLabel`, invalide `fixtures`+`venues`), `MatchRowsTable.tsx` (libellé « à rattacher
+dans Importer », drift trouvé et corrigé — la section disait encore « non rattaché ») ; confirmé
+qu'aucun `DELETE /api/venues/{id}/external-labels/{label}` n'a de consommateur front (roadmap
+P4-196) et que `POST /api/fixtures` n'accepte pas `fbiVenueLabel` (`FixtureInput.php`, zéro e2e
+possible par cette voie). Reste du fichier (Espace Importer, canal API, réconciliation,
+Configuration — P4-185) non re-sondé cette passe.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -279,13 +278,13 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   `EffectiveScheduleResolver` (pur) + `TrainingCalendarContext` (chargement scopé), consommés par le
   radar ET l'impact — deux copies auraient divergé.
 
-## Gymnase depuis le libellé — alias de salle FBI/FFBB (P4-187a, backend, 2026-09-09)
+## Gymnase depuis le libellé — alias de salle FBI/FFBB (P4-187, backend P4-187a + écran P4-187b, LIVRÉ EN ENTIER, 2026-09-09)
 
 > Mesuré 2026-09-08 sur le canal API (`POST /api/ffbb/rencontres/apply`, roadmap P4-187) : un
 > domicile importé porte un libellé de salle fédéral (`Fixture.fbiVenueLabel`) mais aucun
 > `venueId` — invisible de la collision de gymnase (`VENUE_OVERLAP`) et de la fermeture
-> (`VENUE_UNAVAILABLE`). Backend seul livré ici ; le geste « Rattacher » dans l'écran Importer et
-> la proposition pré-sélectionnée suivent en **P4-187b**.
+> (`VENUE_UNAVAILABLE`). P4-187a a livré le backend seul (résolution automatique + routes) ;
+> **P4-187b** livre le geste « Rattacher » dans l'écran Importer (ci-dessous, § Écran).
 
 - **`Venue.externalLabels`** (`backend/src/Entity/Venue.php:74`, JSON `default '[]'`, liste
   NORMALISÉE et dédupliquée — `setExternalLabels`/`addExternalLabel`/`removeExternalLabel`
@@ -343,6 +342,37 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   changement `ci.yml`. Behat `un-domicile-importe-retrouve-son-gymnase.feature`
   (`VenueAliasContext`) : dépôt sans gymnase → rattachement → visible sans placement → re-dépôt au
   même libellé rattaché d'office → fermeture détectée.
+
+### Écran — le geste « Rattacher » dans Importer (P4-187b, front, 2026-09-09)
+
+- **File de traitement** (`ReviewQueue.tsx`, `ReviewQueueRow.tsx`) : un domicile `isUnattachedHome`
+  (`lib/reviewQueue.ts` — `HOME` sans `venueId` avec un `fbiVenueLabel`, ouvertes ET traitées)
+  affiche un sous-bloc neutre (jamais un warning — c'est une réparation, pas une alerte) : replié,
+  le libellé brut + « `<libellé>` · non rattaché » + bouton **Rattacher** ; déplié, un
+  `VenueSelect` (pré-sélectionné sur `Fixture.suggestedVenueId` s'il figure dans la liste des
+  gymnases actifs du club, sinon placeholder « Choisir un gymnase ») + **Confirmer**/**Annuler**.
+  Confirmer envoie le libellé BRUT (`fbiVenueLabel`, jamais normalisé côté client — le serveur
+  normalise) à `POST /api/venues/{id}/external-labels` (`api.ts` `attachVenueLabel`,
+  `AttachVenueLabelInput`) ; un 422 serveur s'affiche tel quel et le bloc reste ouvert.
+- **`useAttachVenueLabel`** (`queries.ts`) invalide `["fixtures"]` (le `suggestedVenueId` et le
+  `venueId` backfillé se recalculent, la file et le radar se mettent à jour) **et** `["venues"]`
+  (le gymnase gagne son `externalLabels`). Toast composé par l'appelant (`ReviewQueue.tsx`
+  `onAttach`) sur `AttachVenueLabelResult.attached` : « N domicile(s) rattaché(s) à `<gymnase>`
+  (toutes équipes) » si `attached > 0`, sinon « Libellé confirmé — aucun nouveau domicile à
+  rattacher » (l'alias existait déjà, ou plus aucun domicile à backfiller).
+- **En-tête d'équipe** (`ReviewQueue.tsx`) gagne un troisième segment « N sans gymnase »
+  (`TeamQueue.unattachedCount`, `lib/reviewQueue.ts`) quand au moins un domicile de l'équipe est
+  sans gymnase — badge de l'onglet Importer (`pendingReviewCount`) inchangé, ce compteur ne compte
+  QUE `NEW`/`OUT_OF_SYNC`.
+- **Consulter** (`MatchRowsTable.tsx`) recale son libellé pour renvoyer vers le geste : un domicile
+  sans gymnase s'affiche « `<libellé>` · à rattacher dans Importer » (était « non rattaché »).
+- **Pas d'écran de retrait d'alias** : le `DELETE /api/venues/{id}/external-labels/{label}` (livré
+  en P4-187a) n'a aucun consommateur dans `frontend/src` — un alias mal rattaché ne se corrige
+  qu'en API. Roadmap **P4-196**.
+- **Pas de couverture e2e** : `POST /api/fixtures` (endpoint de création directe) n'accepte pas
+  `fbiVenueLabel` (`backend/src/Dto/FixtureInput.php`) — le scénario ne se rejoue pas par cette
+  voie. Couverture vitest : `ReviewQueueRow.test.tsx`, `ImportPage.test.tsx`,
+  `lib/reviewQueue.test.ts`, `queries.test.tsx`, `api.test.ts`.
 
 ## Habitudes + passerelles (P1-4 PR C, 2026-08-03)
 

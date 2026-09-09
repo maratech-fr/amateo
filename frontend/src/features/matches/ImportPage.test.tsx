@@ -1,12 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HTTPError } from "ky";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useToastStore } from "@/shared/stores/toastStore";
 
-import type { FbiIngestionLatest, Fixture, FixtureReviewState, PendingDeviation, ReviewFixturesResult } from "./api";
+import type { AttachVenueLabelResult, FbiIngestionLatest, Fixture, FixtureReviewState, PendingDeviation, ReviewFixturesResult, Venue } from "./api";
 import { ImportPage } from "./ImportPage";
 import { weekendKeyOf } from "./lib/weekendGrid";
 import { useMatchesStore } from "./store";
@@ -15,23 +16,34 @@ const {
   getTeams,
   getPriorityTiers,
   getFixtures,
+  getVenues,
   getLatestFbiIngestion,
   getFfbbRencontres,
   applyFfbbRencontres,
   reviewFixtures,
   resolveFixtureDeviation,
+  attachVenueLabel,
 } = vi.hoisted(() => ({
   getTeams: vi.fn(),
   getPriorityTiers: vi.fn(() => Promise.resolve([{ id: 1, label: "S", name: "Fanion", color: null }, { id: 2, label: "A", name: "Réserve", color: null }])),
   getFixtures: vi.fn(),
+  getVenues: vi.fn((): Promise<Venue[]> => Promise.resolve([{ id: "venue-1", name: "Gymnase Alpha", color: null, externalLabels: [] }])),
   getLatestFbiIngestion: vi.fn((): Promise<{ latest: FbiIngestionLatest | null }> => Promise.resolve({ latest: null })),
   getFfbbRencontres: vi.fn(),
   applyFfbbRencontres: vi.fn(() => Promise.resolve({ created: 0, updated: 0, unresolvedDeviations: [], depositedAt: "2026-08-24T14:06:00+00:00" })),
   reviewFixtures: vi.fn((): Promise<ReviewFixturesResult> => Promise.resolve({ reviewed: 1, skipped: [] })),
   resolveFixtureDeviation: vi.fn(() => Promise.resolve({ fixtureId: "x", reviewState: "REVIEWED", reviewedAt: "2026-10-02T10:00:00+00:00", pendingDeviations: [] })),
+  attachVenueLabel: vi.fn((): Promise<AttachVenueLabelResult> => Promise.resolve({ venueId: "venue-1", label: "GYMNASE MATEO", attached: 2 })),
 }));
 
-vi.mock("./api", () => ({ getTeams, getPriorityTiers, getFixtures, getLatestFbiIngestion, getFfbbRencontres, applyFfbbRencontres, reviewFixtures, resolveFixtureDeviation }));
+vi.mock("./api", () => ({ getTeams, getPriorityTiers, getFixtures, getVenues, getLatestFbiIngestion, getFfbbRencontres, applyFfbbRencontres, reviewFixtures, resolveFixtureDeviation, attachVenueLabel }));
+
+/** ky 2.x expose le corps parsé sur `error.data` — on reproduit ce contrat pour le 422 nommé. */
+function httpError(status: number, body: unknown): HTTPError {
+  const error = new HTTPError(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }), new Request("http://localhost/api/venues/venue-1/external-labels"), {} as never);
+  (error as unknown as { data?: unknown }).data = body;
+  return error;
+}
 
 const teams = [
   { id: "team-1", name: "SM1", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 },
@@ -60,6 +72,7 @@ function fx(teamId: string, reviewState: FixtureReviewState, matchDate: string, 
     reviewedAt: null,
     pendingDeviations: [],
     ffbbRencontreId: null,
+    suggestedVenueId: null,
     ...extra,
   };
 }
@@ -70,6 +83,7 @@ const autoDev: PendingDeviation = { field: "kickoff", appValue: "15:00", sourceV
 function renderPage(fixtures: Fixture[], route = "/matchs/importer") {
   getTeams.mockResolvedValue(teams);
   getFixtures.mockResolvedValue(fixtures);
+  getVenues.mockResolvedValue([{ id: "venue-1", name: "Gymnase Alpha", color: null, externalLabels: [] }]);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter(
     [
@@ -93,6 +107,8 @@ beforeEach(() => {
   getLatestFbiIngestion.mockResolvedValue({ latest: null });
   applyFfbbRencontres.mockResolvedValue({ created: 0, updated: 0, unresolvedDeviations: [], depositedAt: "2026-08-24T14:06:00+00:00" });
   reviewFixtures.mockResolvedValue({ reviewed: 1, skipped: [] });
+  getVenues.mockResolvedValue([{ id: "venue-1", name: "Gymnase Alpha", color: null, externalLabels: [] }]);
+  attachVenueLabel.mockResolvedValue({ venueId: "venue-1", label: "GYMNASE MATEO", attached: 2 });
   useMatchesStore.setState({ reconciliation: null, filterMode: "equipe", filterIds: [], selectedWeekend: null });
   useToastStore.setState({ toasts: [] });
 });
@@ -196,6 +212,37 @@ describe("ImportPage — la file de traitement", () => {
     const header = await screen.findByRole("button", { name: /SM1/ });
     expect(header).toHaveAttribute("aria-expanded", "true");
     expect(within(header.closest("div") as HTMLElement).getByRole("button", { name: "Valider" })).toBeInTheDocument();
+  });
+});
+
+describe("ImportPage — rattacher un gymnase depuis le libellé (P4-187b)", () => {
+  it("l'en-tête compte les domiciles sans gymnase (« N sans gymnase »)", async () => {
+    renderPage([fx("team-1", "NEW", "2026-11-07", { fbiVenueLabel: "GYMNASE MATEO" })]);
+    expect(await screen.findByRole("button", { name: /SM1 · 1 à valider · 1 sans gymnase/ })).toBeInTheDocument();
+  });
+
+  it("Confirmer poste le libellé BRUT sur le gymnase choisi + toast succès nommant le gymnase", async () => {
+    const user = userEvent.setup();
+    renderPage([fx("team-1", "NEW", "2026-11-07", { fbiVenueLabel: "GYMNASE MATEO", suggestedVenueId: "venue-1" })], "/matchs/importer?equipe=team-1");
+    await user.click(await screen.findByRole("button", { name: "Rattacher" }));
+    await user.click(screen.getByRole("button", { name: "Confirmer" }));
+    expect(attachVenueLabel).toHaveBeenCalledWith({ venueId: "venue-1", label: "GYMNASE MATEO" });
+    await waitFor(() => {
+      const messages = useToastStore.getState().toasts.map((t) => t.message);
+      expect(messages.some((m) => m.includes("Gymnase Alpha") && m.includes("2 domiciles"))).toBe(true);
+    });
+  });
+
+  it("un 422 nommé du serveur est affiché TEL QUEL (message serveur, pas un repli)", async () => {
+    attachVenueLabel.mockRejectedValueOnce(httpError(422, { error: "Ce libellé est déjà porté par un autre gymnase. Retirez-le d'abord." }));
+    const user = userEvent.setup();
+    renderPage([fx("team-1", "NEW", "2026-11-07", { fbiVenueLabel: "GYMNASE MATEO", suggestedVenueId: "venue-1" })], "/matchs/importer?equipe=team-1");
+    await user.click(await screen.findByRole("button", { name: "Rattacher" }));
+    await user.click(screen.getByRole("button", { name: "Confirmer" }));
+    await waitFor(() => {
+      const messages = useToastStore.getState().toasts.map((t) => t.message);
+      expect(messages.some((m) => m.includes("déjà porté par un autre gymnase"))).toBe(true);
+    });
   });
 });
 

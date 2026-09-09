@@ -22,7 +22,7 @@ function fixture(over: Partial<Fixture> & Pick<Fixture, "id" | "teamId">): Fixtu
     reviewState: "NEW" as const,
     reviewedAt: null,
     pendingDeviations: [],
-    ffbbRencontreId: null,
+    ffbbRencontreId: null, suggestedVenueId: null,
     ...over,
   };
 }

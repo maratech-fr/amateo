@@ -66,6 +66,13 @@ export interface Fixture {
   pendingDeviations: PendingDeviation[];
   /** PR-3a — la rencontre FFBB appariée (canal API), null sinon. */
   ffbbRencontreId: string | null;
+  /**
+   * P4-187b — proposition FLOUE de gymnase (lecture seule) : servie pour un HOME
+   * SANS `venueId` portant un `fbiVenueLabel` dont le nom/alias matche un gymnase
+   * actif du club. Ambiguïté (≥ 2 candidats) → null ; jamais un placement, juste un
+   * pré-remplissage suggéré dans le geste « Rattacher ». Le front l'AFFICHE.
+   */
+  suggestedVenueId: string | null;
 }
 
 export interface Competition {
@@ -271,6 +278,12 @@ export interface Venue {
   id: string;
   name: string;
   color: string | null;
+  /**
+   * P4-187b — libellés FBI/FFBB confirmés qui désignent ce gymnase (lecture seule,
+   * jamais écrit par un PUT ; normalisé/dédupliqué côté serveur). L'API l'omet quand
+   * vide → `normalizeVenue` le ramène à `[]`.
+   */
+  externalLabels: string[];
 }
 
 export interface Category {
@@ -335,6 +348,7 @@ function normalizeFixture(raw: Fixture): Fixture {
     pendingDeviations: raw.pendingDeviations ?? [],
     reviewedAt: raw.reviewedAt ?? null,
     ffbbRencontreId: raw.ffbbRencontreId ?? null,
+    suggestedVenueId: raw.suggestedVenueId ?? null,
   };
 }
 
@@ -353,7 +367,37 @@ export const getTeams = (): Promise<Team[]> => collectionAll<Team>("teams");
 // Tiers are a tiny fixed set (S/A/B/C/D) and their id is numeric, so use the
 // unpaginated `collection` (collectionAll constrains T to a string id).
 export const getPriorityTiers = (): Promise<PriorityTier[]> => collection<PriorityTier>("priority_tiers");
-export const getVenues = async (): Promise<Venue[]> => sortByName(await collectionAll<Venue>("venues"));
+/** The API omits `externalLabels` when empty → coerce it back to `[]` so consumers
+ * never see `undefined`. */
+function normalizeVenue(raw: Venue): Venue {
+  return { ...raw, externalLabels: raw.externalLabels ?? [] };
+}
+
+export const getVenues = async (): Promise<Venue[]> => sortByName((await collectionAll<Venue>("venues")).map(normalizeVenue));
+
+export interface AttachVenueLabelInput {
+  venueId: string;
+  /** Le libellé BRUT (`fbiVenueLabel`) — le serveur NORMALISE (translit/casse/espaces). */
+  label: string;
+}
+
+export interface AttachVenueLabelResult {
+  venueId: string;
+  label: string;
+  /** Combien de domiciles ENCORE sans salle ont été rattachés par le backfill (0 sur un re-POST). */
+  attached: number;
+}
+
+/**
+ * P4-187b — rattache un libellé FBI/FFBB à un gymnase (alias confirmé) PUIS
+ * backfille tous les domiciles du club+saison encore sans salle au même libellé
+ * (toutes équipes). On envoie le libellé BRUT, le serveur le normalise. 422 nommé
+ * si le libellé est déjà porté par un AUTRE gymnase (« retirez-le d'abord »), vide,
+ * trop long, ou au-delà de 30 alias ; management-gated, 409 saison archivée. Le
+ * message serveur est affiché tel quel par `onError` (`errorMessage`).
+ */
+export const attachVenueLabel = ({ venueId, label }: AttachVenueLabelInput): Promise<AttachVenueLabelResult> =>
+  api.post(`venues/${venueId}/external-labels`, { json: { label } }).json<AttachVenueLabelResult>();
 export const getCategories = (): Promise<Category[]> => collectionAll<Category>("sport_categories");
 export const getCoaches = (): Promise<Coach[]> => collectionAll<Coach>("coaches");
 

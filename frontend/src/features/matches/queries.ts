@@ -354,6 +354,26 @@ export function useResolveFixtureDeviation() {
   });
 }
 
+/**
+ * P4-187b — rattache un libellé de salle FBI/FFBB à un gymnase. Invalide
+ * `["fixtures"]` (le `suggestedVenueId` et le `venueId` backfillé y vivent, la file
+ * de traitement et le radar se recalculent) ET `["venues"]` (le gymnase gagne un
+ * `externalLabels`). Le toast de succès (« N rattachés ») est composé par
+ * l'appelant, qui seul connaît le nom du gymnase ; ici on ne fait que l'invalidation
+ * et le 422 nommé du serveur (`errorMessage` → toast, affiché tel quel).
+ */
+export function useAttachVenueLabel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: matchesApi.AttachVenueLabelInput) => matchesApi.attachVenueLabel(input),
+    onSuccess: () => {
+      invalidateFixtures(queryClient);
+      void queryClient.invalidateQueries({ queryKey: ["venues"] });
+    },
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
 // ── Capacity layer (P1-4 PR B) ───────────────────────────────────────────────
 
 /** Match access windows of the club's venues — consumed by the placement panel,

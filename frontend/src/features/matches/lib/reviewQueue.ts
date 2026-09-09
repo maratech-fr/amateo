@@ -15,8 +15,21 @@ export interface TeamQueue {
   teamId: string;
   toValidate: number;
   deviationCount: number;
+  /** P4-187b — domiciles importés avec un libellé de salle mais SANS gymnase rattaché
+   * (ouvertes ET traitées confondues) : le geste « Rattacher » vit sur la ligne. */
+  unattachedCount: number;
   open: Fixture[];
   treated: Fixture[];
+}
+
+/**
+ * P4-187b — un domicile importé qui porte un libellé de salle FBI/FFBB mais aucun
+ * gymnase rattaché : invisible de la collision de gymnase et de la fermeture tant que
+ * son `venueId` n'est pas posé. Présentation pure (le backend a déjà tout calculé) —
+ * on lit trois champs, on ne décide d'aucune règle métier.
+ */
+export function isUnattachedHome(fixture: Fixture): boolean {
+  return "HOME" === fixture.homeAway && null === fixture.venueId && null !== fixture.fbiVenueLabel;
 }
 
 function byMatchDateAsc(a: Fixture, b: Fixture): number {
@@ -50,6 +63,7 @@ export function buildReviewQueue(fixtures: Fixture[], teamOrder: string[]): Team
         teamId,
         toValidate: teamFixtures.filter((f) => "NEW" === f.reviewState).length,
         deviationCount: teamFixtures.filter((f) => "OUT_OF_SYNC" === f.reviewState).length,
+        unattachedCount: teamFixtures.filter(isUnattachedHome).length,
         open,
         treated,
       };

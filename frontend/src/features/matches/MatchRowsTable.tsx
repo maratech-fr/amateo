@@ -138,7 +138,7 @@ function GroupRows({
                 </span>
               ) : null !== fixture.fbiVenueLabel ? (
                 <span className="text-muted-foreground">
-                  {fixture.fbiVenueLabel} · non rattaché
+                  {fixture.fbiVenueLabel} · à rattacher dans Importer
                 </span>
               ) : (
                 <span className="text-muted-foreground">—</span>

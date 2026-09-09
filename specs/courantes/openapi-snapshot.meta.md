@@ -1,12 +1,21 @@
-Last verified @ 2026-09-09 (P4-187a — rattacher un libellé de salle à un gymnase, `coder` — snapshot
-régénéré dans le même commit. **196 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓,
-**+2 paths** (les routes de rattachement `POST /api/venues/{id}/external-labels` et
-`DELETE /api/venues/{id}/external-labels/{label}`) ; le schéma read `Venue` gagne `externalLabels`
-(liste de libellés confirmés) et `Fixture` gagne `suggestedVenueId`.
-· SHA-256 `16aad8df6b122c422a8494db02680ce33c741a01e96be138912f82b1b7fe7632`
+Last verified @ 2026-09-09 (P4-187b — l'écran « Rattacher » de l'onglet Importer, `coder`. **196 paths**
+(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : les DEUX routes de rattachement
+existaient déjà (P4-187a). Ce qui change ici, ce sont les **deux propriétés de schéma** que P4-187a
+annonçait sans qu'elles atterrissent dans l'export — `Venue.externalLabels` (list<string>, lecture seule)
+et `Fixture.suggestedVenueId` (proposition floue, lecture) — absentes du snapshot `16aad8df` (regénéré à
+l'époque contre un cache de métadonnées API Platform périmé) et ajoutées ici après `cache:clear` +
+ré-export : **+42 lignes**, 3 variantes read chacune (jsonld, plain, collection).
+· SHA-256 `ca849b8c7ae070429f04f6f3b7c36386c392548417f1af5b89b28668cb42e800`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **P4-187b — l'écran « Rattacher » de l'onglet Importer (2026-09-09)** : **+0 path** — pur frontend, mais le
+  snapshot gagne les DEUX propriétés que P4-187a avait décrites sans les faire atterrir dans l'export : le
+  schéma read `Venue` gagne `externalLabels` (list<string>, lecture seule — jamais writable par le PUT) et
+  `Fixture` gagne `suggestedVenueId` (proposition floue de gymnase pour un domicile importé sans salle,
+  lecture). Le manque venait d'un export P4-187a lancé contre un cache de métadonnées API Platform périmé
+  (le code portait bien les `#[Groups(['read'])]`) ; `cache:clear` + ré-export les ajoute (3 variantes read
+  chacune). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.20, aucun appel moteur).
 - **P4-187a — un domicile importé retrouve son gymnase depuis le libellé FBI/FFBB (2026-09-09)** :
   **+2 paths** — deux routes de rattachement (`VenueExternalLabelController`, management + saison écrivable) :
   `POST /api/venues/{id}/external-labels` (corps `{label}` — ajoute l'alias normalisé, idempotent, puis
@@ -65,16 +74,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   `GET/PUT/DELETE /api/shared_training_groups/{id}` disparaissent du snapshot. 192 → **190 paths**.
   Contrat backend⇄engine bumpé **2.19** (retrait de `sharedTrainings`/`SharedTrainingGroupSchema`
   des deux endpoints qui les portaient).
-- **P2-51 PR-5b — `POST /api/schedule-slots/move-group` (2026-08-31)** : **+1 path** — le rail de
-  DÉPLACEMENT de bloc atomique (D11) : déplace la séance d'un bloc (tous ses créneaux membres à la
-  case source) vers une case cible, sous UN verdict et en une transaction (tout-ou-nothing). Corps
-  `{scheduleId, blockId, source{venueId,dayOfWeek,startTime}, target{…}}` — le serveur résout
-  lui-même les créneaux membres (jamais de slotIds clients). 200 (`movedSlotIds`) / 422 refus nommé
-  (`shared_block_broken` si le geste casse le bloc) ou `slot_unavailable` / 409 génération ou plan
-  choisi. Déclaré dans `PathContributor/ManualEditPaths.php`. 191 → **192 paths**. Backend + contrat
-  backend⇄engine **bumpé 2.17 → 2.18** : `/validate-assignments` juge désormais N déplacements sous
-  UN verdict (`candidates`/`references` LISTES remplacent le singulier — le déplacement de bloc les
-  émet à N, le rail simple à 1).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine
