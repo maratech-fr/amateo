@@ -12,6 +12,7 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
+use App\Enum\CompetitionType;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -148,10 +149,93 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
         self::assertResponseStatusCodeSame(204, 'pairing must not engage the team (no fixture created)');
     }
 
+    public function testConfirmACupNameInfersCupTypeAndClearsMatchdays(): void
+    {
+        // P4-195 — un engagement dont le nom porte « coupe » naît en type CUP, et
+        // sa complétude « 2×(N−1) » est NULL (une coupe ne se compte pas ainsi).
+        [$tokenA, , $clubA] = $this->register('FFPG');
+        $this->useStubClubCode($clubA);
+        $team = $this->createTeam($clubA);
+
+        $this->confirm($tokenA, FfbbHttpClientStub::COMPETITION_ID_CUP, $team->getId());
+        self::assertResponseStatusCodeSame(200);
+
+        $this->scopeGucToClub($clubA);
+        $this->em->clear();
+        $competition = $this->em->getRepository(Competition::class)->findOneBy(['ffbbCompetitionId' => FfbbHttpClientStub::COMPETITION_ID_CUP]);
+        self::assertNotNull($competition);
+        self::assertSame(CompetitionType::CUP, $competition->getCompetitionType(), 'a « coupe » name infers CUP');
+        self::assertNull($competition->getExpectedMatchdays(), 'a cup carries no 2×(N−1) completeness');
+    }
+
+    public function testConfirmAChampionshipKeepsTwoTimesNMinusOne(): void
+    {
+        // P4-195 — un championnat garde 2×(N−1) (le type par défaut est inchangé).
+        [$tokenA, , $clubA] = $this->register('FFPH');
+        $this->useStubClubCode($clubA);
+        $team = $this->createTeam($clubA);
+
+        $this->confirm($tokenA, FfbbHttpClientStub::COMPETITION_ID, $team->getId());
+        self::assertResponseStatusCodeSame(200);
+
+        $this->scopeGucToClub($clubA);
+        $this->em->clear();
+        $competition = $this->em->getRepository(Competition::class)->findOneBy(['ffbbCompetitionId' => FfbbHttpClientStub::COMPETITION_ID]);
+        self::assertNotNull($competition);
+        self::assertSame(CompetitionType::CHAMPIONSHIP, $competition->getCompetitionType());
+        self::assertSame(6, $competition->getExpectedMatchdays(), 'poule of 4 → 2×(4−1) = 6, untouched');
+    }
+
+    public function testConfirmRepostsCupOnAnExistingChampionshipWhoseNameInfersCup(): void
+    {
+        // P4-195 (sous-décision fondateur) — une compétition RÉUTILISÉE dont le nom
+        // infère CUP mais stockée en CHAMPIONSHIP (avec une complétude figée) est
+        // REPASSÉE en CUP, journées effacées — répare la vraie Coupe du Rhône (1/68).
+        [$tokenA, , $clubA] = $this->register('FFPI');
+        $this->useStubClubCode($clubA);
+        $team = $this->createTeam($clubA);
+        $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubA]);
+        self::assertInstanceOf(Season::class, $season);
+
+        $this->scopeGucToClub($clubA);
+        $existing = new Competition;
+        $existing->setClubId($clubA);
+        $existing->setSeasonId($season->getId());
+        $existing->setTeamId($team->getId());
+        $existing->setName(FfbbHttpClientStub::CUP_ENGAGEMENT_NAME);
+        $existing->setCompetitionType(CompetitionType::CHAMPIONSHIP);
+        $existing->setExpectedMatchdays(68);
+        $this->em->persist($existing);
+        $this->em->flush();
+        $existingId = $existing->getId();
+
+        $this->confirm($tokenA, FfbbHttpClientStub::COMPETITION_ID_CUP, $team->getId());
+        self::assertResponseStatusCodeSame(200);
+
+        $this->scopeGucToClub($clubA);
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Competition::class)->find($existingId);
+        self::assertInstanceOf(Competition::class, $reloaded);
+        self::assertSame(CompetitionType::CUP, $reloaded->getCompetitionType(), 'a name that infers CUP re-poses CUP on reuse');
+        self::assertNull($reloaded->getExpectedMatchdays(), 'the 2×(N−1) is cleared to null');
+        self::assertSame(FfbbHttpClientStub::COMPETITION_ID_CUP, $reloaded->getFfbbCompetitionId(), 'the SAME row is re-paired, not duplicated');
+        self::assertCount(1, $this->em->getRepository(Competition::class)->findBy(['teamId' => $team->getId()]), 'no duplicate competition');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    private function confirm(string $token, string $ffbbCompetitionId, string $teamId): void
+    {
+        $this->client->request('POST', '/api/ffbb/engagements/confirm', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['pairings' => [[
+            'ffbbCompetitionId' => $ffbbCompetitionId,
+            'teamId' => $teamId,
+        ]]], \JSON_THROW_ON_ERROR));
     }
 
     /** Point the club at the stub's FFBB code (the only one it answers). */

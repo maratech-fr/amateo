@@ -1,12 +1,10 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-09-09 (P4-187a « gymnase depuis le libellé », backend seul —
-`documentation-update`). Re-confronté au code : `FfbbRencontreReconciler::apply` appelle désormais
-aussi `FbiFixtureImporter::attachConfirmedVenue` (`FfbbRencontreReconciler.php:139` création,
-`:263` mise à jour) — un domicile encore sans salle dont le libellé égale un alias CONFIRMÉ
-(`Venue.externalLabels`) reçoit son `venueId` à l'apply, sans jamais être placé ✓. Reste non
-re-sondé cette passe : hosts en constantes dures, routes engagements/salles, filtre strict
-`searchRencontres` — voir stamp précédent (`git log -p --follow` ce fichier).
+Last verified @ 2026-09-10 (P4-194 + P4-195, `documentation-update`) : § « Réconciliation FBI, canal API »
+étendu à la création de compétition depuis le libellé fédéral et à la règle de l'amical
+(`FfbbRencontreReconciler::resolveOrCreateCompetition`, `isFriendlyLabel`) ; § Engagements recalé sur
+l'inférence de type et l'absence de journées attendues d'une coupe (`FfbbEngagementsController`,
+`inferCompetitionType`). Hosts SSRF et routes re-confrontés au code, inchangés.
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit rester dans la **liste blanche de hosts** du client (SSRF, A12). Vérifié le 2026-07-10 sur le code réel `ARA0069036` (BCCL).
 
@@ -118,6 +116,17 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   l'import xlsx (`reviewState`/`pendingDeviations` sur `Fixture`, `processPerimeterFields`/
   `reconcileNoDivergence`) et applique **D9** — un domicile `PLACED`/`SUBMITTED` que l'API renvoie
   identique sur date + heure + salle passe `VALIDATED` + traité, exactement comme un dépôt xlsx.
+  **P4-194 (2026-09-10)** : `apply` **résout ou crée la compétition** d'une rencontre dont la
+  compétition fédérale n'est appariée à aucune équipe — `Competition` de type `CUP`, nommée d'après le
+  libellé fédéral (clampé à la longueur de colonne), rattachée à l'équipe visée, portant
+  `ffbbCompetitionId`, sans `expectedMatchdays`. Idempotence : couple (réf FFBB, équipe) + carte du run
+  (deux rencontres d'une même coupe → UNE compétition), repli (équipe, nom exact) pour ré-adopter une
+  compétition dont un réappariement a effacé les refs — jamais si elle porte déjà une AUTRE réf.
+  **L'amical se reconnaît au LIBELLÉ** (premier token normalisé « amical » : « AMICAL PNM », repli
+  « Amical » du lecteur), jamais à l'absence d'appariement : un amical porte lui aussi une réf de
+  compétition (`FfbbHttpClientStub`, cas mesuré). Rattachage rétroactif : un ré-`apply` pose la
+  compétition manquante sur une rencontre déjà créée — et rien d'autre (ni statut, ni date, ni état de
+  traitement). Ambiguïté (deux équipes du club dans la même coupe) : l'équipe n'est plus suggérée.
 - **P4-187a (2026-09-09)** : `apply` pose aussi `venueId` par ALIAS CONFIRMÉ
   (`FbiFixtureImporter::attachConfirmedVenue`, foyer partagé avec l'import xlsx) sur un domicile
   encore sans salle dont le libellé FBI/FFBB égale un alias que le gestionnaire a rattaché à un
@@ -148,7 +157,11 @@ Deux appels de plus, mêmes hosts, même confinement SSRF (`FfbbApiClient`) — 
 - `searchCompetitionsByCode(code, saison)` — index `ffbbserver_competitions`. ⚠ `id` n'est pas filtrable ;
   `code` (« PRM », national — 27 hits) et `saison.code` le sont. L'appelant discrimine ensuite par `id`
   (porté par `engagement.idCompetition.id`). `poules[].engagements[].nom` = **la liste exacte des clubs
-  d'une poule** (le garde-fou d'import) ; taille de poule → `expectedMatchdays = 2×(N−1)`.
+  d'une poule** (le garde-fou d'import) ; taille de poule → `expectedMatchdays = 2×(N−1)` — **sauf sur une
+  COUPE** (P4-195, 2026-09-10) : le type se déduit du nom (« coupe » → `CUP`, avant « brassage ») et une
+  coupe se joue par tours, donc `expectedMatchdays` reste **null** (l'alerte « calendrier incomplet » se
+  tait, l'écran affiche « N journées importées » sans dénominateur). Un réappariement **répare** une
+  compétition stockée `CHAMPIONSHIP` dont le nom infère une coupe.
 
 La jointure complète vit dans `FfbbEngagementReader` (filtre saison via `FfbbSeasonCode` — « 26-27 » ↔
 `SeasonResolver::seasonYear` 2026 — et réparation du double encodage UTF-8 des libellés, mesuré :

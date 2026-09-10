@@ -61,14 +61,16 @@ export function phaseFixtures(fixtures: Fixture[], competitionId: string): Array
 /**
  * Complétude d'une phase : le conflit serveur `COMPETITION_INCOMPLETE` de cette
  * compétition s'il existe (`imported`/`expected`), sinon un comptage de PRÉSENTATION
- * `count(fixtures) / expectedMatchdays`.
+ * `count(fixtures) / expectedMatchdays`. `expected` vaut `null` quand la compétition
+ * n'attend aucun nombre de journées (une COUPE, P4-195 : `expectedMatchdays` null et
+ * aucun conflit serveur) — l'appelant rend alors le compte SANS dénominateur.
  */
-export function phaseCompleteness(competition: Competition, fixtures: Fixture[], conflicts: Conflict[]): { imported: number; expected: number } {
+export function phaseCompleteness(competition: Competition, fixtures: Fixture[], conflicts: Conflict[]): { imported: number; expected: number | null } {
   const incomplete = conflicts.find((c) => "COMPETITION_INCOMPLETE" === c.type && c.competitionId === competition.id);
   if (undefined !== incomplete && undefined !== incomplete.imported && undefined !== incomplete.expected) {
     return { imported: incomplete.imported, expected: incomplete.expected };
   }
-  return { imported: fixtures.length, expected: competition.expectedMatchdays ?? 0 };
+  return { imported: fixtures.length, expected: competition.expectedMatchdays ?? null };
 }
 
 /**

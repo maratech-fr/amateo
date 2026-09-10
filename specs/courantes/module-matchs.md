@@ -1,15 +1,24 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-10 (P4-193, `documentation-update`). **Un amical n'est plus proposé au solveur**
-(décision fondateur 2026-09-10) : `MatchPlacementPayloadBuilder::matchRow` (`MatchPlacementPayloadBuilder.php:247-266`,
-lu) écarte toute `Fixture` `competitionId` null du `kind: TO_PLACE` — placée+ancrée → `FIXED` (gymnase protégé,
-legacy PLACED+SOLVER compris), sinon absente du payload. **Le contrat reste 2.20, `engine/` n'est pas touché**
-(pas de champ `friendly`, pas de bump). Nouvelle famille `FRIENDLY_ON_MATCH_SLOT` (sévérité 5) dans
-`MatchConflictDetector::friendlyOnMatchSlotConflicts` (`MatchConflictDetector.php:223+`, lu) — alerte, jamais
-un blocage. `lib/matchAccess.ts::venueAccessError` (lu) rend `{level, message}` : gymnase indisponible reste
-`error` pour tous, hors-créneau devient `warning` pour un amical, `error` pour une compétition. § « Détection —
-`MatchConflictDetector` » (P4-188/189/191) et reste du fichier (Espace Importer, canal API, réconciliation,
-Configuration, P4-185/187) non re-sondés cette passe — voir `git log -p --follow` pour leur dernière vérification.
+Last verified @ 2026-09-10 (P4-194 + P4-195, `documentation-update`). **Une rencontre de coupe non
+appariée n'est plus un amical** : `FfbbRencontreReconciler::resolveOrCreateCompetition`
+(`FfbbRencontreReconciler.php:441-506`, lu) fait naître — ou réutilise — une `Competition` `CUP`
+rattachée à l'équipe visée dès que le libellé fédéral normalisé ne porte pas le token `amical` (§
+« Le canal API FFBB » ci-dessous) ; « non apparié » n'a plus rien à voir avec « amical ». **Une
+coupe n'attend aucune journée** : `FfbbEngagementsController::inferCompetitionType`/`confirm`
+(`FfbbEngagementsController.php:180-192,221-270`, lu) infère le type depuis le nom (« coupe » testé AVANT «
+brassage ») et pose `expectedMatchdays` null pour une `CUP` — `MatchConflictDetector::competitionIncompleteItems`
+(`MatchConflictDetector.php:359-373`, lu) était déjà muet sur un `expected` null, comportement
+inchangé, seul l'appariement change ce qu'il pose. Reste inchangé depuis la passe précédente :
+**un amical n'est plus proposé au solveur** (décision fondateur 2026-09-10, P4-193) —
+`MatchPlacementPayloadBuilder::matchRow` (`MatchPlacementPayloadBuilder.php:247-266`) écarte toute
+`Fixture` `competitionId` null du `kind: TO_PLACE` (placée+ancrée → `FIXED`, sinon absente du
+payload), **le contrat reste 2.20**, et `FRIENDLY_ON_MATCH_SLOT` (sévérité 5,
+`MatchConflictDetector::friendlyOnMatchSlotConflicts`) alerte sans jamais bloquer — une coupe,
+elle, porte de nouveau un `competitionId` réel et n'est plus concernée par cette liberté. § «
+Détection — `MatchConflictDetector` » (P4-188/189/191), § « Espace Importer » et § «
+Configuration » (P4-185/187) non re-sondés cette passe — voir `git log -p --follow` pour leur
+dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -174,7 +183,12 @@ amical ne suit plus non plus les fenêtres/week-ends de match — ni le solveur 
 ci-dessous, qui ne le reçoit plus jamais), ni la garde de placement manuel (§ « Couche capacité », qui ne fait
 plus qu'avertir). La seule famille qui le concerne désormais est `FRIENDLY_ON_MATCH_SLOT` (§ « Diagnostic
 gradué » ci-dessous) — une alerte, jamais un blocage ; il reste par ailleurs soumis aux autres familles
-(collision de gymnase, coach en double, etc.) comme n'importe quelle rencontre.
+(collision de gymnase, coach en double, etc.) comme n'importe quelle rencontre. **Depuis P4-194**
+(2026-09-10, § « Le canal API FFBB » plus bas), `competitionId` null veut vraiment dire « amical » —
+le libellé fédéral tranche à l'intégration, plus l'absence d'appariement : une rencontre de coupe
+porte désormais une vraie `Competition` `CUP` et redevient un match à part entière ici — soumise
+à `leagueWindowViolations`, exclue de `friendlyOnMatchSlotConflicts`, de nouveau bloquée par la
+garde de placement manuel hors créneau (§ « Couche capacité »).
 
 ### Endpoint — `GET /api/fixtures/conflicts`
 
@@ -781,11 +795,22 @@ SOFT « repos après jour de match »).
   ligue — un écart se corrige auprès d'elle. »
 - **Le confirm écrit sur la `Competition` de l'équipe** (réutilisée par nom canonique, sinon créée) :
   `ffbbCompetitionId`/`ffbbPouleId`/`ffbbPouleName`/`ffbbCompetitionName`, **`expectedMatchdays` =
-  2×(N−1) figé à l'appariement**, et **`ffbbPouleOpponents`** (la liste des clubs de la poule, copiée —
-  le garde-fou d'import restera hors-réseau, PR F2). Taille et adversaires viennent d'un **re-fetch
-  serveur** — un client forgé ne peut pas éteindre la complétude. Un engagement = une équipe : ré-apparier
-  ailleurs efface les réfs de l'ancienne ligne (ses fixtures survivent). Champs exposés en LECTURE sur
-  `CompetitionResource`, jamais écrits par le CRUD.
+  2×(N−1) figé à l'appariement, `null` pour une COUPE (P4-195, ci-dessous)**, et
+  **`ffbbPouleOpponents`** (la liste des clubs de la poule, copiée — le garde-fou d'import restera
+  hors-réseau, PR F2). Taille et adversaires viennent d'un **re-fetch serveur** — un client forgé ne
+  peut pas éteindre la complétude. Un engagement = une équipe : ré-apparier ailleurs efface les réfs
+  de l'ancienne ligne (ses fixtures survivent). Champs exposés en LECTURE sur `CompetitionResource`,
+  jamais écrits par le CRUD.
+- **Type inféré du nom fédéral (P4-195, 2026-09-10)** : `FfbbEngagementsController::inferCompetitionType`
+  cherche « coupe » AVANT « brassage » dans le nom canonique normalisé (« coupe » → `CUP`, «
+  brassage » → `BRASSAGE`, ni l'un ni l'autre → `null`) ; sur une CRÉATION, `null` retombe sur
+  `CHAMPIONSHIP` (défaut historique inchangé). **Sur une compétition RÉUTILISÉE** (même équipe, même
+  nom canonique ou nom normalisé égal), une inférence POSITIVE **repose** le type stocké — répare
+  une compétition mal typée par un appariement antérieur (mesuré : la Coupe du Rhône réelle stockée
+  `CHAMPIONSHIP`, « 1 / 68 journées ») — un type posé à la main via le CRUD sur un nom qui n'infère
+  RIEN (`null`) reste intact, jamais écrasé. **Une `CUP` n'attend aucune journée** :
+  `expectedMatchdays` posé `null` (jamais `2×(N−1)`) quand le type EFFECTIF après inférence est
+  `CUP` — `COMPETITION_INCOMPLETE` reste muet dessus (§ « Complétude » ci-dessous).
 - **Garde-fou poule (PR F2, 6.1)** : à l'analyze ET à l'import, pour une division résolue vers une
   compétition APPARIÉE, les adversaires DISTINCTS du fichier sont confrontés à la liste des clubs de
   la poule (containment mot-entier normalisé, l'idiome `containsClub` — « FIRMINY … - 1 » matche le
@@ -796,7 +821,9 @@ SOFT « repos après jour de match »).
 - **Complétude (PR F2, 6.2)** : au rapport d'import (« 9/22 journées — fichier partiel ou phase pas
   encore sortie », compté sur les `Fixture` PERSISTÉS) ET en **sévérité 6** du diagnostic
   (`COMPETITION_INCOMPLETE`, groupe « Calendriers incomplets » replié) — seules les compétitions à
-  `expectedMatchdays` sont jugées.
+  `expectedMatchdays` sont jugées ; **une `CUP` n'en a jamais depuis P4-195** (elle se joue par
+  tours éliminatoires, pas par journées) et ne lève donc jamais ce conflit
+  (`MatchConflictDetector::competitionIncompleteItems` saute tout `expected` null).
 - **Pré-remplissage de l'analyze (PR F2, 6.3)** : division NON mappée dont le libellé égale (normalisé)
   le **nom canonique FFBB** d'une compétition appariée → `suggestedTeamId` + `suggestedCompetitionId`
   (badge « proposé par la FFBB ») — une suggestion, jamais une résolution ; **jamais pour une division
@@ -1052,12 +1079,12 @@ Importer · Configuration** ; l'onglet Importer a livré sa page en PR-3b, déta
 - **Filtre PR-1 partagé** avec Semaine (même `filterMode/filterIds`, même URL `?vue=&filtre=`) : « Thomas » suit le
   gestionnaire d'un onglet à l'autre.
 - **Type de compétition** (chips multi, défaut tout) : amical = `competitionId` null ; championnat / coupe / brassage =
-  `Competition.competitionType`. ⚠ Une rencontre FFBB d'une compétition non appariée (coupes jeunes…) arrive sans
-  `competitionId` et se range donc sous « Amical » — roadmap P4-194. **Effet de bord depuis P4-193** : cette
-  rencontre profite ALORS À TORT de la liberté de placement de l'amical (solveur qui l'ignore, garde de
-  placement en simple avertissement) tant que P4-194 n'est pas soldée. Un conflit suit ses rencontres
-  référencées ; un calendrier incomplet suit sa compétition ; un conflit sans rencontre ni compétition reste
-  visible tant que « tout » est coché.
+  `Competition.competitionType`. **Depuis P4-194 (2026-09-10)** une rencontre de coupe non appariée
+  n'arrive plus sans `competitionId` — le canal API lui fait naître ou réutiliser une `Competition`
+  `CUP` à l'intégration (§ « Le canal API FFBB » du présent fichier) — elle se range désormais sous
+  « Coupe », plus sous « Amical », et redevient soumise aux fenêtres ligue et au blocage de
+  placement hors créneau. Un conflit suit ses rencontres référencées ; un calendrier incomplet suit
+  sa compétition ; un conflit sans rencontre ni compétition reste visible tant que « tout » est coché.
 - **Semaine type** (interrupteur, affichée par défaut) : la grille avec ou sans les cases « Habitude … ».
 - **Familles de conflits** (chips avec compteur, défaut tout coché) — les 10 `ConflictType`, libellés en table
   (`lib/conflictLabels.ts`) : collision de gymnase, hors fenêtre ligue, coach en double, match × entraînement,
@@ -1077,9 +1104,13 @@ Importer · Configuration** ; l'onglet Importer a livré sa page en PR-3b, déta
     dernier), table groupée par jour (`lib/monthView.ts`), compteurs de familles sur le mois, empty state « Aucun
     match pour {libellé} en {mois} ».
   - **Phase** = une compétition FFBB appariée (`Competition`) : `<select>` natif, en-tête « {importées} / {attendues}
-    journées » (⚠ sur une coupe le dénominateur 2×(N−1) n'a pas de sens — roadmap P4-195) (le conflit `COMPETITION_INCOMPLETE` de la compétition s'il existe, sinon `count/expectedMatchdays` —
-    comptage de présentation), journées groupées par week-end (`lib/phaseView.ts`), empty state « Aucune compétition
-    appariée » → Engagements FFBB.
+    journées » — le conflit `COMPETITION_INCOMPLETE` de la compétition s'il existe, sinon
+    `count/expectedMatchdays` (comptage de présentation). **Depuis P4-195 (2026-09-10)** :
+    `phaseCompleteness` (`lib/phaseView.ts`) rend `expected: null` pour une `CUP`
+    (`expectedMatchdays` null, aucune journée attendue), et l'en-tête bascule sans dénominateur —
+    « N journée(s) importée(s) » — plutôt que d'afficher un `2×(N−1)` sans le sens qu'il porte pour
+    un championnat. Journées groupées par week-end, empty state « Aucune compétition appariée » →
+    Engagements FFBB.
   - **Ligne de match** (`MatchRowsTable.tsx`, primitive partagée `table.tsx` née ici) : date + heure ou « heure non
     publiée », équipe (+ rôle en vue coach), dom./ext., adversaire, gymnase résolu sinon `fbiVenueLabel` « non
     rattaché », statut, une pastille par famille de conflit présente ; clic → Placer sur le week-end du match.
@@ -1333,16 +1364,42 @@ future.
   un hit « AMICAL PNM » ne concernant pas le club).
 - **Appariement 3 étages, plus un tier-0 d'idempotence** (`FfbbRencontreReconciler::matchRow`) :
   0. une fixture portant déjà l'id national de la rencontre (`Fixture.ffbbRencontreId`) — une
-     re-vérification ne re-propose jamais un match déjà créé ; 1. la compétition APPARIÉE résout
-     l'équipe (une compétition non appariée = un amical → équipe non résolue → proposée à la
-     création) ; 2. parmi les fixtures de cette équipe, une date EXACTE ; 3. à défaut, un
-     adversaire normalisé (rattrape une date déplacée). Les écarts détectés sur un match APPARIÉ
-     réutilisent VERBATIM `FbiFixtureImporter::detectFieldDeviations`/`groupDeviations` — même
-     périmètre (domiciles déjà placés), mêmes trois champs, même moteur de décision que le xlsx,
-     jamais une seconde copie.
+     re-vérification ne re-propose jamais un match déjà créé ; 1. une compétition APPARIÉE portant
+     ce `competitionFfbbId` pour **une SEULE équipe** suggère cette équipe — zéro compétition
+     (amical / réf inconnue) ou **≥ 2** (deux équipes du club engagées sur la même coupe, P4-194
+     R4) ne suggèrent RIEN, la ligne reste créable au choix manuel ; 2. parmi les fixtures de cette
+     équipe, une date EXACTE ; 3. à défaut, un adversaire normalisé (rattrape une date déplacée).
+     **« Non apparié » ne veut plus dire « amical » depuis P4-194** (ci-dessous) — c'est le
+     libellé fédéral qui tranche, jamais l'état d'appariement. Les écarts détectés sur un match
+     résolu réutilisent VERBATIM `FbiFixtureImporter::detectFieldDeviations`/`groupDeviations` —
+     même périmètre (domiciles déjà placés), mêmes trois champs, même moteur de décision que le
+     xlsx, jamais une seconde copie.
+- **Une coupe non appariée devient une vraie `Competition` (P4-194, 2026-09-10)** : le libellé
+  fédéral normalisé tranche — le token EXACT `amical` (« AMICAL PNM/PNF/RM3 », fallback `Amical`
+  du lecteur) laisse `Fixture.competitionId` null (amical, contrat `Fixture` inchangé) ; tout
+  autre libellé PORTANT un `competitionFfbbId` fait naître ou réutiliser une `Competition` `CUP`
+  **pour l'équipe visée** (`FfbbRencontreReconciler::resolveOrCreateCompetition` — nom clampé à
+  180, `ffbbCompetitionId` posé, **jamais** de poule/adversaires/journées attendues : ceux-là
+  restent la main de l'appariement confirmé, § « Appariement FFBB » plus haut). ⚠ **Un amical réel
+  PORTE lui aussi une réf de compétition fédérale** — « non apparié » ne suffit jamais à conclure
+  « amical », seul le libellé le dit.
+  - **Idempotence à trois niveaux** : (1) la carte du run (`createdByKey`, clé `ffbbId|teamId`) —
+    deux rencontres de la MÊME coupe dans le même appel partagent UNE compétition ; (2) le lookup
+    base par (ffbbId, équipe) — un ré-`apply` réutilise la compétition déjà posée ; (3) un repli
+    (équipe, nom EXACT) qui **ré-adopte** une compétition dont un réappariement a effacé les réfs
+    FFBB (sinon `uniq_competition_team_name` sauterait à la re-création).
+  - **Rattachage rétroactif** : à chaque `apply`, une fixture DÉJÀ créée mais encore sans
+    compétition reçoit la compétition résolue-ou-créée pour son équipe si sa row est une coupe —
+    RIEN d'autre n'est touché (ni statut, ni date, ni traitement de la rencontre).
+  - **Conséquence** : une coupe redevient un vrai match — elle entre dans le rail `TO_PLACE` du
+    solveur (§ « Solveur de placement »), elle est soumise aux fenêtres ligue (une
+    `LEAGUE_WINDOW_VIOLATION` devient possible là où rien n'était vérifié avant), elle quitte la
+    chip « Amical » de Consulter pour « Coupe », son placement manuel hors créneau redevient
+    bloquant (`error`, plus un simple `warning` amical), et elle perd `FRIENDLY_ON_MATCH_SLOT`.
 - **Les créations proposées, jamais imposées** — la valeur ajoutée réelle de ce canal : les
-  rencontres publiées sans fixture correspondante (mesuré sur un vrai club : uniquement des
-  AMICAUX, zéro championnat — le calendrier officiel continue de passer par FBI). Chaque ligne
+  rencontres publiées sans fixture correspondante (mesuré sur un vrai club au 2026-08-24 :
+  uniquement des AMICAUX, zéro championnat — le calendrier officiel continue de passer par FBI ;
+  mesure antérieure à P4-194, des coupes y figurent aussi désormais — § ci-dessus). Chaque ligne
   « Présents à la FFBB, absents de l'app » porte un `TeamSelect` — la compétition appariée
   pré-remplit une suggestion, **rien n'est créé pour une ligne dont le select reste vide** («
   Ne pas créer »). Un match AWAY créé depuis ce canal reste purement INFORMATIF (aucune salle
@@ -1367,8 +1424,13 @@ future.
   dépasse 64 caractères est ÉCARTÉE (une clé d'idempotence ne se tronque jamais), plutôt que de
   faire échouer l'apply entier en 502 au flush.
 - **Back** — tests : `FfbbRencontresApiTest.php` (les deux routes, gardes SEC-07/socle/tenant,
-  re-fetch serveur, 409 doublon), `FfbbRencontreReaderTest.php` (mapping, filtre saison, clamp),
-  `FfbbApiClientTest.php` (filtre strict serveur).
+  re-fetch serveur, 409 doublon ; **+P4-194** : création CUP depuis une rencontre non appariée,
+  idempotence run+base, rattachage rétroactif, ambiguïté deux équipes — double `FfbbHttpClientStub`),
+  `FfbbRencontreReaderTest.php` (mapping, filtre saison, clamp), `FfbbApiClientTest.php` (filtre
+  strict serveur), `FfbbPairingAuthorizationTest.php` (**+P4-195** : inférence de type à l'appariement,
+  réparation du type stocké au réappariement), `MatchConflictDetectorTest.php` (**+P4-195** : une
+  CUP à `expectedMatchdays` null ne lève jamais `COMPETITION_INCOMPLETE` même avec des rencontres
+  importées).
 
 ## Espace Importer — workflow de traitement (PR-3a backend + PR-3b frontend, 2026-09-08 — LIVRÉ EN ENTIER)
 

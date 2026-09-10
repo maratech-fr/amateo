@@ -28,7 +28,15 @@ vi.mock("./api", () => ({
       { id: "fx-home-w2", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-10-10", homeAway: "HOME", opponentLabel: "Lointains", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: null, fbiVenueLabel: null, placementSource: "MANUAL", unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, suggestedVenueId: null },
     ]),
   ),
-  getCompetitions: vi.fn(() => Promise.resolve([{ id: "comp-coupe", teamId: "team-2", name: "Coupe AURA", competitionType: "CUP", ffbbCompetitionId: "ffbb-1", expectedMatchdays: 8 }])),
+  getCompetitions: vi.fn(() =>
+    Promise.resolve([
+      // Une coupe : expectedMatchdays null (P4-195) → complétude SANS dénominateur.
+      { id: "comp-coupe", teamId: "team-2", name: "Coupe AURA", competitionType: "CUP", ffbbCompetitionId: "ffbb-1", expectedMatchdays: null },
+      // Un championnat (nom qui trie APRÈS « Coupe » → la coupe reste la phase par
+      // défaut) : expectedMatchdays 10 → complétude AVEC dénominateur, inchangée.
+      { id: "comp-champ", teamId: "team-1", name: "Nationale 3", competitionType: "CHAMPIONSHIP", ffbbCompetitionId: "ffbb-2", expectedMatchdays: 10 },
+    ]),
+  ),
   getTeams: vi.fn(() =>
     Promise.resolve([
       { id: "team-1", name: "U13", sportCategoryId: "cat-1", level: null, gender: null, priorityTierId: 3, tierOrder: 0 },
@@ -177,19 +185,24 @@ describe("ConsultPage (PR-2b — temporalités Mois et Phase)", () => {
     expect(screen.queryByRole("switch", { name: /Semaine type/ })).not.toBeInTheDocument();
   });
 
-  it("bascule Phase : sélecteur natif + complétude + journées de la compétition appariée", async () => {
+  it("bascule Phase : coupe = compte SANS dénominateur (P4-195), championnat = AVEC dénominateur", async () => {
     const user = userEvent.setup();
     renderConsult();
     await user.click(await screen.findByRole("button", { name: "Phase" }));
 
-    // Sélecteur natif des compétitions appariées (Coupe AURA — Seniors).
+    // Sélecteur natif des compétitions appariées ; la coupe est la phase par défaut.
     const select = await screen.findByRole("combobox", { name: /Phase|compétition/i });
     expect(select).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /Coupe AURA — Seniors/ })).toBeInTheDocument();
-    // Complétude : 1 rencontre importée / 8 journées attendues.
-    expect(screen.getByText(/1\s*\/\s*8\s+journées importées/)).toBeInTheDocument();
-    // La rencontre de la phase (Rivaux, comp-coupe) dans la table.
+    // Coupe (expectedMatchdays null) : « 1 journée importée », SANS « / N ».
+    expect(screen.getByText(/^\s*1 journée importée\s*$/)).toBeInTheDocument();
+    expect(screen.queryByText(/journées importées/)).not.toBeInTheDocument();
+    // La rencontre de la phase coupe (Rivaux, comp-coupe) dans la table.
     expect(screen.getByText("Rivaux")).toBeInTheDocument();
+
+    // Bascule sur le championnat (expectedMatchdays 10) : rendu AVEC dénominateur.
+    await user.selectOptions(select, "comp-champ");
+    expect(await screen.findByText(/0\s*\/\s*10\s+journées importées/)).toBeInTheDocument();
   });
 
   it("cliquer une ligne de la table (Mois) renvoie vers Placer sur son week-end", async () => {

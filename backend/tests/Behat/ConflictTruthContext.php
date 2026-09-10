@@ -32,6 +32,9 @@ final class ConflictTruthContext extends BaseContext
 {
     private const string USER_EMAIL = 'mara.mb@bccl.fr';
 
+    /** Catégorie DISTINCTIVE (aucune vraie équipe ne la porte → zéro collision d'enveloppe). */
+    private const string CUP_CATEGORY_NAME = 'BEHAT Coupe P4-194';
+
     private string $token = '';
 
     private string $clubId = '';
@@ -63,6 +66,16 @@ final class ConflictTruthContext extends BaseContext
     private string $championshipFixtureId = '';
 
     private string $friendlyId = '';
+
+    private string $cupCategoryId = '';
+
+    private string $cupWindowId = '';
+
+    private string $cupCompetitionId = '';
+
+    private string $cupFixtureId = '';
+
+    private string $cupSaturday = '';
 
     /** @var list<mixed> Conflits rendus par GET /api/fixtures/conflicts. */
     private array $conflicts = [];
@@ -261,6 +274,79 @@ final class ConflictTruthContext extends BaseContext
         }
     }
 
+    #[Given('une fenêtre de ligue étroite le samedi matin cadre cette équipe')]
+    public function uneFenetreDeLigueEtroiteLeSamedi(): void
+    {
+        // Isolation TOTALE : une catégorie DISTINCTIVE réaffectée à l'équipe jetable
+        // (aucune vraie équipe ne la porte → zéro collision d'enveloppe) + un niveau
+        // connu ; la fenêtre de ligue est seedée sous la ligue EFFECTIVE du club
+        // (patron LeagueMatchWindowRepository::effectiveLeague), samedi 10:00-10:30.
+        // Purge d'un éventuel orphelin d'un run tué (catégorie distinctive → sûr).
+        $this->dbalExec(\sprintf('DELETE FROM league_match_window WHERE category=\'%s\'', self::CUP_CATEGORY_NAME), admin: true);
+
+        $sportId = $this->dbalScalar(
+            \sprintf('SELECT sport_id AS behatval FROM sport_category WHERE id=(SELECT sport_category_id FROM team WHERE id=\'%s\')', $this->teamId),
+            admin: true,
+        );
+        if ('' === $sportId) {
+            throw new RuntimeException('le sport de la catégorie de l\'équipe jetable est introuvable');
+        }
+        $this->cupCategoryId = $this->dbalScalar('SELECT gen_random_uuid()::text AS behatval', admin: true);
+        $this->dbalExec(\sprintf(
+            'INSERT INTO sport_category (id, version, created_at, updated_at, club_id, sport_id, name, is_custom, sort_order)'
+            . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'%s\', true, 0)',
+            $this->cupCategoryId,
+            $this->clubId,
+            $sportId,
+            self::CUP_CATEGORY_NAME,
+        ), admin: true);
+        // L'équipe porte cette catégorie distinctive + un niveau REGIONAL connu.
+        $this->dbalExec(\sprintf('UPDATE team SET sport_category_id=\'%s\', level=\'REGIONAL\' WHERE id=\'%s\'', $this->cupCategoryId, $this->teamId), admin: true);
+
+        // Ligue effective (miroir de LeagueMatchWindowRepository::effectiveLeague).
+        $clubLeague = $this->dbalScalar(\sprintf('SELECT COALESCE(league, \'\') AS behatval FROM club WHERE id=\'%s\'', $this->clubId), admin: true);
+        $hasWindows = '' !== $this->dbalScalar(\sprintf('SELECT id AS behatval FROM league_match_window WHERE league=\'%s\' LIMIT 1', $clubLeague), admin: true);
+        $effectiveLeague = ('' !== $clubLeague && $hasWindows) ? $clubLeague : 'AURA';
+
+        // Fenêtre étroite : samedi (ISO 6) 10:00-10:30 — un coup d'envoi le soir sera
+        // hors fenêtre. Genre NULL = catalogue-large → cadre l'équipe quel que soit
+        // son genre. Niveau REGIONAL = celui de l'équipe.
+        $this->cupWindowId = $this->dbalScalar('SELECT gen_random_uuid()::text AS behatval', admin: true);
+        $this->dbalExec(\sprintf(
+            'INSERT INTO league_match_window (id, created_at, league, category, level, gender, day_of_week, kickoff_min, kickoff_max)'
+            . ' VALUES (\'%s\', now(), \'%s\', \'%s\', \'REGIONAL\', NULL, 6, \'10:00\', \'10:30\')',
+            $this->cupWindowId,
+            $effectiveLeague,
+            self::CUP_CATEGORY_NAME,
+        ), admin: true);
+
+        $this->cupSaturday = '2027-01-16';
+    }
+
+    #[Given('une rencontre de coupe à domicile ce samedi, coup d\'envoi le soir hors de la fenêtre')]
+    public function uneRencontreDeCoupeADomicileHorsFenetre(): void
+    {
+        // Une COUPE (competitionType CUP) → la rencontre PORTE une compétition, elle
+        // n'est jamais un amical (competitionId non null).
+        $this->cupCompetitionId = $this->idOf(
+            $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => 'Coupe du Rhône (vérité conflits)', 'competitionType' => 'CUP'], $this->token),
+            'compétition coupe',
+        );
+        // Coup d'envoi 18:00 le samedi → hors de la fenêtre 10:00-10:30 : violation
+        // de ligue (HOME + coup d'envoi suffisent au détecteur, sans placement).
+        $this->cupFixtureId = $this->idOf(
+            $this->apiPost('fixtures', [
+                'teamId' => $this->teamId,
+                'matchDate' => $this->cupSaturday,
+                'homeAway' => 'HOME',
+                'opponentLabel' => 'Adversaire coupe',
+                'competitionId' => $this->cupCompetitionId,
+                'kickoffTime' => '18:00',
+            ], $this->token),
+            'rencontre de coupe',
+        );
+    }
+
     #[When('je demande les conflits des matchs')]
     public function jeDemandeLesConflits(): void
     {
@@ -326,6 +412,36 @@ final class ConflictTruthContext extends BaseContext
         }
     }
 
+    #[Then('le radar signale la coupe hors fenêtre de ligue, et jamais comme un amical sur créneau')]
+    public function leRadarSignaleLaCoupeHorsFenetre(): void
+    {
+        $leagueViolation = null;
+        $friendlyOnCup = null;
+        foreach ($this->conflicts as $conflict) {
+            if (!\is_array($conflict)) {
+                continue;
+            }
+            $fixtureBlock = $conflict['fixture'] ?? null;
+            $fixtureId = \is_array($fixtureBlock) ? ($fixtureBlock['fixtureId'] ?? null) : null;
+            if ($fixtureId !== $this->cupFixtureId) {
+                continue;
+            }
+            if ('LEAGUE_WINDOW_VIOLATION' === ($conflict['type'] ?? null)) {
+                $leagueViolation = $conflict;
+            }
+            if ('FRIENDLY_ON_MATCH_SLOT' === ($conflict['type'] ?? null)) {
+                $friendlyOnCup = $conflict;
+            }
+        }
+
+        if (null === $leagueViolation) {
+            throw new RuntimeException('aucune violation de fenêtre de ligue ne porte la coupe — elle n\'a pas été soumise à l\'enveloppe (traitée en amical ?)');
+        }
+        if (null !== $friendlyOnCup) {
+            throw new RuntimeException('la coupe est signalée FRIENDLY_ON_MATCH_SLOT — une coupe est un VRAI match, jamais un amical');
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
@@ -333,13 +449,15 @@ final class ConflictTruthContext extends BaseContext
             return;
         }
 
-        foreach ([$this->fixtureId, $this->friendlyId, $this->championshipFixtureId] as $id) {
+        foreach ([$this->fixtureId, $this->friendlyId, $this->championshipFixtureId, $this->cupFixtureId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
         }
-        if ('' !== $this->competitionId) {
-            $this->apiDelete(\sprintf('competitions/%s', $this->competitionId), $this->token);
+        foreach ([$this->competitionId, $this->cupCompetitionId] as $id) {
+            if ('' !== $id) {
+                $this->apiDelete(\sprintf('competitions/%s', $id), $this->token);
+            }
         }
         if ('' !== $this->teamCoachId) {
             $this->apiDelete(\sprintf('team_coaches/%s', $this->teamCoachId), $this->token);
@@ -362,6 +480,14 @@ final class ConflictTruthContext extends BaseContext
         }
         if ('' !== $this->venueId) {
             $this->apiDelete(\sprintf('venues/%s', $this->venueId), $this->token);
+        }
+
+        // Décor P4-194 : la fenêtre de ligue seedée (globale, par catégorie
+        // DISTINCTIVE → sûr) et la catégorie jetable (après la suppression de
+        // l'équipe qui la référençait).
+        $this->dbalExec(\sprintf('DELETE FROM league_match_window WHERE category=\'%s\'', self::CUP_CATEGORY_NAME), admin: true);
+        if ('' !== $this->cupCategoryId) {
+            $this->dbalExec(\sprintf('DELETE FROM sport_category WHERE id=\'%s\'', $this->cupCategoryId), admin: true);
         }
 
         // Le DELETE d'API d'une racine découpée peut être refusé sans lever ici : on

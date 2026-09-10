@@ -1,10 +1,10 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-10 (P4-193, `documentation-update`) : `ls backend/features/` toujours 19 fichiers
-(P4-193 ajoute des scénarios à deux features EXISTANTES, `placement-des-matchs.feature` et
-`les-conflits-d-un-match-disent-la-verite.feature` — aucune feature neuve, aucun compte à recaler) ; les
-deux lignes § Matchs enrichies du comportement amical (jamais proposé au solveur, alerte
-`FRIENDLY_ON_MATCH_SLOT`).
+Last verified @ 2026-09-10 (P4-194 + P4-195, `documentation-update`) : `ls backend/features/` toujours
+19 fichiers (P4-194/195 ajoutent un scénario coupe à une feature EXISTANTE,
+`les-conflits-d-un-match-disent-la-verite.feature` — aucune feature neuve, aucun compte à recaler) ; la
+ligne § Matchs de cette feature enrichie du scénario coupe (une coupe hors fenêtre de ligue est un vrai
+match, jamais un amical).
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
 > prouve**, **par quel job CI**, et **ce que personne ne prouve**. Il ne remplace ni
@@ -156,7 +156,7 @@ une feature par PR (`ls backend/features/` fait foi du compte) :
 | `placement-des-matchs.feature` | un match à domicile dans sa fenêtre d'accès est `PLACED`, un sans fenêtre reste `UNPLACED` avec la raison nommée `no_access_window` (remplace `smoke-place-matches.sh`) ; **depuis P4-193 (2026-09-10)** : un amical déposé sans créneau n'est jamais proposé au solveur (reste sans créneau après `/place`) et se place ensuite à la main hors de la fenêtre d'accès match, sans être refusé |
 | `une-rencontre-importee-dit-si-elle-est-traitee.feature` (PR-3a, 2026-09-08) | du premier dépôt au traitement : une rencontre importée est « à traiter », placer la traite, un re-dépôt identique la fait passer « attestée FBI » (D9 — le pas Gherkin vérifie `status === VALIDATED`, libellé recalé P4-187a), un re-dépôt divergent la rend « déphasée » sans écraser la valeur app, trancher l'écart la replace « à replacer » et de nouveau traitée ; une rencontre absente d'un dépôt reste intouchée |
 | `un-domicile-importe-retrouve-son-gymnase.feature` (P4-187a, 2026-09-09) | un domicile déposé avec un libellé de salle inconnu n'a pas de gymnase ; rattacher le libellé au gymnase (`POST /api/venues/{id}/external-labels`) le lui donne sans le placer (reste UNPLACED) ; un re-dépôt au même libellé est rattaché d'office ; le gymnase fermé à la date du match fait naître le conflit « gymnase indisponible » |
-| `les-conflits-d-un-match-disent-la-verite.feature` (P4-188/189/191, 2026-09-09 ; +P4-193, 2026-09-10) | une fermeture racine découpée en milieu/fin dont l'enfant « milieu » pointe un entraînement remonte ce conflit `MATCH_TRAINING` (la période la plus ÉTROITE gagne, jamais un repli sur la racine sans plan) — la borne de début du conflit est l'heure murale du club, sans décalage horaire ; **depuis P4-193** : un amical placé le dimanche d'un week-end où le club joue une rencontre de championnat le samedi est signalé `FRIENDLY_ON_MATCH_SLOT` (raison week-end de match), jamais bloqué |
+| `les-conflits-d-un-match-disent-la-verite.feature` (P4-188/189/191, 2026-09-09 ; +P4-193 +P4-194/195, 2026-09-10) | une fermeture racine découpée en milieu/fin dont l'enfant « milieu » pointe un entraînement remonte ce conflit `MATCH_TRAINING` (la période la plus ÉTROITE gagne, jamais un repli sur la racine sans plan) — la borne de début du conflit est l'heure murale du club, sans décalage horaire ; **depuis P4-193** : un amical placé le dimanche d'un week-end où le club joue une rencontre de championnat le samedi est signalé `FRIENDLY_ON_MATCH_SLOT` (raison week-end de match), jamais bloqué ; **depuis P4-194/195** : une rencontre de coupe hors fenêtre de ligue lève `LEAGUE_WINDOW_VIOLATION` comme un championnat et n'est JAMAIS signalée `FRIENDLY_ON_MATCH_SLOT` — la coupe seede sa propre fenêtre de ligue dans la table GLOBALE `league_match_window` sous une catégorie jetable distinctive, nettoyée derrière elle |
 
 Côté frontend, PR-3b (2026-09-08, même jour) : **`tests/e2e/matches-importer.spec.ts`** — l'onglet
 Importer est atteint, son badge égale le compte serveur NEW+OUT_OF_SYNC (jamais `· 0`), la

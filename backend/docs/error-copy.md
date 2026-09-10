@@ -4,12 +4,10 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-09-06 (rotation `documentation-update`, PR P4-164 PR-1 — zone non touchée,
-contrôle de fraîcheur). Re-confronté au code : `status < 500` toujours à `errorMessage.ts:32` ✓ ·
-`new ValidationException(` toujours confiné à `AbstractStateProcessor.php` (grep `src/` : aucune
-autre occurrence) ✓ · `ValidationExceptionCarriesViolationsTest` (`tests/Unit/`) et
-`PublicTextIsFreeOfInternalIdentifiersTest` (`tests/OpenApi/`) existent sous ces noms ✓. Rien de
-faux trouvé.
+Last verified @ 2026-09-10 (rotation `documentation-update`, PR P4-194/P4-195 « coupes FFBB » — zone non
+touchée, contrôle de fraîcheur). Re-confronté au code : la règle « le corps du serveur ne parle qu'en
+deçà de 500 » tient toujours (`frontend/src/shared/lib/errorMessage.ts:32`, et le repli générique
+`:65` au-delà) ✓. Rien à corriger.
 
 ## La règle
 
