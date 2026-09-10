@@ -1,13 +1,14 @@
 # Guide de génération de planning — ClubScheduler
 
-Last verified @ 2026-09-06 (P2-61, `documentation-update` — § Injection du placement précédent recalé : le
-moteur pèse aussi la proximité en phase 1, l'émission backend est inchangée). Re-confronté au code :
-`CONTRACT_VERSION` toujours **2.20** (`ScheduleConstraintBuilder.php:64`) ✓ ; `resolvePreviousAssignmentSlots`
-(`GenerateScheduleHandler.php:389`, source explicite de même lignée puis repli dernière COMPLETED) ✓ ;
-`withPreviousAssignments` (`ScheduleConstraintBuilder.php:673`, greffé après le hash) ✓ ; `sourceScheduleId`
-posé par `RegenerateController` sur la version REGARDÉE ✓ ; `make seed-bccl` (`backend/Makefile:181-184`,
-`app:bccl:seed` create-only) ✓ ; les `container_name` `amateo-*` cités tiennent contre `docker-compose.yml` ✓.
-Reste non re-sondé cette passe : le corps du guide hors § Pré-requis et § Injection.
+Last verified @ 2026-09-10 (rotation de fraîcheur `documentation-update`, PR P4-193 module matchs — fichier
+hors sujet). Re-confronté au code : `CONTRACT_VERSION` toujours **2.20** (`ScheduleConstraintBuilder.php:64`,
+inchangé par P4-193 — c'est `MatchPlacementPayloadBuilder`, un fichier distinct, qui parle le contrat des
+matchs) ✓ ; `resolvePreviousAssignmentSlots` (`GenerateScheduleHandler.php:389`, source explicite de même
+lignée puis repli dernière COMPLETED) ✓ ; `withPreviousAssignments` (`ScheduleConstraintBuilder.php:673`,
+greffé après le hash) ✓ ; `make seed-bccl` (`backend/Makefile:181-182`, `app:bccl:seed` create-only) ✓ ; les
+`container_name` `amateo-*` cités tiennent contre `docker-compose.yml` (`amateo-php-fpm:102`,
+`amateo-nginx:136`, `amateo-postgres:156`, `amateo-redis:180`) ✓. Reste non re-sondé cette passe : le corps
+du guide hors § Pré-requis et § Injection.
 
 > Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend ClubScheduler. Il s'adresse aux développeurs juniors qui découvrent le projet.
 
