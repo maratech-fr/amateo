@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeftRight, Check, Lock, LockOpen, MapPinOff, Pencil, Trash2, Undo2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Check, Info, Lock, LockOpen, MapPinOff, Pencil, Trash2, Undo2, X } from "lucide-react";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { useState } from "react";
 
@@ -124,12 +124,17 @@ export function PlacementPanel({
   const validated = "VALIDATED" === fixture.status;
   const locked = placed && "SOLVER" !== fixture.placementSource;
 
+  // Un amical (competitionId null) n'obéit à aucune enveloppe ligue ni à aucun
+  // créneau de match (P4-193, fondateur 2026-09-10) : son placement est LIBRE. Le
+  // gymnase indisponible reste le seul refus dur — pour tout le monde.
+  const isFriendly = null === fixture.competitionId;
   const hasKickoff = "" !== kickoff;
-  const envelopeBlocked = envelope.mapped && hasKickoff && !isInEnvelope(envelope, kickoff);
+  const envelopeBlocked = !isFriendly && envelope.mapped && hasKickoff && !isInEnvelope(envelope, kickoff);
   const venueName = venues.find((v) => v.id === venueId)?.name ?? "ce gymnase";
-  const accessError = "" === venueId ? null : venueAccessError(venueId, venueName, fixture.matchDate, kickoff, matchWindows, unavailabilities);
+  const accessIssue = "" === venueId ? null : venueAccessError(venueId, venueName, fixture.matchDate, kickoff, matchWindows, unavailabilities, isFriendly);
+  const accessBlocked = null !== accessIssue && "error" === accessIssue.level;
   const unchanged = placed && venueId === (fixture.venueId ?? "") && kickoff === (fixture.kickoffTime ?? "");
-  const canPlace = "" !== venueId && hasKickoff && !envelopeBlocked && null === accessError && !busy && !unchanged;
+  const canPlace = "" !== venueId && hasKickoff && !envelopeBlocked && !accessBlocked && !busy && !unchanged;
 
   return (
     <Card>
@@ -203,11 +208,18 @@ export function PlacementPanel({
               </p>
             ) : null}
             {hasKickoff ? <EnvelopeHint envelope={envelope} kickoff={kickoff} /> : null}
-            {null !== accessError ? (
-              <p className="flex items-center gap-1 text-xs text-warning">
-                <AlertTriangle className="size-3.5" />
-                {accessError}
-              </p>
+            {null !== accessIssue ? (
+              "error" === accessIssue.level ? (
+                <p className="flex items-center gap-1 text-xs text-warning">
+                  <AlertTriangle className="size-3.5" />
+                  {accessIssue.message}
+                </p>
+              ) : (
+                <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Info className="size-3.5" />
+                  {accessIssue.message}
+                </p>
+              )
             ) : null}
 
             <Button size="sm" disabled={!canPlace} onClick={() => onPlace({ venueId, kickoffTime: kickoff })}>

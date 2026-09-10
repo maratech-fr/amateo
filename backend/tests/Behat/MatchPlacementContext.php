@@ -43,9 +43,13 @@ final class MatchPlacementContext extends BaseContext
 
     private string $rotationId = '';
 
+    private string $competitionId = '';
+
     private string $fxSat = '';
 
     private string $fxSun = '';
+
+    private string $friendlyId = '';
 
     private string $saturday = '';
 
@@ -133,13 +137,29 @@ final class MatchPlacementContext extends BaseContext
     #[Given('un match à domicile le samedi et un autre le dimanche')]
     public function deuxMatchsADomicile(): void
     {
+        // Le solveur ne place plus les amicaux (P4-193) : ces domiciles doivent être
+        // rattachés à une COMPÉTITION pour être proposés au placement.
+        $this->competitionId = $this->createdId(
+            $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => 'Championnat jetable', 'competitionType' => 'CHAMPIONSHIP'], $this->token),
+            'compétition',
+        );
         $this->fxSat = $this->createdId(
-            $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->saturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire samedi'], $this->token),
+            $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->saturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire samedi', 'competitionId' => $this->competitionId], $this->token),
             'match du samedi',
         );
         $this->fxSun = $this->createdId(
-            $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->sunday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire dimanche'], $this->token),
+            $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->sunday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire dimanche', 'competitionId' => $this->competitionId], $this->token),
             'match du dimanche',
+        );
+    }
+
+    #[Given('un amical à domicile le samedi sur ce gymnase, sans créneau posé')]
+    public function unAmicalADomicile(): void
+    {
+        // Amical = aucune compétition (competitionId absent).
+        $this->friendlyId = $this->createdId(
+            $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->saturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Amical de gala'], $this->token),
+            'amical',
         );
     }
 
@@ -172,11 +192,55 @@ final class MatchPlacementContext extends BaseContext
         }
         $this->placeResult = $result['json'];
 
-        $fixture = $this->apiGet(\sprintf('fixtures/%s', $this->fxSat), $this->token);
-        if (200 !== $fixture['status']) {
-            throw new RuntimeException(\sprintf('lecture du match du samedi en échec (HTTP %d)', $fixture['status']));
+        if ('' !== $this->fxSat) {
+            $fixture = $this->apiGet(\sprintf('fixtures/%s', $this->fxSat), $this->token);
+            if (200 !== $fixture['status']) {
+                throw new RuntimeException(\sprintf('lecture du match du samedi en échec (HTTP %d)', $fixture['status']));
+            }
+            $this->satFixture = $fixture['json'];
         }
-        $this->satFixture = $fixture['json'];
+    }
+
+    #[Then('l\'amical n\'est jamais proposé au solveur et reste sans créneau')]
+    public function lAmicalResteSansCreneau(): void
+    {
+        // Absent des non-plaçables : le solveur ne l'a JAMAIS reçu (pas « rejeté »).
+        $unplaced = $this->placeResult['unplaced'] ?? [];
+        foreach (\is_array($unplaced) ? $unplaced : [] as $entry) {
+            if (\is_array($entry) && ($entry['matchId'] ?? null) === $this->friendlyId) {
+                throw new RuntimeException('l\'amical figure dans les non-plaçables — il aurait dû être IGNORÉ du solveur, pas listé');
+            }
+        }
+
+        $fixture = $this->apiGet(\sprintf('fixtures/%s', $this->friendlyId), $this->token);
+        $status = $fixture['json']['status'] ?? null;
+        if ('UNPLACED' !== $status) {
+            throw new RuntimeException(\sprintf('l\'amical devrait rester UNPLACED après le placement, statut « %s »', \is_string($status) ? $status : 'inconnu'));
+        }
+    }
+
+    #[Then('je peux le placer à la main hors de la fenêtre d\'accès match')]
+    public function jePlaceLAmicalHorsFenetre(): void
+    {
+        // Le geste manuel d'un amical est LIBRE (aucun verrou serveur) : le PUT à
+        // 20h00, hors de la fenêtre 14h00-18h00, doit réussir et poser PLACED.
+        $current = $this->apiGet(\sprintf('fixtures/%s', $this->friendlyId), $this->token)['json'];
+        $result = $this->apiPut(\sprintf('fixtures/%s', $this->friendlyId), [
+            'teamId' => $this->teamId,
+            'matchDate' => \is_string($current['matchDate'] ?? null) ? $current['matchDate'] : $this->saturday,
+            'homeAway' => 'HOME',
+            'opponentLabel' => \is_string($current['opponentLabel'] ?? null) ? $current['opponentLabel'] : 'Amical de gala',
+            'venueId' => $this->venueId,
+            'kickoffTime' => '20:00',
+            'status' => 'PLACED',
+        ], $this->token);
+        if (200 !== $result['status']) {
+            throw new RuntimeException(\sprintf('le placement manuel de l\'amical hors fenêtre a répondu %d (200 attendu — le geste manuel est libre)', $result['status']));
+        }
+        $status = $result['json']['status'] ?? null;
+        if ('PLACED' !== $status) {
+            throw new RuntimeException(\sprintf('l\'amical placé à la main devrait être PLACED, statut « %s »', \is_string($status) ? $status : 'inconnu'));
+        }
     }
 
     #[Then('le match du samedi est placé par le solveur entre 14h30 et 16h15')]
@@ -243,13 +307,16 @@ final class MatchPlacementContext extends BaseContext
             return;
         }
 
-        foreach ([$this->fxSat, $this->fxSun] as $id) {
+        foreach ([$this->fxSat, $this->fxSun, $this->friendlyId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
         }
         if ('' !== $this->rotationId) {
             $this->apiDelete(\sprintf('match_slot_rotations/%s', $this->rotationId), $this->token);
+        }
+        if ('' !== $this->competitionId) {
+            $this->apiDelete(\sprintf('competitions/%s', $this->competitionId), $this->token);
         }
         if ('' !== $this->windowId) {
             $this->apiDelete(\sprintf('venue_match_windows/%s', $this->windowId), $this->token);

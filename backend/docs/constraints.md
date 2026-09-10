@@ -1,16 +1,11 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-09-06 (rotation de fraîcheur `documentation-update`, PR P2-61 moteur —
-fichier hors sujet). Re-confronté au code : tags système présents dans `TeamTagService`
-(`EMB` :27, axe AGE) ✓ · `FACILITY_CAPACITY` ne subsiste qu'en commentaires historiques
-(`ScheduleConstraintBuilder.php:1398`, `ValidateConstraintsController.php:263`,
-`engine/app/main.py:488`, `PayloadCapacityMirror.php:30`) ✓ · `maxConsecutiveDays` (P2-42) reste
-opt-in, naît ÉTEINTE (`ImplicitConstraintConfig.php:127`, « absent from the payload, the rule is
-not applied at all ») ✓ · scopes/familles/rule types §2.1-2.3 confirmés lettre pour lettre contre
-`backend/src/Enum/ConstraintScope.php` (CLUB/TEAM/COACH/FACILITY), `ConstraintFamily.php`
-(TIME/DAY/FACILITY/COACH_AVAILABILITY) et `ConstraintRuleType.php`
-(HARD/PREFERRED/BONUS/LOCK) ✓. Reste non re-sondé cette passe — historique : `git log -p
---follow` ce fichier.
+Last verified @ 2026-09-10 (rotation de fraîcheur `documentation-update`, PR P4-193 « amicaux hors
+créneau match » — fichier hors sujet). Re-confronté au code : tag système `EMB` toujours sur l'axe AGE
+(`TeamTagService.php:27`, dérivé `:149`) ✓ · `FACILITY_CAPACITY` ne subsiste qu'en commentaires
+historiques (une occurrence dans `ScheduleConstraintBuilder.php`, une dans
+`ValidateConstraintsController.php`) ✓ · `maxConsecutiveDays` (P2-42) toujours opt-in dans
+`ImplicitConstraintConfig.php:117` ✓. Rien à corriger.
 
 > ClubScheduler — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 

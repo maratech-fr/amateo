@@ -31,17 +31,30 @@ export function kickoffInsideWindow(venueId: string, day: number, kickoff: strin
   return windows.some((w) => w.venueId === venueId && w.dayOfWeek === day && kickoff >= w.startTime && kickoff < w.endTime);
 }
 
+/** Le geste de placement est-il refusé (error) ou seulement signalé (warning) ? */
+export interface VenueAccessIssue {
+  level: "error" | "warning";
+  message: string;
+}
+
 /**
- * The capacity guard of the placement gesture (cadrage P1-4 §5) — HARD, no
- * degradation: these are the CLUB's own declarations, there is no mapping
- * ambiguity (contrary to the league envelope). Returns the human reason, or
- * null when the placement is allowed.
+ * The capacity guard of the placement gesture (cadrage P1-4 §5) — the CLUB's own
+ * declarations, no mapping ambiguity (contrary to the league envelope). Returns
+ * the issue to show, or null when the placement is fully clean.
  *
- * Rules, in blocking order:
- * 1. venue unavailable on the match date (all-circumstances closure);
+ * Two severities since P4-193, driven by `isFriendly`:
+ * - a venue UNAVAILABLE on the match date is ALWAYS an `error` (a friendly can no
+ *   more sit in a closed gym than a competition match);
+ * - « no window that day » and « kickoff outside every window » are an `error`
+ *   for a COMPETITION match, but only a `warning` for a FRIENDLY — a friendly is
+ *   free to be placed off any match slot (the solver no longer places it, the
+ *   radar alerts). The warning carries a single neutral message.
+ *
+ * Rules, in order:
+ * 1. venue unavailable on the match date (all-circumstances closure) → error;
  * 2. the club declares match windows but this venue has none on that day;
  * 3. a kickoff outside every window of (venue, day).
- * A club with NO window anywhere has not adopted the data → nothing blocks.
+ * A club with NO window anywhere has not adopted the data → nothing to enforce.
  */
 export function venueAccessError(
   venueId: string,
@@ -50,11 +63,15 @@ export function venueAccessError(
   kickoff: string | null,
   windows: VenueMatchWindow[],
   unavailabilities: VenueUnavailability[],
-): string | null {
+  isFriendly: boolean,
+): VenueAccessIssue | null {
   for (const unavailability of unavailabilities) {
     if (unavailability.venueId === venueId && matchDate >= unavailability.startDate && matchDate <= unavailability.endDate) {
       const label = null !== unavailability.label ? ` (${unavailability.label})` : "";
-      return `${venueName} est indisponible du ${frDateShortNoYear(unavailability.startDate)} au ${frDateShortNoYear(unavailability.endDate)}${label}.`;
+      return {
+        level: "error",
+        message: `${venueName} est indisponible du ${frDateShortNoYear(unavailability.startDate)} au ${frDateShortNoYear(unavailability.endDate)}${label}.`,
+      };
     }
   }
 
@@ -62,14 +79,17 @@ export function venueAccessError(
     return null; // the club has not adopted match windows — nothing to enforce
   }
 
+  // Un amical hors créneau match n'est pas bloqué : placement libre, on signale.
+  const friendlyOffSlot: VenueAccessIssue = { level: "warning", message: "Amical hors créneau match — placement libre." };
+
   const day = isoDayOf(matchDate);
   const dayWindows = windows.filter((w) => w.venueId === venueId && w.dayOfWeek === day);
   if (0 === dayWindows.length) {
-    return `Pas d'accès match le ${DAY_LABELS[day] ?? "?"} à ${venueName}.`;
+    return isFriendly ? friendlyOffSlot : { level: "error", message: `Pas d'accès match le ${DAY_LABELS[day] ?? "?"} à ${venueName}.` };
   }
   if (null !== kickoff && "" !== kickoff && !kickoffInsideWindow(venueId, day, kickoff, windows)) {
     const ranges = dayWindows.map((w) => `${w.startTime}–${w.endTime}`).join(", ");
-    return `Hors fenêtre d'accès match (${ranges}).`;
+    return isFriendly ? friendlyOffSlot : { level: "error", message: `Hors fenêtre d'accès match (${ranges}).` };
   }
 
   return null;

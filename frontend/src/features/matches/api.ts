@@ -199,7 +199,8 @@ export type ConflictType =
   | "ACCESS_WINDOW_LOST"
   | "TEAM_LINK_OVERLAP"
   | "COMPETITION_INCOMPLETE"
-  | "AWAY_NO_FOOTPRINT";
+  | "AWAY_NO_FOOTPRINT"
+  | "FRIENDLY_ON_MATCH_SLOT";
 
 export interface Conflict {
   type: ConflictType;
@@ -236,6 +237,13 @@ export interface Conflict {
   teamId?: string;
   imported?: number;
   expected?: number;
+  /**
+   * FRIENDLY_ON_MATCH_SLOT (severity 5, P4-193) — pourquoi l'amical est signalé :
+   * `MATCH_SLOT_WINDOW` (empreinte sur une fenêtre d'accès match) et/ou
+   * `MATCH_WEEKEND` (week-end où le club joue une rencontre non amicale). EXCLU de
+   * l'empreinte d'identité (le litige reste « cet amical sur un créneau »).
+   */
+  reasons?: string[];
   /**
    * RMM-3 — identité STABLE d'un conflit (`ConflictFingerprinter` côté serveur) :
    * même valeur tant que c'est le même litige, elle change quand sa nature change.

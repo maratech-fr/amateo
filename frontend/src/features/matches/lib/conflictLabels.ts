@@ -8,7 +8,7 @@ import type { ConflictType } from "../api";
  * Une TABLE, jamais un ternaire ni un `switch` (doctrine `fixtureStatusLabel.ts`,
  * `.claude/rules/frontend.md` : un `switch` sur un enum métier partagé est un
  * décideur interdit ; ici c'est une classification vers un LIBELLÉ, donc une table).
- * TypeScript exige les 9 clés de `ConflictType` — aucune famille ne peut être
+ * TypeScript exige les 10 clés de `ConflictType` — aucune famille ne peut être
  * oubliée (garde `conflictLabels.test.ts`, exhaustif). Distinct de
  * `ConflictRadar.conflictTitle` (phrase longue par conflit, non touchée) : ici un
  * NOM COURT de famille, pour une chip.
@@ -23,7 +23,8 @@ export const CONFLICT_FAMILY_LABEL: Record<ConflictType, string> = {
   COMPETITION_INCOMPLETE: "Calendrier incomplet",
   VENUE_UNAVAILABLE: "Gymnase indisponible",
   AWAY_NO_FOOTPRINT: "Extérieur sans heure",
+  FRIENDLY_ON_MATCH_SLOT: "Amical sur créneau match",
 };
 
-/** Les 9 familles, dans l'ordre de la table (ordre des chips). */
+/** Les 10 familles, dans l'ordre de la table (ordre des chips). */
 export const CONFLICT_FAMILIES = Object.keys(CONFLICT_FAMILY_LABEL) as ConflictType[];

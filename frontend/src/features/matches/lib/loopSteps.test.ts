@@ -13,7 +13,9 @@ function fx(over: Partial<Fixture> = {}): Fixture {
     id: over.id ?? "fx",
     teamId: over.teamId ?? "team-1",
     seasonId: "s",
-    competitionId: null,
+    // Compétition par défaut : « Placés au modèle » compte ces domiciles. Un amical
+    // (competitionId null) en est exclu (P4-193) — testé à part.
+    competitionId: "comp",
     matchDate: over.matchDate ?? "2026-10-03", // a Saturday
     homeAway: over.homeAway ?? "HOME",
     opponentLabel: "Adv",
@@ -62,6 +64,15 @@ describe("deriveLoopSteps — les 5 états DÉRIVÉS de la semaine (zéro état 
     expect(id(deriveLoopSteps({ weekFixtures, habits: [], conflicts: [] }), "model").done).toBe(true);
     // Avec une habitude sur cette équipe : l'UNPLACED compte — l'étape n'est plus done.
     expect(id(deriveLoopSteps({ weekFixtures, habits: [habit()], conflicts: [] }), "model").done).toBe(false);
+  });
+
+  it("étape 2 : un AMICAL non placé ne compte JAMAIS (le solveur ne le place plus, P4-193)", () => {
+    // Amical HOME UNPLACED d'une équipe À HABITUDE : « Placés au modèle » reste done
+    // (l'amical est exclu), mais « Domiciles posés » le voit toujours (non-done).
+    const weekFixtures = [fx({ id: "u", competitionId: null, status: "UNPLACED", venueId: null, kickoffTime: null })];
+    const steps = deriveLoopSteps({ weekFixtures, habits: [habit()], conflicts: [] });
+    expect(id(steps, "model").done).toBe(true);
+    expect(id(steps, "homeSlots").done).toBe(false);
   });
 
   it("étape 2 : l'ÉCART AU MODÈLE ne rend JAMAIS l'étape non-done (signal, pas blocage)", () => {

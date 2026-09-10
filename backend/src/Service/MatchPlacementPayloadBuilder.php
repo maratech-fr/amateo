@@ -36,13 +36,21 @@ use Doctrine\ORM\EntityManagerInterface;
  * - the league envelope is resolved per team by LeagueEnvelopeResolver
  *   (tolerant join — unmapped team = no league HARD + an INFO diagnostic).
  *
- * Match kinds:
- * - HOME UNPLACED → TO_PLACE ;
- * - HOME PLACED by the SOLVER → TO_PLACE carrying its current placement
- *   (stability bonus + hint) ;
- * - HOME PLACED manually (or legacy null source), SUBMITTED, VALIDATED →
- *   FIXED anchors — IF they still carry venue+kickoff; a submitted match that
- *   lost its venue (DOC-2) is skipped: it can neither anchor nor be placed ;
+ * Match kinds (a FRIENDLY = competitionId null is handled apart, below):
+ * - competition HOME UNPLACED → TO_PLACE ;
+ * - competition HOME PLACED by the SOLVER → TO_PLACE carrying its current
+ *   placement (stability bonus + hint) ;
+ * - competition HOME PLACED manually (or legacy null source), SUBMITTED,
+ *   VALIDATED → FIXED anchors — IF they still carry venue+kickoff; a submitted
+ *   match that lost its venue (DOC-2) is skipped: it can neither anchor nor be
+ *   placed ;
+ * - a FRIENDLY is NEVER handed to the solver (P4-193, founder 2026-09-10): a
+ *   friendly plays whenever the club wants (a week night, a holiday, a
+ *   match-less weekend) and its placement is FREE — the radar ALERTS on a match
+ *   slot, it never blocks. So a friendly is never TO_PLACE: placed AND still
+ *   anchored (venue+kickoff) → FIXED (its gym stays protected against the other
+ *   matches, PLACED+SOLVER legacy included) ; UNPLACED or unanchored → absent
+ *   from the payload (null) ;
  * - AWAY → informative footprint (real or estimated hour, else none).
  */
 final class MatchPlacementPayloadBuilder
@@ -236,9 +244,15 @@ final class MatchPlacementPayloadBuilder
             ];
         }
 
+        // A FRIENDLY (competitionId null) is NEVER handed to the solver (P4-193):
+        // it is never TO_PLACE. It falls straight through to the anchor branch —
+        // placed+anchored → FIXED (its gym stays protected), UNPLACED/unanchored
+        // → null (absent). The PLACED+SOLVER legacy case is caught here too.
+        $isFriendly = null === $fixture->getCompetitionId();
+
         $isSolverPlaced = FixtureStatus::PLACED === $fixture->getStatus()
             && FixturePlacementSource::SOLVER === $fixture->getPlacementSource();
-        if (FixtureStatus::UNPLACED === $fixture->getStatus() || $isSolverPlaced) {
+        if (!$isFriendly && (FixtureStatus::UNPLACED === $fixture->getStatus() || $isSolverPlaced)) {
             return $base + [
                 'kind' => 'TO_PLACE',
                 'currentVenueId' => $isSolverPlaced ? $fixture->getVenueId() : null,
@@ -246,8 +260,10 @@ final class MatchPlacementPayloadBuilder
             ];
         }
 
-        // Manual / submitted / validated anchors — only if still fully anchored
-        // (a submitted match whose venue was deleted, DOC-2, can do neither).
+        // Anchors — competition matches placed manually / submitted / validated,
+        // and ANY placed friendly — only if still fully anchored (a match whose
+        // venue was deleted, DOC-2, can do neither; a friendly UNPLACED lands
+        // here and is skipped).
         if (null === $fixture->getVenueId() || !$fixture->getKickoffTime() instanceof DateTimeImmutable) {
             return null;
         }

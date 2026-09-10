@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\CrossStack;
 
 use App\Entity\Club;
+use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -13,6 +14,7 @@ use App\Entity\Team;
 use App\Entity\TeamMatchHabit;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
+use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
@@ -21,6 +23,7 @@ use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
+use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\HttpClient\HttpClient;
@@ -141,6 +144,61 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
     }
 
     /**
+     * NR P4-193 (§7.1 contrat backend↔engine) : un AMICAL (competitionId null)
+     * n'est jamais confié au solveur. Il n'est jamais TO_PLACE : non placé →
+     * ABSENT du payload ; placé et ancré → FIXED (son gymnase reste protégé) ;
+     * AWAY → footprint informatif comme un match de compétition. Un match de
+     * championnat, lui, reste TO_PLACE (inchangé). Si cette partition casse, le
+     * solveur se remet à déplacer/placer des amicaux.
+     */
+    #[Group('phase1')]
+    public function testFriendlyFixturesAreHandledApartFromCompetitionOnes(): void
+    {
+        [, $seededFixture, $club, $season, $builder, $venue] = $this->buildFromSeededClub();
+        $em = self::getContainer()->get('doctrine.orm.entity_manager');
+        $teamId = $seededFixture->getTeamId();
+
+        $friendlyUnplaced = $this->makeFixture($em, $club, $season, $teamId, '2026-10-10', FixtureHomeAway::HOME);
+        $friendlyPlaced = $this->makeFixture($em, $club, $season, $teamId, '2026-10-17', FixtureHomeAway::HOME);
+        $friendlyPlaced->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $friendlyPlaced->setVenueId($venue->getId());
+        $friendlyPlaced->setKickoffTime(new DateTimeImmutable('15:30'));
+        $friendlyPlaced->setPlacementSource(FixturePlacementSource::MANUAL);
+        $friendlyAway = $this->makeFixture($em, $club, $season, $teamId, '2026-10-24', FixtureHomeAway::AWAY);
+        $em->flush();
+
+        $matches = $builder->build($club, $season->getId())['payload']['matches'];
+        $byId = [];
+        foreach ($matches as $row) {
+            $byId[$row['id']] = $row;
+        }
+
+        // Amical non placé : ABSENT (ni TO_PLACE, ni FIXED).
+        self::assertArrayNotHasKey($friendlyUnplaced->getId(), $byId, 'un amical non placé ne va jamais au solveur');
+        // Amical placé et ancré : FIXED, jamais TO_PLACE (son gymnase reste protégé).
+        self::assertSame('FIXED', $byId[$friendlyPlaced->getId()]['kind'] ?? null);
+        self::assertSame($venue->getId(), $byId[$friendlyPlaced->getId()]['venueId'] ?? null);
+        // Amical extérieur : AWAY, comme une rencontre de compétition.
+        self::assertSame('AWAY', $byId[$friendlyAway->getId()]['kind'] ?? null);
+        // Championnat (la rencontre seedée, UNPLACED) : TO_PLACE — inchangé.
+        self::assertSame('TO_PLACE', $byId[$seededFixture->getId()]['kind'] ?? null);
+    }
+
+    private function makeFixture(EntityManagerInterface $em, Club $club, Season $season, string $teamId, string $date, FixtureHomeAway $homeAway): Fixture
+    {
+        $fixture = new Fixture;
+        $fixture->setClubId($club->getId());
+        $fixture->setSeasonId($season->getId());
+        $fixture->setTeamId($teamId);
+        $fixture->setMatchDate(new DateTimeImmutable($date));
+        $fixture->setHomeAway($homeAway);
+        $fixture->setOpponentLabel('Amical');
+        $em->persist($fixture);
+
+        return $fixture;
+    }
+
+    /**
      * @return array{0: array{payload: array<string, mixed>, toPlaceCount: int, infoDiagnostics: list<array<string, mixed>>}, 1: Fixture, 2: Club, 3: Season, 4: MatchPlacementPayloadBuilder, 5: Venue}
      */
     private function buildFromSeededClub(): array
@@ -194,6 +252,17 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         $team->setIsActive(true);
         $em->persist($team);
 
+        // La rencontre seedée est un match de CHAMPIONNAT (competitionId non nul) :
+        // un amical ne va plus au solveur (P4-193), il sortirait du payload et
+        // viderait ce test — c'est la compétition qui prouve le kind TO_PLACE.
+        $competition = new Competition;
+        $competition->setClubId($club->getId());
+        $competition->setSeasonId($season->getId());
+        $competition->setTeamId($team->getId());
+        $competition->setName('D2-' . $uid);
+        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
+        $em->persist($competition);
+
         $venue = new Venue;
         $venue->setClubId($club->getId());
         $venue->setSeasonId($season->getId());
@@ -223,6 +292,7 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($team->getId());
+        $fixture->setCompetitionId($competition->getId());
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-03')); // Saturday
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('AS Voisins');

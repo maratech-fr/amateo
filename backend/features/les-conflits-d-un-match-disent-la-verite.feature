@@ -14,3 +14,10 @@ Fonctionnalité: Les conflits d'un match disent la vérité
     Et un match à domicile de l'équipe ce jeudi, coup d'envoi à 20h45, sur ce gymnase
     Quand je demande les conflits des matchs
     Alors un conflit d'entraînement porte ce match et sa borne de début est l'heure murale sans décalage
+
+  Scénario: Un amical posé un week-end de match est signalé, jamais bloqué (P4-193)
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe, un coach et un gymnase jetables
+    Et une rencontre de championnat le samedi et un amical placé le dimanche du même week-end
+    Quand je demande les conflits des matchs
+    Alors le radar signale l'amical sur un créneau de match, pour cause de week-end de match

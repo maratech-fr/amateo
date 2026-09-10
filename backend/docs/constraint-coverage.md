@@ -1,17 +1,11 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-09-06 (rotation `documentation-update`, P4-179/180 — zone non touchée par la
-PR, contrôle de fraîcheur). Re-confronté au code : `ConstraintFamily`
-(`backend/src/Enum/ConstraintFamily.php`) n'a toujours que 4 cas (TIME/DAY/FACILITY/COACH_AVAILABILITY),
-`FACILITY_CAPACITY` absent de l'enum ✓ ; `ScheduleConstraintBuilder::VENUE_CONFIG_KEYS`
-(`backend/src/Service/ScheduleConstraintBuilder.php:56`) porte toujours `minAtVenueId` ✓ ; les
-tests `engine/tests/semantic/test_hard_lock_divisible_slot.py` et `test_consecutive_days.py`
-existent toujours ✓ ; `MIN_SESSIONS` reste une cible **soft** en production
-(`engine/app/solver/constraints/structural.py:619-621` — capable d'un plancher dur mais production
-passe 0, aucune contrainte dure postée) ✓. Reste non re-sondé cette passe (dernière passe
-complète : `maxEndTime` HARD, `add_max_consecutive_days_constraints`, `forced_day_vars`,
-`resolveTravelRuleIntensity`, `objective/weights.py`, `VenueClosureDays`,
-`add_match_day_rest_bonus` — voir historique `git log -p --follow` ce fichier).
+Last verified @ 2026-09-10 (rotation `documentation-update`, PR P4-193 « amicaux hors créneau match » —
+zone non touchée par la PR, contrôle de fraîcheur). Re-confronté au code : `ConstraintFamily`
+(`backend/src/Enum/ConstraintFamily.php:11-14`) n'a toujours que 4 cas (TIME/DAY/FACILITY/
+COACH_AVAILABILITY), `FACILITY_CAPACITY` absent de l'enum ✓ ; `ScheduleConstraintBuilder::VENUE_CONFIG_KEYS`
+porte toujours `minAtVenueId` ✓ ; les tests moteur `test_hard_lock_divisible_slot.py` et
+`test_consecutive_days.py` sont toujours en place (`engine/tests/semantic/`) ✓. Rien à corriger.
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels

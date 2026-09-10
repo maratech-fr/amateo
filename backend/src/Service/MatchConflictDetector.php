@@ -69,6 +69,12 @@ use DateTimeImmutable;
  * - AWAY_NO_FOOTPRINT (7, dette v): an AWAY fixture with no hour and no habit
  *   on its weekday — the residual blind spot is now NAMED (info; the UI folds
  *   the group).
+ * - FRIENDLY_ON_MATCH_SLOT (5, « À surveiller », P4-193): a placed HOME FRIENDLY
+ *   (competitionId null, venue+kickoff) sitting on a match slot — its footprint
+ *   overlaps a match access window of its gym (reason MATCH_SLOT_WINDOW) and/or
+ *   its date is a Sat/Sun of a weekend where the club plays a non-friendly match
+ *   (reason MATCH_WEEKEND). The solver no longer places friendlies and their
+ *   manual placement is FREE — this ALERTS, it never blocks (founder decision).
  *
  * Pure/stateless: the controller loads the scoped data and passes it in; this
  * class only crosses and overlaps, so it is unit-testable without a kernel.
@@ -217,6 +223,125 @@ final class MatchConflictDetector
             ...$this->teamLinkConflicts($views, $teamLinks),
             ...$this->competitionIncompleteItems($fixtures, $competitions),
             ...$this->awayNoFootprintItems($fixtures, $habitByTeamDay),
+            ...$this->friendlyOnMatchSlotConflicts($views, $fixtures, $matchWindows),
+        ];
+    }
+
+    /**
+     * Severity 5 (« À surveiller ») — a placed HOME FRIENDLY (competitionId null,
+     * venue + kickoff) sitting on a match slot. The solver no longer places
+     * friendlies (P4-193) and their manual placement is FREE: this ALERTS, it
+     * never blocks (founder decision, 2026-09-10). ONE item per fixture, carrying
+     * the `reasons` that triggered it (MATCH_SLOT_WINDOW, MATCH_WEEKEND):
+     * - MATCH_SLOT_WINDOW: the match FOOTPRINT overlaps a VenueMatchWindow of the
+     *   SAME gym, projected onto the ISO weekday of the date. ⚠ Divergence ASSUMÉE
+     *   with the kickoffInsideWindow rule of ACCESS_WINDOW_LOST (patron ci-dessus):
+     *   there we test whether the KICKOFF POINT falls inside the window; HERE we
+     *   overlap the whole EMPREINTE — a friendly starting BEFORE the window still
+     *   eats the slot, so it must alert. `venueId` is carried for this branch.
+     * - MATCH_WEEKEND: the date is a Saturday or Sunday and the club has ≥ 1
+     *   NON-friendly fixture (HOME or AWAY) on the Saturday OR the Sunday of the
+     *   same weekend (key = the Saturday's date; Friday does NOT count — founder
+     *   decision).
+     *
+     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, coachIds: list<string>}> $views
+     * @param list<Fixture>                                                                                                                           $fixtures
+     * @param list<VenueMatchWindow>                                                                                                                  $matchWindows
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function friendlyOnMatchSlotConflicts(array $views, array $fixtures, array $matchWindows): array
+    {
+        // Weekends (key = the Saturday's date) where a NON-friendly match is
+        // played, on the Saturday or the Sunday. Friday does not count.
+        $matchWeekends = [];
+        foreach ($fixtures as $fixture) {
+            if (null === $fixture->getCompetitionId()) {
+                continue;
+            }
+            $weekendKey = $this->weekendSaturdayKey($fixture->getMatchDate());
+            if (null !== $weekendKey) {
+                $matchWeekends[$weekendKey] = true;
+            }
+        }
+
+        $conflicts = [];
+        foreach ($views as $view) {
+            $fixture = $view['fixture'];
+            if (null !== $fixture->getCompetitionId()
+                || FixtureHomeAway::HOME !== $fixture->getHomeAway()
+                || null === $fixture->getVenueId()
+                || !$fixture->getKickoffTime() instanceof DateTimeImmutable
+            ) {
+                continue;
+            }
+
+            $reasons = [];
+            // Fenêtre : l'empreinte chevauche une fenêtre du même gymnase, projetée
+            // sur le jour ISO de la date (chevauchement, pas appartenance du kickoff).
+            $day = (int) $fixture->getMatchDate()->format('N');
+            foreach ($matchWindows as $window) {
+                if ($window->getVenueId() !== $fixture->getVenueId() || $window->getDayOfWeek() !== $day) {
+                    continue;
+                }
+                if ($this->overlaps($view['window'], $this->matchWindowOnDate($fixture->getMatchDate(), $window))) {
+                    $reasons[] = 'MATCH_SLOT_WINDOW';
+
+                    break;
+                }
+            }
+            // Week-end de match.
+            $weekendKey = $this->weekendSaturdayKey($fixture->getMatchDate());
+            if (null !== $weekendKey && isset($matchWeekends[$weekendKey])) {
+                $reasons[] = 'MATCH_WEEKEND';
+            }
+
+            if ([] === $reasons) {
+                continue;
+            }
+
+            $conflict = [
+                'type' => 'FRIENDLY_ON_MATCH_SLOT',
+                'severity' => 5,
+                'reasons' => $reasons,
+                'fixture' => $this->bareFixtureView($fixture),
+            ];
+            if (\in_array('MATCH_SLOT_WINDOW', $reasons, true)) {
+                $conflict['venueId'] = $fixture->getVenueId();
+            }
+            $conflicts[] = $conflict;
+        }
+
+        return $conflicts;
+    }
+
+    /**
+     * The Saturday date (Y-m-d) of the weekend a Sat/Sun date belongs to, or null
+     * for Monday-Friday (a weekday match never triggers the MATCH_WEEKEND reason).
+     */
+    private function weekendSaturdayKey(DateTimeImmutable $date): ?string
+    {
+        return match ((int) $date->format('N')) {
+            6 => $date->format('Y-m-d'),
+            7 => $date->modify('-1 day')->format('Y-m-d'),
+            default => null,
+        };
+    }
+
+    /**
+     * Project a match access window onto a concrete date (the caller has already
+     * matched the ISO weekday).
+     *
+     * @return array{start: DateTimeImmutable, end: DateTimeImmutable}
+     */
+    private function matchWindowOnDate(DateTimeImmutable $date, VenueMatchWindow $window): array
+    {
+        $start = $window->getStartTime();
+        $end = $window->getEndTime();
+
+        return [
+            'start' => $date->setTime((int) $start->format('H'), (int) $start->format('i')),
+            'end' => $date->setTime((int) $end->format('H'), (int) $end->format('i')),
         ];
     }
 

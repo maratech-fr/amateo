@@ -6,6 +6,7 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -14,6 +15,7 @@ use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
+use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
@@ -273,10 +275,22 @@ final class PlaceMatchesControllerTest extends WebTestCase
 
     private function createFixture(string $clubId, string $seasonId, string $teamId, string $date): Fixture
     {
+        // Match de COMPÉTITION : le solveur ne place plus les amicaux (P4-193), un
+        // domicile sans compétition sortirait du payload de placement.
+        $competition = new Competition;
+        $competition->setClubId($clubId);
+        $competition->setSeasonId($seasonId);
+        $competition->setTeamId($teamId);
+        $competition->setName('D2-' . uniqid('', true));
+        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
+        $this->em->persist($competition);
+        $this->em->flush();
+
         $fixture = new Fixture;
         $fixture->setClubId($clubId);
         $fixture->setSeasonId($seasonId);
         $fixture->setTeamId($teamId);
+        $fixture->setCompetitionId($competition->getId());
         $fixture->setMatchDate(new DateTimeImmutable($date));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv');

@@ -58,6 +58,8 @@ function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string 
       return "Calendrier incomplet";
     case "AWAY_NO_FOOTPRINT":
       return "Extérieur sans heure ni habitude";
+    case "FRIENDLY_ON_MATCH_SLOT":
+      return "Amical sur un créneau de match";
     default:
       return `Gymnase indisponible${null != conflict.label && "" !== conflict.label ? ` (${conflict.label})` : ""}`;
   }
@@ -88,6 +90,18 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>): string {
   }
   if ("AWAY_NO_FOOTPRINT" === conflict.type && conflict.fixture) {
     return `${teamName(teams, conflict.fixture.teamId)} · ${frDateShortNoYear(conflict.fixture.matchDate)} — invisible du radar, déclarez une habitude`;
+  }
+  if ("FRIENDLY_ON_MATCH_SLOT" === conflict.type && conflict.fixture) {
+    const reasons = conflict.reasons ?? [];
+    const bits: string[] = [];
+    if (reasons.includes("MATCH_SLOT_WINDOW")) {
+      bits.push("créneau d'accès match");
+    }
+    if (reasons.includes("MATCH_WEEKEND")) {
+      bits.push("week-end de match");
+    }
+    const why = bits.length > 0 ? ` (${bits.join(", ")})` : "";
+    return `Amical ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)}${why} — placement libre, à surveiller`;
   }
   return "Conflit";
 }
