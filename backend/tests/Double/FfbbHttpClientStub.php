@@ -27,6 +27,14 @@ final class FfbbHttpClientStub implements HttpClientInterface
     public const POULE_ID = '910000000000001';
     public const POULE_CLUBS = ['AS TEST NORD', 'BC TEST SUD', 'ES TEST OUEST', 'US TEST EST'];
 
+    // P4-195 — a CUP engagement (its name infers CUP → no « 2×(N−1) »): its
+    // competition detail is served for the CDR code alongside the championship's.
+    public const COMPETITION_ID_CUP = '900000000000002';
+    public const COMPETITION_CODE_CUP = 'CDR';
+    public const POULE_ID_CUP = '910000000000002';
+    public const CUP_ENGAGEMENT_NAME = 'Coupe du Rhône U18';
+    public const CUP_POULE_CLUBS = ['AS TEST NORD', 'BC TEST SUD', 'ES TEST OUEST'];
+
     // RMM-4 PR-3 — the `ffbbserver_rencontres` fixtures: a championship rencontre
     // paired to the stub competition, an AMICAL absent of any xlsx (the real value
     // of the API channel), and a NOISE hit that does NOT concern the club (both
@@ -38,6 +46,17 @@ final class FfbbHttpClientStub implements HttpClientInterface
     public const AMICAL_OPPONENT = 'BRON BASKET';
     public const CHAMP_KICKOFF = '20:30';
     public const AMICAL_KICKOFF = '20:00';
+
+    // P4-194 — TWO rencontres of the SAME cup (club HOME), the competition NOT
+    // paired: its name says « coupe » (not an amical), so apply must resolve-or-
+    // create ONE CUP competition shared by both.
+    public const RENCONTRE_COUPE_1_ID = 'renc-coupe-1';
+    public const RENCONTRE_COUPE_2_ID = 'renc-coupe-2';
+    public const COUPE_FFBB_ID = 'coupe-comp-1';
+    public const COUPE_NAME = 'U18 MASCULIN COUPE DU RHONE';
+    public const COUPE_OPPONENT_1 = 'AS TEST NORD';
+    public const COUPE_OPPONENT_2 = 'BC TEST SUD';
+    public const COUPE_KICKOFF = '17:00';
 
     private readonly MockHttpClient $inner;
 
@@ -63,14 +82,25 @@ final class FfbbHttpClientStub implements HttpClientInterface
             }
 
             if (str_contains($body, 'ffbbserver_engagements')) {
-                $hits = str_contains($body, self::CLUB_CODE) ? [[
-                    'codeClub' => self::CLUB_CODE,
-                    'sexe' => 'Masculin',
-                    'categorie' => ['code' => 'SE', 'libelle' => 'Seniors'],
-                    'niveau' => ['code' => 'DEP', 'libelle' => 'Départemental'],
-                    'idCompetition' => ['id' => self::COMPETITION_ID, 'code' => self::COMPETITION_CODE, 'nom' => 'Pré test masculine'],
-                    'idPoule' => ['id' => self::POULE_ID, 'nom' => 'Poule T'],
-                ]] : [];
+                $hits = str_contains($body, self::CLUB_CODE) ? [
+                    [
+                        'codeClub' => self::CLUB_CODE,
+                        'sexe' => 'Masculin',
+                        'categorie' => ['code' => 'SE', 'libelle' => 'Seniors'],
+                        'niveau' => ['code' => 'DEP', 'libelle' => 'Départemental'],
+                        'idCompetition' => ['id' => self::COMPETITION_ID, 'code' => self::COMPETITION_CODE, 'nom' => 'Pré test masculine'],
+                        'idPoule' => ['id' => self::POULE_ID, 'nom' => 'Poule T'],
+                    ],
+                    // P4-195 — a CUP engagement: the name infers CUP → journées null.
+                    [
+                        'codeClub' => self::CLUB_CODE,
+                        'sexe' => 'Masculin',
+                        'categorie' => ['code' => 'U18', 'libelle' => 'U18'],
+                        'niveau' => ['code' => 'DEP', 'libelle' => 'Départemental'],
+                        'idCompetition' => ['id' => self::COMPETITION_ID_CUP, 'code' => self::COMPETITION_CODE_CUP, 'nom' => self::CUP_ENGAGEMENT_NAME],
+                        'idPoule' => ['id' => self::POULE_ID_CUP, 'nom' => 'Poule Coupe'],
+                    ],
+                ] : [];
 
                 return $this->search($hits);
             }
@@ -114,6 +144,19 @@ final class FfbbHttpClientStub implements HttpClientInterface
                 return $this->search($hits);
             }
             if (str_contains($body, 'ffbbserver_competitions')) {
+                if (str_contains($body, self::COMPETITION_CODE_CUP)) {
+                    return $this->search([[
+                        'id' => self::COMPETITION_ID_CUP,
+                        'code' => self::COMPETITION_CODE_CUP,
+                        'nom' => self::CUP_ENGAGEMENT_NAME,
+                        'saison' => ['code' => $this->currentSeasonCode()],
+                        'poules' => [[
+                            'id' => self::POULE_ID_CUP,
+                            'nom' => 'Poule Coupe',
+                            'engagements' => array_map(static fn (string $nom): array => ['nom' => $nom], self::CUP_POULE_CLUBS),
+                        ]],
+                    ]]);
+                }
                 $hits = str_contains($body, self::COMPETITION_CODE) ? [[
                     'id' => self::COMPETITION_ID,
                     'code' => self::COMPETITION_CODE,
@@ -150,8 +193,9 @@ final class FfbbHttpClientStub implements HttpClientInterface
 
     /**
      * The club's rencontres (RMM-4 PR-3): a championship hit paired to the stub
-     * competition (club HOME), an amical (club HOME, no paired competition), and a
-     * NOISE hit concerning two OTHER clubs — the strict filter must exclude it.
+     * competition (club HOME), an amical (club HOME, no paired competition), a
+     * NOISE hit concerning two OTHER clubs (the strict filter must exclude it), and
+     * TWO cup rencontres sharing one unpaired « COUPE » competition (P4-194).
      *
      * @return list<array<string, mixed>>
      */
@@ -178,7 +222,10 @@ final class FfbbHttpClientStub implements HttpClientInterface
                 'date_rencontre' => $date . 'T' . self::AMICAL_KICKOFF . ':00',
                 'idOrganismeEquipe1' => $us,
                 'idOrganismeEquipe2' => ['code' => 'ARA0000009', 'nom' => self::AMICAL_OPPONENT],
-                'competitionId' => ['id' => 'amical-unpaired', 'nom' => 'AMICAL'],
+                // P4-194 R1 — a REAL amical carries a competitionFfbbId (« non
+                // apparié » ne suffit pas) : c'est le token « amical » du LIBELLÉ
+                // multi-mots qui tranche (« AMICAL PNM », cas mesuré).
+                'competitionId' => ['id' => 'amical-unpaired', 'nom' => 'AMICAL PNM'],
                 'salle' => ['libelle' => 'GYMNASE STUB', 'adresse' => '1 rue du Test'],
                 'saison' => $season,
             ],
@@ -188,6 +235,27 @@ final class FfbbHttpClientStub implements HttpClientInterface
                 'idOrganismeEquipe1' => ['code' => 'ARA0000007', 'nom' => 'AUTRE CLUB A'],
                 'idOrganismeEquipe2' => ['code' => 'ARA0000008', 'nom' => 'AUTRE CLUB B'],
                 'competitionId' => ['id' => 'amical-noise', 'nom' => 'AMICAL PNM'],
+                'saison' => $season,
+            ],
+            // P4-194 — two rencontres of the SAME cup (club HOME), the competition
+            // NOT paired. Its name carries « COUPE » → NOT an amical: apply must
+            // resolve-or-create ONE CUP competition shared by both.
+            [
+                'id' => self::RENCONTRE_COUPE_1_ID,
+                'date_rencontre' => $date . 'T' . self::COUPE_KICKOFF . ':00',
+                'idOrganismeEquipe1' => $us,
+                'idOrganismeEquipe2' => ['code' => 'ARA0000003', 'nom' => self::COUPE_OPPONENT_1],
+                'competitionId' => ['id' => self::COUPE_FFBB_ID, 'nom' => self::COUPE_NAME],
+                'salle' => ['libelle' => 'GYMNASE STUB', 'adresse' => '1 rue du Test'],
+                'saison' => $season,
+            ],
+            [
+                'id' => self::RENCONTRE_COUPE_2_ID,
+                'date_rencontre' => new DateTimeImmutable('today')->modify('+37 days')->format('Y-m-d') . 'T' . self::COUPE_KICKOFF . ':00',
+                'idOrganismeEquipe1' => $us,
+                'idOrganismeEquipe2' => ['code' => 'ARA0000004', 'nom' => self::COUPE_OPPONENT_2],
+                'competitionId' => ['id' => self::COUPE_FFBB_ID, 'nom' => self::COUPE_NAME],
+                'salle' => ['libelle' => 'GYMNASE STUB', 'adresse' => '1 rue du Test'],
                 'saison' => $season,
             ],
         ];

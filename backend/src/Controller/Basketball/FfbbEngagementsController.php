@@ -180,7 +180,14 @@ final class FfbbEngagementsController extends AbstractController
             $competition->setFfbbPouleId($row['ffbbPouleId']);
             $competition->setFfbbPouleName($row['pouleName']);
             $competition->setFfbbCompetitionName($row['competitionName']);
-            $competition->setExpectedMatchdays(FfbbEngagementReader::expectedMatchdays($row['pouleSize']));
+            // P4-195 — une coupe n'a pas de complétude « 2×(N−1) » : le détecteur
+            // resterait sur « 1 / 68 » (mesuré, Coupe du Rhône). Journées null si le
+            // type EFFECTIF (après inférence ci-dessus) est CUP, sinon 2×(N−1).
+            $competition->setExpectedMatchdays(
+                CompetitionType::CUP === $competition->getCompetitionType()
+                    ? null
+                    : FfbbEngagementReader::expectedMatchdays($row['pouleSize']),
+            );
             $competition->setFfbbPouleOpponents($row['pouleOpponents']);
             $confirmed[] = ['competitionId' => $competition->getId(), 'teamId' => $teamId, 'ffbbCompetitionId' => $row['ffbbCompetitionId']];
         }
@@ -213,10 +220,19 @@ final class FfbbEngagementsController extends AbstractController
     /** @param list<Competition> $competitions */
     private function findOrCreateCompetition(array &$competitions, string $teamId, string $canonicalName, string $seasonId): Competition
     {
+        $inferredType = $this->inferCompetitionType($canonicalName);
         foreach ($competitions as $competition) {
             if ($competition->getTeamId() === $teamId
                 && ($competition->getFfbbCompetitionName() === $canonicalName || $this->normalize($competition->getName()) === $this->normalize($canonicalName))
             ) {
+                // P4-195 — sur une compétition RÉUTILISÉE dont le NOM infère
+                // positivement coupe/brassage, on repose le type (répare une Coupe
+                // du Rhône stockée en championnat, mesuré 1/68). Un type posé à la
+                // main via le CRUD sur un nom qui n'infère RIEN reste respecté.
+                if ($inferredType instanceof CompetitionType) {
+                    $competition->setCompetitionType($inferredType);
+                }
+
                 return $competition;
             }
         }
@@ -227,13 +243,30 @@ final class FfbbEngagementsController extends AbstractController
         $competition->setSeasonId($seasonId);
         $competition->setTeamId($teamId);
         $competition->setName($canonicalName);
-        $competition->setCompetitionType(
-            str_contains($this->normalize($canonicalName), 'brassage') ? CompetitionType::BRASSAGE : CompetitionType::CHAMPIONSHIP,
-        );
+        $competition->setCompetitionType($inferredType ?? CompetitionType::CHAMPIONSHIP);
         $this->entityManager->persist($competition);
         $competitions[] = $competition;
 
         return $competition;
+    }
+
+    /**
+     * Positive type inference from the federal name (P4-195) — « coupe » → CUP
+     * (checked BEFORE « brassage »), « brassage » → BRASSAGE. Null = no positive
+     * inference (default CHAMPIONSHIP on create; a hand-set CRUD type left alone
+     * on reuse).
+     */
+    private function inferCompetitionType(string $name): ?CompetitionType
+    {
+        $normalized = $this->normalize($name);
+        if (str_contains($normalized, 'coupe')) {
+            return CompetitionType::CUP;
+        }
+        if (str_contains($normalized, 'brassage')) {
+            return CompetitionType::BRASSAGE;
+        }
+
+        return null;
     }
 
     private function normalize(string $value): string

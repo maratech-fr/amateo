@@ -21,6 +21,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
+use App\Service\Basketball\FfbbRencontreReconciler;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\Double\FfbbHttpClientStub;
@@ -31,6 +32,7 @@ use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
+use ReflectionMethod;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -72,7 +74,12 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertSame([], $body['deviations'], 'no fixture yet → no deviation');
         $rencontreIds = array_column($body['creatable'], 'rencontreId');
         sort($rencontreIds);
-        self::assertSame([FfbbHttpClientStub::RENCONTRE_AMICAL_ID, FfbbHttpClientStub::RENCONTRE_CHAMP_ID], $rencontreIds, 'both club rencontres are creatable; the foreign noise hit is excluded');
+        self::assertSame([
+            FfbbHttpClientStub::RENCONTRE_AMICAL_ID,
+            FfbbHttpClientStub::RENCONTRE_CHAMP_ID,
+            FfbbHttpClientStub::RENCONTRE_COUPE_1_ID,
+            FfbbHttpClientStub::RENCONTRE_COUPE_2_ID,
+        ], $rencontreIds, 'the club rencontres (amical, champ, two cup) are creatable; the foreign noise hit is excluded');
         self::assertNotContains(FfbbHttpClientStub::RENCONTRE_NOISE_ID, $rencontreIds);
 
         $amical = $this->creatable($body, FfbbHttpClientStub::RENCONTRE_AMICAL_ID);
@@ -139,7 +146,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertNull($fixture->getReviewedAt());
         self::assertSame(FixtureHomeAway::HOME, $fixture->getHomeAway());
         self::assertSame(FfbbHttpClientStub::AMICAL_OPPONENT, $fixture->getOpponentLabel());
-        self::assertNull($fixture->getCompetitionId(), 'an unpaired competition = a friendly (null competitionId)');
+        self::assertNull($fixture->getCompetitionId(), 'the « AMICAL PNM » label makes it a friendly (null competitionId), even though it carries a competitionFfbbId (P4-194 R1)');
         self::assertSame(FfbbHttpClientStub::AMICAL_KICKOFF, $fixture->getKickoffTime()?->format('H:i'));
         self::assertSame('GYMNASE STUB', $fixture->getFbiVenueLabel());
 
@@ -147,6 +154,130 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertNotContains(FfbbHttpClientStub::RENCONTRE_AMICAL_ID, $this->listCreatableIds($token));
         $again = $this->apply($token, [], [['rencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID, 'teamId' => $team->getId()]]);
         self::assertSame(0, $again['created'], 'a rencontre already created is never re-created');
+    }
+
+    public function testApplyCreatesACupCompetitionForAnUnpairedCoupeRencontre(): void
+    {
+        // P4-194 — une coupe non appariée n'est PAS un amical : sa rencontre créée
+        // porte une Competition CUP (créée à la volée), jamais competitionId null.
+        [$token, , $clubId] = $this->register('FRCUP1');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $season = $this->seasonOf($clubId);
+
+        $result = $this->apply($token, [], [['rencontreId' => FfbbHttpClientStub::RENCONTRE_COUPE_1_ID, 'teamId' => $team->getId()]]);
+        self::assertSame(1, $result['created']);
+
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['ffbbRencontreId' => FfbbHttpClientStub::RENCONTRE_COUPE_1_ID]);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        self::assertNotNull($fixture->getCompetitionId(), 'a coupe is NOT an amical → it carries a competition');
+
+        $competition = $this->em->getRepository(Competition::class)->find($fixture->getCompetitionId());
+        self::assertInstanceOf(Competition::class, $competition);
+        self::assertSame(CompetitionType::CUP, $competition->getCompetitionType());
+        self::assertSame(FfbbHttpClientStub::COUPE_NAME, $competition->getName());
+        self::assertSame(FfbbHttpClientStub::COUPE_FFBB_ID, $competition->getFfbbCompetitionId());
+        self::assertNull($competition->getExpectedMatchdays(), 'a cup carries no 2×(N−1) completeness');
+        // Assertion tenant : club / saison / équipe corrects.
+        self::assertSame($clubId, $competition->getClubId());
+        self::assertSame($season->getId(), $competition->getSeasonId());
+        self::assertSame($team->getId(), $competition->getTeamId());
+    }
+
+    public function testTwoRencontresOfTheSameCupShareOneCompetitionAndReApplyIsIdempotent(): void
+    {
+        // P4-194 — deux rencontres de la MÊME coupe → UNE seule Competition (carte
+        // du run) ; le ré-apply ne recrée ni fixture ni compétition.
+        [$token, , $clubId] = $this->register('FRCUP2');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+
+        $creations = [
+            ['rencontreId' => FfbbHttpClientStub::RENCONTRE_COUPE_1_ID, 'teamId' => $team->getId()],
+            ['rencontreId' => FfbbHttpClientStub::RENCONTRE_COUPE_2_ID, 'teamId' => $team->getId()],
+        ];
+        self::assertSame(2, $this->apply($token, [], $creations)['created']);
+
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        $competitions = $this->em->getRepository(Competition::class)->findBy(['ffbbCompetitionId' => FfbbHttpClientStub::COUPE_FFBB_ID]);
+        self::assertCount(1, $competitions, 'two rencontres of the same cup → ONE competition');
+        $fixtures = $this->em->getRepository(Fixture::class)->findBy(['teamId' => $team->getId()]);
+        self::assertCount(2, $fixtures);
+        foreach ($fixtures as $fx) {
+            self::assertSame($competitions[0]->getId(), $fx->getCompetitionId(), 'both fixtures point to the single cup');
+        }
+
+        self::assertSame(0, $this->apply($token, [], $creations)['created'], 'a rencontre already created is never re-created');
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        self::assertCount(1, $this->em->getRepository(Competition::class)->findBy(['ffbbCompetitionId' => FfbbHttpClientStub::COUPE_FFBB_ID]), 'no duplicate competition on re-apply');
+        self::assertCount(2, $this->em->getRepository(Fixture::class)->findBy(['teamId' => $team->getId()]), 'no duplicate fixture on re-apply');
+    }
+
+    public function testAnExistingFixtureWithoutCompetitionIsRetroactivelyAttachedToTheCup(): void
+    {
+        // P4-194 R3 — un domicile déjà en base (matché tier-0 par ffbbRencontreId)
+        // SANS compétition reçoit la coupe résolue-ou-créée, et RIEN d'autre :
+        // date / statut / reviewState intouchés (fixture UNPLACED = hors périmètre).
+        [$token, , $clubId] = $this->register('FRCUP3');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $season = $this->seasonOf($clubId);
+
+        $this->scopeGucToClub($clubId);
+        $existing = $this->buildFixture($clubId, $season->getId(), $team->getId(), $this->rencontreDate(), FfbbHttpClientStub::COUPE_OPPONENT_1, FixtureHomeAway::HOME);
+        $existing->setFfbbRencontreId(FfbbHttpClientStub::RENCONTRE_COUPE_1_ID);
+        $existing->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $this->em->persist($existing);
+        $this->em->flush();
+        $existingId = $existing->getId();
+        $dateBefore = $existing->getMatchDate()->format('Y-m-d');
+
+        $this->apply($token, [], []);
+
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Fixture::class)->find($existingId);
+        self::assertInstanceOf(Fixture::class, $reloaded);
+        self::assertNotNull($reloaded->getCompetitionId(), 'the cup is retroactively attached to the matched fixture');
+        $competition = $this->em->getRepository(Competition::class)->find($reloaded->getCompetitionId());
+        self::assertSame(CompetitionType::CUP, $competition?->getCompetitionType());
+        self::assertSame(FixtureStatus::UNPLACED, $reloaded->getStatus(), 'the status is untouched');
+        self::assertSame($dateBefore, $reloaded->getMatchDate()->format('Y-m-d'), 'the date is untouched');
+        self::assertSame(FixtureReviewState::NEW, $reloaded->getReviewState(), 'no treatment induced');
+    }
+
+    public function testACoupeWithAnAlreadyPairedCompetitionReusesItUnchanged(): void
+    {
+        // P4-194 — une compétition PORTANT déjà ce ffbbId (pour cette équipe) est
+        // RÉUTILISÉE : aucune création parasite, la rencontre pointe l'existante.
+        [$token, , $clubId] = $this->register('FRCUP4');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $season = $this->seasonOf($clubId);
+
+        $this->scopeGucToClub($clubId);
+        $competition = new Competition;
+        $competition->setClubId($clubId);
+        $competition->setSeasonId($season->getId());
+        $competition->setTeamId($team->getId());
+        $competition->setName(FfbbHttpClientStub::COUPE_NAME);
+        $competition->setCompetitionType(CompetitionType::CUP);
+        $competition->setFfbbCompetitionId(FfbbHttpClientStub::COUPE_FFBB_ID);
+        $this->em->persist($competition);
+        $this->em->flush();
+        $competitionId = $competition->getId();
+
+        self::assertSame(1, $this->apply($token, [], [['rencontreId' => FfbbHttpClientStub::RENCONTRE_COUPE_1_ID, 'teamId' => $team->getId()]])['created']);
+
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        self::assertCount(1, $this->em->getRepository(Competition::class)->findBy(['ffbbCompetitionId' => FfbbHttpClientStub::COUPE_FFBB_ID]), 'the already-paired competition is reused, never duplicated');
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['ffbbRencontreId' => FfbbHttpClientStub::RENCONTRE_COUPE_1_ID]);
+        self::assertSame($competitionId, $fixture?->getCompetitionId());
     }
 
     public function testApplyReFetchesServerAndIgnoresForgedOrForeignCreations(): void
@@ -366,6 +497,30 @@ final class FfbbRencontresApiTest extends WebTestCase
             'CONTENT_TYPE' => 'application/json',
         ], '{"decisions":[],"creations":[]}');
         self::assertResponseStatusCodeSame(409, 'archived-season writes must be refused');
+    }
+
+    public function testAFederalLabelWithBrokenBytesNeverBreaksTheImport(): void
+    {
+        // Un libellé fédéral aux octets cassés ne doit jamais faire tomber l'import :
+        // il est nettoyé avant normalisation (revue sécurité P4-194).
+        $reconciler = self::getContainer()->get(FfbbRencontreReconciler::class);
+        $isFriendly = new ReflectionMethod($reconciler, 'isFriendlyLabel');
+
+        self::assertFalse($isFriendly->invoke($reconciler, "U18 COUPE\xC3\x28 DU RHONE"));
+        self::assertTrue($isFriendly->invoke($reconciler, "AMICAL\xC3\x28 PNM"));
+    }
+
+    public function testOnlyALabelThatOPENSWithAmicalIsAFriendly(): void
+    {
+        // « amical » en TÊTE annonce l'amical ; le mot ailleurs ne suffit pas
+        // (revue sécurité P4-194) — sinon une vraie compétition passerait amicale.
+        $reconciler = self::getContainer()->get(FfbbRencontreReconciler::class);
+        $isFriendly = new ReflectionMethod($reconciler, 'isFriendlyLabel');
+
+        self::assertTrue($isFriendly->invoke($reconciler, 'AMICAL PNM'));
+        self::assertTrue($isFriendly->invoke($reconciler, 'Amical'));
+        self::assertFalse($isFriendly->invoke($reconciler, 'U18 MASCULIN COUPE DU PARC AMICAL'));
+        self::assertFalse($isFriendly->invoke($reconciler, 'AMICALE LAIQUE COUPE'));
     }
 
     public function testListWithoutAChosenSocleReturns409(): void

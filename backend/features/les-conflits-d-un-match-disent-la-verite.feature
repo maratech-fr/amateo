@@ -21,3 +21,14 @@ Fonctionnalité: Les conflits d'un match disent la vérité
     Et une rencontre de championnat le samedi et un amical placé le dimanche du même week-end
     Quand je demande les conflits des matchs
     Alors le radar signale l'amical sur un créneau de match, pour cause de week-end de match
+
+  Scénario: Une rencontre de coupe hors fenêtre de ligue est un vrai match, jamais un amical (P4-194)
+    Une coupe PORTE une compétition (elle n'est jamais un amical à competitionId null) : le radar la
+    soumet à l'enveloppe de ligue comme un championnat — hors de la fenêtre autorisée elle crie une
+    violation de fenêtre —, et ne la signale JAMAIS comme un amical posé sur un créneau de match.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe, un coach et un gymnase jetables
+    Et une fenêtre de ligue étroite le samedi matin cadre cette équipe
+    Et une rencontre de coupe à domicile ce samedi, coup d'envoi le soir hors de la fenêtre
+    Quand je demande les conflits des matchs
+    Alors le radar signale la coupe hors fenêtre de ligue, et jamais comme un amical sur créneau

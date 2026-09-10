@@ -423,7 +423,9 @@ export function ConsultPage() {
             </div>
             {null !== completeness ? (
               <span className="text-sm font-medium text-foreground tabular-nums">
-                {completeness.imported} / {completeness.expected} journées importées
+                {null === completeness.expected
+                  ? `${completeness.imported} journée${completeness.imported > 1 ? "s" : ""} importée${completeness.imported > 1 ? "s" : ""}`
+                  : `${completeness.imported} / ${completeness.expected} journées importées`}
               </span>
             ) : null}
           </div>

@@ -662,6 +662,32 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame([], $this->detect([], [], null, [], [], [], [], [], [], [], [$competition]));
     }
 
+    public function testACupWithoutExpectedMatchdaysNeverCriesIncompleteCalendar(): void
+    {
+        // P4-195 — une coupe porte expectedMatchdays null (pas de « 2×(N−1) »).
+        // MÊME avec une rencontre importée (la vraie Coupe du Rhône : 1 rencontre),
+        // le radar ne DOIT PAS crier « calendrier incomplet ». Le détecteur est déjà
+        // muet quand expected est null (MatchConflictDetector.php:371-374) — ce test
+        // le garde après le changement de l'appariement (journées CUP = null).
+        $cup = new Competition;
+        $this->setId($cup, 'cup-1');
+        $cup->setClubId('club');
+        $cup->setSeasonId('season');
+        $cup->setTeamId(self::TEAM_1);
+        $cup->setName('U18 MASCULIN COUPE DU RHONE');
+        $cup->setCompetitionType(CompetitionType::CUP);
+        $cup->setExpectedMatchdays(null);
+
+        $fx = $this->fixture('fx-cup', self::TEAM_1, '2026-10-03', '17:00');
+        $fx->setCompetitionId('cup-1');
+
+        $incompletes = array_values(array_filter(
+            $this->detect([$fx], [], null, [], [], [], [], [], [], [], [$cup]),
+            static fn (array $item): bool => 'COMPETITION_INCOMPLETE' === $item['type'],
+        ));
+        self::assertSame([], $incompletes, 'a cup with null expected matchdays never triggers COMPETITION_INCOMPLETE');
+    }
+
     public function testARealKickoffIsNeverOverriddenByAHabit(): void
     {
         // The away match HAS a real hour (20:30, clear of the training) — the

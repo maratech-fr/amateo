@@ -71,8 +71,11 @@ class Competition implements TenantOwnedInterface
     #[ORM\Column(type: 'date_immutable', nullable: true)]
     private ?DateTimeImmutable $endDate = null;
 
-    // ── FFBB pairing refs (P1-4 PR F, appariement §3) — written ONLY by the
-    // pairing confirm endpoint (never by the CRUD), re-paired at each phase. ──
+    // ── FFBB pairing refs (P1-4 PR F, appariement §3) — written by the pairing
+    // confirm endpoint (never by the CRUD), re-paired at each phase. Since P4-194
+    // the FFBB-API reconciler ALSO sets ffbbCompetitionId (when it resolves-or-
+    // creates the CUP of an imported rencontre) — but never poule/opponents/
+    // matchdays: those stay the pairing confirm's alone. ──
 
     #[ORM\Column(length: 64, nullable: true)]
     private ?string $ffbbCompetitionId = null;

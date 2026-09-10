@@ -72,6 +72,11 @@ describe("phaseCompleteness", () => {
     const fixtures = [fx({ id: "a", matchDate: "2026-10-03", competitionId: "c1" }), fx({ id: "b", matchDate: "2026-10-10", competitionId: "c1" })];
     expect(phaseCompleteness(competition, fixtures, [])).toEqual({ imported: 2, expected: 10 });
   });
+
+  it("une coupe sans journées attendues (et sans conflit serveur) ⇒ expected null (P4-195)", () => {
+    const cup = comp({ id: "cup", teamId: "t", name: "Coupe du Rhône", competitionType: "CUP", ffbbCompetitionId: "f-cup", expectedMatchdays: null });
+    expect(phaseCompleteness(cup, [fx({ id: "a", matchDate: "2026-10-03", competitionId: "cup" })], [])).toEqual({ imported: 1, expected: null });
+  });
 });
 
 describe("scopeConflictsToPhase", () => {

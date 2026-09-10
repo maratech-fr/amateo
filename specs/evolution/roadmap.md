@@ -1,4 +1,4 @@
-# Roadmap (58) — ce qui reste à faire
+# Roadmap (56) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -155,13 +155,17 @@
 > `MatchPlacementPayloadBuilder`) et gagne une alerte dédiée (`FRIENDLY_ON_MATCH_SLOT`) — **zéro
 > champ moteur, zéro bump, le contrat reste 2.20**, détail
 > [`module-matchs.md`](../courantes/module-matchs.md) § « Solveur de placement » et § « Diagnostic
-> gradué ». Suite = **P4-194/195/196**.
+> gradué ». Suite = **P4-196** — (6) le canal API FFBB et l'appariement — **P4-194 + P4-195 SOLDÉS
+> (2026-09-10)** : une rencontre de coupe non appariée fait naître ou réutilise une `Competition`
+> CUP rattachée à l'équipe (le libellé fédéral tranche l'amical, plus l'absence d'appariement), et
+> une CUP n'attend aucune journée (`expectedMatchdays` null, un réappariement répare un type
+> stocké à tort), détail
+> [`module-matchs.md`](../courantes/module-matchs.md) § « Le canal API FFBB » et § « Appariement
+> FFBB ».
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
 | P4-184 | **`Échap` ne ferme pas la puce `ResourceFilter`, et son fond de fermeture intercepte tous les clics** | ⚪ | XS | `frontend/src/features/planning/ResourceFilter.tsx:83` : fermeture par un `<button aria-hidden class="fixed inset-0 z-50">` seulement, aucun gestionnaire clavier — a11y (escape-routes) ; a bloqué les e2e de la PR-1 filtres matchs. Trois consommateurs (planning, vœux coach, matchs) : à corriger dans la puce, pas chez eux |
-| P4-194 | **Une rencontre FFBB d'une compétition NON appariée (coupes jeunes, coupe territoriale) est créée SANS compétition → l'app la classe « amical »** | 🟡 | S | Mesuré 2026-09-08 sur les 18 rencontres réelles : `POST /api/ffbb/rencontres/apply` crée U13/U15/U18 coupe du Rhône, coupe ARA U18, coupe territoriale SM3 avec `competitionId` null (aucun engagement remonté pour ces compétitions), donc indiscernables d'un amical — le filtre « type de compétition » de Consulter les range sous Amical, et P4-190 les exempte des fenêtres ligue à tort. Piste : créer la `Competition` (type CUP) depuis le libellé FFBB de la rencontre à la création, ou distinguer « sans compétition appariée » d'« amical » (l'amical FFBB porte « AMICAL » dans `competitionNom`) |
-| P4-195 | **`expectedMatchdays` d'une COUPE = 2×(N−1) comme un championnat → « 1 / 68 journées importées » sur la Coupe du Rhône (35 clubs)** | ⚪ | XS | Vu en Consulter · Phase le 2026-09-08 (`phaseCompleteness`, qui lit `Competition.expectedMatchdays` posé à l'appariement — `FfbbEngagementsController`, taille de poule → `2×(N−1)`, `backend/docs/ffbb-api.md` § Engagements). Une coupe se joue par tours éliminatoires : pas de nombre de journées attendu. Remède : `expectedMatchdays` null (et `COMPETITION_INCOMPLETE` muet) quand `competitionType = CUP`, l'écran affiche alors « N journée(s) importée(s) » sans dénominateur |
 | P4-192 | **À l'arrivée sur Semaine, les déplacements du week-end ne se voient pas** (atterrissage « Saisi dans FBI (0/0) ») | 🟡 | S | Mesuré 2026-09-08 : bandeau « 3 matchs arrivés » mais panneau « Aucun domicile à recopier » ; les 3 extérieurs (SF1, SM1, U21M1) vivent sous une autre étape. `defaultLoopStep` (`lib/loopSteps.ts`) choisit le premier trou : quand tout est fait sauf FBI (0/0), montrer plutôt la grille + la liste « À l'extérieur ce week-end » |
 | P4-196 | **Gérer les alias FFBB d'un gymnase (voir / retirer)** | ⚪ | S | `POST`/`DELETE /api/venues/{id}/external-labels[/{label}]` sont tous deux livrés côté backend (`backend/src/Controller/VenueExternalLabelController.php`), mais seul le POST a un consommateur front (P4-187b, geste « Rattacher »). Le DELETE n'a AUCUN écran : un libellé rattaché au mauvais gymnase ne se corrige qu'en API. Reste à cadrer : où vivre ce réglage (fiche gymnase ? `ConfigurationPage`) et si un simple retrait d'alias suffit ou s'il faut aussi dé-rattacher les domiciles déjà backfillés |
 
