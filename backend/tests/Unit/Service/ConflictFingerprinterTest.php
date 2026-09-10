@@ -12,8 +12,8 @@ use PHPUnit\Framework\TestCase;
 /**
  * RMM-3 — la maison unique de l'empreinte d'un conflit. Pure : elle prend un item
  * du tableau de MatchConflictDetector et en rend l'IDENTITÉ stable. Ce test épingle
- * les 9 types (les champs d'identité, tels que le détecteur les émet), la STABILITÉ
- * (même empreinte quand sévérité / segment / rôle bougent) et le changement de
+ * les 10 types (les champs d'identité, tels que le détecteur les émet), la STABILITÉ
+ * (même empreinte quand sévérité / segment / rôle / reasons bougent) et le changement de
  * NATURE (autre paire, ou autre type → autre empreinte).
  */
 #[Group('phase1')]
@@ -72,10 +72,23 @@ final class ConflictFingerprinterTest extends TestCase
 
     public function testSingleFixtureTypesAreFixtureId(): void
     {
-        foreach (['LEAGUE_WINDOW_VIOLATION', 'ACCESS_WINDOW_LOST', 'AWAY_NO_FOOTPRINT'] as $type) {
+        foreach (['LEAGUE_WINDOW_VIOLATION', 'ACCESS_WINDOW_LOST', 'AWAY_NO_FOOTPRINT', 'FRIENDLY_ON_MATCH_SLOT'] as $type) {
             $conflict = ['type' => $type, 'severity' => 2, 'fixture' => ['fixtureId' => 'fix-42']];
             self::assertSame($type . ':fix-42', $this->fingerprinter->fingerprint($conflict));
         }
+    }
+
+    /** FRIENDLY_ON_MATCH_SLOT : ses `reasons` sont HORS identité — fenêtre seule, week-end
+     * seul ou les deux restent LE MÊME litige (sinon chaque bascule le re-badge « Nouveau »). */
+    public function testFriendlyOnMatchSlotIsStableWhenReasonsChange(): void
+    {
+        $window = ['type' => 'FRIENDLY_ON_MATCH_SLOT', 'severity' => 5, 'reasons' => ['MATCH_SLOT_WINDOW'], 'venueId' => 'venue-1', 'fixture' => ['fixtureId' => 'fix-9']];
+        $both = ['type' => 'FRIENDLY_ON_MATCH_SLOT', 'severity' => 5, 'reasons' => ['MATCH_SLOT_WINDOW', 'MATCH_WEEKEND'], 'venueId' => 'venue-1', 'fixture' => ['fixtureId' => 'fix-9']];
+        $weekendOnly = ['type' => 'FRIENDLY_ON_MATCH_SLOT', 'severity' => 5, 'reasons' => ['MATCH_WEEKEND'], 'fixture' => ['fixtureId' => 'fix-9']];
+
+        self::assertSame('FRIENDLY_ON_MATCH_SLOT:fix-9', $this->fingerprinter->fingerprint($window));
+        self::assertSame($this->fingerprinter->fingerprint($window), $this->fingerprinter->fingerprint($both));
+        self::assertSame($this->fingerprinter->fingerprint($window), $this->fingerprinter->fingerprint($weekendOnly));
     }
 
     public function testVenueUnavailableIsFixturePlusUnavailability(): void

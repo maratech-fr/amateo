@@ -110,7 +110,10 @@ export function deriveLoopSteps({ weekFixtures, habits, conflicts }: LoopStepsIn
   const weekFixtureIds = new Set(weekFixtures.map((f) => f.id));
   const home = weekFixtures.filter((f) => "HOME" === f.homeAway);
   const homeUnplaced = home.filter((f) => "UNPLACED" === f.status);
-  const homeUnplacedWithHabit = homeUnplaced.filter((f) => teamHasHabit(f.teamId, habits));
+  // « Placés au modèle » EXCLUT les amicaux (P4-193) : le solveur ne les place plus,
+  // ils ne suivent aucun modèle, l'étape resterait un trou permanent. « Domiciles
+  // posés » (homeSlots, ci-dessous) les garde — un domicile amical reste à poser.
+  const homeUnplacedWithHabit = homeUnplaced.filter((f) => null !== f.competitionId && teamHasHabit(f.teamId, habits));
   const conflictCount = weekConflictCount(conflicts, weekFixtureIds);
   const submitted = home.filter((f) => "SUBMITTED" === f.status || "VALIDATED" === f.status);
 

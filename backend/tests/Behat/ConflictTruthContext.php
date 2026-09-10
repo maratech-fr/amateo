@@ -58,6 +58,12 @@ final class ConflictTruthContext extends BaseContext
 
     private string $fixtureId = '';
 
+    private string $competitionId = '';
+
+    private string $championshipFixtureId = '';
+
+    private string $friendlyId = '';
+
     /** @var list<mixed> Conflits rendus par GET /api/fixtures/conflicts. */
     private array $conflicts = [];
 
@@ -147,6 +153,7 @@ final class ConflictTruthContext extends BaseContext
         // semaine entamée est le « fin ». Une racine qui part un lundi n'a donc pas de « début » :
         // son « milieu » PARTAGE sa date de départ — c'est l'aléa d'ordre de tri (`startDate, id`,
         // ids aléatoires) à reproduire. Le jeudi 14 janv. est couvert par la racine ET le milieu.
+        $this->purgerDecorCalendaire();
         $this->rootId = $this->createEntry('Fermeture racine (vérité conflits)', '2027-01-11', '2027-01-26', null);
         $this->pointedChildId = $this->createEntry('Milieu', '2027-01-11', '2027-01-24', $this->rootId);
         $this->createEntry('Fin', '2027-01-25', '2027-01-31', $this->rootId);
@@ -216,6 +223,44 @@ final class ConflictTruthContext extends BaseContext
         $this->fixtureId = $this->idOf($fixture, 'match à domicile');
     }
 
+    #[Given('une rencontre de championnat le samedi et un amical placé le dimanche du même week-end')]
+    public function unChampionnatEtUnAmicalLeMemeWeekend(): void
+    {
+        // Week-end fixe et clair : 16 janv. 2027 (samedi) / 17 janv. (dimanche), hors
+        // des vacances scolaires seedées et des fenêtres des autres scénarios.
+        $saturday = '2027-01-16';
+        $sunday = '2027-01-17';
+
+        // Une compétition jetable → la rencontre du samedi n'est PAS un amical, elle fait
+        // du week-end un « week-end de match ».
+        $this->competitionId = $this->idOf(
+            $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => 'Championnat jetable (vérité conflits)', 'competitionType' => 'CHAMPIONSHIP'], $this->token),
+            'compétition jetable',
+        );
+        $this->championshipFixtureId = $this->idOf(
+            $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $saturday, 'homeAway' => 'AWAY', 'opponentLabel' => 'Adversaire championnat', 'competitionId' => $this->competitionId], $this->token),
+            'rencontre de championnat',
+        );
+
+        // Amical à DOMICILE le dimanche du même week-end, puis posé (gymnase + heure).
+        $this->friendlyId = $this->idOf(
+            $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $sunday, 'homeAway' => 'HOME', 'opponentLabel' => 'Amical de gala'], $this->token),
+            'amical',
+        );
+        $placed = $this->apiPut(\sprintf('fixtures/%s', $this->friendlyId), [
+            'teamId' => $this->teamId,
+            'matchDate' => $sunday,
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Amical de gala',
+            'venueId' => $this->venueId,
+            'kickoffTime' => '15:00',
+            'status' => 'PLACED',
+        ], $this->token);
+        if (200 !== $placed['status']) {
+            throw new RuntimeException(\sprintf('placement manuel de l\'amical en échec (HTTP %d)', $placed['status']));
+        }
+    }
+
     #[When('je demande les conflits des matchs')]
     public function jeDemandeLesConflits(): void
     {
@@ -255,9 +300,32 @@ final class ConflictTruthContext extends BaseContext
         }
     }
 
-    /**
-     * Démonte tout le décor jetable et repose le pointeur du socle. Quoi qu'il arrive.
-     */
+    #[Then('le radar signale l\'amical sur un créneau de match, pour cause de week-end de match')]
+    public function leRadarSignaleLAmicalSurUnCreneau(): void
+    {
+        $found = null;
+        foreach ($this->conflicts as $conflict) {
+            if (!\is_array($conflict) || 'FRIENDLY_ON_MATCH_SLOT' !== ($conflict['type'] ?? null)) {
+                continue;
+            }
+            $fixtureBlock = $conflict['fixture'] ?? null;
+            $fixtureId = \is_array($fixtureBlock) ? ($fixtureBlock['fixtureId'] ?? null) : null;
+            if ($fixtureId === $this->friendlyId) {
+                $found = $conflict;
+
+                break;
+            }
+        }
+
+        if (null === $found) {
+            throw new RuntimeException('aucune alerte FRIENDLY_ON_MATCH_SLOT ne porte cet amical — le week-end de match n\'a pas été vu');
+        }
+        $reasons = $found['reasons'] ?? null;
+        if (!\is_array($reasons) || !\in_array('MATCH_WEEKEND', $reasons, true)) {
+            throw new RuntimeException(\sprintf('l\'alerte n\'invoque pas MATCH_WEEKEND (raisons : %s)', \is_array($reasons) ? implode(',', array_map(strval(...), $reasons)) : 'aucune'));
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
@@ -265,8 +333,13 @@ final class ConflictTruthContext extends BaseContext
             return;
         }
 
-        if ('' !== $this->fixtureId) {
-            $this->apiDelete(\sprintf('fixtures/%s', $this->fixtureId), $this->token);
+        foreach ([$this->fixtureId, $this->friendlyId, $this->championshipFixtureId] as $id) {
+            if ('' !== $id) {
+                $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
+            }
+        }
+        if ('' !== $this->competitionId) {
+            $this->apiDelete(\sprintf('competitions/%s', $this->competitionId), $this->token);
         }
         if ('' !== $this->teamCoachId) {
             $this->apiDelete(\sprintf('team_coaches/%s', $this->teamCoachId), $this->token);
@@ -291,12 +364,42 @@ final class ConflictTruthContext extends BaseContext
             $this->apiDelete(\sprintf('venues/%s', $this->venueId), $this->token);
         }
 
+        // Le DELETE d'API d'une racine découpée peut être refusé sans lever ici : on
+        // repasse en SQL pour ne jamais laisser de décor derrière soi.
+        $this->purgerDecorCalendaire();
+
         if ($this->pointerSetBySelf && '' !== $this->clubId) {
             $this->dbalExec(
                 \sprintf('UPDATE schedule_plan SET chosen_schedule_id=NULL WHERE club_id=\'%s\' AND type=\'SEASON\'', $this->clubId),
                 admin: true,
             );
         }
+    }
+
+    /**
+     * Démonte tout le décor jetable et repose le pointeur du socle. Quoi qu'il arrive.
+     */
+    /**
+     * Purge SQL du décor calendaire de CE scénario, par TITRE : les enfants et leurs
+     * plans/versions/créneaux d'abord, la racine ensuite. Idempotente, et jouée AUSSI
+     * avant la création — un run précédent tué (ou un DELETE d'API refusé, qui ne lève
+     * rien ici) laissait sinon une racine derrière lui, et la découpe suivante partait
+     * en 422 « semaines complètes ».
+     */
+    private function purgerDecorCalendaire(): void
+    {
+        if ('' === $this->clubId) {
+            return;
+        }
+        $titles = '(\'Fermeture racine (vérité conflits)\', \'Milieu\', \'Fin\')';
+        $scope = \sprintf('club_id=\'%s\' AND title IN %s', $this->clubId, $titles);
+        $plans = \sprintf('SELECT id FROM schedule_plan WHERE calendar_entry_id IN (SELECT id FROM calendar_entry WHERE %s)', $scope);
+        $this->dbalExec(\sprintf('DELETE FROM schedule_slot_template WHERE schedule_id IN (SELECT id FROM schedule WHERE schedule_plan_id IN (%s))', $plans), admin: true);
+        $this->dbalExec(\sprintf('UPDATE schedule_plan SET chosen_schedule_id=NULL WHERE id IN (%s)', $plans), admin: true);
+        $this->dbalExec(\sprintf('DELETE FROM schedule WHERE schedule_plan_id IN (%s)', $plans), admin: true);
+        $this->dbalExec(\sprintf('DELETE FROM schedule_plan WHERE calendar_entry_id IN (SELECT id FROM calendar_entry WHERE %s)', $scope), admin: true);
+        $this->dbalExec(\sprintf('DELETE FROM calendar_entry WHERE %s AND parent_entry_id IS NOT NULL', $scope), admin: true);
+        $this->dbalExec(\sprintf('DELETE FROM calendar_entry WHERE %s', $scope), admin: true);
     }
 
     private function createEntry(string $title, string $start, string $end, ?string $parentEntryId): string

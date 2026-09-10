@@ -12,7 +12,10 @@ const fixture: Fixture = {
   id: "fx-1",
   teamId: "team-1",
   seasonId: "s",
-  competitionId: null,
+  // Match de compétition par défaut : les gardes DURES (enveloppe, fenêtre
+  // d'accès) s'appliquent. Un amical (competitionId null) les assouplit — testé
+  // à part (P4-193).
+  competitionId: "comp-1",
   matchDate: "2026-10-03", // a Saturday
   homeAway: "HOME",
   opponentLabel: "Voisins",
@@ -198,6 +201,74 @@ describe("PlacementPanel", () => {
     expect(screen.getByRole("button", { name: "Placer" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "Placer" }));
     expect(onPlace).toHaveBeenCalledWith({ venueId: "venue-2", kickoffTime: "14:00" });
+  });
+
+  // ── Amical : placement libre hors créneau (P4-193) ───────────────────────
+
+  const friendly: Fixture = { ...fixture, competitionId: null };
+
+  it("un amical hors fenêtre d'accès : avertissement NEUTRE, bouton ACTIF (placement libre)", async () => {
+    const user = userEvent.setup();
+    const onPlace = renderPanel(openEnvelope, vi.fn(), {
+      fixture: friendly,
+      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, startTime: "14:00", endTime: "18:00" }],
+    });
+
+    const list = await openListbox(user, "Gymnase");
+    await user.click(within(list).getByRole("option", { name: "Gymnase Alpha" }));
+    await user.type(screen.getByLabelText("Heure de coup d'envoi"), "20:00");
+
+    expect(screen.getByText("Amical hors créneau match — placement libre.")).toBeInTheDocument();
+    // Jamais le message dur d'une compétition.
+    expect(screen.queryByText(/Hors fenêtre d'accès match/)).toBeNull();
+    const place = screen.getByRole("button", { name: "Placer" });
+    expect(place).toBeEnabled();
+    await user.click(place);
+    expect(onPlace).toHaveBeenCalledWith({ venueId: "venue-1", kickoffTime: "20:00" });
+  });
+
+  it("un championnat hors fenêtre reste BLOQUÉ (contraste avec l'amical)", async () => {
+    const user = userEvent.setup();
+    const onPlace = renderPanel(openEnvelope, vi.fn(), {
+      fixture: { ...fixture, competitionId: "comp-1" },
+      matchWindows: [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, startTime: "14:00", endTime: "18:00" }],
+    });
+
+    const list = await openListbox(user, "Gymnase");
+    await user.click(within(list).getByRole("option", { name: "Gymnase Alpha" }));
+    await user.type(screen.getByLabelText("Heure de coup d'envoi"), "20:00");
+
+    expect(screen.getByText(/Hors fenêtre d'accès match \(14:00–18:00\)/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Placer" })).toBeDisabled();
+    expect(onPlace).not.toHaveBeenCalled();
+  });
+
+  it("un gymnase indisponible bloque même un amical (le seul refus dur pour tous)", async () => {
+    const user = userEvent.setup();
+    renderPanel(openEnvelope, vi.fn(), {
+      fixture: friendly,
+      unavailabilities: [{ id: "u1", venueId: "venue-1", startDate: "2026-10-01", endDate: "2026-10-05", label: "travaux" }],
+    });
+
+    const list = await openListbox(user, "Gymnase");
+    await user.click(within(list).getByRole("option", { name: "Gymnase Alpha" }));
+    await user.type(screen.getByLabelText("Heure de coup d'envoi"), "14:00");
+
+    expect(screen.getByText(/indisponible du 1 oct\. au 5 oct\. \(travaux\)/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Placer" })).toBeDisabled();
+  });
+
+  it("l'enveloppe ligue ne bloque JAMAIS un amical (mapped + hors fenêtre → bouton actif)", async () => {
+    const user = userEvent.setup();
+    const onPlace = renderPanel(mappedEnvelope, vi.fn(), { fixture: friendly });
+
+    await pickListboxOption(user, "Gymnase", "Gymnase Alpha");
+    await user.type(screen.getByLabelText("Heure de coup d'envoi"), "20:00"); // hors enveloppe mappée
+
+    const place = screen.getByRole("button", { name: "Placer" });
+    expect(place).toBeEnabled();
+    await user.click(place);
+    expect(onPlace).toHaveBeenCalledWith({ venueId: "venue-1", kickoffTime: "20:00" });
   });
 
   // ── Manual loop (P1-4 PR E1) ─────────────────────────────────────────────

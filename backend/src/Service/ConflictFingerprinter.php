@@ -62,8 +62,11 @@ final class ConflictFingerprinter
                 $this->nestedStr($conflict, 'left', 'fixtureId'),
                 $this->nestedStr($conflict, 'right', 'fixtureId'),
             )),
-            // Une seule fixture porte le litige.
-            'LEAGUE_WINDOW_VIOLATION', 'ACCESS_WINDOW_LOST', 'AWAY_NO_FOOTPRINT' => \sprintf(
+            // Une seule fixture porte le litige. FRIENDLY_ON_MATCH_SLOT : ses
+            // `reasons` (MATCH_SLOT_WINDOW/MATCH_WEEKEND) sont EXCLUS de l'identité
+            // — le litige reste « cet amical sur un créneau match » qu'il touche la
+            // fenêtre, le week-end, ou les deux (pas de vague de « Nouveau »).
+            'LEAGUE_WINDOW_VIOLATION', 'ACCESS_WINDOW_LOST', 'AWAY_NO_FOOTPRINT', 'FRIENDLY_ON_MATCH_SLOT' => \sprintf(
                 '%s:%s',
                 $type,
                 $this->nestedStr($conflict, 'fixture', 'fixtureId'),

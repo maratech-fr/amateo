@@ -1,16 +1,15 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-09 (P4-188 + P4-189 + P4-191, `documentation-update`). § « Détection —
-`MatchConflictDetector` » recalée sur `EffectiveScheduleResolver::resolve` (`EffectiveScheduleResolver.php:38-54`,
-lu) : la période la plus ÉTROITE gagne (`end − start` minimal, égalité → première), un enfant plus étroit sans
-version pointée gagne quand même — remplace l'ancienne « première période de la liste » (faux négatif
-`MATCH_TRAINING` sur une fermeture découpée, P4-188). Règle coach (`MatchConflictDetector::pairRole`,
-`MatchConflictDetector.php:724-733`, lu) inversée : MAIN seulement si principal des DEUX équipes, sinon
-ASSISTANT — libellé front « (assistant d'un côté) » vérifié dans `ConflictRadar.tsx:45` (P4-189). Bornes de
-conflit (`start`/`end`/`windowStart`/`windowEnd`) en heure murale sans offset, `MatchConflictDetector::
-WALL_CLOCK_FORMAT = 'Y-m-d\TH:i:s'` (`MatchConflictDetector.php:90`, lu) — `ConflictFingerprinter.php` confirmé
-sans re-lecture de ces champs (P4-191). Reste du fichier (Espace Importer, canal API, réconciliation,
-Configuration, P4-185/187) non re-sondé cette passe.
+Last verified @ 2026-09-10 (P4-193, `documentation-update`). **Un amical n'est plus proposé au solveur**
+(décision fondateur 2026-09-10) : `MatchPlacementPayloadBuilder::matchRow` (`MatchPlacementPayloadBuilder.php:247-266`,
+lu) écarte toute `Fixture` `competitionId` null du `kind: TO_PLACE` — placée+ancrée → `FIXED` (gymnase protégé,
+legacy PLACED+SOLVER compris), sinon absente du payload. **Le contrat reste 2.20, `engine/` n'est pas touché**
+(pas de champ `friendly`, pas de bump). Nouvelle famille `FRIENDLY_ON_MATCH_SLOT` (sévérité 5) dans
+`MatchConflictDetector::friendlyOnMatchSlotConflicts` (`MatchConflictDetector.php:223+`, lu) — alerte, jamais
+un blocage. `lib/matchAccess.ts::venueAccessError` (lu) rend `{level, message}` : gymnase indisponible reste
+`error` pour tous, hors-créneau devient `warning` pour un amical, `error` pour une compétition. § « Détection —
+`MatchConflictDetector` » (P4-188/189/191) et reste du fichier (Espace Importer, canal API, réconciliation,
+Configuration, P4-185/187) non re-sondés cette passe — voir `git log -p --follow` pour leur dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -168,9 +167,14 @@ précède sa racine, la largeur si (P4-188 — corrige un faux négatif MATCH_TR
 découpée, incident du 3 sept. 2026). Un `Fixture` AWAY sans `kickoffTime` n'a pas d'empreinte (trajet = palier
 B) → il ne génère aucun conflit — voulu.
 
-**Amicaux (P4-190, 2026-09-08)** : une rencontre sans compétition (`competitionId` null) n'est jamais
-comparée aux fenêtres ligue de son équipe — `leagueWindowViolations` la saute ; elle reste soumise aux
-autres familles. Le solveur de placement, lui, applique encore les fenêtres par équipe (roadmap P4-193).
+**Amicaux (P4-190, 2026-09-08 ; complété P4-193, 2026-09-10)** : une rencontre sans compétition
+(`competitionId` null) n'est jamais comparée aux fenêtres ligue de son équipe — `leagueWindowViolations` la
+saute. **Depuis P4-193** (règle fondateur 2026-09-10 : « un amical n'est pas sur un créneau de match »), un
+amical ne suit plus non plus les fenêtres/week-ends de match — ni le solveur (§ « Solveur de placement »
+ci-dessous, qui ne le reçoit plus jamais), ni la garde de placement manuel (§ « Couche capacité », qui ne fait
+plus qu'avertir). La seule famille qui le concerne désormais est `FRIENDLY_ON_MATCH_SLOT` (§ « Diagnostic
+gradué » ci-dessous) — une alerte, jamais un blocage ; il reste par ailleurs soumis aux autres familles
+(collision de gymnase, coach en double, etc.) comme n'importe quelle rencontre.
 
 ### Endpoint — `GET /api/fixtures/conflicts`
 
@@ -280,11 +284,15 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
     servie par `GET /api/venue-unavailability-impact` (`VenueUnavailabilityImpact`, pur) ;
   - radar matchs : finding **`VENUE_UNAVAILABLE`** (match posé sur un gymnase fermé à sa date — le cas que
     la garde de placement ne peut pas attraper : l'indispo posée APRÈS le placement).
-- **Garde de placement** (`PlacementPanel` + `lib/matchAccess.ts`, HARD sans dégradation — donnée du club,
-  pas de mapping incertain) : sélecteur restreint aux gymnases de match (repli : club sans AUCUNE fenêtre →
-  liste complète, donnée non adoptée) ; bloqué si jour sans fenêtre, heure hors plage, ou gymnase indispo à
-  la date. Pas de verrou serveur sur le geste MANUEL (décision fondateur) — le solveur (PR D), lui, ne
-  sort jamais du HARD ; le verrou serveur du geste manuel reste une dette PR E (roadmap, dette (i)).
+- **Garde de placement** (`PlacementPanel` + `lib/matchAccess.ts::venueAccessError`, donnée du club, pas de
+  mapping incertain) : sélecteur restreint aux gymnases de match (repli : club sans AUCUNE fenêtre → liste
+  complète, donnée non adoptée). Gymnase indisponible à la date = `error` bloquant **pour tout le monde**, ami
+  ou compétition. Jour sans fenêtre / heure hors plage : `error` bloquant pour une COMPÉTITION, **`warning`
+  neutre pour un AMICAL depuis P4-193** (2026-09-10, `venueAccessError(…, isFriendly)`) — « Amical hors créneau
+  match — placement libre. », le geste reste autorisé (`PlacementPanel.tsx::canPlace`). Pas de verrou serveur
+  sur le geste MANUEL (décision fondateur) — le solveur (PR D), lui, ne sort jamais du HARD **et ne voit plus
+  les amicaux du tout** (P4-193, § suivante) ; le verrou serveur du geste manuel reste une dette PR E (roadmap,
+  dette (i)).
 - **Source unique ADR-0002** : la règle « quel planning s'applique à telle date » est extraite en
   `EffectiveScheduleResolver` (pur) + `TrainingCalendarContext` (chargement scopé), consommés par le
   radar ET l'impact — deux copies auraient divergé.
@@ -665,6 +673,16 @@ SOFT « repos après jour de match »).
   re-plaçable (bonus stabilité). Écriture directe en `PLACED` (patron du planning) ; l'applier recharge
   chaque fixture et n'écrit que si le solveur y est encore autorisé — un geste manuel pendant le solve
   gagne toujours.
+- **Un AMICAL n'est jamais proposé au solveur (P4-193, décision fondateur 2026-09-10).** « Un amical n'est
+  pas sur un créneau de match : il peut se passer en semaine, pendant les vacances scolaires, ou un
+  week-end sans match. » `MatchPlacementPayloadBuilder::matchRow` (`MatchPlacementPayloadBuilder.php:247-266`)
+  exclut toute `Fixture` `competitionId` null du `kind: TO_PLACE` (jamais soumis à l'objectif, jamais aux
+  contraintes HARD ci-dessus) ; un amical HOME placé ET encore ancré (venue+kickoff) devient une ancre
+  **FIXED** (son gymnase reste protégé contre les autres matchs, legacy PLACED+SOLVER compris) — non placé ou
+  désancré, il est simplement **absent du payload**. AWAY et les matchs de compétition sont inchangés. **Le
+  contrat reste 2.20** : aucun champ `friendly` ajouté, `engine/` n'est pas touché — la place laissée libre par
+  l'amical au solveur est couverte par une nouvelle alerte, pas par une contrainte moteur (§ « Diagnostic
+  gradué » ci-dessous, `FRIENDLY_ON_MATCH_SLOT`).
 - **Le backend PROJETTE, l'engine reste plat** (`MatchPlacementPayloadBuilder`) : occupations
   d'entraînement **datées** via `TrainingCalendarContext` + `EffectiveScheduleResolver` (ADR-0002 jamais
   ré-implémenté côté engine), heure extérieure estimée par le MÊME `AwayKickoffEstimator` que le radar,
@@ -719,9 +737,21 @@ SOFT « repos après jour de match »).
   **`ACCESS_WINDOW_LOST`** (dette (ii) soldée : placé dont la fenêtre d'accès a changé APRÈS — règle du
   PANNEAU mirrorée : heure-point, demi-ouvert, club sans aucune fenêtre = rien à faire respecter, PAS
   la règle empreinte du solveur : un match que le panneau vient d'autoriser ne doit pas alerter) ·
-  5 coach ASSISTANT + `TEAM_LINK_OVERLAP` · 7 **`AWAY_NO_FOOTPRINT`** (dette (v) : l'angle mort —
-  extérieur sans heure ni habitude du bon jour — est NOMMÉ, plus un silence pris pour de la santé).
-  La sévérité 6 (`COMPETITION_INCOMPLETE`, PR F2) juge les compétitions APPARIÉES sous leur attendu.
+  5 coach ASSISTANT + `TEAM_LINK_OVERLAP` + **`FRIENDLY_ON_MATCH_SLOT`** (P4-193, ci-dessous) · 7
+  **`AWAY_NO_FOOTPRINT`** (dette (v) : l'angle mort — extérieur sans heure ni habitude du bon jour — est
+  NOMMÉ, plus un silence pris pour de la santé). La sévérité 6 (`COMPETITION_INCOMPLETE`, PR F2) juge les
+  compétitions APPARIÉES sous leur attendu.
+- **`FRIENDLY_ON_MATCH_SLOT` (5, « à surveiller », P4-193, 2026-09-10, `friendlyOnMatchSlotConflicts`)** :
+  un amical HOME placé (venue+kickoff) qui atterrit sur un créneau de match — le solveur ne les place plus
+  (§ « Solveur de placement » ci-dessus), le placement manuel est libre, donc c'est le radar qui alerte, sans
+  jamais bloquer. UN item par rencontre, `reasons` porte ce qui a déclenché l'alerte (un ou les deux) :
+  `MATCH_SLOT_WINDOW` (l'empreinte du match CHEVAUCHE une `VenueMatchWindow` du même gymnase ce jour — ⚠
+  divergence ASSUMÉE avec `ACCESS_WINDOW_LOST` ci-dessus, qui teste le KICKOFF ponctuel dans la fenêtre : ici
+  c'est l'empreinte entière, un amical commençant avant la fenêtre mange déjà le créneau) et/ou
+  `MATCH_WEEKEND` (le samedi ou le dimanche d'un week-end où le club a ≥ 1 rencontre NON amicale — clé =
+  la date du samedi, **le vendredi ne compte jamais**, décision fondateur). `reasons` est EXCLU de l'identité
+  du conflit (`ConflictFingerprinter`) — le litige reste « cet amical sur un créneau », qu'il touche la
+  fenêtre, le week-end, ou les deux.
 - **Enveloppe fiable côté UI (dette (iv) soldée)** : `GET /api/league-match-windows` porte
   `resolvedTeamWindows` (teamId → ids de fenêtres), calculé par le MÊME `LeagueEnvelopeResolver` que
   le solveur et le diagnostic — la jointure n'existe qu'à UN endroit ; `lib/envelope.ts` devient un
@@ -1023,12 +1053,16 @@ Importer · Configuration** ; l'onglet Importer a livré sa page en PR-3b, déta
   gestionnaire d'un onglet à l'autre.
 - **Type de compétition** (chips multi, défaut tout) : amical = `competitionId` null ; championnat / coupe / brassage =
   `Competition.competitionType`. ⚠ Une rencontre FFBB d'une compétition non appariée (coupes jeunes…) arrive sans
-  `competitionId` et se range donc sous « Amical » — roadmap P4-194. Un conflit suit ses rencontres référencées ; un calendrier incomplet suit sa
-  compétition ; un conflit sans rencontre ni compétition reste visible tant que « tout » est coché.
+  `competitionId` et se range donc sous « Amical » — roadmap P4-194. **Effet de bord depuis P4-193** : cette
+  rencontre profite ALORS À TORT de la liberté de placement de l'amical (solveur qui l'ignore, garde de
+  placement en simple avertissement) tant que P4-194 n'est pas soldée. Un conflit suit ses rencontres
+  référencées ; un calendrier incomplet suit sa compétition ; un conflit sans rencontre ni compétition reste
+  visible tant que « tout » est coché.
 - **Semaine type** (interrupteur, affichée par défaut) : la grille avec ou sans les cases « Habitude … ».
-- **Familles de conflits** (chips avec compteur, défaut tout coché) — les 9 `ConflictType`, libellés en table
+- **Familles de conflits** (chips avec compteur, défaut tout coché) — les 10 `ConflictType`, libellés en table
   (`lib/conflictLabels.ts`) : collision de gymnase, hors fenêtre ligue, coach en double, match × entraînement,
-  passerelle (info), placement fragilisé, calendrier incomplet, gymnase indisponible, extérieur sans heure. Le
+  passerelle (info), placement fragilisé, calendrier incomplet, gymnase indisponible, extérieur sans heure,
+  **amical sur créneau match** (`FRIENDLY_ON_MATCH_SLOT`, P4-193). Le
   **compteur porte sur la temporalité affichée** (la semaine lundi→dimanche du week-end actif ; un conflit sans
   date est toujours compté) — le radar de Placer compte « tous ceux de la personne », son rail « ceux de la
   semaine » : Consulter tranche. Une chip décochée garde son compteur (compté avant le filtre de famille).
@@ -1073,10 +1107,12 @@ Importer · Configuration** ; l'onglet Importer a livré sa page en PR-3b, déta
   seule ouverte à la fois. Import FBI reste accessible des deux côtés (même dialogue, deux entrées).
 - **Le rail à 5 étapes DÉRIVÉES** (`features/matches/lib/loopSteps.ts`, `deriveLoopSteps`, fonction
   **pure** — zéro état stocké, zéro backend) : *batch importé* (des fixtures existent sur la
-  semaine) → *placés au modèle* (0 domicile `UNPLACED` dont l'équipe a une `TeamMatchHabit`) →
-  *litiges* (compte du radar rattaché aux fixtures de la semaine, `weekConflictCount`) → *domiciles
-  posés* (0 `HOME` `UNPLACED`) → *saisi FBI* (`SUBMITTED`+`VALIDATED` == tous les `HOME` de la
-  semaine). Consomme la primitive partagée `shared/components/ui/step-rail.tsx` (second
+  semaine) → *placés au modèle* (0 domicile `UNPLACED` **de compétition** dont l'équipe a une
+  `TeamMatchHabit` — **les amicaux sont EXCLUS de cette étape depuis P4-193** : le solveur ne les
+  reprend plus, un amical non placé y resterait un trou permanent) → *litiges* (compte du radar
+  rattaché aux fixtures de la semaine, `weekConflictCount`) → *domiciles posés* (0 `HOME` `UNPLACED`,
+  amicaux COMPRIS — un domicile amical reste à poser) → *saisi FBI* (`SUBMITTED`+`VALIDATED` == tous
+  les `HOME` de la semaine). Consomme la primitive partagée `shared/components/ui/step-rail.tsx` (second
   consommateur après le wizard). Store `railStep` (`null` = auto = **premier trou** — la première
   étape non faite, `defaultLoopStep` ; tout fait → la dernière étape, état « veille » entre deux
   rafales de matchs) ; changer de semaine (`setSelectedWeekend`) remet le rail à `null`.

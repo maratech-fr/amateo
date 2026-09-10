@@ -191,7 +191,9 @@ export function MatchesPage() {
   const outOfEnvelope = useMemo<Set<string>>(() => {
     const set = new Set<string>();
     for (const fixture of allFixtures) {
-      if (!isPlacedOnGrid(fixture) || null === fixture.kickoffTime) {
+      // Un amical (competitionId null) n'obéit à aucune enveloppe ligue (P4-193) :
+      // il n'entre jamais dans le badge « hors enveloppe », indicatif au plus.
+      if (!isPlacedOnGrid(fixture) || null === fixture.kickoffTime || null === fixture.competitionId) {
         continue;
       }
       const envelope = resolveEnvelope(fixture, resolvedTeamWindows, windows);
