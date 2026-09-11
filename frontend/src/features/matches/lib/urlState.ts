@@ -157,9 +157,9 @@ export function applyConsultToParams(current: URLSearchParams, consult: ConsultP
  * SUPPRIME le param ; `null` écrit `aucune` — sans quoi replier le gabarit
  * (param absent) le rouvrirait au décodage. Mêmes conventions que `?vue=`/`?temps=`.
  */
-export type ConfigSection = "gabarit" | "creneaux" | "echeances" | "durees" | "adversaires" | "reglages";
+export type ConfigSection = "gabarit" | "creneaux" | "echeances" | "durees" | "adversaires" | "reglages" | "libelles";
 
-const CONFIG_SECTIONS: ConfigSection[] = ["gabarit", "creneaux", "echeances", "durees", "adversaires", "reglages"];
+const CONFIG_SECTIONS: ConfigSection[] = ["gabarit", "creneaux", "echeances", "durees", "adversaires", "reglages", "libelles"];
 
 function isConfigSection(value: string | null): value is ConfigSection {
   return null !== value && (CONFIG_SECTIONS as string[]).includes(value);

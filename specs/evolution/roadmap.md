@@ -1,4 +1,4 @@
-# Roadmap (56) — ce qui reste à faire
+# Roadmap (55) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -155,19 +155,22 @@
 > `MatchPlacementPayloadBuilder`) et gagne une alerte dédiée (`FRIENDLY_ON_MATCH_SLOT`) — **zéro
 > champ moteur, zéro bump, le contrat reste 2.20**, détail
 > [`module-matchs.md`](../courantes/module-matchs.md) § « Solveur de placement » et § « Diagnostic
-> gradué ». Suite = **P4-196** — (6) le canal API FFBB et l'appariement — **P4-194 + P4-195 SOLDÉS
+> gradué ». (6) le canal API FFBB et l'appariement — **P4-194 + P4-195 SOLDÉS
 > (2026-09-10)** : une rencontre de coupe non appariée fait naître ou réutilise une `Competition`
 > CUP rattachée à l'équipe (le libellé fédéral tranche l'amical, plus l'absence d'appariement), et
 > une CUP n'attend aucune journée (`expectedMatchdays` null, un réappariement répare un type
 > stocké à tort), détail
 > [`module-matchs.md`](../courantes/module-matchs.md) § « Le canal API FFBB » et § « Appariement
-> FFBB ».
+> FFBB ». (7) les alias FFBB d'un gymnase, voir/retirer — **P4-196 SOLDÉ (2026-09-11)** : 7ᵉ
+> `AccordionSection` de `ConfigurationPage` (`VenueLabelsSection.tsx`, `?section=libelles`),
+> détail [`module-matchs.md`](../courantes/module-matchs.md) § « Gymnase depuis le libellé ».
+> Restent ouverts sur ce lot : **P4-192** (déplacements du week-end invisibles à l'arrivée sur
+> Semaine) et **P4-184** (`Échap` ne ferme pas la puce `ResourceFilter`).
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
 | P4-184 | **`Échap` ne ferme pas la puce `ResourceFilter`, et son fond de fermeture intercepte tous les clics** | ⚪ | XS | `frontend/src/features/planning/ResourceFilter.tsx:83` : fermeture par un `<button aria-hidden class="fixed inset-0 z-50">` seulement, aucun gestionnaire clavier — a11y (escape-routes) ; a bloqué les e2e de la PR-1 filtres matchs. Trois consommateurs (planning, vœux coach, matchs) : à corriger dans la puce, pas chez eux |
 | P4-192 | **À l'arrivée sur Semaine, les déplacements du week-end ne se voient pas** (atterrissage « Saisi dans FBI (0/0) ») | 🟡 | S | Mesuré 2026-09-08 : bandeau « 3 matchs arrivés » mais panneau « Aucun domicile à recopier » ; les 3 extérieurs (SF1, SM1, U21M1) vivent sous une autre étape. `defaultLoopStep` (`lib/loopSteps.ts`) choisit le premier trou : quand tout est fait sauf FBI (0/0), montrer plutôt la grille + la liste « À l'extérieur ce week-end » |
-| P4-196 | **Gérer les alias FFBB d'un gymnase (voir / retirer)** | ⚪ | S | `POST`/`DELETE /api/venues/{id}/external-labels[/{label}]` sont tous deux livrés côté backend (`backend/src/Controller/VenueExternalLabelController.php`), mais seul le POST a un consommateur front (P4-187b, geste « Rattacher »). Le DELETE n'a AUCUN écran : un libellé rattaché au mauvais gymnase ne se corrige qu'en API. Reste à cadrer : où vivre ce réglage (fiche gymnase ? `ConfigurationPage`) et si un simple retrait d'alias suffit ou s'il faut aussi dé-rattacher les domiciles déjà backfillés |
 
 ### Blocs de mutualisation imbriqués (mesure P4-182, 2026-09-07)
 

@@ -7,8 +7,8 @@ import { renderWithProviders } from "@/test/utils";
 
 import { ConfigurationPage } from "./ConfigurationPage";
 
-// P4-185 — une section = un écran : les 6 cartes sont devenues 6 accordéons
-// CONTRÔLÉS, un seul ouvert à la fois, ancré `?section=`. On mute la couche api
+// P4-185 — une section = un écran : les cartes sont des accordéons CONTRÔLÉS, un
+// seul ouvert à la fois, ancré `?section=` (7ᵉ « libelles » ajoutée P4-196). On mute la couche api
 // (PROD) et react-query tourne pour de vrai ; « pending » = promesse pendante pour
 // exercer le régime chargement (en-tête SANS compte).
 const state: Record<string, unknown[] | "pending"> = {
@@ -158,6 +158,38 @@ describe("ConfigurationPage (P4-185 — une section = un écran)", () => {
     expect(screen.queryByRole("button", { name: "Accès match" })).not.toBeInTheDocument();
     // …et l'URL le consigne.
     expect(screen.getByTestId("section-param")).toHaveTextContent("aucune");
+  });
+
+  // ── P4-196 — la 7ᵉ section « Libellés FFBB des gymnases » ─────────────────────
+  it("la section « Libellés FFBB des gymnases » existe et est repliée à l'arrivée", async () => {
+    renderWithProviders(<Harness />);
+    await screen.findByText(/Aucune habitude déclarée/);
+    const header = screen.getByRole("button", { name: /^Libellés FFBB des gymnases/ });
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    // Le corps (phrase d'aide) n'est PAS monté tant que la section est repliée.
+    expect(screen.queryByText(/enregistrés sous une forme simplifiée/i)).not.toBeInTheDocument();
+  });
+
+  it("deep-link ?section=libelles : les libellés sont ouverts à l'arrivée (gabarit replié)", async () => {
+    renderWithProviders(<Harness />, { route: "/matchs/configuration?section=libelles" });
+    // Corps monté : la phrase d'aide et l'état vide (aucun alias sur le seed) sont là.
+    expect(await screen.findByText(/enregistrés sous une forme simplifiée/i)).toBeInTheDocument();
+    expect(screen.getByText(/Aucun gymnase ne porte de libellé FFBB/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Aucune habitude déclarée/)).not.toBeInTheDocument();
+  });
+
+  it("l'en-tête des libellés porte le résumé quand un gymnase a des alias (compte les gymnases, pas les alias)", async () => {
+    state.venues = [{ id: "venue-1", name: "Gymnase Alpha", color: "#00aa00", externalLabels: ["gymnase mateo", "salle mateo"] }];
+    renderWithProviders(<Harness />);
+    // findBy : le résumé apparaît quand la query venues se résout (comme le test des rotations).
+    expect(await screen.findByRole("button", { name: "Libellés FFBB des gymnases · 1 gymnase nommé par la FFBB" })).toBeInTheDocument();
+  });
+
+  it("en chargement (venues pendant) : l'en-tête des libellés n'affiche AUCUN compte", async () => {
+    state.venues = "pending";
+    renderWithProviders(<Harness />);
+    // L'en-tête existe tout de suite, SANS résumé (ni « · aucun libellé », ni un compte).
+    expect(await screen.findByRole("button", { name: "Libellés FFBB des gymnases" })).toBeInTheDocument();
   });
 
   // ── P4-186 (rappel) — les DONNÉES FBI/FFBB ne sont PAS dans la Configuration ──

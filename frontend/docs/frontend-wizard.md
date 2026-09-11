@@ -1,11 +1,11 @@
 # Wizard — saisie des données (tranche 3, LIVRÉ)
 
-Last verified @ 2026-09-06 (`documentation-update`, P4-164 SOLDÉ — PR-2 : `VenueSelect` cité en
-item 2 « Gymnases » est le SUJET). Recalé sur le code : le sélecteur de gymnase (`VenueSelect`) est
-désormais construit sur `listbox.tsx` (pastille sur chaque option ET le trigger, ancienne limite
-« liste ouverte textuelle » disparue) — vérifié `venue-select.tsx` + les 5 wizard/matches
-consommateurs. Reste du fichier non re-contrôlé ligne à ligne cette passe — un stamp REMPLACE,
-l'historique vit dans git.
+Last verified @ 2026-09-11 (`documentation-update`, rotation des stamps — sans rapport avec la
+feature de la PR). Re-confronté au code : `VenueSelect` (`venue-select.tsx:1,44-49`) reste construit
+sur `Listbox` (`shared/components/ui/listbox.tsx`) ; `WIZARD_STEPS` (`lib/steps.ts:9-15`) porte
+toujours exactement 6 étapes (teams/venues/coaches/constraints/recap/generate), inchangé ; `lib/
+teamColumns.ts` existe toujours (foyer unique des largeurs de colonnes). Reste du fichier non
+re-contrôlé ligne à ligne cette passe — un stamp REMPLACE, l'historique vit dans git.
 
 > ⚠️ **Réalité livrée — canonique.** Le draft "4 étapes" plus bas est **historique/superseded** : le wizard a été reconstruit dans `frontend/src/features/wizard` avec un flux plus granulaire, décidé avec le PO. Les sections 1+ ci-dessous ne décrivent plus l'implémentation.
 

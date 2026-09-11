@@ -128,8 +128,8 @@ describe("decodeSectionParam (P4-185 — accordéon Configuration)", () => {
     expect(decodeSectionParam(new URLSearchParams("section=aucune"))).toBeNull();
   });
 
-  it("chacune des 6 clés est reconnue", () => {
-    for (const key of ["gabarit", "creneaux", "echeances", "durees", "adversaires", "reglages"] as const) {
+  it("chacune des 7 clés est reconnue (P4-196 ajoute « libelles »)", () => {
+    for (const key of ["gabarit", "creneaux", "echeances", "durees", "adversaires", "reglages", "libelles"] as const) {
       expect(decodeSectionParam(new URLSearchParams(`section=${key}`))).toBe(key);
     }
   });
@@ -147,6 +147,11 @@ describe("applySectionToParams (P4-185)", () => {
 
   it("une autre section ⇒ écrite telle quelle", () => {
     expect(applySectionToParams(new URLSearchParams(""), "durees").get("section")).toBe("durees");
+  });
+
+  it("« libelles » (P4-196) ⇒ écrite et relue telle quelle", () => {
+    expect(applySectionToParams(new URLSearchParams(""), "libelles").get("section")).toBe("libelles");
+    expect(decodeSectionParam(applySectionToParams(new URLSearchParams(""), "libelles"))).toBe("libelles");
   });
 
   it("préserve les params sans rapport", () => {

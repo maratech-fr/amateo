@@ -1,24 +1,13 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-10 (P4-194 + P4-195, `documentation-update`). **Une rencontre de coupe non
-appariée n'est plus un amical** : `FfbbRencontreReconciler::resolveOrCreateCompetition`
-(`FfbbRencontreReconciler.php:441-506`, lu) fait naître — ou réutilise — une `Competition` `CUP`
-rattachée à l'équipe visée dès que le libellé fédéral normalisé ne porte pas le token `amical` (§
-« Le canal API FFBB » ci-dessous) ; « non apparié » n'a plus rien à voir avec « amical ». **Une
-coupe n'attend aucune journée** : `FfbbEngagementsController::inferCompetitionType`/`confirm`
-(`FfbbEngagementsController.php:180-192,221-270`, lu) infère le type depuis le nom (« coupe » testé AVANT «
-brassage ») et pose `expectedMatchdays` null pour une `CUP` — `MatchConflictDetector::competitionIncompleteItems`
-(`MatchConflictDetector.php:359-373`, lu) était déjà muet sur un `expected` null, comportement
-inchangé, seul l'appariement change ce qu'il pose. Reste inchangé depuis la passe précédente :
-**un amical n'est plus proposé au solveur** (décision fondateur 2026-09-10, P4-193) —
-`MatchPlacementPayloadBuilder::matchRow` (`MatchPlacementPayloadBuilder.php:247-266`) écarte toute
-`Fixture` `competitionId` null du `kind: TO_PLACE` (placée+ancrée → `FIXED`, sinon absente du
-payload), **le contrat reste 2.20**, et `FRIENDLY_ON_MATCH_SLOT` (sévérité 5,
-`MatchConflictDetector::friendlyOnMatchSlotConflicts`) alerte sans jamais bloquer — une coupe,
-elle, porte de nouveau un `competitionId` réel et n'est plus concernée par cette liberté. § «
-Détection — `MatchConflictDetector` » (P4-188/189/191), § « Espace Importer » et § «
-Configuration » (P4-185/187) non re-sondés cette passe — voir `git log -p --follow` pour leur
-dernière vérification.
+Last verified @ 2026-09-11 (P4-196, `documentation-update`). **Écran de retrait des libellés FFBB
+livré** : § « Gymnase depuis le libellé » — 7ᵉ `AccordionSection` de `/matchs/configuration`
+(`VenueLabelsSection.tsx`, `?section=libelles`), `detachVenueLabel`/`useDetachVenueLabel`
+(`onSettled` invalide `["venues"]` et `["fixtures"]`), confronté au code
+(`VenueLabelsSection.tsx`, `ConfigurationPage.tsx`, `api.ts`, `queries.ts`,
+`lib/configSummaries.ts`, `lib/urlState.ts`). § « Configuration — repli visuel » recalé : sept
+sections, plus six. Reste du fichier (§ Détection, § Espace Importer, § reconciliation coupes
+P4-194/195) non re-sondé cette passe — voir `git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -311,7 +300,7 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   `EffectiveScheduleResolver` (pur) + `TrainingCalendarContext` (chargement scopé), consommés par le
   radar ET l'impact — deux copies auraient divergé.
 
-## Gymnase depuis le libellé — alias de salle FBI/FFBB (P4-187, backend P4-187a + écran P4-187b, LIVRÉ EN ENTIER, 2026-09-09)
+## Gymnase depuis le libellé — alias de salle FBI/FFBB (P4-187, backend P4-187a + écran P4-187b, LIVRÉ EN ENTIER, 2026-09-09 ; écran de retrait P4-196, 2026-09-11)
 
 > Mesuré 2026-09-08 sur le canal API (`POST /api/ffbb/rencontres/apply`, roadmap P4-187) : un
 > domicile importé porte un libellé de salle fédéral (`Fixture.fbiVenueLabel`) mais aucun
@@ -399,9 +388,24 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   QUE `NEW`/`OUT_OF_SYNC`.
 - **Consulter** (`MatchRowsTable.tsx`) recale son libellé pour renvoyer vers le geste : un domicile
   sans gymnase s'affiche « `<libellé>` · à rattacher dans Importer » (était « non rattaché »).
-- **Pas d'écran de retrait d'alias** : le `DELETE /api/venues/{id}/external-labels/{label}` (livré
-  en P4-187a) n'a aucun consommateur dans `frontend/src` — un alias mal rattaché ne se corrige
-  qu'en API. Roadmap **P4-196**.
+- **Écran de retrait d'alias (P4-196, `/matchs/configuration`)** : 7ᵉ `AccordionSection`,
+  **« Libellés FFBB des gymnases »** (dernière position, repliée comme les autres, ancrée
+  `?section=libelles`). `VenueLabelsSection.tsx` liste un gymnase par ligne — ceux qui portent
+  ≥ 1 alias — avec ses alias en pastilles affichées VERBATIM (la forme normalisée stockée ; une
+  phrase d'aide explique la normalisation minuscules/sans accents) et un bouton **Retirer** par
+  pastille ; l'état vide renvoie vers le geste **Rattacher** de l'onglet Importer. Le retrait
+  passe par un `ConfirmDialog` (« Les matchs déjà rattachés gardent ce gymnase ; seuls les
+  prochains imports ne le seront plus. ») puis `DELETE /api/venues/{id}/external-labels/{label}`
+  (`detachVenueLabel`, libellé encodé — il contient des espaces). Résumé d'en-tête `labelsSummary`
+  (`lib/configSummaries.ts`) compte les GYMNASES à ≥ 1 alias, jamais les alias : « N gymnase(s)
+  nommé(s) par la FFBB » / « aucun libellé rattaché » / muet en chargement. `useDetachVenueLabel`
+  invalide `["venues"]` **et** `["fixtures"]` en `onSettled` (décision fondateur : le
+  `suggestedVenueId` d'Importer est DÉRIVÉ des alias à la lecture — sans la seconde invalidation,
+  Importer pourrait re-proposer le gymnase dont l'alias vient d'être retiré). **Corriger un
+  mauvais rattachement reste deux gestes** : retirer ici, puis Rattacher depuis Importer ; les
+  rencontres déjà rattachées au mauvais gymnase AVANT le retrait se corrigent une par une (hors
+  scope assumé de P4-196 — pas de dé-rattachement en masse). Pas de couverture e2e (geste rare) :
+  l'API est couverte côté backend par `VenueExternalLabelApiTest` et la feature Behat des alias.
 - **Pas de couverture e2e** : `POST /api/fixtures` (endpoint de création directe) n'accepte pas
   `fbiVenueLabel` (`backend/src/Dto/FixtureInput.php`) — le scénario ne se rejoue pas par cette
   voie. Couverture vitest : `ReviewQueueRow.test.tsx`, `ImportPage.test.tsx`,
@@ -1575,6 +1579,8 @@ future.
   (le param est alors ABSENT de l'URL — écrire le défaut ne pollue pas le lien) ; `section=aucune`
   ⇒ tout replié (encodage explicite : sans lui, replier le gabarit — param absent — le rouvrirait
   au décodage suivant). Mêmes conventions que `?vue=`/`?temps=` des autres onglets du module.
+  ⚠ **Devenu SEPT depuis P4-196** (§ « Gymnase depuis le libellé » ci-dessus) : `ConfigSection`
+  gagne `libelles`, même patron — le mécanisme d'accordéon contrôlé décrit ici n'a pas changé.
 - **Un résumé discret dans le nom accessible du bouton** (`features/matches/lib/configSummaries.ts`,
   fonctions PURES, comptent ce que le backend a déjà calculé — zéro règle métier côté front) :
   « N rotation(s) » (`rotationsSummary`), « N sur M compétition(s) renseignée(s) » sur l'échéance

@@ -15,6 +15,7 @@ import {
   useCreateVenueUnavailability,
   useDeleteFixture,
   useDeleteVenueMatchWindow,
+  useDetachVenueLabel,
   useFfbbSalles,
   useFixtures,
   useImportFbiFixtures,
@@ -75,6 +76,7 @@ vi.mock("./api", () => ({
   createVenueMatchWindow: vi.fn().mockResolvedValue({ id: "w1", venueId: "v", dayOfWeek: 6, startTime: "14:00", endTime: "20:00" }),
   deleteVenueMatchWindow: vi.fn().mockResolvedValue(undefined),
   attachVenueLabel: vi.fn().mockResolvedValue({ venueId: "v1", label: "GYMNASE MATEO", attached: 1 }),
+  detachVenueLabel: vi.fn().mockResolvedValue(undefined),
 }));
 
 function makeClient(): QueryClient {
@@ -343,6 +345,32 @@ describe("matches queries — rattacher un libellé de salle (P4-187b)", () => {
     await waitFor(() => expect(result.current.attach.isSuccess).toBe(true));
     // Les DEUX lecteurs vivants refetchent : un rattachement pose un venueId (fixtures)
     // ET ajoute un externalLabels (venues). Si l'un manquait, il resterait à 1.
+    await waitFor(() => expect(matchesApi.getFixtures).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(matchesApi.getVenues).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe("matches queries — retirer un libellé de salle (P4-196)", () => {
+  it("useDetachVenueLabel refetche ['venues'] ET ['fixtures'] MÊME quand le DELETE échoue (onSettled, pas onSuccess)", async () => {
+    // Un 404 « gymnase supprimé entre-temps » ne doit pas laisser la liste (staleTime 300 s)
+    // menteuse : le `suggestedVenueId` dérivé des alias et l'`externalLabels` du gymnase
+    // doivent se recaler dans les DEUX issues. Un onSuccess laisserait ici un cache périmé.
+    vi.mocked(matchesApi.detachVenueLabel).mockRejectedValueOnce(new Error("404 gymnase disparu"));
+    const client = makeClient();
+    const { result } = renderHook(
+      () => ({ fixtures: useFixtures(), venues: useVenues(), detach: useDetachVenueLabel() }),
+      { wrapper: wrapperFor(client) },
+    );
+
+    await waitFor(() => expect(result.current.fixtures.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.venues.isSuccess).toBe(true));
+    expect(matchesApi.getFixtures).toHaveBeenCalledTimes(1);
+    expect(matchesApi.getVenues).toHaveBeenCalledTimes(1);
+
+    result.current.detach.mutate({ venueId: "v1", label: "gymnase mateo" });
+
+    await waitFor(() => expect(result.current.detach.isError).toBe(true));
+    // L'échec n'a PAS empêché le rafraîchissement des deux lecteurs vivants.
     await waitFor(() => expect(matchesApi.getFixtures).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(matchesApi.getVenues).toHaveBeenCalledTimes(2));
   });
