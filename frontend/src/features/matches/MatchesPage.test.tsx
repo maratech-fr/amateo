@@ -453,6 +453,24 @@ describe("MatchesPage — filtres (PR-1)", () => {
     expect(screen.queryByText(/au 6 sept\./)).not.toBeInTheDocument();
   });
 
+  it("P4-192 — un week-end 100 % extérieur atterrit sur la grille (homeSlots), jamais sur « Aucun domicile à recopier »", async () => {
+    // Mesuré le 2026-09-08 (SF1, SM1, U21M1) : sans domicile, fbiEntry est le premier
+    // trou mais VIDE ; y atterrir affichait « Aucun domicile à recopier dans FBI » alors
+    // qu'il y a bien des matchs, tous à l'extérieur. defaultLoopStep bascule sur homeSlots.
+    vi.mocked(matchesApi.getFixtures).mockResolvedValueOnce([
+      { id: "fx-away-1", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-10-04", homeAway: "AWAY", opponentLabel: "Grenoble", status: "UNPLACED", venueId: null, kickoffTime: null, fbiVenueLabel: "Halle Clemenceau", externalRef: null, placementSource: null, unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, suggestedVenueId: null },
+    ]);
+    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: [] });
+    renderWithProviders(<MatchesPage />);
+
+    // Aucun clic sur le rail : la vue par défaut est homeSlots (bascule P4-192). La grille
+    // de placement est rendue (en-tête « À placer ») ET la bande extérieur.
+    expect(await screen.findByRole("heading", { name: "À placer" })).toBeInTheDocument();
+    expect(screen.getByText(/À l'extérieur ce week-end/)).toBeInTheDocument();
+    // Le faux message de la vue fbiEntry ne s'affiche PAS.
+    expect(screen.queryByText(/Aucun domicile à recopier/)).not.toBeInTheDocument();
+  });
+
   it("filtre « par gymnase » : les extérieurs (sans gymnase) sont exclus", async () => {
     const user = userEvent.setup();
     renderWithProviders(<MatchesPage />);

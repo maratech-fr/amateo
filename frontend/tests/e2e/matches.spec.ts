@@ -195,7 +195,20 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
     await expect(page.getByRole("button", { name: new RegExp(`vs ${opponent}`) })).toHaveCount(0, { timeout: 15_000 });
 
     // ── Manual loop (P1-4 PR E1): the placed match is a clickable grid cell. ──
+    // ⚠ La grille ne montre qu'UNE semaine : celle du premier week-end À VENIR qui
+    // porte des rencontres. Notre match est daté LOIN (6 mars 2027) pour ne heurter
+    // aucune donnée réelle — sur une base qui porte de vraies rencontres (le bac à
+    // sable), la grille atterrit donc des mois AVANT lui. On avance jusqu'à SA
+    // semaine (bornes : seules les semaines qui portent des rencontres sont listées).
     const cell = page.getByRole("button", { name: new RegExp(`\\d\\d:\\d\\d · ${opponent}`) });
+    const nextWeek = page.getByRole("button", { name: "Semaine suivante" });
+    for (let hops = 0; hops < 40 && !(await cell.isVisible()) && (await nextWeek.isEnabled()); hops += 1) {
+      await nextWeek.click();
+      await page.waitForTimeout(150);
+      // Changer de semaine REND l'étape à l'automatique (store `railStep` → null) :
+      // on revient donc explicitement sur « Domiciles posés », la vue qui porte la grille.
+      await page.getByRole("button", { name: /Domiciles posés/ }).click();
+    }
     await expect(cell).toBeVisible({ timeout: 15_000 });
     await cell.click();
 
@@ -244,10 +257,10 @@ test("matches: filtre par coach recadre la vue et porte le deep-link", async ({ 
   await expect(page).toHaveURL(/[?&]vue=coach/);
   await expect(page).toHaveURL(/[?&]filtre=/);
 
-  // ⚠ Fermer la puce AVANT de poursuivre : son fond de fermeture est un <button>
+  // Fermer la puce AVANT de poursuivre : son fond de fermeture est un <button>
   // invisible plein écran (z-50) qui intercepte tous les clics tant qu'elle est
-  // ouverte, et Échap ne la ferme pas (dette a11y côté planning/ResourceFilter).
-  await page.mouse.click(5, 5);
+  // ouverte. Échap la ferme désormais (P4-184) et rend le focus au déclencheur.
+  await page.keyboard.press("Escape");
 
   // La vue « Domiciles posés » rend la grille sans erreur, recadrée sur le coach.
   await page.getByRole("button", { name: /Domiciles posés/ }).click();

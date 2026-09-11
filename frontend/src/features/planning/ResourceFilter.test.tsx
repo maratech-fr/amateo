@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useEffect, useRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 
@@ -76,6 +77,61 @@ describe("ResourceFilter — un filtre posé doit se voir", () => {
     await user.click(screen.getByRole("button", { expanded: false }));
 
     expect(screen.getByRole("textbox", { name: "Rechercher parmi les gymnases" })).toBeInTheDocument();
+  });
+
+  it("P4-184 — Échap ferme la puce ET rend le focus au déclencheur (WCAG 2.1.2)", async () => {
+    const user = userEvent.setup();
+    render(<ResourceFilter viewMode="gymnase" groups={groups} selected={[]} onToggle={noop} onClear={noop} />);
+    const trigger = screen.getByRole("button", { expanded: false });
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    await user.keyboard("{Escape}");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).toHaveFocus();
+  });
+
+  it("P4-184 — le clic sur le voile ferme toujours la puce (geste souris, conservé)", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<ResourceFilter viewMode="gymnase" groups={groups} selected={[]} onToggle={noop} onClear={noop} />);
+    const trigger = screen.getByRole("button", { expanded: false });
+    await user.click(trigger);
+    // Le voile est le <button aria-hidden tabIndex=-1 fixed inset-0>.
+    const veil = container.querySelector('button[aria-hidden="true"]');
+    expect(veil).not.toBeNull();
+    await user.click(veil as HTMLElement);
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("P4-184 NR — Échap ne remonte PAS à un conteneur hôte à listener NATIF (stopPropagation : ne ferme pas la modale hôte)", async () => {
+    // La puce est montée DEUX fois dans un `Modal` dont `useModalA11y` écoute Échap en
+    // NATIF sur le panel : sans `stopPropagation()`, Échap fermerait AUSSI la fenêtre.
+    // On reproduit le panel hôte par un conteneur à listener keydown natif.
+    const hostSpy = vi.fn();
+    function Host() {
+      const ref = useRef<HTMLDivElement>(null);
+      useEffect(() => {
+        const el = ref.current;
+        if (null === el) {
+          return;
+        }
+        el.addEventListener("keydown", hostSpy);
+        return () => el.removeEventListener("keydown", hostSpy);
+      }, []);
+      return (
+        <div ref={ref}>
+          <ResourceFilter viewMode="gymnase" groups={groups} selected={[]} onToggle={noop} onClear={noop} />
+        </div>
+      );
+    }
+    const user = userEvent.setup();
+    render(<Host />);
+    const trigger = screen.getByRole("button", { expanded: false });
+    await user.click(trigger);
+    await user.keyboard("{Escape}");
+
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(hostSpy).not.toHaveBeenCalled();
   });
 
   it("bascule la ressource cliquée", async () => {

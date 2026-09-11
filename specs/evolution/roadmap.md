@@ -1,4 +1,4 @@
-# Roadmap (55) — ce qui reste à faire
+# Roadmap (54) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -163,14 +163,16 @@
 > [`module-matchs.md`](../courantes/module-matchs.md) § « Le canal API FFBB » et § « Appariement
 > FFBB ». (7) les alias FFBB d'un gymnase, voir/retirer — **P4-196 SOLDÉ (2026-09-11)** : 7ᵉ
 > `AccordionSection` de `ConfigurationPage` (`VenueLabelsSection.tsx`, `?section=libelles`),
-> détail [`module-matchs.md`](../courantes/module-matchs.md) § « Gymnase depuis le libellé ».
-> Restent ouverts sur ce lot : **P4-192** (déplacements du week-end invisibles à l'arrivée sur
-> Semaine) et **P4-184** (`Échap` ne ferme pas la puce `ResourceFilter`).
-
-| # | Sujet | Impact | Effort | Note |
-|---|-------|:---:|:---:|---|
-| P4-184 | **`Échap` ne ferme pas la puce `ResourceFilter`, et son fond de fermeture intercepte tous les clics** | ⚪ | XS | `frontend/src/features/planning/ResourceFilter.tsx:83` : fermeture par un `<button aria-hidden class="fixed inset-0 z-50">` seulement, aucun gestionnaire clavier — a11y (escape-routes) ; a bloqué les e2e de la PR-1 filtres matchs. Trois consommateurs (planning, vœux coach, matchs) : à corriger dans la puce, pas chez eux |
-| P4-192 | **À l'arrivée sur Semaine, les déplacements du week-end ne se voient pas** (atterrissage « Saisi dans FBI (0/0) ») | 🟡 | S | Mesuré 2026-09-08 : bandeau « 3 matchs arrivés » mais panneau « Aucun domicile à recopier » ; les 3 extérieurs (SF1, SM1, U21M1) vivent sous une autre étape. `defaultLoopStep` (`lib/loopSteps.ts`) choisit le premier trou : quand tout est fait sauf FBI (0/0), montrer plutôt la grille + la liste « À l'extérieur ce week-end » |
+> détail [`module-matchs.md`](../courantes/module-matchs.md) § « Gymnase depuis le libellé ». (8)
+> l'atterrissage de Placer et la fermeture clavier de la puce de filtre — **P4-192 + P4-184 SOLDÉS
+> (2026-09-11)** : `defaultLoopStep` bascule sur « Domiciles posés » quand le seul trou restant est
+> « Saisi dans FBI » et qu'il est VIDE (champ `LoopStep.empty`, jamais le libellé « (0/0) »),
+> mesuré sur un week-end 100 % déplacements (SF1/SM1/U21M1, 2026-09-08) ; `Échap` ferme la puce
+> `ResourceFilter` et rend le focus au déclencheur (listener natif + `stopPropagation`, patron
+> `listbox.tsx`), détail [`module-matchs.md`](../courantes/module-matchs.md) § « Refonte UX —
+> RMM-1 » et § « Filtres par équipe / coach / gymnase ». **Reste P4-197** (ci-dessous), relevé en réparant l'e2e du 2026-09-11
+> (P4-183, blocs de mutualisation imbriqués, est un lot distinct — mesure P4-182, ci-dessous).
+| P4-197 | **Placer un match qui n'est pas dans la semaine affichée : la grille ne le montre nulle part** | 🟡 | S | Relevé le 2026-09-11 en réparant `tests/e2e/matches.spec.ts` : la liste « à placer » n'est PAS bornée à la semaine affichée (`MatchesPage.tsx` — `filteredFixtures` nourrit la liste, `weekendFixtures` la grille), donc on peut sélectionner et placer un domicile d'une autre semaine ; il quitte la liste et n'apparaît sur aucune grille tant qu'on n'a pas navigué à SA semaine. Pire : `setSelectedWeekend` rend l'étape à l'automatique (`store.ts`), la navigation change donc aussi de vue. Mesuré sur un match du 6 mars 2027 placé depuis la semaine de septembre. Remède à cadrer : après un placement, suivre le match (poser `selectedWeekend` sur sa semaine) ou borner la liste « à placer » à la semaine affichée |
 
 ### Blocs de mutualisation imbriqués (mesure P4-182, 2026-09-07)
 

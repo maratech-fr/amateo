@@ -1,5 +1,5 @@
 import { Check, ChevronDown } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { cn } from "@/shared/lib/utils";
 
@@ -31,6 +31,37 @@ export function ResourceFilter({ viewMode, groups, selected, onToggle, onClear }
   // (modale doléances — coachs et équipes), et deux `aria-controls` identiques
   // désigneraient le même panneau.
   const panelId = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Échap ferme la puce et rend le focus au déclencheur (WCAG 2.1.2). Patron REPRIS de
+  // `shared/components/ui/listbox.tsx:74-81 / :203-219` : listener keydown NATIF sur le
+  // wrapper (pas le handler React synthétique), + `stopPropagation()`. Pourquoi ce couple :
+  // `CoachWishesModal.tsx:114-115` héberge DEUX de ces puces dans un `Modal` dont
+  // `useModalA11y` (`shared/lib/useModalA11y.ts:76-80`) écoute Échap en NATIF sur le panel.
+  // Le wrapper est un DESCENDANT du panel : un listener natif bouillonnant y tire AVANT
+  // celui du panel, et `stopPropagation()` empêche Échap de fermer AUSSI la fenêtre. Un
+  // handler React synthétique (délégué à la racine) arriverait trop tard. Le clic-voile,
+  // lui, ne restitue pas le focus (geste souris, comme `Listbox`) — voile conservé à l'identique.
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const wrapper = wrapperRef.current;
+    if (null === wrapper) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if ("Escape" === event.key) {
+        event.preventDefault();
+        event.stopPropagation();
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    wrapper.addEventListener("keydown", onKeyDown);
+    return () => wrapper.removeEventListener("keydown", onKeyDown);
+  }, [open]);
 
   if (groups.every((g) => 0 === g.resources.length)) {
     return null;
@@ -49,12 +80,13 @@ export function ResourceFilter({ viewMode, groups, selected, onToggle, onClear }
   const summary = active ? `${count} sélectionné${count > 1 ? "s" : ""}` : "tous";
 
   return (
-    <div className="relative inline-block">
+    <div ref={wrapperRef} className="relative inline-block">
       {/* Motif « disclosure » : `aria-expanded` + `aria-controls`. Pas de
           `aria-haspopup="listbox"` — le panneau porte un champ de recherche et des boutons
           bascules, pas des `option` ; l'annoncer en listbox promettrait à l'AT une
           navigation qui n'existe pas. */}
       <button
+        ref={triggerRef}
         type="button"
         aria-expanded={open}
         aria-controls={panelId}
