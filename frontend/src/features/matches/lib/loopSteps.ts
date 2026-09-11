@@ -21,6 +21,13 @@ export interface LoopStep {
   /** Libellé FR, comptes INCLUS (« Conflits (3) ») — le rail ne porte pas de badge à part. */
   label: string;
   done: boolean;
+  /**
+   * « Cette étape n'a RIEN à traiter cette semaine » — posé UNIQUEMENT sur `fbiEntry`
+   * (aucun domicile : `0 === home.length`). C'est un CHAMP, jamais dérivé du libellé
+   * « (0/0) ». `defaultLoopStep` s'en sert pour ne pas atterrir sur une étape vide.
+   * Optionnel — compatible avec `StepRailStep` (typage structurel, le rail l'ignore).
+   */
+  empty?: boolean;
 }
 
 export interface LoopStepsInput {
@@ -122,7 +129,7 @@ export function deriveLoopSteps({ weekFixtures, habits, conflicts }: LoopStepsIn
     { id: "model", label: "Placés au modèle", done: 0 === homeUnplacedWithHabit.length },
     { id: "disputes", label: `Conflits (${conflictCount})`, done: 0 === conflictCount },
     { id: "homeSlots", label: "Domiciles posés", done: 0 === homeUnplaced.length },
-    { id: "fbiEntry", label: `Saisi dans FBI (${submitted.length}/${home.length})`, done: home.length > 0 && submitted.length === home.length },
+    { id: "fbiEntry", label: `Saisi dans FBI (${submitted.length}/${home.length})`, done: home.length > 0 && submitted.length === home.length, empty: 0 === home.length },
   ];
 }
 
@@ -130,7 +137,22 @@ export function deriveLoopSteps({ weekFixtures, habits, conflicts }: LoopStepsIn
  * L'étape sélectionnée par DÉFAUT (store `railStep === null`) = le PREMIER TROU :
  * la première étape non-done de la semaine affichée. Tout done (état « veille »
  * entre deux rafales) → la dernière étape (on est au bout, rien à traiter).
+ *
+ * ⚠ Bascule mesurée le 2026-09-08 (SF1, SM1, U21M1) : un week-end 100 % déplacements
+ * laisse `fbiEntry` non-done ET `empty` (son `done` exige des domiciles, `home.length > 0`),
+ * alors que la vue `homeSlots` rend la grille + « À l'extérieur ce week-end ». Atterrir sur
+ * `fbiEntry` afficherait « Aucun domicile à recopier dans FBI » — un mensonge : il y a bien
+ * des matchs, tous à l'extérieur. Quand le premier trou est un `fbiEntry` VIDE, on rend
+ * `homeSlots` à la place. On lit le CHAMP `empty`, JAMAIS le libellé « (0/0) ». Un trou
+ * AVANT `fbiEntry` (conflits, domiciles à poser) prime : on y va. Des domiciles à saisir
+ * (`empty: false`) → `fbiEntry` normalement. « Tout done » et `empty` sont exclusifs
+ * (le `done` de `fbiEntry` exige `home.length > 0`), le choix utilisateur prime toujours
+ * (l'appelant passe `railStep ?? defaultLoopStep(steps)`).
  */
 export function defaultLoopStep(steps: LoopStep[]): LoopStepId {
-  return (steps.find((s) => !s.done) ?? steps[steps.length - 1]).id;
+  const first = steps.find((s) => !s.done) ?? steps[steps.length - 1];
+  if ("fbiEntry" === first.id && true === first.empty) {
+    return "homeSlots";
+  }
+  return first.id;
 }

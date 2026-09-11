@@ -1,13 +1,14 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-11 (P4-196, `documentation-update`). **Écran de retrait des libellés FFBB
-livré** : § « Gymnase depuis le libellé » — 7ᵉ `AccordionSection` de `/matchs/configuration`
-(`VenueLabelsSection.tsx`, `?section=libelles`), `detachVenueLabel`/`useDetachVenueLabel`
-(`onSettled` invalide `["venues"]` et `["fixtures"]`), confronté au code
-(`VenueLabelsSection.tsx`, `ConfigurationPage.tsx`, `api.ts`, `queries.ts`,
-`lib/configSummaries.ts`, `lib/urlState.ts`). § « Configuration — repli visuel » recalé : sept
-sections, plus six. Reste du fichier (§ Détection, § Espace Importer, § reconciliation coupes
-P4-194/195) non re-sondé cette passe — voir `git log -p --follow` pour sa dernière vérification.
+Last verified @ 2026-09-11 (P4-192 + P4-184, `documentation-update`). **Dernières lignes ouvertes
+du lot module matchs soldées, frontend seul** : (1) `defaultLoopStep`/`LoopStep.empty`
+(`lib/loopSteps.ts:17-31,152-158`) confrontés au code — l'exception d'atterrissage `fbiEntry` vide
+→ `homeSlots` est bien réservée à CETTE étape, tout autre trou prime ; (2) `Échap` sur
+`ResourceFilter` (`frontend/src/features/planning/ResourceFilter.tsx:46-64`) confronté au code —
+listener natif + `stopPropagation`, focus rendu au déclencheur, voile de clic-hors inchangé ; les
+trois consommateurs (planning, matchs, vœux coach) relus, intouchés. Reste du fichier (§
+Détection, § Espace Importer, § reconciliation coupes P4-194/195, § retrait des libellés P4-196)
+non re-sondé cette passe — voir `git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -1068,8 +1069,11 @@ part : une barre de filtres sur la vue Semaine, même patron que `/planning`.
   wizard), écrit en `replace` à chaque changement ; ids inconnus ignorés. Premier état de filtre du dépôt porté par
   l'URL (`/planning` reste sur son store seul).
 - **Lecture seule** : aucun geste nouveau. Suite : l'onglet Consulter (PR-2a, ci-dessous) puis Mois · Phase (PR-2b).
-- Dette relevée en chemin, hors périmètre : `Échap` ne ferme pas la puce `ResourceFilter` (fond de fermeture plein
-  écran qui intercepte les clics) — roadmap **P4-184**.
+- **`Échap` ferme la puce `ResourceFilter`** (P4-184, 2026-09-11) : listener `keydown` **natif** sur le wrapper
+  (`stopPropagation`, patron `shared/components/ui/listbox.tsx`) — nécessaire car deux de ces puces vivent aussi
+  dans le `Modal` des vœux de coach, dont `useModalA11y` écoute Échap en natif sur le panel : sans
+  `stopPropagation`, Échap fermerait la puce ET la fenêtre. Focus rendu au bouton déclencheur ; le voile de
+  clic-hors, lui, ne restitue pas le focus (geste souris), inchangé.
 
 ## Onglet « Consulter » — le module sépare Importer · Placer · Consulter (PR-2a, 2026-09-08)
 
@@ -1120,7 +1124,8 @@ Importer · Configuration** ; l'onglet Importer a livré sa page en PR-3b, déta
     rattaché », statut, une pastille par famille de conflit présente ; clic → Placer sur le week-end du match.
   - URL : `temps=semaine|mois|phase`, `mois=YYYY-MM`, `phase=<competitionId>`.
 - Livré depuis, hors PR-2a : l'onglet Importer (PR-3a/PR-3b, § « Espace Importer » plus bas — file de
-  traitement par équipe, compteurs « N à valider »/« N écart(s) »). P4-192 reste ouvert (l'atterrissage de Placer).
+  traitement par équipe, compteurs « N à valider »/« N écart(s) »). L'atterrissage de Placer sur un week-end
+  100 % déplacements est corrigé, § « Refonte UX — RMM-1 » ci-dessous (« Le rail à 5 étapes »).
 
 ## Refonte UX — RMM-1 (P2-26, 4 PR entre 2026-08-23 et 2026-08-24)
 
@@ -1151,6 +1156,13 @@ Importer · Configuration** ; l'onglet Importer a livré sa page en PR-3b, déta
   consommateur après le wizard). Store `railStep` (`null` = auto = **premier trou** — la première
   étape non faite, `defaultLoopStep` ; tout fait → la dernière étape, état « veille » entre deux
   rafales de matchs) ; changer de semaine (`setSelectedWeekend`) remet le rail à `null`.
+  **Exception d'atterrissage (P4-192, mesurée 2026-09-08 sur SF1/SM1/U21M1 — un week-end 100 % déplacements)** :
+  quand le premier trou tombe sur `fbiEntry` **vide** (`empty: true` — aucun `HOME` cette semaine,
+  `home.length === 0`), `defaultLoopStep` rend `homeSlots` (grille + « À l'extérieur ce week-end ») plutôt que
+  `fbiEntry`, dont le libellé « Saisi dans FBI (0/0) » afficherait « Aucun domicile à recopier » — un mensonge :
+  il y a bien des matchs, tous à l'extérieur. `empty` est un CHAMP de `LoopStep`, jamais dérivé du libellé
+  « (0/0) ». Un trou AVANT `fbiEntry` (conflits, domiciles à poser) prime toujours ; un choix de rail fait par
+  l'utilisateur (`railStep` non `null`) prime aussi.
   Deux formules VALIDÉES fondateur, à ne pas re-discuter : (1) un **écart au modèle** (`isOffModel`
   — jour/heure/gymnase divergeant de l'habitude déclarée) est un **SIGNAL affiché, jamais un
   `done` bloquant** (verbatim : « c'est un signal, c'est pas bloquant ») — sans habitude sur

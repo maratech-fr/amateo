@@ -146,6 +146,30 @@ describe("defaultLoopStep — le PREMIER TROU (première étape non-done)", () =
     expect(steps.every((s) => s.done)).toBe(true);
     expect(defaultLoopStep(steps)).toBe("fbiEntry");
   });
+
+  it("P4-192 — week-end 100 % extérieur (fbiEntry VIDE, tout le reste done) → homeSlots, pas fbiEntry", () => {
+    // Aucun domicile ce week-end : fbiEntry est non-done (son done exige home.length>0)
+    // ET empty (0 domicile). Atterrir dessus afficherait « Aucun domicile à recopier dans
+    // FBI » alors que la vue homeSlots rend la grille + « À l'extérieur ce week-end ».
+    const steps = deriveLoopSteps({ weekFixtures: [fx({ id: "away", homeAway: "AWAY", status: "UNPLACED" })], habits: [], conflicts: [] });
+    const fbi = id(steps, "fbiEntry");
+    expect(fbi.done).toBe(false);
+    expect(fbi.empty).toBe(true);
+    // Toutes les autres étapes sont done → le premier trou EST fbiEntry, mais il est vide.
+    expect(steps.filter((s) => s.id !== "fbiEntry").every((s) => s.done)).toBe(true);
+    expect(defaultLoopStep(steps)).toBe("homeSlots");
+  });
+
+  it("P4-192 — des domiciles à saisir (fbiEntry non-done mais NON vide) → fbiEntry inchangé", () => {
+    // Un domicile PLACÉ non encore saisi : fbiEntry non-done, empty false (il y a bien un
+    // domicile). Le premier trou reste fbiEntry, et on y va — la bascule est inerte.
+    const steps = deriveLoopSteps({ weekFixtures: [fx({ id: "h", status: "PLACED" })], habits: [], conflicts: [] });
+    const fbi = id(steps, "fbiEntry");
+    expect(fbi.done).toBe(false);
+    expect(fbi.empty).toBe(false);
+    expect(steps.filter((s) => s.id !== "fbiEntry").every((s) => s.done)).toBe(true);
+    expect(defaultLoopStep(steps)).toBe("fbiEntry");
+  });
 });
 
 describe("isOffModel — divergence d'un domicile placé vs son habitude", () => {

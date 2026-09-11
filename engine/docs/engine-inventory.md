@@ -1,13 +1,13 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-09-06 (P2-61, `documentation-update` — §POST /generate phase 2 et §5 poids :
-`PLACEMENT_PROXIMITY_WEIGHT = 9` en phase 1, score rapporté soustrait la proximité ; la mention
-« inerte » de P3-21 était périmée depuis PR B). Re-confronté au code :
-`CONTRACT_VERSION` toujours **2.20** (`engine/CONTRACT_VERSION`) ✓ ; `app/solver/constraints/`
-porte toujours ses **8 fichiers** (`__init__`, `common`, `diagnostics`, `parsing`, `structural`,
-`targeting`, `travel`, `wellness`) ✓ ; `app/solver/objective/` et `app/solver/result_builder/`
-gardent leur découpe déclarée (`weights`/`normalise`/`terms` et `helpers`/`slots`/`diagnostics`) ✓ ;
-port 8000 confirmé (`docker-compose.yml:284,286`) ✓. Reste de l'inventaire non re-sondé ligne à
+Last verified @ 2026-09-11 (rotation, `documentation-update`, PR P4-192/P4-184 — engine non
+touché). Re-confronté au code : `CONTRACT_VERSION` toujours **2.20** (`engine/CONTRACT_VERSION`) ✓ ;
+`app/solver/constraints/` porte toujours ses **8 fichiers** (`__init__`, `common`, `diagnostics`,
+`parsing`, `structural`, `targeting`, `travel`, `wellness`) ✓ ; `app/solver/objective/` et
+`app/solver/result_builder/` gardent leur découpe déclarée (`weights`/`normalise`/`terms` et
+`helpers`/`slots`/`diagnostics`) ✓ ; port 8000 confirmé (`docker-compose.yml:284,286`) ✓ ;
+`PLACEMENT_PROXIMITY_WEIGHT = 9` toujours utilisé en phase 1 (`app/main.py:701-706`) ✓. Reste de
+l'inventaire non re-sondé ligne à
 ligne cette passe.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.

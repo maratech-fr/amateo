@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose *)",
+      "Bash(make install *)",
+      "Bash(touch .installed)",
+      "Bash(make start *)",
+      "Bash(curl -s http://localhost:8080/api/health)",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(mkdir -p /tmp/claude-1000/-home-franck-Projets-scheduler/05354415-5f48-4f31-bb31-28eb55e8abce/scratchpad)",
+      "Bash(make -C backend help)",
+      "Bash(echo \"--- exit: $?\")",
+      "Bash(python3 -c ' *)",
+      "Bash(grep -nE \"^  [a-z-]+:$|user:|UID:|GID:\" docker-compose.yml)",
+      "Bash(git stash *)",
+      "Bash(git checkout *)",
+      "Bash(git pull *)",
+      "Workflow(code-review)",
+      "Bash(make db-reset *)",
+      "Bash(make fixtures *)",
+      "Bash(npx playwright *)",
+      "Read(//home/marabou/.cache/ms-playwright/**)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/)",
+      "Bash(node /home/marabou/.claude/jobs/de65fdd1/tmp/repro.mjs)",
+      "Bash(node -e \"console.log\\(require.resolve\\('@playwright/test'\\)\\)\")",
+      "Bash(node -e \"import\\('@playwright/test'\\).then\\(m=>console.log\\('ok esm'\\)\\)\")",
+      "Bash(node /home/marabou/.claude/jobs/de65fdd1/tmp/repro2.mjs)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "code-review-graph",
+    "playwright",
+    "serena",
+    "context7"
+  ]
+}

@@ -1,11 +1,13 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-09-06 (rotation `documentation-update`, PR P4-164 PR-1 — zone non touchée,
+Last verified @ 2026-09-11 (rotation `documentation-update`, PR P4-192/P4-184 — zone non touchée,
 contrôle de fraîcheur). Re-confronté au code : `engine/CONTRACT_VERSION` toujours `2.20` ✓ ;
-`DiagnosticSchema.id` toujours requis (`output_schema.py:61`) ✓ ; le commentaire mort
-`FACILITY_CAPACITY` toujours à `engine/app/main.py:488` (RETIRÉE le 2026-08-08, état inchangé) ✓ ;
-`LEVEL_2_OBJECTIVE_WEIGHTS` toujours consommé par `add_preferred_day_bonus`/`add_preferred_time_bonus`/
-`add_match_day_rest_bonus`/`add_spacing_penalty` (`app/main.py:631-634`) ✓. Rien de faux trouvé.
+`DiagnosticSchema.id` toujours requis (`app/schemas/output_schema.py:61-62`, `class
+DiagnosticSchema` ligne 61, `id: str` ligne 62 — chemin recalé, le fichier vit sous `app/schemas/`
+pas `app/`) ✓ ; le commentaire mort `FACILITY_CAPACITY` toujours présent (`app/main.py`, § retiré
+le 2026-08-08, état inchangé) ✓ ; `LEVEL_2_OBJECTIVE_WEIGHTS` toujours consommé par
+`add_preferred_day_bonus`/`add_preferred_time_bonus`/`add_match_day_rest_bonus`/`add_spacing_penalty`
+(`app/main.py:631-634`) ✓. Rien de faux trouvé.
 Reste non re-parcouru ligne à ligne cette passe — historique :
 `git log -p --follow engine/docs/nominal-flow.md`.
 
