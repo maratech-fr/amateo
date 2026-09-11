@@ -411,6 +411,21 @@ export interface AttachVenueLabelResult {
  */
 export const attachVenueLabel = ({ venueId, label }: AttachVenueLabelInput): Promise<AttachVenueLabelResult> =>
   api.post(`venues/${venueId}/external-labels`, { json: { label } }).json<AttachVenueLabelResult>();
+
+export interface DetachVenueLabelInput {
+  venueId: string;
+  /** L'alias NORMALISÉ stocké (`Venue.externalLabels`) — il contient des espaces, d'où l'encodage du chemin. */
+  label: string;
+}
+
+/**
+ * P4-196 — retire un alias FBI/FFBB d'un gymnase. Ne touche AUCUNE rencontre déjà
+ * rattachée (le `venueId` posé reste, seul l'alias qui l'a produit part) ; 204,
+ * idempotent. Le libellé est l'alias NORMALISÉ (avec espaces) → encodage du chemin
+ * obligatoire. 404 gymnase étranger, 409 saison archivée ; management-gated.
+ */
+export const detachVenueLabel = ({ venueId, label }: DetachVenueLabelInput): Promise<void> =>
+  api.delete(`venues/${venueId}/external-labels/${encodeURIComponent(label)}`).then(() => undefined);
 export const getCategories = (): Promise<Category[]> => collectionAll<Category>("sport_categories");
 export const getCoaches = (): Promise<Coach[]> => collectionAll<Coach>("coaches");
 

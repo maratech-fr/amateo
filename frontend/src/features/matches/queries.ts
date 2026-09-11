@@ -374,6 +374,29 @@ export function useAttachVenueLabel() {
   });
 }
 
+/**
+ * P4-196 — retire un alias de salle FBI/FFBB d'un gymnase. Invalidation en
+ * `onSettled` (PAS `onSuccess`) : après un 404 « gymnase supprimé entre-temps », la
+ * liste des gymnases (staleTime 300 s) doit quand même se recaler. On invalide
+ * directement `["venues"]` (le gymnase perd un `externalLabels`) ET `["fixtures"]`
+ * (le `suggestedVenueId` est DÉRIVÉ des alias à la lecture — sans ça Importer
+ * pourrait re-proposer la salle dont on vient de retirer le libellé) — jamais le
+ * helper `invalidateFixtures`, dont le volet `["wizard","teams"]` n'a rien à faire
+ * ici. Toast de succès ; le message serveur (409 saison archivée…) est affiché tel quel.
+ */
+export function useDetachVenueLabel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: matchesApi.DetachVenueLabelInput) => matchesApi.detachVenueLabel(input),
+    onSuccess: () => toast.success("Libellé retiré."),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ["venues"] });
+      void queryClient.invalidateQueries({ queryKey: ["fixtures"] });
+    },
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
 // ── Capacity layer (P1-4 PR B) ───────────────────────────────────────────────
 
 /** Match access windows of the club's venues — consumed by the placement panel,

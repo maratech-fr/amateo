@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { Competition, MatchSlotRotation, OpponentTravel, SportCategoryDuration } from "../api";
-import { deadlinesSummary, durationsSummary, opponentsSummary, rotationsSummary } from "./configSummaries";
+import type { Competition, MatchSlotRotation, OpponentTravel, SportCategoryDuration, Venue } from "../api";
+import { deadlinesSummary, durationsSummary, labelsSummary, opponentsSummary, rotationsSummary } from "./configSummaries";
+
+const venue = (over: Partial<Venue> = {}): Venue => ({ id: "v1", name: "Gymnase Alpha", color: null, externalLabels: [], ...over });
 
 const rotation = (id: string): MatchSlotRotation => ({ id, venueId: "v1", dayOfWeek: 6, kickoffTime: "20:30", teamIds: ["t1", "t2"] });
 
@@ -103,5 +105,23 @@ describe("opponentsSummary", () => {
 
   it("des non localisés ⇒ « N à localiser sur M »", () => {
     expect(opponentsSummary([travel({ located: false }), travel({ opponentLabel: "B" }), travel({ opponentLabel: "C", located: false })])).toBe("2 à localiser sur 3");
+  });
+});
+
+describe("labelsSummary (P4-196)", () => {
+  it("undefined (chargement/échec) ⇒ null — en-tête muet, jamais un « 0 » fabriqué", () => {
+    expect(labelsSummary(undefined)).toBeNull();
+  });
+
+  it("aucun gymnase à alias ⇒ « aucun libellé rattaché »", () => {
+    expect(labelsSummary([venue(), venue({ id: "v2" })])).toBe("aucun libellé rattaché");
+  });
+
+  it("compte les GYMNASES à alias, jamais les alias : 1 gymnase / 3 alias ⇒ « 1 gymnase nommé par la FFBB »", () => {
+    expect(labelsSummary([venue({ externalLabels: ["gymnase mateo", "salle mateo", "mateo"] }), venue({ id: "v2" })])).toBe("1 gymnase nommé par la FFBB");
+  });
+
+  it("plusieurs gymnases à alias ⇒ pluriel", () => {
+    expect(labelsSummary([venue({ externalLabels: ["gymnase a"] }), venue({ id: "v2", externalLabels: ["gymnase b", "salle b"] }), venue({ id: "v3" })])).toBe("2 gymnases nommés par la FFBB");
   });
 });

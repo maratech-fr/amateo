@@ -344,8 +344,9 @@ product rules — reuse them instead of rolling your own:
   open section in the URL. Closing a controlled section **unmounts** its body — a caller holding
   draft state inside must accept it is lost on collapse. First consumer: the Importer tab's
   per-team review queue (`features/matches/ReviewQueue.tsx`, `?equipe=`, module matchs PR-3b
-  2026-09-08). Second: `/matchs/configuration` (`ConfigurationPage.tsx`, P4-185) — six sections,
-  mutually exclusive (one open at a time), anchored `?section=` (`features/matches/lib/urlState.ts`).
+  2026-09-08). Second: `/matchs/configuration` (`ConfigurationPage.tsx`, P4-185) — seven sections
+  (the 7th, `VenueLabelsSection.tsx`, added P4-196), mutually exclusive (one open at a time),
+  anchored `?section=` (`features/matches/lib/urlState.ts`).
 - **`listbox`** (`Listbox`) — the shared APG single-select listbox: colour dot or icon, a
   right-aligned count ("reste N"), a second reason/precision line, and a keyboard-reachable but
   **disabled** option (visible + motivated, never dropped from the list). Built in-house because

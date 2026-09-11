@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Fixture, Venue } from "./api";
-import { getFixtures, getVenues } from "./api";
+import { detachVenueLabel, getFixtures, getVenues } from "./api";
 
 // On n'exerce QUE la coercition de `api.ts` : le voisin `@/shared/api/collection` est le
 // SEUL double. L'API Platform OMET les props nulles/vides du JSON — on prouve que les
@@ -9,6 +9,12 @@ import { getFixtures, getVenues } from "./api";
 // grille ne voient jamais `undefined`.
 const { collectionAll } = vi.hoisted(() => ({ collectionAll: vi.fn() }));
 vi.mock("@/shared/api/collection", () => ({ collectionAll, collection: vi.fn() }));
+
+// Le client ky : on capture le CHEMIN du DELETE sans toucher le réseau (patron
+// submitReopenFixture.test.ts). `getFixtures`/`getVenues` passent par `collectionAll`
+// (mocké au-dessus), donc ce double du client ne les gêne pas.
+const { del } = vi.hoisted(() => ({ del: vi.fn<(url: string) => Promise<unknown>>(() => Promise.resolve()) }));
+vi.mock("@/shared/api/client", () => ({ api: { delete: del } }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -40,5 +46,12 @@ describe("getVenues — coercition de externalLabels (P4-187b)", () => {
     collectionAll.mockResolvedValue([{ id: "v1", name: "Gymnase Alpha", color: null, externalLabels: ["GYMNASE MATEO"] }] as unknown as Venue[]);
     const [v] = await getVenues();
     expect(v.externalLabels).toEqual(["GYMNASE MATEO"]);
+  });
+});
+
+describe("detachVenueLabel — encodage du libellé dans le chemin (P4-196)", () => {
+  it("encode l'espace de l'alias normalisé (jamais un chemin cassé)", async () => {
+    await detachVenueLabel({ venueId: "v1", label: "gymnase mateo" });
+    expect(del).toHaveBeenCalledWith("venues/v1/external-labels/gymnase%20mateo");
   });
 });

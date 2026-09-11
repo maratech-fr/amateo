@@ -9,7 +9,8 @@ import { VenueSelect } from "@/shared/components/ui/venue-select";
 
 import type { Team, Venue } from "./api";
 import { type ConfigSection, applySectionToParams, decodeSectionParam } from "./lib/urlState";
-import { deadlinesSummary, durationsSummary, opponentsSummary, rotationsSummary } from "./lib/configSummaries";
+import { deadlinesSummary, durationsSummary, labelsSummary, opponentsSummary, rotationsSummary } from "./lib/configSummaries";
+import { VenueLabelsSection } from "./VenueLabelsSection";
 import { HabitsLinksDialog } from "./HabitsLinksDialog";
 import { EntryDeadlinesEditor } from "./EntryDeadlinesEditor";
 import { MatchDurationsEditor } from "./MatchDurationsEditor";
@@ -55,9 +56,12 @@ function sectionTitle(label: string, summary: string | null): ReactNode {
  * (dépôt saisonnier, canal API, engagements) a déménagé dans l'onglet Importer :
  * la Configuration ne porte plus que des RÉGLAGES.
  *
- * P4-185 — « une section = un écran » : les 6 cartes sont des accordéons CONTRÔLÉS,
+ * P4-185 — « une section = un écran » : les cartes sont des accordéons CONTRÔLÉS,
  * un seul ouvert à la fois, ancré `?section=` (deep-link, patron `ReviewQueue`).
  * Le gabarit est ouvert par défaut ; `section=aucune` = tout replié.
+ *
+ * P4-196 — 7ᵉ section « Libellés FFBB des gymnases » (dernière) : voir/retirer les
+ * alias de salle FBI/FFBB confirmés (le pendant du geste « Rattacher » d'Importer).
  */
 export function ConfigurationPage() {
   const teams = useTeams();
@@ -142,6 +146,11 @@ export function ConfigurationPage() {
             Habitudes &amp; passerelles
           </Button>
         </div>
+      </AccordionSection>
+
+      {/* 3. Les libellés FFBB des gymnases — voir/retirer les alias de salle (P4-196). */}
+      <AccordionSection {...sectionProps("libelles")} title={sectionTitle("Libellés FFBB des gymnases", labelsSummary(venues.data))}>
+        <VenueLabelsSection venues={venues.data} />
       </AccordionSection>
 
       {habitsDialogOpen ? (

@@ -1,4 +1,4 @@
-import type { Competition, MatchSlotRotation, OpponentTravel, SportCategoryDuration } from "../api";
+import type { Competition, MatchSlotRotation, OpponentTravel, SportCategoryDuration, Venue } from "../api";
 
 /**
  * P4-185 — les résumés d'en-tête des sections de `/matchs/configuration` (accordéon
@@ -57,4 +57,20 @@ export function opponentsSummary(travel?: OpponentTravel[]): string | null {
     return "tous localisés";
   }
   return `${n} à localiser sur ${m}`;
+}
+
+/**
+ * P4-196 — combien de GYMNASES portent au moins un libellé FBI/FFBB confirmé
+ * (jamais le nombre d'alias : un gymnase à 3 libellés compte pour un). `undefined`
+ * (chargement) ⇒ `null` ⇒ en-tête muet ; aucun ⇒ « aucun libellé rattaché ».
+ */
+export function labelsSummary(venues?: Venue[]): string | null {
+  if (undefined === venues) {
+    return null;
+  }
+  const n = venues.filter((v) => v.externalLabels.length > 0).length;
+  if (0 === n) {
+    return "aucun libellé rattaché";
+  }
+  return `${n} gymnase${n > 1 ? "s" : ""} nommé${n > 1 ? "s" : ""} par la FFBB`;
 }
