@@ -35,6 +35,7 @@ const engagement = (over: Partial<FfbbEngagement> = {}): FfbbEngagement => ({
   gender: "Masculin",
   pouleSize: 8,
   pouleOpponents: [],
+  suggestionSource: null,
   suggestedTeamId: null,
   suggestedCompetitionId: null,
   ...over,
@@ -103,8 +104,9 @@ describe("RMM-0 — lisibilité de l'appariement (B1/B2/B4)", () => {
     });
     renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
-    // Palier « lg » (liste d'engagements) : la modale a la place de montrer la queue de chaîne.
-    expect(screen.getByRole("dialog")).toHaveClass("lg:max-w-3xl");
+    // Palier « xl » (P4-200 C2 — même patron que `ImportFbiDialog`) : la modale a la place de
+    // montrer la queue de chaîne ET la sous-ligne désambiguïsante sans enroulement agressif.
+    expect(screen.getByRole("dialog")).toHaveClass("lg:max-w-5xl");
 
     // B1 — le chiffre discriminant (« Division 3 ») est en QUEUE : le libellé ne doit plus être
     // tronqué sans secours (wrap = toujours visible, + title de secours).
@@ -126,5 +128,77 @@ describe("RMM-0 — lisibilité de l'appariement (B1/B2/B4)", () => {
     expect(select).toHaveClass("w-52");
     // La valeur pré-remplie (SM2) se lit sur le trigger sans ouvrir la liste.
     expect(select).toHaveAccessibleName(/SM2/);
+  });
+});
+
+// ── P4-200 C2 — chip d'origine FBI, compteur, competitionId de la suggestion conservée ────────
+describe("P4-200 C2 — refonte de la modale Engagements", () => {
+  it("chip « suggéré depuis l'import FBI » quand la suggestion vient de l'import et n'est pas retouchée", async () => {
+    getFfbbEngagements.mockResolvedValue({ engagements: [engagement({ suggestionSource: "fbi", suggestedTeamId: "team-sm1" })] });
+    renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await screen.findByText("Pré régionale masculine");
+    expect(screen.getByText("suggéré depuis l'import FBI")).toBeInTheDocument();
+  });
+
+  it("aucune chip pour un appariement reconduit (source pairing) — pas une hypothèse", async () => {
+    getFfbbEngagements.mockResolvedValue({ engagements: [engagement({ suggestionSource: "pairing", suggestedTeamId: "team-sm1" })] });
+    renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await screen.findByText("Pré régionale masculine");
+    expect(screen.queryByText("suggéré depuis l'import FBI")).not.toBeInTheDocument();
+  });
+
+  it("la chip disparaît dès qu'un choix explicite est fait sur la ligne", async () => {
+    const user = userEvent.setup();
+    getFfbbEngagements.mockResolvedValue({ engagements: [engagement({ suggestionSource: "fbi", suggestedTeamId: "team-sm1" })] });
+    renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await screen.findByText("suggéré depuis l'import FBI");
+    await pickListboxOption(user, "Équipe pour Pré régionale masculine", "SM2");
+    expect(screen.queryByText("suggéré depuis l'import FBI")).not.toBeInTheDocument();
+  });
+
+  it("compteur « N rattachée(s) sur M » — passe de 1/2 à 2/2 après un choix", async () => {
+    const user = userEvent.setup();
+    getFfbbEngagements.mockResolvedValue({
+      engagements: [
+        engagement({ suggestionSource: "fbi", suggestedTeamId: "team-sm1" }),
+        engagement({ ffbbCompetitionId: "comp-2", competitionName: "Coupe", suggestionSource: null, suggestedTeamId: null }),
+      ],
+    });
+    renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await screen.findByText("Coupe");
+    expect(screen.getByText("1 rattachée sur 2")).toBeInTheDocument();
+    await pickListboxOption(user, "Équipe pour Coupe", "SM2");
+    expect(screen.getByText("2 rattachées sur 2")).toBeInTheDocument();
+  });
+
+  it("confirm envoie competitionId quand la suggestion est conservée telle quelle", async () => {
+    const user = userEvent.setup();
+    getFfbbEngagements.mockResolvedValue({
+      engagements: [engagement({ suggestionSource: "pairing", suggestedTeamId: "team-sm1", suggestedCompetitionId: "comp-x" })],
+    });
+    renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await screen.findByRole("button", { name: "Confirmer 1 appariement" });
+    await user.click(screen.getByRole("button", { name: "Confirmer 1 appariement" }));
+
+    expect(confirmFfbbPairings).toHaveBeenCalledWith([{ ffbbCompetitionId: "comp-1", teamId: "team-sm1", competitionId: "comp-x" }]);
+  });
+
+  it("confirm N'ENVOIE PAS de competitionId quand l'équipe est changée", async () => {
+    const user = userEvent.setup();
+    getFfbbEngagements.mockResolvedValue({
+      engagements: [engagement({ suggestionSource: "pairing", suggestedTeamId: "team-sm1", suggestedCompetitionId: "comp-x" })],
+    });
+    renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await screen.findByText("Pré régionale masculine");
+    await pickListboxOption(user, "Équipe pour Pré régionale masculine", "SM2");
+    await user.click(screen.getByRole("button", { name: "Confirmer 1 appariement" }));
+
+    expect(confirmFfbbPairings).toHaveBeenCalledWith([{ ffbbCompetitionId: "comp-1", teamId: "team-sm2" }]);
   });
 });

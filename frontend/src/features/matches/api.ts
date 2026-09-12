@@ -118,6 +118,12 @@ export interface FfbbEngagement {
   gender: string | null;
   pouleSize: number;
   pouleOpponents: string[];
+  /**
+   * D'où vient le pré-remplissage (C1) : `pairing` = appariement déjà confirmé et reconduit à
+   * la phase suivante ; `canonical` = correspondance de référence FFBB ; `fbi` = déduit d'un
+   * import FBI (une HYPOTHÈSE, signalée par une chip). `null` = aucune suggestion.
+   */
+  suggestionSource: "pairing" | "canonical" | "fbi" | null;
   /** Pre-fill: the team already paired to this competition (or its next phase). */
   suggestedTeamId: string | null;
   suggestedCompetitionId: string | null;
@@ -126,7 +132,7 @@ export interface FfbbEngagement {
 export const getFfbbEngagements = (): Promise<{ engagements: FfbbEngagement[] }> =>
   api.get("ffbb/engagements").json<{ engagements: FfbbEngagement[] }>();
 
-export const confirmFfbbPairings = (pairings: { ffbbCompetitionId: string; teamId: string }[]): Promise<void> =>
+export const confirmFfbbPairings = (pairings: { ffbbCompetitionId: string; teamId: string; competitionId?: string }[]): Promise<void> =>
   api
     .post("ffbb/engagements/confirm", { json: { pairings } })
     .then(() => undefined);

@@ -293,7 +293,7 @@ export function useFfbbEngagements(enabled: boolean) {
 export function useConfirmFfbbPairings() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (pairings: { ffbbCompetitionId: string; teamId: string }[]) => matchesApi.confirmFfbbPairings(pairings),
+    mutationFn: (pairings: { ffbbCompetitionId: string; teamId: string; competitionId?: string }[]) => matchesApi.confirmFfbbPairings(pairings),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["competitions"] });
       void queryClient.invalidateQueries({ queryKey: ["ffbb", "engagements"] });
