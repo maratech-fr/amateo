@@ -58,6 +58,38 @@ final class FfbbHttpClientStub implements HttpClientInterface
     public const COUPE_OPPONENT_2 = 'BC TEST SUD';
     public const COUPE_KICKOFF = '17:00';
 
+    // P4-200 (C1) — realistic engagements the FBI-signature bridge must be able
+    // to pair to an xlsx competition: a « … - Division 2 », a U21, a CRM cup and
+    // a brassage. Their FBI code (the club-side xlsx name) is given for the test.
+    public const BRIDGE_D2_COMPETITION_ID = '900000000000003';
+    public const BRIDGE_D2_NAME = 'Régionale masculine seniors - Division 2';
+    public const BRIDGE_D2_FBI_CODE = 'RM2';
+    public const BRIDGE_U21_COMPETITION_ID = '900000000000004';
+    public const BRIDGE_U21_NAME = 'Régionale masculine U21';
+    public const BRIDGE_U21_FBI_CODE = 'RMU21';
+    public const BRIDGE_CRM_COMPETITION_ID = '900000000000005';
+    public const BRIDGE_CRM_NAME = 'Coupe du Rhône et Métropole de Lyon - Seniors Masculins';
+    public const BRIDGE_CRM_FBI_CODE = 'CRMLSM';
+    public const BRIDGE_BRASSAGE_COMPETITION_ID = '900000000000006';
+    public const BRIDGE_BRASSAGE_NAME = 'Régionale féminine U13 - Brassage';
+    public const BRIDGE_BRASSAGE_FBI_CODE = 'RFU13 Brassage';
+
+    /** @var list<array{code: string, compId: string, pouleId: string, name: string, sexe: string, categorie: array{code: string, libelle: string}, niveau: array{code: string, libelle: string}}> */
+    private const BRIDGE = [
+        ['code' => 'RMSD2', 'compId' => self::BRIDGE_D2_COMPETITION_ID, 'pouleId' => '910000000000003',
+            'name' => self::BRIDGE_D2_NAME, 'sexe' => 'Masculin',
+            'categorie' => ['code' => 'SE', 'libelle' => 'Seniors'], 'niveau' => ['code' => 'REG', 'libelle' => 'Régional']],
+        ['code' => 'RMU21C', 'compId' => self::BRIDGE_U21_COMPETITION_ID, 'pouleId' => '910000000000004',
+            'name' => self::BRIDGE_U21_NAME, 'sexe' => 'Masculin',
+            'categorie' => ['code' => 'U21', 'libelle' => 'U21'], 'niveau' => ['code' => 'REG', 'libelle' => 'Régional']],
+        ['code' => 'CRMSMC', 'compId' => self::BRIDGE_CRM_COMPETITION_ID, 'pouleId' => '910000000000005',
+            'name' => self::BRIDGE_CRM_NAME, 'sexe' => 'Masculin',
+            'categorie' => ['code' => 'SE', 'libelle' => 'Seniors'], 'niveau' => ['code' => 'DEP', 'libelle' => 'Départemental']],
+        ['code' => 'RFB13C', 'compId' => self::BRIDGE_BRASSAGE_COMPETITION_ID, 'pouleId' => '910000000000006',
+            'name' => self::BRIDGE_BRASSAGE_NAME, 'sexe' => 'Féminin',
+            'categorie' => ['code' => 'U13', 'libelle' => 'U13'], 'niveau' => ['code' => 'REG', 'libelle' => 'Régional']],
+    ];
+
     private readonly MockHttpClient $inner;
 
     public function __construct()
@@ -100,6 +132,7 @@ final class FfbbHttpClientStub implements HttpClientInterface
                         'idCompetition' => ['id' => self::COMPETITION_ID_CUP, 'code' => self::COMPETITION_CODE_CUP, 'nom' => self::CUP_ENGAGEMENT_NAME],
                         'idPoule' => ['id' => self::POULE_ID_CUP, 'nom' => 'Poule Coupe'],
                     ],
+                    ...$this->bridgeEngagementHits(),
                 ] : [];
 
                 return $this->search($hits);
@@ -144,6 +177,21 @@ final class FfbbHttpClientStub implements HttpClientInterface
                 return $this->search($hits);
             }
             if (str_contains($body, 'ffbbserver_competitions')) {
+                foreach (self::BRIDGE as $extra) {
+                    if (str_contains($body, $extra['code'])) {
+                        return $this->search([[
+                            'id' => $extra['compId'],
+                            'code' => $extra['code'],
+                            'nom' => $extra['name'],
+                            'saison' => ['code' => $this->currentSeasonCode()],
+                            'poules' => [[
+                                'id' => $extra['pouleId'],
+                                'nom' => 'Poule ' . $extra['code'],
+                                'engagements' => array_map(static fn (string $nom): array => ['nom' => $nom], self::POULE_CLUBS),
+                            ]],
+                        ]]);
+                    }
+                }
                 if (str_contains($body, self::COMPETITION_CODE_CUP)) {
                     return $this->search([[
                         'id' => self::COMPETITION_ID_CUP,
@@ -259,6 +307,25 @@ final class FfbbHttpClientStub implements HttpClientInterface
                 'saison' => $season,
             ],
         ];
+    }
+
+    /**
+     * The realistic bridge engagements (P4-200 C1): a « … - Division 2 », a U21,
+     * a CRM cup and a brassage — each joins its own competition detail served
+     * above, so the reader emits a full row the FBI-signature bridge can pair.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function bridgeEngagementHits(): array
+    {
+        return array_map(static fn (array $extra): array => [
+            'codeClub' => self::CLUB_CODE,
+            'sexe' => $extra['sexe'],
+            'categorie' => $extra['categorie'],
+            'niveau' => $extra['niveau'],
+            'idCompetition' => ['id' => $extra['compId'], 'code' => $extra['code'], 'nom' => $extra['name']],
+            'idPoule' => ['id' => $extra['pouleId'], 'nom' => 'Poule ' . $extra['code']],
+        ], self::BRIDGE);
     }
 
     /** « 26-27 » for today's season — the reader filters on the CURRENT season. */

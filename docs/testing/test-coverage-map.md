@@ -1,9 +1,9 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-12 (P4-199, `documentation-update`) : `ls backend/features/` toujours
-19 fichiers (P4-199 étend une feature EXISTANTE, `une-rencontre-importee-dit-si-elle-est-traitee.feature`
-— aucune feature neuve, aucun compte à recaler, rien de bloquant ajouté) ; la ligne § Matchs de cette
-feature enrichie des scénarios extérieur/passé/suffixe.
+Last verified @ 2026-09-12 (P4-200 C1, `documentation-update`) : aucune feature Behat neuve (le
+pont FBI → Engagements FFBB n'a pas de feature possible, § 4 ci-dessous) ; `FfbbPairingAuthorizationTest`
+confirmé `#[Group('phase1')]` et **absent** de `blocking-tests.md`/`ci.yml` (tourne dans `unit-tests`
+seul). `ls backend/features/` toujours 19 fichiers.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
 > prouve**, **par quel job CI**, et **ce que personne ne prouve**. Il ne remplace ni
@@ -91,6 +91,14 @@ rail réel, le comportement est conforme à l'invariant `CLAUDE.md` §6 (le verr
 diagnostiquée) — la relocalisation constatée au cadrage venait d'un cache de payload périmé, pas du
 produit. `un-verrou-est-souverain.feature` porte désormais ce scénario. Cette section reste la
 maison des prochains angles morts trouvés.
+
+**Appariement FFBB (engagements, tous canaux) — jamais de feature Behat, structurel.** L'env dev de
+Behat pointe la vraie FFBB (`with-sandbox.sh`) ; le double déterministe `FfbbHttpClientStub` n'est
+câblé qu'en env **test**. La preuve reste donc en PHPUnit seul : `FfbbPairingAuthorizationTest`
+(tenant, périmètre engagé, et depuis **P4-200 C1** le pont de signature `FbiDivisionSignature`
+xlsx → Engagements FFBB — priorité des sources de suggestion, ambiguïté deux équipes, coupe/
+brassage pontés, amical jamais, `competitionId` honoré seulement pour l'équipe choisie), tagué
+`phase1` mais **non listé dans `blocking-tests.md`** — tourne dans `unit-tests` seul.
 
 ## `coverage-floor.json` — la couture des trois zones (P4-166)
 

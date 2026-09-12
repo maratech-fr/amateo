@@ -222,6 +222,158 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
         self::assertCount(1, $this->em->getRepository(Competition::class)->findBy(['teamId' => $team->getId()]), 'no duplicate competition');
     }
 
+    public function testEngagementListSuggestsTheFbiMappedTeamBySignature(): void
+    {
+        // P4-200 (C1) — the xlsx import stored a Competition « DM2 »; the FBI
+        // bridge must SUGGEST its team on the matching FFBB engagement.
+        [$tokenA, , $clubA] = $this->register('FFPJ');
+        $this->useStubClubCode($clubA);
+        $team = $this->createTeam($clubA);
+        $competition = $this->createCompetition($clubA, $this->seasonOf($clubA)->getId(), $team->getId(), 'DM2');
+
+        $row = $this->engagementRow($tokenA, FfbbHttpClientStub::COMPETITION_ID);
+        self::assertSame('fbi', $row['suggestionSource'], 'the signature bridge names its source');
+        self::assertSame($team->getId(), $row['suggestedTeamId']);
+        self::assertSame($competition->getId(), $row['suggestedCompetitionId'], 'the xlsx competition to write on');
+    }
+
+    public function testEngagementListSuggestsNothingWhenTwoTeamsMatchTheSameSignature(): void
+    {
+        [$tokenA, , $clubA] = $this->register('FFPK');
+        $this->useStubClubCode($clubA);
+        $seasonId = $this->seasonOf($clubA)->getId();
+        $teamA = $this->createTeam($clubA);
+        $this->createCompetition($clubA, $seasonId, $teamA->getId(), 'DM2');
+        $teamB = $this->createTeam($clubA);
+        $this->createCompetition($clubA, $seasonId, $teamB->getId(), 'DM3');
+
+        $row = $this->engagementRow($tokenA, FfbbHttpClientStub::COMPETITION_ID);
+        self::assertNull($row['suggestionSource'], 'two distinct teams → ambiguous → no suggestion');
+        self::assertNull($row['suggestedTeamId']);
+    }
+
+    public function testEngagementListBridgesACupToACupCompetition(): void
+    {
+        [$tokenA, , $clubA] = $this->register('FFPL');
+        $this->useStubClubCode($clubA);
+        $team = $this->createTeam($clubA);
+        $this->createCompetition($clubA, $this->seasonOf($clubA)->getId(), $team->getId(), 'CRMLU18M');
+
+        $row = $this->engagementRow($tokenA, FfbbHttpClientStub::COMPETITION_ID_CUP);
+        self::assertSame('fbi', $row['suggestionSource'], 'a cup bridges a cup');
+        self::assertSame($team->getId(), $row['suggestedTeamId']);
+    }
+
+    public function testAnAmicalCompetitionIsNeverBridged(): void
+    {
+        // « Amical DM2 » would match the championship signature if it were not an
+        // amical — the FRIENDLY type must exclude it from the bridge.
+        [$tokenA, , $clubA] = $this->register('FFPM');
+        $this->useStubClubCode($clubA);
+        $team = $this->createTeam($clubA);
+        $this->createCompetition($clubA, $this->seasonOf($clubA)->getId(), $team->getId(), 'Amical DM2');
+
+        $row = $this->engagementRow($tokenA, FfbbHttpClientStub::COMPETITION_ID);
+        self::assertNull($row['suggestionSource'], 'an amical is never a bridge candidate');
+    }
+
+    public function testAConfirmedPairingWinsOverTheFbiBridge(): void
+    {
+        [$tokenA, , $clubA] = $this->register('FFPN');
+        $this->useStubClubCode($clubA);
+        $seasonId = $this->seasonOf($clubA)->getId();
+        $teamPaired = $this->createTeam($clubA);
+        $this->createCompetition($clubA, $seasonId, $teamPaired->getId(), 'PNM', FfbbHttpClientStub::COMPETITION_ID);
+        $teamBridged = $this->createTeam($clubA);
+        $this->createCompetition($clubA, $seasonId, $teamBridged->getId(), 'DM2');
+
+        $row = $this->engagementRow($tokenA, FfbbHttpClientStub::COMPETITION_ID);
+        self::assertSame('pairing', $row['suggestionSource'], 'an existing pairing wins over the bridge');
+        self::assertSame($teamPaired->getId(), $row['suggestedTeamId']);
+    }
+
+    public function testAForeignClubsCompetitionNeverFeedsTheSuggestion(): void
+    {
+        // §7.1 tenant — a matching xlsx competition owned by ANOTHER club must
+        // stay invisible to the bridge.
+        [$tokenA, , $clubA] = $this->register('FFPO');
+        $this->useStubClubCode($clubA);
+        $this->createTeam($clubA);
+        [, , $clubB] = $this->register('FFPP');
+        $teamB = $this->createTeam($clubB);
+        $this->createCompetition($clubB, $this->seasonOf($clubB)->getId(), $teamB->getId(), 'DM2');
+
+        $row = $this->engagementRow($tokenA, FfbbHttpClientStub::COMPETITION_ID);
+        self::assertNull($row['suggestionSource'], 'another club\'s competition never feeds the suggestion');
+        self::assertNull($row['suggestedTeamId']);
+    }
+
+    public function testConfirmWithCompetitionIdWritesTheRefsOnTheXlsxCompetition(): void
+    {
+        [$tokenA, , $clubA] = $this->register('FFPQ');
+        $this->useStubClubCode($clubA);
+        $team = $this->createTeam($clubA);
+        $xlsx = $this->createCompetition($clubA, $this->seasonOf($clubA)->getId(), $team->getId(), 'PNM');
+        $xlsxId = $xlsx->getId();
+
+        $this->client->request('POST', '/api/ffbb/engagements/confirm', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $tokenA, 'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['pairings' => [[
+            'ffbbCompetitionId' => FfbbHttpClientStub::COMPETITION_ID,
+            'teamId' => $team->getId(),
+            'competitionId' => $xlsxId,
+        ]]], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(200);
+
+        $this->scopeGucToClub($clubA);
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Competition::class)->find($xlsxId);
+        self::assertInstanceOf(Competition::class, $reloaded);
+        self::assertSame(FfbbHttpClientStub::COMPETITION_ID, $reloaded->getFfbbCompetitionId(), 'the refs land on the xlsx competition');
+        self::assertSame('Pré test masculine', $reloaded->getFfbbCompetitionName(), 'canonical FFBB name written');
+        self::assertSame('PNM', $reloaded->getName(), 'the FBI code (the resolver key) is kept');
+        self::assertCount(1, $this->em->getRepository(Competition::class)->findBy(['teamId' => $team->getId()]), 'no twin competition created');
+
+        // Périmètre engagé (§7.1): still no fixture → the team stays deletable.
+        $this->client->request('DELETE', \sprintf('/api/teams/%s', $team->getId()), [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $tokenA,
+        ]);
+        self::assertResponseStatusCodeSame(204, 'writing refs on an xlsx competition never engages the team');
+    }
+
+    public function testConfirmIgnoresACompetitionIdOfAnotherTeam(): void
+    {
+        [$tokenA, , $clubA] = $this->register('FFPR');
+        $this->useStubClubCode($clubA);
+        $seasonId = $this->seasonOf($clubA)->getId();
+        $teamA = $this->createTeam($clubA);
+        $teamB = $this->createTeam($clubA);
+        $foreign = $this->createCompetition($clubA, $seasonId, $teamB->getId(), 'PNM');
+        $foreignId = $foreign->getId();
+
+        $this->client->request('POST', '/api/ffbb/engagements/confirm', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $tokenA, 'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['pairings' => [[
+            'ffbbCompetitionId' => FfbbHttpClientStub::COMPETITION_ID,
+            'teamId' => $teamA->getId(),
+            'competitionId' => $foreignId,
+        ]]], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(200);
+
+        $this->scopeGucToClub($clubA);
+        $this->em->clear();
+        // Team A got a fresh competition (the id was ignored — wrong team).
+        $created = $this->em->getRepository(Competition::class)->findOneBy(['teamId' => $teamA->getId()]);
+        self::assertInstanceOf(Competition::class, $created);
+        self::assertSame(FfbbHttpClientStub::COMPETITION_ID, $created->getFfbbCompetitionId());
+        self::assertSame('Pré test masculine', $created->getName(), 'a new competition is named by the canonical name');
+        // Team B's competition is untouched.
+        $reloadedForeign = $this->em->getRepository(Competition::class)->find($foreignId);
+        self::assertInstanceOf(Competition::class, $reloadedForeign);
+        self::assertNull($reloadedForeign->getFfbbCompetitionId(), 'the other team\'s competition never received the refs');
+        self::assertSame('PNM', $reloadedForeign->getName());
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -236,6 +388,54 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
             'ffbbCompetitionId' => $ffbbCompetitionId,
             'teamId' => $teamId,
         ]]], \JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * The engagement row of the given ffbb competition id, from GET /api/ffbb/engagements.
+     *
+     * @return array<string, mixed>
+     */
+    private function engagementRow(string $token, string $ffbbCompetitionId): array
+    {
+        $this->client->request('GET', '/api/ffbb/engagements', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $token,
+        ]);
+        self::assertResponseIsSuccessful();
+        /** @var array{engagements: list<array<string, mixed>>} $data */
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        foreach ($data['engagements'] as $row) {
+            if (($row['ffbbCompetitionId'] ?? null) === $ffbbCompetitionId) {
+                return $row;
+            }
+        }
+        self::fail(\sprintf('No engagement row for %s', $ffbbCompetitionId));
+    }
+
+    private function seasonOf(string $clubId): Season
+    {
+        $this->scopeGucToClub($clubId);
+        $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubId]);
+        self::assertInstanceOf(Season::class, $season);
+
+        return $season;
+    }
+
+    private function createCompetition(string $clubId, string $seasonId, string $teamId, string $name, ?string $ffbbCompetitionId = null): Competition
+    {
+        $this->scopeGucToClub($clubId);
+        $competition = new Competition;
+        $competition->setClubId($clubId);
+        $competition->setSeasonId($seasonId);
+        $competition->setTeamId($teamId);
+        $competition->setName($name);
+        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
+        if (null !== $ffbbCompetitionId) {
+            $competition->setFfbbCompetitionId($ffbbCompetitionId);
+        }
+        $this->em->persist($competition);
+        $this->em->flush();
+
+        return $competition;
     }
 
     /** Point the club at the stub's FFBB code (the only one it answers). */

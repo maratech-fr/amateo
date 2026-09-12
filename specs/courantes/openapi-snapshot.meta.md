@@ -1,14 +1,18 @@
-Last verified @ 2026-09-09 (P4-187b — l'écran « Rattacher » de l'onglet Importer, `coder`. **196 paths**
-(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : les DEUX routes de rattachement
-existaient déjà (P4-187a). Ce qui change ici, ce sont les **deux propriétés de schéma** que P4-187a
-annonçait sans qu'elles atterrissent dans l'export — `Venue.externalLabels` (list<string>, lecture seule)
-et `Fixture.suggestedVenueId` (proposition floue, lecture) — absentes du snapshot `16aad8df` (regénéré à
-l'époque contre un cache de métadonnées API Platform périmé) et ajoutées ici après `cache:clear` +
-ré-export : **+42 lignes**, 3 variantes read chacune (jsonld, plain, collection).
-· SHA-256 `ca849b8c7ae070429f04f6f3b7c36386c392548417f1af5b89b28668cb42e800`
+Last verified @ 2026-09-12 (P4-200 C1 — le pont xlsx → Engagements FFBB, régénéré par l'orchestrateur après
+`docker compose restart php-fpm` + `cache:clear` + `api:openapi:export`. **196 paths**
+(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : les deux routes
+`GET /api/ffbb/engagements` et `POST /api/ffbb/engagements/confirm` existaient. Ce qui change : la réponse de
+`list` gagne `suggestionSource` (enum `pairing` · `canonical` · `fbi`, nullable) et le corps de `confirm`
+est désormais documenté avec un `competitionId` optionnel par pairing — **+40 lignes**, portées par
+`FfbbEngagementPaths` (contributeur du domaine).
+· SHA-256 `5c300691dbbc32284434988764e5dcda37d28f6095165a7461f93e994b7abf4d`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **P4-200 C1 — le pont xlsx → Engagements FFBB (2026-09-12)** : **+0 path** — `GET /api/ffbb/engagements`
+  répond `suggestionSource` (`pairing` | `canonical` | `fbi` | null) à côté de `suggestedTeamId` /
+  `suggestedCompetitionId` ; `POST /api/ffbb/engagements/confirm` accepte un `competitionId` optionnel par
+  pairing (les réfs FFBB se posent SUR la compétition xlsx de l'équipe choisie). 196 → **196 paths**.
 - **P4-187b — l'écran « Rattacher » de l'onglet Importer (2026-09-09)** : **+0 path** — pur frontend, mais le
   snapshot gagne les DEUX propriétés que P4-187a avait décrites sans les faire atterrir dans l'export : le
   schéma read `Venue` gagne `externalLabels` (list<string>, lecture seule — jamais writable par le PUT) et
@@ -68,12 +72,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   → 422). Provider dédié `TeamSoloBudgetStateProvider` (délègue à `SoloReservationBudget`, maison unique
   de R), pagination désactivée. 190 → **191 paths**. Backend PUR, contrat backend⇄engine **inchangé**
   (`CONTRACT_VERSION` 2.20, aucun appel moteur — garde d'écriture à la source).
-- **P2-51 PR-7 — retrait de `SharedTrainingGroup` (2026-08-31)** : **−2 paths** — le modèle groupe
-  {équipes, K} est retiré entièrement (backend/contrat/moteur/écran/seeder), `SharedTrainingBlock`
-  devient la SEULE mutualisation. `GET/POST /api/shared_training_groups` et
-  `GET/PUT/DELETE /api/shared_training_groups/{id}` disparaissent du snapshot. 192 → **190 paths**.
-  Contrat backend⇄engine bumpé **2.19** (retrait de `sharedTrainings`/`SharedTrainingGroupSchema`
-  des deux endpoints qui les portaient).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

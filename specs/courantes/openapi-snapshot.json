@@ -10761,6 +10761,15 @@
                                                             "type": "string"
                                                         }
                                                     },
+                                                    "suggestionSource": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "pairing",
+                                                            "canonical",
+                                                            "fbi"
+                                                        ],
+                                                        "nullable": true
+                                                    },
                                                     "suggestedTeamId": {
                                                         "type": "string",
                                                         "nullable": true
@@ -10851,7 +10860,37 @@
                         "description": "FFBB unreachable \u2014 retry later"
                     }
                 },
-                "summary": "Confirm the FFBB pairings in block (re-paired at each phase \u2014 1 click)"
+                "summary": "Confirm the FFBB pairings in block (re-paired at each phase \u2014 1 click)",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "pairings": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "ffbbCompetitionId": {
+                                                    "type": "string"
+                                                },
+                                                "teamId": {
+                                                    "type": "string"
+                                                },
+                                                "competitionId": {
+                                                    "type": "string",
+                                                    "nullable": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
             }
         },
         "/api/ffbb/rencontres": {

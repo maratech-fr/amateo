@@ -1,11 +1,10 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-12 (P4-199 « règles d'import », `documentation-update`). **Règles de
-naissance/fenêtre** (`FbiFixtureImporter::treatOnArrival`/`sourceIsAuthoritativeForWindow`,
-`backend/src/Service/FbiFixtureImporter.php:614,628,658`) confrontées au code — § « Espace
-Importer — workflow de traitement » (tableau cas → effet, caveat « Masquer les extérieurs » soldé)
-et § « Appariement FFBB » (suffixe « (n) », migration `Version20260912120000`). Reste du fichier
-(§ Détection, § reconciliation coupes P4-194/195, § retrait des libellés P4-196) non re-sondé
+Last verified @ 2026-09-12 (P4-200 C1 « pont FBI → Engagements FFBB », `documentation-update`).
+§ « Appariement FFBB » étendue au pont de signature (`FbiDivisionSignature`,
+`FfbbEngagementsController::bridgeSuggestion`/`resolveCompetition`) confrontée au code — voir
+aussi la trace §3 et la décision fermée §2 de `etat-des-lieux.md`. Reste du fichier (§ Détection,
+§ reconciliation coupes P4-194/195, § retrait des libellés P4-196, § Espace Importer) non re-sondé
 cette passe — voir `git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
@@ -918,6 +917,36 @@ SOFT « repos après jour de match »).
   mapper ») — le dialog n'a pas de geste de re-mapping, une écriture fautive collerait. Deux mappings
   (équipe, division) identiques dans un même lot = une seule `Competition` (dedupe en mémoire, le
   lookup DB ne voit pas les frères non flushés).
+- **Le pont xlsx → Engagements FFBB (P4-200 C1, backend seul, 2026-09-12)** : troisième source de
+  suggestion, après `pairing` (id FFBB déjà porté) et `canonical` (nom canonique égal) — chaque ligne
+  d'engagement porte désormais `suggestionSource: "pairing"|"canonical"|"fbi"|null`.
+  `App\Service\Basketball\FbiDivisionSignature` (stateless, dépend de `VenueLabelNormalizer` — la
+  seule maison de normalisation FBI/FFBB, jamais une seconde) parse le code de division FBI stocké
+  comme `Competition::name` à l'import xlsx (« PNM », « RF3 », « DFU15-2 », « CRMLSM »,
+  « RMU13 Brassage », « Amical PNM ») en une signature `{level: PN/PR/R/D, division, gender,
+  category: U9…U21/SENIORS/VETERANS/LOISIR, type: CHAMPIONSHIP/CUP/BRASSAGE/FRIENDLY}`, et la ligne
+  FFBB (`category`/`level`/`gender` + « Division n » du nom) en la signature équivalente. Le « -k »
+  collé après un séparateur (« DFU15-2 ») est un **n° de poule FBI**, ignoré — un chiffre GLUÉ
+  (« RF3 ») est la **division**, gardée. **Coupes et brassages entrent dans le pont** (décision
+  fondateur 2026-09-12 : « les coupes sont un championnat particulier ») — **un amical n'entre
+  jamais** (`type` FRIENDLY exclu par construction dans `bridges()`).
+  Suggestion **seulement si UNE seule équipe** ressort du pont (« DFU11 » → U11F1 et « DFU11-2 » →
+  U11F2 : deux équipes distinctes → rien) ; plusieurs compétitions vers la MÊME équipe → la
+  première par nom. `POST /api/ffbb/engagements/confirm` accepte, par pairing, un `competitionId`
+  optionnel — la suggestion `fbi` acceptée — honoré seulement s'il appartient à l'équipe choisie
+  (`FfbbEngagementsController::resolveCompetition` : filtre tenant/saison déjà porté par la lecture,
+  plus une garde équipe explicite) : les réfs FFBB se posent alors SUR cette compétition xlsx
+  existante (`name` reste le code FBI, la clé du résolveur xlsx ; `ffbbCompetitionName` reçoit le
+  nom canonique FFBB), plus de compétition jumelle vide ni de fausse alerte « 0/N journées ».
+  L'inférence de type (P4-195, ci-dessus) rejoue sur la compétition réutilisée — repose le type si
+  le nom canonique infère positivement. `confirm` n'engage toujours pas l'équipe
+  (`FfbbPairingAuthorizationTest`), NR tenant dédié (la compétition xlsx d'un AUTRE club ne nourrit
+  jamais la suggestion, même signature). ⚠ **Aucune feature Behat possible** (l'env dev pointe la
+  vraie FFBB, le stub HTTP n'est câblé qu'en env test) — preuve en PHPUnit via
+  `FfbbHttpClientStub` (enrichi d'engagements réalistes : division, U21, coupe, brassage) +
+  `FfbbPairingAuthorizationTest`. **Reste ouvert (C2, frontend)** : `FfbbEngagementsDialog.tsx` ne
+  distingue pas encore visuellement une suggestion `fbi` des deux autres sources (pas de badge
+  « suggéré depuis l'import FBI », pas de compteur) — roadmap P4-200.
 
 ## Lecture des fondations — `readState` sur `MatchesPage` (P4-133, 2026-08-30)
 
