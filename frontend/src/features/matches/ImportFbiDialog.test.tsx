@@ -2,10 +2,11 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { toast } from "@/shared/stores/toastStore";
 import { listboxTrigger, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
-import type { ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team } from "./api";
+import type { ImportAnalysisDivision, ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team } from "./api";
 import { ImportFbiDialog } from "./ImportFbiDialog";
 
 const { analyzeFbiFixtures, importFbiFixtures, placeMatches } = vi.hoisted(() => ({
@@ -55,6 +56,26 @@ const tiers: PriorityTier[] = [
   { id: 3, label: "B", name: "Moyenne", color: null },
 ];
 
+const unmatchedDiv = (name: string, fbiTeamLabel: string | null = null): ImportAnalysisDivision => ({
+  name,
+  fbiTeamLabel,
+  rowCount: 3,
+  teamId: null,
+  competitionId: null,
+  suggestedTeamId: null,
+  suggestedCompetitionId: null,
+  pouleError: null,
+  pouleUnknownOpponents: [],
+});
+const matchedDiv = (name: string, teamId: string): ImportAnalysisDivision => ({ ...unmatchedDiv(name), teamId, competitionId: "comp-x" });
+const analysisOf = (divisions: ImportAnalysisDivision[]): ImportFbiAnalysis => ({
+  divisions,
+  totalRows: divisions.reduce((n, d) => n + d.rowCount, 0),
+  exempted: 0,
+  errors: [],
+  deviations: [],
+});
+
 const pickFile = async (user: ReturnType<typeof userEvent.setup>) => {
   const file = new File(["xlsx"], "fbi.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   await user.upload(screen.getByLabelText("Fichier FBI"), file);
@@ -80,7 +101,8 @@ describe("ImportFbiDialog", () => {
 
     await pickFile(user);
 
-    expect(analyzeFbiFixtures).toHaveBeenCalledOnce();
+    // Le fichier est lu en mémoire (async) avant l'analyse → attendre l'appel.
+    await waitFor(() => expect(analyzeFbiFixtures).toHaveBeenCalledOnce());
     // The persisted PNM mapping is pre-filled (text, no select)…
     await waitFor(() => expect(screen.getByText("→ SM1")).toBeInTheDocument());
     // …and the unknown DF2 division offers the team picker.
@@ -159,7 +181,9 @@ describe("ImportFbiDialog", () => {
     expect(listboxTrigger(/Équipe pour DF2/)).toHaveAccessibleName(/Associer à/); // valeur vide → placeholder
     expect(screen.queryByText("proposé par la FFBB")).not.toBeInTheDocument();
 
+    // DF2 sans équipe → confirmation ; même en confirmant, rien d'invisible n'est envoyé.
     await user.click(screen.getByRole("button", { name: "Importer" }));
+    await user.click(await screen.findByRole("button", { name: "Importer quand même" }));
     expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [], []);
   });
 
@@ -230,6 +254,8 @@ describe("ImportFbiDialog", () => {
     await pickFile(user);
     await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Importer" }));
+    // DF2 reste sans équipe → confirmation avant l'import.
+    await user.click(await screen.findByRole("button", { name: "Importer quand même" }));
 
     await waitFor(() => expect(screen.getByText(/PNM : 9\/22 journées — fichier partiel ou phase pas encore sortie/)).toBeInTheDocument());
   });
@@ -300,6 +326,7 @@ describe("ImportFbiDialog", () => {
     // Plus jamais de bouton « Examiner » : l'action primaire reste « Importer ».
     expect(screen.queryByRole("button", { name: /Examiner/i })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Importer" }));
+    await user.click(await screen.findByRole("button", { name: "Importer quand même" }));
 
     // Le rapport COMPTE les écarts consignés dans la file et offre de l'ouvrir.
     await waitFor(() => expect(screen.getByText(/1 écart consigné dans Importer/i)).toBeInTheDocument());
@@ -315,8 +342,220 @@ describe("ImportFbiDialog", () => {
     await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /Examiner/i })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Importer" }));
+    await user.click(await screen.findByRole("button", { name: "Importer quand même" }));
     await waitFor(() => expect(screen.getByText(/22 créés/)).toBeInTheDocument());
     // unresolvedDeviations vide (mock par défaut) → aucune file à ouvrir.
     expect(screen.queryByRole("button", { name: "Ouvrir la file" })).not.toBeInTheDocument();
+  });
+
+  // ── Onglets par famille (mesure terrain : 50 divisions, écran illisible) ─────────
+
+  it("range les divisions en onglets par famille, avec un compteur (appariées/total)", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce(
+      analysisOf([
+        matchedDiv("DF2", "team-1"), // départemental, apparié (persisté)
+        unmatchedDiv("DMU13"), // départemental, non apparié
+        unmatchedDiv("PNM"), // régional, non apparié
+      ]),
+    );
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    expect(await screen.findByRole("tab", { name: "Départemental (1/2)" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Régional (0/1)" })).toBeInTheDocument();
+  });
+
+  it("une famille sans division est absente du tablist", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce(analysisOf([unmatchedDiv("DF2")]));
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    expect(await screen.findByRole("tab", { name: /Départemental/ })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Régional/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Amicaux/ })).not.toBeInTheDocument();
+  });
+
+  it("bascule d'onglet : seules les divisions de la famille active sont accessibles", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce(analysisOf([unmatchedDiv("DF2"), unmatchedDiv("RM2")]));
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    // Départemental actif par défaut (1re famille présente dans FAMILY_ORDER).
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /Équipe pour RM2/ })).not.toBeInTheDocument(); // panneau régional caché
+
+    await user.click(screen.getByRole("tab", { name: /Régional/ }));
+    expect(listboxTrigger(/Équipe pour RM2/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Équipe pour DF2/ })).not.toBeInTheDocument();
+  });
+
+  it("associer une équipe fait monter le compteur de l'onglet (0/1 → 1/1)", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce(analysisOf([unmatchedDiv("DF2")]));
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    expect(await screen.findByRole("tab", { name: "Départemental (0/1)" })).toBeInTheDocument();
+    await pickListboxOption(user, "Équipe pour DF2", "SF3");
+    expect(screen.getByRole("tab", { name: "Départemental (1/1)" })).toBeInTheDocument();
+  });
+
+  // ── Bouton Importer actif + confirmation des divisions sans équipe ───────────────
+
+  it("import avec divisions non appariées → confirmation qui les NOMME (texte exact)", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce(analysisOf([unmatchedDiv("RMU13 Brassage"), unmatchedDiv("CMRLU13M"), unmatchedDiv("AMICAL SF")]));
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await waitFor(() => expect(listboxTrigger(/Équipe pour RMU13 Brassage/)).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Importer" }));
+
+    expect(await screen.findByText("Des divisions restent sans équipe")).toBeInTheDocument();
+    expect(
+      screen.getByText("Les rencontres de RMU13 Brassage, CMRLU13M et AMICAL SF ne seront pas importées — elles resteront à associer au prochain dépôt. Importer quand même ?"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Importer quand même" }));
+    // Rien d'apparié → aucune mapping n'accompagne l'import.
+    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [], []);
+  });
+
+  it("la confirmation nomme les divisions au format « name (fbiTeamLabel) »", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce(analysisOf([unmatchedDiv("DF2", "Équipe 2")]));
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Importer" }));
+    expect(await screen.findByText(/Les rencontres de DF2 \(Équipe 2\) ne seront pas importées/)).toBeInTheDocument();
+  });
+
+  it("« Annuler » sur la confirmation : aucun import, la modale hôte reste ouverte", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce(analysisOf([unmatchedDiv("DF2")]));
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Importer" }));
+    await user.click(await screen.findByRole("button", { name: "Annuler" }));
+
+    expect(importFbiFixtures).not.toHaveBeenCalled();
+    expect(screen.queryByText("Des divisions restent sans équipe")).not.toBeInTheDocument();
+    // La modale hôte (bouton Importer) est toujours là.
+    expect(screen.getByRole("button", { name: "Importer" })).toBeInTheDocument();
+  });
+
+  it("tout apparié (persisté + suggestion affichée) → import direct, sans confirmation", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce(
+      analysisOf([matchedDiv("PNM", "team-1"), { ...unmatchedDiv("DF2"), suggestedTeamId: "team-2", suggestedCompetitionId: "comp-9" }]),
+    );
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toHaveAccessibleName(/SF3/));
+    await user.click(screen.getByRole("button", { name: "Importer" }));
+
+    expect(screen.queryByText("Des divisions restent sans équipe")).not.toBeInTheDocument();
+    expect(importFbiFixtures).toHaveBeenCalledWith(expect.any(File), [{ division: "DF2", fbiTeamLabel: null, teamId: "team-2", competitionId: "comp-9" }], []);
+  });
+
+  // ── Re-dépôt : l'onglet actif est un state séparé, non réinitialisé ──────────────
+
+  it("re-dépôt : la famille active est conservée si elle existe encore", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures
+      .mockResolvedValueOnce(analysisOf([unmatchedDiv("DF2"), unmatchedDiv("CMRLU13M")])) // départemental + coupes CRM
+      .mockResolvedValueOnce(analysisOf([unmatchedDiv("DFU9"), unmatchedDiv("CRMLU13M")])); // coquille corrigée, même famille
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await user.click(await screen.findByRole("tab", { name: /Coupes CRM/ }));
+    expect(listboxTrigger(/Équipe pour CMRLU13M/)).toBeInTheDocument();
+
+    await pickFile(user);
+    // Coupes CRM toujours présente → on y reste ; le départemental (DFU9) est caché.
+    await waitFor(() => expect(listboxTrigger(/Équipe pour CRMLU13M/)).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /Équipe pour DFU9/ })).not.toBeInTheDocument();
+  });
+
+  it("re-dépôt : repli sur la première famille non vide si l'active a disparu", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures
+      .mockResolvedValueOnce(analysisOf([unmatchedDiv("DF2"), unmatchedDiv("CMRLU13M")]))
+      .mockResolvedValueOnce(analysisOf([unmatchedDiv("DF2")])); // championnat pur, plus de coupes CRM
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await user.click(await screen.findByRole("tab", { name: /Coupes CRM/ }));
+    expect(listboxTrigger(/Équipe pour CMRLU13M/)).toBeInTheDocument();
+
+    await pickFile(user);
+    // Coupes CRM a disparu → repli sur Départemental (1re non vide de FAMILY_ORDER).
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
+    expect(screen.queryByRole("tab", { name: /Coupes CRM/ })).not.toBeInTheDocument();
+  });
+
+  // ── Défilement : la Modale (xl) est l'unique zone défilante ────────────────────
+
+  it("la liste des divisions ne défile plus (Modal seule) ; les diagnostics gardent leurs bornes", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce({
+      divisions: [{ ...matchedDiv("DF2", "team-1"), pouleUnknownOpponents: ["US INTRUS"] }],
+      totalRows: 3,
+      exempted: 0,
+      errors: ["Ligne 4 : format inattendu."],
+      deviations: [],
+    });
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    const divisionRow = await screen.findByText(/DF2/, { selector: "span[title]" });
+    const list = divisionRow.closest("ul");
+    expect(list).not.toHaveClass("max-h-64");
+    expect(list).not.toHaveClass("overflow-y-auto");
+    // Les listes de diagnostics gardent leur hauteur bornée + défilement propre.
+    expect(screen.getByText(/hors poule — US INTRUS/).closest("ul")).toHaveClass("overflow-y-auto");
+    expect(screen.getByText(/Ligne 4 : format inattendu/).closest("ul")).toHaveClass("overflow-y-auto");
+  });
+
+  // ── Fix « Problème de connexion » : snapshot mémoire lu une fois à la sélection ──
+
+  it("lit le fichier en mémoire UNE fois : le même snapshot part à l'analyse ET à l'import", async () => {
+    const user = userEvent.setup();
+    analyzeFbiFixtures.mockResolvedValueOnce(analysisOf([matchedDiv("PNM", "team-1")])); // tout apparié → import direct
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await waitFor(() => expect(analyzeFbiFixtures).toHaveBeenCalledOnce());
+    await user.click(await screen.findByRole("button", { name: "Importer" }));
+    await waitFor(() => expect(importFbiFixtures).toHaveBeenCalledOnce());
+
+    const analyzed = (analyzeFbiFixtures.mock.calls as unknown[][])[0]?.[0];
+    const imported = (importFbiFixtures.mock.calls as unknown[][])[0]?.[0];
+    expect(analyzed).toBeInstanceOf(File);
+    expect(imported).toBe(analyzed); // MÊME objet mémoire, pas le File de l'<input> relu sur disque
+  });
+
+  it("échec de lecture du fichier → toast nommé, aucune requête envoyée", async () => {
+    const user = userEvent.setup();
+    const errorSpy = vi.spyOn(toast, "error");
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    // Fichier verrouillé/modifié entre-temps : la lecture mémoire échoue.
+    const locked = new File(["xlsx"], "fbi.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    vi.spyOn(locked, "arrayBuffer").mockRejectedValueOnce(new Error("locked"));
+    await user.upload(screen.getByLabelText("Fichier FBI"), locked);
+
+    await waitFor(() => expect(errorSpy).toHaveBeenCalledWith("Le fichier n'a pas pu être lu — est-il ouvert dans un autre logiciel ?"));
+    expect(analyzeFbiFixtures).not.toHaveBeenCalled();
+
+    errorSpy.mockRestore();
   });
 });

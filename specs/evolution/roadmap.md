@@ -1,4 +1,4 @@
-# Roadmap (54) — ce qui reste à faire
+# Roadmap (55) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -170,12 +170,15 @@
 > mesuré sur un week-end 100 % déplacements (SF1/SM1/U21M1, 2026-09-08) ; `Échap` ferme la puce
 > `ResourceFilter` et rend le focus au déclencheur (listener natif + `stopPropagation`, patron
 > `listbox.tsx`), détail [`module-matchs.md`](../courantes/module-matchs.md) § « Refonte UX —
-> RMM-1 » et § « Filtres par équipe / coach / gymnase ». **Reste P4-197** (ci-dessous), relevé en réparant l'e2e du 2026-09-11
-> (P4-183, blocs de mutualisation imbriqués, est un lot distinct — mesure P4-182, ci-dessous).
+> RMM-1 » et § « Filtres par équipe / coach / gymnase ». **Reste P4-197 et P4-198** (ci-dessous),
+> le premier relevé en réparant l'e2e du 2026-09-11, le second mesuré le 2026-09-12 en rangeant le
+> dépôt FBI en onglets par famille (P4-183, blocs de mutualisation imbriqués, est un lot distinct —
+> mesure P4-182, ci-dessous).
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
 | P4-197 | **Placer un match qui n'est pas dans la semaine affichée : la grille ne le montre nulle part** | 🟡 | S | Relevé le 2026-09-11 en réparant `tests/e2e/matches.spec.ts` : la liste « à placer » n'est PAS bornée à la semaine affichée (`MatchesPage.tsx` — `filteredFixtures` nourrit la liste, `weekendFixtures` la grille), donc on peut sélectionner et placer un domicile d'une autre semaine ; il quitte la liste et n'apparaît sur aucune grille tant qu'on n'a pas navigué à SA semaine. Pire : `setSelectedWeekend` rend l'étape à l'automatique (`store.ts`), la navigation change donc aussi de vue. Mesuré sur un match du 6 mars 2027 placé depuis la semaine de septembre. Remède à cadrer : après un placement, suivre le match (poser `selectedWeekend` sur sa semaine) ou borner la liste « à placer » à la semaine affichée |
+| P4-198 | **Recherche dans le sélecteur d'équipe / de gymnase (`Listbox`)** | 🟡 | S | Mesuré le 2026-09-12 au dépôt FBI d'un export réel du fondateur, 50 divisions à associer une à une via `TeamSelect` : `TeamSelect`/`VenueSelect` (`shared/components/ui/team-select.tsx`, `venue-select.tsx`), tous deux bâtis sur `Listbox` (P4-164), n'ont pas de champ de recherche — `ResourceFilter.tsx:118-132` (`features/planning/`) en a un. Primitive à ajouter au partagé `Listbox` (une seule maison), profiterait aux deux sélecteurs sans dupliquer le geste |
 
 ### Blocs de mutualisation imbriqués (mesure P4-182, 2026-09-07)
 

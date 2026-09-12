@@ -1,14 +1,12 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-11 (P4-192 + P4-184, `documentation-update`). **Dernières lignes ouvertes
-du lot module matchs soldées, frontend seul** : (1) `defaultLoopStep`/`LoopStep.empty`
-(`lib/loopSteps.ts:17-31,152-158`) confrontés au code — l'exception d'atterrissage `fbiEntry` vide
-→ `homeSlots` est bien réservée à CETTE étape, tout autre trou prime ; (2) `Échap` sur
-`ResourceFilter` (`frontend/src/features/planning/ResourceFilter.tsx:46-64`) confronté au code —
-listener natif + `stopPropagation`, focus rendu au déclencheur, voile de clic-hors inchangé ; les
-trois consommateurs (planning, matchs, vœux coach) relus, intouchés. Reste du fichier (§
-Détection, § Espace Importer, § reconciliation coupes P4-194/195, § retrait des libellés P4-196)
-non re-sondé cette passe — voir `git log -p --follow` pour sa dernière vérification.
+Last verified @ 2026-09-12 (mesure terrain fondateur, `documentation-update`). **Dépôt FBI en
+onglets par famille de division** (`ImportFbiDialog.tsx`, `lib/divisionFamily.ts`) confronté au
+code — voir § « Onglets par famille — dépôt FBI », qui remplace aussi le paragraphe UI périmé de
+§ « Import FBI réel — une passe » (le bouton « Examiner l'écart » qu'il décrivait a disparu en
+PR-3b, 2026-09-08). Reste du fichier (§ Détection, § reconciliation coupes P4-194/195, § retrait
+des libellés P4-196) non re-sondé cette passe — voir `git log -p --follow` pour sa dernière
+vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -258,13 +256,77 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
 - **Rapport** `{created, updated, unchanged, exempted, errors[], warnings[{type, division, externalRef,
   message}], unmappedDivisions[{name, fbiTeamLabel, rowCount}], completeness[…], unresolvedDeviations[…],
   depositedAt}` — les deux derniers champs sont la réconciliation (RMM-4 ci-dessous).
-- **UI** : « Importer FBI » dans `/matchs` → `ImportFbiDialog` **une passe** : fichier choisi → analyse
-  auto → table des correspondances (connues en texte, nouvelles en `TeamSelect`). Si l'analyse ne rend
-  AUCUN écart domicile, « Importer » envoie fichier + nouveaux mappings → rapport affiché en place, flux
-  inchangé depuis PR A. Si elle en rend (RMM-4), le bouton devient « Examiner l'écart »/« Examiner les N
-  écarts » et bascule vers la vue dédiée `/matchs/reconciliation` au lieu d'importer directement — détail
-  ci-dessous. Invalidation `fixtures` + `wizard/teams` (engagement) + `competitions` (+ `fbi-ingestions`
-  côté réconciliation).
+- **UI** : « Importer FBI » dans `/matchs` → `ImportFbiDialog` **une passe** : fichier choisi → lu en
+  mémoire → analyse auto → divisions rangées en onglets par famille (§ « Onglets par famille — dépôt
+  FBI » ci-dessous) → « Importer » envoie toujours `{file, mappings}` sans détour (le canal de
+  réconciliation par écart a disparu en PR-3b, 2026-09-08 — § « Espace Importer » plus bas) → rapport
+  affiché en place. Invalidation `fixtures` + `wizard/teams` (engagement) + `competitions` (+
+  `fbi-ingestions`).
+
+### Onglets par famille — dépôt FBI (2026-09-12, mesure terrain fondateur)
+
+> Besoin : un export réel du fondateur porte **50 divisions (291 lignes)** — une seule liste
+> défilante les rend illisibles et rognait, via son `max-h-64 overflow-y-auto`, le panneau du
+> `TeamSelect` qui s'ouvre à côté. Deux correctifs distincts, mesurés le même jour : le classement
+> en onglets, et un bug de lecture de fichier découvert en même temps (dernier point ci-dessous).
+
+- **Classification pure, présentationnelle seulement** (`frontend/src/features/matches/lib/
+  divisionFamily.ts`, `classifyDivision`) : elle choisit l'onglet d'affichage d'une division, elle
+  ne décide AUCUN comportement métier (miroir/redérivation interdits, `.claude/rules/frontend.md`).
+  Normalisation : minuscules → `stripDiacritics` (maison unique) → tout caractère non
+  alphanumérique devient un espace → espaces réduits → trim → tokens. Règles appliquées **dans cet
+  ordre** (la première qui matche gagne) :
+  1. `brassage` dans les tokens → **Brassage** (avant Régional/Départemental : `RMU13 Brassage`
+     n'est pas du régional) ;
+  2. `ara` **et** `coupe` dans les tokens, ordre indifférent → **Coupe ARA** ;
+  3. préfixe `crml` ou la coquille fédérale `cmrl` → **Coupes CRM** ;
+  4. préfixe `amical` → **Amicaux** ;
+  5. préfixe `d` ou `pr` → **Départemental** (**PRM y compris — décision fondateur**, un préfixe
+     `PR` classe départemental même si le sigle évoque un rang régional) ;
+  6. préfixe `r` ou `pn` → **Régional** ;
+  7. sinon → **Autres** — le repli garanti, une division ne disparaît jamais.
+- **Mesuré sur l'export réel du fondateur** (291 lignes, 50 divisions, 2026-09-12) : Départemental
+  23, Régional 5, Brassage 6, Coupes CRM 8, Coupe ARA 3, Amicaux 5, Autres 0.
+- **Le classement se fait sur le LIBELLÉ DU FICHIER, jamais sur `Competition.competitionType`**
+  (décision fermée, `etat-des-lieux.md` §2) : le type stocké peut être faux jusqu'au prochain
+  appariement — `FbiFixtureImporter::persistMappings` (`backend/src/Service/
+  FbiFixtureImporter.php:1263-1264`) infère `BRASSAGE` si le nom contient « Brassage », sinon
+  `CHAMPIONSHIP` par défaut : une coupe non appariée reste `CHAMPIONSHIP` en base tant qu'un
+  réappariement ne la corrige pas (P4-194/195 ci-dessous). Classer sur ce champ aurait rangé les
+  coupes CRM du fondateur en Départemental/Régional selon leur tag d'équipe.
+- **Compteur d'appariement dans le libellé de l'onglet** (« Départemental (4/23) ») : divisions à
+  sélection EFFECTIVE (`isPaired` — teamId persisté, choix du gestionnaire, ou suggestion FFBB
+  affichée non touchée) sur total de la famille, recalculé en direct à chaque choix. Une famille
+  absente des divisions de l'analyse n'est **pas rendue** dans le `Tabs` ; une famille entièrement
+  appariée **reste rendue** (elle ne disparaît pas au fur et à mesure qu'on la complète).
+- **Bouton Importer toujours actif.** S'il reste des divisions sans sélection effective, la
+  confirmation (`ConfirmDialog`, `destructive={false}` — rien n'est détruit) les **NOMME**
+  (énumération française « A, B et C ») et dit la conséquence : « ne seront pas importées — elles
+  resteront à associer au prochain dépôt » (`FbiFixtureImporter.php:63-64`, « ni créées ni erreurs »
+  pour une ligne non mappée). Tout apparié (persisté + suggestion affichée) → import direct, sans
+  confirmation. Le payload d'import (`{file, mappings}`) est inchangé.
+- **Re-dépôt** : l'onglet actif est conservé s'il existe encore parmi les familles présentes,
+  sinon repli sur la première non vide de l'ordre d'affichage (`FAMILY_ORDER`).
+- **Un seul défilement** : la liste des divisions n'est plus enfermée dans un `max-h-64
+  overflow-y-auto` qui rognait aussi le panneau du `TeamSelect` — la Modale (passée en
+  `size="xl"`) est l'UNIQUE zone défilante. Les listes de diagnostics (erreurs de poule, avertis-
+  sements) gardent leur borne propre.
+- **Le fichier est lu en mémoire UNE fois, à la sélection** (bug mesuré par le fondateur le
+  2026-09-12) : le `File` d'un `<input type="file">` n'est qu'un HANDLE — son contenu est RELU sur
+  le disque à chaque envoi. Rouvrir/ré-enregistrer l'export dans Excel entre l'analyse et l'import
+  faisait échouer le second envoi (Chrome `ERR_UPLOAD_FILE_CHANGED` → `TypeError`), qu'Amateo
+  traduisait à tort en « Problème de connexion » — aucune requête n'atteignait le serveur.
+  `onFileChange` fige désormais un `File` SNAPSHOT (`arrayBuffer()` relu une fois, même nom, même
+  type) envoyé tel quel à l'analyse ET à l'import. Un échec de lecture à la sélection (fichier
+  ouvert dans un autre logiciel) affiche un message nommé, sans requête envoyée.
+- **Front** — tests : `lib/divisionFamily.test.ts` (règles de classification, repli garanti),
+  `ImportFbiDialog.test.tsx` (onglets + compteur, bascule d'onglet, confirmation nommée, re-dépôt,
+  défilement unique, snapshot mémoire, échec de lecture). Pas d'e2e — le dialogue est rare et tout
+  s'affirme en jsdom.
+- **Dette restée due (P4-198)** : `TeamSelect` (`Listbox`) n'a pas de champ de recherche pour
+  choisir l'équipe d'une division — sur 50 divisions, le geste répétitif s'y prêterait ; `Resource
+  Filter` en a une (`ResourceFilter.tsx:118-132`). Primitive à ajouter au partagé, profiterait
+  aussi à `VenueSelect`. Voir `roadmap.md`.
 
 ## Couche capacité (P1-4 PR B, 2026-08-03)
 
