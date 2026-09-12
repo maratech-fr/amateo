@@ -1596,8 +1596,29 @@ future.
     Amateo » / « Prendre {source} » avec la conséquence de `lib/deviationConsequence.ts` toujours
     visible (texte `keep_app` recalé : « la rencontre est traitée avec la valeur d'Amateo ») ;
     un écart `autoApplied` (hors périmètre, imposé par la source pendant que le match était traité)
-    porte son propre bandeau (« La source a déplacé ce match … au … ») ; bouton « Placer » qui
-    pose le filtre équipe et le week-end du match puis renvoie à Semaine.
+    porte son propre bandeau (« La source a déplacé ce match … au … ») ; bouton **« Replacer »**
+    (voir lisibilité de ligne ci-dessous) qui pose le filtre équipe et le week-end du match puis
+    renvoie à Semaine.
+  - **Lisibilité de ligne (2026-09-12)** : la tête de chaque rencontre porte désormais une icône
+    `House`/`Plane` (`lucide-react`, `aria-hidden="true"` — c'est le mot « Domicile »/« Extérieur »
+    qui porte le sens, jamais l'icône seule), puis, après l'adversaire, l'heure (`HH:MM` tabulaire
+    ou « heure non publiée » si `Fixture.kickoffTime` est `null`) et la salle : le nom du gymnase
+    si `venueId` est résolu dans les gymnases du club, sinon le `fbiVenueLabel` brut, sinon rien.
+    Bouton **« Replacer »** (était « Placer ») rendu **UNIQUEMENT sur un domicile** (`isHome`,
+    absent sur un extérieur — rien à placer côté club) ; il pose `railStep="homeSlots"` et
+    `selectedFixtureId` **après** `setFilterMode`/`toggleFilterId`/`setSelectedWeekend` (ces trois-là
+    remettent `railStep` à `null`, et l'auto de la boucle peut retomber sur une autre vue que
+    `homeSlots`, où vit seul le panneau de placement) — le clic ouvre donc directement le panneau de
+    placement du match, plus un atterrissage sur la grille nue.
+  - **« Masquer les extérieurs » (2026-09-12)** : interrupteur miroir de « Afficher les traitées »
+    (même patron, `?exterieurs=masques`), filtre les rencontres AWAY **avant**
+    `buildReviewQueue` — en-têtes d'équipe recomptés sur ce qui reste visible, une équipe 100 %
+    extérieur disparaît de la file naturellement, l'état vide suit. **Décision assumée** : le badge
+    de l'onglet Importer (`pendingReviewCount`) garde le compte RÉEL, non filtré — masquer ≠
+    traiter. **Caveat assumé, à corriger en PR B** : la bascule active, « Tout valider » sur une
+    équipe valide QUAND MÊME ses rencontres extérieures masquées (le serveur reçoit `{teamId}`,
+    l'équipe entière) — PR B (règles d'import, roadmap P4-199) rendra les extérieurs traités
+    D'OFFICE à l'import, ce qui videra ce caveat de sa substance.
   - **Le flux xlsx a perdu son détour.** `ImportFbiDialog` n'affiche plus « Examiner les écarts » :
     « Importer » envoie toujours `{file, mappings}` sans décisions ; le rapport affiche « N
     écart(s) consigné(s) dans Importer » + un bouton « Ouvrir la file » (au lieu de basculer vers
