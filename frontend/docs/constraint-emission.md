@@ -1,13 +1,14 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-09-08 (rotation `documentation-update`, zone non touchée par cette PR —
+Last verified @ 2026-09-13 (rotation `documentation-update`, zone non touchée par cette PR —
 contrôle de fraîcheur). Re-confronté au code : `resolveTravelRuleIntensity`
 (`ScheduleConstraintBuilder.php:965`, repli `TeamLinkIntensity::PREFERRED`) toujours le seul point
 de résolution de l'intensité `travelTime` ✓ ; `forcedDays` toujours câblé sur les 3 couches
 (`ConstraintValidationService.php:71-79`, `ConstraintConfigValidator.php:74`,
-`ConstraintsStep.tsx:365-366`, `engine/app/solver/constraints/targeting.py:74`) ✓ ; la famille
-`FACILITY_CAPACITY` toujours retirée du moteur, le commentaire au passé toujours à
-`engine/app/main.py:487-489` ✓. Rien de faux trouvé cette passe.
+`frontend/src/features/wizard/steps/ConstraintsStep.tsx:365-366`,
+`engine/app/solver/constraints/targeting.py:74`) ✓ ; la famille `FACILITY_CAPACITY` toujours
+retirée du moteur, le commentaire au passé toujours à `engine/app/main.py:487-489` ✓. Rien de faux
+trouvé cette passe.
 
 > **But** : (1) lister ce que le **wizard émet** réellement, et (2) mettre les **3 couches côte à côte**
 > (frontend → backend → engine) pour repérer les **scissions** et les **angles morts** — les cas où

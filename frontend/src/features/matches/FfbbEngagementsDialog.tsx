@@ -1,5 +1,7 @@
+import { Sparkles } from "lucide-react";
 import { useState } from "react";
 
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Modal } from "@/shared/components/ui/modal";
 import { Spinner } from "@/shared/components/ui/spinner";
@@ -30,17 +32,35 @@ export function FfbbEngagementsDialog({ teams, tiers, onClose }: FfbbEngagements
   const rows = engagements.data?.engagements ?? [];
   const chosenOf = (id: string, suggested: string | null): string => choices[id] ?? suggested ?? "";
   const pairings = rows
-    .map((row) => ({ ffbbCompetitionId: row.ffbbCompetitionId, teamId: chosenOf(row.ffbbCompetitionId, row.suggestedTeamId) }))
+    .map((row) => {
+      const teamId = chosenOf(row.ffbbCompetitionId, row.suggestedTeamId);
+      const base = { ffbbCompetitionId: row.ffbbCompetitionId, teamId };
+      // Quand l'équipe choisie EST l'équipe suggérée (peu importe la source), la réf FFBB se pose
+      // SUR la compétition xlsx déjà appariée (C1) : on transmet son `suggestedCompetitionId` pour
+      // réutiliser la compétition côté serveur plutôt que d'en dupliquer une. Si le gestionnaire a
+      // changé d'équipe, la suggestion ne tient plus — pas de `competitionId`.
+      if ("" !== teamId && teamId === row.suggestedTeamId && null !== row.suggestedCompetitionId) {
+        return { ...base, competitionId: row.suggestedCompetitionId };
+      }
+      return base;
+    })
     .filter((pairing) => "" !== pairing.teamId);
 
   const teamName = (id: string): string => teams.find((team) => team.id === id)?.name ?? "";
+
+  // Compteur d'en-tête (patron du compteur d'ImportFbi) : M = lignes, N = lignes rattachées
+  // (équipe choisie OU suggestion conservée) = `pairings.length`.
+  const attachedCount = pairings.length;
+  // La phrase d'origine FBI ne s'affiche qu'une fois, et SEULEMENT s'il existe au moins une
+  // suggestion issue d'un import FBI (une chip par ligne le rappelle ensuite).
+  const hasFbiSuggestion = rows.some((row) => "fbi" === row.suggestionSource && null !== row.suggestedTeamId);
 
   return (
     <Modal
       label="Engagements FFBB"
       title="Engagements FFBB"
       onClose={onClose}
-      size="lg"
+      size="xl"
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose}>
@@ -60,6 +80,7 @@ export function FfbbEngagementsDialog({ teams, tiers, onClose }: FfbbEngagements
         <p className="text-xs text-muted-foreground">
           Les équipes engagées telles que la ligue les connaît — rattachez chacune à votre équipe puis
           confirmez en bloc. À chaque nouvelle phase, ré-ouvrez : tout est pré-rempli.{" "}
+          {hasFbiSuggestion ? "Les rattachements marqués proviennent de votre dernier import FBI. " : null}
           <strong>Données de la ligue — un écart se corrige auprès d'elle.</strong>
         </p>
 
@@ -76,13 +97,22 @@ export function FfbbEngagementsDialog({ teams, tiers, onClose }: FfbbEngagements
             Aucun engagement trouvé pour cette saison (les poules sortent généralement après le 20 juillet).
           </p>
         ) : (
-          <ul className="flex flex-col gap-2">
+          <>
+            <p className="text-xs font-medium text-foreground">
+              {`${attachedCount} rattachée${attachedCount > 1 ? "s" : ""} sur ${rows.length}`}
+            </p>
+            <ul className="flex flex-col gap-2">
             {rows.map((row) => {
               // Le chiffre discriminant (« …Division 2 » vs « …Division 3 ») est en QUEUE de
               // chaîne : on LAISSE le libellé s'enrouler (jamais tronqué → toujours visible, y
               // compris au doigt) et on double d'un `title` de secours (§6bis B1/B2).
               const subLabel = `${row.pouleName} · ${row.pouleSize} clubs${null !== row.category ? ` · ${row.category}` : ""}${null !== row.level ? ` · ${row.level}` : ""}${null !== row.gender ? ` · ${row.gender}` : ""}`;
               const chosen = chosenOf(row.ffbbCompetitionId, row.suggestedTeamId);
+              // La chip ne s'affiche que pour une HYPOTHÈSE issue d'un import FBI, tant que le
+              // gestionnaire n'a pas retouché la ligne (choix explicite = `choices[id]` défini →
+              // la chip tombe). Un `pairing`/`canonical` est un appariement confirmé/reconduit :
+              // pas d'hypothèse, pas de chip.
+              const showFbiChip = "fbi" === row.suggestionSource && null !== row.suggestedTeamId && undefined === choices[row.ffbbCompetitionId];
               return (
                 <li key={row.ffbbCompetitionId} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
                   <span className="min-w-0 text-sm">
@@ -93,22 +123,30 @@ export function FfbbEngagementsDialog({ teams, tiers, onClose }: FfbbEngagements
                       {subLabel}
                     </span>
                   </span>
-                  <TeamSelect
-                    aria-label={`Équipe pour ${row.competitionName}`}
-                    // La valeur sélectionnée se lit sans ouvrir le select (§6bis B4) : élargi,
-                    // et un `title` en secours pour le nom d'équipe qui déborderait encore.
-                    title={"" !== chosen ? teamName(chosen) : "Non rattachée"}
-                    className="h-9 w-52 shrink-0 rounded-md border border-input bg-background px-2 text-sm"
-                    teams={teams}
-                    tiers={tiers}
-                    placeholder="Non rattachée"
-                    value={chosen}
-                    onValueChange={(v) => setChoices({ ...choices, [row.ffbbCompetitionId]: v })}
-                  />
+                  <span className="flex shrink-0 flex-col items-end gap-1">
+                    <TeamSelect
+                      aria-label={`Équipe pour ${row.competitionName}`}
+                      // La valeur sélectionnée se lit sans ouvrir le select (§6bis B4) : élargi,
+                      // et un `title` en secours pour le nom d'équipe qui déborderait encore.
+                      title={"" !== chosen ? teamName(chosen) : "Non rattachée"}
+                      className="w-52 shrink-0"
+                      teams={teams}
+                      tiers={tiers}
+                      placeholder="Non rattachée"
+                      value={chosen}
+                      onValueChange={(v) => setChoices({ ...choices, [row.ffbbCompetitionId]: v })}
+                    />
+                    {showFbiChip ? (
+                      <StatusPill variant="neutral" icon={<Sparkles className="size-3.5 shrink-0" aria-hidden="true" />}>
+                        suggéré depuis l'import FBI
+                      </StatusPill>
+                    ) : null}
+                  </span>
                 </li>
               );
             })}
-          </ul>
+            </ul>
+          </>
         )}
 
       </div>

@@ -1,9 +1,10 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-12 (P4-200 C1 « pont FBI → Engagements FFBB », `documentation-update`).
-§ « Appariement FFBB » étendue au pont de signature (`FbiDivisionSignature`,
-`FfbbEngagementsController::bridgeSuggestion`/`resolveCompetition`) confrontée au code — voir
-aussi la trace §3 et la décision fermée §2 de `etat-des-lieux.md`. Reste du fichier (§ Détection,
+Last verified @ 2026-09-13 (P4-200 C2 « refonte de la modale Engagements FFBB », SOLDE,
+`documentation-update`). § « Appariement FFBB » étendue à l'écran : `FfbbEngagementsDialog.tsx`
+confronté au code (taille `xl`, compteur `pairings.length`, garde de la chip `undefined ===
+choices[row.ffbbCompetitionId]`, transmission de `competitionId` sur équipe choisie ===
+suggérée) — voir aussi la trace §3 de `etat-des-lieux.md`. Reste du fichier (§ Détection,
 § reconciliation coupes P4-194/195, § retrait des libellés P4-196, § Espace Importer) non re-sondé
 cette passe — voir `git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
@@ -944,9 +945,23 @@ SOFT « repos après jour de match »).
   jamais la suggestion, même signature). ⚠ **Aucune feature Behat possible** (l'env dev pointe la
   vraie FFBB, le stub HTTP n'est câblé qu'en env test) — preuve en PHPUnit via
   `FfbbHttpClientStub` (enrichi d'engagements réalistes : division, U21, coupe, brassage) +
-  `FfbbPairingAuthorizationTest`. **Reste ouvert (C2, frontend)** : `FfbbEngagementsDialog.tsx` ne
-  distingue pas encore visuellement une suggestion `fbi` des deux autres sources (pas de badge
-  « suggéré depuis l'import FBI », pas de compteur) — roadmap P4-200.
+  `FfbbPairingAuthorizationTest`.
+- **L'écran distingue la source de suggestion (P4-200 C2, frontend seul, 2026-09-13, clôt P4-200)** :
+  `FfbbEngagementsDialog.tsx` en `Modal size="xl"` (même patron que `ImportFbiDialog`). Un
+  compteur « N rattachée(s) sur M » sous l'intro (N = lignes avec une équipe choisie **ou** une
+  suggestion conservée, calculé sur `pairings.length` — pas un recompte séparé). La phrase
+  « Les rattachements marqués proviennent de votre dernier import FBI. » ne s'affiche **qu'une
+  fois**, et seulement s'il existe au moins une ligne `suggestionSource === "fbi"`. Chaque ligne
+  `fbi` **non retouchée** (`choices[id]` toujours `undefined`) porte, sous son `TeamSelect`, une
+  chip `StatusPill variant="neutral"` + icône `Sparkles` « suggéré depuis l'import FBI » — un
+  choix explicite sur la ligne la fait disparaître ; `pairing` (réf déjà connue) et `canonical`
+  (nom canonique égal) sont un appariement **confirmé**/**reconduit**, jamais une chip. Le
+  `confirm` transmet `competitionId = suggestedCompetitionId` quand l'équipe choisie **est**
+  l'équipe suggérée, **quelle que soit la source** (pas seulement `fbi`) — rien si le
+  gestionnaire change d'équipe. Pas d'onglets (une quinzaine de lignes typiques, à distinguer du
+  dépôt xlsx rangé en onglets par famille depuis le 2026-09-12, § « Onglets par famille » plus
+  bas — volumes très différents). Passe de design `ui-ux-pro-max` faite avant l'implémentation
+  (taille, position de la chip, variante de couleur, position du compteur).
 
 ## Lecture des fondations — `readState` sur `MatchesPage` (P4-133, 2026-08-30)
 

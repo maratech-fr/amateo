@@ -1,4 +1,4 @@
-# Roadmap (57) — ce qui reste à faire
+# Roadmap (56) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -177,14 +177,13 @@
 > manuels du fondateur sur ses 256 rencontres réelles (82 sans heure) : règles d'import à recaler
 > (extérieur/passé-semaine-en-cours/suffixe équipe) — **P4-199 SOLDÉ le même jour**, détail
 > [`module-matchs.md`](../courantes/module-matchs.md) § « Espace Importer » et § « Appariement
-> FFBB » — **P4-200 C1 (backend) livré le 2026-09-12, reste C2 (écran)**, quota e2e superadmin
+> FFBB » — **P4-200 SOLDÉ (C1 le 2026-09-12, C2 le 2026-09-13)**, reste le quota e2e superadmin
 > (P4-201).
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
 | P4-197 | **Placer un match qui n'est pas dans la semaine affichée : la grille ne le montre nulle part** | 🟡 | S | Relevé le 2026-09-11 en réparant `tests/e2e/matches.spec.ts` : la liste « à placer » n'est PAS bornée à la semaine affichée (`MatchesPage.tsx` — `filteredFixtures` nourrit la liste, `weekendFixtures` la grille), donc on peut sélectionner et placer un domicile d'une autre semaine ; il quitte la liste et n'apparaît sur aucune grille tant qu'on n'a pas navigué à SA semaine. Pire : `setSelectedWeekend` rend l'étape à l'automatique (`store.ts`), la navigation change donc aussi de vue. Mesuré sur un match du 6 mars 2027 placé depuis la semaine de septembre. Remède à cadrer : après un placement, suivre le match (poser `selectedWeekend` sur sa semaine) ou borner la liste « à placer » à la semaine affichée |
 | P4-198 | **Recherche dans le sélecteur d'équipe / de gymnase (`Listbox`)** | 🟡 | S | Mesuré le 2026-09-12 au dépôt FBI d'un export réel du fondateur, 50 divisions à associer une à une via `TeamSelect` : `TeamSelect`/`VenueSelect` (`shared/components/ui/team-select.tsx`, `venue-select.tsx`), tous deux bâtis sur `Listbox` (P4-164), n'ont pas de champ de recherche — `ResourceFilter.tsx:118-132` (`features/planning/`) en a un. Primitive à ajouter au partagé `Listbox` (une seule maison), profiterait aux deux sélecteurs sans dupliquer le geste |
-| P4-200 | **Appariement FFBB — écran : la modale Engagements FFBB ne distingue pas encore le pont xlsx (C1 SOLDÉ, reste C2)** | 🟡 | M | **C1 (backend) livré le 2026-09-12** : `FbiDivisionSignature` ponte le code de division xlsx à la ligne FFBB, `suggestionSource` expose la source, `confirm` accepte un `competitionId` — détail [`module-matchs.md`](../courantes/module-matchs.md) § « Appariement FFBB ». **Reste C2 (frontend)** : `FfbbEngagementsDialog.tsx` traite encore les trois sources de suggestion à l'identique — pas de badge « suggéré depuis l'import FBI », pas de compteur, taille modale inchangée. Cadrage de la refonte à faire séparément (passe de design d'abord) |
 | P4-201 | **e2e superadmin : une session par spec brûle le quota `admin_auth`** | 🟡 | S | Chaque relance de spec superadmin ré-authentifie et consomme le rate-limit `admin_auth` (5/15 min par IP) — cascade rouge vue sur PR #882 (`modal-reachability.spec.ts`). Les specs superadmin devraient partager UNE session au lieu d'une par fichier |
 
 ### Blocs de mutualisation imbriqués (mesure P4-182, 2026-09-07)

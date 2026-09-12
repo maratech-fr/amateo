@@ -1,6 +1,6 @@
-Last verified @ 2026-09-08 (**rotation de fraîcheur** `documentation-update`, PR espace Importer —
-zone non touchée par cette PR. Re-confronté au code : `POST /api/feedback` route toujours à
-`FeedbackController.php:66` ; `EventListener/RequestIdListener.php` +
+Last verified @ 2026-09-13 (**rotation de fraîcheur** `documentation-update`, PR refonte modale
+Engagements FFBB — zone non touchée par cette PR. Re-confronté au code : `POST /api/feedback`
+route toujours à `FeedbackController.php:66` ; `EventListener/RequestIdListener.php` +
 `Messenger/RequestIdMiddleware.php` existent toujours (backend+bus) ; `monolog-bundle` toujours
 dans `composer.json:31`. Tout juste)
 
