@@ -38,6 +38,8 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
   const setFilterMode = useMatchesStore((s) => s.setFilterMode);
   const toggleFilterId = useMatchesStore((s) => s.toggleFilterId);
   const setSelectedWeekend = useMatchesStore((s) => s.setSelectedWeekend);
+  const setRailStep = useMatchesStore((s) => s.setRailStep);
+  const setSelectedFixtureId = useMatchesStore((s) => s.setSelectedFixtureId);
   const reviewFixtures = useReviewFixtures();
   const resolveDeviation = useResolveFixtureDeviation();
   const attachVenueLabel = useAttachVenueLabel();
@@ -46,6 +48,8 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
   // l'URL dans une transition différée, et une case contrôlée par l'URL seule
   // revient « décochée » le temps de la transition (vu en e2e et à l'œil).
   const [showTreated, setShowTreated] = useState<boolean>(() => "1" === searchParams.get("traitees"));
+  // Même régime pour « Masquer les extérieurs », miroir de `?exterieurs=masques`.
+  const [hideAway, setHideAway] = useState<boolean>(() => "masques" === searchParams.get("exterieurs"));
   const openTeamId = searchParams.get("equipe");
   const busy = reviewFixtures.isPending || resolveDeviation.isPending || attachVenueLabel.isPending;
 
@@ -62,7 +66,12 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
   const fixtureById = useMemo(() => new Map(fixtures.map((f) => [f.id, f])), [fixtures]);
 
   const teamOrder = useMemo(() => [...teams].sort(compareTeamsByRank).map((t) => t.id), [teams]);
-  const queues = useMemo(() => buildReviewQueue(fixtures, teamOrder), [fixtures, teamOrder]);
+  // « Masquer les extérieurs » filtre AVANT la construction de la file : en-têtes
+  // recomptés, équipes 100 % extérieur et état vide suivent naturellement.
+  const queues = useMemo(() => {
+    const shown = hideAway ? fixtures.filter((f) => "AWAY" !== f.homeAway) : fixtures;
+    return buildReviewQueue(shown, teamOrder);
+  }, [fixtures, teamOrder, hideAway]);
 
   // Sans « afficher les traitées », on ne montre que les équipes à rencontres ouvertes.
   const visibleQueues = showTreated ? queues : queues.filter((q) => q.open.length > 0);
@@ -83,10 +92,21 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
     setParam("traitees", next ? "1" : null);
   };
 
+  const toggleHideAway = (next: boolean): void => {
+    setHideAway(next);
+    setParam("exterieurs", next ? "masques" : null);
+  };
+
   const onPlace = (fixture: Fixture): void => {
+    // `setFilterMode`/`toggleFilterId`/`setSelectedWeekend` remettent tous `railStep`
+    // à null, et l'auto de la boucle peut atterrir sur une autre vue que `homeSlots` —
+    // or le panneau de placement n'y vit que là. On POSE donc la vue et la rencontre
+    // pointée APRÈS ces trois-là, pour ouvrir directement le panneau du match.
     setFilterMode("equipe");
     toggleFilterId(fixture.teamId);
     setSelectedWeekend(weekendKeyOf(fixture.matchDate));
+    setRailStep("homeSlots");
+    setSelectedFixtureId(fixture.id);
     void navigate("/matchs");
   };
 
@@ -134,7 +154,10 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
   if (0 === visibleQueues.length) {
     return (
       <div className="flex flex-col gap-3">
-        {hasTreated ? <TreatedToggle showTreated={showTreated} onToggle={toggleTreated} /> : null}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          {hasTreated ? <TreatedToggle showTreated={showTreated} onToggle={toggleTreated} /> : null}
+          <HideAwayToggle hideAway={hideAway} onToggle={toggleHideAway} />
+        </div>
         <EmptyState icon={Inbox} title="Rien à traiter" description="Toutes les rencontres importées sont à jour. Déposez un export FBI ou vérifiez via l'API FFBB pour en apporter de nouvelles." />
       </div>
     );
@@ -142,7 +165,10 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
 
   return (
     <div className="flex flex-col gap-3">
-      <TreatedToggle showTreated={showTreated} onToggle={toggleTreated} />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <TreatedToggle showTreated={showTreated} onToggle={toggleTreated} />
+        <HideAwayToggle hideAway={hideAway} onToggle={toggleHideAway} />
+      </div>
       {visibleQueues.map((queue) => {
         const rows = [...queue.open, ...(showTreated ? queue.treated : [])];
         const headerParts = [teamName(queue.teamId), `${queue.toValidate} à valider`];
@@ -184,6 +210,15 @@ function TreatedToggle({ showTreated, onToggle }: { showTreated: boolean; onTogg
     <label className="flex w-fit items-center gap-2 text-sm text-muted-foreground">
       <input type="checkbox" checked={showTreated} onChange={(e) => onToggle(e.target.checked)} className="size-4" />
       Afficher les traitées
+    </label>
+  );
+}
+
+function HideAwayToggle({ hideAway, onToggle }: { hideAway: boolean; onToggle: (next: boolean) => void }) {
+  return (
+    <label className="flex w-fit items-center gap-2 text-sm text-muted-foreground">
+      <input type="checkbox" checked={hideAway} onChange={(e) => onToggle(e.target.checked)} className="size-4" />
+      Masquer les extérieurs
     </label>
   );
 }

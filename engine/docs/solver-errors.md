@@ -1,9 +1,10 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-09-07 (fix bloc épinglé en comblement, `documentation-update` — ligne
-`shared_block_not_honored` recalée : seconde cause INFEASIBLE « bloc sur-épinglé » émise par
-`_diagnose_shared_blocks` (`diagnostics.py`, id `shared-block-overpinned-…`) ; codes du tableau
-re-confrontés au `Literal` de `output_schema.py`, contrat 2.20 ✓).
+Last verified @ 2026-09-12 (rotation `documentation-update` — `SCORE_FORMULA_VERSION` =
+`T24_LEVEL_2_FIXED_WEIGHTS_V13` (`app/solver/objective/weights.py:31`) ✓ ; budget adaptatif
+60/180/600 s aux paliers ≤50/≤200 de complexité (`app/main.py:415-430`, `_adaptive_timeout`) ✓ ;
+`solverTimeoutSeconds` défaut 650 sur `/generate` (`app/schemas/input_schema.py:319`) ✓ ;
+`engine/CONTRACT_VERSION` = `2.20` ✓ — aucune dérive trouvée).
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 
 ---

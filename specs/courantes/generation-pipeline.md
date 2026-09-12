@@ -1,16 +1,17 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-09-07 (rotation de fraîcheur `documentation-update`, PR fix bloc épinglé en
-comblement — fichier hors sujet). Re-confronté au code : chaîne `GenerateScheduleController.php:30`
+Last verified @ 2026-09-12 (rotation de fraîcheur `documentation-update` — fichier hors sujet de
+la PR). Re-confronté au code : chaîne `GenerateScheduleController.php:30`
 → Messenger → `GenerateScheduleHandler.php:44` (importe via `ScheduleResultImporter`, injecté
 `:67`) ✓ · verrou `ClubGenerationLock::acquire` (`ClubGenerationLock.php:20`) ✓ · topic
-`club:{clubId}:schedule:{scheduleId}` (`MercureTopic.php:27`) ✓ · `CONTRACT_VERSION = '2.20'`
+`club:{clubId}:schedule:{scheduleId}` (`MercureTopic.php:24-27`) ✓ · `CONTRACT_VERSION = '2.20'`
 (`ScheduleConstraintBuilder.php:64`, même valeur `MoveSlotService.php:50` et
-`MatchPlacementPayloadBuilder.php:57`, `engine/CONTRACT_VERSION`) ✓ · `TIMEOUT_MS = 20 min`
+`MatchPlacementPayloadBuilder.php:65`, `engine/CONTRACT_VERSION`) ✓ · `TIMEOUT_MS = 20 min`
 (`GenerateStep.tsx:37`) ✓ · mode comblement : épingles HARD **avant** le hash de snapshot,
-`previousAssignments`/`socleReferenceAssignments` greffés **après** (`GenerateScheduleHandler.php:210-266`)
-✓. Corrigé au passage : citation `api.ts:846-848` → **`845-848`** (la ligne `export const
-listSchedules` était omise) — *(historique des passes vit dans git :
+`previousAssignments`/`socleReferenceAssignments` greffés **après** (`GenerateScheduleHandler.php:205-266`)
+✓. Corrigé au passage : citation `MatchPlacementPayloadBuilder.php:57` → **`:65`** (dérive de
+numéro de ligne, la classe a gagné un commentaire) ; `api.ts:845-848` (`listSchedules`) toujours
+juste — *(historique des passes vit dans git :
 `git log -p --follow specs/courantes/generation-pipeline.md`)*
 
 > Vérité courante. Décrit ce qui **doit** se passer, zone par zone, quand un

@@ -93,11 +93,12 @@ function renderPage(fixtures: Fixture[], route = "/matchs/importer") {
     ],
     { initialEntries: [route] },
   );
-  return render(
+  const utils = render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+  return { ...utils, router };
 }
 
 beforeEach(() => {
@@ -109,7 +110,7 @@ beforeEach(() => {
   reviewFixtures.mockResolvedValue({ reviewed: 1, skipped: [] });
   getVenues.mockResolvedValue([{ id: "venue-1", name: "Gymnase Alpha", color: null, externalLabels: [] }]);
   attachVenueLabel.mockResolvedValue({ venueId: "venue-1", label: "GYMNASE MATEO", attached: 2 });
-  useMatchesStore.setState({ reconciliation: null, filterMode: "equipe", filterIds: [], selectedWeekend: null });
+  useMatchesStore.setState({ reconciliation: null, filterMode: "equipe", filterIds: [], selectedWeekend: null, railStep: null, selectedFixtureId: null });
   useToastStore.setState({ toasts: [] });
 });
 
@@ -196,14 +197,17 @@ describe("ImportPage — la file de traitement", () => {
     expect(await screen.findByRole("button", { name: /SM1/ })).toBeInTheDocument();
   });
 
-  it("Placer pose le filtre équipe + le week-end dans le store et renvoie vers la boucle", async () => {
+  it("Replacer pose le filtre équipe + week-end + la vue homeSlots + la rencontre sélectionnée, et renvoie vers la boucle", async () => {
     const user = userEvent.setup();
     renderPage([fx("team-1", "NEW", "2026-11-07")], "/matchs/importer?equipe=team-1");
-    await user.click(await screen.findByRole("button", { name: "Placer" }));
+    await user.click(await screen.findByRole("button", { name: "Replacer" }));
     const state = useMatchesStore.getState();
     expect(state.filterMode).toBe("equipe");
     expect(state.filterIds).toContain("team-1");
     expect(state.selectedWeekend).toBe(weekendKeyOf("2026-11-07"));
+    // Le panneau de placement n'est rendu que dans la vue homeSlots, sur la rencontre pointée.
+    expect(state.railStep).toBe("homeSlots");
+    expect(state.selectedFixtureId).toBe("fx-1");
     expect(await screen.findByText("BOUCLE")).toBeInTheDocument();
   });
 
@@ -212,6 +216,37 @@ describe("ImportPage — la file de traitement", () => {
     const header = await screen.findByRole("button", { name: /SM1/ });
     expect(header).toHaveAttribute("aria-expanded", "true");
     expect(within(header.closest("div") as HTMLElement).getByRole("button", { name: "Valider" })).toBeInTheDocument();
+  });
+});
+
+describe("ImportPage — masquer les extérieurs (PR A)", () => {
+  it("la bascule masque les AWAY : recompte l'en-tête, fait disparaître une équipe 100 % extérieur, et miroir ?exterieurs=masques", async () => {
+    const user = userEvent.setup();
+    const { router } = renderPage([
+      fx("team-1", "NEW", "2026-11-07", { homeAway: "HOME" }),
+      fx("team-1", "NEW", "2026-11-14", { homeAway: "AWAY" }),
+      fx("team-2", "NEW", "2026-11-21", { homeAway: "AWAY" }),
+    ]);
+    // Avant : SM1 compte 2 à valider ; SF2 (100 % extérieur) est présente.
+    expect(await screen.findByRole("button", { name: /SM1 · 2 à valider/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /SF2/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox", { name: "Masquer les extérieurs" }));
+
+    // Après : SM1 recompté à 1 (le domicile seul), SF2 disparue, URL en miroir.
+    expect(await screen.findByRole("button", { name: /SM1 · 1 à valider/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /SF2/ })).not.toBeInTheDocument();
+    expect(router.state.location.search).toContain("exterieurs=masques");
+  });
+
+  it("montée avec ?exterieurs=masques : les extérieurs sont masqués d'emblée + case cochée", async () => {
+    renderPage(
+      [fx("team-1", "NEW", "2026-11-07", { homeAway: "HOME" }), fx("team-2", "NEW", "2026-11-21", { homeAway: "AWAY" })],
+      "/matchs/importer?exterieurs=masques",
+    );
+    expect(await screen.findByRole("button", { name: /SM1 · 1 à valider/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /SF2/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Masquer les extérieurs" })).toBeChecked();
   });
 });
 

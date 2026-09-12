@@ -1,4 +1,4 @@
-import { ArrowRightLeft, CalendarClock, Check, MapPin } from "lucide-react";
+import { ArrowRightLeft, CalendarClock, Check, House, MapPin, Plane } from "lucide-react";
 import { useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
@@ -51,20 +51,34 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
   // « Valider » en ligne quand il n'y a rien à arbitrer (NEW, ou seulement des
   // valeurs auto-appliquées à acquitter) — un OUT_OF_SYNC à écarts se tranche par champ.
   const canValidateLine = "REVIEWED" !== fixture.reviewState && 0 === arbitrable.length;
+  const isHome = "HOME" === fixture.homeAway;
+  // Salle : le nom du gymnase si le `venueId` est résolu dans les gymnases du club,
+  // sinon le libellé FBI brut, sinon rien (l'icône domicile/extérieur porte déjà le sens).
+  const venue = null !== fixture.venueId ? venues.find((v) => v.id === fixture.venueId) : undefined;
+  const venueText = venue?.name ?? fixture.fbiVenueLabel ?? null;
 
   return (
     <li className="flex flex-col gap-2 rounded-md border border-border bg-card p-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="text-sm font-medium tabular-nums">{frDateWeekdayNoYear(fixture.matchDate)}</span>
-        <span className="text-sm">{HOME_AWAY_LABEL[fixture.homeAway]}</span>
+        <span className="flex items-center gap-1 text-sm">
+          {isHome ? <House className="size-3.5 text-muted-foreground" aria-hidden="true" /> : <Plane className="size-3.5 text-muted-foreground" aria-hidden="true" />}
+          {HOME_AWAY_LABEL[fixture.homeAway]}
+        </span>
         <span className="text-sm text-muted-foreground">vs {fixture.opponentLabel}</span>
+        <span className="text-sm">
+          {null !== fixture.kickoffTime ? <span className="tabular-nums">{fixture.kickoffTime}</span> : <span className="text-muted-foreground">heure non publiée</span>}
+          {null !== venueText ? <span className="text-muted-foreground"> · {venueText}</span> : null}
+        </span>
         <StatusPill>{FIXTURE_STATUS_LABEL[fixture.status]}</StatusPill>
         <span className="text-xs text-muted-foreground">{treatmentLabel(fixture)}</span>
         <span className="ml-auto flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => onPlace(fixture)}>
-            <MapPin className="size-3.5" />
-            Placer
-          </Button>
+          {isHome ? (
+            <Button variant="ghost" size="sm" onClick={() => onPlace(fixture)}>
+              <MapPin className="size-3.5" />
+              Replacer
+            </Button>
+          ) : null}
           {canValidateLine ? (
             <Button variant="outline" size="sm" disabled={busy} onClick={() => onValidateLine(fixture.id)}>
               <Check className="size-3.5" />

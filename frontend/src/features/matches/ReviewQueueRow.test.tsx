@@ -39,13 +39,13 @@ function fx(extra: Partial<Fixture> = {}): Fixture {
   };
 }
 
-function renderRow(fixture: Fixture, onAttach = vi.fn()) {
-  render(
+function renderRow(fixture: Fixture, onAttach = vi.fn(), onPlace = vi.fn()) {
+  const utils = render(
     <ul>
-      <ReviewQueueRow fixture={fixture} venues={venues} onValidateLine={vi.fn()} onResolve={vi.fn()} onPlace={vi.fn()} onAttach={onAttach} busy={false} />
+      <ReviewQueueRow fixture={fixture} venues={venues} onValidateLine={vi.fn()} onResolve={vi.fn()} onPlace={onPlace} onAttach={onAttach} busy={false} />
     </ul>,
   );
-  return { onAttach };
+  return { onAttach, onPlace, ...utils };
 }
 
 const TRIGGER = /Choisir le gymnase pour la rencontre/;
@@ -125,5 +125,56 @@ describe("ReviewQueueRow — rattacher un gymnase (P4-187b)", () => {
     await user.click(screen.getByRole("button", { name: "Annuler" }));
     expect(screen.getByRole("button", { name: "Rattacher" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Confirmer" })).not.toBeInTheDocument();
+  });
+});
+
+describe("ReviewQueueRow — domicile/extérieur, heure et salle (PR A)", () => {
+  it("HOME → pictogramme maison aria-hidden + le mot « Domicile »", () => {
+    const { container } = renderRow(fx({ homeAway: "HOME" }));
+    expect(screen.getByText("Domicile")).toBeInTheDocument();
+    const house = container.querySelector(".lucide-house");
+    expect(house).not.toBeNull();
+    expect(house).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("AWAY → pictogramme avion aria-hidden + le mot « Extérieur »", () => {
+    const { container } = renderRow(fx({ homeAway: "AWAY" }));
+    expect(screen.getByText("Extérieur")).toBeInTheDocument();
+    const plane = container.querySelector(".lucide-plane");
+    expect(plane).not.toBeNull();
+    expect(plane).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("heure + gymnase RÉSOLU (venueId dans la liste) : « 12:30 · <nom du gymnase> »", () => {
+    renderRow(fx({ kickoffTime: "12:30", venueId: "v1" }));
+    expect(screen.getByText("12:30")).toBeInTheDocument();
+    expect(screen.getByText(/Gymnase Alpha/)).toBeInTheDocument();
+  });
+
+  it("repli sur le libellé FBI brut quand aucun gymnase n'est rattaché (venueId null)", () => {
+    // AWAY : pas de bloc « Rattacher », le libellé n'apparaît que dans la métadonnée.
+    renderRow(fx({ homeAway: "AWAY", kickoffTime: "12:30", venueId: null, fbiVenueLabel: "Salle Croix-Luizet" }));
+    expect(screen.getByText("12:30")).toBeInTheDocument();
+    expect(screen.getByText(/Salle Croix-Luizet/)).toBeInTheDocument();
+  });
+
+  it("heure absente (kickoffTime null) → « heure non publiée »", () => {
+    renderRow(fx({ kickoffTime: null }));
+    expect(screen.getByText("heure non publiée")).toBeInTheDocument();
+  });
+
+  it("« Replacer » présent sur un domicile, appelle onPlace", async () => {
+    const user = userEvent.setup();
+    const fixture = fx({ homeAway: "HOME" });
+    const { onPlace } = renderRow(fixture);
+    const replace = screen.getByRole("button", { name: "Replacer" });
+    await user.click(replace);
+    expect(onPlace).toHaveBeenCalledWith(fixture);
+  });
+
+  it("« Replacer » absent sur un extérieur (jamais un domicile à replacer)", () => {
+    renderRow(fx({ homeAway: "AWAY" }));
+    expect(screen.queryByRole("button", { name: "Replacer" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Placer" })).not.toBeInTheDocument();
   });
 });
