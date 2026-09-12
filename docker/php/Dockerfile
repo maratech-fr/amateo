@@ -116,7 +116,13 @@ CMD ["php-fpm"]
 FROM base AS prod
 
 # rclone backs the optional BACKUP_SYNC_COMMAND off-site hook (DatabaseBackupCommand).
+# SEC A19 — même règle que nginx-prod (`apk upgrade`) : l'image de base php:8.4-fpm
+# traîne des paquets Debian troués entre deux rebuilds upstream (2e prise Trivy,
+# 2026-09-12 : perl 5.40.1-6 avec 12 CVE CRITICAL, correctif 5.40.1-6+deb13u1
+# déjà publié côté Debian). L'upgrade au build ramène les paquets au niveau des
+# dépôts — le gate Trivy de build-docker vérifie derrière.
 RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends rclone \
     && rm -rf /var/lib/apt/lists/*
 
