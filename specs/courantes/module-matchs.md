@@ -294,6 +294,10 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
      `PR` classe départemental même si le sigle évoque un rang régional) ;
   6. préfixe `r` ou `pn` → **Régional** ;
   7. sinon → **Autres** — le repli garanti, une division ne disparaît jamais.
+- **Dans un onglet, les divisions se lisent par ordre alphabétique NATUREL** (`localeCompare`
+  `fr`, `numeric` : DF2 · DFU9 · DFU11 · DM2 · PRM), jamais dans l'ordre d'apparition du fichier
+  (demande fondateur 2026-09-12, même jour) — le tri est un `sort` sur une copie, l'ordre servi
+  par l'analyse n'est pas muté.
 - **Mesuré sur l'export réel du fondateur** (291 lignes, 50 divisions, 2026-09-12) : Départemental
   23, Régional 5, Brassage 6, Coupes CRM 8, Coupe ARA 3, Amicaux 5, Autres 0.
 - **Le classement se fait sur le LIBELLÉ DU FICHIER, jamais sur `Competition.competitionType`**
