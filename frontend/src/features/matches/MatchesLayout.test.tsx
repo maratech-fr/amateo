@@ -20,7 +20,7 @@ vi.mock("@/shared/session/queries", () => ({
 const visit = vi.hoisted(() => ({ count: 0 }));
 // PR-3b — les rencontres nourrissent le badge de l'onglet Importer (pendingReviewCount).
 // Mutable par test pour piloter le compte (NEW/OUT_OF_SYNC/REVIEWED) et l'échec.
-const fixturesState = vi.hoisted(() => ({ rows: [] as { reviewState: string }[], fail: false }));
+const fixturesState = vi.hoisted(() => ({ rows: [] as { reviewState: string; pendingDeviations: { autoApplied: boolean }[] }[], fail: false }));
 vi.mock("./api", () => ({
   postModuleVisit: vi.fn(() => {
     visit.count += 1;
@@ -106,15 +106,22 @@ describe("MatchesLayout (RMM-1 PR2 — deux espaces)", () => {
 describe("MatchesLayout — le badge de l'onglet Importer (PR-3b)", () => {
   it("affiche le compte quand des rencontres restent à traiter (« Importer · N »)", async () => {
     meState.chosen = "s1";
-    fixturesState.rows = [{ reviewState: "NEW" }, { reviewState: "OUT_OF_SYNC" }, { reviewState: "REVIEWED" }];
+    // NEW + OUT_OF_SYNC + une REVIEWED à alerte auto-appliquée comptent ; une REVIEWED
+    // sans alerte ne compte pas (P4-199) → 3.
+    fixturesState.rows = [
+      { reviewState: "NEW", pendingDeviations: [] },
+      { reviewState: "OUT_OF_SYNC", pendingDeviations: [{ autoApplied: false }] },
+      { reviewState: "REVIEWED", pendingDeviations: [{ autoApplied: true }] },
+      { reviewState: "REVIEWED", pendingDeviations: [] },
+    ];
     renderAt("/matchs");
     // Le compte arrive après le fetch (data absente au premier rendu).
-    expect(await screen.findByRole("link", { name: "Importer · 2" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Importer · 3" })).toBeInTheDocument();
   });
 
   it("aucun compte quand tout est traité — jamais « Importer · 0 »", async () => {
     meState.chosen = "s1";
-    fixturesState.rows = [{ reviewState: "REVIEWED" }];
+    fixturesState.rows = [{ reviewState: "REVIEWED", pendingDeviations: [] }];
     renderAt("/matchs");
     await waitFor(() => expect(visit.count).toBe(1)); // laisse le fetch se poser
     expect(screen.getByRole("link", { name: "Importer" })).toBeInTheDocument();

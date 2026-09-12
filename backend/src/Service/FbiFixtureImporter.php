@@ -100,6 +100,7 @@ final class FbiFixtureImporter
         private readonly ClockInterface $clock,
         private readonly VenueLabelNormalizer $labelNormalizer,
         private readonly VenueAliasResolver $venueAliasResolver,
+        private readonly ClubDay $clubDay,
     ) {}
 
     /**
@@ -231,6 +232,9 @@ final class FbiFixtureImporter
         $decisionMap = $this->indexDecisions($decisions);
         $venueNames = $this->venueNamesById();
         $now = DateTimeImmutable::createFromInterface($this->clock->now());
+        // Décision P4-199 — la borne « FBI fait foi » (dimanche de la semaine ISO
+        // en cours, fuseau club), calculée UNE fois pour ce dépôt.
+        $weekEnd = $this->currentIsoWeekEnd($club);
         /** @var array<string, true> $persistingSet */
         $persistingSet = [];
         /** @var list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}> $deviationRecords */
@@ -310,7 +314,7 @@ final class FbiFixtureImporter
 
                 $existing = $existingByTeamRef[$key] ?? null;
                 if ($existing instanceof Fixture) {
-                    $outcome = $this->applyDiff($existing, $row, $group['name'], $warnings, $decisionMap, $venueNames, $deviationRecords, $persistingSet, $now);
+                    $outcome = $this->applyDiff($existing, $row, $group['name'], $warnings, $decisionMap, $venueNames, $deviationRecords, $persistingSet, $now, $weekEnd);
                     if ('updated' === $outcome) {
                         ++$updated;
                     } else {
@@ -333,6 +337,8 @@ final class FbiFixtureImporter
                 // P4-187a — un domicile dont le libellé égale un alias confirmé
                 // naît AVEC son gymnase (mais UNPLACED : jamais placé d'office).
                 $this->attachConfirmedVenue($fixture, $row['venueLabel']);
+                // P4-199 — extérieur / passé / semaine ISO en cours → naît traité.
+                $this->treatOnArrival($fixture, $now, $club);
                 $this->entityManager->persist($fixture);
                 ++$created;
             }
@@ -601,6 +607,63 @@ final class FbiFixtureImporter
     }
 
     /**
+     * Retire le suffixe FFBB « (n) » d'un libellé d'équipe — délégué au foyer unique
+     * ({@see VenueLabelNormalizer::stripTeamNumberSuffix}, P4-199). Public pour que le
+     * canal API ({@see FfbbRencontreReconciler}) le partage sans en recopier la regex.
+     */
+    public function stripTeamNumberSuffix(string $label): string
+    {
+        return $this->labelNormalizer->stripTeamNumberSuffix($label);
+    }
+
+    /**
+     * Décision fondateur P4-199 — une rencontre naît DÉJÀ traitée (REVIEWED +
+     * horodatée) dès sa création dans deux cas : (1) c'est un EXTÉRIEUR (le club ne
+     * la place pas, rien à examiner) ; (2) sa date est passée OU tombe dans la
+     * semaine ISO en cours (borne = dimanche de la semaine, fuseau du club) — une
+     * rencontre déjà jouée ou imminente n'est pas « nouvelle ». Un domicile futur
+     * hors de cette fenêtre reste NEW (à examiner et placer). Foyer unique appelé
+     * aux deux canaux (import xlsx + canal API).
+     */
+    public function treatOnArrival(Fixture $fixture, DateTimeImmutable $now, Club $club): void
+    {
+        if (FixtureHomeAway::AWAY === $fixture->getHomeAway()
+            || $fixture->getMatchDate()->format('Y-m-d') <= $this->currentIsoWeekEnd($club)->format('Y-m-d')) {
+            $fixture->markReviewed($now);
+        }
+    }
+
+    /**
+     * Le dimanche (borne haute, date civile) de la semaine ISO EN COURS du club. « Quel
+     * jour est-on pour ce club ? » vient du foyer {@see ClubDay} (une génération à
+     * 00:30 UTC un lundi est encore dimanche à Paris — c'est lui qui le sait). La
+     * semaine ISO commence le lundi (jour 1) : dimanche = aujourd'hui + (7 − jour ISO).
+     */
+    public function currentIsoWeekEnd(Club $club): DateTimeImmutable
+    {
+        $today = $this->clubDay->todayFor($club);
+        $isoWeekday = (int) $today->format('N');
+
+        return $today->modify(\sprintf('+%d days', 7 - $isoWeekday));
+    }
+
+    /**
+     * Décision fondateur P4-199 — sur un domicile PLACÉ déphasé, la source « fait
+     * foi » (appliquée d'office, sans arbitrage) quand la date Amateo OU la date de
+     * la source tombe dans la fenêtre (≤ dimanche de la semaine ISO en cours) :
+     * « app OU source ». Un déphasage entièrement futur reste un arbitrage.
+     *
+     * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
+     */
+    public function sourceIsAuthoritativeForWindow(Fixture $existing, array $row, DateTimeImmutable $weekEnd): bool
+    {
+        $end = $weekEnd->format('Y-m-d');
+
+        return $existing->getMatchDate()->format('Y-m-d') <= $end
+            || $row['matchDate']->format('Y-m-d') <= $end;
+    }
+
+    /**
      * The SHARED reconciliation engine of a matched, in-perimeter fixture with at
      * least one divergent field — used by BOTH channels (xlsx import + FFBB-API
      * apply), never a second copy. Per field: a `take_file` writes the source value
@@ -611,14 +674,15 @@ final class FbiFixtureImporter
      * `$persistingSet` (before rewriting the entries) and the flat `$records`.
      *
      * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null}       $row
-     * @param array<string, array{app: string|null, file: string|null}>                                                                                                                 $fields        the CURRENT divergences (non-empty), keyed by field
-     * @param array<string, string>                                                                                                                                                     $decisions     fixtureId|field → keep_app|take_file
+     * @param array<string, array{app: string|null, file: string|null}>                                                                                                                 $fields                the CURRENT divergences (non-empty), keyed by field
+     * @param array<string, string>                                                                                                                                                     $decisions             fixtureId|field → keep_app|take_file
      * @param 'FBI_XLSX'|'FFBB_API'                                                                                                                                                     $channel
      * @param list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}> $records
      * @param array<string, true>                                                                                                                                                       $persistingSet
      * @param list<array{type: string, division: string, externalRef: string, message: string}>                                                                                         $warnings
+     * @param bool                                                                                                                                                                      $sourceIsAuthoritative décision P4-199 « FBI fait foi » : un champ non tranché est appliqué D'OFFICE (voir {@see sourceIsAuthoritativeForWindow})
      */
-    public function processPerimeterFields(Fixture $existing, array $row, array $fields, array $decisions, string $channel, string $divisionName, array &$records, array &$persistingSet, array &$warnings, DateTimeImmutable $now): bool
+    public function processPerimeterFields(Fixture $existing, array $row, array $fields, array $decisions, string $channel, string $divisionName, array &$records, array &$persistingSet, array &$warnings, DateTimeImmutable $now, bool $sourceIsAuthoritative = false): bool
     {
         $changed = false;
         // The status the manager SAW — captured before any take_file mutates it.
@@ -643,6 +707,15 @@ final class FbiFixtureImporter
                 // (« unchanged » as far as the rencontre content goes).
                 $existing->removePendingDeviation($field);
                 $effect = 'keep_app';
+            } elseif ($sourceIsAuthoritative) {
+                // Décision P4-199 — « FBI fait foi » : la source est appliquée
+                // d'OFFICE (date/salle dé-placent, heure en place), et une entrée
+                // `autoApplied` remplace l'écart à arbitrer pour ALLUMER le bandeau
+                // « la source a déplacé ce match » — la rencontre reste traitée.
+                $this->applyFieldTakeFile($existing, $field, $row, $now);
+                $existing->putPendingDeviation($this->pendingEntry($existing, $field, $vals, $channel, $now, true));
+                $changed = true;
+                $effect = 'take_file';
             } else {
                 $existing->putPendingDeviation($this->pendingEntry($existing, $field, $vals, $channel, $now, false));
             }
@@ -657,7 +730,14 @@ final class FbiFixtureImporter
             }
         }
 
-        $this->finalizeReview($existing, $now);
+        if ($sourceIsAuthoritative) {
+            // La source a fait foi : les entrées restantes sont toutes `autoApplied`
+            // (bandeau), la rencontre est traitée — on contourne finalizeReview qui
+            // la rangerait OUT_OF_SYNC sur ces pending.
+            $existing->markReviewed($now);
+        } else {
+            $this->finalizeReview($existing, $now);
+        }
 
         return $changed;
     }
@@ -912,13 +992,13 @@ final class FbiFixtureImporter
      * @param list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}> $records       collected per-field deviation records
      * @param array<string, true>                                                                                                                                                       $persistingSet « fixtureId|field » of écarts already open before this deposit (populated here)
      */
-    private function applyDiff(Fixture $existing, array $row, string $divisionName, array &$warnings, array $decisions, array $venueNames, array &$records, array &$persistingSet, DateTimeImmutable $now): string
+    private function applyDiff(Fixture $existing, array $row, string $divisionName, array &$warnings, array $decisions, array $venueNames, array &$records, array &$persistingSet, DateTimeImmutable $now, DateTimeImmutable $weekEnd): string
     {
         $fields = $this->detectFieldDeviations($existing, $row, $venueNames);
         if (null !== $fields) {
             $changed = [] === $fields
                 ? $this->reconcileNoDivergence($existing, $row, $venueNames, $now)
-                : $this->processPerimeterFields($existing, $row, $fields, $decisions, FbiIngestionSource::FBI_XLSX->value, $divisionName, $records, $persistingSet, $warnings, $now);
+                : $this->processPerimeterFields($existing, $row, $fields, $decisions, FbiIngestionSource::FBI_XLSX->value, $divisionName, $records, $persistingSet, $warnings, $now, $this->sourceIsAuthoritativeForWindow($existing, $row, $weekEnd));
 
             // xlsx-only silent updates (D3): the opponent label always, the raw
             // fbiVenueLabel only when the venue is not itself a divergence (a
@@ -1025,9 +1105,15 @@ final class FbiFixtureImporter
 
     /**
      * A match ALREADY treated (REVIEWED/OUT_OF_SYNC) whose source silently changed
-     * a value out of the perimeter goes back OUT_OF_SYNC, with an « auto-applied »
-     * entry per changed field so the manager sees what the league moved. A NEW
-     * match (never treated) keeps NEW — there is nothing to be out of sync with.
+     * a value out of the perimeter records an « auto-applied » entry per changed
+     * field so the manager sees what the league moved. A NEW match (never treated)
+     * keeps NEW — there is nothing to be out of sync with.
+     *
+     * Décision fondateur P4-199 — un EXTÉRIEUR PREND ACTE de la source : la valeur
+     * est appliquée d'office (déjà écrite en amont), la trace `autoApplied` allume
+     * le bandeau, mais la rencontre RESTE traitée (REVIEWED, jamais OUT_OF_SYNC) —
+     * le club ne place pas un extérieur, il n'y a rien à re-arbitrer. Un domicile
+     * hors périmètre (UNPLACED) déjà traité, lui, retombe OUT_OF_SYNC.
      *
      * @param array<string, array{app: string|null, file: string|null}> $autoApplied
      * @param 'FBI_XLSX'|'FFBB_API'                                     $channel
@@ -1039,6 +1125,11 @@ final class FbiFixtureImporter
         }
         foreach ($autoApplied as $field => $vals) {
             $existing->putPendingDeviation($this->pendingEntry($existing, $field, $vals, $channel, $now, true));
+        }
+        if (FixtureHomeAway::AWAY === $existing->getHomeAway()) {
+            $existing->markReviewed($now);
+
+            return;
         }
         $existing->setReviewState(FixtureReviewState::OUT_OF_SYNC);
     }
@@ -1463,7 +1554,12 @@ final class FbiFixtureImporter
                 }
             }
 
-            $clubLabel = $matchesHome ? $equipe1 : $equipe2;
+            // P4-199 — le suffixe FFBB « (n) » (deux engagements homonymes) est retiré
+            // du libellé du club ET de l'adversaire dès la lecture (foyer unique
+            // {@see VenueLabelNormalizer::stripTeamNumberSuffix}) : ni la clé de
+            // rapprochement ni le libellé stocké ne le portent plus.
+            $clubLabel = $this->labelNormalizer->stripTeamNumberSuffix($matchesHome ? $equipe1 : $equipe2);
+            $opponentLabel = $this->labelNormalizer->stripTeamNumberSuffix($matchesHome ? $equipe2 : $equipe1);
             $rows[] = [
                 'divisionName' => $divisionName,
                 'divisionKey' => $this->normalizeLabel($divisionName),
@@ -1474,7 +1570,7 @@ final class FbiFixtureImporter
                 'homeAway' => $matchesHome ? FixtureHomeAway::HOME : FixtureHomeAway::AWAY,
                 // Column is VARCHAR(180) — clamp instead of failing the row on
                 // an absurdly long label.
-                'opponentLabel' => mb_substr($matchesHome ? $equipe2 : $equipe1, 0, 180),
+                'opponentLabel' => mb_substr($opponentLabel, 0, 180),
                 'kickoffTime' => $kickoffTime,
                 'venueLabel' => '' === $venueLabel ? null : mb_substr($venueLabel, 0, 180),
             ];

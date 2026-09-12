@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service\Basketball;
 
+use App\Entity\Club;
 use App\Entity\Competition;
 use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
@@ -124,6 +125,10 @@ final class FfbbRencontreReconciler
         $decisionMap = $this->importer->indexDecisions($decisions);
         $context = $this->matchingContext();
         $now = $this->now();
+        // P4-199 — le club porte le fuseau : il gouverne la naissance « traitée »
+        // (extérieur / passé / semaine ISO en cours) et la borne « FBI fait foi ».
+        $club = $this->entityManager->getRepository(Club::class)->find($clubId);
+        $weekEnd = $club instanceof Club ? $this->importer->currentIsoWeekEnd($club) : null;
 
         /** @var list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}> $records */
         $records = [];
@@ -177,10 +182,10 @@ final class FfbbRencontreReconciler
 
                 continue;
             }
-            $this->importer->processPerimeterFields($fixture, $row, $fields, $decisionMap, FbiIngestionSource::FFBB_API->value, $row['competitionName'], $records, $persistingSet, $discardedWarnings, $now);
+            $this->importer->processPerimeterFields($fixture, $row, $fields, $decisionMap, FbiIngestionSource::FFBB_API->value, $row['competitionName'], $records, $persistingSet, $discardedWarnings, $now, $weekEnd instanceof DateTimeImmutable && $this->importer->sourceIsAuthoritativeForWindow($fixture, $row, $weekEnd));
         }
 
-        $created = $this->applyCreations($creations, $rowsByRencontreId, $context, $clubId, $seasonId, $createdByKey);
+        $created = $this->applyCreations($creations, $rowsByRencontreId, $context, $clubId, $seasonId, $createdByKey, $club, $now);
 
         // The unresolved écarts (no decision) — reported, never overwritten.
         $unresolvedRecords = array_values(array_filter($records, static fn (array $r): bool => 'none' === $r['effect']));
@@ -221,7 +226,7 @@ final class FfbbRencontreReconciler
      * @param array{fixturesByRencontreId: array<string, Fixture>, teamById: array<string, Team>, teamByFfbbCompetitionId: array<string, list<string>>, competitionByFfbbId: array<string, list<Competition>>, competitionsByTeam: array<string, list<Competition>>, fixturesByTeam: array<string, list<Fixture>>} $context
      * @param array<string, Competition>                                                                                                                                                                                                                                                                           $createdByKey
      */
-    private function applyCreations(array $creations, array $rowsByRencontreId, array $context, string $clubId, string $seasonId, array &$createdByKey): int
+    private function applyCreations(array $creations, array $rowsByRencontreId, array $context, string $clubId, string $seasonId, array &$createdByKey, ?Club $club, DateTimeImmutable $now): int
     {
         $created = 0;
         $seen = [];
@@ -247,7 +252,7 @@ final class FfbbRencontreReconciler
                 continue;
             }
 
-            $this->entityManager->persist($this->newFixture($row, $teamId, $clubId, $seasonId, $context, $createdByKey));
+            $this->entityManager->persist($this->newFixture($row, $teamId, $clubId, $seasonId, $context, $createdByKey, $club, $now));
             ++$created;
         }
 
@@ -259,7 +264,7 @@ final class FfbbRencontreReconciler
      * @param array{fixturesByRencontreId: array<string, Fixture>, teamById: array<string, Team>, teamByFfbbCompetitionId: array<string, list<string>>, competitionByFfbbId: array<string, list<Competition>>, competitionsByTeam: array<string, list<Competition>>, fixturesByTeam: array<string, list<Fixture>>} $context
      * @param array<string, Competition>                                                                                                                                                                                                                                                                           $createdByKey
      */
-    private function newFixture(array $row, string $teamId, string $clubId, string $seasonId, array $context, array &$createdByKey): Fixture
+    private function newFixture(array $row, string $teamId, string $clubId, string $seasonId, array $context, array &$createdByKey, ?Club $club, DateTimeImmutable $now): Fixture
     {
         /** @var DateTimeImmutable $matchDate */
         $matchDate = $row['matchDate'];
@@ -275,17 +280,23 @@ final class FfbbRencontreReconciler
         $fixture->setCompetitionId($competition instanceof Competition ? $competition->getId() : null);
         $fixture->setMatchDate($matchDate);
         $fixture->setHomeAway($row['homeAway'] instanceof FixtureHomeAway ? $row['homeAway'] : FixtureHomeAway::HOME);
-        $fixture->setOpponentLabel(\is_string($row['opponentLabel'] ?? null) ? $row['opponentLabel'] : '');
+        // P4-199 — le suffixe FFBB « (n) » est retiré du libellé adverse à la
+        // création (foyer unique partagé avec l'import xlsx).
+        $fixture->setOpponentLabel($this->importer->stripTeamNumberSuffix(\is_string($row['opponentLabel'] ?? null) ? $row['opponentLabel'] : ''));
         $fixture->setKickoffTime($row['kickoffTime'] instanceof DateTimeImmutable ? $row['kickoffTime'] : null);
         $fixture->setFbiVenueLabel(\is_string($row['venueLabel'] ?? null) ? $row['venueLabel'] : null);
         $fixture->setFfbbRencontreId(\is_string($row['rencontreId'] ?? null) ? $row['rencontreId'] : null);
         // Status is always UNPLACED (placing a home match requires a CLUB venue +
-        // an explicit manager action — same rule as the FBI import). reviewState
-        // stays NEW by default — a freshly imported rencontre is « à traiter ».
-        $fixture->setStatus(FixtureStatus::UNPLACED, $this->now());
+        // an explicit manager action — same rule as the FBI import).
+        $fixture->setStatus(FixtureStatus::UNPLACED, $now);
         // P4-187a — un domicile dont le libellé égale un alias confirmé naît AVEC
         // son gymnase (jamais placé pour autant : reste UNPLACED). Moteur partagé.
         $this->importer->attachConfirmedVenue($fixture, \is_string($row['venueLabel'] ?? null) ? $row['venueLabel'] : null);
+        // P4-199 — extérieur / passé / semaine ISO en cours → naît DÉJÀ traité
+        // (REVIEWED). Un domicile futur hors fenêtre reste NEW (à traiter/placer).
+        if ($club instanceof Club) {
+            $this->importer->treatOnArrival($fixture, $now, $club);
+        }
 
         return $fixture;
     }

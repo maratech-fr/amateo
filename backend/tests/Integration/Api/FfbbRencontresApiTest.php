@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
+use App\Clock\DevClockStore;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Competition;
@@ -154,6 +155,29 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertNotContains(FfbbHttpClientStub::RENCONTRE_AMICAL_ID, $this->listCreatableIds($token));
         $again = $this->apply($token, [], [['rencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID, 'teamId' => $team->getId()]]);
         self::assertSame(0, $again['created'], 'a rencontre already created is never re-created');
+    }
+
+    public function testApplyCreatesAPastRencontreAlreadyTreated(): void
+    {
+        // P4-199 décision 1 (canal API) — une rencontre dont la date est PASSÉE
+        // (horloge épinglée après la date du stub) naît DÉJÀ traitée (REVIEWED).
+        // La borne « traitée à l'arrivée » est calculée dans le fuseau du club.
+        self::getContainer()->get(DevClockStore::class)->set($this->rencontreDate()->modify('+5 days'));
+
+        [$token, , $clubId] = $this->register('FRT');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+
+        $created = $this->apply($token, [], [['rencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID, 'teamId' => $team->getId()]]);
+        self::assertSame(1, $created['created']);
+
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['ffbbRencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID]);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture->getReviewState(), 'une rencontre passée naît traitée');
+        self::assertNotNull($fixture->getReviewedAt());
+        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus(), 'traitée ne veut pas dire placée');
     }
 
     public function testApplyCreatesACupCompetitionForAnUnpairedCoupeRencontre(): void
@@ -539,6 +563,14 @@ final class FfbbRencontresApiTest extends WebTestCase
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    protected function tearDown(): void
+    {
+        // Relâche toute horloge épinglée (Redis partagé, non transactionnel) — sinon
+        // elle fuirait sur les tests suivants.
+        self::getContainer()->get(DevClockStore::class)->set(null);
+        parent::tearDown();
     }
 
     /** @return array<string, string> */

@@ -57,6 +57,24 @@ final class FixtureReviewApiTest extends WebTestCase
         self::assertSame('2026-10-04', substr((string) $row['match_date'], 0, 10), 'keeping the app value never writes the source');
     }
 
+    public function testLineReviewAcknowledgesAnAutoAppliedDeviationOnAnAlreadyReviewedFixture(): void
+    {
+        // P4-199 — une rencontre DÉJÀ traitée (REVIEWED) portant une entrée
+        // `autoApplied` (la source a imposé une valeur hors périmètre : le bandeau
+        // « Pris en compte ») : le geste ligne vide l'écart, elle reste traitée.
+        [$club, $user, $season] = $this->createClubUser('ra');
+        $team = $this->createTeam($club, $season, 'SF3');
+        $fixture = $this->autoAppliedReviewedFixture($club, $season, $team, '2026-10-04', '2026-10-11');
+
+        $this->post($user, '/api/fixtures/review', ['fixtureIds' => [$fixture->getId()]]);
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(1, $this->responseData()['reviewed']);
+
+        $row = $this->reload($club, $fixture->getId());
+        self::assertSame('REVIEWED', $row['review_state'], 'elle reste traitée');
+        self::assertSame('[]', (string) $row['pending_deviations'], '« Pris en compte » vide l\'entrée autoApplied');
+    }
+
     public function testBulkReviewSkipsFixturesStillCarryingPendingDeviations(): void
     {
         [$club, $user, $season] = $this->createClubUser('rb');
@@ -207,6 +225,27 @@ final class FixtureReviewApiTest extends WebTestCase
             'autoApplied' => false,
         ]);
         $fixture->setReviewState(FixtureReviewState::OUT_OF_SYNC);
+        $this->em->flush();
+
+        return $fixture;
+    }
+
+    private function autoAppliedReviewedFixture(Club $club, Season $season, Team $team, string $appDate, string $sourceDate): Fixture
+    {
+        // Placée → REVIEWED (setStatus PLACED sans écart traite la rencontre), puis
+        // une entrée autoApplied déposée SANS repasser OUT_OF_SYNC — l'état exact
+        // d'un extérieur / domicile in-window dont la source a fait foi (P4-199).
+        $fixture = $this->plainFixture($club, $season, $team, $appDate);
+        $this->scopeGucToClub($club->getId());
+        $fixture->putPendingDeviation([
+            'field' => 'date',
+            'appValue' => $appDate,
+            'sourceValue' => $sourceDate,
+            'channel' => 'FBI_XLSX',
+            'seenAt' => '2026-09-01T10:00:00+00:00',
+            'autoApplied' => true,
+        ]);
+        $fixture->markReviewed(new DateTimeImmutable);
         $this->em->flush();
 
         return $fixture;

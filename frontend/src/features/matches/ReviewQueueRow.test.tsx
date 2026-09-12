@@ -178,3 +178,56 @@ describe("ReviewQueueRow — domicile/extérieur, heure et salle (PR A)", () => 
     expect(screen.queryByRole("button", { name: "Placer" })).not.toBeInTheDocument();
   });
 });
+
+describe("ReviewQueueRow — valider / pris en compte / bandeau (P4-199)", () => {
+  function renderValidatable(fixture: Fixture, onValidateLine = vi.fn()) {
+    render(
+      <ul>
+        <ReviewQueueRow fixture={fixture} venues={venues} onValidateLine={onValidateLine} onResolve={vi.fn()} onPlace={vi.fn()} onAttach={vi.fn()} busy={false} />
+      </ul>,
+    );
+    return { onValidateLine };
+  }
+
+  it("NEW sans écart : bouton « Valider », appelle onValidateLine", async () => {
+    const user = userEvent.setup();
+    const fixture = fx({ reviewState: "NEW", homeAway: "AWAY" });
+    const { onValidateLine } = renderValidatable(fixture);
+    await user.click(screen.getByRole("button", { name: "Valider" }));
+    expect(onValidateLine).toHaveBeenCalledWith(fixture.id);
+  });
+
+  it("REVIEWED sans écart : aucun bouton (déjà traitée)", () => {
+    renderValidatable(fx({ reviewState: "REVIEWED", homeAway: "AWAY", reviewedAt: "2026-10-01T10:00:00+00:00" }));
+    expect(screen.queryByRole("button", { name: "Valider" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Pris en compte" })).not.toBeInTheDocument();
+  });
+
+  it("REVIEWED à écart AUTO-APPLIQUÉ : bouton « Pris en compte » + bandeau ancien → nouveau, appelle onValidateLine", async () => {
+    const user = userEvent.setup();
+    const fixture = fx({
+      reviewState: "REVIEWED",
+      homeAway: "AWAY",
+      reviewedAt: "2026-10-01T10:00:00+00:00",
+      pendingDeviations: [{ field: "date", appValue: "2026-11-07", sourceValue: "2026-11-14", channel: "FBI_XLSX", seenAt: "2026-10-01T00:00:00+00:00", autoApplied: true }],
+    });
+    const { onValidateLine } = renderValidatable(fixture);
+    // Bandeau : la source a déplacé, ANCIENNE → NOUVELLE (jamais l'inverse).
+    expect(screen.getByText(/FBI a déplacé ce match.*2026-11-07 → 2026-11-14/)).toBeInTheDocument();
+    // Pas d'arbitrage champ par champ sur un écart auto-appliqué.
+    expect(screen.queryByRole("button", { name: "Garder Amateo" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Pris en compte" }));
+    expect(onValidateLine).toHaveBeenCalledWith(fixture.id);
+  });
+
+  it("OUT_OF_SYNC à écart arbitrable : ni « Valider » ni « Pris en compte » (on tranche par champ)", () => {
+    renderValidatable(fx({
+      reviewState: "OUT_OF_SYNC",
+      homeAway: "AWAY",
+      pendingDeviations: [{ field: "date", appValue: "2026-11-07", sourceValue: "2026-11-14", channel: "FBI_XLSX", seenAt: "2026-10-01T00:00:00+00:00", autoApplied: false }],
+    }));
+    expect(screen.queryByRole("button", { name: "Valider" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Pris en compte" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Garder Amateo" })).toBeInTheDocument();
+  });
+});

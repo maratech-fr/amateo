@@ -32,6 +32,23 @@ export function isUnattachedHome(fixture: Fixture): boolean {
   return "HOME" === fixture.homeAway && null === fixture.venueId && null !== fixture.fbiVenueLabel;
 }
 
+/**
+ * P4-199 — une rencontre TRAITÉE (REVIEWED) peut porter un écart AUTO-APPLIQUÉ : la
+ * source a imposé une valeur d'office (extérieur, ou domicile déphasé dans la semaine
+ * en cours — « FBI fait foi ») pendant qu'elle était traitée. Elle reste traitée mais
+ * mérite un « Pris en compte » (bandeau) — elle doit donc rester VISIBLE dans la file,
+ * pas rangée avec les traitées sans alerte. Présentation pure (le backend a tranché).
+ */
+export function hasAutoAppliedDeviation(fixture: Fixture): boolean {
+  return fixture.pendingDeviations.some((d) => d.autoApplied);
+}
+
+/** À traiter d'un geste ou à arbitrer : NEW, OUT_OF_SYNC, ou REVIEWED encore porteuse
+ * d'une alerte auto-appliquée (à acquitter). Ce prédicat gouverne `open` ET le badge. */
+function isOpenReview(fixture: Fixture): boolean {
+  return "NEW" === fixture.reviewState || "OUT_OF_SYNC" === fixture.reviewState || ("REVIEWED" === fixture.reviewState && hasAutoAppliedDeviation(fixture));
+}
+
 function byMatchDateAsc(a: Fixture, b: Fixture): number {
   return a.matchDate < b.matchDate ? -1 : a.matchDate > b.matchDate ? 1 : 0;
 }
@@ -57,11 +74,13 @@ export function buildReviewQueue(fixtures: Fixture[], teamOrder: string[]): Team
 
   return [...byTeam.entries()]
     .map(([teamId, teamFixtures]): TeamQueue => {
-      const open = teamFixtures.filter((f) => "NEW" === f.reviewState || "OUT_OF_SYNC" === f.reviewState).sort(byMatchDateAsc);
-      const treated = teamFixtures.filter((f) => "REVIEWED" === f.reviewState).sort(byMatchDateAsc);
+      const open = teamFixtures.filter(isOpenReview).sort(byMatchDateAsc);
+      // Traitées SANS alerte : une REVIEWED à écart auto-appliqué reste dans `open`.
+      const treated = teamFixtures.filter((f) => "REVIEWED" === f.reviewState && !hasAutoAppliedDeviation(f)).sort(byMatchDateAsc);
       return {
         teamId,
-        toValidate: teamFixtures.filter((f) => "NEW" === f.reviewState).length,
+        // « à valider » = les gestes en un clic : NEW + REVIEWED à acquitter (« Pris en compte »).
+        toValidate: teamFixtures.filter((f) => "NEW" === f.reviewState || ("REVIEWED" === f.reviewState && hasAutoAppliedDeviation(f))).length,
         deviationCount: teamFixtures.filter((f) => "OUT_OF_SYNC" === f.reviewState).length,
         unattachedCount: teamFixtures.filter(isUnattachedHome).length,
         open,
@@ -72,7 +91,8 @@ export function buildReviewQueue(fixtures: Fixture[], teamOrder: string[]): Team
 }
 
 /** Combien de rencontres restent à traiter, tous équipes confondues (NEW +
- * OUT_OF_SYNC) — nourrit le badge de l'onglet Importer. */
+ * OUT_OF_SYNC + REVIEWED à alerte auto-appliquée) — nourrit le badge de l'onglet
+ * Importer : masquer ≠ traiter, mais une alerte non acquittée compte comme « à traiter ». */
 export function pendingReviewCount(fixtures: Fixture[]): number {
-  return fixtures.filter((f) => "NEW" === f.reviewState || "OUT_OF_SYNC" === f.reviewState).length;
+  return fixtures.filter(isOpenReview).length;
 }
