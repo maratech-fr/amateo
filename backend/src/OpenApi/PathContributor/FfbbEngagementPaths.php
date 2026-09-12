@@ -36,6 +36,7 @@ final readonly class FfbbEngagementPaths implements CustomPathContributor
                             'gender' => ['type' => 'string', 'nullable' => true],
                             'pouleSize' => ['type' => 'integer'],
                             'pouleOpponents' => ['type' => 'array', 'items' => ['type' => 'string']],
+                            'suggestionSource' => ['type' => 'string', 'enum' => ['pairing', 'canonical', 'fbi'], 'nullable' => true],
                             'suggestedTeamId' => ['type' => 'string', 'nullable' => true],
                             'suggestedCompetitionId' => ['type' => 'string', 'nullable' => true],
                         ]]],
@@ -72,6 +73,19 @@ final readonly class FfbbEngagementPaths implements CustomPathContributor
                 '502' => new Response('FFBB unreachable — retry later'),
             ],
             summary: 'Confirm the FFBB pairings in block (re-paired at each phase — 1 click)',
+            requestBody: $this->schemas->jsonBody([
+                'type' => 'object',
+                'properties' => [
+                    'pairings' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                        'ffbbCompetitionId' => ['type' => 'string'],
+                        'teamId' => ['type' => 'string'],
+                        // Optional: the accepted FBI-bridge suggestion — the refs land
+                        // on that already-mapped xlsx competition (honoured only when
+                        // it belongs to the chosen team), instead of a twin empty one.
+                        'competitionId' => ['type' => 'string', 'nullable' => true],
+                    ]]],
+                ],
+            ]),
         )));
 
         $paths->addPath('/api/ffbb/rencontres', new PathItem(get: new Operation(

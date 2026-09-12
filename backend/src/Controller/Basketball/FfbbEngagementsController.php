@@ -10,6 +10,7 @@ use App\Entity\Season;
 use App\Entity\Team;
 use App\Enum\CompetitionType;
 use App\Repository\ClubRepository;
+use App\Service\Basketball\FbiDivisionSignature;
 use App\Service\Basketball\FfbbEngagementReader;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
@@ -31,10 +32,13 @@ use Throwable;
  *
  * GET  /api/ffbb/engagements        — the club's engagements of the CURRENT
  *   season, on demand (no cache, no cron — closed legal decision), each with a
- *   pre-fill suggestion (a Competition already carrying this ffbbCompetitionId,
- *   else a strict normalized match on the canonical competition name).
+ *   pre-fill suggestion and its `suggestionSource`: a Competition already
+ *   carrying this ffbbCompetitionId (`pairing`), else a strict normalized match
+ *   on the canonical competition name (`canonical`), else the FBI-signature
+ *   bridge to a competition mapped at xlsx import (`fbi`), else nothing (null).
  * POST /api/ffbb/engagements/confirm — writes the refs on each paired team's
- *   Competition (reused by (teamId, canonical name) or created), freezing
+ *   Competition (an optional `competitionId` lands them ON the mapped xlsx
+ *   competition; else reused by (teamId, canonical name) or created), freezing
  *   expectedMatchdays = 2×(N−1) and the poule's opponent club list (the import
  *   guard's OFFLINE data). Poule size and opponents come from a server-side
  *   re-read — never from the client. Not pairing a row = not sending it: the
@@ -42,6 +46,8 @@ use Throwable;
  *
  * Management-gated (SEC-07) + season writable + socle chosen (match-module
  * writes). Best-effort on the FFBB side: 502, never a broken gesture.
+ *
+ * @phpstan-import-type Signature from FbiDivisionSignature
  */
 #[AsController]
 final class FfbbEngagementsController extends AbstractController
@@ -57,6 +63,7 @@ final class FfbbEngagementsController extends AbstractController
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly SocleGuard $socleGuard,
         private readonly FfbbEngagementReader $reader,
+        private readonly FbiDivisionSignature $divisionSignature,
     ) {}
 
     #[Route('/api/ffbb/engagements', name: 'api_ffbb_engagements', methods: ['GET'])]
@@ -80,6 +87,11 @@ final class FfbbEngagementsController extends AbstractController
         $competitions = $this->entityManager->getRepository(Competition::class)->findBy([]);
         $byFfbbId = [];
         $byCanonicalName = [];
+        // FBI-signature bridge candidates (C1): the club's UNPAIRED xlsx
+        // competitions, keyed by the signature parsed from their FBI code name.
+        // Tenant/season filters already scope findBy([]) — a foreign club's
+        // competition is invisible, so it can never feed a suggestion.
+        $bridgeCandidates = [];
         foreach ($competitions as $competition) {
             if (null !== $competition->getFfbbCompetitionId()) {
                 $byFfbbId[$competition->getFfbbCompetitionId()] = $competition;
@@ -87,17 +99,37 @@ final class FfbbEngagementsController extends AbstractController
             if (null !== $competition->getFfbbCompetitionName()) {
                 $byCanonicalName[$this->normalize($competition->getFfbbCompetitionName())] = $competition;
             }
+            // Only an UNPAIRED xlsx competition feeds the bridge (a paired one is
+            // already reached by its ffbb id / canonical name above).
+            if (null === $competition->getFfbbCompetitionId()) {
+                $signature = $this->divisionSignature->fromCode($competition->getName());
+                if (null !== $signature) {
+                    $bridgeCandidates[] = ['competition' => $competition, 'signature' => $signature];
+                }
+            }
         }
 
         $engagements = [];
         foreach ($rows as $row) {
-            // Pre-fill (D5): (a) a Competition already paired to THIS ffbb id →
-            // idempotent re-open; (b) strict normalized canonical-name match →
-            // next phase of the same competition; (c) nothing → manual gesture.
-            $suggested = $byFfbbId[$row['ffbbCompetitionId']]
-                ?? $byCanonicalName[$this->normalize($row['competitionName'])]
-                ?? null;
+            // Suggestion priority (C1): (a) a Competition already paired to THIS
+            // ffbb id → idempotent re-open ; (b) strict normalized canonical-name
+            // match → next phase of the same competition ; (c) the FBI-signature
+            // bridge → the team already mapped at xlsx import ; (d) nothing.
+            $source = null;
+            $suggested = $byFfbbId[$row['ffbbCompetitionId']] ?? null;
+            if ($suggested instanceof Competition) {
+                $source = 'pairing';
+            } else {
+                $suggested = $byCanonicalName[$this->normalize($row['competitionName'])] ?? null;
+                if ($suggested instanceof Competition) {
+                    $source = 'canonical';
+                } else {
+                    $suggested = $this->bridgeSuggestion($bridgeCandidates, $row);
+                    $source = $suggested instanceof Competition ? 'fbi' : null;
+                }
+            }
             $engagements[] = $row + [
+                'suggestionSource' => $source,
                 'suggestedTeamId' => $suggested?->getTeamId(),
                 'suggestedCompetitionId' => $suggested?->getId(),
             ];
@@ -153,6 +185,7 @@ final class FfbbEngagementsController extends AbstractController
             }
             $ffbbCompetitionId = \is_string($pairing['ffbbCompetitionId'] ?? null) ? $pairing['ffbbCompetitionId'] : '';
             $teamId = \is_string($pairing['teamId'] ?? null) ? $pairing['teamId'] : '';
+            $competitionId = \is_string($pairing['competitionId'] ?? null) && '' !== $pairing['competitionId'] ? $pairing['competitionId'] : null;
             $row = $rowsByFfbbId[$ffbbCompetitionId] ?? null;
             if (null === $row) {
                 return $this->json(['error' => \sprintf('Engagement inconnu pour cette saison (%s).', $ffbbCompetitionId)], Response::HTTP_UNPROCESSABLE_ENTITY);
@@ -175,7 +208,7 @@ final class FfbbEngagementsController extends AbstractController
                 }
             }
 
-            $competition = $this->findOrCreateCompetition($competitions, $teamId, $row['competitionName'], $season->getId());
+            $competition = $this->resolveCompetition($competitions, $teamId, $competitionId, $row['competitionName'], $season->getId());
             $competition->setFfbbCompetitionId($row['ffbbCompetitionId']);
             $competition->setFfbbPouleId($row['ffbbPouleId']);
             $competition->setFfbbPouleName($row['pouleName']);
@@ -197,6 +230,37 @@ final class FfbbEngagementsController extends AbstractController
         return $this->json(['confirmed' => $confirmed]);
     }
 
+    /**
+     * The FBI-signature suggestion for ONE FFBB engagement row (C1): the team a
+     * manager already mapped at xlsx import. Only when EXACTLY one team's
+     * competitions carry a matching signature — several DISTINCT teams →
+     * ambiguous → no suggestion (« DFU11 » → U11F1 and « DFU11-2 » → U11F2 :
+     * deux équipes, rien). Several competitions toward the SAME team → the first
+     * by name.
+     *
+     * @param list<array{competition: Competition, signature: Signature}>                                    $candidates
+     * @param array{category: string|null, level: string|null, gender: string|null, competitionName: string} $row
+     */
+    private function bridgeSuggestion(array $candidates, array $row): ?Competition
+    {
+        $ffbbSignature = $this->divisionSignature->fromFfbbRow($row['category'], $row['level'], $row['gender'], $row['competitionName']);
+
+        $matches = [];
+        $teamIds = [];
+        foreach ($candidates as $candidate) {
+            if ($this->divisionSignature->bridges($candidate['signature'], $ffbbSignature)) {
+                $matches[] = $candidate['competition'];
+                $teamIds[$candidate['competition']->getTeamId()] = true;
+            }
+        }
+        if (1 !== \count($teamIds)) {
+            return null;
+        }
+        usort($matches, static fn (Competition $a, Competition $b): int => strcmp($a->getName(), $b->getName()));
+
+        return $matches[0];
+    }
+
     /** @return array{0: string|null, 1: int|null, 2: JsonResponse|null} */
     private function context(Request $request): array
     {
@@ -215,6 +279,36 @@ final class FfbbEngagementsController extends AbstractController
         }
 
         return [$clubCode, SeasonResolver::seasonYear($season->getStartDate()), null];
+    }
+
+    /**
+     * Resolve the Competition to carry the refs. When the client sends a
+     * `competitionId` (the FBI-bridge suggestion accepted, C1), the refs land ON
+     * that xlsx competition rather than a twin empty one — but ONLY when it
+     * belongs to the chosen team (the tenant/season filters already hide a
+     * foreign club's row, and the team check blocks hijacking another team's
+     * competition). Its `name` stays the FBI code (« PNM » — the xlsx resolver's
+     * key), only the refs are written on top; a positive type inference is
+     * re-posed like on a canonical-name reuse (P4-195). Otherwise falls back to
+     * the canonical-name reuse-or-create.
+     *
+     * @param list<Competition> $competitions
+     */
+    private function resolveCompetition(array &$competitions, string $teamId, ?string $competitionId, string $canonicalName, string $seasonId): Competition
+    {
+        if (null !== $competitionId) {
+            $byId = $this->entityManager->getRepository(Competition::class)->findOneBy(['id' => $competitionId]);
+            if ($byId instanceof Competition && $byId->getTeamId() === $teamId) {
+                $inferredType = $this->inferCompetitionType($canonicalName);
+                if ($inferredType instanceof CompetitionType) {
+                    $byId->setCompetitionType($inferredType);
+                }
+
+                return $byId;
+            }
+        }
+
+        return $this->findOrCreateCompetition($competitions, $teamId, $canonicalName, $seasonId);
     }
 
     /** @param list<Competition> $competitions */

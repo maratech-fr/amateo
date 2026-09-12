@@ -1,10 +1,10 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-09-12 (P4-199, `documentation-update`) : § « Réconciliation FBI, canal API »
-étendu aux règles de naissance/fenêtre partagées avec le xlsx (`FfbbRencontreReconciler` appelle
-`FbiFixtureImporter::treatOnArrival`/`sourceIsAuthoritativeForWindow`, `backend/src/Service/Basketball/FfbbRencontreReconciler.php:128-131,185`)
-et au retrait du suffixe FFBB « (n) » (`VenueLabelNormalizer::stripTeamNumberSuffix`, appelé sur
-`clubLabel`/`opponentLabel` avant écriture). Hosts SSRF et routes re-confrontés au code, inchangés.
+Last verified @ 2026-09-12 (P4-200 C1, `documentation-update`) : § « Engagements + compétitions »
+étendue au pont de signature FBI (`App\Service\Basketball\FbiDivisionSignature`, nouveau service)
+— `GET /api/ffbb/engagements` gagne une troisième source de suggestion et `suggestionSource` dans
+la réponse, `POST /api/ffbb/engagements/confirm` accepte un `competitionId` optionnel par pairing.
+Hosts SSRF et routes re-confrontés au code, inchangés.
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit rester dans la **liste blanche de hosts** du client (SSRF, A12). Vérifié le 2026-07-10 sur le code réel `ARA0069036` (BCCL).
 
@@ -176,6 +176,28 @@ La jointure complète vit dans `FfbbEngagementReader` (filtre saison via `FfbbSe
 `SeasonResolver::seasonYear` 2026 — et réparation du double encodage UTF-8 des libellés, mesuré :
 `PrÃ© rÃ©gionale`). Consommée par `FfbbEngagementsController` (`GET /api/ffbb/engagements` +
 `POST /api/ffbb/engagements/confirm`, SEC-07 + saison écrivable + socle pointé).
+
+**Pont xlsx → Engagements FFBB (P4-200 C1, 2026-09-12).** Chaque ligne de `GET /api/ffbb/engagements`
+porte désormais `suggestionSource: "pairing"|"canonical"|"fbi"|null`, priorité inchangée sur les deux
+premières sources (`pairing` = une `Competition` déjà appariée à cet id FFBB ; `canonical` = égalité
+normalisée stricte du nom canonique) puis, troisième source, `fbi` : `App\Service\Basketball\FbiDivisionSignature`
+parse le code de division FBI d'une `Competition` xlsx **non appariée** (`Competition::name`, ex. « PNM »,
+« RF3 », « CRMLSM », « RFU13 Brassage » — la poule collée après un séparateur, « DFU15-2 », est ignorée,
+c'est un n° de poule FBI, pas de division) en une signature `{level, division, gender, category, type}`,
+et la ligne FFBB (`category`/`level`/`gender`/« Division n » du nom) en la signature équivalente
+(`FfbbEngagementsController::bridgeSuggestion`). Coupes et brassages entrent dans le pont (décision
+fondateur 2026-09-12, § « Décisions fermées »), un amical (type `FRIENDLY`) jamais. Suggestion
+seulement si le pont désigne **une seule équipe** — plusieurs compétitions distinctes matchant la
+même signature vers des équipes différentes → aucune suggestion (« DFU11 » ambigu entre deux équipes) ;
+plusieurs compétitions vers la même équipe → la première par nom.
+`POST /api/ffbb/engagements/confirm` accepte, par pairing, un `competitionId` optionnel (la
+suggestion `fbi` acceptée) : honoré seulement si la compétition appartient à l'équipe choisie
+(`FfbbEngagementsController::resolveCompetition` — filtre tenant/saison déjà porté par la lecture,
+plus une garde équipe explicite), les réfs FFBB se posent alors SUR cette compétition xlsx (`name`
+reste le code FBI, la clé du résolveur xlsx ; `ffbbCompetitionName` reçoit le nom canonique FFBB) au
+lieu d'une compétition jumelle vide. Sans `competitionId` (ou id étranger à l'équipe) : repli sur le
+comportement historique par `(teamId, nom canonique)`. Écrire sur la compétition xlsx n'engage
+toujours pas l'équipe (`FfbbPairingAuthorizationTest`).
 
 `ffbbserver_rencontres` (36 hits BCCL, tous des amicaux, zéro championnat) est un index DIFFÉRENT,
 désormais exploité côté réconciliation — voir § « Réconciliation FBI, canal API » plus haut.
