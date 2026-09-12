@@ -558,4 +558,26 @@ describe("ImportFbiDialog", () => {
 
     errorSpy.mockRestore();
   });
+
+  it("range les divisions d'un onglet par ordre alphabétique naturel (DFU9 avant DFU11), pas dans l'ordre du fichier", async () => {
+    const user = userEvent.setup();
+    const division = (name: string) => ({ name, fbiTeamLabel: null, rowCount: 3, teamId: null, competitionId: null, suggestedTeamId: null, suggestedCompetitionId: null, pouleError: null, pouleUnknownOpponents: [] });
+    analyzeFbiFixtures.mockResolvedValueOnce({
+      divisions: [division("PRM"), division("DFU11"), division("DM2"), division("DFU9"), division("DF2")],
+      totalRows: 15,
+      exempted: 0,
+      errors: [],
+      deviations: [],
+    });
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await screen.findByText("PRM");
+    const names = ["PRM", "DFU11", "DM2", "DFU9", "DF2"];
+    const rendered = screen
+      .getAllByRole("listitem")
+      .map((li) => names.find((n) => li.textContent?.startsWith(n) ?? false))
+      .filter((n): n is string => undefined !== n);
+    expect(rendered).toEqual(["DF2", "DFU9", "DFU11", "DM2", "PRM"]);
+  });
 });

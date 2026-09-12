@@ -70,6 +70,9 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
 
   // Les familles présentes, dans l'ordre d'affichage, familles vides écartées.
   const presentFamilies = (divisions: ImportAnalysisDivision[]): DivisionFamily[] => FAMILY_ORDER.filter((family) => divisions.some((d) => classifyDivision(d.name) === family));
+  // Dans un onglet, les divisions se lisent par ordre alphabétique NATUREL (DFU9 avant
+  // DFU11), jamais dans l'ordre d'apparition du fichier (demande fondateur, 2026-09-12).
+  const sortedByName = (divisions: ImportAnalysisDivision[]): ImportAnalysisDivision[] => [...divisions].sort((a, b) => a.name.localeCompare(b.name, "fr", { numeric: true, sensitivity: "base" }));
 
   const applyAnalysis = (a: ImportFbiAnalysis): void => {
     setAnalysis(a);
@@ -264,7 +267,7 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
             ) : null}
             {families.map((family) => (
               <TabPanel key={family} tabId={family} idPrefix="fbi-family" active={family === currentFamily} className="pt-1">
-                <ul className="flex flex-col gap-1">{analysis.divisions.filter((d) => classifyDivision(d.name) === family).map(renderDivisionRow)}</ul>
+                <ul className="flex flex-col gap-1">{sortedByName(analysis.divisions.filter((d) => classifyDivision(d.name) === family)).map(renderDivisionRow)}</ul>
               </TabPanel>
             ))}
             {/* P1-4 PR F2 (6.1) — poule guard verdicts of the dry-run. */}
