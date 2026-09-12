@@ -48,9 +48,12 @@ interface ReviewQueueRowProps {
 export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onPlace, onAttach, busy }: ReviewQueueRowProps) {
   const arbitrable = fixture.pendingDeviations.filter((d) => !d.autoApplied);
   const autoApplied = fixture.pendingDeviations.filter((d) => d.autoApplied);
-  // « Valider » en ligne quand il n'y a rien à arbitrer (NEW, ou seulement des
-  // valeurs auto-appliquées à acquitter) — un OUT_OF_SYNC à écarts se tranche par champ.
-  const canValidateLine = "REVIEWED" !== fixture.reviewState && 0 === arbitrable.length;
+  // Un geste en un clic quand il n'y a rien à arbitrer : « Valider » pour une NEW,
+  // « Pris en compte » pour une REVIEWED qui porte encore une alerte auto-appliquée
+  // (P4-199). Une REVIEWED SANS alerte n'a pas de bouton (déjà traitée) ; un
+  // OUT_OF_SYNC à écarts se tranche champ par champ.
+  const canValidateLine = 0 === arbitrable.length && ("REVIEWED" !== fixture.reviewState || autoApplied.length > 0);
+  const validateLabel = "REVIEWED" === fixture.reviewState ? "Pris en compte" : "Valider";
   const isHome = "HOME" === fixture.homeAway;
   // Salle : le nom du gymnase si le `venueId` est résolu dans les gymnases du club,
   // sinon le libellé FBI brut, sinon rien (l'icône domicile/extérieur porte déjà le sens).
@@ -82,7 +85,7 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
           {canValidateLine ? (
             <Button variant="outline" size="sm" disabled={busy} onClick={() => onValidateLine(fixture.id)}>
               <Check className="size-3.5" />
-              Valider
+              {validateLabel}
             </Button>
           ) : null}
         </span>
@@ -91,12 +94,13 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
       {/* Domicile importé sans gymnase : réparation contextuelle, ton NEUTRE (jamais warning). */}
       {isUnattachedHome(fixture) ? <AttachVenueBlock fixture={fixture} venues={venues} onAttach={onAttach} busy={busy} /> : null}
 
-      {/* Valeurs imposées hors périmètre pendant que le match était traité. */}
+      {/* Valeurs imposées d'office par la source pendant que le match était traité :
+          ancienne valeur → nouvelle (la destination est `sourceValue`, jamais `appValue`). */}
       {autoApplied.map((d) => (
         <div key={`auto-${d.field}`} className="flex items-start gap-2 rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm">
           <CalendarClock className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
           <span>
-            La source a déplacé ce match ({FIELD_LABEL[d.field].toLowerCase()}) au {d.appValue ?? "—"}.
+            {sourceLabel(d.channel)} a déplacé ce match ({FIELD_LABEL[d.field].toLowerCase()}) : {d.appValue ?? "—"} → {d.sourceValue ?? "—"}.
           </span>
         </div>
       ))}

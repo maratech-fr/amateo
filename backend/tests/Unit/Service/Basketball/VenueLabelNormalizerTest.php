@@ -34,6 +34,24 @@ final class VenueLabelNormalizerTest extends TestCase
         ];
     }
 
+    /**
+     * @return list<array{0: string, 1: string}>
+     */
+    public static function suffixes(): array
+    {
+        return [
+            // Le suffixe FFBB « (n) » collé en fin est retiré, l'espace avant aussi.
+            ['AL CALUIRE ET CUIRE - 3 (6)', 'AL CALUIRE ET CUIRE - 3'],
+            ['B CHARPENNES CROIX LUIZET (10)', 'B CHARPENNES CROIX LUIZET'],
+            // Un « (6) » en MILIEU de chaîne est intact (l'ancre ne mord qu'en fin).
+            ['AS (6) VOISINS', 'AS (6) VOISINS'],
+            // Une chaîne sans suffixe revient telle quelle.
+            ['AS Voisins', 'AS Voisins'],
+            // Idempotent : un second passage ne trouve plus rien.
+            ['AL CALUIRE ET CUIRE - 3', 'AL CALUIRE ET CUIRE - 3'],
+        ];
+    }
+
     #[DataProvider('labels')]
     public function testNormalizeFoldsCaseAccentsPunctuationAndSpacing(string $raw, string $expected): void
     {
@@ -43,6 +61,12 @@ final class VenueLabelNormalizerTest extends TestCase
     public function testTwoTrulyDifferentLabelsKeepDistinctKeys(): void
     {
         self::assertNotSame($this->normalizer->normalize('GYMNASE MATEO'), $this->normalizer->normalize('MATEO'));
+    }
+
+    #[DataProvider('suffixes')]
+    public function testStripTeamNumberSuffixRemovesTheTrailingFfbbNumberOnly(string $raw, string $expected): void
+    {
+        self::assertSame($expected, $this->normalizer->stripTeamNumberSuffix($raw));
     }
 
     public function testContainsWordIsWholeWordNotSubstring(): void

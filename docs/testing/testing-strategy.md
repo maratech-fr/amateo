@@ -1,7 +1,7 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-08 (rotation de fraîcheur `documentation-update`, PR-2b Mois · Phase module
-matchs — fichier hors sujet). Re-confronté à `.github/workflows/ci.yml` : job `smoke-tests` toujours
+Last verified @ 2026-09-12 (rotation de fraîcheur `documentation-update`, P4-199 règles d'import —
+fichier hors sujet). Re-confronté à `.github/workflows/ci.yml` : job `smoke-tests` toujours
 absent (`grep -c "smoke-tests:" .github/workflows/ci.yml` → 0) ; **SEPT jobs sans `needs`** confirmés
 un par un (`frontend`, `dependency-audit`, `rector`, `secrets-scan`, `semgrep`, `engine-semantics`,
 `functional-tests` — `lint`/`phpstan`/`engine-tests` sont aussi sans `needs` mais gatent d'autres

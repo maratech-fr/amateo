@@ -1,4 +1,4 @@
-# Roadmap (58) — ce qui reste à faire
+# Roadmap (57) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -175,14 +175,15 @@
 > dépôt FBI en onglets par famille (P4-183, blocs de mutualisation imbriqués, est un lot distinct —
 > mesure P4-182, ci-dessous). **P4-199/200/201** ouverts le 2026-09-12 lors de la passe de tests
 > manuels du fondateur sur ses 256 rencontres réelles (82 sans heure) : règles d'import à recaler
-> (extérieur/passé-semaine-en-cours/suffixe équipe), pont d'appariement xlsx→Engagements FFBB
-> manquant, quota e2e superadmin.
+> (extérieur/passé-semaine-en-cours/suffixe équipe) — **P4-199 SOLDÉ le même jour**, détail
+> [`module-matchs.md`](../courantes/module-matchs.md) § « Espace Importer » et § « Appariement
+> FFBB » — pont d'appariement xlsx→Engagements FFBB manquant (P4-200), quota e2e superadmin
+> (P4-201).
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
 | P4-197 | **Placer un match qui n'est pas dans la semaine affichée : la grille ne le montre nulle part** | 🟡 | S | Relevé le 2026-09-11 en réparant `tests/e2e/matches.spec.ts` : la liste « à placer » n'est PAS bornée à la semaine affichée (`MatchesPage.tsx` — `filteredFixtures` nourrit la liste, `weekendFixtures` la grille), donc on peut sélectionner et placer un domicile d'une autre semaine ; il quitte la liste et n'apparaît sur aucune grille tant qu'on n'a pas navigué à SA semaine. Pire : `setSelectedWeekend` rend l'étape à l'automatique (`store.ts`), la navigation change donc aussi de vue. Mesuré sur un match du 6 mars 2027 placé depuis la semaine de septembre. Remède à cadrer : après un placement, suivre le match (poser `selectedWeekend` sur sa semaine) ou borner la liste « à placer » à la semaine affichée |
 | P4-198 | **Recherche dans le sélecteur d'équipe / de gymnase (`Listbox`)** | 🟡 | S | Mesuré le 2026-09-12 au dépôt FBI d'un export réel du fondateur, 50 divisions à associer une à une via `TeamSelect` : `TeamSelect`/`VenueSelect` (`shared/components/ui/team-select.tsx`, `venue-select.tsx`), tous deux bâtis sur `Listbox` (P4-164), n'ont pas de champ de recherche — `ResourceFilter.tsx:118-132` (`features/planning/`) en a un. Primitive à ajouter au partagé `Listbox` (une seule maison), profiterait aux deux sélecteurs sans dupliquer le geste |
-| P4-199 | **Règles d'import à recaler (backend, canaux xlsx + API)** — trois écarts mesurés le 2026-09-12 sur 256 rencontres réelles (82 sans heure) | 🟡 | M | (a) un match à l'EXTÉRIEUR naît `NEW` aujourd'hui comme un domicile (`FbiFixtureImporter.php:322-338` crée toute rencontre nouvelle sans distinguer `homeAway` ; `Fixture.php:153` pose le défaut `NEW` sans condition) — or un extérieur n'est jamais « à traiter » par le club : il devrait naître `REVIEWED`, un écart ultérieur appliquant la source d'office avec mise en lumière (bandeau + « Pris en compte » un clic), « ce n'est pas un conflit, on prend acte ». (b) une rencontre déjà passée ou dans la semaine ISO en cours (jusqu'au dimanche, fuseau club) devrait aussi naître `REVIEWED`, et un déphasage FBI dans cette fenêtre appliquer la source d'office (« FBI fait foi ») — aucune notion de fenêtre temporelle n'existe aujourd'hui dans `FbiFixtureImporter` (vérifié : aucune comparaison à `now`/semaine ISO à la création). (c) le libellé Equipe FBI recopié TEL QUEL (`FbiFixtureImporter.php:1477` `'clubLabel' => mb_substr($clubLabel, 0, 180)`, aucun nettoyage) porte un suffixe `(n)` sur 62 libellés du fichier réel — à retirer à l'import + migration de nettoyage des lignes déjà en base |
 | P4-200 | **Appariement FFBB — le pont xlsx → Engagements FFBB manque** | 🟡 | M | L'écran Engagements FFBB (`backend/src/Controller/Basketball/FfbbEngagementsController.php:79-100`, méthode `list`) ne pré-remplit une compétition que si elle porte déjà `ffbbCompetitionId` OU un `ffbbCompetitionName` canonique déjà posé — il ignore l'appariement division→équipe fait manuellement au dépôt xlsx (`Competition` sans `ffbb_competition_id`). Mesuré le 2026-09-12 : le fondateur a dû refaire à la main les ~10 minutes d'appariement déjà faites côté import. Cadrage : faire porter cet appariement au pont, et passer `FfbbEngagementsDialog.tsx` sur le même patron liste-à-droite que l'import FBI (passe de design d'abord) |
 | P4-201 | **e2e superadmin : une session par spec brûle le quota `admin_auth`** | 🟡 | S | Chaque relance de spec superadmin ré-authentifie et consomme le rate-limit `admin_auth` (5/15 min par IP) — cascade rouge vue sur PR #882 (`modal-reachability.spec.ts`). Les specs superadmin devraient partager UNE session au lieu d'une par fichier |
 

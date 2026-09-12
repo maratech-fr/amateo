@@ -1,12 +1,12 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-12 (mesure terrain fondateur, `documentation-update`). **Dépôt FBI en
-onglets par famille de division** (`ImportFbiDialog.tsx`, `lib/divisionFamily.ts`) confronté au
-code — voir § « Onglets par famille — dépôt FBI », qui remplace aussi le paragraphe UI périmé de
-§ « Import FBI réel — une passe » (le bouton « Examiner l'écart » qu'il décrivait a disparu en
-PR-3b, 2026-09-08). Reste du fichier (§ Détection, § reconciliation coupes P4-194/195, § retrait
-des libellés P4-196) non re-sondé cette passe — voir `git log -p --follow` pour sa dernière
-vérification.
+Last verified @ 2026-09-12 (P4-199 « règles d'import », `documentation-update`). **Règles de
+naissance/fenêtre** (`FbiFixtureImporter::treatOnArrival`/`sourceIsAuthoritativeForWindow`,
+`backend/src/Service/FbiFixtureImporter.php:614,628,658`) confrontées au code — § « Espace
+Importer — workflow de traitement » (tableau cas → effet, caveat « Masquer les extérieurs » soldé)
+et § « Appariement FFBB » (suffixe « (n) », migration `Version20260912120000`). Reste du fichier
+(§ Détection, § reconciliation coupes P4-194/195, § retrait des libellés P4-196) non re-sondé
+cette passe — voir `git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -232,6 +232,15 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   `CHAMPIONSHIP`). **Deux équipes du club dans la même division** : le libellé FBI côté club
   (« BCCL - 2 ») désambiguïse — stocké dans `Competition.fbiTeamLabel`, une entrée d'appariement par
   libellé ; nominal (une équipe par division) → label null, robuste au drift de libellé.
+  **Suffixe FFBB « (n) » retiré à la lecture** (P4-199, 2026-09-12) : la FFBB accole ce suffixe pour
+  distinguer deux engagements homonymes (« AL CALUIRE ET CUIRE - 3 (6) ») — il portait sur 62
+  libellés d'un export réel et cassait la clé de rapprochement division↔équipe. Foyer unique
+  `VenueLabelNormalizer::stripTeamNumberSuffix` (regex ancrée en fin de chaîne, `\s+\(\d+\)\s*$`),
+  appliqué aux DEUX canaux (xlsx `FbiFixtureImporter::parseFile`, API `FfbbRencontreReconciler`) sur
+  `clubLabel`/`opponentLabel` avant écriture. Migration `Version20260912120000` (idempotente,
+  `regexp_replace`) rejoue le même retrait sur `fixture.opponent_label` et
+  `competition.fbi_team_label` déjà en base — sans elle, les divisions déjà appariées avant P4-199
+  seraient réapparues « non appariées » au dépôt suivant (la clé aurait changé de forme sous elles).
 - **Diff/update par `(team, externalRef)`** — re-upload ≠ skip :
   - date changée ou switch HOME↔AWAY → mise à jour + **dé-placement** (`UNPLACED`, `venueId` effacé) +
     warning `RESCHEDULED`/`SWITCHED` (« la ligue a re-décidé ») ;
@@ -1535,7 +1544,13 @@ future.
   l'appelant (jamais un `new DateTimeImmutable` nu) — le mode démo/play a une horloge simulée.
 - **Le tableau cas → effet** (identique aux deux canaux, xlsx et API — le moteur est le MÊME,
   `FbiFixtureImporter::processPerimeterFields`/`reconcileNoDivergence`) :
-  - rencontre créée (nouvelle, ou hors périmètre — extérieur, ou domicile encore `UNPLACED`) → `NEW`.
+  - **rencontre créée** : un **domicile futur** (hors fenêtre ci-dessous), même encore `UNPLACED`,
+    naît `NEW` — rien à traiter avant que le club le place. Un **extérieur**, ou une rencontre dont
+    la date **est passée ou tombe dans la semaine ISO en cours** (borne = dimanche, fuseau du club),
+    naît **déjà `REVIEWED`** (`FbiFixtureImporter::treatOnArrival`, foyer unique aux deux canaux —
+    décision fondateur P4-199, 2026-09-12 : « un extérieur n'est jamais à traiter par le club », « un
+    match imminent ou déjà joué n'est pas nouveau »). La borne (`currentIsoWeekEnd`) vient du fuseau
+    du club (`ClubDay`), pas du serveur.
   - source identique à l'app, rien à traiter → rien ne bouge.
   - **D9** — domicile `PLACED`/`SUBMITTED` que la source (xlsx OU API) renvoie identique sur
     **date + heure + salle** (les trois présents : une heure réelle, pas la sentinelle FBI 00:00 ;
@@ -1544,13 +1559,22 @@ future.
     ne l'atteste ; c'est désormais un EFFET de l'import (décision fondateur 2026-09-08, revoit le
     « la ligue possède ce statut » de RMM-1).
   - un champ diverge sans décision → `OUT_OF_SYNC`, l'écart persisté (`pendingDeviations`), la
-    valeur app GARDÉE (jamais écrasée par défaut).
+    valeur app GARDÉE (jamais écrasée par défaut) — **sauf si « FBI/API fait foi » s'applique**
+    (décision fondateur P4-199, « app OU source ») : un domicile PLACÉ dont **la date Amateo OU la
+    date de la source** tombe dans la fenêtre passé/semaine ISO en cours
+    (`FbiFixtureImporter::sourceIsAuthoritativeForWindow`) voit le champ appliqué **D'OFFICE**
+    (`applyFieldTakeFile` — date/salle dé-placent, heure en place), reste `REVIEWED`, et gagne une
+    entrée `pendingDeviations` `autoApplied: true` (bandeau + « Pris en compte », pas d'arbitrage).
+    Un déphasage ENTIÈREMENT futur (les deux dates hors fenêtre) reste un arbitrage classique.
   - une décision arrive (`keep_app` retire l'écart sans écrire, `take_file`/`take_source` adopte
     la source et retire l'écart) → dernier écart retiré ⇒ `REVIEWED` + horodatée (D5).
   - un champ HORS périmètre (`RESCHEDULED`/`SWITCHED`/heure auto-appliquée) change en silence sur
-    une rencontre DÉJÀ traitée → retombe `OUT_OF_SYNC`, avec une entrée `pendingDeviations`
-    `autoApplied: true` par champ touché (`FbiFixtureImporter::recordAutoApplied`) — une rencontre
-    `NEW` (jamais examinée) n'a rien à être « de nouveau » en désaccord, elle reste `NEW`.
+    une rencontre DÉJÀ traitée → un **domicile** retombe `OUT_OF_SYNC`, avec une entrée
+    `pendingDeviations` `autoApplied: true` par champ touché (`FbiFixtureImporter::recordAutoApplied`) ;
+    un **extérieur** (toujours `REVIEWED`, jamais examiné par le club) **PREND ACTE** au lieu de
+    retomber `OUT_OF_SYNC` — même entrée `autoApplied` (bandeau), mais `reviewState` reste
+    `REVIEWED` (décision fondateur P4-199 : « un extérieur ne s'arbitre jamais, la source fait foi »).
+    Une rencontre `NEW` (jamais examinée) n'a rien à être « de nouveau » en désaccord, elle reste `NEW`.
   - **une rencontre absente du dépôt n'est jamais touchée** (import partiel légitime, décision
     fondateur — un fichier qui n'exporte qu'une poule ne doit pas faire disparaître ou geler les
     autres) : ni son `status`, ni son `reviewState`, ni ses écarts ne bougent.
@@ -1587,18 +1611,26 @@ future.
     `useFixtures` — pas d'endpoint agrégé, décision assumée ci-dessus). Un accordéon PAR équipe
     (`AccordionSection` en mode contrôlé, ouverture dans `?equipe=`), tri `compareTeamsByRank` ;
     en-tête « SM1 · N à valider · N écart(s) » ; « Tout valider » (`POST /api/fixtures/review
-    {teamId}`, les rencontres à écart sautées sont NOMMÉES en toast, jamais tranchées en masse) ;
+    {teamId}`, les rencontres à écart sautées sont NOMMÉES en toast, jamais tranchées en masse — un
+    écart `autoApplied` (bandeau « Pris en compte ») compte comme un écart pendant et est SAUTÉ lui
+    aussi, `Fixture::hasPendingDeviations` (lu par `ReviewFixturesController`) ne distingue pas :
+    prise d'acte = un clic PAR LIGNE, décision fondateur P4-199) ;
     interrupteur « Afficher les traitées » (`?traitees=1`, masquées par défaut — une équipe sans
     rencontre ouverte disparaît de la file tant qu'il n'est pas activé).
-  - `ReviewQueueRow.tsx` : une rencontre `NEW` (ou à seuls écarts `autoApplied`) se valide en un
-    clic (`onValidateLine`, « garder l'app » implicite) ; une rencontre à écart ARBITRABLE se
-    tranche champ par champ, deux colonnes Amateo / source (FBI ou API FFBB), boutons « Garder
-    Amateo » / « Prendre {source} » avec la conséquence de `lib/deviationConsequence.ts` toujours
-    visible (texte `keep_app` recalé : « la rencontre est traitée avec la valeur d'Amateo ») ;
-    un écart `autoApplied` (hors périmètre, imposé par la source pendant que le match était traité)
-    porte son propre bandeau (« La source a déplacé ce match … au … ») ; bouton **« Replacer »**
-    (voir lisibilité de ligne ci-dessous) qui pose le filtre équipe et le week-end du match puis
-    renvoie à Semaine.
+  - `ReviewQueueRow.tsx` : une rencontre `NEW` sans écart arbitrable se valide en un clic
+    (bouton « Valider », `onValidateLine`, « garder l'app » implicite) ; une `REVIEWED` qui porte
+    encore une alerte `autoApplied` (sans écart arbitrable) se PREND EN COMPTE d'un clic **au même
+    endpoint** (bouton « Pris en compte » — `canValidateLine`/`validateLabel`, P4-199) ; une
+    rencontre à écart ARBITRABLE se tranche champ par champ, deux colonnes Amateo / source (FBI ou
+    API FFBB), boutons « Garder Amateo » / « Prendre {source} » avec la conséquence de
+    `lib/deviationConsequence.ts` toujours visible (texte `keep_app` recalé : « la rencontre est
+    traitée avec la valeur d'Amateo ») ; un écart `autoApplied` (hors périmètre, ou source faisant
+    foi P4-199, imposé pendant que le match était/reste traité) porte son propre bandeau nommant
+    la source et l'ANCIENNE valeur → la NOUVELLE (« {source} a déplacé ce match (champ) : ancien →
+    nouveau », `d.appValue` → `d.sourceValue` — **bug corrigé au passage** : le bandeau affichait
+    auparavant l'ANCIENNE valeur `appValue` comme SI c'était la destination) ; bouton
+    **« Replacer »** (voir lisibilité de ligne ci-dessous) qui pose le filtre équipe et le week-end
+    du match puis renvoie à Semaine.
   - **Lisibilité de ligne (2026-09-12)** : la tête de chaque rencontre porte désormais une icône
     `House`/`Plane` (`lucide-react`, `aria-hidden="true"` — c'est le mot « Domicile »/« Extérieur »
     qui porte le sens, jamais l'icône seule), puis, après l'adversaire, l'heure (`HH:MM` tabulaire
@@ -1615,10 +1647,18 @@ future.
     `buildReviewQueue` — en-têtes d'équipe recomptés sur ce qui reste visible, une équipe 100 %
     extérieur disparaît de la file naturellement, l'état vide suit. **Décision assumée** : le badge
     de l'onglet Importer (`pendingReviewCount`) garde le compte RÉEL, non filtré — masquer ≠
-    traiter. **Caveat assumé, à corriger en PR B** : la bascule active, « Tout valider » sur une
-    équipe valide QUAND MÊME ses rencontres extérieures masquées (le serveur reçoit `{teamId}`,
-    l'équipe entière) — PR B (règles d'import, roadmap P4-199) rendra les extérieurs traités
-    D'OFFICE à l'import, ce qui videra ce caveat de sa substance.
+    traiter. **Caveat soldé (P4-199, 2026-09-12)** : un extérieur naît désormais `REVIEWED`
+    D'OFFICE (§ « tableau cas → effet » ci-dessus), et un écart ultérieur sur un extérieur PREND
+    ACTE sans jamais redescendre `OUT_OF_SYNC` — il n'y a donc plus rien à « valider » en masse sur
+    ces lignes, masquées ou non ; une alerte `autoApplied` résiduelle se traite d'un clic
+    « Pris en compte » PAR LIGNE (jamais en masse, `Fixture::hasPendingDeviations` ne distingue
+    pas — même limite que pour un écart arbitrable). `pendingReviewCount`/`buildReviewQueue`
+    (`lib/reviewQueue.ts` `isOpenReview`/`hasAutoAppliedDeviation`) comptent une `REVIEWED` à
+    alerte non acquittée comme « à traiter » — masquée ou non, elle reste dans le badge et dans la
+    file `open`, jamais rangée avec les traitées sans alerte. Résidu assumé : les extérieurs
+    importés AVANT P4-199 et encore `NEW` ne sont pas rétro-traités (aucune migration de backfill
+    sur `reviewState`, contrairement au backfill D2 de la colonne elle-même) — ils se rangent au
+    prochain dépôt qui les touche.
   - **Le flux xlsx a perdu son détour.** `ImportFbiDialog` n'affiche plus « Examiner les écarts » :
     « Importer » envoie toujours `{file, mappings}` sans décisions ; le rapport affiche « N
     écart(s) consigné(s) dans Importer » + un bouton « Ouvrir la file » (au lieu de basculer vers

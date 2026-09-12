@@ -182,7 +182,8 @@ describe("ImportPage — la file de traitement", () => {
 
   it("une valeur auto-appliquée hors périmètre se signale (bandeau), pas d'arbitrage", async () => {
     renderPage([fx("team-2", "OUT_OF_SYNC", "2026-12-05", { pendingDeviations: [autoDev] })], "/matchs/importer?equipe=team-2");
-    expect(await screen.findByText(/La source a déplacé ce match/)).toBeInTheDocument();
+    // Bandeau P4-199 : « <source> a déplacé ce match (champ) : ancien → nouveau ».
+    expect(await screen.findByText(/API FFBB a déplacé ce match.*15:00 → 16:00/)).toBeInTheDocument();
     // Rien à arbitrer → un « Valider » d'acquittement, pas de « Prendre FBI ».
     expect(screen.getByRole("button", { name: "Valider" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Prendre/ })).not.toBeInTheDocument();

@@ -20,3 +20,30 @@ Fonctionnalité: Une rencontre importée dit si elle est traitée
     Quand je tranche l'écart de date en adoptant la source
     Alors la rencontre est « à replacer » et de nouveau « traitée »
     Et une rencontre absente du dépôt reste intouchée
+
+  Scénario: Un match à l'extérieur naît déjà traité
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Quand je dépose un fichier FBI avec un match à l'extérieur
+    Alors la rencontre importée est « traitée »
+
+  Scénario: Un match déjà passé naît déjà traité
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Quand je dépose un fichier FBI avec un match à domicile déjà passé
+    Alors la rencontre importée est « traitée »
+
+  Scénario: Un écart sur un extérieur est pris en compte, sans arbitrage
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Quand je dépose un fichier FBI avec un match à l'extérieur
+    Et je re-dépose l'extérieur à une autre date, sans trancher
+    Alors la rencontre est « traitée » et porte une alerte de déplacement
+    Quand je valide la rencontre d'un geste
+    Alors la rencontre est « traitée » et l'alerte de déplacement a disparu
+
+  Scénario: Le suffixe FFBB « (n) » est retiré du libellé de l'adversaire
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Quand je dépose un fichier FBI dont l'adversaire porte un suffixe numéroté
+    Alors le libellé de l'adversaire importé est sans suffixe

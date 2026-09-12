@@ -1,15 +1,18 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-08 (rotation de fraîcheur `documentation-update`, PR-1 filtres module
-matchs — fichier hors sujet). Re-confronté au code, tout juste :
-- Cibles `backend/Makefile` : `test`/`tests-complete`/`behat`/`phpunit`/`db-empty`/`seed-bccl`/
-  `seed-demo`/`seed-holidays`/`seed-league`/`rector` (dry-run, `composer rector -- --dry-run`)
-  toutes présentes exactement sous ces noms ✓
-- Commandes console (`backend/src/Command/`) : `app:bccl:seed` (`BcclSeedCommand.php:41`),
-  `app:demo:seed` (`DemoSeedCommand.php:40`), `app:schedules:reconcile-stuck --older-than`
-  (`ReconcileStuckSchedulesCommand.php:40,59`), `app:league-windows:seed`
-  (`SeedLeagueWindowsCommand.php:25`), `app:public-holidays:seed`
-  (`SeedPublicHolidaysCommand.php:24`) — tous les noms `#[AsCommand]` collent au mot près ✓
+Last verified @ 2026-09-12 (rotation de fraîcheur `documentation-update`, P4-199 règles d'import —
+fichier hors sujet). Re-confronté au code, tout juste :
+- Cibles `backend/Makefile` : liste complète (`.PHONY`) contient bien `test`/`tests-complete`/
+  `behat`/`phpunit`/`db-empty-test`/`db-init-test`/`seed-bccl`/`seed-demo`/`seed-holidays`/
+  `seed-league`/`rector`/`coverage`/`migration-diff` — chaque cible documentée ci-dessous existe ✓
+- Cibles racine (`Makefile`) : `play`/`sandbox`/`db-empty`/`reset`/`bootstrap`/`start`/`install` —
+  toutes présentes ✓
+- `backend/scripts/` ne porte plus aucun smoke bash (`ls` : `coverage-gate.php`,
+  `generate-schedule.sh`, `generate-schedule-test.sh`, `generate-totp.php`, `lib/`, `load-test/`,
+  `with-sandbox.sh`) ✓
+- Commandes console (`backend/src/Command/`) : `app:bccl:seed`, `app:demo:seed`,
+  `app:league-windows:seed`, `app:load-test:seed-clubs` — toutes portent `#[AsCommand]` sous le nom
+  documenté ✓
 Non re-sondé cette passe : le reste des commandes et gardes listées — un stamp REMPLACE,
 l'historique vit dans git.
 

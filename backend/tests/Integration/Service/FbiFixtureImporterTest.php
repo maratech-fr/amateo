@@ -733,38 +733,173 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertSame(FixtureStatus::PLACED, $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RV6'])?->getStatus());
     }
 
-    public function testAutoAppliedChangeOnAReviewedFixtureMarksItOutOfSync(): void
+    public function testAnAwayEcartIsTakenAsAcknowledgedStaysReviewedNeverOutOfSync(): void
     {
-        // An AWAY fixture treated by the manager, then rescheduled by the league:
-        // the change is auto-applied (out of perimeter) but leaves an auto-applied
-        // pending entry and the fixture goes back OUT_OF_SYNC.
+        // P4-199 décision 2 — un EXTÉRIEUR naît traité (REVIEWED) ; un écart ultérieur
+        // applique la source d'office, laisse une entrée `autoApplied` (le bandeau
+        // « la source a déplacé ce match ») mais RESTE traité — jamais OUT_OF_SYNC :
+        // le club ne place pas un extérieur, il n'y a rien à ré-arbitrer.
         $this->importMapped([['D2', 'RA9', 'AS Voisins', 'BC TESTVILLE - 1', '03/10/2026', '15:30', 'Salle Adverse']]);
         $away = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RA9']);
         self::assertSame(FixtureHomeAway::AWAY, $away?->getHomeAway());
-        $away?->markReviewed(new DateTimeImmutable);
-        $this->em->flush();
+        self::assertSame(FixtureReviewState::REVIEWED, $away?->getReviewState(), 'un extérieur naît déjà traité');
 
         $result = $this->importMapped([['D2', 'RA9', 'AS Voisins', 'BC TESTVILLE - 1', '10/10/2026', '15:30', 'Salle Adverse']]);
         self::assertSame(1, $result['updated']);
+        self::assertSame([], $result['unresolvedDeviations'], 'un extérieur ne produit jamais d\'écart à arbitrer');
         $this->em->clear();
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RA9']);
-        self::assertSame('2026-10-10', $fixture?->getMatchDate()->format('Y-m-d'));
-        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState());
+        self::assertSame('2026-10-10', $fixture?->getMatchDate()->format('Y-m-d'), 'la source est appliquée d\'office');
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState(), 'reste traité — jamais OUT_OF_SYNC');
         $entry = $fixture?->getPendingDeviation('date');
         self::assertNotNull($entry);
-        self::assertTrue($entry['autoApplied']);
+        self::assertTrue($entry['autoApplied'], 'l\'entrée autoApplied allume le bandeau « pris en compte »');
         self::assertSame('2026-10-10', $entry['sourceValue']);
     }
 
-    public function testAutoAppliedChangeOnANewFixtureStaysNew(): void
+    public function testAutoAppliedChangeOnANewUnplacedHomeStaysNew(): void
     {
-        // Never treated (NEW) → a reschedule stays NEW, no pending entry.
-        $this->importMapped([['D2', 'RA8', 'AS Voisins', 'BC TESTVILLE - 1', '03/10/2026', '15:30', 'Salle Adverse']]);
-        $this->importMapped([['D2', 'RA8', 'AS Voisins', 'BC TESTVILLE - 1', '10/10/2026', '15:30', 'Salle Adverse']]);
+        // Never treated (a HOME still UNPLACED and future = NEW) → a reschedule out of
+        // the perimeter stays NEW, no pending entry (an AWAY can no longer be NEW —
+        // it is born REVIEWED, P4-199 décision 1).
+        $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00')); // mercredi
+        $this->importMapped([['D2', 'RH8', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $born = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RH8']);
+        self::assertSame(FixtureReviewState::NEW, $born?->getReviewState(), 'un domicile futur hors semaine naît NEW');
+
+        $this->importMapped([['D2', 'RH8', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']]);
         $this->em->clear();
-        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RA8']);
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RH8']);
         self::assertSame(FixtureReviewState::NEW, $fixture?->getReviewState());
         self::assertSame([], $fixture?->getPendingDeviations());
+        self::assertSame('2026-10-10', $fixture?->getMatchDate()->format('Y-m-d'), 'hors périmètre, la source gagne directement');
+    }
+
+    // ── P4-199 : naissance « traitée » selon l'extérieur / la fenêtre temporelle ──
+
+    public function testAnAwayFixtureIsBornTreated(): void
+    {
+        // Décision 1 — un extérieur naît REVIEWED + horodaté (date future indifférente).
+        $this->importMapped([['D2', 'RX1', 'AS Voisins', 'BC TESTVILLE - 1', '03/10/2026', '15:30', 'Salle Adverse']]);
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RX1']);
+        self::assertSame(FixtureHomeAway::AWAY, $fixture?->getHomeAway());
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+        self::assertNotNull($fixture?->getReviewedAt());
+    }
+
+    public function testAPastHomeFixtureIsBornTreated(): void
+    {
+        // Décision 1 — une rencontre PASSÉE (avant la semaine ISO en cours) naît traitée.
+        $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00')); // mercredi, semaine 14→20 sept.
+        $this->importMapped([['D2', 'RP1', 'BC TESTVILLE - 1', 'AS Voisins', '12/09/2026', '15:30', '']]); // samedi passé
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RP1']);
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+        self::assertNotNull($fixture?->getReviewedAt());
+    }
+
+    public function testAHomeFixtureInTheCurrentIsoWeekIsBornTreated(): void
+    {
+        // Décision 1 — un match du samedi de la semaine ISO en cours (≤ dimanche) naît traité.
+        $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00')); // mercredi ; dimanche = 20 sept.
+        $this->importMapped([['D2', 'RW1', 'BC TESTVILLE - 1', 'AS Voisins', '19/09/2026', '15:30', '']]); // samedi de cette semaine
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RW1']);
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+        self::assertNotNull($fixture?->getReviewedAt());
+    }
+
+    public function testAFutureHomeFixtureOutsideTheWeekStaysNew(): void
+    {
+        // Décision 1 — un domicile futur HORS de la semaine ISO reste à traiter (NEW).
+        $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00')); // dimanche = 20 sept.
+        $this->importMapped([['D2', 'RF1', 'BC TESTVILLE - 1', 'AS Voisins', '26/09/2026', '15:30', '']]); // samedi suivant
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RF1']);
+        self::assertSame(FixtureReviewState::NEW, $fixture?->getReviewState());
+        self::assertNull($fixture?->getReviewedAt());
+    }
+
+    // ── P4-199 : « FBI fait foi » sur un domicile placé déphasé dans la fenêtre ──
+
+    public function testPlacedHomeDeviationWithAPastAppDateIsAppliedAtOnceAndStaysTreated(): void
+    {
+        // Décision 3 — la date Amateo est dans la fenêtre (passée) : la source est
+        // appliquée D'OFFICE (dé-placée), une entrée autoApplied allume le bandeau,
+        // la rencontre reste traitée (jamais un arbitrage OUT_OF_SYNC).
+        $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00')); // dimanche = 20 sept.
+        $this->importMapped([['D2', 'RW9', 'BC TESTVILLE - 1', 'AS Voisins', '12/09/2026', '15:30', '']]); // date app passée
+        $this->place('RW9'); // PLACED + REVIEWED
+
+        $result = $this->importMapped([['D2', 'RW9', 'BC TESTVILLE - 1', 'AS Voisins', '19/09/2026', '15:30', '']]);
+        self::assertSame(1, $result['updated']);
+        self::assertSame([], $result['unresolvedDeviations'], 'FBI fait foi : rien à arbitrer');
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RW9']);
+        self::assertSame('2026-09-19', $fixture?->getMatchDate()->format('Y-m-d'), 'la source est écrite d\'office');
+        self::assertSame(FixtureStatus::UNPLACED, $fixture?->getStatus(), 'le déplacement de date dé-place');
+        self::assertNull($fixture?->getVenueId());
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+        $entry = $fixture?->getPendingDeviation('date');
+        self::assertNotNull($entry);
+        self::assertTrue($entry['autoApplied']);
+        self::assertSame('2026-09-19', $entry['sourceValue']);
+    }
+
+    public function testPlacedHomeDeviationWithAFutureAppButPastSourceDateIsAppliedAtOnce(): void
+    {
+        // Décision 3 — « app OU source » : la date Amateo est future hors fenêtre, mais
+        // la date de la SOURCE est passée → la source fait foi quand même.
+        $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00')); // dimanche = 20 sept.
+        $this->importMapped([['D2', 'RW8', 'BC TESTVILLE - 1', 'AS Voisins', '26/09/2026', '15:30', '']]); // date app future hors semaine
+        $this->place('RW8');
+
+        $result = $this->importMapped([['D2', 'RW8', 'BC TESTVILLE - 1', 'AS Voisins', '12/09/2026', '15:30', '']]); // source passée
+        self::assertSame([], $result['unresolvedDeviations']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RW8']);
+        self::assertSame('2026-09-12', $fixture?->getMatchDate()->format('Y-m-d'));
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+        self::assertTrue($fixture?->getPendingDeviation('date')['autoApplied'] ?? false);
+    }
+
+    public function testPlacedHomeDeviationFullyOutsideTheWeekStaysAnArbitration(): void
+    {
+        // Décision 3 (borne) — les deux dates hors fenêtre : arbitrage inchangé
+        // (OUT_OF_SYNC, valeur app gardée), le régime RMM-4 d'origine.
+        $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00')); // dimanche = 20 sept.
+        $this->importMapped([['D2', 'RW7', 'BC TESTVILLE - 1', 'AS Voisins', '26/09/2026', '15:30', '']]);
+        $this->place('RW7');
+
+        $result = $this->importMapped([['D2', 'RW7', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        self::assertCount(1, $result['unresolvedDeviations']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RW7']);
+        self::assertSame('2026-09-26', $fixture?->getMatchDate()->format('Y-m-d'), 'valeur app gardée, jamais écrasée');
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState());
+        self::assertFalse($fixture?->getPendingDeviation('date')['autoApplied'] ?? true, 'écart à arbitrer, pas auto-appliqué');
+    }
+
+    // ── P4-199 : retrait du suffixe FFBB « (n) » ────────────────────────────
+
+    public function testTheFfbbTeamNumberSuffixIsStrippedFromTheStoredOpponent(): void
+    {
+        $this->importMapped([['D2', 'RS9', 'BC TESTVILLE - 1', 'AS Voisins (2)', '03/10/2026', '15:30', '']]);
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RS9']);
+        self::assertSame('AS Voisins', $fixture?->getOpponentLabel(), 'le suffixe « (2) » est retiré du libellé adverse stocké');
+    }
+
+    public function testAnalyzeReturnsTheClubLabelWithoutItsFfbbNumberSuffix(): void
+    {
+        // Le libellé de division renvoyé au dialog (fbiTeamLabel d'une division
+        // multi-équipes) est nettoyé → la correspondance persistée l'est aussi.
+        $this->createTeam('U15-2');
+        $file = $this->xlsx([
+            ['D2', 'A1', 'BC TESTVILLE - 1 (3)', 'AS X', '03/10/2026', '', ''],
+            ['D2', 'A2', 'BC TESTVILLE - 2 (5)', 'AS Y', '03/10/2026', '', ''],
+        ]);
+
+        $analysis = $this->importer->analyze($file, $this->club);
+        $labels = array_column($analysis['divisions'], 'fbiTeamLabel');
+        sort($labels);
+        self::assertSame(['BC TESTVILLE - 1', 'BC TESTVILLE - 2'], $labels, 'les suffixes « (3) »/« (5) » sont retirés du libellé renvoyé');
     }
 
     public function testEveryDepositWritesADatedIngestionAndOnlyXlsxIsTheLastDeposit(): void

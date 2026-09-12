@@ -1,10 +1,10 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-09-10 (P4-194 + P4-195, `documentation-update`) : § « Réconciliation FBI, canal API »
-étendu à la création de compétition depuis le libellé fédéral et à la règle de l'amical
-(`FfbbRencontreReconciler::resolveOrCreateCompetition`, `isFriendlyLabel`) ; § Engagements recalé sur
-l'inférence de type et l'absence de journées attendues d'une coupe (`FfbbEngagementsController`,
-`inferCompetitionType`). Hosts SSRF et routes re-confrontés au code, inchangés.
+Last verified @ 2026-09-12 (P4-199, `documentation-update`) : § « Réconciliation FBI, canal API »
+étendu aux règles de naissance/fenêtre partagées avec le xlsx (`FfbbRencontreReconciler` appelle
+`FbiFixtureImporter::treatOnArrival`/`sourceIsAuthoritativeForWindow`, `backend/src/Service/Basketball/FfbbRencontreReconciler.php:128-131,185`)
+et au retrait du suffixe FFBB « (n) » (`VenueLabelNormalizer::stripTeamNumberSuffix`, appelé sur
+`clubLabel`/`opponentLabel` avant écriture). Hosts SSRF et routes re-confrontés au code, inchangés.
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit rester dans la **liste blanche de hosts** du client (SSRF, A12). Vérifié le 2026-07-10 sur le code réel `ARA0069036` (BCCL).
 
@@ -133,6 +133,15 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   gymnase (`Venue.externalLabels`, `POST /api/venues/{id}/external-labels`) — la rencontre reste
   UNPLACED, seule visible de `VENUE_OVERLAP`/`VENUE_UNAVAILABLE`. Détail :
   [`module-matchs.md`](../../specs/courantes/module-matchs.md) § « Gymnase depuis le libellé ».
+- **P4-199 (2026-09-12)** : `apply` partage désormais aussi les règles de naissance/fenêtre du xlsx
+  (`FfbbRencontreReconciler` appelle `FbiFixtureImporter::treatOnArrival`/`sourceIsAuthoritativeForWindow`,
+  foyer unique) — un extérieur créé par ce canal naît `REVIEWED` d'office, un domicile PLACÉ
+  déphasé dont la date app OU la date API tombe dans la fenêtre passé/semaine ISO en cours (fuseau
+  club) est appliqué D'OFFICE plutôt que proposé à l'arbitrage ; les libellés `clubLabel`/
+  `opponentLabel` perdent leur suffixe FFBB « (n) » à la lecture
+  (`VenueLabelNormalizer::stripTeamNumberSuffix`). Détail :
+  [`module-matchs.md`](../../specs/courantes/module-matchs.md) § « Espace Importer — workflow de
+  traitement ».
 - **Filtre strict serveur** (`FfbbApiClient::searchRencontres`) : la recherche plein texte sur le
   code club rend du bruit (un hit « AMICAL PNM » ne concernant pas le club, mesuré) — ne sont
   gardés que les hits où le code club apparaît sur `idOrganismeEquipe1.code` OU

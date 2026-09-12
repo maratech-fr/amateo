@@ -93,7 +93,12 @@ final class FixtureReviewContext extends BaseContext
             $this->pointerSetBySelf = true;
         }
 
-        $this->matchDate = date('Y-m-d', (int) strtotime('next saturday'));
+        // P4-199 — le samedi de la semaine ISO SUIVANTE : « next saturday » tombe,
+        // du lundi au vendredi, DANS la semaine ISO en cours (≤ dimanche), or un
+        // domicile dans cette fenêtre naîtrait « traité » (REVIEWED) au lieu de NEW,
+        // et un déphasage y serait appliqué d'office au lieu d'ouvrir un arbitrage.
+        // « monday next week +5 days » = le samedi d'après, toujours hors fenêtre.
+        $this->matchDate = date('Y-m-d', (int) strtotime('monday next week +5 days'));
         $this->rescheduledDate = date('Y-m-d', (int) strtotime($this->matchDate . ' +7 days'));
     }
 
@@ -160,6 +165,7 @@ final class FixtureReviewContext extends BaseContext
     }
 
     #[Then('la rencontre est « traitée »')]
+    #[Then('la rencontre importée est « traitée »')]
     public function laRencontreEstTraitee(): void
     {
         $this->assertReviewState('REVIEWED');
@@ -231,6 +237,73 @@ final class FixtureReviewContext extends BaseContext
         }
     }
 
+    // ── P4-199 : naissance « traitée », prise d'acte extérieur, suffixe ──────
+
+    #[When('je dépose un fichier FBI avec un match à l\'extérieur')]
+    public function jeDeposeUnMatchExterieur(): void
+    {
+        $this->depositMatch($this->matchDate, 'AWAY', 'Adversaire Behat', '', [['division' => self::DIVISION, 'teamId' => $this->teamId]]);
+        $this->captureImportedFixture();
+    }
+
+    #[When('je dépose un fichier FBI avec un match à domicile déjà passé')]
+    public function jeDeposeUnMatchDomicilePasse(): void
+    {
+        // Un samedi révolu : hors ET avant la semaine ISO en cours → « traité » à l'arrivée.
+        $past = date('Y-m-d', (int) strtotime('monday this week -2 days'));
+        $this->depositMatch($past, 'HOME', 'Adversaire Behat', self::VENUE_NAME, [['division' => self::DIVISION, 'teamId' => $this->teamId]]);
+        $this->captureImportedFixture();
+    }
+
+    #[When('je re-dépose l\'extérieur à une autre date, sans trancher')]
+    public function jeReDeposeExterieurAutreDate(): void
+    {
+        $this->depositMatch($this->rescheduledDate, 'AWAY', 'Adversaire Behat', '', null);
+    }
+
+    #[Then('la rencontre est « traitée » et porte une alerte de déplacement')]
+    public function laRencontreEstTraiteeAvecAlerte(): void
+    {
+        $this->assertReviewState('REVIEWED');
+        if (!$this->hasAutoAppliedDeviation()) {
+            throw new RuntimeException('l\'écart auto-appliqué (bandeau « pris en compte ») est absent');
+        }
+    }
+
+    #[When('je valide la rencontre d\'un geste')]
+    public function jeValideLaRencontre(): void
+    {
+        $result = $this->apiPost('fixtures/review', ['fixtureIds' => [$this->fixtureId]], $this->token);
+        if (200 !== $result['status']) {
+            throw new RuntimeException(\sprintf('valider la rencontre a répondu %d (200 attendu)', $result['status']));
+        }
+    }
+
+    #[Then('la rencontre est « traitée » et l\'alerte de déplacement a disparu')]
+    public function laRencontreEstTraiteeSansAlerte(): void
+    {
+        $this->assertReviewState('REVIEWED');
+        if ($this->hasAutoAppliedDeviation()) {
+            throw new RuntimeException('« Pris en compte » aurait dû vider l\'écart auto-appliqué');
+        }
+    }
+
+    #[When('je dépose un fichier FBI dont l\'adversaire porte un suffixe numéroté')]
+    public function jeDeposeAdversaireSuffixe(): void
+    {
+        $this->depositMatch($this->matchDate, 'HOME', 'Club Adverse (2)', self::VENUE_NAME, [['division' => self::DIVISION, 'teamId' => $this->teamId]]);
+        $this->captureImportedFixture();
+    }
+
+    #[Then('le libellé de l\'adversaire importé est sans suffixe')]
+    public function leLibelleAdversaireEstSansSuffixe(): void
+    {
+        $label = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId), $this->token)['json']['opponentLabel'] ?? null;
+        if ('Club Adverse' !== $label) {
+            throw new RuntimeException(\sprintf('le suffixe FFBB n\'a pas été retiré : « %s » au lieu de « Club Adverse »', \is_string($label) ? $label : 'inconnu'));
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
@@ -259,22 +332,69 @@ final class FixtureReviewContext extends BaseContext
         }
     }
 
+    /** Un écart AUTO-APPLIQUÉ (bandeau) subsiste-t-il sur la rencontre suivie ? */
+    private function hasAutoAppliedDeviation(): bool
+    {
+        $deviations = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId), $this->token)['json']['pendingDeviations'] ?? null;
+        if (!\is_array($deviations)) {
+            return false;
+        }
+        foreach ($deviations as $deviation) {
+            if (\is_array($deviation) && true === ($deviation['autoApplied'] ?? false)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Récupère l'id (et la compétition) de la rencontre importée sous EXTERNAL_REF. */
+    private function captureImportedFixture(): void
+    {
+        $id = $this->dbalScalar(
+            \sprintf('SELECT id AS behatval FROM fixture WHERE club_id=\'%s\' AND external_ref=\'%s\' LIMIT 1', $this->clubId, self::EXTERNAL_REF),
+            admin: true,
+        );
+        if ('' === $id) {
+            throw new RuntimeException('la rencontre importée est introuvable après le dépôt');
+        }
+        $this->fixtureId = $id;
+        $this->competitionId = $this->dbalScalar(
+            \sprintf('SELECT id AS behatval FROM competition WHERE club_id=\'%s\' AND name=\'%s\' LIMIT 1', $this->clubId, self::DIVISION),
+            admin: true,
+        );
+    }
+
     /**
-     * Dépose un fichier FBI d'UNE ligne (HOME au gymnase GYM BEHAT à 15:30) via
-     * multipart, exactement comme le dialog d'import.
+     * Dépose le fichier de référence : UN match à DOMICILE au gymnase GYM BEHAT à
+     * 15:30, contre « Adversaire Behat ». Enveloppe de {@see depositMatch}.
      *
      * @param list<array{division: string, teamId: string}>|null $mappings
      */
     private function deposit(string $date, ?array $mappings): void
     {
+        $this->depositMatch($date, 'HOME', 'Adversaire Behat', self::VENUE_NAME, $mappings);
+    }
+
+    /**
+     * Dépose un fichier FBI d'UNE ligne via multipart, exactement comme le dialog
+     * d'import — domicile ou extérieur, adversaire et salle au choix (le club est
+     * placé en Equipe 1 à domicile, en Equipe 2 à l'extérieur).
+     *
+     * @param list<array{division: string, teamId: string}>|null $mappings
+     */
+    private function depositMatch(string $date, string $homeAway, string $opponent, string $salle, ?array $mappings): void
+    {
+        $equipe1 = 'HOME' === $homeAway ? $this->clubName : $opponent;
+        $equipe2 = 'HOME' === $homeAway ? $opponent : $this->clubName;
         $rows = [[
             self::DIVISION,
             self::EXTERNAL_REF,
-            $this->clubName,
-            'Adversaire Behat',
+            $equipe1,
+            $equipe2,
             date('d/m/Y', (int) strtotime($date)),
             '15:30',
-            self::VENUE_NAME,
+            $salle,
         ]];
         $path = $this->writeXlsx($rows);
 

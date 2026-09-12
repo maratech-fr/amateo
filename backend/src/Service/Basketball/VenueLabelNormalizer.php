@@ -36,6 +36,20 @@ final class VenueLabelNormalizer
     }
 
     /**
+     * Retire le suffixe « (n) » que la FFBB accole en fin de libellé d'équipe pour
+     * distinguer deux engagements homonymes (« AL CALUIRE ET CUIRE - 3 (6) » →
+     * « AL CALUIRE ET CUIRE - 3 »). Foyer UNIQUE du nettoyage (P4-199) — appliqué au
+     * libellé BRUT à l'import (parseFile + canal API) et rejoué par la migration de
+     * données sur les libellés déjà stockés. Un « (6) » en MILIEU de chaîne est
+     * intact (l'ancre `$` ne mord qu'en fin) ; une chaîne sans suffixe revient
+     * telle quelle. Idempotent (un seul suffixe possible en fin).
+     */
+    public function stripTeamNumberSuffix(string $label): string
+    {
+        return (string) preg_replace('/\s+\(\d+\)\s*$/u', '', $label);
+    }
+
+    /**
      * Whole-word containment (space-padded), NOT raw substring: the ALREADY
      * NORMALIZED needle must appear as a full word of the (normalized here)
      * haystack — « bc test » matches « bc test 1 » but never « bc testville ».
