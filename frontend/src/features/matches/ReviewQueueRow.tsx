@@ -4,6 +4,7 @@ import { useState } from "react";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
+import { todayISO } from "@/shared/lib/clock";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
 
 import type { AttachVenueLabelInput, Fixture, PendingDeviation, ResolveDeviationInput, Venue } from "./api";
@@ -55,6 +56,10 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
   const canValidateLine = 0 === arbitrable.length && ("REVIEWED" !== fixture.reviewState || autoApplied.length > 0);
   const validateLabel = "REVIEWED" === fixture.reviewState ? "Pris en compte" : "Valider";
   const isHome = "HOME" === fixture.homeAway;
+  // Un match déjà joué ne se replace pas (retour fondateur 2026-09-13) : comparaison de
+  // dates civiles ISO, le jour = celui du navigateur du gestionnaire (`todayISO`).
+  const isPast = fixture.matchDate < todayISO();
+  const canReplace = isHome && !isPast;
   // Salle : le nom du gymnase si le `venueId` est résolu dans les gymnases du club,
   // sinon le libellé FBI brut, sinon rien (l'icône domicile/extérieur porte déjà le sens).
   const venue = null !== fixture.venueId ? venues.find((v) => v.id === fixture.venueId) : undefined;
@@ -76,7 +81,7 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
         <StatusPill>{FIXTURE_STATUS_LABEL[fixture.status]}</StatusPill>
         <span className="text-xs text-muted-foreground">{treatmentLabel(fixture)}</span>
         <span className="ml-auto flex items-center gap-2">
-          {isHome ? (
+          {canReplace ? (
             <Button variant="ghost" size="sm" onClick={() => onPlace(fixture)}>
               <MapPin className="size-3.5" />
               Replacer

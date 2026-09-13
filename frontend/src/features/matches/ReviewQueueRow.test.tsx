@@ -172,6 +172,16 @@ describe("ReviewQueueRow — domicile/extérieur, heure et salle (PR A)", () => 
     expect(onPlace).toHaveBeenCalledWith(fixture);
   });
 
+  it("« Replacer » absent sur un domicile déjà joué (un match passé ne se replace pas)", () => {
+    renderRow(fx({ homeAway: "HOME", matchDate: "2020-01-04" }));
+    expect(screen.queryByRole("button", { name: "Replacer" })).not.toBeInTheDocument();
+  });
+
+  it("« Replacer » présent sur un domicile à venir", () => {
+    renderRow(fx({ homeAway: "HOME", matchDate: "2099-01-04" }));
+    expect(screen.getByRole("button", { name: "Replacer" })).toBeInTheDocument();
+  });
+
   it("« Replacer » absent sur un extérieur (jamais un domicile à replacer)", () => {
     renderRow(fx({ homeAway: "AWAY" }));
     expect(screen.queryByRole("button", { name: "Replacer" })).not.toBeInTheDocument();
