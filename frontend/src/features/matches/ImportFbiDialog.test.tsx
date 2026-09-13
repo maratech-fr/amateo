@@ -260,43 +260,19 @@ describe("ImportFbiDialog", () => {
     await waitFor(() => expect(screen.getByText(/PNM : 9\/22 journées — fichier partiel ou phase pas encore sortie/)).toBeInTheDocument());
   });
 
-  // ── RMM-1 PR2 — le placement proposé en fin d'import (décision fondateur) ─────────
-  it("propose de placer les matchs importés AU rapport réussi — jamais avant, jamais sans clic", async () => {
+  // ── 2026-09-13 — plus AUCUN bouton de placement au rapport (le solveur se lance
+  //    depuis Semaine, retour fondateur) ──────────────────────────────────────────
+  it("le rapport réussi ne propose jamais de placer les matchs (le solveur vit dans Semaine)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
     await pickFile(user);
     await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
     await pickListboxOption(user, "Équipe pour DF2", "SF3"); // team-2
-
-    // Avant le rapport : aucun bouton de placement (l'offre naît du rapport réussi).
-    expect(screen.queryByRole("button", { name: /Placer les matchs importés/ })).not.toBeInTheDocument();
-
     await user.click(screen.getByRole("button", { name: "Importer" }));
     await waitFor(() => expect(screen.getByText(/22 créés · 1 mis à jour · 9 inchangés/)).toBeInTheDocument());
 
-    const place = screen.getByRole("button", { name: /Placer les matchs importés/ });
-    // FALSIFICATION — le rail n'est JAMAIS lancé tant que le bouton n'est pas cliqué.
-    expect(placeMatches).not.toHaveBeenCalled();
-
-    await user.click(place);
-    expect(placeMatches).toHaveBeenCalledOnce();
-  });
-
-  it("à 0 crédit, le bouton de placement est GRISÉ avec le solde visible (jamais masqué)", async () => {
-    meState.club = { entitlements: { planCode: "decouverte", planName: "Découverte", maxTeams: null, teamsUsed: 4, creditsMax: 10, creditsUsed: 10, canGenerate: false, canPlaceMatches: false, canExportPdf: false, seasonTransition: false } };
-    const user = userEvent.setup();
-    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
-
-    await pickFile(user);
-    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
-    await pickListboxOption(user, "Équipe pour DF2", "SF3"); // team-2
-    await user.click(screen.getByRole("button", { name: "Importer" }));
-    await waitFor(() => expect(screen.getByText(/22 créés/)).toBeInTheDocument());
-
-    const place = await screen.findByRole("button", { name: /Placer les matchs importés \(0 crédit\)/ });
-    expect(place).toBeDisabled();
-    await user.click(place);
+    expect(screen.queryByRole("button", { name: /Placer/ })).not.toBeInTheDocument();
     expect(placeMatches).not.toHaveBeenCalled();
   });
 

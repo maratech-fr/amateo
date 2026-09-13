@@ -1,4 +1,4 @@
-import { Inbox, Wand2 } from "lucide-react";
+import { Inbox } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -7,13 +7,11 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Modal } from "@/shared/components/ui/modal";
 import { TabPanel, Tabs } from "@/shared/components/ui/tabs";
 import { TeamSelect } from "@/shared/components/ui/team-select";
-import { useCredits } from "@/shared/credits/useCredits";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { FbiMapping, ImportAnalysisDivision, ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team } from "./api";
 import { classifyDivision, type DivisionFamily, FAMILY_LABEL, FAMILY_ORDER } from "./lib/divisionFamily";
-import { placementToastMessage } from "./lib/placementToast";
-import { useAnalyzeFbiFixtures, useImportFbiFixtures, usePlaceMatches } from "./queries";
+import { useAnalyzeFbiFixtures, useImportFbiFixtures } from "./queries";
 
 interface ImportFbiDialogProps {
   teams: Team[];
@@ -37,14 +35,6 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
   const analyzeFbi = useAnalyzeFbiFixtures();
   const importFbi = useImportFbiFixtures();
   const navigate = useNavigate();
-  // RMM-1 PR2 — au rapport RÉUSSI, on propose de placer les matchs importés en UN
-  // clic (jamais automatique). Même rail et même gate crédits que le bouton
-  // principal de la boucle : solde dans le libellé, grisé à 0 mais JAMAIS masqué
-  // (décision fondateur — on voit pourquoi on ne peut pas).
-  const credits = useCredits();
-  const placeMatches = usePlaceMatches();
-  const placeCreditSuffix = null !== credits ? ` (${credits.remaining} crédit${credits.remaining > 1 ? "s" : ""})` : "";
-  const placeCreditsBlocked = null !== credits && !credits.canPlaceMatches;
   const [file, setFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<ImportFbiAnalysis | null>(null);
   const [choices, setChoices] = useState<Record<string, string>>({});
@@ -360,25 +350,9 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
               </div>
             ) : null}
 
-            {/* L'enchaînement naturel : les matchs viennent d'arriver UNPLACED,
-                on les place dans la foulée — un clic, jamais automatique. */}
-            <div className="mt-1 flex flex-col items-end gap-1 border-t border-border pt-2">
-              <Button
-                size="sm"
-                disabled={placeMatches.isPending || placeCreditsBlocked}
-                onClick={() =>
-                  placeMatches.mutate(undefined, {
-                    onSuccess: (result) => {
-                      toast.success(placementToastMessage(result));
-                      onClose();
-                    },
-                  })
-                }
-              >
-                <Wand2 className="size-4" />
-                {placeMatches.isPending ? "Placement…" : `Placer les matchs importés${placeCreditSuffix}`}
-              </Button>
-            </div>
+            {/* Le placement automatique (solveur) ne se propose PLUS ici : c'est un geste
+                de l'onglet Semaine (« Placer automatiquement »), pas une suite de l'import
+                (retour fondateur 2026-09-13 : « il ne fait pas sens pour moi »). */}
           </div>
         ) : null}
 

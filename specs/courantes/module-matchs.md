@@ -294,6 +294,12 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
      `PR` classe départemental même si le sigle évoque un rang régional) ;
   6. préfixe `r` ou `pn` → **Régional** ;
   7. sinon → **Autres** — le repli garanti, une division ne disparaît jamais.
+- **Le rapport d'import ne propose PLUS le placement automatique** (2026-09-13, retour fondateur :
+  « il ne fait pas sens pour moi ») : le bouton baguette « Placer les matchs importés » (RMM-1 PR2,
+  même rail `POST /api/fixtures/place` et même garde crédits que « Placer automatiquement » de
+  Semaine) est retiré de `ImportFbiDialog` ; le solveur se lance depuis l'onglet Semaine seulement,
+  le rapport n'offre que « Ouvrir la file ». Témoin : test « le rapport réussi ne propose jamais de
+  placer les matchs ».
 - **Dans un onglet, les divisions se lisent par ordre alphabétique NATUREL** (`localeCompare`
   `fr`, `numeric` : DF2 · DFU9 · DFU11 · DM2 · PRM), jamais dans l'ordre d'apparition du fichier
   (demande fondateur 2026-09-12, même jour) — le tri est un `sort` sur une copie, l'ordre servi
@@ -1684,8 +1690,10 @@ future.
     qui porte le sens, jamais l'icône seule), puis, après l'adversaire, l'heure (`HH:MM` tabulaire
     ou « heure non publiée » si `Fixture.kickoffTime` est `null`) et la salle : le nom du gymnase
     si `venueId` est résolu dans les gymnases du club, sinon le `fbiVenueLabel` brut, sinon rien.
-    Bouton **« Replacer »** (était « Placer ») rendu **UNIQUEMENT sur un domicile** (`isHome`,
-    absent sur un extérieur — rien à placer côté club) ; il pose `railStep="homeSlots"` et
+    Bouton **« Replacer »** (était « Placer ») rendu **UNIQUEMENT sur un domicile À VENIR**
+    (`canReplace = isHome && !isPast`, `isPast = matchDate < todayISO()` — absent sur un extérieur,
+    rien à placer côté club ; absent sur un match déjà joué, « ça n'a pas de sens », retour fondateur
+    2026-09-13) ; il pose `railStep="homeSlots"` et
     `selectedFixtureId` **après** `setFilterMode`/`toggleFilterId`/`setSelectedWeekend` (ces trois-là
     remettent `railStep` à `null`, et l'auto de la boucle peut retomber sur une autre vue que
     `homeSlots`, où vit seul le panneau de placement) — le clic ouvre donc directement le panneau de
