@@ -49,8 +49,16 @@ function isOpenReview(fixture: Fixture): boolean {
   return "NEW" === fixture.reviewState || "OUT_OF_SYNC" === fixture.reviewState || ("REVIEWED" === fixture.reviewState && hasAutoAppliedDeviation(fixture));
 }
 
-function byMatchDateAsc(a: Fixture, b: Fixture): number {
-  return a.matchDate < b.matchDate ? -1 : a.matchDate > b.matchDate ? 1 : 0;
+/** Ordre chronologique d'une rencontre : date de match, puis heure de coup d'envoi (une heure
+ * absente passe après les heures connues du même jour). Exporté : la file d'une équipe se lit
+ * TOUJOURS dans cet ordre, traitées comprises (retour fondateur 2026-09-14). */
+export function byMatchDateAsc(a: Fixture, b: Fixture): number {
+  if (a.matchDate !== b.matchDate) {
+    return a.matchDate < b.matchDate ? -1 : 1;
+  }
+  const ka = a.kickoffTime ?? "99:99";
+  const kb = b.kickoffTime ?? "99:99";
+  return ka < kb ? -1 : ka > kb ? 1 : 0;
 }
 
 /** Ordre des équipes = `teamOrder` (l'appelant le dérive de `compareTeamsByRank`,

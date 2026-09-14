@@ -198,6 +198,22 @@ describe("ImportPage — la file de traitement", () => {
     expect(await screen.findByRole("button", { name: /SM1/ })).toBeInTheDocument();
   });
 
+  it("traitées affichées : la liste d'une équipe reste triée par date (une traitée du 1er passe avant une à traiter du 7)", async () => {
+    const user = userEvent.setup();
+    // `?equipe=` ouvre l'accordéon de l'équipe : les lignes ne sont rendues que dépliées.
+    renderPage([fx("team-1", "NEW", "2026-11-07"), fx("team-1", "REVIEWED", "2026-11-01", { reviewedAt: "2026-10-01T10:00:00+00:00" })], "/matchs/importer?equipe=team-1");
+    await screen.findByRole("button", { name: /SM1/ });
+    await user.click(screen.getByRole("checkbox", { name: "Afficher les traitées" }));
+    // L'espace entre le jour et le mois est insécable (Intl fr) : \s le couvre.
+    await screen.findByText(/\b1\snov\./);
+    const dates = screen
+      .getAllByRole("listitem")
+      .map((li) => li.textContent ?? "")
+      .map((t): string | null => (/\b1\snov\./.test(t) ? "1 nov." : /\b7\snov\./.test(t) ? "7 nov." : null))
+      .filter((d): d is string => null !== d);
+    expect(dates).toEqual(["1 nov.", "7 nov."]);
+  });
+
   it("Replacer pose le filtre équipe + week-end + la vue homeSlots + la rencontre sélectionnée, et renvoie vers la boucle", async () => {
     const user = userEvent.setup();
     renderPage([fx("team-1", "NEW", "2026-11-07")], "/matchs/importer?equipe=team-1");

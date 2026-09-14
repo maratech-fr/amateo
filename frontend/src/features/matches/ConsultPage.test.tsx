@@ -46,6 +46,13 @@ vi.mock("./api", () => ({
   ),
   getPriorityTiers: vi.fn(() => Promise.resolve([{ id: 1, label: "S", name: "Fanion", color: null }, { id: 3, label: "B", name: "Moyenne", color: null }])),
   getVenues: vi.fn(() => Promise.resolve([{ id: "venue-1", name: "Gymnase Alpha", color: "#00aa00", externalLabels: [] }])),
+  getSportCategoryDurations: vi.fn(() =>
+    Promise.resolve([
+      // cat-1 : override club 75 min → doit primer sur le défaut de famille servi (105).
+      { id: "cat-1", sportId: "sp", name: "U13", matchMinutes: 75, warmupMinutes: null, defaultMatchMinutes: 105, defaultWarmupMinutes: 30 },
+      { id: "cat-2", sportId: "sp", name: "Seniors", matchMinutes: null, warmupMinutes: null, defaultMatchMinutes: 105, defaultWarmupMinutes: 30 },
+    ]),
+  ),
   getCoaches: vi.fn(() => Promise.resolve([{ id: "coach-1", firstName: "Jean", lastName: "Dupont" }])),
   getTeamMatchHabits: vi.fn(() =>
     // Habitude samedi de team-3 (sans match ce week-end) → un ghost « Habitude Cadets ».
@@ -116,6 +123,14 @@ describe("ConsultPage (PR-2a — onglet Consulter, lecture seule)", () => {
     // AwayList en lecture seule : pas de crayon/corbeille.
     expect(screen.queryByRole("button", { name: /Modifier le match/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Supprimer le match/ })).not.toBeInTheDocument();
+  });
+
+  it("la grille dessine le bloc à la durée de match de la catégorie SERVIE (override club 75 min)", async () => {
+    renderConsult();
+    // fx-home-amical = U13 (cat-1), override club 75 min : 16:00 → bloc 16:00–17:15 (et non le
+    // repli 105 = 17:45), lu sur le titre de la cellule de grille de la Semaine 2026-10-03.
+    expect(await screen.findByTitle(/16:00–17:15/)).toBeInTheDocument();
+    expect(screen.queryByTitle(/16:00–17:45/)).not.toBeInTheDocument();
   });
 
   it("affiche les chips type de compétition et les chips familles avec compteur", async () => {

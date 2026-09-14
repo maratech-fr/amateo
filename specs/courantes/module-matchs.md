@@ -144,7 +144,8 @@ Le radar de conflits devient **SPATIAL** : un coach qui joue à l'extérieur est
   (RLS FORCE complet, aucune écriture au global, coords MANUAL range-validées et self-scoped).
 - ⚠ **Divergences ASSUMÉES** : (1) le SOLVEUR de placement garde 105 min fixe (`match_placement.py`, contrat
   2.16 inchangé) — le trajet nourrit le radar préventif, pas l'optimisation moteur ; (2) le dessin de la grille
-  week-end reste 2h15 fixe (`weekendGrid.ts:4-6`, présentation pure — le radar serveur est la source de vérité).
+  week-end est une présentation pure (`weekendGrid.ts`, § Grille week-end ci-dessous — le radar serveur est la
+  source de vérité).
 
 ## Palier A — PR-2 (moteur de conflits, à la volée, coach seul, 2026-07-07)
 
@@ -225,10 +226,17 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
 
 - **Grille week-end** (`WeekendGrid` + `lib/weekendGrid.ts`) : calendrier daté week-end-centrique (colonnes =
   date × gymnase, lignes = créneaux), distinct du canevas lun-sam de l'entraînement. Chaque match placé =
-  bloc d'une **empreinte VISUELLE fixe 2h15** (constantes locales `weekendGrid.ts:5-6` — résidu assumé
-  depuis P2-54 PR-1 : le radar calcule par catégorie, le DESSIN de la grille non ; présentation pure, à
-  réconcilier quand l'empreinte voyagera à l'écran — PR-3), libellé au coup d'envoi. Navigation ‹ › entre
-  week-ends. Les matchs non placés / AWAY-sans-heure vivent dans la liste « À placer ».
+  un bloc qui **part du coup d'envoi et dure le match** (`matchMinutes` de la catégorie servi par
+  `sport_categories` — override de club sinon défaut de famille déjà résolu côté serveur, `lib/weekendGrid.ts`
+  `matchMinutesByCategory`, repli 105 si la catégorie manque ; jamais de redérivation de la règle de famille) et
+  **s'enchaîne** : s'il existe un match SUIVANT dans le même gymnase le même jour dont le coup d'envoi tombe au
+  plus **30 min** après la fin naturelle du bloc, le bloc s'étire jusqu'à ce coup d'envoi — quatre domiciles à
+  10:00 · 12:00 · 14:15 · 16:30 se lisent 10:00–12:00 · 12:00–14:15 · 14:15–16:30 · 16:30–18:15, sans trou.
+  Au-delà de 30 min le trou reste VISIBLE (« du temps que je peux optimiser en avançant les matchs », retour
+  fondateur 2026-09-14). Un chevauchement (coup d'envoi suivant AVANT la fin naturelle) garde sa durée et part
+  en couloir séparé. Plus d'empreinte −30 min : l'échauffement n'occupe pas la salle (cohérent avec D1, § Détection).
+  Présentation pure, libellé au coup d'envoi. Navigation ‹ › entre week-ends. Les matchs non placés /
+  AWAY-sans-heure vivent dans la liste « À placer ».
 - **Pose domicile** (`PlacementPanel`) : clic sur un match à placer → panneau (salle + heure) →
   `PUT /api/fixtures/{id}` (full-replace, statut `PLACED`, corps reconstruit pour ne pas effacer opponent/
   competition). **Envelope-ligue** : garde **HARD** (bouton désactivé hors fenêtre) quand l'équipe mappe une
@@ -553,7 +561,8 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
     du match (champs vides seulement) + ligne « Habitude : samedi 15:30 · Mateo ». **Les gardes restent
     souveraines** (enveloppe, accès, indispo — l'habitude pré-remplit, ne débloque jamais).
   - **Blocs fantômes** (`WeekendGrid`) : une habitude À GYMNASE dont l'équipe n'a AUCUN match ce jour-là
-    projette un bloc translucide pointillé « Habitude SF3 · fenêtre protégée » (empreinte 2h15, lanes
+    projette un bloc translucide pointillé « Habitude SF3 · fenêtre protégée » (même départ au coup d'envoi et
+    même durée de match que les vrais blocs, sans enchaînement — un fantôme n'est pas un match —, lanes
     partagées avec les vrais matchs — un placement manuel atterrit À CÔTÉ, pas dessus). **La réalité
     dissout le fantôme** : tout match de l'équipe à cette date — extérieur compris, la fenêtre se LIBÈRE.
     Habitude sans gymnase → pas de fantôme (grille en colonnes gymnase).
@@ -1709,7 +1718,9 @@ future.
     écart `autoApplied` (bandeau « Pris en compte ») compte comme un écart pendant et est SAUTÉ lui
     aussi, `Fixture::hasPendingDeviations` (lu par `ReviewFixturesController`) ne distingue pas :
     prise d'acte = un clic PAR LIGNE, décision fondateur P4-199) ;
-    interrupteur « Afficher les traitées » (`?traitees=1`, masquées par défaut — une équipe sans
+    interrupteur « Afficher les traitées » (`?traitees=1`, masquées par défaut ; affichées, la liste de
+    l'équipe reste UNE liste triée par date puis heure de coup d'envoi — `byMatchDateAsc` exporté de
+    `lib/reviewQueue.ts`, jamais les traitées « à la suite », retour fondateur 2026-09-14 — une équipe sans
     rencontre ouverte disparaît de la file tant qu'il n'est pas activé).
   - `ReviewQueueRow.tsx` : une rencontre `NEW` sans écart arbitrable se valide en un clic
     (bouton « Valider », `onValidateLine`, « garder l'app » implicite) ; une `REVIEWED` qui porte

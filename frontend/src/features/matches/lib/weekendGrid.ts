@@ -1,19 +1,47 @@
-import type { Fixture, Team, TeamMatchHabit, Venue } from "../api";
+import type { Fixture, SportCategoryDuration, Team, TeamMatchHabit, Venue } from "../api";
 import { isoWeekday, timeToMinutes } from "./envelope";
 
 /**
- * Empreinte VISUELLE fixe du dessin de grille (2h15 = 30 + 105). ⚠ Divergence
- * ASSUMÉE, réaffirmée en P2-54 PR-3 : depuis la PR-1 la durée réelle est PAR
- * CATÉGORIE, et depuis la PR-3 une empreinte AWAY inclut le TRAJET aller-retour —
- * mais la grille reste un DESSIN indicatif à hauteur de bloc constante. La VÉRITÉ
- * (durée par catégorie + trajet) vit dans le radar serveur (`GET /api/fixtures/conflicts`)
- * et le chip de trajet de la liste extérieure (`AwayTravelChip`), pas ici : le
- * dessin ne calcule aucun conflit, il place des blocs lisibles. Réconcilier la
- * hauteur des blocs au cas par cas serait un chantier propre, pas une correction
- * de mensonge — le radar tranche, la grille illustre.
+ * Règle de DESSIN des blocs de match sur la grille week-end (retour fondateur
+ * 2026-09-14). Un bloc COMMENCE au coup d'envoi (plus de −30 min d'échauffement
+ * dessiné) et dure la durée du match (`matchMinutes` de la catégorie de l'équipe
+ * quand le front la connaît — 8ᵉ argument `durations`, sinon le repli `MATCH_MINUTES`
+ * = 105, celui de `MatchDurationProfile::fallback()` côté backend).
+ *
+ * ENCHAÎNEMENT : deux domiciles du même gymnase le même jour « se suivent » — le
+ * temps d'échauffement est juste plus court. Tant que le coup d'envoi SUIVANT tombe
+ * au plus `MAX_CHAIN_GAP_MINUTES` (30) après la fin naturelle du bloc, celui-ci
+ * s'étire jusqu'à ce coup d'envoi : quatre matchs collés se lisent comme quatre
+ * blocs sans trou. Au-delà de 30 min, le trou RESTE visible — c'est du temps que le
+ * gestionnaire peut optimiser en avançant les matchs, il doit le voir. Deux gymnases
+ * ne s'enchaînent jamais entre eux ; un chevauchement (coup d'envoi suivant AVANT la
+ * fin naturelle) n'étire rien et part en couloirs.
+ *
+ * ⚠ Ce dessin ne parle QUE de la grille : le radar de conflits serveur
+ * (`GET /api/fixtures/conflicts`) et le solveur sont souverains et INCHANGÉS — la
+ * grille illustre, elle ne calcule aucun conflit et n'applique aucune règle métier
+ * (durée effective = override ?? défaut de famille, résolue par le serveur : on la
+ * REÇOIT déjà résolue dans `durations`, on ne la recalcule jamais ici — cf.
+ * `.claude/rules/frontend.md`).
  */
 export const WARMUP_MINUTES = 30;
 export const MATCH_MINUTES = 105;
+/** Écart maximal (min) entre la fin naturelle d'un bloc et le coup d'envoi suivant
+ *  du même gymnase pour que les deux s'enchaînent sans trou (retour fondateur 2026-09-14). */
+export const MAX_CHAIN_GAP_MINUTES = 30;
+
+/**
+ * Table `sportCategoryId → durée EFFECTIVE de match (min)` à passer à
+ * `buildWeekendGrid` : l'override de club (`matchMinutes`) quand il est posé, sinon le
+ * défaut de FAMILLE `defaultMatchMinutes` — celui-ci DÉJÀ résolu par le serveur
+ * (`SportCategoryResource::fromEntity(..., MatchDurationProfile)`). On SÉLECTIONNE une
+ * valeur servie ; on ne redérive JAMAIS la règle de famille (U7–U11 75 / U13–U15 90 /
+ * U18+ 105) côté front (🔴 `.claude/rules/frontend.md`). La clé `id` d'une catégorie
+ * est le `sportCategoryId` d'une équipe (même entité `sport_categories`).
+ */
+export function matchMinutesByCategory(durations: SportCategoryDuration[]): Map<string, number> {
+  return new Map(durations.map((category) => [category.id, category.matchMinutes ?? category.defaultMatchMinutes]));
+}
 
 /** minutes since midnight → "HH:MM". */
 // D-20 : c'était la seule des trois copies à clamper — elle est devenue le foyer partagé.
@@ -202,12 +230,51 @@ function ghostSlots(habits: TeamMatchHabit[], fixtures: Fixture[], weekendKey: s
   return ghosts;
 }
 
+/** Durée effective (min) du match d'une équipe : `matchMinutes` de sa catégorie
+ *  quand le front la connaît (déjà résolue côté serveur), sinon le repli 105. */
+function matchMinutesOf(teamId: string, teams: Map<string, Team>, durations: Map<string, number>): number {
+  const categoryId = teams.get(teamId)?.sportCategoryId;
+  const minutes = undefined === categoryId ? undefined : durations.get(categoryId);
+  return undefined === minutes ? MATCH_MINUTES : minutes;
+}
+
+/**
+ * Bornes DESSINÉES d'un bloc de match (retour fondateur 2026-09-14) : début = coup
+ * d'envoi ; fin = coup d'envoi + durée, ÉTIRÉE jusqu'au coup d'envoi suivant du même
+ * gymnase le même jour tant que l'écart ≤ `MAX_CHAIN_GAP_MINUTES`. `placed` est
+ * l'ensemble des domiciles posés ; renvoie `{ start, end }` par id de rencontre.
+ */
+function blockBounds(placed: Fixture[], teams: Map<string, Team>, durations: Map<string, number>): Map<string, { start: number; end: number }> {
+  const bounds = new Map<string, { start: number; end: number }>();
+  const groups = new Map<string, Fixture[]>();
+  for (const fixture of placed) {
+    const key = `${fixture.matchDate}:${fixture.venueId as string}`;
+    const list = groups.get(key) ?? [];
+    list.push(fixture);
+    groups.set(key, list);
+  }
+  for (const group of groups.values()) {
+    const sorted = [...group].sort((a, b) => timeToMinutes(a.kickoffTime as string) - timeToMinutes(b.kickoffTime as string));
+    const kickoffs = sorted.map((f) => timeToMinutes(f.kickoffTime as string));
+    sorted.forEach((fixture, i) => {
+      const kickoff = kickoffs[i];
+      const naturalEnd = kickoff + matchMinutesOf(fixture.teamId, teams, durations);
+      const nextKickoff = kickoffs.slice(i + 1).find((k) => k > kickoff);
+      const chained = undefined !== nextKickoff && nextKickoff >= naturalEnd && nextKickoff - naturalEnd <= MAX_CHAIN_GAP_MINUTES;
+      bounds.set(fixture.id, { start: kickoff, end: chained ? (nextKickoff as number) : naturalEnd });
+    });
+  }
+  return bounds;
+}
+
 /**
  * Pure layout of the placed home matches of ONE weekend. A date is a super-column
  * split into one sub-column per venue used that date; rows are 15-min steps from
- * the earliest footprint start to the latest end. Each match block spans its full
- * 2h15 footprint (kickoff−30 → kickoff+105), labelled at the kickoff time.
- * Habit ghosts (P1-4 PR C) join the layout as translucent, non-blocking blocks.
+ * the earliest kickoff to the latest block end. Each match block STARTS at kickoff
+ * and spans the match duration, chained to the next kickoff of the same venue/day
+ * when the gap is ≤ 30 min (see the module header); labelled at the kickoff time.
+ * Habit ghosts (P1-4 PR C) join the layout as translucent, non-blocking blocks —
+ * same kickoff-start + match-duration rule, but never chained (a ghost is not a match).
  */
 export function buildWeekendGrid(
   fixtures: Fixture[],
@@ -217,6 +284,7 @@ export function buildWeekendGrid(
   habits: TeamMatchHabit[] = [],
   weekendKey: string | null = null,
   stepMin = 15,
+  durations: Map<string, number> = new Map(),
 ): WeekendGridModel {
   const placed = fixtures.filter(isPlacedOnGrid);
   const ghosts = ghostSlots(habits, fixtures, weekendKey);
@@ -224,16 +292,18 @@ export function buildWeekendGrid(
     return { columns: [], dateGroups: [], rows: [], cells: [], startMin: 0, stepMin, empty: true };
   }
 
+  const bounds = blockBounds(placed, teams, durations);
+
   let min = Infinity;
   let max = -Infinity;
   for (const fixture of placed) {
-    const start = timeToMinutes(fixture.kickoffTime as string) - WARMUP_MINUTES;
-    min = Math.min(min, start);
-    max = Math.max(max, start + WARMUP_MINUTES + MATCH_MINUTES);
+    const block = bounds.get(fixture.id) as { start: number; end: number };
+    min = Math.min(min, block.start);
+    max = Math.max(max, block.end);
   }
   for (const ghost of ghosts) {
-    min = Math.min(min, ghost.kickoffMin - WARMUP_MINUTES);
-    max = Math.max(max, ghost.kickoffMin + MATCH_MINUTES);
+    min = Math.min(min, ghost.kickoffMin);
+    max = Math.max(max, ghost.kickoffMin + matchMinutesOf(ghost.teamId, teams, durations));
   }
   const startMin = Math.floor(min / 60) * 60;
   const endMin = Math.ceil(max / 60) * 60;
@@ -270,8 +340,7 @@ export function buildWeekendGrid(
       continue;
     }
     const kickoff = timeToMinutes(fixture.kickoffTime as string);
-    const start = kickoff - WARMUP_MINUTES;
-    const end = kickoff + MATCH_MINUTES;
+    const { start, end } = bounds.get(fixture.id) as { start: number; end: number };
     const cell: WeekendCell = {
       key: fixture.id,
       fixtureId: fixture.id,
@@ -302,8 +371,8 @@ export function buildWeekendGrid(
     if (undefined === idx) {
       continue;
     }
-    const start = ghost.kickoffMin - WARMUP_MINUTES;
-    const end = ghost.kickoffMin + MATCH_MINUTES;
+    const start = ghost.kickoffMin;
+    const end = ghost.kickoffMin + matchMinutesOf(ghost.teamId, teams, durations);
     const cell: WeekendCell = {
       key: `ghost:${ghost.teamId}:${ghost.dateKey}`,
       fixtureId: "",

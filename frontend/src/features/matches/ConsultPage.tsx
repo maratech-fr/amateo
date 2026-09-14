@@ -22,10 +22,10 @@ import { applyMatchFilter } from "./lib/matchFilter";
 import { conflictsByFixture, groupByDay, listMonths, resolveActiveMonth, scopeConflictsToMonth } from "./lib/monthView";
 import { listPhases, phaseCompleteness, phaseFixtures, scopeConflictsToPhase } from "./lib/phaseView";
 import { applyConsultToParams, applyFilterToParams, decodeConsultParams, decodeFilterParams } from "./lib/urlState";
-import { buildWeekendGrid, listWeekends, resolveActiveWeekend, weekendKeyOf, weekLabel } from "./lib/weekendGrid";
+import { buildWeekendGrid, listWeekends, matchMinutesByCategory, resolveActiveWeekend, weekendKeyOf, weekLabel } from "./lib/weekendGrid";
 import { MatchesFilterBar } from "./MatchesFilterBar";
 import { MatchRowsTable } from "./MatchRowsTable";
-import { useCoaches, useCompetitions, useConflicts, useOpponentTravel, usePriorityTiers, useTeamMatchHabits, useTeams, useVenues, useFixtures } from "./queries";
+import { useCoaches, useCompetitions, useConflicts, useOpponentTravel, usePriorityTiers, useSportCategoryDurations, useTeamMatchHabits, useTeams, useVenues, useFixtures } from "./queries";
 import { useMatchesStore, type ConsultTemporality } from "./store";
 import { WeekendGrid } from "./WeekendGrid";
 
@@ -74,6 +74,7 @@ export function ConsultPage() {
   const venues = useVenues();
   const coaches = useCoaches();
   const habitsQuery = useTeamMatchHabits();
+  const categoryDurations = useSportCategoryDurations();
   const opponentTravel = useOpponentTravel();
   const teamCoaches = useTeamCoaches();
   const coachPlayers = useCoachPlayers();
@@ -111,6 +112,8 @@ export function ConsultPage() {
   const allFixtures = useMemo<Fixture[]>(() => fixtures.data ?? [], [fixtures.data]);
   const allConflicts = useMemo<Conflict[]>(() => conflicts.data?.conflicts ?? [], [conflicts.data]);
   const habits = useMemo(() => habitsQuery.data ?? [], [habitsQuery.data]);
+  // Durée effective de match par catégorie (override club, sinon défaut de famille servi par le serveur) — pour la hauteur des blocs de la grille.
+  const matchDurations = useMemo(() => matchMinutesByCategory(categoryDurations.data ?? []), [categoryDurations.data]);
 
   // ── Chaîne pure : PR-1 → type de compétition ─────────────────────────────────
   const filtered = useMemo(
@@ -145,8 +148,8 @@ export function ConsultPage() {
     [kindFixtures, activeWeekend],
   );
   const grid = useMemo(
-    () => buildWeekendGrid(weekendFixtures, venuesMap, teamsMap, new Set<string>(), consultTypicalWeek ? habits : [], activeWeekend),
-    [weekendFixtures, venuesMap, teamsMap, consultTypicalWeek, habits, activeWeekend],
+    () => buildWeekendGrid(weekendFixtures, venuesMap, teamsMap, new Set<string>(), consultTypicalWeek ? habits : [], activeWeekend, 15, matchDurations),
+    [weekendFixtures, venuesMap, teamsMap, consultTypicalWeek, habits, activeWeekend, matchDurations],
   );
 
   // ── Temporalité MOIS : navigateur ‹ mois ›, table groupée par jour ────────────
