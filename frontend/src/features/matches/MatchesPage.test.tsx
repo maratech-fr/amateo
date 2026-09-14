@@ -118,6 +118,9 @@ vi.mock("./api", () => ({
   // RMM-4 — la fraîcheur : un dépôt existe → rappel discret près du rail semaine.
   getLatestFbiIngestion: vi.fn(() => Promise.resolve({ latest: { depositedAt: "2026-08-20T09:00:00+00:00", source: "FBI_XLSX", created: 10, updated: 2, unchanged: 3, deviationsCount: 0 } })),
   getOpponentTravel: vi.fn(() => Promise.resolve([])),
+  // E2 — inventaire des libellés de salle : vide par défaut (aucun bandeau, aucune
+  // perturbation des autres tests) ; surchargé au besoin.
+  getVenueLabelInventory: vi.fn(() => Promise.resolve([])),
 }));
 
 beforeEach(() => {
@@ -500,5 +503,26 @@ describe("MatchesPage — filtres (PR-1)", () => {
     // Le domicile posé à Gymnase Alpha reste ; l'extérieur (Grenoble, sans gymnase) disparaît.
     expect(await screen.findByRole("button", { name: /Seniors.*Rivaux/ })).toBeInTheDocument();
     expect(screen.queryByText(/à Grenoble/)).not.toBeInTheDocument();
+  });
+
+  // ── E2 (P4-205) — le signal des salles non appariées sur la Semaine ──────────
+  it("un domicile de la semaine sans gymnase ⇒ compteur discret sous la grille (jamais un faux calme)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MatchesPage />);
+    // On rejoint une vue qui montre la grille ; fx-unplaced (HOME, venueId null, 03/10)
+    // est de la semaine affichée mais absent de la grille faute de gymnase.
+    await gotoStep(user, /Domiciles posés/);
+    expect(await screen.findByText(/1 domicile de ce week-end sans gymnase, non affiché/)).toBeInTheDocument();
+  });
+
+  it("des libellés de salle non appariés ⇒ bandeau au-dessus de la grille", async () => {
+    const user = userEvent.setup();
+    vi.mocked(matchesApi.getVenueLabelInventory).mockResolvedValue([
+      { labelKey: "gymnase mateo", displayLabel: "GYMNASE MATEO", venueId: null, suggestedVenueId: null, homeCount: 4, placedCount: 0, unplacedCount: 4 },
+    ]);
+    renderWithProviders(<MatchesPage />);
+    await gotoStep(user, /Domiciles posés/);
+    expect(await screen.findByText(/1 libellé de salle non apparié/)).toBeInTheDocument();
+    vi.mocked(matchesApi.getVenueLabelInventory).mockResolvedValue([]);
   });
 });

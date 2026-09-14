@@ -21,6 +21,7 @@ const state: Record<string, unknown[] | "pending"> = {
   durations: [],
   fixtures: [],
   travel: [],
+  labelInventory: [],
 };
 
 function serve(key: string): Promise<unknown> {
@@ -38,6 +39,7 @@ vi.mock("./api", () => ({
   getSportCategoryDurations: () => serve("durations"),
   getFixtures: () => serve("fixtures"),
   getOpponentTravel: () => serve("travel"),
+  getVenueLabelInventory: () => serve("labelInventory"),
   updateSportCategoryDuration: vi.fn(),
   createMatchSlotRotation: vi.fn(),
   updateMatchSlotRotation: vi.fn(),
@@ -72,6 +74,7 @@ beforeEach(() => {
   state.durations = [];
   state.fixtures = [];
   state.travel = [];
+  state.labelInventory = [];
 });
 
 describe("ConfigurationPage (P4-185 — une section = un écran)", () => {
@@ -160,33 +163,36 @@ describe("ConfigurationPage (P4-185 — une section = un écran)", () => {
     expect(screen.getByTestId("section-param")).toHaveTextContent("aucune");
   });
 
-  // ── P4-196 — la 7ᵉ section « Libellés FFBB des gymnases » ─────────────────────
+  // ── E2 (P4-205) — la 7ᵉ section « Libellés FFBB des gymnases » (écran d'appariement) ──
   it("la section « Libellés FFBB des gymnases » existe et est repliée à l'arrivée", async () => {
     renderWithProviders(<Harness />);
     await screen.findByText(/Aucune habitude déclarée/);
     const header = screen.getByRole("button", { name: /^Libellés FFBB des gymnases/ });
     expect(header).toHaveAttribute("aria-expanded", "false");
     // Le corps (phrase d'aide) n'est PAS monté tant que la section est repliée.
-    expect(screen.queryByText(/enregistrés sous une forme simplifiée/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/pointe vers un gymnase du club/i)).not.toBeInTheDocument();
   });
 
-  it("deep-link ?section=libelles : les libellés sont ouverts à l'arrivée (gabarit replié)", async () => {
+  it("deep-link ?section=libelles : l'écran d'appariement est ouvert à l'arrivée (gabarit replié)", async () => {
     renderWithProviders(<Harness />, { route: "/matchs/configuration?section=libelles" });
-    // Corps monté : la phrase d'aide et l'état vide (aucun alias sur le seed) sont là.
-    expect(await screen.findByText(/enregistrés sous une forme simplifiée/i)).toBeInTheDocument();
-    expect(screen.getByText(/Aucun gymnase ne porte de libellé FFBB/i)).toBeInTheDocument();
+    // Corps monté : la phrase d'aide et l'état vide (aucun libellé importé sur le seed).
+    expect(await screen.findByText(/pointe vers un gymnase du club/i)).toBeInTheDocument();
+    expect(screen.getByText(/Aucun libellé de salle importé pour l'instant/i)).toBeInTheDocument();
     expect(screen.queryByText(/Aucune habitude déclarée/)).not.toBeInTheDocument();
   });
 
-  it("l'en-tête des libellés porte le résumé quand un gymnase a des alias (compte les gymnases, pas les alias)", async () => {
-    state.venues = [{ id: "venue-1", name: "Gymnase Alpha", color: "#00aa00", externalLabels: ["gymnase mateo", "salle mateo"] }];
+  it("l'en-tête des libellés porte le résumé « N libellés · N non appariés » (depuis l'inventaire)", async () => {
+    state.labelInventory = [
+      { labelKey: "gymnase mateo", displayLabel: "GYMNASE MATEO", venueId: null, suggestedVenueId: null, homeCount: 2, placedCount: 0, unplacedCount: 2 },
+      { labelKey: "salle beta", displayLabel: "SALLE BETA", venueId: "venue-1", suggestedVenueId: null, homeCount: 1, placedCount: 1, unplacedCount: 0 },
+    ];
     renderWithProviders(<Harness />);
-    // findBy : le résumé apparaît quand la query venues se résout (comme le test des rotations).
-    expect(await screen.findByRole("button", { name: "Libellés FFBB des gymnases · 1 gymnase nommé par la FFBB" })).toBeInTheDocument();
+    // findBy : le résumé apparaît quand la query inventaire se résout.
+    expect(await screen.findByRole("button", { name: "Libellés FFBB des gymnases · 2 libellés · 1 non apparié" })).toBeInTheDocument();
   });
 
-  it("en chargement (venues pendant) : l'en-tête des libellés n'affiche AUCUN compte", async () => {
-    state.venues = "pending";
+  it("en chargement (inventaire pendant) : l'en-tête des libellés n'affiche AUCUN compte", async () => {
+    state.labelInventory = "pending";
     renderWithProviders(<Harness />);
     // L'en-tête existe tout de suite, SANS résumé (ni « · aucun libellé », ni un compte).
     expect(await screen.findByRole("button", { name: "Libellés FFBB des gymnases" })).toBeInTheDocument();

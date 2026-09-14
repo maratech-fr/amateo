@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useToastStore } from "@/shared/stores/toastStore";
 
-import type { AttachVenueLabelResult, FbiIngestionLatest, Fixture, FixtureReviewState, PendingDeviation, ReviewFixturesResult, Venue } from "./api";
+import type { AttachVenueLabelResult, FbiIngestionLatest, Fixture, FixtureReviewState, PendingDeviation, ReviewFixturesResult, Venue, VenueLabelInventoryRow } from "./api";
 import { ImportPage } from "./ImportPage";
 import { weekendKeyOf } from "./lib/weekendGrid";
 import { useMatchesStore } from "./store";
@@ -23,6 +23,7 @@ const {
   reviewFixtures,
   resolveFixtureDeviation,
   attachVenueLabel,
+  getVenueLabelInventory,
 } = vi.hoisted(() => ({
   getTeams: vi.fn(),
   getPriorityTiers: vi.fn(() => Promise.resolve([{ id: 1, label: "S", name: "Fanion", color: null }, { id: 2, label: "A", name: "Réserve", color: null }])),
@@ -34,9 +35,10 @@ const {
   reviewFixtures: vi.fn((): Promise<ReviewFixturesResult> => Promise.resolve({ reviewed: 1, skipped: [] })),
   resolveFixtureDeviation: vi.fn(() => Promise.resolve({ fixtureId: "x", reviewState: "REVIEWED", reviewedAt: "2026-10-02T10:00:00+00:00", pendingDeviations: [] })),
   attachVenueLabel: vi.fn((): Promise<AttachVenueLabelResult> => Promise.resolve({ venueId: "venue-1", label: "GYMNASE MATEO", attached: 2 })),
+  getVenueLabelInventory: vi.fn((): Promise<VenueLabelInventoryRow[]> => Promise.resolve([])),
 }));
 
-vi.mock("./api", () => ({ getTeams, getPriorityTiers, getFixtures, getVenues, getLatestFbiIngestion, getFfbbRencontres, applyFfbbRencontres, reviewFixtures, resolveFixtureDeviation, attachVenueLabel }));
+vi.mock("./api", () => ({ getTeams, getPriorityTiers, getFixtures, getVenues, getLatestFbiIngestion, getFfbbRencontres, applyFfbbRencontres, reviewFixtures, resolveFixtureDeviation, attachVenueLabel, getVenueLabelInventory }));
 
 /** ky 2.x expose le corps parsé sur `error.data` — on reproduit ce contrat pour le 422 nommé. */
 function httpError(status: number, body: unknown): HTTPError {
@@ -127,6 +129,19 @@ describe("ImportPage — les entrées de données", () => {
     getLatestFbiIngestion.mockResolvedValueOnce({ latest: { depositedAt: "2026-08-22T09:00:00+00:00", source: "FBI_XLSX", created: 5, updated: 1, unchanged: 2, deviationsCount: 0 } });
     renderPage([]);
     expect(await screen.findByText(/Dernier dépôt FBI/i)).toBeInTheDocument();
+  });
+
+  it("E2 — des libellés non appariés ⇒ bandeau de renvoi dans la carte « Données de match »", async () => {
+    getVenueLabelInventory.mockResolvedValueOnce([{ labelKey: "gymnase mateo", displayLabel: "GYMNASE MATEO", venueId: null, suggestedVenueId: null, homeCount: 3, placedCount: 0, unplacedCount: 3 }]);
+    renderPage([]);
+    expect(await screen.findByText(/1 libellé de salle non apparié/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Apparier les salles/ })).toBeInTheDocument();
+  });
+
+  it("E2 — tout apparié (inventaire vide) ⇒ aucun bandeau", async () => {
+    renderPage([]);
+    await screen.findByRole("button", { name: /Importer FBI/ });
+    expect(screen.queryByText(/non apparié/)).not.toBeInTheDocument();
   });
 });
 

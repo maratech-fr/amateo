@@ -1,66 +1,125 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Venue } from "./api";
+import { pickListboxOption } from "@/test/pickListboxOption";
+
+import type { Venue, VenueLabelInventoryRow } from "./api";
 import { VenueLabelsSection } from "./VenueLabelsSection";
 
-// On n'exerce QUE le composant : `useDetachVenueLabel` est le SEUL double (on prouve
-// le GESTE — la mutation appelée avec le bon {venueId, label} —, pas l'invalidation,
-// gardée dans queries.test.tsx). Pas de QueryClient ni de routeur : le composant est
-// une feuille pilotée par sa prop `venues`.
-const { mutate } = vi.hoisted(() => ({ mutate: vi.fn() }));
-vi.mock("./queries", () => ({ useDetachVenueLabel: () => ({ mutate, isPending: false }) }));
+// On exerce l'ÉCRAN d'appariement : l'inventaire (prop de la query) et les deux mutations
+// sont les seuls doubles — on prouve le GESTE (la mutation appelée avec le bon corps, drapeau
+// `reassign` compris), pas l'invalidation ni le toast (gardés dans queries.test.tsx). `VenueSelect`
+// reste RÉEL (primitive partagée testée ailleurs) : on pilote son Listbox via le helper maison.
+const h = vi.hoisted(() => ({
+  inventory: undefined as VenueLabelInventoryRow[] | undefined,
+  mutateAttach: vi.fn(),
+  mutateDetach: vi.fn(),
+}));
+vi.mock("./queries", () => ({
+  useVenueLabelInventory: () => ({ data: h.inventory }),
+  useAttachVenueLabel: () => ({ mutate: h.mutateAttach, isPending: false }),
+  useDetachVenueLabel: () => ({ mutate: h.mutateDetach, isPending: false }),
+}));
 
-const venue = (over: Partial<Venue> = {}): Venue => ({ id: "v1", name: "Gymnase Alpha", color: null, externalLabels: [], ...over });
+const venues: Venue[] = [
+  { id: "v-alpha", name: "Gymnase Alpha", color: null, externalLabels: [] },
+  { id: "v-beta", name: "Gymnase Beta", color: null, externalLabels: [] },
+];
 
-beforeEach(() => {
-  mutate.mockClear();
+const row = (over: Partial<VenueLabelInventoryRow> = {}): VenueLabelInventoryRow => ({
+  labelKey: "gymnase mateo",
+  displayLabel: "GYMNASE MATEO",
+  venueId: null,
+  suggestedVenueId: null,
+  homeCount: 3,
+  placedCount: 1,
+  unplacedCount: 2,
+  ...over,
 });
 
-describe("VenueLabelsSection (P4-196)", () => {
-  it("venues undefined (chargement) ⇒ rendu NUL (jamais un « aucun libellé » fabriqué)", () => {
+beforeEach(() => {
+  h.inventory = undefined;
+  h.mutateAttach.mockClear();
+  h.mutateDetach.mockClear();
+});
+
+describe("VenueLabelsSection — écran d'appariement (E2, P4-205)", () => {
+  it("inventaire undefined (chargement) ⇒ rendu NUL (jamais un « aucun libellé » fabriqué)", () => {
+    h.inventory = undefined;
+    const { container } = render(<VenueLabelsSection venues={venues} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("venues undefined (chargement) ⇒ rendu NUL", () => {
+    h.inventory = [row()];
     const { container } = render(<VenueLabelsSection venues={undefined} />);
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("un gymnase sans alias n'a pas de ligne ; seul celui à alias apparaît", () => {
-    render(<VenueLabelsSection venues={[venue({ id: "v1", name: "Sans Alias" }), venue({ id: "v2", name: "Gymnase Matéo", externalLabels: ["gymnase mateo"] })]} />);
-    expect(screen.queryByText("Sans Alias")).not.toBeInTheDocument();
-    expect(screen.getByText("Gymnase Matéo")).toBeInTheDocument();
-    // Le libellé est affiché VERBATIM (la forme normalisée stockée), jamais re-cassé.
-    expect(screen.getByText("gymnase mateo")).toBeInTheDocument();
+  it("inventaire vide ⇒ état vide « Aucun libellé de salle importé pour l'instant »", () => {
+    h.inventory = [];
+    render(<VenueLabelsSection venues={venues} />);
+    expect(screen.getByText(/Aucun libellé de salle importé pour l'instant/i)).toBeInTheDocument();
   });
 
-  it("aucun gymnase à alias ⇒ EmptyHint (pas de liste)", () => {
-    render(<VenueLabelsSection venues={[venue(), venue({ id: "v2" })]} />);
-    expect(screen.getByText(/Aucun gymnase ne porte de libellé FFBB/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Retirer le libellé/ })).not.toBeInTheDocument();
+  it("une ligne par libellé, avec ses compteurs (N domiciles · N placés · N non placés)", () => {
+    h.inventory = [row({ homeCount: 3, placedCount: 1, unplacedCount: 2 })];
+    render(<VenueLabelsSection venues={venues} />);
+    expect(screen.getByText("GYMNASE MATEO")).toBeInTheDocument();
+    expect(screen.getByText(/3 domiciles · 1 placé · 2 non placés/)).toBeInTheDocument();
   });
 
-  it("clic « Retirer » ouvre le dialogue de confirmation (« gardent ce gymnase »)", async () => {
+  it("suggestion pré-sélectionnée : le gymnase suggéré s'affiche + pastille « d'après les rencontres »", () => {
+    h.inventory = [row({ venueId: null, suggestedVenueId: "v-beta" })];
+    render(<VenueLabelsSection venues={venues} />);
+    // La valeur du Listbox (nom du gymnase) est sur le bouton déclencheur.
+    expect(screen.getByRole("button", { name: /Gymnase pour le libellé GYMNASE MATEO/ }).textContent).toContain("Gymnase Beta");
+    expect(screen.getByText("d'après les rencontres")).toBeInTheDocument();
+  });
+
+  it("un libellé confirmé n'affiche PAS la pastille de suggestion (chip = pas encore confirmé)", () => {
+    h.inventory = [row({ venueId: "v-alpha", suggestedVenueId: null })];
+    render(<VenueLabelsSection venues={venues} />);
+    expect(screen.queryByText("d'après les rencontres")).not.toBeInTheDocument();
+  });
+
+  it("« Confirmer » (pas d'alias, suggestion acceptée) ⇒ mutation SANS reassign, label = labelKey", async () => {
     const user = userEvent.setup();
-    render(<VenueLabelsSection venues={[venue({ id: "v2", name: "Gymnase Matéo", externalLabels: ["gymnase mateo"] })]} />);
-    await user.click(screen.getByRole("button", { name: "Retirer le libellé « gymnase mateo » du gymnase Gymnase Matéo" }));
-    expect(screen.getByText(/gardent ce gymnase/i)).toBeInTheDocument();
-    // Rien n'est muté tant que l'on n'a pas confirmé.
-    expect(mutate).not.toHaveBeenCalled();
+    h.inventory = [row({ venueId: null, suggestedVenueId: "v-beta" })];
+    render(<VenueLabelsSection venues={venues} />);
+    await user.click(screen.getByRole("button", { name: "Confirmer" }));
+    expect(h.mutateAttach).toHaveBeenCalledTimes(1);
+    expect(h.mutateAttach.mock.calls[0][0]).toEqual({ venueId: "v-beta", label: "gymnase mateo" });
   });
 
-  it("Confirmer appelle la mutation avec {venueId, label} EXACTS (l'alias normalisé, jamais re-cassé)", async () => {
+  it("changer de gymnase alors qu'un alias existe ⇒ ConfirmDialog nommant M/N puis reassign: true", async () => {
     const user = userEvent.setup();
-    render(<VenueLabelsSection venues={[venue({ id: "v2", name: "Gymnase Matéo", externalLabels: ["gymnase mateo"] })]} />);
-    await user.click(screen.getByRole("button", { name: "Retirer le libellé « gymnase mateo » du gymnase Gymnase Matéo" }));
+    h.inventory = [row({ venueId: "v-alpha", suggestedVenueId: null, unplacedCount: 2, placedCount: 1 })];
+    render(<VenueLabelsSection venues={venues} />);
+    // On bascule la sélection sur un AUTRE gymnase.
+    await pickListboxOption(user, "Gymnase pour le libellé GYMNASE MATEO", "Gymnase Beta");
+    await user.click(screen.getByRole("button", { name: "Réaffecter" }));
+    // Le dialogue annonce l'impact chiffré (M non placés basculent, N placés conservés).
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/2 domiciles non placés basculeront vers Gymnase Beta/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/1 placé conserve leur salle/)).toBeInTheDocument();
+    // Rien muté tant que non confirmé.
+    expect(h.mutateAttach).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "Réaffecter" }));
+    expect(h.mutateAttach).toHaveBeenCalledTimes(1);
+    expect(h.mutateAttach.mock.calls[0][0]).toEqual({ venueId: "v-beta", label: "gymnase mateo", reassign: true });
+  });
+
+  it("« Retirer » ouvre le dialogue inchangé (« gardent ce gymnase ») puis detach {venueId, labelKey}", async () => {
+    const user = userEvent.setup();
+    h.inventory = [row({ venueId: "v-alpha", suggestedVenueId: null })];
+    render(<VenueLabelsSection venues={venues} />);
     await user.click(screen.getByRole("button", { name: "Retirer" }));
-    expect(mutate).toHaveBeenCalledTimes(1);
-    expect(mutate).toHaveBeenCalledWith({ venueId: "v2", label: "gymnase mateo" });
-  });
-
-  it("Annuler ⇒ aucun appel de mutation", async () => {
-    const user = userEvent.setup();
-    render(<VenueLabelsSection venues={[venue({ id: "v2", name: "Gymnase Matéo", externalLabels: ["gymnase mateo"] })]} />);
-    await user.click(screen.getByRole("button", { name: "Retirer le libellé « gymnase mateo » du gymnase Gymnase Matéo" }));
-    await user.click(screen.getByRole("button", { name: "Annuler" }));
-    expect(mutate).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/gardent ce gymnase/i)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Retirer" }));
+    expect(h.mutateDetach).toHaveBeenCalledTimes(1);
+    expect(h.mutateDetach.mock.calls[0][0]).toEqual({ venueId: "v-alpha", label: "gymnase mateo" });
   });
 });

@@ -25,6 +25,7 @@ import { applyConsultToParams, applyFilterToParams, decodeConsultParams, decodeF
 import { buildWeekendGrid, listWeekends, matchMinutesByCategory, resolveActiveWeekend, weekendKeyOf, weekLabel } from "./lib/weekendGrid";
 import { MatchesFilterBar } from "./MatchesFilterBar";
 import { MatchRowsTable } from "./MatchRowsTable";
+import { HiddenHomesWeekNotice, UnpairedVenueLabelsBanner } from "./UnpairedVenueLabelsBanner";
 import { useCoaches, useCompetitions, useConflicts, useOpponentTravel, usePriorityTiers, useSportCategoryDurations, useTeamMatchHabits, useTeams, useVenues, useFixtures } from "./queries";
 import { useMatchesStore, type ConsultTemporality } from "./store";
 import { WeekendGrid } from "./WeekendGrid";
@@ -438,6 +439,8 @@ export function ConsultPage() {
       {/* ── Contenu selon la temporalité ──────────────────────────────────────── */}
       {isWeek ? (
         <>
+          {/* E2 — le signal partagé, au-dessus de la grille (warning, role=status). */}
+          <UnpairedVenueLabelsBanner />
           {0 === weekendFixtures.length ? (
             <EmptyState
               icon={Filter}
@@ -451,6 +454,8 @@ export function ConsultPage() {
               </div>
               {/* Lecture seule : ni crayon ni corbeille (onEdit/onDelete omis). */}
               <AwayList fixtures={weekendFixtures} teams={teamsMap} habits={habits} travel={opponentTravel.data ?? []} coachRoles={coachTeamRoles} />
+              {/* E2 — l'écho discret sous la grille : jamais un faux calme. */}
+              <HiddenHomesWeekNotice count={weekendFixtures.filter((f) => "HOME" === f.homeAway && null === f.venueId).length} />
             </div>
           )}
           {/* Le radar (Semaine seule), nourri des conflits filtrés. */}

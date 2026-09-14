@@ -1,4 +1,4 @@
-import { Inbox } from "lucide-react";
+import { Inbox, MapPin } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -11,7 +11,8 @@ import { toast } from "@/shared/stores/toastStore";
 
 import type { FbiMapping, ImportAnalysisDivision, ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team } from "./api";
 import { classifyDivision, type DivisionFamily, FAMILY_LABEL, FAMILY_ORDER } from "./lib/divisionFamily";
-import { useAnalyzeFbiFixtures, useImportFbiFixtures } from "./queries";
+import { useAnalyzeFbiFixtures, useImportFbiFixtures, useVenueLabelInventory } from "./queries";
+import { PAIR_VENUES_LABEL, PAIR_VENUES_PATH } from "./UnpairedVenueLabelsBanner";
 
 interface ImportFbiDialogProps {
   teams: Team[];
@@ -34,7 +35,12 @@ const divisionKey = (d: { name: string; fbiTeamLabel: string | null }): string =
 export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps) {
   const analyzeFbi = useAnalyzeFbiFixtures();
   const importFbi = useImportFbiFixtures();
+  const labelInventory = useVenueLabelInventory();
   const navigate = useNavigate();
+  // E2 — combien de libellés de salle restent sans gymnase (renvoi post-import).
+  // `?? []` ⇒ 0 tant que l'inventaire n'est pas connu : l'entrée reste muette avant
+  // de savoir (jamais un renvoi fabriqué), sens sûr.
+  const unpairedLabels = (labelInventory.data ?? []).filter((row) => null === row.venueId).length;
   const [file, setFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<ImportFbiAnalysis | null>(null);
   const [choices, setChoices] = useState<Record<string, string>>({});
@@ -346,6 +352,30 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
                 >
                   <Inbox className="size-4" />
                   Ouvrir la file
+                </Button>
+              </div>
+            ) : null}
+
+            {/* E2 (décision 4) — un import fait naître des libellés de salle : ceux
+                sans gymnase laissent leurs domiciles hors de la grille. On renvoie vers
+                l'écran d'appariement en FERMANT d'abord la modale (pas de modale sur
+                modale, patron « Ouvrir la file »). L'inventaire, invalidé par l'import,
+                se recalcule ; muet tant qu'il n'est pas connu (jamais avant de savoir). */}
+            {unpairedLabels > 0 ? (
+              <div className="mt-1 flex flex-col items-start gap-1 border-t border-border pt-2">
+                <p className="text-xs text-muted-foreground">
+                  {unpairedLabels} salle{unpairedLabels > 1 ? "s" : ""} à apparier — des domiciles n'apparaissent pas sur la grille.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    onClose();
+                    void navigate(PAIR_VENUES_PATH);
+                  }}
+                >
+                  <MapPin className="size-4" />
+                  {PAIR_VENUES_LABEL}
                 </Button>
               </div>
             ) : null}

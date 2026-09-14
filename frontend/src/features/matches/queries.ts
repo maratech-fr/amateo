@@ -82,6 +82,22 @@ export function useVenues() {
   return useQuery({ queryKey: ["venues"], queryFn: matchesApi.getVenues, staleTime: 300_000 });
 }
 
+/** E2 — la clé de l'inventaire agrégé des libellés de salle FBI/FFBB. Séparée de
+ * `["venues"]` : c'est une AGRÉGATION (compteurs + suggestion), pas la liste des
+ * gymnases ; l'attache/le retrait/l'import l'invalident explicitement. */
+export const VENUE_LABEL_INVENTORY_KEY = ["venue-label-inventory"] as const;
+
+/**
+ * E2 — l'inventaire des libellés de salle FBI/FFBB de la saison (`GET
+ * /api/venues/fbi-labels`), nourrissant l'écran d'appariement, le bandeau des
+ * libellés non appariés et le résumé de section. Frais court (30 s) : chaque
+ * import/attache le déplace. `undefined` (chargement/échec) ⇒ les consommateurs
+ * restent MUETS (jamais un « 0 non apparié » fabriqué — `readState`).
+ */
+export function useVenueLabelInventory() {
+  return useQuery({ queryKey: VENUE_LABEL_INVENTORY_KEY, queryFn: matchesApi.getVenueLabelInventory, staleTime: 30_000 });
+}
+
 export function useCategories() {
   return useQuery({ queryKey: ["categories"], queryFn: matchesApi.getCategories, staleTime: 300_000 });
 }
@@ -369,6 +385,7 @@ export function useAttachVenueLabel() {
     onSuccess: () => {
       invalidateFixtures(queryClient);
       void queryClient.invalidateQueries({ queryKey: ["venues"] });
+      void queryClient.invalidateQueries({ queryKey: VENUE_LABEL_INVENTORY_KEY });
     },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
@@ -392,6 +409,7 @@ export function useDetachVenueLabel() {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ["venues"] });
       void queryClient.invalidateQueries({ queryKey: ["fixtures"] });
+      void queryClient.invalidateQueries({ queryKey: VENUE_LABEL_INVENTORY_KEY });
     },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
@@ -608,6 +626,9 @@ export function useImportFbiFixtures() {
       void queryClient.invalidateQueries({ queryKey: ["competitions"] });
       // RMM-4 — every deposit is dated: the freshness feed just moved.
       void queryClient.invalidateQueries({ queryKey: ["fbi-ingestions", "latest"] });
+      // E2 — un import fait naître/déplacer des libellés de salle : l'inventaire
+      // (bandeau des non appariés, écran d'appariement) doit se recalculer.
+      void queryClient.invalidateQueries({ queryKey: VENUE_LABEL_INVENTORY_KEY });
     },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });

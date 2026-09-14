@@ -17,7 +17,7 @@ import { MatchDurationsEditor } from "./MatchDurationsEditor";
 import { MatchSlotRotationsEditor } from "./MatchSlotRotationsEditor";
 import { OpponentTravelCard } from "./OpponentTravelCard";
 import { MatchWindowsEditor } from "./MatchWindowsEditor";
-import { useCompetitions, useFixtures, useMatchSlotRotations, useOpponentTravel, usePriorityTiers, useSportCategoryDurations, useTeamMatchHabits, useTeams, useVenues } from "./queries";
+import { useCompetitions, useFixtures, useMatchSlotRotations, useOpponentTravel, usePriorityTiers, useSportCategoryDurations, useTeamMatchHabits, useTeams, useVenueLabelInventory, useVenues } from "./queries";
 import { TypicalWeekendGrid } from "./TypicalWeekendGrid";
 
 function byId<T extends { id: string }>(rows: T[] | undefined): Map<string, T> {
@@ -72,6 +72,7 @@ export function ConfigurationPage() {
   const habitsQuery = useTeamMatchHabits();
   const rotationsQuery = useMatchSlotRotations();
   const categoryDurations = useSportCategoryDurations();
+  const labelInventory = useVenueLabelInventory();
   // Même clé de query que `OpponentTravelCard` (zéro requête nouvelle) — sert le
   // résumé d'en-tête ; la carte reste intacte à l'intérieur de la section.
   const opponentTravel = useOpponentTravel();
@@ -149,7 +150,7 @@ export function ConfigurationPage() {
       </AccordionSection>
 
       {/* 3. Les libellés FFBB des gymnases — voir/retirer les alias de salle (P4-196). */}
-      <AccordionSection {...sectionProps("libelles")} title={sectionTitle("Libellés FFBB des gymnases", labelsSummary(venues.data))}>
+      <AccordionSection {...sectionProps("libelles")} title={sectionTitle("Libellés FFBB des gymnases", labelsSummary(labelInventory.data))}>
         <VenueLabelsSection venues={venues.data} />
       </AccordionSection>
 
