@@ -53,14 +53,14 @@ interface VenueSelectProps {
  * intact, état en sous-ligne — au lieu d'être concaténé dans le libellé (`nom — état`).
  */
 export function VenueSelect({ venues, leadingOptions, placeholder, className, wrapperClassName, ...listbox }: VenueSelectProps) {
-  const options: ListboxOption[] = [
-    ...(leadingOptions ?? []).map((o) => ({ value: o.value, label: o.label, disabled: o.disabled })),
-    ...venues.map((v) => ({ value: v.id, label: v.name, swatch: v.color, sub: v.sub, disabled: v.disabled })),
-  ];
+  const options: ListboxOption[] = venues.map((v) => ({ value: v.id, label: v.name, swatch: v.color, sub: v.sub, disabled: v.disabled }));
+  // Head options ("Tous les gymnases"…) go through the primitive's `leadingOptions` so they stay
+  // visible under a search filter and never count toward its threshold (P4-198).
+  const leading: ListboxOption[] = (leadingOptions ?? []).map((o) => ({ value: o.value, label: o.label, disabled: o.disabled }));
 
   return (
     <div className={wrapperClassName}>
-      <Listbox {...listbox} options={options} placeholder={placeholder} className={className} />
+      <Listbox {...listbox} options={options} leadingOptions={leading} placeholder={placeholder} className={className} searchLabel="Rechercher un gymnase" />
     </div>
   );
 }

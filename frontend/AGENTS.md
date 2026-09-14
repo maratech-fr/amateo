@@ -358,6 +358,13 @@ product rules — reuse them instead of rolling your own:
   colour/count/sub/disabled-with-reason. Test helper: `src/test/pickListboxOption.ts` (open +
   choose by label). Two consumers, both migrated (P4-164, PR-1 + PR-2): `team-select` and
   `venue-select` — lot **closed**, no `<select>` gymnase/team left outside these two.
+  **In-panel search at ≥ 8 real options** (P4-198, 2026-09-14): the panel becomes a
+  `[search input] + [div role="listbox"]` wrapper (an `<input>` is not a valid `role="listbox"`
+  child), trigger stays a plain button — an editable combobox was deliberately rejected (no a11y
+  gain, breaks trigger-value readers). `leadingOptions` prop (head rows, always visible, excluded
+  from the threshold and the filter) and `searchLabel` prop (the field's accessible name, default
+  "Rechercher") live on the primitive; below the threshold the panel is byte-identical to
+  pre-P4-198. `ResourceFilter` keeps its own separate search (not converged).
 - **`team-select`** — every team picker in the app (constraints, coaches, matches, FBI import)
   goes through it, now built on `Listbox` (P4-164 PR-1): grouped by priority tier, same order as
   the Teams step, tier **colour** as the swatch — a team has no colour of its own (founder

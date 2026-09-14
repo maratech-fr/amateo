@@ -10,8 +10,12 @@ soit leur gymnase, épargne PLACED/SUBMITTED/VALIDATED (`reassignHomeFixtures`) 
 POST sans drapeau restent byte-identiques à avant E1. `VenueLabelsSection.tsx` (E2) consomme
 désormais cet inventaire — table, `VenueSelect`, Confirmer/Réaffecter/Retirer — et
 `UnpairedVenueLabelsBanner.tsx` (nouveau) porte le signal partagé, vérifiés contre le code de
-cette PR. Reste du fichier (§ « Détection », § reconciliation coupes P4-194/195, § Appariement
-FFBB) non re-sondé cette passe — voir `git log -p --follow` pour sa dernière vérification.
+cette PR. § « Onglets par famille — dépôt FBI » (paragraphe « Dette soldée P4-198 ») confrontée au
+diff `frontend/src/shared/components/ui/listbox.tsx` : seuil `SEARCH_THRESHOLD = 8` sur les
+options RÉELLES (placeholder/`leadingOptions` exclus), prop `leadingOptions` posée par
+`venue-select.tsx`, `searchLabel` posé par `team-select.tsx`/`venue-select.tsx`. Reste du fichier
+(§ « Détection », § reconciliation coupes P4-194/195, § Appariement FFBB) non re-sondé cette
+passe — voir `git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -377,10 +381,13 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   `ImportFbiDialog.test.tsx` (onglets + compteur, bascule d'onglet, confirmation nommée, re-dépôt,
   défilement unique, snapshot mémoire, échec de lecture). Pas d'e2e — le dialogue est rare et tout
   s'affirme en jsdom.
-- **Dette restée due (P4-198)** : `TeamSelect` (`Listbox`) n'a pas de champ de recherche pour
-  choisir l'équipe d'une division — sur 50 divisions, le geste répétitif s'y prêterait ; `Resource
-  Filter` en a une (`ResourceFilter.tsx:118-132`). Primitive à ajouter au partagé, profiterait
-  aussi à `VenueSelect`. Voir `roadmap.md`.
+- **Dette soldée (P4-198, 2026-09-14)** : choisir l'équipe d'une division passait par `TeamSelect`
+  (`Listbox`) sans champ de recherche — sur 50 divisions, le geste répétitif s'y prêtait mal.
+  `Listbox` gagne un champ de recherche dans le panneau au-delà de 8 options réelles (le
+  placeholder et les `leadingOptions` ne comptent pas), profitant à `TeamSelect` **et**
+  `VenueSelect` sans dupliquer le geste — détail `frontend/docs/frontend-components.md`
+  § primitives et `frontend/AGENTS.md` puce `listbox`. `ResourceFilter.tsx:118-132` garde sa
+  propre recherche, non convergée (décision §2 de l'état des lieux).
 
 ## Couche capacité (P1-4 PR B, 2026-08-03)
 

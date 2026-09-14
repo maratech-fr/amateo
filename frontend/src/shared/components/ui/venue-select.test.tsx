@@ -1,4 +1,4 @@
-import { render, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -52,6 +52,14 @@ describe("VenueSelect (Listbox — pastille couleur, P4-164 PR-2)", () => {
     );
     const options = within(await openListbox(user, "— gymnase —")).getAllByRole("option");
     expect(options.map((o) => o.textContent)).toEqual(["— gymnase —", "Tous", "ADN", "JDR"]);
+  });
+
+  it("affiche un champ « Rechercher un gymnase » au-dessus du seuil (P4-198)", async () => {
+    const user = userEvent.setup();
+    const many = Array.from({ length: 8 }, (_, i) => ({ id: `v${i}`, name: `Gymnase ${i + 1}`, color: null }));
+    render(<VenueSelect aria-label="Gymnase" venues={many} value="" onValueChange={vi.fn()} />);
+    await openListbox(user, "Gymnase");
+    expect(screen.getByRole("textbox", { name: "Rechercher un gymnase" })).toBeInTheDocument();
   });
 
   it("`sub` = sous-ligne (nom intact) et `disabled` rend l'option inerte", async () => {

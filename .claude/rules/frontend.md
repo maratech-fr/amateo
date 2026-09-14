@@ -42,7 +42,7 @@ paths:
   **primitives** `shared/components/ui/*` (Button, Modal, Select, Input, Card, StepRail, Menu APG,
   **Listbox** — sélecteur riche à choix unique (couleur/icône, compte, sous-ligne, option
   désactivée motivée), patron APG, P4-164 PR-1, maison des sélecteurs qui dépassent le `<select>`
-  natif —, **StatusPill** — la pastille partagée, icône + texte, variantes warning/accent/neutral,
+  natif, recherche intégrée au panneau au-delà de 8 options réelles (P4-198) —, **StatusPill** — la pastille partagée, icône + texte, variantes warning/accent/neutral,
   P4-173 puis P4-177 —, VenueSwatch…) ; `SourceBadge` (AUTO/MANUEL) est désormais lui aussi une maison
   unique — `features/matches/SourceBadge.tsx` (P4-177, adossée à `StatusPill`), consommée par
   `TravelMatrixModal.tsx` et `OpponentTravelCard.tsx` (les deux copies locales ont disparu) ;
