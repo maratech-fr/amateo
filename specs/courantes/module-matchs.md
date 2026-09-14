@@ -1,18 +1,14 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-14 (P4-203 « le solveur de placement adopte la règle D1 »,
-`documentation-update`). § « Empreinte-temps » et § « Solveur de placement » confrontées au diff
-`engine/app/solver/match_placement.py` : la NoOverlap salle et la fenêtre d'accès HARD portent
-désormais sur `[coup d'envoi, coup d'envoi + matchMinutes]` seul (`DEFAULT_MATCH_MIN=105`,
-`DEFAULT_WARMUP_MIN=30`, ex-`BEFORE_KICKOFF_MIN`/`AFTER_KICKOFF_MIN`/`FOOTPRINT_MIN` supprimées) ;
-l'échauffement ne reste QUE sur la fenêtre PERSONNE (coach, `NOT_SIMULTANEOUS`, entraînements
-projetés) ; `BACK_TO_BACK` = kickoff suivant exactement à la fin du match précédent. Durées portées
-par équipe (`teams[].matchMinutes`/`warmupMinutes`, Pydantic 105/30 par défaut) — résolues côté
-backend par `MatchDurationResolver` (`MatchPlacementPayloadBuilder.php`), contrat backend⇄engine
-**2.21** (`engine/CONTRACT_VERSION`, `MatchPlacementPayloadBuilder::CONTRACT_VERSION`,
-`ScheduleConstraintBuilder::CONTRACT_VERSION`, `MoveSlotService::CONTRACT_VERSION`, tous alignés).
-Golden re-épinglé (`test_match_placement_golden.py`). Reste du fichier (§ « Gymnase depuis le
-libellé », § « Détection », § reconciliation coupes P4-194/195, § Appariement FFBB) non re-sondé
+Last verified @ 2026-09-15 (PR A « onglet Conflits », `documentation-update`). Nouveau §
+« Onglet Conflits » ajouté et confronté au code : `ConflictsPage.tsx`, `lib/conflictPivot.ts`
+(`pivotConflicts`, 4 axes + 3 sentinelles, un conflit à 2 équipes compte sous chacune),
+`ConflictLine.tsx` (`ConflictLine`/`ConflictSeverityGroups`, maison unique consommée par
+`ConflictsPage` ET `ConflictRadar`), `MatchesLayout.tsx` (5ᵉ onglet « Conflits », sans badge),
+`app/routes.tsx` (route lazy `conflits`), `store.ts` (`conflictsPivot`/`conflictsFamilies`,
+séparés de `consultFamilies`), `lib/urlState.ts` (`decodeConflictsParams`/
+`applyConflictsToParams`). Reste du fichier (§ « Gymnase depuis le libellé », § « Détection »,
+§ reconciliation coupes P4-194/195, § Appariement FFBB, § « Solveur de placement ») non re-sondé
 cette passe — voir `git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
@@ -1335,7 +1331,8 @@ part : une barre de filtres sur la vue Semaine, même patron que `/planning`.
 Décision fondateur (2026-09-08, après la mesure sur ses rencontres réelles) : **importer** (faire entrer les rencontres,
 FBI xlsx ou API FFBB), **placer** (la boucle Semaine) et **consulter** (« voir les matchs placés
 et les bugs, c'est une fonctionnalité entière ») sont trois espaces. Nav `MatchesLayout` : **Semaine · Consulter ·
-Importer · Configuration** ; l'onglet Importer a livré sa page en PR-3b, détail § « Espace Importer » plus bas.
+Importer · Configuration · Conflits** ; l'onglet Importer a livré sa page en PR-3b, détail § « Espace Importer »
+plus bas, l'onglet Conflits en PR A, détail § « Onglet Conflits » ci-dessous.
 
 `/matchs/consulter` (`ConsultPage.tsx`) — **lecture seule** : aucune mutation, ni rail, ni panneau de placement.
 
@@ -1384,6 +1381,73 @@ Importer · Configuration** ; l'onglet Importer a livré sa page en PR-3b, déta
 - Livré depuis, hors PR-2a : l'onglet Importer (PR-3a/PR-3b, § « Espace Importer » plus bas — file de
   traitement par équipe, compteurs « N à valider »/« N écart(s) »). L'atterrissage de Placer sur un week-end
   100 % déplacements est corrigé, § « Refonte UX — RMM-1 » ci-dessous (« Le rail à 5 étapes »).
+
+## Onglet « Conflits » — tous les conflits de la saison, pivotés (PR A, 2026-09-15)
+
+Décision fondateur (2026-09-15) : un **4ᵉ espace en lecture seule**, à côté de Consulter — Consulter
+répond « qu'est-ce qui se passe cette semaine/ce mois/cette phase ? », Conflits répond « qu'est-ce qui
+cloche sur TOUTE la saison, regroupé par qui ça touche ? ». Nav `MatchesLayout` : Semaine · Consulter ·
+Importer · Configuration · **Conflits** (`/matchs/conflits`, `ConflictsPage.tsx`), dernier onglet,
+**sans badge** (les statuts persistés qui justifieraient un compte « à traiter » sont un successeur,
+§ roadmap plus bas).
+
+- **Même flux que Consulter, sans son filtre** : `useConflicts()` (le même `GET /api/fixtures/conflicts`
+  que Consulter/le radar) — **mais PAS de `MatchesFilterBar` (`filterMode`/`filterIds`)** ici, décision
+  fondateur fermée. Le store `filterMode/filterIds` est partagé avec la boucle Semaine ; l'appliquer à
+  Conflits fausserait le compte SAISON que l'onglet promet — ex. un gestionnaire arrivé sur Conflits
+  avec « SM2 » encore coché dans le filtre partagé verrait « Mara · 1 » au lieu de « Mara · 3 » (les
+  2 autres conflits de Mara touchent d'autres équipes). L'onglet a ses PROPRES filtres, dans le store
+  mais SÉPARÉS de ceux de Consulter : `conflictsPivot`/`conflictsFamilies` (`store.ts`), distincts de
+  `filterMode/filterIds` (Semaine/Consulter) et de `consultFamilies` (Consulter) — décocher une famille
+  dans Conflits ne touche pas les chips de Consulter, et réciproquement.
+- **Pivot** (`lib/conflictPivot.ts` `pivotConflicts`, dérivation PURE — aucun conflit n'est recalculé ni
+  requalifié, on RÉPARTIT en seaux des lignes déjà servies par le serveur, 🔴 `.claude/rules/frontend.md`) :
+  **coach** (défaut), **équipe**, **gymnase**, **journée** (= week-end samedi+dimanche, libellé
+  `weekendShortLabel` — « 7-8 oct. », `lib/weekendGrid.ts`). Un conflit à 2 équipes (type `MATCH_MATCH`/
+  `VENUE_OVERLAP`/`TEAM_LINK_OVERLAP`) apparaît sous CHACUNE de ses deux équipes en pivot équipe — la
+  somme des entrées dépasse alors le total de conflits, **assumé** (décision fondateur : chaque équipe
+  doit voir SES conflits, la double-apparition en est le prix).
+  Chaque axe porte une **sentinelle** pour les conflits sans ressource résolue sur cet axe, **toujours
+  en dernier** dans le tri : « Autres conflits » (pivot coach, `conflict.coachId` absent — ex. collision
+  de gymnase entre deux matchs sans coach identifié), « Extérieur » (pivot gymnase, aucun `venueId`
+  résolu — match à l'extérieur), « Sans date » (pivot journée, `dateOf(conflict)` retourne `null`).
+  L'axe équipe n'a pas de sentinelle (un conflit sans équipe résolue n'existe pas en pratique). Une
+  entrée à **0 conflit n'existe jamais** — le pivot ne crée que les seaux qu'il rencontre.
+- **Tri des entrées** : ressources/week-ends d'abord (compte décroissant, départage `localeCompare("fr")`
+  sur le libellé résolu ; le pivot journée trie chronologiquement sur la clé ISO), sentinelles toujours
+  après, dans le même ordre entre elles.
+- **Chips familles** (mêmes 10 `ConflictType`, `lib/conflictLabels.ts`) : **toutes cochées par défaut**,
+  compteur **SAISON** (avant filtre de famille, avant filtre de pivot) — décocher une chip ne change pas
+  son compteur, seulement les entrées affichées. Seules les familles PRÉSENTES sur la saison (compteur
+  > 0) ont une chip.
+- **Accordéon par entrée** (`AccordionSection`, une seule ouverte à la fois, `?ouvert=<clé>`) : le
+  contenu de chaque entrée est `ConflictSeverityGroups` (voir plus bas) — même regroupement par gravité
+  que le radar, **gravité 7 repliée derrière un compte** (une seule maison, `ConflictLine.tsx`). Changer
+  de pivot ou de familles **replie tout** (un `?ouvert` dont la clé n'existe plus dans le nouveau pivot
+  est nettoyé de l'URL). Une entrée unique s'ouvre d'office.
+- **Bouton « Voir la semaine »** (par conflit daté, slot `trailing` de `ConflictLine`) : pose la semaine
+  du conflit dans le store (`setSelectedWeekend`) et navigue vers `/matchs` (Placer) — absent sur un
+  conflit sans date résolue (`dateOf(conflict) === null`).
+- **`aria-live="polite"`** annonce le regroupement (« Regroupé par {axe} — N entrée(s), M conflit(s) »)
+  **après une interaction seulement** (pivot ou famille changés) — jamais au premier rendu ni à un
+  refetch d'arrière-plan.
+- **Deux états vides** : saison sans aucun conflit → `EmptyState` (« Aucun conflit sur la saison ») ;
+  conflits présents mais toutes les familles décochées → `EmptyHint` sous les chips (« Aucun conflit
+  pour les familles cochées »), chips restant visibles pour recocher.
+- **`ConflictLine`/`ConflictSeverityGroups`** (`ConflictLine.tsx`) — extraits du `ConflictRadar`
+  (PRÉSENTATION seule, aucune formule de gravité redérivée : `groupBySeverity`/`toneOf`, exportés de
+  `lib/diagnostic.ts`, restent la seule maison) : le radar les CONSOMME sans le slot `trailing`, rendu
+  inchangé ; l'onglet Conflits les consomme avec `trailing` (le bouton « Voir la semaine »). Une seule
+  maison de la ligne de conflit pour les deux écrans.
+- **URL** : `pivot=coach|equipe|gymnase|journee` (absent = `coach`, défaut), `conflits=<familles>`
+  (absent = toutes) — `decodeConflictsParams`/`applyConflictsToParams` (`lib/urlState.ts`), même nom de
+  paramètre `conflits=` que Consulter mais sur une route distincte (pas de collision).
+- **Passe de design `ui-ux-pro-max`** faite le 2026-09-15 (11 décisions) — alternatives écartées :
+  liste plate (pas de regroupement), tableau, `<select>` pour le pivot, badge de nav sur ce livrable
+  (reporté au successeur qui porte un statut), `StatusPill` par entrée, ventilation par gravité en plus
+  du pivot, bouton « tout déplier ».
+- **Suite prévue, pas encore livrée** : un statut persisté par conflit (dérogation demandée / réglé en
+  interne / sans solution) — voir `specs/evolution/roadmap.md`.
 
 ## Refonte UX — RMM-1 (P2-26, 4 PR entre 2026-08-23 et 2026-08-24)
 

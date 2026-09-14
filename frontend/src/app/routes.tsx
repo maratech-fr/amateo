@@ -168,6 +168,13 @@ export const routes: RouteObject[] = [
                 lazy: async () => ({ Component: (await import("@/features/matches/ConfigurationPage")).ConfigurationPage }),
               },
               {
+                // PR A — l'espace « Conflits » : tous les conflits de la saison, pivotés
+                // (coach/équipe/gymnase/journée), en lecture seule. Route lazy sœur,
+                // garde socle héritée du layout.
+                path: "conflits",
+                lazy: async () => ({ Component: (await import("@/features/matches/ConflictsPage")).ConflictsPage }),
+              },
+              {
                 // RMM-4 — la vue dédiée de réconciliation FBI (garde socle héritée du
                 // layout). Elle vit du payload d'analyse porté en mémoire (store) :
                 // un accès direct sans payload renvoie proprement vers la boucle.

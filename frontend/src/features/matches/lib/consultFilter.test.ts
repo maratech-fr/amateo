@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Competition, Conflict, ConflictType, Fixture } from "../api";
-import { applyFamilyFilter, applyKindFilter, competitionKind, countByFamily, familyOf, KINDS, scopeConflictsToWeek } from "./consultFilter";
+import { applyFamilyFilter, applyKindFilter, competitionKind, countByFamily, dateOf, familyOf, KINDS, scopeConflictsToWeek } from "./consultFilter";
 
 function fixture(over: Partial<Fixture> = {}): Fixture {
   return {
@@ -176,5 +176,20 @@ describe("applyFamilyFilter", () => {
   it("filtre par famille", () => {
     const out = applyFamilyFilter(conflicts, ["MATCH_MATCH"]);
     expect(out.map((c) => c.type)).toEqual(["MATCH_MATCH"]);
+  });
+});
+
+describe("dateOf (exporté pour le pivot par journée)", () => {
+  it("prend `start` tronqué à la date quand il est présent", () => {
+    expect(dateOf({ type: "VENUE_OVERLAP", severity: 1, start: "2026-10-03T20:45:00" })).toBe("2026-10-03");
+  });
+
+  it("à défaut, la matchDate d'un côté référencé (left, puis right, puis fixture)", () => {
+    expect(dateOf({ type: "MATCH_MATCH", severity: 3, left: { fixtureId: "f", teamId: "t", homeAway: "HOME", matchDate: "2026-11-07", kickoffTime: null, windowStart: "", windowEnd: "" } })).toBe("2026-11-07");
+    expect(dateOf({ type: "VENUE_UNAVAILABLE", severity: 1, fixture: { fixtureId: "f", teamId: "t", homeAway: "HOME", matchDate: "2026-12-05", kickoffTime: null, status: "PLACED" } })).toBe("2026-12-05");
+  });
+
+  it("sans date ni côté ⇒ null (conflit « sans date »)", () => {
+    expect(dateOf({ type: "COMPETITION_INCOMPLETE", severity: 6, teamId: "t" })).toBeNull();
   });
 });

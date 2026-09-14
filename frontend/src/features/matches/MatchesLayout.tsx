@@ -77,6 +77,11 @@ export function MatchesLayout() {
         <NavLink to="/matchs/configuration" className={linkClass}>
           Configuration
         </NavLink>
+        {/* PR A — l'espace « Conflits » : tous les conflits de la saison, pivotés
+            (coach/équipe/gymnase/journée), en lecture seule. Sans badge. */}
+        <NavLink to="/matchs/conflits" className={linkClass}>
+          Conflits
+        </NavLink>
       </nav>
       <Outlet />
     </div>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyConsultToParams, applyFilterToParams, applySectionToParams, decodeConsultParams, decodeFilterParams, decodeSectionParam } from "./urlState";
+import { applyConflictsToParams, applyConsultToParams, applyFilterToParams, applySectionToParams, decodeConflictsParams, decodeConsultParams, decodeFilterParams, decodeSectionParam } from "./urlState";
 
 describe("decodeFilterParams", () => {
   it("params absents ⇒ equipe / aucune sélection", () => {
@@ -164,5 +164,40 @@ describe("applySectionToParams (P4-185)", () => {
     expect(decodeSectionParam(applySectionToParams(new URLSearchParams(""), "gabarit"))).toBe("gabarit");
     expect(decodeSectionParam(applySectionToParams(new URLSearchParams(""), null))).toBeNull();
     expect(decodeSectionParam(applySectionToParams(new URLSearchParams(""), "echeances"))).toBe("echeances");
+  });
+});
+
+describe("decodeConflictsParams (onglet Conflits, PR A)", () => {
+  it("params absents ⇒ pivot coach (défaut), familles null (= tout)", () => {
+    expect(decodeConflictsParams(new URLSearchParams(""))).toEqual({ pivot: "coach", families: null });
+  });
+
+  it("lit pivot + conflits (familles), pivot inconnu ⇒ repli coach", () => {
+    expect(decodeConflictsParams(new URLSearchParams("pivot=gymnase")).pivot).toBe("gymnase");
+    expect(decodeConflictsParams(new URLSearchParams("pivot=xxx")).pivot).toBe("coach");
+    expect(decodeConflictsParams(new URLSearchParams("conflits=MATCH_MATCH,VENUE_OVERLAP")).families).toEqual(["MATCH_MATCH", "VENUE_OVERLAP"]);
+  });
+});
+
+describe("applyConflictsToParams (onglet Conflits, PR A)", () => {
+  it("pivot coach (défaut) + familles null ⇒ ni pivot ni conflits", () => {
+    expect(applyConflictsToParams(new URLSearchParams(""), { pivot: "coach", families: null }).toString()).toBe("");
+  });
+
+  it("pivot ≠ coach ⇒ écrit ; familles partielles ⇒ conflits écrit", () => {
+    const out = applyConflictsToParams(new URLSearchParams(""), { pivot: "journee", families: ["MATCH_MATCH"] });
+    expect(out.get("pivot")).toBe("journee");
+    expect(out.get("conflits")).toBe("MATCH_MATCH");
+  });
+
+  it("préserve les params sans rapport (ex. ?ouvert)", () => {
+    const out = applyConflictsToParams(new URLSearchParams("ouvert=coach-1"), { pivot: "equipe", families: null });
+    expect(out.get("ouvert")).toBe("coach-1");
+    expect(out.get("pivot")).toBe("equipe");
+    expect(out.has("conflits")).toBe(false);
+  });
+
+  it("aller-retour cohérent", () => {
+    expect(decodeConflictsParams(applyConflictsToParams(new URLSearchParams(""), { pivot: "gymnase", families: null })).pivot).toBe("gymnase");
   });
 });

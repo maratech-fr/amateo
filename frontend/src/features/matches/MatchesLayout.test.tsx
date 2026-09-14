@@ -46,6 +46,7 @@ function renderAt(path: string) {
             <Route path="consulter" element={<div>CONSULTER</div>} />
             <Route path="importer" element={<div>IMPORTER</div>} />
             <Route path="configuration" element={<div>CONFIG</div>} />
+            <Route path="conflits" element={<div>CONFLITS</div>} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -62,14 +63,22 @@ describe("MatchesLayout (RMM-1 PR2 — deux espaces)", () => {
     expect(screen.getByRole("link", { name: "Configuration" })).toBeInTheDocument();
   });
 
-  it("porte les QUATRE onglets, dans l'ordre Semaine · Consulter · Importer · Configuration (PR-3b)", () => {
+  it("porte les CINQ onglets, dans l'ordre Semaine · Consulter · Importer · Configuration · Conflits (PR A)", () => {
     meState.chosen = "s1";
     renderAt("/matchs");
     const nav = screen.getByRole("navigation", { name: "Espaces matchs" });
     const labels = within(nav)
       .getAllByRole("link")
       .map((l) => l.textContent);
-    expect(labels).toEqual(["Semaine", "Consulter", "Importer", "Configuration"]);
+    expect(labels).toEqual(["Semaine", "Consulter", "Importer", "Configuration", "Conflits"]);
+  });
+
+  it("porte l'onglet Conflits et rend l'espace Conflits (PR A)", async () => {
+    meState.chosen = "s1";
+    const user = userEvent.setup();
+    renderAt("/matchs");
+    await user.click(screen.getByRole("link", { name: "Conflits" }));
+    expect(screen.getByText("CONFLITS")).toBeInTheDocument();
   });
 
   it("porte l'onglet Consulter et rend l'espace Consulter (PR-2a)", async () => {

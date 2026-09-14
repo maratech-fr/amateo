@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Fixture, Team, Venue } from "../api";
-import { buildWeekendGrid, isPlacedOnGrid, listWeekends, resolveActiveWeekend, weekendKeyOf, weekLabel } from "./weekendGrid";
+import { buildWeekendGrid, isPlacedOnGrid, listWeekends, resolveActiveWeekend, weekendKeyOf, weekendShortLabel, weekLabel } from "./weekendGrid";
 
 const fixture = (over: Partial<Fixture> = {}): Fixture => ({
   id: "fx-1",
@@ -27,6 +27,18 @@ describe("weekendKeyOf", () => {
   it("buckets Saturday and its Sunday into the same weekend (the Saturday)", () => {
     expect(weekendKeyOf("2026-10-03")).toBe("2026-10-03"); // Saturday
     expect(weekendKeyOf("2026-10-04")).toBe("2026-10-03"); // Sunday → same weekend
+  });
+});
+
+describe("weekendShortLabel (étiquette courte du week-end, onglet Conflits)", () => {
+  it("samedi + dimanche du même mois : « 7-8 oct. »", () => {
+    // 2026-10-03 est un samedi ; son dimanche est le 4 → même mois.
+    expect(weekendShortLabel("2026-10-03")).toBe("3-4 oct.");
+  });
+
+  it("à cheval sur deux mois : « 31 oct.-1 nov. »", () => {
+    // 2026-10-31 est un samedi ; son dimanche est le 1er novembre.
+    expect(weekendShortLabel("2026-10-31")).toBe("31 oct.-1 nov.");
   });
 });
 

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { CoachPlayerMembership, TeamCoach } from "@/features/planning/api";
 
 import type { Conflict, Fixture } from "../api";
-import { applyMatchFilter, expandCoachTeams } from "./matchFilter";
+import { applyMatchFilter, conflictTeamIds, expandCoachTeams } from "./matchFilter";
 
 function fixture(over: Partial<Fixture> & Pick<Fixture, "id" | "teamId">): Fixture {
   return {
@@ -49,6 +49,20 @@ describe("expandCoachTeams", () => {
     const roles = expandCoachTeams(["thomas"], also, coachPlayers);
     // u18 est joueur (coachPlayers) ET assistant (teamCoaches) → assistant l'emporte.
     expect(roles.get("u18")).toBe("assistant");
+  });
+});
+
+describe("conflictTeamIds (exporté pour le pivot par équipe)", () => {
+  it("collecte les équipes portées : left, right, fixture, training et l'agrégat teamId", () => {
+    const conflict: Conflict = {
+      type: "MATCH_MATCH",
+      severity: 3,
+      left: { fixtureId: "f1", teamId: "sm1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: null, windowStart: "", windowEnd: "" },
+      right: { fixtureId: "f2", teamId: "u13", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: null, windowStart: "", windowEnd: "" },
+    };
+    expect(conflictTeamIds(conflict)).toEqual(["sm1", "u13"]);
+    expect(conflictTeamIds({ type: "COMPETITION_INCOMPLETE", severity: 6, teamId: "u15" })).toEqual(["u15"]);
+    expect(conflictTeamIds({ type: "VENUE_OVERLAP", severity: 2, venueId: "venue-9" })).toEqual([]);
   });
 });
 

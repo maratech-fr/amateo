@@ -230,6 +230,78 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   } else {
     await expect(page.getByText(/Hors fenêtre autorisée/)).toBeVisible();
   }
+
+  // ── Onglet « Conflits » (PR A) : /matchs/conflits. On ÉTEND ce scénario plutôt
+  //    que d'ouvrir un 2e test : il réutilise la saison DÉJÀ générée+validée ici
+  //    (un test séparé re-paierait l'onboarding de 240 s et, faute d'autre source
+  //    de conflit, risquerait un écran vide légitimement RED). Le témoin ci-dessous
+  //    fait ÉCHOUER un écran vide EN LE DISANT (règle « un e2e vert sans rien
+  //    éprouver est un faux vert », cf. modal-reachability.spec.ts).
+  //
+  // ⚠ Le lien de nav « Conflits » (role=link, scopé au <nav> « Espaces matchs »)
+  //    est distinct du bouton du rail « Conflits (n) » de Placer (role=button).
+  const matchesNav = page.getByRole("navigation", { name: "Espaces matchs" });
+  await matchesNav.getByRole("link", { name: "Conflits" }).click();
+
+  // Témoin : au moins une entrée d'accordéon « <libellé> · <n> » (n ≥ 1 par
+  // construction — une entrée à 0 conflit n'existe pas). Un écran vide rend
+  // l'EmptyState « Aucun conflit sur la saison » et AUCUN accordéon : ce
+  // `toBeVisible` tombe alors, en nommant ce que le vide signifie.
+  const anyEntry = page.getByRole("button", { name: /·\s*\d+$/ }).first();
+  await expect(
+    anyEntry,
+    "onglet Conflits vide : aucune entrée d'accordéon — le club n'a aucun conflit, le test ne prouverait rien",
+  ).toBeVisible({ timeout: 15_000 });
+  const anyEntryName = (await anyEntry.textContent()) ?? "";
+  const anyEntryCount = Number(anyEntryName.match(/·\s*(\d+)\s*$/)?.[1] ?? "0");
+  expect(anyEntryCount, `entrée « ${anyEntryName.trim()} » à 0 conflit — témoin vide`).toBeGreaterThan(0);
+
+  // Pivot par défaut = Coach (store + URL sans param `pivot`).
+  const pivotGroup = page.getByRole("group", { name: "Regrouper par" });
+  await expect(pivotGroup.getByRole("button", { name: "Coach" })).toHaveAttribute("aria-pressed", "true");
+
+  // Bascule sur « Journée » : l'URL porte pivot=journee ET une entrée week-end
+  // « <dates> · n » (libellé weekendShortLabel, qui COMMENCE par un jour → chiffre,
+  // ce qui l'écarte des sentinelles « Extérieur »/« Sans date ») existe.
+  await pivotGroup.getByRole("button", { name: "Journée" }).click();
+  await expect(page).toHaveURL(/[?&]pivot=journee/);
+  await expect(pivotGroup.getByRole("button", { name: "Journée" })).toHaveAttribute("aria-pressed", "true");
+  const weekendEntry = page.getByRole("button", { name: /^\d.*·\s*\d+$/ }).first();
+  await expect(
+    weekendEntry,
+    "pivot Journée sans aucune entrée week-end datée (que des sentinelles) — le club n'a aucun conflit daté",
+  ).toBeVisible({ timeout: 15_000 });
+
+  // Déplie l'entrée : une ligne de conflit paraît, portant « Voir la semaine »
+  // (rendu seulement pour un conflit DATÉ — un week-end n'en contient que).
+  await weekendEntry.click();
+  await expect(weekendEntry).toHaveAttribute("aria-expanded", "true");
+  const voir = page.getByRole("button", { name: "Voir la semaine" }).first();
+  await expect(voir).toBeVisible();
+
+  // « Voir la semaine » → Placer (/matchs). Le libellé de semaine affiché
+  // (weekLabel « Semaine du <lundi> au <dimanche> ») DOIT porter le week-end du
+  // conflit : le dimanche (borne haute de weekLabel) est le samedi+1, présent dans
+  // l'étiquette courte du bouton (weekendShortLabel) — même samedi des deux côtés,
+  // donc le token « <jour> <mois>. » du dimanche est contenu dans le titre du bouton.
+  const voirTitle = (await voir.getAttribute("title")) ?? ""; // « Voir la semaine du <court> dans Placer »
+  await voir.click();
+  await expect(page).toHaveURL(/\/matchs$/);
+  const weekSpan = page.getByText(/^Semaine du .+ au .+$/);
+  await expect(weekSpan).toBeVisible({ timeout: 15_000 });
+  const weekText = (await weekSpan.textContent()) ?? "";
+  const sunday = weekText.split(" au ")[1]?.trim() ?? "";
+  expect(sunday, `libellé de semaine inattendu : « ${weekText} »`).not.toBe("");
+  expect(voirTitle, `« ${voirTitle} » ne porte pas le dimanche « ${sunday} » de « ${weekText} » — mauvaise semaine`).toContain(sunday);
+
+  // Retour navigateur : pivot Journée ET entrée ouverte (?ouvert) retrouvés.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/matchs\/conflits/);
+  await expect(page).toHaveURL(/[?&]pivot=journee/);
+  await expect(page).toHaveURL(/[?&]ouvert=/);
+  await expect(page.getByRole("group", { name: "Regrouper par" }).getByRole("button", { name: "Journée" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /^\d.*·\s*\d+$/ }).first()).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("button", { name: "Voir la semaine" }).first()).toBeVisible();
 });
 
 /**

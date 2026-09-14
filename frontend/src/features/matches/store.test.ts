@@ -117,6 +117,34 @@ describe("useMatchesStore — filtres Consulter (PR-2a)", () => {
   });
 });
 
+describe("useMatchesStore — onglet Conflits (PR A)", () => {
+  beforeEach(() => {
+    useMatchesStore.setState({ conflictsPivot: "coach", conflictsFamilies: null });
+  });
+
+  it("défauts : pivot coach, familles null (= tout coché)", () => {
+    expect(useMatchesStore.getState().conflictsPivot).toBe("coach");
+    expect(useMatchesStore.getState().conflictsFamilies).toBeNull();
+  });
+
+  it("setConflictsPivot bascule l'axe de regroupement", () => {
+    useMatchesStore.getState().setConflictsPivot("gymnase");
+    expect(useMatchesStore.getState().conflictsPivot).toBe("gymnase");
+    useMatchesStore.getState().setConflictsPivot("journee");
+    expect(useMatchesStore.getState().conflictsPivot).toBe("journee");
+  });
+
+  it("setConflictsFamilies pose la sélection, SÉPARÉE de consultFamilies", () => {
+    useMatchesStore.setState({ consultFamilies: null });
+    useMatchesStore.getState().setConflictsFamilies(["MATCH_MATCH"]);
+    expect(useMatchesStore.getState().conflictsFamilies).toEqual(["MATCH_MATCH"]);
+    // Décocher ici ne touche pas Consulter.
+    expect(useMatchesStore.getState().consultFamilies).toBeNull();
+    useMatchesStore.getState().setConflictsFamilies(null);
+    expect(useMatchesStore.getState().conflictsFamilies).toBeNull();
+  });
+});
+
 describe("useMatchesStore — temporalité Consulter (PR-2b)", () => {
   beforeEach(() => {
     useMatchesStore.setState({ consultTemporality: "semaine", consultMonth: null, consultPhaseId: null });
