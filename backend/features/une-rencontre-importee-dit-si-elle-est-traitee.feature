@@ -33,6 +33,14 @@ Fonctionnalité: Une rencontre importée dit si elle est traitée
     Quand je dépose un fichier FBI avec un match à domicile déjà passé
     Alors la rencontre importée est « traitée »
 
+  Scénario: Un extérieur resté « à traiter » d'un ancien dépôt est rattrapé au re-dépôt
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Quand je dépose un fichier FBI avec un match à l'extérieur
+    Et je force la rencontre importée à « à traiter » en base
+    Et je re-dépose le même extérieur
+    Alors la rencontre est « traitée »
+
   Scénario: Un écart sur un extérieur est pris en compte, sans arbitrage
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe jetable et un gymnase jetable « GYM BEHAT »

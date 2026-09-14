@@ -1,18 +1,12 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-12 (rotation de fraîcheur `documentation-update`, P4-199 règles d'import —
-fichier hors sujet). Re-confronté au code, tout juste :
-- Cibles `backend/Makefile` : liste complète (`.PHONY`) contient bien `test`/`tests-complete`/
-  `behat`/`phpunit`/`db-empty-test`/`db-init-test`/`seed-bccl`/`seed-demo`/`seed-holidays`/
-  `seed-league`/`rector`/`coverage`/`migration-diff` — chaque cible documentée ci-dessous existe ✓
-- Cibles racine (`Makefile`) : `play`/`sandbox`/`db-empty`/`reset`/`bootstrap`/`start`/`install` —
-  toutes présentes ✓
-- `backend/scripts/` ne porte plus aucun smoke bash (`ls` : `coverage-gate.php`,
-  `generate-schedule.sh`, `generate-schedule-test.sh`, `generate-totp.php`, `lib/`, `load-test/`,
-  `with-sandbox.sh`) ✓
-- Commandes console (`backend/src/Command/`) : `app:bccl:seed`, `app:demo:seed`,
-  `app:league-windows:seed`, `app:load-test:seed-clubs` — toutes portent `#[AsCommand]` sous le nom
-  documenté ✓
+Last verified @ 2026-09-14 (D2 « rattrapage des statuts de traitement », `documentation-update`).
+Re-confronté au code, tout juste :
+- Nouvelle commande `app:fixtures:catch-up-review` (`backend/src/Command/CatchUpFixtureReviewCommand.php`)
+  : options `--force`/`--club` confirmées (`InputOption::VALUE_NONE`/`VALUE_REQUIRED`), dry-run par
+  défaut (le `flush()` n'a lieu que sous `--force`), fenêtre par club via
+  `FbiFixtureImporter::currentIsoWeekEnd` + `ClockInterface`, patron `app:periods:remind` (marche les
+  clubs, GUC posé par club, `finally` qui clear/relâche) ✓
 Non re-sondé cette passe : le reste des commandes et gardes listées — un stamp REMPLACE,
 l'historique vit dans git.
 
@@ -118,6 +112,7 @@ Toutes manuelles sauf mention. Détail : `ls backend/src/Command/`.
 | `app:clubs:purge-erased` | RGPD : purge le workspace des clubs dont le délai de grâce d'effacement (30 j) est échu — l'identité publique FFBB survit — **auto, quotidien à 02:15** |
 | `app:coach-wishes:digest` | Digest quotidien des doléances (#10 C3) aux gestionnaires : email **seulement si nouvelle réponse depuis la veille** (silence = rien) + récap **une fois** le lendemain de la deadline, quel que soit l'état — **auto, quotidien à 07:00** ; `--dry-run` / `--date` |
 | `app:periods:remind` | Emails J-14/J-7/J-3 aux gestionnaires : période sans plan overlay — n'agit jamais seul — **auto, quotidien à 08:00** |
+| `app:fixtures:catch-up-review` | D2 : rattrape les rencontres restées `NEW` (« à traiter ») d'un dépôt antérieur à P4-199 alors qu'elles rempliraient déjà le prédicat naissance-traitée (extérieur, ou date ≤ dimanche de la semaine ISO en cours) — jamais un `OUT_OF_SYNC`/`REVIEWED`. **Manuel, dry-run par défaut** (`--force` écrit) ; `--club=<id>` restreint à un club. Marche les clubs sur la connexion applicative (RLS, patron `app:periods:remind`), fenêtre calculée dans le fuseau **de chaque club** (`ClubDay`) — jamais une migration SQL, qui prendrait la date du serveur Postgres. Un club en échec n'interrompt pas les autres |
 | `app:seasons:remind-transition` | Emails J-61/J-30/J-14 avant le pivot du 15 juillet : saison N+1 non préparée — **auto, quotidien à 08:00** |
 | `app:public-holidays:seed` / `app:public-holidays:import` | Jours fériés : seed offline (JSON embarqué) / import API etalab — idempotents ; import **auto trimestriel (1er janv./avr./juil./oct. à 04:30)** |
 | `app:school-holidays:seed` / `app:school-holidays:import` | Vacances scolaires : seed offline / import API Éducation nationale — idempotents ; import **auto trimestriel (1er janv./avr./juil./oct. à 04:00)** |

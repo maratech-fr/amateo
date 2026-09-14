@@ -1,18 +1,16 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-09-08 (rotation de fraîcheur `documentation-update`, PR-2b Mois · Phase module
-matchs — fichier hors sujet). Re-confronté au code : `add_coach_player_non_overlap` a dérivé à
-`app/solver/constraints/structural.py:237` (était cité `:216`, corrigé) ; les champs `Team` cités
-(`sessionsPerWeek`, `priorityTier`) toujours ceux du schéma Pydantic (`app/schemas/input_schema.py:82-86`,
+Last verified @ 2026-09-14 (rotation de fraîcheur `documentation-update`, D2 rattrapage des statuts
+de traitement — fichier hors sujet). Re-confronté au code, tout juste : `add_coach_player_non_overlap`
+toujours à `app/solver/constraints/structural.py:237` ; les champs `Team` cités (`sessionsPerWeek`,
+`priorityTier`) toujours ceux du schéma Pydantic (`app/schemas/input_schema.py:82-86`,
 `sessions_per_week`/`priority_tier_id`) ; la dérivation de capacité `canSplit ? capacity : 1` toujours
-à `ScheduleConstraintBuilder.php:1053` ; le rôle `MAIN` toujours `App\Enum\TeamCoachRole::MAIN`
-(`ASSISTANT` aussi confirmé) ; `resolve_implicit_rules` vit en réalité dans
-`app/solver/constraints/parsing.py` (le fichier disait `app/solver/constraints.py`, qui n'existe pas
-— corrigé) et pose bien `MAX_CONSECUTIVE_DAYS` en `OFF` par défaut (`parsing.py:89`) ; la suppression
-de `FACILITY_CAPACITY` a dérivé à `app/main.py:488` (était cité `:483-484`, corrigé) ; les poids de
-tier S=10000/A=1000/B=100 toujours en dur dans `app/solver/objective/weights.py:35-37`, non lus depuis
-`orToolsWeight` (aucune occurrence dans `engine/app/solver/`). Reste du fichier non re-vérifié cette
-passe — historique : `git log -p --follow engine/docs/business.md`.
+à `ScheduleConstraintBuilder.php:1053` ; `resolve_implicit_rules` toujours dans
+`app/solver/constraints/parsing.py`, pose bien `MAX_CONSECUTIVE_DAYS` en `OFF` par défaut
+(`parsing.py:89`) ; le retrait de `FACILITY_CAPACITY` toujours documenté à `app/main.py:488` ; les
+poids de tier S=10000/A=1000/B=100 toujours en dur dans `app/solver/objective/weights.py:35-37`, non
+lus depuis `orToolsWeight` (aucune occurrence dans `engine/app/solver/`). Reste du fichier non
+re-vérifié cette passe — historique : `git log -p --follow engine/docs/business.md`.
 
 > Ce document explique le domaine de la planification sportive et ce que le moteur `engine` resout. Destine aux nouveaux developpeurs rejoignant le projet ClubScheduler.
 

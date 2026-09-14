@@ -150,6 +150,14 @@ final class FfbbRencontreReconciler
             }
             $consumed[$fixture->getId()] = true;
 
+            // D2 (rattrapage) — un existant resté « à traiter » (NEW) d'un dépôt
+            // antérieur à la naissance-traitée est rattrapé, MÊME hors du périmètre
+            // d'écart (un extérieur sort du tri ci-dessous sans jamais y passer).
+            // Gardé par la fenêtre (null si le club est introuvable).
+            if ($weekEnd instanceof DateTimeImmutable) {
+                $this->importer->catchUpReview($fixture, $now, $weekEnd);
+            }
+
             // P4-187a — exception ÉTROITE au « the API never auto-applies » : sur un
             // domicile encore sans salle, on POSE le venueId depuis un alias confirmé
             // (et RIEN d'autre — jamais un statut, jamais une date). La rencontre

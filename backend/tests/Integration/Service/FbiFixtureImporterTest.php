@@ -817,6 +817,91 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertNull($fixture?->getReviewedAt());
     }
 
+    // ── D2 : rattrapage d'un existant resté « à traiter » au re-dépôt ───────
+
+    public function testAnExistingNewAwayIsCaughtUpOnReDeposit(): void
+    {
+        // Résidu d'un dépôt antérieur à la naissance-traitée : un extérieur resté
+        // NEW. Un re-dépôt identique le rattrape (REVIEWED + horodaté).
+        $this->importMapped([['D2', 'CU1', 'AS Voisins', 'BC TESTVILLE - 1', '03/10/2026', '15:30', 'Salle Adverse']]);
+        $this->forceReviewState('CU1', FixtureReviewState::NEW);
+
+        $this->importMapped([['D2', 'CU1', 'AS Voisins', 'BC TESTVILLE - 1', '03/10/2026', '15:30', 'Salle Adverse']]);
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'CU1']);
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+        self::assertNotNull($fixture?->getReviewedAt());
+    }
+
+    public function testAnExistingNewPastHomeIsCaughtUpOnReDeposit(): void
+    {
+        $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00')); // mercredi ; dimanche = 20 sept.
+        $this->importMapped([['D2', 'CU2', 'BC TESTVILLE - 1', 'AS Voisins', '12/09/2026', '15:30', '']]); // samedi passé
+        $this->forceReviewState('CU2', FixtureReviewState::NEW);
+
+        $this->importMapped([['D2', 'CU2', 'BC TESTVILLE - 1', 'AS Voisins', '12/09/2026', '15:30', '']]);
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'CU2']);
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+        self::assertNotNull($fixture?->getReviewedAt());
+    }
+
+    public function testAnExistingNewHomeInTheCurrentWeekIsCaughtUpOnReDeposit(): void
+    {
+        $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00')); // dimanche = 20 sept.
+        $this->importMapped([['D2', 'CU3', 'BC TESTVILLE - 1', 'AS Voisins', '19/09/2026', '15:30', '']]); // samedi de cette semaine
+        $this->forceReviewState('CU3', FixtureReviewState::NEW);
+
+        $this->importMapped([['D2', 'CU3', 'BC TESTVILLE - 1', 'AS Voisins', '19/09/2026', '15:30', '']]);
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'CU3']);
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+        self::assertNotNull($fixture?->getReviewedAt());
+    }
+
+    public function testAnExistingNewFutureHomeOutsideTheWeekStaysNewOnReDeposit(): void
+    {
+        // Le prédicat ne mord pas : un domicile futur hors semaine reste « à traiter ».
+        $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00')); // dimanche = 20 sept.
+        $this->importMapped([['D2', 'CU4', 'BC TESTVILLE - 1', 'AS Voisins', '26/09/2026', '15:30', '']]); // samedi suivant
+        // Il naît déjà NEW (hors fenêtre) ; un re-dépôt identique le laisse NEW.
+        $this->importMapped([['D2', 'CU4', 'BC TESTVILLE - 1', 'AS Voisins', '26/09/2026', '15:30', '']]);
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'CU4']);
+        self::assertSame(FixtureReviewState::NEW, $fixture?->getReviewState());
+        self::assertNull($fixture?->getReviewedAt());
+    }
+
+    public function testCatchUpNeverTouchesAnOutOfSyncFixture(): void
+    {
+        // Le rattrapage n'agit QUE sur NEW : un OUT_OF_SYNC (même un extérieur, que
+        // le prédicat qualifierait) garde son état de traitement au re-dépôt.
+        $this->importMapped([['D2', 'CU5', 'AS Voisins', 'BC TESTVILLE - 1', '03/10/2026', '15:30', 'Salle Adverse']]);
+        $this->forceReviewState('CU5', FixtureReviewState::OUT_OF_SYNC);
+
+        $this->importMapped([['D2', 'CU5', 'AS Voisins', 'BC TESTVILLE - 1', '03/10/2026', '15:30', 'Salle Adverse']]);
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'CU5']);
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState());
+    }
+
+    public function testCatchUpIsIdempotentOnASecondReDeposit(): void
+    {
+        // Le premier re-dépôt rattrape (horodate à T1) ; un second, horloge avancée,
+        // ne re-marque pas — reviewedAt reste T1 (catchUpReview ne mord plus, non-NEW).
+        $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00'));
+        $this->importMapped([['D2', 'CU6', 'AS Voisins', 'BC TESTVILLE - 1', '03/10/2026', '15:30', 'Salle Adverse']]);
+        $this->forceReviewState('CU6', FixtureReviewState::NEW);
+
+        $this->pinClock(new DateTimeImmutable('2026-09-17 10:00:00'));
+        $this->importMapped([['D2', 'CU6', 'AS Voisins', 'BC TESTVILLE - 1', '03/10/2026', '15:30', 'Salle Adverse']]);
+        $this->em->clear();
+        $firstStamp = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'CU6'])?->getReviewedAt();
+        self::assertNotNull($firstStamp);
+
+        $this->pinClock(new DateTimeImmutable('2026-09-25 10:00:00'));
+        $this->importMapped([['D2', 'CU6', 'AS Voisins', 'BC TESTVILLE - 1', '03/10/2026', '15:30', 'Salle Adverse']]);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'CU6']);
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+        self::assertSame($firstStamp->format('Y-m-d'), $fixture?->getReviewedAt()?->format('Y-m-d'), 'jamais re-horodaté');
+    }
+
     // ── P4-199 : « FBI fait foi » sur un domicile placé déphasé dans la fenêtre ──
 
     public function testPlacedHomeDeviationWithAPastAppDateIsAppliedAtOnceAndStaysTreated(): void
@@ -1396,6 +1481,15 @@ final class FbiFixtureImporterTest extends KernelTestCase
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
         self::assertNotNull($fixture);
         $fixture->setStatus($status, new DateTimeImmutable);
+        $this->em->flush();
+    }
+
+    /** Force l'état de traitement : simule un résidu d'avant le rattrapage. */
+    private function forceReviewState(string $externalRef, FixtureReviewState $state): void
+    {
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
+        self::assertNotNull($fixture);
+        $fixture->setReviewState($state);
         $this->em->flush();
     }
 

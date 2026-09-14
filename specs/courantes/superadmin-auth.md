@@ -1,8 +1,8 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-09-08 (rotation `documentation-update`, hors sujet de la PR — PR-3a module
-matchs, backend). Re-confronté au code : firewall `admin` = `pattern: ^/api/admin`,
-`provider: super_admin_provider` (`backend/config/packages/security.yaml:34,36`) ✓ ;
+Last verified @ 2026-09-14 (rotation `documentation-update`, hors sujet de la PR — D2 rattrapage des
+statuts de traitement, backend). Re-confronté au code, tout juste : firewall `admin` = `pattern:
+^/api/admin`, `provider: super_admin_provider` (`backend/config/packages/security.yaml:34,36`) ✓ ;
 `AdminCsrfListener` toujours à la priorité 6
 (`#[AsEventListener(event: KernelEvents::REQUEST, priority: 6)]`) ✓ ; politique de mot de passe
 12 caractères + majuscule + caractère spécial toujours dans `PasswordPolicy::MIN_LENGTH`/

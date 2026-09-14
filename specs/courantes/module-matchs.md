@@ -1,11 +1,12 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-13 (P4-200 C2 « refonte de la modale Engagements FFBB », SOLDE,
-`documentation-update`). § « Appariement FFBB » étendue à l'écran : `FfbbEngagementsDialog.tsx`
-confronté au code (taille `xl`, compteur `pairings.length`, garde de la chip `undefined ===
-choices[row.ffbbCompetitionId]`, transmission de `competitionId` sur équipe choisie ===
-suggérée) — voir aussi la trace §3 de `etat-des-lieux.md`. Reste du fichier (§ Détection,
-§ reconciliation coupes P4-194/195, § retrait des libellés P4-196, § Espace Importer) non re-sondé
+Last verified @ 2026-09-14 (D2 « rattrapage des statuts de traitement », `documentation-update`).
+§ « Espace Importer » (tableau cas → effet + « Masquer les extérieurs ») confrontée au code :
+`FbiFixtureImporter::catchUpReview`/`qualifiesForArrivalTreatment`
+(`backend/src/Service/FbiFixtureImporter.php`), l'appel en tête d'`applyDiff` et dans
+`FfbbRencontreReconciler::reconcile` (avant le tri de périmètre) ; résidu « extérieurs importés
+avant P4-199 restent NEW » retiré (rattrapé désormais). Reste du fichier (§ Détection,
+§ reconciliation coupes P4-194/195, § retrait des libellés P4-196, § Appariement FFBB) non re-sondé
 cette passe — voir `git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
@@ -1605,6 +1606,17 @@ future.
     décision fondateur P4-199, 2026-09-12 : « un extérieur n'est jamais à traiter par le club », « un
     match imminent ou déjà joué n'est pas nouveau »). La borne (`currentIsoWeekEnd`) vient du fuseau
     du club (`ClubDay`), pas du serveur.
+  - **rattrapage (D2, 2026-09-14)** : le prédicat de naissance-traitée (extérieur, ou date ≤
+    dimanche de la semaine ISO en cours) mordait UNIQUEMENT à la création. Une rencontre EXISTANTE
+    restée `NEW` d'un dépôt antérieur à ce prédicat (ex. un extérieur déposé avant P4-199) est
+    désormais rattrapée — `REVIEWED` + horodatée — au foyer partagé
+    `FbiFixtureImporter::catchUpReview` (prédicat extrait dans `qualifiesForArrivalTreatment`,
+    commun avec `treatOnArrival`), appelé en tête d'`applyDiff` (dépôt xlsx) et dans la boucle des
+    rencontres matchées du reconciler API (`FfbbRencontreReconciler`, avant le tri de périmètre).
+    N'agit **que** sur un `NEW` (jamais un `OUT_OF_SYNC` ni un `REVIEWED` déjà posé) et est
+    idempotent. Un rattrapage seul ne compte pas dans `created`/`updated`/`unchanged` (état de
+    traitement, pas donnée de match). Pour un rattrapage SANS re-dépôt (par lot, sur une base
+    existante) : commande console `app:fixtures:catch-up-review` — voir `backend/docs/commands.md`.
   - source identique à l'app, rien à traiter → rien ne bouge.
   - **D9** — domicile `PLACED`/`SUBMITTED` que la source (xlsx OU API) renvoie identique sur
     **date + heure + salle** (les trois présents : une heure réelle, pas la sentinelle FBI 00:00 ;
@@ -1711,10 +1723,10 @@ future.
     pas — même limite que pour un écart arbitrable). `pendingReviewCount`/`buildReviewQueue`
     (`lib/reviewQueue.ts` `isOpenReview`/`hasAutoAppliedDeviation`) comptent une `REVIEWED` à
     alerte non acquittée comme « à traiter » — masquée ou non, elle reste dans le badge et dans la
-    file `open`, jamais rangée avec les traitées sans alerte. Résidu assumé : les extérieurs
-    importés AVANT P4-199 et encore `NEW` ne sont pas rétro-traités (aucune migration de backfill
-    sur `reviewState`, contrairement au backfill D2 de la colonne elle-même) — ils se rangent au
-    prochain dépôt qui les touche.
+    file `open`, jamais rangée avec les traitées sans alerte. **Rattrapage (D2, 2026-09-14)** — les
+    extérieurs importés avant P4-199 et encore `NEW` ne restent plus figés : voir § « tableau cas →
+    effet » ci-dessus (`FbiFixtureImporter::catchUpReview`) et `backend/docs/commands.md`
+    (`app:fixtures:catch-up-review`) pour le rattrapage hors ligne, club par club.
   - **Le flux xlsx a perdu son détour.** `ImportFbiDialog` n'affiche plus « Examiner les écarts » :
     « Importer » envoie toujours `{file, mappings}` sans décisions ; le rapport affiche « N
     écart(s) consigné(s) dans Importer » + un bouton « Ouvrir la file » (au lieu de basculer vers
