@@ -8,6 +8,8 @@ use Behat\Hook\AfterScenario;
 use Behat\Step\Given;
 use Behat\Step\Then;
 use Behat\Step\When;
+use DateTimeImmutable;
+use DateTimeZone;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use RuntimeException;
@@ -97,9 +99,15 @@ final class FixtureReviewContext extends BaseContext
         // du lundi au vendredi, DANS la semaine ISO en cours (≤ dimanche), or un
         // domicile dans cette fenêtre naîtrait « traité » (REVIEWED) au lieu de NEW,
         // et un déphasage y serait appliqué d'office au lieu d'ouvrir un arbitrage.
-        // « monday next week +5 days » = le samedi d'après, toujours hors fenêtre.
-        $this->matchDate = date('Y-m-d', (int) strtotime('monday next week +5 days'));
-        $this->rescheduledDate = date('Y-m-d', (int) strtotime($this->matchDate . ' +7 days'));
+        // Le samedi de la semaine ISO SUIVANTE, compté depuis le JOUR DU CLUB (Europe/Paris,
+        // le fuseau du club de démonstration) — jamais depuis l'horloge UTC du conteneur :
+        // à 00:24 Paris un lundi, PHP-UTC est encore dimanche, « monday next week »
+        // tombait dans la semaine ISO en cours et la rencontre naissait REVIEWED (constaté
+        // 2026-09-14, run D1). Arithmétique ISO explicite : lundi courant + 7 + 5.
+        $clubToday = new DateTimeImmutable('today', new DateTimeZone('Europe/Paris'));
+        $mondayThisWeek = $clubToday->modify(\sprintf('-%d days', (int) $clubToday->format('N') - 1));
+        $this->matchDate = $mondayThisWeek->modify('+12 days')->format('Y-m-d');
+        $this->rescheduledDate = $mondayThisWeek->modify('+19 days')->format('Y-m-d');
     }
 
     #[Given('une équipe jetable et un gymnase jetable « GYM BEHAT »')]
@@ -250,7 +258,9 @@ final class FixtureReviewContext extends BaseContext
     public function jeDeposeUnMatchDomicilePasse(): void
     {
         // Un samedi révolu : hors ET avant la semaine ISO en cours → « traité » à l'arrivée.
-        $past = date('Y-m-d', (int) strtotime('monday this week -2 days'));
+        // Compté depuis le jour du club (Europe/Paris), même raison que `matchDate`.
+        $clubToday = new DateTimeImmutable('today', new DateTimeZone('Europe/Paris'));
+        $past = $clubToday->modify(\sprintf('-%d days', (int) $clubToday->format('N') - 1))->modify('-2 days')->format('Y-m-d');
         $this->depositMatch($past, 'HOME', 'Adversaire Behat', self::VENUE_NAME, [['division' => self::DIVISION, 'teamId' => $this->teamId]]);
         $this->captureImportedFixture();
     }

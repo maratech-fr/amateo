@@ -64,6 +64,9 @@ final class MatchVisitDeltaParityTest extends WebTestCase
 
     private EntityManagerInterface $em;
 
+    /** Date de match commune, mémoïsée par test (voir matchDay()). */
+    private ?DateTimeImmutable $matchDay = null;
+
     /** Première visite : la référence est figée en SILENCE, aucun badge, même si un conflit existe déjà. */
     public function testFirstVisitIsSilent(): void
     {
@@ -579,7 +582,12 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         $fixture->setClubId($season->getClubId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($teamId);
-        $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
+        // D1 rule 3 filters matches strictly BEFORE the club's civil today (ClubDay,
+        // Europe/Paris) — the radar this test drives now applies it. A near-future,
+        // memoised day keeps every seeded match active whatever the wall clock or the
+        // UTC/Paris midnight boundary (weekday is irrelevant to a MATCH_MATCH), WITHOUT
+        // pinning the app clock, which the raw-SQL NOW() time-travel below would desync.
+        $fixture->setMatchDate($this->matchDay());
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv');
         $fixture->setKickoffTime(DateTimeImmutable::createFromFormat('!H:i', $kickoff) ?: null);
@@ -598,7 +606,7 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($teamId);
         $fixture->setCompetitionId($competitionId);
-        $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
+        $fixture->setMatchDate($this->matchDay());
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv');
         $fixture->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
@@ -651,6 +659,16 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         $this->em->flush();
 
         return $schedule->getId();
+    }
+
+    /**
+     * A near-future match day, safely at-or-after the club's civil today whatever the
+     * UTC/Paris boundary, and stable across a single test (a MATCH_MATCH needs both
+     * fixtures on the SAME day). +2 days clears the at-most-one-day Paris lead over UTC.
+     */
+    private function matchDay(): DateTimeImmutable
+    {
+        return $this->matchDay ??= new DateTimeImmutable('+2 days');
     }
 
     private function teamId(string $suffix, int $n): string

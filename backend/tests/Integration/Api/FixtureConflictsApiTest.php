@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
+use App\Clock\DevClockStore;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Coach;
@@ -91,10 +92,37 @@ final class FixtureConflictsApiTest extends WebTestCase
         self::assertStringStartsWith('MATCH_MATCH:' . $coachAId . ':', $fingerprint, 'l\'empreinte porte le type et le coach, jamais la sévérité ni le segment');
     }
 
+    /**
+     * D1 rule 3 — a match already played no longer surfaces on the radar. The
+     * clock is pinned to 2026-09-01 (see setUp), so this past pair (2026-08-01)
+     * sits behind the club's civil today while the future pairs of the other
+     * tests (2026-10-04) stay ahead of it.
+     */
+    public function testPastMatchesNoLongerSurface(): void
+    {
+        [, $user] = $this->createClubWithOverlappingMatches('past', '2026-08-01');
+
+        $this->client->request('GET', '/api/fixtures/conflicts', [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(200);
+
+        self::assertSame([], $this->responseData()['conflicts'], 'un match passé ne remonte plus (D1 règle 3)');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+        // Pin the civil today so the seeded dates keep their past/future relation
+        // whatever the wall clock — 2026-10-04 fixtures stay ahead, 2026-08-01
+        // behind (D1 rule 3 filters strictly past matches).
+        self::getContainer()->get(DevClockStore::class)->set(new DateTimeImmutable('2026-09-01 10:00:00'));
+    }
+
+    protected function tearDown(): void
+    {
+        // Redis is shared and not rolled back — never leak the pin into another test.
+        self::getContainer()->get(DevClockStore::class)->set(null);
+        parent::tearDown();
     }
 
     /**
@@ -103,7 +131,7 @@ final class FixtureConflictsApiTest extends WebTestCase
      *
      * @return array{0: Club, 1: User, 2: string} club, user, coachId
      */
-    private function createClubWithOverlappingMatches(string $suffix): array
+    private function createClubWithOverlappingMatches(string $suffix, string $matchDate = '2026-10-04'): array
     {
         $uid = uniqid($suffix, true);
         $hasher = self::getContainer()->get('security.user_password_hasher');
@@ -166,20 +194,20 @@ final class FixtureConflictsApiTest extends WebTestCase
 
         // Two home matches of the coach's two teams, windows 15:30–17:45 and
         // 16:00–18:15 → overlap.
-        $this->fixture($club, $season, $team1, '16:00');
-        $this->fixture($club, $season, $team2, '16:30');
+        $this->fixture($club, $season, $team1, '16:00', $matchDate);
+        $this->fixture($club, $season, $team2, '16:30', $matchDate);
         $this->em->flush();
 
         return [$club, $user, $coach->getId()];
     }
 
-    private function fixture(Club $club, Season $season, string $teamId, string $kickoff): void
+    private function fixture(Club $club, Season $season, string $teamId, string $kickoff, string $matchDate): void
     {
         $fixture = new Fixture;
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($teamId);
-        $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
+        $fixture->setMatchDate(new DateTimeImmutable($matchDate));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv');
         $fixture->setKickoffTime(DateTimeImmutable::createFromFormat('!H:i', $kickoff) ?: null);

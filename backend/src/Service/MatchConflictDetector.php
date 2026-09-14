@@ -31,7 +31,9 @@ use DateTimeImmutable;
  * - MATCH_TRAINING: a fixture overlapping a training of one of the coach's teams,
  *   read from the schedule EFFECTIVE on the match date (rule extracted to
  *   {@see EffectiveScheduleResolver} — P1-4 PR B). A footprint crossing midnight
- *   is checked against BOTH calendar days it spans.
+ *   is checked against BOTH calendar days it spans. ⚠ D1 (2026-09-13): a training
+ *   of the fixture's OWN team is skipped (the players who play don't also train);
+ *   a SISTER team's training (coach on two teams) still clashes.
  * - VENUE_UNAVAILABLE (P1-4 PR B): a fixture whose venue is unavailable on its
  *   date (all-circumstances closure posed on the club calendar AFTER the match
  *   was placed — the real-life case the placement guard cannot catch). Coach-
@@ -55,9 +57,10 @@ use DateTimeImmutable;
  * the coach is MAIN on EVERY involved team → severity 3; a single ASSISTANT
  * engagement on either side softens it to ASSISTANT → 5 (P4-189). New finding
  * kinds:
- * - VENUE_OVERLAP (1): two placed fixtures, same venue, overlapping footprints —
- *   the manual loop never blocks a collision (founder decision), the diagnostic
- *   screams instead.
+ * - VENUE_OVERLAP (1): two placed fixtures, same venue, overlapping VENUE windows
+ *   ([kickoff, kickoff + match], no warm-up — D1, 2026-09-13, so two matches
+ *   chained two hours apart do not false-alarm) — the manual loop never blocks a
+ *   collision (founder decision), the diagnostic screams instead.
  * - LEAGUE_WINDOW_VIOLATION (2): a placed HOME fixture of a MAPPED team whose
  *   day/kickoff sit outside every resolved league window (same
  *   LeagueEnvelopeResolver join as the solver — unmapped team = silent).
@@ -78,6 +81,13 @@ use DateTimeImmutable;
  *
  * Pure/stateless: the controller loads the scoped data and passes it in; this
  * class only crosses and overlaps, so it is unit-testable without a kernel.
+ *
+ * PAST matches (D1 rule 3, 2026-09-13): a fixture already played neither ports
+ * nor receives a conflict. `detect()` takes the club's civil today ({@see ClubDay},
+ * injected by both callers) and filters matchDate < today out of every family
+ * EXCEPT COMPETITION_INCOMPLETE (whose counts stay complete) and the match-weekend
+ * index of FRIENDLY_ON_MATCH_SLOT (a past Saturday championship still marks its
+ * Sunday). A null today (the pure test path) disables the filter.
  *
  * Away travel is not modelled yet (palier B): an away fixture with no estimated
  * kickoff has no footprint and therefore raises no conflict — intended.
@@ -144,6 +154,10 @@ final class MatchConflictDetector
      *                                                                                                                     fixtureId → round-trip car travel minutes (P2-54 RMM-9 PR-3, AWAY only); absent = 0
      *                                                                                                                     (no travel modelled → no spatial extension of the footprint). The controller projects it
      *                                                                                                                     from `opponent_travel` (2 × one-way), the detector stays pure.
+     * @param DateTimeImmutable|null                                                                 $clubToday
+     *                                                                                                                     the club's civil today ({@see ClubDay}); a fixture whose matchDate is strictly BEFORE
+     *                                                                                                                     it is already played — it neither PORTS nor RECEIVES a conflict (D1, rule 3). null
+     *                                                                                                                     (the pure test path) disables the filter entirely.
      *
      * @return list<array<string, mixed>> conflict items ready to serialize
      */
@@ -161,6 +175,7 @@ final class MatchConflictDetector
         array $competitions = [],
         array $profilesByTeam = [],
         array $roundTripByFixtureId = [],
+        ?DateTimeImmutable $clubToday = null,
     ): array {
         $coachesByTeam = [];
         // teamId → coachId → role; a coach both MAIN and ASSISTANT on one team
@@ -176,14 +191,32 @@ final class MatchConflictDetector
 
         $habitByTeamDay = $this->awayKickoffEstimator->indexHabits($habits);
 
+        // D1 rule 3 (founder decision 2026-09-13) — a match already PLAYED must
+        // neither port nor receive a conflict. The active list (matchDate >=
+        // clubToday) feeds every family EXCEPT competitionIncompleteItems (its
+        // counts stay complete) and the match-weekend index of
+        // friendlyOnMatchSlotConflicts (a PAST Saturday championship still makes
+        // its Sunday a « match weekend »), which both read the FULL list. A null
+        // clubToday (the pure test path) disables the filter. Compared as Y-m-d
+        // strings: matchDate is a civil date, no timezone must sneak in.
+        $today = $clubToday?->format('Y-m-d');
+        $activeFixtures = null === $today
+            ? $fixtures
+            : array_values(array_filter(
+                $fixtures,
+                static fn (Fixture $fixture): bool => $fixture->getMatchDate()->format('Y-m-d') >= $today,
+            ));
+
         // Fixtures with a footprint: a real kickoff, or (P1-4 PR C) an AWAY
         // fixture borrowing its team's habitual kickoff for the match weekday
         // (rule extracted to AwayKickoffEstimator — the placement payload
-        // consumes the SAME estimation, PR D). Coaches attached for the coach
-        // conflicts; a coach-less fixture still gets a view (team links don't
-        // need a coach).
+        // consumes the SAME estimation, PR D). Each view carries BOTH the PERSON
+        // window (warm-up + match + travel — coach/link families) and the VENUE
+        // window (match only — the gym-collision families). Coaches attached for
+        // the coach conflicts; a coach-less fixture still gets a view (team links
+        // don't need a coach).
         $views = [];
-        foreach ($fixtures as $fixture) {
+        foreach ($activeFixtures as $fixture) {
             // P2-54 RMM-9 — the footprint durations now depend on the team's
             // category profile; a team missing from the map falls back to the
             // documented 105/30 (MatchDurationProfile::fallback()).
@@ -194,19 +227,24 @@ final class MatchConflictDetector
             $roundTrip = $roundTripByFixtureId[$fixture->getId()] ?? 0;
             $estimated = false;
             $window = $this->footprint->occupancy($fixture, $profile, $roundTrip);
+            $venueWindow = $this->footprint->venueOccupancy($fixture, $profile);
             if (null === $window) {
                 $estimatedKickoff = $this->awayKickoffEstimator->estimate($fixture, $habitByTeamDay);
                 if ($estimatedKickoff instanceof DateTimeImmutable) {
                     $window = $this->footprint->occupancyAt($fixture, $estimatedKickoff, $profile, $roundTrip);
+                    $venueWindow = $this->footprint->venueOccupancyAt($fixture, $estimatedKickoff, $profile);
                     $estimated = true;
                 }
             }
-            if (null === $window) {
+            // Both windows share the same kickoff source, so they are non-null
+            // together; the double guard keeps PHPStan honest about it.
+            if (null === $window || null === $venueWindow) {
                 continue;
             }
             $views[] = [
                 'fixture' => $fixture,
                 'window' => $window,
+                'venueWindow' => $venueWindow,
                 'estimated' => $estimated,
                 'coachIds' => array_keys($coachesByTeam[$fixture->getTeamId()] ?? []),
             ];
@@ -215,14 +253,14 @@ final class MatchConflictDetector
 
         return [
             ...$this->venueOverlapConflicts($views),
-            ...$this->leagueWindowViolations($fixtures, $envelope),
+            ...$this->leagueWindowViolations($activeFixtures, $envelope),
             ...$this->matchMatchConflicts($coachViews, $rolesByTeam),
             ...$this->matchTrainingConflicts($coachViews, $coachesByTeam, $rolesByTeam, $seasonScheduleId, $activePeriods, $slotsBySchedule),
-            ...$this->venueUnavailableConflicts($fixtures, $unavailabilities),
-            ...$this->accessWindowLostConflicts($fixtures, $matchWindows),
+            ...$this->venueUnavailableConflicts($activeFixtures, $unavailabilities),
+            ...$this->accessWindowLostConflicts($activeFixtures, $matchWindows),
             ...$this->teamLinkConflicts($views, $teamLinks),
             ...$this->competitionIncompleteItems($fixtures, $competitions),
-            ...$this->awayNoFootprintItems($fixtures, $habitByTeamDay),
+            ...$this->awayNoFootprintItems($activeFixtures, $habitByTeamDay),
             ...$this->friendlyOnMatchSlotConflicts($views, $fixtures, $matchWindows),
         ];
     }
@@ -233,20 +271,23 @@ final class MatchConflictDetector
      * friendlies (P4-193) and their manual placement is FREE: this ALERTS, it
      * never blocks (founder decision, 2026-09-10). ONE item per fixture, carrying
      * the `reasons` that triggered it (MATCH_SLOT_WINDOW, MATCH_WEEKEND):
-     * - MATCH_SLOT_WINDOW: the match FOOTPRINT overlaps a VenueMatchWindow of the
-     *   SAME gym, projected onto the ISO weekday of the date. ⚠ Divergence ASSUMÉE
-     *   with the kickoffInsideWindow rule of ACCESS_WINDOW_LOST (patron ci-dessus):
-     *   there we test whether the KICKOFF POINT falls inside the window; HERE we
-     *   overlap the whole EMPREINTE — a friendly starting BEFORE the window still
-     *   eats the slot, so it must alert. `venueId` is carried for this branch.
+     * - MATCH_SLOT_WINDOW: the match VENUE window ([kickoff, kickoff + match], no
+     *   warm-up — D1, 2026-09-13) overlaps a VenueMatchWindow of the SAME gym,
+     *   projected onto the ISO weekday of the date. ⚠ Divergence ASSUMÉE with the
+     *   kickoffInsideWindow rule of ACCESS_WINDOW_LOST (patron ci-dessus): there we
+     *   test whether the KICKOFF POINT falls inside the window; HERE we overlap the
+     *   whole gym occupancy — a friendly whose match still bites into the window
+     *   alerts. Warm-up is EXCLUDED though: a friendly whose gym window sits clear
+     *   of the access window (only its warm-up would have touched it) stays silent.
+     *   `venueId` is carried for this branch.
      * - MATCH_WEEKEND: the date is a Saturday or Sunday and the club has ≥ 1
      *   NON-friendly fixture (HOME or AWAY) on the Saturday OR the Sunday of the
      *   same weekend (key = the Saturday's date; Friday does NOT count — founder
      *   decision).
      *
-     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, coachIds: list<string>}> $views
-     * @param list<Fixture>                                                                                                                           $fixtures
-     * @param list<VenueMatchWindow>                                                                                                                  $matchWindows
+     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, venueWindow: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, coachIds: list<string>}> $views
+     * @param list<Fixture>                                                                                                                                                                                                 $fixtures
+     * @param list<VenueMatchWindow>                                                                                                                                                                                        $matchWindows
      *
      * @return list<array<string, mixed>>
      */
@@ -277,14 +318,15 @@ final class MatchConflictDetector
             }
 
             $reasons = [];
-            // Fenêtre : l'empreinte chevauche une fenêtre du même gymnase, projetée
-            // sur le jour ISO de la date (chevauchement, pas appartenance du kickoff).
+            // Fenêtre : la fenêtre SALLE (sans échauffement, D1) chevauche une fenêtre
+            // du même gymnase, projetée sur le jour ISO de la date (chevauchement, pas
+            // appartenance du kickoff).
             $day = (int) $fixture->getMatchDate()->format('N');
             foreach ($matchWindows as $window) {
                 if ($window->getVenueId() !== $fixture->getVenueId() || $window->getDayOfWeek() !== $day) {
                     continue;
                 }
-                if ($this->overlaps($view['window'], $this->matchWindowOnDate($fixture->getMatchDate(), $window))) {
+                if ($this->overlaps($view['venueWindow'], $this->matchWindowOnDate($fixture->getMatchDate(), $window))) {
                     $reasons[] = 'MATCH_SLOT_WINDOW';
 
                     break;
@@ -391,11 +433,15 @@ final class MatchConflictDetector
     }
 
     /**
-     * Severity 1 — two fixtures on the SAME venue with overlapping footprints.
+     * Severity 1 — two fixtures on the SAME venue whose VENUE windows overlap.
      * The manual loop lets this happen on purpose (a derogation or the league
-     * can impose it); the diagnostic makes it the loudest finding instead.
+     * can impose it); the diagnostic makes it the loudest finding instead. ⚠ D1
+     * (2026-09-13): the collision is tested on the VENUE window ([kickoff,
+     * kickoff + match], no warm-up) — two matches chained two hours apart in the
+     * same gym must NOT collide on their inflated person footprints. The served
+     * `start`/`end` are therefore the intersection of the VENUE windows.
      *
-     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, coachIds: list<string>}> $views
+     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, venueWindow: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, coachIds: list<string>}> $views
      *
      * @return list<array<string, mixed>>
      */
@@ -408,15 +454,15 @@ final class MatchConflictDetector
             for ($j = $i + 1; $j < $count; ++$j) {
                 $left = $withVenue[$i];
                 $right = $withVenue[$j];
-                if ($left['fixture']->getVenueId() !== $right['fixture']->getVenueId() || !$this->overlaps($left['window'], $right['window'])) {
+                if ($left['fixture']->getVenueId() !== $right['fixture']->getVenueId() || !$this->overlaps($left['venueWindow'], $right['venueWindow'])) {
                     continue;
                 }
                 $conflicts[] = [
                     'type' => 'VENUE_OVERLAP',
                     'severity' => 1,
                     'venueId' => $left['fixture']->getVenueId(),
-                    'start' => $this->maxMoment($left['window']['start'], $right['window']['start'])->format(self::WALL_CLOCK_FORMAT),
-                    'end' => $this->minMoment($left['window']['end'], $right['window']['end'])->format(self::WALL_CLOCK_FORMAT),
+                    'start' => $this->maxMoment($left['venueWindow']['start'], $right['venueWindow']['start'])->format(self::WALL_CLOCK_FORMAT),
+                    'end' => $this->minMoment($left['venueWindow']['end'], $right['venueWindow']['end'])->format(self::WALL_CLOCK_FORMAT),
                     'left' => $this->fixtureView($left['fixture'], $left['window'], $left['estimated']),
                     'right' => $this->fixtureView($right['fixture'], $right['window'], $right['estimated']),
                 ];
@@ -744,6 +790,14 @@ final class MatchConflictDetector
 
                 foreach ($slotsBySchedule[$scheduleId] ?? [] as $slot) {
                     if ($slot->getDayOfWeek() !== $isoWeekday) {
+                        continue;
+                    }
+                    // D1 rule 2 (2026-09-13) — a match of a team against the training
+                    // of the SAME team is not a conflict: the players who play do not
+                    // also train. Whatever the gym, skip the slot of the fixture's own
+                    // team; a SISTER team's training (the coach on two teams) still
+                    // clashes below.
+                    if ($slot->getTeamId() === $view['fixture']->getTeamId()) {
                         continue;
                     }
                     // Who actually runs the training: the slot's assigned coach if
