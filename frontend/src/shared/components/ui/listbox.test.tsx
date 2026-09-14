@@ -453,3 +453,101 @@ describe("Listbox — recherche (P4-198)", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 });
+
+/**
+ * Le panneau est PORTÉ sous `document.body` en position fixe — il dépasse une modale ou une zone
+ * défilante comme le fait un `<select>` natif. Retour fondateur 2026-09-14 (modale « Accès match »,
+ * 9 gymnases) : le panneau naissait DANS le corps `overflow-y-auto` d'une modale presque vide et se
+ * retrouvait rogné — « je scrolle dans la modale pour scroller dans la liste, c'est ridicule ».
+ * ⚠ jsdom ne mesure rien (rects à 0) : on garde la STRUCTURE (parent = body, `fixed`, `aria-controls`)
+ * comme `modal-overflow.test.tsx` — la géométrie réelle est prouvée en Playwright (`listbox.spec.ts`).
+ */
+describe("Listbox — panneau porté hors de l'arbre (dépasse une modale comme un select natif)", () => {
+  function clipped(options: ListboxOption[]) {
+    return render(
+      <div data-testid="clip" style={{ overflowY: "auto", maxHeight: 40 }}>
+        <Harness options={options} />
+      </div>,
+    );
+  }
+
+  it.each([
+    ["sans recherche (< 8)", OPTIONS],
+    ["avec recherche (≥ 8)", MANY],
+  ])("ouvert %s : le panneau vit sous body en position fixe, hors de l'ancêtre défilant, relié par aria-controls", async (_, options) => {
+    const user = userEvent.setup();
+    clipped(options);
+    await user.click(trigger());
+    const frame = list().closest(".fixed");
+    expect(frame, "le cadre du panneau porte `fixed` — un overflow d'ancêtre ne peut plus le rogner").not.toBeNull();
+    expect(frame?.parentElement).toBe(document.body);
+    expect(screen.getByTestId("clip").contains(frame as HTMLElement)).toBe(false);
+    // Le lien DOM trigger → panneau est perdu par le portail : `aria-controls` le rétablit.
+    expect(frame?.id).toBeTruthy();
+    expect(trigger()).toHaveAttribute("aria-controls", frame?.id);
+  });
+
+  it("fermé : plus de panneau ni d'aria-controls (rien d'orphelin sous body)", async () => {
+    const user = userEvent.setup();
+    clipped(OPTIONS);
+    await user.click(trigger());
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(document.body.querySelector(":scope > .fixed")).toBeNull();
+    expect(trigger()).not.toHaveAttribute("aria-controls");
+  });
+
+  it("un clic DANS le panneau porté n'est pas un clic extérieur (le champ de recherche garde la liste ouverte)", async () => {
+    const user = userEvent.setup();
+    clipped(MANY);
+    await user.click(trigger());
+    await user.click(screen.getByRole("textbox", { name: "Rechercher" }));
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    await user.click(document.body);
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  it("un mousedown DANS le panneau porté n'atteint jamais document : un hôte à fermeture extérieure (ExportMenu, menu) reste ouvert", async () => {
+    const user = userEvent.setup();
+    const hostOutsideClick = vi.fn();
+    document.addEventListener("mousedown", hostOutsideClick);
+    try {
+      clipped(MANY);
+      await user.click(trigger());
+      hostOutsideClick.mockClear();
+      await user.click(screen.getByRole("textbox", { name: "Rechercher" }));
+      await user.click(within(list()).getByRole("option", { name: "Gymnase Auclair" }));
+      expect(hostOutsideClick, "aucun mousedown du panneau ne remonte au document").not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Équipe Gymnase Auclair" })).toBeInTheDocument();
+      // Un vrai clic extérieur, lui, remonte toujours.
+      await user.click(document.body);
+      expect(hostOutsideClick).toHaveBeenCalled();
+    } finally {
+      document.removeEventListener("mousedown", hostOutsideClick);
+    }
+  });
+
+  it("choisir une option depuis le panneau porté sélectionne et referme", async () => {
+    const user = userEvent.setup();
+    const onValueChange = vi.fn();
+    render(
+      <div data-testid="clip" style={{ overflowY: "auto", maxHeight: 40 }}>
+        <Harness options={OPTIONS} onValueChange={onValueChange} />
+      </div>,
+    );
+    await user.click(trigger());
+    await user.click(within(list()).getByRole("option", { name: "Bravo" }));
+    expect(onValueChange).toHaveBeenCalledWith("b");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.getByRole("button", { name: "Équipe Bravo" })).toBeInTheDocument();
+  });
+
+  it("aucune violation axe sur l'état ouvert PORTÉ (scan du document entier, pas du conteneur)", async () => {
+    const user = userEvent.setup();
+    clipped(MANY);
+    await user.click(trigger());
+    // `region` : règle de PAGE (tout contenu dans un landmark) — sans objet sur un rendu nu ; le
+    // scan porte sur le document entier parce que le panneau n'est plus dans `container`.
+    expect(await axe(document.body, { rules: { region: { enabled: false } } })).toHaveNoViolations();
+  });
+});

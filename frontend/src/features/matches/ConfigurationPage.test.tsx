@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useSearchParams } from "react-router";
@@ -40,6 +40,9 @@ vi.mock("./api", () => ({
   getFixtures: () => serve("fixtures"),
   getOpponentTravel: () => serve("travel"),
   getVenueLabelInventory: () => serve("labelInventory"),
+  getVenueMatchWindows: () => Promise.resolve([]),
+  createVenueMatchWindow: vi.fn(),
+  deleteVenueMatchWindow: vi.fn(),
   updateSportCategoryDuration: vi.fn(),
   createMatchSlotRotation: vi.fn(),
   updateMatchSlotRotation: vi.fn(),
@@ -107,6 +110,20 @@ describe("ConfigurationPage (P4-185 — une section = un écran)", () => {
     expect(screen.getByRole("button", { name: "Habitudes & passerelles" })).toBeInTheDocument();
     // Le gabarit reste replié.
     expect(screen.queryByText(/Aucune habitude déclarée/)).not.toBeInTheDocument();
+  });
+
+  it("la modale « Accès match » : le sélecteur de gymnase se déploie HORS de la modale (porté, jamais rogné par le corps défilant)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<Harness />, { route: "/matchs/configuration?section=reglages" });
+    await user.click(await screen.findByRole("button", { name: "Accès match" }));
+    const dialog = await screen.findByRole("dialog", { name: "Accès match" });
+    // Le corps de la modale DÉFILE (contrat `modal-overflow.test.tsx`, inchangé) — c'est lui qui
+    // rognait le panneau quand celui-ci naissait dans l'arbre (retour fondateur 2026-09-14).
+    expect(dialog.querySelector(":scope > .overflow-y-auto")).not.toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: /Gymnase des accès match/ }));
+    const list = await screen.findByRole("listbox");
+    expect(dialog.contains(list), "le panneau est porté sous body : il dépasse la modale comme un select natif").toBe(false);
+    expect(within(list).getByRole("option", { name: /Gymnase Alpha/ })).toBeInTheDocument();
   });
 
   it("ouvrir « Échéances de saisie » monte son éditeur", async () => {

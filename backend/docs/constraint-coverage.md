@@ -1,11 +1,12 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-09-10 (rotation `documentation-update`, PR P4-193 « amicaux hors créneau match » —
-zone non touchée par la PR, contrôle de fraîcheur). Re-confronté au code : `ConstraintFamily`
+Last verified @ 2026-09-15 (rotation `documentation-update`, PR « panneau `Listbox` porté » — zone non
+touchée par la PR, contrôle de fraîcheur). Re-confronté au code : `ConstraintFamily`
 (`backend/src/Enum/ConstraintFamily.php:11-14`) n'a toujours que 4 cas (TIME/DAY/FACILITY/
 COACH_AVAILABILITY), `FACILITY_CAPACITY` absent de l'enum ✓ ; `ScheduleConstraintBuilder::VENUE_CONFIG_KEYS`
-porte toujours `minAtVenueId` ✓ ; les tests moteur `test_hard_lock_divisible_slot.py` et
-`test_consecutive_days.py` sont toujours en place (`engine/tests/semantic/`) ✓. Rien à corriger.
+(`:56`) porte toujours `minAtVenueId` ✓ ; les tests moteur `test_hard_lock_divisible_slot.py` et
+`test_consecutive_days.py` sont toujours en place (`engine/tests/semantic/`), `objective/weights.py` aussi ✓.
+Rien à corriger.
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels
