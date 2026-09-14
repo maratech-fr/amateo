@@ -10,17 +10,25 @@ from ortools.sat.python import cp_model
 from app.schemas.match_input_schema import (
     MatchPlacementInputSchema,
     MatchSchema,
+    MatchTeamSchema,
     SlotRotationSchema,
     TeamHabitSchema,
 )
 
 logger = logging.getLogger("engine.match_placement")
 
-# ── Geometry (spec §4bis: the 2h15 home footprint occupies the venue) ─────────
+# ── Geometry (D1, P4-203) ─────────────────────────────────────────────────────
+# Durations are PER TEAM now: the payload carries teams[].matchMinutes /
+# teams[].warmupMinutes (resolved by the backend from the sport category). The
+# court is held for the MATCH only ([kickoff, kickoff + matchMinutes]) — the
+# warm-up no longer occupies the venue (founder decision 2026-09-13: "you warm
+# up on the side during the previous match"). The PERSON footprint (coach /
+# NOT_SIMULTANEOUS link) still carries the warm-up:
+# [kickoff − warmupMinutes, kickoff + matchMinutes]. Two league matches chained
+# two hours apart in the same gym therefore no longer collide.
 STEP_MIN = 15
-BEFORE_KICKOFF_MIN = 30
-AFTER_KICKOFF_MIN = 105
-FOOTPRINT_MIN = BEFORE_KICKOFF_MIN + AFTER_KICKOFF_MIN
+DEFAULT_MATCH_MIN = 105
+DEFAULT_WARMUP_MIN = 30
 
 # ── Objective weights (ADR-0003 — fixed, documented, golden-pinned) ──────────
 # Placement dominates every SOFT combination of one match: the solver never
@@ -45,7 +53,7 @@ W_GAP_PER_STEP = 1
 
 REASON_MESSAGES = {
     "venue_unavailable": "Tous les gymnases de match sont indisponibles à cette date.",
-    "no_access_window": "Aucune fenêtre d'accès match ne contient l'empreinte de 2h15 ce jour-là.",
+    "no_access_window": "Aucune fenêtre d'accès match ne contient la durée du match ce jour-là.",
     "no_league_intersection": "Les fenêtres de la ligue ne croisent aucune fenêtre d'accès ce jour-là.",
     "venue_full": "Tous les créneaux licites sont déjà occupés par d'autres matchs.",
 }
@@ -61,6 +69,14 @@ def _to_time(total: int) -> time:
 
 def _iso_day(value: date) -> int:
     return value.isoweekday()
+
+
+def _durations(team: MatchTeamSchema | None) -> tuple[int, int]:
+    """(matchMinutes, warmupMinutes) of a team — the documented defaults when the
+    team is absent or the fields were omitted (Pydantic already fills 105 / 30)."""
+    if team is None:
+        return DEFAULT_MATCH_MIN, DEFAULT_WARMUP_MIN
+    return team.match_minutes, team.warmup_minutes
 
 
 class _Candidate:
@@ -80,6 +96,7 @@ def _candidate_kickoffs(
     reason when it is EMPTY (derived at build time, before any solve)."""
     day = _iso_day(match.match_date)
     team = next((t for t in input_data.teams if t.id == match.team_id), None)
+    match_min, _ = _durations(team)
     league = [w for w in (team.league_windows if team else []) if w.day_of_week == day]
     league_mapped = team is not None and len(team.league_windows) > 0
 
@@ -94,10 +111,11 @@ def _candidate_kickoffs(
         for window in venue.match_windows:
             if window.day_of_week != day:
                 continue
-            # The WHOLE footprint must fit inside the access window (warm-up
-            # occupies the court too).
-            first = _minutes(window.start) + BEFORE_KICKOFF_MIN
-            last = _minutes(window.end) - AFTER_KICKOFF_MIN
+            # The venue is held for the MATCH only (D1): kickoff ≥ start and
+            # kickoff + matchMinutes ≤ end. The warm-up no longer reserves the
+            # court, so a match may start at the very opening of the window.
+            first = _minutes(window.start)
+            last = _minutes(window.end) - match_min
             kick = ((first + STEP_MIN - 1) // STEP_MIN) * STEP_MIN
             while kick <= last:
                 saw_access_candidate = True
@@ -122,12 +140,14 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
     """Place every placeable TO_PLACE match; name why the rest stayed out.
 
     HARD (never violated in the output): access windows ∩ league windows,
-    venue unavailabilities, per-(venue, date) no-overlap of the 2h15 footprints
-    (FIXED matches consume their slot without being variables).
+    venue unavailabilities, per-(venue, date) no-overlap of the MATCH windows
+    ([kickoff, kickoff + matchMinutes] — the warm-up no longer occupies the
+    court, D1; FIXED matches consume their slot without being variables).
     SOFT: habits, A/B slot rotations (attraction + window protection, at parity
     with habits — RMM-5), MAIN/ASSISTANT coach clashes (vs matches AND projected
-    trainings), NOT_SIMULTANEOUS links, BACK_TO_BACK chains, habit-window
-    protection, day compaction, re-solve stability.
+    trainings, on the PERSON window that keeps the warm-up), NOT_SIMULTANEOUS
+    links, BACK_TO_BACK chains, habit-window protection, day compaction,
+    re-solve stability.
     """
     model = cp_model.CpModel()
 
@@ -165,29 +185,32 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
 
     solvable = [m for m in to_place if m.id in candidates]
 
-    # 2. Venue no-overlap per (venue, date). FIXED anchors are DATA, not model
-    # variables: they PRUNE the candidates they cover instead of entering the
-    # NoOverlap as fixed intervals — two manual anchors may legitimately collide
-    # (the manual loop never blocks, the diagnostic alerts), and a fixed-interval
-    # pair in overlap would make the WHOLE model infeasible and unplace
-    # everything (bug caught by smoke-place-matches, P1-4 PR E1).
+    # 2. Venue no-overlap per (venue, date), on the MATCH window
+    # [kickoff, kickoff + matchMinutes] (D1 — no warm-up). FIXED anchors are DATA,
+    # not model variables: they PRUNE the candidates they cover instead of
+    # entering the NoOverlap as fixed intervals — two manual anchors may
+    # legitimately collide (the manual loop never blocks, the diagnostic alerts),
+    # and a fixed-interval pair in overlap would make the WHOLE model infeasible
+    # and unplace everything (bug caught by smoke-place-matches, P1-4 PR E1).
     fixed_busy: dict[tuple[str, date], list[tuple[int, int]]] = {}
     for match in fixed:
         if match.venue_id is None or match.kickoff is None:  # guarded by schema
             continue
-        start = _minutes(match.kickoff) - BEFORE_KICKOFF_MIN
-        fixed_busy.setdefault((match.venue_id, match.match_date), []).append((start, start + FOOTPRINT_MIN))
+        match_min, _ = _durations(teams_by_id.get(match.team_id))
+        start = _minutes(match.kickoff)
+        fixed_busy.setdefault((match.venue_id, match.match_date), []).append((start, start + match_min))
 
     intervals_by_group: dict[tuple[str, date], list[cp_model.IntervalVar]] = {}
     for match in solvable:
+        match_min, _ = _durations(teams_by_id.get(match.team_id))
         for cand in candidates[match.id]:
-            start = cand.kickoff_min - BEFORE_KICKOFF_MIN
+            start = cand.kickoff_min
             busy = fixed_busy.get((cand.venue_id, match.match_date), [])
-            if any(start < b_end and b_start < start + FOOTPRINT_MIN for b_start, b_end in busy):
+            if any(start < b_end and b_start < start + match_min for b_start, b_end in busy):
                 model.add(cand.var == 0)
                 continue
             interval = model.new_optional_fixed_size_interval_var(
-                start, FOOTPRINT_MIN, cand.var, f"iv_{match.id}_{cand.venue_id}_{cand.kickoff_min}"
+                start, match_min, cand.var, f"iv_{match.id}_{cand.venue_id}_{cand.kickoff_min}"
             )
             intervals_by_group.setdefault((cand.venue_id, match.match_date), []).append(interval)
     for group in intervals_by_group.values():
@@ -199,7 +222,9 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
         objective.append(W_PLACE * is_placed[match.id])
 
     # 3. Per-candidate constant terms: habit bonus, stability, protection,
-    # coach clash vs FIXED/AWAY footprints and projected trainings.
+    # coach clash vs FIXED/AWAY footprints and projected trainings. The coach /
+    # person window carries the warm-up: [kickoff − warmupMinutes, kickoff +
+    # matchMinutes].
     fixed_windows_by_coach: dict[tuple[str, date], list[tuple[int, int]]] = {}
     for match in input_data.matches:
         if match.kind == "TO_PLACE" or match.kickoff is None:
@@ -207,8 +232,9 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
         team = teams_by_id.get(match.team_id)
         if team is None:
             continue
-        start = _minutes(match.kickoff) - BEFORE_KICKOFF_MIN
-        end = _minutes(match.kickoff) + AFTER_KICKOFF_MIN
+        match_min, warmup_min = _durations(team)
+        start = _minutes(match.kickoff) - warmup_min
+        end = _minutes(match.kickoff) + match_min
         for ref in team.coaches:
             fixed_windows_by_coach.setdefault((ref.coach_id, match.match_date), []).append((start, end))
     for occupancy in input_data.training_occupancies:
@@ -217,11 +243,13 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
         )
 
     # Habit-window protection: dates where a team with a venue-anchored habit
-    # has NO match at all — its habitual footprint is defended.
+    # has NO match at all — its habitual MATCH window [kickoff, kickoff +
+    # matchMinutes] is defended (aligned on the venue occupancy, D1).
     match_dates = sorted({m.match_date for m in input_data.matches})
     team_dates = {(m.team_id, m.match_date) for m in input_data.matches}
     protected: dict[tuple[str, date], list[tuple[int, int]]] = {}
     for team in input_data.teams:
+        match_min, _ = _durations(team)
         for habit in team.habits:
             if habit.venue_id is None:
                 continue
@@ -229,35 +257,39 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
                 if _iso_day(day_key) != habit.day_of_week or (team.id, day_key) in team_dates:
                     continue
                 kick = _minutes(habit.kickoff)
-                protected.setdefault((habit.venue_id, day_key), []).append(
-                    (kick - BEFORE_KICKOFF_MIN, kick + AFTER_KICKOFF_MIN)
-                )
+                protected.setdefault((habit.venue_id, day_key), []).append((kick, kick + match_min))
 
     # Rotation-window protection (RMM-5, §8): on a date at the slot's day where NO
-    # member has a match at all, the shared slot's 2h15 footprint is defended
-    # against other teams — the mirror of the habit protection above.
+    # member has a match at all, the shared slot's MATCH window is defended
+    # against other teams — the mirror of the habit protection above. Duration =
+    # the longest member's match (the slot must hold whichever member receives).
     for rotation in input_data.slot_rotations:
         members = set(rotation.team_ids)
+        rot_match_min = max(
+            (_durations(teams_by_id.get(member_id))[0] for member_id in rotation.team_ids),
+            default=DEFAULT_MATCH_MIN,
+        )
         for day_key in match_dates:
             if _iso_day(day_key) != rotation.day_of_week:
                 continue
             if any((member_id, day_key) in team_dates for member_id in members):
                 continue
             kick = _minutes(rotation.kickoff)
-            protected.setdefault((rotation.venue_id, day_key), []).append(
-                (kick - BEFORE_KICKOFF_MIN, kick + AFTER_KICKOFF_MIN)
-            )
+            protected.setdefault((rotation.venue_id, day_key), []).append((kick, kick + rot_match_min))
 
     for match in solvable:
         team = teams_by_id.get(match.team_id)
+        match_min, warmup_min = _durations(team)
         team_habit: TeamHabitSchema | None = None
         if team is not None:
             team_habit = next((h for h in team.habits if h.day_of_week == _iso_day(match.match_date)), None)
         match_rotations = rotations_by_team_day.get((match.team_id, _iso_day(match.match_date)), [])
         for cand in candidates[match.id]:
             weight = 0
-            start = cand.kickoff_min - BEFORE_KICKOFF_MIN
-            end = cand.kickoff_min + AFTER_KICKOFF_MIN
+            venue_start = cand.kickoff_min
+            venue_end = cand.kickoff_min + match_min
+            person_start = cand.kickoff_min - warmup_min
+            person_end = cand.kickoff_min + match_min
             if team_habit is not None:
                 if cand.kickoff_min == _minutes(team_habit.kickoff):
                     weight += W_HABIT_TIME
@@ -277,26 +309,31 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
             ):
                 weight += W_STABILITY
                 model.add_hint(cand.var, 1)
+            # Protection is a VENUE conflict → the candidate's MATCH window.
             for p_start, p_end in protected.get((cand.venue_id, match.match_date), []):
-                if start < p_end and p_start < end:
+                if venue_start < p_end and p_start < venue_end:
                     weight -= W_PROTECT_HABIT
+            # Coach clash is a PERSON conflict → the warm-up-carrying window.
             if team is not None:
                 for ref in team.coaches:
                     role_weight = W_COACH_MAIN if ref.role == "MAIN" else W_COACH_ASSISTANT
                     for f_start, f_end in fixed_windows_by_coach.get((ref.coach_id, match.match_date), []):
-                        if start < f_end and f_start < end:
+                        if person_start < f_end and f_start < person_end:
                             weight -= role_weight
             if weight:
                 objective.append(weight * cand.var)
 
-    # 4. Pairwise SOFT between TO_PLACE matches: shared-coach clash, links.
+    # 4. Pairwise SOFT between TO_PLACE matches: shared-coach clash, links. Coach
+    # and NOT_SIMULTANEOUS overlap on the PERSON window (warm-up kept).
     def _overlap_pairs(left: MatchSchema, right: MatchSchema, penalty: int, tag: str) -> None:
         if left.match_date != right.match_date:
             return
+        l_match, l_warm = _durations(teams_by_id.get(left.team_id))
+        r_match, r_warm = _durations(teams_by_id.get(right.team_id))
         for lc in candidates[left.id]:
-            l_start, l_end = lc.kickoff_min - BEFORE_KICKOFF_MIN, lc.kickoff_min + AFTER_KICKOFF_MIN
+            l_start, l_end = lc.kickoff_min - l_warm, lc.kickoff_min + l_match
             for rc in candidates[right.id]:
-                r_start, r_end = rc.kickoff_min - BEFORE_KICKOFF_MIN, rc.kickoff_min + AFTER_KICKOFF_MIN
+                r_start, r_end = rc.kickoff_min - r_warm, rc.kickoff_min + r_match
                 if l_start < r_end and r_start < l_end:
                     both = model.new_bool_var(f"{tag}_{left.id}_{right.id}_{lc.kickoff_min}_{rc.kickoff_min}")
                     # Penalised (negative in a Maximize): only the LOWER bound is
@@ -328,10 +365,18 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
                 if link.type == "NOT_SIMULTANEOUS":
                     _overlap_pairs(left, right, W_LINK_NOT_SIMULTANEOUS, "link")
                 elif link.type == "BACK_TO_BACK" and left.match_date == right.match_date:
-                    # Chained = same venue, footprints contiguous (Δkickoff = 2h15).
+                    # Chained = same venue, MATCH windows contiguous: the right
+                    # kicks off exactly when the left's match ends (or symmetric).
+                    l_match, _ = _durations(teams_by_id.get(left.team_id))
+                    r_match, _ = _durations(teams_by_id.get(right.team_id))
                     for lc in candidates[left.id]:
                         for rc in candidates[right.id]:
-                            if lc.venue_id == rc.venue_id and abs(lc.kickoff_min - rc.kickoff_min) == FOOTPRINT_MIN:
+                            if lc.venue_id != rc.venue_id:
+                                continue
+                            chained_ok = (
+                                rc.kickoff_min == lc.kickoff_min + l_match or lc.kickoff_min == rc.kickoff_min + r_match
+                            )
+                            if chained_ok:
                                 chained = model.new_bool_var(f"btb_{left.id}_{right.id}_{lc.kickoff_min}")
                                 # Rewarded (positive): only the UPPER bounds are
                                 # needed — the maximiser pulls `chained` to 1
@@ -341,38 +386,41 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
                                 objective.append(W_BACK_TO_BACK * chained)
 
     # 5. Day compaction per (venue, date): penalise the idle span between the
-    # first and last footprint (span − 135 × placed count, in 15-min steps).
+    # first and last MATCH window (span − Σ matchMinutes placed, in 15-min steps).
     day_start, day_end = 0, 24 * 60
-    groups: dict[tuple[str, date], list[tuple[cp_model.IntVar, int]]] = {}
+    groups: dict[tuple[str, date], list[tuple[cp_model.IntVar, int, int]]] = {}
     for match in solvable:
+        m_match, _ = _durations(teams_by_id.get(match.team_id))
         for cand in candidates[match.id]:
-            groups.setdefault((cand.venue_id, match.match_date), []).append((cand.var, cand.kickoff_min))
-    fixed_by_group: dict[tuple[str, date], list[int]] = {}
+            groups.setdefault((cand.venue_id, match.match_date), []).append((cand.var, cand.kickoff_min, m_match))
+    fixed_by_group: dict[tuple[str, date], list[tuple[int, int]]] = {}
     for match in fixed:
         if match.venue_id is not None and match.kickoff is not None:
-            fixed_by_group.setdefault((match.venue_id, match.match_date), []).append(_minutes(match.kickoff))
+            m_match, _ = _durations(teams_by_id.get(match.team_id))
+            fixed_by_group.setdefault((match.venue_id, match.match_date), []).append((_minutes(match.kickoff), m_match))
     for key, group_cands in groups.items():
-        fixed_kicks = fixed_by_group.get(key, [])
+        fixed_entries = fixed_by_group.get(key, [])
         span_start = model.new_int_var(day_start, day_end, f"span_start_{key[0]}_{key[1]}")
         span_end = model.new_int_var(day_start, day_end, f"span_end_{key[0]}_{key[1]}")
-        count_expr: list[cp_model.IntVar] = []
-        for var, kick in group_cands:
-            model.add(span_start <= kick - BEFORE_KICKOFF_MIN).only_enforce_if(var)
-            model.add(span_end >= kick + AFTER_KICKOFF_MIN).only_enforce_if(var)
-            count_expr.append(var)
-        for kick in fixed_kicks:
-            model.add(span_start <= kick - BEFORE_KICKOFF_MIN)
-            model.add(span_end >= kick + AFTER_KICKOFF_MIN)
-        n_fixed = len(fixed_kicks)
-        total = sum(count_expr) + n_fixed if count_expr else n_fixed
+        placed_footprint: list[cp_model.LinearExpr] = []
+        for var, kick, m_match in group_cands:
+            model.add(span_start <= kick).only_enforce_if(var)
+            model.add(span_end >= kick + m_match).only_enforce_if(var)
+            placed_footprint.append(m_match * var)
+        for kick, m_match in fixed_entries:
+            model.add(span_start <= kick)
+            model.add(span_end >= kick + m_match)
+        n_fixed = len(fixed_entries)
+        fixed_footprint = sum(m_match for _, m_match in fixed_entries)
         gap = model.new_int_var(0, day_end, f"gap_{key[0]}_{key[1]}")
-        # gap ≥ span − 135·n ; NoOverlap guarantees span ≥ 135·n when all sit
-        # apart, so gap measures idle time. The maximiser pushes gap down to its
-        # lower bound (it enters the objective negatively).
-        model.add(gap >= (span_end - span_start) - FOOTPRINT_MIN * total)
+        # gap ≥ span − Σ matchMinutes ; NoOverlap guarantees span ≥ Σ matchMinutes
+        # when all sit apart, so gap measures idle time. The maximiser pushes gap
+        # down to its lower bound (it enters the objective negatively).
+        total_footprint = sum(placed_footprint) + fixed_footprint if placed_footprint else fixed_footprint
+        model.add(gap >= (span_end - span_start) - total_footprint)
         if n_fixed == 0:
             any_placed = model.new_bool_var(f"any_{key[0]}_{key[1]}")
-            model.add_max_equality(any_placed, [var for var, _ in group_cands])
+            model.add_max_equality(any_placed, [var for var, _, _ in group_cands])
             model.add(span_end == span_start).only_enforce_if(any_placed.Not())
         # Per 15-min STEP (not per minute) — a 6 h hole must never outweigh a
         # coach clash: 24 steps × 1 « 60 (the D5 hierarchy holds).

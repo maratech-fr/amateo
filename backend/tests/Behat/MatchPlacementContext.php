@@ -8,6 +8,8 @@ use Behat\Hook\AfterScenario;
 use Behat\Step\Given;
 use Behat\Step\Then;
 use Behat\Step\When;
+use DateTimeImmutable;
+use DateTimeZone;
 use RuntimeException;
 
 /**
@@ -45,7 +47,11 @@ final class MatchPlacementContext extends BaseContext
 
     private string $competitionId = '';
 
+    private string $competitionId2 = '';
+
     private string $fxSat = '';
+
+    private string $fxSat2 = '';
 
     private string $fxSun = '';
 
@@ -98,8 +104,12 @@ final class MatchPlacementContext extends BaseContext
             $this->pointerSetBySelf = true;
         }
 
-        $this->saturday = date('Y-m-d', (int) strtotime('next saturday'));
-        $this->sunday = date('Y-m-d', (int) strtotime($this->saturday . ' +1 day'));
+        // Dates comptées depuis le JOUR DU CLUB (Europe/Paris) et non l'UTC du
+        // serveur : près de minuit, strtotime() côté UTC pouvait viser un autre
+        // samedi que celui affiché au gestionnaire.
+        $paris = new DateTimeZone('Europe/Paris');
+        $this->saturday = new DateTimeImmutable('now', $paris)->modify('next saturday')->format('Y-m-d');
+        $this->sunday = new DateTimeImmutable($this->saturday, $paris)->modify('+1 day')->format('Y-m-d');
     }
 
     #[Given('deux équipes et un gymnase jetables')]
@@ -150,6 +160,31 @@ final class MatchPlacementContext extends BaseContext
         $this->fxSun = $this->createdId(
             $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->sunday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire dimanche', 'competitionId' => $this->competitionId], $this->token),
             'match du dimanche',
+        );
+    }
+
+    #[Given('deux matchs à domicile le même samedi, un par équipe')]
+    public function deuxDomicilesLeMemeSamedi(): void
+    {
+        // Deux domiciles de compétition, un par équipe, le MÊME samedi sur le
+        // même gymnase : sous D1 (P4-203) la salle ne tient que la durée du match
+        // (plus l'échauffement), donc deux rencontres enchaînées tiennent dans la
+        // fenêtre 14h00-18h00 là où l'ancienne empreinte 2h15 en aurait recalé une.
+        $this->competitionId = $this->createdId(
+            $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => 'Championnat jetable A', 'competitionType' => 'CHAMPIONSHIP'], $this->token),
+            'compétition A',
+        );
+        $this->competitionId2 = $this->createdId(
+            $this->apiPost('competitions', ['teamId' => $this->secondTeamId, 'name' => 'Championnat jetable B', 'competitionType' => 'CHAMPIONSHIP'], $this->token),
+            'compétition B',
+        );
+        $this->fxSat = $this->createdId(
+            $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->saturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire A', 'competitionId' => $this->competitionId], $this->token),
+            'premier match du samedi',
+        );
+        $this->fxSat2 = $this->createdId(
+            $this->apiPost('fixtures', ['teamId' => $this->secondTeamId, 'matchDate' => $this->saturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire B', 'competitionId' => $this->competitionId2], $this->token),
+            'second match du samedi',
         );
     }
 
@@ -243,7 +278,7 @@ final class MatchPlacementContext extends BaseContext
         }
     }
 
-    #[Then('le match du samedi est placé par le solveur entre 14h30 et 16h15')]
+    #[Then('le match du samedi est placé par le solveur entre 14h00 et 16h15')]
     public function leMatchDuSamediEstPlace(): void
     {
         $status = $this->satFixture['status'] ?? null;
@@ -256,9 +291,33 @@ final class MatchPlacementContext extends BaseContext
             throw new RuntimeException(\sprintf('le match du samedi n\'est pas marqué comme placé par le solveur (source « %s »)', \is_string($source) ? $source : 'inconnue'));
         }
 
+        // Sous D1 (P4-203) la salle ne réserve plus l'échauffement : le coup
+        // d'envoi peut désormais toucher l'ouverture de la fenêtre (14h00).
         $kickoff = $this->kickoff();
-        if ($kickoff <= '14:29' || $kickoff >= '16:16') {
-            throw new RuntimeException(\sprintf('coup d\'envoi %s hors de la plage légale 14:30-16:15', $kickoff));
+        if ($kickoff <= '13:59' || $kickoff >= '16:16') {
+            throw new RuntimeException(\sprintf('coup d\'envoi %s hors de la plage légale 14:00-16:15', $kickoff));
+        }
+    }
+
+    #[Then('les deux matchs du samedi sont posés par le solveur dans ce gymnase')]
+    public function lesDeuxMatchsSontPoses(): void
+    {
+        $unplaced = \is_array($this->placeResult['unplaced'] ?? null) ? $this->placeResult['unplaced'] : [];
+        foreach ([$this->fxSat, $this->fxSat2] as $id) {
+            foreach ($unplaced as $entry) {
+                if (\is_array($entry) && ($entry['matchId'] ?? null) === $id) {
+                    throw new RuntimeException('un des deux domiciles est resté non plaçable — deux matchs enchaînés doivent tenir dans la fenêtre (D1)');
+                }
+            }
+
+            $fixture = $this->apiGet(\sprintf('fixtures/%s', $id), $this->token)['json'];
+            $status = $fixture['status'] ?? null;
+            if ('PLACED' !== $status) {
+                throw new RuntimeException(\sprintf('un domicile du samedi n\'est pas placé (statut « %s »)', \is_string($status) ? $status : 'inconnu'));
+            }
+            if (($fixture['venueId'] ?? null) !== $this->venueId) {
+                throw new RuntimeException('un domicile du samedi n\'a pas atterri sur le gymnase jetable');
+            }
         }
     }
 
@@ -307,7 +366,7 @@ final class MatchPlacementContext extends BaseContext
             return;
         }
 
-        foreach ([$this->fxSat, $this->fxSun, $this->friendlyId] as $id) {
+        foreach ([$this->fxSat, $this->fxSat2, $this->fxSun, $this->friendlyId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
@@ -315,8 +374,10 @@ final class MatchPlacementContext extends BaseContext
         if ('' !== $this->rotationId) {
             $this->apiDelete(\sprintf('match_slot_rotations/%s', $this->rotationId), $this->token);
         }
-        if ('' !== $this->competitionId) {
-            $this->apiDelete(\sprintf('competitions/%s', $this->competitionId), $this->token);
+        foreach ([$this->competitionId, $this->competitionId2] as $id) {
+            if ('' !== $id) {
+                $this->apiDelete(\sprintf('competitions/%s', $id), $this->token);
+            }
         }
         if ('' !== $this->windowId) {
             $this->apiDelete(\sprintf('venue_match_windows/%s', $this->windowId), $this->token);

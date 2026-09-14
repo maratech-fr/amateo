@@ -44,8 +44,25 @@ Invariant gardé par `assert_no_hard_violation` (tests sémantiques).
 ### 4. Budget fixe, déterminisme, poids documentés
 
 30 s par défaut (plafond payload 60 s), **1 worker** (bit-stable — les golden en dépendent), seed 42.
-Candidats au pas de **15 min** dans (accès ∩ ligue), l'empreinte 2h15 entière dans la fenêtre d'accès
-(l'échauffement occupe la salle). Poids SOFT (produit, golden-épinglés) : conflit coach MAIN −60 ·
+Candidats au pas de **15 min** dans (accès ∩ ligue).
+
+**Amendement 2026-09-14 (D1, P4-203)** : la salle n'est plus tenue pour l'empreinte 2h15 — elle est
+tenue pour le **match seul** (`[coup d'envoi, coup d'envoi + matchMinutes]`), alignée sur la règle
+que le radar (D1, #889) applique déjà à l'occupation de salle. L'échauffement reste une contrainte de
+**personne** (coach, passerelle `NOT_SIMULTANEOUS`, entraînements projetés) sur
+`[coup d'envoi − warmupMinutes, coup d'envoi + matchMinutes]`. Décision fondateur : « on s'échauffe
+sur le côté pendant le match précédent ; deux matchs qui s'enchaînent, c'est OK et très courant » — le
+solveur refusait jusqu'ici l'enchaînement fédéral à 2 h que le radar acceptait déjà. Les durées
+(`matchMinutes`/`warmupMinutes`) sont désormais **par équipe**, résolues côté backend par
+`MatchDurationResolver` (override de catégorie sinon défaut de famille 75/90/105 min, échauffement 30
+min — `MatchDurationProfile::fallback()` = 105/30 pour une catégorie sans famille) et portées par le
+contrat (`teams[].matchMinutes`/`warmupMinutes`, Pydantic optionnels par défaut 105/30 — un payload
+absent de ces champs garde l'ancien comportement). Un match « enchaîné » (BACK_TO_BACK, SOFT) est
+désormais celui dont le suivant démarre exactement à la fin du match précédent (`Δkickoff` variable
+selon les durées, plus une constante 2h15). Golden re-épinglé consciemment (changement de géométrie =
+changement de produit) : `engine/tests/golden/test_match_placement_golden.py`.
+
+Poids SOFT (produit, golden-épinglés) : conflit coach MAIN −60 ·
 passerelle NOT_SIMULTANEOUS violée −40 · habitude heure +15 / gymnase +5 (le jour est constant) ·
 fenêtre habituelle protégée −25 · **rotation A/B — attraction heure +15 / gymnase +5 · fenêtre de
 rotation protégée −25** (RMM-5 : extension à parité stricte du mécanisme d'habitude, le créneau

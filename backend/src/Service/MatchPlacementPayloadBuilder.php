@@ -62,7 +62,7 @@ final class MatchPlacementPayloadBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '2.20';
+    public const string CONTRACT_VERSION = '2.21';
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -70,6 +70,7 @@ final class MatchPlacementPayloadBuilder
         private readonly AwayKickoffEstimator $awayKickoffEstimator,
         private readonly LeagueEnvelopeResolver $leagueEnvelopeResolver,
         private readonly EffectiveScheduleResolver $effectiveScheduleResolver,
+        private readonly MatchDurationResolver $matchDurationResolver,
     ) {}
 
     /**
@@ -147,8 +148,14 @@ final class MatchPlacementPayloadBuilder
             ];
         }
 
-        // Teams: league envelope (tolerant), habits, coaches.
+        // Teams: league envelope (tolerant), habits, coaches, per-category
+        // durations (P4-203 — resolved by MatchDurationResolver, the SAME service
+        // the radar footprint uses).
         $envelope = $this->resolveEnvelope($club, $teams, $categories);
+        $categoriesById = [];
+        foreach ($categories as $category) {
+            $categoriesById[$category->getId()] = $category;
+        }
         $habitsByTeam = [];
         foreach ($habits as $habit) {
             // Suppléance (tranchage 5) : l'habitude d'un membre le MÊME jour que sa
@@ -173,6 +180,10 @@ final class MatchPlacementPayloadBuilder
         $infoDiagnostics = [];
         foreach ($teams as $team) {
             $windows = $envelope[$team->getId()] ?? [];
+            $category = $categoriesById[$team->getSportCategoryId()] ?? null;
+            $profile = null !== $category
+                ? $this->matchDurationResolver->resolve($category)
+                : MatchDurationProfile::fallback();
             $teamRows[] = [
                 'id' => $team->getId(),
                 'name' => $team->getName(),
@@ -183,6 +194,8 @@ final class MatchPlacementPayloadBuilder
                 ], $windows),
                 'habits' => $habitsByTeam[$team->getId()] ?? [],
                 'coaches' => $coachesByTeam[$team->getId()] ?? [],
+                'matchMinutes' => $profile->matchMinutes,
+                'warmupMinutes' => $profile->warmupMinutes,
             ];
             if ([] === $windows) {
                 $infoDiagnostics[] = [
