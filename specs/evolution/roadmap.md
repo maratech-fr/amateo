@@ -1,4 +1,4 @@
-# Roadmap (57) — ce qui reste à faire
+# Roadmap (58) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -178,13 +178,17 @@
 > (extérieur/passé-semaine-en-cours/suffixe équipe) — **P4-199 SOLDÉ le même jour**, détail
 > [`module-matchs.md`](../courantes/module-matchs.md) § « Espace Importer » et § « Appariement
 > FFBB » — **P4-200 SOLDÉ (C1 le 2026-09-12, C2 le 2026-09-13)**, reste le quota e2e superadmin
-> (P4-201).
+> (P4-201). **D1 SOLDÉ (2026-09-13)** — le détecteur de conflits dit la vérité (salle = fenêtre
+> match seul, jamais de conflit avec l'entraînement de sa propre équipe, passé muet), détail
+> [`module-matchs.md`](../courantes/module-matchs.md) § « Détection » ; différé une phrase d'aide
+> « Durée des matchs » (P4-202, ci-dessous).
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
 | P4-197 | **Placer un match qui n'est pas dans la semaine affichée : la grille ne le montre nulle part** | 🟡 | S | Relevé le 2026-09-11 en réparant `tests/e2e/matches.spec.ts` : la liste « à placer » n'est PAS bornée à la semaine affichée (`MatchesPage.tsx` — `filteredFixtures` nourrit la liste, `weekendFixtures` la grille), donc on peut sélectionner et placer un domicile d'une autre semaine ; il quitte la liste et n'apparaît sur aucune grille tant qu'on n'a pas navigué à SA semaine. Pire : `setSelectedWeekend` rend l'étape à l'automatique (`store.ts`), la navigation change donc aussi de vue. Mesuré sur un match du 6 mars 2027 placé depuis la semaine de septembre. Remède à cadrer : après un placement, suivre le match (poser `selectedWeekend` sur sa semaine) ou borner la liste « à placer » à la semaine affichée |
 | P4-198 | **Recherche dans le sélecteur d'équipe / de gymnase (`Listbox`)** | 🟡 | S | Mesuré le 2026-09-12 au dépôt FBI d'un export réel du fondateur, 50 divisions à associer une à une via `TeamSelect` : `TeamSelect`/`VenueSelect` (`shared/components/ui/team-select.tsx`, `venue-select.tsx`), tous deux bâtis sur `Listbox` (P4-164), n'ont pas de champ de recherche — `ResourceFilter.tsx:118-132` (`features/planning/`) en a un. Primitive à ajouter au partagé `Listbox` (une seule maison), profiterait aux deux sélecteurs sans dupliquer le geste |
 | P4-201 | **e2e superadmin : une session par spec brûle le quota `admin_auth`** | 🟡 | S | Chaque relance de spec superadmin ré-authentifie et consomme le rate-limit `admin_auth` (5/15 min par IP) — cascade rouge vue sur PR #882 (`modal-reachability.spec.ts`). Les specs superadmin devraient partager UNE session au lieu d'une par fichier |
+| P4-202 | **« Durée des matchs » ne dit pas que l'échauffement n'occupe pas la salle** | ⚪ | S | Différé de D1 (2026-09-13, décision §2 « la SALLE n'est occupée que par le match ») : `MatchDurationsEditor.tsx:196` dit « Le temps qu'un match occupe, échauffement compris — il sert à repérer quand un coach est pris par un match, trajet inclus. », vrai pour le coach (fenêtre PERSONNE inchangée) mais silencieux sur la salle — un gestionnaire pourrait croire que deux matchs enchaînés à 2 h d'écart dans le même gymnase collisionnent. Ajouter une phrase d'aide : l'échauffement n'occupe pas la salle, deux matchs peuvent s'enchaîner. Frontend seul |
 | P4-203 | **Le solveur de placement compte l'échauffement dans l'occupation de la salle ; le radar de conflits (D1, #889) ne compte que le match** | 🟡 | M | Constaté en passe D2 (2026-09-14). Côté engine, le HARD `NoOverlap` du placement inclut l'échauffement dans l'empreinte de salle : `engine/app/solver/match_placement.py:20-23` (`BEFORE_KICKOFF_MIN = 30`, `AFTER_KICKOFF_MIN = 105`, `FOOTPRINT_MIN`) et le commentaire `:97-98` (« The WHOLE footprint must fit inside the access window (warm-up occupies the court too) ») — cohérent avec ADR-0003 §4 (`docs/architecture/adr-0003-match-placement-solve.md:47`, « l'empreinte 2h15 entière dans la fenêtre d'accès »). D'après la passe D1 (#889, pas présente sur cette branche — à reconfirmer `file:ligne` au cadrage), le détecteur de conflits ne compterait que la durée du match, sans l'échauffement : sur un enchaînement fédéral à 2 h dans la même salle, le radar se tairait alors que « Placer automatiquement » refuserait de poser le second match (contrainte HARD violée côté engine, invisible côté diagnostic). Lot engine + contrat (`CONTRACT_VERSION`) à cadrer : soit aligner le radar sur l'empreinte pleine du solveur, soit assumer et documenter l'écart |
 
 ### Blocs de mutualisation imbriqués (mesure P4-182, 2026-09-07)

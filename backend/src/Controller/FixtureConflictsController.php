@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Entity\Club;
 use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\Season;
@@ -18,6 +19,7 @@ use App\Enum\FixtureHomeAway;
 use App\Repository\ClubRepository;
 use App\Repository\LeagueMatchWindowRepository;
 use App\Repository\OpponentTravelRepository;
+use App\Service\ClubDay;
 use App\Service\ConflictFingerprinter;
 use App\Service\LeagueEnvelopeResolver;
 use App\Service\MatchConflictDetector;
@@ -58,6 +60,7 @@ final class FixtureConflictsController extends AbstractController
         private readonly LeagueEnvelopeResolver $envelopeResolver,
         private readonly MatchDurationResolver $matchDurationResolver,
         private readonly OpponentTravelRepository $opponentTravelRepository,
+        private readonly ClubDay $clubDay,
     ) {}
 
     // priority > 0: this static path must win over API Platform's /api/fixtures/{id}
@@ -88,8 +91,12 @@ final class FixtureConflictsController extends AbstractController
         $teams = $this->entityManager->getRepository(Team::class)->findBy([]);
         /** @var list<SportCategory> $categories */
         $categories = $this->entityManager->getRepository(SportCategory::class)->findBy([]);
-        $league = $this->clubRepository->find($clubId)?->getLeague();
+        $club = $this->clubRepository->find($clubId);
+        $league = $club?->getLeague();
         $envelope = $this->envelopeResolver->resolve($teams, $categories, $this->leagueWindowRepository->findEnvelopeForLeague($league));
+        // D1 rule 3 — the club's civil today drops already-played matches from the
+        // radar (foyer ClubDay, never rebuilt inline).
+        $clubToday = $club instanceof Club ? $this->clubDay->todayFor($club) : null;
         // P2-54 RMM-9 — teamId → match duration profile: the category's own values
         // when set, else its family default (MatchDurationResolver). The detector
         // stays PURE (data injected), the resolution happens once, here.
@@ -144,6 +151,7 @@ final class FixtureConflictsController extends AbstractController
             $competitions,
             $profilesByTeam,
             $roundTripByFixtureId,
+            $clubToday,
         );
 
         // RMM-3 — champ ADDITIF : l'empreinte stable de chaque conflit, calculée EN

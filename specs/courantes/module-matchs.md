@@ -1,13 +1,16 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-14 (D2 « rattrapage des statuts de traitement », `documentation-update`).
-§ « Espace Importer » (tableau cas → effet + « Masquer les extérieurs ») confrontée au code :
-`FbiFixtureImporter::catchUpReview`/`qualifiesForArrivalTreatment`
-(`backend/src/Service/FbiFixtureImporter.php`), l'appel en tête d'`applyDiff` et dans
-`FfbbRencontreReconciler::reconcile` (avant le tri de périmètre) ; résidu « extérieurs importés
-avant P4-199 restent NEW » retiré (rattrapé désormais). Reste du fichier (§ Détection,
-§ reconciliation coupes P4-194/195, § retrait des libellés P4-196, § Appariement FFBB) non re-sondé
-cette passe — voir `git log -p --follow` pour sa dernière vérification.
+Last verified @ 2026-09-14 (D1 « le détecteur de conflits dit la vérité » + D2 « rattrapage des
+statuts de traitement », `documentation-update`, rebase D1 sur D2). § « Détection »
+(`MatchConflictDetector`/`MatchFootprint`) confrontée au code : fenêtre SALLE (`venueOccupancy`/
+`venueOccupancyAt`, sans échauffement) vs fenêtre PERSONNE par famille, `matchTrainingConflicts`
+sautant le créneau de la PROPRE équipe du match, filtre « passé muet » sur `ClubDay::todayFor` injecté
+par `FixtureConflictsController` et `MatchModuleDeltaComputer`. § « Espace Importer » (tableau cas →
+effet + « Masquer les extérieurs ») confrontée au code : `FbiFixtureImporter::catchUpReview`/
+`qualifiesForArrivalTreatment`, l'appel en tête d'`applyDiff` et dans `FfbbRencontreReconciler::reconcile`
+(avant le tri de périmètre) ; résidu « extérieurs importés avant P4-199 restent NEW » retiré. Reste du
+fichier (§ reconciliation coupes P4-194/195, § retrait des libellés P4-196, § Appariement FFBB) non
+re-sondé cette passe — voir `git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -48,6 +51,16 @@ aller-retour** (injecté, 0 jusqu'à la PR-3) — **la douche et le battement SO
 les anciennes constantes 30+15 sont supprimées). ⚠ **Divergence ASSUMÉE** : le solveur de placement
 (`engine/app/solver/match_placement.py`, `AFTER_KICKOFF_MIN = 105`) garde son empreinte figée — le radar
 est par catégorie, le placement moteur non ; à réconcilier si un club le constate, pas avant.
+
+**Deux fenêtres depuis D1 (2026-09-13)** — décision fondateur mesurée sur 256 rencontres réelles : la
+fenêtre PERSONNE ci-dessus (échauffement + match + trajet, `occupancy`/`occupancyAt`) sert les familles
+qui suivent le coach/le lien d'équipe (`MATCH_MATCH`, `MATCH_TRAINING`, `TEAM_LINK_OVERLAP`) ; une
+seconde fenêtre **SALLE seule**, `[coup d'envoi, coup d'envoi + durée du match]`, sans échauffement ni
+trajet (`MatchFootprint::venueOccupancy`/`venueOccupancyAt`), sert les familles de collision de gymnase
+(`VENUE_OVERLAP`, et la raison `MATCH_SLOT_WINDOW` de `FRIENDLY_ON_MATCH_SLOT`). Motif : la ligue enchaîne
+parfois à 2 h d'écart (105 + 30 min d'échauffement = 135 > 120 aurait fait crier tout enchaînement
+fédéral) ; « on s'échauffe sur le côté pendant le match précédent, l'échauffement sert à estimer la
+durée d'un match », pas à réserver la salle.
 
 ### Catalogue-ligue — `LeagueMatchWindow` (table GLOBALE)
 
@@ -144,7 +157,10 @@ Croise l'empreinte-temps `MatchFootprint` d'un `Fixture` avec les autres occupat
 - **`MATCH_MATCH`** : deux `Fixture` d'équipes partageant un coach (via `TeamCoach.coachId`) dont les fenêtres
   d'occupation se chevauchent.
 - **`MATCH_TRAINING`** : un `Fixture` chevauchant un entraînement d'une équipe du coach, lu dans le **planning
-  effectif à la date du match**. Une période ACTIVE **capture** les dates qu'elle couvre : à l'intérieur le
+  effectif à la date du match**. **Depuis D1 (2026-09-13)** : l'entraînement de l'équipe qui joue CE match
+  n'est jamais un conflit avec lui, quel que soit le gymnase (`matchTrainingConflicts` saute le créneau dont
+  `teamId` === celui de la rencontre — les joueurs qui jouent ne s'entraînent pas en même temps) ; un
+  entraînement d'une équipe SŒUR du même coach reste couvert normalement. Une période ACTIVE **capture** les dates qu'elle couvre : à l'intérieur le
   planning de base ne s'applique pas — son **overlay**, c'est-à-dire la **version choisie du plan de la
   période** (`SchedulePlanProvisioner::chosenByPeriodPlans`, ADR-0002 lot D-b du 2026-07-18 ; le champ
   `CalendarEntry.overlayScheduleId` a été **supprimé** à cette occasion, et un plan de période qui ne pointe
@@ -178,6 +194,15 @@ le libellé fédéral tranche à l'intégration, plus l'absence d'appariement : 
 porte désormais une vraie `Competition` `CUP` et redevient un match à part entière ici — soumise
 à `leagueWindowViolations`, exclue de `friendlyOnMatchSlotConflicts`, de nouveau bloquée par la
 garde de placement manuel hors créneau (§ « Couche capacité »).
+
+**Passé muet (D1, 2026-09-13)** : `detect()` reçoit la date civile du jour côté club (`ClubDay::todayFor`,
+foyer unique injecté par les deux appelants — `FixtureConflictsController` et `MatchModuleDeltaComputer`)
+et filtre toute rencontre dont `matchDate` est strictement avant cette date hors de **toutes** les familles
+**sauf** `COMPETITION_INCOMPLETE` (compte par compétition, sur la liste complète) et l'index des week-ends
+de match de `FRIENDLY_ON_MATCH_SLOT` (un championnat du samedi déjà joué marque encore le dimanche « week-end
+de match »). Un match déjà joué ne PORTE ni ne REÇOIT donc plus aucun conflit — le badge « nouveaux conflits »
+à l'ouverture ne signale plus de vagues du passé. `clubToday` à `null` (chemin de test pur) désactive le
+filtre.
 
 ### Endpoint — `GET /api/fixtures/conflicts`
 
@@ -831,8 +856,9 @@ SOFT « repos après jour de match »).
   (`lib/diagnostic.ts`, pur), elle ne re-dérive JAMAIS la gravité. Groupes triés pire-d'abord, tons
   1-2 rouges / 3-5 warning / 7 neutre, **groupe 7 replié avec compteur** (40 extérieurs aveugles =
   une ligne, pas 40 cartes).
-- **Échelle (cadrage §8)** : 1 `VENUE_OVERLAP` (deux matchs même gymnase qui se chevauchent — la
-  boucle manuelle ne bloque jamais, le diagnostic crie) · 2 `LEAGUE_WINDOW_VIOLATION` (domicile placé
+- **Échelle (cadrage §8)** : 1 `VENUE_OVERLAP` (deux matchs même gymnase dont les fenêtres SALLE se
+  chevauchent — sans échauffement depuis D1, ci-dessus : deux matchs enchaînés à 2 h d'écart ne
+  collisionnent plus — la boucle manuelle ne bloque jamais, le diagnostic crie) · 2 `LEAGUE_WINDOW_VIOLATION` (domicile placé
   d'une équipe MAPPÉE hors de toute fenêtre ligue — non mappée = silencieuse, même tolérance que le
   solveur) · 3 coach **MAIN** (`MATCH_MATCH`/`MATCH_TRAINING`) · 4 `VENUE_UNAVAILABLE` +
   **`ACCESS_WINDOW_LOST`** (dette (ii) soldée : placé dont la fenêtre d'accès a changé APRÈS — règle du
@@ -846,9 +872,11 @@ SOFT « repos après jour de match »).
   un amical HOME placé (venue+kickoff) qui atterrit sur un créneau de match — le solveur ne les place plus
   (§ « Solveur de placement » ci-dessus), le placement manuel est libre, donc c'est le radar qui alerte, sans
   jamais bloquer. UN item par rencontre, `reasons` porte ce qui a déclenché l'alerte (un ou les deux) :
-  `MATCH_SLOT_WINDOW` (l'empreinte du match CHEVAUCHE une `VenueMatchWindow` du même gymnase ce jour — ⚠
-  divergence ASSUMÉE avec `ACCESS_WINDOW_LOST` ci-dessus, qui teste le KICKOFF ponctuel dans la fenêtre : ici
-  c'est l'empreinte entière, un amical commençant avant la fenêtre mange déjà le créneau) et/ou
+  `MATCH_SLOT_WINDOW` (la fenêtre SALLE du match — sans échauffement, D1 ci-dessus — CHEVAUCHE une
+  `VenueMatchWindow` du même gymnase ce jour — ⚠ divergence ASSUMÉE avec `ACCESS_WINDOW_LOST` ci-dessus,
+  qui teste le KICKOFF ponctuel dans la fenêtre : ici c'est toute l'occupation salle, un amical dont le
+  match mord encore la fenêtre alerte, mais un amical dont seul l'échauffement l'aurait touchée reste
+  silencieux) et/ou
   `MATCH_WEEKEND` (le samedi ou le dimanche d'un week-end où le club a ≥ 1 rencontre NON amicale — clé =
   la date du samedi, **le vendredi ne compte jamais**, décision fondateur). `reasons` est EXCLU de l'identité
   du conflit (`ConflictFingerprinter`) — le litige reste « cet amical sur un créneau », qu'il touche la

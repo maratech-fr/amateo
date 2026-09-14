@@ -8,6 +8,7 @@ use Behat\Hook\AfterScenario;
 use Behat\Step\Given;
 use Behat\Step\Then;
 use Behat\Step\When;
+use DateTimeImmutable;
 use RuntimeException;
 
 /**
@@ -35,6 +36,16 @@ final class ConflictTruthContext extends BaseContext
     /** Catégorie DISTINCTIVE (aucune vraie équipe ne la porte → zéro collision d'enveloppe). */
     private const string CUP_CATEGORY_NAME = 'BEHAT Coupe P4-194';
 
+    /**
+     * Horloge de l'app épinglée le temps du scénario (foyer ClubDay → SimulatedClock
+     * → DevClockStore Redis, honoré app-wide en dev). Elle rend le décor daté (fermeture
+     * janv. 2027, week-end, coupe) STABLE quelle que soit la date réelle : sans ça, la
+     * règle 3 de D1 tairait ces matchs une fois janvier 2027 passé. Dans la MÊME saison
+     * que « aujourd'hui » réel (2026-2027), donc le socle en vigueur reste celui de la
+     * saison courante. Relâchée en AfterScenario, quoi qu'il arrive.
+     */
+    private const string PINNED_NOW = '2026-12-01T09:00:00';
+
     private string $token = '';
 
     private string $clubId = '';
@@ -43,11 +54,20 @@ final class ConflictTruthContext extends BaseContext
 
     private string $teamId = '';
 
+    private string $sisterTeamId = '';
+
     private string $coachId = '';
 
     private string $venueId = '';
 
     private string $teamCoachId = '';
+
+    private string $sisterTeamCoachId = '';
+
+    /** Paire de matchs même-gymnase (scénarios enchaînement ET match d'hier). */
+    private string $gymFixtureAId = '';
+
+    private string $gymFixtureBId = '';
 
     private string $rootId = '';
 
@@ -84,6 +104,9 @@ final class ConflictTruthContext extends BaseContext
     public function leClubConnecteAvecSocleEnVigueur(): void
     {
         $this->token = $this->mintToken(self::USER_EMAIL);
+        // Épingle l'horloge AVANT toute lecture datée : le décor reste stable et la
+        // règle 3 (D1) ne tait aucun match du décor.
+        $this->pinClock(self::PINNED_NOW);
 
         $me = $this->apiGet('me', $this->token);
         $club = $me['json']['club'] ?? null;
@@ -154,6 +177,24 @@ final class ConflictTruthContext extends BaseContext
             'role' => 'MAIN',
         ], $this->token);
         $this->teamCoachId = $this->idOf($teamCoach, 'affectation coach↔équipe');
+
+        // Équipe SŒUR du MÊME coach : la règle 2 de D1 tait l'entraînement de la
+        // PROPRE équipe du match ; le conflit vit sur la séance de la sœur (le cas
+        // Dionnet SM1 + U18M1). Utilisée par le scénario « enfant milieu ».
+        $sister = $this->apiPost('teams', [
+            'name' => 'Équipe sœur jetable (vérité conflits)',
+            'sportCategoryId' => $sportCategoryId,
+            'priorityTierId' => (int) $priorityTierId,
+            'tierOrder' => (int) $tierOrder,
+        ], $this->token);
+        $this->sisterTeamId = $this->idOf($sister, 'équipe sœur jetable');
+
+        $sisterTeamCoach = $this->apiPost('team_coaches', [
+            'teamId' => $this->sisterTeamId,
+            'coachId' => $this->coachId,
+            'role' => 'MAIN',
+        ], $this->token);
+        $this->sisterTeamCoachId = $this->idOf($sisterTeamCoach, 'affectation coach↔équipe sœur');
     }
 
     #[Given('une fermeture racine découpée en milieu et fin, la racine et le milieu partageant leur date de départ')]
@@ -174,52 +215,16 @@ final class ConflictTruthContext extends BaseContext
         $this->matchThursday = '2027-01-14';
     }
 
-    #[Given('le plan du milieu pointe une version portant un entraînement de l\'équipe le jeudi à 20h45 sur ce gymnase')]
-    public function lePlanDuDebutPointeUneVersionAvecEntrainement(): void
+    #[Given('le plan du milieu pointe une version portant un entraînement de l\'équipe sœur le jeudi à 20h45 sur ce gymnase')]
+    public function lePlanDuDebutPointeUneVersionAvecEntrainementSoeur(): void
     {
-        // Chaque enfant naît AVEC son plan (rail « 1 entrée = 1 plan »).
-        $this->debutPlanId = $this->dbalScalar(
-            \sprintf('SELECT id AS behatval FROM schedule_plan WHERE calendar_entry_id=\'%s\'', $this->pointedChildId),
-            admin: true,
-        );
-        if ('' === $this->debutPlanId) {
-            throw new RuntimeException('le plan du segment « milieu » est introuvable');
-        }
+        $this->poserOverlayAvecEntrainement($this->sisterTeamId);
+    }
 
-        $version = $this->apiPost('schedules', ['schedulePlanId' => $this->debutPlanId, 'status' => 'DRAFT'], $this->token);
-        $this->versionId = $this->idOf($version, 'version overlay du milieu');
-
-        // La saison de la version : le créneau doit la porter pour rester tenant-visible.
-        $seasonId = $this->dbalScalar(
-            \sprintf('SELECT season_id AS behatval FROM schedule WHERE id=\'%s\'', $this->versionId),
-            admin: true,
-        );
-        if ('' === $seasonId) {
-            throw new RuntimeException('la saison de la version overlay est introuvable');
-        }
-
-        // Un entraînement JEUDI (ISO 4) 20:45, 90 min, sur l'équipe + le gymnase + le coach jetables.
-        // Aucune génération moteur : la case est posée à la main (décision de cadrage).
-        $this->dbalExec(
-            \sprintf(
-                'INSERT INTO schedule_slot_template'
-                . ' (id, version, created_at, updated_at, club_id, season_id, schedule_id, team_id, venue_id, coach_id, day_of_week, start_time, duration_minutes, lock_level)'
-                . ' VALUES (gen_random_uuid(), 1, now(), now(), \'%s\', \'%s\', \'%s\', \'%s\', \'%s\', \'%s\', 4, \'20:45\', 90, \'NONE\')',
-                $this->clubId,
-                $seasonId,
-                $this->versionId,
-                $this->teamId,
-                $this->venueId,
-                $this->coachId,
-            ),
-            admin: true,
-        );
-
-        // Le plan du « milieu » pointe cette version : elle devient l'overlay effectif de la période.
-        $this->dbalExec(
-            \sprintf('UPDATE schedule_plan SET chosen_schedule_id=\'%s\' WHERE id=\'%s\'', $this->versionId, $this->debutPlanId),
-            admin: true,
-        );
+    #[Given('le plan du milieu pointe une version portant un entraînement de sa propre équipe le jeudi à 20h45 sur ce gymnase')]
+    public function lePlanDuDebutPointeUneVersionAvecEntrainementPropreEquipe(): void
+    {
+        $this->poserOverlayAvecEntrainement($this->teamId);
     }
 
     #[Given('un match à domicile de l\'équipe ce jeudi, coup d\'envoi à 20h45, sur ce gymnase')]
@@ -234,6 +239,27 @@ final class ConflictTruthContext extends BaseContext
             'kickoffTime' => '20:45',
         ], $this->token);
         $this->fixtureId = $this->idOf($fixture, 'match à domicile');
+    }
+
+    #[Given('deux matchs à domicile enchaînés à deux heures dans ce gymnase, un samedi à venir')]
+    public function deuxMatchsEnchainesADeuxHeures(): void
+    {
+        // Samedi À VENIR relatif à l'horloge épinglée → futur, conservé par la règle 3.
+        // 18:45 puis 20:45, même gymnase : les fenêtres SALLE (match seul) ne se touchent
+        // pas — le radar ne DOIT signaler aucune collision de gymnase (D1 règle 1).
+        $saturday = new DateTimeImmutable(self::PINNED_NOW)->modify('next saturday')->format('Y-m-d');
+        $this->gymFixtureAId = $this->poserMatchDomicile($this->teamId, $saturday, '18:45');
+        $this->gymFixtureBId = $this->poserMatchDomicile($this->sisterTeamId, $saturday, '20:45');
+    }
+
+    #[Given('deux matchs à domicile qui se chevauchaient dans ce gymnase, mais joués hier')]
+    public function deuxMatchsQuiSeChevauchaientMaisJouesHier(): void
+    {
+        // HIER relatif à l'horloge épinglée : deux matchs qui se chevauchaient (même gymnase,
+        // 30 min d'écart) mais déjà JOUÉS → la règle 3 (D1) les sort du radar.
+        $yesterday = new DateTimeImmutable(self::PINNED_NOW)->modify('-1 day')->format('Y-m-d');
+        $this->gymFixtureAId = $this->poserMatchDomicile($this->teamId, $yesterday, '18:00');
+        $this->gymFixtureBId = $this->poserMatchDomicile($this->sisterTeamId, $yesterday, '18:30');
     }
 
     #[Given('une rencontre de championnat le samedi et un amical placé le dimanche du même week-end')]
@@ -386,6 +412,39 @@ final class ConflictTruthContext extends BaseContext
         }
     }
 
+    #[Then('aucun conflit d\'entraînement ne porte ce match')]
+    public function aucunConflitDEntrainementNePorteCeMatch(): void
+    {
+        foreach ($this->conflicts as $conflict) {
+            if (!\is_array($conflict) || 'MATCH_TRAINING' !== ($conflict['type'] ?? null)) {
+                continue;
+            }
+            $fixtureBlock = $conflict['fixture'] ?? null;
+            $fixtureId = \is_array($fixtureBlock) ? ($fixtureBlock['fixtureId'] ?? null) : null;
+            if ($fixtureId === $this->fixtureId) {
+                throw new RuntimeException('un conflit MATCH_TRAINING porte ce match alors qu\'il se pose sur le créneau de sa PROPRE équipe (D1 règle 2)');
+            }
+        }
+    }
+
+    #[Then('le radar ne signale aucune collision de gymnase pour ces deux matchs')]
+    public function aucuneCollisionDeGymnasePourCesDeuxMatchs(): void
+    {
+        $pair = [$this->gymFixtureAId, $this->gymFixtureBId];
+        foreach ($this->conflicts as $conflict) {
+            if (!\is_array($conflict) || 'VENUE_OVERLAP' !== ($conflict['type'] ?? null)) {
+                continue;
+            }
+            foreach (['left', 'right'] as $side) {
+                $block = $conflict[$side] ?? null;
+                $fixtureId = \is_array($block) ? ($block['fixtureId'] ?? null) : null;
+                if (\in_array($fixtureId, $pair, true)) {
+                    throw new RuntimeException('une collision de gymnase VENUE_OVERLAP porte ces deux matchs alors qu\'elle ne devrait pas (fenêtre SALLE disjointe, ou match déjà joué — D1)');
+                }
+            }
+        }
+    }
+
     #[Then('le radar signale l\'amical sur un créneau de match, pour cause de week-end de match')]
     public function leRadarSignaleLAmicalSurUnCreneau(): void
     {
@@ -449,7 +508,11 @@ final class ConflictTruthContext extends BaseContext
             return;
         }
 
-        foreach ([$this->fixtureId, $this->friendlyId, $this->championshipFixtureId, $this->cupFixtureId] as $id) {
+        // Relâche l'horloge en PREMIER : quoi qu'il advienne du reste du nettoyage, le
+        // bac à sable ne doit jamais rester bloqué dans un « aujourd'hui » figé.
+        $this->releaseClock();
+
+        foreach ([$this->fixtureId, $this->friendlyId, $this->championshipFixtureId, $this->cupFixtureId, $this->gymFixtureAId, $this->gymFixtureBId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
@@ -459,8 +522,10 @@ final class ConflictTruthContext extends BaseContext
                 $this->apiDelete(\sprintf('competitions/%s', $id), $this->token);
             }
         }
-        if ('' !== $this->teamCoachId) {
-            $this->apiDelete(\sprintf('team_coaches/%s', $this->teamCoachId), $this->token);
+        foreach ([$this->teamCoachId, $this->sisterTeamCoachId] as $id) {
+            if ('' !== $id) {
+                $this->apiDelete(\sprintf('team_coaches/%s', $id), $this->token);
+            }
         }
         // La suppression de la racine cascade ses enfants, leurs plans et leurs versions (dont la
         // version overlay et son créneau).
@@ -468,12 +533,16 @@ final class ConflictTruthContext extends BaseContext
             $this->apiDelete(\sprintf('calendar_entries/%s', $this->rootId), $this->token);
         }
 
-        // Ceinture et bretelles : rien ne doit référencer l'équipe/le gymnase avant leur suppression.
-        if ('' !== $this->teamId) {
-            $this->dbalExec(\sprintf('DELETE FROM schedule_slot_template WHERE team_id=\'%s\'', $this->teamId), admin: true);
+        // Ceinture et bretelles : rien ne doit référencer les équipes/le gymnase avant leur suppression.
+        foreach ([$this->teamId, $this->sisterTeamId] as $teamId) {
+            if ('' !== $teamId) {
+                $this->dbalExec(\sprintf('DELETE FROM schedule_slot_template WHERE team_id=\'%s\'', $teamId), admin: true);
+            }
         }
-        if ('' !== $this->teamId) {
-            $this->apiDelete(\sprintf('teams/%s', $this->teamId), $this->token);
+        foreach ([$this->teamId, $this->sisterTeamId] as $teamId) {
+            if ('' !== $teamId) {
+                $this->apiDelete(\sprintf('teams/%s', $teamId), $this->token);
+            }
         }
         if ('' !== $this->coachId) {
             $this->apiDelete(\sprintf('coaches/%s', $this->coachId), $this->token);
@@ -503,6 +572,59 @@ final class ConflictTruthContext extends BaseContext
     }
 
     /**
+     * Crée la version overlay du « milieu », y pose un entraînement JEUDI 20:45 (90 min)
+     * porté par $slotTeamId (l'équipe sœur → conflit ; la propre équipe → silence, D1
+     * règle 2), sur le gymnase et le coach jetables, et fait pointer le plan du milieu
+     * sur cette version.
+     */
+    private function poserOverlayAvecEntrainement(string $slotTeamId): void
+    {
+        // Chaque enfant naît AVEC son plan (rail « 1 entrée = 1 plan »).
+        $this->debutPlanId = $this->dbalScalar(
+            \sprintf('SELECT id AS behatval FROM schedule_plan WHERE calendar_entry_id=\'%s\'', $this->pointedChildId),
+            admin: true,
+        );
+        if ('' === $this->debutPlanId) {
+            throw new RuntimeException('le plan du segment « milieu » est introuvable');
+        }
+
+        $version = $this->apiPost('schedules', ['schedulePlanId' => $this->debutPlanId, 'status' => 'DRAFT'], $this->token);
+        $this->versionId = $this->idOf($version, 'version overlay du milieu');
+
+        // La saison de la version : le créneau doit la porter pour rester tenant-visible.
+        $seasonId = $this->dbalScalar(
+            \sprintf('SELECT season_id AS behatval FROM schedule WHERE id=\'%s\'', $this->versionId),
+            admin: true,
+        );
+        if ('' === $seasonId) {
+            throw new RuntimeException('la saison de la version overlay est introuvable');
+        }
+
+        // Un entraînement JEUDI (ISO 4) 20:45, 90 min, sur $slotTeamId + le gymnase + le coach
+        // jetables. Aucune génération moteur : la case est posée à la main (décision de cadrage).
+        $this->dbalExec(
+            \sprintf(
+                'INSERT INTO schedule_slot_template'
+                . ' (id, version, created_at, updated_at, club_id, season_id, schedule_id, team_id, venue_id, coach_id, day_of_week, start_time, duration_minutes, lock_level)'
+                . ' VALUES (gen_random_uuid(), 1, now(), now(), \'%s\', \'%s\', \'%s\', \'%s\', \'%s\', \'%s\', 4, \'20:45\', 90, \'NONE\')',
+                $this->clubId,
+                $seasonId,
+                $this->versionId,
+                $slotTeamId,
+                $this->venueId,
+                $this->coachId,
+            ),
+            admin: true,
+        );
+
+        // Le plan du « milieu » pointe cette version : elle devient l'overlay effectif de la période.
+        $this->dbalExec(
+            \sprintf('UPDATE schedule_plan SET chosen_schedule_id=\'%s\' WHERE id=\'%s\'', $this->versionId, $this->debutPlanId),
+            admin: true,
+        );
+    }
+
+    /**
      * Démonte tout le décor jetable et repose le pointeur du socle. Quoi qu'il arrive.
      */
     /**
@@ -526,6 +648,22 @@ final class ConflictTruthContext extends BaseContext
         $this->dbalExec(\sprintf('DELETE FROM schedule_plan WHERE calendar_entry_id IN (SELECT id FROM calendar_entry WHERE %s)', $scope), admin: true);
         $this->dbalExec(\sprintf('DELETE FROM calendar_entry WHERE %s AND parent_entry_id IS NOT NULL', $scope), admin: true);
         $this->dbalExec(\sprintf('DELETE FROM calendar_entry WHERE %s', $scope), admin: true);
+    }
+
+    /** Pose un match à domicile (gymnase + coup d'envoi) et renvoie son id. */
+    private function poserMatchDomicile(string $teamId, string $date, string $kickoff): string
+    {
+        return $this->idOf(
+            $this->apiPost('fixtures', [
+                'teamId' => $teamId,
+                'matchDate' => $date,
+                'homeAway' => 'HOME',
+                'opponentLabel' => 'Adversaire jetable',
+                'venueId' => $this->venueId,
+                'kickoffTime' => $kickoff,
+            ], $this->token),
+            'match à domicile jetable',
+        );
     }
 
     private function createEntry(string $title, string $start, string $end, ?string $parentEntryId): string
@@ -555,5 +693,20 @@ final class ConflictTruthContext extends BaseContext
         }
 
         return $id;
+    }
+
+    /** Épingle l'horloge de l'app (POST /api/dev/clock, dev-only, honoré app-wide). */
+    private function pinClock(string $iso): void
+    {
+        $response = $this->apiPost('dev/clock', ['at' => $iso], $this->token);
+        if (200 !== $response['status']) {
+            throw new RuntimeException(\sprintf('impossible d\'épingler l\'horloge de dev (HTTP %d) — la stack tourne-t-elle bien en dev ?', $response['status']));
+        }
+    }
+
+    /** Relâche l'horloge → temps réel. Ne lève pas : le nettoyage doit toujours continuer. */
+    private function releaseClock(): void
+    {
+        $this->apiPost('dev/clock', ['at' => null], $this->token);
     }
 }

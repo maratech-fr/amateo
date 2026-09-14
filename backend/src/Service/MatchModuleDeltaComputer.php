@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Entity\Club;
 use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\SportCategory;
@@ -49,6 +50,7 @@ final class MatchModuleDeltaComputer
         private readonly LeagueMatchWindowRepository $leagueWindowRepository,
         private readonly LeagueEnvelopeResolver $envelopeResolver,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
+        private readonly ClubDay $clubDay,
     ) {}
 
     /**
@@ -135,12 +137,18 @@ final class MatchModuleDeltaComputer
         $teams = $this->entityManager->getRepository(Team::class)->findBy([]);
         /** @var list<SportCategory> $categories */
         $categories = $this->entityManager->getRepository(SportCategory::class)->findBy([]);
-        $league = $this->clubRepository->find($clubId)?->getLeague();
+        $club = $this->clubRepository->find($clubId);
+        $league = $club?->getLeague();
         $envelope = $this->envelopeResolver->resolve($teams, $categories, $this->leagueWindowRepository->findEnvelopeForLeague($league));
         /** @var list<Competition> $competitions */
         $competitions = $this->entityManager->getRepository(Competition::class)->findBy([]);
 
         $context = $this->trainingCalendarContext->load($seasonId);
+
+        // D1 rule 3 — the delta reads the SAME radar as the controller, so it must
+        // apply the SAME past-match filter (foyer ClubDay), or a played match would
+        // stay in the fingerprint set on one side and not the other.
+        $clubToday = $club instanceof Club ? $this->clubDay->todayFor($club) : null;
 
         return $this->detector->detect(
             $fixtures,
@@ -154,6 +162,7 @@ final class MatchModuleDeltaComputer
             $matchWindows,
             $envelope,
             $competitions,
+            clubToday: $clubToday,
         );
     }
 

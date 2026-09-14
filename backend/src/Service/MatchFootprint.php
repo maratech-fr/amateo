@@ -76,6 +76,50 @@ final class MatchFootprint
     }
 
     /**
+     * The VENUE-occupancy window: [kickoff, kickoff + matchMinutes] — the gym is
+     * held for the match itself ONLY, with NO warm-up and NO travel (D1, founder
+     * decision 2026-09-13). Two matches chained two hours apart in the same gym
+     * must not collide on their PERSON footprints (warm-up would inflate the
+     * window and false-alarm); the VENUE_OVERLAP family and the
+     * FRIENDLY_ON_MATCH_SLOT window reason overlap THIS window instead. Null when
+     * the kickoff is unknown (same as {@see occupancy}).
+     *
+     * @return array{start: DateTimeImmutable, end: DateTimeImmutable}|null
+     */
+    public function venueOccupancy(Fixture $fixture, MatchDurationProfile $profile): ?array
+    {
+        $kickoff = $this->kickoffMoment($fixture);
+        if (!$kickoff instanceof DateTimeImmutable) {
+            return null;
+        }
+
+        return [
+            'start' => $kickoff,
+            'end' => $kickoff->modify(\sprintf('+%d minutes', $profile->matchMinutes)),
+        ];
+    }
+
+    /**
+     * The VENUE-occupancy window for an EXPLICIT kickoff time — the estimation
+     * path (an away fixture borrowing its team's habitual kickoff), symmetric to
+     * {@see occupancyAt}. Still gym-only: no warm-up, no travel.
+     *
+     * @return array{start: DateTimeImmutable, end: DateTimeImmutable}
+     */
+    public function venueOccupancyAt(Fixture $fixture, DateTimeImmutable $kickoffTime, MatchDurationProfile $profile): array
+    {
+        $kickoff = $fixture->getMatchDate()->setTime(
+            (int) $kickoffTime->format('H'),
+            (int) $kickoffTime->format('i'),
+        );
+
+        return [
+            'start' => $kickoff,
+            'end' => $kickoff->modify(\sprintf('+%d minutes', $profile->matchMinutes)),
+        ];
+    }
+
+    /**
      * Total NOMINAL occupied minutes (before + after the kickoff), or null when
      * the kickoff is unknown. Computed from the profile, NOT from a timestamp
      * delta — a footprint spanning a DST transition must still report its
