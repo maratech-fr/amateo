@@ -261,6 +261,25 @@ final class FixtureReviewContext extends BaseContext
         $this->depositMatch($this->rescheduledDate, 'AWAY', 'Adversaire Behat', '', null);
     }
 
+    #[When('je force la rencontre importée à « à traiter » en base')]
+    public function jeForceLaRencontreATraiter(): void
+    {
+        // Simule le résidu d'un dépôt d'AVANT la naissance-traitée : un extérieur
+        // qui naîtrait « traité » aujourd'hui est remis « à traiter » en base (SQL
+        // admin, comme le patron de purge du contexte), horodatage effacé.
+        $this->dbalExec(
+            \sprintf('UPDATE fixture SET review_state=\'NEW\', reviewed_at=NULL WHERE id=\'%s\'', $this->fixtureId),
+            admin: true,
+        );
+        $this->assertReviewState('NEW');
+    }
+
+    #[When('je re-dépose le même extérieur')]
+    public function jeReDeposeLeMemeExterieur(): void
+    {
+        $this->depositMatch($this->matchDate, 'AWAY', 'Adversaire Behat', '', null);
+    }
+
     #[Then('la rencontre est « traitée » et porte une alerte de déplacement')]
     public function laRencontreEstTraiteeAvecAlerte(): void
     {

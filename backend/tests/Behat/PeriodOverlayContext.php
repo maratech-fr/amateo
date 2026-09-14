@@ -112,7 +112,7 @@ final class PeriodOverlayContext extends BaseContext
         // La fenêtre doit rester CLAIRE de toute période déjà seedée
         // (PeriodWindowUniquenessGuard 409 sur chevauchement). +49 jours passe
         // au-delà de toutes les fenêtres du seed et glisse avec le temps réel.
-        $this->entryId = $this->createClosurePeriod('next monday +49 days', 'Fermeture overlay fonctionnel');
+        $this->entryId = $this->createClosurePeriod($this->holidayFreeMonday(49, 4), 'Fermeture overlay fonctionnel');
     }
 
     #[When('j\'ouvre son plan de période puis je génère une version en overlay')]
@@ -143,7 +143,7 @@ final class PeriodOverlayContext extends BaseContext
     #[Given('une nouvelle période de fermeture dont le plan recopie les blocs partagés du socle')]
     public function uneNouvellePeriodeAvecBlocs(): void
     {
-        $this->entryId = $this->createClosurePeriod('next monday +63 days', 'Fermeture overlay remplissage');
+        $this->entryId = $this->createClosurePeriod($this->holidayFreeMonday(63, 4), 'Fermeture overlay remplissage');
 
         $plan = $this->apiPost('schedule_plans', ['calendarEntryId' => $this->entryId], $this->token);
         $this->plan2Id = $this->idOf($plan, 'plan de période');
@@ -249,11 +249,12 @@ final class PeriodOverlayContext extends BaseContext
     public function uneFermetureAvecVersionAboutie(): void
     {
         // Fenêtre bien au-delà des périodes seedées ET des deux autres scénarios (+49/+63 j).
-        $this->redateStart = date('Y-m-d', (int) strtotime('next monday +77 days'));
+        // Le re-datage prolonge de deux semaines : la fenêtre libre de vacances couvre 4 + 14 j.
+        $this->redateStart = $this->holidayFreeMonday(77, 18);
         $this->redateEnd = date('Y-m-d', (int) strtotime($this->redateStart . ' +4 days'));
         $this->redateTitle = 'Fermeture à re-dater';
 
-        $this->entryId = $this->createClosurePeriod('next monday +77 days', $this->redateTitle);
+        $this->entryId = $this->createClosurePeriod($this->redateStart, $this->redateTitle);
 
         $plan = $this->apiPost('schedule_plans', ['calendarEntryId' => $this->entryId], $this->token);
         $this->redatePlanId = $this->idOf($plan, 'plan de période');
@@ -327,10 +328,13 @@ final class PeriodOverlayContext extends BaseContext
     #[Given('une fermeture à venir découpée en trois semaines-segments, chacune avec son plan')]
     public function uneFermetureDecoupeeEnTrois(): void
     {
-        // Décor jetable, bien au-delà des périodes seedées, dans la même zone sans vacances que le
-        // scénario 3 (+77 j). Mère du MERCREDI de la semaine 1 au SAMEDI de la semaine 3 : découpée
-        // en début (semaine entamée de tête), milieu (semaine 2 pleine), fin (semaine entamée de queue).
-        $w1mon = (int) strtotime('next monday +77 days');
+        // Décor jetable, bien au-delà des périodes seedées, sur trois semaines pleines SANS vacances
+        // scolaires (la règle de découpe ne compte que les semaines OFFERTES : une semaine de
+        // vacances lun→ven fait un trou, et le 3ᵉ segment devenait « une semaine complète isolée »
+        // → 422, constaté le 2026-09-14 quand « +77 j » a atterri sur Noël). Mère du MERCREDI de la
+        // semaine 1 au SAMEDI de la semaine 3 : découpée en début (semaine entamée de tête), milieu
+        // (semaine 2 pleine), fin (semaine entamée de queue).
+        $w1mon = (int) strtotime($this->holidayFreeMonday(77, 20));
         $d = static fn (int $off): string => date('Y-m-d', (int) strtotime(\sprintf('+%d days', $off), $w1mon));
         $this->splitStart = $d(2);       // semaine 1, mercredi
         $motherEnd = $d(19);             // semaine 3, samedi
@@ -428,6 +432,33 @@ final class PeriodOverlayContext extends BaseContext
         }
     }
 
+    /**
+     * Le lundi (Y-m-d) d'une fenêtre de `$spanDays` jours SANS vacances scolaires de la zone du
+     * club, à partir de « next monday +$offsetDays » — glisse de semaine en semaine jusqu'à en
+     * trouver une. Un décor relatif à aujourd'hui traverse les vacances au fil de l'année ; la
+     * règle de découpe (semaines OFFERTES) et les gardes de saison ne pardonnent pas.
+     */
+    private function holidayFreeMonday(int $offsetDays, int $spanDays): string
+    {
+        $monday = (int) strtotime(\sprintf('next monday +%d days', $offsetDays));
+        for ($attempt = 0; $attempt < 30; ++$attempt) {
+            $start = date('Y-m-d', $monday);
+            $end = date('Y-m-d', (int) strtotime(\sprintf('+%d days', $spanDays), $monday));
+            $hits = $this->dbalScalar(\sprintf(
+                'SELECT count(*) AS behatval FROM school_holiday_period h JOIN club c ON c.school_zone = h.zone WHERE c.id=\'%s\' AND h.start_date <= \'%s\' AND h.end_date >= \'%s\'',
+                $this->clubId,
+                $end,
+                $start,
+            ), admin: true);
+            if ('0' === $hits) {
+                return $start;
+            }
+            $monday = (int) strtotime('+7 days', $monday);
+        }
+
+        throw new RuntimeException(\sprintf('aucune fenêtre de %d jours sans vacances scolaires trouvée après « next monday +%d days »', $spanDays, $offsetDays));
+    }
+
     private function createClosurePeriod(string $startExpr, string $title): string
     {
         $start = date('Y-m-d', (int) strtotime($startExpr));
@@ -473,7 +504,10 @@ final class PeriodOverlayContext extends BaseContext
     {
         $id = $response['json']['id'] ?? null;
         if (!\is_string($id) || '' === $id) {
-            throw new RuntimeException(\sprintf('création %s sans identifiant en retour (HTTP %d)', $what, $response['status']));
+            // Le corps de la réponse est nommé dans l'erreur : un 422 muet a coûté une enquête
+            // (2026-09-14) — la raison servie (violations / detail) doit se lire dans le rapport.
+            $detail = json_encode($response['json'], \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES);
+            throw new RuntimeException(\sprintf('création %s sans identifiant en retour (HTTP %d) — %s', $what, $response['status'], \is_string($detail) ? mb_substr($detail, 0, 600) : '?'));
         }
 
         return $id;

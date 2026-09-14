@@ -274,6 +274,37 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertSame(FixtureReviewState::NEW, $reloaded->getReviewState(), 'no treatment induced');
     }
 
+    public function testAnExistingNewAwayFixtureIsCaughtUpToTreatedOnApply(): void
+    {
+        // D2 (rattrapage, canal API) — un extérieur EXISTANT resté « à traiter »
+        // (résidu d'avant la naissance-traitée) est rattrapé au passage API, MÊME
+        // hors du périmètre d'écart (un extérieur n'y entre jamais). Le traitement
+        // ne place pas.
+        [$token, , $clubId] = $this->register('FRCATCH');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $season = $this->seasonOf($clubId);
+
+        $this->scopeGucToClub($clubId);
+        $existing = $this->buildFixture($clubId, $season->getId(), $team->getId(), $this->rencontreDate(), FfbbHttpClientStub::CHAMP_OPPONENT, FixtureHomeAway::AWAY);
+        $existing->setFfbbRencontreId(FfbbHttpClientStub::RENCONTRE_CHAMP_ID);
+        $existing->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $existing->setReviewState(FixtureReviewState::NEW);
+        $this->em->persist($existing);
+        $this->em->flush();
+        $existingId = $existing->getId();
+
+        $this->apply($token, [], []);
+
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Fixture::class)->find($existingId);
+        self::assertInstanceOf(Fixture::class, $reloaded);
+        self::assertSame(FixtureReviewState::REVIEWED, $reloaded->getReviewState(), 'un extérieur resté NEW est rattrapé au passage API');
+        self::assertNotNull($reloaded->getReviewedAt());
+        self::assertSame(FixtureStatus::UNPLACED, $reloaded->getStatus(), 'rattraper le traitement ne place pas');
+    }
+
     public function testACoupeWithAnAlreadyPairedCompetitionReusesItUnchanged(): void
     {
         // P4-194 — une compétition PORTANT déjà ce ffbbId (pour cette équipe) est

@@ -627,10 +627,31 @@ final class FbiFixtureImporter
      */
     public function treatOnArrival(Fixture $fixture, DateTimeImmutable $now, Club $club): void
     {
-        if (FixtureHomeAway::AWAY === $fixture->getHomeAway()
-            || $fixture->getMatchDate()->format('Y-m-d') <= $this->currentIsoWeekEnd($club)->format('Y-m-d')) {
+        if ($this->qualifiesForArrivalTreatment($fixture, $this->currentIsoWeekEnd($club))) {
             $fixture->markReviewed($now);
         }
+    }
+
+    /**
+     * D2 (rattrapage) — une rencontre EXISTANTE restée « à traiter » (NEW) d'un
+     * dépôt antérieur à la naissance-traitée est rattrapée : traitée (REVIEWED +
+     * horodatée) dès qu'elle remplit le MÊME prédicat qu'{@see treatOnArrival}
+     * (extérieur, ou date ≤ dimanche de la semaine ISO en cours — fenêtre passée
+     * par l'appelant, fuseau du club). Ne touche JAMAIS un OUT_OF_SYNC ni un
+     * REVIEWED (leur état de traitement est déjà posé) ; idempotent. Le rattrapage
+     * n'est PAS une donnée de match : il ne compte pas dans created/updated/
+     * unchanged du rapport d'import. Foyer partagé aux deux canaux (re-dépôt xlsx
+     * + passage API) et à la commande de rattrapage hors ligne.
+     */
+    public function catchUpReview(Fixture $existing, DateTimeImmutable $now, DateTimeImmutable $weekEnd): bool
+    {
+        if (FixtureReviewState::NEW !== $existing->getReviewState()
+            || !$this->qualifiesForArrivalTreatment($existing, $weekEnd)) {
+            return false;
+        }
+        $existing->markReviewed($now);
+
+        return true;
     }
 
     /**
@@ -826,6 +847,18 @@ final class FbiFixtureImporter
     }
 
     /**
+     * Le prédicat « naît/est rattrapée traitée » PARTAGÉ par {@see treatOnArrival}
+     * et {@see catchUpReview} (jamais recopié) : un EXTÉRIEUR (le club ne le place
+     * pas, rien à examiner), ou une date ≤ dimanche de la semaine ISO en cours
+     * (rencontre déjà jouée ou imminente). Un domicile futur hors fenêtre est faux.
+     */
+    private function qualifiesForArrivalTreatment(Fixture $fixture, DateTimeImmutable $weekEnd): bool
+    {
+        return FixtureHomeAway::AWAY === $fixture->getHomeAway()
+            || $fixture->getMatchDate()->format('Y-m-d') <= $weekEnd->format('Y-m-d');
+    }
+
+    /**
      * Guard-before-write (revue F2 round 1): a mapping whose division the poule
      * guard REFUSES is dropped (named error) instead of persisted — the dialog
      * has no remap gesture, a wrong write would stick. The target competition
@@ -994,6 +1027,11 @@ final class FbiFixtureImporter
      */
     private function applyDiff(Fixture $existing, array $row, string $divisionName, array &$warnings, array $decisions, array $venueNames, array &$records, array &$persistingSet, DateTimeImmutable $now, DateTimeImmutable $weekEnd): string
     {
+        // D2 (rattrapage) — un existant matché resté « à traiter » (NEW) d'un dépôt
+        // antérieur à la naissance-traitée est rattrapé ici, avant tout diff. Son
+        // retour n'alimente PAS updated/unchanged (état de traitement, pas donnée).
+        $this->catchUpReview($existing, $now, $weekEnd);
+
         $fields = $this->detectFieldDeviations($existing, $row, $venueNames);
         if (null !== $fields) {
             $changed = [] === $fields
