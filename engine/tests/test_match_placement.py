@@ -62,10 +62,26 @@ def kickoff_of(result: dict[str, Any], match_id: str) -> str:
 
 
 def test_places_inside_the_access_window() -> None:
-    # Window 14:00-18:00, footprint 2h15 → legal kickoffs 14:30..16:15.
+    # Window 14:00-18:00, match 105 min (venue-only, D1) → legal kickoffs
+    # 14:00..16:15 (kickoff + 105 ≤ 18:00).
     result = solve_match_placement(payload(matches=[to_place()], venues=[venue()], teams=[team()]))
     assert result["unplaced"] == []
-    assert "14:30" <= kickoff_of(result, "m1") <= "16:15"
+    assert "14:00" <= kickoff_of(result, "m1") <= "16:15"
+
+
+def test_kickoff_at_the_window_opening_is_legal() -> None:
+    # D1 (P4-203): the access window no longer reserves 30 min of warm-up before
+    # kickoff, so a match may start at the very opening. Window 14:00-15:45 holds
+    # exactly one 105-min match → kickoff 14:00.
+    result = solve_match_placement(
+        payload(
+            matches=[to_place()],
+            venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "15:45"}])],
+            teams=[team()],
+        )
+    )
+    assert result["unplaced"] == []
+    assert kickoff_of(result, "m1") == "14:00"
 
 
 def test_no_access_window_on_that_day_is_named() -> None:
@@ -124,11 +140,33 @@ def test_two_matches_never_overlap_in_one_venue() -> None:
     k1 = kickoff_of(result, "m1")
     k2 = kickoff_of(result, "m2")
     minutes = lambda s: int(s[:2]) * 60 + int(s[3:])  # noqa: E731
-    assert abs(minutes(k1) - minutes(k2)) >= 135
+    # Venue window = match only (105 min, D1) → they may sit 105 min apart.
+    assert abs(minutes(k1) - minutes(k2)) >= 105
+
+
+def test_two_seniors_chain_two_hours_apart_in_one_venue() -> None:
+    # D1 (P4-203): the court is held for the match only (105 min), the warm-up no
+    # longer occupies it — two league matches back-to-back both fit. Window
+    # 14:00-17:30 holds EXACTLY two 105-min matches (the old 2h15 footprint would
+    # have unplaced one). Both placed, on the one venue, 105 min apart.
+    result = solve_match_placement(
+        payload(
+            matches=[to_place("m1", "t1"), to_place("m2", "t2")],
+            venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "17:30"}])],
+            teams=[team("t1"), team("t2")],
+        )
+    )
+    assert result["unplaced"] == []
+    assert {p["venueId"] for p in result["placements"]} == {"v1"}
+    k1 = kickoff_of(result, "m1")
+    k2 = kickoff_of(result, "m2")
+    minutes = lambda s: int(s[:2]) * 60 + int(s[3:])  # noqa: E731
+    assert abs(minutes(k1) - minutes(k2)) == 105
 
 
 def test_fixed_match_consumes_its_slot_and_never_moves() -> None:
-    # FIXED at 15:30 occupies 15:00-17:15 → the TO_PLACE lands 17:45+.
+    # FIXED at 15:30 occupies the venue 15:30-17:15 (match only, D1) → the
+    # TO_PLACE lands 17:15+.
     result = solve_match_placement(
         payload(
             matches=[
@@ -140,23 +178,74 @@ def test_fixed_match_consumes_its_slot_and_never_moves() -> None:
         )
     )
     assert all(p["matchId"] != "fx" for p in result["placements"])  # never re-emitted
-    assert kickoff_of(result, "m1") >= "17:45"
+    assert kickoff_of(result, "m1") >= "17:15"
 
 
 def test_full_venue_is_named() -> None:
-    # Window fits exactly ONE footprint (14:00-16:15 → single kickoff 14:30),
+    # Window fits exactly ONE 105-min match (14:00-15:45 → single kickoff 14:00),
     # already taken by a FIXED match.
     result = solve_match_placement(
         payload(
             matches=[
-                {"id": "fx", "teamId": "t1", "date": SATURDAY, "kind": "FIXED", "venueId": "v1", "kickoff": "14:30"},
+                {"id": "fx", "teamId": "t1", "date": SATURDAY, "kind": "FIXED", "venueId": "v1", "kickoff": "14:00"},
                 to_place("m1", "t2"),
             ],
-            venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "16:15"}])],
+            venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "15:45"}])],
             teams=[team("t1"), team("t2")],
         )
     )
     assert result["unplaced"][0]["reason"] == "venue_full"
+
+
+def test_two_seniors_one_hour_apart_leave_one_unplaced() -> None:
+    # A window holding only ONE 105-min match can host a single senior game: a
+    # second senior would need to sit ≥ 105 min away and overflows → venue_full.
+    result = solve_match_placement(
+        payload(
+            matches=[to_place("m1", "t1"), to_place("m2", "t2")],
+            venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "15:45"}])],
+            teams=[team("t1"), team("t2")],
+        )
+    )
+    assert len(result["placements"]) == 1
+    assert result["unplaced"][0]["reason"] == "venue_full"
+
+
+def test_category_duration_is_honoured() -> None:
+    # A 75-min category fits a 75-min window; a 105-min one does not (P4-203).
+    fits = solve_match_placement(
+        payload(
+            matches=[to_place("m1", "t1")],
+            venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "15:15"}])],
+            teams=[team("t1", matchMinutes=75, warmupMinutes=30)],
+        )
+    )
+    assert fits["unplaced"] == []
+    assert kickoff_of(fits, "m1") == "14:00"
+
+    overflows = solve_match_placement(
+        payload(
+            matches=[to_place("m1", "t1")],
+            venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "15:15"}])],
+            teams=[team("t1", matchMinutes=105, warmupMinutes=30)],
+        )
+    )
+    assert overflows["placements"] == []
+    assert overflows["unplaced"][0]["reason"] == "no_access_window"
+
+
+def test_absent_durations_default_to_105_and_30() -> None:
+    # A team WITHOUT matchMinutes/warmupMinutes behaves as 105 / 30 (the omitted
+    # fields keep the previous behaviour). Window 14:00-15:45 = one 105-min match.
+    result = solve_match_placement(
+        payload(
+            matches=[to_place()],
+            venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "15:45"}])],
+            teams=[team()],
+        )
+    )
+    assert result["unplaced"] == []
+    assert kickoff_of(result, "m1") == "14:00"
 
 
 def test_colliding_fixed_anchors_never_sink_the_whole_solve() -> None:
@@ -185,7 +274,8 @@ def test_colliding_fixed_anchors_never_sink_the_whole_solve() -> None:
     )
     assert result["status"] == "completed"
     assert result["unplaced"] == []
-    assert kickoff_of(result, "m1") >= "14:30"
+    # Sunday window 14:00-18:00, match 105 → legal kickoffs 14:00..16:15.
+    assert "14:00" <= kickoff_of(result, "m1") <= "16:15"
 
 
 def test_candidates_under_a_fixed_anchor_are_pruned_not_infeasible() -> None:
@@ -271,7 +361,27 @@ def test_back_to_back_link_chains_on_the_same_venue() -> None:
         )
     )
     minutes = lambda s: int(s[:2]) * 60 + int(s[3:])  # noqa: E731
-    assert abs(minutes(kickoff_of(result, "m1")) - minutes(kickoff_of(result, "m2"))) == 135
+    # Chained = the second kicks off exactly when the first's match ends (105 min).
+    assert abs(minutes(kickoff_of(result, "m1")) - minutes(kickoff_of(result, "m2"))) == 105
+
+
+def test_shared_coach_keeps_the_warmup_in_the_person_window() -> None:
+    # The PERSON (coach) window still carries the warm-up (D1): two matches of one
+    # MAIN coach are pushed ≥ warm-up + match (135 min) apart even on two DIFFERENT
+    # venues, where the match-only venue windows would allow them closer.
+    wide = [{"dayOfWeek": 6, "start": "14:00", "end": "22:30"}]
+    result = solve_match_placement(
+        payload(
+            matches=[to_place("m1", "t1"), to_place("m2", "t2")],
+            venues=[venue("v1", windows=wide), venue("v2", windows=wide)],
+            teams=[
+                team("t1", coaches=[{"coachId": "c1", "role": "MAIN"}]),
+                team("t2", coaches=[{"coachId": "c1", "role": "MAIN"}]),
+            ],
+        )
+    )
+    minutes = lambda s: int(s[:2]) * 60 + int(s[3:])  # noqa: E731
+    assert abs(minutes(kickoff_of(result, "m1")) - minutes(kickoff_of(result, "m2"))) >= 135
 
 
 def test_rotation_time_and_venue_attract_the_placement() -> None:
@@ -303,7 +413,9 @@ def test_rotation_window_is_protected_when_no_member_plays() -> None:
     )
     k = kickoff_of(result, "m1")
     minutes = int(k[:2]) * 60 + int(k[3:])
-    assert minutes + 105 <= 15 * 60 or minutes - 30 >= 17 * 60 + 15
+    # Protected MATCH window [15:30, 17:15] (D1) — the candidate's own match
+    # window [k, k+105] must not cross it.
+    assert minutes + 105 <= 15 * 60 + 30 or minutes >= 17 * 60 + 15
 
 
 def test_empty_rotation_block_is_a_noop() -> None:
@@ -331,5 +443,6 @@ def test_protected_habit_window_repels_other_matches() -> None:
     )
     k = kickoff_of(result, "m1")
     minutes = int(k[:2]) * 60 + int(k[3:])
-    # Footprint [k-30, k+105] must not cross [15:00, 17:15].
-    assert minutes + 105 <= 15 * 60 or minutes - 30 >= 17 * 60 + 15
+    # Protected MATCH window [15:30, 17:15] (D1) — the candidate's match window
+    # [k, k+105] must not cross it.
+    assert minutes + 105 <= 15 * 60 + 30 or minutes >= 17 * 60 + 15

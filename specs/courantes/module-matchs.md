@@ -1,21 +1,19 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-14 (E2 « l'écran d'appariement des libellés de salle », frontend sur le
-backend d'E1, `documentation-update`). § « Gymnase depuis le libellé » confrontée au code :
-`GET /api/venues/fbi-labels` (`VenueExternalLabelController::inventory`, `priority: 10`) sert
-`App\Service\Basketball\VenueLabelInventory::forSeason` (regroupement par clé normalisée,
-suggestion unanime, compteurs) ; `POST /api/venues/{id}/external-labels` avec `reassign: true`
-retire l'alias de son ancien porteur, re-pointe les domiciles UNPLACED du même libellé quel que
-soit leur gymnase, épargne PLACED/SUBMITTED/VALIDATED (`reassignHomeFixtures`) ; le DELETE et le
-POST sans drapeau restent byte-identiques à avant E1. `VenueLabelsSection.tsx` (E2) consomme
-désormais cet inventaire — table, `VenueSelect`, Confirmer/Réaffecter/Retirer — et
-`UnpairedVenueLabelsBanner.tsx` (nouveau) porte le signal partagé, vérifiés contre le code de
-cette PR. § « Onglets par famille — dépôt FBI » (paragraphe « Dette soldée P4-198 ») confrontée au
-diff `frontend/src/shared/components/ui/listbox.tsx` : seuil `SEARCH_THRESHOLD = 8` sur les
-options RÉELLES (placeholder/`leadingOptions` exclus), prop `leadingOptions` posée par
-`venue-select.tsx`, `searchLabel` posé par `team-select.tsx`/`venue-select.tsx`. Reste du fichier
-(§ « Détection », § reconciliation coupes P4-194/195, § Appariement FFBB) non re-sondé cette
-passe — voir `git log -p --follow` pour sa dernière vérification.
+Last verified @ 2026-09-14 (P4-203 « le solveur de placement adopte la règle D1 »,
+`documentation-update`). § « Empreinte-temps » et § « Solveur de placement » confrontées au diff
+`engine/app/solver/match_placement.py` : la NoOverlap salle et la fenêtre d'accès HARD portent
+désormais sur `[coup d'envoi, coup d'envoi + matchMinutes]` seul (`DEFAULT_MATCH_MIN=105`,
+`DEFAULT_WARMUP_MIN=30`, ex-`BEFORE_KICKOFF_MIN`/`AFTER_KICKOFF_MIN`/`FOOTPRINT_MIN` supprimées) ;
+l'échauffement ne reste QUE sur la fenêtre PERSONNE (coach, `NOT_SIMULTANEOUS`, entraînements
+projetés) ; `BACK_TO_BACK` = kickoff suivant exactement à la fin du match précédent. Durées portées
+par équipe (`teams[].matchMinutes`/`warmupMinutes`, Pydantic 105/30 par défaut) — résolues côté
+backend par `MatchDurationResolver` (`MatchPlacementPayloadBuilder.php`), contrat backend⇄engine
+**2.21** (`engine/CONTRACT_VERSION`, `MatchPlacementPayloadBuilder::CONTRACT_VERSION`,
+`ScheduleConstraintBuilder::CONTRACT_VERSION`, `MoveSlotService::CONTRACT_VERSION`, tous alignés).
+Golden re-épinglé (`test_match_placement_golden.py`). Reste du fichier (§ « Gymnase depuis le
+libellé », § « Détection », § reconciliation coupes P4-194/195, § Appariement FFBB) non re-sondé
+cette passe — voir `git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -53,9 +51,10 @@ Resource **sert** `defaultMatchMinutes`/`defaultWarmupMinutes` résolus, le fron
 (anti-redérivation). Domicile = `kickoff−échauffement → kickoff+durée_match`. Extérieur = + **trajet
 aller-retour** (injecté, 0 jusqu'à la PR-3) — **la douche et le battement SONT SORTIS de l'empreinte**
 (décision fondateur 2026-08-28 : négligeables, le coach enchaîne en mordant sur l'échauffement suivant ;
-les anciennes constantes 30+15 sont supprimées). ⚠ **Divergence ASSUMÉE** : le solveur de placement
-(`engine/app/solver/match_placement.py`, `AFTER_KICKOFF_MIN = 105`) garde son empreinte figée — le radar
-est par catégorie, le placement moteur non ; à réconcilier si un club le constate, pas avant.
+les anciennes constantes 30+15 sont supprimées). Depuis P4-203 (2026-09-14), le solveur de placement
+partage la même géométrie que le radar : les durées (`matchMinutes`/`warmupMinutes`) sont résolues
+par le backend via **`MatchDurationResolver`** (par équipe, contrat 2.21) et portées jusqu'à l'engine
+— voir « Deux fenêtres depuis D1 » ci-dessous, qui s'applique désormais au solveur ET au radar.
 
 **Deux fenêtres depuis D1 (2026-09-13)** — décision fondateur mesurée sur 256 rencontres réelles : la
 fenêtre PERSONNE ci-dessus (échauffement + match + trajet, `occupancy`/`occupancyAt`) sert les familles
@@ -147,10 +146,12 @@ Le radar de conflits devient **SPATIAL** : un coach qui joue à l'extérieur est
 - NR isolation : `MatchTenantIsolationTest` étendu (`opponent_travel` scopé, un MANUAL de A ne fuit pas à B —
   bloquant, ce fichier est déjà un step de `blocking-tests`). `/security-review` de la PR : **zéro finding**
   (RLS FORCE complet, aucune écriture au global, coords MANUAL range-validées et self-scoped).
-- ⚠ **Divergences ASSUMÉES** : (1) le SOLVEUR de placement garde 105 min fixe (`match_placement.py`, contrat
-  2.16 inchangé) — le trajet nourrit le radar préventif, pas l'optimisation moteur ; (2) le dessin de la grille
-  week-end est une présentation pure (`weekendGrid.ts`, § Grille week-end ci-dessous — le radar serveur est la
-  source de vérité).
+- ⚠ **Divergence ASSUMÉE** : le trajet (`roundTripTravelMinutes`) nourrit le radar préventif, pas
+  l'optimisation moteur — le solveur de placement (`match_placement.py`, contrat 2.21) reçoit les
+  durées de match/échauffement par équipe depuis P4-203 mais pas le trajet (toujours 0 côté engine).
+  Le dessin de la grille week-end (`weekendGrid.ts`, § Grille week-end ci-dessous) reste une
+  présentation pure et **n'a pas suivi** D1/P4-203 : elle dessine encore `[coup d'envoi − 30, coup
+  d'envoi + 105]` alors que la salle = match seul — roadmap ouverte pour l'aligner.
 
 ## Palier A — PR-2 (moteur de conflits, à la volée, coach seul, 2026-07-07)
 
@@ -724,7 +725,8 @@ parité stricte du mécanisme d'habitude.
     suppléance backend garantit qu'un membre ne porte jamais habitude ET rotation le même jour, ces
     deux bonus ne s'additionnent jamais sur le même candidat.
   - **Protection de fenêtre** — sur une date où **aucun membre** de la rotation n'a de match, le
-    créneau (gymnase + fenêtre 2h15 autour du coup d'envoi) est défendu contre les AUTRES équipes
+    créneau (gymnase + fenêtre MATCH `[coup d'envoi, coup d'envoi + durée]`, depuis D1/P4-203 — la
+    durée retenue est celle du membre au match le plus long) est défendu contre les AUTRES équipes
     au même malus que la protection d'habitude, **`W_PROTECT_HABIT=25`** (mécanisme `protected`
     partagé, pas une nouvelle constante).
 - **Scénario sémantique** (`test_ab_rotation_image_is_honoured_across_two_weekends`) : deux week-ends
@@ -862,7 +864,7 @@ SOFT « repos après jour de match »).
 
 - **Second problème solveur engine** : `POST /place-matches` (`engine/app/solver/match_placement.py`,
   schémas `match_input_schema.py`/`match_output_schema.py`), **un seul** `CONTRACT_VERSION` pour les deux
-  endpoints → bump **2.2**. Le solve hebdo est intouché (mêmes fichiers, mêmes golden).
+  endpoints → **2.21** (P4-203, 2026-09-14). Le solve hebdo est intouché (mêmes fichiers, mêmes golden).
 - **Rail SYNCHRONE** : `POST /api/fixtures/place` (`PlaceMatchesController` — management + saison
   écrivable + socle pointé) répond dans la requête, sans Messenger ni Mercure. Anti-double-clic par
   `MatchPlacementLock` (Redis, préfixe dédié — PAS le verrou de génération). Seuil de bascule async ~20 s
@@ -872,14 +874,20 @@ SOFT « repos après jour de match »).
   (`no_access_window` · `no_league_intersection` · `venue_unavailable` · `venue_full`), la raison affichée
   sur sa ligne « À placer ». Ce n'est pas la relaxation qu'interdit ADR-0001 : rien n'est relâché,
   l'impossible est épelé (le signal dérogation-tôt EST le produit).
-- **HARD** : fenêtres d'accès match (l'empreinte 2h15 entière dedans — l'échauffement occupe la salle),
-  indisponibilités gymnase, no-overlap par (gymnase, date), fenêtre ligue quand l'enveloppe est résolue
+- **HARD** : fenêtres d'accès match (le **match seul** dedans depuis D1/P4-203 — `kickoff ≥ start` et
+  `kickoff + matchMinutes ≤ end`, l'échauffement n'occupe plus la salle), indisponibilités gymnase,
+  no-overlap par (gymnase, date) sur la fenêtre MATCH, fenêtre ligue quand l'enveloppe est résolue
   (`LeagueEnvelopeResolver`, portage serveur de la jointure tolérante d'`envelope.ts` — non résolue =
-  aucun HARD + diagnostic INFO `league_envelope_unresolved`). **SOFT** (golden-épinglés — en changer un =
-  changer le PRODUIT) : conflit coach MAIN −60 · passerelle `NOT_SIMULTANEOUS` violée −40 · habitude
-  heure +15 / gymnase +5 · fenêtre habituelle protégée −25 · `BACK_TO_BACK` enchaîné +15 · coach
-  ASSISTANT −10 · stabilité re-solve +8 (+ hint) · compactage −1 par pas de 15 min de trou. Candidats au
-  pas de 15 min, 30 s de budget, 1 worker + seed (bit-stable).
+  aucun HARD + diagnostic INFO `league_envelope_unresolved`). Les durées (`matchMinutes`/`warmupMinutes`)
+  sont **par équipe**, résolues par `MatchDurationResolver` (override de catégorie sinon défaut de
+  famille 75/90/105 min, échauffement 30 min) et portées par le contrat ; côté engine, absentes du
+  payload ⇒ défauts Pydantic 105/30 (ancien comportement). **SOFT** (golden-épinglés — en changer un =
+  changer le PRODUIT) : conflit coach MAIN −60 (fenêtre PERSONNE, échauffement conservé) · passerelle
+  `NOT_SIMULTANEOUS` violée −40 (fenêtre PERSONNE) · habitude heure +15 / gymnase +5 · fenêtre habituelle
+  protégée −25 (fenêtre MATCH) · `BACK_TO_BACK` enchaîné +15 (le suivant démarre exactement à la fin du
+  match précédent — plus une constante 2h15) · coach ASSISTANT −10 · stabilité re-solve +8 (+ hint) ·
+  compactage −1 par pas de 15 min de trou (sur Σ des durées de match placées). Candidats au pas de 15
+  min, 30 s de budget, 1 worker + seed (bit-stable).
 - **Ancres — `Fixture.placementSource`** (`MANUAL`/`SOLVER`, null legacy = manuel) : tout geste API du
   gestionnaire stampe MANUAL ; MANUAL + `SUBMITTED`/`VALIDATED` = **FIXED**, consomment leur créneau et ne
   bougent JAMAIS (un déposé qui a perdu sa salle est ignoré du payload — ni ancre ni plaçable). SOLVER =
@@ -892,10 +900,11 @@ SOFT « repos après jour de match »).
   exclut toute `Fixture` `competitionId` null du `kind: TO_PLACE` (jamais soumis à l'objectif, jamais aux
   contraintes HARD ci-dessus) ; un amical HOME placé ET encore ancré (venue+kickoff) devient une ancre
   **FIXED** (son gymnase reste protégé contre les autres matchs, legacy PLACED+SOLVER compris) — non placé ou
-  désancré, il est simplement **absent du payload**. AWAY et les matchs de compétition sont inchangés. **Le
-  contrat reste 2.20** : aucun champ `friendly` ajouté, `engine/` n'est pas touché — la place laissée libre par
-  l'amical au solveur est couverte par une nouvelle alerte, pas par une contrainte moteur (§ « Diagnostic
-  gradué » ci-dessous, `FRIENDLY_ON_MATCH_SLOT`).
+  désancré, il est simplement **absent du payload**. AWAY et les matchs de compétition sont inchangés.
+  **Cette décision n'a pas bougé le contrat** (aucun champ `friendly` ajouté, `engine/` non touché) —
+  la place laissée libre par l'amical au solveur est couverte par une nouvelle alerte, pas par une
+  contrainte moteur (§ « Diagnostic gradué » ci-dessous, `FRIENDLY_ON_MATCH_SLOT`) ; le contrat a bumpé
+  depuis pour une raison indépendante (P4-203, § « Solveur de placement » ci-dessus).
 - **Le backend PROJETTE, l'engine reste plat** (`MatchPlacementPayloadBuilder`) : occupations
   d'entraînement **datées** via `TrainingCalendarContext` + `EffectiveScheduleResolver` (ADR-0002 jamais
   ré-implémenté côté engine), heure extérieure estimée par le MÊME `AwayKickoffEstimator` que le radar,

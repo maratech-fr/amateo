@@ -71,14 +71,50 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         self::assertArrayHasKey('unavailabilities', $venue);
 
         $team = $payload['teams'][0];
-        foreach (['id', 'name', 'leagueWindows', 'habits', 'coaches'] as $key) {
+        foreach (['id', 'name', 'leagueWindows', 'habits', 'coaches', 'matchMinutes', 'warmupMinutes'] as $key) {
             self::assertArrayHasKey($key, $team);
         }
         self::assertSame(['dayOfWeek' => 6, 'kickoff' => '15:30', 'venueId' => null], $team['habits'][0]);
+        // Durées PAR CATÉGORIE (P4-203) : la catégorie « U13-… » sans override
+        // hérite du défaut de famille U13-U15 = 90 / 30.
+        self::assertSame(90, $team['matchMinutes']);
+        self::assertSame(30, $team['warmupMinutes']);
         // L'équipe de test ne mappe pas l'enveloppe → [] + diagnostic INFO
         // (« on accompagne, on ne décide pas »).
         self::assertSame([], $team['leagueWindows']);
         self::assertSame('league_envelope_unresolved', $built['infoDiagnostics'][0]['type']);
+    }
+
+    /**
+     * NR P4-203 (§7.1 contrat backend↔engine) : le payload porte les durées PAR
+     * ÉQUIPE (matchMinutes/warmupMinutes), résolues par MatchDurationResolver sur
+     * la catégorie de l'équipe — override de club quand la catégorie en porte un,
+     * sinon défaut de famille. Le moteur en dépend pour tenir la salle sur la
+     * seule durée du match (D1).
+     */
+    #[Group('phase1')]
+    public function testPerTeamDurationsCarryClubOverrideElseFamilyDefault(): void
+    {
+        [, $fixture, $club, $season, $builder] = $this->buildFromSeededClub();
+        $em = self::getContainer()->get('doctrine.orm.entity_manager');
+
+        // Sans override : la catégorie « U13-… » hérite du défaut de famille 90 / 30.
+        $team = $builder->build($club, $season->getId())['payload']['teams'][0];
+        self::assertSame(90, $team['matchMinutes']);
+        self::assertSame(30, $team['warmupMinutes']);
+
+        // Override de club posé sur la catégorie → il prime le défaut de famille.
+        $teamEntity = $em->getRepository(Team::class)->find($fixture->getTeamId());
+        self::assertInstanceOf(Team::class, $teamEntity);
+        $category = $em->getRepository(SportCategory::class)->find($teamEntity->getSportCategoryId());
+        self::assertInstanceOf(SportCategory::class, $category);
+        $category->setMatchMinutes(70);
+        $category->setWarmupMinutes(20);
+        $em->flush();
+
+        $team = $builder->build($club, $season->getId())['payload']['teams'][0];
+        self::assertSame(70, $team['matchMinutes']);
+        self::assertSame(20, $team['warmupMinutes']);
     }
 
     #[Group('contract')]

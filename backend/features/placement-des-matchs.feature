@@ -14,9 +14,17 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Et un match à domicile le samedi et un autre le dimanche
     Et plus aucune fenêtre d'accès le dimanche dans tout le club
     Quand je lance le placement des matchs
-    Alors le match du samedi est placé par le solveur entre 14h30 et 16h15
+    Alors le match du samedi est placé par le solveur entre 14h00 et 16h15
     Et le match du samedi atterrit sur le créneau de rotation partagé, sur le gymnase à 15h30
     Et le match du dimanche reste sans créneau, faute de fenêtre d'accès ce jour-là
+
+  Scénario: Deux domiciles à deux heures d'écart tiennent dans le même gymnase
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et deux équipes et un gymnase jetables
+    Et une fenêtre d'accès le samedi de 14h00 à 18h00 sur ce gymnase
+    Et deux matchs à domicile le même samedi, un par équipe
+    Quand je lance le placement des matchs
+    Alors les deux matchs du samedi sont posés par le solveur dans ce gymnase
 
   Scénario: Un amical n'est jamais proposé au solveur et se place à la main hors créneau
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur

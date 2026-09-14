@@ -84,10 +84,12 @@ final class PlaceMatchesControllerTest extends WebTestCase
         self::assertSame(FixtureStatus::PLACED, $saturday->getStatus());
         self::assertSame(FixturePlacementSource::SOLVER, $saturday->getPlacementSource());
         self::assertSame($venue->getId(), $saturday->getVenueId());
+        // U13 → match 90 min ; la salle ne tient que la durée du match (D1) →
+        // coup d'envoi légal 14:00..16:30 (le match peut ouvrir la fenêtre).
         $kickoff = $saturday->getKickoffTime()?->format('H:i');
         self::assertNotNull($kickoff);
-        self::assertGreaterThanOrEqual('14:30', $kickoff);
-        self::assertLessThanOrEqual('16:15', $kickoff);
+        self::assertGreaterThanOrEqual('14:00', $kickoff);
+        self::assertLessThanOrEqual('16:30', $kickoff);
 
         $this->em->refresh($sunday);
         self::assertSame(FixtureStatus::UNPLACED, $sunday->getStatus());
@@ -115,14 +117,15 @@ final class PlaceMatchesControllerTest extends WebTestCase
         self::assertSame('20:30', $anchor->getKickoffTime()?->format('H:i'));
         self::assertSame(FixturePlacementSource::MANUAL, $anchor->getPlacementSource());
 
-        // The other match landed clear of the anchor's 20:00-22:15 footprint:
-        // its own footprint must END by 20:00 → kickoff ≤ 18:15 (back-to-back
-        // contiguity is legal — half-open no-overlap).
+        // The other match landed clear of the anchor's VENUE window (D1 — match
+        // only: 20:30-22:00 for a U13). Its own match window [k, k+90] must end
+        // by 20:30 → kickoff ≤ 19:00 (back-to-back contiguity is legal — half-open
+        // no-overlap).
         $this->em->refresh($other);
         self::assertSame(FixtureStatus::PLACED, $other->getStatus());
         $kickoff = $other->getKickoffTime()?->format('H:i');
         self::assertNotNull($kickoff);
-        self::assertLessThanOrEqual('18:15', $kickoff);
+        self::assertLessThanOrEqual('19:00', $kickoff);
     }
 
     protected function setUp(): void

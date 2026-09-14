@@ -65,7 +65,7 @@
 | **Diagnostic** | Explication structurée d'un échec/compromis solveur (`ScheduleDiagnostic`, ex. `day_constraint_conflict`, `venue_minimum_unreachable`). |
 | **Écart au socle** (`SocleDeviation`) | Comparaison créneau par créneau entre le socle et une version de FERMETURE `COMPLETED` : `moved[]` (appariement chronologique socle→période, `to.slotId` vise la carte de la grille) et `unplaced[]` (reliquat sans contrepartie, `reason` motivée ou nulle). Calculé par `SocleDeviationCalculator`, servi en LECTURE par `GET /api/schedules/{id}/socle-deviation`. Marqué dans la grille par un symbole ⇄ (token `--diff`, violet) AVANT le nom d'équipe — jamais un mot à l'écran, jamais de légende. |
 
-## Payload backend↔engine (contrat `CONTRACT_VERSION`, actuel 2.20)
+## Payload backend↔engine (contrat `CONTRACT_VERSION`, actuel 2.21)
 
 Clés racine : `version` · `clubId` · `seasonId` · `scheduleName` · `solverSeed` (déterminisme) ·
 `solverTimeoutSeconds` (**plafond**, jamais le budget réel — paliers adaptatifs 60/180/600 s) ·

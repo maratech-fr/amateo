@@ -82,6 +82,12 @@ class MatchTeamSchema(SerializableModel):
     league_windows: list[LeagueKickoffWindowSchema] = Field(default_factory=list, alias="leagueWindows")
     habits: list[TeamHabitSchema] = Field(default_factory=list, max_length=7)
     coaches: list[TeamCoachRefSchema] = Field(default_factory=list, max_length=20)
+    # Per-category durations (P4-203) resolved by the backend
+    # (MatchDurationResolver). OMITTED ⇒ the documented defaults, so an old
+    # payload keeps the previous behaviour: the venue holds the match only
+    # ([kickoff, kickoff + matchMinutes]), the person window keeps the warm-up.
+    match_minutes: int = Field(default=105, alias="matchMinutes", ge=1)
+    warmup_minutes: int = Field(default=30, alias="warmupMinutes", ge=0)
 
 
 class MatchSchema(SerializableModel):
@@ -158,7 +164,7 @@ class MatchPlacementInputSchema(SerializableModel):
     # défaut n'est jamais la valeur du fil. On l'aligne néanmoins sur le contrat
     # courant pour qu'aucun lecteur ne le prenne pour une version concurrente.
     # L'autorité reste `engine/CONTRACT_VERSION`, comparée au MAJOR à l'entrée.
-    version: str = "2.4"
+    version: str = "2.21"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     solver_seed: int = Field(default=42, alias="solverSeed")

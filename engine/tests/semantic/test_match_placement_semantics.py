@@ -13,9 +13,9 @@ from datetime import date, time, timedelta
 from typing import Any
 
 from app.main import read_contract_version
-from app.schemas.match_input_schema import MatchPlacementInputSchema
+from app.schemas.match_input_schema import MatchPlacementInputSchema, MatchTeamSchema
 from app.schemas.match_output_schema import MatchPlacementOutputSchema
-from app.solver.match_placement import AFTER_KICKOFF_MIN, BEFORE_KICKOFF_MIN, solve_match_placement
+from app.solver.match_placement import DEFAULT_MATCH_MIN, solve_match_placement
 
 SATURDAY = "2026-10-03"
 
@@ -24,10 +24,15 @@ def _minutes(value: time) -> int:
     return value.hour * 60 + value.minute
 
 
+def _match_min(teams: dict[str, MatchTeamSchema], team_id: str) -> int:
+    team = teams.get(team_id)
+    return team.match_minutes if team is not None else DEFAULT_MATCH_MIN
+
+
 def assert_no_hard_violation(input_data: MatchPlacementInputSchema, output: MatchPlacementOutputSchema) -> None:
-    """The HARD invariant: every placement sits in an access window, inside the
-    league window when the team maps, on an available venue, and no two
-    footprints overlap in one (venue, date)."""
+    """The HARD invariant: every placement sits in an access window (its MATCH
+    fits — no warm-up reserved, D1), inside the league window when the team maps,
+    on an available venue, and no two MATCH windows overlap in one (venue, date)."""
     matches = {m.id: m for m in input_data.matches}
     venues = {v.id: v for v in input_data.venues}
     teams = {t.id: t for t in input_data.teams}
@@ -36,7 +41,7 @@ def assert_no_hard_violation(input_data: MatchPlacementInputSchema, output: Matc
         if match.kind == "FIXED" and match.venue_id is not None and match.kickoff is not None:
             kick = _minutes(match.kickoff)
             occupied.setdefault((match.venue_id, match.match_date), []).append(
-                (kick - BEFORE_KICKOFF_MIN, kick + AFTER_KICKOFF_MIN)
+                (kick, kick + _match_min(teams, match.team_id))
             )
 
     for placement in output.placements:
@@ -44,17 +49,16 @@ def assert_no_hard_violation(input_data: MatchPlacementInputSchema, output: Matc
         venue = venues[placement.venue_id]
         kick = _minutes(placement.kickoff)
         day = match.match_date.isoweekday()
+        m_min = _match_min(teams, match.team_id)
 
         assert not any(u.start_date <= match.match_date <= u.end_date for u in venue.unavailabilities), (
             f"{placement.match_id}: placed on an unavailable venue"
         )
 
         assert any(
-            w.day_of_week == day
-            and _minutes(w.start) + BEFORE_KICKOFF_MIN <= kick
-            and kick + AFTER_KICKOFF_MIN <= _minutes(w.end)
+            w.day_of_week == day and _minutes(w.start) <= kick and kick + m_min <= _minutes(w.end)
             for w in venue.match_windows
-        ), f"{placement.match_id}: footprint outside every access window"
+        ), f"{placement.match_id}: match outside every access window"
 
         league = teams[match.team_id].league_windows
         if league:
@@ -62,7 +66,7 @@ def assert_no_hard_violation(input_data: MatchPlacementInputSchema, output: Matc
                 w.day_of_week == day and _minutes(w.kickoff_min) <= kick <= _minutes(w.kickoff_max) for w in league
             ), f"{placement.match_id}: kickoff outside the league window"
 
-        window = (kick - BEFORE_KICKOFF_MIN, kick + AFTER_KICKOFF_MIN)
+        window = (kick, kick + m_min)
         for other in occupied.get((placement.venue_id, match.match_date), []):
             assert not (window[0] < other[1] and other[0] < window[1]), f"{placement.match_id}: venue overlap"
         occupied.setdefault((placement.venue_id, match.match_date), []).append(window)
@@ -80,8 +84,8 @@ def wire_payload() -> dict[str, Any]:
         "solverSeed": 42,
         "solverTimeoutSeconds": 30,
         "matches": [
-            # 3 TO_PLACE + 1 FIXED = 4 footprints × 135 min = 540 ≤ the 570-min
-            # window (13:00-22:30) — full but feasible; a 5th would overflow.
+            # 3 TO_PLACE + 1 FIXED = 4 MATCH windows × 105 min = 420 ≤ the 570-min
+            # window (13:00-22:30) — feasible (D1: the venue holds the match only).
             {"id": "m-pnm", "teamId": "pnm", "date": SATURDAY, "kind": "TO_PLACE"},
             {"id": "m-sf1", "teamId": "sf1", "date": SATURDAY, "kind": "TO_PLACE"},
             {"id": "m-df2", "teamId": "df2", "date": SATURDAY, "kind": "TO_PLACE"},
@@ -153,8 +157,8 @@ def test_realistic_weekend_honours_every_hard_rule() -> None:
 
 
 def test_access_window_is_hard_no_kickoff_ever_leaks_out() -> None:
-    # NR sémantique du cadrage : fenêtre samedi 14:00-18:00 → AUCUN coup
-    # d'envoi hors 14:30-16:15, quelles que soient les préférences.
+    # NR sémantique du cadrage : fenêtre samedi 14:00-18:00, match 105 min →
+    # AUCUN coup d'envoi hors 14:00-16:15, quelles que soient les préférences.
     payload = wire_payload()
     payload["venues"] = [
         {
@@ -183,22 +187,25 @@ def test_access_window_is_hard_no_kickoff_ever_leaks_out() -> None:
 
     assert len(output.placements) == 1
     kick = output.placements[0].kickoff
-    assert time(14, 30) <= kick <= time(16, 15)
+    assert time(14, 0) <= kick <= time(16, 15)
     assert_no_hard_violation(input_data, output)
 
 
 def test_a_manual_anchor_is_never_moved_nor_double_booked() -> None:
     input_data = MatchPlacementInputSchema.model_validate(wire_payload())
     output = MatchPlacementOutputSchema.model_validate(solve_match_placement(input_data))
+    teams = {t.id: t for t in input_data.teams}
+    matches = {m.id: m for m in input_data.matches}
 
     # The FIXED match never appears in placements…
     assert all(p.match_id != "m-rm2" for p in output.placements)
-    # …and nothing overlaps its footprint (20:30 kickoff → 20:00-22:15) on Mateo.
-    anchor_start = 20 * 60 + 30 - BEFORE_KICKOFF_MIN
-    anchor_end = 20 * 60 + 30 + AFTER_KICKOFF_MIN
+    # …and no MATCH window overlaps its venue window (20:30 kickoff → 20:30-22:15,
+    # match only, D1) on Mateo.
+    anchor_start = 20 * 60 + 30
+    anchor_end = 20 * 60 + 30 + _match_min(teams, matches["m-rm2"].team_id)
     for placement in output.placements:
         kick = _minutes(placement.kickoff)
-        start, end = kick - BEFORE_KICKOFF_MIN, kick + AFTER_KICKOFF_MIN
+        start, end = kick, kick + _match_min(teams, matches[placement.match_id].team_id)
         assert not (start < anchor_end and anchor_start < end), f"{placement.match_id} overlaps the manual anchor"
 
 

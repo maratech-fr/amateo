@@ -1,10 +1,13 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-09-12 (rotation `documentation-update` — `SCORE_FORMULA_VERSION` =
-`T24_LEVEL_2_FIXED_WEIGHTS_V13` (`app/solver/objective/weights.py:31`) ✓ ; budget adaptatif
-60/180/600 s aux paliers ≤50/≤200 de complexité (`app/main.py:415-430`, `_adaptive_timeout`) ✓ ;
-`solverTimeoutSeconds` défaut 650 sur `/generate` (`app/schemas/input_schema.py:319`) ✓ ;
-`engine/CONTRACT_VERSION` = `2.20` ✓ — aucune dérive trouvée).
+Last verified @ 2026-09-14 (P4-203 « le solveur de placement adopte la règle D1 »,
+`documentation-update`). `engine/CONTRACT_VERSION` = `2.21` ✓ — bumpé par P4-203 (durées de match
+par équipe sur `/place-matches`) ; ce document ne cite aucun message d'erreur `no_access_window`
+littéral (seulement la ligne générique `unplaced_match`, toujours exacte), donc rien à recaler sur
+le fond côté placement. `SCORE_FORMULA_VERSION` = `T24_LEVEL_2_FIXED_WEIGHTS_V13`
+(`app/solver/objective/weights.py:31`) ✓ ; budget adaptatif 60/180/600 s aux paliers ≤50/≤200 de
+complexité (`app/main.py:415-430`, `_adaptive_timeout`) ✓ ; `solverTimeoutSeconds` défaut 650 sur
+`/generate` (`app/schemas/input_schema.py:319`) ✓ — aucune dérive trouvée.
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 
 ---
@@ -22,7 +25,7 @@ Ces erreurs sont retournees directement par l'API FastAPI, avant meme que le sol
 - `sessionsPerWeek: "trois"` au lieu d'un entier
 - Champ `sportCategoryId` manquant sur une equipe (requis)
 - Cle inconnue dans le payload (les schemas sont `extra=forbid`)
-- `version: "1.0"` alors que le moteur parle le **MAJOR 2** du contrat `2.20` (`"2.0"` comme `"2.1"` passent)
+- `version: "1.0"` alors que le moteur parle le **MAJOR 2** du contrat `2.21` (`"2.0"` comme `"2.1"` passent)
 
 **Attention — deux pieges qui ne provoquent PAS de 422** : `lockLevel` est une **chaine libre**, pas un enum (un `"FORT"` est accepte et simplement traite comme non-`HARD`), et le `dayOfWeek` d'un creneau de gymnase (`VenueTrainingSlotSchema`) est un entier **sans borne** — un `8` passe la validation (d'autres schemas du meme payload, eux, sont bornes `ge=1, le=7` : la tolerance n'est pas une regle generale).
 
