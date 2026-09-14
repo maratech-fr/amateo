@@ -26,11 +26,15 @@ type Pending =
  * SUGGESTION pré-sélectionnée avec une pastille neutre « d'après les rencontres »,
  * sinon placeholder « Non apparié »), et l'action.
  *
- * - Sans alias (ou en acceptant la suggestion) : « Confirmer » = POST sans `reassign`
- *   (backfill des domiciles encore sans salle). Aucun dialogue (geste sûr, additif).
- * - Un alias existe et on choisit un AUTRE gymnase : « Réaffecter » ouvre un
- *   `ConfirmDialog` (« M non placés basculeront vers X ; N placés conservent leur
- *   salle ») puis POST `reassign: true`. La correction en un geste (E1) qui manquait.
+ * - Sans alias ET les domiciles ne portent aucun autre gymnase (ou on accepte la
+ *   suggestion) : « Confirmer » = POST sans `reassign` (backfill des domiciles encore
+ *   sans salle). Aucun dialogue (geste sûr, additif).
+ * - Un alias existe et on choisit un AUTRE gymnase, OU (2026-09-14) pas d'alias mais les
+ *   domiciles portent DÉJÀ un gymnase différent de celui choisi (`suggestedVenueId` ≠
+ *   sélection — le cas vécu : alias retiré la veille, 83 domiciles restés sur le mauvais
+ *   gymnase, « Confirmer » ne bougeait rien) : « Réaffecter » ouvre un `ConfirmDialog`
+ *   (« M non placés basculeront vers X ; N placés conservent leur salle ») puis POST
+ *   `reassign: true`. La correction en un geste (E1) qui manquait.
  * - « Retirer » (ghost, subordonné) sur les lignes à alias : `ConfirmDialog` inchangé
  *   (les matchs déjà rattachés gardent ce gymnase).
  *
@@ -118,7 +122,15 @@ export function VenueLabelsSection({ venues }: { venues: Venue[] | undefined }) 
               const selected = effectiveValue(row);
               const confirmed = row.venueId;
               const showsSuggestion = null === confirmed && null !== row.suggestedVenueId && selected === row.suggestedVenueId;
-              const hasChange = selected !== (confirmed ?? "");
+              // Réaffecter dès que des domiciles PORTENT un autre gymnase que celui choisi :
+              // alias confirmé ailleurs, ou pas d'alias mais un gymnase unanime différent.
+              // `suggestedVenueId` est nul quand il égale l'alias confirmé (inventaire E1) : non nul,
+              // il dit que des domiciles portent ENCORE un autre gymnase → il y a quelque chose à
+              // réaffecter même sans changer la sélection (cas vécu : alias posé sur JDR par
+              // « Confirmer », 83 domiciles restés sur ADN, bouton grisé faute de « changement »).
+              const drift = null !== row.suggestedVenueId && selected !== row.suggestedVenueId;
+              const needsReassign = null !== confirmed || drift;
+              const hasChange = selected !== (confirmed ?? "") || drift;
               const canWrite = "" !== selected && hasChange;
               return (
                 <TableRow key={row.labelKey}>
@@ -149,14 +161,14 @@ export function VenueLabelsSection({ venues }: { venues: Venue[] | undefined }) 
                         size="sm"
                         disabled={busy || !canWrite}
                         onClick={() => {
-                          if (null === confirmed) {
-                            confirmAttach(row, selected);
-                          } else {
+                          if (needsReassign) {
                             setPending({ kind: "reassign", row, targetVenueId: selected, targetVenueName: venueName(selected) });
+                          } else {
+                            confirmAttach(row, selected);
                           }
                         }}
                       >
-                        {null === confirmed ? "Confirmer" : "Réaffecter"}
+                        {needsReassign ? "Réaffecter" : "Confirmer"}
                       </Button>
                       {null !== confirmed ? (
                         <Button

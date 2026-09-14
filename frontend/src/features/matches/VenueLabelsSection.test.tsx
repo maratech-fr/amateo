@@ -111,6 +111,35 @@ describe("VenueLabelsSection — écran d'appariement (E2, P4-205)", () => {
     expect(h.mutateAttach.mock.calls[0][0]).toEqual({ venueId: "v-beta", label: "gymnase mateo", reassign: true });
   });
 
+  it("pas d'alias mais les domiciles portent un AUTRE gymnase que celui choisi ⇒ « Réaffecter » + reassign (cas vécu 2026-09-14)", async () => {
+    const user = userEvent.setup();
+    // Alias retiré la veille : venueId null ; les 83 domiciles restés sur Alpha (suggestion unanime).
+    h.inventory = [row({ venueId: null, suggestedVenueId: "v-alpha", unplacedCount: 83, placedCount: 0 })];
+    render(<VenueLabelsSection venues={venues} />);
+    await pickListboxOption(user, "Gymnase pour le libellé GYMNASE MATEO", "Gymnase Beta");
+    // Plus de « Confirmer » (qui ne bougerait rien) : le geste est une ré-affectation.
+    expect(screen.queryByRole("button", { name: "Confirmer" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Réaffecter" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/83 domiciles non placés basculeront vers Gymnase Beta/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Réaffecter" }));
+    expect(h.mutateAttach.mock.calls[0][0]).toEqual({ venueId: "v-beta", label: "gymnase mateo", reassign: true });
+  });
+
+  it("alias confirmé mais des domiciles portent encore un autre gymnase ⇒ « Réaffecter » ACTIF sans changer la sélection", async () => {
+    const user = userEvent.setup();
+    // Alias posé sur Beta par « Confirmer » ; les 83 domiciles restés sur Alpha (suggestion ≠ confirmé).
+    h.inventory = [row({ venueId: "v-beta", suggestedVenueId: "v-alpha", unplacedCount: 83, placedCount: 0 })];
+    render(<VenueLabelsSection venues={venues} />);
+    const button = screen.getByRole("button", { name: "Réaffecter" });
+    expect(button).toBeEnabled();
+    await user.click(button);
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/83 domiciles non placés basculeront vers Gymnase Beta/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Réaffecter" }));
+    expect(h.mutateAttach.mock.calls[0][0]).toEqual({ venueId: "v-beta", label: "gymnase mateo", reassign: true });
+  });
+
   it("« Retirer » ouvre le dialogue inchangé (« gardent ce gymnase ») puis detach {venueId, labelKey}", async () => {
     const user = userEvent.setup();
     h.inventory = [row({ venueId: "v-alpha", suggestedVenueId: null })];
