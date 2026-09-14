@@ -1,7 +1,7 @@
 # Vacances scolaires & jours fériés — référentiels calendaires
 
-Last verified @ 2026-09-09 (rotation `documentation-update`, P4-187b — zone non touchée par la PR,
-contrôle de fraîcheur). Re-confronté au code : `AdminJobCatalog` déclare toujours
+Last verified @ 2026-09-15 (rotation `documentation-update`, PR « panneau `Listbox` porté » — zone non
+touchée par la PR, contrôle de fraîcheur). Re-confronté au code : `AdminJobCatalog` déclare toujours
 `import-school-holidays`/`import-public-holidays` en `quarterly(4)`/`quarterly(4, 30)`,
 `manualTriggerAllowed: true` (`backend/src/AdminJob/AdminJobCatalog.php:63-64`) ✓ ;
 `SchoolZoneResolver::ZONES` (`backend/src/Service/SchoolZoneResolver.php:27-32`) porte toujours

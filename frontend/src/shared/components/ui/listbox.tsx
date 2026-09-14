@@ -1,5 +1,6 @@
 import { AlertTriangle, ChevronDown, Search } from "lucide-react";
-import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { cn, stripDiacritics } from "@/shared/lib/utils";
@@ -71,7 +72,13 @@ const MAX_LIST_PX = 256; // max-h-64 (16rem)
  *  in-panel search field. Below it the panel is byte-identical to the pre-P4-198 listbox. */
 const SEARCH_THRESHOLD = 8;
 
-const POPUP_FRAME = "absolute z-50 w-full rounded-md border border-border bg-card text-card-foreground shadow";
+/** Gap between the trigger and the panel (the former `mt-1`), in px. */
+const POPUP_GAP_PX = 4;
+
+/** `fixed` + `z-[100]`: the panel is portaled to `document.body` and must sit above a modal
+ *  (`z-[90]`, `modal.tsx`) — the same layer as the toaster. Width/position come from the
+ *  trigger's rect (inline style), never from a CSS parent. */
+const POPUP_FRAME = "fixed z-[100] rounded-md border border-border bg-card text-card-foreground shadow";
 
 /**
  * Accessible single-select listbox (APG listbox pattern), built in-house because the
@@ -87,27 +94,39 @@ const POPUP_FRAME = "absolute z-50 w-full rounded-md border border-border bg-car
  *   Home / End / typeahead move focus; disabled options are focusable too (WCAG lets a
  *   listbox expose an unavailable option, and a manager must be able to READ its reason).
  *
- * - **The popover lives in the tree, not a portal**, so it inherits the modal's stacking
- *   and its keydown handling reaches the modal — which forces the next two decisions.
+ * - **The panel is PORTALED to `document.body`, in `position: fixed`** — it overflows a modal
+ *   or any scrolling ancestor exactly like a native `<select>` does. It used to live in the
+ *   tree (`absolute` under the trigger), which made it inherit every ancestor's `overflow`:
+ *   inside the short « Accès match » modal (9 venues → search field) the panel was born in an
+ *   almost-empty `overflow-y-auto` body and got clipped — the manager had to scroll the modal
+ *   to scroll the list (founder, 2026-09-14: « c'est ridicule »). Consequences, all handled
+ *   here: the trigger links the detached panel with `aria-controls`; the outside-click test
+ *   counts the panel as « inside » and a `mousedown` in the panel never reaches `document`
+ *   (a host with its own outside-click — `menu.tsx`, `ExportMenu` — must not close); stacking is explicit (`z-[100]`, above `modal.tsx`'s
+ *   `z-[90]`); position/width are re-measured from the trigger's rect on `resize` and on any
+ *   `scroll` (capture) while open. Since the panel is no longer a DOM descendant of the modal
+ *   panel, the modal's native keydown listener (`useModalA11y.ts`) never sees the list's keys:
+ *   Escape/Tab below are decided solely here.
  *
  * - **Escape closes the list only, and `stopPropagation()`s.** The keydown handler is a
- *   NATIVE bubble listener on the popup container (not React's delegated handler) so its
- *   ordering against the modal's own native listener (`useModalA11y.ts`, attached on the
- *   dialog panel) is deterministic: the container is a descendant of the panel, so a native
- *   bubble listener there fires FIRST and `stopPropagation()` keeps the event from reaching
- *   the panel. Without this, Escape inside the list would ALSO close the surrounding modal —
- *   the manager would lose the whole dialog trying to dismiss a dropdown.
+ *   NATIVE listener on the panel container (not React's delegated handler — a React synthetic
+ *   event would bubble through the portal to the trigger's React ancestors). Escape must never
+ *   ALSO close the surrounding modal — the manager would lose the whole dialog trying to
+ *   dismiss a dropdown.
  *
  * - **Tab closes without selecting, and lets the event pass.** A listbox is not a menu:
  *   leaving it with Tab must not commit the merely-highlighted option (that is what Enter is
- *   for), and it must not trap focus — Tab has to keep flowing to the next control (the modal
- *   focus-trap then does its job). So Tab restores focus to the trigger, closes, and does NOT
- *   preventDefault/stopPropagation.
+ *   for), and it must not trap focus. Tab restores focus to the trigger BEFORE the default
+ *   action runs, so sequential navigation continues from the trigger — inside the host dialog.
+ *   (Known edge: the modal focus-trap does not see this keydown; a trigger that is the LAST
+ *   focusable of a dialog would let Tab leave it. No such dialog exists — every modal ends
+ *   with its footer buttons.)
  *
- * - **Vertical flip is measured once at open** against the nearest scrollable ancestor (the
- *   modal body), viewport as fallback: open upward only when the space below is too small AND
- *   there is more room above. Recomputed on `resize` while open, never on scroll. In jsdom
- *   every rect is 0, so the flip is inert there and is proven in Playwright instead.
+ * - **Vertical flip is measured at open against the VIEWPORT** (fixed positioning escapes
+ *   every scroll container, so the viewport is the only bound that matters): open upward only
+ *   when the space below is too small AND there is more room above. Recomputed on `resize`
+ *   and `scroll` while open. In jsdom every rect is 0, so the flip is inert there and is
+ *   proven in Playwright instead (`listbox.spec.ts`).
  *
  * - **Search field for long lists (P4-198), NOT an editable combobox.** At ≥ 8 real options
  *   the panel grows a text filter. The trigger stays a real `button[aria-haspopup="listbox"]`
@@ -144,13 +163,36 @@ export function Listbox({
   "aria-describedby": ariaDescribedby,
 }: ListboxProps) {
   const [open, setOpen] = useState(false);
-  const [dropUp, setDropUp] = useState(false);
+  // Inline geometry of the portaled panel (left/width from the trigger, top OR bottom by flip).
+  const [popupStyle, setPopupStyle] = useState<CSSProperties>({});
   const [query, setQuery] = useState("");
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const fallbackLabelId = useId();
   const valueId = useId();
+  const popupId = useId();
+
+  // Place the portaled panel under (or above) the trigger, from its viewport rect. Called
+  // before paint at open, then on resize/scroll while open. Pure DOM measurement — inert in
+  // jsdom (every rect is 0 → `top: 4px`).
+  const place = (): void => {
+    const trigger = triggerRef.current;
+    const popupEl = popupRef.current;
+    if (!trigger || !popupEl) {
+      return;
+    }
+    const rect = trigger.getBoundingClientRect();
+    const needed = popupEl.offsetHeight || Math.min(popupEl.scrollHeight, MAX_LIST_PX);
+    const below = window.innerHeight - rect.bottom;
+    const above = rect.top;
+    const dropUp = below < needed && above > below;
+    setPopupStyle({
+      left: rect.left,
+      width: rect.width,
+      ...(dropUp ? { bottom: window.innerHeight - rect.top + POPUP_GAP_PX } : { top: rect.bottom + POPUP_GAP_PX }),
+    });
+  };
 
   // The label to reference: a caller-provided labelledby wins; otherwise the aria-label is
   // rendered as an sr-only span so the trigger's accessible name can be "label + value"
@@ -219,48 +261,31 @@ export function Listbox({
       initial?.scrollIntoView?.({ block: "nearest" });
     }
 
-    const trigger = triggerRef.current;
-    const popupEl = popupRef.current;
-    if (trigger && popupEl) {
-      const rect = trigger.getBoundingClientRect();
-      const needed = Math.min(popupEl.scrollHeight, MAX_LIST_PX);
-      const scroller = scrollableAncestor(trigger);
-      const bounds = scroller ? scroller.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
-      const below = bounds.bottom - rect.bottom;
-      const above = rect.top - bounds.top;
-      setDropUp(below < needed && above > below);
-    }
+    place();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Outside click + resize (flip recompute), only while open.
+  // Outside click + resize/scroll (re-placement), only while open. The portaled panel is NOT a
+  // DOM descendant of the trigger's root: a click inside it (search field, option) must count
+  // as « inside ». Scroll is listened in capture so any scrolling ancestor re-anchors the panel.
   useEffect(() => {
     if (!open) {
       return;
     }
     const onPointer = (e: MouseEvent) => {
       const root = triggerRef.current?.parentElement;
-      if (root && !root.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (root && !root.contains(target) && !popupRef.current?.contains(target)) {
         close(false);
       }
     };
-    const onResize = () => {
-      const trigger = triggerRef.current;
-      const popupEl = popupRef.current;
-      if (!trigger || !popupEl) {
-        return;
-      }
-      const rect = trigger.getBoundingClientRect();
-      const needed = Math.min(popupEl.scrollHeight, MAX_LIST_PX);
-      const scroller = scrollableAncestor(trigger);
-      const bounds = scroller ? scroller.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
-      setDropUp(bounds.bottom - rect.bottom < needed && rect.top - bounds.top > bounds.bottom - rect.bottom);
-    };
     document.addEventListener("mousedown", onPointer);
-    window.addEventListener("resize", onResize);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
     return () => {
       document.removeEventListener("mousedown", onPointer);
-      window.removeEventListener("resize", onResize);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
     };
   }, [open]);
 
@@ -359,8 +384,18 @@ export function Listbox({
           }
       }
     };
+    // A mousedown INSIDE the portaled panel stops here: the panel is not a DOM descendant of
+    // the host that opened it, so any document-level « click outside » listener (`menu.tsx`,
+    // `ExportMenu.tsx`…) would otherwise read a click on an option as a click OUTSIDE its root
+    // and close the host under the manager's hand. `click` is left alone (the options pick on
+    // React `onClick`, delivered through the portal container).
+    const onMouseDown = (e: MouseEvent) => e.stopPropagation();
     popupEl.addEventListener("keydown", onKeyDown);
-    return () => popupEl.removeEventListener("keydown", onKeyDown);
+    popupEl.addEventListener("mousedown", onMouseDown);
+    return () => {
+      popupEl.removeEventListener("keydown", onKeyDown);
+      popupEl.removeEventListener("mousedown", onMouseDown);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -388,7 +423,7 @@ export function Listbox({
   );
 
   return (
-    <div className="relative w-full">
+    <div className="w-full">
       {ariaLabel !== undefined && ariaLabelledby === undefined ? (
         <span id={fallbackLabelId} className="sr-only">
           {ariaLabel}
@@ -403,6 +438,7 @@ export function Listbox({
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls={open ? popupId : undefined}
         aria-labelledby={triggerLabelledby}
         aria-describedby={ariaDescribedby}
         onClick={() => (open ? close(false) : setOpen(true))}
@@ -426,9 +462,10 @@ export function Listbox({
         <ChevronDown aria-hidden className="size-4 shrink-0 text-muted-foreground" />
       </button>
       {open
-        ? searchable
+        ? createPortal(
+          searchable
           ? (
-              <div ref={popupRef} className={cn(POPUP_FRAME, dropUp ? "bottom-full mb-1" : "top-full mt-1")}>
+              <div ref={popupRef} id={popupId} style={popupStyle} className={POPUP_FRAME}>
                 <div className="border-b border-border p-1">
                   <div className="flex items-center gap-2 rounded-sm bg-background px-2 focus-within:ring-2 focus-within:ring-ring">
                     <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />
@@ -453,25 +490,15 @@ export function Listbox({
               </div>
             )
           : (
-              <div ref={popupRef} role="listbox" tabIndex={-1} aria-labelledby={labelId} className={cn(POPUP_FRAME, "max-h-64 overflow-y-auto py-1", dropUp ? "bottom-full mb-1" : "top-full mt-1")}>
+              <div ref={popupRef} id={popupId} style={popupStyle} role="listbox" tabIndex={-1} aria-labelledby={labelId} className={cn(POPUP_FRAME, "max-h-64 overflow-y-auto py-1")}>
                 {listContent}
               </div>
-            )
+            ),
+          document.body,
+        )
         : null}
     </div>
   );
-}
-
-function scrollableAncestor(el: HTMLElement): HTMLElement | null {
-  let node = el.parentElement;
-  while (node) {
-    const style = window.getComputedStyle(node);
-    if (/(auto|scroll|overlay)/.test(style.overflowY) && node.scrollHeight > node.clientHeight) {
-      return node;
-    }
-    node = node.parentElement;
-  }
-  return null;
 }
 
 function Glyph({ icon, swatch }: { icon?: ReactNode; swatch?: string | null }) {

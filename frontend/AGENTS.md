@@ -352,7 +352,12 @@ product rules — reuse them instead of rolling your own:
   **disabled** option (visible + motivated, never dropped from the list). Built in-house because
   the project ships no rich-option select; interaction decisions (roving `tabIndex` not
   `aria-activedescendant`, Escape stops propagation so it never bubbles into a hosting modal, Tab
-  closes without selecting, flip measured once at open) live in the component's own docblock —
+  closes without selecting, flip measured against the viewport at open + resize/scroll) live in
+  the component's own docblock — **the panel is portaled to `document.body` in `position: fixed`
+  (2026-09-15)**: it overflows a modal or any scrolling ancestor like a native `<select>` (the
+  founder's « Accès match » list was clipped by the modal body); `aria-controls` links trigger and
+  panel, a `mousedown` inside the panel never reaches `document` (hosts with their own
+  outside-click stay open) —
   single home, don't re-decide them at a call site. The plain native `<select>` (`select.tsx`)
   stays the house of the ~20 simple pickers (days, statuses, category, duration…) that carry no
   colour/count/sub/disabled-with-reason. Test helper: `src/test/pickListboxOption.ts` (open +

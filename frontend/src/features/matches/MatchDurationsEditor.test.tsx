@@ -45,6 +45,14 @@ describe("MatchDurationsEditor — la durée de match par catégorie (P2-54 RMM-
     expect(screen.getAllByRole("columnheader", { name: "Défaut" })).toHaveLength(2);
   });
 
+  it("P4-202 — l'aide dit que l'échauffement n'occupe PAS la salle : deux matchs peuvent s'enchaîner", () => {
+    renderWithProviders(<MatchDurationsEditor categories={CATEGORIES} />);
+    // Vrai pour le coach (fenêtre personne), et désormais DIT pour la salle (règle D1 / P4-203) —
+    // sans cette phrase, un gestionnaire croit que deux matchs à 2 h d'écart collisionnent.
+    expect(screen.getByText(/l'échauffement n'occupe pas la salle/i)).toBeInTheDocument();
+    expect(screen.getByText(/deux matchs peuvent s'enchaîner/i)).toBeInTheDocument();
+  });
+
   it("une ligne par catégorie (le nom en cellule)", () => {
     renderWithProviders(<MatchDurationsEditor categories={CATEGORIES} />);
     expect(screen.getByRole("cell", { name: "U13" })).toBeInTheDocument();
