@@ -564,10 +564,15 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   - **Confirmer** (pas d'alias encore, ou suggestion acceptée telle quelle) : `POST
     /api/venues/{id}/external-labels {label}` SANS `reassign` — geste additif sûr, aucune
     confirmation (le backfill des non placés n'écrase jamais un placement).
-  - **Réaffecter** (un alias existe déjà et l'utilisateur choisit un AUTRE gymnase) : `ConfirmDialog`
-    nommant « M non placé(s) basculeront vers X ; N placé(s) conservent leur salle » puis `POST
-    …/external-labels {label, reassign: true}` — la correction en un geste que E1 a préparée côté
-    backend (§ « Routes » ci-dessus) et que cet écran expose enfin.
+  - **Réaffecter** — dès que des domiciles PORTENT un autre gymnase que celui choisi : un alias
+    existe et l'utilisateur choisit un AUTRE gymnase, OU (correctif 2026-09-14) pas d'alias mais
+    les domiciles portent déjà un gymnase unanime différent (`suggestedVenueId` ≠ sélection — cas
+    vécu : alias retiré la veille, 83 domiciles restés sur ADN, « Confirmer » ne bougeait rien), OU
+    alias confirmé mais des domiciles restés ailleurs (`suggestedVenueId` non nul ≠ alias — le
+    bouton reste ACTIF sans changer la sélection, là où « rien n'a changé » le grisait) :
+    `ConfirmDialog` nommant « M non placé(s) basculeront vers X ; N placé(s) conservent leur
+    salle » puis `POST …/external-labels {label, reassign: true}` — la correction en un geste que
+    E1 a préparée côté backend (§ « Routes » ci-dessus) et que cet écran expose enfin.
   - **Retirer** (ghost, sur les lignes à alias confirmé) : `ConfirmDialog` inchangé (« Les matchs
     déjà rattachés gardent ce gymnase ; seuls les prochains imports ne le seront plus. ») puis
     `DELETE /api/venues/{id}/external-labels/{label}`.
