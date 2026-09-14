@@ -252,6 +252,24 @@ final class ManagementRoleTest extends WebTestCase
         self::assertResponseIsSuccessful(); // 200 : la lecture reste ouverte
     }
 
+    public function testFbiLabelInventoryIsReadableByAMemberButReassignIsManagementOnly(): void
+    {
+        // E1 — l'inventaire des libellés de salle est un ÉTAT (lecture ouverte à
+        // tout membre), la ré-affectation est un GESTE (management-only). assertManager
+        // tire avant tout lookup, un id bidon + un corps reassign atteignent le 403.
+        [, , $clubA] = $this->register('MGB');
+        $memberToken = $this->addActiveMember($clubA, 'member');
+
+        $this->client->request('GET', '/api/venues/fbi-labels', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $memberToken]);
+        self::assertResponseIsSuccessful(); // 200 : lecture ouverte
+
+        $this->client->request('POST', '/api/venues/' . self::DUMMY_ID . '/external-labels', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $memberToken,
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], '{"label":"GYMNASE MATEO","reassign":true}');
+        self::assertResponseStatusCodeSame(403, 'ré-affecter un libellé doit être management-only');
+    }
+
     public function testManagerStillWritesNewlyClosedFamily(): void
     {
         // Contre-preuve : le défaut à true ne bloque pas le management — un admin

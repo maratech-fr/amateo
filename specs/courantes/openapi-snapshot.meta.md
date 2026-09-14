@@ -1,14 +1,17 @@
-Last verified @ 2026-09-12 (P4-200 C1 — le pont xlsx → Engagements FFBB, régénéré par l'orchestrateur après
-`docker compose restart php-fpm` + `cache:clear` + `api:openapi:export`. **196 paths**
-(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : les deux routes
-`GET /api/ffbb/engagements` et `POST /api/ffbb/engagements/confirm` existaient. Ce qui change : la réponse de
-`list` gagne `suggestionSource` (enum `pairing` · `canonical` · `fbi`, nullable) et le corps de `confirm`
-est désormais documenté avec un `competitionId` optionnel par pairing — **+40 lignes**, portées par
-`FfbbEngagementPaths` (contributeur du domaine).
-· SHA-256 `5c300691dbbc32284434988764e5dcda37d28f6095165a7461f93e994b7abf4d`
+Last verified @ 2026-09-14 (E1 — l'appariement des salles côté backend, régénéré par l'orchestrateur après
+`rm -rf var/cache/*` + `docker compose restart php-fpm` + `cache:clear` + `api:openapi:export`. **197 paths**
+(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** : `GET /api/venues/fbi-labels`
+(l'inventaire agrégé libellé de salle FBI → gymnase, compteurs) ; le corps de
+`POST /api/venues/{id}/external-labels` gagne `reassign` (optionnel) et sa réponse `kept` +
+`previousVenueId` — **+94 lignes**, portées par `VenueAliasPaths` (contributeur du domaine).
+· SHA-256 `a5a0fb39e1b0a9a5b44f30bdb4e82ff4cd394eafc75a56ca888c0159adae400e`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **E1 — l'appariement des salles, backend (2026-09-14)** : **+1 path** — `GET /api/venues/fbi-labels`
+  (par libellé normalisé : gymnase confirmé, gymnase suggéré d'après les rencontres, domiciles / placés /
+  non placés) ; `POST /api/venues/{id}/external-labels` accepte `reassign` (l'alias change de porteur, les
+  domiciles NON placés au même libellé basculent) et répond `kept` + `previousVenueId`. 196 → **197 paths**.
 - **P4-200 C1 — le pont xlsx → Engagements FFBB (2026-09-12)** : **+0 path** — `GET /api/ffbb/engagements`
   répond `suggestionSource` (`pairing` | `canonical` | `fbi` | null) à côté de `suggestedTeamId` /
   `suggestedCompetitionId` ; `POST /api/ffbb/engagements/confirm` accepte un `competitionId` optionnel par
@@ -64,14 +67,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   figée (règle d'or : le backend dit, le front affiche). Servie sur les 3 variantes du schéma read
   (jsonld, collection). Prédicat UNIQUE (`CalendarEntryRedatability`) partagé avec le dégel de fenêtre
   au PUT. Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.20, aucun appel moteur).
-- **P2-60 PR-1 — le budget solo en lecture (`GET /api/team_solo_budgets`) (2026-09-03)** : **+1 path** —
-  ressource LECTURE SEULE `TeamSoloBudget` (GetCollection uniquement, pas d'item) : le budget de
-  réservation individuelle de chaque équipe par portée — `teamId`, `schedulePlanId`, `effectiveSessions`
-  (S), `blockSessions` (B), `residual` (R = S − B), `individualUsed`, `inBlock`. Filtrable par
-  `?schedulePlanId=` (absent/NULL = socle, UUID = plan de période ; malformé → 400, inexistant/étranger
-  → 422). Provider dédié `TeamSoloBudgetStateProvider` (délègue à `SoloReservationBudget`, maison unique
-  de R), pagination désactivée. 190 → **191 paths**. Backend PUR, contrat backend⇄engine **inchangé**
-  (`CONTRACT_VERSION` 2.20, aucun appel moteur — garde d'écriture à la source).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

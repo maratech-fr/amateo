@@ -50,6 +50,8 @@ final class VenueAliasContext extends BaseContext
 
     private string $venueId = '';
 
+    private string $venueId2 = '';
+
     private string $competitionId = '';
 
     private string $unavailabilityId = '';
@@ -103,6 +105,78 @@ final class VenueAliasContext extends BaseContext
         }
         $this->teamId = $this->createdId($this->apiPost('teams', ['name' => 'Alias Jetable', 'sportCategoryId' => $category, 'priorityTierId' => 1], $this->token), 'équipe');
         $this->venueId = $this->createdId($this->apiPost('venues', ['name' => self::VENUE_NAME, 'source' => 'manual'], $this->token), 'gymnase');
+    }
+
+    #[Given('un deuxième gymnase jetable pour la ré-affectation')]
+    public function unDeuxiemeGymnaseJetable(): void
+    {
+        $this->venueId2 = $this->createdId($this->apiPost('venues', ['name' => self::VENUE_NAME . ' BIS', 'source' => 'manual'], $this->token), 'gymnase');
+    }
+
+    #[When('je re-dépose un autre match au même libellé, puis je le place sur le premier gymnase')]
+    public function jeReDeposeEtPlace(): void
+    {
+        // Le dépôt au libellé déjà rattaché reçoit le premier gymnase d'office ; on
+        // le fait ensuite passer PLACED (témoin de placement) via une écriture admin.
+        $this->deposit(self::REF_2, null);
+        $this->dbalExec(
+            \sprintf(
+                'UPDATE fixture SET status=\'PLACED\', venue_id=\'%s\' WHERE club_id=\'%s\' AND external_ref=\'%s\'',
+                $this->venueId,
+                $this->clubId,
+                self::REF_2,
+            ),
+            admin: true,
+        );
+    }
+
+    #[When('je ré-affecte le libellé « GYMNASE BEHAT ALIAS » au deuxième gymnase jetable')]
+    public function jeReaffecteLeLibelle(): void
+    {
+        $result = $this->apiPost(
+            \sprintf('venues/%s/external-labels', $this->venueId2),
+            ['label' => self::FBI_LABEL, 'reassign' => true],
+            $this->token,
+        );
+        if (200 !== $result['status']) {
+            throw new RuntimeException(\sprintf('la ré-affectation a répondu %d (200 attendu)', $result['status']));
+        }
+    }
+
+    #[Then('le domicile non placé bascule sur le deuxième gymnase')]
+    public function leDomicileNonPlaceBascule(): void
+    {
+        if ($this->venueIdOf(self::REF_1) !== $this->venueId2) {
+            throw new RuntimeException('le domicile non placé aurait dû basculer sur le deuxième gymnase');
+        }
+    }
+
+    #[Then('le témoin déjà placé garde le premier gymnase')]
+    public function leTemoinGardeSonGymnase(): void
+    {
+        if ($this->venueIdOf(self::REF_2) !== $this->venueId) {
+            throw new RuntimeException('un domicile déjà placé ne doit jamais être re-pointé par une ré-affectation');
+        }
+    }
+
+    #[Then('l\'alias a changé de porteur pour le deuxième gymnase')]
+    public function laliasAChangeDePorteur(): void
+    {
+        $normalized = 'gymnase behat alias';
+        $onFirst = $this->dbalScalar(
+            \sprintf('SELECT external_labels AS behatval FROM venue WHERE id=\'%s\'', $this->venueId),
+            admin: true,
+        );
+        $onSecond = $this->dbalScalar(
+            \sprintf('SELECT external_labels AS behatval FROM venue WHERE id=\'%s\'', $this->venueId2),
+            admin: true,
+        );
+        if (str_contains($onFirst, $normalized)) {
+            throw new RuntimeException('le premier gymnase aurait dû perdre l\'alias');
+        }
+        if (!str_contains($onSecond, $normalized)) {
+            throw new RuntimeException('le deuxième gymnase aurait dû recevoir l\'alias');
+        }
     }
 
     #[When('je dépose un fichier FBI dont la salle est « GYMNASE BEHAT ALIAS »')]
@@ -211,6 +285,9 @@ final class VenueAliasContext extends BaseContext
         }
         if ('' !== $this->venueId) {
             $this->apiDelete(\sprintf('venues/%s', $this->venueId), $this->token);
+        }
+        if ('' !== $this->venueId2) {
+            $this->apiDelete(\sprintf('venues/%s', $this->venueId2), $this->token);
         }
         if ($this->pointerSetBySelf && '' !== $this->clubId) {
             $this->dbalExec(
