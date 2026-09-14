@@ -67,7 +67,7 @@ export function TeamSelect<T extends TeamLike>({ teams, tiers, mutualisationGrou
 
   // Flat fallback: no tiers loaded AND no mutualisation section → a plain list (no group headers).
   if (!hasRealTiers && !hasMutualisation) {
-    return <Listbox {...listbox} options={teams.map((team) => teamOption(team, null))} />;
+    return <Listbox {...listbox} options={teams.map((team) => teamOption(team, null))} searchLabel="Rechercher une équipe" />;
   }
 
   const groups: ListboxGroup[] = [];
@@ -86,5 +86,5 @@ export function TeamSelect<T extends TeamLike>({ teams, tiers, mutualisationGrou
     });
   }
 
-  return <Listbox {...listbox} groups={groups} />;
+  return <Listbox {...listbox} groups={groups} searchLabel="Rechercher une équipe" />;
 }

@@ -1,12 +1,15 @@
 # FORWARD Components Spec — Pages & Shared Components (hors wizard)
 
-Last verified @ 2026-09-14 (rotation `documentation-update`, zone non touchée par la PR E2 —
-contrôle de fraîcheur). Re-confronté au code : `SurfaceSkin = "console" | "app"` toujours défini
-dans `shared/lib/surfaceSkin.ts:12` ✓ ; `empty-hint.tsx` porte toujours `EmptyHint` avec
-`variant?: SurfaceSkin` par défaut `"app"` (`empty-hint.tsx:29`) ✓ ; `tabs.tsx` porte toujours la
-table `TAB_SKINS: Record<SurfaceSkin, …>` (`tabs.tsx:19`) ✓ ; `consolePalette.guard.test.ts` existe
-bien sous `features/admin/` ✓. Rien de faux trouvé cette passe. Le bloc « Historique »
-(sections 2-9) reste superseded, non re-vérifié — il ne prétend à aucune autorité.
+Last verified @ 2026-09-14 (`documentation-update`, P4-198 — la primitive `Listbox` n'avait
+aucune entrée dans la table §3, ajoutée). Re-confronté au code : `SurfaceSkin = "console" | "app"`
+toujours défini dans `shared/lib/surfaceSkin.ts:12` ✓ ; `empty-hint.tsx` porte toujours
+`EmptyHint` avec `variant?: SurfaceSkin` par défaut `"app"` (`empty-hint.tsx:29`) ✓ ; `tabs.tsx`
+porte toujours la table `TAB_SKINS: Record<SurfaceSkin, …>` (`tabs.tsx:19`) ✓ ;
+`consolePalette.guard.test.ts` existe bien sous `features/admin/` ✓ ; `listbox.tsx` porte
+`SEARCH_THRESHOLD = 8`, la prop `leadingOptions` et la prop `searchLabel` (défaut « Rechercher »)
+✓. Rien de faux trouvé cette passe. Le bloc « Historique » (sections 2-9) reste marqué superseded
+par son en-tête, mais §3 (Shared Components) est en pratique tenu à jour au fil des PR (cf. les
+lignes P4-127/P4-149/P4-198) — signalé pour ce que ça vaut, non déplacé cette passe.
 
 > 🛑 **Ce document est SUPERSEDED. Il ne décrit pas le frontend livré.**
 >
@@ -539,6 +542,7 @@ de la présentation + accessibilité.
 | `Button` | Bouton avec variants + sizes. **Désactivé, il INFORME** (P4-127 e) : plus de `pointer-events-none` — les `title=` d'explication vivent, curseur `not-allowed`, survols bornés aux boutons actifs (`hover:enabled:`) ; la doctrine « raison en clair à côté » reste la norme pour les cas importants | `variant`, `size`, `disabled`, `children` | Toutes les pages |
 | `Input` | Input texte avec label, erreur, hint | `label`, `error`, `hint`, `type`, `value`, `onChange` | LoginForm, RegisterForm, tous formulaires |
 | `Select` | Dropdown natif stylé + label | `label`, `options`, `value`, `onChange` | ScheduleViewPage (filtres), DiagnosticsPage |
+| `Listbox` | Sélecteur riche à choix unique — patron APG listbox, trigger `button` (nom accessible = libellé + valeur), roving `tabIndex`, couleur/icône, compte, sous-ligne, option désactivée motivée (visible, jamais retirée). Maison des sélecteurs qui dépassent le `<select>` natif (`select.tsx` garde les ~20 pickers simples). **Recherche dans le panneau à partir de 8 options réelles** (P4-198, `SEARCH_THRESHOLD` — placeholder et `leadingOptions` exclus du seuil et du filtre) : combobox éditable délibérément écarté (aucun gain a11y, casse la lecture du trigger), le panneau devient alors un wrapper `[input + div role="listbox"]` (un `<input>` n'est pas un enfant valide de `role="listbox"`) ; sous le seuil, DOM et comportement byte-identiques | `value`, `onValueChange`, `options` \| `groups`, `leadingOptions` (options de tête toujours visibles), `placeholder`, `searchLabel` (nom accessible du champ de recherche, défaut « Rechercher ») | `team-select.tsx`, `venue-select.tsx` (tous deux migrés, P4-164) |
 | `Badge` | Badge coloré (statut, tier, severity) | `color`, `children`, `icon` | ScheduleHeader, TierColumn, DiagnosticItem |
 | `Spinner` | Spinner de chargement accessible | `size`, `label` | GenerateButton, ExportPdfButton, tous loaders |
 | `Skeleton` | Skeleton loader pour chargement initial | `lines`, `width`, `height` | ScheduleViewPage, DiagnosticsPage, TierListPage |

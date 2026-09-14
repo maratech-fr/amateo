@@ -1,8 +1,8 @@
-import { AlertTriangle, ChevronDown } from "lucide-react";
+import { AlertTriangle, ChevronDown, Search } from "lucide-react";
 import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
-import { cn } from "@/shared/lib/utils";
+import { cn, stripDiacritics } from "@/shared/lib/utils";
 
 /** One selectable row. `value` is opaque (the caller encodes/decodes it). */
 export interface ListboxOption {
@@ -40,10 +40,22 @@ interface ListboxProps {
   options?: ListboxOption[];
   /** Grouped list — takes precedence over `options`. */
   groups?: ListboxGroup[];
+  /**
+   * Head options rendered before the list (after the selectable placeholder), ALWAYS visible:
+   * they escape the search filter and do not count toward the search threshold (they are
+   * navigation aids like "Tous les gymnases", not results). See the search decision below.
+   */
+  leadingOptions?: ListboxOption[];
   placeholder?: string;
   disabled?: boolean;
   /** Tooltip on the trigger's value (falls back to the visible text). */
   title?: string;
+  /**
+   * Accessible name of the in-panel search field (its `aria-label`, and its visible placeholder).
+   * Only surfaces when the search field is shown (≥ 8 real options). Never the placeholder alone
+   * (axe accepts a placeholder-only name, an AT does not — AGENTS.md). Default "Rechercher".
+   */
+  searchLabel?: string;
   id?: string;
   /** Applied to the trigger button (width/height overrides). */
   className?: string;
@@ -54,6 +66,12 @@ interface ListboxProps {
 }
 
 const MAX_LIST_PX = 256; // max-h-64 (16rem)
+
+/** At/above this many REAL options (placeholder + leadingOptions excluded) the panel grows an
+ *  in-panel search field. Below it the panel is byte-identical to the pre-P4-198 listbox. */
+const SEARCH_THRESHOLD = 8;
+
+const POPUP_FRAME = "absolute z-50 w-full rounded-md border border-border bg-card text-card-foreground shadow";
 
 /**
  * Accessible single-select listbox (APG listbox pattern), built in-house because the
@@ -73,7 +91,7 @@ const MAX_LIST_PX = 256; // max-h-64 (16rem)
  *   and its keydown handling reaches the modal — which forces the next two decisions.
  *
  * - **Escape closes the list only, and `stopPropagation()`s.** The keydown handler is a
- *   NATIVE bubble listener on the listbox container (not React's delegated handler) so its
+ *   NATIVE bubble listener on the popup container (not React's delegated handler) so its
  *   ordering against the modal's own native listener (`useModalA11y.ts`, attached on the
  *   dialog panel) is deterministic: the container is a descendant of the panel, so a native
  *   bubble listener there fires FIRST and `stopPropagation()` keeps the event from reaching
@@ -90,15 +108,34 @@ const MAX_LIST_PX = 256; // max-h-64 (16rem)
  *   modal body), viewport as fallback: open upward only when the space below is too small AND
  *   there is more room above. Recomputed on `resize` while open, never on scroll. In jsdom
  *   every rect is 0, so the flip is inert there and is proven in Playwright instead.
+ *
+ * - **Search field for long lists (P4-198), NOT an editable combobox.** At ≥ 8 real options
+ *   the panel grows a text filter. The trigger stays a real `button[aria-haspopup="listbox"]`
+ *   whose accessible name is "label + selected value" (18 test files and screen-reader users
+ *   read the current value off it) and the roving-focus model is untouched — an editable
+ *   combobox (`role="combobox"` + `aria-activedescendant` on an input) would replace both, for
+ *   no a11y gain, so it is deliberately rejected (design pass, ui-ux-pro-max, 2026-09-14). Since
+ *   an `<input>` is not a valid child of `role="listbox"`, the panel becomes a wrapper
+ *   (`[search] + [div role="listbox"]`); the keydown listener migrates to that wrapper and
+ *   guards events coming FROM the field (Space, Home/End, characters stay caret edits; ArrowDown
+ *   enters the list; Enter picks the first non-disabled match when a query is typed). Filtering
+ *   is accent-insensitive, AND across whitespace tokens, over `label + sub`; the placeholder and
+ *   `leadingOptions` never filter out; a fully-filtered group hides its header too; a polite
+ *   sr-only region announces the result count and a visible empty state names the query. The
+ *   filter clears on every close. Below the threshold the panel is byte-identical (initial focus
+ *   on the selected option). jsdom cannot measure this pass beyond the DOM; contrast/reflow stay
+ *   in Playwright.
  */
 export function Listbox({
   value,
   onValueChange,
   options,
   groups,
+  leadingOptions,
   placeholder,
   disabled = false,
   title,
+  searchLabel = "Rechercher",
   id,
   className,
   autoFocus,
@@ -108,8 +145,10 @@ export function Listbox({
 }: ListboxProps) {
   const [open, setOpen] = useState(false);
   const [dropUp, setDropUp] = useState(false);
+  const [query, setQuery] = useState("");
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const fallbackLabelId = useId();
   const valueId = useId();
 
@@ -126,11 +165,32 @@ export function Listbox({
   // The placeholder doubles as a selectable leading option (value "") so a picker can be CLEARED —
   // parity with the native <select> this replaces (FfbbEngagements clears a suggestion, Reconciliation
   // « Ne pas créer »). It never appears in the trigger's chosen glyph (that stays the muted empty text).
-  const leading: ListboxOption | null = placeholder !== undefined ? { value: "", label: placeholder } : null;
+  const placeholderOption: ListboxOption | null = placeholder !== undefined ? { value: "", label: placeholder } : null;
 
-  const optionEls = (): HTMLElement[] => Array.from(listRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? []);
+  // Search: only above the threshold, and only counting REAL options (placeholder + leadingOptions
+  // are navigation aids, never results). The query filters `label + sub`, accent-insensitive, AND
+  // across whitespace tokens; the placeholder and leadingOptions always stay; empty groups collapse.
+  const searchable = realOptions.length >= SEARCH_THRESHOLD;
+  const tokens = searchable ? stripDiacritics(query).toLowerCase().trim().split(/\s+/).filter(Boolean) : [];
+  const matches = (opt: ListboxOption): boolean => {
+    if (0 === tokens.length) {
+      return true;
+    }
+    const hay = stripDiacritics(`${opt.label} ${opt.sub ?? ""}`).toLowerCase();
+    return tokens.every((t) => hay.includes(t));
+  };
+  const filteredGroups = groups?.map((g) => ({ ...g, options: g.options.filter(matches) })).filter((g) => g.options.length > 0);
+  const filteredFlat = groups ? undefined : (options ?? []).filter(matches);
+  const filteredReal: ListboxOption[] = filteredGroups ? filteredGroups.flatMap((g) => g.options) : (filteredFlat ?? []);
+  const resultCount = filteredReal.length;
+  const liveText = 0 === tokens.length ? "" : 0 === resultCount ? "Aucun résultat" : `${resultCount} résultat${resultCount > 1 ? "s" : ""}`;
 
+  const optionEls = (): HTMLElement[] => Array.from(popupRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? []);
+
+  // Closing always drops the filter (selection, Escape, Tab, outside click, trigger toggle): a
+  // reopened picker starts fresh. Runs in event handlers, never in an effect.
   const close = (restoreFocus: boolean) => {
+    setQuery("");
     setOpen(false);
     if (restoreFocus) {
       triggerRef.current?.focus();
@@ -150,16 +210,20 @@ export function Listbox({
     if (!open) {
       return;
     }
-    const opts = optionEls();
-    const initial = opts.find((o) => o.dataset.value === value) ?? opts.find((o) => "true" !== o.dataset.disabled) ?? opts[0];
-    initial?.focus();
-    initial?.scrollIntoView?.({ block: "nearest" });
+    if (searchable) {
+      searchRef.current?.focus();
+    } else {
+      const opts = optionEls();
+      const initial = opts.find((o) => o.dataset.value === value) ?? opts.find((o) => "true" !== o.dataset.disabled) ?? opts[0];
+      initial?.focus();
+      initial?.scrollIntoView?.({ block: "nearest" });
+    }
 
     const trigger = triggerRef.current;
-    const listEl = listRef.current;
-    if (trigger && listEl) {
+    const popupEl = popupRef.current;
+    if (trigger && popupEl) {
       const rect = trigger.getBoundingClientRect();
-      const needed = Math.min(listEl.scrollHeight, MAX_LIST_PX);
+      const needed = Math.min(popupEl.scrollHeight, MAX_LIST_PX);
       const scroller = scrollableAncestor(trigger);
       const bounds = scroller ? scroller.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
       const below = bounds.bottom - rect.bottom;
@@ -177,17 +241,17 @@ export function Listbox({
     const onPointer = (e: MouseEvent) => {
       const root = triggerRef.current?.parentElement;
       if (root && !root.contains(e.target as Node)) {
-        setOpen(false);
+        close(false);
       }
     };
     const onResize = () => {
       const trigger = triggerRef.current;
-      const listEl = listRef.current;
-      if (!trigger || !listEl) {
+      const popupEl = popupRef.current;
+      if (!trigger || !popupEl) {
         return;
       }
       const rect = trigger.getBoundingClientRect();
-      const needed = Math.min(listEl.scrollHeight, MAX_LIST_PX);
+      const needed = Math.min(popupEl.scrollHeight, MAX_LIST_PX);
       const scroller = scrollableAncestor(trigger);
       const bounds = scroller ? scroller.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
       setDropUp(bounds.bottom - rect.bottom < needed && rect.top - bounds.top > bounds.bottom - rect.bottom);
@@ -200,17 +264,17 @@ export function Listbox({
     };
   }, [open]);
 
-  // Keyboard handling as a NATIVE listener on the container (see the Escape decision above).
+  // Keyboard handling as a NATIVE listener on the popup container (see the Escape decision above).
+  // When the search field is present it lives inside this container, so events raised there bubble
+  // here — hence the `fromField` guard: characters, Space and Home/End must stay caret edits.
   useEffect(() => {
-    const listEl = listRef.current;
-    if (!open || !listEl) {
+    const popupEl = popupRef.current;
+    if (!open || !popupEl) {
       return;
     }
     const onKeyDown = (e: KeyboardEvent) => {
       const opts = optionEls();
-      if (0 === opts.length) {
-        return;
-      }
+      const fromField = null !== searchRef.current && e.target === searchRef.current;
       const idx = opts.indexOf(document.activeElement as HTMLElement);
       switch (e.key) {
         case "Escape":
@@ -220,33 +284,68 @@ export function Listbox({
           return;
         case "Tab":
           // Close without selecting, and let the event pass (no preventDefault).
-          triggerRef.current?.focus();
-          setOpen(false);
+          close(true);
           return;
         case "ArrowDown":
           e.preventDefault();
+          if (fromField) {
+            opts[0]?.focus(); // enter the list from the field
+            return;
+          }
           opts[Math.min(idx + 1, opts.length - 1)]?.focus();
           return;
         case "ArrowUp":
           e.preventDefault();
+          if (fromField) {
+            opts[opts.length - 1]?.focus();
+            return;
+          }
           opts[Math.max(idx - 1, 0)]?.focus();
           return;
         case "Home":
+          if (fromField) {
+            return; // caret to line start
+          }
           e.preventDefault();
           opts[0]?.focus();
           return;
         case "End":
+          if (fromField) {
+            return; // caret to line end
+          }
           e.preventDefault();
           opts[opts.length - 1]?.focus();
           return;
         case "Enter":
+          e.preventDefault();
+          if (fromField) {
+            // Decision 4: with a query typed, commit the first non-disabled MATCH (leading
+            // rows — placeholder / leadingOptions — are skipped); with no query, do nothing.
+            if ((searchRef.current?.value ?? "").trim().length > 0) {
+              const first = opts.find((o) => "true" !== o.dataset.leading && "true" !== o.dataset.disabled);
+              if (first) {
+                selectEl(first);
+              }
+            }
+            return;
+          }
+          if (idx >= 0) {
+            selectEl(opts[idx]);
+          }
+          return;
         case " ":
+          if (fromField) {
+            return; // a space in the query
+          }
           e.preventDefault();
           if (idx >= 0) {
             selectEl(opts[idx]);
           }
           return;
         default:
+          if (fromField) {
+            return; // let the character reach the input
+          }
           if (1 === e.key.length && !e.ctrlKey && !e.metaKey && !e.altKey) {
             const ch = e.key.toLowerCase();
             for (let i = 1; i <= opts.length; i++) {
@@ -260,12 +359,33 @@ export function Listbox({
           }
       }
     };
-    listEl.addEventListener("keydown", onKeyDown);
-    return () => listEl.removeEventListener("keydown", onKeyDown);
+    popupEl.addEventListener("keydown", onKeyDown);
+    return () => popupEl.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const renderOptions = (opts: ListboxOption[]): ReactNode => opts.map((opt) => <Option key={opt.value} opt={opt} selected={opt.value === value} onPick={selectEl} />);
+
+  const hasLeading = placeholderOption !== null || (leadingOptions !== undefined && leadingOptions.length > 0);
+  const listContent: ReactNode = (
+    <>
+      {hasLeading ? (
+        <ul role="presentation" className="m-0 list-none p-0">
+          {placeholderOption ? <Option opt={placeholderOption} selected={"" === value} onPick={selectEl} leading /> : null}
+          {(leadingOptions ?? []).map((opt) => (
+            <Option key={opt.value} opt={opt} selected={opt.value === value} onPick={selectEl} leading />
+          ))}
+        </ul>
+      ) : null}
+      {filteredGroups
+        ? filteredGroups.map((g) => <Group key={g.id} group={g} renderOptions={renderOptions} />)
+        : (
+            <ul role="presentation" className="m-0 list-none p-0">
+              {renderOptions(filteredFlat ?? [])}
+            </ul>
+          )}
+    </>
+  );
 
   return (
     <div className="relative w-full">
@@ -285,7 +405,7 @@ export function Listbox({
         aria-expanded={open}
         aria-labelledby={triggerLabelledby}
         aria-describedby={ariaDescribedby}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => (open ? close(false) : setOpen(true))}
         onKeyDown={(e) => {
           if ("ArrowDown" === e.key || "ArrowUp" === e.key) {
             e.preventDefault();
@@ -305,31 +425,39 @@ export function Listbox({
         </span>
         <ChevronDown aria-hidden className="size-4 shrink-0 text-muted-foreground" />
       </button>
-      {open ? (
-        <div
-          ref={listRef}
-          role="listbox"
-          tabIndex={-1}
-          aria-labelledby={labelId}
-          className={cn(
-            "absolute z-50 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-card py-1 text-card-foreground shadow",
-            dropUp ? "bottom-full mb-1" : "top-full mt-1",
-          )}
-        >
-          {leading ? (
-            <ul role="presentation" className="m-0 list-none p-0">
-              {renderOptions([leading])}
-            </ul>
-          ) : null}
-          {groups
-            ? groups.map((g) => <Group key={g.id} group={g} renderOptions={renderOptions} />)
-            : (
-                <ul role="presentation" className="m-0 list-none p-0">
-                  {renderOptions(options ?? [])}
-                </ul>
-              )}
-        </div>
-      ) : null}
+      {open
+        ? searchable
+          ? (
+              <div ref={popupRef} className={cn(POPUP_FRAME, dropUp ? "bottom-full mb-1" : "top-full mt-1")}>
+                <div className="border-b border-border p-1">
+                  <div className="flex items-center gap-2 rounded-sm bg-background px-2 focus-within:ring-2 focus-within:ring-ring">
+                    <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                    <input
+                      ref={searchRef}
+                      type="text"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      aria-label={searchLabel}
+                      placeholder={searchLabel}
+                      className="h-8 w-full border-0 bg-transparent p-0 text-sm outline-none placeholder:text-muted-foreground"
+                    />
+                  </div>
+                </div>
+                <div role="listbox" tabIndex={-1} aria-labelledby={labelId} className="max-h-64 overflow-y-auto py-1">
+                  {listContent}
+                </div>
+                <span aria-live="polite" className="sr-only">
+                  {liveText}
+                </span>
+                {tokens.length > 0 && 0 === resultCount ? <div className="px-3 py-2 text-sm text-muted-foreground">{`Aucun résultat pour « ${query} »`}</div> : null}
+              </div>
+            )
+          : (
+              <div ref={popupRef} role="listbox" tabIndex={-1} aria-labelledby={labelId} className={cn(POPUP_FRAME, "max-h-64 overflow-y-auto py-1", dropUp ? "bottom-full mb-1" : "top-full mt-1")}>
+                {listContent}
+              </div>
+            )
+        : null}
     </div>
   );
 }
@@ -378,7 +506,7 @@ function Group({ group, renderOptions }: { group: ListboxGroup; renderOptions: (
   );
 }
 
-function Option({ opt, selected, onPick }: { opt: ListboxOption; selected: boolean; onPick: (el: HTMLElement) => void }) {
+function Option({ opt, selected, onPick, leading }: { opt: ListboxOption; selected: boolean; onPick: (el: HTMLElement) => void; leading?: boolean }) {
   const labelId = useId();
   const countId = useId();
   const subId = useId();
@@ -394,6 +522,9 @@ function Option({ opt, selected, onPick }: { opt: ListboxOption; selected: boole
       data-value={opt.value}
       data-label={opt.label.toLowerCase()}
       data-disabled={opt.disabled ? "true" : undefined}
+      // `leading` (placeholder / leadingOptions) is skipped by the search field's Enter shortcut,
+      // which commits the first real MATCH, never a navigation aid.
+      data-leading={leading ? "true" : undefined}
       aria-selected={selected}
       aria-disabled={opt.disabled ? true : undefined}
       aria-labelledby={labelId}

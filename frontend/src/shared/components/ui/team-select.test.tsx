@@ -78,4 +78,12 @@ describe("TeamSelect", () => {
     await user.click(screen.getByRole("option", { name: "SM1" }));
     expect(onValueChange).toHaveBeenCalledWith("s1");
   });
+
+  it("shows a « Rechercher une équipe » search field above the threshold (P4-198)", async () => {
+    const user = userEvent.setup();
+    const many: TeamLike[] = Array.from({ length: 8 }, (_, i) => ({ id: `t${i}`, name: `SM${i + 1}`, priorityTierId: 1, tierOrder: i }));
+    render(<TeamSelect aria-label="Équipe" teams={many} tiers={tiers} value="" onValueChange={vi.fn()} />);
+    await user.click(trigger());
+    expect(screen.getByRole("textbox", { name: "Rechercher une équipe" })).toBeInTheDocument();
+  });
 });

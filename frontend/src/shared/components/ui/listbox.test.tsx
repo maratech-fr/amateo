@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { axe } from "vitest-axe";
 
 import { Listbox, type ListboxGroup, type ListboxOption } from "./listbox";
 
@@ -9,6 +10,23 @@ const OPTIONS: ListboxOption[] = [
   { value: "a", label: "Alpha" },
   { value: "b", label: "Bravo" },
   { value: "c", label: "Charlie" },
+];
+
+/** ≥ 8 real options → the search field appears (P4-198 threshold). Sub-lines + one disabled row
+ *  so the filter can be exercised on `label`, on `sub`, and against a keyboard-reachable-but-inert
+ *  option that must stay visible. Labels are chosen so `gym ber` matches Berthelot ONLY (Auclair,
+ *  not Aubert, so "ber" does not leak). */
+const MANY: ListboxOption[] = [
+  { value: "1", label: "Gymnase Berthelot" },
+  { value: "2", label: "Gymnase Auclair" },
+  { value: "3", label: "Stade Municipal", sub: "Tous ses créneaux sont placés" },
+  { value: "4", label: "Salle des Fêtes" },
+  { value: "5", label: "Complexe Nord" },
+  { value: "6", label: "Halle Ouest", disabled: true, sub: "Épuisé" },
+  { value: "7", label: "U13M1" },
+  { value: "8", label: "U13M2" },
+  { value: "9", label: "Cosec Sud" },
+  { value: "10", label: "Palais des Sports" },
 ];
 
 /** Controlled harness so a selection is reflected back into the trigger. */
@@ -225,5 +243,213 @@ describe("Listbox — fermeture", () => {
     expect(screen.getByRole("listbox")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "dehors" }));
     expect(screen.queryByRole("listbox")).toBeNull();
+  });
+});
+
+describe("Listbox — recherche (P4-198)", () => {
+  it("7 options réelles : PAS de champ de recherche (byte-identique)", async () => {
+    const user = userEvent.setup();
+    render(<Harness options={MANY.slice(0, 7)} />);
+    await user.click(trigger());
+    expect(screen.queryByRole("textbox")).toBeNull();
+    // Focus initial sur la première option (comportement d'origine, seuil non atteint).
+    expect(within(list()).getByRole("option", { name: "Gymnase Berthelot" })).toHaveFocus();
+  });
+
+  it("8 options réelles : un champ de recherche (nom = searchLabel, défaut « Rechercher »)", async () => {
+    const user = userEvent.setup();
+    render(<Harness options={MANY.slice(0, 8)} />);
+    await user.click(trigger());
+    expect(screen.getByRole("textbox", { name: "Rechercher" })).toBeInTheDocument();
+  });
+
+  it("le placeholder et les leadingOptions ne comptent pas dans le seuil", async () => {
+    const user = userEvent.setup();
+    // 7 vraies options + placeholder + 1 leadingOption = 9 lignes, mais 7 RÉELLES → pas de champ.
+    render(<Harness options={MANY.slice(0, 7)} placeholder="— aucun —" leadingOptions={[{ value: "all", label: "Tous" }]} />);
+    await user.click(trigger());
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("met le focus DANS le champ à l'ouverture (≥ 8)", async () => {
+    const user = userEvent.setup();
+    render(<Harness options={MANY} />);
+    await user.click(trigger());
+    expect(screen.getByRole("textbox", { name: "Rechercher" })).toHaveFocus();
+  });
+
+  it("filtre en tokens ET : « gym ber » → Berthelot seul", async () => {
+    const user = userEvent.setup();
+    render(<Harness options={MANY} />);
+    await user.click(trigger());
+    await user.type(screen.getByRole("textbox"), "gym ber");
+    const opts = within(list()).getAllByRole("option");
+    expect(opts).toHaveLength(1);
+    expect(opts[0]).toHaveAccessibleName("Gymnase Berthelot");
+  });
+
+  it("insensible aux accents ; une option désactivée qui matche RESTE visible et inerte", async () => {
+    const onValueChange = vi.fn();
+    const user = userEvent.setup();
+    render(<Harness options={MANY} onValueChange={onValueChange} />);
+    await user.click(trigger());
+    await user.type(screen.getByRole("textbox"), "épuis"); // matche « Épuisé » (sous-ligne) de Halle Ouest
+    const opt = within(list()).getByRole("option", { name: "Halle Ouest" });
+    expect(opt).toHaveAttribute("aria-disabled", "true");
+    await user.click(opt);
+    expect(onValueChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+  });
+
+  it("matche sur la sous-ligne (sub), pas seulement le libellé", async () => {
+    const user = userEvent.setup();
+    render(<Harness options={MANY} />);
+    await user.click(trigger());
+    await user.type(screen.getByRole("textbox"), "placés");
+    const opts = within(list()).getAllByRole("option");
+    expect(opts).toHaveLength(1);
+    expect(opts[0]).toHaveAccessibleName("Stade Municipal");
+  });
+
+  it("masque un groupe entièrement filtré, en-tête compris", async () => {
+    const user = userEvent.setup();
+    const groups: ListboxGroup[] = [
+      { id: "g1", label: "Gymnases", options: [{ value: "1", label: "Gymnase Berthelot" }, { value: "2", label: "Gymnase Auclair" }] },
+      {
+        id: "g2",
+        label: "Équipes",
+        options: [
+          { value: "7", label: "U13M1" },
+          { value: "8", label: "U13M2" },
+          { value: "9", label: "U15M1" },
+          { value: "10", label: "U15M2" },
+          { value: "11", label: "U17M1" },
+          { value: "12", label: "U17M2" },
+        ],
+      },
+    ];
+    render(<Harness options={undefined} groups={groups} />);
+    await user.click(trigger());
+    await user.type(screen.getByRole("textbox"), "gymnase");
+    expect(screen.getByRole("group", { name: "Gymnases" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Équipes" })).toBeNull();
+  });
+
+  it("placeholder et leadingOptions restent visibles même sans correspondance", async () => {
+    const user = userEvent.setup();
+    render(<Harness options={MANY} placeholder="— aucun —" leadingOptions={[{ value: "all", label: "Tous" }]} />);
+    await user.click(trigger());
+    await user.type(screen.getByRole("textbox"), "zzzzz");
+    expect(within(list()).getByRole("option", { name: "— aucun —" })).toBeInTheDocument();
+    expect(within(list()).getByRole("option", { name: "Tous" })).toBeInTheDocument();
+  });
+
+  it("affiche « Aucun résultat pour « xyz » » quand rien ne matche", async () => {
+    const user = userEvent.setup();
+    render(<Harness options={MANY} />);
+    await user.click(trigger());
+    await user.type(screen.getByRole("textbox"), "zzzzz");
+    expect(screen.getByText("Aucun résultat pour « zzzzz »")).toBeInTheDocument();
+  });
+
+  it("annonce le nombre de résultats dans une région aria-live polie", async () => {
+    const user = userEvent.setup();
+    render(<Harness options={MANY} />);
+    await user.click(trigger());
+    await user.type(screen.getByRole("textbox"), "gymnase"); // Berthelot + Auclair
+    const live = screen.getByText("2 résultats");
+    expect(live).toHaveAttribute("aria-live", "polite");
+  });
+
+  it("↓ depuis le champ entre dans la liste (première option)", async () => {
+    const user = userEvent.setup();
+    render(<Harness options={MANY} />);
+    await user.click(trigger());
+    expect(screen.getByRole("textbox")).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    const opts = within(list()).getAllByRole("option");
+    expect(opts[0]).toHaveFocus();
+  });
+
+  it("Entrée dans le champ sélectionne la première option filtrée non désactivée", async () => {
+    const onValueChange = vi.fn();
+    const user = userEvent.setup();
+    render(<Harness options={MANY} onValueChange={onValueChange} />);
+    await user.click(trigger());
+    await user.type(screen.getByRole("textbox"), "u13m1");
+    await user.keyboard("{Enter}");
+    expect(onValueChange).toHaveBeenCalledWith("7");
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  it("Entrée sans requête ne sélectionne rien et laisse la liste ouverte", async () => {
+    const onValueChange = vi.fn();
+    const user = userEvent.setup();
+    render(<Harness options={MANY} onValueChange={onValueChange} />);
+    await user.click(trigger());
+    await user.keyboard("{Enter}");
+    expect(onValueChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+  });
+
+  it("Entrée dans le champ ne choisit PAS une option désactivée (aucune non-désactivée ne matche)", async () => {
+    const onValueChange = vi.fn();
+    const user = userEvent.setup();
+    render(<Harness options={MANY} onValueChange={onValueChange} />);
+    await user.click(trigger());
+    await user.type(screen.getByRole("textbox"), "ouest"); // Halle Ouest, désactivée, seule à matcher
+    await user.keyboard("{Enter}");
+    expect(onValueChange).not.toHaveBeenCalled();
+  });
+
+  it("Échap depuis le champ ferme la liste sans remonter au parent (la modale survit)", async () => {
+    const parentKeydown = vi.fn();
+    const user = userEvent.setup();
+    const { container } = render(<Harness options={MANY} />);
+    container.addEventListener("keydown", parentKeydown);
+    await user.click(trigger());
+    expect(screen.getByRole("textbox")).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(parentKeydown).not.toHaveBeenCalled();
+    expect(trigger()).toHaveFocus();
+    container.removeEventListener("keydown", parentKeydown);
+  });
+
+  it("Tab depuis le champ ferme SANS sélectionner", async () => {
+    const onValueChange = vi.fn();
+    const user = userEvent.setup();
+    render(<Harness options={MANY} onValueChange={onValueChange} />);
+    await user.click(trigger());
+    expect(screen.getByRole("textbox")).toHaveFocus();
+    await user.keyboard("{Tab}");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(onValueChange).not.toHaveBeenCalled();
+  });
+
+  it("le filtre est vidé à la réouverture", async () => {
+    const user = userEvent.setup();
+    render(<Harness options={MANY} />);
+    await user.click(trigger());
+    await user.type(screen.getByRole("textbox"), "gymnase");
+    expect(within(list()).getAllByRole("option")).toHaveLength(2);
+    await user.keyboard("{Escape}");
+    await user.click(trigger());
+    expect(screen.getByRole("textbox")).toHaveValue("");
+    expect(within(list()).getAllByRole("option").length).toBeGreaterThan(2);
+  });
+
+  it("le nom accessible du champ vient de searchLabel", async () => {
+    const user = userEvent.setup();
+    render(<Harness options={MANY} searchLabel="Rechercher une équipe" />);
+    await user.click(trigger());
+    expect(screen.getByRole("textbox", { name: "Rechercher une équipe" })).toBeInTheDocument();
+  });
+
+  it("aucune violation axe sur l'état ouvert avec le champ de recherche (≥ 8)", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Harness options={MANY} />);
+    await user.click(trigger());
+    expect(await axe(container)).toHaveNoViolations();
   });
 });
