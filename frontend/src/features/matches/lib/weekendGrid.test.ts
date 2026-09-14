@@ -53,17 +53,18 @@ describe("buildWeekendGrid", () => {
     expect(grid.cells).toHaveLength(0);
   });
 
-  it("lays a placed match as a 2h15 footprint block in its date×venue column", () => {
+  it("lays a lone placed match as a block starting at kickoff, spanning the match duration", () => {
     const grid = buildWeekendGrid([fixture()], venues, teams);
     expect(grid.empty).toBe(false);
     expect(grid.columns).toHaveLength(1);
     expect(grid.dateGroups[0].dateKey).toBe("2026-10-03");
     expect(grid.cells).toHaveLength(1);
     const cell = grid.cells[0];
-    // 16:00 kickoff → footprint 15:30–17:45 = 135 min = 9 steps of 15 min.
+    // Retour fondateur 2026-09-14 : le bloc DÉMARRE au coup d'envoi (plus de −30) et
+    // dure la durée du match (repli 105). 16:00 → 16:00–17:45 = 105 min = 7 pas de 15.
     expect(cell.kickoffLabel).toBe("16:00");
-    expect(cell.footprintLabel).toBe("15:30–17:45");
-    expect(cell.gridRowSpan).toBe(9);
+    expect(cell.footprintLabel).toBe("16:00–17:45");
+    expect(cell.gridRowSpan).toBe(7);
     expect(cell.outOfEnvelope).toBe(false);
   });
 
@@ -77,6 +78,82 @@ describe("buildWeekendGrid", () => {
     expect(grid.cells).toHaveLength(2);
     expect(grid.cells.map((c) => c.laneCount)).toEqual([2, 2]);
     expect(new Set(grid.cells.map((c) => c.lane))).toEqual(new Set([0, 1]));
+  });
+});
+
+describe("enchaînement des blocs (PR F — retour fondateur 2026-09-14)", () => {
+  const footprints = (grid: ReturnType<typeof buildWeekendGrid>): Map<string, string> =>
+    new Map(grid.cells.map((c) => [c.fixtureId, c.footprintLabel]));
+
+  it("(a) quatre domiciles du même gymnase s'enchaînent sans trou", () => {
+    const grid = buildWeekendGrid(
+      [
+        fixture({ id: "a", kickoffTime: "10:00", opponentLabel: "A" }),
+        fixture({ id: "b", kickoffTime: "12:00", opponentLabel: "B" }),
+        fixture({ id: "c", kickoffTime: "14:15", opponentLabel: "C" }),
+        fixture({ id: "d", kickoffTime: "16:30", opponentLabel: "D" }),
+      ],
+      venues,
+      teams,
+    );
+    const fp = footprints(grid);
+    // Fins naturelles 11:45 / 13:45 / 16:00 / 18:15 ; écarts 15 / 30 / 30 min → tous ≤ 30.
+    expect(fp.get("a")).toBe("10:00–12:00");
+    expect(fp.get("b")).toBe("12:00–14:15");
+    expect(fp.get("c")).toBe("14:15–16:30");
+    expect(fp.get("d")).toBe("16:30–18:15"); // dernier match : durée seule
+    // La grille part du premier coup d'envoi (plus de −30).
+    expect(grid.startMin).toBe(600);
+    expect(grid.rows[0].label).toBe("10:00");
+    // Quatre blocs qui se suivent = une seule voie.
+    expect(grid.cells.every((c) => 1 === c.laneCount)).toBe(true);
+  });
+
+  it("(b) un écart > 30 min laisse le trou visible : le bloc garde sa durée", () => {
+    const grid = buildWeekendGrid([fixture({ id: "a", kickoffTime: "10:00" }), fixture({ id: "b", kickoffTime: "13:00" })], venues, teams);
+    const fp = footprints(grid);
+    // fin naturelle de a = 11:45 ; b à 13:00 → écart 75 min > 30 → pas d'enchaînement.
+    expect(fp.get("a")).toBe("10:00–11:45");
+    expect(fp.get("b")).toBe("13:00–14:45");
+  });
+
+  it("(c) un écart d'exactement 30 min enchaîne encore", () => {
+    const grid = buildWeekendGrid([fixture({ id: "a", kickoffTime: "10:00" }), fixture({ id: "b", kickoffTime: "12:15" })], venues, teams);
+    const fp = footprints(grid);
+    // fin naturelle de a = 11:45 ; b à 12:15 = 11:45 + 30 → à la limite → enchaîné.
+    expect(fp.get("a")).toBe("10:00–12:15");
+    expect(fp.get("b")).toBe("12:15–14:00");
+  });
+
+  it("(d) deux gymnases ne s'enchaînent jamais entre eux", () => {
+    const twoVenues = new Map<string, Venue>([
+      ["venue-1", { id: "venue-1", name: "Gymnase Alpha", color: "#00aa00", externalLabels: [] }],
+      ["venue-2", { id: "venue-2", name: "Gymnase Beta", color: "#0000aa", externalLabels: [] }],
+    ]);
+    const grid = buildWeekendGrid(
+      [fixture({ id: "a", kickoffTime: "10:00", venueId: "venue-1" }), fixture({ id: "b", kickoffTime: "12:00", venueId: "venue-2" })],
+      twoVenues,
+      teams,
+    );
+    const fp = footprints(grid);
+    // a seul dans SON gymnase : durée seule, aucun étirement vers le match de l'autre salle.
+    expect(fp.get("a")).toBe("10:00–11:45");
+    expect(fp.get("b")).toBe("12:00–13:45");
+  });
+
+  it("(e) la durée de catégorie servie est respectée, repli 105 sinon", () => {
+    // 8ᵉ argument = durées EFFECTIVES par sportCategoryId (déjà résolues côté serveur, jamais recalculées ici).
+    const withDuration = buildWeekendGrid([fixture()], venues, teams, new Set(), [], "2026-10-03", 15, new Map([["cat", 75]]));
+    expect(withDuration.cells[0].footprintLabel).toBe("16:00–17:15"); // U11 = 75 min
+    const fallback = buildWeekendGrid([fixture()], venues, teams);
+    expect(fallback.cells[0].footprintLabel).toBe("16:00–17:45"); // repli 105 (MatchDurationProfile::fallback)
+  });
+
+  it("(f) footprintLabel = les bornes DESSINÉES du bloc, et gridRowSpan concorde", () => {
+    const grid = buildWeekendGrid([fixture({ id: "a", kickoffTime: "10:00" }), fixture({ id: "b", kickoffTime: "12:00" })], venues, teams);
+    const a = grid.cells.find((c) => "a" === c.fixtureId);
+    expect(a?.footprintLabel).toBe("10:00–12:00"); // étiré jusqu'au coup d'envoi suivant
+    expect(a?.gridRowSpan).toBe(Math.round((720 - 600) / 15)); // (12:00 − 10:00)/15 = 8
   });
 });
 

@@ -28,9 +28,9 @@ import { datelessConflicts, defaultLoopStep, deriveLoopSteps, offModelCount, sam
 import { todayISO } from "@/shared/lib/clock";
 import { ModuleVisitBanner } from "./ModuleVisitBanner";
 import { placementToastMessage } from "./lib/placementToast";
-import { buildWeekendGrid, isPlacedOnGrid, listWeekends, resolveActiveWeekend, weekendKeyOf, weekLabel } from "./lib/weekendGrid";
+import { buildWeekendGrid, isPlacedOnGrid, listWeekends, matchMinutesByCategory, resolveActiveWeekend, weekendKeyOf, weekLabel } from "./lib/weekendGrid";
 import { PlacementPanel } from "./PlacementPanel";
-import { useCategories, useCoaches, useCompetitions, useConflicts, useDeleteFixture, useFixtures, useLatestFbiIngestion, useLeagueWindows, useLockFixture, useMatchSlotRotations, useModuleVisit, useMoveFixture, useOpponentTravel, usePlaceFixture, usePlaceMatches, usePriorityTiers, useReopenFixture, useSubmitFixture, useSwapFixtures, useTeamMatchHabits, useTeams, useUnlockFixture, useUnplaceFixture, useVenueMatchWindows, useVenues, useVenueUnavailabilities } from "./queries";
+import { useCategories, useCoaches, useCompetitions, useConflicts, useDeleteFixture, useFixtures, useLatestFbiIngestion, useLeagueWindows, useLockFixture, useMatchSlotRotations, useModuleVisit, useMoveFixture, useOpponentTravel, usePlaceFixture, usePlaceMatches, usePriorityTiers, useReopenFixture, useSportCategoryDurations, useSubmitFixture, useSwapFixtures, useTeamMatchHabits, useTeams, useUnlockFixture, useUnplaceFixture, useVenueMatchWindows, useVenues, useVenueUnavailabilities } from "./queries";
 import { toast } from "@/shared/stores/toastStore";
 import { useCredits } from "@/shared/credits/useCredits";
 import { useMatchesStore } from "./store";
@@ -56,6 +56,7 @@ export function MatchesPage() {
   const priorityTiers = usePriorityTiers();
   const venues = useVenues();
   const categories = useCategories();
+  const categoryDurations = useSportCategoryDurations();
   const coaches = useCoaches();
   const matchWindows = useVenueMatchWindows();
   const unavailabilities = useVenueUnavailabilities();
@@ -104,6 +105,8 @@ export function MatchesPage() {
   const teamsMap = useMemo<Map<string, Team>>(() => byId(teams.data), [teams.data]);
   const venuesMap = useMemo<Map<string, Venue>>(() => byId(venues.data), [venues.data]);
   const categoriesMap = useMemo<Map<string, Category>>(() => byId(categories.data), [categories.data]);
+  // Durée effective de match par catégorie (override club, sinon défaut de famille servi par le serveur) — pour la hauteur des blocs de la grille.
+  const matchDurations = useMemo(() => matchMinutesByCategory(categoryDurations.data ?? []), [categoryDurations.data]);
   const competitionsMap = useMemo<Map<string, Competition>>(() => byId(competitions.data), [competitions.data]);
   const coachesMap = useMemo<Map<string, Coach>>(() => byId(coaches.data), [coaches.data]);
 
@@ -217,8 +220,8 @@ export function MatchesPage() {
   );
 
   const grid = useMemo(
-    () => buildWeekendGrid(weekendFixtures, venuesMap, teamsMap, outOfEnvelope, habits, activeWeekend),
-    [weekendFixtures, venuesMap, teamsMap, outOfEnvelope, habits, activeWeekend],
+    () => buildWeekendGrid(weekendFixtures, venuesMap, teamsMap, outOfEnvelope, habits, activeWeekend, 15, matchDurations),
+    [weekendFixtures, venuesMap, teamsMap, outOfEnvelope, habits, activeWeekend, matchDurations],
   );
 
   // RMM-1 PR3 (L3) — les 5 étapes de la boucle, DÉRIVÉES de la semaine affichée

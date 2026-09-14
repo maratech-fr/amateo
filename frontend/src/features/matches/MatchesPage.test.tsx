@@ -56,6 +56,13 @@ vi.mock("./api", () => ({
   ),
   getVenues: vi.fn(() => Promise.resolve([{ id: "venue-1", name: "Gymnase Alpha", color: "#00aa00", externalLabels: [] }])),
   getCategories: vi.fn(() => Promise.resolve([{ id: "cat-1", name: "U13" }, { id: "cat-2", name: "Seniors" }])),
+  getSportCategoryDurations: vi.fn(() =>
+    Promise.resolve([
+      { id: "cat-1", sportId: "sp", name: "U13", matchMinutes: null, warmupMinutes: null, defaultMatchMinutes: 105, defaultWarmupMinutes: 30 },
+      // cat-2 SANS override → la grille doit honorer le défaut de FAMILLE servi (90 min), jamais le redériver.
+      { id: "cat-2", sportId: "sp", name: "Seniors", matchMinutes: null, warmupMinutes: null, defaultMatchMinutes: 90, defaultWarmupMinutes: 30 },
+    ]),
+  ),
   getCoaches: vi.fn(() => Promise.resolve([{ id: "coach-1", firstName: "Jean", lastName: "Dupont" }])),
   getLeagueWindows: vi.fn(() => Promise.resolve({ league: "AURA", items: [], resolvedTeamWindows: {} })),
   // Capacity layer (P1-4 PR B) — empty: no window declared, nothing blocks.
@@ -173,6 +180,16 @@ describe("MatchesPage — la boucle guidée (RMM-1 PR3)", () => {
     // fx-placed porte externalRef 26 → repère rendu ; fx-unplaced n'en a pas.
     expect(await screen.findByText("n° 26")).toBeInTheDocument();
     expect(screen.queryByText(/n° —/)).not.toBeInTheDocument();
+  });
+
+  it("la grille dessine le bloc à la durée de match de la catégorie SERVIE (défaut de famille 90 min)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MatchesPage />);
+    await gotoStep(user, /Placés au modèle/);
+    // fx-placed = Seniors (cat-2) sans override → défaut de famille SERVI 90 min : 16:00 → bloc
+    // 16:00–17:30 (et non le repli 105 = 17:45), lu sur le titre de la cellule de grille.
+    expect(await screen.findByTitle(/16:00–17:30/)).toBeInTheDocument();
+    expect(screen.queryByTitle(/16:00–17:45/)).not.toBeInTheDocument();
   });
 
   it("étape « Saisi dans FBI » (L9) : liste par équipe, cocher = « Marquer saisi »", async () => {

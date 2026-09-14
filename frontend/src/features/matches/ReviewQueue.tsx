@@ -11,7 +11,7 @@ import { toast } from "@/shared/stores/toastStore";
 
 import type { AttachVenueLabelInput, Fixture, ResolveDeviationInput, Team, Venue } from "./api";
 import { useAttachVenueLabel, useResolveFixtureDeviation, useReviewFixtures } from "./queries";
-import { buildReviewQueue } from "./lib/reviewQueue";
+import { buildReviewQueue, byMatchDateAsc } from "./lib/reviewQueue";
 import { ReviewQueueRow } from "./ReviewQueueRow";
 import { useMatchesStore } from "./store";
 import { weekendKeyOf } from "./lib/weekendGrid";
@@ -170,7 +170,9 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
         <HideAwayToggle hideAway={hideAway} onToggle={toggleHideAway} />
       </div>
       {visibleQueues.map((queue) => {
-        const rows = [...queue.open, ...(showTreated ? queue.treated : [])];
+        // Traitées affichées = UNE liste par équipe, toujours triée par date (jamais les
+        // traitées « à la suite », retour fondateur 2026-09-14).
+        const rows = showTreated ? [...queue.open, ...queue.treated].sort(byMatchDateAsc) : queue.open;
         const headerParts = [teamName(queue.teamId), `${queue.toValidate} à valider`];
         if (queue.deviationCount > 0) {
           headerParts.push(`${queue.deviationCount} écart${queue.deviationCount > 1 ? "s" : ""}`);
