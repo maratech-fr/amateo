@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import type { ConflictType, RencontreCreatable } from "./api";
+import type { ConflictPivotAxis } from "./lib/conflictPivot";
 import type { Kind } from "./lib/consultFilter";
 import type { LoopStepId } from "./lib/loopSteps";
 import type { MatchFilterMode } from "./lib/matchFilter";
@@ -69,6 +70,14 @@ interface MatchesState {
   consultTemporality: ConsultTemporality;
   consultMonth: string | null;
   consultPhaseId: string | null;
+  /**
+   * PR A — filtres de l'onglet Conflits, SÉPARÉS de Consulter (décocher une famille
+   * ici ne change pas `consultFamilies`). `conflictsPivot` = l'axe de regroupement
+   * (coach par défaut) ; `conflictsFamilies` = les familles cochées (`null` = tout,
+   * jamais sérialisé). Non persisté : l'URL `?pivot=&conflits=&ouvert=` porte le deep-link.
+   */
+  conflictsPivot: ConflictPivotAxis;
+  conflictsFamilies: ConflictType[] | null;
   setSelectedWeekend: (key: string | null) => void;
   setRailStep: (step: LoopStepId | null) => void;
   setUnplacedReasons: (reasons: Map<string, string>) => void;
@@ -86,6 +95,8 @@ interface MatchesState {
   setConsultTemporality: (temporality: ConsultTemporality) => void;
   setConsultMonth: (month: string | null) => void;
   setConsultPhaseId: (phaseId: string | null) => void;
+  setConflictsPivot: (pivot: ConflictPivotAxis) => void;
+  setConflictsFamilies: (families: ConflictType[] | null) => void;
 }
 
 /** PR-2b — les trois temporalités de l'onglet Consulter. */
@@ -109,6 +120,8 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   consultTemporality: "semaine",
   consultMonth: null,
   consultPhaseId: null,
+  conflictsPivot: "coach",
+  conflictsFamilies: null,
   // Changer de semaine remet la vue à l'auto (le premier trou de la NOUVELLE
   // semaine) — le rail ne « saute » jamais SOUS l'utilisateur, mais une autre
   // semaine est un autre contexte : on repart de son premier trou. Les raisons
@@ -134,4 +147,6 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   setConsultTemporality: (consultTemporality) => set({ consultTemporality }),
   setConsultMonth: (consultMonth) => set({ consultMonth }),
   setConsultPhaseId: (consultPhaseId) => set({ consultPhaseId }),
+  setConflictsPivot: (conflictsPivot) => set({ conflictsPivot }),
+  setConflictsFamilies: (conflictsFamilies) => set({ conflictsFamilies }),
 }));

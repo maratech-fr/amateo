@@ -28,7 +28,9 @@ const GROUP_TITLES: Record<number, string> = {
   7: "Angles morts",
 };
 
-function toneOf(severity: number): DiagnosticGroup["tone"] {
+/** Tonalité d'une gravité (worst first) — exportée pour l'onglet Conflits, qui
+ *  colorise ses lignes sans re-décider la gravité (émise par le serveur). */
+export function toneOf(severity: number): DiagnosticGroup["tone"] {
   if (severity <= 2) {
     return "destructive";
   }

@@ -1,5 +1,6 @@
 import type { ConflictType } from "../api";
 import { CONFLICT_FAMILIES } from "./conflictLabels";
+import type { ConflictPivotAxis } from "./conflictPivot";
 import { KINDS, type Kind } from "./consultFilter";
 import type { MatchFilterMode } from "./matchFilter";
 
@@ -146,6 +147,47 @@ export function applyConsultToParams(current: URLSearchParams, consult: ConsultP
     next.set("phase", consult.phaseId);
   } else {
     next.delete("phase");
+  }
+  return next;
+}
+
+/**
+ * PR A — sérialisation des filtres de l'onglet Conflits, fonctions PURES (mêmes
+ * conventions : absent = défaut). `pivot` = l'axe de regroupement (coach défaut),
+ * `conflits` = les familles cochées (réutilise `CONFLICT_FAMILIES`). `null` (familles)
+ * ou la sélection PLEINE = tout coché ⇒ rien dans l'URL. La section ouverte (`?ouvert`)
+ * est gérée directement par la page, ces fonctions la PRÉSERVENT (autres params copiés).
+ */
+const PIVOTS: ConflictPivotAxis[] = ["coach", "equipe", "gymnase", "journee"];
+
+function isPivot(value: string | null): value is ConflictPivotAxis {
+  return null !== value && (PIVOTS as string[]).includes(value);
+}
+
+export interface ConflictsParams {
+  pivot: ConflictPivotAxis;
+  families: ConflictType[] | null;
+}
+
+export function decodeConflictsParams(params: URLSearchParams): ConflictsParams {
+  const rawPivot = params.get("pivot");
+  return {
+    pivot: isPivot(rawPivot) ? rawPivot : "coach",
+    families: decodeList(params.get("conflits"), CONFLICT_FAMILIES),
+  };
+}
+
+export function applyConflictsToParams(current: URLSearchParams, conflicts: ConflictsParams): URLSearchParams {
+  const next = new URLSearchParams(current);
+  if ("coach" === conflicts.pivot) {
+    next.delete("pivot");
+  } else {
+    next.set("pivot", conflicts.pivot);
+  }
+  if (null === conflicts.families || conflicts.families.length === CONFLICT_FAMILIES.length) {
+    next.delete("conflits");
+  } else {
+    next.set("conflits", conflicts.families.join(","));
   }
   return next;
 }

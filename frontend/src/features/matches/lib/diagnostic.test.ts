@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Conflict } from "../api";
-import { groupBySeverity } from "./diagnostic";
+import { groupBySeverity, toneOf } from "./diagnostic";
 
 const conflict = (type: Conflict["type"], severity: number): Conflict => ({ type, severity });
 
@@ -38,5 +38,16 @@ describe("groupBySeverity (P1-4 PR E2)", () => {
   it("a conflict without severity falls in the watch group (5), never crashes", () => {
     const legacy = { type: "MATCH_MATCH" } as Conflict;
     expect(groupBySeverity([legacy])[0]?.severity).toBe(5);
+  });
+});
+
+describe("toneOf (exporté pour l'onglet Conflits)", () => {
+  it("grade la tonalité : 1-2 destructive, 3-5 warning, 6-7 muted", () => {
+    expect(toneOf(1)).toBe("destructive");
+    expect(toneOf(2)).toBe("destructive");
+    expect(toneOf(3)).toBe("warning");
+    expect(toneOf(5)).toBe("warning");
+    expect(toneOf(6)).toBe("muted");
+    expect(toneOf(7)).toBe("muted");
   });
 });

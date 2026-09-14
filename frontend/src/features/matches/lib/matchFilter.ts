@@ -65,8 +65,10 @@ export function expandCoachTeams(coachIds: string[], teamCoaches: TeamCoach[], c
   return roles;
 }
 
-/** teamIds portés par un conflit (acteurs de match + entraînement + agrégat). */
-function conflictTeamIds(conflict: Conflict): string[] {
+/** teamIds portés par un conflit (acteurs de match + entraînement + agrégat).
+ *  Exporté pour le pivot « par équipe » de l'onglet Conflits (un conflit apparaît
+ *  sous chaque équipe qu'il porte). */
+export function conflictTeamIds(conflict: Conflict): string[] {
   const ids: string[] = [];
   if (undefined !== conflict.left) ids.push(conflict.left.teamId);
   if (undefined !== conflict.right) ids.push(conflict.right.teamId);

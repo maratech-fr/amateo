@@ -123,12 +123,6 @@ export function scopeConflictsToWeek(conflicts: Conflict[], weekendKey: string |
  */
 export function scopeConflictsToRange(conflicts: Conflict[], from: string, to: string): Conflict[] {
   const dateless = new Set(datelessConflicts(conflicts));
-  const dateOf = (conflict: Conflict): string | null => {
-    if (undefined !== conflict.start) {
-      return conflict.start.slice(0, 10);
-    }
-    return conflict.left?.matchDate ?? conflict.right?.matchDate ?? conflict.fixture?.matchDate ?? null;
-  };
   return conflicts.filter((conflict) => {
     if (dateless.has(conflict)) {
       return true;
@@ -136,6 +130,19 @@ export function scopeConflictsToRange(conflicts: Conflict[], from: string, to: s
     const date = dateOf(conflict);
     return null === date || (date >= from && date <= to);
   });
+}
+
+/**
+ * La date (Y-m-d) d'un conflit : `start` (tronqué au jour) quand il est présent,
+ * sinon la `matchDate` d'un côté référencé (left → right → fixture). `null` = aucune
+ * date portée (conflit « sans date », ex. COMPETITION_INCOMPLETE). Maison unique du
+ * datage, partagée par le scoping calendaire ET le pivot « par journée » (onglet Conflits).
+ */
+export function dateOf(conflict: Conflict): string | null {
+  if (undefined !== conflict.start) {
+    return conflict.start.slice(0, 10);
+  }
+  return conflict.left?.matchDate ?? conflict.right?.matchDate ?? conflict.fixture?.matchDate ?? null;
 }
 
 /** La famille d'un conflit — son `type` (présentation, pas un verdict). */
@@ -154,7 +161,7 @@ export function countByFamily(conflicts: Conflict[]): Map<ConflictType, number> 
 }
 
 /**
- * Filtre « famille de conflit ». Toutes cochées (les 9 `ConflictType`) ⇒ MÊME
+ * Filtre « famille de conflit ». Toutes cochées (les 10 `ConflictType`) ⇒ MÊME
  * référence (pass-through) ; sinon on garde les conflits dont le type est coché.
  */
 export function applyFamilyFilter(conflicts: Conflict[], families: readonly ConflictType[]): Conflict[] {

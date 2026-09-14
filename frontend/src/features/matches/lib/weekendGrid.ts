@@ -70,6 +70,25 @@ export function weekendLabel(saturdayKey: string): string {
 }
 
 /**
+ * Étiquette COURTE d'un week-end (samedi + dimanche) — « 3-4 oct. » quand les deux
+ * jours partagent le mois, « 31 oct.-1 nov. » à cheval sur deux mois. `saturdayKey`
+ * est le samedi du bucket (cf. `weekendKeyOf`) ; le dimanche est samedi + 1. Pour les
+ * titres et infobulles compacts de l'onglet Conflits (l'année est du bruit, la fenêtre
+ * tient dans la saison — même parti que `frDateShortNoYear`).
+ */
+export function weekendShortLabel(saturdayKey: string): string {
+  const saturday = new Date(`${saturdayKey}T00:00:00`);
+  const sunday = new Date(saturday);
+  sunday.setDate(saturday.getDate() + 1);
+  const day = (d: Date): string => d.toLocaleDateString("fr-FR", { day: "numeric" });
+  const month = (d: Date): string => d.toLocaleDateString("fr-FR", { month: "short" });
+  if (saturday.getMonth() === sunday.getMonth()) {
+    return `${day(saturday)}-${day(sunday)} ${month(saturday)}`;
+  }
+  return `${day(saturday)} ${month(saturday)}-${day(sunday)} ${month(sunday)}`;
+}
+
+/**
  * Bornes calendaires (Y-m-d) de la semaine Lun→Dim contenant un bucket week-end
  * (`saturdayKey` = son samedi) : lundi = samedi − 5, dimanche = samedi + 1. Maison
  * unique de cette dérivation, partagée par `weekLabel` (l'étiquette) et le scoping
