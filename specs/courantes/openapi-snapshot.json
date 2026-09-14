@@ -19643,6 +19643,65 @@
                 }
             }
         },
+        "/api/venues/fbi-labels": {
+            "get": {
+                "operationId": "listVenueFbiLabels",
+                "tags": [
+                    "Venue"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Inventaire agr\u00e9g\u00e9, par libell\u00e9 de salle FBI/FFBB normalis\u00e9 de la saison courante : le gymnase confirm\u00e9 (`venueId`, null si aucun alias), une suggestion tir\u00e9e des placements r\u00e9els (`suggestedVenueId` = gymnase unanime des domiciles qui en ont un, null si divergent ou d\u00e9j\u00e0 confirm\u00e9) et les compteurs. Lecture ouverte \u00e0 tout membre authentifi\u00e9",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "labels": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "labelKey": {
+                                                        "type": "string",
+                                                        "description": "Le libell\u00e9 normalis\u00e9 (cl\u00e9 de regroupement)"
+                                                    },
+                                                    "displayLabel": {
+                                                        "type": "string",
+                                                        "description": "La graphie brute la plus fr\u00e9quente"
+                                                    },
+                                                    "venueId": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "suggestedVenueId": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "homeCount": {
+                                                        "type": "integer"
+                                                    },
+                                                    "placedCount": {
+                                                        "type": "integer"
+                                                    },
+                                                    "unplacedCount": {
+                                                        "type": "integer"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    }
+                },
+                "summary": "Inventaire des libell\u00e9s de salle FBI/FFBB de la saison courante, par gymnase"
+            }
+        },
         "/api/venues/{id}": {
             "get": {
                 "operationId": "api_venues_id_get",
@@ -19895,7 +19954,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Alias ajout\u00e9 (normalis\u00e9, idempotent) puis backfill des domiciles du club encore sans salle dont le libell\u00e9 \u00e9gale l'alias \u2014 le gymnase leur est pos\u00e9 sans les placer (`attached` = nombre de rencontres nouvellement rattach\u00e9es, 0 sur un re-POST)",
+                        "description": "Alias ajout\u00e9 (normalis\u00e9, idempotent) puis backfill des domiciles du club encore sans salle dont le libell\u00e9 \u00e9gale l'alias \u2014 le gymnase leur est pos\u00e9 sans les placer (`attached` = nombre de rencontres nouvellement rattach\u00e9es, 0 sur un re-POST). Avec `reassign: true`, l'alias est retir\u00e9 de son ancien gymnase (`previousVenueId`) et tous les domiciles NON PLAC\u00c9S au m\u00eame libell\u00e9 sont re-point\u00e9s (`attached`), les plac\u00e9s gardant leur salle (`kept`)",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -19910,6 +19969,15 @@
                                         },
                                         "attached": {
                                             "type": "integer"
+                                        },
+                                        "kept": {
+                                            "type": "integer",
+                                            "description": "R\u00e9-affectation seulement : domiciles plac\u00e9s qui gardent leur salle"
+                                        },
+                                        "previousVenueId": {
+                                            "type": "string",
+                                            "nullable": true,
+                                            "description": "R\u00e9-affectation seulement : le gymnase qui portait l'alias avant (null sinon)"
                                         }
                                     }
                                 }
@@ -19929,10 +19997,33 @@
                         "description": "The venue's season is archived (read-only)"
                     },
                     "422": {
-                        "description": "Empty label after normalization, or the label already belongs to another venue of the club"
+                        "description": "Empty label after normalization, or (without reassign) the label already belongs to another venue of the club"
                     }
                 },
-                "summary": "Rattacher un libell\u00e9 de salle FBI/FFBB \u00e0 un gymnase"
+                "summary": "Rattacher (ou r\u00e9-affecter) un libell\u00e9 de salle FBI/FFBB \u00e0 un gymnase",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "label"
+                                ],
+                                "properties": {
+                                    "label": {
+                                        "type": "string",
+                                        "description": "Le libell\u00e9 BRUT (le serveur normalise)"
+                                    },
+                                    "reassign": {
+                                        "type": "boolean",
+                                        "description": "Retirer l'alias de son gymnase actuel et re-pointer les domiciles non plac\u00e9s (d\u00e9faut false)"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
             }
         },
         "/api/venues/{id}/external-labels/{label}": {

@@ -1,10 +1,11 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-09-12 (P4-200 C1, `documentation-update`) : § « Engagements + compétitions »
-étendue au pont de signature FBI (`App\Service\Basketball\FbiDivisionSignature`, nouveau service)
-— `GET /api/ffbb/engagements` gagne une troisième source de suggestion et `suggestionSource` dans
-la réponse, `POST /api/ffbb/engagements/confirm` accepte un `competitionId` optionnel par pairing.
-Hosts SSRF et routes re-confrontés au code, inchangés.
+Last verified @ 2026-09-14 (E1 — ré-affectation d'un libellé de salle, `documentation-update`) :
+§ « Réconciliation FBI, canal API » — `apply` pose toujours `venueId` par alias CONFIRMÉ seul
+(inchangé) ; le nouveau `reassign: true` de `POST /api/venues/{id}/external-labels` (E1) est un
+geste distinct, hors `apply`. Confirmé sur `FfbbRencontreReader.php:112-121,168-190` : l'objet
+`salle` d'un hit rencontres ne porte aucun `numero`, seulement `{id, libelle, adresse,
+cartographie}`. Hosts SSRF et routes non re-sondés cette passe.
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit rester dans la **liste blanche de hosts** du client (SSRF, A12). Vérifié le 2026-07-10 sur le code réel `ARA0069036` (BCCL).
 
@@ -131,8 +132,17 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   (`FbiFixtureImporter::attachConfirmedVenue`, foyer partagé avec l'import xlsx) sur un domicile
   encore sans salle dont le libellé FBI/FFBB égale un alias que le gestionnaire a rattaché à un
   gymnase (`Venue.externalLabels`, `POST /api/venues/{id}/external-labels`) — la rencontre reste
-  UNPLACED, seule visible de `VENUE_OVERLAP`/`VENUE_UNAVAILABLE`. Détail :
+  UNPLACED, seule visible de `VENUE_OVERLAP`/`VENUE_UNAVAILABLE`. **E1 (2026-09-14)** : le même POST
+  accepte désormais `reassign: true` pour corriger un alias posé sur le MAUVAIS gymnase en un geste
+  (retire l'alias de l'ancien porteur, re-pointe les domiciles NON PLACÉS du club au même libellé,
+  épargne les domiciles déjà PLACÉS/SOUMIS/VALIDÉS) — sans effet sur `apply`/`FfbbRencontreReconciler`
+  elle-même, qui continue de ne poser `venueId` que sur un domicile encore sans salle. Détail :
   [`module-matchs.md`](../../specs/courantes/module-matchs.md) § « Gymnase depuis le libellé ».
+  ⚠ **Pont par référence FFBB de salle toujours impossible** : l'objet `salle` d'un hit rencontres
+  (`FfbbRencontreReader.php:112-121`, `:168-190`) ne porte que `{id, libelle, adresse,
+  cartographie}`, jamais le `numero` de l'index salles (`Venue.externalRef`) — un appariement exact
+  par référence fédérale, plutôt que par libellé, resterait à confirmer contre l'API réelle
+  (roadmap P4-204).
 - **P4-199 (2026-09-12)** : `apply` partage désormais aussi les règles de naissance/fenêtre du xlsx
   (`FfbbRencontreReconciler` appelle `FbiFixtureImporter::treatOnArrival`/`sourceIsAuthoritativeForWindow`,
   foyer unique) — un extérieur créé par ce canal naît `REVIEWED` d'office, un domicile PLACÉ

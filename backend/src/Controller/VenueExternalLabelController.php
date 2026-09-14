@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Entity\Fixture;
+use App\Entity\Season;
 use App\Entity\Venue;
 use App\Enum\FixtureHomeAway;
+use App\Enum\FixtureStatus;
+use App\Service\Basketball\VenueLabelInventory;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\ManagementAccessGuard;
+use App\Service\SeasonResolver;
 use App\Service\WriteTargetSeasonResolver;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -25,10 +29,15 @@ use Symfony\Component\Routing\Attribute\Route;
  * pas de `venueId` : rattacher le libellé au gymnase le rend visible de la collision
  * de gymnase et de la fermeture, sans jamais placer la rencontre.
  *
+ *  - GET    /api/venues/fbi-labels                    → inventaire agrégé (lecture
+ *    ouverte à tout membre) : par libellé NORMALISÉ de la saison courante, le
+ *    gymnase confirmé, une suggestion tirée des placements réels et les compteurs.
  *  - POST   /api/venues/{id}/external-labels          → ajoute l'alias (normalisé,
  *    idempotent) PUIS backfille les domiciles du club encore sans salle dont le
  *    libellé égale l'alias. Un libellé déjà porté par un AUTRE gymnase → 422 ; un
- *    libellé vide après normalisation → 422.
+ *    libellé vide après normalisation → 422. Avec `reassign: true`, l'alias change
+ *    de porteur et les domiciles NON PLACÉS au même libellé sont re-pointés (les
+ *    placés gardent leur salle).
  *  - DELETE /api/venues/{id}/external-labels/{label}  → retire l'alias (idempotent),
  *    NE touche aucune rencontre déjà rattachée.
  *
@@ -51,6 +60,8 @@ final class VenueExternalLabelController extends AbstractController implements S
         private readonly VenueLabelNormalizer $labelNormalizer,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
         private readonly RequestStack $requestStack,
+        private readonly SeasonResolver $seasonResolver,
+        private readonly VenueLabelInventory $labelInventory,
     ) {}
 
     /**
@@ -63,6 +74,30 @@ final class VenueExternalLabelController extends AbstractController implements S
         $venueId = $request->attributes->get('id');
 
         return \is_string($venueId) && '' !== $venueId ? $this->writeTargetSeasonResolver->ofVenue($venueId) : null;
+    }
+
+    /**
+     * Inventaire agrégé « libellé de salle FBI/FFBB → gymnase » de la saison
+     * courante du club : lecture ouverte à tout membre authentifié (pas
+     * {@see ManagementAccessGuard} — c'est un état, pas un geste), le club et la
+     * saison viennent du contexte serveur. Alimente l'écran de ré-affectation
+     * (E2). `priority: 10` : cette route statique doit gagner sur la route item
+     * `/api/venues/{id}` d'API Platform, qui avalerait sinon « fbi-labels » comme
+     * un uuid (→ 404), même idiome que {@see FixtureConflictsController}.
+     */
+    #[Route('/api/venues/fbi-labels', name: 'api_venue_fbi_labels', methods: ['GET'], priority: 10)]
+    public function inventory(): JsonResponse
+    {
+        $clubId = $this->currentClubId();
+        if (null === $clubId) {
+            return $this->json(['labels' => []]);
+        }
+        $season = $this->seasonResolver->selectedOrCurrent($this->requestStack->getCurrentRequest(), $clubId);
+        if (!$season instanceof Season) {
+            return $this->json(['labels' => []]);
+        }
+
+        return $this->json(['labels' => $this->labelInventory->forSeason($season->getId())]);
     }
 
     #[Route('/api/venues/{id}/external-labels', name: 'api_venue_external_labels_attach', methods: ['POST'])]
@@ -78,6 +113,10 @@ final class VenueExternalLabelController extends AbstractController implements S
 
         $decoded = json_decode((string) $request->getContent(), true);
         $rawLabel = \is_array($decoded) ? ($decoded['label'] ?? null) : null;
+        // Ré-affectation explicite (E1) : sans le drapeau, comportement byte-identique
+        // (422 d'unicité, backfill des seuls domiciles sans salle) ; avec, l'alias change
+        // de porteur et les domiciles NON PLACÉS sont re-pointés quel que soit leur gymnase.
+        $reassign = \is_array($decoded) && true === ($decoded['reassign'] ?? null);
         $label = $this->labelNormalizer->normalize(\is_string($rawLabel) ? $rawLabel : '');
         if ('' === $label) {
             return $this->json(['error' => 'Le libellé est vide.'], Response::HTTP_UNPROCESSABLE_ENTITY);
@@ -89,27 +128,52 @@ final class VenueExternalLabelController extends AbstractController implements S
             return $this->json(['error' => \sprintf('Ce gymnase porte déjà %d libellés — retirez-en un avant d\'en ajouter.', self::MAX_LABELS_PER_VENUE)], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        // Un libellé ne désigne qu'UN gymnase : s'il est déjà porté par un autre,
-        // on refuse en le nommant (« retirez-le d'abord ») plutôt que de créer une
-        // ambiguïté qui empêcherait toute résolution confirmée.
+        // Un libellé ne désigne qu'UN gymnase. Un autre gymnase le porte déjà ?
+        //  - sans `reassign` : on refuse en le nommant (« retirez-le d'abord »)
+        //    plutôt que de créer une ambiguïté qui empêcherait toute résolution ;
+        //  - avec `reassign` : on le lui RETIRE (l'unicité reste tenue) et on note
+        //    `previousVenueId` pour dire d'où l'alias vient.
         $owner = $this->venueCarryingLabel($label, $venue->getId(), $venue->getSeasonId());
+        $previousVenueId = null;
         if ($owner instanceof Venue) {
-            return $this->json(
-                ['error' => \sprintf('Ce libellé est déjà rattaché au gymnase « %s ». Retirez-le d\'abord.', $owner->getName())],
-                Response::HTTP_UNPROCESSABLE_ENTITY,
-            );
+            if (!$reassign) {
+                return $this->json(
+                    ['error' => \sprintf('Ce libellé est déjà rattaché au gymnase « %s ». Retirez-le d\'abord.', $owner->getName())],
+                    Response::HTTP_UNPROCESSABLE_ENTITY,
+                );
+            }
+            $previousVenueId = $owner->getId();
+            $owner->removeExternalLabel($label);
         }
 
         $venue->addExternalLabel($label);
+
+        if ($reassign) {
+            // Ré-affectation : tous les domiciles NON PLACÉS de la saison au même
+            // libellé pointent désormais ce gymnase, quel que soit leur gymnase actuel
+            // (`attached` = nombre effectivement re-pointé → 0 si déjà bons, idempotent).
+            // Les PLACÉS/SOUMIS/VALIDÉS gardent leur salle (statut jamais touché) et sont
+            // comptés `kept` — le geste ne défait jamais un placement déjà décidé.
+            [$attached, $kept] = $this->reassignHomeFixtures($venue, $label);
+            $this->entityManager->flush();
+
+            return $this->json([
+                'label' => $label,
+                'venueId' => $venue->getId(),
+                'attached' => $attached,
+                'kept' => $kept,
+                'previousVenueId' => $previousVenueId,
+            ], Response::HTTP_OK);
+        }
 
         // Backfill : les domiciles du club encore sans salle dont le libellé FBI/FFBB
         // égale l'alias reçoivent ce gymnase (statut inchangé — jamais un placement).
         // `attached` ne compte que les nouveaux rattachés : un re-POST ne recompte
         // rien (les rencontres déjà rattachées ne sont plus « sans salle »).
-        $attached = 0;
         // Borne SAISON explicite (défense en profondeur sous le filtre saison) : les
         // alias sont copiés au changement de saison, un domicile de N-1 ne doit
         // jamais recevoir le gymnase de N.
+        $attached = 0;
         $fixtures = $this->entityManager->getRepository(Fixture::class)->findBy([
             'homeAway' => FixtureHomeAway::HOME,
             'venueId' => null,
@@ -144,6 +208,40 @@ final class VenueExternalLabelController extends AbstractController implements S
         $this->entityManager->flush();
 
         return new Response(null, Response::HTTP_NO_CONTENT);
+    }
+
+    /**
+     * Re-pointe vers $venue tous les domiciles NON PLACÉS de la saison dont le
+     * libellé normalisé égale $label (quel que soit leur gymnase actuel), sans
+     * jamais toucher un domicile PLACÉ/SOUMIS/VALIDÉ ni aucun statut.
+     *
+     * @return array{0: int, 1: int} [re-pointés (venue changé), placés conservés]
+     */
+    private function reassignHomeFixtures(Venue $venue, string $label): array
+    {
+        $attached = 0;
+        $kept = 0;
+        $fixtures = $this->entityManager->getRepository(Fixture::class)->findBy([
+            'homeAway' => FixtureHomeAway::HOME,
+            'seasonId' => $venue->getSeasonId(),
+        ]);
+        foreach ($fixtures as $fixture) {
+            $fixtureLabel = $fixture->getFbiVenueLabel();
+            if (null === $fixtureLabel || $this->labelNormalizer->normalize($fixtureLabel) !== $label) {
+                continue;
+            }
+            if (FixtureStatus::UNPLACED !== $fixture->getStatus()) {
+                ++$kept;
+
+                continue;
+            }
+            if ($fixture->getVenueId() !== $venue->getId()) {
+                $fixture->setVenueId($venue->getId());
+                ++$attached;
+            }
+        }
+
+        return [$attached, $kept];
     }
 
     /**

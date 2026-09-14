@@ -12,6 +12,7 @@ use App\Entity\Season;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Enum\FixtureHomeAway;
+use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -164,10 +165,141 @@ final class VenueExternalLabelApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(409);
     }
 
+    public function testFbiLabelsInventoryGroupsByNormalizedLabelWithCountsAndConfirmedVenue(): void
+    {
+        [$club, $user, $season] = $this->createClubUser('inv');
+        $venue = $this->createVenue($club, $season, 'Palais des Sports');
+        // Deux graphies « GYMNASE MATEO » + une « Gymnase Matéo » → une seule clé ;
+        // la graphie la plus fréquente est « GYMNASE MATEO ».
+        $this->createFixture($club, $season, FixtureHomeAway::HOME, 'GYMNASE MATEO');
+        $this->createFixture($club, $season, FixtureHomeAway::HOME, 'GYMNASE MATEO');
+        $this->createFixture($club, $season, FixtureHomeAway::HOME, 'Gymnase Matéo', status: FixtureStatus::PLACED);
+        $this->createFixture($club, $season, FixtureHomeAway::AWAY, 'GYMNASE MATEO');
+
+        $rows = $this->getInventory($user)['labels'];
+        self::assertCount(1, $rows, 'les deux graphies fusionnent sur une clé normalisée, l\'extérieur ne compte pas');
+        self::assertSame('gymnase mateo', $rows[0]['labelKey']);
+        self::assertSame('GYMNASE MATEO', $rows[0]['displayLabel'], 'la graphie brute la plus fréquente');
+        self::assertSame(3, $rows[0]['homeCount']);
+        self::assertSame(1, $rows[0]['placedCount']);
+        self::assertSame(2, $rows[0]['unplacedCount']);
+        self::assertNull($rows[0]['venueId'], 'aucun alias confirmé → venueId null');
+
+        // Confirmer l'alias → la ligne pointe le gymnase.
+        $this->post($user, $venue->getId(), 'GYMNASE MATEO');
+        self::assertResponseIsSuccessful();
+        $rows = $this->getInventory($user)['labels'];
+        self::assertSame($venue->getId(), $rows[0]['venueId'], 'l\'alias confirmé désigne le gymnase');
+    }
+
+    public function testFbiLabelsInventorySuggestsAnUnanimousVenueAndNullOnDivergence(): void
+    {
+        [$club, $user, $season] = $this->createClubUser('sug');
+        $venueA = $this->createVenue($club, $season, 'Gymnase Alpha');
+        $venueB = $this->createVenue($club, $season, 'Gymnase Beta');
+        // Deux domiciles au même libellé, tous deux placés au MÊME gymnase A, aucun
+        // alias confirmé → suggestion unanime = A.
+        $this->createFixture($club, $season, FixtureHomeAway::HOME, 'GYMNASE MATEO', venueId: $venueA->getId(), status: FixtureStatus::PLACED);
+        $this->createFixture($club, $season, FixtureHomeAway::HOME, 'GYMNASE MATEO', venueId: $venueA->getId(), status: FixtureStatus::PLACED);
+
+        $rows = $this->getInventory($user)['labels'];
+        self::assertNull($rows[0]['venueId']);
+        self::assertSame($venueA->getId(), $rows[0]['suggestedVenueId'], 'un gymnase unanime est suggéré');
+
+        // Un troisième domicile placé sur B → divergence → plus aucune suggestion.
+        $this->createFixture($club, $season, FixtureHomeAway::HOME, 'GYMNASE MATEO', venueId: $venueB->getId(), status: FixtureStatus::PLACED);
+        $rows = $this->getInventory($user)['labels'];
+        self::assertNull($rows[0]['suggestedVenueId'], 'deux gymnases candidats → jamais un pari');
+    }
+
+    public function testReassignRepointsUnplacedStripsPreviousOwnerAndKeepsPlaced(): void
+    {
+        [$club, $user, $season] = $this->createClubUser('rea');
+        $wrong = $this->createVenue($club, $season, 'Mauvais Gymnase');
+        $right = $this->createVenue($club, $season, 'Bon Gymnase');
+        // Trois domiciles au libellé, déjà pointés (à tort) sur le mauvais gymnase :
+        // deux UNPLACED (à re-pointer) et un PLACED (témoin, à conserver).
+        $u1 = $this->createFixture($club, $season, FixtureHomeAway::HOME, 'GYMNASE MATEO', venueId: $wrong->getId());
+        $u2 = $this->createFixture($club, $season, FixtureHomeAway::HOME, 'GYMNASE MATEO', venueId: $wrong->getId());
+        $placed = $this->createFixture($club, $season, FixtureHomeAway::HOME, 'GYMNASE MATEO', venueId: $wrong->getId(), status: FixtureStatus::PLACED);
+
+        // L'alias appartient d'abord au mauvais gymnase.
+        $this->post($user, $wrong->getId(), 'GYMNASE MATEO');
+        self::assertResponseIsSuccessful();
+
+        // Sans drapeau, poser l'alias sur le bon gymnase serait refusé (unicité).
+        $this->post($user, $right->getId(), 'GYMNASE MATEO');
+        self::assertResponseStatusCodeSame(422);
+
+        // Avec reassign : l'alias change de porteur, les 2 UNPLACED basculent, le PLACED reste.
+        $body = $this->postBody($user, $right->getId(), ['label' => 'GYMNASE MATEO', 'reassign' => true]);
+        self::assertResponseIsSuccessful();
+        self::assertSame('gymnase mateo', $body['label']);
+        self::assertSame($right->getId(), $body['venueId']);
+        self::assertSame(2, $body['attached'], 'les deux domiciles non placés sont re-pointés');
+        self::assertSame(1, $body['kept'], 'le domicile placé garde sa salle et est compté kept');
+        self::assertSame($wrong->getId(), $body['previousVenueId'], 'l\'ancien porteur de l\'alias est servi');
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        self::assertSame($right->getId(), $this->em->getRepository(Fixture::class)->find($u1)?->getVenueId());
+        self::assertSame($right->getId(), $this->em->getRepository(Fixture::class)->find($u2)?->getVenueId());
+        self::assertSame($wrong->getId(), $this->em->getRepository(Fixture::class)->find($placed)?->getVenueId(), 'un domicile placé n\'est jamais re-pointé');
+        self::assertSame([], $this->em->getRepository(Venue::class)->find($wrong->getId())?->getExternalLabels(), 'l\'ancien gymnase perd l\'alias');
+        self::assertSame(['gymnase mateo'], $this->em->getRepository(Venue::class)->find($right->getId())?->getExternalLabels());
+    }
+
+    public function testReassignTowardTheVenueAlreadyCarryingTheAliasIsIdempotent(): void
+    {
+        [$club, $user, $season] = $this->createClubUser('idem');
+        $venue = $this->createVenue($club, $season, 'Palais des Sports');
+        $this->createFixture($club, $season, FixtureHomeAway::HOME, 'GYMNASE MATEO');
+
+        // Premier reassign : pose l'alias + re-pointe l'unique UNPLACED (previousVenueId null).
+        $first = $this->postBody($user, $venue->getId(), ['label' => 'GYMNASE MATEO', 'reassign' => true]);
+        self::assertResponseIsSuccessful();
+        self::assertSame(1, $first['attached']);
+        self::assertNull($first['previousVenueId'], 'aucun ancien porteur');
+
+        // Second reassign identique : le domicile pointe déjà le bon gymnase → rien à re-pointer.
+        $again = $this->postBody($user, $venue->getId(), ['label' => 'GYMNASE MATEO', 'reassign' => true]);
+        self::assertResponseIsSuccessful();
+        self::assertSame(0, $again['attached'], 'idempotent : rien de nouveau à re-pointer');
+        self::assertNull($again['previousVenueId']);
+        self::assertSame(['gymnase mateo'], $this->em->getRepository(Venue::class)->find($venue->getId())?->getExternalLabels());
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function getInventory(User $user): array
+    {
+        $this->client->request('GET', '/api/venues/fbi-labels', [], [], $this->authHeaders($user));
+        self::assertResponseIsSuccessful();
+
+        $decoded = json_decode((string) $this->client->getResponse()->getContent(), true);
+
+        return \is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     *
+     * @return array<string, mixed>
+     */
+    private function postBody(User $user, string $venueId, array $body): array
+    {
+        $this->client->request('POST', '/api/venues/' . $venueId . '/external-labels', [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], json_encode($body, \JSON_THROW_ON_ERROR));
+
+        $decoded = json_decode((string) $this->client->getResponse()->getContent(), true);
+
+        return \is_array($decoded) ? $decoded : [];
     }
 
     /**
@@ -196,7 +328,7 @@ final class VenueExternalLabelApiTest extends WebTestCase
         return $venue;
     }
 
-    private function createFixture(Club $club, Season $season, FixtureHomeAway $homeAway, string $venueLabel): string
+    private function createFixture(Club $club, Season $season, FixtureHomeAway $homeAway, string $venueLabel, ?string $venueId = null, ?FixtureStatus $status = null): string
     {
         $this->scopeGucToClub($club->getId());
         $fixture = new Fixture;
@@ -207,6 +339,12 @@ final class VenueExternalLabelApiTest extends WebTestCase
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel('Adversaire');
         $fixture->setFbiVenueLabel($venueLabel);
+        if (null !== $venueId) {
+            $fixture->setVenueId($venueId);
+        }
+        if ($status instanceof FixtureStatus) {
+            $fixture->setStatus($status, new DateTimeImmutable);
+        }
         $this->em->persist($fixture);
         $this->em->flush();
 

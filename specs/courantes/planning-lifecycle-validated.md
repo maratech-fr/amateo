@@ -1,13 +1,12 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-09-09 (rotation `documentation-update`, PR P4-188/189/191 (détecteur de
-conflits) — zone non touchée, contrôle de fraîcheur). Reconfirmé : `ScheduleStatus` toujours
-`DRAFT/PENDING/GENERATING/COMPLETED/FAILED`, pas de `VALIDATED` (`ScheduleStatus.php:9-14`) ✓ ·
+Last verified @ 2026-09-14 (rotation `documentation-update`, PR E1 — ré-affectation d'un libellé de
+salle, zone non touchée, contrôle de fraîcheur). Reconfirmé : `ScheduleStatus` toujours
+`DRAFT/PENDING/GENERATING/COMPLETED/FAILED`, pas de `VALIDATED` (`ScheduleStatus.php:11-15`) ✓ ·
 `SocleGuard::assertSeasonPlanChosen` toujours présent (`SocleGuard.php:26`) ✓ · `onValidate`
-toujours câblé au bouton « Valider » de `PlanningToolbar` (`PlanningToolbar.tsx:74,194`) ✓.
-**Un écart de citation corrigé** : `useValidateSchedule()` est appelé depuis `PlanningPage.tsx:317`
-(§2, la ligne disait `:316` — décalage d'une ligne). Historique des passes vit dans git :
-`git log -p --follow specs/courantes/planning-lifecycle-validated.md`)
+toujours câblé au bouton « Valider » de `PlanningToolbar` (`PlanningToolbar.tsx:74,194`) ✓ ·
+`useValidateSchedule()` toujours appelé depuis `PlanningPage.tsx:317`. Historique des passes vit
+dans git : `git log -p --follow specs/courantes/planning-lifecycle-validated.md`)
 
 > **Bascule 2026-07-16 (ADR-0002, `docs/architecture/adr-0002-pattern-plan.md`)** : le **plan de
 > type SEASON** (`schedule_plan`) et **la version qu'il pointe** (`chosen_schedule_id`) SONT le

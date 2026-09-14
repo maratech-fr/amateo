@@ -216,6 +216,33 @@ final class MatchTenantIsolationTest extends WebTestCase
         self::assertNull($connection->fetchOne('SELECT venue_id FROM fixture WHERE id = ?', [$foreignFixtureId]) ?: null, 'la rencontre de B n\'est jamais backfillée par un rattachement de A');
     }
 
+    public function testFbiLabelInventoryAndReassignNeverCrossClubs(): void
+    {
+        // E1 NR (axe tenant §7.1) — l'inventaire ne liste jamais les libellés d'un
+        // autre club, et une ré-affectation ne re-pointe jamais un domicile étranger.
+        [$clubA, $userA, $seasonA] = $this->createClubUser('a');
+        $venueA = $this->createVenue($clubA, $seasonA, 'Gymnase A');
+        [$clubB, , $seasonB] = $this->createClubUser('b');
+        $venueB = $this->createVenue($clubB, $seasonB, 'Gymnase B');
+        // B : un domicile NON PLACÉ au même libellé, déjà pointé sur son propre gymnase.
+        $foreignHome = $this->createHomeFixtureWithLabel($clubB, $seasonB, 'GYMNASE MATEO', $venueB->getId());
+
+        // (1) L'inventaire de A (aucun domicile) ne remonte aucun libellé de B.
+        $this->client->request('GET', '/api/venues/fbi-labels', [], [], $this->authHeaders($userA));
+        self::assertResponseIsSuccessful();
+        self::assertSame([], $this->responseData()['labels'] ?? ['?'], 'A n\'a aucun domicile → aucun libellé, jamais ceux de B');
+
+        // (2) Une ré-affectation légitime chez A ne re-pointe aucune rencontre de B.
+        $this->client->request('POST', '/api/venues/' . $venueA->getId() . '/external-labels', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode(['label' => 'GYMNASE MATEO', 'reassign' => true], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+        self::assertSame(0, $this->responseData()['attached'] ?? -1, 'aucune rencontre de A ne porte ce libellé → 0 re-pointé');
+
+        // Lecture brute sous le scope de B : son domicile garde son gymnase.
+        $this->scopeGucToClub($clubB->getId());
+        $connection = self::getContainer()->get(EntityManagerInterface::class)->getConnection();
+        self::assertSame($venueB->getId(), (string) $connection->fetchOne('SELECT venue_id FROM fixture WHERE id = ?', [$foreignHome]), 'le domicile de B n\'est jamais re-pointé par une ré-affectation de A');
+    }
+
     public function testVenueUnavailabilityIsManagementGatedAndSeasonGuarded(): void
     {
         [$clubA, $userA, $seasonA] = $this->createClubUser('a');
@@ -724,7 +751,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         return $fixture;
     }
 
-    private function createHomeFixtureWithLabel(Club $club, Season $season, string $venueLabel): string
+    private function createHomeFixtureWithLabel(Club $club, Season $season, string $venueLabel, ?string $venueId = null): string
     {
         $this->scopeGucToClub($club->getId());
         $fixture = new Fixture;
@@ -735,6 +762,9 @@ final class MatchTenantIsolationTest extends WebTestCase
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adversaire');
         $fixture->setFbiVenueLabel($venueLabel);
+        if (null !== $venueId) {
+            $fixture->setVenueId($venueId);
+        }
         $this->em->persist($fixture);
         $this->em->flush();
 

@@ -1,16 +1,15 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-14 (D1 « le détecteur de conflits dit la vérité » + D2 « rattrapage des
-statuts de traitement », `documentation-update`, rebase D1 sur D2). § « Détection »
-(`MatchConflictDetector`/`MatchFootprint`) confrontée au code : fenêtre SALLE (`venueOccupancy`/
-`venueOccupancyAt`, sans échauffement) vs fenêtre PERSONNE par famille, `matchTrainingConflicts`
-sautant le créneau de la PROPRE équipe du match, filtre « passé muet » sur `ClubDay::todayFor` injecté
-par `FixtureConflictsController` et `MatchModuleDeltaComputer`. § « Espace Importer » (tableau cas →
-effet + « Masquer les extérieurs ») confrontée au code : `FbiFixtureImporter::catchUpReview`/
-`qualifiesForArrivalTreatment`, l'appel en tête d'`applyDiff` et dans `FfbbRencontreReconciler::reconcile`
-(avant le tri de périmètre) ; résidu « extérieurs importés avant P4-199 restent NEW » retiré. Reste du
-fichier (§ reconciliation coupes P4-194/195, § retrait des libellés P4-196, § Appariement FFBB) non
-re-sondé cette passe — voir `git log -p --follow` pour sa dernière vérification.
+Last verified @ 2026-09-14 (E1 « ré-affectation d'un libellé de salle FBI/FFBB », backend seul,
+`documentation-update`). § « Gymnase depuis le libellé » confrontée au code :
+`GET /api/venues/fbi-labels` (`VenueExternalLabelController::inventory`, `priority: 10`) sert
+`App\Service\Basketball\VenueLabelInventory::forSeason` (regroupement par clé normalisée,
+suggestion unanime, compteurs) ; `POST /api/venues/{id}/external-labels` avec `reassign: true`
+retire l'alias de son ancien porteur, re-pointe les domiciles UNPLACED du même libellé quel que
+soit leur gymnase, épargne PLACED/SUBMITTED/VALIDATED (`reassignHomeFixtures`) ; le DELETE et le
+POST sans drapeau restent byte-identiques à avant E1. Reste du fichier (§ « Détection », §
+reconciliation coupes P4-194/195, § Appariement FFBB) non re-sondé cette passe — voir
+`git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -416,13 +415,20 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   `EffectiveScheduleResolver` (pur) + `TrainingCalendarContext` (chargement scopé), consommés par le
   radar ET l'impact — deux copies auraient divergé.
 
-## Gymnase depuis le libellé — alias de salle FBI/FFBB (P4-187, backend P4-187a + écran P4-187b, LIVRÉ EN ENTIER, 2026-09-09 ; écran de retrait P4-196, 2026-09-11)
+## Gymnase depuis le libellé — alias de salle FBI/FFBB (P4-187, backend P4-187a + écran P4-187b, LIVRÉ EN ENTIER, 2026-09-09 ; écran de retrait P4-196, 2026-09-11 ; ré-affectation backend E1, 2026-09-14)
 
 > Mesuré 2026-09-08 sur le canal API (`POST /api/ffbb/rencontres/apply`, roadmap P4-187) : un
 > domicile importé porte un libellé de salle fédéral (`Fixture.fbiVenueLabel`) mais aucun
 > `venueId` — invisible de la collision de gymnase (`VENUE_OVERLAP`) et de la fermeture
 > (`VENUE_UNAVAILABLE`). P4-187a a livré le backend seul (résolution automatique + routes) ;
 > **P4-187b** livre le geste « Rattacher » dans l'écran Importer (ci-dessous, § Écran).
+>
+> **E1 (2026-09-14)** : vécu fondateur — un libellé FBI rattaché au MAUVAIS gymnase (« Rattacher »
+> n'apparaissant que sur un domicile SANS gymnase, il ne corrigeait rien) a fait dormir 83
+> domiciles sur la mauvaise salle, et retirer l'alias ne les dépointait pas (par conception, voir
+> § « Routes » ci-dessous). E1 livre le BACKEND d'une ré-affectation en un geste (inventaire agrégé +
+> `reassign: true`, ci-dessous) ; l'écran qui l'expose reste à construire (E2, non livré à cette
+> date — voir la ligne roadmap correspondante).
 
 - **`Venue.externalLabels`** (`backend/src/Entity/Venue.php:74`, JSON `default '[]'`, liste
   NORMALISÉE et dédupliquée — `setExternalLabels`/`addExternalLabel`/`removeExternalLabel`
@@ -455,15 +461,36 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
     `:263` mise à jour) appelle le MÊME `attachConfirmedVenue` — exception ÉTROITE, documentée
     dans le code, au principe « l'API n'auto-applique jamais » : seul le `venueId` est posé, jamais
     un statut, jamais une date, jamais sur un AWAY ni sur une rencontre qui a déjà un gymnase.
-- **Routes** (management SEC-07 + saison écrivable → 409 archivée + tenant → 404, contributeur
-  OpenAPI `VenueAliasPaths`, `backend/src/Controller/VenueExternalLabelController.php`) :
-  - `POST /api/venues/{id}/external-labels` `{label}` → `{venueId, label, attached}`. Ajoute
-    l'alias (normalisé, idempotent) PUIS backfille les domiciles du club encore SANS salle dont le
-    libellé égale l'alias (`attached` = nombre nouvellement rattaché, 0 sur un re-POST). Libellé
-    déjà porté par un AUTRE gymnase du club → 422 nommé (« retirez-le d'abord ») ; libellé vide
-    après normalisation → 422.
+- **Routes** (contributeur OpenAPI `VenueAliasPaths`,
+  `backend/src/Controller/VenueExternalLabelController.php`) :
+  - `GET /api/venues/fbi-labels` (E1, `priority: 10` pour gagner sur la route item
+    `/api/venues/{id}` d'API Platform — sinon « fbi-labels » y serait avalé comme un uuid, même
+    idiome que `FixtureConflictsController`) → lecture ouverte à **tout membre authentifié** (c'est
+    un état, pas un geste ; club+saison courante résolus côté serveur) : `{labels: [...]}`,
+    inventaire agrégé par `App\Service\Basketball\VenueLabelInventory` (service pur, jamais
+    d'écriture), un objet par libellé de salle **normalisé** (`VenueLabelNormalizer`) — `labelKey`,
+    `displayLabel` (la graphie brute la plus fréquente ; à égalité, la première rencontrée),
+    `venueId` (l'alias CONFIRMÉ, null sinon), `suggestedVenueId` (le gymnase **unanime** des
+    domiciles du libellé qui en portent un — null si divergence ≥ 2 candidats, ou s'il égale déjà
+    `venueId` : jamais un pari, jamais une redite), `homeCount`/`placedCount`/`unplacedCount`, trié
+    par `displayLabel`. Alimente l'écran d'appariement à venir (E2, ci-dessous).
+  - `POST /api/venues/{id}/external-labels` (management SEC-07 + saison écrivable → 409 archivée +
+    tenant → 404) `{label}` → `{venueId, label, attached}`. Ajoute l'alias (normalisé, idempotent)
+    PUIS backfille les domiciles du club encore SANS salle dont le libellé égale l'alias
+    (`attached` = nombre nouvellement rattaché, 0 sur un re-POST). Libellé déjà porté par un AUTRE
+    gymnase du club → 422 nommé (« retirez-le d'abord ») ; libellé vide après normalisation → 422.
+  - **`reassign: true` sur ce même POST (E1)** — la correction en un geste que « Rattacher »
+    n'offrait pas : l'alias **quitte** son ancien porteur (`previousVenueId` dans la réponse, null
+    s'il n'y en avait pas) et se pose sur la cible ; tous les domiciles **NON PLACÉS** de la saison
+    au même libellé basculent sur la cible **quel que soit leur gymnase actuel** (`attached` = ceux
+    effectivement re-pointés, 0 si déjà bons — idempotent) ; **un domicile PLACED/SUBMITTED/
+    VALIDATED n'est jamais re-pointé** — son statut ni son `venueId` ne bougent, compté `kept` dans
+    la réponse. Sans le drapeau : comportement byte-identique à avant E1 (le 422 d'unicité reste).
+    `VenueExternalLabelController::reassignHomeFixtures`.
   - `DELETE /api/venues/{id}/external-labels/{label}` → 204, idempotent, ne touche AUCUNE
-    rencontre déjà rattachée (le lien reste posé, seul l'alias qui l'a produit part).
+    rencontre déjà rattachée (le lien reste posé, seul l'alias qui l'a produit part) — **ce
+    contrat est inchangé par E1** : retirer un alias ne dépointe jamais un domicile déjà rattaché,
+    seule une ré-affectation explicite (`reassign: true`) le fait, et seulement pour les non placés.
 - **`VenueResource.externalLabels`** (lecture seule, jamais écrit par PUT) et
   `FixtureResource.suggestedVenueId` (lecture seule, seulement pour un HOME sans `venueId` avec un
   `fbiVenueLabel`) exposent les deux niveaux à l'écran.
@@ -473,13 +500,20 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   devient visible de `VENUE_OVERLAP` et `VENUE_UNAVAILABLE` dès que son `venueId` est posé.
 - **Tests** : `VenueLabelNormalizerTest` (normalisation), `MatchConflictDetectorTest` (+2 — un
   UNPLACED à `venueId` voit la collision et la fermeture), `FbiFixtureImporterTest`,
-  `FfbbRencontresApiTest`, `VenueExternalLabelApiTest` (les deux routes), NR
-  `MatchTenantIsolationTest` (rattacher/backfiller n'échappe jamais le club — gymnase étranger →
-  404, un rattachement légitime ne backfille aucune rencontre d'un autre club) + `ManagementRoleTest`
-  (SEC-07 des deux routes) — les deux fichiers sont déjà des steps de `blocking-tests`, aucun
-  changement `ci.yml`. Behat `un-domicile-importe-retrouve-son-gymnase.feature`
+  `FfbbRencontresApiTest`, `VenueExternalLabelApiTest` (routes POST/DELETE **et**, depuis E1,
+  l'inventaire GET + le `reassign` : regroupement par clé normalisée avec compteurs, suggestion
+  unanime vs `null` sur divergence, ré-affectation qui dépointe l'ancien porteur/re-pointe les non
+  placés/épargne les placés, idempotence), NR `MatchTenantIsolationTest` (rattacher/backfiller
+  n'échappe jamais le club — gymnase étranger → 404, un rattachement légitime ne backfille aucune
+  rencontre d'un autre club ; depuis E1, l'inventaire et la ré-affectation d'un club ne voient/ne
+  touchent jamais ceux d'un autre) + `ManagementRoleTest` (SEC-07 du POST/DELETE, lecture ouverte à
+  tout membre pour le GET inventaire) — les deux fichiers sont déjà des steps de `blocking-tests`
+  (`VenueExternalLabelApiTest` ne l'est pas), aucun changement `ci.yml`/`blocking-tests.md`. Behat
+  `un-domicile-importe-retrouve-son-gymnase.feature`
   (`VenueAliasContext`) : dépôt sans gymnase → rattachement → visible sans placement → re-dépôt au
-  même libellé rattaché d'office → fermeture détectée.
+  même libellé rattaché d'office → fermeture détectée ; **+1 scénario E1** — ré-affecter un
+  libellé rattaché au mauvais gymnase corrige le domicile non placé, garde le témoin déjà placé sur
+  son gymnase d'origine, et fait changer l'alias de porteur.
 
 ### Écran — le geste « Rattacher » dans Importer (P4-187b, front, 2026-09-09)
 
@@ -517,11 +551,16 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   nommé(s) par la FFBB » / « aucun libellé rattaché » / muet en chargement. `useDetachVenueLabel`
   invalide `["venues"]` **et** `["fixtures"]` en `onSettled` (décision fondateur : le
   `suggestedVenueId` d'Importer est DÉRIVÉ des alias à la lecture — sans la seconde invalidation,
-  Importer pourrait re-proposer le gymnase dont l'alias vient d'être retiré). **Corriger un
-  mauvais rattachement reste deux gestes** : retirer ici, puis Rattacher depuis Importer ; les
-  rencontres déjà rattachées au mauvais gymnase AVANT le retrait se corrigent une par une (hors
-  scope assumé de P4-196 — pas de dé-rattachement en masse). Pas de couverture e2e (geste rare) :
-  l'API est couverte côté backend par `VenueExternalLabelApiTest` et la feature Behat des alias.
+  Importer pourrait re-proposer le gymnase dont l'alias vient d'être retiré). ⚠ **Nuancé par E1
+  côté backend (2026-09-14, ci-dessus)** : au moment de la livraison de cet écran (P4-196), corriger
+  un mauvais rattachement était **deux gestes SANS filet** (retirer ici, puis Rattacher depuis
+  Importer) et les rencontres déjà mal rattachées AVANT le retrait se corrigeaient une par une, à la
+  main — c'est exactement le vécu fondateur qui a motivé E1 (83 domiciles sur le mauvais gymnase).
+  Le BACKEND d'une correction en un geste existe désormais (`reassign: true`, § « Routes »
+  ci-dessus), mais **cet écran (`VenueLabelsSection.tsx`) ne l'appelle pas encore** — il ne pose
+  que `DELETE`. L'écran d'appariement qui l'exposera est **E2, à venir** (ligne roadmap). Pas de
+  couverture e2e (geste rare) : l'API est couverte côté backend par `VenueExternalLabelApiTest` et
+  la feature Behat des alias.
 - **Pas de couverture e2e** : `POST /api/fixtures` (endpoint de création directe) n'accepte pas
   `fbiVenueLabel` (`backend/src/Dto/FixtureInput.php`) — le scénario ne se rejoue pas par cette
   voie. Couverture vitest : `ReviewQueueRow.test.tsx`, `ImportPage.test.tsx`,
