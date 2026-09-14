@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setTodayOverride } from "@/shared/lib/clock";
 
+import * as matchesApi from "./api";
 import { ConsultPage } from "./ConsultPage";
 import { useMatchesStore } from "./store";
 
@@ -81,6 +82,8 @@ vi.mock("./api", () => ({
     }),
   ),
   getOpponentTravel: vi.fn(() => Promise.resolve([])),
+  // E2 — inventaire des libellés de salle : vide par défaut (aucun bandeau).
+  getVenueLabelInventory: vi.fn(() => Promise.resolve([])),
 }));
 
 function renderConsult() {
@@ -179,6 +182,25 @@ describe("ConsultPage (PR-2a — onglet Consulter, lecture seule)", () => {
 
     expect(screen.getByText("PLACER")).toBeInTheDocument();
     expect(useMatchesStore.getState().selectedWeekend).toBe("2026-10-03");
+  });
+
+  // ── E2 (P4-205) — le signal des salles non appariées en vue Semaine ──────────
+  it("des libellés non appariés ⇒ bandeau au-dessus de la grille (vue Semaine)", async () => {
+    vi.mocked(matchesApi.getVenueLabelInventory).mockResolvedValueOnce([
+      { labelKey: "gymnase mateo", displayLabel: "GYMNASE MATEO", venueId: null, suggestedVenueId: null, homeCount: 2, placedCount: 0, unplacedCount: 2 },
+    ]);
+    renderConsult();
+    expect(await screen.findByText(/1 libellé de salle non apparié/)).toBeInTheDocument();
+  });
+
+  it("un domicile de la semaine sans gymnase ⇒ compteur discret sous la grille", async () => {
+    vi.mocked(matchesApi.getFixtures).mockResolvedValueOnce([
+      { id: "fx-home-amical", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "Voisins", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: null, fbiVenueLabel: null, placementSource: "MANUAL", unplacedReason: null, reviewState: "NEW", reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, suggestedVenueId: null },
+      // Domicile de la même semaine SANS gymnase → caché de la grille.
+      { id: "fx-home-noroom", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "Sans salle", status: "UNPLACED", venueId: null, kickoffTime: null, externalRef: null, fbiVenueLabel: "GYMNASE MATEO", placementSource: null, unplacedReason: null, reviewState: "NEW", reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, suggestedVenueId: null },
+    ] as never);
+    renderConsult();
+    expect(await screen.findByText(/1 domicile de ce week-end sans gymnase, non affiché/)).toBeInTheDocument();
   });
 });
 

@@ -398,25 +398,62 @@ export interface AttachVenueLabelInput {
   venueId: string;
   /** Le libellé BRUT (`fbiVenueLabel`) — le serveur NORMALISE (translit/casse/espaces). */
   label: string;
+  /**
+   * E1/E2 — retirer l'alias de son porteur actuel et re-pointer les domiciles NON
+   * PLACÉS du même libellé sur `venueId` (les placés gardent leur salle). Défaut
+   * `false` = rattachement idempotent (422 si le libellé est déjà porté ailleurs).
+   */
+  reassign?: boolean;
 }
 
 export interface AttachVenueLabelResult {
   venueId: string;
   label: string;
-  /** Combien de domiciles ENCORE sans salle ont été rattachés par le backfill (0 sur un re-POST). */
+  /** Domiciles nouvellement rattachés (backfill sans `reassign`, re-pointés avec) — 0 si idempotent. */
   attached: number;
+  /** Ré-affectation seulement : domiciles PLACÉS qui gardent leur salle. Absent sans `reassign`. */
+  kept?: number;
+  /** Ré-affectation seulement : le gymnase qui portait l'alias avant (null si aucun). Absent sans `reassign`. */
+  previousVenueId?: string | null;
 }
 
 /**
- * P4-187b — rattache un libellé FBI/FFBB à un gymnase (alias confirmé) PUIS
- * backfille tous les domiciles du club+saison encore sans salle au même libellé
- * (toutes équipes). On envoie le libellé BRUT, le serveur le normalise. 422 nommé
- * si le libellé est déjà porté par un AUTRE gymnase (« retirez-le d'abord »), vide,
- * trop long, ou au-delà de 30 alias ; management-gated, 409 saison archivée. Le
- * message serveur est affiché tel quel par `onError` (`errorMessage`).
+ * P4-187b — rattache (ou, avec `reassign`, ré-affecte) un libellé FBI/FFBB à un
+ * gymnase (alias confirmé) PUIS backfille tous les domiciles du club+saison encore
+ * sans salle au même libellé (toutes équipes). On envoie le libellé BRUT, le serveur
+ * le normalise. Sans `reassign` : 422 nommé si le libellé est déjà porté par un AUTRE
+ * gymnase (« retirez-le d'abord »), vide, trop long, ou au-delà de 30 alias. Avec
+ * `reassign: true` (E1/E2) : l'alias quitte son ancien porteur (`previousVenueId`) et
+ * les domiciles NON PLACÉS basculent (`attached`), les placés restant (`kept`).
+ * Management-gated, 409 saison archivée. Le message serveur est affiché tel quel par
+ * `onError` (`errorMessage`).
  */
-export const attachVenueLabel = ({ venueId, label }: AttachVenueLabelInput): Promise<AttachVenueLabelResult> =>
-  api.post(`venues/${venueId}/external-labels`, { json: { label } }).json<AttachVenueLabelResult>();
+export const attachVenueLabel = ({ venueId, label, reassign }: AttachVenueLabelInput): Promise<AttachVenueLabelResult> =>
+  api.post(`venues/${venueId}/external-labels`, { json: true === reassign ? { label, reassign: true } : { label } }).json<AttachVenueLabelResult>();
+
+/**
+ * E2 — une ligne de l'inventaire agrégé des libellés de salle FBI/FFBB de la saison
+ * courante (`GET /api/venues/fbi-labels`), un objet par libellé NORMALISÉ. Lecture
+ * ouverte à tout membre (c'est un ÉTAT, pas un geste). Le front COMPTE ce que le
+ * serveur a agrégé ; il ne redérive jamais la normalisation (clé = `labelKey` servi,
+ * 🔴 `.claude/rules/frontend.md`).
+ */
+export interface VenueLabelInventoryRow {
+  /** Le libellé normalisé — clé de regroupement ET libellé BRUT à renvoyer à l'attache. */
+  labelKey: string;
+  /** La graphie brute la plus fréquente (affichée). */
+  displayLabel: string;
+  /** L'alias CONFIRMÉ (le gymnase rattaché), null si aucun. */
+  venueId: string | null;
+  /** Le gymnase UNANIME des domiciles placés (null si divergent, ou déjà égal à `venueId`). */
+  suggestedVenueId: string | null;
+  homeCount: number;
+  placedCount: number;
+  unplacedCount: number;
+}
+
+export const getVenueLabelInventory = (): Promise<VenueLabelInventoryRow[]> =>
+  api.get("venues/fbi-labels").json<{ labels: VenueLabelInventoryRow[] }>().then((r) => r.labels);
 
 export interface DetachVenueLabelInput {
   venueId: string;

@@ -1,4 +1,4 @@
-# Roadmap (60) — ce qui reste à faire
+# Roadmap (59) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -181,12 +181,14 @@
 > (P4-201). **D1 SOLDÉ (2026-09-13)** — le détecteur de conflits dit la vérité (salle = fenêtre
 > match seul, jamais de conflit avec l'entraînement de sa propre équipe, passé muet), détail
 > [`module-matchs.md`](../courantes/module-matchs.md) § « Détection » ; différé une phrase d'aide
-> « Durée des matchs » (P4-202, ci-dessous). **E1 SOLDÉ backend (2026-09-14)** — vécu fondateur
+> « Durée des matchs » (P4-202, ci-dessous). **E1 + E2 SOLDÉS (2026-09-14)** — vécu fondateur
 > (libellé rattaché au mauvais gymnase, 83 domiciles mal placés, aucun geste de correction
-> existant) : inventaire agrégé + ré-affectation en un geste (`reassign: true`) qui re-pointe les
-> non placés sans jamais toucher un placé, détail [`module-matchs.md`](../courantes/module-matchs.md)
-> § « Gymnase depuis le libellé ». **Reste ouvert** : l'écran qui l'expose (P4-205, E2) et le pont
-> par référence FFBB de salle, à re-sonder (P4-204).
+> existant) : inventaire agrégé + ré-affectation en un geste (`reassign: true`, E1) qui re-pointe
+> les non placés sans jamais toucher un placé, **exposé par l'écran d'appariement** (E2 —
+> l'ancienne section « Libellés FFBB des gymnases » devient l'écran, un signal partagé renvoie
+> vers lui depuis Importer/Semaine/Consulter), détail
+> [`module-matchs.md`](../courantes/module-matchs.md) § « Gymnase depuis le libellé ». **Reste
+> ouvert** : le pont par référence FFBB de salle, à re-sonder (P4-204).
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
@@ -196,7 +198,6 @@
 | P4-202 | **« Durée des matchs » ne dit pas que l'échauffement n'occupe pas la salle** | ⚪ | S | Différé de D1 (2026-09-13, décision §2 « la SALLE n'est occupée que par le match ») : `MatchDurationsEditor.tsx:196` dit « Le temps qu'un match occupe, échauffement compris — il sert à repérer quand un coach est pris par un match, trajet inclus. », vrai pour le coach (fenêtre PERSONNE inchangée) mais silencieux sur la salle — un gestionnaire pourrait croire que deux matchs enchaînés à 2 h d'écart dans le même gymnase collisionnent. Ajouter une phrase d'aide : l'échauffement n'occupe pas la salle, deux matchs peuvent s'enchaîner. Frontend seul |
 | P4-203 | **Le solveur de placement compte l'échauffement dans l'occupation de la salle ; le radar de conflits (D1, #889) ne compte que le match** | 🟡 | M | Constaté en passe D2 (2026-09-14). Côté engine, le HARD `NoOverlap` du placement inclut l'échauffement dans l'empreinte de salle : `engine/app/solver/match_placement.py:20-23` (`BEFORE_KICKOFF_MIN = 30`, `AFTER_KICKOFF_MIN = 105`, `FOOTPRINT_MIN`) et le commentaire `:97-98` (« The WHOLE footprint must fit inside the access window (warm-up occupies the court too) ») — cohérent avec ADR-0003 §4 (`docs/architecture/adr-0003-match-placement-solve.md:47`, « l'empreinte 2h15 entière dans la fenêtre d'accès »). D'après la passe D1 (#889, pas présente sur cette branche — à reconfirmer `file:ligne` au cadrage), le détecteur de conflits ne compterait que la durée du match, sans l'échauffement : sur un enchaînement fédéral à 2 h dans la même salle, le radar se tairait alors que « Placer automatiquement » refuserait de poser le second match (contrainte HARD violée côté engine, invisible côté diagnostic). Lot engine + contrat (`CONTRACT_VERSION`) à cadrer : soit aligner le radar sur l'empreinte pleine du solveur, soit assumer et documenter l'écart |
 | P4-204 | **Pont par référence FFBB de salle — impossible aujourd'hui, à re-sonder** | ⚪ | S | Constaté au cadrage E1 (2026-09-14, ré-affectation des alias de salle) : un appariement EXACT « libellé FBI ↔ gymnase du club » par référence fédérale (plutôt que par libellé approximatif) supposerait que l'objet `salle` d'un hit rencontres FFBB porte le même `numero` que l'index salles — mais il ne porte que `{id, libelle, adresse, cartographie}` (`FfbbRencontreReader.php:112-121,168-190`), jamais de `numero` ; l'index salles, lui, EXPOSE ce `numero` et l'app le stocke déjà (`Venue.externalRef`, posé par l'assistant `VenuesStep.tsx:276-384`). À faire : re-sonder l'API réelle pour confirmer que ce `numero` existe vraiment côté rencontres (peut-être sous un autre champ) — s'il est présent, la suggestion `suggestedVenueId` de `GET /api/venues/fbi-labels` (E1) pourrait devenir EXACTE au lieu d'unanime-sur-placements |
-| P4-205 | **E2 — l'écran d'appariement des libellés de salle, sur le backend d'E1** | 🟡 | M | Backend livré (E1, 2026-09-14, `GET /api/venues/fbi-labels` + `POST .../external-labels {reassign: true}` — voir [`module-matchs.md`](../courantes/module-matchs.md) § « Gymnase depuis le libellé »), écran restant à construire : la section Configuration « Libellés FFBB des gymnases » (`VenueLabelsSection.tsx`) devient l'écran d'appariement — un tableau libellé → gymnase, un sélecteur, une chip « d'après les rencontres » sur la suggestion, une confirmation nommant les domiciles placés conservés (« N placés conservent leur salle ») à la ré-affectation. Un signal « N libellés non appariés » + un bouton-renvoi « Apparier les salles » dans Importer et au rapport d'import (pas de modale) complètent la boucle. Vécu fondateur à l'origine (2026-09-14) : « Rattacher » n'apparaissant que sur un domicile SANS gymnase, aucun écran ne permet aujourd'hui de corriger un alias mal posé |
 
 ### Blocs de mutualisation imbriqués (mesure P4-182, 2026-09-07)
 

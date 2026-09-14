@@ -6,10 +6,10 @@ import { toast } from "@/shared/stores/toastStore";
 import { listboxTrigger, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
-import type { ImportAnalysisDivision, ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team } from "./api";
+import type { ImportAnalysisDivision, ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team, VenueLabelInventoryRow } from "./api";
 import { ImportFbiDialog } from "./ImportFbiDialog";
 
-const { analyzeFbiFixtures, importFbiFixtures, placeMatches } = vi.hoisted(() => ({
+const { analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInventory } = vi.hoisted(() => ({
   analyzeFbiFixtures: vi.fn(() =>
     Promise.resolve({
       divisions: [
@@ -38,9 +38,11 @@ const { analyzeFbiFixtures, importFbiFixtures, placeMatches } = vi.hoisted(() =>
     } satisfies ImportFbiResult as ImportFbiResult),
   ),
   placeMatches: vi.fn(() => Promise.resolve({ placed: 22, skipped: 0, unplaced: [], diagnostics: [] })),
+  // E2 — inventaire des libellés : vide par défaut (aucune entrée « à apparier »).
+  getVenueLabelInventory: vi.fn((): Promise<VenueLabelInventoryRow[]> => Promise.resolve([])),
 }));
 
-vi.mock("./api", () => ({ analyzeFbiFixtures, importFbiFixtures, placeMatches }));
+vi.mock("./api", () => ({ analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInventory }));
 
 // useCredits lit useMe : `club` mutable pour piloter le solde (bouton de placement
 // de fin d'import — grisé à 0 AVEC le solde, jamais masqué).
@@ -322,6 +324,37 @@ describe("ImportFbiDialog", () => {
     await waitFor(() => expect(screen.getByText(/22 créés/)).toBeInTheDocument());
     // unresolvedDeviations vide (mock par défaut) → aucune file à ouvrir.
     expect(screen.queryByRole("button", { name: "Ouvrir la file" })).not.toBeInTheDocument();
+  });
+
+  it("E2 — après import, des salles à apparier ⇒ renvoi qui FERME la modale (pas de modale sur modale)", async () => {
+    const user = userEvent.setup();
+    // Persistant (pas Once) : l'import invalide l'inventaire → il refetche ; les DEUX
+    // lectures doivent voir le libellé non apparié. Remis à [] en fin de test.
+    getVenueLabelInventory.mockResolvedValue([{ labelKey: "gymnase mateo", displayLabel: "GYMNASE MATEO", venueId: null, suggestedVenueId: null, homeCount: 2, placedCount: 0, unplacedCount: 2 }]);
+    const onClose = vi.fn();
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={onClose} />);
+
+    await pickFile(user);
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Importer" }));
+    await user.click(await screen.findByRole("button", { name: "Importer quand même" }));
+
+    await waitFor(() => expect(screen.getByText(/1 salle à apparier/)).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /Apparier les salles/ }));
+    expect(onClose).toHaveBeenCalled();
+    getVenueLabelInventory.mockResolvedValue([]);
+  });
+
+  it("E2 — tout apparié (inventaire vide) ⇒ rapport sans renvoi « à apparier »", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Importer" }));
+    await user.click(await screen.findByRole("button", { name: "Importer quand même" }));
+    await waitFor(() => expect(screen.getByText(/22 créés/)).toBeInTheDocument());
+    expect(screen.queryByText(/à apparier/)).not.toBeInTheDocument();
   });
 
   // ── Onglets par famille (mesure terrain : 50 divisions, écran illisible) ─────────

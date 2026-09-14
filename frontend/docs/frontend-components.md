@@ -1,6 +1,6 @@
 # FORWARD Components Spec — Pages & Shared Components (hors wizard)
 
-Last verified @ 2026-09-09 (rotation `documentation-update`, zone non touchée par cette PR —
+Last verified @ 2026-09-14 (rotation `documentation-update`, zone non touchée par la PR E2 —
 contrôle de fraîcheur). Re-confronté au code : `SurfaceSkin = "console" | "app"` toujours défini
 dans `shared/lib/surfaceSkin.ts:12` ✓ ; `empty-hint.tsx` porte toujours `EmptyHint` avec
 `variant?: SurfaceSkin` par défaut `"app"` (`empty-hint.tsx:29`) ✓ ; `tabs.tsx` porte toujours la

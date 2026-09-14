@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Fixture, Venue } from "./api";
-import { detachVenueLabel, getFixtures, getVenues } from "./api";
+import type { Fixture, Venue, VenueLabelInventoryRow } from "./api";
+import { attachVenueLabel, detachVenueLabel, getFixtures, getVenueLabelInventory, getVenues } from "./api";
 
 // On n'exerce QUE la coercition de `api.ts` : le voisin `@/shared/api/collection` est le
 // SEUL double. L'API Platform OMET les props nulles/vides du JSON — on prouve que les
@@ -13,8 +13,12 @@ vi.mock("@/shared/api/collection", () => ({ collectionAll, collection: vi.fn() }
 // Le client ky : on capture le CHEMIN du DELETE sans toucher le réseau (patron
 // submitReopenFixture.test.ts). `getFixtures`/`getVenues` passent par `collectionAll`
 // (mocké au-dessus), donc ce double du client ne les gêne pas.
-const { del } = vi.hoisted(() => ({ del: vi.fn<(url: string) => Promise<unknown>>(() => Promise.resolve()) }));
-vi.mock("@/shared/api/client", () => ({ api: { delete: del } }));
+const { del, post, get } = vi.hoisted(() => ({
+  del: vi.fn<(url: string) => Promise<unknown>>(() => Promise.resolve()),
+  post: vi.fn(() => ({ json: () => Promise.resolve({ venueId: "v1", label: "gymnase mateo", attached: 0 }) })),
+  get: vi.fn(() => ({ json: () => Promise.resolve({ labels: [] as VenueLabelInventoryRow[] }) })),
+}));
+vi.mock("@/shared/api/client", () => ({ api: { delete: del, post, get } }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -53,5 +57,34 @@ describe("detachVenueLabel — encodage du libellé dans le chemin (P4-196)", ()
   it("encode l'espace de l'alias normalisé (jamais un chemin cassé)", async () => {
     await detachVenueLabel({ venueId: "v1", label: "gymnase mateo" });
     expect(del).toHaveBeenCalledWith("venues/v1/external-labels/gymnase%20mateo");
+  });
+});
+
+describe("attachVenueLabel — drapeau reassign dans le corps (E2, P4-205)", () => {
+  it("sans reassign ⇒ corps { label } SEUL (aucune clé reassign)", async () => {
+    await attachVenueLabel({ venueId: "v1", label: "GYMNASE MATEO" });
+    expect(post).toHaveBeenCalledWith("venues/v1/external-labels", { json: { label: "GYMNASE MATEO" } });
+  });
+
+  it("reassign: true ⇒ corps { label, reassign: true }", async () => {
+    await attachVenueLabel({ venueId: "v2", label: "GYMNASE MATEO", reassign: true });
+    expect(post).toHaveBeenCalledWith("venues/v2/external-labels", { json: { label: "GYMNASE MATEO", reassign: true } });
+  });
+
+  it("reassign: false ⇒ traité comme absent (corps { label } SEUL — jamais reassign:false)", async () => {
+    await attachVenueLabel({ venueId: "v3", label: "X", reassign: false });
+    expect(post).toHaveBeenCalledWith("venues/v3/external-labels", { json: { label: "X" } });
+  });
+});
+
+describe("getVenueLabelInventory — déballe { labels } (E2, P4-205)", () => {
+  it("rend le tableau labels tel quel (une ligne par libellé normalisé, champs du contrat)", async () => {
+    const rows: VenueLabelInventoryRow[] = [
+      { labelKey: "gymnase mateo", displayLabel: "GYMNASE MATEO", venueId: null, suggestedVenueId: "v9", homeCount: 3, placedCount: 1, unplacedCount: 2 },
+    ];
+    get.mockReturnValueOnce({ json: () => Promise.resolve({ labels: rows }) });
+    const out = await getVenueLabelInventory();
+    expect(get).toHaveBeenCalledWith("venues/fbi-labels");
+    expect(out).toEqual(rows);
   });
 });

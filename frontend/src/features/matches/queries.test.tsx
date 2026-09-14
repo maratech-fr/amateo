@@ -32,6 +32,7 @@ import {
   useUnavailabilityImpact,
   useUpdateSportCategoryDuration,
   useVenueMatchWindows,
+  useVenueLabelInventory,
   useVenues,
   useVenueUnavailabilities,
 } from "./queries";
@@ -77,6 +78,7 @@ vi.mock("./api", () => ({
   deleteVenueMatchWindow: vi.fn().mockResolvedValue(undefined),
   attachVenueLabel: vi.fn().mockResolvedValue({ venueId: "v1", label: "GYMNASE MATEO", attached: 1 }),
   detachVenueLabel: vi.fn().mockResolvedValue(undefined),
+  getVenueLabelInventory: vi.fn().mockResolvedValue([]),
 }));
 
 function makeClient(): QueryClient {
@@ -347,6 +349,51 @@ describe("matches queries — rattacher un libellé de salle (P4-187b)", () => {
     // ET ajoute un externalLabels (venues). Si l'un manquait, il resterait à 1.
     await waitFor(() => expect(matchesApi.getFixtures).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(matchesApi.getVenues).toHaveBeenCalledTimes(2));
+  });
+
+  it("useAttachVenueLabel refetche AUSSI l'inventaire ['venue-label-inventory'] (bandeau + écran d'appariement)", async () => {
+    const client = makeClient();
+    const { result } = renderHook(
+      () => ({ inventory: useVenueLabelInventory(), attach: useAttachVenueLabel() }),
+      { wrapper: wrapperFor(client) },
+    );
+    await waitFor(() => expect(result.current.inventory.isSuccess).toBe(true));
+    expect(matchesApi.getVenueLabelInventory).toHaveBeenCalledTimes(1);
+
+    result.current.attach.mutate({ venueId: "v1", label: "GYMNASE MATEO" });
+
+    await waitFor(() => expect(result.current.attach.isSuccess).toBe(true));
+    await waitFor(() => expect(matchesApi.getVenueLabelInventory).toHaveBeenCalledTimes(2));
+  });
+
+  it("useAttachVenueLabel avec reassign passe le drapeau à l'API et refetche l'inventaire", async () => {
+    const client = makeClient();
+    const { result } = renderHook(
+      () => ({ inventory: useVenueLabelInventory(), attach: useAttachVenueLabel() }),
+      { wrapper: wrapperFor(client) },
+    );
+    await waitFor(() => expect(result.current.inventory.isSuccess).toBe(true));
+
+    result.current.attach.mutate({ venueId: "v2", label: "GYMNASE MATEO", reassign: true });
+
+    await waitFor(() => expect(result.current.attach.isSuccess).toBe(true));
+    expect(matchesApi.attachVenueLabel).toHaveBeenCalledWith({ venueId: "v2", label: "GYMNASE MATEO", reassign: true });
+    await waitFor(() => expect(matchesApi.getVenueLabelInventory).toHaveBeenCalledTimes(2));
+  });
+
+  it("useImportFbiFixtures refetche l'inventaire (des libellés de salle naissent d'un import)", async () => {
+    const client = makeClient();
+    const { result } = renderHook(
+      () => ({ inventory: useVenueLabelInventory(), importFbi: useImportFbiFixtures() }),
+      { wrapper: wrapperFor(client) },
+    );
+    await waitFor(() => expect(result.current.inventory.isSuccess).toBe(true));
+    expect(matchesApi.getVenueLabelInventory).toHaveBeenCalledTimes(1);
+
+    result.current.importFbi.mutate({ file: new File(["x"], "fbi.xlsx"), mappings: [] });
+
+    await waitFor(() => expect(result.current.importFbi.isSuccess).toBe(true));
+    await waitFor(() => expect(matchesApi.getVenueLabelInventory).toHaveBeenCalledTimes(2));
   });
 });
 

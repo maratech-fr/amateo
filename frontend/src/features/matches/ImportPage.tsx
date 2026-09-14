@@ -17,6 +17,7 @@ import { STALE_DAYS, depositDaysAgo, relativeDepositLabel } from "./lib/fbiFresh
 import { useApplyFfbbRencontres, useFfbbRencontres, useFixtures, useLatestFbiIngestion, usePriorityTiers, useTeams, useVenues } from "./queries";
 import { ReviewQueue } from "./ReviewQueue";
 import { useMatchesStore } from "./store";
+import { UnpairedVenueLabelsBanner } from "./UnpairedVenueLabelsBanner";
 
 /**
  * PR-3b — l'espace « Importer » : d'un côté les ENTRÉES de données de match
@@ -117,6 +118,11 @@ export function ImportPage() {
             <Clock className="size-4 shrink-0" aria-hidden="true" />
             {null === latest || null === freshDays ? "Aucun dépôt FBI cette saison." : `Dernier dépôt FBI : ${relativeDepositLabel(freshDays)}.`}
           </p>
+          {/* E2 — le signal des libellés de salle non appariés (des domiciles n'apparaissent
+              pas sur la grille) + renvoi vers l'écran d'appariement. Muet si tout est apparié. */}
+          <div className="mt-3">
+            <UnpairedVenueLabelsBanner />
+          </div>
         </CardContent>
       </Card>
 

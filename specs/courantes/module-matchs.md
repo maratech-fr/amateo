@@ -1,15 +1,17 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-14 (E1 « ré-affectation d'un libellé de salle FBI/FFBB », backend seul,
-`documentation-update`). § « Gymnase depuis le libellé » confrontée au code :
+Last verified @ 2026-09-14 (E2 « l'écran d'appariement des libellés de salle », frontend sur le
+backend d'E1, `documentation-update`). § « Gymnase depuis le libellé » confrontée au code :
 `GET /api/venues/fbi-labels` (`VenueExternalLabelController::inventory`, `priority: 10`) sert
 `App\Service\Basketball\VenueLabelInventory::forSeason` (regroupement par clé normalisée,
 suggestion unanime, compteurs) ; `POST /api/venues/{id}/external-labels` avec `reassign: true`
 retire l'alias de son ancien porteur, re-pointe les domiciles UNPLACED du même libellé quel que
 soit leur gymnase, épargne PLACED/SUBMITTED/VALIDATED (`reassignHomeFixtures`) ; le DELETE et le
-POST sans drapeau restent byte-identiques à avant E1. Reste du fichier (§ « Détection », §
-reconciliation coupes P4-194/195, § Appariement FFBB) non re-sondé cette passe — voir
-`git log -p --follow` pour sa dernière vérification.
+POST sans drapeau restent byte-identiques à avant E1. `VenueLabelsSection.tsx` (E2) consomme
+désormais cet inventaire — table, `VenueSelect`, Confirmer/Réaffecter/Retirer — et
+`UnpairedVenueLabelsBanner.tsx` (nouveau) porte le signal partagé, vérifiés contre le code de
+cette PR. Reste du fichier (§ « Détection », § reconciliation coupes P4-194/195, § Appariement
+FFBB) non re-sondé cette passe — voir `git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -415,7 +417,7 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   `EffectiveScheduleResolver` (pur) + `TrainingCalendarContext` (chargement scopé), consommés par le
   radar ET l'impact — deux copies auraient divergé.
 
-## Gymnase depuis le libellé — alias de salle FBI/FFBB (P4-187, backend P4-187a + écran P4-187b, LIVRÉ EN ENTIER, 2026-09-09 ; écran de retrait P4-196, 2026-09-11 ; ré-affectation backend E1, 2026-09-14)
+## Gymnase depuis le libellé — alias de salle FBI/FFBB (P4-187, backend P4-187a + écran P4-187b, LIVRÉ EN ENTIER, 2026-09-09 ; écran de retrait P4-196, 2026-09-11 ; ré-affectation backend E1 + écran d'appariement E2, LIVRÉ EN ENTIER, 2026-09-14)
 
 > Mesuré 2026-09-08 sur le canal API (`POST /api/ffbb/rencontres/apply`, roadmap P4-187) : un
 > domicile importé porte un libellé de salle fédéral (`Fixture.fbiVenueLabel`) mais aucun
@@ -423,12 +425,15 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
 > (`VENUE_UNAVAILABLE`). P4-187a a livré le backend seul (résolution automatique + routes) ;
 > **P4-187b** livre le geste « Rattacher » dans l'écran Importer (ci-dessous, § Écran).
 >
-> **E1 (2026-09-14)** : vécu fondateur — un libellé FBI rattaché au MAUVAIS gymnase (« Rattacher »
+> **E1 + E2 (2026-09-14)** : vécu fondateur — un libellé FBI rattaché au MAUVAIS gymnase (« Rattacher »
 > n'apparaissant que sur un domicile SANS gymnase, il ne corrigeait rien) a fait dormir 83
 > domiciles sur la mauvaise salle, et retirer l'alias ne les dépointait pas (par conception, voir
-> § « Routes » ci-dessous). E1 livre le BACKEND d'une ré-affectation en un geste (inventaire agrégé +
-> `reassign: true`, ci-dessous) ; l'écran qui l'expose reste à construire (E2, non livré à cette
-> date — voir la ligne roadmap correspondante).
+> § « Routes » ci-dessous) ; pire, « une ligne d'import sans gymnase n'apparaît nulle part en
+> Consultation, aucun moyen de savoir qu'il y a une action à faire ». E1 livre le BACKEND d'une
+> ré-affectation en un geste (inventaire agrégé + `reassign: true`, ci-dessous) ; **E2 livre
+> l'écran qui l'expose** — l'ancienne section « Libellés FFBB des gymnases » de
+> `/matchs/configuration` (§ « Écran », ci-dessous) devient l'écran d'appariement, et un signal
+> partagé (« N libellés non appariés ») renvoie vers lui depuis Importer, Semaine et Consulter.
 
 - **`Venue.externalLabels`** (`backend/src/Entity/Venue.php:74`, JSON `default '[]'`, liste
   NORMALISÉE et dédupliquée — `setExternalLabels`/`addExternalLabel`/`removeExternalLabel`
@@ -473,7 +478,7 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
     `venueId` (l'alias CONFIRMÉ, null sinon), `suggestedVenueId` (le gymnase **unanime** des
     domiciles du libellé qui en portent un — null si divergence ≥ 2 candidats, ou s'il égale déjà
     `venueId` : jamais un pari, jamais une redite), `homeCount`/`placedCount`/`unplacedCount`, trié
-    par `displayLabel`. Alimente l'écran d'appariement à venir (E2, ci-dessous).
+    par `displayLabel`. Alimente l'écran d'appariement (E2, § « Écran » ci-dessous).
   - `POST /api/venues/{id}/external-labels` (management SEC-07 + saison écrivable → 409 archivée +
     tenant → 404) `{label}` → `{venueId, label, attached}`. Ajoute l'alias (normalisé, idempotent)
     PUIS backfille les domiciles du club encore SANS salle dont le libellé égale l'alias
@@ -538,29 +543,56 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   QUE `NEW`/`OUT_OF_SYNC`.
 - **Consulter** (`MatchRowsTable.tsx`) recale son libellé pour renvoyer vers le geste : un domicile
   sans gymnase s'affiche « `<libellé>` · à rattacher dans Importer » (était « non rattaché »).
-- **Écran de retrait d'alias (P4-196, `/matchs/configuration`)** : 7ᵉ `AccordionSection`,
-  **« Libellés FFBB des gymnases »** (dernière position, repliée comme les autres, ancrée
-  `?section=libelles`). `VenueLabelsSection.tsx` liste un gymnase par ligne — ceux qui portent
-  ≥ 1 alias — avec ses alias en pastilles affichées VERBATIM (la forme normalisée stockée ; une
-  phrase d'aide explique la normalisation minuscules/sans accents) et un bouton **Retirer** par
-  pastille ; l'état vide renvoie vers le geste **Rattacher** de l'onglet Importer. Le retrait
-  passe par un `ConfirmDialog` (« Les matchs déjà rattachés gardent ce gymnase ; seuls les
-  prochains imports ne le seront plus. ») puis `DELETE /api/venues/{id}/external-labels/{label}`
-  (`detachVenueLabel`, libellé encodé — il contient des espaces). Résumé d'en-tête `labelsSummary`
-  (`lib/configSummaries.ts`) compte les GYMNASES à ≥ 1 alias, jamais les alias : « N gymnase(s)
-  nommé(s) par la FFBB » / « aucun libellé rattaché » / muet en chargement. `useDetachVenueLabel`
-  invalide `["venues"]` **et** `["fixtures"]` en `onSettled` (décision fondateur : le
-  `suggestedVenueId` d'Importer est DÉRIVÉ des alias à la lecture — sans la seconde invalidation,
-  Importer pourrait re-proposer le gymnase dont l'alias vient d'être retiré). ⚠ **Nuancé par E1
-  côté backend (2026-09-14, ci-dessus)** : au moment de la livraison de cet écran (P4-196), corriger
-  un mauvais rattachement était **deux gestes SANS filet** (retirer ici, puis Rattacher depuis
-  Importer) et les rencontres déjà mal rattachées AVANT le retrait se corrigeaient une par une, à la
-  main — c'est exactement le vécu fondateur qui a motivé E1 (83 domiciles sur le mauvais gymnase).
-  Le BACKEND d'une correction en un geste existe désormais (`reassign: true`, § « Routes »
-  ci-dessus), mais **cet écran (`VenueLabelsSection.tsx`) ne l'appelle pas encore** — il ne pose
-  que `DELETE`. L'écran d'appariement qui l'exposera est **E2, à venir** (ligne roadmap). Pas de
-  couverture e2e (geste rare) : l'API est couverte côté backend par `VenueExternalLabelApiTest` et
-  la feature Behat des alias.
+- **Écran d'appariement (E2/P4-205, `/matchs/configuration`, 2026-09-14 — remplace l'écran de
+  retrait P4-196)** : même 7ᵉ `AccordionSection`, **« Libellés FFBB des gymnases »** (dernière
+  position, repliée comme les autres, ancrée `?section=libelles`), mais `VenueLabelsSection.tsx`
+  est réécrit : **une ligne par LIBELLÉ** de l'inventaire (`useVenueLabelInventory`), plus une ligne
+  par gymnase — `Table` partagée, colonnes libellé (`displayLabel`) / compteurs domiciles·placés·
+  non placés / gymnase / action. La colonne gymnase est un `VenueSelect` dont la valeur EFFECTIVE
+  (`effectiveValue`) est le gymnase confirmé (`row.venueId`) sinon la sélection utilisateur en
+  attente sinon la SUGGESTION (`row.suggestedVenueId`) pré-sélectionnée avec une `StatusPill`
+  neutre « d'après les rencontres » (retirée dès que l'utilisateur change la sélection ou qu'une
+  écriture réussit), sinon placeholder « Non apparié ». Trois gestes :
+  - **Confirmer** (pas d'alias encore, ou suggestion acceptée telle quelle) : `POST
+    /api/venues/{id}/external-labels {label}` SANS `reassign` — geste additif sûr, aucune
+    confirmation (le backfill des non placés n'écrase jamais un placement).
+  - **Réaffecter** (un alias existe déjà et l'utilisateur choisit un AUTRE gymnase) : `ConfirmDialog`
+    nommant « M non placé(s) basculeront vers X ; N placé(s) conservent leur salle » puis `POST
+    …/external-labels {label, reassign: true}` — la correction en un geste que E1 a préparée côté
+    backend (§ « Routes » ci-dessus) et que cet écran expose enfin.
+  - **Retirer** (ghost, sur les lignes à alias confirmé) : `ConfirmDialog` inchangé (« Les matchs
+    déjà rattachés gardent ce gymnase ; seuls les prochains imports ne le seront plus. ») puis
+    `DELETE /api/venues/{id}/external-labels/{label}`.
+
+  État vide : « Aucun libellé de salle importé pour l'instant. Ils arrivent avec un import FBI ou
+  le canal API FFBB. » Résumé d'en-tête `labelsSummary` (`lib/configSummaries.ts`) compte les
+  LIBELLÉS de l'inventaire, plus les gymnases : « N libellé(s) · N non apparié(s) » (un libellé
+  sans `venueId`) / « aucun libellé importé » / muet en chargement ou échec. `useAttachVenueLabel`/
+  `useDetachVenueLabel`/`useImportFbiFixtures` invalident tous `["venue-label-inventory"]` (clé
+  dédiée, `queries.ts`) en plus de `["venues"]`/`["fixtures"]` — l'écran, le signal partagé et le
+  résumé de section retombent sur le même cache frais (`staleTime: 30_000`).
+- **Le signal partagé (`UnpairedVenueLabelsBanner.tsx`, nouveau, E2 décision 3)** : l'appariement a
+  **une seule maison**, cette section ; tout autre écran y **renvoie** par un bouton, jamais une
+  modale sur une modale. `PAIR_VENUES_PATH`/`PAIR_VENUES_LABEL` (« Apparier les salles ») sont
+  déclarés une fois, consommés par les trois points d'entrée ci-dessous.
+  - `UnpairedVenueLabelsBanner` — « N libellé(s) de salle non apparié(s) — M domiciles n'apparaissent
+    pas sur la grille » (`role="status"`, ton warning, jamais rouge), rendu NUL tant que l'inventaire
+    n'est pas connu ou qu'il n'y a rien à faire (jamais un faux calme). Placé au-dessus de la grille
+    sur la vue Semaine de `/matchs` et de `/matchs/consulter`, et sur la carte « Données de match »
+    de `/matchs/importer`.
+  - `HiddenHomesWeekNotice` — l'écho discret SOUS la grille des mêmes deux vues Semaine, ton neutre :
+    « N domicile(s) de ce week-end sans gymnase, non affiché(s) » (`count` dérivé par l'appelant du
+    cache `useFixtures` — un domicile HOME sans `venueId` n'apparaît jamais sur la grille datée,
+    `lib/weekendGrid.ts` `isPlacedOnGrid`, § « Le solveur de placement » ci-dessous) — jamais un
+    silence pris pour de la santé.
+  - Rapport d'import (`ImportFbiDialog`, décision 4) : après un import qui laisse des libellés sans
+    gymnase, « N salle(s) à apparier » + le même bouton, qui **ferme le dialogue** avant de naviguer
+    (patron « Ouvrir la file », pas de modale sur modale).
+  - Pas de couverture e2e (geste rare) : l'API est couverte côté backend par
+    `VenueExternalLabelApiTest` et la feature Behat des alias ; couverture vitest côté écran :
+    `VenueLabelsSection.test.tsx`, `UnpairedVenueLabelsBanner.test.tsx`, `ConfigurationPage.test.tsx`,
+    `ImportPage.test.tsx`, `ImportFbiDialog.test.tsx`, `MatchesPage.test.tsx`, `ConsultPage.test.tsx`,
+    `api.test.ts`, `queries.test.tsx`, `lib/configSummaries.test.ts`.
 - **Pas de couverture e2e** : `POST /api/fixtures` (endpoint de création directe) n'accepte pas
   `fbiVenueLabel` (`backend/src/Dto/FixtureInput.php`) — le scénario ne se rejoue pas par cette
   voie. Couverture vitest : `ReviewQueueRow.test.tsx`, `ImportPage.test.tsx`,
@@ -1307,6 +1339,9 @@ Importer · Configuration** ; l'onglet Importer a livré sa page en PR-3b, déta
   `countByFamily` → `applyFamilyFilter`, pass-through des mêmes références quand tout est coché.
 - **Grille + extérieurs en lecture** (`WeekendGrid`, `AwayList` sans ses actions), radar nourri des conflits filtrés ;
   clic sur un match → Placer sur son week-end. Navigateur ‹ › et `resolveActiveWeekend` comme Semaine.
+  **Depuis E2 (2026-09-14)**, sur la vue Semaine : `UnpairedVenueLabelsBanner` au-dessus de la
+  grille, `HiddenHomesWeekNotice` sous `AwayList` — détail § « Gymnase depuis le libellé » plus
+  haut.
 - **URL** : `type=amical,championnat,coupe,brassage`, `conflits=<familles>`, `type_semaine=0|1` (absent = défaut).
 - **Temporalités Semaine · Mois · Phase** (PR-2b, 2026-09-08 — contrôle segmenté à côté du navigateur, Semaine par
   défaut et byte-identique) :
@@ -1812,7 +1847,10 @@ future.
     canal API (`checkViaApi` dans `ImportPage`) route en trois issues : des rencontres créables →
     la vue de réconciliation ; pas de créable mais des écarts → `apply` direct (toast « N écart(s)
     consigné(s) dans la file ») ; rien → toast « Tout est en phase avec ce que la FFBB publie »
-    (aucun `apply`).
+    (aucun `apply`). **Depuis E2 (2026-09-14)** : un import qui laisse des libellés de salle sans
+    gymnase ajoute « N salle(s) à apparier » + un bouton qui ferme le dialogue puis renvoie vers
+    l'écran d'appariement ; `ImportPage` porte en outre le signal `UnpairedVenueLabelsBanner`
+    au-dessus de la carte « Données de match » — détail § « Gymnase depuis le libellé » ci-dessus.
   - **Configuration allégée — P4-186 SOLDÉ.** Le dépôt FBI, le canal API et les Engagements FFBB
     ont quitté `ConfigurationPage.tsx` pour l'onglet Importer (décision fondateur 2026-09-07 : « du
     RUN, pas de la configuration ») ; `ConfigurationPage` ne porte plus que des réglages de saison

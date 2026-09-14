@@ -1,6 +1,6 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-09-09 (rotation `documentation-update`, hors sujet de la PR — P4-185).
+Last verified @ 2026-09-14 (rotation `documentation-update`, hors sujet de la PR E2).
 Re-confronté à `frontend/package.json` : `vitest`/`@vitest/coverage-v8` `^4.1.11`,
 `@testing-library/react` `^16.3.0`, `@testing-library/jest-dom` `^7.0.1`, `jsdom` `^30.0.1`,
 `msw` `^2.15.0`, `@playwright/test` `^1.62.1`, `vitest-axe` `^0.1.0`, `@axe-core/playwright`

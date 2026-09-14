@@ -1,4 +1,4 @@
-import type { Competition, MatchSlotRotation, OpponentTravel, SportCategoryDuration, Venue } from "../api";
+import type { Competition, MatchSlotRotation, OpponentTravel, SportCategoryDuration, VenueLabelInventoryRow } from "../api";
 
 /**
  * P4-185 — les résumés d'en-tête des sections de `/matchs/configuration` (accordéon
@@ -60,17 +60,20 @@ export function opponentsSummary(travel?: OpponentTravel[]): string | null {
 }
 
 /**
- * P4-196 — combien de GYMNASES portent au moins un libellé FBI/FFBB confirmé
- * (jamais le nombre d'alias : un gymnase à 3 libellés compte pour un). `undefined`
- * (chargement) ⇒ `null` ⇒ en-tête muet ; aucun ⇒ « aucun libellé rattaché ».
+ * E2 (P4-205) — le résumé d'en-tête de l'écran d'appariement, tiré de l'INVENTAIRE
+ * des libellés de salle FBI/FFBB (`GET /api/venues/fbi-labels`) : « N libellés · N non
+ * appariés » (un libellé sans `venueId`). `undefined` (chargement/échec) ⇒ `null` ⇒
+ * en-tête muet — jamais un « 0 non apparié » fabriqué. Aucun libellé ⇒ « aucun libellé
+ * importé ».
  */
-export function labelsSummary(venues?: Venue[]): string | null {
-  if (undefined === venues) {
+export function labelsSummary(inventory?: VenueLabelInventoryRow[]): string | null {
+  if (undefined === inventory) {
     return null;
   }
-  const n = venues.filter((v) => v.externalLabels.length > 0).length;
+  const n = inventory.length;
   if (0 === n) {
-    return "aucun libellé rattaché";
+    return "aucun libellé importé";
   }
-  return `${n} gymnase${n > 1 ? "s" : ""} nommé${n > 1 ? "s" : ""} par la FFBB`;
+  const unpaired = inventory.filter((row) => null === row.venueId).length;
+  return `${n} libellé${n > 1 ? "s" : ""} · ${unpaired} non apparié${unpaired > 1 ? "s" : ""}`;
 }

@@ -1,9 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import type { Competition, MatchSlotRotation, OpponentTravel, SportCategoryDuration, Venue } from "../api";
+import type { Competition, MatchSlotRotation, OpponentTravel, SportCategoryDuration, VenueLabelInventoryRow } from "../api";
 import { deadlinesSummary, durationsSummary, labelsSummary, opponentsSummary, rotationsSummary } from "./configSummaries";
 
-const venue = (over: Partial<Venue> = {}): Venue => ({ id: "v1", name: "Gymnase Alpha", color: null, externalLabels: [], ...over });
+const invRow = (over: Partial<VenueLabelInventoryRow> = {}): VenueLabelInventoryRow => ({
+  labelKey: "gymnase mateo",
+  displayLabel: "GYMNASE MATEO",
+  venueId: null,
+  suggestedVenueId: null,
+  homeCount: 0,
+  placedCount: 0,
+  unplacedCount: 0,
+  ...over,
+});
 
 const rotation = (id: string): MatchSlotRotation => ({ id, venueId: "v1", dayOfWeek: 6, kickoffTime: "20:30", teamIds: ["t1", "t2"] });
 
@@ -108,20 +117,30 @@ describe("opponentsSummary", () => {
   });
 });
 
-describe("labelsSummary (P4-196)", () => {
-  it("undefined (chargement/échec) ⇒ null — en-tête muet, jamais un « 0 » fabriqué", () => {
+describe("labelsSummary (E2, P4-205)", () => {
+  it("undefined (chargement/échec) ⇒ null — en-tête muet, jamais un « 0 non apparié » fabriqué", () => {
     expect(labelsSummary(undefined)).toBeNull();
   });
 
-  it("aucun gymnase à alias ⇒ « aucun libellé rattaché »", () => {
-    expect(labelsSummary([venue(), venue({ id: "v2" })])).toBe("aucun libellé rattaché");
+  it("inventaire vide ⇒ « aucun libellé importé »", () => {
+    expect(labelsSummary([])).toBe("aucun libellé importé");
   });
 
-  it("compte les GYMNASES à alias, jamais les alias : 1 gymnase / 3 alias ⇒ « 1 gymnase nommé par la FFBB »", () => {
-    expect(labelsSummary([venue({ externalLabels: ["gymnase mateo", "salle mateo", "mateo"] }), venue({ id: "v2" })])).toBe("1 gymnase nommé par la FFBB");
+  it("compte les libellés ET les non appariés (venueId null) : 3 libellés, 2 sans gymnase", () => {
+    expect(
+      labelsSummary([
+        invRow({ labelKey: "a", venueId: "v1" }),
+        invRow({ labelKey: "b", venueId: null }),
+        invRow({ labelKey: "c", venueId: null }),
+      ]),
+    ).toBe("3 libellés · 2 non appariés");
   });
 
-  it("plusieurs gymnases à alias ⇒ pluriel", () => {
-    expect(labelsSummary([venue({ externalLabels: ["gymnase a"] }), venue({ id: "v2", externalLabels: ["gymnase b", "salle b"] }), venue({ id: "v3" })])).toBe("2 gymnases nommés par la FFBB");
+  it("un seul libellé, un seul non apparié ⇒ singulier des deux côtés", () => {
+    expect(labelsSummary([invRow({ labelKey: "a", venueId: null })])).toBe("1 libellé · 1 non apparié");
+  });
+
+  it("tous appariés ⇒ « N libellés · 0 non apparié »", () => {
+    expect(labelsSummary([invRow({ labelKey: "a", venueId: "v1" }), invRow({ labelKey: "b", venueId: "v2" })])).toBe("2 libellés · 0 non apparié");
   });
 });

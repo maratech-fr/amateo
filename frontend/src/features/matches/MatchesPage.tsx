@@ -30,6 +30,7 @@ import { ModuleVisitBanner } from "./ModuleVisitBanner";
 import { placementToastMessage } from "./lib/placementToast";
 import { buildWeekendGrid, isPlacedOnGrid, listWeekends, matchMinutesByCategory, resolveActiveWeekend, weekendKeyOf, weekLabel } from "./lib/weekendGrid";
 import { PlacementPanel } from "./PlacementPanel";
+import { HiddenHomesWeekNotice, UnpairedVenueLabelsBanner } from "./UnpairedVenueLabelsBanner";
 import { useCategories, useCoaches, useCompetitions, useConflicts, useDeleteFixture, useFixtures, useLatestFbiIngestion, useLeagueWindows, useLockFixture, useMatchSlotRotations, useModuleVisit, useMoveFixture, useOpponentTravel, usePlaceFixture, usePlaceMatches, usePriorityTiers, useReopenFixture, useSportCategoryDurations, useSubmitFixture, useSwapFixtures, useTeamMatchHabits, useTeams, useUnlockFixture, useUnplaceFixture, useVenueMatchWindows, useVenues, useVenueUnavailabilities } from "./queries";
 import { toast } from "@/shared/stores/toastStore";
 import { useCredits } from "@/shared/credits/useCredits";
@@ -391,9 +392,20 @@ export function MatchesPage() {
       </p>
     ) : null;
 
+  // E2 — domiciles de la semaine affichée cachés de la grille faute de gymnase (HOME,
+  // `venueId` null) : dérivé du cache déjà chargé, présentation pure (même régime que
+  // `unattachedCount`). Nourrit le compteur discret sous la grille.
+  const hiddenHomesThisWeek = weekendFixtures.filter((f) => "HOME" === f.homeAway && null === f.venueId).length;
+
   const gridBlock = (
-    <div className="h-[32rem]">
-      <WeekendGrid model={grid} onSelectFixture={onGridSelect} selectedFixtureId={swapSourceId ?? selectedFixtureId} swapCandidateIds={swapCandidateIds} />
+    <div className="flex flex-col gap-2">
+      {/* E2 — le signal partagé, au-dessus de la grille (warning, role=status). */}
+      <UnpairedVenueLabelsBanner />
+      <div className="h-[32rem]">
+        <WeekendGrid model={grid} onSelectFixture={onGridSelect} selectedFixtureId={swapSourceId ?? selectedFixtureId} swapCandidateIds={swapCandidateIds} />
+      </div>
+      {/* E2 — l'écho discret sous la grille : jamais un faux calme. */}
+      <HiddenHomesWeekNotice count={hiddenHomesThisWeek} />
     </div>
   );
 
