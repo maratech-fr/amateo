@@ -162,7 +162,10 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   // Scopé au dialogue « Nouveau match » : depuis PR-1, la barre de filtres porte aussi une
   // puce « Équipes : … » qui matcherait /^Équipe/ hors de ce contexte.
   await page.getByRole("dialog").getByRole("button", { name: /^Équipe/ }).click();
-  await page.getByRole("option").first().click();
+  // Scoper AU listbox : depuis PR #897 son panneau est porté sous <body> (position: fixed), APRÈS
+  // les <select> natifs du dialogue — `page.getByRole("option")` ramasserait sinon une <option>
+  // native invisible (waiting for element to be visible → timeout).
+  await page.getByRole("listbox").getByRole("option").first().click();
   await page.getByLabel("Date").fill("2027-03-06"); // a Saturday
   await page.getByLabel("Adversaire").fill(opponent);
   await page.getByRole("button", { name: "Créer" }).click();
@@ -185,7 +188,9 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   // Le picker de gymnase est le Listbox partagé (P4-164 PR-2) : ouvrir, sauter le placeholder
   // « Gymnase… » (option 0), choisir le premier gymnase réel (option 1).
   await page.locator('button[aria-haspopup="listbox"]').first().click();
-  await page.getByRole("option").nth(1).click();
+  // Scopé AU listbox (même piège que ci-dessus : panneau porté sous <body>). L'option 0 est le
+  // placeholder « Gymnase… » (une vraie option du listbox, value ""), donc .nth(1) = 1er gymnase réel.
+  await page.getByRole("listbox").getByRole("option").nth(1).click();
   await page.getByLabel("Heure de coup d'envoi").fill("15:00");
   // exact: the page also carries the "Placer automatiquement" solver button (PR D).
   const place = page.getByRole("button", { name: "Placer", exact: true });
