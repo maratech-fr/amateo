@@ -1,9 +1,9 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-12 (rotation, `documentation-update`). Confronté au code, tout juste :
+Last verified @ 2026-09-15 (rotation, `documentation-update`). Confronté au code, tout juste :
 `SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"` et `LEVEL_2_OBJECTIVE_WEIGHTS`
 (S=10000/A=1000/B=100…) dans `objective/weights.py` ; `SOCLE_REFERENCE_TIER_WEIGHTS`
-(S=20/A=18/B=16/C=14/D=12, même fichier) ; `add_max_consecutive_days_constraints` dans
+(S=20/A=18/B=16/C=14/D=12, même fichier) ; `add_max_consecutive_days_constraints` toujours à
 `constraints/wellness.py:494`.
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.

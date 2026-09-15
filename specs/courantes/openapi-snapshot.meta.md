@@ -1,13 +1,18 @@
-Last verified @ 2026-09-15 (PR-1 « adversaire multi-gymnases » côté backend, régénéré par le coder après
-`cache:clear` + `api:openapi:export`). **198 paths**
-(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : que des champs ADDITIFS — le
-trajet adverse passe au grain ÉQUIPE (`opponentTeamKey`/`scope`, + `city`/`postalCode` sur la vue liste ;
-`opponentTeamKey`/`scope` sur les corps `manual`/`auto`) et le schéma `Fixture` gagne `opponentOrganismeCode`
-+ `opponentTeamKey`.
-· SHA-256 `b08a6613f99e3305e9ba1da2d5778f3f2ce17a2e2a88fdad9e338aae944f0b6e`
+Last verified @ 2026-09-15 (PR-2 « adversaire multi-gymnases » côté backend, régénéré par le coder après
+`cache:clear` + `api:openapi:export`). **199 paths**
+(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** : le nouvel endpoint des
+suggestions partagées de gymnases par club adverse.
+· SHA-256 `35d5157b24805ed1a47036db55c2a9315b9f40d948a37f0799957b16c67e0daa`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **PR-2 « adversaire multi-gymnases », backend (2026-09-15)** : **+1 path** — les SUGGESTIONS partagées de
+  gymnases par club adverse. `GET /api/opponents/{code}/venue-suggestions` (management, A6) rend les gymnases
+  connus d'un adversaire — vus dans le calendrier fédéral (`FFBB_API`) ou choisis par des clubs (`MANUAL`) —
+  avec un `chosenByCount` (« un compte, jamais un qui »), FFBB_API d'abord puis MANUAL par compte décroissant ;
+  422 si le code n'est pas un adversaire AWAY de la saison. 198 → **199 paths**. Backend PUR, contrat
+  backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun appel moteur, aucun payload solveur ne lit le
+  partagé).
 - **PR-1 « adversaire multi-gymnases », backend (2026-09-15)** : **+0 path** — le trajet adverse gagne le
   grain ÉQUIPE. `GET /api/opponents/travel` : une entrée par (code, équipe) au lieu d'une par code, avec les
   champs additifs `opponentTeamKey`, `scope` (`TEAM`|`CLUB`|null), `city`, `postalCode`. Les corps
@@ -55,15 +60,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   `pendingDeviations` (liste des écarts source⇄app ouverts) et `ffbbRencontreId`. 192 → **194 paths**. Backend
   PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.20, aucun appel moteur). La trace des écarts
   a MIGRÉ du dépôt (`fbi_ingestion.pending_deviations` supprimée) vers la rencontre (D7).
-- **P4-174 D3 v2 — l'aperçu de re-datage d'une indisponibilité découpée (2026-09-05)** : **+1 path** —
-  nouvelle route de LECTURE `POST /api/calendar_entries/{id}/redate-preview` (`RedatePreviewController`,
-  management, aucune écriture) qui rend les EFFETS d'un re-datage de mère découpée (keep/shift/absorb/
-  vanish/birth/holiday_takes_over, chaque ligne avec son `label` français, dates en clair, aucun
-  identifiant interne) + un `token` d'état. Le PUT `CalendarEntry` gagne `previewToken` (corps write) :
-  une mère découpée sans jeton → 422 « demandez l'aperçu », jeton périmé → 409. Le schéma read
-  `CalendarEntry` gagne `redateNeedsPreview` (booléen, exclusif de `redatable`) sur les 3 variantes read.
-  Foyer unique `SplitMotherRedatePlanner` (aperçu ET apply). 191 → **192 paths**. Backend PUR, contrat
-  backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.20, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

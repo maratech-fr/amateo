@@ -1,11 +1,12 @@
 # Accueil « cockpit temporel » — mise au clair (préliminaire calendriers secondaires)
 
-Last verified @ 2026-09-12 (rotation, `documentation-update`). Confronté au code, tout juste :
-`PeriodStructure.tsx:518` porte toujours `sub` sur `VenueSelect` ; `SCHOOL_HOLIDAY_HORIZON_DAYS = 30`
-(`frontend/src/features/cockpit/RadarPanel.tsx:50`) ; `App\Service\ClosureSegmentation` et
+Last verified @ 2026-09-15 (rotation, `documentation-update`). Confronté au code, tout juste :
+`PeriodStructure.tsx:518` (`frontend/src/features/wizard/steps/`) porte toujours `sub` sur
+`VenueSelect` ; `SCHOOL_HOLIDAY_HORIZON_DAYS = 30` toujours à
+`frontend/src/features/cockpit/RadarPanel.tsx:50` ; `App\Service\ClosureSegmentation` et
 `App\Service\CalendarEntryRedatability` existent bien (`backend/src/Service/`) ; la route
-`POST /api/calendar_entries/{id}/redate-preview` existe (`RedatePreviewController.php:48`). Reste
-du fichier non re-vérifié cette passe — historique : `git log -p --follow` ce fichier.
+`POST /api/calendar_entries/{id}/redate-preview` existe toujours (`RedatePreviewController.php:48`).
+Reste du fichier non re-vérifié cette passe — historique : `git log -p --follow` ce fichier.
 
 > **Statut** : **approche arrêtée** (décisions tranchées §9) — **livrée** ; cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2.
 > **Pas un plan** — pas de tâches, pas d'effort chiffré ; l'exécution se planifiera palier par palier (§8).

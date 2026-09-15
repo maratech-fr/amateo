@@ -14,6 +14,7 @@ use App\Tests\Behat\HolidayWeekContext;
 use App\Tests\Behat\LockContext;
 use App\Tests\Behat\MatchPlacementContext;
 use App\Tests\Behat\OnboardingContext;
+use App\Tests\Behat\OpponentSuggestionContext;
 use App\Tests\Behat\PeriodOverlayContext;
 use App\Tests\Behat\RepriseWeekContext;
 use App\Tests\Behat\SeasonGenerationContext;
@@ -137,5 +138,10 @@ return (new Config)
                 new Suite('conflits-resolution')
                     ->withPaths('%paths.base%/features/un-conflit-traite-reste-visible-mais-decompte.feature')
                     ->withContexts(ConflictResolutionContext::class),
+            )
+            ->withSuite(
+                new Suite('suggestions-gymnases')
+                    ->withPaths('%paths.base%/features/les-gymnases-d-un-adversaire-se-partagent-en-suggestions.feature')
+                    ->withContexts(OpponentSuggestionContext::class),
             ),
     );

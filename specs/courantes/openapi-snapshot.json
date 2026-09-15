@@ -9408,6 +9408,120 @@
                 "summary": "Recompute the AUTO travel times of the season's away opponents (management only)"
             }
         },
+        "/api/opponents/{code}/venue-suggestions": {
+            "get": {
+                "operationId": "listOpponentVenueSuggestions",
+                "tags": [
+                    "Fixture"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The community-shared venue suggestions for one away opponent: the gyms known for it \u2014 seen in the federal calendar (FFBB_API) or picked by clubs (MANUAL, its label re-resolved federally, never client text) \u2014 each with a COUNT of choices, NEVER by whom. FFBB_API first, then MANUAL by descending count.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": {
+                                            "type": "string",
+                                            "description": "The opponent FFBB organisme code"
+                                        },
+                                        "suggestions": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "externalRef": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ],
+                                                        "description": "The FFBB salle number for a MANUAL suggestion; null for an FFBB_API one (the rencontre hit carries no salle number)"
+                                                    },
+                                                    "label": {
+                                                        "type": "string",
+                                                        "description": "The gym label (federal \u2014 never club free-text)"
+                                                    },
+                                                    "city": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ]
+                                                    },
+                                                    "postalCode": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ]
+                                                    },
+                                                    "latitude": {
+                                                        "type": [
+                                                            "number",
+                                                            "null"
+                                                        ],
+                                                        "format": "float"
+                                                    },
+                                                    "longitude": {
+                                                        "type": [
+                                                            "number",
+                                                            "null"
+                                                        ],
+                                                        "format": "float"
+                                                    },
+                                                    "source": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "FFBB_API",
+                                                            "MANUAL"
+                                                        ]
+                                                    },
+                                                    "chosenByCount": {
+                                                        "type": "integer",
+                                                        "description": "How many times this gym was chosen (per club/season/team) \u2014 never by whom"
+                                                    },
+                                                    "lastChosenAt": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ],
+                                                        "format": "date",
+                                                        "description": "Day only (no time \u2014 no temporal side-channel)"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No club or season in context"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "422": {
+                        "description": "The code is not an away opponent of the current season"
+                    }
+                },
+                "summary": "The community-shared venue suggestions for an away opponent (management only; a count, never a who)",
+                "parameters": [
+                    {
+                        "name": "code",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "The opponent FFBB organisme code (must be an away opponent of the current season)"
+                    }
+                ]
+            }
+        },
         "/api/implicit_rule_settings": {
             "get": {
                 "operationId": "api_implicit_rule_settings_get_collection",
