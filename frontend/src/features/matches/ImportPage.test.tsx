@@ -73,7 +73,7 @@ function fx(teamId: string, reviewState: FixtureReviewState, matchDate: string, 
     reviewState,
     reviewedAt: null,
     pendingDeviations: [],
-    ffbbRencontreId: null,
+    ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null,
     suggestedVenueId: null,
     ...extra,
   };

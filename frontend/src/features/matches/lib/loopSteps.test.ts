@@ -31,6 +31,8 @@ function fx(over: Partial<Fixture> = {}): Fixture {
     pendingDeviations: over.pendingDeviations ?? [],
     ffbbRencontreId: over.ffbbRencontreId ?? null,
     suggestedVenueId: over.suggestedVenueId ?? null,
+    opponentOrganismeCode: over.opponentOrganismeCode ?? null,
+    opponentTeamKey: over.opponentTeamKey ?? null,
     ...over,
   };
 }

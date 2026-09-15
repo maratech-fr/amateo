@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { Fixture, Team, TeamMatchHabit } from "./api";
+import type { Fixture, OpponentTravel, Team, TeamMatchHabit } from "./api";
 import { AwayList } from "./AwayList";
 
 const away = (over: Partial<Fixture> = {}): Fixture => ({
@@ -19,7 +19,24 @@ const away = (over: Partial<Fixture> = {}): Fixture => ({
   externalRef: null,
   fbiVenueLabel: "Halle Clemenceau",
   placementSource: null,
-  unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, suggestedVenueId: null, ...over,
+  unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, suggestedVenueId: null, opponentOrganismeCode: null, opponentTeamKey: null, ...over,
+});
+
+const travelEntry = (over: Partial<OpponentTravel>): OpponentTravel => ({
+  opponentOrganismeCode: "C1",
+  opponentTeamKey: "GRENOBLE-1",
+  opponentLabel: "Grenoble",
+  located: true,
+  precision: "VENUE",
+  locationName: "Halle Y",
+  city: null,
+  postalCode: null,
+  travelMinutes: 22,
+  approximated: false,
+  source: "AUTO",
+  scope: "CLUB",
+  overrideVenueLabel: null,
+  ...over,
 });
 
 const teams = new Map<string, Team>([["team-1", { id: "team-1", name: "SM2", sportCategoryId: "cat", level: null, gender: null, priorityTierId: 1, tierOrder: 0 }]]);
@@ -78,6 +95,41 @@ describe("AwayList (P1-4 PR E2 — l'extérieur visible)", () => {
     expect(screen.getByText("SM2")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Modifier le match contre Grenoble" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Supprimer le match contre Grenoble" })).not.toBeInTheDocument();
+  });
+
+  // ── PR-3 — jointure du trajet par (opponentOrganismeCode, opponentTeamKey), plus par libellé ─────
+  it("joint le trajet par (code, opponentTeamKey) servis — le chip du gymnase paraît", () => {
+    render(
+      <AwayList
+        fixtures={[away({ opponentOrganismeCode: "C1", opponentTeamKey: "GRENOBLE-1" })]}
+        teams={teams}
+        habits={[]}
+        travel={[travelEntry({})]}
+      />,
+    );
+    expect(screen.getByText("Halle Y")).toBeInTheDocument();
+    expect(screen.getByText("22 min")).toBeInTheDocument();
+  });
+
+  it("plus de repli par libellé : même libellé mais teamKey différent ⇒ AUCUNE jointure (lieu inconnu)", () => {
+    render(
+      <AwayList
+        fixtures={[away({ opponentOrganismeCode: "C1", opponentTeamKey: "GRENOBLE-2" })]}
+        teams={teams}
+        habits={[]}
+        // Le trajet est celui de l'équipe « - 1 », le fixture est l'équipe « - 2 » : même label « Grenoble ».
+        travel={[travelEntry({ opponentTeamKey: "GRENOBLE-1" })]}
+      />,
+    );
+    expect(screen.queryByText("Halle Y")).not.toBeInTheDocument();
+    expect(screen.getByText("lieu inconnu")).toBeInTheDocument();
+  });
+
+  it("une AWAY sans code fédéral résolu reste sans trajet (jointure impossible)", () => {
+    render(
+      <AwayList fixtures={[away({ opponentOrganismeCode: null, opponentTeamKey: null })]} teams={teams} habits={[]} travel={[travelEntry({})]} />,
+    );
+    expect(screen.getByText("lieu inconnu")).toBeInTheDocument();
   });
 
   // ── RMM-0 (§6bis B5) — l'heure porte les conflits de coach : jamais coupée sans secours ─────

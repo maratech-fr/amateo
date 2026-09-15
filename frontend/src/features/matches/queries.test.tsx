@@ -28,6 +28,7 @@ import {
   useSetEntryDeadlines,
   useSetOpponentTravelAuto,
   useSetOpponentTravelManual,
+  useVenueSuggestions,
   useSportCategoryDurations,
   useSwapFixtures,
   useTeamMatchHabits,
@@ -60,6 +61,7 @@ vi.mock("./api", () => ({
   getSportCategoryDurations: vi.fn().mockResolvedValue([]),
   getVenues: vi.fn().mockResolvedValue([]),
   listFfbbSalles: vi.fn().mockResolvedValue({ postalCode: null, salles: [] }),
+  getVenueSuggestions: vi.fn().mockResolvedValue([]),
 
   deleteFixture: vi.fn().mockResolvedValue(undefined),
   placeMatches: vi.fn().mockResolvedValue({ placed: 0, skipped: 0, unplaced: [], diagnostics: [] }),
@@ -184,12 +186,38 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     await waitFor(() => expect(result.current.travel.isSuccess).toBe(true));
     await waitFor(() => expect(result.current.conflicts.isSuccess).toBe(true));
 
-    result.current.auto.mutate("ORG9");
+    result.current.auto.mutate({ opponentOrganismeCode: "ORG9" });
 
     await waitFor(() => expect(result.current.auto.isSuccess).toBe(true));
-    expect(matchesApi.setOpponentTravelAuto).toHaveBeenCalledWith("ORG9");
+    expect(matchesApi.setOpponentTravelAuto).toHaveBeenCalledWith({ opponentOrganismeCode: "ORG9" });
     await waitFor(() => expect(matchesApi.getOpponentTravel).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(matchesApi.getConflicts).toHaveBeenCalledTimes(2));
+  });
+
+  it("useSetOpponentTravelManual invalide AUSSI les suggestions partagées du code (un lecteur useVenueSuggestions refetch)", async () => {
+    const client = makeClient();
+    const { result } = renderHook(
+      () => ({ suggestions: useVenueSuggestions("ORG9"), pin: useSetOpponentTravelManual() }),
+      { wrapper: wrapperFor(client) },
+    );
+
+    await waitFor(() => expect(result.current.suggestions.isSuccess).toBe(true));
+    expect(matchesApi.getVenueSuggestions).toHaveBeenCalledTimes(1);
+
+    result.current.pin.mutate({ opponentOrganismeCode: "ORG9", venueLabel: "Salle X", venueExternalRef: null, latitude: 45.7, longitude: 4.8 });
+
+    await waitFor(() => expect(result.current.pin.isSuccess).toBe(true));
+    await waitFor(() => expect(matchesApi.getVenueSuggestions).toHaveBeenCalledTimes(2));
+  });
+
+  it("useSetOpponentTravelAuto avec teamKey supprime la ligne équipe (transmet le teamKey au POST auto)", async () => {
+    const client = makeClient();
+    const { result } = renderHook(() => ({ auto: useSetOpponentTravelAuto() }), { wrapper: wrapperFor(client) });
+
+    result.current.auto.mutate({ opponentOrganismeCode: "ORG9", opponentTeamKey: "GRENOBLE-2" });
+
+    await waitFor(() => expect(result.current.auto.isSuccess).toBe(true));
+    expect(matchesApi.setOpponentTravelAuto).toHaveBeenCalledWith({ opponentOrganismeCode: "ORG9", opponentTeamKey: "GRENOBLE-2" });
   });
 
   it("useResolveOpponentTravel (recalcul global) refetche trajet ET radar", async () => {

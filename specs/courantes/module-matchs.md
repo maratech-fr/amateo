@@ -1,21 +1,18 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-15 (lot « adversaire multi-gymnases » PR-2, backend seul — **recalage
-post-finding sécurité**, `documentation-update`). Sous-§ « Suggestions partagées de gymnases »
-recalé contre le code FINAL (le finding sécurité a changé le mécanisme après une première passe
-doc) : `OpponentVenueSuggestion`/`OpponentVenueSuggestionRepository` (`upsertManual` ne réécrit
-plus libellé/coordonnées sur conflit, seul `updated_at` bouge), nouveau
-`Service/Basketball/FfbbSalleResolver` (RE-RÉSOUT le `numero` fédéral côté serveur via
-`_geoRadius` + égalité stricte, les coordonnées du corps ne sont qu'une graine — le libellé/
-coords écrits au partagé viennent TOUJOURS du hit fédéral, jamais du client), migration
-`Version20260915140000` (backfill A5 **retiré** — confirmé : aucun `INSERT … SELECT` restant,
-commentaire « PAS de backfill »), `OpponentTravelResolver::accountManualChoice`/`revertToAuto`/
-`deleteTeamOverride` (comptage via le résolveur fédéral, une ref non résolue/FFBB muet → tenant
-seul, aucune écriture partagée), `OpponentTravelController::venueSuggestions`/`suggestionView`
-(`lastChosenAt` servi au JOUR seul, `Y-m-d`), `OpponentVenueSuggestionShareTest` (8 cas,
-confirmés un par un contre le code). § « Annuaire adverse » (reste) et § « Trajet AWAY & radar
-spatial » (grain équipe, PR-1) non re-sondés cette passe — dernière vérification : 2026-09-15
-(passe PR-1).
+Last verified @ 2026-09-15 (lot « adversaire multi-gymnases » PR-3, frontend seul — **le lot est
+CLOS**, `documentation-update`). § « Trajet AWAY & radar spatial » recalé contre le code de
+l'écran : `OpponentTravelCard.tsx` (liste PLATE groupée par club — `deriveClubLabel` retire
+seulement un suffixe d'équipe final « - n » pour l'AFFICHAGE, jamais une clé de résolution —,
+ligne « Toutes les équipes (défaut) » lue sur l'entrée `scope` CLUB/`null`, une ligne par équipe
+au libellé BRUT, entrées sans code fédéral affichées à part sans bouton), `LocateOpponentModal.tsx`
+(portée `fieldset` TEAM/CLUB verrouillée depuis la ligne club, section « Gymnases connus » sur
+`useVenueSuggestions`, section « Ajouter un gymnase » au CP **prérempli** depuis `postalCode`
+servi), `AwayList.tsx` (jointure par `(opponentOrganismeCode, opponentTeamKey)` servis — plus de
+repli par libellé), `lib/configSummaries.ts` (`opponentsSummary`), `api.ts`/`queries.ts`
+(`VenueSuggestion`, `useVenueSuggestions`). § « Suggestions partagées de gymnases » et § « Annuaire
+adverse » non re-sondés cette passe (backend inchangé depuis PR-2) — dernière vérification :
+2026-09-15 (passe PR-2, recalage post-finding sécurité).
 Reste du fichier (§ « Résolution des conflits », § « Gymnase depuis le libellé », §
 « Détection », § reconciliation coupes P4-194/195, § Appariement FFBB, § « Solveur de
 placement ») non re-sondé cette passe — voir `git log -p --follow` pour sa dernière
@@ -211,10 +208,11 @@ scénario **dépend de la disponibilité de l'API FFBB réelle**, comme les feat
 **Reste ouvert** : la fusion d'une ligne `FFBB_API` et d'une ligne `MANUAL` de la MÊME salle (aujourd'hui deux
 lignes disjointes faute de `numero` côté hit rencontre) — le pont retenu ici (`_geoRadius` + égalité stricte du
 `numero`) n'y répond pas nativement ; un pont par `id` de salle reste une PISTE non implémentée (roadmap
-P4-204, amendé 2026-09-15). PR-3 du lot (frontend — écran/picker consommant ces suggestions) reste à livrer.
-La dérive de compteur décrite ci-dessus est trackée séparément (P4-209).
+P4-204, amendé 2026-09-15). La dérive de compteur décrite ci-dessus est trackée séparément (P4-209). Le
+picker qui consomme ces suggestions (modale « Localiser », § « Trajet AWAY & radar spatial » ci-dessous) est
+livré depuis PR-3 (2026-09-15) — le lot « adversaire multi-gymnases » est CLOS.
 
-### Trajet AWAY & radar spatial — `OpponentTravel` (table TENANT, P2-54 RMM-9 PR-3, 2026-08-28 ; grain ÉQUIPE P2-54 « adversaire multi-gymnases » PR-1, backend seul, 2026-09-15)
+### Trajet AWAY & radar spatial — `OpponentTravel` (table TENANT, P2-54 RMM-9 PR-3, 2026-08-28 ; grain ÉQUIPE P2-54 « adversaire multi-gymnases » PR-1, backend, 2026-09-15 ; écran PR-3 du même lot, frontend, 2026-09-15 — **lot CLOS**)
 
 Le radar de conflits devient **SPATIAL** : un coach qui joue à l'extérieur est vu occupé le temps du trajet.
 - **Clé de jointure** : `Fixture.opponent_organisme_code` (colonne nullable, ajoutée PR-3) — le code fédéral de
@@ -261,16 +259,38 @@ surcharge équipe gouverne si elle existe, sinon la ligne club, sinon l'annuaire
   minute à `MatchFootprint::occupancy(...)` ; sans code/sans trajet résolu → 0 (comportement actuel, pas de
   conflit spatial — dit franchement). Détecteur toujours PUR.
 - **`FixtureResource`/`FixtureStateProvider`** gagnent deux champs additifs en lecture : `opponentOrganismeCode`
-  et `opponentTeamKey` (calculé SERVEUR — `VenueLabelNormalizer::normalize(opponentLabel)`, foyer unique —
-  pour que le front puisse un jour joindre le trajet sans re-dériver un libellé).
-  ⚠ **Pas encore consommé** : l'écran (`AwayList.tsx:43,60`) joint toujours le trajet par **libellé brut**
-  (`opponentLabel.toLowerCase()`), pas par `(code, opponentTeamKey)` — il remarche par construction (une
-  entrée par libellé grâce au groupage ci-dessus), mais l'écran par club, le picker et le câblage sur ces
-  champs additifs sont **PR-3 du lot**, pas encore livrés.
-- **Écran** (`AwayTravelChip`, `OpponentTravelCard`, `LocateOpponentModal`) : chip trajet + précision par
-  icône+mot sur `AwayList` (VENUE « Gymnase · 22 min » / CITY « ville de X · ~35 min · approché »), carte
-  « Adversaires à localiser » au SET-UP, correction en modale per-adversaire (badge Auto/Manuel). La précision,
-  les minutes et le flag « approché » sont **servis par le backend** (le front ne les re-dérive pas).
+  et `opponentTeamKey` (calculé SERVEUR — `VenueLabelNormalizer::normalize(opponentLabel)`, foyer unique).
+  **Consommé depuis PR-3 (2026-09-15)** : `AwayList.tsx` joint le trajet par `(opponentOrganismeCode,
+  opponentTeamKey)` servis, **plus de repli par libellé brut** — une AWAY sans code fédéral résolu reste
+  sans trajet (`AwayList.tsx:43-52`).
+- **Écran** (`AwayTravelChip`, `OpponentTravelCard`, `LocateOpponentModal` — livré en entier PR-3, 2026-09-15) :
+  chip trajet + précision par icône+mot sur `AwayList` (VENUE « Gymnase · 22 min » / CITY « ville de X ·
+  ~35 min · approché »), carte « Adversaires à localiser » au SET-UP, correction en modale par équipe/club.
+  La précision, les minutes, `scope` et `source` sont **servis par le backend** (le front ne les re-dérive
+  pas — seul un libellé de club d'AFFICHAGE l'est, ci-dessous).
+  - **`OpponentTravelCard`** : liste PLATE groupée par club (organisme fédéral) — le backend sert une entrée
+    PAR ÉQUIPE adverse, l'écran les regroupe. `deriveClubLabel` (présentation pure, jamais une clé) retire
+    le suffixe d'équipe final « - n » du libellé brut pour titrer le club ; les entrées sans code fédéral
+    résolu forment une ligne à part, « code fédéral non résolu — relancez la localisation », sans bouton.
+    Chaque groupe : en-tête club (libellé dérivé, compteur « N équipe(s) · M à localiser »), tri des clubs
+    non-localisés d'abord puis alphabétique (fr) ; une ligne « Toutes les équipes (défaut) » en tête, lue
+    sur l'entrée dont `scope` vaut `CLUB`/`null` (« — » si aucune) avec bouton « Localiser » et, si le
+    défaut est `MANUAL`, « Rétablir l'automatique » (`revertToAuto`, portée club) ; une ligne PAR ÉQUIPE
+    ensuite, libellé **BRUT** (jamais dérivé), `SourceBadge`, pastille « défaut du club » quand `scope`
+    vaut `CLUB`/`null`, `AwayTravelChip`, bouton « Localiser » et, si `scope === "TEAM"`, « Revenir au
+    défaut du club » (`deleteTeamOverride`, supprime la ligne — décision A3 §2, jamais un retour AUTO).
+    Un `WarningPanel` UNE PHRASE (« N équipe(s) adverse(s) sans gymnase… ») remplace l'ancien encart
+    listant les équipes (alternative écartée, passe design §2).
+  - **`LocateOpponentModal`** : portée choisie en `fieldset` radios « Pour cette équipe » (défaut depuis
+    une ligne équipe) / « Pour tout le club » ; depuis la ligne club, le radio « cette équipe » disparaît
+    et « tout le club » reste seul, coché et désactivé (verrouillé, rien à choisir). Deux sections :
+    **« Gymnases connus »** (`useVenueSuggestions(code)`, suggestions PARTAGÉES du club adverse) — chips
+    « vu sur FFBB » / « choisi N fois », une suggestion sans `externalRef` reste sélectionnable avec la
+    mention « votre choix restera propre à votre club », une suggestion sans coordonnées est désactivée,
+    états chargement/échec/vide gérés ; **« Ajouter un gymnase »** — recherche `/api/ffbb/salles` par code
+    postal **prérempli** depuis `OpponentTravel.postalCode` (servi par l'annuaire adverse). Un seul geste :
+    cliquer un gymnase (suggestion ou salle FFBB) écrit `POST /api/opponents/travel/manual` et ferme la
+    modale au succès (toast) ; l'échec reste ouvert (toast d'erreur, `onError` du hook).
 - NR isolation : `MatchTenantIsolationTest` étendu (`opponent_travel` scopé, un MANUAL de A ne fuit pas à B,
   **grain équipe compris** depuis 2026-09-15 — un `teamKey` de A reste invisible à B, un `manual` de B visant
   le `(code, teamKey)` de A est un 422 — bloquant, ce fichier est déjà un step de `blocking-tests`).
@@ -283,10 +303,11 @@ surcharge équipe gouverne si elle existe, sinon la ligne club, sinon l'annuaire
   Le dessin de la grille week-end (`weekendGrid.ts`, § Grille week-end ci-dessous) reste une
   présentation pure et **n'a pas suivi** D1/P4-203 : elle dessine encore `[coup d'envoi − 30, coup
   d'envoi + 105]` alors que la salle = match seul — roadmap ouverte pour l'aligner.
-- **Reste du lot « adversaire multi-gymnases »** : PR-2 (suggestions **partagées** de gymnases, § ci-dessus)
-  est **livrée** (2026-09-15, backend seul). Reste **PR-3** (frontend : écran par club, picker sur les
-  suggestions, CP préfixé, câblage d'`AwayList` sur `(opponentOrganismeCode, opponentTeamKey)` au lieu du
-  libellé brut) — non livrée à cette date.
+- **Lot « adversaire multi-gymnases » — CLOS (2026-09-15, 3 PR)** : PR-1 (grain équipe, backend), PR-2
+  (suggestions partagées de gymnases, § ci-dessus, backend) et PR-3 (écran par club, picker sur les
+  suggestions, CP prérempli, câblage d'`AwayList` sur `(opponentOrganismeCode, opponentTeamKey)`, frontend)
+  sont toutes livrées — le besoin du 2026-09-15 (CP non préfixé, deux équipes du même club fondues en une
+  entrée) est entièrement traité.
 
 ## Palier A — PR-2 (moteur de conflits, à la volée, coach seul, 2026-07-07)
 
@@ -2254,7 +2275,8 @@ future.
   **effective** (club ou proposée par la communauté, jamais recalculée — `Competition.
   effectiveEntryDeadline`) (`deadlinesSummary`), « défauts par catégorie » ou « N personnalisée(s) »
   — une catégorie est personnalisée dès qu'une des deux durées a une valeur propre (`durationsSummary`)
-  —, « N à localiser sur M » (`opponentsSummary`). Une entrée `undefined` (chargement ou échec de
+  —, « N à localiser sur M équipes adverses » (`opponentsSummary` — M = entrées servies, une PAR ÉQUIPE
+  adverse depuis le grain équipe, 2026-09-15). Une entrée `undefined` (chargement ou échec de
   lecture) rend `null` ⇒ **aucun compte affiché**, jamais un « 0 » fabriqué qui laisserait croire à
   un vide. Le résumé « Adversaires à localiser » réutilise la MÊME clé react-query que
   `OpponentTravelCard` (`useOpponentTravel`, appelée une fois au niveau page) — zéro requête

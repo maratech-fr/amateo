@@ -7,13 +7,17 @@ import { awayTravelTitle } from "./lib/awayTravelTitle";
 
 const travel = (over: Partial<OpponentTravel>): OpponentTravel => ({
   opponentOrganismeCode: "ORG",
+  opponentTeamKey: "ADVERSAIRE",
   opponentLabel: "Adversaire",
   located: true,
   precision: "VENUE",
   locationName: "Gymnase du Clar",
+  city: null,
+  postalCode: null,
   travelMinutes: 22,
   approximated: false,
   source: "AUTO",
+  scope: "CLUB",
   overrideVenueLabel: null,
   ...over,
 });

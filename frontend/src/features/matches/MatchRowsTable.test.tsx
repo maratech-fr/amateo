@@ -23,7 +23,7 @@ function fx(partial: Partial<Fixture> & Pick<Fixture, "id">): Fixture {
     reviewState: "NEW" as const,
     reviewedAt: null,
     pendingDeviations: [],
-    ffbbRencontreId: null,
+    ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null,
     suggestedVenueId: null,
     ...partial,
   };

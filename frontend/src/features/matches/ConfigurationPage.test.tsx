@@ -144,14 +144,14 @@ describe("ConfigurationPage (P4-185 — une section = un écran)", () => {
       { id: "c2", teamId: "team-1", name: "RM2", competitionType: "championnat", effectiveEntryDeadline: null },
     ];
     state.travel = [
-      { opponentOrganismeCode: "A", opponentLabel: "Adv A", located: false, precision: null, locationName: null, travelMinutes: null, approximated: false, source: null, overrideVenueLabel: null },
-      { opponentOrganismeCode: "B", opponentLabel: "Adv B", located: true, precision: null, locationName: null, travelMinutes: null, approximated: false, source: null, overrideVenueLabel: null },
+      { opponentOrganismeCode: "A", opponentTeamKey: "ADV A", opponentLabel: "Adv A", located: false, precision: null, locationName: null, city: null, postalCode: null, travelMinutes: null, approximated: false, source: null, scope: null, overrideVenueLabel: null },
+      { opponentOrganismeCode: "B", opponentTeamKey: "ADV B", opponentLabel: "Adv B", located: true, precision: null, locationName: null, city: null, postalCode: null, travelMinutes: null, approximated: false, source: null, scope: "CLUB", overrideVenueLabel: null },
     ];
     renderWithProviders(<Harness />);
 
     expect(await screen.findByRole("button", { name: "Créneaux partagés (alternance) · 2 rotations" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Échéances de saisie · 1 renseignée sur 2 compétitions" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Adversaires à localiser · 1 à localiser sur 2" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Adversaires à localiser · 1 à localiser sur 2 équipes adverses" })).toBeInTheDocument();
   });
 
   it("en chargement (promesse pendante) : l'en-tête n'affiche AUCUN compte — jamais un « 0 » fabriqué", async () => {

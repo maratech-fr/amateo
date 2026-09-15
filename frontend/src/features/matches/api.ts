@@ -73,6 +73,19 @@ export interface Fixture {
    * pré-remplissage suggéré dans le geste « Rattacher ». Le front l'AFFICHE.
    */
   suggestedVenueId: string | null;
+  /**
+   * P2-54 « adversaire multi-gymnases » — le code FFBB de l'organisme adverse, stampé
+   * best-effort par le serveur sur les AWAY, null quand l'adversaire n'a pas pu être
+   * résolu. Read-only. Clé de jointure vers le trajet adverse (avec `opponentTeamKey`).
+   */
+  opponentOrganismeCode: string | null;
+  /**
+   * P2-54 « adversaire multi-gymnases » — le libellé adverse NORMALISÉ côté serveur : le
+   * grain d'une surcharge de trajet PAR ÉQUIPE (une même organisation joue parfois dans
+   * plusieurs gymnases selon son équipe). Null quand le libellé est vide. Read-only. Le
+   * front joint le trajet par `(opponentOrganismeCode, opponentTeamKey)` sans re-dériver.
+   */
+  opponentTeamKey: string | null;
 }
 
 export interface Competition {
@@ -396,6 +409,8 @@ function normalizeFixture(raw: Fixture): Fixture {
     reviewedAt: raw.reviewedAt ?? null,
     ffbbRencontreId: raw.ffbbRencontreId ?? null,
     suggestedVenueId: raw.suggestedVenueId ?? null,
+    opponentOrganismeCode: raw.opponentOrganismeCode ?? null,
+    opponentTeamKey: raw.opponentTeamKey ?? null,
   };
 }
 
@@ -1126,24 +1141,35 @@ export const swapFixtures = async (a: Fixture, b: Fixture): Promise<void> => {
 /** How precisely an away opponent's venue is known (mirror of the backend enum, présentation seule). */
 export type OpponentLocationPrecision = "VENUE" | "CITY";
 export type OpponentTravelSource = "AUTO" | "MANUAL";
+/** Quel grain gouverne un trajet : surcharge PAR ÉQUIPE, défaut du CLUB, ou aucun (mirror serveur). */
+export type OpponentTravelScope = "TEAM" | "CLUB";
 
 /**
  * Le trajet d'un adversaire AWAY, TOUT calculé côté serveur (le front n'en re-dérive
- * rien — `approximated` et `travelMinutes` viennent du backend). `located` = un lieu
- * exploitable existe ; `precision`/`locationName` disent lequel ; `source` distingue
- * l'AUTO calculé de la correction MANUELLE.
+ * rien — `approximated` et `travelMinutes` viennent du backend). Une entrée par ÉQUIPE
+ * adverse (grain `(code, opponentTeamKey)`). `located` = un lieu exploitable existe ;
+ * `precision`/`locationName` disent lequel ; `source` distingue l'AUTO calculé de la
+ * correction MANUELLE ; `scope` dit quel grain (équipe/club) gouverne cette ligne.
  */
 export interface OpponentTravel {
   opponentOrganismeCode: string | null;
+  /** Libellé adverse normalisé SERVEUR — le grain d'une surcharge PAR ÉQUIPE ; null si non résolu. */
+  opponentTeamKey: string | null;
   opponentLabel: string;
   located: boolean;
   precision: OpponentLocationPrecision | null;
   locationName: string | null;
+  /** La commune adverse, servie par l'annuaire partagé (pré-remplit la recherche CP). */
+  city: string | null;
+  /** Le code postal adverse, servi par l'annuaire partagé (pré-remplit la recherche CP). */
+  postalCode: string | null;
   /** Aller simple en voiture, minutes — null = best-effort non calculé. */
   travelMinutes: number | null;
   /** Calculé SERVEUR (= précision ville) — le front NE le re-dérive PAS d'un seuil. */
   approximated: boolean;
   source: OpponentTravelSource | null;
+  /** Le grain qui gouverne ce trajet : surcharge ÉQUIPE, défaut CLUB, ou aucun (null). */
+  scope: OpponentTravelScope | null;
   overrideVenueLabel: string | null;
 }
 
@@ -1156,15 +1182,52 @@ export interface OpponentTravelManualInput {
   venueExternalRef: string | null;
   latitude: number;
   longitude: number;
+  /** Le grain-équipe à épingler ; omis = le défaut du club. */
+  opponentTeamKey?: string | null;
+  /** TEAM (cette équipe) ou CLUB (défaut du club, n'écrase jamais une équipe déjà choisie). */
+  scope?: OpponentTravelScope;
 }
 
 /** Épingle un gymnase à la main pour un adversaire (surcharge MANUAL + recalcul du trajet). */
 export const setOpponentTravelManual = (input: OpponentTravelManualInput): Promise<unknown> =>
   api.post("opponents/travel/manual", { json: input }).json();
 
+export interface OpponentTravelAutoInput {
+  opponentOrganismeCode: string;
+  /** Avec teamKey : SUPPRIME la ligne équipe (retour au défaut du club). Sans : retour AUTO du club. */
+  opponentTeamKey?: string | null;
+}
+
 /** Rétablit la localisation automatique d'un adversaire (retire la surcharge). */
-export const setOpponentTravelAuto = (opponentOrganismeCode: string): Promise<unknown> =>
-  api.post("opponents/travel/auto", { json: { opponentOrganismeCode } }).json();
+export const setOpponentTravelAuto = (input: OpponentTravelAutoInput): Promise<unknown> =>
+  api.post("opponents/travel/auto", { json: input }).json();
+
+/** L'origine fédérale d'un gymnase suggéré pour un adversaire — observé (API) ou choisi par des clubs (manuel). */
+export type VenueSuggestionSource = "FFBB_API" | "MANUAL";
+
+/**
+ * Un gymnase connu d'un adversaire, PARTAGÉ entre clubs (table globale, données fédérales
+ * seulement). « Un COMPTE, jamais un QUI » : `chosenByCount` compte des choix, jamais des
+ * clubs identifiés ; `lastChosenAt` est servi au JOUR seul. Tout vient du backend.
+ */
+export interface VenueSuggestion {
+  /** Le n° de salle FFBB pour une suggestion MANUELLE ; null pour une observée en API. */
+  externalRef: string | null;
+  label: string;
+  city: string | null;
+  postalCode: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  source: VenueSuggestionSource;
+  /** Combien de fois ce gymnase a été choisi (par club/saison/équipe) — jamais par QUI. */
+  chosenByCount: number;
+  /** Jour seul (Y-m-d), jamais l'heure. */
+  lastChosenAt: string | null;
+}
+
+/** Les gymnases connus d'un adversaire (partagés) — FFBB_API d'abord, puis MANUAL par compte décroissant. */
+export const getVenueSuggestions = async (code: string): Promise<VenueSuggestion[]> =>
+  (await api.get(`opponents/${encodeURIComponent(code)}/venue-suggestions`).json<{ code: string; suggestions: VenueSuggestion[] }>()).suggestions;
 
 export interface OpponentTravelResolveResult {
   resolved: number;
