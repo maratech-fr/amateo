@@ -1,27 +1,18 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-15 (lot « une personne = ses équipes coachées + ses équipes où elle joue »
-— radar de conflits matchs, backend + libellés front, `documentation-update`). § « Détection », §
-« Diagnostic gradué » (bloc « Échelle ») et § « Reste palier A » recalés contre
-`MatchConflictDetector.php`, `ConflictPersonRole.php`, `FixtureConflictsController.php`,
-`MatchModuleDeltaComputer.php`, `SeasonAndFixturePaths.php` (OpenAPI), `ConflictFingerprinter.php`
-(inchangée — vérifié : empreinte insensible à `role`/`coachRole`, donc les statuts de résolution
-posés survivent), `conflictLabels.ts`, `diagnostic.ts`, `ConflictLine.tsx`, `api.ts`.
-Passe antérieure la même date (lot « adversaire multi-gymnases » PR-3, frontend seul — **ce
-lot-là est CLOS**) : § « Trajet AWAY & radar spatial » recalé contre le code de l'écran :
-`OpponentTravelCard.tsx` (liste PLATE groupée par club — `deriveClubLabel` retire
-seulement un suffixe d'équipe final « - n » pour l'AFFICHAGE, jamais une clé de résolution —,
-ligne « Toutes les équipes (défaut) » lue sur l'entrée `scope` CLUB/`null`, une ligne par équipe
-au libellé BRUT, entrées sans code fédéral affichées à part sans bouton), `LocateOpponentModal.tsx`
-(portée `fieldset` TEAM/CLUB verrouillée depuis la ligne club, section « Gymnases connus » sur
-`useVenueSuggestions`, section « Ajouter un gymnase » au CP **prérempli** depuis `postalCode`
-servi), `AwayList.tsx` (jointure par `(opponentOrganismeCode, opponentTeamKey)` servis — plus de
-repli par libellé), `lib/configSummaries.ts` (`opponentsSummary`), `api.ts`/`queries.ts`
-(`VenueSuggestion`, `useVenueSuggestions`). § « Suggestions partagées de gymnases » et § « Annuaire
-adverse » non re-sondés depuis (backend inchangé depuis PR-2).
+Last verified @ 2026-09-16 (PR 2a « Configuration & navigation », `documentation-update`). §
+« Onglet Consulter » (nav réordonnée), nouveau § « Onglet Semaine type », § « Configuration —
+repli visuel » (amendement : cinq sections, défaut tout replié, « Accès match » listé + modale par
+gymnase) et § « Trajet AWAY & radar spatial » (nouvelle sous-section PR 2a : recherche, orphelins
+repliés, bouton unique « Mettre à jour les adversaires », cap 200) recalés contre `MatchesLayout.tsx`,
+`routes.tsx`, `TypicalWeekPage.tsx`, `ConfigurationPage.tsx`, `lib/urlState.ts`,
+`lib/configSummaries.ts`, `lib/matchAccessSummary.ts`, `OpponentTravelCard.tsx`,
+`lib/opponentSearch.ts`, `LocateOpponentModal.tsx`, `MatchRowsTable.tsx`, `api.ts`,
+`OpponentResolveController.php` (`MAX_DISTINCT = 200`), `OpponentResolveCapTest.php`.
 Reste du fichier (§ « Résolution des conflits », § « Gymnase depuis le libellé », § reconciliation
-coupes P4-194/195, § Appariement FFBB, § « Solveur de placement ») non re-sondé cette passe — voir
-`git log -p --follow` pour sa dernière vérification.
+coupes P4-194/195, § Appariement FFBB, § « Solveur de placement », § « Annuaire adverse », §
+« Suggestions partagées de gymnases ») non re-sondé cette passe — voir `git log -p --follow` pour
+sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -313,6 +304,38 @@ surcharge équipe gouverne si elle existe, sinon la ligne club, sinon l'annuaire
   suggestions, CP prérempli, câblage d'`AwayList` sur `(opponentOrganismeCode, opponentTeamKey)`, frontend)
   sont toutes livrées — le besoin du 2026-09-15 (CP non préfixé, deux équipes du même club fondues en une
   entrée) est entièrement traité.
+
+### PR 2a « Configuration & navigation » — recherche, cap relevé, bouton unique (2026-09-16)
+
+- **Recherche instantanée** (`lib/opponentSearch.ts` : `normalizeSearch`/`queryTokens`/
+  `textMatchesQuery`/`clubMatchesQuery`) : insensible aux accents/casse (`stripDiacritics`, même
+  patron que le picker Localiser), tokens en ET, présentation pure. Un club est conservé **ENTIER**
+  (en-tête + toutes ses équipes) dès que SON libellé OU une de ses équipes matche — jamais un
+  filtrage équipe par équipe qui casserait le groupe. Sans texte, tout passe (champ masqué si zéro
+  adversaire). Une requête sans résultat affiche « Aucun adversaire pour « {query} » », un résultat
+  partiel « N clubs sur M ».
+- **Adversaires sans code fédéral repliés** (`OpponentTravelCard`, `orphansOpen`/`showWithout`
+  patron disclosure) : liste à part, dépliée automatiquement dès qu'une recherche la matche, sinon
+  repliée par défaut.
+- **Un seul bouton « Mettre à jour les adversaires »** (`useUpdateOpponents`, `queries.ts`)
+  remplace l'ancien geste implicite : **deux étapes best-effort ENCHAÎNÉES**, chacune indépendante
+  (l'échec de l'une n'empêche pas la suivante) — (1) `POST /api/opponents/resolve` (rattrapage des
+  codes FFBB, annuaire global, estampille les rencontres), puis (2)
+  `POST /api/opponents/travel/resolve` (recalcul des trajets AUTO, le MANUAL est préservé). Annonce
+  a11y `role="status"` montée AVANT le clic (« étape 1 sur 2 : codes FFBB » / « étape 2 sur 2 :
+  trajets ») ; à la fin, un toast de résumé et l'invalidation du trajet/radar/fixtures/suggestions.
+  Un 422 de l'étape 1 (le cap, ci-dessous) affiche son message métier tel quel ; tout autre échec
+  d'étape affiche un toast générique et laisse l'étape suivante s'exécuter.
+- **Cap dur relevé de 60 à 200** (`OpponentResolveController::MAX_DISTINCT`,
+  `backend/src/Controller/OpponentResolveController.php:39`) — le club du fondateur compte ~102
+  adversaires distincts, la borne de 60 le heurtait déjà. Au-delà, `POST /api/opponents/resolve`
+  refuse en 422 AVANT tout appel réseau, message nommant le compte observé et le maximum ; gardé
+  par `backend/tests/Integration/Api/OpponentResolveCapTest.php` (franchit la borne à 201, assied
+  « maximum 200 »).
+- **Indice « Dans le fichier » dans `LocateOpponentModal`** : jusqu'à 3 libellés de salle FBI
+  DISTINCTS déjà vus sur les rencontres de CET adversaire (grain équipe), dans l'ordre
+  d'apparition — un indice affiché SEUL, jamais préremplissant la recherche FFBB (alternative
+  écartée à la passe design : préremplir aurait fait croire à une résolution automatique).
 
 ## Palier A — PR-2 (moteur de conflits, à la volée, coach seul, 2026-07-07)
 
@@ -1518,9 +1541,11 @@ part : une barre de filtres sur la vue Semaine, même patron que `/planning`.
 
 Décision fondateur (2026-09-08, après la mesure sur ses rencontres réelles) : **importer** (faire entrer les rencontres,
 FBI xlsx ou API FFBB), **placer** (la boucle Semaine) et **consulter** (« voir les matchs placés
-et les bugs, c'est une fonctionnalité entière ») sont trois espaces. Nav `MatchesLayout` : **Semaine · Consulter ·
-Importer · Configuration · Conflits** ; l'onglet Importer a livré sa page en PR-3b, détail § « Espace Importer »
-plus bas, l'onglet Conflits en PR A, détail § « Onglet Conflits » ci-dessous.
+et les bugs, c'est une fonctionnalité entière ») sont trois espaces. Nav `MatchesLayout` (ordre figé PR 2a,
+2026-09-16, défilable horizontalement à l'étroit — `overflow-x-auto`, `scrollIntoView` ramène l'onglet actif en
+vue) : **Conflits · Consulter · Importer · Configuration · Semaine type · Semaine** ; l'onglet Importer a livré sa
+page en PR-3b, détail § « Espace Importer » plus bas, l'onglet Conflits en PR A, détail § « Onglet Conflits »
+ci-dessous, l'onglet Semaine type en PR 2a, détail § « Onglet Semaine type » ci-dessous.
 
 `/matchs/consulter` (`ConsultPage.tsx`) — **lecture seule** : aucune mutation, ni rail, ni panneau de placement.
 
@@ -1563,8 +1588,11 @@ plus bas, l'onglet Conflits en PR A, détail § « Onglet Conflits » ci-dessous
     un championnat. Journées groupées par week-end, empty state « Aucune compétition appariée » →
     Engagements FFBB.
   - **Ligne de match** (`MatchRowsTable.tsx`, primitive partagée `table.tsx` née ici) : date + heure ou « heure non
-    publiée », équipe (+ rôle en vue coach), dom./ext., adversaire, gymnase résolu sinon `fbiVenueLabel` « non
-    rattaché », statut, une pastille par famille de conflit présente ; clic → Placer sur le week-end du match.
+    publiée », équipe (+ rôle en vue coach), dom./ext., adversaire, gymnase résolu sinon `fbiVenueLabel`, statut,
+    une pastille par famille de conflit présente ; clic → Placer sur le week-end du match. **L'invite « à
+    rattacher » (§ « Gymnase depuis le libellé » ci-dessus, P4-187b) ne s'affiche que sur un match À DOMICILE**
+    (`<libellé> · à rattacher dans Importer`) — un EXTÉRIEUR sans gymnase résolu affiche son `fbiVenueLabel` SEUL
+    (c'est la salle de l'ADVERSAIRE, rien à rattacher côté club, `MatchRowsTable.tsx:140-145`).
   - URL : `temps=semaine|mois|phase`, `mois=YYYY-MM`, `phase=<competitionId>`.
 - Livré depuis, hors PR-2a : l'onglet Importer (PR-3a/PR-3b, § « Espace Importer » plus bas — file de
   traitement par équipe, compteurs « N à valider »/« N écart(s) »). L'atterrissage de Placer sur un week-end
@@ -2277,6 +2305,25 @@ future.
   toujours `status === VALIDATED`) — le drift cosmétique signalé lors de PR-3a (vocabulaire pré-D9
   laissé dans le pas) a été corrigé au passage par P4-187a.
 
+## Onglet « Semaine type » — page sœur de la Configuration (PR 2a « Configuration & navigation », 2026-09-16)
+
+Décision fondateur (2026-09-15) : « Semaine type » devient un **onglet à part** de `MatchesLayout`
+(`/matchs/semaine-type`, `TypicalWeekPage.tsx`, deep-linkable, garde socle héritée du layout) — pas
+une septième section de l'accordéon Configuration. Elle porte ce qui était le **gabarit idéal**
+(l'image A/B en vedette, `TypicalWeekendGrid`) et les **créneaux partagés** (alternance,
+`MatchSlotRotationsEditor`, § « Rotation A/B — RMM-5 » ci-dessus, comportement CRUD inchangé) : le
+MODÈLE sans dates que le placement respecte au maximum. Le bouton **« Habitudes & passerelles »**
+(`HabitsLinksDialog`, modale, § « Habitudes + passerelles — P1-4 PR C » ci-dessus, comportement
+inchangé) s'ouvre d'ici — c'est là que ce modèle se dessine.
+
+Les anciens deep-links `?section=gabarit` et `?section=creneaux` de `/matchs/configuration`
+**redirigent** vers `/matchs/semaine-type` (`<Navigate replace>`, lecture du paramètre `section`
+brut AVANT le décodage `ConfigSection`, silencieuse — pas de toast, alternative écartée à la passe
+design) — un lien externe déjà partagé continue de fonctionner.
+
+- **Front** — pas de test dédié listé pour cette page au-delà de l'e2e `matches.spec.ts` (nav +
+  redirection) ; `ConfigurationPage.test.tsx` couvre la redirection depuis les anciens deep-links.
+
 ## Configuration — repli visuel (P4-185, 2026-09-09) — LIVRÉ EN ENTIER
 
 > Besoin : mesurée à 5 078 px de haut avant P4-186 (fondateur 2026-09-07) ; P4-186 (ci-dessus) a
@@ -2284,6 +2331,26 @@ future.
 > cartes toujours dépliées en pile (dont 8 rotations et 12 lignes de durées ouvertes en dur).
 > P4-185 règle la présentation : « une section = un écran ». **Zéro backend/engine, zéro
 > comportement métier, zéro API** — pur repli visuel.
+
+⚠ **Amendé par PR 2a « Configuration & navigation » (2026-09-16)** — le paragraphe ci-dessous
+décrit l'état **au 2026-09-09** (P4-185) puis **P4-196** ; il ne reflète plus la page telle
+qu'elle est aujourd'hui. État courant : le gabarit A/B et les créneaux partagés ont quitté la
+Configuration pour l'onglet **« Semaine type »** (§ ci-dessus) ; « Réglages de saison » a été
+renommé **« Accès match »** (clé URL `reglages` conservée) et **Habitudes & passerelles** est
+désormais un bouton de la Semaine type, plus une sous-section d'« Accès match ». La Configuration
+ne porte donc plus que **cinq** `AccordionSection` (`ConfigSection` =
+`echeances|durees|adversaires|reglages|libelles`) et **le défaut est devenu « tout replié »**
+(absent, `aucune`, une clé inconnue OU les clés déplacées `gabarit`/`creneaux` ⇒ aucune section
+ouverte — `gabarit`/`creneaux` redirigent en plus vers `/matchs/semaine-type`) : « `gabarit` ouvert
+par défaut » ci-dessous ne vaut plus. **« Accès match »** (`MatchAccessSection`,
+`ConfigurationPage.tsx`) liste désormais les gymnases : ceux qui ONT au moins une fenêtre d'accès
+match d'abord (triés alpha, fenêtres mises en forme par `formatMatchAccessWindows` — « sam.
+12:00–23:00 · dim. 09:00–20:00 »), puis, repliés derrière un bouton disclosure natif (`ChevronDown`,
+pas `FilterToggle` — alternative écartée à la passe design, ce n'est pas un filtre), les gymnases
+SANS accès ; « Modifier » sur une ligne ouvre une **modale par gymnase** (`MatchWindowsEditor`,
+même éditeur que l'étape Gymnases du wizard, plus de sélecteur de gymnase dans la modale elle-même)
+et le focus revient explicitement au bouton « Modifier » de sa ligne à la fermeture — qui a pu
+changer de liste (gagné/perdu son accès).
 
 - **Les six sections deviennent des `AccordionSection` CONTRÔLÉES** (`ConfigurationPage.tsx`) : le
   gabarit A/B, Créneaux partagés (alternance), Échéances de saisie, Durée des matchs, Adversaires à
@@ -2297,6 +2364,8 @@ future.
   au décodage suivant). Mêmes conventions que `?vue=`/`?temps=` des autres onglets du module.
   ⚠ **Devenu SEPT depuis P4-196** (§ « Gymnase depuis le libellé » ci-dessus) : `ConfigSection`
   gagne `libelles`, même patron — le mécanisme d'accordéon contrôlé décrit ici n'a pas changé.
+  ⚠ **Retombé à CINQ depuis PR 2a** (bandeau ci-dessus) : le gabarit et les créneaux sont partis,
+  le défaut est devenu « tout replié ».
 - **Un résumé discret dans le nom accessible du bouton** (`features/matches/lib/configSummaries.ts`,
   fonctions PURES, comptent ce que le backend a déjà calculé — zéro règle métier côté front) :
   « N rotation(s) » (`rotationsSummary`), « N sur M compétition(s) renseignée(s) » sur l'échéance
@@ -2325,7 +2394,13 @@ future.
   `?section=`, résumés d'en-tête), `MatchSlotRotationsEditor.test.tsx` (ligne compacte, dépliage
   unique), `MatchDurationsEditor.test.tsx` (tableau par groupe), `lib/urlState.test.ts`,
   `lib/configSummaries.test.ts` ; e2e `tests/e2e/matches-importer.spec.ts` recalé
-  (`?section=reglages`, une seule section — le gabarit — ouverte à l'arrivée sans paramètre).
+  (`?section=reglages`, une seule section — le gabarit — ouverte à l'arrivée sans paramètre) — **au
+  2026-09-09**. ⚠ **Non re-sondé pour PR 2a** (§ ci-dessus, « Amendé ») : le gabarit a quitté cette
+  page, l'assertion « seul le gabarit est ouvert à l'arrivée » (`matches-importer.spec.ts:149-150`)
+  n'a plus de bouton correspondant sur `/matchs/configuration` — signalé (pas corrigé, hors scope
+  docs), la couverture PR 2a de la nav/redirection vit dans `tests/e2e/matches.spec.ts` (« matches
+  PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès match, recherche adversaires ») et
+  `ConfigurationPage.test.tsx` (redirection `?section=gabarit|creneaux`).
 
 ## Échéances ligue/comité — RMM-6 (3 PR, 2026-08-25) — LIVRÉ EN ENTIER
 

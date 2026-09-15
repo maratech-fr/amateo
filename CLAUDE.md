@@ -178,8 +178,8 @@ la remplir littéralement.
    `unit-tests` lance `phpunit tests/` ENTIER. **Avant de pousser :
    `make -C backend tests-complete`** (miroir CI — détail : `backend/docs/commands.md`). Chaque
    dossier de `tests/` est dans une testsuite (garde `TestsuitesCoverEveryTestDirectoryTest`).
-2. `contracts/` et `tests/` racine = placeholders vides (les tests cross-stack vivent dans
-   `backend/tests/`).
+2. Pas de `contracts/` ni `tests/` à la racine du dépôt — les tests cross-stack vivent dans
+   `backend/tests/`.
 3. Tenant résolu côté serveur depuis le JWT : le front n'envoie **aucun** header `X-Club-Id`.
 
 **Pointers:** `docs/project-map.md` (**la carte** — zones, ops, sécurité, tout le reste) ·

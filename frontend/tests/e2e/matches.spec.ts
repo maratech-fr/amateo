@@ -393,26 +393,32 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   // ── PR-3 « adversaire multi-gymnases » : l'écran de trajet adverse, groupé par club ─────
   //    On NE dépend d'aucune donnée FFBB live (réseau non fiable en CI) : le témoin RÉALISTE
   //    est que les deux extérieurs créés par CE run (`${opponent}-EXT`, `-EXT2`, saisis à la
-  //    main → AUCUN code fédéral résolu) apparaissent en lignes club « code fédéral non
-  //    résolu » SANS bouton « Localiser », et que le résumé d'en-tête parle d'« équipes
-  //    adverses ». Un écran qui ne les montrerait pas fait ÉCHOUER ces attentes en le disant.
+  //    main → AUCUN code fédéral résolu) apparaissent dans la liste repliée « N adversaires sans
+  //    code fédéral » (PR 2a — OpponentTravelCard sort les orphelins à part), et que le résumé
+  //    d'en-tête parle d'« équipes adverses ». Un écran qui ne les montrerait pas fait ÉCHOUER
+  //    ces attentes en le disant.
   await page.goto("/matchs/configuration?section=adversaires");
   // Le résumé d'en-tête de la section porte le nouveau libellé « … équipes adverses ».
   await expect(page.getByRole("button", { name: /Adversaires à localiser · .*équipes adverses/ })).toBeVisible({ timeout: 15_000 });
 
+  // PR 2a : les adversaires sans code fédéral vivent dans une disclosure repliée par défaut.
+  const orphansToggle = page.getByRole("button", { name: /\d+ adversaires? sans code fédéral$/ });
+  await expect(orphansToggle, "témoin: les extérieurs sans code fédéral doivent former la liste repliée").toBeVisible({ timeout: 15_000 });
+  await orphansToggle.click();
+
   for (const suffix of ["EXT", "EXT2"] as const) {
     // `exact: true` : le nom Playwright est une SOUS-CHAÎNE insensible à la casse par défaut, donc
-    // « …-EXT » attraperait aussi « …-EXT2 » (strict mode violation). Chaque en-tête <h4> est UNE
-    // ligne club (OpponentTravelCard : orphan → <li><h4>…</h4><p>code fédéral non résolu…</p></li>).
+    // « …-EXT » attraperait aussi « …-EXT2 » (strict mode violation). Chaque orphelin déplié est
+    // <li><h4>…</h4><p>code fédéral non résolu</p></li> (OpponentTravelCard, PR 2a).
     const heading = page.getByRole("heading", { name: `${opponent}-${suffix}`, exact: true, level: 4 });
     await expect(
       heading,
-      `l'extérieur ${opponent}-${suffix} devrait figurer en ligne club « code fédéral non résolu » — le test ne prouverait rien sinon`,
+      `l'extérieur ${opponent}-${suffix} devrait figurer dans la liste « sans code fédéral » — le test ne prouverait rien sinon`,
     ).toBeVisible({ timeout: 15_000 });
-    // Sa ligne club (le <li> de CET en-tête exact) porte le sous-libellé de reprise ET n'offre PAS
-    // de « Localiser » (code non résolu) — scopé au <li> pour ne pas résoudre à plusieurs éléments.
+    // Sa ligne (le <li> de CET en-tête exact) porte le sous-libellé « code fédéral non résolu » ET
+    // n'offre PAS de « Localiser » — scopé au <li> pour ne pas résoudre à plusieurs éléments.
     const row = heading.locator("xpath=ancestor::li[1]");
-    await expect(row.getByText("code fédéral non résolu — relancez la localisation")).toBeVisible();
+    await expect(row.getByText("code fédéral non résolu")).toBeVisible();
     await expect(row.getByRole("button", { name: /Localiser/ })).toHaveCount(0);
   }
 });
@@ -512,14 +518,17 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
   const venueName = editLabel.replace("Modifier les accès match de ", "");
   await firstEdit.click();
 
-  const dialog = page.getByRole("dialog", { name: `Accès match · ${venueName}` });
+  // Le nom accessible de la modale vient de son `label` (« Accès match ») ; le gymnase est dans le titre (h2).
+  const dialog = page.getByRole("dialog", { name: "Accès match" });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: `Accès match · ${venueName}` })).toBeVisible();
   await dialog.getByLabel("Jour de la fenêtre match").selectOption("6");
   await dialog.getByLabel("Début de la fenêtre match").fill("14:00");
   await dialog.getByLabel("Fin de la fenêtre match").fill("22:00");
   await dialog.getByRole("button", { name: "Ajouter la fenêtre match" }).click();
   await expect(dialog.getByText(/Samedi 14:00/)).toBeVisible();
-  await dialog.getByRole("button", { name: "Fermer" }).click();
+  // Deux « Fermer » (la croix d'en-tête + le pied) : on ferme par le bouton du pied.
+  await dialog.locator("footer").getByRole("button", { name: "Fermer" }).click();
 
   // Le gymnase a rejoint la liste principale (avec sa plage formatée), le focus revient au
   // « Modifier » de sa ligne, et l'en-tête compte un gymnase de plus.

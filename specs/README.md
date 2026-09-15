@@ -1,14 +1,15 @@
 # Living Specs System
 
-Last verified @ 2026-09-14 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
-cette PR — D2 rattrapage des statuts de traitement, backend). Re-confronté, tout juste : les quatre
-gardes `{DocPlacementTest,DocStampFreshnessTest,RoadmapIdentityTest,BlockingTestsListMatchesCiTest}.php`
-existent toujours (`ls backend/tests/Unit/Documentation/`) ; **§ Files Overview confronté ligne à
-ligne à `ls specs/courantes/*.md`** — les 11 fichiers cités (`etat-des-lieux`,
-`planning-lifecycle-validated`, `types-de-planning`, `superadmin-auth`, `identite-visuelle-club`,
-`vacances-scolaires-jours-feries`, `accueil-cockpit-temporel`, `module-matchs`,
-`canal-signalement`, `generation-pipeline`, `openapi-snapshot.meta`) correspondent exactement au
-dossier, aucun absent, aucun fantôme. Reste du fichier non re-sondé cette passe.
+Last verified @ 2026-09-16 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+cette PR — PR 2a « Configuration & navigation », module matchs). Re-confronté, tout juste : les
+quatre gardes `{DocPlacementTest,DocStampFreshnessTest,RoadmapIdentityTest,
+BlockingTestsListMatchesCiTest}.php` existent toujours (`ls backend/tests/Unit/Documentation/`) ;
+**§ Files Overview confronté ligne à ligne à `ls specs/courantes/*.md`** — les 11 fichiers cités
+(`etat-des-lieux`, `planning-lifecycle-validated`, `types-de-planning`, `superadmin-auth`,
+`identite-visuelle-club`, `vacances-scolaires-jours-feries`, `accueil-cockpit-temporel`,
+`module-matchs`, `canal-signalement`, `generation-pipeline`, `openapi-snapshot.meta`)
+correspondent exactement au dossier, aucun absent, aucun fantôme. Reste du fichier non re-sondé
+cette passe.
 
 ## 3-Tier Structure
 
