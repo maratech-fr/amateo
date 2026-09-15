@@ -401,12 +401,16 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Adversaires à localiser · .*équipes adverses/ })).toBeVisible({ timeout: 15_000 });
 
   for (const suffix of ["EXT", "EXT2"] as const) {
-    const heading = page.getByRole("heading", { name: `${opponent}-${suffix}`, level: 4 });
+    // `exact: true` : le nom Playwright est une SOUS-CHAÎNE insensible à la casse par défaut, donc
+    // « …-EXT » attraperait aussi « …-EXT2 » (strict mode violation). Chaque en-tête <h4> est UNE
+    // ligne club (OpponentTravelCard : orphan → <li><h4>…</h4><p>code fédéral non résolu…</p></li>).
+    const heading = page.getByRole("heading", { name: `${opponent}-${suffix}`, exact: true, level: 4 });
     await expect(
       heading,
       `l'extérieur ${opponent}-${suffix} devrait figurer en ligne club « code fédéral non résolu » — le test ne prouverait rien sinon`,
     ).toBeVisible({ timeout: 15_000 });
-    // Sa ligne club porte le sous-libellé de reprise ET n'offre PAS de « Localiser » (code non résolu).
+    // Sa ligne club (le <li> de CET en-tête exact) porte le sous-libellé de reprise ET n'offre PAS
+    // de « Localiser » (code non résolu) — scopé au <li> pour ne pas résoudre à plusieurs éléments.
     const row = heading.locator("xpath=ancestor::li[1]");
     await expect(row.getByText("code fédéral non résolu — relancez la localisation")).toBeVisible();
     await expect(row.getByRole("button", { name: /Localiser/ })).toHaveCount(0);
