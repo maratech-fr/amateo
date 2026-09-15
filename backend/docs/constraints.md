@@ -1,11 +1,13 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-09-10 (rotation de fraîcheur `documentation-update`, PR P4-193 « amicaux hors
-créneau match » — fichier hors sujet). Re-confronté au code : tag système `EMB` toujours sur l'axe AGE
-(`TeamTagService.php:27`, dérivé `:149`) ✓ · `FACILITY_CAPACITY` ne subsiste qu'en commentaires
-historiques (une occurrence dans `ScheduleConstraintBuilder.php`, une dans
-`ValidateConstraintsController.php`) ✓ · `maxConsecutiveDays` (P2-42) toujours opt-in dans
-`ImplicitConstraintConfig.php:117` ✓. Rien à corriger.
+Last verified @ 2026-09-15 (rotation de fraîcheur `documentation-update`, PR P4-207 « résolution des
+conflits, backend » — fichier hors sujet). Re-confronté au code : tag système `EMB` toujours sur
+l'axe AGE (`TeamTagService.php:27`, dérivé `:149`) ✓ · `FACILITY_CAPACITY` ne subsiste qu'en
+commentaires/docblocks historiques (`PayloadCapacityMirror.php:30`,
+`ScheduleConstraintBuilder.php:1398`, `ValidateConstraintsController.php:263`) ✓ ·
+`maxConsecutiveDays` (P2-42) toujours seule règle à `defaultIntensity: 'OFF'`, « opt-in : absente du
+payload, la règle n'est pas appliquée du tout » (`ImplicitConstraintConfig.php:117-127`) ✓. Rien à
+corriger.
 
 > ClubScheduler — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 

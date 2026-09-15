@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Clock\DevClockStore;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Competition;
+use App\Entity\ConflictResolution;
 use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
 use App\Entity\MatchSlotRotation;
@@ -23,6 +25,7 @@ use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
 use App\Enum\CompetitionType;
+use App\Enum\ConflictResolutionStatus;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
@@ -503,6 +506,72 @@ final class MatchTenantIsolationTest extends WebTestCase
         self::assertCount(0, $this->em->getRepository(OpponentTravel::class)->findBy(['opponentOrganismeCode' => 'ORGX']));
     }
 
+    // ── Résolution des conflits (P4-207) : le statut vit dans une table TENANT ──
+
+    /**
+     * NR axe §7.1 tenant isolation : le statut de traitement d'un conflit vit dans
+     * une table TENANT keyée sur l'empreinte. Club A pose un statut ; club B ne le
+     * voit jamais dans son radar, et un PUT de B sur l'empreinte de A est refusé
+     * (422 : absente du flux de B) — jamais une fuite ni un écrasement. Falsifié :
+     * la ligne de A reste intacte en base après la tentative de B.
+     */
+    public function testConflictResolutionIsTenantScoped(): void
+    {
+        // Le radar tait les matchs passés (civil today) : on épingle l'horloge pour
+        // que la rencontre du décor (2026-10-04) reste future quoi qu'il arrive.
+        self::getContainer()->get(DevClockStore::class)->set(new DateTimeImmutable('2026-09-01 10:00:00'));
+
+        [$clubA, $userA, $seasonA] = $this->createClubUser('cra');
+        [$clubB, $userB, $seasonB] = $this->createClubUser('crb');
+        $this->createAwayNoFootprintFixture($clubA, $seasonA);
+        $this->createAwayNoFootprintFixture($clubB, $seasonB);
+
+        // Club A stamps a status on its own conflict.
+        $fingerprintA = $this->firstConflict($userA)['fingerprint'];
+        self::assertIsString($fingerprintA);
+        $this->putConflictResolution($userA, $fingerprintA, ['status' => 'DEROGATION_REQUESTED', 'note' => 'A seulement']);
+        self::assertResponseStatusCodeSame(200);
+
+        // A sees its resolution; B sees its OWN conflict (a distinct fingerprint) with
+        // resolution null — never A's row.
+        self::assertSame('DEROGATION_REQUESTED', $this->firstConflict($userA)['resolution']['status']);
+        $conflictB = $this->firstConflict($userB);
+        self::assertNull($conflictB['resolution'], 'club B ne voit jamais la résolution de A');
+        self::assertNotSame($fingerprintA, $conflictB['fingerprint'], 'chaque club a sa propre empreinte (fixture distincte)');
+
+        // B stamps A's fingerprint → 422 (absent from B's flow): no leak, no overwrite.
+        $this->putConflictResolution($userB, $fingerprintA, ['status' => 'RESOLVED_INTERNALLY']);
+        self::assertResponseStatusCodeSame(422);
+
+        // A's row is untouched in the DB: still one row, club A, DEROGATION_REQUESTED.
+        $this->em->clear();
+        $this->scopeGucToClub($clubA->getId());
+        $rows = $this->em->getRepository(ConflictResolution::class)->findBy(['fingerprint' => $fingerprintA]);
+        self::assertCount(1, $rows);
+        self::assertSame($clubA->getId(), $rows[0]->getClubId());
+        self::assertSame(ConflictResolutionStatus::DEROGATION_REQUESTED, $rows[0]->getStatus());
+        self::assertSame('A seulement', $rows[0]->getNote());
+    }
+
+    /**
+     * The conflict-resolution writes are management-gated (SEC-07): a non-management
+     * member is refused on PUT and on DELETE (403 wins, before any flow check).
+     */
+    public function testConflictResolutionWritesAreManagementGated(): void
+    {
+        [$clubA] = $this->createClubUser('crg');
+        $editor = $this->createMember($clubA, 'editor');
+        // Well-formed fingerprint (passes the route requirement) — the 403 must fire
+        // before any flow/existence check.
+        $fingerprint = 'AWAY_NO_FOOTPRINT:11111111-1111-4111-8111-111111111111';
+
+        $this->putConflictResolution($editor, $fingerprint, ['status' => 'DEROGATION_REQUESTED']);
+        self::assertResponseStatusCodeSame(403);
+
+        $this->client->request('DELETE', $this->conflictResolutionUrl($fingerprint), [], [], $this->authHeaders($editor));
+        self::assertResponseStatusCodeSame(403);
+    }
+
     public function testFbiIngestionsAreScopedToTheClub(): void
     {
         [$clubA, , $seasonA] = $this->createClubUser('a');
@@ -566,6 +635,15 @@ final class MatchTenantIsolationTest extends WebTestCase
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    protected function tearDown(): void
+    {
+        // The conflict radar filters strictly past matches by the club's civil today
+        // (DevAwareClock → DevClockStore, Redis, NOT rolled back by dama). Any test
+        // that pins it must release it, whatever happened.
+        self::getContainer()->get(DevClockStore::class)->set(null);
+        parent::tearDown();
     }
 
     /** A placed HOME fixture carrying one open pending deviation (OUT_OF_SYNC). */
@@ -784,6 +862,52 @@ final class MatchTenantIsolationTest extends WebTestCase
         $this->em->flush();
 
         return $competition;
+    }
+
+    /** An AWAY fixture with no kickoff → exactly one AWAY_NO_FOOTPRINT conflict. */
+    private function createAwayNoFootprintFixture(Club $club, Season $season): string
+    {
+        $this->scopeGucToClub($club->getId());
+        $fixture = new Fixture;
+        $fixture->setClubId($club->getId());
+        $fixture->setSeasonId($season->getId());
+        $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
+        $fixture->setHomeAway(FixtureHomeAway::AWAY);
+        $fixture->setOpponentLabel('Adversaire sans empreinte');
+        // No kickoff and no habit on the team's weekday → AWAY_NO_FOOTPRINT (severity 7).
+        $this->em->persist($fixture);
+        $this->em->flush();
+
+        return $fixture->getId();
+    }
+
+    /** @return array<string, mixed> the first conflict of the caller's radar */
+    private function firstConflict(User $user): array
+    {
+        $this->client->request('GET', '/api/fixtures/conflicts', [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(200);
+        $conflicts = $this->responseData()['conflicts'];
+        self::assertIsArray($conflicts);
+        self::assertNotEmpty($conflicts, 'le radar du club devrait porter au moins un conflit');
+
+        /** @var array<string, mixed> $first */
+        $first = $conflicts[0];
+
+        return $first;
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     */
+    private function putConflictResolution(User $user, string $fingerprint, array $body): void
+    {
+        $this->client->request('PUT', $this->conflictResolutionUrl($fingerprint), [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], (string) json_encode($body, \JSON_THROW_ON_ERROR));
+    }
+
+    private function conflictResolutionUrl(string $fingerprint): string
+    {
+        return '/api/fixtures/conflicts/' . $fingerprint . '/resolution';
     }
 
     /**

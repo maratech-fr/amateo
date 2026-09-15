@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Tests\Behat\ClosureSegmentationContext;
 use App\Tests\Behat\CoachWishesContext;
+use App\Tests\Behat\ConflictResolutionContext;
 use App\Tests\Behat\ConflictTruthContext;
 use App\Tests\Behat\ConstraintHonoredContext;
 use App\Tests\Behat\EngagedTeamContext;
@@ -131,5 +132,10 @@ return (new Config)
                 new Suite('conflits-verite')
                     ->withPaths('%paths.base%/features/les-conflits-d-un-match-disent-la-verite.feature')
                     ->withContexts(ConflictTruthContext::class),
+            )
+            ->withSuite(
+                new Suite('conflits-resolution')
+                    ->withPaths('%paths.base%/features/un-conflit-traite-reste-visible-mais-decompte.feature')
+                    ->withContexts(ConflictResolutionContext::class),
             ),
     );

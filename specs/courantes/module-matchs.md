@@ -1,15 +1,18 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-15 (PR A « onglet Conflits », `documentation-update`). Nouveau §
-« Onglet Conflits » ajouté et confronté au code : `ConflictsPage.tsx`, `lib/conflictPivot.ts`
-(`pivotConflicts`, 4 axes + 3 sentinelles, un conflit à 2 équipes compte sous chacune),
-`ConflictLine.tsx` (`ConflictLine`/`ConflictSeverityGroups`, maison unique consommée par
-`ConflictsPage` ET `ConflictRadar`), `MatchesLayout.tsx` (5ᵉ onglet « Conflits », sans badge),
-`app/routes.tsx` (route lazy `conflits`), `store.ts` (`conflictsPivot`/`conflictsFamilies`,
-séparés de `consultFamilies`), `lib/urlState.ts` (`decodeConflictsParams`/
-`applyConflictsToParams`). Reste du fichier (§ « Gymnase depuis le libellé », § « Détection »,
-§ reconciliation coupes P4-194/195, § Appariement FFBB, § « Solveur de placement ») non re-sondé
-cette passe — voir `git log -p --follow` pour sa dernière vérification.
+Last verified @ 2026-09-15 (PR B1 « résolution des conflits, backend », `documentation-update`).
+Nouveau § « Résolution des conflits — backend » ajouté et confronté au code :
+`ConflictResolutionStatus.php` (3 cas stockables, « à traiter » = absence de ligne),
+`ConflictResolution.php` (tenant, unique club+saison+empreinte, note ≤ 500), `Version20260915120000`
+(RLS patron `opponent_travel`), `FixtureConflictsController.php` (champ additif `resolution` sur le
+GET, `PUT`/`DELETE .../resolution`, `assertManager()` en premier), `SeasonDataPurger.php`
+(`ConflictResolution` dans la liste de purge — la seule porte de sortie d'un orphelin) ✓. Passe
+précédente (PR A « onglet Conflits ») : `ConflictsPage.tsx`, `lib/conflictPivot.ts`
+(`pivotConflicts`, 4 axes + 3 sentinelles), `ConflictLine.tsx`, `MatchesLayout.tsx` (5ᵉ onglet, sans
+badge), `store.ts`, `lib/urlState.ts` — non re-sondée cette passe. Reste du fichier (§ « Gymnase
+depuis le libellé », § « Détection », § reconciliation coupes P4-194/195, § Appariement FFBB,
+§ « Solveur de placement ») non re-sondé cette passe — voir `git log -p --follow` pour sa dernière
+vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -1388,8 +1391,9 @@ Décision fondateur (2026-09-15) : un **4ᵉ espace en lecture seule**, à côt�
 répond « qu'est-ce qui se passe cette semaine/ce mois/cette phase ? », Conflits répond « qu'est-ce qui
 cloche sur TOUTE la saison, regroupé par qui ça touche ? ». Nav `MatchesLayout` : Semaine · Consulter ·
 Importer · Configuration · **Conflits** (`/matchs/conflits`, `ConflictsPage.tsx`), dernier onglet,
-**sans badge** (les statuts persistés qui justifieraient un compte « à traiter » sont un successeur,
-§ roadmap plus bas).
+**sans badge** — le statut de traitement existe désormais côté backend seul (§ « Résolution des
+conflits », PR B1, ci-dessous) ; la chip de statut, les compteurs qui décrémentent et le badge de
+nav restent un successeur FRONTEND (PR B2, roadmap P4-207).
 
 - **Même flux que Consulter, sans son filtre** : `useConflicts()` (le même `GET /api/fixtures/conflicts`
   que Consulter/le radar) — **mais PAS de `MatchesFilterBar` (`filterMode`/`filterIds`)** ici, décision
@@ -1446,8 +1450,60 @@ Importer · Configuration · **Conflits** (`/matchs/conflits`, `ConflictsPage.ts
   liste plate (pas de regroupement), tableau, `<select>` pour le pivot, badge de nav sur ce livrable
   (reporté au successeur qui porte un statut), `StatusPill` par entrée, ventilation par gravité en plus
   du pivot, bouton « tout déplier ».
-- **Suite prévue, pas encore livrée** : un statut persisté par conflit (dérogation demandée / réglé en
-  interne / sans solution) — voir `specs/evolution/roadmap.md`.
+- **Suite livrée EN PARTIE** : le statut persisté par conflit existe désormais côté backend
+  (§ « Résolution des conflits » ci-dessous, PR B1). **Reste ouvert (PR B2, frontend, roadmap
+  P4-207)** : la chip de statut dans `ConflictLine`, les compteurs (pivot Conflits + badge de nav
+  `ConflictRadar`) qui décrémentent sur un conflit traité, l'interrupteur de pose/retrait, le
+  badge de nav « Conflits · N à traiter ».
+
+## Résolution des conflits — backend (P4-207 PR B1, 2026-09-15)
+
+Décision fondateur (2026-09-15) : un conflit traité **reste toujours rendu** par le radar — poser un
+statut ne le masque jamais, il ne fait que dire OÙ EN EST sa résolution. Seul le **gestionnaire**
+écrit (`ManagementAccessGuard::assertManager`, SEC-07) ; un membre simple lit mais ne pose rien.
+Backend seul livré dans cette PR — le frontend (chip, compteurs, interrupteur, badge de nav) est
+**PR B2, non livrée**, voir roadmap P4-207.
+
+- **Modèle** (`ConflictResolution`, `ConflictResolutionStatus`) : table TENANT (RLS `FORCE`, patron
+  structurel `OpponentTravel`) keyée sur `(club_id, season_id, fingerprint)` — l'EMPREINTE STABLE
+  d'un conflit (`ConflictFingerprinter`, déjà posée par RMM-3), pas son contenu daté. **Trois cas
+  seulement se stockent** : `DEROGATION_REQUESTED` (Dérogation demandée), `RESOLVED_INTERNALLY`
+  (Réglé en interne), `NO_SOLUTION_YET` (Sans solution pour l'instant). **« À traiter » n'a AUCUN
+  cas d'enum** : c'est le défaut, et le défaut = absence de ligne — poser « à traiter » = `DELETE`,
+  jamais une valeur stockée. Note libre facultative (≤ 500 caractères), `updatedBy` (dernier auteur).
+  Migration `Version20260915120000`.
+- **Endpoint GET additif** : `GET /api/fixtures/conflicts` gagne un champ `resolution:
+  {status, note, updatedAt} | null` sur chaque conflit (`null` = « à traiter », le défaut sans
+  ligne) — jointure **serveur** sur l'empreinte, faite par `ConflictResolutionRepository::mapByFingerprint`
+  contre les lignes du club+saison courants. La jointure ne sert QUE les empreintes du flux courant :
+  une ligne dont l'empreinte a disparu (conflit résolu par le solveur/un geste, ou nature changée —
+  même paire, type différent — donc nouvelle empreinte) devient un **orphelin**, jamais rendu.
+- **Endpoints d'écriture** — `PUT`/`DELETE /api/fixtures/conflicts/{fingerprint}/resolution`
+  (`FixtureConflictsController`), empreinte contrainte par la route
+  (`[A-Z_]+:[0-9a-fA-F,:-]+` — une empreinte malformée reste un **404 de routing**, n'atteint jamais
+  l'action). `assertManager()` tiré **en premier** (403 avant tout autre contrôle). `PUT` : statut
+  inconnu ou note > 500 caractères → 422 ; l'empreinte DOIT appartenir au flux COURANT du club+saison
+  (recalculé par la même plomberie que le GET) sinon 422 (jamais un statut fantôme sur un conflit
+  disparu) ; upsert sur la clé unique (club, saison, empreinte) — un second PUT remplace, jamais une
+  seconde ligne. `DELETE` : retour à « à traiter », **idempotent** (204 même sans ligne, y compris sur
+  une empreinte qui n'existe plus dans le flux — le repli à « à traiter » n'a pas besoin que le
+  conflit existe encore).
+- **Orphelins — JAMAIS nettoyés à la volée, purgés avec la saison** (décision fermée § 2) : une ligne
+  dont l'empreinte a quitté le flux courant reste en base, invisible du GET, jusqu'à la purge de
+  saison (`SeasonDataPurger::purge` — `ConflictResolution` y est listée comme les autres tables
+  `club_id+season_id` sans enfant) ou l'effacement RGPD du club (`ErasedClubPurger`, qui délègue à
+  `SeasonDataPurger` saison par saison).
+- **OpenAPI** : les deux routes + le champ additif `resolution` sont déclarés dans
+  `SeasonAndFixturePaths` (`CustomRoutesOpenApiFactory`) et présents au snapshot.
+- **Tests** : `MatchTenantIsolationTest` (NR axe tenant isolation — isolation cross-club du statut +
+  garde management sur PUT/DELETE), `FixtureConflictsApiTest` (champ additif par défaut, PUT→GET,
+  upsert, DELETE idempotent, 422 statut inconnu / note trop longue / empreinte absente du flux, 404
+  empreinte malformée), `ConflictResolutionStatusTest` (les trois cas stockables, `tryFrom` d'un
+  statut inconnu). Feature Behat dédiée
+  `un-conflit-traite-reste-visible-mais-decompte.feature` (suite `conflits-resolution`,
+  `ConflictResolutionContext`) : le gestionnaire pose « Dérogation demandée » sur un litige, le radar
+  le rend toujours avec sa résolution, l'autre litige reste « à traiter » ; un membre sans rôle de
+  gestion se voit refuser l'écriture.
 
 ## Refonte UX — RMM-1 (P2-26, 4 PR entre 2026-08-23 et 2026-08-24)
 

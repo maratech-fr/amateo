@@ -8,6 +8,7 @@ use App\Clock\DevClockStore;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Coach;
+use App\Entity\ConflictResolution;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\TeamCoach;
@@ -106,6 +107,103 @@ final class FixtureConflictsApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
 
         self::assertSame([], $this->responseData()['conflicts'], 'un match passé ne remonte plus (D1 règle 3)');
+    }
+
+    // ── P4-207 « Résolution des conflits » (champ additif + PUT/DELETE) ──
+
+    public function testGetCarriesNullResolutionByDefault(): void
+    {
+        [, $user] = $this->createClubWithOverlappingMatches('rn');
+
+        $conflicts = $this->conflictsFor($user);
+        self::assertCount(1, $conflicts);
+        self::assertArrayHasKey('resolution', $conflicts[0], 'le champ resolution est ADDITIF, toujours présent');
+        self::assertNull($conflicts[0]['resolution'], 'aucune ligne = « à traiter » = null');
+    }
+
+    public function testPutThenGetCarriesTheResolution(): void
+    {
+        [, $user] = $this->createClubWithOverlappingMatches('put');
+        $fingerprint = $this->conflictsFor($user)[0]['fingerprint'];
+
+        $this->putResolution($user, $fingerprint, ['status' => 'DEROGATION_REQUESTED', 'note' => 'Vu avec la ligue']);
+        self::assertResponseStatusCodeSame(200);
+        $put = $this->responseData();
+        self::assertSame($fingerprint, $put['fingerprint']);
+        self::assertSame('DEROGATION_REQUESTED', $put['resolution']['status']);
+
+        $conflict = $this->conflictsFor($user)[0];
+        self::assertSame('DEROGATION_REQUESTED', $conflict['resolution']['status']);
+        self::assertSame('Vu avec la ligue', $conflict['resolution']['note']);
+        self::assertArrayHasKey('updatedAt', $conflict['resolution']);
+    }
+
+    public function testPutOnTheSameFingerprintReplacesTheRow(): void
+    {
+        [$club, $user] = $this->createClubWithOverlappingMatches('rep');
+        $fingerprint = $this->conflictsFor($user)[0]['fingerprint'];
+
+        $this->putResolution($user, $fingerprint, ['status' => 'DEROGATION_REQUESTED']);
+        self::assertResponseStatusCodeSame(200);
+        $this->putResolution($user, $fingerprint, ['status' => 'RESOLVED_INTERNALLY']);
+        self::assertResponseStatusCodeSame(200);
+
+        self::assertSame('RESOLVED_INTERNALLY', $this->conflictsFor($user)[0]['resolution']['status']);
+        $this->scopeGucToClub($club->getId());
+        self::assertCount(1, $this->em->getRepository(ConflictResolution::class)->findBy([]), 'un upsert, jamais une seconde ligne');
+    }
+
+    public function testDeleteResetsToNullAndIsIdempotent(): void
+    {
+        [, $user] = $this->createClubWithOverlappingMatches('del');
+        $fingerprint = $this->conflictsFor($user)[0]['fingerprint'];
+        $this->putResolution($user, $fingerprint, ['status' => 'NO_SOLUTION_YET']);
+        self::assertResponseStatusCodeSame(200);
+
+        $this->client->request('DELETE', $this->resolutionUrl($fingerprint), [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(204);
+        self::assertNull($this->conflictsFor($user)[0]['resolution']);
+
+        // « À traiter » EST l'absence de ligne : un second DELETE reste 204.
+        $this->client->request('DELETE', $this->resolutionUrl($fingerprint), [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(204);
+    }
+
+    public function testUnknownStatusIs422(): void
+    {
+        [, $user] = $this->createClubWithOverlappingMatches('st');
+        $fingerprint = $this->conflictsFor($user)[0]['fingerprint'];
+
+        $this->putResolution($user, $fingerprint, ['status' => 'A_TRAITER']);
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testNoteOver500CharactersIs422(): void
+    {
+        [, $user] = $this->createClubWithOverlappingMatches('nt');
+        $fingerprint = $this->conflictsFor($user)[0]['fingerprint'];
+
+        $this->putResolution($user, $fingerprint, ['status' => 'DEROGATION_REQUESTED', 'note' => str_repeat('x', 501)]);
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testWellFormedButAbsentFingerprintIs422(): void
+    {
+        [, $user] = $this->createClubWithOverlappingMatches('ab');
+        // Passes the route requirement (TYPE:uuid) but is nowhere in the current radar.
+        $absent = 'AWAY_NO_FOOTPRINT:11111111-1111-4111-8111-111111111111';
+
+        $this->putResolution($user, $absent, ['status' => 'DEROGATION_REQUESTED']);
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testMalformedFingerprintIs404(): void
+    {
+        [, $user] = $this->createClubWithOverlappingMatches('mf');
+
+        // Lowercase, no TYPE:field shape → the route requirement rejects it (routing 404).
+        $this->client->request('PUT', '/api/fixtures/conflicts/pas-une-empreinte/resolution', [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], (string) json_encode(['status' => 'DEROGATION_REQUESTED'], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(404);
     }
 
     protected function setUp(): void
@@ -219,6 +317,33 @@ final class FixtureConflictsApiTest extends WebTestCase
         $hex = substr(md5($suffix . $n), 0, 12);
 
         return \sprintf('%s-%s-4%s-8%s-%s', substr($hex, 0, 8), substr($hex, 8, 4), '111', '111', '111111111111');
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function conflictsFor(User $user): array
+    {
+        $this->client->request('GET', '/api/fixtures/conflicts', [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(200);
+
+        /** @var list<array<string, mixed>> $conflicts */
+        $conflicts = $this->responseData()['conflicts'];
+
+        return $conflicts;
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     */
+    private function putResolution(User $user, string $fingerprint, array $body): void
+    {
+        $this->client->request('PUT', $this->resolutionUrl($fingerprint), [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], (string) json_encode($body, \JSON_THROW_ON_ERROR));
+    }
+
+    private function resolutionUrl(string $fingerprint): string
+    {
+        return '/api/fixtures/conflicts/' . $fingerprint . '/resolution';
     }
 
     /**

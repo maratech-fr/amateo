@@ -109,6 +109,11 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                             'fixture' => ['type' => 'object', 'nullable' => true, 'description' => 'MATCH_TRAINING: the match'],
                             'training' => ['type' => 'object', 'nullable' => true, 'description' => 'MATCH_TRAINING: the training slot'],
                             'fingerprint' => ['type' => 'string', 'description' => 'Stable identity of the conflict — same while it is the same dispute, changes when its nature changes (the guardian compares it across visits)'],
+                            'resolution' => ['type' => 'object', 'nullable' => true, 'description' => 'The handling status a manager stamped on this conflict (null = « à traiter », the default with no row)', 'properties' => [
+                                'status' => ['type' => 'string', 'enum' => ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET']],
+                                'note' => ['type' => 'string', 'nullable' => true],
+                                'updatedAt' => ['type' => 'string', 'format' => 'date-time'],
+                            ]],
                         ]]],
                     ],
                 ]),
@@ -117,6 +122,52 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
             ],
             summary: 'Same-coach match/training conflict radar (read-only, computed on the fly)',
         )));
+
+        $paths->addPath('/api/fixtures/conflicts/{fingerprint}/resolution', new PathItem(
+            put: new Operation(
+                operationId: 'putFixtureConflictResolution',
+                tags: ['Match'],
+                responses: [
+                    '200' => $this->schemas->jsonResponse('The handling status now stamped on the conflict (the conflict itself stays on the radar; this only says where its resolution stands)', [
+                        'type' => 'object',
+                        'properties' => [
+                            'fingerprint' => ['type' => 'string'],
+                            'resolution' => ['type' => 'object', 'properties' => [
+                                'status' => ['type' => 'string', 'enum' => ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET']],
+                                'note' => ['type' => 'string', 'nullable' => true],
+                                'updatedAt' => ['type' => 'string', 'format' => 'date-time'],
+                            ]],
+                        ],
+                    ]),
+                    '400' => new Response('No club in context'),
+                    '403' => new Response('Not a management member'),
+                    '404' => new Response('Malformed fingerprint (routing)'),
+                    '422' => new Response('Unknown status, note over 500 characters, or a fingerprint absent from the current radar'),
+                ],
+                summary: 'Set (or replace) the handling status of a conflict — management only. « À traiter » is not a status here (it is the absence of a row): reset with DELETE',
+                parameters: [['name' => 'fingerprint', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string'], 'description' => 'The stable fingerprint of the conflict (from the radar feed)']],
+                requestBody: $this->schemas->jsonBody([
+                    'type' => 'object',
+                    'required' => ['status'],
+                    'properties' => [
+                        'status' => ['type' => 'string', 'enum' => ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET']],
+                        'note' => ['type' => 'string', 'nullable' => true, 'description' => 'Optional free note, at most 500 characters'],
+                    ],
+                ]),
+            ),
+            delete: new Operation(
+                operationId: 'deleteFixtureConflictResolution',
+                tags: ['Match'],
+                responses: [
+                    '204' => new Response('Reset to « à traiter » (idempotent — 204 even when there was no row)'),
+                    '400' => new Response('No club in context'),
+                    '403' => new Response('Not a management member'),
+                    '404' => new Response('Malformed fingerprint (routing)'),
+                ],
+                summary: 'Reset a conflict to « à traiter » (removes the handling status) — management only',
+                parameters: [['name' => 'fingerprint', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string'], 'description' => 'The stable fingerprint of the conflict']],
+            ),
+        ));
 
         $paths->addPath('/api/matches/module-visit', new PathItem(post: new Operation(
             operationId: 'stampMatchModuleVisit',

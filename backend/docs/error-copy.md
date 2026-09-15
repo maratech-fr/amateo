@@ -4,10 +4,12 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-09-10 (rotation `documentation-update`, PR P4-194/P4-195 « coupes FFBB » — zone non
-touchée, contrôle de fraîcheur). Re-confronté au code : la règle « le corps du serveur ne parle qu'en
-deçà de 500 » tient toujours (`frontend/src/shared/lib/errorMessage.ts:32`, et le repli générique
-`:65` au-delà) ✓. Rien à corriger.
+Last verified @ 2026-09-15 (rotation `documentation-update`, PR P4-207 « résolution des conflits,
+backend » — zone non touchée, contrôle de fraîcheur). Re-confronté au code : la règle « le corps du
+serveur ne parle qu'en deçà de 500 » tient toujours (`frontend/src/shared/lib/errorMessage.ts:32`, et
+le repli générique `if (status >= 500)` `:65` au-delà) ✓ ; le rail 422 des state processors reste
+gardé par `Unit/ValidationExceptionCarriesViolationsTest` (interdit le constructeur-chaîne partout
+ailleurs dans `src/`, cf. `.claude/rules/backend.md`) ✓. Rien à corriger.
 
 ## La règle
 
