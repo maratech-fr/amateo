@@ -18,7 +18,20 @@ use Doctrine\ORM\Mapping as ORM;
  *
  * Keyée sur le code organisme fédéral de l'adversaire (`opponentOrganismeCode`),
  * la même clé que {@see OpponentDirectoryEntry} et {@see Fixture::getOpponentOrganismeCode()}.
- * Un couple (club, saison, code) = une ligne (unique).
+ *
+ * Grain (P2-54 PR-1 « adversaire multi-gymnases ») : une ligne peut porter en plus
+ * un `opponentTeamKey` (le libellé de rencontre NORMALISÉ, foyer
+ * {@see VenueLabelNormalizer::normalize}). Sémantique :
+ *   - `opponentTeamKey` NULL = ligne CLUB : le trajet PAR DÉFAUT pour toutes les
+ *     rencontres de ce code adverse ;
+ *   - `opponentTeamKey` renseigné = ligne ÉQUIPE : une surcharge pour les seules
+ *     rencontres dont le libellé normalisé = ce teamKey (un organisme qui joue dans
+ *     plusieurs gymnases selon son équipe : « BASKET 5EME - 1 » vs « - 2 ») ;
+ *   - absence de ligne équipe → la rencontre hérite de la ligne club ; absence de
+ *     ligne club → l'annuaire global.
+ * Une ligne équipe naît TOUJOURS d'un choix manuel du gestionnaire — la passe AUTO
+ * n'en crée jamais. Un couple (club, saison, code, teamKey) = une ligne (unique,
+ * `NULLS NOT DISTINCT` : deux lignes club du même code sont interdites).
  *
  * `travelMinutes` = trajet ALLER SIMPLE en voiture (le radar double pour l'aller-
  * retour), NULLABLE : null = lieu connu mais IGN n'a rien rendu (best-effort),
@@ -32,7 +45,7 @@ use Doctrine\ORM\Mapping as ORM;
  */
 #[ORM\Entity(repositoryClass: OpponentTravelRepository::class)]
 #[ORM\Table(name: 'opponent_travel')]
-#[ORM\UniqueConstraint(name: 'uniq_opponent_travel_code', columns: ['club_id', 'season_id', 'opponent_organisme_code'])]
+#[ORM\UniqueConstraint(name: 'uniq_opponent_travel_team', columns: ['club_id', 'season_id', 'opponent_organisme_code', 'opponent_team_key'])]
 #[ORM\Index(name: 'idx_opponent_travel_club_season', columns: ['club_id', 'season_id'])]
 #[ORM\HasLifecycleCallbacks]
 class OpponentTravel implements TenantOwnedInterface
@@ -59,6 +72,13 @@ class OpponentTravel implements TenantOwnedInterface
 
     #[ORM\Column(name: 'opponent_organisme_code', length: 64)]
     private string $opponentOrganismeCode;
+
+    /**
+     * Le libellé de rencontre NORMALISÉ (foyer {@see VenueLabelNormalizer::normalize})
+     * quand cette ligne surcharge UNE équipe adverse ; NULL pour la ligne CLUB (défaut).
+     */
+    #[ORM\Column(name: 'opponent_team_key', length: 180, nullable: true)]
+    private ?string $opponentTeamKey = null;
 
     /** Aller simple en VOITURE, en minutes. Null = non calculé / IGN muet (best-effort). */
     #[ORM\Column(name: 'travel_minutes', type: 'smallint', nullable: true)]
@@ -173,6 +193,24 @@ class OpponentTravel implements TenantOwnedInterface
         $this->opponentOrganismeCode = $opponentOrganismeCode;
 
         return $this;
+    }
+
+    public function getOpponentTeamKey(): ?string
+    {
+        return $this->opponentTeamKey;
+    }
+
+    public function setOpponentTeamKey(?string $opponentTeamKey): self
+    {
+        $this->opponentTeamKey = $opponentTeamKey;
+
+        return $this;
+    }
+
+    /** True when this row overrides a single opponent TEAM (else it is the club default). */
+    public function isTeamScoped(): bool
+    {
+        return null !== $this->opponentTeamKey;
     }
 
     public function getTravelMinutes(): ?int

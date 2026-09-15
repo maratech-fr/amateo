@@ -190,6 +190,39 @@ final class OpponentTravelResolverTest extends WebTestCase
         }
     }
 
+    /**
+     * P2-54 « adversaire multi-gymnases » — la structure que LIT le radar
+     * ({@see OpponentTravelRepository::travelMinutesBySeason}) : par code, le défaut club
+     * et les surcharges par équipe. Le radar projette alors `teams[teamKey] ?? club` :
+     * la fixture « - 2 » prend le trajet équipe (20), « - 1 » retombe sur le club (60).
+     */
+    public function testTravelMinutesBySeasonExposesTeamOverridesWithAClubFallback(): void
+    {
+        [$club, $season] = $this->seedClubWithAwayOpponent();
+        $code = self::OPPONENT_CODE;
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->persist((new OpponentTravel)
+            ->setClubId($club->getId())->setSeasonId($season->getId())->setOpponentOrganismeCode($code)
+            ->setSource(OpponentTravelSource::AUTO)->setTravelMinutes(60)->setResolvedAt(new DateTimeImmutable));
+        $this->em->persist((new OpponentTravel)
+            ->setClubId($club->getId())->setSeasonId($season->getId())->setOpponentOrganismeCode($code)
+            ->setOpponentTeamKey('adverse trajet 2')
+            ->setSource(OpponentTravelSource::MANUAL)->setTravelMinutes(20)->setResolvedAt(new DateTimeImmutable));
+        $this->em->flush();
+        $this->em->clear();
+
+        $this->scopeGucToClub($club->getId());
+        $map = $this->travelRepository()->travelMinutesBySeason($season->getId());
+
+        self::assertArrayHasKey($code, $map);
+        self::assertSame(60, $map[$code]['club'], 'le défaut club (repli du radar)');
+        self::assertSame(['adverse trajet 2' => 20], $map[$code]['teams'], 'la surcharge par équipe, keyée sur le libellé normalisé');
+        // The radar's projection: teams[teamKey] ?? club.
+        self::assertSame(20, $map[$code]['teams']['adverse trajet 2'] ?? $map[$code]['club'], 'fixture « - 2 » → trajet équipe');
+        self::assertSame(60, $map[$code]['teams']['adverse trajet 1'] ?? $map[$code]['club'], 'fixture « - 1 » → repli club');
+    }
+
     protected function setUp(): void
     {
         self::createClient();

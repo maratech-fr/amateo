@@ -23,6 +23,7 @@ use App\Repository\ClubRepository;
 use App\Repository\ConflictResolutionRepository;
 use App\Repository\LeagueMatchWindowRepository;
 use App\Repository\OpponentTravelRepository;
+use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\ClubDay;
 use App\Service\ConflictFingerprinter;
 use App\Service\LeagueEnvelopeResolver;
@@ -76,6 +77,7 @@ final class FixtureConflictsController extends AbstractController
         private readonly ClubDay $clubDay,
         private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly ConflictResolutionRepository $resolutionRepository,
+        private readonly VenueLabelNormalizer $labelNormalizer,
     ) {}
 
     // priority > 0: this static path must win over API Platform's /api/fixtures/{id}
@@ -258,16 +260,24 @@ final class FixtureConflictsController extends AbstractController
 
         // P2-54 RMM-9 PR-3 — the SPATIAL radar: an AWAY fixture's footprint grows by
         // the round trip (2 × one-way car time) to the opponent's venue, read from
-        // the tenant `opponent_travel` via the stamped organisme code. A fixture
-        // without code / without travel keeps 0 (no spatial conflict — told plainly).
+        // the tenant `opponent_travel` via the stamped organisme code. Grain ÉQUIPE
+        // (P2-54 PR-1) : chaque rencontre résout son trajet par (code, libellé
+        // normalisé) → override équipe, sinon défaut club. Une rencontre sans code /
+        // sans trajet reste 0 (aucun conflit spatial — dit franchement).
         $roundTripByFixtureId = [];
         if ($season instanceof Season) {
-            $travelByCode = $this->opponentTravelRepository->travelMinutesByCode($season->getId());
-            if ([] !== $travelByCode) {
+            $travelBySeason = $this->opponentTravelRepository->travelMinutesBySeason($season->getId());
+            if ([] !== $travelBySeason) {
                 foreach ($fixtures as $fixture) {
                     $code = $fixture->getOpponentOrganismeCode();
-                    if (FixtureHomeAway::AWAY === $fixture->getHomeAway() && null !== $code && isset($travelByCode[$code])) {
-                        $roundTripByFixtureId[$fixture->getId()] = 2 * $travelByCode[$code];
+                    if (FixtureHomeAway::AWAY !== $fixture->getHomeAway() || null === $code || !isset($travelBySeason[$code])) {
+                        continue;
+                    }
+                    $teamKey = $this->labelNormalizer->normalize(trim($fixture->getOpponentLabel()));
+                    $entry = $travelBySeason[$code];
+                    $oneWay = $entry['teams'][$teamKey] ?? $entry['club'];
+                    if (null !== $oneWay) {
+                        $roundTripByFixtureId[$fixture->getId()] = 2 * $oneWay;
                     }
                 }
             }

@@ -8,6 +8,7 @@ use App\ApiResource\FixtureResource;
 use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
 use App\Service\Basketball\VenueAliasResolver;
+use App\Service\Basketball\VenueLabelNormalizer;
 use Doctrine\ORM\QueryBuilder;
 use Symfony\Contracts\Service\Attribute\Required;
 
@@ -18,10 +19,18 @@ class FixtureStateProvider extends AbstractStateProvider
 {
     private VenueAliasResolver $venueAliasResolver;
 
+    private VenueLabelNormalizer $labelNormalizer;
+
     #[Required]
     public function setVenueAliasResolver(VenueAliasResolver $venueAliasResolver): void
     {
         $this->venueAliasResolver = $venueAliasResolver;
+    }
+
+    #[Required]
+    public function setLabelNormalizer(VenueLabelNormalizer $labelNormalizer): void
+    {
+        $this->labelNormalizer = $labelNormalizer;
     }
 
     protected function getEntityClass(): string
@@ -53,6 +62,11 @@ class FixtureStateProvider extends AbstractStateProvider
     protected function mapEntityToOutput(object $entity): FixtureResource
     {
         $output = FixtureResource::fromEntity($entity);
+        // Grain équipe (P2-54) : la clé d'équipe = le libellé adverse NORMALISÉ, calculée
+        // SERVEUR (foyer unique) et servie, pour que le front joigne le trajet par équipe
+        // sans jamais re-normaliser un libellé.
+        $teamKey = $this->labelNormalizer->normalize(trim($entity->getOpponentLabel()));
+        $output->opponentTeamKey = '' === $teamKey ? null : $teamKey;
         // D6 — proposition floue d'un gymnase pour un domicile importé encore sans
         // salle. Lecture seule, jamais un placement (venue mémoïsé par requête).
         if (FixtureHomeAway::HOME === $entity->getHomeAway() && null === $entity->getVenueId() && null !== $entity->getFbiVenueLabel()) {

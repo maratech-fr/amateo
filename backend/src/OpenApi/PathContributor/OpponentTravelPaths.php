@@ -94,13 +94,17 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
             'type' => 'object',
             'properties' => [
                 'opponentOrganismeCode' => ['type' => ['string', 'null']],
+                'opponentTeamKey' => ['type' => ['string', 'null'], 'description' => 'Server-normalized opponent label — the grain of a per-team travel override; null for an unresolved opponent'],
                 'opponentLabel' => ['type' => 'string'],
                 'located' => ['type' => 'boolean', 'description' => 'A resolvable location exists (directory entry or manual override)'],
                 'precision' => ['type' => ['string', 'null'], 'enum' => ['VENUE', 'CITY', null], 'description' => 'How precisely the opponent venue is known'],
                 'locationName' => ['type' => ['string', 'null'], 'description' => 'The gym label (VENUE / override) or the commune (CITY)'],
+                'city' => ['type' => ['string', 'null'], 'description' => 'The opponent commune from the shared directory'],
+                'postalCode' => ['type' => ['string', 'null'], 'description' => 'The opponent postal code from the shared directory'],
                 'travelMinutes' => ['type' => ['integer', 'null'], 'description' => 'One-way car travel from the club siège (null = best-effort miss)'],
                 'approximated' => ['type' => 'boolean', 'description' => 'Server-computed: the location is only city-precise'],
                 'source' => ['type' => ['string', 'null'], 'enum' => ['AUTO', 'MANUAL', null]],
+                'scope' => ['type' => ['string', 'null'], 'enum' => ['TEAM', 'CLUB', null], 'description' => 'Which grain governs this travel: a per-team override (TEAM), the club default (CLUB), or none (null)'],
                 'overrideVenueLabel' => ['type' => ['string', 'null'], 'description' => 'The gym the manager pinned by hand'],
             ],
         ];
@@ -108,8 +112,10 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
             'type' => 'object',
             'properties' => [
                 'opponentOrganismeCode' => ['type' => 'string'],
+                'opponentTeamKey' => ['type' => ['string', 'null'], 'description' => 'The opponent-team grain of this row; null = the club default'],
+                'scope' => ['type' => ['string', 'null'], 'enum' => ['TEAM', 'CLUB', null]],
                 'travelMinutes' => ['type' => ['integer', 'null']],
-                'source' => ['type' => 'string', 'enum' => ['AUTO', 'MANUAL']],
+                'source' => ['type' => ['string', 'null'], 'enum' => ['AUTO', 'MANUAL', null]],
                 'overrideVenueLabel' => ['type' => ['string', 'null']],
             ],
         ];
@@ -148,6 +154,8 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                 'required' => ['opponentOrganismeCode', 'venueLabel', 'latitude', 'longitude'],
                 'properties' => [
                     'opponentOrganismeCode' => ['type' => 'string', 'description' => 'The opponent FFBB organisme code (must be an away opponent of the season)'],
+                    'opponentTeamKey' => ['type' => 'string', 'nullable' => true, 'description' => 'The server-normalized opponent label to pin a SINGLE team; omit for the club default'],
+                    'scope' => ['type' => 'string', 'enum' => ['TEAM', 'CLUB'], 'nullable' => true, 'description' => 'Grain of the override — defaults to TEAM when opponentTeamKey is given, else CLUB'],
                     'venueLabel' => ['type' => 'string'],
                     'venueExternalRef' => ['type' => 'string', 'nullable' => true, 'description' => 'The FFBB salle number, when picked from /api/ffbb/salles'],
                     'latitude' => ['type' => 'number'],
@@ -172,6 +180,7 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                 'required' => ['opponentOrganismeCode'],
                 'properties' => [
                     'opponentOrganismeCode' => ['type' => 'string'],
+                    'opponentTeamKey' => ['type' => 'string', 'nullable' => true, 'description' => 'Revert a SINGLE team to automatic (deletes its override); omit to revert the club default'],
                 ],
             ]),
         )));

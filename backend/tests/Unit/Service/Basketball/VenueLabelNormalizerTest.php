@@ -52,6 +52,30 @@ final class VenueLabelNormalizerTest extends TestCase
         ];
     }
 
+    /**
+     * @return list<array{0: string, 1: string}>
+     */
+    public static function teamNumbers(): array
+    {
+        return [
+            // Le suffixe d'équipe « - n » collé en fin (tiret, espaces optionnels) est retiré.
+            ['BASKET BALL 5EME - 2', 'BASKET BALL 5EME'],
+            ['BASKET BALL 5EME - 12', 'BASKET BALL 5EME'],
+            // Tiret cadratin et sans espace : mêmes.
+            ['AL CALUIRE –2', 'AL CALUIRE'],
+            ['AL CALUIRE -3', 'AL CALUIRE'],
+            // Un « - 3 » en MILIEU de chaîne est intact (l'ancre ne mord qu'en fin).
+            ['AS - 3 VOISINS', 'AS - 3 VOISINS'],
+            // Une chaîne sans suffixe d'équipe revient telle quelle.
+            ['AS Voisins', 'AS Voisins'],
+            // Idempotent : un second passage ne trouve plus rien.
+            ['BASKET BALL 5EME', 'BASKET BALL 5EME'],
+            // Le « (n) » FFBB n'est PAS un « - n » : stripTrailingTeamNumber ne le touche pas
+            // (le nombre n'est pas en fin de chaîne, la parenthèse l'est).
+            ['AL CALUIRE - 3 (6)', 'AL CALUIRE - 3 (6)'],
+        ];
+    }
+
     #[DataProvider('labels')]
     public function testNormalizeFoldsCaseAccentsPunctuationAndSpacing(string $raw, string $expected): void
     {
@@ -67,6 +91,24 @@ final class VenueLabelNormalizerTest extends TestCase
     public function testStripTeamNumberSuffixRemovesTheTrailingFfbbNumberOnly(string $raw, string $expected): void
     {
         self::assertSame($expected, $this->normalizer->stripTeamNumberSuffix($raw));
+    }
+
+    #[DataProvider('teamNumbers')]
+    public function testStripTrailingTeamNumberRemovesOneTrailingDashNumberOnly(string $raw, string $expected): void
+    {
+        self::assertSame($expected, $this->normalizer->stripTrailingTeamNumber($raw));
+    }
+
+    /**
+     * Décision (ordre « (n) » puis « - n ») : les deux nettoyages sont orthogonaux et se
+     * COMPOSENT — d'abord le « (n) » FFBB (foyer stripTeamNumberSuffix), ensuite le « - n »
+     * d'équipe (stripTrailingTeamNumber) — pour retomber sur le nom d'organisme nu.
+     */
+    public function testTheTwoTrailingCleanupsComposeToTheBareOrganismeName(): void
+    {
+        $withoutParen = $this->normalizer->stripTeamNumberSuffix('AL CALUIRE ET CUIRE - 3 (6)');
+        self::assertSame('AL CALUIRE ET CUIRE - 3', $withoutParen);
+        self::assertSame('AL CALUIRE ET CUIRE', $this->normalizer->stripTrailingTeamNumber($withoutParen));
     }
 
     public function testContainsWordIsWholeWordNotSubstring(): void

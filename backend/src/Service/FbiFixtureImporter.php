@@ -617,6 +617,17 @@ final class FbiFixtureImporter
     }
 
     /**
+     * Retire le suffixe d'équipe « - n » d'un libellé — délégué au foyer unique
+     * ({@see VenueLabelNormalizer::stripTrailingTeamNumber}). Public pour que le
+     * rapprochement au nom ({@see App\Service\Basketball\OpponentLocationResolver})
+     * le partage sans recopier la regex.
+     */
+    public function stripTrailingTeamNumber(string $label): string
+    {
+        return $this->labelNormalizer->stripTrailingTeamNumber($label);
+    }
+
+    /**
      * Décision fondateur P4-199 — une rencontre naît DÉJÀ traitée (REVIEWED +
      * horodatée) dès sa création dans deux cas : (1) c'est un EXTÉRIEUR (le club ne
      * la place pas, rien à examiner) ; (2) sa date est passée OU tombe dans la

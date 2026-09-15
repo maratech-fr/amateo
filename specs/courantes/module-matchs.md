@@ -1,20 +1,19 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-15 (PR B2 « résolution des conflits, frontend », `documentation-update`).
-§ « Résolution des conflits » complété côté frontend et confronté au code :
-`ConflictResolutionControl.tsx` (3 régimes membre/gestionnaire+empreinte/gestionnaire sans
-empreinte, `Menu` APG, note inline ≤ 500, `ConfirmDialog` seulement si une note serait perdue),
-`lib/conflictResolution.ts` (`RESOLUTION_LABEL`, `isOpenConflict`, `openConflictCount` — maison
-unique), `ConflictRadar.tsx`/`ConflictsPage.tsx`/`ConsultPage.tsx`/`lib/consultFilter.ts`
-(compteurs = à traiter, « · 0 » en sourdine sur une famille/entrée 100 % traitée),
-`lib/loopSteps.ts`/`MatchesLayout.tsx` (rail et badge de nav = à traiter, badge absent à 0),
-`queries.ts` (invalidation `["fixtures","conflicts"]` seule), `shared/components/ui/menu.tsx`
-(`restoreFocusOnSelect`/`triggerRef` ✓), `shared/components/ui/filter-toggle.tsx` (nouvelle
-primitive — `ReviewQueue.tsx` garde ses deux copies locales non converties, signalé). § « Onglet
-« Conflits » » recalé (badge de nav, chips à traiter, interrupteur « Masquer les traités »). Reste
-du fichier (§ « Gymnase depuis le libellé », § « Détection », § reconciliation coupes P4-194/195,
-§ Appariement FFBB, § « Solveur de placement ») non re-sondé cette passe — voir `git log -p
---follow` pour sa dernière vérification.
+Last verified @ 2026-09-15 (lot « adversaire multi-gymnases » PR-1, backend seul,
+`documentation-update`). § « Annuaire adverse » et § « Trajet AWAY & radar spatial » recalés
+contre le code : `OpponentTravel.opponent_team_key` (migration `Version20260915130000`, unicité
+`NULLS NOT DISTINCT`), `OpponentTravelRepository::findEffective`/`travelMinutesBySeason`,
+`OpponentTravelResolver` (l'AUTO ne touche que les lignes CLUB, A3 = suppression d'une ligne
+équipe), `OpponentTravelController::buildOpponents`/`manual`/`auto` (groupage par `(code,
+teamKey)`, portée déduite, 422 si le teamKey n'est pas un adversaire AWAY réel),
+`FixtureConflictsController` (radar résolu équipe → club), `FixtureResource`/
+`FixtureStateProvider` (champs additifs `opponentOrganismeCode`/`opponentTeamKey`, non encore
+consommés par `AwayList.tsx`), `OpponentLocationResolver::resolveOrganismeByName` (relance « - n »
+via `VenueLabelNormalizer::stripTrailingTeamNumber`). Reste du fichier (§ « Résolution des
+conflits », § « Gymnase depuis le libellé », § « Détection », § reconciliation coupes
+P4-194/195, § Appariement FFBB, § « Solveur de placement ») non re-sondé cette passe — voir
+`git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -101,6 +100,16 @@ localisé », JAMAIS un import bloqué) :
 Upsert par code organisme, `VENUE` > `CITY` jamais l'inverse ; un adversaire déjà en `VENUE` est laissé tel
 quel (zéro appel réseau).
 
+**Rapprochement au nom (étage 1/2 sans code) — `OpponentLocationResolver::resolveOrganismeByName`** (P2-54
+« adversaire multi-gymnases » PR-1, 2026-09-15) : le match STRICT (exactement un hit normalize-égal, sinon
+0/≥2 = ambigu, aucune clé) tente d'abord le nom TEL QUEL ; s'il échoue, **UNE SEULE relance** sur le nom
+dépouillé de son suffixe d'équipe final « - n » (`VenueLabelNormalizer::stripTrailingTeamNumber` — « BASKET
+BALL 5EME - 2 » → « BASKET BALL 5EME », le nom d'organisme nu que la fédé enregistre). Sert un organisme
+multi-équipes (deux engagements homonymes suffixés) : les deux passes restent strictes chacune, la relance
+n'assouplit rien d'autre. Le **libellé de la rencontre**, lui, n'est **jamais** dépouillé — seule la
+recherche d'organisme l'est ; les deux équipes (« - 1 », « - 2 ») résolvent le même code et sont stampées
+chacune sous leur libellé complet (`resolveObservations` garde `codeByName` sur le libellé BRUT).
+
 🔴 **Invariant de sécurité (revue 2026-08-28) : la précision `VENUE` est RÉSERVÉE au canal API.** Un libellé
 de salle issu d'un **xlsx est fourni par le CLUB** — l'accepter comme `VENUE` laisserait un club épingler un
 adversaire réel à un faux gymnase, écrit dans la table partagée et lu byte-identique par tous les autres
@@ -123,7 +132,7 @@ automatiquement.
 (`FfbbRencontresController`), et rattrapage `POST /api/opponents/resolve` (management SEC-07, cap dur avant
 réseau + rate-limit `opponent_resolve` par user). L'annuaire est CONSOMMÉ par le trajet (§ suivante, PR-3).
 
-### Trajet AWAY & radar spatial — `OpponentTravel` (table TENANT, P2-54 RMM-9 PR-3, 2026-08-28)
+### Trajet AWAY & radar spatial — `OpponentTravel` (table TENANT, P2-54 RMM-9 PR-3, 2026-08-28 ; grain ÉQUIPE P2-54 « adversaire multi-gymnases » PR-1, backend seul, 2026-09-15)
 
 Le radar de conflits devient **SPATIAL** : un coach qui joue à l'extérieur est vu occupé le temps du trajet.
 - **Clé de jointure** : `Fixture.opponent_organisme_code` (colonne nullable, ajoutée PR-3) — le code fédéral de
@@ -133,26 +142,69 @@ Le radar de conflits devient **SPATIAL** : un coach qui joue à l'extérieur est
   club+saison+code adverse → `travelMinutes` (aller simple voiture, nullable), `source` `AUTO`|`MANUAL`, surcharge
   de gymnase (`overrideVenue*`). ⚠ **Le trajet dépend du siège d'un club précis → donnée CLUB-spécifique, elle
   vit ICI (tenant), JAMAIS dans `opponent_directory` (public).** Le MANUAL n'est jamais écrasé par l'AUTO.
+
+**Grain ÉQUIPE (2026-09-15)** — un même organisme adverse peut jouer dans plusieurs gymnases selon son
+équipe (« BASKET 5EME - 1 » vs « - 2 »). `opponent_travel.opponent_team_key` (nullable, `VARCHAR(180)`) porte
+le libellé de rencontre **NORMALISÉ** (`VenueLabelNormalizer::normalize`) quand la ligne surcharge UNE
+équipe ; `NULL` = la ligne **CLUB** (le défaut historique). Unicité `(club_id, season_id,
+opponent_organisme_code, opponent_team_key)` en **`NULLS NOT DISTINCT`** (PG 16, migration
+`Version20260915130000`) : deux lignes CLUB du même code restent interdites, comme deux lignes de la même
+équipe. **Résolution en cascade équipe → club → annuaire** (`OpponentTravelRepository::findEffective`) : la
+surcharge équipe gouverne si elle existe, sinon la ligne club, sinon l'annuaire global reste seul repère.
+- **Une ligne équipe naît TOUJOURS d'un choix manuel** — `OpponentTravelResolver::resolve()` (la passe AUTO)
+  ne touche QUE les lignes CLUB (`existingByCode` filtre `opponentTeamKey === null`) ; une équipe déjà
+  surchargée est donc toujours `MANUAL` par construction, jamais recalculée par l'AUTO.
+- **Décision A3 — « rétablir l'automatique » sur une ÉQUIPE = SUPPRIMER la ligne** (`deleteTeamOverride`),
+  jamais la repasser en AUTO : la rencontre retombe alors sur la ligne club puis l'annuaire. Sur la ligne
+  CLUB, « rétablir l'automatique » reste `revertToAuto` (recalcul AUTO classique, comportement inchangé).
+- **La portée CLUB ne touche jamais un choix équipe existant** : `applyManualOverride(…, teamKey: null, …)`
+  n'écrit que la ligne club — les équipes sans ligne propre héritent d'elle via la cascade, une surcharge
+  équipe posée avant survit intacte à une correction CLUB postérieure (et réciproquement).
+- **API** (`OpponentTravelController`) : `GET /api/opponents/travel` groupe désormais les rencontres AWAY par
+  `(code, libellé normalisé)` — deux équipes du même organisme sont **deux entrées distinctes**, libellé
+  **BRUT** conservé pour l'affichage (corrige le défaut où « - 1 » et « - 2 » fondaient en une seule entrée
+  « - 1 »). Chaque entrée porte, en plus des champs existants, `opponentTeamKey` (le libellé normalisé),
+  `scope` (`TEAM`|`CLUB`|`null` — quel grain gouverne), et l'annuaire livre aussi `city`/`postalCode`.
+  `POST /api/opponents/travel/manual` et `/auto` acceptent `opponentTeamKey` + `scope` optionnels — portée
+  déduite (`TEAM` dès qu'un `teamKey` est fourni, `CLUB` sinon ; un `scope=TEAM` sans `teamKey` est un 422) ;
+  une écriture `TEAM` est refusée en 422 si le `(code, teamKey)` ne correspond à aucune rencontre AWAY réelle
+  de la saison (`isAwayOpponent`, comparé au libellé normalisé de chaque fixture — jamais un devinette).
 - **Calcul** (`OpponentTravelResolver`) : lieu = surcharge MANUAL si présente, sinon lat/long de
   `opponent_directory` ; `IgnRoutingClient` voiture depuis `Club.latitude/longitude`. Best-effort (IGN en panne →
   `travelMinutes` null, jamais une erreur bloquante). Route `POST /api/opponents/travel/resolve` (management,
   cap + rate-limit `opponent_travel_resolve`). Correction MANUAL via `/api/ffbb/salles` + retour-à-l'AUTO.
-- **Injection radar** : `FixtureConflictsController` passe `roundTripTravelMinutes = 2 × OpponentTravel.travelMinutes`
-  à `MatchFootprint::occupancy(...)` par AWAY ; sans code/sans trajet → 0 (comportement actuel, pas de conflit
-  spatial — dit franchement). Détecteur toujours PUR.
+- **Injection radar** : `FixtureConflictsController` lit `OpponentTravelRepository::travelMinutesBySeason`
+  (par code : la minute club + la map des surcharges équipe) et résout chaque rencontre AWAY par
+  `(code, libellé normalisé) → équipe, sinon club` avant de passer `roundTripTravelMinutes = 2 ×` cette
+  minute à `MatchFootprint::occupancy(...)` ; sans code/sans trajet résolu → 0 (comportement actuel, pas de
+  conflit spatial — dit franchement). Détecteur toujours PUR.
+- **`FixtureResource`/`FixtureStateProvider`** gagnent deux champs additifs en lecture : `opponentOrganismeCode`
+  et `opponentTeamKey` (calculé SERVEUR — `VenueLabelNormalizer::normalize(opponentLabel)`, foyer unique —
+  pour que le front puisse un jour joindre le trajet sans re-dériver un libellé).
+  ⚠ **Pas encore consommé** : l'écran (`AwayList.tsx:43,60`) joint toujours le trajet par **libellé brut**
+  (`opponentLabel.toLowerCase()`), pas par `(code, opponentTeamKey)` — il remarche par construction (une
+  entrée par libellé grâce au groupage ci-dessus), mais l'écran par club, le picker et le câblage sur ces
+  champs additifs sont **PR-3 du lot**, pas encore livrés.
 - **Écran** (`AwayTravelChip`, `OpponentTravelCard`, `LocateOpponentModal`) : chip trajet + précision par
   icône+mot sur `AwayList` (VENUE « Gymnase · 22 min » / CITY « ville de X · ~35 min · approché »), carte
   « Adversaires à localiser » au SET-UP, correction en modale per-adversaire (badge Auto/Manuel). La précision,
   les minutes et le flag « approché » sont **servis par le backend** (le front ne les re-dérive pas).
-- NR isolation : `MatchTenantIsolationTest` étendu (`opponent_travel` scopé, un MANUAL de A ne fuit pas à B —
-  bloquant, ce fichier est déjà un step de `blocking-tests`). `/security-review` de la PR : **zéro finding**
-  (RLS FORCE complet, aucune écriture au global, coords MANUAL range-validées et self-scoped).
+- NR isolation : `MatchTenantIsolationTest` étendu (`opponent_travel` scopé, un MANUAL de A ne fuit pas à B,
+  **grain équipe compris** depuis 2026-09-15 — un `teamKey` de A reste invisible à B, un `manual` de B visant
+  le `(code, teamKey)` de A est un 422 — bloquant, ce fichier est déjà un step de `blocking-tests`).
+  `/security-review` de la PR-3 (2026-08-28, base) : **zéro finding** (RLS FORCE complet, aucune écriture au
+  global, coords MANUAL range-validées et self-scoped) ; le grain équipe (2026-09-15) ne change ni la table
+  ni les colonnes RLS, seule la clé d'unicité s'élargit.
 - ⚠ **Divergence ASSUMÉE** : le trajet (`roundTripTravelMinutes`) nourrit le radar préventif, pas
   l'optimisation moteur — le solveur de placement (`match_placement.py`, contrat 2.21) reçoit les
   durées de match/échauffement par équipe depuis P4-203 mais pas le trajet (toujours 0 côté engine).
   Le dessin de la grille week-end (`weekendGrid.ts`, § Grille week-end ci-dessous) reste une
   présentation pure et **n'a pas suivi** D1/P4-203 : elle dessine encore `[coup d'envoi − 30, coup
   d'envoi + 105]` alors que la salle = match seul — roadmap ouverte pour l'aligner.
+- **Reste du lot « adversaire multi-gymnases »** : PR-2 (l'annuaire GLOBAL `opponent_directory` gagne des
+  **suggestions partagées** — sans jamais y écrire d'identité de club, « un compte, jamais un qui ») et PR-3
+  (frontend : écran par club, picker sur les suggestions, CP préfixé, câblage d'`AwayList` sur
+  `(opponentOrganismeCode, opponentTeamKey)` au lieu du libellé brut) — non livrées à cette date.
 
 ## Palier A — PR-2 (moteur de conflits, à la volée, coach seul, 2026-07-07)
 
