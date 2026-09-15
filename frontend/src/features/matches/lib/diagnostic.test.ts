@@ -27,6 +27,13 @@ describe("groupBySeverity (P1-4 PR E2)", () => {
     expect(groups.map((g) => g.tone)).toEqual(["destructive", "destructive", "warning", "muted"]);
   });
 
+  it("intitule le groupe gravité 3 « Personne en double » (coach OU joueuse en double)", () => {
+    // Le lot « une personne = ses équipes » : la gravité 3 n'est plus « Coach principal
+    // en double » — une joueuse en double y tombe aussi.
+    const groups = groupBySeverity([conflict("MATCH_MATCH", 3)]);
+    expect(groups.find((g) => 3 === g.severity)?.title).toBe("Personne en double");
+  });
+
   it("folds the structural groups 6 and 7 (N teams = N lines max, not N alerts)", () => {
     const groups = groupBySeverity([conflict("AWAY_NO_FOOTPRINT", 7), conflict("COMPETITION_INCOMPLETE", 6), conflict("VENUE_OVERLAP", 1)]);
     expect(groups.find((g) => 7 === g.severity)?.folded).toBe(true);

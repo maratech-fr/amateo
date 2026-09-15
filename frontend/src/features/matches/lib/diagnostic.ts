@@ -21,7 +21,7 @@ const GROUP_TITLES: Record<number, string> = {
   // module matchs. Deux mots pour un objet, c'est un objet de plus à comprendre.
   1: "Collision de gymnase",
   2: "Hors fenêtre ligue",
-  3: "Coach principal en double",
+  3: "Personne en double",
   4: "Placement fragilisé",
   5: "À surveiller",
   6: "Calendriers incomplets",

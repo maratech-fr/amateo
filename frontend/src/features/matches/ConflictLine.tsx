@@ -6,7 +6,8 @@ import { coachFullName } from "@/shared/lib/coachName";
 import { frDateShortNoYear } from "@/shared/lib/date";
 import { cn } from "@/shared/lib/utils";
 
-import type { Coach, Conflict, Team } from "./api";
+import type { Coach, Conflict, ConflictSideRole, Team } from "./api";
+import { SIDE_ROLE_WORD } from "./lib/conflictLabels";
 import { groupBySeverity, type DiagnosticGroup } from "./lib/diagnostic";
 
 /**
@@ -33,10 +34,16 @@ function whenLabel(iso: string): string {
   return date.toLocaleString("fr-FR", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
+/** « SF2 (coach) » / « SM2 (joueur) » — le rôle par côté annote l'équipe. */
+function annotateSide(name: string, role: ConflictSideRole | undefined): string {
+  return undefined !== role ? `${name} (${SIDE_ROLE_WORD[role]})` : name;
+}
+
 function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string {
+  // Personne en double : le nom seul. Le rôle vit désormais PAR CÔTÉ dans le résumé
+  // (« SF2 (coach) et SM2 (joueur) ») — la ligne ne relit plus `coachRole`.
   if (undefined !== conflict.coachId) {
-    const role = "ASSISTANT" === conflict.coachRole ? " (assistant d'un côté)" : "";
-    return `${coachName(coaches, conflict.coachId)}${role}`;
+    return coachName(coaches, conflict.coachId);
   }
   switch (conflict.type) {
     case "VENUE_OVERLAP":
@@ -59,11 +66,27 @@ function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string 
 }
 
 function conflictSummary(conflict: Conflict, teams: Map<string, Team>): string {
-  if (("MATCH_MATCH" === conflict.type || "VENUE_OVERLAP" === conflict.type) && conflict.left && conflict.right) {
+  if ("VENUE_OVERLAP" === conflict.type && conflict.left && conflict.right) {
     return `${teamName(teams, conflict.left.teamId)} et ${teamName(teams, conflict.right.teamId)} — ${frDateShortNoYear(conflict.left.matchDate)}`;
   }
+  if ("MATCH_MATCH" === conflict.type && conflict.left && conflict.right) {
+    // Tous MAIN → nu (« SF2 et SM2 ») ; sinon CHAQUE côté est annoté de son rôle
+    // (« SF2 (coach) et SM2 (joueur) ») — jamais un seul côté. Un seul prédicat.
+    const leftName = teamName(teams, conflict.left.teamId);
+    const rightName = teamName(teams, conflict.right.teamId);
+    const allMain = [conflict.left.role, conflict.right.role].every((role) => "MAIN" === role);
+    const body = allMain ? `${leftName} et ${rightName}` : `${annotateSide(leftName, conflict.left.role)} et ${annotateSide(rightName, conflict.right.role)}`;
+    return `${body} — ${frDateShortNoYear(conflict.left.matchDate)}`;
+  }
   if ("MATCH_TRAINING" === conflict.type && conflict.fixture && conflict.training) {
-    return `Match ${teamName(teams, conflict.fixture.teamId)} × entraînement ${teamName(teams, conflict.training.teamId)}`;
+    // Le match d'abord, même règle d'annotation (nu si tout MAIN).
+    const matchName = teamName(teams, conflict.fixture.teamId);
+    const trainingName = teamName(teams, conflict.training.teamId);
+    const matchRole = "role" in conflict.fixture ? conflict.fixture.role : undefined;
+    const allMain = [matchRole, conflict.training.role].every((role) => "MAIN" === role);
+    return allMain
+      ? `Match ${matchName} × entraînement ${trainingName}`
+      : `Match ${annotateSide(matchName, matchRole)} × entraînement ${annotateSide(trainingName, conflict.training.role)}`;
   }
   if ("VENUE_UNAVAILABLE" === conflict.type && conflict.fixture) {
     return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} — gymnase indisponible, à repositionner`;

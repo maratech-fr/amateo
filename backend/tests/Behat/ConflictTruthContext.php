@@ -97,6 +97,21 @@ final class ConflictTruthContext extends BaseContext
 
     private string $cupSaturday = '';
 
+    /** Décor du scénario coach↔joueuse (une personne = ses équipes coachées + jouées). */
+    private string $coachedTeamId = '';
+
+    private string $playedTeamId = '';
+
+    private string $personCoachId = '';
+
+    private string $personTeamCoachId = '';
+
+    private string $membershipId = '';
+
+    private string $coachedMatchId = '';
+
+    private string $playedMatchId = '';
+
     /** @var list<mixed> Conflits rendus par GET /api/fixtures/conflicts. */
     private array $conflicts = [];
 
@@ -373,6 +388,51 @@ final class ConflictTruthContext extends BaseContext
         );
     }
 
+    #[Given('une personne qui coache une équipe et joue dans une autre, leurs deux matchs se chevauchant')]
+    public function unePersonneQuiCoacheEtJoue(): void
+    {
+        // Deux équipes JETABLES (catégorie/palier clonés du club — FK NOT NULL de team),
+        // une personne (coach) qui coache la première (team_coach MAIN) et JOUE la seconde
+        // (coach_player_membership actif — jamais un team_coach : c'est le cœur du lot).
+        $clone = $this->dbalScalar(
+            \sprintf('SELECT sport_category_id || \'|\' || priority_tier_id || \'|\' || COALESCE(tier_order::text, \'0\') AS behatval FROM team WHERE club_id=\'%s\' LIMIT 1', $this->clubId),
+            admin: true,
+        );
+        $parts = '' === $clone ? [] : explode('|', $clone);
+        if (3 !== \count($parts)) {
+            throw new RuntimeException('impossible de cloner une catégorie/palier valide (le club a-t-il des équipes seedées ?)');
+        }
+        [$sportCategoryId, $priorityTierId, $tierOrder] = $parts;
+        $teamBody = static fn (string $name): array => [
+            'name' => $name,
+            'sportCategoryId' => $sportCategoryId,
+            'priorityTierId' => (int) $priorityTierId,
+            'tierOrder' => (int) $tierOrder,
+        ];
+
+        $this->coachedTeamId = $this->idOf($this->apiPost('teams', $teamBody('Équipe coachée (personne en double)'), $this->token), 'équipe coachée');
+        $this->playedTeamId = $this->idOf($this->apiPost('teams', $teamBody('Équipe où elle joue (personne en double)'), $this->token), 'équipe jouée');
+        $this->personCoachId = $this->idOf($this->apiPost('coaches', ['firstName' => 'Mara', 'lastName' => 'Polyvalente'], $this->token), 'personne polyvalente');
+
+        // Elle coache la première équipe (MAIN)…
+        $this->personTeamCoachId = $this->idOf(
+            $this->apiPost('team_coaches', ['teamId' => $this->coachedTeamId, 'coachId' => $this->personCoachId, 'role' => 'MAIN'], $this->token),
+            'affectation coach↔équipe coachée',
+        );
+        // …et JOUE dans la seconde (membership actif, jamais coach de cette équipe).
+        $this->membershipId = $this->idOf(
+            $this->apiPost('coach_player_memberships', ['coachId' => $this->personCoachId, 'teamId' => $this->playedTeamId, 'isActive' => true], $this->token),
+            'adhésion joueuse',
+        );
+
+        // Deux matchs À L'EXTÉRIEUR (donc SANS gymnase → aucune collision de gymnase à
+        // brouiller le radar), un samedi À VENIR (conservé par D1 règle 3), avec des coups
+        // d'envoi qui se chevauchent : 15:30 pour l'équipe coachée, 16:00 pour l'équipe jouée.
+        $saturday = new DateTimeImmutable(self::PINNED_NOW)->modify('next saturday')->format('Y-m-d');
+        $this->coachedMatchId = $this->poserMatchExterieur($this->coachedTeamId, $saturday, '15:30');
+        $this->playedMatchId = $this->poserMatchExterieur($this->playedTeamId, $saturday, '16:00');
+    }
+
     #[When('je demande les conflits des matchs')]
     public function jeDemandeLesConflits(): void
     {
@@ -501,6 +561,45 @@ final class ConflictTruthContext extends BaseContext
         }
     }
 
+    #[Then('un conflit de personne en double porte ses deux matchs, en gravité 3, coach d\'un côté et joueuse de l\'autre')]
+    public function unConflitDePersonneEnDouble(): void
+    {
+        $pair = [$this->coachedMatchId, $this->playedMatchId];
+        $found = null;
+        foreach ($this->conflicts as $conflict) {
+            if (!\is_array($conflict) || 'MATCH_MATCH' !== ($conflict['type'] ?? null)) {
+                continue;
+            }
+            $left = $conflict['left'] ?? null;
+            $right = $conflict['right'] ?? null;
+            $leftId = \is_array($left) ? ($left['fixtureId'] ?? null) : null;
+            $rightId = \is_array($right) ? ($right['fixtureId'] ?? null) : null;
+            if (\in_array($leftId, $pair, true) && \in_array($rightId, $pair, true)) {
+                $found = $conflict;
+
+                break;
+            }
+        }
+
+        if (null === $found) {
+            throw new RuntimeException('aucun conflit MATCH_MATCH ne porte ces deux matchs — la joueuse n\'a pas rejoint le coach dans la carte personne→équipes');
+        }
+        if (3 !== ($found['severity'] ?? null)) {
+            throw new RuntimeException(\sprintf('gravité 3 attendue (double MAIN×PLAYER), obtenue « %s »', json_encode($found['severity'] ?? null)));
+        }
+        if ('PLAYER' !== ($found['coachRole'] ?? null)) {
+            throw new RuntimeException(\sprintf('coachRole agrégé « PLAYER » attendu (MAIN + PLAYER), obtenu « %s »', json_encode($found['coachRole'] ?? null)));
+        }
+        // Ordre chronologique : le match coaché (15:30) est à gauche, rôle coach ; le match
+        // joué (16:00) à droite, rôle joueuse.
+        $leftRole = \is_array($found['left'] ?? null) ? ($found['left']['role'] ?? null) : null;
+        $rightRole = \is_array($found['right'] ?? null) ? ($found['right']['role'] ?? null) : null;
+        $leftId = \is_array($found['left'] ?? null) ? ($found['left']['fixtureId'] ?? null) : null;
+        if ($leftId !== $this->coachedMatchId || 'MAIN' !== $leftRole || 'PLAYER' !== $rightRole) {
+            throw new RuntimeException(\sprintf('rôles par côté attendus (gauche = match coaché « MAIN », droite « PLAYER »), obtenus gauche=%s/%s droite=%s', json_encode($leftId), json_encode($leftRole), json_encode($rightRole)));
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
@@ -512,7 +611,7 @@ final class ConflictTruthContext extends BaseContext
         // bac à sable ne doit jamais rester bloqué dans un « aujourd'hui » figé.
         $this->releaseClock();
 
-        foreach ([$this->fixtureId, $this->friendlyId, $this->championshipFixtureId, $this->cupFixtureId, $this->gymFixtureAId, $this->gymFixtureBId] as $id) {
+        foreach ([$this->fixtureId, $this->friendlyId, $this->championshipFixtureId, $this->cupFixtureId, $this->gymFixtureAId, $this->gymFixtureBId, $this->coachedMatchId, $this->playedMatchId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
@@ -522,7 +621,11 @@ final class ConflictTruthContext extends BaseContext
                 $this->apiDelete(\sprintf('competitions/%s', $id), $this->token);
             }
         }
-        foreach ([$this->teamCoachId, $this->sisterTeamCoachId] as $id) {
+        // L'adhésion joueuse AVANT l'équipe qu'elle référence.
+        if ('' !== $this->membershipId) {
+            $this->apiDelete(\sprintf('coach_player_memberships/%s', $this->membershipId), $this->token);
+        }
+        foreach ([$this->teamCoachId, $this->sisterTeamCoachId, $this->personTeamCoachId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('team_coaches/%s', $id), $this->token);
             }
@@ -539,13 +642,15 @@ final class ConflictTruthContext extends BaseContext
                 $this->dbalExec(\sprintf('DELETE FROM schedule_slot_template WHERE team_id=\'%s\'', $teamId), admin: true);
             }
         }
-        foreach ([$this->teamId, $this->sisterTeamId] as $teamId) {
+        foreach ([$this->teamId, $this->sisterTeamId, $this->coachedTeamId, $this->playedTeamId] as $teamId) {
             if ('' !== $teamId) {
                 $this->apiDelete(\sprintf('teams/%s', $teamId), $this->token);
             }
         }
-        if ('' !== $this->coachId) {
-            $this->apiDelete(\sprintf('coaches/%s', $this->coachId), $this->token);
+        foreach ([$this->coachId, $this->personCoachId] as $id) {
+            if ('' !== $id) {
+                $this->apiDelete(\sprintf('coaches/%s', $id), $this->token);
+            }
         }
         if ('' !== $this->venueId) {
             $this->apiDelete(\sprintf('venues/%s', $this->venueId), $this->token);
@@ -648,6 +753,21 @@ final class ConflictTruthContext extends BaseContext
         $this->dbalExec(\sprintf('DELETE FROM schedule_plan WHERE calendar_entry_id IN (SELECT id FROM calendar_entry WHERE %s)', $scope), admin: true);
         $this->dbalExec(\sprintf('DELETE FROM calendar_entry WHERE %s AND parent_entry_id IS NOT NULL', $scope), admin: true);
         $this->dbalExec(\sprintf('DELETE FROM calendar_entry WHERE %s', $scope), admin: true);
+    }
+
+    /** Pose un match À L'EXTÉRIEUR (aucun gymnase) avec un coup d'envoi et renvoie son id. */
+    private function poserMatchExterieur(string $teamId, string $date, string $kickoff): string
+    {
+        return $this->idOf(
+            $this->apiPost('fixtures', [
+                'teamId' => $teamId,
+                'matchDate' => $date,
+                'homeAway' => 'AWAY',
+                'opponentLabel' => 'Adversaire jetable',
+                'kickoffTime' => $kickoff,
+            ], $this->token),
+            'match extérieur jetable',
+        );
     }
 
     /** Pose un match à domicile (gymnase + coup d'envoi) et renvoie son id. */

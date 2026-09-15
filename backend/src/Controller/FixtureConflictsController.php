@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Entity\Club;
+use App\Entity\CoachPlayerMembership;
 use App\Entity\Competition;
 use App\Entity\ConflictResolution;
 use App\Entity\Fixture;
@@ -215,6 +216,11 @@ final class FixtureConflictsController extends AbstractController
         $fixtures = $this->entityManager->getRepository(Fixture::class)->findBy([]);
         /** @var list<TeamCoach> $teamCoachRows */
         $teamCoachRows = $this->entityManager->getRepository(TeamCoach::class)->findBy([]);
+        // Lot « une personne = ses équipes coachées + ses équipes où elle joue » —
+        // les liens JOUEUR (CoachPlayerMembership) rejoignent les coachs dans la
+        // carte personne→équipes du détecteur. Chargés sous les mêmes filtres tenant.
+        /** @var list<CoachPlayerMembership> $playerMemberships */
+        $playerMemberships = $this->entityManager->getRepository(CoachPlayerMembership::class)->findBy([]);
         /** @var list<VenueUnavailability> $unavailabilities */
         $unavailabilities = $this->entityManager->getRepository(VenueUnavailability::class)->findBy([]);
         /** @var list<TeamMatchHabit> $habits */
@@ -298,6 +304,7 @@ final class FixtureConflictsController extends AbstractController
             $profilesByTeam,
             $roundTripByFixtureId,
             $clubToday,
+            $playerMemberships,
         );
 
         // RMM-3 — champ ADDITIF : l'empreinte stable de chaque conflit, calculée EN

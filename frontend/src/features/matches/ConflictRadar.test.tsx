@@ -77,10 +77,10 @@ describe("ConflictRadar — le titre dit « Conflits » (mot unique, UXC-18)", (
   });
 });
 
-describe("ConflictRadar — rôle assistant nuancé (P4-189)", () => {
-  it("un conflit coach ASSISTANT est intitulé « (assistant d'un côté) »", () => {
-    // P4-189 — coachRole ASSISTANT désigne « MAIN d'un seul côté au plus » ; le
-    // libellé le dit sans mentir sur une double délégation.
+describe("ConflictRadar — personne en double, rôle PAR CÔTÉ (une personne = ses équipes)", () => {
+  it("titre = nom seul ; le rôle vit PAR CÔTÉ dans le résumé (« U13 (assistant) et Seniors (coach) »)", () => {
+    // Le rôle nuancé quitte le TITRE (fini « (assistant d'un côté) ») pour annoter
+    // CHAQUE côté dans le résumé — coach d'un côté, assistant de l'autre.
     const coachesMap = new Map<string, Coach>([["coach-a", { id: "coach-a", firstName: "Anna", lastName: "B" }]]);
     const conflicts: Conflict[] = [
       {
@@ -88,14 +88,16 @@ describe("ConflictRadar — rôle assistant nuancé (P4-189)", () => {
         severity: 5, resolution: null,
         coachId: "coach-a",
         coachRole: "ASSISTANT",
-        left: side("fx-1", "team-1", "2026-10-03"),
-        right: side("fx-2", "team-2", "2026-10-03"),
+        left: { ...side("fx-1", "team-1", "2026-10-03"), role: "ASSISTANT" },
+        right: { ...side("fx-2", "team-2", "2026-10-03"), role: "MAIN" },
       },
     ];
     renderRadar(<ConflictRadar conflicts={conflicts} teams={teams} coaches={coachesMap} />);
-    expect(screen.getByText(/\(assistant d'un côté\)/)).toBeInTheDocument();
-    // Falsification : le vieux « (assistant) » nu ne doit plus être servi.
-    expect(screen.queryByText(/Anna B \(assistant\)$/)).toBeNull();
+    // Titre = nom seul.
+    expect(screen.getByText("Anna B")).toBeInTheDocument();
+    expect(screen.queryByText(/\(assistant d'un côté\)/)).toBeNull();
+    // Résumé annoté par côté.
+    expect(screen.getByText(/U13 \(assistant\) et Seniors \(coach\)/)).toBeInTheDocument();
   });
 });
 

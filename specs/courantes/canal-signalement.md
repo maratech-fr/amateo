@@ -1,8 +1,10 @@
-Last verified @ 2026-09-13 (**rotation de fraîcheur** `documentation-update`, PR refonte modale
-Engagements FFBB — zone non touchée par cette PR. Re-confronté au code : `POST /api/feedback`
+Last verified @ 2026-09-15 (**rotation de fraîcheur** `documentation-update`, PR conflits
+coach ↔ joueur — zone non touchée par cette PR). Re-confronté au code : `POST /api/feedback`
 route toujours à `FeedbackController.php:66` ; `EventListener/RequestIdListener.php` +
 `Messenger/RequestIdMiddleware.php` existent toujours (backend+bus) ; `monolog-bundle` toujours
-dans `composer.json:31`. Tout juste)
+dans `composer.json:31` ; le digest quotidien (D4) existe (`app:feedback:digest`,
+`FeedbackDigestCommand.php`) ; l'email « bien reçu »/« traité » (§3bis) existe
+(`FeedbackMailBuilder.php`). Tout juste.
 
 # Canal signalement, support & reproduction
 

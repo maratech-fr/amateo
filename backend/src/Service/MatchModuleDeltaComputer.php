@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Club;
+use App\Entity\CoachPlayerMembership;
 use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\SportCategory;
@@ -125,6 +126,11 @@ final class MatchModuleDeltaComputer
         $fixtures = $this->entityManager->getRepository(Fixture::class)->findBy([]);
         /** @var list<TeamCoach> $teamCoachRows */
         $teamCoachRows = $this->entityManager->getRepository(TeamCoach::class)->findBy([]);
+        // Les liens JOUEUR rejoignent les coachs dans la carte personne→équipes —
+        // chargés ici AUSSI, sinon le radar du delta divergerait de celui du
+        // contrôleur (parité MatchVisitDeltaParityTest).
+        /** @var list<CoachPlayerMembership> $playerMemberships */
+        $playerMemberships = $this->entityManager->getRepository(CoachPlayerMembership::class)->findBy([]);
         /** @var list<VenueUnavailability> $unavailabilities */
         $unavailabilities = $this->entityManager->getRepository(VenueUnavailability::class)->findBy([]);
         /** @var list<TeamMatchHabit> $habits */
@@ -163,6 +169,7 @@ final class MatchModuleDeltaComputer
             $envelope,
             $competitions,
             clubToday: $clubToday,
+            playerMemberships: $playerMemberships,
         );
     }
 

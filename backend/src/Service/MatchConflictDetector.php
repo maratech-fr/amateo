@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Entity\CoachPlayerMembership;
 use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\LeagueMatchWindow;
@@ -13,8 +14,8 @@ use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
+use App\Enum\ConflictPersonRole;
 use App\Enum\FixtureHomeAway;
-use App\Enum\TeamCoachRole;
 use App\Enum\TeamLinkType;
 use DateInterval;
 use DateTimeImmutable;
@@ -25,15 +26,28 @@ use DateTimeImmutable;
  * training can NEVER overlap for the same person — this surfaces the clash as
  * early as the fixture is entered (the anticipation value of the module).
  *
+ * A « person » is a coach OR a player: the occupancy map unions coach
+ * engagements (`team_coach`: MAIN/ASSISTANT) with player engagements (active
+ * {@see CoachPlayerMembership}), so a player who plays SM2 while she coaches SF2
+ * is double-booked exactly like a coach on two teams. Each side of a person
+ * conflict carries its {@see ConflictPersonRole} on THAT team (`role`), and the
+ * aggregate `coachRole` (kept for compat) is MAIN when every side is MAIN,
+ * ASSISTANT as soon as one side is ASSISTANT, PLAYER otherwise.
+ *
  * Three conflict kinds. The first two are built on {@see MatchFootprint}
  * occupancy windows:
- * - MATCH_MATCH: two fixtures of teams sharing a coach whose windows overlap.
- * - MATCH_TRAINING: a fixture overlapping a training of one of the coach's teams,
+ * - MATCH_MATCH: two fixtures of teams sharing a person whose windows overlap.
+ *   Sides are ordered CHRONOLOGICALLY (earliest window start on the left); the
+ *   fingerprint sorts the pair anyway, so the view order is free.
+ * - MATCH_TRAINING: a fixture overlapping a training of one of the person's teams,
  *   read from the schedule EFFECTIVE on the match date (rule extracted to
  *   {@see EffectiveScheduleResolver} — P1-4 PR B). A footprint crossing midnight
- *   is checked against BOTH calendar days it spans. ⚠ D1 (2026-09-13): a training
- *   of the fixture's OWN team is skipped (the players who play don't also train);
- *   a SISTER team's training (coach on two teams) still clashes.
+ *   is checked against BOTH calendar days it spans. ⚠ D1 (2026-09-13), EXTENDED
+ *   to players: a training of the fixture's OWN team is skipped for its coaches
+ *   AND its players (the players who play don't also train); a SISTER team's
+ *   training (coach or player on two teams) still clashes. When the slot has an
+ *   assigned coach, he replaces the OTHER coaches of the slot's team (anti false-
+ *   positive) but NEVER evicts its players.
  * - VENUE_UNAVAILABLE (P1-4 PR B): a fixture whose venue is unavailable on its
  *   date (all-circumstances closure posed on the club calendar AFTER the match
  *   was placed — the real-life case the placement guard cannot catch). Coach-
@@ -53,10 +67,14 @@ use DateTimeImmutable;
  *
  * GRADED diagnostic (P1-4 PR E2, cadrage §8): every finding carries a
  * `severity` (1 = worst), emitted by the SERVER — the UI groups and labels, it
- * never re-derives gravity. Coach findings carry `coachRole`: MAIN only when
- * the coach is MAIN on EVERY involved team → severity 3; a single ASSISTANT
- * engagement on either side softens it to ASSISTANT → 5 (P4-189). New finding
- * kinds:
+ * never re-derives gravity. Person findings grade by the PER-SIDE roles:
+ * - MATCH_MATCH: severity 3 for MAIN×MAIN, MAIN×PLAYER and PLAYER×PLAYER; a
+ *   single ASSISTANT engagement on either side softens it to 5 (P4-189) — a
+ *   helper can hold that side.
+ * - MATCH_TRAINING: severity 3 (match played × training coached MAIN, or
+ *   match played × training played), EXCEPT a match COACHED (MAIN) against a
+ *   training where she only PLAYS → 5, and any ASSISTANT side → 5.
+ * New finding kinds:
  * - VENUE_OVERLAP (1): two placed fixtures, same venue, overlapping VENUE windows
  *   ([kickoff, kickoff + match], no warm-up — D1, 2026-09-13, so two matches
  *   chained two hours apart do not false-alarm) — the manual loop never blocks a
@@ -89,8 +107,10 @@ use DateTimeImmutable;
  * index of FRIENDLY_ON_MATCH_SLOT (a past Saturday championship still marks its
  * Sunday). A null today (the pure test path) disables the filter.
  *
- * Away travel is not modelled yet (palier B): an away fixture with no estimated
- * kickoff has no footprint and therefore raises no conflict — intended.
+ * Away travel IS modelled (P2-54 RMM-9 PR-3): an away footprint grows by the
+ * round-trip car time when the opponent's travel is known (0 otherwise). An away
+ * fixture with no real hour and no estimated kickoff still has no footprint and
+ * therefore raises no conflict — named instead by AWAY_NO_FOOTPRINT.
  */
 final class MatchConflictDetector
 {
@@ -158,6 +178,10 @@ final class MatchConflictDetector
      *                                                                                                                     the club's civil today ({@see ClubDay}); a fixture whose matchDate is strictly BEFORE
      *                                                                                                                     it is already played — it neither PORTS nor RECEIVES a conflict (D1, rule 3). null
      *                                                                                                                     (the pure test path) disables the filter entirely.
+     * @param list<CoachPlayerMembership>                                                            $playerMemberships
+     *                                                                                                                     scoped coach↔team PLAYER links; only the active ones count. A person is a PLAYER of
+     *                                                                                                                     that team UNLESS she already coaches it (the coach role then wins). Both callers load
+     *                                                                                                                     and pass these (parité MatchVisitDeltaParityTest).
      *
      * @return list<array<string, mixed>> conflict items ready to serialize
      */
@@ -176,16 +200,35 @@ final class MatchConflictDetector
         array $profilesByTeam = [],
         array $roundTripByFixtureId = [],
         ?DateTimeImmutable $clubToday = null,
+        array $playerMemberships = [],
     ): array {
+        // Two person maps by team. Coaches carry a role (MAIN/ASSISTANT, worst
+        // engagement wins, cadrage §8); active players carry PLAYER. Kept apart
+        // because the training side reads coaches and players differently (an
+        // assigned slot coach replaces the other COACHES, never the players).
         $coachesByTeam = [];
-        // teamId → coachId → role; a coach both MAIN and ASSISTANT on one team
-        // counts MAIN (the worst engagement wins, cadrage §8).
-        $rolesByTeam = [];
+        $playersByTeam = [];
+        // teamId → personId → ConflictPersonRole, the SINGLE per-side role: the
+        // coach role wins over PLAYER (a MAIN who also plays is graded MAIN), and
+        // its keys are the union of coaches and active players of the team.
+        $roleByTeamPerson = [];
         foreach ($teamCoachRows as $link) {
             $coachesByTeam[$link->getTeamId()][$link->getCoachId()] = true;
-            $current = $rolesByTeam[$link->getTeamId()][$link->getCoachId()] ?? null;
-            if (TeamCoachRole::MAIN !== $current) {
-                $rolesByTeam[$link->getTeamId()][$link->getCoachId()] = $link->getRole();
+            $role = ConflictPersonRole::from($link->getRole()->value);
+            $current = $roleByTeamPerson[$link->getTeamId()][$link->getCoachId()] ?? null;
+            if (ConflictPersonRole::MAIN !== $current) {
+                $roleByTeamPerson[$link->getTeamId()][$link->getCoachId()] = $role;
+            }
+        }
+        foreach ($playerMemberships as $membership) {
+            if (!$membership->getIsActive()) {
+                continue;
+            }
+            $playersByTeam[$membership->getTeamId()][$membership->getCoachId()] = true;
+            // The coach role wins: only stamp PLAYER where no coach engagement
+            // already grades this person on this team.
+            if (!isset($roleByTeamPerson[$membership->getTeamId()][$membership->getCoachId()])) {
+                $roleByTeamPerson[$membership->getTeamId()][$membership->getCoachId()] = ConflictPersonRole::PLAYER;
             }
         }
 
@@ -246,16 +289,18 @@ final class MatchConflictDetector
                 'window' => $window,
                 'venueWindow' => $venueWindow,
                 'estimated' => $estimated,
-                'coachIds' => array_keys($coachesByTeam[$fixture->getTeamId()] ?? []),
+                // The PERSONS of the fixture's team (coaches ∪ active players) —
+                // the keys of the per-team role map are exactly that union.
+                'personIds' => array_keys($roleByTeamPerson[$fixture->getTeamId()] ?? []),
             ];
         }
-        $coachViews = array_values(array_filter($views, static fn (array $view): bool => [] !== $view['coachIds']));
+        $personViews = array_values(array_filter($views, static fn (array $view): bool => [] !== $view['personIds']));
 
         return [
             ...$this->venueOverlapConflicts($views),
             ...$this->leagueWindowViolations($activeFixtures, $envelope),
-            ...$this->matchMatchConflicts($coachViews, $rolesByTeam),
-            ...$this->matchTrainingConflicts($coachViews, $coachesByTeam, $rolesByTeam, $seasonScheduleId, $activePeriods, $slotsBySchedule),
+            ...$this->matchMatchConflicts($personViews, $roleByTeamPerson),
+            ...$this->matchTrainingConflicts($personViews, $coachesByTeam, $playersByTeam, $roleByTeamPerson, $seasonScheduleId, $activePeriods, $slotsBySchedule),
             ...$this->venueUnavailableConflicts($activeFixtures, $unavailabilities),
             ...$this->accessWindowLostConflicts($activeFixtures, $matchWindows),
             ...$this->teamLinkConflicts($views, $teamLinks),
@@ -285,9 +330,9 @@ final class MatchConflictDetector
      *   same weekend (key = the Saturday's date; Friday does NOT count — founder
      *   decision).
      *
-     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, venueWindow: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, coachIds: list<string>}> $views
-     * @param list<Fixture>                                                                                                                                                                                                 $fixtures
-     * @param list<VenueMatchWindow>                                                                                                                                                                                        $matchWindows
+     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, venueWindow: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, personIds: list<string>}> $views
+     * @param list<Fixture>                                                                                                                                                                                                  $fixtures
+     * @param list<VenueMatchWindow>                                                                                                                                                                                         $matchWindows
      *
      * @return list<array<string, mixed>>
      */
@@ -441,7 +486,7 @@ final class MatchConflictDetector
      * same gym must NOT collide on their inflated person footprints. The served
      * `start`/`end` are therefore the intersection of the VENUE windows.
      *
-     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, venueWindow: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, coachIds: list<string>}> $views
+     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, venueWindow: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, personIds: list<string>}> $views
      *
      * @return list<array<string, mixed>>
      */
@@ -626,8 +671,8 @@ final class MatchConflictDetector
      * only — BACK_TO_BACK is a solver preference, diagnosing its non-respect
      * without a solver would invent a rule). Coach-independent.
      *
-     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, coachIds: list<string>}> $views
-     * @param list<TeamLink>                                                                                                                          $teamLinks
+     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, personIds: list<string>}> $views
+     * @param list<TeamLink>                                                                                                                           $teamLinks
      *
      * @return list<array<string, mixed>>
      */
@@ -724,34 +769,40 @@ final class MatchConflictDetector
     }
 
     /**
-     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, coachIds: list<string>}> $views
-     * @param array<string, array<string, TeamCoachRole>>                                                                                             $rolesByTeam
+     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, personIds: list<string>}> $views
+     * @param array<string, array<string, ConflictPersonRole>>                                                                                         $roleByTeamPerson
      *
      * @return list<array<string, mixed>>
      */
-    private function matchMatchConflicts(array $views, array $rolesByTeam): array
+    private function matchMatchConflicts(array $views, array $roleByTeamPerson): array
     {
         $conflicts = [];
         $count = \count($views);
         for ($i = 0; $i < $count; ++$i) {
             for ($j = $i + 1; $j < $count; ++$j) {
-                $left = $views[$i];
-                $right = $views[$j];
-                if (!$this->overlaps($left['window'], $right['window'])) {
+                $a = $views[$i];
+                $b = $views[$j];
+                if (!$this->overlaps($a['window'], $b['window'])) {
                     continue;
                 }
-                // A coach shared by both fixtures' teams is double-booked.
-                foreach (array_intersect($left['coachIds'], $right['coachIds']) as $coachId) {
-                    $role = $this->pairRole($rolesByTeam, $coachId, [$left['fixture']->getTeamId(), $right['fixture']->getTeamId()]);
+                // Chronological order: the fixture whose window starts earliest is
+                // the left side (the fingerprint sorts the pair, so this is only for
+                // a stable, readable view).
+                [$left, $right] = $a['window']['start'] <= $b['window']['start'] ? [$a, $b] : [$b, $a];
+                // A person (coach or player) shared by both fixtures' teams is
+                // double-booked, graded by her role on EACH side.
+                foreach (array_intersect($left['personIds'], $right['personIds']) as $personId) {
+                    $leftRole = $this->personRole($roleByTeamPerson, $left['fixture']->getTeamId(), $personId);
+                    $rightRole = $this->personRole($roleByTeamPerson, $right['fixture']->getTeamId(), $personId);
                     $conflicts[] = [
                         'type' => 'MATCH_MATCH',
-                        'severity' => TeamCoachRole::MAIN === $role ? 3 : 5,
-                        'coachRole' => $role->value,
-                        'coachId' => $coachId,
+                        'severity' => $this->pairSeverity($leftRole, $rightRole),
+                        'coachRole' => $this->aggregateRole($leftRole, $rightRole)->value,
+                        'coachId' => $personId,
                         'start' => $this->maxMoment($left['window']['start'], $right['window']['start'])->format(self::WALL_CLOCK_FORMAT),
                         'end' => $this->minMoment($left['window']['end'], $right['window']['end'])->format(self::WALL_CLOCK_FORMAT),
-                        'left' => $this->fixtureView($left['fixture'], $left['window'], $left['estimated']),
-                        'right' => $this->fixtureView($right['fixture'], $right['window'], $right['estimated']),
+                        'left' => $this->fixtureView($left['fixture'], $left['window'], $left['estimated'], $leftRole),
+                        'right' => $this->fixtureView($right['fixture'], $right['window'], $right['estimated'], $rightRole),
                     ];
                 }
             }
@@ -761,18 +812,20 @@ final class MatchConflictDetector
     }
 
     /**
-     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, coachIds: list<string>}> $views
-     * @param array<string, array<string, true>>                                                                                                      $coachesByTeam
-     * @param array<string, array<string, TeamCoachRole>>                                                                                             $rolesByTeam
-     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}>                                                  $activePeriods
-     * @param array<string, list<ScheduleSlotTemplate>>                                                                                               $slotsBySchedule
+     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, personIds: list<string>}> $views
+     * @param array<string, array<string, true>>                                                                                                       $coachesByTeam
+     * @param array<string, array<string, true>>                                                                                                       $playersByTeam
+     * @param array<string, array<string, ConflictPersonRole>>                                                                                         $roleByTeamPerson
+     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}>                                                   $activePeriods
+     * @param array<string, list<ScheduleSlotTemplate>>                                                                                                $slotsBySchedule
      *
      * @return list<array<string, mixed>>
      */
     private function matchTrainingConflicts(
         array $views,
         array $coachesByTeam,
-        array $rolesByTeam,
+        array $playersByTeam,
+        array $roleByTeamPerson,
         ?string $seasonScheduleId,
         array $activePeriods,
         array $slotsBySchedule,
@@ -792,23 +845,30 @@ final class MatchConflictDetector
                     if ($slot->getDayOfWeek() !== $isoWeekday) {
                         continue;
                     }
-                    // D1 rule 2 (2026-09-13) — a match of a team against the training
-                    // of the SAME team is not a conflict: the players who play do not
-                    // also train. Whatever the gym, skip the slot of the fixture's own
-                    // team; a SISTER team's training (the coach on two teams) still
+                    // D1 rule 2 (2026-09-13), EXTENDED to players — a match of a team
+                    // against the training of the SAME team is not a conflict for its
+                    // coaches NOR its players: they play, they don't also train.
+                    // Whatever the gym, skip the slot of the fixture's own team; a
+                    // SISTER team's training (coach or player on two teams) still
                     // clashes below.
                     if ($slot->getTeamId() === $view['fixture']->getTeamId()) {
                         continue;
                     }
-                    // Who actually runs the training: the slot's assigned coach if
-                    // any, else any coach of the slot's team. Intersect with this
-                    // fixture's coaches — only a coach on BOTH sides is double-booked.
+                    // Who is held by the training: the slot's assigned coach if any,
+                    // else any coach of the slot's team — PLUS its players in every
+                    // case (an assigned coach replaces the OTHER coaches, never the
+                    // players). Intersect with this fixture's persons: only a person
+                    // on BOTH sides is double-booked.
                     $slotCoach = $slot->getCoachId();
                     $trainingCoachIds = null !== $slotCoach
                         ? [$slotCoach]
                         : array_keys($coachesByTeam[$slot->getTeamId()] ?? []);
-                    $coachIds = array_values(array_intersect($view['coachIds'], $trainingCoachIds));
-                    if ([] === $coachIds) {
+                    $trainingPersonIds = array_values(array_unique([
+                        ...$trainingCoachIds,
+                        ...array_keys($playersByTeam[$slot->getTeamId()] ?? []),
+                    ]));
+                    $personIds = array_values(array_intersect($view['personIds'], $trainingPersonIds));
+                    if ([] === $personIds) {
                         continue;
                     }
 
@@ -817,16 +877,17 @@ final class MatchConflictDetector
                         continue;
                     }
 
-                    foreach ($coachIds as $coachId) {
-                        $role = $this->pairRole($rolesByTeam, $coachId, [$view['fixture']->getTeamId(), $slot->getTeamId()]);
+                    foreach ($personIds as $personId) {
+                        $matchRole = $this->personRole($roleByTeamPerson, $view['fixture']->getTeamId(), $personId);
+                        $trainingRole = $this->personRole($roleByTeamPerson, $slot->getTeamId(), $personId);
                         $conflicts[] = [
                             'type' => 'MATCH_TRAINING',
-                            'severity' => TeamCoachRole::MAIN === $role ? 3 : 5,
-                            'coachRole' => $role->value,
-                            'coachId' => $coachId,
+                            'severity' => $this->trainingSeverity($matchRole, $trainingRole),
+                            'coachRole' => $this->aggregateRole($matchRole, $trainingRole)->value,
+                            'coachId' => $personId,
                             'start' => $this->maxMoment($view['window']['start'], $trainingWindow['start'])->format(self::WALL_CLOCK_FORMAT),
                             'end' => $this->minMoment($view['window']['end'], $trainingWindow['end'])->format(self::WALL_CLOCK_FORMAT),
-                            'fixture' => $this->fixtureView($view['fixture'], $view['window'], $view['estimated']),
+                            'fixture' => $this->fixtureView($view['fixture'], $view['window'], $view['estimated'], $matchRole),
                             'training' => [
                                 'slotTemplateId' => $slot->getId(),
                                 'scheduleId' => $slot->getScheduleId(),
@@ -835,6 +896,7 @@ final class MatchConflictDetector
                                 'dayOfWeek' => $slot->getDayOfWeek(),
                                 'startTime' => $slot->getStartTime()->format('H:i'),
                                 'durationMinutes' => $slot->getDurationMinutes(),
+                                'role' => $trainingRole->value,
                                 'windowStart' => $trainingWindow['start']->format(self::WALL_CLOCK_FORMAT),
                                 'windowEnd' => $trainingWindow['end']->format(self::WALL_CLOCK_FORMAT),
                             ],
@@ -891,24 +953,59 @@ final class MatchConflictDetector
     }
 
     /**
-     * The role that grades a PAIR conflict: MAIN only when the coach is MAIN on
-     * EVERY involved team — a single ASSISTANT engagement is enough to soften
-     * the finding to ASSISTANT (severity 5). Rationale: if the coach is only
-     * an assistant on one of the two sides, a helper can hold that side, so the
-     * clash is less acute than a double head-coach booking (P4-189).
+     * The person's role on ONE team, for a conflict side. Falls back to ASSISTANT
+     * for a person the map does not grade on that team — the case of an assigned
+     * slot coach outside `team_coach`: he acts as a coach, but the softest one, so
+     * the finding is never harder than the truth.
      *
-     * @param array<string, array<string, TeamCoachRole>> $rolesByTeam
-     * @param list<string>                                $teamIds
+     * @param array<string, array<string, ConflictPersonRole>> $roleByTeamPerson
      */
-    private function pairRole(array $rolesByTeam, string $coachId, array $teamIds): TeamCoachRole
+    private function personRole(array $roleByTeamPerson, string $teamId, string $personId): ConflictPersonRole
     {
-        foreach ($teamIds as $teamId) {
-            if (TeamCoachRole::MAIN !== ($rolesByTeam[$teamId][$coachId] ?? null)) {
-                return TeamCoachRole::ASSISTANT;
-            }
+        return $roleByTeamPerson[$teamId][$personId] ?? ConflictPersonRole::ASSISTANT;
+    }
+
+    /**
+     * MATCH_MATCH gravity from the two side roles (cadrage §, founder decision):
+     * MAIN×MAIN, MAIN×PLAYER and PLAYER×PLAYER are all a hard clash (3); a single
+     * ASSISTANT engagement on either side softens it to 5 — a helper can hold it.
+     */
+    private function pairSeverity(ConflictPersonRole $left, ConflictPersonRole $right): int
+    {
+        return ConflictPersonRole::ASSISTANT === $left || ConflictPersonRole::ASSISTANT === $right ? 5 : 3;
+    }
+
+    /**
+     * MATCH_TRAINING gravity (asymmetric — the match side and the training side do
+     * not weigh the same): a match she PLAYS clashing with a training she COACHES
+     * (MAIN) or PLAYS is hard (3), but a match she COACHES (MAIN) against a training
+     * where she only PLAYS is softer (5) — she can drop the play, not the coaching.
+     * Any ASSISTANT side softens it to 5 too.
+     */
+    private function trainingSeverity(ConflictPersonRole $matchRole, ConflictPersonRole $trainingRole): int
+    {
+        if (ConflictPersonRole::ASSISTANT === $matchRole || ConflictPersonRole::ASSISTANT === $trainingRole) {
+            return 5;
         }
 
-        return TeamCoachRole::MAIN;
+        return ConflictPersonRole::MAIN === $matchRole && ConflictPersonRole::PLAYER === $trainingRole ? 5 : 3;
+    }
+
+    /**
+     * The aggregate `coachRole` (kept for compat with the pre-player contract):
+     * MAIN when every side is MAIN, ASSISTANT as soon as one side is ASSISTANT,
+     * PLAYER otherwise. With coaches only it degenerates to the old MAIN/ASSISTANT.
+     */
+    private function aggregateRole(ConflictPersonRole $a, ConflictPersonRole $b): ConflictPersonRole
+    {
+        if (ConflictPersonRole::ASSISTANT === $a || ConflictPersonRole::ASSISTANT === $b) {
+            return ConflictPersonRole::ASSISTANT;
+        }
+        if (ConflictPersonRole::MAIN === $a && ConflictPersonRole::MAIN === $b) {
+            return ConflictPersonRole::MAIN;
+        }
+
+        return ConflictPersonRole::PLAYER;
     }
 
     private function maxMoment(DateTimeImmutable $a, DateTimeImmutable $b): DateTimeImmutable
@@ -923,12 +1020,15 @@ final class MatchConflictDetector
 
     /**
      * @param array{start: DateTimeImmutable, end: DateTimeImmutable} $window
+     * @param ConflictPersonRole|null                                 $role   the person's role on this fixture's team, on a PERSON conflict
+     *                                                                        (MATCH_MATCH/MATCH_TRAINING). null for the gym/link families,
+     *                                                                        which share this view but carry no person → no `role` key.
      *
      * @return array<string, mixed>
      */
-    private function fixtureView(Fixture $fixture, array $window, bool $estimated = false): array
+    private function fixtureView(Fixture $fixture, array $window, bool $estimated = false, ?ConflictPersonRole $role = null): array
     {
-        return [
+        $view = [
             'fixtureId' => $fixture->getId(),
             'teamId' => $fixture->getTeamId(),
             'homeAway' => $fixture->getHomeAway()->value,
@@ -940,5 +1040,10 @@ final class MatchConflictDetector
             'windowStart' => $window['start']->format(self::WALL_CLOCK_FORMAT),
             'windowEnd' => $window['end']->format(self::WALL_CLOCK_FORMAT),
         ];
+        if ($role instanceof ConflictPersonRole) {
+            $view['role'] = $role->value;
+        }
+
+        return $view;
     }
 }

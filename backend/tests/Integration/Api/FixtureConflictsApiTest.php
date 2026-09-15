@@ -8,6 +8,7 @@ use App\Clock\DevClockStore;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Coach;
+use App\Entity\CoachPlayerMembership;
 use App\Entity\ConflictResolution;
 use App\Entity\Fixture;
 use App\Entity\Season;
@@ -69,6 +70,43 @@ final class FixtureConflictsApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
 
         $coachIds = array_map(static fn (array $c): string => $c['coachId'], $this->responseData()['conflicts']);
+        self::assertSame([$coachAId], array_values(array_unique($coachIds)));
+        self::assertNotContains($coachBId, $coachIds);
+    }
+
+    /**
+     * Lot « une personne = ses équipes » — a person who COACHES team-1 (MAIN) and
+     * PLAYS team-2 is double-booked, and each side carries its own role over the
+     * wire: MAIN on the coached side, PLAYER on the played side. Severity stays 3
+     * (MAIN×PLAYER is a hard clash), coachRole is the aggregate PLAYER.
+     */
+    public function testMatchMatchCarriesPerSideRolesForACoachWhoAlsoPlays(): void
+    {
+        [, $user] = $this->createClubWithOverlappingMatches('cp', playsSecondTeam: true);
+
+        $conflicts = $this->conflictsFor($user);
+        self::assertCount(1, $conflicts);
+        self::assertSame('MATCH_MATCH', $conflicts[0]['type']);
+        self::assertSame(3, $conflicts[0]['severity']);
+        self::assertSame('PLAYER', $conflicts[0]['coachRole']);
+        // team-1 (16:00, window 15:30) is chronologically first → left, coached MAIN;
+        // team-2 (16:30) → right, played PLAYER.
+        self::assertSame('MAIN', $conflicts[0]['left']['role']);
+        self::assertSame('PLAYER', $conflicts[0]['right']['role']);
+    }
+
+    /**
+     * §7.1 tenant axis — a player membership of ANOTHER club never leaks a conflict
+     * into the caller's radar (the CoachPlayerMembership tenant filter applies like
+     * every other loaded entity). Club B's coach↔player overlap stays invisible to A.
+     */
+    public function testMembershipsOfAnotherClubRaiseNoConflictForTheCaller(): void
+    {
+        [, $userA, $coachAId] = $this->createClubWithOverlappingMatches('ma');
+        [, , $coachBId] = $this->createClubWithOverlappingMatches('mb', playsSecondTeam: true);
+
+        $conflicts = $this->conflictsFor($userA);
+        $coachIds = array_map(static fn (array $c): string => $c['coachId'], $conflicts);
         self::assertSame([$coachAId], array_values(array_unique($coachIds)));
         self::assertNotContains($coachBId, $coachIds);
     }
@@ -225,11 +263,13 @@ final class FixtureConflictsApiTest extends WebTestCase
 
     /**
      * A club whose single coach runs two teams playing overlapping matches on the
-     * same day → exactly one MATCH_MATCH conflict.
+     * same day → exactly one MATCH_MATCH conflict. When $playsSecondTeam is true the
+     * person only COACHES team-1 (MAIN) and PLAYS team-2 (an active
+     * CoachPlayerMembership) — the founder case that unions coaches with players.
      *
      * @return array{0: Club, 1: User, 2: string} club, user, coachId
      */
-    private function createClubWithOverlappingMatches(string $suffix, string $matchDate = '2026-10-04'): array
+    private function createClubWithOverlappingMatches(string $suffix, string $matchDate = '2026-10-04', bool $playsSecondTeam = false): array
     {
         $uid = uniqid($suffix, true);
         $hasher = self::getContainer()->get('security.user_password_hasher');
@@ -280,7 +320,9 @@ final class FixtureConflictsApiTest extends WebTestCase
 
         $team1 = $this->uuid($suffix, 1);
         $team2 = $this->uuid($suffix, 2);
-        foreach ([$team1, $team2] as $teamId) {
+        // Coach both teams, OR coach team-1 and PLAY team-2 (the coach↔player case).
+        $coachedTeams = $playsSecondTeam ? [$team1] : [$team1, $team2];
+        foreach ($coachedTeams as $teamId) {
             $link = new TeamCoach;
             $link->setClubId($club->getId());
             $link->setSeasonId($season->getId());
@@ -288,6 +330,15 @@ final class FixtureConflictsApiTest extends WebTestCase
             $link->setCoachId($coach->getId());
             $link->setRole(TeamCoachRole::MAIN);
             $this->em->persist($link);
+        }
+        if ($playsSecondTeam) {
+            $membership = new CoachPlayerMembership;
+            $membership->setClubId($club->getId());
+            $membership->setSeasonId($season->getId());
+            $membership->setCoachId($coach->getId());
+            $membership->setTeamId($team2);
+            $membership->setIsActive(true);
+            $this->em->persist($membership);
         }
 
         // Two home matches of the coach's two teams, windows 15:30–17:45 and

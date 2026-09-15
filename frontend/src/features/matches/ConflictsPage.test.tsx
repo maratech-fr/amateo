@@ -115,15 +115,15 @@ describe("ConflictsPage — chips familles (compteurs saison, séparés de Consu
     const user = userEvent.setup();
     renderAt();
     await screen.findByRole("button", { name: /Mara · 3/ });
-    // « Coach en double » (MATCH_MATCH) : 2 sur la saison.
-    const chip = screen.getByRole("button", { name: /Coach en double/ });
+    // « Personne en double » (MATCH_MATCH) : 2 sur la saison.
+    const chip = screen.getByRole("button", { name: /Personne en double/ });
     expect(chip).toHaveTextContent("2");
     expect(chip).toHaveAttribute("aria-pressed", "true");
     await user.click(chip);
     // Décoché : Mara ne garde que le MATCH_TRAINING → « Mara · 1 ». Le compte de la chip reste 2 (saison).
     expect(await screen.findByRole("button", { name: /Mara · 1/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Coach en double/ })).toHaveTextContent("2");
-    expect(screen.getByRole("button", { name: /Coach en double/ })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: /Personne en double/ })).toHaveTextContent("2");
+    expect(screen.getByRole("button", { name: /Personne en double/ })).toHaveAttribute("aria-pressed", "false");
   });
 });
 
@@ -166,6 +166,20 @@ describe("ConflictsPage — phrase sr-only aria-live", () => {
   });
 });
 
+describe("ConflictsPage — le rôle PAR CÔTÉ ne change ni le pivot ni les compteurs", () => {
+  it("un MATCH_MATCH dont un côté est PLAYER pivote toujours par personne et compte sa famille", async () => {
+    // Décision 13 — le pivot/filtre/compteur coach s'appuie sur `coachId` (la
+    // personne), jamais sur le rôle : une joueuse en double se range sous elle et
+    // nourrit la famille « Personne en double » comme un coach.
+    state.conflicts = [
+      { type: "MATCH_MATCH", severity: 3, resolution: null, coachId: "coach-1", left: { ...side("fx-1", "team-1"), role: "MAIN" }, right: { ...side("fx-2", "team-2"), role: "PLAYER" } },
+    ];
+    renderAt();
+    expect(await screen.findByRole("button", { name: /Mara · 1/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Personne en double/ })).toHaveTextContent("1");
+  });
+});
+
 describe("ConflictsPage — états vides", () => {
   it("saison sans conflit : EmptyState « Aucun conflit sur la saison »", async () => {
     state.conflicts = [];
@@ -178,12 +192,12 @@ describe("ConflictsPage — états vides", () => {
     renderAt();
     await screen.findByRole("button", { name: /Mara · 3/ });
     // Décocher les trois familles présentes.
-    await user.click(screen.getByRole("button", { name: /Coach en double/ }));
+    await user.click(screen.getByRole("button", { name: /Personne en double/ }));
     await user.click(screen.getByRole("button", { name: /Match × entraînement/ }));
     await user.click(screen.getByRole("button", { name: /Gymnase indisponible/ }));
     expect(await screen.findByText("Aucun conflit pour les familles cochées.")).toBeInTheDocument();
     // Les chips restent visibles.
-    expect(screen.getByRole("button", { name: /Coach en double/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Personne en double/ })).toBeInTheDocument();
   });
 });
 
@@ -257,8 +271,8 @@ describe("ConflictsPage — traitement des conflits (P4-207)", () => {
     const chip = await screen.findByRole("button", { name: /Match × entraînement/ });
     const zero = within(chip).getByText("0");
     expect(zero).toHaveClass("text-muted-foreground");
-    // La famille « Coach en double » garde son compte ouvert (1), non muet.
-    expect(within(screen.getByRole("button", { name: /Coach en double/ })).getByText("1")).not.toHaveClass("text-muted-foreground");
+    // La famille « Personne en double » garde son compte ouvert (1), non muet.
+    expect(within(screen.getByRole("button", { name: /Personne en double/ })).getByText("1")).not.toHaveClass("text-muted-foreground");
   });
 
   it("membre : pastille en LECTURE (aucun menu, aucun « Traiter »)", async () => {
