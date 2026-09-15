@@ -513,7 +513,12 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
   await expect(disclosure, "témoin: le seed doit avoir au moins un gymnase sans accès match").toBeVisible();
   await disclosure.click();
 
-  const firstEdit = page.getByRole("button", { name: /^Modifier les accès match de / }).first();
+  // ⚠ Scoper à la LISTE DÉPLIÉE de la disclosure (frère `<ul>` du bouton, `ConfigurationPage.tsx`
+  //    L174-181) : un `.first()` sur toute la page attraperait le premier gymnase de la liste
+  //    principale (qui a DÉJÀ des accès), et l'ajout d'une 2ᵉ plage rendrait « sam. …, 14:00–22:00 »
+  //    (introuvable). On prend donc un gymnase SANS accès, garanti d'avoir une seule fenêtre après.
+  const withoutList = disclosure.locator("xpath=following-sibling::ul[1]");
+  const firstEdit = withoutList.getByRole("button", { name: /^Modifier les accès match de / }).first();
   const editLabel = (await firstEdit.getAttribute("aria-label")) ?? "";
   const venueName = editLabel.replace("Modifier les accès match de ", "");
   await firstEdit.click();
@@ -530,12 +535,22 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
   // Deux « Fermer » (la croix d'en-tête + le pied) : on ferme par le bouton du pied.
   await dialog.locator("footer").getByRole("button", { name: "Fermer" }).click();
 
-  // Le gymnase a rejoint la liste principale (avec sa plage formatée), le focus revient au
-  // « Modifier » de sa ligne, et l'en-tête compte un gymnase de plus.
-  await expect(page.getByText("sam. 14:00–22:00")).toBeVisible();
+  // Le gymnase a rejoint la liste principale : SA ligne (le <li> de son nom exact) porte la plage
+  // formatée « sam. 14:00–22:00 » (une seule fenêtre → pas de virgule) ; le focus revient à son
+  // « Modifier » ; et l'en-tête compte un gymnase de plus.
+  const venueRow = page.getByText(venueName, { exact: true }).locator("xpath=ancestor::li[1]");
+  await expect(venueRow).toContainText("sam. 14:00–22:00");
   const modifierAfter = page.getByRole("button", { name: `Modifier les accès match de ${venueName}` });
   await expect(modifierAfter).toBeFocused();
   await expect.poll(readCount).toBe(before + 1);
+
+  // ── Nettoyage (la base dev n'est pas remise à zéro entre runs) : retirer la fenêtre ajoutée ──
+  await modifierAfter.click();
+  const cleanupDialog = page.getByRole("dialog", { name: "Accès match" });
+  await cleanupDialog.getByRole("button", { name: "Supprimer la fenêtre Samedi 14:00" }).first().click();
+  await expect(cleanupDialog.getByText(/Samedi 14:00/)).toHaveCount(0);
+  await cleanupDialog.locator("footer").getByRole("button", { name: "Fermer" }).click();
+  await expect.poll(readCount).toBe(before);
 
   // ── Recherche adversaires : « xyz » n'a aucun résultat, Escape vide la requête ──
   await page.goto("/matchs/configuration?section=adversaires");
