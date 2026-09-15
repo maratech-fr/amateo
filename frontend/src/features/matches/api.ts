@@ -1266,3 +1266,20 @@ export interface FfbbSalle {
 
 export const listFfbbSalles = (postalCode: string): Promise<{ postalCode: string | null; salles: FfbbSalle[] }> =>
   api.get("ffbb/salles", { searchParams: { postalCode } }).json();
+
+// ── Rattrapage des codes FFBB des adversaires — annuaire GLOBAL (PR 2a) ───────
+/**
+ * La réponse du rattrapage d'annuaire (`POST /api/opponents/resolve`) : combien d'adversaires
+ * AWAY ont VU leur localisation résolue (`resolved`), la liste des non résolus (`unresolved`),
+ * ceux déjà à jour (`skipped`) et combien de fixtures ont été estampillées de leur code
+ * (`stamped`) — le rattrapage écrit la table GLOBALE et estampille les codes des rencontres.
+ */
+export interface OpponentResolveResult {
+  resolved: number;
+  unresolved: string[];
+  skipped: number;
+  stamped: number;
+}
+
+/** Rattrape les codes FFBB des adversaires AWAY (annuaire global + estampille les rencontres). Best-effort, management. */
+export const resolveOpponents = (): Promise<OpponentResolveResult> => api.post("opponents/resolve").json<OpponentResolveResult>();

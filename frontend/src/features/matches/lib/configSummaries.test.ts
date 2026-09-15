@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { Competition, MatchSlotRotation, OpponentTravel, SportCategoryDuration, VenueLabelInventoryRow } from "../api";
-import { deadlinesSummary, durationsSummary, labelsSummary, opponentsSummary, rotationsSummary } from "./configSummaries";
+import type { Competition, MatchSlotRotation, OpponentTravel, SportCategoryDuration, Venue, VenueLabelInventoryRow, VenueMatchWindow } from "../api";
+import { accessSummary, deadlinesSummary, durationsSummary, labelsSummary, opponentsSummary, rotationsSummary } from "./configSummaries";
+
+const venue = (id: string): Venue => ({ id, name: `Gymnase ${id}`, color: null, externalLabels: [] });
+const matchWindow = (venueId: string): VenueMatchWindow => ({ id: `${venueId}-w`, venueId, dayOfWeek: 6, startTime: "14:00", endTime: "22:00" });
 
 const invRow = (over: Partial<VenueLabelInventoryRow> = {}): VenueLabelInventoryRow => ({
   labelKey: "gymnase mateo",
@@ -146,5 +149,26 @@ describe("labelsSummary (E2, P4-205)", () => {
 
   it("tous appariés ⇒ « N libellés · 0 non apparié »", () => {
     expect(labelsSummary([invRow({ labelKey: "a", venueId: "v1" }), invRow({ labelKey: "b", venueId: "v2" })])).toBe("2 libellés · 0 non apparié");
+  });
+});
+
+describe("accessSummary (PR 2a — la section « Accès match »)", () => {
+  it("undefined (chargement/échec de l'une des lectures) ⇒ null", () => {
+    expect(accessSummary(undefined, [venue("v1")])).toBeNull();
+    expect(accessSummary([matchWindow("v1")], undefined)).toBeNull();
+  });
+
+  it("aucun gymnase avec accès ⇒ phrase dédiée", () => {
+    expect(accessSummary([], [venue("v1"), venue("v2")])).toBe("aucun gymnase avec accès match");
+  });
+
+  it("compte les gymnases qui ONT au moins une fenêtre (pluriel)", () => {
+    // v1 et v2 ont un accès (plusieurs fenêtres pour v1 ne comptent qu'une fois), v3 non.
+    const windows = [matchWindow("v1"), matchWindow("v1"), matchWindow("v2")];
+    expect(accessSummary(windows, [venue("v1"), venue("v2"), venue("v3")])).toBe("2 gymnases");
+  });
+
+  it("un seul gymnase avec accès ⇒ singulier", () => {
+    expect(accessSummary([matchWindow("v1")], [venue("v1"), venue("v2")])).toBe("1 gymnase");
   });
 });

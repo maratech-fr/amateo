@@ -4,18 +4,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
 
-import type { OpponentTravel } from "./api";
+import type { Fixture, OpponentTravel } from "./api";
 import { OpponentTravelCard } from "./OpponentTravelCard";
 
-const resolveMutate = vi.fn();
 const revertMutate = vi.fn();
+const updateRun = vi.fn();
 const travelState: { data: OpponentTravel[]; isError: boolean } = { data: [], isError: false };
+const fixturesState: { data: Fixture[] } = { data: [] };
+const updateState: { step: "idle" | "codes" | "trajets" } = { step: "idle" };
 
 vi.mock("./queries", () => ({
   useOpponentTravel: () => ({ data: travelState.data, isError: travelState.isError, refetch: vi.fn() }),
-  useResolveOpponentTravel: () => ({ mutate: resolveMutate, isPending: false }),
+  useFixtures: () => ({ data: fixturesState.data }),
+  useUpdateOpponents: () => ({ run: updateRun, isPending: "idle" !== updateState.step, step: updateState.step }),
   useSetOpponentTravelAuto: () => ({ mutate: revertMutate, isPending: false }),
-  // The modal (opened by « Localiser ») needs these on the mock — never invoked here.
+  // The modal (opened by « Localiser ») needs these on the mock.
   useVenueSuggestions: () => ({ data: undefined, isError: false, refetch: vi.fn() }),
   useFfbbSalles: () => ({ data: undefined, isError: false, refetch: vi.fn() }),
   useSetOpponentTravelManual: () => ({ mutate: vi.fn(), isPending: false }),
@@ -38,10 +41,12 @@ const opp = (over: Partial<OpponentTravel> & { opponentLabel: string }): Opponen
 });
 
 beforeEach(() => {
-  resolveMutate.mockReset();
   revertMutate.mockReset();
+  updateRun.mockReset();
   travelState.data = [];
   travelState.isError = false;
+  fixturesState.data = [];
+  updateState.step = "idle";
 });
 
 describe("OpponentTravelCard — l'écran SET-UP du trajet adverse, GROUPÉ PAR CLUB (PR-3)", () => {
@@ -52,10 +57,8 @@ describe("OpponentTravelCard — l'écran SET-UP du trajet adverse, GROUPÉ PAR 
     ];
     renderWithProviders(<OpponentTravelCard />);
 
-    // En-tête club = libellé de la première équipe MOINS le suffixe « - n » (affichage).
     expect(screen.getByRole("heading", { name: "BASKET BALL 5EME", level: 4 })).toBeInTheDocument();
     expect(screen.getByText("2 équipes")).toBeInTheDocument();
-    // La ligne défaut est en tête, puis les libellés BRUTS entiers des deux équipes.
     expect(screen.getByText("Toutes les équipes (défaut)")).toBeInTheDocument();
     expect(screen.getByText("BASKET BALL 5EME - 1")).toBeInTheDocument();
     expect(screen.getByText("BASKET BALL 5EME - 2")).toBeInTheDocument();
@@ -68,9 +71,7 @@ describe("OpponentTravelCard — l'écran SET-UP du trajet adverse, GROUPÉ PAR 
     ];
     renderWithProviders(<OpponentTravelCard />);
 
-    // La pastille de grain paraît pour l'équipe gouvernée par le club (une occurrence).
     expect(screen.getAllByText("défaut du club")).toHaveLength(1);
-    // L'équipe TEAM porte le retour au défaut ; l'équipe CLUB non.
     expect(screen.getByRole("button", { name: "Revenir au défaut du club pour Team TEAM" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Revenir au défaut du club pour Team CLUB" })).not.toBeInTheDocument();
   });
@@ -92,17 +93,6 @@ describe("OpponentTravelCard — l'écran SET-UP du trajet adverse, GROUPÉ PAR 
     expect(revertMutate.mock.calls[0][0]).toEqual({ opponentOrganismeCode: "C1" });
   });
 
-  it("une entrée SANS code fédéral : une ligne club à part, sans bouton Localiser", () => {
-    travelState.data = [
-      opp({ opponentLabel: "Perdu FC", opponentOrganismeCode: null, opponentTeamKey: null, located: false, precision: null, locationName: null, travelMinutes: null, source: null, scope: null }),
-    ];
-    renderWithProviders(<OpponentTravelCard />);
-
-    expect(screen.getByText(/code fédéral non résolu — relancez la localisation/)).toBeInTheDocument();
-    // La reprise passe par « Recalculer les trajets » en tête, jamais un « Localiser » ici.
-    expect(screen.queryByRole("button", { name: /^Localiser/ })).not.toBeInTheDocument();
-  });
-
   it("tri : le club portant une équipe non localisée passe AVANT un club tout localisé", () => {
     travelState.data = [
       opp({ opponentOrganismeCode: "Z", opponentLabel: "Zebre", opponentTeamKey: "ZEBRE", located: true }),
@@ -111,7 +101,6 @@ describe("OpponentTravelCard — l'écran SET-UP du trajet adverse, GROUPÉ PAR 
     renderWithProviders(<OpponentTravelCard />);
 
     const headings = screen.getAllByRole("heading", { level: 4 }).map((h) => h.textContent);
-    // Alpha (non localisé) d'abord malgré l'ordre alphabétique inverse du service.
     expect(headings).toEqual(["Alpha", "Zebre"]);
   });
 
@@ -125,15 +114,6 @@ describe("OpponentTravelCard — l'écran SET-UP du trajet adverse, GROUPÉ PAR 
     expect(screen.getByText("2 équipes adverses sans gymnase — leurs matchs n'entrent pas dans le radar.")).toBeInTheDocument();
   });
 
-  it("recalcule tous les trajets à la demande", async () => {
-    travelState.data = [opp({ opponentLabel: "Voisin FC", opponentTeamKey: "VOISIN" })];
-    renderWithProviders(<OpponentTravelCard />);
-
-    await userEvent.click(screen.getByRole("button", { name: /Recalculer les trajets/ }));
-    expect(resolveMutate).toHaveBeenCalledTimes(1);
-  });
-
-  // ── TÉMOIN GARDÉ (ex OpponentTravelCard.test.tsx:84-88) : tout localisé → ton calme ─────
   it("tout localisé → un ton calme, jamais la phrase d'alerte", () => {
     travelState.data = [opp({ opponentLabel: "Voisin FC", opponentTeamKey: "VOISIN" })];
     renderWithProviders(<OpponentTravelCard />);
@@ -149,5 +129,129 @@ describe("OpponentTravelCard — l'écran SET-UP du trajet adverse, GROUPÉ PAR 
     await userEvent.click(screen.getByRole("button", { name: "Localiser Team A" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Localiser Team A")).toBeInTheDocument();
+  });
+});
+
+describe("OpponentTravelCard — « Mettre à jour les adversaires » (PR 2a, deux étapes)", () => {
+  it("le bouton lance la mise à jour (rattrapage codes puis trajets)", async () => {
+    travelState.data = [opp({ opponentLabel: "Voisin FC", opponentTeamKey: "VOISIN" })];
+    renderWithProviders(<OpponentTravelCard />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Mettre à jour les adversaires" }));
+    expect(updateRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("étape « codes » : libellé « Codes FFBB… », disabled, annonce a11y « étape 1 sur 2 »", () => {
+    travelState.data = [opp({ opponentLabel: "Voisin FC", opponentTeamKey: "VOISIN" })];
+    updateState.step = "codes";
+    renderWithProviders(<OpponentTravelCard />);
+
+    expect(screen.getByRole("button", { name: "Codes FFBB…" })).toBeDisabled();
+    expect(screen.getByText("Mise à jour des adversaires — étape 1 sur 2 : codes FFBB")).toBeInTheDocument();
+  });
+
+  it("étape « trajets » : libellé « Trajets… », annonce a11y « étape 2 sur 2 »", () => {
+    travelState.data = [opp({ opponentLabel: "Voisin FC", opponentTeamKey: "VOISIN" })];
+    updateState.step = "trajets";
+    renderWithProviders(<OpponentTravelCard />);
+
+    expect(screen.getByRole("button", { name: "Trajets…" })).toBeInTheDocument();
+    expect(screen.getByText("Mise à jour des adversaires — étape 2 sur 2 : trajets")).toBeInTheDocument();
+  });
+});
+
+describe("OpponentTravelCard — recherche instantanée (PR 2a)", () => {
+  beforeEach(() => {
+    travelState.data = [
+      opp({ opponentOrganismeCode: "C1", opponentLabel: "BASKET 5EME - 1", opponentTeamKey: "BB-1" }),
+      opp({ opponentOrganismeCode: "C2", opponentLabel: "MEYZIEU BASKET", opponentTeamKey: "MZ" }),
+    ];
+  });
+
+  it("filtre par club, annonce « N clubs sur M » (role=status)", async () => {
+    renderWithProviders(<OpponentTravelCard />);
+    await userEvent.type(screen.getByRole("searchbox", { name: "Rechercher un club ou une équipe" }), "meyzieu");
+
+    const count = screen.getByText("1 club sur 2");
+    expect(count).toHaveAttribute("role", "status");
+    expect(screen.getByRole("heading", { name: "MEYZIEU BASKET", level: 4 })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "BASKET 5EME", level: 4 })).not.toBeInTheDocument();
+  });
+
+  it("zéro résultat → « Aucun adversaire pour « xyz ». » à la place de la liste (role=status)", async () => {
+    renderWithProviders(<OpponentTravelCard />);
+    await userEvent.type(screen.getByRole("searchbox", { name: "Rechercher un club ou une équipe" }), "xyz");
+
+    const empty = screen.getByText(/Aucun adversaire pour/);
+    expect(empty).toHaveAttribute("role", "status");
+    expect(empty).toHaveTextContent("Aucun adversaire pour « xyz ».");
+    expect(screen.queryByRole("heading", { level: 4 })).not.toBeInTheDocument();
+  });
+
+  it("Escape vide la requête (la liste complète revient)", async () => {
+    renderWithProviders(<OpponentTravelCard />);
+    const search = screen.getByRole("searchbox", { name: "Rechercher un club ou une équipe" });
+    await userEvent.type(search, "xyz");
+    expect(screen.getByText(/Aucun adversaire pour/)).toBeInTheDocument();
+    await userEvent.type(search, "{Escape}");
+    expect(search).toHaveValue("");
+    expect(screen.getByRole("heading", { name: "MEYZIEU BASKET", level: 4 })).toBeInTheDocument();
+  });
+});
+
+describe("OpponentTravelCard — adversaires sans code fédéral (PR 2a, repli à part)", () => {
+  it("repliés par défaut sous une disclosure, dépliés au clic ; jamais un « Localiser » ici", async () => {
+    travelState.data = [
+      opp({ opponentLabel: "Team A", opponentTeamKey: "T-A" }),
+      opp({ opponentLabel: "Perdu FC", opponentOrganismeCode: null, opponentTeamKey: null, located: false, precision: null, locationName: null, travelMinutes: null, source: null, scope: null }),
+    ];
+    renderWithProviders(<OpponentTravelCard />);
+
+    // Replié : le corps n'est PAS monté, mais l'invite et le bouton le sont.
+    expect(screen.queryByText("code fédéral non résolu")).not.toBeInTheDocument();
+    expect(screen.getByText(/« Mettre à jour les adversaires » tente de retrouver leur code FFBB/)).toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "1 adversaire sans code fédéral" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    await userEvent.click(toggle);
+    expect(screen.getByText("code fédéral non résolu")).toBeInTheDocument();
+    // L'orphelin n'a AUCUN bouton « Localiser » (le club codé Team A, lui, en a).
+    expect(screen.queryByRole("button", { name: /Localiser.*Perdu/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Localiser Team A" })).toBeInTheDocument();
+  });
+
+  it("une recherche qui matche un orphelin DÉPLIE la liste et suit le compte", async () => {
+    travelState.data = [
+      opp({ opponentLabel: "Perdu FC", opponentOrganismeCode: null, opponentTeamKey: null, located: false, precision: null, locationName: null, travelMinutes: null, source: null, scope: null }),
+      opp({ opponentLabel: "Zorro Club", opponentOrganismeCode: null, opponentTeamKey: null, located: false, precision: null, locationName: null, travelMinutes: null, source: null, scope: null }),
+    ];
+    renderWithProviders(<OpponentTravelCard />);
+
+    // Deux orphelins repliés.
+    expect(screen.getByRole("button", { name: "2 adversaires sans code fédéral" })).toHaveAttribute("aria-expanded", "false");
+
+    await userEvent.type(screen.getByRole("searchbox", { name: "Rechercher un club ou une équipe" }), "perdu");
+    const toggle = screen.getByRole("button", { name: "1 adversaire sans code fédéral" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Perdu FC")).toBeInTheDocument();
+    expect(screen.queryByText("Zorro Club")).not.toBeInTheDocument();
+  });
+});
+
+describe("OpponentTravelCard — indice « Dans le fichier » passé à Localiser (PR 2a)", () => {
+  it("joint les salles FBI de la rencontre par (code, teamKey) et les passe à la modale", async () => {
+    travelState.data = [opp({ opponentOrganismeCode: "C9", opponentLabel: "Team A", opponentTeamKey: "T-A", scope: "CLUB" })];
+    fixturesState.data = [
+      { opponentOrganismeCode: "C9", opponentTeamKey: "T-A", fbiVenueLabel: "GYMNASE CHANFRAY" } as unknown as Fixture,
+      { opponentOrganismeCode: "C9", opponentTeamKey: "T-A", fbiVenueLabel: "GYMNASE CHANFRAY" } as unknown as Fixture, // doublon ignoré
+      { opponentOrganismeCode: "AUTRE", opponentTeamKey: "X", fbiVenueLabel: "PAS CELUI-CI" } as unknown as Fixture,
+    ];
+    renderWithProviders(<OpponentTravelCard />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Localiser Team A" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/Dans le fichier/)).toBeInTheDocument();
+    expect(within(dialog).getByText("GYMNASE CHANFRAY")).toBeInTheDocument();
+    expect(within(dialog).queryByText("PAS CELUI-CI")).not.toBeInTheDocument();
   });
 });

@@ -168,6 +168,12 @@ export const routes: RouteObject[] = [
                 lazy: async () => ({ Component: (await import("@/features/matches/ConfigurationPage")).ConfigurationPage }),
               },
               {
+                // PR 2a — la « Semaine type » (gabarit idéal + créneaux partagés), sortie de la
+                // Configuration en page sœur lazy. Garde socle héritée du layout.
+                path: "semaine-type",
+                lazy: async () => ({ Component: (await import("@/features/matches/TypicalWeekPage")).TypicalWeekPage }),
+              },
+              {
                 // PR A — l'espace « Conflits » : tous les conflits de la saison, pivotés
                 // (coach/équipe/gymnase/journée), en lecture seule. Route lazy sœur,
                 // garde socle héritée du layout.

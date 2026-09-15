@@ -1,4 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { HTTPError } from "ky";
+import { useState } from "react";
 
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { toast } from "@/shared/stores/toastStore";
@@ -345,6 +347,71 @@ export function useResolveOpponentTravel() {
     },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
+}
+
+/** Les étapes de la mise à jour des adversaires — pilotent le libellé du bouton et l'annonce a11y. */
+export type UpdateOpponentsStep = "idle" | "codes" | "trajets";
+
+export interface UpdateOpponentsController {
+  run: () => void;
+  isPending: boolean;
+  step: UpdateOpponentsStep;
+}
+
+/**
+ * PR 2a — « Mettre à jour les adversaires » : deux étapes best-effort ENCHAÎNÉES — (1) rattraper
+ * les codes FFBB des adversaires (`POST /api/opponents/resolve`, annuaire global + estampille les
+ * rencontres), puis (2) recalculer les trajets AUTO (`POST /api/opponents/travel/resolve`). Chaque
+ * étape est indépendante : un échec log un toast et laisse la suivante s'exécuter (le 422 du cap
+ * porte un message métier précis — on le montre tel quel). À la fin, un unique toast de succès
+ * résume les étapes réussies, et on ré-invalide le trajet, le radar, les fixtures et les suggestions.
+ */
+export function useUpdateOpponents(): UpdateOpponentsController {
+  const queryClient = useQueryClient();
+  const [step, setStep] = useState<UpdateOpponentsStep>("idle");
+
+  const run = (): void => {
+    if ("idle" !== step) {
+      return;
+    }
+    void (async () => {
+      const done: string[] = [];
+
+      // Étape 1 — rattraper les codes FFBB.
+      setStep("codes");
+      try {
+        const codes = await matchesApi.resolveOpponents();
+        done.push(`${codes.resolved} code${codes.resolved > 1 ? "s" : ""} retrouvé${codes.resolved > 1 ? "s" : ""}`);
+      } catch (error) {
+        if (error instanceof HTTPError && 422 === error.response.status) {
+          // Le cap (« trop d'adversaires… ») est un message métier écrit pour être lu : tel quel.
+          toast.error(await errorMessage(error));
+        } else {
+          toast.error("Rattrapage des codes FFBB impossible — poursuite avec les trajets.");
+        }
+      }
+
+      // Étape 2 — recalculer les trajets AUTO (le MANUAL est préservé).
+      setStep("trajets");
+      try {
+        const travel = await matchesApi.resolveOpponentTravel();
+        done.push(`${travel.resolved} trajet${travel.resolved > 1 ? "s" : ""} calculé${travel.resolved > 1 ? "s" : ""}`);
+      } catch (error) {
+        toast.error(await errorMessage(error));
+      }
+
+      // Le rattrapage a estampillé des codes (fixtures) ; travel + suggestions partagées ont bougé.
+      void queryClient.invalidateQueries({ queryKey: ["fixtures"] });
+      void queryClient.invalidateQueries({ queryKey: ["opponents"] });
+
+      setStep("idle");
+      if (done.length > 0) {
+        toast.success(done.join(" · "));
+      }
+    })();
+  };
+
+  return { run, isPending: "idle" !== step, step };
 }
 
 /** Salles FFBB d'une commune (le combobox « Localiser ») — best-effort, patron VenuesStep. */

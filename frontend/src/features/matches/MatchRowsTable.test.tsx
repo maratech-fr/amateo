@@ -65,10 +65,16 @@ describe("MatchRowsTable (PR-2b — ligne de match partagée Mois/Phase)", () =>
     expect(screen.getByText(/heure non publiée/)).toBeInTheDocument();
   });
 
-  it("gymnase non rattaché ⇒ fbiVenueLabel + « à rattacher dans Importer »", () => {
-    renderTable({ groups: [{ key: "g", label: "g", fixtures: [fx({ id: "fx-1", venueId: null, fbiVenueLabel: "Halle Clemenceau" })] }] });
+  it("gymnase non rattaché à DOMICILE ⇒ fbiVenueLabel + « à rattacher dans Importer »", () => {
+    renderTable({ groups: [{ key: "g", label: "g", fixtures: [fx({ id: "fx-1", homeAway: "HOME", venueId: null, fbiVenueLabel: "Halle Clemenceau" })] }] });
     expect(screen.getByText(/Halle Clemenceau/)).toBeInTheDocument();
     expect(screen.getByText(/à rattacher dans Importer/)).toBeInTheDocument();
+  });
+
+  it("un EXTÉRIEUR avec libellé FBI ⇒ le libellé SEUL (jamais « à rattacher » — c'est la salle de l'adversaire)", () => {
+    renderTable({ groups: [{ key: "g", label: "g", fixtures: [fx({ id: "fx-1", homeAway: "AWAY", venueId: null, fbiVenueLabel: "Gymnase Chanfray" })] }] });
+    expect(screen.getByText("Gymnase Chanfray")).toBeInTheDocument();
+    expect(screen.queryByText(/à rattacher/)).not.toBeInTheDocument();
   });
 
   it("ni gymnase ni libellé FBI ⇒ « — »", () => {
