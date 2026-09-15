@@ -51,6 +51,25 @@ final class OpponentLocationResolverTest extends WebTestCase
 
     private const string OPPONENT_NAME = 'ADVERSE POISON FC';
 
+    // Relance « - n » (P2-54 « adversaire multi-gymnases ») : un organisme joue via
+    // plusieurs équipes numérotées ; le libellé de rencontre porte le « - n », l'index
+    // fédéral connaît l'organisme sous son nom NU.
+    private const string MULTI_1 = 'ADVERSE MULTI - 1';
+
+    private const string MULTI_2 = 'ADVERSE MULTI - 2';
+
+    private const string MULTI_STRIPPED = 'ADVERSE MULTI';
+
+    private const string MULTI_CODE = 'ARA0069MUL';
+
+    private const string SF_FULL = 'TEAM ALPHA - 1';
+
+    private const string SF_CODE_FULL = 'ARA0069FUL';
+
+    private const string SF_CODE_STRIP = 'ARA0069STR';
+
+    private const string AMBIGU = 'AMBIGU - 1';
+
     private EntityManagerInterface $em;
 
     public function testXlsxChannelCanNeverProduceVenuePrecisionOnTheSharedTable(): void
@@ -131,10 +150,142 @@ final class OpponentLocationResolverTest extends WebTestCase
         self::assertNull($other->getOpponentOrganismeCode(), 'a fixture of another (unresolved) opponent is left untouched');
     }
 
+    /**
+     * P2-54 « adversaire multi-gymnases » — le rapprochement au nom RELANCE une fois
+     * sans le suffixe d'équipe « - n » : « ADVERSE MULTI - 1 » et « - 2 » (l'organisme
+     * fédéral s'appelle « ADVERSE MULTI ») résolvent le MÊME code, et les deux
+     * rencontres sont estampillées (codeByName keyé sur le libellé COMPLET). Falsifié :
+     * sans la relance, la passe stricte sur le nom complet échoue et rien n'est estampé.
+     */
+    public function testRelanceOnStrippedTeamNumberResolvesBothTeamsToTheSameCode(): void
+    {
+        $resolver = $this->resolverWithRelanceFfbb();
+
+        $team1 = (new Fixture)->setHomeAway(FixtureHomeAway::AWAY)->setOpponentLabel(self::MULTI_1);
+        $team2 = (new Fixture)->setHomeAway(FixtureHomeAway::AWAY)->setOpponentLabel(self::MULTI_2);
+
+        $outcome = $resolver->resolveObservations(
+            [
+                ['organismeCode' => null, 'name' => self::MULTI_1, 'directVenue' => null],
+                ['organismeCode' => null, 'name' => self::MULTI_2, 'directVenue' => null],
+            ],
+            [$team1, $team2],
+        );
+
+        self::assertSame(2, $outcome['stamped'], 'les deux équipes du même organisme sont estampillées');
+        self::assertSame(self::MULTI_CODE, $team1->getOpponentOrganismeCode());
+        self::assertSame(self::MULTI_CODE, $team2->getOpponentOrganismeCode(), 'la relance « - n » unifie les deux équipes sur le code de l\'organisme');
+    }
+
+    /**
+     * La passe STRICTE d'abord : quand le libellé COMPLET apparie déjà un organisme, la
+     * relance ne se déclenche jamais. Falsifié : le nom nu apparie un AUTRE code — si la
+     * relance mordait à tort, on stamperait ce mauvais code.
+     */
+    public function testStrictMatchOnTheFullLabelWinsWithoutRelance(): void
+    {
+        $resolver = $this->resolverWithRelanceFfbb();
+
+        $match = (new Fixture)->setHomeAway(FixtureHomeAway::AWAY)->setOpponentLabel(self::SF_FULL);
+
+        $outcome = $resolver->resolveObservations(
+            [['organismeCode' => null, 'name' => self::SF_FULL, 'directVenue' => null]],
+            [$match],
+        );
+
+        self::assertSame(1, $outcome['stamped']);
+        self::assertSame(self::SF_CODE_FULL, $match->getOpponentOrganismeCode(), 'la passe stricte sur le libellé complet gagne, la relance ne s\'est pas déclenchée');
+        self::assertNotSame(self::SF_CODE_STRIP, $match->getOpponentOrganismeCode());
+    }
+
+    /**
+     * La relance reste STRICTE : un nom nu qui apparie DEUX organismes est ambigu → pas
+     * de clé, aucune rencontre estampée.
+     */
+    public function testRelanceStaysStrictWhenTheStrippedNameIsAmbiguous(): void
+    {
+        $resolver = $this->resolverWithRelanceFfbb();
+
+        $match = (new Fixture)->setHomeAway(FixtureHomeAway::AWAY)->setOpponentLabel(self::AMBIGU);
+
+        $outcome = $resolver->resolveObservations(
+            [['organismeCode' => null, 'name' => self::AMBIGU, 'directVenue' => null]],
+            [$match],
+        );
+
+        self::assertSame(0, $outcome['stamped']);
+        self::assertNull($match->getOpponentOrganismeCode(), 'une relance à 2 organismes reste ambiguë → aucune clé');
+    }
+
     protected function setUp(): void
     {
         self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /**
+     * The real resolver on a QUERY-AWARE FFBB mock: the organisme index answers by the
+     * exact `q` sent, so the strict pass on the FULL label fails while the relance on the
+     * bare name succeeds (or is ambiguous / already-strict, per the fixtures).
+     */
+    private function resolverWithRelanceFfbb(): OpponentLocationResolver
+    {
+        $apiClient = new FfbbApiClient($this->relanceMock(), 'stub-token');
+
+        $importer = self::getContainer()->get(FbiFixtureImporter::class);
+        self::assertInstanceOf(FbiFixtureImporter::class, $importer);
+        $geocoder = self::getContainer()->get(BanGeocodingClient::class);
+        self::assertInstanceOf(BanGeocodingClient::class, $geocoder);
+
+        return new OpponentLocationResolver(
+            new FfbbRencontreReader($apiClient),
+            $apiClient,
+            $geocoder,
+            $importer,
+            $this->repository(),
+            $this->em,
+            new NullLogger,
+        );
+    }
+
+    private function relanceMock(): MockHttpClient
+    {
+        return new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
+            /** @var array<string, mixed> $data */
+            $data = json_decode(\is_string($options['body'] ?? null) ? $options['body'] : '{}', true) ?: [];
+            $query = \is_array($data['queries'][0] ?? null) ? $data['queries'][0] : [];
+            $index = \is_string($query['indexUid'] ?? null) ? $query['indexUid'] : '';
+            $q = \is_string($query['q'] ?? null) ? $query['q'] : '';
+
+            if ('ffbbserver_organismes' !== $index) {
+                return $this->hits([]); // no salle appariement in these scenarios
+            }
+
+            return match ($q) {
+                // Multi-équipes : le libellé complet ne trouve rien, le nom nu trouve l'organisme.
+                self::MULTI_STRIPPED => $this->hits([$this->organisme(self::MULTI_CODE, self::MULTI_STRIPPED)]),
+                // Strict d'abord : le libellé COMPLET apparie un organisme (code « full »),
+                // le nom nu en apparierait un AUTRE (code « strip ») — jamais atteint.
+                self::SF_FULL => $this->hits([$this->organisme(self::SF_CODE_FULL, self::SF_FULL)]),
+                'TEAM ALPHA' => $this->hits([$this->organisme(self::SF_CODE_STRIP, 'TEAM ALPHA')]),
+                // Ambigu : le nom nu apparie DEUX organismes.
+                'AMBIGU' => $this->hits([$this->organisme('ARA0069AM1', 'AMBIGU'), $this->organisme('ARA0069AM2', 'AMBIGU')]),
+                default => $this->hits([]),
+            };
+        });
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function organisme(string $code, string $nom): array
+    {
+        return [
+            'code' => $code,
+            'nom' => $nom,
+            'commune' => ['libelle' => 'Lyon', 'codePostal' => '69001'],
+            '_geo' => ['lat' => 45.76, 'lng' => 4.86],
+        ];
     }
 
     /**

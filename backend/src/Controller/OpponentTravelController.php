@@ -13,6 +13,7 @@ use App\Enum\OpponentLocationPrecision;
 use App\Repository\FixtureRepository;
 use App\Repository\OpponentDirectoryEntryRepository;
 use App\Repository\OpponentTravelRepository;
+use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\OpponentTravelResolver;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonResolver;
@@ -57,6 +58,7 @@ final class OpponentTravelController extends AbstractController
         private readonly OpponentDirectoryEntryRepository $directory,
         private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly OpponentTravelResolver $resolver,
+        private readonly VenueLabelNormalizer $labelNormalizer,
         private readonly RateLimiterFactory $opponentTravelResolveLimiter,
     ) {}
 
@@ -70,12 +72,12 @@ final class OpponentTravelController extends AbstractController
         \assert(null !== $clubId && $season instanceof Season);
 
         $awayFixtures = $this->fixtures->findAwayBySeason($season->getId());
-        $travelByCode = $this->indexTravel($season->getId());
+        $travelIndex = $this->indexTravel($season->getId());
 
         return $this->json([
             'clubId' => $clubId,
             'seasonId' => $season->getId(),
-            'opponents' => $this->buildOpponents($awayFixtures, $travelByCode),
+            'opponents' => $this->buildOpponents($awayFixtures, $travelIndex),
         ]);
     }
 
@@ -99,15 +101,20 @@ final class OpponentTravelController extends AbstractController
         $ref = \is_string($payload['venueExternalRef'] ?? null) && '' !== trim($payload['venueExternalRef']) ? mb_substr(trim($payload['venueExternalRef']), 0, 64) : null;
         $lat = $this->coordinate($payload['latitude'] ?? null, -90.0, 90.0);
         $lon = $this->coordinate($payload['longitude'] ?? null, -180.0, 180.0);
+        // Portée : TEAM dès qu'un teamKey est fourni, CLUB sinon — un `scope` explicite peut
+        // forcer CLUB (on ignore alors le teamKey). Un `scope=TEAM` sans teamKey est invalide.
+        $rawTeamKey = $this->cleanTeamKey($payload['opponentTeamKey'] ?? null);
+        $scope = $this->cleanScope($payload['scope'] ?? null) ?? (null !== $rawTeamKey ? 'TEAM' : 'CLUB');
+        $teamKey = 'CLUB' === $scope ? null : $rawTeamKey;
 
-        if (null === $code || '' === $label || null === $lat || null === $lon) {
+        if (null === $code || '' === $label || null === $lat || null === $lon || ('TEAM' === $scope && null === $teamKey)) {
             return $this->json(['error' => 'Adversaire ou gymnase invalide.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
-        if (!\in_array($code, $this->resolver->distinctOpponentCodes($season->getId()), true)) {
+        if (!$this->isAwayOpponent($season->getId(), $code, $teamKey)) {
             return $this->json(['error' => 'Cet adversaire n\'a aucune rencontre à l\'extérieur cette saison.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $row = $this->resolver->applyManualOverride($clubId, $season->getId(), $code, $ref, mb_substr($label, 0, 180), $lat, $lon);
+        $row = $this->resolver->applyManualOverride($clubId, $season->getId(), $code, $teamKey, $ref, mb_substr($label, 0, 180), $lat, $lon);
 
         return $this->json($this->travelView($row), Response::HTTP_OK);
     }
@@ -125,9 +132,25 @@ final class OpponentTravelController extends AbstractController
 
         /** @var mixed $payload */
         $payload = json_decode($request->getContent(), true);
-        $code = $this->cleanCode(\is_array($payload) ? ($payload['opponentOrganismeCode'] ?? null) : null);
+        $payload = \is_array($payload) ? $payload : [];
+        $code = $this->cleanCode($payload['opponentOrganismeCode'] ?? null);
         if (null === $code) {
             return $this->json(['error' => 'Adversaire invalide.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+        $teamKey = $this->cleanTeamKey($payload['opponentTeamKey'] ?? null);
+
+        // Grain ÉQUIPE (A3) : rétablir l'automatique = SUPPRIMER la ligne équipe ; la
+        // rencontre retombe sur la ligne club puis l'annuaire (vue résolue renvoyée).
+        if (null !== $teamKey) {
+            if (!$this->resolver->deleteTeamOverride($season->getId(), $code, $teamKey)) {
+                return $this->json(['error' => 'Aucune localisation manuelle à rétablir pour cet adversaire.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+            $fallback = $this->travelRepository->findEffective($season->getId(), $code, $teamKey);
+
+            return $this->json(
+                $fallback instanceof OpponentTravel ? $this->travelView($fallback) : $this->emptyTravelView($code, $teamKey),
+                Response::HTTP_OK,
+            );
         }
 
         $row = $this->resolver->revertToAuto($clubId, $season->getId(), $code);
@@ -171,33 +194,49 @@ final class OpponentTravelController extends AbstractController
     }
 
     /**
-     * Group the AWAY fixtures by opponent (organisme code when stamped, else the
-     * normalized label) and shape each one for display.
+     * Group the AWAY fixtures by opponent TEAM — `(organisme code, normalized label)`
+     * when stamped, else the normalized label alone — keeping the RAW rencontre label
+     * for display (P2-54 « adversaire multi-gymnases » : two teams of the same
+     * organisme, « BASKET 5EME - 1 » vs « - 2 », are two distinct entries). Each entry
+     * resolves its travel team → club → directory and says which grain won (`scope`).
      *
-     * @param list<Fixture>                 $awayFixtures
-     * @param array<string, OpponentTravel> $travelByCode
+     * @param list<Fixture>                                                                         $awayFixtures
+     * @param array<string, array{club: OpponentTravel|null, teams: array<string, OpponentTravel>}> $travelIndex
      *
      * @return list<array<string, mixed>>
      */
-    private function buildOpponents(array $awayFixtures, array $travelByCode): array
+    private function buildOpponents(array $awayFixtures, array $travelIndex): array
     {
-        /** @var array<string, array{code: string|null, label: string}> $groups */
+        /** @var array<string, array{code: string|null, teamKey: string|null, label: string}> $groups */
         $groups = [];
         foreach ($awayFixtures as $fixture) {
-            $code = $fixture->getOpponentOrganismeCode();
             $label = trim($fixture->getOpponentLabel());
-            $key = null !== $code && '' !== $code ? 'code:' . $code : 'label:' . mb_strtolower($label);
-            if (!isset($groups[$key])) {
-                $groups[$key] = ['code' => null !== $code && '' !== $code ? $code : null, 'label' => $label];
+            $code = $fixture->getOpponentOrganismeCode();
+            $code = null !== $code && '' !== $code ? $code : null;
+            if (null === $code) {
+                // Code fédéral non résolu : regroupé au libellé, jamais localisé (inchangé).
+                $key = 'label:' . mb_strtolower($label);
+                $groups[$key] ??= ['code' => null, 'teamKey' => null, 'label' => $label];
+
+                continue;
             }
+            $teamKey = $this->labelNormalizer->normalize($label);
+            $teamKey = '' === $teamKey ? null : $teamKey;
+            $key = 'code:' . $code . '|team:' . ($teamKey ?? '');
+            $groups[$key] ??= ['code' => $code, 'teamKey' => $teamKey, 'label' => $label];
         }
 
         $opponents = [];
         foreach ($groups as $group) {
             $code = $group['code'];
+            $teamKey = $group['teamKey'];
             $entry = null === $code ? null : $this->directory->findOneByFfbbOrganismeCode($code);
-            $travel = null === $code ? null : ($travelByCode[$code] ?? null);
-            $opponents[] = $this->opponentView($group['label'], $code, $entry, $travel);
+            $codeTravel = null === $code ? null : ($travelIndex[$code] ?? null);
+            $teamRow = null !== $teamKey && null !== $codeTravel ? ($codeTravel['teams'][$teamKey] ?? null) : null;
+            $clubRow = $codeTravel['club'] ?? null;
+            $travel = $teamRow ?? $clubRow;
+            $scope = null !== $teamRow ? 'TEAM' : (null !== $clubRow ? 'CLUB' : null);
+            $opponents[] = $this->opponentView($group['label'], $code, $teamKey, $entry, $travel, $scope);
         }
         usort($opponents, static fn (array $a, array $b): int => strcasecmp((string) $a['opponentLabel'], (string) $b['opponentLabel']));
 
@@ -207,7 +246,7 @@ final class OpponentTravelController extends AbstractController
     /**
      * @return array<string, mixed>
      */
-    private function opponentView(string $label, ?string $code, ?OpponentDirectoryEntry $entry, ?OpponentTravel $travel): array
+    private function opponentView(string $label, ?string $code, ?string $teamKey, ?OpponentDirectoryEntry $entry, ?OpponentTravel $travel, ?string $scope): array
     {
         $hasOverride = $travel instanceof OpponentTravel && $travel->hasOverride();
         $precision = $entry?->getPrecision()?->value;
@@ -218,14 +257,18 @@ final class OpponentTravelController extends AbstractController
 
         return [
             'opponentOrganismeCode' => $code,
+            'opponentTeamKey' => $teamKey,
             'opponentLabel' => $label,
             'located' => $located,
             'precision' => $hasOverride ? OpponentLocationPrecision::VENUE->value : $precision,
             'locationName' => $this->locationName($entry, $travel),
+            'city' => $entry?->getCity(),
+            'postalCode' => $entry?->getPostalCode(),
             'travelMinutes' => $travel?->getTravelMinutes(),
             'approximated' => $approximated,
             'source' => $travel?->getSource()->value,
-            'overrideVenueLabel' => $travel instanceof OpponentTravel && $travel->hasOverride() ? $travel->getOverrideVenueLabel() : null,
+            'scope' => $scope,
+            'overrideVenueLabel' => $hasOverride ? $travel->getOverrideVenueLabel() : null,
         ];
     }
 
@@ -244,12 +287,17 @@ final class OpponentTravelController extends AbstractController
     }
 
     /**
+     * The write response for one travel row (manual/auto) — additive `opponentTeamKey`
+     * + `scope` (TEAM|CLUB from the row's grain), the rest unchanged.
+     *
      * @return array<string, mixed>
      */
     private function travelView(OpponentTravel $row): array
     {
         return [
             'opponentOrganismeCode' => $row->getOpponentOrganismeCode(),
+            'opponentTeamKey' => $row->getOpponentTeamKey(),
+            'scope' => $row->isTeamScoped() ? 'TEAM' : 'CLUB',
             'travelMinutes' => $row->getTravelMinutes(),
             'source' => $row->getSource()->value,
             'overrideVenueLabel' => $row->hasOverride() ? $row->getOverrideVenueLabel() : null,
@@ -257,16 +305,83 @@ final class OpponentTravelController extends AbstractController
     }
 
     /**
-     * @return array<string, OpponentTravel> keyed by opponent organisme code
+     * The write response when a TEAM override was reverted (A3 deletion) and nothing
+     * governs the team any more — no club row either: « retour à l'automatique, rien
+     * de connu ».
+     *
+     * @return array<string, mixed>
+     */
+    private function emptyTravelView(string $code, ?string $teamKey): array
+    {
+        return [
+            'opponentOrganismeCode' => $code,
+            'opponentTeamKey' => $teamKey,
+            'scope' => null,
+            'travelMinutes' => null,
+            'source' => null,
+            'overrideVenueLabel' => null,
+        ];
+    }
+
+    /**
+     * The travel rows of the club+season, indexed for a team → club resolution:
+     * per opponent organisme code, the club default row (teamKey NULL) and the
+     * per-team override rows.
+     *
+     * @return array<string, array{club: OpponentTravel|null, teams: array<string, OpponentTravel>}>
      */
     private function indexTravel(string $seasonId): array
     {
         $map = [];
         foreach ($this->travelRepository->findBySeason($seasonId) as $row) {
-            $map[$row->getOpponentOrganismeCode()] = $row;
+            $code = $row->getOpponentOrganismeCode();
+            $map[$code] ??= ['club' => null, 'teams' => []];
+            $teamKey = $row->getOpponentTeamKey();
+            if (null === $teamKey) {
+                $map[$code]['club'] = $row;
+            } else {
+                $map[$code]['teams'][$teamKey] = $row;
+            }
         }
 
         return $map;
+    }
+
+    /**
+     * True when `(code, teamKey)` names a real AWAY opponent of the club+season: for a
+     * CLUB write (teamKey null) the code must have an away fixture; for a TEAM write the
+     * teamKey must equal a stamped fixture's normalized label under that code.
+     */
+    private function isAwayOpponent(string $seasonId, string $code, ?string $teamKey): bool
+    {
+        if (null === $teamKey) {
+            return \in_array($code, $this->resolver->distinctOpponentCodes($seasonId), true);
+        }
+        foreach ($this->fixtures->findAwayBySeason($seasonId) as $fixture) {
+            $fixtureCode = $fixture->getOpponentOrganismeCode();
+            if (null !== $fixtureCode && '' !== $fixtureCode && $fixtureCode === $code
+                && $this->labelNormalizer->normalize(trim($fixture->getOpponentLabel())) === $teamKey) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function cleanTeamKey(mixed $value): ?string
+    {
+        if (!\is_string($value)) {
+            return null;
+        }
+        $trimmed = trim($value);
+
+        return '' === $trimmed ? null : mb_substr($trimmed, 0, 180);
+    }
+
+    /** @return 'TEAM'|'CLUB'|null */
+    private function cleanScope(mixed $value): ?string
+    {
+        return \in_array($value, ['TEAM', 'CLUB'], true) ? $value : null;
     }
 
     private function cleanCode(mixed $value): ?string

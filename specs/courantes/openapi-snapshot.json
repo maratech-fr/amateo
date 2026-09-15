@@ -9018,6 +9018,13 @@
                                                             "null"
                                                         ]
                                                     },
+                                                    "opponentTeamKey": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ],
+                                                        "description": "Server-normalized opponent label \u2014 the grain of a per-team travel override; null for an unresolved opponent"
+                                                    },
                                                     "opponentLabel": {
                                                         "type": "string"
                                                     },
@@ -9044,6 +9051,20 @@
                                                         ],
                                                         "description": "The gym label (VENUE / override) or the commune (CITY)"
                                                     },
+                                                    "city": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ],
+                                                        "description": "The opponent commune from the shared directory"
+                                                    },
+                                                    "postalCode": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ],
+                                                        "description": "The opponent postal code from the shared directory"
+                                                    },
                                                     "travelMinutes": {
                                                         "type": [
                                                             "integer",
@@ -9065,6 +9086,18 @@
                                                             "MANUAL",
                                                             null
                                                         ]
+                                                    },
+                                                    "scope": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ],
+                                                        "enum": [
+                                                            "TEAM",
+                                                            "CLUB",
+                                                            null
+                                                        ],
+                                                        "description": "Which grain governs this travel: a per-team override (TEAM), the club default (CLUB), or none (null)"
                                                     },
                                                     "overrideVenueLabel": {
                                                         "type": [
@@ -9108,6 +9141,24 @@
                                         "opponentOrganismeCode": {
                                             "type": "string"
                                         },
+                                        "opponentTeamKey": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "description": "The opponent-team grain of this row; null = the club default"
+                                        },
+                                        "scope": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "enum": [
+                                                "TEAM",
+                                                "CLUB",
+                                                null
+                                            ]
+                                        },
                                         "travelMinutes": {
                                             "type": [
                                                 "integer",
@@ -9115,10 +9166,14 @@
                                             ]
                                         },
                                         "source": {
-                                            "type": "string",
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
                                             "enum": [
                                                 "AUTO",
-                                                "MANUAL"
+                                                "MANUAL",
+                                                null
                                             ]
                                         },
                                         "overrideVenueLabel": {
@@ -9157,6 +9212,11 @@
                                 "properties": {
                                     "opponentOrganismeCode": {
                                         "type": "string"
+                                    },
+                                    "opponentTeamKey": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "Revert a SINGLE team to automatic (deletes its override); omit to revert the club default"
                                     }
                                 }
                             }
@@ -9183,6 +9243,24 @@
                                         "opponentOrganismeCode": {
                                             "type": "string"
                                         },
+                                        "opponentTeamKey": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "description": "The opponent-team grain of this row; null = the club default"
+                                        },
+                                        "scope": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "enum": [
+                                                "TEAM",
+                                                "CLUB",
+                                                null
+                                            ]
+                                        },
                                         "travelMinutes": {
                                             "type": [
                                                 "integer",
@@ -9190,10 +9268,14 @@
                                             ]
                                         },
                                         "source": {
-                                            "type": "string",
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
                                             "enum": [
                                                 "AUTO",
-                                                "MANUAL"
+                                                "MANUAL",
+                                                null
                                             ]
                                         },
                                         "overrideVenueLabel": {
@@ -9236,6 +9318,20 @@
                                     "opponentOrganismeCode": {
                                         "type": "string",
                                         "description": "The opponent FFBB organisme code (must be an away opponent of the season)"
+                                    },
+                                    "opponentTeamKey": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "The server-normalized opponent label to pin a SINGLE team; omit for the club default"
+                                    },
+                                    "scope": {
+                                        "type": "string",
+                                        "enum": [
+                                            "TEAM",
+                                            "CLUB"
+                                        ],
+                                        "nullable": true,
+                                        "description": "Grain of the override \u2014 defaults to TEAM when opponentTeamKey is given, else CLUB"
                                     },
                                     "venueLabel": {
                                         "type": "string"
@@ -25686,6 +25782,20 @@
                             "null"
                         ]
                     },
+                    "opponentOrganismeCode": {
+                        "description": "The opponent's FFBB organisme code (the join key toward the shared directory\nand the tenant opponent-travel), stamped best-effort on AWAY fixtures \u2014 null\nwhen the opponent could not be resolved. Read-only.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "opponentTeamKey": {
+                        "description": "The opponent TEAM key: the opponent label normalized server-side \u2014 the grain\nat which a per-team travel override is keyed alongside the organisme code, so\nthe front joins the travel without re-deriving any label. Null when the label\nis empty. Read-only.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "placementSource": {
                         "description": "MANUAL | SOLVER | null \u2014 who placed it (re-solve anchor marker, PR D).",
                         "type": [
@@ -25921,6 +26031,20 @@
                             "null"
                         ]
                     },
+                    "opponentOrganismeCode": {
+                        "description": "The opponent's FFBB organisme code (the join key toward the shared directory\nand the tenant opponent-travel), stamped best-effort on AWAY fixtures \u2014 null\nwhen the opponent could not be resolved. Read-only.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "opponentTeamKey": {
+                        "description": "The opponent TEAM key: the opponent label normalized server-side \u2014 the grain\nat which a per-team travel override is keyed alongside the organisme code, so\nthe front joins the travel without re-deriving any label. Null when the label\nis empty. Read-only.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "placementSource": {
                         "description": "MANUAL | SOLVER | null \u2014 who placed it (re-solve anchor marker, PR D).",
                         "type": [
@@ -26059,6 +26183,20 @@
                             },
                             "fbiVenueLabel": {
                                 "description": "Raw FBI \u00ab Salle \u00bb label, HOME and AWAY \u2014 never a Venue reference.",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "opponentOrganismeCode": {
+                                "description": "The opponent's FFBB organisme code (the join key toward the shared directory\nand the tenant opponent-travel), stamped best-effort on AWAY fixtures \u2014 null\nwhen the opponent could not be resolved. Read-only.",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "opponentTeamKey": {
+                                "description": "The opponent TEAM key: the opponent label normalized server-side \u2014 the grain\nat which a per-team travel override is keyed alongside the organisme code, so\nthe front joins the travel without re-deriving any label. Null when the label\nis empty. Read-only.",
                                 "type": [
                                     "string",
                                     "null"

@@ -1,13 +1,21 @@
-Last verified @ 2026-09-15 (B1 — P4-207 « Résolution des conflits » côté backend, régénéré par le coder après
+Last verified @ 2026-09-15 (PR-1 « adversaire multi-gymnases » côté backend, régénéré par le coder après
 `cache:clear` + `api:openapi:export`). **198 paths**
-(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** : `PUT`/`DELETE`
-`/api/fixtures/conflicts/{fingerprint}/resolution` (poser/retirer le statut de traitement d'un conflit) ; le
-schéma de réponse du radar `GET /api/fixtures/conflicts` gagne le champ additif `resolution`
-(`status`/`note`/`updatedAt`, nullable).
-· SHA-256 `f9be7ed0bc6d4bcf15eed6589f3ca835faa8eb3947943fa1d16d94ca7999381f`
+(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : que des champs ADDITIFS — le
+trajet adverse passe au grain ÉQUIPE (`opponentTeamKey`/`scope`, + `city`/`postalCode` sur la vue liste ;
+`opponentTeamKey`/`scope` sur les corps `manual`/`auto`) et le schéma `Fixture` gagne `opponentOrganismeCode`
++ `opponentTeamKey`.
+· SHA-256 `b08a6613f99e3305e9ba1da2d5778f3f2ce17a2e2a88fdad9e338aae944f0b6e`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **PR-1 « adversaire multi-gymnases », backend (2026-09-15)** : **+0 path** — le trajet adverse gagne le
+  grain ÉQUIPE. `GET /api/opponents/travel` : une entrée par (code, équipe) au lieu d'une par code, avec les
+  champs additifs `opponentTeamKey`, `scope` (`TEAM`|`CLUB`|null), `city`, `postalCode`. Les corps
+  `POST /api/opponents/travel/manual` et `/auto` acceptent `opponentTeamKey` (+ `scope` optionnel sur
+  `manual`) ; leurs réponses gagnent `opponentTeamKey`/`scope`. Le schéma read `Fixture` gagne
+  `opponentOrganismeCode` + `opponentTeamKey` (libellé adverse normalisé, servi pour joindre le trajet par
+  équipe sans re-dériver). 198 → **198 paths**. Backend PUR, contrat backend⇄engine **inchangé**
+  (`CONTRACT_VERSION` 2.21, aucun appel moteur, aucun payload solveur ne lit `opponent_travel`).
 - **B1 — P4-207 « Résolution des conflits », backend (2026-09-15)** : **+1 path** — `PUT`/`DELETE`
   `/api/fixtures/conflicts/{fingerprint}/resolution` (poser/remplacer ou retirer le statut de traitement d'un
   conflit — management-only ; « à traiter » = absence de ligne = `DELETE` idempotent) ; le radar
@@ -56,15 +64,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   `CalendarEntry` gagne `redateNeedsPreview` (booléen, exclusif de `redatable`) sur les 3 variantes read.
   Foyer unique `SplitMotherRedatePlanner` (aperçu ET apply). 191 → **192 paths**. Backend PUR, contrat
   backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.20, aucun appel moteur).
-- **P4-173 — le bloc servi `staleness` sur `SchedulePlan` (2026-09-05)** : **+0 path** — le schéma
-  lecture `SchedulePlan` gagne une propriété `staleness` (nouveau schéma `SchedulePlanStaleness` :
-  `manuallyEdited`/`constraintsChanged`/`resourcesChanged`), ou `null`. Elle porte la péremption de
-  la version POINTÉE par le plan (les 3 drapeaux de `Schedule`), pour que le cockpit dise « à
-  régénérer » sans redériver la règle. `null` quand le plan ne pointe aucune version, ou que sa
-  fenêtre est révolue (`endDate` < aujourd'hui). Renseignée en batch (une requête `id IN (versions
-  pointées du club)`, mémoïsée par requête — `SchedulePlanStalenessResolver`, patron `redatable`) sur
-  les 3 variantes read (jsonld, collection). Backend PUR, contrat backend⇄engine **inchangé**
-  (`CONTRACT_VERSION` 2.20, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

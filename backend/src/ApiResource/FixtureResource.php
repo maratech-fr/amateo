@@ -127,6 +127,23 @@ class FixtureResource
     #[Groups(['read'])]
     public ?string $fbiVenueLabel = null;
 
+    /**
+     * The opponent's FFBB organisme code (the join key toward the shared directory
+     * and the tenant opponent-travel), stamped best-effort on AWAY fixtures — null
+     * when the opponent could not be resolved. Read-only.
+     */
+    #[Groups(['read'])]
+    public ?string $opponentOrganismeCode = null;
+
+    /**
+     * The opponent TEAM key: the opponent label normalized server-side — the grain
+     * at which a per-team travel override is keyed alongside the organisme code, so
+     * the front joins the travel without re-deriving any label. Null when the label
+     * is empty. Read-only.
+     */
+    #[Groups(['read'])]
+    public ?string $opponentTeamKey = null;
+
     /** MANUAL | SOLVER | null — who placed it (re-solve anchor marker, PR D). */
     #[Groups(['read'])]
     public ?string $placementSource = null;
@@ -186,6 +203,7 @@ class FixtureResource
         $dto->externalRef = $entity->getExternalRef();
         $dto->ffbbRencontreId = $entity->getFfbbRencontreId();
         $dto->fbiVenueLabel = $entity->getFbiVenueLabel();
+        $dto->opponentOrganismeCode = $entity->getOpponentOrganismeCode();
         $dto->placementSource = $entity->getPlacementSource()?->value;
         $dto->unplacedReason = $entity->getUnplacedReason()?->value;
         $dto->reviewState = $entity->getReviewState()->value;

@@ -366,20 +366,48 @@ final class OpponentLocationResolver
     }
 
     /**
-     * A STRICT organisme match by name: among the typo-tolerant hits, exactly ONE
-     * must normalize-equal the query — 0 or ≥2 is ambiguous and yields no key.
+     * A STRICT organisme match by name, with ONE fallback for a multi-team opponent
+     * (P2-54 « adversaire multi-gymnases ») : the strict pass first ; only if it
+     * fails, a SINGLE relance on the name stripped of its trailing team number
+     * (« BASKET BALL 5EME - 2 » → « BASKET BALL 5EME », the bare organisme name the
+     * federation registers). Each pass is strict (exactly ONE normalize-equal hit,
+     * else null) — the relance never loosens that. The rencontre LABEL stays intact:
+     * only the ORGANISME lookup uses the stripped name, so both « - 1 » and « - 2 »
+     * resolve to the same code and get stamped ({@see resolveObservations} keys
+     * `codeByName` on the FULL label).
      *
      * @return array<string, mixed>|null
      */
     private function resolveOrganismeByName(string $name): ?array
     {
-        $needle = $this->importer->normalizeLabel($name);
+        $strict = $this->strictOrganismeMatch($name);
+        if (null !== $strict) {
+            return $strict;
+        }
+
+        $stripped = $this->importer->stripTrailingTeamNumber(trim($name));
+        if ($stripped === trim($name)) {
+            return null; // no team suffix to strip → nothing new to try
+        }
+
+        return $this->strictOrganismeMatch($stripped);
+    }
+
+    /**
+     * The strict organisme match for one query: among the typo-tolerant hits,
+     * exactly ONE must normalize-equal the query — 0 or ≥2 is ambiguous, no key.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function strictOrganismeMatch(string $query): ?array
+    {
+        $needle = $this->importer->normalizeLabel($query);
         if ('' === $needle) {
             return null;
         }
 
         $matches = [];
-        foreach ($this->apiClient->search($name, self::ORGANISME_SEARCH_LIMIT) as $hit) {
+        foreach ($this->apiClient->search($query, self::ORGANISME_SEARCH_LIMIT) as $hit) {
             if (null !== $this->trimToNull($this->str($hit['code'] ?? null))
                 && $this->importer->normalizeLabel($this->str($hit['nom'] ?? null) ?? '') === $needle) {
                 $matches[] = $hit;

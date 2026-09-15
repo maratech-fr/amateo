@@ -50,6 +50,25 @@ final class VenueLabelNormalizer
     }
 
     /**
+     * Retire le suffixe d'ÉQUIPE « - n » que la FFBB accole en fin de libellé pour
+     * distinguer les engagements d'un même organisme (« BASKET BALL 5EME - 2 » →
+     * « BASKET BALL 5EME », le nom d'organisme nu). Tiret court ou cadratin, espaces
+     * optionnels de part et d'autre, entier ; ancré en fin (`$`), donc un « - 3 » en
+     * MILIEU de chaîne est intact. Un seul suffixe possible → idempotent. Distinct de
+     * {@see stripTeamNumberSuffix} (le « (n) » homonyme, entre parenthèses) : les deux
+     * se composent pour retomber sur le nom d'organisme.
+     *
+     * Sert au RAPPROCHEMENT au nom d'un adversaire multi-équipes (P2-54, la relance
+     * sans suffixe de {@see OpponentLocationResolver::resolveOrganismeByName}) : le
+     * LIBELLÉ de la rencontre, lui, reste toujours intact — ce nettoyage ne sert qu'à
+     * chercher l'organisme.
+     */
+    public function stripTrailingTeamNumber(string $label): string
+    {
+        return (string) preg_replace('/\s*[-–]\s*\d+\s*$/u', '', $label);
+    }
+
+    /**
      * Whole-word containment (space-padded), NOT raw substring: the ALREADY
      * NORMALIZED needle must appear as a full word of the (normalized here)
      * haystack — « bc test » matches « bc test 1 » but never « bc testville ».

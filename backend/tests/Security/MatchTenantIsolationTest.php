@@ -506,6 +506,55 @@ final class MatchTenantIsolationTest extends WebTestCase
         self::assertCount(0, $this->em->getRepository(OpponentTravel::class)->findBy(['opponentOrganismeCode' => 'ORGX']));
     }
 
+    /**
+     * NR axe §7.1 tenant isolation — grain ÉQUIPE (P2-54 « adversaire multi-gymnases »).
+     * Une ligne de trajet PAR ÉQUIPE (teamKey) reste scopée tenant : club B ne lit ni
+     * n'écrase la ligne équipe de A ; un `manual` de B portant le code ET le teamKey
+     * d'une équipe de A est refusé (422 : aucune rencontre AWAY correspondante chez B),
+     * jamais une fuite ni un écrasement. Falsifié : la ligne équipe de A reste intacte.
+     */
+    public function testOpponentTeamTravelIsTenantScopedAndAForeignTeamKeyIsRejected(): void
+    {
+        [$clubA, , $seasonA] = $this->createClubUser('teama');
+        [$clubB, $userB] = $this->createClubUser('teamb');
+
+        // A team-grain MANUAL row for club A only (code + teamKey).
+        $this->seedTeamManualTravel($clubA, $seasonA, 'ORGTEAM', 'equipe alpha', 42, 'Gymnase A');
+
+        // Club A's RLS-scoped repository sees its team row; club B sees nothing.
+        $this->scopeGucToClub($clubA->getId());
+        $rowsA = $this->em->getRepository(OpponentTravel::class)->findBy(['opponentOrganismeCode' => 'ORGTEAM', 'opponentTeamKey' => 'equipe alpha']);
+        self::assertCount(1, $rowsA);
+        self::assertSame(42, $rowsA[0]->getTravelMinutes());
+
+        $this->scopeGucToClub($clubB->getId());
+        self::assertCount(0, $this->em->getRepository(OpponentTravel::class)->findBy(['opponentOrganismeCode' => 'ORGTEAM']));
+
+        // Club B tries to pin a gym for A's team (same code + teamKey) → 422, no write:
+        // B has no AWAY fixture matching that (code, teamKey).
+        $this->client->request('POST', '/api/opponents/travel/manual', [], [], $this->authHeaders($userB) + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'opponentOrganismeCode' => 'ORGTEAM', 'opponentTeamKey' => 'equipe alpha', 'venueLabel' => 'Gymnase pirate', 'latitude' => 45.7, 'longitude' => 4.9,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        // A's team row is untouched (still 42, still « Gymnase A »). The kernel request
+        // left the Doctrine filters scoped to B; disable them and rely on the RLS GUC
+        // (scoped to A) so the assertion reads A's rows at the DB level.
+        $this->scopeGucToClub($clubA->getId());
+        $this->em->clear();
+        $filters = $this->em->getFilters();
+        foreach (['tenant_filter', 'season_filter'] as $filter) {
+            if ($filters->isEnabled($filter)) {
+                $filters->disable($filter);
+            }
+        }
+        $survivor = $this->em->getRepository(OpponentTravel::class)->findOneBy(['opponentOrganismeCode' => 'ORGTEAM', 'opponentTeamKey' => 'equipe alpha']);
+        self::assertInstanceOf(OpponentTravel::class, $survivor);
+        self::assertSame($clubA->getId(), $survivor->getClubId());
+        self::assertSame(42, $survivor->getTravelMinutes());
+        self::assertSame('Gymnase A', $survivor->getOverrideVenueLabel());
+    }
+
     // ── Résolution des conflits (P4-207) : le statut vit dans une table TENANT ──
 
     /**
@@ -677,6 +726,24 @@ final class MatchTenantIsolationTest extends WebTestCase
             ->setSource(OpponentTravelSource::MANUAL)
             ->setTravelMinutes($minutes)
             ->setOverrideVenueExternalRef(null)
+            ->setOverrideVenueLabel($venueLabel)
+            ->setOverrideLatitude(45.75)
+            ->setOverrideLongitude(4.85)
+            ->setResolvedAt(new DateTimeImmutable);
+        $this->em->persist($row);
+        $this->em->flush();
+    }
+
+    private function seedTeamManualTravel(Club $club, Season $season, string $code, string $teamKey, int $minutes, string $venueLabel): void
+    {
+        $this->scopeGucToClub($club->getId());
+        $row = (new OpponentTravel)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setOpponentOrganismeCode($code)
+            ->setOpponentTeamKey($teamKey)
+            ->setSource(OpponentTravelSource::MANUAL)
+            ->setTravelMinutes($minutes)
             ->setOverrideVenueLabel($venueLabel)
             ->setOverrideLatitude(45.75)
             ->setOverrideLongitude(4.85)

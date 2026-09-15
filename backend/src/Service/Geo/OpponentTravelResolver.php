@@ -28,6 +28,14 @@ use Doctrine\ORM\EntityManagerInterface;
  *   - otherwise the opponent's entry in the GLOBAL `opponent_directory` (public
  *     federal coordinates).
  *
+ * Grain (P2-54 « adversaire multi-gymnases » PR-1) : {@see resolve()} ne touche QUE
+ * les lignes CLUB (le défaut, `opponentTeamKey` NULL) — comportement historique. Une
+ * ligne ÉQUIPE naît toujours d'un choix manuel ({@see applyManualOverride} portée
+ * ÉQUIPE) ; « rétablir l'automatique » sur une équipe = SUPPRIMER la ligne
+ * ({@see deleteTeamOverride}, décision A3) pour retomber sur la ligne club puis
+ * l'annuaire. Une ligne équipe étant donc toujours MANUAL par construction, la passe
+ * AUTO n'a jamais rien à en recalculer.
+ *
  * Best-effort intégral : IGN en panne → `travelMinutes` null (jamais une erreur
  * bloquante) ; un adversaire sans lieu connu (ni override ni directory géolocalisé)
  * est laissé « non localisé », sans ligne AUTO.
@@ -172,11 +180,18 @@ final class OpponentTravelResolver
      * The manager pins a specific gym for an opponent (MANUAL override). The
      * travel is recomputed from that gym; a MANUAL row is never touched by the
      * AUTO pass afterwards. Best-effort: IGN muet → `travelMinutes` null.
+     *
+     * `$teamKey` null → the CLUB row (the default for every rencontre of this code) ;
+     * `$teamKey` renseigné → the override of that single opponent TEAM. La portée CLUB
+     * ne remplit QUE la ligne club : les équipes sans ligne propre héritent du club via
+     * la résolution team → club → annuaire, donc il n'y a jamais de « ligne équipe vide »
+     * à remplir (elle n'existe que si un manuel l'a créée, auquel cas c'est un MANUAL
+     * qu'on n'écrase pas). Équivalence confirmée : la portée CLUB = la seule ligne club.
      */
-    public function applyManualOverride(string $clubId, string $seasonId, string $code, ?string $venueRef, string $venueLabel, float $lat, float $lon): OpponentTravel
+    public function applyManualOverride(string $clubId, string $seasonId, string $code, ?string $teamKey, ?string $venueRef, string $venueLabel, float $lat, float $lon): OpponentTravel
     {
         $minutes = $this->carMinutesFromClub($clubId, $lat, $lon);
-        $row = $this->travelRepository->findOneByCode($seasonId, $code) ?? $this->newRow($clubId, $seasonId, $code);
+        $row = $this->travelRepository->findOneByCode($seasonId, $code, $teamKey) ?? $this->newRow($clubId, $seasonId, $code, $teamKey);
         $row->setOverrideVenueExternalRef($venueRef)
             ->setOverrideVenueLabel($venueLabel)
             ->setOverrideLatitude($lat)
@@ -191,13 +206,14 @@ final class OpponentTravelResolver
     }
 
     /**
-     * Return an opponent to AUTO: drop the manual override and recompute the
-     * travel from the GLOBAL directory location. Null when there is no row to
-     * revert (nothing was overridden).
+     * Return the CLUB row of an opponent to AUTO: drop the manual override and
+     * recompute the travel from the GLOBAL directory location. Null when there is
+     * no club row to revert (nothing was overridden). A TEAM override is reverted
+     * by DELETING it ({@see deleteTeamOverride}, décision A3), not by this method.
      */
     public function revertToAuto(string $clubId, string $seasonId, string $code): ?OpponentTravel
     {
-        $row = $this->travelRepository->findOneByCode($seasonId, $code);
+        $row = $this->travelRepository->findOneByCode($seasonId, $code, null);
         if (!$row instanceof OpponentTravel) {
             return null;
         }
@@ -213,6 +229,23 @@ final class OpponentTravelResolver
         $this->entityManager->flush();
 
         return $row;
+    }
+
+    /**
+     * Rétablir l'AUTO d'une ligne ÉQUIPE = la SUPPRIMER (décision A3) : la rencontre
+     * retombe alors sur la ligne club puis l'annuaire. True si une ligne a été
+     * supprimée, false s'il n'y en avait aucune (rien à rétablir).
+     */
+    public function deleteTeamOverride(string $seasonId, string $code, string $teamKey): bool
+    {
+        $row = $this->travelRepository->findOneByCode($seasonId, $code, $teamKey);
+        if (!$row instanceof OpponentTravel) {
+            return false;
+        }
+        $this->entityManager->remove($row);
+        $this->entityManager->flush();
+
+        return true;
     }
 
     /** Car minutes from the club siège to a point, or null (no club geo / IGN muet). */
@@ -245,23 +278,30 @@ final class OpponentTravelResolver
     }
 
     /**
+     * The CLUB rows (opponentTeamKey NULL) keyed by opponent organisme code — the
+     * AUTO pass only ever recomputes the club default. Team overrides (always MANUAL
+     * by construction) are left entirely untouched.
+     *
      * @return array<string, OpponentTravel> keyed by opponent organisme code
      */
     private function existingByCode(string $seasonId): array
     {
         $map = [];
         foreach ($this->travelRepository->findBySeason($seasonId) as $row) {
-            $map[$row->getOpponentOrganismeCode()] = $row;
+            if (null === $row->getOpponentTeamKey()) {
+                $map[$row->getOpponentOrganismeCode()] = $row;
+            }
         }
 
         return $map;
     }
 
-    private function newRow(string $clubId, string $seasonId, string $code): OpponentTravel
+    private function newRow(string $clubId, string $seasonId, string $code, ?string $teamKey = null): OpponentTravel
     {
         return (new OpponentTravel)
             ->setClubId($clubId)
             ->setSeasonId($seasonId)
-            ->setOpponentOrganismeCode($code);
+            ->setOpponentOrganismeCode($code)
+            ->setOpponentTeamKey($teamKey);
     }
 }

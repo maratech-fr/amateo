@@ -29,26 +29,60 @@ final class OpponentTravelRepository extends ServiceEntityRepository
         return $this->findBy(['seasonId' => $seasonId]);
     }
 
-    public function findOneByCode(string $seasonId, string $opponentOrganismeCode): ?OpponentTravel
+    /**
+     * The row at the given grain: the CLUB default when `$opponentTeamKey` is null,
+     * else the override of that single opponent TEAM. `findOneBy` turns a null value
+     * into `opponent_team_key IS NULL`, so the club row and a team row never collide.
+     */
+    public function findOneByCode(string $seasonId, string $opponentOrganismeCode, ?string $opponentTeamKey = null): ?OpponentTravel
     {
-        return $this->findOneBy(['seasonId' => $seasonId, 'opponentOrganismeCode' => $opponentOrganismeCode]);
+        return $this->findOneBy([
+            'seasonId' => $seasonId,
+            'opponentOrganismeCode' => $opponentOrganismeCode,
+            'opponentTeamKey' => $opponentTeamKey,
+        ]);
     }
 
     /**
-     * ONE-WAY car travel minutes keyed by opponent organisme code, for the
-     * club+season — the map the radar reads to give an AWAY fixture its round
-     * trip (2 ×). A row without minutes is omitted (best-effort: no minutes,
-     * no spatial conflict).
-     *
-     * @return array<string, int>
+     * The row that GOVERNS a rencontre of `(code, teamKey)`: the team override when
+     * one exists, else the club default (team → club). Null when neither exists.
      */
-    public function travelMinutesByCode(string $seasonId): array
+    public function findEffective(string $seasonId, string $opponentOrganismeCode, ?string $opponentTeamKey): ?OpponentTravel
+    {
+        if (null !== $opponentTeamKey) {
+            $team = $this->findOneByCode($seasonId, $opponentOrganismeCode, $opponentTeamKey);
+            if ($team instanceof OpponentTravel) {
+                return $team;
+            }
+        }
+
+        return $this->findOneByCode($seasonId, $opponentOrganismeCode, null);
+    }
+
+    /**
+     * ONE-WAY car travel minutes for the club+season, resolvable at the TEAM grain
+     * with a CLUB fallback — the structure the radar reads to give an AWAY fixture
+     * its round trip (2 ×). Per opponent organisme code: the club default (nullable)
+     * and the per-team overrides. A row without minutes is omitted (best-effort: no
+     * minutes, no spatial conflict); the radar reads `teams[teamKey] ?? club`.
+     *
+     * @return array<string, array{club: int|null, teams: array<string, int>}>
+     */
+    public function travelMinutesBySeason(string $seasonId): array
     {
         $map = [];
         foreach ($this->findBySeason($seasonId) as $row) {
+            $code = $row->getOpponentOrganismeCode();
+            $map[$code] ??= ['club' => null, 'teams' => []];
             $minutes = $row->getTravelMinutes();
-            if (null !== $minutes) {
-                $map[$row->getOpponentOrganismeCode()] = $minutes;
+            if (null === $minutes) {
+                continue;
+            }
+            $teamKey = $row->getOpponentTeamKey();
+            if (null === $teamKey) {
+                $map[$code]['club'] = $minutes;
+            } else {
+                $map[$code]['teams'][$teamKey] = $minutes;
             }
         }
 
