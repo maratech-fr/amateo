@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Fixture, Venue, VenueLabelInventoryRow } from "./api";
-import { attachVenueLabel, detachVenueLabel, getFixtures, getVenueLabelInventory, getVenues } from "./api";
+import { attachVenueLabel, deleteConflictResolution, detachVenueLabel, getFixtures, getVenueLabelInventory, getVenues, putConflictResolution } from "./api";
 
 // On n'exerce QUE la coercition de `api.ts` : le voisin `@/shared/api/collection` est le
 // SEUL double. L'API Platform OMET les props nulles/vides du JSON — on prouve que les
@@ -13,12 +13,13 @@ vi.mock("@/shared/api/collection", () => ({ collectionAll, collection: vi.fn() }
 // Le client ky : on capture le CHEMIN du DELETE sans toucher le réseau (patron
 // submitReopenFixture.test.ts). `getFixtures`/`getVenues` passent par `collectionAll`
 // (mocké au-dessus), donc ce double du client ne les gêne pas.
-const { del, post, get } = vi.hoisted(() => ({
+const { del, post, get, put } = vi.hoisted(() => ({
   del: vi.fn<(url: string) => Promise<unknown>>(() => Promise.resolve()),
   post: vi.fn(() => ({ json: () => Promise.resolve({ venueId: "v1", label: "gymnase mateo", attached: 0 }) })),
   get: vi.fn(() => ({ json: () => Promise.resolve({ labels: [] as VenueLabelInventoryRow[] }) })),
+  put: vi.fn(() => ({ json: () => Promise.resolve({ fingerprint: "fp-1", resolution: { status: "DEROGATION_REQUESTED", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } }) })),
 }));
-vi.mock("@/shared/api/client", () => ({ api: { delete: del, post, get } }));
+vi.mock("@/shared/api/client", () => ({ api: { delete: del, post, get, put } }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -86,5 +87,26 @@ describe("getVenueLabelInventory — déballe { labels } (E2, P4-205)", () => {
     const out = await getVenueLabelInventory();
     expect(get).toHaveBeenCalledWith("venues/fbi-labels");
     expect(out).toEqual(rows);
+  });
+});
+
+describe("putConflictResolution — pose la résolution par empreinte (P4-207)", () => {
+  it("PUT sur le chemin de l'empreinte avec { status } (note omise = vidée serveur)", async () => {
+    const out = await putConflictResolution("fp-1", { status: "DEROGATION_REQUESTED" });
+    expect(put).toHaveBeenCalledWith("fixtures/conflicts/fp-1/resolution", { json: { status: "DEROGATION_REQUESTED" } });
+    expect(out.fingerprint).toBe("fp-1");
+    expect(out.resolution.status).toBe("DEROGATION_REQUESTED");
+  });
+
+  it("resservit la note quand fournie (le PUT est un remplacement plein)", async () => {
+    await putConflictResolution("fp-2", { status: "RESOLVED_INTERNALLY", note: "vu avec la ligue" });
+    expect(put).toHaveBeenCalledWith("fixtures/conflicts/fp-2/resolution", { json: { status: "RESOLVED_INTERNALLY", note: "vu avec la ligue" } });
+  });
+});
+
+describe("deleteConflictResolution — remet « à traiter » (P4-207)", () => {
+  it("DELETE sur le chemin de l'empreinte", async () => {
+    await deleteConflictResolution("fp-3");
+    expect(del).toHaveBeenCalledWith("fixtures/conflicts/fp-3/resolution");
   });
 });

@@ -65,7 +65,7 @@ describe("phaseFixtures", () => {
 describe("phaseCompleteness", () => {
   const competition = comp({ id: "c1", teamId: "t", name: "D1", ffbbCompetitionId: "f1", expectedMatchdays: 10 });
   it("préfère le conflit COMPETITION_INCOMPLETE de la compétition", () => {
-    const incomplete: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, competitionId: "c1", imported: 4, expected: 10 };
+    const incomplete: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, competitionId: "c1", imported: 4, expected: 10 };
     expect(phaseCompleteness(competition, [fx({ id: "a", matchDate: "2026-10-03", competitionId: "c1" })], [incomplete])).toEqual({ imported: 4, expected: 10 });
   });
   it("sinon compte les fixtures / expectedMatchdays", () => {
@@ -82,13 +82,13 @@ describe("phaseCompleteness", () => {
 describe("scopeConflictsToPhase", () => {
   const overlap: Conflict = {
     type: "VENUE_OVERLAP",
-    severity: 1,
+    severity: 1, resolution: null,
     left: { fixtureId: "fa", teamId: "t", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:00", windowStart: "", windowEnd: "" },
   };
-  const incomplete: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, competitionId: "c1", imported: 4, expected: 10 };
+  const incomplete: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, competitionId: "c1", imported: 4, expected: 10 };
   const foreign: Conflict = {
     type: "VENUE_OVERLAP",
-    severity: 1,
+    severity: 1, resolution: null,
     left: { fixtureId: "zz", teamId: "t", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:00", windowStart: "", windowEnd: "" },
   };
 

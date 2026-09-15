@@ -58,6 +58,28 @@ describe("Menu", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
+  it("restores focus to the trigger after selecting an item (APG menu button)", async () => {
+    const user = userEvent.setup();
+    setup();
+    const trigger = screen.getByLabelText("Menu du compte");
+    await user.click(trigger);
+    await user.click(screen.getByRole("menuitem", { name: "Se déconnecter" }));
+    expect(trigger).toHaveFocus();
+  });
+
+  it("restoreFocusOnSelect={false} leaves focus off the trigger after a selection", async () => {
+    const user = userEvent.setup();
+    render(
+      <Menu label="Menu du compte" trigger={<span>burger</span>} restoreFocusOnSelect={false}>
+        <MenuItem>Se déconnecter</MenuItem>
+      </Menu>,
+    );
+    const trigger = screen.getByLabelText("Menu du compte");
+    await user.click(trigger);
+    await user.click(screen.getByRole("menuitem", { name: "Se déconnecter" }));
+    expect(trigger).not.toHaveFocus();
+  });
+
   it("focuses the first item on open and roams with arrow keys", async () => {
     const user = userEvent.setup();
     render(

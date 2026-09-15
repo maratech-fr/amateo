@@ -208,6 +208,27 @@ export type ConflictType =
   | "AWAY_NO_FOOTPRINT"
   | "FRIENDLY_ON_MATCH_SLOT";
 
+/**
+ * P4-207 — l'axe TRAITEMENT d'un conflit (où en est sa RÉSOLUTION), distinct de la
+ * gravité : `DEROGATION_REQUESTED` (dérogation demandée à la ligue),
+ * `RESOLVED_INTERNALLY` (réglé en interne), `NO_SOLUTION_YET` (sans solution pour
+ * l'instant). « À traiter » n'est PAS un statut : c'est l'ABSENCE de résolution
+ * (`resolution === null`). Miroir de `App\Enum\ConflictResolutionStatus`.
+ */
+export type ConflictResolutionStatus = "DEROGATION_REQUESTED" | "RESOLVED_INTERNALLY" | "NO_SOLUTION_YET";
+
+/**
+ * P4-207 — la résolution PERSISTÉE d'un conflit (par empreinte, jamais par id) : où
+ * en est son traitement, une note libre facultative, et l'instant du dernier
+ * changement (ATOM). `null` sur un conflit = « à traiter ». Le conflit reste listé
+ * partout tant qu'il existe ; la résolution ne fait qu'annoter son traitement.
+ */
+export interface ConflictResolution {
+  status: ConflictResolutionStatus;
+  note: string | null;
+  updatedAt: string;
+}
+
 export interface Conflict {
   type: ConflictType;
   /** P1-4 PR E2 — gravity emitted by the SERVER (1 = worst … 7 = info). */
@@ -258,6 +279,13 @@ export interface Conflict {
    * ni des étapes de la boucle n'en dépend.
    */
   fingerprint?: string;
+  /**
+   * P4-207 — la résolution PERSISTÉE de ce conflit, ou `null` quand il est « à
+   * traiter ». Le backend la sert TOUJOURS (jamais absente) : un conflit sans ligne
+   * de résolution porte `resolution: null`. Écrivable seulement quand `fingerprint`
+   * est présent (l'empreinte EST la clé d'écriture).
+   */
+  resolution: ConflictResolution | null;
 }
 
 export interface ConflictsResponse {
@@ -489,6 +517,23 @@ export const getLeagueWindows = (): Promise<LeagueWindowsResponse> =>
 
 /** Same-coach conflict radar, recomputed server-side on every call. */
 export const getConflicts = (): Promise<ConflictsResponse> => api.get("fixtures/conflicts").json<ConflictsResponse>();
+
+/**
+ * P4-207 — pose (ou REMPLACE) la résolution d'un conflit, adressée par son EMPREINTE
+ * (jamais un id). Le PUT est un remplacement plein : `note` absente ⇒ note vidée côté
+ * serveur — l'appelant qui ne veut CHANGER que le statut resservit donc la note
+ * existante. Management-gated (403 membre) ; 422 statut inconnu / note > 500 /
+ * empreinte disparue du flux. Rend l'état à jour `{fingerprint, resolution}`.
+ */
+export const putConflictResolution = (fingerprint: string, input: { status: ConflictResolutionStatus; note?: string }): Promise<{ fingerprint: string; resolution: ConflictResolution }> =>
+  api.put(`fixtures/conflicts/${fingerprint}/resolution`, { json: input }).json<{ fingerprint: string; resolution: ConflictResolution }>();
+
+/**
+ * P4-207 — remet un conflit « à traiter » (efface sa résolution). 204 idempotent —
+ * même sans ligne existante. Management-gated.
+ */
+export const deleteConflictResolution = (fingerprint: string): Promise<void> =>
+  api.delete(`fixtures/conflicts/${fingerprint}/resolution`).then(() => undefined);
 
 /**
  * RMM-3 — le « gardien » à l'ouverture du module. Ce que le POST rapporte : ce qui

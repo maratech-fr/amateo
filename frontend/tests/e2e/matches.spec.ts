@@ -301,6 +301,40 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   await page.getByRole("button", { name: /Angles morts/ }).first().click();
   await expect(page.getByText(/invisible du radar, déclarez une habitude/).first()).toBeVisible();
 
+  // ── P4-207 : résolution d'un conflit depuis l'onglet ─────────────────────────
+  // Le gestionnaire (login = owner, il génère/valide) voit « Traiter ». On MESURE
+  // avant/après (la base sandbox peut porter d'autres conflits) : jamais une valeur
+  // absolue. Un conflit ANNOTÉ reste listé mais quitte les COMPTEURS.
+  const navBadge = page.getByRole("navigation", { name: "Espaces matchs" }).getByRole("link", { name: /^Conflits/ });
+  const countOf = async (loc: import("@playwright/test").Locator): Promise<number> => Number(((await loc.textContent()) ?? "").match(/·\s*(\d+)/)?.[1] ?? "0");
+  const openBefore = await countOf(navBadge);
+  const autresBefore = await countOf(autresEntry);
+  expect(autresBefore, "l'entrée « Autres conflits » devrait porter ≥ 2 conflits à traiter (nos deux extérieurs)").toBeGreaterThanOrEqual(2);
+
+  // 1re ligne « Angles morts » : « Traiter » → menu APG → « Dérogation demandée ».
+  await page.getByRole("button", { name: "Traiter le conflit" }).first().click();
+  await page.getByRole("menuitem", { name: "Dérogation demandée" }).click();
+
+  // Témoins : la chip paraît, la ligne reste listée, les compteurs baissent de 1.
+  const derogChip = page.getByRole("button", { name: /Statut de traitement : Dérogation demandée/ });
+  await expect(derogChip.first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/invisible du radar, déclarez une habitude/).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: new RegExp(`^Autres conflits ·\\s*${autresBefore - 1}\\b`) })).toBeVisible({ timeout: 15_000 });
+  await expect(navBadge).toHaveText(new RegExp(`Conflits ·\\s*${openBefore - 1}\\b`), { timeout: 15_000 });
+
+  // « Masquer les traités » cache la ligne annotée ; la re-cocher la ramène.
+  const hideTreated = page.getByRole("checkbox", { name: "Masquer les traités" });
+  await hideTreated.check();
+  await expect(derogChip).toHaveCount(0);
+  await hideTreated.uncheck();
+  await expect(derogChip.first()).toBeVisible();
+
+  // « Remettre à traiter » (note vide ⇒ DELETE direct) restaure l'état : compteur remonté.
+  await derogChip.first().click();
+  await page.getByRole("menuitem", { name: "Remettre à traiter" }).click();
+  await expect(derogChip).toHaveCount(0, { timeout: 15_000 });
+  await expect(page.getByRole("button", { name: new RegExp(`^Autres conflits ·\\s*${autresBefore}\\b`) })).toBeVisible({ timeout: 15_000 });
+
   // Pivot par défaut = Coach (store + URL sans param `pivot`).
   const pivotGroup = page.getByRole("group", { name: "Regrouper par" });
   await expect(pivotGroup.getByRole("button", { name: "Coach" })).toHaveAttribute("aria-pressed", "true");

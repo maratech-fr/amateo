@@ -38,6 +38,39 @@ export function useConflicts() {
 }
 
 /**
+ * P4-207 — pose/remplace la résolution d'un conflit (par empreinte). On invalide
+ * `["fixtures","conflicts"]` SEULEMENT : la résolution vit sur le flux du radar, et
+ * aucune empreinte ne change (pas de `useModuleVisit` à rejouer). Toast succès/erreur
+ * (jamais de sauvegarde muette) ; le message serveur (422/403) est affiché tel quel.
+ */
+export function useSetConflictResolution() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ fingerprint, status, note }: { fingerprint: string; status: matchesApi.ConflictResolutionStatus; note?: string }) =>
+      matchesApi.putConflictResolution(fingerprint, { status, note }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["fixtures", "conflicts"] });
+      toast.success("Statut enregistré.");
+    },
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+/** P4-207 — remet un conflit « à traiter » (efface sa résolution). Même invalidation
+ *  ciblée que la pose ; toast succès/erreur. */
+export function useClearConflictResolution() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (fingerprint: string) => matchesApi.deleteConflictResolution(fingerprint),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["fixtures", "conflicts"] });
+      toast.success("Statut enregistré.");
+    },
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+/**
  * RMM-3 — le « gardien » à l'ouverture. Le POST part au montage du module (le
  * layout, `enabled` piloté par la garde socle) et le delta d'UNE ouverture ne se
  * refetch JAMAIS en cours de session : `staleTime: Infinity`. La grâce serveur rend

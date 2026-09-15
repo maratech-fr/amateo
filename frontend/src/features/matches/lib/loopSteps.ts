@@ -1,4 +1,5 @@
 import type { Conflict, Fixture, MatchSlotRotation, TeamMatchHabit } from "../api";
+import { isOpenConflict } from "./conflictResolution";
 import { isoWeekday } from "./envelope";
 
 /**
@@ -108,9 +109,13 @@ function conflictFixtureIds(conflict: Conflict): string[] {
  */
 export const datelessConflicts = (conflicts: Conflict[]): Conflict[] => conflicts.filter((c) => 0 === conflictFixtureIds(c).length);
 
-/** Conflits du radar rattachés à un fixture de la semaine affichée. */
+/**
+ * Conflits du radar rattachés à un fixture de la semaine affichée, À TRAITER seulement
+ * (P4-207) : un conflit annoté (dérogation demandée, réglé en interne, sans solution)
+ * reste listé partout, mais ne compte plus dans l'étape « Conflits (n) » ni son `done`.
+ */
 function weekConflictCount(conflicts: Conflict[], weekFixtureIds: Set<string>): number {
-  return conflicts.filter((c) => conflictFixtureIds(c).some((id) => weekFixtureIds.has(id))).length;
+  return conflicts.filter((c) => isOpenConflict(c) && conflictFixtureIds(c).some((id) => weekFixtureIds.has(id))).length;
 }
 
 export function deriveLoopSteps({ weekFixtures, habits, conflicts }: LoopStepsInput): LoopStep[] {

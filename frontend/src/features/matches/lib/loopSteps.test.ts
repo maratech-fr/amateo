@@ -41,7 +41,7 @@ function habit(over: Partial<TeamMatchHabit> = {}): TeamMatchHabit {
 }
 
 function conflictOn(fixtureId: string): Conflict {
-  return { type: "MATCH_MATCH", severity: 3, left: { fixtureId, teamId: "t", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:00", windowStart: "", windowEnd: "" } };
+  return { type: "MATCH_MATCH", severity: 3, resolution: null, left: { fixtureId, teamId: "t", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:00", windowStart: "", windowEnd: "" } };
 }
 
 function id(steps: ReturnType<typeof deriveLoopSteps>, stepId: string) {
@@ -94,13 +94,21 @@ describe("deriveLoopSteps — les 5 états DÉRIVÉS de la semaine (zéro état 
     expect(id(withDate, "disputes").done).toBe(false);
     expect(id(withDate, "disputes").label).toBe("Conflits (1)");
     // Conflit SANS fixture (COMPETITION_INCOMPLETE) → hors compte hebdo, done.
-    const dateless: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, competitionId: "c", teamId: "team-1", imported: 3, expected: 6 };
+    const dateless: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, competitionId: "c", teamId: "team-1", imported: 3, expected: 6 };
     const withoutDate = deriveLoopSteps({ weekFixtures, habits: [], conflicts: [dateless] });
     expect(id(withoutDate, "disputes").done).toBe(true);
     expect(id(withoutDate, "disputes").label).toBe("Conflits (0)");
     // Conflit sur un fixture d'une AUTRE semaine → pas dans le compte de W.
     const otherWeek = deriveLoopSteps({ weekFixtures, habits: [], conflicts: [conflictOn("not-in-w")] });
     expect(id(otherWeek, "disputes").done).toBe(true);
+  });
+
+  it("étape 3 (Conflits) : un conflit de W ANNOTÉ ne compte plus, l'étape passe done (P4-207)", () => {
+    const weekFixtures = [fx({ id: "w1" })];
+    const treated: Conflict = { ...conflictOn("w1"), resolution: { status: "DEROGATION_REQUESTED", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } };
+    const steps = deriveLoopSteps({ weekFixtures, habits: [], conflicts: [treated] });
+    expect(id(steps, "disputes").label).toBe("Conflits (0)");
+    expect(id(steps, "disputes").done).toBe(true);
   });
 
   it("étape 4 (Domiciles posés) : done ⇔ 0 HOME UNPLACED (habitude ou non)", () => {

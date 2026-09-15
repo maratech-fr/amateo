@@ -1,18 +1,20 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-15 (PR B1 « résolution des conflits, backend », `documentation-update`).
-Nouveau § « Résolution des conflits — backend » ajouté et confronté au code :
-`ConflictResolutionStatus.php` (3 cas stockables, « à traiter » = absence de ligne),
-`ConflictResolution.php` (tenant, unique club+saison+empreinte, note ≤ 500), `Version20260915120000`
-(RLS patron `opponent_travel`), `FixtureConflictsController.php` (champ additif `resolution` sur le
-GET, `PUT`/`DELETE .../resolution`, `assertManager()` en premier), `SeasonDataPurger.php`
-(`ConflictResolution` dans la liste de purge — la seule porte de sortie d'un orphelin) ✓. Passe
-précédente (PR A « onglet Conflits ») : `ConflictsPage.tsx`, `lib/conflictPivot.ts`
-(`pivotConflicts`, 4 axes + 3 sentinelles), `ConflictLine.tsx`, `MatchesLayout.tsx` (5ᵉ onglet, sans
-badge), `store.ts`, `lib/urlState.ts` — non re-sondée cette passe. Reste du fichier (§ « Gymnase
-depuis le libellé », § « Détection », § reconciliation coupes P4-194/195, § Appariement FFBB,
-§ « Solveur de placement ») non re-sondé cette passe — voir `git log -p --follow` pour sa dernière
-vérification.
+Last verified @ 2026-09-15 (PR B2 « résolution des conflits, frontend », `documentation-update`).
+§ « Résolution des conflits » complété côté frontend et confronté au code :
+`ConflictResolutionControl.tsx` (3 régimes membre/gestionnaire+empreinte/gestionnaire sans
+empreinte, `Menu` APG, note inline ≤ 500, `ConfirmDialog` seulement si une note serait perdue),
+`lib/conflictResolution.ts` (`RESOLUTION_LABEL`, `isOpenConflict`, `openConflictCount` — maison
+unique), `ConflictRadar.tsx`/`ConflictsPage.tsx`/`ConsultPage.tsx`/`lib/consultFilter.ts`
+(compteurs = à traiter, « · 0 » en sourdine sur une famille/entrée 100 % traitée),
+`lib/loopSteps.ts`/`MatchesLayout.tsx` (rail et badge de nav = à traiter, badge absent à 0),
+`queries.ts` (invalidation `["fixtures","conflicts"]` seule), `shared/components/ui/menu.tsx`
+(`restoreFocusOnSelect`/`triggerRef` ✓), `shared/components/ui/filter-toggle.tsx` (nouvelle
+primitive — `ReviewQueue.tsx` garde ses deux copies locales non converties, signalé). § « Onglet
+« Conflits » » recalé (badge de nav, chips à traiter, interrupteur « Masquer les traités »). Reste
+du fichier (§ « Gymnase depuis le libellé », § « Détection », § reconciliation coupes P4-194/195,
+§ Appariement FFBB, § « Solveur de placement ») non re-sondé cette passe — voir `git log -p
+--follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -1391,9 +1393,9 @@ Décision fondateur (2026-09-15) : un **4ᵉ espace en lecture seule**, à côt�
 répond « qu'est-ce qui se passe cette semaine/ce mois/cette phase ? », Conflits répond « qu'est-ce qui
 cloche sur TOUTE la saison, regroupé par qui ça touche ? ». Nav `MatchesLayout` : Semaine · Consulter ·
 Importer · Configuration · **Conflits** (`/matchs/conflits`, `ConflictsPage.tsx`), dernier onglet,
-**sans badge** — le statut de traitement existe désormais côté backend seul (§ « Résolution des
-conflits », PR B1, ci-dessous) ; la chip de statut, les compteurs qui décrémentent et le badge de
-nav restent un successeur FRONTEND (PR B2, roadmap P4-207).
+badge « Conflits · N » = conflits À TRAITER seulement, **absent** (jamais « Conflits · 0 ») quand
+il n'en reste aucun — depuis PR B2 (§ « Résolution des conflits » ci-dessous), qui pose le statut
+persisté consommé par ce badge.
 
 - **Même flux que Consulter, sans son filtre** : `useConflicts()` (le même `GET /api/fixtures/conflicts`
   que Consulter/le radar) — **mais PAS de `MatchesFilterBar` (`filterMode`/`filterIds`)** ici, décision
@@ -1421,14 +1423,21 @@ nav restent un successeur FRONTEND (PR B2, roadmap P4-207).
   sur le libellé résolu ; le pivot journée trie chronologiquement sur la clé ISO), sentinelles toujours
   après, dans le même ordre entre elles.
 - **Chips familles** (mêmes 10 `ConflictType`, `lib/conflictLabels.ts`) : **toutes cochées par défaut**,
-  compteur **SAISON** (avant filtre de famille, avant filtre de pivot) — décocher une chip ne change pas
-  son compteur, seulement les entrées affichées. Seules les familles PRÉSENTES sur la saison (compteur
-  > 0) ont une chip.
+  compteur **SAISON, à traiter seulement** depuis P4-207 (`countByFamily`, `lib/consultFilter.ts`) —
+  décocher une chip ne change pas son compteur, seulement les entrées affichées. Chip **visible** dès
+  qu'une famille est **présente** sur la saison (`familiesPresent`, traitée ou non) — une famille
+  100 % traitée garde donc sa chip, compteur « · 0 » en sourdine ; une famille absente de la saison
+  reste masquée.
+- **Interrupteur « Masquer les traités »** (`FilterToggle`, `?traites=masques`) — visible seulement
+  s'il existe au moins un conflit traité sur la saison ; filtre l'AFFICHAGE des entrées (après les
+  familles, avant le pivot), jamais les compteurs ci-dessus. État local, miroir de l'URL (patron
+  `ReviewQueue` § « Afficher les traitées »).
 - **Accordéon par entrée** (`AccordionSection`, une seule ouverte à la fois, `?ouvert=<clé>`) : le
   contenu de chaque entrée est `ConflictSeverityGroups` (voir plus bas) — même regroupement par gravité
-  que le radar, **gravité 7 repliée derrière un compte** (une seule maison, `ConflictLine.tsx`). Changer
-  de pivot ou de familles **replie tout** (un `?ouvert` dont la clé n'existe plus dans le nouveau pivot
-  est nettoyé de l'URL). Une entrée unique s'ouvre d'office.
+  que le radar, **gravité 7 repliée derrière un compte** (une seule maison, `ConflictLine.tsx`). Le
+  titre de l'entrée porte son compte À TRAITER (ex. « Mara · 3 », sourdine à 0). Changer de pivot ou de
+  familles **replie tout** (un `?ouvert` dont la clé n'existe plus dans le nouveau pivot est nettoyé de
+  l'URL). Une entrée unique s'ouvre d'office.
 - **Bouton « Voir la semaine »** (par conflit daté, slot `trailing` de `ConflictLine`) : pose la semaine
   du conflit dans le store (`setSelectedWeekend`) et navigue vers `/matchs` (Placer) — absent sur un
   conflit sans date résolue (`dateOf(conflict) === null`).
@@ -1450,19 +1459,19 @@ nav restent un successeur FRONTEND (PR B2, roadmap P4-207).
   liste plate (pas de regroupement), tableau, `<select>` pour le pivot, badge de nav sur ce livrable
   (reporté au successeur qui porte un statut), `StatusPill` par entrée, ventilation par gravité en plus
   du pivot, bouton « tout déplier ».
-- **Suite livrée EN PARTIE** : le statut persisté par conflit existe désormais côté backend
-  (§ « Résolution des conflits » ci-dessous, PR B1). **Reste ouvert (PR B2, frontend, roadmap
-  P4-207)** : la chip de statut dans `ConflictLine`, les compteurs (pivot Conflits + badge de nav
-  `ConflictRadar`) qui décrémentent sur un conflit traité, l'interrupteur de pose/retrait, le
-  badge de nav « Conflits · N à traiter ».
+- **Suite livrée EN ENTIER** (P4-207, PR B1 backend + PR B2 frontend) : le statut persisté par
+  conflit — chip, compteurs, interrupteur, badge de nav — est décrit en détail
+  § « Résolution des conflits » ci-dessous.
 
-## Résolution des conflits — backend (P4-207 PR B1, 2026-09-15)
+## Résolution des conflits (P4-207, 2026-09-15 — PR B1 backend + PR B2 frontend)
 
 Décision fondateur (2026-09-15) : un conflit traité **reste toujours rendu** par le radar — poser un
 statut ne le masque jamais, il ne fait que dire OÙ EN EST sa résolution. Seul le **gestionnaire**
-écrit (`ManagementAccessGuard::assertManager`, SEC-07) ; un membre simple lit mais ne pose rien.
-Backend seul livré dans cette PR — le frontend (chip, compteurs, interrupteur, badge de nav) est
-**PR B2, non livrée**, voir roadmap P4-207.
+écrit (`ManagementAccessGuard::assertManager`, SEC-07) ; un membre simple lit une pastille STATIQUE
+(aucun menu) et ne pose rien — un conflit « à traiter » ne lui affiche **rien** (pas de pastille, pas
+de bouton).
+
+### Backend (PR B1)
 
 - **Modèle** (`ConflictResolution`, `ConflictResolutionStatus`) : table TENANT (RLS `FORCE`, patron
   structurel `OpponentTravel`) keyée sur `(club_id, season_id, fingerprint)` — l'EMPREINTE STABLE
@@ -1504,6 +1513,70 @@ Backend seul livré dans cette PR — le frontend (chip, compteurs, interrupteur
   `ConflictResolutionContext`) : le gestionnaire pose « Dérogation demandée » sur un litige, le radar
   le rend toujours avec sa résolution, l'autre litige reste « à traiter » ; un membre sans rôle de
   gestion se voit refuser l'écriture.
+
+### Frontend (PR B2, 2026-09-15)
+
+- **`ConflictResolutionControl.tsx`** — le contrôle greffé sur `ConflictLine` (slot `trailing` la
+  pastille/l'éditeur, slot `below` la note), consommé par `ConflictRadar` **et** `ConflictsPage` via
+  `renderConflict` (une seule maison). Trois régimes : **membre** (`canManage` faux) → pastille
+  `StatusPill` STATIQUE (aucun menu), rien affiché si « à traiter » ; **gestionnaire, empreinte
+  présente** → la pastille EST le déclencheur d'un `Menu` APG (3 statuts + « Modifier la note… » +
+  « Remettre à traiter »), un conflit « à traiter » montre un bouton **« Traiter »** (même menu des
+  3 statuts) ; **gestionnaire sans empreinte** (conflit sans `fingerprint`, ex. un conflit qui n'a
+  jamais été exposé par cette voie) → dégradé en lecture, comme un membre. Choisir un statut écrit
+  **immédiatement** (`PUT`, jamais de modale de confirmation). `aria-busy` sur le `<li>` pendant une
+  écriture (spinner sur la pastille), toast succès/erreur systématique.
+- **Note** — bouton « Note » sous la ligne (visible si une note existe ou est en édition),
+  dépliable ; éditeur inline `<textarea maxLength={500}>` + compteur `N/500`, Ctrl/Cmd+Entrée
+  enregistre, Échap annule et rend le focus au bouton Note (WCAG 2.4.3). `PUT` REMPLACE la note
+  entière : poser un statut sans y toucher **ressert** la note existante (`resolution?.note`).
+- **Remettre à traiter** — `DELETE`. Note vide : direct. Note non vide : `ConfirmDialog` (« Remettre
+  à traiter effacera la note ») — seul geste destructif de la PR, seul cas qui perd des données. Au
+  succès, le focus revient au bouton **« Traiter »** qui remplace la pastille démontée (`triggerRef`
+  forwardé à `Menu`, § `menu.tsx` ci-dessous).
+- **`lib/conflictResolution.ts`** — maison unique du traitement : `RESOLUTION_LABEL` (libellé FR +
+  variante `StatusPill` + glyphe DISTINCT par statut, table PRÉSENTATION pure, jamais un `switch`
+  décideur), `isOpenConflict` (`resolution == null`), `openConflictCount`. **Consommée partout** où
+  un compteur existe : `ConflictRadar` (badge), `ConflictsPage` (compteurs de familles/pivot/tri),
+  `ConsultPage`/`lib/consultFilter.ts` (`countByFamily`, `familiesPresent`), `lib/loopSteps.ts`
+  (rail « Conflits (n) »), `MatchesLayout` (badge de nav) — un compteur ne compte QUE l'à traiter,
+  un conflit annoté reste listé mais ne pèse plus.
+- **Badge de nav** « Conflits · N » (`MatchesLayout.tsx`) — N = `openConflictCount`, **absent** (pas
+  « Conflits · 0 ») quand il n'en reste aucun à traiter, même patron que le badge « Importer · N ».
+- **Onglet Conflits** — voir § « Onglet « Conflits » » ci-dessus (chips familles à traiter + « · 0 »
+  en sourdine sur une famille 100 % traitée, titre d'entrée « Mara · N », interrupteur « Masquer les
+  traités » `?traites=masques`).
+- **`queries.ts`** : `useSetConflictResolution`/`useClearConflictResolution` invalident
+  **`["fixtures","conflicts"]` seulement** — la résolution vit sur le flux du radar, aucune
+  empreinte ne change (pas de `useModuleVisit`/RMM-3 à rejouer).
+- **`Menu` (`shared/components/ui/menu.tsx`) — deux ajouts, primitive partagée** : `restoreFocusOnSelect`
+  (défaut `true`) — activer un item referme le menu et **rend le focus au déclencheur**, comme
+  Échap ; `false` réservé au cas où le déclencheur va être DÉMONTÉ par la sélection (« Traiter » qui
+  devient une pastille) — l'appelant refocalise lui-même le remplaçant. `triggerRef` — ref externe
+  forwardée sur le `<button>` déclencheur, pour qu'un appelant puisse le refocaliser après un
+  changement de forme.
+- **`FilterToggle` (`shared/components/ui/filter-toggle.tsx`)** — nouvelle primitive partagée : la
+  case à cocher d'un filtre d'affichage (label + `<input type="checkbox">`, ligne entière
+  cliquable), patron copié du geste inline déjà présent dans `ReviewQueue.tsx` (« Afficher les
+  traitées », « Masquer les extérieurs ») — **`ReviewQueue.tsx` garde ses deux copies locales**,
+  non converties par cette PR (candidat de convergence signalé, non traité ici).
+- **Passe de design `ui-ux-pro-max`** faite le 2026-09-15 — alternatives écartées : une chip
+  « À traiter » à côté de la pastille (bruit ×40 sur une saison dense — l'absence de pastille EST
+  le signal) ; une modale de confirmation au CHOIX du statut (l'écriture immédiate est réversible en
+  un clic, une modale par statut aurait ralenti le geste le plus fréquent) ; un `Listbox`/`<select>`
+  natif pour l'éditeur de statut (le patron `Menu` APG est déjà la maison des menus d'action, un
+  sélecteur de valeur aurait dupliqué un second composant pour 3 options) ; un double compteur
+  « 3 · 5 » (traité/total) sur les chips et le badge (un seul nombre, l'à traiter, est ce qui
+  reste à FAIRE — le total ne pilote aucune décision) ; une mutation OPTIMISTE (l'écriture reste
+  ATTENDUE, `aria-busy` + spinner, jamais un état local qui pourrait diverger du serveur) ; un
+  `aria-live` dédié sur le changement de statut (le toaster est déjà une région live, en doubler une
+  aurait fait annoncer deux fois) ; une confirmation SYSTÉMATIQUE au retour à traiter (seule la
+  perte réelle — une note non vide — justifie une confirmation, cf. `ConfirmDialog` ci-dessus).
+- **e2e** (`frontend/tests/e2e/matches.spec.ts`) : depuis l'onglet Conflits, pose « Dérogation
+  demandée » sur un conflit, mesure AVANT/APRÈS (jamais une valeur absolue — la base sandbox porte
+  d'autres conflits) que le badge de nav et le compteur de l'entrée baissent de 1, que la ligne reste
+  listée, que « Masquer les traités » la cache puis la rend, et que « Remettre à traiter » restaure
+  le compteur.
 
 ## Refonte UX — RMM-1 (P2-26, 4 PR entre 2026-08-23 et 2026-08-24)
 

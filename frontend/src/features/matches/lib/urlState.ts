@@ -167,6 +167,8 @@ function isPivot(value: string | null): value is ConflictPivotAxis {
 export interface ConflictsParams {
   pivot: ConflictPivotAxis;
   families: ConflictType[] | null;
+  /** P4-207 — « Masquer les traités » : `?traites=masques` (absent = affichés). */
+  hideTreated: boolean;
 }
 
 export function decodeConflictsParams(params: URLSearchParams): ConflictsParams {
@@ -174,6 +176,7 @@ export function decodeConflictsParams(params: URLSearchParams): ConflictsParams 
   return {
     pivot: isPivot(rawPivot) ? rawPivot : "coach",
     families: decodeList(params.get("conflits"), CONFLICT_FAMILIES),
+    hideTreated: "masques" === params.get("traites"),
   };
 }
 
@@ -188,6 +191,12 @@ export function applyConflictsToParams(current: URLSearchParams, conflicts: Conf
     next.delete("conflits");
   } else {
     next.set("conflits", conflicts.families.join(","));
+  }
+  // Affichés (défaut) ⇒ param absent ; masqués ⇒ `traites=masques`.
+  if (conflicts.hideTreated) {
+    next.set("traites", "masques");
+  } else {
+    next.delete("traites");
   }
   return next;
 }

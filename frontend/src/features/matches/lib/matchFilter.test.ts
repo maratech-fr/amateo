@@ -56,13 +56,13 @@ describe("conflictTeamIds (exporté pour le pivot par équipe)", () => {
   it("collecte les équipes portées : left, right, fixture, training et l'agrégat teamId", () => {
     const conflict: Conflict = {
       type: "MATCH_MATCH",
-      severity: 3,
+      severity: 3, resolution: null,
       left: { fixtureId: "f1", teamId: "sm1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: null, windowStart: "", windowEnd: "" },
       right: { fixtureId: "f2", teamId: "u13", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: null, windowStart: "", windowEnd: "" },
     };
     expect(conflictTeamIds(conflict)).toEqual(["sm1", "u13"]);
-    expect(conflictTeamIds({ type: "COMPETITION_INCOMPLETE", severity: 6, teamId: "u15" })).toEqual(["u15"]);
-    expect(conflictTeamIds({ type: "VENUE_OVERLAP", severity: 2, venueId: "venue-9" })).toEqual([]);
+    expect(conflictTeamIds({ type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, teamId: "u15" })).toEqual(["u15"]);
+    expect(conflictTeamIds({ type: "VENUE_OVERLAP", severity: 2, resolution: null, venueId: "venue-9" })).toEqual([]);
   });
 });
 
@@ -86,9 +86,9 @@ describe("applyMatchFilter — équipe", () => {
 
   it("garde un conflit dont un acteur (left/right/fixture/training) OU l'agrégat teamId est coché", () => {
     const conflicts: Conflict[] = [
-      { type: "MATCH_MATCH", severity: 3, left: { fixtureId: "f-sm1", teamId: "sm1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: null, windowStart: "", windowEnd: "" }, right: { fixtureId: "f-u13", teamId: "u13", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: null, windowStart: "", windowEnd: "" } },
-      { type: "COMPETITION_INCOMPLETE", severity: 6, teamId: "u13" },
-      { type: "VENUE_OVERLAP", severity: 2, venueId: "venue-9" },
+      { type: "MATCH_MATCH", severity: 3, resolution: null, left: { fixtureId: "f-sm1", teamId: "sm1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: null, windowStart: "", windowEnd: "" }, right: { fixtureId: "f-u13", teamId: "u13", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: null, windowStart: "", windowEnd: "" } },
+      { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, teamId: "u13" },
+      { type: "VENUE_OVERLAP", severity: 2, resolution: null, venueId: "venue-9" },
     ];
     const out = applyMatchFilter({ mode: "equipe", ids: ["sm1"], fixtures, conflicts, teamCoaches, coachPlayers });
     expect(out.conflicts.map((c) => c.type)).toEqual(["MATCH_MATCH"]);
@@ -106,8 +106,8 @@ describe("applyMatchFilter — coach", () => {
 
   it("garde un conflit par coachId même sans équipe dans le périmètre ; exclut le sans-lien", () => {
     const conflicts: Conflict[] = [
-      { type: "MATCH_MATCH", severity: 3, coachId: "thomas", left: { fixtureId: "f-sm1", teamId: "sm1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: null, windowStart: "", windowEnd: "" }, right: { fixtureId: "f-u15", teamId: "u15m1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: null, windowStart: "", windowEnd: "" } },
-      { type: "VENUE_OVERLAP", severity: 2, venueId: "venue-9" },
+      { type: "MATCH_MATCH", severity: 3, resolution: null, coachId: "thomas", left: { fixtureId: "f-sm1", teamId: "sm1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: null, windowStart: "", windowEnd: "" }, right: { fixtureId: "f-u15", teamId: "u15m1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: null, windowStart: "", windowEnd: "" } },
+      { type: "VENUE_OVERLAP", severity: 2, resolution: null, venueId: "venue-9" },
     ];
     const out = applyMatchFilter({ mode: "coach", ids: ["thomas"], fixtures, conflicts, teamCoaches, coachPlayers });
     expect(out.conflicts.map((c) => c.type)).toEqual(["MATCH_MATCH"]);
@@ -127,10 +127,10 @@ describe("applyMatchFilter — gymnase", () => {
 
   it("garde un conflit par venueId direct, par training.venueId, ou par la fixture référencée posée au gymnase", () => {
     const conflicts: Conflict[] = [
-      { type: "VENUE_OVERLAP", severity: 2, venueId: "venue-1" },
-      { type: "MATCH_TRAINING", severity: 4, training: { slotTemplateId: "t", scheduleId: "sc", teamId: "u13", venueId: "venue-1", dayOfWeek: 3, startTime: "18:00", durationMinutes: 90, windowStart: "", windowEnd: "" } },
-      { type: "MATCH_MATCH", severity: 3, left: { fixtureId: "f-home", teamId: "sm1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "16:00", windowStart: "", windowEnd: "" }, right: { fixtureId: "f-other", teamId: "u13", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "16:00", windowStart: "", windowEnd: "" } },
-      { type: "VENUE_OVERLAP", severity: 2, venueId: "venue-9" },
+      { type: "VENUE_OVERLAP", severity: 2, resolution: null, venueId: "venue-1" },
+      { type: "MATCH_TRAINING", severity: 4, resolution: null, training: { slotTemplateId: "t", scheduleId: "sc", teamId: "u13", venueId: "venue-1", dayOfWeek: 3, startTime: "18:00", durationMinutes: 90, windowStart: "", windowEnd: "" } },
+      { type: "MATCH_MATCH", severity: 3, resolution: null, left: { fixtureId: "f-home", teamId: "sm1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "16:00", windowStart: "", windowEnd: "" }, right: { fixtureId: "f-other", teamId: "u13", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "16:00", windowStart: "", windowEnd: "" } },
+      { type: "VENUE_OVERLAP", severity: 2, resolution: null, venueId: "venue-9" },
     ];
     const out = applyMatchFilter({ mode: "gymnase", ids: ["venue-1"], fixtures, conflicts, teamCoaches, coachPlayers });
     // 3 gardés (venueId direct, training.venueId, fixture f-home posée à venue-1) ; le dernier (venue-9) exclu.

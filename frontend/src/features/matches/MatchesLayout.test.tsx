@@ -21,18 +21,23 @@ const visit = vi.hoisted(() => ({ count: 0 }));
 // PR-3b — les rencontres nourrissent le badge de l'onglet Importer (pendingReviewCount).
 // Mutable par test pour piloter le compte (NEW/OUT_OF_SYNC/REVIEWED) et l'échec.
 const fixturesState = vi.hoisted(() => ({ rows: [] as { reviewState: string; pendingDeviations: { autoApplied: boolean }[] }[], fail: false }));
+// P4-207 — les conflits nourrissent le badge de l'onglet Conflits (openConflictCount). Mutable
+// par test pour piloter le compte à traiter.
+const conflictsState = vi.hoisted(() => ({ rows: [] as { type: string; severity: number; resolution: unknown }[] }));
 vi.mock("./api", () => ({
   postModuleVisit: vi.fn(() => {
     visit.count += 1;
     return Promise.resolve({ firstVisit: true, newFixturesCount: 0, newConflictFingerprints: [], planningChanged: false, referenceTakenAt: "2026-08-24T10:00:00+00:00" });
   }),
   getFixtures: vi.fn(() => (fixturesState.fail ? Promise.reject(new Error("boom")) : Promise.resolve(fixturesState.rows))),
+  getConflicts: vi.fn(() => Promise.resolve({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: conflictsState.rows })),
 }));
 
 beforeEach(() => {
   visit.count = 0;
   fixturesState.rows = [];
   fixturesState.fail = false;
+  conflictsState.rows = [];
 });
 
 function renderAt(path: string) {
@@ -144,6 +149,29 @@ describe("MatchesLayout — le badge de l'onglet Importer (PR-3b)", () => {
     await waitFor(() => expect(visit.count).toBe(1));
     expect(screen.getByRole("link", { name: "Importer" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Importer · / })).not.toBeInTheDocument();
+  });
+});
+
+describe("MatchesLayout — le badge de l'onglet Conflits (P4-207)", () => {
+  it("affiche le compte À TRAITER (« Conflits · N »), l'annoté ne pèse pas", async () => {
+    meState.chosen = "s1";
+    conflictsState.rows = [
+      { type: "VENUE_OVERLAP", severity: 1, resolution: null },
+      { type: "MATCH_MATCH", severity: 3, resolution: null },
+      // Annoté → ne compte pas.
+      { type: "MATCH_TRAINING", severity: 5, resolution: { status: "DEROGATION_REQUESTED", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } },
+    ];
+    renderAt("/matchs");
+    expect(await screen.findByRole("link", { name: "Conflits · 2" })).toBeInTheDocument();
+  });
+
+  it("aucun compte quand tout est traité — jamais « Conflits · 0 »", async () => {
+    meState.chosen = "s1";
+    conflictsState.rows = [{ type: "VENUE_OVERLAP", severity: 1, resolution: { status: "RESOLVED_INTERNALLY", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } }];
+    renderAt("/matchs");
+    await waitFor(() => expect(visit.count).toBe(1));
+    expect(screen.getByRole("link", { name: "Conflits" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Conflits · / })).not.toBeInTheDocument();
   });
 });
 

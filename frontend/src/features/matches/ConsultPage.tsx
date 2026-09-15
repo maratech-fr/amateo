@@ -17,7 +17,7 @@ import { AwayList } from "./AwayList";
 import { ConflictRadar } from "./ConflictRadar";
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { CONFLICT_FAMILIES, CONFLICT_FAMILY_LABEL } from "./lib/conflictLabels";
-import { applyFamilyFilter, applyKindFilter, countByFamily, KINDS, scopeConflictsToWeek, type Kind } from "./lib/consultFilter";
+import { applyFamilyFilter, applyKindFilter, countByFamily, familiesPresent, KINDS, scopeConflictsToWeek, type Kind } from "./lib/consultFilter";
 import { applyMatchFilter } from "./lib/matchFilter";
 import { conflictsByFixture, groupByDay, listMonths, resolveActiveMonth, scopeConflictsToMonth } from "./lib/monthView";
 import { listPhases, phaseCompleteness, phaseFixtures, scopeConflictsToPhase } from "./lib/phaseView";
@@ -192,6 +192,10 @@ export function ConsultPage() {
 
   // Compteurs par famille : sur la temporalité affichée, AVANT le filtre familles.
   const familyCounts = isWeek ? weekFamilyCounts : isMonth ? monthFamilyCounts : phaseFamilyCounts;
+  // Visibilité des chips : famille PRÉSENTE (traitée ou non) sur la temporalité affichée —
+  // une famille toute traitée garde sa chip « 0 » (P4-207), une famille absente reste masquée.
+  const scopedConflicts = isWeek ? weekConflicts : isMonth ? monthConflicts : phaseConflicts;
+  const present = familiesPresent(scopedConflicts);
 
   // ── Deep-link : filtre PR-1 (partagé) + filtres Consulter, dans l'URL ─────────
   const [searchParams, setSearchParams] = useSearchParams();
@@ -265,7 +269,7 @@ export function ConsultPage() {
   };
   // Chips familles : celles PRÉSENTES (compteur > 0 sur la temporalité). Décocher
   // n'enlève pas la chip (le compteur vient d'AVANT le filtre familles).
-  const familyChips = CONFLICT_FAMILIES.filter((family) => (familyCounts.get(family) ?? 0) > 0);
+  const familyChips = CONFLICT_FAMILIES.filter((family) => present.has(family));
 
   // Cliquer un match renvoie vers la boucle (Placer) SUR ce week-end.
   function onSelectFixture(fixtureId: string): void {
@@ -353,7 +357,7 @@ export function ConsultPage() {
               onClick={() => toggleFamily(family)}
             >
               {CONFLICT_FAMILY_LABEL[family]}
-              <span className="tabular-nums text-xs">{familyCounts.get(family) ?? 0}</span>
+              <span className={cn("tabular-nums text-xs", 0 === (familyCounts.get(family) ?? 0) ? "text-muted-foreground" : undefined)}>{familyCounts.get(family) ?? 0}</span>
             </Button>
           ))}
         </div>

@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, Sparkles } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
 import { coachFullName } from "@/shared/lib/coachName";
@@ -116,38 +116,57 @@ interface ConflictLineProps {
   coaches: Map<string, Coach>;
   tone: DiagnosticGroup["tone"];
   isNew: boolean;
-  /** Slot d'action à droite (onglet Conflits : « Voir la semaine ») — absent dans le radar. */
+  /** Slot d'action à droite (pastille/éditeur de traitement, « Voir la semaine ») — absent dans un rendu nu. */
   trailing?: ReactNode;
+  /** Slot pleine largeur SOUS la ligne (P4-207 : la note de traitement). */
+  below?: ReactNode;
+  /** Une écriture est en cours sur ce conflit → `aria-busy` sur le `<li>` (P4-207). */
+  ariaBusy?: boolean;
 }
 
 /**
- * Une ligne de conflit — le `<li>` du radar, à l'identique. Le slot `trailing`, quand
- * il est fourni, se pose à droite (et passe SOUS la phrase à 400 px, `flex-col` →
- * `sm:flex-row`) ; sans trailing, la structure et le rendu sont ceux du radar.
+ * Une ligne de conflit — le `<li>` du radar. Le slot `trailing` se pose à droite (et
+ * passe SOUS la phrase à 400 px, `flex-col` → `sm:flex-row`) ; le slot `below` s'étend
+ * en pleine largeur sous la ligne (la note). Sans trailing ni below, la structure et
+ * le rendu sont ceux du radar d'origine.
  */
-export function ConflictLine({ conflict, teams, coaches, tone, isNew, trailing }: ConflictLineProps) {
-  return (
-    <li className={cn("rounded-md border px-3 py-2 text-sm", TONE_CLASSES[tone], undefined !== trailing ? "flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between" : undefined)}>
-      <div>
-        <p className="flex flex-wrap items-center gap-1.5 font-medium">
-          {conflictTitle(conflict, coaches)}
-          {isNew ? (
-            <StatusPill variant="accent" className="border-accent/30 px-1.5 text-[0.65rem] uppercase tracking-wide" icon={<Sparkles className="size-3 text-accent" aria-hidden="true" />}>
-              Nouveau
-            </StatusPill>
-          ) : null}
-        </p>
-        <p className="text-muted-foreground">
-          {conflictSummary(conflict, teams)}
-          {estimatedTag(conflict) ? <span className="ml-1 rounded bg-muted px-1 text-xs uppercase tracking-wide">heure estimée</span> : null}
-        </p>
-        {undefined !== conflict.start && undefined !== conflict.end ? (
-          <p className="text-xs text-muted-foreground">
-            {whenLabel(conflict.start)} → {whenLabel(conflict.end)}
-          </p>
+export function ConflictLine({ conflict, teams, coaches, tone, isNew, trailing, below, ariaBusy }: ConflictLineProps) {
+  const content = (
+    <div>
+      <p className="flex flex-wrap items-center gap-1.5 font-medium">
+        {conflictTitle(conflict, coaches)}
+        {isNew ? (
+          <StatusPill variant="accent" className="border-accent/30 px-1.5 text-[0.65rem] uppercase tracking-wide" icon={<Sparkles className="size-3 text-accent" aria-hidden="true" />}>
+            Nouveau
+          </StatusPill>
         ) : null}
+      </p>
+      <p className="text-muted-foreground">
+        {conflictSummary(conflict, teams)}
+        {estimatedTag(conflict) ? <span className="ml-1 rounded bg-muted px-1 text-xs uppercase tracking-wide">heure estimée</span> : null}
+      </p>
+      {undefined !== conflict.start && undefined !== conflict.end ? (
+        <p className="text-xs text-muted-foreground">
+          {whenLabel(conflict.start)} → {whenLabel(conflict.end)}
+        </p>
+      ) : null}
+    </div>
+  );
+
+  const topRow =
+    undefined !== trailing ? (
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        {content}
+        <div className="self-start">{trailing}</div>
       </div>
-      {undefined !== trailing ? <div className="self-start">{trailing}</div> : null}
+    ) : (
+      content
+    );
+
+  return (
+    <li aria-busy={true === ariaBusy || undefined} className={cn("rounded-md border px-3 py-2 text-sm", TONE_CLASSES[tone], undefined !== trailing || undefined !== below ? "flex flex-col gap-2" : undefined)}>
+      {topRow}
+      {undefined !== below ? <div>{below}</div> : null}
     </li>
   );
 }
@@ -158,17 +177,21 @@ interface ConflictSeverityGroupsProps {
   coaches: Map<string, Coach>;
   /** RMM-3 — empreintes des conflits NOUVEAUX (chip « Nouveau », ornement pur). */
   newFingerprints?: ReadonlySet<string>;
-  /** Onglet Conflits : le slot d'action par conflit (« Voir la semaine »). Absent = radar. */
-  renderTrailing?: (conflict: Conflict) => ReactNode;
+  /**
+   * P4-207 — rendu d'un conflit délégué à l'appelant (radar ET onglet Conflits passent
+   * un `ConflictResolutionControl`, qui compose lui-même la `ConflictLine` avec la
+   * pastille/éditeur et la note). Absent = rendu nu d'une `ConflictLine` (usage pur).
+   */
+  renderConflict?: (conflict: Conflict, meta: { tone: DiagnosticGroup["tone"]; isNew: boolean }) => ReactNode;
 }
 
 /**
  * Le regroupement par gravité (1 = pire d'abord), gravités 6-7 repliées derrière un
  * compte — N angles morts se lisent en UNE ligne, pas N alertes. Maison unique
- * consommée par le `ConflictRadar` (sans `renderTrailing` → rendu identique) et par
- * chaque entrée de l'onglet Conflits.
+ * consommée par le `ConflictRadar` et par chaque entrée de l'onglet Conflits ; sans
+ * `renderConflict`, elle rend des `ConflictLine` nues.
  */
-export function ConflictSeverityGroups({ conflicts, teams, coaches, newFingerprints, renderTrailing }: ConflictSeverityGroupsProps) {
+export function ConflictSeverityGroups({ conflicts, teams, coaches, newFingerprints, renderConflict }: ConflictSeverityGroupsProps) {
   const groups = groupBySeverity(conflicts);
   const [unfolded, setUnfolded] = useState<Set<number>>(new Set());
 
@@ -209,17 +232,15 @@ export function ConflictSeverityGroups({ conflicts, teams, coaches, newFingerpri
             </h3>
             {folded ? null : (
               <ul className="flex flex-col gap-2">
-                {group.conflicts.map((conflict, index) => (
-                  <ConflictLine
-                    key={`${conflict.type}-${conflict.coachId ?? conflict.unavailabilityId ?? ""}-${index}`}
-                    conflict={conflict}
-                    teams={teams}
-                    coaches={coaches}
-                    tone={group.tone}
-                    isNew={isNew(conflict)}
-                    trailing={renderTrailing?.(conflict)}
-                  />
-                ))}
+                {group.conflicts.map((conflict, index) => {
+                  const key = conflict.fingerprint ?? `${conflict.type}-${conflict.coachId ?? conflict.unavailabilityId ?? ""}-${index}`;
+                  const meta = { tone: group.tone, isNew: isNew(conflict) };
+                  return undefined !== renderConflict ? (
+                    <Fragment key={key}>{renderConflict(conflict, meta)}</Fragment>
+                  ) : (
+                    <ConflictLine key={key} conflict={conflict} teams={teams} coaches={coaches} tone={meta.tone} isNew={meta.isNew} />
+                  );
+                })}
               </ul>
             )}
           </section>
