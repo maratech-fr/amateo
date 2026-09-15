@@ -1,19 +1,25 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-15 (lot « adversaire multi-gymnases » PR-1, backend seul,
-`documentation-update`). § « Annuaire adverse » et § « Trajet AWAY & radar spatial » recalés
-contre le code : `OpponentTravel.opponent_team_key` (migration `Version20260915130000`, unicité
-`NULLS NOT DISTINCT`), `OpponentTravelRepository::findEffective`/`travelMinutesBySeason`,
-`OpponentTravelResolver` (l'AUTO ne touche que les lignes CLUB, A3 = suppression d'une ligne
-équipe), `OpponentTravelController::buildOpponents`/`manual`/`auto` (groupage par `(code,
-teamKey)`, portée déduite, 422 si le teamKey n'est pas un adversaire AWAY réel),
-`FixtureConflictsController` (radar résolu équipe → club), `FixtureResource`/
-`FixtureStateProvider` (champs additifs `opponentOrganismeCode`/`opponentTeamKey`, non encore
-consommés par `AwayList.tsx`), `OpponentLocationResolver::resolveOrganismeByName` (relance « - n »
-via `VenueLabelNormalizer::stripTrailingTeamNumber`). Reste du fichier (§ « Résolution des
-conflits », § « Gymnase depuis le libellé », § « Détection », § reconciliation coupes
-P4-194/195, § Appariement FFBB, § « Solveur de placement ») non re-sondé cette passe — voir
-`git log -p --follow` pour sa dernière vérification.
+Last verified @ 2026-09-15 (lot « adversaire multi-gymnases » PR-2, backend seul — **recalage
+post-finding sécurité**, `documentation-update`). Sous-§ « Suggestions partagées de gymnases »
+recalé contre le code FINAL (le finding sécurité a changé le mécanisme après une première passe
+doc) : `OpponentVenueSuggestion`/`OpponentVenueSuggestionRepository` (`upsertManual` ne réécrit
+plus libellé/coordonnées sur conflit, seul `updated_at` bouge), nouveau
+`Service/Basketball/FfbbSalleResolver` (RE-RÉSOUT le `numero` fédéral côté serveur via
+`_geoRadius` + égalité stricte, les coordonnées du corps ne sont qu'une graine — le libellé/
+coords écrits au partagé viennent TOUJOURS du hit fédéral, jamais du client), migration
+`Version20260915140000` (backfill A5 **retiré** — confirmé : aucun `INSERT … SELECT` restant,
+commentaire « PAS de backfill »), `OpponentTravelResolver::accountManualChoice`/`revertToAuto`/
+`deleteTeamOverride` (comptage via le résolveur fédéral, une ref non résolue/FFBB muet → tenant
+seul, aucune écriture partagée), `OpponentTravelController::venueSuggestions`/`suggestionView`
+(`lastChosenAt` servi au JOUR seul, `Y-m-d`), `OpponentVenueSuggestionShareTest` (8 cas,
+confirmés un par un contre le code). § « Annuaire adverse » (reste) et § « Trajet AWAY & radar
+spatial » (grain équipe, PR-1) non re-sondés cette passe — dernière vérification : 2026-09-15
+(passe PR-1).
+Reste du fichier (§ « Résolution des conflits », § « Gymnase depuis le libellé », §
+« Détection », § reconciliation coupes P4-194/195, § Appariement FFBB, § « Solveur de
+placement ») non re-sondé cette passe — voir `git log -p --follow` pour sa dernière
+vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -132,6 +138,82 @@ automatiquement.
 (`FfbbRencontresController`), et rattrapage `POST /api/opponents/resolve` (management SEC-07, cap dur avant
 réseau + rate-limit `opponent_resolve` par user). L'annuaire est CONSOMMÉ par le trajet (§ suivante, PR-3).
 
+### Suggestions partagées de gymnases — `OpponentVenueSuggestion` (table GLOBALE, P2-54 « adversaire multi-gymnases » PR-2, backend seul, 2026-09-15)
+
+Un même organisme adverse joue parfois dans plusieurs gymnases selon son équipe (§ « Trajet AWAY » ci-dessous) :
+la table `opponent_venue_suggestion` **collectionne** les gymnases connus d'un adversaire pour aider un club à
+retrouver le bon sans re-résoudre à l'aveugle. **Décision fondateur (2026-09-15, revue sécurité) : « un COMPTE,
+jamais un QUI », et le partagé ne reçoit QUE des données FÉDÉRALES** — patron `opponent_directory`, table
+GLOBALE hors tenant (pas de `club_id`, pas de RLS, GRANT SELECT/INSERT/UPDATE **sans DELETE**), keyée sur le
+**code organisme fédéral public**, sans AUCUNE colonne club/user/provenance. Le corollaire opposable de son
+docblock d'entité interdit d'y ajouter jamais la moindre identité (quel club, quel user, un horodatage par
+club) ni du **texte libre saisi par un client** — sans repasser la revue sécurité.
+
+**Deux sources, un compte** :
+- **`FFBB_API`** — un gymnase **observé** dans le calendrier fédéral : `OpponentLocationResolver::
+  resolveObservations` dépose la salle du hit rencontre (`directVenue`, best-effort, même best-effort que la
+  résolution d'annuaire) via `upsertFromApi`. Le hit rencontre ne porte **pas** le `numero` fédéral de salle
+  (sondé le 2026-09-15, seulement un `id` distinct — § « Le canal API FFBB » de [`ffbb-api.md`](../../backend/docs/ffbb-api.md)) :
+  ces lignes sont donc **sans référence**, dédupliquées par `(code, lower(libellé))` (index partiel dédié). Une
+  observation n'est **jamais un choix** : le compte n'est pas touché.
+- **`MANUAL`** — un gymnase **choisi** par UN club via `/api/ffbb/salles` (donc porteur de son `numero` fédéral,
+  `venueExternalRef`), à travers `OpponentTravelController::manual` → `OpponentTravelResolver::
+  applyManualOverride` → `accountManualChoice`. 🔴 **Le libellé/ville/CP/coordonnées ÉCRITS AU PARTAGÉ ne sont
+  JAMAIS ceux du corps client** : `FfbbSalleResolver::resolveByExternalRef` RE-RÉSOUT le `numero` côté serveur
+  — les coordonnées du corps ne servent que de GRAINE d'une recherche `_geoRadius` (rayon de vérification
+  2 km, `FfbbApiClient::searchSallesNearby`), dont on ne garde que le hit dont le `numero` est EXACTEMENT
+  celui demandé, et c'est SON libellé/ville/CP/coordonnées fédéraux qui sont écrits (`accountManualChoice`).
+  **Une ref inconnue de l'index FFBB, ou FFBB muet, laisse le choix TENANT SEUL** — aucune écriture ni
+  incrément au partagé (warning loggé, jamais bloquant). `upsertManual` (`ON CONFLICT`) ne réécrit **plus**
+  libellé/coordonnées sur un conflit — seul `updated_at` bouge : le PREMIER club dont le choix a résolu
+  FÉDÉRALEMENT fixe la ligne, un second club au corps différent ne la modifie pas. Compte : `+1` sur le
+  nouveau ref (SI résolu), `−1` sur l'ancien s'il y en avait un (`revertToAuto`/`deleteTeamOverride`
+  décrémentent symétriquement), neutre si le club re-choisit le même gymnase. Compte et décompte sont des
+  écritures **natives** atomiques (`OpponentVenueSuggestionRepository::increment`/`decrement`,
+  `GREATEST(0, chosen_by_count - 1)`) — la table est concurrente entre clubs, jamais un read-modify-write
+  applicatif. ⚠ **Dérive de compteur connue, roadmap P4-209** : le décrément d'un ancien ref se déclenche dès
+  qu'il existe sur la ligne TENANT, même si ce choix précédent n'avait jamais résolu fédéralement (donc
+  jamais incrémenté) — un club qui bascule d'une ref inconnue vers une ref connue peut décrémenter à tort le
+  compte d'UN AUTRE club.
+
+**Décisions fermées (2026-09-15)** : **A2** une ligne retombée à 0 **reste** — le rôle applicatif n'a **jamais**
+de DELETE sur cette table (`REVOKE DELETE` explicite dans `Version20260915140000`, un
+`ALTER DEFAULT PRIVILEGES` antérieur en aurait sinon conféré un par défaut) ; **A5 ABANDONNÉ** — la migration
+ne backfille **plus** les surcharges MANUAL déjà posées sur `opponent_travel` : ce sont des `override_venue_
+label`/coordonnées **SAISIS par des clubs**, interdits dans le partagé depuis la revue sécurité (même famille
+que le retrait de l'appariement franc par libellé de RMM-9) — les compteurs se reconstruisent organiquement
+au prochain choix de chaque club, avec un libellé fédéral re-résolu serveur ; **A6** endpoint de lecture dédié
+(ci-dessous).
+
+**Endpoint (A6)** : `GET /api/opponents/{code}/venue-suggestions` (management SEC-07, `OpponentTravelController::
+venueSuggestions`) — les suggestions du `{code}`, triées `FFBB_API` d'abord puis `MANUAL` par compte décroissant
+puis libellé (`OpponentVenueSuggestionRepository::findByCode`). 422 si `{code}` n'est pas un adversaire AWAY de
+la saison courante du club (jamais un code arbitraire). Réponse : `externalRef`/`label`/`city`/`postalCode`/
+`latitude`/`longitude`/`source`/`chosenByCount`/`lastChosenAt` — jamais de champ club-identifiant.
+`chosenByCount` compte **des choix** (par club×saison×équipe), **pas des clubs distincts** — l'OpenAPI le dit
+en toutes lettres. `lastChosenAt` sert le **JOUR seul** (`Y-m-d`, jamais l'heure) — une seconde exacte serait
+un canal auxiliaire temporel permettant de corréler un choix à un club.
+
+**Gate bloquant `OpponentVenueSuggestionShareTest`** (8 cas, patron `OpponentDirectoryShareTest`/
+`EntryDeadlineShareTest`) : falsifié dans les deux sens — schéma en liste blanche exacte (colonnes interdites
+nommées : `club_id`, `user_id`, `season_id`, `author_id`, `source_club_id`, `created_by`, `chosen_by`), réponse
+**byte-identique** quel que soit le club lecteur, rôle `amateo_app` SELECT+INSERT+UPDATE sans DELETE, décompte
+jamais < 0, un choix manuel écrit le libellé **FÉDÉRAL** (jamais le texte du corps), une ref inconnue n'écrit
+**rien**, un second club au corps différent ne réécrit **pas** la ligne, et le choix de B ne change jamais le
+trajet **tenant** de A.
+
+**Feature Behat** `les-gymnases-d-un-adversaire-se-partagent-en-suggestions.feature` (`OpponentSuggestionContext`) :
+de bout en bout sur la stack qui tourne, avec deux **numéros de salle fédéraux RÉELS** (Villeurbanne, sondés le
+2026-09-15) — puisque la ligne partagée n'existe qu'après re-résolution serveur contre l'index FFBB, ce
+scénario **dépend de la disponibilité de l'API FFBB réelle**, comme les features de réconciliation FFBB
+(§ « Réconciliation FBI, canal API »).
+
+**Reste ouvert** : la fusion d'une ligne `FFBB_API` et d'une ligne `MANUAL` de la MÊME salle (aujourd'hui deux
+lignes disjointes faute de `numero` côté hit rencontre) — le pont retenu ici (`_geoRadius` + égalité stricte du
+`numero`) n'y répond pas nativement ; un pont par `id` de salle reste une PISTE non implémentée (roadmap
+P4-204, amendé 2026-09-15). PR-3 du lot (frontend — écran/picker consommant ces suggestions) reste à livrer.
+La dérive de compteur décrite ci-dessus est trackée séparément (P4-209).
+
 ### Trajet AWAY & radar spatial — `OpponentTravel` (table TENANT, P2-54 RMM-9 PR-3, 2026-08-28 ; grain ÉQUIPE P2-54 « adversaire multi-gymnases » PR-1, backend seul, 2026-09-15)
 
 Le radar de conflits devient **SPATIAL** : un coach qui joue à l'extérieur est vu occupé le temps du trajet.
@@ -201,10 +283,10 @@ surcharge équipe gouverne si elle existe, sinon la ligne club, sinon l'annuaire
   Le dessin de la grille week-end (`weekendGrid.ts`, § Grille week-end ci-dessous) reste une
   présentation pure et **n'a pas suivi** D1/P4-203 : elle dessine encore `[coup d'envoi − 30, coup
   d'envoi + 105]` alors que la salle = match seul — roadmap ouverte pour l'aligner.
-- **Reste du lot « adversaire multi-gymnases »** : PR-2 (l'annuaire GLOBAL `opponent_directory` gagne des
-  **suggestions partagées** — sans jamais y écrire d'identité de club, « un compte, jamais un qui ») et PR-3
-  (frontend : écran par club, picker sur les suggestions, CP préfixé, câblage d'`AwayList` sur
-  `(opponentOrganismeCode, opponentTeamKey)` au lieu du libellé brut) — non livrées à cette date.
+- **Reste du lot « adversaire multi-gymnases »** : PR-2 (suggestions **partagées** de gymnases, § ci-dessus)
+  est **livrée** (2026-09-15, backend seul). Reste **PR-3** (frontend : écran par club, picker sur les
+  suggestions, CP préfixé, câblage d'`AwayList` sur `(opponentOrganismeCode, opponentTeamKey)` au lieu du
+  libellé brut) — non livrée à cette date.
 
 ## Palier A — PR-2 (moteur de conflits, à la volée, coach seul, 2026-07-07)
 

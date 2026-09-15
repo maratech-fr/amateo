@@ -9,6 +9,7 @@ use App\Entity\OpponentDirectoryEntry;
 use App\Enum\FixtureHomeAway;
 use App\Enum\OpponentLocationPrecision;
 use App\Repository\OpponentDirectoryEntryRepository;
+use App\Repository\OpponentVenueSuggestionRepository;
 use App\Service\FbiFixtureImporter;
 use App\Service\Geo\BanGeocodingClient;
 use Doctrine\ORM\EntityManagerInterface;
@@ -57,6 +58,7 @@ final class OpponentLocationResolver
         private readonly BanGeocodingClient $geocoder,
         private readonly FbiFixtureImporter $importer,
         private readonly OpponentDirectoryEntryRepository $directory,
+        private readonly OpponentVenueSuggestionRepository $suggestions,
         private readonly EntityManagerInterface $entityManager,
         private readonly LoggerInterface $logger,
     ) {}
@@ -174,6 +176,15 @@ final class OpponentLocationResolver
 
             try {
                 $outcome = $this->resolveOne($observation);
+                // Canal API : la salle exacte portée par le hit rencontre (directVenue)
+                // alimente AUSSI les suggestions PARTAGÉES de gymnases de l'adversaire
+                // (source FFBB_API, sans référence de salle — « un compte, jamais un qui »).
+                // Best-effort intégral : une panne ici est catchée comme la résolution.
+                if (null !== $outcome['code'] && null !== $observation['directVenue']) {
+                    $venue = $observation['directVenue'];
+                    $this->suggestions->upsertFromApi($outcome['code'], $venue['libelle'], $venue['city'], $venue['postalCode'], $venue['latitude'], $venue['longitude']);
+                    $wrote = true;
+                }
             } catch (Throwable $e) {
                 // Best-effort intégral : une panne réseau (ou une donnée FFBB
                 // inattendue) sur UN adversaire n'interrompt jamais la boucle.

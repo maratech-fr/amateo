@@ -662,6 +662,18 @@ jobs:
       - name: OpponentLocationResolverTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Service/Basketball/OpponentLocationResolverTest.php --group phase1'
 
+      # P2-54 adversaire multi-gymnases PR-2 : les SUGGESTIONS de gymnases par club adverse vivent
+      # dans une table PARTAGÉE entre clubs (`opponent_venue_suggestion`) — surface qui traverse la
+      # frontière tenant. Ce gate tient l'invariant « un COMPTE, jamais un QUI » : le SCHÉMA n'a
+      # AUCUNE colonne club-identifiante (catalogue Postgres, liste blanche exacte + interdits
+      # nommés), la réponse de l'endpoint est BYTE-IDENTIQUE quel que soit le club lecteur, le rôle
+      # amateo_app a SELECT+INSERT+UPDATE mais PAS DELETE (seule couche DB d'une table sans RLS), le
+      # décompte ne descend jamais sous 0 (GREATEST), un manual n'écrit AUCUNE identité, et le
+      # choix de B ne change pas le trajet de A. Falsifié dans les deux sens. Sans ce gate, une
+      # colonne club_id/provenance pourrait se glisser dans le partagé (fuite tenant), en silence.
+      - name: OpponentVenueSuggestionShareTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/OpponentVenueSuggestionShareTest.php --group phase1'
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest

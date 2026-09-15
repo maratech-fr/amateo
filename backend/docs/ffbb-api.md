@@ -1,11 +1,16 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-09-14 (E1 — ré-affectation d'un libellé de salle, `documentation-update`) :
-§ « Réconciliation FBI, canal API » — `apply` pose toujours `venueId` par alias CONFIRMÉ seul
-(inchangé) ; le nouveau `reassign: true` de `POST /api/venues/{id}/external-labels` (E1) est un
-geste distinct, hors `apply`. Confirmé sur `FfbbRencontreReader.php:112-121,168-190` : l'objet
-`salle` d'un hit rencontres ne porte aucun `numero`, seulement `{id, libelle, adresse,
-cartographie}`. Hosts SSRF et routes non re-sondés cette passe.
+Last verified @ 2026-09-15 (P2-54 « adversaire multi-gymnases » PR-2, **recalage post-finding
+sécurité** — code FINAL relu après qu'un finding a changé le mécanisme de résolution,
+`documentation-update`) : § « Réconciliation FBI, canal API » — le paragraphe « pont par
+référence FFBB de salle » recalé contre le code final : le pont par `id` reste une PISTE NON
+implémentée (aucun code ne l'exploite), et la 2ᵉ sonde (index salles non queryable par `numero`,
+seul `_geoRadius` rend des hits) est confirmée sur `FfbbSalleResolver.php:15-23`. Confirmé sur
+`FfbbRencontreReader.php:112-121,168-190` : l'objet `salle` d'un hit rencontres ne porte
+toujours aucun `numero`, seulement `{id, libelle, adresse, cartographie}` ; confirmé sur
+`FfbbSallesController.php:141` : le proxy salles n'expose que `numero` (→ `externalRef`), jamais
+l'`id`. Le reste (alias confirmé, `reassign`) inchangé depuis le 2026-09-14. Hosts SSRF et
+routes non re-sondés cette passe.
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit rester dans la **liste blanche de hosts** du client (SSRF, A12). Vérifié le 2026-07-10 sur le code réel `ARA0069036` (BCCL).
 
@@ -138,11 +143,23 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   épargne les domiciles déjà PLACÉS/SOUMIS/VALIDÉS) — sans effet sur `apply`/`FfbbRencontreReconciler`
   elle-même, qui continue de ne poser `venueId` que sur un domicile encore sans salle. Détail :
   [`module-matchs.md`](../../specs/courantes/module-matchs.md) § « Gymnase depuis le libellé ».
-  ⚠ **Pont par référence FFBB de salle toujours impossible** : l'objet `salle` d'un hit rencontres
-  (`FfbbRencontreReader.php:112-121`, `:168-190`) ne porte que `{id, libelle, adresse,
-  cartographie}`, jamais le `numero` de l'index salles (`Venue.externalRef`) — un appariement exact
-  par référence fédérale, plutôt que par libellé, resterait à confirmer contre l'API réelle
-  (roadmap P4-204).
+  ⚠ **Pont par référence FFBB de salle toujours impossible AUJOURD'HUI** : l'objet `salle` d'un
+  hit rencontres (`FfbbRencontreReader.php:112-121`, `:168-190`) ne porte que `{id, libelle,
+  adresse, cartographie}`, jamais le `numero` de l'index salles (`Venue.externalRef`, exposé par
+  le proxy salles — `FfbbSallesController.php:141`, qui n'expose aujourd'hui que `numero`, jamais
+  l'`id`). Un pont EXACT par cet `id` (comparer le `salle.id` d'un hit rencontres à l'`id` de
+  l'index `ffbbserver_salles`) reste une **PISTE non implémentée** — aucun chemin de code ne
+  l'exploite ni ne le confirme aujourd'hui (roadmap P4-204, amendé 2026-09-15).
+  **2ᵉ sonde réseau réelle (2026-09-15, club BCCL, cadrage P2-54 PR-2)** : l'index `ffbbserver_salles`
+  n'est **PAS queryable par `numero`** — ni en filtre, ni en plein texte — seule la voie `_geoRadius`
+  rend des hits (`FfbbSalleResolver.php:15-23`, `FfbbApiClient::searchSallesNearby`). C'est
+  pourquoi le pont retenu pour PR-2 (§ « Suggestions partagées de gymnases » de
+  [`module-matchs.md`](../../specs/courantes/module-matchs.md)) n'est **PAS** par `id`, mais par
+  **coordonnées-graine + égalité stricte du `numero`** parmi les hits proches
+  (`FfbbSalleResolver::resolveByExternalRef`) — un mécanisme de VÉRIFICATION, pas de LOOKUP direct.
+  Il ne répond pas au besoin de P4-204 (apparier un hit rencontres SANS coordonnées de départ) : une
+  ligne `FFBB_API` et une ligne `MANUAL` de la MÊME salle restent donc deux suggestions disjointes
+  dans `opponent_venue_suggestion` tant que P4-204 n'est pas résolu.
 - **P4-199 (2026-09-12)** : `apply` partage désormais aussi les règles de naissance/fenêtre du xlsx
   (`FfbbRencontreReconciler` appelle `FbiFixtureImporter::treatOnArrival`/`sourceIsAuthoritativeForWindow`,
   foyer unique) — un extérieur créé par ce canal naît `REVIEWED` d'office, un domicile PLACÉ

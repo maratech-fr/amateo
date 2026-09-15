@@ -8,6 +8,7 @@ use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
 use App\Enum\OpponentLocationPrecision;
 use App\Repository\OpponentDirectoryEntryRepository;
+use App\Repository\OpponentVenueSuggestionRepository;
 use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\FfbbRencontreReader;
 use App\Service\Basketball\OpponentLocationResolver;
@@ -129,6 +130,60 @@ final class OpponentLocationResolverTest extends WebTestCase
     }
 
     /**
+     * P2-54 PR-2 — le canal API (directVenue autoritatif) dépose AUSSI une suggestion
+     * PARTAGÉE FFBB_API pour ce gymnase de l'adversaire : sans référence de salle (le
+     * hit rencontre ne porte pas le `numero`), dédupliquée par libellé, compte à 0
+     * (une observation n'est pas un choix). Best-effort : le dépôt vit dans le même
+     * try/catch que la résolution.
+     */
+    public function testApiChannelDepositsAnFfbbApiVenueSuggestion(): void
+    {
+        $resolver = $this->resolverWithControlledFfbb();
+
+        $resolver->resolveObservations([[
+            'organismeCode' => self::API_CODE,
+            'name' => 'ADVERSE AUTORITAIRE FC',
+            'directVenue' => [
+                'libelle' => 'GYMNASE AUTORITAIRE',
+                'city' => 'Lyon',
+                'postalCode' => '69003',
+                'latitude' => 45.76,
+                'longitude' => 4.86,
+            ],
+        ]]);
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            'SELECT source, venue_external_ref, venue_label, city, postal_code, chosen_by_count FROM opponent_venue_suggestion WHERE ffbb_organisme_code = :code',
+            ['code' => self::API_CODE],
+        );
+        self::assertIsArray($row, 'le canal API a déposé une suggestion partagée');
+        self::assertSame('FFBB_API', $row['source']);
+        self::assertNull($row['venue_external_ref'], 'une suggestion FFBB_API n\'a pas de référence de salle (le hit ne la porte pas)');
+        self::assertSame('GYMNASE AUTORITAIRE', $row['venue_label']);
+        self::assertSame('Lyon', $row['city']);
+        self::assertSame('69003', $row['postal_code']);
+        self::assertSame(0, (int) $row['chosen_by_count'], 'une observation n\'est pas un choix : compte 0');
+    }
+
+    /** Le canal xlsx (directVenue null) ne dépose AUCUNE suggestion — le partage est réservé à l'API. */
+    public function testXlsxChannelDepositsNoVenueSuggestion(): void
+    {
+        $resolver = $this->resolverWithControlledFfbb();
+
+        $resolver->resolveObservations([[
+            'organismeCode' => null,
+            'name' => self::OPPONENT_NAME,
+            'directVenue' => null,
+        ]]);
+
+        $count = (int) $this->em->getConnection()->fetchOne(
+            'SELECT COUNT(*) FROM opponent_venue_suggestion WHERE ffbb_organisme_code = :code',
+            ['code' => self::XLSX_CODE],
+        );
+        self::assertSame(0, $count, 'un libellé club-fourni (xlsx) n\'alimente jamais les suggestions partagées');
+    }
+
+    /**
      * P2-54 PR-3 — the resolved organisme code is STAMPED back onto the AWAY
      * fixtures of that opponent (the join key toward the directory + the tenant
      * travel). Falsifiable: a fixture of a DIFFERENT opponent is left untouched.
@@ -243,6 +298,7 @@ final class OpponentLocationResolverTest extends WebTestCase
             $geocoder,
             $importer,
             $this->repository(),
+            $this->suggestions(),
             $this->em,
             new NullLogger,
         );
@@ -310,6 +366,7 @@ final class OpponentLocationResolverTest extends WebTestCase
             $geocoder,
             $importer,
             $this->repository(),
+            $this->suggestions(),
             $this->em,
             new NullLogger,
         );
@@ -354,6 +411,14 @@ final class OpponentLocationResolverTest extends WebTestCase
     {
         $repository = self::getContainer()->get(OpponentDirectoryEntryRepository::class);
         self::assertInstanceOf(OpponentDirectoryEntryRepository::class, $repository);
+
+        return $repository;
+    }
+
+    private function suggestions(): OpponentVenueSuggestionRepository
+    {
+        $repository = self::getContainer()->get(OpponentVenueSuggestionRepository::class);
+        self::assertInstanceOf(OpponentVenueSuggestionRepository::class, $repository);
 
         return $repository;
     }

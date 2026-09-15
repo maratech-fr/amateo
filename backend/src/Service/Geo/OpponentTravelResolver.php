@@ -12,8 +12,11 @@ use App\Repository\ClubRepository;
 use App\Repository\FixtureRepository;
 use App\Repository\OpponentDirectoryEntryRepository;
 use App\Repository\OpponentTravelRepository;
+use App\Repository\OpponentVenueSuggestionRepository;
+use App\Service\Basketball\FfbbSalleResolver;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 
 /**
  * P2-54 RMM-9 PR-3 — computes the AUTO car travel time from a club's siège to
@@ -49,8 +52,11 @@ final class OpponentTravelResolver
         private readonly IgnRoutingClient $routingClient,
         private readonly OpponentTravelRepository $travelRepository,
         private readonly OpponentDirectoryEntryRepository $directory,
+        private readonly OpponentVenueSuggestionRepository $suggestions,
+        private readonly FfbbSalleResolver $salleResolver,
         private readonly ClubRepository $clubRepository,
         private readonly FixtureRepository $fixtures,
+        private readonly LoggerInterface $logger,
     ) {}
 
     /**
@@ -191,7 +197,11 @@ final class OpponentTravelResolver
     public function applyManualOverride(string $clubId, string $seasonId, string $code, ?string $teamKey, ?string $venueRef, string $venueLabel, float $lat, float $lon): OpponentTravel
     {
         $minutes = $this->carMinutesFromClub($clubId, $lat, $lon);
-        $row = $this->travelRepository->findOneByCode($seasonId, $code, $teamKey) ?? $this->newRow($clubId, $seasonId, $code, $teamKey);
+        $existing = $this->travelRepository->findOneByCode($seasonId, $code, $teamKey);
+        // Le ref que la ligne portait AVANT ce choix (null si nouvelle/AUTO) — pour le
+        // comptage partagé (changement de choix = −1 ancien +1 nouveau).
+        $previousRef = $existing?->getOverrideVenueExternalRef();
+        $row = $existing ?? $this->newRow($clubId, $seasonId, $code, $teamKey);
         $row->setOverrideVenueExternalRef($venueRef)
             ->setOverrideVenueLabel($venueLabel)
             ->setOverrideLatitude($lat)
@@ -199,6 +209,7 @@ final class OpponentTravelResolver
             ->setTravelMinutes($minutes)
             ->setSource(OpponentTravelSource::MANUAL)
             ->setResolvedAt(new DateTimeImmutable);
+        $this->accountManualChoice($code, $previousRef, $venueRef, $lat, $lon);
         $this->entityManager->persist($row);
         $this->entityManager->flush();
 
@@ -217,6 +228,7 @@ final class OpponentTravelResolver
         if (!$row instanceof OpponentTravel) {
             return null;
         }
+        $previousRef = $row->getOverrideVenueExternalRef();
         $location = $this->directoryLocation($code);
         $minutes = null === $location ? null : $this->carMinutesFromClub($clubId, $location[0], $location[1]);
         $row->setOverrideVenueExternalRef(null)
@@ -226,6 +238,11 @@ final class OpponentTravelResolver
             ->setTravelMinutes($minutes)
             ->setSource(OpponentTravelSource::AUTO)
             ->setResolvedAt(new DateTimeImmutable);
+        // Ce club ne choisit plus ce gymnase : la suggestion partagée recule (idempotent —
+        // décrément SEULEMENT si la ligne portait effectivement un ref).
+        if (null !== $previousRef) {
+            $this->suggestions->decrement($code, $previousRef);
+        }
         $this->entityManager->flush();
 
         return $row;
@@ -242,10 +259,51 @@ final class OpponentTravelResolver
         if (!$row instanceof OpponentTravel) {
             return false;
         }
+        $previousRef = $row->getOverrideVenueExternalRef();
         $this->entityManager->remove($row);
+        // Ce club ne choisit plus ce gymnase pour cette équipe : la suggestion recule
+        // (idempotent — décrément SEULEMENT si la ligne portait un ref).
+        if (null !== $previousRef) {
+            $this->suggestions->decrement($code, $previousRef);
+        }
         $this->entityManager->flush();
 
         return true;
+    }
+
+    /**
+     * Comptabilise un choix manuel dans les suggestions PARTAGÉES de gymnases de
+     * l'adversaire (« un compte, jamais un qui »). Changement de choix = −1 sur
+     * l'ancien ref, +1 sur le nouveau ; re-choisir le même = neutre.
+     *
+     * 🔴 SÉCURITÉ (revue 2026-09-15) : le partagé ne reçoit QUE des données FÉDÉRALES.
+     * Le numéro de salle du corps est RE-RÉSOLU côté serveur contre l'index FFBB
+     * ({@see FfbbSalleResolver}, les coordonnées du corps ne sont qu'une graine de
+     * recherche) : le libellé/ville/CP/coordonnées écrits viennent du HIT fédéral,
+     * jamais du texte du client. Si le numéro ne résout pas (inconnu) ou si FFBB est
+     * muet : le choix reste TENANT seul, AUCUNE écriture ni incrément dans le partagé.
+     */
+    private function accountManualChoice(string $code, ?string $previousRef, ?string $newRef, float $lat, float $lon): void
+    {
+        if ($previousRef === $newRef) {
+            return; // re-choisir exactement le même gymnase : rien ne bouge
+        }
+        if (null !== $previousRef) {
+            $this->suggestions->decrement($code, $previousRef);
+        }
+        if (null === $newRef) {
+            return; // un gymnase sans référence fédérale ne partage rien (tenant seul)
+        }
+
+        $federal = $this->salleResolver->resolveByExternalRef($newRef, $lat, $lon);
+        if (null === $federal) {
+            // Référence inconnue ou FFBB muet → le choix reste tenant, rien au partagé.
+            $this->logger->warning('Opponent venue suggestion: federal salle unresolved, shared feed skipped', ['ref' => $newRef]);
+
+            return;
+        }
+        $this->suggestions->upsertManual($code, $newRef, $federal['label'], $federal['city'], $federal['postalCode'], $federal['latitude'], $federal['longitude']);
+        $this->suggestions->increment($code, $newRef);
     }
 
     /** Car minutes from the club siège to a point, or null (no club geo / IGN muet). */

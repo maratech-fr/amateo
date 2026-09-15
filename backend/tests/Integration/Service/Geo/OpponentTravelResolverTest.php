@@ -17,6 +17,9 @@ use App\Repository\ClubRepository;
 use App\Repository\FixtureRepository;
 use App\Repository\OpponentDirectoryEntryRepository;
 use App\Repository\OpponentTravelRepository;
+use App\Repository\OpponentVenueSuggestionRepository;
+use App\Service\Basketball\FfbbApiClient;
+use App\Service\Basketball\FfbbSalleResolver;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\OpponentTravelResolver;
 use App\Service\SeasonResolver;
@@ -25,6 +28,7 @@ use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
+use Psr\Log\NullLogger;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\Clock\MockClock;
@@ -223,6 +227,80 @@ final class OpponentTravelResolverTest extends WebTestCase
         self::assertSame(60, $map[$code]['teams']['adverse trajet 1'] ?? $map[$code]['club'], 'fixture « - 1 » → repli club');
     }
 
+    /**
+     * P2-54 PR-2 — un choix MANUAL référencé alimente la suggestion PARTAGÉE (+1) ;
+     * re-choisir le même gymnase est neutre ; changer de gymnase décrémente l'ancien
+     * ref et incrémente le nouveau.
+     */
+    public function testManualChoiceFeedsTheSharedSuggestionAndAChangeMovesTheCount(): void
+    {
+        [$club, $season] = $this->seedClubWithAwayOpponent();
+        $refA = '166900101';
+        $refB = '166900102';
+        $resolver = $this->resolverWithIgn(1320);
+
+        $this->scopeGucToClub($club->getId());
+        $resolver->applyManualOverride($club->getId(), $season->getId(), self::OPPONENT_CODE, null, $refA, 'GYMNASE A', 45.76, 4.86);
+        self::assertSame(1, $this->suggestionCount(self::OPPONENT_CODE, $refA), 'un choix référencé alimente la suggestion (+1)');
+
+        // Re-choisir exactement le même gymnase : neutre.
+        $resolver->applyManualOverride($club->getId(), $season->getId(), self::OPPONENT_CODE, null, $refA, 'GYMNASE A', 45.76, 4.86);
+        self::assertSame(1, $this->suggestionCount(self::OPPONENT_CODE, $refA), 're-choisir le même gymnase ne double pas le compte');
+
+        // Changer de gymnase : −1 sur l'ancien, +1 sur le nouveau.
+        $resolver->applyManualOverride($club->getId(), $season->getId(), self::OPPONENT_CODE, null, $refB, 'GYMNASE B', 45.60, 4.70);
+        self::assertSame(0, $this->suggestionCount(self::OPPONENT_CODE, $refA), 'changer de choix décrémente l\'ancien ref');
+        self::assertSame(1, $this->suggestionCount(self::OPPONENT_CODE, $refB), 'et incrémente le nouveau');
+    }
+
+    /** Un choix MANUAL SANS référence de salle reste tenant — il n'alimente PAS le partagé. */
+    public function testManualChoiceWithoutRefFeedsNothingToTheSharedTable(): void
+    {
+        [$club, $season] = $this->seedClubWithAwayOpponent();
+        $resolver = $this->resolverWithIgn(1320);
+
+        $this->scopeGucToClub($club->getId());
+        $resolver->applyManualOverride($club->getId(), $season->getId(), self::OPPONENT_CODE, null, null, 'GYMNASE LIBRE', 45.76, 4.86);
+
+        $shared = (int) $this->em->getConnection()->fetchOne(
+            'SELECT COUNT(*) FROM opponent_venue_suggestion WHERE ffbb_organisme_code = :code',
+            ['code' => self::OPPONENT_CODE],
+        );
+        self::assertSame(0, $shared, 'un gymnase saisi sans référence FFBB ne partage rien (tenant seulement)');
+    }
+
+    /** Rétablir l'AUTO sur la ligne CLUB décrémente le ref qu'elle portait (idempotent). */
+    public function testRevertToAutoDecrementsTheClubRowRef(): void
+    {
+        [$club, $season] = $this->seedClubWithAwayOpponent();
+        $this->seedDirectoryEntry(45.76, 4.86);
+        $ref = '166900201';
+        $resolver = $this->resolverWithIgn(1320);
+
+        $this->scopeGucToClub($club->getId());
+        $resolver->applyManualOverride($club->getId(), $season->getId(), self::OPPONENT_CODE, null, $ref, 'GYMNASE C', 45.76, 4.86);
+        self::assertSame(1, $this->suggestionCount(self::OPPONENT_CODE, $ref));
+
+        $resolver->revertToAuto($club->getId(), $season->getId(), self::OPPONENT_CODE);
+        self::assertSame(0, $this->suggestionCount(self::OPPONENT_CODE, $ref), 'rétablir l\'automatique rend le gymnase → −1 partagé');
+    }
+
+    /** Supprimer une surcharge ÉQUIPE (rétablir l'AUTO d'une équipe, A3) décrémente son ref. */
+    public function testDeleteTeamOverrideDecrementsTheTeamRowRef(): void
+    {
+        [$club, $season] = $this->seedClubWithAwayOpponent();
+        $ref = '166900301';
+        $teamKey = 'adverse trajet 2';
+        $resolver = $this->resolverWithIgn(1320);
+
+        $this->scopeGucToClub($club->getId());
+        $resolver->applyManualOverride($club->getId(), $season->getId(), self::OPPONENT_CODE, $teamKey, $ref, 'GYMNASE EQUIPE', 45.76, 4.86);
+        self::assertSame(1, $this->suggestionCount(self::OPPONENT_CODE, $ref));
+
+        self::assertTrue($resolver->deleteTeamOverride($season->getId(), self::OPPONENT_CODE, $teamKey));
+        self::assertSame(0, $this->suggestionCount(self::OPPONENT_CODE, $ref), 'supprimer la surcharge équipe rend le gymnase → −1 partagé');
+    }
+
     protected function setUp(): void
     {
         self::createClient();
@@ -245,9 +323,55 @@ final class OpponentTravelResolverTest extends WebTestCase
             $ign,
             $this->travelRepository(),
             self::getContainer()->get(OpponentDirectoryEntryRepository::class),
+            $this->suggestionRepository(),
+            $this->salleResolver(),
             self::getContainer()->get(ClubRepository::class),
             self::getContainer()->get(FixtureRepository::class),
+            new NullLogger,
         );
+    }
+
+    /**
+     * A FfbbSalleResolver on a MockHttpClient: any `ffbbserver_salles` geo query returns
+     * a fixed set of FEDERAL salles (the test refs), so a manual choice re-resolves its
+     * federal label/coords server-side exactly like production — never the caller's text.
+     */
+    private function salleResolver(): FfbbSalleResolver
+    {
+        $salles = [];
+        foreach (['166900101', '166900102', '166900201', '166900301'] as $numero) {
+            $salles[] = [
+                'numero' => $numero,
+                'libelle' => 'GYMNASE FEDERAL ' . $numero,
+                'cartographie' => ['ville' => 'Lyon', 'latitude' => 45.76, 'longitude' => 4.86],
+                'commune' => ['codePostal' => '69001'],
+            ];
+        }
+        $mock = new MockHttpClient(static function (string $method, string $url, array $options) use ($salles): MockResponse {
+            $body = \is_string($options['body'] ?? null) ? $options['body'] : '';
+
+            return new MockResponse((string) json_encode(['results' => [['hits' => str_contains($body, 'ffbbserver_salles') ? $salles : []]]]));
+        });
+
+        return new FfbbSalleResolver(new FfbbApiClient($mock, 'stub-token'));
+    }
+
+    private function suggestionRepository(): OpponentVenueSuggestionRepository
+    {
+        $repository = self::getContainer()->get(OpponentVenueSuggestionRepository::class);
+        self::assertInstanceOf(OpponentVenueSuggestionRepository::class, $repository);
+
+        return $repository;
+    }
+
+    private function suggestionCount(string $code, string $ref): ?int
+    {
+        $value = $this->em->getConnection()->fetchOne(
+            'SELECT chosen_by_count FROM opponent_venue_suggestion WHERE ffbb_organisme_code = :code AND venue_external_ref = :ref',
+            ['code' => $code, 'ref' => $ref],
+        );
+
+        return false === $value ? null : (int) $value;
     }
 
     /**

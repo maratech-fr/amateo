@@ -15,6 +15,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\OpponentLocationPrecision;
 use App\Enum\OpponentTravelSource;
 use App\Enum\SeasonStatus;
+use App\Repository\OpponentVenueSuggestionRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
@@ -221,10 +222,111 @@ final class OpponentTravelApiTest extends WebTestCase
         );
     }
 
+    /**
+     * P2-54 PR-2 — l'endpoint des suggestions partagées : management-only (A6, 403 pour
+     * un simple membre), 422 pour un code qui n'est pas un adversaire AWAY de la saison,
+     * et la FORME + le TRI (FFBB_API d'abord, puis MANUAL par compte décroissant).
+     */
+    public function testVenueSuggestionsAreForbiddenForANonManagementMember(): void
+    {
+        [$club, , $season] = $this->seedClub();
+        $code = 'ARA00690S1';
+        $this->awayFixture($club, $season, $code, 'ADVERSAIRE SUGG');
+        $member = $this->addMember($club, 'member');
+
+        $this->client->request('GET', '/api/opponents/' . $code . '/venue-suggestions', [], [], $this->authHeaders($member) + ['HTTP_ACCEPT' => 'application/json']);
+        self::assertResponseStatusCodeSame(403, 'A6 : assertManager() d\'abord, un simple membre est refusé');
+    }
+
+    public function testVenueSuggestionsRejectACodeThatIsNotAnAwayOpponent(): void
+    {
+        [, $user] = $this->seedClub();
+
+        $this->client->request('GET', '/api/opponents/ARA0069XXX/venue-suggestions', [], [], $this->authHeaders($user) + ['HTTP_ACCEPT' => 'application/json']);
+        self::assertResponseStatusCodeSame(422, 'un code sans rencontre AWAY cette saison → 422');
+    }
+
+    public function testVenueSuggestionsAreShapedAndSortedApiFirstThenManualByCount(): void
+    {
+        [$club, $user, $season] = $this->seedClub();
+        $code = 'ARA00690S2';
+        $this->awayFixture($club, $season, $code, 'ADVERSAIRE MULTI GYMS');
+
+        $suggestions = $this->suggestions();
+        // Une observation FFBB_API (sans ref) + deux choix MANUAL de popularités distinctes.
+        $suggestions->upsertFromApi($code, 'GYMNASE FEDERAL', 'Lyon', '69001', 45.70, 4.80);
+        $suggestions->upsertManual($code, '166900901', 'GYMNASE POPULAIRE', null, null, 45.60, 4.70);
+        $suggestions->increment($code, '166900901');
+        $suggestions->increment($code, '166900901');
+        $suggestions->upsertManual($code, '166900902', 'GYMNASE RARE', null, null, 45.50, 4.60);
+        $suggestions->increment($code, '166900902');
+
+        $this->client->request('GET', '/api/opponents/' . $code . '/venue-suggestions', [], [], $this->authHeaders($user) + ['HTTP_ACCEPT' => 'application/json']);
+        self::assertResponseStatusCodeSame(200);
+        $data = $this->responseData();
+        self::assertSame($code, $data['code']);
+
+        /** @var list<array<string, mixed>> $list */
+        $list = $data['suggestions'];
+        self::assertCount(3, $list);
+
+        // Tri : FFBB_API d'abord, puis MANUAL par compte décroissant.
+        self::assertSame('FFBB_API', $list[0]['source']);
+        self::assertNull($list[0]['externalRef'], 'une suggestion FFBB_API n\'a pas de référence de salle');
+        self::assertSame('GYMNASE FEDERAL', $list[0]['label']);
+        self::assertSame('MANUAL', $list[1]['source']);
+        self::assertSame('GYMNASE POPULAIRE', $list[1]['label']);
+        self::assertSame(2, $list[1]['chosenByCount']);
+        self::assertSame('166900901', $list[1]['externalRef']);
+        self::assertSame('MANUAL', $list[2]['source']);
+        self::assertSame(1, $list[2]['chosenByCount'], 'le moins choisi vient après');
+
+        // Forme : toutes les clés attendues, exactement.
+        self::assertSame(
+            ['externalRef', 'label', 'city', 'postalCode', 'latitude', 'longitude', 'source', 'chosenByCount', 'lastChosenAt'],
+            array_keys($list[0]),
+        );
+        self::assertSame('Lyon', $list[0]['city']);
+        self::assertSame('69001', $list[0]['postalCode']);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    private function suggestions(): OpponentVenueSuggestionRepository
+    {
+        $repository = self::getContainer()->get(OpponentVenueSuggestionRepository::class);
+        self::assertInstanceOf(OpponentVenueSuggestionRepository::class, $repository);
+
+        return $repository;
+    }
+
+    private function addMember(Club $club, string $role): User
+    {
+        $uid = uniqid('mbr', true);
+        $hasher = self::getContainer()->get('security.user_password_hasher');
+
+        $member = new User;
+        $member->setEmail($uid . '@test.com');
+        $member->setFirstName('Me');
+        $member->setLastName('Mbre');
+        $member->setPasswordHash($hasher->hashPassword($member, 'pass'));
+        $this->em->persist($member);
+        $this->em->flush();
+
+        $this->scopeGucToClub($club->getId());
+        $membership = new ClubUser;
+        $membership->setClubId($club->getId());
+        $membership->setUserId($member->getId());
+        $membership->setRole($role);
+        $membership->setIsActive(true);
+        $this->em->persist($membership);
+        $this->em->flush();
+
+        return $member;
     }
 
     private function teamKey(string $label): string

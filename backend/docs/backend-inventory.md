@@ -3,15 +3,17 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-15 (lot « adversaire multi-gymnases » PR-1, backend seul,
-`documentation-update`). §3 « Module matchs » recalé : cinq routes `OpponentTravelController`/
-`OpponentResolveController` (jusque-là absentes de l'inventaire) ajoutées, avec le grain ÉQUIPE
-2026-09-15 (`opponentTeamKey`/`scope`, groupage `(code, libellé normalisé)`, décision A3 =
-suppression) ✓ contre `OpponentTravelController.php`/`OpponentTravelResolver.php`/
-`OpponentTravelRepository.php`. §2 ressource `Fixture` : deux champs additifs
-`opponentOrganismeCode`/`opponentTeamKey` (`FixtureResource.php`/`FixtureStateProvider.php`) ✓.
-Reste du fichier non re-vérifié cette passe — historique des recalages précédents : `git log -p
---follow` ce fichier. Un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-15 (lot « adversaire multi-gymnases » PR-2, backend seul — **recalage
+post-finding sécurité**, `documentation-update`). §3 « Module matchs », route
+`/api/opponents/{code}/venue-suggestions` (GET, `OpponentTravelController::venueSuggestions`)
+recalée contre le code FINAL (un finding sécurité a changé le mécanisme après une première passe
+doc) : migration `Version20260915140000` confirmée SANS backfill (aucun `INSERT … SELECT`
+restant), nouveau `Service/Basketball/FfbbSalleResolver` (re-résolution serveur du `numero` via
+`_geoRadius`, jamais les libellé/coords du corps client), `OpponentVenueSuggestionRepository::
+upsertManual` (ne réécrit plus libellé/coords sur conflit). Reste du fichier (les cinq routes
+`OpponentTravelController`/`OpponentResolveController` recalées à la passe PR-1 précédente, même
+date) non re-vérifié cette passe — historique des recalages précédents : `git log -p --follow` ce
+fichier. Un stamp REMPLACE, l'historique vit dans git.
 
 ---
 
@@ -611,6 +613,7 @@ Détail : [`module-matchs.md`](../../specs/courantes/module-matchs.md). Placemen
 | `/api/opponents/travel/manual` | POST | `OpponentTravelController` | (management) épingle un gymnase (`/api/ffbb/salles`) pour un adversaire → surcharge MANUAL + recalcul du trajet. **Depuis 2026-09-15** : `opponentTeamKey`/`scope` optionnels — portée déduite (`TEAM` dès qu'un `opponentTeamKey` est fourni, `CLUB` sinon) ; 422 si `scope=TEAM` sans `teamKey`, ou si `(code, teamKey)` ne correspond à aucune rencontre AWAY réelle de la saison (`isAwayOpponent`, comparaison au libellé normalisé). Une écriture CLUB n'écrase jamais une ligne équipe existante (et réciproquement). SEC-07. |
 | `/api/opponents/travel/auto` | POST | `OpponentTravelController` | (management) retour à l'AUTO. Sans `opponentTeamKey` : recalcule la ligne CLUB depuis l'annuaire global. **Depuis 2026-09-15**, avec `opponentTeamKey` : **SUPPRIME** la ligne équipe (décision A3 — une ligne équipe naît toujours d'un choix manuel, elle ne « redevient » jamais AUTO) ; la réponse reflète le repli team → club → annuaire. SEC-07. |
 | `/api/opponents/travel/resolve` | POST | `OpponentTravelController` | (management) recalcule TOUS les trajets AUTO du club+saison (`OpponentTravelResolver::resolve` — ne touche que les lignes CLUB depuis le grain équipe, les lignes équipe MANUAL ne sont jamais dans son périmètre). Cap dur `OpponentTravelResolver::MAX_OPPONENTS=60` avant réseau, rate-limit `opponent_travel_resolve` par utilisateur. SEC-07. |
+| `/api/opponents/{code}/venue-suggestions` | GET | `OpponentTravelController` | **P2-54 « adversaire multi-gymnases » PR-2 (2026-09-15)** — les suggestions PARTAGÉES de gymnases de l'adversaire `{code}` : table GLOBALE `opponent_venue_suggestion` (nouvelle, hors tenant, patron `opponent_directory` — pas de `club_id`, pas de RLS, GRANT sans DELETE, `Version20260915140000`, **sans backfill** — les valeurs saisies par des clubs sont interdites au partagé), deux sources `FFBB_API` (observé, sans ref — le hit rencontre ne porte pas le `numero`) / `MANUAL` (choisi via `/api/ffbb/salles` : `Service/Basketball/FfbbSalleResolver` RE-RÉSOUT le `numero` côté serveur — `_geoRadius` + égalité stricte, jamais le libellé/coords du corps client ; ref inconnue/FFBB muet → tenant seul, rien au partagé), un `chosenByCount` **jamais un « qui »** — compte des CHOIX par club×saison×équipe, pas des clubs distincts (A2 : une ligne à 0 reste, jamais supprimée). `lastChosenAt` au JOUR seul. Triées `FFBB_API` puis `MANUAL` par compte décroissant. 422 si `{code}` n'est pas un adversaire AWAY de la saison. management SEC-07 (A6). Gate NR bloquant : `OpponentVenueSuggestionShareTest` (8 cas). |
 
 ### Transition de saison (P1/P2)
 

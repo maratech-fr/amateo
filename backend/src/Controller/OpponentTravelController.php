@@ -7,12 +7,14 @@ namespace App\Controller;
 use App\Entity\Fixture;
 use App\Entity\OpponentDirectoryEntry;
 use App\Entity\OpponentTravel;
+use App\Entity\OpponentVenueSuggestion;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\OpponentLocationPrecision;
 use App\Repository\FixtureRepository;
 use App\Repository\OpponentDirectoryEntryRepository;
 use App\Repository\OpponentTravelRepository;
+use App\Repository\OpponentVenueSuggestionRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\OpponentTravelResolver;
 use App\Service\ManagementAccessGuard;
@@ -56,6 +58,7 @@ final class OpponentTravelController extends AbstractController
         private readonly FixtureRepository $fixtures,
         private readonly OpponentTravelRepository $travelRepository,
         private readonly OpponentDirectoryEntryRepository $directory,
+        private readonly OpponentVenueSuggestionRepository $suggestions,
         private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly OpponentTravelResolver $resolver,
         private readonly VenueLabelNormalizer $labelNormalizer,
@@ -191,6 +194,55 @@ final class OpponentTravelController extends AbstractController
         }
 
         return $this->json($this->resolver->resolve($clubId, $season->getId()));
+    }
+
+    /**
+     * The PARTAGÉES venue suggestions for one away opponent (management, A6) : les
+     * gymnases connus de l'adversaire — vus dans le calendrier fédéral (FFBB_API) ou
+     * choisis par des clubs (MANUAL) — avec un COMPTE, jamais un « qui ». FFBB_API
+     * d'abord, puis MANUAL par compte décroissant. Le `{code}` doit être un adversaire
+     * AWAY de la saison courante du club (422 sinon), jamais un code arbitraire.
+     */
+    #[Route('/api/opponents/{code}/venue-suggestions', name: 'api_opponents_venue_suggestions', methods: ['GET'])]
+    public function venueSuggestions(Request $request, string $code): JsonResponse
+    {
+        $this->managementAccessGuard->assertManager(); // SEC-07 first, so 403 wins (A6).
+
+        [$clubId, $season, $error] = $this->context($request);
+        if ($error instanceof JsonResponse) {
+            return $error;
+        }
+        \assert(null !== $clubId && $season instanceof Season);
+
+        $clean = $this->cleanCode($code);
+        if (null === $clean || !$this->isAwayOpponent($season->getId(), $clean, null)) {
+            return $this->json(['error' => 'Cet adversaire n\'a aucune rencontre à l\'extérieur cette saison.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        return $this->json([
+            'code' => $clean,
+            'suggestions' => array_map($this->suggestionView(...), $this->suggestions->findByCode($clean)),
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function suggestionView(OpponentVenueSuggestion $suggestion): array
+    {
+        return [
+            'externalRef' => $suggestion->getVenueExternalRef(),
+            'label' => $suggestion->getVenueLabel(),
+            'city' => $suggestion->getCity(),
+            'postalCode' => $suggestion->getPostalCode(),
+            'latitude' => $suggestion->getLatitude(),
+            'longitude' => $suggestion->getLongitude(),
+            'source' => $suggestion->getSource()->value,
+            'chosenByCount' => $suggestion->getChosenByCount(),
+            // Date SEULE (jamais l'heure) : la seconde exacte serait un canal auxiliaire
+            // temporel permettant de corréler un choix à un club (« un compte, jamais un qui »).
+            'lastChosenAt' => $suggestion->getLastChosenAt()?->format('Y-m-d'),
+        ];
     }
 
     /**
