@@ -1,8 +1,13 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-14 (D2 « rattrapage des statuts de traitement », `documentation-update`) :
-un scénario ajouté à une feature EXISTANTE (`une-rencontre-importee-dit-si-elle-est-traitee.feature`
-+1, `ls backend/features/` toujours 19 fichiers) — pas de nouvelle feature.
+Last verified @ 2026-09-16 (rotation `documentation-update`, PR fiabilité CI e2e — aucune feature
+Behat ni suite ajoutée par cette PR, zéro code produit). §1 ligne `Playwright` recroisée contre
+`frontend/playwright.config.ts` : la suite reste un seul job CI `e2e`, désormais structurée en
+trois PROJETS Playwright (`setup` → `superadmin`, `dependencies` ; `chromium`, le reste) plutôt
+qu'un run plat — la colonne `Local`/`Job CI` de la ligne ne change pas (`make -C frontend e2e`,
+`e2e`). Détail de la fiabilité infra (pré-pull/relance/classification) et de la session
+superadmin unique : [`testing-strategy.md`](testing-strategy.md) §1 et § « Le socle superadmin
+e2e » — non dupliqué ici (ce fichier ne porte QUE le « qui teste quoi »).
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
 > prouve**, **par quel job CI**, et **ce que personne ne prouve**. Il ne remplace ni

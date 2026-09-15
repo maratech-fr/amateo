@@ -1,13 +1,15 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-09-14 (P4-203 « le solveur de placement adopte la règle D1 »,
-`documentation-update`). §3.3 Contract recalée : `CONTRACT_VERSION` **2.21** des deux côtés
-(`engine/CONTRACT_VERSION`, `MatchPlacementPayloadBuilder::CONTRACT_VERSION:65`,
-`ScheduleConstraintBuilder::CONTRACT_VERSION`, `MoveSlotService::CONTRACT_VERSION`) ✓ ; la
-liste de bumps portait une erreur de recalage mécanique (le 2.21 avait hérité de la description
-du 2.20, qui disparaissait de la liste) — corrigée : 2.21 = durées de match par équipe (P4-203),
-2.20 = `socleReferenceAssignments` (PR-3 comblement), redevenus distincts.
-⚠ Vérification volontairement ÉTROITE : le reste de la carte n'a pas été reconfronté au code ce jour.)
+Last verified @ 2026-09-16 (rotation `documentation-update`, PR fiabilité CI e2e). §1 Repository
+layout recalée : la liste `.github/workflows/` complétée (`mirror-images.yml`,
+`security-weekly.yml` en manquaient) ; **`contracts/` et `tests/` (racine) n'existent PAS du
+tout** — `git log --all --full-history -- contracts tests` ne rend aucun commit sur aucune
+branche, contrairement au « EMPTY placeholder » affiché jusqu'ici (même drift dans `CLAUDE.md`
+§10, non corrigé ici — hors scope d'édition de cette passe, signalé). Frontend features
+(`frontend/src/features/`) et écosystèmes Dependabot (`.github/dependabot.yml`) recomptés contre
+le disque : les deux listes de la carte sont exactes. ⚠ Vérification volontairement ÉTROITE : le
+reste de la carte (backend/engine détaillés, ops, sécurité) n'a pas été reconfronté au code ce
+jour.)
 
 Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `feedback` (bouton + dialogue de signalement), `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes) ; voir `../frontend/docs/frontend-wizard.md` et `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 
@@ -27,10 +29,17 @@ specs/     Living specs (initiales / courantes / evolution) — see specs/README
 docs/      This documentation set + docs/technique/
 docker/    Per-service Dockerfiles (php, frontend, pdf-worker, postgres, …) + edge nginx confs
 docker-compose.yml       dev stack   ·   docker-compose.prod.yml   prod stack (§4)
-.github/workflows/       ci.yml (CI pipeline) + deploy.yml (build-push ghcr + deploy SSH)
-contracts/ EMPTY placeholder (no codegen yet)
-tests/     EMPTY placeholder (cross-stack tests currently live in backend/tests/)
+.github/workflows/       ci.yml (CI pipeline) + deploy.yml (build-push ghcr + deploy SSH) +
+                         mirror-images.yml (manuel, miroir ghcr des images tierces, P4-92) +
+                         security-weekly.yml (cron hebdo, Trivy sur les images prod publiées, A19)
 ```
+
+⚠ `contracts/` et `tests/` (racine) — cités comme « placeholders vides » dans `CLAUDE.md` §10 —
+**n'existent pas du tout** dans ce dépôt (`git log --all --full-history -- contracts tests` : aucun
+commit, sur aucune branche, n'a jamais touché l'un ou l'autre chemin ; vérifié 2026-09-16). Git ne
+matérialise aucun dossier vide sans fichier suivi dedans, donc l'un et l'autre n'ont jamais existé
+tels quels — les tests cross-stack vivent dans `backend/tests/`, aucun codegen de contrat n'existe
+(sync manuelle backend⇄engine, `CLAUDE.md` §6).
 
 All services share the Docker network `amateo_network`.
 

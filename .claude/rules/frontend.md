@@ -108,3 +108,7 @@ paths:
 - ⚠ **Un e2e qui passe sans avoir rien mis à l'épreuve est un faux vert** : quand un scénario peut
   devenir vide (une modale trop courte pour déborder, une liste vide), lui donner un **témoin** qui
   ÉCHOUE en le disant — cf. `tests/e2e/modal-reachability.spec.ts`.
+- **Superadmin : jamais de login dans une spec** — le projet Playwright `setup`
+  (`tests/e2e/superadmin.setup.ts`) fige UNE session par run (`storageState`), réutilisée sans
+  retry par le projet `superadmin` ; un login par spec, multiplié par les retries, brûle le
+  quota `admin_auth` (5/15 min par IP) et déguise un 429 en régression produit (P4-201).

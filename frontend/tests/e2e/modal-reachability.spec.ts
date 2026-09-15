@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "./fixtures";
 
-import { loginAsSuperAdmin, superAdminFromEnv } from "./support-admin";
+import { superAdminFromEnv } from "./support-admin";
 
 /**
  * WCAG 1.4.10 (reflow) sur l'app RENDUE — l'axe que jsdom ne peut pas voir.
@@ -88,8 +88,8 @@ test.describe("une modale longue reste atteignable", () => {
   test("catalogue d'actions support : tient à l'écran et défile, en 1440 et en 320 (WCAG 1.4.10)", async ({ page }) => {
     test.setTimeout(120_000);
 
-    await loginAsSuperAdmin(page, credentials!);
-
+    // Session superadmin déjà ouverte : elle vient du storageState figé par le projet `setup`
+    // (superadmin.setup.ts), pas d'un login propre à ce test — un seul login par run.
     // La console est en 6 onglets ; les clubs vivent dans « Comptes clubs ». On y va par le
     // deep-link `?tab=` (SA, 2026-07-25) plutôt qu'en cliquant : moins de surface à casser.
     await page.goto("/admin?tab=clubs");
@@ -121,9 +121,9 @@ test.describe("une modale longue reste atteignable", () => {
       await page.setViewportSize({ width, height });
       await expectDialogFitsAndScrolls(page, `Actions support · ${width}×${height}`);
 
-      // ─ TÉMOIN CLAVIER (P4-127 d) — ici, dans le test qui a DÉJÀ une session, plutôt qu'en
-      //   test séparé : un 3ᵉ `loginAsSuperAdmin` ferait franchir au spec le plafond admin_auth
-      //   (5 tentatives / 15 min par IP — cf. Makefile), throttlant le test suivant. En sortant
+      // ─ TÉMOIN CLAVIER (P4-127 d) — ici, dans le test qui a DÉJÀ ouvert la modale, plutôt qu'en
+      //   test séparé : simple économie d'un aller-retour (le quota admin_auth, lui, n'est plus en
+      //   jeu — la session vient du storageState partagé, aucun test ne relogue). En sortant
       //   les actions du flux défilant (pied `shrink-0` hors de `overflow-y-auto`), on a créé le
       //   risque d'une zone défilante sans focusable, donc indéfilable au clavier sur un
       //   navigateur qui ne rend pas les conteneurs scrollables focusables. On PROUVE le
@@ -173,7 +173,7 @@ test.describe("une modale longue reste atteignable", () => {
   test("palier xl : la modale atteint son plafond de 1152 px sur 1920, et ne le dépasse pas", async ({ page }) => {
     test.setTimeout(120_000);
 
-    await loginAsSuperAdmin(page, credentials!);
+    // Session superadmin depuis le storageState partagé (projet `setup`) — pas de login ici.
     await page.setViewportSize({ width: 1920, height: 1080 });
     await page.goto("/admin?tab=clubs");
 
