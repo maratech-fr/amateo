@@ -169,6 +169,34 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   await page.getByLabel("Date").fill("2027-03-06"); // a Saturday
   await page.getByLabel("Adversaire").fill(opponent);
   await page.getByRole("button", { name: "Créer" }).click();
+  // La création est asynchrone : attendre la fermeture AVANT d'en rouvrir une (sinon
+  // « Nouveau match » rouvrirait le dialogue DÉJÀ ouvert et on éditerait ses champs).
+  await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeHidden({ timeout: 15_000 });
+
+  // ── Deux rencontres EXTÉRIEURES sans heure, un MERCREDI (jour 3) ──────────────
+  //    Le seed ne pose d'habitudes de match que les jours 6/7 (BcclSeeder.php:1407-1424),
+  //    donc AUCUNE équipe n'a d'habitude un mercredi : chaque extérieur sans heure émet
+  //    un AWAY_NO_FOOTPRINT (gravité 7, MatchConflictDetector.php:590-609 ; filtré sur
+  //    matchDate >= aujourd'hui — 2027 est futur —, JAMAIS sur le statut : un extérieur né
+  //    REVIEWED compte). Conflit DÉTERMINISTE qui peuple l'onglet Conflits sur une base
+  //    FRAÎCHE (CI), là où le radar seul ne prouvait rien (le club n'a aucun conflit).
+  //    DEUX week-ends distincts (10→13-14 mars, weekendKeyOf ramène au samedi ; 17→20-21
+  //    mars) pour que le pivot Journée ait ≥2 entrées : avec UNE seule, `openKey` la force
+  //    ouverte (ConflictsPage.tsx:156) et le clic EFFACE `?ouvert` — le deep-link goBack
+  //    (:301) ne tiendrait plus. Un AWAY n'apparaît NI dans « à placer » (UnplacedList :
+  //    HOME uniquement) NI sur la grille ; AwayList l'écrit « à <adv> », jamais « vs <adv> »
+  //    → l'assertion `vs ${opponent}` (:200/:229) ne le ramasse pas (suffixe distinct en plus).
+  for (const [date, suffix] of [["2027-03-10", "EXT"], ["2027-03-17", "EXT2"]] as const) {
+    await page.getByRole("button", { name: /Nouveau match/i }).click();
+    await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeVisible();
+    await page.getByRole("dialog").getByRole("button", { name: /^Équipe/ }).click();
+    await page.getByRole("listbox").getByRole("option").first().click();
+    await page.getByLabel("Domicile ou extérieur").selectOption("AWAY");
+    await page.getByLabel("Date").fill(date); // un mercredi — aucune habitude ce jour-là
+    await page.getByLabel("Adversaire").fill(`${opponent}-${suffix}`);
+    await page.getByRole("button", { name: "Créer" }).click();
+    await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeHidden({ timeout: 15_000 });
+  }
 
   // La liste « à placer » + le panneau + la grille vivent dans la vue « Domiciles
   // posés » (rail⇄vue). On l'ouvre avant de manipuler le placement.
@@ -256,6 +284,23 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   const anyEntryCount = Number(anyEntryName.match(/·\s*(\d+)\s*$/)?.[1] ?? "0");
   expect(anyEntryCount, `entrée « ${anyEntryName.trim()} » à 0 conflit — témoin vide`).toBeGreaterThan(0);
 
+  // Témoin PLUS précis : au pivot Coach, nos AWAY_NO_FOOTPRINT (sans coachId,
+  // conflictPivot.ts:104-105) tombent dans la sentinelle « Autres conflits ». Gravité 7
+  // = groupe REPLIÉ « Angles morts » (diagnostic.ts:28,57 ; ConflictLine.tsx:184-208 —
+  // libellé DISTINCT de la chip famille « Extérieur sans heure », conflictLabels.ts:25).
+  // ⚠ « Angles morts » ne se rend QUE dans une entrée OUVERTE : on ouvre d'abord l'entrée
+  // « Autres conflits · n » (forcée ouverte si elle est seule — ConflictsPage.tsx:156 —,
+  // sinon fermée sur une base qui porte d'autres conflits). On la déplie si besoin, puis
+  // on LIT la phrase AWAY_NO_FOOTPRINT (ConflictLine.tsx:84-86) : preuve que le conflit
+  // attendu est bien là, pas juste « une entrée quelconque ».
+  const autresEntry = page.getByRole("button", { name: /^Autres conflits ·/ });
+  if ("false" === (await autresEntry.getAttribute("aria-expanded"))) {
+    await autresEntry.click();
+  }
+  await expect(autresEntry).toHaveAttribute("aria-expanded", "true");
+  await page.getByRole("button", { name: /Angles morts/ }).first().click();
+  await expect(page.getByText(/invisible du radar, déclarez une habitude/).first()).toBeVisible();
+
   // Pivot par défaut = Coach (store + URL sans param `pivot`).
   const pivotGroup = page.getByRole("group", { name: "Regrouper par" });
   await expect(pivotGroup.getByRole("button", { name: "Coach" })).toHaveAttribute("aria-pressed", "true");
@@ -276,6 +321,10 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   // (rendu seulement pour un conflit DATÉ — un week-end n'en contient que).
   await weekendEntry.click();
   await expect(weekendEntry).toHaveAttribute("aria-expanded", "true");
+  // Le conflit AWAY_NO_FOOTPRINT est gravité 7 → REPLIÉ dans « Angles morts » : « Voir la
+  // semaine » y reste caché tant qu'on ne déplie pas le groupe (ConflictLine.tsx:180-210).
+  // Seule l'entrée OUVERTE rend ses enfants, donc un unique bouton « Angles morts » ici.
+  await page.getByRole("button", { name: /Angles morts/ }).first().click();
   const voir = page.getByRole("button", { name: "Voir la semaine" }).first();
   await expect(voir).toBeVisible();
 
@@ -301,6 +350,10 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   await expect(page).toHaveURL(/[?&]ouvert=/);
   await expect(page.getByRole("group", { name: "Regrouper par" }).getByRole("button", { name: "Journée" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: /^\d.*·\s*\d+$/ }).first()).toHaveAttribute("aria-expanded", "true");
+  // L'entrée est ré-ouverte (deep-link), mais le retour REMONTE la page : l'état de
+  // dépliage du groupe gravité 7 est réinitialisé (ConflictLine.tsx:173) — on redéplie
+  // « Angles morts » avant d'attendre « Voir la semaine ».
+  await page.getByRole("button", { name: /Angles morts/ }).first().click();
   await expect(page.getByRole("button", { name: "Voir la semaine" }).first()).toBeVisible();
 });
 
