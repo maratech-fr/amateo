@@ -1,12 +1,11 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-14 (D2 « rattrapage des statuts de traitement », `documentation-update`).
-Re-confronté au code, tout juste :
-- Nouvelle commande `app:fixtures:catch-up-review` (`backend/src/Command/CatchUpFixtureReviewCommand.php`)
-  : options `--force`/`--club` confirmées (`InputOption::VALUE_NONE`/`VALUE_REQUIRED`), dry-run par
-  défaut (le `flush()` n'a lieu que sous `--force`), fenêtre par club via
-  `FbiFixtureImporter::currentIsoWeekEnd` + `ClockInterface`, patron `app:periods:remind` (marche les
-  clubs, GUC posé par club, `finally` qui clear/relâche) ✓
+Last verified @ 2026-09-15 (**rotation de fraîcheur** `documentation-update`, PR conflits
+coach ↔ joueur — zone non touchée par cette PR). Re-confronté au code, tout juste :
+`app:fixtures:catch-up-review` (`CatchUpFixtureReviewCommand.php`) — options `--force`
+(`InputOption::VALUE_NONE`)/`--club` (`VALUE_REQUIRED`) confirmées ; `make play`/`db-empty`/`reset`
+toujours dans `Makefile` (racine, cibles `play`/`db-empty`/`reset`) ; CI lance toujours
+`app:bccl:seed --no-interaction` directement (`.github/workflows/ci.yml:1012`, `:1226`).
 Non re-sondé cette passe : le reste des commandes et gardes listées — un stamp REMPLACE,
 l'historique vit dans git.
 

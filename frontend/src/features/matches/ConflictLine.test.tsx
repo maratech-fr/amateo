@@ -71,3 +71,72 @@ describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
     expect(container.querySelector("li")).not.toHaveAttribute("aria-busy");
   });
 });
+
+describe("ConflictLine — personne en double, rôle PAR CÔTÉ (une personne = ses équipes)", () => {
+  const coachesMap = new Map<string, Coach>([["p-1", { id: "p-1", firstName: "Mara", lastName: "MB" }]]);
+
+  function personSide(fixtureId: string, teamId: string, role: "MAIN" | "ASSISTANT" | "PLAYER") {
+    return { ...side(fixtureId, teamId), role };
+  }
+
+  function renderPerson(conflict: Conflict) {
+    return render(
+      <ul>
+        <ConflictLine conflict={conflict} teams={teams} coaches={coachesMap} tone="warning" isNew={false} />
+      </ul>,
+    );
+  }
+
+  it("le titre est le NOM seul — plus de suffixe « (assistant d'un côté) »", () => {
+    renderPerson({
+      type: "MATCH_MATCH",
+      severity: 5,
+      resolution: null,
+      coachId: "p-1",
+      coachRole: "ASSISTANT",
+      left: personSide("fx-1", "team-1", "ASSISTANT"),
+      right: personSide("fx-2", "team-2", "MAIN"),
+    });
+    expect(screen.getByText("Mara MB")).toBeInTheDocument();
+    expect(screen.queryByText(/assistant d'un côté/)).not.toBeInTheDocument();
+  });
+
+  it("MATCH_MATCH tout MAIN : le résumé reste NU (« U13 et Seniors »)", () => {
+    renderPerson({
+      type: "MATCH_MATCH",
+      severity: 3,
+      resolution: null,
+      coachId: "p-1",
+      coachRole: "MAIN",
+      left: personSide("fx-1", "team-1", "MAIN"),
+      right: personSide("fx-2", "team-2", "MAIN"),
+    });
+    expect(screen.getByText(/^U13 et Seniors —/)).toBeInTheDocument();
+  });
+
+  it("MATCH_MATCH coach×joueuse : CHAQUE côté est annoté (« U13 (coach) et Seniors (joueur) »)", () => {
+    renderPerson({
+      type: "MATCH_MATCH",
+      severity: 3,
+      resolution: null,
+      coachId: "p-1",
+      coachRole: "PLAYER",
+      left: personSide("fx-1", "team-1", "MAIN"),
+      right: personSide("fx-2", "team-2", "PLAYER"),
+    });
+    expect(screen.getByText(/U13 \(coach\) et Seniors \(joueur\) —/)).toBeInTheDocument();
+  });
+
+  it("MATCH_TRAINING : le match d'abord, annoté (« Match Seniors (joueur) × entraînement U13 (coach) »)", () => {
+    renderPerson({
+      type: "MATCH_TRAINING",
+      severity: 5,
+      resolution: null,
+      coachId: "p-1",
+      coachRole: "PLAYER",
+      fixture: { ...side("fx-1", "team-2"), role: "PLAYER" },
+      training: { slotTemplateId: "t", scheduleId: "sc", teamId: "team-1", venueId: "v", dayOfWeek: 3, startTime: "18:00", durationMinutes: 90, role: "MAIN", windowStart: "", windowEnd: "" },
+    });
+    expect(screen.getByText("Match Seniors (joueur) × entraînement U13 (coach)")).toBeInTheDocument();
+  });
+});

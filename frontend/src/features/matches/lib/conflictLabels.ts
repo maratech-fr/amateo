@@ -1,4 +1,4 @@
-import type { ConflictType } from "../api";
+import type { ConflictSideRole, ConflictType } from "../api";
 
 /**
  * PR-2a — maison UNIQUE du libellé « famille de conflit » affiché dans les chips
@@ -16,7 +16,7 @@ import type { ConflictType } from "../api";
 export const CONFLICT_FAMILY_LABEL: Record<ConflictType, string> = {
   VENUE_OVERLAP: "Collision de gymnase",
   LEAGUE_WINDOW_VIOLATION: "Hors fenêtre ligue",
-  MATCH_MATCH: "Coach en double",
+  MATCH_MATCH: "Personne en double",
   MATCH_TRAINING: "Match × entraînement",
   TEAM_LINK_OVERLAP: "Passerelle",
   ACCESS_WINDOW_LOST: "Placement fragilisé",
@@ -28,3 +28,15 @@ export const CONFLICT_FAMILY_LABEL: Record<ConflictType, string> = {
 
 /** Les 10 familles, dans l'ordre de la table (ordre des chips). */
 export const CONFLICT_FAMILIES = Object.keys(CONFLICT_FAMILY_LABEL) as ConflictType[];
+
+/**
+ * Le mot d'un rôle PAR CÔTÉ, pour annoter une équipe dans le résumé d'un conflit
+ * personne-en-double (« SF2 (coach) et SM2 (joueur) »). Table exhaustive
+ * (`Record<ConflictSideRole, …>` → TypeScript exige les 3 clés) : PRÉSENTATION pure,
+ * jamais un décideur de comportement (`.claude/rules/frontend.md`).
+ */
+export const SIDE_ROLE_WORD: Record<ConflictSideRole, string> = {
+  MAIN: "coach",
+  ASSISTANT: "assistant",
+  PLAYER: "joueur",
+};

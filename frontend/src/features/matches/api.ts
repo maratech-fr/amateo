@@ -171,6 +171,13 @@ export interface LeagueWindowsResponse {
   resolvedTeamWindows: Record<string, string[]>;
 }
 
+/**
+ * Le rôle d'UNE personne sur UN côté d'un conflit personne-en-double (« une
+ * personne = ses équipes coachées + ses équipes où elle joue ») : `MAIN` /
+ * `ASSISTANT` (coach) ou `PLAYER` (joueuse). Miroir de `App\Enum\ConflictPersonRole`.
+ */
+export type ConflictSideRole = "MAIN" | "ASSISTANT" | "PLAYER";
+
 /** One side of a conflict — the fixture and its computed occupancy window. */
 export interface ConflictFixtureView {
   fixtureId: string;
@@ -181,6 +188,10 @@ export interface ConflictFixtureView {
   /** P1-4 PR C — the window borrows the team's HABITUAL kickoff (away match
    * without a real hour): say « heure estimée ». */
   estimatedKickoff?: boolean;
+  /** Le rôle de la personne sur CE côté — servi seulement pour MATCH_MATCH
+   * (`left`/`right`). Absent sur les familles gymnase/passerelle, qui partagent
+   * cette vue mais ne portent aucune personne. */
+  role?: ConflictSideRole;
   windowStart: string;
   windowEnd: string;
 }
@@ -193,6 +204,8 @@ export interface ConflictTrainingView {
   dayOfWeek: number;
   startTime: string;
   durationMinutes: number;
+  /** Le rôle de la personne avec l'équipe du créneau — MATCH_TRAINING. */
+  role?: ConflictSideRole;
   windowStart: string;
   windowEnd: string;
 }
@@ -246,8 +259,10 @@ export interface Conflict {
   type: ConflictType;
   /** P1-4 PR E2 — gravity emitted by the SERVER (1 = worst … 7 = info). */
   severity: number;
-  /** MATCH_MATCH / MATCH_TRAINING — MAIN only when the coach is MAIN on every involved team, else ASSISTANT. */
-  coachRole?: "MAIN" | "ASSISTANT";
+  /** MATCH_MATCH / MATCH_TRAINING — rôle AGRÉGÉ de la personne : MAIN si tous les
+   * côtés sont MAIN, ASSISTANT dès qu'un côté est ASSISTANT, PLAYER sinon. Le rôle
+   * PAR CÔTÉ vit sur `left`/`right` (ou `fixture`/`training`). */
+  coachRole?: ConflictSideRole;
   coachId?: string;
   /** TEAM_LINK_OVERLAP only. */
   teamLinkId?: string;

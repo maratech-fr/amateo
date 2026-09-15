@@ -11367,14 +11367,30 @@
                                                     "type": {
                                                         "type": "string",
                                                         "enum": [
+                                                            "VENUE_OVERLAP",
+                                                            "LEAGUE_WINDOW_VIOLATION",
                                                             "MATCH_MATCH",
                                                             "MATCH_TRAINING",
                                                             "VENUE_UNAVAILABLE",
-                                                            "TEAM_LINK_OVERLAP"
+                                                            "ACCESS_WINDOW_LOST",
+                                                            "TEAM_LINK_OVERLAP",
+                                                            "COMPETITION_INCOMPLETE",
+                                                            "AWAY_NO_FOOTPRINT",
+                                                            "FRIENDLY_ON_MATCH_SLOT"
                                                         ]
                                                     },
                                                     "coachId": {
-                                                        "type": "string"
+                                                        "type": "string",
+                                                        "description": "The double-booked person (a coach or a player) \u2014 MATCH_MATCH / MATCH_TRAINING"
+                                                    },
+                                                    "coachRole": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "MAIN",
+                                                            "ASSISTANT",
+                                                            "PLAYER"
+                                                        ],
+                                                        "description": "Aggregate role of the person: MAIN when every side is MAIN, ASSISTANT as soon as one side is ASSISTANT, PLAYER otherwise"
                                                     },
                                                     "start": {
                                                         "type": "string",
@@ -11389,22 +11405,66 @@
                                                     "left": {
                                                         "type": "object",
                                                         "nullable": true,
-                                                        "description": "MATCH_MATCH: first fixture"
+                                                        "description": "MATCH_MATCH: the earliest-starting fixture",
+                                                        "properties": {
+                                                            "role": {
+                                                                "type": "string",
+                                                                "enum": [
+                                                                    "MAIN",
+                                                                    "ASSISTANT",
+                                                                    "PLAYER"
+                                                                ],
+                                                                "description": "The person's role on this side"
+                                                            }
+                                                        }
                                                     },
                                                     "right": {
                                                         "type": "object",
                                                         "nullable": true,
-                                                        "description": "MATCH_MATCH: second fixture"
+                                                        "description": "MATCH_MATCH: the later fixture",
+                                                        "properties": {
+                                                            "role": {
+                                                                "type": "string",
+                                                                "enum": [
+                                                                    "MAIN",
+                                                                    "ASSISTANT",
+                                                                    "PLAYER"
+                                                                ],
+                                                                "description": "The person's role on this side"
+                                                            }
+                                                        }
                                                     },
                                                     "fixture": {
                                                         "type": "object",
                                                         "nullable": true,
-                                                        "description": "MATCH_TRAINING: the match"
+                                                        "description": "MATCH_TRAINING: the match",
+                                                        "properties": {
+                                                            "role": {
+                                                                "type": "string",
+                                                                "enum": [
+                                                                    "MAIN",
+                                                                    "ASSISTANT",
+                                                                    "PLAYER"
+                                                                ],
+                                                                "description": "The person's role with the match team"
+                                                            }
+                                                        }
                                                     },
                                                     "training": {
                                                         "type": "object",
                                                         "nullable": true,
-                                                        "description": "MATCH_TRAINING: the training slot"
+                                                        "description": "MATCH_TRAINING: the training slot",
+                                                        "properties": {
+                                                            "role": {
+                                                                "type": "string",
+                                                                "enum": [
+                                                                    "MAIN",
+                                                                    "ASSISTANT",
+                                                                    "PLAYER"
+                                                                ],
+                                                                "description": "The person's role with the training team"
+                                                            }
+                                                        }
                                                     },
                                                     "fingerprint": {
                                                         "type": "string",

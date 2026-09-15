@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Service;
 
+use App\Entity\CoachPlayerMembership;
 use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\LeagueMatchWindow;
@@ -959,6 +960,178 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame(['VENUE_OVERLAP'], array_column($this->detect([$left, $right], []), 'type'));
     }
 
+    // ── Une personne = ses équipes coachées + ses équipes où elle joue ───────
+
+    public function testACoachWhoAlsoPlaysElsewhereIsDoubleBookedWithPerSideRolesAndChronologicalOrder(): void
+    {
+        // The founder case (Mara): she is the MAIN coach of team-1 and a PLAYER of
+        // team-2, both playing overlapping matches → a MATCH_MATCH. Severity 3
+        // (MAIN×PLAYER is a hard clash), coachRole PLAYER (not all MAIN, no
+        // assistant). Sides are chronological: the earlier window is on the left,
+        // whatever the input order — team-1's fixture is passed LAST here.
+        $early = $this->fixture('fx-early', self::TEAM_1, '2026-10-04', '16:00'); // 15:30–17:45
+        $late = $this->fixture('fx-late', self::TEAM_2, '2026-10-04', '16:30'); // 16:00–18:15
+
+        $conflicts = $this->detect(
+            [$late, $early],
+            [$this->link(self::COACH_A, self::TEAM_1, TeamCoachRole::MAIN)],
+            playerMemberships: [$this->membership(self::COACH_A, self::TEAM_2)],
+        );
+
+        self::assertCount(1, $conflicts);
+        self::assertSame('MATCH_MATCH', $conflicts[0]['type']);
+        self::assertSame(self::COACH_A, $conflicts[0]['coachId']);
+        self::assertSame(3, $conflicts[0]['severity']);
+        self::assertSame('PLAYER', $conflicts[0]['coachRole']);
+        // Chronological: team-1 (15:30) on the left even though it was passed last.
+        self::assertSame('fx-early', $conflicts[0]['left']['fixtureId']);
+        self::assertSame('MAIN', $conflicts[0]['left']['role']);
+        self::assertSame('fx-late', $conflicts[0]['right']['fixtureId']);
+        self::assertSame('PLAYER', $conflicts[0]['right']['role']);
+    }
+
+    public function testTwoTeamsAPlayerPlaysBothClashAtSeverityThree(): void
+    {
+        // A pure player of two teams with overlapping matches → MATCH_MATCH,
+        // severity 3, both sides PLAYER, coachRole PLAYER. No coach anywhere.
+        $left = $this->fixture('fx-1', self::TEAM_1, '2026-10-04', '16:00');
+        $right = $this->fixture('fx-2', self::TEAM_2, '2026-10-04', '16:30');
+
+        $conflicts = $this->detect(
+            [$left, $right],
+            [],
+            playerMemberships: [$this->membership(self::COACH_A, self::TEAM_1), $this->membership(self::COACH_A, self::TEAM_2)],
+        );
+
+        self::assertCount(1, $conflicts);
+        self::assertSame(3, $conflicts[0]['severity']);
+        self::assertSame('PLAYER', $conflicts[0]['coachRole']);
+        self::assertSame('PLAYER', $conflicts[0]['left']['role']);
+        self::assertSame('PLAYER', $conflicts[0]['right']['role']);
+    }
+
+    public function testAnAssistantEngagementSoftensAPlayerClashToFive(): void
+    {
+        // ASSISTANT on one side, PLAYER on the other → severity 5, coachRole
+        // ASSISTANT (a helper can hold the assistant side).
+        $left = $this->fixture('fx-1', self::TEAM_1, '2026-10-04', '16:00');
+        $right = $this->fixture('fx-2', self::TEAM_2, '2026-10-04', '16:30');
+
+        $conflicts = $this->detect(
+            [$left, $right],
+            [$this->link(self::COACH_A, self::TEAM_1, TeamCoachRole::ASSISTANT)],
+            playerMemberships: [$this->membership(self::COACH_A, self::TEAM_2)],
+        );
+
+        self::assertCount(1, $conflicts);
+        self::assertSame(5, $conflicts[0]['severity']);
+        self::assertSame('ASSISTANT', $conflicts[0]['coachRole']);
+    }
+
+    public function testAnInactiveMembershipIsIgnored(): void
+    {
+        // She coaches team-1 but her team-2 membership is INACTIVE: she is not a
+        // player of team-2, so the two overlapping matches raise nothing.
+        $left = $this->fixture('fx-1', self::TEAM_1, '2026-10-04', '16:00');
+        $right = $this->fixture('fx-2', self::TEAM_2, '2026-10-04', '16:30');
+
+        self::assertSame([], $this->detect(
+            [$left, $right],
+            [$this->link(self::COACH_A, self::TEAM_1, TeamCoachRole::MAIN)],
+            playerMemberships: [$this->membership(self::COACH_A, self::TEAM_2, false)],
+        ));
+    }
+
+    public function testMatchPlayedAgainstACoachedTrainingIsHard(): void
+    {
+        // She PLAYS team-1's match and COACHES (MAIN) team-2's overlapping Sunday
+        // training. Direction « match joué × entraînement coaché » → severity 3.
+        $fixtures = [$this->fixture('fx-1', self::TEAM_1, '2026-10-04', '16:00')]; // Sunday 15:30–17:45
+        $links = [$this->link(self::COACH_A, self::TEAM_2, TeamCoachRole::MAIN)];
+        $slots = [$this->slot('sl-1', self::BASELINE, self::TEAM_2, 7, '17:00', 90, self::COACH_A)];
+
+        $conflicts = $this->detect($fixtures, $links, self::BASELINE, [], [self::BASELINE => $slots], playerMemberships: [$this->membership(self::COACH_A, self::TEAM_1)]);
+
+        self::assertCount(1, $conflicts);
+        self::assertSame('MATCH_TRAINING', $conflicts[0]['type']);
+        self::assertSame(3, $conflicts[0]['severity']);
+        self::assertSame('PLAYER', $conflicts[0]['coachRole']);
+        self::assertSame('PLAYER', $conflicts[0]['fixture']['role']);
+        self::assertSame('MAIN', $conflicts[0]['training']['role']);
+    }
+
+    public function testMatchCoachedAgainstAPlayedTrainingIsSofter(): void
+    {
+        // She COACHES (MAIN) team-1's match and only PLAYS team-2, whose training
+        // overlaps (no assigned coach → the slot is held by its players too).
+        // Direction « match coaché × entraînement où elle joue » → severity 5.
+        $fixtures = [$this->fixture('fx-1', self::TEAM_1, '2026-10-04', '16:00')];
+        $links = [$this->link(self::COACH_A, self::TEAM_1, TeamCoachRole::MAIN)];
+        $slots = [$this->slot('sl-1', self::BASELINE, self::TEAM_2, 7, '17:00', 90)]; // no assigned coach
+
+        $conflicts = $this->detect($fixtures, $links, self::BASELINE, [], [self::BASELINE => $slots], playerMemberships: [$this->membership(self::COACH_A, self::TEAM_2)]);
+
+        self::assertCount(1, $conflicts);
+        self::assertSame('MATCH_TRAINING', $conflicts[0]['type']);
+        self::assertSame(5, $conflicts[0]['severity']);
+        self::assertSame('MAIN', $conflicts[0]['fixture']['role']);
+        self::assertSame('PLAYER', $conflicts[0]['training']['role']);
+    }
+
+    public function testAPlayerMatchOnHerOwnTeamTrainingStaysSilent(): void
+    {
+        // D1 rule 2, EXTENDED to players: she plays team-1's match while team-1
+        // itself trains — the players who play do not also train, so no conflict.
+        $fixtures = [$this->fixture('fx-1', self::TEAM_1, '2026-10-04', '16:00')];
+        $slots = [$this->slot('sl-own', self::BASELINE, self::TEAM_1, 7, '17:00', 90)];
+
+        self::assertSame([], $this->detect($fixtures, [], self::BASELINE, [], [self::BASELINE => $slots], playerMemberships: [$this->membership(self::COACH_A, self::TEAM_1)]));
+    }
+
+    public function testAnAssignedSlotCoachNeverEvictsThePlayers(): void
+    {
+        // The slot of team-2 is assigned to coach B (who replaces the OTHER
+        // coaches). A PLAYER of team-2 (coach A) also plays team-1's overlapping
+        // match: the assigned coach must not shadow her — she is still flagged.
+        $fixtures = [$this->fixture('fx-1', self::TEAM_1, '2026-10-04', '16:00')];
+        $links = [$this->link(self::COACH_B, self::TEAM_2, TeamCoachRole::MAIN)];
+        $slots = [$this->slot('sl-1', self::BASELINE, self::TEAM_2, 7, '17:00', 90, self::COACH_B)];
+
+        $conflicts = $this->detect(
+            $fixtures,
+            $links,
+            self::BASELINE,
+            [],
+            [self::BASELINE => $slots],
+            playerMemberships: [$this->membership(self::COACH_A, self::TEAM_1), $this->membership(self::COACH_A, self::TEAM_2)],
+        );
+
+        self::assertCount(1, $conflicts);
+        self::assertSame('MATCH_TRAINING', $conflicts[0]['type']);
+        self::assertSame(self::COACH_A, $conflicts[0]['coachId']);
+        self::assertSame('PLAYER', $conflicts[0]['fixture']['role']);
+        self::assertSame('PLAYER', $conflicts[0]['training']['role']);
+    }
+
+    public function testACoachWhoAlsoPlaysTheSameTeamCountsMain(): void
+    {
+        // Coach role wins over player on the SAME team: MAIN on team-1 AND a player
+        // of team-1, MAIN on team-2 → each side is MAIN, severity 3, coachRole MAIN.
+        $left = $this->fixture('fx-1', self::TEAM_1, '2026-10-04', '16:00');
+        $right = $this->fixture('fx-2', self::TEAM_2, '2026-10-04', '16:30');
+
+        $conflicts = $this->detect(
+            [$left, $right],
+            [$this->link(self::COACH_A, self::TEAM_1, TeamCoachRole::MAIN), $this->link(self::COACH_A, self::TEAM_2, TeamCoachRole::MAIN)],
+            playerMemberships: [$this->membership(self::COACH_A, self::TEAM_1)],
+        );
+
+        self::assertCount(1, $conflicts);
+        self::assertSame(3, $conflicts[0]['severity']);
+        self::assertSame('MAIN', $conflicts[0]['coachRole']);
+        self::assertSame('MAIN', $conflicts[0]['left']['role']);
+    }
+
     private function competition(string $id, ?int $expectedMatchdays): Competition
     {
         $competition = new Competition;
@@ -1027,10 +1200,32 @@ final class MatchConflictDetectorTest extends TestCase
      *
      * @return list<array<string, mixed>>
      */
-    private function detect(array $fixtures, array $links, ?string $baselineScheduleId = null, array $overlayPeriods = [], array $slotsBySchedule = [], array $unavailabilities = [], array $habits = [], array $teamLinks = [], array $matchWindows = [], array $envelope = [], array $competitions = [], array $profilesByTeam = [], ?DateTimeImmutable $clubToday = null): array
+    /**
+     * @param list<Fixture>                                                                          $fixtures
+     * @param list<TeamCoach>                                                                        $links
+     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}> $overlayPeriods
+     * @param array<string, list<ScheduleSlotTemplate>>                                              $slotsBySchedule
+     * @param list<VenueUnavailability>                                                              $unavailabilities
+     * @param list<CoachPlayerMembership>                                                            $playerMemberships
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function detect(array $fixtures, array $links, ?string $baselineScheduleId = null, array $overlayPeriods = [], array $slotsBySchedule = [], array $unavailabilities = [], array $habits = [], array $teamLinks = [], array $matchWindows = [], array $envelope = [], array $competitions = [], array $profilesByTeam = [], ?DateTimeImmutable $clubToday = null, array $playerMemberships = []): array
     {
         return new MatchConflictDetector(new MatchFootprint, new EffectiveScheduleResolver, new AwayKickoffEstimator)
-            ->detect($fixtures, $links, $baselineScheduleId, $overlayPeriods, $slotsBySchedule, $unavailabilities, $habits, $teamLinks, $matchWindows, $envelope, $competitions, $profilesByTeam, [], $clubToday);
+            ->detect($fixtures, $links, $baselineScheduleId, $overlayPeriods, $slotsBySchedule, $unavailabilities, $habits, $teamLinks, $matchWindows, $envelope, $competitions, $profilesByTeam, [], $clubToday, $playerMemberships);
+    }
+
+    private function membership(string $coachId, string $teamId, bool $active = true): CoachPlayerMembership
+    {
+        $membership = new CoachPlayerMembership;
+        $membership->setClubId('club');
+        $membership->setSeasonId('season');
+        $membership->setCoachId($coachId);
+        $membership->setTeamId($teamId);
+        $membership->setIsActive($active);
+
+        return $membership;
     }
 
     private function leagueWindow(int $dayOfWeek, string $min, string $max): LeagueMatchWindow

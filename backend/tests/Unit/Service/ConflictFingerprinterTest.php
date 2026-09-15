@@ -137,6 +137,37 @@ final class ConflictFingerprinterTest extends TestCase
         self::assertSame($this->fingerprinter->fingerprint($base), $this->fingerprinter->fingerprint($shifted));
     }
 
+    /**
+     * Lot « une personne = ses équipes » — le rôle PAR CÔTÉ (`left.role`/`right.role`,
+     * `fixture.role`/`training.role`) et un `coachRole` PLAYER sont HORS identité : le
+     * même litige entre les deux mêmes fixtures reste LE MÊME MATCH_MATCH, qu'il naisse
+     * d'un coach ou d'une joueuse.
+     */
+    public function testFingerprintIgnoresPerSideRolesIncludingPlayer(): void
+    {
+        $coach = [
+            'type' => 'MATCH_MATCH',
+            'coachId' => 'person-1',
+            'coachRole' => 'MAIN',
+            'left' => ['fixtureId' => 'fix-a', 'role' => 'MAIN'],
+            'right' => ['fixtureId' => 'fix-b', 'role' => 'MAIN'],
+        ];
+        $player = [
+            'type' => 'MATCH_MATCH',
+            'coachId' => 'person-1',
+            'coachRole' => 'PLAYER',
+            'left' => ['fixtureId' => 'fix-a', 'role' => 'MAIN'],
+            'right' => ['fixtureId' => 'fix-b', 'role' => 'PLAYER'],
+        ];
+
+        self::assertSame('MATCH_MATCH:person-1:fix-a,fix-b', $this->fingerprinter->fingerprint($coach));
+        self::assertSame($this->fingerprinter->fingerprint($coach), $this->fingerprinter->fingerprint($player));
+
+        // Idem MATCH_TRAINING : la joueuse (fixture.role PLAYER) garde l'empreinte.
+        $training = ['type' => 'MATCH_TRAINING', 'coachId' => 'person-1', 'coachRole' => 'PLAYER', 'fixture' => ['fixtureId' => 'fix-1', 'role' => 'PLAYER'], 'training' => ['slotTemplateId' => 'slot-7', 'role' => 'MAIN']];
+        self::assertSame('MATCH_TRAINING:person-1:fix-1:slot-7', $this->fingerprinter->fingerprint($training));
+    }
+
     /** Un COMPETITION_INCOMPLETE 9/22 → 15/22 reste LE MÊME (sinon chaque import le re-badge). */
     public function testCompetitionIncompleteIsStableWhenCountsGrow(): void
     {

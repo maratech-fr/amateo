@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { ConflictType } from "../api";
-import { CONFLICT_FAMILY_LABEL } from "./conflictLabels";
+import type { ConflictSideRole, ConflictType } from "../api";
+import { CONFLICT_FAMILY_LABEL, SIDE_ROLE_WORD } from "./conflictLabels";
 
 // PR-2a — les 10 familles de conflits couvertes exhaustivement. La table est un
 // `Record<ConflictType, string>` : TypeScript exige déjà les 10 clés, ce test
@@ -30,7 +30,7 @@ describe("CONFLICT_FAMILY_LABEL", () => {
   it("mappe chaque famille sur son libellé humain (PR-2a)", () => {
     expect(CONFLICT_FAMILY_LABEL.VENUE_OVERLAP).toBe("Collision de gymnase");
     expect(CONFLICT_FAMILY_LABEL.LEAGUE_WINDOW_VIOLATION).toBe("Hors fenêtre ligue");
-    expect(CONFLICT_FAMILY_LABEL.MATCH_MATCH).toBe("Coach en double");
+    expect(CONFLICT_FAMILY_LABEL.MATCH_MATCH).toBe("Personne en double");
     expect(CONFLICT_FAMILY_LABEL.MATCH_TRAINING).toBe("Match × entraînement");
     expect(CONFLICT_FAMILY_LABEL.TEAM_LINK_OVERLAP).toBe("Passerelle");
     expect(CONFLICT_FAMILY_LABEL.ACCESS_WINDOW_LOST).toBe("Placement fragilisé");
@@ -38,5 +38,22 @@ describe("CONFLICT_FAMILY_LABEL", () => {
     expect(CONFLICT_FAMILY_LABEL.VENUE_UNAVAILABLE).toBe("Gymnase indisponible");
     expect(CONFLICT_FAMILY_LABEL.AWAY_NO_FOOTPRINT).toBe("Extérieur sans heure");
     expect(CONFLICT_FAMILY_LABEL.FRIENDLY_ON_MATCH_SLOT).toBe("Amical sur créneau match");
+  });
+});
+
+describe("SIDE_ROLE_WORD (rôle par côté d'un conflit personne-en-double)", () => {
+  const ALL_ROLES: ConflictSideRole[] = ["MAIN", "ASSISTANT", "PLAYER"];
+
+  it("porte un mot pour les 3 rôles, et exactement ceux-ci", () => {
+    expect(Object.keys(SIDE_ROLE_WORD).sort()).toEqual([...ALL_ROLES].sort());
+    for (const role of ALL_ROLES) {
+      expect(SIDE_ROLE_WORD[role]).toBeTruthy();
+    }
+  });
+
+  it("mappe chaque rôle sur son mot humain", () => {
+    expect(SIDE_ROLE_WORD.MAIN).toBe("coach");
+    expect(SIDE_ROLE_WORD.ASSISTANT).toBe("assistant");
+    expect(SIDE_ROLE_WORD.PLAYER).toBe("joueur");
   });
 });

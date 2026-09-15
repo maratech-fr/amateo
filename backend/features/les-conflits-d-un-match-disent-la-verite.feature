@@ -55,6 +55,15 @@ Fonctionnalité: Les conflits d'un match disent la vérité
     Quand je demande les conflits des matchs
     Alors le radar signale l'amical sur un créneau de match, pour cause de week-end de match
 
+  Scénario: Une joueuse qui coache une autre équipe voit son conflit en rouge
+    Une même personne coache une équipe et JOUE dans une autre : deux matchs qui se chevauchent la
+    mettent en double, exactement comme un coach sur deux équipes. Le radar le dit en rouge
+    (gravité 3), et chaque côté porte son rôle — coach d'un côté, joueuse de l'autre.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une personne qui coache une équipe et joue dans une autre, leurs deux matchs se chevauchant
+    Quand je demande les conflits des matchs
+    Alors un conflit de personne en double porte ses deux matchs, en gravité 3, coach d'un côté et joueuse de l'autre
+
   Scénario: Une rencontre de coupe hors fenêtre de ligue est un vrai match, jamais un amical (P4-194)
     Une coupe PORTE une compétition (elle n'est jamais un amical à competitionId null) : le radar la
     soumet à l'enveloppe de ligue comme un championnat — hors de la fenêtre autorisée elle crie une

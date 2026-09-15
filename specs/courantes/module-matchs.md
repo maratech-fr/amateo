@@ -1,8 +1,15 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-15 (lot « adversaire multi-gymnases » PR-3, frontend seul — **le lot est
-CLOS**, `documentation-update`). § « Trajet AWAY & radar spatial » recalé contre le code de
-l'écran : `OpponentTravelCard.tsx` (liste PLATE groupée par club — `deriveClubLabel` retire
+Last verified @ 2026-09-15 (lot « une personne = ses équipes coachées + ses équipes où elle joue »
+— radar de conflits matchs, backend + libellés front, `documentation-update`). § « Détection », §
+« Diagnostic gradué » (bloc « Échelle ») et § « Reste palier A » recalés contre
+`MatchConflictDetector.php`, `ConflictPersonRole.php`, `FixtureConflictsController.php`,
+`MatchModuleDeltaComputer.php`, `SeasonAndFixturePaths.php` (OpenAPI), `ConflictFingerprinter.php`
+(inchangée — vérifié : empreinte insensible à `role`/`coachRole`, donc les statuts de résolution
+posés survivent), `conflictLabels.ts`, `diagnostic.ts`, `ConflictLine.tsx`, `api.ts`.
+Passe antérieure la même date (lot « adversaire multi-gymnases » PR-3, frontend seul — **ce
+lot-là est CLOS**) : § « Trajet AWAY & radar spatial » recalé contre le code de l'écran :
+`OpponentTravelCard.tsx` (liste PLATE groupée par club — `deriveClubLabel` retire
 seulement un suffixe d'équipe final « - n » pour l'AFFICHAGE, jamais une clé de résolution —,
 ligne « Toutes les équipes (défaut) » lue sur l'entrée `scope` CLUB/`null`, une ligne par équipe
 au libellé BRUT, entrées sans code fédéral affichées à part sans bouton), `LocateOpponentModal.tsx`
@@ -11,12 +18,10 @@ au libellé BRUT, entrées sans code fédéral affichées à part sans bouton), 
 servi), `AwayList.tsx` (jointure par `(opponentOrganismeCode, opponentTeamKey)` servis — plus de
 repli par libellé), `lib/configSummaries.ts` (`opponentsSummary`), `api.ts`/`queries.ts`
 (`VenueSuggestion`, `useVenueSuggestions`). § « Suggestions partagées de gymnases » et § « Annuaire
-adverse » non re-sondés cette passe (backend inchangé depuis PR-2) — dernière vérification :
-2026-09-15 (passe PR-2, recalage post-finding sécurité).
-Reste du fichier (§ « Résolution des conflits », § « Gymnase depuis le libellé », §
-« Détection », § reconciliation coupes P4-194/195, § Appariement FFBB, § « Solveur de
-placement ») non re-sondé cette passe — voir `git log -p --follow` pour sa dernière
-vérification.
+adverse » non re-sondés depuis (backend inchangé depuis PR-2).
+Reste du fichier (§ « Résolution des conflits », § « Gymnase depuis le libellé », § reconciliation
+coupes P4-194/195, § Appariement FFBB, § « Solveur de placement ») non re-sondé cette passe — voir
+`git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -313,25 +318,41 @@ surcharge équipe gouverne si elle existe, sinon la ligne club, sinon l'annuaire
 
 ### Détection — `MatchConflictDetector` (service pur)
 
-Croise l'empreinte-temps `MatchFootprint` d'un `Fixture` avec les autres occupations d'un **même coach**
-(périmètre coach seul ; les joueurs = plus tard). Dans un club amateur match et entraînement ne peuvent
-**jamais** se superposer → la valeur est de le voir dès la saisie. Deux types :
+Croise l'empreinte-temps `MatchFootprint` d'un `Fixture` avec les autres occupations de la **même
+personne** — **union coach ∪ joueur** depuis le lot « une personne = ses équipes coachées + ses
+équipes où elle joue » (2026-09-15, réouvre la décision fermée ci-dessous § « Reste palier A »,
+motivée par un cas terrain réel : une joueuse coach principale d'une équipe, joueuse active d'une
+autre, deux matchs extérieurs chevauchants le 8/11 — aucun conflit émis avant ce lot). Deux cartes
+teamId → personId (coachs `TeamCoach` ∪ joueurs actifs `CoachPlayerMembership`) alimentent une carte
+UNIQUE teamId → personId → `ConflictPersonRole` (MAIN/ASSISTANT/PLAYER, `App\Enum\ConflictPersonRole`) :
+le rôle coach l'emporte toujours sur PLAYER pour la même équipe (un MAIN qui joue aussi reste gradé
+MAIN). Chaque côté d'un conflit porte désormais son **rôle PAR CÔTÉ** (`left.role`/`right.role` en
+`MATCH_MATCH`, `fixture.role`/`training.role` en `MATCH_TRAINING` — choix fondateur contre l'agrégat :
+« SF2 (coach) et SM2 (joueur) » dit plus qu'un rôle unique) ; le champ `coachRole` **agrégé** (MAIN si
+tous les côtés MAIN, ASSISTANT dès qu'un côté ASSISTANT, PLAYER sinon) reste servi pour compat mais
+n'est plus la source d'affichage. Dans un club amateur match et entraînement ne peuvent **jamais** se
+superposer → la valeur est de le voir dès la saisie. Deux types :
 
-- **`MATCH_MATCH`** : deux `Fixture` d'équipes partageant un coach (via `TeamCoach.coachId`) dont les fenêtres
-  d'occupation se chevauchent.
-- **`MATCH_TRAINING`** : un `Fixture` chevauchant un entraînement d'une équipe du coach, lu dans le **planning
-  effectif à la date du match**. **Depuis D1 (2026-09-13)** : l'entraînement de l'équipe qui joue CE match
-  n'est jamais un conflit avec lui, quel que soit le gymnase (`matchTrainingConflicts` saute le créneau dont
-  `teamId` === celui de la rencontre — les joueurs qui jouent ne s'entraînent pas en même temps) ; un
-  entraînement d'une équipe SŒUR du même coach reste couvert normalement. Une période ACTIVE **capture** les dates qu'elle couvre : à l'intérieur le
+- **`MATCH_MATCH`** : deux `Fixture` d'équipes partageant une personne (coach ou joueur) dont les fenêtres
+  d'occupation se chevauchent. Gravité (`pairSeverity`) : MAIN×MAIN, MAIN×PLAYER, PLAYER×PLAYER = **3** (un
+  clash dur) ; un ASSISTANT sur au moins un côté adoucit à **5** (une aide peut tenir ce côté).
+- **`MATCH_TRAINING`** : un `Fixture` chevauchant un entraînement d'une équipe de la personne, lu dans le **planning
+  effectif à la date du match**. Gravité (`trainingSeverity`, asymétrique) : match **joué** × entraînement
+  coaché MAIN ou joué = **3** ; match **coaché** (MAIN) × entraînement où elle ne fait que JOUER = **5**
+  (elle peut lâcher le jeu, pas le coaching) ; tout côté ASSISTANT = **5**. **Depuis D1 (2026-09-13), ÉTENDUE
+  aux joueurs par ce lot** : l'entraînement de l'équipe qui joue CE match n'est jamais un conflit avec lui,
+  quel que soit le gymnase, ni pour ses coachs NI pour ses joueurs (`matchTrainingConflicts` saute le créneau
+  dont `teamId` === celui de la rencontre — les joueurs qui jouent ne s'entraînent pas en même temps) ; un
+  entraînement d'une équipe SŒUR (coach ou joueur sur deux équipes) reste couvert normalement. Un coach
+  **assigné au créneau** remplace les AUTRES coachs de l'équipe du créneau (anti faux-positif sur un
+  co-coach qui ne tient pas la séance) mais **n'évince jamais ses joueurs**. Une période ACTIVE **capture** les dates qu'elle couvre : à l'intérieur le
   planning de base ne s'applique pas — son **overlay**, c'est-à-dire la **version choisie du plan de la
   période** (`SchedulePlanProvisioner::chosenByPeriodPlans`, ADR-0002 lot D-b du 2026-07-18 ; le champ
   `CalendarEntry.overlayScheduleId` a été **supprimé** à cette occasion, et un plan de période qui ne pointe
   rien = **aucun overlay**), s'il existe,
   **sinon aucun entraînement** (une coupure = « pas d'entraînement », donc aucun conflit fantôme). Hors période = la
   **version choisie du plan SEASON** (`SchedulePlanProvisioner::chosenOfSeasonPlan`, ADR-0002). Le créneau hebdo (`ScheduleSlotTemplate`, `dayOfWeek`+`startTime`+`durationMinutes`)
-  est **projeté sur la date**, puis chevauché. Le coach en conflit = le `coachId` **assigné au créneau** s'il
-  existe, sinon les coachs de l'équipe du créneau (pas de faux positif sur un co-coach qui ne tient pas la séance).
+  est **projeté sur la date**, puis chevauché.
 
 Chevauchement demi-ouvert (créneaux jointifs = pas de conflit). Une empreinte qui **passe minuit** (coup d'envoi
 tardif) est vérifiée sur les **deux jours** qu'elle couvre. Périodes qui se chevauchent (une fermeture racine
@@ -351,7 +372,7 @@ amical ne suit plus non plus les fenêtres/week-ends de match — ni le solveur 
 ci-dessous, qui ne le reçoit plus jamais), ni la garde de placement manuel (§ « Couche capacité », qui ne fait
 plus qu'avertir). La seule famille qui le concerne désormais est `FRIENDLY_ON_MATCH_SLOT` (§ « Diagnostic
 gradué » ci-dessous) — une alerte, jamais un blocage ; il reste par ailleurs soumis aux autres familles
-(collision de gymnase, coach en double, etc.) comme n'importe quelle rencontre. **Depuis P4-194**
+(collision de gymnase, personne en double, etc.) comme n'importe quelle rencontre. **Depuis P4-194**
 (2026-09-10, § « Le canal API FFBB » plus bas), `competitionId` null veut vraiment dire « amical » —
 le libellé fédéral tranche à l'intégration, plus l'absence d'appariement : une rencontre de coupe
 porte désormais une vraie `Competition` `CUP` et redevient un match à part entière ici — soumise
@@ -1104,24 +1125,31 @@ SOFT « repos après jour de match »).
 
 ## Diagnostic gradué + extérieur visible + week-end type — P1-4 PR E2 (2026-08-03)
 
-- **La sévérité est émise par le SERVEUR** (`MatchConflictDetector`, `severity` 1..7 + `coachRole`
-  MAIN/ASSISTANT — MAIN seulement si le coach est principal sur les DEUX équipes impliquées, sinon
-  ASSISTANT : « (assistant d'un côté) » à l'écran, ex. assistant SM1 / principal U21M1 = à
-  surveiller, pas un conflit bloquant. Règle fondateur 2026-09-07, **inverse** l'ancienne (P4-189 —
-  avant, principal sur N'IMPORTE laquelle des deux équipes suffisait à gagner) ; `rolesByTeam`
-  (MAIN+ASSISTANT sur la MÊME équipe = MAIN) inchangé) ; l'UI groupe et libelle
-  (`lib/diagnostic.ts`, pur), elle ne re-dérive JAMAIS la gravité. Groupes triés pire-d'abord, tons
-  1-2 rouges / 3-5 warning / 7 neutre, **groupe 7 replié avec compteur** (40 extérieurs aveugles =
-  une ligne, pas 40 cartes).
+- **La sévérité est émise par le SERVEUR** (`MatchConflictDetector`, `severity` 1..7). Depuis le lot
+  « une personne = ses équipes coachées + ses équipes où elle joue » (2026-09-15, § « Détection »
+  ci-dessus) : le rôle se lit **PAR CÔTÉ** (`left.role`/`right.role`, `fixture.role`/`training.role`
+  — MAIN/ASSISTANT/PLAYER), la gravité aussi (`pairSeverity`/`trainingSeverity`, § « Détection »).
+  Le champ `coachRole` **agrégé** (MAIN si tous les côtés MAIN, ASSISTANT dès qu'un côté ASSISTANT,
+  PLAYER sinon — même formule que la règle P4-189 « MAIN seulement si principal sur les DEUX
+  équipes », étendue avec PLAYER) reste servi pour compat mais **n'est plus la source d'affichage
+  ni de gravité** : ce rôle-là a régi le titre du conflit jusqu'à ce lot, ce rôle-titre est
+  **caduque** — l'UI (`ConflictLine.tsx`) annote chaque équipe de son propre rôle dans le résumé
+  (« SF2 (coach) et SM2 (joueur) ») plutôt qu'un mot
+  au titre. `lib/diagnostic.ts` groupe et libelle (pur), il ne re-dérive JAMAIS la gravité. Groupes
+  triés pire-d'abord, tons 1-2 rouges / 3-5 warning / 7 neutre, **groupe 7 replié avec compteur** (40
+  extérieurs aveugles = une ligne, pas 40 cartes).
 - **Échelle (cadrage §8)** : 1 `VENUE_OVERLAP` (deux matchs même gymnase dont les fenêtres SALLE se
   chevauchent — sans échauffement depuis D1, ci-dessus : deux matchs enchaînés à 2 h d'écart ne
   collisionnent plus — la boucle manuelle ne bloque jamais, le diagnostic crie) · 2 `LEAGUE_WINDOW_VIOLATION` (domicile placé
   d'une équipe MAPPÉE hors de toute fenêtre ligue — non mappée = silencieuse, même tolérance que le
-  solveur) · 3 coach **MAIN** (`MATCH_MATCH`/`MATCH_TRAINING`) · 4 `VENUE_UNAVAILABLE` +
-  **`ACCESS_WINDOW_LOST`** (dette (ii) soldée : placé dont la fenêtre d'accès a changé APRÈS — règle du
-  PANNEAU mirrorée : heure-point, demi-ouvert, club sans aucune fenêtre = rien à faire respecter, PAS
-  la règle empreinte du solveur : un match que le panneau vient d'autoriser ne doit pas alerter) ·
-  5 coach ASSISTANT + `TEAM_LINK_OVERLAP` + **`FRIENDLY_ON_MATCH_SLOT`** (P4-193, ci-dessous) · 7
+  solveur) · 3 `MATCH_MATCH`/`MATCH_TRAINING` **clash dur** (MAIN×MAIN, MAIN×PLAYER, PLAYER×PLAYER en
+  `MATCH_MATCH` ; match joué × entraînement coaché MAIN ou joué en `MATCH_TRAINING`) · 4
+  `VENUE_UNAVAILABLE` + **`ACCESS_WINDOW_LOST`** (dette (ii) soldée : placé dont la fenêtre d'accès a
+  changé APRÈS — règle du PANNEAU mirrorée : heure-point, demi-ouvert, club sans aucune fenêtre =
+  rien à faire respecter, PAS la règle empreinte du solveur : un match que le panneau vient
+  d'autoriser ne doit pas alerter) · 5 `MATCH_MATCH`/`MATCH_TRAINING` **adouci** (un côté ASSISTANT ;
+  ou match coaché MAIN × entraînement où elle ne fait que jouer — elle peut lâcher le jeu, pas le
+  coaching) + `TEAM_LINK_OVERLAP` + **`FRIENDLY_ON_MATCH_SLOT`** (P4-193, ci-dessous) · 7
   **`AWAY_NO_FOOTPRINT`** (dette (v) : l'angle mort — extérieur sans heure ni habitude du bon jour — est
   NOMMÉ, plus un silence pris pour de la santé). La sévérité 6 (`COMPETITION_INCOMPLETE`, PR F2) juge les
   compétitions APPARIÉES sous leur attendu.
@@ -1507,7 +1535,7 @@ plus bas, l'onglet Conflits en PR A, détail § « Onglet Conflits » ci-dessous
   sa compétition ; un conflit sans rencontre ni compétition reste visible tant que « tout » est coché.
 - **Semaine type** (interrupteur, affichée par défaut) : la grille avec ou sans les cases « Habitude … ».
 - **Familles de conflits** (chips avec compteur, défaut tout coché) — les 10 `ConflictType`, libellés en table
-  (`lib/conflictLabels.ts`) : collision de gymnase, hors fenêtre ligue, coach en double, match × entraînement,
+  (`lib/conflictLabels.ts`) : collision de gymnase, hors fenêtre ligue, personne en double, match × entraînement,
   passerelle (info), placement fragilisé, calendrier incomplet, gymnase indisponible, extérieur sans heure,
   **amical sur créneau match** (`FRIENDLY_ON_MATCH_SLOT`, P4-193). Le
   **compteur porte sur la temporalité affichée** (la semaine lundi→dimanche du week-end actif ; un conflit sans
@@ -2427,9 +2455,20 @@ future.
 
 ## Reste palier A (à venir)
 
-**Joueurs** dans le moteur de conflits : décision fermée — pas d'entité joueur, la passerelle déclarée
-(`TeamLink`, PR C) couvre le besoin. Paliers B (dérogation + trajet + annuaire adverse global) / C (effet
-réseau) plus tard. ⚠ Envelope strictement HARD & fiable côté UI = clé de jointure normalisée
-équipe↔fenêtre (dette (iv), PR E — côté solveur la jointure tolérante `LeagueEnvelopeResolver` est
-livrée). *(`Team.preferredMatchWindow` → devenue `TeamMatchHabit` (P3-1 soldée en PR C) ; format FBI
-validé sur vrai export + diff de ré-import → livrés en PR A.)*
+**Joueurs dans le moteur de conflits — décision fermée RÉOUVERTE (2026-09-15)** : l'ancienne clôture
+(« pas d'entité joueur, la passerelle déclarée `TeamLink` couvre le besoin ») est **caduque** — le
+lot « une personne = ses équipes coachées + ses équipes où elle joue » (§ « Détection » plus haut)
+unionne désormais les joueurs actifs (`CoachPlayerMembership`, entité déjà en place depuis le MVP,
+déjà consommée par le filtre coach de la vue Semaine — § « Filtres par équipe / coach / gymnase »)
+dans le radar de conflits lui-même. `TeamLink` reste le mécanisme pour un besoin DIFFÉRENT (une
+équipe DÉCLARÉE partageant des joueurs avec une autre, sans lister lesquels) — les deux coexistent,
+`TeamLink` ne couvrait pas le cas d'UNE personne suivie individuellement. Alternatives de
+présentation écartées (passe design 2026-09-15) : un suffixe de titre type « (assistant d'un côté) »
+(béquille de l'agrégat) · « joueur·se »/« joue » · les heures dans le résumé (redite de la 3ᵉ ligne
+déjà horaire) · « Coach ou joueur en double » (trop long, genré) · annoter un seul côté · poser le
+rôle dans l'entrée du pivot coach de l'onglet Conflits (non touché par ce lot). Paliers B (dérogation
++ trajet + annuaire adverse global) / C (effet réseau) plus tard. ⚠ Envelope strictement HARD &
+fiable côté UI = clé de jointure normalisée équipe↔fenêtre (dette (iv), PR E — côté solveur la
+jointure tolérante `LeagueEnvelopeResolver` est livrée). *(`Team.preferredMatchWindow` → devenue
+`TeamMatchHabit` (P3-1 soldée en PR C) ; format FBI validé sur vrai export + diff de ré-import →
+livrés en PR A.)*

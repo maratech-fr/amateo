@@ -1,11 +1,21 @@
-Last verified @ 2026-09-15 (PR-2 « adversaire multi-gymnases » côté backend, régénéré par le coder après
-`cache:clear` + `api:openapi:export`). **199 paths**
-(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** : le nouvel endpoint des
-suggestions partagées de gymnases par club adverse.
-· SHA-256 `35d5157b24805ed1a47036db55c2a9315b9f40d948a37f0799957b16c67e0daa`
+Last verified @ 2026-09-15 (lot « une personne = ses équipes coachées + ses équipes où elle joue » côté
+backend, régénéré par le coder après `cache:pool:clear --all` + `api:openapi:export`). **199 paths**
+(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : le radar des conflits gagne des
+champs additifs (rôle par côté + rôle agrégé étendu au joueur), aucune route nouvelle.
+· SHA-256 `917e17709508515b05b16b39a247eac46713b3c2ce1a6e50a502d9e049625a39`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **« Une personne = ses équipes coachées + ses équipes où elle joue », backend (2026-09-15)** : **+0 path** —
+  le radar `GET /api/fixtures/conflicts` unit les coachs (`team_coach`) et les joueurs (`CoachPlayerMembership`
+  actifs) dans une même carte personne→équipes. Champs ADDITIFS : `coachRole` gagne la valeur `PLAYER` (agrégat
+  MAIN si tous MAIN, ASSISTANT dès qu'un côté ASSISTANT, PLAYER sinon) ; chaque côté d'un conflit personne porte
+  son `role` (`MAIN`|`ASSISTANT`|`PLAYER`) — `left.role`/`right.role` sur MATCH_MATCH, `fixture.role`/`training.role`
+  sur MATCH_TRAINING ; l'enum `type` du conflit est recalé sur ses 10 familles réelles (VENUE_OVERLAP,
+  LEAGUE_WINDOW_VIOLATION, MATCH_MATCH, MATCH_TRAINING, VENUE_UNAVAILABLE, ACCESS_WINDOW_LOST, TEAM_LINK_OVERLAP,
+  COMPETITION_INCOMPLETE, AWAY_NO_FOOTPRINT, FRIENDLY_ON_MATCH_SLOT). Aucune empreinte de conflit ne change
+  (le rôle est hors identité). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun
+  appel moteur, aucun payload solveur ne lit les adhésions joueur).
 - **PR-2 « adversaire multi-gymnases », backend (2026-09-15)** : **+1 path** — les SUGGESTIONS partagées de
   gymnases par club adverse. `GET /api/opponents/{code}/venue-suggestions` (management, A6) rend les gymnases
   connus d'un adversaire — vus dans le calendrier fédéral (`FFBB_API`) ou choisis par des clubs (`MANUAL`) —
@@ -50,16 +60,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   (list<string>, lecture seule — jamais writable par le PUT) et `Fixture` gagne `suggestedVenueId`
   (proposition floue en lecture pour un domicile importé sans salle). 194 → **196 paths**. Backend PUR,
   contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.20, aucun appel moteur).
-- **PR-3a — l'espace « Importer » : traiter les rencontres (2026-09-08)** : **+2 paths** — deux routes de
-  traitement (`ReviewFixturesController` + `ReviewFixtureDeviationController`, management + saison écrivable
-  + socle pointé) : `POST /api/fixtures/review` (corps `{fixtureIds?}` geste ligne — écarts vidés, REVIEWED —
-  ou `{teamId?}` geste masse — les rencontres à écarts pendants sautées et nommées ; réponse
-  `{reviewed, skipped[{fixtureId, reason}]}`) et `POST /api/fixtures/review/deviations` (corps
-  `{fixtureId, field: date|kickoff|venue, choice: keep_app|take_source}` — tranche UN écart, dernier retiré →
-  REVIEWED). Le schéma read `Fixture` gagne `reviewState` (NEW|OUT_OF_SYNC|REVIEWED), `reviewedAt`,
-  `pendingDeviations` (liste des écarts source⇄app ouverts) et `ffbbRencontreId`. 192 → **194 paths**. Backend
-  PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.20, aucun appel moteur). La trace des écarts
-  a MIGRÉ du dépôt (`fbi_ingestion.pending_deviations` supprimée) vers la rencontre (D7).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

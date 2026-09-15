@@ -257,9 +257,9 @@ describe("MatchesPage — la boucle guidée (RMM-1 PR3)", () => {
     // Bande extérieur : présente dans la vue Domiciles (comme dans la vue modèle).
     await gotoStep(user, /Domiciles posés/);
     expect(await screen.findByText(/à Grenoble \(Halle Clemenceau\)/)).toBeInTheDocument();
-    // Radar gradué : vue Conflits (groupe sévérité 3 = coach principal en double).
+    // Radar gradué : vue Conflits (groupe sévérité 3 = personne en double).
     await gotoStep(user, /Conflits/);
-    expect(await screen.findByText("Coach principal en double")).toBeInTheDocument();
+    expect(await screen.findByText("Personne en double")).toBeInTheDocument();
   });
 
   it("clic sur une cellule placée ouvre le panneau de boucle manuelle (P1-4 PR E1)", async () => {
