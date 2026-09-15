@@ -1,4 +1,5 @@
 import type { Competition, Conflict, ConflictType, Fixture } from "../api";
+import { isOpenConflict } from "./conflictResolution";
 import { datelessConflicts } from "./loopSteps";
 import { weekBounds } from "./weekendGrid";
 
@@ -150,14 +151,31 @@ export function familyOf(conflict: Conflict): ConflictType {
   return conflict.type;
 }
 
-/** Compteur par famille (sur l'ensemble de conflits fourni). */
+/**
+ * Compteur par famille — À TRAITER seulement (P4-207) : un conflit annoté reste listé
+ * dans son entrée, mais ne pèse plus sur le compteur de la chip famille (Consulter ET
+ * Conflits). Un compteur ne compte que ce qu'il reste à faire.
+ */
 export function countByFamily(conflicts: Conflict[]): Map<ConflictType, number> {
   const counts = new Map<ConflictType, number>();
   for (const conflict of conflicts) {
+    if (!isOpenConflict(conflict)) {
+      continue;
+    }
     const family = familyOf(conflict);
     counts.set(family, (counts.get(family) ?? 0) + 1);
   }
   return counts;
+}
+
+/**
+ * Les familles AYANT au moins un conflit (traité ou non) — la maison de la VISIBILITÉ
+ * des chips (P4-207), sœur de `countByFamily` (qui, lui, ne compte que l'à traiter).
+ * Une famille toute traitée reste PRÉSENTE (chip visible « · 0 » en sourdine) ; une
+ * famille sans AUCUN conflit reste absente (chip masquée).
+ */
+export function familiesPresent(conflicts: Conflict[]): Set<ConflictType> {
+  return new Set(conflicts.map((conflict) => conflict.type));
 }
 
 /**

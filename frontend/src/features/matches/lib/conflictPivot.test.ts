@@ -37,11 +37,11 @@ const fixturesById = new Map<string, Fixture>([
   ["fx-away", fixture({ id: "fx-away", teamId: "team-1", homeAway: "AWAY", venueId: null })],
 ]);
 
-const coachDouble: Conflict = { type: "MATCH_MATCH", severity: 3, coachId: "coach-1", start: "2026-10-03T20:00:00", end: "2026-10-03T22:00:00", left: side("fx-1", "team-1"), right: side("fx-2", "team-2") };
-const coachTraining: Conflict = { type: "MATCH_TRAINING", severity: 5, coachId: "coach-1", fixture: side("fx-1", "team-1"), training: { slotTemplateId: "t", scheduleId: "sc", teamId: "team-3", venueId: "venue-3", dayOfWeek: 3, startTime: "18:00", durationMinutes: 90, windowStart: "", windowEnd: "" } };
-const venueOverlap: Conflict = { type: "VENUE_OVERLAP", severity: 1, venueId: "venue-1", left: side("fx-1", "team-1"), right: side("fx-2", "team-2") };
-const awayNoFootprint: Conflict = { type: "AWAY_NO_FOOTPRINT", severity: 7, fixture: side("fx-away", "team-1", "2026-10-04") };
-const incomplete: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, teamId: "team-2", competitionId: "comp-1" };
+const coachDouble: Conflict = { type: "MATCH_MATCH", severity: 3, resolution: null, coachId: "coach-1", start: "2026-10-03T20:00:00", end: "2026-10-03T22:00:00", left: side("fx-1", "team-1"), right: side("fx-2", "team-2") };
+const coachTraining: Conflict = { type: "MATCH_TRAINING", severity: 5, resolution: null, coachId: "coach-1", fixture: side("fx-1", "team-1"), training: { slotTemplateId: "t", scheduleId: "sc", teamId: "team-3", venueId: "venue-3", dayOfWeek: 3, startTime: "18:00", durationMinutes: 90, windowStart: "", windowEnd: "" } };
+const venueOverlap: Conflict = { type: "VENUE_OVERLAP", severity: 1, resolution: null, venueId: "venue-1", left: side("fx-1", "team-1"), right: side("fx-2", "team-2") };
+const awayNoFootprint: Conflict = { type: "AWAY_NO_FOOTPRINT", severity: 7, resolution: null, fixture: side("fx-away", "team-1", "2026-10-04") };
+const incomplete: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, teamId: "team-2", competitionId: "comp-1" };
 
 describe("pivotConflicts — axes", () => {
   it("PIVOT_AXES = coach, equipe, gymnase, journee (dans l'ordre)", () => {

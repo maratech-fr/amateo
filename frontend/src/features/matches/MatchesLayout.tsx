@@ -4,8 +4,9 @@ import { NavLink, Outlet } from "react-router";
 import { cn } from "@/shared/lib/utils";
 import { useSocleValidated } from "@/shared/lib/socle";
 
+import { openConflictCount } from "./lib/conflictResolution";
 import { pendingReviewCount } from "./lib/reviewQueue";
-import { useFixtures, useModuleVisit } from "./queries";
+import { useConflicts, useFixtures, useModuleVisit } from "./queries";
 
 /**
  * RMM-1 PR2 — « deux espaces ». Le module matchs écrasait deux temps que le
@@ -36,6 +37,12 @@ export function MatchesLayout() {
   // jamais « Importer · 0 ».
   const fixtures = useFixtures();
   const pending = undefined !== fixtures.data ? pendingReviewCount(fixtures.data) : 0;
+
+  // P4-207 — le badge de l'onglet Conflits : le nombre de conflits À TRAITER, lu du même
+  // cache que le radar (aucune requête en plus). En chargement/échec, pas de compte —
+  // jamais « Conflits · 0 ».
+  const conflicts = useConflicts();
+  const openConflicts = undefined !== conflicts.data ? openConflictCount(conflicts.data.conflicts) : 0;
 
   // Matchs verrouillés tant que le plan de saison ne pointe pas une version
   // (état cockpit 2) — même condition que le SocleGuard côté serveur. Le garde
@@ -78,9 +85,10 @@ export function MatchesLayout() {
           Configuration
         </NavLink>
         {/* PR A — l'espace « Conflits » : tous les conflits de la saison, pivotés
-            (coach/équipe/gymnase/journée), en lecture seule. Sans badge. */}
+            (coach/équipe/gymnase/journée), en lecture seule. P4-207 — badge = conflits
+            À TRAITER, affiché seulement quand > 0. */}
         <NavLink to="/matchs/conflits" className={linkClass}>
-          Conflits
+          {openConflicts > 0 ? `Conflits · ${openConflicts}` : "Conflits"}
         </NavLink>
       </nav>
       <Outlet />

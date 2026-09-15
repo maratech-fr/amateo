@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Competition, Conflict, ConflictType, Fixture } from "../api";
-import { applyFamilyFilter, applyKindFilter, competitionKind, countByFamily, dateOf, familyOf, KINDS, scopeConflictsToWeek } from "./consultFilter";
+import { applyFamilyFilter, applyKindFilter, competitionKind, countByFamily, dateOf, familiesPresent, familyOf, KINDS, scopeConflictsToWeek } from "./consultFilter";
 
 function fixture(over: Partial<Fixture> = {}): Fixture {
   return {
@@ -40,7 +40,7 @@ const competitionsById = new Map<string, Competition>([
 function conflictRefFixture(fixtureId: string): Conflict {
   return {
     type: "VENUE_OVERLAP",
-    severity: 1,
+    severity: 1, resolution: null,
     fixture: { fixtureId, teamId: "team-1", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:00", windowStart: "", windowEnd: "" },
   };
 }
@@ -85,13 +85,13 @@ describe("applyKindFilter", () => {
   });
 
   it("COMPETITION_INCOMPLETE suit son competitionId", () => {
-    const incomplete: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, competitionId: "comp-coupe", teamId: "team-1" };
+    const incomplete: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, competitionId: "comp-coupe", teamId: "team-1" };
     expect(applyKindFilter(fixtures, [incomplete], ["coupe"], competitionsById).conflicts).toHaveLength(1);
     expect(applyKindFilter(fixtures, [incomplete], ["championnat"], competitionsById).conflicts).toHaveLength(0);
   });
 
   it("un conflit orphelin (ni fixture ni compétition) est visible si tout coché, retiré dès qu'on filtre", () => {
-    const orphan: Conflict = { type: "AWAY_NO_FOOTPRINT", severity: 7 };
+    const orphan: Conflict = { type: "AWAY_NO_FOOTPRINT", severity: 7, resolution: null };
     // tout coché ⇒ pass-through, orphelin conservé
     expect(applyKindFilter(fixtures, [orphan], KINDS, competitionsById).conflicts).toContain(orphan);
     // un type décoché ⇒ on filtre, l'orphelin n'a aucun type à faire matcher
@@ -104,17 +104,17 @@ describe("scopeConflictsToWeek", () => {
   const WEEKEND = "2026-10-03";
   const datedStart = (iso: string): Conflict => ({
     type: "MATCH_MATCH",
-    severity: 3,
+    severity: 3, resolution: null,
     start: iso,
     left: { fixtureId: "l", teamId: "team-1", homeAway: "HOME", matchDate: iso.slice(0, 10), kickoffTime: "16:00", windowStart: "", windowEnd: "" },
     right: { fixtureId: "r", teamId: "team-2", homeAway: "HOME", matchDate: iso.slice(0, 10), kickoffTime: "16:00", windowStart: "", windowEnd: "" },
   });
   const refByMatchDate = (matchDate: string): Conflict => ({
     type: "VENUE_UNAVAILABLE",
-    severity: 1,
+    severity: 1, resolution: null,
     fixture: { fixtureId: "fx", teamId: "team-1", homeAway: "HOME", matchDate, kickoffTime: "16:00", status: "PLACED" },
   });
-  const dateless: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, competitionId: "comp-x", teamId: "team-1" };
+  const dateless: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, competitionId: "comp-x", teamId: "team-1" };
 
   it("weekendKey null ⇒ pass-through (MÊME référence)", () => {
     const conflicts = [dateless];
@@ -146,26 +146,52 @@ describe("scopeConflictsToWeek", () => {
 
 describe("familyOf / countByFamily", () => {
   it("familyOf renvoie le type du conflit", () => {
-    expect(familyOf({ type: "MATCH_MATCH", severity: 3 })).toBe("MATCH_MATCH");
+    expect(familyOf({ type: "MATCH_MATCH", severity: 3, resolution: null })).toBe("MATCH_MATCH");
   });
 
   it("countByFamily compte par famille", () => {
     const conflicts: Conflict[] = [
-      { type: "MATCH_MATCH", severity: 3 },
-      { type: "MATCH_MATCH", severity: 3 },
-      { type: "TEAM_LINK_OVERLAP", severity: 6 },
+      { type: "MATCH_MATCH", severity: 3, resolution: null },
+      { type: "MATCH_MATCH", severity: 3, resolution: null },
+      { type: "TEAM_LINK_OVERLAP", severity: 6, resolution: null },
     ];
     const counts = countByFamily(conflicts);
     expect(counts.get("MATCH_MATCH")).toBe(2);
     expect(counts.get("TEAM_LINK_OVERLAP")).toBe(1);
     expect(counts.get("VENUE_OVERLAP")).toBeUndefined();
   });
+
+  it("countByFamily ne compte QUE l'à traiter — un conflit annoté ne pèse pas (P4-207)", () => {
+    const conflicts: Conflict[] = [
+      { type: "MATCH_MATCH", severity: 3, resolution: null },
+      { type: "MATCH_MATCH", severity: 3, resolution: { status: "DEROGATION_REQUESTED", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } },
+      { type: "TEAM_LINK_OVERLAP", severity: 6, resolution: { status: "RESOLVED_INTERNALLY", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } },
+    ];
+    const counts = countByFamily(conflicts);
+    // Un seul MATCH_MATCH à traiter ; le TEAM_LINK_OVERLAP entièrement traité disparaît du compte.
+    expect(counts.get("MATCH_MATCH")).toBe(1);
+    expect(counts.get("TEAM_LINK_OVERLAP")).toBeUndefined();
+  });
+
+  it("familiesPresent : les familles AYANT au moins un conflit (traité ou non) — pour la visibilité des chips (P4-207)", () => {
+    const conflicts: Conflict[] = [
+      { type: "MATCH_MATCH", severity: 3, resolution: null },
+      // Famille entièrement traitée : présente (chip visible à 0), mais hors compte.
+      { type: "TEAM_LINK_OVERLAP", severity: 6, resolution: { status: "RESOLVED_INTERNALLY", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } },
+    ];
+    const present = familiesPresent(conflicts);
+    expect(present.has("MATCH_MATCH")).toBe(true);
+    expect(present.has("TEAM_LINK_OVERLAP")).toBe(true);
+    // Une famille sans AUCUN conflit reste absente (chip masquée).
+    expect(present.has("VENUE_OVERLAP")).toBe(false);
+    expect(familiesPresent([]).size).toBe(0);
+  });
 });
 
 describe("applyFamilyFilter", () => {
   const conflicts: Conflict[] = [
-    { type: "MATCH_MATCH", severity: 3 },
-    { type: "TEAM_LINK_OVERLAP", severity: 6 },
+    { type: "MATCH_MATCH", severity: 3, resolution: null },
+    { type: "TEAM_LINK_OVERLAP", severity: 6, resolution: null },
   ];
   const ALL: ConflictType[] = ["VENUE_OVERLAP", "LEAGUE_WINDOW_VIOLATION", "MATCH_MATCH", "MATCH_TRAINING", "VENUE_UNAVAILABLE", "ACCESS_WINDOW_LOST", "TEAM_LINK_OVERLAP", "COMPETITION_INCOMPLETE", "AWAY_NO_FOOTPRINT"];
 
@@ -181,15 +207,15 @@ describe("applyFamilyFilter", () => {
 
 describe("dateOf (exporté pour le pivot par journée)", () => {
   it("prend `start` tronqué à la date quand il est présent", () => {
-    expect(dateOf({ type: "VENUE_OVERLAP", severity: 1, start: "2026-10-03T20:45:00" })).toBe("2026-10-03");
+    expect(dateOf({ type: "VENUE_OVERLAP", severity: 1, resolution: null, start: "2026-10-03T20:45:00" })).toBe("2026-10-03");
   });
 
   it("à défaut, la matchDate d'un côté référencé (left, puis right, puis fixture)", () => {
-    expect(dateOf({ type: "MATCH_MATCH", severity: 3, left: { fixtureId: "f", teamId: "t", homeAway: "HOME", matchDate: "2026-11-07", kickoffTime: null, windowStart: "", windowEnd: "" } })).toBe("2026-11-07");
-    expect(dateOf({ type: "VENUE_UNAVAILABLE", severity: 1, fixture: { fixtureId: "f", teamId: "t", homeAway: "HOME", matchDate: "2026-12-05", kickoffTime: null, status: "PLACED" } })).toBe("2026-12-05");
+    expect(dateOf({ type: "MATCH_MATCH", severity: 3, resolution: null, left: { fixtureId: "f", teamId: "t", homeAway: "HOME", matchDate: "2026-11-07", kickoffTime: null, windowStart: "", windowEnd: "" } })).toBe("2026-11-07");
+    expect(dateOf({ type: "VENUE_UNAVAILABLE", severity: 1, resolution: null, fixture: { fixtureId: "f", teamId: "t", homeAway: "HOME", matchDate: "2026-12-05", kickoffTime: null, status: "PLACED" } })).toBe("2026-12-05");
   });
 
   it("sans date ni côté ⇒ null (conflit « sans date »)", () => {
-    expect(dateOf({ type: "COMPETITION_INCOMPLETE", severity: 6, teamId: "t" })).toBeNull();
+    expect(dateOf({ type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, teamId: "t" })).toBeNull();
   });
 });

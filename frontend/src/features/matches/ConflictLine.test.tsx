@@ -14,7 +14,7 @@ function side(fixtureId: string, teamId: string, matchDate = "2026-10-03") {
   return { fixtureId, teamId, homeAway: "HOME" as const, matchDate, kickoffTime: "16:00", windowStart: "", windowEnd: "" };
 }
 
-const overlap: Conflict = { type: "VENUE_OVERLAP", severity: 1, fingerprint: "fp-1", left: side("fx-1", "team-1"), right: side("fx-2", "team-2") };
+const overlap: Conflict = { type: "VENUE_OVERLAP", severity: 1, resolution: null, fingerprint: "fp-1", left: side("fx-1", "team-1"), right: side("fx-2", "team-2") };
 
 function renderLine(props: Partial<React.ComponentProps<typeof ConflictLine>> = {}) {
   return render(
@@ -54,5 +54,20 @@ describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
   it("sans trailing : aucun bouton", () => {
     renderLine();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("rend le slot below sous la ligne (P4-207)", () => {
+    renderLine({ below: <p>Note de traitement</p> });
+    expect(screen.getByText("Note de traitement")).toBeInTheDocument();
+  });
+
+  it("porte aria-busy sur le <li> pendant une écriture (P4-207)", () => {
+    const { container } = renderLine({ ariaBusy: true });
+    expect(container.querySelector("li")).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("sans ariaBusy : le <li> ne porte pas aria-busy", () => {
+    const { container } = renderLine();
+    expect(container.querySelector("li")).not.toHaveAttribute("aria-busy");
   });
 });

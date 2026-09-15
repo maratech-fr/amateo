@@ -5,17 +5,22 @@ import { useNavigate, useSearchParams } from "react-router";
 import { AccordionSection } from "@/shared/components/ui/accordion";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint, EmptyState } from "@/shared/components/ui/empty-hint";
+import { FilterToggle } from "@/shared/components/ui/filter-toggle";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { coachFullName } from "@/shared/lib/coachName";
 import { readFailed, readLoading } from "@/shared/lib/readState";
+import { isManagementRole } from "@/shared/lib/roles";
 import { cn } from "@/shared/lib/utils";
+import { useMe } from "@/shared/session/queries";
 
 import type { Coach, Conflict, Team, Venue } from "./api";
+import { ConflictResolutionControl } from "./ConflictResolutionControl";
 import { ConflictSeverityGroups } from "./ConflictLine";
 import { CONFLICT_FAMILIES, CONFLICT_FAMILY_LABEL } from "./lib/conflictLabels";
 import { type ConflictPivotAxis, type ConflictPivotEntry, PIVOT_AXES, pivotConflicts } from "./lib/conflictPivot";
-import { applyFamilyFilter, countByFamily, dateOf } from "./lib/consultFilter";
+import { isOpenConflict, openConflictCount } from "./lib/conflictResolution";
+import { applyFamilyFilter, countByFamily, dateOf, familiesPresent } from "./lib/consultFilter";
 import { applyConflictsToParams, decodeConflictsParams } from "./lib/urlState";
 import { weekendKeyOf, weekendShortLabel } from "./lib/weekendGrid";
 import { useCoaches, useConflicts, useFixtures, useModuleVisit, useTeams, useVenues } from "./queries";
@@ -62,8 +67,15 @@ export function ConflictsPage() {
 
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { data: me } = useMe();
+  const canManage = isManagementRole(me?.role);
 
   const { conflictsPivot, conflictsFamilies, setConflictsPivot, setConflictsFamilies, setSelectedWeekend } = useMatchesStore();
+
+  // « Masquer les traités » vit en état LOCAL, miroir de `?traites=masques` (patron
+  // `ReviewQueue` : l'URL différée revient « décochée » un instant si la case dépend
+  // d'elle seule). Il filtre l'AFFICHAGE, jamais les compteurs.
+  const [hideTreated, setHideTreated] = useState(false);
 
   const teamsMap = useMemo<Map<string, Team>>(() => byId(teams.data), [teams.data]);
   const venuesMap = useMemo<Map<string, Venue>>(() => byId(venues.data), [venues.data]);
@@ -73,11 +85,18 @@ export function ConflictsPage() {
   const allConflicts = useMemo<Conflict[]>(() => conflicts.data?.conflicts ?? [], [conflicts.data]);
   const newFingerprints = useMemo<Set<string>>(() => new Set(moduleVisit.data?.newConflictFingerprints ?? []), [moduleVisit.data]);
 
-  // Compteurs par famille : SAISON (avant le filtre familles), comme le veut la décision.
+  // Compteurs par famille : SAISON, À TRAITER seulement (countByFamily filtre l'annoté).
   const familyCounts = useMemo(() => countByFamily(allConflicts), [allConflicts]);
   const effectiveFamilies = conflictsFamilies ?? CONFLICT_FAMILIES;
-  const filtered = useMemo(() => applyFamilyFilter(allConflicts, effectiveFamilies), [allConflicts, effectiveFamilies]);
+  // Le filtre « Masquer les traités » s'applique APRÈS les familles, AVANT le pivot ;
+  // les compteurs (au-dessus) n'en bougent pas.
+  const filtered = useMemo(() => {
+    const byFamily = applyFamilyFilter(allConflicts, effectiveFamilies);
+    return hideTreated ? byFamily.filter(isOpenConflict) : byFamily;
+  }, [allConflicts, effectiveFamilies, hideTreated]);
   const rawEntries = useMemo(() => pivotConflicts(filtered, conflictsPivot, fixturesById), [filtered, conflictsPivot, fixturesById]);
+  // Il reste des conflits traités à révéler/masquer ? (pilote l'affichage de l'interrupteur.)
+  const hasTreated = useMemo(() => allConflicts.some((c) => !isOpenConflict(c)), [allConflicts]);
 
   const entryLabel = useMemo(() => {
     return (entry: ConflictPivotEntry): string => {
@@ -115,8 +134,11 @@ export function ConflictsPage() {
       if ("journee" === conflictsPivot) {
         return a.key.localeCompare(b.key);
       }
-      if (b.conflicts.length !== a.conflicts.length) {
-        return b.conflicts.length - a.conflicts.length;
+      // Tri par compte À TRAITER décroissant (P4-207 : une entrée 100 % traitée pèse 0).
+      const openA = openConflictCount(a.conflicts);
+      const openB = openConflictCount(b.conflicts);
+      if (openB !== openA) {
+        return openB - openA;
       }
       return entryLabel(a).localeCompare(entryLabel(b), "fr");
     });
@@ -135,12 +157,13 @@ export function ConflictsPage() {
     const decoded = decodeConflictsParams(searchParams);
     setConflictsPivot(decoded.pivot);
     setConflictsFamilies(decoded.families);
+    setHideTreated(decoded.hideTreated);
   }, [searchParams, setConflictsPivot, setConflictsFamilies]);
   useEffect(() => {
     if (!seededRef.current) {
       return;
     }
-    const next = applyConflictsToParams(searchParams, { pivot: conflictsPivot, families: conflictsFamilies });
+    const next = applyConflictsToParams(searchParams, { pivot: conflictsPivot, families: conflictsFamilies, hideTreated });
     // Changer de pivot replie tout : un `?ouvert` dont la clé n'existe plus est nettoyé.
     const open = next.get("ouvert");
     if (null !== open && !entryKeys.has(open)) {
@@ -149,7 +172,7 @@ export function ConflictsPage() {
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [conflictsPivot, conflictsFamilies, entryKeys, searchParams, setSearchParams]);
+  }, [conflictsPivot, conflictsFamilies, hideTreated, entryKeys, searchParams, setSearchParams]);
 
   // Section ouverte : `?ouvert=<clé>` ; une seule entrée ⇒ ouverte d'office.
   const openParam = searchParams.get("ouvert");
@@ -196,7 +219,7 @@ export function ConflictsPage() {
   };
 
   // Un conflit daté offre « Voir la semaine » (vers Placer) ; sans date, aucun bouton.
-  const renderTrailing = (conflict: Conflict): ReactNode => {
+  const renderVoirSemaine = (conflict: Conflict): ReactNode => {
     const date = dateOf(conflict);
     if (null === date) {
       return null;
@@ -217,6 +240,20 @@ export function ConflictsPage() {
       </Button>
     );
   };
+
+  // P4-207 — chaque conflit porte sa pastille/éditeur de traitement (avant « Voir la
+  // semaine ») + sa note ; le contrôle compose la `ConflictLine`.
+  const renderConflict = (conflict: Conflict, meta: { tone: "destructive" | "warning" | "muted"; isNew: boolean }): ReactNode => (
+    <ConflictResolutionControl
+      conflict={conflict}
+      teams={teamsMap}
+      coaches={coachesMap}
+      tone={meta.tone}
+      isNew={meta.isNew}
+      canManage={canManage}
+      extraTrailing={renderVoirSemaine(conflict)}
+    />
+  );
 
   // Lectures fondatrices (doctrine `readState`, comme `ConsultPage`).
   if (readLoading(conflicts) || readLoading(teams) || readLoading(venues)) {
@@ -246,9 +283,10 @@ export function ConflictsPage() {
     );
   }
 
-  // Chips familles : celles PRÉSENTES sur la saison (compteur > 0). Décocher n'enlève
-  // pas la chip (le compteur est SAISON, pas filtré).
-  const familyChips = CONFLICT_FAMILIES.filter((family) => (familyCounts.get(family) ?? 0) > 0);
+  // Chips familles : celles PRÉSENTES sur la saison (au moins un conflit, traité ou non).
+  // Une famille toute traitée garde sa chip « · 0 » ; le compteur affiché = à traiter.
+  const present = familiesPresent(allConflicts);
+  const familyChips = CONFLICT_FAMILIES.filter((family) => present.has(family));
 
   return (
     <div className="flex flex-col gap-4">
@@ -271,23 +309,35 @@ export function ConflictsPage() {
         </div>
       </div>
 
-      {/* Chips familles de conflits (présentes) avec compteur SAISON. */}
-      {familyChips.length > 0 ? (
-        <div role="group" aria-label="Familles de conflits" className="flex flex-wrap items-center gap-1.5">
-          {familyChips.map((family) => (
-            <Button
-              key={family}
-              type="button"
-              size="sm"
-              aria-pressed={isFamilyChecked(family)}
-              variant={isFamilyChecked(family) ? "default" : "ghost"}
-              className={cn("h-7 gap-1.5 border border-border", isFamilyChecked(family) ? "" : "text-muted-foreground")}
-              onClick={() => toggleFamily(family)}
-            >
-              {CONFLICT_FAMILY_LABEL[family]}
-              <span className="tabular-nums text-xs">{familyCounts.get(family) ?? 0}</span>
-            </Button>
-          ))}
+      {/* Chips familles de conflits (présentes) avec compteur À TRAITER, et l'interrupteur
+          « Masquer les traités » en fin de rangée (ml-auto, passe à la ligne à 400 px). */}
+      {familyChips.length > 0 || hasTreated ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {familyChips.length > 0 ? (
+            <div role="group" aria-label="Familles de conflits" className="flex flex-wrap items-center gap-1.5">
+              {familyChips.map((family) => (
+                <Button
+                  key={family}
+                  type="button"
+                  size="sm"
+                  aria-pressed={isFamilyChecked(family)}
+                  variant={isFamilyChecked(family) ? "default" : "ghost"}
+                  className={cn("h-7 gap-1.5 border border-border", isFamilyChecked(family) ? "" : "text-muted-foreground")}
+                  onClick={() => toggleFamily(family)}
+                >
+                  {CONFLICT_FAMILY_LABEL[family]}
+                  <span className={cn("tabular-nums text-xs", 0 === (familyCounts.get(family) ?? 0) ? "text-muted-foreground" : undefined)}>{familyCounts.get(family) ?? 0}</span>
+                </Button>
+              ))}
+            </div>
+          ) : null}
+          {hasTreated ? (
+            <div className="ml-auto">
+              <FilterToggle checked={hideTreated} onChange={setHideTreated}>
+                Masquer les traités
+              </FilterToggle>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -306,13 +356,14 @@ export function ConflictsPage() {
               key={entry.key}
               title={
                 <span className="tabular-nums">
-                  {entryLabel(entry)} · {entry.conflicts.length}
+                  {entryLabel(entry)}{" "}
+                  <span className={0 === openConflictCount(entry.conflicts) ? "text-muted-foreground" : undefined}>· {openConflictCount(entry.conflicts)}</span>
                 </span>
               }
               open={openKey === entry.key}
               onToggle={(next) => setOuvert(next ? entry.key : null)}
             >
-              <ConflictSeverityGroups conflicts={entry.conflicts} teams={teamsMap} coaches={coachesMap} newFingerprints={newFingerprints} renderTrailing={renderTrailing} />
+              <ConflictSeverityGroups conflicts={entry.conflicts} teams={teamsMap} coaches={coachesMap} newFingerprints={newFingerprints} renderConflict={renderConflict} />
             </AccordionSection>
           ))}
         </div>

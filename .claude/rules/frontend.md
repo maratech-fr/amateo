@@ -46,6 +46,9 @@ paths:
   P4-173 puis P4-177 —, VenueSwatch…) ; `SourceBadge` (AUTO/MANUEL) est désormais lui aussi une maison
   unique — `features/matches/SourceBadge.tsx` (P4-177, adossée à `StatusPill`), consommée par
   `TravelMatrixModal.tsx` et `OpponentTravelCard.tsx` (les deux copies locales ont disparu) ;
+  `FilterToggle` (`shared/components/ui/filter-toggle.tsx`, P4-207) est la maison unique de la case
+  à cocher d'un filtre d'affichage — née du patron inline de `ReviewQueue.tsx`, qui garde ses deux
+  copies locales NON converties (candidat de convergence, signalé, non traité) ;
   **couleurs/espacements** = tokens du thème (`text-warning`,
   `text-muted-foreground`, `bg-muted`, `border-border`…), **jamais un `#hex`** ni une classe sans
   jeton (`text-warning-foreground` était un no-op, P4-130). Recoder à la main un spinner nu, un

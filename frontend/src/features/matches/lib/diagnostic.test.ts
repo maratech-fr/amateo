@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Conflict } from "../api";
 import { groupBySeverity, toneOf } from "./diagnostic";
 
-const conflict = (type: Conflict["type"], severity: number): Conflict => ({ type, severity });
+const conflict = (type: Conflict["type"], severity: number): Conflict => ({ type, severity, resolution: null });
 
 describe("groupBySeverity (P1-4 PR E2)", () => {
   it("sorts groups worst-first and keeps the server's severity as-is", () => {

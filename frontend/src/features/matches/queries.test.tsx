@@ -8,6 +8,7 @@ import {
   useAnalyzeFbiFixtures,
   useApplyFfbbRencontres,
   useAttachVenueLabel,
+  useClearConflictResolution,
   useCompetitions,
   useConflicts,
   useCreateTeamMatchHabit,
@@ -23,6 +24,7 @@ import {
   useOpponentTravel,
   usePlaceMatches,
   useResolveOpponentTravel,
+  useSetConflictResolution,
   useSetEntryDeadlines,
   useSetOpponentTravelAuto,
   useSetOpponentTravelManual,
@@ -79,6 +81,8 @@ vi.mock("./api", () => ({
   attachVenueLabel: vi.fn().mockResolvedValue({ venueId: "v1", label: "GYMNASE MATEO", attached: 1 }),
   detachVenueLabel: vi.fn().mockResolvedValue(undefined),
   getVenueLabelInventory: vi.fn().mockResolvedValue([]),
+  putConflictResolution: vi.fn().mockResolvedValue({ fingerprint: "fp-1", resolution: { status: "DEROGATION_REQUESTED", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } }),
+  deleteConflictResolution: vi.fn().mockResolvedValue(undefined),
 }));
 
 function makeClient(): QueryClient {
@@ -541,5 +545,34 @@ describe("matches queries — useFfbbSalles : la clé est scopée par code posta
     const bad = renderHook(() => useFfbbSalles("abc"), { wrapper });
     expect(bad.result.current.fetchStatus).toBe("idle");
     expect(matchesApi.listFfbbSalles).not.toHaveBeenCalledWith("abc");
+  });
+});
+
+describe("résolution des conflits (P4-207) — l'écriture rafraîchit le radar", () => {
+  it("useSetConflictResolution refetche le radar ['fixtures','conflicts'] (effet réel)", async () => {
+    const client = makeClient();
+    const { result } = renderHook(() => ({ conflicts: useConflicts(), setRes: useSetConflictResolution() }), { wrapper: wrapperFor(client) });
+
+    await waitFor(() => expect(result.current.conflicts.isSuccess).toBe(true));
+    expect(matchesApi.getConflicts).toHaveBeenCalledTimes(1);
+
+    result.current.setRes.mutate({ fingerprint: "fp-1", status: "DEROGATION_REQUESTED" });
+
+    await waitFor(() => expect(result.current.setRes.isSuccess).toBe(true));
+    expect(matchesApi.putConflictResolution).toHaveBeenCalledWith("fp-1", { status: "DEROGATION_REQUESTED", note: undefined });
+    await waitFor(() => expect(matchesApi.getConflicts).toHaveBeenCalledTimes(2));
+  });
+
+  it("useClearConflictResolution efface (DELETE) et refetche le radar", async () => {
+    const client = makeClient();
+    const { result } = renderHook(() => ({ conflicts: useConflicts(), clearRes: useClearConflictResolution() }), { wrapper: wrapperFor(client) });
+
+    await waitFor(() => expect(result.current.conflicts.isSuccess).toBe(true));
+
+    result.current.clearRes.mutate("fp-1");
+
+    await waitFor(() => expect(result.current.clearRes.isSuccess).toBe(true));
+    expect(matchesApi.deleteConflictResolution).toHaveBeenCalledWith("fp-1");
+    await waitFor(() => expect(matchesApi.getConflicts).toHaveBeenCalledTimes(2));
   });
 });

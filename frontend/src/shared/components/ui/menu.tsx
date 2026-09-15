@@ -1,4 +1,4 @@
-import { createContext, type ReactNode, useContext, useEffect, useId, useRef, useState } from "react";
+import { createContext, type ReactNode, type RefObject, useContext, useEffect, useId, useRef, useState } from "react";
 import { NavLink } from "react-router";
 
 import { cn } from "@/shared/lib/utils";
@@ -18,6 +18,20 @@ interface MenuProps {
    * it the label overflows the fixed 40px box and overlaps its neighbours.
    */
   triggerClassName?: string;
+  /**
+   * APG menu button: activating an item returns focus to the trigger (like
+   * Escape). Default `true`. Set `false` only when the selection deliberately
+   * moves focus elsewhere and the trigger will be unmounted (a caller that then
+   * focuses the replacement itself).
+   */
+  restoreFocusOnSelect?: boolean;
+  /**
+   * Optional forwarded ref to the trigger button — lets a caller focus the
+   * trigger after it re-renders (e.g. a status pill that becomes a « Traiter »
+   * button once its resolution is cleared). Merged with the internal ref used
+   * for focus restoration.
+   */
+  triggerRef?: RefObject<HTMLButtonElement | null>;
 }
 
 const ITEM_SELECTOR = '[role="menuitem"]';
@@ -28,12 +42,20 @@ const ITEM_SELECTOR = '[role="menuitem"]';
  * Arrow Up/Down roam the items; Escape or Tab close and restore focus to the
  * trigger; an outside click closes. No external dependency.
  */
-export function Menu({ label, trigger, children, className, triggerClassName }: MenuProps) {
+export function Menu({ label, trigger, children, className, triggerClassName, restoreFocusOnSelect = true, triggerRef: externalTriggerRef }: MenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
+
+  // Merge the internal trigger ref (focus restoration) with the caller's, if any.
+  const setTriggerNode = (node: HTMLButtonElement | null): void => {
+    triggerRef.current = node;
+    if (undefined !== externalTriggerRef) {
+      externalTriggerRef.current = node;
+    }
+  };
 
   const close = (restoreFocus = false) => {
     setOpen(false);
@@ -91,7 +113,7 @@ export function Menu({ label, trigger, children, className, triggerClassName }: 
   return (
     <div ref={rootRef} className={cn("relative", className)}>
       <button
-        ref={triggerRef}
+        ref={setTriggerNode}
         type="button"
         aria-label={label}
         aria-haspopup="menu"
@@ -115,7 +137,7 @@ export function Menu({ label, trigger, children, className, triggerClassName }: 
           onKeyDown={onPanelKeyDown}
           className="absolute right-0 z-50 mt-1 min-w-44 rounded-md border border-border bg-background p-1 shadow-lg"
         >
-          <MenuCloseContext.Provider value={() => close(false)}>{children}</MenuCloseContext.Provider>
+          <MenuCloseContext.Provider value={() => close(restoreFocusOnSelect)}>{children}</MenuCloseContext.Provider>
         </div>
       ) : null}
     </div>

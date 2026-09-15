@@ -88,7 +88,7 @@ vi.mock("./api", () => ({
       conflicts: [
         {
           type: "MATCH_MATCH",
-          severity: 3,
+          severity: 3, resolution: null,
           coachRole: "MAIN",
           coachId: "coach-1",
           start: "2026-10-03T15:30:00+00:00",
@@ -422,9 +422,9 @@ describe("MatchesPage — filtres (PR-1)", () => {
       seasonPlanChosen: true,
       conflicts: [
         // Conflit du coach Thomas (SM1 × U15M1, même dimanche).
-        { type: "MATCH_MATCH", severity: 3, coachRole: "MAIN", coachId: "thomas", left: { fixtureId: "fx-sm1", teamId: "sm1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "14:00", windowStart: "", windowEnd: "" }, right: { fixtureId: "fx-u15", teamId: "u15m1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "16:00", windowStart: "", windowEnd: "" } },
+        { type: "MATCH_MATCH", severity: 3, resolution: null, coachRole: "MAIN", coachId: "thomas", left: { fixtureId: "fx-sm1", teamId: "sm1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "14:00", windowStart: "", windowEnd: "" }, right: { fixtureId: "fx-u15", teamId: "u15m1", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "16:00", windowStart: "", windowEnd: "" } },
         // Conflit SANS lien avec Thomas (équipe hors-périmètre) → doit être exclu.
-        { type: "VENUE_OVERLAP", severity: 2, venueId: "venue-1", left: { fixtureId: "fx-hors", teamId: "hors", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "18:00", windowStart: "", windowEnd: "" }, right: { fixtureId: "fx-hors", teamId: "hors", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "18:00", windowStart: "", windowEnd: "" } },
+        { type: "VENUE_OVERLAP", severity: 2, resolution: null, venueId: "venue-1", left: { fixtureId: "fx-hors", teamId: "hors", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "18:00", windowStart: "", windowEnd: "" }, right: { fixtureId: "fx-hors", teamId: "hors", homeAway: "HOME", matchDate: "2026-10-04", kickoffTime: "18:00", windowStart: "", windowEnd: "" } },
       ],
     });
     planningLinks.teamCoaches = [

@@ -72,15 +72,15 @@ describe("groupByDay", () => {
 describe("scopeConflictsToMonth (même contrat que scopeConflictsToWeek)", () => {
   const inMonth: Conflict = {
     type: "VENUE_OVERLAP",
-    severity: 1,
+    severity: 1, resolution: null,
     left: { fixtureId: "x", teamId: "t", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:00", windowStart: "", windowEnd: "" },
   };
   const nextMonth: Conflict = {
     type: "VENUE_UNAVAILABLE",
-    severity: 1,
+    severity: 1, resolution: null,
     fixture: { fixtureId: "y", teamId: "t", homeAway: "HOME", matchDate: "2026-11-02", kickoffTime: "16:00", status: "PLACED" },
   };
-  const dateless: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, competitionId: "c", imported: 1, expected: 10 };
+  const dateless: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, competitionId: "c", imported: 1, expected: 10 };
 
   it("garde ceux du mois, écarte ceux d'un autre mois, garde toujours les sans-date", () => {
     const kept = scopeConflictsToMonth([inMonth, nextMonth, dateless], "2026-10");
@@ -99,13 +99,13 @@ describe("conflictsByFixture", () => {
   it("rattache un conflit à chaque fixture référencée (left/right/fixture), sans doublon", () => {
     const overlap: Conflict = {
       type: "VENUE_OVERLAP",
-      severity: 1,
+      severity: 1, resolution: null,
       left: { fixtureId: "fa", teamId: "t", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:00", windowStart: "", windowEnd: "" },
       right: { fixtureId: "fb", teamId: "u", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:00", windowStart: "", windowEnd: "" },
     };
     const unavail: Conflict = {
       type: "VENUE_UNAVAILABLE",
-      severity: 1,
+      severity: 1, resolution: null,
       fixture: { fixtureId: "fa", teamId: "t", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:00", status: "PLACED" },
     };
     const map = conflictsByFixture([overlap, unavail]);

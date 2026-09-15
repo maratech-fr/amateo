@@ -79,7 +79,7 @@ describe("MatchRowsTable (PR-2b — ligne de match partagée Mois/Phase)", () =>
   it("montre une pastille par famille de conflit du match", () => {
     const overlap: Conflict = {
       type: "VENUE_OVERLAP",
-      severity: 1,
+      severity: 1, resolution: null,
       left: { fixtureId: "fx-1", teamId: "team-1", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:00", windowStart: "", windowEnd: "" },
     };
     renderTable({ conflictsByFixture: new Map([["fx-1", [overlap]]]) });

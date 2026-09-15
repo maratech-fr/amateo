@@ -1,14 +1,16 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-09-10 (rotation de fraîcheur `documentation-update`, PR P4-193 module matchs —
-fichier hors sujet). Re-confronté au code : `BanGeocodingClient::SEARCH_URL`
+Last verified @ 2026-09-15 (rotation de fraîcheur `documentation-update`, PR P4-207 « résolution des
+conflits, frontend » — fichier hors sujet). Re-confronté au code : `BanGeocodingClient::SEARCH_URL`
 (`BanGeocodingClient.php:24`) et `IgnRoutingClient::ITINERARY_URL` (`IgnRoutingClient.php:44`)
 hosts en constantes dures ✓ · `IgnRoutingClient::BATCH_BUDGET_SECONDS = 30.0`
 (`IgnRoutingClient.php:42`) ✓ · `PROFILE_CAR`/`PROFILE_PEDESTRIAN` seuls, aucune 3ᵉ constante
 (`IgnRoutingClient.php:25-26`) ✓ · `VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS = 120`
-(`VenueTravelTimeAutofillService.php:27`) ✓ · rate-limit `venue_travel_time_autofill` 10/h sliding
-window (`rate_limiter.yaml:59-62`) ✓ · `engine/CONTRACT_VERSION` = **2.20** ✓ (inchangé par P4-193 —
-le solveur de placement matchs n'a reçu aucun champ neuf).
+(`Service/Geo/VenueTravelTimeAutofillService.php:27`) ✓ · rate-limit `venue_travel_time_autofill`
+10/h sliding window (`rate_limiter.yaml:59-62`) ✓ · `engine/CONTRACT_VERSION` avait dérivé à
+**2.21** (bumpé entre-temps sans rapport avec ce fichier) — la ligne §« Le solveur d'ENTRAÎNEMENT
+la lit » ne fige déjà aucune valeur (« voir le fichier pour la valeur courante ») donc rien à
+corriger là ; seul ce stamp fixait 2.20, corrigé.
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,

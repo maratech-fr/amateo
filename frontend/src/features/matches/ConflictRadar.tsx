@@ -1,9 +1,13 @@
 import { AlertTriangle, ShieldCheck } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
+import { isManagementRole } from "@/shared/lib/roles";
+import { useMe } from "@/shared/session/queries";
 
 import type { Coach, Conflict, Team } from "./api";
 import { ConflictSeverityGroups } from "./ConflictLine";
+import { ConflictResolutionControl } from "./ConflictResolutionControl";
+import { openConflictCount } from "./lib/conflictResolution";
 
 interface ConflictRadarProps {
   conflicts: Conflict[];
@@ -28,13 +32,18 @@ interface ConflictRadarProps {
  * Conflits) ; le radar les CONSOMME, rendu inchangé.
  */
 export function ConflictRadar({ conflicts, teams, coaches, newFingerprints }: ConflictRadarProps) {
+  const { data: me } = useMe();
+  const canManage = isManagementRole(me?.role);
+  // Le badge ne compte que l'À TRAITER (P4-207) — un conflit annoté reste listé, mais
+  // ne pèse plus sur le compteur.
+  const openCount = openConflictCount(conflicts);
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <AlertTriangle className="size-4 text-warning" />
           Conflits
-          {conflicts.length > 0 ? <span className="rounded-full bg-warning/15 px-2 text-xs text-warning">{conflicts.length}</span> : null}
+          {openCount > 0 ? <span className="rounded-full bg-warning/15 px-2 text-xs text-warning">{openCount}</span> : null}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -44,7 +53,15 @@ export function ConflictRadar({ conflicts, teams, coaches, newFingerprints }: Co
             Aucun conflit détecté.
           </p>
         ) : (
-          <ConflictSeverityGroups conflicts={conflicts} teams={teams} coaches={coaches} newFingerprints={newFingerprints} />
+          <ConflictSeverityGroups
+            conflicts={conflicts}
+            teams={teams}
+            coaches={coaches}
+            newFingerprints={newFingerprints}
+            renderConflict={(conflict, meta) => (
+              <ConflictResolutionControl conflict={conflict} teams={teams} coaches={coaches} tone={meta.tone} isNew={meta.isNew} canManage={canManage} />
+            )}
+          />
         )}
       </CardContent>
     </Card>

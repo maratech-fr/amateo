@@ -168,8 +168,8 @@ describe("applySectionToParams (P4-185)", () => {
 });
 
 describe("decodeConflictsParams (onglet Conflits, PR A)", () => {
-  it("params absents ⇒ pivot coach (défaut), familles null (= tout)", () => {
-    expect(decodeConflictsParams(new URLSearchParams(""))).toEqual({ pivot: "coach", families: null });
+  it("params absents ⇒ pivot coach (défaut), familles null (= tout), traités affichés", () => {
+    expect(decodeConflictsParams(new URLSearchParams(""))).toEqual({ pivot: "coach", families: null, hideTreated: false });
   });
 
   it("lit pivot + conflits (familles), pivot inconnu ⇒ repli coach", () => {
@@ -177,27 +177,40 @@ describe("decodeConflictsParams (onglet Conflits, PR A)", () => {
     expect(decodeConflictsParams(new URLSearchParams("pivot=xxx")).pivot).toBe("coach");
     expect(decodeConflictsParams(new URLSearchParams("conflits=MATCH_MATCH,VENUE_OVERLAP")).families).toEqual(["MATCH_MATCH", "VENUE_OVERLAP"]);
   });
+
+  it("traites=masques ⇒ hideTreated ; absent ou autre ⇒ false (P4-207)", () => {
+    expect(decodeConflictsParams(new URLSearchParams("traites=masques")).hideTreated).toBe(true);
+    expect(decodeConflictsParams(new URLSearchParams("")).hideTreated).toBe(false);
+    expect(decodeConflictsParams(new URLSearchParams("traites=xxx")).hideTreated).toBe(false);
+  });
 });
 
 describe("applyConflictsToParams (onglet Conflits, PR A)", () => {
-  it("pivot coach (défaut) + familles null ⇒ ni pivot ni conflits", () => {
-    expect(applyConflictsToParams(new URLSearchParams(""), { pivot: "coach", families: null }).toString()).toBe("");
+  it("pivot coach (défaut) + familles null + traités affichés ⇒ rien dans l'URL", () => {
+    expect(applyConflictsToParams(new URLSearchParams(""), { pivot: "coach", families: null, hideTreated: false }).toString()).toBe("");
   });
 
   it("pivot ≠ coach ⇒ écrit ; familles partielles ⇒ conflits écrit", () => {
-    const out = applyConflictsToParams(new URLSearchParams(""), { pivot: "journee", families: ["MATCH_MATCH"] });
+    const out = applyConflictsToParams(new URLSearchParams(""), { pivot: "journee", families: ["MATCH_MATCH"], hideTreated: false });
     expect(out.get("pivot")).toBe("journee");
     expect(out.get("conflits")).toBe("MATCH_MATCH");
   });
 
+  it("hideTreated ⇒ traites=masques ; false ⇒ param absent (P4-207)", () => {
+    expect(applyConflictsToParams(new URLSearchParams(""), { pivot: "coach", families: null, hideTreated: true }).get("traites")).toBe("masques");
+    expect(applyConflictsToParams(new URLSearchParams("traites=masques"), { pivot: "coach", families: null, hideTreated: false }).has("traites")).toBe(false);
+  });
+
   it("préserve les params sans rapport (ex. ?ouvert)", () => {
-    const out = applyConflictsToParams(new URLSearchParams("ouvert=coach-1"), { pivot: "equipe", families: null });
+    const out = applyConflictsToParams(new URLSearchParams("ouvert=coach-1"), { pivot: "equipe", families: null, hideTreated: false });
     expect(out.get("ouvert")).toBe("coach-1");
     expect(out.get("pivot")).toBe("equipe");
     expect(out.has("conflits")).toBe(false);
   });
 
-  it("aller-retour cohérent", () => {
-    expect(decodeConflictsParams(applyConflictsToParams(new URLSearchParams(""), { pivot: "gymnase", families: null })).pivot).toBe("gymnase");
+  it("aller-retour cohérent (pivot + hideTreated)", () => {
+    const round = decodeConflictsParams(applyConflictsToParams(new URLSearchParams(""), { pivot: "gymnase", families: null, hideTreated: true }));
+    expect(round.pivot).toBe("gymnase");
+    expect(round.hideTreated).toBe(true);
   });
 });

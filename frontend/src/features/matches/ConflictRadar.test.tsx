@@ -1,8 +1,20 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import type { ReactElement } from "react";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Coach, Conflict, Team } from "./api";
 import { ConflictRadar } from "./ConflictRadar";
+
+// Le radar lit `me` (rôle) pour décider s'il propose l'éditeur de traitement (P4-207).
+// Ici : membre (aucun rôle) → pastilles/éditeur absents, le radar rend ses lignes nues.
+vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: undefined }) }));
+
+/** Le radar monte des mutations react-query (l'éditeur de traitement) → il lui faut un client. */
+function renderRadar(ui: ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 
 const teams = new Map<string, Team>([
   ["team-1", { id: "team-1", name: "U13", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 }],
@@ -19,14 +31,14 @@ function conflictsFixture(): Conflict[] {
   return [
     {
       type: "VENUE_OVERLAP",
-      severity: 1,
+      severity: 1, resolution: null,
       fingerprint: "fp-new",
       left: side("fx-1", "team-1", "2026-10-03"),
       right: side("fx-2", "team-2", "2026-10-03"),
     },
     {
       type: "VENUE_OVERLAP",
-      severity: 1,
+      severity: 1, resolution: null,
       fingerprint: "fp-old",
       left: side("fx-3", "team-2", "2026-10-04"),
       right: side("fx-4", "team-1", "2026-10-04"),
@@ -36,7 +48,7 @@ function conflictsFixture(): Conflict[] {
 
 describe("ConflictRadar — chip « Nouveau » (RMM-3, ornement pur)", () => {
   it("un conflit dont l'empreinte ∈ la liste porte une chip « Nouveau »", () => {
-    render(<ConflictRadar conflicts={conflictsFixture()} teams={teams} coaches={coaches} newFingerprints={new Set(["fp-new"])} />);
+    renderRadar(<ConflictRadar conflicts={conflictsFixture()} teams={teams} coaches={coaches} newFingerprints={new Set(["fp-new"])} />);
     const chips = screen.getAllByText("Nouveau");
     expect(chips).toHaveLength(1);
     // P4-178 — repli AA : StatusPill accent, le texte reste `text-foreground` (l'icône porte `text-accent`).
@@ -44,12 +56,12 @@ describe("ConflictRadar — chip « Nouveau » (RMM-3, ornement pur)", () => {
   });
 
   it("un conflit dont l'empreinte ∉ la liste n'a PAS de chip (falsification)", () => {
-    render(<ConflictRadar conflicts={conflictsFixture()} teams={teams} coaches={coaches} newFingerprints={new Set(["fp-absent"])} />);
+    renderRadar(<ConflictRadar conflicts={conflictsFixture()} teams={teams} coaches={coaches} newFingerprints={new Set(["fp-absent"])} />);
     expect(screen.queryByText("Nouveau")).not.toBeInTheDocument();
   });
 
   it("delta absent (aucune empreinte) → aucune chip, le radar reste intact", () => {
-    render(<ConflictRadar conflicts={conflictsFixture()} teams={teams} coaches={coaches} />);
+    renderRadar(<ConflictRadar conflicts={conflictsFixture()} teams={teams} coaches={coaches} />);
     expect(screen.queryByText("Nouveau")).not.toBeInTheDocument();
     // Le radar rend toujours ses conflits (les deux collisions).
     expect(screen.getAllByText("Deux matchs sur le même créneau")).toHaveLength(2);
@@ -58,7 +70,7 @@ describe("ConflictRadar — chip « Nouveau » (RMM-3, ornement pur)", () => {
 
 describe("ConflictRadar — le titre dit « Conflits » (mot unique, UXC-18)", () => {
   it("intitule la carte « Conflits », jamais « Diagnostic »", () => {
-    render(<ConflictRadar conflicts={conflictsFixture()} teams={teams} coaches={coaches} />);
+    renderRadar(<ConflictRadar conflicts={conflictsFixture()} teams={teams} coaches={coaches} />);
     // Le titre est un <h2> (CardTitle). Falsification : remettre « Diagnostic » casse ce test.
     expect(screen.getByRole("heading", { level: 2, name: /Conflits/ })).toBeInTheDocument();
     expect(screen.queryByText("Diagnostic")).toBeNull();
@@ -73,14 +85,14 @@ describe("ConflictRadar — rôle assistant nuancé (P4-189)", () => {
     const conflicts: Conflict[] = [
       {
         type: "MATCH_MATCH",
-        severity: 5,
+        severity: 5, resolution: null,
         coachId: "coach-a",
         coachRole: "ASSISTANT",
         left: side("fx-1", "team-1", "2026-10-03"),
         right: side("fx-2", "team-2", "2026-10-03"),
       },
     ];
-    render(<ConflictRadar conflicts={conflicts} teams={teams} coaches={coachesMap} />);
+    renderRadar(<ConflictRadar conflicts={conflicts} teams={teams} coaches={coachesMap} />);
     expect(screen.getByText(/\(assistant d'un côté\)/)).toBeInTheDocument();
     // Falsification : le vieux « (assistant) » nu ne doit plus être servi.
     expect(screen.queryByText(/Anna B \(assistant\)$/)).toBeNull();
@@ -95,14 +107,14 @@ describe("ConflictRadar — heure murale sans offset (P4-191)", () => {
     const conflicts: Conflict[] = [
       {
         type: "VENUE_OVERLAP",
-        severity: 1,
+        severity: 1, resolution: null,
         start: "2026-09-03T20:45:00",
         end: "2026-09-03T22:30:00",
         left: side("fx-1", "team-1", "2026-09-03"),
         right: side("fx-2", "team-2", "2026-09-03"),
       },
     ];
-    render(<ConflictRadar conflicts={conflicts} teams={teams} coaches={coaches} />);
+    renderRadar(<ConflictRadar conflicts={conflicts} teams={teams} coaches={coaches} />);
     expect(screen.getByText(/20:45/)).toBeInTheDocument();
     expect(screen.getByText(/22:30/)).toBeInTheDocument();
   });
