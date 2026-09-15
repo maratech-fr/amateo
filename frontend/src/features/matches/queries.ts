@@ -287,6 +287,11 @@ function invalidateTravel(queryClient: ReturnType<typeof useQueryClient>): void 
   void queryClient.invalidateQueries({ queryKey: ["fixtures", "conflicts"] });
 }
 
+/** Choosing/reverting a gym bumps the SHARED suggestion counters of that opponent → re-read them. */
+function invalidateSuggestions(queryClient: ReturnType<typeof useQueryClient>, code: string): void {
+  void queryClient.invalidateQueries({ queryKey: ["opponents", code, "suggestions"] });
+}
+
 export function useOpponentTravel() {
   return useQuery({ queryKey: OPPONENT_TRAVEL_KEY, queryFn: matchesApi.getOpponentTravel, staleTime: 30_000 });
 }
@@ -295,7 +300,10 @@ export function useSetOpponentTravelManual() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: matchesApi.OpponentTravelManualInput) => matchesApi.setOpponentTravelManual(input),
-    onSuccess: () => invalidateTravel(queryClient),
+    onSuccess: (_data, input) => {
+      invalidateTravel(queryClient);
+      invalidateSuggestions(queryClient, input.opponentOrganismeCode);
+    },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
@@ -303,9 +311,27 @@ export function useSetOpponentTravelManual() {
 export function useSetOpponentTravelAuto() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (opponentOrganismeCode: string) => matchesApi.setOpponentTravelAuto(opponentOrganismeCode),
-    onSuccess: () => invalidateTravel(queryClient),
+    mutationFn: (input: matchesApi.OpponentTravelAutoInput) => matchesApi.setOpponentTravelAuto(input),
+    onSuccess: (_data, input) => {
+      invalidateTravel(queryClient);
+      invalidateSuggestions(queryClient, input.opponentOrganismeCode);
+    },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+/**
+ * Les gymnases connus d'un adversaire (suggestions PARTAGÉES) — lecture management, à la
+ * demande (le picker de la modale). Clé `["opponents", code, "suggestions"]`, alignée sur
+ * ce qu'invalident les écritures de trajet. Best-effort (retry false).
+ */
+export function useVenueSuggestions(code: string) {
+  return useQuery({
+    queryKey: ["opponents", code, "suggestions"],
+    queryFn: () => matchesApi.getVenueSuggestions(code),
+    enabled: "" !== code,
+    staleTime: 30_000,
+    retry: false,
   });
 }
 

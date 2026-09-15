@@ -48,6 +48,7 @@ export function opponentsSummary(travel?: OpponentTravel[]): string | null {
   if (undefined === travel) {
     return null;
   }
+  // M = entrées servies (une PAR ÉQUIPE adverse depuis le grain équipe, 2026-09-15).
   const m = travel.length;
   if (0 === m) {
     return "aucun adversaire";
@@ -56,7 +57,7 @@ export function opponentsSummary(travel?: OpponentTravel[]): string | null {
   if (0 === n) {
     return "tous localisés";
   }
-  return `${n} à localiser sur ${m}`;
+  return `${n} à localiser sur ${m} équipes adverses`;
 }
 
 /**

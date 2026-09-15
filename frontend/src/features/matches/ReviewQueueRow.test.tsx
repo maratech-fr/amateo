@@ -33,7 +33,7 @@ function fx(extra: Partial<Fixture> = {}): Fixture {
     reviewState: "NEW",
     reviewedAt: null,
     pendingDeviations: [],
-    ffbbRencontreId: null,
+    ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null,
     suggestedVenueId: null,
     ...extra,
   };

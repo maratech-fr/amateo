@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Fixture, Venue, VenueLabelInventoryRow } from "./api";
-import { attachVenueLabel, deleteConflictResolution, detachVenueLabel, getFixtures, getVenueLabelInventory, getVenues, putConflictResolution } from "./api";
+import { attachVenueLabel, deleteConflictResolution, detachVenueLabel, getFixtures, getVenueLabelInventory, getVenueSuggestions, getVenues, putConflictResolution } from "./api";
 
 // On n'exerce QUE la coercition de `api.ts` : le voisin `@/shared/api/collection` est le
 // SEUL double. L'API Platform OMET les props nulles/vides du JSON — on prouve que les
@@ -37,6 +37,33 @@ describe("getFixtures — coercition de suggestedVenueId (P4-187b)", () => {
     collectionAll.mockResolvedValue([{ id: "f1", teamId: "t1", matchDate: "2026-11-07", homeAway: "HOME", opponentLabel: "BRON", status: "PLACED", reviewState: "NEW", suggestedVenueId: "v9" }] as unknown as Fixture[]);
     const [f] = await getFixtures();
     expect(f.suggestedVenueId).toBe("v9");
+  });
+});
+
+describe("getFixtures — coercition des clés de jointure adverse (P2-54 « adversaire multi-gymnases »)", () => {
+  it("ramène opponentOrganismeCode/opponentTeamKey absents à null (l'API omet le champ nul)", async () => {
+    collectionAll.mockResolvedValue([{ id: "f1", teamId: "t1", matchDate: "2026-11-07", homeAway: "AWAY", opponentLabel: "BRON", status: "UNPLACED", reviewState: "NEW" }] as unknown as Fixture[]);
+    const [f] = await getFixtures();
+    expect(f.opponentOrganismeCode).toBeNull();
+    expect(f.opponentTeamKey).toBeNull();
+  });
+
+  it("préserve les clés présentes", async () => {
+    collectionAll.mockResolvedValue([
+      { id: "f1", teamId: "t1", matchDate: "2026-11-07", homeAway: "AWAY", opponentLabel: "BRON - 2", status: "UNPLACED", reviewState: "NEW", opponentOrganismeCode: "ARA0069123", opponentTeamKey: "BRON-2" },
+    ] as unknown as Fixture[]);
+    const [f] = await getFixtures();
+    expect(f.opponentOrganismeCode).toBe("ARA0069123");
+    expect(f.opponentTeamKey).toBe("BRON-2");
+  });
+});
+
+describe("getVenueSuggestions — les gymnases connus d'un adversaire (PR-3)", () => {
+  it("encode le code dans le chemin et déballe { suggestions }", async () => {
+    get.mockReturnValueOnce({ json: () => Promise.resolve({ code: "ARA 69", suggestions: [{ label: "Halle" }] }) } as unknown as ReturnType<typeof get>);
+    const out = await getVenueSuggestions("ARA 69");
+    expect(get).toHaveBeenCalledWith("opponents/ARA%2069/venue-suggestions");
+    expect(out).toEqual([{ label: "Halle" }]);
   });
 });
 

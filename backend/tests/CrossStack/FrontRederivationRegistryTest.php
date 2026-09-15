@@ -129,6 +129,8 @@ final class FrontRederivationRegistryTest extends TestCase
         'features/wizard/steps/RecapStep.tsx' => 'affichage : compte les contraintes HARD pour un chiffre du récap',
         'features/planning/SlotDetail.tsx' => 'présentation : ruleType → libellé « obligatoire »/« préférence »',
         'features/matches/lib/teamLinkLabel.ts' => 'présentation : maison UNIQUE du libellé d\'intensité de passerelle (table PREFERRED/MANDATORY → « Préféré »/« Obligatoire »), consommée par les deux hôtes de la sous-ligne — aucun verdict, le solveur reste seul juge de ce qu\'une intensité FAIT',
+        'features/matches/OpponentTravelCard.tsx' => 'FAUX POSITIF par collision de noms : branche sur OpponentTravelScope (grain du trajet adverse TEAM|CLUB, SERVI par GET /api/opponents/travel), homonyme de ConstraintScope mais sans rapport — présentation/plomberie : choisit QUELLE entrée révèle le défaut du club et quelle pastille/action afficher ; aucune règle de contrainte, le solveur n\'en applique rien',
+        'features/matches/LocateOpponentModal.tsx' => 'FAUX POSITIF par collision de noms : branche sur OpponentTravelScope (grain du trajet adverse TEAM|CLUB, SERVI par GET /api/opponents/travel), homonyme de ConstraintScope mais sans rapport — plomberie : choisit le PAYLOAD (opponentTeamKey + scope) re-envoyé TEL QUEL au backend selon la radio de portée ; aucun verdict solveur',
     ];
 
     // ---------------------------------------------------------------- (i) REGISTRE

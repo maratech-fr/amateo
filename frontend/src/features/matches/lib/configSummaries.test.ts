@@ -31,13 +31,17 @@ const category = (over: Partial<SportCategoryDuration> = {}): SportCategoryDurat
 
 const travel = (over: Partial<OpponentTravel> = {}): OpponentTravel => ({
   opponentOrganismeCode: "ORG",
+  opponentTeamKey: "ADVERSAIRE",
   opponentLabel: "Adversaire",
   located: true,
   precision: null,
   locationName: null,
+  city: null,
+  postalCode: null,
   travelMinutes: null,
   approximated: false,
   source: null,
+  scope: null,
   overrideVenueLabel: null,
   ...over,
 });
@@ -112,8 +116,8 @@ describe("opponentsSummary", () => {
     expect(opponentsSummary([travel(), travel({ opponentLabel: "B" })])).toBe("tous localisés");
   });
 
-  it("des non localisés ⇒ « N à localiser sur M »", () => {
-    expect(opponentsSummary([travel({ located: false }), travel({ opponentLabel: "B" }), travel({ opponentLabel: "C", located: false })])).toBe("2 à localiser sur 3");
+  it("des non localisés ⇒ « N à localiser sur M équipes adverses »", () => {
+    expect(opponentsSummary([travel({ located: false }), travel({ opponentLabel: "B" }), travel({ opponentLabel: "C", located: false })])).toBe("2 à localiser sur 3 équipes adverses");
   });
 });
 

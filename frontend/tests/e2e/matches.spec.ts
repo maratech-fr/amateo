@@ -389,6 +389,28 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   // « Angles morts » avant d'attendre « Voir la semaine ».
   await page.getByRole("button", { name: /Angles morts/ }).first().click();
   await expect(page.getByRole("button", { name: "Voir la semaine" }).first()).toBeVisible();
+
+  // ── PR-3 « adversaire multi-gymnases » : l'écran de trajet adverse, groupé par club ─────
+  //    On NE dépend d'aucune donnée FFBB live (réseau non fiable en CI) : le témoin RÉALISTE
+  //    est que les deux extérieurs créés par CE run (`${opponent}-EXT`, `-EXT2`, saisis à la
+  //    main → AUCUN code fédéral résolu) apparaissent en lignes club « code fédéral non
+  //    résolu » SANS bouton « Localiser », et que le résumé d'en-tête parle d'« équipes
+  //    adverses ». Un écran qui ne les montrerait pas fait ÉCHOUER ces attentes en le disant.
+  await page.goto("/matchs/configuration?section=adversaires");
+  // Le résumé d'en-tête de la section porte le nouveau libellé « … équipes adverses ».
+  await expect(page.getByRole("button", { name: /Adversaires à localiser · .*équipes adverses/ })).toBeVisible({ timeout: 15_000 });
+
+  for (const suffix of ["EXT", "EXT2"] as const) {
+    const heading = page.getByRole("heading", { name: `${opponent}-${suffix}`, level: 4 });
+    await expect(
+      heading,
+      `l'extérieur ${opponent}-${suffix} devrait figurer en ligne club « code fédéral non résolu » — le test ne prouverait rien sinon`,
+    ).toBeVisible({ timeout: 15_000 });
+    // Sa ligne club porte le sous-libellé de reprise ET n'offre PAS de « Localiser » (code non résolu).
+    const row = heading.locator("xpath=ancestor::li[1]");
+    await expect(row.getByText("code fédéral non résolu — relancez la localisation")).toBeVisible();
+    await expect(row.getByRole("button", { name: /Localiser/ })).toHaveCount(0);
+  }
 });
 
 /**

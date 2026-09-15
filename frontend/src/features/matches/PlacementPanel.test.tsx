@@ -29,7 +29,7 @@ const fixture: Fixture = {
   reviewState: "NEW" as const,
   reviewedAt: null,
   pendingDeviations: [],
-  ffbbRencontreId: null, suggestedVenueId: null,
+  ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null,
 };
 const venues: Venue[] = [
   { id: "venue-1", name: "Gymnase Alpha", color: null, externalLabels: [] },
