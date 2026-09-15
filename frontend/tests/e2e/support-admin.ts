@@ -1,6 +1,16 @@
 import { createHmac } from "node:crypto";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { expect, type Page } from "@playwright/test";
+
+/**
+ * Le `storageState` où le projet `setup` (`superadmin.setup.ts`) fige LA session superadmin du
+ * run, et que le projet `superadmin` réutilise (voir `playwright.config.ts`). Chemin ABSOLU,
+ * source unique partagée par la config et le setup — pour qu'ils ne dérivent jamais l'un de
+ * l'autre. Le dossier `.auth/` est ignoré par git (`tests/e2e/.gitignore`).
+ */
+export const SUPERADMIN_STORAGE_STATE = join(dirname(fileURLToPath(import.meta.url)), ".auth", "superadmin.json");
 
 /**
  * Socle e2e de la console superadmin — le premier parcours qui franchit `/admin`.

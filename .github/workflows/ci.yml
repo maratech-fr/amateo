@@ -964,6 +964,12 @@ jobs:
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 40
     needs: blocking-tests
+    env:
+      # BuildKit « bake » démarre un builder et peut se figer sur « waiting for BuildKit:
+      # DeadlineExceeded » quand compose délègue un build local (engine) — run e2e rouge du
+      # 2026-09-15. On coupe la délégation à `docker buildx bake` : compose bâtit alors par sa
+      # voie classique (BuildKit intégré au démon), sans builder externe à attendre.
+      COMPOSE_BAKE: "false"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -976,12 +982,33 @@ jobs:
       - name: Pre-build php image (GHA cache)
         uses: ./.github/actions/build-php-cached
 
+      # Docker Hub injoignable au PULL a rougi « Start services » (run 2026-09-15 : i/o timeout
+      # sur `dunglas/mercure`). On pré-tire les images TIERCES à part, avec relance : un aléa de
+      # registre ne doit plus déguiser une infra saine en échec. `--ignore-buildable` laisse de
+      # côté les images bâties localement (php déjà chargée par l'action ci-dessus, engine ci-après).
+      - name: Pre-pull third-party images
+        id: prepull
+        run: .github/scripts/retry.sh 3 docker compose pull --ignore-buildable nginx mercure redis postgres
+
+      # `engine` est la SEULE image du démarrage à être bâtie localement (les autres sont tierces
+      # ou déjà chargées). On la bâtit À PART, avec relance : « Start services » n'a alors plus
+      # aucun build à déclencher — c'est ce build implicite d'engine (via bake) qui a rougi le
+      # 2026-09-15. (COMPOSE_BAKE=false, en env du job, écarte le builder externe.)
+      - name: Build the engine image
+        id: buildengine
+        run: .github/scripts/retry.sh 2 docker compose build engine
+
       # The journey drives the real stack: nginx (/api), engine (solve),
       # mercure, redis, postgres. messenger-worker starts AFTER composer
       # install — its `bin/console messenger:consume` command dies without
       # vendor/ on a fresh checkout and `--wait` would fail the job.
+      # ⚠ Pas de `--no-build` : php-fpm est chargée par l'action sous le tag `scheduler-php-fpm`
+      # alors que compose la résout sous le nom du projet (`container_name: amateo-php-fpm`) — un
+      # `--no-build` risquerait « image introuvable » sur php. On laisse donc compose retomber sur
+      # un build classique au besoin (rare, engine déjà bâtie, tierces déjà tirées), sous relance.
       - name: Start services
-        run: docker compose up -d --wait php-fpm nginx engine mercure redis postgres
+        id: startservices
+        run: .github/scripts/retry.sh 3 docker compose up -d --wait php-fpm nginx engine mercure redis postgres
 
       # P4-100 — cache de backend/vendor + retry : un 5xx du registre ne doit
       # plus rougir une PR saine (voir l'action).
@@ -1082,6 +1109,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Run Playwright suite
+        id: playwright
         working-directory: frontend
         run: E2E_BASE_URL=http://localhost:5173 npx playwright test
 
@@ -1091,12 +1119,41 @@ jobs:
       # en-tête de la conf prod passait tous les checks. On construit l'image et on rejoue
       # le seul spec concerné contre elle. `E2E_A17_REQUIRED=1` interdit au skip de revenir
       # en silence : viser un dev server ici devient un échec, pas un test ignoré.
+      # `--build` → BuildKit : relance bornée (2 essais) au cas où le builder mette du temps à
+      # répondre, comme pour l'image engine plus haut.
       - name: Build the nginx frontend image
-        run: docker compose up -d --wait --build frontend
+        id: buildfrontend
+        run: .github/scripts/retry.sh 2 docker compose up -d --wait --build frontend
 
       - name: A17 security headers (against the nginx build, not the dev server)
+        id: a17
         working-directory: frontend
         run: E2E_BASE_URL=http://localhost:8081 E2E_A17_REQUIRED=1 npx playwright test tests/e2e/security-headers.spec.ts
+
+      # Boussole d'échec : distinguer une panne d'INFRA (avant que Playwright tourne) d'un vrai
+      # échec de test, pour ne pas envoyer chercher un bug produit quand c'est le registre, BuildKit
+      # ou la stack qui a lâché. Lu depuis l'`outcome` des steps (un step sauté par un échec amont
+      # n'a pas l'`outcome` « failure »).
+      - name: Classify failure (infra vs Playwright)
+        if: failure()
+        run: |
+          {
+            echo "## E2E — nature de l'échec"
+            if [ "${{ steps.playwright.outcome }}" = "failure" ] || [ "${{ steps.a17.outcome }}" = "failure" ]; then
+              echo "❌ **Échec Playwright** — la suite a démarré et au moins un test a rougi. Voir l'artefact \`playwright-results\`."
+            else
+              echo "⚠️ **Échec AVANT Playwright (infra)** — la suite n'a pas démarré. La cause est en amont (pull d'images, build engine/frontend, démarrage de la stack), pas dans les tests."
+            fi
+            echo ""
+            echo "| Step | Résultat |"
+            echo "| --- | --- |"
+            echo "| Pre-pull images | ${{ steps.prepull.outcome }} |"
+            echo "| Build engine | ${{ steps.buildengine.outcome }} |"
+            echo "| Start services | ${{ steps.startservices.outcome }} |"
+            echo "| Build frontend nginx | ${{ steps.buildfrontend.outcome }} |"
+            echo "| Run Playwright | ${{ steps.playwright.outcome }} |"
+            echo "| A17 headers | ${{ steps.a17.outcome }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload traces on failure
         if: failure()
