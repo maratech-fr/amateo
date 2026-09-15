@@ -144,14 +144,19 @@ test("importer: onglet, badge absent, configuration allégée, file de traitemen
     await expect(page.getByRole("button", { name: /à valider/ }).first()).toBeVisible();
   }
 
-  // ── Configuration : « une section = un écran » (P4-185) + données FBI/FFBB migrées (P4-186) ──
+  // ── Configuration : « une section = un écran » (P4-185) + données FBI/FFBB migrées (P4-186) +
+  //    gabarit/créneaux partis en Semaine type, défaut tout replié (PR 2a) ──
   await page.goto("/matchs/configuration");
-  // À l'arrivée, seul le gabarit est ouvert → « Accès match » (section Réglages) reste replié.
-  await expect(page.getByRole("button", { name: /Le gabarit idéal/ })).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByRole("button", { name: "Accès match" })).toHaveCount(0);
-  // Deep-link direct sur la section Réglages → « Accès match » est visible.
+  // Le gabarit idéal a déménagé sur /matchs/semaine-type — plus de section « gabarit » ici.
+  await expect(page.getByRole("button", { name: /Le gabarit idéal/ })).toHaveCount(0);
+  // À l'arrivée TOUT est replié : l'en-tête « Accès match » existe mais sa liste n'est pas montée
+  // (ConfigurationPage.tsx — sectionTitle « Accès match » + summary, défaut openSection null).
+  await expect(page.getByRole("button", { name: /^Accès match/ })).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByText(/Les créneaux que la mairie accorde/)).toHaveCount(0);
+  // Deep-link direct sur la section « Accès match » → sa liste de gymnases (Modifier par ligne) est visible.
   await page.goto("/matchs/configuration?section=reglages");
-  await expect(page.getByRole("button", { name: "Accès match" })).toBeVisible();
+  await expect(page.getByText(/Les créneaux que la mairie accorde/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Modifier les accès match de / }).first()).toBeVisible();
   await expect(page.getByText("Dépôt saisonnier FBI")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Engagements FFBB" })).toHaveCount(0);
 

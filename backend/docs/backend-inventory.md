@@ -3,17 +3,12 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-15 (lot « adversaire multi-gymnases » PR-2, backend seul — **recalage
-post-finding sécurité**, `documentation-update`). §3 « Module matchs », route
-`/api/opponents/{code}/venue-suggestions` (GET, `OpponentTravelController::venueSuggestions`)
-recalée contre le code FINAL (un finding sécurité a changé le mécanisme après une première passe
-doc) : migration `Version20260915140000` confirmée SANS backfill (aucun `INSERT … SELECT`
-restant), nouveau `Service/Basketball/FfbbSalleResolver` (re-résolution serveur du `numero` via
-`_geoRadius`, jamais les libellé/coords du corps client), `OpponentVenueSuggestionRepository::
-upsertManual` (ne réécrit plus libellé/coords sur conflit). Reste du fichier (les cinq routes
-`OpponentTravelController`/`OpponentResolveController` recalées à la passe PR-1 précédente, même
-date) non re-vérifié cette passe — historique des recalages précédents : `git log -p --follow` ce
-fichier. Un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-16 (PR 2a « Configuration & navigation », `documentation-update`). §3
+« Module matchs », route `/api/opponents/resolve` (`OpponentResolveController`) recalée contre
+`OpponentResolveController.php:39` : le cap dur passe de `MAX_DISTINCT=60` à `200`, gardé par
+`OpponentResolveCapTest.php`. Reste du fichier non re-vérifié cette passe — historique des
+recalages précédents : `git log -p --follow` ce fichier. Un stamp REMPLACE, l'historique vit dans
+git.
 
 ---
 
@@ -608,7 +603,7 @@ Détail : [`module-matchs.md`](../../specs/courantes/module-matchs.md). Placemen
 | `/api/venues/{id}/external-labels/{label}` | DELETE | `VenueExternalLabelController` | **P4-187a (2026-09-09)** — « Retirer » un alias (idempotent, 204) — ne touche AUCUNE rencontre déjà rattachée (le lien reste posé, seul l'alias qui l'a produit part). Mêmes gardes que le POST. **Contrat inchangé par E1** : retirer un alias ne dépointe jamais — seule une ré-affectation explicite (POST `reassign: true`) le fait, et seulement pour les domiciles non placés. |
 | `/api/competitions/entry-deadlines` | POST | `CompetitionEntryDeadlinesController` | **RMM-6 PR-1 (2026-08-25)** — saisie bulk `{competitionIds[], deadline}` : pose (ou efface, `deadline: null` **explicite**, clé absente → 422) UNE échéance sur un lot de compétitions du club+saison en une transaction ; un id inconnu/étranger → 422, rien écrit. Pour chaque compétition **appariée** (`ffbbCompetitionId` non null) et une date posée (jamais un effacement), upserte aussi `shared_competition_deadline` (dernière écriture gagne, un seul upsert même si deux compétitions du lot partagent le même id fédéral). SEC-07 (management) tire avant tout lookup ; saison archivée → 409. |
 | `/api/matches/deadline-outlook` | GET | `EntryDeadlineOutlookController` | **RMM-6 PR-1 (2026-08-25)** — l'outlook cockpit, lecture seule, ouvert au Membre : pour chaque échéance EFFECTIVE (club sinon défaut communautaire) encore due, ses compétitions, le nombre de domiciles restant à saisir et si la fenêtre J-7 (`EntryDeadlineOutlook::REMINDER_WINDOW_DAYS`) est ouverte. Une fenêtre ouverte ET une référence de visite existante joignent le delta gardien (`MatchModuleDeltaComputer`, réutilisé) **sans stamper** — maison unique du J-7, le front ne recalcule rien. |
-| `/api/opponents/resolve` | POST | `OpponentResolveController` | **P2-54 RMM-9 (2026-08-28)** — le rattrapage de l'annuaire GLOBAL `opponent_directory` : localise les adversaires AWAY du club+saison encore absents/CITY-only (`OpponentLocationResolver`). SEC-07, cap dur `MAX_DISTINCT=60` avant tout appel réseau, rate-limit `opponent_resolve` par utilisateur. N'écrit QUE la table globale (aucune donnée club/saison). |
+| `/api/opponents/resolve` | POST | `OpponentResolveController` | **P2-54 RMM-9 (2026-08-28), cap relevé PR 2a (2026-09-16)** — le rattrapage de l'annuaire GLOBAL `opponent_directory` : localise les adversaires AWAY du club+saison encore absents/CITY-only (`OpponentLocationResolver`). SEC-07, cap dur `MAX_DISTINCT=200` (était 60 — le club du fondateur compte ~102 adversaires distincts) avant tout appel réseau, rate-limit `opponent_resolve` par utilisateur. N'écrit QUE la table globale (aucune donnée club/saison). Consommé depuis le front par le bouton unique « Mettre à jour les adversaires » (`/matchs/configuration`). |
 | `/api/opponents/travel` | GET | `OpponentTravelController` | **P2-54 RMM-9 PR-3 (2026-08-28), grain ÉQUIPE P2-54 « adversaire multi-gymnases » PR-1 (2026-09-15)** — par rencontre AWAY, groupée par `(opponentOrganismeCode, libellé normalisé)` (deux équipes d'un même organisme = deux entrées, libellé BRUT conservé) : précision/lieu/trajet (nullable)/`approximated` (serveur)/`source` AUTO\|MANUAL, plus depuis 2026-09-15 `opponentTeamKey`, `scope` (`TEAM`\|`CLUB`\|`null` — quel grain gouverne), `city`/`postalCode` de l'annuaire. Ouvert au Membre. |
 | `/api/opponents/travel/manual` | POST | `OpponentTravelController` | (management) épingle un gymnase (`/api/ffbb/salles`) pour un adversaire → surcharge MANUAL + recalcul du trajet. **Depuis 2026-09-15** : `opponentTeamKey`/`scope` optionnels — portée déduite (`TEAM` dès qu'un `opponentTeamKey` est fourni, `CLUB` sinon) ; 422 si `scope=TEAM` sans `teamKey`, ou si `(code, teamKey)` ne correspond à aucune rencontre AWAY réelle de la saison (`isAwayOpponent`, comparaison au libellé normalisé). Une écriture CLUB n'écrase jamais une ligne équipe existante (et réciproquement). SEC-07. |
 | `/api/opponents/travel/auto` | POST | `OpponentTravelController` | (management) retour à l'AUTO. Sans `opponentTeamKey` : recalcule la ligne CLUB depuis l'annuaire global. **Depuis 2026-09-15**, avec `opponentTeamKey` : **SUPPRIME** la ligne équipe (décision A3 — une ligne équipe naît toujours d'un choix manuel, elle ne « redevient » jamais AUTO) ; la réponse reflète le repli team → club → annuaire. SEC-07. |
