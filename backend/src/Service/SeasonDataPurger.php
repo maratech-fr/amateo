@@ -10,6 +10,7 @@ use App\Entity\CoachPlayerMembership;
 use App\Entity\CoachWish;
 use App\Entity\CoachWishCampaign;
 use App\Entity\Competition;
+use App\Entity\ConflictResolution;
 use App\Entity\Constraint;
 use App\Entity\ConstraintConflict;
 use App\Entity\ConstraintPeriodOverride;
@@ -139,6 +140,10 @@ final class SeasonDataPurger
             // RMM-3 — instantané de visite du module matchs (club_id+season_id, aucun
             // enfant) : purgé avec la saison comme les autres tables tenant+saison.
             MatchModuleVisit::class,
+            // P4-207 — statut de traitement d'un conflit (club_id+season_id, aucun
+            // enfant) : purgé avec la saison. C'est la SEULE porte de sortie d'une
+            // ligne orpheline (empreinte disparue du flux) — jamais nettoyée à la volée.
+            ConflictResolution::class,
             // RMM-4 — ingestions FBI datées (club_id+season_id, aucun enfant) :
             // purgées avec la saison ; ErasedClubPurger les suit via ce purger.
             FbiIngestion::class,

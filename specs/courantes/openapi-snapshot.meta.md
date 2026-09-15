@@ -1,13 +1,18 @@
-Last verified @ 2026-09-14 (E1 — l'appariement des salles côté backend, régénéré par l'orchestrateur après
-`rm -rf var/cache/*` + `docker compose restart php-fpm` + `cache:clear` + `api:openapi:export`. **197 paths**
-(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** : `GET /api/venues/fbi-labels`
-(l'inventaire agrégé libellé de salle FBI → gymnase, compteurs) ; le corps de
-`POST /api/venues/{id}/external-labels` gagne `reassign` (optionnel) et sa réponse `kept` +
-`previousVenueId` — **+94 lignes**, portées par `VenueAliasPaths` (contributeur du domaine).
-· SHA-256 `a5a0fb39e1b0a9a5b44f30bdb4e82ff4cd394eafc75a56ca888c0159adae400e`
+Last verified @ 2026-09-15 (B1 — P4-207 « Résolution des conflits » côté backend, régénéré par le coder après
+`cache:clear` + `api:openapi:export`). **198 paths**
+(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** : `PUT`/`DELETE`
+`/api/fixtures/conflicts/{fingerprint}/resolution` (poser/retirer le statut de traitement d'un conflit) ; le
+schéma de réponse du radar `GET /api/fixtures/conflicts` gagne le champ additif `resolution`
+(`status`/`note`/`updatedAt`, nullable).
+· SHA-256 `f9be7ed0bc6d4bcf15eed6589f3ca835faa8eb3947943fa1d16d94ca7999381f`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **B1 — P4-207 « Résolution des conflits », backend (2026-09-15)** : **+1 path** — `PUT`/`DELETE`
+  `/api/fixtures/conflicts/{fingerprint}/resolution` (poser/remplacer ou retirer le statut de traitement d'un
+  conflit — management-only ; « à traiter » = absence de ligne = `DELETE` idempotent) ; le radar
+  `GET /api/fixtures/conflicts` gagne le champ additif `resolution` (objet `status`/`note`/`updatedAt`,
+  nullable = « à traiter »). 197 → **198 paths**. Backend PUR, contrat backend⇄engine **inchangé** (aucun appel moteur).
 - **E1 — l'appariement des salles, backend (2026-09-14)** : **+1 path** — `GET /api/venues/fbi-labels`
   (par libellé normalisé : gymnase confirmé, gymnase suggéré d'après les rencontres, domiciles / placés /
   non placés) ; `POST /api/venues/{id}/external-labels` accepte `reassign` (l'alias change de porteur, les
@@ -60,13 +65,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   pointées du club)`, mémoïsée par requête — `SchedulePlanStalenessResolver`, patron `redatable`) sur
   les 3 variantes read (jsonld, collection). Backend PUR, contrat backend⇄engine **inchangé**
   (`CONTRACT_VERSION` 2.20, aucun appel moteur).
-- **D3 v1 PR-1 complément — le champ servi `redatable` sur `CalendarEntry` (2026-09-04)** : **+0 path** —
-  la ressource lecture `CalendarEntry` gagne une propriété booléenne `redatable` : vraie ssi l'entrée
-  est une racine de FERMETURE portant un plan « d'un bloc » (sans mère, sans semaines-enfants) — le
-  seul cas où le front peut proposer de déplacer les dates, les autres périodes gardant leur fenêtre
-  figée (règle d'or : le backend dit, le front affiche). Servie sur les 3 variantes du schéma read
-  (jsonld, collection). Prédicat UNIQUE (`CalendarEntryRedatability`) partagé avec le dégel de fenêtre
-  au PUT. Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.20, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

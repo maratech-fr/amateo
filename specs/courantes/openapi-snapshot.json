@@ -11199,6 +11199,29 @@
                                                     "fingerprint": {
                                                         "type": "string",
                                                         "description": "Stable identity of the conflict \u2014 same while it is the same dispute, changes when its nature changes (the guardian compares it across visits)"
+                                                    },
+                                                    "resolution": {
+                                                        "type": "object",
+                                                        "nullable": true,
+                                                        "description": "The handling status a manager stamped on this conflict (null = \u00ab \u00e0 traiter \u00bb, the default with no row)",
+                                                        "properties": {
+                                                            "status": {
+                                                                "type": "string",
+                                                                "enum": [
+                                                                    "DEROGATION_REQUESTED",
+                                                                    "RESOLVED_INTERNALLY",
+                                                                    "NO_SOLUTION_YET"
+                                                                ]
+                                                            },
+                                                            "note": {
+                                                                "type": "string",
+                                                                "nullable": true
+                                                            },
+                                                            "updatedAt": {
+                                                                "type": "string",
+                                                                "format": "date-time"
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
@@ -11216,6 +11239,136 @@
                     }
                 },
                 "summary": "Same-coach match/training conflict radar (read-only, computed on the fly)"
+            }
+        },
+        "/api/fixtures/conflicts/{fingerprint}/resolution": {
+            "put": {
+                "operationId": "putFixtureConflictResolution",
+                "tags": [
+                    "Match"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The handling status now stamped on the conflict (the conflict itself stays on the radar; this only says where its resolution stands)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "fingerprint": {
+                                            "type": "string"
+                                        },
+                                        "resolution": {
+                                            "type": "object",
+                                            "properties": {
+                                                "status": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "DEROGATION_REQUESTED",
+                                                        "RESOLVED_INTERNALLY",
+                                                        "NO_SOLUTION_YET"
+                                                    ]
+                                                },
+                                                "note": {
+                                                    "type": "string",
+                                                    "nullable": true
+                                                },
+                                                "updatedAt": {
+                                                    "type": "string",
+                                                    "format": "date-time"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No club in context"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "404": {
+                        "description": "Malformed fingerprint (routing)"
+                    },
+                    "422": {
+                        "description": "Unknown status, note over 500 characters, or a fingerprint absent from the current radar"
+                    }
+                },
+                "summary": "Set (or replace) the handling status of a conflict \u2014 management only. \u00ab \u00c0 traiter \u00bb is not a status here (it is the absence of a row): reset with DELETE",
+                "parameters": [
+                    {
+                        "name": "fingerprint",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "The stable fingerprint of the conflict (from the radar feed)"
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "status"
+                                ],
+                                "properties": {
+                                    "status": {
+                                        "type": "string",
+                                        "enum": [
+                                            "DEROGATION_REQUESTED",
+                                            "RESOLVED_INTERNALLY",
+                                            "NO_SOLUTION_YET"
+                                        ]
+                                    },
+                                    "note": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "Optional free note, at most 500 characters"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            },
+            "delete": {
+                "operationId": "deleteFixtureConflictResolution",
+                "tags": [
+                    "Match"
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Reset to \u00ab \u00e0 traiter \u00bb (idempotent \u2014 204 even when there was no row)"
+                    },
+                    "400": {
+                        "description": "No club in context"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "404": {
+                        "description": "Malformed fingerprint (routing)"
+                    }
+                },
+                "summary": "Reset a conflict to \u00ab \u00e0 traiter \u00bb (removes the handling status) \u2014 management only",
+                "parameters": [
+                    {
+                        "name": "fingerprint",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "The stable fingerprint of the conflict"
+                    }
+                ]
             }
         },
         "/api/fixtures/place": {
