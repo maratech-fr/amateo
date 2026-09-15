@@ -28,11 +28,14 @@ export function LocateOpponentModal({
   opponent,
   clubLabel,
   lockedToClub,
+  fileVenueLabels = [],
   onClose,
 }: {
   opponent: OpponentTravel;
   clubLabel: string;
   lockedToClub: boolean;
+  /** Les salles vues dans le fichier FBI pour cet adversaire (indice, jamais un pré-remplissage). */
+  fileVenueLabels?: string[];
   onClose: () => void;
 }) {
   const code = opponent.opponentOrganismeCode ?? "";
@@ -92,6 +95,13 @@ export function LocateOpponentModal({
       }
     >
       <div className="flex flex-col gap-4">
+        {/* Indice « Dans le fichier » — les salles FBI vues pour cet adversaire (jamais préremplies). */}
+        {fileVenueLabels.length > 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Dans le fichier : <span className="font-medium text-foreground">{fileVenueLabels.join(" · ")}</span>
+          </p>
+        ) : null}
+
         {/* Portée de la correction — verrouillée « tout le club » depuis la ligne club. */}
         <fieldset className="flex flex-col gap-1.5" aria-describedby="locate-scope-help">
           <legend className="text-xs font-medium">Portée de la correction</legend>

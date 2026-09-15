@@ -137,8 +137,12 @@ function GroupRows({
                   {venue.name}
                 </span>
               ) : null !== fixture.fbiVenueLabel ? (
+                // L'invite « à rattacher » ne vaut que pour un match À DOMICILE — c'est là qu'un
+                // libellé FBI doit pointer un gymnase du club. Pour un extérieur, le libellé est
+                // celui de la salle de l'adversaire : rien à rattacher, on l'affiche seul.
                 <span className="text-muted-foreground">
-                  {fixture.fbiVenueLabel} · à rattacher dans Importer
+                  {fixture.fbiVenueLabel}
+                  {"HOME" === fixture.homeAway ? " · à rattacher dans Importer" : ""}
                 </span>
               ) : (
                 <span className="text-muted-foreground">—</span>

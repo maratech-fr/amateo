@@ -1,5 +1,6 @@
 import { Lock } from "lucide-react";
-import { NavLink, Outlet } from "react-router";
+import { useEffect, useRef } from "react";
+import { NavLink, Outlet, useLocation } from "react-router";
 
 import { cn } from "@/shared/lib/utils";
 import { useSocleValidated } from "@/shared/lib/socle";
@@ -22,6 +23,16 @@ import { useConflicts, useFixtures, useModuleVisit } from "./queries";
  */
 export function MatchesLayout() {
   const socleValidated = useSocleValidated();
+  const { pathname } = useLocation();
+  const navRef = useRef<HTMLElement>(null);
+
+  // La nav défile horizontalement à l'étroit (≤ 400 px) — le dernier onglet (« Semaine »,
+  // l'espace par défaut) est alors hors écran. À chaque changement de route, on ramène
+  // l'onglet actif (`aria-current`) dans le champ visible, sans bouger la page verticalement.
+  useEffect(() => {
+    // `scrollIntoView` n'existe pas sous jsdom (aucun moteur de layout) — appel gardé.
+    navRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+  }, [pathname]);
 
   // RMM-3 — le « gardien » : le POST de visite part au MONTAGE du module, une seule
   // fois (staleTime Infinity), et seulement APRÈS la garde socle — `enabled` piloté
@@ -59,20 +70,24 @@ export function MatchesLayout() {
 
   const linkClass = ({ isActive }: { isActive: boolean }): string =>
     cn(
-      "border-b-2 px-1 pb-2 pt-1 text-sm transition-colors focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+      "shrink-0 whitespace-nowrap border-b-2 px-1 pb-2 pt-1 text-sm transition-colors focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
       isActive ? "border-accent font-medium text-foreground" : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
     );
 
   return (
     <div className="flex flex-col gap-4">
       <h1 className="border-l-[3px] border-accent pl-3 text-lg font-semibold">Matchs</h1>
-      <nav aria-label="Espaces matchs" className="flex gap-6 border-b border-border">
-        {/* `end` : /matchs (la boucle) n'est pas actif quand on est en Configuration. */}
-        <NavLink to="/matchs" end className={linkClass}>
-          Semaine
+      {/* Nav défilable horizontalement (pas de `flex-wrap`, pas de `scrollbar-hide`) : à l'étroit
+          les onglets restent sur une ligne et l'actif est ramené en vue (`scrollIntoView` ci-dessus). */}
+      <nav ref={navRef} aria-label="Espaces matchs" className="flex gap-4 overflow-x-auto border-b border-border sm:gap-6">
+        {/* PR A — l'espace « Conflits » : tous les conflits de la saison, pivotés
+            (coach/équipe/gymnase/journée), en lecture seule. P4-207 — badge = conflits
+            À TRAITER, affiché seulement quand > 0. */}
+        <NavLink to="/matchs/conflits" className={linkClass}>
+          {openConflicts > 0 ? `Conflits · ${openConflicts}` : "Conflits"}
         </NavLink>
         {/* PR-2a — l'espace « se rendre compte » : matchs placés + conflits, filtrés,
-            en lecture seule (temporalité Semaine ; 2b ajoutera mois/phase). */}
+            en lecture seule (temporalité Semaine · Mois · Phase). */}
         <NavLink to="/matchs/consulter" className={linkClass}>
           Consulter
         </NavLink>
@@ -84,11 +99,14 @@ export function MatchesLayout() {
         <NavLink to="/matchs/configuration" className={linkClass}>
           Configuration
         </NavLink>
-        {/* PR A — l'espace « Conflits » : tous les conflits de la saison, pivotés
-            (coach/équipe/gymnase/journée), en lecture seule. P4-207 — badge = conflits
-            À TRAITER, affiché seulement quand > 0. */}
-        <NavLink to="/matchs/conflits" className={linkClass}>
-          {openConflicts > 0 ? `Conflits · ${openConflicts}` : "Conflits"}
+        {/* PR 2a — la « Semaine type » : le gabarit idéal + les créneaux partagés, sortis
+            de la Configuration (une page sœur, deep-linkable). */}
+        <NavLink to="/matchs/semaine-type" className={linkClass}>
+          Semaine type
+        </NavLink>
+        {/* `end` : /matchs (la boucle « Semaine ») n'est pas actif quand on est sur un autre espace. */}
+        <NavLink to="/matchs" end className={linkClass}>
+          Semaine
         </NavLink>
       </nav>
       <Outlet />

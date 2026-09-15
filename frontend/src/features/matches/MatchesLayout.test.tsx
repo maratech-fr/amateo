@@ -51,6 +51,7 @@ function renderAt(path: string) {
             <Route path="consulter" element={<div>CONSULTER</div>} />
             <Route path="importer" element={<div>IMPORTER</div>} />
             <Route path="configuration" element={<div>CONFIG</div>} />
+            <Route path="semaine-type" element={<div>SEMAINE_TYPE</div>} />
             <Route path="conflits" element={<div>CONFLITS</div>} />
           </Route>
         </Routes>
@@ -68,14 +69,31 @@ describe("MatchesLayout (RMM-1 PR2 — deux espaces)", () => {
     expect(screen.getByRole("link", { name: "Configuration" })).toBeInTheDocument();
   });
 
-  it("porte les CINQ onglets, dans l'ordre Semaine · Consulter · Importer · Configuration · Conflits (PR A)", () => {
+  it("porte les SIX onglets, dans l'ordre Conflits · Consulter · Importer · Configuration · Semaine type · Semaine (PR 2a)", () => {
     meState.chosen = "s1";
     renderAt("/matchs");
     const nav = screen.getByRole("navigation", { name: "Espaces matchs" });
     const labels = within(nav)
       .getAllByRole("link")
       .map((l) => l.textContent);
-    expect(labels).toEqual(["Semaine", "Consulter", "Importer", "Configuration", "Conflits"]);
+    expect(labels).toEqual(["Conflits", "Consulter", "Importer", "Configuration", "Semaine type", "Semaine"]);
+  });
+
+  it("la nav défile horizontalement (overflow-x-auto, ni flex-wrap ni scrollbar-hide)", () => {
+    meState.chosen = "s1";
+    renderAt("/matchs");
+    const nav = screen.getByRole("navigation", { name: "Espaces matchs" });
+    expect(nav).toHaveClass("overflow-x-auto");
+    expect(nav.className).not.toContain("flex-wrap");
+    expect(nav.className).not.toContain("scrollbar-hide");
+  });
+
+  it("porte l'onglet « Semaine type » et rend sa page (PR 2a)", async () => {
+    meState.chosen = "s1";
+    const user = userEvent.setup();
+    renderAt("/matchs");
+    await user.click(screen.getByRole("link", { name: "Semaine type" }));
+    expect(screen.getByText("SEMAINE_TYPE")).toBeInTheDocument();
   });
 
   it("porte l'onglet Conflits et rend l'espace Conflits (PR A)", async () => {

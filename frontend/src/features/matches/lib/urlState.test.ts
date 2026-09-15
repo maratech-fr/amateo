@@ -115,53 +115,53 @@ describe("applyConsultToParams (PR-2a/2b)", () => {
   });
 });
 
-describe("decodeSectionParam (P4-185 — accordéon Configuration)", () => {
-  it("absent ⇒ gabarit (défaut ouvert)", () => {
-    expect(decodeSectionParam(new URLSearchParams(""))).toBe("gabarit");
+describe("decodeSectionParam (PR 2a — accordéon Configuration, défaut tout replié)", () => {
+  it("absent ⇒ null (rien d'ouvert par défaut)", () => {
+    expect(decodeSectionParam(new URLSearchParams(""))).toBeNull();
   });
 
-  it("valeur inconnue ⇒ repli sur gabarit", () => {
-    expect(decodeSectionParam(new URLSearchParams("section=xxx"))).toBe("gabarit");
+  it("valeur inconnue ⇒ null", () => {
+    expect(decodeSectionParam(new URLSearchParams("section=xxx"))).toBeNull();
   });
 
-  it("« aucune » ⇒ null (tout replié)", () => {
+  it("« aucune » (ancien encodage) ⇒ null (toléré)", () => {
     expect(decodeSectionParam(new URLSearchParams("section=aucune"))).toBeNull();
   });
 
-  it("chacune des 7 clés est reconnue (P4-196 ajoute « libelles »)", () => {
-    for (const key of ["gabarit", "creneaux", "echeances", "durees", "adversaires", "reglages", "libelles"] as const) {
+  it("les clés déplacées « gabarit »/« creneaux » ⇒ null (la page redirige vers la Semaine type)", () => {
+    expect(decodeSectionParam(new URLSearchParams("section=gabarit"))).toBeNull();
+    expect(decodeSectionParam(new URLSearchParams("section=creneaux"))).toBeNull();
+  });
+
+  it("chacune des 5 clés RÉGLAGE est reconnue", () => {
+    for (const key of ["echeances", "durees", "adversaires", "reglages", "libelles"] as const) {
       expect(decodeSectionParam(new URLSearchParams(`section=${key}`))).toBe(key);
     }
   });
 });
 
-describe("applySectionToParams (P4-185)", () => {
-  it("gabarit (défaut) ⇒ param supprimé", () => {
-    expect(applySectionToParams(new URLSearchParams(""), "gabarit").toString()).toBe("");
-    expect(applySectionToParams(new URLSearchParams("section=reglages"), "gabarit").toString()).toBe("");
+describe("applySectionToParams (PR 2a)", () => {
+  it("null (tout replié = défaut) ⇒ param supprimé", () => {
+    expect(applySectionToParams(new URLSearchParams(""), null).toString()).toBe("");
+    expect(applySectionToParams(new URLSearchParams("section=reglages"), null).toString()).toBe("");
   });
 
-  it("null (tout replié) ⇒ section=aucune", () => {
-    expect(applySectionToParams(new URLSearchParams(""), null).get("section")).toBe("aucune");
-  });
-
-  it("une autre section ⇒ écrite telle quelle", () => {
+  it("une section ⇒ écrite telle quelle", () => {
     expect(applySectionToParams(new URLSearchParams(""), "durees").get("section")).toBe("durees");
   });
 
-  it("« libelles » (P4-196) ⇒ écrite et relue telle quelle", () => {
+  it("« libelles » ⇒ écrite et relue telle quelle", () => {
     expect(applySectionToParams(new URLSearchParams(""), "libelles").get("section")).toBe("libelles");
     expect(decodeSectionParam(applySectionToParams(new URLSearchParams(""), "libelles"))).toBe("libelles");
   });
 
   it("préserve les params sans rapport", () => {
-    const out = applySectionToParams(new URLSearchParams("autre=1"), "creneaux");
+    const out = applySectionToParams(new URLSearchParams("autre=1"), "reglages");
     expect(out.get("autre")).toBe("1");
-    expect(out.get("section")).toBe("creneaux");
+    expect(out.get("section")).toBe("reglages");
   });
 
-  it("aller-retour cohérent : encode(gabarit) se relit gabarit, encode(null) se relit null", () => {
-    expect(decodeSectionParam(applySectionToParams(new URLSearchParams(""), "gabarit"))).toBe("gabarit");
+  it("aller-retour cohérent : encode(null) se relit null, encode(echeances) se relit echeances", () => {
     expect(decodeSectionParam(applySectionToParams(new URLSearchParams(""), null))).toBeNull();
     expect(decodeSectionParam(applySectionToParams(new URLSearchParams(""), "echeances"))).toBe("echeances");
   });

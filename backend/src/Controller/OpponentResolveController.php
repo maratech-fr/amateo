@@ -36,7 +36,7 @@ final class OpponentResolveController extends AbstractController
     use ResolvesCurrentClubTrait;
 
     /** Borne dure sur les adversaires distincts d'un rattrapage (avant tout réseau). */
-    private const int MAX_DISTINCT = 60;
+    private const int MAX_DISTINCT = 200;
 
     public function __construct(
         private readonly OpponentLocationResolver $resolver,

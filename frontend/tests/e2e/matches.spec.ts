@@ -456,3 +456,84 @@ test("matches: filtre par coach recadre la vue et porte le deep-link", async ({ 
   await page.getByRole("button", { name: /Domiciles posés/ }).click();
   await expect(page.getByRole("heading", { name: "À placer" })).toBeVisible();
 });
+
+/**
+ * PR 2a « Configuration & navigation » — la barre d'espaces réordonnée + défilable, la Semaine
+ * type sœur (redirection des anciens deep-links), et la section « Accès match » un gymnase à la
+ * fois. Écrit sous la stack réelle (socle validé par `ensureValidated`).
+ */
+test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès match, recherche adversaires", async ({ page }) => {
+  test.setTimeout(240_000); // l'onboarding lance une vraie génération CP-SAT
+  await login(page);
+  await ensureValidated(page);
+
+  await page.goto("/matchs");
+  const nav = page.getByRole("navigation", { name: "Espaces matchs" });
+  const links = nav.getByRole("link");
+  await expect(links).toHaveCount(6);
+  await expect(links.nth(0)).toContainText("Conflits");
+  await expect(links.nth(1)).toHaveText("Consulter");
+  await expect(links.nth(2)).toContainText("Importer");
+  await expect(links.nth(3)).toHaveText("Configuration");
+  await expect(links.nth(4)).toHaveText("Semaine type");
+  await expect(links.nth(5)).toHaveText("Semaine");
+
+  // À 400 px la nav déborde : l'onglet actif (« Semaine », le dernier) est ramené en vue.
+  await page.setViewportSize({ width: 400, height: 800 });
+  await page.goto("/matchs");
+  const active = nav.locator('[aria-current="page"]');
+  await expect(active).toHaveText("Semaine");
+  await expect(active).toBeInViewport();
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // Anciens deep-links du gabarit/créneaux → la Semaine type.
+  await page.goto("/matchs/configuration?section=gabarit");
+  await expect(page).toHaveURL(/\/matchs\/semaine-type$/);
+  await expect(page.getByRole("heading", { name: "Semaine type", level: 2 })).toBeVisible();
+
+  // ── Accès match : ajouter un créneau à un gymnase SANS accès, un gymnase à la fois ──
+  await page.goto("/matchs/configuration?section=reglages");
+  const header = page.getByRole("button", { name: /^Accès match/ });
+  await expect(header).toBeVisible();
+  const readCount = async (): Promise<number> => {
+    const text = (await header.innerText()).trim();
+    const m = text.match(/·\s*(\d+)\s*gymnase/);
+    return null === m ? 0 : Number(m[1]);
+  };
+  const before = await readCount();
+
+  // Témoin de vacuité : le scénario n'a de sens que s'il existe un gymnase sans accès.
+  const disclosure = page.getByRole("button", { name: /\d+ gymnases? sans accès match$/ });
+  await expect(disclosure, "témoin: le seed doit avoir au moins un gymnase sans accès match").toBeVisible();
+  await disclosure.click();
+
+  const firstEdit = page.getByRole("button", { name: /^Modifier les accès match de / }).first();
+  const editLabel = (await firstEdit.getAttribute("aria-label")) ?? "";
+  const venueName = editLabel.replace("Modifier les accès match de ", "");
+  await firstEdit.click();
+
+  const dialog = page.getByRole("dialog", { name: `Accès match · ${venueName}` });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Jour de la fenêtre match").selectOption("6");
+  await dialog.getByLabel("Début de la fenêtre match").fill("14:00");
+  await dialog.getByLabel("Fin de la fenêtre match").fill("22:00");
+  await dialog.getByRole("button", { name: "Ajouter la fenêtre match" }).click();
+  await expect(dialog.getByText(/Samedi 14:00/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Fermer" }).click();
+
+  // Le gymnase a rejoint la liste principale (avec sa plage formatée), le focus revient au
+  // « Modifier » de sa ligne, et l'en-tête compte un gymnase de plus.
+  await expect(page.getByText("sam. 14:00–22:00")).toBeVisible();
+  const modifierAfter = page.getByRole("button", { name: `Modifier les accès match de ${venueName}` });
+  await expect(modifierAfter).toBeFocused();
+  await expect.poll(readCount).toBe(before + 1);
+
+  // ── Recherche adversaires : « xyz » n'a aucun résultat, Escape vide la requête ──
+  await page.goto("/matchs/configuration?section=adversaires");
+  const search = page.getByRole("searchbox", { name: "Rechercher un club ou une équipe" });
+  await expect(search).toBeVisible();
+  await search.fill("xyznonexistant");
+  await expect(page.getByText(/Aucun adversaire pour/)).toBeVisible();
+  await search.press("Escape");
+  await expect(search).toHaveValue("");
+});

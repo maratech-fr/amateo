@@ -202,33 +202,32 @@ export function applyConflictsToParams(current: URLSearchParams, conflicts: Conf
 }
 
 /**
- * P4-185 — ancrage de la section ouverte de `/matchs/configuration` (accordéon
- * « une section = un écran »). `?section=<clé>` ; absent/inconnu ⇒ `gabarit`
- * (défaut ouvert), `aucune` ⇒ `null` (tout replié). Écrire le défaut (`gabarit`)
- * SUPPRIME le param ; `null` écrit `aucune` — sans quoi replier le gabarit
- * (param absent) le rouvrirait au décodage. Mêmes conventions que `?vue=`/`?temps=`.
+ * PR 2a « Configuration & navigation » — ancrage de la section ouverte de
+ * `/matchs/configuration` (accordéon « une section = un écran »). `?section=<clé>`.
+ *
+ * Le gabarit et les créneaux ont DÉMÉNAGÉ vers `/matchs/semaine-type` : `ConfigSection` ne
+ * porte plus que les cinq sections RÉGLAGE (`echeances|durees|adversaires|reglages|libelles`).
+ * **Défaut = tout replié** : absent, `aucune` (toléré, ancien encodage), une valeur inconnue,
+ * ou les clés déplacées `gabarit`/`creneaux` ⇒ `null` (aucune section ouverte). Écrire `null`
+ * SUPPRIME le param (le défaut n'a plus besoin d'être encodé). La redirection des anciennes
+ * clés `gabarit`/`creneaux` vers la Semaine type est portée par `ConfigurationPage`
+ * (lecture du param brut). Mêmes conventions que `?vue=`/`?temps=`.
  */
-export type ConfigSection = "gabarit" | "creneaux" | "echeances" | "durees" | "adversaires" | "reglages" | "libelles";
+export type ConfigSection = "echeances" | "durees" | "adversaires" | "reglages" | "libelles";
 
-const CONFIG_SECTIONS: ConfigSection[] = ["gabarit", "creneaux", "echeances", "durees", "adversaires", "reglages", "libelles"];
+const CONFIG_SECTIONS: ConfigSection[] = ["echeances", "durees", "adversaires", "reglages", "libelles"];
 
 function isConfigSection(value: string | null): value is ConfigSection {
   return null !== value && (CONFIG_SECTIONS as string[]).includes(value);
 }
 
 export function decodeSectionParam(params: URLSearchParams): ConfigSection | null {
-  const raw = params.get("section");
-  if ("aucune" === raw) {
-    return null;
-  }
-  return isConfigSection(raw) ? raw : "gabarit";
+  return isConfigSection(params.get("section")) ? (params.get("section") as ConfigSection) : null;
 }
 
 export function applySectionToParams(current: URLSearchParams, section: ConfigSection | null): URLSearchParams {
   const next = new URLSearchParams(current);
   if (null === section) {
-    next.set("section", "aucune");
-  } else if ("gabarit" === section) {
     next.delete("section");
   } else {
     next.set("section", section);

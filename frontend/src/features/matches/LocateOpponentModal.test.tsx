@@ -200,3 +200,24 @@ describe("LocateOpponentModal — la correction manuelle (PR-3, suggestions + po
     expect(within(list).getByRole("button", { name: /Gymnase des Servizières/ })).toBeDisabled();
   });
 });
+
+describe("LocateOpponentModal — indice « Dans le fichier » (PR 2a)", () => {
+  const renderWithHint = (labels: string[]) =>
+    renderWithProviders(<LocateOpponentModal opponent={OPPONENT} clubLabel="Meyzieu Basket" lockedToClub={false} fileVenueLabels={labels} onClose={vi.fn()} />);
+
+  it("aucun libellé ⇒ pas de ligne « Dans le fichier »", () => {
+    renderTeam(); // fileVenueLabels par défaut = []
+    expect(screen.queryByText(/Dans le fichier/)).not.toBeInTheDocument();
+  });
+
+  it("un libellé ⇒ « Dans le fichier : GYMNASE CHANFRAY »", () => {
+    renderWithHint(["GYMNASE CHANFRAY"]);
+    expect(screen.getByText(/Dans le fichier/)).toBeInTheDocument();
+    expect(screen.getByText("GYMNASE CHANFRAY")).toBeInTheDocument();
+  });
+
+  it("plusieurs libellés ⇒ joints par « · »", () => {
+    renderWithHint(["HALLE A", "HALLE B", "HALLE C"]);
+    expect(screen.getByText("HALLE A · HALLE B · HALLE C")).toBeInTheDocument();
+  });
+});

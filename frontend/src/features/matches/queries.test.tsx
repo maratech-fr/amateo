@@ -33,6 +33,7 @@ import {
   useSwapFixtures,
   useTeamMatchHabits,
   useUnavailabilityImpact,
+  useUpdateOpponents,
   useUpdateSportCategoryDuration,
   useVenueMatchWindows,
   useVenueLabelInventory,
@@ -68,6 +69,7 @@ vi.mock("./api", () => ({
   setOpponentTravelManual: vi.fn().mockResolvedValue({}),
   setOpponentTravelAuto: vi.fn().mockResolvedValue({}),
   resolveOpponentTravel: vi.fn().mockResolvedValue({ resolved: 2, unresolved: [], skippedManual: 0 }),
+  resolveOpponents: vi.fn().mockResolvedValue({ resolved: 12, unresolved: [], skipped: 0, stamped: 40 }),
   createVenueUnavailability: vi.fn().mockResolvedValue({ id: "u1", venueId: "v", startDate: "2026-10-01", endDate: "2026-10-02", label: null }),
   createTeamMatchHabit: vi.fn().mockResolvedValue({ id: "h1", teamId: "t", dayOfWeek: 6, kickoffTime: "18:00", venueId: null }),
   setEntryDeadlines: vi.fn().mockResolvedValue({ updated: [], deadline: null }),
@@ -86,6 +88,12 @@ vi.mock("./api", () => ({
   putConflictResolution: vi.fn().mockResolvedValue({ fingerprint: "fp-1", resolution: { status: "DEROGATION_REQUESTED", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } }),
   deleteConflictResolution: vi.fn().mockResolvedValue(undefined),
 }));
+
+// La barre de toasts est mockée pour ces cas (aucun autre test du fichier ne l'asserte) :
+// « Mettre à jour les adversaires » résume ses étapes réussies dans UN toast de succès, et
+// signale l'échec d'une étape sans interrompre la suivante.
+const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock("@/shared/stores/toastStore", () => ({ toast: toastMock }));
 
 function makeClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -235,6 +243,49 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     await waitFor(() => expect(result.current.resolve.isSuccess).toBe(true));
     await waitFor(() => expect(matchesApi.getOpponentTravel).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(matchesApi.getConflicts).toHaveBeenCalledTimes(2));
+  });
+
+  it("useUpdateOpponents (deux étapes) : rattrape les codes PUIS les trajets, refetche fixtures + trajet, UN toast de succès", async () => {
+    toastMock.success.mockClear();
+    toastMock.error.mockClear();
+    const client = makeClient();
+    const { result } = renderHook(
+      () => ({ fixtures: useFixtures(), travel: useOpponentTravel(), update: useUpdateOpponents() }),
+      { wrapper: wrapperFor(client) },
+    );
+
+    await waitFor(() => expect(result.current.fixtures.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.travel.isSuccess).toBe(true));
+
+    result.current.update.run();
+
+    await waitFor(() => expect("idle" === result.current.update.step).toBe(true));
+    // Les DEUX étapes ont tourné, dans l'ordre.
+    expect(matchesApi.resolveOpponents).toHaveBeenCalledTimes(1);
+    expect(matchesApi.resolveOpponentTravel).toHaveBeenCalledTimes(1);
+    // Les lecteurs réels ont refetché (fixtures estampillées + trajet).
+    await waitFor(() => expect(matchesApi.getFixtures).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(matchesApi.getOpponentTravel).toHaveBeenCalledTimes(2));
+    // UN seul toast de succès, résumant les deux étapes réussies.
+    expect(toastMock.success).toHaveBeenCalledTimes(1);
+    expect(toastMock.success).toHaveBeenCalledWith("12 codes retrouvés · 2 trajets calculés");
+  });
+
+  it("useUpdateOpponents : l'échec de l'étape 1 (codes) N'INTERROMPT PAS l'étape 2 (trajets)", async () => {
+    toastMock.success.mockClear();
+    toastMock.error.mockClear();
+    vi.mocked(matchesApi.resolveOpponents).mockRejectedValueOnce(new Error("codes KO"));
+    const client = makeClient();
+    const { result } = renderHook(() => ({ update: useUpdateOpponents() }), { wrapper: wrapperFor(client) });
+
+    result.current.update.run();
+
+    await waitFor(() => expect("idle" === result.current.update.step).toBe(true));
+    // L'étape 2 a bien tourné malgré l'échec de l'étape 1.
+    expect(matchesApi.resolveOpponentTravel).toHaveBeenCalledTimes(1);
+    // Un toast d'erreur pour l'étape 1, et le succès ne résume QUE l'étape réussie.
+    expect(toastMock.error).toHaveBeenCalledWith("Rattrapage des codes FFBB impossible — poursuite avec les trajets.");
+    expect(toastMock.success).toHaveBeenCalledWith("2 trajets calculés");
   });
 });
 

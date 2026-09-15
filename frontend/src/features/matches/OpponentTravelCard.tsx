@@ -1,18 +1,21 @@
-import { Building2, MapPinOff, RefreshCw, RotateCcw } from "lucide-react";
-import { useState } from "react";
+import { Building2, ChevronDown, MapPinOff, RefreshCw, RotateCcw, Search } from "lucide-react";
+import { useId, useMemo, useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { WarningPanel } from "@/shared/components/ui/warning-panel";
 import { readState } from "@/shared/lib/readState";
+import { cn } from "@/shared/lib/utils";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { OpponentTravel } from "./api";
 import { AwayTravelChip } from "./AwayTravelChip";
 import { LocateOpponentModal } from "./LocateOpponentModal";
-import { useOpponentTravel, useResolveOpponentTravel, useSetOpponentTravelAuto } from "./queries";
+import { clubMatchesQuery, queryTokens, textMatchesQuery } from "./lib/opponentSearch";
+import { useFixtures, useOpponentTravel, useSetOpponentTravelAuto, useUpdateOpponents } from "./queries";
 import { SourceBadge } from "./SourceBadge";
 
 /**
@@ -22,6 +25,10 @@ import { SourceBadge } from "./SourceBadge";
  * source AUTO/MANUEL et le grain (`scope`) qui la gouverne. Tout (précision, minutes,
  * `scope`, `source`) vient du BACKEND — le front n'en re-dérive rien, il DÉRIVE seulement un
  * libellé de club d'AFFICHAGE (présentation pure, jamais une clé).
+ *
+ * PR 2a — une RECHERCHE instantanée (club ou équipe), les adversaires SANS code fédéral sortis
+ * dans une liste repliée à part, et « Mettre à jour les adversaires » (rattraper les codes FFBB
+ * puis recalculer les trajets, deux étapes).
  */
 
 /** Libellé de club pour l'AFFICHAGE : le libellé brut moins un suffixe d'équipe final « - n ».
@@ -52,59 +59,92 @@ interface Locating {
 
 export function OpponentTravelCard() {
   const travelQuery = useOpponentTravel();
-  const resolve = useResolveOpponentTravel();
+  const fixtures = useFixtures();
+  const update = useUpdateOpponents();
   const revert = useSetOpponentTravelAuto();
   const [locating, setLocating] = useState<Locating | null>(null);
+  const [query, setQuery] = useState("");
+  const [orphansOpen, setOrphansOpen] = useState(false);
+  const orphansListId = useId();
 
   const state = readState(travelQuery);
   const opponents = travelQuery.data ?? [];
   const unlocatedCount = opponents.filter((o) => !o.located).length;
 
   // ── Groupement par CLUB (code fédéral) + lignes « non résolues » à part ──────────
-  const coded = new Map<string, OpponentTravel[]>();
-  const unresolved: OpponentTravel[] = [];
-  for (const o of opponents) {
-    if (null === o.opponentOrganismeCode) {
-      unresolved.push(o);
-    } else {
-      const bucket = coded.get(o.opponentOrganismeCode) ?? [];
-      bucket.push(o);
-      coded.set(o.opponentOrganismeCode, bucket);
+  const { groups, unresolved } = useMemo(() => {
+    const coded = new Map<string, OpponentTravel[]>();
+    const orphans: OpponentTravel[] = [];
+    for (const o of travelQuery.data ?? []) {
+      if (null === o.opponentOrganismeCode) {
+        orphans.push(o);
+      } else {
+        const bucket = coded.get(o.opponentOrganismeCode) ?? [];
+        bucket.push(o);
+        coded.set(o.opponentOrganismeCode, bucket);
+      }
     }
-  }
-  const groups: ClubGroup[] = [...coded.entries()].map(([code, entries]) => ({
-    code,
-    clubLabel: deriveClubLabel(entries[0].opponentLabel),
-    entries,
-  }));
+    const built: ClubGroup[] = [...coded.entries()].map(([code, entries]) => ({ code, clubLabel: deriveClubLabel(entries[0].opponentLabel), entries }));
+    return { groups: built, unresolved: orphans };
+  }, [travelQuery.data]);
 
-  // Chaque ligne (club groupé ou entrée non résolue) porte son témoin de tri : les clubs
-  // ayant AU MOINS une équipe non localisée d'abord, puis alphabétique (fr).
-  type Row = { hasUnlocated: boolean; sortLabel: string; group: ClubGroup | null; orphan: OpponentTravel | null };
-  const rows: Row[] = [
-    ...groups.map((g) => ({ hasUnlocated: g.entries.some((e) => !e.located), sortLabel: g.clubLabel, group: g, orphan: null })),
-    ...unresolved.map((o) => ({ hasUnlocated: true, sortLabel: deriveClubLabel(o.opponentLabel), group: null, orphan: o })),
-  ].sort((a, b) => Number(b.hasUnlocated) - Number(a.hasUnlocated) || a.sortLabel.localeCompare(b.sortLabel, "fr"));
+  // ── Recherche instantanée : un club conservé ENTIER si son libellé OU une équipe matche ──
+  const tokens = queryTokens(query);
+  const filteredGroups = useMemo(
+    () => (0 === tokens.length ? groups : groups.filter((g) => clubMatchesQuery(g.clubLabel, g.entries.map((e) => e.opponentLabel), tokens))),
+    [groups, tokens],
+  );
+  // Clubs non-localisés d'abord, puis alphabétique (fr).
+  const sortedGroups = [...filteredGroups].sort(
+    (a, b) => Number(b.entries.some((e) => !e.located)) - Number(a.entries.some((e) => !e.located)) || a.clubLabel.localeCompare(b.clubLabel, "fr"),
+  );
+  const matchingOrphans = useMemo(
+    () => (0 === tokens.length ? unresolved : unresolved.filter((o) => textMatchesQuery(o.opponentLabel, tokens))).slice().sort((a, b) => a.opponentLabel.localeCompare(b.opponentLabel, "fr")),
+    [unresolved, tokens],
+  );
+  const orphansExpanded = orphansOpen || ("" !== query && matchingOrphans.length > 0);
+
+  // ── Indice « Dans le fichier » pour Localiser : les salles FBI vues sur les rencontres de CET
+  //    adversaire (grain équipe), distinctes, 3 au plus, dans l'ordre d'apparition. ──
+  const fileVenueLabels = useMemo(() => {
+    if (null === locating) {
+      return [];
+    }
+    const { opponentOrganismeCode: code, opponentTeamKey: key } = locating.opponent;
+    const labels: string[] = [];
+    for (const fx of fixtures.data ?? []) {
+      if (fx.opponentOrganismeCode === code && fx.opponentTeamKey === key && null !== fx.fbiVenueLabel && !labels.includes(fx.fbiVenueLabel)) {
+        labels.push(fx.fbiVenueLabel);
+        if (labels.length >= 3) {
+          break;
+        }
+      }
+    }
+    return labels;
+  }, [locating, fixtures.data]);
 
   const revertToClubDefault = (code: string, teamKey: string | null): void => {
-    revert.mutate(
-      { opponentOrganismeCode: code, ...(null === teamKey ? {} : { opponentTeamKey: teamKey }) },
-      { onSuccess: () => toast.success("Défaut du club rétabli.") },
-    );
+    revert.mutate({ opponentOrganismeCode: code, ...(null === teamKey ? {} : { opponentTeamKey: teamKey }) }, { onSuccess: () => toast.success("Défaut du club rétabli.") });
   };
+
+  const updateLabel = "codes" === update.step ? "Codes FFBB…" : "trajets" === update.step ? "Trajets…" : "Mettre à jour les adversaires";
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          Précisez le gymnase de ces adversaires pour estimer le trajet de vos coachs. Le défaut vaut pour
-          tout le club ; une équipe peut recevoir son propre gymnase.
+          Précisez le gymnase de ces adversaires pour estimer le trajet de vos coachs. Le défaut vaut pour tout le club ; une
+          équipe peut recevoir son propre gymnase.
         </p>
-        <Button variant="ghost" size="sm" className="shrink-0" disabled={resolve.isPending} onClick={() => resolve.mutate()}>
-          <RefreshCw className="size-4" aria-hidden="true" />
-          {resolve.isPending ? "Recalcul…" : "Recalculer les trajets"}
+        <Button variant="outline" size="sm" className="shrink-0" disabled={update.isPending} onClick={update.run}>
+          <RefreshCw className={cn("size-4", update.isPending ? "animate-spin" : "")} aria-hidden="true" />
+          {updateLabel}
         </Button>
       </div>
+      {/* Annonce a11y de la progression — MONTÉE avant le clic (le lecteur d'écran suit les étapes). */}
+      <p role="status" className="sr-only">
+        {"codes" === update.step ? "Mise à jour des adversaires — étape 1 sur 2 : codes FFBB" : "trajets" === update.step ? "Mise à jour des adversaires — étape 2 sur 2 : trajets" : ""}
+      </p>
 
       {"failed" === state ? <LoadErrorHint onRetry={() => void travelQuery.refetch()} /> : null}
       {"loading" === state ? <EmptyHint>Chargement…</EmptyHint> : null}
@@ -122,37 +162,75 @@ export function OpponentTravelCard() {
             <EmptyHint>Tous vos adversaires sont localisés — les temps de trajet sont estimés automatiquement.</EmptyHint>
           ) : null}
 
-          {rows.length > 0 ? (
+          {/* Recherche — masquée sans adversaire (le filtre n'aurait rien à faire). */}
+          {opponents.length > 0 ? (
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input
+                type="search"
+                aria-label="Rechercher un club ou une équipe"
+                placeholder="Rechercher un club ou une équipe"
+                className="h-9 w-full pl-9 sm:max-w-xs"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if ("Escape" === e.key) {
+                    setQuery("");
+                  }
+                }}
+              />
+            </div>
+          ) : null}
+
+          {/* Élément role=status UNIQUE : requête vide → rien ; résultats → compte ; zéro → l'invite. */}
+          {"" !== query && 0 === filteredGroups.length && 0 === matchingOrphans.length ? (
+            <EmptyHint role="status">Aucun adversaire pour « {query} ».</EmptyHint>
+          ) : "" !== query && filteredGroups.length > 0 ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              {filteredGroups.length} club{filteredGroups.length > 1 ? "s" : ""} sur {groups.length}
+            </p>
+          ) : null}
+
+          {sortedGroups.length > 0 ? (
             <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
-              {rows.map((row) =>
-                null !== row.orphan ? (
-                  // ── Entrée SANS code fédéral : une ligne club à part, sans lignes équipe ni bouton.
-                  <li key={`orphan-${row.orphan.opponentLabel}`} className="px-3 py-2">
-                    <h4 className="text-sm font-medium">{deriveClubLabel(row.orphan.opponentLabel)}</h4>
-                    <p className="text-xs text-muted-foreground">code fédéral non résolu — relancez la localisation</p>
-                  </li>
-                ) : (
-                  <ClubRow
-                    key={`club-${row.group!.code}`}
-                    group={row.group!}
-                    revertPending={revert.isPending}
-                    onLocate={setLocating}
-                    onRevert={revertToClubDefault}
-                  />
-                ),
-              )}
+              {sortedGroups.map((group) => (
+                <ClubRow key={`club-${group.code}`} group={group} revertPending={revert.isPending} onLocate={setLocating} onRevert={revertToClubDefault} />
+              ))}
             </ul>
+          ) : null}
+
+          {/* Adversaires SANS code fédéral — liste repliée à part, compte suivant le filtre. */}
+          {matchingOrphans.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="self-start"
+                aria-expanded={orphansExpanded}
+                aria-controls={orphansExpanded ? orphansListId : undefined}
+                onClick={() => setOrphansOpen((open) => !open)}
+              >
+                <ChevronDown className={cn("size-4", orphansExpanded ? "rotate-180" : "")} aria-hidden="true" />
+                {matchingOrphans.length} adversaire{matchingOrphans.length > 1 ? "s" : ""} sans code fédéral
+              </Button>
+              <p className="text-xs text-muted-foreground">« Mettre à jour les adversaires » tente de retrouver leur code FFBB.</p>
+              {orphansExpanded ? (
+                <ul id={orphansListId} className="flex flex-col divide-y divide-border rounded-md border border-border">
+                  {matchingOrphans.map((orphan) => (
+                    <li key={`orphan-${orphan.opponentLabel}`} className="px-3 py-2">
+                      <h4 className="text-sm font-medium">{deriveClubLabel(orphan.opponentLabel)}</h4>
+                      <p className="text-xs text-muted-foreground">code fédéral non résolu</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
           ) : null}
         </>
       ) : null}
 
       {null !== locating ? (
-        <LocateOpponentModal
-          opponent={locating.opponent}
-          clubLabel={locating.clubLabel}
-          lockedToClub={locating.lockedToClub}
-          onClose={() => setLocating(null)}
-        />
+        <LocateOpponentModal opponent={locating.opponent} clubLabel={locating.clubLabel} lockedToClub={locating.lockedToClub} fileVenueLabels={fileVenueLabels} onClose={() => setLocating(null)} />
       ) : null}
     </div>
   );
@@ -194,12 +272,7 @@ function ClubRow({
             {null !== clubDefault ? <AwayTravelChip travel={clubDefault} /> : <span className="ml-1 text-xs text-muted-foreground">—</span>}
           </span>
           <span className="flex shrink-0 items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={`Localiser ${clubLabel}, toutes les équipes`}
-              onClick={() => onLocate({ opponent: entries[0], clubLabel, lockedToClub: true })}
-            >
+            <Button variant="ghost" size="sm" aria-label={`Localiser ${clubLabel}, toutes les équipes`} onClick={() => onLocate({ opponent: entries[0], clubLabel, lockedToClub: true })}>
               Localiser
             </Button>
             {clubIsManual ? (
