@@ -53,9 +53,11 @@ export function AwayList({ fixtures, teams, habits, travel = [], coachRoles, onE
 
   return (
     <section className="rounded-lg border border-border bg-card px-3 py-2">
-      <h3 className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      {/* PR 3b — `<h2>` (et non `<h3>`) : sur le Calendrier fusionné, la bande extérieur est
+          au même niveau de titre que « À placer » (`CardTitle` = h2), pas imbriquée sous elle. */}
+      <h2 className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         <Bus className="size-3.5" />À l'extérieur ce week-end
-      </h3>
+      </h2>
       <ul className="flex flex-col gap-1">
         {away.map((fixture) => {
           const { hour, estimated } = awayHour(fixture, habits);

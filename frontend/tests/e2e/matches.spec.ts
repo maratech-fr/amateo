@@ -146,16 +146,12 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   await page.getByRole("link", { name: "Matchs" }).click();
   await expect(page.getByRole("heading", { name: "Matchs" })).toBeVisible();
 
-  // RMM-1 PR3 — l'écran est désormais une BOUCLE GUIDÉE : un rail de 5 vues (le
-  // même geste que le wizard). Le radar vit dans la vue « Conflits » ; la liste
-  // « à placer », le panneau et la grille dans « Domiciles posés ». On NAVIGUE
-  // donc explicitement (les boutons du rail portent le libellé de l'étape). Le
-  // radar reste un témoin : présent dans sa vue.
-  await page.getByRole("button", { name: /Conflits/ }).click();
-  // Le titre de la carte radar (un <h2>) — distinct du bouton « Conflits (n) » du rail.
-  await expect(page.getByRole("heading", { name: /Conflits/, level: 2 })).toBeVisible();
+  // PR 3b — l'écran est désormais le CALENDRIER unique : plus de rail, la liste
+  // « à placer », le panneau, la grille, la bande extérieur ET le radar sont sur le
+  // même établi de semaine. La barre « Semaine affichée » porte les trois compteurs.
+  await expect(page.getByRole("group", { name: "Semaine affichée" })).toBeVisible();
 
-  // Manual entry (« Nouveau match » est dans la barre du haut, dispo partout).
+  // Manual entry (« Nouveau match » est dans la barre d'actions, dispo partout).
   await page.getByRole("button", { name: /Nouveau match/i }).click();
   await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeVisible();
   // « Équipe » est une listbox APG (P4-164) : on ouvre le trigger puis on choisit la 1re équipe.
@@ -200,9 +196,8 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeHidden({ timeout: 15_000 });
   }
 
-  // La liste « à placer » + le panneau + la grille vivent dans la vue « Domiciles
-  // posés » (rail⇄vue). On l'ouvre avant de manipuler le placement.
-  await page.getByRole("button", { name: /Domiciles posés/ }).click();
+  // PR 3b — la liste « à placer », le panneau et la grille sont TOUJOURS visibles
+  // sur le Calendrier (plus de vue à ouvrir).
 
   // The new home fixture shows in the to-do list; open its placement panel.
   // Names disambiguate the two buttons carrying the opponent: the to-do entry
@@ -240,9 +235,6 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
     for (let hops = 0; hops < 40 && !(await cell.isVisible()) && (await nextWeek.isEnabled()); hops += 1) {
       await nextWeek.click();
       await page.waitForTimeout(150);
-      // Changer de semaine REND l'étape à l'automatique (store `railStep` → null) :
-      // on revient donc explicitement sur « Domiciles posés », la vue qui porte la grille.
-      await page.getByRole("button", { name: /Domiciles posés/ }).click();
     }
     await expect(cell).toBeVisible({ timeout: 15_000 });
     await cell.click();
@@ -267,15 +259,12 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   // gymnase. On hop jusqu'à la semaine qui porte le premier extérieur (base réelle :
   // il est daté LOIN, mars 2027). Tous les locators sont scopés au conteneur grille
   // (`data-testid="weekend-grid"`) pour ne rien ramasser dans la bande AwayList sœur.
-  await page.getByRole("button", { name: /Domiciles posés/ }).click();
   const gridRoot = page.getByTestId("weekend-grid");
   const awayExtBlock = gridRoot.getByRole("button", { name: new RegExp(`à ${opponent}-EXT\\b`) });
   const nextWeekAway = page.getByRole("button", { name: "Semaine suivante" });
   for (let hops = 0; hops < 60 && !(await awayExtBlock.isVisible()) && (await nextWeekAway.isEnabled()); hops += 1) {
     await nextWeekAway.click();
     await page.waitForTimeout(120);
-    // Changer de semaine rend l'étape à l'automatique : on revient sur « Domiciles posés ».
-    await page.getByRole("button", { name: /Domiciles posés/ }).click();
   }
   await expect(
     awayExtBlock,
@@ -396,12 +385,12 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   const voir = page.getByRole("button", { name: "Voir la semaine" }).first();
   await expect(voir).toBeVisible();
 
-  // « Voir la semaine » → Placer (/matchs). Le libellé de semaine affiché
+  // « Voir la semaine » → Calendrier (/matchs). Le libellé de semaine affiché
   // (weekLabel « Semaine du <lundi> au <dimanche> ») DOIT porter le week-end du
   // conflit : le dimanche (borne haute de weekLabel) est le samedi+1, présent dans
   // l'étiquette courte du bouton (weekendShortLabel) — même samedi des deux côtés,
   // donc le token « <jour> <mois>. » du dimanche est contenu dans le titre du bouton.
-  const voirTitle = (await voir.getAttribute("title")) ?? ""; // « Voir la semaine du <court> dans Placer »
+  const voirTitle = (await voir.getAttribute("title")) ?? ""; // « Voir la semaine du <court> dans le Calendrier »
   await voir.click();
   await expect(page).toHaveURL(/\/matchs$/);
   const weekSpan = page.getByText(/^Semaine du .+ au .+$/);
@@ -492,9 +481,9 @@ test("matches: filtre par coach recadre la vue et porte le deep-link", async ({ 
   // ouverte. Échap la ferme désormais (P4-184) et rend le focus au déclencheur.
   await page.keyboard.press("Escape");
 
-  // La vue « Domiciles posés » rend la grille sans erreur, recadrée sur le coach.
-  await page.getByRole("button", { name: /Domiciles posés/ }).click();
-  await expect(page.getByRole("heading", { name: "À placer" })).toBeVisible();
+  // PR 3b — le Calendrier rend la barre « Semaine affichée » et l'établi recadrés
+  // sur le coach (plus de vue à ouvrir).
+  await expect(page.getByRole("group", { name: "Semaine affichée" })).toBeVisible();
 });
 
 /**
@@ -510,19 +499,20 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
   await page.goto("/matchs");
   const nav = page.getByRole("navigation", { name: "Espaces matchs" });
   const links = nav.getByRole("link");
-  await expect(links).toHaveCount(6);
+  // PR 3b — CINQ onglets : Conflits · Calendrier · Importer · Configuration · Semaine type
+  // (« Consulter » et « Semaine » ont fusionné dans « Calendrier »).
+  await expect(links).toHaveCount(5);
   await expect(links.nth(0)).toContainText("Conflits");
-  await expect(links.nth(1)).toHaveText("Consulter");
+  await expect(links.nth(1)).toHaveText("Calendrier");
   await expect(links.nth(2)).toContainText("Importer");
   await expect(links.nth(3)).toHaveText("Configuration");
   await expect(links.nth(4)).toHaveText("Semaine type");
-  await expect(links.nth(5)).toHaveText("Semaine");
 
-  // À 400 px la nav déborde : l'onglet actif (« Semaine », le dernier) est ramené en vue.
+  // À 400 px la nav déborde : l'onglet actif (« Calendrier », l'index /matchs) est ramené en vue.
   await page.setViewportSize({ width: 400, height: 800 });
   await page.goto("/matchs");
   const active = nav.locator('[aria-current="page"]');
-  await expect(active).toHaveText("Semaine");
+  await expect(active).toHaveText("Calendrier");
   await expect(active).toBeInViewport();
   await page.setViewportSize({ width: 1280, height: 900 });
 
@@ -616,4 +606,108 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
   await expect(page.getByText(/Aucun adversaire pour/)).toBeVisible();
   await search.press("Escape");
   await expect(search).toHaveValue("");
+});
+
+/**
+ * PR 3b « Calendrier unique » — la barre « Semaine affichée » (3 compteurs), la modale
+ * « À recopier dans FBI », le suivi P4-197 après « Placer », et le clic d'une ligne Mois
+ * qui bascule en Semaine (URL `semaine=`, cellule focalisée). Le test CRÉE sa donnée (un
+ * domicile daté loin) et se nettoie en `finally` (base dev non réinitialisée).
+ */
+test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async ({ page }) => {
+  test.setTimeout(240_000);
+  await login(page);
+  await ensureValidated(page);
+
+  const opponent = `E2E3B-${Date.now().toString(36).toUpperCase()}`;
+  await page.goto("/matchs");
+  await expect(page.getByRole("heading", { name: "Matchs" })).toBeVisible();
+
+  try {
+    // ── Créer un domicile daté LOIN (samedi 2027-03-13) ──────────────────────────
+    await page.getByRole("button", { name: /Nouveau match/i }).click();
+    await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeVisible();
+    await page.getByRole("dialog").getByRole("button", { name: /^Équipe/ }).click();
+    await page.getByRole("listbox").getByRole("option").first().click();
+    await page.getByLabel("Date").fill("2027-03-13");
+    await page.getByLabel("Adversaire").fill(opponent);
+    await page.getByRole("button", { name: "Créer" }).click();
+    await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeHidden({ timeout: 15_000 });
+
+    // ── La barre « Semaine affichée » : trois compteurs (dont « conflits » = lien) ─
+    const counters = page.getByRole("group", { name: "Semaine affichée" });
+    await expect(counters.getByRole("button", { name: /à placer/ })).toBeVisible();
+    await expect(counters.getByRole("link", { name: /conflits/ })).toHaveAttribute("href", "/matchs/conflits");
+    await expect(counters.getByRole("button", { name: /à saisir dans FBI/ })).toHaveAttribute("aria-haspopup", "dialog");
+
+    // ── Naviguer jusqu'à la semaine du domicile créé (la liste « À placer ») ──────
+    const todo = page.getByRole("button", { name: new RegExp(`vs ${opponent}`) });
+    const nextWeek = page.getByRole("button", { name: "Semaine suivante" });
+    for (let hops = 0; hops < 60 && !(await todo.isVisible()) && (await nextWeek.isEnabled()); hops += 1) {
+      await nextWeek.click();
+      await page.waitForTimeout(120);
+    }
+    await expect(todo).toBeVisible({ timeout: 15_000 });
+    // L'URL porte la semaine (clé samedi) déposée par la navigation.
+    await expect(page).toHaveURL(/[?&]semaine=\d{4}-\d{2}-\d{2}/);
+
+    // ── « à placer » ramène le focus sur le <h2> « À placer » ─────────────────────
+    await counters.getByRole("button", { name: /à placer/ }).click();
+    await expect(page.getByRole("heading", { name: "À placer" })).toBeFocused();
+
+    // ── « FBI » ouvre la modale ; Échap la ferme et rend le focus au compteur ─────
+    const fbiBtn = counters.getByRole("button", { name: /à saisir dans FBI/ });
+    await fbiBtn.click();
+    await expect(page.getByRole("dialog", { name: "À recopier dans FBI" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "À recopier dans FBI" })).toBeHidden();
+    await expect(fbiBtn).toBeFocused();
+
+    // ── Suivi P4-197 : « Placer » recadre sur le match et le focalise ─────────────
+    await todo.click();
+    await page.locator('button[aria-haspopup="listbox"]').first().click();
+    await page.getByRole("listbox").getByRole("option").nth(1).click();
+    await page.getByLabel("Heure de coup d'envoi").fill("15:00");
+    const place = page.getByRole("button", { name: "Placer", exact: true });
+    if (await place.isEnabled()) {
+      await place.click();
+      // La cellule placée est focalisée (repli : le <h2> « À placer »).
+      const cell = page.getByRole("button", { name: new RegExp(`\\d\\d:\\d\\d · ${opponent}`) });
+      await expect(cell).toBeVisible({ timeout: 15_000 });
+    }
+
+    // ── Mois → clic ligne → bascule Semaine (URL semaine=, cellule focalisée) ──────
+    await page.getByRole("button", { name: "Mois", exact: true }).click();
+    // Naviguer jusqu'au mois du match (mars 2027) : la table le liste.
+    const row = page.getByRole("button", { name: new RegExp(`Ouvrir .*${opponent}.* dans la semaine`) });
+    const nextMonth = page.getByRole("button", { name: "Mois suivant" });
+    for (let hops = 0; hops < 24 && !(await row.isVisible()) && (await nextMonth.isEnabled()); hops += 1) {
+      await nextMonth.click();
+      await page.waitForTimeout(120);
+    }
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await row.click();
+    // Bascule en Semaine + URL semaine=.
+    await expect(page.getByRole("button", { name: "Semaine", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page).toHaveURL(/[?&]semaine=\d{4}-\d{2}-\d{2}/);
+  } finally {
+    // Nettoyage : supprimer le match créé (bande extérieur ou grille selon l'état) — best-effort.
+    await page.goto("/matchs");
+    const todo = page.getByRole("button", { name: new RegExp(`vs ${opponent}`) });
+    const cell = page.getByRole("button", { name: new RegExp(`\\d\\d:\\d\\d · ${opponent}`) });
+    const nextWeek = page.getByRole("button", { name: "Semaine suivante" });
+    for (let hops = 0; hops < 60 && !(await todo.isVisible()) && !(await cell.isVisible()) && (await nextWeek.isEnabled()); hops += 1) {
+      await nextWeek.click();
+      await page.waitForTimeout(120);
+    }
+    if (await cell.isVisible().catch(() => false)) {
+      await cell.click();
+      const del = page.getByRole("button", { name: "Supprimer" });
+      if ((await del.count()) > 0) {
+        await del.first().click();
+        const confirm = page.getByRole("button", { name: "Supprimer", exact: true }).last();
+        await confirm.click().catch(() => {});
+      }
+    }
+  }
 });

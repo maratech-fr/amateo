@@ -1,6 +1,28 @@
 import { describe, expect, it } from "vitest";
 
-import { applyConflictsToParams, applyConsultToParams, applyFilterToParams, applySectionToParams, decodeConflictsParams, decodeConsultParams, decodeFilterParams, decodeSectionParam } from "./urlState";
+import { applyConflictsToParams, applyConsultToParams, applyFilterToParams, applySectionToParams, applyWeekendToParams, decodeConflictsParams, decodeConsultParams, decodeFilterParams, decodeSectionParam, decodeWeekendParam } from "./urlState";
+
+describe("decodeWeekendParam / applyWeekendToParams (PR 3b — semaine=)", () => {
+  it("absent ⇒ null (auto)", () => {
+    expect(decodeWeekendParam(new URLSearchParams(""))).toBeNull();
+  });
+
+  it("date ISO valide ⇒ conservée", () => {
+    expect(decodeWeekendParam(new URLSearchParams("semaine=2026-10-03"))).toBe("2026-10-03");
+  });
+
+  it("valeur mal formée ⇒ null (retombe sur l'auto)", () => {
+    expect(decodeWeekendParam(new URLSearchParams("semaine=lundi"))).toBeNull();
+    expect(decodeWeekendParam(new URLSearchParams("semaine=2026-13"))).toBeNull();
+  });
+
+  it("null ⇒ semaine absente ; une clé ⇒ écrite ; autres params préservés", () => {
+    expect(applyWeekendToParams(new URLSearchParams("semaine=2026-10-03"), null).toString()).toBe("");
+    const out = applyWeekendToParams(new URLSearchParams("vue=coach"), "2026-10-03");
+    expect(out.get("vue")).toBe("coach");
+    expect(out.get("semaine")).toBe("2026-10-03");
+  });
+});
 
 describe("decodeFilterParams", () => {
   it("params absents ⇒ equipe / aucune sélection", () => {

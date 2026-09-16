@@ -1,4 +1,4 @@
-import { type RouteObject } from "react-router";
+import { redirect, type RouteObject } from "react-router";
 
 import { AppLayout } from "@/app/AppLayout";
 import { AuthGuard } from "@/app/AuthGuard";
@@ -147,14 +147,15 @@ export const routes: RouteObject[] = [
             lazy: async () => ({ Component: (await import("@/features/matches/MatchesLayout")).MatchesLayout }),
             children: [
               {
+                // PR 3b — le Calendrier, écran unique du module (fusion Semaine⇄Consulter).
                 index: true,
-                lazy: async () => ({ Component: (await import("@/features/matches/MatchesPage")).MatchesPage }),
+                lazy: async () => ({ Component: (await import("@/features/matches/CalendarPage")).CalendarPage }),
               },
               {
-                // PR-2a — l'espace « Consulter » (lecture seule, temporalité Semaine).
-                // Route lazy sœur de la boucle ; garde socle héritée du layout.
+                // PR 3b — renvoi permanent de l'ancien « Consulter » vers le Calendrier,
+                // query conservée (deep-links partagés) via un loader `redirect`.
                 path: "consulter",
-                lazy: async () => ({ Component: (await import("@/features/matches/ConsultPage")).ConsultPage }),
+                loader: ({ request }) => redirect(`/matchs${new URL(request.url).search}`),
               },
               {
                 // PR-3b — l'espace « Importer » : dépôt FBI / API FFBB + file de

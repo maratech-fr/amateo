@@ -56,8 +56,11 @@ frontend/
 │   │   ├── cockpit/             # / home: season-plan banner, month calendar, radar,
 │   │   │                        # FbiDeadlineCard (RMM-6 PR-3: matches FBI-entry reminder + login escalation)
 │   │   ├── legal/               # /confidentialite
-│   │   ├── matches/             # MatchesLayout, six routes: /matchs (guided loop, 5 derived rail
-│   │   │                        # steps) · /matchs/consulter (read-only, season/week/month/phase) ·
+│   │   ├── matches/             # MatchesLayout, seven routes/5 tabs: /matchs (index — the
+│   │   │                        # Calendar, single screen since PR 3b 2026-09-16: merges the
+│   │   │                        # weekly placement loop, `WeekCounters` bar replacing the old
+│   │   │                        # 5-step rail, and read Week/month/phase) ·
+│   │   │                        # /matchs/consulter (permanent redirect → /matchs) ·
 │   │   │                        # /matchs/importer (data entry + per-team review queue) ·
 │   │   │                        # /matchs/configuration (rare setup) · /matchs/conflits (read-only,
 │   │   │                        # season conflicts pivoted coach/team/venue/matchday, PR A 2026-09-15)
@@ -349,8 +352,9 @@ product rules — reuse them instead of rolling your own:
   open section in the URL. Closing a controlled section **unmounts** its body — a caller holding
   draft state inside must accept it is lost on collapse. First consumer: the Importer tab's
   per-team review queue (`features/matches/ReviewQueue.tsx`, `?equipe=`, module matchs PR-3b
-  2026-09-08). Second: `/matchs/configuration` (`ConfigurationPage.tsx`, P4-185) — seven sections
-  (the 7th, `VenueLabelsSection.tsx`, the venue-label pairing screen since E2/P4-205, 2026-09-14),
+  2026-09-08). Second: `/matchs/configuration` (`ConfigurationPage.tsx`, P4-185) — five sections
+  (the 5th, `VenueLabelsSection.tsx`, the venue-label pairing screen since E2/P4-205, 2026-09-14 —
+  the gabarit/créneaux sections moved out to their own `/matchs/semaine-type` page, PR 2a),
   mutually exclusive (one open at a time), anchored `?section=` (`features/matches/lib/urlState.ts`).
 - **`listbox`** (`Listbox`) — the shared APG single-select listbox: colour dot or icon, a
   right-aligned count ("reste N"), a second reason/precision line, and a keyboard-reachable but
@@ -403,7 +407,7 @@ product rules — reuse them instead of rolling your own:
   themes. Wraps, never truncates (`whitespace-normal`); passes through `title`/`aria-label` for a
   caller whose announcement is richer than the visible text (e.g. `CreditBadge`). First consumer:
   `features/cockpit/StalenessPill.tsx` (P4-173). All five pastilles that predated it have migrated
-  (P4-177): `CreditBadge`, `CompromiseList`, `MatchesPage`'s `offModelBadge`/`sameWeekendBadge`,
+  (P4-177): `CreditBadge`, `CompromiseList`, `WeekWorkbench`'s (ex-`MatchesPage`) `offModelBadge`/`sameWeekendBadge`,
   and `SourceBadge` — now a single shared component (`features/matches/SourceBadge.tsx`) consumed
   by both `TravelMatrixModal` and `OpponentTravelCard`, which each used to carry their own copy.
   Seven more migrated (P4-178): `CoachesStep` ("Salarié" + preferred cap), `VenueGeocodeField`
@@ -422,9 +426,11 @@ product rules — reuse them instead of rolling your own:
   `onSelect` bubbles the click so the caller owns its effects. Accessible name follows WCAG 2.5.3
   (it **contains** the visible label; a done step appends "— étape terminée"). Imports `Check`/`Lock`
   itself, and deliberately **no `className` prop** (same rationale as `modal`).
-  Second consumer since RMM-1 PR3: `features/matches` (`MatchesPage` + `lib/loopSteps.ts`) —
-  its `steps`/`done` are **recomputed from scratch on every render** (no persisted progression,
-  no locks), unlike the wizard's precomputed array. Don't assume the rail itself tracks anything.
+  **Second consumer RETIRED (PR 3b, 2026-09-16)**: `features/matches` used `step-rail` from RMM-1
+  PR3 through the merged « Calendrier » screen — the 5-derived-step rail (`MatchesPage.tsx`,
+  deleted) is gone, replaced by the `WeekCounters` bar (three pure counters, `lib/loopSteps.ts`
+  `deriveWeekCounters` — no `steps`/`done` array, no `step-rail` import). The wizard is `step-rail`'s
+  **only** consumer today; don't assume it still tracks matches-module progression.
 
 ### `shared/lib/readState.ts` — the anti-"credible emptiness" rule
 

@@ -1,12 +1,10 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-09-14 (P4-203 « le solveur de placement adopte la règle D1 »,
-`documentation-update`). `engine/CONTRACT_VERSION` = `2.21` ✓ — bumpé par P4-203 (durées de match
-par équipe sur `/place-matches`) ; ce document ne cite aucun message d'erreur `no_access_window`
-littéral (seulement la ligne générique `unplaced_match`, toujours exacte), donc rien à recaler sur
-le fond côté placement. `SCORE_FORMULA_VERSION` = `T24_LEVEL_2_FIXED_WEIGHTS_V13`
+Last verified @ 2026-09-16 (rotation de fraîcheur `documentation-update`, PR 3b module matchs —
+fichier hors sujet). Re-confronté au code, tout juste : `engine/CONTRACT_VERSION` = `2.21` ✓
+(fichier `engine/CONTRACT_VERSION`) ; `SCORE_FORMULA_VERSION` = `T24_LEVEL_2_FIXED_WEIGHTS_V13`
 (`app/solver/objective/weights.py:31`) ✓ ; budget adaptatif 60/180/600 s aux paliers ≤50/≤200 de
-complexité (`app/main.py:415-430`, `_adaptive_timeout`) ✓ ; `solverTimeoutSeconds` défaut 650 sur
+complexité (`app/main.py`, `_adaptive_timeout`) ✓ ; `solverTimeoutSeconds` défaut 650 sur
 `/generate` (`app/schemas/input_schema.py:319`) ✓ — aucune dérive trouvée.
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 

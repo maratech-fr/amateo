@@ -112,7 +112,7 @@ beforeEach(() => {
   reviewFixtures.mockResolvedValue({ reviewed: 1, skipped: [] });
   getVenues.mockResolvedValue([{ id: "venue-1", name: "Gymnase Alpha", color: null, externalLabels: [] }]);
   attachVenueLabel.mockResolvedValue({ venueId: "venue-1", label: "GYMNASE MATEO", attached: 2 });
-  useMatchesStore.setState({ reconciliation: null, filterMode: "equipe", filterIds: [], selectedWeekend: null, railStep: null, selectedFixtureId: null });
+  useMatchesStore.setState({ reconciliation: null, filterMode: "equipe", filterIds: [], selectedWeekend: null, selectedFixtureId: null });
   useToastStore.setState({ toasts: [] });
 });
 
@@ -229,7 +229,7 @@ describe("ImportPage — la file de traitement", () => {
     expect(dates).toEqual(["1 nov.", "7 nov."]);
   });
 
-  it("Replacer pose le filtre équipe + week-end + la vue homeSlots + la rencontre sélectionnée, et renvoie vers la boucle", async () => {
+  it("Replacer pose le filtre équipe + week-end + la rencontre sélectionnée, et renvoie vers le Calendrier", async () => {
     const user = userEvent.setup();
     renderPage([fx("team-1", "NEW", "2026-11-07")], "/matchs/importer?equipe=team-1");
     await user.click(await screen.findByRole("button", { name: "Replacer" }));
@@ -237,8 +237,8 @@ describe("ImportPage — la file de traitement", () => {
     expect(state.filterMode).toBe("equipe");
     expect(state.filterIds).toContain("team-1");
     expect(state.selectedWeekend).toBe(weekendKeyOf("2026-11-07"));
-    // Le panneau de placement n'est rendu que dans la vue homeSlots, sur la rencontre pointée.
-    expect(state.railStep).toBe("homeSlots");
+    // PR 3b — le panneau de placement du Calendrier est PERMANENT : la rencontre pointée
+    // suffit à l'ouvrir (plus de vue de rail à poser).
     expect(state.selectedFixtureId).toBe("fx-1");
     expect(await screen.findByText("BOUCLE")).toBeInTheDocument();
   });

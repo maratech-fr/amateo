@@ -174,8 +174,11 @@ test("consulter: chips, semaine type, et filtre par famille de conflit", async (
     createdIds.push(await createFixture(overlapSat, overlapA));
     createdIds.push(await createFixture(overlapSat, overlapB));
 
+    // PR 3b — « Consulter » a FUSIONNÉ dans « Calendrier » : /matchs/consulter REDIRIGE
+    // vers /matchs (query conservée). Les chips/temporalités vivent désormais sur le Calendrier.
     await page.goto("/matchs/consulter");
-    await expect(page.getByRole("link", { name: "Consulter" })).toHaveAttribute("aria-current", "page");
+    await expect(page).toHaveURL(/\/matchs(\?|$)/);
+    await expect(page.getByRole("navigation", { name: "Espaces matchs" }).getByRole("link", { name: "Calendrier" })).toHaveAttribute("aria-current", "page");
 
     // Chips type de compétition — STATIQUES (les 4 `KINDS`), donc présentes même
     // sans données ; cochées par défaut.

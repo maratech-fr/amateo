@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Conflict, Fixture, MatchSlotRotation, TeamMatchHabit } from "../api";
-import { defaultLoopStep, deriveLoopSteps, isOffModel, offModelCount, sameWeekendRotationCount } from "./loopSteps";
+import { datelessConflicts, deriveWeekCounters, isOffModel, offModelCount, sameWeekendRotationCount, weekConflictCount } from "./loopSteps";
 
 function rotation(over: Partial<MatchSlotRotation> = {}): MatchSlotRotation {
   return { id: over.id ?? "rot", venueId: over.venueId ?? "venue-1", dayOfWeek: over.dayOfWeek ?? 6, kickoffTime: over.kickoffTime ?? "16:00", teamIds: over.teamIds ?? ["team-1", "team-2"] };
@@ -46,139 +46,60 @@ function conflictOn(fixtureId: string): Conflict {
   return { type: "MATCH_MATCH", severity: 3, resolution: null, left: { fixtureId, teamId: "t", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:00", windowStart: "", windowEnd: "" } };
 }
 
-function id(steps: ReturnType<typeof deriveLoopSteps>, stepId: string) {
-  const step = steps.find((s) => s.id === stepId);
-  if (undefined === step) {
-    throw new Error(`step ${stepId} absent`);
-  }
-  return step;
-}
-
-describe("deriveLoopSteps — les 5 états DÉRIVÉS de la semaine (zéro état stocké)", () => {
-  it("étape 1 (Batch importé) : done ⇔ des matchs existent cette semaine", () => {
-    expect(id(deriveLoopSteps({ weekFixtures: [], habits: [], conflicts: [] }), "batch").done).toBe(false);
-    expect(id(deriveLoopSteps({ weekFixtures: [fx()], habits: [], conflicts: [] }), "batch").done).toBe(true);
+describe("deriveWeekCounters — les 3 compteurs DÉRIVÉS de la semaine (PR 3b, ex-rail)", () => {
+  it("semaine vide ⇒ 0 · 0 · 0", () => {
+    expect(deriveWeekCounters([], [])).toEqual({ unplaced: 0, conflicts: 0, fbiToEnter: 0 });
   });
 
-  it("étape 2 (Placés au modèle) : 1 HOME UNPLACED d'une équipe À HABITUDE ⇒ non-done", () => {
-    const weekFixtures = [fx({ id: "u", status: "UNPLACED", venueId: null, kickoffTime: null })];
-    // Sans habitude déclarée : l'UNPLACED ne compte pas — l'étape reste done.
-    expect(id(deriveLoopSteps({ weekFixtures, habits: [], conflicts: [] }), "model").done).toBe(true);
-    // Avec une habitude sur cette équipe : l'UNPLACED compte — l'étape n'est plus done.
-    expect(id(deriveLoopSteps({ weekFixtures, habits: [habit()], conflicts: [] }), "model").done).toBe(false);
+  it("« à placer » = domiciles UNPLACED (habitude ou non — le compteur ne filtre pas par modèle)", () => {
+    // Contrairement à l'ancienne étape « Placés au modèle », le compteur « à placer » compte
+    // TOUS les domiciles UNPLACED, avec ou sans habitude (P4-197 : la liste couvre tout).
+    const weekFixtures = [fx({ id: "u", status: "UNPLACED", venueId: null, kickoffTime: null }), fx({ id: "p", status: "PLACED" })];
+    expect(deriveWeekCounters(weekFixtures, []).unplaced).toBe(1);
+    // Un amical non placé compte aussi (le compteur ne fait pas la distinction P4-193 de l'ancien rail).
+    const amical = [fx({ id: "a", competitionId: null, status: "UNPLACED", venueId: null, kickoffTime: null })];
+    expect(deriveWeekCounters(amical, []).unplaced).toBe(1);
   });
 
-  it("étape 2 : un AMICAL non placé ne compte JAMAIS (le solveur ne le place plus, P4-193)", () => {
-    // Amical HOME UNPLACED d'une équipe À HABITUDE : « Placés au modèle » reste done
-    // (l'amical est exclu), mais « Domiciles posés » le voit toujours (non-done).
-    const weekFixtures = [fx({ id: "u", competitionId: null, status: "UNPLACED", venueId: null, kickoffTime: null })];
-    const steps = deriveLoopSteps({ weekFixtures, habits: [habit()], conflicts: [] });
-    expect(id(steps, "model").done).toBe(true);
-    expect(id(steps, "homeSlots").done).toBe(false);
-  });
-
-  it("étape 2 : l'ÉCART AU MODÈLE ne rend JAMAIS l'étape non-done (signal, pas blocage)", () => {
-    // Un HOME PLACÉ mais hors habitude (jour ≠ dimanche déclaré) : écart présent…
-    const offModel = fx({ id: "off", status: "PLACED", matchDate: "2026-10-03", kickoffTime: "18:30" });
-    const habits = [habit({ kickoffTime: "16:00" })]; // habitude 16:00, placé 18:30 → écart
-    expect(isOffModel(offModel, habits)).toBe(true);
-    expect(offModelCount([offModel], habits)).toBe(1);
-    // …et pourtant l'étape 2 (comme la 4) reste DONE : tout est placé.
-    const steps = deriveLoopSteps({ weekFixtures: [offModel], habits, conflicts: [] });
-    expect(id(steps, "model").done).toBe(true);
-    expect(id(steps, "homeSlots").done).toBe(true);
-  });
-
-  it("étape 3 (Conflits) : un conflit rattaché à un fixture de W compte ; un conflit SANS date NON", () => {
+  it("« conflits » = conflits À TRAITER rattachés à la semaine (pas les sans-date, pas une autre semaine, pas les annotés)", () => {
     const weekFixtures = [fx({ id: "w1" })];
-    // Conflit sur w1 (dans W) → compte, non-done, count dans le label.
-    const withDate = deriveLoopSteps({ weekFixtures, habits: [], conflicts: [conflictOn("w1")] });
-    expect(id(withDate, "disputes").done).toBe(false);
-    expect(id(withDate, "disputes").label).toBe("Conflits (1)");
-    // Conflit SANS fixture (COMPETITION_INCOMPLETE) → hors compte hebdo, done.
+    // Conflit sur w1 (dans W) → compte.
+    expect(deriveWeekCounters(weekFixtures, [conflictOn("w1")]).conflicts).toBe(1);
+    // Conflit SANS fixture (COMPETITION_INCOMPLETE) → hors compte hebdo.
     const dateless: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, competitionId: "c", teamId: "team-1", imported: 3, expected: 6 };
-    const withoutDate = deriveLoopSteps({ weekFixtures, habits: [], conflicts: [dateless] });
-    expect(id(withoutDate, "disputes").done).toBe(true);
-    expect(id(withoutDate, "disputes").label).toBe("Conflits (0)");
+    expect(deriveWeekCounters(weekFixtures, [dateless]).conflicts).toBe(0);
     // Conflit sur un fixture d'une AUTRE semaine → pas dans le compte de W.
-    const otherWeek = deriveLoopSteps({ weekFixtures, habits: [], conflicts: [conflictOn("not-in-w")] });
-    expect(id(otherWeek, "disputes").done).toBe(true);
-  });
-
-  it("étape 3 (Conflits) : un conflit de W ANNOTÉ ne compte plus, l'étape passe done (P4-207)", () => {
-    const weekFixtures = [fx({ id: "w1" })];
+    expect(deriveWeekCounters(weekFixtures, [conflictOn("not-in-w")]).conflicts).toBe(0);
+    // Conflit ANNOTÉ (P4-207) → ne compte plus.
     const treated: Conflict = { ...conflictOn("w1"), resolution: { status: "DEROGATION_REQUESTED", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } };
-    const steps = deriveLoopSteps({ weekFixtures, habits: [], conflicts: [treated] });
-    expect(id(steps, "disputes").label).toBe("Conflits (0)");
-    expect(id(steps, "disputes").done).toBe(true);
+    expect(deriveWeekCounters(weekFixtures, [treated]).conflicts).toBe(0);
   });
 
-  it("étape 4 (Domiciles posés) : done ⇔ 0 HOME UNPLACED (habitude ou non)", () => {
-    const unplacedNoHabit = [fx({ id: "u", status: "UNPLACED", venueId: null, kickoffTime: null })];
-    // Étape 2 done (pas d'habitude) MAIS étape 4 non-done : la distinction validée fondateur.
-    const steps = deriveLoopSteps({ weekFixtures: unplacedNoHabit, habits: [], conflicts: [] });
-    expect(id(steps, "model").done).toBe(true);
-    expect(id(steps, "homeSlots").done).toBe(false);
-  });
-
-  it("étape 5 (Saisi dans FBI) : tout HOME SUBMITTED/VALIDATED et H non vide ⇒ done + label n/m", () => {
-    const one = fx({ id: "a", status: "PLACED" });
-    const partial = deriveLoopSteps({ weekFixtures: [one], habits: [], conflicts: [] });
-    expect(id(partial, "fbiEntry").done).toBe(false);
-    expect(id(partial, "fbiEntry").label).toBe("Saisi dans FBI (0/1)");
-    // Une semaine où tout est SUBMITTED → 5/5 cochés (état « veille »).
+  it("« à saisir dans FBI » = domiciles − (SUBMITTED + VALIDATED)", () => {
+    // Un domicile PLACÉ non encore saisi ⇒ 1 à saisir.
+    expect(deriveWeekCounters([fx({ id: "a", status: "PLACED" })], []).fbiToEnter).toBe(1);
+    // Tout SUBMITTED/VALIDATED ⇒ 0 à saisir.
     const submitted = [fx({ id: "a", status: "SUBMITTED" }), fx({ id: "b", status: "VALIDATED" })];
-    const all = deriveLoopSteps({ weekFixtures: submitted, habits: [], conflicts: [] });
-    expect(id(all, "fbiEntry").done).toBe(true);
-    expect(id(all, "fbiEntry").label).toBe("Saisi dans FBI (2/2)");
-    expect(all.every((s) => s.done)).toBe(true);
-  });
-
-  it("étape 5 : H vide ⇒ non-done (rien à saisir ne se coche pas comme fait)", () => {
-    const awayOnly = [fx({ id: "away", homeAway: "AWAY", status: "UNPLACED" })];
-    expect(id(deriveLoopSteps({ weekFixtures: awayOnly, habits: [], conflicts: [] }), "fbiEntry").done).toBe(false);
+    expect(deriveWeekCounters(submitted, []).fbiToEnter).toBe(0);
+    // Un extérieur ne compte pas (jamais un domicile à recopier).
+    expect(deriveWeekCounters([fx({ id: "away", homeAway: "AWAY", status: "UNPLACED" })], []).fbiToEnter).toBe(0);
   });
 });
 
-describe("defaultLoopStep — le PREMIER TROU (première étape non-done)", () => {
-  it("renvoie la première étape non-done", () => {
-    // Batch done (W>0), model non-done (habitude + unplaced) → défaut = model.
-    const steps = deriveLoopSteps({
-      weekFixtures: [fx({ id: "u", status: "UNPLACED", venueId: null, kickoffTime: null })],
-      habits: [habit()],
-      conflicts: [],
-    });
-    expect(defaultLoopStep(steps)).toBe("model");
+describe("weekConflictCount — conflits À TRAITER rattachés à la semaine (exporté PR 3b)", () => {
+  it("compte les OUVERTS référençant un fixture de la semaine ; ignore annotés/hors-semaine", () => {
+    const ids = new Set(["w1"]);
+    expect(weekConflictCount([conflictOn("w1")], ids)).toBe(1);
+    expect(weekConflictCount([conflictOn("other")], ids)).toBe(0);
+    const treated: Conflict = { ...conflictOn("w1"), resolution: { status: "NO_SOLUTION_YET", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } };
+    expect(weekConflictCount([treated], ids)).toBe(0);
   });
+});
 
-  it("tout done → dernière étape (rien à traiter, on est au bout)", () => {
-    const steps = deriveLoopSteps({ weekFixtures: [fx({ status: "SUBMITTED" })], habits: [], conflicts: [] });
-    expect(steps.every((s) => s.done)).toBe(true);
-    expect(defaultLoopStep(steps)).toBe("fbiEntry");
-  });
-
-  it("P4-192 — week-end 100 % extérieur (fbiEntry VIDE, tout le reste done) → homeSlots, pas fbiEntry", () => {
-    // Aucun domicile ce week-end : fbiEntry est non-done (son done exige home.length>0)
-    // ET empty (0 domicile). Atterrir dessus afficherait « Aucun domicile à recopier dans
-    // FBI » alors que la vue homeSlots rend la grille + « À l'extérieur ce week-end ».
-    const steps = deriveLoopSteps({ weekFixtures: [fx({ id: "away", homeAway: "AWAY", status: "UNPLACED" })], habits: [], conflicts: [] });
-    const fbi = id(steps, "fbiEntry");
-    expect(fbi.done).toBe(false);
-    expect(fbi.empty).toBe(true);
-    // Toutes les autres étapes sont done → le premier trou EST fbiEntry, mais il est vide.
-    expect(steps.filter((s) => s.id !== "fbiEntry").every((s) => s.done)).toBe(true);
-    expect(defaultLoopStep(steps)).toBe("homeSlots");
-  });
-
-  it("P4-192 — des domiciles à saisir (fbiEntry non-done mais NON vide) → fbiEntry inchangé", () => {
-    // Un domicile PLACÉ non encore saisi : fbiEntry non-done, empty false (il y a bien un
-    // domicile). Le premier trou reste fbiEntry, et on y va — la bascule est inerte.
-    const steps = deriveLoopSteps({ weekFixtures: [fx({ id: "h", status: "PLACED" })], habits: [], conflicts: [] });
-    const fbi = id(steps, "fbiEntry");
-    expect(fbi.done).toBe(false);
-    expect(fbi.empty).toBe(false);
-    expect(steps.filter((s) => s.id !== "fbiEntry").every((s) => s.done)).toBe(true);
-    expect(defaultLoopStep(steps)).toBe("fbiEntry");
+describe("datelessConflicts — conflits sans fixture (bannière hors-semaine)", () => {
+  it("garde les conflits sans fixture référencé, écarte ceux datés", () => {
+    const dateless: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, competitionId: "c", teamId: "team-1", imported: 3, expected: 6 };
+    expect(datelessConflicts([dateless, conflictOn("w1")])).toEqual([dateless]);
   });
 });
 
@@ -244,18 +165,16 @@ describe("sameWeekendRotationCount — deux membres reçoivent le même week-end
   });
 });
 
-describe("le SIGNAL ne rend JAMAIS une étape non-done, et les LABELS du rail restent byte-identiques", () => {
-  it("écart au modèle + même-week-end pleins : les 5 done et les 5 labels sont INCHANGÉS", () => {
-    // Deux membres d'une rotation, tous deux placés HORS créneau ET reçevant le même week-end.
+describe("le SIGNAL ne pèse JAMAIS dans les compteurs (les rotations n'y entrent nulle part)", () => {
+  it("écart au modèle + même-week-end pleins : les 3 compteurs restent INCHANGÉS", () => {
+    // Deux membres d'une rotation, tous deux placés HORS créneau ET recevant le même week-end.
     const home1 = fx({ id: "a", teamId: "team-1", status: "SUBMITTED", matchDate: "2026-10-03", kickoffTime: "18:30", venueId: "venue-1" });
     const home2 = fx({ id: "b", teamId: "team-2", status: "SUBMITTED", matchDate: "2026-10-03", kickoffTime: "18:30", venueId: "venue-1" });
     const rots = [rotation({ dayOfWeek: 6, kickoffTime: "20:30", venueId: "venue-1", teamIds: ["team-1", "team-2"] })];
     // Signal PLEIN…
     expect(offModelCount([home1, home2], [], rots)).toBe(2);
     expect(sameWeekendRotationCount([home1, home2], rots)).toBe(1);
-    // …et pourtant le rail est intact : les rotations n'entrent NULLE PART dans deriveLoopSteps.
-    const steps = deriveLoopSteps({ weekFixtures: [home1, home2], habits: [], conflicts: [] });
-    expect(steps.every((s) => s.done)).toBe(true);
-    expect(steps.map((s) => s.label)).toEqual(["Batch importé", "Placés au modèle", "Conflits (0)", "Domiciles posés", "Saisi dans FBI (2/2)"]);
+    // …et pourtant les compteurs sont intacts : tout est SUBMITTED, aucun conflit.
+    expect(deriveWeekCounters([home1, home2], [])).toEqual({ unplaced: 0, conflicts: 0, fbiToEnter: 0 });
   });
 });

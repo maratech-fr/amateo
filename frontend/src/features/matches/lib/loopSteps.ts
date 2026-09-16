@@ -3,43 +3,17 @@ import { isOpenConflict } from "./conflictResolution";
 import { isoWeekday } from "./envelope";
 
 /**
- * **La boucle guidée du module matchs — dérivation PURE des 5 états** (RMM-1 PR3,
- * cadrage §6quater L3). Le rail ne STOCKE aucune progression : il LIT la semaine
- * affichée (fixtures + habitudes + radar) et en dérive les 5 étapes à chaque
- * rendu. Zéro état nouveau, zéro backend.
+ * **Les signaux de la SEMAINE affichée du module matchs — dérivation PURE** (PR 3b
+ * « Calendrier unique »). Depuis la fusion Semaine⇄Consulter, le module n'a plus de
+ * rail : la barre `WeekCounters` lit la semaine affichée (fixtures + radar) et en
+ * dérive trois compteurs (à placer · conflits · à saisir dans FBI), tandis que les
+ * signaux « hors modèle » / « même week-end » restent les mêmes qu'avant.
  *
- * ⚠ Ce module ne DÉCIDE d'aucun comportement métier — pas de verdict, pas de
- * garde. Il calcule des états de PROGRESSION (des `done` bool) et des libellés à
- * partir de données déjà servies par le backend. Ce n'est pas une redérivation de
- * règle (`.claude/rules/frontend.md`) : il ne rejoue pas le solveur ni le radar,
- * il compte ce qu'ils ont produit. Les formules sont VALIDÉES fondateur (§6quater).
+ * ⚠ Ce module ne DÉCIDE d'aucun comportement métier — pas de verdict, pas de garde.
+ * Il COMPTE ce que le solveur/le radar ont déjà produit (des `done`/des totaux),
+ * jamais une redérivation de règle (`.claude/rules/frontend.md`). Les formules sont
+ * VALIDÉES fondateur (§6quater), reprises telles quelles du rail supprimé.
  */
-
-export type LoopStepId = "batch" | "model" | "disputes" | "homeSlots" | "fbiEntry";
-
-export interface LoopStep {
-  id: LoopStepId;
-  /** Libellé FR, comptes INCLUS (« Conflits (3) ») — le rail ne porte pas de badge à part. */
-  label: string;
-  done: boolean;
-  /**
-   * « Cette étape n'a RIEN à traiter cette semaine » — posé UNIQUEMENT sur `fbiEntry`
-   * (aucun domicile : `0 === home.length`). C'est un CHAMP, jamais dérivé du libellé
-   * « (0/0) ». `defaultLoopStep` s'en sert pour ne pas atterrir sur une étape vide.
-   * Optionnel — compatible avec `StepRailStep` (typage structurel, le rail l'ignore).
-   */
-  empty?: boolean;
-}
-
-export interface LoopStepsInput {
-  /** W — les fixtures de la SEMAINE affichée (déjà bucketées par la page). */
-  weekFixtures: Fixture[];
-  habits: TeamMatchHabit[];
-  /** Le radar entier ; le rattachement hebdo est calculé ici. */
-  conflicts: Conflict[];
-}
-
-const teamHasHabit = (teamId: string, habits: TeamMatchHabit[]): boolean => habits.some((h) => h.teamId === teamId);
 
 /**
  * Écart au modèle d'un domicile PLACÉ (jour / heure / gymnase divergeant de la
@@ -90,7 +64,7 @@ export const offModelCount = (weekFixtures: Fixture[], habits: TeamMatchHabit[],
  * DEUX de leurs membres (ou plus, distincts) recevoir À DOMICILE le même week-end
  * affiché. L'alternance dit qu'un seul membre reçoit par week-end sur le créneau ;
  * deux domiciles la contredisent. SIGNAL neutre (pilule), jamais un blocage — comme
- * l'écart au modèle, il n'entre dans AUCUN `done`.
+ * l'écart au modèle, il ne pèse dans AUCUN compteur.
  */
 export function sameWeekendRotationCount(weekFixtures: Fixture[], rotations: MatchSlotRotation[]): number {
   const homeTeams = new Set(weekFixtures.filter((f) => "HOME" === f.homeAway).map((f) => f.teamId));
@@ -104,60 +78,45 @@ function conflictFixtureIds(conflict: Conflict): string[] {
 
 /**
  * Conflits SANS date (aucun fixture référencé — ex. COMPETITION_INCOMPLETE). Ils
- * sortent du compte hebdo et s'affichent en BANDEAU GLOBAL au-dessus du rail
- * (décision fondateur), jamais dans une étape de semaine.
+ * sortent du compte hebdo et s'affichent en BANDEAU GLOBAL sur le Calendrier
+ * (décision fondateur), en lien vers l'onglet Conflits, jamais dans la semaine.
  */
 export const datelessConflicts = (conflicts: Conflict[]): Conflict[] => conflicts.filter((c) => 0 === conflictFixtureIds(c).length);
 
 /**
  * Conflits du radar rattachés à un fixture de la semaine affichée, À TRAITER seulement
  * (P4-207) : un conflit annoté (dérogation demandée, réglé en interne, sans solution)
- * reste listé partout, mais ne compte plus dans l'étape « Conflits (n) » ni son `done`.
+ * reste listé partout, mais ne compte plus dans « conflits (n) » de la barre.
+ * PR 3b — EXPORTÉ (devient `openConflictCount` sur les conflits de la semaine),
+ * cohérent avec le badge de l'onglet Conflits.
  */
-function weekConflictCount(conflicts: Conflict[], weekFixtureIds: Set<string>): number {
+export function weekConflictCount(conflicts: Conflict[], weekFixtureIds: Set<string>): number {
   return conflicts.filter((c) => isOpenConflict(c) && conflictFixtureIds(c).some((id) => weekFixtureIds.has(id))).length;
 }
 
-export function deriveLoopSteps({ weekFixtures, habits, conflicts }: LoopStepsInput): LoopStep[] {
-  const weekFixtureIds = new Set(weekFixtures.map((f) => f.id));
-  const home = weekFixtures.filter((f) => "HOME" === f.homeAway);
-  const homeUnplaced = home.filter((f) => "UNPLACED" === f.status);
-  // « Placés au modèle » EXCLUT les amicaux (P4-193) : le solveur ne les place plus,
-  // ils ne suivent aucun modèle, l'étape resterait un trou permanent. « Domiciles
-  // posés » (homeSlots, ci-dessous) les garde — un domicile amical reste à poser.
-  const homeUnplacedWithHabit = homeUnplaced.filter((f) => null !== f.competitionId && teamHasHabit(f.teamId, habits));
-  const conflictCount = weekConflictCount(conflicts, weekFixtureIds);
-  const submitted = home.filter((f) => "SUBMITTED" === f.status || "VALIDATED" === f.status);
-
-  return [
-    { id: "batch", label: "Batch importé", done: weekFixtures.length > 0 },
-    { id: "model", label: "Placés au modèle", done: 0 === homeUnplacedWithHabit.length },
-    { id: "disputes", label: `Conflits (${conflictCount})`, done: 0 === conflictCount },
-    { id: "homeSlots", label: "Domiciles posés", done: 0 === homeUnplaced.length },
-    { id: "fbiEntry", label: `Saisi dans FBI (${submitted.length}/${home.length})`, done: home.length > 0 && submitted.length === home.length, empty: 0 === home.length },
-  ];
+/** PR 3b — les trois compteurs de la barre « Semaine affichée » (`WeekCounters`). */
+export interface WeekCounts {
+  /** Domiciles encore UNPLACED de la semaine (« à placer »). */
+  unplaced: number;
+  /** Conflits À TRAITER rattachés à la semaine (`weekConflictCount`). */
+  conflicts: number;
+  /** « À saisir dans FBI » = domiciles − (SUBMITTED + VALIDATED). */
+  fbiToEnter: number;
 }
 
 /**
- * L'étape sélectionnée par DÉFAUT (store `railStep === null`) = le PREMIER TROU :
- * la première étape non-done de la semaine affichée. Tout done (état « veille »
- * entre deux rafales) → la dernière étape (on est au bout, rien à traiter).
- *
- * ⚠ Bascule mesurée le 2026-09-08 (SF1, SM1, U21M1) : un week-end 100 % déplacements
- * laisse `fbiEntry` non-done ET `empty` (son `done` exige des domiciles, `home.length > 0`),
- * alors que la vue `homeSlots` rend la grille + « À l'extérieur ce week-end ». Atterrir sur
- * `fbiEntry` afficherait « Aucun domicile à recopier dans FBI » — un mensonge : il y a bien
- * des matchs, tous à l'extérieur. Quand le premier trou est un `fbiEntry` VIDE, on rend
- * `homeSlots` à la place. On lit le CHAMP `empty`, JAMAIS le libellé « (0/0) ». Un trou
- * AVANT `fbiEntry` (conflits, domiciles à poser) prime : on y va. Des domiciles à saisir
- * (`empty: false`) → `fbiEntry` normalement. « Tout done » et `empty` sont exclusifs
- * (le `done` de `fbiEntry` exige `home.length > 0`), le choix utilisateur prime toujours
- * (l'appelant passe `railStep ?? defaultLoopStep(steps)`).
+ * PR 3b — dérive les trois compteurs de la semaine affichée, reprenant EXACTEMENT
+ * les formules du rail supprimé (`homeUnplaced`, `submitted`, `home` de l'ancien
+ * `deriveLoopSteps`). Zéro état, zéro backend : compte ce qui est déjà servi.
  */
-export function defaultLoopStep(steps: LoopStep[]): LoopStepId {
-  const first = steps.find((s) => !s.done) ?? steps[steps.length - 1];
-  if ("fbiEntry" === first.id && true === first.empty) {
-    return "homeSlots";
-  }
-  return first.id;
+export function deriveWeekCounters(weekFixtures: Fixture[], conflicts: Conflict[]): WeekCounts {
+  const weekFixtureIds = new Set(weekFixtures.map((f) => f.id));
+  const home = weekFixtures.filter((f) => "HOME" === f.homeAway);
+  const homeUnplaced = home.filter((f) => "UNPLACED" === f.status);
+  const submitted = home.filter((f) => "SUBMITTED" === f.status || "VALIDATED" === f.status);
+  return {
+    unplaced: homeUnplaced.length,
+    conflicts: weekConflictCount(conflicts, weekFixtureIds),
+    fbiToEnter: home.length - submitted.length,
+  };
 }
