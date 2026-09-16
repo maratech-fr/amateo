@@ -1,15 +1,12 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-09-16 (rotation `documentation-update`, PR fiabilité CI e2e). §1 Repository
-layout recalée : la liste `.github/workflows/` complétée (`mirror-images.yml`,
-`security-weekly.yml` en manquaient) ; **`contracts/` et `tests/` (racine) n'existent PAS du
-tout** — `git log --all --full-history -- contracts tests` ne rend aucun commit sur aucune
-branche, contrairement au « EMPTY placeholder » affiché jusqu'ici (même drift dans `CLAUDE.md`
-§10, non corrigé ici — hors scope d'édition de cette passe, signalé). Frontend features
-(`frontend/src/features/`) et écosystèmes Dependabot (`.github/dependabot.yml`) recomptés contre
-le disque : les deux listes de la carte sont exactes. ⚠ Vérification volontairement ÉTROITE : le
-reste de la carte (backend/engine détaillés, ops, sécurité) n'a pas été reconfronté au code ce
-jour.)
+Last verified @ 2026-09-17 (`documentation-update`, PR épinglage Mercure). §4 Infrastructure
+recalée : dev/CI n'épinglent plus `latest` pour Mercure — `docker-compose.yml` pointe
+`dunglas/mercure:v0.24.2` (confronté à `docker-compose.prod.yml:320` `v0.19`), suite à la
+sortie cassante de Mercure 1.0 le 2026-09-16 qui a rougi la CI dans la nuit (détail :
+[`security/mercure.md`](security/mercure.md)). ⚠ Vérification volontairement ÉTROITE : le reste
+de la carte (repository layout §1, backend/engine détaillés, ops, sécurité) n'a pas été
+reconfronté au code ce jour.)
 
 Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `feedback` (bouton + dialogue de signalement), `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes) ; voir `../frontend/docs/frontend-wizard.md` et `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 
@@ -167,7 +164,7 @@ ruff (line 120, py312, double quotes, LF) · mypy `strict` + `pydantic.mypy` (`o
 
 - **Orchestration (dev):** root `docker-compose.yml` (reads `.env`; template `.env.dist`).
 - **Services (dev):** PostgreSQL 16 (`amateo-postgres`), Redis 7 appendonly (`amateo-redis`), Mercure hub (`amateo-mercure` — signed with the **dedicated `MERCURE_JWT_SECRET`, never `JWT_PASSPHRASE`**: the two being the same value *was* SEC-06, and `MercureHardeningTest` now blocks its return), Mailpit (`amateo-mailpit`), `pdf-worker` (Node), `php-fpm` + nginx, `engine`, **`messenger-worker`** (consumes the Redis queue — without it a generation stays `PENDING`), **`cron-runner`** (`app:jobs:run-due` every minute), `frontend` (nginx :8081) and the dev helpers `frontend-dev` / `frontend-tooling`. Every service has a Docker healthcheck. Details on the hub: [`security/mercure.md`](security/mercure.md).
-- **Prod (`docker-compose.prod.yml`, P0-2/INF-03):** a **standalone** file, not an overlay of the dev compose — immutable images pulled by tag from ghcr.io, **zero code bind-mount**, no dev services (mailpit, frontend-dev, frontend-tooling), third-party images pinned (e.g. `dunglas/mercure:v0.19` where dev rides `:latest`), secrets declared `${…:?}` so the stack refuses to boot on a missing one. The VM only ever holds `docker-compose.prod.yml`, `.env.prod` and `jwt/`. Deploy = tag `v*` → build-push ghcr → SSH (`.github/workflows/deploy.yml`, `make deploy VERSION=vX.Y.Z`); the SSH half stays dormant until the repo variable `DEPLOY_ENABLED=true`. Detail: [`ops/prod-stack.md`](ops/prod-stack.md) · runbook: [`ops/deploy.md`](ops/deploy.md) · backups & Sentry: [`ops/backup-restore.md`](ops/backup-restore.md).
+- **Prod (`docker-compose.prod.yml`, P0-2/INF-03):** a **standalone** file, not an overlay of the dev compose — immutable images pulled by tag from ghcr.io, **zero code bind-mount**, no dev services (mailpit, frontend-dev, frontend-tooling), third-party images pinned to an exact tag everywhere (dev, CI and prod alike — e.g. Mercure: `dunglas/mercure:v0.24.2` in dev/CI's `docker-compose.yml`, `dunglas/mercure:v0.19` in prod; no zone rides `:latest` since Mercure 1.0's breaking release broke dev/CI overnight, 2026-09-17), secrets declared `${…:?}` so the stack refuses to boot on a missing one. The VM only ever holds `docker-compose.prod.yml`, `.env.prod` and `jwt/`. Deploy = tag `v*` → build-push ghcr → SSH (`.github/workflows/deploy.yml`, `make deploy VERSION=vX.Y.Z`); the SSH half stays dormant until the repo variable `DEPLOY_ENABLED=true`. Detail: [`ops/prod-stack.md`](ops/prod-stack.md) · runbook: [`ops/deploy.md`](ops/deploy.md) · backups & Sentry: [`ops/backup-restore.md`](ops/backup-restore.md).
 - **Edge routing:** dev `npm run dev` on host (:5173) proxies `/api`→8080, `/exports`→8080, `/.well-known/mercure`→3000 — and **no `/engine` proxy** (removed, FRT-17: the frontend never calls the engine directly, boundary §2 of `CLAUDE.md`). The `frontend` container's nginx (`docker/frontend/nginx.conf` — **a single conf for dev and prod since P4-118**) additionally proxies `/bundles/` and `/exports/`, and carries **no `/engine/` location at all**: that debug proxy was removed from dev too on 2026-07-31 (it exposed the solver unauthenticated).
 
 ---

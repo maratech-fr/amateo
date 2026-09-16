@@ -324,7 +324,10 @@ services:
       - amateo_network
 
   mercure:
-    image: dunglas/mercure:latest
+    # Épinglé : Mercure 1.0 (2026-09-16) passe à l'authorization OAuth 2.0 et répond 401 aux
+    # tokens 0.x → hub cassé sous `latest`. On reste sur 0.24.2 (version qui tourne) ; la
+    # migration 1.0 est cadrée en roadmap. `latest` interdit ici désormais.
+    image: dunglas/mercure:v0.24.2
     container_name: amateo-mercure
     environment:
       SERVER_NAME: ":80"
