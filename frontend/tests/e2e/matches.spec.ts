@@ -620,6 +620,9 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
   await ensureValidated(page);
 
   const opponent = `E2E3B-${Date.now().toString(36).toUpperCase()}`;
+  // Clé samedi de la semaine du match (weekendKeyOf ramène au samedi) — réutilisée pour
+  // naviguer par l'URL (`semaine=`) dans le try ET dans le nettoyage `finally`.
+  const matchDate = "2027-03-13";
   await page.goto("/matchs");
   await expect(page.getByRole("heading", { name: "Matchs" })).toBeVisible();
 
@@ -629,7 +632,7 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
     await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeVisible();
     await page.getByRole("dialog").getByRole("button", { name: /^Équipe/ }).click();
     await page.getByRole("listbox").getByRole("option").first().click();
-    await page.getByLabel("Date").fill("2027-03-13");
+    await page.getByLabel("Date").fill(matchDate);
     await page.getByLabel("Adversaire").fill(opponent);
     await page.getByRole("button", { name: "Créer" }).click();
     await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeHidden({ timeout: 15_000 });
@@ -640,16 +643,27 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
     await expect(counters.getByRole("link", { name: /conflits/ })).toHaveAttribute("href", "/matchs/conflits");
     await expect(counters.getByRole("button", { name: /à saisir dans FBI/ })).toHaveAttribute("aria-haspopup", "dialog");
 
-    // ── Naviguer jusqu'à la semaine du domicile créé (la liste « À placer ») ──────
+    // ── Naviguer jusqu'à la semaine du domicile créé ─────────────────────────────
+    // La liste « À placer » couvre TOUTES les semaines (P4-197) : on navigue sur la
+    // semaine AFFICHÉE (clé samedi = matchDate), pas sur la liste — sinon `todo` est
+    // visible dès la 1re semaine, la boucle n'avance jamais et l'URL ne porte pas `semaine=`.
     const todo = page.getByRole("button", { name: new RegExp(`vs ${opponent}`) });
     const nextWeek = page.getByRole("button", { name: "Semaine suivante" });
-    for (let hops = 0; hops < 60 && !(await todo.isVisible()) && (await nextWeek.isEnabled()); hops += 1) {
+    for (let hops = 0; hops < 60 && !page.url().includes(`semaine=${matchDate}`) && (await nextWeek.isEnabled()); hops += 1) {
       await nextWeek.click();
       await page.waitForTimeout(120);
     }
+    // Témoin qui PARLE si la navigation n'a jamais atteint la semaine du match (la base CI
+    // porte d'autres rencontres, la semaine du match DOIT être atteignable) — pas de repli silencieux.
+    if (!page.url().includes(`semaine=${matchDate}`)) {
+      throw new Error(
+        `PR 3b: la semaine ${matchDate} n'a jamais été atteinte après 60 sauts `
+        + `(URL courante : ${page.url()}). « Semaine suivante » n'a pas déposé la clé.`,
+      );
+    }
+    // L'URL porte la semaine EXACTE du match (plus précis que \d{4}-…).
+    await expect(page).toHaveURL(new RegExp(`[?&]semaine=${matchDate}`));
     await expect(todo).toBeVisible({ timeout: 15_000 });
-    // L'URL porte la semaine (clé samedi) déposée par la navigation.
-    await expect(page).toHaveURL(/[?&]semaine=\d{4}-\d{2}-\d{2}/);
 
     // ── « à placer » ramène le focus sur le <h2> « À placer » ─────────────────────
     await counters.getByRole("button", { name: /à placer/ }).click();
@@ -691,12 +705,13 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
     await expect(page.getByRole("button", { name: "Semaine", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(page).toHaveURL(/[?&]semaine=\d{4}-\d{2}-\d{2}/);
   } finally {
-    // Nettoyage : supprimer le match créé (bande extérieur ou grille selon l'état) — best-effort.
+    // Nettoyage : supprimer le match créé (grille si placé) — best-effort.
+    // Même correctif P4-197 : on navigue sur la semaine AFFICHÉE (clé matchDate), pas sur
+    // la liste « À placer » (qui montre le match dès la 1re semaine → boucle figée).
     await page.goto("/matchs");
-    const todo = page.getByRole("button", { name: new RegExp(`vs ${opponent}`) });
     const cell = page.getByRole("button", { name: new RegExp(`\\d\\d:\\d\\d · ${opponent}`) });
     const nextWeek = page.getByRole("button", { name: "Semaine suivante" });
-    for (let hops = 0; hops < 60 && !(await todo.isVisible()) && !(await cell.isVisible()) && (await nextWeek.isEnabled()); hops += 1) {
+    for (let hops = 0; hops < 60 && !page.url().includes(`semaine=${matchDate}`) && (await nextWeek.isEnabled()); hops += 1) {
       await nextWeek.click();
       await page.waitForTimeout(120);
     }
