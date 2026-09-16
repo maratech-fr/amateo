@@ -78,6 +78,17 @@ framework:
             policy: 'sliding_window'
             limit: 10
             interval: '1 hour'
+        # P2-54 PR-2b — l'orchestrateur « Mettre à jour les adversaires » (POST /api/opponents/refresh),
+        # keyé PAR UTILISATEUR (JWT) : la route enchaîne les TROIS passes (rattrapage des codes,
+        # auto-localisation des gymnases depuis le fichier, recalcul des trajets) → la plus grosse
+        # rafale d'appels sortants du module (FFBB salles/organismes + BAN + IGN). 10/h couvre
+        # l'usage réel (on met à jour ponctuellement, puis l'annuaire se remplit tout seul aux
+        # imports/apply) et borne une boucle d'appels tiers. Même patron que opponent_resolve /
+        # opponent_travel_resolve (per-user, non assoupli en test À DESSEIN).
+        opponent_refresh:
+            policy: 'sliding_window'
+            limit: 10
+            interval: '1 hour'
         # #10 C2 : la page publique de collecte des doléances (GET pré-remplissage +
         # POST soumission), par IP. 20/15min — large pour un coach (quelques soumissions),
         # borne réelle contre l'énumération de tokens.

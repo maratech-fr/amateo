@@ -14,6 +14,7 @@ use App\Tests\Behat\HolidayWeekContext;
 use App\Tests\Behat\LockContext;
 use App\Tests\Behat\MatchPlacementContext;
 use App\Tests\Behat\OnboardingContext;
+use App\Tests\Behat\OpponentAutoLocateContext;
 use App\Tests\Behat\OpponentSuggestionContext;
 use App\Tests\Behat\PeriodOverlayContext;
 use App\Tests\Behat\RepriseWeekContext;
@@ -143,5 +144,10 @@ return (new Config)
                 new Suite('suggestions-gymnases')
                     ->withPaths('%paths.base%/features/les-gymnases-d-un-adversaire-se-partagent-en-suggestions.feature')
                     ->withContexts(OpponentSuggestionContext::class),
+            )
+            ->withSuite(
+                new Suite('gymnase-du-fichier')
+                    ->withPaths('%paths.base%/features/le-gymnase-du-fichier-localise-l-adversaire.feature')
+                    ->withContexts(OpponentAutoLocateContext::class),
             ),
     );

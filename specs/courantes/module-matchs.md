@@ -1,18 +1,21 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-16 (PR 2a « Configuration & navigation », `documentation-update`). §
-« Onglet Consulter » (nav réordonnée), nouveau § « Onglet Semaine type », § « Configuration —
-repli visuel » (amendement : cinq sections, défaut tout replié, « Accès match » listé + modale par
-gymnase) et § « Trajet AWAY & radar spatial » (nouvelle sous-section PR 2a : recherche, orphelins
-repliés, bouton unique « Mettre à jour les adversaires », cap 200) recalés contre `MatchesLayout.tsx`,
-`routes.tsx`, `TypicalWeekPage.tsx`, `ConfigurationPage.tsx`, `lib/urlState.ts`,
-`lib/configSummaries.ts`, `lib/matchAccessSummary.ts`, `OpponentTravelCard.tsx`,
-`lib/opponentSearch.ts`, `LocateOpponentModal.tsx`, `MatchRowsTable.tsx`, `api.ts`,
-`OpponentResolveController.php` (`MAX_DISTINCT = 200`), `OpponentResolveCapTest.php`.
-Reste du fichier (§ « Résolution des conflits », § « Gymnase depuis le libellé », § reconciliation
-coupes P4-194/195, § Appariement FFBB, § « Solveur de placement », § « Annuaire adverse », §
-« Suggestions partagées de gymnases ») non re-sondé cette passe — voir `git log -p --follow` pour
-sa dernière vérification.
+Last verified @ 2026-09-16 (PR 2b « auto-localisation des adversaires + endpoint orchestrateur »,
+`documentation-update` — clôt le lot 2). § « Trajet AWAY & radar spatial » : nouvelle sous-section
+« Auto-localisation depuis le libellé du fichier » (`OpponentVenueAutoLocator`) et bouton unique
+« Mettre à jour les adversaires » recalé sur l'orchestrateur `POST /api/opponents/refresh` (trois
+passes best-effort en un seul appel, remplace l'ancien enchaînement front de deux appels) ; §
+« Suggestions partagées de gymnases » amendée (P4-209(a) — garde de décrément par source livrée,
+adoucie mais pas fermée) ; § « Annuaire adverse » : lot 2 CLOS. Recalés contre
+`OpponentVenueAutoLocator.php`, `OpponentTravelResolver.php`, `OpponentRefreshController.php`,
+`rate_limiter.yaml`, `ImportFixturesController.php`, `Basketball/FfbbRencontresController.php`,
+`OpponentTravelPaths.php`, `OpponentVenueAutoLocatorTest.php`, `OpponentRefreshApiTest.php`,
+`MatchTenantIsolationTest.php`, `le-gymnase-du-fichier-localise-l-adversaire.feature`, `api.ts`,
+`queries.ts`, `OpponentTravelCard.tsx`.
+Reste du fichier (§ « Onglet Consulter », § « Onglet Semaine type », § « Configuration — repli
+visuel », § « Résolution des conflits », § « Gymnase depuis le libellé », § reconciliation coupes
+P4-194/195, § Appariement FFBB, § « Solveur de placement ») non re-sondé cette passe — voir
+`git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -131,6 +134,11 @@ automatiquement.
 (`FfbbRencontresController`), et rattrapage `POST /api/opponents/resolve` (management SEC-07, cap dur avant
 réseau + rate-limit `opponent_resolve` par user). L'annuaire est CONSOMMÉ par le trajet (§ suivante, PR-3).
 
+**Lot 2 « Configuration & navigation + auto-localisation » — CLOS (2026-09-16, PR 2a + PR 2b)** :
+PR 2a (recherche, orphelins repliés, cap 200, frontend) et PR 2b (auto-localisation des gymnases
+depuis le fichier, endpoint orchestrateur `POST /api/opponents/refresh`, backend + swap frontend,
+§ « Trajet AWAY & radar spatial » ci-dessous) sont toutes deux livrées.
+
 ### Suggestions partagées de gymnases — `OpponentVenueSuggestion` (table GLOBALE, P2-54 « adversaire multi-gymnases » PR-2, backend seul, 2026-09-15)
 
 Un même organisme adverse joue parfois dans plusieurs gymnases selon son équipe (§ « Trajet AWAY » ci-dessous) :
@@ -151,7 +159,10 @@ club) ni du **texte libre saisi par un client** — sans repasser la revue sécu
   observation n'est **jamais un choix** : le compte n'est pas touché.
 - **`MANUAL`** — un gymnase **choisi** par UN club via `/api/ffbb/salles` (donc porteur de son `numero` fédéral,
   `venueExternalRef`), à travers `OpponentTravelController::manual` → `OpponentTravelResolver::
-  applyManualOverride` → `accountManualChoice`. 🔴 **Le libellé/ville/CP/coordonnées ÉCRITS AU PARTAGÉ ne sont
+  applyManualOverride` → `accountManualChoice`. Une ligne équipe peut aussi naître **AUTO** depuis le libellé
+  du fichier (§ « Trajet AWAY & radar spatial » → « Auto-localisation depuis le libellé du fichier »,
+  PR-2b) — celle-là ne compte **jamais** comme un choix, elle n'entre jamais dans ce compte.
+  🔴 **Le libellé/ville/CP/coordonnées ÉCRITS AU PARTAGÉ ne sont
   JAMAIS ceux du corps client** : `FfbbSalleResolver::resolveByExternalRef` RE-RÉSOUT le `numero` côté serveur
   — les coordonnées du corps ne servent que de GRAINE d'une recherche `_geoRadius` (rayon de vérification
   2 km, `FfbbApiClient::searchSallesNearby`), dont on ne garde que le hit dont le `numero` est EXACTEMENT
@@ -164,10 +175,14 @@ club) ni du **texte libre saisi par un client** — sans repasser la revue sécu
   décrémentent symétriquement), neutre si le club re-choisit le même gymnase. Compte et décompte sont des
   écritures **natives** atomiques (`OpponentVenueSuggestionRepository::increment`/`decrement`,
   `GREATEST(0, chosen_by_count - 1)`) — la table est concurrente entre clubs, jamais un read-modify-write
-  applicatif. ⚠ **Dérive de compteur connue, roadmap P4-209** : le décrément d'un ancien ref se déclenche dès
-  qu'il existe sur la ligne TENANT, même si ce choix précédent n'avait jamais résolu fédéralement (donc
-  jamais incrémenté) — un club qui bascule d'une ref inconnue vers une ref connue peut décrémenter à tort le
-  compte d'UN AUTRE club.
+  applicatif. ⚠ **Dérive de compteur connue, roadmap P4-209 — garde par SOURCE livrée (PR-2b,
+  2026-09-16), adoucie mais PAS fermée** : `accountManualChoice`/`revertToAuto`/`deleteTeamOverride`
+  ne décrémentent plus l'ancien ref que si la ligne remplacée était **MANUAL** — une ligne AUTO
+  (posée par `OpponentVenueAutoLocator` depuis le libellé du fichier, ci-dessous) porte un ref
+  fédéral qui n'a jamais compté, donc n'est plus décrémentée à tort. Reste ouvert (P4-209 b/c) :
+  une ligne MANUAL dont le ref précédent n'avait, lui, JAMAIS résolu fédéralement (donc jamais
+  incrémenté) est encore décrémentée à tort à ce jour ; une purge de saison ne décrémente jamais ;
+  le compte reste par ligne club×saison×équipe, pas par club distinct.
 
 **Décisions fermées (2026-09-15)** : **A2** une ligne retombée à 0 **reste** — le rôle applicatif n'a **jamais**
 de DELETE sur cette table (`REVOKE DELETE` explicite dans `Version20260915140000`, un
@@ -317,15 +332,10 @@ surcharge équipe gouverne si elle existe, sinon la ligne club, sinon l'annuaire
 - **Adversaires sans code fédéral repliés** (`OpponentTravelCard`, `orphansOpen`/`showWithout`
   patron disclosure) : liste à part, dépliée automatiquement dès qu'une recherche la matche, sinon
   repliée par défaut.
-- **Un seul bouton « Mettre à jour les adversaires »** (`useUpdateOpponents`, `queries.ts`)
-  remplace l'ancien geste implicite : **deux étapes best-effort ENCHAÎNÉES**, chacune indépendante
-  (l'échec de l'une n'empêche pas la suivante) — (1) `POST /api/opponents/resolve` (rattrapage des
-  codes FFBB, annuaire global, estampille les rencontres), puis (2)
-  `POST /api/opponents/travel/resolve` (recalcul des trajets AUTO, le MANUAL est préservé). Annonce
-  a11y `role="status"` montée AVANT le clic (« étape 1 sur 2 : codes FFBB » / « étape 2 sur 2 :
-  trajets ») ; à la fin, un toast de résumé et l'invalidation du trajet/radar/fixtures/suggestions.
-  Un 422 de l'étape 1 (le cap, ci-dessous) affiche son message métier tel quel ; tout autre échec
-  d'étape affiche un toast générique et laisse l'étape suivante s'exécuter.
+- **Un seul bouton « Mettre à jour les adversaires »** (`useUpdateOpponents`, `queries.ts`) — livré
+  d'abord (PR 2a, 2026-09-16) comme deux appels front enchaînés, **remplacé depuis PR 2b (même
+  jour, § ci-dessous) par UN SEUL appel serveur** `POST /api/opponents/refresh` : voir
+  « PR 2b « auto-localisation des adversaires + endpoint orchestrateur » » pour le détail à jour.
 - **Cap dur relevé de 60 à 200** (`OpponentResolveController::MAX_DISTINCT`,
   `backend/src/Controller/OpponentResolveController.php:39`) — le club du fondateur compte ~102
   adversaires distincts, la borne de 60 le heurtait déjà. Au-delà, `POST /api/opponents/resolve`
@@ -336,6 +346,74 @@ surcharge équipe gouverne si elle existe, sinon la ligne club, sinon l'annuaire
   DISTINCTS déjà vus sur les rencontres de CET adversaire (grain équipe), dans l'ordre
   d'apparition — un indice affiché SEUL, jamais préremplissant la recherche FFBB (alternative
   écartée à la passe design : préremplir aurait fait croire à une résolution automatique).
+
+### PR 2b « auto-localisation des adversaires + endpoint orchestrateur » (2026-09-16 — clôt le lot 2)
+
+**Auto-localisation depuis le libellé du fichier — `OpponentVenueAutoLocator`** : depuis le
+2026-09-16, « le gestionnaire a déjà le gymnase et l'équipe extérieure dans le fichier » (décision
+fondateur) — plus besoin de saisir quoi que ce soit pour localiser un adversaire dont le fichier
+FBI porte déjà le libellé de la salle. Sémantique, par groupe AWAY `(code organisme, libellé
+adverse normalisé)` :
+- candidats = les salles **fédérales** de l'annuaire adverse (`searchSalles` par CP si connu,
+  sinon `searchSallesNearby` sur un rayon de 10 km autour de ses coordonnées, sinon rien) ;
+- **égalité STRICTE** `normalize(libellé du fichier) === normalize(salle.libelle)` — jamais de
+  recherche floue ni de score ;
+- un groupe peut porter plusieurs libellés de fichier distincts (l'adversaire a changé de salle en
+  cours de saison) : chacun est tenté, un hit **UNIQUE** pose la ligne `opponent_travel` TEAM
+  `source = AUTO` avec la fiche fédérale (libellé/numéro/coordonnées, jamais le texte du fichier) ;
+  0 ou ≥ 2 hits pour ce libellé n'apporte rien ; deux libellés qui convergent vers **deux salles
+  différentes** = AMBIGU, rien n'est posé.
+- une ligne TEAM déjà **MANUAL** est laissée intacte (le choix du gestionnaire est souverain,
+  comptée `skipped`) ; une ligne TEAM déjà **AUTO** (ou son absence) est re-tentée à chaque appel.
+- best-effort intégral (FFBB muet/réseau en panne → le groupe reste non localisé, jamais une
+  exception) ; n'écrit **QUE** la table tenant `opponent_travel` — **jamais** le partagé
+  `opponent_venue_suggestion` : une localisation AUTOMATIQUE devinée d'un libellé de fichier saisi
+  par le club n'est **pas** un choix et n'alimente jamais le compteur communautaire (§ « Suggestions
+  partagées de gymnases » ci-dessus, corollaire P4-209).
+
+**Déclencheurs** : hook best-effort après import xlsx (`ImportFixturesController`), hook
+best-effort après apply canal API (`FfbbRencontresController`), et le bouton « Mettre à jour les
+adversaires » (ci-dessous) — mêmes trois points d'entrée que l'annuaire (§ « Annuaire adverse »).
+
+**Endpoint orchestrateur — `POST /api/opponents/refresh`** (`OpponentRefreshController`, dédié
+plutôt qu'une action de plus dans `OpponentTravelController` — trois services sans donnée en
+commun avec son CRUD de trajet) : UN seul appel enchaîne les trois passes best-effort, **chacune
+indépendante** (l'échec de l'une, loggé, n'annule jamais les autres) :
+1. rattrapage des codes fédéraux (`OpponentLocationResolver::resolveObservations`, même moteur
+   que `POST /api/opponents/resolve`) ;
+2. auto-localisation des gymnases depuis le fichier (`OpponentVenueAutoLocator::locate`, ci-dessus) ;
+3. recalcul des trajets AUTO (`OpponentTravelResolver::resolve`, le MANUAL préservé).
+
+`assertManager()` d'abord (403 souverain) ; cap dur `MAX_DISTINCT = 200` AVANT tout réseau
+(422 parlant, aucun jeton brûlé — même borne que le rattrapage des codes, cap indépendant du
+`OpponentTravelResolver::MAX_OPPONENTS = 60` des routes fines) ; puis un limiteur PAR UTILISATEUR
+dédié `opponent_refresh` (10/h, `rate_limiter.yaml`). Réponse `{codes, autoLocated, travel}`
+(chaque bloc = la forme de sa route fine). **Les routes fines restent en place** (`/opponents/resolve`,
+`/opponents/travel/resolve`) — compat, personne ne les a retirées.
+
+**Frontend (`useUpdateOpponents`, `OpponentTravelCard.tsx`)** : le bouton unique « Mettre à jour
+les adversaires » n'appelle plus que `POST /api/opponents/refresh` (un seul appel, plus les deux
+enchaînés de PR 2a) ; le toast de résumé nomme les trois passes : « N codes retrouvés · N gymnases
+localisés depuis le fichier · N trajets calculés ». Invalidation `fixtures`/`opponents`/
+`fixtures/conflicts` après l'appel, réussi ou non.
+
+**Décision fondateur (2026-09-15/16)** : un seul bouton, jamais un geste séparé pour
+l'auto-localisation ; propre au club, jamais partagé depuis un libellé de fichier (repris
+ci-dessus) ; une ligne AUTO ne compte jamais comme un choix (A5 déjà abandonné pour la migration,
+§ « Suggestions partagées » — même principe étendu ici au call site).
+
+**Feature Behat** `le-gymnase-du-fichier-localise-l-adversaire.feature`
+(`OpponentAutoLocateContext`) : API FFBB réelle, gymnase Jeanne Desparmet-Ruello — un gymnase réel
+localise l'adversaire à jour, un libellé inventé ne localise rien, et « revenir au défaut du club »
+efface la localisation automatique (`deleteTeamOverride`).
+
+**Tests** : `OpponentVenueAutoLocatorTest` (8 cas — hit unique, 0/≥2 hits, deux libellés
+divergents, ligne MANUAL préservée, ligne AUTO re-tentée, best-effort réseau), `OpponentRefreshApiTest`
+(403 non-management, cap AVANT réseau, 429 limiteur, réponse à trois blocs toujours bien formée,
+passes indépendantes), `MatchTenantIsolationTest` (NR étendu), `OpponentTravelResolverTest`
+(garde de décrément par source, § « Suggestions partagées »).
+
+**Lot 2 « Configuration & navigation + auto-localisation » — CLOS** (PR 2a + PR 2b, 2026-09-16).
 
 ## Palier A — PR-2 (moteur de conflits, à la volée, coach seul, 2026-07-07)
 

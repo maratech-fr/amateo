@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Fixture, Venue, VenueLabelInventoryRow } from "./api";
-import { attachVenueLabel, deleteConflictResolution, detachVenueLabel, getFixtures, getVenueLabelInventory, getVenueSuggestions, getVenues, putConflictResolution, resolveOpponents } from "./api";
+import { attachVenueLabel, deleteConflictResolution, detachVenueLabel, getFixtures, getVenueLabelInventory, getVenueSuggestions, getVenues, putConflictResolution, refreshOpponents, resolveOpponents } from "./api";
 
 // On n'exerce QUE la coercition de `api.ts` : le voisin `@/shared/api/collection` est le
 // SEUL double. L'API Platform OMET les props nulles/vides du JSON — on prouve que les
@@ -144,5 +144,19 @@ describe("resolveOpponents — rattrapage des codes FFBB de l'annuaire (PR 2a)",
     const out = await resolveOpponents();
     expect(post).toHaveBeenCalledWith("opponents/resolve");
     expect(out).toEqual({ resolved: 12, unresolved: ["Perdu FC"], skipped: 3, stamped: 40 });
+  });
+});
+
+describe("refreshOpponents — l'orchestrateur en un appel (PR 2b)", () => {
+  it("POST opponents/refresh et rend les trois passes { codes, autoLocated, travel }", async () => {
+    const body = {
+      codes: { resolved: 12, unresolved: ["Perdu FC"], skipped: 3, stamped: 40 },
+      autoLocated: { located: 8, ambiguous: 1, unmatched: 2, skipped: 4 },
+      travel: { resolved: 40, unresolved: ["ARA0069999"], skippedManual: 5 },
+    };
+    post.mockReturnValueOnce({ json: () => Promise.resolve(body) } as unknown as ReturnType<typeof post>);
+    const out = await refreshOpponents();
+    expect(post).toHaveBeenCalledWith("opponents/refresh");
+    expect(out).toEqual(body);
   });
 });

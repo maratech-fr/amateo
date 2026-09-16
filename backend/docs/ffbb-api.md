@@ -247,6 +247,10 @@ désormais exploité côté réconciliation — voir § « Réconciliation FBI, 
   **AUTO** : 3 km élargi tant que < 5 salles — un défaut fixe montrait une liste vide à un club rural
   (Martiel : 0 salle à 3 ET 5 km, mesuré §6.9). Panneau « Gymnases à proximité » de l'étape 2 ;
   « déjà ajouté » reconnu au numéro fédéral, jamais au nom.
+- **P2-54 PR-2b** — nouveau consommateur : `App\Service\Geo\OpponentVenueAutoLocator` (salles par
+  CP `searchSalles` de l'annuaire adverse, sinon `searchSallesNearby` par rayon autour de ses
+  coordonnées) — égalité STRICTE `normalize(libellé du fichier FBI) === normalize(salle.libelle)`
+  pour poser le gymnase FÉDÉRAL comme surcharge de trajet TENANT (source AUTO, jamais le partagé).
 
 ## Ce qui est disponible et NON exploité
 

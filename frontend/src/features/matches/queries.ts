@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { HTTPError } from "ky";
 import { useState } from "react";
 
 import { errorMessage } from "@/shared/lib/errorMessage";
@@ -349,8 +348,8 @@ export function useResolveOpponentTravel() {
   });
 }
 
-/** Les étapes de la mise à jour des adversaires — pilotent le libellé du bouton et l'annonce a11y. */
-export type UpdateOpponentsStep = "idle" | "codes" | "trajets";
+/** L'état de la mise à jour des adversaires — pilote le libellé du bouton et l'annonce a11y. */
+export type UpdateOpponentsStep = "idle" | "running";
 
 export interface UpdateOpponentsController {
   run: () => void;
@@ -359,12 +358,12 @@ export interface UpdateOpponentsController {
 }
 
 /**
- * PR 2a — « Mettre à jour les adversaires » : deux étapes best-effort ENCHAÎNÉES — (1) rattraper
- * les codes FFBB des adversaires (`POST /api/opponents/resolve`, annuaire global + estampille les
- * rencontres), puis (2) recalculer les trajets AUTO (`POST /api/opponents/travel/resolve`). Chaque
- * étape est indépendante : un échec log un toast et laisse la suivante s'exécuter (le 422 du cap
- * porte un message métier précis — on le montre tel quel). À la fin, un unique toast de succès
- * résume les étapes réussies, et on ré-invalide le trajet, le radar, les fixtures et les suggestions.
+ * PR 2b — « Mettre à jour les adversaires » : UN SEUL appel (`POST /api/opponents/refresh`)
+ * qui enchaîne côté serveur les trois passes best-effort (rattrapage des codes FFBB,
+ * auto-localisation des gymnases depuis le fichier FBI, recalcul des trajets AUTO — le MANUAL
+ * préservé). Un unique toast résume les trois passes ; on ré-invalide les fixtures, le radar de
+ * conflits et TOUT ce qui pend sous `["opponents"]` (trajet + suggestions partagées). Un échec
+ * (dont le 422 du cap, message métier écrit pour être lu) remonte tel quel par `errorMessage`.
  */
 export function useUpdateOpponents(): UpdateOpponentsController {
   const queryClient = useQueryClient();
@@ -375,39 +374,30 @@ export function useUpdateOpponents(): UpdateOpponentsController {
       return;
     }
     void (async () => {
-      const done: string[] = [];
-
-      // Étape 1 — rattraper les codes FFBB.
-      setStep("codes");
+      setStep("running");
       try {
-        const codes = await matchesApi.resolveOpponents();
-        done.push(`${codes.resolved} code${codes.resolved > 1 ? "s" : ""} retrouvé${codes.resolved > 1 ? "s" : ""}`);
-      } catch (error) {
-        if (error instanceof HTTPError && 422 === error.response.status) {
-          // Le cap (« trop d'adversaires… ») est un message métier écrit pour être lu : tel quel.
-          toast.error(await errorMessage(error));
-        } else {
-          toast.error("Rattrapage des codes FFBB impossible — poursuite avec les trajets.");
-        }
-      }
-
-      // Étape 2 — recalculer les trajets AUTO (le MANUAL est préservé).
-      setStep("trajets");
-      try {
-        const travel = await matchesApi.resolveOpponentTravel();
-        done.push(`${travel.resolved} trajet${travel.resolved > 1 ? "s" : ""} calculé${travel.resolved > 1 ? "s" : ""}`);
+        const result = await matchesApi.refreshOpponents();
+        const codes = result.codes.resolved;
+        const located = result.autoLocated.located;
+        const trajets = result.travel.resolved;
+        toast.success(
+          [
+            `${codes} code${codes > 1 ? "s" : ""} retrouvé${codes > 1 ? "s" : ""}`,
+            `${located} gymnase${located > 1 ? "s" : ""} localisé${located > 1 ? "s" : ""} depuis le fichier`,
+            `${trajets} trajet${trajets > 1 ? "s" : ""} calculé${trajets > 1 ? "s" : ""}`,
+          ].join(" · "),
+        );
       } catch (error) {
         toast.error(await errorMessage(error));
       }
 
-      // Le rattrapage a estampillé des codes (fixtures) ; travel + suggestions partagées ont bougé.
+      // La mise à jour a estampillé des codes (fixtures), bougé le trajet + les suggestions
+      // partagées, et changé le radar spatial.
       void queryClient.invalidateQueries({ queryKey: ["fixtures"] });
       void queryClient.invalidateQueries({ queryKey: ["opponents"] });
+      void queryClient.invalidateQueries({ queryKey: ["fixtures", "conflicts"] });
 
       setStep("idle");
-      if (done.length > 0) {
-        toast.success(done.join(" · "));
-      }
     })();
   };
 

@@ -1,10 +1,11 @@
 # ClubScheduler — Tenant Isolation Architecture
 
-Last verified @ 2026-09-14 (rotation `documentation-update`, PR E1 — ré-affectation d'un libellé de
-salle, fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code : priorité 7 toujours
-en place (`TenantFilterListener.php:55`, `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · sortie
-immédiate sur `/api/admin/**` (`TenantFilterListener.php:81`) ✓ · `TenantOwnedInterfaceCompletenessTest.php`
-présent (`backend/tests/Security/`) ✓. Rien à corriger.
+Last verified @ 2026-09-16 (rotation `documentation-update`, PR 2b « auto-localisation des
+adversaires » — fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code :
+priorité 7 toujours en place (`TenantFilterListener.php:55`, `KernelEvents::REQUEST =>
+['onKernelRequest', 7]`) ✓ · sortie immédiate sur `/api/admin/**` (`TenantFilterListener.php:81`)
+✓ · `TenantOwnedInterfaceCompletenessTest.php` présent (`backend/tests/Security/`) ✓. Rien à
+corriger.
 
 ## Overview
 

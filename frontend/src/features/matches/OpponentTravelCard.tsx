@@ -26,9 +26,10 @@ import { SourceBadge } from "./SourceBadge";
  * `scope`, `source`) vient du BACKEND — le front n'en re-dérive rien, il DÉRIVE seulement un
  * libellé de club d'AFFICHAGE (présentation pure, jamais une clé).
  *
- * PR 2a — une RECHERCHE instantanée (club ou équipe), les adversaires SANS code fédéral sortis
- * dans une liste repliée à part, et « Mettre à jour les adversaires » (rattraper les codes FFBB
- * puis recalculer les trajets, deux étapes).
+ * PR 2a/2b — une RECHERCHE instantanée (club ou équipe), les adversaires SANS code fédéral sortis
+ * dans une liste repliée à part, et « Mettre à jour les adversaires » : depuis la PR 2b, UN seul
+ * appel serveur (`/api/opponents/refresh`) enchaîne les trois passes (codes FFBB, gymnases depuis
+ * le fichier, trajets) — un unique libellé d'étape « Mise à jour… ».
  */
 
 /** Libellé de club pour l'AFFICHAGE : le libellé brut moins un suffixe d'équipe final « - n ».
@@ -127,7 +128,7 @@ export function OpponentTravelCard() {
     revert.mutate({ opponentOrganismeCode: code, ...(null === teamKey ? {} : { opponentTeamKey: teamKey }) }, { onSuccess: () => toast.success("Défaut du club rétabli.") });
   };
 
-  const updateLabel = "codes" === update.step ? "Codes FFBB…" : "trajets" === update.step ? "Trajets…" : "Mettre à jour les adversaires";
+  const updateLabel = "running" === update.step ? "Mise à jour…" : "Mettre à jour les adversaires";
 
   return (
     <div className="flex flex-col gap-3">
@@ -141,9 +142,9 @@ export function OpponentTravelCard() {
           {updateLabel}
         </Button>
       </div>
-      {/* Annonce a11y de la progression — MONTÉE avant le clic (le lecteur d'écran suit les étapes). */}
+      {/* Annonce a11y de la progression — MONTÉE avant le clic (le lecteur d'écran suit l'état). */}
       <p role="status" className="sr-only">
-        {"codes" === update.step ? "Mise à jour des adversaires — étape 1 sur 2 : codes FFBB" : "trajets" === update.step ? "Mise à jour des adversaires — étape 2 sur 2 : trajets" : ""}
+        {"running" === update.step ? "Mise à jour des adversaires en cours…" : ""}
       </p>
 
       {"failed" === state ? <LoadErrorHint onRetry={() => void travelQuery.refetch()} /> : null}

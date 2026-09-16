@@ -555,6 +555,54 @@ final class MatchTenantIsolationTest extends WebTestCase
         self::assertSame('Gymnase A', $survivor->getOverrideVenueLabel());
     }
 
+    /**
+     * NR axe §7.1 tenant isolation — grain ÉQUIPE AUTO (P2-54 PR-2b, auto-localisation
+     * depuis le libellé du fichier). Une ligne de trajet ÉQUIPE `source = AUTO` (portant
+     * un ref de salle fédéral) reste scopée TENANT : club B ne la lit jamais, et
+     * l'ORCHESTRATEUR `POST /api/opponents/refresh` lancé par B — qui enchaîne rattrapage
+     * des codes, auto-localisation et recalcul des trajets — n'écrit RIEN chez A.
+     * Falsifié : la ligne AUTO de A reste byte-identique après le refresh de B.
+     */
+    public function testOpponentTeamAutoTravelIsTenantScopedAndRefreshOfBWritesNothingAtA(): void
+    {
+        [$clubA, , $seasonA] = $this->createClubUser('autoa');
+        [$clubB, $userB] = $this->createClubUser('autob');
+
+        // A TEAM AUTO row for club A only (code + teamKey + federal salle ref, source AUTO).
+        $this->seedTeamAutoTravel($clubA, $seasonA, 'ORGAUTO', 'equipe auto', 33, '166900777', 'GYMNASE FEDERAL A');
+
+        // Club A's RLS-scoped repository sees its team AUTO row; club B sees nothing.
+        $this->scopeGucToClub($clubA->getId());
+        $rowsA = $this->em->getRepository(OpponentTravel::class)->findBy(['opponentOrganismeCode' => 'ORGAUTO']);
+        self::assertCount(1, $rowsA);
+        self::assertSame(OpponentTravelSource::AUTO, $rowsA[0]->getSource());
+
+        $this->scopeGucToClub($clubB->getId());
+        self::assertCount(0, $this->em->getRepository(OpponentTravel::class)->findBy(['opponentOrganismeCode' => 'ORGAUTO']));
+
+        // Club B runs the refresh orchestrator — B has no away fixtures of its own, so the
+        // three passes write nothing, and A's tenant row is unreachable to B either way.
+        $this->client->request('POST', '/api/opponents/refresh', [], [], $this->authHeaders($userB) + ['HTTP_ACCEPT' => 'application/json']);
+        self::assertResponseStatusCodeSame(200);
+
+        // A's team AUTO row survives byte-identical. Disable the request-scoped Doctrine
+        // filters (left pointing at B) and rely on the RLS GUC scoped to A.
+        $this->scopeGucToClub($clubA->getId());
+        $this->em->clear();
+        $filters = $this->em->getFilters();
+        foreach (['tenant_filter', 'season_filter'] as $filter) {
+            if ($filters->isEnabled($filter)) {
+                $filters->disable($filter);
+            }
+        }
+        $survivor = $this->em->getRepository(OpponentTravel::class)->findOneBy(['opponentOrganismeCode' => 'ORGAUTO', 'opponentTeamKey' => 'equipe auto']);
+        self::assertInstanceOf(OpponentTravel::class, $survivor);
+        self::assertSame($clubA->getId(), $survivor->getClubId());
+        self::assertSame(33, $survivor->getTravelMinutes());
+        self::assertSame(OpponentTravelSource::AUTO, $survivor->getSource());
+        self::assertSame('166900777', $survivor->getOverrideVenueExternalRef());
+    }
+
     // ── Résolution des conflits (P4-207) : le statut vit dans une table TENANT ──
 
     /**
@@ -744,6 +792,25 @@ final class MatchTenantIsolationTest extends WebTestCase
             ->setOpponentTeamKey($teamKey)
             ->setSource(OpponentTravelSource::MANUAL)
             ->setTravelMinutes($minutes)
+            ->setOverrideVenueLabel($venueLabel)
+            ->setOverrideLatitude(45.75)
+            ->setOverrideLongitude(4.85)
+            ->setResolvedAt(new DateTimeImmutable);
+        $this->em->persist($row);
+        $this->em->flush();
+    }
+
+    private function seedTeamAutoTravel(Club $club, Season $season, string $code, string $teamKey, int $minutes, string $venueRef, string $venueLabel): void
+    {
+        $this->scopeGucToClub($club->getId());
+        $row = (new OpponentTravel)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setOpponentOrganismeCode($code)
+            ->setOpponentTeamKey($teamKey)
+            ->setSource(OpponentTravelSource::AUTO)
+            ->setTravelMinutes($minutes)
+            ->setOverrideVenueExternalRef($venueRef)
             ->setOverrideVenueLabel($venueLabel)
             ->setOverrideLatitude(45.75)
             ->setOverrideLongitude(4.85)

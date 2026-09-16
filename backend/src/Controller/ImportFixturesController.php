@@ -11,6 +11,7 @@ use App\Repository\FixtureRepository;
 use App\Service\Basketball\OpponentLocationResolver;
 use App\Service\FbiFixtureImporter;
 use App\Service\FixtureImportGate;
+use App\Service\Geo\OpponentVenueAutoLocator;
 use App\Service\SeasonResolver;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use InvalidArgumentException;
@@ -44,6 +45,7 @@ final class ImportFixturesController extends AbstractController
         private readonly LoggerInterface $logger,
         private readonly SeasonResolver $seasonResolver,
         private readonly OpponentLocationResolver $opponentResolver,
+        private readonly OpponentVenueAutoLocator $venueAutoLocator,
         private readonly FixtureRepository $fixtures,
     ) {}
 
@@ -101,7 +103,7 @@ final class ImportFixturesController extends AbstractController
         // P2-54 RMM-9 — after the fixtures are flushed, locate the DISTINCT away
         // opponents into the global directory. Best-effort, jamais un import cassé :
         // le résolveur avale déjà toute panne réseau, ce garde couvre le reste.
-        $this->resolveOpponentLocations($season);
+        $this->resolveOpponentLocations($club, $season);
 
         return $this->json([
             'message' => 'Import terminé.',
@@ -120,7 +122,7 @@ final class ImportFixturesController extends AbstractController
         ], Response::HTTP_OK);
     }
 
-    private function resolveOpponentLocations(?Season $season): void
+    private function resolveOpponentLocations(Club $club, ?Season $season): void
     {
         if (!$season instanceof Season) {
             return;
@@ -129,6 +131,15 @@ final class ImportFixturesController extends AbstractController
             $this->opponentResolver->resolveFromFixtures($this->fixtures->findAwayBySeason($season->getId()));
         } catch (Throwable $e) {
             $this->logger->warning('Opponent directory: post-import resolution failed', ['exception' => $e]);
+        }
+        // P2-54 PR-2b — puis auto-localiser le gymnase de chaque équipe adverse depuis le
+        // libellé de salle du fichier FBI (surcharge de trajet TENANT, source AUTO). Passe
+        // SÉPARÉE : un échec ici (ou de la résolution ci-dessus) ne bloque jamais l'autre,
+        // et jamais l'import (best-effort intégral, jamais un 500).
+        try {
+            $this->venueAutoLocator->locate($club->getId(), $season->getId());
+        } catch (Throwable $e) {
+            $this->logger->warning('Opponent directory: post-import venue auto-location failed', ['exception' => $e]);
         }
     }
 
