@@ -26,7 +26,7 @@ interface MatchRowsTableProps {
   conflictsByFixture: Map<string, Conflict[]>;
   /** En vue coach : rôle du coach filtré sur l'équipe, en pastille (comme `AwayList`). */
   coachRoles?: Map<string, CoachTeamRole>;
-  /** Renvoi vers Placer sur le week-end du match (la page pose la semaine + navigue). */
+  /** Renvoi vers la Semaine du Calendrier sur le week-end du match (la page pose la semaine). */
   onSelectFixture: (fixtureId: string) => void;
 }
 
@@ -48,7 +48,7 @@ function familiesOf(conflicts: Conflict[] | undefined): (typeof CONFLICT_FAMILIE
  * l'onglet Consulter (lecture seule). Une colonne par fait : date/heure, équipe (+ rôle
  * coach), domicile/extérieur, adversaire, gymnase, statut, conflits (une pastille par
  * famille présente). Chaque ligne porte UN bouton accessible (jamais un `onClick` sur
- * `<tr>` nu) qui renvoie vers Placer sur le week-end du match. Présentation pure :
+ * `<tr>` nu) qui renvoie vers la Semaine du Calendrier sur le week-end du match. Présentation pure :
  * libellés en table (🔴 `.claude/rules/frontend.md`), aucun verdict recalculé.
  */
 export function MatchRowsTable({ caption, groups, teams, venues, conflictsByFixture, coachRoles, onSelectFixture }: MatchRowsTableProps) {
@@ -117,7 +117,7 @@ function GroupRows({
               <button
                 type="button"
                 className="rounded text-left underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={`Ouvrir ${teamName} contre ${fixture.opponentLabel} le ${frDateWeekdayNoYear(fixture.matchDate)} dans Placer`}
+                aria-label={`Ouvrir ${teamName} contre ${fixture.opponentLabel} le ${frDateWeekdayNoYear(fixture.matchDate)} dans la semaine`}
                 onClick={() => onSelectFixture(fixture.id)}
               >
                 <span>{frDateWeekdayNoYear(fixture.matchDate)}</span>{" "}

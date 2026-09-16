@@ -38,7 +38,6 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
   const setFilterMode = useMatchesStore((s) => s.setFilterMode);
   const toggleFilterId = useMatchesStore((s) => s.toggleFilterId);
   const setSelectedWeekend = useMatchesStore((s) => s.setSelectedWeekend);
-  const setRailStep = useMatchesStore((s) => s.setRailStep);
   const setSelectedFixtureId = useMatchesStore((s) => s.setSelectedFixtureId);
   const reviewFixtures = useReviewFixtures();
   const resolveDeviation = useResolveFixtureDeviation();
@@ -98,14 +97,12 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
   };
 
   const onPlace = (fixture: Fixture): void => {
-    // `setFilterMode`/`toggleFilterId`/`setSelectedWeekend` remettent tous `railStep`
-    // à null, et l'auto de la boucle peut atterrir sur une autre vue que `homeSlots` —
-    // or le panneau de placement n'y vit que là. On POSE donc la vue et la rencontre
-    // pointée APRÈS ces trois-là, pour ouvrir directement le panneau du match.
+    // PR 3b — le Calendrier porte un panneau de placement PERMANENT (plus de rail) :
+    // on pose le filtre, la semaine et la rencontre pointée, et le panneau du match
+    // s'ouvre directement à l'arrivée sur le Calendrier.
     setFilterMode("equipe");
     toggleFilterId(fixture.teamId);
     setSelectedWeekend(weekendKeyOf(fixture.matchDate));
-    setRailStep("homeSlots");
     setSelectedFixtureId(fixture.id);
     void navigate("/matchs");
   };

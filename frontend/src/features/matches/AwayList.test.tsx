@@ -67,6 +67,11 @@ describe("AwayList (P1-4 PR E2 — l'extérieur visible)", () => {
     expect(screen.getByText(/heure inconnue/)).toBeInTheDocument();
   });
 
+  it("PR 3b — le titre de la bande est un <h2> (même niveau que « À placer » sur le Calendrier)", () => {
+    render(<AwayList fixtures={[away()]} teams={teams} habits={[habit]} onEdit={vi.fn()} onDelete={vi.fn()} />);
+    expect(screen.getByRole("heading", { level: 2, name: /À l'extérieur ce week-end/ })).toBeInTheDocument();
+  });
+
   it("renders nothing when the weekend has no away match", () => {
     const { container } = render(<AwayList fixtures={[away({ homeAway: "HOME" })]} teams={teams} habits={[]} onEdit={vi.fn()} onDelete={vi.fn()} />);
     expect(container).toBeEmptyDOMElement();

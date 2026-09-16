@@ -218,7 +218,7 @@ export function ConflictsPage() {
     setConflictsFamilies(nextFamilies.length === CONFLICT_FAMILIES.length ? null : nextFamilies);
   };
 
-  // Un conflit daté offre « Voir la semaine » (vers Placer) ; sans date, aucun bouton.
+  // Un conflit daté offre « Voir la semaine » (vers Calendrier) ; sans date, aucun bouton.
   const renderVoirSemaine = (conflict: Conflict): ReactNode => {
     const date = dateOf(conflict);
     if (null === date) {
@@ -229,7 +229,7 @@ export function ConflictsPage() {
       <Button
         variant="outline"
         size="sm"
-        title={`Voir la semaine du ${weekendShortLabel(saturday)} dans Placer`}
+        title={`Voir la semaine du ${weekendShortLabel(saturday)} dans le Calendrier`}
         onClick={() => {
           setSelectedWeekend(saturday);
           navigate("/matchs");
@@ -255,7 +255,7 @@ export function ConflictsPage() {
     />
   );
 
-  // Lectures fondatrices (doctrine `readState`, comme `ConsultPage`).
+  // Lectures fondatrices (doctrine `readState`, comme `CalendarPage`).
   if (readLoading(conflicts) || readLoading(teams) || readLoading(venues)) {
     return <FullPageSpinner />;
   }

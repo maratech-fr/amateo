@@ -69,14 +69,17 @@ describe("MatchesLayout (RMM-1 PR2 — deux espaces)", () => {
     expect(screen.getByRole("link", { name: "Configuration" })).toBeInTheDocument();
   });
 
-  it("porte les SIX onglets, dans l'ordre Conflits · Consulter · Importer · Configuration · Semaine type · Semaine (PR 2a)", () => {
+  it("porte les CINQ onglets, dans l'ordre Conflits · Calendrier · Importer · Configuration · Semaine type (PR 3b)", () => {
     meState.chosen = "s1";
     renderAt("/matchs");
     const nav = screen.getByRole("navigation", { name: "Espaces matchs" });
     const labels = within(nav)
       .getAllByRole("link")
       .map((l) => l.textContent);
-    expect(labels).toEqual(["Conflits", "Consulter", "Importer", "Configuration", "Semaine type", "Semaine"]);
+    expect(labels).toEqual(["Conflits", "Calendrier", "Importer", "Configuration", "Semaine type"]);
+    // Plus aucun onglet « Consulter » ni « Semaine » (fusionnés dans « Calendrier »).
+    expect(labels).not.toContain("Consulter");
+    expect(labels).not.toContain("Semaine");
   });
 
   it("la nav défile horizontalement (overflow-x-auto, ni flex-wrap ni scrollbar-hide)", () => {
@@ -104,14 +107,14 @@ describe("MatchesLayout (RMM-1 PR2 — deux espaces)", () => {
     expect(screen.getByText("CONFLITS")).toBeInTheDocument();
   });
 
-  it("porte l'onglet Consulter et rend l'espace Consulter (PR-2a)", async () => {
+  it("porte l'onglet Calendrier (index /matchs) et rend l'écran unique (PR 3b)", async () => {
     meState.chosen = "s1";
     const user = userEvent.setup();
-    renderAt("/matchs");
-    const consulterLink = screen.getByRole("link", { name: "Consulter" });
-    expect(consulterLink).toBeInTheDocument();
-    await user.click(consulterLink);
-    expect(screen.getByText("CONSULTER")).toBeInTheDocument();
+    renderAt("/matchs/configuration");
+    const calendrierLink = screen.getByRole("link", { name: "Calendrier" });
+    expect(calendrierLink).toBeInTheDocument();
+    await user.click(calendrierLink);
+    expect(screen.getByText("BOUCLE")).toBeInTheDocument();
   });
 
   it("le garde socle verrouille la BOUCLE sans version pointée", () => {
@@ -218,7 +221,7 @@ describe("MatchesLayout — le « gardien » (RMM-3, POST de visite)", () => {
     // le cache staleTime Infinity n'est pas refetché.
     await user.click(screen.getByRole("link", { name: "Configuration" }));
     expect(screen.getByText("CONFIG")).toBeInTheDocument();
-    await user.click(screen.getByRole("link", { name: "Semaine" }));
+    await user.click(screen.getByRole("link", { name: "Calendrier" }));
     expect(screen.getByText("BOUCLE")).toBeInTheDocument();
 
     await new Promise((r) => setTimeout(r, 50));

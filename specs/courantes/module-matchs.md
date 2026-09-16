@@ -1,21 +1,27 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-16 (lot 3 « grille unique », PR-3a « extérieurs dans la grille » —
-**frontend seul, additif** — `documentation-update`). § « Palier A — PR-3 (grille week-end UI) » :
-nouvelle sous-section « Colonne Extérieur » (`lib/awayKickoff.ts` foyer d'heure/jointure trajet,
-`lib/awayColumn.ts` cellules + bande « sans heure » + tri, `WeekendGrid.tsx` rendu) ; § « Diagnostic
-gradué + extérieur visible » amendée (la bande `AwayList` reste, la grille montre désormais aussi
-les extérieurs) ; § « Trajet AWAY & radar spatial » **corrigée** : la divergence −30 min qui y était
-décrite ne portait déjà plus que sur la vue « week-end type » (`typicalWeekend.ts`, P4-206 toujours
-ouvert) — la grille datée réelle (`weekendGrid.ts`) n'en a jamais tenu depuis D1/P4-203, l'ancienne
-formulation était stale. **PR 3b (Calendrier unique — suppression de l'onglet Semaine et du rail,
-compteurs, P4-197) n'est PAS livrée.** Recalés contre `frontend/src/features/matches/lib/{awayKickoff,awayColumn,weekendGrid}.ts`,
-`WeekendGrid.tsx`, `MatchesPage.tsx`, `ConsultPage.tsx`, `AwayList.tsx`, `tests/e2e/matches.spec.ts`.
-Reste du fichier (§ « Onglet Consulter » hors la note ci-dessous, § « Onglet Semaine type », §
-« Configuration — repli visuel », § « Résolution des conflits », § « Gymnase depuis le libellé », §
-reconciliation coupes P4-194/195, § Appariement FFBB, § « Solveur de placement », § « Trajet AWAY »
-hors le paragraphe corrigé) non re-sondé cette passe — voir `git log -p --follow` pour sa dernière
-vérification.
+Last verified @ 2026-09-16 (lot 3 (2/2) « Calendrier — l'écran unique », PR 3b — **frontend seul,
+clôt le lot 3** — `documentation-update`). **PR 3b est LIVRÉE** : `/matchs` (index) fusionne l'ex
+« Semaine » (`MatchesPage.tsx`, SUPPRIMÉ) et l'ex « Consulter » (`ConsultPage.tsx`, SUPPRIMÉ) en un
+seul écran `CalendarPage.tsx` — rail à 5 étapes (`railStep`/`deriveLoopSteps`) et son exception
+d'atterrissage P4-192 supprimés, remplacés par la barre `WeekCounters` (3 compteurs) ; nav
+`MatchesLayout` passe à **5 onglets** (Conflits · Calendrier · Importer · Configuration · Semaine
+type) ; `/matchs/consulter` redirige en permanence (query conservée). § réécrites/renommées : « Onglet
+« Consulter » » → **« Calendrier — l'écran unique du module matchs »** (contenu Mois/Phase/filtres
+conservé, sous-titré « Détail » — toujours courant, seul le fichier porteur a changé) ; « Refonte UX
+— RMM-1 » annotée d'une note de HISTORICISATION (rail + P4-192 morts, « deux espaces, deux routes »
+— boucle vs Configuration — reste vrai, inchangé) ; « Onglet Conflits » (nav 5 onglets, « Voir la
+semaine » → Calendrier) ; § « Palier A — PR-3 (grille week-end UI) » (pointeurs `MatchesPage.tsx` →
+`WeekWorkbench.tsx`, PR 3b marquée livrée) ; § « Lecture des fondations » (readState relocalisé
+`CalendarPage.tsx`) ; « Le gardien à l'ouverture » (bandeau/rappel de fraîcheur relocalisés
+`CalendarPage.tsx`/`CalendarControls.tsx`). Recalés contre `frontend/src/features/matches/
+{CalendarPage,WeekWorkbench,WeekCounters,CalendarControls,MonthTable,PhaseTable,MatchesLayout,
+ReviewQueue,ConflictsPage,MatchRowsTable,AwayList}.tsx`, `lib/{loopSteps,urlState}.ts`, `store.ts`,
+`frontend/src/app/routes.tsx`, `tests/e2e/{matches,matches-consulter}.spec.ts`. Reste du fichier
+(§ « Configuration — repli visuel », § « Résolution des conflits », § « Gymnase depuis le libellé »,
+§ reconciliation coupes P4-194/195, § Appariement FFBB, § « Solveur de placement », § « Trajet AWAY »,
+§ « Réconciliation FBI », § « Espace Importer », § « Onglet Semaine type », § « Échéances ligue/
+comité ») non re-sondé cette passe — voir `git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -540,8 +546,9 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   « 15:30 · à Epinouze », L3 trajet en chip (`awayTravelLabel`, `~` si approché) si connu. `aria-label`
   complet (équipe, adversaire, jour, heure ou « heure inconnue », « heure estimée », trajet) porte le nom
   accessible — l'info ne repose jamais sur l'icône seule. Clic ouvre `FixtureFormDialog` en édition
-  (`MatchesPage.tsx:312`, jamais le `PlacementPanel` — réservé au domicile) ; **inerte en mode échange**
-  (garde posée AVANT le test de statut, `MatchesPage.tsx:290` — on n'échange que des domiciles).
+  (`WeekWorkbench.tsx:213-214`, `onEditFixture`, jamais le `PlacementPanel` — réservé au domicile) ;
+  **inerte en mode échange** (garde posée AVANT le test de statut, `WeekWorkbench.tsx:194-196` — on
+  n'échange que des domiciles).
   `data-away="true"`/`data-testid="weekend-grid"` distinguent le bloc de la grille pour les tests.
   **La bande `AwayList` sous la grille est CONSERVÉE** (décision fondateur 2026-09-16) — elle seule porte
   la salle du fichier (`fbiVenueLabel`), le n° de rencontre, le rôle coach et les actions
@@ -549,8 +556,9 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   les deux). **L'estimation d'heure d'un extérieur NE DÉPEND JAMAIS de l'interrupteur « Semaine type »**
   (`showGhosts`) — celui-ci ne gouverne que les fantômes d'habitude ; `habits` reste PLEIN pour
   l'estimation, sinon la colonne dirait « heure inconnue » pendant que la bande `AwayList` (même écran)
-  estime déjà (`weekendGrid.ts:331-333`). **PR 3b (« Calendrier unique » — suppression de l'onglet
-  Semaine et du rail, compteurs, P4-197 « placer hors semaine affichée ») n'est PAS livrée.**
+  estime déjà (`weekendGrid.ts:331-333`). **PR 3b (« Calendrier unique » — fusion de la boucle Semaine
+  et de Consulter en un seul écran, `WeekCounters` à la place du rail, P4-197 « placer hors semaine
+  affichée ») est livrée** (2026-09-16) — détail § « Calendrier — l'écran unique » plus bas.
 - **Pose domicile** (`PlacementPanel`) : clic sur un match à placer → panneau (salle + heure) →
   `PUT /api/fixtures/{id}` (full-replace, statut `PLACED`, corps reconstruit pour ne pas effacer opponent/
   competition). **Envelope-ligue** : garde **HARD** (bouton désactivé hors fenêtre) quand l'équipe mappe une
@@ -559,7 +567,7 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
 - **Saisie manuelle** (`FixtureFormDialog`) : `POST /api/fixtures` (équipe, date, HOME/AWAY, adversaire,
   compétition optionnelle = amical) — complément de l'import FBI (amicaux, manquants).
 - **Radar affiché** (`ConflictRadar`) : `GET /api/fixtures/conflicts` en direct (invalidé à chaque mutation).
-- Tests : Vitest `lib/{weekendGrid,envelope}.test.ts`, `PlacementPanel`/`FixtureFormDialog`/`MatchesPage`
+- Tests : Vitest `lib/{weekendGrid,envelope}.test.ts`, `PlacementPanel`/`FixtureFormDialog`/`CalendarPage`
   (.test.tsx) ; e2e Playwright `tests/e2e/matches.spec.ts` (login → créer → placer / garde hors-fenêtre).
   ⚠ L'API omet les props null → `getFixtures` re-normalise `venueId`/`kickoffTime`/`competitionId` en `null`.
 
@@ -749,7 +757,7 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
 > ré-affectation en un geste (inventaire agrégé + `reassign: true`, ci-dessous) ; **E2 livre
 > l'écran qui l'expose** — l'ancienne section « Libellés FFBB des gymnases » de
 > `/matchs/configuration` (§ « Écran », ci-dessous) devient l'écran d'appariement, et un signal
-> partagé (« N libellés non appariés ») renvoie vers lui depuis Importer, Semaine et Consulter.
+> partagé (« N libellés non appariés ») renvoie vers lui depuis Importer et le Calendrier.
 
 - **`Venue.externalLabels`** (`backend/src/Entity/Venue.php:74`, JSON `default '[]'`, liste
   NORMALISÉE et dédupliquée — `setExternalLabels`/`addExternalLabel`/`removeExternalLabel`
@@ -857,7 +865,7 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   (`TeamQueue.unattachedCount`, `lib/reviewQueue.ts`) quand au moins un domicile de l'équipe est
   sans gymnase — badge de l'onglet Importer (`pendingReviewCount`) inchangé, ce compteur ne compte
   QUE `NEW`/`OUT_OF_SYNC`.
-- **Consulter** (`MatchRowsTable.tsx`) recale son libellé pour renvoyer vers le geste : un domicile
+- **Le Calendrier** (`MatchRowsTable.tsx`) recale son libellé pour renvoyer vers le geste : un domicile
   sans gymnase s'affiche « `<libellé>` · à rattacher dans Importer » (était « non rattaché »).
 - **Écran d'appariement (E2/P4-205, `/matchs/configuration`, 2026-09-14 — remplace l'écran de
   retrait P4-196)** : même 7ᵉ `AccordionSection`, **« Libellés FFBB des gymnases »** (dernière
@@ -912,7 +920,7 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   - Pas de couverture e2e (geste rare) : l'API est couverte côté backend par
     `VenueExternalLabelApiTest` et la feature Behat des alias ; couverture vitest côté écran :
     `VenueLabelsSection.test.tsx`, `UnpairedVenueLabelsBanner.test.tsx`, `ConfigurationPage.test.tsx`,
-    `ImportPage.test.tsx`, `ImportFbiDialog.test.tsx`, `MatchesPage.test.tsx`, `ConsultPage.test.tsx`,
+    `ImportPage.test.tsx`, `ImportFbiDialog.test.tsx`, `CalendarPage.test.tsx`,
     `api.test.ts`, `queries.test.tsx`, `lib/configSummaries.test.ts`.
 - **Pas de couverture e2e** : `POST /api/fixtures` (endpoint de création directe) n'accepte pas
   `fbiVenueLabel` (`backend/src/Dto/FixtureInput.php`) — le scénario ne se rejoue pas par cette
@@ -1134,10 +1142,11 @@ honorées** ici (les décisions 1 « SOFT jamais bloquant » et 4 « FICTIF, auc
 - **Nouveau signal « même week-end »** (`sameWeekendRotationCount`) : compte les créneaux partagés
   où **au moins deux membres distincts** reçoivent à domicile le même week-end affiché — l'image
   A/B dit qu'un seul membre reçoit par week-end sur le créneau, deux domiciles la contredisent.
-  Rendu en **pilule NEUTRE** (icône `Info`, `bg-muted`) juste sous l'écart au modèle, sur l'étape
-  **« placés au modèle »** de `MatchesPage` — jamais une erreur, jamais dans un `done` du rail : honore la
-  décision fondateur n°1 (« l'image A/B est un IDÉAL SOFT, jamais un HARD… le radar peut signaler,
-  il ne bloque pas »), au même titre que l'écart au modèle existant.
+  Rendu en **pilule NEUTRE** (icône `Info`, `bg-muted`) au-dessus de la grille, juste sous l'écart au
+  modèle (`WeekWorkbench.tsx`, badges `offModelBadge`/`sameWeekendBadge`) — jamais une erreur, jamais
+  compté dans `WeekCounters` : honore la décision fondateur n°1 (« l'image A/B est un IDÉAL SOFT,
+  jamais un HARD… le radar peut signaler, il ne bloque pas »), au même titre que l'écart au modèle
+  existant.
 - **Zéro backend/API/contrat touché** : les mutations ajoutent un toast d'erreur en `onError`
   (patron des autres mutations du module) ; aucune route ni schéma neufs, tout consomme le CRUD
   livré PR-1.
@@ -1418,7 +1427,7 @@ SOFT « repos après jour de match »).
   bas — volumes très différents). Passe de design `ui-ux-pro-max` faite avant l'implémentation
   (taille, position de la chip, variante de couleur, position du compteur).
 
-## Lecture des fondations — `readState` sur `MatchesPage` (P4-133, 2026-08-30)
+## Lecture des fondations — `readState` sur le Calendrier (P4-133, 2026-08-30 ; relocalisé `CalendarPage.tsx` PR 3b, 2026-09-16)
 
 - **Trois lectures FONDATRICES** (`fixtures`, `teams`, `venues` — sans elles tout le reste de
   l'écran dérive d'un `data ?? []`) passent par la doctrine partagée `shared/lib/readState.ts`
@@ -1431,11 +1440,12 @@ SOFT « repos après jour de match »).
   importé » de l'étape « batch », confondant échec et vide, et pouvait pousser à ré-importer
   par-dessus des données existantes.
 - **`conflicts.isError` reste BRUT, volontairement PAS passé sur `readFailed`** (bloc
-  `conflictErrorBlock`, message « Les conflits n'ont pas pu être vérifiés — rechargez la page avant
-  de placer un match ») : c'est un avertissement de **sûreté** avant un geste d'écriture (placer un
-  match contre une image des conflits potentiellement PÉRIMÉE), pas un état de chargement de page —
-  décision fermée, [`etat-des-lieux.md`](etat-des-lieux.md) §2.
-- Tests : `MatchesPage.test.tsx` (rencontres en échec, gymnases en échec → `LoadErrorHint`).
+  `conflictErrorBlock`, désormais dans `WeekWorkbench.tsx`, message « Les conflits n'ont pas pu être
+  vérifiés — rechargez la page avant de placer un match ») : c'est un avertissement de **sûreté**
+  avant un geste d'écriture (placer un match contre une image des conflits potentiellement
+  PÉRIMÉE), pas un état de chargement de page — décision fermée,
+  [`etat-des-lieux.md`](etat-des-lieux.md) §2.
+- Tests : `CalendarPage.test.tsx` (rencontres en échec, gymnases en échec → `LoadErrorHint`).
 
 ## Vérifs / gardes
 
@@ -1480,7 +1490,7 @@ SOFT « repos après jour de match »).
   fantôme), `diagnostic.test` (tri, tons, repli sév. 7, legacy sans severity → 5),
   `typicalWeekend.test` (empreinte, hors week-end exclu, lanes, sans-gymnase à part),
   `AwayList.test` (salle FBI + heure estimée/réelle/inconnue, suppression confirmée),
-  `MatchesPage.test` +1 (bande extérieur + bascule week-end type).
+  `MatchesPage.test` +1 (bande extérieur + bascule week-end type — depuis migré vers `CalendarPage.test.tsx`, `MatchesPage.tsx` supprimé PR 3b).
 - Boucle manuelle (PR E1) : `FixtureApiTest` +6 (**phase1** — déverrou accepté sur écho seul, 422 si
   le placement bouge ou si le statut quitte PLACED, écho → MANUAL, UNPLACED → null, SOLVER refusé au
   POST), `MatchPlacementContractSchemaTest` +1 (**phase1, NR contrat** — verrou/déverrou bascule les
@@ -1491,7 +1501,7 @@ SOFT « repos après jour de match »).
   HOME→AWAY libère), `weekendGrid.test` (badge verrou, null = manuel), `PlacementPanel.test` +6
   (Déplacer désactivé sans changement, actions, bascule verrou, confirmation de suppression,
   SUBMITTED lecture seule), `FixtureFormDialog.test` +2 (édition pré-remplie équipe figée, warning
-  bascule extérieur), `MatchesPage.test` +1 (clic grille → panneau boucle manuelle). E2e : verrou
+  bascule extérieur), `MatchesPage.test` +1 (clic grille → panneau boucle manuelle — depuis migré vers `CalendarPage.test.tsx`, `MatchesPage.tsx` supprimé PR 3b). E2e : verrou
   aller-retour + dé-placer sur la vraie stack.
 - Placement (PR D) : `MatchPlacementContractSchemaTest` (**phase1** : forme du payload au contrat backend⇄engine ; groupe
   `contract` : POST au VRAI engine, kickoff rendu DANS la fenêtre — sémantique, pas un 200),
@@ -1634,8 +1644,8 @@ part : une barre de filtres sur la vue Semaine, même patron que `/planning`.
   filtre : équipe d'un `left/right/fixture/training`, `teamId` d'un calendrier incomplet, `coachId` (vue coach),
   `venueId`/`training.venueId` ou la fixture référencée posée au gymnase (vue gymnase).
 - **Application en amont** : `filteredFixtures`/`filteredConflicts` nourrissent la grille, `UnplacedList`, `AwayList`,
-  le radar ET le rail (`deriveLoopSteps` inchangé — les compteurs deviennent ceux du filtre). Sans filtre :
-  pass-through des mêmes références, vue Semaine byte-identique.
+  le radar ET la barre de compteurs (`WeekCounters`, `deriveWeekCounters` depuis PR 3b — les compteurs deviennent
+  ceux du filtre). Sans filtre : pass-through des mêmes références, vue Semaine byte-identique.
 - **Semaines** : le navigateur ‹ › parcourt les week-ends de la personne filtrée ; atterrissage
   `resolveActiveWeekend` (`lib/weekendGrid.ts`) = sélection si encore listée, sinon première semaine ≥ semaine courante,
   sinon la dernière. Empty state « Aucun match pour {libellé} cette semaine ».
@@ -1649,20 +1659,77 @@ part : une barre de filtres sur la vue Semaine, même patron que `/planning`.
   `stopPropagation`, Échap fermerait la puce ET la fenêtre. Focus rendu au bouton déclencheur ; le voile de
   clic-hors, lui, ne restitue pas le focus (geste souris), inchangé.
 
-## Onglet « Consulter » — le module sépare Importer · Placer · Consulter (PR-2a, 2026-09-08)
+## Calendrier — l'écran unique du module matchs (PR 3b, 2026-09-16 — clôt le lot 3)
 
-Décision fondateur (2026-09-08, après la mesure sur ses rencontres réelles) : **importer** (faire entrer les rencontres,
-FBI xlsx ou API FFBB), **placer** (la boucle Semaine) et **consulter** (« voir les matchs placés
-et les bugs, c'est une fonctionnalité entière ») sont trois espaces. Nav `MatchesLayout` (ordre figé PR 2a,
-2026-09-16, défilable horizontalement à l'étroit — `overflow-x-auto`, `scrollIntoView` ramène l'onglet actif en
-vue) : **Conflits · Consulter · Importer · Configuration · Semaine type · Semaine** ; l'onglet Importer a livré sa
-page en PR-3b, détail § « Espace Importer » plus bas, l'onglet Conflits en PR A, détail § « Onglet Conflits »
-ci-dessous, l'onglet Semaine type en PR 2a, détail § « Onglet Semaine type » ci-dessous.
+> **SUPERSEDE** « Importer · Placer · Consulter = trois espaces » (PR-2a, 2026-09-08, ci-dessous
+> historicisé) et l'axe « deux espaces, deux routes » de RMM-1 (§ plus bas, note de
+> historicisation dans cette section). Décision fondateur (2026-09-16) : un seul écran de
+> travail, `/matchs` (`CalendarPage.tsx`, route INDEX du layout, remplace `MatchesPage.tsx` +
+> `ConsultPage.tsx`, tous deux SUPPRIMÉS) fusionne la boucle hebdo (placer/échanger/verrouiller/
+> saisir dans FBI) et la lecture Semaine·Mois·Phase — « voir les matchs placés et les bugs, c'est
+> une fonctionnalité entière » reste vrai, mais ce n'est plus un onglet à part : c'est le MÊME
+> écran que celui qui place. Importer garde sa maison propre (onglet dédié, file de traitement) —
+> le Calendrier ne réouvre plus de dialogue d'import, il consomme ce qui est déjà entré.
+> Nav `MatchesLayout` (5 onglets, `overflow-x-auto`, `scrollIntoView` ramène l'actif en vue) :
+> **Conflits · Calendrier · Importer · Configuration · Semaine type** — Calendrier est la route
+> `index`. `/matchs/consulter` **redirige en permanence** vers `/matchs` (query conservée, `loader`
+> `redirect`, `frontend/src/app/routes.tsx`) pour les deep-links déjà partagés.
 
-`/matchs/consulter` (`ConsultPage.tsx`) — **lecture seule** : aucune mutation, ni rail, ni panneau de placement.
+- **Chaîne PURE reprise à l'identique de Consulter** (`CalendarPage.tsx:80-86`) : `applyMatchFilter`
+  (PR-1, équipe/coach/gymnase) → `applyKindFilter` (type de compétition) → scope temporel
+  (semaine/mois/phase) → `countByFamily` → `applyFamilyFilter`. Zéro règle métier nouvelle.
+- **Temporalité Semaine = l'établi** (`WeekWorkbench.tsx`, extrait trait pour trait de l'ancien
+  onglet Semaine `MatchesPage.tsx`) : liste « À placer » qui couvre désormais TOUTES les semaines
+  filtrées, pas seulement l'affichée (P4-197 — avant, un week-end 100 % déplacements laissait la
+  liste vide et sans repli) ; panneau de placement PERMANENT (état vide « Sélectionnez un match »
+  quand rien n'est sélectionné, jamais un saut de colonne) ; grille week-end (colonne Extérieur,
+  § « Palier A — PR-3 » ci-dessus) ; bande `AwayList` ; **radar `ConflictRadar` rendu EN DERNIER**
+  (sous la grille — passe design, ci-dessous). Mode échange inchangé : Échap sort (WCAG 2.1.2),
+  anneau sur les candidates, la source estompée. **Suivi après placement (P4-197)** : une fois un
+  match placé, la semaine se recadre dessus et le focus lui revient (repli sur le `<h2>` « À
+  placer » si la cellule n'est pas sur la grille — ex. pas de gymnase).
+- **`WeekCounters`** (`WeekCounters.tsx`, barre « Semaine affichée ») remplace le rail à 5 étapes
+  de RMM-1 (§ plus bas, historicisé) : trois compteurs PURS dérivés de `deriveWeekCounters`
+  (`lib/loopSteps.ts`, mêmes formules que l'ancien `deriveLoopSteps`) — « N à placer » (scroll +
+  focus la liste), « N conflits → » (lien direct vers `/matchs/conflits`), « N à saisir dans FBI »
+  (ouvre la modale ci-dessous). PRÉSENTATION pure, aucun verdict recalculé.
+- **Modale « À recopier dans FBI »** (`Modal` `size="lg"`, ouverte par le compteur FBI) porte
+  `FbiEntryList` — comportement inchangé, détaillé § « Refonte UX — RMM-1 » ci-dessous (groupage
+  équipe, filtre équipe/date, « Tout marquer saisi » borné à l'affiché).
+- **URL fusionnée** (`lib/urlState.ts`) : `vue`/`filtre` (PR-1) + `type`/`conflits`/`type_semaine`/
+  `temps`/`mois`/`phase` (Consulter, inchangés) + **`semaine=YYYY-MM-DD`** (NEUF, clé samedi de la
+  semaine affichée, absente ou mal formée ⇒ auto). Seedée une fois au montage ; ne clobber jamais
+  une semaine posée par une navigation (« Voir la semaine » depuis Conflits, clic sur une ligne
+  Mois/Phase).
+- **Barre d'actions** : « Placer automatiquement » SEUL bouton primaire (crédits affichés) ;
+  « Nouveau match » secondaire (`outline`) ; `FeedbackButton`.
+- **Bandeau conflits SANS date** (ex. `COMPETITION_INCOMPLETE`, `datelessConflicts` — `lib/loopSteps.ts`) :
+  lien vers l'onglet Conflits, jamais rattaché à une semaine précise.
+- **Clic sur une ligne Mois/Phase** (`onSelectFromTable`) : bascule en Semaine, pose la semaine du
+  match, focalise la cellule sur la grille (ou le `<h2>` « À placer » si le match n'est pas sur la
+  grille) — MÊME écran, pas de changement de route.
+- **État vide « aucun match importé »** : `EmptyState` + bouton « Importer des rencontres » →
+  `/matchs/importer` (maison unique de l'import).
+- **Passe de design `ui-ux-pro-max`** (2026-09-16, 11 décisions) — alternatives écartées :
+  `StatusPill` pour les compteurs (ce sont des actions, pas des statuts), réutiliser la colonne du
+  rail supprimé, modale FBI en `xl` (contenu mono-colonne → `lg`), section FBI repliable, un
+  `<h2>` « Calendrier » (l'onglet actif de la nav sert déjà de titre), un badge de nav sur
+  Calendrier, le panneau placeholder affiché même sous `lg:` (une carte vide y volerait tout
+  l'écran).
+- **Front** — tests : `CalendarPage.test.tsx` (chaîne de filtres, URL fusionnée, bandeau conflits
+  sans date, modale FBI, états vides), `WeekCounters.test.tsx` (formules, libellés, navigation),
+  `lib/loopSteps.test.ts` (`deriveWeekCounters`), `lib/weekendGrid.test.ts`. `MatchesPage.tsx`/
+  `ConsultPage.tsx` et leurs tests sont **SUPPRIMÉS** — couverture transférée dans les fichiers
+  ci-dessus.
 
-- **Filtre PR-1 partagé** avec Semaine (même `filterMode/filterIds`, même URL `?vue=&filtre=`) : « Thomas » suit le
-  gestionnaire d'un onglet à l'autre.
+### Détail — filtres, familles de conflits, Mois · Phase (PR-2a/PR-2b, 2026-09-08, VIT dans `CalendarPage.tsx`)
+
+Contenu né sous `ConsultPage.tsx` (PR-2a/PR-2b, 2026-09-08) — la mécanique décrite ci-dessous est
+**toujours celle du Calendrier aujourd'hui**, seul le fichier qui la porte a changé (`ConsultPage.tsx`
+supprimé, fusionné dans `CalendarPage.tsx`/`CalendarControls.tsx`/`MonthTable.tsx`/`PhaseTable.tsx`).
+
+- **Filtre PR-1 partagé** entre les trois temporalités (même `filterMode/filterIds`, même URL
+  `?vue=&filtre=`) : « Thomas » suit le gestionnaire de Semaine à Mois à Phase.
 - **Type de compétition** (chips multi, défaut tout) : amical = `competitionId` null ; championnat / coupe / brassage =
   `Competition.competitionType`. **Depuis P4-194 (2026-09-10)** une rencontre de coupe non appariée
   n'arrive plus sans `competitionId` — le canal API lui fait naître ou réutiliser une `Competition`
@@ -1670,7 +1737,7 @@ ci-dessous, l'onglet Semaine type en PR 2a, détail § « Onglet Semaine type »
   « Coupe », plus sous « Amical », et redevient soumise aux fenêtres ligue et au blocage de
   placement hors créneau. Un conflit suit ses rencontres référencées ; un calendrier incomplet suit
   sa compétition ; un conflit sans rencontre ni compétition reste visible tant que « tout » est coché.
-- **Semaine type** (interrupteur, affichée par défaut) : la grille avec ou sans les cases « Habitude … ».
+- **Semaine type** (interrupteur, affichée par défaut, temporalité Semaine seule) : la grille avec ou sans les cases « Habitude … ».
   ⚠ **Ne gouverne QUE les fantômes d'habitude** (`showGhosts` → `buildWeekendGrid`) : l'heure ESTIMÉE
   d'un extérieur (colonne « Extérieur », § « Palier A — PR-3 » ci-dessus) reste calculée depuis les
   habitudes que l'interrupteur soit sur ON ou OFF — décision superviseur 2026-09-16, sinon la colonne
@@ -1680,15 +1747,15 @@ ci-dessous, l'onglet Semaine type en PR 2a, détail § « Onglet Semaine type »
   passerelle (info), placement fragilisé, calendrier incomplet, gymnase indisponible, extérieur sans heure,
   **amical sur créneau match** (`FRIENDLY_ON_MATCH_SLOT`, P4-193). Le
   **compteur porte sur la temporalité affichée** (la semaine lundi→dimanche du week-end actif ; un conflit sans
-  date est toujours compté) — le radar de Placer compte « tous ceux de la personne », son rail « ceux de la
-  semaine » : Consulter tranche. Une chip décochée garde son compteur (compté avant le filtre de famille).
-- **Chaîne pure** (`lib/consultFilter.ts`) : `applyMatchFilter` → `applyKindFilter` → `scopeConflictsToWeek` →
-  `countByFamily` → `applyFamilyFilter`, pass-through des mêmes références quand tout est coché.
-- **Grille + extérieurs en lecture** (`WeekendGrid`, `AwayList` sans ses actions), radar nourri des conflits filtrés ;
-  clic sur un match → Placer sur son week-end. Navigateur ‹ › et `resolveActiveWeekend` comme Semaine.
-  **Depuis E2 (2026-09-14)**, sur la vue Semaine : `UnpairedVenueLabelsBanner` au-dessus de la
-  grille, `HiddenHomesWeekNotice` sous `AwayList` — détail § « Gymnase depuis le libellé » plus
-  haut.
+  date est toujours compté) — le radar de la grille compte « tous ceux de la semaine » (`radarConflicts`),
+  `WeekCounters` compte « ceux à traiter de la semaine » (`weekConflictCount`) : ce sont deux lectures
+  distinctes du même scope, pas deux règles. Une chip décochée garde son compteur (compté avant le
+  filtre de famille).
+- **Grille + extérieurs**, radar nourri des conflits filtrés ; clic sur un match dans Mois/Phase
+  → bascule en Semaine sur son week-end (`onSelectFromTable`, même écran). Navigateur ‹ › et
+  `resolveActiveWeekend` en Semaine.
+  **Depuis E2 (2026-09-14)** : `UnpairedVenueLabelsBanner` au-dessus de la grille,
+  `HiddenHomesWeekNotice` sous `AwayList` — détail § « Gymnase depuis le libellé » plus haut.
 - **URL** : `type=amical,championnat,coupe,brassage`, `conflits=<familles>`, `type_semaine=0|1` (absent = défaut).
 - **Temporalités Semaine · Mois · Phase** (PR-2b, 2026-09-08 — contrôle segmenté à côté du navigateur, Semaine par
   défaut et byte-identique) :
@@ -1705,34 +1772,36 @@ ci-dessous, l'onglet Semaine type en PR 2a, détail § « Onglet Semaine type »
     Engagements FFBB.
   - **Ligne de match** (`MatchRowsTable.tsx`, primitive partagée `table.tsx` née ici) : date + heure ou « heure non
     publiée », équipe (+ rôle en vue coach), dom./ext., adversaire, gymnase résolu sinon `fbiVenueLabel`, statut,
-    une pastille par famille de conflit présente ; clic → Placer sur le week-end du match. **L'invite « à
+    une pastille par famille de conflit présente ; clic → bascule en Semaine sur le week-end du match. **L'invite « à
     rattacher » (§ « Gymnase depuis le libellé » ci-dessus, P4-187b) ne s'affiche que sur un match À DOMICILE**
     (`<libellé> · à rattacher dans Importer`) — un EXTÉRIEUR sans gymnase résolu affiche son `fbiVenueLabel` SEUL
     (c'est la salle de l'ADVERSAIRE, rien à rattacher côté club, `MatchRowsTable.tsx:140-145`).
   - URL : `temps=semaine|mois|phase`, `mois=YYYY-MM`, `phase=<competitionId>`.
 - Livré depuis, hors PR-2a : l'onglet Importer (PR-3a/PR-3b, § « Espace Importer » plus bas — file de
-  traitement par équipe, compteurs « N à valider »/« N écart(s) »). L'atterrissage de Placer sur un week-end
-  100 % déplacements est corrigé, § « Refonte UX — RMM-1 » ci-dessous (« Le rail à 5 étapes »).
+  traitement par équipe, compteurs « N à valider »/« N écart(s) »). L'atterrissage sur un week-end
+  100 % déplacements (ex-P4-192, rail RMM-1) est réglé autrement depuis PR 3b (§ « Calendrier —
+  l'écran unique » ci-dessus) : la liste « À placer » couvre TOUTES les semaines filtrées, il n'y a
+  plus d'étape à faire atterrir.
 
 ## Onglet « Conflits » — tous les conflits de la saison, pivotés (PR A, 2026-09-15)
 
-Décision fondateur (2026-09-15) : un **4ᵉ espace en lecture seule**, à côté de Consulter — Consulter
+Décision fondateur (2026-09-15) : un **espace en lecture seule** à côté du Calendrier — le Calendrier
 répond « qu'est-ce qui se passe cette semaine/ce mois/cette phase ? », Conflits répond « qu'est-ce qui
-cloche sur TOUTE la saison, regroupé par qui ça touche ? ». Nav `MatchesLayout` : Semaine · Consulter ·
-Importer · Configuration · **Conflits** (`/matchs/conflits`, `ConflictsPage.tsx`), dernier onglet,
+cloche sur TOUTE la saison, regroupé par qui ça touche ? ». Nav `MatchesLayout` (5 onglets, PR 3b,
+2026-09-16) : **Conflits · Calendrier · Importer · Configuration · Semaine type**, premier onglet,
 badge « Conflits · N » = conflits À TRAITER seulement, **absent** (jamais « Conflits · 0 ») quand
 il n'en reste aucun — depuis PR B2 (§ « Résolution des conflits » ci-dessous), qui pose le statut
 persisté consommé par ce badge.
 
-- **Même flux que Consulter, sans son filtre** : `useConflicts()` (le même `GET /api/fixtures/conflicts`
-  que Consulter/le radar) — **mais PAS de `MatchesFilterBar` (`filterMode`/`filterIds`)** ici, décision
+- **Même flux que le Calendrier, sans son filtre** : `useConflicts()` (le même `GET /api/fixtures/conflicts`
+  que le Calendrier/le radar) — **mais PAS de `MatchesFilterBar` (`filterMode`/`filterIds`)** ici, décision
   fondateur fermée. Le store `filterMode/filterIds` est partagé avec la boucle Semaine ; l'appliquer à
   Conflits fausserait le compte SAISON que l'onglet promet — ex. un gestionnaire arrivé sur Conflits
   avec « SM2 » encore coché dans le filtre partagé verrait « Mara · 1 » au lieu de « Mara · 3 » (les
   2 autres conflits de Mara touchent d'autres équipes). L'onglet a ses PROPRES filtres, dans le store
-  mais SÉPARÉS de ceux de Consulter : `conflictsPivot`/`conflictsFamilies` (`store.ts`), distincts de
-  `filterMode/filterIds` (Semaine/Consulter) et de `consultFamilies` (Consulter) — décocher une famille
-  dans Conflits ne touche pas les chips de Consulter, et réciproquement.
+  mais SÉPARÉS de ceux du Calendrier : `conflictsPivot`/`conflictsFamilies` (`store.ts`), distincts de
+  `filterMode/filterIds` (PR-1) et de `consultFamilies` (Calendrier) — décocher une famille
+  dans Conflits ne touche pas les chips du Calendrier, et réciproquement.
 - **Pivot** (`lib/conflictPivot.ts` `pivotConflicts`, dérivation PURE — aucun conflit n'est recalculé ni
   requalifié, on RÉPARTIT en seaux des lignes déjà servies par le serveur, 🔴 `.claude/rules/frontend.md`) :
   **coach** (défaut), **équipe**, **gymnase**, **journée** (= week-end samedi+dimanche, libellé
@@ -1766,8 +1835,8 @@ persisté consommé par ce badge.
   familles **replie tout** (un `?ouvert` dont la clé n'existe plus dans le nouveau pivot est nettoyé de
   l'URL). Une entrée unique s'ouvre d'office.
 - **Bouton « Voir la semaine »** (par conflit daté, slot `trailing` de `ConflictLine`) : pose la semaine
-  du conflit dans le store (`setSelectedWeekend`) et navigue vers `/matchs` (Placer) — absent sur un
-  conflit sans date résolue (`dateOf(conflict) === null`).
+  du conflit dans le store (`setSelectedWeekend`) et navigue vers `/matchs` (le Calendrier) — absent sur
+  un conflit sans date résolue (`dateOf(conflict) === null`).
 - **`aria-live="polite"`** annonce le regroupement (« Regroupé par {axe} — N entrée(s), M conflit(s) »)
   **après une interaction seulement** (pivot ou famille changés) — jamais au premier rendu ni à un
   refetch d'arrière-plan.
@@ -1781,7 +1850,7 @@ persisté consommé par ce badge.
   maison de la ligne de conflit pour les deux écrans.
 - **URL** : `pivot=coach|equipe|gymnase|journee` (absent = `coach`, défaut), `conflits=<familles>`
   (absent = toutes) — `decodeConflictsParams`/`applyConflictsToParams` (`lib/urlState.ts`), même nom de
-  paramètre `conflits=` que Consulter mais sur une route distincte (pas de collision).
+  paramètre `conflits=` que le Calendrier mais sur une route distincte (pas de collision).
 - **Passe de design `ui-ux-pro-max`** faite le 2026-09-15 (11 décisions) — alternatives écartées :
   liste plate (pas de regroupement), tableau, `<select>` pour le pivot, badge de nav sur ce livrable
   (reporté au successeur qui porte un statut), `StatusPill` par entrée, ventilation par gravité en plus
@@ -1865,9 +1934,9 @@ de bouton).
   variante `StatusPill` + glyphe DISTINCT par statut, table PRÉSENTATION pure, jamais un `switch`
   décideur), `isOpenConflict` (`resolution == null`), `openConflictCount`. **Consommée partout** où
   un compteur existe : `ConflictRadar` (badge), `ConflictsPage` (compteurs de familles/pivot/tri),
-  `ConsultPage`/`lib/consultFilter.ts` (`countByFamily`, `familiesPresent`), `lib/loopSteps.ts`
-  (rail « Conflits (n) »), `MatchesLayout` (badge de nav) — un compteur ne compte QUE l'à traiter,
-  un conflit annoté reste listé mais ne pèse plus.
+  `CalendarPage`/`lib/consultFilter.ts` (`countByFamily`, `familiesPresent`), `lib/loopSteps.ts`
+  (`WeekCounters` « conflits », depuis PR 3b), `MatchesLayout` (badge de nav) — un compteur ne compte
+  QUE l'à traiter, un conflit annoté reste listé mais ne pèse plus.
 - **Badge de nav** « Conflits · N » (`MatchesLayout.tsx`) — N = `openConflictCount`, **absent** (pas
   « Conflits · 0 ») quand il n'en reste aucun à traiter, même patron que le badge « Importer · N ».
 - **Onglet Conflits** — voir § « Onglet « Conflits » » ci-dessus (chips familles à traiter + « · 0 »
@@ -1913,6 +1982,21 @@ de bouton).
 > RMM-0 (lisibilité des modales) sont des lots FRÈRES déjà livrés séparément, réutilisés ici.
 > **Zéro comportement moteur, zéro API** : la refonte réorganise l'écran, le solveur de placement et
 > le radar (sections ci-dessus) sont inchangés.
+>
+> ⚠ **HISTORICISÉ le 2026-09-16 (PR 3b, § « Calendrier — l'écran unique » ci-dessus) — ce qui a
+> changé et ce qui n'a PAS changé.** Le **rail à 5 étapes** (`deriveLoopSteps`, store `railStep`)
+> décrit ci-dessous a été **SUPPRIMÉ** (vérifié : plus aucune trace dans
+> `frontend/src/features/matches/lib/loopSteps.ts`/`store.ts`) et remplacé par la barre
+> `WeekCounters` (3 compteurs) ; **P4-192** (l'exception d'atterrissage sur un week-end 100 %
+> déplacements) **meurt avec le rail** — la liste « À placer » couvre désormais TOUTES les
+> semaines filtrées (P4-197), il n'y a plus d'étape à faire atterrir. Le bullet « Deux espaces,
+> deux routes » ci-dessous, lui, **reste EXACT** : `/matchs` (la boucle hebdo) et
+> `/matchs/configuration` (le SET-UP rare) sont toujours deux routes distinctes aujourd'hui — ce
+> qui a bougé, c'est la COMPOSITION de la boucle elle-même (elle a depuis absorbé Consulter puis
+> perdu le rail), pas ce clivage. Les fichiers cités plus bas (`MatchesPage.tsx`) ont été
+> **SUPPRIMÉS** : la même mécanique (panneau permanent, échange visible, Échap, raisons de
+> non-placement, `FbiEntryList`) vit désormais dans `WeekWorkbench.tsx`/`CalendarPage.tsx`.
+> Section CONSERVÉE ci-dessous comme trace de ce qui a été livré puis remplacé.
 
 - **Deux espaces, deux routes** : `/matchs` (la boucle hebdo) et `/matchs/configuration` (le SET-UP
   rare) sont deux vraies routes sous `MatchesLayout.tsx` — nav en onglets (deep-link + bouton retour
@@ -2054,8 +2138,9 @@ future.
   change). `ModuleVisitBanner.tsx` et `ConflictRadar.tsx` lisent le MÊME cache react-query (une
   seule requête nourrit les deux affichages).
 - **`ModuleVisitBanner`** — un bandeau `role="status"` (pas `alert`), ton ACCENT (heads-up amical,
-  distinct du warning des conflits sans date et du destructive socle), au-dessus du rail dans
-  `MatchesPage.tsx`. Muet si `firstVisit` ou delta vide (aucun des trois segments non nul). Les
+  distinct du warning des conflits sans date et du destructive socle), sous les contrôles du
+  Calendrier (`CalendarPage.tsx`, entre `CalendarControls` et le corps — le rail qui le précédait
+  a disparu, PR 3b). Muet si `firstVisit` ou delta vide (aucun des trois segments non nul). Les
   segments NON NULS s'affichent dans l'ordre du geste — matchs arrivés → nouveaux conflits →
   planning changé — singuliers propres (« 1 match arrivé », « 1 nouveau conflit »), ex. « Depuis
   votre dernière visite : 12 matchs arrivés · 3 nouveaux conflits · le planning de saison a
@@ -2065,9 +2150,9 @@ future.
 - **Chips « Nouveau » sur le radar** — `ConflictRadar` reçoit une prop optionnelle
   `newFingerprints` (`ReadonlySet<string>`) ; un conflit dont `fingerprint ∈ newFingerprints` porte
   une chip. **Ornement PUR** : absente (prop non fournie ou empreinte non présente) → radar
-  intact ; rien de la sévérité, du tri, des libellés ni des étapes du rail n'en dépend — vérifié en
-  non-régression (`MatchesPage.test.tsx` : un delta plein affiche le bandeau sans toucher au moindre
-  libellé du rail).
+  intact ; rien de la sévérité, du tri ni des libellés n'en dépend — vérifié en
+  non-régression (`CalendarPage.test.tsx` : un delta plein affiche le bandeau sans toucher au
+  moindre libellé environnant).
 
 ## Réconciliation FBI (RMM-4, 3 PR — backend, front, canal API, 2026-08-24 — LIVRÉ EN ENTIER)
 
@@ -2112,8 +2197,9 @@ future.
   Front : `useLatestFbiIngestion` (invalidée après chaque import) alimente une carte dans
   `ConfigurationPage` (« Dernier dépôt FBI : aujourd'hui/hier/il y a N jours », escalade en warning
   au-delà de `STALE_DAYS = 30` ou en l'absence totale de dépôt) et un rappel discret (`text-xs`
-  muted, sans bordure ni icône) près du rail semaine de `MatchesPage` — « aujourd'hui » toujours lu
-  du front (`todayISO`, ancrage démo compris), jamais du serveur.
+  muted, sans bordure ni icône, `depositReminder`) en bout de la ligne de contrôles du Calendrier
+  (`CalendarControls.tsx`) — « aujourd'hui » toujours lu du front (`todayISO`, ancrage démo
+  compris), jamais du serveur.
 - **La vue dédiée `/matchs/reconciliation`** (décision fondateur 2026-08-24, passe de conception
   `ui-ux-pro-max` : l'écran de choix ne tient pas dans la modale d'import). Enfant de
   `MatchesLayout` — garde socle héritée, aucune route propre. **Zéro état serveur** : elle vit du

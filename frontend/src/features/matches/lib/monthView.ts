@@ -13,6 +13,12 @@ export function listMonths(fixtures: Fixture[]): string[] {
   return [...new Set(fixtures.map((f) => f.matchDate.slice(0, 7)))].sort();
 }
 
+/** Libellé français d'un mois `YYYY-MM`, ex. « septembre 2026 » (présentation pure). */
+export function monthLabel(month: string): string {
+  const [year, m] = month.split("-").map(Number);
+  return new Date(year, m - 1, 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+}
+
 /**
  * Le mois affiché — MÊME règle que `resolveActiveWeekend` : la sélection si elle est
  * listée, sinon le premier mois ≥ mois courant, sinon le dernier, sinon `null`.

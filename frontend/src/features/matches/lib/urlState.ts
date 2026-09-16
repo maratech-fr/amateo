@@ -52,6 +52,30 @@ export function applyFilterToParams(current: URLSearchParams, mode: MatchFilterM
 }
 
 /**
+ * PR 3b — la SEMAINE affichée du Calendrier dans l'URL (`semaine=YYYY-MM-DD`, clé
+ * samedi de `weekendKeyOf`). Écrite en `replace` quand `selectedWeekend` change, lue
+ * au seed. Absente ou mal formée = auto (le store repart de `null`, la page résout la
+ * première semaine ≥ aujourd'hui). On valide seulement la FORME (date ISO) ; une clé
+ * hors de la liste des semaines retombe sur l'auto via `resolveActiveWeekend`.
+ */
+const WEEKEND_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function decodeWeekendParam(params: URLSearchParams): string | null {
+  const raw = params.get("semaine");
+  return null !== raw && WEEKEND_RE.test(raw) ? raw : null;
+}
+
+export function applyWeekendToParams(current: URLSearchParams, weekend: string | null): URLSearchParams {
+  const next = new URLSearchParams(current);
+  if (null === weekend) {
+    next.delete("semaine");
+  } else {
+    next.set("semaine", weekend);
+  }
+  return next;
+}
+
+/**
  * PR-2a/2b — sérialisation des filtres de l'onglet Consulter, fonctions PURES (mêmes
  * conventions que le filtre PR-1 : absent = défaut). `type` = types de compétition
  * cochés, `conflits` = familles de conflits cochées, `type_semaine=0|1` = semaine

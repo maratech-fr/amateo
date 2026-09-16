@@ -3,23 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useMatchesStore } from "./store";
 
 beforeEach(() => {
-  useMatchesStore.setState({ selectedWeekend: null, railStep: null, unplacedReasons: new Map() });
-});
-
-describe("useMatchesStore — railStep (RMM-1 PR3)", () => {
-  it("setRailStep pose la vue", () => {
-    useMatchesStore.getState().setRailStep("disputes");
-    expect(useMatchesStore.getState().railStep).toBe("disputes");
-  });
-
-  it("changer de semaine remet railStep à null (l'auto recalcule le premier trou)", () => {
-    useMatchesStore.getState().setRailStep("homeSlots");
-    expect(useMatchesStore.getState().railStep).toBe("homeSlots");
-
-    useMatchesStore.getState().setSelectedWeekend("2026-10-03");
-    expect(useMatchesStore.getState().selectedWeekend).toBe("2026-10-03");
-    expect(useMatchesStore.getState().railStep, "changer de semaine reset la vue").toBeNull();
-  });
+  useMatchesStore.setState({ selectedWeekend: null, selectedFixtureId: null, unplacedReasons: new Map() });
 });
 
 describe("useMatchesStore — raisons de non-placement (RMM-1 PR4, L6)", () => {
@@ -27,9 +11,9 @@ describe("useMatchesStore — raisons de non-placement (RMM-1 PR4, L6)", () => {
     useMatchesStore.getState().setUnplacedReasons(new Map([["fx-1", "Aucune fenêtre d'accès match"]]));
     expect(useMatchesStore.getState().unplacedReasons.get("fx-1")).toBe("Aucune fenêtre d'accès match");
 
-    // Un geste sans rapport (poser la vue du rail) ne purge PAS les raisons —
+    // Un geste sans rapport (sélectionner une rencontre) ne purge PAS les raisons —
     // elles restent tant que la semaine affichée ne change pas.
-    useMatchesStore.getState().setRailStep("homeSlots");
+    useMatchesStore.getState().setSelectedFixtureId("fx-1");
     expect(useMatchesStore.getState().unplacedReasons.get("fx-1"), "un autre geste conserve les raisons").toBe("Aucune fenêtre d'accès match");
   });
 
@@ -44,7 +28,7 @@ describe("useMatchesStore — raisons de non-placement (RMM-1 PR4, L6)", () => {
 
 describe("useMatchesStore — filtre de la vue Semaine (PR-1)", () => {
   beforeEach(() => {
-    useMatchesStore.setState({ filterMode: "equipe", filterIds: [], railStep: null });
+    useMatchesStore.setState({ filterMode: "equipe", filterIds: [] });
   });
 
   it("défaut : mode equipe, aucune sélection", () => {
@@ -52,21 +36,18 @@ describe("useMatchesStore — filtre de la vue Semaine (PR-1)", () => {
     expect(useMatchesStore.getState().filterIds).toEqual([]);
   });
 
-  it("setFilterMode change l'axe, VIDE la sélection et remet railStep à null", () => {
-    useMatchesStore.setState({ filterIds: ["a", "b"], railStep: "disputes" });
+  it("setFilterMode change l'axe et VIDE la sélection", () => {
+    useMatchesStore.setState({ filterIds: ["a", "b"] });
     useMatchesStore.getState().setFilterMode("coach");
     expect(useMatchesStore.getState().filterMode).toBe("coach");
     expect(useMatchesStore.getState().filterIds).toEqual([]);
-    expect(useMatchesStore.getState().railStep).toBeNull();
   });
 
-  it("toggleFilterId ajoute puis retire, et remet railStep à null", () => {
+  it("toggleFilterId ajoute puis retire", () => {
     useMatchesStore.getState().toggleFilterId("t1");
     expect(useMatchesStore.getState().filterIds).toEqual(["t1"]);
-    useMatchesStore.setState({ railStep: "model" });
     useMatchesStore.getState().toggleFilterId("t2");
     expect(useMatchesStore.getState().filterIds).toEqual(["t1", "t2"]);
-    expect(useMatchesStore.getState().railStep).toBeNull();
     useMatchesStore.getState().toggleFilterId("t1");
     expect(useMatchesStore.getState().filterIds).toEqual(["t2"]);
   });
