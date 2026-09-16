@@ -204,6 +204,41 @@ describe("ConsultPage (PR-2a — onglet Consulter, lecture seule)", () => {
     expect(useMatchesStore.getState().selectedWeekend).toBe("2026-10-03");
   });
 
+  it("lot 3 PR-3a — « Semaine type » OFF n'éteint QUE les fantômes : l'extérieur reste estimé (grille cohérente avec la bande)", async () => {
+    const user = userEvent.setup();
+    // Habitude DIMANCHE de team-1 (fx-away est un dimanche) → l'extérieur emprunte 15:00 (estimé).
+    vi.mocked(matchesApi.getTeamMatchHabits).mockResolvedValueOnce([{ id: "h-sun", teamId: "team-1", dayOfWeek: 7, kickoffTime: "15:00", venueId: null }]);
+    const { container } = renderConsult();
+    await screen.findByRole("button", { name: /Amical/ });
+    // « Semaine type » par défaut ON → on l'éteint (les fantômes doivent partir, PAS l'estimation).
+    await user.click(screen.getByRole("switch", { name: /Semaine type/ }));
+    const awayBlock = await waitFor(() => {
+      const el = container.querySelector('[data-away="true"][data-fixture-id="fx-away"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    // Toggle OFF : le bloc extérieur garde son heure ESTIMÉE (jamais « heure inconnue »).
+    expect(awayBlock.getAttribute("aria-label")).toMatch(/15:00, heure estimée/);
+    expect(awayBlock.getAttribute("aria-label")).not.toMatch(/heure inconnue/);
+    // La bande AwayList sous la grille estime aussi : cohérence sur le même écran.
+    expect(screen.getByText("heure estimée")).toBeInTheDocument();
+  });
+
+  it("lot 3 PR-3a — la vue Semaine rend un bloc extérieur ; cliquer saute vers Placer", async () => {
+    const user = userEvent.setup();
+    const { container } = renderConsult();
+    await screen.findByRole("button", { name: /Amical/ });
+    const awayBlock = await waitFor(() => {
+      const el = container.querySelector('[data-away="true"][data-fixture-id="fx-away"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    await user.click(awayBlock);
+    // onSelectFixture inchangé : saut vers /matchs (Placer).
+    expect(screen.getByText("PLACER")).toBeInTheDocument();
+    expect(useMatchesStore.getState().selectedWeekend).toBe("2026-10-03");
+  });
+
   // ── E2 (P4-205) — le signal des salles non appariées en vue Semaine ──────────
   it("des libellés non appariés ⇒ bandeau au-dessus de la grille (vue Semaine)", async () => {
     vi.mocked(matchesApi.getVenueLabelInventory).mockResolvedValueOnce([

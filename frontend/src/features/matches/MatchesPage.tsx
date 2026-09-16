@@ -221,8 +221,8 @@ export function MatchesPage() {
   );
 
   const grid = useMemo(
-    () => buildWeekendGrid(weekendFixtures, venuesMap, teamsMap, outOfEnvelope, habits, activeWeekend, 15, matchDurations),
-    [weekendFixtures, venuesMap, teamsMap, outOfEnvelope, habits, activeWeekend, matchDurations],
+    () => buildWeekendGrid(weekendFixtures, venuesMap, teamsMap, outOfEnvelope, habits, activeWeekend, 15, matchDurations, opponentTravel.data ?? []),
+    [weekendFixtures, venuesMap, teamsMap, outOfEnvelope, habits, activeWeekend, matchDurations, opponentTravel.data],
   );
 
   // RMM-1 PR3 (L3) — les 5 étapes de la boucle, DÉRIVÉES de la semaine affichée
@@ -280,9 +280,16 @@ export function MatchesPage() {
     reopenFixture.isPending;
 
   // P1-4 PR E1 — a grid click either picks the swap partner (swap mode) or opens
-  // the panel of the clicked match.
+  // the panel of the clicked match. lot 3 PR-3a — un bloc EXTÉRIEUR ouvre son
+  // dialogue d'édition (le `PlacementPanel` reste réservé au domicile).
   function onGridSelect(fixtureId: string): void {
+    const clicked = allFixtures.find((f) => f.id === fixtureId) ?? null;
     if (null !== swapSource) {
+      // Un bloc extérieur est INERTE en mode échange (on n'échange que des domiciles) —
+      // garde posée AVANT le test `status === "PLACED"`.
+      if (null !== clicked && "AWAY" === clicked.homeAway) {
+        return;
+      }
       if (fixtureId === swapSource.id) {
         setSwapSourceId(null);
         return;
@@ -299,6 +306,11 @@ export function MatchesPage() {
       );
       setSwapSourceId(null);
       setSelectedFixtureId(null);
+      return;
+    }
+    // Hors échange : un extérieur ouvre l'édition, un domicile ouvre son panneau.
+    if (null !== clicked && "AWAY" === clicked.homeAway) {
+      setEditFixture(clicked);
       return;
     }
     setSelectedFixtureId(fixtureId);

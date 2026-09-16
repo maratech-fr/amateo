@@ -1,4 +1,6 @@
-import type { Fixture, SportCategoryDuration, Team, TeamMatchHabit, Venue } from "../api";
+import type { Fixture, OpponentTravel, SportCategoryDuration, Team, TeamMatchHabit, Venue } from "../api";
+import { awayBandRows, buildAwayCells } from "./awayColumn";
+import { awayHour } from "./awayKickoff";
 import { isoWeekday, timeToMinutes } from "./envelope";
 
 /**
@@ -145,9 +147,12 @@ export function isPlacedOnGrid(fixture: Fixture): boolean {
 export interface WeekendColumn {
   key: string;
   dateKey: string;
-  venueId: string;
+  /** null for the « Extérieur » column (it is venue-less by nature). */
+  venueId: string | null;
   label: string;
   color: string | null;
+  /** lot 3 PR-3a — the trailing « Extérieur » column of a date group (away matches). */
+  away?: boolean;
 }
 
 export interface DateGroup {
@@ -181,11 +186,23 @@ export interface WeekendCell {
   /** P1-4 PR E1 — anchor badge: MANUAL (or legacy null) placement, the solver
    * never moves it. SOLVER-placed = re-solvable, no padlock. */
   locked: boolean;
+  /** lot 3 PR-3a — an AWAY block (in the trailing « Extérieur » column). */
+  away?: boolean;
+  /** AWAY with an ESTIMATED hour (habitual kickoff borrowed) — « heure estimée ». */
+  estimated?: boolean;
+  /** AWAY with no real hour AND no habit that weekday → « heure inconnue » band. */
+  unknownHour?: boolean;
+  /** AWAY travel footprint « 45 min » (`~` if approximated), null when unknown. */
+  travelLabel?: string | null;
+  /** AWAY short weekday (« sam. ») for the block's accessible name. */
+  awayWeekday?: string;
 }
 
 export interface WeekendGridRow {
   label: string | null;
   major: boolean;
+  /** lot 3 PR-3a — a row of the « sans heure » band prepended above the time rows. */
+  unknownHour?: boolean;
 }
 
 export interface WeekendGridModel {
@@ -294,6 +311,9 @@ function blockBounds(placed: Fixture[], teams: Map<string, Team>, durations: Map
  * when the gap is ≤ 30 min (see the module header); labelled at the kickoff time.
  * Habit ghosts (P1-4 PR C) join the layout as translucent, non-blocking blocks —
  * same kickoff-start + match-duration rule, but never chained (a ghost is not a match).
+ * AWAY matches (lot 3 PR-3a) get a trailing « Extérieur » column per date, laid out by
+ * `lib/awayColumn.ts`: at their (real or estimated) hour, or in a « sans heure » band
+ * prepended above the time rows when no hour and no habit resolves.
  */
 export function buildWeekendGrid(
   fixtures: Fixture[],
@@ -304,14 +324,24 @@ export function buildWeekendGrid(
   weekendKey: string | null = null,
   stepMin = 15,
   durations: Map<string, number> = new Map(),
+  travel: OpponentTravel[] = [],
+  showGhosts = true,
 ): WeekendGridModel {
   const placed = fixtures.filter(isPlacedOnGrid);
-  const ghosts = ghostSlots(habits, fixtures, weekendKey);
-  if (0 === placed.length && 0 === ghosts.length) {
+  // `showGhosts` ne gouverne QUE les fantômes d'habitude (interrupteur « Semaine type ») ;
+  // `habits` reste PLEIN pour l'estimation d'heure des extérieurs — sinon la colonne
+  // « Extérieur » dirait « heure inconnue » pendant que la bande AwayList estime (même écran).
+  const ghosts = showGhosts ? ghostSlots(habits, fixtures, weekendKey) : [];
+  const awayFixtures = fixtures.filter((f) => "AWAY" === f.homeAway);
+  if (0 === placed.length && 0 === ghosts.length && 0 === awayFixtures.length) {
     return { columns: [], dateGroups: [], rows: [], cells: [], startMin: 0, stepMin, empty: true };
   }
 
   const bounds = blockBounds(placed, teams, durations);
+  // La bande « sans heure » (extérieurs sans heure ni habitude) décale toutes les
+  // rangées horaires vers le bas ; 0 quand aucun extérieur n'est sans heure (domicile
+  // byte-identique sans extérieur).
+  const bandRows = awayBandRows(awayFixtures, habits);
 
   let min = Infinity;
   let max = -Infinity;
@@ -324,20 +354,32 @@ export function buildWeekendGrid(
     min = Math.min(min, ghost.kickoffMin);
     max = Math.max(max, ghost.kickoffMin + matchMinutesOf(ghost.teamId, teams, durations));
   }
-  const startMin = Math.floor(min / 60) * 60;
-  const endMin = Math.ceil(max / 60) * 60;
+  // Les extérieurs À HEURE (réelle/estimée) participent à l'amplitude horaire ; ceux
+  // sans heure vivent dans la bande, hors des rangées horaires.
+  for (const fixture of awayFixtures) {
+    const { hour } = awayHour(fixture, habits);
+    if (null !== hour) {
+      const start = timeToMinutes(hour);
+      min = Math.min(min, start);
+      max = Math.max(max, start + matchMinutesOf(fixture.teamId, teams, durations));
+    }
+  }
+  const hasTimed = Infinity !== min;
+  const startMin = hasTimed ? Math.floor(min / 60) * 60 : 0;
+  const endMin = hasTimed ? Math.ceil(max / 60) * 60 : 0;
 
-  const dateKeys = [...new Set([...placed.map((f) => f.matchDate), ...ghosts.map((g) => g.dateKey)])].sort();
+  const dateKeys = [...new Set([...placed.map((f) => f.matchDate), ...ghosts.map((g) => g.dateKey), ...awayFixtures.map((f) => f.matchDate)])].sort();
   const columns: WeekendColumn[] = [];
   const dateGroups: DateGroup[] = [];
   let cssColumn = 2; // col 1 is the time gutter
   for (const dateKey of dateKeys) {
     const dayFixtures = placed.filter((f) => f.matchDate === dateKey);
     const dayGhosts = ghosts.filter((g) => g.dateKey === dateKey);
+    const hasAway = awayFixtures.some((f) => f.matchDate === dateKey);
     const venueIds = [...new Set([...dayFixtures.map((f) => f.venueId as string), ...dayGhosts.map((g) => g.venueId)])].sort((a, b) =>
       compareNamesFr(venues.get(a)?.name ?? "", venues.get(b)?.name ?? ""),
     );
-    dateGroups.push({ dateKey, label: dateLabel(dateKey), startColumn: cssColumn, span: venueIds.length });
+    dateGroups.push({ dateKey, label: dateLabel(dateKey), startColumn: cssColumn, span: venueIds.length + (hasAway ? 1 : 0) });
     for (const venueId of venueIds) {
       columns.push({
         key: `${dateKey}:${venueId}`,
@@ -346,6 +388,11 @@ export function buildWeekendGrid(
         label: venues.get(venueId)?.name ?? "Gymnase ?",
         color: venues.get(venueId)?.color ?? null,
       });
+      cssColumn += 1;
+    }
+    // La colonne « Extérieur », TOUJOURS en dernier du groupe de date.
+    if (hasAway) {
+      columns.push({ key: `${dateKey}:away`, dateKey, venueId: null, label: "Extérieur", color: null, away: true });
       cssColumn += 1;
     }
   }
@@ -364,7 +411,7 @@ export function buildWeekendGrid(
       key: fixture.id,
       fixtureId: fixture.id,
       gridColumn: 2 + idx,
-      gridRowStart: 3 + Math.round((start - startMin) / stepMin),
+      gridRowStart: 3 + bandRows + Math.round((start - startMin) / stepMin),
       gridRowSpan: Math.max(1, Math.round((end - start) / stepMin)),
       lane: 0,
       laneCount: 1,
@@ -396,7 +443,7 @@ export function buildWeekendGrid(
       key: `ghost:${ghost.teamId}:${ghost.dateKey}`,
       fixtureId: "",
       gridColumn: 2 + idx,
-      gridRowStart: 3 + Math.round((start - startMin) / stepMin),
+      gridRowStart: 3 + bandRows + Math.round((start - startMin) / stepMin),
       gridRowSpan: Math.max(1, Math.round((end - start) / stepMin)),
       lane: 0,
       laneCount: 1,
@@ -414,9 +461,22 @@ export function buildWeekendGrid(
     cells.push(cell);
     intervals.push({ startMin: start, endMin: end, cell });
   }
+
+  // lot 3 PR-3a — les blocs de la colonne « Extérieur » (à heure : couloirs partagés ;
+  // sans heure : bande en tête). Ils rejoignent les couloirs via `intervals`.
+  const awayCells = buildAwayCells(
+    { awayFixtures, teams, habits, travel, matchMinutesOf: (teamId) => matchMinutesOf(teamId, teams, durations), columnIndex, startMin, stepMin, bandRows },
+    intervals,
+  );
+  cells.push(...awayCells);
+
   assignLanes(intervals);
 
   const rows: WeekendGridRow[] = [];
+  // La bande « sans heure » en TÊTE (gouttière « h ? » sur sa première rangée).
+  for (let i = 0; i < bandRows; i += 1) {
+    rows.push({ label: 0 === i ? "h ?" : null, major: false, unknownHour: true });
+  }
   for (let t = startMin; t < endMin; t += stepMin) {
     rows.push({ label: 0 === t % 30 ? formatMinutes(t) : null, major: 0 === t % 60 });
   }

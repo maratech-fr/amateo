@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -262,6 +262,35 @@ describe("MatchesPage — la boucle guidée (RMM-1 PR3)", () => {
     expect(await screen.findByText("Personne en double")).toBeInTheDocument();
   });
 
+  it("lot 3 PR-3a — cliquer un bloc EXTÉRIEUR de la grille ouvre le dialogue d'édition", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<MatchesPage />);
+    await gotoStep(user, /Domiciles posés/);
+    // Le bloc de la colonne « Extérieur » (fx-away, sans heure → « heure inconnue »).
+    const awayBlock = await waitFor(() => {
+      const el = container.querySelector('[data-away="true"][data-fixture-id="fx-away"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    await user.click(awayBlock);
+    // Le dialogue d'édition s'ouvre (FixtureFormDialog), pas le PlacementPanel (HOME-only).
+    expect(await screen.findByRole("heading", { name: "Modifier le match" })).toBeInTheDocument();
+  });
+
+  it("lot 3 PR-3a — en mode échange, cliquer un extérieur ne fait RIEN (bloc inerte)", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<MatchesPage />);
+    await gotoStep(user, /Domiciles posés/);
+    await user.click(await screen.findByRole("button", { name: /Seniors.*Rivaux/ }));
+    await user.click(screen.getByRole("button", { name: /Échanger avec/ }));
+    expect(screen.getByText(/cliquez le match à échanger/)).toBeInTheDocument();
+    const awayBlock = container.querySelector('[data-away="true"]') as HTMLElement;
+    await user.click(awayBlock);
+    // Toujours en mode échange, aucun dialogue d'édition ouvert.
+    expect(screen.getByText(/cliquez le match à échanger/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Modifier le match" })).not.toBeInTheDocument();
+  });
+
   it("clic sur une cellule placée ouvre le panneau de boucle manuelle (P1-4 PR E1)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<MatchesPage />);
@@ -450,9 +479,11 @@ describe("MatchesPage — filtres (PR-1)", () => {
     expect(within(rail).getByRole("button", { name: /Conflits \(1\)/ })).toBeInTheDocument();
 
     // Grille (vue Placés au modèle) : SM1 et U15M1, jamais l'équipe hors-périmètre.
+    // lot 3 PR-3a — SM1 a AUSSI un extérieur (colonne « Extérieur ») : on cible le
+    // domicile par son adversaire pour ne pas ramasser les deux blocs SM1.
     await gotoStep(user, /Placés au modèle/);
-    expect(await screen.findByRole("button", { name: /SM1/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /U15M1/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /SM1.*AlphaOpp/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /U15M1.*BetaOpp/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /HorsPerim/ })).not.toBeInTheDocument();
     // Le rôle est annoncé sur le match extérieur de SM1 (Thomas assistant).
     expect(screen.getByText("assistant")).toBeInTheDocument();
