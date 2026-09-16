@@ -127,11 +127,11 @@ test("importer: onglet, badge absent, configuration allégée, file de traitemen
   const tabLabel = 0 === openBefore ? "Importer" : `Importer · ${openBefore}`;
 
   await page.goto("/matchs");
-  const importerTab = page.getByRole("link", { name: /^Importer/ });
+  const importerTab = page.getByRole("navigation", { name: "Espaces matchs" }).getByRole("link", { name: /^Importer/ });
   await expect(importerTab).toBeVisible();
   await expect(importerTab).toHaveText(tabLabel);
   await importerTab.click();
-  await expect(page.getByRole("link", { name: /^Importer/ })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("navigation", { name: "Espaces matchs" }).getByRole("link", { name: /^Importer/ })).toHaveAttribute("aria-current", "page");
 
   // Les entrées de données de match sont là.
   await expect(page.getByRole("button", { name: /Importer FBI/ })).toBeVisible();
@@ -184,7 +184,7 @@ test("importer: onglet, badge absent, configuration allégée, file de traitemen
 
     // TÉMOIN — la rencontre créée est TRAITÉE : masquée par défaut (la file ne
     // montre que les ouvertes), et le badge n'a pas bougé.
-    await expect(page.getByRole("link", { name: /^Importer/ })).toHaveText(tabLabel);
+    await expect(page.getByRole("navigation", { name: "Espaces matchs" }).getByRole("link", { name: /^Importer/ })).toHaveText(tabLabel);
     if (0 === openBefore) {
       await expect(page.getByText("Rien à traiter")).toBeVisible();
     }
