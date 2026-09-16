@@ -501,10 +501,21 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
   await page.goto("/matchs/configuration?section=reglages");
   const header = page.getByRole("button", { name: /^Accès match/ });
   await expect(header).toBeVisible();
+  // ⚠ `accessSummary` (lib/configSummaries.ts) rend `null` tant que les fenêtres ne sont pas
+  //    chargées → l'en-tête vaut « Accès match » SANS compte. Lire `before` à cet instant donnait
+  //    0 (faux) et faisait échouer `before + 1`. On attend donc que le résumé soit là : « N
+  //    gymnase(s) » ou « aucun gymnase avec accès match ».
+  await expect(header).toHaveText(/·\s*(\d+\s*gymnases?|aucun gymnase)/);
   const readCount = async (): Promise<number> => {
     const text = (await header.innerText()).trim();
+    if (/·\s*aucun gymnase/.test(text)) {
+      return 0;
+    }
     const m = text.match(/·\s*(\d+)\s*gymnase/);
-    return null === m ? 0 : Number(m[1]);
+    if (null === m) {
+      throw new Error(`en-tête « Accès match » sans compte (résumé non chargé) : « ${text} »`);
+    }
+    return Number(m[1]);
   };
   const before = await readCount();
 
@@ -521,35 +532,46 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
   const firstEdit = withoutList.getByRole("button", { name: /^Modifier les accès match de / }).first();
   const editLabel = (await firstEdit.getAttribute("aria-label")) ?? "";
   const venueName = editLabel.replace("Modifier les accès match de ", "");
-  await firstEdit.click();
-
-  // Le nom accessible de la modale vient de son `label` (« Accès match ») ; le gymnase est dans le titre (h2).
-  const dialog = page.getByRole("dialog", { name: "Accès match" });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("heading", { name: `Accès match · ${venueName}` })).toBeVisible();
-  await dialog.getByLabel("Jour de la fenêtre match").selectOption("6");
-  await dialog.getByLabel("Début de la fenêtre match").fill("14:00");
-  await dialog.getByLabel("Fin de la fenêtre match").fill("22:00");
-  await dialog.getByRole("button", { name: "Ajouter la fenêtre match" }).click();
-  await expect(dialog.getByText(/Samedi 14:00/)).toBeVisible();
-  // Deux « Fermer » (la croix d'en-tête + le pied) : on ferme par le bouton du pied.
-  await dialog.locator("footer").getByRole("button", { name: "Fermer" }).click();
-
-  // Le gymnase a rejoint la liste principale : SA ligne (le <li> de son nom exact) porte la plage
-  // formatée « sam. 14:00–22:00 » (une seule fenêtre → pas de virgule) ; le focus revient à son
-  // « Modifier » ; et l'en-tête compte un gymnase de plus.
-  const venueRow = page.getByText(venueName, { exact: true }).locator("xpath=ancestor::li[1]");
-  await expect(venueRow).toContainText("sam. 14:00–22:00");
   const modifierAfter = page.getByRole("button", { name: `Modifier les accès match de ${venueName}` });
-  await expect(modifierAfter).toBeFocused();
-  await expect.poll(readCount).toBe(before + 1);
 
-  // ── Nettoyage (la base dev n'est pas remise à zéro entre runs) : retirer la fenêtre ajoutée ──
-  await modifierAfter.click();
-  const cleanupDialog = page.getByRole("dialog", { name: "Accès match" });
-  await cleanupDialog.getByRole("button", { name: "Supprimer la fenêtre Samedi 14:00" }).first().click();
-  await expect(cleanupDialog.getByText(/Samedi 14:00/)).toHaveCount(0);
-  await cleanupDialog.locator("footer").getByRole("button", { name: "Fermer" }).click();
+  // Ajout → vérifs → nettoyage : le `finally` retire la fenêtre AJOUTÉE même si une vérif échoue,
+  // pour ne pas laisser de créneau parasite dans la base dev CI (non réinitialisée entre runs).
+  try {
+    await firstEdit.click();
+    // Le nom accessible de la modale vient de son `label` (« Accès match ») ; le gymnase est dans le titre (h2).
+    const dialog = page.getByRole("dialog", { name: "Accès match" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: `Accès match · ${venueName}` })).toBeVisible();
+    await dialog.getByLabel("Jour de la fenêtre match").selectOption("6");
+    await dialog.getByLabel("Début de la fenêtre match").fill("14:00");
+    await dialog.getByLabel("Fin de la fenêtre match").fill("22:00");
+    await dialog.getByRole("button", { name: "Ajouter la fenêtre match" }).click();
+    await expect(dialog.getByText(/Samedi 14:00/)).toBeVisible();
+    // Deux « Fermer » (la croix d'en-tête + le pied) : on ferme par le bouton du pied.
+    await dialog.locator("footer").getByRole("button", { name: "Fermer" }).click();
+
+    // Le gymnase a rejoint la liste principale : SA ligne (le <li> de son nom exact) porte la plage
+    // formatée « sam. 14:00–22:00 » (une seule fenêtre → pas de virgule) ; le focus revient à son
+    // « Modifier » ; et l'en-tête compte un gymnase de plus.
+    const venueRow = page.getByText(venueName, { exact: true }).locator("xpath=ancestor::li[1]");
+    await expect(venueRow).toContainText("sam. 14:00–22:00");
+    await expect(modifierAfter).toBeFocused();
+    await expect.poll(readCount).toBe(before + 1);
+  } finally {
+    // Nettoyage robuste : rouvre le gymnase et supprime la fenêtre Samedi 14:00 SI elle existe.
+    if ("" !== venueName && (await modifierAfter.count()) > 0) {
+      await modifierAfter.first().click();
+      const cleanupDialog = page.getByRole("dialog", { name: "Accès match" });
+      await expect(cleanupDialog).toBeVisible();
+      const del = cleanupDialog.getByRole("button", { name: "Supprimer la fenêtre Samedi 14:00" });
+      if ((await del.count()) > 0) {
+        await del.first().click();
+        await expect(cleanupDialog.getByText(/Samedi 14:00/)).toHaveCount(0);
+      }
+      await cleanupDialog.locator("footer").getByRole("button", { name: "Fermer" }).click();
+    }
+  }
+  // Après nettoyage, l'en-tête est revenu à son compte initial.
   await expect.poll(readCount).toBe(before);
 
   // ── Recherche adversaires : « xyz » n'a aucun résultat, Escape vide la requête ──
