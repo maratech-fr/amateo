@@ -1,15 +1,14 @@
 # Guide de génération de planning — ClubScheduler
 
-Last verified @ 2026-09-14 (P4-203 « le solveur de placement adopte la règle D1 »,
-`documentation-update`). Re-confronté au code : `CONTRACT_VERSION` = **2.21** (`ScheduleConstraintBuilder.php:64`)
-✓ — bumpé par P4-203, mais c'est `MatchPlacementPayloadBuilder` (fichier distinct, contrat des
-matchs) qui porte le motif du bump ; ce guide décrit `/generate`, dont ni la forme du payload ni
-le flux ne bougent. `resolvePreviousAssignmentSlots` (`GenerateScheduleHandler.php:389`, source
-explicite de même lignée puis repli dernière COMPLETED) ✓ ; `withPreviousAssignments`
-(`ScheduleConstraintBuilder.php:673`, greffé après le hash) ✓ ; `container_name` `amateo-*` cités
-tiennent contre `docker-compose.yml` (`amateo-php-fpm:102`, `amateo-nginx:136`,
-`amateo-postgres:156`, `amateo-redis:180`) ✓. Reste non re-sondé cette passe : le corps du guide
-hors § Pré-requis et § Injection.
+Last verified @ 2026-09-16 (rotation `documentation-update`, PR backend « écart de salle d'un
+domicile non placé » — sujet sans rapport, fichier choisi par stamp le plus ancien). Re-confronté
+au code, rien n'a dérivé : `CONTRACT_VERSION` = **2.21** (`ScheduleConstraintBuilder.php:64`) ✓ ;
+`resolvePreviousAssignmentSlots` (`GenerateScheduleHandler.php:389`) ✓ ; `withPreviousAssignments`
+(`ScheduleConstraintBuilder.php:673`) ✓ ; `container_name` `amateo-*` cités tiennent contre
+`docker-compose.yml` (`amateo-php-fpm:102`, `amateo-nginx:136`, `amateo-postgres:156`,
+`amateo-redis:180`) ✓ ; `app:bccl:seed` (`BcclSeedCommand.php:41`) et le code club `ARA0069036`
+(exemple encore cohérent avec `DemoCreateCommand.php`) ✓. Reste non re-sondé cette passe : le corps
+du guide hors § Pré-requis et § Injection.
 
 > Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend ClubScheduler. Il s'adresse aux développeurs juniors qui découvrent le projet.
 

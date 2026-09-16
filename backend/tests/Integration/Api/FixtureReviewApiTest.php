@@ -12,6 +12,7 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
+use App\Entity\Venue;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
@@ -182,6 +183,54 @@ final class FixtureReviewApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(404);
     }
 
+    public function testKeepAppVenueOnAnUnplacedStampsTheKeptLabel(): void
+    {
+        // « Garder l'appli » sur l'écart salle d'un NON PLACÉ : le gymnase reste, le
+        // libellé source est adopté (brut + normalisé mémorisé pour l'idempotence, E).
+        [$club, $user, $season] = $this->createClubUser('rkv');
+        $team = $this->createTeam($club, $season, 'SF3');
+        [$fixture, $jdr] = $this->unplacedVenueDeviatedFixture($club, $season, $team, 'GYMNASE JDR');
+
+        $this->post($user, '/api/fixtures/review/deviations', [
+            'fixtureId' => $fixture->getId(),
+            'field' => 'venue',
+            'choice' => 'keep_app',
+        ]);
+        self::assertResponseStatusCodeSame(200);
+
+        $reloaded = $this->reloadFixture($club, $fixture->getId());
+        self::assertSame($jdr, $reloaded->getVenueId(), 'le gymnase est gardé');
+        self::assertSame('SALLE RAPHAEL DE BARROS', $reloaded->getFbiVenueLabel(), 'le libellé source brut est adopté');
+        self::assertSame('salle raphael de barros', $reloaded->getKeptVenueLabel(), 'le libellé normalisé est mémorisé');
+        self::assertSame(FixtureReviewState::REVIEWED, $reloaded->getReviewState());
+        self::assertSame([], $reloaded->getPendingDeviations());
+    }
+
+    public function testTakeSourceVenueOnAnUnplacedFollowsTheConfirmedAlias(): void
+    {
+        // « Prendre le fichier » sur l'écart salle d'un NON PLACÉ : le gymnase erroné
+        // est vidé puis l'alias confirmé du libellé source repose le bon (Debarros) ;
+        // le statut reste UNPLACED, le pense-bête keep_app est effacé.
+        [$club, $user, $season] = $this->createClubUser('rtv');
+        $team = $this->createTeam($club, $season, 'SF3');
+        $debarros = $this->createAliasedVenue($club, $season, 'Debarros', ['salle raphael de barros']);
+        [$fixture] = $this->unplacedVenueDeviatedFixture($club, $season, $team, 'GYMNASE JDR');
+
+        $this->post($user, '/api/fixtures/review/deviations', [
+            'fixtureId' => $fixture->getId(),
+            'field' => 'venue',
+            'choice' => 'take_source',
+        ]);
+        self::assertResponseStatusCodeSame(200);
+
+        $reloaded = $this->reloadFixture($club, $fixture->getId());
+        self::assertSame($debarros, $reloaded->getVenueId(), 'l\'alias confirmé repose le bon gymnase');
+        self::assertSame(FixtureStatus::UNPLACED, $reloaded->getStatus(), 'le statut reste UNPLACED');
+        self::assertNull($reloaded->getKeptVenueLabel());
+        self::assertSame(FixtureReviewState::REVIEWED, $reloaded->getReviewState());
+        self::assertSame([], $reloaded->getPendingDeviations());
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -247,6 +296,75 @@ final class FixtureReviewApiTest extends WebTestCase
         ]);
         $fixture->markReviewed(new DateTimeImmutable);
         $this->em->flush();
+
+        return $fixture;
+    }
+
+    /**
+     * An UNPLACED home fixture attached to a REAL club gym, carrying an open venue
+     * écart whose source names another salle (« SALLE RAPHAEL DE BARROS ») — the
+     * exact « 20 »-case state the review endpoint arbitrates.
+     *
+     * @return array{0: Fixture, 1: string} [fixture, appVenueId]
+     */
+    private function unplacedVenueDeviatedFixture(Club $club, Season $season, Team $team, string $venueName): array
+    {
+        $this->scopeGucToClub($club->getId());
+        $venue = new Venue;
+        $venue->setClubId($club->getId());
+        $venue->setSeasonId($season->getId());
+        $venue->setName($venueName);
+        $venue->setSource('manual');
+        $this->em->persist($venue);
+
+        $fixture = new Fixture;
+        $fixture->setClubId($club->getId());
+        $fixture->setSeasonId($season->getId());
+        $fixture->setTeamId($team->getId());
+        $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
+        $fixture->setHomeAway(FixtureHomeAway::HOME);
+        $fixture->setOpponentLabel('Adversaire');
+        $fixture->setVenueId($venue->getId());
+        $fixture->setFbiVenueLabel('SALLE RAPHAEL DE BARROS');
+        $fixture->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $fixture->putPendingDeviation([
+            'field' => 'venue',
+            'appValue' => $venueName,
+            'sourceValue' => 'SALLE RAPHAEL DE BARROS',
+            'channel' => 'FBI_XLSX',
+            'seenAt' => '2026-09-01T10:00:00+00:00',
+            'autoApplied' => false,
+        ]);
+        $fixture->setReviewState(FixtureReviewState::OUT_OF_SYNC);
+        $this->em->persist($fixture);
+        $this->em->flush();
+
+        return [$fixture, $venue->getId()];
+    }
+
+    /** @param list<string> $aliases already-normalized labels */
+    private function createAliasedVenue(Club $club, Season $season, string $name, array $aliases): string
+    {
+        $this->scopeGucToClub($club->getId());
+        $venue = new Venue;
+        $venue->setClubId($club->getId());
+        $venue->setSeasonId($season->getId());
+        $venue->setName($name);
+        $venue->setSource('manual');
+        $venue->setExternalLabels($aliases);
+        $this->em->persist($venue);
+        $this->em->flush();
+
+        return $venue->getId();
+    }
+
+    private function reloadFixture(Club $club, string $fixtureId): Fixture
+    {
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $this->scopeGucToClub($club->getId());
+        $em->clear();
+        $fixture = $em->getRepository(Fixture::class)->find($fixtureId);
+        self::assertInstanceOf(Fixture::class, $fixture);
 
         return $fixture;
     }

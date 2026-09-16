@@ -87,8 +87,16 @@ final class FfbbRencontreReconciler
             $consumed[$fixture->getId()] = true;
 
             $fields = $this->importer->detectFieldDeviations($fixture, $row, $venueNames);
-            if (null === $fields || [] === $fields) {
-                continue; // matched but no divergence (or out of the home-placed perimeter)
+            if (null === $fields) {
+                // Hors du périmètre placé : un domicile UNPLACED dont la ligue change la
+                // salle est un écart aussi (le même moteur partagé, jamais une copie).
+                $venueDeviation = $this->importer->detectUnplacedVenueDeviation($fixture, $row, $venueNames);
+                if (null === $venueDeviation) {
+                    continue;
+                }
+                $fields = ['venue' => $venueDeviation];
+            } elseif ([] === $fields) {
+                continue; // matched but no divergence
             }
             foreach ($fields as $field => $vals) {
                 if (null !== $fixture->getPendingDeviation($field)) {
@@ -180,7 +188,16 @@ final class FfbbRencontreReconciler
 
             $fields = $this->importer->detectFieldDeviations($fixture, $row, $venueNames);
             if (null === $fields) {
-                continue; // out of the home-placed perimeter — the API never auto-applies (beyond the venue attach above)
+                // Hors du périmètre placé : un domicile UNPLACED dont la ligue change la
+                // salle est un écart à arbitrer (moteur partagé, scope ['venue'], JAMAIS
+                // « FBI fait foi » sur la salle d'un non placé). Aucune autre application
+                // d'office hors périmètre (au-delà du rattachement d'alias ci-dessus).
+                $venueDeviation = $this->importer->detectUnplacedVenueDeviation($fixture, $row, $venueNames);
+                if (null !== $venueDeviation) {
+                    $this->importer->processPerimeterFields($fixture, $row, ['venue' => $venueDeviation], $decisionMap, FbiIngestionSource::FFBB_API->value, $row['competitionName'], $records, $persistingSet, $discardedWarnings, $now, false, ['venue']);
+                }
+
+                continue;
             }
             // The SAME reconciliation engine as the xlsx import (never a copy):
             // per-field decisions + pending-écart maintenance + reviewState, or D9

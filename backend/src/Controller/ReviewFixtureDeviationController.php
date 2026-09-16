@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
+use App\Enum\FixtureStatus;
 use App\Service\FbiFixtureImporter;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
@@ -92,6 +93,10 @@ final class ReviewFixtureDeviationController extends AbstractController
                 return $this->json(['error' => 'La valeur de la source pour cet écart est illisible.'], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
             $this->importer->applyFieldTakeFile($fixture, $field, $row, $now);
+        } elseif ('venue' === $field && FixtureStatus::UNPLACED === $fixture->getStatus()) {
+            // « Garder l'appli » sur l'écart salle d'un NON PLACÉ : on mémorise le
+            // libellé source (normalisé) pour l'idempotence (E) — le gymnase reste.
+            $this->importer->applyVenueKeepApp($fixture, (string) ($entry['sourceValue'] ?? ''));
         }
         $fixture->removePendingDeviation($field);
 

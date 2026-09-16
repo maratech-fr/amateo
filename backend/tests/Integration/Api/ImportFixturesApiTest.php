@@ -9,6 +9,7 @@ use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
+use App\Entity\Venue;
 use App\Enum\FixtureStatus;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
@@ -161,6 +162,38 @@ final class ImportFixturesApiTest extends WebTestCase
         self::assertSame('FBI_XLSX', $freshness['source']);
     }
 
+    public function testVenueDeviationOnAnUnplacedHomeIsSurfacedOverHttp(): void
+    {
+        [$token, $clubName, $teamId] = $this->registerWithTeam();
+        $needle = strtoupper($clubName);
+
+        // Import a home match (UNPLACED, no salle) then attach it to a club gym
+        // WITHOUT placing it — the « 20 »-case state.
+        $this->upload('/api/fixtures/import', $token, $this->xlsx([
+            ['D2', 'A9600', $needle . ' - 1', 'AS Voisins', '03/10/2026', '15:30', ''],
+        ]), ['mappings' => json_encode([['division' => 'D2', 'teamId' => $teamId]], \JSON_THROW_ON_ERROR)]);
+        self::assertResponseStatusCodeSame(200);
+        $venueId = $this->attachUnplacedGym('A9600', 'GYMNASE JDR');
+
+        // Re-import: the league names a divergent salle → the venue écart surfaces,
+        // the gym stays intact and the label is NOT silently rewritten.
+        $this->upload('/api/fixtures/import', $token, $this->xlsx([
+            ['D2', 'A9600', $needle . ' - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE RAPHAEL DE BARROS'],
+        ]));
+        self::assertResponseStatusCodeSame(200);
+        $report = $this->responseData();
+        self::assertCount(1, $report['unresolvedDeviations']);
+        self::assertSame(
+            ['app' => 'GYMNASE JDR', 'file' => 'SALLE RAPHAEL DE BARROS'],
+            $report['unresolvedDeviations'][0]['fields']['venue'],
+        );
+
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'A9600']);
+        self::assertSame($venueId, $fixture?->getVenueId(), 'no decision never moves the gym');
+        self::assertNull($fixture?->getFbiVenueLabel(), 'the salle label is not silently rewritten');
+    }
+
     public function testMalformedDecisionsFieldIsRejected(): void
     {
         [$token] = $this->registerWithTeam();
@@ -248,6 +281,24 @@ final class ImportFixturesApiTest extends WebTestCase
         $this->em->flush();
 
         return $fixture->getId();
+    }
+
+    /** Attaches an imported fixture to a real club gym WITHOUT placing it (stays UNPLACED). */
+    private function attachUnplacedGym(string $externalRef, string $venueName): string
+    {
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
+        self::assertNotNull($fixture, 'imported fixture must exist');
+        $this->scopeGucToClub($fixture->getClubId());
+        $venue = new Venue;
+        $venue->setClubId($fixture->getClubId());
+        $venue->setSeasonId($fixture->getSeasonId());
+        $venue->setName($venueName);
+        $venue->setSource('manual');
+        $this->em->persist($venue);
+        $fixture->setVenueId($venue->getId());
+        $this->em->flush();
+
+        return $venue->getId();
     }
 
     private function assertFixtureDate(string $id, string $expected): void

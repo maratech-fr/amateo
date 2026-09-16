@@ -1,13 +1,14 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-09-14 (P4-203 « le solveur de placement adopte la règle D1 »,
-`documentation-update`). `CONTRACT_VERSION` = **2.21** (`engine/CONTRACT_VERSION`) ✓ confronté à
-`match_placement.py` : `DEFAULT_MATCH_MIN=105`/`DEFAULT_WARMUP_MIN=30` remplacent
-`BEFORE_KICKOFF_MIN`/`AFTER_KICKOFF_MIN`/`FOOTPRINT_MIN` (supprimées) ; `MatchTeamSchema.match_minutes`/
-`warmup_minutes` confirmés dans `match_input_schema.py` (défauts Pydantic 105/30) ; bump 2.21 ajouté à
-la liste ci-dessous. Reste de l'inventaire (constraints/, objective/, result_builder/, port 8000,
-`PLACEMENT_PROXIMITY_WEIGHT`) non re-sondé cette passe — voir `git log -p --follow` pour sa dernière
-vérification.
+Last verified @ 2026-09-16 (rotation `documentation-update`, PR backend « écart de salle d'un
+domicile non placé » — sujet sans rapport, fichier choisi par stamp le plus ancien). Re-confronté
+au code, rien n'a dérivé : `CONTRACT_VERSION` = **2.21** (`engine/CONTRACT_VERSION`) ✓ ;
+`DEFAULT_MATCH_MIN=105`/`DEFAULT_WARMUP_MIN=30` toujours dans `match_placement.py` ✓ ; port 8000
+(`docker-compose.yml`, exposé via `${ENGINE_PORT}`) ✓ ; les quatre paquets cités
+(`solver/constraints/`, `solver/objective/`, `solver/result_builder/`, plus `match_placement.py`)
+existent avec les fichiers listés ✓. Reste de l'inventaire (`PLACEMENT_PROXIMITY_WEIGHT`, le détail
+des sections sous la ligne 40) non re-sondé cette passe — voir `git log -p --follow` pour sa
+dernière vérification.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
 > Source de vérité : `engine/app/main.py`, `engine/app/schemas/input_schema.py`, `engine/app/schemas/output_schema.py`, `engine/app/solver/{model,constraints,objective,result_builder}.py`, `engine/app/core/config.py`.
