@@ -301,6 +301,71 @@ final class OpponentTravelResolverTest extends WebTestCase
         self::assertSame(0, $this->suggestionCount(self::OPPONENT_CODE, $ref), 'supprimer la surcharge équipe rend le gymnase → −1 partagé');
     }
 
+    /**
+     * PR-2b — garde P4-209(a) : supprimer une ligne équipe **AUTO** (posée par
+     * l'auto-localisation depuis le fichier, portant un ref fédéral mais n'ayant JAMAIS
+     * compté comme un choix) NE décrémente PAS le partagé — sinon on volerait le compte
+     * d'un autre club. Falsifié : le compte d'un autre club reste intact.
+     */
+    public function testDeletingAnAutoTeamRowDoesNotDecrementTheSharedCount(): void
+    {
+        [$club, $season] = $this->seedClubWithAwayOpponent();
+        $ref = '166900401';
+        $teamKey = 'adverse trajet 2';
+
+        // Un AUTRE club a choisi ce gymnase (compte partagé = 1) — indépendant de nous.
+        $this->suggestionRepository()->upsertManual(self::OPPONENT_CODE, $ref, 'GYMNASE FEDERAL', null, null, 45.76, 4.86);
+        $this->suggestionRepository()->increment(self::OPPONENT_CODE, $ref);
+        self::assertSame(1, $this->suggestionCount(self::OPPONENT_CODE, $ref));
+
+        // Notre ligne équipe est AUTO (auto-localisée) et porte le MÊME ref fédéral.
+        $this->scopeGucToClub($club->getId());
+        $auto = (new OpponentTravel)
+            ->setClubId($club->getId())->setSeasonId($season->getId())->setOpponentOrganismeCode(self::OPPONENT_CODE)
+            ->setOpponentTeamKey($teamKey)
+            ->setSource(OpponentTravelSource::AUTO)->setTravelMinutes(12)
+            ->setOverrideVenueLabel('GYMNASE FEDERAL')->setOverrideVenueExternalRef($ref)
+            ->setOverrideLatitude(45.76)->setOverrideLongitude(4.86)->setResolvedAt(new DateTimeImmutable);
+        $this->em->persist($auto);
+        $this->em->flush();
+
+        self::assertTrue($this->resolverWithIgn(1320)->deleteTeamOverride($season->getId(), self::OPPONENT_CODE, $teamKey));
+        self::assertSame(1, $this->suggestionCount(self::OPPONENT_CODE, $ref), 'supprimer une ligne AUTO ne touche PAS le compte partagé d\'un autre club');
+    }
+
+    /**
+     * PR-2b — `manual` sur une ligne équipe **AUTO** la remplace par MANUAL : +1 sur le
+     * nouveau gymnase, JAMAIS de −1 sur l'ancien ref (l'AUTO n'avait jamais compté). Le
+     * compte d'un autre club sur l'ancien ref reste intact.
+     */
+    public function testManualOverAnAutoTeamRowAddsOneWithoutDecrementingTheOld(): void
+    {
+        [$club, $season] = $this->seedClubWithAwayOpponent();
+        $oldRef = '166900402';
+        $newRef = '166900101'; // connu du salleResolver de ce test
+        $teamKey = 'adverse trajet 2';
+
+        // Un autre club tient le compte de l'ancien ref (= 1) — indépendant.
+        $this->suggestionRepository()->upsertManual(self::OPPONENT_CODE, $oldRef, 'ANCIEN GYM', null, null, 45.76, 4.86);
+        $this->suggestionRepository()->increment(self::OPPONENT_CODE, $oldRef);
+
+        // Notre ligne équipe est AUTO et porte l'ancien ref.
+        $this->scopeGucToClub($club->getId());
+        $auto = (new OpponentTravel)
+            ->setClubId($club->getId())->setSeasonId($season->getId())->setOpponentOrganismeCode(self::OPPONENT_CODE)
+            ->setOpponentTeamKey($teamKey)
+            ->setSource(OpponentTravelSource::AUTO)->setTravelMinutes(12)
+            ->setOverrideVenueLabel('ANCIEN GYM')->setOverrideVenueExternalRef($oldRef)
+            ->setOverrideLatitude(45.76)->setOverrideLongitude(4.86)->setResolvedAt(new DateTimeImmutable);
+        $this->em->persist($auto);
+        $this->em->flush();
+
+        $this->resolverWithIgn(1320)->applyManualOverride($club->getId(), $season->getId(), self::OPPONENT_CODE, $teamKey, $newRef, 'GYMNASE B', 45.76, 4.86);
+
+        self::assertSame(1, $this->suggestionCount(self::OPPONENT_CODE, $oldRef), 'remplacer un AUTO ne décrémente pas l\'ancien ref (jamais compté)');
+        self::assertSame(1, $this->suggestionCount(self::OPPONENT_CODE, $newRef), 'le nouveau choix MANUAL compte +1');
+    }
+
     protected function setUp(): void
     {
         self::createClient();

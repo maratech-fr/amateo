@@ -31,13 +31,17 @@ use Psr\Log\LoggerInterface;
  *   - otherwise the opponent's entry in the GLOBAL `opponent_directory` (public
  *     federal coordinates).
  *
- * Grain (P2-54 « adversaire multi-gymnases » PR-1) : {@see resolve()} ne touche QUE
- * les lignes CLUB (le défaut, `opponentTeamKey` NULL) — comportement historique. Une
- * ligne ÉQUIPE naît toujours d'un choix manuel ({@see applyManualOverride} portée
- * ÉQUIPE) ; « rétablir l'automatique » sur une équipe = SUPPRIMER la ligne
- * ({@see deleteTeamOverride}, décision A3) pour retomber sur la ligne club puis
- * l'annuaire. Une ligne équipe étant donc toujours MANUAL par construction, la passe
- * AUTO n'a jamais rien à en recalculer.
+ * Grain (P2-54 « adversaire multi-gymnases » PR-1) : {@see resolve()} — la passe AUTO
+ * des TRAJETS — ne touche QUE les lignes CLUB (le défaut, `opponentTeamKey` NULL) ;
+ * comportement historique inchangé. Une ligne ÉQUIPE peut naître de DEUX sources :
+ *   - un choix manuel du gestionnaire ({@see applyManualOverride} portée ÉQUIPE), ou
+ *   - l'auto-localisation du gymnase depuis le libellé du fichier FBI (PR-2b,
+ *     {@see OpponentVenueAutoLocator}) — `source = AUTO`, portant un ref de salle
+ *     fédéral mais ne comptant JAMAIS comme un choix au partagé.
+ * « Rétablir l'automatique » sur une équipe = SUPPRIMER la ligne ({@see deleteTeamOverride},
+ * décision A3) pour retomber sur la ligne club puis l'annuaire ; une ligne équipe AUTO
+ * remplacée par un choix manuel devient MANUAL (+1 au partagé, sans −1). Le décrément
+ * du compteur partagé ne joue donc QUE quand la ligne remplacée/supprimée était MANUAL.
  *
  * Best-effort intégral : IGN en panne → `travelMinutes` null (jamais une erreur
  * bloquante) ; un adversaire sans lieu connu (ni override ni directory géolocalisé)
@@ -198,9 +202,13 @@ final class OpponentTravelResolver
     {
         $minutes = $this->carMinutesFromClub($clubId, $lat, $lon);
         $existing = $this->travelRepository->findOneByCode($seasonId, $code, $teamKey);
-        // Le ref que la ligne portait AVANT ce choix (null si nouvelle/AUTO) — pour le
-        // comptage partagé (changement de choix = −1 ancien +1 nouveau).
+        // Le ref que la ligne portait AVANT ce choix (null si nouvelle) — pour le
+        // comptage partagé (changement de choix = −1 ancien +1 nouveau). Le −1 ne vaut
+        // QUE si l'ancienne ligne était MANUAL : une ligne AUTO (grain équipe posé par
+        // {@see OpponentVenueAutoLocator}) porte un ref fédéral mais n'a JAMAIS compté
+        // comme un choix — la décrémenter volerait le compte d'un autre club (P4-209(a)).
         $previousRef = $existing?->getOverrideVenueExternalRef();
+        $previousWasManual = $existing instanceof OpponentTravel && OpponentTravelSource::MANUAL === $existing->getSource();
         $row = $existing ?? $this->newRow($clubId, $seasonId, $code, $teamKey);
         $row->setOverrideVenueExternalRef($venueRef)
             ->setOverrideVenueLabel($venueLabel)
@@ -209,7 +217,7 @@ final class OpponentTravelResolver
             ->setTravelMinutes($minutes)
             ->setSource(OpponentTravelSource::MANUAL)
             ->setResolvedAt(new DateTimeImmutable);
-        $this->accountManualChoice($code, $previousRef, $venueRef, $lat, $lon);
+        $this->accountManualChoice($code, $previousWasManual ? $previousRef : null, $venueRef, $lat, $lon);
         $this->entityManager->persist($row);
         $this->entityManager->flush();
 
@@ -229,6 +237,7 @@ final class OpponentTravelResolver
             return null;
         }
         $previousRef = $row->getOverrideVenueExternalRef();
+        $wasManual = OpponentTravelSource::MANUAL === $row->getSource();
         $location = $this->directoryLocation($code);
         $minutes = null === $location ? null : $this->carMinutesFromClub($clubId, $location[0], $location[1]);
         $row->setOverrideVenueExternalRef(null)
@@ -238,9 +247,10 @@ final class OpponentTravelResolver
             ->setTravelMinutes($minutes)
             ->setSource(OpponentTravelSource::AUTO)
             ->setResolvedAt(new DateTimeImmutable);
-        // Ce club ne choisit plus ce gymnase : la suggestion partagée recule (idempotent —
-        // décrément SEULEMENT si la ligne portait effectivement un ref).
-        if (null !== $previousRef) {
+        // Ce club ne choisit plus ce gymnase : la suggestion partagée recule — SEULEMENT
+        // si la ligne club était MANUAL (une ligne AUTO n'a jamais compté). Idempotent,
+        // ref effectif seul (une ligne AUTO club ne porte de toute façon pas de ref).
+        if ($wasManual && null !== $previousRef) {
             $this->suggestions->decrement($code, $previousRef);
         }
         $this->entityManager->flush();
@@ -260,10 +270,14 @@ final class OpponentTravelResolver
             return false;
         }
         $previousRef = $row->getOverrideVenueExternalRef();
+        $wasManual = OpponentTravelSource::MANUAL === $row->getSource();
         $this->entityManager->remove($row);
-        // Ce club ne choisit plus ce gymnase pour cette équipe : la suggestion recule
-        // (idempotent — décrément SEULEMENT si la ligne portait un ref).
-        if (null !== $previousRef) {
+        // Ce club ne choisit plus ce gymnase pour cette équipe : la suggestion recule —
+        // MAIS uniquement si la ligne supprimée était MANUAL. Une ligne AUTO (posée par
+        // {@see OpponentVenueAutoLocator} depuis le libellé du fichier) porte un ref
+        // fédéral sans avoir jamais incrémenté le partagé : la décrémenter volerait le
+        // compte d'un autre club (P4-209(a)). Décrément idempotent, ref effectif seul.
+        if ($wasManual && null !== $previousRef) {
             $this->suggestions->decrement($code, $previousRef);
         }
         $this->entityManager->flush();
@@ -274,7 +288,10 @@ final class OpponentTravelResolver
     /**
      * Comptabilise un choix manuel dans les suggestions PARTAGÉES de gymnases de
      * l'adversaire (« un compte, jamais un qui »). Changement de choix = −1 sur
-     * l'ancien ref, +1 sur le nouveau ; re-choisir le même = neutre.
+     * l'ancien ref, +1 sur le nouveau ; re-choisir le même = neutre. `$previousRef`
+     * n'est transmis QUE lorsque la ligne remplacée était MANUAL : remplacer une ligne
+     * AUTO (grain équipe, {@see OpponentVenueAutoLocator}) par un choix manuel = +1 sur
+     * le nouveau, JAMAIS de −1 (l'AUTO n'avait jamais compté — P4-209(a)).
      *
      * 🔴 SÉCURITÉ (revue 2026-09-15) : le partagé ne reçoit QUE des données FÉDÉRALES.
      * Le numéro de salle du corps est RE-RÉSOLU côté serveur contre l'index FFBB
@@ -337,8 +354,9 @@ final class OpponentTravelResolver
 
     /**
      * The CLUB rows (opponentTeamKey NULL) keyed by opponent organisme code — the
-     * AUTO pass only ever recomputes the club default. Team overrides (always MANUAL
-     * by construction) are left entirely untouched.
+     * travel AUTO pass only ever recomputes the club default. Team overrides (MANUAL,
+     * or AUTO posé par {@see OpponentVenueAutoLocator}) are left entirely untouched
+     * here — the venue auto-locator owns the team grain.
      *
      * @return array<string, OpponentTravel> keyed by opponent organisme code
      */

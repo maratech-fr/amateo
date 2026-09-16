@@ -1283,3 +1283,19 @@ export interface OpponentResolveResult {
 
 /** Rattrape les codes FFBB des adversaires AWAY (annuaire global + estampille les rencontres). Best-effort, management. */
 export const resolveOpponents = (): Promise<OpponentResolveResult> => api.post("opponents/resolve").json<OpponentResolveResult>();
+
+/**
+ * La réponse de la mise à jour groupée (`POST /api/opponents/refresh`, PR 2b) : les TROIS passes
+ * best-effort en un seul appel — (`codes`) rattrapage des codes FFBB de l'annuaire, (`autoLocated`)
+ * localisation des gymnases depuis le libellé du fichier FBI, (`travel`) recalcul des trajets AUTO.
+ * Chaque passe est indépendante (l'échec de l'une n'annule pas les autres). Champs alignés sur le
+ * snapshot OpenAPI (`/api/opponents/refresh`).
+ */
+export interface OpponentRefreshResult {
+  codes: { resolved: number; unresolved: string[]; skipped: number; stamped: number };
+  autoLocated: { located: number; ambiguous: number; unmatched: number; skipped: number };
+  travel: { resolved: number; unresolved: string[]; skippedManual: number };
+}
+
+/** Met à jour tous les adversaires AWAY en UN appel : codes FFBB + gymnases depuis le fichier + trajets. Best-effort, management. */
+export const refreshOpponents = (): Promise<OpponentRefreshResult> => api.post("opponents/refresh").json<OpponentRefreshResult>();

@@ -11,7 +11,7 @@ const revertMutate = vi.fn();
 const updateRun = vi.fn();
 const travelState: { data: OpponentTravel[]; isError: boolean } = { data: [], isError: false };
 const fixturesState: { data: Fixture[] } = { data: [] };
-const updateState: { step: "idle" | "codes" | "trajets" } = { step: "idle" };
+const updateState: { step: "idle" | "running" } = { step: "idle" };
 
 vi.mock("./queries", () => ({
   useOpponentTravel: () => ({ data: travelState.data, isError: travelState.isError, refetch: vi.fn() }),
@@ -132,8 +132,8 @@ describe("OpponentTravelCard — l'écran SET-UP du trajet adverse, GROUPÉ PAR 
   });
 });
 
-describe("OpponentTravelCard — « Mettre à jour les adversaires » (PR 2a, deux étapes)", () => {
-  it("le bouton lance la mise à jour (rattrapage codes puis trajets)", async () => {
+describe("OpponentTravelCard — « Mettre à jour les adversaires » (PR 2b, un seul appel)", () => {
+  it("le bouton lance la mise à jour (un seul geste serveur)", async () => {
     travelState.data = [opp({ opponentLabel: "Voisin FC", opponentTeamKey: "VOISIN" })];
     renderWithProviders(<OpponentTravelCard />);
 
@@ -141,22 +141,13 @@ describe("OpponentTravelCard — « Mettre à jour les adversaires » (PR 2a, de
     expect(updateRun).toHaveBeenCalledTimes(1);
   });
 
-  it("étape « codes » : libellé « Codes FFBB… », disabled, annonce a11y « étape 1 sur 2 »", () => {
+  it("en cours : libellé unique « Mise à jour… », disabled, annonce a11y unique", () => {
     travelState.data = [opp({ opponentLabel: "Voisin FC", opponentTeamKey: "VOISIN" })];
-    updateState.step = "codes";
+    updateState.step = "running";
     renderWithProviders(<OpponentTravelCard />);
 
-    expect(screen.getByRole("button", { name: "Codes FFBB…" })).toBeDisabled();
-    expect(screen.getByText("Mise à jour des adversaires — étape 1 sur 2 : codes FFBB")).toBeInTheDocument();
-  });
-
-  it("étape « trajets » : libellé « Trajets… », annonce a11y « étape 2 sur 2 »", () => {
-    travelState.data = [opp({ opponentLabel: "Voisin FC", opponentTeamKey: "VOISIN" })];
-    updateState.step = "trajets";
-    renderWithProviders(<OpponentTravelCard />);
-
-    expect(screen.getByRole("button", { name: "Trajets…" })).toBeInTheDocument();
-    expect(screen.getByText("Mise à jour des adversaires — étape 2 sur 2 : trajets")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mise à jour…" })).toBeDisabled();
+    expect(screen.getByText("Mise à jour des adversaires en cours…")).toBeInTheDocument();
   });
 });
 

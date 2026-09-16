@@ -10,6 +10,7 @@ use App\Repository\ClubRepository;
 use App\Repository\FixtureRepository;
 use App\Service\Basketball\FfbbRencontreReconciler;
 use App\Service\Basketball\OpponentLocationResolver;
+use App\Service\Geo\OpponentVenueAutoLocator;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
@@ -59,6 +60,7 @@ final class FfbbRencontresController extends AbstractController
         private readonly SocleGuard $socleGuard,
         private readonly FfbbRencontreReconciler $reconciler,
         private readonly OpponentLocationResolver $opponentResolver,
+        private readonly OpponentVenueAutoLocator $venueAutoLocator,
         private readonly FixtureRepository $fixtures,
         private readonly LoggerInterface $logger,
     ) {}
@@ -131,6 +133,14 @@ final class FfbbRencontresController extends AbstractController
             $this->opponentResolver->resolveFromApiChannel($clubCode, $seasonYear, $this->fixtures->findAwayBySeason((string) $seasonId));
         } catch (Throwable $e) {
             $this->logger->warning('Opponent directory: post-apply resolution failed', ['exception' => $e]);
+        }
+        // P2-54 PR-2b — puis auto-localiser le gymnase de chaque équipe adverse depuis le
+        // libellé de salle du fichier (surcharge de trajet TENANT, source AUTO). Passe
+        // SÉPARÉE, best-effort : un échec ne transforme jamais un apply réussi en 502.
+        try {
+            $this->venueAutoLocator->locate($clubId, (string) $seasonId);
+        } catch (Throwable $e) {
+            $this->logger->warning('Opponent directory: post-apply venue auto-location failed', ['exception' => $e]);
         }
 
         return $this->json([

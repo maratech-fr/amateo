@@ -238,5 +238,40 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
             summary: 'The community-shared venue suggestions for an away opponent (management only; a count, never a who)',
             parameters: [['name' => 'code', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string'], 'description' => 'The opponent FFBB organisme code (must be an away opponent of the current season)']],
         )));
+
+        $paths->addPath('/api/opponents/refresh', new PathItem(post: new Operation(
+            operationId: 'refreshOpponents',
+            tags: ['Fixture'],
+            responses: [
+                '200' => $this->schemas->jsonResponse('Runs, in ONE call, the three best-effort passes that update the season\'s away opponents: (a) catch up FFBB organisme codes into the shared directory and stamp the fixtures; (b) auto-locate each opponent team\'s gym from the FBI file salle label (federal salle, tenant AUTO override, never client text); (c) recompute the AUTO car travel. Each pass is independent — a failure in one does not cancel the others.', [
+                    'type' => 'object',
+                    'properties' => [
+                        'codes' => ['type' => 'object', 'description' => 'Pass (a): the FFBB organisme code catch-up', 'properties' => [
+                            'resolved' => ['type' => 'integer', 'description' => 'Opponents written/refined in the shared directory'],
+                            'unresolved' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Opponent names that could not be located'],
+                            'skipped' => ['type' => 'integer', 'description' => 'Opponents already known at venue precision (no network call)'],
+                            'stamped' => ['type' => 'integer', 'description' => 'Away fixtures whose opponent organisme code was stamped (join key)'],
+                        ]],
+                        'autoLocated' => ['type' => 'object', 'description' => 'Pass (b): the gym auto-location from the FBI file salle label', 'properties' => [
+                            'located' => ['type' => 'integer', 'description' => 'Opponent teams whose gym was located from the file (a unique federal salle)'],
+                            'ambiguous' => ['type' => 'integer', 'description' => 'Opponent teams whose file labels pointed to two different federal salles (nothing written)'],
+                            'unmatched' => ['type' => 'integer', 'description' => 'Opponent teams with no unique federal salle for their file label'],
+                            'skipped' => ['type' => 'integer', 'description' => 'Opponent teams left untouched because a MANUAL override already governs them'],
+                        ]],
+                        'travel' => ['type' => 'object', 'description' => 'Pass (c): the AUTO travel recompute', 'properties' => [
+                            'resolved' => ['type' => 'integer', 'description' => 'Opponents with a computed travel time'],
+                            'unresolved' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Opponent codes with no located venue or no routing duration'],
+                            'skippedManual' => ['type' => 'integer', 'description' => 'Opponents whose MANUAL override was preserved'],
+                        ]],
+                    ],
+                ]),
+                '400' => new Response('No club or season in context'),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+                '403' => new Response('Not a management member'),
+                '422' => new Response('Too many distinct opponents to update at once (retry with fewer)'),
+                '429' => new Response('Too many requests (per-user rate limit)'),
+            ],
+            summary: 'Update all away opponents in one call — catch up codes, auto-locate gyms from the file, recompute travel (management only)',
+        )));
     }
 }

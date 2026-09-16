@@ -70,6 +70,11 @@ vi.mock("./api", () => ({
   setOpponentTravelAuto: vi.fn().mockResolvedValue({}),
   resolveOpponentTravel: vi.fn().mockResolvedValue({ resolved: 2, unresolved: [], skippedManual: 0 }),
   resolveOpponents: vi.fn().mockResolvedValue({ resolved: 12, unresolved: [], skipped: 0, stamped: 40 }),
+  refreshOpponents: vi.fn().mockResolvedValue({
+    codes: { resolved: 12, unresolved: [], skipped: 0, stamped: 40 },
+    autoLocated: { located: 8, ambiguous: 0, unmatched: 0, skipped: 0 },
+    travel: { resolved: 40, unresolved: [], skippedManual: 0 },
+  }),
   createVenueUnavailability: vi.fn().mockResolvedValue({ id: "u1", venueId: "v", startDate: "2026-10-01", endDate: "2026-10-02", label: null }),
   createTeamMatchHabit: vi.fn().mockResolvedValue({ id: "h1", teamId: "t", dayOfWeek: 6, kickoffTime: "18:00", venueId: null }),
   setEntryDeadlines: vi.fn().mockResolvedValue({ updated: [], deadline: null }),
@@ -245,7 +250,7 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     await waitFor(() => expect(matchesApi.getConflicts).toHaveBeenCalledTimes(2));
   });
 
-  it("useUpdateOpponents (deux étapes) : rattrape les codes PUIS les trajets, refetche fixtures + trajet, UN toast de succès", async () => {
+  it("useUpdateOpponents (PR 2b) : UN seul appel refreshOpponents, refetche fixtures + trajet, UN toast à trois passes", async () => {
     toastMock.success.mockClear();
     toastMock.error.mockClear();
     const client = makeClient();
@@ -260,32 +265,34 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     result.current.update.run();
 
     await waitFor(() => expect("idle" === result.current.update.step).toBe(true));
-    // Les DEUX étapes ont tourné, dans l'ordre.
-    expect(matchesApi.resolveOpponents).toHaveBeenCalledTimes(1);
-    expect(matchesApi.resolveOpponentTravel).toHaveBeenCalledTimes(1);
+    // UN SEUL appel serveur remplace les deux gestes de la PR 2a.
+    expect(matchesApi.refreshOpponents).toHaveBeenCalledTimes(1);
+    expect(matchesApi.resolveOpponents).not.toHaveBeenCalled();
+    expect(matchesApi.resolveOpponentTravel).not.toHaveBeenCalled();
     // Les lecteurs réels ont refetché (fixtures estampillées + trajet).
     await waitFor(() => expect(matchesApi.getFixtures).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(matchesApi.getOpponentTravel).toHaveBeenCalledTimes(2));
-    // UN seul toast de succès, résumant les deux étapes réussies.
+    // UN seul toast de succès, résumant les TROIS passes.
     expect(toastMock.success).toHaveBeenCalledTimes(1);
-    expect(toastMock.success).toHaveBeenCalledWith("12 codes retrouvés · 2 trajets calculés");
+    expect(toastMock.success).toHaveBeenCalledWith("12 codes retrouvés · 8 gymnases localisés depuis le fichier · 40 trajets calculés");
   });
 
-  it("useUpdateOpponents : l'échec de l'étape 1 (codes) N'INTERROMPT PAS l'étape 2 (trajets)", async () => {
+  it("useUpdateOpponents : un échec du refresh remonte un toast d'erreur, sans toast de succès, mais invalide quand même", async () => {
     toastMock.success.mockClear();
     toastMock.error.mockClear();
-    vi.mocked(matchesApi.resolveOpponents).mockRejectedValueOnce(new Error("codes KO"));
+    vi.mocked(matchesApi.refreshOpponents).mockRejectedValueOnce(new Error("refresh KO"));
     const client = makeClient();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
     const { result } = renderHook(() => ({ update: useUpdateOpponents() }), { wrapper: wrapperFor(client) });
 
     result.current.update.run();
 
     await waitFor(() => expect("idle" === result.current.update.step).toBe(true));
-    // L'étape 2 a bien tourné malgré l'échec de l'étape 1.
-    expect(matchesApi.resolveOpponentTravel).toHaveBeenCalledTimes(1);
-    // Un toast d'erreur pour l'étape 1, et le succès ne résume QUE l'étape réussie.
-    expect(toastMock.error).toHaveBeenCalledWith("Rattrapage des codes FFBB impossible — poursuite avec les trajets.");
-    expect(toastMock.success).toHaveBeenCalledWith("2 trajets calculés");
+    expect(toastMock.error).toHaveBeenCalledTimes(1);
+    expect(toastMock.success).not.toHaveBeenCalled();
+    // Les invalidations tournent même sur échec (le serveur a pu écrire partiellement).
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["fixtures"] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["opponents"] });
   });
 });
 

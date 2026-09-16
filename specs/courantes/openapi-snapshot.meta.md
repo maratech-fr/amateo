@@ -1,11 +1,21 @@
-Last verified @ 2026-09-15 (lot « une personne = ses équipes coachées + ses équipes où elle joue » côté
-backend, régénéré par le coder après `cache:pool:clear --all` + `api:openapi:export`). **199 paths**
-(`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : le radar des conflits gagne des
-champs additifs (rôle par côté + rôle agrégé étendu au joueur), aucune route nouvelle.
-· SHA-256 `917e17709508515b05b16b39a247eac46713b3c2ce1a6e50a502d9e049625a39`
+Last verified @ 2026-09-16 (PR-2b « adversaire multi-gymnases » — auto-localisation depuis le gymnase du
+fichier + orchestrateur, backend, régénéré par le coder après `cache:pool:clear --all` + `api:openapi:export`).
+**200 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** : l'orchestrateur
+`POST /api/opponents/refresh`, aucune autre route ne bouge.
+· SHA-256 `2b8beedbf62bb911750060f395a5e0adfe7e9c7309e6383cffa75a4a2a850e76`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **PR-2b « adversaire multi-gymnases » — auto-localisation depuis le fichier + orchestrateur, backend (2026-09-16)** :
+  **+1 path** — `POST /api/opponents/refresh` (management) enchaîne EN UN APPEL les trois passes best-effort qui
+  mettent à jour les adversaires AWAY : (`codes`) rattrapage des codes fédéraux dans l'annuaire + estampille des
+  rencontres, (`autoLocated`) auto-localisation du gymnase de chaque équipe adverse depuis le libellé de salle
+  du FICHIER FBI (salle FÉDÉRALE, surcharge de trajet TENANT source AUTO, jamais le partagé ni le texte client),
+  (`travel`) recalcul des trajets AUTO. Réponse à trois blocs (`codes`/`autoLocated`/`travel`), chaque passe
+  indépendante ; cap dur 200 avant réseau (422) + limiteur `opponent_refresh` (429). Les routes fines
+  `/api/opponents/resolve` et `/api/opponents/travel/resolve` restent (compat). 199 → **200 paths**. Backend PUR,
+  contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun appel moteur, aucun payload solveur ne lit
+  `opponent_travel`).
 - **« Une personne = ses équipes coachées + ses équipes où elle joue », backend (2026-09-15)** : **+0 path** —
   le radar `GET /api/fixtures/conflicts` unit les coachs (`team_coach`) et les joueurs (`CoachPlayerMembership`
   actifs) dans une même carte personne→équipes. Champs ADDITIFS : `coachRole` gagne la valeur `PLAYER` (agrégat
@@ -51,15 +61,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   lecture). Le manque venait d'un export P4-187a lancé contre un cache de métadonnées API Platform périmé
   (le code portait bien les `#[Groups(['read'])]`) ; `cache:clear` + ré-export les ajoute (3 variantes read
   chacune). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.20, aucun appel moteur).
-- **P4-187a — un domicile importé retrouve son gymnase depuis le libellé FBI/FFBB (2026-09-09)** :
-  **+2 paths** — deux routes de rattachement (`VenueExternalLabelController`, management + saison écrivable) :
-  `POST /api/venues/{id}/external-labels` (corps `{label}` — ajoute l'alias normalisé, idempotent, puis
-  backfille les domiciles du club encore sans salle au même libellé ; réponse `{venueId, label, attached}` ;
-  422 libellé vide ou déjà porté par un autre gymnase) et `DELETE /api/venues/{id}/external-labels/{label}`
-  (retire l'alias, 204, ne dépointe aucune rencontre). Le schéma read `Venue` gagne `externalLabels`
-  (list<string>, lecture seule — jamais writable par le PUT) et `Fixture` gagne `suggestedVenueId`
-  (proposition floue en lecture pour un domicile importé sans salle). 194 → **196 paths**. Backend PUR,
-  contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.20, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine
