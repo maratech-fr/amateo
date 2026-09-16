@@ -149,8 +149,10 @@ export function ConsultPage() {
     [kindFixtures, activeWeekend],
   );
   const grid = useMemo(
-    () => buildWeekendGrid(weekendFixtures, venuesMap, teamsMap, new Set<string>(), consultTypicalWeek ? habits : [], activeWeekend, 15, matchDurations),
-    [weekendFixtures, venuesMap, teamsMap, consultTypicalWeek, habits, activeWeekend, matchDurations],
+    // habitudes TOUJOURS pleines (estimation d'heure des extérieurs) ; « Semaine type »
+    // ne gouverne QUE les fantômes d'habitude (`showGhosts`), pas l'heure d'un extérieur.
+    () => buildWeekendGrid(weekendFixtures, venuesMap, teamsMap, new Set<string>(), habits, activeWeekend, 15, matchDurations, opponentTravel.data ?? [], consultTypicalWeek),
+    [weekendFixtures, venuesMap, teamsMap, consultTypicalWeek, habits, activeWeekend, matchDurations, opponentTravel.data],
   );
 
   // ── Temporalité MOIS : navigateur ‹ mois ›, table groupée par jour ────────────

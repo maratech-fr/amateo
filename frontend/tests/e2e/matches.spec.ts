@@ -183,9 +183,11 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   //    DEUX week-ends distincts (10→13-14 mars, weekendKeyOf ramène au samedi ; 17→20-21
   //    mars) pour que le pivot Journée ait ≥2 entrées : avec UNE seule, `openKey` la force
   //    ouverte (ConflictsPage.tsx:156) et le clic EFFACE `?ouvert` — le deep-link goBack
-  //    (:301) ne tiendrait plus. Un AWAY n'apparaît NI dans « à placer » (UnplacedList :
-  //    HOME uniquement) NI sur la grille ; AwayList l'écrit « à <adv> », jamais « vs <adv> »
-  //    → l'assertion `vs ${opponent}` (:200/:229) ne le ramasse pas (suffixe distinct en plus).
+  //    (:301) ne tiendrait plus. Un AWAY n'apparaît PAS dans « à placer » (UnplacedList :
+  //    HOME uniquement) NI dans une case GYMNASE de la grille ; depuis le lot 3 PR-3a il
+  //    apparaît dans la colonne « Extérieur » de la grille, écrit « à <adv> », jamais
+  //    « vs <adv> » → l'assertion `vs ${opponent}` (:229) ne le ramasse pas. La colonne
+  //    « Extérieur » est vérifiée plus bas (en-tête + bloc data-away « heure inconnue »).
   for (const [date, suffix] of [["2027-03-10", "EXT"], ["2027-03-17", "EXT2"]] as const) {
     await page.getByRole("button", { name: /Nouveau match/i }).click();
     await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeVisible();
@@ -258,6 +260,38 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   } else {
     await expect(page.getByText(/Hors fenêtre autorisée/)).toBeVisible();
   }
+
+  // ── lot 3 PR-3a — les EXTÉRIEURS dans la grille (colonne « Extérieur ») ───────
+  // Les deux -EXT/-EXT2 créés plus haut (mercredis SANS habitude → heure inconnue)
+  // apparaissent dans la colonne « Extérieur » de la grille, PAS dans une case
+  // gymnase. On hop jusqu'à la semaine qui porte le premier extérieur (base réelle :
+  // il est daté LOIN, mars 2027). Tous les locators sont scopés au conteneur grille
+  // (`data-testid="weekend-grid"`) pour ne rien ramasser dans la bande AwayList sœur.
+  await page.getByRole("button", { name: /Domiciles posés/ }).click();
+  const gridRoot = page.getByTestId("weekend-grid");
+  const awayExtBlock = gridRoot.getByRole("button", { name: new RegExp(`à ${opponent}-EXT\\b`) });
+  const nextWeekAway = page.getByRole("button", { name: "Semaine suivante" });
+  for (let hops = 0; hops < 60 && !(await awayExtBlock.isVisible()) && (await nextWeekAway.isEnabled()); hops += 1) {
+    await nextWeekAway.click();
+    await page.waitForTimeout(120);
+    // Changer de semaine rend l'étape à l'automatique : on revient sur « Domiciles posés ».
+    await page.getByRole("button", { name: /Domiciles posés/ }).click();
+  }
+  await expect(
+    awayExtBlock,
+    "colonne « Extérieur » : le bloc -EXT est introuvable sur les semaines à venir (l'extérieur n'entre pas dans la grille)",
+  ).toBeVisible({ timeout: 15_000 });
+  // En-tête « Extérieur » présent dans le conteneur grille.
+  await expect(gridRoot.getByText("Extérieur")).toBeVisible();
+  // Le bloc porte data-away ET dit « heure inconnue » (gouttière « h ? » — mercredi sans habitude).
+  await expect(awayExtBlock).toHaveAttribute("data-away", "true");
+  await expect(awayExtBlock).toHaveAccessibleName(/heure inconnue/);
+  // Témoin : l'AWAY n'est JAMAIS une case gymnase (« vs <adv> ») — il dit « à <adv> » ;
+  // l'ancien « NI sur la grille » est donc faux, mais `vs ${opponent}` reste à 0.
+  await expect(gridRoot.getByRole("button", { name: new RegExp(`vs ${opponent}-EXT`) })).toHaveCount(0);
+  // Témoin de vacuité : la colonne « Extérieur » n'existe QUE le jour qui porte un
+  // extérieur (le mercredi) — un seul en-tête « Extérieur » dans cette semaine.
+  await expect(gridRoot.getByText("Extérieur")).toHaveCount(1);
 
   // ── Onglet « Conflits » (PR A) : /matchs/conflits. On ÉTEND ce scénario plutôt
   //    que d'ouvrir un 2e test : il réutilise la saison DÉJÀ générée+validée ici

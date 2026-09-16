@@ -1,21 +1,21 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-16 (PR 2b « auto-localisation des adversaires + endpoint orchestrateur »,
-`documentation-update` — clôt le lot 2). § « Trajet AWAY & radar spatial » : nouvelle sous-section
-« Auto-localisation depuis le libellé du fichier » (`OpponentVenueAutoLocator`) et bouton unique
-« Mettre à jour les adversaires » recalé sur l'orchestrateur `POST /api/opponents/refresh` (trois
-passes best-effort en un seul appel, remplace l'ancien enchaînement front de deux appels) ; §
-« Suggestions partagées de gymnases » amendée (P4-209(a) — garde de décrément par source livrée,
-adoucie mais pas fermée) ; § « Annuaire adverse » : lot 2 CLOS. Recalés contre
-`OpponentVenueAutoLocator.php`, `OpponentTravelResolver.php`, `OpponentRefreshController.php`,
-`rate_limiter.yaml`, `ImportFixturesController.php`, `Basketball/FfbbRencontresController.php`,
-`OpponentTravelPaths.php`, `OpponentVenueAutoLocatorTest.php`, `OpponentRefreshApiTest.php`,
-`MatchTenantIsolationTest.php`, `le-gymnase-du-fichier-localise-l-adversaire.feature`, `api.ts`,
-`queries.ts`, `OpponentTravelCard.tsx`.
-Reste du fichier (§ « Onglet Consulter », § « Onglet Semaine type », § « Configuration — repli
-visuel », § « Résolution des conflits », § « Gymnase depuis le libellé », § reconciliation coupes
-P4-194/195, § Appariement FFBB, § « Solveur de placement ») non re-sondé cette passe — voir
-`git log -p --follow` pour sa dernière vérification.
+Last verified @ 2026-09-16 (lot 3 « grille unique », PR-3a « extérieurs dans la grille » —
+**frontend seul, additif** — `documentation-update`). § « Palier A — PR-3 (grille week-end UI) » :
+nouvelle sous-section « Colonne Extérieur » (`lib/awayKickoff.ts` foyer d'heure/jointure trajet,
+`lib/awayColumn.ts` cellules + bande « sans heure » + tri, `WeekendGrid.tsx` rendu) ; § « Diagnostic
+gradué + extérieur visible » amendée (la bande `AwayList` reste, la grille montre désormais aussi
+les extérieurs) ; § « Trajet AWAY & radar spatial » **corrigée** : la divergence −30 min qui y était
+décrite ne portait déjà plus que sur la vue « week-end type » (`typicalWeekend.ts`, P4-206 toujours
+ouvert) — la grille datée réelle (`weekendGrid.ts`) n'en a jamais tenu depuis D1/P4-203, l'ancienne
+formulation était stale. **PR 3b (Calendrier unique — suppression de l'onglet Semaine et du rail,
+compteurs, P4-197) n'est PAS livrée.** Recalés contre `frontend/src/features/matches/lib/{awayKickoff,awayColumn,weekendGrid}.ts`,
+`WeekendGrid.tsx`, `MatchesPage.tsx`, `ConsultPage.tsx`, `AwayList.tsx`, `tests/e2e/matches.spec.ts`.
+Reste du fichier (§ « Onglet Consulter » hors la note ci-dessous, § « Onglet Semaine type », §
+« Configuration — repli visuel », § « Résolution des conflits », § « Gymnase depuis le libellé », §
+reconciliation coupes P4-194/195, § Appariement FFBB, § « Solveur de placement », § « Trajet AWAY »
+hors le paragraphe corrigé) non re-sondé cette passe — voir `git log -p --follow` pour sa dernière
+vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -311,9 +311,10 @@ surcharge équipe gouverne si elle existe, sinon la ligne club, sinon l'annuaire
 - ⚠ **Divergence ASSUMÉE** : le trajet (`roundTripTravelMinutes`) nourrit le radar préventif, pas
   l'optimisation moteur — le solveur de placement (`match_placement.py`, contrat 2.21) reçoit les
   durées de match/échauffement par équipe depuis P4-203 mais pas le trajet (toujours 0 côté engine).
-  Le dessin de la grille week-end (`weekendGrid.ts`, § Grille week-end ci-dessous) reste une
-  présentation pure et **n'a pas suivi** D1/P4-203 : elle dessine encore `[coup d'envoi − 30, coup
-  d'envoi + 105]` alors que la salle = match seul — roadmap ouverte pour l'aligner.
+  ⚠ **Correction 2026-09-16** : la grille week-end DATÉE (`weekendGrid.ts`, § « Palier A — PR-3 »
+  ci-dessus) suit DÉJÀ la géométrie D1/P4-203 (`[coup d'envoi, coup d'envoi + matchMinutes]`, aucune
+  empreinte `− 30` dessinée) — seule la vue « week-end type » (le gabarit idéal, `typicalWeekend.ts`)
+  dessine encore `[coup d'envoi − 30, coup d'envoi + 105]`, roadmap ouverte pour l'aligner (P4-206).
 - **Lot « adversaire multi-gymnases » — CLOS (2026-09-15, 3 PR)** : PR-1 (grain équipe, backend), PR-2
   (suggestions partagées de gymnases, § ci-dessus, backend) et PR-3 (écran par club, picker sur les
   suggestions, CP prérempli, câblage d'`AwayList` sur `(opponentOrganismeCode, opponentTeamKey)`, frontend)
@@ -519,8 +520,37 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   Au-delà de 30 min le trou reste VISIBLE (« du temps que je peux optimiser en avançant les matchs », retour
   fondateur 2026-09-14). Un chevauchement (coup d'envoi suivant AVANT la fin naturelle) garde sa durée et part
   en couloir séparé. Plus d'empreinte −30 min : l'échauffement n'occupe pas la salle (cohérent avec D1, § Détection).
-  Présentation pure, libellé au coup d'envoi. Navigation ‹ › entre week-ends. Les matchs non placés /
-  AWAY-sans-heure vivent dans la liste « À placer ».
+  Présentation pure, libellé au coup d'envoi. Navigation ‹ › entre week-ends. Les DOMICILES non placés
+  vivent dans la liste « À placer » (`UnplacedList`, HOME sans salle/heure seulement,
+  `UnplacedList.tsx:24`) ; les EXTÉRIEURS, eux, sont toujours DANS la grille — colonne
+  « Extérieur » (ci-dessous), jamais dans cette liste.
+- **Colonne « Extérieur » (lot 3 PR-3a, 2026-09-16, frontend seul, additif)** : dernière colonne (8rem,
+  icône `Bus`) du groupe de date qui porte ≥ 1 match AWAY (`buildWeekendGrid`, `columns.push({…, away:
+  true})` toujours en dernier du groupe). Foyer unique d'heure et de jointure trajet : `lib/awayKickoff.ts`
+  (`awayHour` — heure réelle sinon habitude du jour taguée « estimée », sinon `null` ; `awayTravelKey` —
+  jointure `(code, teamKey)`, plus de repli par libellé brut), extrait d'`AwayList` qui le consomme
+  désormais aussi (même règle des deux côtés, zéro duplication). Un AWAY à heure (réelle ou estimée)
+  rejoint les couloirs communs (`assignLanes`) comme un domicile mais **n'est jamais enchaîné**
+  (`blockBounds` reste réservé aux domiciles). Un AWAY sans heure NI habitude du bon jour tombe dans la
+  **bande « sans heure »** prépendue en tête de grille (gouttière « h ? », blocs empilés pleine largeur,
+  jamais en couloirs, `lib/awayColumn.ts` `awayBandRows`/`buildAwayCells`) — 0 rangée quand aucun AWAY
+  n'est sans heure (grille domicile byte-identique sans extérieur). Bloc = fond `bg-muted` uni, rail
+  `border-l-muted-foreground`, tout le texte `text-foreground` (jamais un ton dégradé — décision passe
+  design ci-dessous) : L1 équipe + icône `Clock` (heure estimée) ou `HelpCircle` (heure inconnue), L2
+  « 15:30 · à Epinouze », L3 trajet en chip (`awayTravelLabel`, `~` si approché) si connu. `aria-label`
+  complet (équipe, adversaire, jour, heure ou « heure inconnue », « heure estimée », trajet) porte le nom
+  accessible — l'info ne repose jamais sur l'icône seule. Clic ouvre `FixtureFormDialog` en édition
+  (`MatchesPage.tsx:312`, jamais le `PlacementPanel` — réservé au domicile) ; **inerte en mode échange**
+  (garde posée AVANT le test de statut, `MatchesPage.tsx:290` — on n'échange que des domiciles).
+  `data-away="true"`/`data-testid="weekend-grid"` distinguent le bloc de la grille pour les tests.
+  **La bande `AwayList` sous la grille est CONSERVÉE** (décision fondateur 2026-09-16) — elle seule porte
+  la salle du fichier (`fbiVenueLabel`), le n° de rencontre, le rôle coach et les actions
+  Modifier/Supprimer ; la colonne de grille est une vue COMPACTE, même tri (`compareAway`, partagé par
+  les deux). **L'estimation d'heure d'un extérieur NE DÉPEND JAMAIS de l'interrupteur « Semaine type »**
+  (`showGhosts`) — celui-ci ne gouverne que les fantômes d'habitude ; `habits` reste PLEIN pour
+  l'estimation, sinon la colonne dirait « heure inconnue » pendant que la bande `AwayList` (même écran)
+  estime déjà (`weekendGrid.ts:331-333`). **PR 3b (« Calendrier unique » — suppression de l'onglet
+  Semaine et du rail, compteurs, P4-197 « placer hors semaine affichée ») n'est PAS livrée.**
 - **Pose domicile** (`PlacementPanel`) : clic sur un match à placer → panneau (salle + heure) →
   `PUT /api/fixtures/{id}` (full-replace, statut `PLACED`, corps reconstruit pour ne pas effacer opponent/
   competition). **Envelope-ligue** : garde **HARD** (bouton désactivé hors fenêtre) quand l'équipe mappe une
@@ -1275,6 +1305,10 @@ SOFT « repos après jour de match »).
 - **Extérieur visible** : bande « À l'extérieur ce week-end » sous la grille (`AwayList`) — équipe,
   date, adversaire + salle FBI (`fbiVenueLabel`), heure réelle sinon habituelle taguée « heure
   estimée » (même règle que le radar), sinon « heure inconnue » ; Modifier/Supprimer (confirmation).
+  **Depuis lot 3 PR-3a (2026-09-16)**, le même extérieur apparaît AUSSI, en vue compacte, DANS la
+  grille (colonne « Extérieur » par date, détail § « Palier A — PR-3 » ci-dessus) — la bande garde le
+  détail (salle du fichier, n° de rencontre, rôle coach, suppression), la grille donne la vue d'ensemble
+  datée. Même foyer d'heure (`lib/awayKickoff.ts`), même tri, un seul calcul.
 - **Vue « week-end type »** (reformulation fondateur de « semaine type ») : bascule sur `/matchs` —
   le gabarit IDÉAL du gestionnaire, toutes les habitudes Sam/Dim × gymnases, sans dates, empreintes
   2h15, chevauchements posés côte à côte (une collision de gabarit doit se VOIR). Lecture seule
@@ -1637,6 +1671,10 @@ ci-dessous, l'onglet Semaine type en PR 2a, détail § « Onglet Semaine type »
   placement hors créneau. Un conflit suit ses rencontres référencées ; un calendrier incomplet suit
   sa compétition ; un conflit sans rencontre ni compétition reste visible tant que « tout » est coché.
 - **Semaine type** (interrupteur, affichée par défaut) : la grille avec ou sans les cases « Habitude … ».
+  ⚠ **Ne gouverne QUE les fantômes d'habitude** (`showGhosts` → `buildWeekendGrid`) : l'heure ESTIMÉE
+  d'un extérieur (colonne « Extérieur », § « Palier A — PR-3 » ci-dessus) reste calculée depuis les
+  habitudes que l'interrupteur soit sur ON ou OFF — décision superviseur 2026-09-16, sinon la colonne
+  dirait « heure inconnue » pendant que la bande `AwayList` du même écran estime déjà.
 - **Familles de conflits** (chips avec compteur, défaut tout coché) — les 10 `ConflictType`, libellés en table
   (`lib/conflictLabels.ts`) : collision de gymnase, hors fenêtre ligue, personne en double, match × entraînement,
   passerelle (info), placement fragilisé, calendrier incomplet, gymnase indisponible, extérieur sans heure,

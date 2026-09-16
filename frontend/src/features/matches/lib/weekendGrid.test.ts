@@ -233,6 +233,143 @@ describe("habit ghosts (P1-4 PR C)", () => {
   });
 });
 
+describe("colonne extérieur (lot 3 PR-3a)", () => {
+  const away = (over: Partial<Fixture> = {}): Fixture =>
+    fixture({ id: "ax", homeAway: "AWAY", venueId: null, kickoffTime: null, opponentLabel: "Épinouze", ...over });
+  const habitSat = (over: Partial<import("../api").TeamMatchHabit> = {}): import("../api").TeamMatchHabit => ({
+    id: "h", teamId: "team-1", dayOfWeek: 6, kickoffTime: "15:30", venueId: null, ...over,
+  });
+  const travelEntry = (over: Partial<import("../api").OpponentTravel> = {}): import("../api").OpponentTravel => ({
+    opponentOrganismeCode: "C1", opponentTeamKey: "EPI-1", opponentLabel: "Épinouze", located: true, precision: "VENUE",
+    locationName: "Halle Y", city: null, postalCode: null, travelMinutes: 45, approximated: false, source: "AUTO", scope: "CLUB", overrideVenueLabel: null, ...over,
+  });
+
+  it("ajoute la colonne « Extérieur » EN DERNIER du groupe de date, jamais de pastille", () => {
+    const grid = buildWeekendGrid([fixture(), away({ kickoffTime: "18:00" })], venues, teams);
+    const last = grid.columns[grid.columns.length - 1];
+    expect(last.away).toBe(true);
+    expect(last.label).toBe("Extérieur");
+    expect(last.color).toBeNull();
+    expect(last.venueId).toBeNull();
+    // Le groupe de date englobe le gymnase ET l'extérieur.
+    expect(grid.dateGroups[0].span).toBe(2);
+  });
+
+  it("aucune colonne « Extérieur » sur un jour sans extérieur", () => {
+    const grid = buildWeekendGrid([fixture()], venues, teams);
+    expect(grid.columns.some((c) => true === c.away)).toBe(false);
+  });
+
+  it("heure RÉELLE : jamais estimée ; heure ESTIMÉE depuis l'habitude du jour", () => {
+    const real = buildWeekendGrid([away({ kickoffTime: "18:00" })], venues, teams);
+    const realCell = real.cells.find((c) => true === c.away);
+    expect(realCell?.kickoffLabel).toBe("18:00");
+    expect(realCell?.estimated).toBe(false);
+    expect(realCell?.unknownHour).toBe(false);
+
+    // Sans heure réelle mais habitude samedi 15:30 (le match est un samedi).
+    const est = buildWeekendGrid([away()], venues, teams, new Set(), [habitSat()], "2026-10-03");
+    const estCell = est.cells.find((c) => true === c.away);
+    expect(estCell?.kickoffLabel).toBe("15:30");
+    expect(estCell?.estimated).toBe(true);
+    expect(estCell?.unknownHour).toBe(false);
+  });
+
+  it("sans heure ni habitude : bande « sans heure » en TÊTE, blocs empilés (2 rangées)", () => {
+    const grid = buildWeekendGrid(
+      [away({ id: "u1", opponentLabel: "AAA" }), away({ id: "u2", opponentLabel: "BBB" })],
+      venues, teams, new Set(), [], "2026-10-03",
+    );
+    const band = grid.cells.filter((c) => true === c.unknownHour);
+    expect(band).toHaveLength(2);
+    expect(band.every((c) => 2 === c.gridRowSpan)).toBe(true);
+    // Empilés : deux blocs de 2 rangées, aux rangées 3 et 5.
+    expect(new Set(band.map((c) => c.gridRowStart))).toEqual(new Set([3, 5]));
+    // La bande précède les rangées horaires ; sa première rangée porte la gouttière « h ? ».
+    expect(grid.rows[0].unknownHour).toBe(true);
+    expect(grid.rows[0].label).toBe("h ?");
+    // Empilés PLEINE largeur, jamais en couloirs.
+    expect(band.every((c) => 1 === c.laneCount)).toBe(true);
+  });
+
+  it("la bande décale les rangées horaires du domicile (offset), HOME sinon byte-identique", () => {
+    // Un domicile 16:00 + un extérieur sans heure → bande de 2 rangées, le domicile glisse.
+    const withBand = buildWeekendGrid([fixture(), away()], venues, teams, new Set(), [], "2026-10-03");
+    const home = withBand.cells.find((c) => "fx-1" === c.fixtureId);
+    expect(home?.gridRowStart).toBe(3 + 2); // 2 rangées de bande insérées au-dessus
+
+    // Sans extérieur ni trajet : HOME strictement inchangé (offset 0, aucune colonne away).
+    const plain = buildWeekendGrid([fixture()], venues, teams);
+    const plainHome = plain.cells[0];
+    expect(plainHome.gridRowStart).toBe(3);
+    expect(plainHome.gridRowSpan).toBe(7);
+    expect(plainHome.footprintLabel).toBe("16:00–17:45");
+    expect(plain.columns.some((c) => true === c.away)).toBe(false);
+    expect(plain.rows[0].unknownHour ?? false).toBe(false);
+  });
+
+  it("un extérieur ne s'ENCHAÎNE JAMAIS : chaque bloc garde sa durée de match", () => {
+    const grid = buildWeekendGrid(
+      [away({ id: "a", kickoffTime: "10:00" }), away({ id: "b", kickoffTime: "12:00" })],
+      venues, teams,
+    );
+    const a = grid.cells.find((c) => "a" === c.fixtureId);
+    // 10:00 + 105 = 11:45, NON étiré vers 12:00 (pas d'enchaînement extérieur).
+    expect(a?.footprintLabel).toBe("10:00–11:45");
+  });
+
+  it("deux extérieurs qui se chevauchent partent en couloirs", () => {
+    const grid = buildWeekendGrid(
+      [away({ id: "a", kickoffTime: "10:00" }), away({ id: "b", kickoffTime: "10:30" })],
+      venues, teams,
+    );
+    const cells = grid.cells.filter((c) => true === c.away);
+    expect(cells.map((c) => c.laneCount)).toEqual([2, 2]);
+    expect(new Set(cells.map((c) => c.lane))).toEqual(new Set([0, 1]));
+  });
+
+  it("porte le libellé de trajet servi (« 45 min », joint par (code, teamKey))", () => {
+    const grid = buildWeekendGrid(
+      [away({ kickoffTime: "18:00", opponentOrganismeCode: "C1", opponentTeamKey: "EPI-1" })],
+      venues, teams, new Set(), [], "2026-10-03", 15, new Map(), [travelEntry()],
+    );
+    expect(grid.cells.find((c) => true === c.away)?.travelLabel).toBe("45 min");
+    // Approché → préfixe « ~ ».
+    const approx = buildWeekendGrid(
+      [away({ kickoffTime: "18:00", opponentOrganismeCode: "C1", opponentTeamKey: "EPI-1" })],
+      venues, teams, new Set(), [], "2026-10-03", 15, new Map(), [travelEntry({ approximated: true })],
+    );
+    expect(approx.cells.find((c) => true === c.away)?.travelLabel).toBe("~45 min");
+  });
+
+  it("showGhosts=false n'éteint QUE les fantômes d'habitude : l'heure d'un extérieur reste estimée", () => {
+    const habits = [
+      // Habitude samedi de team-1 → l'extérieur samedi de team-1 emprunte 15:30 (estimé).
+      { id: "ha", teamId: "team-1", dayOfWeek: 6, kickoffTime: "15:30", venueId: null } as import("../api").TeamMatchHabit,
+      // Habitude d'une équipe FANTÔME (sans match) → un fantôme QUAND showGhosts.
+      { id: "hg", teamId: "team-ghost", dayOfWeek: 6, kickoffTime: "14:00", venueId: "venue-1" } as import("../api").TeamMatchHabit,
+    ];
+    // 10ᵉ argument `showGhosts=false` : pas de fantôme, MAIS l'extérieur reste estimé (habitudes pleines).
+    const grid = buildWeekendGrid([away()], venues, teams, new Set(), habits, "2026-10-03", 15, new Map(), [], false);
+    expect(grid.cells.filter((c) => true === c.ghost)).toHaveLength(0);
+    const awayCell = grid.cells.find((c) => true === c.away);
+    expect(awayCell?.estimated).toBe(true);
+    expect(awayCell?.kickoffLabel).toBe("15:30");
+    // showGhosts=true (défaut) : le fantôme réapparaît, l'extérieur reste estimé.
+    const withGhost = buildWeekendGrid([away()], venues, teams, new Set(), habits, "2026-10-03", 15, new Map(), []);
+    expect(withGhost.cells.filter((c) => true === c.ghost)).toHaveLength(1);
+    expect(withGhost.cells.find((c) => true === c.away)?.estimated).toBe(true);
+  });
+
+  it("un week-end 100 % extérieur sans heure n'est PAS vide (grille = la bande seule)", () => {
+    const grid = buildWeekendGrid([away()], venues, teams, new Set(), [], "2026-10-03");
+    expect(grid.empty).toBe(false);
+    expect(grid.cells.filter((c) => true === c.unknownHour)).toHaveLength(1);
+    // Aucune rangée horaire (pas de contenu à heure) : seule la bande existe.
+    expect(grid.rows.every((r) => true === r.unknownHour)).toBe(true);
+  });
+});
+
 describe("weekLabel — l'axe SEMAINE (L7)", () => {
   it("étiquette lundi→dimanche de la semaine du samedi bucket", () => {
     // 2026-10-03 est un samedi → semaine du lundi 28 sept. au dimanche 4 oct.

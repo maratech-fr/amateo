@@ -1,4 +1,4 @@
-import { AlertTriangle, Lock } from "lucide-react";
+import { AlertTriangle, Bus, Car, Clock, HelpCircle, Lock } from "lucide-react";
 import { type UIEvent, useRef } from "react";
 
 import { EmptyBlock } from "@/shared/components/ui/empty-hint";
@@ -6,7 +6,22 @@ import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { tint } from "@/shared/lib/color";
 import { cn } from "@/shared/lib/utils";
 
-import type { WeekendGridModel } from "./lib/weekendGrid";
+import type { WeekendCell, WeekendGridModel } from "./lib/weekendGrid";
+
+/** lot 3 PR-3a — nom accessible d'un bloc extérieur : équipe, adversaire, jour + heure
+ *  (ou « heure inconnue »), « heure estimée », trajet. Ordre stable, segments absents omis. */
+function awayBlockName(cell: WeekendCell): string {
+  const parts = [`${cell.teamLabel} à ${cell.opponentLabel}`];
+  const when = true === cell.unknownHour ? "heure inconnue" : cell.kickoffLabel;
+  parts.push(`${cell.awayWeekday ?? ""} ${when}`.trim());
+  if (true === cell.estimated) {
+    parts.push("heure estimée");
+  }
+  if (null !== cell.travelLabel && undefined !== cell.travelLabel) {
+    parts.push(`${cell.travelLabel} de trajet`);
+  }
+  return parts.join(", ");
+}
 
 const ROW_HEIGHT = 16; // px per 15-min step (1h = 64px)
 const HEADER_ROW = "1.75rem";
@@ -36,7 +51,8 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
     return <EmptyBlock>Aucun match placé sur ce week-end.</EmptyBlock>;
   }
 
-  const gridTemplateColumns = `3.25rem repeat(${columns.length}, minmax(6rem, 1fr))`;
+  // Colonne « Extérieur » plus large (8rem) que les gymnases (6rem) : elle porte trois lignes.
+  const gridTemplateColumns = `3.25rem ${columns.map((c) => (true === c.away ? "minmax(8rem, 1fr)" : "minmax(6rem, 1fr)")).join(" ")}`;
   const gridTemplateRows = `${HEADER_ROW} ${HEADER_ROW} repeat(${rows.length}, ${ROW_HEIGHT}px)`;
 
   function onScroll(event: UIEvent<HTMLDivElement>) {
@@ -52,7 +68,7 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
   const freezeXY = { transform: "translate(var(--sx, 0), var(--sy, 0))" };
 
   return (
-    <div className="h-full overflow-auto rounded-lg border border-border bg-card" onScroll={onScroll}>
+    <div data-testid="weekend-grid" className="h-full overflow-auto rounded-lg border border-border bg-card" onScroll={onScroll}>
       <div ref={gridRef} className="grid text-xs" style={{ gridTemplateColumns, gridTemplateRows }}>
         <div className="z-40 border-b border-r border-border bg-card" style={{ gridColumn: 1, gridRow: "1 / 3", ...freezeXY }} />
 
@@ -71,9 +87,14 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
             key={column.key}
             className="z-30 flex items-center justify-center gap-1 truncate border-b border-l border-border bg-card px-1 text-center text-muted-foreground"
             style={{ gridColumn: 2 + i, gridRow: 2, ...freezeY }}
-            title={column.label}
+            title={true === column.away ? "À l'extérieur" : column.label}
           >
-            {null !== column.color ? <VenueSwatch color={column.color} /> : null}
+            {/* lot 3 PR-3a — la colonne « Extérieur » : icône bus, jamais de pastille de gymnase. */}
+            {true === column.away ? (
+              <Bus className="size-3 shrink-0" aria-hidden="true" />
+            ) : null !== column.color ? (
+              <VenueSwatch color={column.color} />
+            ) : null}
             <span className="truncate">{column.label}</span>
           </div>
         ))}
@@ -89,11 +110,60 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
         ))}
 
         {cells.map((cell) => {
-          const clickable = !cell.ghost && undefined !== onSelectFixture;
-          const Tag = clickable ? "button" : "div";
           // RMM-1 PR4 (L6) — le mode échange se VOIT : les candidates portent
           // l'anneau + le curseur, les autres cellules placées s'estompent.
           const swapArmed = null !== swapCandidateIds;
+
+          // lot 3 PR-3a — un bloc EXTÉRIEUR (colonne « Extérieur ») : même <button> que le
+          // domicile, fond muted uni, rail muted-foreground, tout le texte `text-foreground`.
+          // En mode échange il est INERTE (estompé, sans handler) : on n'échange que des domiciles.
+          if (true === cell.away) {
+            const awayClickable = undefined !== onSelectFixture && !swapArmed;
+            const AwayTag = awayClickable ? "button" : "div";
+            const name = awayBlockName(cell);
+            return (
+              <AwayTag
+                key={cell.key}
+                {...(awayClickable ? { type: "button" as const, onClick: () => onSelectFixture(cell.fixtureId) } : {})}
+                data-fixture-id={cell.fixtureId}
+                data-away="true"
+                aria-label={name}
+                title={name}
+                className={cn(
+                  "z-10 m-px flex flex-col items-start overflow-hidden rounded border border-border border-l-4 border-l-muted-foreground bg-muted px-1 py-0.5 text-left leading-tight text-foreground",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                  awayClickable ? "cursor-pointer hover:brightness-95 dark:hover:brightness-110" : "",
+                  swapArmed ? "opacity-40" : "",
+                )}
+                style={{
+                  gridColumn: cell.gridColumn,
+                  gridRow: `${cell.gridRowStart} / span ${cell.gridRowSpan}`,
+                  justifySelf: "start",
+                  width: `${100 / cell.laneCount}%`,
+                  transform: `translateX(${cell.lane * 100}%)`,
+                }}
+              >
+                <span className="flex w-full items-center gap-1 text-xs font-medium">
+                  <Bus className="size-3 shrink-0" aria-hidden="true" />
+                  <span className="truncate">{cell.teamLabel}</span>
+                  {true === cell.estimated ? <Clock aria-label="Heure estimée" className="ml-auto size-3 shrink-0" /> : null}
+                  {true === cell.unknownHour ? <HelpCircle aria-label="Heure inconnue" className="ml-auto size-3 shrink-0" /> : null}
+                </span>
+                <span className="truncate text-[10px]">
+                  {(true === cell.unknownHour ? "heure inconnue" : cell.kickoffLabel) + ` · à ${cell.opponentLabel}`}
+                </span>
+                {null !== cell.travelLabel && undefined !== cell.travelLabel ? (
+                  <span className="flex items-center gap-1 text-[10px]">
+                    <Car className="size-3 shrink-0" aria-hidden="true" />
+                    <span className="tabular-nums">{cell.travelLabel}</span>
+                  </span>
+                ) : null}
+              </AwayTag>
+            );
+          }
+
+          const clickable = !cell.ghost && undefined !== onSelectFixture;
+          const Tag = clickable ? "button" : "div";
           const isSwapCandidate = swapArmed && !cell.ghost && swapCandidateIds.has(cell.fixtureId);
           const isSwapSource = swapArmed && cell.fixtureId === selectedFixtureId;
           const swapDimmed = swapArmed && !isSwapCandidate && !isSwapSource;

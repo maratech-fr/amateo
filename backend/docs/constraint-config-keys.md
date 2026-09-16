@@ -1,7 +1,7 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-09-14 (rotation `documentation-update`, PR P4-203 « solveur de placement /
-règle D1 » — fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code :
+Last verified @ 2026-09-16 (rotation `documentation-update`, PR-3a « extérieurs dans la grille »
+— fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code :
 `CalendarEntryStateProcessor::redateEntryPairedConstraints` (`CalendarEntryStateProcessor.php:642`,
 appelée `:458`) toujours présente ✓ ; `ConstraintConfigValidator::SPEC` porte toujours
 `minStartTime`/`maxStartTime`/`maxEndTime` en type `time`, `preferredDays`/`forbiddenDays`/
