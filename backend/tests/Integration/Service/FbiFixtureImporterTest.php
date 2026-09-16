@@ -1289,6 +1289,199 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertNull($fixture->getUnplacedReason());
     }
 
+    // ── Écart salle d'un domicile NON PLACÉ (les « 20 » cas) ────────────────
+
+    public function testUnplacedHomeWhoseVenueDivergesFromTheFileIsAReportedDeviationNotSilentlyRewritten(): void
+    {
+        $jdr = $this->createVenue('GYMNASE JDR');
+        $this->createVenueWithAliases('Debarros', ['salle raphael de barros']);
+        $this->unplacedHomeWithVenue('UV01', $jdr, 'OLD LABEL');
+
+        // Re-dépôt : la ligue nomme « SALLE RAPHAEL DE BARROS » (alias de Debarros),
+        // le gymnase rattaché est JDR → un écart salle, et RIEN n'est écrit en silence.
+        $result = $this->importMapped([['D2', 'UV01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE RAPHAEL DE BARROS']]);
+
+        self::assertCount(1, $result['unresolvedDeviations']);
+        self::assertSame(
+            ['app' => 'GYMNASE JDR', 'file' => 'SALLE RAPHAEL DE BARROS'],
+            $result['unresolvedDeviations'][0]['fields']['venue'],
+        );
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'UV01']);
+        self::assertSame($jdr, $fixture?->getVenueId(), 'le gymnase reste intact');
+        self::assertSame('OLD LABEL', $fixture?->getFbiVenueLabel(), 'le libellé n\'est PAS réécrit en silence');
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState());
+    }
+
+    public function testTheTwentyCasesStoredLabelAlreadyEqualsTheFileButTheGymDiffersIsADeviation(): void
+    {
+        // L'état exact des 20 rencontres mesurées : le libellé STOCKÉ égale déjà celui
+        // du fichier, mais le gymnase (JDR) n'est pas la salle confirmée du libellé
+        // (Debarros). La détection compare le GYMNASE au fichier, jamais le libellé
+        // stocké (déjà égal) — le prochain dépôt pose donc la question une fois.
+        $jdr = $this->createVenue('GYMNASE JDR');
+        $this->createVenueWithAliases('Debarros', ['salle raphael de barros']);
+        $this->unplacedHomeWithVenue('UV20', $jdr, 'SALLE RAPHAEL DE BARROS');
+
+        $result = $this->importMapped([['D2', 'UV20', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE RAPHAEL DE BARROS']]);
+
+        self::assertCount(1, $result['unresolvedDeviations']);
+        self::assertSame(
+            ['app' => 'GYMNASE JDR', 'file' => 'SALLE RAPHAEL DE BARROS'],
+            $result['unresolvedDeviations'][0]['fields']['venue'],
+        );
+    }
+
+    public function testADomicileWithoutAVenueStaysSilent(): void
+    {
+        // Garde-fou du plan : un domicile SANS gymnase (venueId null) reste hors du
+        // détecteur — le libellé se met à jour en silence, jamais d'écart salle.
+        $this->importMapped([['D2', 'UV00', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'Gymnase X']]);
+
+        $result = $this->importMapped([['D2', 'UV00', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'Gymnase Y']]);
+
+        self::assertSame([], $result['unresolvedDeviations']);
+        self::assertSame('Gymnase Y', $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'UV00'])?->getFbiVenueLabel());
+    }
+
+    public function testKeepAppOnAnUnplacedVenueStampsTheKeptLabelAndIsIdempotent(): void
+    {
+        $jdr = $this->createVenue('GYMNASE JDR');
+        $this->createVenueWithAliases('Debarros', ['salle raphael de barros']);
+        $fixture = $this->unplacedHomeWithVenue('UV02', $jdr, 'OLD LABEL');
+        $id = $fixture->getId();
+
+        // keep_app : on garde JDR, on adopte le libellé BRUT, on mémorise le normalisé.
+        $result = $this->importMapped(
+            [['D2', 'UV02', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE RAPHAEL DE BARROS']],
+            null,
+            [['fixtureId' => $id, 'field' => 'venue', 'choice' => 'keep_app']],
+        );
+        self::assertSame([], $result['unresolvedDeviations']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'UV02']);
+        self::assertSame($jdr, $fixture?->getVenueId(), 'le gymnase est gardé');
+        self::assertSame('SALLE RAPHAEL DE BARROS', $fixture?->getFbiVenueLabel(), 'le libellé BRUT est adopté');
+        self::assertSame('salle raphael de barros', $fixture?->getKeptVenueLabel(), 'le libellé NORMALISÉ est mémorisé');
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+
+        // Un re-dépôt du MÊME libellé est désormais muet (idempotence).
+        $again = $this->importMapped([['D2', 'UV02', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE RAPHAEL DE BARROS']]);
+        self::assertSame([], $again['unresolvedDeviations']);
+
+        // Un AUTRE libellé rouvre un écart.
+        $other = $this->importMapped([['D2', 'UV02', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE AUTRE']]);
+        self::assertCount(1, $other['unresolvedDeviations']);
+        self::assertSame('SALLE AUTRE', $other['unresolvedDeviations'][0]['fields']['venue']['file']);
+    }
+
+    public function testTakeFileOnAnUnplacedVenueFollowsAConfirmedAlias(): void
+    {
+        $jdr = $this->createVenue('GYMNASE JDR');
+        $debarros = $this->createVenueWithAliases('Debarros', ['salle raphael de barros']);
+        $fixture = $this->unplacedHomeWithVenue('UV03', $jdr, 'OLD LABEL');
+        $id = $fixture->getId();
+
+        $result = $this->importMapped(
+            [['D2', 'UV03', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE RAPHAEL DE BARROS']],
+            null,
+            [['fixtureId' => $id, 'field' => 'venue', 'choice' => 'take_file']],
+        );
+        self::assertSame(1, $result['updated']);
+        self::assertSame([], $result['unresolvedDeviations']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'UV03']);
+        self::assertSame($debarros, $fixture?->getVenueId(), 'l\'alias confirmé repose le bon gymnase (Debarros)');
+        self::assertSame(FixtureStatus::UNPLACED, $fixture?->getStatus(), 'le statut reste UNPLACED');
+        self::assertSame('SALLE RAPHAEL DE BARROS', $fixture?->getFbiVenueLabel());
+        self::assertNull($fixture?->getKeptVenueLabel());
+    }
+
+    public function testTakeFileOnAnUnplacedVenueWithAnUnknownLabelLeavesNoGym(): void
+    {
+        $jdr = $this->createVenue('GYMNASE JDR');
+        $fixture = $this->unplacedHomeWithVenue('UV04', $jdr, 'OLD LABEL');
+        $id = $fixture->getId();
+
+        $result = $this->importMapped(
+            [['D2', 'UV04', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE INCONNUE']],
+            null,
+            [['fixtureId' => $id, 'field' => 'venue', 'choice' => 'take_file']],
+        );
+        self::assertSame([], $result['unresolvedDeviations']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'UV04']);
+        self::assertNull($fixture?->getVenueId(), 'un libellé inconnu ne repose aucun gymnase (la salle remonte « à rattacher »)');
+        self::assertSame(FixtureStatus::UNPLACED, $fixture?->getStatus());
+        self::assertSame('SALLE INCONNUE', $fixture?->getFbiVenueLabel());
+    }
+
+    public function testADateChangeAlongsideTheVenueTakesTheCurrentPathNoVenueDeviation(): void
+    {
+        // Décision C — la date change EN MÊME TEMPS : le chemin actuel s'exécute
+        // intégralement (unplace vide le gymnase, le libellé est adopté, l'alias
+        // re-rattache), AUCUN arbitrage salle.
+        $jdr = $this->createVenue('GYMNASE JDR');
+        $debarros = $this->createVenueWithAliases('Debarros', ['salle raphael de barros']);
+        $this->unplacedHomeWithVenue('UV05', $jdr, 'OLD LABEL');
+
+        $result = $this->importMapped([['D2', 'UV05', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', 'SALLE RAPHAEL DE BARROS']]);
+
+        self::assertSame([], $result['unresolvedDeviations'], 'un re-datage ne lève pas d\'écart salle');
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'UV05']);
+        self::assertSame('2026-10-10', $fixture?->getMatchDate()->format('Y-m-d'));
+        self::assertSame($debarros, $fixture?->getVenueId(), 'le libellé adopté re-rattache le gymnase par alias');
+        self::assertSame('SALLE RAPHAEL DE BARROS', $fixture?->getFbiVenueLabel());
+    }
+
+    public function testTheVenueScopedPurgeKeepsAKickoffAutoAppliedEntryFromTheSameDeposit(): void
+    {
+        // Piège vérifié — l'écart salle et un auto-apply d'HEURE du MÊME dépôt doivent
+        // COEXISTER : la purge est bornée à ['venue'], elle n'efface jamais l'entrée
+        // heure. (Une date ne peut pas coexister — unplace y vide le gymnase — d'où
+        // l'heure.)
+        $jdr = $this->createVenue('GYMNASE JDR');
+        $this->createVenueWithAliases('Debarros', ['salle raphael de barros']);
+        $fixture = $this->unplacedHomeWithVenue('UV06', $jdr, 'SALLE RAPHAEL DE BARROS');
+        // Non-NEW pour que recordAutoApplied dépose l'entrée heure auto-appliquée.
+        $fixture->setReviewState(FixtureReviewState::OUT_OF_SYNC);
+        $this->em->flush();
+
+        // Même dépôt : l'heure bouge (15:30 → 17:00) ET la salle diverge toujours.
+        $result = $this->importMapped([['D2', 'UV06', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', 'SALLE RAPHAEL DE BARROS']]);
+
+        self::assertCount(1, $result['unresolvedDeviations'], 'l\'écart salle est rapporté');
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'UV06']);
+        $kickoff = $fixture?->getPendingDeviation('kickoff');
+        self::assertNotNull($kickoff, 'l\'entrée heure du même dépôt survit à la purge scoped venue');
+        self::assertTrue($kickoff['autoApplied']);
+        self::assertNotNull($fixture?->getPendingDeviation('venue'));
+    }
+
+    public function testAPendingVenueDeviationDropsWhenTheLabelBecomesConformAgain(): void
+    {
+        $jdr = $this->createVenue('GYMNASE JDR');
+        $this->unplacedHomeWithVenue('UV07', $jdr, 'OLD LABEL');
+
+        // Premier dépôt divergent → un écart salle naît (OUT_OF_SYNC).
+        $first = $this->importMapped([['D2', 'UV07', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE AUTRE']]);
+        self::assertCount(1, $first['unresolvedDeviations']);
+        $this->em->clear();
+        $born = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'UV07']);
+        self::assertNotNull($born?->getPendingDeviation('venue'));
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $born?->getReviewState());
+
+        // Deuxième dépôt nommant le gymnase lui-même (conforme au fuzzy) → l'écart tombe.
+        $second = $this->importMapped([['D2', 'UV07', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE JDR']]);
+        self::assertSame([], $second['unresolvedDeviations']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'UV07']);
+        self::assertNull($fixture?->getPendingDeviation('venue'), 'l\'entrée salle pendante tombe');
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+    }
+
     // ── Setup & helpers ────────────────────────────────────────────────────
 
     protected function setUp(): void
@@ -1442,6 +1635,23 @@ final class FbiFixtureImporterTest extends KernelTestCase
         }
 
         return $this->importer->import($this->xlsx($rows), $this->club, $mappings, $decisions);
+    }
+
+    /**
+     * Imports a home fixture (no salle → nothing auto-attaches), then pins the exact
+     * « 20 »-case state: UNPLACED, a REAL club gym as venueId, a divergent stored FBI
+     * label. Returns the managed fixture.
+     */
+    private function unplacedHomeWithVenue(string $externalRef, string $venueId, string $fbiLabel): Fixture
+    {
+        $this->importMapped([['D2', $externalRef, 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
+        self::assertNotNull($fixture);
+        $fixture->setVenueId($venueId);
+        $fixture->setFbiVenueLabel($fbiLabel);
+        $this->em->flush();
+
+        return $fixture;
     }
 
     /** The id of the imported fixture — the key of a reconciliation decision. */

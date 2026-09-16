@@ -144,6 +144,18 @@ class Fixture implements TenantOwnedInterface
     private ?FixtureUnplacedReason $unplacedReason = null;
 
     /**
+     * Le libellé de salle « gardé » par le gestionnaire quand il choisit « Garder
+     * l'appli » sur l'écart salle d'un domicile NON PLACÉ (venueId ≠ salle du
+     * fichier) — stocké NORMALISÉ ({@see App\Service\Basketball\VenueLabelNormalizer}).
+     * Pense-bête d'idempotence : tant que la source répète CE libellé, l'écart ne se
+     * repose plus ; un autre libellé rouvre un écart. Effacé dès qu'une salle non
+     * nulle est posée ({@see setVenueId}) et par un « Prendre le fichier » sur la
+     * salle. Non exposé à l'API (aucun groupe de sérialisation).
+     */
+    #[ORM\Column(length: 180, nullable: true)]
+    private ?string $keptVenueLabel = null;
+
+    /**
      * Le TRAITEMENT de la rencontre par le gestionnaire (espace « Importer »,
      * PR-3a), distinct du placement {@see FixtureStatus}. Défaut NEW. Passé à
      * REVIEWED par un geste explicite (trancher un écart, placer, créer à la
@@ -428,7 +440,23 @@ class Fixture implements TenantOwnedInterface
         // unique (FixtureVenueLossMarker), jamais par ce setter.
         if (null !== $venueId) {
             $this->unplacedReason = null;
+            // Poser une salle éteint le pense-bête « garder l'appli » : le domicile
+            // a désormais un gymnase choisi, l'idempotence de l'ancien écart n'a plus
+            // d'objet (même maison que unplacedReason).
+            $this->keptVenueLabel = null;
         }
+
+        return $this;
+    }
+
+    public function getKeptVenueLabel(): ?string
+    {
+        return $this->keptVenueLabel;
+    }
+
+    public function setKeptVenueLabel(?string $keptVenueLabel): self
+    {
+        $this->keptVenueLabel = $keptVenueLabel;
 
         return $this;
     }

@@ -1,27 +1,24 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-16 (lot 3 (2/2) « Calendrier — l'écran unique », PR 3b — **frontend seul,
-clôt le lot 3** — `documentation-update`). **PR 3b est LIVRÉE** : `/matchs` (index) fusionne l'ex
-« Semaine » (`MatchesPage.tsx`, SUPPRIMÉ) et l'ex « Consulter » (`ConsultPage.tsx`, SUPPRIMÉ) en un
-seul écran `CalendarPage.tsx` — rail à 5 étapes (`railStep`/`deriveLoopSteps`) et son exception
-d'atterrissage P4-192 supprimés, remplacés par la barre `WeekCounters` (3 compteurs) ; nav
-`MatchesLayout` passe à **5 onglets** (Conflits · Calendrier · Importer · Configuration · Semaine
-type) ; `/matchs/consulter` redirige en permanence (query conservée). § réécrites/renommées : « Onglet
-« Consulter » » → **« Calendrier — l'écran unique du module matchs »** (contenu Mois/Phase/filtres
-conservé, sous-titré « Détail » — toujours courant, seul le fichier porteur a changé) ; « Refonte UX
-— RMM-1 » annotée d'une note de HISTORICISATION (rail + P4-192 morts, « deux espaces, deux routes »
-— boucle vs Configuration — reste vrai, inchangé) ; « Onglet Conflits » (nav 5 onglets, « Voir la
-semaine » → Calendrier) ; § « Palier A — PR-3 (grille week-end UI) » (pointeurs `MatchesPage.tsx` →
-`WeekWorkbench.tsx`, PR 3b marquée livrée) ; § « Lecture des fondations » (readState relocalisé
-`CalendarPage.tsx`) ; « Le gardien à l'ouverture » (bandeau/rappel de fraîcheur relocalisés
-`CalendarPage.tsx`/`CalendarControls.tsx`). Recalés contre `frontend/src/features/matches/
-{CalendarPage,WeekWorkbench,WeekCounters,CalendarControls,MonthTable,PhaseTable,MatchesLayout,
-ReviewQueue,ConflictsPage,MatchRowsTable,AwayList}.tsx`, `lib/{loopSteps,urlState}.ts`, `store.ts`,
-`frontend/src/app/routes.tsx`, `tests/e2e/{matches,matches-consulter}.spec.ts`. Reste du fichier
-(§ « Configuration — repli visuel », § « Résolution des conflits », § « Gymnase depuis le libellé »,
-§ reconciliation coupes P4-194/195, § Appariement FFBB, § « Solveur de placement », § « Trajet AWAY »,
-§ « Réconciliation FBI », § « Espace Importer », § « Onglet Semaine type », § « Échéances ligue/
-comité ») non re-sondé cette passe — voir `git log -p --follow` pour sa dernière vérification.
+Last verified @ 2026-09-16 (fix backend « écart de salle d'un domicile non placé »,
+`documentation-update`). Nouvelle § « Écart de salle d'un domicile non placé — jamais réparé en
+silence » (sous § « Gymnase depuis le libellé ») recalée contre le code lu : `FbiFixtureImporter.php`
+(`detectFieldDeviations:424`, `venueMatches:1395`, `detectUnplacedVenueDeviation:486`,
+`processPerimeterFields:813`, `applyVenueKeepApp:578`, `applyFieldTakeFile` case venue,
+`attachConfirmedVenue:951`), `Entity/Fixture.php` (`keptVenueLabel`, effacé par `setVenueId` non
+nul), `Controller/ReviewFixtureDeviationController.php` (branche keep_app venue/UNPLACED),
+`Service/Basketball/FfbbRencontreReconciler.php` (`attachConfirmedVenue` appelé lignes 175/319 —
+références corrigées, avaient dérivé à 139/263 après l'ajout du détecteur), `migrations/
+Version20260916120000.php`, `ApiResource/FixtureResource.php` (`keptVenueLabel` absent — pas de
+regen OpenAPI), feature Behat `un-domicile-non-place-dont-la-ligue-change-la-salle-est-arbitre.feature`
++ `VenueDeviationContext` + suite `ecart-salle-non-place` (`behat.dist.php`). § « Le périmètre de
+réconciliation (D1/D3) » et § « Appariement FFBB » amendées de l'exception venue/UNPLACED ; ligne
+« salle/adversaire dérivés → mise à jour silencieuse » (§ Import FBI) amendée de la même exception.
+Reste du fichier (§ « Calendrier — l'écran unique », § « Configuration — repli visuel »,
+§ « Résolution des conflits », § reconciliation coupes P4-194/195, § « Solveur de placement »,
+§ « Trajet AWAY », § « Espace Importer » hors la ligne amendée, § « Onglet Semaine type »,
+§ « Échéances ligue/comité ») non re-sondé cette passe — voir `git log -p --follow` pour sa
+dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -603,7 +600,11 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   - heure réelle changée → mise à jour **en place** (la salle reste le choix du club) + warning si placé ;
   - **`00:00` = sentinelle « heure non fixée »** (F2) → `kickoffTime` null à la création, et n'écrase
     JAMAIS une heure posée par le club ;
-  - salle/adversaire dérivés → mise à jour silencieuse ; rien → `unchanged`.
+  - salle/adversaire dérivés → mise à jour silencieuse ; rien → `unchanged`. **Exception (2026-09-16,
+    § « Écart de salle d'un domicile non placé » plus bas)** : un domicile encore `UNPLACED` mais
+    déjà **rattaché à un gymnase** (`venueId` posé) dont le dépôt nomme une AUTRE salle n'est
+    **jamais** réécrit en silence — c'est un écart à arbitrer, au même titre que le périmètre placé.
+    Un domicile encore sans aucun gymnase reste une mise à jour silencieuse de `fbiVenueLabel`.
 - **`Exempt`** (journée de repos) → sauté, compté `exempted`, jamais une erreur (F5). **Salle stockée**
   domicile ET extérieur dans `Fixture.fbiVenueLabel` (F3 — matière trajet, jamais une référence `Venue`).
 - **Multi-fichiers incrémental** : la ligue d'abord, le comité quand il répond — chaque fichier complète
@@ -665,7 +666,7 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
 - **Le classement se fait sur le LIBELLÉ DU FICHIER, jamais sur `Competition.competitionType`**
   (décision fermée, `etat-des-lieux.md` §2) : le type stocké peut être faux jusqu'au prochain
   appariement — `FbiFixtureImporter::persistMappings` (`backend/src/Service/
-  FbiFixtureImporter.php:1263-1264`) infère `BRASSAGE` si le nom contient « Brassage », sinon
+  FbiFixtureImporter.php:1471,1537`) infère `BRASSAGE` si le nom contient « Brassage », sinon
   `CHAMPIONSHIP` par défaut : une coupe non appariée reste `CHAMPIONSHIP` en base tant qu'un
   réappariement ne la corrige pas (P4-194/195 ci-dessous). Classer sur ce champ aurait rangé les
   coupes CRM du fondateur en Départemental/Régional selon leur tag d'équipe.
@@ -784,10 +785,10 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
     tests — jamais les gymnases d'un autre club en cache).
 - **Résolution automatique à l'intégration, les DEUX canaux** — jamais un placement, le
   `reviewState` reste intact :
-  - xlsx : `FbiFixtureImporter::attachConfirmedVenue` (`FbiFixtureImporter.php:734`), appelé à la
+  - xlsx : `FbiFixtureImporter::attachConfirmedVenue` (`FbiFixtureImporter.php:951`), appelé à la
     création d'un domicile et sur une rencontre existante toujours sans gymnase.
-  - Canal API : `FfbbRencontreReconciler::apply` (`FfbbRencontreReconciler.php:139` création,
-    `:263` mise à jour) appelle le MÊME `attachConfirmedVenue` — exception ÉTROITE, documentée
+  - Canal API : `FfbbRencontreReconciler::apply` (`FfbbRencontreReconciler.php:175` création,
+    `:319` mise à jour) appelle le MÊME `attachConfirmedVenue` — exception ÉTROITE, documentée
     dans le code, au principe « l'API n'auto-applique jamais » : seul le `venueId` est posé, jamais
     un statut, jamais une date, jamais sur un AWAY ni sur une rencontre qui a déjà un gymnase.
 - **Routes** (contributeur OpenAPI `VenueAliasPaths`,
@@ -843,6 +844,66 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   même libellé rattaché d'office → fermeture détectée ; **+1 scénario E1** — ré-affecter un
   libellé rattaché au mauvais gymnase corrige le domicile non placé, garde le témoin déjà placé sur
   son gymnase d'origine, et fait changer l'alias de porteur.
+
+### Écart de salle d'un domicile NON PLACÉ — jamais réparé en silence (2026-09-16)
+
+> Mesuré sur la base du fondateur (2026-09-16) : 20 domiciles NON PLACÉS mais déjà rattachés à un
+> gymnase (`venueId` posé par alias confirmé) recevaient un dépôt suivant qui nommait une AUTRE
+> salle (ex. `venueId` = JDR, libellé fichier « SALLE RAPHAEL DE BARROS », alias confirmé de
+> Debarros) — le libellé brut (`fbiVenueLabel`) était réécrit **en silence**, sans jamais corriger
+> ni même signaler que le gymnase posé ne correspondait plus à la source. Décision fondateur (§2) :
+> l'appli a peut-être raison (le FBI peut être en erreur), donc **toujours un arbitrage**, jamais
+> une résolution d'office — y compris dans la fenêtre P4-199 (« FBI fait foi »), qui ne couvre pas
+> la salle d'un non placé.
+
+- **Détection — `FbiFixtureImporter::detectUnplacedVenueDeviation`** (méthode publique, foyer
+  partagé xlsx + canal API, `FbiFixtureImporter.php:486`) : complète
+  `detectFieldDeviations` — qui, lui, ne couvre QUE le périmètre **placé** — sur le seul champ
+  salle. Lève ssi HOME des deux côtés, statut `UNPLACED`, `venueId` posé et connu du club, libellé
+  fichier non null, date fichier = date app (un RE-DATAGE simultané suit le chemin existant :
+  `unplace()` y vide déjà `venueId`, donc la clause ne lève plus), et **ni le fuzzy nom↔libellé ni
+  l'alias confirmé du libellé** ne pointent le gymnase courant (la clause alias évite un faux écart
+  quand le gymnase EST déjà celui de l'alias — sinon un domicile bien rattaché lèverait un écart à
+  chaque dépôt).
+- **Moteur d'arbitrage partagé, un seul champ scope** : les deux canaux (`FbiFixtureImporter::applyDiff`
+  et `FfbbRencontreReconciler::analyze`/`apply`) appellent le détecteur quand le domicile est hors
+  du périmètre placé (`detectFieldDeviations` rend `null`) et, s'il lève, réutilisent
+  `processPerimeterFields` avec `$scope = ['venue']` — la purge des entrées périmées ne touche
+  alors QUE `venue`, sans effacer une entrée `autoApplied` date/heure posée le même dépôt. Le canal
+  API n'applique **jamais** « FBI fait foi » sur ce champ (`sourceIsAuthoritative=false`
+  systématique ici) — cohérent avec la décision fondateur ci-dessus.
+- **« Garder l'appli » mémorise le libellé — idempotence.** `Fixture.keptVenueLabel` (colonne
+  `kept_venue_label`, migration `Version20260916120000`, **non exposée à l'API**, aucun groupe de
+  sérialisation sur `FixtureResource`) : `applyVenueKeepApp` y stocke le libellé fichier
+  **normalisé**, adopte le libellé brut dans `fbiVenueLabel`, retire l'écart — le gymnase courant
+  ne bouge pas. Tant que la source répète CE libellé, le détecteur ne repose plus la question
+  (comparaison contre `keptVenueLabel` normalisé). Un libellé fichier DIFFÉRENT rouvre un écart.
+  `setVenueId()` sur une valeur non nulle efface `keptVenueLabel` (poser une salle éteint le
+  pense-bête — plus d'objet à l'idempotence de l'ancien écart).
+- **« Prendre le fichier » suit l'alias confirmé.** `applyFieldTakeFile` case `venue` sur un
+  domicile non placé : après `unplace()` (qui vide déjà `venueId`), `attachConfirmedVenue(nouveau
+  libellé)` re-résout la salle — un libellé qui porte un alias confirmé repose le bon gymnase
+  (byte-identique au mécanisme § « Gymnase depuis le libellé » ci-dessus), un libellé inconnu laisse
+  `venueId` null (la rencontre remonte « à rattacher » dans Importer). `keptVenueLabel` est effacé
+  dans les deux cas. Un domicile déjà **placé** garde le comportement pré-existant (pas de
+  re-rattachement automatique — le gestionnaire re-place).
+- **Le geste vit dans la file de traitement de l'onglet Importer** (`ReviewQueueRow`, même écran que
+  les autres écarts champ par champ, § « Espace Importer » plus bas) — **pas** dans le rapport de
+  dépôt xlsx (décision fermée du 2026-09-08 réaffirmée : la file en un clic reste le seul lieu
+  d'arbitrage). keep_app sur un champ `venue` d'un `UNPLACED` route côté contrôleur vers
+  `applyVenueKeepApp` (`ReviewFixtureDeviationController.php`), take_file suit le chemin commun.
+- **Tests** : `Unit/Entity/FixtureTest.php` (`keptVenueLabel` effacé par `setVenueId` non nul),
+  `Integration/Service/FbiFixtureImporterTest.php` (détection, idempotence keep_app, take_file suit
+  l'alias sinon vide, re-datage simultané hors périmètre), `Integration/Api/{FfbbRencontresApiTest,
+  FixtureReviewApiTest,ImportFixturesApiTest}.php` (les deux canaux, le contrôleur de revue). Behat
+  `un-domicile-non-place-dont-la-ligue-change-la-salle-est-arbitre.feature`
+  (`VenueDeviationContext`, suite `ecart-salle-non-place`) : un dépôt divergent ouvre l'écart sans
+  toucher le gymnase, « Garder l'appli » rend le re-dépôt identique muet, « Prendre le fichier »
+  suit l'alias confirmé du deuxième gymnase.
+- **Hors scope, connu et non traité ici** : le périmètre **placé** a le même défaut d'idempotence
+  (`keep_app` n'y mémorise rien, § « Réconciliation FBI » ci-dessous) et sa comparaison
+  (`detectFieldDeviations`) ne consulte que le fuzzy, jamais l'alias confirmé — P4-210 en
+  roadmap.
 
 ### Écran — le geste « Rattacher » dans Importer (P4-187b, front, 2026-09-09)
 
@@ -2165,10 +2226,13 @@ future.
 > délibérément agnostique du canal qui l'alimente, exactement pour ce rebranchement).
 
 - **Le périmètre de réconciliation (D1/D3)** : seuls les domiciles **déjà placés** peuvent diverger
-  — un extérieur, ou un domicile encore `UNPLACED`, ou une ligne qui change de côté, sort du
-  périmètre. Trois champs seulement deviennent un CHOIX : **date, heure (kickoff), salle**
-  (`FbiFixtureImporter::DEVIATION_FIELDS`) ; adversaire et libellé de salle brut restent une mise à
-  jour silencieuse (jamais un écart présenté).
+  sur les trois champs date/heure (kickoff)/salle (`FbiFixtureImporter::DEVIATION_FIELDS`) — un
+  extérieur, ou une ligne qui change de côté, reste hors périmètre en entier ; adversaire et
+  libellé de salle brut restent une mise à jour silencieuse (jamais un écart présenté). **Un
+  domicile encore `UNPLACED` reste hors périmètre sur date et heure, mais PAS sur la salle depuis le
+  2026-09-16** : rattaché à un gymnase, il gagne son propre détecteur (`detectUnplacedVenueDeviation`,
+  § « Écart de salle d'un domicile non placé » plus haut) qui partage le même moteur de décision
+  (`processPerimeterFields`, scope `['venue']`).
 - **`analyze()` détecte, `import()` tranche.** L'analyse (dry-run, zéro écriture) recalcule les
   écarts et les rend groupés par fixture (`groupDeviations`) ; l'import reçoit en plus un champ
   multipart `decisions` (liste `{fixtureId, field, choice: keep_app|take_file}`) — **un champ SANS
@@ -2253,7 +2317,9 @@ future.
      libellé fédéral qui tranche, jamais l'état d'appariement. Les écarts détectés sur un match
      résolu réutilisent VERBATIM `FbiFixtureImporter::detectFieldDeviations`/`groupDeviations` —
      même périmètre (domiciles déjà placés), mêmes trois champs, même moteur de décision que le
-     xlsx, jamais une seconde copie.
+     xlsx, jamais une seconde copie ; **+ `detectUnplacedVenueDeviation` depuis le 2026-09-16** sur
+     un domicile non placé déjà rattaché à un gymnase (§ « Écart de salle d'un domicile non placé »
+     plus haut) — même moteur partagé, scope `['venue']` seul.
 - **Une coupe non appariée devient une vraie `Competition` (P4-194, 2026-09-10)** : le libellé
   fédéral normalisé tranche — le token EXACT `amical` (« AMICAL PNM/PNF/RM3 », fallback `Amical`
   du lecteur) laisse `Fixture.competitionId` null (amical, contrat `Fixture` inchangé) ; tout

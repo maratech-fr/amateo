@@ -473,6 +473,47 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertSame(FixtureReviewState::NEW, $reloaded?->getReviewState(), 'aucun traitement induit');
     }
 
+    public function testVenueDeviationOnAnUnplacedHomeIsSurfacedAndArbitratedByTheApi(): void
+    {
+        // Un domicile UNPLACED rattaché à un gymnase du club (GYMNASE APP) dont la ligue
+        // publie une AUTRE salle (GYMNASE STUB) est un écart à arbitrer — jamais réécrit
+        // en silence, jamais « FBI fait foi » sur un non placé. Même moteur que l'import xlsx.
+        [$token, , $clubId] = $this->register('FRV4');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $season = $this->seasonOf($clubId);
+        $this->pairTeamToStubCompetition($clubId, $season->getId(), $team->getId());
+
+        // UNPLACED home matché au championnat (tier 2), pointant un gymnase du club qui
+        // n'est PAS la salle que la ligue publie ; heure alignée → seule la salle diverge.
+        $existing = $this->createFixture($clubId, $season->getId(), $team->getId(), $this->rencontreDate(), FfbbHttpClientStub::CHAMP_OPPONENT, true, FixtureStatus::UNPLACED, FfbbHttpClientStub::CHAMP_KICKOFF);
+        $this->scopeGucToClub($clubId);
+        $appVenueId = $this->aVenue($clubId, $season->getId());
+        $existing->setVenueId($appVenueId);
+        $this->em->flush();
+        $existingId = $existing->getId();
+
+        // analyze fait remonter l'écart salle (app GYMNASE APP vs file GYMNASE STUB).
+        $this->client->request('GET', '/api/ffbb/rencontres', [], [], $this->auth($token));
+        $deviations = $this->json()['deviations'];
+        self::assertCount(1, $deviations);
+        self::assertSame($existingId, $deviations[0]['fixtureId']);
+        self::assertSame(['app' => 'GYMNASE APP', 'file' => 'GYMNASE STUB'], $deviations[0]['fields']['venue']);
+
+        // apply SANS décision → l'écart est rapporté, le gymnase reste INTACT.
+        $result = $this->apply($token, [], []);
+        self::assertCount(1, $result['unresolvedDeviations']);
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Fixture::class)->find($existingId);
+        self::assertSame($appVenueId, $reloaded?->getVenueId(), 'aucune décision ne déplace le gymnase');
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $reloaded?->getReviewState());
+        $entry = $reloaded?->getPendingDeviation('venue');
+        self::assertNotNull($entry);
+        self::assertSame('FFBB_API', $entry['channel']);
+        self::assertSame('GYMNASE STUB', $entry['sourceValue']);
+    }
+
     public function testFfbbApiIngestionIsNotTheXlsxFreshnessAndDoesNotTouchATrace(): void
     {
         [$token, , $clubId] = $this->register('FRG');

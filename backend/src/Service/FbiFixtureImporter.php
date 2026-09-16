@@ -171,7 +171,15 @@ final class FbiFixtureImporter
                     continue;
                 }
                 $fields = $this->detectFieldDeviations($existing, $row, $venueNames);
-                if (null === $fields || [] === $fields) {
+                if (null === $fields) {
+                    // Hors du périmètre placé : un domicile UNPLACED dont la ligue change
+                    // la salle est un écart aussi (jamais réécrit en silence).
+                    $venueDeviation = $this->detectUnplacedVenueDeviation($existing, $row, $venueNames);
+                    if (null === $venueDeviation) {
+                        continue;
+                    }
+                    $fields = ['venue' => $venueDeviation];
+                } elseif ([] === $fields) {
                     continue;
                 }
                 $seenFixtures[$existing->getId()] = true;
@@ -454,6 +462,67 @@ final class FbiFixtureImporter
     }
 
     /**
+     * L'écart salle d'un domicile NON PLACÉ mais RATTACHÉ à un gymnase (venueId non
+     * null) dont la source nomme une AUTRE salle : sinon le libellé serait réécrit en
+     * silence sans jamais interroger le gestionnaire ni corriger le gymnase (les 20
+     * cas mesurés — venueId JDR, libellé « SALLE RAPHAEL DE BARROS », alias confirmé de
+     * Debarros). Complète {@see detectFieldDeviations} (qui, lui, ne couvre QUE le
+     * placé) et partage le MÊME moteur d'arbitrage aux deux canaux (import xlsx + API).
+     * Lecture seule. Lève ssi :
+     *  - HOME des deux côtés · statut UNPLACED ;
+     *  - venueId non null ET connu (un gymnase du club) · libellé fichier non null ;
+     *  - date fichier == date app (un re-datage passe par le chemin actuel, décision
+     *    fondateur : `unplace` y vide déjà le venueId) ;
+     *  - divergence RÉELLE : ni le fuzzy nom↔libellé NI l'alias confirmé du libellé ne
+     *    pointent le gymnase courant (la clause alias évite un faux écart quand le
+     *    gymnase EST celui de l'alias) ;
+     *  - le libellé normalisé n'est pas déjà « gardé » (idempotence keep_app, E).
+     *
+     * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
+     * @param array<string, string>                                                                                                                                               $venueNames venueId → Venue name
+     *
+     * @return array{app: string, file: string}|null null = pas d'écart salle à arbitrer
+     */
+    public function detectUnplacedVenueDeviation(Fixture $existing, array $row, array $venueNames): ?array
+    {
+        if (FixtureHomeAway::HOME !== $existing->getHomeAway()
+            || FixtureHomeAway::HOME !== $row['homeAway']
+            || FixtureStatus::UNPLACED !== $existing->getStatus()) {
+            return null;
+        }
+
+        $venueId = $existing->getVenueId();
+        $fileLabel = $row['venueLabel'];
+        if (null === $venueId || null === $fileLabel || !isset($venueNames[$venueId])) {
+            return null;
+        }
+
+        // Un re-datage n'est pas un écart salle : il suit le chemin actuel (dé-place
+        // puis ré-adopte le libellé) — au point d'appel de l'import, `unplace` a déjà
+        // vidé le venueId, donc la clause ci-dessus n'y lève plus (décision C).
+        if ($existing->getMatchDate()->format('Y-m-d') !== $row['matchDate']->format('Y-m-d')) {
+            return null;
+        }
+
+        $appLabel = $venueNames[$venueId];
+        // Conforme si le fuzzy nom↔libellé matche OU si l'alias confirmé du libellé
+        // pointe le gymnase courant (sans la clause alias, un domicile déjà rattaché
+        // au bon gymnase par alias lèverait un faux écart).
+        if ($this->venueMatches($appLabel, $fileLabel)
+            || $this->venueAliasResolver->resolveConfirmed($fileLabel) === $venueId) {
+            return null;
+        }
+
+        // Idempotence « Garder l'appli » (E) : un libellé déjà mémorisé ne repose pas
+        // la question tant que la source le répète.
+        if ($this->labelNormalizer->normalize($fileLabel) === $existing->getKeptVenueLabel()) {
+            return null;
+        }
+
+        return ['app' => $appLabel, 'file' => $fileLabel];
+    }
+
+    /**
      * « Prendre le fichier » on one field. Retained semantics (RMM-4):
      * - DATE: la ligue a re-décidé → write the date AND un-place (UNPLACED, venue
      *   cleared) — exactly today's reschedule; the placement is invalidated.
@@ -479,12 +548,38 @@ final class FbiFixtureImporter
                 $this->demoteSubmitted($existing, $now);
                 break;
             case 'venue':
+                // Un NON PLACÉ (les 20 cas) : après avoir vidé le gymnase erroné, on
+                // relit le libellé adopté depuis un alias confirmé — la salle correcte
+                // (Debarros) se repose seule, un libellé inconnu laisse venueId null (la
+                // salle remonte dans l'inventaire « à rattacher »). Le statut reste
+                // UNPLACED. Un PLACÉ garde le comportement actuel (pas de re-rattachement
+                // auto : le gestionnaire re-place).
+                $wasUnplaced = FixtureStatus::UNPLACED === $existing->getStatus();
                 if (null !== $row['venueLabel']) {
                     $existing->setFbiVenueLabel($row['venueLabel']);
                 }
+                $existing->setKeptVenueLabel(null);
                 $this->unplace($existing, $now);
+                if ($wasUnplaced) {
+                    $this->attachConfirmedVenue($existing, $row['venueLabel']);
+                }
                 break;
         }
+    }
+
+    /**
+     * « Garder l'appli » sur l'écart salle d'un domicile NON PLACÉ (E) : on garde le
+     * gymnase courant, on adopte le libellé BRUT de la source dans `fbiVenueLabel`, on
+     * MÉMORISE ce libellé normalisé dans `keptVenueLabel` (pense-bête d'idempotence :
+     * un re-dépôt du même libellé ne repose plus la question) et l'écart salle est
+     * retiré. Foyer partagé par le moteur d'import ({@see processPerimeterFields}) et
+     * l'arbitrage hors dépôt ({@see App\Controller\ReviewFixtureDeviationController}).
+     */
+    public function applyVenueKeepApp(Fixture $fixture, string $fileLabel): void
+    {
+        $fixture->setKeptVenueLabel($this->labelNormalizer->normalize($fileLabel));
+        $fixture->setFbiVenueLabel($fileLabel);
+        $fixture->removePendingDeviation('venue');
     }
 
     /**
@@ -713,8 +808,9 @@ final class FbiFixtureImporter
      * @param array<string, true>                                                                                                                                                       $persistingSet
      * @param list<array{type: string, division: string, externalRef: string, message: string}>                                                                                         $warnings
      * @param bool                                                                                                                                                                      $sourceIsAuthoritative décision P4-199 « FBI fait foi » : un champ non tranché est appliqué D'OFFICE (voir {@see sourceIsAuthoritativeForWindow})
+     * @param list<string>|null                                                                                                                                                         $scope                 champs dont la boucle de purge des entrées périmées s'occupe (défaut : tous les {@see DEVIATION_FIELDS}) — restreint à `['venue']` pour l'écart salle d'un non placé, sinon la purge effacerait les entrées `autoApplied` date/heure posées le même dépôt
      */
-    public function processPerimeterFields(Fixture $existing, array $row, array $fields, array $decisions, string $channel, string $divisionName, array &$records, array &$persistingSet, array &$warnings, DateTimeImmutable $now, bool $sourceIsAuthoritative = false): bool
+    public function processPerimeterFields(Fixture $existing, array $row, array $fields, array $decisions, string $channel, string $divisionName, array &$records, array &$persistingSet, array &$warnings, DateTimeImmutable $now, bool $sourceIsAuthoritative = false, ?array $scope = null): bool
     {
         $changed = false;
         // The status the manager SAW — captured before any take_file mutates it.
@@ -737,7 +833,13 @@ final class FbiFixtureImporter
             } elseif ('keep_app' === $choice) {
                 // Keep the app value: the écart is resolved but NO data changes
                 // (« unchanged » as far as the rencontre content goes).
-                $existing->removePendingDeviation($field);
+                if ('venue' === $field && FixtureStatus::UNPLACED->value === $status) {
+                    // Garder l'appli sur la salle d'un NON PLACÉ : on mémorise le
+                    // libellé source pour l'idempotence (E) — le gymnase courant reste.
+                    $this->applyVenueKeepApp($existing, (string) $vals['file']);
+                } else {
+                    $existing->removePendingDeviation($field);
+                }
                 $effect = 'keep_app';
             } elseif ($sourceIsAuthoritative) {
                 // Décision P4-199 — « FBI fait foi » : la source est appliquée
@@ -756,7 +858,10 @@ final class FbiFixtureImporter
 
         // A field that stopped diverging (the source came back to the app value)
         // drops its stale pending entry — the écart resolved itself (no data change).
-        foreach (self::DEVIATION_FIELDS as $field) {
+        // La purge est bornée au SCOPE : pour l'écart salle d'un non placé (scope
+        // ['venue']), elle ne touche PAS les entrées autoApplied date/heure posées le
+        // même dépôt (piège vérifié).
+        foreach ($scope ?? self::DEVIATION_FIELDS as $field) {
             if (!isset($fields[$field]) && null !== $existing->getPendingDeviation($field)) {
                 $existing->removePendingDeviation($field);
             }
@@ -1136,7 +1241,14 @@ final class FbiFixtureImporter
             $existing->setOpponentLabel($row['opponentLabel']);
             $changed = true;
         }
-        if (null !== $row['venueLabel'] && $existing->getFbiVenueLabel() !== $row['venueLabel']) {
+
+        // Un domicile UNPLACED rattaché à un gymnase dont la source nomme une AUTRE
+        // salle est un écart à ARBITRER, jamais un libellé réécrit en silence (les 20
+        // cas). La réécriture silencieuse ci-dessous est SAUTÉE quand l'écart lève —
+        // « une décision de salle possède l'écriture du libellé » (même principe que
+        // le périmètre placé).
+        $venueDeviation = $this->detectUnplacedVenueDeviation($existing, $row, $venueNames);
+        if (null === $venueDeviation && null !== $row['venueLabel'] && $existing->getFbiVenueLabel() !== $row['venueLabel']) {
             $existing->setFbiVenueLabel($row['venueLabel']);
             $changed = true;
         }
@@ -1144,8 +1256,29 @@ final class FbiFixtureImporter
         $this->recordAutoApplied($existing, $autoApplied, FbiIngestionSource::FBI_XLSX->value, $now);
 
         // P4-187a — un domicile UNPLACED (hors périmètre) dont le libellé égale un
-        // alias confirmé retrouve son gymnase, toujours sans le placer.
+        // alias confirmé retrouve son gymnase, toujours sans le placer. No-op quand un
+        // écart salle est levé (venueId déjà posé, donc rien à rattacher).
         if ($this->attachConfirmedVenue($existing, $existing->getFbiVenueLabel())) {
+            $changed = true;
+        }
+
+        if (null !== $venueDeviation) {
+            // Écart salle d'un non placé : moteur d'arbitrage partagé, JAMAIS « FBI
+            // fait foi » (une salle de non placé n'est jamais appliquée d'office), et
+            // scope ['venue'] pour que la purge n'efface pas les entrées date/heure
+            // autoApplied posées le même dépôt. Un take_file/keep_app éventuel (décision
+            // du dialog) écrit une donnée → « updated ».
+            if ($this->processPerimeterFields($existing, $row, ['venue' => $venueDeviation], $decisions, FbiIngestionSource::FBI_XLSX->value, $divisionName, $records, $persistingSet, $warnings, $now, false, ['venue'])) {
+                $changed = true;
+            }
+        } elseif (null !== $existing->getPendingDeviation('venue')) {
+            // Le libellé est redevenu conforme (le fuzzy/alias matche, ou le gymnase a
+            // été rattaché) : l'entrée salle pendante tombe, et si c'était la dernière
+            // la rencontre est traitée (miroir du placé).
+            $existing->removePendingDeviation('venue');
+            if (!$existing->hasPendingDeviations()) {
+                $existing->markReviewed($now);
+            }
             $changed = true;
         }
 
