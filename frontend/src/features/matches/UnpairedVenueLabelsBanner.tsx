@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/lib/utils";
 
+import { hiddenBreakdownParts, type HiddenWeekBreakdown } from "./lib/consultFilter";
 import { useVenueLabelInventory } from "./queries";
 
 /**
@@ -91,6 +92,34 @@ export function HiddenHomesWeekNotice({ count }: { count: number }) {
         {count} domicile{count > 1 ? "s" : ""} de ce week-end sans gymnase, non affiché{count > 1 ? "s" : ""}.
       </span>
       <PairVenuesButton />
+    </div>
+  );
+}
+
+/**
+ * A5 — l'indice « masqués » : « N matchs masqués cette semaine (3 extérieurs, 1 amical). »
+ * FRÈRE de `HiddenHomesWeekNotice` (même squelette neutre), pour les rencontres de la
+ * semaine RETIRÉES par les Types ou l'interrupteur Extérieurs. PRÉSENTATION pure : le
+ * `breakdown` arrive dérivé (`hiddenWeekBreakdown`), le bouton « Afficher » remonte à la
+ * page (qui lève les masques, focalise la grille et remplit la région live). `total <= 0`
+ * ⇒ rendu NUL. Pas d'`aria-live` ici (la région vit dans la page pour survivre au retrait
+ * de l'indice après la levée).
+ */
+export function HiddenMatchesWeekNotice({ breakdown, onReveal }: { breakdown: HiddenWeekBreakdown; onReveal: () => void }) {
+  if (breakdown.total <= 0) {
+    return null;
+  }
+  const total = breakdown.total;
+  const parts = hiddenBreakdownParts(breakdown);
+  return (
+    <div className={cn("flex flex-wrap items-center gap-2 text-sm text-muted-foreground")}>
+      <Info className="size-4 shrink-0" aria-hidden="true" />
+      <span className="grow tabular-nums">
+        {total} match{total > 1 ? "s" : ""} masqué{total > 1 ? "s" : ""} cette semaine ({parts.join(", ")}).
+      </span>
+      <Button variant="outline" size="sm" className="shrink-0" onClick={onReveal}>
+        Afficher
+      </Button>
     </div>
   );
 }

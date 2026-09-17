@@ -18,6 +18,24 @@ export type Kind = "amical" | "championnat" | "coupe" | "brassage";
 /** Les 4 types, dans l'ordre des chips ; « tout coché » ⇔ contient les 4. */
 export const KINDS: Kind[] = ["amical", "championnat", "coupe", "brassage"];
 
+/**
+ * Les types affichés PAR DÉFAUT (décision fondateur) : les amicaux sont masqués tant
+ * qu'on ne les coche pas. `consultKinds === null` (store) signifie « les DÉFAUTS »,
+ * d'où `effectiveKinds = consultKinds ?? DEFAULT_KINDS` côté page.
+ */
+export const DEFAULT_KINDS: Kind[] = ["championnat", "coupe", "brassage"];
+
+/**
+ * Normalise une sélection de types vers le store : `null` quand elle égale EXACTEMENT
+ * les DÉFAUTS (championnat+coupe+brassage), sinon la liste explicite dans l'ordre de
+ * `KINDS` (y compris les 4). Maison unique du toggle des puces ET des levées de masque.
+ */
+export function normalizeKinds(selected: readonly Kind[]): Kind[] | null {
+  const next = KINDS.filter((k) => selected.includes(k));
+  const isDefault = next.length === DEFAULT_KINDS.length && DEFAULT_KINDS.every((k) => next.includes(k));
+  return isDefault ? null : next;
+}
+
 // Classification enum FFBB → libellé de type. Une TABLE (comme les libellés) :
 // mapper `CompetitionType` vers un `Kind` de PRÉSENTATION n'est pas un décideur
 // de comportement. Repli sur « championnat » quand la compétition manque ou porte
@@ -190,4 +208,95 @@ export function applyFamilyFilter(conflicts: Conflict[], families: readonly Conf
     return conflicts;
   }
   return conflicts.filter((c) => active.has(c.type));
+}
+
+/**
+ * Un conflit a-t-il un CÔTÉ à domicile (left / right / fixture) ? Générique — sert le
+ * filtre « Seulement avec un match à domicile » (onglet Conflits). Conséquence assumée :
+ * un conflit SANS côté (COMPETITION_INCOMPLETE) et un côté purement extérieur
+ * (AWAY_NO_FOOTPRINT) sont masqués quand la case est cochée. `left`/`right`/`fixture`
+ * portent tous `homeAway` (ConflictFixtureView / ConflictUnavailableFixtureView).
+ */
+export function hasHomeSide(conflict: Conflict): boolean {
+  return [conflict.left, conflict.right, conflict.fixture].some((side) => undefined !== side && "HOME" === side.homeAway);
+}
+
+/**
+ * A8 — les masques à LEVER pour que des rencontres cibles apparaissent sur le Calendrier :
+ * un côté extérieur exige l'interrupteur Extérieurs (`away`), un type hors de la sélection
+ * effective exige que sa puce soit cochée (`kinds` à ajouter). PUR : la page applique
+ * (`setConsultAway`, `setConsultKinds` via `normalizeKinds`).
+ */
+export function revealPlan(fixtures: Fixture[], effectiveKinds: readonly Kind[], competitionsById: Map<string, Competition>): { away: boolean; kinds: Kind[] } {
+  const active = new Set(effectiveKinds);
+  let away = false;
+  const add = new Set<Kind>();
+  for (const fixture of fixtures) {
+    if ("AWAY" === fixture.homeAway) {
+      away = true;
+    }
+    const kind = competitionKind(fixture, competitionsById);
+    if (!active.has(kind)) {
+      add.add(kind);
+    }
+  }
+  return { away, kinds: KINDS.filter((k) => add.has(k)) };
+}
+
+export interface HiddenWeekBreakdown {
+  /** Total masqué (extérieurs + types), pour la phrase « N matchs masqués ». */
+  total: number;
+  /** Extérieurs masqués par l'interrupteur (jamais ceux déjà retirés par leur type). */
+  away: number;
+  /** Masqués par un type décoché, par type (le type PRIME : un extérieur d'un type
+   *  décoché compte UNE fois ici, pas dans `away`). */
+  byKind: Map<Kind, number>;
+}
+
+/**
+ * Rencontres de la semaine (déjà filtrées PR-1) retirées par les Types OU l'interrupteur
+ * Extérieurs — l'indice « masqués ». Priorité au TYPE : un extérieur d'un type décoché
+ * est compté une seule fois, côté type. PRÉSENTATION, aucune règle métier.
+ */
+export function hiddenWeekBreakdown(weekFixtures: Fixture[], effectiveKinds: readonly Kind[], showAway: boolean, competitionsById: Map<string, Competition>): HiddenWeekBreakdown {
+  const active = new Set(effectiveKinds);
+  const byKind = new Map<Kind, number>();
+  let away = 0;
+  for (const fixture of weekFixtures) {
+    const kind = competitionKind(fixture, competitionsById);
+    if (!active.has(kind)) {
+      byKind.set(kind, (byKind.get(kind) ?? 0) + 1);
+    } else if ("AWAY" === fixture.homeAway && !showAway) {
+      away += 1;
+    }
+  }
+  const total = away + [...byKind.values()].reduce((sum, n) => sum + n, 0);
+  return { total, away, byKind };
+}
+
+/** Singulier/pluriel du décompte par type, pour la phrase de l'indice « masqués ». */
+const KIND_COUNT_LABEL: Record<Kind, [string, string]> = {
+  amical: ["amical", "amicaux"],
+  championnat: ["championnat", "championnats"],
+  coupe: ["coupe", "coupes"],
+  brassage: ["brassage", "brassages"],
+};
+
+/**
+ * Les segments « N extérieurs », « N amicaux »… d'un indice de masquage — extérieurs
+ * d'abord, puis les types dans l'ordre de `KINDS`. PRÉSENTATION pure.
+ */
+export function hiddenBreakdownParts(breakdown: HiddenWeekBreakdown): string[] {
+  const parts: string[] = [];
+  if (breakdown.away > 0) {
+    parts.push(`${breakdown.away} extérieur${breakdown.away > 1 ? "s" : ""}`);
+  }
+  for (const kind of KINDS) {
+    const n = breakdown.byKind.get(kind) ?? 0;
+    if (n > 0) {
+      const [singular, plural] = KIND_COUNT_LABEL[kind];
+      parts.push(`${n} ${n > 1 ? plural : singular}`);
+    }
+  }
+  return parts;
 }

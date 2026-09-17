@@ -9,8 +9,9 @@ import { frDateWeekdayNoYear } from "@/shared/lib/date";
 import { compareTeamsByRank } from "@/shared/lib/teamTiers";
 import { toast } from "@/shared/stores/toastStore";
 
-import type { AttachVenueLabelInput, Fixture, ResolveDeviationInput, Team, Venue } from "./api";
-import { useAttachVenueLabel, useResolveFixtureDeviation, useReviewFixtures } from "./queries";
+import type { AttachVenueLabelInput, Competition, Fixture, ResolveDeviationInput, Team, Venue } from "./api";
+import { DEFAULT_KINDS, normalizeKinds, revealPlan } from "./lib/consultFilter";
+import { useAttachVenueLabel, useCompetitions, useResolveFixtureDeviation, useReviewFixtures } from "./queries";
 import { buildReviewQueue, byMatchDateAsc } from "./lib/reviewQueue";
 import { ReviewQueueRow } from "./ReviewQueueRow";
 import { useMatchesStore } from "./store";
@@ -39,6 +40,11 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
   const toggleFilterId = useMatchesStore((s) => s.toggleFilterId);
   const setSelectedWeekend = useMatchesStore((s) => s.setSelectedWeekend);
   const setSelectedFixtureId = useMatchesStore((s) => s.setSelectedFixtureId);
+  const consultKinds = useMatchesStore((s) => s.consultKinds);
+  const setConsultKinds = useMatchesStore((s) => s.setConsultKinds);
+  const setConsultAway = useMatchesStore((s) => s.setConsultAway);
+  const competitions = useCompetitions();
+  const competitionsById = useMemo<Map<string, Competition>>(() => new Map((competitions.data ?? []).map((c) => [c.id, c])), [competitions.data]);
   const reviewFixtures = useReviewFixtures();
   const resolveDeviation = useResolveFixtureDeviation();
   const attachVenueLabel = useAttachVenueLabel();
@@ -102,6 +108,15 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
     // s'ouvre directement à l'arrivée sur le Calendrier.
     setFilterMode("equipe");
     toggleFilterId(fixture.teamId);
+    // A8 — lève les masques qui cacheraient la rencontre cible (extérieur / type hors sélection).
+    const effectiveKinds = consultKinds ?? DEFAULT_KINDS;
+    const plan = revealPlan([fixture], effectiveKinds, competitionsById);
+    if (plan.away) {
+      setConsultAway(true);
+    }
+    if (plan.kinds.length > 0) {
+      setConsultKinds(normalizeKinds([...effectiveKinds, ...plan.kinds]));
+    }
     setSelectedWeekend(weekendKeyOf(fixture.matchDate));
     setSelectedFixtureId(fixture.id);
     void navigate("/matchs");

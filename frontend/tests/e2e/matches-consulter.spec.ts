@@ -191,18 +191,23 @@ test("consulter: chips, semaine type, et filtre par famille de conflit", async (
     await expect(page).toHaveURL(/\/matchs(\?|$)/);
     await expect(page.getByRole("navigation", { name: "Espaces matchs" }).getByRole("link", { name: "Calendrier" })).toHaveAttribute("aria-current", "page");
 
-    // Chips type de compétition — STATIQUES (les 4 `KINDS`), donc présentes même
-    // sans données ; cochées par défaut.
-    for (const label of ["Amical", "Championnat", "Coupe", "Brassage"]) {
+    // Chips type de compétition — STATIQUES (les 4 `KINDS`), présentes même sans données.
+    // NOUVEAUX DÉFAUTS (lot A) : « Amical » DÉCOCHÉ, les 3 autres cochés.
+    await expect(page.getByRole("button", { name: "Amical", exact: true })).toHaveAttribute("aria-pressed", "false");
+    for (const label of ["Championnat", "Coupe", "Brassage"]) {
       await expect(page.getByRole("button", { name: label, exact: true })).toHaveAttribute("aria-pressed", "true");
     }
+    // Nos rencontres créées sont des AMICAUX (competitionId null) : sans ce clic, les cases,
+    // la puce « Collision de gymnase » et la vue Mois seraient vides. On coche « Amical ».
+    await page.getByRole("button", { name: "Amical", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Amical", exact: true })).toHaveAttribute("aria-pressed", "true");
 
-    // Interrupteur « Semaine type » (role switch), coché par défaut ; on le bascule.
+    // Interrupteur « Semaine type » (role switch), MASQUÉ par défaut (lot A) ; on l'allume.
     const semaineType = page.getByRole("switch", { name: /Semaine type/ });
-    await expect(semaineType).toHaveAttribute("aria-checked", "true");
-    await semaineType.click();
     await expect(semaineType).toHaveAttribute("aria-checked", "false");
-    await expect(page).toHaveURL(/[?&]type_semaine=0/);
+    await semaineType.click();
+    await expect(semaineType).toHaveAttribute("aria-checked", "true");
+    await expect(page).toHaveURL(/[?&]type_semaine=1/);
 
     // Va sur la semaine de la collision (repérée par notre rencontre créée). On
     // cherche › puis ‹ : indépendant de l'horloge (potentiellement pilotée serveur).

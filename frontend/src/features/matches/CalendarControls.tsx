@@ -1,4 +1,5 @@
-import { CalendarCheck2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Bus, CalendarCheck2, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
+import { useRef } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { Select } from "@/shared/components/ui/select";
@@ -7,7 +8,7 @@ import { cn } from "@/shared/lib/utils";
 
 import type { ConflictType } from "./api";
 import { CONFLICT_FAMILIES, CONFLICT_FAMILY_LABEL } from "./lib/conflictLabels";
-import { KINDS, type Kind } from "./lib/consultFilter";
+import { DEFAULT_KINDS, KINDS, type Kind, normalizeKinds } from "./lib/consultFilter";
 import { monthLabel } from "./lib/monthView";
 import { weekendKeyOf, weekLabel } from "./lib/weekendGrid";
 import { useMatchesStore, type ConsultTemporality } from "./store";
@@ -33,11 +34,13 @@ interface CalendarControlsProps {
 }
 
 /**
- * PR 3b — les contrôles du Calendrier : chips de type de compétition + interrupteur
- * « Semaine type » (Semaine seule), chips de familles de conflits (compteur), contrôle
- * segmenté Semaine·Mois·Phase, navigateur ‹ › + « Aujourd'hui » propre à la temporalité,
- * et rappel de fraîcheur. Lit l'état Consulter + `selectedWeekend` du store ; PRÉSENTATION
- * pure (les compteurs/chips arrivent déjà dérivés par la page).
+ * PR 3b — les contrôles du Calendrier : chips de type de compétition (groupe « Types »),
+ * interrupteurs « Semaine type » (Semaine seule) et « Extérieurs » (les trois temporalités)
+ * dans le groupe « Afficher », un « Réinitialiser » quand l'état diffère des défauts, les
+ * chips de familles de conflits (« Familles de conflits »), le contrôle segmenté « Période »
+ * (Semaine·Mois·Phase), le navigateur propre à la temporalité et le rappel de fraîcheur. Lit
+ * l'état Consulter + `selectedWeekend` du store ; PRÉSENTATION pure (les compteurs/chips
+ * arrivent déjà dérivés par la page).
  */
 export function CalendarControls(props: CalendarControlsProps) {
   const { familyChips, familyCounts, weekends, activeWeekend, weekendIndex, months, activeMonth, monthIndex, phases, activePhaseId, completeness, depositReminder } = props;
@@ -45,11 +48,13 @@ export function CalendarControls(props: CalendarControlsProps) {
     consultKinds,
     consultFamilies,
     consultTypicalWeek,
+    consultAway,
     consultTemporality,
     consultMonth,
     setConsultKinds,
     setConsultFamilies,
     setConsultTypicalWeek,
+    setConsultAway,
     setConsultTemporality,
     setConsultMonth,
     setConsultPhaseId,
@@ -63,17 +68,18 @@ export function CalendarControls(props: CalendarControlsProps) {
   const todayWeekKey = weekendKeyOf(todayISO());
   const todayMonthKey = todayISO().slice(0, 7);
   const chipClass = (checked: boolean): string => cn("h-7", checked ? "" : "text-muted-foreground");
+  const typesRef = useRef<HTMLDivElement>(null);
 
-  const isKindChecked = (kind: Kind): boolean => null === consultKinds || consultKinds.includes(kind);
+  const effectiveKinds = consultKinds ?? DEFAULT_KINDS;
+  const isKindChecked = (kind: Kind): boolean => effectiveKinds.includes(kind);
   const toggleKind = (kind: Kind): void => {
-    const active = new Set<Kind>(consultKinds ?? KINDS);
+    const active = new Set<Kind>(effectiveKinds);
     if (active.has(kind)) {
       active.delete(kind);
     } else {
       active.add(kind);
     }
-    const next = KINDS.filter((k) => active.has(k));
-    setConsultKinds(next.length === KINDS.length ? null : next);
+    setConsultKinds(normalizeKinds([...active]));
   };
   const isFamilyChecked = (family: ConflictType): boolean => null === consultFamilies || consultFamilies.includes(family);
   const toggleFamily = (family: ConflictType): void => {
@@ -87,36 +93,80 @@ export function CalendarControls(props: CalendarControlsProps) {
     setConsultFamilies(next.length === CONFLICT_FAMILIES.length ? null : next);
   };
 
+  // « Réinitialiser » : visible dès que Types, Extérieurs, Semaine type ou Familles diffèrent
+  // des défauts ; ne touche NI pivot NI temporalité NI semaine ; focus → première puce de type.
+  const dirty = null !== consultKinds || consultAway || consultTypicalWeek || null !== consultFamilies;
+  const reset = (): void => {
+    setConsultKinds(null);
+    setConsultFamilies(null);
+    setConsultTypicalWeek(false);
+    setConsultAway(false);
+    requestAnimationFrame(() => typesRef.current?.querySelector("button")?.focus());
+  };
+
   return (
     <>
-      {/* Chips type de compétition + interrupteur « Semaine type » (Semaine seule). */}
+      {/* Rangée « Types » + « Afficher » (interrupteurs) + « Réinitialiser ». */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
-          {KINDS.map((kind) => (
-            <Button key={kind} type="button" size="sm" aria-pressed={isKindChecked(kind)} variant={isKindChecked(kind) ? "default" : "ghost"} className={chipClass(isKindChecked(kind))} onClick={() => toggleKind(kind)}>
-              {KIND_LABEL[kind]}
-            </Button>
-          ))}
+        <div role="group" aria-labelledby="calendar-types-label" className="flex flex-wrap items-center gap-2">
+          <span id="calendar-types-label" className="text-xs font-medium text-muted-foreground">
+            Types
+          </span>
+          <div ref={typesRef} className="flex flex-wrap items-center gap-1 rounded-md border border-border p-0.5">
+            {KINDS.map((kind) => (
+              <Button key={kind} type="button" size="sm" aria-pressed={isKindChecked(kind)} variant={isKindChecked(kind) ? "default" : "ghost"} className={chipClass(isKindChecked(kind))} onClick={() => toggleKind(kind)}>
+                {KIND_LABEL[kind]}
+              </Button>
+            ))}
+          </div>
         </div>
-        {isWeek ? (
+
+        <div role="group" aria-labelledby="calendar-afficher-label" className="flex flex-wrap items-center gap-2">
+          <span id="calendar-afficher-label" className="text-xs font-medium text-muted-foreground">
+            Afficher
+          </span>
+          {isWeek ? (
+            <Button
+              type="button"
+              role="switch"
+              size="sm"
+              aria-checked={consultTypicalWeek}
+              variant={consultTypicalWeek ? "default" : "ghost"}
+              className={cn("h-7 gap-1.5", consultTypicalWeek ? "" : "text-muted-foreground")}
+              onClick={() => setConsultTypicalWeek(!consultTypicalWeek)}
+            >
+              <CalendarCheck2 className="size-3.5" aria-hidden="true" />
+              Semaine type
+            </Button>
+          ) : null}
           <Button
             type="button"
             role="switch"
             size="sm"
-            aria-checked={consultTypicalWeek}
-            variant={consultTypicalWeek ? "default" : "ghost"}
-            className={cn("h-7 gap-1.5", consultTypicalWeek ? "" : "text-muted-foreground")}
-            onClick={() => setConsultTypicalWeek(!consultTypicalWeek)}
+            aria-checked={consultAway}
+            variant={consultAway ? "default" : "ghost"}
+            className={cn("h-7 gap-1.5", consultAway ? "" : "text-muted-foreground")}
+            onClick={() => setConsultAway(!consultAway)}
           >
-            <CalendarCheck2 className="size-3.5" aria-hidden="true" />
-            Semaine type
+            <Bus className="size-3.5" aria-hidden="true" />
+            Extérieurs
+          </Button>
+        </div>
+
+        {dirty ? (
+          <Button type="button" variant="ghost" size="sm" className="h-7 gap-1.5" onClick={reset}>
+            <RotateCcw className="size-3.5" aria-hidden="true" />
+            Réinitialiser
           </Button>
         ) : null}
       </div>
 
       {/* Chips familles de conflits présentes, avec compteur. */}
       {familyChips.length > 0 ? (
-        <div role="group" aria-label="Familles de conflits" className="flex flex-wrap items-center gap-1.5">
+        <div role="group" aria-labelledby="calendar-familles-label" className="flex flex-wrap items-center gap-1.5">
+          <span id="calendar-familles-label" className="text-xs font-medium text-muted-foreground">
+            Familles de conflits
+          </span>
           {familyChips.map((family) => (
             <Button
               key={family}
@@ -134,22 +184,27 @@ export function CalendarControls(props: CalendarControlsProps) {
         </div>
       ) : null}
 
-      {/* Contrôle segmenté de temporalité + navigateur propre + rappel de fraîcheur. */}
+      {/* Contrôle segmenté « Période » + navigateur propre + rappel de fraîcheur. */}
       <div className="flex flex-wrap items-center gap-2">
-        <div role="group" aria-label="Temporalité" className="flex items-center gap-1 rounded-md border border-border p-0.5">
-          {TEMPORALITIES.map((temporality) => (
-            <Button
-              key={temporality}
-              type="button"
-              size="sm"
-              aria-pressed={temporality === consultTemporality}
-              variant={temporality === consultTemporality ? "default" : "ghost"}
-              className={chipClass(temporality === consultTemporality)}
-              onClick={() => setConsultTemporality(temporality)}
-            >
-              {TEMPORALITY_LABEL[temporality]}
-            </Button>
-          ))}
+        <div role="group" aria-labelledby="calendar-periode-label" className="flex flex-wrap items-center gap-2">
+          <span id="calendar-periode-label" className="text-xs font-medium text-muted-foreground">
+            Période
+          </span>
+          <div className="flex flex-wrap items-center gap-1 rounded-md border border-border p-0.5">
+            {TEMPORALITIES.map((temporality) => (
+              <Button
+                key={temporality}
+                type="button"
+                size="sm"
+                aria-pressed={temporality === consultTemporality}
+                variant={temporality === consultTemporality ? "default" : "ghost"}
+                className={chipClass(temporality === consultTemporality)}
+                onClick={() => setConsultTemporality(temporality)}
+              >
+                {TEMPORALITY_LABEL[temporality]}
+              </Button>
+            ))}
+          </div>
         </div>
 
         {isWeek ? (

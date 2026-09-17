@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Conflict, ConflictResolution } from "../api";
-import { isOpenConflict, openConflictCount, RESOLUTION_LABEL, RESOLUTION_STATUSES } from "./conflictResolution";
+import { countByTreatment, isOpenConflict, openConflictCount, RESOLUTION_LABEL, RESOLUTION_STATUSES, TREATMENT_KEYS, TREATMENT_SLUG, treatmentFromSlug, treatmentOf } from "./conflictResolution";
 
 function conflict(resolution: ConflictResolution | null): Conflict {
   return { type: "VENUE_OVERLAP", severity: 1, resolution };
@@ -55,5 +55,36 @@ describe("openConflictCount", () => {
   it("données absentes ⇒ 0 (jamais un « · 0 » fabriqué)", () => {
     expect(openConflictCount(undefined)).toBe(0);
     expect(openConflictCount([])).toBe(0);
+  });
+});
+
+describe("Traitement (B — clés, slugs, treatmentOf, countByTreatment)", () => {
+  it("TREATMENT_KEYS : à traiter en tête, puis les 3 statuts", () => {
+    expect(TREATMENT_KEYS).toEqual(["a_traiter", "DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET"]);
+  });
+
+  it("TREATMENT_SLUG : table exhaustive des 4 slugs URL", () => {
+    expect(TREATMENT_SLUG).toEqual({ a_traiter: "a_traiter", DEROGATION_REQUESTED: "derogation", RESOLVED_INTERNALLY: "regle_interne", NO_SOLUTION_YET: "sans_solution" });
+  });
+
+  it("treatmentFromSlug : aller-retour sur chaque clé ; slug inconnu ⇒ null", () => {
+    for (const key of TREATMENT_KEYS) {
+      expect(treatmentFromSlug(TREATMENT_SLUG[key])).toBe(key);
+    }
+    expect(treatmentFromSlug("ghost")).toBeNull();
+  });
+
+  it("treatmentOf : null ⇒ a_traiter ; résolu ⇒ son statut", () => {
+    expect(treatmentOf(conflict(null))).toBe("a_traiter");
+    expect(treatmentOf(conflict(resolved("DEROGATION_REQUESTED")))).toBe("DEROGATION_REQUESTED");
+    expect(treatmentOf(conflict(resolved("RESOLVED_INTERNALLY")))).toBe("RESOLVED_INTERNALLY");
+  });
+
+  it("countByTreatment : compte les 4 états (fixes saison)", () => {
+    const counts = countByTreatment([conflict(null), conflict(null), conflict(resolved("DEROGATION_REQUESTED")), conflict(resolved("NO_SOLUTION_YET"))]);
+    expect(counts.get("a_traiter")).toBe(2);
+    expect(counts.get("DEROGATION_REQUESTED")).toBe(1);
+    expect(counts.get("NO_SOLUTION_YET")).toBe(1);
+    expect(counts.get("RESOLVED_INTERNALLY")).toBeUndefined();
   });
 });

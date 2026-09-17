@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Competition, Conflict, ConflictType, Fixture } from "../api";
-import { applyFamilyFilter, applyKindFilter, competitionKind, countByFamily, dateOf, familiesPresent, familyOf, KINDS, scopeConflictsToWeek } from "./consultFilter";
+import { applyFamilyFilter, applyKindFilter, competitionKind, countByFamily, dateOf, DEFAULT_KINDS, familiesPresent, familyOf, hasHomeSide, hiddenBreakdownParts, hiddenWeekBreakdown, KINDS, normalizeKinds, revealPlan, scopeConflictsToWeek } from "./consultFilter";
 
 function fixture(over: Partial<Fixture> = {}): Fixture {
   return {
@@ -217,5 +217,94 @@ describe("dateOf (exporté pour le pivot par journée)", () => {
 
   it("sans date ni côté ⇒ null (conflit « sans date »)", () => {
     expect(dateOf({ type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, teamId: "t" })).toBeNull();
+  });
+});
+
+describe("DEFAULT_KINDS / normalizeKinds (A1)", () => {
+  it("les défauts excluent l'amical", () => {
+    expect(DEFAULT_KINDS).toEqual(["championnat", "coupe", "brassage"]);
+  });
+
+  it("normalizeKinds : les défauts ⇒ null ; les 4 / un sous-ensemble / vide ⇒ liste explicite", () => {
+    expect(normalizeKinds(["championnat", "coupe", "brassage"])).toBeNull();
+    expect(normalizeKinds(["brassage", "coupe", "championnat"])).toBeNull(); // ordre indifférent
+    expect(normalizeKinds(["amical", "championnat", "coupe", "brassage"])).toEqual(["amical", "championnat", "coupe", "brassage"]);
+    expect(normalizeKinds(["coupe"])).toEqual(["coupe"]);
+    expect(normalizeKinds([])).toEqual([]);
+  });
+});
+
+describe("hasHomeSide (B4)", () => {
+  const home = { fixtureId: "f", teamId: "t", homeAway: "HOME" as const, matchDate: "2026-10-03", kickoffTime: "16:00", windowStart: "", windowEnd: "" };
+  const away = { fixtureId: "f", teamId: "t", homeAway: "AWAY" as const, matchDate: "2026-10-03", kickoffTime: null, windowStart: "", windowEnd: "" };
+
+  it("un côté HOME (left/right/fixture) ⇒ true", () => {
+    expect(hasHomeSide({ type: "MATCH_MATCH", severity: 3, resolution: null, left: home, right: away })).toBe(true);
+    expect(hasHomeSide({ type: "VENUE_UNAVAILABLE", severity: 1, resolution: null, fixture: { ...home, status: "PLACED" } })).toBe(true);
+  });
+
+  it("tous les côtés AWAY ⇒ false (AWAY_NO_FOOTPRINT masqué)", () => {
+    expect(hasHomeSide({ type: "AWAY_NO_FOOTPRINT", severity: 7, resolution: null, left: away, right: away })).toBe(false);
+  });
+
+  it("aucun côté (COMPETITION_INCOMPLETE) ⇒ false (masqué)", () => {
+    expect(hasHomeSide({ type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, teamId: "t", competitionId: "c" })).toBe(false);
+  });
+});
+
+describe("revealPlan (A8)", () => {
+  it("un extérieur ⇒ away true ; un type hors sélection ⇒ ajouté", () => {
+    const awayCoupe = fixture({ id: "a", competitionId: "comp-coupe", homeAway: "AWAY" });
+    const plan = revealPlan([awayCoupe], DEFAULT_KINDS, competitionsById);
+    expect(plan.away).toBe(true);
+    // coupe est un défaut ⇒ pas d'ajout de type ; seul l'extérieur manque.
+    expect(plan.kinds).toEqual([]);
+  });
+
+  it("un amical à domicile hors défauts ⇒ ajoute « amical », away false", () => {
+    const amicalHome = fixture({ id: "b", competitionId: null, homeAway: "HOME" });
+    const plan = revealPlan([amicalHome], DEFAULT_KINDS, competitionsById);
+    expect(plan.away).toBe(false);
+    expect(plan.kinds).toEqual(["amical"]);
+  });
+});
+
+describe("hiddenWeekBreakdown / hiddenBreakdownParts (A5)", () => {
+  const champHome = fixture({ id: "h", competitionId: "comp-champ", homeAway: "HOME" });
+  const amicalHome = fixture({ id: "a", competitionId: null, homeAway: "HOME" });
+  const awayChamp = fixture({ id: "w", competitionId: "comp-champ", homeAway: "AWAY" });
+
+  it("masque par TYPE (amical décoché) et par EXTÉRIEUR (interrupteur), le type primant", () => {
+    // Défauts (pas d'amical), extérieurs éteints : amical masqué par type, away masqué par interrupteur.
+    const b = hiddenWeekBreakdown([champHome, amicalHome, awayChamp], DEFAULT_KINDS, false, competitionsById);
+    expect(b.total).toBe(2);
+    expect(b.away).toBe(1);
+    expect(b.byKind.get("amical")).toBe(1);
+    expect(hiddenBreakdownParts(b)).toEqual(["1 extérieur", "1 amical"]);
+  });
+
+  it("interrupteur allumé : plus d'extérieur masqué, seul l'amical (type) reste", () => {
+    const b = hiddenWeekBreakdown([champHome, amicalHome, awayChamp], DEFAULT_KINDS, true, competitionsById);
+    expect(b.total).toBe(1);
+    expect(b.away).toBe(0);
+    expect(hiddenBreakdownParts(b)).toEqual(["1 amical"]);
+  });
+
+  it("un extérieur d'un type décoché compte UNE fois côté type (pas dans away)", () => {
+    const awayAmical = fixture({ id: "x", competitionId: null, homeAway: "AWAY" });
+    const b = hiddenWeekBreakdown([awayAmical], DEFAULT_KINDS, false, competitionsById);
+    expect(b.away).toBe(0);
+    expect(b.byKind.get("amical")).toBe(1);
+    expect(hiddenBreakdownParts(b)).toEqual(["1 amical"]);
+  });
+
+  it("pluriels : 2 extérieurs, 2 amicaux", () => {
+    const b = hiddenWeekBreakdown(
+      [amicalHome, fixture({ id: "a2", competitionId: null, homeAway: "HOME" }), awayChamp, fixture({ id: "w2", competitionId: "comp-champ", homeAway: "AWAY" })],
+      DEFAULT_KINDS,
+      false,
+      competitionsById,
+    );
+    expect(hiddenBreakdownParts(b)).toEqual(["2 extérieurs", "2 amicaux"]);
   });
 });

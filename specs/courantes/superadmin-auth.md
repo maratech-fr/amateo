@@ -1,16 +1,18 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-09-14 (rotation `documentation-update`, hors sujet de la PR — D2 rattrapage des
-statuts de traitement, backend). Re-confronté au code, tout juste : firewall `admin` = `pattern:
-^/api/admin`, `provider: super_admin_provider` (`backend/config/packages/security.yaml:34,36`) ✓ ;
-`AdminCsrfListener` toujours à la priorité 6
+Last verified @ 2026-09-17 (rotation `documentation-update`, hors sujet de la PR — défauts
+Calendrier + filtres Conflits, frontend). Re-confronté au code, un écart TROUVÉ ET CORRIGÉ :
+firewall `admin` = `pattern: ^/api/admin`, `provider: super_admin_provider`
+(`backend/config/packages/security.yaml:34,36`) ✓ ; `AdminCsrfListener` toujours à la priorité 6
 (`#[AsEventListener(event: KernelEvents::REQUEST, priority: 6)]`) ✓ ; politique de mot de passe
 12 caractères + majuscule + caractère spécial toujours dans `PasswordPolicy::MIN_LENGTH`/
 `REQUIREMENT_FR` (`backend/src/Service/PasswordPolicy.php:15,18`) ✓ ; challenge de session
 password→TOTP toujours borné à 5 minutes (`time() - $startedAt > 300`,
 `backend/src/Controller/AdminAuthController.php:72`) ✓ ; entité `SuperAdmin` toujours séparée
-(`backend/src/Entity/SuperAdmin.php:13`) ✓. Reste du fichier non re-confronté cette passe ;
-l'historique des vérifications précédentes vit dans
+(`backend/src/Entity/SuperAdmin.php:13`) ✓ ; **§ « Relances d'imports SA3-D » corrigé** — le doc
+ne citait que deux jobs `manualTriggerAllowed: true`, un troisième (`club-approval-digest`)
+le porte aussi (`backend/src/AdminJob/AdminJobCatalog.php:53,63,64`). Reste du fichier non
+re-confronté cette passe ; l'historique des vérifications précédentes vit dans
 `git log -p --follow specs/courantes/superadmin-auth.md`)
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle
@@ -236,8 +238,9 @@ cadences « toutes les 10 minutes », « quotidien » ou « trimestriel ».
 ## Relances d'imports SA3-D
 
 `POST /api/admin/jobs/{key}/run` exige la session superadmin et son jeton CSRF. Le
-catalogue expose `manualTriggerAllowed` et n'autorise la relance que pour
-`import-school-holidays` et `import-public-holidays`. La route n'accepte jamais un nom de
+catalogue expose `manualTriggerAllowed` et l'autorise pour trois jobs (`AdminJobCatalog.php`) :
+`import-school-holidays`, `import-public-holidays` et `club-approval-digest` (relances
+d'approbation de club). La route n'accepte jamais un nom de
 commande brut : elle exécute la commande et ses arguments fixes issus du catalogue avec
 la source `superadmin` et l'identité de l'acteur dans `admin_job_run`.
 

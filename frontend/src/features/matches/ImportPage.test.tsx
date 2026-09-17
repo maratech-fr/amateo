@@ -38,7 +38,7 @@ const {
   getVenueLabelInventory: vi.fn((): Promise<VenueLabelInventoryRow[]> => Promise.resolve([])),
 }));
 
-vi.mock("./api", () => ({ getTeams, getPriorityTiers, getFixtures, getVenues, getLatestFbiIngestion, getFfbbRencontres, applyFfbbRencontres, reviewFixtures, resolveFixtureDeviation, attachVenueLabel, getVenueLabelInventory }));
+vi.mock("./api", () => ({ getTeams, getPriorityTiers, getFixtures, getVenues, getLatestFbiIngestion, getFfbbRencontres, applyFfbbRencontres, reviewFixtures, resolveFixtureDeviation, attachVenueLabel, getVenueLabelInventory, getCompetitions: () => Promise.resolve([]) }));
 
 /** ky 2.x expose le corps parsé sur `error.data` — on reproduit ce contrat pour le 422 nommé. */
 function httpError(status: number, body: unknown): HTTPError {
