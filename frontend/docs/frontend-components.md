@@ -1,15 +1,20 @@
 # FORWARD Components Spec — Pages & Shared Components (hors wizard)
 
-Last verified @ 2026-09-15 (`documentation-update`, résolution des conflits — P4-207 PR B2).
-Re-confronté au code : `menu.tsx` porte `restoreFocusOnSelect` (défaut `true`) et `triggerRef`
-forwardé, `close(restoreFocusOnSelect)` à la sélection d'un item ✓ ; `filter-toggle.tsx` (nouvelle
-primitive) ✓ ; `ReviewQueue.tsx` porte toujours ses deux cases à cocher inline (`checkbox` ×2, non
-converties sur `FilterToggle`) ✓. Rien de faux trouvé cette passe côté §3. Le bloc « Historique »
-(sections 2-9) reste marqué superseded par son en-tête, mais §3 (Shared Components) est en pratique
-tenu à jour au fil des PR (cf. les lignes P4-127/P4-149/P4-198/P4-207) — signalé pour ce que ça vaut,
-non déplacé cette passe. ⚠ Drift constaté hors scope de cette passe, non corrigé : `StatusPill` et
-`SourceBadge` (maisons uniques citées dans `.claude/rules/frontend.md` et `module-matchs.md`) sont
-ABSENTES de la table §3.
+Last verified @ 2026-09-17 (`documentation-update`, défauts Calendrier + filtres Conflits —
+re-confronté après édition de la ligne `FilterToggle`, `DocStampFreshnessTest` rouge). Re-confronté
+au code : `filter-toggle.tsx` (`frontend/src/shared/components/ui/filter-toggle.tsx`) toujours la
+maison unique, consommée par `ConflictsPage.tsx:370-372` pour « Seulement avec un match à
+domicile » (le libellé « Masquer les traités » a disparu de son SEUL usage, remplacé par les puces
+« Traitement » — table non-`FilterToggle`, hors périmètre de cette ligne) ✓ ; `ReviewQueue.tsx`
+porte toujours ses deux cases à cocher inline non converties (`type="checkbox"` ×2, lignes 225 et
+234) ✓ ; `Listbox` (`listbox.tsx`) : `SEARCH_THRESHOLD = 8` (`:73`), consommé par `team-select.tsx`
+et `venue-select.tsx` (tous deux important `Listbox` depuis `@/shared/components/ui/listbox`) ✓.
+Rien de faux trouvé cette passe côté §3. Le bloc « Historique » (sections 2-9) reste marqué
+superseded par son en-tête, mais §3 (Shared Components) est en pratique tenu à jour au fil des PR
+(cf. les lignes P4-127/P4-149/P4-198/P4-207) — signalé pour ce que ça vaut, non déplacé cette
+passe. ⚠ Drift **toujours présent, non corrigé** (re-confirmé cette passe, `StatusPill` vit dans
+`badge.tsx` — pas un fichier dédié) : `StatusPill` et `SourceBadge` (maisons uniques citées dans
+`.claude/rules/frontend.md` et `module-matchs.md`) sont ABSENTES de la table §3.
 
 > 🛑 **Ce document est SUPERSEDED. Il ne décrit pas le frontend livré.**
 >

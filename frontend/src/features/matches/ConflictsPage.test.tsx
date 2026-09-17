@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Conflict } from "./api";
@@ -51,11 +51,23 @@ vi.mock("./api", () => ({
   postModuleVisit: vi.fn(() => Promise.resolve({ firstVisit: true, newFixturesCount: 0, newConflictFingerprints: [], planningChanged: false, referenceTakenAt: "2026-10-01T10:00:00+00:00" })),
 }));
 
+// Sonde de destination : « Voir la semaine » navigue vers /matchs ; on LIT la query de
+// la cible (l'A8 doit porter les masques dans l'URL — le store est écrasé par le seed).
+function CalendarProbe() {
+  const location = useLocation();
+  return (
+    <div>
+      <span>PLACER</span>
+      <span data-testid="calendar-search">{location.search}</span>
+    </div>
+  );
+}
+
 function renderAt(path = "/matchs/conflits") {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter(
     [
-      { path: "/matchs", element: <div>PLACER</div> },
+      { path: "/matchs", element: <CalendarProbe /> },
       { path: "/matchs/conflits", element: <ConflictsPage /> },
     ],
     { initialEntries: [path] },
@@ -370,10 +382,13 @@ describe("ConflictsPage — filtre Traitement, domicile, resets (B)", () => {
     renderAt();
     const voir = await screen.findByRole("button", { name: "Voir la semaine" });
     await user.click(voir);
-    // Les masques du Calendrier sont levés AVANT la navigation.
-    expect(useMatchesStore.getState().consultAway).toBe(true);
-    expect(useMatchesStore.getState().consultKinds).toContain("amical");
+    // Les masques du Calendrier sont portés par l'URL DE DESTINATION (le store serait écrasé
+    // par le seed de CalendarPage) : `exterieurs=1` (côté AWAY) + `type=…amical…` + `semaine=`.
+    await screen.findByText("PLACER");
+    const search = (await screen.findByTestId("calendar-search")).textContent ?? "";
+    expect(search).toMatch(/[?&]exterieurs=1/);
+    expect(search).toMatch(/[?&]type=[^&]*amical/);
+    expect(search).toMatch(/[?&]semaine=2026-10-03/);
     expect(useMatchesStore.getState().selectedWeekend).toBe("2026-10-03");
-    expect(await screen.findByText("PLACER")).toBeInTheDocument();
   });
 });

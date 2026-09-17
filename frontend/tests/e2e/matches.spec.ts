@@ -412,10 +412,12 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   // donc le token « <jour> <mois>. » du dimanche est contenu dans le titre du bouton.
   const voirTitle = (await voir.getAttribute("title")) ?? ""; // « Voir la semaine du <court> dans le Calendrier »
   await voir.click();
-  await expect(page).toHaveURL(/\/matchs$/);
-  // A8 — le conflit AWAY_NO_FOOTPRINT a un côté EXTÉRIEUR : « Voir la semaine » a levé
-  // l'interrupteur Extérieurs avant de naviguer (sinon la semaine visée serait masquée).
+  // A8 — « Voir la semaine » navigue vers le Calendrier avec les masques DANS L'URL (le
+  // conflit AWAY_NO_FOOTPRINT a un côté EXTÉRIEUR) : la query porte `exterieurs=1` d'emblée,
+  // donc l'URL n'est plus le `/matchs` nu — et l'interrupteur « Extérieurs » arrive ALLUMÉ.
+  await expect(page).toHaveURL(/\/matchs\?/);
   await expect(page).toHaveURL(/[?&]exterieurs=1/);
+  await expect(page.getByRole("switch", { name: "Extérieurs" })).toHaveAttribute("aria-checked", "true");
   const weekSpan = page.getByText(/^Semaine du .+ au .+$/);
   await expect(weekSpan).toBeVisible({ timeout: 15_000 });
   const weekText = (await weekSpan.textContent()) ?? "";
@@ -675,6 +677,14 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
     // visible dès la 1re semaine, la boucle n'avance jamais et l'URL ne porte pas `semaine=`.
     const todo = page.getByRole("button", { name: new RegExp(`vs ${opponent}`) });
     const nextWeek = page.getByRole("button", { name: "Semaine suivante" });
+    // COURSE : attendre que le refetch de la liste soit ARRIVÉ avant de sauter — le match créé
+    // apparaît dans « À placer » (qui couvre TOUTES les semaines, P4-197) ⇒ le cache est à jour.
+    // Sans cette attente, « Semaine suivante » est encore `disabled` (une seule semaine connue),
+    // la boucle ne saute jamais et le témoin lève à tort (rouge au 1er essai, vert au retry).
+    await expect(todo).toBeVisible({ timeout: 15_000 });
+    if (!page.url().includes(`semaine=${matchDate}`)) {
+      await expect(nextWeek).toBeEnabled({ timeout: 15_000 });
+    }
     for (let hops = 0; hops < 60 && !page.url().includes(`semaine=${matchDate}`) && (await nextWeek.isEnabled()); hops += 1) {
       await nextWeek.click();
       await page.waitForTimeout(120);
@@ -736,10 +746,16 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
     // la liste « À placer » (qui montre le match dès la 1re semaine → boucle figée).
     // Lot A — l'URL force types + extérieurs pour que l'amical créé soit visible au nettoyage.
     await page.goto("/matchs?type=amical,championnat,coupe,brassage&exterieurs=1");
+    // Best-effort : attendre que la page soit chargée avant de sonder les flèches (sinon
+    // `isEnabled()` lève sur un bouton encore absent). Tout est enveloppé pour ne jamais
+    // faire échouer le nettoyage.
+    await expect(page.getByRole("group", { name: "Semaine affichée" }))
+      .toBeVisible({ timeout: 15_000 })
+      .catch(() => {});
     const cell = page.getByRole("button", { name: new RegExp(`\\d\\d:\\d\\d · ${opponent}`) });
     const nextWeek = page.getByRole("button", { name: "Semaine suivante" });
-    for (let hops = 0; hops < 60 && !page.url().includes(`semaine=${matchDate}`) && (await nextWeek.isEnabled()); hops += 1) {
-      await nextWeek.click();
+    for (let hops = 0; hops < 60 && !page.url().includes(`semaine=${matchDate}`) && (await nextWeek.isEnabled().catch(() => false)); hops += 1) {
+      await nextWeek.click().catch(() => {});
       await page.waitForTimeout(120);
     }
     if (await cell.isVisible().catch(() => false)) {

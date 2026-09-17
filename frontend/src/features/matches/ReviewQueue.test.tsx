@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Fixture, Team, Venue } from "./api";
@@ -43,12 +43,22 @@ const homeAmical = {
   suggestedVenueId: null,
 } as unknown as Fixture;
 
+function CalendarProbe() {
+  const location = useLocation();
+  return (
+    <div>
+      <span>PLACER</span>
+      <span data-testid="calendar-search">{location.search}</span>
+    </div>
+  );
+}
+
 function renderQueue() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter(
     [
       { path: "/matchs/importer", element: <ReviewQueue fixtures={[homeAmical]} teams={[team]} venues={[venue]} /> },
-      { path: "/matchs", element: <div>PLACER</div> },
+      { path: "/matchs", element: <CalendarProbe /> },
     ],
     { initialEntries: ["/matchs/importer"] },
   );
@@ -64,14 +74,17 @@ beforeEach(() => {
 });
 
 describe("ReviewQueue.onPlace (A8)", () => {
-  it("« Replacer » un domicile amical lève le masque de type (amical) et pointe la rencontre", async () => {
+  it("« Replacer » un domicile amical porte le masque de type (amical) dans l'URL de destination + pointe la rencontre", async () => {
     const user = userEvent.setup();
     renderQueue();
     // Ouvrir l'accordéon de l'équipe puis « Replacer ».
     await user.click(await screen.findByRole("button", { name: /SM1/ }));
     await user.click(await screen.findByRole("button", { name: "Replacer" }));
-    expect(useMatchesStore.getState().consultKinds).toContain("amical");
+    // Le masque de type voyage DANS L'URL (le store serait écrasé par le seed de CalendarPage).
+    await screen.findByText("PLACER");
+    const search = (await screen.findByTestId("calendar-search")).textContent ?? "";
+    expect(search).toMatch(/[?&]type=[^&]*amical/);
+    // La rencontre pointée survit par le store (le seed n'y touche pas).
     expect(useMatchesStore.getState().selectedFixtureId).toBe("fx-1");
-    expect(await screen.findByText("PLACER")).toBeInTheDocument();
   });
 });

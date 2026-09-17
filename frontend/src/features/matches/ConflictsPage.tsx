@@ -21,7 +21,7 @@ import { CONFLICT_FAMILIES, CONFLICT_FAMILY_LABEL } from "./lib/conflictLabels";
 import { type ConflictPivotAxis, type ConflictPivotEntry, PIVOT_AXES, pivotConflicts } from "./lib/conflictPivot";
 import { countByTreatment, isOpenConflict, openConflictCount, RESOLUTION_LABEL, TREATMENT_KEYS, type TreatmentKey, treatmentOf } from "./lib/conflictResolution";
 import { applyFamilyFilter, countByFamily, DEFAULT_KINDS, dateOf, familiesPresent, hasHomeSide, normalizeKinds, revealPlan } from "./lib/consultFilter";
-import { applyConflictsToParams, decodeConflictsParams } from "./lib/urlState";
+import { applyConflictsToParams, applyConsultToParams, applyWeekendToParams, decodeConflictsParams } from "./lib/urlState";
 import { weekendKeyOf, weekendShortLabel } from "./lib/weekendGrid";
 import { useCoaches, useCompetitions, useConflicts, useFixtures, useModuleVisit, useTeams, useVenues } from "./queries";
 import { useMatchesStore } from "./store";
@@ -84,7 +84,7 @@ export function ConflictsPage() {
   const { data: me } = useMe();
   const canManage = isManagementRole(me?.role);
 
-  const { conflictsPivot, conflictsFamilies, setConflictsPivot, setConflictsFamilies, setSelectedWeekend, consultKinds, setConsultKinds, setConsultAway } = useMatchesStore();
+  const { conflictsPivot, conflictsFamilies, setConflictsPivot, setConflictsFamilies, setSelectedWeekend, consultKinds, consultFamilies, consultTypicalWeek, consultAway } = useMatchesStore();
 
   // « Traitement » (4 puces) et « domicile » vivent en état LOCAL, miroirs de
   // `?traitement=`/`?domicile=1` (patron `ReviewQueue` : l'URL différée revient « décochée »
@@ -275,22 +275,28 @@ export function ConflictsPage() {
     requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-conflicts-entries] button')?.focus());
   };
 
-  // A8 — « Voir la semaine » lève d'abord les masques du Calendrier (interrupteur Extérieurs
-  // si un côté est extérieur, puces des types référencés) AVANT de naviguer, pour que le
-  // conflit visé soit visible à l'arrivée.
-  const revealForConflict = (conflict: Conflict): void => {
+  // A8 — « Voir la semaine » navigue vers le Calendrier avec les masques levés DANS L'URL :
+  // le seed de `CalendarPage` REDÉFINIT l'état Consulter depuis l'URL (l'URL fait foi), donc
+  // poser le store ne suffirait pas — il serait écrasé. On PRÉSERVE l'état Consulter courant
+  // (kinds/familles/semaine type) et on n'ÉTEINT jamais un masque déjà levé.
+  const revealSearch = (conflict: Conflict, weekendKey: string): string => {
     const targets = [conflict.left?.fixtureId, conflict.right?.fixtureId, conflict.fixture?.fixtureId]
       .filter((id): id is string => undefined !== id)
       .map((id) => fixturesById.get(id))
       .filter((fx): fx is NonNullable<typeof fx> => undefined !== fx);
     const effectiveKinds = consultKinds ?? DEFAULT_KINDS;
     const plan = revealPlan(targets, effectiveKinds, competitionsMap);
-    if (plan.away) {
-      setConsultAway(true);
-    }
-    if (plan.kinds.length > 0) {
-      setConsultKinds(normalizeKinds([...effectiveKinds, ...plan.kinds]));
-    }
+    const kinds = plan.kinds.length > 0 ? normalizeKinds([...effectiveKinds, ...plan.kinds]) : consultKinds;
+    const params = applyConsultToParams(new URLSearchParams(), {
+      kinds,
+      families: consultFamilies,
+      typicalWeek: consultTypicalWeek,
+      away: plan.away || consultAway,
+      temps: "semaine",
+      month: null,
+      phaseId: null,
+    });
+    return applyWeekendToParams(params, weekendKey).toString();
   };
 
   // Un conflit daté offre « Voir la semaine » (vers Calendrier) ; sans date, aucun bouton.
@@ -306,9 +312,9 @@ export function ConflictsPage() {
         size="sm"
         title={`Voir la semaine du ${weekendShortLabel(saturday)} dans le Calendrier`}
         onClick={() => {
-          revealForConflict(conflict);
+          const search = revealSearch(conflict, saturday);
           setSelectedWeekend(saturday);
-          navigate("/matchs");
+          navigate({ pathname: "/matchs", search });
         }}
       >
         <CalendarDays className="size-4" aria-hidden="true" />

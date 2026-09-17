@@ -11,6 +11,7 @@ import { toast } from "@/shared/stores/toastStore";
 
 import type { AttachVenueLabelInput, Competition, Fixture, ResolveDeviationInput, Team, Venue } from "./api";
 import { DEFAULT_KINDS, normalizeKinds, revealPlan } from "./lib/consultFilter";
+import { applyConsultToParams } from "./lib/urlState";
 import { useAttachVenueLabel, useCompetitions, useResolveFixtureDeviation, useReviewFixtures } from "./queries";
 import { buildReviewQueue, byMatchDateAsc } from "./lib/reviewQueue";
 import { ReviewQueueRow } from "./ReviewQueueRow";
@@ -41,8 +42,9 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
   const setSelectedWeekend = useMatchesStore((s) => s.setSelectedWeekend);
   const setSelectedFixtureId = useMatchesStore((s) => s.setSelectedFixtureId);
   const consultKinds = useMatchesStore((s) => s.consultKinds);
-  const setConsultKinds = useMatchesStore((s) => s.setConsultKinds);
-  const setConsultAway = useMatchesStore((s) => s.setConsultAway);
+  const consultFamilies = useMatchesStore((s) => s.consultFamilies);
+  const consultTypicalWeek = useMatchesStore((s) => s.consultTypicalWeek);
+  const consultAway = useMatchesStore((s) => s.consultAway);
   const competitions = useCompetitions();
   const competitionsById = useMemo<Map<string, Competition>>(() => new Map((competitions.data ?? []).map((c) => [c.id, c])), [competitions.data]);
   const reviewFixtures = useReviewFixtures();
@@ -108,18 +110,25 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
     // s'ouvre directement à l'arrivée sur le Calendrier.
     setFilterMode("equipe");
     toggleFilterId(fixture.teamId);
-    // A8 — lève les masques qui cacheraient la rencontre cible (extérieur / type hors sélection).
+    // A8 — les masques (extérieur / type hors sélection) doivent voyager DANS L'URL : le seed de
+    // `CalendarPage` REDÉFINIT l'état Consulter depuis l'URL, donc poser le store serait écrasé.
+    // Le filtre PR-1 (équipe), la semaine et la rencontre pointée survivent, eux, par le store
+    // (le seed protège le filtre « store vierge », et ne touche ni semaine ni fixture pointée).
     const effectiveKinds = consultKinds ?? DEFAULT_KINDS;
     const plan = revealPlan([fixture], effectiveKinds, competitionsById);
-    if (plan.away) {
-      setConsultAway(true);
-    }
-    if (plan.kinds.length > 0) {
-      setConsultKinds(normalizeKinds([...effectiveKinds, ...plan.kinds]));
-    }
+    const kinds = plan.kinds.length > 0 ? normalizeKinds([...effectiveKinds, ...plan.kinds]) : consultKinds;
+    const params = applyConsultToParams(new URLSearchParams(), {
+      kinds,
+      families: consultFamilies,
+      typicalWeek: consultTypicalWeek,
+      away: plan.away || consultAway,
+      temps: "semaine",
+      month: null,
+      phaseId: null,
+    });
     setSelectedWeekend(weekendKeyOf(fixture.matchDate));
     setSelectedFixtureId(fixture.id);
-    void navigate("/matchs");
+    void navigate({ pathname: "/matchs", search: params.toString() });
   };
 
   const onValidateLine = (fixtureId: string): void => {
