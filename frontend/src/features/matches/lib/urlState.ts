@@ -1,7 +1,8 @@
 import type { ConflictType } from "../api";
 import { CONFLICT_FAMILIES } from "./conflictLabels";
 import type { ConflictPivotAxis } from "./conflictPivot";
-import { KINDS, type Kind } from "./consultFilter";
+import { DEFAULT_KINDS, KINDS, type Kind } from "./consultFilter";
+import { TREATMENT_KEYS, TREATMENT_SLUG, treatmentFromSlug, type TreatmentKey } from "./conflictResolution";
 import type { MatchFilterMode } from "./matchFilter";
 
 /**
@@ -94,14 +95,27 @@ function isTemps(value: string | null): value is ConsultTemps {
 }
 
 export interface ConsultParams {
+  /** `null` = les DÉFAUTS (championnat+coupe+brassage) ; une liste = sélection explicite
+   *  (y compris les 4 ou `[]`). Absent dans l'URL ⇔ null. */
   kinds: Kind[] | null;
   families: ConflictType[] | null;
+  /** Semaine type — MASQUÉE par défaut (`type_semaine=1` quand affichée). */
   typicalWeek: boolean;
+  /** Interrupteur « Extérieurs » — masqués par défaut (`exterieurs=1` quand affichés). */
+  away: boolean;
   temps: ConsultTemps;
   /** Mois affiché `YYYY-MM` (temporalité Mois) ; null = auto. */
   month: string | null;
   /** Compétition appariée affichée (temporalité Phase) ; null = auto/première. */
   phaseId: string | null;
+}
+
+/** `type=` absent ⇔ les DÉFAUTS : `null` OU une liste égale aux DÉFAUTS (3 types). */
+function isDefaultKinds(value: Kind[] | null): boolean {
+  if (null === value) {
+    return true;
+  }
+  return value.length === DEFAULT_KINDS.length && DEFAULT_KINDS.every((k) => value.includes(k));
 }
 
 function decodeList<T extends string>(raw: string | null, valid: readonly T[]): T[] | null {
@@ -120,10 +134,13 @@ export function decodeConsultParams(params: URLSearchParams): ConsultParams {
   const rawMonth = params.get("mois");
   const rawPhase = params.get("phase");
   return {
+    // absent ⇒ null (= les DÉFAUTS) ; liste (dont `[]` pour `type=` vide) = sélection explicite.
     kinds: decodeList(params.get("type"), KINDS),
     families: decodeList(params.get("conflits"), CONFLICT_FAMILIES),
-    // absent ou "1" ⇒ affichée ; "0" ⇒ masquée.
-    typicalWeek: "0" !== params.get("type_semaine"),
+    // INVERSÉ (défaut masquée) : "1" ⇒ affichée ; absent/"0"/autre ⇒ masquée.
+    typicalWeek: "1" === params.get("type_semaine"),
+    // Extérieurs masqués par défaut : "1" ⇒ affichés.
+    away: "1" === params.get("exterieurs"),
     // semaine · mois · phase ; toute autre valeur retombe sur semaine (défaut).
     temps: isTemps(params.get("temps")) ? (params.get("temps") as ConsultTemps) : "semaine",
     // `mois` doit être un YYYY-MM valide (une valeur bidon est ignorée) ; `phase` est
@@ -135,9 +152,9 @@ export function decodeConsultParams(params: URLSearchParams): ConsultParams {
 
 /**
  * Renvoie une NOUVELLE `URLSearchParams` (autres params préservés) portant les
- * filtres Consulter. `null` OU la sélection PLEINE (les 4 types / les 9 familles) =
- * défaut ⇒ param absent ; semaine type affichée (défaut) ⇒ `type_semaine` absent ;
- * `temps` = `semaine` (défaut) ⇒ absent.
+ * filtres Consulter. `type` : absent ⇔ défaut (les 3), sinon liste explicite ;
+ * `conflits` : `null`/plein ⇒ absent ; `type_semaine=1`/`exterieurs=1` seulement quand
+ * ALLUMÉS ; `temps` = `semaine` (défaut) ⇒ absent.
  */
 export function applyConsultToParams(current: URLSearchParams, consult: ConsultParams): URLSearchParams {
   const next = new URLSearchParams(current);
@@ -148,12 +165,26 @@ export function applyConsultToParams(current: URLSearchParams, consult: ConsultP
       next.set(key, value.join(","));
     }
   };
-  writeList("type", consult.kinds, KINDS.length);
-  writeList("conflits", consult.families, CONFLICT_FAMILIES.length);
-  if (consult.typicalWeek) {
-    next.delete("type_semaine");
+  // `type` : absent ⇔ défaut (les 3) ; toute autre sélection = liste EXPLICITE, y compris
+  // les 4 (`type=amical,championnat,coupe,brassage`) ou `[]` (`type=` vide, zéro coché).
+  if (isDefaultKinds(consult.kinds)) {
+    next.delete("type");
   } else {
-    next.set("type_semaine", "0");
+    next.set("type", (consult.kinds ?? []).join(","));
+  }
+  writeList("conflits", consult.families, CONFLICT_FAMILIES.length);
+  // INVERSÉ : `type_semaine=1` quand ALLUMÉE, supprimé sinon (un ancien `type_semaine=0`
+  // décode « éteinte » et se réécrit en absence par ce passage).
+  if (consult.typicalWeek) {
+    next.set("type_semaine", "1");
+  } else {
+    next.delete("type_semaine");
+  }
+  // Extérieurs : `exterieurs=1` quand allumé, absent sinon.
+  if (consult.away) {
+    next.set("exterieurs", "1");
+  } else {
+    next.delete("exterieurs");
   }
   // `temps` absent quand semaine (défaut) ; `mois`/`phase` n'existent que sous LEUR
   // temporalité (une sélection posée sous une autre temporalité ne pollue pas l'URL).
@@ -191,16 +222,47 @@ function isPivot(value: string | null): value is ConflictPivotAxis {
 export interface ConflictsParams {
   pivot: ConflictPivotAxis;
   families: ConflictType[] | null;
-  /** P4-207 — « Masquer les traités » : `?traites=masques` (absent = affichés). */
-  hideTreated: boolean;
+  /**
+   * Filtre « Traitement » — `null` = tout (les 4 aussi ⇒ absent) ; une liste = sélection
+   * explicite (`traitement=a_traiter,derogation`). Rétro-compat P4-207 : `traites=masques`
+   * décode `["a_traiter"]` (réécrit `traitement=a_traiter`, `traites` supprimé) ; si les
+   * deux coexistent, `traitement` gagne.
+   */
+  treatments: TreatmentKey[] | null;
+  /** « Seulement avec un match à domicile » : `domicile=1` (absent = tous). */
+  homeOnly: boolean;
+}
+
+/** Décode une liste de slugs `traitement=` en clés connues (slug inconnu ignoré), dédoublonnée. */
+function decodeTreatments(raw: string | null): TreatmentKey[] | null {
+  if (null === raw) {
+    return null;
+  }
+  const parsed = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => "" !== s)
+    .map(treatmentFromSlug)
+    .filter((k): k is TreatmentKey => null !== k);
+  return [...new Set(parsed)];
 }
 
 export function decodeConflictsParams(params: URLSearchParams): ConflictsParams {
   const rawPivot = params.get("pivot");
+  const rawTraitement = params.get("traitement");
+  let treatments: TreatmentKey[] | null;
+  if (null !== rawTraitement) {
+    treatments = decodeTreatments(rawTraitement);
+  } else if ("masques" === params.get("traites")) {
+    treatments = ["a_traiter"]; // legacy P4-207 « Masquer les traités »
+  } else {
+    treatments = null;
+  }
   return {
     pivot: isPivot(rawPivot) ? rawPivot : "coach",
     families: decodeList(params.get("conflits"), CONFLICT_FAMILIES),
-    hideTreated: "masques" === params.get("traites"),
+    treatments,
+    homeOnly: "1" === params.get("domicile"),
   };
 }
 
@@ -216,11 +278,17 @@ export function applyConflictsToParams(current: URLSearchParams, conflicts: Conf
   } else {
     next.set("conflits", conflicts.families.join(","));
   }
-  // Affichés (défaut) ⇒ param absent ; masqués ⇒ `traites=masques`.
-  if (conflicts.hideTreated) {
-    next.set("traites", "masques");
+  // Le legacy `traites=masques` est TOUJOURS purgé (réécrit en `traitement=`).
+  next.delete("traites");
+  if (null === conflicts.treatments || conflicts.treatments.length === TREATMENT_KEYS.length) {
+    next.delete("traitement");
   } else {
-    next.delete("traites");
+    next.set("traitement", conflicts.treatments.map((k) => TREATMENT_SLUG[k]).join(","));
+  }
+  if (conflicts.homeOnly) {
+    next.set("domicile", "1");
+  } else {
+    next.delete("domicile");
   }
   return next;
 }

@@ -1,13 +1,15 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-09-14 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
-cette PR — P4-198, frontend seul). Re-vérifié contre le code, tout juste : `RedatePreviewController`
-(`backend/src/Controller/RedatePreviewController.php:36`) ✓, `SplitMotherRedatePlanner`
-(`backend/src/Service/SplitMotherRedatePlanner.php:41`) ✓,
+Last verified @ 2026-09-17 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+cette PR — défauts Calendrier + filtres Conflits, frontend seul). Re-vérifié contre le code, tout
+juste : `RedatePreviewController` (`backend/src/Controller/RedatePreviewController.php:36`) ✓,
+`SplitMotherRedatePlanner` (`backend/src/Service/SplitMotherRedatePlanner.php:41`) ✓,
 `CalendarEntryRedatability::redateNeedsPreview` (`backend/src/Service/CalendarEntryRedatability.php:68`) ✓,
-`CalendarEntryResource.redateNeedsPreview` (`backend/src/ApiResource/CalendarEntryResource.php:78`) ✓.
-Rien de faux trouvé cette passe. Reste du fichier (E1-E6, D1-D10bis, historique des décisions) non
-re-confronté ligne à ligne cette passe.
+`CalendarEntryResource.redateNeedsPreview` (`backend/src/ApiResource/CalendarEntryResource.php:78`) ✓,
+`CalendarEntryStateProcessor::assertValidWeekChild`
+(`backend/src/State/Processor/CalendarEntryStateProcessor.php:673`) ✓, `segmentsFromOffer`
+(`frontend/src/features/cockpit/lib/date.ts:231`) ✓. Rien de faux trouvé cette passe. Reste du
+fichier (E1-E6, D1-D10bis, historique des décisions) non re-confronté ligne à ligne cette passe.
 
 > **Rôle de ce document** : la trace durable du modèle métier des plannings, validé avec le
 > fondateur le 2026-07-12. C'est LA référence à consulter avant tout travail sur la

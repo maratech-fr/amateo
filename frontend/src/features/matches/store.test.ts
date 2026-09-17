@@ -67,15 +67,16 @@ describe("useMatchesStore — filtre de la vue Semaine (PR-1)", () => {
   });
 });
 
-describe("useMatchesStore — filtres Consulter (PR-2a)", () => {
+describe("useMatchesStore — filtres Consulter (A)", () => {
   beforeEach(() => {
-    useMatchesStore.setState({ consultKinds: null, consultFamilies: null, consultTypicalWeek: true });
+    useMatchesStore.setState({ consultKinds: null, consultFamilies: null, consultTypicalWeek: false, consultAway: false });
   });
 
-  it("défauts : kinds/families null (= tout), semaine type affichée", () => {
+  it("défauts : kinds/families null, semaine type MASQUÉE, extérieurs MASQUÉS", () => {
     expect(useMatchesStore.getState().consultKinds).toBeNull();
     expect(useMatchesStore.getState().consultFamilies).toBeNull();
-    expect(useMatchesStore.getState().consultTypicalWeek).toBe(true);
+    expect(useMatchesStore.getState().consultTypicalWeek).toBe(false);
+    expect(useMatchesStore.getState().consultAway).toBe(false);
   });
 
   it("setConsultKinds pose la sélection de types de compétition", () => {
@@ -93,8 +94,15 @@ describe("useMatchesStore — filtres Consulter (PR-2a)", () => {
   });
 
   it("setConsultTypicalWeek bascule la semaine type", () => {
-    useMatchesStore.getState().setConsultTypicalWeek(false);
-    expect(useMatchesStore.getState().consultTypicalWeek).toBe(false);
+    useMatchesStore.getState().setConsultTypicalWeek(true);
+    expect(useMatchesStore.getState().consultTypicalWeek).toBe(true);
+  });
+
+  it("setConsultAway bascule l'interrupteur Extérieurs", () => {
+    useMatchesStore.getState().setConsultAway(true);
+    expect(useMatchesStore.getState().consultAway).toBe(true);
+    useMatchesStore.getState().setConsultAway(false);
+    expect(useMatchesStore.getState().consultAway).toBe(false);
   });
 });
 

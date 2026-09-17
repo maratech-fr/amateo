@@ -34,3 +34,45 @@ export const isOpenConflict = (conflict: Conflict): boolean => null == conflict.
 
 /** Le nombre de conflits À TRAITER dans un lot (les données absentes ⇒ 0, jamais « · 0 » fabriqué). */
 export const openConflictCount = (conflicts: Conflict[] | undefined): number => (conflicts ?? []).filter(isOpenConflict).length;
+
+/**
+ * L'axe de FILTRE « Traitement » de l'onglet Conflits : « à traiter » (l'ABSENCE de
+ * résolution) + les trois statuts de `ConflictResolutionStatus`. « à traiter » n'est
+ * PAS un statut serveur, d'où la clé distincte `"a_traiter"`.
+ */
+export type TreatmentKey = "a_traiter" | ConflictResolutionStatus;
+
+/** Les 4 clés, dans l'ordre des puces (« à traiter » en tête). */
+export const TREATMENT_KEYS: TreatmentKey[] = ["a_traiter", "DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET"];
+
+/**
+ * Slug URL par clé — TABLE `Record` exhaustive (TypeScript exige les 4), jamais un
+ * `switch`. PRÉSENTATION du deep-link : `?traitement=derogation,regle_interne`.
+ */
+export const TREATMENT_SLUG: Record<TreatmentKey, string> = {
+  a_traiter: "a_traiter",
+  DEROGATION_REQUESTED: "derogation",
+  RESOLVED_INTERNALLY: "regle_interne",
+  NO_SOLUTION_YET: "sans_solution",
+};
+
+const SLUG_TO_TREATMENT: Record<string, TreatmentKey> = Object.fromEntries(
+  (Object.keys(TREATMENT_SLUG) as TreatmentKey[]).map((key) => [TREATMENT_SLUG[key], key]),
+) as Record<string, TreatmentKey>;
+
+/** La clé d'un slug URL connu, sinon `null` (slug inconnu ignoré au décodage). */
+export const treatmentFromSlug = (slug: string): TreatmentKey | null => SLUG_TO_TREATMENT[slug] ?? null;
+
+/** Le traitement d'un conflit : son statut de résolution, sinon « à traiter ». */
+export const treatmentOf = (conflict: Conflict): TreatmentKey => conflict.resolution?.status ?? "a_traiter";
+
+/** Compte par clé de traitement (les 4) sur un lot — compteurs FIXES saison (doctrine
+ *  de la page : un filtre change l'affichage, jamais les compteurs). */
+export function countByTreatment(conflicts: Conflict[]): Map<TreatmentKey, number> {
+  const counts = new Map<TreatmentKey, number>();
+  for (const conflict of conflicts) {
+    const key = treatmentOf(conflict);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}

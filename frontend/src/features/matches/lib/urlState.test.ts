@@ -63,25 +63,32 @@ describe("applyFilterToParams", () => {
   });
 });
 
-describe("decodeConsultParams (PR-2a)", () => {
-  it("params absents ⇒ kinds/families null (= tout), semaine type affichée, temps semaine, mois/phase null", () => {
-    expect(decodeConsultParams(new URLSearchParams(""))).toEqual({ kinds: null, families: null, typicalWeek: true, temps: "semaine", month: null, phaseId: null });
+describe("decodeConsultParams (A — défauts + extérieurs)", () => {
+  it("params absents ⇒ kinds/families null, semaine type MASQUÉE, extérieurs MASQUÉS, temps semaine, mois/phase null", () => {
+    expect(decodeConsultParams(new URLSearchParams(""))).toEqual({ kinds: null, families: null, typicalWeek: false, away: false, temps: "semaine", month: null, phaseId: null });
   });
 
-  it("type ⇒ liste filtrée sur les valeurs connues, dédoublonnée", () => {
+  it("type ⇒ liste filtrée sur les valeurs connues, dédoublonnée ; type= vide ⇒ [] (zéro coché)", () => {
     expect(decodeConsultParams(new URLSearchParams("type=coupe,amical,coupe,ghost")).kinds).toEqual(["coupe", "amical"]);
+    expect(decodeConsultParams(new URLSearchParams("type=")).kinds).toEqual([]);
   });
 
   it("conflits ⇒ liste de familles filtrée sur les valeurs connues", () => {
     expect(decodeConsultParams(new URLSearchParams("conflits=MATCH_MATCH,GHOST,TEAM_LINK_OVERLAP")).families).toEqual(["MATCH_MATCH", "TEAM_LINK_OVERLAP"]);
   });
 
-  it("type_semaine=0 ⇒ semaine type masquée ; 1/absent ⇒ affichée", () => {
-    expect(decodeConsultParams(new URLSearchParams("type_semaine=0")).typicalWeek).toBe(false);
+  it("type_semaine INVERSÉ : 1 ⇒ affichée ; absent/0 ⇒ masquée", () => {
     expect(decodeConsultParams(new URLSearchParams("type_semaine=1")).typicalWeek).toBe(true);
+    expect(decodeConsultParams(new URLSearchParams("type_semaine=0")).typicalWeek).toBe(false);
+    expect(decodeConsultParams(new URLSearchParams("")).typicalWeek).toBe(false);
   });
 
-  it("temps accepte semaine · mois · phase (PR-2b) ; valeur inconnue ⇒ repli semaine", () => {
+  it("exterieurs=1 ⇒ affichés ; absent ⇒ masqués", () => {
+    expect(decodeConsultParams(new URLSearchParams("exterieurs=1")).away).toBe(true);
+    expect(decodeConsultParams(new URLSearchParams("")).away).toBe(false);
+  });
+
+  it("temps accepte semaine · mois · phase ; valeur inconnue ⇒ repli semaine", () => {
     expect(decodeConsultParams(new URLSearchParams("temps=mois")).temps).toBe("mois");
     expect(decodeConsultParams(new URLSearchParams("temps=phase")).temps).toBe("phase");
     expect(decodeConsultParams(new URLSearchParams("temps=ghost")).temps).toBe("semaine");
@@ -95,45 +102,56 @@ describe("decodeConsultParams (PR-2a)", () => {
   });
 });
 
-describe("applyConsultToParams (PR-2a/2b)", () => {
-  it("défauts (tout coché, semaine type, temps semaine) ⇒ aucun param", () => {
-    expect(applyConsultToParams(new URLSearchParams(""), { kinds: null, families: null, typicalWeek: true, temps: "semaine", month: null, phaseId: null }).toString()).toBe("");
+describe("applyConsultToParams (A — type défauts, type_semaine/exterieurs inversés)", () => {
+  const base = { kinds: null, families: null, typicalWeek: false, away: false, temps: "semaine" as const, month: null, phaseId: null };
+
+  it("défauts (kinds null, semaine type éteinte, extérieurs éteints, temps semaine) ⇒ aucun param", () => {
+    expect(applyConsultToParams(new URLSearchParams(""), base).toString()).toBe("");
   });
 
-  it("sélection partielle de types ⇒ type écrit ; semaine type masquée ⇒ type_semaine=0", () => {
-    const out = applyConsultToParams(new URLSearchParams(""), { kinds: ["amical", "coupe"], families: null, typicalWeek: false, temps: "semaine", month: null, phaseId: null });
-    expect(out.get("type")).toBe("amical,coupe");
-    expect(out.get("type_semaine")).toBe("0");
-    expect(out.get("conflits")).toBeNull();
+  it("kinds = les DÉFAUTS (3) ⇒ type absent ; kinds explicites (dont les 4) ⇒ type écrit", () => {
+    expect(applyConsultToParams(new URLSearchParams(""), { ...base, kinds: ["championnat", "coupe", "brassage"] }).has("type")).toBe(false);
+    expect(applyConsultToParams(new URLSearchParams(""), { ...base, kinds: ["amical", "championnat", "coupe", "brassage"] }).get("type")).toBe("amical,championnat,coupe,brassage");
+    expect(applyConsultToParams(new URLSearchParams(""), { ...base, kinds: ["amical", "coupe"] }).get("type")).toBe("amical,coupe");
   });
 
-  it("familles partielles ⇒ conflits écrit", () => {
-    expect(applyConsultToParams(new URLSearchParams(""), { kinds: null, families: ["MATCH_MATCH"], typicalWeek: true, temps: "semaine", month: null, phaseId: null }).get("conflits")).toBe("MATCH_MATCH");
+  it("zéro coché ⇒ type= vide", () => {
+    expect(applyConsultToParams(new URLSearchParams(""), { ...base, kinds: [] }).toString()).toBe("type=");
   });
 
-  it("préserve les params sans rapport", () => {
-    expect(applyConsultToParams(new URLSearchParams("autre=1"), { kinds: null, families: null, typicalWeek: true, temps: "semaine", month: null, phaseId: null }).get("autre")).toBe("1");
+  it("semaine type affichée ⇒ type_semaine=1 ; extérieurs affichés ⇒ exterieurs=1", () => {
+    const out = applyConsultToParams(new URLSearchParams(""), { ...base, typicalWeek: true, away: true });
+    expect(out.get("type_semaine")).toBe("1");
+    expect(out.get("exterieurs")).toBe("1");
+  });
+
+  it("un ancien type_semaine=0 se réécrit en absence", () => {
+    expect(applyConsultToParams(new URLSearchParams("type_semaine=0"), base).has("type_semaine")).toBe(false);
+  });
+
+  it("familles partielles ⇒ conflits écrit ; préserve les params sans rapport", () => {
+    expect(applyConsultToParams(new URLSearchParams(""), { ...base, families: ["MATCH_MATCH"] }).get("conflits")).toBe("MATCH_MATCH");
+    expect(applyConsultToParams(new URLSearchParams("autre=1"), base).get("autre")).toBe("1");
   });
 
   it("temps mois + mois écrit temps=mois & mois=YYYY-MM (phase absente)", () => {
-    const out = applyConsultToParams(new URLSearchParams(""), { kinds: null, families: null, typicalWeek: true, temps: "mois", month: "2026-10", phaseId: "comp-1" });
+    const out = applyConsultToParams(new URLSearchParams(""), { ...base, temps: "mois", month: "2026-10", phaseId: "comp-1" });
     expect(out.get("temps")).toBe("mois");
     expect(out.get("mois")).toBe("2026-10");
     expect(out.get("phase")).toBeNull();
   });
 
-  it("temps phase + phaseId écrit temps=phase & phase=<id> (mois absent)", () => {
-    const out = applyConsultToParams(new URLSearchParams(""), { kinds: null, families: null, typicalWeek: true, temps: "phase", month: "2026-10", phaseId: "comp-1" });
-    expect(out.get("temps")).toBe("phase");
-    expect(out.get("phase")).toBe("comp-1");
-    expect(out.get("mois")).toBeNull();
-  });
-
   it("temps semaine ⇒ ni temps ni mois ni phase, même si month/phaseId posés", () => {
-    const out = applyConsultToParams(new URLSearchParams(""), { kinds: null, families: null, typicalWeek: true, temps: "semaine", month: "2026-10", phaseId: "comp-1" });
+    const out = applyConsultToParams(new URLSearchParams(""), { ...base, month: "2026-10", phaseId: "comp-1" });
     expect(out.get("temps")).toBeNull();
     expect(out.get("mois")).toBeNull();
     expect(out.get("phase")).toBeNull();
+  });
+
+  it("aller-retour : legacy type_semaine=0 décode false et se réécrit en absence", () => {
+    const decoded = decodeConsultParams(new URLSearchParams("type_semaine=0"));
+    expect(decoded.typicalWeek).toBe(false);
+    expect(applyConsultToParams(new URLSearchParams("type_semaine=0"), decoded).has("type_semaine")).toBe(false);
   });
 });
 
@@ -189,9 +207,9 @@ describe("applySectionToParams (PR 2a)", () => {
   });
 });
 
-describe("decodeConflictsParams (onglet Conflits, PR A)", () => {
-  it("params absents ⇒ pivot coach (défaut), familles null (= tout), traités affichés", () => {
-    expect(decodeConflictsParams(new URLSearchParams(""))).toEqual({ pivot: "coach", families: null, hideTreated: false });
+describe("decodeConflictsParams (onglet Conflits, B)", () => {
+  it("params absents ⇒ pivot coach, familles null, treatments null, domicile false", () => {
+    expect(decodeConflictsParams(new URLSearchParams(""))).toEqual({ pivot: "coach", families: null, treatments: null, homeOnly: false });
   });
 
   it("lit pivot + conflits (familles), pivot inconnu ⇒ repli coach", () => {
@@ -200,39 +218,57 @@ describe("decodeConflictsParams (onglet Conflits, PR A)", () => {
     expect(decodeConflictsParams(new URLSearchParams("conflits=MATCH_MATCH,VENUE_OVERLAP")).families).toEqual(["MATCH_MATCH", "VENUE_OVERLAP"]);
   });
 
-  it("traites=masques ⇒ hideTreated ; absent ou autre ⇒ false (P4-207)", () => {
-    expect(decodeConflictsParams(new URLSearchParams("traites=masques")).hideTreated).toBe(true);
-    expect(decodeConflictsParams(new URLSearchParams("")).hideTreated).toBe(false);
-    expect(decodeConflictsParams(new URLSearchParams("traites=xxx")).hideTreated).toBe(false);
+  it("traitement = liste de slugs → clés (slug inconnu ignoré, dédoublonné)", () => {
+    expect(decodeConflictsParams(new URLSearchParams("traitement=a_traiter,derogation,ghost,derogation")).treatments).toEqual(["a_traiter", "DEROGATION_REQUESTED"]);
+    expect(decodeConflictsParams(new URLSearchParams("traitement=regle_interne,sans_solution")).treatments).toEqual(["RESOLVED_INTERNALLY", "NO_SOLUTION_YET"]);
+  });
+
+  it("domicile=1 ⇒ homeOnly", () => {
+    expect(decodeConflictsParams(new URLSearchParams("domicile=1")).homeOnly).toBe(true);
+    expect(decodeConflictsParams(new URLSearchParams("")).homeOnly).toBe(false);
+  });
+
+  it("rétro-compat traites=masques ⇒ treatments=[a_traiter] ; traitement gagne si les deux coexistent", () => {
+    expect(decodeConflictsParams(new URLSearchParams("traites=masques")).treatments).toEqual(["a_traiter"]);
+    expect(decodeConflictsParams(new URLSearchParams("traites=masques&traitement=derogation")).treatments).toEqual(["DEROGATION_REQUESTED"]);
   });
 });
 
-describe("applyConflictsToParams (onglet Conflits, PR A)", () => {
-  it("pivot coach (défaut) + familles null + traités affichés ⇒ rien dans l'URL", () => {
-    expect(applyConflictsToParams(new URLSearchParams(""), { pivot: "coach", families: null, hideTreated: false }).toString()).toBe("");
+describe("applyConflictsToParams (onglet Conflits, B)", () => {
+  const base = { pivot: "coach" as const, families: null, treatments: null, homeOnly: false };
+
+  it("défauts ⇒ rien dans l'URL", () => {
+    expect(applyConflictsToParams(new URLSearchParams(""), base).toString()).toBe("");
   });
 
   it("pivot ≠ coach ⇒ écrit ; familles partielles ⇒ conflits écrit", () => {
-    const out = applyConflictsToParams(new URLSearchParams(""), { pivot: "journee", families: ["MATCH_MATCH"], hideTreated: false });
+    const out = applyConflictsToParams(new URLSearchParams(""), { ...base, pivot: "journee", families: ["MATCH_MATCH"] });
     expect(out.get("pivot")).toBe("journee");
     expect(out.get("conflits")).toBe("MATCH_MATCH");
   });
 
-  it("hideTreated ⇒ traites=masques ; false ⇒ param absent (P4-207)", () => {
-    expect(applyConflictsToParams(new URLSearchParams(""), { pivot: "coach", families: null, hideTreated: true }).get("traites")).toBe("masques");
-    expect(applyConflictsToParams(new URLSearchParams("traites=masques"), { pivot: "coach", families: null, hideTreated: false }).has("traites")).toBe(false);
+  it("treatments partiels ⇒ traitement=slugs ; les 4 ⇒ absent ; toujours purge le legacy traites", () => {
+    expect(applyConflictsToParams(new URLSearchParams(""), { ...base, treatments: ["a_traiter", "DEROGATION_REQUESTED"] }).get("traitement")).toBe("a_traiter,derogation");
+    expect(applyConflictsToParams(new URLSearchParams(""), { ...base, treatments: ["a_traiter", "DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET"] }).has("traitement")).toBe(false);
+    expect(applyConflictsToParams(new URLSearchParams("traites=masques"), base).has("traites")).toBe(false);
+  });
+
+  it("domicile ⇒ domicile=1 ; false ⇒ absent", () => {
+    expect(applyConflictsToParams(new URLSearchParams(""), { ...base, homeOnly: true }).get("domicile")).toBe("1");
+    expect(applyConflictsToParams(new URLSearchParams("domicile=1"), base).has("domicile")).toBe(false);
   });
 
   it("préserve les params sans rapport (ex. ?ouvert)", () => {
-    const out = applyConflictsToParams(new URLSearchParams("ouvert=coach-1"), { pivot: "equipe", families: null, hideTreated: false });
+    const out = applyConflictsToParams(new URLSearchParams("ouvert=coach-1"), { ...base, pivot: "equipe" });
     expect(out.get("ouvert")).toBe("coach-1");
     expect(out.get("pivot")).toBe("equipe");
     expect(out.has("conflits")).toBe(false);
   });
 
-  it("aller-retour cohérent (pivot + hideTreated)", () => {
-    const round = decodeConflictsParams(applyConflictsToParams(new URLSearchParams(""), { pivot: "gymnase", families: null, hideTreated: true }));
-    expect(round.pivot).toBe("gymnase");
-    expect(round.hideTreated).toBe(true);
+  it("aller-retour legacy : traites=masques décode a_traiter et se réécrit traitement=a_traiter (traites purgé)", () => {
+    const decoded = decodeConflictsParams(new URLSearchParams("traites=masques"));
+    const out = applyConflictsToParams(new URLSearchParams("traites=masques"), decoded);
+    expect(out.get("traitement")).toBe("a_traiter");
+    expect(out.has("traites")).toBe(false);
   });
 });

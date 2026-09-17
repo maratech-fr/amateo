@@ -1780,9 +1780,10 @@ part : une barre de filtres sur la vue Semaine, même patron que `/planning`.
   `FbiEntryList` — comportement inchangé, détaillé § « Refonte UX — RMM-1 » ci-dessous (groupage
   équipe, filtre équipe/date, « Tout marquer saisi » borné à l'affiché).
 - **URL fusionnée** (`lib/urlState.ts`) : `vue`/`filtre` (PR-1) + `type`/`conflits`/`type_semaine`/
-  `temps`/`mois`/`phase` (Consulter, inchangés) + **`semaine=YYYY-MM-DD`** (NEUF, clé samedi de la
-  semaine affichée, absente ou mal formée ⇒ auto). Seedée une fois au montage ; ne clobber jamais
-  une semaine posée par une navigation (« Voir la semaine » depuis Conflits, clic sur une ligne
+  `exterieurs`/`temps`/`mois`/`phase` (Consulter, défauts et sens détaillés § « Détail — filtres… »
+  ci-dessous, revus le 2026-09-16/17) + **`semaine=YYYY-MM-DD`** (NEUF, clé samedi de la semaine
+  affichée, absente ou mal formée ⇒ auto). Seedée une fois au montage ; ne clobber jamais une
+  semaine posée par une navigation (« Voir la semaine » depuis Conflits, clic sur une ligne
   Mois/Phase).
 - **Barre d'actions** : « Placer automatiquement » SEUL bouton primaire (crédits affichés) ;
   « Nouveau match » secondaire (`outline`) ; `FeedbackButton`.
@@ -1813,18 +1814,56 @@ supprimé, fusionné dans `CalendarPage.tsx`/`CalendarControls.tsx`/`MonthTable.
 
 - **Filtre PR-1 partagé** entre les trois temporalités (même `filterMode/filterIds`, même URL
   `?vue=&filtre=`) : « Thomas » suit le gestionnaire de Semaine à Mois à Phase.
-- **Type de compétition** (chips multi, défaut tout) : amical = `competitionId` null ; championnat / coupe / brassage =
+- **Types de compétition** (chips multi, groupe « Types ») — **défauts revus le 2026-09-16/17**
+  (décision fondateur) : championnat + coupe + brassage cochés, **amical décoché**
+  (`DEFAULT_KINDS`, `lib/consultFilter.ts`) ; `consultKinds === null` (store) veut dire « les
+  DÉFAUTS », plus « tout » — `effectiveKinds = consultKinds ?? DEFAULT_KINDS`
+  (`CalendarPage.tsx`). amical = `competitionId` null ; championnat / coupe / brassage =
   `Competition.competitionType`. **Depuis P4-194 (2026-09-10)** une rencontre de coupe non appariée
   n'arrive plus sans `competitionId` — le canal API lui fait naître ou réutiliser une `Competition`
   `CUP` à l'intégration (§ « Le canal API FFBB » du présent fichier) — elle se range désormais sous
   « Coupe », plus sous « Amical », et redevient soumise aux fenêtres ligue et au blocage de
   placement hors créneau. Un conflit suit ses rencontres référencées ; un calendrier incomplet suit
   sa compétition ; un conflit sans rencontre ni compétition reste visible tant que « tout » est coché.
-- **Semaine type** (interrupteur, affichée par défaut, temporalité Semaine seule) : la grille avec ou sans les cases « Habitude … ».
-  ⚠ **Ne gouverne QUE les fantômes d'habitude** (`showGhosts` → `buildWeekendGrid`) : l'heure ESTIMÉE
+- **Semaine type** (interrupteur, groupe « Afficher », **MASQUÉE par défaut** depuis le
+  2026-09-16/17 — `consultTypicalWeek` initial `false`, `store.ts` ; auparavant affichée par
+  défaut), temporalité Semaine seule : la grille avec ou sans les cases « Habitude … ». ⚠ **Ne
+  gouverne QUE les fantômes d'habitude** (`showGhosts` → `buildWeekendGrid`) : l'heure ESTIMÉE
   d'un extérieur (colonne « Extérieur », § « Palier A — PR-3 » ci-dessus) reste calculée depuis les
   habitudes que l'interrupteur soit sur ON ou OFF — décision superviseur 2026-09-16, sinon la colonne
   dirait « heure inconnue » pendant que la bande `AwayList` du même écran estime déjà.
+- **Extérieurs** (interrupteur, groupe « Afficher », icône `Bus`, **MASQUÉS par défaut**,
+  `consultAway`, décision fondateur 2026-09-16/17) — présent sous les TROIS temporalités. Éteint :
+  la colonne « Extérieur » de la grille, la bande « sans heure », `AwayList` et les lignes
+  extérieures des tables Mois/Phase disparaissent de l'AFFICHAGE (`visibleFixtures`,
+  `CalendarPage.tsx`) ; une semaine/un mois 100 % masqué sort des flèches ‹ › (`weekends`/`months`
+  dérivés de `visibleFixtures`). **NE sont JAMAIS filtrés par cet interrupteur** : `WeekCounters`
+  (calculé sur `weekendFixturesAll`, extérieurs INCLUS), la liste « à saisir dans FBI », la
+  complétude de phase (`phaseGroupsAll`/`phaseAllFixtures`), et TOUT le pipeline conflits (radar,
+  badge de nav, compteurs de familles) — un conflit coach domicile × extérieur reste au radar
+  interrupteur éteint (NR dédié « cas Mara », `CalendarPage.test.tsx`). **Revient sur la décision
+  du lot 3** « les extérieurs vivent DANS la grille » (§ « Palier A — PR-3 » ci-dessus) : ils y
+  restent TOUJOURS, mais désormais derrière cet interrupteur — décision fermée, § 2 de
+  `etat-des-lieux.md`.
+- **Indice « N matchs masqués »** (`HiddenMatchesWeekNotice`, `UnpairedVenueLabelsBanner.tsx`,
+  frère de `HiddenHomesWeekNotice`) — sous la grille de la semaine ET sous son état vide (sinon
+  « Aucun match cette semaine » mentirait si des matchs existent mais sont masqués) :
+  « N matchs masqués cette semaine (3 extérieurs, 1 amical) · Afficher ». Décompte
+  `hiddenWeekBreakdown` (`lib/consultFilter.ts`) sur la semaine RÉELLEMENT affichée, priorité au
+  TYPE (un extérieur d'un type décoché compte une fois, côté type, jamais côté « extérieurs »). Le
+  bouton « Afficher » (`revealHiddenWeek`, `CalendarPage.tsx`) lève SEULEMENT les masques qui
+  cachent quelque chose sur la semaine courante (allume Extérieurs si besoin, coche les types
+  manquants), rend le focus à la grille (`GRID_CONTAINER_ID`, `WeekWorkbench.tsx`), et annonce
+  « N matchs affichés » dans une région live persistante (`CalendarPage.tsx`, survit au retrait de
+  l'indice une fois plus rien masqué).
+- **« Réinitialiser »** (`CalendarControls.tsx`) — visible dès que Types, Extérieurs, Semaine type
+  ou Familles diffèrent des défauts ; remet les quatre au défaut sans toucher pivot ni temporalité
+  ni semaine affichée, rend le focus à la première puce de type.
+- **Liens qui allument leurs filtres** (`revealPlan`, `lib/consultFilter.ts`, PUR — décrit une
+  cible, n'écrit rien lui-même) : un lien interne vers une rencontre précise allume Extérieurs
+  et/ou le type manquant pour que sa cible soit visible à l'arrivée — « Voir la semaine » depuis un
+  conflit (`ConflictsPage.tsx` `revealForConflict`, un ou deux côtés) et « Placer » depuis la file
+  Importer (`ReviewQueue.tsx` `onPlace`).
 - **Familles de conflits** (chips avec compteur, défaut tout coché) — les 10 `ConflictType`, libellés en table
   (`lib/conflictLabels.ts`) : collision de gymnase, hors fenêtre ligue, personne en double, match × entraînement,
   passerelle (info), placement fragilisé, calendrier incomplet, gymnase indisponible, extérieur sans heure,
@@ -1839,7 +1878,14 @@ supprimé, fusionné dans `CalendarPage.tsx`/`CalendarControls.tsx`/`MonthTable.
   `resolveActiveWeekend` en Semaine.
   **Depuis E2 (2026-09-14)** : `UnpairedVenueLabelsBanner` au-dessus de la grille,
   `HiddenHomesWeekNotice` sous `AwayList` — détail § « Gymnase depuis le libellé » plus haut.
-- **URL** : `type=amical,championnat,coupe,brassage`, `conflits=<familles>`, `type_semaine=0|1` (absent = défaut).
+- **URL** (`lib/urlState.ts`) : `type=` **absent ⇔ les DÉFAUTS** (championnat+coupe+brassage) —
+  toute autre sélection s'écrit EXPLICITEMENT (y compris les 4 types, ou `type=` vide pour zéro
+  coché) ; `conflits=<familles>` (absent = toutes) ; `type_semaine=1` **quand ALLUMÉE** (sens
+  INVERSÉ depuis le 2026-09-16/17 — un ancien `type_semaine=0` continue de se lire « éteinte » puis
+  se réécrit en absence de paramètre) ; `exterieurs=1` quand affichés (absent = masqués, défaut).
+  ⚠ **Homonyme, routes distinctes** : l'onglet Importer porte déjà `?exterieurs=masques` (sens
+  INVERSE — masqués QUAND le paramètre est présent, `ReviewQueue.tsx`) sur `/matchs/importer` ; ne
+  pas confondre avec `?exterieurs=1` du Calendrier.
 - **Temporalités Semaine · Mois · Phase** (PR-2b, 2026-09-08 — contrôle segmenté à côté du navigateur, Semaine par
   défaut et byte-identique) :
   - **Mois** : navigateur ‹ mois › (`resolveActiveMonth` : sélection si listée, sinon premier mois ≥ courant, sinon
@@ -1901,16 +1947,36 @@ persisté consommé par ce badge.
 - **Tri des entrées** : ressources/week-ends d'abord (compte décroissant, départage `localeCompare("fr")`
   sur le libellé résolu ; le pivot journée trie chronologiquement sur la clé ISO), sentinelles toujours
   après, dans le même ordre entre elles.
-- **Chips familles** (mêmes 10 `ConflictType`, `lib/conflictLabels.ts`) : **toutes cochées par défaut**,
-  compteur **SAISON, à traiter seulement** depuis P4-207 (`countByFamily`, `lib/consultFilter.ts`) —
-  décocher une chip ne change pas son compteur, seulement les entrées affichées. Chip **visible** dès
-  qu'une famille est **présente** sur la saison (`familiesPresent`, traitée ou non) — une famille
-  100 % traitée garde donc sa chip, compteur « · 0 » en sourdine ; une famille absente de la saison
-  reste masquée.
-- **Interrupteur « Masquer les traités »** (`FilterToggle`, `?traites=masques`) — visible seulement
-  s'il existe au moins un conflit traité sur la saison ; filtre l'AFFICHAGE des entrées (après les
-  familles, avant le pivot), jamais les compteurs ci-dessus. État local, miroir de l'URL (patron
+- **Chips familles** (mêmes 10 `ConflictType`, `lib/conflictLabels.ts`, groupe « Familles ») :
+  **toutes cochées par défaut**, compteur **SAISON, à traiter seulement** depuis P4-207
+  (`countByFamily`, `lib/consultFilter.ts`) — décocher une chip ne change pas son compteur,
+  seulement les entrées affichées. Chip **visible** dès qu'une famille est **présente** sur la
+  saison (`familiesPresent`, traitée ou non) — une famille 100 % traitée garde donc sa chip,
+  compteur « · 0 » en sourdine ; une famille absente de la saison reste masquée. Bouton « Tout
+  décocher »/« Tout cocher » en fin de rangée.
+- **Puces « Traitement »** (remplace l'ex-interrupteur « Masquer les traités », 2026-09-16/17) —
+  quatre puces `Button aria-pressed` : À traiter · Dérogation demandée · Réglé en interne · Sans
+  solution pour l'instant, libellés/glyphe empruntés à la maison unique `RESOLUTION_LABEL`
+  (`lib/conflictResolution.ts` ; « À traiter » n'a pas de statut serveur, clé distincte
+  `"a_traiter"`, glyphe `CircleAlert` propre à `ConflictsPage.tsx`), compteur par clé **FIXE sur la
+  saison** (`countByTreatment`) — visibles seulement s'il existe au moins un conflit traité sur la
+  saison (`hasTreated`). Filtre l'AFFICHAGE des entrées (après les familles, avant le domicile et
+  le pivot), jamais les compteurs. Bouton « Tout décocher »/« Tout cocher » en fin de rangée.
+- **`FilterToggle` « Seulement avec un match à domicile »** (`hasHomeSide`,
+  `lib/consultFilter.ts`) — un conflit passe s'il a un côté (`left`/`right`/`fixture`) HOME ;
+  conséquence assumée : `COMPETITION_INCOMPLETE` (aucun côté) et `AWAY_NO_FOOTPRINT` (côté
+  purement extérieur) sont masqués quand la case est cochée — c'est un critère DESCRIPTIF, jamais
+  « où je peux agir » (décision fermée, § 2). En fin de rangée Familles quand il n'existe aucun
+  conflit traité, en fin de rangée Traitement sinon.
+- **Ordre d'application** : familles → traitement → domicile → pivot (`filtered`,
+  `ConflictsPage.tsx`). Les trois filtres vivent en état LOCAL, miroir de l'URL (patron
   `ReviewQueue` § « Afficher les traitées »).
+- **Repli mobile « Filtres »** (< sm, même DOM que le bureau) — un bouton `SlidersHorizontal`
+  replie Familles + Traitement + domicile (compteur « Filtres · N » quand des filtres diffèrent des
+  défauts) ; le pivot (« Regrouper par ») reste visible même replié. « Réinitialiser » (`RotateCcw`)
+  remet Familles/Traitement/domicile aux défauts sans toucher le pivot, rend le focus à la première
+  entrée ; un état vide de filtre propose le même geste (« Réinitialiser les filtres », nomme le
+  total de conflits sur la saison).
 - **Accordéon par entrée** (`AccordionSection`, une seule ouverte à la fois, `?ouvert=<clé>`) : le
   contenu de chaque entrée est `ConflictSeverityGroups` (voir plus bas) — même regroupement par gravité
   que le radar, **gravité 7 repliée derrière un compte** (une seule maison, `ConflictLine.tsx`). Le
@@ -1932,8 +1998,12 @@ persisté consommé par ce badge.
   inchangé ; l'onglet Conflits les consomme avec `trailing` (le bouton « Voir la semaine »). Une seule
   maison de la ligne de conflit pour les deux écrans.
 - **URL** : `pivot=coach|equipe|gymnase|journee` (absent = `coach`, défaut), `conflits=<familles>`
-  (absent = toutes) — `decodeConflictsParams`/`applyConflictsToParams` (`lib/urlState.ts`), même nom de
-  paramètre `conflits=` que le Calendrier mais sur une route distincte (pas de collision).
+  (absent = toutes), `traitement=<slugs>` (`a_traiter,derogation,regle_interne,sans_solution` —
+  absent ou les 4 ⇒ tout), `domicile=1` (absent = tous) — `decodeConflictsParams`/
+  `applyConflictsToParams` (`lib/urlState.ts`), même nom de paramètre `conflits=` que le Calendrier
+  mais sur une route distincte (pas de collision). **Legacy `?traites=masques`** (P4-207) reste lu
+  comme « À traiter seul » (`treatments: ["a_traiter"]`) puis réécrit en `traitement=a_traiter`, le
+  paramètre `traites` étant toujours purgé de l'URL.
 - **Passe de design `ui-ux-pro-max`** faite le 2026-09-15 (11 décisions) — alternatives écartées :
   liste plate (pas de regroupement), tableau, `<select>` pour le pivot, badge de nav sur ce livrable
   (reporté au successeur qui porte un statut), `StatusPill` par entrée, ventilation par gravité en plus
@@ -2023,8 +2093,9 @@ de bouton).
 - **Badge de nav** « Conflits · N » (`MatchesLayout.tsx`) — N = `openConflictCount`, **absent** (pas
   « Conflits · 0 ») quand il n'en reste aucun à traiter, même patron que le badge « Importer · N ».
 - **Onglet Conflits** — voir § « Onglet « Conflits » » ci-dessus (chips familles à traiter + « · 0 »
-  en sourdine sur une famille 100 % traitée, titre d'entrée « Mara · N », interrupteur « Masquer les
-  traités » `?traites=masques`).
+  en sourdine sur une famille 100 % traitée, titre d'entrée « Mara · N », **puces « Traitement »**
+  depuis le 2026-09-16/17 — remplacent l'ex-interrupteur « Masquer les traités », legacy
+  `?traites=masques` toujours lu).
 - **`queries.ts`** : `useSetConflictResolution`/`useClearConflictResolution` invalident
   **`["fixtures","conflicts"]` seulement** — la résolution vit sur le flux du radar, aucune
   empreinte ne change (pas de `useModuleVisit`/RMM-3 à rejouer).
@@ -2054,8 +2125,8 @@ de bouton).
 - **e2e** (`frontend/tests/e2e/matches.spec.ts`) : depuis l'onglet Conflits, pose « Dérogation
   demandée » sur un conflit, mesure AVANT/APRÈS (jamais une valeur absolue — la base sandbox porte
   d'autres conflits) que le badge de nav et le compteur de l'entrée baissent de 1, que la ligne reste
-  listée, que « Masquer les traités » la cache puis la rend, et que « Remettre à traiter » restaure
-  le compteur.
+  listée, que décocher la puce « Dérogation demandée » du groupe Traitement la cache (et la recocher
+  la rend), et que « Remettre à traiter » restaure le compteur.
 
 ## Détail par côté d'un conflit de personne — P2-54 (2026-09-17)
 

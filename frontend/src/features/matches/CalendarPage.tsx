@@ -20,7 +20,7 @@ import { FbiEntryList } from "./FbiEntryList";
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { FixtureFormDialog } from "./FixtureFormDialog";
 import { CONFLICT_FAMILIES } from "./lib/conflictLabels";
-import { applyFamilyFilter, applyKindFilter, countByFamily, familiesPresent, KINDS, scopeConflictsToWeek } from "./lib/consultFilter";
+import { applyFamilyFilter, applyKindFilter, countByFamily, DEFAULT_KINDS, familiesPresent, hiddenWeekBreakdown, KINDS, normalizeKinds, scopeConflictsToWeek } from "./lib/consultFilter";
 import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
 import { depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
 import { datelessConflicts, deriveWeekCounters } from "./lib/loopSteps";
@@ -64,8 +64,9 @@ import {
   useVenueUnavailabilities,
 } from "./queries";
 import { useMatchesStore } from "./store";
+import { HiddenMatchesWeekNotice } from "./UnpairedVenueLabelsBanner";
 import { WeekCounters } from "./WeekCounters";
-import { PLACE_HEADING_ID, WeekWorkbench } from "./WeekWorkbench";
+import { GRID_CONTAINER_ID, PLACE_HEADING_ID, WeekWorkbench } from "./WeekWorkbench";
 
 function byId<T extends { id: string }>(rows: T[] | undefined): Map<string, T> {
   return new Map((rows ?? []).map((row) => [row.id, row]));
@@ -132,16 +133,22 @@ export function CalendarPage() {
     consultKinds,
     consultFamilies,
     consultTypicalWeek,
+    consultAway,
     consultTemporality,
     consultMonth,
     consultPhaseId,
     setConsultKinds,
     setConsultFamilies,
     setConsultTypicalWeek,
+    setConsultAway,
     setConsultTemporality,
     setConsultMonth,
     setConsultPhaseId,
   } = useMatchesStore();
+
+  // A5 — région live persistante : remplie après la levée des masques (« N matchs affichés »),
+  // elle survit au retrait de l'indice « masqués » (qui disparaît dès que rien n'est masqué).
+  const [revealLive, setRevealLive] = useState("");
 
   const teamsMap = useMemo<Map<string, Team>>(() => byId(teams.data), [teams.data]);
   const venuesMap = useMemo<Map<string, Venue>>(() => byId(venues.data), [venues.data]);
@@ -180,7 +187,7 @@ export function CalendarPage() {
       .join(", ");
   }, [filterActive, filterIds, filterMode, coachesMap, venuesMap, teamsMap]);
 
-  const effectiveKinds = consultKinds ?? KINDS;
+  const effectiveKinds = consultKinds ?? DEFAULT_KINDS;
   const effectiveFamilies = consultFamilies ?? CONFLICT_FAMILIES;
   const kindResult = useMemo(
     () => applyKindFilter(filtered.fixtures, filtered.conflicts, effectiveKinds, competitionsMap),
@@ -188,6 +195,13 @@ export function CalendarPage() {
   );
   const kindFixtures = kindResult.fixtures;
   const kindConflicts = kindResult.conflicts;
+
+  // Interrupteur « Extérieurs » : filtre d'AFFICHAGE (grille/bande/Mois/Phase). Les
+  // compteurs, conflits, radar, complétude et enveloppe restent sur `kindFixtures`.
+  const visibleFixtures = useMemo(
+    () => (consultAway ? kindFixtures : kindFixtures.filter((f) => "HOME" === f.homeAway)),
+    [consultAway, kindFixtures],
+  );
 
   const isWeek = "semaine" === consultTemporality;
   const isMonth = "mois" === consultTemporality;
@@ -209,27 +223,44 @@ export function CalendarPage() {
   }, [allFixtures, resolvedTeamWindows, windows]);
 
   // ── Temporalité SEMAINE ────────────────────────────────────────────────────────
-  const weekends = useMemo(() => listWeekends(kindFixtures), [kindFixtures]);
+  const weekends = useMemo(() => listWeekends(visibleFixtures), [visibleFixtures]);
   const activeWeekend = resolveActiveWeekend(weekends, selectedWeekend, weekendKeyOf(todayISO()));
   const weekendIndex = null === activeWeekend ? -1 : weekends.indexOf(activeWeekend);
+  // Rencontres AFFICHÉES de la semaine (extérieurs masqués si l'interrupteur est éteint).
   const weekendFixtures = useMemo(
+    () => (null === activeWeekend ? [] : visibleFixtures.filter((f) => weekendKeyOf(f.matchDate) === activeWeekend)),
+    [visibleFixtures, activeWeekend],
+  );
+  // Rencontres de la semaine, extérieurs INCLUS — sert les COMPTEURS (identiques quel que
+  // soit l'interrupteur, NR) et la modale « À recopier dans FBI ».
+  const weekendFixturesAll = useMemo(
     () => (null === activeWeekend ? [] : kindFixtures.filter((f) => weekendKeyOf(f.matchDate) === activeWeekend)),
     [kindFixtures, activeWeekend],
   );
   const weekConflicts = useMemo(() => scopeConflictsToWeek(kindConflicts, activeWeekend), [kindConflicts, activeWeekend]);
   const weekFamilyCounts = useMemo(() => countByFamily(weekConflicts), [weekConflicts]);
   const radarConflicts = useMemo(() => applyFamilyFilter(weekConflicts, effectiveFamilies), [weekConflicts, effectiveFamilies]);
-  const weekCounts = useMemo(() => deriveWeekCounters(weekendFixtures, kindConflicts), [weekendFixtures, kindConflicts]);
+  const weekCounts = useMemo(() => deriveWeekCounters(weekendFixturesAll, kindConflicts), [weekendFixturesAll, kindConflicts]);
+  // Indice « masqués » : rencontres de la semaine (filtrées PR-1) retirées par les Types OU
+  // l'interrupteur Extérieurs — dérivé sur la semaine RÉELLEMENT affichée.
+  const weekAllFilteredFixtures = useMemo(
+    () => (null === activeWeekend ? [] : filtered.fixtures.filter((f) => weekendKeyOf(f.matchDate) === activeWeekend)),
+    [filtered.fixtures, activeWeekend],
+  );
+  const weekHiddenBreakdown = useMemo(
+    () => hiddenWeekBreakdown(weekAllFilteredFixtures, effectiveKinds, consultAway, competitionsMap),
+    [weekAllFilteredFixtures, effectiveKinds, consultAway, competitionsMap],
+  );
 
   // ── Temporalité MOIS ───────────────────────────────────────────────────────────
-  const months = useMemo(() => listMonths(kindFixtures), [kindFixtures]);
+  const months = useMemo(() => listMonths(visibleFixtures), [visibleFixtures]);
   const activeMonth = resolveActiveMonth(months, consultMonth, todayISO().slice(0, 7));
   const monthConflicts = useMemo(() => scopeConflictsToMonth(kindConflicts, activeMonth), [kindConflicts, activeMonth]);
   const monthFamilyCounts = useMemo(() => countByFamily(monthConflicts), [monthConflicts]);
   const monthCbf = useMemo(() => conflictsByFixture(applyFamilyFilter(monthConflicts, effectiveFamilies)), [monthConflicts, effectiveFamilies]);
   const monthGroups = useMemo(
-    () => (null === activeMonth ? [] : groupByDay(kindFixtures, activeMonth).map((g) => ({ key: g.date, label: dayHeaderLabel(g.date), fixtures: g.fixtures }))),
-    [kindFixtures, activeMonth],
+    () => (null === activeMonth ? [] : groupByDay(visibleFixtures, activeMonth).map((g) => ({ key: g.date, label: dayHeaderLabel(g.date), fixtures: g.fixtures }))),
+    [visibleFixtures, activeMonth],
   );
   const monthIndex = null === activeMonth ? -1 : months.indexOf(activeMonth);
 
@@ -241,8 +272,11 @@ export function CalendarPage() {
     }
     return phases.some((p) => p.competitionId === consultPhaseId) ? consultPhaseId : phases[0].competitionId;
   }, [phases, consultPhaseId]);
-  const phaseGroupsRaw = useMemo(() => (null === activePhaseId ? [] : phaseFixtures(kindFixtures, activePhaseId)), [kindFixtures, activePhaseId]);
-  const phaseAllFixtures = useMemo(() => phaseGroupsRaw.flatMap((g) => g.fixtures), [phaseGroupsRaw]);
+  // Complétude + conflits + scoping = toute la compétition (extérieurs INCLUS).
+  const phaseGroupsAll = useMemo(() => (null === activePhaseId ? [] : phaseFixtures(kindFixtures, activePhaseId)), [kindFixtures, activePhaseId]);
+  const phaseAllFixtures = useMemo(() => phaseGroupsAll.flatMap((g) => g.fixtures), [phaseGroupsAll]);
+  // Table d'AFFICHAGE (extérieurs masqués si l'interrupteur est éteint).
+  const phaseGroupsRaw = useMemo(() => (null === activePhaseId ? [] : phaseFixtures(visibleFixtures, activePhaseId)), [visibleFixtures, activePhaseId]);
   const phaseConflicts = useMemo(
     () => scopeConflictsToPhase(kindConflicts, activePhaseId, phaseAllFixtures.map((f) => f.id)),
     [kindConflicts, activePhaseId, phaseAllFixtures],
@@ -291,6 +325,7 @@ export function CalendarPage() {
     setConsultKinds(consult.kinds);
     setConsultFamilies(consult.families);
     setConsultTypicalWeek(consult.typicalWeek);
+    setConsultAway(consult.away);
     setConsultTemporality(consult.temps);
     setConsultMonth(consult.month);
     setConsultPhaseId(consult.phaseId);
@@ -300,7 +335,7 @@ export function CalendarPage() {
     if (null !== weekend && null === useMatchesStore.getState().selectedWeekend) {
       setSelectedWeekend(weekend);
     }
-  }, [teams.data, coaches.data, venues.data, searchParams, filterMode, filterIds.length, setFilterMode, toggleFilterId, setConsultKinds, setConsultFamilies, setConsultTypicalWeek, setConsultTemporality, setConsultMonth, setConsultPhaseId, setSelectedWeekend]);
+  }, [teams.data, coaches.data, venues.data, searchParams, filterMode, filterIds.length, setFilterMode, toggleFilterId, setConsultKinds, setConsultFamilies, setConsultTypicalWeek, setConsultAway, setConsultTemporality, setConsultMonth, setConsultPhaseId, setSelectedWeekend]);
   useEffect(() => {
     if (!seededRef.current) {
       return;
@@ -310,6 +345,7 @@ export function CalendarPage() {
       kinds: consultKinds,
       families: consultFamilies,
       typicalWeek: consultTypicalWeek,
+      away: consultAway,
       temps: consultTemporality,
       month: consultMonth,
       phaseId: consultPhaseId,
@@ -318,7 +354,7 @@ export function CalendarPage() {
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [filterMode, filterIds, consultKinds, consultFamilies, consultTypicalWeek, consultTemporality, consultMonth, consultPhaseId, selectedWeekend, searchParams, setSearchParams]);
+  }, [filterMode, filterIds, consultKinds, consultFamilies, consultTypicalWeek, consultAway, consultTemporality, consultMonth, consultPhaseId, selectedWeekend, searchParams, setSearchParams]);
 
   // « à placer » : ramène la liste dans le champ et lui donne le focus (le `<h2>`).
   const scrollToPlace = (): void => {
@@ -350,6 +386,22 @@ export function CalendarPage() {
     });
   };
 
+  // A5 — lève SEULEMENT les masques qui cachent quelque chose sur la semaine affichée :
+  // l'interrupteur Extérieurs si des extérieurs sont masqués, et coche les types concernés ;
+  // puis rend le focus à la grille et remplit la région live.
+  const revealHiddenWeek = (): void => {
+    if (weekHiddenBreakdown.away > 0) {
+      setConsultAway(true);
+    }
+    const hiddenKinds = KINDS.filter((k) => (weekHiddenBreakdown.byKind.get(k) ?? 0) > 0);
+    if (hiddenKinds.length > 0) {
+      setConsultKinds(normalizeKinds([...effectiveKinds, ...hiddenKinds]));
+    }
+    const total = weekHiddenBreakdown.total;
+    setRevealLive(`${total} match${total > 1 ? "s" : ""} affiché${total > 1 ? "s" : ""}`);
+    requestAnimationFrame(() => document.getElementById(GRID_CONTAINER_ID)?.focus());
+  };
+
   // Trois lectures fondatrices (doctrine `readState`).
   if (readLoading(fixtures) || readLoading(teams) || readLoading(venues)) {
     return <FullPageSpinner />;
@@ -370,6 +422,10 @@ export function CalendarPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* A5 — annonce sr-only : vide au montage, remplie après la levée des masques. */}
+      <p className="sr-only" aria-live="polite">
+        {revealLive}
+      </p>
       {/* (c) — barre d'actions : retour discret · Nouveau match · Placer auto (SEUL bouton primaire). */}
       <div className="flex flex-wrap items-center justify-end gap-2">
         <FeedbackButton screen="/matchs" />
@@ -455,11 +511,18 @@ export function CalendarPage() {
               )}
             </div>
           ) : 0 === weekendFixtures.length ? (
-            <EmptyState
-              icon={CalendarX2}
-              title={filterActive ? `Aucun match pour ${filterLabel} cette semaine` : "Aucun match cette semaine"}
-              description="Aucune rencontre sur la semaine affichée. Changez de semaine ou ajustez le filtre."
-            />
+            <div className="flex flex-col gap-2">
+              <EmptyState
+                icon={CalendarX2}
+                title={filterActive ? `Aucun match pour ${filterLabel} cette semaine` : "Aucun match cette semaine"}
+                description={
+                  weekHiddenBreakdown.total > 0
+                    ? "Aucune rencontre avec les filtres actuels."
+                    : "Aucune rencontre sur la semaine affichée. Changez de semaine ou ajustez le filtre."
+                }
+              />
+              <HiddenMatchesWeekNotice breakdown={weekHiddenBreakdown} onReveal={revealHiddenWeek} />
+            </div>
           ) : (
             <WeekWorkbench
               activeWeekend={activeWeekend}
@@ -487,6 +550,8 @@ export function CalendarPage() {
               matchDurations={matchDurations}
               newFingerprints={newConflictFingerprints}
               showGhosts={consultTypicalWeek}
+              hiddenBreakdown={weekHiddenBreakdown}
+              onRevealHidden={revealHiddenWeek}
               onEditFixture={setEditFixture}
             />
           )}
@@ -539,7 +604,7 @@ export function CalendarPage() {
           }
         >
           <FbiEntryList
-            fixtures={weekendFixtures}
+            fixtures={weekendFixturesAll}
             teams={teamsMap}
             venues={venuesMap}
             competitions={competitionsMap}

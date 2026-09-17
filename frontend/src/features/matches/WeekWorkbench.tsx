@@ -10,6 +10,7 @@ import { toast } from "@/shared/stores/toastStore";
 import type { Category, Coach, Conflict, Fixture, LeagueWindow, MatchSlotRotation, OpponentTravel, Team, TeamMatchHabit, Venue, VenueMatchWindow, VenueUnavailability } from "./api";
 import { AwayList } from "./AwayList";
 import { ConflictRadar } from "./ConflictRadar";
+import type { HiddenWeekBreakdown } from "./lib/consultFilter";
 import { resolveEnvelope } from "./lib/envelope";
 import { offModelCount, sameWeekendRotationCount } from "./lib/loopSteps";
 import type { CoachTeamRole } from "./lib/matchFilter";
@@ -28,13 +29,16 @@ import {
   useUnplaceFixture,
 } from "./queries";
 import { useMatchesStore } from "./store";
-import { HiddenHomesWeekNotice, UnpairedVenueLabelsBanner } from "./UnpairedVenueLabelsBanner";
+import { HiddenHomesWeekNotice, HiddenMatchesWeekNotice, UnpairedVenueLabelsBanner } from "./UnpairedVenueLabelsBanner";
 import { UnplacedList } from "./UnplacedList";
 import { WeekendGrid } from "./WeekendGrid";
 import { WeekendGridLegend } from "./WeekendGridLegend";
 
 /** L'id du `<h2>` « À placer » — cible du focus quand la barre `WeekCounters` renvoie à la liste. */
 export const PLACE_HEADING_ID = "matches-place-heading";
+
+/** L'id du conteneur de la grille — cible du focus après la levée des masques (A5). */
+export const GRID_CONTAINER_ID = "matches-week-grid";
 
 interface WeekWorkbenchProps {
   /** Clé samedi de la semaine affichée (jamais null : la page borne l'appel). */
@@ -71,6 +75,10 @@ interface WeekWorkbenchProps {
   newFingerprints: ReadonlySet<string>;
   /** « Semaine type » (interrupteur de la page) : les fantômes d'habitude sur la grille. */
   showGhosts: boolean;
+  /** A5 — décompte des rencontres de la semaine masquées par les Types/l'interrupteur Extérieurs. */
+  hiddenBreakdown: HiddenWeekBreakdown;
+  /** A5 — lève les masques de la semaine + focalise la grille + remplit la région live (page). */
+  onRevealHidden: () => void;
   /** Le crayon d'un extérieur / du panneau ouvre le dialogue d'édition (porté par la page). */
   onEditFixture: (fixture: Fixture) => void;
 }
@@ -111,6 +119,8 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
     matchDurations,
     newFingerprints,
     showGhosts,
+    hiddenBreakdown,
+    onRevealHidden,
     onEditFixture,
   } = props;
 
@@ -335,10 +345,11 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
         {conflictErrorBlock}
         <div className="flex flex-col gap-2">
           <UnpairedVenueLabelsBanner />
-          <div className="h-[32rem]">
+          <div id={GRID_CONTAINER_ID} tabIndex={-1} className="h-[32rem] outline-none">
             <WeekendGrid model={grid} onSelectFixture={onGridSelect} selectedFixtureId={swapSourceId ?? selectedFixtureId} swapCandidateIds={swapCandidateIds} />
           </div>
           <HiddenHomesWeekNotice count={hiddenHomesThisWeek} />
+          <HiddenMatchesWeekNotice breakdown={hiddenBreakdown} onReveal={onRevealHidden} />
           {/* Légende conditionnelle : « à confirmer » (cases hachurées) et « Habitude »
               (fantômes pointillés, seulement quand « Semaine type » est active). */}
           <WeekendGridLegend

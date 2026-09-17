@@ -51,8 +51,15 @@ interface MatchesState {
    */
   consultKinds: Kind[] | null;
   consultFamilies: ConflictType[] | null;
-  /** Semaine type = les ghosts d'habitude sur la grille ; affichée par défaut. */
+  /** Semaine type = les ghosts d'habitude sur la grille ; MASQUÉE par défaut. */
   consultTypicalWeek: boolean;
+  /**
+   * Interrupteur « Extérieurs » (décision fondateur) : par défaut `false` — les
+   * rencontres extérieures sont masquées de l'AFFICHAGE (grille, bande, Mois, Phase),
+   * mais restent dans les compteurs, les conflits et le radar. Non persisté (URL
+   * `?exterieurs=1`).
+   */
+  consultAway: boolean;
   /**
    * PR-2b — la temporalité de l'onglet Consulter : Semaine (défaut, byte-identique
    * PR-2a) · Mois · Phase. `consultMonth` = le mois `YYYY-MM` affiché (Mois),
@@ -84,6 +91,7 @@ interface MatchesState {
   setConsultKinds: (kinds: Kind[] | null) => void;
   setConsultFamilies: (families: ConflictType[] | null) => void;
   setConsultTypicalWeek: (typicalWeek: boolean) => void;
+  setConsultAway: (away: boolean) => void;
   setConsultTemporality: (temporality: ConsultTemporality) => void;
   setConsultMonth: (month: string | null) => void;
   setConsultPhaseId: (phaseId: string | null) => void;
@@ -107,7 +115,8 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   filterIds: [],
   consultKinds: null,
   consultFamilies: null,
-  consultTypicalWeek: true,
+  consultTypicalWeek: false,
+  consultAway: false,
   consultTemporality: "semaine",
   consultMonth: null,
   consultPhaseId: null,
@@ -130,6 +139,7 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   setConsultKinds: (consultKinds) => set({ consultKinds }),
   setConsultFamilies: (consultFamilies) => set({ consultFamilies }),
   setConsultTypicalWeek: (consultTypicalWeek) => set({ consultTypicalWeek }),
+  setConsultAway: (consultAway) => set({ consultAway }),
   setConsultTemporality: (consultTemporality) => set({ consultTemporality }),
   setConsultMonth: (consultMonth) => set({ consultMonth }),
   setConsultPhaseId: (consultPhaseId) => set({ consultPhaseId }),

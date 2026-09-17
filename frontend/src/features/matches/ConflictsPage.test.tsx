@@ -27,8 +27,11 @@ const state = vi.hoisted(() => ({ conflicts: [] as Conflict[] }));
 const meState = vi.hoisted(() => ({ role: "admin" as string | null }));
 vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: { role: meState.role } }) }));
 
+const compState = vi.hoisted(() => ({ competitions: [] as unknown[] }));
+
 vi.mock("./api", () => ({
   getConflicts: vi.fn(() => Promise.resolve({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: state.conflicts })),
+  getCompetitions: vi.fn(() => Promise.resolve(compState.competitions)),
   putConflictResolution: vi.fn(() => Promise.resolve({ fingerprint: "fp", resolution: { status: "DEROGATION_REQUESTED", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } })),
   deleteConflictResolution: vi.fn(() => Promise.resolve(undefined)),
   getTeams: vi.fn(() =>
@@ -67,8 +70,9 @@ function renderAt(path = "/matchs/conflits") {
 beforeEach(() => {
   vi.clearAllMocks();
   state.conflicts = DEFAULT_CONFLICTS;
+  compState.competitions = [];
   meState.role = "admin";
-  useMatchesStore.setState({ selectedWeekend: null, conflictsPivot: "coach", conflictsFamilies: null });
+  useMatchesStore.setState({ selectedWeekend: null, conflictsPivot: "coach", conflictsFamilies: null, consultKinds: null, consultAway: false });
 });
 
 describe("ConflictsPage — pivot par défaut coach", () => {
@@ -195,7 +199,7 @@ describe("ConflictsPage — états vides", () => {
     await user.click(screen.getByRole("button", { name: /Personne en double/ }));
     await user.click(screen.getByRole("button", { name: /Match × entraînement/ }));
     await user.click(screen.getByRole("button", { name: /Gymnase indisponible/ }));
-    expect(await screen.findByText("Aucun conflit pour les familles cochées.")).toBeInTheDocument();
+    expect(await screen.findByText(/Aucun conflit ne correspond aux filtres/)).toBeInTheDocument();
     // Les chips restent visibles.
     expect(screen.getByRole("button", { name: /Personne en double/ })).toBeInTheDocument();
   });
@@ -245,7 +249,7 @@ describe("ConflictsPage — traitement des conflits (P4-207)", () => {
     expect(screen.getByRole("button", { name: /Statut de traitement : Réglé en interne/ })).toBeInTheDocument();
   });
 
-  it("« Masquer les traités » cache la ligne annotée sans toucher au reste", async () => {
+  it("groupe Traitement : décocher « Réglé en interne » cache la ligne annotée sans toucher au reste", async () => {
     const user = userEvent.setup();
     state.conflicts = [
       { type: "MATCH_MATCH", severity: 3, coachId: "coach-1", fingerprint: "fp-open", resolution: null, left: side("fx-1", "team-1"), right: side("fx-2", "team-2") },
@@ -256,9 +260,41 @@ describe("ConflictsPage — traitement des conflits (P4-207)", () => {
     expect(screen.getByRole("button", { name: /Statut de traitement : Réglé en interne/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Traiter le conflit" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("checkbox", { name: "Masquer les traités" }));
+    // Décocher la puce « Réglé en interne » du groupe Traitement (scopé pour ne pas viser la pastille).
+    const treatment = screen.getByRole("group", { name: "Traitement" });
+    await user.click(within(treatment).getByRole("button", { name: /Réglé en interne/ }));
     expect(screen.queryByRole("button", { name: /Statut de traitement : Réglé en interne/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Traiter le conflit" })).toBeInTheDocument();
+  });
+
+  it("groupe Traitement : les 4 puces avec compteurs FIXES saison, un compteur à 0 en sourdine", async () => {
+    state.conflicts = [
+      { type: "MATCH_MATCH", severity: 3, coachId: "coach-1", fingerprint: "fp-open", resolution: null, left: side("fx-1", "team-1"), right: side("fx-2", "team-2") },
+      { type: "MATCH_TRAINING", severity: 5, coachId: "coach-1", fingerprint: "fp-treated", resolution: { status: "RESOLVED_INTERNALLY", note: null, updatedAt: "2026-10-03T20:45:00+02:00" }, fixture: side("fx-1", "team-1"), training },
+    ];
+    renderAt();
+    const treatment = await screen.findByRole("group", { name: "Traitement" });
+    for (const label of ["À traiter", "Dérogation demandée", "Réglé en interne", "Sans solution pour l'instant"]) {
+      expect(within(treatment).getByRole("button", { name: new RegExp(label) })).toBeInTheDocument();
+    }
+    // 1 à traiter, 1 réglé en interne, 0 dérogation (en sourdine).
+    expect(within(within(treatment).getByRole("button", { name: /À traiter/ })).getByText("1")).not.toHaveClass("text-muted-foreground");
+    expect(within(within(treatment).getByRole("button", { name: /Dérogation demandée/ })).getByText("0")).toHaveClass("text-muted-foreground");
+  });
+
+  it("le filtre « domicile » masque un COMPETITION_INCOMPLETE (aucun côté)", async () => {
+    const user = userEvent.setup();
+    state.conflicts = [
+      { type: "MATCH_MATCH", severity: 3, coachId: "coach-1", fingerprint: "fp-home", resolution: null, left: side("fx-1", "team-1"), right: side("fx-2", "team-2") },
+      { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, teamId: "team-1", competitionId: "comp-1" },
+    ];
+    renderAt();
+    await screen.findByRole("button", { name: /Mara · 1/ });
+    expect(screen.getByRole("button", { name: /Autres conflits · 1/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "Seulement avec un match à domicile" }));
+    // Le conflit à côté domicile reste ; le COMPETITION_INCOMPLETE (aucun côté) disparaît.
+    expect(screen.getByRole("button", { name: /Mara · 1/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Autres conflits/ })).not.toBeInTheDocument();
   });
 
   it("une famille entièrement traitée garde sa chip, compteur ouverts 0 en sourdine", async () => {
@@ -280,8 +316,64 @@ describe("ConflictsPage — traitement des conflits (P4-207)", () => {
     state.conflicts = [{ type: "MATCH_MATCH", severity: 3, coachId: "coach-1", fingerprint: "fp-z", resolution: { status: "RESOLVED_INTERNALLY", note: null, updatedAt: "2026-10-03T20:45:00+02:00" }, left: side("fx-1", "team-1"), right: side("fx-2", "team-2") }];
     renderAt();
     await screen.findByRole("button", { name: /Mara · 0/ });
-    expect(screen.getByText(/Réglé en interne/)).toBeInTheDocument();
+    // « Réglé en interne » paraît sur la pastille du conflit ET dans la puce du groupe Traitement.
+    expect(screen.getAllByText(/Réglé en interne/).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /modifier/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Traiter le conflit" })).not.toBeInTheDocument();
+  });
+});
+
+describe("ConflictsPage — filtre Traitement, domicile, resets (B)", () => {
+  const trainingB = { slotTemplateId: "t", scheduleId: "sc", teamId: "team-2", venueId: "venue-1", dayOfWeek: 3, startTime: "18:00", durationMinutes: 90, windowStart: "", windowEnd: "" };
+
+  it("rétro-compat ?traites=masques : ne montre que l'à traiter (« À traiter » pressé, réécrit)", async () => {
+    state.conflicts = [
+      { type: "MATCH_MATCH", severity: 3, coachId: "coach-1", fingerprint: "fp-open", resolution: null, left: side("fx-1", "team-1"), right: side("fx-2", "team-2") },
+      { type: "MATCH_TRAINING", severity: 5, coachId: "coach-1", fingerprint: "fp-treated", resolution: { status: "RESOLVED_INTERNALLY", note: null, updatedAt: "2026-10-03T20:45:00+02:00" }, fixture: side("fx-1", "team-1"), training: trainingB },
+    ];
+    renderAt("/matchs/conflits?traites=masques");
+    await screen.findByRole("button", { name: /Mara · 1/ });
+    expect(screen.getByRole("button", { name: "Traiter le conflit" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Statut de traitement : Réglé en interne/ })).not.toBeInTheDocument();
+    const treatment = screen.getByRole("group", { name: "Traitement" });
+    expect(within(treatment).getByRole("button", { name: /À traiter/ })).toHaveAttribute("aria-pressed", "true");
+    expect(within(treatment).getByRole("button", { name: /Réglé en interne/ })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("« Tout décocher » vide les familles → EmptyHint + « Réinitialiser les filtres » les rétablit", async () => {
+    const user = userEvent.setup();
+    renderAt();
+    await screen.findByRole("button", { name: /Mara · 3/ });
+    const families = screen.getByRole("group", { name: "Familles" });
+    await user.click(within(families).getByRole("button", { name: "Tout décocher" }));
+    expect(await screen.findByText(/Aucun conflit ne correspond aux filtres/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Réinitialiser les filtres" }));
+    expect(await screen.findByRole("button", { name: /Mara · 3/ })).toBeInTheDocument();
+  });
+
+  it("A8 : « Voir la semaine » sur un conflit à côté extérieur/amical pose consultAway + consultKinds AVANT de naviguer", async () => {
+    const user = userEvent.setup();
+    vi.mocked(matchesApi.getFixtures).mockResolvedValueOnce([
+      { id: "fx-away", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-10-03", homeAway: "AWAY", opponentLabel: "Adv", status: "UNPLACED", venueId: null, kickoffTime: null, externalRef: null, fbiVenueLabel: "Halle", placementSource: null, unplacedReason: null, reviewState: "NEW", reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null },
+      { id: "fx-2", teamId: "team-2", seasonId: "s", competitionId: null, matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "Adv", status: "PLACED", venueId: "venue-1", kickoffTime: "18:00", externalRef: null, fbiVenueLabel: null, placementSource: "MANUAL", unplacedReason: null, reviewState: "NEW", reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null },
+    ] as never);
+    state.conflicts = [
+      {
+        type: "MATCH_MATCH",
+        severity: 3,
+        resolution: null,
+        coachId: "coach-1",
+        left: { fixtureId: "fx-away", teamId: "team-1", homeAway: "AWAY", matchDate: "2026-10-03", kickoffTime: null, windowStart: "", windowEnd: "" },
+        right: side("fx-2", "team-2"),
+      },
+    ];
+    renderAt();
+    const voir = await screen.findByRole("button", { name: "Voir la semaine" });
+    await user.click(voir);
+    // Les masques du Calendrier sont levés AVANT la navigation.
+    expect(useMatchesStore.getState().consultAway).toBe(true);
+    expect(useMatchesStore.getState().consultKinds).toContain("amical");
+    expect(useMatchesStore.getState().selectedWeekend).toBe("2026-10-03");
+    expect(await screen.findByText("PLACER")).toBeInTheDocument();
   });
 });

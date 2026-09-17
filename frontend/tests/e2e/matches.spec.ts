@@ -151,6 +151,16 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   // même établi de semaine. La barre « Semaine affichée » porte les trois compteurs.
   await expect(page.getByRole("group", { name: "Semaine affichée" })).toBeVisible();
 
+  // Lot A — les rencontres créées plus bas sont des AMICAUX, et les extérieurs sont
+  // masqués par défaut : on coche « Amical » ET on allume « Extérieurs » AVANT tout hop
+  // de semaine (une semaine 100 % masquée sort des flèches de navigation).
+  await page.getByRole("button", { name: "Amical", exact: true }).click();
+  const exterieursSwitch = page.getByRole("switch", { name: "Extérieurs" });
+  if ("false" === (await exterieursSwitch.getAttribute("aria-checked"))) {
+    await exterieursSwitch.click();
+  }
+  await expect(exterieursSwitch).toHaveAttribute("aria-checked", "true");
+
   // Manual entry (« Nouveau match » est dans la barre d'actions, dispo partout).
   await page.getByRole("button", { name: /Nouveau match/i }).click();
   await expect(page.getByRole("heading", { name: "Nouveau match" })).toBeVisible();
@@ -345,12 +355,22 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   await expect(page.getByRole("button", { name: new RegExp(`^Autres conflits ·\\s*${autresBefore - 1}\\b`) })).toBeVisible({ timeout: 15_000 });
   await expect(navBadge).toHaveText(new RegExp(`Conflits ·\\s*${openBefore - 1}\\b`), { timeout: 15_000 });
 
-  // « Masquer les traités » cache la ligne annotée ; la re-cocher la ramène.
-  const hideTreated = page.getByRole("checkbox", { name: "Masquer les traités" });
-  await hideTreated.check();
+  // Décocher la puce « Dérogation demandée » du groupe Traitement cache la ligne annotée ;
+  // la re-cocher la ramène (le groupe n'existe QUE si des conflits sont traités : on vient
+  // d'annoter, donc `hasTreated` est vrai). La puce de FILTRE porte « Dérogation demandée <n> »
+  // (icône aria-hidden), distincte de la pastille « Statut de traitement : Dérogation demandée ».
+  const treatment = page.getByRole("group", { name: "Traitement" });
+  await expect(treatment).toBeVisible();
+  const derogFilter = treatment.getByRole("button", { name: /^Dérogation demandée/ });
+  await expect(derogFilter).toHaveAttribute("aria-pressed", "true");
+  await derogFilter.click();
+  await expect(derogFilter).toHaveAttribute("aria-pressed", "false");
   await expect(derogChip).toHaveCount(0);
-  await hideTreated.uncheck();
+  await expect(page).toHaveURL(/[?&]traitement=/);
+  await derogFilter.click();
+  await expect(derogFilter).toHaveAttribute("aria-pressed", "true");
   await expect(derogChip.first()).toBeVisible();
+  await expect(page).not.toHaveURL(/[?&]traitement=/);
 
   // « Remettre à traiter » (note vide ⇒ DELETE direct) restaure l'état : compteur remonté.
   await derogChip.first().click();
@@ -393,6 +413,9 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   const voirTitle = (await voir.getAttribute("title")) ?? ""; // « Voir la semaine du <court> dans le Calendrier »
   await voir.click();
   await expect(page).toHaveURL(/\/matchs$/);
+  // A8 — le conflit AWAY_NO_FOOTPRINT a un côté EXTÉRIEUR : « Voir la semaine » a levé
+  // l'interrupteur Extérieurs avant de naviguer (sinon la semaine visée serait masquée).
+  await expect(page).toHaveURL(/[?&]exterieurs=1/);
   const weekSpan = page.getByText(/^Semaine du .+ au .+$/);
   await expect(weekSpan).toBeVisible({ timeout: 15_000 });
   const weekText = (await weekSpan.textContent()) ?? "";
@@ -625,6 +648,9 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
   const matchDate = "2027-03-13";
   await page.goto("/matchs");
   await expect(page.getByRole("heading", { name: "Matchs" })).toBeVisible();
+  // Lot A — le domicile créé est un AMICAL (competitionId null), masqué par défaut : on coche
+  // « Amical » pour qu'il pèse dans les compteurs, la liste « À placer », la grille et le Mois.
+  await page.getByRole("button", { name: "Amical", exact: true }).click();
 
   try {
     // ── Créer un domicile daté LOIN (samedi 2027-03-13) ──────────────────────────
@@ -708,7 +734,8 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
     // Nettoyage : supprimer le match créé (grille si placé) — best-effort.
     // Même correctif P4-197 : on navigue sur la semaine AFFICHÉE (clé matchDate), pas sur
     // la liste « À placer » (qui montre le match dès la 1re semaine → boucle figée).
-    await page.goto("/matchs");
+    // Lot A — l'URL force types + extérieurs pour que l'amical créé soit visible au nettoyage.
+    await page.goto("/matchs?type=amical,championnat,coupe,brassage&exterieurs=1");
     const cell = page.getByRole("button", { name: new RegExp(`\\d\\d:\\d\\d · ${opponent}`) });
     const nextWeek = page.getByRole("button", { name: "Semaine suivante" });
     for (let hops = 0; hops < 60 && !page.url().includes(`semaine=${matchDate}`) && (await nextWeek.isEnabled()); hops += 1) {
