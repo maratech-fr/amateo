@@ -19,7 +19,7 @@ exposes the API, **engine** solves, **frontend** renders (wizard → generate �
 
 | Zone | Lang / Runtime | Entry point | Role |
 |------|----------------|-------------|------|
-| `backend/` | PHP 8.4 · Symfony 7.4 · API Platform 4.3 · Doctrine ORM 3.6 | `public/index.php` | API, persistence, async orchestration |
+| `backend/` | PHP 8.4 · Symfony 7.4 · API Platform 4.4 · Doctrine ORM 3.7 | `public/index.php` | API, persistence, async orchestration |
 | `engine/` | Python 3.12 · FastAPI · OR-Tools CP-SAT | `app/main.py` | Schedule solver (`POST /generate` · `/place-matches` · `/validate-assignments`) |
 | `frontend/` | TS · React 19 · Vite · Tailwind 4 | `src/main.tsx` | UI — auth · planning work-loop · data-entry wizard |
 | `landing/` | HTML/CSS statique (zéro build) | `index.html` | Page de vente publique — **hors app**, aucun lien avec `frontend/` ; marque/liens dans `config.js` seul |

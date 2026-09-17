@@ -1,6 +1,6 @@
 # Amateo — Backend Agent Context
 
-> Symfony 7.4 + API Platform 4.3 + PHP 8.4. Core API and async scheduling orchestration.
+> Symfony 7.4 + API Platform 4.4 + PHP 8.4. Core API and async scheduling orchestration.
 > **Pointer file** — commands, CI, boundaries, flow: see root [`CLAUDE.md`](../CLAUDE.md) and [`docs/project-map.md`](../docs/project-map.md). Do not duplicate them here.
 
 ## Where things live (no counts — they rot)
