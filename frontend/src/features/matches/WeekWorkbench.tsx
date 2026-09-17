@@ -340,7 +340,7 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
           <HiddenHomesWeekNotice count={hiddenHomesThisWeek} />
         </div>
         <AwayList fixtures={weekendFixtures} teams={teamsMap} habits={habits} travel={opponentTravel} coachRoles={coachRoles} onEdit={onEditFixture} onDelete={(fixture) => deleteFixture.mutate(fixture.id)} />
-        {radarLoaded ? <ConflictRadar conflicts={radarConflicts} teams={teamsMap} coaches={coachesMap} newFingerprints={newFingerprints} /> : null}
+        {radarLoaded ? <ConflictRadar conflicts={radarConflicts} teams={teamsMap} coaches={coachesMap} venues={venuesMap} newFingerprints={newFingerprints} /> : null}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatMinutes as sharedFormat, parseTime } from "./time";
+import { formatDurationMinutes, formatMinutes as sharedFormat, parseTime } from "./time";
 import { fmtMinutes } from "@/features/wizard/lib/days";
 import { formatMinutes as matchesFormat } from "@/features/matches/lib/weekendGrid";
 import { formatMinutes as planningFormat } from "@/features/planning/lib/grid";
@@ -83,5 +83,28 @@ describe("les replis restent le choix de l'appelant (D-21)", () => {
   it("la détection de coach dédoublé garde null — la réaction la plus stricte", async () => {
     const mod = await import("@/features/wizard/lib/coachDoubleBooking");
     expect(mod).toBeDefined();
+  });
+});
+
+/**
+ * Détail par côté d'un conflit (P2-54) — la durée AÉRÉE : « 45 min » sous l'heure,
+ * « 1 h » / « 1 h 55 » au-delà (minutes sur deux chiffres). Distinct du compact
+ * « 1h55 » de `duration.formatDuration`.
+ */
+describe("formatDurationMinutes (durée aérée)", () => {
+  it("sous une heure : les minutes", () => {
+    expect(formatDurationMinutes(45)).toBe("45 min");
+    expect(formatDurationMinutes(5)).toBe("5 min");
+    expect(formatDurationMinutes(59)).toBe("59 min");
+  });
+
+  it("une heure PILE : « 1 h », sans minutes accolées", () => {
+    expect(formatDurationMinutes(60)).toBe("1 h");
+    expect(formatDurationMinutes(120)).toBe("2 h");
+  });
+
+  it("au-delà : « 1 h 55 », minutes sur deux chiffres (« 1 h 05 »)", () => {
+    expect(formatDurationMinutes(115)).toBe("1 h 55");
+    expect(formatDurationMinutes(65)).toBe("1 h 05");
   });
 });

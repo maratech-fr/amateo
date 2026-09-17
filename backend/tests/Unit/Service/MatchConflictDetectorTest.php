@@ -351,6 +351,64 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame('MATCH_TRAINING', $conflicts[0]['type']);
         self::assertTrue($conflicts[0]['fixture']['estimatedKickoff']);
         self::assertNull($conflicts[0]['fixture']['kickoffTime']); // nothing persisted
+        // P2-54 side details — the estimated hour « HH:MM » is carried (= the habit).
+        self::assertSame('17:30', $conflicts[0]['fixture']['estimatedKickoffTime']);
+    }
+
+    public function testFixtureViewCarriesDurationProfileOpponentLabelAndNoTravelOnHome(): void
+    {
+        // Two overlapping HOME matches sharing coach A (no venue → no VENUE_OVERLAP,
+        // only MATCH_MATCH). team-1 carries a 90-min profile; team-2 falls back.
+        $fx1 = $this->fixture('fx-1', self::TEAM_1, '2026-10-04', '16:00');
+        $fx1->setOpponentLabel('ASVEL - 2');
+        $fx2 = $this->fixture('fx-2', self::TEAM_2, '2026-10-04', '16:30');
+        $fx2->setOpponentLabel('VAULX - 1');
+        $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
+        $profiles = [self::TEAM_1 => new MatchDurationProfile(90, 20)];
+
+        $conflicts = $this->detect([$fx1, $fx2], $links, null, [], [], [], [], [], [], [], [], $profiles);
+
+        self::assertCount(1, $conflicts);
+        $byTeam = $this->sidesByTeam($conflicts[0]);
+        self::assertSame(90, $byTeam[self::TEAM_1]['matchDurationMinutes']);
+        self::assertSame(105, $byTeam[self::TEAM_2]['matchDurationMinutes']); // fallback profil
+        self::assertSame('ASVEL - 2', $byTeam[self::TEAM_1]['opponentLabel']);
+        self::assertSame('VAULX - 1', $byTeam[self::TEAM_2]['opponentLabel']);
+        // HOME → jamais de trajet ; pas d'estimation → heure estimée nulle.
+        self::assertNull($byTeam[self::TEAM_1]['travelOneWayMinutes']);
+        self::assertNull($byTeam[self::TEAM_2]['travelOneWayMinutes']);
+        self::assertNull($byTeam[self::TEAM_1]['estimatedKickoffTime']);
+    }
+
+    public function testTravelOneWayIsHalfTheRoundTripWhenModelledNullWhenAbsent(): void
+    {
+        // Coach A on both teams; fx-1 AWAY (round trip modelled), fx-2 HOME (never).
+        $away = $this->awayFixture('fx-1', self::TEAM_1, '2026-10-04', '16:00');
+        $home = $this->fixture('fx-2', self::TEAM_2, '2026-10-04', '16:30');
+        $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
+
+        // 170-min round trip on the away fixture ONLY.
+        $conflicts = $this->detect([$away, $home], $links, null, [], [], [], [], [], [], [], [], [], null, [], ['fx-1' => 170]);
+
+        self::assertCount(1, $conflicts);
+        $byTeam = $this->sidesByTeam($conflicts[0]);
+        self::assertSame(85, $byTeam[self::TEAM_1]['travelOneWayMinutes']); // 170 / 2, away
+        self::assertNull($byTeam[self::TEAM_2]['travelOneWayMinutes']); // home, never
+    }
+
+    public function testTravelOneWayNullForAwayWithoutAModelledRoundTrip(): void
+    {
+        // AWAY fixture but NO row in the round-trip map → « trajet inconnu » (null),
+        // never 0 (the footprint still gets 0, but the side field distinguishes).
+        $away = $this->awayFixture('fx-1', self::TEAM_1, '2026-10-04', '16:00');
+        $home = $this->fixture('fx-2', self::TEAM_2, '2026-10-04', '16:30');
+        $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
+
+        $conflicts = $this->detect([$away, $home], $links);
+
+        self::assertCount(1, $conflicts);
+        $byTeam = $this->sidesByTeam($conflicts[0]);
+        self::assertNull($byTeam[self::TEAM_1]['travelOneWayMinutes']);
     }
 
     public function testAwayWithoutHabitOnThatWeekdayHasNoFootprintButIsNamed(): void
@@ -1210,10 +1268,10 @@ final class MatchConflictDetectorTest extends TestCase
      *
      * @return list<array<string, mixed>>
      */
-    private function detect(array $fixtures, array $links, ?string $baselineScheduleId = null, array $overlayPeriods = [], array $slotsBySchedule = [], array $unavailabilities = [], array $habits = [], array $teamLinks = [], array $matchWindows = [], array $envelope = [], array $competitions = [], array $profilesByTeam = [], ?DateTimeImmutable $clubToday = null, array $playerMemberships = []): array
+    private function detect(array $fixtures, array $links, ?string $baselineScheduleId = null, array $overlayPeriods = [], array $slotsBySchedule = [], array $unavailabilities = [], array $habits = [], array $teamLinks = [], array $matchWindows = [], array $envelope = [], array $competitions = [], array $profilesByTeam = [], ?DateTimeImmutable $clubToday = null, array $playerMemberships = [], array $roundTripByFixtureId = []): array
     {
         return new MatchConflictDetector(new MatchFootprint, new EffectiveScheduleResolver, new AwayKickoffEstimator)
-            ->detect($fixtures, $links, $baselineScheduleId, $overlayPeriods, $slotsBySchedule, $unavailabilities, $habits, $teamLinks, $matchWindows, $envelope, $competitions, $profilesByTeam, [], $clubToday, $playerMemberships);
+            ->detect($fixtures, $links, $baselineScheduleId, $overlayPeriods, $slotsBySchedule, $unavailabilities, $habits, $teamLinks, $matchWindows, $envelope, $competitions, $profilesByTeam, $roundTripByFixtureId, $clubToday, $playerMemberships);
     }
 
     private function membership(string $coachId, string $teamId, bool $active = true): CoachPlayerMembership
@@ -1293,6 +1351,28 @@ final class MatchConflictDetectorTest extends TestCase
         $slot->setDurationMinutes($durationMinutes);
 
         return $slot;
+    }
+
+    /**
+     * The two sides of a MATCH_MATCH conflict, keyed by their teamId (the view
+     * order is chronological, so this makes assertions independent of it).
+     *
+     * @param array<string, mixed> $conflict
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function sidesByTeam(array $conflict): array
+    {
+        $out = [];
+        foreach (['left', 'right'] as $key) {
+            /** @var array<string, mixed> $side */
+            $side = $conflict[$key];
+            /** @var string $teamId */
+            $teamId = $side['teamId'];
+            $out[$teamId] = $side;
+        }
+
+        return $out;
     }
 
     /** Ids are DB-generated (no setter) — set the private field for pure-unit assertions. */

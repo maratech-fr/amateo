@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui
 import { isManagementRole } from "@/shared/lib/roles";
 import { useMe } from "@/shared/session/queries";
 
-import type { Coach, Conflict, Team } from "./api";
+import type { Coach, Conflict, Team, Venue } from "./api";
 import { ConflictSeverityGroups } from "./ConflictLine";
 import { ConflictResolutionControl } from "./ConflictResolutionControl";
 import { openConflictCount } from "./lib/conflictResolution";
@@ -13,6 +13,8 @@ interface ConflictRadarProps {
   conflicts: Conflict[];
   teams: Map<string, Team>;
   coaches: Map<string, Coach>;
+  /** Les gymnases — pour nommer le lieu d'un entraînement dans le détail par côté. */
+  venues: Map<string, Venue>;
   /**
    * RMM-3 — les empreintes des conflits NOUVEAUX depuis la dernière visite (le
    * « gardien »). Un conflit dont l'empreinte est dedans porte une chip « Nouveau ».
@@ -31,7 +33,7 @@ interface ConflictRadarProps {
  * `ConflictLine`/`ConflictSeverityGroups` (une seule maison, partagée avec l'onglet
  * Conflits) ; le radar les CONSOMME, rendu inchangé.
  */
-export function ConflictRadar({ conflicts, teams, coaches, newFingerprints }: ConflictRadarProps) {
+export function ConflictRadar({ conflicts, teams, coaches, venues, newFingerprints }: ConflictRadarProps) {
   const { data: me } = useMe();
   const canManage = isManagementRole(me?.role);
   // Le badge ne compte que l'À TRAITER (P4-207) — un conflit annoté reste listé, mais
@@ -57,9 +59,10 @@ export function ConflictRadar({ conflicts, teams, coaches, newFingerprints }: Co
             conflicts={conflicts}
             teams={teams}
             coaches={coaches}
+            venues={venues}
             newFingerprints={newFingerprints}
             renderConflict={(conflict, meta) => (
-              <ConflictResolutionControl conflict={conflict} teams={teams} coaches={coaches} tone={meta.tone} isNew={meta.isNew} canManage={canManage} />
+              <ConflictResolutionControl conflict={conflict} teams={teams} coaches={coaches} venues={venues} tone={meta.tone} isNew={meta.isNew} canManage={canManage} />
             )}
           />
         )}

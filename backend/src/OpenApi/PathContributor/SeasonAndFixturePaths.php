@@ -90,6 +90,17 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
             summary: 'Last FBI export deposit of the club/season (freshness feed, read-only, open to any member)',
         )));
 
+        // The additive per-side detail fields carried by the MATCH_MATCH (left/right)
+        // and MATCH_TRAINING (fixture) sides, so the UI can render one line per side
+        // with the opponent, the place and the travel/estimated hours.
+        $sideDetails = [
+            'estimatedKickoffTime' => ['type' => 'string', 'nullable' => true, 'description' => 'Estimated kickoff « HH:MM » borrowed from the team habit — set only when the kickoff is estimated (an away match with no real hour), null otherwise'],
+            'travelOneWayMinutes' => ['type' => 'integer', 'nullable' => true, 'description' => 'One-way car travel minutes to the opponent; null when no travel is modelled, and always null on a home side'],
+            'matchDurationMinutes' => ['type' => 'integer', 'description' => 'Match duration in minutes for this side\'s team (its resolved category profile, else the default)'],
+            'opponentLabel' => ['type' => 'string', 'description' => 'The opponent label of this fixture'],
+            'opponentPlace' => ['type' => 'string', 'nullable' => true, 'description' => 'Where the opponent plays, decorated on away sides only (manual override, then the federal directory city, then the FBI venue label); null when unknown'],
+        ];
+
         $paths->addPath('/api/fixtures/conflicts', new PathItem(get: new Operation(
             operationId: 'getFixtureConflicts',
             tags: ['Match'],
@@ -107,13 +118,13 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                             'end' => ['type' => 'string', 'format' => 'date-time', 'description' => 'Overlap segment end'],
                             'left' => ['type' => 'object', 'nullable' => true, 'description' => 'MATCH_MATCH: the earliest-starting fixture', 'properties' => [
                                 'role' => ['type' => 'string', 'enum' => ['MAIN', 'ASSISTANT', 'PLAYER'], 'description' => 'The person\'s role on this side'],
-                            ]],
+                            ] + $sideDetails],
                             'right' => ['type' => 'object', 'nullable' => true, 'description' => 'MATCH_MATCH: the later fixture', 'properties' => [
                                 'role' => ['type' => 'string', 'enum' => ['MAIN', 'ASSISTANT', 'PLAYER'], 'description' => 'The person\'s role on this side'],
-                            ]],
+                            ] + $sideDetails],
                             'fixture' => ['type' => 'object', 'nullable' => true, 'description' => 'MATCH_TRAINING: the match', 'properties' => [
                                 'role' => ['type' => 'string', 'enum' => ['MAIN', 'ASSISTANT', 'PLAYER'], 'description' => 'The person\'s role with the match team'],
-                            ]],
+                            ] + $sideDetails],
                             'training' => ['type' => 'object', 'nullable' => true, 'description' => 'MATCH_TRAINING: the training slot', 'properties' => [
                                 'role' => ['type' => 'string', 'enum' => ['MAIN', 'ASSISTANT', 'PLAYER'], 'description' => 'The person\'s role with the training team'],
                             ]],

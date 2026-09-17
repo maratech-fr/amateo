@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Coach, Conflict, ConflictResolution, Team } from "./api";
+import type { Coach, Conflict, ConflictResolution, Team, Venue } from "./api";
 import * as matchesApi from "./api";
 import { ConflictResolutionControl } from "./ConflictResolutionControl";
 
@@ -17,6 +17,7 @@ const teams = new Map<string, Team>([
   ["team-2", { id: "team-2", name: "Seniors", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 }],
 ]);
 const coaches = new Map<string, Coach>();
+const venues = new Map<string, Venue>();
 
 function side(fixtureId: string, teamId: string) {
   return { fixtureId, teamId, homeAway: "HOME" as const, matchDate: "2026-10-03", kickoffTime: "16:00", windowStart: "", windowEnd: "" };
@@ -33,7 +34,7 @@ function renderControl(conflict: Conflict, canManage = true) {
   const wrap = (c: Conflict) => (
     <QueryClientProvider client={client}>
       <ul>
-        <ConflictResolutionControl conflict={c} teams={teams} coaches={coaches} tone="destructive" isNew={false} canManage={canManage} />
+        <ConflictResolutionControl conflict={c} teams={teams} coaches={coaches} venues={venues} tone="destructive" isNew={false} canManage={canManage} />
       </ul>
     </QueryClientProvider>
   );

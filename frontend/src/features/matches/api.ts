@@ -194,6 +194,21 @@ export interface ConflictFixtureView {
   role?: ConflictSideRole;
   windowStart: string;
   windowEnd: string;
+  /**
+   * Détail par côté (MATCH_MATCH / MATCH_TRAINING) — champs ADDITIFS servis par le
+   * backend pour rendre une ligne par côté. Optionnels : les familles gymnase/passerelle
+   * partagent cette vue mais le front ne les lit pas pour elles.
+   */
+  /** Heure estimée « HH:MM » empruntée à l'habitude — non-null SSI `estimatedKickoff`. */
+  estimatedKickoffTime?: string | null;
+  /** Trajet ALLER simple (minutes) ; null = non modélisé (« trajet inconnu ») ; toujours null en domicile. */
+  travelOneWayMinutes?: number | null;
+  /** Durée du match de l'équipe de ce côté (profil catégorie résolu, sinon défaut). */
+  matchDurationMinutes?: number;
+  /** Le libellé de l'adversaire de cette rencontre (« vs … »). */
+  opponentLabel?: string;
+  /** Où joue l'adversaire — décoré côté AWAY seulement ; null = lieu inconnu. */
+  opponentPlace?: string | null;
 }
 
 export interface ConflictTrainingView {

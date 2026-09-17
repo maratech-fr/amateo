@@ -248,6 +248,7 @@ export function ConflictsPage() {
       conflict={conflict}
       teams={teamsMap}
       coaches={coachesMap}
+      venues={venuesMap}
       tone={meta.tone}
       isNew={meta.isNew}
       canManage={canManage}
@@ -363,7 +364,7 @@ export function ConflictsPage() {
               open={openKey === entry.key}
               onToggle={(next) => setOuvert(next ? entry.key : null)}
             >
-              <ConflictSeverityGroups conflicts={entry.conflicts} teams={teamsMap} coaches={coachesMap} newFingerprints={newFingerprints} renderConflict={renderConflict} />
+              <ConflictSeverityGroups conflicts={entry.conflicts} teams={teamsMap} coaches={coachesMap} venues={venuesMap} newFingerprints={newFingerprints} renderConflict={renderConflict} />
             </AccordionSection>
           ))}
         </div>

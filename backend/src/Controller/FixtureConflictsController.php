@@ -31,6 +31,7 @@ use App\Service\LeagueEnvelopeResolver;
 use App\Service\ManagementAccessGuard;
 use App\Service\MatchConflictDetector;
 use App\Service\MatchDurationResolver;
+use App\Service\OpponentPlaceResolver;
 use App\Service\SeasonResolver;
 use App\Service\TrainingCalendarContext;
 use DateTimeInterface;
@@ -79,6 +80,7 @@ final class FixtureConflictsController extends AbstractController
         private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly ConflictResolutionRepository $resolutionRepository,
         private readonly VenueLabelNormalizer $labelNormalizer,
+        private readonly OpponentPlaceResolver $opponentPlaceResolver,
     ) {}
 
     // priority > 0: this static path must win over API Platform's /api/fixtures/{id}
@@ -315,7 +317,85 @@ final class FixtureConflictsController extends AbstractController
             $conflicts,
         );
 
+        // P2-54 conflict side details — champ ADDITIF `opponentPlace` sur les côtés
+        // AWAY des familles PERSONNE (MATCH_MATCH left/right, MATCH_TRAINING fixture).
+        // Décoré EN AVAL (le détecteur ne le connaît pas), résolu en BATCH par
+        // OpponentPlaceResolver ; un côté HOME ne porte jamais la clé.
+        if ($season instanceof Season) {
+            $conflicts = $this->decorateOpponentPlace($conflicts, $fixtures, $season->getId());
+        }
+
         return [$season, $conflicts, null !== $context['seasonScheduleId']];
+    }
+
+    /**
+     * Decorate the AWAY sides of the person families with a resolved place label
+     * (`opponentPlace`, string|null). Two passes so the resolver batches once:
+     * gather the away fixtures those sides reference, resolve, then stamp each.
+     *
+     * @param list<array<string, mixed>> $conflicts
+     * @param list<Fixture>              $fixtures
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function decorateOpponentPlace(array $conflicts, array $fixtures, string $seasonId): array
+    {
+        $fixtureById = [];
+        foreach ($fixtures as $fixture) {
+            $fixtureById[$fixture->getId()] = $fixture;
+        }
+
+        /** @var array<string, Fixture> $awayFixtures */
+        $awayFixtures = [];
+        foreach ($conflicts as $conflict) {
+            foreach ($this->awaySideKeys($conflict) as $key) {
+                $side = $conflict[$key];
+                if (!\is_array($side) || 'AWAY' !== ($side['homeAway'] ?? null)) {
+                    continue;
+                }
+                $fixtureId = $side['fixtureId'] ?? null;
+                if (\is_string($fixtureId) && isset($fixtureById[$fixtureId])) {
+                    $awayFixtures[$fixtureId] = $fixtureById[$fixtureId];
+                }
+            }
+        }
+
+        $places = $this->opponentPlaceResolver->resolveByFixture($seasonId, array_values($awayFixtures));
+
+        return array_map(
+            function (array $conflict) use ($places): array {
+                foreach ($this->awaySideKeys($conflict) as $key) {
+                    $side = $conflict[$key];
+                    if (!\is_array($side) || 'AWAY' !== ($side['homeAway'] ?? null)) {
+                        continue;
+                    }
+                    $fixtureId = $side['fixtureId'] ?? null;
+                    $side['opponentPlace'] = \is_string($fixtureId) ? ($places[$fixtureId] ?? null) : null;
+                    $conflict[$key] = $side;
+                }
+
+                return $conflict;
+            },
+            $conflicts,
+        );
+    }
+
+    /**
+     * The side keys that carry an away MATCH fixture, per conflict type:
+     * MATCH_MATCH → left/right, MATCH_TRAINING → the match fixture. Every other
+     * family (gym/link/…) keeps its rendering untouched, so it decorates nothing.
+     *
+     * @param array<string, mixed> $conflict
+     *
+     * @return list<string>
+     */
+    private function awaySideKeys(array $conflict): array
+    {
+        return match ($conflict['type'] ?? null) {
+            'MATCH_MATCH' => ['left', 'right'],
+            'MATCH_TRAINING' => ['fixture'],
+            default => [],
+        };
     }
 
     /** @return array{status: string, note: string|null, updatedAt: string} */

@@ -1,11 +1,20 @@
-Last verified @ 2026-09-16 (PR-2b « adversaire multi-gymnases » — auto-localisation depuis le gymnase du
-fichier + orchestrateur, backend, régénéré par le coder après `cache:pool:clear --all` + `api:openapi:export`).
-**200 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** : l'orchestrateur
-`POST /api/opponents/refresh`, aucune autre route ne bouge.
-· SHA-256 `2b8beedbf62bb911750060f395a5e0adfe7e9c7309e6383cffa75a4a2a850e76`
+Last verified @ 2026-09-17 (« détail par côté » d'un conflit de personne — champs additifs par côté sur le
+radar `GET /api/fixtures/conflicts`, backend, régénéré par le coder après `cache:pool:clear --all` + `api:openapi:export`).
+**200 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : aucune route ne bouge,
+seul le schéma des côtés `left`/`right`/`fixture` du conflit gagne cinq propriétés.
+· SHA-256 `04b4c0ae403e77a0d61d87e1018eb9fdebeb9b82974e920ae6ce28d6be3c00b1`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **« Détail par côté » d'un conflit de personne, backend (2026-09-17)** : **+0 path** — le radar
+  `GET /api/fixtures/conflicts` gagne cinq champs ADDITIFS PAR CÔTÉ sur les familles PERSONNE (les côtés
+  `left`/`right` de MATCH_MATCH, `fixture` de MATCH_TRAINING) pour rendre une ligne par côté : `estimatedKickoffTime`
+  (heure estimée `HH:MM`, non-null seulement quand le coup d'envoi est estimé), `travelOneWayMinutes` (trajet aller
+  simple ; null = non modélisé, toujours null en domicile), `matchDurationMinutes` (durée de match du côté),
+  `opponentLabel` (le libellé adverse), et `opponentPlace` (où joue l'adversaire — décoré côté AWAY seulement :
+  override manuel équipe > club > annuaire fédéral > libellé FBI > null). Aucune empreinte de conflit ne change
+  (ces champs sont hors identité). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun
+  appel moteur, aucun payload solveur ne lit ces champs).
 - **PR-2b « adversaire multi-gymnases » — auto-localisation depuis le fichier + orchestrateur, backend (2026-09-16)** :
   **+1 path** — `POST /api/opponents/refresh` (management) enchaîne EN UN APPEL les trois passes best-effort qui
   mettent à jour les adversaires AWAY : (`codes`) rattrapage des codes fédéraux dans l'annuaire + estampille des
@@ -54,13 +63,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   répond `suggestionSource` (`pairing` | `canonical` | `fbi` | null) à côté de `suggestedTeamId` /
   `suggestedCompetitionId` ; `POST /api/ffbb/engagements/confirm` accepte un `competitionId` optionnel par
   pairing (les réfs FFBB se posent SUR la compétition xlsx de l'équipe choisie). 196 → **196 paths**.
-- **P4-187b — l'écran « Rattacher » de l'onglet Importer (2026-09-09)** : **+0 path** — pur frontend, mais le
-  snapshot gagne les DEUX propriétés que P4-187a avait décrites sans les faire atterrir dans l'export : le
-  schéma read `Venue` gagne `externalLabels` (list<string>, lecture seule — jamais writable par le PUT) et
-  `Fixture` gagne `suggestedVenueId` (proposition floue de gymnase pour un domicile importé sans salle,
-  lecture). Le manque venait d'un export P4-187a lancé contre un cache de métadonnées API Platform périmé
-  (le code portait bien les `#[Groups(['read'])]`) ; `cache:clear` + ré-export les ajoute (3 variantes read
-  chacune). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.20, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

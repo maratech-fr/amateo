@@ -50,3 +50,20 @@ export function parseTime(value: string | null | undefined): number | null {
 
   return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : null;
 }
+
+/**
+ * Une DURÉE en minutes → une phrase lisible AÉRÉE : « 45 min » sous l'heure,
+ * « 1 h » / « 1 h 55 » au-delà (minutes sur deux chiffres, `05`). Distinct de
+ * `shared/lib/duration.formatDuration` (compact « 1h55 », sans espaces) : celui-ci
+ * aère l'heure pour le détail par côté d'un conflit (« durée estimée 1 h 55 »,
+ * « Chevauchement … · 1 h 55 »). PRÉSENTATION pure.
+ */
+export function formatDurationMinutes(minutes: number): string {
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+
+  return 0 === m ? `${h} h` : `${h} h ${String(m).padStart(2, "0")}`;
+}
