@@ -100,6 +100,60 @@ describe("WeekendGrid — colonne extérieur (lot 3 PR-3a)", () => {
   });
 });
 
+describe("WeekendGrid — case « À confirmer » (lot 1, 2026-09-17)", () => {
+  // Un domicile porté sur la grille (gymnase + heure repris de l'import) mais UNPLACED.
+  const toConfirm = {
+    ...fixtureBase,
+    id: "fxC",
+    teamId: "tA",
+    matchDate: "2026-10-03", // samedi
+    opponentLabel: "Villeurbanne",
+    status: "UNPLACED" as const,
+    venueId: "v1",
+    kickoffTime: "15:30",
+    externalRef: "7",
+    placementSource: null as null,
+  };
+  const habit = { id: "h", teamId: "tB", dayOfWeek: 6, kickoffTime: "14:00", venueId: "v1" } as import("./api").TeamMatchHabit;
+
+  it("porte la pastille « À confirmer », un fond hachuré et un nom accessible verbatim — jamais de cadenas", () => {
+    const model = buildWeekendGrid([toConfirm], venues, teams);
+    const { container } = render(<WeekendGrid model={model} onSelectFixture={() => {}} />);
+    const cell = container.querySelector('[data-to-confirm="true"]') as HTMLElement;
+    expect(cell).not.toBeNull();
+    // Pastille (le texte visible EST l'annonce d'état).
+    expect(within(cell).getByText("À confirmer")).toBeInTheDocument();
+    // Fond hachuré (jamais d'opacité, jamais de pointillé — ce n'est PAS un fantôme).
+    expect(cell.getAttribute("style")).toContain("repeating-linear-gradient");
+    expect(cell).not.toHaveClass("border-dashed");
+    expect(cell.getAttribute("style") ?? "").not.toContain("opacity");
+    // Un à-confirmer n'est jamais verrouillé.
+    expect(within(cell).queryByLabelText("Ancre manuelle")).toBeNull();
+    expect(cell).toHaveAttribute(
+      "aria-label",
+      "U13 – Villeurbanne, sam. 15:30, Gymnase Alpha. À confirmer : gymnase et heure repris de l'import, rencontre pas encore placée.",
+    );
+  });
+
+  it("cliquer une case à confirmer remonte son fixtureId (sélection → panneau)", async () => {
+    const onSelect = vi.fn();
+    const model = buildWeekendGrid([toConfirm], venues, teams);
+    const { container } = render(<WeekendGrid model={model} onSelectFixture={onSelect} />);
+    await userEvent.click(container.querySelector('[data-to-confirm="true"]') as HTMLElement);
+    expect(onSelect).toHaveBeenCalledWith("fxC");
+  });
+
+  it("un match PLACÉ manuel garde son cadenas ; un fantôme garde son pointillé", () => {
+    // fxA est PLACED + MANUAL (cadenas) ; un fantôme d'habitude (pointillé/translucide).
+    const model = buildWeekendGrid([fixtures[0]], venues, teams, new Set(), [habit], "2026-10-03");
+    render(<WeekendGrid model={model} onSelectFixture={() => {}} />);
+    expect(screen.getByLabelText("Ancre manuelle")).toBeInTheDocument();
+    const ghost = screen.getByTitle(/fenêtre protégée/);
+    expect(ghost).toHaveClass("border-dashed");
+    expect(ghost).toHaveClass("opacity-60");
+  });
+});
+
 describe("WeekendGrid — a11y (A11Y-17)", () => {
   it("un match hors fenêtre ligue porte un nom accessible, pas l'icône + couleur seules", () => {
     // 4ᵉ argument = ids hors enveloppe : fxA sort de la fenêtre autorisée par la ligue.

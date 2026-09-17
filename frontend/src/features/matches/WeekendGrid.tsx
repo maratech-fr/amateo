@@ -1,6 +1,7 @@
-import { AlertTriangle, Bus, Car, Clock, HelpCircle, Lock } from "lucide-react";
+import { AlertTriangle, Bus, Car, CircleDashed, Clock, HelpCircle, Lock } from "lucide-react";
 import { type UIEvent, useRef } from "react";
 
+import { StatusPill } from "@/shared/components/ui/badge";
 import { EmptyBlock } from "@/shared/components/ui/empty-hint";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { tint } from "@/shared/lib/color";
@@ -23,6 +24,16 @@ function awayBlockName(cell: WeekendCell): string {
   return parts.join(", ");
 }
 
+/**
+ * VOCABULAIRE VISUEL des cases de la grille (à garder cohérent) :
+ *  - **pointillé + translucide (opacity)** = « PAS un match » : un fantôme d'habitude,
+ *    la fenêtre protégée d'une équipe dont le calendrier n'est pas encore connu.
+ *  - **hachures (repeating-linear-gradient) + opaque + pastille « À confirmer »** =
+ *    « un vrai match, EN ATTENTE » : un domicile dont le gymnase et l'heure ont été
+ *    repris de l'import mais que le gestionnaire n'a pas encore confirmé (statut
+ *    backend UNPLACED). Jamais d'opacité ni de pointillé ici — réservés au fantôme.
+ *  - **fond teinté uni + éventuel cadenas** = un match RÉELLEMENT placé.
+ */
 const ROW_HEIGHT = 16; // px per 15-min step (1h = 64px)
 const HEADER_ROW = "1.75rem";
 
@@ -159,6 +170,53 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
                   </span>
                 ) : null}
               </AwayTag>
+            );
+          }
+
+          // Case « À confirmer » : même case, même colonne, fond hachuré + rail couleur
+          // gymnase + pastille warning. Un vrai match en attente (opaque), jamais un
+          // fantôme (pointillé/translucide) — cf. le docblock « VOCABULAIRE VISUEL ».
+          if (cell.toConfirm) {
+            const confirmClickable = undefined !== onSelectFixture; // jamais un ghost
+            const ConfirmTag = confirmClickable ? "button" : "div";
+            const venueColor = cell.venueColor ?? "var(--accent)";
+            const confirmDimmed = swapArmed && cell.fixtureId !== selectedFixtureId;
+            // Nom accessible = les textes visibles, verbatim, + le contexte (gymnase, jour).
+            const confirmName = `${cell.teamLabel} – ${cell.opponentLabel}, ${cell.weekday ?? ""} ${cell.kickoffLabel}, ${cell.venueLabel}. À confirmer : gymnase et heure repris de l'import, rencontre pas encore placée.`;
+            return (
+              <ConfirmTag
+                key={cell.key}
+                {...(confirmClickable ? { type: "button" as const, onClick: () => onSelectFixture(cell.fixtureId) } : {})}
+                data-fixture-id={cell.fixtureId}
+                data-to-confirm="true"
+                aria-label={confirmName}
+                title={confirmName}
+                className={cn(
+                  "z-10 m-px flex flex-col items-start gap-0.5 overflow-hidden rounded border border-border border-l-4 bg-card px-1 py-0.5 text-left leading-tight text-foreground",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                  confirmClickable ? "cursor-pointer hover:brightness-95 dark:hover:brightness-110" : "",
+                  cell.fixtureId === selectedFixtureId ? "ring-2 ring-accent" : "",
+                  confirmDimmed ? "opacity-40" : "",
+                )}
+                style={{
+                  gridColumn: cell.gridColumn,
+                  gridRow: `${cell.gridRowStart} / span ${cell.gridRowSpan}`,
+                  justifySelf: "start",
+                  width: `${100 / cell.laneCount}%`,
+                  transform: `translateX(${cell.lane * 100}%)`,
+                  borderLeftColor: venueColor,
+                  backgroundImage: `repeating-linear-gradient(45deg, color-mix(in oklch, ${venueColor} 22%, transparent) 0 4px, transparent 4px 9px)`,
+                }}
+              >
+                <span className="flex w-full items-center font-medium">
+                  <span className="truncate">{cell.teamLabel}</span>
+                </span>
+                <StatusPill variant="warning" className="px-1 py-0 text-[10px]" icon={<CircleDashed className="size-3 text-warning" aria-hidden="true" />}>
+                  À confirmer
+                </StatusPill>
+                <span className="truncate text-[10px] text-foreground">{`${cell.kickoffLabel} · ${cell.opponentLabel}`}</span>
+                {null !== cell.externalRef ? <span className="text-[10px] tabular-nums text-foreground">n° {cell.externalRef}</span> : null}
+              </ConfirmTag>
             );
           }
 

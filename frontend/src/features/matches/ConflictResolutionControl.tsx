@@ -238,8 +238,12 @@ export function ConflictResolutionControl({ conflict, teams, coaches, venues, to
   }
 
   const hasTrailing = null !== chip || undefined !== extraTrailing;
+  // Décision fondateur 2026-09-17 : les deux actions s'EMPILENT toujours — « Traiter »
+  // (ou la pastille) AU-DESSUS, « Voir la semaine » EN DESSOUS — alignées à droite et de
+  // même largeur, quelle que soit la longueur de la ligne (l'ancien `flex-wrap` les
+  // empilait de façon incohérente selon la place restante).
   const trailing = hasTrailing ? (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-col items-stretch gap-2">
       {chip}
       {extraTrailing}
     </div>

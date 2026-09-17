@@ -381,3 +381,37 @@ describe("PlacementPanel", () => {
     expect(screen.queryByText("2026-10-03")).toBeNull();
   });
 });
+
+// ── « Confirmer ce placement » : un UNPLACED déjà pré-rempli par l'import (lot 1) ────────
+describe("PlacementPanel — confirmer un placement repris de l'import (2026-09-17)", () => {
+  // UNPLACED mais gymnase + heure déjà connus (repris de l'import).
+  const importFx: Fixture = { ...fixture, status: "UNPLACED", venueId: "venue-1", kickoffTime: "14:00" };
+
+  it("intitule le bouton « Confirmer ce placement » + ligne d'aide quand rien n'a changé", () => {
+    renderPanel(openEnvelope, vi.fn(), { fixture: importFx });
+    expect(screen.getByRole("button", { name: "Confirmer ce placement" })).toBeEnabled();
+    expect(screen.getByText("Gymnase et heure repris de l'import — vérifiez, puis confirmez.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Placer" })).toBeNull();
+  });
+
+  it("redevient « Placer » (et masque l'aide) dès qu'une valeur change", async () => {
+    const user = userEvent.setup();
+    renderPanel(openEnvelope, vi.fn(), { fixture: importFx });
+    const kickoff = screen.getByLabelText("Heure de coup d'envoi");
+    await user.clear(kickoff);
+    await user.type(kickoff, "15:00");
+    expect(screen.getByRole("button", { name: "Placer" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Confirmer ce placement" })).toBeNull();
+    expect(screen.queryByText(/repris de l'import — vérifiez/)).toBeNull();
+  });
+
+  it("sans gymnase d'origine, rien à confirmer : le bouton reste « Placer » (flux e2e « créer puis placer »)", async () => {
+    const user = userEvent.setup();
+    // Le fixture par défaut est UNPLACED SANS gymnase ni heure (le match vient d'être créé).
+    renderPanel(openEnvelope);
+    await pickListboxOption(user, "Gymnase", "Gymnase Alpha");
+    await user.type(screen.getByLabelText("Heure de coup d'envoi"), "14:00");
+    expect(screen.getByRole("button", { name: "Placer" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Confirmer ce placement" })).toBeNull();
+  });
+});

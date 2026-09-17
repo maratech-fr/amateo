@@ -169,17 +169,47 @@ describe("enchaînement des blocs (PR F — retour fondateur 2026-09-14)", () =>
   });
 });
 
-describe("lock badge (P1-4 PR E1)", () => {
-  it("marks MANUAL and legacy-null placements as locked anchors, SOLVER as free", () => {
+describe("lock badge (P1-4 PR E1 · cadenas resserré 2026-09-17)", () => {
+  it("verrouille les placés MANUELS (PLACED/SUBMITTED/VALIDATED), jamais SOLVER, jamais null, jamais UNPLACED", () => {
     const grid = buildWeekendGrid(
-      [fixture({ id: "m", placementSource: "MANUAL" }), fixture({ id: "n", kickoffTime: "18:00", placementSource: null }), fixture({ id: "s", kickoffTime: "20:00", placementSource: "SOLVER" })],
+      [
+        fixture({ id: "m", placementSource: "MANUAL" }), // PLACED + MANUAL → verrouillé
+        fixture({ id: "sub", kickoffTime: "17:00", status: "SUBMITTED", placementSource: "MANUAL" }),
+        fixture({ id: "val", kickoffTime: "17:30", status: "VALIDATED", placementSource: "MANUAL" }),
+        fixture({ id: "n", kickoffTime: "18:00", placementSource: null }), // legacy null → PLUS verrouillé
+        fixture({ id: "s", kickoffTime: "20:00", placementSource: "SOLVER" }),
+        fixture({ id: "u", kickoffTime: "21:00", status: "UNPLACED", placementSource: "MANUAL" }), // UNPLACED jamais
+      ],
       venues,
       teams,
     );
     const byId = new Map(grid.cells.map((c) => [c.fixtureId, c.locked]));
     expect(byId.get("m")).toBe(true);
-    expect(byId.get("n")).toBe(true); // null legacy = manual: never move what we cannot attribute
+    expect(byId.get("sub")).toBe(true);
+    expect(byId.get("val")).toBe(true);
+    expect(byId.get("n")).toBe(false);
     expect(byId.get("s")).toBe(false);
+    expect(byId.get("u")).toBe(false);
+  });
+});
+
+describe("toConfirm — un statut backend présenté, pas une décision front", () => {
+  it("true pour un domicile porté sur la grille mais UNPLACED (gymnase + heure repris de l'import)", () => {
+    // Le fixture par défaut a gymnase + heure (isPlacedOnGrid true) ; statut UNPLACED.
+    const grid = buildWeekendGrid([fixture({ status: "UNPLACED" })], venues, teams);
+    expect(grid.cells).toHaveLength(1);
+    expect(grid.cells[0].toConfirm).toBe(true);
+    expect(grid.cells[0].locked).toBe(false); // un à-confirmer n'est jamais verrouillé
+    expect(grid.cells[0].weekday).toBe("sam."); // 2026-10-03 est un samedi (nom accessible)
+  });
+
+  it("false dès que le match est réellement placé (PLACED / SUBMITTED / VALIDATED)", () => {
+    const grid = buildWeekendGrid(
+      [fixture({ id: "p", status: "PLACED" }), fixture({ id: "s", kickoffTime: "18:00", status: "SUBMITTED" }), fixture({ id: "v", kickoffTime: "19:00", status: "VALIDATED" })],
+      venues,
+      teams,
+    );
+    expect(grid.cells.every((c) => false === c.toConfirm)).toBe(true);
   });
 });
 

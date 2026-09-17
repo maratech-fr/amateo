@@ -153,3 +153,35 @@ describe("ConflictResolutionControl — lecture (membre / sans empreinte)", () =
     expect(screen.getByText("réservé un autre créneau")).toBeInTheDocument();
   });
 });
+
+describe("ConflictResolutionControl — actions empilées (décision fondateur 2026-09-17)", () => {
+  it("empile « Traiter »/pastille AU-DESSUS de « Voir la semaine » dans une même colonne", () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <ul>
+          <ConflictResolutionControl
+            conflict={conflictWith(resolved("RESOLVED_INTERNALLY"))}
+            teams={teams}
+            coaches={coaches}
+            venues={venues}
+            tone="destructive"
+            isNew={false}
+            canManage
+            extraTrailing={
+              <button type="button">Voir la semaine</button>
+            }
+          />
+        </ul>
+      </QueryClientProvider>,
+    );
+    const voir = screen.getByRole("button", { name: "Voir la semaine" });
+    const traiter = screen.getByRole("button", { name: /Statut de traitement/ });
+    const column = voir.parentElement as HTMLElement;
+    // Une seule colonne (flex-col) porte les deux actions, « Traiter »/pastille d'abord.
+    expect(column).toHaveClass("flex-col");
+    expect(column.contains(traiter)).toBe(true);
+    // « Traiter »/pastille précède « Voir la semaine » dans l'ordre du document (empilé au-dessus).
+    expect(Boolean(voir.compareDocumentPosition(traiter) & Node.DOCUMENT_POSITION_PRECEDING)).toBe(true);
+  });
+});

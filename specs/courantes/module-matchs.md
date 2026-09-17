@@ -556,7 +556,10 @@ les endpoints PR-1/PR-2 — aucun ajout backend.
   `PUT /api/fixtures/{id}` (full-replace, statut `PLACED`, corps reconstruit pour ne pas effacer opponent/
   competition). **Envelope-ligue** : garde **HARD** (bouton désactivé hors fenêtre) quand l'équipe mappe une
   fenêtre du catalogue ; **dégradation en repère indicatif** (non bloquant) quand le mapping catégorie/niveau
-  ne résout pas de façon fiable (`lib/envelope.ts`). Le radar serveur reste la vérité dure.
+  ne résout pas de façon fiable (`lib/envelope.ts`). Le radar serveur reste la vérité dure. **Un
+  domicile UNPLACED qui porte déjà un gymnase et une heure (repris de l'import) se rend comme une
+  case « À confirmer » distincte, jamais comme une case placée** — détail § « Grille — case « à
+  confirmer » » plus bas.
 - **Saisie manuelle** (`FixtureFormDialog`) : `POST /api/fixtures` (équipe, date, HOME/AWAY, adversaire,
   compétition optionnelle = amical) — complément de l'import FBI (amicaux, manquants).
 - **Radar affiché** (`ConflictRadar`) : `GET /api/fixtures/conflicts` en direct (invalidé à chaque mutation).
@@ -1303,7 +1306,11 @@ SOFT « repos après jour de match »).
   fait le travail) ; « rendre au solveur » = PUT écho + `placementSource: "SOLVER"`, accepté par le
   serveur **seulement à placement (salle/heure/date) inchangé et statut PLACED** — 422 sinon (on ne
   peut pas étiqueter SOLVER un placement choisi à la main ; `FixtureStateProcessor`). À la création,
-  `SOLVER` est refusé (422). `null` legacy = manuel (cadenas affiché).
+  `SOLVER` est refusé (422). **`PlacementPanel` calcule son propre cadenas d'en-tête/bouton**
+  (`locked = placed && "SOLVER" !== fixture.placementSource`, `PlacementPanel.tsx:125`) : `null`
+  legacy y reste affiché comme un cadenas. **`WeekendGrid` a resserré sa propre formule le
+  2026-09-17** (§ « Grille — case « à confirmer » » ci-dessous) — les deux calculs divergent
+  désormais sur un `PLACED` legacy `placementSource: null` (dette signalée, P4-214 en roadmap).
 - **Éditer** : équipe figée (une autre équipe = un autre engagement — supprimer + recréer) ; **changer
   la date à la main CONSERVE le placement** (le gestionnaire EST la décision, à l'inverse du ré-import
   FBI qui dé-place) — le radar signale ce que la nouvelle date casse. **Exception** : basculer
@@ -2103,6 +2110,76 @@ un entraînement n'a pas le même poids qu'un domicile qui déborde de 45 min). 
   `bg-destructive/5`/`bg-warning/5`, préexistant) porte désormais nettement plus de texte, sans être
   mesuré par `frontend/tests/e2e/a11y-contrast.spec.ts` (qui verrouille `/10`/`/15` mais jamais `/5`,
   et ne visite pas `/matchs`) — **P4-213** (`specs/evolution/roadmap.md`).
+
+## Grille — case « à confirmer » et liste des conflits, ajustements (2026-09-17)
+
+> Retours fondateur sur sa passe de tests des 2026-09-16/17 : un domicile NON PLACÉ qui portait déjà
+> un gymnase et une heure repris de l'import se rendait comme une case PLEINE, avec un cadenas
+> « Ancre manuelle » — le fondateur a cru que l'appli avait DÉCIDÉ du gymnase (cas U21M2 face à
+> JDR), alors que rien n'était encore confirmé. Deuxième retour, sur l'onglet Conflits : les boutons
+> d'action (« Traiter »/pastille + « Voir la semaine ») s'empilaient de façon incohérente sur les
+> longues lignes du détail par côté (§ ci-dessus), et l'ordre des conflits dans un groupe de gravité
+> ne suivait aucune logique lisible.
+
+- **Case « À confirmer » (`WeekendCell.toConfirm`)** — `frontend/src/features/matches/lib/weekendGrid.ts:441` :
+  `toConfirm = "UNPLACED" === fixture.status` sur une rencontre déjà `isPlacedOnGrid` (gymnase +
+  heure connus). C'est la PRÉSENTATION d'un statut servi par le backend, jamais une décision
+  recalculée côté front (🔴 `.claude/rules/frontend.md`). `WeekendGrid.tsx` lui donne un rendu
+  DÉDIÉ (bloc `cell.toConfirm`, avant le rendu générique) : fond **hachuré** (`repeating-linear-
+  gradient` à la couleur du gymnase, `color-mix`), rail `border-l-4` couleur gymnase, pastille
+  `StatusPill variant="warning"` (icône `CircleDashed`) « À confirmer », **jamais d'opacité ni de
+  pointillé** — ces deux-là restent réservés au fantôme d'habitude (docblock « VOCABULAIRE VISUEL »
+  en tête de `WeekendGrid.tsx`). `aria-label`/`title` verbatim (équipe, adversaire, jour, coup
+  d'envoi, gymnase, phrase « À confirmer : … repris de l'import, rencontre pas encore placée »).
+  Clic inchangé (ouvre `PlacementPanel`, même `onSelectFixture`) — **pas de bouton dans la case,
+  pas de confirmation en lot** (décisions passe design ci-dessous).
+- **Cadenas resserré côté grille** (`WeekendGrid`, `weekendGrid.ts:441`) :
+  `locked = "UNPLACED" !== fixture.status && "MANUAL" === fixture.placementSource` — un placement
+  RÉEL (PLACED/SUBMITTED/VALIDATED) posé À LA MAIN. Avant ce lot, la grille verrouillait tout
+  `placementSource !== "SOLVER"`, `null` legacy compris, ce qui affichait le cadenas sur une case
+  qui n'était même pas encore placée. Un `UNPLACED` n'est **jamais** verrouillé (rien n'est posé) ;
+  un `SOLVER` reste re-solvable. ⚠ **`PlacementPanel` garde SA propre formule, non alignée** — voir
+  § « Boucle manuelle — P1-4 PR E1 » ci-dessus et **P4-214** (`specs/evolution/roadmap.md`).
+- **Panneau — « Confirmer ce placement »** (`PlacementPanel.tsx:142-148`) : `isImportConfirm` est
+  vrai ssi le fixture est `UNPLACED`, porte déjà `venueId`/`kickoffTime`, et le formulaire affiche
+  encore ces MÊMES valeurs — le geste ne CHOISIT rien, il valide ce qui est proposé. Le bouton
+  primaire dit alors « Confirmer ce placement » (au lieu de « Placer ») + une ligne d'aide
+  « Gymnase et heure repris de l'import — vérifiez, puis confirmez. » ; dès qu'une valeur change
+  (gymnase ou heure), le bouton redevient « Placer » (un vrai choix) et l'aide disparaît. Sans
+  gymnase/heure d'origine (création manuelle), rien à confirmer — le flux reste « Placer ».
+- **Légende conditionnelle** (`WeekendGridLegend.tsx`, sous la grille dans `WeekWorkbench.tsx`) :
+  présentation pure, rendu NUL si rien à expliquer. « N à confirmer — gymnase et heure repris de
+  l'import, pas encore placé(s) » (échantillon hachuré) affichée dès qu'il existe ≥ 1 case à
+  confirmer sur la semaine ; « Habitude — fenêtre protégée » (échantillon pointillé) affichée
+  seulement quand « Semaine type » (`showGhosts`) est active ET qu'il existe ≥ 1 fantôme affiché.
+- **Passe de design `ui-ux-pro-max` faite** (2026-09-17) : alternatives écartées — un bouton de
+  confirmation DANS la case (la case garde son seul rôle de clic vers le panneau, cohérent avec
+  toutes les autres cases de la grille) ; un « tout confirmer » en lot (chaque confirmation passe
+  par les gardes du panneau — enveloppe ligue, accès gymnase — jamais un geste de masse qui les
+  contournerait) ; les hachures reprennent le patron déjà posé par `VenueAvailabilityGrid` (pas un
+  nouveau motif visuel).
+- **Liste des conflits — boutons toujours empilés** (`ConflictResolutionControl.tsx`) : le slot
+  `trailing` passe de `flex flex-wrap` à `flex flex-col items-stretch` — « Traiter » (ou la
+  pastille) toujours AU-DESSUS, « Voir la semaine » toujours EN DESSOUS, même largeur, quelle que
+  soit la longueur de la ligne. Avant ce lot, `flex-wrap` empilait les deux boutons de façon
+  incohérente selon la place restante sur les longues lignes du détail par côté (§ ci-dessus).
+  `ConflictLine.tsx` donne à la colonne texte `min-w-0 flex-1` (elle rétrécit) et au conteneur du
+  `trailing` `shrink-0` (il garde sa largeur propre) — décision fondateur sur capture réelle, pas de
+  passe `ui-ux-pro-max` dédiée pour cet ajustement.
+- **Conflits triés par DATE croissante DANS un groupe de gravité** (`lib/conflictOrder.ts`,
+  `sortConflictsByDate`) : dérivation PURE, appliquée par `ConflictSeverityGroups` sur
+  `group.conflicts` — ne touche ni l'ordre des groupes de gravité ni l'ordre des entrées de pivot de
+  l'onglet Conflits. Clé de tri : `dateOf(conflict)` (`lib/consultFilter.ts`, maison unique de la
+  date d'un conflit) puis l'heure (`conflict.start` sinon le coup d'envoi du premier côté) puis
+  l'empreinte (départage déterministe) ; un conflit sans date résolue tombe en fin de liste.
+  Consommé par le radar (`ConflictRadar`) **et** l'onglet Conflits (`ConflictsPage`), même maison de
+  ligne (§ « Onglet « Conflits » » ci-dessus).
+- **Tests** : Vitest `lib/weekendGrid.test.ts` (cadenas resserré, `toConfirm`), `WeekendGrid.test.tsx`
+  (rendu hachuré/pastille/aria-label, cadenas absent, clic), `WeekendGridLegend.test.tsx` (rendu nul,
+  les deux entrées conditionnelles), `PlacementPanel.test.tsx` (libellé/aide, bascule dès qu'une
+  valeur change, cas sans gymnase d'origine), `lib/conflictOrder.test.ts` (tri par date/heure/
+  empreinte, pur), `ConflictResolutionControl.test.tsx` (« Traiter »/pastille toujours AU-DESSUS de
+  « Voir la semaine », même colonne `flex-col`).
 
 ## Refonte UX — RMM-1 (P2-26, 4 PR entre 2026-08-23 et 2026-08-24)
 
