@@ -1,11 +1,20 @@
-Last verified @ 2026-09-17 (« détail par côté » d'un conflit de personne — champs additifs par côté sur le
-radar `GET /api/fixtures/conflicts`, backend, régénéré par le coder après `cache:pool:clear --all` + `api:openapi:export`).
+Last verified @ 2026-09-17 (VILLE de l'adversaire extérieur au lieu du gymnase — description du champ
+`opponentPlace` recalée sur le radar `GET /api/fixtures/conflicts`, backend, régénéré par le coder après
+`cache:pool:clear --all` + `api:openapi:export`).
 **200 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : aucune route ne bouge,
-seul le schéma des côtés `left`/`right`/`fixture` du conflit gagne cinq propriétés.
-· SHA-256 `04b4c0ae403e77a0d61d87e1018eb9fdebeb9b82974e920ae6ce28d6be3c00b1`
+seule la description du champ `opponentPlace` des côtés `left`/`right`/`fixture` change (la forme du schéma est inchangée).
+· SHA-256 `ffe083560fa5f67ab06de57118bb156b6aa7863b7a8ea9b0ab87ba9146c945d4`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **VILLE de l'adversaire extérieur (au lieu du gymnase), backend (2026-09-17)** : **+0 path** — la
+  description du champ `opponentPlace` (côtés `left`/`right` de MATCH_MATCH, `fixture` de MATCH_TRAINING sur
+  le radar `GET /api/fixtures/conflicts`) est recalée : ligne d'override effective (équipe puis club) → VILLE
+  de la salle CHOISIE (`opponent_venue_suggestion` par (code, venueExternalRef)) → VILLE de l'annuaire fédéral
+  → null ; le libellé de gymnase d'override et le libellé FBI ne sont PLUS servis. Aucune forme de schéma ne
+  change (seule la description). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21,
+  aucun appel moteur). Le faux positif d'échauffement du même radar est corrigé dans la MÊME PR côté détecteur
+  (`MatchConflictDetector`) — aucun impact OpenAPI, hors de ce snapshot.
 - **« Détail par côté » d'un conflit de personne, backend (2026-09-17)** : **+0 path** — le radar
   `GET /api/fixtures/conflicts` gagne cinq champs ADDITIFS PAR CÔTÉ sur les familles PERSONNE (les côtés
   `left`/`right` de MATCH_MATCH, `fixture` de MATCH_TRAINING) pour rendre une ligne par côté : `estimatedKickoffTime`
@@ -59,10 +68,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   (par libellé normalisé : gymnase confirmé, gymnase suggéré d'après les rencontres, domiciles / placés /
   non placés) ; `POST /api/venues/{id}/external-labels` accepte `reassign` (l'alias change de porteur, les
   domiciles NON placés au même libellé basculent) et répond `kept` + `previousVenueId`. 196 → **197 paths**.
-- **P4-200 C1 — le pont xlsx → Engagements FFBB (2026-09-12)** : **+0 path** — `GET /api/ffbb/engagements`
-  répond `suggestionSource` (`pairing` | `canonical` | `fbi` | null) à côté de `suggestedTeamId` /
-  `suggestedCompetitionId` ; `POST /api/ffbb/engagements/confirm` accepte un `competitionId` optionnel par
-  pairing (les réfs FFBB se posent SUR la compétition xlsx de l'équipe choisie). 196 → **196 paths**.
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

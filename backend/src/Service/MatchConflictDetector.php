@@ -38,7 +38,13 @@ use DateTimeImmutable;
  * occupancy windows:
  * - MATCH_MATCH: two fixtures of teams sharing a person whose windows overlap.
  *   Sides are ordered CHRONOLOGICALLY (earliest window start on the left); the
- *   fingerprint sorts the pair anyway, so the view order is free.
+ *   fingerprint sorts the pair anyway, so the view order is free. ⚠ D1 ÉTENDU
+ *   (2026-09-17, « personnes déjà sur place ») — two HOME fixtures in the SAME
+ *   gym: the LATER kickoff loses its warm-up (its EFFECTIVE window becomes its
+ *   venueWindow), the earlier keeps its full person window, and both the overlap
+ *   test and the served start/end use these EFFECTIVE windows; the per-side
+ *   windowStart/windowEnd stay the full person windows. Different gyms / a null
+ *   venue / an AWAY side / equal kickoffs → unchanged.
  * - MATCH_TRAINING: a fixture overlapping a training of one of the person's teams,
  *   read from the schedule EFFECTIVE on the match date (rule extracted to
  *   {@see EffectiveScheduleResolver} — P1-4 PR B). A footprint crossing midnight
@@ -47,7 +53,12 @@ use DateTimeImmutable;
  *   AND its players (the players who play don't also train); a SISTER team's
  *   training (coach or player on two teams) still clashes. When the slot has an
  *   assigned coach, he replaces the OTHER coaches of the slot's team (anti false-
- *   positive) but NEVER evicts its players.
+ *   positive) but NEVER evicts its players. ⚠ D1 ÉTENDU (2026-09-17) — when the
+ *   match is HOME in the SAME gym as the training AND kicks off AFTER the session
+ *   starts (the match is « second »), the person is already on site: the match's
+ *   warm-up drops and its EFFECTIVE window becomes its venueWindow. A training
+ *   that starts after the kickoff has no warm-up to remove → unchanged; another
+ *   gym / a null venue / an AWAY match → unchanged.
  * - VENUE_UNAVAILABLE (P1-4 PR B): a fixture whose venue is unavailable on its
  *   date (all-circumstances closure posed on the club calendar AFTER the match
  *   was placed — the real-life case the placement guard cannot catch). Coach-
@@ -801,9 +812,18 @@ final class MatchConflictDetector
             for ($j = $i + 1; $j < $count; ++$j) {
                 $a = $views[$i];
                 $b = $views[$j];
-                if (!$this->overlaps($a['window'], $b['window'])) {
+                // D1 ÉTENDU (2026-09-17) — the EFFECTIVE windows: two HOME fixtures
+                // in the same gym let the LATER kickoff drop its warm-up (the shared
+                // person is already on site for the earlier match). The overlap test
+                // and the served start/end use these effective windows; the full
+                // person windows are still served per side (windowStart/windowEnd,
+                // via fixtureView, which reads $view['window'] untouched).
+                [$effA, $effB] = $this->effectiveMatchWindows($a, $b);
+                if (!$this->overlaps($effA, $effB)) {
                     continue;
                 }
+                $overlapStart = $this->maxMoment($effA['start'], $effB['start']);
+                $overlapEnd = $this->minMoment($effA['end'], $effB['end']);
                 // Chronological order: the fixture whose window starts earliest is
                 // the left side (the fingerprint sorts the pair, so this is only for
                 // a stable, readable view).
@@ -818,8 +838,8 @@ final class MatchConflictDetector
                         'severity' => $this->pairSeverity($leftRole, $rightRole),
                         'coachRole' => $this->aggregateRole($leftRole, $rightRole)->value,
                         'coachId' => $personId,
-                        'start' => $this->maxMoment($left['window']['start'], $right['window']['start'])->format(self::WALL_CLOCK_FORMAT),
-                        'end' => $this->minMoment($left['window']['end'], $right['window']['end'])->format(self::WALL_CLOCK_FORMAT),
+                        'start' => $overlapStart->format(self::WALL_CLOCK_FORMAT),
+                        'end' => $overlapEnd->format(self::WALL_CLOCK_FORMAT),
                         'left' => $this->fixtureView($left, $leftRole),
                         'right' => $this->fixtureView($right, $rightRole),
                     ];
@@ -828,6 +848,48 @@ final class MatchConflictDetector
         }
 
         return $conflicts;
+    }
+
+    /**
+     * The EFFECTIVE occupancy windows of a MATCH_MATCH pair (D1 étendu,
+     * 2026-09-17, « personnes déjà sur place »). Two HOME fixtures in the SAME
+     * gym: the one kicking off LATEST loses its warm-up — its effective window
+     * becomes its {@see FixtureView} venueWindow ([kickoff, kickoff + match]) —
+     * because the shared person is already on site for the earlier match; the
+     * earlier keeps its full person window. Different gyms, a null venue, an AWAY
+     * side, or EQUAL kickoffs → both keep their full person windows (unchanged).
+     *
+     * @param FixtureView $a
+     * @param FixtureView $b
+     *
+     * @return array{0: OccupancyWindow, 1: OccupancyWindow}
+     */
+    private function effectiveMatchWindows(array $a, array $b): array
+    {
+        if (!$this->sameHomeVenue($a['fixture'], $b['fixture'])) {
+            return [$a['window'], $b['window']];
+        }
+        // Compared via the venueWindow start = the kickoff moment. Equal kickoffs
+        // keep the current behaviour (both full person windows).
+        $cmp = $a['venueWindow']['start'] <=> $b['venueWindow']['start'];
+        if (0 === $cmp) {
+            return [$a['window'], $b['window']];
+        }
+
+        return $cmp > 0
+            ? [$a['venueWindow'], $b['window']]  // a kicks off later → a drops its warm-up
+            : [$a['window'], $b['venueWindow']]; // b kicks off later → b drops its warm-up
+    }
+
+    /** True when both fixtures are HOME in the SAME, non-null gym. */
+    private function sameHomeVenue(Fixture $a, Fixture $b): bool
+    {
+        $venue = $a->getVenueId();
+
+        return null !== $venue
+            && $venue === $b->getVenueId()
+            && FixtureHomeAway::HOME === $a->getHomeAway()
+            && FixtureHomeAway::HOME === $b->getHomeAway();
     }
 
     /**
@@ -892,7 +954,22 @@ final class MatchConflictDetector
                     }
 
                     $trainingWindow = $this->slotWindowOnDate($date, $slot);
-                    if (!$this->overlaps($view['window'], $trainingWindow)) {
+                    // D1 ÉTENDU (2026-09-17) — a HOME match in the SAME gym as the
+                    // training and kicking off AFTER the session starts (the match is
+                    // « second ») drops its warm-up: the person is already on site.
+                    // Its EFFECTIVE window becomes its venueWindow. A training that is
+                    // « second » (starts after the kickoff) has no warm-up to remove →
+                    // full person window; other gym / null venue / AWAY → full window.
+                    $matchWindow = $view['window'];
+                    $fixtureVenueId = $view['fixture']->getVenueId();
+                    if (FixtureHomeAway::HOME === $view['fixture']->getHomeAway()
+                        && null !== $fixtureVenueId
+                        && $fixtureVenueId === $slot->getVenueId()
+                        && $view['venueWindow']['start'] > $trainingWindow['start']
+                    ) {
+                        $matchWindow = $view['venueWindow'];
+                    }
+                    if (!$this->overlaps($matchWindow, $trainingWindow)) {
                         continue;
                     }
 
@@ -904,8 +981,8 @@ final class MatchConflictDetector
                             'severity' => $this->trainingSeverity($matchRole, $trainingRole),
                             'coachRole' => $this->aggregateRole($matchRole, $trainingRole)->value,
                             'coachId' => $personId,
-                            'start' => $this->maxMoment($view['window']['start'], $trainingWindow['start'])->format(self::WALL_CLOCK_FORMAT),
-                            'end' => $this->minMoment($view['window']['end'], $trainingWindow['end'])->format(self::WALL_CLOCK_FORMAT),
+                            'start' => $this->maxMoment($matchWindow['start'], $trainingWindow['start'])->format(self::WALL_CLOCK_FORMAT),
+                            'end' => $this->minMoment($matchWindow['end'], $trainingWindow['end'])->format(self::WALL_CLOCK_FORMAT),
                             'fixture' => $this->fixtureView($view, $matchRole),
                             'training' => [
                                 'slotTemplateId' => $slot->getId(),

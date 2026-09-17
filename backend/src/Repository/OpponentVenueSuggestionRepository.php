@@ -46,6 +46,26 @@ final class OpponentVenueSuggestionRepository extends ServiceEntityRepository
     }
 
     /**
+     * Lecture BATCH keyée sur le code organisme fédéral — le résolveur du LIEU d'un
+     * adversaire extérieur retrouve la ville de la salle CHOISIE pour beaucoup de
+     * rencontres d'un coup, un `findOneBy` par rencontre serait un N+1. Lecture seule
+     * sur cette table de RÉFÉRENCE GLOBALE (aucun club_id, hors RLS). Une liste vide
+     * rend [] sans requête. Patron {@see OpponentDirectoryEntryRepository::findByFfbbOrganismeCodes}.
+     *
+     * @param list<string> $ffbbOrganismeCodes
+     *
+     * @return list<OpponentVenueSuggestion>
+     */
+    public function findByFfbbOrganismeCodes(array $ffbbOrganismeCodes): array
+    {
+        if ([] === $ffbbOrganismeCodes) {
+            return [];
+        }
+
+        return $this->findBy(['ffbbOrganismeCode' => array_values(array_unique($ffbbOrganismeCodes))]);
+    }
+
+    /**
      * Dépose/actualise une suggestion FFBB_API — un gymnase VU dans le calendrier
      * fédéral (canal API, best-effort). Sans référence de salle (le hit rencontre ne
      * porte pas le `numero`, sondé 2026-09-15) : dédupliquée par `(code, lower(libellé))`.

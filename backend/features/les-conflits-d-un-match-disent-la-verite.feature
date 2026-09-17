@@ -48,6 +48,25 @@ Fonctionnalité: Les conflits d'un match disent la vérité
     Quand je demande les conflits des matchs
     Alors le radar ne signale aucune collision de gymnase pour ces deux matchs
 
+  Scénario: Deux domiciles enchaînés dans le même gymnase : l'échauffement du second n'est pas un conflit de personne (D1 étendu)
+    Une même personne coache deux équipes qui enchaînent deux matchs à domicile dans le MÊME gymnase.
+    La personne est déjà sur place pour le premier : l'échauffement du second ne recouvre plus rien de
+    réel, le radar ne DOIT signaler aucun conflit de personne entre ces deux matchs (décision 2026-09-17).
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe, un coach et un gymnase jetables
+    Et la même personne coache deux équipes qui enchaînent un match à domicile chacune dans le même gymnase
+    Quand je demande les conflits des matchs
+    Alors le radar ne signale aucun conflit de personne entre ces deux matchs
+
+  Scénario: Deux domiciles enchaînés dans deux gymnases différents : le conflit de personne demeure (contre-exemple)
+    Le même enchaînement, mais dans DEUX gymnases : la personne devrait être aux deux à la fois,
+    l'échauffement du second recouvre bel et bien le premier match — le conflit de personne demeure.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe, un coach et un gymnase jetables
+    Et la même personne coache deux équipes qui enchaînent un match à domicile chacune dans deux gymnases différents
+    Quand je demande les conflits des matchs
+    Alors un conflit de personne en double porte ces deux matchs enchaînés
+
   Scénario: Un amical posé un week-end de match est signalé, jamais bloqué (P4-193)
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe, un coach et un gymnase jetables

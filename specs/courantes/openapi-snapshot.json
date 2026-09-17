@@ -11543,7 +11543,7 @@
                                                             "opponentPlace": {
                                                                 "type": "string",
                                                                 "nullable": true,
-                                                                "description": "Where the opponent plays, decorated on away sides only (manual override, then the federal directory city, then the FBI venue label); null when unknown"
+                                                                "description": "The opponent place on away sides only: the city of the gym chosen for this opponent team, else the federal directory city; null when unknown"
                                                             }
                                                         }
                                                     },
@@ -11582,7 +11582,7 @@
                                                             "opponentPlace": {
                                                                 "type": "string",
                                                                 "nullable": true,
-                                                                "description": "Where the opponent plays, decorated on away sides only (manual override, then the federal directory city, then the FBI venue label); null when unknown"
+                                                                "description": "The opponent place on away sides only: the city of the gym chosen for this opponent team, else the federal directory city; null when unknown"
                                                             }
                                                         }
                                                     },
@@ -11621,7 +11621,7 @@
                                                             "opponentPlace": {
                                                                 "type": "string",
                                                                 "nullable": true,
-                                                                "description": "Where the opponent plays, decorated on away sides only (manual override, then the federal directory city, then the FBI venue label); null when unknown"
+                                                                "description": "The opponent place on away sides only: the city of the gym chosen for this opponent team, else the federal directory city; null when unknown"
                                                             }
                                                         }
                                                     },

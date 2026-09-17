@@ -1,20 +1,17 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-17 (P2-54 « détail par côté d'un conflit », `documentation-update`).
-Nouvelle § « Détail par côté d'un conflit de personne — P2-54 (2026-09-17) » ajoutée, recalée
-contre le code lu : `MatchConflictDetector::fixtureView`/`FixtureView` (champs additifs
-`estimatedKickoffTime`/`travelOneWayMinutes`/`matchDurationMinutes`/`opponentLabel`,
-`backend/src/Service/MatchConflictDetector.php`), `FixtureConflictsController::decorateOpponentPlace`/
-`awaySideKeys` (décoration `opponentPlace` en aval, côtés AWAY seulement), nouveau
-`App\Service\OpponentPlaceResolver` (ordre override équipe → override club → annuaire fédéral →
-salle FBI → `null`) + `OpponentDirectoryEntryRepository::findByFfbbOrganismeCodes` (batch),
-`SeasonAndFixturePaths.php` (`$sideDetails` inline sur `left`/`right`/`fixture`),
-`features/matches/lib/conflictSideLines.ts` (builder pur), `ConflictLine.tsx` (rendu par côté +
-chevauchement), `shared/lib/time.ts` (`formatDurationMinutes`). Reste du fichier (§ « Calendrier —
-l'écran unique », § « Configuration — repli visuel », § reconciliation coupes P4-194/195,
-§ « Solveur de placement », § « Trajet AWAY », § « Espace Importer », § « Onglet Semaine type »,
-§ « Échéances ligue/comité », § « Écart de salle d'un domicile non placé ») non re-sondé cette
-passe — voir `git log -p --follow` pour sa dernière vérification.
+Last verified @ 2026-09-17 (faux positif d'échauffement « personnes déjà sur place » + ville de
+l'adversaire extérieur, `documentation-update`). § « Détection » complétée d'un paragraphe « D1
+étendu » et § « Détail par côté d'un conflit de personne » recalée sur l'ORDRE de résolution du
+lieu adverse, tous deux confrontés au code lu : `MatchConflictDetector::effectiveMatchWindows`/
+`sameHomeVenue` (`backend/src/Service/MatchConflictDetector.php`), `OpponentPlaceResolver`
+(`backend/src/Service/OpponentPlaceResolver.php`, override effectif équipe/club sur sa référence de
+salle FFBB → ville de `OpponentVenueSuggestion` → ville de l'annuaire fédéral → `null`) + nouveau
+`OpponentVenueSuggestionRepository::findByFfbbOrganismeCodes` (batch). Reste du fichier (§
+« Calendrier — l'écran unique », § « Configuration — repli visuel », § reconciliation coupes
+P4-194/195, § « Solveur de placement », § « Trajet AWAY », § « Espace Importer », § « Onglet
+Semaine type », § « Échéances ligue/comité », § « Écart de salle d'un domicile non placé ») non
+re-sondé cette passe — voir `git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -465,6 +462,28 @@ findActivePeriodsOrdered`, `ORDER BY startDate, id` — des UUIDv4 aléatoires) 
 précède sa racine, la largeur si (P4-188 — corrige un faux négatif MATCH_TRAINING mesuré sur une fermeture
 découpée, incident du 3 sept. 2026). Un `Fixture` AWAY sans `kickoffTime` n'a pas d'empreinte (trajet = palier
 B) → il ne génère aucun conflit — voulu.
+
+**D1 étendu — « personnes déjà sur place » (2026-09-17)** : faux positif mesuré sur capture réelle
+(même personne joueuse d'un match domicile à 18:30 puis coach d'un match domicile à 20:45 dans le
+MÊME gymnase, échauffement 30 min → le radar levait un chevauchement de 10 min alors que la
+personne était sur place sans discontinuer). `effectiveMatchWindows`/`sameHomeVenue`
+(`MatchConflictDetector.php`) : pour une paire `MATCH_MATCH`, deux fixtures **HOME** dans le **même**
+gymnase non-null → le côté au coup d'envoi le plus TARDIF perd son échauffement (sa fenêtre
+EFFECTIVE devient sa fenêtre SALLE, `[coup d'envoi, fin de match]`) ; le plus précoce garde sa
+fenêtre PERSONNE entière. Le test de recouvrement et le `start`/`end` servis du conflit partent de
+ces fenêtres EFFECTIVES ; les bornes PAR CÔTÉ (`windowStart`/`windowEnd`, § « Détail par côté »
+ci-dessous) restent les fenêtres PERSONNE complètes, inchangées. Un vrai recouvrement de JEU (les
+deux matchs empiètent hors échauffement) reste un conflit. Inchangé si : gymnases différents,
+gymnase inconnu d'un côté, un côté AWAY, coups d'envoi ÉGAUX (`sameHomeVenue`/comparaison stricte).
+Étendue à `MATCH_TRAINING` (`matchTrainingConflicts`) : un match HOME dans le même gymnase que le
+créneau d'entraînement ET dont le coup d'envoi suit le début de la séance perd de même son
+échauffement ; un entraînement qui commence APRÈS le coup d'envoi n'a rien à retirer, inchangé. Deux
+scénarios Behat (`backend/features/les-conflits-d-un-match-disent-la-verite.feature`) : même
+gymnase → aucun conflit de personne ; gymnases différents → le conflit demeure (contre-exemple).
+`MatchFootprint`, `ConflictFingerprinter` et `MatchModuleDeltaComputer` ne sont pas touchés — un
+conflit supprimé par cette règle qui portait un statut de traitement (`conflict_resolution`) laisse
+ce statut inerte, jamais nettoyé (même décision que l'orphelin P4-207 ci-dessus, § « Résolution des
+conflits »).
 
 **Amicaux (P4-190, 2026-09-08 ; complété P4-193, 2026-09-10)** : une rencontre sans compétition
 (`competitionId` null) n'est jamais comparée aux fenêtres ligue de son équipe — `leagueWindowViolations` la
@@ -2062,14 +2081,22 @@ un entraînement n'a pas le même poids qu'un domicile qui déborde de 45 min). 
 - **`opponentPlace`** (où joue l'adversaire) est **décoré EN AVAL de la détection**, jamais dans
   `MatchConflictDetector` : `FixtureConflictsController::decorateOpponentPlace` ne le pose que sur
   les côtés **AWAY** de `MATCH_MATCH`/`MATCH_TRAINING` (`awaySideKeys` — `left`/`right` ou
-  `fixture` selon `conflict.type` ; aucune autre famille n'est touchée), résolu en **BATCH** (deux
+  `fixture` selon `conflict.type` ; aucune autre famille n'est touchée), résolu en **BATCH** (trois
   requêtes pour tout le lot, jamais un N+1) par le nouveau `App\Service\OpponentPlaceResolver`.
-  **Ordre de résolution (décision fondateur)** : (1) saisie MANUELLE du club — l'override ÉQUIPE
-  (`OpponentTravel.overrideVenueLabel` keyé sur le libellé normalisé, `VenueLabelNormalizer`) puis
-  l'override CLUB ; (2) la ville de l'annuaire fédéral GLOBAL (`OpponentDirectoryEntry.city`, table
-  en LECTURE seule ici — `OpponentDirectoryEntryRepository::findByFfbbOrganismeCodes`, batch) ; (3)
-  le gymnase du fichier FBI (`Fixture.fbiVenueLabel`) ; (4) `null` (« lieu inconnu »). Une valeur
-  blanche à un palier est traitée comme absente, le palier suivant est tenté.
+  `opponentPlace` sert une **VILLE**, jamais un libellé de gymnase — **ordre de résolution recalé le
+  2026-09-17 (remplace l'ordre « manuel d'abord » livré ce même jour, devenu caduc dans la même
+  PR)** : (1) la ligne d'override EFFECTIVE (`OpponentTravel` — l'override ÉQUIPE, keyé sur le
+  libellé normalisé via `VenueLabelNormalizer`, sinon l'override CLUB) — si elle porte une
+  `overrideVenueExternalRef` (un n° de salle FFBB), la VILLE de la suggestion fédérale
+  `OpponentVenueSuggestion` correspondante `(ffbbOrganismeCode, venueExternalRef)`
+  (`OpponentVenueSuggestionRepository::findByFfbbOrganismeCodes`, table GLOBALE en lecture seule) ;
+  (2) sinon (pas de réf, suggestion sans ville, ou pas d'override du tout) la ville de l'annuaire
+  fédéral GLOBAL (`OpponentDirectoryEntry.city`,
+  `OpponentDirectoryEntryRepository::findByFfbbOrganismeCodes`, batch) ; (3) `null` (« lieu
+  inconnu »). **`OpponentTravel::getOverrideVenueLabel()` et `Fixture::getFbiVenueLabel()` ne sont
+  plus JAMAIS servis** — c'étaient des libellés de gymnase, pas une ville, et le fondateur veut la
+  ville. La ville est servie telle quelle (majuscules de l'annuaire, aucune transformation de
+  casse).
 - **OpenAPI** : les quatre champs + `opponentPlace` sont ajoutés en INLINE aux propriétés de
   `left`/`right`/`fixture` de `GET /api/fixtures/conflicts` (`SeasonAndFixturePaths.php`,
   constante `$sideDetails` composée dans les trois blocs) ; le bloc `training` ne les porte pas — un
