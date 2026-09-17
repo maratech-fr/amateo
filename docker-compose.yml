@@ -223,6 +223,12 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    # Le worker sort de lui-même par conception (--time-limit=3600, ou signal
+    # d'arrêt quand un cache:clear invalide le cache chargé) : sans politique il
+    # restait mort en silence et plus aucune génération ne tournait. `on-failure`
+    # ne suffit pas — ces sorties sont en code 0. Même politique que la prod ;
+    # `unless-stopped` respecte un `docker compose stop` volontaire.
+    restart: unless-stopped
     networks:
       - amateo_network
 

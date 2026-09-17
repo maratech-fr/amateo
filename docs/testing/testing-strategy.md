@@ -1,18 +1,13 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-15 (rotation de fraîcheur `documentation-update`, lot « adversaire
-multi-gymnases » backend — fichier hors sujet). Re-confronté à `.github/workflows/ci.yml` : job
-`smoke-tests` toujours absent (`grep -c "smoke-tests:" .github/workflows/ci.yml` → 0) ; **SEPT
-jobs sans `needs`** confirmés un par un (`frontend`, `dependency-audit`, `rector`, `secrets-scan`,
-`semgrep`, `engine-semantics`, `functional-tests` — `lint`/`phpstan`/`engine-tests` sont aussi sans
-`needs` mais gatent d'autres jobs, catégorie distincte) ; `blocking-tests` toujours `needs: [lint,
-phpstan]` ; `unit-tests` et `e2e` toujours `needs: blocking-tests` ; `build-docker` toujours `needs:
-[blocking-tests, engine-tests]` seulement ; `functional-tests` toujours sans `needs`, step unique
-`docker compose exec … vendor/bin/behat --format=pretty --no-interaction` sous `APP_ENV=dev`, et
-démarre bien `pdf-worker` dans son étape `Start services` (l'export PDF réel, ajouté 2026-09-05) ;
-`backend/phpunit.xml.dist` toujours 3 `<testsuite>` (`Unit`, `Integration`, `Contract`) et
-`backend/tests/Unit/TestsuitesCoverEveryTestDirectoryTest.php` existe toujours. Reste du fichier non
-re-sondé cette passe (voir `git log -p --follow docs/testing/testing-strategy.md` pour l'historique
+Last verified @ 2026-09-18 (`documentation-update`, PR « `messenger-worker` de dev gagne
+`restart: unless-stopped` »). Re-confronté le § 3bis ci-dessous (piège e2e « worker mort = plus de
+mail ») : `docker-compose.yml` pose désormais `restart: unless-stopped` sur `messenger-worker`
+(seul service de dev à le porter) — un exit sur `--time-limit=3600` ou un `cache:clear` ne laisse
+plus le worker mort pendant des heures, il repart seul en quelques secondes ; le self-heal
+`compose up -d --wait` de `make -C frontend e2e` reste la seule protection pour une invocation
+`npx playwright test` directe (hors périmètre de cette politique de redémarrage). Reste du fichier
+non re-sondé cette passe (voir `git log -p --follow docs/testing/testing-strategy.md` pour l'historique
 des passes).
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique), [`test-coverage-map.md`](test-coverage-map.md) (qui teste quoi, angles morts) and [`../project-map.md`](../project-map.md).
@@ -269,6 +264,14 @@ self-heal** (il est conditionné à l'absence de `E2E_BASE_URL`). Constaté le 2
 arrêté depuis 9 h. Et la boîte Mailpit est désormais **vidée avant chaque inscription**
 (`submitRegister`) — accumulée sur des dizaines de runs locaux, la recherche `to:{email}` finissait
 par ne plus rendre le bon message.
+
+⚑ **Depuis le 2026-09-18, ce risque est atténué côté compose** : `docker-compose.yml` pose
+`restart: unless-stopped` sur `messenger-worker` (seul service de dev à le porter) — une sortie
+sur le time-limit horaire, ou sur un `cache:clear` qui invalide le cache que le worker avait
+chargé, ne le laisse plus mort en silence : il repart seul en quelques secondes, sur le code ET le
+cache courants. Le self-heal `compose up -d --wait` ci-dessus reste utile pour le cas qu'il couvre
+seul : un worker jamais démarré du tout (stack partiellement montée) ou arrêté volontairement
+(`docker compose stop`, que `unless-stopped` respecte).
 
 ## 4. How to run locally
 
