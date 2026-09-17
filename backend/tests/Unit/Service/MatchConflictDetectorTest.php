@@ -1190,6 +1190,192 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame('MAIN', $conflicts[0]['left']['role']);
     }
 
+    // ── D1 étendu : personnes déjà sur place (même gymnase, 2026-09-17) ──────
+
+    public function testTwoHomeMatchesSameGymTheLaterDropsWarmupNoConflict(): void
+    {
+        // Founder case (2026-09-17): SM2 home 18:30 (115 min → 20:25) and SM1 home
+        // 20:45 (warm-up 30 → person window from 20:15), SAME gym, shared person.
+        // SM1 kicks off later → its warm-up drops (effective window 20:45→22:30);
+        // SM2 keeps its person window (…→20:25). No overlap → NO MATCH_MATCH (the
+        // old rule false-alarmed on the inflated 20:15→20:25 person overlap).
+        $sm2 = $this->fixture('fx-sm2', self::TEAM_1, '2026-10-03', '18:30');
+        $sm2->setVenueId('jdr');
+        $sm1 = $this->fixture('fx-sm1', self::TEAM_2, '2026-10-03', '20:45');
+        $sm1->setVenueId('jdr');
+        $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
+
+        $matchMatch = array_values(array_filter(
+            $this->detect([$sm2, $sm1], $links, profilesByTeam: [self::TEAM_1 => new MatchDurationProfile(115, 30)]),
+            static fn (array $c): bool => 'MATCH_MATCH' === $c['type'],
+        ));
+        self::assertSame([], $matchMatch);
+    }
+
+    public function testTwoHomeMatchesSameGymRealOverlapStartsAtTheSecondKickoff(): void
+    {
+        // SM1 pulled to 20:00: its effective venue window 20:00→21:45 now bites SM2's
+        // 18:00→20:25 person window → MATCH_MATCH, start = the SECOND kickoff (20:00),
+        // end = the intersection 20:25 (SM2's person end). Bornes = fenêtres EFFECTIVES.
+        $sm2 = $this->fixture('fx-sm2', self::TEAM_1, '2026-10-03', '18:30');
+        $sm2->setVenueId('jdr');
+        $sm1 = $this->fixture('fx-sm1', self::TEAM_2, '2026-10-03', '20:00');
+        $sm1->setVenueId('jdr');
+        $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
+
+        $matchMatch = array_values(array_filter(
+            $this->detect([$sm2, $sm1], $links, profilesByTeam: [self::TEAM_1 => new MatchDurationProfile(115, 30)]),
+            static fn (array $c): bool => 'MATCH_MATCH' === $c['type'],
+        ));
+        self::assertCount(1, $matchMatch);
+        self::assertSame('2026-10-03T20:00:00', $matchMatch[0]['start']);
+        self::assertSame('2026-10-03T20:25:00', $matchMatch[0]['end']);
+    }
+
+    public function testTwoHomeMatchesDifferentGymsKeepTheFullPersonOverlap(): void
+    {
+        // Same times as the founder case but DIFFERENT gyms → the rule does not
+        // apply → the full person windows overlap 20:15→20:25 (10 min) conserved.
+        $sm2 = $this->fixture('fx-sm2', self::TEAM_1, '2026-10-03', '18:30');
+        $sm2->setVenueId('jdr');
+        $sm1 = $this->fixture('fx-sm1', self::TEAM_2, '2026-10-03', '20:45');
+        $sm1->setVenueId('other');
+        $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
+
+        $matchMatch = array_values(array_filter(
+            $this->detect([$sm2, $sm1], $links, profilesByTeam: [self::TEAM_1 => new MatchDurationProfile(115, 30)]),
+            static fn (array $c): bool => 'MATCH_MATCH' === $c['type'],
+        ));
+        self::assertCount(1, $matchMatch);
+        self::assertSame('2026-10-03T20:15:00', $matchMatch[0]['start']);
+        self::assertSame('2026-10-03T20:25:00', $matchMatch[0]['end']);
+    }
+
+    public function testTwoHomeMatchesOneWithoutVenueKeepTheFullPersonOverlap(): void
+    {
+        // SM1 has NO venue (unplaced): the same-gym rule needs BOTH venues non-null
+        // → it cannot apply → the full person windows overlap 20:15→20:25 conserved.
+        $sm2 = $this->fixture('fx-sm2', self::TEAM_1, '2026-10-03', '18:30');
+        $sm2->setVenueId('jdr');
+        $sm1 = $this->fixture('fx-sm1', self::TEAM_2, '2026-10-03', '20:45'); // no venue
+        $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
+
+        $matchMatch = array_values(array_filter(
+            $this->detect([$sm2, $sm1], $links, profilesByTeam: [self::TEAM_1 => new MatchDurationProfile(115, 30)]),
+            static fn (array $c): bool => 'MATCH_MATCH' === $c['type'],
+        ));
+        self::assertCount(1, $matchMatch);
+        self::assertSame('2026-10-03T20:15:00', $matchMatch[0]['start']);
+    }
+
+    public function testTwoMatchesSameGymButOneAwayKeepTheFullPersonOverlap(): void
+    {
+        // Same gym, same times, but SM1 is AWAY: the rule requires BOTH sides HOME
+        // → full person windows overlap 20:15→20:25 conserved.
+        $sm2 = $this->fixture('fx-sm2', self::TEAM_1, '2026-10-03', '18:30');
+        $sm2->setVenueId('jdr');
+        $sm1 = $this->awayFixture('fx-sm1', self::TEAM_2, '2026-10-03', '20:45');
+        $sm1->setVenueId('jdr');
+        $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
+
+        $matchMatch = array_values(array_filter(
+            $this->detect([$sm2, $sm1], $links, profilesByTeam: [self::TEAM_1 => new MatchDurationProfile(115, 30)]),
+            static fn (array $c): bool => 'MATCH_MATCH' === $c['type'],
+        ));
+        self::assertCount(1, $matchMatch);
+        self::assertSame('2026-10-03T20:15:00', $matchMatch[0]['start']);
+    }
+
+    public function testTwoHomeMatchesSameGymEqualKickoffsKeepTheFullOverlap(): void
+    {
+        // Same gym, EQUAL kickoffs 18:30: neither is « the later », the rule keeps
+        // both full person windows → MATCH_MATCH conserved (current behaviour).
+        $a = $this->fixture('fx-a', self::TEAM_1, '2026-10-03', '18:30');
+        $a->setVenueId('jdr');
+        $b = $this->fixture('fx-b', self::TEAM_2, '2026-10-03', '18:30');
+        $b->setVenueId('jdr');
+        $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
+
+        $matchMatch = array_values(array_filter(
+            $this->detect([$a, $b], $links),
+            static fn (array $c): bool => 'MATCH_MATCH' === $c['type'],
+        ));
+        self::assertCount(1, $matchMatch);
+    }
+
+    public function testHomeMatchSecondSameGymAsTrainingWarmupOnlyOverlapIsSilent(): void
+    {
+        // 2026-10-04 Sunday. Sister team-2 trains 19:00→20:30 in the slot's gym
+        // 'venue'; the team-1 HOME match kicks off 20:45 in the SAME gym (person
+        // window from 20:15 via the 30-min warm-up). The match is « second » (20:45
+        // > 19:00): the coach is already on site, its warm-up drops → effective
+        // window 20:45→… clears the 20:30 session → NO MATCH_TRAINING (the old
+        // warm-up overlap 20:15→20:30 false-alarmed).
+        $fixture = $this->fixture('fx-1', self::TEAM_1, '2026-10-04', '20:45');
+        $fixture->setVenueId('venue');
+        $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
+        $slots = [$this->slot('sl-1', self::BASELINE, self::TEAM_2, 7, '19:00', 90)]; // 19:00→20:30
+
+        $training = array_values(array_filter(
+            $this->detect([$fixture], $links, self::BASELINE, [], [self::BASELINE => $slots]),
+            static fn (array $c): bool => 'MATCH_TRAINING' === $c['type'],
+        ));
+        self::assertSame([], $training);
+    }
+
+    public function testHomeMatchSecondSameGymRealOverlapStartsAtKickoff(): void
+    {
+        // Same as above but the session runs to 21:00: the match's effective window
+        // 20:45→22:30 now bites it → MATCH_TRAINING, start = the kickoff (20:45).
+        $fixture = $this->fixture('fx-1', self::TEAM_1, '2026-10-04', '20:45');
+        $fixture->setVenueId('venue');
+        $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
+        $slots = [$this->slot('sl-1', self::BASELINE, self::TEAM_2, 7, '19:00', 120)]; // 19:00→21:00
+
+        $training = array_values(array_filter(
+            $this->detect([$fixture], $links, self::BASELINE, [], [self::BASELINE => $slots]),
+            static fn (array $c): bool => 'MATCH_TRAINING' === $c['type'],
+        ));
+        self::assertCount(1, $training);
+        self::assertSame('2026-10-04T20:45:00', $training[0]['start']);
+    }
+
+    public function testHomeMatchDifferentGymFromTrainingKeepsTheWarmupOverlap(): void
+    {
+        // Match in gym 'other', training in the slot's gym 'venue': different gyms →
+        // the rule does not apply → the full person window (from 20:15) overlaps the
+        // 19:00→20:30 session → MATCH_TRAINING conserved, start = 20:15.
+        $fixture = $this->fixture('fx-1', self::TEAM_1, '2026-10-04', '20:45');
+        $fixture->setVenueId('other');
+        $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
+        $slots = [$this->slot('sl-1', self::BASELINE, self::TEAM_2, 7, '19:00', 90)]; // 19:00→20:30
+
+        $training = array_values(array_filter(
+            $this->detect([$fixture], $links, self::BASELINE, [], [self::BASELINE => $slots]),
+            static fn (array $c): bool => 'MATCH_TRAINING' === $c['type'],
+        ));
+        self::assertCount(1, $training);
+        self::assertSame('2026-10-04T20:15:00', $training[0]['start']);
+    }
+
+    public function testTrainingStartingAfterTheKickoffKeepsTheConflict(): void
+    {
+        // The training is « second » — it starts (17:00) AFTER the 16:00 kickoff — so
+        // there is no warm-up to strip: the match keeps its full person window and the
+        // tail overlap 17:00→17:45 stands → MATCH_TRAINING conserved, even same-gym.
+        $fixture = $this->fixture('fx-1', self::TEAM_1, '2026-10-04', '16:00'); // 15:30→17:45
+        $fixture->setVenueId('venue');
+        $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
+        $slots = [$this->slot('sl-1', self::BASELINE, self::TEAM_2, 7, '17:00', 90)]; // 17:00→18:30
+
+        $training = array_values(array_filter(
+            $this->detect([$fixture], $links, self::BASELINE, [], [self::BASELINE => $slots]),
+            static fn (array $c): bool => 'MATCH_TRAINING' === $c['type'],
+        ));
+        self::assertCount(1, $training);
+        self::assertSame('2026-10-04T17:00:00', $training[0]['start']);
+    }
+
     private function competition(string $id, ?int $expectedMatchdays): Competition
     {
         $competition = new Competition;

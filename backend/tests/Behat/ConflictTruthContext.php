@@ -69,6 +69,16 @@ final class ConflictTruthContext extends BaseContext
 
     private string $gymFixtureBId = '';
 
+    /** Décor D1 étendu « personnes déjà sur place » : second gymnase + catégorie à durée épinglée. */
+    private string $secondVenueId = '';
+
+    private string $durationCategoryId = '';
+
+    /** Paire de matchs enchaînés de la MÊME personne (deux équipes coachées). */
+    private string $personGymMatchAId = '';
+
+    private string $personGymMatchBId = '';
+
     private string $rootId = '';
 
     private string $pointedChildId = '';
@@ -275,6 +285,23 @@ final class ConflictTruthContext extends BaseContext
         $yesterday = new DateTimeImmutable(self::PINNED_NOW)->modify('-1 day')->format('Y-m-d');
         $this->gymFixtureAId = $this->poserMatchDomicile($this->teamId, $yesterday, '18:00');
         $this->gymFixtureBId = $this->poserMatchDomicile($this->sisterTeamId, $yesterday, '18:30');
+    }
+
+    #[Given('la même personne coache deux équipes qui enchaînent un match à domicile chacune dans le même gymnase')]
+    public function enchainementMemePersonneMemeGymnase(): void
+    {
+        $this->poserEnchainementMemePersonne($this->venueId);
+    }
+
+    #[Given('la même personne coache deux équipes qui enchaînent un match à domicile chacune dans deux gymnases différents')]
+    public function enchainementMemePersonneDeuxGymnases(): void
+    {
+        $second = $this->apiPost('venues', [
+            'name' => 'Second gymnase jetable (vérité conflits)',
+            'source' => 'manual',
+        ], $this->token);
+        $this->secondVenueId = $this->idOf($second, 'second gymnase jetable');
+        $this->poserEnchainementMemePersonne($this->secondVenueId);
     }
 
     #[Given('une rencontre de championnat le samedi et un amical placé le dimanche du même week-end')]
@@ -505,6 +532,22 @@ final class ConflictTruthContext extends BaseContext
         }
     }
 
+    #[Then('le radar ne signale aucun conflit de personne entre ces deux matchs')]
+    public function aucunConflitDePersonneEntreCesDeuxMatchs(): void
+    {
+        if (null !== $this->matchMatchDeLaPaireEnchainee()) {
+            throw new RuntimeException('un conflit de personne MATCH_MATCH porte ces deux matchs enchaînés alors que l\'échauffement du second, dans le même gymnase, ne recouvre rien de réel (D1 étendu 2026-09-17)');
+        }
+    }
+
+    #[Then('un conflit de personne en double porte ces deux matchs enchaînés')]
+    public function unConflitDePersonnePorteLesDeuxMatchsEnchaines(): void
+    {
+        if (null === $this->matchMatchDeLaPaireEnchainee()) {
+            throw new RuntimeException('aucun conflit de personne MATCH_MATCH ne porte ces deux matchs enchaînés — dans deux gymnases différents, la personne ne peut être aux deux, le conflit doit demeurer');
+        }
+    }
+
     #[Then('le radar signale l\'amical sur un créneau de match, pour cause de week-end de match')]
     public function leRadarSignaleLAmicalSurUnCreneau(): void
     {
@@ -611,7 +654,7 @@ final class ConflictTruthContext extends BaseContext
         // bac à sable ne doit jamais rester bloqué dans un « aujourd'hui » figé.
         $this->releaseClock();
 
-        foreach ([$this->fixtureId, $this->friendlyId, $this->championshipFixtureId, $this->cupFixtureId, $this->gymFixtureAId, $this->gymFixtureBId, $this->coachedMatchId, $this->playedMatchId] as $id) {
+        foreach ([$this->fixtureId, $this->friendlyId, $this->championshipFixtureId, $this->cupFixtureId, $this->gymFixtureAId, $this->gymFixtureBId, $this->coachedMatchId, $this->playedMatchId, $this->personGymMatchAId, $this->personGymMatchBId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
@@ -652,16 +695,22 @@ final class ConflictTruthContext extends BaseContext
                 $this->apiDelete(\sprintf('coaches/%s', $id), $this->token);
             }
         }
-        if ('' !== $this->venueId) {
-            $this->apiDelete(\sprintf('venues/%s', $this->venueId), $this->token);
+        foreach ([$this->venueId, $this->secondVenueId] as $venueId) {
+            if ('' !== $venueId) {
+                $this->apiDelete(\sprintf('venues/%s', $venueId), $this->token);
+            }
         }
 
         // Décor P4-194 : la fenêtre de ligue seedée (globale, par catégorie
         // DISTINCTIVE → sûr) et la catégorie jetable (après la suppression de
         // l'équipe qui la référençait).
         $this->dbalExec(\sprintf('DELETE FROM league_match_window WHERE category=\'%s\'', self::CUP_CATEGORY_NAME), admin: true);
-        if ('' !== $this->cupCategoryId) {
-            $this->dbalExec(\sprintf('DELETE FROM sport_category WHERE id=\'%s\'', $this->cupCategoryId), admin: true);
+        // Décor D1 étendu : la catégorie à durée épinglée (après suppression des
+        // deux équipes qui la référençaient ci-dessus).
+        foreach ([$this->cupCategoryId, $this->durationCategoryId] as $categoryId) {
+            if ('' !== $categoryId) {
+                $this->dbalExec(\sprintf('DELETE FROM sport_category WHERE id=\'%s\'', $categoryId), admin: true);
+            }
         }
 
         // Le DELETE d'API d'une racine découpée peut être refusé sans lever ici : on
@@ -784,6 +833,85 @@ final class ConflictTruthContext extends BaseContext
             ], $this->token),
             'match à domicile jetable',
         );
+    }
+
+    /**
+     * Épingle une catégorie à durée CONNUE (match 90 / échauffement 30) sur les deux
+     * équipes jetables du MÊME coach, puis pose deux matchs à domicile enchaînés : A à
+     * 18h30 (gymnase primaire), B à 20h15 ($secondVenueId). Avec 90/30 : A occupe la
+     * personne 18h00→20h00, B 19h45→21h45. Dans le MÊME gymnase, la règle D1 étendue
+     * retranche l'échauffement de B (déjà sur place) → fenêtre effective 20h15→… qui ne
+     * touche plus les 20h00 de A → aucun conflit de personne ; dans DEUX gymnases, les
+     * fenêtres personne pleines se recouvrent (19h45→20h00) → le conflit demeure.
+     */
+    private function poserEnchainementMemePersonne(string $secondVenueId): void
+    {
+        // Catégorie DISTINCTIVE à durée épinglée, réaffectée aux deux équipes jetables :
+        // la durée du match ne dépend plus de la catégorie clonée du club (indéterminée).
+        $sportId = $this->dbalScalar(
+            \sprintf('SELECT sport_id AS behatval FROM sport_category WHERE id=(SELECT sport_category_id FROM team WHERE id=\'%s\')', $this->teamId),
+            admin: true,
+        );
+        if ('' === $sportId) {
+            throw new RuntimeException('le sport de la catégorie de l\'équipe jetable est introuvable');
+        }
+        $this->durationCategoryId = $this->dbalScalar('SELECT gen_random_uuid()::text AS behatval', admin: true);
+        $this->dbalExec(\sprintf(
+            'INSERT INTO sport_category (id, version, created_at, updated_at, club_id, sport_id, name, is_custom, sort_order, match_minutes, warmup_minutes)'
+            . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'BEHAT Durée D1 (vérité conflits)\', true, 0, 90, 30)',
+            $this->durationCategoryId,
+            $this->clubId,
+            $sportId,
+        ), admin: true);
+        $this->dbalExec(\sprintf(
+            'UPDATE team SET sport_category_id=\'%s\' WHERE id IN (\'%s\', \'%s\')',
+            $this->durationCategoryId,
+            $this->teamId,
+            $this->sisterTeamId,
+        ), admin: true);
+
+        // Deux matchs à domicile enchaînés un samedi À VENIR (conservé par D1 règle 3).
+        $saturday = new DateTimeImmutable(self::PINNED_NOW)->modify('next saturday')->format('Y-m-d');
+        $this->personGymMatchAId = $this->idOf($this->apiPost('fixtures', [
+            'teamId' => $this->teamId,
+            'matchDate' => $saturday,
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Adversaire jetable',
+            'venueId' => $this->venueId,
+            'kickoffTime' => '18:30',
+        ], $this->token), 'match enchaîné A');
+        $this->personGymMatchBId = $this->idOf($this->apiPost('fixtures', [
+            'teamId' => $this->sisterTeamId,
+            'matchDate' => $saturday,
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Adversaire jetable',
+            'venueId' => $secondVenueId,
+            'kickoffTime' => '20:15',
+        ], $this->token), 'match enchaîné B');
+    }
+
+    /**
+     * Le conflit MATCH_MATCH portant la paire de matchs enchaînés, ou null.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function matchMatchDeLaPaireEnchainee(): ?array
+    {
+        $pair = [$this->personGymMatchAId, $this->personGymMatchBId];
+        foreach ($this->conflicts as $conflict) {
+            if (!\is_array($conflict) || 'MATCH_MATCH' !== ($conflict['type'] ?? null)) {
+                continue;
+            }
+            $left = $conflict['left'] ?? null;
+            $right = $conflict['right'] ?? null;
+            $leftId = \is_array($left) ? ($left['fixtureId'] ?? null) : null;
+            $rightId = \is_array($right) ? ($right['fixtureId'] ?? null) : null;
+            if (\in_array($leftId, $pair, true) && \in_array($rightId, $pair, true)) {
+                return $conflict;
+            }
+        }
+
+        return null;
     }
 
     private function createEntry(string $title, string $start, string $end, ?string $parentEntryId): string

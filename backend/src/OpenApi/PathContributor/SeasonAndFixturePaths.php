@@ -98,7 +98,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
             'travelOneWayMinutes' => ['type' => 'integer', 'nullable' => true, 'description' => 'One-way car travel minutes to the opponent; null when no travel is modelled, and always null on a home side'],
             'matchDurationMinutes' => ['type' => 'integer', 'description' => 'Match duration in minutes for this side\'s team (its resolved category profile, else the default)'],
             'opponentLabel' => ['type' => 'string', 'description' => 'The opponent label of this fixture'],
-            'opponentPlace' => ['type' => 'string', 'nullable' => true, 'description' => 'Where the opponent plays, decorated on away sides only (manual override, then the federal directory city, then the FBI venue label); null when unknown'],
+            'opponentPlace' => ['type' => 'string', 'nullable' => true, 'description' => 'The opponent place on away sides only: the city of the gym chosen for this opponent team, else the federal directory city; null when unknown'],
         ];
 
         $paths->addPath('/api/fixtures/conflicts', new PathItem(get: new Operation(
