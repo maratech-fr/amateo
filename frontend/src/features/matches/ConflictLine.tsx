@@ -1,13 +1,15 @@
-import { ChevronDown, ChevronRight, Sparkles } from "lucide-react";
+import { Bus, ChevronDown, ChevronRight, Clock, Dumbbell, Home, Sparkles } from "lucide-react";
 import { Fragment, type ReactNode, useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
 import { coachFullName } from "@/shared/lib/coachName";
 import { frDateShortNoYear } from "@/shared/lib/date";
+import { formatDurationMinutes } from "@/shared/lib/time";
 import { cn } from "@/shared/lib/utils";
 
-import type { Coach, Conflict, ConflictSideRole, Team } from "./api";
+import type { Coach, Conflict, ConflictSideRole, Team, Venue } from "./api";
 import { SIDE_ROLE_WORD } from "./lib/conflictLabels";
+import { buildConflictSideLines, type ConflictSideKind, type ConflictSideLine, type ConflictSideModel } from "./lib/conflictSideLines";
 import { groupBySeverity, type DiagnosticGroup } from "./lib/diagnostic";
 
 /**
@@ -127,6 +129,108 @@ function estimatedTag(conflict: Conflict): boolean {
   return true === conflict.fixture?.estimatedKickoff || true === conflict.left?.estimatedKickoff || true === conflict.right?.estimatedKickoff;
 }
 
+/** L'icône de lieu par côté (domicile/extérieur/entraînement) — TABLE, pas un décideur. */
+const KIND_ICON: Record<ConflictSideKind, typeof Home> = {
+  home: Home,
+  away: Bus,
+  training: Dumbbell,
+};
+
+/** La pastille « estimé » collée à l'heure du coup d'envoi emprunté à une habitude. */
+function EstimatedPill(): ReactNode {
+  return (
+    <StatusPill variant="neutral" className="px-1.5 py-0" icon={<Clock className="size-3" aria-hidden="true" />}>
+      estimé
+    </StatusPill>
+  );
+}
+
+/** Une ligne de côté (équipe + rôle | lieu · adversaire + horaires) — MATCH_MATCH / MATCH_TRAINING. */
+function ConflictSideRow({ side }: { side: ConflictSideLine }) {
+  const Icon = KIND_ICON[side.kind];
+  return (
+    <li className="grid grid-cols-[5.5rem_1fr] gap-x-2">
+      <span>
+        <span className="font-medium text-foreground">{side.teamName}</span>
+        {undefined !== side.roleWord ? <span className="text-muted-foreground"> {side.roleWord}</span> : null}
+      </span>
+      {/* min-w-0 : sans lui, une piste 1fr de grille refuse de rétrécir → l'enfant déborde. */}
+      <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-0.5">
+        {/* Groupe LIEU : le bloc icône + domicile/extérieur reste insécable ; l'adversaire
+            (potentiellement long) est un bloc SÉPARÉ qui s'enroule et se casse — jamais tronqué,
+            jamais nowrap (seules les HEURES le sont). */}
+        <span className="flex min-w-0 flex-wrap items-center gap-x-1">
+          <span className="flex items-center gap-1 whitespace-nowrap">
+            <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="text-foreground">{side.place}</span>
+          </span>
+          {undefined !== side.opponent ? (
+            <span className="min-w-0 text-foreground [overflow-wrap:anywhere]">
+              <span aria-hidden="true">· </span>
+              {side.opponent}
+            </span>
+          ) : null}
+        </span>
+        {/* Groupe HORAIRES : chaque segment (libellé + heure) insécable. */}
+        <span className="flex flex-wrap items-center gap-x-1">
+          {side.segments.map((segment, index) => (
+            <span key={index} className="whitespace-nowrap">
+              {undefined !== segment.separator ? <span aria-hidden="true">{"arrow" === segment.separator ? " → " : " · "}</span> : null}
+              {undefined !== segment.label ? <span className={true === segment.emphasis ? "font-semibold text-foreground" : "text-muted-foreground"}>{segment.label} </span> : null}
+              <span className={cn("tabular-nums text-foreground", true === segment.emphasis ? "font-semibold" : undefined)}>{segment.value}</span>
+              {true === segment.estimated ? (
+                <>
+                  {" "}
+                  <EstimatedPill />
+                </>
+              ) : null}
+            </span>
+          ))}
+          {true === side.travelUnknown ? (
+            <span className="whitespace-nowrap text-muted-foreground">
+              <span aria-hidden="true"> · </span>trajet inconnu
+            </span>
+          ) : null}
+        </span>
+      </div>
+    </li>
+  );
+}
+
+/**
+ * Le DÉTAIL par côté d'un conflit de personne : une ligne par équipe + la ligne de
+ * chevauchement. Remplace, pour MATCH_MATCH / MATCH_TRAINING, la ligne grise et la
+ * pastille globale « heure estimée » (le coup d'envoi porte sa propre pastille).
+ */
+function ConflictSideDetail({ model }: { model: ConflictSideModel }) {
+  const { overlap } = model;
+  return (
+    <div className="mt-1 text-xs">
+      <ul className="flex flex-col gap-0.5" aria-label="Détail par équipe">
+        {model.sides.map((side, index) => (
+          <ConflictSideRow key={index} side={side} />
+        ))}
+      </ul>
+      {/* Chevauchement : PAS de text-warning (sous AA sur fond teinté) ; date répétée
+          seulement quand début et fin tombent deux jours différents. */}
+      <p className="mt-1 font-medium text-foreground">
+        Chevauchement <span className="sr-only">de </span>
+        <span className="tabular-nums">
+          {overlap.crossDay ? `${overlap.startDay} ` : null}
+          {overlap.start}
+        </span>
+        <span aria-hidden="true"> → </span>
+        <span className="sr-only"> à </span>
+        <span className="tabular-nums">
+          {overlap.crossDay ? `${overlap.endDay} ` : null}
+          {overlap.end}
+        </span>{" "}
+        · <span className="font-semibold">{formatDurationMinutes(overlap.minutes)}</span>
+      </p>
+    </div>
+  );
+}
+
 const TONE_CLASSES = {
   destructive: "border-destructive/40 bg-destructive/5",
   warning: "border-warning/30 bg-warning/5",
@@ -137,6 +241,8 @@ interface ConflictLineProps {
   conflict: Conflict;
   teams: Map<string, Team>;
   coaches: Map<string, Coach>;
+  /** Les gymnases — pour nommer le lieu d'un entraînement dans le détail par côté. */
+  venues: Map<string, Venue>;
   tone: DiagnosticGroup["tone"];
   isNew: boolean;
   /** Slot d'action à droite (pastille/éditeur de traitement, « Voir la semaine ») — absent dans un rendu nu. */
@@ -152,8 +258,14 @@ interface ConflictLineProps {
  * passe SOUS la phrase à 400 px, `flex-col` → `sm:flex-row`) ; le slot `below` s'étend
  * en pleine largeur sous la ligne (la note). Sans trailing ni below, la structure et
  * le rendu sont ceux du radar d'origine.
+ *
+ * Familles PERSONNE (MATCH_MATCH / MATCH_TRAINING) : une LIGNE PAR CÔTÉ + une ligne de
+ * chevauchement (`buildConflictSideLines`) remplacent la ligne grise et la pastille
+ * globale « heure estimée » (le coup d'envoi porte sa propre pastille). Les familles
+ * gymnase/passerelle gardent leur rendu ACTUEL (ligne grise + pastille globale).
  */
-export function ConflictLine({ conflict, teams, coaches, tone, isNew, trailing, below, ariaBusy }: ConflictLineProps) {
+export function ConflictLine({ conflict, teams, coaches, venues, tone, isNew, trailing, below, ariaBusy }: ConflictLineProps) {
+  const sideModel = buildConflictSideLines(conflict, teams, venues);
   const content = (
     <div>
       <p className="flex flex-wrap items-center gap-1.5 font-medium">
@@ -166,9 +278,12 @@ export function ConflictLine({ conflict, teams, coaches, tone, isNew, trailing, 
       </p>
       <p className="text-muted-foreground">
         {conflictSummary(conflict, teams)}
-        {estimatedTag(conflict) ? <span className="ml-1 rounded bg-muted px-1 text-xs uppercase tracking-wide">heure estimée</span> : null}
+        {/* La pastille GLOBALE « heure estimée » disparaît pour les familles à détail par côté. */}
+        {null === sideModel && estimatedTag(conflict) ? <span className="ml-1 rounded bg-muted px-1 text-xs uppercase tracking-wide">heure estimée</span> : null}
       </p>
-      {undefined !== conflict.start && undefined !== conflict.end ? (
+      {null !== sideModel ? (
+        <ConflictSideDetail model={sideModel} />
+      ) : undefined !== conflict.start && undefined !== conflict.end ? (
         <p className="text-xs text-muted-foreground">
           {whenLabel(conflict.start)} → {whenLabel(conflict.end)}
         </p>
@@ -198,6 +313,8 @@ interface ConflictSeverityGroupsProps {
   conflicts: Conflict[];
   teams: Map<string, Team>;
   coaches: Map<string, Coach>;
+  /** Les gymnases — pour nommer le lieu d'un entraînement dans le détail par côté. */
+  venues: Map<string, Venue>;
   /** RMM-3 — empreintes des conflits NOUVEAUX (chip « Nouveau », ornement pur). */
   newFingerprints?: ReadonlySet<string>;
   /**
@@ -214,7 +331,7 @@ interface ConflictSeverityGroupsProps {
  * consommée par le `ConflictRadar` et par chaque entrée de l'onglet Conflits ; sans
  * `renderConflict`, elle rend des `ConflictLine` nues.
  */
-export function ConflictSeverityGroups({ conflicts, teams, coaches, newFingerprints, renderConflict }: ConflictSeverityGroupsProps) {
+export function ConflictSeverityGroups({ conflicts, teams, coaches, venues, newFingerprints, renderConflict }: ConflictSeverityGroupsProps) {
   const groups = groupBySeverity(conflicts);
   const [unfolded, setUnfolded] = useState<Set<number>>(new Set());
 
@@ -261,7 +378,7 @@ export function ConflictSeverityGroups({ conflicts, teams, coaches, newFingerpri
                   return undefined !== renderConflict ? (
                     <Fragment key={key}>{renderConflict(conflict, meta)}</Fragment>
                   ) : (
-                    <ConflictLine key={key} conflict={conflict} teams={teams} coaches={coaches} tone={meta.tone} isNew={meta.isNew} />
+                    <ConflictLine key={key} conflict={conflict} teams={teams} coaches={coaches} venues={venues} tone={meta.tone} isNew={meta.isNew} />
                   );
                 })}
               </ul>

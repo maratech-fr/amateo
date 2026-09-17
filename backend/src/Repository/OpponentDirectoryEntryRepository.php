@@ -25,6 +25,25 @@ final class OpponentDirectoryEntryRepository extends ServiceEntityRepository
     }
 
     /**
+     * Batch lookup keyed on the FFBB organisme code — the conflict radar resolves
+     * an away opponent's place for MANY fixtures at once, so a per-fixture
+     * `findOneBy` would be an N+1. Read-only over this GLOBAL reference table
+     * (no club_id, outside RLS). An empty list returns [] without a query.
+     *
+     * @param list<string> $ffbbOrganismeCodes
+     *
+     * @return list<OpponentDirectoryEntry>
+     */
+    public function findByFfbbOrganismeCodes(array $ffbbOrganismeCodes): array
+    {
+        if ([] === $ffbbOrganismeCodes) {
+            return [];
+        }
+
+        return $this->findBy(['ffbbOrganismeCode' => array_values(array_unique($ffbbOrganismeCodes))]);
+    }
+
+    /**
      * Upsert a resolved opponent location, keyed on the organisme code. A more
      * precise resolution (VENUE) replaces a less precise one (CITY), never the
      * reverse — a CITY resolution NEVER downgrades an existing VENUE row. The

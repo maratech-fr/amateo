@@ -1,24 +1,20 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-16 (fix backend « écart de salle d'un domicile non placé »,
-`documentation-update`). Nouvelle § « Écart de salle d'un domicile non placé — jamais réparé en
-silence » (sous § « Gymnase depuis le libellé ») recalée contre le code lu : `FbiFixtureImporter.php`
-(`detectFieldDeviations:424`, `venueMatches:1395`, `detectUnplacedVenueDeviation:486`,
-`processPerimeterFields:813`, `applyVenueKeepApp:578`, `applyFieldTakeFile` case venue,
-`attachConfirmedVenue:951`), `Entity/Fixture.php` (`keptVenueLabel`, effacé par `setVenueId` non
-nul), `Controller/ReviewFixtureDeviationController.php` (branche keep_app venue/UNPLACED),
-`Service/Basketball/FfbbRencontreReconciler.php` (`attachConfirmedVenue` appelé lignes 175/319 —
-références corrigées, avaient dérivé à 139/263 après l'ajout du détecteur), `migrations/
-Version20260916120000.php`, `ApiResource/FixtureResource.php` (`keptVenueLabel` absent — pas de
-regen OpenAPI), feature Behat `un-domicile-non-place-dont-la-ligue-change-la-salle-est-arbitre.feature`
-+ `VenueDeviationContext` + suite `ecart-salle-non-place` (`behat.dist.php`). § « Le périmètre de
-réconciliation (D1/D3) » et § « Appariement FFBB » amendées de l'exception venue/UNPLACED ; ligne
-« salle/adversaire dérivés → mise à jour silencieuse » (§ Import FBI) amendée de la même exception.
-Reste du fichier (§ « Calendrier — l'écran unique », § « Configuration — repli visuel »,
-§ « Résolution des conflits », § reconciliation coupes P4-194/195, § « Solveur de placement »,
-§ « Trajet AWAY », § « Espace Importer » hors la ligne amendée, § « Onglet Semaine type »,
-§ « Échéances ligue/comité ») non re-sondé cette passe — voir `git log -p --follow` pour sa
-dernière vérification.
+Last verified @ 2026-09-17 (P2-54 « détail par côté d'un conflit », `documentation-update`).
+Nouvelle § « Détail par côté d'un conflit de personne — P2-54 (2026-09-17) » ajoutée, recalée
+contre le code lu : `MatchConflictDetector::fixtureView`/`FixtureView` (champs additifs
+`estimatedKickoffTime`/`travelOneWayMinutes`/`matchDurationMinutes`/`opponentLabel`,
+`backend/src/Service/MatchConflictDetector.php`), `FixtureConflictsController::decorateOpponentPlace`/
+`awaySideKeys` (décoration `opponentPlace` en aval, côtés AWAY seulement), nouveau
+`App\Service\OpponentPlaceResolver` (ordre override équipe → override club → annuaire fédéral →
+salle FBI → `null`) + `OpponentDirectoryEntryRepository::findByFfbbOrganismeCodes` (batch),
+`SeasonAndFixturePaths.php` (`$sideDetails` inline sur `left`/`right`/`fixture`),
+`features/matches/lib/conflictSideLines.ts` (builder pur), `ConflictLine.tsx` (rendu par côté +
+chevauchement), `shared/lib/time.ts` (`formatDurationMinutes`). Reste du fichier (§ « Calendrier —
+l'écran unique », § « Configuration — repli visuel », § reconciliation coupes P4-194/195,
+§ « Solveur de placement », § « Trajet AWAY », § « Espace Importer », § « Onglet Semaine type »,
+§ « Échéances ligue/comité », § « Écart de salle d'un domicile non placé ») non re-sondé cette
+passe — voir `git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -2034,6 +2030,79 @@ de bouton).
   d'autres conflits) que le badge de nav et le compteur de l'entrée baissent de 1, que la ligne reste
   listée, que « Masquer les traités » la cache puis la rend, et que « Remettre à traiter » restaure
   le compteur.
+
+## Détail par côté d'un conflit de personne — P2-54 (2026-09-17)
+
+Besoin fondateur : sur `MATCH_MATCH`/`MATCH_TRAINING`, la ligne grise ne montrait que le segment de
+**chevauchement** — illisible pour juger l'impact réel (un extérieur à 40 min qui mord de 10 min sur
+un entraînement n'a pas le même poids qu'un domicile qui déborde de 45 min). Une ligne par CÔTÉ
+(équipe, rôle, lieu, adversaire, horaires) remplace désormais la ligne grise pour ces deux familles
+**seulement** — le gymnase/la passerelle gardent leur rendu inchangé (ligne grise + pastille globale
+« heure estimée »).
+
+### Backend — champs additifs, décoration en aval
+
+- **`MatchConflictDetector::fixtureView`** (`backend/src/Service/MatchConflictDetector.php`) sert
+  quatre champs ADDITIFS par côté, sur `left`/`right` (`MATCH_MATCH`) et `fixture`
+  (`MATCH_TRAINING`) : `estimatedKickoffTime` (« HH:MM » emprunté à l'habitude, non-null **ssi**
+  `estimatedKickoff`), `travelOneWayMinutes` (aller simple, `roundTrip / 2` — **`null` = trajet NON
+  modélisé**, jamais confondu avec 0 ; toujours `null` côté HOME), `matchDurationMinutes` (le
+  `matchMinutes` du profil déjà résolu par catégorie/club/défaut) et `opponentLabel`. Champs
+  ADDITIFS : les familles gymnase/passerelle partagent la même vue et les reçoivent aussi, le front
+  ne les lit juste pas pour elles. `ConflictFingerprinter` (liste blanche) et
+  `MatchModuleDeltaComputer` **non touchés** — l'identité d'un conflit et le delta de visite (RMM-3)
+  restent inchangés par cet ajout purement présentationnel.
+- **`opponentPlace`** (où joue l'adversaire) est **décoré EN AVAL de la détection**, jamais dans
+  `MatchConflictDetector` : `FixtureConflictsController::decorateOpponentPlace` ne le pose que sur
+  les côtés **AWAY** de `MATCH_MATCH`/`MATCH_TRAINING` (`awaySideKeys` — `left`/`right` ou
+  `fixture` selon `conflict.type` ; aucune autre famille n'est touchée), résolu en **BATCH** (deux
+  requêtes pour tout le lot, jamais un N+1) par le nouveau `App\Service\OpponentPlaceResolver`.
+  **Ordre de résolution (décision fondateur)** : (1) saisie MANUELLE du club — l'override ÉQUIPE
+  (`OpponentTravel.overrideVenueLabel` keyé sur le libellé normalisé, `VenueLabelNormalizer`) puis
+  l'override CLUB ; (2) la ville de l'annuaire fédéral GLOBAL (`OpponentDirectoryEntry.city`, table
+  en LECTURE seule ici — `OpponentDirectoryEntryRepository::findByFfbbOrganismeCodes`, batch) ; (3)
+  le gymnase du fichier FBI (`Fixture.fbiVenueLabel`) ; (4) `null` (« lieu inconnu »). Une valeur
+  blanche à un palier est traitée comme absente, le palier suivant est tenté.
+- **OpenAPI** : les quatre champs + `opponentPlace` sont ajoutés en INLINE aux propriétés de
+  `left`/`right`/`fixture` de `GET /api/fixtures/conflicts` (`SeasonAndFixturePaths.php`,
+  constante `$sideDetails` composée dans les trois blocs) ; le bloc `training` ne les porte pas — un
+  entraînement n'a ni adversaire ni trajet. Snapshot régénéré.
+
+### Frontend — builder pur + rendu
+
+- **`features/matches/lib/conflictSideLines.ts`** (`buildConflictSideLines`) : le BUILDER pur du
+  modèle de lignes — une entrée par côté + une ligne de chevauchement. Rend `null` pour toute
+  famille autre que `MATCH_MATCH`/`MATCH_TRAINING` (le caller garde alors l'ancien rendu). Aucune
+  formule métier : des TABLES (`HOME_AWAY_KIND`, `SIDE_ROLE_WORD`) et de l'arithmétique
+  D'AFFICHAGE commentée comme telle — la fin d'un domicile (`kickoff + matchDurationMinutes`) et la
+  durée du chevauchement (`end − start`) sont calculées ici, les horaires eux-mêmes
+  (`windowStart`/`windowEnd`/`kickoffTime`/`estimatedKickoffTime`) sont LUS depuis le backend,
+  jamais redérivés. Un extérieur sans `travelOneWayMinutes` (trajet non modélisé) n'affiche ni
+  départ ni retour — un « trajet inconnu » muet à la place.
+- **`ConflictLine.tsx`** : pour `MATCH_MATCH`/`MATCH_TRAINING`, une liste de deux lignes
+  (`ConflictSideRow` — icône `Home`/`Bus`/`Dumbbell` selon le côté, équipe + rôle, groupe lieu
+  (domicile/« extérieur à {ville}» ou « extérieur (lieu inconnu) »/« Entraînement · {gymnase} ») +
+  adversaire, puis les segments horaires — coup d'envoi en **gras**, pastille « estimé »
+  (`StatusPill` neutral + `Clock`) collée au segment concerné, jamais un ton global) suivie de la
+  ligne de chevauchement (`Chevauchement HH:MM → HH:MM · durée`, en gras, **volontairement sans**
+  `text-warning` — sous AA sur un fond déjà teinté). La pastille GLOBALE « heure estimée » et
+  l'ancienne ligne grise (segment de chevauchement seul) **restent** pour les familles
+  gymnase/passerelle. `formatDurationMinutes` (nouveau, `shared/lib/time.ts`) formate une durée en
+  minutes de façon AÉRÉE (« 1 h 55 ») — distinct de `shared/lib/duration.formatDuration` (compact
+  « 1h55 », utilisé ailleurs dans le module) : deux maisons pour deux styles, documenté en tête de
+  fichier.
+- **`venues: Map<string, Venue>`** est filetée depuis les consommateurs (`ConflictRadar`,
+  `ConflictResolutionControl`, `ConflictsPage`, `WeekWorkbench`) jusqu'à `ConflictLine`/
+  `ConflictSeverityGroups` — nécessaire pour nommer le gymnase d'un entraînement dans le détail par
+  côté (`trainingSide`).
+- **Passe de design `ui-ux-pro-max` faite** (2026-09-17) : alternatives écartées — tableau, cartes,
+  frise horizontale ; le marqueur « estimé » reprend `StatusPill` neutral + `Clock` (cohérence avec
+  le reste du module) ; lecture au lecteur d'écran phrase par phrase (le groupe lieu, puis les
+  horaires, jamais un bloc muet).
+- **Gap connu, non traité ici** : le fond teinté de la ligne (`TONE_CLASSES`,
+  `bg-destructive/5`/`bg-warning/5`, préexistant) porte désormais nettement plus de texte, sans être
+  mesuré par `frontend/tests/e2e/a11y-contrast.spec.ts` (qui verrouille `/10`/`/15` mais jamais `/5`,
+  et ne visite pas `/matchs`) — **P4-213** (`specs/evolution/roadmap.md`).
 
 ## Refonte UX — RMM-1 (P2-26, 4 PR entre 2026-08-23 et 2026-08-24)
 

@@ -10,7 +10,7 @@ import { Spinner } from "@/shared/components/ui/spinner";
 import { frDateShortNoYear } from "@/shared/lib/date";
 import { cn } from "@/shared/lib/utils";
 
-import type { Coach, Conflict, ConflictResolutionStatus, Team } from "./api";
+import type { Coach, Conflict, ConflictResolutionStatus, Team, Venue } from "./api";
 import { ConflictLine } from "./ConflictLine";
 import type { DiagnosticGroup } from "./lib/diagnostic";
 import { RESOLUTION_LABEL, RESOLUTION_STATUSES } from "./lib/conflictResolution";
@@ -39,6 +39,8 @@ interface ConflictResolutionControlProps {
   conflict: Conflict;
   teams: Map<string, Team>;
   coaches: Map<string, Coach>;
+  /** Les gymnases — transmis à `ConflictLine` pour le détail par côté (lieu d'un entraînement). */
+  venues: Map<string, Venue>;
   tone: DiagnosticGroup["tone"];
   isNew: boolean;
   /** Le membre peut-il écrire ? (affichage seul — le serveur reste juge.) */
@@ -53,7 +55,7 @@ const ICON_TONE: Record<"warning" | "accent" | "neutral", string> = {
   neutral: "text-muted-foreground",
 };
 
-export function ConflictResolutionControl({ conflict, teams, coaches, tone, isNew, canManage, extraTrailing }: ConflictResolutionControlProps) {
+export function ConflictResolutionControl({ conflict, teams, coaches, venues, tone, isNew, canManage, extraTrailing }: ConflictResolutionControlProps) {
   const setResolution = useSetConflictResolution();
   const clearResolution = useClearConflictResolution();
   const busy = setResolution.isPending || clearResolution.isPending;
@@ -299,7 +301,7 @@ export function ConflictResolutionControl({ conflict, teams, coaches, tone, isNe
 
   return (
     <>
-      <ConflictLine conflict={conflict} teams={teams} coaches={coaches} tone={tone} isNew={isNew} trailing={trailing} below={below} ariaBusy={busy} />
+      <ConflictLine conflict={conflict} teams={teams} coaches={coaches} venues={venues} tone={tone} isNew={isNew} trailing={trailing} below={below} ariaBusy={busy} />
       <ConfirmDialog
         open={confirmOpen}
         title="Remettre à traiter ?"

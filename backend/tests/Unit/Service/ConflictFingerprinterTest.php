@@ -204,6 +204,31 @@ final class ConflictFingerprinterTest extends TestCase
         self::assertSame($this->fingerprinter->fingerprint($ab), $this->fingerprinter->fingerprint($ba));
     }
 
+    /**
+     * P2-54 « détail par côté » — les champs neufs par côté (estimatedKickoffTime,
+     * travelOneWayMinutes, matchDurationMinutes, opponentLabel, opponentPlace) sont
+     * HORS identité : l'empreinte est une LISTE BLANCHE, elle ne les lit pas. Le même
+     * litige, décoré ou nu, garde LA MÊME empreinte.
+     */
+    public function testFingerprintIgnoresSideDetailFields(): void
+    {
+        $bare = [
+            'type' => 'MATCH_MATCH',
+            'coachId' => 'person-1',
+            'left' => ['fixtureId' => 'fix-a'],
+            'right' => ['fixtureId' => 'fix-b'],
+        ];
+        $decorated = [
+            'type' => 'MATCH_MATCH',
+            'coachId' => 'person-1',
+            'left' => ['fixtureId' => 'fix-a', 'estimatedKickoffTime' => '15:00', 'travelOneWayMinutes' => 85, 'matchDurationMinutes' => 105, 'opponentLabel' => 'ASVEL - 2', 'opponentPlace' => 'Villeurbanne'],
+            'right' => ['fixtureId' => 'fix-b', 'estimatedKickoffTime' => null, 'travelOneWayMinutes' => null, 'matchDurationMinutes' => 115, 'opponentLabel' => 'VAULX - 1'],
+        ];
+
+        self::assertSame('MATCH_MATCH:person-1:fix-a,fix-b', $this->fingerprinter->fingerprint($bare));
+        self::assertSame($this->fingerprinter->fingerprint($bare), $this->fingerprinter->fingerprint($decorated));
+    }
+
     public function testUnknownTypeIsRefused(): void
     {
         $this->expectException(InvalidArgumentException::class);

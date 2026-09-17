@@ -111,6 +111,9 @@ use DateTimeImmutable;
  * round-trip car time when the opponent's travel is known (0 otherwise). An away
  * fixture with no real hour and no estimated kickoff still has no footprint and
  * therefore raises no conflict — named instead by AWAY_NO_FOOTPRINT.
+ *
+ * @phpstan-type OccupancyWindow array{start: DateTimeImmutable, end: DateTimeImmutable}
+ * @phpstan-type FixtureView array{fixture: Fixture, window: OccupancyWindow, venueWindow: OccupancyWindow, estimated: bool, estimatedKickoffTime: string|null, travelOneWayMinutes: int|null, matchDurationMinutes: int, personIds: list<string>}
  */
 final class MatchConflictDetector
 {
@@ -269,6 +272,9 @@ final class MatchConflictDetector
             // (MatchFootprint only adds the leg for AWAY).
             $roundTrip = $roundTripByFixtureId[$fixture->getId()] ?? 0;
             $estimated = false;
+            // P2-54 conflict side details — the estimated kickoff « HH:MM » held for
+            // the per-side rendering, non-null ONLY when the window borrowed a habit.
+            $estimatedKickoffTime = null;
             $window = $this->footprint->occupancy($fixture, $profile, $roundTrip);
             $venueWindow = $this->footprint->venueOccupancy($fixture, $profile);
             if (null === $window) {
@@ -277,6 +283,7 @@ final class MatchConflictDetector
                     $window = $this->footprint->occupancyAt($fixture, $estimatedKickoff, $profile, $roundTrip);
                     $venueWindow = $this->footprint->venueOccupancyAt($fixture, $estimatedKickoff, $profile);
                     $estimated = true;
+                    $estimatedKickoffTime = $estimatedKickoff->format('H:i');
                 }
             }
             // Both windows share the same kickoff source, so they are non-null
@@ -284,11 +291,23 @@ final class MatchConflictDetector
             if (null === $window || null === $venueWindow) {
                 continue;
             }
+            // P2-54 conflict side details — the ONE-WAY travel leg (round trip / 2)
+            // for the per-side rendering. null = NOT modelled (the fixture carries no
+            // row in the projected map) so the UI says « trajet inconnu » rather than
+            // « 0 min » ; the footprint above still gets `?? 0`. Always null on HOME
+            // (the controller only projects AWAY rows), guarded here so the contract
+            // stays local to this class.
+            $travelOneWayMinutes = FixtureHomeAway::AWAY === $fixture->getHomeAway() && \array_key_exists($fixture->getId(), $roundTripByFixtureId)
+                ? intdiv($roundTripByFixtureId[$fixture->getId()], 2)
+                : null;
             $views[] = [
                 'fixture' => $fixture,
                 'window' => $window,
                 'venueWindow' => $venueWindow,
                 'estimated' => $estimated,
+                'estimatedKickoffTime' => $estimatedKickoffTime,
+                'travelOneWayMinutes' => $travelOneWayMinutes,
+                'matchDurationMinutes' => $profile->matchMinutes,
                 // The PERSONS of the fixture's team (coaches ∪ active players) —
                 // the keys of the per-team role map are exactly that union.
                 'personIds' => array_keys($roleByTeamPerson[$fixture->getTeamId()] ?? []),
@@ -330,9 +349,9 @@ final class MatchConflictDetector
      *   same weekend (key = the Saturday's date; Friday does NOT count — founder
      *   decision).
      *
-     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, venueWindow: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, personIds: list<string>}> $views
-     * @param list<Fixture>                                                                                                                                                                                                  $fixtures
-     * @param list<VenueMatchWindow>                                                                                                                                                                                         $matchWindows
+     * @param list<FixtureView>      $views
+     * @param list<Fixture>          $fixtures
+     * @param list<VenueMatchWindow> $matchWindows
      *
      * @return list<array<string, mixed>>
      */
@@ -486,7 +505,7 @@ final class MatchConflictDetector
      * same gym must NOT collide on their inflated person footprints. The served
      * `start`/`end` are therefore the intersection of the VENUE windows.
      *
-     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, venueWindow: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, personIds: list<string>}> $views
+     * @param list<FixtureView> $views
      *
      * @return list<array<string, mixed>>
      */
@@ -508,8 +527,8 @@ final class MatchConflictDetector
                     'venueId' => $left['fixture']->getVenueId(),
                     'start' => $this->maxMoment($left['venueWindow']['start'], $right['venueWindow']['start'])->format(self::WALL_CLOCK_FORMAT),
                     'end' => $this->minMoment($left['venueWindow']['end'], $right['venueWindow']['end'])->format(self::WALL_CLOCK_FORMAT),
-                    'left' => $this->fixtureView($left['fixture'], $left['window'], $left['estimated']),
-                    'right' => $this->fixtureView($right['fixture'], $right['window'], $right['estimated']),
+                    'left' => $this->fixtureView($left),
+                    'right' => $this->fixtureView($right),
                 ];
             }
         }
@@ -671,8 +690,8 @@ final class MatchConflictDetector
      * only — BACK_TO_BACK is a solver preference, diagnosing its non-respect
      * without a solver would invent a rule). Coach-independent.
      *
-     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, personIds: list<string>}> $views
-     * @param list<TeamLink>                                                                                                                           $teamLinks
+     * @param list<FixtureView> $views
+     * @param list<TeamLink>    $teamLinks
      *
      * @return list<array<string, mixed>>
      */
@@ -682,7 +701,7 @@ final class MatchConflictDetector
             return [];
         }
 
-        /** @var array<string, list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool}>> $byTeam */
+        /** @var array<string, list<FixtureView>> $byTeam */
         $byTeam = [];
         foreach ($views as $view) {
             $byTeam[$view['fixture']->getTeamId()][] = $view;
@@ -704,8 +723,8 @@ final class MatchConflictDetector
                         'teamLinkId' => $link->getId(),
                         'start' => $this->maxMoment($left['window']['start'], $right['window']['start'])->format(self::WALL_CLOCK_FORMAT),
                         'end' => $this->minMoment($left['window']['end'], $right['window']['end'])->format(self::WALL_CLOCK_FORMAT),
-                        'left' => $this->fixtureView($left['fixture'], $left['window'], $left['estimated']),
-                        'right' => $this->fixtureView($right['fixture'], $right['window'], $right['estimated']),
+                        'left' => $this->fixtureView($left),
+                        'right' => $this->fixtureView($right),
                     ];
                 }
             }
@@ -769,8 +788,8 @@ final class MatchConflictDetector
     }
 
     /**
-     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, personIds: list<string>}> $views
-     * @param array<string, array<string, ConflictPersonRole>>                                                                                         $roleByTeamPerson
+     * @param list<FixtureView>                                $views
+     * @param array<string, array<string, ConflictPersonRole>> $roleByTeamPerson
      *
      * @return list<array<string, mixed>>
      */
@@ -801,8 +820,8 @@ final class MatchConflictDetector
                         'coachId' => $personId,
                         'start' => $this->maxMoment($left['window']['start'], $right['window']['start'])->format(self::WALL_CLOCK_FORMAT),
                         'end' => $this->minMoment($left['window']['end'], $right['window']['end'])->format(self::WALL_CLOCK_FORMAT),
-                        'left' => $this->fixtureView($left['fixture'], $left['window'], $left['estimated'], $leftRole),
-                        'right' => $this->fixtureView($right['fixture'], $right['window'], $right['estimated'], $rightRole),
+                        'left' => $this->fixtureView($left, $leftRole),
+                        'right' => $this->fixtureView($right, $rightRole),
                     ];
                 }
             }
@@ -812,12 +831,12 @@ final class MatchConflictDetector
     }
 
     /**
-     * @param list<array{fixture: Fixture, window: array{start: DateTimeImmutable, end: DateTimeImmutable}, estimated: bool, personIds: list<string>}> $views
-     * @param array<string, array<string, true>>                                                                                                       $coachesByTeam
-     * @param array<string, array<string, true>>                                                                                                       $playersByTeam
-     * @param array<string, array<string, ConflictPersonRole>>                                                                                         $roleByTeamPerson
-     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}>                                                   $activePeriods
-     * @param array<string, list<ScheduleSlotTemplate>>                                                                                                $slotsBySchedule
+     * @param list<FixtureView>                                                                      $views
+     * @param array<string, array<string, true>>                                                     $coachesByTeam
+     * @param array<string, array<string, true>>                                                     $playersByTeam
+     * @param array<string, array<string, ConflictPersonRole>>                                       $roleByTeamPerson
+     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}> $activePeriods
+     * @param array<string, list<ScheduleSlotTemplate>>                                              $slotsBySchedule
      *
      * @return list<array<string, mixed>>
      */
@@ -887,7 +906,7 @@ final class MatchConflictDetector
                             'coachId' => $personId,
                             'start' => $this->maxMoment($view['window']['start'], $trainingWindow['start'])->format(self::WALL_CLOCK_FORMAT),
                             'end' => $this->minMoment($view['window']['end'], $trainingWindow['end'])->format(self::WALL_CLOCK_FORMAT),
-                            'fixture' => $this->fixtureView($view['fixture'], $view['window'], $view['estimated'], $matchRole),
+                            'fixture' => $this->fixtureView($view, $matchRole),
                             'training' => [
                                 'slotTemplateId' => $slot->getId(),
                                 'scheduleId' => $slot->getScheduleId(),
@@ -1019,16 +1038,18 @@ final class MatchConflictDetector
     }
 
     /**
-     * @param array{start: DateTimeImmutable, end: DateTimeImmutable} $window
-     * @param ConflictPersonRole|null                                 $role   the person's role on this fixture's team, on a PERSON conflict
-     *                                                                        (MATCH_MATCH/MATCH_TRAINING). null for the gym/link families,
-     *                                                                        which share this view but carry no person → no `role` key.
+     * @param FixtureView             $view
+     * @param ConflictPersonRole|null $role the person's role on this fixture's team, on a PERSON conflict
+     *                                      (MATCH_MATCH/MATCH_TRAINING). null for the gym/link families,
+     *                                      which share this view but carry no person → no `role` key.
      *
      * @return array<string, mixed>
      */
-    private function fixtureView(Fixture $fixture, array $window, bool $estimated = false, ?ConflictPersonRole $role = null): array
+    private function fixtureView(array $view, ?ConflictPersonRole $role = null): array
     {
-        $view = [
+        $fixture = $view['fixture'];
+        $window = $view['window'];
+        $serialized = [
             'fixtureId' => $fixture->getId(),
             'teamId' => $fixture->getTeamId(),
             'homeAway' => $fixture->getHomeAway()->value,
@@ -1036,14 +1057,24 @@ final class MatchConflictDetector
             'kickoffTime' => $fixture->getKickoffTime()?->format('H:i'),
             // P1-4 PR C — the window was built on the team's HABITUAL kickoff,
             // not a real hour: the UI must say « heure estimée ».
-            'estimatedKickoff' => $estimated,
+            'estimatedKickoff' => $view['estimated'],
+            // P2-54 conflict side details — ADDITIVE per-side fields for the
+            // MATCH_MATCH/MATCH_TRAINING rendering. Harmless extras on the
+            // gym/link families that share this view (the UI ignores them for
+            // those); the ConflictFingerprinter is a whitelist and never reads
+            // them. `opponentPlace` is NOT here — it is decorated by
+            // FixtureConflictsController on AWAY sides after detection.
+            'estimatedKickoffTime' => $view['estimatedKickoffTime'],
+            'travelOneWayMinutes' => $view['travelOneWayMinutes'],
+            'matchDurationMinutes' => $view['matchDurationMinutes'],
+            'opponentLabel' => $fixture->getOpponentLabel(),
             'windowStart' => $window['start']->format(self::WALL_CLOCK_FORMAT),
             'windowEnd' => $window['end']->format(self::WALL_CLOCK_FORMAT),
         ];
         if ($role instanceof ConflictPersonRole) {
-            $view['role'] = $role->value;
+            $serialized['role'] = $role->value;
         }
 
-        return $view;
+        return $serialized;
     }
 }

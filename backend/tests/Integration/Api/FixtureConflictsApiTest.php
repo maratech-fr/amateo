@@ -11,10 +11,12 @@ use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\ConflictResolution;
 use App\Entity\Fixture;
+use App\Entity\OpponentDirectoryEntry;
 use App\Entity\Season;
 use App\Entity\TeamCoach;
 use App\Entity\User;
 use App\Enum\FixtureHomeAway;
+use App\Enum\OpponentLocationPrecision;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\SeasonResolver;
@@ -145,6 +147,48 @@ final class FixtureConflictsApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
 
         self::assertSame([], $this->responseData()['conflicts'], 'un match passé ne remonte plus (D1 règle 3)');
+    }
+
+    /**
+     * P2-54 « détail par côté » — chaque côté MATCH porte les champs ADDITIFS servis
+     * pour le rendu par côté : durée de match, libellé adverse, trajet (null en
+     * domicile), heure estimée (null quand le coup d'envoi est réel). Un côté HOME ne
+     * porte JAMAIS `opponentPlace` (décoré côté AWAY seulement).
+     */
+    public function testSidesCarryTheAdditiveDetailFields(): void
+    {
+        [, $user] = $this->createClubWithOverlappingMatches('add');
+
+        $conflicts = $this->conflictsFor($user);
+        self::assertCount(1, $conflicts);
+        foreach (['left', 'right'] as $key) {
+            $side = $conflicts[0][$key];
+            self::assertIsInt($side['matchDurationMinutes']);
+            self::assertSame('Adv', $side['opponentLabel']);
+            self::assertArrayHasKey('travelOneWayMinutes', $side);
+            self::assertNull($side['travelOneWayMinutes'], 'domicile → jamais de trajet');
+            self::assertNull($side['estimatedKickoffTime'], 'coup d\'envoi réel → pas d\'heure estimée');
+            self::assertArrayNotHasKey('opponentPlace', $side, 'côté HOME → pas de lieu adverse');
+        }
+    }
+
+    /**
+     * P2-54 — le côté AWAY d'un MATCH_MATCH est décoré de `opponentPlace`, résolu ici
+     * par l'annuaire fédéral (ville). Le côté HOME reste sans la clé.
+     */
+    public function testAwaySideCarriesOpponentPlaceFromTheDirectory(): void
+    {
+        [, $user] = $this->createClubWithHomeAwayOverlap('pl', 'ARA0069777', 'Villeurbanne');
+
+        $conflicts = $this->conflictsFor($user);
+        self::assertCount(1, $conflicts);
+        $sides = [];
+        foreach (['left', 'right'] as $key) {
+            $sides[$conflicts[0][$key]['homeAway']] = $conflicts[0][$key];
+        }
+        self::assertArrayHasKey('opponentPlace', $sides['AWAY']);
+        self::assertSame('Villeurbanne', $sides['AWAY']['opponentPlace']);
+        self::assertArrayNotHasKey('opponentPlace', $sides['HOME'], 'jamais de lieu adverse décoré sur un domicile');
     }
 
     // ── P4-207 « Résolution des conflits » (champ additif + PUT/DELETE) ──
@@ -361,6 +405,97 @@ final class FixtureConflictsApiTest extends WebTestCase
         $fixture->setOpponentLabel('Adv');
         $fixture->setKickoffTime(DateTimeImmutable::createFromFormat('!H:i', $kickoff) ?: null);
         $this->em->persist($fixture);
+    }
+
+    /**
+     * A club whose coach runs team-1 (HOME) and team-2 (AWAY) with overlapping
+     * windows → one MATCH_MATCH. The away opponent carries an organisme code and a
+     * directory entry (city), so its side gets an `opponentPlace`.
+     *
+     * @return array{0: Club, 1: User, 2: string} club, user, coachId
+     */
+    private function createClubWithHomeAwayOverlap(string $suffix, string $opponentCode, string $city): array
+    {
+        $uid = uniqid($suffix, true);
+        $hasher = self::getContainer()->get('security.user_password_hasher');
+
+        $club = new Club;
+        $club->setName('Club conflict ' . $suffix);
+        $club->setSlug('club-conflict-' . $uid);
+        $club->setTimezone('Europe/Paris');
+        $club->setLocale('fr');
+        $club->setOnboardingCompleted(true);
+        $club->setFfbbClubCode(strtoupper(substr(md5($uid), 0, 3)) . strtoupper(substr(md5($uid), 3, 10)));
+        $this->em->persist($club);
+
+        $user = new User;
+        $user->setEmail('conflict' . $uid . '@test.com');
+        $user->setFirstName('Con');
+        $user->setLastName('Flict');
+        $user->setPasswordHash($hasher->hashPassword($user, 'pass'));
+        $this->em->persist($user);
+        $this->em->flush();
+
+        $this->scopeGucToClub($club->getId());
+
+        $membership = new ClubUser;
+        $membership->setClubId($club->getId());
+        $membership->setUserId($user->getId());
+        $membership->setRole('admin');
+        $membership->setIsActive(true);
+        $this->em->persist($membership);
+
+        $season = new Season;
+        $season->setClubId($club->getId());
+        $year = SeasonResolver::seasonYear(new DateTimeImmutable('today'));
+        $season->setName((string) $year);
+        $season->setStartDate(new DateTimeImmutable($year . '-08-01'));
+        $season->setEndDate(new DateTimeImmutable(($year + 1) . '-07-15'));
+        $season->setStatus(SeasonStatus::ACTIVE);
+        $season->setTransitionData([]);
+        $this->em->persist($season);
+
+        $coach = new Coach;
+        $coach->setClubId($club->getId());
+        $coach->setSeasonId($season->getId());
+        $coach->setFirstName('Coach');
+        $coach->setLastName($suffix);
+        $this->em->persist($coach);
+        $this->em->flush();
+
+        $team1 = $this->uuid($suffix, 1);
+        $team2 = $this->uuid($suffix, 2);
+        foreach ([$team1, $team2] as $teamId) {
+            $link = new TeamCoach;
+            $link->setClubId($club->getId());
+            $link->setSeasonId($season->getId());
+            $link->setTeamId($teamId);
+            $link->setCoachId($coach->getId());
+            $link->setRole(TeamCoachRole::MAIN);
+            $this->em->persist($link);
+        }
+
+        // team-1 HOME 16:00 ; team-2 AWAY 16:00 (real kickoff) → overlapping windows.
+        $this->fixture($club, $season, $team1, '16:00', '2026-10-04');
+        $away = new Fixture;
+        $away->setClubId($club->getId());
+        $away->setSeasonId($season->getId());
+        $away->setTeamId($team2);
+        $away->setMatchDate(new DateTimeImmutable('2026-10-04'));
+        $away->setHomeAway(FixtureHomeAway::AWAY);
+        $away->setOpponentLabel('ASVEL - 2');
+        $away->setOpponentOrganismeCode($opponentCode);
+        $away->setKickoffTime(DateTimeImmutable::createFromFormat('!H:i', '16:00') ?: null);
+        $this->em->persist($away);
+
+        // The federal directory (GLOBAL, no club_id) knows where the opponent plays.
+        $entry = new OpponentDirectoryEntry($opponentCode, 'ASVEL', OpponentLocationPrecision::CITY);
+        $entry->setCity($city);
+        $this->em->persist($entry);
+
+        $this->em->flush();
+
+        return [$club, $user, $coach->getId()];
     }
 
     private function uuid(string $suffix, int $n): string

@@ -1,7 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { Coach, Conflict, Team } from "./api";
+import type { Coach, Conflict, Team, Venue } from "./api";
 import { ConflictLine } from "./ConflictLine";
 
 const teams = new Map<string, Team>([
@@ -9,6 +9,7 @@ const teams = new Map<string, Team>([
   ["team-2", { id: "team-2", name: "Seniors", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 }],
 ]);
 const coaches = new Map<string, Coach>();
+const venues = new Map<string, Venue>([["v-1", { id: "v-1", name: "Gymnase Mateo", color: null, externalLabels: [] }]]);
 
 function side(fixtureId: string, teamId: string, matchDate = "2026-10-03") {
   return { fixtureId, teamId, homeAway: "HOME" as const, matchDate, kickoffTime: "16:00", windowStart: "", windowEnd: "" };
@@ -19,7 +20,7 @@ const overlap: Conflict = { type: "VENUE_OVERLAP", severity: 1, resolution: null
 function renderLine(props: Partial<React.ComponentProps<typeof ConflictLine>> = {}) {
   return render(
     <ul>
-      <ConflictLine conflict={overlap} teams={teams} coaches={coaches} tone="destructive" isNew={false} {...props} />
+      <ConflictLine conflict={overlap} teams={teams} coaches={coaches} venues={venues} tone="destructive" isNew={false} {...props} />
     </ul>,
   );
 }
@@ -82,7 +83,7 @@ describe("ConflictLine — personne en double, rôle PAR CÔTÉ (une personne = 
   function renderPerson(conflict: Conflict) {
     return render(
       <ul>
-        <ConflictLine conflict={conflict} teams={teams} coaches={coachesMap} tone="warning" isNew={false} />
+        <ConflictLine conflict={conflict} teams={teams} coaches={coachesMap} venues={venues} tone="warning" isNew={false} />
       </ul>,
     );
   }
@@ -138,5 +139,108 @@ describe("ConflictLine — personne en double, rôle PAR CÔTÉ (une personne = 
       training: { slotTemplateId: "t", scheduleId: "sc", teamId: "team-1", venueId: "v", dayOfWeek: 3, startTime: "18:00", durationMinutes: 90, role: "MAIN", windowStart: "", windowEnd: "" },
     });
     expect(screen.getByText("Match Seniors (joueur) × entraînement U13 (coach)")).toBeInTheDocument();
+  });
+});
+
+describe("ConflictLine — détail par côté (P2-54)", () => {
+  const coachesMap = new Map<string, Coach>([["p-1", { id: "p-1", firstName: "Mara", lastName: "MB" }]]);
+
+  const awayEstimated = {
+    fixtureId: "fx-a",
+    teamId: "team-1",
+    homeAway: "AWAY" as const,
+    matchDate: "2026-11-08",
+    kickoffTime: null,
+    estimatedKickoff: true,
+    estimatedKickoffTime: "15:00",
+    travelOneWayMinutes: 85,
+    windowStart: "2026-11-08T13:30:00",
+    windowEnd: "2026-11-08T18:25:00",
+    matchDurationMinutes: 105,
+    opponentLabel: "ASVEL - 2",
+    opponentPlace: "Villeurbanne",
+    role: "MAIN" as const,
+  };
+  const homeReal = {
+    fixtureId: "fx-b",
+    teamId: "team-2",
+    homeAway: "HOME" as const,
+    matchDate: "2026-11-08",
+    kickoffTime: "15:30",
+    windowStart: "2026-11-08T15:00:00",
+    windowEnd: "2026-11-08T17:25:00",
+    // 90 min so the home « durée estimée » (1 h 30) is distinct from the overlap
+    // (1 h 55) — the assertion below targets the chevauchement uniquely.
+    matchDurationMinutes: 90,
+    opponentLabel: "VAULX EN VELIN BASKET CLUB - 2",
+    role: "PLAYER" as const,
+  };
+  const matchMatch: Conflict = {
+    type: "MATCH_MATCH",
+    severity: 3,
+    resolution: null,
+    coachId: "p-1",
+    start: "2026-11-08T15:30:00",
+    end: "2026-11-08T17:25:00",
+    left: awayEstimated,
+    right: homeReal,
+  };
+
+  function renderDetail(conflict: Conflict) {
+    return render(
+      <ul>
+        <ConflictLine conflict={conflict} teams={teams} coaches={coachesMap} venues={venues} tone="warning" isNew={false} />
+      </ul>,
+    );
+  }
+
+  it("rend UNE LIGNE PAR CÔTÉ (liste « Détail par équipe ») + le chevauchement", () => {
+    renderDetail(matchMatch);
+    const detail = screen.getByRole("list", { name: "Détail par équipe" });
+    expect(within(detail).getAllByRole("listitem")).toHaveLength(2);
+    // Lieu + adversaire par côté.
+    expect(screen.getByText("extérieur à Villeurbanne")).toBeInTheDocument();
+    expect(screen.getByText("domicile")).toBeInTheDocument();
+    expect(screen.getByText("vs ASVEL - 2")).toBeInTheDocument();
+    expect(screen.getByText("vs VAULX EN VELIN BASKET CLUB - 2")).toBeInTheDocument();
+    // Le chevauchement, avec sa durée aérée.
+    expect(screen.getByText(/Chevauchement/)).toBeInTheDocument();
+    expect(screen.getByText("1 h 55")).toBeInTheDocument();
+  });
+
+  it("le coup d'envoi estimé porte la pastille « estimé » ; la pastille GLOBALE « heure estimée » disparaît", () => {
+    renderDetail(matchMatch);
+    expect(screen.getByText("estimé")).toBeInTheDocument();
+    expect(screen.queryByText("heure estimée")).not.toBeInTheDocument();
+  });
+
+  it("adversaire long : l'adversaire s'enroule (ni whitespace-nowrap ni truncate), les segments horaires restent insécables", () => {
+    const longOpp = "VAULX EN VELIN BASKET CLUB SUD OUEST - 2"; // 40 caractères
+    renderDetail({ ...matchMatch, right: { ...homeReal, opponentLabel: longOpp } });
+
+    // Le bloc adversaire s'enroule et se casse (overflow-wrap), jamais nowrap ni truncate.
+    const opponent = screen.getByText(new RegExp(longOpp));
+    expect(opponent).not.toHaveClass("whitespace-nowrap");
+    expect(opponent).not.toHaveClass("truncate");
+    expect(opponent).toHaveClass("[overflow-wrap:anywhere]");
+
+    // Un segment horaire (le coup d'envoi) reste, lui, insécable.
+    const kickoffLabel = screen.getAllByText("coup d'envoi", { exact: false })[0];
+    expect(kickoffLabel.closest("span.whitespace-nowrap")).not.toBeNull();
+  });
+
+  it("VENUE_OVERLAP garde la pastille GLOBALE « heure estimée » (témoin de non-régression) et AUCUN détail par côté", () => {
+    const venueOverlap: Conflict = {
+      type: "VENUE_OVERLAP",
+      severity: 1,
+      resolution: null,
+      start: "2026-11-08T15:30:00",
+      end: "2026-11-08T17:25:00",
+      left: { ...awayEstimated },
+      right: { ...homeReal },
+    };
+    renderDetail(venueOverlap);
+    expect(screen.getByText("heure estimée")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Détail par équipe" })).not.toBeInTheDocument();
   });
 });

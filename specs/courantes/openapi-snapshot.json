@@ -11521,6 +11521,29 @@
                                                                     "PLAYER"
                                                                 ],
                                                                 "description": "The person's role on this side"
+                                                            },
+                                                            "estimatedKickoffTime": {
+                                                                "type": "string",
+                                                                "nullable": true,
+                                                                "description": "Estimated kickoff \u00ab HH:MM \u00bb borrowed from the team habit \u2014 set only when the kickoff is estimated (an away match with no real hour), null otherwise"
+                                                            },
+                                                            "travelOneWayMinutes": {
+                                                                "type": "integer",
+                                                                "nullable": true,
+                                                                "description": "One-way car travel minutes to the opponent; null when no travel is modelled, and always null on a home side"
+                                                            },
+                                                            "matchDurationMinutes": {
+                                                                "type": "integer",
+                                                                "description": "Match duration in minutes for this side's team (its resolved category profile, else the default)"
+                                                            },
+                                                            "opponentLabel": {
+                                                                "type": "string",
+                                                                "description": "The opponent label of this fixture"
+                                                            },
+                                                            "opponentPlace": {
+                                                                "type": "string",
+                                                                "nullable": true,
+                                                                "description": "Where the opponent plays, decorated on away sides only (manual override, then the federal directory city, then the FBI venue label); null when unknown"
                                                             }
                                                         }
                                                     },
@@ -11537,6 +11560,29 @@
                                                                     "PLAYER"
                                                                 ],
                                                                 "description": "The person's role on this side"
+                                                            },
+                                                            "estimatedKickoffTime": {
+                                                                "type": "string",
+                                                                "nullable": true,
+                                                                "description": "Estimated kickoff \u00ab HH:MM \u00bb borrowed from the team habit \u2014 set only when the kickoff is estimated (an away match with no real hour), null otherwise"
+                                                            },
+                                                            "travelOneWayMinutes": {
+                                                                "type": "integer",
+                                                                "nullable": true,
+                                                                "description": "One-way car travel minutes to the opponent; null when no travel is modelled, and always null on a home side"
+                                                            },
+                                                            "matchDurationMinutes": {
+                                                                "type": "integer",
+                                                                "description": "Match duration in minutes for this side's team (its resolved category profile, else the default)"
+                                                            },
+                                                            "opponentLabel": {
+                                                                "type": "string",
+                                                                "description": "The opponent label of this fixture"
+                                                            },
+                                                            "opponentPlace": {
+                                                                "type": "string",
+                                                                "nullable": true,
+                                                                "description": "Where the opponent plays, decorated on away sides only (manual override, then the federal directory city, then the FBI venue label); null when unknown"
                                                             }
                                                         }
                                                     },
@@ -11553,6 +11599,29 @@
                                                                     "PLAYER"
                                                                 ],
                                                                 "description": "The person's role with the match team"
+                                                            },
+                                                            "estimatedKickoffTime": {
+                                                                "type": "string",
+                                                                "nullable": true,
+                                                                "description": "Estimated kickoff \u00ab HH:MM \u00bb borrowed from the team habit \u2014 set only when the kickoff is estimated (an away match with no real hour), null otherwise"
+                                                            },
+                                                            "travelOneWayMinutes": {
+                                                                "type": "integer",
+                                                                "nullable": true,
+                                                                "description": "One-way car travel minutes to the opponent; null when no travel is modelled, and always null on a home side"
+                                                            },
+                                                            "matchDurationMinutes": {
+                                                                "type": "integer",
+                                                                "description": "Match duration in minutes for this side's team (its resolved category profile, else the default)"
+                                                            },
+                                                            "opponentLabel": {
+                                                                "type": "string",
+                                                                "description": "The opponent label of this fixture"
+                                                            },
+                                                            "opponentPlace": {
+                                                                "type": "string",
+                                                                "nullable": true,
+                                                                "description": "Where the opponent plays, decorated on away sides only (manual override, then the federal directory city, then the FBI venue label); null when unknown"
                                                             }
                                                         }
                                                     },
