@@ -114,7 +114,18 @@ function nextSaturdayAtLeast(minAhead: number): string {
 /** Amène la semaine affichée sur celle qui contient `text`, en cliquant `btn`
  * (‹ ou ›) au plus `max` fois. Retourne vrai si `text` est visible à la fin. */
 async function stepUntilVisible(btn: import("@playwright/test").Locator, target: import("@playwright/test").Locator, max: number): Promise<boolean> {
-  if (await target.isVisible().catch(() => false)) {
+  // Un locator qui résout PLUSIEURS éléments (ex. le libellé d'une rencontre porté à
+  // la fois par la case de grille ET par le détail par côté du radar) doit ÉCHOUER
+  // EN LE DISANT — jamais être avalé en `false`, sinon la boucle traverse toutes les
+  // semaines sans jamais « voir » sa cible (témoin muet). Règle « témoin qui parle ».
+  const seen = async (): Promise<boolean> => {
+    const n = await target.count();
+    if (n > 1) {
+      throw new Error(`stepUntilVisible: locator ambigu (${n} éléments) — scoper au conteneur (grille/table)`);
+    }
+    return 1 === n && (await target.first().isVisible());
+  };
+  if (await seen()) {
     return true;
   }
   for (let i = 0; i < max; i++) {
@@ -122,7 +133,7 @@ async function stepUntilVisible(btn: import("@playwright/test").Locator, target:
       break;
     }
     await btn.click();
-    if (await target.isVisible().catch(() => false)) {
+    if (await seen()) {
       return true;
     }
   }
@@ -197,7 +208,11 @@ test("consulter: chips, semaine type, et filtre par famille de conflit", async (
     // cherche › puis ‹ : indépendant de l'horloge (potentiellement pilotée serveur).
     const nextWeek = page.getByRole("button", { name: "Semaine suivante" });
     const prevWeek = page.getByRole("button", { name: "Semaine précédente" });
-    const overlapCell = page.getByText(overlapA, { exact: false });
+    // Scopé à la GRILLE (`data-testid="weekend-grid"`, WeekendGrid.tsx) : le même libellé
+    // de rencontre est aussi rendu par le détail par côté du radar (ConflictLine, #913),
+    // qui vit sous la grille — sans ce scope, le locator résout 2 éléments (strict-mode).
+    const grid = page.getByTestId("weekend-grid");
+    const overlapCell = grid.getByText(overlapA, { exact: false });
     const found = (await stepUntilVisible(nextWeek, overlapCell, 12)) || (await stepUntilVisible(prevWeek, overlapCell, 24));
     expect(found, "la semaine de la collision créée est atteignable").toBeTruthy();
     await expect(overlapCell).toBeVisible();
@@ -225,7 +240,7 @@ test("consulter: chips, semaine type, et filtre par famille de conflit", async (
 
     // Témoin du bornage à la SEMAINE : sur la semaine de la rencontre ISOLÉE
     // (W_clean, un cran plus tôt), aucune collision. Assertion forte (`toHaveCount(0)`).
-    const cleanCell = page.getByText(cleanOpp, { exact: false });
+    const cleanCell = grid.getByText(cleanOpp, { exact: false });
     expect(await stepUntilVisible(prevWeek, cleanCell, 24), "la semaine de la rencontre isolée est atteignable").toBeTruthy();
     await expect(cleanCell).toBeVisible();
     await expect(familiesGroup.getByRole("button", { name: /^Collision de gymnase/ })).toHaveCount(0);
