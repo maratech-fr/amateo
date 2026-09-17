@@ -1,25 +1,21 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-17 (`documentation-update`, deux passes le même jour). (1) Faux positif
-d'échauffement « personnes déjà sur place » + ville de l'adversaire extérieur : § « Détection »
-complétée d'un paragraphe « D1 étendu » et § « Détail par côté d'un conflit de personne » recalée
-sur l'ORDRE de résolution du lieu adverse, confrontés au code lu :
-`MatchConflictDetector::effectiveMatchWindows`/`sameHomeVenue`
-(`backend/src/Service/MatchConflictDetector.php`), `OpponentPlaceResolver`
-(`backend/src/Service/OpponentPlaceResolver.php`, override effectif équipe/club sur sa référence de
-salle FFBB → ville de `OpponentVenueSuggestion` → ville de l'annuaire fédéral → `null`) + nouveau
-`OpponentVenueSuggestionRepository::findByFfbbOrganismeCodes` (batch). (2) Défauts Calendrier +
-filtres Conflits, PUIS correctif produit sur le mécanisme de reveal : § « Liens qui allument leurs
-filtres » et le bullet « Voir la semaine » recalés — le masque (Extérieurs/type) voyage désormais
-DANS L'URL de la navigation (`revealSearch`/`onPlace` → `applyConsultToParams` +
-`applyWeekendToParams`, `{ pathname: "/matchs", search }`), jamais posé dans le store avant
-`navigate` (INOPÉRANT : le seed de `CalendarPage.tsx` redéfinit l'état Consulter depuis l'URL à
-chaque montage) — confronté à `ConflictsPage.tsx`/`ReviewQueue.tsx`/`CalendarPage.tsx` (le seed,
-`:~305-336`). Reste du fichier (§ « Calendrier — l'écran unique » pour le reste, § « Configuration
-— repli visuel », § reconciliation coupes P4-194/195, § « Solveur de placement », § « Trajet
-AWAY », § « Espace Importer », § « Onglet Semaine type », § « Échéances ligue/comité », § « Écart
-de salle d'un domicile non placé ») non re-sondé cette passe — voir `git log -p --follow` pour sa
-dernière vérification.
+Last verified @ 2026-09-17 (`documentation-update`, PR « mémoire de session des filtres »). Bullet
+« URL fusionnée » et § « Liens qui allument leurs filtres » recalés : le seed du Calendrier
+(`CalendarPage.tsx`, effet unique seed + re-synchro d'URL) ne redéfinit plus l'état Consulter
+DEPUIS L'URL à CHAQUE montage — il ne le fait QUE si l'URL porte au moins une des sept clés
+Consulter (`hasConsultParams`/`CONSULT_PARAM_KEYS`, `lib/urlState.ts`) ; sans aucune clé (retour
+par l'onglet « Calendrier », qui pointe `/matchs` sans query), le store Zustand — mémoire de
+session, NON persistée — est GARDÉ et l'adresse re-synchronisée depuis lui. Un lien AVEC query
+(« Voir la semaine », « Placer ») continue de faire foi à l'identique. Confronté au code lu :
+`CalendarPage.tsx` (effet fusionné, `touchedStore`), `lib/urlState.ts` (`hasConsultParams`),
+`ConflictsPage.tsx:178-188` (seed inconditionnel, PAS concerné par ce lot — trou signalé en
+roadmap). Reste du fichier (§ « Calendrier — l'écran unique » pour le reste, § « Détection », §
+« Détail par côté d'un conflit de personne », § « Configuration — repli visuel », §
+reconciliation coupes P4-194/195, § « Solveur de placement », § « Trajet AWAY », § « Espace
+Importer », § « Onglet Semaine type », § « Échéances ligue/comité », § « Écart de salle d'un
+domicile non placé ») non re-sondé cette passe — voir `git log -p --follow` pour sa dernière
+vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -1790,9 +1786,23 @@ part : une barre de filtres sur la vue Semaine, même patron que `/planning`.
 - **URL fusionnée** (`lib/urlState.ts`) : `vue`/`filtre` (PR-1) + `type`/`conflits`/`type_semaine`/
   `exterieurs`/`temps`/`mois`/`phase` (Consulter, défauts et sens détaillés § « Détail — filtres… »
   ci-dessous, revus le 2026-09-16/17) + **`semaine=YYYY-MM-DD`** (NEUF, clé samedi de la semaine
-  affichée, absente ou mal formée ⇒ auto). Seedée une fois au montage ; ne clobber jamais une
-  semaine posée par une navigation (« Voir la semaine » depuis Conflits, clic sur une ligne
-  Mois/Phase).
+  affichée, absente ou mal formée ⇒ auto). **Mémoire de session des filtres (2026-09-17)** :
+  l'URL fait foi pour les filtres Consulter **SEULEMENT si elle porte au moins une des sept clés
+  ci-dessus** (`hasConsultParams`, `CONSULT_PARAM_KEYS`, `lib/urlState.ts`) — alors seed complet,
+  toute clé absente vaut son défaut, un lien partagé dit vrai ; **sinon** (ex. retour par l'onglet
+  « Calendrier », qui pointe `/matchs` SANS query) le store (Zustand, mémoire de session **NON
+  persistée** — perdue au rechargement de page) est **GARDÉ**, et l'adresse est re-synchronisée
+  depuis lui. Le filtre PR-1 (seedé seulement sur un store vierge), la semaine et la rencontre
+  pointée gardent leur logique propre, inchangée — `semaine` n'est PAS une clé Consulter, et n'est
+  jamais clobberée par une navigation (« Voir la semaine » depuis Conflits, clic sur une ligne
+  Mois/Phase). « Réinitialiser » remet toujours les quatre filtres Consulter à leur défaut, quel
+  que soit l'état mémorisé. ⚠ **Piège d'implémentation** : seed et re-synchro sont **UN SEUL
+  effet** (`CalendarPage.tsx`) — sur la passe où le seed vient d'écrire dans le store, la
+  re-synchro est SAUTÉE cette passe-là (les valeurs encore lues sont celles d'AVANT le seed ; la
+  re-synchro écraserait sinon le deep-link reçu) — l'écriture du store redéclenche l'effet, qui
+  re-synchronise à la passe suivante. Un effet de re-synchro SÉPARÉ, gardé par un `ref` (patron
+  d'avant cette PR), ne se redéclenche PAS quand seul le `ref` change : le cas « URL nue, store
+  gardé » laissait alors l'adresse désynchronisée du store jusqu'à la prochaine interaction.
 - **Barre d'actions** : « Placer automatiquement » SEUL bouton primaire (crédits affichés) ;
   « Nouveau match » secondaire (`outline`) ; `FeedbackButton`.
 - **Bandeau conflits SANS date** (ex. `COMPETITION_INCOMPLETE`, `datelessConflicts` — `lib/loopSteps.ts`) :
@@ -1875,11 +1885,15 @@ supprimé, fusionné dans `CalendarPage.tsx`/`CalendarControls.tsx`/`MonthTable.
   dans le store avant `navigate`** : les deux appelants construisent la query avec
   `applyConsultToParams` (+ `applyWeekendToParams` côté Conflits, `lib/urlState.ts`) et naviguent
   en `{ pathname: "/matchs", search }`, un type déjà allumé n'étant jamais éteint. ⚠ **Pourquoi** :
-  le seed du Calendrier (`CalendarPage.tsx`) redéfinit l'état Consulter DEPUIS L'URL à chaque
-  montage — seuls le filtre PR-1 (sur un store vierge), la semaine et la rencontre pointée
-  survivent par le store ; poser `consultKinds`/`consultAway` en mémoire avant `navigate` est donc
-  INOPÉRANT, écrasé dès l'arrivée sur `/matchs` — l'URL fait foi, pas le store, pour tout ce que ce
-  seed redéfinit.
+  le seed du Calendrier (`CalendarPage.tsx`) redéfinit l'état Consulter DEPUIS L'URL — les deux
+  appelants construisant toujours une query qui porte au moins une clé Consulter (bullet « URL
+  fusionnée » ci-dessus), leur lien reste dans le cas qui FAIT foi ; seuls le filtre PR-1 (sur un
+  store vierge), la semaine et la rencontre pointée survivent par le store dans tous les cas.
+  Poser `consultKinds`/`consultAway` en mémoire avant `navigate` reste donc INOPÉRANT sur un lien
+  AVEC query, écrasé dès l'arrivée sur `/matchs`. **Depuis le 2026-09-17** (mémoire de session,
+  bullet « URL fusionnée » ci-dessus) ceci ne vaut plus que pour un lien qui PORTE une clé
+  Consulter : un lien SANS query (ex. l'onglet « Calendrier ») laisse désormais le store faire
+  foi.
 - **Familles de conflits** (chips avec compteur, défaut tout coché) — les 10 `ConflictType`, libellés en table
   (`lib/conflictLabels.ts`) : collision de gymnase, hors fenêtre ligue, personne en double, match × entraînement,
   passerelle (info), placement fragilisé, calendrier incomplet, gymnase indisponible, extérieur sans heure,

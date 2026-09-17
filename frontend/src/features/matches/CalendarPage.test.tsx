@@ -1,5 +1,7 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setTodayOverride } from "@/shared/lib/clock";
@@ -9,6 +11,36 @@ import { renderWithProviders } from "@/test/utils";
 import * as matchesApi from "./api";
 import { CalendarPage } from "./CalendarPage";
 import { useMatchesStore } from "./store";
+
+// Sonde d'URL : le Calendrier re-synchronise l'URL depuis le store (effet d'écriture,
+// `replace`) ; on rend la page À CÔTÉ d'un lecteur de `location.search` pour l'observer.
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="calendar-search">{location.search}</span>;
+}
+
+function renderCalendarWithLocation(route: string) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createMemoryRouter(
+    [
+      {
+        path: "*",
+        element: (
+          <>
+            <CalendarPage />
+            <LocationProbe />
+          </>
+        ),
+      },
+    ],
+    { initialEntries: [route] },
+  );
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+}
 
 // URL EXPLICITE (les 4 types + extérieurs + semaine type) : le seed lit l'URL au montage et
 // REDÉFINIT l'état Consulter, donc le `beforeEach` seul ne suffit pas à préserver les tests de
@@ -593,6 +625,14 @@ describe("CalendarPage — modale FBI (ConfirmDialog imbriqué)", () => {
 
 // ── A — nouveaux défauts + interrupteur « Extérieurs » ─────────────────────────────
 describe("CalendarPage — défauts (état vierge) + interrupteur Extérieurs", () => {
+  // Mémoire de session : une URL NUE (« / ») ne réécrit plus le store — or l'outer
+  // beforeEach le pose SALE (les 4 types + extérieurs + semaine type). Ces tests rendent
+  // à « / » et attendent les DÉFAUTS : on repose donc explicitement un store VIERGE avant
+  // chaque rendu (sans cette remise, un store sale survivrait à l'URL nue et les fausserait).
+  beforeEach(() => {
+    useMatchesStore.setState({ consultKinds: null, consultFamilies: null, consultTypicalWeek: false, consultAway: false });
+  });
+
   function fx(over: Record<string, unknown>) {
     return {
       seasonId: "s",
@@ -742,5 +782,85 @@ describe("CalendarPage — défauts (état vierge) + interrupteur Extérieurs", 
     expect(await screen.findByRole("switch", { name: "Extérieurs" })).toHaveAttribute("aria-checked", "true");
     expect((await screen.findAllByText(/à Grenoble/)).length).toBeGreaterThan(0);
     expect(useMatchesStore.getState().consultAway).toBe(true);
+  });
+});
+
+// ── Mémoire de session des filtres Consulter : l'URL fait foi si elle porte AU MOINS une
+//    clé Consulter, sinon le store (mémoire non persistée) est gardé. ────────────────────
+describe("CalendarPage — mémoire de session des filtres Consulter", () => {
+  it("(i) store non défaut + URL NUE (« / ») : le store est GARDÉ, puis re-synchronisé dans l'URL", async () => {
+    // Extérieurs allumé + amical coché dans le store ; aucune clé Consulter dans l'URL.
+    useMatchesStore.setState({ consultAway: true, consultKinds: ["amical", "championnat", "coupe", "brassage"] });
+    renderCalendarWithLocation("/");
+    // Le store survit à l'URL nue : interrupteur allumé, puce Amical pressée.
+    expect(await screen.findByRole("switch", { name: "Extérieurs" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("button", { name: "Amical" })).toHaveAttribute("aria-pressed", "true");
+    // L'effet d'écriture re-synchronise l'adresse : exterieurs=1 + type=… reviennent.
+    await waitFor(() => {
+      const search = screen.getByTestId("calendar-search").textContent ?? "";
+      expect(search).toMatch(/[?&]exterieurs=1/);
+      expect(search).toMatch(/[?&]type=[^&]*amical/);
+    });
+    expect(useMatchesStore.getState().consultAway).toBe(true);
+  });
+
+  it("(ii) même store + URL « ?exterieurs=1 » : l'URL GAGNE (types aux défauts, extérieurs allumé)", async () => {
+    useMatchesStore.setState({ consultAway: true, consultKinds: ["amical", "championnat", "coupe", "brassage"] });
+    renderCalendarWithLocation("/?exterieurs=1");
+    expect(await screen.findByRole("switch", { name: "Extérieurs" })).toHaveAttribute("aria-checked", "true");
+    // `type` absent de l'URL ⇒ défauts : Amical décoché malgré le store.
+    expect(screen.getByRole("button", { name: "Amical" })).toHaveAttribute("aria-pressed", "false");
+    expect(useMatchesStore.getState().consultKinds).toBeNull();
+  });
+
+  it("(iii) « ?semaine=… » seule (pas une clé Consulter) + store non défaut : le store est GARDÉ", async () => {
+    useMatchesStore.setState({ consultAway: true, consultKinds: ["amical", "championnat", "coupe", "brassage"] });
+    renderCalendarWithLocation("/?semaine=2027-03-13");
+    expect(await screen.findByRole("switch", { name: "Extérieurs" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("button", { name: "Amical" })).toHaveAttribute("aria-pressed", "true");
+    expect(useMatchesStore.getState().consultAway).toBe(true);
+  });
+
+  it("(iv) « Réinitialiser » : défauts + URL sans clé Consulter ; retour par l'onglet (remontage à « / ») reste aux défauts", async () => {
+    const user = userEvent.setup();
+    // Route EXPLICITE (tout coché + extérieurs + semaine type) → l'état diffère des défauts.
+    const { unmount } = renderCalendarWithLocation(EXPLICIT);
+    await user.click(await screen.findByRole("button", { name: "Réinitialiser" }));
+    await waitFor(() => expect(useMatchesStore.getState().consultKinds).toBeNull());
+    expect(useMatchesStore.getState().consultAway).toBe(false);
+    expect(useMatchesStore.getState().consultTypicalWeek).toBe(false);
+    // L'URL a perdu toutes ses clés Consulter.
+    await waitFor(() => {
+      const search = screen.getByTestId("calendar-search").textContent ?? "";
+      expect(search).not.toMatch(/[?&]type=/);
+      expect(search).not.toMatch(/[?&]exterieurs=/);
+      expect(search).not.toMatch(/[?&]type_semaine=/);
+    });
+    // Retour par l'onglet « Calendrier » = remontage à « / » (URL nue) : pas de résurrection.
+    unmount();
+    renderCalendarWithLocation("/");
+    expect(await screen.findByRole("switch", { name: "Extérieurs" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("button", { name: "Amical" })).toHaveAttribute("aria-pressed", "false");
+    expect(useMatchesStore.getState().consultKinds).toBeNull();
+  });
+
+  it("(v) un ancien lien « ?type_semaine=0 » porte une clé ⇒ SEED (le store sale est écrasé, inoffensif)", async () => {
+    useMatchesStore.setState({ consultAway: true, consultKinds: ["amical", "championnat", "coupe", "brassage"] });
+    renderCalendarWithLocation("/?type_semaine=0");
+    // La clé déclenche un seed complet : `exterieurs` absent de l'URL ⇒ éteint (son défaut).
+    expect(await screen.findByRole("switch", { name: "Extérieurs" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("button", { name: "Amical" })).toHaveAttribute("aria-pressed", "false");
+    expect(useMatchesStore.getState().consultAway).toBe(false);
+  });
+
+  it("point 4 — reveal sans clé Consulter (store DÉJÀ aux défauts) : garder le store ≡ seeder les défauts", async () => {
+    // Un lien « Voir la semaine »/« Placer » construit depuis un store aux DÉFAUTS et sans masque
+    // à lever produit une query sans clé Consulter (au plus « semaine= »). Le store étant déjà aux
+    // défauts, le garder est équivalent à seeder les défauts — aucun écart visible.
+    useMatchesStore.setState({ consultAway: false, consultKinds: null, consultTypicalWeek: false, consultFamilies: null });
+    renderCalendarWithLocation("/?semaine=2027-03-13");
+    expect(await screen.findByRole("switch", { name: "Extérieurs" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("button", { name: "Amical" })).toHaveAttribute("aria-pressed", "false");
+    expect(useMatchesStore.getState().consultKinds).toBeNull();
   });
 });

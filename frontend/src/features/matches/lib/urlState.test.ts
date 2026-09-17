@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyConflictsToParams, applyConsultToParams, applyFilterToParams, applySectionToParams, applyWeekendToParams, decodeConflictsParams, decodeConsultParams, decodeFilterParams, decodeSectionParam, decodeWeekendParam } from "./urlState";
+import { applyConflictsToParams, applyConsultToParams, applyFilterToParams, applySectionToParams, applyWeekendToParams, decodeConflictsParams, decodeConsultParams, decodeFilterParams, decodeSectionParam, decodeWeekendParam, hasConsultParams } from "./urlState";
 
 describe("decodeWeekendParam / applyWeekendToParams (PR 3b — semaine=)", () => {
   it("absent ⇒ null (auto)", () => {
@@ -152,6 +152,29 @@ describe("applyConsultToParams (A — type défauts, type_semaine/exterieurs inv
     const decoded = decodeConsultParams(new URLSearchParams("type_semaine=0"));
     expect(decoded.typicalWeek).toBe(false);
     expect(applyConsultToParams(new URLSearchParams("type_semaine=0"), decoded).has("type_semaine")).toBe(false);
+  });
+});
+
+describe("hasConsultParams (mémoire de session — l'URL porte-t-elle une clé Consulter ?)", () => {
+  it("chacune des 7 clés Consulter ⇒ true", () => {
+    for (const key of ["type", "conflits", "type_semaine", "exterieurs", "temps", "mois", "phase"]) {
+      expect(hasConsultParams(new URLSearchParams(`${key}=x`))).toBe(true);
+    }
+  });
+
+  it("aucune clé ⇒ false", () => {
+    expect(hasConsultParams(new URLSearchParams(""))).toBe(false);
+  });
+
+  it("clés étrangères seules (semaine · vue/mode · filtre/ids) ⇒ false", () => {
+    expect(hasConsultParams(new URLSearchParams("semaine=2027-03-13"))).toBe(false);
+    expect(hasConsultParams(new URLSearchParams("vue=coach&filtre=a,b"))).toBe(false);
+    expect(hasConsultParams(new URLSearchParams("mode=x&ids=1"))).toBe(false);
+    expect(hasConsultParams(new URLSearchParams("semaine=2027-03-13&vue=coach"))).toBe(false);
+  });
+
+  it("une clé Consulter au milieu de clés étrangères ⇒ true", () => {
+    expect(hasConsultParams(new URLSearchParams("semaine=2027-03-13&exterieurs=1"))).toBe(true);
   });
 });
 

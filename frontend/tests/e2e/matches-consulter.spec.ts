@@ -197,6 +197,27 @@ test("consulter: chips, semaine type, et filtre par famille de conflit", async (
     for (const label of ["Championnat", "Coupe", "Brassage"]) {
       await expect(page.getByRole("button", { name: label, exact: true })).toHaveAttribute("aria-pressed", "true");
     }
+    // ── Témoin « mémoire de session » (ce lot) : un filtre allumé SURVIT à un aller-retour
+    //    d'onglet Conflits → Calendrier (le lien « Calendrier » pointe /matchs SANS query, mais
+    //    le store est gardé et l'URL se re-synchronise), là où un rechargement le remettrait aux
+    //    défauts. Locators scopés au <nav> « Espaces matchs ». ────────────────────────────────
+    const matchesNav = page.getByRole("navigation", { name: "Espaces matchs" });
+    const exterieurs = page.getByRole("switch", { name: "Extérieurs" });
+    await expect(exterieurs).toHaveAttribute("aria-checked", "false");
+    await exterieurs.click();
+    await expect(exterieurs).toHaveAttribute("aria-checked", "true");
+    await expect(page).toHaveURL(/[?&]exterieurs=1/);
+    await matchesNav.getByRole("link", { name: "Conflits" }).click();
+    await expect(page).toHaveURL(/\/matchs\/conflits/);
+    await matchesNav.getByRole("link", { name: "Calendrier" }).click();
+    await expect(page).toHaveURL(/\/matchs(\?|$)/);
+    // Mémoire : l'interrupteur est TOUJOURS allumé et l'URL re-synchronisée reporte exterieurs=1.
+    await expect(exterieurs).toHaveAttribute("aria-checked", "true");
+    await expect(page).toHaveURL(/[?&]exterieurs=1/);
+    // On restaure le défaut (extérieurs masqués) pour la suite du scénario.
+    await exterieurs.click();
+    await expect(exterieurs).toHaveAttribute("aria-checked", "false");
+
     // Nos rencontres créées sont des AMICAUX (competitionId null) : sans ce clic, les cases,
     // la puce « Collision de gymnase » et la vue Mois seraient vides. On coche « Amical ».
     await page.getByRole("button", { name: "Amical", exact: true }).click();

@@ -35,6 +35,7 @@ import {
   decodeConsultParams,
   decodeFilterParams,
   decodeWeekendParam,
+  hasConsultParams,
 } from "./lib/urlState";
 import { isPlacedOnGrid, listWeekends, matchMinutesByCategory, resolveActiveWeekend, weekendKeyOf, weekLabel } from "./lib/weekendGrid";
 import { MatchesFilterBar } from "./MatchesFilterBar";
@@ -303,43 +304,67 @@ export function CalendarPage() {
     null === latestDeposit ? "Aucun dépôt FBI cette saison" : `Dernier dépôt FBI ${relativeDepositLabel(depositDaysAgo(latestDeposit.depositedAt, todayISO()))}`;
 
   // ── Deep-link fusionné : filtre PR-1 + filtres Consulter + semaine ──────────────
+  // UN seul effet, deux temps : (1) au premier passage utile (données prêtes), SEED depuis
+  // l'URL — filtre PR-1 sur store vierge, filtres Consulter SEULEMENT si l'URL porte une clé
+  // Consulter (sinon le store, mémoire de session non persistée, est GARDÉ), semaine ; (2) à
+  // CHAQUE passage, re-SYNCHRONISE l'URL depuis le store. Fusionnés (au lieu d'un effet
+  // d'écriture séparé gardé par un ref) pour que la re-synchro parte DÈS la passe de seed même
+  // quand aucune valeur n'a changé — cas « URL nue, store gardé » : un ref ne redéclencherait
+  // aucun effet et l'adresse ne se re-synchroniserait qu'à la prochaine interaction.
   const [searchParams, setSearchParams] = useSearchParams();
   const seededRef = useRef(false);
   useEffect(() => {
-    if (seededRef.current || undefined === teams.data || undefined === coaches.data || undefined === venues.data) {
+    if (undefined === teams.data || undefined === coaches.data || undefined === venues.data) {
       return;
     }
-    seededRef.current = true;
-    // Filtre PR-1 : seedé seulement sur un store VIERGE (une navigation depuis Conflits/
-    // la file l'a déjà peuplé ; re-toggler l'effacerait).
-    if (0 === filterIds.length && "equipe" === filterMode) {
-      const { mode, ids } = decodeFilterParams(searchParams);
-      const known = new Set(("coach" === mode ? coaches.data : "gymnase" === mode ? venues.data : teams.data).map((r) => r.id));
-      const kept = ids.filter((id) => known.has(id));
-      if ("equipe" !== mode || kept.length > 0) {
-        setFilterMode(mode);
-        kept.forEach(toggleFilterId);
+    // `touchedStore` : le seed a-t-il écrit dans le store CETTE passe ? Si oui, on NE
+    // synchronise PAS l'URL maintenant (les valeurs lues plus bas sont encore celles d'AVANT
+    // le seed → on clobberait le deep-link) ; l'écriture du store redéclenche l'effet et la
+    // passe suivante synchronise avec les valeurs seedées. Si non (URL nue, store gardé), les
+    // valeurs lues SONT à jour → on synchronise dès cette passe.
+    let touchedStore = false;
+    if (!seededRef.current) {
+      seededRef.current = true;
+      // Filtre PR-1 : seedé seulement sur un store VIERGE (une navigation depuis Conflits/
+      // la file l'a déjà peuplé ; re-toggler l'effacerait).
+      if (0 === filterIds.length && "equipe" === filterMode) {
+        const { mode, ids } = decodeFilterParams(searchParams);
+        const known = new Set(("coach" === mode ? coaches.data : "gymnase" === mode ? venues.data : teams.data).map((r) => r.id));
+        const kept = ids.filter((id) => known.has(id));
+        if ("equipe" !== mode || kept.length > 0) {
+          setFilterMode(mode);
+          kept.forEach(toggleFilterId);
+          touchedStore = true;
+        }
+      }
+      // Mémoire de session : l'URL FAIT FOI dès qu'elle porte au moins une clé Consulter
+      // (seed complet, clé absente = son défaut — un lien partagé dit vrai) ; sinon (URL nue,
+      // ex. retour par l'onglet « Calendrier » vers `/matchs`) on NE TOUCHE PAS l'état
+      // Consulter du store — la re-synchro ci-dessous repoussera le store dans l'adresse.
+      if (hasConsultParams(searchParams)) {
+        const consult = decodeConsultParams(searchParams);
+        setConsultKinds(consult.kinds);
+        setConsultFamilies(consult.families);
+        setConsultTypicalWeek(consult.typicalWeek);
+        setConsultAway(consult.away);
+        setConsultTemporality(consult.temps);
+        setConsultMonth(consult.month);
+        setConsultPhaseId(consult.phaseId);
+        touchedStore = true;
+      }
+      // Semaine : ne seede QUE si l'URL la porte ET que le store est à l'auto (jamais
+      // clobber une semaine posée par une navigation « Voir la semaine »).
+      const weekend = decodeWeekendParam(searchParams);
+      if (null !== weekend && null === useMatchesStore.getState().selectedWeekend) {
+        setSelectedWeekend(weekend);
+        touchedStore = true;
       }
     }
-    const consult = decodeConsultParams(searchParams);
-    setConsultKinds(consult.kinds);
-    setConsultFamilies(consult.families);
-    setConsultTypicalWeek(consult.typicalWeek);
-    setConsultAway(consult.away);
-    setConsultTemporality(consult.temps);
-    setConsultMonth(consult.month);
-    setConsultPhaseId(consult.phaseId);
-    // Semaine : ne seede QUE si l'URL la porte ET que le store est à l'auto (jamais
-    // clobber une semaine posée par une navigation « Voir la semaine »).
-    const weekend = decodeWeekendParam(searchParams);
-    if (null !== weekend && null === useMatchesStore.getState().selectedWeekend) {
-      setSelectedWeekend(weekend);
-    }
-  }, [teams.data, coaches.data, venues.data, searchParams, filterMode, filterIds.length, setFilterMode, toggleFilterId, setConsultKinds, setConsultFamilies, setConsultTypicalWeek, setConsultAway, setConsultTemporality, setConsultMonth, setConsultPhaseId, setSelectedWeekend]);
-  useEffect(() => {
-    if (!seededRef.current) {
+    if (touchedStore) {
       return;
     }
+    // Re-synchro : pousse le store (valeurs à jour) dans l'URL (`replace`), autres params
+    // préservés. No-op quand l'adresse reflète déjà le store.
     const withFilter = applyFilterToParams(searchParams, filterMode, filterIds);
     const withConsult = applyConsultToParams(withFilter, {
       kinds: consultKinds,
@@ -354,7 +379,7 @@ export function CalendarPage() {
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [filterMode, filterIds, consultKinds, consultFamilies, consultTypicalWeek, consultAway, consultTemporality, consultMonth, consultPhaseId, selectedWeekend, searchParams, setSearchParams]);
+  }, [teams.data, coaches.data, venues.data, searchParams, filterMode, filterIds, consultKinds, consultFamilies, consultTypicalWeek, consultAway, consultTemporality, consultMonth, consultPhaseId, selectedWeekend, setFilterMode, toggleFilterId, setConsultKinds, setConsultFamilies, setConsultTypicalWeek, setConsultAway, setConsultTemporality, setConsultMonth, setConsultPhaseId, setSelectedWeekend, setSearchParams]);
 
   // « à placer » : ramène la liste dans le champ et lui donne le focus (le `<h2>`).
   const scrollToPlace = (): void => {
