@@ -130,6 +130,24 @@ function decodeList<T extends string>(raw: string | null, valid: readonly T[]): 
   return [...new Set(parsed)];
 }
 
+/**
+ * Les clés de query que porte l'état Consulter — liste UNIQUE (source de vérité du
+ * couple decode/apply : `applyConsultToParams` écrit/supprime exactement ces clés,
+ * `decodeConsultParams` les relit). Sert à `hasConsultParams`.
+ */
+export const CONSULT_PARAM_KEYS = ["type", "conflits", "type_semaine", "exterieurs", "temps", "mois", "phase"] as const;
+
+/**
+ * PURE — l'URL porte-t-elle AU MOINS une clé de l'état Consulter ? Sert au seed du
+ * Calendrier (mémoire de session) : une URL avec au moins une clé FAIT FOI (seed complet,
+ * une clé absente = son défaut) ; une URL sans aucune clé laisse le store (mémoire non
+ * persistée) intact. Les clés PR-1 (`vue`/`filtre`) et la semaine (`semaine`) n'en font pas
+ * partie : elles ont leur propre logique de seed.
+ */
+export function hasConsultParams(params: URLSearchParams): boolean {
+  return CONSULT_PARAM_KEYS.some((key) => params.has(key));
+}
+
 export function decodeConsultParams(params: URLSearchParams): ConsultParams {
   const rawMonth = params.get("mois");
   const rawPhase = params.get("phase");
