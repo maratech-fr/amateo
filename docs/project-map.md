@@ -1,12 +1,10 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-09-17 (`documentation-update`, PR épinglage Mercure). §4 Infrastructure
-recalée : dev/CI n'épinglent plus `latest` pour Mercure — `docker-compose.yml` pointe
-`dunglas/mercure:v0.24.2` (confronté à `docker-compose.prod.yml:320` `v0.19`), suite à la
-sortie cassante de Mercure 1.0 le 2026-09-16 qui a rougi la CI dans la nuit (détail :
-[`security/mercure.md`](security/mercure.md)). ⚠ Vérification volontairement ÉTROITE : le reste
-de la carte (repository layout §1, backend/engine détaillés, ops, sécurité) n'a pas été
-reconfronté au code ce jour.)
+Last verified @ 2026-09-17 (`documentation-update`, lot Dependabot backend #900). §1 Repository
+layout recalé : ligne `backend/` — API Platform **4.3 → 4.4**, Doctrine ORM **3.6 → 3.7**, Symfony
+reste LTS **7.4** (versions confirmées dans `backend/composer.lock` après la montée). ⚠
+Vérification volontairement ÉTROITE : le reste de la carte (backend/engine détaillés, ops,
+sécurité) n'a pas été reconfronté au code ce jour.)
 
 Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `feedback` (bouton + dialogue de signalement), `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes) ; voir `../frontend/docs/frontend-wizard.md` et `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 
@@ -15,7 +13,7 @@ Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend 
 ## 1. Repository layout
 
 ```
-backend/   PHP 8.4 · Symfony 7.4 · API Platform 4.3 · Doctrine ORM 3.6 · Messenger · Mercure · JWT
+backend/   PHP 8.4 · Symfony 7.4 · API Platform 4.4 · Doctrine ORM 3.7 · Messenger · Mercure · JWT
 engine/    Python 3.12 · FastAPI · OR-Tools CP-SAT
 frontend/  TS · React 19 · Vite · TW4  (active: auth · planning work-loop · wizard)
 landing/   Page de vente publique — HTML/CSS statique PUR (zéro build, AUCUN lien avec frontend/) ;

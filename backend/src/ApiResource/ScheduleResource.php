@@ -192,12 +192,14 @@ class ScheduleResource
     #[Groups(['read'])]
     public bool $isChosen = false;
 
+    // P2-8 (PR A) : bloc calculé SERVEUR par le même code que les gardes d'écriture
+    // (ScheduleCapabilityResolver) — « capacité affichée == verdict du refus » ; renseigné
+    // EN BATCH par ScheduleStateProvider, null sur le chemin fromEntity nu (réponse POST/PUT)
+    // comme planType/isChosen — le front le recharge par un GET après une mutation.
     /**
-     * P2-8 (PR A) : le bloc de permissions de CETTE version, calculé SERVEUR par le même
-     * code que les gardes d'écriture (ScheduleCapabilityResolver) — « capacité affichée ==
-     * verdict du refus ». Renseigné EN BATCH par ScheduleStateProvider ; null sur le chemin
-     * fromEntity nu (réponse POST/PUT), comme planType/isChosen — le front le recharge via
-     * un GET après une mutation.
+     * Les permissions applicables à cette version pour l'utilisateur courant (ce qu'il peut
+     * faire dessus), calculées côté serveur. Absent (null) dans la réponse d'une création ou
+     * d'une mise à jour : rechargez la version via un GET pour les obtenir.
      */
     #[Groups(['read'])]
     public ?ScheduleCapabilities $capabilities = null;

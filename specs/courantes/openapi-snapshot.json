@@ -1,5 +1,5 @@
 {
-    "openapi": "3.1.0",
+    "openapi": "3.2.0",
     "info": {
         "title": "Amateo API",
         "description": "",
@@ -27619,6 +27619,7 @@
                         "type": "boolean"
                     },
                     "capabilities": {
+                        "description": "Les permissions applicables \u00e0 cette version pour l'utilisateur courant (ce qu'il peut\nfaire dessus), calcul\u00e9es c\u00f4t\u00e9 serveur. Absent (null) dans la r\u00e9ponse d'une cr\u00e9ation ou\nd'une mise \u00e0 jour : rechargez la version via un GET pour les obtenir.",
                         "anyOf": [
                             {
                                 "$ref": "#/components/schemas/ScheduleCapabilities"
@@ -27844,6 +27845,7 @@
                         "type": "boolean"
                     },
                     "capabilities": {
+                        "description": "Les permissions applicables \u00e0 cette version pour l'utilisateur courant (ce qu'il peut\nfaire dessus), calcul\u00e9es c\u00f4t\u00e9 serveur. Absent (null) dans la r\u00e9ponse d'une cr\u00e9ation ou\nd'une mise \u00e0 jour : rechargez la version via un GET pour les obtenir.",
                         "anyOf": [
                             {
                                 "$ref": "#/components/schemas/ScheduleCapabilities.html"
@@ -28028,6 +28030,7 @@
                                 "type": "boolean"
                             },
                             "capabilities": {
+                                "description": "Les permissions applicables \u00e0 cette version pour l'utilisateur courant (ce qu'il peut\nfaire dessus), calcul\u00e9es c\u00f4t\u00e9 serveur. Absent (null) dans la r\u00e9ponse d'une cr\u00e9ation ou\nd'une mise \u00e0 jour : rechargez la version via un GET pour les obtenir.",
                                 "anyOf": [
                                     {
                                         "$ref": "#/components/schemas/ScheduleCapabilities.jsonld"
@@ -28187,6 +28190,7 @@
                         }
                     },
                     "causes": {
+                        "description": "Les causes structur\u00e9es du diagnostic : chaque entr\u00e9e d\u00e9crit un facteur ayant emp\u00each\u00e9\nou compliqu\u00e9 le placement des \u00e9quipes.",
                         "type": "array",
                         "items": {
                             "$ref": "#/components/schemas/DiagnosticCause"
@@ -28356,6 +28360,7 @@
                         }
                     },
                     "causes": {
+                        "description": "Les causes structur\u00e9es du diagnostic : chaque entr\u00e9e d\u00e9crit un facteur ayant emp\u00each\u00e9\nou compliqu\u00e9 le placement des \u00e9quipes.",
                         "type": "array",
                         "items": {
                             "$ref": "#/components/schemas/DiagnosticCause.html"
@@ -28460,6 +28465,7 @@
                                 }
                             },
                             "causes": {
+                                "description": "Les causes structur\u00e9es du diagnostic : chaque entr\u00e9e d\u00e9crit un facteur ayant emp\u00each\u00e9\nou compliqu\u00e9 le placement des \u00e9quipes.",
                                 "type": "array",
                                 "items": {
                                     "$ref": "#/components/schemas/DiagnosticCause.jsonld"
@@ -28537,6 +28543,7 @@
                         "type": "boolean"
                     },
                     "staleness": {
+                        "description": "La version point\u00e9e par ce plan est-elle \u00e0 r\u00e9g\u00e9n\u00e9rer, et pourquoi ? Le bloc porte les\ncat\u00e9gories de donn\u00e9es qui ont chang\u00e9 depuis la g\u00e9n\u00e9ration de cette version (retouche \u00e0 la\nmain, contrainte, autre donn\u00e9e du club) : le planning d\u00e9crit un \u00e9tat ant\u00e9rieur \u2014 p\u00e9rim\u00e9,\npas faux. `null` quand le plan ne pointe aucune version encore, ou que sa fen\u00eatre est d\u00e9j\u00e0\npass\u00e9e (rien \u00e0 r\u00e9g\u00e9n\u00e9rer pour du r\u00e9volu). Renseign\u00e9 en batch (une requ\u00eate par collection).",
                         "anyOf": [
                             {
                                 "$ref": "#/components/schemas/SchedulePlanStaleness"
@@ -28641,6 +28648,7 @@
                         "type": "boolean"
                     },
                     "staleness": {
+                        "description": "La version point\u00e9e par ce plan est-elle \u00e0 r\u00e9g\u00e9n\u00e9rer, et pourquoi ? Le bloc porte les\ncat\u00e9gories de donn\u00e9es qui ont chang\u00e9 depuis la g\u00e9n\u00e9ration de cette version (retouche \u00e0 la\nmain, contrainte, autre donn\u00e9e du club) : le planning d\u00e9crit un \u00e9tat ant\u00e9rieur \u2014 p\u00e9rim\u00e9,\npas faux. `null` quand le plan ne pointe aucune version encore, ou que sa fen\u00eatre est d\u00e9j\u00e0\npass\u00e9e (rien \u00e0 r\u00e9g\u00e9n\u00e9rer pour du r\u00e9volu). Renseign\u00e9 en batch (une requ\u00eate par collection).",
                         "anyOf": [
                             {
                                 "$ref": "#/components/schemas/SchedulePlanStaleness.html"
@@ -28718,6 +28726,7 @@
                                 "type": "boolean"
                             },
                             "staleness": {
+                                "description": "La version point\u00e9e par ce plan est-elle \u00e0 r\u00e9g\u00e9n\u00e9rer, et pourquoi ? Le bloc porte les\ncat\u00e9gories de donn\u00e9es qui ont chang\u00e9 depuis la g\u00e9n\u00e9ration de cette version (retouche \u00e0 la\nmain, contrainte, autre donn\u00e9e du club) : le planning d\u00e9crit un \u00e9tat ant\u00e9rieur \u2014 p\u00e9rim\u00e9,\npas faux. `null` quand le plan ne pointe aucune version encore, ou que sa fen\u00eatre est d\u00e9j\u00e0\npass\u00e9e (rien \u00e0 r\u00e9g\u00e9n\u00e9rer pour du r\u00e9volu). Renseign\u00e9 en batch (une requ\u00eate par collection).",
                                 "anyOf": [
                                     {
                                         "$ref": "#/components/schemas/SchedulePlanStaleness.jsonld"

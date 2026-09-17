@@ -1,12 +1,24 @@
-Last verified @ 2026-09-17 (VILLE de l'adversaire extérieur au lieu du gymnase — description du champ
-`opponentPlace` recalée sur le radar `GET /api/fixtures/conflicts`, backend, régénéré par le coder après
-`cache:pool:clear --all` + `api:openapi:export`).
-**200 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : aucune route ne bouge,
-seule la description du champ `opponentPlace` des côtés `left`/`right`/`fixture` change (la forme du schéma est inchangée).
-· SHA-256 `ffe083560fa5f67ab06de57118bb156b6aa7863b7a8ea9b0ab87ba9146c945d4`
+Last verified @ 2026-09-17 (montée du lot Dependabot — `api-platform/*` 4.3.17 → **4.4.0** : l'export
+OpenAPI passe en **3.2.0** (était 3.1.0), qui autorise une `description` en frère d'un `$ref` (la 3.1
+l'interdisait, API Platform la supprimait) ; régénéré par le coder après `cache:pool:clear --all` +
+`api:openapi:export`).
+**200 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : aucune route,
+aucun schéma, aucune propriété ne bouge — seules 3 propriétés typées par RÉFÉRENCE
+(`Schedule.capabilities`, `ScheduleDiagnostic.causes`, `SchedulePlan.staleness`) gagnent leur description
+docblock, plus la version de spec `3.1.0`→`3.2.0` (9 clés `description` ajoutées = 3 propriétés × base/html/jsonld).
+· SHA-256 `c017ce7eba83b58db5c6936493cad4f7962e19aa8d0493735ed298a63d238add`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Montée Dependabot — API Platform 4.4 / OpenAPI 3.2.0 (2026-09-17)** : **+0 path** — la montée
+  `api-platform/*` 4.3.17 → 4.4.0 fait passer l'export de `openapi: 3.1.0` à `3.2.0`. La 3.2 autorise
+  une `description` en frère d'un `$ref` (interdit en 3.1, API Platform la supprimait) : 3 propriétés
+  typées par référence publient donc désormais leur docblock — `Schedule.capabilities` (→ `ScheduleCapabilities`),
+  `ScheduleDiagnostic.causes` (→ liste de `DiagnosticCause`), `SchedulePlan.staleness` (→ `SchedulePlanStaleness`).
+  Les docblocks de `capabilities` et `causes` ont été RÉÉCRITS dans la même passe (la référence interne
+  part en commentaire `//`, la phrase publique reste — garde `PublicTextIsFreeOfInternalIdentifiersTest`).
+  Aucune route, aucun schéma, aucune propriété ne change ; contrat backend⇄engine **inchangé**
+  (`CONTRACT_VERSION` 2.21, aucun appel moteur).
 - **VILLE de l'adversaire extérieur (au lieu du gymnase), backend (2026-09-17)** : **+0 path** — la
   description du champ `opponentPlace` (côtés `left`/`right` de MATCH_MATCH, `fixture` de MATCH_TRAINING sur
   le radar `GET /api/fixtures/conflicts`) est recalée : ligne d'override effective (équipe puis club) → VILLE
@@ -64,10 +76,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   conflit — management-only ; « à traiter » = absence de ligne = `DELETE` idempotent) ; le radar
   `GET /api/fixtures/conflicts` gagne le champ additif `resolution` (objet `status`/`note`/`updatedAt`,
   nullable = « à traiter »). 197 → **198 paths**. Backend PUR, contrat backend⇄engine **inchangé** (aucun appel moteur).
-- **E1 — l'appariement des salles, backend (2026-09-14)** : **+1 path** — `GET /api/venues/fbi-labels`
-  (par libellé normalisé : gymnase confirmé, gymnase suggéré d'après les rencontres, domiciles / placés /
-  non placés) ; `POST /api/venues/{id}/external-labels` accepte `reassign` (l'alias change de porteur, les
-  domiciles NON placés au même libellé basculent) et répond `kept` + `previousVenueId`. 196 → **197 paths**.
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

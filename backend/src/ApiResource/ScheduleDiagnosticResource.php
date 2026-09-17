@@ -77,10 +77,13 @@ class ScheduleDiagnosticResource
     #[Groups(['read'])]
     public array $suggestions = [];
 
+    // P4-101 — typé par une CLASSE (DiagnosticCause), pas un tableau nu : c'est ce qui rend
+    // le snapshot OpenAPI juste (`$ref` vers la forme réelle) au lieu du
+    // `additionalProperties: string|null` qu'un `array` laissait déduire — et qui mentait
+    // sur `count`.
     /**
-     * P4-101 — typé par une CLASSE, pas un tableau nu : c'est ce qui rend le snapshot
-     * OpenAPI juste (`$ref` vers la forme réelle) au lieu du `additionalProperties:
-     * string|null` qu'un `array` laissait déduire — et qui mentait sur `count`.
+     * Les causes structurées du diagnostic : chaque entrée décrit un facteur ayant empêché
+     * ou compliqué le placement des équipes.
      *
      * @var list<DiagnosticCause>
      */

@@ -5,6 +5,98 @@
 > l'upgrade apporte, et ce qu'il a fallu adapter chez nous. But : comprendre les mises à jour,
 > pas les subir. Ordre antichronologique.
 
+## 2026-09-17 — lot Dependabot (2 PRs mergées, dont 1 réparée)
+
+### API Platform 4.3 → 4.4 (backend, PR #900)
+
+**C'est quoi** : `api-platform/*` (les paquets `doctrine-orm`, `symfony` et leurs dépendances
+internes), le socle qui transforme nos classes PHP en API — c'est lui qui lit nos entités/DTOs
+et en déduit les routes, la documentation technique (« contrat OpenAPI », le plan exact de ce que
+l'API accepte et renvoie) et le format JSON réellement servi.
+
+**Ça apporte** : suivi de routine côté fonctionnement (aucune route, aucun schéma, aucune
+propriété n'a bougé). Le changement visible est plus subtil : le contrat OpenAPI généré passe de
+la version de spec 3.1.0 à 3.2.0, qui autorise désormais un cas que 3.1 interdisait — écrire une
+« description » (le texte d'aide qui accompagne un champ dans la doc technique) juste à côté
+d'un renvoi vers un autre schéma. Trois champs qui avaient ce cas (`Schedule.capabilities`,
+`ScheduleDiagnostic.causes`, `SchedulePlan.staleness`) ont donc vu leur description, jusqu'ici
+tue par la version 3.1, apparaître pour la première fois dans le contrat public.
+
+**Adapté chez nous** : cette apparition a révélé un problème que personne n'avait vu, parce que
+le texte était invisible jusque-là — deux de ces descriptions contenaient des références internes
+d'équipe (des codes du type « P2-8 », « P4-101 », qui n'ont aucun sens pour qui consomme l'API de
+l'extérieur), tirées des commentaires de code source. Un garde-fou automatique existant
+(`PublicTextIsFreeOfInternalIdentifiersTest`) les a détectées et a fait échouer les tests : la
+phrase utile est restée dans le commentaire de code (pour les développeurs), la référence interne
+en a été retirée, et la description publique a été réécrite en français simple côté API. Au
+passage, on a repéré que **cinq autres** descriptions déjà publiées avant ce lot (sur
+`ScheduleResource.php` : `planType`, `generatedTeamCount`, `hasStructurePhoto`, `isLiveContext`,
+`isChosen`) sont écrites en jargon de développeur anglais — sans référence interne, donc le
+garde-fou ne les voit pas. Ligne de dette ouverte : `P4-218` dans `specs/evolution/roadmap.md`.
+
+### Le piège Flex, encore (backend, PR #900)
+
+**C'est quoi** : un rappel plutôt qu'une nouveauté — Dependabot calcule les mises à jour de
+dépendances backend HORS de notre environnement habituel, donc sans le mécanisme (« Flex ») qui
+impose à Symfony de rester sur sa version longue durée (LTS 7.4) pendant la résolution.
+
+**Ça apporte** : rien de nouveau en soi, mais ça explique pourquoi la PR proposait au départ de
+faire sauter 18 briques Symfony vers une version 8.0 qu'on ne veut pas encore (bugs corrigés
+jusqu'en 2028, sécurité jusqu'en 2029 sur la 7.4 — la 8.0 n'a pas cette garantie de stabilité).
+
+**Adapté chez nous** : recalculé dans notre environnement habituel avec seulement les 15 paquets
+visés, ce qui a ramené tout Symfony sur la LTS 7.4 (versions 7.4.16 à 7.4.19) — jamais en figeant
+une version dans le fichier de config (ça masquerait le problème sans le résoudre), toujours en
+relançant le calcul correctement outillé.
+
+### Doctrine ORM 3.6 → 3.7 + Doctrine Collections 2 → 3 (backend, PR #900)
+
+**C'est quoi** : `doctrine/orm` traduit nos entités PHP en requêtes SQL ; `doctrine/collections`
+(monté en même temps, comme dépendance technique) fournit le type de liste utilisé quand une
+entité porte plusieurs éléments liés (ex. une équipe et ses créneaux).
+
+**Ça apporte** : suivi de routine ; la version 3 de Collections retire des façons de faire
+obsolètes et resserre ses règles internes.
+
+**Adapté chez nous** : rien — vérifié qu'aucune de nos entités n'utilise ce type de liste
+aujourd'hui (aucune relation ne compte plusieurs éléments liés dans l'autre sens chez nous).
+
+### Rector 2.6.5 → 2.6.7 (backend, PR #900)
+
+**C'est quoi** : l'outil qui réécrit automatiquement notre code pour suivre le style PHP décidé
+pour le projet (une passe obligatoire avant chaque envoi de code backend).
+
+**Ça apporte** : une nouvelle règle de style (préférer `__DIR__ . '/../x'` à une écriture plus
+détournée du même chemin de fichier).
+
+**Adapté chez nous** : appliquée sur le seul fichier concerné (`backend/tests/bootstrap.php`) —
+Rector fait convention chez nous, une nouvelle règle s'applique dès qu'elle sort.
+
+### Playwright 1.62 → 1.63 (frontend, PR #901)
+
+**C'est quoi** : l'outil qui pilote un vrai navigateur pour jouer nos parcours utilisateur de bout
+en bout (les tests dits « e2e »).
+
+**Ça apporte** : suivi de routine.
+
+**Adapté chez nous** : rien à adapter, mais une précaution prise avant de merger — ces tests ne
+se jouent que sur les machines de la CI (pas en local), donc on a attendu que le run e2e déclenché
+par la PR soit vert avant de merger, plutôt que de merger « à l'aveugle » sur les seuls tests
+locaux.
+
+### Le reste — montées mineures sans impact
+
+**Backend (PR #900)** : `doctrine/doctrine-migrations-bundle`, `phpstan/phpdoc-parser`,
+`sentry/sentry-symfony`, les paquets Symfony `framework-bundle`/`property-access`/
+`property-info`/`serializer`/`validator`/`yaml` (restés sur la LTS 7.4), `behat/behat`,
+`phpstan/phpstan`. **Frontend (PR #901)** : dix-neuf paquets mineurs/correctifs — Sentry,
+React Query (+ ses outils de dev), `ky`, `lucide-react`, `react-router`, Storybook, Testing
+Library, ESLint et ses greffons, TypeScript-ESLint, `@types/node`, `@types/react-dom`,
+`@vitejs/plugin-react`, `globals`. Suivi de routine des deux côtés, rien à adapter — vérifié par
+la suite de tests complète de chaque zone (backend : miroir exact de la CI, PHPStan + CS-Fixer +
+tests + Rector à vide ; frontend : lint + build + tests, image de test reconstruite pour ne pas
+valider une version périmée).
+
 ## 2026-09-04 — behat/behat 3.32 (backend, hors Dependabot — P4-165 palier 1)
 
 **C'est quoi** : `behat/behat` (^3, v3.32.0 installée), le runner de tests fonctionnels Gherkin —
