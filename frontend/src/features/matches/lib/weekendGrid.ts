@@ -1,5 +1,5 @@
 import type { Fixture, OpponentTravel, SportCategoryDuration, Team, TeamMatchHabit, Venue } from "../api";
-import { awayBandRows, buildAwayCells } from "./awayColumn";
+import { awayBandRows, buildAwayCells, shortWeekday } from "./awayColumn";
 import { awayHour } from "./awayKickoff";
 import { isoWeekday, timeToMinutes } from "./envelope";
 
@@ -183,9 +183,21 @@ export interface WeekendCell {
   /** P1-4 PR C — a HABIT ghost, not a match: the team's protected window on a
    * weekend its calendar has not reached yet. Purely visual, never blocking. */
   ghost: boolean;
-  /** P1-4 PR E1 — anchor badge: MANUAL (or legacy null) placement, the solver
-   * never moves it. SOLVER-placed = re-solvable, no padlock. */
+  /** P1-4 PR E1 — anchor badge (cadenas resserré 2026-09-17) : un placement RÉEL
+   * (PLACED/SUBMITTED/VALIDATED) posé MANUELLEMENT (`placementSource === "MANUAL"`),
+   * que le solveur ne bouge plus. Un placement SOLVER reste re-solvable (pas de
+   * cadenas) ; un UNPLACED n'est JAMAIS verrouillé (rien n'est encore posé). */
   locked: boolean;
+  /** Case « À confirmer » : un domicile porté sur la grille (gymnase + heure connus,
+   * `isPlacedOnGrid`) mais dont le STATUT servi par le backend reste `UNPLACED` — le
+   * gymnase et l'heure ont été repris de l'import, la rencontre n'est pas encore
+   * placée. PRÉSENTATION d'un statut backend, pas une décision front (le front affiche
+   * `status`, il ne le calcule pas — 🔴 `.claude/rules/frontend.md`). Faux pour un
+   * match réellement placé, un fantôme, un extérieur. */
+  toConfirm: boolean;
+  /** Jour court (« sam. ») du match — pour le nom accessible d'une case « à confirmer »,
+   * loin de l'en-tête daté de sa colonne. Non renseigné pour un fantôme. */
+  weekday?: string;
   /** lot 3 PR-3a — an AWAY block (in the trailing « Extérieur » column). */
   away?: boolean;
   /** AWAY with an ESTIMATED hour (habitual kickoff borrowed) — « heure estimée ». */
@@ -424,7 +436,12 @@ export function buildWeekendGrid(
       externalRef: fixture.externalRef,
       outOfEnvelope: outOfEnvelope.has(fixture.id),
       ghost: false,
-      locked: "SOLVER" !== fixture.placementSource,
+      // Cadenas resserré (2026-09-17) : PLACED-ou-plus ET posé à la main. Un UNPLACED
+      // (une case « à confirmer ») n'est jamais verrouillé, un SOLVER reste re-solvable.
+      locked: "UNPLACED" !== fixture.status && "MANUAL" === fixture.placementSource,
+      // « À confirmer » : sur la grille (gymnase + heure) mais statut backend UNPLACED.
+      toConfirm: "UNPLACED" === fixture.status,
+      weekday: shortWeekday(fixture.matchDate),
     };
     cells.push(cell);
     intervals.push({ startMin: start, endMin: end, cell });
@@ -457,6 +474,7 @@ export function buildWeekendGrid(
       outOfEnvelope: false,
       ghost: true,
       locked: false,
+      toConfirm: false,
     };
     cells.push(cell);
     intervals.push({ startMin: start, endMin: end, cell });

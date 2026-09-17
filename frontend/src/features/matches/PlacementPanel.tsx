@@ -134,6 +134,17 @@ export function PlacementPanel({
   const accessIssue = "" === venueId ? null : venueAccessError(venueId, venueName, fixture.matchDate, kickoff, matchWindows, unavailabilities, isFriendly);
   const accessBlocked = null !== accessIssue && "error" === accessIssue.level;
   const unchanged = placed && venueId === (fixture.venueId ?? "") && kickoff === (fixture.kickoffTime ?? "");
+  // « Confirmer ce placement » : la rencontre est UNPLACED mais porte DÉJÀ un gymnase et
+  // une heure (repris de l'import) et le formulaire les montre encore tels quels — le
+  // geste ne CHOISIT rien, il valide ce qui est proposé. Dès qu'une valeur change, le
+  // bouton redevient « Placer » (un vrai choix). Sans gymnase/heure d'origine, rien à
+  // confirmer.
+  const isImportConfirm =
+    "UNPLACED" === fixture.status &&
+    null !== fixture.venueId &&
+    null !== fixture.kickoffTime &&
+    venueId === fixture.venueId &&
+    kickoff === fixture.kickoffTime;
   const canPlace = "" !== venueId && hasKickoff && !envelopeBlocked && !accessBlocked && !busy && !unchanged;
 
   return (
@@ -222,8 +233,11 @@ export function PlacementPanel({
               )
             ) : null}
 
+            {isImportConfirm ? (
+              <p className="text-xs text-muted-foreground">Gymnase et heure repris de l'import — vérifiez, puis confirmez.</p>
+            ) : null}
             <Button size="sm" disabled={!canPlace} onClick={() => onPlace({ venueId, kickoffTime: kickoff })}>
-              {placed ? "Déplacer" : "Placer"}
+              {isImportConfirm ? "Confirmer ce placement" : placed ? "Déplacer" : "Placer"}
             </Button>
 
             {placed ? (

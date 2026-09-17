@@ -1,14 +1,12 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-09-14 (P4-203 « le solveur de placement adopte la règle D1 »,
-`documentation-update`). `engine/CONTRACT_VERSION` = `2.21` ✓ — bumpé par P4-203 pour
-`/place-matches` (durées de match par équipe, `MatchTeamSchema.match_minutes`/`warmup_minutes`) ;
-ce document décrit UNIQUEMENT le flux `/generate`, qui n'a pas bougé — ni la forme du payload
-(`ScheduleInputSchema`) ni le flux décrits ici ne sont affectés. `DiagnosticSchema.id` toujours
-requis (`app/schemas/output_schema.py:61-62`) ✓ ; le commentaire mort `FACILITY_CAPACITY` toujours
-présent (`app/main.py:488`) ✓ ; `LEVEL_2_OBJECTIVE_WEIGHTS` toujours consommé par
+Last verified @ 2026-09-17 (rotation `documentation-update`, zone non touchée par la PR courante —
+grille « à confirmer »/liste des conflits, frontend seul). Reconfirmé : `engine/CONTRACT_VERSION` =
+`2.21` ✓ (`engine/CONTRACT_VERSION`) ; `DiagnosticSchema.id` toujours requis
+(`app/schemas/output_schema.py:61`) ✓ ; le commentaire mort `FACILITY_CAPACITY` toujours présent,
+non-code (`app/main.py:488-491`) ✓ ; `LEVEL_2_OBJECTIVE_WEIGHTS` toujours consommé par
 `add_preferred_day_bonus`/`add_preferred_time_bonus`/`add_match_day_rest_bonus`/`add_spacing_penalty`
-(`app/main.py:632`) ✓. Rien de faux trouvé.
+(`app/main.py:632-635`) ✓. Rien de faux trouvé.
 Reste non re-parcouru ligne à ligne cette passe — historique :
 `git log -p --follow engine/docs/nominal-flow.md`.
 

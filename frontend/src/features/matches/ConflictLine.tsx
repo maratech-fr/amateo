@@ -10,6 +10,7 @@ import { cn } from "@/shared/lib/utils";
 import type { Coach, Conflict, ConflictSideRole, Team, Venue } from "./api";
 import { SIDE_ROLE_WORD } from "./lib/conflictLabels";
 import { buildConflictSideLines, type ConflictSideKind, type ConflictSideLine, type ConflictSideModel } from "./lib/conflictSideLines";
+import { sortConflictsByDate } from "./lib/conflictOrder";
 import { groupBySeverity, type DiagnosticGroup } from "./lib/diagnostic";
 
 /**
@@ -267,7 +268,9 @@ interface ConflictLineProps {
 export function ConflictLine({ conflict, teams, coaches, venues, tone, isNew, trailing, below, ariaBusy }: ConflictLineProps) {
   const sideModel = buildConflictSideLines(conflict, teams, venues);
   const content = (
-    <div>
+    // min-w-0 flex-1 : la colonne texte rétrécit et rend la place au trailing shrink-0
+    // (décision fondateur 2026-09-17 — les actions empilées gardent leur largeur propre).
+    <div className="min-w-0 flex-1">
       <p className="flex flex-wrap items-center gap-1.5 font-medium">
         {conflictTitle(conflict, coaches)}
         {isNew ? (
@@ -295,7 +298,7 @@ export function ConflictLine({ conflict, teams, coaches, venues, tone, isNew, tr
     undefined !== trailing ? (
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         {content}
-        <div className="self-start">{trailing}</div>
+        <div className="shrink-0 self-start">{trailing}</div>
       </div>
     ) : (
       content
@@ -372,7 +375,9 @@ export function ConflictSeverityGroups({ conflicts, teams, coaches, venues, newF
             </h3>
             {folded ? null : (
               <ul className="flex flex-col gap-2">
-                {group.conflicts.map((conflict, index) => {
+                {/* DANS un groupe de gravité : date croissante (l'ordre des groupes et des
+                    entrées de pivot ne bouge pas). Décision fondateur 2026-09-17. */}
+                {sortConflictsByDate(group.conflicts).map((conflict, index) => {
                   const key = conflict.fingerprint ?? `${conflict.type}-${conflict.coachId ?? conflict.unavailabilityId ?? ""}-${index}`;
                   const meta = { tone: group.tone, isNew: isNew(conflict) };
                   return undefined !== renderConflict ? (

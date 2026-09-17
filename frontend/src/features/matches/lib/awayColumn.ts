@@ -56,8 +56,9 @@ export function awayBandRows(awayFixtures: Fixture[], habits: TeamMatchHabit[]):
 }
 
 /** Étiquette de jour courte (« sam. », « mer. ») pour le nom accessible d'un bloc
- *  extérieur — le bloc est loin de l'en-tête daté de son groupe de colonnes. */
-function shortWeekday(dateKey: string): string {
+ *  loin de l'en-tête daté de son groupe de colonnes (bloc extérieur, ou case
+ *  « à confirmer » côté domicile). Maison unique, réutilisée par `weekendGrid`. */
+export function shortWeekday(dateKey: string): string {
   return new Date(`${dateKey}T00:00:00`).toLocaleDateString("fr-FR", { weekday: "short" });
 }
 
@@ -111,6 +112,8 @@ export function buildAwayCells(layout: AwayLayout, intervals: { startMin: number
       outOfEnvelope: false,
       ghost: false,
       locked: false,
+      // Un extérieur n'a ni gymnase ni heure à confirmer sur la grille.
+      toConfirm: false,
       away: true,
       travelLabel,
       awayWeekday: shortWeekday(fixture.matchDate),

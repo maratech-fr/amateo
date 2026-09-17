@@ -31,6 +31,7 @@ import { useMatchesStore } from "./store";
 import { HiddenHomesWeekNotice, UnpairedVenueLabelsBanner } from "./UnpairedVenueLabelsBanner";
 import { UnplacedList } from "./UnplacedList";
 import { WeekendGrid } from "./WeekendGrid";
+import { WeekendGridLegend } from "./WeekendGridLegend";
 
 /** L'id du `<h2>` « À placer » — cible du focus quand la barre `WeekCounters` renvoie à la liste. */
 export const PLACE_HEADING_ID = "matches-place-heading";
@@ -338,6 +339,12 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
             <WeekendGrid model={grid} onSelectFixture={onGridSelect} selectedFixtureId={swapSourceId ?? selectedFixtureId} swapCandidateIds={swapCandidateIds} />
           </div>
           <HiddenHomesWeekNotice count={hiddenHomesThisWeek} />
+          {/* Légende conditionnelle : « à confirmer » (cases hachurées) et « Habitude »
+              (fantômes pointillés, seulement quand « Semaine type » est active). */}
+          <WeekendGridLegend
+            toConfirmCount={grid.cells.filter((c) => c.toConfirm).length}
+            showHabits={showGhosts && grid.cells.some((c) => c.ghost)}
+          />
         </div>
         <AwayList fixtures={weekendFixtures} teams={teamsMap} habits={habits} travel={opponentTravel} coachRoles={coachRoles} onEdit={onEditFixture} onDelete={(fixture) => deleteFixture.mutate(fixture.id)} />
         {radarLoaded ? <ConflictRadar conflicts={radarConflicts} teams={teamsMap} coaches={coachesMap} venues={venuesMap} newFingerprints={newFingerprints} /> : null}
