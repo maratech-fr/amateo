@@ -1,14 +1,10 @@
 # Guide de génération de planning — ClubScheduler
 
-Last verified @ 2026-09-16 (rotation `documentation-update`, PR backend « écart de salle d'un
-domicile non placé » — sujet sans rapport, fichier choisi par stamp le plus ancien). Re-confronté
-au code, rien n'a dérivé : `CONTRACT_VERSION` = **2.21** (`ScheduleConstraintBuilder.php:64`) ✓ ;
-`resolvePreviousAssignmentSlots` (`GenerateScheduleHandler.php:389`) ✓ ; `withPreviousAssignments`
-(`ScheduleConstraintBuilder.php:673`) ✓ ; `container_name` `amateo-*` cités tiennent contre
-`docker-compose.yml` (`amateo-php-fpm:102`, `amateo-nginx:136`, `amateo-postgres:156`,
-`amateo-redis:180`) ✓ ; `app:bccl:seed` (`BcclSeedCommand.php:41`) et le code club `ARA0069036`
-(exemple encore cohérent avec `DemoCreateCommand.php`) ✓. Reste non re-sondé cette passe : le corps
-du guide hors § Pré-requis et § Injection.
+Last verified @ 2026-09-18 (`documentation-update`, PR « `messenger-worker` de dev gagne
+`restart: unless-stopped` »). Re-confronté § 6 « Cas 1 : le statut reste bloqué en PENDING » contre
+`docker-compose.yml` : `messenger-worker` y porte désormais `restart: unless-stopped`, seul
+service de dev à le porter. Reste non re-sondé cette passe : le corps du guide hors § Pré-requis,
+§ Injection et § 6 Cas 1.
 
 > Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend ClubScheduler. Il s'adresse aux développeurs juniors qui découvrent le projet.
 
@@ -336,7 +332,7 @@ Voici chaque panne possible, avec son symptôme, sa cause, sa vérification, sa 
 | **Cause** | Le conteneur `messenger-worker` n'est pas démarré. Il n'y a personne pour consommer la file Redis. |
 | **Vérification** | `docker ps \| grep messenger` — si aucune ligne ne s'affiche, le worker est arrêté. |
 | **Correction** | `docker compose up -d messenger-worker` |
-| **Prévention** | Inclus toujours `messenger-worker` dans ton `docker-compose.yml` ou ton script de démarrage. |
+| **Prévention** | Depuis le 2026-09-18, `messenger-worker` porte `restart: unless-stopped` en dev (comme en prod) : une sortie de lui-même (time-limit horaire, `cache:clear` qui invalide son cache) le fait redémarrer seul en quelques secondes — ce cas précis ne devrait donc plus se produire. Ce qui reste possible : la stack n'a jamais été démarrée pour ce service, ou il a été arrêté volontairement (`docker compose stop`, respecté par `unless-stopped`) — inclure `messenger-worker` dans ton `docker-compose.yml`/script de démarrage le couvre. |
 
 ### Cas 2 : le statut retombe en PENDING (verrou club tenu)
 
