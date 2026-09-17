@@ -733,4 +733,14 @@ describe("CalendarPage — défauts (état vierge) + interrupteur Extérieurs", 
     expect(useMatchesStore.getState().consultTypicalWeek).toBe(false);
     expect(screen.getByRole("button", { name: "Amical" })).toHaveAttribute("aria-pressed", "false");
   });
+
+  it("A8 intégration : à la route produite par « Voir la semaine », l'URL SUFFIT (store à false écrasé)", async () => {
+    // Store aux défauts (extérieurs MASQUÉS) : c'est l'URL, pas le store, qui doit décider.
+    useMatchesStore.setState({ consultAway: false, consultKinds: null });
+    renderWithProviders(<CalendarPage />, { route: "/?type=amical,championnat,coupe,brassage&exterieurs=1" });
+    // Le seed lit l'URL → interrupteur allumé + bande extérieure rendue (fx-away « Grenoble »).
+    expect(await screen.findByRole("switch", { name: "Extérieurs" })).toHaveAttribute("aria-checked", "true");
+    expect((await screen.findAllByText(/à Grenoble/)).length).toBeGreaterThan(0);
+    expect(useMatchesStore.getState().consultAway).toBe(true);
+  });
 });

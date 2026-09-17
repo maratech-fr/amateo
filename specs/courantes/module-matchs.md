@@ -1,17 +1,25 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-17 (faux positif d'échauffement « personnes déjà sur place » + ville de
-l'adversaire extérieur, `documentation-update`). § « Détection » complétée d'un paragraphe « D1
-étendu » et § « Détail par côté d'un conflit de personne » recalée sur l'ORDRE de résolution du
-lieu adverse, tous deux confrontés au code lu : `MatchConflictDetector::effectiveMatchWindows`/
-`sameHomeVenue` (`backend/src/Service/MatchConflictDetector.php`), `OpponentPlaceResolver`
+Last verified @ 2026-09-17 (`documentation-update`, deux passes le même jour). (1) Faux positif
+d'échauffement « personnes déjà sur place » + ville de l'adversaire extérieur : § « Détection »
+complétée d'un paragraphe « D1 étendu » et § « Détail par côté d'un conflit de personne » recalée
+sur l'ORDRE de résolution du lieu adverse, confrontés au code lu :
+`MatchConflictDetector::effectiveMatchWindows`/`sameHomeVenue`
+(`backend/src/Service/MatchConflictDetector.php`), `OpponentPlaceResolver`
 (`backend/src/Service/OpponentPlaceResolver.php`, override effectif équipe/club sur sa référence de
 salle FFBB → ville de `OpponentVenueSuggestion` → ville de l'annuaire fédéral → `null`) + nouveau
-`OpponentVenueSuggestionRepository::findByFfbbOrganismeCodes` (batch). Reste du fichier (§
-« Calendrier — l'écran unique », § « Configuration — repli visuel », § reconciliation coupes
-P4-194/195, § « Solveur de placement », § « Trajet AWAY », § « Espace Importer », § « Onglet
-Semaine type », § « Échéances ligue/comité », § « Écart de salle d'un domicile non placé ») non
-re-sondé cette passe — voir `git log -p --follow` pour sa dernière vérification.
+`OpponentVenueSuggestionRepository::findByFfbbOrganismeCodes` (batch). (2) Défauts Calendrier +
+filtres Conflits, PUIS correctif produit sur le mécanisme de reveal : § « Liens qui allument leurs
+filtres » et le bullet « Voir la semaine » recalés — le masque (Extérieurs/type) voyage désormais
+DANS L'URL de la navigation (`revealSearch`/`onPlace` → `applyConsultToParams` +
+`applyWeekendToParams`, `{ pathname: "/matchs", search }`), jamais posé dans le store avant
+`navigate` (INOPÉRANT : le seed de `CalendarPage.tsx` redéfinit l'état Consulter depuis l'URL à
+chaque montage) — confronté à `ConflictsPage.tsx`/`ReviewQueue.tsx`/`CalendarPage.tsx` (le seed,
+`:~305-336`). Reste du fichier (§ « Calendrier — l'écran unique » pour le reste, § « Configuration
+— repli visuel », § reconciliation coupes P4-194/195, § « Solveur de placement », § « Trajet
+AWAY », § « Espace Importer », § « Onglet Semaine type », § « Échéances ligue/comité », § « Écart
+de salle d'un domicile non placé ») non re-sondé cette passe — voir `git log -p --follow` pour sa
+dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -1862,8 +1870,16 @@ supprimé, fusionné dans `CalendarPage.tsx`/`CalendarControls.tsx`/`MonthTable.
 - **Liens qui allument leurs filtres** (`revealPlan`, `lib/consultFilter.ts`, PUR — décrit une
   cible, n'écrit rien lui-même) : un lien interne vers une rencontre précise allume Extérieurs
   et/ou le type manquant pour que sa cible soit visible à l'arrivée — « Voir la semaine » depuis un
-  conflit (`ConflictsPage.tsx` `revealForConflict`, un ou deux côtés) et « Placer » depuis la file
-  Importer (`ReviewQueue.tsx` `onPlace`).
+  conflit (`ConflictsPage.tsx` `revealSearch`, un ou deux côtés) et « Placer » depuis la file
+  Importer (`ReviewQueue.tsx` `onPlace`). **Le masque voyage DANS L'URL de la navigation, jamais
+  dans le store avant `navigate`** : les deux appelants construisent la query avec
+  `applyConsultToParams` (+ `applyWeekendToParams` côté Conflits, `lib/urlState.ts`) et naviguent
+  en `{ pathname: "/matchs", search }`, un type déjà allumé n'étant jamais éteint. ⚠ **Pourquoi** :
+  le seed du Calendrier (`CalendarPage.tsx`) redéfinit l'état Consulter DEPUIS L'URL à chaque
+  montage — seuls le filtre PR-1 (sur un store vierge), la semaine et la rencontre pointée
+  survivent par le store ; poser `consultKinds`/`consultAway` en mémoire avant `navigate` est donc
+  INOPÉRANT, écrasé dès l'arrivée sur `/matchs` — l'URL fait foi, pas le store, pour tout ce que ce
+  seed redéfinit.
 - **Familles de conflits** (chips avec compteur, défaut tout coché) — les 10 `ConflictType`, libellés en table
   (`lib/conflictLabels.ts`) : collision de gymnase, hors fenêtre ligue, personne en double, match × entraînement,
   passerelle (info), placement fragilisé, calendrier incomplet, gymnase indisponible, extérieur sans heure,
@@ -1984,8 +2000,10 @@ persisté consommé par ce badge.
   familles **replie tout** (un `?ouvert` dont la clé n'existe plus dans le nouveau pivot est nettoyé de
   l'URL). Une entrée unique s'ouvre d'office.
 - **Bouton « Voir la semaine »** (par conflit daté, slot `trailing` de `ConflictLine`) : pose la semaine
-  du conflit dans le store (`setSelectedWeekend`) et navigue vers `/matchs` (le Calendrier) — absent sur
-  un conflit sans date résolue (`dateOf(conflict) === null`).
+  du conflit dans le store (`setSelectedWeekend`) et navigue vers `/matchs` (le Calendrier) **avec les
+  masques à lever PORTÉS DANS LA QUERY** (`revealSearch`, § « Liens qui allument leurs filtres »
+  ci-dessus — le seed du Calendrier redéfinit l'état Consulter depuis l'URL, un store posé avant
+  `navigate` serait écrasé) — absent sur un conflit sans date résolue (`dateOf(conflict) === null`).
 - **`aria-live="polite"`** annonce le regroupement (« Regroupé par {axe} — N entrée(s), M conflit(s) »)
   **après une interaction seulement** (pivot ou famille changés) — jamais au premier rendu ni à un
   refetch d'arrière-plan.
