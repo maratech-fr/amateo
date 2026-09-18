@@ -73,6 +73,7 @@ class ConstraintStateProcessor extends AbstractStateProcessor
         $entity->setCalendarEntryId($input->calendarEntryId);
         $entity->setIsActive($input->isActive ?? true);
         $entity->setSortOrder($input->sortOrder ?? 0);
+        $this->assertPreferredVenueIsNotMandatory($entity);
 
         return $entity;
     }
@@ -140,6 +141,7 @@ class ConstraintStateProcessor extends AbstractStateProcessor
         if (null !== $input->sortOrder) {
             $entity->setSortOrder($input->sortOrder);
         }
+        $this->assertPreferredVenueIsNotMandatory($entity);
     }
 
     /**
@@ -159,6 +161,28 @@ class ConstraintStateProcessor extends AbstractStateProcessor
         // toggles are keyed on constraintId and would orphan on a bare delete.
         foreach ($this->entityManager->getRepository(ConstraintPeriodOverride::class)->findBy(['constraintId' => $entity->getId()]) as $override) {
             $this->entityManager->remove($override);
+        }
+    }
+
+    /**
+     * D1 — « préférer ce gymnase » (preferredVenueId) est TOUJOURS une préférence
+     * (PREFERRED) : jamais un must. L'obligatoire, c'est le mode « impose »
+     * (forcedVenueId). On refuse à la SOURCE une préférence de gymnase épinglée
+     * HARD|LOCK (le wizard n'en émet plus, mais un script/une donnée legacy pourrait) —
+     * garde sur l'état FINAL, create comme update.
+     */
+    private function assertPreferredVenueIsNotMandatory(Constraint $entity): void
+    {
+        // `config` (défaut `[]`) est testé en PREMIER : sans la clé, on ne touche pas aux
+        // propriétés typées `family`/`ruleType` — inutile ici, et non initialisées sur une
+        // entité partielle de test unitaire.
+        if (!\array_key_exists('preferredVenueId', $entity->getConfig())) {
+            return;
+        }
+        if (ConstraintFamily::FACILITY === $entity->getFamily()
+            && \in_array($entity->getRuleType(), [ConstraintRuleType::HARD, ConstraintRuleType::LOCK], true)
+        ) {
+            $this->refuse('Une préférence de gymnase ne peut pas être obligatoire — choisissez « impose ».');
         }
     }
 

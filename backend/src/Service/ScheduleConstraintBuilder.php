@@ -29,7 +29,6 @@ use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelRuleSetting;
 use App\Entity\VenueTravelTime;
 use App\Enum\ConstraintFamily;
-use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\SchedulePlanType;
@@ -1360,32 +1359,10 @@ final class ScheduleConstraintBuilder
                     $result[] = $this->serializeConstraintRow($constraint, $constraint->getId() . ':' . $teamId, $teamId, $resolvedConfig);
                 }
 
-                // When HARD + a forced venue (preferredVenueId in HARD, or the
-                // explicit forcedVenueId "impose" mode): the venue is DEDICATED to
-                // the tag → also forbid it for every team NOT in the tag. Both keys
-                // force the tag onto the venue engine-side, so exclusivity must
-                // cover both, else "impose" would be weaker than HARD "préfère".
-                $dedicatedVenueId = $config['forcedVenueId'] ?? $config['preferredVenueId'] ?? null;
-                // `is_string && '' !==` et non `null !==` (revue #340 round 2) : un
-                // `preferredVenueId` vidé en '' par un client émettait des lignes
-                // `forbiddenVenueId: ''` — un gymnase inexistant interdit à tout le club.
-                // Même garde que le verdict du sélecteur : les deux doivent coïncider.
-                if (ConstraintRuleType::HARD === $constraint->getRuleType() && \is_string($dedicatedVenueId) && '' !== $dedicatedVenueId) {
-                    $tagTeamIdSet = array_flip($teamIds);
-                    foreach ($teams as $team) {
-                        if (isset($tagTeamIdSet[$team->getId()])) {
-                            continue;
-                        }
-                        $result[] = $this->serializeConstraintRow(
-                            $constraint,
-                            $constraint->getId() . ':forbidden:' . $team->getId(),
-                            $team->getId(),
-                            ['forbiddenVenueId' => $dedicatedVenueId],
-                            name: $constraint->getName() . ' (interdit hors tag)',
-                            ruleType: ConstraintRuleType::HARD->value,
-                        );
-                    }
-                }
+                // D1 (décision fondateur, lecture 1) — « impose Y au groupe X » FORCE le
+                // groupe sur le gymnase et NE RÉSERVE RIEN aux autres équipes : plus aucune
+                // ligne `forbiddenVenueId` implicite « interdit hors tag ». Une exclusivité,
+                // si elle est voulue, se saisit — elle ne se déduit pas d'un « impose ».
 
                 continue;
             }

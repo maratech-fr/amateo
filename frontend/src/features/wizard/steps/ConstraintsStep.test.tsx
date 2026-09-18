@@ -430,6 +430,42 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     expect(h.createMut.mock.calls[0][0]).toMatchObject({ family: "FACILITY", ruleType: "HARD", config: { forcedVenueId: "v1" } });
   });
 
+  it("FACILITY « préfère » : aucun sélecteur Règle, une pastille figée « Préféré » (D1)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConstraintsStep />);
+
+    await user.click(screen.getByRole("button", { name: "Gymnase" }));
+    // Mode « préfère » par défaut : « préfère » est TOUJOURS une préférence, pas un choix.
+    expect(screen.queryByLabelText("Règle")).not.toBeInTheDocument();
+    expect(screen.getByText("Préféré")).toBeInTheDocument();
+  });
+
+  it("FACILITY « évite » : le sélecteur Règle revient avec ses trois options (D1)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConstraintsStep />);
+
+    await user.click(screen.getByRole("button", { name: "Gymnase" }));
+    await user.selectOptions(screen.getByLabelText("Préférence"), "forbidden");
+    const rule = screen.getByLabelText("Règle");
+    expect(Array.from(rule.querySelectorAll("option")).map((o) => o.textContent)).toEqual(["Préféré", "Obligatoire", "Verrouillé"]);
+  });
+
+  it("FACILITY : une règle HARD posée sur « évite » ne FUIT pas sur « préfère » — le POST porte PREFERRED (D1)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConstraintsStep />);
+
+    await user.click(screen.getByRole("button", { name: "Gymnase" }));
+    // Sur « évite », l'utilisateur choisit Obligatoire (HARD)…
+    await user.selectOptions(screen.getByLabelText("Préférence"), "forbidden");
+    await user.selectOptions(screen.getByLabelText("Règle"), "HARD");
+    // …puis repasse en « préfère » : le sélecteur disparaît, la règle DOIT redevenir PREFERRED.
+    await user.selectOptions(screen.getByLabelText("Préférence"), "preferred");
+    await pickListboxOption(user, /— gymnase —/, "Gymnase A");
+    await user.click(screen.getByRole("button", { name: "Ajouter la contrainte" }));
+
+    expect(h.createMut.mock.calls[0][0]).toMatchObject({ family: "FACILITY", ruleType: "PREFERRED", config: { preferredVenueId: "v1" } });
+  });
+
   it("TIME 'Fini avant' emits a HARD maxEndTime (soft path can't honor an end-bound — ALIGN-04)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<ConstraintsStep />);

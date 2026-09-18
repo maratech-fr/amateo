@@ -50,6 +50,15 @@ const RULE_LABEL: Record<ConstraintRuleType, string> = {
   LOCK: "Verrouillé",
 };
 
+/**
+ * La pastille de règle FIGÉE (ni sélecteur, ni choix) — « Obligatoire » quand la règle est
+ * dure par nature, « Préféré » quand « préfère ce gymnase » l'est toujours (D1). Un seul
+ * patron paramétré par libellé, jamais deux `<span>` copiés.
+ */
+function RuleBadge({ label }: { label: string }) {
+  return <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{label}</span>;
+}
+
 /** Coerce a JSON config value (unknown) into a day-number array. */
 const asNums = (v: unknown): number[] => (Array.isArray(v) ? v.map(Number).filter((n) => !Number.isNaN(n)) : []);
 
@@ -383,7 +392,10 @@ export function ConstraintsStep() {
       }
       const config = { ...tagConfig, ...("preferred" === effectiveVenueMode ? { preferredVenueId: venueId } : { forbiddenVenueId: venueId }) };
       const verb = "preferred" === effectiveVenueMode ? "préfère" : "évite";
-      return { name: `${who} · ${verb} ${venueName.get(venueId)}`, scope, scopeTargetId, family, ruleType, config };
+      // D1 — « préfère » est TOUJOURS PREFERRED (épinglé, jamais la valeur d'état, qui peut
+      // fuir d'un « évite » HARD posé juste avant) ; « évite » garde son sélecteur.
+      const venueRule: ConstraintRuleType = "preferred" === effectiveVenueMode ? "PREFERRED" : ruleType;
+      return { name: `${who} · ${verb} ${venueName.get(venueId)}`, scope, scopeTargetId, family, ruleType: venueRule, config };
     }
     // COACH_AVAILABILITY
     if ("" === coachId || 0 === days.size) {
@@ -944,7 +956,12 @@ export function ConstraintsStep() {
           // ALWAYS hard (a person can't be in two places; a forced venue, a whitelist/at-least
           // day rule, and a gym-closing end-bound are musts, not nudges) — the payload pins
           // HARD, so a rule selector here would be a lie.
-          <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">Obligatoire</span>
+          <RuleBadge label={RULE_LABEL.HARD} />
+        ) : "FACILITY" === family && "preferred" === effectiveVenueMode ? (
+          // D1 — « préfère ce gymnase » est TOUJOURS une préférence (PREFERRED) : jamais un
+          // must. L'obligatoire, c'est le mode « impose » (forcedVenueId). Pas de sélecteur ici
+          // — une pastille figée « Préféré », comme « Obligatoire » l'est pour les règles dures.
+          <RuleBadge label={RULE_LABEL.PREFERRED} />
         ) : (
           <Select aria-label="Règle" className="h-8 w-28" value={ruleType} onChange={(e) => setRuleType(e.target.value as ConstraintRuleType)}>
             {RULES.map((r) => (

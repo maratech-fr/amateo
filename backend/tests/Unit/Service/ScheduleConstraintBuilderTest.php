@@ -188,13 +188,12 @@ final class ScheduleConstraintBuilderTest extends TestCase
         self::assertSame([], $serialized, 'an unresolvable tag must emit NOTHING (no club-wide forbiddenVenueId)');
     }
 
-    public function testForcedVenueOnTagReservesItExclusively(): void
+    public function testForcedVenueOnTagDoesNotReserveItForTeamsOutsideTheTag(): void
     {
-        // Review NR (PR #120, F2): "impose" (forcedVenueId) on a group must DEDICATE
-        // the venue — forbid it for teams outside the tag — exactly like HARD
-        // "préfère" (preferredVenueId), else the strong-sounding impose would be
-        // weaker than a mere preference (the tagged group forced in, others free to
-        // pile in too).
+        // D1 (décision fondateur, lecture 1) : « impose Gymnase A au groupe FEMININE »
+        // FORCE le groupe sur le gymnase et NE RÉSERVE RIEN aux autres équipes — plus
+        // aucune ligne `forbiddenVenueId` implicite « interdit hors tag ». Une exclusivité,
+        // si elle est voulue, se saisit ; elle ne se déduit pas d'un « impose ».
         $tag = (new TeamTag)->setId('tag-fem')->setClubId('club-1')->setName('FEMININE');
         $this->teamTagRepository->method('findOneBy')->willReturn($tag);
         $this->teamTagAssignmentRepository->method('findBy')->willReturn([
@@ -217,8 +216,7 @@ final class ScheduleConstraintBuilderTest extends TestCase
         $forbidden = array_values(array_filter($serialized, static fn (array $r): bool => 'v-1' === ($r['config']['forbiddenVenueId'] ?? null)));
         self::assertCount(1, $forced, 'the tagged team is forced onto the venue');
         self::assertSame('team-a', $forced[0]['scopeTargetId']);
-        self::assertCount(1, $forbidden, 'a non-tag team gets the venue forbidden (exclusivity)');
-        self::assertSame('team-b', $forbidden[0]['scopeTargetId']);
+        self::assertSame([], $forbidden, 'aucune équipe hors tag ne se voit interdire le gymnase — « impose » ne réserve rien (D1)');
     }
 
     /**
