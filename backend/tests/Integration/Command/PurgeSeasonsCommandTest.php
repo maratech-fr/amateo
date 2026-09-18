@@ -46,6 +46,10 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
 
     private string $oldTokenId;
 
+    private string $oppCode;
+
+    private string $oppRef;
+
     public function testDryRunDeletesNothing(): void
     {
         [$club, $seasons] = $this->createClubWithSeasons();
@@ -84,6 +88,16 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
         self::assertNull($this->em->getRepository(CoachWishToken::class)->find($this->oldTokenId), 'son token part par la FK CASCADE');
         // planning-versions D2: the structure photos die with their season.
         self::assertCount(0, $this->em->getRepository(ScheduleStructureSnapshot::class)->findBy(['seasonId' => $old->getId()]));
+        // BCK-24 — le trajet adverse de la saison N-2 est purgé…
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne(
+            'SELECT COUNT(*) FROM opponent_travel WHERE season_id = :sid',
+            ['sid' => $old->getId()],
+        ), 'opponent_travel de la saison N-2 purgé');
+        // …et son choix MANUAL a fait reculer le compteur PARTAGÉ (2 → 1, P4-209(b)).
+        self::assertSame(1, (int) $this->em->getConnection()->fetchOne(
+            'SELECT chosen_by_count FROM opponent_venue_suggestion WHERE ffbb_organisme_code = :code AND venue_external_ref = :ref',
+            ['code' => $this->oppCode, 'ref' => $this->oppRef],
+        ), 'P4-209(b) : la purge d\'une ligne MANUAL décrémente le compteur partagé');
         // current, N-1 and the future draft survive.
         self::assertNotNull($this->em->getRepository(Season::class)->find($past->getId()));
         self::assertNotNull($this->em->getRepository(Season::class)->find($current->getId()));
@@ -216,6 +230,23 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
         $this->em->persist($token);
         $this->em->flush();
         $this->oldTokenId = $token->getId();
+
+        // BCK-24 / P4-209(b) — une ligne opponent_travel MANUAL de la saison N-2 qui
+        // épingle un gymnase fédéral : la purge doit la SUPPRIMER et décrémenter le
+        // compteur PARTAGÉ (opponent_venue_suggestion), exactement comme revertToAuto.
+        $this->oppCode = 'OPP' . strtoupper(substr(md5($uid), 0, 8));
+        $this->oppRef = 'SALLE' . strtoupper(substr(md5($uid), 8, 6));
+        $conn = $this->em->getConnection();
+        $conn->executeStatement(
+            'INSERT INTO opponent_venue_suggestion (id, ffbb_organisme_code, venue_external_ref, venue_label, city, postal_code, latitude, longitude, source, chosen_by_count, last_chosen_at, created_at, updated_at)'
+            . " VALUES (gen_random_uuid(), :code, :ref, 'Gymnase Test', 'Ville', '69000', 45.7, 4.8, 'MANUAL', 2, now(), now(), now())",
+            ['code' => $this->oppCode, 'ref' => $this->oppRef],
+        );
+        $conn->executeStatement(
+            'INSERT INTO opponent_travel (id, version, created_at, updated_at, club_id, season_id, opponent_organisme_code, opponent_team_key, travel_minutes, source, override_venue_external_ref, override_venue_label, override_latitude, override_longitude, resolved_at)'
+            . " VALUES (gen_random_uuid(), 1, now(), now(), :cid, :sid, :code, NULL, 42, 'MANUAL', :ref, 'Gymnase Test', 45.7, 4.8, now())",
+            ['cid' => $club->getId(), 'sid' => $old->getId(), 'code' => $this->oppCode, 'ref' => $this->oppRef],
+        );
 
         return [$club, [$old, $past, $current, $draft]];
     }
