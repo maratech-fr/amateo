@@ -1,12 +1,19 @@
-Last verified @ 2026-09-19 (retours de tests — `POST /api/opponents/refresh` gagne un champ ADDITIF
-`failedSteps` (liste des passes best-effort qui ont levé et sont retombées sur leur résultat neutre ; vide
-en régime nominal, non-vide = mise à jour partielle à relancer) ; régénéré par `api:openapi:export`).
+Last verified @ 2026-09-19 (retours de tests — deux champs ADDITIFS : `failedSteps` sur la réponse de
+`POST /api/opponents/refresh`, et `windows` sur les conflits `ACCESS_WINDOW_LOST` du radar
+`GET /api/fixtures/conflicts` (les accès match du gymnase de la fixture, jour du match d'abord) ;
+régénéré par `api:openapi:export`).
 **200 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : aucune route
-n'apparaît ni ne disparaît — seule la réponse 200 de `/api/opponents/refresh` gagne la propriété `failedSteps`.
-· SHA-256 `66fc5d939b24780e822eb09397f77591edcabd269bf9c6e89b58a82869aa88ea`
+n'apparaît ni ne disparaît — seules deux propriétés additives s'ajoutent (`failedSteps`, `windows`).
+· SHA-256 `ef0508b200163d1b9bc7d0d1e8fd5e6139ee4071c474a4ae247e858c15babebc`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Retours de tests — `windows` sur ACCESS_WINDOW_LOST, backend (2026-09-19)** : **+0 path** — un conflit
+  `ACCESS_WINDOW_LOST` du radar `GET /api/fixtures/conflicts` porte désormais un champ ADDITIF `windows`
+  (`array<{dayOfWeek, startTime, endTime}>`) : les accès match DU GYMNASE de la fixture, jour du match
+  d'abord, pour que l'écran dise « placé hors des accès match de {Gymnase} (samedi 14:00–18:00, …) ». Champ
+  hors identité (l'empreinte reste `TYPE:fixtureId`). Backend PUR, contrat backend⇄engine **inchangé**
+  (`CONTRACT_VERSION` 2.21, aucun appel moteur).
 - **Retours de tests — `failedSteps` sur la mise à jour des adversaires, backend (2026-09-19)** : **+0 path** —
   la réponse 200 de `POST /api/opponents/refresh` gagne un champ ADDITIF `failedSteps` (`array<'codes'|'auto-locate'|'travel'>`) :
   les passes best-effort qui ont levé et sont retombées sur leur résultat neutre. Vide en régime nominal ; non-vide,
@@ -58,16 +65,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   `/api/opponents/resolve` et `/api/opponents/travel/resolve` restent (compat). 199 → **200 paths**. Backend PUR,
   contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun appel moteur, aucun payload solveur ne lit
   `opponent_travel`).
-- **« Une personne = ses équipes coachées + ses équipes où elle joue », backend (2026-09-15)** : **+0 path** —
-  le radar `GET /api/fixtures/conflicts` unit les coachs (`team_coach`) et les joueurs (`CoachPlayerMembership`
-  actifs) dans une même carte personne→équipes. Champs ADDITIFS : `coachRole` gagne la valeur `PLAYER` (agrégat
-  MAIN si tous MAIN, ASSISTANT dès qu'un côté ASSISTANT, PLAYER sinon) ; chaque côté d'un conflit personne porte
-  son `role` (`MAIN`|`ASSISTANT`|`PLAYER`) — `left.role`/`right.role` sur MATCH_MATCH, `fixture.role`/`training.role`
-  sur MATCH_TRAINING ; l'enum `type` du conflit est recalé sur ses 10 familles réelles (VENUE_OVERLAP,
-  LEAGUE_WINDOW_VIOLATION, MATCH_MATCH, MATCH_TRAINING, VENUE_UNAVAILABLE, ACCESS_WINDOW_LOST, TEAM_LINK_OVERLAP,
-  COMPETITION_INCOMPLETE, AWAY_NO_FOOTPRINT, FRIENDLY_ON_MATCH_SLOT). Aucune empreinte de conflit ne change
-  (le rôle est hors identité). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun
-  appel moteur, aucun payload solveur ne lit les adhésions joueur).
 - **PR-2 « adversaire multi-gymnases », backend (2026-09-15)** : **+1 path** — les SUGGESTIONS partagées de
   gymnases par club adverse. `GET /api/opponents/{code}/venue-suggestions` (management, A6) rend les gymnases
   connus d'un adversaire — vus dans le calendrier fédéral (`FFBB_API`) ou choisis par des clubs (`MANUAL`) —

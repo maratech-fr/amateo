@@ -11656,6 +11656,27 @@
                                                             }
                                                         }
                                                     },
+                                                    "windows": {
+                                                        "type": "array",
+                                                        "description": "ACCESS_WINDOW_LOST: the match-access windows of the fixture's venue, the match weekday first \u2014 so the screen can name where the kickoff should have sat",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "dayOfWeek": {
+                                                                    "type": "integer",
+                                                                    "description": "ISO weekday 1..7"
+                                                                },
+                                                                "startTime": {
+                                                                    "type": "string",
+                                                                    "description": "\u00ab HH:MM \u00bb"
+                                                                },
+                                                                "endTime": {
+                                                                    "type": "string",
+                                                                    "description": "\u00ab HH:MM \u00bb"
+                                                                }
+                                                            }
+                                                        }
+                                                    },
                                                     "fingerprint": {
                                                         "type": "string",
                                                         "description": "Stable identity of the conflict \u2014 same while it is the same dispute, changes when its nature changes (the guardian compares it across visits)"

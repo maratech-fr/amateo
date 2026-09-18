@@ -33,7 +33,7 @@ describe("CONFLICT_FAMILY_LABEL", () => {
     expect(CONFLICT_FAMILY_LABEL.MATCH_MATCH).toBe("Personne en double");
     expect(CONFLICT_FAMILY_LABEL.MATCH_TRAINING).toBe("Match × entraînement");
     expect(CONFLICT_FAMILY_LABEL.TEAM_LINK_OVERLAP).toBe("Passerelle");
-    expect(CONFLICT_FAMILY_LABEL.ACCESS_WINDOW_LOST).toBe("Placement fragilisé");
+    expect(CONFLICT_FAMILY_LABEL.ACCESS_WINDOW_LOST).toBe("Hors accès match");
     expect(CONFLICT_FAMILY_LABEL.COMPETITION_INCOMPLETE).toBe("Calendrier incomplet");
     expect(CONFLICT_FAMILY_LABEL.VENUE_UNAVAILABLE).toBe("Gymnase indisponible");
     expect(CONFLICT_FAMILY_LABEL.AWAY_NO_FOOTPRINT).toBe("Extérieur sans heure");

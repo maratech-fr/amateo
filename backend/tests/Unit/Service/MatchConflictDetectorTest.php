@@ -647,6 +647,33 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame(['ACCESS_WINDOW_LOST'], array_column($this->detect([$placed], [], null, [], [], [], [], [], $atEnd), 'type'));
     }
 
+    public function testAccessWindowLostCarriesTheVenueWindowsMatchDayFirst(): void
+    {
+        // Placé le samedi 15:00, hors des accès match de son gymnase → ACCESS_WINDOW_LOST.
+        // Le conflit porte les accès match DE SON GYMNASE, jour du match (samedi) d'abord —
+        // de quoi dire à l'écran « placé hors des accès (samedi 16:00–18:00, …) ».
+        $placed = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00');
+        $placed->setVenueId('venue-mateo');
+        $placed->setCompetitionId('comp-1');
+
+        $windows = [
+            $this->matchWindow('venue-mateo', 3, '18:00', '20:00'), // mercredi
+            $this->matchWindow('venue-mateo', 6, '16:00', '18:00'), // samedi (jour du match)
+            $this->matchWindow('venue-autre', 6, '14:00', '18:00'), // autre gymnase → exclu
+        ];
+        $conflicts = $this->detect([$placed], [], null, [], [], [], [], [], $windows);
+
+        self::assertSame(['ACCESS_WINDOW_LOST'], array_column($conflicts, 'type'));
+        self::assertSame(
+            [
+                ['dayOfWeek' => 6, 'startTime' => '16:00', 'endTime' => '18:00'],
+                ['dayOfWeek' => 3, 'startTime' => '18:00', 'endTime' => '20:00'],
+            ],
+            $conflicts[0]['windows'],
+            'les accès du gymnase de la fixture, jour du match (samedi) en premier ; l\'autre gymnase est exclu',
+        );
+    }
+
     public function testCoachRoleIsMainOnlyWhenMainOnEveryInvolvedTeam(): void
     {
         // P4-189 — the per-PAIR role is MAIN only when the coach is MAIN on BOTH

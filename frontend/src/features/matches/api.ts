@@ -270,6 +270,20 @@ export interface ConflictResolution {
   updatedAt: string;
 }
 
+/** LEAGUE_WINDOW_VIOLATION — an allowed kickoff window (envelope) the placement violates. */
+export interface LeagueKickoffWindow {
+  dayOfWeek: number;
+  kickoffMin: string;
+  kickoffMax: string;
+}
+
+/** ACCESS_WINDOW_LOST — one match-access window of the fixture's venue. */
+export interface VenueAccessWindow {
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+}
+
 export interface Conflict {
   type: ConflictType;
   /** P1-4 PR E2 — gravity emitted by the SERVER (1 = worst … 7 = info). */
@@ -299,8 +313,11 @@ export interface Conflict {
   label?: string | null;
   unavailableFrom?: string;
   unavailableUntil?: string;
-  /** LEAGUE_WINDOW_VIOLATION — the windows the placement violates. */
-  windows?: { dayOfWeek: number; kickoffMin: string; kickoffMax: string }[];
+  /**
+   * LEAGUE_WINDOW_VIOLATION — the allowed kickoff windows the placement violates (`kickoffMin`/`kickoffMax`).
+   * ACCESS_WINDOW_LOST — the fixture's venue match-access windows, the match weekday first (`startTime`/`endTime`).
+   */
+  windows?: LeagueKickoffWindow[] | VenueAccessWindow[];
   /** COMPETITION_INCOMPLETE (severity 6) — paired-competition completeness. */
   competitionId?: string;
   competitionName?: string;

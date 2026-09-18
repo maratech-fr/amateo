@@ -4,10 +4,11 @@ import { Fragment, type ReactNode, useState } from "react";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { coachFullName } from "@/shared/lib/coachName";
 import { frDateShortNoYear } from "@/shared/lib/date";
+import { dayLabelLong } from "@/shared/lib/days";
 import { formatDurationMinutes } from "@/shared/lib/time";
 import { cn } from "@/shared/lib/utils";
 
-import type { Coach, Conflict, ConflictSideRole, Team, Venue } from "./api";
+import type { Coach, Conflict, ConflictSideRole, LeagueKickoffWindow, Team, Venue, VenueAccessWindow } from "./api";
 import { SIDE_ROLE_WORD } from "./lib/conflictLabels";
 import { buildConflictSideLines, type ConflictSideKind, type ConflictSideLine, type ConflictSideModel } from "./lib/conflictSideLines";
 import { sortConflictsByDate } from "./lib/conflictOrder";
@@ -54,7 +55,7 @@ function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string 
     case "LEAGUE_WINDOW_VIOLATION":
       return "Hors fenêtre autorisée par la ligue";
     case "ACCESS_WINDOW_LOST":
-      return "L'accès match ne couvre plus ce match";
+      return "Hors accès match";
     case "TEAM_LINK_OVERLAP":
       return "Passerelle violée";
     case "COMPETITION_INCOMPLETE":
@@ -68,7 +69,17 @@ function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string 
   }
 }
 
-function conflictSummary(conflict: Conflict, teams: Map<string, Team>): string {
+/** « samedi 16:00–18:00, mercredi 18:00–20:00 » (jour du match d'abord, servi par le serveur) ;
+ *  sans aucun accès match sur ce gymnase → « aucun accès match ce jour-là ». */
+function accessWindowsPhrase(conflict: Conflict): string {
+  const windows = (conflict.windows ?? []) as VenueAccessWindow[];
+  if (0 === windows.length) {
+    return "aucun accès match ce jour-là";
+  }
+  return windows.map((w) => `${dayLabelLong(w.dayOfWeek)} ${w.startTime}–${w.endTime}`).join(", ");
+}
+
+function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: Map<string, Venue>): string {
   if ("VENUE_OVERLAP" === conflict.type && conflict.left && conflict.right) {
     return `${teamName(teams, conflict.left.teamId)} et ${teamName(teams, conflict.right.teamId)} — ${frDateShortNoYear(conflict.left.matchDate)}`;
   }
@@ -95,10 +106,11 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>): string {
     return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} — gymnase indisponible, à repositionner`;
   }
   if ("ACCESS_WINDOW_LOST" === conflict.type && conflict.fixture) {
-    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} à ${conflict.fixture.kickoffTime ?? "?"} — la fenêtre d'accès a changé après le placement`;
+    const venueName = venues.get(conflict.venueId ?? "")?.name ?? "ce gymnase";
+    return `Placé hors des accès match de ${venueName} (${accessWindowsPhrase(conflict)}) — déplacez le match ou ajustez l'accès dans Configuration.`;
   }
   if ("LEAGUE_WINDOW_VIOLATION" === conflict.type && conflict.fixture) {
-    const windows = (conflict.windows ?? []).map((w) => `${w.kickoffMin}–${w.kickoffMax}`).join(", ");
+    const windows = ((conflict.windows ?? []) as LeagueKickoffWindow[]).map((w) => `${w.kickoffMin}–${w.kickoffMax}`).join(", ");
     return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} à ${conflict.fixture.kickoffTime ?? "?"} (fenêtres : ${windows}) — dérogation à demander tôt`;
   }
   if ("TEAM_LINK_OVERLAP" === conflict.type && conflict.left && conflict.right) {
@@ -280,7 +292,7 @@ export function ConflictLine({ conflict, teams, coaches, venues, tone, isNew, tr
         ) : null}
       </p>
       <p className="text-muted-foreground">
-        {conflictSummary(conflict, teams)}
+        {conflictSummary(conflict, teams, venues)}
         {/* La pastille GLOBALE « heure estimée » disparaît pour les familles à détail par côté. */}
         {null === sideModel && estimatedTag(conflict) ? <span className="ml-1 rounded bg-muted px-1 text-xs uppercase tracking-wide">heure estimée</span> : null}
       </p>

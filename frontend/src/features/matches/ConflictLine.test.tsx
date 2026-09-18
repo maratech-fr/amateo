@@ -32,6 +32,40 @@ describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
     expect(screen.getByText(/U13 et Seniors/)).toBeInTheDocument();
   });
 
+  it("ACCESS_WINDOW_LOST : titre « Hors accès match » et phrase nommant le gymnase + les accès (jour du match d'abord)", () => {
+    const access: Conflict = {
+      type: "ACCESS_WINDOW_LOST",
+      severity: 4,
+      resolution: null,
+      fingerprint: "fp-acc",
+      venueId: "v-1",
+      fixture: { fixtureId: "fx-9", teamId: "team-1", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "15:00", windowStart: "", windowEnd: "" },
+      windows: [
+        { dayOfWeek: 6, startTime: "16:00", endTime: "18:00" },
+        { dayOfWeek: 3, startTime: "18:00", endTime: "20:00" },
+      ],
+    };
+    renderLine({ conflict: access });
+    expect(screen.getByText("Hors accès match")).toBeInTheDocument();
+    expect(
+      screen.getByText("Placé hors des accès match de Gymnase Mateo (samedi 16:00–18:00, mercredi 18:00–20:00) — déplacez le match ou ajustez l'accès dans Configuration."),
+    ).toBeInTheDocument();
+  });
+
+  it("ACCESS_WINDOW_LOST : sans aucun accès match sur le gymnase → « (aucun accès match ce jour-là) »", () => {
+    const access: Conflict = {
+      type: "ACCESS_WINDOW_LOST",
+      severity: 4,
+      resolution: null,
+      fingerprint: "fp-acc2",
+      venueId: "v-1",
+      fixture: { fixtureId: "fx-9", teamId: "team-1", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "15:00", windowStart: "", windowEnd: "" },
+      windows: [],
+    };
+    renderLine({ conflict: access });
+    expect(screen.getByText(/\(aucun accès match ce jour-là\)/)).toBeInTheDocument();
+  });
+
   it("porte la tonalité de gravité sur le <li>", () => {
     const { container } = renderLine({ tone: "destructive" });
     expect(container.querySelector("li")).toHaveClass("border-destructive/40");

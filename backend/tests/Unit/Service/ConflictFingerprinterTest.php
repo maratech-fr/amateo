@@ -78,6 +78,19 @@ final class ConflictFingerprinterTest extends TestCase
         }
     }
 
+    /** ACCESS_WINDOW_LOST : les `windows` (accès match du gymnase, servis pour l'affichage) sont
+     * HORS identité — l'empreinte reste TYPE:fixtureId, qu'on ajoute ou change les fenêtres. */
+    public function testAccessWindowLostIsStableWhenWindowsChange(): void
+    {
+        $bare = ['type' => 'ACCESS_WINDOW_LOST', 'severity' => 4, 'venueId' => 'venue-1', 'fixture' => ['fixtureId' => 'fix-42']];
+        $withWindows = $bare + ['windows' => [['dayOfWeek' => 6, 'startTime' => '14:00', 'endTime' => '18:00']]];
+        $otherWindows = $bare + ['windows' => [['dayOfWeek' => 3, 'startTime' => '18:00', 'endTime' => '20:00']]];
+
+        self::assertSame('ACCESS_WINDOW_LOST:fix-42', $this->fingerprinter->fingerprint($bare));
+        self::assertSame($this->fingerprinter->fingerprint($bare), $this->fingerprinter->fingerprint($withWindows));
+        self::assertSame($this->fingerprinter->fingerprint($withWindows), $this->fingerprinter->fingerprint($otherWindows));
+    }
+
     /** FRIENDLY_ON_MATCH_SLOT : ses `reasons` sont HORS identité — fenêtre seule, week-end
      * seul ou les deux restent LE MÊME litige (sinon chaque bascule le re-badge « Nouveau »). */
     public function testFriendlyOnMatchSlotIsStableWhenReasonsChange(): void

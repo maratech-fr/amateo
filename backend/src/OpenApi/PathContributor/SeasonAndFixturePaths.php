@@ -128,6 +128,11 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                             'training' => ['type' => 'object', 'nullable' => true, 'description' => 'MATCH_TRAINING: the training slot', 'properties' => [
                                 'role' => ['type' => 'string', 'enum' => ['MAIN', 'ASSISTANT', 'PLAYER'], 'description' => 'The person\'s role with the training team'],
                             ]],
+                            'windows' => ['type' => 'array', 'description' => 'ACCESS_WINDOW_LOST: the match-access windows of the fixture\'s venue, the match weekday first — so the screen can name where the kickoff should have sat', 'items' => ['type' => 'object', 'properties' => [
+                                'dayOfWeek' => ['type' => 'integer', 'description' => 'ISO weekday 1..7'],
+                                'startTime' => ['type' => 'string', 'description' => '« HH:MM »'],
+                                'endTime' => ['type' => 'string', 'description' => '« HH:MM »'],
+                            ]]],
                             'fingerprint' => ['type' => 'string', 'description' => 'Stable identity of the conflict — same while it is the same dispute, changes when its nature changes (the guardian compares it across visits)'],
                             'resolution' => ['type' => 'object', 'nullable' => true, 'description' => 'The handling status a manager stamped on this conflict (null = « à traiter », the default with no row)', 'properties' => [
                                 'status' => ['type' => 'string', 'enum' => ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET']],
