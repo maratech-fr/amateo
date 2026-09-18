@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { expect, type Locator, type Page, test } from "./fixtures";
 
 import { ensureValidated, expectNoA11yViolations, expectNoContrastViolations, forceTheme, loginSeededClub, registerAndVerify, settleVeil, uniqueAra } from "./support";
 
@@ -74,14 +74,26 @@ for (const mode of MODES) {
  * AUCUNE violation structurelle sur ces écrans, hormis `/matchs/semaine-type` (les deux défauts que
  * ce lot corrige). Onboarding idempotent : seul le 1ᵉʳ thème déclenche une génération (CP-SAT réelle).
  */
-const AUTH_SCREENS: { path: string; label: string }[] = [
-  { path: "/matchs", label: "matchs · calendrier" },
-  { path: "/matchs/semaine-type", label: "matchs · semaine type" },
-  { path: "/planning", label: "planning · grille" },
-  { path: "/club", label: "club · fiche" },
+// Témoin PAR ÉCRAN : un locator qui prouve un CONTENU rendu (pas seulement le gabarit). Le témoin
+// GLOBAL précédent (`[data-testid="weekend-grid"], [role="region"], [class*="shadow-sm"]`) était trop
+// étroit — la grille /planning (`WeekGrid`) ne porte NI carte `shadow-sm` NI `role="region"` NI
+// testid, si bien qu'axe scannait une page pourtant PEINTE (heading + boutons de créneaux) et le
+// témoin la déclarait « vide ». Chaque écran désigne donc sa propre preuve de contenu.
+const AUTH_SCREENS: { path: string; label: string; witness: (page: Page) => Locator }[] = [
+  // `/matchs` : la grille week-end (`WeekendGrid.tsx:82`), rendue en dur par `WeekWorkbench` (aucune
+  // condition) sur la vue « Semaine » par défaut.
+  { path: "/matchs", label: "matchs · calendrier", witness: (page) => page.getByTestId("weekend-grid") },
+  // `/matchs/semaine-type` : la région nommée de `TypicalWeekendGrid.tsx:92`.
+  { path: "/matchs/semaine-type", label: "matchs · semaine type", witness: (page) => page.getByRole("region", { name: "Grille de la semaine type" }) },
+  // `/planning` : une carte de session RÉELLE (`WeekGrid` `data-slot-id`, WeekGrid.tsx:429/471). Le
+  // bouton de verrou n'existe PAS sur un plan validé (lecture seule → le cadenas redevient un
+  // indicateur passif, `onToggleLock` undefined) ; on vise donc un créneau PLACÉ, présent dans la
+  // vue par défaut « Par gymnase ».
+  { path: "/planning", label: "planning · grille", witness: (page) => page.locator("[data-slot-id]") },
+  // `/club` : le titre de page `<h1>Gestion du club</h1>` (`ClubPage.tsx:644`) — contenu de la page,
+  // pas du gabarit (l'`AppLayout` ne porte aucun h1).
+  { path: "/club", label: "club · fiche", witness: (page) => page.getByRole("heading", { level: 1 }) },
 ];
-// Témoin : une carte (`shadow-sm`), une grille week-end, ou une région défilante RENDUE.
-const WITNESS = '[data-testid="weekend-grid"], [role="region"], [class*="shadow-sm"]';
 
 for (const mode of MODES) {
   test(`contrast — authenticated screens (${mode})`, async ({ page }) => {
@@ -93,7 +105,7 @@ for (const mode of MODES) {
     for (const screen of AUTH_SCREENS) {
       await page.goto(screen.path);
       await settleVeil(page);
-      await expect(page.locator(WITNESS).first(), `${screen.label} (${mode}) : aucun témoin (carte/grille) rendu — un scan sur écran vide ne prouve rien`).toBeVisible({ timeout: 20_000 });
+      await expect(screen.witness(page).first(), `${screen.label} (${mode}) : aucun témoin (carte/grille/région) rendu — un scan sur écran vide ne prouve rien`).toBeVisible({ timeout: 20_000 });
       await expectNoA11yViolations(page, `${screen.label} (${mode})`);
     }
   });
