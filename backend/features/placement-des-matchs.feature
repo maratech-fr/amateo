@@ -26,6 +26,16 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Quand je lance le placement des matchs
     Alors les deux matchs du samedi sont posés par le solveur dans ce gymnase
 
+  Scénario: Le trajet d'un match extérieur protège le coach partagé pendant le placement automatique
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et deux équipes et un gymnase jetables
+    Et une large fenêtre d'accès le samedi de 14h00 à 23h30 sur ce gymnase
+    Et un entraîneur qui partage les deux équipes
+    Et un match extérieur de la seconde équipe le samedi à 14h00, à long trajet aller-retour
+    Et un match à domicile de la première équipe le samedi à placer
+    Quand je lance le placement des matchs
+    Alors le match à domicile est posé en fin de journée, après le retour du coach de l'extérieur
+
   Scénario: Un amical n'est jamais proposé au solveur et se place à la main hors créneau
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et deux équipes et un gymnase jetables

@@ -62,7 +62,7 @@ class ValidateAssignmentsInputSchema(SerializableModel):
     # Fallback quand le champ est OMIS ; le backend l'envoie TOUJOURS. Aligné sur le contrat
     # courant (engine/CONTRACT_VERSION) pour qu'aucun lecteur ne le prenne pour une version
     # concurrente ; gardé par test_schema_version_defaults_match_contract_version.
-    version: str = "2.22"
+    version: str = "2.23"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     solver_seed: int = Field(default=42, alias="solverSeed")

@@ -485,3 +485,32 @@ def test_protected_habit_window_repels_other_matches() -> None:
     # Protected MATCH window [15:30, 17:15] (D1) — the candidate's match window
     # [k, k+105] must not cross it.
     assert minutes + 105 <= 15 * 60 + 30 or minutes >= 17 * 60 + 15
+
+
+def test_away_travel_extends_the_coach_window_and_pushes_the_home_match() -> None:
+    # D3 — an AWAY match's coach window grows by the round trip (half before the
+    # warm-up, half after the match, EXACTLY like MatchFootprint). Shared coach c1:
+    # t1 plays HOME (to place), t2 plays AWAY at 14:00. Durations 60/0 for clean math.
+    # Without travel the AWAY window is [14:00, 15:00]; t1's habit at 15:00 is clash-
+    # free (half-open) and wins. With a 120-min round trip the AWAY window grows to
+    # [13:00, 16:00]: the 15:00 slot now clashes with the coach (penalty 60 > habit
+    # bonus 20), so the match is pushed to the next clash-free slot, 16:00.
+    def run(round_trip: int) -> dict[str, Any]:
+        return solve_match_placement(
+            payload(
+                matches=[
+                    to_place("m1", "t1"),
+                    {"id": "away1", "teamId": "t2", "date": SATURDAY, "kind": "AWAY", "kickoff": "14:00", "roundTripMinutes": round_trip},
+                ],
+                venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "17:00"}])],
+                teams=[
+                    team("t1", coaches=[{"coachId": "c1", "role": "MAIN"}], habits=[{"dayOfWeek": 6, "kickoff": "15:00", "venueId": "v1"}], matchMinutes=60, warmupMinutes=0),
+                    team("t2", coaches=[{"coachId": "c1", "role": "MAIN"}], matchMinutes=60, warmupMinutes=0),
+                ],
+            )
+        )
+
+    # Witness (round trip = 0): the travel leg is inert, the habit wins at 15:00.
+    assert kickoff_of(run(0), "m1") == "15:00"
+    # With the round trip, the extended AWAY window pushes the match to 16:00.
+    assert kickoff_of(run(120), "m1") == "16:00"

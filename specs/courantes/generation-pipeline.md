@@ -2,7 +2,7 @@
 
 Last verified @ 2026-09-18 (`documentation-update`, PR correctrice de l'audit moteur 0918 — hors
 filet du garde `test_contract_version_doc_sync.py`, AUD-DOC-39). `CONTRACT_VERSION` était noté
-`'2.21'`, désormais **`'2.22'`** (`ScheduleConstraintBuilder.php:64`, même valeur
+`'2.21'`, désormais **`'2.23'`** (`ScheduleConstraintBuilder.php:64`, même valeur
 `MoveSlotService.php:50` et `MatchPlacementPayloadBuilder.php:65`, `engine/CONTRACT_VERSION`,
 bump ENG-40) — occurrences ci-dessous recalées. Reste non re-sondé cette passe : chaîne
 `GenerateScheduleController` → Messenger → `GenerateScheduleHandler`, verrou

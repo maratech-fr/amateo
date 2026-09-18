@@ -1,6 +1,6 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-09-18 (lot correctif de l'audit moteur 0918 — recalage du contrat 2.22,
+Last verified @ 2026-09-18 (lot correctif de l'audit moteur 0918 — recalage du contrat 2.23,
 `documentation-update`). Re-confronté au code : `BanGeocodingClient::SEARCH_URL`
 (`BanGeocodingClient.php:24`) et `IgnRoutingClient::ITINERARY_URL` (`IgnRoutingClient.php:44`)
 hosts en constantes dures ✓ · `IgnRoutingClient::BATCH_BUDGET_SECONDS = 30.0`
@@ -8,7 +8,7 @@ hosts en constantes dures ✓ · `IgnRoutingClient::BATCH_BUDGET_SECONDS = 30.0`
 (`IgnRoutingClient.php:25-26`) ✓ · `VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS = 120`
 (`Service/Geo/VenueTravelTimeAutofillService.php:27`) ✓ · rate-limit `venue_travel_time_autofill`
 10/h sliding window (`rate_limiter.yaml:59-62`) ✓ · `engine/CONTRACT_VERSION` a bougé à
-**2.22** (bump ENG-40, sans rapport avec ce fichier — lot correctif de l'audit moteur 0918,
+**2.23** (bump ENG-40, sans rapport avec ce fichier — lot correctif de l'audit moteur 0918,
 AUD-DOC-39) — occurrence ci-dessous recalée ; la ligne §« Le solveur d'ENTRAÎNEMENT la lit » ne
 fige déjà aucune valeur (« voir le fichier pour la valeur courante ») donc rien à corriger là.
 
