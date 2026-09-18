@@ -13,6 +13,27 @@ import { parseTime } from "@/shared/lib/time";
 
 export { isoWeekday };
 
+/**
+ * ⚠️ MIROIR DÉCLARÉ (régime 2, FrontRederivationRegistryTest) — parité MÉCANIQUE avec la
+ * MÊME algèbre côté backend, `App\Service\MatchConflictDetector::kickoffInsideLeagueWindow`
+ * (branche LEAGUE_WINDOW_VIOLATION). Le front BLOQUE la pose (via `isInEnvelope`, rail
+ * synchrone) ; le backend DIAGNOSTIQUE après coup. Ils DIVERGENT par conception sur (a)
+ * l'exemption AMICAL — le front assouplit un amical (`PlacementPanel` : `!isFriendly`), le
+ * backend saute les `competitionId` null (`leagueWindowViolations`) — et (b) la résolution
+ * équipe↔fenêtre, déjà serveur (`resolvedTeamWindows`). Ils partagent CE prédicat
+ * d'appartenance, la seule algèbre qui peut dériver en silence : intervalle FERMÉ
+ * `[kickoffMin, kickoffMax]` (les deux bornes incluses), filtré sur le JOUR. Cas partagés
+ * `leagueEnvelope.parity.json`, gardés par `LeagueEnvelopeMirrorParityTest`.
+ */
+export function kickoffInsideLeagueWindow(
+  day: number,
+  kickoff: string,
+  windows: { dayOfWeek: number; kickoffMin: string; kickoffMax: string }[],
+): boolean {
+  const min = timeToMinutes(kickoff);
+  return windows.some((w) => w.dayOfWeek === day && min >= timeToMinutes(w.kickoffMin) && min <= timeToMinutes(w.kickoffMax));
+}
+
 export interface EnvelopeResult {
   /** True only when the team maps to at least one league window (HARD guard active). */
   mapped: boolean;
@@ -50,10 +71,9 @@ export function resolveEnvelope(
     mapped: matched.length > 0,
     windows: matched,
     dayOk: dayWindows.length > 0,
-    timeOk: (kickoff: string) => {
-      const min = timeToMinutes(kickoff);
-      return dayWindows.some((w) => min >= timeToMinutes(w.kickoffMin) && min <= timeToMinutes(w.kickoffMax));
-    },
+    // Miroir déclaré ci-dessus : le prédicat d'appartenance à l'enveloppe ligue vit
+    // dans `kickoffInsideLeagueWindow` (filtré sur le jour), gardé en parité avec le backend.
+    timeOk: (kickoff: string) => kickoffInsideLeagueWindow(day, kickoff, matched),
   };
 }
 

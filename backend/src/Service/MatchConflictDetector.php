@@ -171,6 +171,33 @@ final class MatchConflictDetector
     }
 
     /**
+     * LE prédicat pur d'enveloppe de LIGUE — le coup d'envoi (H:i) tombe-t-il dans une
+     * fenêtre autorisée par la ligue ce JOUR ? Intervalle FERMÉ `[kickoffMin, kickoffMax]`
+     * (les deux bornes incluses — la ligue autorise le dernier coup d'envoi), à distinguer
+     * du demi-ouvert de {@see kickoffInsideWindow} (accès gymnase). Extrait pour la parité
+     * MÉCANIQUE avec le front (`matches/lib/envelope.ts::kickoffInsideLeagueWindow`, cas
+     * partagés `leagueEnvelope.parity.json`, gardés par `LeagueEnvelopeMirrorParityTest`) :
+     * le front l'utilise pour BLOQUER la pose (via `isInEnvelope`), le backend pour
+     * DIAGNOSTIQUER (LEAGUE_WINDOW_VIOLATION). L'exemption AMICAL et la résolution
+     * équipe↔fenêtre divergent (déclaré côté front) ; cette algèbre-ci ne doit pas.
+     *
+     * @param list<array{dayOfWeek: int, kickoffMin: string, kickoffMax: string}> $windows
+     */
+    public static function kickoffInsideLeagueWindow(int $day, string $kickoff, array $windows): bool
+    {
+        foreach ($windows as $window) {
+            if ($window['dayOfWeek'] === $day
+                && $kickoff >= $window['kickoffMin']
+                && $kickoff <= $window['kickoffMax']
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * @param list<Fixture>                                                                          $fixtures             season fixtures (already club+season scoped)
      * @param list<TeamCoach>                                                                        $teamCoachRows        coach↔team links (scoped)
      * @param string|null                                                                            $seasonScheduleId     the season's calendar (the version its plan points at), or null
@@ -578,27 +605,18 @@ final class MatchConflictDetector
             }
             $day = (int) $fixture->getMatchDate()->format('N');
             $kickoff = $kickoffTime->format('H:i');
-            $inside = false;
-            foreach ($windows as $window) {
-                if ($window->getDayOfWeek() === $day
-                    && $kickoff >= $window->getKickoffMin()->format('H:i')
-                    && $kickoff <= $window->getKickoffMax()->format('H:i')
-                ) {
-                    $inside = true;
-                    break;
-                }
-            }
-            if ($inside) {
+            $windowArrays = array_map(static fn (LeagueMatchWindow $w): array => [
+                'dayOfWeek' => $w->getDayOfWeek(),
+                'kickoffMin' => $w->getKickoffMin()->format('H:i'),
+                'kickoffMax' => $w->getKickoffMax()->format('H:i'),
+            ], $windows);
+            if (self::kickoffInsideLeagueWindow($day, $kickoff, $windowArrays)) {
                 continue;
             }
             $conflicts[] = [
                 'type' => 'LEAGUE_WINDOW_VIOLATION',
                 'severity' => 2,
-                'windows' => array_map(static fn (LeagueMatchWindow $w): array => [
-                    'dayOfWeek' => $w->getDayOfWeek(),
-                    'kickoffMin' => $w->getKickoffMin()->format('H:i'),
-                    'kickoffMax' => $w->getKickoffMax()->format('H:i'),
-                ], $windows),
+                'windows' => $windowArrays,
                 'fixture' => $this->bareFixtureView($fixture),
             ];
         }

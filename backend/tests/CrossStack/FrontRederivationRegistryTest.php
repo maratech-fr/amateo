@@ -103,6 +103,11 @@ final class FrontRederivationRegistryTest extends TestCase
             'backendTruth' => 'App\\Service\\MatchConflictDetector::kickoffInsideWindow',
             'parityTest' => 'MatchAccessMirrorParityTest.php',
         ],
+        'features/matches/lib/envelope.ts' => [
+            'decides' => 'coup d\'envoi dans une fenêtre d\'enveloppe ligue de ce jour (intervalle fermé)',
+            'backendTruth' => 'App\\Service\\MatchConflictDetector::kickoffInsideLeagueWindow',
+            'parityTest' => 'LeagueEnvelopeMirrorParityTest.php',
+        ],
         'features/cockpit/lib/holidayWorkweek.ts' => [
             'decides' => 'une semaine est-elle « de vacances » (lundi→vendredi couvert) — offerte en reprise, exclue de l\'offre fermeture ; sinon semaine de saison',
             'backendTruth' => 'App\\Service\\HolidayWorkweekRule::covers (garde du POST d\'une semaine-enfant de vacances)',
