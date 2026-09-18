@@ -150,7 +150,9 @@ describe("WeekendGrid — case « À confirmer » (lot 1, 2026-09-17)", () => {
     expect(screen.getByLabelText("Ancre manuelle")).toBeInTheDocument();
     const ghost = screen.getByTitle(/fenêtre protégée/);
     expect(ghost).toHaveClass("border-dashed");
-    expect(ghost).toHaveClass("opacity-60");
+    // A11Y-22 — la dé-emphase du fantôme se porte par la GRAISSE, jamais par l'opacité sur du texte.
+    expect(ghost).toHaveClass("font-normal");
+    expect(ghost).not.toHaveClass("opacity-60");
   });
 });
 

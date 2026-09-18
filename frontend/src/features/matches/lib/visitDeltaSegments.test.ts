@@ -31,4 +31,20 @@ describe("visitDeltaSegments (RMM-6 — segments partagés du delta de visite)",
   it("delta VIDE → aucun segment", () => {
     expect(visitDeltaSegments({ newFixturesCount: 0, newConflictFingerprints: [], planningChanged: false })).toEqual([]);
   });
+
+  // FRT-37 — garde de forme (maison unique). Un delta MALFORMÉ (payload API partiel, `{}`) lisait
+  // `.newConflictFingerprints.length` sur `undefined` et abattait la route (le bandeau et la tuile
+  // cockpit consomment cette fonction). Un compteur non-number / des fingerprints non-array / un
+  // booléen absent rendent une liste VIDE → bandeau et tuile absents, page indemne.
+  it("delta `{}` (payload malformé) → aucun segment, aucune exception", () => {
+    expect(() => visitDeltaSegments({} as never)).not.toThrow();
+    expect(visitDeltaSegments({} as never)).toEqual([]);
+  });
+
+  it("variantes PARTIELLES (champ manquant / type faux) → aucun segment", () => {
+    expect(visitDeltaSegments({ newFixturesCount: 3 } as never)).toEqual([]); // fingerprints/planningChanged absents
+    expect(visitDeltaSegments({ newConflictFingerprints: ["a"], planningChanged: true } as never)).toEqual([]); // compteur absent
+    expect(visitDeltaSegments({ newFixturesCount: 3, newConflictFingerprints: "x", planningChanged: true } as never)).toEqual([]); // fingerprints non-array
+    expect(visitDeltaSegments({ newFixturesCount: 3, newConflictFingerprints: [], planningChanged: 1 } as never)).toEqual([]); // planningChanged non-booléen
+  });
 });

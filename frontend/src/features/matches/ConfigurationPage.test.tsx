@@ -10,7 +10,7 @@ import { ConfigurationPage } from "./ConfigurationPage";
 
 // PR 2a — la Configuration perd le gabarit + les créneaux (partis en Semaine type) et gagne la
 // section « Accès match ». Défaut = tout replié. On mute la couche api (PROD) ; react-query tourne.
-const state: Record<string, unknown[] | "pending"> = {
+const state: Record<string, unknown[] | "pending" | "error"> = {
   teams: [],
   venues: [],
   competitions: [],
@@ -23,7 +23,9 @@ const state: Record<string, unknown[] | "pending"> = {
 
 function serve(key: string): Promise<unknown> {
   const value = state[key];
-  return "pending" === value ? new Promise<unknown>(() => {}) : Promise.resolve(value);
+  if ("pending" === value) return new Promise<unknown>(() => {});
+  if ("error" === value) return Promise.reject(new Error("boom"));
+  return Promise.resolve(value);
 }
 
 vi.mock("./api", () => ({
@@ -233,5 +235,19 @@ describe("ConfigurationPage — les autres sections (rappel)", () => {
     await screen.findByRole("button", { name: /^Échéances de saisie/ });
     expect(screen.queryByRole("button", { name: "Engagements FFBB" })).not.toBeInTheDocument();
     expect(screen.queryByText(/Dépôt saisonnier FBI/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("ConfigurationPage — UXS-08 : un échec de lecture fondatrice ne se rend pas comme vide", () => {
+  it("useVenues en ÉCHEC → une alerte avec réessai, jamais un « Aucun … » crédible", async () => {
+    // On mute la PROD (`getVenues` rejette), pas le composant : la page est gatée sur ses deux
+    // lectures fondatrices (teams + venues). Un échec doit céder à `LoadErrorHint` (role=alert),
+    // jamais fabriquer un écran vide (« aucune section », « Aucun gymnase ») qui pousse à re-saisir.
+    state.venues = "error";
+    renderWithProviders(<Harness />);
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    // Aucun vide crédible n'est rendu.
+    expect(screen.queryByText(/Aucun/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Échéances de saisie/ })).not.toBeInTheDocument();
   });
 });

@@ -1028,8 +1028,8 @@ describe("PlanningPage (integration)", () => {
       await vi.waitFor(() => {
         const slot1 = container.querySelector('[data-slot-id="slot-1"]');
         const slot2 = container.querySelector('[data-slot-id="slot-2"]');
-        expect(slot2?.className).not.toContain("opacity-30");
-        expect(slot1?.className).toContain("opacity-30");
+        expect(slot2?.className).not.toContain("grayscale");
+        expect(slot1?.className).toContain("grayscale");
       });
       // P2-30 — le mode cible RESTE armé pour réessayer (le panneau montre la consigne de choix).
       expect(screen.getByRole("button", { name: /Choisir la case cible/ })).toBeInTheDocument();

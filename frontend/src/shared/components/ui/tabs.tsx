@@ -113,7 +113,11 @@ export function Tabs({ tabs, activeTab, onTabChange, ariaLabel, idPrefix, varian
             type="button"
             role="tab"
             id={`${idPrefix}-tab-${tab.id}`}
-            aria-controls={`${idPrefix}-panel-${tab.id}`}
+            // A11Y-23 — `aria-controls` seulement sur l'onglet ACTIF (attribut optionnel, APG) :
+            // certains consommateurs ne montent que le panneau actif (CampaignDialog,
+            // TypicalWeekendGrid), et un `aria-controls` posé sur les onglets inactifs pointait
+            // alors un panneau ABSENT du DOM.
+            aria-controls={isActive ? `${idPrefix}-panel-${tab.id}` : undefined}
             aria-selected={isActive}
             tabIndex={isActive ? 0 : -1}
             onClick={() => onTabChange(tab.id)}

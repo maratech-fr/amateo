@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures";
 
-import { expectNoContrastViolations, forceTheme, registerAndVerify, settleVeil, uniqueAra } from "./support";
+import { ensureValidated, expectNoContrastViolations, forceTheme, loginSeededClub, registerAndVerify, settleVeil, uniqueAra } from "./support";
 
 /**
  * WCAG 2.2 AA colour-contrast (1.4.3) on the real rendered app — the axis jsdom
@@ -57,6 +57,43 @@ for (const mode of MODES) {
     // valide alors la vraie couleur (`text-foreground`, AA). cf. `settleVeil`.
     await settleVeil(page);
     await expectNoContrastViolations(page, `wizard · gymnases (${mode})`);
+  });
+}
+
+/**
+ * A11Y-22 — les écrans AUTHENTIFIÉS denses (`/matchs`, `/matchs/semaine-type`, `/planning`,
+ * `/club`) portent les grilles et textes que ce lot a corrigés (opacité → grayscale / jeton plein,
+ * fantômes en `text-muted-foreground` plein, etc.). axe sur les écrans PUBLICS ne les peint jamais :
+ * on connecte le club seedé, on amène le plan à « validé » (matchs débloqués), et on scanne le
+ * contraste (WCAG 1.4.3) sur chaque écran, DANS LES DEUX THÈMES. Chaque scan exige un TÉMOIN (une
+ * carte / grille rendue) — un scan sur écran vide ne prouve rien — et attend la levée du voile.
+ *
+ * NB : scan SCOPÉ au contraste (règle établie du dépôt, `expectNoContrastViolations`), et non un
+ * scan structurel large — celui-ci remonterait de la dette a11y préexistante hors du périmètre de
+ * ce lot. Onboarding idempotent : seul le 1ᵉʳ thème déclenche une génération (CP-SAT réelle).
+ */
+const AUTH_SCREENS: { path: string; label: string }[] = [
+  { path: "/matchs", label: "matchs · calendrier" },
+  { path: "/matchs/semaine-type", label: "matchs · semaine type" },
+  { path: "/planning", label: "planning · grille" },
+  { path: "/club", label: "club · fiche" },
+];
+// Témoin : une carte (`shadow-sm`), une grille week-end, ou une région défilante RENDUE.
+const WITNESS = '[data-testid="weekend-grid"], [role="region"], [class*="shadow-sm"]';
+
+for (const mode of MODES) {
+  test(`contrast — authenticated screens (${mode})`, async ({ page }) => {
+    test.setTimeout(300_000); // le 1er thème conduit une génération CP-SAT réelle
+    await forceTheme(page, mode);
+    await loginSeededClub(page);
+    await ensureValidated(page);
+
+    for (const screen of AUTH_SCREENS) {
+      await page.goto(screen.path);
+      await settleVeil(page);
+      await expect(page.locator(WITNESS).first(), `${screen.label} (${mode}) : aucun témoin (carte/grille) rendu — un scan sur écran vide ne prouve rien`).toBeVisible({ timeout: 20_000 });
+      await expectNoContrastViolations(page, `${screen.label} (${mode})`);
+    }
   });
 }
 
@@ -139,6 +176,9 @@ for (const mode of MODES) {
         return [d[0], d[1], d[2]];
       };
       out["text-foreground on bg-warning/10"] = ratio(of("text-foreground", "color"), composite("bg-warning/10", bg));
+      // A11Y-22 — la même pastille warning peut être posée sur une CARD (ConflictRadar dans une
+      // Card, WeekendGrid « À confirmer ») : le fond `bg-warning/10` se composite alors sur `bg-card`.
+      out["text-foreground on bg-warning/10 (over card)"] = ratio(of("text-foreground", "color"), composite("bg-warning/10", card));
       // P4-177 — le TEXTE de la pastille `accent` (StatusPill : « Gain » d'un compromis, source
       // MANUEL) : `text-foreground` sur `bg-accent/10` (fond α 0.1 → composité sur `bg-background`).
       // `text-accent` y tombe sous AA (cf. AGENTS.md gotcha #11) : le texte est donc `text-foreground`
@@ -172,6 +212,23 @@ for (const mode of MODES) {
       const fg = of("text-foreground", "color");
       out["text-foreground on réservation cell (accent tint)"] = ratio(fg, cellFill("color-mix(in oklch, var(--accent) 30%, var(--card))"));
       out["text-foreground on réservation cell (bright venue tint)"] = ratio(fg, cellFill("color-mix(in oklch, #FFD21E 30%, var(--card))"));
+      // A11Y-22 — la case RÉELLE de la grille week-end (`WeekendGrid`) porte son texte `text-foreground`
+      // sur `tint(venueColor)` = `<hex>22` (α 0x22/255 ≈ 0,13), composité sur `bg-card`. On mesure la
+      // PIRE teinte de `VENUE_PALETTE` pour du texte foncé : le jaune `#FFD21E` (le plus clair).
+      const compositeColor = (color: string, under: [number, number, number]): [number, number, number] => {
+        ctx.clearRect(0, 0, 1, 1);
+        ctx.fillStyle = `rgb(${under[0]}, ${under[1]}, ${under[2]})`;
+        ctx.fillRect(0, 0, 1, 1);
+        ctx.fillStyle = color;
+        ctx.fillRect(0, 0, 1, 1);
+        const d = ctx.getImageData(0, 0, 1, 1).data;
+        return [d[0], d[1], d[2]];
+      };
+      out["text-foreground on WeekendGrid cell (bright venue tint)"] = ratio(fg, compositeColor("#FFD21E22", card));
+      // A11Y-22 — `text-muted-foreground` PLEIN (l'opacité sur du texte a disparu) sur les cases vides /
+      // fermées des grilles planning (`WeekGrid`) : sur `bg-muted` opaque, et sur `bg-muted/40` sur card.
+      out["text-muted-foreground on bg-muted"] = ratio(of("text-muted-foreground", "color"), of("bg-muted", "backgroundColor"));
+      out["text-muted-foreground on bg-muted/40 (over card)"] = ratio(of("text-muted-foreground", "color"), composite("bg-muted/40", card));
       // P4-181 — `text-destructive` en TEXTE vit sur des teintes `bg-destructive/10|15` (badge de
       // contrainte `PeriodStructure`, badge `ReconciliationPanel`, jour sélectionné `CoachWishForm`,
       // « F » férié `MonthCalendar` en /15, alerte `SlotReservationModal`), sur card ET sur background.

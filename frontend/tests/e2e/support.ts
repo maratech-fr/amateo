@@ -121,6 +121,84 @@ export async function expectNoContrastViolations(page: Page, label: string, incl
 }
 
 /**
+ * Seeded dev club (BasketballInit) — full data, but INCOMPLETE onboarding. Le login et l'onboarding
+ * jusqu'à « planning principal validé » vivent ICI (maison unique) : `matches.spec` en porte
+ * historiquement une copie (candidat de convergence — à faire pointer sur ces exports).
+ */
+export const SEEDED_CLUB = { email: "mara.mb@bccl.fr", password: "maraboubccl" } as const;
+
+export async function loginSeededClub(page: Page): Promise<void> {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(SEEDED_CLUB.email);
+  await page.getByLabel("Mot de passe", { exact: true }).fill(SEEDED_CLUB.password);
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page.getByRole("button", { name: "Saison de travail" })).toBeVisible({ timeout: 15_000 });
+}
+
+/**
+ * Amène le club seedé à l'état 3 (planning principal validé) pour débloquer les matchs. Idempotent
+ * (la base de dev n'est pas réinitialisée) : si la nav Matchs est déjà un lien actif, le socle est
+ * validé → rien à faire. Sinon on conduit l'étape génération du wizard puis on valide le plan.
+ */
+export async function ensureValidated(page: Page): Promise<void> {
+  await page.goto("/");
+  const validated = await page
+    .getByRole("link", { name: "Matchs" })
+    .waitFor({ state: "visible", timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (validated) {
+    return;
+  }
+
+  await page.goto("/wizard");
+  await page.waitForLoadState("networkidle");
+
+  const railGenerate = page.locator("nav").getByRole("button", { name: /Génération/ });
+  if (await railGenerate.isEnabled({ timeout: 3_000 }).catch(() => false)) {
+    await railGenerate.click();
+  }
+
+  const cont = page.getByRole("button", { name: "Continuer vers la génération" });
+  const launch = page.getByRole("button", { name: "Lancer la génération" });
+  const onGenerationPath = await Promise.race([
+    cont.waitFor({ state: "visible", timeout: 10_000 }).then(() => true),
+    launch.waitFor({ state: "visible", timeout: 10_000 }).then(() => true),
+  ]).catch(() => false);
+
+  if (!onGenerationPath) {
+    const landed = await page
+      .locator("[aria-current]")
+      .first()
+      .textContent()
+      .then((t) => t?.trim() ?? "inconnue")
+      .catch(() => "inconnue");
+    throw new Error(
+      `ensureValidated: le wizard a atterri sur « ${landed} » au lieu du chemin de génération. ` +
+        "La base de DEV a dérivé (une étape est redevenue incomplète). En CI (base fraîche) ce cas ne se produit pas.",
+    );
+  }
+
+  if (await cont.isVisible().catch(() => false)) {
+    if (!(await cont.isEnabled({ timeout: 5_000 }).catch(() => false))) {
+      throw new Error("ensureValidated: « Continuer vers la génération » est DÉSACTIVÉ (gate du récap : contrainte invalide ou bloqueur non résolu).");
+    }
+    await cont.click();
+  }
+  const validate = page.getByRole("button", { name: "Valider" });
+  const alreadyGenerated = await validate.isVisible({ timeout: 3_000 }).catch(() => false);
+  if (!alreadyGenerated && (await launch.isEnabled({ timeout: 5_000 }).catch(() => false))) {
+    await launch.click();
+  }
+  await expect(validate).toBeVisible({ timeout: 180_000 });
+  await validate.click();
+  const dialog = page.getByRole("dialog", { name: "Valider le planning" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Valider", exact: true }).click();
+  await expect(page.getByRole("link", { name: "Matchs" })).toBeVisible({ timeout: 15_000 });
+}
+
+/**
  * Persist the theme mode before the app boots (zustand-persist key `cs-theme`)
  * AND kill transitions/animations, so axe samples settled colours — a
  * `transition-colors` mid-flight briefly reads intermediate, sub-AA values.

@@ -103,7 +103,7 @@ describe("VenueLabelsSection — écran d'appariement (E2, P4-205)", () => {
     // Le dialogue annonce l'impact chiffré (M non placés basculent, N placés conservés).
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText(/2 domiciles non placés basculeront vers Gymnase Beta/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/1 placé conserve leur salle/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/1 placé conserve leur gymnase/)).toBeInTheDocument();
     // Rien muté tant que non confirmé.
     expect(h.mutateAttach).not.toHaveBeenCalled();
     await user.click(within(dialog).getByRole("button", { name: "Réaffecter" }));

@@ -49,7 +49,7 @@ describe("MatchDurationsEditor — la durée de match par catégorie (P2-54 RMM-
     renderWithProviders(<MatchDurationsEditor categories={CATEGORIES} />);
     // Vrai pour le coach (fenêtre personne), et désormais DIT pour la salle (règle D1 / P4-203) —
     // sans cette phrase, un gestionnaire croit que deux matchs à 2 h d'écart collisionnent.
-    expect(screen.getByText(/l'échauffement n'occupe pas la salle/i)).toBeInTheDocument();
+    expect(screen.getByText(/l'échauffement n'occupe pas le gymnase/i)).toBeInTheDocument();
     expect(screen.getByText(/deux matchs peuvent s'enchaîner/i)).toBeInTheDocument();
   });
 

@@ -17,6 +17,17 @@ export interface VisitDelta {
 }
 
 export function visitDeltaSegments(delta: VisitDelta): string[] {
+  // FRT-37 — garde de forme (maison unique). Un delta MALFORMÉ (payload API partiel, `{}`) lisait
+  // `.newConflictFingerprints.length` sur `undefined` et abattait la route — cette fonction alimente
+  // le bandeau du module ET la tuile cockpit. Compteur non-number / fingerprints non-array / booléen
+  // absent → aucun segment → bandeau et tuile absents, page indemne (aucune error boundary requise).
+  if (
+    "number" !== typeof delta.newFixturesCount ||
+    !Array.isArray(delta.newConflictFingerprints) ||
+    "boolean" !== typeof delta.planningChanged
+  ) {
+    return [];
+  }
   const segments: string[] = [];
   if (delta.newFixturesCount > 0) {
     segments.push(`${delta.newFixturesCount} match${delta.newFixturesCount > 1 ? "s" : ""} arrivé${delta.newFixturesCount > 1 ? "s" : ""}`);

@@ -169,7 +169,7 @@ export function CoachWishesModal({ mother, weekFilter, onClose }: { mother: Cale
               ) : (
                 <ul className="space-y-1">
                   {items.map((w) => (
-                    <li key={w.id} className={cn("flex items-start gap-2 rounded-md border border-border px-3 py-2 text-sm", w.done && "opacity-60")}>
+                    <li key={w.id} className="flex items-start gap-2 rounded-md border border-border px-3 py-2 text-sm">
                       <input type="checkbox" aria-label={`Traité — ${teamName.get(w.teamId) ?? "équipe"}`} className="mt-1 size-4" checked={w.done} onChange={() => toggleDone(w)} />
                       <div className={cn("min-w-0 flex-1", w.done && "line-through")}>
                         <p className="font-medium">

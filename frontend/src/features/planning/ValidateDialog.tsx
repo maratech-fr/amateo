@@ -66,7 +66,7 @@ export function ValidateDialog({ hasAlerts, siblingCount, busy, orphan, onConfir
           <MapPinOff aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-destructive" />
           <div>
             <p>
-              {orphan.orphanCount > 1 ? `${orphan.orphanCount} matchs perdront leur salle` : "1 match perdra sa salle"}
+              {orphan.orphanCount > 1 ? `${orphan.orphanCount} matchs perdront leur gymnase` : "1 match perdra son gymnase"}
               {orphan.declaredCount > 0 ? `, dont ${orphan.declaredCount} déjà ${orphan.declaredCount > 1 ? "déclarés" : "déclaré"} à la fédération` : ""}.
             </p>
             <p className="mt-1 text-muted-foreground">

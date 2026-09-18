@@ -79,7 +79,7 @@ const LOCK_ORIGIN: Record<LockOrigin, { label: string; hint: string }> = {
 function ConstraintList({ label, items, describe }: { label: string; items: Constraint[]; describe: (c: Constraint) => string | null }) {
   return (
     <div className="mt-2 first:mt-0">
-      <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground/80">{label}</p>
+      <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
       <ul className="mt-1 divide-y divide-border/60">
         {items.map((c) => {
           // B2 — UNE seule ligne de texte par contrainte : ce que la règle FAIT (dérivé de la
@@ -101,7 +101,7 @@ function ConstraintList({ label, items, describe }: { label: string; items: Cons
                 step="constraints"
                 params={{ edit: c.id }}
                 from="planning"
-                className="self-start text-xs font-medium text-accent underline underline-offset-2 hover:text-accent/80"
+                className="self-start text-xs font-medium text-accent underline underline-offset-2 hover:text-accent"
               >
                 Corriger cette contrainte
               </WizardStepLink>

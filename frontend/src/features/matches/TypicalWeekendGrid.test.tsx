@@ -59,4 +59,30 @@ describe("TypicalWeekendGrid — segmenté A/B (RMM-5 PR-4)", () => {
     expect(screen.getByText("SF1")).toBeInTheDocument();
     expect(screen.getByText("SM2")).toBeInTheDocument();
   });
+
+  // A11Y-23 — le segmenté A/B posait un `aria-controls` sur CHAQUE onglet, mais AUCUN TabPanel
+  // n'existait : des références pendantes. La semaine active est désormais enveloppée dans un
+  // TabPanel, et la primitive ne pose `aria-controls` que sur l'onglet actif → tout lien résout.
+  it("A11Y-23 — chaque aria-controls d'onglet référence un panneau présent", () => {
+    render(<TypicalWeekendGrid habits={[]} rotations={[rotation()]} venues={VENUES} teams={TEAMS} />);
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.length).toBeGreaterThan(1);
+    for (const tab of tabs) {
+      const controls = tab.getAttribute("aria-controls");
+      if (null !== controls) {
+        expect(document.getElementById(controls), `aria-controls="${controls}" doit exister`).not.toBeNull();
+      }
+    }
+    // L'onglet actif (Semaine A) pointe bien un tabpanel présent.
+    expect(screen.getByRole("tabpanel")).toBeInTheDocument();
+  });
+
+  // A11Y-24 — la grille défile ; une région défilante doit être focusable au clavier et nommée
+  // (WCAG 2.1.1). Le div `overflow-auto` porte lui-même tabIndex/role="region"/aria-label.
+  it("A11Y-24 — la grille défilante est une région focusable et nommée", () => {
+    render(<TypicalWeekendGrid habits={[]} rotations={[rotation()]} venues={VENUES} teams={TEAMS} />);
+    const region = screen.getByRole("region", { name: "Grille de la semaine type" });
+    expect(region).toHaveClass("overflow-auto");
+    expect(region).toHaveAttribute("tabindex", "0");
+  });
 });

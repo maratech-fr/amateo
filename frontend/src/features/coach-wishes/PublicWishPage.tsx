@@ -248,7 +248,7 @@ function WishProgress({ stepper, teams }: { stepper: ReturnType<typeof useWishSt
                   {content}
                 </button>
               ) : (
-                <span className="rounded-full px-2.5 py-1.5 text-muted-foreground/70">{label(i)}</span>
+                <span className="rounded-full px-2.5 py-1.5 text-muted-foreground">{label(i)}</span>
               )}
             </li>
           );

@@ -318,8 +318,9 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                   title={`Fermé — ${closedReason}`}
                   aria-label={`${cell.venueLabel}, ${dayLabel} ${cell.startLabel}–${cell.endLabel} — fermé : ${closedReason}`}
                   className={cn(
-                    "z-10 m-px flex items-center justify-center overflow-hidden rounded border border-dashed border-muted-foreground/30 bg-muted/40 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60",
-                    dimmed ? "opacity-30" : "",
+                    "z-10 m-px flex items-center justify-center overflow-hidden rounded border border-dashed border-muted-foreground/30 bg-muted/40 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground",
+                    // A11Y-22 — estompage de cellule par `grayscale`, jamais `opacity` (opacité sur du texte < AA).
+                    dimmed ? "grayscale" : "",
                     flagged ? "border-warning ring-2 ring-warning text-warning" : "",
                   )}
                   style={emptyStyle}
@@ -357,11 +358,11 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                 title={`Créneau vide · ${cell.venueLabel} · ${cell.startLabel}–${cell.endLabel}`}
                 aria-label={emphasized ? `Créneau vide à combler · ${cell.venueLabel} · ${cell.startLabel}–${cell.endLabel}` : undefined}
                 className={cn(
-                  "z-10 m-px flex items-center justify-center overflow-hidden rounded border border-dashed border-muted-foreground/40 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70 transition",
-                  dimmed ? "opacity-30" : "",
+                  "z-10 m-px flex items-center justify-center overflow-hidden rounded border border-dashed border-muted-foreground/40 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground transition",
+                  dimmed ? "grayscale" : "",
                   flagged ? "border-warning ring-2 ring-warning text-warning" : "",
-                  // Une fenêtre vide n'a aucun verrou : sous la lentille, elle s'estompe.
-                  lensActive ? "opacity-40" : "",
+                  // Une fenêtre vide n'a aucun verrou : sous la lentille, elle s'estompe (grayscale, A11Y-22).
+                  lensActive ? "grayscale" : "",
                   // Discret mais repérable : bordure pleine + fond teinté accent + texte accent.
                   emphasized ? "border-solid border-accent bg-accent/10 text-accent" : "",
                 )}
@@ -388,7 +389,7 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                 key={cell.key}
                 className={cn(
                   "relative z-10 m-px flex flex-col overflow-hidden rounded border-l-4 text-left leading-tight transition",
-                  dimmed ? "opacity-30" : "",
+                  dimmed ? "grayscale" : "",
                   null !== uniformOrigin ? LOCK_LENS_META[uniformOrigin].ringClass : "",
                 )}
                 style={{
@@ -416,7 +417,7 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                       key={member.slotId}
                       className={cn(
                         "group relative flex w-full items-center",
-                        lensActive && null === member.lockOrigin ? "opacity-40" : "",
+                        lensActive && null === member.lockOrigin ? "grayscale" : "",
                         // Anneau par membre seulement en situation MIXTE — uniforme = anneau de carte.
                         memberLensRing && null !== member.lockOrigin ? LOCK_LENS_META[member.lockOrigin].ringClass : "",
                         // Écart au socle : anneau `diff`, sauf si sélection ou anneau de lentille prime.
@@ -473,11 +474,11 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                 "group relative z-10 m-px flex overflow-hidden rounded border-l-4 transition",
                 "hover:ring-1 hover:ring-accent",
                 selected ? "ring-2 ring-accent" : "",
-                dimmed ? "opacity-30" : "",
+                dimmed ? "grayscale" : "",
                 // Mode cible : la SOURCE pulse et porte un anneau distinctif.
                 isSource(cell.slotId) ? "animate-pulse ring-2 ring-accent" : "",
                 // Lentille : sans verrou → estompé ; verrouillé → anneau de sa catégorie.
-                lensActive && null === cell.lockOrigin ? "opacity-40" : "",
+                lensActive && null === cell.lockOrigin ? "grayscale" : "",
                 lensActive && null !== cell.lockOrigin ? LOCK_LENS_META[cell.lockOrigin].ringClass : "",
                 // Écart au socle : anneau `diff`, sauf conflit (aucun anneau, comme toute carte
                 // occupée surlignée), sélection ou anneau de lentille ; le symbole ⇄, lui, reste.

@@ -93,7 +93,7 @@ export function VenueLabelsSection({ venues }: { venues: Venue[] | undefined }) 
       {
         onSuccess: (r) => {
           clearSelection(row.labelKey);
-          toast.success(`Alias déplacé — ${r.attached} domicile${r.attached > 1 ? "s" : ""} basculé${r.attached > 1 ? "s" : ""}, ${r.kept ?? 0} placé${(r.kept ?? 0) > 1 ? "s" : ""} conservé${(r.kept ?? 0) > 1 ? "s" : ""} sur leur salle`);
+          toast.success(`Alias déplacé — ${r.attached} domicile${r.attached > 1 ? "s" : ""} basculé${r.attached > 1 ? "s" : ""}, ${r.kept ?? 0} placé${(r.kept ?? 0) > 1 ? "s" : ""} conservé${(r.kept ?? 0) > 1 ? "s" : ""} sur leur gymnase`);
         },
       },
     );
@@ -194,7 +194,7 @@ export function VenueLabelsSection({ venues }: { venues: Venue[] | undefined }) 
         title={null !== pending && "reassign" === pending.kind ? `Réaffecter « ${pending.row.displayLabel} » à ${pending.targetVenueName} ?` : ""}
         description={
           null !== pending && "reassign" === pending.kind
-            ? `${pending.row.unplacedCount} domicile${pending.row.unplacedCount > 1 ? "s" : ""} non placé${pending.row.unplacedCount > 1 ? "s" : ""} basculeront vers ${pending.targetVenueName} ; ${pending.row.placedCount} placé${pending.row.placedCount > 1 ? "s" : ""} ${pending.row.placedCount > 1 ? "conservent" : "conserve"} leur salle.`
+            ? `${pending.row.unplacedCount} domicile${pending.row.unplacedCount > 1 ? "s" : ""} non placé${pending.row.unplacedCount > 1 ? "s" : ""} basculeront vers ${pending.targetVenueName} ; ${pending.row.placedCount} placé${pending.row.placedCount > 1 ? "s" : ""} ${pending.row.placedCount > 1 ? "conservent" : "conserve"} leur gymnase.`
             : undefined
         }
         confirmLabel="Réaffecter"
