@@ -1,14 +1,18 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-09-15 (rotation `documentation-update`, zone non touchée par cette PR —
-contrôle de fraîcheur). Re-confronté au code : `resolveTravelRuleIntensity`
+Last verified @ 2026-09-18 (rotation de fraîcheur `documentation-update`, PR audit 0918). **DOC-45
+corrigé** : la table annonçait « ✅ +60 soft / forcé » / « ✅ interdit / −60 soft » sur
+`preferredVenueId`/`forbiddenVenueId` — faux depuis le rebalancement V10 du 2026-08-15,
+`engine/app/solver/objective/weights.py:53,61` donne `10`/`-10`, corrigé ci-dessous. **DOC-48
+corrigé** : la synthèse affirmait encore « Reste 🔴 `max_consecutive_days` » alors que la table
+juste au-dessus (et le code, P2-42 du 2026-08-19) le donnent déjà **aligné** — contradiction
+levée. Reste confronté au code cette passe : `resolveTravelRuleIntensity`
 (`ScheduleConstraintBuilder.php:965`, repli `TeamLinkIntensity::PREFERRED`) toujours le seul point
 de résolution de l'intensité `travelTime` ✓ ; `forcedDays` toujours câblé sur les 3 couches
 (`ConstraintValidationService.php:71-79`, `ConstraintConfigValidator.php:74`,
 `frontend/src/features/wizard/steps/ConstraintsStep.tsx:365-366`,
 `engine/app/solver/constraints/targeting.py:74`) ✓ ; la famille `FACILITY_CAPACITY` toujours
-retirée du moteur, le commentaire au passé toujours à `engine/app/main.py:487-489` ✓. Rien de faux
-trouvé cette passe.
+retirée du moteur, le commentaire au passé à `engine/app/main.py:488-491` ✓.
 
 > **But** : (1) lister ce que le **wizard émet** réellement, et (2) mettre les **3 couches côte à côte**
 > (frontend → backend → engine) pour repérer les **scissions** et les **angles morts** — les cas où
@@ -66,8 +70,8 @@ Colonnes : le **front** l'émet-il ? · le **backend** le transmet/transforme-t-
 | `minStartTime` / `maxStartTime` | ✅ TIME | passe | ✅ fenêtre dure / bonus soft | ✅ **aligné** |
 | `forbiddenDays` | ✅ « à éviter » | passe | ✅ dur / soft | ✅ **aligné** |
 | `allowedDays` | ✅ « uniquement » | passe | ✅ whitelist (interdit le complément) | ✅ **aligné** *(depuis ENG-16)* |
-| `preferredVenueId` | ✅ « préfère » | HARD→forcé + exclusivité tag | ✅ +60 soft / forcé | ✅ **aligné** |
-| `forbiddenVenueId` | ✅ « évite » | passe | ✅ interdit / −60 soft | ✅ **aligné** |
+| `preferredVenueId` | ✅ « préfère » | HARD→forcé + exclusivité tag | ✅ +10 soft / forcé | ✅ **aligné** |
+| `forbiddenVenueId` | ✅ « évite » | passe | ✅ interdit / −10 soft | ✅ **aligné** |
 | `forcedVenueId` | ✅ « impose » | + exclusivité tag | ✅ salle forcée | ✅ **aligné** |
 | `unavailableDays` | ✅ coach « indisponible » | passe | ✅ union, dur | ✅ **aligné** |
 | `availableDays` (coach « disponible **uniquement** ») | ✅ coach *(depuis ALIGN)* | passe | ✅ whitelist (intersection) | ✅ **aligné** |
@@ -87,7 +91,7 @@ Colonnes : le **front** l'émet-il ? · le **backend** le transmet/transforme-t-
 
 - **Aligné** : tout ce que le wizard émet est écrit par le backend et honoré par l'engine. Les scissions historiques « déclaré ≠ effectif » (ENG-10/11/12/13 offre↔engine, **ENG-16** forcedDays↔allowedDays) sont **corrigées** et verrouillées par `constraint_matrix.py`.
 - **🟠 Scission A — l'engine sait, le front n'émet pas** : `preferredDays` seul reste dans ce cas — DÉCISION FERMÉE (ALIGN-09, 2026-08-23, voir état des lieux) de ne pas l'exposer. *(`forcedDays` et `availableDays` — coach « disponible uniquement » — ont été **exposés/alignés**.)*
-- **✅ Angles morts résorbés (2026-07-08)** : `maxEndTime` (**ALIGN-04**, mode « Fini avant »), **minimum de séances par gymnase** `minAtVenueId` (**ALIGN-05**, mode « au moins N »), **espacement** `spacing` (**ALIGN-06**, règle implicite soft) sont désormais câblés sur les 3 couches et verrouillés (matrice engine + offre wizard). Reste **🔴 `max_consecutive_days`** (écart **dur** « pas 3 d'affilée ») — le soft `spacing` ne le garantit pas.
+- **✅ Angles morts résorbés (2026-07-08)** : `maxEndTime` (**ALIGN-04**, mode « Fini avant »), **minimum de séances par gymnase** `minAtVenueId` (**ALIGN-05**, mode « au moins N »), **espacement** `spacing` (**ALIGN-06**, règle implicite soft) sont désormais câblés sur les 3 couches et verrouillés (matrice engine + offre wizard). `max_consecutive_days` (écart **dur** « pas N jours d'affilée ») a suivi le **2026-08-19** (P2-42) — voir la ligne `maxConsecutiveDays` de la table ci-dessus, désormais **aligné** ; aucun angle mort dur ne reste ouvert sur cette famille.
 - **✅ `travelTime` — le front active ET règle désormais** (P2-53 RMM-8, 4 PR, livré le 2026-08-26) : l'activation reste dérivée de la matrice, mais l'intensité (Préféré/Obligatoire) est un vrai levier depuis PR-4 (`VenueTravelRuleSetting`) — l'engine comprenait déjà MANDATORY depuis PR-2, le front peut maintenant le poser. Plus un angle mort.
 
 > **Où le vérifier automatiquement — deux verrous complémentaires, aucun ne couvre tout :**

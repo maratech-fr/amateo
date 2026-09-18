@@ -1,10 +1,14 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-09-17 (`documentation-update`, lot Dependabot backend #900). §1 Repository
-layout recalé : ligne `backend/` — API Platform **4.3 → 4.4**, Doctrine ORM **3.6 → 3.7**, Symfony
-reste LTS **7.4** (versions confirmées dans `backend/composer.lock` après la montée). ⚠
-Vérification volontairement ÉTROITE : le reste de la carte (backend/engine détaillés, ops,
-sécurité) n'a pas été reconfronté au code ce jour.)
+Last verified @ 2026-09-18 (`documentation-update`, PR correctrice de l'audit 0918). §4
+Infrastructure, ligne « Orchestration (dev) » recalée contre `docker-compose.yml` :
+`restart: unless-stopped` posé sur 10 services dev DE PLUS ce jour (P4-220 — frontend, php-fpm,
+nginx, postgres, redis, cron-runner, engine, pdf-worker, mercure, mailpit), rejoignant
+`messenger-worker` (posé la veille, PR #918) — `grep -c "restart:" docker-compose.yml` → 11. ⚠
+Vérification volontairement ÉTROITE : le reste de la carte (§1 repository layout, backend/engine détaillés,
+ops, sécurité) n'a pas été reconfronté au code ce jour — notamment §3 « moteur » (DOC-37, roadmap :
+omet `/place-matches`/`/validate-assignments` et le découpage en paquet de `result_builder.py`,
+non traité par cette PR).
 
 Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `feedback` (bouton + dialogue de signalement), `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes) ; voir `../frontend/docs/frontend-wizard.md` et `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 
@@ -160,7 +164,10 @@ ruff (line 120, py312, double quotes, LF) · mypy `strict` + `pydantic.mypy` (`o
 
 ## 4. Infrastructure
 
-- **Orchestration (dev):** root `docker-compose.yml` (reads `.env`; template `.env.dist`).
+- **Orchestration (dev):** root `docker-compose.yml` (reads `.env`; template `.env.dist`). **Since
+  P4-220 (2026-09-18):** every dev service carries `restart: unless-stopped` — parity with prod
+  (§ below), closing the gap an incident found the hard way (`messenger-worker` stayed dead for 5h
+  on 2026-09-17 after a `cache:clear`, PR #918, before the other 9 services got the same policy).
 - **Services (dev):** PostgreSQL 16 (`amateo-postgres`), Redis 7 appendonly (`amateo-redis`), Mercure hub (`amateo-mercure` — signed with the **dedicated `MERCURE_JWT_SECRET`, never `JWT_PASSPHRASE`**: the two being the same value *was* SEC-06, and `MercureHardeningTest` now blocks its return), Mailpit (`amateo-mailpit`), `pdf-worker` (Node), `php-fpm` + nginx, `engine`, **`messenger-worker`** (consumes the Redis queue — without it a generation stays `PENDING`), **`cron-runner`** (`app:jobs:run-due` every minute), `frontend` (nginx :8081) and the dev helpers `frontend-dev` / `frontend-tooling`. Every service has a Docker healthcheck. Details on the hub: [`security/mercure.md`](security/mercure.md).
 - **Prod (`docker-compose.prod.yml`, P0-2/INF-03):** a **standalone** file, not an overlay of the dev compose — immutable images pulled by tag from ghcr.io, **zero code bind-mount**, no dev services (mailpit, frontend-dev, frontend-tooling), third-party images pinned to an exact tag everywhere (dev, CI and prod alike — e.g. Mercure: `dunglas/mercure:v0.24.2` in dev/CI's `docker-compose.yml`, `dunglas/mercure:v0.19` in prod; no zone rides `:latest` since Mercure 1.0's breaking release broke dev/CI overnight, 2026-09-17), secrets declared `${…:?}` so the stack refuses to boot on a missing one. The VM only ever holds `docker-compose.prod.yml`, `.env.prod` and `jwt/`. Deploy = tag `v*` → build-push ghcr → SSH (`.github/workflows/deploy.yml`, `make deploy VERSION=vX.Y.Z`); the SSH half stays dormant until the repo variable `DEPLOY_ENABLED=true`. Detail: [`ops/prod-stack.md`](ops/prod-stack.md) · runbook: [`ops/deploy.md`](ops/deploy.md) · backups & Sentry: [`ops/backup-restore.md`](ops/backup-restore.md).
 - **Edge routing:** dev `npm run dev` on host (:5173) proxies `/api`→8080, `/exports`→8080, `/.well-known/mercure`→3000 — and **no `/engine` proxy** (removed, FRT-17: the frontend never calls the engine directly, boundary §2 of `CLAUDE.md`). The `frontend` container's nginx (`docker/frontend/nginx.conf` — **a single conf for dev and prod since P4-118**) additionally proxies `/bundles/` and `/exports/`, and carries **no `/engine/` location at all**: that debug proxy was removed from dev too on 2026-07-31 (it exposed the solver unauthenticated).

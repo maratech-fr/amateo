@@ -137,3 +137,12 @@ d'env (pas de fichier de conf rclone à gérer) :
    pas — un `throw` de test) → l'event apparaît dans Sentry.
 4. Périmètre : **erreurs uniquement** (traces_sample_rate: 0 partout) — la perf solveur vit
    dans `solver_metrics`, pas dans un APM.
+
+## 6. Retour arrière de migration — drill (INF-05)
+
+Le chemin de secours réel en prod reste la restauration du dump pré-migration (§2-3, `app:db:backup
+--force` avant toute migration risquée) — **jamais** `doctrine:migrations:migrate prev` en
+production. Ce que le `down()` d'une migration promet peut néanmoins être FAUX sans que rien ne le
+révèle avant un incident : `backend/scripts/migration-rollback-drill.sh` le prouve à froid, sur une
+base jetable. Détail (déroulé, garde fail-closed, pourquoi hors CI) :
+[`migration-rollback-drill.md`](migration-rollback-drill.md).

@@ -1,10 +1,14 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-15 (rotation, `documentation-update`). Confronté au code, tout juste :
-`SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"` et `LEVEL_2_OBJECTIVE_WEIGHTS`
-(S=10000/A=1000/B=100…) dans `objective/weights.py` ; `SOCLE_REFERENCE_TIER_WEIGHTS`
-(S=20/A=18/B=16/C=14/D=12, même fichier) ; `add_max_consecutive_days_constraints` toujours à
-`constraints/wellness.py:494`.
+Last verified @ 2026-09-18 (rotation de fraîcheur `documentation-update`, PR audit 0918 — **DOC-45
+corrigé** : les poids du gymnase préféré/évité annoncés à cette table (« bonus/malus objectif
+**+60/−60** ») étaient FAUX depuis le rebalancement V10 du 2026-08-15 ; `objective/weights.py:53,61`
+donne bien `"preferred": 10` / `"avoided_venue": -10`, corrigé ci-dessous — **DOC-46 corrigé** :
+le renvoi FACILITY_CAPACITY pointait `app/main.py:291-294`, le commentaire au passé vit en fait à
+`:488-491`, corrigé. `SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"` et
+`LEVEL_2_OBJECTIVE_WEIGHTS` (S=10000/A=1000/B=100…) dans `objective/weights.py` ; sinon confronté
+au code, tout juste : `SOCLE_REFERENCE_TIER_WEIGHTS` (S=20/A=18/B=16/C=14/D=12, même fichier) ;
+`add_max_consecutive_days_constraints` toujours à `constraints/wellness.py:494`.
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
 > Chaque entrée donne le **mécanisme** (dur/soft), le **ruleType** qui l'active, et un **exemple BCCL**.
@@ -68,8 +72,8 @@ Last verified @ 2026-09-15 (rotation, `documentation-update`). Confronté au cod
 | Clé | Sens | Dur (HARD/LOCK) | Soft (PREFERRED) |
 |---|---|---|---|
 | `forcedVenueId` (uuid) | **imposer** ce gymnase | l'équipe ne joue QUE là (tous les autres interdits) | — |
-| `preferredVenueId` (uuid) | ce gymnase | **HARD/LOCK = forcé** (comme `forcedVenueId`) | bonus objectif **+60** par séance dans ce gymnase |
-| `forbiddenVenueId` (uuid) | **éviter** ce gymnase | assignation interdite (dur) | malus objectif **−60** (soft « évite ») |
+| `preferredVenueId` (uuid) | ce gymnase | **HARD/LOCK = forcé** (comme `forcedVenueId`) | bonus objectif **+10** par séance dans ce gymnase |
+| `forbiddenVenueId` (uuid) | **éviter** ce gymnase | assignation interdite (dur) | malus objectif **−10** (soft « évite ») |
 | `minAtVenueId` (uuid) + `minAtVenueCount` (int, défaut 1) | **au moins N** séances dans ce gymnase (plancher, ≠ forçage) | pose `somme(vars de l'équipe dans ce gymnase) ≥ N` ; les autres séances restent libres | — **HARD-only** |
 
 - **`minAtVenueId`** (ALIGN-05) est un **plancher**, pas un forçage : contrairement à `forcedVenueId` (TOUTES les séances), il garantit `≥ N` séances ici et laisse le reste libre. **Fail-soft** : si l'équipe a moins de **jours distincts** disponibles dans ce gymnase que `N` (elle joue ≤ 1 séance/jour, donc deux créneaux le même jour ne comptent que pour une séance), l'engine **n'ajoute pas** la contrainte et émet un diagnostic `venue_minimum_unreachable` (sévérité ERROR) au lieu d'un INFEASIBLE. Le backend refuse en amont `N > séances/semaine de l'équipe` (fail-fast avant génération).
@@ -134,7 +138,7 @@ La famille est **supprimée des trois couches**. Le moteur rabotait la capacité
 (`min(capacité du créneau, maxTeams)`) — un mécanisme réel, mais **aucun chemin UI ne pouvait créer la
 contrainte** et **zéro ligne n'existait en base** : du code honoré que personne ne pouvait atteindre.
 Elle est absente de la liste blanche `config` (une écriture est refusée en 422) et il ne reste dans le
-moteur qu'un commentaire au passé (`app/main.py:291-294`).
+moteur qu'un commentaire au passé (`app/main.py:488-491`).
 
 **La divisibilité d'un gymnase n'a jamais transité par cette famille** : elle est saisie à l'**écran
 Gymnases** (`canSplit`) et voyage dans `trainingSlots[].capacity` (`canSplit ? capacity : 1`) — c'est
