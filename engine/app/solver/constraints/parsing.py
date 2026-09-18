@@ -453,12 +453,23 @@ def parse_v2_constraints(constraints: list[dict[str, Any]]) -> ParsedConstraints
             # genuine contract drift. A recognised family whose specific
             # config/scope variant isn't handled (e.g. a CLUB-scope FACILITY) is
             # a deliberate no-op, not drift, and must not spam warnings (review).
+            # The server log alone was invisible to the manager: surface it on the
+            # same diagnostics channel as the other target-less drops so the UI can
+            # tell them the rule was NOT applied (and why).
             logger.warning(
                 "unrecognised constraint dropped: id=%s type=%s family=%s ruleType=%s",
                 c.get("id"),
                 c_type,
                 family,
                 rule_type,
+            )
+            result["parse_warnings"].append(
+                _not_honored_warning(
+                    c,
+                    "WARNING",
+                    f"Contrainte de type inconnu (famille {family}, type {c_type}) — non appliquée : "
+                    "vérifiez la version de l'application ou supprimez et resaisissez la contrainte.",
+                )
             )
 
     # The blocked-interval accumulation IS the coach-availability algebra (union of

@@ -65,10 +65,12 @@ def test_unused_slot_warnings_emitted_for_empty_slots() -> None:
         assert diag.team_id is None, f"Expected teamId=None, got {diag.team_id}"
         assert diag.coach_id is None, f"Expected coachId=None, got {diag.coach_id}"
         assert diag.suggestions == [], f"Expected empty suggestions, got {diag.suggestions}"
-        # Message must contain venue name and a time range (HH:MM-HH:MM).
-        assert "Gymnase Test" in diag.message, f"Message missing venue name: {diag.message}"
-        assert "-" in diag.message, f"Message missing time range: {diag.message}"
-        assert "no team assigned" in diag.message, f"Message missing suffix: {diag.message}"
+        # Le message est possédé par le backend (DiagnosticMessageBuilder le reconstruit
+        # inconditionnellement) : l'engine émet une chaîne vide. Les champs structurés
+        # (venueId, dayOfWeek, startTime, durationMinutes) portent tout le nécessaire.
+        assert diag.message == "", f"Expected engine to emit an empty message, got {diag.message!r}"
+        assert diag.venue_id == "venue-1"
+        assert diag.duration_minutes == 90
 
     # The two unused slots should correspond to the two slots not used by the solver.
     used_start_times = {slot.start_time.strftime("%H:%M") for slot in result.slots}

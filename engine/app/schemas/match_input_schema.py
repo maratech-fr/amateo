@@ -16,6 +16,7 @@ MAX_MATCH_TEAMS = 200
 MAX_TEAM_LINKS = 400
 MAX_TRAINING_OCCUPANCIES = 20000
 MAX_WINDOWS_PER_VENUE = 50
+MAX_LEAGUE_WINDOWS_PER_TEAM = 50  # mirror of MAX_WINDOWS_PER_VENUE — a team's league envelope
 MAX_UNAVAILABILITIES_PER_VENUE = 100
 MAX_SLOT_ROTATIONS = 100
 MAX_TEAMS_PER_SLOT_ROTATION = 20
@@ -79,7 +80,9 @@ class MatchTeamSchema(SerializableModel):
     name: str = ""
     # [] = the team does not map to a league envelope → NO league HARD (the
     # backend already emitted an INFO diagnostic saying so).
-    league_windows: list[LeagueKickoffWindowSchema] = Field(default_factory=list, alias="leagueWindows")
+    league_windows: list[LeagueKickoffWindowSchema] = Field(
+        default_factory=list, alias="leagueWindows", max_length=MAX_LEAGUE_WINDOWS_PER_TEAM
+    )
     habits: list[TeamHabitSchema] = Field(default_factory=list, max_length=7)
     coaches: list[TeamCoachRefSchema] = Field(default_factory=list, max_length=20)
     # Per-category durations (P4-203) resolved by the backend
@@ -110,6 +113,9 @@ class MatchSchema(SerializableModel):
     kind: str = "TO_PLACE"  # TO_PLACE | FIXED | AWAY
     venue_id: str | None = Field(default=None, alias="venueId")
     kickoff: time | None = None
+    # Transporté par le contrat mais NON consommé par le solveur : décision produit en attente
+    # (peser un clash de coach sur une heure ESTIMÉE moins qu'un clash sur une heure CERTAINE).
+    # En l'état, une heure estimée pèse autant qu'une heure réelle dans les termes de coach.
     kickoff_estimated: bool = Field(default=False, alias="kickoffEstimated")
     current_venue_id: str | None = Field(default=None, alias="currentVenueId")
     current_kickoff: time | None = Field(default=None, alias="currentKickoff")
@@ -163,8 +169,9 @@ class MatchPlacementInputSchema(SerializableModel):
     # Fallback quand le champ est OMIS ; le backend l'envoie TOUJOURS, donc ce
     # défaut n'est jamais la valeur du fil. On l'aligne néanmoins sur le contrat
     # courant pour qu'aucun lecteur ne le prenne pour une version concurrente.
-    # L'autorité reste `engine/CONTRACT_VERSION`, comparée au MAJOR à l'entrée.
-    version: str = "2.21"
+    # L'autorité reste `engine/CONTRACT_VERSION`, comparée au MAJOR à l'entrée ;
+    # gardé par test_schema_version_defaults_match_contract_version.
+    version: str = "2.22"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     solver_seed: int = Field(default=42, alias="solverSeed")

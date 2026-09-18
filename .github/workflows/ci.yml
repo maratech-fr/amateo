@@ -752,6 +752,9 @@ jobs:
       - name: Run mypy
         run: docker compose run --rm engine mypy
 
+      - name: Run bandit
+        run: docker compose run --rm engine bandit -r app/
+
   engine-perf:
     name: Engine Perf Gate (main only)
     runs-on: ubuntu-latest

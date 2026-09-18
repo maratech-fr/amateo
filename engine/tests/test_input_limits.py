@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from app.main import build_schedule
 from app.schemas.input_schema import (
+    MAX_CONSTRAINTS_EXPANDED,
     MAX_SLOTS_TOTAL,
     MAX_TEAMS,
     MAX_VENUES,
@@ -65,14 +66,20 @@ class TestInputLimits:
         with pytest.raises(ValidationError):
             ScheduleInputSchema.model_validate(_payload(venues=venues))
 
-    def test_large_expanded_constraint_list_is_not_capped(self) -> None:
-        # ENG-23: constraints has NO per-list cap — the backend fans out CLUB-scoped rules into
-        # raw(<=500) x teams(<=200) rows, so any finite cap would false-block a legit club. A
-        # large expanded list validates; the real bounds are the backend RAW cap + the nginx
-        # 20m body limit + the solver timeout, not this schema.
+    def test_large_expanded_constraint_list_within_cap_is_accepted(self) -> None:
+        # The backend fans out CLUB-scoped rules into raw(<=500) x teams(<=200) rows, so a per-rule
+        # cap would false-block a legit club. A large expanded list (well under the EXPANDED
+        # ceiling MAX_CONSTRAINTS_EXPANDED) still validates.
         constraints = [{"id": f"c{i}"} for i in range(10_000)]
         model = ScheduleInputSchema.model_validate(_payload(constraints=constraints))
         assert len(model.constraints) == 10_000
+
+    def test_constraints_over_expanded_cap_rejected(self) -> None:
+        # Beyond the EXPANDED ceiling raw(<=500) x teams(<=200), the payload is a bomb: rejected at
+        # the boundary before CP-SAT ever builds.
+        constraints = [{"id": f"c{i}"} for i in range(MAX_CONSTRAINTS_EXPANDED + 1)]
+        with pytest.raises(ValidationError):
+            ScheduleInputSchema.model_validate(_payload(constraints=constraints))
 
     def test_at_cap_payload_still_solves(self) -> None:
         # A max-teams / no-venue payload validates and solves instantly (all unplaced),

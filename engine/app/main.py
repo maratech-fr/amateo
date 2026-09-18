@@ -201,47 +201,6 @@ def read_implicit_rules() -> ImplicitConstraintSyncRequest:
         ) from exc
 
 
-def _day_constraint_conflict_team_ids(time_windows: list[dict[str, Any]]) -> set[str]:
-    forced_days_by_team: dict[str, set[int]] = {}
-    forbidden_days_by_team: dict[str, set[int]] = {}
-
-    for constraint in time_windows or []:
-        if not constraint.get("isActive", True):
-            continue
-
-        rule_type = constraint.get("ruleType") or constraint.get("rule_type")
-        family = constraint.get("family")
-        if rule_type == "PREFERRED" and family == "TIME":
-            continue
-        # LOCK is enforced as hard as HARD downstream. Aligning this set is defensive
-        # only (ENG-20): its consumer just writes 0 into a min-floor that is already
-        # all-zeros today (min is soft-only, ENG-18), and the ACTUAL LOCK-DAY conflict
-        # enforcement already lives in add_time_window_constraints. Kept for the day a
-        # hard min floor is re-activated, not for any effect today.
-        if rule_type not in ("HARD", "LOCK") or family != "DAY":
-            continue
-
-        team_id = constraint.get("scope_target_id") or constraint.get("scopeTargetId")
-        if team_id is None:
-            continue
-
-        team_id_text = str(team_id)
-        config = constraint.get("config") or {}
-        forced_days = config.get("forcedDays") or []
-        forbidden_days = config.get("forbiddenDays") or []
-
-        forced_days_by_team.setdefault(team_id_text, set()).update(int(day) for day in forced_days if day is not None)
-        forbidden_days_by_team.setdefault(team_id_text, set()).update(
-            int(day) for day in forbidden_days if day is not None
-        )
-
-    return {
-        team_id
-        for team_id, forced_days in forced_days_by_team.items()
-        if forced_days & forbidden_days_by_team.get(team_id, set())
-    }
-
-
 def _lock_is_idle(lock: asyncio.Lock) -> bool:
     # Idle = neither held NOR awaited. Checking locked() alone is not enough:
     # during release, asyncio sets _locked=False before the woken waiter runs,
@@ -511,25 +470,13 @@ def _solve(
         ):
             hard_satisfied_team_ids.add(str(team_id))
 
-    # Hard min_sessions forces UNKNOWN when venue capacity < total sessions needed.
-    # Soft-only via objective bonus (session_count:20) + WARNING diagnostics.
-    adjusted_min_by_team: dict[str, int] = {
-        str(team.get("id") or ""): 0 for team in data.get("teams", []) if team.get("id")
-    }
-
-    available_assignments_by_team: dict[str, list[Any]] = {}
-    for slot_key, var in model.x.items():
-        team_id = slot_key[0]
-        available_assignments_by_team.setdefault(team_id, []).append(var)
-
-    for team in data.get("teams", []):
-        team_id = team.get("id")
-        max_sessions = team.get("sessions_per_week") or team.get("sessionsPerWeek")
-        if team_id and max_sessions and not available_assignments_by_team.get(team_id, []):
-            adjusted_min_by_team[str(team_id)] = 0
-
-    for team_id in _day_constraint_conflict_team_ids(parsed["time_windows"]):
-        adjusted_min_by_team[team_id] = 0
+    # Le minimum de séances par équipe est SOFT-ONLY (porté par l'objectif, bonus
+    # session_count + diagnostics WARNING), jamais un plancher dur : ce dict de ZÉROS
+    # n'existe que pour la parité de SOURCE avec le verdict (`_apply_hard`), qui construit
+    # exactement la même expression — le registre `test_hard_layer_parity_registry` compare
+    # les deux textes. Le jour où MIN_SESSIONS deviendrait un plancher dur, changer cette
+    # expression fera rougir le registre (et c'est voulu).
+    min_by_team: dict[str, int] = {str(t.get("id")): 0 for t in data.get("teams", []) if t.get("id")}
 
     # Build assignments from model.x with start/end for consecutive-session constraints.
     # Each (team, venue, day, slot) appears exactly ONCE — no per-coach duplication.
@@ -573,7 +520,7 @@ def _solve(
         coach_unavailability=parsed["coach_unavailability"],
         forced_venues=parsed["forced_venues"],
         priority_tiers=parsed.get("priority_tiers", {}),
-        min_sessions_by_team=adjusted_min_by_team or None,
+        min_sessions_by_team=min_by_team or None,
         implicit_rules=resolved_implicit_rules,
         team_coach_map=team_coach_map,
         team_player_map=team_player_map,

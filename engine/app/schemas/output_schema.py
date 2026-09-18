@@ -89,6 +89,9 @@ class DiagnosticSchema(SerializableModel):
         "soft_lock_moved",
         "unplaced",
         "unplaced_match",
+        # Le placement de matchs est trop volumineux pour construire le modèle CP-SAT dans le
+        # budget de build : abandon nommé plutôt qu'un hang (ADR-0001 — on nomme l'impossible).
+        "placement_problem_too_large",
         "unused_slot",
         "venue_minimum_unreachable",
     ]
