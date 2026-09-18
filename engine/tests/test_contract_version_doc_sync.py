@@ -47,6 +47,35 @@ DOCS_QUOTING_THE_ACTIVE_VERSION = (
     # règle de zone citent la version : ils la citent juste, ou ils rougissent ici.
     REPO_ROOT / "CLAUDE.md",
     REPO_ROOT / ".claude" / "rules" / "engine.md",
+    # Rattrapage 2026-09-18 (lot correctif de l'audit 0918, AUD-DOC-39) : TROIS documents de
+    # plus citent le contrat EN VIGUEUR et ont dérivé DEUX fois hors de ce filet — 2.20 au bump
+    # 2.21 (15/09), puis 2.21 au bump 2.22 (18/09). Le pipeline de génération est lu comme source
+    # de vérité quand on planifie un changement de contrat ; geo-api décrit le payload
+    # `venueTravelTimes`. Ils citent la version : ils la citent juste, ou ils rougissent ici
+    # (même leçon que D-37, deux récidives plus tard).
+    REPO_ROOT / "backend" / "docs" / "generation-flow.md",
+    REPO_ROOT / "specs" / "courantes" / "generation-pipeline.md",
+    REPO_ROOT / "backend" / "docs" / "geo-api.md",
+    # `specs/courantes/module-matchs.md` a AUSSI dérivé deux fois, mais il est gardé par la règle
+    # ROBUSTE ci-dessous (`test_no_doc_presents_a_stale_numeric_contract_version`) plutôt qu'ici :
+    # un doc de ce grain peut légitimement déférer le NUMÉRO à `CLAUDE.md` (une seule maison
+    # canonique, §8) et ne citer `CONTRACT_VERSION` que symboliquement. Exiger sa PRÉSENCE
+    # rougirait à tort dans ce cas ; interdire une valeur PÉRIMÉE, jamais.
+)
+
+# AUD-DOC-39 (bis) — garde ROBUSTE pour les docs susceptibles d'être refondus et de déférer le
+# numéro à `CLAUDE.md`. Règle : « toute mention d'une version DE CONTRAT numérique = la version
+# active ». On n'exige PAS la présence (le doc peut ne parler du contrat que symboliquement) ;
+# on interdit seulement qu'un `contrat 2.NN` / `CONTRACT_VERSION 2.NN` PÉRIMÉ y traîne comme
+# courant. C'est le filet demandé pour `module-matchs.md`, refondu en parallèle.
+DOCS_WITH_ROBUST_ACTIVE_VERSION = (REPO_ROOT / "specs" / "courantes" / "module-matchs.md",)
+
+# Une version de contrat numérique CITÉE au contact du mot « contrat » ou de `CONTRACT_VERSION`
+# (dans un sens ou dans l'autre, à courte distance sur la même ligne). Un « 2.15 » isolé, loin de
+# ces mots, n'est pas ferré : seule une valeur PRÉSENTÉE comme la version de contrat compte.
+_CONTRACT_NUMBER_NEAR = re.compile(
+    r"(?:contrat|CONTRACT_VERSION)[^\n]{0,40}?\*{0,2}`?\"?(2\.\d+)"
+    r"|(2\.\d+)`?\"?\*{0,2}[^\n]{0,20}?(?:contrat|CONTRACT_VERSION)"
 )
 
 
@@ -94,6 +123,15 @@ def test_every_doc_quoting_the_contract_cites_the_current_version() -> None:
     Volontairement bete, comme le test ci-dessus : on exige seulement que la version en
     vigueur soit CITEE quelque part. Un doc qui ne parle que d'une version passee est donc
     en faute, un doc qui cite la courante ET son historique est correct.
+
+    AUD-DOC-39 (lot correctif de l'audit 0918) — deuxieme recidive du meme motif, deux bumps
+    d'affilee : `generation-flow.md`, `generation-pipeline.md`, `geo-api.md` et
+    `module-matchs.md` sont restes a 2.20 au bump 2.21 (15/09) puis a 2.21 au bump 2.22 (18/09),
+    precisement parce qu'ils n'etaient pas gardes. Les TROIS premiers sont ajoutes ci-dessus (ils
+    citent la version : ils la citent juste, ou ils rougissent ici) ; `module-matchs.md`, refondu
+    en parallele et susceptible de deferer le NUMERO a `CLAUDE.md`, est garde par la regle ROBUSTE
+    `test_no_doc_presents_a_stale_numeric_contract_version`. Le test n'exige aucune ligne precise
+    (une simple presence de la version courante), donc il reste robuste a une refonte de prose.
     """
     version = _current_version()
 
@@ -111,6 +149,33 @@ def test_every_doc_quoting_the_contract_cites_the_current_version() -> None:
         f"{stale}. Un agent qui les lit part sur une version perimee — c'est exactement ce "
         "qui s'est produit entre le bump 2.2 et l'audit du 2026-08-08, sur SEPT fichiers. "
         "Mettre a jour le doc dans le MEME commit que le bump."
+    )
+
+
+def test_no_doc_presents_a_stale_numeric_contract_version() -> None:
+    """AUD-DOC-39 (bis) — garde ROBUSTE pour un doc refondu en parallele.
+
+    « Toute mention `contrat X.Y` / `CONTRACT_VERSION X.Y` = la version active. » On n'exige pas
+    que le doc cite un numero (il peut deferer a `CLAUDE.md`, une seule maison canonique) ; on
+    interdit qu'un numero PERIME y soit presente comme le contrat courant. `module-matchs.md` a
+    derive deux fois (2.20 au bump 2.21, 2.21 au bump 2.22) : cette regle attrape la prochaine
+    sans se briser sur une refonte de prose ni sur le choix de deferer le numero.
+    """
+    version = _current_version()
+
+    stale = []
+    for doc in DOCS_WITH_ROBUST_ACTIVE_VERSION:
+        text = doc.read_text(encoding="utf-8")
+        for match in _CONTRACT_NUMBER_NEAR.finditer(text):
+            found = match.group(1) or match.group(2)
+            if found and found != version:
+                stale.append(f"{doc.relative_to(REPO_ROOT)} presente {found} comme contrat courant")
+
+    assert not stale, (
+        f"ces documents presentent une version de contrat qui n'est plus la version en vigueur "
+        f"({version}) : {stale}. Un numero de contrat au contact de « contrat »/`CONTRACT_VERSION` "
+        "doit etre l'actuel — sinon, le citer au passe ou deferer a `CLAUDE.md`. Meme motif que "
+        "D-37, deux recidives plus tard (AUD-DOC-39)."
     )
 
 

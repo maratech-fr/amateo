@@ -93,6 +93,15 @@ règle « jamais merger sans go » reste en vigueur pour tout le reste).
    Ce journal se committe **dans la même PR** que les correctifs quand il y en a, sinon sur une
    branche doc dédiée. Une dette découverte au passage (paquet installé jamais utilisé, config
    morte) → ligne P4 dans `specs/evolution/roadmap.md`, référencée depuis l'entrée.
+3. **Un lot qui change un CONTRAT PUBLIC laisse EN PLUS une ligne datée dans
+   `specs/courantes/etat-des-lieux.md` §3** (AUD-DOC-42, 2026-09-18) — `docs/upgrades.md` seul ne
+   suffit pas : ce fichier est le journal du *pourquoi technique*, l'état des lieux est celui du
+   *livré produit*, et un contrat public qui bouge (schéma OpenAPI exposé au frontend, forme d'une
+   réponse API, version d'un contrat backend⇄engine) est un changement produit même quand il n'est
+   voulu par personne. Exemple vécu : #900/#901 (2026-09-17) ont fait passer OpenAPI de 3.1 à 3.2
+   via la montée d'API Platform 4.4 — traité dans `docs/upgrades.md`, sans trace §3 avant cette
+   règle. Ne pas ajouter de ligne pour un lot qui ne touche aucun contrat exposé (dépendance
+   interne, outillage, dev-only).
 
 ## Gardes-fous
 

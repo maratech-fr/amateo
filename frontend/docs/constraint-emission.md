@@ -1,12 +1,10 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-09-18 (rotation de fraîcheur `documentation-update`, PR audit 0918). **DOC-45
-corrigé** : la table annonçait « ✅ +60 soft / forcé » / « ✅ interdit / −60 soft » sur
-`preferredVenueId`/`forbiddenVenueId` — faux depuis le rebalancement V10 du 2026-08-15,
-`engine/app/solver/objective/weights.py:53,61` donne `10`/`-10`, corrigé ci-dessous. **DOC-48
-corrigé** : la synthèse affirmait encore « Reste 🔴 `max_consecutive_days` » alors que la table
-juste au-dessus (et le code, P2-42 du 2026-08-19) le donnent déjà **aligné** — contradiction
-levée. Reste confronté au code cette passe : `resolveTravelRuleIntensity`
+Last verified @ 2026-09-18 (`documentation-update`, PR docs de l'audit 0918, AUD-DOC-47). **DOC-47
+corrigé** : la table d'alignement omettait `targetTags`/`excludeTags` (« et aussi » / « sauf »,
+P2-29) — ajoutés (émis `ConstraintsStep.tsx`, résolus en N contraintes TEAM par
+`ScheduleConstraintBuilder::resolveTagToTeamIds`, engine reçoit les contraintes déjà éclatées,
+zéro clé de tag dans son payload). Reste confronté au code cette passe : `resolveTravelRuleIntensity`
 (`ScheduleConstraintBuilder.php:965`, repli `TeamLinkIntensity::PREFERRED`) toujours le seul point
 de résolution de l'intensité `travelTime` ✓ ; `forcedDays` toujours câblé sur les 3 couches
 (`ConstraintValidationService.php:71-79`, `ConstraintConfigValidator.php:74`,
@@ -78,6 +76,7 @@ Colonnes : le **front** l'émet-il ? · le **backend** le transmet/transforme-t-
 | `maxTeams` / famille `FACILITY_CAPACITY` | ❌ jamais émis (l'écran Gymnases n'émet pas de contrainte) | ❌ famille **retirée** le 2026-08-08 (SEC-13 PR C) — absente de la liste blanche | ❌ retirée du moteur le même jour (`main.py:487-489`, commentaire au passé) | ✅ **sans objet** : la divisibilité voyage **uniquement** par `trainingSlots[].capacity` (`canSplit ? capacity : 1`). La famille était honorée par le moteur alors qu'aucun chemin UI ne pouvait la créer — zéro ligne en base |
 | `venue_closed` (période) | ✅ (cockpit) | → **retrait des créneaux** du gymnase les jours fermés (`VenueClosureDays`, P2-5 5b #263) | ✅ | ✅ **aligné** *(plus d'expansion `forbiddenVenueId` : `expandClosedVenues` supprimé — le créneau fermé est retiré du payload à la source)* |
 | `targetTag` (groupe) | ✅ | → N contraintes TEAM | ✅ (par équipe) | ✅ **aligné** |
+| `targetTags` / `excludeTags` (groupe « et aussi » / « sauf », P2-29) | ✅ `ConstraintsStep.tsx` (« et aussi » = intersection `targetTags`, « sauf » = union soustraite `excludeTags` — jamais avec `targetTag` legacy, 422 sinon) | ✅ `ScheduleConstraintBuilder::resolveTagToTeamIds` (∩ `targetTags`) − (∪ `excludeTags`) résout en N contraintes **TEAM**, les deux clés retirées du `config` transmis (D11 : aucune clé de tag ne part au moteur) | ✅ reçoit des contraintes **TEAM déjà éclatées** — zéro clé `targetTags`/`excludeTags` dans le payload engine | ✅ **aligné** |
 | `orToolsWeight` (tier) | ❌ jamais émis (nulle part dans `frontend/src`) | ❌ ne l'envoie pas (retiré volontairement) | poids **fixes codés en dur** (`LEVEL_2_OBJECTIVE_WEIGHTS`) | ✅ **sans objet** : la priorité S≫A≫B≫C≫D est garantie côté engine sans transport du poids |
 | **`forcedDays`** (« au moins une séance tel jour ») | ✅ mode « au moins une » *(depuis ALIGN-09, HARD seul — pas de sélecteur de règle)* | passe | ✅ compris (dur, somme sur l'UNION par équipe) | ✅ **aligné** *(ALIGN-09)* |
 | **`preferredDays`** | ❌ non émis *(DÉCISION FERMÉE ALIGN-09 : reste engine-only)* | — | ✅ (objectif) | 🟠 **scission A** (racine d'ENG-10) |

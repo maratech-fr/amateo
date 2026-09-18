@@ -1,16 +1,9 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-09-15 (P2-54 « adversaire multi-gymnases » PR-2, **recalage post-finding
-sécurité** — code FINAL relu après qu'un finding a changé le mécanisme de résolution,
-`documentation-update`) : § « Réconciliation FBI, canal API » — le paragraphe « pont par
-référence FFBB de salle » recalé contre le code final : le pont par `id` reste une PISTE NON
-implémentée (aucun code ne l'exploite), et la 2ᵉ sonde (index salles non queryable par `numero`,
-seul `_geoRadius` rend des hits) est confirmée sur `FfbbSalleResolver.php:15-23`. Confirmé sur
-`FfbbRencontreReader.php:112-121,168-190` : l'objet `salle` d'un hit rencontres ne porte
-toujours aucun `numero`, seulement `{id, libelle, adresse, cartographie}` ; confirmé sur
-`FfbbSallesController.php:141` : le proxy salles n'expose que `numero` (→ `externalRef`), jamais
-l'`id`. Le reste (alias confirmé, `reassign`) inchangé depuis le 2026-09-14. Hosts SSRF et
-routes non re-sondés cette passe.
+Last verified @ 2026-09-18 (`documentation-update`, PR docs de l'audit 0918 — vérification ÉTROITE :
+les 3 renvois vers `module-matchs.md` recalés sur ses nouveaux §1/§7 après sa refonte par écran du
+même jour ; AUD-DOC-38). Reste du fichier (hosts SSRF, routes, pont par référence FFBB de salle)
+non re-sondé cette passe — dernière vérification de fond : 2026-09-15 (P2-54 PR-2).
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit rester dans la **liste blanche de hosts** du client (SSRF, A12). Vérifié le 2026-07-10 sur le code réel `ARA0069036` (BCCL).
 
@@ -142,7 +135,7 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   (retire l'alias de l'ancien porteur, re-pointe les domiciles NON PLACÉS du club au même libellé,
   épargne les domiciles déjà PLACÉS/SOUMIS/VALIDÉS) — sans effet sur `apply`/`FfbbRencontreReconciler`
   elle-même, qui continue de ne poser `venueId` que sur un domicile encore sans salle. Détail :
-  [`module-matchs.md`](../../specs/courantes/module-matchs.md) § « Gymnase depuis le libellé ».
+  [`module-matchs.md`](../../specs/courantes/module-matchs.md) §1 « Modèle & données transverses ».
   ⚠ **Pont par référence FFBB de salle toujours impossible AUJOURD'HUI** : l'objet `salle` d'un
   hit rencontres (`FfbbRencontreReader.php:112-121`, `:168-190`) ne porte que `{id, libelle,
   adresse, cartographie}`, jamais le `numero` de l'index salles (`Venue.externalRef`, exposé par
@@ -167,8 +160,7 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   club) est appliqué D'OFFICE plutôt que proposé à l'arbitrage ; les libellés `clubLabel`/
   `opponentLabel` perdent leur suffixe FFBB « (n) » à la lecture
   (`VenueLabelNormalizer::stripTeamNumberSuffix`). Détail :
-  [`module-matchs.md`](../../specs/courantes/module-matchs.md) § « Espace Importer — workflow de
-  traitement ».
+  [`module-matchs.md`](../../specs/courantes/module-matchs.md) §7 « Écran Importer ».
 - **Filtre strict serveur** (`FfbbApiClient::searchRencontres`) : la recherche plein texte sur le
   code club rend du bruit (un hit « AMICAL PNM » ne concernant pas le club, mesuré) — ne sont
   gardés que les hits où le code club apparaît sur `idOrganismeEquipe1.code` OU
@@ -179,7 +171,7 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   compteurs seuls. La trace des écarts, elle, n'est plus portée par `FbiIngestion` du tout depuis
   PR-3a (D7) : elle vit sur `Fixture.pendingDeviations`, commune aux deux canaux.
 
-Détail produit complet (appariement 3 étages, front) : [`../../specs/courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) § « Réconciliation FBI (RMM-4) ».
+Détail produit complet (appariement 3 étages, front) : [`../../specs/courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) §7 « Écran Importer ».
 
 ## Engagements + compétitions (P1-4 PR F, appariement)
 
