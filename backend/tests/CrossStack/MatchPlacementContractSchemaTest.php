@@ -269,6 +269,45 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         self::assertSame(80, $awayRow['roundTripMinutes']);
     }
 
+    /**
+     * NR D3 (§7.1 contrat backend↔engine) : le trajet aller-retour émis est CLAMPÉ à la
+     * borne du schéma engine (24 h = 1440 min). Un aller-simple aberrant (800 min → 1600
+     * aller-retour) ferait sinon rejeter TOUT le payload en 422 (`round_trip_minutes` `le=1440`).
+     */
+    #[Group('phase1')]
+    public function testRoundTripTravelIsClampedToTheSchemaBound(): void
+    {
+        [, $seededFixture, $club, $season, $builder] = $this->buildFromSeededClub();
+        $em = self::getContainer()->get('doctrine.orm.entity_manager');
+        $teamId = $seededFixture->getTeamId();
+
+        $away = $this->makeFixture($em, $club, $season, $teamId, '2026-10-24', FixtureHomeAway::AWAY);
+        $away->setOpponentOrganismeCode('ORG-LOIN');
+        $away->setOpponentLabel('Bout du monde');
+
+        // Aller simple aberrant de 800 min → aller-retour 1600, au-delà de la borne engine.
+        $travel = new OpponentTravel;
+        $travel->setClubId($club->getId());
+        $travel->setSeasonId($season->getId());
+        $travel->setOpponentOrganismeCode('ORG-LOIN');
+        $travel->setOpponentTeamKey(null);
+        $travel->setTravelMinutes(800);
+        $travel->setSource(OpponentTravelSource::MANUAL);
+        $em->persist($travel);
+        $em->flush();
+
+        $matches = $builder->build($club, $season->getId())['payload']['matches'];
+        $awayRow = null;
+        foreach ($matches as $row) {
+            if ($row['id'] === $away->getId()) {
+                $awayRow = $row;
+            }
+        }
+        self::assertNotNull($awayRow, 'la rencontre extérieure figure au payload');
+        // Clampé à 1440 (24 h), pas 1600 : le payload reste recevable par le schéma engine.
+        self::assertSame(1440, $awayRow['roundTripMinutes']);
+    }
+
     private function makeFixture(EntityManagerInterface $em, Club $club, Season $season, string $teamId, string $date, FixtureHomeAway $homeAway): Fixture
     {
         $fixture = new Fixture;

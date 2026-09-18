@@ -64,6 +64,14 @@ final class MatchPlacementPayloadBuilder
      */
     public const string CONTRACT_VERSION = '2.23';
 
+    /**
+     * Borne du trajet aller-retour AWAY émis, alignée sur le schéma engine
+     * (`match_input_schema.py`, `round_trip_minutes` `le=1440`). Un aller-simple IGN
+     * aberrant (> 720 min) donnerait un aller-retour > 1440 qui ferait rejeter TOUT le
+     * payload en 422 : on clampe ici pour dégrader proprement (empreinte plafonnée à 24 h).
+     */
+    private const int MAX_ROUND_TRIP_MINUTES = 1440;
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly TrainingCalendarContext $trainingCalendarContext,
@@ -263,8 +271,9 @@ final class MatchPlacementPayloadBuilder
                 'kickoff' => $kickoff?->format('H:i'),
                 'kickoffEstimated' => !$fixture->getKickoffTime() instanceof DateTimeImmutable && $estimated instanceof DateTimeImmutable,
                 // D3 — le trajet aller-retour vers l'adversaire (2 × aller simple, 0 si
-                // inconnu). Le solveur étend la fenêtre AWAY du coach de cette durée.
-                'roundTripMinutes' => $roundTripMinutes,
+                // inconnu), clampé à la borne du schéma engine (24 h). Le solveur étend la
+                // fenêtre AWAY du coach de cette durée.
+                'roundTripMinutes' => min($roundTripMinutes, self::MAX_ROUND_TRIP_MINUTES),
             ];
         }
 
