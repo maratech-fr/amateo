@@ -8938,7 +8938,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Runs, in ONE call, the three best-effort passes that update the season's away opponents: (a) catch up FFBB organisme codes into the shared directory and stamp the fixtures; (b) auto-locate each opponent team's gym from the FBI file salle label (federal salle, tenant AUTO override, never client text); (c) recompute the AUTO car travel. Each pass is independent \u2014 a failure in one does not cancel the others.",
+                        "description": "Runs, in ONE call, the three best-effort passes that update the season's away opponents: (a) catch up FFBB organisme codes into the shared directory and stamp the fixtures; (b) auto-locate each opponent team's gym from the FBI file salle label (federal salle, tenant AUTO override, never client text); (c) recompute the AUTO car travel. Each pass is independent \u2014 a failure in one does not cancel the others. A shared wall-clock budget bounds the whole call: once it is spent, the remaining opponents of each pass come back unresolved/skipped (a partial result) so a degraded federation can never hold the request near the upstream timeout \u2014 re-run to continue.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -9406,6 +9406,9 @@
                     },
                     "422": {
                         "description": "Invalid opponent/venue, or the opponent has no away fixture this season"
+                    },
+                    "429": {
+                        "description": "Too many requests (per-user rate limit)"
                     }
                 },
                 "summary": "Pin an opponent's gym by hand and recompute its travel (management only)",
@@ -23514,12 +23517,14 @@
                 ],
                 "properties": {
                     "name": {
+                        "maxLength": 180,
                         "type": [
                             "string",
                             "null"
                         ]
                     },
                     "slug": {
+                        "maxLength": 180,
                         "type": [
                             "string",
                             "null"
@@ -23547,12 +23552,14 @@
                         ]
                     },
                     "timezone": {
+                        "maxLength": 64,
                         "type": [
                             "string",
                             "null"
                         ]
                     },
                     "locale": {
+                        "maxLength": 10,
                         "type": [
                             "string",
                             "null"
@@ -23565,6 +23572,7 @@
                         ]
                     },
                     "ffbbClubCode": {
+                        "maxLength": 64,
                         "type": [
                             "string",
                             "null"
@@ -23882,12 +23890,14 @@
                 ],
                 "properties": {
                     "firstName": {
+                        "maxLength": 120,
                         "type": [
                             "string",
                             "null"
                         ]
                     },
                     "lastName": {
+                        "maxLength": 120,
                         "type": [
                             "string",
                             "null"
@@ -23895,6 +23905,7 @@
                     },
                     "email": {
                         "format": "email",
+                        "maxLength": 180,
                         "externalDocs": {
                             "url": "https://schema.org/email"
                         },
@@ -23904,6 +23915,7 @@
                         ]
                     },
                     "phone": {
+                        "maxLength": 40,
                         "type": [
                             "string",
                             "null"
@@ -24161,6 +24173,7 @@
                         ]
                     },
                     "position": {
+                        "maxLength": 120,
                         "type": [
                             "string",
                             "null"
@@ -24906,6 +24919,7 @@
                         ]
                     },
                     "name": {
+                        "maxLength": 180,
                         "type": [
                             "string",
                             "null"
@@ -25270,6 +25284,7 @@
                 ],
                 "properties": {
                     "name": {
+                        "maxLength": 180,
                         "type": [
                             "string",
                             "null"
@@ -25340,18 +25355,21 @@
                         }
                     },
                     "createdBy": {
+                        "maxLength": 80,
                         "type": [
                             "string",
                             "null"
                         ]
                     },
                     "source": {
+                        "maxLength": 80,
                         "type": [
                             "string",
                             "null"
                         ]
                     },
                     "sourceOccurrenceId": {
+                        "maxLength": 180,
                         "type": [
                             "string",
                             "null"
@@ -26250,6 +26268,7 @@
                         ]
                     },
                     "opponentLabel": {
+                        "maxLength": 180,
                         "type": [
                             "string",
                             "null"
@@ -28219,6 +28238,7 @@
                         ]
                     },
                     "type": {
+                        "maxLength": 50,
                         "type": [
                             "string",
                             "null"
@@ -29104,6 +29124,7 @@
                 ],
                 "properties": {
                     "name": {
+                        "maxLength": 120,
                         "type": [
                             "string",
                             "null"
@@ -29617,6 +29638,7 @@
                         ]
                     },
                     "name": {
+                        "maxLength": 120,
                         "type": [
                             "string",
                             "null"
@@ -30099,6 +30121,7 @@
                         ]
                     },
                     "name": {
+                        "maxLength": 180,
                         "type": [
                             "string",
                             "null"
@@ -31502,6 +31525,7 @@
                 "properties": {
                     "email": {
                         "format": "email",
+                        "maxLength": 180,
                         "externalDocs": {
                             "url": "https://schema.org/email"
                         },
@@ -31511,12 +31535,14 @@
                         ]
                     },
                     "firstName": {
+                        "maxLength": 120,
                         "type": [
                             "string",
                             "null"
                         ]
                     },
                     "lastName": {
+                        "maxLength": 120,
                         "type": [
                             "string",
                             "null"
@@ -31709,6 +31735,7 @@
                 ],
                 "properties": {
                     "name": {
+                        "maxLength": 180,
                         "type": [
                             "string",
                             "null"
@@ -31721,6 +31748,7 @@
                         ]
                     },
                     "color": {
+                        "maxLength": 20,
                         "type": [
                             "string",
                             "null"
@@ -31758,6 +31786,7 @@
                         ]
                     },
                     "externalRef": {
+                        "maxLength": 180,
                         "type": [
                             "string",
                             "null"
