@@ -137,15 +137,15 @@
 > « Importer · N ») branché dessus — **P4-186 SOLDÉ** (le dépôt FBI/canal API ont quitté la
 > Configuration pour l'onglet Importer) et le texte de `PlacementPanel.tsx` sur `VALIDATED` recalé
 > (« Attesté par FBI… », plus « La ligue a validé ce match… ») ; détail :
-> [`module-matchs.md`](../courantes/module-matchs.md) § « Espace Importer » ; (2) le repli visuel de
+> [`module-matchs.md`](../courantes/module-matchs.md) §7 « Écran Importer » ; (2) le repli visuel de
 > la Configuration — **P4-185 SOLDÉ (2026-09-09)** : six sections en accordéons contrôlés ancrés
 > `?section=`, rotations en liste compacte, durées en tableau partagé, détail
-> [`module-matchs.md`](../courantes/module-matchs.md) § « Configuration — repli visuel ». (3) gymnase
+> [`module-matchs.md`](../courantes/module-matchs.md) §8 « Écran Configuration ». (3) gymnase
 > depuis le libellé — **P4-187 SOLDÉ (187a backend + 187b écran, 2026-09-09)** : alias de salle
 > confirmés (`Venue.externalLabels`), résolution automatique aux deux canaux d'import (jamais un
 > placement), routes `POST`/`DELETE /api/venues/{id}/external-labels[/{label}]`, geste
 > « Rattacher » sur la file de traitement Importer (`ReviewQueueRow.tsx`), détail
-> [`module-matchs.md`](../courantes/module-matchs.md) § « Gymnase depuis le libellé ». (4) le
+> [`module-matchs.md`](../courantes/module-matchs.md) §1 « Modèle & données transverses ». (4) le
 > détecteur de conflits (vérité de date + règle coach + bornes murales) — **P4-188 + P4-189 +
 > P4-191 SOLDÉS (2026-09-09)**, détail [`module-matchs.md`](../courantes/module-matchs.md) §
 > « Détection — MatchConflictDetector ». (5) le solveur de placement et l'amical — **P4-193 SOLDÉ
@@ -154,59 +154,57 @@
 > avec un bump `CONTRACT_VERSION` 2.21), l'amical **quitte le rail solveur** (jamais proposé,
 > `MatchPlacementPayloadBuilder`) et gagne une alerte dédiée (`FRIENDLY_ON_MATCH_SLOT`) — **zéro
 > champ moteur, zéro bump, le contrat reste 2.20**, détail
-> [`module-matchs.md`](../courantes/module-matchs.md) § « Solveur de placement » et § « Diagnostic
+> [`module-matchs.md`](../courantes/module-matchs.md) §3 « Solveur de placement » et §2 « Détecteur de
 > gradué ». (6) le canal API FFBB et l'appariement — **P4-194 + P4-195 SOLDÉS
 > (2026-09-10)** : une rencontre de coupe non appariée fait naître ou réutilise une `Competition`
 > CUP rattachée à l'équipe (le libellé fédéral tranche l'amical, plus l'absence d'appariement), et
 > une CUP n'attend aucune journée (`expectedMatchdays` null, un réappariement répare un type
 > stocké à tort), détail
-> [`module-matchs.md`](../courantes/module-matchs.md) § « Le canal API FFBB » et § « Appariement
-> FFBB ». (7) les alias FFBB d'un gymnase, voir/retirer — **P4-196 SOLDÉ (2026-09-11)** : 7ᵉ
+> [`module-matchs.md`](../courantes/module-matchs.md) §7 « Écran Importer » (§7 « Écran Importer »). (7) les alias FFBB d'un gymnase, voir/retirer — **P4-196 SOLDÉ (2026-09-11)** : 7ᵉ
 > `AccordionSection` de `ConfigurationPage` (`VenueLabelsSection.tsx`, `?section=libelles`),
-> détail [`module-matchs.md`](../courantes/module-matchs.md) § « Gymnase depuis le libellé ». (8)
+> détail [`module-matchs.md`](../courantes/module-matchs.md) §1 « Modèle & données transverses ». (8)
 > l'atterrissage de Placer et la fermeture clavier de la puce de filtre — **P4-192 + P4-184 SOLDÉS
 > (2026-09-11)** : `defaultLoopStep` bascule sur « Domiciles posés » quand le seul trou restant est
 > « Saisi dans FBI » et qu'il est VIDE (champ `LoopStep.empty`, jamais le libellé « (0/0) »),
 > mesuré sur un week-end 100 % déplacements (SF1/SM1/U21M1, 2026-09-08) ; `Échap` ferme la puce
 > `ResourceFilter` et rend le focus au déclencheur (listener natif + `stopPropagation`, patron
-> `listbox.tsx`), détail [`module-matchs.md`](../courantes/module-matchs.md) § « Refonte UX —
-> RMM-1 » et § « Filtres par équipe / coach / gymnase ». **P4-197 SOLDÉ (2026-09-16, PR 3b
+> `listbox.tsx`), détail [`module-matchs.md`](../courantes/module-matchs.md) §5 « Écran Calendrier » (ex-Refonte UX —
+> RMM-1 » et §5 « Écran Calendrier ». **P4-197 SOLDÉ (2026-09-16, PR 3b
 > « Calendrier — l'écran unique »)** : la liste « à placer » couvre désormais TOUTES les semaines
 > filtrées (plus de bornage à la semaine affichée) et un match placé recadre la semaine dessus
-> automatiquement — détail [`module-matchs.md`](../courantes/module-matchs.md) § « Calendrier —
+> automatiquement — détail [`module-matchs.md`](../courantes/module-matchs.md) §5 « Écran Calendrier »
 > l'écran unique du module matchs » (P4-183, blocs de mutualisation imbriqués, est un lot distinct —
 > mesure P4-182, ci-dessous). **P4-198 SOLDÉ (2026-09-14)** — recherche mesurée le 2026-09-12 en
 > rangeant le dépôt FBI en onglets par famille : champ de recherche intégré à la primitive
 > `Listbox` au-delà de 8 options réelles, trigger-bouton conservé, détail
-> [`module-matchs.md`](../courantes/module-matchs.md) § « Onglets par famille — dépôt FBI » et
+> [`module-matchs.md`](../courantes/module-matchs.md) §7 « Écran Importer » et
 > [`frontend-components.md`](../../frontend/docs/frontend-components.md). **P4-199/200/201**
 > ouverts le 2026-09-12 lors de la passe de tests
 > manuels du fondateur sur ses 256 rencontres réelles (82 sans heure) : règles d'import à recaler
 > (extérieur/passé-semaine-en-cours/suffixe équipe) — **P4-199 SOLDÉ le même jour**, détail
-> [`module-matchs.md`](../courantes/module-matchs.md) § « Espace Importer » et § « Appariement
-> FFBB » — **P4-200 SOLDÉ (C1 le 2026-09-12, C2 le 2026-09-13)**. **P4-201 SOLDÉ (2026-09-16)** —
+> [`module-matchs.md`](../courantes/module-matchs.md) §7 « Écran Importer » (§7 « Écran Importer ») — **P4-200 SOLDÉ (C1 le 2026-09-12, C2 le 2026-09-13)**. **P4-201 SOLDÉ (2026-09-16)** —
 > quota e2e superadmin : session unique par run (projet Playwright `setup` + `storageState`),
 > détail [`testing-strategy.md`](../../docs/testing/testing-strategy.md) § « Le socle superadmin
 > e2e ». **D1 SOLDÉ (2026-09-13)** — le détecteur de conflits dit la vérité (salle = fenêtre
 > match seul, jamais de conflit avec l'entraînement de sa propre équipe, passé muet), détail
-> [`module-matchs.md`](../courantes/module-matchs.md) § « Détection » ; différé une phrase d'aide
+> [`module-matchs.md`](../courantes/module-matchs.md) §2 « Détecteur de conflits » ; différé une phrase d'aide
 > « Durée des matchs » (P4-202, ci-dessous). **E1 + E2 SOLDÉS (2026-09-14)** — vécu fondateur
 > (libellé rattaché au mauvais gymnase, 83 domiciles mal placés, aucun geste de correction
 > existant) : inventaire agrégé + ré-affectation en un geste (`reassign: true`, E1) qui re-pointe
 > les non placés sans jamais toucher un placé, **exposé par l'écran d'appariement** (E2 —
 > l'ancienne section « Libellés FFBB des gymnases » devient l'écran, un signal partagé renvoie
 > vers lui depuis Importer/Semaine/Consulter), détail
-> [`module-matchs.md`](../courantes/module-matchs.md) § « Gymnase depuis le libellé ». **Reste
+> [`module-matchs.md`](../courantes/module-matchs.md) §1 « Modèle & données transverses ». **Reste
 > ouvert** : le pont par référence FFBB de salle, à re-sonder (P4-204). **P4-203 SOLDÉ
 > (2026-09-14)** — le solveur de placement adopte la règle D1 : la salle tient le match SEUL,
 > l'échauffement reste une fenêtre personne, contrat backend⇄engine **2.21** (durées de match par
-> équipe), détail [`module-matchs.md`](../courantes/module-matchs.md) § « Solveur de placement » et
+> équipe), détail [`module-matchs.md`](../courantes/module-matchs.md) §3 « Solveur de placement » et
 > [ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md) §4. **Reste ouvert** : la
 > vue « week-end type » n'a pas suivi cette géométrie (P4-206, ci-dessous).
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
-| P4-204 | **Pont par référence FFBB de salle — `numero` absent côté rencontres, un pont par `id` reste une PISTE non implémentée** | ⚪ | S | Constaté au cadrage E1 (2026-09-14, ré-affectation des alias de salle) : un appariement EXACT « libellé FBI ↔ gymnase du club » par référence fédérale (plutôt que par libellé approximatif) supposerait que l'objet `salle` d'un hit rencontres FFBB porte le même `numero` que l'index salles — mais il ne porte que `{id, libelle, adresse, cartographie}` (`FfbbRencontreReader.php:112-121,168-190`), jamais de `numero` ; le proxy salles, lui, n'expose que `numero` (`FfbbSallesController::mapSalle` — `FfbbSallesController.php:141`), jamais l'`id`. **Amendé 2026-09-15 (cadrage PR-2 « adversaire multi-gymnases »)** : un pont par cet `id` (comparer le `salle.id` d'un hit rencontres à l'`id` de l'index `ffbbserver_salles`) reste une **PISTE NON implémentée** — aucun code ne l'exploite ni ne le confirme. **2ᵉ sonde réseau réelle (2026-09-15, club BCCL)** : l'index `ffbbserver_salles` n'est PAS queryable par `numero` (ni filtre, ni plein texte) — seule la voie `_geoRadius` rend des hits (`FfbbSalleResolver.php:15-23`). Le pont retenu pour PR-2 (suggestions partagées de gymnase, § « Suggestions partagées de gymnases » de [`module-matchs.md`](../courantes/module-matchs.md)) est donc **coordonnées-graine + égalité stricte du `numero`**, PAS l'`id` — un mécanisme de VÉRIFICATION (il faut déjà connaître un point proche), pas un LOOKUP direct depuis un hit rencontres sans coordonnées. À faire, si le pont par `id` est un jour tenté : exposer l'`id` côté proxy salles et le stocker à côté de `numero`, pour fusionner une ligne `FFBB_API` et une ligne `MANUAL` de la même salle dans `opponent_venue_suggestion`, et rendre `suggestedVenueId` de `GET /api/venues/fbi-labels` (E1) EXACTE au lieu d'unanime-sur-placements |
+| P4-204 | **Pont par référence FFBB de salle — `numero` absent côté rencontres, un pont par `id` reste une PISTE non implémentée** | ⚪ | S | Constaté au cadrage E1 (2026-09-14, ré-affectation des alias de salle) : un appariement EXACT « libellé FBI ↔ gymnase du club » par référence fédérale (plutôt que par libellé approximatif) supposerait que l'objet `salle` d'un hit rencontres FFBB porte le même `numero` que l'index salles — mais il ne porte que `{id, libelle, adresse, cartographie}` (`FfbbRencontreReader.php:112-121,168-190`), jamais de `numero` ; le proxy salles, lui, n'expose que `numero` (`FfbbSallesController::mapSalle` — `FfbbSallesController.php:141`), jamais l'`id`. **Amendé 2026-09-15 (cadrage PR-2 « adversaire multi-gymnases »)** : un pont par cet `id` (comparer le `salle.id` d'un hit rencontres à l'`id` de l'index `ffbbserver_salles`) reste une **PISTE NON implémentée** — aucun code ne l'exploite ni ne le confirme. **2ᵉ sonde réseau réelle (2026-09-15, club BCCL)** : l'index `ffbbserver_salles` n'est PAS queryable par `numero` (ni filtre, ni plein texte) — seule la voie `_geoRadius` rend des hits (`FfbbSalleResolver.php:15-23`). Le pont retenu pour PR-2 (suggestions partagées de gymnase, §1 « Modèle & données transverses » de [`module-matchs.md`](../courantes/module-matchs.md)) est donc **coordonnées-graine + égalité stricte du `numero`**, PAS l'`id` — un mécanisme de VÉRIFICATION (il faut déjà connaître un point proche), pas un LOOKUP direct depuis un hit rencontres sans coordonnées. À faire, si le pont par `id` est un jour tenté : exposer l'`id` côté proxy salles et le stocker à côté de `numero`, pour fusionner une ligne `FFBB_API` et une ligne `MANUAL` de la même salle dans `opponent_venue_suggestion`, et rendre `suggestedVenueId` de `GET /api/venues/fbi-labels` (E1) EXACTE au lieu d'unanime-sur-placements |
 | P4-206 | **La vue « week-end type » dessine encore l'empreinte 2h15 — pas la géométrie D1/P4-203** | ⚪ | S | P4-203 (2026-09-14) a aligné le solveur de placement sur le radar (D1, #889) : la salle tient le match SEUL, l'échauffement reste une fenêtre personne. Le gabarit idéal du gestionnaire (`frontend/src/features/matches/lib/typicalWeekend.ts:125-126`, constantes `weekendGrid.ts:27-28`) dessine toujours `[coup d'envoi − 30, coup d'envoi + 105]` — présentation pure, hors scope P4-203. À aligner sur « salle = match seul » pour la cohérence visuelle avec la grille datée |
 | P4-209 | **Suggestions partagées de gymnases — le compteur `chosenByCount` peut encore dériver, deux résidus (jamais une fuite d'identité, juste un nombre inexact)** | ⚪ | S | Réduite : **(b) livrée** (PR correctrice audit 0918, 2026-09-18) — `SeasonDataPurger::decrementSharedVenueChoices` décrémente désormais le partagé, en pré-passe, pour chaque ligne `opponent_travel` MANUAL à ref effectif AVANT le DELETE de masse (`SeasonDataPurger.php`), même sémantique que `revertToAuto`/`deleteTeamOverride`. Restent deux résidus DANS le compte, sans lien avec le gate sécurité (`OpponentVenueSuggestionShareTest` reste vert) : **(a), résiduel** — sur une ligne restée MANUAL, le décrément s'applique toujours dès qu'un `previousRef` existe, MÊME si ce choix précédent n'avait jamais résolu fédéralement — donc jamais incrémenté le partagé (un club qui bascule d'une ref inconnue vers une ref connue peut encore décrémenter à tort le compte LÉGITIME d'un autre club, `OpponentTravelResolver.php:303-324,233-259,266-286`). **(c)** le compte est par ligne CLUB×SAISON×ÉQUIPE, pas par club distinct (une équipe de plus qui choisit le même gymnase incrémente encore) — déjà assumé et dit dans l'OpenAPI (« per club/season/team ») et `module-matchs.md`, à ne pas perdre de vue en corrigeant (a) |
 | P4-210 | **Écart de salle — le périmètre PLACÉ garde le défaut corrigé pour le non placé (2026-09-16) : `keep_app` non idempotent, comparaison sans alias confirmé** | 🟡 | S | Constaté en livrant l'écart salle d'un non placé (§ ci-dessus) : sur un domicile déjà PLACÉ, `detectFieldDeviations` (`backend/src/Service/FbiFixtureImporter.php:456`) compare la salle par `venueMatches` (fuzzy) SEUL, jamais l'alias confirmé (`VenueAliasResolver::resolveConfirmed`) — un placé rattaché par alias à « Debarros » dont le fichier nomme « SALLE RAPHAEL DE BARROS » lève un FAUX écart à chaque dépôt si le fuzzy ne matche pas. Et `processPerimeterFields` (`:833-843`) ne mémorise RIEN pour la branche `keep_app` du périmètre placé (contrairement à `Fixture.keptVenueLabel` posé pour le non placé) — un « Garder l'appli » sur ce champ n'est PAS idempotent, l'écart revient au dépôt suivant tant que le fichier répète le même libellé. Même remède que cette PR (clause alias + mémoire par libellé), à étendre au périmètre placé |
@@ -347,7 +345,7 @@
 
 ---
 
-## Findings d'audit ouverts (registre `/audit`) — 16
+## Findings d'audit ouverts (registre `/audit`) — 8
 
 > **À quoi sert cette section.** Le skill `/audit` tient un **registre à IDs stables** : un finding garde son
 > identifiant d'une édition à l'autre, ce qui rend la comparaison inter-éditions possible (« ce défaut est-il
@@ -371,14 +369,9 @@
 | AUD-ALIGN-12 | **Le solveur de placement ignore le trajet adversaire que le radar modélise** | Moyenne | align/engine | 2026-09-18 | `MatchConflictDetector` allonge l'empreinte AWAY du trajet aller-retour (`:281-287`) ; `POST /api/fixtures/place` ne reçoit AUCUNE donnée de trajet (`MatchPlacementPayloadBuilder.php:214-230`, 0 hit `travel` dans `match_placement.py`) — « Placer automatiquement » peut poser un domicile que le radar signale immédiatement après. Sens inverse (dangereux) de P4-215 (le solveur trop prudent vs le radar). Effort M |
 | AUD-FRT-31 | **Les gardes de placement d'un match sont front-only et reposent sur des lectures non gardées (`?? []`)** | Moyenne | frontend | 2026-09-18 | Confirmé. 14/17 lectures de `CalendarPage` passent par `?? []` ; `lib/matchAccess.ts:49-50` traite 0 fenêtre comme « rien à imposer » → une lecture ÉCHOUÉE est indistinguable d'un club sans créneau : `PlacementPanel.tsx:134-148` rend `canPlace=true`. Côté serveur, `FixtureStateProcessor.php` ne vérifie ni fenêtre d'accès, ni indisponibilité, ni enveloppe ligue. Remède : `readState`/`LoadErrorHint` (patron `CalendarPage.tsx:430-446`) + refus serveur dans `FixtureStateProcessor`. Effort M |
 | AUD-FRT-32 | **Miroir silencieux non déclaré : l'enveloppe ligue re-dérivée côté front sans test de parité** | Moyenne | frontend | 2026-09-18 | Confirmé. `matches/lib/envelope.ts:38-69` redérive `MatchConflictDetector::leagueWindowViolations` (`:560-590`) et DÉCIDE `envelopeBlocked → canPlace` (`PlacementPanel.tsx:132,148`) — alors que `LEAGUE_WINDOW_VIOLATION` est déjà servi dans `allConflicts`. Absent de `FrontRederivationRegistryTest`, régime (3) interdit par `.claude/rules/frontend.md`. Remède : déclarer le miroir avec un test de parité, ou consommer directement `LEAGUE_WINDOW_VIOLATION`. Effort S |
-| AUD-DOC-37 | **`docs/project-map.md` §3 ampute le moteur de 2 endpoints sur 6, et annonce `result_builder.py` fichier là où c'est un paquet** | Moyenne | doc | 2026-09-18 | `:133` omet `POST /place-matches` et `/validate-assignments` (`main.py:854,874`) ; `:145` omet `match_placement.py`, `validate_assignments.py`, `compromise.py`. DOC-36 (édition précédente) a corrigé le cas symétrique dans `CLAUDE.md`, pas la règle ici. Effort XS |
-| AUD-DOC-38 | **`specs/courantes/module-matchs.md` est un journal chronologique (28 titres `##` datés d'une PR), pas un état courant** | Moyenne | doc | 2026-09-18 | `wc -l` re-exécuté : 3 093 lignes, +157 % en 3 semaines. `specs/README.md` demande l'état courant. DOC-34 (meta-changelog OpenAPI borné) réincarné à la plus grande échelle du dépôt. Remède : refondre en état courant PAR ÉCRAN (journal daté part dans `etat-des-lieux.md` §3), avec une règle de taille. Effort M |
-| AUD-DOC-39 | **4 docs citent le `CONTRACT_VERSION` actif hors de la liste gardée par `test_contract_version_doc_sync.py`** | Moyenne | doc | 2026-09-18 | Le garde (`:37-50`) liste 9 docs ; `backend/docs/generation-flow.md:134,161`, `specs/courantes/generation-pipeline.md:10`, `backend/docs/geo-api.md:11`, `module-matchs.md:58,312` citent le contrat hors liste — 3 avaient réellement dérivé (2.20→2.21), rattrapés À LA MAIN par la rotation du 15/09. Remède : élargir `DOCS_QUOTING_THE_ACTIVE_VERSION`. Effort S |
-| AUD-DOC-45 | **Résidu : aucun garde n'empêche une future dérive des poids gymnase préféré/évité entre le code et les docs** | Moyenne | doc | 2026-09-18 | **Valeurs déjà corrigées par la rotation de fraîcheur de la PR correctrice 0918** (`engine/docs/constraint-vocabulary.md`, `frontend/docs/constraint-emission.md` : +60/−60 → +10/−10, `objective/weights.py:53,61`). Résidu NON traité (code) : rien ne garde ces valeurs contre une future dérive — 34 jours et trois stamps « re-confronté » étaient passés au-dessus avant cette PR. Remède : ajouter les valeurs au garde `test_contract_version_doc_sync` (ou un test dédié). Effort XS |
 | AUD-ENG-FAIBLES-0918 | **Engine — reliquat Faibles/Info de l'édition, non traités par la PR correctrice** | Faible | engine | 2026-09-18 | ENG-44/45/46/47 SOLDÉS par la PR correctrice ENGINE (`e7c69878`, contrat 2.22 — annotations `sharedBlocks`/`teamLinks` + défauts `version` réalignés, `constraints`/`leagueWindows` cappés, bandit gaté en CI, `unused_slot` n'émet plus de texte mort). Reste ouvert : ENG-43 (`GenerateScheduleHandler.php:237-245` greffe `previousAssignments`/`socleReferenceAssignments` APRÈS le hash de snapshot — **délibéré, pas un oubli** : inclure la greffe au snapshot ferait diverger `snapshotHash` de `currentStructureHash` à chaque régénération ; la vraie solution est de persister le payload FINAL dans un champ séparé, renvoyé au lot backend) · `soft_lock_moved` (frère mort d'ENG-47, jamais traité : le moteur envoie encore un texte anglais brut, `DiagnosticMessageBuilder` le reconstruit TOUJOURS localement — décrit `specs/courantes/etat-des-lieux.md` §2) · ALIGN-13 (`kickoffEstimated` transporté, jamais lu par le solveur — décision produit en attente : option A = peser un clash coach sur heure ESTIMÉE à 30 au lieu de 60, option B = annotation honnête retenue en l'état) · ALIGN-14 (`ConstraintKeysAreHonouredByEngineTest` prouve la clé, pas la cellule clé×ruleType pour les crans SOFT) · ALIGN-15 (le gate `forcedDays` ignore une FACILITY combinée `forcedVenueId`/`allowedDays`). Effort S |
 | AUD-BCK-FAIBLES-0918 | **Backend — reliquat Faibles/Info de l'édition, non traités par la PR correctrice** | Faible | backend | 2026-09-18 | BCK-26 (repli `?? $name` écrit un libellé club dans `opponent_directory`, `OpponentLocationResolver::locateCity():354`) · BCK-29 (`GenerateScheduleHandler` sans garde de statut terminal) · BCK-30 (`SYMFONY_DEPRECATIONS_HELPER = "weak"`) · BCK-31 (N+1 hydraté dans l'importeur FBI, `FbiFixtureImporter.php:381-386`) · SEC-20 (appariement code↔salle choisie sans provenance, même angle mort que BCK-18) · SEC-22 (import xlsx sans borne applicative propre — taille/lignes). **BCK-18 déjà tracké en P4-137 du backlog, pas dupliqué ici.** Effort S |
 | AUD-FRT-FAIBLES-0918 | **Frontend — reliquat Faibles/Info de l'édition, non traités par la PR correctrice** | Faible | frontend/ux | 2026-09-18 | FRT-37, UXC-21/22/23, A11Y-23/24 SOLDÉS par la PR correctrice frontend (`d00f4f7f`) — voir `specs/courantes/etat-des-lieux.md` §3. Reste ouvert : FRT-33 (monolithes du module matchs : `matches/api.ts` 1 316 l., `CalendarPage.tsx` 645 l.) · FRT-34 (70 avertissements `act(...)` par run) · FRT-35 (`msw` déclaré, jamais importé) · FRT-36 (chemin d'échec non testé sur `ConflictsPage`) · UXC-20 (puce filtre recodée 6 fois/2 fichiers, pas de `FilterChip` — recoupe P4-216) · UXC-24 (trois mots pour le statut `UNPLACED` selon l'onglet) · UXS-07 (onglet Conflits avant l'écran d'accueil du module — décision fondateur 15/09) · A11Y-21 (cibles `h-7` = 28px, AA ok, AAA non — recoupe P4-217). Effort S |
-| AUD-DOC-FAIBLES-0918 | **Docs — reliquat Faibles/Info de l'édition, non traités par la PR correctrice (hors DOC-46/48, corrigés par sa rotation de fraîcheur)** | Faible | doc | 2026-09-18 | DOC-40 (`specs/evolution/console-superadmin.md:32-105` garde ~75 l. d'état déjà LIVRÉ, non gradué vers `superadmin-auth.md`) · DOC-41 (`.claude/rules/frontend.md:8` compte volatil faux) · DOC-42 (les lots Dependabot ne laissent aucune trace §3 état des lieux) · DOC-43 (`duplications-de-verite.md` : cimetière de résolu, 49 ✅ / 5 ⬜) · DOC-44 (`docs/upgrades.md` journal non borné, 9 entrées 34 Ko) · DOC-47 (la table d'alignement ignore `targetTags`/`excludeTags`, émis et résolus mais jamais vérifiés par construction). Effort S |
 | AUD-INFRA-FAIBLES-0918 | **Infra — reliquat Faible/Info de l'édition, non traité par la PR correctrice** | Mineure | infra | 2026-09-18 | SEC-21 (`permissions:` absent de `ci.yml`/`security-weekly.yml`, contrairement à `deploy.yml`/`mirror-images.yml` — rétrogradé Mineure après contre-vérification : `default_workflow_permissions = read` au niveau du dépôt via l'API GitHub, le jeton hérité est déjà en lecture seule). Effort XS |
 
 > **`UXC-10` est fait hors admin** (2026-08-30) : 21 sites ralliés sur la primitive `EmptyHint`

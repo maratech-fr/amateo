@@ -1,12 +1,14 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-09-15 (rotation `documentation-update`, PR A onglet Conflits — zone non
-touchée par la PR, contrôle de fraîcheur). Re-confronté au code : `ConstraintFamily`
+Last verified @ 2026-09-18 (rotation de fraîcheur `documentation-update`, PR docs de l'audit
+0918 — fichier au stamp le plus ancien du dépôt, zone non touchée par le reste de la PR).
+Re-confronté au code : les poids cités ligne 35 (`spacing`, −2), ligne 45 (`preferredVenueId`,
++10) et ligne 67 (tiers S=10000…D=1) sont exacts contre `engine/app/solver/objective/weights.py`
+(`LEVEL_2_OBJECTIVE_WEIGHTS["spacing"]=-2`, `["preferred"]=10`, `["S"]=10000`/`["D"]=1`) — ce
+fichier était déjà, avant cette passe, le seul des trois docs de référence à ne PAS avoir dérivé
+sur le couple préféré/évité (DOC-45, 2026-09-18). `ConstraintFamily`
 (`backend/src/Enum/ConstraintFamily.php:11-14`) n'a toujours que 4 cas (TIME/DAY/FACILITY/
-COACH_AVAILABILITY), `FACILITY_CAPACITY` absent de l'enum ✓ ; `ScheduleConstraintBuilder::VENUE_CONFIG_KEYS`
-porte toujours `minAtVenueId` (`ScheduleConstraintBuilder.php:56`) ✓ ; les tests moteur
-`test_hard_lock_divisible_slot.py` et `test_consecutive_days.py` sont toujours en place
-(`engine/tests/semantic/`) ✓. Rien à corriger.
+COACH_AVAILABILITY), `FACILITY_CAPACITY` absent de l'enum ✓. Rien à corriger.
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels

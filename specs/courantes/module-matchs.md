@@ -47,6 +47,12 @@ vigueur, il n'a rien à comparer.
   FICTIF — aucun ancrage calendaire) : un créneau physique (gymnase **NOT NULL** + jour + heure,
   unique) partagé par N équipes en alternance A/B/C (cas SM1/SM2 : pénurie de créneaux). Une
   rotation tombée sous 2 membres est supprimée, un gymnase supprimé emporte la rotation entière.
+  L'image A/B (habitudes ∪ rotations) alimente aussi le solveur d'ENTRAÎNEMENT : `Team.matchDay`
+  (`ScheduleConstraintBuilder::deriveMatchDay`, `POST /generate`) émet le DERNIER jour ISO de match
+  de la semaine — le repos qui compte est celui d'après lui (`rest_day = match_day % 7 + 1`,
+  `engine/app/solver/objective/terms.py`) — pour le bonus SOFT « jour de repos après un match ».
+  Sans image (ni habitude ni rotation), repli sur le champ déclaré `Team.matchDay` (0-based,
+  converti en ISO à l'émission).
 - **`VenueMatchWindow`** (jour ISO + plage horaire, gymnase = « de match » ssi ≥ 1 fenêtre — aucun
   booléen sur `Venue`) et **`VenueUnavailability`** (plage de dates + motif, toutes circonstances,
   alerte seulement — jamais recopiée en N+1).
