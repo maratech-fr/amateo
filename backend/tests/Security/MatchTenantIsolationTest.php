@@ -9,6 +9,7 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Competition;
 use App\Entity\ConflictResolution;
+use App\Entity\FbiCorrection;
 use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
 use App\Entity\MatchSlotRotation;
@@ -26,6 +27,7 @@ use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
 use App\Enum\CompetitionType;
 use App\Enum\ConflictResolutionStatus;
+use App\Enum\FbiCorrectionField;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
@@ -669,6 +671,54 @@ final class MatchTenantIsolationTest extends WebTestCase
         self::assertResponseStatusCodeSame(403);
     }
 
+    /**
+     * NR axe §7.1 tenant isolation — le registre « à corriger dans FBI » vit dans une
+     * table TENANT. Club A ouvre une entrée ; club B ne la lit jamais (sa
+     * `findOpenBySeason`/`findOpen` reste vide sur la MÊME rencontre+champ), et une
+     * fermeture par B sur l'entrée de A est impossible (invisible sous le GUC de B).
+     * Falsifié dans les deux sens : chaque club voit SA ligne et RIEN de l'autre.
+     */
+    public function testFbiCorrectionsAreTenantScoped(): void
+    {
+        [$clubA, , $seasonA] = $this->createClubUser('fca');
+        [$clubB, , $seasonB] = $this->createClubUser('fcb');
+
+        // Même rencontre (id) et même champ des deux côtés : SEULE la frontière tenant
+        // les sépare — une fuite se verrait immédiatement.
+        $fixtureId = '33333333-3333-4333-8333-333333333333';
+        $this->seedFbiCorrection($clubA, $seasonA, $fixtureId, '15:00', '15:30');
+        $this->seedFbiCorrection($clubB, $seasonB, $fixtureId, '18:00', '18:30');
+
+        $repo = $this->em->getRepository(FbiCorrection::class);
+
+        // Le registre de A voit SON entrée (app 15:00), jamais celle de B.
+        $this->scopeGucToClub($clubA->getId());
+        $openA = $repo->findOpenBySeason($seasonA->getId());
+        self::assertCount(1, $openA);
+        self::assertSame($clubA->getId(), $openA[0]->getClubId());
+        self::assertSame('15:00', $openA[0]->getAppValue());
+        self::assertInstanceOf(FbiCorrection::class, $repo->findOpen($fixtureId, FbiCorrectionField::KICKOFF));
+
+        // Le registre de B voit SON entrée (app 18:00), jamais celle de A.
+        $this->scopeGucToClub($clubB->getId());
+        $openB = $repo->findOpenBySeason($seasonB->getId());
+        self::assertCount(1, $openB);
+        self::assertSame($clubB->getId(), $openB[0]->getClubId());
+        self::assertSame('18:00', $openB[0]->getAppValue());
+
+        // B ne « ferme » jamais l'entrée de A : sous le GUC de B, la ligne de A est
+        // introuvable par son id (RLS), donc rien à fermer côté B.
+        self::assertNull($repo->findOneBy(['id' => $openA[0]->getId()]));
+
+        // La ligne de A reste OUVERTE en base sous le scope de A.
+        $this->scopeGucToClub($clubA->getId());
+        $this->em->clear();
+        $survivor = $repo->findOneBy(['fixtureId' => $fixtureId, 'field' => FbiCorrectionField::KICKOFF]);
+        self::assertInstanceOf(FbiCorrection::class, $survivor);
+        self::assertTrue($survivor->isOpen());
+        self::assertSame($clubA->getId(), $survivor->getClubId());
+    }
+
     public function testFbiIngestionsAreScopedToTheClub(): void
     {
         [$clubA, , $seasonA] = $this->createClubUser('a');
@@ -762,6 +812,22 @@ final class MatchTenantIsolationTest extends WebTestCase
         $this->em->flush();
 
         return $fixture;
+    }
+
+    /** An OPEN « à corriger dans FBI » kickoff entry for the club+season. */
+    private function seedFbiCorrection(Club $club, Season $season, string $fixtureId, string $appValue, string $fbiValue): void
+    {
+        $this->scopeGucToClub($club->getId());
+        $row = (new FbiCorrection)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setFixtureId($fixtureId)
+            ->setField(FbiCorrectionField::KICKOFF)
+            ->setAppValue($appValue)
+            ->setFbiValue($fbiValue)
+            ->setDecidedBy('44444444-4444-4444-8444-444444444444');
+        $this->em->persist($row);
+        $this->em->flush();
     }
 
     private function seedManualTravel(Club $club, Season $season, string $code, int $minutes, string $venueLabel): void
