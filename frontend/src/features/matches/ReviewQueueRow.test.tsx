@@ -222,12 +222,47 @@ describe("ReviewQueueRow — valider / pris en compte / bandeau (P4-199)", () =>
       pendingDeviations: [{ field: "date", appValue: "2026-11-07", sourceValue: "2026-11-14", channel: "FBI_XLSX", seenAt: "2026-10-01T00:00:00+00:00", autoApplied: true }],
     });
     const { onValidateLine } = renderValidatable(fixture);
-    // Bandeau : la source a déplacé, ANCIENNE → NOUVELLE (jamais l'inverse).
-    expect(screen.getByText(/FBI a déplacé ce match.*2026-11-07 → 2026-11-14/)).toBeInTheDocument();
+    // Bandeau : UNE phrase, dates FORMATÉES (jamais l'ISO brut), ancienne → nouvelle.
+    expect(screen.getByText("FBI a déplacé ce match (date) : sam. 7 nov. → sam. 14 nov.")).toBeInTheDocument();
     // Pas d'arbitrage champ par champ sur un écart auto-appliqué.
     expect(screen.queryByRole("button", { name: "Garder Amateo" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Pris en compte" }));
     expect(onValidateLine).toHaveBeenCalledWith(fixture.id);
+  });
+
+  it("date ET heure auto-appliquées : UN seul bloc « … → nouvelle date à nouvelle heure »", () => {
+    renderValidatable(fx({
+      reviewState: "REVIEWED",
+      homeAway: "AWAY",
+      reviewedAt: "2026-10-01T10:00:00+00:00",
+      pendingDeviations: [
+        { field: "date", appValue: "2026-11-07", sourceValue: "2026-11-14", channel: "FBI_XLSX", seenAt: "2026-10-01T00:00:00+00:00", autoApplied: true },
+        { field: "kickoff", appValue: "20:00", sourceValue: "21:00", channel: "FBI_XLSX", seenAt: "2026-10-01T00:00:00+00:00", autoApplied: true },
+      ],
+    }));
+    expect(screen.getByText("FBI a déplacé ce match : sam. 7 nov. → sam. 14 nov. à 21:00.")).toBeInTheDocument();
+    // UN seul bloc : la phrase n'apparaît pas deux fois.
+    expect(screen.queryAllByText(/a déplacé ce match/)).toHaveLength(1);
+  });
+
+  it("heure seule auto-appliquée : « (heure) : 20:00 → 21:00 »", () => {
+    renderValidatable(fx({
+      reviewState: "REVIEWED",
+      homeAway: "AWAY",
+      reviewedAt: "2026-10-01T10:00:00+00:00",
+      pendingDeviations: [{ field: "kickoff", appValue: "20:00", sourceValue: "21:00", channel: "FBI_XLSX", seenAt: "2026-10-01T00:00:00+00:00", autoApplied: true }],
+    }));
+    expect(screen.getByText("FBI a déplacé ce match (heure) : 20:00 → 21:00")).toBeInTheDocument();
+  });
+
+  it("salle seule auto-appliquée (canal API) : « (salle) : X → Y », la source nommée", () => {
+    renderValidatable(fx({
+      reviewState: "REVIEWED",
+      homeAway: "AWAY",
+      reviewedAt: "2026-10-01T10:00:00+00:00",
+      pendingDeviations: [{ field: "venue", appValue: "Gymnase Alpha", sourceValue: "Coubertin", channel: "FFBB_API", seenAt: "2026-10-01T00:00:00+00:00", autoApplied: true }],
+    }));
+    expect(screen.getByText("API FFBB a déplacé ce match (salle) : Gymnase Alpha → Coubertin")).toBeInTheDocument();
   });
 
   it("OUT_OF_SYNC à écart arbitrable : ni « Valider » ni « Pris en compte » (on tranche par champ)", () => {

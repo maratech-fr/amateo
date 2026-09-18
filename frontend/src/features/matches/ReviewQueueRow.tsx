@@ -8,6 +8,7 @@ import { todayISO } from "@/shared/lib/clock";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
 
 import type { AttachVenueLabelInput, Fixture, PendingDeviation, ResolveDeviationInput, Venue } from "./api";
+import { autoAppliedPhrase } from "./lib/autoAppliedPhrase";
 import { DEPOSITED_WARNING, FIELD_LABEL, fieldConsequence, isDeposited } from "./lib/deviationConsequence";
 import { FIXTURE_STATUS_LABEL } from "./lib/fixtureStatusLabel";
 import { isUnattachedHome } from "./lib/reviewQueue";
@@ -99,16 +100,14 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
       {/* Domicile importé sans gymnase : réparation contextuelle, ton NEUTRE (jamais warning). */}
       {isUnattachedHome(fixture) ? <AttachVenueBlock fixture={fixture} venues={venues} onAttach={onAttach} busy={busy} /> : null}
 
-      {/* Valeurs imposées d'office par la source pendant que le match était traité :
-          ancienne valeur → nouvelle (la destination est `sourceValue`, jamais `appValue`). */}
-      {autoApplied.map((d) => (
-        <div key={`auto-${d.field}`} className="flex items-start gap-2 rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm">
+      {/* Valeurs imposées d'office par la source pendant que le match était traité : UNE
+          phrase lisible (dates formatées, date+heure fusionnées), plus une ligne par champ. */}
+      {autoApplied.length > 0 ? (
+        <div className="flex items-start gap-2 rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm">
           <CalendarClock className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
-          <span>
-            {sourceLabel(d.channel)} a déplacé ce match ({FIELD_LABEL[d.field].toLowerCase()}) : {d.appValue ?? "—"} → {d.sourceValue ?? "—"}.
-          </span>
+          <span>{autoAppliedPhrase(autoApplied, sourceLabel(autoApplied[0].channel))}</span>
         </div>
-      ))}
+      ) : null}
 
       {/* Écarts à arbitrer : deux colonnes Amateo / source, une décision par champ. */}
       {arbitrable.map((d) => {
