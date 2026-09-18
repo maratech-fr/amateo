@@ -228,10 +228,20 @@ describe("ConflictLine — détail par côté (P2-54)", () => {
     );
   }
 
-  it("rend UNE LIGNE PAR CÔTÉ (liste « Détail par équipe ») + le chevauchement", () => {
+  /** Les cellules d'une ligne DANS L'ORDRE des colonnes (identité rowheader + 4 horaires). */
+  function cellsOf(row: HTMLElement): Element[] {
+    return Array.from(row.querySelectorAll("th[scope='row'], td"));
+  }
+
+  it("rend un TABLEAU « Détail par équipe » (4 en-têtes de colonne) + une ligne par côté + le chevauchement", () => {
     renderDetail(matchMatch);
-    const detail = screen.getByRole("list", { name: "Détail par équipe" });
-    expect(within(detail).getAllByRole("listitem")).toHaveLength(2);
+    const table = screen.getByRole("table", { name: "Détail par équipe" });
+    // 4 en-têtes NOMMÉS (la colonne d'identité n'en porte pas) : Départ, Coup d'envoi, Fin/retour, Durée.
+    const headers = within(table).getAllByRole("columnheader").map((h) => h.textContent);
+    expect(headers).toEqual(["Départ", "Coup d'envoi", "Fin / retour", "Durée"]);
+    // Deux lignes de corps (une par côté).
+    const bodyRows = within(table).getAllByRole("row").slice(1);
+    expect(bodyRows).toHaveLength(2);
     // Lieu + adversaire par côté.
     expect(screen.getByText("extérieur à Villeurbanne")).toBeInTheDocument();
     expect(screen.getByText("domicile")).toBeInTheDocument();
@@ -242,13 +252,36 @@ describe("ConflictLine — détail par côté (P2-54)", () => {
     expect(screen.getByText("1 h 55")).toBeInTheDocument();
   });
 
-  it("le coup d'envoi estimé porte la pastille « estimé » ; la pastille GLOBALE « heure estimée » disparaît", () => {
+  it("le coup d'envoi est TOUJOURS la même colonne (index 2) — l'alignement est un fait DOM", () => {
     renderDetail(matchMatch);
-    expect(screen.getByText("estimé")).toBeInTheDocument();
-    expect(screen.queryByText("heure estimée")).not.toBeInTheDocument();
+    const table = screen.getByRole("table", { name: "Détail par équipe" });
+    const [awayRow, homeRow] = within(table).getAllByRole("row").slice(1);
+    // Côté extérieur (estimé 15:00) et côté domicile (15:30) : le coup d'envoi tombe dans la
+    // MÊME cellule (index 2) — l'alignement des heures ne dépend pas de la nature du côté.
+    expect(cellsOf(awayRow)[2].textContent).toContain("15:00");
+    expect(cellsOf(homeRow)[2].textContent).toContain("15:30");
   });
 
-  it("adversaire long : l'adversaire s'enroule (ni whitespace-nowrap ni truncate), les segments horaires restent insécables", () => {
+  it("le coup d'envoi estimé porte la pastille « estimé » DANS sa case ; la pastille GLOBALE « heure estimée » disparaît", () => {
+    renderDetail(matchMatch);
+    expect(screen.queryByText("heure estimée")).not.toBeInTheDocument();
+    const table = screen.getByRole("table", { name: "Détail par équipe" });
+    const awayRow = within(table).getAllByRole("row").slice(1)[0];
+    expect(cellsOf(awayRow)[2].textContent).toContain("estimé");
+  });
+
+  it("côté sans trajet : Départ = « — » et « trajet inconnu » dans l'en-tête de ligne", () => {
+    const noTravel = { ...awayEstimated, travelOneWayMinutes: null };
+    renderDetail({ ...matchMatch, left: noTravel });
+    const table = screen.getByRole("table", { name: "Détail par équipe" });
+    const awayRow = within(table).getAllByRole("row").slice(1)[0];
+    const cells = cellsOf(awayRow);
+    // Colonne Départ (index 1) = tiret muet ; « trajet inconnu » vit dans le rowheader (index 0).
+    expect(cells[1].textContent).toBe("—");
+    expect(cells[0].textContent).toContain("trajet inconnu");
+  });
+
+  it("adversaire long : l'adversaire s'enroule (ni whitespace-nowrap ni truncate), les cellules horaires restent insécables", () => {
     const longOpp = "VAULX EN VELIN BASKET CLUB SUD OUEST - 2"; // 40 caractères
     renderDetail({ ...matchMatch, right: { ...homeReal, opponentLabel: longOpp } });
 
@@ -258,9 +291,18 @@ describe("ConflictLine — détail par côté (P2-54)", () => {
     expect(opponent).not.toHaveClass("truncate");
     expect(opponent).toHaveClass("[overflow-wrap:anywhere]");
 
-    // Un segment horaire (le coup d'envoi) reste, lui, insécable.
-    const kickoffLabel = screen.getAllByText("coup d'envoi", { exact: false })[0];
-    expect(kickoffLabel.closest("span.whitespace-nowrap")).not.toBeNull();
+    // Une cellule horaire (le coup d'envoi) reste, elle, insécable.
+    const table = screen.getByRole("table", { name: "Détail par équipe" });
+    const homeRow = within(table).getAllByRole("row").slice(1)[1];
+    expect(cellsOf(homeRow)[2]).toHaveClass("whitespace-nowrap");
+  });
+
+  it("l'en-tête « Durée » se replie sous @sm (container query) — le masquage réel se prouve en Playwright", () => {
+    renderDetail(matchMatch);
+    const duree = screen.getByRole("columnheader", { name: "Durée" });
+    // jsdom n'applique aucun CSS Tailwind : on atteste la CLASSE, pas le rendu (Playwright le fait).
+    expect(duree).toHaveClass("@sm:table-cell");
+    expect(duree).toHaveClass("hidden");
   });
 
   it("VENUE_OVERLAP garde la pastille GLOBALE « heure estimée » (témoin de non-régression) et AUCUN détail par côté", () => {
@@ -275,6 +317,6 @@ describe("ConflictLine — détail par côté (P2-54)", () => {
     };
     renderDetail(venueOverlap);
     expect(screen.getByText("heure estimée")).toBeInTheDocument();
-    expect(screen.queryByRole("list", { name: "Détail par équipe" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Détail par équipe" })).not.toBeInTheDocument();
   });
 });

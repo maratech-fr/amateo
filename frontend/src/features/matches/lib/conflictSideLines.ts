@@ -21,20 +21,20 @@ import { SIDE_ROLE_WORD } from "./conflictLabels";
  */
 
 export type ConflictSideKind = "home" | "away" | "training";
-export type SegmentSeparator = "arrow" | "dot";
 
-/** Un point horaire d'un côté (« coup d'envoi 15:00 », « fin 17:25 », « 18:00 »). */
-export interface ConflictTimeSegment {
-  /** Mot muet en tête (« départ », « retour », « fin », « durée estimée », « coup d'envoi »). */
-  label?: string;
-  /** L'heure « 15:00 » ou la durée « 1 h 55 ». */
-  value: string;
-  /** Le coup d'envoi — libellé + heure en gras. */
-  emphasis?: boolean;
-  /** Pastille « estimé » collée à ce segment (coup d'envoi emprunté à une habitude). */
-  estimated?: boolean;
-  /** Séparateur AVANT ce segment ; absent = premier segment, sans séparateur. */
-  separator?: SegmentSeparator;
+/**
+ * Les 4 créneaux FIXES d'un côté, alignés en colonnes de tableau (le coup d'envoi toujours
+ * colonne 2, quelle que soit la nature). Un créneau absent → cellule « — ».
+ */
+export interface ConflictSideTimes {
+  /** Colonne 1 « Départ » — extérieur avec trajet modélisé seulement. */
+  departure?: string;
+  /** Colonne 2 « Coup d'envoi » — TOUJOURS présent (match : le coup d'envoi ; entraînement : son début). */
+  kickoff: { value: string; estimated: boolean };
+  /** Colonne 3 « Fin / retour » — domicile : fin ; extérieur : retour ; entraînement : fin. */
+  end?: string;
+  /** Colonne 4 « Durée » — durée estimée du match, DOMICILE seul. */
+  duration?: string;
 }
 
 export interface ConflictSideLine {
@@ -46,8 +46,8 @@ export interface ConflictSideLine {
   place: string;
   /** « vs <adversaire> » — côtés MATCH seulement (jamais un entraînement). */
   opponent?: string;
-  segments: ConflictTimeSegment[];
-  /** Extérieur sans trajet modélisé : pas de départ/retour, un « trajet inconnu » muet à la place. */
+  times: ConflictSideTimes;
+  /** Extérieur sans trajet modélisé : départ/retour absents, un « trajet inconnu » muet à la place. */
   travelUnknown?: boolean;
 }
 
@@ -99,49 +99,49 @@ function matchPlace(side: ConflictFixtureView): string {
   return null != place && "" !== place ? `extérieur à ${place}` : "extérieur (lieu inconnu)";
 }
 
-/** Les segments horaires d'un côté MATCH — domicile (coup d'envoi → fin · durée) ou extérieur (départ → coup d'envoi → retour). */
-function matchSegments(side: ConflictFixtureView): { segments: ConflictTimeSegment[]; travelUnknown?: boolean } {
+/** Les 4 créneaux d'un côté MATCH — domicile (coup d'envoi, fin, durée) ou extérieur (départ, coup d'envoi, retour). */
+function matchTimes(side: ConflictFixtureView): { times: ConflictSideTimes; travelUnknown?: boolean } {
   const duration = side.matchDurationMinutes;
 
   if ("AWAY" !== side.homeAway) {
-    // Domicile : coup d'envoi RÉEL → fin (kickoff + durée, arithmétique d'affichage) · durée estimée.
+    // Domicile : coup d'envoi RÉEL ; fin = kickoff + durée (arithmétique d'affichage) ; colonne durée.
     const kickoff = side.kickoffTime ?? "";
-    const segments: ConflictTimeSegment[] = [{ label: "coup d'envoi", value: kickoff, emphasis: true }];
     const kickoffMin = parseTime(kickoff);
-    if (null !== kickoffMin && undefined !== duration) {
-      segments.push({ label: "fin", value: formatMinutes(kickoffMin + duration), separator: "arrow" });
-      segments.push({ label: "durée estimée", value: formatDurationMinutes(duration), separator: "dot" });
-    }
-    return { segments };
+    return {
+      times: {
+        kickoff: { value: kickoff, estimated: false },
+        end: null !== kickoffMin && undefined !== duration ? formatMinutes(kickoffMin + duration) : undefined,
+        duration: undefined !== duration ? formatDurationMinutes(duration) : undefined,
+      },
+    };
   }
 
   // Extérieur : le coup d'envoi RÉEL, sinon l'ESTIMÉ emprunté à l'habitude.
   const estimated = true === side.estimatedKickoff;
   const kickoff = side.kickoffTime ?? side.estimatedKickoffTime ?? "";
-  const kickoffSegment: ConflictTimeSegment = { label: "coup d'envoi", value: kickoff, emphasis: true, estimated };
 
-  // Trajet non modélisé (null) → pas de départ/retour, « trajet inconnu » à la place.
+  // Trajet non modélisé (null) → ni départ ni retour, « trajet inconnu » à la place.
   if (null == side.travelOneWayMinutes) {
-    return { segments: [kickoffSegment], travelUnknown: true };
+    return { times: { kickoff: { value: kickoff, estimated } }, travelUnknown: true };
   }
   return {
-    segments: [
-      { label: "départ", value: wallClockTime(side.windowStart) },
-      { ...kickoffSegment, separator: "arrow" },
-      { label: "retour", value: wallClockTime(side.windowEnd), separator: "arrow" },
-    ],
+    times: {
+      departure: wallClockTime(side.windowStart),
+      kickoff: { value: kickoff, estimated },
+      end: wallClockTime(side.windowEnd), // le retour
+    },
   };
 }
 
 function matchSide(side: ConflictFixtureView, teams: Map<string, Team>): ConflictSideLine {
-  const { segments, travelUnknown } = matchSegments(side);
+  const { times, travelUnknown } = matchTimes(side);
   return {
     teamName: teams.get(side.teamId)?.name ?? "Équipe ?",
     roleWord: roleWordOf(side),
     kind: HOME_AWAY_KIND[side.homeAway],
     place: matchPlace(side),
     opponent: undefined !== side.opponentLabel && "" !== side.opponentLabel ? `vs ${side.opponentLabel}` : undefined,
-    segments,
+    times,
     travelUnknown,
   };
 }
@@ -153,8 +153,8 @@ function trainingSide(training: ConflictTrainingView, teams: Map<string, Team>, 
     roleWord: roleWordOf(training),
     kind: "training",
     place: `Entraînement · ${venueName}`,
-    // Entraînement : la fenêtre servie telle quelle, aucun coup d'envoi.
-    segments: [{ value: wallClockTime(training.windowStart) }, { value: wallClockTime(training.windowEnd), separator: "arrow" }],
+    // Entraînement : son début va en colonne coup d'envoi, sa fin en colonne fin/retour.
+    times: { kickoff: { value: wallClockTime(training.windowStart), estimated: false }, end: wallClockTime(training.windowEnd) },
   };
 }
 

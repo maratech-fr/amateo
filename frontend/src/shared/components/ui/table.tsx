@@ -12,11 +12,18 @@ import { cn } from "@/shared/lib/utils";
  * défile HORIZONTALEMENT dans sa boîte, jamais la page (règle `.claude/rules/frontend.md`).
  * `TableHead` pose `scope="col"` (en-tête de colonne, a11y) et le style d'en-tête
  * (`text-muted-foreground`, ≥ `text-xs`). Jetons du thème uniquement — aucun `#hex`.
+ *
+ * `variant="inline"` — un tableau NU (ni bordure, ni fond, ni arrondi), en `text-xs`, destiné à
+ * s'imbriquer dans un encart déjà cadré (le détail par côté d'un conflit) ; il garde son
+ * `overflow-x-auto`. `TableHead`/`TableCell` acceptent un `className` pour resserrer les cellules
+ * (`px-1.5 py-0.5`) et laisser les en-têtes en `normal-case`.
  */
-export function Table({ className, ...props }: HTMLAttributes<HTMLTableElement>) {
+export function Table({ className, variant = "default", ...props }: HTMLAttributes<HTMLTableElement> & { variant?: "default" | "inline" }) {
+  const wrapper = "inline" === variant ? "w-full overflow-x-auto" : "w-full overflow-x-auto rounded-lg border border-border bg-card";
+  const table = "inline" === variant ? "w-full border-collapse text-xs text-foreground" : "w-full border-collapse text-sm text-foreground";
   return (
-    <div className="w-full overflow-x-auto rounded-lg border border-border bg-card">
-      <table className={cn("w-full border-collapse text-sm text-foreground", className)} {...props} />
+    <div className={wrapper}>
+      <table className={cn(table, className)} {...props} />
     </div>
   );
 }

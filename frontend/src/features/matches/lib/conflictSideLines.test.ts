@@ -72,32 +72,33 @@ describe("buildConflictSideLines — côté MATCH", () => {
     expect(home.place).toBe("domicile");
     expect(home.opponent).toBe("vs VAULX EN VELIN BASKET CLUB - 2");
     expect(home.travelUnknown).toBeUndefined();
-    expect(home.segments).toEqual([
-      { label: "coup d'envoi", value: "15:30", emphasis: true },
-      { label: "fin", value: "17:25", separator: "arrow" },
-      { label: "durée estimée", value: "1 h 55", separator: "dot" },
-    ]);
+    // Créneaux fixes : pas de départ (domicile), coup d'envoi, fin (kickoff + durée), durée estimée.
+    expect(home.times).toEqual({
+      kickoff: { value: "15:30", estimated: false },
+      end: "17:25",
+      duration: "1 h 55",
+    });
   });
 
-  it("extérieur RÉEL : lieu « extérieur à … », départ → coup d'envoi (non estimé) → retour", () => {
+  it("extérieur RÉEL : lieu « extérieur à … », départ / coup d'envoi (non estimé) / retour, sans durée", () => {
     const model = buildConflictSideLines(matchMatch(awaySide(), homeSide()), teams, venues);
     const away = model!.sides[0];
     expect(away.kind).toBe("away");
     expect(away.place).toBe("extérieur à Villeurbanne");
     expect(away.opponent).toBe("vs ASVEL - 2");
     expect(away.travelUnknown).toBeUndefined();
-    expect(away.segments).toEqual([
-      { label: "départ", value: "13:30" },
-      { label: "coup d'envoi", value: "15:00", emphasis: true, estimated: false, separator: "arrow" },
-      { label: "retour", value: "18:25", separator: "arrow" },
-    ]);
+    // Départ / coup d'envoi / retour ; la colonne durée reste vide en extérieur.
+    expect(away.times).toEqual({
+      departure: "13:30",
+      kickoff: { value: "15:00", estimated: false },
+      end: "18:25",
+    });
   });
 
   it("extérieur ESTIMÉ : le coup d'envoi porte l'heure estimée et le drapeau estimated", () => {
     const away = awaySide({ kickoffTime: null, estimatedKickoff: true, estimatedKickoffTime: "15:00" });
     const model = buildConflictSideLines(matchMatch(away, homeSide()), teams, venues);
-    const kickoff = model!.sides[0].segments.find((s) => "coup d'envoi" === s.label);
-    expect(kickoff).toEqual({ label: "coup d'envoi", value: "15:00", emphasis: true, estimated: true, separator: "arrow" });
+    expect(model!.sides[0].times.kickoff).toEqual({ value: "15:00", estimated: true });
   });
 
   it("trajet INCONNU (travelOneWayMinutes null) : ni départ ni retour, drapeau travelUnknown", () => {
@@ -105,7 +106,8 @@ describe("buildConflictSideLines — côté MATCH", () => {
     const model = buildConflictSideLines(matchMatch(away, homeSide()), teams, venues);
     const side = model!.sides[0];
     expect(side.travelUnknown).toBe(true);
-    expect(side.segments).toEqual([{ label: "coup d'envoi", value: "15:00", emphasis: true, estimated: false }]);
+    // Seul le coup d'envoi (colonne 2) ; départ/retour/durée absents → cellules « — » à l'écran.
+    expect(side.times).toEqual({ kickoff: { value: "15:00", estimated: false } });
   });
 
   it("lieu INCONNU (opponentPlace null) : « extérieur (lieu inconnu) »", () => {
@@ -147,7 +149,8 @@ describe("buildConflictSideLines — MATCH_TRAINING (entraînement)", () => {
     expect(side.roleWord).toBe("coach");
     expect(side.place).toBe("Entraînement · Gymnase Mateo");
     expect(side.opponent).toBeUndefined();
-    expect(side.segments).toEqual([{ value: "18:00" }, { value: "19:30", separator: "arrow" }]);
+    // Entraînement : son début va en colonne coup d'envoi, sa fin en colonne fin/retour.
+    expect(side.times).toEqual({ kickoff: { value: "18:00", estimated: false }, end: "19:30" });
   });
 
   it("gymnase absent de la map → « Gymnase ? » (jamais un crash)", () => {
