@@ -147,6 +147,7 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                 '401' => new Response('Unauthorized (missing/expired JWT)'),
                 '403' => new Response('Not a management member'),
                 '422' => new Response('Invalid opponent/venue, or the opponent has no away fixture this season'),
+                '429' => new Response('Too many requests (per-user rate limit)'),
             ],
             summary: 'Pin an opponent\'s gym by hand and recompute its travel (management only)',
             requestBody: $this->schemas->jsonBody([
