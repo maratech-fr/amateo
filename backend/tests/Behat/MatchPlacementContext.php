@@ -239,12 +239,12 @@ final class MatchPlacementContext extends BaseContext
         // Le champ opponentOrganismeCode n'est pas exposé au POST (posé à l'import) : on
         // l'estampille en base, comme la fédération le ferait, puis on injecte le trajet
         // (aller-retour = 2 × 180 = 360 min côté projection). Nettoyés en fin de scénario.
-        $seasonId = $this->dbalScalar(
-            \sprintf('SELECT id AS behatval FROM season WHERE club_id=\'%s\' AND status=\'ACTIVE\' ORDER BY created_at DESC LIMIT 1', $this->clubId),
-            admin: true,
-        );
-        if ('' === $seasonId) {
-            throw new RuntimeException('aucune saison ACTIVE pour rattacher le trajet');
+        // La saison = celle de la rencontre qu'on vient de créer, LUE À L'API (jamais parsée
+        // depuis la sortie console d'un `run-sql`) : c'est exactement la saison courante que
+        // la projection de trajet interroge.
+        $seasonId = $this->apiGet(\sprintf('fixtures/%s', $this->awayId), $this->token)['json']['seasonId'] ?? null;
+        if (!\is_string($seasonId) || '' === $seasonId) {
+            throw new RuntimeException('la saison de la rencontre extérieure est introuvable');
         }
         $this->travelCode = 'BEHAT-D3-' . substr(md5($this->awayId), 0, 8);
         $this->dbalExec(
