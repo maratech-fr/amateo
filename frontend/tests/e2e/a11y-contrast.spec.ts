@@ -67,31 +67,72 @@ for (const mode of MODES) {
  * et on lance un scan axe COMPLET (`wcag2a`/`wcag2aa`/`wcag21aa`) sur chaque écran, DANS LES DEUX
  * THÈMES. C'est ce scan structurel qui garde A11Y-23 (`aria-valid-attr-value` : un `aria-controls`
  * vers un id absent) et A11Y-24 (`scrollable-region-focusable`), en plus du contraste (color-contrast
- * est tagué wcag2aa). Chaque scan exige un TÉMOIN (une carte / grille rendue) — un scan sur écran vide
- * ne prouve rien — et attend la levée du voile.
+ * est tagué wcag2aa). Chaque scan exige un TÉMOIN (une grille / région / carte RENDUE) — un scan sur
+ * écran vide ne prouve rien — et attend la levée du voile.
  *
- * Tenable : l'audit du 18/09 a exécuté exactement ce scan sur la base BCCL réelle et n'a trouvé
- * AUCUNE violation structurelle sur ces écrans, hormis `/matchs/semaine-type` (les deux défauts que
- * ce lot corrige). Onboarding idempotent : seul le 1ᵉʳ thème déclenche une génération (CP-SAT réelle).
+ * ⚠ Un e2e crée ce qu'il vérifie (mémoire dépôt, 3 PR rougies). Le club seedé CI a des habitudes de
+ * semaine type et un planning (via `ensureValidated`) mais AUCUNE rencontre (`app:bccl:seed` pose des
+ * `TeamMatchHabit`/`MatchSlotRotation`, jamais de `Fixture`). `/matchs` rend donc un EmptyState
+ * « Aucun match importé » (`CalendarPage.tsx:528`), pas la grille : on lui POSTe un amical (patron
+ * `matches-consulter.spec.ts`), nettoyé en `finally`. Les trois autres écrans ont une donnée GARANTIE
+ * par le seed / l'onboarding (voir chaque témoin). L'audit du 18/09 a exécuté ce scan sur la base BCCL
+ * réelle (291 rencontres) sans violation, hormis `/matchs/semaine-type` (les deux défauts corrigés).
+ * Onboarding idempotent : seul le 1ᵉʳ thème déclenche une génération (CP-SAT réelle).
  */
+function ymd(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+/** Le prochain samedi (Y-m-d) à au moins `minAhead` jours d'aujourd'hui — une semaine future VIERGE. */
+function nextSaturdayAtLeast(minAhead: number): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + minAhead);
+  while (6 !== d.getDay()) {
+    d.setDate(d.getDate() + 1); // 6 = samedi
+  }
+  return ymd(d);
+}
+/** Amène la semaine affichée sur celle qui contient `target`, en cliquant `btn` (‹ ou ›) au plus
+ * `max` fois. Un locator qui résout PLUSIEURS éléments ÉCHOUE en le disant (jamais avalé en `false`). */
+async function stepUntilVisible(btn: Locator, target: Locator, max: number): Promise<boolean> {
+  const seen = async (): Promise<boolean> => {
+    const n = await target.count();
+    if (n > 1) {
+      throw new Error(`stepUntilVisible: locator ambigu (${n} éléments) — scoper au conteneur (grille)`);
+    }
+    return 1 === n && (await target.first().isVisible());
+  };
+  if (await seen()) {
+    return true;
+  }
+  for (let i = 0; i < max; i++) {
+    if (!(await btn.isEnabled())) {
+      break;
+    }
+    await btn.click();
+    if (await seen()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Témoin PAR ÉCRAN : un locator qui prouve un CONTENU rendu (pas seulement le gabarit). Le témoin
 // GLOBAL précédent (`[data-testid="weekend-grid"], [role="region"], [class*="shadow-sm"]`) était trop
 // étroit — la grille /planning (`WeekGrid`) ne porte NI carte `shadow-sm` NI `role="region"` NI
 // testid, si bien qu'axe scannait une page pourtant PEINTE (heading + boutons de créneaux) et le
-// témoin la déclarait « vide ». Chaque écran désigne donc sa propre preuve de contenu.
+// témoin la déclarait « vide ». Chaque écran désigne donc sa propre preuve de contenu, GARANTIE en CI.
 const AUTH_SCREENS: { path: string; label: string; witness: (page: Page) => Locator }[] = [
-  // `/matchs` : la grille week-end (`WeekendGrid.tsx:82`), rendue en dur par `WeekWorkbench` (aucune
-  // condition) sur la vue « Semaine » par défaut.
-  { path: "/matchs", label: "matchs · calendrier", witness: (page) => page.getByTestId("weekend-grid") },
-  // `/matchs/semaine-type` : la région nommée de `TypicalWeekendGrid.tsx:92`.
+  // `/matchs/semaine-type` : la région nommée de `TypicalWeekendGrid.tsx:92`, rendue dès qu'il existe
+  // ≥1 habitude (`columns.length > 0`). Le seed pose 32 `TeamMatchHabit` (`BcclSeeder.php:1407-1424`).
   { path: "/matchs/semaine-type", label: "matchs · semaine type", witness: (page) => page.getByRole("region", { name: "Grille de la semaine type" }) },
-  // `/planning` : une carte de session RÉELLE (`WeekGrid` `data-slot-id`, WeekGrid.tsx:429/471). Le
-  // bouton de verrou n'existe PAS sur un plan validé (lecture seule → le cadenas redevient un
-  // indicateur passif, `onToggleLock` undefined) ; on vise donc un créneau PLACÉ, présent dans la
-  // vue par défaut « Par gymnase ».
+  // `/planning` : une carte de session RÉELLE (`WeekGrid` `data-slot-id`, WeekGrid.tsx:429/471), posée
+  // par le planning que `ensureValidated` génère+valide. Le bouton de verrou n'existe PAS sur un plan
+  // validé (lecture seule → cadenas passif, `onToggleLock` undefined, WeekGrid.tsx:188-191) : on vise
+  // un créneau PLACÉ, présent dans la vue par défaut « Par gymnase ».
   { path: "/planning", label: "planning · grille", witness: (page) => page.locator("[data-slot-id]") },
-  // `/club` : le titre de page `<h1>Gestion du club</h1>` (`ClubPage.tsx:644`) — contenu de la page,
-  // pas du gabarit (l'`AppLayout` ne porte aucun h1).
+  // `/club` : le titre de page `<h1>Gestion du club</h1>` (`ClubPage.tsx:644`), toujours rendu — contenu
+  // de la page, pas du gabarit (l'`AppLayout` ne porte aucun h1).
   { path: "/club", label: "club · fiche", witness: (page) => page.getByRole("heading", { level: 1 }) },
 ];
 
@@ -102,6 +143,51 @@ for (const mode of MODES) {
     await loginSeededClub(page);
     await ensureValidated(page);
 
+    // ── /matchs : provisionner une rencontre (le club CI n'en a AUCUNE) ─────────────────────────
+    // Les cookies du contexte suivent `page.request` (JWT httpOnly) : on prend la 1ʳᵉ équipe + le 1ᵉʳ
+    // gymnase, on POSTe un amical HOME PLACÉ (venue + coup d'envoi → il tombe dans une case de grille).
+    const teamsRes = await page.request.get("/api/teams?itemsPerPage=100");
+    expect(teamsRes.ok(), "GET /api/teams").toBeTruthy();
+    const teamId = ((await teamsRes.json()).member?.[0]?.id ?? undefined) as string | undefined;
+    const venuesRes = await page.request.get("/api/venues?itemsPerPage=100");
+    expect(venuesRes.ok(), "GET /api/venues").toBeTruthy();
+    const venueId = ((await venuesRes.json()).member?.[0]?.id ?? undefined) as string | undefined;
+    expect(teamId, "le club seedé a au moins une équipe").toBeTruthy();
+    expect(venueId, "le club seedé a au moins un gymnase").toBeTruthy();
+
+    const opponent = `A11Y-${mode.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+    const created = await page.request.post("/api/fixtures", {
+      data: { teamId, matchDate: nextSaturdayAtLeast(7), homeAway: "HOME", opponentLabel: opponent, venueId, kickoffTime: "15:00", competitionId: null },
+    });
+    expect(created.ok(), "POST /api/fixtures").toBeTruthy();
+    const fixtureId = (await created.json()).id as string;
+    try {
+      await page.goto("/matchs");
+      // « Amical » est DÉCOCHÉ par défaut (#916) — notre amical (`competitionId: null`) serait invisible,
+      // la grille resterait un EmptyState. On le coche AVANT de chercher la semaine (une semaine 100 %
+      // masquée n'entre pas dans le sélecteur : `weekends` dérive des fixtures VISIBLES).
+      const amical = page.getByRole("button", { name: "Amical", exact: true });
+      if ("true" !== (await amical.getAttribute("aria-pressed"))) {
+        await amical.click();
+      }
+      await expect(amical).toHaveAttribute("aria-pressed", "true");
+      // Rejoindre la semaine de NOTRE rencontre (indépendant de l'horloge serveur). Le libellé est
+      // scopé à la grille (`weekend-grid`) : sans conflit, il n'est peint qu'une fois, dans la case.
+      const grid = page.getByTestId("weekend-grid");
+      const cell = grid.getByText(opponent, { exact: false });
+      const nextWeek = page.getByRole("button", { name: "Semaine suivante" });
+      const prevWeek = page.getByRole("button", { name: "Semaine précédente" });
+      const found = (await stepUntilVisible(nextWeek, cell, 12)) || (await stepUntilVisible(prevWeek, cell, 24));
+      expect(found, `matchs · calendrier (${mode}) : la semaine de la rencontre créée (${opponent}) est atteignable — grille jamais rendue`).toBeTruthy();
+      await expect(cell).toBeVisible();
+      await settleVeil(page);
+      await expectNoA11yViolations(page, `matchs · calendrier (${mode})`);
+    } finally {
+      // Base dev CI non remise à zéro : on nettoie NOTRE rencontre, sans supposer l'état.
+      await page.request.delete(`/api/fixtures/${fixtureId}`).catch(() => undefined);
+    }
+
+    // ── Les trois écrans à donnée GARANTIE par le seed / l'onboarding ────────────────────────────
     for (const screen of AUTH_SCREENS) {
       await page.goto(screen.path);
       await settleVeil(page);
