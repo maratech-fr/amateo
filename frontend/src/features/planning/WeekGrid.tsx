@@ -509,7 +509,11 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                       accent↔accent-foreground pairing (A11Y-06). */}
                   {cell.roleTag ? <span className="shrink-0 rounded-sm bg-accent px-1 text-[10px] text-accent-foreground">{cell.roleTag}</span> : null}
                 </span>
-                <span className="truncate text-[10px] text-muted-foreground">{cell.secondaryLabel}</span>
+                {/* A11Y-22 — case RÉELLE teintée (`tint(venueColor)`) : sous-ligne en `text-foreground`,
+                    dé-emphase par la TAILLE seule (`text-[10px]`), jamais par l'opacité/`muted` (même
+                    recette que `WeekendGrid`). Le `text-muted-foreground` tombait à 4,24-4,33 en sombre
+                    (coach « … Patin », « Sans coach ») sur une teinte de gymnase composée sur card. */}
+                <span className="truncate text-[10px] text-foreground">{cell.secondaryLabel}</span>
               </button>
               {renderLock(cell.slotId, cell.teamLabel, cell.locked)}
               {lensActive && null !== cell.lockOrigin ? renderLensBadge(cell.lockOrigin) : null}

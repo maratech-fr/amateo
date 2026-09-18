@@ -314,7 +314,10 @@ for (const mode of MODES) {
       out["text-foreground on réservation cell (bright venue tint)"] = ratio(fg, cellFill("color-mix(in oklch, #FFD21E 30%, var(--card))"));
       // A11Y-22 — la case RÉELLE de la grille week-end (`WeekendGrid`) porte son texte `text-foreground`
       // sur `tint(venueColor)` = `<hex>22` (α 0x22/255 ≈ 0,13), composité sur `bg-card`. On mesure la
-      // PIRE teinte de `VENUE_PALETTE` pour du texte foncé : le jaune `#FFD21E` (le plus clair).
+      // PIRE teinte de `VENUE_PALETTE` pour du texte foncé : le jaune `#FFD21E` (le plus clair). La
+      // grille PLANNING (`WeekGrid`) partage le MÊME helper `tint()` et la même sous-ligne
+      // `text-foreground` (coach, corrigé de `text-muted-foreground` qui tombait à 4,24-4,33 en sombre) :
+      // cette paire les garde donc toutes les deux, dans les deux thèmes.
       const compositeColor = (color: string, under: [number, number, number]): [number, number, number] => {
         ctx.clearRect(0, 0, 1, 1);
         ctx.fillStyle = `rgb(${under[0]}, ${under[1]}, ${under[2]})`;
