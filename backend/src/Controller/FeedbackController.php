@@ -10,6 +10,7 @@ use App\Entity\ScheduleDiagnostic;
 use App\Entity\User;
 use App\Service\FeedbackMailBuilder;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -61,6 +62,7 @@ final class FeedbackController extends AbstractController
         private readonly FeedbackMailBuilder $mailBuilder,
         private readonly RateLimiterFactory $feedbackLimiter,
         private readonly RequestStack $requestStack,
+        private readonly LoggerInterface $logger,
     ) {}
 
     #[Route('/api/feedback', name: 'api_feedback_submit', methods: ['POST'])]
@@ -184,7 +186,10 @@ final class FeedbackController extends AbstractController
         // DISPATCH (Redis down) tomberait ici — avalé, le signalement est déjà persisté.
         try {
             $this->mailer->send($this->mailBuilder->build($to));
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            // Mail avalé (le signalement est déjà persisté) mais l'échec de DISPATCH est
+            // tracé — sinon une panne du bus (Redis) resterait muette.
+            $this->logger->warning('Feedback acknowledgement mail dispatch failed', ['error' => $e->getMessage()]);
         }
     }
 }
