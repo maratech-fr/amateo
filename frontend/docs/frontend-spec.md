@@ -4,16 +4,19 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-09-16 (`documentation-update`, PR 3b « Calendrier — l'écran unique », clôt le
-lot 3). Recalée contre `frontend/src/features/matches/{CalendarPage,WeekWorkbench,WeekCounters,
-CalendarControls,MonthTable,PhaseTable,MatchesLayout,ReviewQueue,ConflictsPage}.tsx`, `lib/{loopSteps,
-urlState}.ts`, `store.ts`, `frontend/src/app/routes.tsx` : la ligne `/matchs` (§2 table des routes),
-la ligne `matches store` (§ state map) et l'arbre `matches/` (§ layout tree) — `MatchesPage.tsx`/
-`ConsultPage.tsx` SUPPRIMÉS, `CalendarPage.tsx` devient la route index (fusion boucle+lecture),
-nav à 5 onglets (Conflits · Calendrier · Importer · Configuration · Semaine type), `railStep`
-retiré du store (remplacé par `WeekCounters`, dérivé pur), `?semaine=` ajoutée à l'URL fusionnée.
-Reste du fichier (dont l'auto-localisation des adversaires PR 2b, l'ordre de nav antérieur à PR 3b
-dans d'autres sections éventuelles) non re-sondé cette passe.
+Last verified @ 2026-09-18 (`documentation-update`, lot correctif frontend de l'audit 2026-09-18,
+UXC-23/UXS-08 — la ligne `/matchs` de ce fichier cite ces deux items). Re-confronté au code :
+**UXC-23** — la citation du `ConfirmDialog` de `VenueLabelsSection.tsx` disait « … conservent leur
+salle », le composant dit désormais « … conservent leur gymnase » (`VenueLabelsSection.tsx:197`)
+— corrigée dans ce fichier ; **UXS-08** — `ConfigurationPage.tsx` gate ses cinq
+`AccordionSection` sur les lectures fondatrices équipes+gymnases (`LoadErrorHint`/`FullPageSpinner`)
+et chaque section sur SA propre lecture (`SectionBody`), `TypicalWeekPage.tsx` gate la page entière
+sur ses six lectures — aucun `?? []` restant sur ces deux écrans (détail :
+`frontend/AGENTS.md` §readState) ; nav à 5 onglets **Conflits · Calendrier · Importer ·
+Configuration · Semaine type** toujours dans cet ordre (`MatchesLayout.tsx:86-105`) ; les cinq
+ancres `?section=echeances|durees|adversaires|reglages|libelles` de `/matchs/configuration`
+toujours exactes (`ConfigurationPage.tsx`, `sectionProps`). Reste du fichier (dont
+l'auto-localisation des adversaires PR 2b) non re-sondé cette passe.
 ## 1. Stack Decided
 
 Versions figées pour le rebuild. Aucune librairie ne sera ajoutée sans justification explicite.
