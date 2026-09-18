@@ -349,12 +349,10 @@ consommée par la garde d'écriture **et** par `TeamResource.isEngaged` que le f
   auto-localisation depuis le fichier + trajets, un seul appel serveur) ; le cap du rattrapage des
   codes FFBB passe de 60 à **200** adversaires distincts (le club du fondateur en compte ~102).
 
-→ [`module-matchs.md`](module-matchs.md) § « Calendrier — l'écran unique du module matchs »,
-§ « Refonte UX — RMM-1 » (historicisée : rail + deux/trois espaces), § « Le gardien à l'ouverture »,
-§ « Réconciliation FBI (RMM-4) », § « Rotation A/B — RMM-5 », § « Échéances ligue/comité — RMM-6 »,
-§ « P2-52 — un match déclaré ne perd plus sa salle en silence », § « Configuration — repli
-visuel (P4-185) », § « Onglet « Semaine type » », § « Onglets par famille — dépôt FBI »,
-§ « Onglet « Conflits » » et § « Résolution des conflits » ·
+→ [`module-matchs.md`](module-matchs.md) — refondu le 2026-09-18 en état courant PAR ÉCRAN
+(AUD-DOC-38) : §1 Modèle & données transverses, §2 Détecteur de conflits, §3 Solveur de placement,
+§4 Le gardien + échéances, §5 Écran Calendrier, §6 Écran Conflits, §7 Écran Importer, §8 Écran
+Configuration, §9 Écran Semaine type, §10 Périmètre engagé, §11 Tests & gardes ·
 [`gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md)
 
 ### 1.6 Collecte des demandes coach

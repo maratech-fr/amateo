@@ -1,12 +1,9 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-09-17 (rotation `documentation-update`, grille « à confirmer »/liste des
-conflits — zone matchs frontend, non touchée ici, contrôle de fraîcheur). Reconfirmé :
-`ScheduleStatus` toujours `DRAFT/PENDING/GENERATING/COMPLETED/FAILED`, pas de `VALIDATED`
-(`ScheduleStatus.php:11-15`) ✓ · `SocleGuard::assertSeasonPlanChosen` toujours présent
-(`SocleGuard.php:26`) ✓ · `onValidate` toujours câblé au bouton « Valider » de `PlanningToolbar`
-(`PlanningToolbar.tsx:74,194`) ✓ · `useValidateSchedule()` toujours appelé depuis
-`PlanningPage.tsx:317`. Historique des passes vit dans git :
+Last verified @ 2026-09-18 (`documentation-update`, PR docs de l'audit 0918, AUD-DOC-38 —
+vérification ÉTROITE : seul le renvoi § « P2-52 » vers `module-matchs.md`, refondu le même jour en
+état courant par écran, est recalé sur son nouveau §10 ; le reste du fichier n'est pas re-sondé
+cette passe). Historique des passes vit dans git :
 `git log -p --follow specs/courantes/planning-lifecycle-validated.md`)
 
 > **Bascule 2026-07-16 (ADR-0002, `docs/architecture/adr-0002-pattern-plan.md`)** : le **plan de
@@ -156,8 +153,8 @@ DRAFT ──generate──▶ PENDING ──▶ GENERATING ──▶ COMPLETED
   pointage, tout match domicile dont le gymnase a disparu du club+saison est dépointé
   (`FixtureVenueLossMarker`, `UNPLACED` + raison persistante `venue_lost`) — annoncé au préalable
   par `GET /api/schedules/{id}/validate-impact` (même prédicat, parité par construction). Comportement
-  et détail complet : [`module-matchs.md`](module-matchs.md) § « P2-52 — un match déclaré ne perd
-  plus sa salle en silence » ; cette spec ne fait que pointer l'effet de bord, pas le redécrire.
+  et détail complet : [`module-matchs.md`](module-matchs.md) §10 « Le périmètre engagé » (sous-§ salle
+  non protégée) ; cette spec ne fait que pointer l'effet de bord, pas le redécrire.
 
 ### 3.4 Pas de nouveau statut
 `ScheduleStatus` reste `DRAFT/PENDING/GENERATING/COMPLETED/FAILED` : « validé » se dérive du pointeur, donc **aucun statut à ajouter** (inv. 1).

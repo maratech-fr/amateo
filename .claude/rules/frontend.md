@@ -5,8 +5,8 @@ paths:
 
 # Frontend — conventions & pièges (chargé quand frontend/ est touché)
 
-> **Ce fichier ne remplace pas [`frontend/AGENTS.md`](../../frontend/AGENTS.md)** (315 lignes :
-> frontières, routage, état serveur/client, primitives, a11y). Il porte **seulement ce qui, non
+> **Ce fichier ne remplace pas [`frontend/AGENTS.md`](../../frontend/AGENTS.md)** (frontières,
+> routage, état serveur/client, primitives, a11y). Il porte **seulement ce qui, non
 > su, rend un test VERT à tort** — parce que ces règles-là doivent être en contexte sans que
 > personne ait à penser à les chercher.
 

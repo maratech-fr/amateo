@@ -1,16 +1,13 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-09-18 (`documentation-update`, PR correctrice ENGINE de l'audit 0918 —
-seconde passe du jour). §4 Infrastructure, ligne « Orchestration (dev) » recalée contre
-`docker-compose.yml` : `restart: unless-stopped` posé sur 10 services dev DE PLUS ce jour (P4-220
-— frontend, php-fpm, nginx, postgres, redis, cron-runner, engine, pdf-worker, mercure, mailpit),
-rejoignant `messenger-worker` (posé la veille, PR #918) — `grep -c "restart:" docker-compose.yml`
-→ 11. `engine/CONTRACT_VERSION` = **2.22** ✓ (bump ENG-40, nouveau diagnostic
-`placement_problem_too_large`) — la ligne de bumps ci-dessous recalée. ⚠ Vérification
-volontairement ÉTROITE : le reste de la carte (§1 repository layout, backend/engine détaillés,
-ops, sécurité) n'a pas été reconfronté au code cette passe — notamment §3 « moteur » (DOC-37,
-roadmap : omet `/place-matches`/`/validate-assignments` et le découpage en paquet de
-`result_builder.py`, non traité par cette PR).
+Last verified @ 2026-09-18 (`documentation-update`, PR correctrice DOC de l'audit 0918 — DOC-37).
+§3 « moteur » recalée contre le code (`grep -n '@app.post' engine/app/main.py` : les 4 routes ;
+`ls engine/app/solver/`) : les 6 routes du moteur sont listées, `result_builder/` et `objective/`
+sont décrits comme des PAQUETS (pas un fichier), `match_placement.py`, `validate_assignments.py`
+et `compromise.py` rejoignent la table des modules solveur. Reste du fichier (§1 repository
+layout, backend détaillé, ops, sécurité) non reconfronté cette passe — voir les stamps de zone
+pour ces sections. `engine/CONTRACT_VERSION` = **2.22** ✓ (bump ENG-40, nouveau diagnostic
+`placement_problem_too_large`).
 
 Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `feedback` (bouton + dialogue de signalement), `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes) ; voir `../frontend/docs/frontend-wizard.md` et `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 
@@ -136,7 +133,7 @@ All services share the Docker network `amateo_network`.
 
 ## 3. Engine (`engine/`)
 
-**Entry point:** `app/main.py` (FastAPI). Routes: `GET /`, `GET /health`, `POST /generate` (main), `POST /implicit-constraints` (sync enabled implicit rules with backend).
+**Entry point:** `app/main.py` (FastAPI). Routes: `GET /`, `GET /health`, `POST /generate` (main), `POST /place-matches` (match placement rail), `POST /validate-assignments` (verdict endpoint), `POST /implicit-constraints` (sync enabled implicit rules with backend).
 
 ### 3.1 Modules
 | Module | Role |
@@ -148,7 +145,10 @@ All services share the Docker network `amateo_network`.
 | `app/solver/model.py` | `ScheduleCpModel(cp_model.CpModel)`, `build_model`, slot/lock/capacity extraction |
 | `app/solver/constraints/` | **Paquet** (ENG-32) : Level-1 hard constraints (`structural`/`wellness`/`targeting`), `parse_v2_constraints()` (`parsing`), `diagnose_locked_slot_violations()` (`diagnostics`) — façade `__init__` à surface d'import inchangée, orchestrateur inclus (couture de test) |
 | `app/solver/objective/` | **Paquet** (`weights.py`/`terms.py`/`normalise.py`, façade `__init__`) : Level-2 soft objective, tiered placement scoring, bonuses (dont la référence socle du comblement, PR-3), `SCORE_FORMULA_VERSION` |
-| `app/solver/result_builder.py` | CP-SAT solution → output schema + diagnostics |
+| `app/solver/result_builder/` | **Paquet** (`slots.py`/`diagnostics.py`/`helpers.py`, façade `__init__`) : CP-SAT solution → output schema + diagnostics |
+| `app/solver/match_placement.py` | `POST /place-matches` model build + solve (match placement rail) |
+| `app/solver/validate_assignments.py` | `POST /validate-assignments` verdict rail (hard-layer replay + compromise scoring) |
+| `app/solver/compromise.py` | named compromise scoring shared by `validate_assignments.py` |
 | `app/solver/helpers.py` | shared sentinels/utilities (deduplicated out of constraints/objective) |
 
 ### 3.2 Solve pipeline (`POST /generate`)
