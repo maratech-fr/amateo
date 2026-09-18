@@ -165,7 +165,7 @@ final class SeasonDataPurger
      *
      * @var array<string, string> table => comment / pourquoi
      */
-    private const HANDLED_APART = [
+    public const HANDLED_APART = [
         'team_tag_assignment' => 'purgé par season_id seul (BCK-11 : porte un club_id mais le périmètre reste la saison, RLS borne le club)',
         'season' => 'la ligne pivot elle-même — supprimée conditionnellement ($deleteSeasonRow : purge de rétention / effacement, jamais le reset)',
     ];
@@ -176,7 +176,7 @@ final class SeasonDataPurger
      *
      * @var array<string, string> table => pourquoi
      */
-    private const EXCLUDED_FROM_SEASON_PURGE = [
+    public const EXCLUDED_FROM_SEASON_PURGE = [
         // Ces cinq tables sont club-scoped SANS saison : les borner par la saison n'a pas
         // de sens. Leur seule porte de sortie est l'effacement RGPD du club (ErasedClubPurger,
         // delete par clubId), pas la purge de saison.

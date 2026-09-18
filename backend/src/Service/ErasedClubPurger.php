@@ -64,7 +64,7 @@ final class ErasedClubPurger
      *
      * @var array<string, string> table => pourquoi
      */
-    private const EXCLUDED_FROM_ERASURE = [
+    public const EXCLUDED_FROM_ERASURE = [
         'audit_log' => 'accountability : l\'effacement du club ÉCRIT lui-même une ligne d\'audit (CLUB_PURGED) — le journal a sa propre rétention (app:audit:purge)',
         'coach_wish_token' => 'part par la FK ON DELETE CASCADE de sa campagne (supprimée avec chaque saison par SeasonDataPurger)',
     ];
