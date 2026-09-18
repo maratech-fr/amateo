@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { errorMessage } from "@/shared/lib/errorMessage";
+import { useMe } from "@/shared/session/queries";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { CreateFixtureInput, Fixture, PlaceFixtureInput } from "./api";
@@ -298,6 +299,17 @@ function invalidateSuggestions(queryClient: ReturnType<typeof useQueryClient>, c
 
 export function useOpponentTravel() {
   return useQuery({ queryKey: OPPONENT_TRAVEL_KEY, queryFn: matchesApi.getOpponentTravel, staleTime: 30_000 });
+}
+
+/**
+ * Le siège du club est-il localisé ? (coordonnées posées sur `me.club`) — pilote le bandeau
+ * « trajets indisponibles » de la carte des trajets adverses. Le backend l'expose aussi en
+ * booléen sur `GET /api/opponents/travel` (`clubGeolocated`) ; ici on lit la même vérité depuis
+ * la session déjà chargée, sans jamais toucher aux coordonnées brutes.
+ */
+export function useClubGeolocated(): boolean {
+  const { data: me } = useMe();
+  return null != me?.club?.latitude && null != me.club.longitude;
 }
 
 export function useSetOpponentTravelManual() {

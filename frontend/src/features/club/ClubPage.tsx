@@ -2,11 +2,13 @@ import { Crop, ImagePlus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { useMe } from "@/shared/session/queries";
 import type { FfbbOrganisme, MeResponse } from "@/shared/session/api";
 import { PendingMembersSection } from "@/features/auth/PendingMembersSection";
 import { MembersSection } from "@/features/club/MembersSection";
 import { AccordionSection } from "@/shared/components/ui/accordion";
+import { AddressGeocodeField } from "@/shared/components/ui/address-geocode-field";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
@@ -22,7 +24,8 @@ import { extractPalette } from "@/shared/lib/palette";
 import type { SubscriptionPlan, UsageDayHours } from "./api";
 import { LogoCropper } from "./LogoCropper";
 import { formatHours } from "./lib/venueStats";
-import { useDeleteLogo, useDownloadClubExport, useFfbbImport, useResetClub, useSubscriptionPlans, useUpdateAppearance, useUploadLogo, useVenueUsageStats } from "./queries";
+import { useDeleteLogo, useDownloadClubExport, useFfbbImport, useResetClub, useSubscriptionPlans, useUpdateAppearance, useUpdateSiege, useUploadLogo, useVenueUsageStats } from "./queries";
+import { toast } from "@/shared/stores/toastStore";
 import { isManagementRole } from "@/shared/lib/roles";
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -266,20 +269,42 @@ function ReadOnlyField({ label, value, mono }: { label: string; value: string | 
 }
 
 /**
- * Informations du club — TOUT vient de la FFBB, rien ne se saisit ici (décision
- * fondateur 2026-08-04). Correspondant/président/salle principale ont été
- * SUPPRIMÉS : l'index organismes ne connaît ni personne physique ni lien
- * club→salle (cadrage api-ffbb-completion-club §1), et la saisie manuelle
- * n'était pas voulue. Le geste de correction est le ré-import.
+ * Le SIÈGE du club — la seule saisie de la fiche. On pose un LIBELLÉ d'adresse ; le serveur le
+ * re-géocode via la BAN et écrit adresse/coordonnées depuis son hit (jamais les coords du
+ * client). Le voile d'enregistrement couvre l'attente ; l'échec 422/502 remonte en toast.
+ */
+function ClubSiegeSubsection({ club }: { club: NonNullable<MeResponse["club"]> }) {
+  const updateSiege = useUpdateSiege();
+  const located = null != club.latitude && null != club.longitude;
+  return (
+    <div>
+      <h3 className="mb-2 text-sm font-semibold">Siège du club</h3>
+      <p className="mb-2 text-xs text-muted-foreground">L'adresse du siège sert à estimer les trajets de vos coachs vers les adversaires.</p>
+      <AddressGeocodeField
+        address={club.address}
+        located={located}
+        placeholder="Adresse du siège"
+        label="Adresse du siège"
+        statusWord="Siège localisé"
+        unlocatedStatus="Siège non localisé — les trajets vers les adversaires ne sont pas estimés."
+        onPick={(candidate) => updateSiege.mutate(candidate.label, { onError: (e) => void errorMessage(e).then((m) => toast.error(m)) })}
+      />
+    </div>
+  );
+}
+
+/**
+ * Informations du club — presque TOUT vient de la FFBB (décision fondateur 2026-08-04) : la
+ * SEULE saisie est le SIÈGE du club (adresse re-géocodée côté serveur), parce que la fédération
+ * ne fournit pas d'adresse fiable pour estimer les trajets vers les adversaires. Le reste
+ * (identité, contact) reste FFBB, corrigé par le ré-import. Correspondant/président/salle
+ * principale restent SUPPRIMÉS (l'index organismes ne les connaît pas).
  */
 function ClubInfoSection({ club }: { club: NonNullable<MeResponse["club"]> }) {
   const ffbbImport = useFfbbImport();
-  // Compact (retour fondateur) : un téléphone se reconnaît sans sous-titre —
-  // les coordonnées s'empilent nues, comme sur les blocs Comité/Ligue.
-  const contactLines = [
-    [club.address, [club.postalCode, club.city].filter(Boolean).join(" ")].filter(Boolean).join(", ") || null,
-    club.contactPhone,
-  ].filter((line): line is string => null !== line);
+  // Compact (retour fondateur) : un téléphone se reconnaît sans sous-titre. L'adresse a QUITTÉ
+  // ce bloc (elle vit désormais dans « Siège du club », la seule saisie de la fiche).
+  const contactLines = [club.contactPhone].filter((line): line is string => null !== line);
   const website = safeHttpUrl(club.website);
 
   return (
@@ -299,6 +324,8 @@ function ClubInfoSection({ club }: { club: NonNullable<MeResponse["club"]> }) {
           <ReadOnlyField label="Comité" value={club.committeeCode} mono />
         </div>
       </div>
+
+      <ClubSiegeSubsection club={club} />
 
       <div>
         <h3 className="mb-2 text-sm font-semibold">Contact du club</h3>
@@ -639,6 +666,10 @@ function ClubHub({ me }: { me: MeResponse }) {
   // Le gate backend management = owner|admin (SEC-07) — l'UI doit matcher,
   // sinon un owner ne voit jamais l'export RGPD (revue PR-2).
   const isManagement = isManagementRole(me.role);
+  // Deep-link `?section=informations` (lien du bandeau « siège » de l'écran matchs) : ouvrir
+  // d'emblée la section « Informations du club » (où vit le siège). Lu sur `window.location`
+  // (ancrage au montage, non réactif) plutôt que `useSearchParams` — pas de dépendance Router.
+  const openInformations = "informations" === new URLSearchParams(window.location.search).get("section");
   return (
     <FichePage>
       <h1 className="mb-1 border-l-[3px] border-accent pl-3 text-xl font-semibold">Gestion du club</h1>
@@ -672,7 +703,7 @@ function ClubHub({ me }: { me: MeResponse }) {
           />
         </AccordionSection>
         {isAdmin && me.club ? (
-          <AccordionSection title="Informations du club">
+          <AccordionSection title="Informations du club" defaultOpen={openInformations}>
             {/* Rendu pur des props (plus aucun formulaire) — pas de key de resync nécessaire. */}
             <ClubInfoSection club={me.club} />
           </AccordionSection>

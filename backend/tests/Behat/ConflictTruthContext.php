@@ -694,23 +694,6 @@ final class ConflictTruthContext extends BaseContext
         }
     }
 
-    /** L'empreinte de l'UNIQUE conflit MATCH_MATCH du radar (un décor = un conflit de personne). */
-    private function empreinteDuConflitDePersonne(): string
-    {
-        foreach ($this->conflicts as $conflict) {
-            if (\is_array($conflict) && 'MATCH_MATCH' === ($conflict['type'] ?? null) && \is_string($conflict['fingerprint'] ?? null) && '' !== $conflict['fingerprint']) {
-                return $conflict['fingerprint'];
-            }
-        }
-
-        throw new RuntimeException('aucun conflit MATCH_MATCH sur le radar — le décor a-t-il bien produit un conflit de personne ?');
-    }
-
-    private function resolutionPath(string $fingerprint): string
-    {
-        return \sprintf('fixtures/conflicts/%s/resolution', rawurlencode($fingerprint));
-    }
-
     #[AfterScenario]
     public function nettoyer(): void
     {
@@ -797,6 +780,23 @@ final class ConflictTruthContext extends BaseContext
                 admin: true,
             );
         }
+    }
+
+    /** L'empreinte de l'UNIQUE conflit MATCH_MATCH du radar (un décor = un conflit de personne). */
+    private function empreinteDuConflitDePersonne(): string
+    {
+        foreach ($this->conflicts as $conflict) {
+            if (\is_array($conflict) && 'MATCH_MATCH' === ($conflict['type'] ?? null) && \is_string($conflict['fingerprint'] ?? null) && '' !== $conflict['fingerprint']) {
+                return $conflict['fingerprint'];
+            }
+        }
+
+        throw new RuntimeException('aucun conflit MATCH_MATCH sur le radar — le décor a-t-il bien produit un conflit de personne ?');
+    }
+
+    private function resolutionPath(string $fingerprint): string
+    {
+        return \sprintf('fixtures/conflicts/%s/resolution', rawurlencode($fingerprint));
     }
 
     /**

@@ -503,14 +503,11 @@ export interface VenueTravelTimeAutofillResult {
   skippedManual: number;
 }
 
-/** Un candidat d'adresse rendu par la BAN (mapping serveur, jamais le hit brut). */
-export interface GeocodeCandidate {
-  label: string;
-  latitude: number;
-  longitude: number;
-  /** Score de pertinence BAN, 0..1. */
-  score: number;
-}
+// Le géocodage d'une adresse (type + appel) a migré dans la maison PARTAGÉE
+// `shared/api/geocode.ts` (il sert le gymnase ET le siège du club) — ré-exporté ici pour
+// les consommateurs wizard existants.
+export type { GeocodeCandidate } from "@/shared/api/geocode";
+export { geocodeAddress } from "@/shared/api/geocode";
 
 /** La matrice du club+saison courant (SeasonFilter serveur-side, aucun param). */
 export const listVenueTravelTimes = (): Promise<VenueTravelTime[]> => collectionAll<VenueTravelTime>("venue_travel_times");
@@ -522,12 +519,6 @@ export const updateVenueTravelTime = (id: string, body: VenueTravelTimePayload):
 /** POST /api/venue-travel-times/autofill (tirets) — remplit AUTO, saute les MANUAL. 422 cap / 429 / 409. */
 export const autofillVenueTravelTimes = (): Promise<VenueTravelTimeAutofillResult> => api.post("venue-travel-times/autofill", { json: {} }).json();
 
-/** GET /api/geocode?q= (management) — jamais un appel direct à la BAN (frontière §2). 422 q<3/>200, 502 BAN down. */
-export const geocodeAddress = (q: string): Promise<GeocodeCandidate[]> =>
-  api
-    .get("geocode", { searchParams: { q } })
-    .json<{ candidates: GeocodeCandidate[] }>()
-    .then((r) => r.candidates);
 
 // --- Levier d'intensité de la règle de trajet (P2-53 RMM-8 PR-4) ---
 

@@ -1,5 +1,6 @@
 import { Building2, ChevronDown, MapPinOff, RefreshCw, RotateCcw, Search } from "lucide-react";
 import { useId, useMemo, useState } from "react";
+import { Link } from "react-router";
 
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -16,7 +17,7 @@ import type { OpponentTravel } from "./api";
 import { AwayTravelChip } from "./AwayTravelChip";
 import { LocateOpponentModal } from "./LocateOpponentModal";
 import { clubMatchesQuery, queryTokens, textMatchesQuery } from "./lib/opponentSearch";
-import { useFixtures, useOpponentTravel, useSetOpponentTravelAuto, useUpdateOpponents } from "./queries";
+import { useClubGeolocated, useFixtures, useOpponentTravel, useSetOpponentTravelAuto, useUpdateOpponents } from "./queries";
 import { SourceBadge } from "./SourceBadge";
 
 /**
@@ -61,6 +62,7 @@ interface Locating {
 
 export function OpponentTravelCard() {
   const travelQuery = useOpponentTravel();
+  const clubGeolocated = useClubGeolocated();
   const fixtures = useFixtures();
   const update = useUpdateOpponents();
   const revert = useSetOpponentTravelAuto();
@@ -147,6 +149,19 @@ export function OpponentTravelCard() {
       <p role="status" className="sr-only">
         {"running" === update.step ? "Mise à jour des adversaires en cours…" : ""}
       </p>
+
+      {/* Sans siège localisé, AUCUN trajet ne s'estime : on le dit et on renvoie vers la fiche club.
+          « Mettre à jour les adversaires » reste disponible (il localise les gymnases adverses). */}
+      {"ready" === state && !clubGeolocated ? (
+        <WarningPanel
+          icon={<MapPinOff className="size-4 text-warning" aria-hidden="true" />}
+          message="Trajets indisponibles : l'adresse du siège du club n'est pas localisée."
+        >
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/club?section=informations">Renseigner le siège</Link>
+          </Button>
+        </WarningPanel>
+      ) : null}
 
       {"failed" === state ? <LoadErrorHint onRetry={() => void travelQuery.refetch()} /> : null}
       {/* UXC-22 — un chargement se dit par un SPINNER inline (activité), pas un état vide. */}

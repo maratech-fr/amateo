@@ -129,6 +129,7 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                     'properties' => [
                         'clubId' => ['type' => 'string'],
                         'seasonId' => ['type' => 'string'],
+                        'clubGeolocated' => ['type' => 'boolean', 'description' => 'The club siège has coordinates (without which no opponent travel can be estimated) — a boolean only, never the raw coordinates'],
                         'opponents' => ['type' => 'array', 'items' => $opponentView],
                     ],
                 ]),

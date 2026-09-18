@@ -4183,6 +4183,35 @@
                 "summary": "Remove the club logo"
             }
         },
+        "/api/club/siege": {
+            "patch": {
+                "operationId": "patchApiClubSiege",
+                "tags": [
+                    "Club"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Si\u00e8ge set \u2014 the server re-geocoded the address and wrote the club address/postcode/city + coordinates from its BAN hit (returns { address, postalCode, city, geolocated }); a forged latitude in the body is ignored"
+                    },
+                    "400": {
+                        "description": "No club in context, or invalid JSON"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "404": {
+                        "description": "Club not found"
+                    },
+                    "422": {
+                        "description": "Address not found \u2014 refine the street and city"
+                    },
+                    "502": {
+                        "description": "Geocoding service unreachable \u2014 retry later"
+                    }
+                },
+                "summary": "Set the club si\u00e8ge from a free-text address (management only; the server re-geocodes, never the client)"
+            }
+        },
         "/api/clubs": {
             "get": {
                 "operationId": "api_clubs_get_collection",
@@ -9124,6 +9153,10 @@
                                         },
                                         "seasonId": {
                                             "type": "string"
+                                        },
+                                        "clubGeolocated": {
+                                            "type": "boolean",
+                                            "description": "The club si\u00e8ge has coordinates (without which no opponent travel can be estimated) \u2014 a boolean only, never the raw coordinates"
                                         },
                                         "opponents": {
                                             "type": "array",

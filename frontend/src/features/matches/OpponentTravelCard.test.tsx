@@ -12,9 +12,11 @@ const updateRun = vi.fn();
 const travelState: { data: OpponentTravel[]; isError: boolean } = { data: [], isError: false };
 const fixturesState: { data: Fixture[] } = { data: [] };
 const updateState: { step: "idle" | "running" } = { step: "idle" };
+const geolocatedState: { value: boolean } = { value: true };
 
 vi.mock("./queries", () => ({
   useOpponentTravel: () => ({ data: travelState.data, isError: travelState.isError, refetch: vi.fn() }),
+  useClubGeolocated: () => geolocatedState.value,
   useFixtures: () => ({ data: fixturesState.data }),
   useUpdateOpponents: () => ({ run: updateRun, isPending: "idle" !== updateState.step, step: updateState.step }),
   useSetOpponentTravelAuto: () => ({ mutate: revertMutate, isPending: false }),
@@ -47,6 +49,7 @@ beforeEach(() => {
   travelState.isError = false;
   fixturesState.data = [];
   updateState.step = "idle";
+  geolocatedState.value = true;
 });
 
 describe("OpponentTravelCard — l'écran SET-UP du trajet adverse, GROUPÉ PAR CLUB (PR-3)", () => {
@@ -129,6 +132,25 @@ describe("OpponentTravelCard — l'écran SET-UP du trajet adverse, GROUPÉ PAR 
     await userEvent.click(screen.getByRole("button", { name: "Localiser Team A" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Localiser Team A")).toBeInTheDocument();
+  });
+
+  it("siège NON localisé : bandeau « Trajets indisponibles » + lien vers la fiche club ; « Mettre à jour » reste", () => {
+    geolocatedState.value = false;
+    travelState.data = [opp({ opponentLabel: "Alpha", opponentTeamKey: "ALPHA" })];
+    renderWithProviders(<OpponentTravelCard />);
+
+    expect(screen.getByText("Trajets indisponibles : l'adresse du siège du club n'est pas localisée.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Renseigner le siège" })).toHaveAttribute("href", "/club?section=informations");
+    // « Mettre à jour les adversaires » reste (il localise les gymnases adverses, pas le siège).
+    expect(screen.getByRole("button", { name: "Mettre à jour les adversaires" })).toBeInTheDocument();
+  });
+
+  it("siège localisé : aucun bandeau « Trajets indisponibles »", () => {
+    geolocatedState.value = true;
+    travelState.data = [opp({ opponentLabel: "Alpha", opponentTeamKey: "ALPHA" })];
+    renderWithProviders(<OpponentTravelCard />);
+
+    expect(screen.queryByText(/Trajets indisponibles/)).not.toBeInTheDocument();
   });
 });
 

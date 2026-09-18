@@ -1,14 +1,21 @@
-Last verified @ 2026-09-19 (retours de tests — trois ajouts ADDITIFS : `failedSteps` sur la réponse de
-`POST /api/opponents/refresh`, `windows` sur les conflits `ACCESS_WINDOW_LOST` du radar
-`GET /api/fixtures/conflicts`, et deux valeurs d'enum `COACHES_NOT_PLAYING`/`PLAYS_NOT_COACHING` sur le
-statut de résolution d'un conflit (`PUT /api/fixtures/conflicts/{fingerprint}/resolution` + le champ
-`resolution.status` du radar) ; régénéré par `api:openapi:export`).
-**200 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : aucune route
-n'apparaît ni ne disparaît — seuls deux champs additifs et deux valeurs d'enum s'ajoutent.
-· SHA-256 `5914c4b0bb21a516b77f27953a7dacc887786158770d508d41847090ef173442`
+Last verified @ 2026-09-19 (retours de tests — une NOUVELLE route `PATCH /api/club/siege` (le serveur
+re-géocode l'adresse via la BAN et écrit adresse/CP/ville + coordonnées depuis son hit, jamais le
+client) et un champ ADDITIF `clubGeolocated` sur `GET /api/opponents/travel` ; plus trois ajouts
+additifs des passes précédentes (`failedSteps`, `windows`, deux valeurs d'enum de résolution) ;
+régénéré par `api:openapi:export`).
+**201 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** :
+`PATCH /api/club/siege` apparaît ; le reste est additif (`clubGeolocated`).
+· SHA-256 `bfa260deaf86fc84fdb35700ef7d2a6281b7a45f6e7a880db643722ad4504e17`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Retours de tests — siège du club géocodé côté serveur, backend (2026-09-19)** : **+1 path** —
+  `PATCH /api/club/siege` (management) : le corps ne porte QUE du texte d'adresse ; le serveur
+  RE-géocode via la BAN et écrit adresse/CP/ville + lat/lon depuis SON hit (réponse
+  `{address, postalCode, city, geolocated}`) — une latitude forgée est ignorée (patron SEC-15) ; 422
+  « adresse introuvable », 502 BAN muet. `GET /api/opponents/travel` gagne un booléen ADDITIF
+  `clubGeolocated` (le siège est-il localisé ? — jamais les coordonnées brutes). 200 → **201 paths**.
+  Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun appel moteur).
 - **Retours de tests — statuts « joue/coache » sur un conflit, backend (2026-09-19)** : **+0 path** — le
   statut de résolution d'un conflit gagne deux valeurs d'enum ADDITIVES `COACHES_NOT_PLAYING` et
   `PLAYS_NOT_COACHING` (`PUT /api/fixtures/conflicts/{fingerprint}/resolution`, requête + réponse, et le
@@ -62,16 +69,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   override manuel équipe > club > annuaire fédéral > libellé FBI > null). Aucune empreinte de conflit ne change
   (ces champs sont hors identité). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun
   appel moteur, aucun payload solveur ne lit ces champs).
-- **PR-2b « adversaire multi-gymnases » — auto-localisation depuis le fichier + orchestrateur, backend (2026-09-16)** :
-  **+1 path** — `POST /api/opponents/refresh` (management) enchaîne EN UN APPEL les trois passes best-effort qui
-  mettent à jour les adversaires AWAY : (`codes`) rattrapage des codes fédéraux dans l'annuaire + estampille des
-  rencontres, (`autoLocated`) auto-localisation du gymnase de chaque équipe adverse depuis le libellé de salle
-  du FICHIER FBI (salle FÉDÉRALE, surcharge de trajet TENANT source AUTO, jamais le partagé ni le texte client),
-  (`travel`) recalcul des trajets AUTO. Réponse à trois blocs (`codes`/`autoLocated`/`travel`), chaque passe
-  indépendante ; cap dur 200 avant réseau (422) + limiteur `opponent_refresh` (429). Les routes fines
-  `/api/opponents/resolve` et `/api/opponents/travel/resolve` restent (compat). 199 → **200 paths**. Backend PUR,
-  contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun appel moteur, aucun payload solveur ne lit
-  `opponent_travel`).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine
