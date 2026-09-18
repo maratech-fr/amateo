@@ -44,12 +44,12 @@
 > [`console-superadmin.md`](console-superadmin.md) (P4-54) ·
 > [`reprise-perimetre-engage.md`](reprise-perimetre-engage.md) (mémoire produit du planning de saison) ·
 > [`ecrans-ui-design.md`](ecrans-ui-design.md) (**P5-16** — fonds d'écran/écrans statiques par sport : contexte technique, familles A/B/C, limitations, prompt designer) ·
-> [`duplications-de-verite.md`](duplications-de-verite.md) (**inventaire du motif « une vérité, deux endroits »** —
-> 44 cas datés du 2026-08-08, triés par « la divergence est-elle silencieuse ? », avec la doctrine de correction.
-> **État : 39 livrés · 4 réfutés · 1 ouvert** — compte vérifiable par
-> `grep -c '^| \*\*D-[0-9]*\*\* ⬜'` (un `grep -c '⬜'` nu compte aussi la légende et deux lignes
-> de prose). Le dernier, **D-11, est dormant** : `match_day` est NULL sur les 69 équipes et
-> aucun écran ne l'expose — à traiter le jour où le champ sera exposé, pas avant).
+> [`duplications-de-verite.md`](duplications-de-verite.md) (**doctrine du motif « une vérité, deux
+> endroits »** — le test de fusion réutilisé par `documentation-update`, les duplications
+> délibérées à ne jamais mutualiser, et l'ouvert. **Refondu le 2026-09-18 (AUD-DOC-43)** : le
+> cimetière des 40 cas déjà livrés est parti — leur détail vit dans git. Reste **D-11**, dormant :
+> `match_day` est NULL sur toutes les équipes et aucun écran ne l'expose — à traiter le jour où le
+> champ sera exposé, pas avant).
 >
 > ⚠ **Cette liste ne contient QUE de l'ouvert, et c'est une règle d'entretien** : un fichier de détail dont
 > l'item est soldé **quitte cette liste ET le dépôt** — l'historique vit dans git, et un cadrage pré-décision
