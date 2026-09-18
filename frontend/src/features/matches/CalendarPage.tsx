@@ -11,6 +11,7 @@ import { Modal } from "@/shared/components/ui/modal";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { todayISO } from "@/shared/lib/clock";
 import { readFailed, readLoading } from "@/shared/lib/readState";
+import type { ReadState } from "@/shared/lib/readState";
 import { useCredits } from "@/shared/credits/useCredits";
 import { toast } from "@/shared/stores/toastStore";
 
@@ -67,6 +68,7 @@ import {
 import { useMatchesStore } from "./store";
 import { HiddenMatchesWeekNotice } from "./UnpairedVenueLabelsBanner";
 import { WeekCounters } from "./WeekCounters";
+import type { PlacementGuards } from "./PlacementPanel";
 import { GRID_CONTAINER_ID, PLACE_HEADING_ID, WeekWorkbench } from "./WeekWorkbench";
 
 function byId<T extends { id: string }>(rows: T[] | undefined): Map<string, T> {
@@ -164,6 +166,30 @@ export function CalendarPage() {
   const habits = useMemo(() => habitsQuery.data ?? [], [habitsQuery.data]);
   const rotations = useMemo(() => rotationsQuery.data ?? [], [rotationsQuery.data]);
   const allConflicts = useMemo<Conflict[]>(() => conflicts.data?.conflicts ?? [], [conflicts.data]);
+
+  // D2 — les trois lectures du club sur lesquelles s'appuie le GESTE de placement
+  // (accès match, indisponibilités, enveloppe ligue). Le panneau suspend le geste
+  // tant qu'elles ne sont pas prêtes : un échec de première lecture ne doit jamais
+  // se lire « aucune restriction » et laisser poser un match dans un gymnase
+  // restreint. Le reste du panneau (dé-placer, verrouiller…) reste actif.
+  const placementGuards = useMemo<PlacementGuards>(() => {
+    const state: ReadState =
+      readFailed(matchWindows) || readFailed(unavailabilities) || readFailed(leagueWindows)
+        ? "failed"
+        : readLoading(matchWindows) || readLoading(unavailabilities) || readLoading(leagueWindows)
+          ? "loading"
+          : "ready";
+    return {
+      state,
+      matchWindows: matchWindows.data ?? [],
+      unavailabilities: unavailabilities.data ?? [],
+      retry: () => {
+        void matchWindows.refetch();
+        void unavailabilities.refetch();
+        void leagueWindows.refetch();
+      },
+    };
+  }, [matchWindows, unavailabilities, leagueWindows]);
 
   // ── Chaîne : PR-1 (équipe/coach/gymnase) → type de compétition ─────────────────
   const filtered = useMemo(
@@ -563,8 +589,7 @@ export function CalendarPage() {
               categoriesMap={categoriesMap}
               coachesMap={coachesMap}
               venues={venues.data ?? []}
-              matchWindows={matchWindows.data ?? []}
-              unavailabilities={unavailabilities.data ?? []}
+              guards={placementGuards}
               habits={habits}
               rotations={rotations}
               opponentTravel={opponentTravel.data ?? []}

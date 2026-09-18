@@ -307,8 +307,14 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
         if team is None:
             continue
         match_min, warmup_min = _durations(team)
-        start = _minutes(match.kickoff) - warmup_min
-        end = _minutes(match.kickoff) + match_min
+        # D3 — an AWAY window grows by the round trip to the opponent: half the trip
+        # before the warm-up (outbound), the rest after the match (return). Replicates
+        # MatchFootprint EXACTLY (intdiv / `//`): the coach is protected while away.
+        # FIXED (home anchors) carry no travel leg.
+        travel_out = match.round_trip_minutes // 2 if match.kind == "AWAY" else 0
+        travel_back = (match.round_trip_minutes - match.round_trip_minutes // 2) if match.kind == "AWAY" else 0
+        start = _minutes(match.kickoff) - warmup_min - travel_out
+        end = _minutes(match.kickoff) + match_min + travel_back
         for ref in team.coaches:
             fixed_windows_by_coach.setdefault((ref.coach_id, match.match_date), []).append((start, end))
     for occupancy in input_data.training_occupancies:

@@ -48,6 +48,8 @@ const openEnvelope: EnvelopeResult = { mapped: false, windows: [], dayOk: false,
 interface Overrides {
   matchWindows?: VenueMatchWindow[];
   unavailabilities?: VenueUnavailability[];
+  guardState?: "loading" | "failed" | "ready";
+  retry?: () => void;
   habits?: TeamMatchHabit[];
   fixture?: Fixture;
   onUnplace?: () => void;
@@ -64,8 +66,12 @@ function renderPanel(envelope: EnvelopeResult, onPlace = vi.fn(), overrides: Ove
     <PlacementPanel
       fixture={overrides.fixture ?? fixture}
       venues={venues}
-      matchWindows={overrides.matchWindows ?? []}
-      unavailabilities={overrides.unavailabilities ?? []}
+      guards={{
+        state: overrides.guardState ?? "ready",
+        matchWindows: overrides.matchWindows ?? [],
+        unavailabilities: overrides.unavailabilities ?? [],
+        retry: overrides.retry ?? vi.fn(),
+      }}
       habits={overrides.habits ?? []}
       teamLabel="U13"
       categoryLabel="U13"
@@ -413,5 +419,55 @@ describe("PlacementPanel — confirmer un placement repris de l'import (2026-09-
     await user.type(screen.getByLabelText("Heure de coup d'envoi"), "14:00");
     expect(screen.getByRole("button", { name: "Placer" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Confirmer ce placement" })).toBeNull();
+  });
+});
+
+describe("PlacementPanel — D2 : le geste de placement suspendu tant que les gardes ne sont pas prêtes", () => {
+  it("failed : alerte de lecture (role=alert), Placer désactivé, Réessayer rappelle retry ; Supprimer reste actif", async () => {
+    const user = userEvent.setup();
+    const retry = vi.fn();
+    const onPlace = renderPanel(openEnvelope, vi.fn(), { guardState: "failed", retry });
+
+    // Le gymnase reste offert (liste complète) et l'heure saisissable : seul le GESTE est neutralisé.
+    await pickListboxOption(user, "Gymnase", "Gymnase Alpha");
+    await user.type(screen.getByLabelText("Heure de coup d'envoi"), "14:00");
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(/Impossible de vérifier les accès match/);
+    expect(screen.getByRole("button", { name: "Placer" })).toBeDisabled();
+    // Les autres gestes de la boucle restent actifs (le refus ne porte que sur le placement).
+    expect(screen.getByRole("button", { name: "Supprimer" })).toBeEnabled();
+
+    await user.click(within(alert).getByRole("button", { name: "Réessayer" }));
+    expect(retry).toHaveBeenCalledOnce();
+    expect(onPlace).not.toHaveBeenCalled();
+  });
+
+  it("loading : Placer désactivé + « Vérification des accès match… », aucune alerte", async () => {
+    const user = userEvent.setup();
+    renderPanel(openEnvelope, vi.fn(), { guardState: "loading" });
+
+    await pickListboxOption(user, "Gymnase", "Gymnase Alpha");
+    await user.type(screen.getByLabelText("Heure de coup d'envoi"), "14:00");
+
+    expect(screen.getByText(/Vérification des accès match…/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Placer" })).toBeDisabled();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("ready avec des listes RÉELLEMENT vides : Placer actif (vacuité réelle, pas fabriquée)", async () => {
+    // Témoin qui distingue « la lecture a renvoyé [] » de « la lecture n'a pas abouti » :
+    // gardes prêtes + aucun accès/indispo déclaré → rien à imposer → placement autorisé.
+    const user = userEvent.setup();
+    const onPlace = renderPanel(openEnvelope, vi.fn(), { guardState: "ready", matchWindows: [], unavailabilities: [] });
+
+    await pickListboxOption(user, "Gymnase", "Gymnase Alpha");
+    await user.type(screen.getByLabelText("Heure de coup d'envoi"), "14:00");
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    const place = screen.getByRole("button", { name: "Placer" });
+    expect(place).toBeEnabled();
+    await user.click(place);
+    expect(onPlace).toHaveBeenCalledWith({ venueId: "venue-1", kickoffTime: "14:00" });
   });
 });

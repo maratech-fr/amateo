@@ -7,6 +7,7 @@ namespace App\Tests\CrossStack;
 use App\Entity\Club;
 use App\Entity\Competition;
 use App\Entity\Fixture;
+use App\Entity\OpponentTravel;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
@@ -18,8 +19,10 @@ use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
+use App\Enum\OpponentTravelSource;
 use App\Enum\SeasonStatus;
 use App\Service\MatchPlacementPayloadBuilder;
+use App\Service\OpponentTravelProjection;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -216,8 +219,93 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         self::assertSame($venue->getId(), $byId[$friendlyPlaced->getId()]['venueId'] ?? null);
         // Amical extérieur : AWAY, comme une rencontre de compétition.
         self::assertSame('AWAY', $byId[$friendlyAway->getId()]['kind'] ?? null);
+        // D3 — la ligne AWAY porte le champ de contrat roundTripMinutes ; trajet
+        // inconnu (aucun opponent_travel seedé) → 0 (aucune extension côté solveur).
+        self::assertArrayHasKey('roundTripMinutes', $byId[$friendlyAway->getId()]);
+        self::assertSame(0, $byId[$friendlyAway->getId()]['roundTripMinutes']);
         // Championnat (la rencontre seedée, UNPLACED) : TO_PLACE — inchangé.
         self::assertSame('TO_PLACE', $byId[$seededFixture->getId()]['kind'] ?? null);
+    }
+
+    /**
+     * NR D3 (§7.1 contrat backend↔engine) : la ligne AWAY du payload de placement
+     * porte le trajet aller-retour (2 × aller simple) projeté par
+     * {@see OpponentTravelProjection} — la MÊME projection que le radar.
+     * Le solveur étend la fenêtre AWAY du coach de cette durée (réplique de
+     * MatchFootprint). Un adversaire sans trajet reste à 0.
+     */
+    #[Group('phase1')]
+    public function testAwayLineCarriesTheProjectedRoundTripTravel(): void
+    {
+        [, $seededFixture, $club, $season, $builder] = $this->buildFromSeededClub();
+        $em = self::getContainer()->get('doctrine.orm.entity_manager');
+        $teamId = $seededFixture->getTeamId();
+
+        // Une rencontre extérieure estampillée d'un code organisme dont le club a un
+        // trajet aller simple de 40 min.
+        $away = $this->makeFixture($em, $club, $season, $teamId, '2026-10-24', FixtureHomeAway::AWAY);
+        $away->setOpponentOrganismeCode('ORG-CONTRAT');
+        $away->setOpponentLabel('ASVEL - 2');
+
+        $travel = new OpponentTravel;
+        $travel->setClubId($club->getId());
+        $travel->setSeasonId($season->getId());
+        $travel->setOpponentOrganismeCode('ORG-CONTRAT');
+        $travel->setOpponentTeamKey(null); // défaut club
+        $travel->setTravelMinutes(40);
+        $travel->setSource(OpponentTravelSource::MANUAL);
+        $em->persist($travel);
+        $em->flush();
+
+        $matches = $builder->build($club, $season->getId())['payload']['matches'];
+        $awayRow = null;
+        foreach ($matches as $row) {
+            if ($row['id'] === $away->getId()) {
+                $awayRow = $row;
+            }
+        }
+        self::assertNotNull($awayRow, 'la rencontre extérieure figure au payload');
+        // 2 × aller simple : 40 → 80.
+        self::assertSame(80, $awayRow['roundTripMinutes']);
+    }
+
+    /**
+     * NR D3 (§7.1 contrat backend↔engine) : le trajet aller-retour émis est CLAMPÉ à la
+     * borne du schéma engine (24 h = 1440 min). Un aller-simple aberrant (800 min → 1600
+     * aller-retour) ferait sinon rejeter TOUT le payload en 422 (`round_trip_minutes` `le=1440`).
+     */
+    #[Group('phase1')]
+    public function testRoundTripTravelIsClampedToTheSchemaBound(): void
+    {
+        [, $seededFixture, $club, $season, $builder] = $this->buildFromSeededClub();
+        $em = self::getContainer()->get('doctrine.orm.entity_manager');
+        $teamId = $seededFixture->getTeamId();
+
+        $away = $this->makeFixture($em, $club, $season, $teamId, '2026-10-24', FixtureHomeAway::AWAY);
+        $away->setOpponentOrganismeCode('ORG-LOIN');
+        $away->setOpponentLabel('Bout du monde');
+
+        // Aller simple aberrant de 800 min → aller-retour 1600, au-delà de la borne engine.
+        $travel = new OpponentTravel;
+        $travel->setClubId($club->getId());
+        $travel->setSeasonId($season->getId());
+        $travel->setOpponentOrganismeCode('ORG-LOIN');
+        $travel->setOpponentTeamKey(null);
+        $travel->setTravelMinutes(800);
+        $travel->setSource(OpponentTravelSource::MANUAL);
+        $em->persist($travel);
+        $em->flush();
+
+        $matches = $builder->build($club, $season->getId())['payload']['matches'];
+        $awayRow = null;
+        foreach ($matches as $row) {
+            if ($row['id'] === $away->getId()) {
+                $awayRow = $row;
+            }
+        }
+        self::assertNotNull($awayRow, 'la rencontre extérieure figure au payload');
+        // Clampé à 1440 (24 h), pas 1600 : le payload reste recevable par le schéma engine.
+        self::assertSame(1440, $awayRow['roundTripMinutes']);
     }
 
     private function makeFixture(EntityManagerInterface $em, Club $club, Season $season, string $teamId, string $date, FixtureHomeAway $homeAway): Fixture

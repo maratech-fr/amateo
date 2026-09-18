@@ -1,10 +1,12 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-09-18 (`documentation-update`, PR correctrice de l'audit moteur 0918 — hors
+Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D3, hors
 filet du garde `test_contract_version_doc_sync.py`, AUD-DOC-39). `CONTRACT_VERSION` était noté
-`'2.21'`, désormais **`'2.22'`** (`ScheduleConstraintBuilder.php:64`, même valeur
-`MoveSlotService.php:50` et `MatchPlacementPayloadBuilder.php:65`, `engine/CONTRACT_VERSION`,
-bump ENG-40) — occurrences ci-dessous recalées. Reste non re-sondé cette passe : chaîne
+`'2.21'`, désormais **`'2.23'`** (`ScheduleConstraintBuilder.php:64`, même valeur
+`MoveSlotService.php:50` et `MatchPlacementPayloadBuilder.php:65`, `engine/CONTRACT_VERSION`) —
+deux bumps le même jour : `2.22` (ENG-40, diagnostic `placement_problem_too_large`) puis `2.23`
+(D3, `matches[].roundTripMinutes` sur `/place-matches`) — occurrences ci-dessous recalées. Reste
+non re-sondé cette passe : chaîne
 `GenerateScheduleController` → Messenger → `GenerateScheduleHandler`, verrou
 `ClubGenerationLock::acquire`, topic Mercure, `TIMEOUT_MS` (dernière confrontation 2026-09-15)
 *(historique des passes vit dans git : `git log -p --follow specs/courantes/generation-pipeline.md`)*

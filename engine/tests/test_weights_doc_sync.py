@@ -43,6 +43,32 @@ EMISSION = REPO_ROOT / "frontend" / "docs" / "constraint-emission.md"
 COVERAGE = REPO_ROOT / "backend" / "docs" / "constraint-coverage.md"
 MODULE_MATCHS = REPO_ROOT / "specs" / "courantes" / "module-matchs.md"
 
+# AUD-DOC-45 (bis) — un STAMP n'est pas du CONTENU. La ligne « Last verified @ … » et son
+# paragraphe de continuation sont de la MÉTADONNÉE de fraîcheur, réécrite à chaque passe
+# `documentation-update` (règle du dépôt). Un garde qui s'y ancre ment : le regex socle s'était
+# accroché à une tournure `SOCLE_REFERENCE_TIER_WEIGHTS (S=…)` qui n'existait QUE dans le stamp,
+# et la passe doc l'a fait disparaître. On retire donc le paragraphe de stamp AVANT de matcher —
+# aucune citation gardée ne doit venir d'un stamp.
+_STAMP_START = re.compile(r"^\*{0,2}Last verified\b")
+
+
+def _body_without_stamp(doc: pathlib.Path) -> str:
+    """Le CORPS du doc, paragraphe de stamp d'en-tête retiré (ligne « Last verified » + ses
+    lignes de continuation, jusqu'à la ligne vide suivante)."""
+    lines = doc.read_text(encoding="utf-8").splitlines()
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        if _STAMP_START.match(lines[i]):
+            # saute tout le paragraphe de stamp jusqu'à la prochaine ligne vide (exclue)
+            while i < len(lines) and lines[i].strip():
+                i += 1
+            continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
+
+
 # Le registre nommé des poids « d'arbitrage produit ». La valeur vient du CODE (import du
 # module), jamais recopiée ici : c'est tout l'intérêt du garde. On compare la MAGNITUDE
 # (`abs`), le signe étant écrit à part dans les docs (« +10 » / « −10 »).
@@ -87,8 +113,8 @@ CITATIONS: tuple[tuple[str, pathlib.Path, str], ...] = (
     ("spacing", COVERAGE, r"`spacing` \(poids −(\d+)"),
     # placement_proximity = 9
     ("placement_proximity", VOCAB, r"poids (\d+), jamais co-émise"),
-    # socle_ref_S = 20
-    ("socle_ref_S", VOCAB, r"SOCLE_REFERENCE_TIER_WEIGHTS`?\s*\(S=(\d+)"),
+    # socle_ref_S = 20 — ancré sur la citation du CORPS (« Poids par tier (`weights.py`) : `S=20 …` »),
+    # jamais sur le stamp (AUD-DOC-45 bis : l'ancienne forme n'existait que dans « Last verified »).
     ("socle_ref_S", VOCAB, r"Poids par tier \(`weights\.py`\) : `S=(\d+)"),
     # team_link_S = 8
     ("team_link_S", VOCAB, r"PLUS HAUTE des deux équipes \(S (\d+)"),
@@ -114,7 +140,7 @@ def test_docs_cite_the_code_value_of_each_product_weight() -> None:
     stale = []
     for name, doc, pattern in CITATIONS:
         expected = abs(PRODUCT_ARBITRATION_WEIGHTS[name])
-        text = doc.read_text(encoding="utf-8")
+        text = _body_without_stamp(doc)
         found = re.findall(pattern, text)
         assert found, (
             f"le garde DOC-45 attend une citation de `{name}` dans "
@@ -145,3 +171,26 @@ def test_every_named_weight_is_guarded_or_documented_as_uncited() -> None:
         "Soit ajouter une entrée dans CITATIONS, soit les sortir du registre, soit les "
         "documenter dans `_UNCITED_BY_DESIGN` avec la raison."
     )
+
+
+def test_no_citation_is_anchored_on_a_stamp_line() -> None:
+    """AUD-DOC-45 (bis) — aucune citation gardée ne doit venir d'un stamp de fraîcheur.
+
+    Un stamp (« Last verified @ … ») est réécrit à chaque passe `documentation-update` : s'y
+    ancrer, c'est garder une tournure jetable (c'est ce qui a fait rougir `socle_ref_S` quand la
+    PR E a réécrit l'en-tête). On vérifie (a) que le stripper retire bien tout stamp, et (b) que
+    CHAQUE regex matche encore APRÈS suppression du stamp — donc sur du vrai corps."""
+    docs = {doc for _, doc, _ in CITATIONS}
+    for doc in docs:
+        body = _body_without_stamp(doc)
+        assert "Last verified" not in body, (
+            f"un stamp survit dans le corps de {doc.relative_to(REPO_ROOT)} — le stripper doit "
+            "retirer la ligne « Last verified » et son paragraphe."
+        )
+
+    for name, doc, pattern in CITATIONS:
+        body = _body_without_stamp(doc)
+        assert re.search(pattern, body), (
+            f"la citation `{name}` ({doc.relative_to(REPO_ROOT)}, regex {pattern!r}) ne matche "
+            "QUE dans le stamp : la recaler sur le CORPS du document."
+        )

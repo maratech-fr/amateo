@@ -56,6 +56,8 @@ final class FixtureReviewContext extends BaseContext
 
     private string $competitionId = '';
 
+    private string $matchWindowId = '';
+
     private string $matchDate = '';
 
     private string $rescheduledDate = '';
@@ -126,6 +128,19 @@ final class FixtureReviewContext extends BaseContext
         $this->controlFixtureId = $this->createdId(
             $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->matchDate, 'homeAway' => 'AWAY', 'opponentLabel' => 'Témoin absent'], $this->token),
             'rencontre-témoin',
+        );
+    }
+
+    #[Given('un accès match le samedi sur « GYM BEHAT »')]
+    public function unAccesMatchSurGymBehat(): void
+    {
+        // D2 — le club de démo déclare des accès match : un domicile de COMPÉTITION ne se place
+        // que dans une fenêtre d'accès de son gymnase ce jour-là. Le gymnase jetable « GYM BEHAT »
+        // n'en a aucune, on en pose une couvrant le samedi 15h30 (le jour réel de `matchDate`).
+        $dayOfWeek = (int) new DateTimeImmutable($this->matchDate)->format('N');
+        $this->matchWindowId = $this->createdId(
+            $this->apiPost('venue_match_windows', ['venueId' => $this->venueId, 'dayOfWeek' => $dayOfWeek, 'startTime' => '14:00', 'endTime' => '18:00'], $this->token),
+            'accès match',
         );
     }
 
@@ -346,6 +361,9 @@ final class FixtureReviewContext extends BaseContext
         }
         if ('' !== $this->competitionId) {
             $this->apiDelete(\sprintf('competitions/%s', $this->competitionId), $this->token);
+        }
+        if ('' !== $this->matchWindowId) {
+            $this->apiDelete(\sprintf('venue_match_windows/%s', $this->matchWindowId), $this->token);
         }
         if ('' !== $this->teamId) {
             $this->apiDelete(\sprintf('teams/%s', $this->teamId), $this->token);

@@ -57,6 +57,18 @@ final class MatchPlacementContext extends BaseContext
 
     private string $friendlyId = '';
 
+    private string $coachId = '';
+
+    private string $teamCoachAId = '';
+
+    private string $teamCoachBId = '';
+
+    private string $awayId = '';
+
+    private string $homeId = '';
+
+    private string $travelCode = '';
+
     private string $saturday = '';
 
     private string $sunday = '';
@@ -186,6 +198,101 @@ final class MatchPlacementContext extends BaseContext
             $this->apiPost('fixtures', ['teamId' => $this->secondTeamId, 'matchDate' => $this->saturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire B', 'competitionId' => $this->competitionId2], $this->token),
             'second match du samedi',
         );
+    }
+
+    #[Given('une large fenêtre d\'accès le samedi de 14h00 à 23h30 sur ce gymnase')]
+    public function uneLargeFenetreLeSamedi(): void
+    {
+        $this->windowId = $this->createdId(
+            $this->apiPost('venue_match_windows', ['venueId' => $this->venueId, 'dayOfWeek' => 6, 'startTime' => '14:00', 'endTime' => '23:30'], $this->token),
+            'fenêtre d\'accès large',
+        );
+    }
+
+    #[Given('un entraîneur qui partage les deux équipes')]
+    public function unEntraineurPartage(): void
+    {
+        $this->coachId = $this->createdId(
+            $this->apiPost('coaches', ['firstName' => 'Coach', 'lastName' => 'Partagé'], $this->token),
+            'entraîneur',
+        );
+        $this->teamCoachAId = $this->createdId(
+            $this->apiPost('team_coaches', ['teamId' => $this->teamId, 'coachId' => $this->coachId, 'role' => 'MAIN'], $this->token),
+            'affectation coach↔équipe A',
+        );
+        $this->teamCoachBId = $this->createdId(
+            $this->apiPost('team_coaches', ['teamId' => $this->secondTeamId, 'coachId' => $this->coachId, 'role' => 'MAIN'], $this->token),
+            'affectation coach↔équipe B',
+        );
+    }
+
+    #[Given('un match extérieur de la seconde équipe le samedi à 14h00, à long trajet aller-retour')]
+    public function unExterieurALongTrajet(): void
+    {
+        // Un match extérieur de l'équipe B, coup d'envoi 14h00 — il occupe le coach.
+        $this->awayId = $this->createdId(
+            $this->apiPost('fixtures', ['teamId' => $this->secondTeamId, 'matchDate' => $this->saturday, 'homeAway' => 'AWAY', 'opponentLabel' => 'Loin FC', 'kickoffTime' => '14:00'], $this->token),
+            'match extérieur',
+        );
+
+        // Trajet ALLER SIMPLE connu (180 min) rattaché au code organisme de l'adversaire.
+        // Le champ opponentOrganismeCode n'est pas exposé au POST (posé à l'import) : on
+        // l'estampille en base, comme la fédération le ferait, puis on injecte le trajet
+        // (aller-retour = 2 × 180 = 360 min côté projection). Nettoyés en fin de scénario.
+        // La saison = celle de la rencontre qu'on vient de créer, LUE À L'API (jamais parsée
+        // depuis la sortie console d'un `run-sql`) : c'est exactement la saison courante que
+        // la projection de trajet interroge.
+        $seasonId = $this->apiGet(\sprintf('fixtures/%s', $this->awayId), $this->token)['json']['seasonId'] ?? null;
+        if (!\is_string($seasonId) || '' === $seasonId) {
+            throw new RuntimeException('la saison de la rencontre extérieure est introuvable');
+        }
+        $this->travelCode = 'BEHAT-D3-' . substr(md5($this->awayId), 0, 8);
+        $this->dbalExec(
+            \sprintf('UPDATE fixture SET opponent_organisme_code=\'%s\' WHERE id=\'%s\'', $this->travelCode, $this->awayId),
+            admin: true,
+        );
+        $this->dbalExec(
+            \sprintf(
+                'INSERT INTO opponent_travel (id, version, created_at, updated_at, club_id, season_id, opponent_organisme_code, travel_minutes, source) '
+                . 'VALUES (gen_random_uuid(), 1, now(), now(), \'%s\', \'%s\', \'%s\', 180, \'MANUAL\')',
+                $this->clubId,
+                $seasonId,
+                $this->travelCode,
+            ),
+            admin: true,
+        );
+    }
+
+    #[Given('un match à domicile de la première équipe le samedi à placer')]
+    public function unDomicileAPlacer(): void
+    {
+        $this->competitionId = $this->createdId(
+            $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => 'Championnat jetable D3', 'competitionType' => 'CHAMPIONSHIP'], $this->token),
+            'compétition',
+        );
+        $this->homeId = $this->createdId(
+            $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->saturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire domicile', 'competitionId' => $this->competitionId], $this->token),
+            'match à domicile',
+        );
+        // Réutilise le pipeline de lecture du step « je lance le placement ».
+        $this->fxSat = $this->homeId;
+    }
+
+    #[Then('le match à domicile est posé en fin de journée, après le retour du coach de l\'extérieur')]
+    public function leDomicileEstPoseTard(): void
+    {
+        $status = $this->satFixture['status'] ?? null;
+        if ('PLACED' !== $status) {
+            throw new RuntimeException(\sprintf('le match à domicile n\'est pas placé (statut « %s »)', \is_string($status) ? $status : 'inconnu'));
+        }
+        // Sans trajet, le coach est libre dès la fin du match extérieur (≈ 16:15) et le
+        // solveur y poserait le domicile. Avec le trajet aller-retour, la fenêtre du coach
+        // s'étend du retour : le seul créneau sans double-réservation tombe en fin de
+        // journée. On borne large (≥ 17h00) pour rester robuste aux durées de catégorie.
+        $kickoff = $this->kickoff();
+        if ($kickoff < '17:00') {
+            throw new RuntimeException(\sprintf('coup d\'envoi %s : le trajet extérieur n\'a pas repoussé le domicile (attendu ≥ 17:00)', $kickoff));
+        }
     }
 
     #[Given('un amical à domicile le samedi sur ce gymnase, sans créneau posé')]
@@ -366,10 +473,22 @@ final class MatchPlacementContext extends BaseContext
             return;
         }
 
-        foreach ([$this->fxSat, $this->fxSat2, $this->fxSun, $this->friendlyId] as $id) {
+        foreach ([$this->fxSat, $this->fxSat2, $this->fxSun, $this->friendlyId, $this->awayId, $this->homeId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
+        }
+        // Trajet injecté en base (D3) + affectations coach : retirés avant les équipes.
+        if ('' !== $this->travelCode) {
+            $this->dbalExec(\sprintf('DELETE FROM opponent_travel WHERE opponent_organisme_code=\'%s\'', $this->travelCode), admin: true);
+        }
+        foreach ([$this->teamCoachAId, $this->teamCoachBId] as $id) {
+            if ('' !== $id) {
+                $this->apiDelete(\sprintf('team_coaches/%s', $id), $this->token);
+            }
+        }
+        if ('' !== $this->coachId) {
+            $this->apiDelete(\sprintf('coaches/%s', $this->coachId), $this->token);
         }
         if ('' !== $this->rotationId) {
             $this->apiDelete(\sprintf('match_slot_rotations/%s', $this->rotationId), $this->token);

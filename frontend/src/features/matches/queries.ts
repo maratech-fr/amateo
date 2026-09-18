@@ -178,7 +178,7 @@ export function useCreateFixture() {
   return useMutation({
     mutationFn: (input: CreateFixtureInput) => matchesApi.createFixture(input),
     onSuccess: () => invalidateFixtures(queryClient),
-    onError: () => toast.error("Création du match impossible"),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -187,7 +187,10 @@ export function usePlaceFixture() {
   return useMutation({
     mutationFn: ({ fixture, input }: { fixture: Fixture; input: PlaceFixtureInput }) => matchesApi.placeFixture(fixture, input),
     onSuccess: () => invalidateFixtures(queryClient),
-    onError: () => toast.error("Placement impossible"),
+    // D2 — le serveur peut REFUSER un placement (hors fenêtre d'accès match /
+    // indisponibilité) avec un message parlant : on le RESTITUE (via `errorMessage`,
+    // qui lit les `violations`/`detail`), on ne le remplace pas par un générique.
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -198,7 +201,7 @@ export function useUpdateFixture() {
   return useMutation({
     mutationFn: ({ fixture, input }: { fixture: Fixture; input: matchesApi.EditFixtureInput }) => matchesApi.updateFixture(fixture, input),
     onSuccess: () => invalidateFixtures(queryClient),
-    onError: () => toast.error("Modification du match impossible"),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -245,7 +248,7 @@ export function useMoveFixture() {
   return useMutation({
     mutationFn: ({ fixture, input }: { fixture: Fixture; input: PlaceFixtureInput }) => matchesApi.moveFixture(fixture, input),
     onSuccess: () => invalidateFixtures(queryClient),
-    onError: () => toast.error("Déplacement impossible"),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 

@@ -1,0 +1,56 @@
+{
+  "_comment": "FRT-32 — cas de PARITÉ MÉCANIQUE du prédicat « coup d'envoi dans une fenêtre d'enveloppe ligue de ce JOUR », intervalle FERMÉ [kickoffMin, kickoffMax] (les DEUX bornes incluses — à distinguer du demi-ouvert des accès gymnase). Consommé par leagueEnvelope.parity.test.ts (front, matches/lib/envelope.ts::kickoffInsideLeagueWindow) ET par LeagueEnvelopeMirrorParityTest.php (backend, MatchConflictDetector::kickoffInsideLeagueWindow). `inside` est le verdict des deux implémentations. L'exemption AMICAL et la résolution équipe↔fenêtre divergent par conception (déclaré côté front) — seul CE prédicat est partagé et gardé ici.",
+  "cases": [
+    {
+      "name": "coup d'envoi au milieu — dedans",
+      "day": 6, "kickoff": "17:00",
+      "windows": [{ "dayOfWeek": 6, "kickoffMin": "16:00", "kickoffMax": "18:00" }],
+      "inside": true
+    },
+    {
+      "name": "borne MIN incluse",
+      "day": 6, "kickoff": "16:00",
+      "windows": [{ "dayOfWeek": 6, "kickoffMin": "16:00", "kickoffMax": "18:00" }],
+      "inside": true
+    },
+    {
+      "name": "borne MAX INCLUSE (intervalle fermé — diffère de l'accès gymnase)",
+      "day": 6, "kickoff": "18:00",
+      "windows": [{ "dayOfWeek": 6, "kickoffMin": "16:00", "kickoffMax": "18:00" }],
+      "inside": true
+    },
+    {
+      "name": "avant la borne min — dehors",
+      "day": 6, "kickoff": "15:45",
+      "windows": [{ "dayOfWeek": 6, "kickoffMin": "16:00", "kickoffMax": "18:00" }],
+      "inside": false
+    },
+    {
+      "name": "après la borne max — dehors",
+      "day": 6, "kickoff": "18:15",
+      "windows": [{ "dayOfWeek": 6, "kickoffMin": "16:00", "kickoffMax": "18:00" }],
+      "inside": false
+    },
+    {
+      "name": "bon horaire mais autre JOUR — dehors",
+      "day": 7, "kickoff": "17:00",
+      "windows": [{ "dayOfWeek": 6, "kickoffMin": "16:00", "kickoffMax": "18:00" }],
+      "inside": false
+    },
+    {
+      "name": "deux fenêtres le même jour — la seconde couvre",
+      "day": 6, "kickoff": "20:30",
+      "windows": [
+        { "dayOfWeek": 6, "kickoffMin": "16:00", "kickoffMax": "18:00" },
+        { "dayOfWeek": 6, "kickoffMin": "20:00", "kickoffMax": "21:00" }
+      ],
+      "inside": true
+    },
+    {
+      "name": "aucune fenêtre — dehors",
+      "day": 6, "kickoff": "17:00",
+      "windows": [],
+      "inside": false
+    }
+  ]
+}

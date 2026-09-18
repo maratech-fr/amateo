@@ -119,6 +119,11 @@ class MatchSchema(SerializableModel):
     kickoff_estimated: bool = Field(default=False, alias="kickoffEstimated")
     current_venue_id: str | None = Field(default=None, alias="currentVenueId")
     current_kickoff: time | None = Field(default=None, alias="currentKickoff")
+    # D3 — trajet aller-retour vers l'adversaire (minutes, 2 × aller simple), AWAY
+    # seulement. Le solveur étend la fenêtre AWAY du coach de ce trajet (moitié avant
+    # l'échauffement, moitié après le match), réplique de MatchFootprint côté backend.
+    # 0 = inconnu / non AWAY → aucune extension. Borne haute = 24 h (garde-fou).
+    round_trip_minutes: int = Field(default=0, ge=0, le=1440, alias="roundTripMinutes")
 
     @model_validator(mode="after")
     def _fixed_is_anchored(self) -> MatchSchema:
@@ -171,7 +176,7 @@ class MatchPlacementInputSchema(SerializableModel):
     # courant pour qu'aucun lecteur ne le prenne pour une version concurrente.
     # L'autorité reste `engine/CONTRACT_VERSION`, comparée au MAJOR à l'entrée ;
     # gardé par test_schema_version_defaults_match_contract_version.
-    version: str = "2.22"
+    version: str = "2.23"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     solver_seed: int = Field(default=42, alias="solverSeed")

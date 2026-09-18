@@ -62,7 +62,15 @@ final class MatchPlacementPayloadBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '2.22';
+    public const string CONTRACT_VERSION = '2.23';
+
+    /**
+     * Borne du trajet aller-retour AWAY émis, alignée sur le schéma engine
+     * (`match_input_schema.py`, `round_trip_minutes` `le=1440`). Un aller-simple IGN
+     * aberrant (> 720 min) donnerait un aller-retour > 1440 qui ferait rejeter TOUT le
+     * payload en 422 : on clampe ici pour dégrader proprement (empreinte plafonnée à 24 h).
+     */
+    private const int MAX_ROUND_TRIP_MINUTES = 1440;
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -71,6 +79,7 @@ final class MatchPlacementPayloadBuilder
         private readonly LeagueEnvelopeResolver $leagueEnvelopeResolver,
         private readonly EffectiveScheduleResolver $effectiveScheduleResolver,
         private readonly MatchDurationResolver $matchDurationResolver,
+        private readonly OpponentTravelProjection $opponentTravelProjection,
     ) {}
 
     /**
@@ -101,6 +110,12 @@ final class MatchPlacementPayloadBuilder
 
         $habitIndex = $this->awayKickoffEstimator->indexHabits($habits);
 
+        // D3 — le trajet aller-retour par rencontre AWAY (2 × aller simple), projeté
+        // par la MAISON UNIQUE partagée avec le radar. Envoyé au solveur pour qu'il
+        // protège le coach PENDANT son déplacement (fenêtre AWAY étendue du trajet,
+        // réplique de MatchFootprint). Absent = 0 (rien de modélisé).
+        $roundTripByFixtureId = $this->opponentTravelProjection->roundTripByFixtureId($seasonId, $fixtures);
+
         // Slot rotations (RMM-5, §8) : le créneau de match PARTAGÉ entre N équipes
         // qui l'occupent en alternance (SM1/SM2 sur le 20h30). $rotationTeamDays
         // porte la SUPPLÉANCE (tranchage 5) : l'habitude d'un membre LE MÊME JOUR
@@ -112,7 +127,7 @@ final class MatchPlacementPayloadBuilder
         $toPlaceCount = 0;
         $matchRows = [];
         foreach ($fixtures as $fixture) {
-            $row = $this->matchRow($fixture, $habitIndex);
+            $row = $this->matchRow($fixture, $habitIndex, $roundTripByFixtureId[$fixture->getId()] ?? 0);
             if (null === $row) {
                 continue;
             }
@@ -235,10 +250,11 @@ final class MatchPlacementPayloadBuilder
 
     /**
      * @param array<string, array<int, TeamMatchHabit>> $habitIndex
+     * @param int                                       $roundTripMinutes D3 — trajet aller-retour AWAY (0 = inconnu / non AWAY)
      *
      * @return array<string, mixed>|null null = skipped (unanchorable submitted match)
      */
-    private function matchRow(Fixture $fixture, array $habitIndex): ?array
+    private function matchRow(Fixture $fixture, array $habitIndex, int $roundTripMinutes): ?array
     {
         $base = [
             'id' => $fixture->getId(),
@@ -254,6 +270,10 @@ final class MatchPlacementPayloadBuilder
                 'kind' => 'AWAY',
                 'kickoff' => $kickoff?->format('H:i'),
                 'kickoffEstimated' => !$fixture->getKickoffTime() instanceof DateTimeImmutable && $estimated instanceof DateTimeImmutable,
+                // D3 — le trajet aller-retour vers l'adversaire (2 × aller simple, 0 si
+                // inconnu), clampé à la borne du schéma engine (24 h). Le solveur étend la
+                // fenêtre AWAY du coach de cette durée.
+                'roundTripMinutes' => min($roundTripMinutes, self::MAX_ROUND_TRIP_MINUTES),
             ];
         }
 

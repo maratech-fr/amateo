@@ -1,16 +1,17 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-09-18 (lot correctif de l'audit moteur 0918 — recalage du contrat 2.22,
-`documentation-update`). Re-confronté au code : `BanGeocodingClient::SEARCH_URL`
+Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — recalage
+du contrat 2.23). Re-confronté au code : `BanGeocodingClient::SEARCH_URL`
 (`BanGeocodingClient.php:24`) et `IgnRoutingClient::ITINERARY_URL` (`IgnRoutingClient.php:44`)
 hosts en constantes dures ✓ · `IgnRoutingClient::BATCH_BUDGET_SECONDS = 30.0`
 (`IgnRoutingClient.php:42`) ✓ · `PROFILE_CAR`/`PROFILE_PEDESTRIAN` seuls, aucune 3ᵉ constante
 (`IgnRoutingClient.php:25-26`) ✓ · `VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS = 120`
 (`Service/Geo/VenueTravelTimeAutofillService.php:27`) ✓ · rate-limit `venue_travel_time_autofill`
-10/h sliding window (`rate_limiter.yaml:59-62`) ✓ · `engine/CONTRACT_VERSION` a bougé à
-**2.22** (bump ENG-40, sans rapport avec ce fichier — lot correctif de l'audit moteur 0918,
-AUD-DOC-39) — occurrence ci-dessous recalée ; la ligne §« Le solveur d'ENTRAÎNEMENT la lit » ne
-fige déjà aucune valeur (« voir le fichier pour la valeur courante ») donc rien à corriger là.
+10/h sliding window (`rate_limiter.yaml:59-62`) ✓ · `engine/CONTRACT_VERSION` a bougé deux fois
+le même jour, sans rapport avec ce fichier de géo — `2.21→2.22` (ENG-40, diagnostic
+`placement_problem_too_large`) puis `2.22→2.23` (D3, `matches[].roundTripMinutes`) — occurrence
+ci-dessous recalée à **2.23** ; la ligne §« Le solveur d'ENTRAÎNEMENT la lit » ne fige déjà aucune
+valeur (« voir le fichier pour la valeur courante ») donc rien à corriger là.
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,

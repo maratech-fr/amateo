@@ -10,7 +10,6 @@ use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Team;
 use App\Entity\TeamPeriodOverride;
 use App\Enum\CalendarEntryPeriodType;
-use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Repository\ConstraintRepository;
 use App\Repository\TeamRepository;
@@ -29,10 +28,11 @@ use Psr\Log\LoggerInterface;
  * par cette classe :
  *
  * - une contrainte DATÉE visant une équipe désactivée restait validée par le gate alors
- *   que le payload la filtrait (le gate ne filtrait que les permanentes) ;
- * - une contrainte CLUB+tag HARD à gymnase dédié dont toutes les équipes taguées sont en
- *   pause était sortie du gate, alors que le payload émet encore ses lignes « interdit
- *   hors tag » pour les autres équipes.
+ *   que le payload la filtrait (le gate ne filtrait que les permanentes).
+ *
+ * (D1, décision fondateur lecture 1 : « impose Y au groupe X » ne réserve plus le gymnase
+ * aux autres équipes — le builder n'émet plus de lignes « interdit hors tag », le gate ne
+ * garde plus une CLUB+tag que par ses lignes PAR ÉQUIPE.)
  *
  * La sélection opère sur les ENTITÉS — ce dont le gate a besoin (`validate()`,
  * `detectConflicts()`, ids d'erreurs). Le builder sérialise ensuite `kept` et garde ses
@@ -199,14 +199,14 @@ final class PeriodConstraintSelector
 
     /**
      * Le verdict d'une CLUB+targetTag, calqué sur les LIGNES que le builder émettrait —
-     * pas sur l'entité, car ses lignes n'ont pas toutes la même config :
+     * pas sur l'entité :
      *
      * - lignes PAR ÉQUIPE (config d'origine, moins le tag) : elles survivent s'il reste
-     *   une équipe taguée ACTIVE et qu'aucune clé de config ne vise un gymnase désactivé ;
-     * - lignes « INTERDIT HORS TAG » (HARD + gymnase dédié ; config REMPLACÉE par
-     *   `forbiddenVenueId` = le dédié) : elles survivent si le gymnase DÉDIÉ n'est pas
-     *   désactivé — même si une clé secondaire l'est, ou si toutes les taguées sont en
-     *   pause (divergence n° 2 alignée).
+     *   une équipe taguée ACTIVE et qu'aucune clé de config ne vise un gymnase désactivé.
+     *
+     * D1 (décision fondateur lecture 1) : plus aucune ligne « interdit hors tag » — « impose
+     * Y au groupe X » ne réserve pas le gymnase aux autres équipes. Une CLUB+tag ne survit
+     * donc QUE par ses lignes par équipe.
      *
      * Tag inconnu ou résolution vide : le builder saute la contrainte entière (aucune ligne).
      *
@@ -229,29 +229,12 @@ final class PeriodConstraintSelector
             }
         }
 
-        $config = $constraint->getConfig();
+        // D1 (décision fondateur, lecture 1) — « impose Y au groupe X » ne RÉSERVE plus
+        // rien aux autres équipes : le builder n'émet plus de lignes « interdit hors tag ».
+        // Le gate suit à l'identique — une CLUB+tag ne survit que par ses lignes PAR ÉQUIPE.
         $perTeamRowsSurvive = [] !== $tagTeamIds && $hasActiveTagged && null === $this->disabledVenueNamedBy($constraint, $disabledVenueIds);
 
-        // Les lignes « interdit hors tag » n'existent que s'il reste une équipe active HORS
-        // du tag (le builder itère les actives en sautant les taguées — revue #340 round 2 :
-        // un tag couvrant TOUTES les actives gardait une entité à zéro ligne).
-        $tagTeamIdSet = array_flip($tagTeamIds);
-        $hasActiveNonTagged = false;
-        foreach (array_keys($activeTeamIds) as $teamId) {
-            if (!isset($tagTeamIdSet[$teamId])) {
-                $hasActiveNonTagged = true;
-                break;
-            }
-        }
-
-        $dedicatedVenueId = $config['forcedVenueId'] ?? $config['preferredVenueId'] ?? null;
-        $forbiddenRowsSurvive = [] !== $tagTeamIds
-            && $hasActiveNonTagged
-            && ConstraintRuleType::HARD === $constraint->getRuleType()
-            && \is_string($dedicatedVenueId) && '' !== $dedicatedVenueId
-            && !isset($disabledVenueIds[$dedicatedVenueId]);
-
-        if ($perTeamRowsSurvive || $forbiddenRowsSurvive) {
+        if ($perTeamRowsSurvive) {
             return self::TAG_KEEP;
         }
 

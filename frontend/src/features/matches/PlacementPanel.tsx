@@ -5,7 +5,10 @@ import { useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
+import { Spinner } from "@/shared/components/ui/spinner";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
+import type { ReadState } from "@/shared/lib/readState";
 
 import type { Fixture, PlaceFixtureInput, TeamMatchHabit, Venue, VenueMatchWindow, VenueUnavailability } from "./api";
 import { isInEnvelope, isoWeekday } from "./lib/envelope";
@@ -14,11 +17,25 @@ import { FIXTURE_STATUS_LABEL } from "./lib/fixtureStatusLabel";
 import { matchVenueIds, venueAccessError } from "./lib/matchAccess";
 import { unplacedReasonLabel } from "./lib/unplacedReasonLabel";
 
+/**
+ * The read state of the three club-owned guards the placement gesture leans on
+ * (match access windows, venue unavailabilities, league envelope). The gesture is
+ * SUSPENDED unless all three are `ready`: a `failed` first-load must never
+ * fabricate « no window → nothing to enforce » and slip a match into a restricted
+ * gym; a `loading` read is simply not ready yet. Derived by the page (readState).
+ */
+export interface PlacementGuards {
+  state: ReadState;
+  matchWindows: VenueMatchWindow[];
+  unavailabilities: VenueUnavailability[];
+  retry: () => void;
+}
+
 interface PlacementPanelProps {
   fixture: Fixture;
   venues: Venue[];
-  matchWindows: VenueMatchWindow[];
-  unavailabilities: VenueUnavailability[];
+  /** D2 — the club-owned guards + their read state (suspends the gesture). */
+  guards: PlacementGuards;
   /** P1-4 PR C — the team's habitual windows: prefill + hint, never a guard. */
   habits: TeamMatchHabit[];
   teamLabel: string;
@@ -80,8 +97,7 @@ function EnvelopeHint({ envelope, kickoff }: { envelope: EnvelopeResult; kickoff
 export function PlacementPanel({
   fixture,
   venues,
-  matchWindows,
-  unavailabilities,
+  guards,
   habits,
   teamLabel,
   categoryLabel,
@@ -97,11 +113,15 @@ export function PlacementPanel({
   onSubmit,
   onReopen,
 }: PlacementPanelProps) {
+  const { matchWindows, unavailabilities } = guards;
+  const guardsReady = "ready" === guards.state;
   // Masquer n'est légitime que pour un CHOIX (§7.2.3) : le sélecteur n'offre
   // que les gymnases de match — mais seulement si le club a déclaré des
-  // fenêtres quelque part (sinon liste complète, donnée non adoptée).
+  // fenêtres quelque part (sinon liste complète, donnée non adoptée). Tant que
+  // les gardes ne sont pas prêtes, on garde la liste COMPLÈTE (ne jamais filtrer
+  // sur une lecture en cours / en échec).
   const matchIds = matchVenueIds(matchWindows);
-  const selectableVenues = 0 === matchIds.size ? venues : venues.filter((v) => matchIds.has(v.id));
+  const selectableVenues = !guardsReady || 0 === matchIds.size ? venues : venues.filter((v) => matchIds.has(v.id));
 
   // P1-4 PR C — the team's habit on the MATCH's weekday prefills the empty
   // fields (venue must survive the selectable filter). Guards stay sovereign:
@@ -145,7 +165,7 @@ export function PlacementPanel({
     null !== fixture.kickoffTime &&
     venueId === fixture.venueId &&
     kickoff === fixture.kickoffTime;
-  const canPlace = "" !== venueId && hasKickoff && !envelopeBlocked && !accessBlocked && !busy && !unchanged;
+  const canPlace = "" !== venueId && hasKickoff && !envelopeBlocked && !accessBlocked && !busy && !unchanged && guardsReady;
 
   return (
     <Card>
@@ -219,7 +239,21 @@ export function PlacementPanel({
               </p>
             ) : null}
             {hasKickoff ? <EnvelopeHint envelope={envelope} kickoff={kickoff} /> : null}
-            {null !== accessIssue ? (
+            {/* D2 — le geste s'appuie sur trois lectures du club (accès match,
+                indisponibilités, enveloppe ligue). Tant qu'elles ne sont pas prêtes,
+                le placement est SUSPENDU : un échec ne doit jamais se lire « aucune
+                restriction ». Les autres gestes (dé-placer, verrouiller, échanger,
+                modifier, supprimer) restent actifs. */}
+            {"failed" === guards.state ? (
+              <LoadErrorHint onRetry={guards.retry}>
+                Impossible de vérifier les accès match et les indisponibilités de ce gymnase. Le placement est suspendu.
+              </LoadErrorHint>
+            ) : "loading" === guards.state ? (
+              <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Spinner className="size-3.5" /> Vérification des accès match…
+              </p>
+            ) : null}
+            {guardsReady && null !== accessIssue ? (
               "error" === accessIssue.level ? (
                 <p className="flex items-center gap-1 text-xs text-warning">
                   <AlertTriangle className="size-3.5" />

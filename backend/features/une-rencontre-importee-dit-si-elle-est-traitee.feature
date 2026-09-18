@@ -9,6 +9,7 @@ Fonctionnalité: Une rencontre importée dit si elle est traitée
   Scénario: Du premier dépôt au traitement, en passant par le déphasage
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Et un accès match le samedi sur « GYM BEHAT »
     Quand je dépose un fichier FBI avec un match à domicile au gymnase « GYM BEHAT » à 15h30
     Alors la rencontre importée est « à traiter »
     Quand je place la rencontre dans le gymnase « GYM BEHAT » à 15h30

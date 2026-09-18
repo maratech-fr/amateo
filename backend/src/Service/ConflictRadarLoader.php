@@ -15,11 +15,8 @@ use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
-use App\Enum\FixtureHomeAway;
 use App\Repository\ClubRepository;
 use App\Repository\LeagueMatchWindowRepository;
-use App\Repository\OpponentTravelRepository;
-use App\Service\Basketball\VenueLabelNormalizer;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -50,9 +47,8 @@ final class ConflictRadarLoader
         private readonly LeagueMatchWindowRepository $leagueWindowRepository,
         private readonly LeagueEnvelopeResolver $envelopeResolver,
         private readonly MatchDurationResolver $matchDurationResolver,
-        private readonly OpponentTravelRepository $opponentTravelRepository,
+        private readonly OpponentTravelProjection $opponentTravelProjection,
         private readonly ClubDay $clubDay,
-        private readonly VenueLabelNormalizer $labelNormalizer,
     ) {}
 
     /**
@@ -116,29 +112,10 @@ final class ConflictRadarLoader
         $context = $this->trainingCalendarContext->load($seasonId);
 
         // P2-54 RMM-9 PR-3 — the SPATIAL radar: an AWAY fixture's footprint grows by
-        // the round trip (2 × one-way car time) to the opponent's venue, read from
-        // the tenant `opponent_travel` via the stamped organisme code. Grain ÉQUIPE
-        // (P2-54 PR-1) : chaque rencontre résout son trajet par (code, libellé
-        // normalisé) → override équipe, sinon défaut club. Une rencontre sans code /
-        // sans trajet reste 0 (aucun conflit spatial — dit franchement).
-        $roundTripByFixtureId = [];
-        if (null !== $seasonId) {
-            $travelBySeason = $this->opponentTravelRepository->travelMinutesBySeason($seasonId);
-            if ([] !== $travelBySeason) {
-                foreach ($fixtures as $fixture) {
-                    $code = $fixture->getOpponentOrganismeCode();
-                    if (FixtureHomeAway::AWAY !== $fixture->getHomeAway() || null === $code || !isset($travelBySeason[$code])) {
-                        continue;
-                    }
-                    $teamKey = $this->labelNormalizer->normalize(trim($fixture->getOpponentLabel()));
-                    $entry = $travelBySeason[$code];
-                    $oneWay = $entry['teams'][$teamKey] ?? $entry['club'];
-                    if (null !== $oneWay) {
-                        $roundTripByFixtureId[$fixture->getId()] = 2 * $oneWay;
-                    }
-                }
-            }
-        }
+        // the round trip (2 × one-way car time) to the opponent's venue. La projection
+        // vit dans OpponentTravelProjection, MAISON UNIQUE partagée avec le payload de
+        // placement (D3) : les deux étendent l'empreinte AWAY de la MÊME façon.
+        $roundTripByFixtureId = $this->opponentTravelProjection->roundTripByFixtureId($seasonId, $fixtures);
 
         $conflicts = $this->detector->detect(
             $fixtures,

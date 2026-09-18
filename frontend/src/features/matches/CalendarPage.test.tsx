@@ -223,6 +223,19 @@ describe("CalendarPage — la Semaine (ex-boucle, fusion PR 3b)", () => {
     expect(placeFixture).toHaveBeenCalledWith(expect.objectContaining({ id: "fx-unplaced" }), { venueId: "venue-1", kickoffTime: "15:00" });
   });
 
+  it("D2 — une lecture des accès match en échec (500) suspend le placement SANS remplacer la page", async () => {
+    const user = userEvent.setup();
+    vi.mocked(matchesApi.getVenueMatchWindows).mockRejectedValueOnce(new Error("500"));
+    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
+    await user.click(await screen.findByRole("button", { name: /vs Voisins/ }));
+    // Le panneau suspend le geste (pas de faux « aucune restriction ») et propose de réessayer.
+    expect(await screen.findByText(/Impossible de vérifier les accès match/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Placer" })).toBeDisabled();
+    // La page n'est PAS remplacée par un écran d'erreur : la barre « Semaine affichée » tient.
+    expect(screen.getByRole("group", { name: "Semaine affichée" })).toBeInTheDocument();
+    expect(placeFixture).not.toHaveBeenCalled();
+  });
+
   it("« Placer automatiquement » (barre d'actions) auto-place et fait remonter la raison", async () => {
     const user = userEvent.setup();
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });

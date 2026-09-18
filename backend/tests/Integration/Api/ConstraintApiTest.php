@@ -14,6 +14,7 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
+use App\Entity\Venue;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
@@ -173,6 +174,77 @@ final class ConstraintApiTest extends WebTestCase
 
         self::assertSame(422, $client->getResponse()->getStatusCode(), 'Un gymnase inexistant doit être refusé : la contrainte rendrait l\'équipe impossible à placer, et le diagnostic du moteur accuserait autre chose.');
         self::assertStringContainsString('forcedVenueId', (string) $client->getResponse()->getContent(), 'La réponse doit NOMMER la clé fautive.');
+    }
+
+    /**
+     * D1 — « préférer ce gymnase » (preferredVenueId) est TOUJOURS une préférence :
+     * l'obligatoire, c'est « impose » (forcedVenueId). Une préférence de gymnase épinglée
+     * HARD|LOCK est refusée à la SOURCE, à la création…
+     */
+    public function testAPreferredVenueCannotBeCreatedMandatory(): void
+    {
+        $venue = $this->createVenue();
+        $status = $this->postConstraint([
+            'name' => 'Préfère mais obligatoire',
+            'scope' => 'TEAM',
+            'scopeTargetId' => '11111111-1111-4111-8111-111111111111',
+            'family' => 'FACILITY',
+            'ruleType' => 'HARD',
+            'config' => ['preferredVenueId' => $venue->getId()],
+        ]);
+
+        self::assertSame(422, $status);
+        self::assertStringContainsString('préférence de gymnase', (string) $this->client->getResponse()->getContent());
+    }
+
+    /** …ET à la mise à jour qui BASCULE la règle d'une préférence de gymnase en HARD. */
+    public function testChangingAPreferredVenueRuleToMandatoryIsRefused(): void
+    {
+        $venue = $this->createVenue();
+        $constraint = $this->createFacilityConstraint(ConstraintRuleType::PREFERRED, ['preferredVenueId' => $venue->getId()]);
+
+        $this->client->loginUser($this->user);
+        // PUT = remplacement complet (le DTO exige name/scope/family/ruleType) : on renvoie
+        // l'identité, on ne change QUE la règle → HARD sur une préférence de gymnase.
+        $this->client->request('PUT', \sprintf('/api/constraints/%s', $constraint->getId()), [], [], [
+            'HTTP_X-Club-Id' => $this->club->getId(),
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], json_encode([
+            'name' => 'Gymnase D1',
+            'scope' => 'TEAM',
+            'scopeTargetId' => '11111111-1111-4111-8111-111111111111',
+            'family' => 'FACILITY',
+            'ruleType' => 'HARD',
+            'config' => ['preferredVenueId' => $venue->getId()],
+        ], \JSON_THROW_ON_ERROR));
+
+        self::assertSame(422, $this->client->getResponse()->getStatusCode());
+        self::assertStringContainsString('préférence de gymnase', (string) $this->client->getResponse()->getContent());
+    }
+
+    /** …ET à la mise à jour qui AJOUTE la clé preferredVenueId à une règle déjà HARD (impose). */
+    public function testAddingAPreferredVenueKeyToAMandatoryRuleIsRefused(): void
+    {
+        $venue = $this->createVenue();
+        $constraint = $this->createFacilityConstraint(ConstraintRuleType::HARD, ['forcedVenueId' => $venue->getId()]);
+
+        $this->client->loginUser($this->user);
+        // La règle reste HARD, mais le config bascule d'un « impose » (forcedVenueId) à une
+        // « préférence » (preferredVenueId) : l'état final FACILITY+preferredVenueId+HARD est refusé.
+        $this->client->request('PUT', \sprintf('/api/constraints/%s', $constraint->getId()), [], [], [
+            'HTTP_X-Club-Id' => $this->club->getId(),
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], json_encode([
+            'name' => 'Gymnase D1',
+            'scope' => 'TEAM',
+            'scopeTargetId' => '11111111-1111-4111-8111-111111111111',
+            'family' => 'FACILITY',
+            'ruleType' => 'HARD',
+            'config' => ['preferredVenueId' => $venue->getId()],
+        ], \JSON_THROW_ON_ERROR));
+
+        self::assertSame(422, $this->client->getResponse()->getStatusCode());
+        self::assertStringContainsString('préférence de gymnase', (string) $this->client->getResponse()->getContent());
     }
 
     /**
@@ -577,6 +649,39 @@ final class ConstraintApiTest extends WebTestCase
         $this->em->flush();
 
         return $team;
+    }
+
+    private function createVenue(): Venue
+    {
+        $venue = new Venue;
+        $venue->setClubId($this->club->getId());
+        $venue->setSeasonId($this->season->getId());
+        $venue->setName('Gymnase D1 ' . uniqid('', true));
+        $venue->setSource('manual');
+        $this->em->persist($venue);
+        $this->em->flush();
+
+        return $venue;
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    private function createFacilityConstraint(ConstraintRuleType $rule, array $config): Constraint
+    {
+        $constraint = new Constraint;
+        $constraint->setClubId($this->club->getId());
+        $constraint->setSeasonId($this->season->getId());
+        $constraint->setName('Gymnase D1');
+        $constraint->setScope(ConstraintScope::TEAM);
+        $constraint->setScopeTargetId('11111111-1111-4111-8111-111111111111');
+        $constraint->setFamily(ConstraintFamily::FACILITY);
+        $constraint->setRuleType($rule);
+        $constraint->setConfig($config);
+        $this->em->persist($constraint);
+        $this->em->flush();
+
+        return $constraint;
     }
 
     private function createConstraint(string $name, string $scope): Constraint

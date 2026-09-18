@@ -1,12 +1,9 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-18 (`documentation-update`, complément au lot correctif frontend de
-l'audit 0918) : §1 ligne « Accessibilité & rendu » recroisée contre
-`frontend/tests/e2e/a11y-contrast.spec.ts` — gagne la paire de survol `--accent-hover` et la note
-sur les témoins par écran (`/matchs` provisionne désormais sa propre rencontre, le club seedé CI
-n'en portant aucune). Liste des specs e2e recroisée contre `frontend/tests/e2e/` (`ls *.spec.ts`) :
-aucun fichier ajouté ni retiré cette passe. §1 ligne `Playwright` (parcours §2, specs axe) et le
-reste des lignes non touchées cette passe — historique complet :
+Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D3) :
+§5 ligne `placement-des-matchs.feature` recroisée contre `backend/features/placement-des-matchs.feature`
+— nouveau scénario (D3, trajet adversaire protège un coach partagé pendant le placement
+automatique). Reste des lignes non touchées cette passe — historique complet :
 `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
@@ -164,7 +161,7 @@ une feature par PR (`ls backend/features/` fait foi du compte) :
 
 | Feature | Ce qu'elle prouve |
 |---|---|
-| `placement-des-matchs.feature` | un match à domicile dans sa fenêtre d'accès est `PLACED`, un sans fenêtre reste `UNPLACED` avec la raison nommée `no_access_window` (remplace `smoke-place-matches.sh`) ; **depuis P4-193 (2026-09-10)** : un amical déposé sans créneau n'est jamais proposé au solveur (reste sans créneau après `/place`) et se place ensuite à la main hors de la fenêtre d'accès match, sans être refusé ; **depuis P4-203 (2026-09-14, D1)** : « Deux domiciles à deux heures d'écart tiennent dans le même gymnase » — l'enchaînement fédéral à 2 h, que le radar acceptait déjà, tient désormais aussi côté solveur (salle = match seul, échauffement = fenêtre personne) |
+| `placement-des-matchs.feature` | un match à domicile dans sa fenêtre d'accès est `PLACED`, un sans fenêtre reste `UNPLACED` avec la raison nommée `no_access_window` (remplace `smoke-place-matches.sh`) ; **depuis P4-193 (2026-09-10)** : un amical déposé sans créneau n'est jamais proposé au solveur (reste sans créneau après `/place`) et se place ensuite à la main hors de la fenêtre d'accès match, sans être refusé ; **depuis P4-203 (2026-09-14, D1)** : « Deux domiciles à deux heures d'écart tiennent dans le même gymnase » — l'enchaînement fédéral à 2 h, que le radar acceptait déjà, tient désormais aussi côté solveur (salle = match seul, échauffement = fenêtre personne) ; **depuis l'audit 0918 (D3)** : le trajet aller-retour d'un match extérieur protège un coach partagé entre deux équipes — le domicile de l'équipe sœur se place en fin de journée, après le retour du coach de l'extérieur |
 | `une-rencontre-importee-dit-si-elle-est-traitee.feature` (PR-3a, 2026-09-08 ; **+P4-199, 2026-09-12** ; **+D2, 2026-09-14**) | du premier dépôt au traitement : une rencontre importée est « à traiter », placer la traite, un re-dépôt identique la fait passer « attestée FBI » (D9 — le pas Gherkin vérifie `status === VALIDATED`, libellé recalé P4-187a), un re-dépôt divergent la rend « déphasée » sans écraser la valeur app, trancher l'écart la replace « à replacer » et de nouveau traitée ; une rencontre absente d'un dépôt reste intouchée ; **depuis P4-199** : un match à l'extérieur, ou un domicile déjà passé, naît déjà « traité » ; un écart ultérieur sur un extérieur est pris en compte sans arbitrage (bandeau, puis « Pris en compte » d'un clic) ; le suffixe FFBB « (n) » est retiré du libellé de l'adversaire à l'import ; **depuis D2** : un extérieur resté « à traiter » d'un ancien dépôt (résidu d'avant P4-199) est rattrapé « traité » au re-dépôt |
 | `un-domicile-importe-retrouve-son-gymnase.feature` (P4-187a, 2026-09-09 ; +1 scénario E1, 2026-09-14) | un domicile déposé avec un libellé de salle inconnu n'a pas de gymnase ; rattacher le libellé au gymnase (`POST /api/venues/{id}/external-labels`) le lui donne sans le placer (reste UNPLACED) ; un re-dépôt au même libellé est rattaché d'office ; le gymnase fermé à la date du match fait naître le conflit « gymnase indisponible » ; **E1** : ré-affecter un libellé rattaché au mauvais gymnase (`reassign: true`) bascule le domicile non placé sur le bon gymnase, garde le témoin déjà placé sur l'ancien, et fait changer l'alias de porteur |
 | `un-domicile-non-place-dont-la-ligue-change-la-salle-est-arbitre.feature` (2026-09-16, suite `ecart-salle-non-place`) | un domicile NON PLACÉ déjà rattaché à un gymnase, dont un dépôt suivant nomme une autre salle, ouvre un écart sans jamais réécrire le gymnase en silence ; « Garder l'appli » mémorise le libellé (un re-dépôt identique reste muet, idempotence) ; « Prendre le fichier » suit l'alias confirmé de la nouvelle salle |
