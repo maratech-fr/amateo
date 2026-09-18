@@ -1,7 +1,7 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-09-15 (rotation de fraîcheur `documentation-update`, PR P4-207 « résolution des
-conflits, frontend » — fichier hors sujet). Re-confronté au code : `BanGeocodingClient::SEARCH_URL`
+Last verified @ 2026-09-18 (lot correctif de l'audit moteur 0918 — recalage du contrat 2.22,
+`documentation-update`). Re-confronté au code : `BanGeocodingClient::SEARCH_URL`
 (`BanGeocodingClient.php:24`) et `IgnRoutingClient::ITINERARY_URL` (`IgnRoutingClient.php:44`)
 hosts en constantes dures ✓ · `IgnRoutingClient::BATCH_BUDGET_SECONDS = 30.0`
 (`IgnRoutingClient.php:42`) ✓ · `PROFILE_CAR`/`PROFILE_PEDESTRIAN` seuls, aucune 3ᵉ constante
