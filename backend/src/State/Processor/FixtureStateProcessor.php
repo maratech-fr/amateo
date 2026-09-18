@@ -10,10 +10,15 @@ use App\ApiResource\FixtureResource;
 use App\Dto\FixtureInput;
 use App\Entity\Competition;
 use App\Entity\Fixture;
+use App\Entity\Venue;
+use App\Entity\VenueMatchWindow;
+use App\Entity\VenueUnavailability;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Service\Basketball\VenueAliasResolver;
+use App\Service\ConflictRadarLoader;
+use App\Service\MatchConflictDetector;
 use App\Service\SocleGuard;
 use DateTimeImmutable;
 use Symfony\Component\Clock\ClockInterface;
@@ -25,6 +30,9 @@ use Symfony\Contracts\Service\Attribute\Required;
  */
 class FixtureStateProcessor extends AbstractStateProcessor
 {
+    /** ISO weekday (1 = Monday … 7 = Sunday) → the French day name, lowercase. */
+    private const array DAY_LABELS = ['', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+
     private SocleGuard $socleGuard;
 
     private ClockInterface $clock;
@@ -108,6 +116,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
         // Saisie manuelle = geste du gestionnaire → la rencontre est TRAITÉE
         // (PR-3a) : REVIEWED + horodaté, quel que soit le statut de placement.
         $entity->markReviewed($now);
+        $this->assertVenueAccessAllowed($entity);
 
         return $entity;
     }
@@ -164,6 +173,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
             // legitimate precisely because nothing else moved in this PUT.
             $entity->setPlacementSource(FixturePlacementSource::SOLVER);
         }
+        $this->assertVenueAccessAllowed($entity);
     }
 
     /**
@@ -178,6 +188,104 @@ class FixtureStateProcessor extends AbstractStateProcessor
         }
 
         return $output;
+    }
+
+    /**
+     * D2 — refus serveur du placement d'une rencontre (geste gestionnaire, entité
+     * FINALE). Une rencontre HOME posée dans un gymnase :
+     *  1. couvert par une indisponibilité à sa date → refus TOUJOURS (amical compris) ;
+     *  2. de COMPÉTITION (competitionId non null), quand le club déclare ≥ 1 accès
+     *     match : aucun accès (gymnase, jour) ou coup d'envoi hors fenêtre → refus ;
+     *     un amical reste libre (le solveur ne le pose plus, le radar signale).
+     *
+     * Aucun refus sur l'enveloppe de ligue (radar seul, décision D2). Les fenêtres et
+     * indisponibilités sont lues via les mêmes repos tenant-filtrés que le radar
+     * ({@see ConflictRadarLoader}) ; l'appartenance du coup d'envoi est LE
+     * MÊME prédicat que le diagnostic ({@see MatchConflictDetector::kickoffInsideWindow},
+     * aucune seconde implémentation). Un club sans aucun accès match n'a rien à imposer.
+     */
+    private function assertVenueAccessAllowed(Fixture $entity): void
+    {
+        if (FixtureHomeAway::HOME !== $entity->getHomeAway()) {
+            return;
+        }
+        $venueId = $entity->getVenueId();
+        if (null === $venueId) {
+            return;
+        }
+        $matchDate = $entity->getMatchDate();
+        $date = $matchDate->format('Y-m-d');
+
+        // (1) indisponibilité couvrante — TOUS les matchs, amical compris.
+        /** @var list<VenueUnavailability> $unavailabilities */
+        $unavailabilities = $this->entityManager->getRepository(VenueUnavailability::class)->findBy([]);
+        foreach ($unavailabilities as $unavailability) {
+            if ($unavailability->getVenueId() !== $venueId) {
+                continue;
+            }
+            if ($date >= $unavailability->getStartDate()->format('Y-m-d') && $date <= $unavailability->getEndDate()->format('Y-m-d')) {
+                $rawLabel = $unavailability->getLabel();
+                $label = null !== $rawLabel && '' !== $rawLabel ? ' — ' . $rawLabel : '';
+                $this->refuse(\sprintf(
+                    '%s est indisponible du %s au %s%s : le match ne peut pas y être placé. Choisissez un autre gymnase.',
+                    $this->venueName($venueId),
+                    $unavailability->getStartDate()->format('j/n'),
+                    $unavailability->getEndDate()->format('j/n'),
+                    $label,
+                ));
+            }
+        }
+
+        // (2) accès match — COMPÉTITION seulement ; un amical est libre hors créneau.
+        if (null === $entity->getCompetitionId()) {
+            return;
+        }
+        /** @var list<VenueMatchWindow> $matchWindows */
+        $matchWindows = $this->entityManager->getRepository(VenueMatchWindow::class)->findBy([]);
+        if ([] === $matchWindows) {
+            // le club n'a pas adopté les accès match → rien à imposer.
+            return;
+        }
+        $day = (int) $matchDate->format('N');
+        $dayWindows = array_values(array_filter(
+            $matchWindows,
+            static fn (VenueMatchWindow $window): bool => $window->getVenueId() === $venueId && $window->getDayOfWeek() === $day,
+        ));
+        if ([] === $dayWindows) {
+            $this->refuse(\sprintf(
+                'Pas d\'accès match le %s à %s : le match ne peut pas y être placé. Choisissez un autre gymnase, ou ajoutez un accès match ce jour-là dans Configuration.',
+                self::DAY_LABELS[$day],
+                $this->venueName($venueId),
+            ));
+        }
+        $kickoffTime = $entity->getKickoffTime();
+        if (!$kickoffTime instanceof DateTimeImmutable) {
+            return;
+        }
+        $windowArrays = array_map(static fn (VenueMatchWindow $window): array => [
+            'venueId' => $window->getVenueId(),
+            'dayOfWeek' => $window->getDayOfWeek(),
+            'startTime' => $window->getStartTime()->format('H:i'),
+            'endTime' => $window->getEndTime()->format('H:i'),
+        ], $matchWindows);
+        if (!MatchConflictDetector::kickoffInsideWindow($venueId, $day, $kickoffTime->format('H:i'), $windowArrays)) {
+            $ranges = implode(', ', array_map(
+                static fn (VenueMatchWindow $window): string => \sprintf('%s–%s', $window->getStartTime()->format('H:i'), $window->getEndTime()->format('H:i')),
+                $dayWindows,
+            ));
+            $this->refuse(\sprintf(
+                'Coup d\'envoi hors fenêtre d\'accès match (%s) le %s à %s : le match ne peut pas y être placé. Choisissez une heure dans la fenêtre, ou ajustez l\'accès match dans Configuration.',
+                $ranges,
+                self::DAY_LABELS[$day],
+                $this->venueName($venueId),
+            ));
+        }
+    }
+
+    /** Le nom HUMAIN du gymnase pour un message 422, ou un repli neutre s'il est introuvable. */
+    private function venueName(string $venueId): string
+    {
+        return $this->entityManager->find(Venue::class, $venueId)?->getName() ?? 'Ce gymnase';
     }
 
     /**

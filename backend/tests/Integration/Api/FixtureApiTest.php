@@ -6,8 +6,13 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Competition;
 use App\Entity\Season;
 use App\Entity\User;
+use App\Entity\Venue;
+use App\Entity\VenueMatchWindow;
+use App\Entity\VenueUnavailability;
+use App\Enum\CompetitionType;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -32,9 +37,15 @@ final class FixtureApiTest extends WebTestCase
 
     private const TEAM_ID = '11111111-1111-4111-8111-111111111111';
 
+    private const VENUE_ID = '22222222-2222-4222-8222-222222222222';
+
     private KernelBrowser $client;
 
     private EntityManagerInterface $em;
+
+    private Club $club;
+
+    private Season $season;
 
     private User $user;
 
@@ -237,6 +248,112 @@ final class FixtureApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
+    public function testRefusesPlacementOnAnUnavailableVenueEvenForAFriendly(): void
+    {
+        // D2 rule 1 — a venue unavailable on the match date refuses ANY placement,
+        // friendly included (no competition here).
+        $this->persistVenue();
+        $this->persistUnavailability('2026-11-01', '2026-11-30', 'Travaux');
+        $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders() + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'teamId' => self::TEAM_ID,
+            'matchDate' => '2026-11-07',
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Voisin',
+            'venueId' => self::VENUE_ID,
+            'kickoffTime' => '16:30',
+            'status' => 'PLACED',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('indisponible', (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testRefusesCompetitionPlacementWhenNoMatchWindowThatDay(): void
+    {
+        // D2 rule 2 — the club declares match access, but on Monday, while the match
+        // is a Saturday (2026-11-07). A competition match then has no slot that day.
+        $this->persistVenue();
+        $competitionId = $this->createCompetition();
+        $this->persistMatchWindow(1, '18:00', '22:00');
+        $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders() + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'teamId' => self::TEAM_ID,
+            'competitionId' => $competitionId,
+            'matchDate' => '2026-11-07',
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Adversaire',
+            'venueId' => self::VENUE_ID,
+            'kickoffTime' => '16:30',
+            'status' => 'PLACED',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+        // NB: le corps JSON échappe l'apostrophe en ' — on assert sur un fragment sans apostrophe.
+        self::assertStringContainsString('accès match le samedi', (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testRefusesCompetitionPlacementWhenKickoffOutsideMatchWindow(): void
+    {
+        // D2 rule 2 — a Saturday access window exists but the kickoff (20:00) sits
+        // outside it. Exercised through the PUT (update) path.
+        $this->persistVenue();
+        $competitionId = $this->createCompetition();
+        $this->persistMatchWindow(6, '14:00', '18:00');
+        $created = $this->post([
+            'teamId' => self::TEAM_ID,
+            'competitionId' => $competitionId,
+            'matchDate' => '2026-11-07',
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Adversaire',
+        ]);
+        $this->putFixture($created['id'], [
+            'teamId' => self::TEAM_ID,
+            'competitionId' => $competitionId,
+            'matchDate' => '2026-11-07',
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Adversaire',
+            'venueId' => self::VENUE_ID,
+            'kickoffTime' => '20:00',
+            'status' => 'PLACED',
+        ]);
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('hors fenêtre', (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testAllowsFriendlyPlacementOutsideMatchWindow(): void
+    {
+        // D2 rule 2 — a FRIENDLY (no competition) is free off any match slot: the
+        // kickoff (20:00) is outside the only Saturday window, yet the placement holds.
+        $this->persistVenue();
+        $this->persistMatchWindow(6, '14:00', '18:00');
+        $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders() + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'teamId' => self::TEAM_ID,
+            'matchDate' => '2026-11-07',
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Amical voisin',
+            'venueId' => self::VENUE_ID,
+            'kickoffTime' => '20:00',
+            'status' => 'PLACED',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+    }
+
+    public function testAllowsCompetitionPlacementWhenClubDeclaresNoMatchWindow(): void
+    {
+        // D2 rule 2 — a club that has NOT adopted match windows has nothing to
+        // enforce: a competition placement with no window at all is allowed.
+        $this->persistVenue();
+        $competitionId = $this->createCompetition();
+        $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders() + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'teamId' => self::TEAM_ID,
+            'competitionId' => $competitionId,
+            'matchDate' => '2026-11-07',
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Adversaire',
+            'venueId' => self::VENUE_ID,
+            'kickoffTime' => '16:30',
+            'status' => 'PLACED',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -330,8 +447,65 @@ final class FixtureApiTest extends WebTestCase
         // Matches need a settled season plan (cockpit state 3); point the plan at a
         // version so this API test targets fixture behaviour, not the socle guard.
         $this->settleSeasonPlan($season);
+        $this->club = $club;
+        $this->season = $season;
 
         return $user;
+    }
+
+    private function persistVenue(): void
+    {
+        if (null !== $this->em->find(Venue::class, self::VENUE_ID)) {
+            return;
+        }
+        $venue = new Venue;
+        $venue->setId(self::VENUE_ID);
+        $venue->setClubId($this->club->getId());
+        $venue->setSeasonId($this->season->getId());
+        $venue->setName('Gymnase Matéo');
+        $venue->setSource('manual');
+        $this->em->persist($venue);
+        $this->em->flush();
+    }
+
+    private function persistMatchWindow(int $dayOfWeek, string $start, string $end): void
+    {
+        $window = new VenueMatchWindow;
+        $window->setClubId($this->club->getId());
+        $window->setSeasonId($this->season->getId());
+        $window->setVenueId(self::VENUE_ID);
+        $window->setDayOfWeek($dayOfWeek);
+        $window->setStartTime(new DateTimeImmutable($start));
+        $window->setEndTime(new DateTimeImmutable($end));
+        $this->em->persist($window);
+        $this->em->flush();
+    }
+
+    private function persistUnavailability(string $start, string $end, ?string $label = null): void
+    {
+        $unavailability = new VenueUnavailability;
+        $unavailability->setClubId($this->club->getId());
+        $unavailability->setSeasonId($this->season->getId());
+        $unavailability->setVenueId(self::VENUE_ID);
+        $unavailability->setStartDate(new DateTimeImmutable($start));
+        $unavailability->setEndDate(new DateTimeImmutable($end));
+        $unavailability->setLabel($label);
+        $this->em->persist($unavailability);
+        $this->em->flush();
+    }
+
+    private function createCompetition(): string
+    {
+        $competition = new Competition;
+        $competition->setClubId($this->club->getId());
+        $competition->setSeasonId($this->season->getId());
+        $competition->setTeamId(self::TEAM_ID);
+        $competition->setName('Championnat');
+        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
+        $this->em->persist($competition);
+        $this->em->flush();
+
+        return $competition->getId();
     }
 
     /**

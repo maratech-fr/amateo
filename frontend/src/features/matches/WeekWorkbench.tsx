@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
 import { toast } from "@/shared/stores/toastStore";
 
-import type { Category, Coach, Conflict, Fixture, LeagueWindow, MatchSlotRotation, OpponentTravel, Team, TeamMatchHabit, Venue, VenueMatchWindow, VenueUnavailability } from "./api";
+import type { Category, Coach, Conflict, Fixture, LeagueWindow, MatchSlotRotation, OpponentTravel, Team, TeamMatchHabit, Venue } from "./api";
 import { AwayList } from "./AwayList";
 import { ConflictRadar } from "./ConflictRadar";
 import type { HiddenWeekBreakdown } from "./lib/consultFilter";
@@ -17,6 +17,7 @@ import type { CoachTeamRole } from "./lib/matchFilter";
 import { isPlacedOnGrid, weekendKeyOf } from "./lib/weekendGrid";
 import { buildWeekendGrid } from "./lib/weekendGrid";
 import { PlacementPanel } from "./PlacementPanel";
+import type { PlacementGuards } from "./PlacementPanel";
 import {
   useDeleteFixture,
   useLockFixture,
@@ -62,8 +63,8 @@ interface WeekWorkbenchProps {
   categoriesMap: Map<string, Category>;
   coachesMap: Map<string, Coach>;
   venues: Venue[];
-  matchWindows: VenueMatchWindow[];
-  unavailabilities: VenueUnavailability[];
+  /** D2 — les gardes du placement (accès match + indisponibilités) + leur état de lecture. */
+  guards: PlacementGuards;
   habits: TeamMatchHabit[];
   rotations: MatchSlotRotation[];
   opponentTravel: OpponentTravel[];
@@ -107,8 +108,7 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
     categoriesMap,
     coachesMap,
     venues,
-    matchWindows,
-    unavailabilities,
+    guards,
     habits,
     rotations,
     opponentTravel,
@@ -234,8 +234,7 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
         key={selectedFixture.id}
         fixture={selectedFixture}
         venues={venues}
-        matchWindows={matchWindows}
-        unavailabilities={unavailabilities}
+        guards={guards}
         habits={habits}
         teamLabel={teamsMap.get(selectedFixture.teamId)?.name ?? "Équipe ?"}
         categoryLabel={categoriesMap.get(teamsMap.get(selectedFixture.teamId)?.sportCategoryId ?? "")?.name ?? "—"}

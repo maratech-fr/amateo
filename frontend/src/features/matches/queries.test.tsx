@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
+import { HTTPError } from "ky";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,6 +23,7 @@ import {
   useImportFbiFixtures,
   useLatestFbiIngestion,
   useOpponentTravel,
+  usePlaceFixture,
   usePlaceMatches,
   useResolveOpponentTravel,
   useSetConflictResolution,
@@ -65,6 +67,7 @@ vi.mock("./api", () => ({
   getVenueSuggestions: vi.fn().mockResolvedValue([]),
 
   deleteFixture: vi.fn().mockResolvedValue(undefined),
+  placeFixture: vi.fn().mockResolvedValue({}),
   placeMatches: vi.fn().mockResolvedValue({ placed: 0, skipped: 0, unplaced: [], diagnostics: [] }),
   setOpponentTravelManual: vi.fn().mockResolvedValue({}),
   setOpponentTravelAuto: vi.fn().mockResolvedValue({}),
@@ -99,6 +102,14 @@ vi.mock("./api", () => ({
 // signale l'échec d'une étape sans interrompre la suivante.
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("@/shared/stores/toastStore", () => ({ toast: toastMock }));
+
+/** Une HTTPError ky d'un statut donné portant `data` = le corps parsé (ce que lit `errorMessage`). */
+function httpError(status: number, data: unknown): HTTPError {
+  return Object.assign(Object.create(HTTPError.prototype) as HTTPError, {
+    data,
+    response: { status, headers: new Headers() } as Response,
+  });
+}
 
 function makeClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -660,5 +671,22 @@ describe("résolution des conflits (P4-207) — l'écriture rafraîchit le radar
     await waitFor(() => expect(result.current.clearRes.isSuccess).toBe(true));
     expect(matchesApi.deleteConflictResolution).toHaveBeenCalledWith("fp-1");
     await waitFor(() => expect(matchesApi.getConflicts).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe("matches queries — le refus serveur 422 est RESTITUÉ (le message meurt sinon)", () => {
+  it("usePlaceFixture : un 422 du serveur remonte le MESSAGE du corps dans le toast, pas un générique", async () => {
+    // D2 — le placement refusé (hors fenêtre d'accès match / indisponibilité) porte un
+    // message parlant en violations : il doit atteindre l'utilisateur, pas « Placement
+    // impossible ». La cause meurt sinon (matches/queries.ts, point bloquant du lot).
+    const message =
+      "Coup d'envoi hors fenêtre d'accès match (14:00–18:00) le samedi à Gymnase Matéo : le match ne peut pas y être placé. Choisissez une heure dans la fenêtre, ou ajustez l'accès match dans Configuration.";
+    vi.mocked(matchesApi.placeFixture).mockRejectedValueOnce(httpError(422, { violations: [{ message }], detail: message }));
+    const { result } = renderHook(() => usePlaceFixture(), { wrapper: wrapperFor(makeClient()) });
+
+    result.current.mutate({ fixture: {} as never, input: {} as never });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith(message));
   });
 });
