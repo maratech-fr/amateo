@@ -86,6 +86,22 @@ export interface Fixture {
    * front joint le trajet par `(opponentOrganismeCode, opponentTeamKey)` sans re-dériver.
    */
   opponentTeamKey: string | null;
+  /**
+   * Mémo « FBI affiche encore … » d'un domicile rétrogradé « à saisir » par une heure
+   * prise du fichier : `{field, value, at}` ou null. Sert la mention de la ligne « à
+   * saisir » de la liste « FBI — à faire ». Servi, jamais recalculé côté front.
+   * Optionnel côté TS (nullable, pas `required` côté OpenAPI) ; `normalizeFixture` le
+   * matérialise TOUJOURS à `null` quand la source ne l'envoie pas.
+   */
+  fbiEcho?: FbiEcho | null;
+}
+
+/** Mémo `Fixture.fbiEcho` — ce que FBI affiche encore pour un champ, sur un domicile « à saisir ». */
+export interface FbiEcho {
+  field: string;
+  value: string;
+  /** ISO. */
+  at: string;
 }
 
 export interface Competition {
@@ -458,6 +474,7 @@ function normalizeFixture(raw: Fixture): Fixture {
     suggestedVenueId: raw.suggestedVenueId ?? null,
     opponentOrganismeCode: raw.opponentOrganismeCode ?? null,
     opponentTeamKey: raw.opponentTeamKey ?? null,
+    fbiEcho: raw.fbiEcho ?? null,
   };
 }
 
@@ -653,12 +670,57 @@ export interface DeadlineGuardianDelta {
 
 export interface DeadlineOutlook {
   windows: DeadlineOutlookWindow[];
+  /**
+   * Le « à faire dans FBI » GLOBAL (toutes semaines), servi pour que le cockpit ET la
+   * barre des compteurs n'aient jamais à charger les fixtures : à saisir = domiciles
+   * PLACED, à corriger = entrées ouvertes du registre.
+   * Optionnel côté TS (le backend le sert toujours ; l'absence retombe sur 0 à l'usage).
+   */
+  fbiTodo?: FbiTodo;
   /** Absent quand aucune fenêtre n'est ouverte OU sans référence de visite. */
   guardianDelta?: DeadlineGuardianDelta;
 }
 
+export interface FbiTodo {
+  toEnter: number;
+  toCorrect: number;
+}
+
 /** L'outlook J-7 des échéances de saisie (lecture seule, ouvert au Membre). */
 export const getDeadlineOutlook = (): Promise<DeadlineOutlook> => api.get("matches/deadline-outlook").json<DeadlineOutlook>();
+
+// ── Registre « à corriger dans FBI » ──────────────────────────────────────────
+
+/**
+ * Une entrée OUVERTE du registre « à corriger dans FBI » : sur une rencontre et un
+ * champ, l'appli fait foi (`appValue` = à taper dans FBI) et FBI est en retard
+ * (`fbiValue` = ce que FBI affiche encore). Servie par le serveur — le front l'AFFICHE.
+ */
+export interface FbiCorrection {
+  id: string;
+  fixtureId: string;
+  field: DeviationField;
+  appValue: string | null;
+  fbiValue: string | null;
+  /** L'alias FBI du gymnase de l'appli, quand connu — ce qu'il faut sélectionner dans FBI. */
+  venueFbiLabel: string | null;
+  /** ISO. */
+  decidedAt: string;
+  /** ISO ou null — dernière fois qu'un dépôt a re-vu cet écart dans FBI. */
+  lastSeenInFbiAt: string | null;
+}
+
+/** Les entrées OUVERTES du registre du club+saison. */
+export const getFbiCorrections = (): Promise<FbiCorrection[]> =>
+  api.get("fixtures/fbi-corrections").json<{ corrections: FbiCorrection[] }>().then((r) => r.corrections);
+
+/** Coche « corrigé dans FBI » (fermeture manuelle). */
+export const closeFbiCorrection = (id: string): Promise<FbiCorrection> =>
+  api.post(`fixtures/fbi-corrections/${id}/close`).json<FbiCorrection>();
+
+/** Annule un « corrigé dans FBI » manuel récent (< 24 h). */
+export const reopenFbiCorrection = (id: string): Promise<FbiCorrection> =>
+  api.post(`fixtures/fbi-corrections/${id}/reopen`).json<FbiCorrection>();
 
 // ── Capacity layer (P1-4 PR B) ───────────────────────────────────────────────
 

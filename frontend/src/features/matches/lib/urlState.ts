@@ -77,6 +77,26 @@ export function applyWeekendToParams(current: URLSearchParams, weekend: string |
 }
 
 /**
+ * Deep-link de la liste « FBI — à faire » : `fbi=1` ouvre la modale (depuis le cockpit
+ * « Ouvrir la liste FBI »). Fonctions PURES, patron « param absent = défaut » : absent
+ * = fermée. L'état vit dans l'URL (piège mémoire : ne pas le poser dans le store puis
+ * naviguer — l'URL fait foi au montage).
+ */
+export function decodeFbiParam(params: URLSearchParams): boolean {
+  return "1" === params.get("fbi");
+}
+
+export function applyFbiToParams(current: URLSearchParams, open: boolean): URLSearchParams {
+  const next = new URLSearchParams(current);
+  if (open) {
+    next.set("fbi", "1");
+  } else {
+    next.delete("fbi");
+  }
+  return next;
+}
+
+/**
  * PR-2a/2b — sérialisation des filtres de l'onglet Consulter, fonctions PURES (mêmes
  * conventions que le filtre PR-1 : absent = défaut). `type` = types de compétition
  * cochés, `conflits` = familles de conflits cochées, `type_semaine=0|1` = semaine

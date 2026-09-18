@@ -94,29 +94,30 @@ export function weekConflictCount(conflicts: Conflict[], weekFixtureIds: Set<str
   return conflicts.filter((c) => isOpenConflict(c) && conflictFixtureIds(c).some((id) => weekFixtureIds.has(id))).length;
 }
 
-/** PR 3b — les trois compteurs de la barre « Semaine affichée » (`WeekCounters`). */
+/**
+ * PR 3b — les compteurs de la barre « Semaine affichée » (`WeekCounters`).
+ * « à saisir dans FBI » a QUITTÉ cette barre : le « FBI à faire » est désormais un
+ * compteur GLOBAL (toutes semaines) servi par le backend (`fbiTodo`), hors du groupe
+ * « Semaine affichée » — ces deux-là restent bornés à la semaine.
+ */
 export interface WeekCounts {
   /** Domiciles encore UNPLACED de la semaine (« à placer »). */
   unplaced: number;
   /** Conflits À TRAITER rattachés à la semaine (`weekConflictCount`). */
   conflicts: number;
-  /** « À saisir dans FBI » = domiciles − (SUBMITTED + VALIDATED). */
-  fbiToEnter: number;
 }
 
 /**
- * PR 3b — dérive les trois compteurs de la semaine affichée, reprenant EXACTEMENT
- * les formules du rail supprimé (`homeUnplaced`, `submitted`, `home` de l'ancien
- * `deriveLoopSteps`). Zéro état, zéro backend : compte ce qui est déjà servi.
+ * PR 3b — dérive les compteurs de la semaine affichée (à placer · conflits), reprenant
+ * EXACTEMENT les formules du rail supprimé. Zéro état, zéro backend : compte ce qui est
+ * déjà servi. Le « à saisir/à corriger dans FBI » est global, il vit ailleurs (`fbiTodo`).
  */
 export function deriveWeekCounters(weekFixtures: Fixture[], conflicts: Conflict[]): WeekCounts {
   const weekFixtureIds = new Set(weekFixtures.map((f) => f.id));
   const home = weekFixtures.filter((f) => "HOME" === f.homeAway);
   const homeUnplaced = home.filter((f) => "UNPLACED" === f.status);
-  const submitted = home.filter((f) => "SUBMITTED" === f.status || "VALIDATED" === f.status);
   return {
     unplaced: homeUnplaced.length,
     conflicts: weekConflictCount(conflicts, weekFixtureIds),
-    fbiToEnter: home.length - submitted.length,
   };
 }

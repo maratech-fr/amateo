@@ -104,6 +104,35 @@ export function useDeadlineOutlook() {
   return useQuery({ queryKey: ["matches", "deadline-outlook"], queryFn: matchesApi.getDeadlineOutlook, staleTime: 30_000 });
 }
 
+/** Le registre « à corriger dans FBI » (entrées ouvertes du club+saison). */
+export function useFbiCorrections() {
+  return useQuery({ queryKey: ["fbi-corrections"], queryFn: matchesApi.getFbiCorrections, staleTime: 30_000 });
+}
+
+/** Fermer/rouvrir une entrée bouge le registre ET le compteur global `fbiTodo`. */
+function invalidateFbiCorrections(queryClient: ReturnType<typeof useQueryClient>): void {
+  void queryClient.invalidateQueries({ queryKey: ["fbi-corrections"] });
+  void queryClient.invalidateQueries({ queryKey: ["matches", "deadline-outlook"] });
+}
+
+export function useCloseFbiCorrection() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => matchesApi.closeFbiCorrection(id),
+    onSuccess: () => invalidateFbiCorrections(queryClient),
+    onError: () => toast.error("Impossible de marquer la correction faite dans FBI"),
+  });
+}
+
+export function useReopenFbiCorrection() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => matchesApi.reopenFbiCorrection(id),
+    onSuccess: () => invalidateFbiCorrections(queryClient),
+    onError: () => toast.error("Impossible d'annuler cette correction"),
+  });
+}
+
 // Reference data (names + envelope axes). Long-lived within a session.
 export function useTeams() {
   return useQuery({ queryKey: ["teams"], queryFn: matchesApi.getTeams, staleTime: 300_000 });
