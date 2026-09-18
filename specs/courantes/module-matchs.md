@@ -1,5 +1,17 @@
 # Module matchs (FFBB) — état courant
 
+Last verified @ 2026-09-18 (`documentation-update`, PR docs de l'audit 0918, AUD-DOC-38 — refonte
+intégrale en état courant par écran, remplace l'ancien stamp-journal à 28 sections datées). Chaque
+mécanisme décrit a été confronté au code au moment de l'écrire : composants `frontend/src/features/
+matches/` (routes, `CalendarPage`/`ConflictsPage`/`ImportPage`/`ConfigurationPage`/`TypicalWeekPage`)
+· `MatchConflictDetector` (D1/D1 étendu, échelle de sévérité) · `ConflictRadarLoader` (chargement
+unique GET conflicts ⇄ delta de visite) · `FbiFixtureImporter`/`FfbbRencontreReconciler` (workflow
+NEW/OUT_OF_SYNC/REVIEWED, moteur partagé) · `VenueAliasResolver`/`OpponentLocationResolver`/
+`OpponentTravelResolver` (tables partagées et tenant) · `OpponentPlaceResolver` (détail par côté) ·
+`engine/app/solver/match_placement.py` (HARD/SOFT, `W_PROTECT_HABIT=25`) ·
+`engine/CONTRACT_VERSION` = **2.22**. Reste non re-sondé : rien — c'est une écriture neuve, pas un
+recalage partiel.
+
 > **Règle de forme (refonte 2026-09-18, AUD-DOC-38)** : ce fichier décrit **l'état courant, par
 > écran** — jamais une section datée d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id)
 > vit dans [`etat-des-lieux.md`](etat-des-lieux.md) §1.5 (carte) et §3 (traces datées) ; les
