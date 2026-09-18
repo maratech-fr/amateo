@@ -1,7 +1,7 @@
 import { renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { accentForMode } from "@/shared/lib/color";
+import { accentForMode, accentHoverForMode } from "@/shared/lib/color";
 import { useThemeStore } from "@/shared/stores/themeStore";
 
 import { useApplyClubTheme } from "./useApplyClubTheme";
@@ -12,6 +12,7 @@ let club: Club | null = null;
 vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: club ? { club } : undefined }) }));
 
 const accentVar = () => document.documentElement.style.getPropertyValue("--accent");
+const accentHoverVar = () => document.documentElement.style.getPropertyValue("--accent-hover");
 
 afterEach(() => {
   document.documentElement.removeAttribute("style");
@@ -61,5 +62,19 @@ describe("useApplyClubTheme — per-mode club accent", () => {
     useThemeStore.setState({ mode: "dark" });
     renderHook(() => useApplyClubTheme());
     expect(accentVar()).toBe("");
+  });
+
+  it("pose --accent-hover (survol dérivé du dérivé) à côté de --accent, dans chaque mode", () => {
+    club = { accentColor: "#3b82f6", accentColorDark: "#f59e0b", accentPalette: null };
+    useThemeStore.setState({ mode: "light" });
+    renderHook(() => useApplyClubTheme());
+    expect(accentHoverVar()).toBe(accentHoverForMode(accentForMode("#3b82f6", "light"), "light"));
+  });
+
+  it("efface --accent-hover quand le club n'a pas d'accent (repli sur le défaut d'index.css)", () => {
+    club = { accentColor: null, accentColorDark: null, accentPalette: null };
+    useThemeStore.setState({ mode: "dark" });
+    renderHook(() => useApplyClubTheme());
+    expect(accentHoverVar()).toBe("");
   });
 });

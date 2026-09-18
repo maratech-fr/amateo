@@ -66,7 +66,7 @@ export function RouteErrorBoundary() {
         <h1 className="text-lg font-semibold">Une nouvelle version est disponible</h1>
         <p className="max-w-md text-sm text-muted-foreground">L'application a été mise à jour pendant votre navigation. Rechargez la page pour continuer — vos données ne sont pas perdues.</p>
         <div className="flex gap-2">
-          <button type="button" onClick={() => void navigate(0)} className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground hover:opacity-90">
+          <button type="button" onClick={() => void navigate(0)} className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground hover:bg-accent-hover">
             Réessayer
           </button>
           <button type="button" onClick={() => window.location.reload()} className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted">

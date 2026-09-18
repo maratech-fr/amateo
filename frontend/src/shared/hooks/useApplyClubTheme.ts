@@ -2,7 +2,7 @@ import { useEffect } from "react";
 
 import { useMe } from "@/shared/session/queries";
 import { useThemeStore } from "@/shared/stores/themeStore";
-import { accentForMode, readableForeground } from "@/shared/lib/color";
+import { accentForMode, accentHoverForMode, readableForeground } from "@/shared/lib/color";
 
 /**
  * Applies the club's accent colour (from /me) to the theme by overriding the
@@ -29,12 +29,16 @@ export function useApplyClubTheme(): void {
     if (null === base) {
       root.style.removeProperty("--accent");
       root.style.removeProperty("--accent-foreground");
+      root.style.removeProperty("--accent-hover");
       root.style.removeProperty("--accent-2");
       return;
     }
     const c = accentForMode(base, mode);
     root.style.setProperty("--accent", c);
     root.style.setProperty("--accent-foreground", readableForeground(c));
+    // Teinte de survol du bouton accent : contraste préservé (jamais `opacity-90`, qui
+    // compositait l'accent vers la surface et cassait AA en clair). Texte inchangé au survol.
+    root.style.setProperty("--accent-hover", accentHoverForMode(c, mode));
     // Secondary tint (from the logo palette) for signature surfaces later.
     const second = palette?.[1];
     if (undefined !== second) {

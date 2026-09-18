@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { accentForMode, luminance, nextVenueColor, readableForeground, VENUE_PALETTE } from "./color";
+import { accentForMode, accentHoverForMode, luminance, nextVenueColor, readableForeground, VENUE_PALETTE } from "./color";
 
 const contrast = (a: string, b: string): number => {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
@@ -57,6 +57,30 @@ describe("accentForMode — accent de club dérivé par le CONTRASTE (A11Y-22, d
 
   it("une couleur non-hex est rendue telle quelle (garde d'entrée)", () => {
     expect(accentForMode("var(--accent)", "light")).toBe("var(--accent)");
+  });
+});
+
+describe("accentHoverForMode — teinte de survol d'un bouton accent (jeton --accent-hover)", () => {
+  // Le survol d'un bouton accent NE change PAS le texte : c'est le MÊME `readableForeground` que
+  // le repos. Il ne doit donc jamais faire chuter le contraste sous AA (l'ancien `opacity-90`
+  // compositait l'accent vers la surface — blanc/accent tombait à 4,26 en clair). On s'éloigne
+  // de la surface (assombrir en clair, éclaircir en sombre) : le sens qui MONTE le contraste.
+  // Chaque accent de club (BCCL + toute la palette de gymnase) est d'abord DÉRIVÉ (accentForMode),
+  // puis on garde son survol, dans les deux thèmes.
+  for (const c of ["#E53935", ...VENUE_PALETTE]) {
+    for (const mode of ["light", "dark"] as const) {
+      it(`${c} (${mode}) : le survol garde le texte du repos ≥ 4,5:1 ET diffère visiblement du repos`, () => {
+        const rest = accentForMode(c, mode);
+        const hover = accentHoverForMode(rest, mode);
+        const fg = readableForeground(rest); // le texte du bouton NE bouge PAS entre repos et survol
+        expect(hover, `survol de ${rest} identique au repos (pas de retour visuel)`).not.toBe(rest);
+        expect(contrast(fg, hover), `${fg} sur survol ${hover} (repos ${rest})`).toBeGreaterThanOrEqual(4.5);
+      });
+    }
+  }
+
+  it("une couleur non-hex est rendue telle quelle (garde d'entrée)", () => {
+    expect(accentHoverForMode("var(--accent)", "light")).toBe("var(--accent)");
   });
 });
 

@@ -181,6 +181,11 @@ for (const mode of MODES) {
       expect(found, `matchs · calendrier (${mode}) : la semaine de la rencontre créée (${opponent}) est atteignable — grille jamais rendue`).toBeTruthy();
       await expect(cell).toBeVisible();
       await settleVeil(page);
+      // ⚠ On NE bouge PAS le pointeur : le dernier geste (clic « Amical » puis, en CI, 0 saut de
+      // semaine car la rencontre créée tombe sur la semaine résolue) le laisse sur la puce PRESSÉE
+      // (`variant="default"` = `bg-accent`). Le scan en état `:hover` est VOULU — c'est lui qui a
+      // pris le défaut #d74945/4,26 (l'ancien `hover:opacity-90` compositait l'accent vers le blanc) ;
+      // le jeton `--accent-hover` change la teinte au survol sans casser le contraste, ce scan le garde.
       await expectNoA11yViolations(page, `matchs · calendrier (${mode})`);
     } finally {
       // Base dev CI non remise à zéro : on nettoie NOTRE rencontre, sans supposer l'état.
@@ -276,6 +281,12 @@ for (const mode of MODES) {
         return [d[0], d[1], d[2]];
       };
       out["text-foreground on bg-warning/10"] = ratio(of("text-foreground", "color"), composite("bg-warning/10", bg));
+      // Option 1 (jeton `--accent-hover`) — le SURVOL d'un bouton accent (`variant="default"`) : le
+      // texte du repos (`--accent-foreground`) sur la teinte de survol (`--accent-hover`, opaque,
+      // dérivée par mode). Remplace `hover:opacity-90` qui compositait `bg-accent` vers la surface
+      // (blanc/accent : 4,85 → 4,26 en clair). Sur /login (défaut, pas de club) on mesure la paire
+      // par défaut d'`index.css` ; le survol club est gardé par `color.test.ts` + le scan /matchs.
+      out["text-accent-foreground on bg-accent-hover"] = ratio(of("text-accent-foreground", "color"), of("bg-accent-hover", "backgroundColor"));
       // A11Y-22 — la même pastille warning peut être posée sur une CARD (ConflictRadar dans une
       // Card, WeekendGrid « À confirmer ») : le fond `bg-warning/10` se composite alors sur `bg-card`.
       out["text-foreground on bg-warning/10 (over card)"] = ratio(of("text-foreground", "color"), composite("bg-warning/10", card));

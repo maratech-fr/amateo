@@ -40,7 +40,7 @@ export interface SystemScreenProps {
 }
 
 const PRIMARY_CLASSES =
-  "inline-flex min-h-11 items-center justify-center rounded-md border border-border bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+  "inline-flex min-h-11 items-center justify-center rounded-md border border-border bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 const SECONDARY_CLASSES =
   "inline-flex min-h-11 items-center justify-center rounded-md border border-border bg-transparent px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 

@@ -105,6 +105,31 @@ export function accentForMode(hex: string, mode: "dark" | "light"): string {
 }
 
 /**
+ * Teinte de SURVOL d'un bouton accent (jeton `--accent-hover`), DÉRIVÉE PAR LE CONTRASTE.
+ * Le survol NE change PAS le texte du bouton : il garde le MÊME `readableForeground(accent)` que
+ * le repos (jamais recalculé, sinon le libellé changerait de couleur au survol). L'ancien
+ * `hover:opacity-90` compositait l'accent OPAQUE vers la surface — sur fond clair il ÉCLAIRCISSAIT
+ * le fond pendant que le texte blanc restait blanc, faisant chuter le contraste (blanc/accent :
+ * 4,85 → 4,26, < AA). On s'ÉLOIGNE donc de la surface : assombrir en clair, éclaircir en sombre —
+ * le sens qui MONTE le contraste avec le texte du repos. Au moins UN pas (survol visiblement
+ * distinct du repos — retour visuel), puis on continue jusqu'à AA (garanti au 1er pas ici, la
+ * boucle est un filet). Entrée non-hex rendue telle quelle.
+ */
+export function accentHoverForMode(accent: string, mode: "dark" | "light"): string {
+  if (null === parseHex(accent)) {
+    return accent;
+  }
+  const fg = readableForeground(accent);
+  const ok = (c: string): boolean => contrastRatio(fg, c) >= AA;
+  // Toujours au moins un pas : le survol DOIT différer du repos (affordance).
+  let current = "light" === mode ? darken(accent, STEP) : lighten(accent, STEP);
+  for (let guard = 0; guard < 64 && !ok(current); guard++) {
+    current = "light" === mode ? darken(current, STEP) : lighten(current, STEP);
+  }
+  return current;
+}
+
+/**
  * Distinguishable venue colours ordered as a rainbow (no black/white/grey) so a
  * freshly created gym gets a vivid default instead of a flat grey. Vivid enough
  * to tell two gyms apart on the planning grid, none so dark it needs lifting.
