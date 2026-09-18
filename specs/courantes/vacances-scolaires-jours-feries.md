@@ -1,9 +1,10 @@
 # Vacances scolaires & jours fériés — référentiels calendaires
 
-Last verified @ 2026-09-15 (rotation `documentation-update`, PR A onglet Conflits — zone non
-touchée par la PR, contrôle de fraîcheur). Re-confronté au code : `AdminJobCatalog` déclare
-toujours `import-school-holidays`/`import-public-holidays` en `quarterly(4)`/`quarterly(4, 30)`,
-`manualTriggerAllowed: true` (`backend/src/AdminJob/AdminJobCatalog.php:63-64`) ✓ ;
+Last verified @ 2026-09-19 (rotation `documentation-update`, PR F « retours de tests du 18-19/09 »
+— zone non touchée par la PR, contrôle de fraîcheur). Re-confronté aux 5 mêmes repères que la passe
+du 2026-09-15 : `AdminJobCatalog` déclare toujours `import-school-holidays`/`import-public-holidays`
+en `quarterly(4)`/`quarterly(4, 30)`, `manualTriggerAllowed: true`
+(`backend/src/AdminJob/AdminJobCatalog.php:63-64`) ✓ ;
 `SchoolZoneResolver::ZONES` (`backend/src/Service/SchoolZoneResolver.php:27-32`) porte toujours
 exactement les 13 codes listés (`A`/`B`/`C`/`CORSE` + 9 DOM/TOM) ✓ ; `HolidayPaths` toujours composé
 par `CustomRoutesOpenApiFactory` (`:69`) ✓ ; le court-circuit zone `null` de `GET

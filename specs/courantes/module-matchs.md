@@ -1,8 +1,13 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D2/D3/
-FRT-32, sur la base de la refonte AUD-DOC-38). Confronté au code cette passe : `FixtureStateProcessor::
-assertVenueAccessAllowed` (D2, §5) ; `MatchConflictDetector::kickoffInsideLeagueWindow` +
+Last verified @ 2026-09-19 (`documentation-update`, PR F « retours de la passe de tests du
+18-19/09 »). Confronté au code cette passe : `OpponentDirectoryEntryRepository::upsert` (upsert
+natif `ON CONFLICT`, §1) ; `OpponentRefreshController::step`/`failedSteps` (§1) ;
+`OpponentTravelResolver::resolve` (re-route d'une ligne MANUAL sans trajet depuis ses coordonnées
+épinglées, §1) ; `ConflictResolutionStatus` (`COACHES_NOT_PLAYING`/`PLAYS_NOT_COACHING`, §6) ;
+`MatchConflictDetector::accessWindowLostConflicts` (champ additif `windows`, §2). Reste confronté à
+la passe précédente (2026-09-18, D2/D3/FRT-32) : `FixtureStateProcessor::assertVenueAccessAllowed`
+(D2, §5) ; `MatchConflictDetector::kickoffInsideLeagueWindow` +
 `matches/lib/envelope.ts::kickoffInsideLeagueWindow` (FRT-32, miroir déclaré, §5) ;
 `OpponentTravelProjection::roundTripByFixtureId` + `matches[].roundTripMinutes` (D3, §3). Reste
 confronté à la refonte précédente : composants `frontend/src/features/matches/` (routes,
@@ -129,7 +134,26 @@ réseau, limiteur `opponent_refresh` 10/h) enchaîne trois passes best-effort in
 rattrapage des codes fédéraux, auto-localisation, recalcul des trajets AUTO. Budget global
 `REFRESH_BUDGET_SECONDS = 45` threadé aux trois passes (au-delà : réponse partielle
 `unresolved`/`skipped`). Best-effort intégral à chaque étage — une panne réseau rend « non localisé »,
-jamais un import bloqué.
+jamais un import bloqué. L'écriture de l'annuaire (`OpponentDirectoryEntryRepository::upsert`) est un
+`INSERT … ON CONFLICT (ffbb_organisme_code) DO UPDATE` natif (retours de tests 2026-09-19) : deux noms
+d'observation différents qui résolvent le MÊME code fédéral dans un seul lot fusionnent en une ligne au
+lieu d'un double `persist` applicatif qui violait l'unicité et **fermait l'`EntityManager`** (les
+passes/imports suivants du même appel se retrouvaient silencieusement avalés, réponse 200 vide). Chaque
+passe qui lève est isolée (`OpponentRefreshController::step`) et s'inscrit dans un champ additif
+`failedSteps` — le front dit franchement « mise à jour interrompue à l'étape … » plutôt qu'un succès
+mensonger ; volontairement **pas** de `resetManager()` (dette assumée : `roadmap.md` P4-247). Une ligne
+`opponent_travel` **MANUAL sans trajet** (IGN muet au moment du choix) mais dont l'override porte des
+coordonnées épinglées est re-routée par la passe AUTO (le trajet seul change, le gymnase choisi reste
+souverain).
+
+**Prérequis du trajet AUTO — le siège du club doit être localisé.** Sans coordonnées sur `Club`, aucun
+trajet ne se calcule (`OpponentTravelResolver::resolve` rend tout en `unresolved`). Le siège se pose
+désormais depuis la fiche club (`PATCH /api/club/siege`, hors module matchs — voir
+`backend/docs/geo-api.md` §1 et `frontend/docs/frontend-spec.md`) ; `GET /api/opponents/travel`
+sert un champ additif `clubGeolocated` (booléen) que l'écran (`OpponentTravelCard`, Configuration ›
+Adversaires) lit via `useClubGeolocated()` pour afficher un bandeau « Trajets indisponibles : l'adresse
+du siège du club n'est pas localisée. » avec un lien direct vers `/club?section=informations` — «
+Mettre à jour les adversaires » reste utilisable (il localise quand même les gymnases adverses).
 
 ### Alias de gymnase (`Venue.externalLabels`, `VenueAliasResolver`)
 
@@ -215,7 +239,10 @@ plus aucun conflit.
 
 **Échelle de sévérité (1..7, émise par le serveur)** : 1 `VENUE_OVERLAP` · 2
 `LEAGUE_WINDOW_VIOLATION` (équipe mappée seulement) · 3 clash dur `MATCH_MATCH`/`MATCH_TRAINING` ·
-4 `VENUE_UNAVAILABLE` + `ACCESS_WINDOW_LOST` · 5 clash adouci + `TEAM_LINK_OVERLAP` +
+4 `VENUE_UNAVAILABLE` + `ACCESS_WINDOW_LOST` (« Hors accès match » — champ additif `windows`, les
+accès du gymnase de la fixture triés jour du match d'abord, hors identité de l'empreinte
+`TYPE:fixtureId` ; l'écran nomme le gymnase et ses fenêtres, « aucun accès match ce jour-là » sans
+aucune) · 5 clash adouci + `TEAM_LINK_OVERLAP` +
 `FRIENDLY_ON_MATCH_SLOT` (amical HOME placé sur un créneau de match — `reasons`:
 `MATCH_SLOT_WINDOW`/`MATCH_WEEKEND`, samedi = clé du week-end, le vendredi ne compte jamais) · 6
 `COMPETITION_INCOMPLETE` (compétitions APPARIÉES sous leur attendu, `expectedMatchdays` — jamais
@@ -228,9 +255,13 @@ trajet non modélisé, `matchDurationMinutes`, `opponentLabel`) ; `opponentPlace
 l'adversaire, jamais un gymnase) est décoré EN AVAL par `FixtureConflictsController::
 decorateOpponentPlace` sur les côtés AWAY seulement, via `OpponentPlaceResolver` (batch) : (1)
 override effectif équipe/club portant une réf FFBB de salle → ville de la suggestion fédérale
-correspondante ; (2) sinon la ville de l'annuaire fédéral global ; (3) `null`. Le front
-(`conflictSideLines.ts`, `ConflictLine.tsx`) rend une ligne par côté + une ligne de chevauchement,
-présentation pure — aucune formule de gravité redérivée.
+correspondante ; (2) sinon la ville de l'annuaire fédéral global ; (3) `null`. Le front (`conflictSideLines.ts`,
+`ConflictLine.tsx`) rend un vrai TABLEAU (`Table variant="inline"` — primitive partagée
+`shared/components/ui/table.tsx`, `frontend/AGENTS.md` §Primitives) à quatre colonnes horaires
+FIXES — Départ · Coup d'envoi (toujours colonne 2, quelle que soit la nature du côté) · Fin/retour ·
+Durée (repliée sous 360 px par container query, la largeur du RADAR pas du viewport) — une ligne
+par côté puis une ligne de chevauchement ; un créneau absent rend « — », jamais une cellule vide
+muette. Présentation pure — aucune formule de gravité redérivée.
 
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
@@ -402,8 +433,13 @@ gymnase partagé (décision fermée — il fausserait le compte saison de l'ongl
 ### Résolution des conflits (`ConflictResolution`, P4-207)
 
 Un conflit traité **reste toujours rendu** — poser un statut dit où en est la résolution, ne masque
-jamais. Trois cas stockables (Dérogation demandée / Réglé en interne / Sans solution pour l'instant) ;
-« À traiter » = défaut = **absence de ligne**. `GET /api/fixtures/conflicts` sert un champ additif
+jamais. Cinq cas stockables (`ConflictResolutionStatus`) : Dérogation demandée / Réglé en interne /
+Sans solution pour l'instant, plus deux réservés aux conflits de PERSONNE où un côté servi porte le
+rôle PLAYER — **« Coache, ne joue pas »** (`COACHES_NOT_PLAYING`) / **« Joue, ne coache pas »**
+(`PLAYS_NOT_COACHING`), refusés en 422 sinon (`FixtureConflictsController::conflictHasPlayerSide`) ;
+le front ne les PROPOSE que dans ce cas (`resolutionChoicesFor`, lecture des rôles servis, jamais une
+redérivation) et les range sous le filtre/chip « Réglé en interne » (pas de chip propre,
+`treatmentOf`). « À traiter » = défaut = **absence de ligne**. `GET /api/fixtures/conflicts` sert un champ additif
 `resolution` (jointure serveur par empreinte, `ConflictRadarLoader`) ; `PUT`/`DELETE
 /api/fixtures/conflicts/{fingerprint}/resolution` (gestionnaire seul, empreinte contrainte par la
 route). **Orphelin** (empreinte disparue du flux) jamais nettoyé à la volée — purgé avec la saison
@@ -476,9 +512,12 @@ Deux routes de traitement (management + saison écrivable + socle pointé) : `PO
 sont sautées et NOMMÉES, jamais tranchées en masse) ; `POST /api/fixtures/review/deviations`
 (`{fixtureId, field, choice: keep_app|take_source}`, rejoue le moteur partagé depuis la valeur
 PERSISTÉE). `ReviewQueueRow` : icône domicile/extérieur, heure ou « heure non publiée », salle
-résolue ; bouton « Valider » (NEW sans écart), « Pris en compte » (alerte `autoApplied` seule),
-tranche champ par champ sinon (deux colonnes Amateo/source) ; « Replacer » seulement sur un domicile
-À VENIR.
+résolue ; bouton « Valider » (NEW sans écart), « Pris en compte » (alerte `autoApplied` seule — une
+phrase UNIQUE, maison `lib/autoAppliedPhrase.ts` : date+heure reprogrammées fusionnent en « {source} a
+déplacé ce match : {ancienne date} → {nouvelle date} à {heure} », un seul champ garde sa forme
+« (champ) : ancien → nouveau », une combinaison rare liste chaque champ dans le même bloc — jamais des
+dates ISO brutes à l'écran), tranche champ par champ sinon (deux colonnes Amateo/source) ; « Replacer »
+seulement sur un domicile À VENIR.
 
 ## 8. Écran Configuration (`/matchs/configuration`)
 
@@ -545,7 +584,8 @@ module). Contrats cross-stack (groupe `contract`) : `MatchPlacementContractSchem
 `MatchVisitDeltaParityTest`. Tables partagées : un `*ShareTest` par table (`OpponentDirectoryShareTest`,
 `OpponentVenueSuggestionShareTest`, `EntryDeadlineShareTest`). Périmètre engagé : `EngagedTeamGuardTest`,
 `DeletionImpactParityTest`. Détecteur/radar : `MatchConflictDetectorTest`,
-`FixtureConflictsApiTest`. Solveur : `test_match_placement*.py` (unit, sémantique, golden épinglé)
+`FixtureConflictsApiTest` + feature Behat `les-conflits-d-un-match-disent-la-verite.feature`
+(`ConflictTruthContext`, D1/D1 étendu, statuts joue/coache). Solveur : `test_match_placement*.py` (unit, sémantique, golden épinglé)
 + feature Behat `backend/features/placement-des-matchs.feature`. Import/réconciliation :
 `FbiFixtureImporterTest`, `FfbbRencontresApiTest`, `FixtureReviewApiTest` + features Behat dédiées
 (`un-domicile-importe-retrouve-son-gymnase`, `le-gymnase-du-fichier-localise-l-adversaire`,

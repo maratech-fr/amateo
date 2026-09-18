@@ -1,8 +1,9 @@
 # Accueil « cockpit temporel » — mise au clair (préliminaire calendriers secondaires)
 
-Last verified @ 2026-09-15 (rotation, `documentation-update`). Confronté au code, tout juste :
-`PeriodStructure.tsx:518` (`frontend/src/features/wizard/steps/`) porte toujours `sub` sur
-`VenueSelect` ; `SCHOOL_HOLIDAY_HORIZON_DAYS = 30` toujours à
+Last verified @ 2026-09-19 (rotation, `documentation-update` — zone non touchée par cette PR, PR F
+« retours de tests du 18-19/09 », module matchs/club). Re-confronté aux 4 mêmes repères que la
+passe du 2026-09-15, tout juste : `PeriodStructure.tsx:518` (`frontend/src/features/wizard/steps/`)
+porte toujours `sub` sur `VenueSelect` ; `SCHOOL_HOLIDAY_HORIZON_DAYS = 30` toujours à
 `frontend/src/features/cockpit/RadarPanel.tsx:50` ; `App\Service\ClosureSegmentation` et
 `App\Service\CalendarEntryRedatability` existent bien (`backend/src/Service/`) ; la route
 `POST /api/calendar_entries/{id}/redate-preview` existe toujours (`RedatePreviewController.php:48`).

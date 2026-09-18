@@ -4,8 +4,14 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-09-18 (`documentation-update`, lot correctif frontend de l'audit 2026-09-18,
-UXC-23/UXS-08 — la ligne `/matchs` de ce fichier cite ces deux items). Re-confronté au code :
+Last verified @ 2026-09-19 (`documentation-update`, PR F « retours de tests du 18-19/09 »).
+Re-confronté au code cette passe : §6.6 ter était **PÉRIMÉE** (décrivait encore le formulaire
+`PATCH /api/club/info` — comité/correspondant/président/salle principale — supprimé le 2026-08-04,
+`ClubPage.tsx` est lecture seule FFBB depuis cette date) — réécrite pour l'état réel
+(`ClubInfoSection`/`ClubSiegeSubsection`, `ClubPage.tsx`) et pour la nouvelle section « Siège du
+club » (`AddressGeocodeField`, `PATCH /api/club/siege`). Reste confronté à la passe précédente
+(2026-09-18, lot correctif frontend de l'audit 2026-09-18, UXC-23/UXS-08 — la ligne `/matchs` de ce
+fichier cite ces deux items) :
 **UXC-23** — la citation du `ConfirmDialog` de `VenueLabelsSection.tsx` disait « … conservent leur
 salle », le composant dit désormais « … conservent leur gymnase » (`VenueLabelsSection.tsx:197`)
 — corrigée dans ce fichier ; **UXS-08** — `ConfigurationPage.tsx` gate ses cinq
@@ -414,20 +420,37 @@ Le gestionnaire ne voit jamais le concept de `club_id` ou `season_id`. Le fronte
   non pointé → « Terminé · à valider » ; ouvert (`PENDING`/`GENERATING`) → « … · en cours ». Deux
   plans `COMPLETED` peuvent donc porter des libellés différents selon lequel est pointé.
 
-### 6.6 ter Informations du club (fiche FFBB — lot B)
+### 6.6 ter Informations du club (fiche FFBB — 100 % lecture seule sauf le siège)
 
-La route `/club` expose une section **« Informations du club »** (admin uniquement, `AccordionSection`)
-qui édite les métadonnées FFBB du club, regroupées : **Identité** (code FFBB + ligue + zone de vacances
-en lecture — auto-dérivés à l'onboarding ; code comité éditable), **Contact**, **Correspondant**,
-**Président**, **Salle principale**. Un bouton « Enregistrer » envoie un `PATCH /api/club/info`
-(management-gated SEC-07) qui met à jour **uniquement les champs présents** dans le body (partiel ;
-`''` réinitialise à `null`), valide les emails et les longueurs (`422` sinon), puis invalide `["me"]`.
-Les valeurs sont lues depuis le bloc `club` de `/api/me`. Saisie **manuelle** aujourd'hui ; l'autofill
-depuis la fiche FFBB est prévu en lot C.
+⚠ **Périmé jusqu'au 2026-09-19** : cette section décrivait encore le formulaire éditable
+`PATCH /api/club/info` (comité éditable, correspondant, président, salle principale). Ce PATCH et
+ces quatre champs ont été **supprimés le 2026-08-04** (décision fondateur, `etat-des-lieux.md` §3) —
+l'index FFBB `organismes` ne connaît aucune personne physique ni aucun lien club→salle. La route
+`/club` expose une section **« Informations du club »** (admin uniquement, `AccordionSection`,
+`ClubInfoSection`) redevenue **lecture seule FFBB**, à une exception près (amendement 2026-09-19,
+retours de tests) :
 
-> **RGPD (minimisation).** Président et correspondant sont des **contacts professionnels** (données
-> publiques de la fiche FFBB : nom, téléphone, email). **Aucune adresse de domicile** n'est stockée —
-> seule l'adresse du club et de la salle principale (lieux publics) le sont. Base légale actée avec P0-1 (DP1 soldé) — [`../../docs/security/rgpd.md`](../../docs/security/rgpd.md) §2.
+- **Identité** (`ReadOnlyField`) : Code FFBB, Ligue, Zone de vacances, Comité — auto-dérivés,
+  aucune saisie. Bouton « Actualiser depuis la FFBB » (`POST /api/club/ffbb-import`,
+  `FfbbClubPopulator::populate`) est le SEUL geste de correction — il n'écrase plus le siège s'il en
+  existe déjà un (`only-fill-when-empty`, § ci-dessous).
+- **Siège du club** (`ClubSiegeSubsection`, amende la décision 2026-08-04 — SEULE saisie de la
+  page) : un `AddressGeocodeField` (primitive partagée, `frontend/AGENTS.md` §Primitives) pose une
+  adresse en texte, le serveur RE-géocode via `PATCH /api/club/siege` (`ClubSiegeController`,
+  `backend/docs/geo-api.md` §1bis) et écrit adresse/CP/ville/lat/lon depuis SON hit fédéral —
+  jamais des coordonnées client (patron SEC-15). Motif : la fédération ne fournit pas d'adresse
+  fiable pour estimer les trajets vers les adversaires (`specs/courantes/module-matchs.md` §1). Un
+  siège déjà choisi À LA MAIN n'est plus écrasé par « Actualiser depuis la FFBB »
+  (`FfbbClubPopulator::applyClub`, only-fill-when-empty comme le seed BCCL).
+- **Contact** (`ReadOnlyField`/liens) : téléphone, email, site — lecture seule FFBB, rafraîchis par
+  « Actualiser depuis la FFBB ».
+- Deep-link `?section=informations` (posé par le bandeau « Trajets indisponibles » de Configuration
+  › Adversaires du module matchs) ouvre d'emblée cette section.
+
+> **RGPD (minimisation).** Président et correspondant, contacts personnels, ont été **retirés en
+> entier** de l'écran et de `/api/me` le 2026-08-04 (aucun automatique possible, aucune saisie
+> manuelle voulue). Le siège du club est une donnée d'**établissement**, pas une PII (cohérent avec
+> `Club.php:156-158`) — [`../../docs/security/rgpd.md`](../../docs/security/rgpd.md) §2.
 
 ### 6.6 quater Statistiques d'utilisation des gymnases (P3-22, 2026-08-17)
 

@@ -1,7 +1,11 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — recalage
-du contrat 2.23). Re-confronté au code : `BanGeocodingClient::SEARCH_URL`
+Last verified @ 2026-09-19 (`documentation-update`, PR F « retours de tests du 18-19/09 »).
+Re-confronté au code cette passe : `BanGeocodingClient::geocodeTop` (`BanGeocodingClient.php:70`,
+le seul candidat structuré, coordonnées jamais celles du client) ✓ · `ClubSiegeController`
+(`ClubSiegeController.php`, `PATCH /api/club/siege`, SEC-15) ✓. Reste confronté à la passe
+précédente (2026-09-18, PR E « décisions de l'audit 0918 » — recalage du contrat 2.23) :
+`BanGeocodingClient::SEARCH_URL`
 (`BanGeocodingClient.php:24`) et `IgnRoutingClient::ITINERARY_URL` (`IgnRoutingClient.php:44`)
 hosts en constantes dures ✓ · `IgnRoutingClient::BATCH_BUDGET_SECONDS = 30.0`
 (`IgnRoutingClient.php:42`) ✓ · `PROFILE_CAR`/`PROFILE_PEDESTRIAN` seuls, aucune 3ᵉ constante
@@ -46,14 +50,39 @@ Headers:
 **Proxy backend** : `GET /api/geocode?q=` (`GeocodeController`) — management-gated (SEC-07,
 `ManagementAccessGuard::assertManager`), 422 si la requête est vide/malformée, 502 nommé si le
 service est indisponible (best-effort : jamais un formulaire cassé). Le frontend n'appelle jamais
-directement api-adresse.data.gouv.fr (frontière §2 de `CLAUDE.md`). **Consommateur écran (PR-3,
-livré)** : `VenueGeocodeField` (`frontend/src/features/wizard/steps/VenueGeocodeField.tsx`), sur la
-fiche d'un gymnase de l'étape Gymnases — saisie ≥3 caractères → « Localiser » → liste de candidats
-(`label`, sans le score chiffré : le premier porte « Recommandé », un score < 0.4 porte
-« correspondance approximative ») → clic écrit `address`+`latitude`+`longitude` sur le gymnase
-(PUT partiel). Un gymnase déjà géolocalisé (import FFBB ou géocodage antérieur) s'affiche
-« Localisé » et ne réécrit rien tant que « Modifier l'adresse » n'est pas cliqué explicitement —
-aucune écriture silencieuse. Détail écran : `frontend/docs/frontend-wizard.md` §Gymnases.
+directement api-adresse.data.gouv.fr (frontière §2 de `CLAUDE.md`). **Primitive front partagée
+(retours de tests, 2026-09-19)** : `AddressGeocodeField` (`frontend/src/shared/components/ui/
+address-geocode-field.tsx`, `frontend/AGENTS.md` §Primitives) — saisie ≥3 caractères → « Localiser »
+(consomme `GET /api/geocode`) → liste de candidats (`label`, sans le score chiffré : le premier
+porte « Recommandé », un score < 0.4 porte « correspondance approximative ») → clic remonte le
+candidat FÉDÉRAL choisi au caller via `onPick`, jamais d'écriture avant le clic. Deux consommateurs :
+- **`VenueGeocodeField`** (`frontend/src/features/wizard/steps/VenueGeocodeField.tsx`, PR-3 P2-53,
+  wrapper mince depuis l'extraction) — fiche d'un gymnase de l'étape Gymnases, écrit
+  `address`+`latitude`+`longitude` sur le gymnase (PUT partiel, coordonnées du candidat client).
+  Détail écran : `frontend/docs/frontend-wizard.md` §Gymnases.
+- **`ClubSiegeSubsection`** (`frontend/src/features/club/ClubPage.tsx`) — section « Siège du club »
+  de la page Club, écrit via `PATCH /api/club/siege` (`ClubSiegeController`, § ci-dessous) qui
+  RE-géocode côté serveur au lieu de faire confiance aux coordonnées du candidat (patron SEC-15,
+  divergent de `VenueGeocodeField`).
+
+Les deux gardent le même comportement « jamais d'écrasement silencieux » : un point déjà géolocalisé
+s'affiche « Localisé »/« Siège localisé » et ne réécrit rien tant que « Modifier l'adresse » n'est
+pas cliqué explicitement.
+
+### 1bis. Poser le siège du club (`PATCH /api/club/siege`, retours de tests 2026-09-19)
+
+Le corps ne porte **que du texte d'adresse** (`address`/`postalCode`/`city`, concaténés) —
+`ClubSiegeController` re-géocode via `BanGeocodingClient::geocodeTop` (le MEILLEUR candidat
+structuré : `{label, postalCode, city, latitude, longitude}`) et écrit adresse/CP/ville/lat/lon
+depuis **SON** hit fédéral, jamais depuis une latitude/longitude que le corps porterait (patron
+SEC-15, comme `OpponentTravelResolver::accountManualChoice`) : le front n'envoie que le `label` du
+candidat choisi dans `AddressGeocodeField`, mais une requête forgée directement sur la route ne
+pourrait de toute façon pas imposer de coordonnées. Management-gated (SEC-07) ; 422 « adresse
+introuvable » (aucun candidat), 502 (BAN muette). Réponse `{address, postalCode, city, geolocated}`
+— `geolocated` reflète l'état réel (`latitude`/`longitude` non nuls), jamais recalculé côté front.
+`GET /api/opponents/travel` (module matchs) sert un champ additif `clubGeolocated` dérivé de la même
+vérité, consommé par `useClubGeolocated()` pour le bandeau « Trajets indisponibles » de Configuration
+› Adversaires — voir `specs/courantes/module-matchs.md` §1.
 
 ## 2. Itinéraire (temps de trajet) — IGN Géoplateforme
 
