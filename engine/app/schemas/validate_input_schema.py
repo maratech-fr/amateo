@@ -6,6 +6,7 @@ from typing import Self
 from pydantic import Field, model_validator
 
 from app.schemas.input_schema import (
+    MAX_CONSTRAINTS_EXPANDED,
     MAX_SHARED_TRAINING_BLOCKS,
     MAX_TEAM_LINKS,
     MAX_VENUE_TRAVEL_TIMES,
@@ -58,7 +59,10 @@ class CandidateAssignmentSchema(SerializableModel):
 
 
 class ValidateAssignmentsInputSchema(SerializableModel):
-    version: str = "2.4"
+    # Fallback quand le champ est OMIS ; le backend l'envoie TOUJOURS. Aligné sur le contrat
+    # courant (engine/CONTRACT_VERSION) pour qu'aucun lecteur ne le prenne pour une version
+    # concurrente ; gardé par test_schema_version_defaults_match_contract_version.
+    version: str = "2.22"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     solver_seed: int = Field(default=42, alias="solverSeed")
@@ -66,7 +70,8 @@ class ValidateAssignmentsInputSchema(SerializableModel):
     venues: list[VenueSchema] = Field(default_factory=list, max_length=MAX_VENUES)
     teams: list[TeamSchema] = Field(default_factory=list, max_length=MAX_TEAMS)
     coaches: list[CoachSchema] = Field(default_factory=list, max_length=MAX_COACHES)
-    constraints: list[ConstraintV2Schema] = Field(default_factory=list)
+    # Même cap que /generate : le produit étendu raw(<=500) x teams(<=200) = MAX_CONSTRAINTS_EXPANDED.
+    constraints: list[ConstraintV2Schema] = Field(default_factory=list, max_length=MAX_CONSTRAINTS_EXPANDED)
     # Parite generation <=> verdict (P2-28) : le MEME reglage de regles implicites
     # s'applique au solve et au verdict — sans lui, un deplacement sur un planning
     # genere en PREFERRED serait juge en tout-HARD et refuse a tort. Optionnel :
@@ -80,14 +85,15 @@ class ValidateAssignmentsInputSchema(SerializableModel):
     priority_tiers: list[PriorityTierSchema] = Field(
         default_factory=list, alias="priorityTiers", max_length=MAX_PRIORITY_TIERS
     )
-    # P2-51 — le verdict accepte AUSSI le bloc `sharedBlocks` (parité de vocabulaire avec
-    # /generate : le backend émet le même dialecte). ACCEPTÉ mais NON consommé en PR-2 : absent/vide
-    # ⇒ aucun effet (rétro-compat) — la sémantique de déplacement-en-bloc est PR-3.
+    # Le verdict accepte ET CONSOMME le bloc `sharedBlocks` (parité de vocabulaire ET de couche
+    # HARD avec /generate : le backend émet le même dialecte, `_apply_hard` le passe à
+    # add_level_1_hard_constraints comme la génération). Absent/vide ⇒ aucun effet (rétro-compat).
     shared_blocks: list[SharedTrainingBlockSchema] = Field(
         default_factory=list, alias="sharedBlocks", max_length=MAX_SHARED_TRAINING_BLOCKS
     )
-    # Lot PASSERELLES — le verdict accepte AUSSI le bloc `teamLinks` (parité de vocabulaire avec
-    # /generate). ACCEPTÉ mais NON consommé en PR-1. Absent/vide ⇒ aucun effet (rétro-compat).
+    # Le verdict accepte ET CONSOMME le bloc `teamLinks` (parité de vocabulaire ET de couche HARD
+    # avec /generate : `_apply_hard` le passe à add_level_1_hard_constraints). Absent/vide ⇒ aucun
+    # effet (rétro-compat).
     team_links: list[TeamLinkSchema] = Field(default_factory=list, alias="teamLinks", max_length=MAX_TEAM_LINKS)
     # P2-53 RMM-8 PR-2 — le verdict accepte AUSSI `venueTravelTimes` (parité de vocabulaire avec
     # /generate : le backend émet le même dialecte). P2-55 — désormais CONSOMMÉ par le verdict :

@@ -36,10 +36,11 @@ final class DiagnosticMessageBuilder
         // name the teams / venue / coach + day + time + reason (who/when/why).
         // Prefer them; the localized builders below are only a fallback for
         // payloads that arrive without a rich message. soft_lock_moved and
-        // unused_slot are the exceptions: the engine still sends a raw English
-        // message for those, so we always rebuild them locally (unused_slot also
-        // fixes the engine's Sunday day-name mislabel — it maps day 0=Sunday
-        // while the payload's dayOfWeek is ISO 1=Monday..7=Sunday).
+        // unused_slot are the exceptions we ALWAYS rebuild locally: soft_lock_moved
+        // still arrives with a raw English message, and unused_slot arrives with an
+        // EMPTY message (the engine owns only the structured fields — venueId,
+        // dayOfWeek, startTime, durationMinutes — and leaves the French copy, day
+        // name included, to this builder).
         return match ($type) {
             'unplaced' => '' !== $engineMessage ? $engineMessage : $this->buildUnplaced($diagnostic, $teamNames),
             'conflict' => '' !== $engineMessage ? $engineMessage : $this->buildConflict($diagnostic, $teamNames, $coachNames, $venueNames),

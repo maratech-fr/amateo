@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time as time_module
 import uuid
 from datetime import date, time
 from typing import Any
@@ -57,6 +58,53 @@ REASON_MESSAGES = {
     "no_league_intersection": "Les fenêtres de la ligue ne croisent aucune fenêtre d'accès ce jour-là.",
     "venue_full": "Tous les créneaux licites sont déjà occupés par d'autres matchs.",
 }
+
+# ── Build budget (ADR-0001: name the impossible, never hang) ──────────────────
+# The CP-SAT time limit only bounds the SOLVE. A pathological placement problem
+# (thousands of matches × wide windows → millions of candidate pairs) can spin
+# the model BUILD — the candidate/no-overlap/pairwise loops below are O(matches²)
+# and O(candidates²) — for minutes before the solver even starts. The schema caps
+# (MAX_MATCHES=2000) bound the shape but not the pair explosion, so we watch a
+# wall-clock deadline over the hot loops and abort with a named diagnostic rather
+# than let a request hang. 10 s is orders of magnitude over a real club's build.
+BUILD_BUDGET_SECONDS = 10.0
+
+
+class _BuildBudgetExceeded(Exception):
+    """Raised when building the CP-SAT model overruns ``BUILD_BUDGET_SECONDS``.
+
+    Carries the measured shape (matches + candidate variables built so far) so the
+    caller can name the problem to the manager instead of failing mutely."""
+
+    def __init__(self, n_matches: int, n_candidates: int) -> None:
+        self.n_matches = n_matches
+        self.n_candidates = n_candidates
+        super().__init__(f"match placement build budget exceeded ({n_matches} matches, {n_candidates} candidates)")
+
+
+def _too_large_result(exc: _BuildBudgetExceeded) -> dict[str, Any]:
+    """The failed response for a placement problem too large to build in budget."""
+    return {
+        "status": "failed",
+        "placements": [],
+        "unplaced": [],
+        "diagnostics": [
+            {
+                "id": str(uuid.uuid5(uuid.NAMESPACE_URL, "placement-too-large")),
+                "type": "placement_problem_too_large",
+                "severity": "error",
+                "message": (
+                    f"Le placement des matchs est trop volumineux pour être calculé "
+                    f"({exc.n_matches} matchs, {exc.n_candidates} créneaux candidats) : "
+                    "réduisez le volume de matchs à placer ou les fenêtres d'accès."
+                ),
+                "suggestions": [
+                    "Placez les matchs par lots plus petits, ou resserrez les fenêtres d'accès des gymnases.",
+                ],
+            }
+        ],
+        "metrics": None,
+    }
 
 
 def _minutes(value: time) -> int:
@@ -137,6 +185,22 @@ def _candidate_kickoffs(
 
 
 def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
+    """Public entry point: build the model and solve it, but abort the BUILD with a
+    named ``placement_problem_too_large`` diagnostic if it overruns the budget
+    (ADR-0001 — the impossible is spelled out, never a silent hang)."""
+    try:
+        return _place_matches(input_data)
+    except _BuildBudgetExceeded as exc:
+        logger.warning(
+            "match placement build budget exceeded club=%s matches=%d candidates=%d",
+            input_data.club_id,
+            exc.n_matches,
+            exc.n_candidates,
+        )
+        return _too_large_result(exc)
+
+
+def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     """Place every placeable TO_PLACE match; name why the rest stayed out.
 
     HARD (never violated in the output): access windows ∩ league windows,
@@ -150,6 +214,7 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
     re-solve stability.
     """
     model = cp_model.CpModel()
+    deadline = time_module.monotonic() + BUILD_BUDGET_SECONDS
 
     teams_by_id = {t.id: t for t in input_data.teams}
     to_place = [m for m in input_data.matches if m.kind == "TO_PLACE"]
@@ -167,7 +232,15 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
     candidates: dict[str, list[_Candidate]] = {}
     is_placed: dict[str, cp_model.IntVar] = {}
     unplaced: list[dict[str, str]] = []
+
+    def _ensure_budget() -> None:
+        # One cheap wall-clock check per hot-loop iteration: raise (with the shape
+        # measured so far) rather than let an O(matches²)/O(candidates²) build hang.
+        if time_module.monotonic() > deadline:
+            raise _BuildBudgetExceeded(len(to_place), sum(len(c) for c in candidates.values()))
+
     for match in to_place:
+        _ensure_budget()
         domain, reason = _candidate_kickoffs(input_data, match)
         if not domain:
             unplaced.append({"matchId": match.id, "reason": reason, "message": REASON_MESSAGES[reason]})
@@ -202,6 +275,7 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
 
     intervals_by_group: dict[tuple[str, date], list[cp_model.IntervalVar]] = {}
     for match in solvable:
+        _ensure_budget()
         match_min, _ = _durations(teams_by_id.get(match.team_id))
         for cand in candidates[match.id]:
             start = cand.kickoff_min
@@ -278,6 +352,7 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
             protected.setdefault((rotation.venue_id, day_key), []).append((kick, kick + rot_match_min))
 
     for match in solvable:
+        _ensure_budget()
         team = teams_by_id.get(match.team_id)
         match_min, warmup_min = _durations(team)
         team_habit: TeamHabitSchema | None = None
@@ -331,6 +406,7 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
         l_match, l_warm = _durations(teams_by_id.get(left.team_id))
         r_match, r_warm = _durations(teams_by_id.get(right.team_id))
         for lc in candidates[left.id]:
+            _ensure_budget()
             l_start, l_end = lc.kickoff_min - l_warm, lc.kickoff_min + l_match
             for rc in candidates[right.id]:
                 r_start, r_end = rc.kickoff_min - r_warm, rc.kickoff_min + r_match
@@ -346,6 +422,7 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
         for ref in team.coaches:
             coach_roles.setdefault(team.id, {})[ref.coach_id] = ref.role
     for i, left in enumerate(solvable):
+        _ensure_budget()
         for right in solvable[i + 1 :]:
             shared = set(coach_roles.get(left.team_id, {})) & set(coach_roles.get(right.team_id, {}))
             for coach_id in shared:
@@ -360,6 +437,7 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
     for match in solvable:
         matches_by_team.setdefault(match.team_id, []).append(match)
     for link in input_data.team_links:
+        _ensure_budget()
         for left in matches_by_team.get(link.team_a_id, []):
             for right in matches_by_team.get(link.team_b_id, []):
                 if link.type == "NOT_SIMULTANEOUS":
@@ -390,6 +468,7 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
     day_start, day_end = 0, 24 * 60
     groups: dict[tuple[str, date], list[tuple[cp_model.IntVar, int, int]]] = {}
     for match in solvable:
+        _ensure_budget()
         m_match, _ = _durations(teams_by_id.get(match.team_id))
         for cand in candidates[match.id]:
             groups.setdefault((cand.venue_id, match.match_date), []).append((cand.var, cand.kickoff_min, m_match))
@@ -399,6 +478,7 @@ def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, An
             m_match, _ = _durations(teams_by_id.get(match.team_id))
             fixed_by_group.setdefault((match.venue_id, match.match_date), []).append((_minutes(match.kickoff), m_match))
     for key, group_cands in groups.items():
+        _ensure_budget()
         fixed_entries = fixed_by_group.get(key, [])
         span_start = model.new_int_var(day_start, day_end, f"span_start_{key[0]}_{key[1]}")
         span_end = model.new_int_var(day_start, day_end, f"span_end_{key[0]}_{key[1]}")

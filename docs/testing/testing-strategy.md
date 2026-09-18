@@ -1,14 +1,17 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-18 (`documentation-update`, PR « `messenger-worker` de dev gagne
-`restart: unless-stopped` »). Re-confronté le § 3bis ci-dessous (piège e2e « worker mort = plus de
-mail ») : `docker-compose.yml` pose désormais `restart: unless-stopped` sur `messenger-worker`
-(seul service de dev à le porter) — un exit sur `--time-limit=3600` ou un `cache:clear` ne laisse
-plus le worker mort pendant des heures, il repart seul en quelques secondes ; le self-heal
-`compose up -d --wait` de `make -C frontend e2e` reste la seule protection pour une invocation
-`npx playwright test` directe (hors périmètre de cette politique de redémarrage). Reste du fichier
-non re-sondé cette passe (voir `git log -p --follow docs/testing/testing-strategy.md` pour l'historique
-des passes).
+Last verified @ 2026-09-18 (`documentation-update`, seconde passe du jour — PR correctrice de
+l'audit moteur 0918). Re-confronté (passe précédente, même jour) le § 3bis ci-dessous (piège e2e
+« worker mort = plus de mail ») : `docker-compose.yml` pose désormais `restart: unless-stopped`
+sur `messenger-worker` (seul service de dev à le porter) — un exit sur `--time-limit=3600` ou un
+`cache:clear` ne laisse plus le worker mort pendant des heures, il repart seul en quelques
+secondes ; le self-heal `compose up -d --wait` de `make -C frontend e2e` reste la seule protection
+pour une invocation `npx playwright test` directe (hors périmètre de cette politique de
+redémarrage). **Cette passe** : §1 recalé contre `ci.yml` — `engine-tests` gagne un step `bandit`
+(ENG-46) et `engine-perf` (main) couvre désormais TROIS tiers `-m perf` (dense, BCCL,
+`test_perf_place_matches.py` — budget de construction `/place-matches`, ENG-40). Reste du fichier
+non re-sondé cette passe (voir `git log -p --follow docs/testing/testing-strategy.md` pour
+l'historique des passes).
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique), [`test-coverage-map.md`](test-coverage-map.md) (qui teste quoi, angles morts) and [`../project-map.md`](../project-map.md).
 
@@ -31,7 +34,7 @@ secrets-scan        (gitleaks)                             — parallel, no need
 semgrep             (security gate)                        — parallel, no needs, BLOCKS the merge
 engine-semantics    (groupe `contract`, cross-stack)       — parallel, no needs, BLOCKS the merge
 functional-tests    (Behat, Gherkin FR, API-only, one feature per promise) — parallel, no needs, BLOCKS the merge (required check à ajouter côté GitHub)
-engine-perf         (dense + BCCL solve < 60 s)             — needs engine-tests ; main only
+engine-perf         (dense + BCCL solve + place-matches build < 60 s) — needs engine-tests ; main only
 engine-perf-pr      (dense solve, PR budget = 60 s)         — needs engine-tests ; PR only, skipped when engine/ untouched
 engine-coverage     (couverture engine + cliquet)           — needs engine-tests ; does NOT gate build-docker
 frontend-coverage   (couverture frontend + cliquet)         — needs frontend ; does NOT gate build-docker
@@ -105,7 +108,7 @@ All PHP test jobs first **create + migrate the test DB** (`doctrine:database:cre
 | `backend-coverage` | `phpunit tests/ --exclude-group contract --coverage-clover` (pcov, `-d pcov.enabled=1`) + `scripts/coverage-gate.php` (plancher `backend` de `coverage-floor.json`, PHPUnit 11 n'a pas de `--fail-under` natif), needs `blocking-tests`, does **NOT** gate `build-docker` (P4-166 PR 3/3) |
 | `e2e` | Playwright (full stack + Vite), needs blocking-tests. ⚠ **Deux cibles, pas une** : la suite tourne contre le **dev server** (:5173), puis un step dédié rejoue `security-headers.spec.ts` contre l'**image nginx** (:8081) avec `E2E_A17_REQUIRED=1`. Sans ce second passage, les tests A17 (CSP, HSTS, X-Frame-Options, nosniff) se **skippaient à chaque run** — les en-têtes n'existent que sur le build nginx — et le contrôle n'a jamais tourné en CI (audit D-04). La variable interdit au skip de revenir en silence : viser un dev server là devient un échec. **Fiabilité infra (2026-09-15)** : `COMPOSE_BAKE=false` (env du job) écarte le builder bake qui se figeait « waiting for BuildKit » ; un step **Pre-pull third-party images** (`docker compose pull --ignore-buildable`, enveloppé de `.github/scripts/retry.sh`) tire nginx/mercure/redis/postgres à part, l'image `engine` est bâtie dans son propre step relançable, et les steps d'infra (pull, build, `up --wait`) passent par `retry.sh` — un aléa de Docker Hub/BuildKit ne rougit plus une PR saine. Un step `if: failure()` écrit dans le résumé de job si l'échec est **AVANT Playwright (infra)** ou **Playwright** |
 | `functional-tests` | **Behat, Gherkin français, API seule** (`backend/features/`, contexts `backend/tests/Behat/`) — scénarios métier relus par le fondateur, joués contre la stack RÉELLE (nginx→php-fpm, vrai `messenger-worker`, vrai engine, **`pdf-worker`** depuis le 2026-09-05 — `l-export-du-planning.feature` attend un PDF Puppeteer réel, sans lui le worker d'export répond `failed`), sans navigateur ni noyau in-process. **Aucun `needs`** — ils répondent « la fonctionnalité marche-t-elle ? », indépendamment des suites unitaires, et n'installent ni npm ni Chromium : le verdict tombe plus tôt. Chaque feature est autosuffisante (JWT auto, données créées/nettoyées, pointeur socle rouvert PUIS restauré) : jouable seule et dans n'importe quel ordre. **Remplace intégralement les 5 smokes bash** (`smoke-solver.sh`, `onboarding-smoke.sh`, `smoke-place-matches.sh`, `smoke-overlay.sh`, `smoke-coach-wishes.sh`, tous SUPPRIMÉS — P4-165, 2026-09-04) — parité prouvée assertion par assertion, même verdicts. Table feature ↔ ce qu'elle prouve : [`test-coverage-map.md`](test-coverage-map.md) §5 |
-| `engine-tests` | `pytest` + `ruff check .` + `mypy` (in the engine container) |
+| `engine-tests` | `pytest` + `ruff check .` + `mypy` + `bandit -r app/` (ENG-46, lot correctif de l'audit 0918 — bandit était déjà en local via `make test`, il ne gatait pas la CI) (in the engine container) |
 | `engine-coverage` | `pytest --cov=app --cov-fail-under=$FLOOR` (`$FLOOR` read from `coverage-floor.json`, key `engine`), needs `engine-tests`, does **NOT** gate `build-docker` (P4-166 PR 1/3) |
 | `frontend` | `npm run lint` (dont `eslint-plugin-jsx-a11y`, §4bis) + `tsc -b` + `vite build` + `vitest` (parallel, no needs) |
 | `frontend-coverage` | `npm run test:coverage` (`vitest run --coverage`, `thresholds.lines` lu de `coverage-floor.json`, clé `frontend`), needs `frontend`, does **NOT** gate `build-docker` (P4-166 PR 2/3) |
@@ -220,10 +223,12 @@ miss exactly that substitution:
   (`model`, `assignments`, `team_coach_map`, `team_player_map`).
 - **`DECLARED_ARG_DIVERGENCES`** carries named, reasoned exceptions (same two-test pattern: a
   reason is mandatory, a stale entry — the argument is no longer actually divergent — fails).
-  **One entry today**: `min_sessions_by_team` — `/generate` passes the real per-team floors
-  (`adjusted_min_by_team`, a soft target carried by the solver's objective), the verdict passes a
-  dict of zeros (the verdict has no objective, it is a feasibility test only); giving it real
-  floors would make the verdict **stricter** than generation itself.
+  **Empty today** (ENG-41, lot correctif de l'audit moteur 0918, 2026-09-18): the one entry,
+  `min_sessions_by_team`, was closed because its reason was false — `/generate` never passed real
+  per-team floors, `adjusted_min_by_team` (renamed `min_by_team`) was already a dict of zeros on
+  both sides (the minimum is SOFT-only, carried by the solver's objective, never a hard floor);
+  the registry compared the **source text** of the two expressions, not their values, so it stayed
+  green while believing a divergence that never existed.
 - Fails loud, never silent, on a `*args`/`**kwargs` splat (individual keyword feeds become
   unreadable) or on the anchor call count drifting from exactly one.
 

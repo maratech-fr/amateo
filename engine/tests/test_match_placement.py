@@ -8,8 +8,12 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+from pydantic import ValidationError
+
 from app.main import read_contract_version
-from app.schemas.match_input_schema import MatchPlacementInputSchema
+from app.schemas.match_input_schema import MAX_LEAGUE_WINDOWS_PER_TEAM, MatchPlacementInputSchema
+from app.solver import match_placement
 from app.solver.match_placement import solve_match_placement
 
 SATURDAY = "2026-10-03"
@@ -102,6 +106,41 @@ def test_league_window_bounds_the_kickoff() -> None:
     )
     assert result["unplaced"] == []
     assert "17:00" <= kickoff_of(result, "m1") <= "20:45"
+
+
+def test_league_windows_over_cap_rejected() -> None:
+    # A10 defense-in-depth: a team's league envelope is bounded (mirror of the
+    # per-venue window cap) so an oversized payload is rejected at the boundary.
+    windows = [{"dayOfWeek": 6, "kickoffMin": "10:00", "kickoffMax": "12:00"}] * (MAX_LEAGUE_WINDOWS_PER_TEAM + 1)
+    with pytest.raises(ValidationError):
+        payload(matches=[to_place()], venues=[venue()], teams=[team(leagueWindows=windows)])
+
+
+def test_league_windows_at_cap_accepted() -> None:
+    windows = [{"dayOfWeek": 6, "kickoffMin": "10:00", "kickoffMax": "12:00"}] * MAX_LEAGUE_WINDOWS_PER_TEAM
+    model = payload(matches=[to_place()], venues=[venue()], teams=[team(leagueWindows=windows)])
+    assert len(model.teams[0].league_windows) == MAX_LEAGUE_WINDOWS_PER_TEAM
+
+
+def test_build_budget_exhausted_fails_with_a_diagnostic(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A pathologically large placement problem must not spin CP-SAT for minutes
+    # inside the model BUILD (before the solver's own time limit even applies).
+    # With the build budget forced to ~0, the solve aborts early, returns
+    # status="failed" and a single actionable diagnostic — never a silent hang.
+    monkeypatch.setattr(match_placement, "BUILD_BUDGET_SECONDS", 0.0, raising=False)
+    result = solve_match_placement(
+        payload(
+            matches=[to_place(match_id=f"m{i}", team_id="t1") for i in range(20)],
+            venues=[venue()],
+            teams=[team()],
+        )
+    )
+    assert result["status"] == "failed", result
+    assert result["placements"] == []
+    assert result["metrics"] is None
+    diags = [d for d in result["diagnostics"] if d["type"] == "placement_problem_too_large"]
+    assert len(diags) == 1, result["diagnostics"]
+    assert diags[0]["severity"] == "error"
 
 
 def test_league_day_mismatch_is_named() -> None:

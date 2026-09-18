@@ -284,8 +284,8 @@ def _single_assign_aliases(func: FuncDef) -> dict[str, ast.expr]:
 
 def _resolve_top(expr: ast.expr, aliases: dict[str, ast.expr]) -> ast.expr:
     """Résout UNIQUEMENT une valeur d'argument qui est un ``Name`` nu vers son alias plain d'une
-    ligne. On ne descend pas dans les sous-expressions : ``adjusted_min_by_team or None`` (un
-    ``BoolOp``) reste tel quel — c'est l'exception ``min_sessions_by_team``, pas un alias."""
+    ligne. On ne descend pas dans les sous-expressions : ``min_by_team or None`` (un ``BoolOp``)
+    reste tel quel des deux côtés — c'est une expression, pas un alias à déplier."""
     if isinstance(expr, ast.Name) and expr.id in aliases:
         return aliases[expr.id]
     return expr
@@ -372,17 +372,7 @@ def _verdict_aggregator_call_owner() -> FuncDef:
 # source différente, ACCEPTÉE avec sa raison. La raison est OBLIGATOIRE (gardée par
 # test_every_declared_arg_divergence_carries_a_reason) et doit décrire une divergence RÉELLE
 # (gardée par test_declared_arg_divergences_are_real) — jamais une exemption fantôme.
-DECLARED_ARG_DIVERGENCES: dict[str, str] = {
-    "min_sessions_by_team": (
-        "Cible SOUPLE, pas un plancher dur — seule exception du registre. /generate passe "
-        "`adjusted_min_by_team or None` (les minimums réels par équipe) parce que l'OBJECTIF du "
-        "solveur les porte ; le verdict passe `min_by_team or None`, un dict de ZÉROS, parce qu'il "
-        "n'a PAS d'objectif : c'est un test de faisabilité seul (docblock de `_apply_hard` : « la "
-        "couche HARD de la génération, MOINS l'objectif et les plafonds de séances »). Lui donner "
-        "ces planchers en dur rendrait le verdict PLUS STRICT que la génération elle-même. "
-        "Divergence délibérée et légitime."
-    ),
-}
+DECLARED_ARG_DIVERGENCES: dict[str, str] = {}
 
 
 def _is_divergent(generate_expr: str | None, verdict_expr: str | None) -> bool:

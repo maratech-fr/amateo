@@ -1,19 +1,22 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-18 (`documentation-update`, PR correctrice de l'audit 0918 — BCK-23).
-§ « Endpoint — `GET /api/fixtures/conflicts` » et § « Le gardien à l'ouverture » recalés : les
-deux appelants (`FixtureConflictsController`, `MatchModuleDeltaComputer::currentConflicts`)
-chargent désormais leur radar via une maison UNIQUE, `App\Service\ConflictRadarLoader::conflicts`
-— avant cette date le delta copiait le chargement du contrôleur à la main, sans
-`profilesByTeam`/`roundTripByFixtureId`, donc un conflit né uniquement du trajet adverse pouvait
-être servi à l'écran sans jamais entrer dans `newConflictFingerprints` du bandeau « depuis ta
-dernière visite » (audit `AUDIT-2026-09-18-claude-fable-5-1.md`, finding BCK-23). Confronté au
-code lu : `ConflictRadarLoader.php` (les deux appelants), `MatchVisitDeltaParityTest.php` (cas
-trajet-only ajouté). Reste du fichier (§ « Calendrier — l'écran unique », § « Détail par côté
-d'un conflit de personne », § « Configuration — repli visuel », § reconciliation coupes
-P4-194/195, § « Solveur de placement », § « Trajet AWAY », § « Espace Importer », § « Onglet
-Semaine type », § « Échéances ligue/comité », § « Écart de salle d'un domicile non placé ») non
-re-sondé cette passe — voir `git log -p --follow` pour sa dernière vérification.
+Last verified @ 2026-09-18 (`documentation-update`, seconde passe du jour — PR correctrice de
+l'audit MOTEUR 0918, hors filet du garde `test_contract_version_doc_sync.py`, AUD-DOC-39). §
+« Endpoint — `GET /api/fixtures/conflicts` » et § « Le gardien à l'ouverture » recalés (passe
+précédente, même jour, BCK-23) : les deux appelants (`FixtureConflictsController`,
+`MatchModuleDeltaComputer::currentConflicts`) chargent désormais leur radar via une maison
+UNIQUE, `App\Service\ConflictRadarLoader::conflicts` — avant cette date le delta copiait le
+chargement du contrôleur à la main, sans `profilesByTeam`/`roundTripByFixtureId`, donc un
+conflit né uniquement du trajet adverse pouvait être servi à l'écran sans jamais entrer dans
+`newConflictFingerprints` du bandeau « depuis ta dernière visite » (audit
+`AUDIT-2026-09-18-claude-fable-5-1.md`, finding BCK-23). **Cette passe** : § « Solveur de
+placement » recalé — `MatchDurationResolver`/`match_placement.py` citaient `contrat 2.21`, bumpé
+à `2.22` (ENG-40, nouveau diagnostic `placement_problem_too_large` sur `/place-matches`, sans
+rapport avec la géométrie D1/P4-203 décrite dans cette section). Reste du fichier (§ « Calendrier
+— l'écran unique », § « Détail par côté d'un conflit de personne », § « Configuration — repli
+visuel », § reconciliation coupes P4-194/195, § « Trajet AWAY », § « Espace Importer », §
+« Onglet Semaine type », § « Échéances ligue/comité », § « Écart de salle d'un domicile non
+placé ») non re-sondé cette passe — voir `git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -53,7 +56,7 @@ aller-retour** (injecté, 0 jusqu'à la PR-3) — **la douche et le battement SO
 (décision fondateur 2026-08-28 : négligeables, le coach enchaîne en mordant sur l'échauffement suivant ;
 les anciennes constantes 30+15 sont supprimées). Depuis P4-203 (2026-09-14), le solveur de placement
 partage la même géométrie que le radar : les durées (`matchMinutes`/`warmupMinutes`) sont résolues
-par le backend via **`MatchDurationResolver`** (par équipe, contrat 2.21) et portées jusqu'à l'engine
+par le backend via **`MatchDurationResolver`** (par équipe, contrat 2.22) et portées jusqu'à l'engine
 — voir « Deux fenêtres depuis D1 » ci-dessous, qui s'applique désormais au solveur ET au radar.
 
 **Deux fenêtres depuis D1 (2026-09-13)** — décision fondateur mesurée sur 256 rencontres réelles : la
@@ -307,7 +310,7 @@ surcharge équipe gouverne si elle existe, sinon la ligne club, sinon l'annuaire
   global, coords MANUAL range-validées et self-scoped) ; le grain équipe (2026-09-15) ne change ni la table
   ni les colonnes RLS, seule la clé d'unicité s'élargit.
 - ⚠ **Divergence ASSUMÉE** : le trajet (`roundTripTravelMinutes`) nourrit le radar préventif, pas
-  l'optimisation moteur — le solveur de placement (`match_placement.py`, contrat 2.21) reçoit les
+  l'optimisation moteur — le solveur de placement (`match_placement.py`, contrat 2.22) reçoit les
   durées de match/échauffement par équipe depuis P4-203 mais pas le trajet (toujours 0 côté engine).
   ⚠ **Correction 2026-09-16** : la grille week-end DATÉE (`weekendGrid.ts`, § « Palier A — PR-3 »
   ci-dessus) suit DÉJÀ la géométrie D1/P4-203 (`[coup d'envoi, coup d'envoi + matchMinutes]`, aucune

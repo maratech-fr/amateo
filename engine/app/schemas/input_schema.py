@@ -14,9 +14,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 MAX_VENUES = 50
 MAX_TEAMS = 200
 MAX_COACHES = 200
-# NB: `constraints` has NO cap (ENG-23) — its expanded size = raw(<=500) x teams(<=200)
-# after the backend fans out CLUB-scoped rules, so no fixed number can both bound a bomb
-# and never false-block a legit club; see the field comment on ScheduleInputSchema.
+# `constraints` is bounded by the EXPANDED product, not a per-rule count: the backend fans out
+# one CLUB-scoped rule into one row per team, so the ceiling is raw(<=500, GenerationComplexity-
+# Guard::MAX_CONSTRAINTS) x teams(<=200, MAX_TEAMS) = 100 000. Generous enough that no legit club
+# ever trips it, finite enough that a bomb can't smuggle an unbounded list past the boundary.
+MAX_CONSTRAINTS_EXPANDED = 100_000
 MAX_SLOT_TEMPLATES = 2000
 MAX_PRIORITY_TIERS = 20
 MAX_SLOTS_PER_VENUE = 1000
@@ -25,7 +27,8 @@ MAX_TAGS_PER_TEAM = 50
 # P2-51 — mutualisation par BLOC : plafonds du bloc `sharedBlocks`. Un bloc se comporte comme UNE
 # équipe (ses séances lui appartiennent, ``commonSessions``), 2..10 équipes membres (cap technique
 # fondateur, minimum métier 2). 50 blocs = défense en profondeur au bord (le backend ne borne pas
-# le NOMBRE de blocs à la saisie). ACCEPTÉ mais NON consommé en PR-2 : la sémantique est PR-3.
+# le NOMBRE de blocs à la saisie). CONSOMMÉ par la couche HARD (add_level_1_hard_constraints), au
+# solve comme au verdict.
 MAX_SHARED_TRAINING_BLOCKS = 50
 MIN_TEAMS_PER_SHARED_BLOCK = 2
 MAX_TEAMS_PER_SHARED_BLOCK = 10
@@ -311,7 +314,11 @@ class ScheduleSlotTemplateSchema(SerializableModel):
 
 
 class ScheduleInputSchema(SerializableModel):
-    version: str = "2.0"
+    # Fallback quand le champ est OMIS ; le backend l'envoie TOUJOURS, donc ce défaut n'est jamais
+    # la valeur du fil. On l'aligne néanmoins sur le contrat courant (engine/CONTRACT_VERSION) pour
+    # qu'aucun lecteur ne le prenne pour une version concurrente ; gardé par
+    # test_schema_version_defaults_match_contract_version.
+    version: str = "2.22"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     schedule_name: str | None = Field(default=None, alias="scheduleName")
@@ -320,10 +327,11 @@ class ScheduleInputSchema(SerializableModel):
     venues: list[VenueSchema] = Field(default_factory=list, max_length=MAX_VENUES)
     teams: list[TeamSchema] = Field(default_factory=list, max_length=MAX_TEAMS)
     coaches: list[CoachSchema] = Field(default_factory=list, max_length=MAX_COACHES)
-    # ENG-23: NO per-list cap — the backend fans out 1 CLUB rule into N per-team rows, so the
-    # expanded count (raw<=500 x teams<=200) can't be reconciled with a fixed max_length without
-    # false-blocking a legit club. Real bounds: backend RAW cap + nginx 20m body + solver timeout.
-    constraints: list[ConstraintV2Schema] = Field(default_factory=list)
+    # Cap = the EXPANDED ceiling raw(<=500) x teams(<=200) = MAX_CONSTRAINTS_EXPANDED: the backend
+    # fans out 1 CLUB rule into N per-team rows, so a per-rule cap would false-block a legit club —
+    # but the expanded product is a real, finite bound a bomb cannot exceed. Other real bounds
+    # still apply upstream (backend RAW cap + nginx 20m body + solver timeout).
+    constraints: list[ConstraintV2Schema] = Field(default_factory=list, max_length=MAX_CONSTRAINTS_EXPANDED)
     slot_templates: list[ScheduleSlotTemplateSchema] = Field(
         default_factory=list, alias="slotTemplates", max_length=MAX_SLOT_TEMPLATES
     )

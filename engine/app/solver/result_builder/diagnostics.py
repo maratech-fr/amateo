@@ -1295,7 +1295,6 @@ def _diagnose_unused_slots(
 
     for venue in _collection(model_data, "venues"):
         venue_id = str(_get(venue, "id"))
-        venue_name = str(_get(venue, "name", default=venue_id))
         for ts in _collection(venue, "training_slots", "trainingSlots"):
             day_of_week = int(_get(ts, "day_of_week", "dayOfWeek"))
             start_time = str(_get(ts, "start_time", "startTime"))
@@ -1304,11 +1303,8 @@ def _diagnose_unused_slots(
             if (venue_id, day_of_week, start_time) in used:
                 continue
 
-            start_minutes = _time_to_minutes(start_time)
-            end_minutes = start_minutes + duration
-            end_time = _format_time(end_minutes)
-            day_name = _DAY_NAMES.get(day_of_week, str(day_of_week))
-
+            # Le libellé (gymnase, jour, plage horaire) est reconstruit côté backend :
+            # aucun texte n'est calculé ici (venue_name / day_name / end_time morts).
             diagnostics.append(
                 {
                     "id": f"diag-unused-slot-{venue_id}-{day_of_week}-{start_time}",
@@ -1318,7 +1314,11 @@ def _diagnose_unused_slots(
                     "dayOfWeek": day_of_week,
                     "startTime": start_time,
                     "durationMinutes": duration,
-                    "message": f"{venue_name} {day_name} {start_time}-{end_time}: no team assigned",
+                    # Copie possédée par le backend : DiagnosticMessageBuilder reconstruit
+                    # inconditionnellement le texte FR de ``unused_slot`` (et corrige au passage
+                    # le libellé de jour). Émettre un message ici serait du texte anglais mort,
+                    # jamais lu — on envoie donc une chaîne vide.
+                    "message": "",
                     "suggestions": [],
                     "teamId": None,
                     "coachId": None,

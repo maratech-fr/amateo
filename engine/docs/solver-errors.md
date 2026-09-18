@@ -1,11 +1,13 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-09-16 (rotation de fraîcheur `documentation-update`, PR 3b module matchs —
-fichier hors sujet). Re-confronté au code, tout juste : `engine/CONTRACT_VERSION` = `2.21` ✓
-(fichier `engine/CONTRACT_VERSION`) ; `SCORE_FORMULA_VERSION` = `T24_LEVEL_2_FIXED_WEIGHTS_V13`
-(`app/solver/objective/weights.py:31`) ✓ ; budget adaptatif 60/180/600 s aux paliers ≤50/≤200 de
-complexité (`app/main.py`, `_adaptive_timeout`) ✓ ; `solverTimeoutSeconds` défaut 650 sur
-`/generate` (`app/schemas/input_schema.py:319`) ✓ — aucune dérive trouvée.
+Last verified @ 2026-09-18 (`documentation-update`, PR correctrice de l'audit moteur 0918).
+Re-confronté au code : `engine/CONTRACT_VERSION` = `2.22` ✓ (bump ENG-40, nouveau diagnostic
+`placement_problem_too_large` ajouté à la table ci-dessous, fichier `engine/CONTRACT_VERSION`) ;
+`SCORE_FORMULA_VERSION` = `T24_LEVEL_2_FIXED_WEIGHTS_V13` (`app/solver/objective/weights.py:31`,
+non re-sondé cette passe) ; budget adaptatif 60/180/600 s aux paliers ≤50/≤200 de complexité
+(`app/main.py`, `_adaptive_timeout`, non re-sondé cette passe) ; `solverTimeoutSeconds` défaut 650
+sur `/generate` (`app/schemas/input_schema.py`, non re-sondé cette passe).
+
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 
 ---
@@ -23,7 +25,7 @@ Ces erreurs sont retournees directement par l'API FastAPI, avant meme que le sol
 - `sessionsPerWeek: "trois"` au lieu d'un entier
 - Champ `sportCategoryId` manquant sur une equipe (requis)
 - Cle inconnue dans le payload (les schemas sont `extra=forbid`)
-- `version: "1.0"` alors que le moteur parle le **MAJOR 2** du contrat `2.21` (`"2.0"` comme `"2.1"` passent)
+- `version: "1.0"` alors que le moteur parle le **MAJOR 2** du contrat `2.22` (`"2.0"` comme `"2.1"` passent)
 
 **Attention — deux pieges qui ne provoquent PAS de 422** : `lockLevel` est une **chaine libre**, pas un enum (un `"FORT"` est accepte et simplement traite comme non-`HARD`), et le `dayOfWeek` d'un creneau de gymnase (`VenueTrainingSlotSchema`) est un entier **sans borne** — un `8` passe la validation (d'autres schemas du meme payload, eux, sont bornes `ge=1, le=7` : la tolerance n'est pas une regle generale).
 
@@ -74,10 +76,19 @@ Les diagnostics apparaissent dans le tableau `diagnostics[]` de la reponse. Ils 
 | `unused_slot` | WARNING | Un creneau declare n'a recu aucune equipe | Le creneau est incompatible avec les contraintes des equipes restantes (jour interdit, fenetre horaire, gymnase interdit), ou plus aucune equipe n'a de seance a placer. | Reaffecter le creneau a une equipe compatible, ou le retirer des disponibilites du gymnase. |
 | `implicit_rule_not_honored` | INFO / WARNING | Une regle implicite de bien-etre n'est pas honoree | `ruleKey` nomme la regle (repos coach, distribution salaries, enchainements, age croissant). **INFO** : la regle a ete assouplie par le gestionnaire (reglee en PREFERRED) — c'est sa decision, pas une erreur. **WARNING** : le solveur n'a pas pu l'honorer malgre le reglage HARD, un verrou etant en cause. | INFO : rien a faire, ou durcir la regle. WARNING : lever le verrou en cause. |
 | `unplaced_match` | ERROR | Un match n'a pas pu etre place | Emis par `/place-matches` (rail synchrone, ADR-0003), pas par le solve hebdomadaire. | Ouvrir un creneau compatible, ou revoir la fenetre de la journee. |
+| `placement_problem_too_large` | ERROR | La CONSTRUCTION du modele CP-SAT de `/place-matches` a depasse son budget avant meme que le solveur ne demarre | Contrat 2.22, ENG-40 : `max_time_in_seconds` ne borne que le SOLVE — les boucles chaudes (candidats, no-overlap, passerelles) sont O(matchs²)/O(candidats²) ; au-dela de `BUILD_BUDGET_SECONDS = 10 s` (`match_placement.py`), le moteur abandonne NOMME plutot qu'un hang (`status="failed"`, aucun placement). | Reduire le volume de matchs a placer par appel, ou resserrer les fenetres d'acces des gymnases (voir `suggestions[]` du diagnostic). |
 | `day_constraint_conflict` | ERROR | Les regles de jours d'une equipe se contredisent | Un jour est a la fois impose (`forcedDays`) et interdit (`forbiddenDays`), ou tous les jours de la liste blanche (`allowedDays`) sont interdits. L'equipe est alors forcee a 0 seance. | Retirer le recouvrement entre la regle "uniquement / impose" et la regle "evite". |
 | `venue_minimum_unreachable` | ERROR | Un plancher "au moins N seances dans ce gymnase" est inatteignable | Le gymnase offre a l'equipe moins de **jours distincts** que N (elle joue au plus une seance par jour). | Baisser N, ou ouvrir des creneaux sur d'autres jours dans ce gymnase. |
 | `shared_block_not_honored` | ERROR | Un BLOC de mutualisation (P2-51 — un ensemble d'equipes qui se comporte comme UNE equipe, SEULE notion depuis le retrait du modele groupe {equipes, K} par PR-7, 2026-08-31) n'a pas pu placer ses `commonSessions` seances communes | Sur INFEASIBLE, deux causes **certaines** — moins de cases (gymnase, jour, heure) communes candidates que de seances demandees, ou (2026-09-07) PLUS de cases EXCLUSIVES ou TOUS les membres sont epingles HARD ensemble (aucun autre bloc toute-epingle sur la case — deux blocs imbriques peuvent se partager une case) que de seances demandees (bloc sur-epingle : le pin est souverain, la sortie est de de-epingler une case) ; sur un solve abouti, defense en profondeur — le compte reel de seances communes du bloc diverge du declare. **Distinct du verdict** `shared_block_broken` (`/validate-assignments`, refus d'un DEPLACEMENT qui casserait un bloc deja honore) — celui-ci n'est pas un diagnostic de generation. | Ouvrir un creneau commun aux equipes du bloc, ou reduire son nombre de seances communes. |
-| `constraint_not_honored` | INFO / WARNING | Une contrainte saisie n'a pas pu etre appliquee | **INFO** : un verrou HARD l'a ecrasee (P2-9) — indisponibilite coach, fenetre horaire, jour exclu, gymnase interdit. Le verrou prime, la contrainte devient inatteignable. **WARNING** : la contrainte est arrivee sans equipe cible et n'a donc pu etre appliquee a personne. | INFO : retirer le verrou, ou assumer qu'il prime — c'est une decision de gestionnaire, pas une erreur. WARNING : verifier le ciblage de la regle cote backend. |
+| `constraint_not_honored` | INFO / WARNING | Une contrainte saisie n'a pas pu etre appliquee | **INFO** : un verrou HARD l'a ecrasee (P2-9) — indisponibilite coach, fenetre horaire, jour exclu, gymnase interdit. Le verrou prime, la contrainte devient inatteignable. **WARNING** : la contrainte est arrivee sans equipe cible et n'a donc pu etre appliquee a personne, OU sa famille/son type n'est reconnu par aucune branche du parseur (contrat 2.22, ENG-42 — ex. skew de deploiement, backend plus recent que l'engine ; message nommant la famille et le type recus). | INFO : retirer le verrou, ou assumer qu'il prime — c'est une decision de gestionnaire, pas une erreur. WARNING (cible) : verifier le ciblage de la regle cote backend. WARNING (type inconnu) : verifier la version de l'application, ou supprimer/resaisir la contrainte. |
+
+⚑ **Proprietaire du texte `message`** (ENG-47) : pour `unused_slot`, le moteur (`_diagnose_unused_slots`,
+`result_builder/diagnostics.py`) n'envoie plus qu'une chaine VIDE — gymnase/jour/plage sont reconstruits
+cote backend par `DiagnosticMessageBuilder`, qui possede aussi la correction du decalage de nom de jour
+(le moteur numerote 0=dimanche, le payload `dayOfWeek` est ISO 1=lundi..7=dimanche). `soft_lock_moved`
+reste sur l'ancien patron : le moteur envoie encore un texte anglais brut, que le backend reconstruit
+TOUJOURS localement (meme raison). Les autres types ci-dessus portent un message engine deja humain,
+prefere par le backend (repli local uniquement si absent).
 
 ---
 

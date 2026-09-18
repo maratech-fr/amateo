@@ -415,6 +415,28 @@ class ParseV2ConstraintsTest(unittest.TestCase):
         result = parse_v2_constraints(constraints)
         assert result["coach_unavailability"] == {"coach-2": {(5, 0, 1440)}}
 
+    def test_unknown_family_and_type_surfaces_a_not_honored_diagnostic(self):
+        # A constraint whose family AND type are both unrecognised was dropped with
+        # only a server-side log — invisible to the manager. It must now ride the same
+        # diagnostics channel as the other target-less drops (constraint_not_honored).
+        constraints = [
+            {
+                "id": "c1",
+                "name": "Ma règle exotique",
+                "isActive": True,
+                "family": "UNKNOWN_FAMILY",
+                "type": "UNKNOWN_TYPE",
+                "scopeTargetId": "team-1",
+                "config": {},
+            }
+        ]
+        result = parse_v2_constraints(constraints)
+        warnings = [w for w in result["parse_warnings"] if w["type"] == "constraint_not_honored"]
+        assert len(warnings) == 1, f"Expected one not-honored diagnostic, got {result['parse_warnings']}"
+        message = warnings[0]["message"]
+        assert "UNKNOWN_FAMILY" in message, message
+        assert "UNKNOWN_TYPE" in message, message
+
 
 if __name__ == "__main__":
     unittest.main()
