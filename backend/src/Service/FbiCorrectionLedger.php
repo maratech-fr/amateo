@@ -11,6 +11,7 @@ use App\Entity\Venue;
 use App\Enum\FbiCorrectionCloseSource;
 use App\Enum\FbiCorrectionField;
 use App\Repository\FbiCorrectionRepository;
+use App\Service\Basketball\VenueLabelNormalizer;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\SecurityBundle\Security;
@@ -36,8 +37,41 @@ final class FbiCorrectionLedger
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly FbiCorrectionRepository $repository,
+        private readonly VenueLabelNormalizer $normalizer,
         private readonly Security $security,
     ) {}
+
+    /** L'entrée OUVERTE de ce (rencontre, champ), ou null. */
+    public function findOpen(Fixture $fixture, FbiCorrectionField $field): ?FbiCorrection
+    {
+        return $this->repository->findOpen($fixture->getId(), $field);
+    }
+
+    /**
+     * Les entrées OUVERTES d'une rencontre (tous champs) — pour tout fermer d'un coup
+     * quand un dépôt ne montre plus AUCUN écart.
+     *
+     * @return list<FbiCorrection>
+     */
+    public function findOpenByFixture(Fixture $fixture): array
+    {
+        return $this->repository->findOpenByFixture($fixture->getId());
+    }
+
+    /**
+     * FBI affiche-t-il TOUJOURS la valeur enregistrée (donc il n'a pas été corrigé) ?
+     * Comparaison par champ, mêmes littéraux que l'écart (venue normalisé, date `Y-m-d`,
+     * heure `H:i`). Vrai ⇒ ne pas re-créer d'écart à traiter, juste re-dater le témoin.
+     */
+    public function stillShowsRecordedValue(FbiCorrection $entry, ?string $sourceValue): bool
+    {
+        $recorded = $entry->getFbiValue();
+        if (FbiCorrectionField::VENUE === $entry->getField()) {
+            return $this->normalizer->normalize((string) $recorded) === $this->normalizer->normalize((string) $sourceValue);
+        }
+
+        return $recorded === $sourceValue;
+    }
 
     /**
      * Ouvre (ou rafraîchit) l'entrée « à corriger dans FBI » pour ce (rencontre, champ) :

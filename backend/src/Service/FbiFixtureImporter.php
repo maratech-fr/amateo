@@ -853,9 +853,26 @@ final class FbiFixtureImporter
                 // « la source a déplacé ce match » — la rencontre reste traitée.
                 $this->applyFieldTakeFile($existing, $field, $row, $now);
                 $existing->putPendingDeviation($this->pendingEntry($existing, $field, $vals, $channel, $now, true));
+                // (d) Fenêtre imminente : l'appli s'aligne d'office sur la source — toute
+                // entrée « à corriger dans FBI » de ce champ n'a plus d'objet, elle se ferme.
+                $this->closeOpenCorrection($existing, $field, $now);
                 $changed = true;
                 $effect = 'take_file';
             } else {
+                $openCorrection = $this->ledger->findOpen($existing, FbiCorrectionField::from($field));
+                if (null !== $openCorrection && $this->ledger->stillShowsRecordedValue($openCorrection, $vals['file'])) {
+                    // (a) FBI affiche TOUJOURS la valeur d'origine : le gestionnaire a déjà
+                    // tranché « garder l'appli », il n'y a rien de neuf à traiter — on ne
+                    // re-crée PAS d'écart, on re-date juste « vu dans FBI ».
+                    $this->ledger->refreshSeen($openCorrection, $now);
+
+                    continue;
+                }
+                if (null !== $openCorrection) {
+                    // (c) FBI affiche une TROISIÈME valeur : l'ancienne correction est
+                    // caduque (fermée par le dépôt) ET un écart normal s'ouvre à arbitrer.
+                    $this->ledger->closeBySource($openCorrection, $now);
+                }
                 $existing->putPendingDeviation($this->pendingEntry($existing, $field, $vals, $channel, $now, false));
             }
             $records[] = $this->deviationRecord($existing, $field, $vals, $divisionName, $effect, $status);
@@ -867,7 +884,13 @@ final class FbiFixtureImporter
         // ['venue']), elle ne touche PAS les entrées autoApplied date/heure posées le
         // même dépôt (piège vérifié).
         foreach ($scope ?? self::DEVIATION_FIELDS as $field) {
-            if (!isset($fields[$field]) && null !== $existing->getPendingDeviation($field)) {
+            if (isset($fields[$field])) {
+                continue;
+            }
+            // (b) Le champ ne diverge plus : FBI reflète de nouveau l'appli → l'entrée
+            // « à corriger dans FBI » est FAITE (fermée par le dépôt).
+            $this->closeOpenCorrection($existing, $field, $now);
+            if (null !== $existing->getPendingDeviation($field)) {
                 $existing->removePendingDeviation($field);
             }
         }
@@ -898,6 +921,11 @@ final class FbiFixtureImporter
     {
         $changed = false;
         $hadPending = $existing->hasPendingDeviations();
+        // Aucun écart : FBI reflète de nouveau l'appli sur TOUS les champs → toute
+        // entrée « à corriger dans FBI » de cette rencontre est faite (fermée par dépôt).
+        foreach ($this->ledger->findOpenByFixture($existing) as $entry) {
+            $this->ledger->closeBySource($entry, $now);
+        }
         foreach (self::DEVIATION_FIELDS as $field) {
             if (null !== $existing->getPendingDeviation($field)) {
                 $existing->removePendingDeviation($field);
@@ -1319,6 +1347,15 @@ final class FbiFixtureImporter
             return;
         }
         $existing->setReviewState(FixtureReviewState::OUT_OF_SYNC);
+    }
+
+    /** Ferme (par le dépôt) l'entrée « à corriger dans FBI » OUVERTE de ce champ, s'il y en a une. */
+    private function closeOpenCorrection(Fixture $fixture, string $field, DateTimeImmutable $now): void
+    {
+        $entry = $this->ledger->findOpen($fixture, FbiCorrectionField::from($field));
+        if (null !== $entry) {
+            $this->ledger->closeBySource($entry, $now);
+        }
     }
 
     /** The league re-decided: the match goes back to « à placer ». */

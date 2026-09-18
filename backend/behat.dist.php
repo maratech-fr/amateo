@@ -9,6 +9,7 @@ use App\Tests\Behat\ConflictTruthContext;
 use App\Tests\Behat\ConstraintHonoredContext;
 use App\Tests\Behat\EngagedTeamContext;
 use App\Tests\Behat\ExportContext;
+use App\Tests\Behat\FbiCorrectionContext;
 use App\Tests\Behat\FixtureReviewContext;
 use App\Tests\Behat\HolidayWeekContext;
 use App\Tests\Behat\LockContext;
@@ -60,6 +61,11 @@ return (new Config)
                 new Suite('traitement')
                     ->withPaths('%paths.base%/features/une-rencontre-importee-dit-si-elle-est-traitee.feature')
                     ->withContexts(FixtureReviewContext::class),
+            )
+            ->withSuite(
+                new Suite('fbi-a-corriger')
+                    ->withPaths('%paths.base%/features/ce-que-fbi-doit-refleter.feature')
+                    ->withContexts(FbiCorrectionContext::class),
             )
             ->withSuite(
                 new Suite('overlay')
