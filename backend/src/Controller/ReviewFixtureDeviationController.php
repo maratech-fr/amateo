@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Entity\Fixture;
+use App\Enum\FbiCorrectionField;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
+use App\Service\FbiCorrectionLedger;
 use App\Service\FbiFixtureImporter;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
@@ -46,6 +48,7 @@ final class ReviewFixtureDeviationController extends AbstractController
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly SocleGuard $socleGuard,
         private readonly FbiFixtureImporter $importer,
+        private readonly FbiCorrectionLedger $ledger,
         private readonly ClockInterface $clock,
     ) {}
 
@@ -93,10 +96,15 @@ final class ReviewFixtureDeviationController extends AbstractController
                 return $this->json(['error' => 'La valeur de la source pour cet écart est illisible.'], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
             $this->importer->applyFieldTakeFile($fixture, $field, $row, $now);
-        } elseif ('venue' === $field && FixtureStatus::UNPLACED === $fixture->getStatus()) {
-            // « Garder l'appli » sur l'écart salle d'un NON PLACÉ : on mémorise le
-            // libellé source (normalisé) pour l'idempotence (E) — le gymnase reste.
-            $this->importer->applyVenueKeepApp($fixture, (string) ($entry['sourceValue'] ?? ''));
+        } else {
+            // « Garder l'appli » : l'appli fait foi, FBI est en retard → une entrée
+            // « à corriger dans FBI ». (take_source, lui, n'ouvre jamais d'entrée.)
+            if ('venue' === $field && FixtureStatus::UNPLACED === $fixture->getStatus()) {
+                // Écart salle d'un NON PLACÉ : on mémorise le libellé source (normalisé)
+                // pour l'idempotence (E) — le gymnase reste.
+                $this->importer->applyVenueKeepApp($fixture, (string) ($entry['sourceValue'] ?? ''));
+            }
+            $this->ledger->open($fixture, FbiCorrectionField::from($field), $entry['appValue'] ?? null, $entry['sourceValue'] ?? null, $now);
         }
         $fixture->removePendingDeviation($field);
 

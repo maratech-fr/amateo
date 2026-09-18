@@ -12,6 +12,7 @@ use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\Venue;
 use App\Enum\CompetitionType;
+use App\Enum\FbiCorrectionField;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
@@ -101,6 +102,7 @@ final class FbiFixtureImporter
         private readonly VenueLabelNormalizer $labelNormalizer,
         private readonly VenueAliasResolver $venueAliasResolver,
         private readonly ClubDay $clubDay,
+        private readonly FbiCorrectionLedger $ledger,
     ) {}
 
     /**
@@ -545,7 +547,7 @@ final class FbiFixtureImporter
                 if ($row['kickoffTime'] instanceof DateTimeImmutable) {
                     $existing->setKickoffTime($row['kickoffTime']);
                 }
-                $this->demoteSubmitted($existing, $now);
+                $this->demoteSubmitted($existing, $now, 'kickoff', $row['kickoffTime']?->format('H:i'));
                 break;
             case 'venue':
                 // Un NON PLACÉ (les 20 cas) : après avoir vidé le gymnase erroné, on
@@ -840,6 +842,9 @@ final class FbiFixtureImporter
                 } else {
                     $existing->removePendingDeviation($field);
                 }
+                // « Garder l'appli » = FBI est en retard → une entrée « à corriger dans
+                // FBI ». Les DEUX canaux (xlsx + API) passent par ce moteur partagé.
+                $this->ledger->open($existing, FbiCorrectionField::from($field), $vals['app'], $vals['file'], $now);
                 $effect = 'keep_app';
             } elseif ($sourceIsAuthoritative) {
                 // Décision P4-199 — « FBI fait foi » : la source est appliquée
@@ -1359,11 +1364,20 @@ final class FbiFixtureImporter
         $existing->markReviewed($now);
     }
 
-    /** D2: an in-place take_file un-submits a SUBMITTED/VALIDATED fixture to PLACED. */
-    private function demoteSubmitted(Fixture $fixture, DateTimeImmutable $now): void
+    /**
+     * D2: an in-place take_file un-submits a SUBMITTED/VALIDATED fixture to PLACED.
+     * La coche FBI portait une mauvaise valeur : la rencontre retombe « à saisir », et
+     * on POSE le mémo `fbiEcho` (« FBI affiche `$sourceValue` ») pour l'afficher sur la
+     * ligne « à saisir » de la liste FBI. Sans rétrogradation (déjà PLACED/UNPLACED),
+     * aucun mémo — il n'y a rien à re-saisir de plus qu'avant.
+     */
+    private function demoteSubmitted(Fixture $fixture, DateTimeImmutable $now, string $field, ?string $sourceValue): void
     {
         if (FixtureStatus::SUBMITTED === $fixture->getStatus() || FixtureStatus::VALIDATED === $fixture->getStatus()) {
             $fixture->setStatus(FixtureStatus::PLACED, $now);
+            if (null !== $sourceValue) {
+                $fixture->setFbiEcho(['field' => $field, 'value' => $sourceValue, 'at' => $now->format(DateTimeImmutable::ATOM)]);
+            }
         }
     }
 

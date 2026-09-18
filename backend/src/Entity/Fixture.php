@@ -23,6 +23,7 @@ use Doctrine\ORM\Mapping as ORM;
  * (coords, travel) is palier B.
  *
  * @phpstan-type PendingDeviation array{field: 'date'|'kickoff'|'venue', appValue: string|null, sourceValue: string|null, channel: 'FBI_XLSX'|'FFBB_API', seenAt: string, autoApplied: bool}
+ * @phpstan-type FbiEcho array{field: string, value: string, at: string}
  */
 #[ORM\Entity(repositoryClass: FixtureRepository::class)]
 #[ORM\Table(name: 'fixture')]
@@ -180,6 +181,19 @@ class Fixture implements TenantOwnedInterface
     #[ORM\Column(type: 'json', options: ['default' => '[]'])]
     private array $pendingDeviations = [];
 
+    /**
+     * Mémo « FBI affiche encore … » posé quand un « prendre le fichier » sur l'HEURE
+     * rétrograde ce domicile de SUBMITTED/VALIDATED à PLACED (la coche FBI portait une
+     * mauvaise heure) : la rencontre est retombée « à saisir dans FBI » et FBI montre
+     * la valeur `value` pour le champ `field` (posé à l'instant `at`). Sert la mention
+     * de la ligne « à saisir » de la liste FBI. Effacé dès que le statut repasse
+     * SUBMITTED/VALIDATED ({@see setStatus}) — la rencontre est de nouveau à jour.
+     *
+     * @var FbiEcho|null
+     */
+    #[ORM\Column(type: 'json', nullable: true)]
+    private ?array $fbiEcho = null;
+
     public function __construct()
     {
         $this->id = $this->newUuid();
@@ -334,6 +348,12 @@ class Fixture implements TenantOwnedInterface
     public function setStatus(FixtureStatus $status, DateTimeImmutable $now): self
     {
         $this->status = $status;
+        // Le mémo « FBI affiche … » ne vaut que tant que la rencontre est « à saisir » :
+        // dès qu'elle repasse SUBMITTED/VALIDATED (re-saisie dans FBI, ou attestée D9),
+        // FBI est de nouveau à jour — le mémo n'a plus d'objet.
+        if (FixtureStatus::SUBMITTED === $status || FixtureStatus::VALIDATED === $status) {
+            $this->fbiEcho = null;
+        }
         if (FixtureStatus::UNPLACED !== $status && [] === $this->pendingDeviations) {
             $this->markReviewed($now);
         }
@@ -422,6 +442,24 @@ class Fixture implements TenantOwnedInterface
     public function clearPendingDeviations(): self
     {
         $this->pendingDeviations = [];
+
+        return $this;
+    }
+
+    /**
+     * @return FbiEcho|null
+     */
+    public function getFbiEcho(): ?array
+    {
+        return $this->fbiEcho;
+    }
+
+    /**
+     * @param FbiEcho|null $fbiEcho
+     */
+    public function setFbiEcho(?array $fbiEcho): self
+    {
+        $this->fbiEcho = $fbiEcho;
 
         return $this;
     }
