@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures";
 
-import { ensureValidated, expectNoContrastViolations, forceTheme, loginSeededClub, registerAndVerify, settleVeil, uniqueAra } from "./support";
+import { ensureValidated, expectNoA11yViolations, expectNoContrastViolations, forceTheme, loginSeededClub, registerAndVerify, settleVeil, uniqueAra } from "./support";
 
 /**
  * WCAG 2.2 AA colour-contrast (1.4.3) on the real rendered app — the axis jsdom
@@ -61,16 +61,18 @@ for (const mode of MODES) {
 }
 
 /**
- * A11Y-22 — les écrans AUTHENTIFIÉS denses (`/matchs`, `/matchs/semaine-type`, `/planning`,
- * `/club`) portent les grilles et textes que ce lot a corrigés (opacité → grayscale / jeton plein,
- * fantômes en `text-muted-foreground` plein, etc.). axe sur les écrans PUBLICS ne les peint jamais :
- * on connecte le club seedé, on amène le plan à « validé » (matchs débloqués), et on scanne le
- * contraste (WCAG 1.4.3) sur chaque écran, DANS LES DEUX THÈMES. Chaque scan exige un TÉMOIN (une
- * carte / grille rendue) — un scan sur écran vide ne prouve rien — et attend la levée du voile.
+ * A11Y-22/23/24 — les écrans AUTHENTIFIÉS denses (`/matchs`, `/matchs/semaine-type`, `/planning`,
+ * `/club`) portent les grilles, onglets et régions que ce lot a corrigés. axe sur les écrans PUBLICS
+ * ne les peint jamais : on connecte le club seedé, on amène le plan à « validé » (matchs débloqués),
+ * et on lance un scan axe COMPLET (`wcag2a`/`wcag2aa`/`wcag21aa`) sur chaque écran, DANS LES DEUX
+ * THÈMES. C'est ce scan structurel qui garde A11Y-23 (`aria-valid-attr-value` : un `aria-controls`
+ * vers un id absent) et A11Y-24 (`scrollable-region-focusable`), en plus du contraste (color-contrast
+ * est tagué wcag2aa). Chaque scan exige un TÉMOIN (une carte / grille rendue) — un scan sur écran vide
+ * ne prouve rien — et attend la levée du voile.
  *
- * NB : scan SCOPÉ au contraste (règle établie du dépôt, `expectNoContrastViolations`), et non un
- * scan structurel large — celui-ci remonterait de la dette a11y préexistante hors du périmètre de
- * ce lot. Onboarding idempotent : seul le 1ᵉʳ thème déclenche une génération (CP-SAT réelle).
+ * Tenable : l'audit du 18/09 a exécuté exactement ce scan sur la base BCCL réelle et n'a trouvé
+ * AUCUNE violation structurelle sur ces écrans, hormis `/matchs/semaine-type` (les deux défauts que
+ * ce lot corrige). Onboarding idempotent : seul le 1ᵉʳ thème déclenche une génération (CP-SAT réelle).
  */
 const AUTH_SCREENS: { path: string; label: string }[] = [
   { path: "/matchs", label: "matchs · calendrier" },
@@ -92,7 +94,7 @@ for (const mode of MODES) {
       await page.goto(screen.path);
       await settleVeil(page);
       await expect(page.locator(WITNESS).first(), `${screen.label} (${mode}) : aucun témoin (carte/grille) rendu — un scan sur écran vide ne prouve rien`).toBeVisible({ timeout: 20_000 });
-      await expectNoContrastViolations(page, `${screen.label} (${mode})`);
+      await expectNoA11yViolations(page, `${screen.label} (${mode})`);
     }
   });
 }

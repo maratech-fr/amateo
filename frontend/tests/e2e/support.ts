@@ -121,6 +121,28 @@ export async function expectNoContrastViolations(page: Page, label: string, incl
 }
 
 /**
+ * Scan axe COMPLET (structurel + contraste) contre l'app réelle. Là où `expectNoContrastViolations`
+ * ne garde QUE la couleur, celui-ci garde tout le référentiel `wcag2a`/`wcag2aa`/`wcag21aa` : c'est
+ * lui qui attrape A11Y-23 (`aria-valid-attr-value` — un `aria-controls` vers un id absent) et A11Y-24
+ * (`scrollable-region-focusable` — une région défilante non atteignable au clavier), défauts que
+ * jsdom (vitest) ne voit pas. `include` scope le scan à un sous-arbre. `label` nomme l'écran (+ thème)
+ * dans la sortie ; chaque violation est préfixée de son id de règle pour un diagnostic direct.
+ */
+export async function expectNoA11yViolations(
+  page: Page,
+  label: string,
+  tags: string[] = ["wcag2a", "wcag2aa", "wcag21aa"],
+  include?: string,
+): Promise<void> {
+  const builder = new AxeBuilder({ page }).withTags(tags);
+  const results = await (include === undefined ? builder : builder.include(include)).analyze();
+  const offenders = results.violations.flatMap((v) =>
+    v.nodes.map((n) => `  [${v.id}] ${n.target.join(" ")} — ${(n.failureSummary ?? "").split("\n").join(" ")}\n    HTML: ${n.html}`),
+  );
+  expect(offenders, `${label}: axe (${tags.join(", ")}) violations:\n${offenders.join("\n")}`).toEqual([]);
+}
+
+/**
  * Seeded dev club (BasketballInit) — full data, but INCOMPLETE onboarding. Le login et l'onboarding
  * jusqu'à « planning principal validé » vivent ICI (maison unique) : `matches.spec` en porte
  * historiquement une copie (candidat de convergence — à faire pointer sur ces exports).
