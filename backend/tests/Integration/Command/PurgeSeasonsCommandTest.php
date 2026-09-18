@@ -239,12 +239,12 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
         $conn = $this->em->getConnection();
         $conn->executeStatement(
             'INSERT INTO opponent_venue_suggestion (id, ffbb_organisme_code, venue_external_ref, venue_label, city, postal_code, latitude, longitude, source, chosen_by_count, last_chosen_at, created_at, updated_at)'
-            . " VALUES (gen_random_uuid(), :code, :ref, 'Gymnase Test', 'Ville', '69000', 45.7, 4.8, 'MANUAL', 2, now(), now(), now())",
+            . ' VALUES (gen_random_uuid(), :code, :ref, \'Gymnase Test\', \'Ville\', \'69000\', 45.7, 4.8, \'MANUAL\', 2, now(), now(), now())',
             ['code' => $this->oppCode, 'ref' => $this->oppRef],
         );
         $conn->executeStatement(
             'INSERT INTO opponent_travel (id, version, created_at, updated_at, club_id, season_id, opponent_organisme_code, opponent_team_key, travel_minutes, source, override_venue_external_ref, override_venue_label, override_latitude, override_longitude, resolved_at)'
-            . " VALUES (gen_random_uuid(), 1, now(), now(), :cid, :sid, :code, NULL, 42, 'MANUAL', :ref, 'Gymnase Test', 45.7, 4.8, now())",
+            . ' VALUES (gen_random_uuid(), 1, now(), now(), :cid, :sid, :code, NULL, 42, \'MANUAL\', :ref, \'Gymnase Test\', 45.7, 4.8, now())',
             ['cid' => $club->getId(), 'sid' => $old->getId(), 'code' => $this->oppCode, 'ref' => $this->oppRef],
         );
 

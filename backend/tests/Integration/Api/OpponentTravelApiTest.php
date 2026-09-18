@@ -24,8 +24,8 @@ use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
-use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\RateLimiter\RateLimiterFactory;
 
 /**
  * P2-54 RMM-9 PR-3 — the read shape of GET /api/opponents/travel (the display feed

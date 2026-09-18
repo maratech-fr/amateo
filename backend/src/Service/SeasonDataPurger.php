@@ -63,6 +63,37 @@ final class SeasonDataPurger
     use DisablesTenantFilters;
 
     /**
+     * Tenant, mais purgées AUTREMENT que par la boucle générique — chacune avec sa raison.
+     * Le test PurgeCompletenessTest exige que toute entité tenant soit couverte ici,
+     * dans une des deux boucles, ou nommément exclue.
+     *
+     * @var array<string, string> table => comment / pourquoi
+     */
+    public const HANDLED_APART = [
+        'team_tag_assignment' => 'purgé par season_id seul (BCK-11 : porte un club_id mais le périmètre reste la saison, RLS borne le club)',
+        'season' => 'la ligne pivot elle-même — supprimée conditionnellement ($deleteSeasonRow : purge de rétention / effacement, jamais le reset)',
+    ];
+
+    /**
+     * Tenant, VOLONTAIREMENT hors de la purge de SAISON — chacune avec sa raison. Une
+     * exclusion est une décision, pas un constat (patron RgpdExportService).
+     *
+     * @var array<string, string> table => pourquoi
+     */
+    public const EXCLUDED_FROM_SEASON_PURGE = [
+        // Ces cinq tables sont club-scoped SANS saison : les borner par la saison n'a pas
+        // de sens. Leur seule porte de sortie est l'effacement RGPD du club (ErasedClubPurger,
+        // delete par clubId), pas la purge de saison.
+        'solver_metrics' => 'club-scoped sans saison — porte de sortie ErasedClubPurger (télémétrie append-only, décision fondateur 2026-07-18)',
+        'feedback' => 'club-scoped sans saison — porte de sortie ErasedClubPurger',
+        'team_tag' => 'club-scoped sans saison — porte de sortie ErasedClubPurger',
+        'sport_category' => 'club-scoped sans saison — porte de sortie ErasedClubPurger',
+        'club_user' => 'club-scoped sans saison — porte de sortie ErasedClubPurger',
+        'audit_log' => 'accountability : rétention propre (app:audit:purge) ; l\'effacement écrit une ligne d\'audit APRÈS la purge',
+        'coach_wish_token' => 'part par la FK ON DELETE CASCADE de sa campagne (jamais supprimé directement)',
+    ];
+
+    /**
      * Enfants SANS colonne club/season, résolus par leur PARENT (sous-requête sur
      * le club+saison du parent) : entityClass => [champ de référence, classe parente].
      * L'ordre est l'ordre de suppression — les enfants avant le DELETE de leur parent,
@@ -156,37 +187,6 @@ final class SeasonDataPurger
         // avant Venue (elle pointe venue_a_id/venue_b_id, aucune FK en base).
         VenueTravelTime::class,
         Venue::class,
-    ];
-
-    /**
-     * Tenant, mais purgées AUTREMENT que par la boucle générique — chacune avec sa raison.
-     * Le test PurgeCompletenessTest exige que toute entité tenant soit couverte ici,
-     * dans une des deux boucles, ou nommément exclue.
-     *
-     * @var array<string, string> table => comment / pourquoi
-     */
-    public const HANDLED_APART = [
-        'team_tag_assignment' => 'purgé par season_id seul (BCK-11 : porte un club_id mais le périmètre reste la saison, RLS borne le club)',
-        'season' => 'la ligne pivot elle-même — supprimée conditionnellement ($deleteSeasonRow : purge de rétention / effacement, jamais le reset)',
-    ];
-
-    /**
-     * Tenant, VOLONTAIREMENT hors de la purge de SAISON — chacune avec sa raison. Une
-     * exclusion est une décision, pas un constat (patron RgpdExportService).
-     *
-     * @var array<string, string> table => pourquoi
-     */
-    public const EXCLUDED_FROM_SEASON_PURGE = [
-        // Ces cinq tables sont club-scoped SANS saison : les borner par la saison n'a pas
-        // de sens. Leur seule porte de sortie est l'effacement RGPD du club (ErasedClubPurger,
-        // delete par clubId), pas la purge de saison.
-        'solver_metrics' => 'club-scoped sans saison — porte de sortie ErasedClubPurger (télémétrie append-only, décision fondateur 2026-07-18)',
-        'feedback' => 'club-scoped sans saison — porte de sortie ErasedClubPurger',
-        'team_tag' => 'club-scoped sans saison — porte de sortie ErasedClubPurger',
-        'sport_category' => 'club-scoped sans saison — porte de sortie ErasedClubPurger',
-        'club_user' => 'club-scoped sans saison — porte de sortie ErasedClubPurger',
-        'audit_log' => 'accountability : rétention propre (app:audit:purge) ; l\'effacement écrit une ligne d\'audit APRÈS la purge',
-        'coach_wish_token' => 'part par la FK ON DELETE CASCADE de sa campagne (jamais supprimé directement)',
     ];
 
     public function __construct(
@@ -307,7 +307,7 @@ final class SeasonDataPurger
         $rows = $this->entityManager->getConnection()->fetchAllAssociative(
             'SELECT opponent_organisme_code, override_venue_external_ref FROM opponent_travel'
             . ' WHERE club_id = :clubId AND season_id = :seasonId'
-            . " AND source = 'MANUAL' AND override_venue_external_ref IS NOT NULL",
+            . ' AND source = \'MANUAL\' AND override_venue_external_ref IS NOT NULL',
             ['clubId' => $clubId, 'seasonId' => $seasonId],
         );
 

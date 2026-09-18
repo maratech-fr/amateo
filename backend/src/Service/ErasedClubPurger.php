@@ -37,6 +37,18 @@ final class ErasedClubPurger
     use DisablesTenantFilters;
 
     /**
+     * Tenant, VOLONTAIREMENT hors de l'effacement DIRECT — chacune avec sa raison. Le
+     * test PurgeCompletenessTest exige que toute entité tenant soit purgée (par saison
+     * via SeasonDataPurger, ou par club ici) ou nommément exclue ici.
+     *
+     * @var array<string, string> table => pourquoi
+     */
+    public const EXCLUDED_FROM_ERASURE = [
+        'audit_log' => 'accountability : l\'effacement du club ÉCRIT lui-même une ligne d\'audit (CLUB_PURGED) — le journal a sa propre rétention (app:audit:purge)',
+        'coach_wish_token' => 'part par la FK ON DELETE CASCADE de sa campagne (supprimée avec chaque saison par SeasonDataPurger)',
+    ];
+
+    /**
      * Entités CLUB-scoped SANS saison, purgées par club_id à l'effacement RGPD (les
      * tables tenant+saison partent, elles, par SeasonDataPurger itéré sur chaque saison).
      * La boucle de purge itère cette constante.
@@ -55,18 +67,6 @@ final class ErasedClubPurger
         TeamTag::class,
         SportCategory::class,
         ClubUser::class,
-    ];
-
-    /**
-     * Tenant, VOLONTAIREMENT hors de l'effacement DIRECT — chacune avec sa raison. Le
-     * test PurgeCompletenessTest exige que toute entité tenant soit purgée (par saison
-     * via SeasonDataPurger, ou par club ici) ou nommément exclue ici.
-     *
-     * @var array<string, string> table => pourquoi
-     */
-    public const EXCLUDED_FROM_ERASURE = [
-        'audit_log' => 'accountability : l\'effacement du club ÉCRIT lui-même une ligne d\'audit (CLUB_PURGED) — le journal a sa propre rétention (app:audit:purge)',
-        'coach_wish_token' => 'part par la FK ON DELETE CASCADE de sa campagne (supprimée avec chaque saison par SeasonDataPurger)',
     ];
 
     public function __construct(

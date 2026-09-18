@@ -668,7 +668,7 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         $this->scopeGucToClub($season->getClubId());
         $this->conn()->executeStatement(
             'INSERT INTO opponent_travel (id, version, created_at, updated_at, club_id, season_id, opponent_organisme_code, opponent_team_key, travel_minutes, source, resolved_at)'
-            . " VALUES (gen_random_uuid(), 1, now(), now(), :cid, :sid, :code, NULL, :min, 'AUTO', now())",
+            . ' VALUES (gen_random_uuid(), 1, now(), now(), :cid, :sid, :code, NULL, :min, \'AUTO\', now())',
             ['cid' => $season->getClubId(), 'sid' => $season->getId(), 'code' => $code, 'min' => $oneWayMinutes],
         );
     }

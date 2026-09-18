@@ -438,7 +438,7 @@ final class AccountErasureTest extends WebTestCase
     {
         $this->em()->getConnection()->executeStatement(
             'INSERT INTO opponent_venue_suggestion (id, ffbb_organisme_code, venue_external_ref, venue_label, city, postal_code, latitude, longitude, source, chosen_by_count, last_chosen_at, created_at, updated_at)'
-            . " VALUES (gen_random_uuid(), :code, :ref, 'Gymnase', 'Ville', '69000', 45.7, 4.8, 'MANUAL', :count, now(), now(), now())",
+            . ' VALUES (gen_random_uuid(), :code, :ref, \'Gymnase\', \'Ville\', \'69000\', 45.7, 4.8, \'MANUAL\', :count, now(), now(), now())',
             ['code' => $code, 'ref' => $ref, 'count' => $count],
         );
     }
@@ -449,7 +449,7 @@ final class AccountErasureTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $this->em()->getConnection()->executeStatement(
             'INSERT INTO opponent_travel (id, version, created_at, updated_at, club_id, season_id, opponent_organisme_code, opponent_team_key, travel_minutes, source, override_venue_external_ref, override_venue_label, override_latitude, override_longitude, resolved_at)'
-            . " VALUES (gen_random_uuid(), 1, now(), now(), :cid, :sid, :code, NULL, 30, :source, :ref, 'Gymnase', 45.7, 4.8, now())",
+            . ' VALUES (gen_random_uuid(), 1, now(), now(), :cid, :sid, :code, NULL, 30, :source, :ref, \'Gymnase\', 45.7, 4.8, now())',
             ['cid' => $clubId, 'sid' => $seasonId, 'code' => $code, 'ref' => $ref, 'source' => $source],
         );
         $this->clearGuc();
