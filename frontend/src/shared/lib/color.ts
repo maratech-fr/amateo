@@ -53,15 +53,80 @@ export function lighten(hex: string, amount: number): string {
   });
 }
 
+/** Mix a colour toward black (amount 0..1) — used to darken a light accent in light mode. */
+function darken(hex: string, amount: number): string {
+  const rgb = parseHex(hex);
+  if (null === rgb) {
+    return hex;
+  }
+  return toHex({ r: rgb.r * (1 - amount), g: rgb.g * (1 - amount), b: rgb.b * (1 - amount) });
+}
+
+/** WCAG contrast ratio between two colours (1..21). */
+function contrastRatio(a: string, b: string): number {
+  const la = luminance(a);
+  const lb = luminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
 /**
- * Accent adjusted for a theme mode: in dark mode a very dark club colour is
- * lifted a bit so it stays legible on dark surfaces; otherwise used as-is.
+ * Surfaces du thème, en sRGB, converties des oklch de `src/index.css` (bloc `:root` clair, bloc
+ * `.dark`) — à garder synchronisées avec ce fichier :
+ *   clair  : --background oklch(0.99 0 0) → #fcfcfc ; --card oklch(1 0 0) → #ffffff
+ *   sombre : --background oklch(0.19 0.01 260) → #111418 ; --card oklch(0.23 0.01 260) → #1a1d22
+ */
+const SURFACES: Record<"dark" | "light", { bg: string; card: string }> = {
+  light: { bg: "#fcfcfc", card: "#ffffff" },
+  dark: { bg: "#111418", card: "#1a1d22" },
+};
+
+const AA = 4.5; // WCAG 1.4.3 — texte normal
+const STEP = 0.04; // ~4 % par pas (mix vers noir en clair, vers blanc en sombre)
+
+/**
+ * Accent d'un club ajusté pour un mode, DÉRIVÉ PAR LE CONTRASTE (A11Y-22, décision fondateur 5).
+ * Un accent sert de TEXTE (`text-accent` sur `--background`/`--card`) : il doit clearer AA (4,5:1)
+ * sur LES DEUX surfaces de son mode, jamais rester lisible sur la seule plus foncée. En clair on
+ * assombrit par pas (mix vers `#000000`), en sombre on éclaircit (mix vers `#ffffff`), jusqu'à
+ * passer sur bg ET card. Une couleur déjà conforme est rendue TELLE QUELLE ; une non-hex aussi.
  */
 export function accentForMode(hex: string, mode: "dark" | "light"): string {
-  if ("dark" === mode && luminance(hex) < 0.22) {
-    return lighten(hex, 0.35);
+  if (null === parseHex(hex)) {
+    return hex;
   }
-  return hex;
+  const { bg, card } = SURFACES[mode];
+  const conforms = (c: string): boolean => contrastRatio(c, bg) >= AA && contrastRatio(c, card) >= AA;
+  let current = hex;
+  // Borne de sûreté : la suite converge vers noir (clair) / blanc (sombre), qui clearent AA.
+  for (let guard = 0; guard < 64 && !conforms(current); guard++) {
+    current = "light" === mode ? darken(current, STEP) : lighten(current, STEP);
+  }
+  return current;
+}
+
+/**
+ * Teinte de SURVOL d'un bouton accent (jeton `--accent-hover`), DÉRIVÉE PAR LE CONTRASTE.
+ * Le survol NE change PAS le texte du bouton : il garde le MÊME `readableForeground(accent)` que
+ * le repos (jamais recalculé, sinon le libellé changerait de couleur au survol). L'ancien
+ * `hover:opacity-90` compositait l'accent OPAQUE vers la surface — sur fond clair il ÉCLAIRCISSAIT
+ * le fond pendant que le texte blanc restait blanc, faisant chuter le contraste (blanc/accent :
+ * 4,85 → 4,26, < AA). On s'ÉLOIGNE donc de la surface : assombrir en clair, éclaircir en sombre —
+ * le sens qui MONTE le contraste avec le texte du repos. Au moins UN pas (survol visiblement
+ * distinct du repos — retour visuel), puis on continue jusqu'à AA (garanti au 1er pas ici, la
+ * boucle est un filet). Entrée non-hex rendue telle quelle.
+ */
+export function accentHoverForMode(accent: string, mode: "dark" | "light"): string {
+  if (null === parseHex(accent)) {
+    return accent;
+  }
+  const fg = readableForeground(accent);
+  const ok = (c: string): boolean => contrastRatio(fg, c) >= AA;
+  // Toujours au moins un pas : le survol DOIT différer du repos (affordance).
+  let current = "light" === mode ? darken(accent, STEP) : lighten(accent, STEP);
+  for (let guard = 0; guard < 64 && !ok(current); guard++) {
+    current = "light" === mode ? darken(current, STEP) : lighten(current, STEP);
+  }
+  return current;
 }
 
 /**

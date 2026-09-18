@@ -1,6 +1,6 @@
-import { expect, test } from "./fixtures";
+import { expect, type Locator, type Page, test } from "./fixtures";
 
-import { expectNoContrastViolations, forceTheme, registerAndVerify, settleVeil, uniqueAra } from "./support";
+import { ensureValidated, expectNoA11yViolations, expectNoContrastViolations, forceTheme, loginSeededClub, registerAndVerify, settleVeil, uniqueAra } from "./support";
 
 /**
  * WCAG 2.2 AA colour-contrast (1.4.3) on the real rendered app — the axis jsdom
@@ -57,6 +57,148 @@ for (const mode of MODES) {
     // valide alors la vraie couleur (`text-foreground`, AA). cf. `settleVeil`.
     await settleVeil(page);
     await expectNoContrastViolations(page, `wizard · gymnases (${mode})`);
+  });
+}
+
+/**
+ * A11Y-22/23/24 — les écrans AUTHENTIFIÉS denses (`/matchs`, `/matchs/semaine-type`, `/planning`,
+ * `/club`) portent les grilles, onglets et régions que ce lot a corrigés. axe sur les écrans PUBLICS
+ * ne les peint jamais : on connecte le club seedé, on amène le plan à « validé » (matchs débloqués),
+ * et on lance un scan axe COMPLET (`wcag2a`/`wcag2aa`/`wcag21aa`) sur chaque écran, DANS LES DEUX
+ * THÈMES. C'est ce scan structurel qui garde A11Y-23 (`aria-valid-attr-value` : un `aria-controls`
+ * vers un id absent) et A11Y-24 (`scrollable-region-focusable`), en plus du contraste (color-contrast
+ * est tagué wcag2aa). Chaque scan exige un TÉMOIN (une grille / région / carte RENDUE) — un scan sur
+ * écran vide ne prouve rien — et attend la levée du voile.
+ *
+ * ⚠ Un e2e crée ce qu'il vérifie (mémoire dépôt, 3 PR rougies). Le club seedé CI a des habitudes de
+ * semaine type et un planning (via `ensureValidated`) mais AUCUNE rencontre (`app:bccl:seed` pose des
+ * `TeamMatchHabit`/`MatchSlotRotation`, jamais de `Fixture`). `/matchs` rend donc un EmptyState
+ * « Aucun match importé » (`CalendarPage.tsx:528`), pas la grille : on lui POSTe un amical (patron
+ * `matches-consulter.spec.ts`), nettoyé en `finally`. Les trois autres écrans ont une donnée GARANTIE
+ * par le seed / l'onboarding (voir chaque témoin). L'audit du 18/09 a exécuté ce scan sur la base BCCL
+ * réelle (291 rencontres) sans violation, hormis `/matchs/semaine-type` (les deux défauts corrigés).
+ * Onboarding idempotent : seul le 1ᵉʳ thème déclenche une génération (CP-SAT réelle).
+ */
+function ymd(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+/** Le prochain samedi (Y-m-d) à au moins `minAhead` jours d'aujourd'hui — une semaine future VIERGE. */
+function nextSaturdayAtLeast(minAhead: number): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + minAhead);
+  while (6 !== d.getDay()) {
+    d.setDate(d.getDate() + 1); // 6 = samedi
+  }
+  return ymd(d);
+}
+/** Amène la semaine affichée sur celle qui contient `target`, en cliquant `btn` (‹ ou ›) au plus
+ * `max` fois. Un locator qui résout PLUSIEURS éléments ÉCHOUE en le disant (jamais avalé en `false`). */
+async function stepUntilVisible(btn: Locator, target: Locator, max: number): Promise<boolean> {
+  const seen = async (): Promise<boolean> => {
+    const n = await target.count();
+    if (n > 1) {
+      throw new Error(`stepUntilVisible: locator ambigu (${n} éléments) — scoper au conteneur (grille)`);
+    }
+    return 1 === n && (await target.first().isVisible());
+  };
+  if (await seen()) {
+    return true;
+  }
+  for (let i = 0; i < max; i++) {
+    if (!(await btn.isEnabled())) {
+      break;
+    }
+    await btn.click();
+    if (await seen()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Témoin PAR ÉCRAN : un locator qui prouve un CONTENU rendu (pas seulement le gabarit). Le témoin
+// GLOBAL précédent (`[data-testid="weekend-grid"], [role="region"], [class*="shadow-sm"]`) était trop
+// étroit — la grille /planning (`WeekGrid`) ne porte NI carte `shadow-sm` NI `role="region"` NI
+// testid, si bien qu'axe scannait une page pourtant PEINTE (heading + boutons de créneaux) et le
+// témoin la déclarait « vide ». Chaque écran désigne donc sa propre preuve de contenu, GARANTIE en CI.
+const AUTH_SCREENS: { path: string; label: string; witness: (page: Page) => Locator }[] = [
+  // `/matchs/semaine-type` : la région nommée de `TypicalWeekendGrid.tsx:92`, rendue dès qu'il existe
+  // ≥1 habitude (`columns.length > 0`). Le seed pose 32 `TeamMatchHabit` (`BcclSeeder.php:1407-1424`).
+  { path: "/matchs/semaine-type", label: "matchs · semaine type", witness: (page) => page.getByRole("region", { name: "Grille de la semaine type" }) },
+  // `/planning` : une carte de session RÉELLE (`WeekGrid` `data-slot-id`, WeekGrid.tsx:429/471), posée
+  // par le planning que `ensureValidated` génère+valide. Le bouton de verrou n'existe PAS sur un plan
+  // validé (lecture seule → cadenas passif, `onToggleLock` undefined, WeekGrid.tsx:188-191) : on vise
+  // un créneau PLACÉ, présent dans la vue par défaut « Par gymnase ».
+  { path: "/planning", label: "planning · grille", witness: (page) => page.locator("[data-slot-id]") },
+  // `/club` : le titre de page `<h1>Gestion du club</h1>` (`ClubPage.tsx:644`), toujours rendu — contenu
+  // de la page, pas du gabarit (l'`AppLayout` ne porte aucun h1).
+  { path: "/club", label: "club · fiche", witness: (page) => page.getByRole("heading", { level: 1 }) },
+];
+
+for (const mode of MODES) {
+  test(`contrast — authenticated screens (${mode})`, async ({ page }) => {
+    test.setTimeout(300_000); // le 1er thème conduit une génération CP-SAT réelle
+    await forceTheme(page, mode);
+    await loginSeededClub(page);
+    await ensureValidated(page);
+
+    // ── /matchs : provisionner une rencontre (le club CI n'en a AUCUNE) ─────────────────────────
+    // Les cookies du contexte suivent `page.request` (JWT httpOnly) : on prend la 1ʳᵉ équipe + le 1ᵉʳ
+    // gymnase, on POSTe un amical HOME PLACÉ (venue + coup d'envoi → il tombe dans une case de grille).
+    const teamsRes = await page.request.get("/api/teams?itemsPerPage=100");
+    expect(teamsRes.ok(), "GET /api/teams").toBeTruthy();
+    const teamId = ((await teamsRes.json()).member?.[0]?.id ?? undefined) as string | undefined;
+    const venuesRes = await page.request.get("/api/venues?itemsPerPage=100");
+    expect(venuesRes.ok(), "GET /api/venues").toBeTruthy();
+    const venueId = ((await venuesRes.json()).member?.[0]?.id ?? undefined) as string | undefined;
+    expect(teamId, "le club seedé a au moins une équipe").toBeTruthy();
+    expect(venueId, "le club seedé a au moins un gymnase").toBeTruthy();
+
+    const opponent = `A11Y-${mode.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+    const created = await page.request.post("/api/fixtures", {
+      data: { teamId, matchDate: nextSaturdayAtLeast(7), homeAway: "HOME", opponentLabel: opponent, venueId, kickoffTime: "15:00", competitionId: null },
+    });
+    expect(created.ok(), "POST /api/fixtures").toBeTruthy();
+    const fixtureId = (await created.json()).id as string;
+    try {
+      await page.goto("/matchs");
+      // « Amical » est DÉCOCHÉ par défaut (#916) — notre amical (`competitionId: null`) serait invisible,
+      // la grille resterait un EmptyState. On le coche AVANT de chercher la semaine (une semaine 100 %
+      // masquée n'entre pas dans le sélecteur : `weekends` dérive des fixtures VISIBLES).
+      const amical = page.getByRole("button", { name: "Amical", exact: true });
+      if ("true" !== (await amical.getAttribute("aria-pressed"))) {
+        await amical.click();
+      }
+      await expect(amical).toHaveAttribute("aria-pressed", "true");
+      // Rejoindre la semaine de NOTRE rencontre (indépendant de l'horloge serveur). Le libellé est
+      // scopé à la grille (`weekend-grid`) : sans conflit, il n'est peint qu'une fois, dans la case.
+      const grid = page.getByTestId("weekend-grid");
+      const cell = grid.getByText(opponent, { exact: false });
+      const nextWeek = page.getByRole("button", { name: "Semaine suivante" });
+      const prevWeek = page.getByRole("button", { name: "Semaine précédente" });
+      const found = (await stepUntilVisible(nextWeek, cell, 12)) || (await stepUntilVisible(prevWeek, cell, 24));
+      expect(found, `matchs · calendrier (${mode}) : la semaine de la rencontre créée (${opponent}) est atteignable — grille jamais rendue`).toBeTruthy();
+      await expect(cell).toBeVisible();
+      await settleVeil(page);
+      // ⚠ On NE bouge PAS le pointeur : le dernier geste (clic « Amical » puis, en CI, 0 saut de
+      // semaine car la rencontre créée tombe sur la semaine résolue) le laisse sur la puce PRESSÉE
+      // (`variant="default"` = `bg-accent`). Le scan en état `:hover` est VOULU — c'est lui qui a
+      // pris le défaut #d74945/4,26 (l'ancien `hover:opacity-90` compositait l'accent vers le blanc) ;
+      // le jeton `--accent-hover` change la teinte au survol sans casser le contraste, ce scan le garde.
+      await expectNoA11yViolations(page, `matchs · calendrier (${mode})`);
+    } finally {
+      // Base dev CI non remise à zéro : on nettoie NOTRE rencontre, sans supposer l'état.
+      await page.request.delete(`/api/fixtures/${fixtureId}`).catch(() => undefined);
+    }
+
+    // ── Les trois écrans à donnée GARANTIE par le seed / l'onboarding ────────────────────────────
+    for (const screen of AUTH_SCREENS) {
+      await page.goto(screen.path);
+      await settleVeil(page);
+      await expect(screen.witness(page).first(), `${screen.label} (${mode}) : aucun témoin (carte/grille/région) rendu — un scan sur écran vide ne prouve rien`).toBeVisible({ timeout: 20_000 });
+      await expectNoA11yViolations(page, `${screen.label} (${mode})`);
+    }
   });
 }
 
@@ -139,6 +281,15 @@ for (const mode of MODES) {
         return [d[0], d[1], d[2]];
       };
       out["text-foreground on bg-warning/10"] = ratio(of("text-foreground", "color"), composite("bg-warning/10", bg));
+      // Option 1 (jeton `--accent-hover`) — le SURVOL d'un bouton accent (`variant="default"`) : le
+      // texte du repos (`--accent-foreground`) sur la teinte de survol (`--accent-hover`, opaque,
+      // dérivée par mode). Remplace `hover:opacity-90` qui compositait `bg-accent` vers la surface
+      // (blanc/accent : 4,85 → 4,26 en clair). Sur /login (défaut, pas de club) on mesure la paire
+      // par défaut d'`index.css` ; le survol club est gardé par `color.test.ts` + le scan /matchs.
+      out["text-accent-foreground on bg-accent-hover"] = ratio(of("text-accent-foreground", "color"), of("bg-accent-hover", "backgroundColor"));
+      // A11Y-22 — la même pastille warning peut être posée sur une CARD (ConflictRadar dans une
+      // Card, WeekendGrid « À confirmer ») : le fond `bg-warning/10` se composite alors sur `bg-card`.
+      out["text-foreground on bg-warning/10 (over card)"] = ratio(of("text-foreground", "color"), composite("bg-warning/10", card));
       // P4-177 — le TEXTE de la pastille `accent` (StatusPill : « Gain » d'un compromis, source
       // MANUEL) : `text-foreground` sur `bg-accent/10` (fond α 0.1 → composité sur `bg-background`).
       // `text-accent` y tombe sous AA (cf. AGENTS.md gotcha #11) : le texte est donc `text-foreground`
@@ -172,6 +323,26 @@ for (const mode of MODES) {
       const fg = of("text-foreground", "color");
       out["text-foreground on réservation cell (accent tint)"] = ratio(fg, cellFill("color-mix(in oklch, var(--accent) 30%, var(--card))"));
       out["text-foreground on réservation cell (bright venue tint)"] = ratio(fg, cellFill("color-mix(in oklch, #FFD21E 30%, var(--card))"));
+      // A11Y-22 — la case RÉELLE de la grille week-end (`WeekendGrid`) porte son texte `text-foreground`
+      // sur `tint(venueColor)` = `<hex>22` (α 0x22/255 ≈ 0,13), composité sur `bg-card`. On mesure la
+      // PIRE teinte de `VENUE_PALETTE` pour du texte foncé : le jaune `#FFD21E` (le plus clair). La
+      // grille PLANNING (`WeekGrid`) partage le MÊME helper `tint()` et la même sous-ligne
+      // `text-foreground` (coach, corrigé de `text-muted-foreground` qui tombait à 4,24-4,33 en sombre) :
+      // cette paire les garde donc toutes les deux, dans les deux thèmes.
+      const compositeColor = (color: string, under: [number, number, number]): [number, number, number] => {
+        ctx.clearRect(0, 0, 1, 1);
+        ctx.fillStyle = `rgb(${under[0]}, ${under[1]}, ${under[2]})`;
+        ctx.fillRect(0, 0, 1, 1);
+        ctx.fillStyle = color;
+        ctx.fillRect(0, 0, 1, 1);
+        const d = ctx.getImageData(0, 0, 1, 1).data;
+        return [d[0], d[1], d[2]];
+      };
+      out["text-foreground on WeekendGrid cell (bright venue tint)"] = ratio(fg, compositeColor("#FFD21E22", card));
+      // A11Y-22 — `text-muted-foreground` PLEIN (l'opacité sur du texte a disparu) sur les cases vides /
+      // fermées des grilles planning (`WeekGrid`) : sur `bg-muted` opaque, et sur `bg-muted/40` sur card.
+      out["text-muted-foreground on bg-muted"] = ratio(of("text-muted-foreground", "color"), of("bg-muted", "backgroundColor"));
+      out["text-muted-foreground on bg-muted/40 (over card)"] = ratio(of("text-muted-foreground", "color"), composite("bg-muted/40", card));
       // P4-181 — `text-destructive` en TEXTE vit sur des teintes `bg-destructive/10|15` (badge de
       // contrainte `PeriodStructure`, badge `ReconciliationPanel`, jour sélectionné `CoachWishForm`,
       // « F » férié `MonthCalendar` en /15, alerte `SlotReservationModal`), sur card ET sur background.

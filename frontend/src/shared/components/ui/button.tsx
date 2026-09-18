@@ -20,7 +20,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-accent text-accent-foreground hover:enabled:opacity-90",
+        default: "bg-accent text-accent-foreground hover:enabled:bg-accent-hover",
         outline: "border border-border bg-transparent hover:enabled:bg-muted",
         ghost: "hover:enabled:bg-muted",
         destructive: "bg-destructive text-destructive-foreground hover:enabled:opacity-90",

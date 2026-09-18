@@ -2,6 +2,9 @@ import { Repeat } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
+import { FullPageSpinner } from "@/shared/components/ui/spinner";
+import { readFailed } from "@/shared/lib/readState";
 
 import type { Team, Venue } from "./api";
 import { HabitsLinksDialog } from "./HabitsLinksDialog";
@@ -32,6 +35,39 @@ export function TypicalWeekPage() {
   const teamsMap = useMemo<Map<string, Team>>(() => byId(teams.data), [teams.data]);
   const venuesMap = useMemo<Map<string, Venue>>(() => byId(venues.data), [venues.data]);
 
+  // UXS-08 — page monolithique : elle est gatée sur SES SIX lectures (une seule vue, pas de
+  // sections indépendantes). Un échec cède à une alerte avec réessai groupé ; un chargement à un
+  // spinner de page — jamais un « Aucune habitude déclarée » (vide crédible) sur une lecture en vol.
+  if (readFailed(teams) || readFailed(tiers) || readFailed(venues) || readFailed(fixtures) || readFailed(habitsQuery) || readFailed(rotationsQuery)) {
+    return (
+      <div className="flex flex-col gap-4">
+        <LoadErrorHint
+          onRetry={() => {
+            for (const q of [teams, tiers, venues, fixtures, habitsQuery, rotationsQuery]) {
+              void q.refetch();
+            }
+          }}
+        />
+      </div>
+    );
+  }
+  if (
+    undefined === teams.data ||
+    undefined === tiers.data ||
+    undefined === venues.data ||
+    undefined === fixtures.data ||
+    undefined === habitsQuery.data ||
+    undefined === rotationsQuery.data
+  ) {
+    return <FullPageSpinner />;
+  }
+  const teamsData = teams.data;
+  const tiersData = tiers.data;
+  const venuesData = venues.data;
+  const fixturesData = fixtures.data;
+  const habitsData = habitsQuery.data;
+  const rotationsData = rotationsQuery.data;
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-2">
@@ -48,16 +84,16 @@ export function TypicalWeekPage() {
       </div>
 
       <div className="h-[32rem] lg:h-[40rem]">
-        <TypicalWeekendGrid habits={habitsQuery.data ?? []} rotations={rotationsQuery.data ?? []} venues={venuesMap} teams={teamsMap} />
+        <TypicalWeekendGrid habits={habitsData} rotations={rotationsData} venues={venuesMap} teams={teamsMap} />
       </div>
 
       {/* Les créneaux partagés (alternance A/B) — l'éditeur porte déjà son propre `<h3>`. */}
       <div id="creneaux" className="border-t border-border pt-4">
-        <MatchSlotRotationsEditor teams={teams.data ?? []} tiers={tiers.data ?? []} venues={venues.data ?? []} />
+        <MatchSlotRotationsEditor teams={teamsData} tiers={tiersData} venues={venuesData} />
       </div>
 
       {habitsDialogOpen ? (
-        <HabitsLinksDialog teams={teams.data ?? []} tiers={tiers.data ?? []} venues={venues.data ?? []} fixtures={fixtures.data ?? []} onClose={() => setHabitsDialogOpen(false)} />
+        <HabitsLinksDialog teams={teamsData} tiers={tiersData} venues={venuesData} fixtures={fixturesData} onClose={() => setHabitsDialogOpen(false)} />
       ) : null}
     </div>
   );

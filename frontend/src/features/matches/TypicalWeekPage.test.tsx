@@ -8,16 +8,21 @@ import { TypicalWeekPage } from "./TypicalWeekPage";
 
 // PR 2a — la Semaine type porte le gabarit idéal + les créneaux partagés, sortis de la
 // Configuration. On mute la couche api (PROD) et react-query tourne pour de vrai.
-const state: Record<string, unknown[]> = { teams: [], tiers: [], venues: [], fixtures: [], habits: [], rotations: [], links: [] };
+const state: Record<string, unknown[] | "error"> = { teams: [], tiers: [], venues: [], fixtures: [], habits: [], rotations: [], links: [] };
+
+function serve(key: string): Promise<unknown> {
+  const value = state[key];
+  return "error" === value ? Promise.reject(new Error("boom")) : Promise.resolve(value);
+}
 
 vi.mock("./api", () => ({
-  getTeams: () => Promise.resolve(state.teams),
-  getPriorityTiers: () => Promise.resolve(state.tiers),
-  getVenues: () => Promise.resolve(state.venues),
-  getFixtures: () => Promise.resolve(state.fixtures),
-  getTeamMatchHabits: () => Promise.resolve(state.habits),
-  getMatchSlotRotations: () => Promise.resolve(state.rotations),
-  getTeamLinks: () => Promise.resolve(state.links),
+  getTeams: () => serve("teams"),
+  getPriorityTiers: () => serve("tiers"),
+  getVenues: () => serve("venues"),
+  getFixtures: () => serve("fixtures"),
+  getTeamMatchHabits: () => serve("habits"),
+  getMatchSlotRotations: () => serve("rotations"),
+  getTeamLinks: () => serve("links"),
   createMatchSlotRotation: vi.fn(),
   updateMatchSlotRotation: vi.fn(),
   deleteMatchSlotRotation: vi.fn(),
@@ -62,5 +67,15 @@ describe("TypicalWeekPage (PR 2a — la Semaine type)", () => {
     await user.click(await screen.findByRole("button", { name: "Habitudes & passerelles" }));
     // Le nom accessible de la modale vient de son `label` (« et »), le titre visible garde le « & ».
     expect(await screen.findByRole("dialog", { name: "Habitudes et passerelles" })).toBeInTheDocument();
+  });
+
+  // UXS-08 — la Semaine type est gatée sur ses lectures. Un échec doit céder à une alerte avec
+  // réessai, jamais rendre « Aucune habitude déclarée » (vide crédible) sur une lecture en échec.
+  it("UXS-08 — useVenues en ÉCHEC → une alerte, jamais un vide crédible", async () => {
+    state.venues = "error";
+    renderWithProviders(<TypicalWeekPage />);
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByText(/Aucune habitude déclarée/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Semaine type", level: 2 })).not.toBeInTheDocument();
   });
 });

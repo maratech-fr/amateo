@@ -95,7 +95,7 @@ export function ReservationGrid({ venue, slots, reservedTeams, slotKeyOf, capaci
               aria-label={`${dayLabel} ${hhmm(slot.startTime)} · ${venue.name}${"" !== groupLabel ? ` · ${groupLabel}` : ""} · ${teams.length}/${capacity} réservé${closedBy ? ` · ${closedText}` : ""} — cliquer pour gérer`}
               className={cn(
                 "z-10 m-px flex flex-col items-start gap-0.5 overflow-hidden rounded border border-border border-l-4 px-1 py-0.5 text-left text-[10px] leading-tight hover:ring-1 hover:ring-accent",
-                closedBy ? "line-through opacity-60" : "",
+                closedBy ? "line-through" : "",
               )}
               style={{ gridColumn: 2 + di, gridRow: `${startRow} / span ${span}`, borderLeftColor: color, backgroundColor: `color-mix(in oklch, ${color} 30%, var(--card))` }}
             >

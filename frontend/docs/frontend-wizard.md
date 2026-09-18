@@ -1,13 +1,13 @@
 # Wizard — saisie des données (tranche 3, LIVRÉ)
 
-Last verified @ 2026-09-15 (`documentation-update`, rotation des stamps — sans rapport avec la
-feature de la PR, lot « adversaire multi-gymnases » backend). Re-confronté au code : `VenueSelect`
-(`frontend/src/shared/components/ui/venue-select.tsx:1,48-58`) reste construit sur `Listbox`
-(`shared/components/ui/listbox.tsx`) ; `WIZARD_STEPS` (`frontend/src/features/wizard/lib/steps.ts:8-15`)
-porte toujours exactement 6 étapes (teams/venues/coaches/constraints/recap/generate), inchangé ;
-`frontend/src/features/wizard/lib/teamColumns.ts` existe toujours (foyer unique des largeurs de
-colonnes). Reste du fichier non re-contrôlé ligne à ligne cette passe — un stamp REMPLACE,
-l'historique vit dans git.
+Last verified @ 2026-09-18 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+cette PR — lot correctif frontend de l'audit 2026-09-18, module matchs). Re-confronté au code :
+`VenueSelect` (`frontend/src/shared/components/ui/venue-select.tsx:1,53-58`) reste construit sur
+`Listbox` (`shared/components/ui/listbox.tsx`) ; `WIZARD_STEPS`
+(`frontend/src/features/wizard/lib/steps.ts:8-15`) porte toujours exactement 6 étapes
+(teams/venues/coaches/constraints/recap/generate), inchangé ; `frontend/src/features/wizard/lib/teamColumns.ts`
+existe toujours (foyer unique des largeurs de colonnes). Reste du fichier non re-contrôlé ligne à
+ligne cette passe — un stamp REMPLACE, l'historique vit dans git.
 
 > ⚠️ **Réalité livrée — canonique.** Le draft "4 étapes" plus bas est **historique/superseded** : le wizard a été reconstruit dans `frontend/src/features/wizard` avec un flux plus granulaire, décidé avec le PO. Les sections 1+ ci-dessous ne décrivent plus l'implémentation.
 

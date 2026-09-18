@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { EmptyBlock } from "@/shared/components/ui/empty-hint";
-import { Tabs } from "@/shared/components/ui/tabs";
+import { TabPanel, Tabs } from "@/shared/components/ui/tabs";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { tint } from "@/shared/lib/color";
 import { dayLabelLong } from "@/shared/lib/days";
@@ -54,11 +54,23 @@ export function TypicalWeekendGrid({ habits, rotations, venues, teams }: Typical
       />
     ) : null;
 
+  // A11Y-23 — quand le segmenté A/B existe, le contenu de la semaine ACTIVE est un TabPanel
+  // (tabId = la semaine affichée) : l'onglet actif — seul à porter `aria-controls` désormais —
+  // pointe alors un panneau RÉELLEMENT présent. Sans rotation (N=1), aucun onglet, aucun panneau.
+  const wrapWeek = (content: ReactNode): ReactNode =>
+    weekCount > 1 ? (
+      <TabPanel tabId={String(activeWeek)} idPrefix="ab-week" active className="flex min-h-0 flex-1 flex-col gap-2">
+        {content}
+      </TabPanel>
+    ) : (
+      content
+    );
+
   if (empty) {
     return (
       <div className="flex h-full flex-col gap-2">
         {segmented}
-        <EmptyBlock>Aucune habitude déclarée — le week-end type se construit dans « Habitudes & passerelles ».</EmptyBlock>
+        {wrapWeek(<EmptyBlock>Aucune habitude déclarée — le week-end type se construit dans « Habitudes & passerelles ».</EmptyBlock>)}
       </div>
     );
   }
@@ -72,9 +84,13 @@ export function TypicalWeekendGrid({ habits, rotations, venues, teams }: Typical
   return (
     <div className="flex h-full flex-col gap-2">
       {segmented}
-      {columns.length > 0 ? (
-        <div className="overflow-auto rounded-lg border border-border bg-card">
-          <div
+      {wrapWeek(
+        <>
+          {columns.length > 0 ? (
+            // A11Y-24 — la grille défile : le div défilant est lui-même une région focusable et nommée.
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- une région QUI DÉFILE doit être atteignable au clavier (WCAG 2.1.1), bien que non-interactive.
+            <div className="overflow-auto rounded-lg border border-border bg-card" role="region" aria-label="Grille de la semaine type" tabIndex={0}>
+              <div
             className="grid text-xs"
             style={{
               gridTemplateColumns: `3.25rem repeat(${columns.length}, minmax(6rem, 1fr))`,
@@ -156,6 +172,8 @@ export function TypicalWeekendGrid({ habits, rotations, venues, teams }: Typical
             .join(" · ")}
         </p>
       ) : null}
+        </>,
+      )}
     </div>
   );
 }

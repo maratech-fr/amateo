@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useEffect } from "react";
 import { useSearchParams } from "react-router";
@@ -201,6 +201,36 @@ describe("Tabs", () => {
 
   it("has no axe accessibility violations", async () => {
     await expectNoA11yViolations(<TabHarness />, { route: `/admin?tab=${DEFAULT_TAB}` });
+  });
+
+  // A11Y-23 — un `aria-controls` ne doit JAMAIS pointer un panneau absent du DOM. La primitive
+  // ne pose donc `aria-controls` que sur l'onglet ACTIF (attribut optionnel, APG). Ici un seul
+  // panneau est rendu (le cas des consommateurs qui ne montent que l'actif : CampaignDialog,
+  // TypicalWeekendGrid) : chaque `aria-controls` présent doit résoudre vers un id existant.
+  it("A11Y-23 — tout aria-controls d'onglet référence un panneau présent (seul l'actif le porte)", () => {
+    render(
+      <div>
+        <Tabs
+          tabs={[
+            { id: "a", label: "A" },
+            { id: "b", label: "B" },
+          ]}
+          activeTab="a"
+          onTabChange={() => {}}
+          ariaLabel="Deux onglets"
+          idPrefix="solo"
+        />
+        <TabPanel tabId="a" idPrefix="solo" active>
+          contenu A
+        </TabPanel>
+      </div>,
+    );
+    for (const tab of screen.getAllByRole("tab")) {
+      const controls = tab.getAttribute("aria-controls");
+      if (null !== controls) {
+        expect(document.getElementById(controls), `aria-controls="${controls}" doit exister dans le DOM`).not.toBeNull();
+      }
+    }
   });
 
   // Le harnais reproduit AdminDashboardPage, qui passe `variant="console"` partout : sans

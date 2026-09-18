@@ -169,7 +169,7 @@ export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onS
             <div
               key={`mw-${window.id}`}
               aria-hidden="true"
-              className="pointer-events-none z-0 m-px overflow-hidden rounded border border-dashed border-accent/60 px-1 pt-0.5 text-[10px] font-medium leading-tight text-accent/80"
+              className="pointer-events-none z-0 m-px overflow-hidden rounded border border-dashed border-accent/60 px-1 pt-0.5 text-[10px] font-medium leading-tight text-accent"
               style={{
                 gridColumn: 2 + di,
                 gridRow: `${startRow} / span ${span}`,
@@ -218,7 +218,7 @@ export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onS
                 // "vanish" into the highlighted cells (reliability bug).
                 "z-10 m-px flex flex-col items-start overflow-hidden rounded border border-border border-l-4 px-1 text-left text-[10px] font-medium leading-tight hover:ring-1 hover:ring-accent",
                 slot.id === selectedSlotId ? "ring-2 ring-accent" : "",
-                closedBy ? "line-through opacity-60" : "",
+                closedBy ? "line-through" : "",
               )}
               style={{ gridColumn: 2 + di, gridRow: `${startRow} / span ${span}`, borderLeftColor: color, backgroundColor: `color-mix(in oklch, ${color} 30%, var(--card))` }}
             >

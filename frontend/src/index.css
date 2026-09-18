@@ -23,6 +23,11 @@
   /* club accent (default neutral blue-ish; replaced per club) */
   --accent: oklch(0.55 0.16 255);
   --accent-foreground: oklch(0.99 0 0);
+  /* Survol du bouton accent (jamais `opacity-90`, qui cassait AA en clair — le fond s'éclaircissait
+     vers la surface, le texte blanc non). Teinte ASSOMBRIE, contraste préservé. Défaut CALCULÉ par
+     `accentHoverForMode(#2171cc,"light")` = sRGB de l'accent par défaut ci-dessus (blanc-sur-survol
+     5,25:1). Surchargé par club via `useApplyClubTheme`. */
+  --accent-hover: #206cc4;
 
   /* Assombri de L 0,58 → 0,50 (P4-181) : `text-destructive` vit en TEXTE sur des teintes
      `bg-destructive/10|15` (badges de contrainte, jour férié, jour sélectionné, alerte de
@@ -71,6 +76,10 @@
      any single foreground (A11Y-06, WCAG 1.4.3). */
   --accent: oklch(0.72 0.15 255);
   --accent-foreground: oklch(0.17 0.02 260);
+  /* Survol accent en sombre : teinte ÉCLAIRCIE (le sens qui MONTE le contraste avec le texte
+     sombre). Défaut CALCULÉ par `accentHoverForMode(#5fa7ff,"dark")` = sRGB de l'accent sombre
+     ci-dessus (texte-sur-survol 8,8:1). Surchargé par club via `useApplyClubTheme`. */
+  --accent-hover: #65abff;
 
   /* Remonté de L 0.62 → 0.66 (P4-179) puis → 0.72 (P4-181) : le fond rouge sombre s'éclaire
      assez pour porter un TEXTE SOMBRE (`--destructive-foreground`) à ≥ AA (6,45:1), et
@@ -172,6 +181,7 @@
   --color-input: var(--input);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-accent-hover: var(--accent-hover);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-warning: var(--warning);

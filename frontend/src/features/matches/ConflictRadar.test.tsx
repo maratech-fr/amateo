@@ -69,6 +69,20 @@ describe("ConflictRadar — chip « Nouveau » (RMM-3, ornement pur)", () => {
   });
 });
 
+describe("ConflictRadar — le compteur d'à-traiter (A11Y-22, décision 2)", () => {
+  it("passe par StatusPill : texte `text-foreground` (jamais text-warning sur teinte) + « à traiter » pour l'AT", () => {
+    // Deux conflits non annotés ⇒ openCount = 2. L'ancien `<span text-warning>` sur `bg-warning/15`
+    // tombait sous AA ; la pastille warning garde son texte en `text-foreground`, l'icône le ton.
+    renderRadar(<ConflictRadar conflicts={conflictsFixture()} teams={teams} coaches={coaches} venues={venues} newFingerprints={new Set()} />);
+    // Le complément « à traiter » n'est visible que du lecteur d'écran (sr-only).
+    const treated = screen.getByText(/à traiter/);
+    const pill = treated.parentElement as HTMLElement;
+    expect(pill).not.toHaveClass("text-warning");
+    expect(pill.className).toContain("text-foreground");
+    expect(pill).toHaveTextContent("2");
+  });
+});
+
 describe("ConflictRadar — le titre dit « Conflits » (mot unique, UXC-18)", () => {
   it("intitule la carte « Conflits », jamais « Diagnostic »", () => {
     renderRadar(<ConflictRadar conflicts={conflictsFixture()} teams={teams} coaches={coaches} venues={venues} />);

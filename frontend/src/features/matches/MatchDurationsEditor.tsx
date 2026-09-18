@@ -194,7 +194,7 @@ export function MatchDurationsEditor({ categories }: { categories: SportCategory
         <h3 className="text-sm font-semibold">Durée des matchs</h3>
         <p className="text-xs text-muted-foreground">
           Le temps qu'un match occupe, échauffement compris — il sert à repérer quand un coach est pris par un match, trajet inclus.
-          L'échauffement n'occupe pas la salle : deux matchs peuvent s'enchaîner dans le même gymnase dès la fin du précédent.
+          L'échauffement n'occupe pas le gymnase : deux matchs peuvent s'enchaîner dans le même gymnase dès la fin du précédent.
         </p>
       </div>
 

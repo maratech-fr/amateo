@@ -78,4 +78,12 @@ describe("ModuleVisitBanner (RMM-3 — bandeau résumé)", () => {
     render(<ModuleVisitBanner delta={undefined} />);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
+
+  // FRT-37 — un delta MALFORMÉ (`{}` : payload partiel) abattait la route (`.length` sur
+  // `undefined`). La garde de forme de `visitDeltaSegments` rend une liste vide → le bandeau
+  // ne paraît pas, et rien ne casse.
+  it("delta MALFORMÉ (`{}`) → RIEN, aucune exception", () => {
+    expect(() => render(<ModuleVisitBanner delta={{} as never} />)).not.toThrow();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
 });

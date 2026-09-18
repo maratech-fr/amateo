@@ -5,8 +5,11 @@ import { Navigate, useSearchParams } from "react-router";
 import { AccordionSection } from "@/shared/components/ui/accordion";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Modal } from "@/shared/components/ui/modal";
+import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
+import { readFailed } from "@/shared/lib/readState";
 import { cn } from "@/shared/lib/utils";
 
 import type { Venue, VenueMatchWindow } from "./api";
@@ -41,6 +44,24 @@ function sectionTitle(label: string, summary: string | null): ReactNode {
       ) : null}
     </span>
   );
+}
+
+/** Une lecture réduite à ce dont `readState` a besoin, plus le `refetch` du retry. */
+type SectionQuery<T> = { data: T | undefined; isError: boolean; refetch: () => unknown };
+
+/**
+ * UXS-08 — le corps d'une section est gaté sur SA lecture (doctrine `readState`). Un vide fabriqué
+ * (`?? []`) pendant le chargement ferait croire « aucune donnée » et pousserait à re-saisir
+ * (doublons) ; un échec propose de réessayer ; sinon l'éditeur, avec une donnée RÉELLEMENT présente.
+ */
+function SectionBody<T>({ query, render }: { query: SectionQuery<T>; render: (data: T) => ReactNode }): ReactNode {
+  if (readFailed(query)) {
+    return <LoadErrorHint onRetry={() => void query.refetch()} />;
+  }
+  if (undefined === query.data) {
+    return <EmptyHint>Chargement…</EmptyHint>;
+  }
+  return render(query.data);
 }
 
 /**
@@ -84,31 +105,53 @@ export function ConfigurationPage() {
     return <Navigate to="/matchs/semaine-type" replace />;
   }
 
+  // UXS-08 — la PAGE est gatée sur ses deux lectures FONDATRICES (équipes + gymnases : elles
+  // alimentent plusieurs sections). Un échec cède à une alerte avec réessai groupé, jamais un écran
+  // vide crédible ; par section, chaque corps a sa propre garde (SectionBody). Patron `CalendarPage`.
+  if (readFailed(teams) || readFailed(venues)) {
+    return (
+      <div className="flex flex-col gap-3">
+        <LoadErrorHint
+          onRetry={() => {
+            void teams.refetch();
+            void venues.refetch();
+          }}
+        />
+      </div>
+    );
+  }
+  if (undefined === teams.data || undefined === venues.data) {
+    return <FullPageSpinner />;
+  }
+  const teamsData = teams.data;
+  const venuesData = venues.data;
+
   return (
     <div className="flex flex-col gap-3">
       {/* 1. Les échéances de saisie ligue/comité — une par compétition. */}
       <AccordionSection {...sectionProps("echeances")} title={sectionTitle("Échéances de saisie", deadlinesSummary(competitions.data))}>
-        <EntryDeadlinesEditor competitions={competitions.data ?? []} teams={teams.data ?? []} />
+        <SectionBody query={competitions} render={(data) => <EntryDeadlinesEditor competitions={data} teams={teamsData} />} />
       </AccordionSection>
 
       {/* 2. La durée des matchs — un réglage par catégorie (P2-54 RMM-9). */}
       <AccordionSection {...sectionProps("durees")} title={sectionTitle("Durée des matchs", durationsSummary(categoryDurations.data))}>
-        <MatchDurationsEditor categories={categoryDurations.data ?? []} />
+        <SectionBody query={categoryDurations} render={(data) => <MatchDurationsEditor categories={data} />} />
       </AccordionSection>
 
-      {/* 3. Le trajet adverse — le radar de conflits devient SPATIAL (P2-54 PR-3). */}
+      {/* 3. Le trajet adverse — le radar de conflits devient SPATIAL (P2-54 PR-3).
+          La carte gère elle-même sa lecture (résumé null-safe via configSummaries). */}
       <AccordionSection {...sectionProps("adversaires")} title={sectionTitle("Adversaires à localiser", opponentsSummary(opponentTravel.data))}>
         <OpponentTravelCard />
       </AccordionSection>
 
       {/* 4. L'accès match des gymnases — clé URL `reglages` conservée. */}
-      <AccordionSection {...sectionProps("reglages")} title={sectionTitle("Accès match", accessSummary(matchWindows.data, venues.data))}>
-        <MatchAccessSection venues={venues.data ?? []} windows={matchWindows.data ?? []} />
+      <AccordionSection {...sectionProps("reglages")} title={sectionTitle("Accès match", accessSummary(matchWindows.data, venuesData))}>
+        <SectionBody query={matchWindows} render={(windows) => <MatchAccessSection venues={venuesData} windows={windows} />} />
       </AccordionSection>
 
       {/* 5. Les libellés FFBB des gymnases — voir/retirer les alias de salle (P4-196). */}
       <AccordionSection {...sectionProps("libelles")} title={sectionTitle("Libellés FFBB des gymnases", labelsSummary(labelInventory.data))}>
-        <VenueLabelsSection venues={venues.data} />
+        <SectionBody query={labelInventory} render={() => <VenueLabelsSection venues={venuesData} />} />
       </AccordionSection>
     </div>
   );

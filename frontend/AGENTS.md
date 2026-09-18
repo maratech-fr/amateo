@@ -447,6 +447,17 @@ screen, and `data ?? []` during a first load fabricates a **credible emptiness**
 "no settings") that makes a manager re-enter data (duplicates) or validate a period they
 believe empty.
 
+**UXS-08 (2026-09-18) — the gating GRAIN depends on the screen's shape.** A monolithic screen
+(one view, no independent sections — `TypicalWeekPage`, six reads) gates the **whole page** on
+`readFailed`/`undefined === data` across all its queries: `FullPageSpinner` while loading,
+`LoadErrorHint` with a grouped retry on failure, never a per-query patchwork. A sectioned screen
+(`ConfigurationPage`, five independent `AccordionSection`s) instead gates the **page** only on
+its *founding* reads (the ones several sections share — here teams + venues) and lets **each
+section's own body** (`SectionBody`, a small `readFailed`/`undefined` wrapper around
+`LoadErrorHint`/`EmptyHint`) gate on its own query: one section's failed read must not blank the
+others. Either way, `?? []` during a first load is banned — it is exactly the credible-emptiness
+bug above, one screen removed.
+
 ---
 
 ## Gotchas
@@ -471,10 +482,26 @@ believe empty.
    which allows no third party). The DSN alone initialises the SDK while the browser drops
    every send **silently**. `frontend/tooling/sentryCspGuard.ts` (called from `vite.config.ts`)
    now **fails the build** on that combination; it is inert while no DSN is set. INF-01.
-7. **The club accent is per-club and AA-guarded.** `useApplyClubTheme` reads
-   `accentColor`/`accentColorDark`/`accentPalette` from `/api/me` and drives `--accent` /
-   `--accent-foreground`; an explicit dark accent is applied as-is in dark mode, otherwise a
-   legible derivation of the light one is used.
+7. **The club accent is per-club and AA-guarded IN BOTH MODES, by contrast, not by a fixed
+   formula.** `useApplyClubTheme` (`shared/hooks/useApplyClubTheme.ts`) picks a per-mode base
+   (dark mode prefers `accentColorDark`, light mode `accentColor`, each falling back to the
+   other) and **always** runs it through `accentForMode(hex, mode)` (`shared/lib/color.ts`,
+   A11Y-22 decision 5) — never a raw bypass. `accentForMode` mixes the colour toward black
+   (light) / white (dark) by ~4% steps until it clears **4.5:1 on BOTH `--background` AND
+   `--card`** of that mode (not just the darker one) — a colour already conforming is returned
+   unchanged. A bright hue like `#F58231` becomes `#b15e23` in light mode, `#FFD21E` becomes
+   `#8a720f`. Swatches/logos keep the raw club colour — only text/accent CSS vars go through
+   the derivation. There is deliberately **no `--accent-fill` token** for a club that finds its
+   derived accent too dark on filled buttons (closed decision — a bright yellow as TEXT on white
+   has no AA-legible form; see `specs/courantes/etat-des-lieux.md` §2). The same hook also sets
+   **`--accent-hover`** next to `--accent`/`--accent-foreground`, via `accentHoverForMode(accent,
+   mode)` (`shared/lib/color.ts`) — a filled `bg-accent` button changes SHADE on hover (darkened in
+   light mode, lightened in dark, at least one step, until AA with the SAME resting foreground),
+   never `hover:opacity-90` (which composited the opaque accent toward the surface and dropped
+   white-on-accent from 4.85 to 4.26 in light mode — the pressed "Amical" chip on `/matchs`,
+   2026-09-18). Consumed by `button.tsx`'s `default` variant, `system-screen.tsx`,
+   `RouteErrorBoundary.tsx`. `destructive` (`bg-destructive`) and `ClubPage`'s avatar (`bg-muted`)
+   still hover via `opacity-90`, deliberately out of scope — `specs/evolution/roadmap.md` P4-244.
 8. **Engaged teams are read-only on two fields.** `Team.isEngaged` comes **from the server**
    (`TeamResource.isEngaged`) and is never recomputed client-side; `TeamsStep` greys out both
    **deletion** and **level change** for such a team — its matches are filed with the
@@ -511,6 +538,29 @@ believe empty.
     darkened `--destructive` (light L 0.50, dark L 0.72) until every tint clears 4.5:1 on both
     background and card, two themes, and the six pairs are hard gates in the spec. Reach for that
     only when the tone has no icon to carry it (the "F" badge); otherwise `StatusPill`.
+    **A11Y-22 (2026-09-18) generalised the corollary from "accent as text" to ALL text**: no
+    `text-<token>/NN` opacity class and no `opacity-30|40|50|60` on a text-bearing element is a
+    legitimate de-emphasis — hierarchy is carried by weight/size/border/fill, a dimmed cell by
+    `grayscale` (not `opacity`). Every prior opacity-as-dimming site moved to a plain token
+    (`text-muted-foreground` full, never `/50`) or to `grayscale`. Decision 6 (closed): **there is
+    no third `--muted-foreground-soft` token** — a soft grey between `text-foreground` and
+    `text-muted-foreground` lands at 4.3:1 on `bg-muted`, indistinguishable from the existing pair
+    besides; a third hierarchy level is size/weight, not a new grey. Guarded two ways: the static
+    `frontend/src/test/textOpacityGuard.test.ts` scans every `.tsx` under `src/` for the two
+    patterns and fails on any hit that is not either auto-exempt (a `disabled` /
+    `cursor-not-allowed` / `pointer-events-none` / `aria-disabled` marker on the same line — WCAG
+    1.4.3 does allow de-emphasing an INACTIVE control) or in its **nominative, ≤5-entry**
+    exemption list (decorative icon opacity, an inert exterior block, a transient dim/lens
+    highlight, an inactive segment label) — a new occurrence outside those two escape hatches is a
+    regression, not a config change; and `tests/e2e/a11y-contrast.spec.ts` locks the concrete
+    token pairs measured this pass (`text-foreground` on `bg-warning/10` on a card, on the bright
+    `#FFD21E22` venue tint, `text-muted-foreground` on `bg-muted` and on `bg-muted/40` over a
+    card), in both themes, against the real rendered app.
+    **The same recipe applies on the other side too**: `features/planning/WeekGrid.tsx`'s coach
+    sub-label (`cell.secondaryLabel`, printed on a *venue-tinted* session card via `tint()`) used
+    `text-muted-foreground` — a plain token, no opacity — which still failed AA on a bright venue
+    tint in dark mode (4.24–4.33:1). Fixed to `text-foreground`, de-emphasised by SIZE alone
+    (`text-[10px]`) — the exact recipe `WeekendGrid`'s cell already used (2026-09-18).
 
 ---
 

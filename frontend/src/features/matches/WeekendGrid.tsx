@@ -196,7 +196,9 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                   confirmClickable ? "cursor-pointer hover:brightness-95 dark:hover:brightness-110" : "",
                   cell.fixtureId === selectedFixtureId ? "ring-2 ring-accent" : "",
-                  confirmDimmed ? "opacity-40" : "",
+                  // Estompage de cellule = `grayscale`, jamais `opacity` (l'opacité sur le texte de la
+                // case tombe sous AA — A11Y-22) : on désature la teinte de gymnase pour désigner l'œil.
+                confirmDimmed ? "grayscale" : "",
                 )}
                 style={{
                   gridColumn: cell.gridColumn,
@@ -239,15 +241,17 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
               className={cn(
                 "z-10 m-px flex flex-col items-start overflow-hidden rounded border-l-4 px-1 py-0.5 text-left leading-tight",
                 cell.outOfEnvelope ? "ring-1 ring-warning" : "",
-                // P1-4 PR C — habit ghost: translucent + dashed, visibly NOT a match.
-                cell.ghost ? "border border-dashed border-border opacity-60" : "",
+                // P1-4 PR C — fantôme d'habitude : pointillé + fond transparent, visiblement PAS un
+                // match. La dé-emphase se porte par la GRAISSE (font-normal), jamais par l'opacité sur
+                // du texte (A11Y-22) ; les cases réelles gardent leur `font-medium`.
+                cell.ghost ? "border border-dashed border-border font-normal" : "",
                 clickable ? "cursor-pointer hover:brightness-95 dark:hover:brightness-110" : "",
                 cell.fixtureId === selectedFixtureId ? "ring-2 ring-accent" : "",
                 // Candidate d'échange : anneau accent net (affordance « clique-moi »).
                 isSwapCandidate ? "ring-2 ring-accent ring-offset-1 ring-offset-background" : "",
                 // Hors du couple source/candidates : on estompe (pas d'animation —
                 // reduced-motion + on ne fait clignoter aucune cellule).
-                swapDimmed ? "opacity-40" : "",
+                swapDimmed ? "grayscale" : "",
               )}
               style={{
                 gridColumn: cell.gridColumn,
@@ -267,11 +271,14 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
                     ligue » ne peut reposer sur l'icône + la couleur seules (A11Y-17). */}
                 {cell.outOfEnvelope ? <AlertTriangle aria-label="Hors fenêtre ligue" className={cn("size-3 shrink-0 text-warning", cell.locked ? "" : "ml-auto")} /> : null}
               </span>
-              <span className="truncate text-[10px] text-muted-foreground">
+              {/* A11Y-22 — fantôme (fond transparent) : `text-muted-foreground` plein ; case RÉELLE
+                  (fond `tint(venueColor)`) : `text-foreground` (recette P4-180, comme « À confirmer »).
+                  Plus aucune opacité sur le texte. */}
+              <span className={cn("truncate text-[10px]", cell.ghost ? "text-muted-foreground" : "text-foreground")}>
                 {cell.ghost ? `${cell.kickoffLabel} · fenêtre protégée` : `${cell.kickoffLabel} · ${cell.opponentLabel}`}
               </span>
               {/* RMM-1 PR3 (L7) — n° de rencontre : repère discret, jamais une clé (fait #2 §4). */}
-              {null !== cell.externalRef ? <span className="text-[10px] tabular-nums text-muted-foreground/80">n° {cell.externalRef}</span> : null}
+              {null !== cell.externalRef ? <span className={cn("text-[10px] tabular-nums", cell.ghost ? "text-muted-foreground" : "text-foreground")}>n° {cell.externalRef}</span> : null}
             </Tag>
           );
         })}

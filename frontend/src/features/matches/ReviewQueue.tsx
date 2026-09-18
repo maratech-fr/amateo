@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { AccordionSection } from "@/shared/components/ui/accordion";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
+import { FilterToggle } from "@/shared/components/ui/filter-toggle";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
 import { compareTeamsByRank } from "@/shared/lib/teamTiers";
 import { toast } from "@/shared/stores/toastStore";
@@ -176,8 +177,14 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
     return (
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          {hasTreated ? <TreatedToggle showTreated={showTreated} onToggle={toggleTreated} /> : null}
-          <HideAwayToggle hideAway={hideAway} onToggle={toggleHideAway} />
+          {hasTreated ? (
+            <FilterToggle checked={showTreated} onChange={toggleTreated}>
+              Afficher les traitées
+            </FilterToggle>
+          ) : null}
+          <FilterToggle checked={hideAway} onChange={toggleHideAway}>
+            Masquer les extérieurs
+          </FilterToggle>
         </div>
         <EmptyState icon={Inbox} title="Rien à traiter" description="Toutes les rencontres importées sont à jour. Déposez un export FBI ou vérifiez via l'API FFBB pour en apporter de nouvelles." />
       </div>
@@ -187,8 +194,12 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <TreatedToggle showTreated={showTreated} onToggle={toggleTreated} />
-        <HideAwayToggle hideAway={hideAway} onToggle={toggleHideAway} />
+        <FilterToggle checked={showTreated} onChange={toggleTreated}>
+          Afficher les traitées
+        </FilterToggle>
+        <FilterToggle checked={hideAway} onChange={toggleHideAway}>
+          Masquer les extérieurs
+        </FilterToggle>
       </div>
       {visibleQueues.map((queue) => {
         // Traitées affichées = UNE liste par équipe, toujours triée par date (jamais les
@@ -228,20 +239,3 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
   );
 }
 
-function TreatedToggle({ showTreated, onToggle }: { showTreated: boolean; onToggle: (next: boolean) => void }) {
-  return (
-    <label className="flex w-fit items-center gap-2 text-sm text-muted-foreground">
-      <input type="checkbox" checked={showTreated} onChange={(e) => onToggle(e.target.checked)} className="size-4" />
-      Afficher les traitées
-    </label>
-  );
-}
-
-function HideAwayToggle({ hideAway, onToggle }: { hideAway: boolean; onToggle: (next: boolean) => void }) {
-  return (
-    <label className="flex w-fit items-center gap-2 text-sm text-muted-foreground">
-      <input type="checkbox" checked={hideAway} onChange={(e) => onToggle(e.target.checked)} className="size-4" />
-      Masquer les extérieurs
-    </label>
-  );
-}

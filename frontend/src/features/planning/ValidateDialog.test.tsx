@@ -30,7 +30,7 @@ describe("ValidateDialog — l'annonce « salle perdue » (P2-52)", () => {
 
   it("N>0 : l'annonce apparaît, avec le nombre et le sous-ensemble déjà déclaré", () => {
     renderDialog(readyImpact({ orphanCount: 3, declaredCount: 2 }));
-    expect(screen.getByText(/3 matchs perdront leur salle/)).toBeInTheDocument();
+    expect(screen.getByText(/3 matchs perdront leur gymnase/)).toBeInTheDocument();
     expect(screen.getByText(/dont 2 déjà déclarés à la fédération/)).toBeInTheDocument();
     // La phrase PARTAGÉE de re-soumission (composant `DeclaredFixturesNotice`) — unique.
     expect(screen.getByText(/matchs déjà déclarés à la fédération devront être re-soumis/)).toBeInTheDocument();
@@ -40,7 +40,7 @@ describe("ValidateDialog — l'annonce « salle perdue » (P2-52)", () => {
 
   it("N>0 sans match déclaré : l'annonce n'ajoute jamais « dont 0 »", () => {
     renderDialog(readyImpact({ orphanCount: 1, declaredCount: 0 }));
-    expect(screen.getByText(/1 match perdra sa salle\./)).toBeInTheDocument();
+    expect(screen.getByText(/1 match perdra son gymnase\./)).toBeInTheDocument();
     expect(screen.queryByText(/déjà déclaré/)).toBeNull();
   });
 

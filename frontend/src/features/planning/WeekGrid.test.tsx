@@ -157,12 +157,12 @@ describe("WeekGrid", () => {
       const model = buildGrid(lensSlots, "gymnase", lookups);
       const { container } = render(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} lockLens />);
 
-      // Non verrouillé → estompé (lentille).
-      expect(container.querySelector('[data-slot-id="free"]')?.className).toContain("opacity-40");
+      // Non verrouillé → estompé (lentille). A11Y-22 : l'estompe est `grayscale`, pas `opacity`.
+      expect(container.querySelector('[data-slot-id="free"]')?.className).toContain("grayscale");
       // Verrouillés → anneau de leur catégorie (« ring-2 ring-* », distinct du hover base
       // « hover:ring-accent »), jamais estompés.
       expect(container.querySelector('[data-slot-id="manual"]')?.className).toContain("ring-2 ring-accent");
-      expect(container.querySelector('[data-slot-id="manual"]')?.className).not.toContain("opacity-40");
+      expect(container.querySelector('[data-slot-id="manual"]')?.className).not.toContain("grayscale");
       expect(container.querySelector('[data-slot-id="reserv"]')?.className).toContain("ring-warning");
     });
 
@@ -191,8 +191,8 @@ describe("WeekGrid", () => {
         <WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} lockLens highlightSlotIds={new Set(["free"])} />,
       );
 
-      // Conflit : le hors-conflit est estompé par le CONFLIT (opacity-30), pas par la lentille.
-      expect(container.querySelector('[data-slot-id="manual"]')?.className).toContain("opacity-30");
+      // Conflit : le hors-conflit est estompé par le CONFLIT (grayscale), pas par la lentille.
+      expect(container.querySelector('[data-slot-id="manual"]')?.className).toContain("grayscale");
       // La lentille est suffoquée : ni anneau de catégorie ni icône lentille tant qu'un conflit règne.
       expect(container.querySelector('[data-slot-id="manual"]')?.className).not.toContain("ring-2 ring-accent");
       expect(container.querySelector('[data-lens="MANUAL"]')).toBeNull();
@@ -202,7 +202,7 @@ describe("WeekGrid", () => {
       const model = buildGrid(lensSlots, "gymnase", lookups);
       const { container } = render(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} />);
 
-      expect(container.querySelector('[data-slot-id="free"]')?.className).not.toContain("opacity-40");
+      expect(container.querySelector('[data-slot-id="free"]')?.className).not.toContain("grayscale");
       expect(container.querySelector('[data-lens="MANUAL"]')).toBeNull();
     });
 
@@ -387,8 +387,8 @@ describe("WeekGrid", () => {
       const card = container.querySelector('[data-slot-id="a"]');
       expect(card?.className).not.toContain("ring-warning");
       expect(card?.className).not.toContain("ring-diff");
-      // Le surlignage conflit reste ce qu'il a toujours été : l'AUTRE carte s'estompe.
-      expect(container.querySelector('[data-slot-id="b"]')?.className).toContain("opacity-30");
+      // Le surlignage conflit reste ce qu'il a toujours été : l'AUTRE carte s'estompe (grayscale, A11Y-22).
+      expect(container.querySelector('[data-slot-id="b"]')?.className).toContain("grayscale");
       // Le symbole ⇄ subsiste malgré le conflit (l'écart reste vrai).
       expect(card?.querySelector(".bg-diff")).not.toBeNull();
     });

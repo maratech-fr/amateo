@@ -47,8 +47,9 @@ paths:
   unique — `features/matches/SourceBadge.tsx` (P4-177, adossée à `StatusPill`), consommée par
   `TravelMatrixModal.tsx` et `OpponentTravelCard.tsx` (les deux copies locales ont disparu) ;
   `FilterToggle` (`shared/components/ui/filter-toggle.tsx`, P4-207) est la maison unique de la case
-  à cocher d'un filtre d'affichage — née du patron inline de `ReviewQueue.tsx`, qui garde ses deux
-  copies locales NON converties (candidat de convergence, signalé, non traité) ;
+  à cocher d'un filtre d'affichage — née du patron inline de `ReviewQueue.tsx`, qui l'utilise
+  désormais pour ses deux interrupteurs (« Afficher les traitées », « Masquer les extérieurs »,
+  UXC-21, lot audit 2026-09-18) : plus aucune copie locale du patron ;
   **couleurs/espacements** = tokens du thème (`text-warning`,
   `text-muted-foreground`, `bg-muted`, `border-border`…), **jamais un `#hex`** ni une classe sans
   jeton (`text-warning-foreground` était un no-op, P4-130). Recoder à la main un spinner nu, un
@@ -92,6 +93,28 @@ paths:
 - 🔴 **jsdom n'a AUCUN moteur de mise en page** : `boundingBox`, `scrollHeight` et
   `getBoundingClientRect` y valent 0. Le **contraste** et le **reflow** (WCAG 1.4.10) ne se testent
   qu'en **Playwright**. Un test jsdom sur ces sujets est vert par construction — il n'atteste rien.
+  C'est pour ça que `frontend/src/test/textOpacityGuard.test.ts` (A11Y-22, 2026-09-18) existe : un
+  garde STATIQUE (grep des sources `.tsx` sur `text-<jeton>/NN`/`opacity-[3-6]0`) qui rougit dans
+  Vitest, avant le scan de contraste Playwright — sans lui une régression d'opacité sur du texte
+  resterait verte jusqu'au prochain `a11y-contrast.spec.ts`.
+- 🔴 **Un scan a11y authentifié sur `/matchs` ne peint RIEN si le club seedé CI n'a aucune
+  `Fixture`** — `app:bccl:seed` ne pose que des `TeamMatchHabit`/`MatchSlotRotation`, jamais de
+  rencontre : l'écran rend un `EmptyState` (« Aucun match importé »), le scan tourne sur du vide et
+  son témoin rougit avant même d'atteindre le contraste. `tests/e2e/a11y-contrast.spec.ts`
+  (2026-09-18) POSTe désormais son propre amical HOME placé avant de scanner, nettoyé en `finally`
+  — patron à reprendre pour tout nouveau scan sur un écran sans donnée garantie par le seed ou
+  l'onboarding. Chaque écran authentifié désigne en outre son PROPRE témoin de contenu rendu
+  (grille week-end / région nommée / carte `[data-slot-id]` / `h1`) plutôt qu'un témoin global
+  (`shadow-sm`/`role=region`/testid) — `/planning` (`WeekGrid`) ne porte AUCUN des trois, un témoin
+  global le déclarait « vide » alors qu'il était peint.
+- 🔴 **Le survol d'un fond `bg-accent` plein n'est jamais une `opacity`** — c'est le jeton
+  `bg-accent-hover` (`--accent-hover`, `accentHoverForMode` dans `shared/lib/color.ts`, posé par
+  `useApplyClubTheme` à côté de `--accent`/`--accent-foreground`). `hover:opacity-90` compositait
+  l'accent OPAQUE vers la surface : en clair le fond s'éclaircissait pendant que le texte blanc
+  restait blanc, cassant l'AA (blanc/accent 4,85 → 4,26, sous 4,5:1 — la puce « Amical » pressée de
+  `/matchs`, 2026-09-18). `destructive` (`bg-destructive`) et l'avatar de `ClubPage` (`bg-muted`)
+  restent sur `opacity-90`, délibérément hors scope (roadmap P4-244) — même piège à surveiller si
+  un futur fond plein en hérite.
 - **TDD obligatoire**, RED prouvé avant l'implémentation
   ([`../../frontend/docs/frontend-strategy.md`](../../frontend/docs/frontend-strategy.md) §1).
 - **Passe de design `ui-ux-pro-max`** (dans un agent — elle ne MESURE rien, mais elle TRANCHE une

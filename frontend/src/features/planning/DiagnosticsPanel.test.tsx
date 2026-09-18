@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useCallback, useEffect, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
@@ -97,6 +98,42 @@ describe("DiagnosticsPanel — ouverture contextuelle", () => {
     render(panel({ diagnostics: [diag("ERROR", "erreur lisible")] }));
 
     expect(screen.queryByText("erreur lisible")).not.toBeInTheDocument();
+  });
+});
+
+describe("DiagnosticsPanel — FRT-30 : l'amorce ne met pas à jour le parent pendant le rendu", () => {
+  it("des diagnostics arrivant APRÈS le montage n'émettent aucun « Cannot update a component », et vident le surlignage hérité", () => {
+    // L'amorce d'état PROPRE (setState de CE composant) reste en rendu — patron React légal. Mais
+    // l'appel au PARENT (`onHighlight`) ne peut PAS partir pendant le rendu (« Cannot update a
+    // component while rendering a different component ») : il part dans un effet déclenché par la
+    // même transition de seed. Changer de version doit tout de même vider le surlignage hérité.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const seen: Array<Set<string>> = [];
+
+    function Parent() {
+      const [, setHighlight] = useState<Set<string>>(new Set(["stale"]));
+      const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
+      // Les diagnostics arrivent APRÈS le premier rendu (comme un fetch qui se résout).
+      useEffect(() => {
+        setDiagnostics([diag("ERROR", "erreur tardive")]);
+      }, []);
+      const onHighlight = useCallback((ids: Set<string>) => {
+        seen.push(ids);
+        setHighlight(ids);
+      }, []);
+      return <DiagnosticsPanel diagnostics={diagnostics} slots={[]} lookups={lookups} onHighlight={onHighlight} openMostSevere seedToken="v1" />;
+    }
+
+    render(<Parent />);
+
+    // Le groupe le plus sévère s'est bien déplié sur les diagnostics arrivés.
+    expect(screen.getByText("erreur tardive")).toBeInTheDocument();
+    // AUCUNE erreur React « setState d'un autre composant pendant le rendu ».
+    const messages = spy.mock.calls.map((c) => c.map(String).join(" ")).join("\n");
+    expect(messages).not.toContain("Cannot update a component");
+    // Le surlignage hérité a bien été vidé (Set vide), via l'effet.
+    expect(seen.some((s) => s.size === 0)).toBe(true);
+    spy.mockRestore();
   });
 });
 

@@ -581,7 +581,7 @@ export function SlotReservationModal({
             step="venues"
             params={{ slot: slot.id }}
             from="reservation"
-            className="mt-1 inline-flex items-center gap-1 font-medium text-accent underline underline-offset-2 hover:text-accent/80"
+            className="mt-1 inline-flex items-center gap-1 font-medium text-accent underline underline-offset-2 hover:text-accent"
           >
             Régler ce créneau dans « Gymnases »
           </WizardStepLink>

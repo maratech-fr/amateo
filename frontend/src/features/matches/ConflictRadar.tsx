@@ -1,5 +1,6 @@
 import { AlertTriangle, ShieldCheck } from "lucide-react";
 
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { isManagementRole } from "@/shared/lib/roles";
 import { useMe } from "@/shared/session/queries";
@@ -45,7 +46,15 @@ export function ConflictRadar({ conflicts, teams, coaches, venues, newFingerprin
         <CardTitle className="flex items-center gap-2 text-base">
           <AlertTriangle className="size-4 text-warning" />
           Conflits
-          {openCount > 0 ? <span className="rounded-full bg-warning/15 px-2 text-xs text-warning">{openCount}</span> : null}
+          {/* A11Y-22 — le compteur d'à-traiter passe par StatusPill : `text-warning` sur `bg-warning/15`
+              tombait sous AA ; le texte reste `text-foreground`, l'icône `AlertTriangle` (ci-dessus)
+              porte le ton. Le complément « à traiter » n'est que pour le lecteur d'écran. */}
+          {openCount > 0 ? (
+            <StatusPill variant="warning" className="py-0">
+              {openCount}
+              <span className="sr-only"> à traiter</span>
+            </StatusPill>
+          ) : null}
         </CardTitle>
       </CardHeader>
       <CardContent>

@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Info, PanelRightClose, XCircle } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
@@ -98,10 +98,15 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
   // le panneau. Au sortir du wizard, le groupe le plus sévère présent est déplié.
   // `ORDER` étant trié du plus grave au moins grave, c'est le PREMIER groupe non vide.
   //
-  // Ajustement pendant le rendu plutôt qu'un effet : `setState` dans un effet est interdit
-  // par le lint React Compiler du dépôt (`react-hooks/set-state-in-effect`), et un
-  // `useState(initial)` ne suffirait pas — les diagnostics arrivent APRÈS le premier
-  // rendu, quand l'état initial est déjà figé.
+  // Amorce PROPRE (état de CE composant) pendant le rendu plutôt qu'un effet : `setState` d'un
+  // état local en rendu est le patron React « état dérivé » (légal, borné), tandis qu'un
+  // `setState` dans un effet est interdit par le lint du dépôt (`react-hooks/set-state-in-effect`),
+  // et un `useState(initial)` ne suffirait pas — les diagnostics arrivent APRÈS le premier rendu,
+  // quand l'état initial est déjà figé.
+  // ⚠ FRT-30 — l'appel au PARENT (`onHighlight`) ne peut PAS partir d'ici : mettre à jour un AUTRE
+  // composant pendant le rendu de celui-ci lève « Cannot update a component while rendering a
+  // different component ». Il vit dans l'effet dédié plus bas, déclenché par la même transition de
+  // seed (`seededToken`) — le surlignage hérité est bien vidé au changement de version.
   //
   // ⚠ Le ré-amorçage se déclenche sur l'IDENTITÉ de la version (`seedToken`), et non sur un
   // booléen « déjà fait » ni sur la FORME des diagnostics. Deux essais avant celui-ci, tous
@@ -122,11 +127,19 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
   if (openMostSevere && groups.length > 0 && seededToken !== seedToken) {
     setSeededToken(seedToken);
     setOpenSeverity(groups[0].severity);
-    // Le surlignage de la grille appartenait au diagnostic de la version PRÉCÉDENTE : le
-    // laisser en place désignerait des créneaux qui ne le concernent plus.
     setActiveId(null);
-    onHighlight(new Set());
   }
+
+  // FRT-30 — l'appel PARENT part dans un effet, déclenché par la même transition de seed. Le
+  // surlignage de la grille appartenait à la version PRÉCÉDENTE : à chaque (ré)amorce on le vide,
+  // sinon il désignerait des créneaux qui ne le concernent plus. `seededToken` (état interne) ne
+  // change QUE lors d'une amorce ; `onHighlight` (setter stable côté PlanningPage) ne re-déclenche
+  // pas l'effet.
+  useEffect(() => {
+    if (undefined !== seededToken) {
+      onHighlight(new Set());
+    }
+  }, [seededToken, onHighlight]);
 
   function toggleGroup(severity: DiagnosticSeverity) {
     setOpenSeverity((current) => (current === severity ? null : severity));
@@ -228,7 +241,7 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
                               step="constraints"
                               params={{ rule: item.ruleKey }}
                               from="planning"
-                              className="self-start px-3 pb-1.5 text-xs font-medium text-accent underline underline-offset-2 hover:text-accent/80"
+                              className="self-start px-3 pb-1.5 text-xs font-medium text-accent underline underline-offset-2 hover:text-accent hover:underline"
                             >
                               Ajuster cette règle
                             </WizardStepLink>
@@ -248,7 +261,7 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
                                       step="constraints"
                                       params={{ edit: cause.constraintId }}
                                       from="planning"
-                                      className="self-start text-xs font-medium text-accent underline underline-offset-2 hover:text-accent/80"
+                                      className="self-start text-xs font-medium text-accent underline underline-offset-2 hover:text-accent hover:underline"
                                     >
                                       Corriger cette règle
                                     </WizardStepLink>

@@ -21,6 +21,16 @@ describe("Button", () => {
     render(<Button>x</Button>);
     expect(screen.getByRole("button")).toHaveClass("bg-accent");
   });
+
+  // A11Y — le survol de la variante accent ne réduit PLUS l'opacité : `opacity-90` compositait
+  // `bg-accent` vers la surface (blanc/accent tombait à 4,26 en clair, < AA). Le survol change
+  // désormais la TEINTE (`--accent-hover`, dérivée par mode, contraste préservé), pas l'opacité.
+  it("le survol de la variante default change la teinte (--accent-hover), pas l'opacité", () => {
+    render(<Button>x</Button>);
+    const btn = screen.getByRole("button");
+    expect(btn.className).not.toContain("opacity-90");
+    expect(btn.className).toContain("hover:enabled:bg-accent-hover");
+  });
 });
 
 /**

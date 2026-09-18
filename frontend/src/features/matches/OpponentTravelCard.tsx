@@ -6,6 +6,7 @@ import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
+import { Spinner } from "@/shared/components/ui/spinner";
 import { WarningPanel } from "@/shared/components/ui/warning-panel";
 import { readState } from "@/shared/lib/readState";
 import { cn } from "@/shared/lib/utils";
@@ -148,7 +149,8 @@ export function OpponentTravelCard() {
       </p>
 
       {"failed" === state ? <LoadErrorHint onRetry={() => void travelQuery.refetch()} /> : null}
-      {"loading" === state ? <EmptyHint>Chargement…</EmptyHint> : null}
+      {/* UXC-22 — un chargement se dit par un SPINNER inline (activité), pas un état vide. */}
+      {"loading" === state ? <Spinner /> : null}
 
       {"ready" === state ? (
         <>
