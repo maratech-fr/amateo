@@ -113,6 +113,17 @@ final class OpponentTravelResolver
         foreach ($codes as $code) {
             $row = $existing[$code] ?? null;
             if (null !== $row && OpponentTravelSource::MANUAL === $row->getSource()) {
+                // Une ligne MANUAL est normalement laissée intacte par la passe AUTO.
+                // Exception : une ligne MANUAL dont le trajet n'a JAMAIS pu être calculé
+                // (IGN muet au moment du choix) mais dont l'override porte des coordonnées
+                // est RE-ROUTÉE — seul le trajet changera, le gymnase épinglé reste souverain.
+                $overrideLat = $row->getOverrideLatitude();
+                $overrideLon = $row->getOverrideLongitude();
+                if (null === $row->getTravelMinutes() && null !== $overrideLat && null !== $overrideLon) {
+                    $geoTargets[] = ['code' => $code, 'lat' => $overrideLat, 'lon' => $overrideLon];
+
+                    continue;
+                }
                 ++$skippedManual;
 
                 continue;
@@ -182,14 +193,22 @@ final class OpponentTravelResolver
             }
             $value = $minutes[$code] ?? null;
             $row = $existing[$code] ?? $this->newRow($clubId, $seasonId, $code);
-            // AUTO row: the location is the global directory's, no manual override.
-            $row->setTravelMinutes($value)
-                ->setSource(OpponentTravelSource::AUTO)
-                ->setOverrideVenueExternalRef(null)
-                ->setOverrideVenueLabel(null)
-                ->setOverrideLatitude(null)
-                ->setOverrideLongitude(null)
-                ->setResolvedAt(new DateTimeImmutable);
+            if (OpponentTravelSource::MANUAL === $row->getSource()) {
+                // Re-route d'une ligne MANUAL restée sans trajet : on ne touche QUE le trajet
+                // (et resolvedAt). Le bloc override (gymnase épinglé) et la source MANUAL sont
+                // souverains — jamais remis à zéro.
+                $row->setTravelMinutes($value)
+                    ->setResolvedAt(new DateTimeImmutable);
+            } else {
+                // AUTO row: the location is the global directory's, no manual override.
+                $row->setTravelMinutes($value)
+                    ->setSource(OpponentTravelSource::AUTO)
+                    ->setOverrideVenueExternalRef(null)
+                    ->setOverrideVenueLabel(null)
+                    ->setOverrideLatitude(null)
+                    ->setOverrideLongitude(null)
+                    ->setResolvedAt(new DateTimeImmutable);
+            }
             if (!isset($existing[$code])) {
                 $this->entityManager->persist($row);
                 $existing[$code] = $row;

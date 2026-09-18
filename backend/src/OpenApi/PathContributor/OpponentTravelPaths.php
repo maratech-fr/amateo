@@ -264,6 +264,7 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                             'unresolved' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Opponent codes with no located venue or no routing duration'],
                             'skippedManual' => ['type' => 'integer', 'description' => 'Opponents whose MANUAL override was preserved'],
                         ]],
+                        'failedSteps' => ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['codes', 'auto-locate', 'travel']], 'description' => 'Passes that threw and fell back to their neutral (zero) result — empty in the nominal case. A non-empty list means the update is PARTIAL: re-run to continue.'],
                     ],
                 ]),
                 '400' => new Response('No club or season in context'),

@@ -100,6 +100,50 @@ final class OpponentTravelResolverTest extends WebTestCase
         self::assertSame('Le vrai gymnase', $row->getOverrideVenueLabel());
     }
 
+    /**
+     * Une ligne MANUAL restée SANS trajet (IGN muet AU MOMENT du choix) mais dont l'override
+     * porte des coordonnées est RE-ROUTÉE par la passe AUTO : SEUL le trajet (et resolvedAt)
+     * change, le gymnase épinglé et la source MANUAL restent souverains. Falsifié : avant le
+     * correctif la ligne était « sautée » (skippedManual) et son trajet restait null pour
+     * toujours ; après, elle est enfin routée sans que son bloc override bouge.
+     */
+    public function testAManualRowWithoutTravelIsReRoutedWithoutTouchingItsOverride(): void
+    {
+        [$club, $season] = $this->seedClubWithAwayOpponent();
+        // Pas d'entrée d'annuaire : la SEULE raison d'entrer dans le routage est l'override.
+
+        $this->scopeGucToClub($club->getId());
+        $manual = (new OpponentTravel)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setOpponentOrganismeCode(self::OPPONENT_CODE)
+            ->setSource(OpponentTravelSource::MANUAL)
+            ->setTravelMinutes(null) // IGN muet au moment du choix
+            ->setOverrideVenueLabel('Le vrai gymnase')
+            ->setOverrideVenueExternalRef('166900101')
+            ->setOverrideLatitude(45.5)
+            ->setOverrideLongitude(4.5)
+            ->setResolvedAt(new DateTimeImmutable);
+        $this->em->persist($manual);
+        $this->em->flush();
+
+        $result = $this->resolverWithIgn(1320)->resolve($club->getId(), $season->getId());
+
+        self::assertSame(1, $result['resolved'], 'la ligne MANUAL sans trajet est enfin routée');
+        self::assertSame(0, $result['skippedManual'], 'elle n\'est plus sautée : elle est re-routée');
+
+        $this->em->clear();
+        $this->scopeGucToClub($club->getId());
+        $row = $this->travelRepository()->findOneByCode($season->getId(), self::OPPONENT_CODE);
+        self::assertInstanceOf(OpponentTravel::class, $row);
+        self::assertSame(22, $row->getTravelMinutes(), '1320 s → 22 min : le trajet est enfin calculé depuis l\'override');
+        self::assertSame(OpponentTravelSource::MANUAL, $row->getSource(), 'la source reste MANUAL (le gymnase épinglé est souverain)');
+        self::assertSame('Le vrai gymnase', $row->getOverrideVenueLabel(), 'le bloc override n\'est pas touché');
+        self::assertSame('166900101', $row->getOverrideVenueExternalRef());
+        self::assertSame(45.5, $row->getOverrideLatitude());
+        self::assertSame(4.5, $row->getOverrideLongitude());
+    }
+
     public function testAnOpponentWithNoDirectoryLocationComesBackUnresolved(): void
     {
         [$club, $season] = $this->seedClubWithAwayOpponent();

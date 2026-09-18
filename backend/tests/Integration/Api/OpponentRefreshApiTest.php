@@ -72,10 +72,13 @@ final class OpponentRefreshApiTest extends WebTestCase
 
         $data = $this->responseData();
         // Chaque passe a produit sa forme — aucune n'a avorté les autres (best-effort).
-        self::assertSame(['codes', 'autoLocated', 'travel'], array_keys($data));
+        // La réponse porte un 4ᵉ champ ADDITIF `failedSteps` : les passes qui ont levé et sont
+        // retombées sur leur résultat neutre. En régime nominal, aucune : la liste est vide.
+        self::assertSame(['codes', 'autoLocated', 'travel', 'failedSteps'], array_keys($data));
         self::assertSame(['resolved', 'unresolved', 'skipped', 'stamped'], array_keys((array) $data['codes']));
         self::assertSame(['located', 'ambiguous', 'unmatched', 'skipped'], array_keys((array) $data['autoLocated']));
         self::assertSame(['resolved', 'unresolved', 'skippedManual'], array_keys((array) $data['travel']));
+        self::assertSame([], $data['failedSteps'], 'aucune passe en échec en régime nominal');
     }
 
     public function testTheLimiterTripsAtElevenCallsForOneUser(): void

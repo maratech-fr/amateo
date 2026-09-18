@@ -101,6 +101,33 @@ final class OpponentLocationResolverTest extends WebTestCase
     }
 
     /**
+     * Régression 23505 — deux observations de NOMS différents (« - 1 »/« - 2 ») résolvent
+     * le MÊME code organisme (relance sur le nom nu). L'upsert de l'annuaire doit les fondre
+     * en UNE ligne via `ON CONFLICT`, sans jamais fermer le manager. Avant le correctif, le
+     * 2ᵉ `findOneBy` ne voyait pas l'entité persistée non flushée → double persist → violation
+     * d'unicité au flush : catchée, mais l'EntityManager restait FERMÉ (les passes suivantes de
+     * l'orchestrateur mouraient alors en silence).
+     */
+    public function testTwoObservationsSharingACodeUpsertOnceWithoutClosingTheManager(): void
+    {
+        $resolver = $this->resolverWithControlledFfbb();
+
+        $outcome = $resolver->resolveObservations([
+            ['organismeCode' => null, 'name' => self::OPPONENT_NAME . ' - 1', 'directVenue' => null],
+            ['organismeCode' => null, 'name' => self::OPPONENT_NAME . ' - 2', 'directVenue' => null],
+        ]);
+
+        self::assertTrue($this->em->isOpen(), 'aucun 23505 : le manager reste ouvert (l\'orchestrateur peut continuer)');
+        self::assertSame(2, $outcome['resolved'], 'les deux observations sont localisées');
+
+        $count = (int) $this->em->getConnection()->fetchOne(
+            'SELECT COUNT(*) FROM opponent_directory WHERE ffbb_organisme_code = :code',
+            ['code' => self::XLSX_CODE],
+        );
+        self::assertSame(1, $count, 'un seul code organisme → une seule ligne d\'annuaire');
+    }
+
+    /**
      * BCK-32 — budget de mur épuisé (deadline dans le passé) : une observation qui SE
      * serait résolue revient en `unresolved` sans le moindre appel réseau ni écriture
      * annuaire — même canal que le reste, best-effort (relancer pour continuer).

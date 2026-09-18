@@ -1306,10 +1306,14 @@ export const resolveOpponents = (): Promise<OpponentResolveResult> => api.post("
  * Chaque passe est indépendante (l'échec de l'une n'annule pas les autres). Champs alignés sur le
  * snapshot OpenAPI (`/api/opponents/refresh`).
  */
+export type OpponentRefreshStep = "codes" | "auto-locate" | "travel";
+
 export interface OpponentRefreshResult {
   codes: { resolved: number; unresolved: string[]; skipped: number; stamped: number };
   autoLocated: { located: number; ambiguous: number; unmatched: number; skipped: number };
   travel: { resolved: number; unresolved: string[]; skippedManual: number };
+  /** Les passes best-effort qui ont levé et sont retombées sur leur résultat neutre (vide en régime nominal). */
+  failedSteps: OpponentRefreshStep[];
 }
 
 /** Met à jour tous les adversaires AWAY en UN appel : codes FFBB + gymnases depuis le fichier + trajets. Best-effort, management. */

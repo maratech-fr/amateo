@@ -351,6 +351,13 @@ export function useResolveOpponentTravel() {
   });
 }
 
+/** Étape serveur → libellé FR lu par le gestionnaire (jamais la clé technique). */
+const REFRESH_STEP_LABELS: Record<matchesApi.OpponentRefreshStep, string> = {
+  codes: "codes",
+  "auto-locate": "gymnases",
+  travel: "trajets",
+};
+
 /** L'état de la mise à jour des adversaires — pilote le libellé du bouton et l'annonce a11y. */
 export type UpdateOpponentsStep = "idle" | "running";
 
@@ -380,16 +387,23 @@ export function useUpdateOpponents(): UpdateOpponentsController {
       setStep("running");
       try {
         const result = await matchesApi.refreshOpponents();
-        const codes = result.codes.resolved;
-        const located = result.autoLocated.located;
-        const trajets = result.travel.resolved;
-        toast.success(
-          [
-            `${codes} code${codes > 1 ? "s" : ""} retrouvé${codes > 1 ? "s" : ""}`,
-            `${located} gymnase${located > 1 ? "s" : ""} localisé${located > 1 ? "s" : ""} depuis le fichier`,
-            `${trajets} trajet${trajets > 1 ? "s" : ""} calculé${trajets > 1 ? "s" : ""}`,
-          ].join(" · "),
-        );
+        if (0 < result.failedSteps.length) {
+          // Une passe a levé côté serveur : la mise à jour est PARTIELLE. On le dit
+          // franchement (au lieu d'un « succès » mensonger) et on invite à relancer.
+          toast.error(`Mise à jour interrompue à l'étape ${REFRESH_STEP_LABELS[result.failedSteps[0]]} — réessayez.`);
+        } else {
+          const codes = result.codes.resolved;
+          const located = result.autoLocated.located;
+          const trajets = result.travel.resolved;
+          const failed = result.codes.unresolved.length + result.travel.unresolved.length;
+          toast.success(
+            [
+              `${codes} code${codes > 1 ? "s" : ""} retrouvé${codes > 1 ? "s" : ""}`,
+              `${located} gymnase${located > 1 ? "s" : ""} localisé${located > 1 ? "s" : ""}`,
+              `${trajets} trajet${trajets > 1 ? "s" : ""} calculé${trajets > 1 ? "s" : ""}${0 < failed ? ` (${failed} en échec)` : ""}`,
+            ].join(" · "),
+          );
+        }
       } catch (error) {
         toast.error(await errorMessage(error));
       }

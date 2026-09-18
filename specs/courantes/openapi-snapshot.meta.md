@@ -1,14 +1,18 @@
-Last verified @ 2026-09-18 (audit 2026-09-18 backend — réponse `429` sur `POST /api/opponents/travel/manual`
-(SEC-19), budget de mur documenté sur `POST /api/opponents/refresh` (BCK-32), et `maxLength` sur 26 propriétés
-texte des DTO d'entrée (BCK-27) ; régénéré par le coder après `cache:pool:clear --all` + `api:openapi:export`).
+Last verified @ 2026-09-19 (retours de tests — `POST /api/opponents/refresh` gagne un champ ADDITIF
+`failedSteps` (liste des passes best-effort qui ont levé et sont retombées sur leur résultat neutre ; vide
+en régime nominal, non-vide = mise à jour partielle à relancer) ; régénéré par `api:openapi:export`).
 **200 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : aucune route
-n'apparaît ni ne disparaît — seules une réponse `429` s'ajoute à `/api/opponents/travel/manual`, la description
-de `/api/opponents/refresh` gagne une phrase (budget de mur → réponse partielle), et 26 propriétés d'entrée
-gagnent leur `maxLength` (borne = longueur de la colonne cible).
-· SHA-256 `419573385089c2b4deaacb85e15dd1f25045bb84d3cef2e6ce64de8e5e24747c`
+n'apparaît ni ne disparaît — seule la réponse 200 de `/api/opponents/refresh` gagne la propriété `failedSteps`.
+· SHA-256 `66fc5d939b24780e822eb09397f77591edcabd269bf9c6e89b58a82869aa88ea`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Retours de tests — `failedSteps` sur la mise à jour des adversaires, backend (2026-09-19)** : **+0 path** —
+  la réponse 200 de `POST /api/opponents/refresh` gagne un champ ADDITIF `failedSteps` (`array<'codes'|'auto-locate'|'travel'>`) :
+  les passes best-effort qui ont levé et sont retombées sur leur résultat neutre. Vide en régime nominal ; non-vide,
+  le front signale une mise à jour PARTIELLE (au lieu d'un succès mensonger) et invite à relancer. La forme des trois
+  blocs (`codes`/`autoLocated`/`travel`) est inchangée. Backend PUR, contrat backend⇄engine **inchangé**
+  (`CONTRACT_VERSION` 2.21, aucun appel moteur).
 - **Audit 2026-09-18 — bornes des trajets adverses + longueurs de DTO, backend** : **+0 path** — trois
   ajustements sans nouvelle route : (SEC-19) `POST /api/opponents/travel/manual` déclare une réponse `429`
   (limiteur PAR UTILISATEUR `opponent_travel_manual`, 30/h) ; (BCK-32) la description de
@@ -71,14 +75,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   422 si le code n'est pas un adversaire AWAY de la saison. 198 → **199 paths**. Backend PUR, contrat
   backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun appel moteur, aucun payload solveur ne lit le
   partagé).
-- **PR-1 « adversaire multi-gymnases », backend (2026-09-15)** : **+0 path** — le trajet adverse gagne le
-  grain ÉQUIPE. `GET /api/opponents/travel` : une entrée par (code, équipe) au lieu d'une par code, avec les
-  champs additifs `opponentTeamKey`, `scope` (`TEAM`|`CLUB`|null), `city`, `postalCode`. Les corps
-  `POST /api/opponents/travel/manual` et `/auto` acceptent `opponentTeamKey` (+ `scope` optionnel sur
-  `manual`) ; leurs réponses gagnent `opponentTeamKey`/`scope`. Le schéma read `Fixture` gagne
-  `opponentOrganismeCode` + `opponentTeamKey` (libellé adverse normalisé, servi pour joindre le trajet par
-  équipe sans re-dériver). 198 → **198 paths**. Backend PUR, contrat backend⇄engine **inchangé**
-  (`CONTRACT_VERSION` 2.21, aucun appel moteur, aucun payload solveur ne lit `opponent_travel`).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

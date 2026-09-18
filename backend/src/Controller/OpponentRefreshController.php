@@ -116,17 +116,22 @@ final class OpponentRefreshController extends AbstractController
 
         // Trois passes INDÉPENDANTES : chacune est isolée pour qu'un échec (réseau, FFBB
         // muet) n'annule jamais les suivantes. L'ordre compte : (a) estampille les codes
-        // dont (b) et (c) ont besoin pour joindre l'adversaire.
+        // dont (b) et (c) ont besoin pour joindre l'adversaire. Une passe qui lève retombe
+        // sur son résultat neutre ET s'inscrit dans `failedSteps` : la réponse reste 200 mais
+        // le front sait qu'elle est partielle et le dit (au lieu d'un « succès » mensonger).
+        $failedSteps = [];
         $seasonId = $season->getId();
         $codes = $this->step(
             'codes',
             fn (): array => $this->locationResolver->resolveObservations($observations, $awayFixtures, $deadline),
             ['resolved' => 0, 'unresolved' => [], 'skipped' => 0, 'stamped' => 0],
+            $failedSteps,
         );
         $autoLocated = $this->step(
             'auto-locate',
             fn (): array => $this->venueAutoLocator->locate($clubId, $seasonId, $deadline),
             ['located' => 0, 'ambiguous' => 0, 'unmatched' => 0, 'skipped' => 0],
+            $failedSteps,
         );
         $travel = $this->step(
             'travel',
@@ -134,12 +139,14 @@ final class OpponentRefreshController extends AbstractController
             // le budget de lot IGN) — 0 si le budget est déjà épuisé (tout en unresolved).
             fn (): array => $this->travelResolver->resolve($clubId, $seasonId, max(0.0, $deadline - $this->nowEpoch())),
             ['resolved' => 0, 'unresolved' => [], 'skippedManual' => 0],
+            $failedSteps,
         );
 
         return $this->json([
             'codes' => $codes,
             'autoLocated' => $autoLocated,
             'travel' => $travel,
+            'failedSteps' => $failedSteps,
         ]);
     }
 
@@ -150,21 +157,30 @@ final class OpponentRefreshController extends AbstractController
     }
 
     /**
-     * Exécute une passe best-effort : sur exception, journalise et retombe sur le
-     * résultat NEUTRE (tout à zéro) pour que la réponse garde sa forme et que les
-     * passes suivantes s'exécutent quand même.
+     * Exécute une passe best-effort : sur exception, journalise, INSCRIT le label dans
+     * `$failedSteps` et retombe sur le résultat NEUTRE (tout à zéro) pour que la réponse
+     * garde sa forme et que les passes suivantes s'exécutent quand même.
+     *
+     * ⚠ Volontairement PAS de `resetManager()` ici : les services des passes (b)/(c)
+     * reçoivent l'EntityManager par injection au constructeur ; un reset crée un manager
+     * frais dans le registre mais ne recâble PAS ces références déjà injectées, donc il ne
+     * ferait pas « retourner » les passes suivantes — il détacherait au passage les entités
+     * pré-chargées. La réponse HONNÊTE (`failedSteps`, sans reset) est le bon contrat : le
+     * front signale une mise à jour partielle et invite à relancer.
      *
      * @param callable(): array<string, mixed> $run
      * @param array<string, mixed>             $neutral
+     * @param list<string>                     $failedSteps accumulateur des passes en échec (par référence)
      *
      * @return array<string, mixed>
      */
-    private function step(string $label, callable $run, array $neutral): array
+    private function step(string $label, callable $run, array $neutral, array &$failedSteps): array
     {
         try {
             return $run();
         } catch (Throwable $e) {
             $this->logger->warning('Opponent refresh: step failed, continuing', ['step' => $label, 'error' => $e->getMessage()]);
+            $failedSteps[] = $label;
 
             return $neutral;
         }

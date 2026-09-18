@@ -9011,6 +9011,18 @@
                                                     "description": "Opponents whose MANUAL override was preserved"
                                                 }
                                             }
+                                        },
+                                        "failedSteps": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string",
+                                                "enum": [
+                                                    "codes",
+                                                    "auto-locate",
+                                                    "travel"
+                                                ]
+                                            },
+                                            "description": "Passes that threw and fell back to their neutral (zero) result \u2014 empty in the nominal case. A non-empty list means the update is PARTIAL: re-run to continue."
                                         }
                                     }
                                 }
