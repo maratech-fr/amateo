@@ -87,9 +87,16 @@ final class OpponentTravelResolver
      * Resolve the AUTO travel for every AWAY opponent of the club+season. A MANUAL
      * row is left untouched. Best-effort per opponent.
      *
+     * BCK-32 — deux bornes contre une passe qui traînerait : (1) un cap dur de
+     * {@see MAX_OPPONENTS} codes géolocalisés à router (l'excès part en `unresolved`
+     * SANS aucun appel réseau) ; (2) un budget de mur `$budgetSeconds` threadé vers
+     * {@see IgnRoutingClient::travelMinutesBatch} (les codes non tentés reviennent en
+     * `unresolved`). `$budgetSeconds` null (route dédiée `/travel/resolve`) = budget de
+     * lot par défaut, comportement inchangé.
+     *
      * @return array{resolved: int, unresolved: list<string>, skippedManual: int}
      */
-    public function resolve(string $clubId, string $seasonId): array
+    public function resolve(string $clubId, string $seasonId, ?float $budgetSeconds = null): array
     {
         $club = $this->clubRepository->find($clubId);
         $clubLat = $club instanceof Club ? $club->getLatitude() : null;
@@ -120,6 +127,17 @@ final class OpponentTravelResolver
             $geoTargets[] = ['code' => $code, 'lat' => $location[0], 'lon' => $location[1]];
         }
 
+        // BCK-32 — cap dur : au-delà de MAX_OPPONENTS codes géolocalisés à router,
+        // l'excès part en `unresolved` SANS aucun appel réseau (le rattrapage se fera à
+        // la prochaine passe). La borne était jusqu'ici tenue par la seule route dédiée ;
+        // l'orchestrateur /refresh l'atteint désormais aussi.
+        if (\count($geoTargets) > self::MAX_OPPONENTS) {
+            foreach (\array_slice($geoTargets, self::MAX_OPPONENTS) as $excess) {
+                $unresolved[] = $excess['code'];
+            }
+            $geoTargets = \array_slice($geoTargets, 0, self::MAX_OPPONENTS);
+        }
+
         // No usable origin → nothing computable, every geolocated opponent is
         // unresolved (best-effort, no exception).
         if (null === $clubLat || null === $clubLon) {
@@ -130,17 +148,22 @@ final class OpponentTravelResolver
             return ['resolved' => 0, 'unresolved' => $unresolved, 'skippedManual' => $skippedManual];
         }
 
-        $batch = $this->routingClient->travelMinutesBatch(array_map(
-            static fn (array $t): array => [
-                'key' => $t['code'],
-                'profile' => IgnRoutingClient::PROFILE_CAR,
-                'startLat' => (float) $clubLat,
-                'startLon' => (float) $clubLon,
-                'endLat' => $t['lat'],
-                'endLon' => $t['lon'],
-            ],
-            $geoTargets,
-        ));
+        $batch = $this->routingClient->travelMinutesBatch(
+            array_map(
+                static fn (array $t): array => [
+                    'key' => $t['code'],
+                    'profile' => IgnRoutingClient::PROFILE_CAR,
+                    'startLat' => (float) $clubLat,
+                    'startLon' => (float) $clubLon,
+                    'endLat' => $t['lat'],
+                    'endLon' => $t['lon'],
+                ],
+                $geoTargets,
+            ),
+            // BCK-32 — jamais plus que le budget de lot ; l'orchestrateur passe le RESTANT
+            // de son budget de mur, borné par BATCH_BUDGET_SECONDS.
+            budgetSeconds: null === $budgetSeconds ? null : min($budgetSeconds, IgnRoutingClient::BATCH_BUDGET_SECONDS),
+        );
         $minutes = $batch['minutes'];
         $budgetExceeded = array_fill_keys($batch['budgetExceededKeys'], true);
 

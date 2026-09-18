@@ -19,6 +19,7 @@ use App\Service\Basketball\VenueLabelNormalizer;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\Clock\ClockInterface;
 use Throwable;
 
 /**
@@ -85,15 +86,21 @@ final class OpponentVenueAutoLocator
         private readonly VenueLabelNormalizer $labelNormalizer,
         private readonly ClubRepository $clubRepository,
         private readonly LoggerInterface $logger,
+        private readonly ClockInterface $clock,
     ) {}
 
     /**
      * Auto-localise chaque équipe adverse AWAY du club+saison depuis le libellé de
      * salle de son fichier FBI. Best-effort.
      *
+     * BCK-32 — `$deadline` (epoch flottant absolu, optionnel) : une fois franchi, les
+     * groupes restants sont comptés `skipped` sans aucun appel réseau — même canal que
+     * le cap {@see MAX_GROUPS}. Null (appel hors orchestrateur, hooks d'import) = aucune
+     * borne de mur, inchangé.
+     *
      * @return array{located: int, ambiguous: int, unmatched: int, skipped: int}
      */
-    public function locate(string $clubId, string $seasonId): array
+    public function locate(string $clubId, string $seasonId, ?float $deadline = null): array
     {
         $club = $this->clubRepository->find($clubId);
         $clubLat = $club instanceof Club ? $club->getLatitude() : null;
@@ -116,11 +123,24 @@ final class OpponentVenueAutoLocator
         // MANUAL souverain, ni déjà sous la borne) le consomment.
         $processed = 0;
         $capNoted = false;
+        $deadlineNoted = false;
 
         foreach ($groups as $group) {
             $existing = $existingTeamRows[$group['key']] ?? null;
             if ($existing instanceof OpponentTravel && OpponentTravelSource::MANUAL === $existing->getSource()) {
                 // Un choix manuel du gestionnaire est souverain : jamais recalculé (aucun réseau).
+                ++$skipped;
+
+                continue;
+            }
+
+            // BCK-32 — budget de mur épuisé : les groupes restants sont sautés SANS
+            // réseau, même canal que le cap ci-dessous (best-effort, relance pour finir).
+            if (null !== $deadline && (float) $this->clock->now()->format('U.u') >= $deadline) {
+                if (!$deadlineNoted) {
+                    $this->logger->warning('Opponent venue auto-locate: wall-clock budget spent, remaining opponents skipped');
+                    $deadlineNoted = true;
+                }
                 ++$skipped;
 
                 continue;

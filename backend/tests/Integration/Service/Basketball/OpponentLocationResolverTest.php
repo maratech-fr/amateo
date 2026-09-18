@@ -19,6 +19,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Psr\Log\NullLogger;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Clock\MockClock;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 
@@ -97,6 +98,26 @@ final class OpponentLocationResolverTest extends WebTestCase
             'le canal xlsx (libellé club-fourni) ne DOIT JAMAIS écrire un VENUE dans la table partagée',
         );
         self::assertNull($entry->getVenueLabel(), 'une résolution ville ne porte aucun libellé de salle');
+    }
+
+    /**
+     * BCK-32 — budget de mur épuisé (deadline dans le passé) : une observation qui SE
+     * serait résolue revient en `unresolved` sans le moindre appel réseau ni écriture
+     * annuaire — même canal que le reste, best-effort (relancer pour continuer).
+     */
+    public function testResolveObservationsStopsAtTheWallClockDeadline(): void
+    {
+        $resolver = $this->resolverWithControlledFfbb();
+
+        $outcome = $resolver->resolveObservations([[
+            'organismeCode' => self::API_CODE,
+            'name' => 'ADVERSE BUDGET FC',
+            'directVenue' => ['libelle' => 'GYM', 'city' => 'Lyon', 'postalCode' => '69003', 'latitude' => 45.76, 'longitude' => 4.86],
+        ]], [], 1.0);
+
+        self::assertSame(0, $outcome['resolved'], 'aucune résolution passé le budget de mur');
+        self::assertSame(['ADVERSE BUDGET FC'], $outcome['unresolved']);
+        self::assertNull($this->repository()->findOneByFfbbOrganismeCode(self::API_CODE), 'rien écrit à l\'annuaire');
     }
 
     public function testApiChannelStillProducesVenuePrecisionFromItsAuthoritativeDirectVenue(): void
@@ -301,6 +322,7 @@ final class OpponentLocationResolverTest extends WebTestCase
             $this->suggestions(),
             $this->em,
             new NullLogger,
+            new MockClock,
         );
     }
 
@@ -369,6 +391,7 @@ final class OpponentLocationResolverTest extends WebTestCase
             $this->suggestions(),
             $this->em,
             new NullLogger,
+            new MockClock,
         );
     }
 

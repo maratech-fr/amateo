@@ -244,7 +244,7 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
             operationId: 'refreshOpponents',
             tags: ['Fixture'],
             responses: [
-                '200' => $this->schemas->jsonResponse('Runs, in ONE call, the three best-effort passes that update the season\'s away opponents: (a) catch up FFBB organisme codes into the shared directory and stamp the fixtures; (b) auto-locate each opponent team\'s gym from the FBI file salle label (federal salle, tenant AUTO override, never client text); (c) recompute the AUTO car travel. Each pass is independent — a failure in one does not cancel the others.', [
+                '200' => $this->schemas->jsonResponse('Runs, in ONE call, the three best-effort passes that update the season\'s away opponents: (a) catch up FFBB organisme codes into the shared directory and stamp the fixtures; (b) auto-locate each opponent team\'s gym from the FBI file salle label (federal salle, tenant AUTO override, never client text); (c) recompute the AUTO car travel. Each pass is independent — a failure in one does not cancel the others. A shared wall-clock budget bounds the whole call: once it is spent, the remaining opponents of each pass come back unresolved/skipped (a partial result) so a degraded federation can never hold the request near the upstream timeout — re-run to continue.', [
                     'type' => 'object',
                     'properties' => [
                         'codes' => ['type' => 'object', 'description' => 'Pass (a): the FFBB organisme code catch-up', 'properties' => [
