@@ -456,7 +456,11 @@ its *founding* reads (the ones several sections share — here teams + venues) a
 section's own body** (`SectionBody`, a small `readFailed`/`undefined` wrapper around
 `LoadErrorHint`/`EmptyHint`) gate on its own query: one section's failed read must not blank the
 others. Either way, `?? []` during a first load is banned — it is exactly the credible-emptiness
-bug above, one screen removed.
+bug above, one screen removed. **A single WIDGET can be the "section"** too, not just an
+accordion: `PlacementPanel` (D2, `features/matches`) derives its own three-query `guards` state
+(`CalendarPage`) and suspends only its own placement gesture (`LoadErrorHint` + retry on
+`failed`, `Spinner` on `loading`) — the rest of the Calendrier screen (filters, other gestures,
+the radar) stays live regardless.
 
 ---
 

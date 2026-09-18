@@ -1,14 +1,16 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-18 (rotation de fraîcheur `documentation-update`, PR audit 0918 — **DOC-45
-corrigé** : les poids du gymnase préféré/évité annoncés à cette table (« bonus/malus objectif
-**+60/−60** ») étaient FAUX depuis le rebalancement V10 du 2026-08-15 ; `objective/weights.py:53,61`
-donne bien `"preferred": 10` / `"avoided_venue": -10`, corrigé ci-dessous — **DOC-46 corrigé** :
-le renvoi FACILITY_CAPACITY pointait `app/main.py:291-294`, le commentaire au passé vit en fait à
-`:488-491`, corrigé. `SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"` et
-`LEVEL_2_OBJECTIVE_WEIGHTS` (S=10000/A=1000/B=100…) dans `objective/weights.py` ; sinon confronté
-au code, tout juste : `SOCLE_REFERENCE_TIER_WEIGHTS` (S=20/A=18/B=16/C=14/D=12, même fichier) ;
-`add_max_consecutive_days_constraints` toujours à `constraints/wellness.py:494`.
+Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D1).
+**§Exclusivité groupe corrigée** : le backend n'ajoute plus de `forbiddenVenueId` hors tag depuis
+D1 (décision fondateur lecture 1, 2026-09-18) — « impose Y au groupe X » force le groupe SANS
+réserver le gymnase aux autres équipes (`ScheduleConstraintBuilder.php`, plus de bloc « forbidden
+hors tag » ; `PeriodConstraintSelector::clubTagVerdict` suit à l'identique). L'engine, lui,
+n'a PAS changé : un `preferredVenueId`/`forcedVenueId` HARD/LOCK reste traité comme un gymnase
+FORCÉ pour l'équipe qui le porte (défense en profondeur sur donnée legacy) — seule l'ÉMISSION
+backend a changé. `SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"` et
+`LEVEL_2_OBJECTIVE_WEIGHTS` (S=10000/A=1000/B=100…) dans `objective/weights.py` ; poids
+`"preferred": 10` / `"avoided_venue": -10` (`objective/weights.py:53,61`) ✓.
+
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
 > Chaque entrée donne le **mécanisme** (dur/soft), le **ruleType** qui l'active, et un **exemple BCCL**.
@@ -91,7 +93,7 @@ au code, tout juste : `SOCLE_REFERENCE_TIER_WEIGHTS` (S=20/A=18/B=16/C=14/D=12, 
   redondant : retirer la pose HARD fait rougir `test_hard_layer_parity_registry.py` (registre de
   parité) sans faire rougir le NR (le miroir refuse encore) ; désactiver le miroir fait rougir
   `test_validate_venue_minimum.py` sans faire rougir le registre (la pose HARD reste là).
-- **Exclusivité groupe** : `CLUB + targetTag + (forcedVenueId ou preferredVenueId HARD)` → le backend force le tag ET **interdit le gymnase hors tag** → gymnase **réservé** au groupe.
+- **Plus d'exclusivité groupe depuis D1 (2026-09-18, décision fondateur lecture 1)** : `CLUB + targetTag + forcedVenueId` force le tag sur le gymnase mais **ne l'interdit plus** aux équipes hors tag — le backend n'émet plus de ligne `forbiddenVenueId` « hors tag ». Une exclusivité voulue se pose désormais À LA MAIN (une contrainte `forbiddenVenueId` séparée par équipe/tag hors groupe). Besoin non couvert par un mécanisme dédié : `backend/docs/constraint-coverage.md` §Axe GYMNASE (❌), `specs/evolution/roadmap.md` §Parking.
 - **Fermeture datée** (`config.type = "venue_closed"`, période cockpit) → le backend l'**étend** en `forbiddenVenueId` HARD par équipe sur la fenêtre.
 
 **Exemples BCCL**

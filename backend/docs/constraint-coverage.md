@@ -1,14 +1,18 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-09-18 (rotation de fraîcheur `documentation-update`, PR docs de l'audit
-0918 — fichier au stamp le plus ancien du dépôt, zone non touchée par le reste de la PR).
+Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D1).
 Re-confronté au code : les poids cités ligne 35 (`spacing`, −2), ligne 45 (`preferredVenueId`,
 +10) et ligne 67 (tiers S=10000…D=1) sont exacts contre `engine/app/solver/objective/weights.py`
-(`LEVEL_2_OBJECTIVE_WEIGHTS["spacing"]=-2`, `["preferred"]=10`, `["S"]=10000`/`["D"]=1`) — ce
-fichier était déjà, avant cette passe, le seul des trois docs de référence à ne PAS avoir dérivé
-sur le couple préféré/évité (DOC-45, 2026-09-18). `ConstraintFamily`
-(`backend/src/Enum/ConstraintFamily.php:11-14`) n'a toujours que 4 cas (TIME/DAY/FACILITY/
-COACH_AVAILABILITY), `FACILITY_CAPACITY` absent de l'enum ✓. Rien à corriger.
+(`LEVEL_2_OBJECTIVE_WEIGHTS["spacing"]=-2`, `["preferred"]=10`, `["S"]=10000`/`["D"]=1`) ;
+`ConstraintFamily` (`backend/src/Enum/ConstraintFamily.php:11-14`) n'a toujours que 4 cas
+(TIME/DAY/FACILITY/COACH_AVAILABILITY), `FACILITY_CAPACITY` absent de l'enum ✓. **Ligne « Réserver
+un gymnase à un groupe » repassée en ❌** (D1, décision fondateur lecture 1) : `ScheduleConstraintBuilder`
+n'émet plus les lignes `forbiddenVenueId` « interdit hors tag » et `PeriodConstraintSelector::
+clubTagVerdict` ne les attend plus — « impose Y au groupe X » force le groupe, il ne réserve plus
+rien aux autres équipes (`backend/src/Service/ScheduleConstraintBuilder.php`, plus de bloc
+« forbidden hors tag » ; `PeriodConstraintSelector.php`, `$forbiddenRowsSurvive` supprimé). Décision
+fermée : `specs/courantes/etat-des-lieux.md` §2 ; besoin non couvert consigné en Parking
+(`specs/evolution/roadmap.md`).
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels
@@ -42,7 +46,7 @@ COACH_AVAILABILITY), `FACILITY_CAPACITY` absent de l'enum ✓. Rien à corriger.
 | Besoin | Mécanisme | Statut | Exemple BCCL |
 |---|---|---|---|
 | « Cette équipe joue dans tel gymnase (obligatoire) » | FACILITY `forcedVenueId` (HARD) | ✅ | SM4 → Jean Vilar |
-| « Réserver un gymnase à un groupe (exclusif) » | FACILITY `forcedVenueId`/`preferredVenueId` HARD + `targetTag` → interdit hors tag | ✅ | Camus réservé Loisir 1/2/3 |
+| « Réserver un gymnase à un groupe (exclusif) » | *aucun mécanisme* — depuis D1 (2026-09-18), « impose Y au groupe X » (`forcedVenueId` + `targetTag`) force le groupe mais **ne réserve plus rien** aux autres équipes ; obtenir l'exclusivité exige de poser À LA MAIN un `forbiddenVenueId` par équipe/tag hors groupe | ❌ | Camus imposé à Loisir 1/2/3 — les autres équipes restent libres d'y aller sauf contrainte séparée |
 | « Éviter tel gymnase » (dur) | FACILITY `forbiddenVenueId` (HARD) | ✅ | Vétérans interdits sur 5 gymnases |
 | « Préférer tel gymnase » | FACILITY `preferredVenueId` (PREFERRED, +10 — recalé sous la valeur d'une séance nue depuis V10 « le remplissage prime », `engine/app/solver/objective/weights.py`) | ✅ soft | Matéo préféré aux Régionales |
 | « Pas ce type d'équipe dans ce gymnase » | FACILITY `forbiddenVenueId` + `targetTag` | ✅ | Jean Vilar pas de féminines |

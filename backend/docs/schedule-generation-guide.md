@@ -1,11 +1,13 @@
 # Guide de génération de planning — ClubScheduler
 
-Last verified @ 2026-09-18 (`documentation-update`, seconde passe du jour — PR correctrice de
-l'audit moteur 0918). Re-confronté § 6 « Cas 1 : le statut reste bloqué en PENDING » contre
-`docker-compose.yml` (passe précédente, même jour) : `messenger-worker` y porte désormais
-`restart: unless-stopped`, seul service de dev à le porter. `engine/CONTRACT_VERSION` = `2.23` ✓
-(bump ENG-40) — la ligne « Correction » ci-dessous recalée. Reste non re-sondé cette passe : le
-corps du guide hors § Pré-requis, § Injection et § 6 Cas 1.
+Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D3).
+Re-confronté § 6 « Cas 1 : le statut reste bloqué en PENDING » contre `docker-compose.yml`
+(passe précédente, même jour) : `messenger-worker` y porte toujours `restart: unless-stopped`,
+seul service de dev à le porter. `engine/CONTRACT_VERSION` = `2.23` ✓ — deux bumps le même jour,
+sans rapport avec ce guide : `2.22` (ENG-40, diagnostic `placement_problem_too_large`) puis
+`2.23` (D3, `matches[].roundTripMinutes`) — la ligne « Correction » ci-dessous recalée au numéro
+courant. Reste non re-sondé cette passe : le corps du guide hors § Pré-requis, § Injection et § 6
+Cas 1.
 
 > Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend ClubScheduler. Il s'adresse aux développeurs juniors qui découvrent le projet.
 

@@ -1,8 +1,10 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-09-18 (`documentation-update`, PR correctrice de l'audit moteur 0918).
-Re-confronté au code : `engine/CONTRACT_VERSION` = `2.23` ✓ (bump ENG-40, nouveau diagnostic
-`placement_problem_too_large` ajouté à la table ci-dessous, fichier `engine/CONTRACT_VERSION`) ;
+Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D3).
+Re-confronté au code : `engine/CONTRACT_VERSION` = `2.23` ✓ — deux bumps le même jour : `2.22`
+(ENG-40, nouveau diagnostic `placement_problem_too_large` ajouté à la table ci-dessous) puis
+`2.23` (D3, `matches[].roundTripMinutes` sur `/place-matches` — sans nouveau diagnostic, sans
+rapport avec ce fichier) ;
 `SCORE_FORMULA_VERSION` = `T24_LEVEL_2_FIXED_WEIGHTS_V13` (`app/solver/objective/weights.py:31`,
 non re-sondé cette passe) ; budget adaptatif 60/180/600 s aux paliers ≤50/≤200 de complexité
 (`app/main.py`, `_adaptive_timeout`, non re-sondé cette passe) ; `solverTimeoutSeconds` défaut 650

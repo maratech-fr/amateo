@@ -1,16 +1,18 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-18 (`documentation-update`, PR docs de l'audit 0918, AUD-DOC-38 — refonte
-intégrale en état courant par écran, remplace l'ancien stamp-journal à 28 sections datées). Chaque
-mécanisme décrit a été confronté au code au moment de l'écrire : composants `frontend/src/features/
-matches/` (routes, `CalendarPage`/`ConflictsPage`/`ImportPage`/`ConfigurationPage`/`TypicalWeekPage`)
-· `MatchConflictDetector` (D1/D1 étendu, échelle de sévérité) · `ConflictRadarLoader` (chargement
+Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D2/D3/
+FRT-32, sur la base de la refonte AUD-DOC-38). Confronté au code cette passe : `FixtureStateProcessor::
+assertVenueAccessAllowed` (D2, §5) ; `MatchConflictDetector::kickoffInsideLeagueWindow` +
+`matches/lib/envelope.ts::kickoffInsideLeagueWindow` (FRT-32, miroir déclaré, §5) ;
+`OpponentTravelProjection::roundTripByFixtureId` + `matches[].roundTripMinutes` (D3, §3). Reste
+confronté à la refonte précédente : composants `frontend/src/features/matches/` (routes,
+`CalendarPage`/`ConflictsPage`/`ImportPage`/`ConfigurationPage`/`TypicalWeekPage`) ·
+`MatchConflictDetector` (D1/D1 étendu, échelle de sévérité) · `ConflictRadarLoader` (chargement
 unique GET conflicts ⇄ delta de visite) · `FbiFixtureImporter`/`FfbbRencontreReconciler` (workflow
 NEW/OUT_OF_SYNC/REVIEWED, moteur partagé) · `VenueAliasResolver`/`OpponentLocationResolver`/
 `OpponentTravelResolver` (tables partagées et tenant) · `OpponentPlaceResolver` (détail par côté) ·
 `engine/app/solver/match_placement.py` (HARD/SOFT, `W_PROTECT_HABIT=25`) ·
-`engine/CONTRACT_VERSION` = **2.23**. Reste non re-sondé : rien — c'est une écriture neuve, pas un
-recalage partiel.
+`engine/CONTRACT_VERSION` = **2.23**.
 
 > **Règle de forme (refonte 2026-09-18, AUD-DOC-38)** : ce fichier décrit **l'état courant, par
 > écran** — jamais une section datée d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id)
@@ -244,7 +246,12 @@ SYNCHRONE** (`PlaceMatchesController` — management + saison écrivable + socle
 `kickoff+matchMinutes ≤ end`), indisponibilités gymnase, no-overlap `(gymnase, date)` sur la fenêtre
 MATCH, fenêtre ligue quand l'enveloppe est résolue (non résolue = diagnostic INFO seul). Durées par
 équipe (`MatchDurationResolver`) portées par le contrat ; absentes côté engine ⇒ défauts Pydantic
-105/30. **SOFT (golden-épinglés)** : conflit coach MAIN −60 · passerelle `NOT_SIMULTANEOUS` violée
+105/30. **Trajet adversaire (D3, contrat 2.23)** : une ligne AWAY porte `roundTripMinutes` (2 ×
+aller simple, projeté par la maison unique `App\Service\OpponentTravelProjection`, partagée avec
+le radar §2) ; le solveur étend la fenêtre de blocage du coach de ce trajet — moitié avant
+l'échauffement, moitié après le match, réplique exacte de `MatchFootprint` — pour le protéger
+pendant son déplacement. Absent/0 (adversaire sans trajet connu) ⇒ aucune extension. **SOFT
+(golden-épinglés)** : conflit coach MAIN −60 · passerelle `NOT_SIMULTANEOUS` violée
 −40 · habitude heure +15/gymnase +5 · fenêtre habituelle protégée −25 · `BACK_TO_BACK` enchaîné +15
 · coach ASSISTANT −10 · stabilité re-solve +8 · compactage −1/15 min de trou. La rotation A/B
 (`slotRotations`, §1) ajoute une attraction équivalente (`W_ROTATION_TIME=15`/`W_ROTATION_VENUE=5`)
@@ -317,6 +324,29 @@ Importer garde sa maison propre (§6).
   (détail : salle fichier, n° rencontre, rôle coach) ; radar `ConflictRadar` en dernier. Mode
   échange : Échap désarme, les candidates (autres domiciles PLACED) portent un anneau, les autres
   s'estompent.
+- **Refus serveur du placement (D2)** : `FixtureStateProcessor::assertVenueAccessAllowed` (geste
+  gestionnaire, create ET update d'un domicile) refuse en 422 (1) toute rencontre — amical compris
+  — posée dans un gymnase couvert par une `VenueUnavailability` à sa date ; (2) pour une rencontre
+  de COMPÉTITION seulement, quand le club déclare ≥ 1 `VenueMatchWindow` : aucune fenêtre `(gymnase,
+  jour)` ou coup d'envoi hors fenêtre (même prédicat que le diagnostic,
+  `MatchConflictDetector::kickoffInsideWindow` — une seule maison). Jamais de refus sur l'enveloppe
+  ligue (radar seul, décision D2) ; un amical reste libre hors fenêtre d'accès. `/api/fixtures/place`
+  (rail solveur, §3 — le solveur pose déjà les mêmes fenêtres/indispos en HARD) et la
+  réconciliation FBI n'empruntent **pas** ce processor : intacts, hors du geste manuel gestionnaire
+  que D2 vise. `PlacementPanel` lit trois gardes du club (accès match,
+  indisponibilités, enveloppe ligue) via `readState` ; le GESTE de placement est SUSPENDU
+  (`LoadErrorHint` + retry en échec, spinner en chargement) tant qu'elles ne sont pas `ready` — un
+  échec de première lecture ne se lit jamais « aucune restriction ». Les mutations de placement/
+  édition restituent le message 422 du serveur dans le toast (`errorMessage`) au lieu d'un
+  générique.
+- **Enveloppe ligue — miroir déclaré (FRT-32)** : le prédicat d'appartenance au coup d'envoi
+  (intervalle FERMÉ `[kickoffMin, kickoffMax]`, filtré par jour) vit dans
+  `MatchConflictDetector::kickoffInsideLeagueWindow` (backend, DIAGNOSTIQUE `LEAGUE_WINDOW_VIOLATION`)
+  et son miroir DÉCLARÉ `matches/lib/envelope.ts::kickoffInsideLeagueWindow` (front, BLOQUE la pose
+  via `isInEnvelope`) — gardés en parité par `leagueEnvelope.parity.json` +
+  `LeagueEnvelopeMirrorParityTest`/`leagueEnvelope.parity.test.ts`. Divergent PAR CONCEPTION :
+  l'exemption amical (front `!isFriendly` vs backend saut des `competitionId` null) et la
+  résolution équipe↔fenêtre (déjà serveur).
 - **Grille week-end** (`WeekendGrid`) : un match placé démarre au coup d'envoi et dure le match
   (`matchMinutes` résolu) ; il **s'enchaîne** avec un match suivant même gymnase/jour dont le coup
   d'envoi tombe ≤ 30 min après sa fin — au-delà, le trou reste visible. **Case « À confirmer »**

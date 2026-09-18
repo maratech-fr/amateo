@@ -1,10 +1,13 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-09-18 (`documentation-update`, PR correctrice de l'audit moteur 0918 —
-hors filet du garde `test_contract_version_doc_sync.py`, AUD-DOC-39). `CONTRACT_VERSION` avait
-dérivé à `2.21` (`ScheduleConstraintBuilder.php:64` ⇄ `engine/CONTRACT_VERSION`, bumpé à `2.23`
-par le lot ENG-40) — corrigé aux occurrences ci-dessous ✓. Reste non re-sondé cette passe : TTL
-du verrou, `ScheduleStatus` (dernière confrontation 2026-09-15).
+Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D3,
+hors filet du garde `test_contract_version_doc_sync.py`, AUD-DOC-39). `CONTRACT_VERSION`
+(`ScheduleConstraintBuilder.php:64` ⇄ `engine/CONTRACT_VERSION`) avait dérivé à `2.21`, puis
+bumpé deux fois le même jour : `2.22` (lot correctif ENG-40, diagnostic
+`placement_problem_too_large`) puis `2.23` (D3, `matches[].roundTripMinutes` sur
+`/place-matches` — sans rapport avec ce document de génération d'entraînement) — corrigé aux
+occurrences ci-dessous ✓. Reste non re-sondé cette passe : TTL du verrou, `ScheduleStatus`
+(dernière confrontation 2026-09-15).
 
 > ClubScheduler — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 

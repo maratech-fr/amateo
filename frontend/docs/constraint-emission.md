@@ -1,10 +1,12 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-09-18 (`documentation-update`, PR docs de l'audit 0918, AUD-DOC-47). **DOC-47
-corrigé** : la table d'alignement omettait `targetTags`/`excludeTags` (« et aussi » / « sauf »,
-P2-29) — ajoutés (émis `ConstraintsStep.tsx`, résolus en N contraintes TEAM par
-`ScheduleConstraintBuilder::resolveTagToTeamIds`, engine reçoit les contraintes déjà éclatées,
-zéro clé de tag dans son payload). Reste confronté au code cette passe : `resolveTravelRuleIntensity`
+Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D1).
+Re-confronté au code : **le mode « préfère » n'offre plus le sélecteur de règle** —
+`ConstraintsStep.tsx` épingle désormais `ruleType: "PREFERRED"` en mode préfère et rend une
+pastille figée « Préféré » (patron du badge « Obligatoire ») au lieu du sélecteur complet ;
+« évite » garde le sien. Côté 3 couches, `preferredVenueId`/`forcedVenueId` ne portent plus
+d'« exclusivité tag » (`ScheduleConstraintBuilder.php` n'émet plus de lignes `forbiddenVenueId`
+« interdit hors tag » — table ci-dessous recalée). `resolveTravelRuleIntensity`
 (`ScheduleConstraintBuilder.php:965`, repli `TeamLinkIntensity::PREFERRED`) toujours le seul point
 de résolution de l'intensité `travelTime` ✓ ; `forcedDays` toujours câblé sur les 3 couches
 (`ConstraintValidationService.php:71-79`, `ConstraintConfigValidator.php:74`,
@@ -28,7 +30,7 @@ retirée du moteur, le commentaire au passé à `engine/app/main.py:488-491` ✓
 | **TIME** « Fini avant » | `maxEndTime` (fin = début + durée) | **HARD** (épinglé) | U15 fini avant 20h30 |
 | **DAY** « à éviter » | `forbiddenDays` | sélecteur | SM2 évite vendredi |
 | **DAY** « uniquement » | `allowedDays` (whitelist) | **HARD** (épinglé) | Vétérans vendredi uniquement |
-| **FACILITY** « préfère » | `preferredVenueId` | sélecteur | Matéo préféré Régionales |
+| **FACILITY** « préfère » | `preferredVenueId` | **PREFERRED** (épinglé — D1, plus de sélecteur, pastille figée « Préféré ») | Matéo préféré Régionales |
 | **FACILITY** « évite » | `forbiddenVenueId` | sélecteur | Vétérans interdits |
 | **FACILITY** « impose » | `forcedVenueId` | **HARD** (épinglé) | SM4 → Jean Vilar |
 | **FACILITY** « au moins N » | `minAtVenueId` + `minAtVenueCount` (défaut 1) | **HARD** (épinglé) | au moins 1 séance à Armand |
@@ -68,9 +70,9 @@ Colonnes : le **front** l'émet-il ? · le **backend** le transmet/transforme-t-
 | `minStartTime` / `maxStartTime` | ✅ TIME | passe | ✅ fenêtre dure / bonus soft | ✅ **aligné** |
 | `forbiddenDays` | ✅ « à éviter » | passe | ✅ dur / soft | ✅ **aligné** |
 | `allowedDays` | ✅ « uniquement » | passe | ✅ whitelist (interdit le complément) | ✅ **aligné** *(depuis ENG-16)* |
-| `preferredVenueId` | ✅ « préfère » | HARD→forcé + exclusivité tag | ✅ +10 soft / forcé | ✅ **aligné** |
+| `preferredVenueId` | ✅ « préfère » (D1 : émis **PREFERRED uniquement**, plus de sélecteur ; HARD/LOCK refusé en 422 à la source, `ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`) | passe (engine reste défense-en-profondeur : un `preferredVenueId` HARD/LOCK legacy force toujours) | ✅ +10 soft ; forcé si legacy HARD/LOCK | ✅ **aligné** |
 | `forbiddenVenueId` | ✅ « évite » | passe | ✅ interdit / −10 soft | ✅ **aligné** |
-| `forcedVenueId` | ✅ « impose » | + exclusivité tag | ✅ salle forcée | ✅ **aligné** |
+| `forcedVenueId` | ✅ « impose » | passe (D1 : plus d'exclusivité tag — ne réserve plus le gymnase aux autres équipes) | ✅ salle forcée | ✅ **aligné** |
 | `unavailableDays` | ✅ coach « indisponible » | passe | ✅ union, dur | ✅ **aligné** |
 | `availableDays` (coach « disponible **uniquement** ») | ✅ coach *(depuis ALIGN)* | passe | ✅ whitelist (intersection) | ✅ **aligné** |
 | `maxTeams` / famille `FACILITY_CAPACITY` | ❌ jamais émis (l'écran Gymnases n'émet pas de contrainte) | ❌ famille **retirée** le 2026-08-08 (SEC-13 PR C) — absente de la liste blanche | ❌ retirée du moteur le même jour (`main.py:487-489`, commentaire au passé) | ✅ **sans objet** : la divisibilité voyage **uniquement** par `trainingSlots[].capacity` (`canSplit ? capacity : 1`). La famille était honorée par le moteur alors qu'aucun chemin UI ne pouvait la créer — zéro ligne en base |

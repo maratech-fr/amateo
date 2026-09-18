@@ -1,8 +1,10 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-09-18 (`documentation-update`, PR correctrice de l'audit moteur 0918).
-Reconfirmé : `engine/CONTRACT_VERSION` = `2.23` ✓ (bump ENG-40, nouveau diagnostic
-`placement_problem_too_large`) — les occurrences de `2.21` ci-dessous recalées à `2.23` ;
+Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D3).
+Reconfirmé : `engine/CONTRACT_VERSION` = `2.23` ✓ — deux bumps le même jour : `2.21→2.22`
+(ENG-40, diagnostic `placement_problem_too_large`) puis `2.22→2.23` (D3,
+`matches[].roundTripMinutes` sur `/place-matches`, sans rapport avec ce document — ce fichier ne
+décrit que `/generate`) ; les occurrences de `2.21` ci-dessous recalées à `2.23` ;
 `DiagnosticSchema.id` toujours requis (`app/schemas/output_schema.py:61`) ✓ ; le commentaire mort
 `FACILITY_CAPACITY` toujours présent, non-code (`app/main.py:488-491`) — non re-sondé cette
 passe (dernière confrontation 2026-09-17). Reste non re-parcouru ligne à ligne cette passe —

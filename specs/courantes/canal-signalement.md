@@ -1,10 +1,10 @@
-Last verified @ 2026-09-15 (**rotation de fraîcheur** `documentation-update`, PR conflits
-coach ↔ joueur — zone non touchée par cette PR). Re-confronté au code : `POST /api/feedback`
-route toujours à `FeedbackController.php:66` ; `EventListener/RequestIdListener.php` +
-`Messenger/RequestIdMiddleware.php` existent toujours (backend+bus) ; `monolog-bundle` toujours
-dans `composer.json:31` ; le digest quotidien (D4) existe (`app:feedback:digest`,
-`FeedbackDigestCommand.php`) ; l'email « bien reçu »/« traité » (§3bis) existe
-(`FeedbackMailBuilder.php`). Tout juste.
+Last verified @ 2026-09-18 (**rotation de fraîcheur** `documentation-update`, PR E « décisions de
+l'audit 0918 » — zone non touchée par cette PR). Re-confronté au code : `POST /api/feedback`
+route toujours présente, **désormais `FeedbackController.php:68`** (ligne recalée, dérive
+mineure) ; `EventListener/RequestIdListener.php` + `Messenger/RequestIdMiddleware.php` existent
+toujours (backend+bus) ; `monolog-bundle` toujours dans `composer.json:31` ; le digest quotidien
+(D4) existe (`app:feedback:digest`, `FeedbackDigestCommand.php`) ; l'email « bien reçu »/« traité »
+(§3bis) existe (`FeedbackMailBuilder.php`).
 
 # Canal signalement, support & reproduction
 

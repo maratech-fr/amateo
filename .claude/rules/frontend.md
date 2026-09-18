@@ -20,7 +20,10 @@ paths:
   `CapacityMirrorParityTest` ; côté cockpit `App\Service\HolidayWorkweekRule` ⇄
   `cockpit/lib/holidayWorkweek.ts`, parité `HolidayWorkweekMirrorParityTest`, D4 2026-09-04 ;
   `App\Service\WeekSegmentationRule` ⇄ `cockpit/lib/weekSegmentation.ts`, parité
-  `WeekSegmentationMirrorParityTest`, découpage début·milieu·fin, 2026-09-05) ;
+  `WeekSegmentationMirrorParityTest`, découpage début·milieu·fin, 2026-09-05 ; côté matchs
+  `MatchConflictDetector::kickoffInsideLeagueWindow` ⇄ `matches/lib/envelope.ts::
+  kickoffInsideLeagueWindow` (enveloppe ligue, intervalle fermé sur le jour), parité
+  `LeagueEnvelopeMirrorParityTest`/`leagueEnvelope.parity.test.ts`, FRT-32 2026-09-18) ;
   **(3) redérivation silencieuse** — ❌ interdite. Signe d'alerte :
   un `switch`/chaîne de conditions sur les valeurs d'un **enum métier partagé** (`scope`,
   `ruleType`, `family`, `lockLevel`, `status`…) pour **décider d'un comportement** (pas pour
