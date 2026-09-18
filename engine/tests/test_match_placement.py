@@ -500,11 +500,24 @@ def test_away_travel_extends_the_coach_window_and_pushes_the_home_match() -> Non
             payload(
                 matches=[
                     to_place("m1", "t1"),
-                    {"id": "away1", "teamId": "t2", "date": SATURDAY, "kind": "AWAY", "kickoff": "14:00", "roundTripMinutes": round_trip},
+                    {
+                        "id": "away1",
+                        "teamId": "t2",
+                        "date": SATURDAY,
+                        "kind": "AWAY",
+                        "kickoff": "14:00",
+                        "roundTripMinutes": round_trip,
+                    },
                 ],
                 venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "17:00"}])],
                 teams=[
-                    team("t1", coaches=[{"coachId": "c1", "role": "MAIN"}], habits=[{"dayOfWeek": 6, "kickoff": "15:00", "venueId": "v1"}], matchMinutes=60, warmupMinutes=0),
+                    team(
+                        "t1",
+                        coaches=[{"coachId": "c1", "role": "MAIN"}],
+                        habits=[{"dayOfWeek": 6, "kickoff": "15:00", "venueId": "v1"}],
+                        matchMinutes=60,
+                        warmupMinutes=0,
+                    ),
                     team("t2", coaches=[{"coachId": "c1", "role": "MAIN"}], matchMinutes=60, warmupMinutes=0),
                 ],
             )
