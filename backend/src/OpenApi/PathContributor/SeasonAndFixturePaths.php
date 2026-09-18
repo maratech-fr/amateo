@@ -194,6 +194,57 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
             ),
         ));
 
+        $paths->addPath('/api/fixtures/fbi-corrections', new PathItem(get: new Operation(
+            operationId: 'listFbiCorrections',
+            tags: ['Match'],
+            responses: [
+                '200' => $this->schemas->jsonResponse('The OPEN « to correct in FBI » ledger of the club+season: divergences where the manager kept the app value, so FBI is behind and must be edited by hand. Each entry says what to type in FBI (appValue) against what FBI still shows (fbiValue).', [
+                    'type' => 'object',
+                    'properties' => [
+                        'corrections' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                            'id' => ['type' => 'string'],
+                            'fixtureId' => ['type' => 'string'],
+                            'field' => ['type' => 'string', 'enum' => ['date', 'kickoff', 'venue']],
+                            'appValue' => ['type' => 'string', 'nullable' => true, 'description' => 'What to type in FBI (the app value)'],
+                            'fbiValue' => ['type' => 'string', 'nullable' => true, 'description' => 'What FBI still shows'],
+                            'venueFbiLabel' => ['type' => 'string', 'nullable' => true, 'description' => 'The FBI alias of the app venue, when known — what to select in FBI'],
+                            'decidedAt' => ['type' => 'string', 'format' => 'date-time'],
+                            'lastSeenInFbiAt' => ['type' => 'string', 'format' => 'date-time', 'nullable' => true, 'description' => 'Last time a deposit re-saw this divergence in FBI'],
+                        ]]],
+                    ],
+                ]),
+                '400' => new Response('No club in context'),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+            ],
+            summary: 'The open « to correct in FBI » ledger for the club+season (read-only, open to any member)',
+        )));
+
+        $paths->addPath('/api/fixtures/fbi-corrections/{id}/close', new PathItem(post: new Operation(
+            operationId: 'closeFbiCorrection',
+            tags: ['Match'],
+            responses: [
+                '200' => new Response('The correction, now closed manually'),
+                '403' => new Response('Not a management member'),
+                '404' => new Response('No open correction with this id in the club+season (byte-identical cross-club)'),
+                '409' => new Response('Archived (read-only) season'),
+            ],
+            summary: 'Mark a « to correct in FBI » entry as done in FBI (closed_by=manual) — management only',
+            parameters: [['name' => 'id', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string']]],
+        )));
+
+        $paths->addPath('/api/fixtures/fbi-corrections/{id}/reopen', new PathItem(post: new Operation(
+            operationId: 'reopenFbiCorrection',
+            tags: ['Match'],
+            responses: [
+                '200' => new Response('The correction, reopened'),
+                '403' => new Response('Not a management member'),
+                '404' => new Response('No correction with this id in the club+season (byte-identical cross-club)'),
+                '409' => new Response('Already open, closed by a deposit, or the manual close is older than 24 hours — cannot be reopened, or archived season'),
+            ],
+            summary: 'Undo a recent manual « done in FBI » (only a manual close under 24 hours) — management only',
+            parameters: [['name' => 'id', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string']]],
+        )));
+
         $paths->addPath('/api/matches/module-visit', new PathItem(post: new Operation(
             operationId: 'stampMatchModuleVisit',
             tags: ['Match'],
@@ -254,6 +305,10 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                             'toEnterCount' => ['type' => 'integer', 'description' => 'Home fixtures not yet entered in FBI (UNPLACED included)'],
                             'withinWindow' => ['type' => 'boolean', 'description' => 'True within seven days of the deadline (overdue included)'],
                         ]]],
+                        'fbiTodo' => ['type' => 'object', 'description' => 'The GLOBAL « to do in FBI » counts (all weeks), so the cockpit and the counters bar never load the fixtures', 'properties' => [
+                            'toEnter' => ['type' => 'integer', 'description' => 'Home fixtures PLACED but not yet entered in FBI (UNPLACED and already-submitted excluded)'],
+                            'toCorrect' => ['type' => 'integer', 'description' => 'Open « to correct in FBI » ledger entries (kept-app divergences FBI is still behind on)'],
+                        ]],
                         'guardianDelta' => ['type' => 'object', 'nullable' => true, 'description' => 'Present only when a reminder window is open AND the user already has a visit reference', 'properties' => [
                             'newFixturesCount' => ['type' => 'integer'],
                             'newConflictFingerprints' => ['type' => 'array', 'items' => ['type' => 'string']],

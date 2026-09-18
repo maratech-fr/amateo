@@ -1,14 +1,25 @@
-Last verified @ 2026-09-19 (retours de tests — une NOUVELLE route `PATCH /api/club/siege` (le serveur
-re-géocode l'adresse via la BAN et écrit adresse/CP/ville + coordonnées depuis son hit, jamais le
-client) et un champ ADDITIF `clubGeolocated` sur `GET /api/opponents/travel` ; plus trois ajouts
-additifs des passes précédentes (`failedSteps`, `windows`, deux valeurs d'enum de résolution) ;
-régénéré par `api:openapi:export`).
-**201 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** :
-`PATCH /api/club/siege` apparaît ; le reste est additif (`clubGeolocated`).
-· SHA-256 `bfa260deaf86fc84fdb35700ef7d2a6281b7a45f6e7a880db643722ad4504e17`
+Last verified @ 2026-09-19 (registre « à corriger dans FBI » — trois NOUVELLES routes custom
+`GET /api/fixtures/fbi-corrections` (lecture membre des écarts que le gestionnaire a gardés côté appli et
+doit reporter dans FBI), `POST …/{id}/close` (marquer corrigé, gestionnaire) et `POST …/{id}/reopen`
+(annuler un « corrigé » manuel de moins de 24 h) ; plus deux champs ADDITIFS — `fbiEcho` sur le schéma
+`Fixture`, `fbiTodo {toEnter, toCorrect}` sur `GET /api/matches/deadline-outlook` ; régénéré par
+`api:openapi:export`).
+**204 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+3 paths** :
+les trois routes `fbi-corrections` apparaissent ; le reste est additif (`fbiEcho`, `fbiTodo`).
+· SHA-256 `119521142f243afd254d06989135bba7ebbb5174ce6b5ceab881003aadf2819d`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Registre « à corriger dans FBI », backend (2026-09-19)** : **+3 paths** — quand le gestionnaire garde
+  l'appli sur un écart, FBI est en retard : `GET /api/fixtures/fbi-corrections` (lecture membre) sert les
+  entrées OUVERTES du club+saison (`{id, fixtureId, field, appValue, fbiValue, venueFbiLabel, decidedAt,
+  lastSeenInFbiAt}`) ; `POST …/{id}/close` (gestionnaire + saison écrivable) coche « corrigé dans FBI »
+  (fermeture manuelle, 404 byte-identique cross-club) ; `POST …/{id}/reopen` annule un « corrigé » manuel de
+  moins de 24 h (sinon 409). Deux champs ADDITIFS : `fbiEcho` (`{field, value, at}`|null) sur le schéma
+  `Fixture` (mémo « FBI affiche … » d'un domicile rétrogradé « à saisir ») et `fbiTodo {toEnter, toCorrect}`
+  sur `GET /api/matches/deadline-outlook` (le « à faire dans FBI » global, servi pour que le cockpit ne
+  charge pas les fixtures). 201 → **204 paths**. Backend PUR, contrat backend⇄engine **inchangé**
+  (`CONTRACT_VERSION` 2.23, aucun appel moteur).
 - **Retours de tests — siège du club géocodé côté serveur, backend (2026-09-19)** : **+1 path** —
   `PATCH /api/club/siege` (management) : le corps ne porte QUE du texte d'adresse ; le serveur
   RE-géocode via la BAN et écrit adresse/CP/ville + lat/lon depuis SON hit (réponse
@@ -60,15 +71,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   change (seule la description). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21,
   aucun appel moteur). Le faux positif d'échauffement du même radar est corrigé dans la MÊME PR côté détecteur
   (`MatchConflictDetector`) — aucun impact OpenAPI, hors de ce snapshot.
-- **« Détail par côté » d'un conflit de personne, backend (2026-09-17)** : **+0 path** — le radar
-  `GET /api/fixtures/conflicts` gagne cinq champs ADDITIFS PAR CÔTÉ sur les familles PERSONNE (les côtés
-  `left`/`right` de MATCH_MATCH, `fixture` de MATCH_TRAINING) pour rendre une ligne par côté : `estimatedKickoffTime`
-  (heure estimée `HH:MM`, non-null seulement quand le coup d'envoi est estimé), `travelOneWayMinutes` (trajet aller
-  simple ; null = non modélisé, toujours null en domicile), `matchDurationMinutes` (durée de match du côté),
-  `opponentLabel` (le libellé adverse), et `opponentPlace` (où joue l'adversaire — décoré côté AWAY seulement :
-  override manuel équipe > club > annuaire fédéral > libellé FBI > null). Aucune empreinte de conflit ne change
-  (ces champs sont hors identité). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun
-  appel moteur, aucun payload solveur ne lit ces champs).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine
