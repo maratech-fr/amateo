@@ -1,26 +1,24 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-09-17 (rotation `documentation-update`, zone non touchée par la PR courante —
-grille « à confirmer »/liste des conflits, frontend seul). Reconfirmé : `engine/CONTRACT_VERSION` =
-`2.21` ✓ (`engine/CONTRACT_VERSION`) ; `DiagnosticSchema.id` toujours requis
-(`app/schemas/output_schema.py:61`) ✓ ; le commentaire mort `FACILITY_CAPACITY` toujours présent,
-non-code (`app/main.py:488-491`) ✓ ; `LEVEL_2_OBJECTIVE_WEIGHTS` toujours consommé par
-`add_preferred_day_bonus`/`add_preferred_time_bonus`/`add_match_day_rest_bonus`/`add_spacing_penalty`
-(`app/main.py:632-635`) ✓. Rien de faux trouvé.
-Reste non re-parcouru ligne à ligne cette passe — historique :
-`git log -p --follow engine/docs/nominal-flow.md`.
+Last verified @ 2026-09-18 (`documentation-update`, PR correctrice de l'audit moteur 0918).
+Reconfirmé : `engine/CONTRACT_VERSION` = `2.22` ✓ (bump ENG-40, nouveau diagnostic
+`placement_problem_too_large`) — les occurrences de `2.21` ci-dessous recalées à `2.22` ;
+`DiagnosticSchema.id` toujours requis (`app/schemas/output_schema.py:61`) ✓ ; le commentaire mort
+`FACILITY_CAPACITY` toujours présent, non-code (`app/main.py:488-491`) — non re-sondé cette
+passe (dernière confrontation 2026-09-17). Reste non re-parcouru ligne à ligne cette passe —
+historique : `git log -p --follow engine/docs/nominal-flow.md`.
 
 > Ce document decrit le chemin complet d'une requete de generation d'emploi du temps, du moment ou le backend construit le payload jusqu'a la notification en temps reel du frontend. Destine aux developpeurs travaillant sur l'integration backend/engine.
 
 ---
 
-## 1. Le backend construit le payload (contrat 2.21)
+## 1. Le backend construit le payload (contrat 2.22)
 
-Quand un utilisateur clique sur "Generer l'emploi du temps" dans le frontend, le backend assemble un objet JSON conforme au schema `ScheduleInputSchema` (version de contrat **2.21**, fichier `engine/CONTRACT_VERSION`). Voici la structure complete, avec des explications inline.
+Quand un utilisateur clique sur "Generer l'emploi du temps" dans le frontend, le backend assemble un objet JSON conforme au schema `ScheduleInputSchema` (version de contrat **2.22**, fichier `engine/CONTRACT_VERSION`). Voici la structure complete, avec des explications inline.
 
 ```json
 {
-  "version": "2.21",
+  "version": "2.22",
   "clubId": "550e8400-e29b-41d4-a716-446655440000",
   "seasonId": "660e8400-e29b-41d4-a716-446655440001",
 
@@ -135,7 +133,7 @@ Quand un utilisateur clique sur "Generer l'emploi du temps" dans le frontend, le
 
 ### Explications par section
 
-- **`version`** : version du contrat (actuellement `2.21`). Le moteur ne compare que le **MAJOR** : `"2.0"` et `"2.1"` passent tous les deux ; un payload `1.x` ou `3.x` est refuse.
+- **`version`** : version du contrat (actuellement `2.22`). Le moteur ne compare que le **MAJOR** : `"2.0"` et `"2.1"` passent tous les deux ; un payload `1.x` ou `3.x` est refuse.
 - **`clubId` / `seasonId`** : identifiants du club et de la saison en cours. Le moteur ne les utilise pas pour le calcul, mais les inclut dans les logs et les diagnostics.
 - **`venues`** : liste des salles. Chaque salle porte ses **creneaux d'entrainement** explicites dans la cle `trainingSlots` : `{dayOfWeek, startTime, durationMinutes, capacity}`. Il n'existe **ni** cle `availability` **ni** champ `endTime` (la fin se deduit de `startTime + durationMinutes`) — les schemas Pydantic sont `extra=forbid`, donc une cle inconnue provoque un `422`. La `capacity` indique combien d'equipes peuvent occuper le creneau simultanement (gymnase divisible : le backend envoie `canSplit ? capacity : 1`).
 - **`teams`** : liste des equipes. Le champ `sportCategoryId` est **requis** (son absence provoque un `422`). Le `priorityTierId` identifie le rang de priorite (1 = S ... 5 = D), dont le poids est code en dur cote moteur.
@@ -166,7 +164,7 @@ Avant de lancer le solveur, le moteur acquiert un verrou asyncio specifique au `
 
 ### Verification de version
 
-Le moteur verifie que le **MAJOR** de `version` correspond au MAJOR de son contrat (`2` pour le contrat `2.21`) : `"2.0"` comme `"2.21"` sont acceptes — le MINOR est ignore. C'est pourquoi la version que le PAYLOAD s'attribue (constante PHP du builder) DOIT valoir exactement `engine/CONTRACT_VERSION` et non « un `2.x` quelconque » : sinon un changement de forme du payload sans bump de MAJOR passerait inapercu des deux cotes. Cette egalite stricte est gardee par `PayloadVersionMatchesContractVersionTest`. Si le MAJOR differe, le moteur retourne une erreur indiquant la version attendue et la version recue.
+Le moteur verifie que le **MAJOR** de `version` correspond au MAJOR de son contrat (`2` pour le contrat `2.22`) : `"2.0"` comme `"2.22"` sont acceptes — le MINOR est ignore. C'est pourquoi la version que le PAYLOAD s'attribue (constante PHP du builder) DOIT valoir exactement `engine/CONTRACT_VERSION` et non « un `2.x` quelconque » : sinon un changement de forme du payload sans bump de MAJOR passerait inapercu des deux cotes. Cette egalite stricte est gardee par `PayloadVersionMatchesContractVersionTest`. Si le MAJOR differe, le moteur retourne une erreur indiquant la version attendue et la version recue.
 
 ---
 
@@ -348,7 +346,7 @@ Le frontend ecoute ce topic via `EventSource`. Des que l'evenement arrive, le fr
 
 ## Resume du flux en 5 etapes
 
-1. **Backend** : construit le payload (contrat 2.21) a partir des entites du club (equipes, salles, entraineurs, contraintes)
+1. **Backend** : construit le payload (contrat 2.22) a partir des entites du club (equipes, salles, entraineurs, contraintes)
 2. **Moteur** : valide le payload, acquiert le verrou club, verifie le MAJOR de la version
 3. **Solveur** : construit le modele, ajoute les contraintes HARD, definit l'objectif, resout dans le budget adaptatif (60/180/600 s selon la taille du probleme)
 4. **Moteur** : retourne `ScheduleOutputSchema` avec creneaux, diagnostics, metriques

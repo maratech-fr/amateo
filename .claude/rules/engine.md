@@ -9,11 +9,14 @@ paths:
   (`ruff format --check` dans `make lint`/`make test` et le job CI Engine Tests, P4-64) —
   `make format` est donc sans danger, il ne churne rien.
 - **mypy `strict`** + plugin `pydantic.mypy` (`ortools.*` ignoré).
+- **bandit** (`bandit -r app/`) — gardé en CI depuis le lot correctif de l'audit 0918 (ENG-46,
+  step dédié du job `engine-tests`), pas seulement en local via `make test`.
 - **pytest** (`-ra`) + golden fixtures (`tests/golden/`, solves complets sur fixtures réelles) +
-  invariants post-solve (`tests/invariants/`) + hypothesis ; `pytest-timeout` contre les solves
-  fous. Les golden dépendent du **worker unique déterministe** (≤200 de complexité) — ne pas
-  toucher `_adaptive_workers` sans les re-jouer.
-- Le contrat backend⇄engine est **synchronisé À LA MAIN** (`engine/CONTRACT_VERSION`, 2.21, un seul
+  invariants post-solve (`tests/invariants/`) + hypothesis + perf (`-m perf`, main only — dont un
+  club synthétique volumineux pour `/place-matches`, `tests/perf/test_perf_place_matches.py`) ;
+  `pytest-timeout` contre les solves fous. Les golden dépendent du **worker unique déterministe**
+  (≤200 de complexité) — ne pas toucher `_adaptive_workers` sans les re-jouer.
+- Le contrat backend⇄engine est **synchronisé À LA MAIN** (`engine/CONTRACT_VERSION`, 2.22, un seul
   contrat pour `/generate`, `/place-matches` ET `/validate-assignments`) : toute modif des schemas
   Pydantic doit garder verts `ContractSchemaTest` + `MatchPlacementContractSchemaTest` +
   `ValidateAssignmentsContractSchemaTest` côté backend.

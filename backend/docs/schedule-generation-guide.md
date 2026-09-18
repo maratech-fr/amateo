@@ -1,10 +1,11 @@
 # Guide de génération de planning — ClubScheduler
 
-Last verified @ 2026-09-18 (`documentation-update`, PR « `messenger-worker` de dev gagne
-`restart: unless-stopped` »). Re-confronté § 6 « Cas 1 : le statut reste bloqué en PENDING » contre
-`docker-compose.yml` : `messenger-worker` y porte désormais `restart: unless-stopped`, seul
-service de dev à le porter. Reste non re-sondé cette passe : le corps du guide hors § Pré-requis,
-§ Injection et § 6 Cas 1.
+Last verified @ 2026-09-18 (`documentation-update`, seconde passe du jour — PR correctrice de
+l'audit moteur 0918). Re-confronté § 6 « Cas 1 : le statut reste bloqué en PENDING » contre
+`docker-compose.yml` (passe précédente, même jour) : `messenger-worker` y porte désormais
+`restart: unless-stopped`, seul service de dev à le porter. `engine/CONTRACT_VERSION` = `2.22` ✓
+(bump ENG-40) — la ligne « Correction » ci-dessous recalée. Reste non re-sondé cette passe : le
+corps du guide hors § Pré-requis, § Injection et § 6 Cas 1.
 
 > Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend ClubScheduler. Il s'adresse aux développeurs juniors qui découvrent le projet.
 
@@ -381,7 +382,7 @@ Voici chaque panne possible, avec son symptôme, sa cause, sa vérification, sa 
 | **Symptôme** | Le statut passe à `FAILED` avec un diagnostic `engine_failed`. Il n'existe **pas** de type `engine_validation_error`. |
 | **Cause** | Le moteur a retourné une réponse JSON **sans clé `status`** (par exemple un corps d'erreur 422 de Pydantic). `EngineClient` lit la réponse avec `toArray(false)` (aucune exception sur un statut HTTP d'erreur) et le handler traite toute réponse sans `status` comme `failed`. Un 422 est improbable en pratique : le payload est construit par `ScheduleConstraintBuilder`, pas saisi à la main. |
 | **Vérification** | `make logs SERVICE=engine` + inspecte le champ `snapshot_data` de la table `schedule` (payload exact envoyé). |
-| **Correction** | Compare le `snapshot_data` au schéma du contrat engine (v2.21, `extra="forbid"`) ; corrige la donnée source incriminée. |
+| **Correction** | Compare le `snapshot_data` au schéma du contrat engine (v2.22, `extra="forbid"`) ; corrige la donnée source incriminée. |
 | **Prévention** | `ContractSchemaTest` garde la synchronisation backend ⇄ engine ; le gate `POST /api/constraints/validate` attrape les configs incohérentes avant le solve. |
 
 ### Cas 7 : COMPLETED mais 0 créneau généré

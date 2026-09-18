@@ -1,10 +1,10 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-09-15 (rotation de fraîcheur `documentation-update`, PR P4-207 « résolution des
-conflits, frontend » — fichier hors sujet). `CONTRACT_VERSION` avait dérivé à `2.21`
-(`ScheduleConstraintBuilder.php:64` ⇄ `engine/CONTRACT_VERSION`) — corrigé aux 4 occurrences ✓ ·
-TTL du verrou = `timeoutSeconds + LOCK_TTL_MARGIN_SECONDS` (`GenerateScheduleHandler.php:62,117`,
-marge de 60 s) ✓ · `ScheduleStatus` à cinq états exactement (`backend/src/Enum/ScheduleStatus.php`) ✓.
+Last verified @ 2026-09-18 (`documentation-update`, PR correctrice de l'audit moteur 0918 —
+hors filet du garde `test_contract_version_doc_sync.py`, AUD-DOC-39). `CONTRACT_VERSION` avait
+dérivé à `2.21` (`ScheduleConstraintBuilder.php:64` ⇄ `engine/CONTRACT_VERSION`, bumpé à `2.22`
+par le lot ENG-40) — corrigé aux occurrences ci-dessous ✓. Reste non re-sondé cette passe : TTL
+du verrou, `ScheduleStatus` (dernière confrontation 2026-09-15).
 
 > ClubScheduler — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
@@ -131,7 +131,7 @@ Voici ce que fait la branche de base, dans l'ordre :
 
 6. **Niveaux de priorité** : il n'y a **pas** de clé `priorityTiers` top-level dans le payload. Les `PriorityTier` du club (S, A, B, C, D) sont sérialisés comme des **contraintes** de type `PRIORITY_TIER` dans `constraints[]`. Leurs poids ne sont pas envoyés (`orToolsWeight` volontairement omis) : le solveur applique des poids **codés en dur** côté engine — S=10000, A=1000, B=100, C=10, D=1 — un poids par tier serait accepté puis ignoré.
 
-7. **Métadonnées** : ajoute `version: "2.21"` (`ScheduleConstraintBuilder::CONTRACT_VERSION`, alignée sur `engine/CONTRACT_VERSION`), `clubId`, `seasonId`, `solverSeed` et `solverTimeoutSeconds`.
+7. **Métadonnées** : ajoute `version: "2.22"` (`ScheduleConstraintBuilder::CONTRACT_VERSION`, alignée sur `engine/CONTRACT_VERSION`), `clubId`, `seasonId`, `solverSeed` et `solverTimeoutSeconds`.
 
 Le payload complet pèse généralement entre 50 et 200 Ko de JSON selon la taille du club.
 
@@ -158,7 +158,7 @@ POST http://engine:8000/generate
 Content-Type: application/json
 
 {
-  "version": "2.21",
+  "version": "2.22",
   "clubId": "bccl-uuid",
   "seasonId": "2025-2026-uuid",
   "solverSeed": 42,
@@ -384,7 +384,7 @@ Voici un tableau récapitulatif de tous les cas d'erreur possibles, avec leur ca
 | **Épinglage orphelin** | `OrphanPinGuard` (#8) : un verrou ou une réservation ne correspond plus à aucun créneau de la grille de période | — (refus synchrone **422**) | Aucun | Le message nomme le gymnase et le jour : redéfinir les créneaux, ou retirer l'épinglage |
 | **Club déjà en génération** | Verrou Redis `schedule_generation:club:{clubId}` tenu par un autre worker | `PENDING` (retry Messenger via `RecoverableMessageHandlingException`) | Aucun | Rien à faire : la demande sera rejouée automatiquement à la fin de la génération en cours |
 | **Timeout HTTP (> 650 s)** | Problème trop complexe pour le solveur CP-SAT (budget adaptatif 60/180/600 s dépassé côté engine) | `FAILED` | `engine_timeout` | Simplifier les contraintes `HARD`, augmenter le nombre de salles, ou réduire le nombre d'équipes |
-| **Payload invalide (422)** | Réponse engine sans clé `status` (corps d'erreur Pydantic) — improbable car le payload est construit par `ScheduleConstraintBuilder` | `FAILED` | `engine_failed` | Comparer le `snapshotData` au schéma engine (contrat 2.21, `engine/CONTRACT_VERSION`) |
+| **Payload invalide (422)** | Réponse engine sans clé `status` (corps d'erreur Pydantic) — improbable car le payload est construit par `ScheduleConstraintBuilder` | `FAILED` | `engine_failed` | Comparer le `snapshotData` au schéma engine (contrat 2.22, `engine/CONTRACT_VERSION`) |
 | **Engine inaccessible** | Conteneur `engine` arrêté ou crash | `FAILED` | `engine_error` | Vérifier l'état des conteneurs Docker (`make logs SERVICE=engine`) |
 | **Planning infaisable** | Contraintes `HARD` mutuellement exclusives | `FAILED` | `conflict` + liste équipes non placées | Relâcher une contrainte `HARD` en `PREFERRED`, ou ajouter des ressources (salle, coach) |
 | **Partiellement résolu** | Ressources insuffisantes pour toutes les équipes | `COMPLETED` (score bas) | `unplaced` diagnostics | Accepter le planning incomplet, ou ajouter des créneaux/salles |
