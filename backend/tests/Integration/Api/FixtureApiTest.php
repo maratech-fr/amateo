@@ -170,6 +170,25 @@ final class FixtureApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
+    /**
+     * BCK-27 — un libellé d'adversaire plus long que la colonne (VARCHAR(180)) doit
+     * être refusé en 422 PARLANT (violations non vides), jamais franchir jusqu'au 500
+     * SQL. La borne DTO (Assert\Length) est la maison unique de ce refus.
+     */
+    public function testRejectsOverlongOpponentLabel(): void
+    {
+        $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders() + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'teamId' => self::TEAM_ID,
+            'matchDate' => '2026-11-01',
+            'homeAway' => 'HOME',
+            'opponentLabel' => str_repeat('A', 181), // colonne opponent_label = VARCHAR(180)
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, (string) $this->client->getResponse()->getContent());
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($data);
+        self::assertNotEmpty($data['violations'] ?? [], 'un 422 muet (violations vides) afficherait « An error occurred »');
+    }
+
     public function testRejectsMalformedKickoffTime(): void
     {
         $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders() + ['CONTENT_TYPE' => 'application/json'], json_encode([

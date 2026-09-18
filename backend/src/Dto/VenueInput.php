@@ -11,12 +11,14 @@ class VenueInput
 {
     #[Assert\NotBlank]
     #[Groups(['write'])]
+    #[Assert\Length(max: 180, maxMessage: 'Le nom du gymnase ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $name = null;
 
     #[Groups(['write'])]
     public ?bool $isExternal = null;
 
     #[Groups(['write'])]
+    #[Assert\Length(max: 20, maxMessage: 'La couleur ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $color = null;
 
     #[Groups(['write'])]
@@ -36,6 +38,7 @@ class VenueInput
     public ?string $source = null;
 
     #[Groups(['write'])]
+    #[Assert\Length(max: 180, maxMessage: 'La référence externe ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $externalRef = null;
 
     #[Groups(['write'])]

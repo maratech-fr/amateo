@@ -71,6 +71,23 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
         self::assertSame(0, $this->sharedRows());
     }
 
+    /**
+     * BCK-32 — budget de mur épuisé (deadline dans le passé) : le groupe qui SE serait
+     * localisé est compté `skipped` sans aucun appel réseau — même canal que le cap
+     * {@see OpponentVenueAutoLocator::MAX_GROUPS}. Best-effort (relancer pour finir).
+     */
+    public function testLocateStopsAtTheWallClockDeadline(): void
+    {
+        [$club, $season] = $this->seedClubWithAway('GYMNASE MATEO', 'Adverse Mateo - 1');
+        $this->seedDirectory();
+
+        $result = $this->locator([$this->salle('166926604', 'GYMNASE MATEO', 45.78, 4.88)])->locate($club->getId(), $season->getId(), 1.0);
+
+        self::assertSame(0, $result['located'], 'rien localisé passé le budget de mur');
+        self::assertSame(1, $result['skipped'], 'le groupe restant est compté skipped');
+        self::assertNull($this->teamRow($club, $season, 'adverse mateo 1'), 'aucune surcharge écrite');
+    }
+
     public function testNoStrictMatchLeavesTheTeamUnlocated(): void
     {
         [$club, $season] = $this->seedClubWithAway('GYMNASE INCONNU', 'Adverse X - 1');
@@ -321,6 +338,7 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
             self::getContainer()->get(VenueLabelNormalizer::class),
             self::getContainer()->get(ClubRepository::class),
             new NullLogger,
+            new MockClock,
         );
     }
 
@@ -352,6 +370,7 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
             self::getContainer()->get(VenueLabelNormalizer::class),
             self::getContainer()->get(ClubRepository::class),
             new NullLogger,
+            new MockClock,
         );
     }
 

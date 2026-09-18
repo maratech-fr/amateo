@@ -16,6 +16,7 @@ class ScheduleDiagnosticInput
 
     #[Assert\NotBlank]
     #[Groups(['write'])]
+    #[Assert\Length(max: 50, maxMessage: 'Le type de diagnostic ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $type = null;
 
     #[Assert\Choice(callback: [ScheduleDiagnosticSeverity::class, 'values'])]

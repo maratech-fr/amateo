@@ -17,6 +17,7 @@ class CompetitionInput
 
     #[Assert\NotBlank]
     #[Groups(['write'])]
+    #[Assert\Length(max: 180, maxMessage: 'Le nom de la compétition ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $name = null;
 
     #[Assert\NotBlank]

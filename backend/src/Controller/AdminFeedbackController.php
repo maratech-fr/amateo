@@ -12,6 +12,7 @@ use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 use Doctrine\Persistence\ManagerRegistry;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -46,6 +47,7 @@ final readonly class AdminFeedbackController
         private ClockInterface $clock,
         private MailerInterface $mailer,
         private FeedbackMailBuilder $mailBuilder,
+        private LoggerInterface $logger,
     ) {}
 
     private static function toHours(mixed $seconds): ?float
@@ -303,7 +305,10 @@ final readonly class AdminFeedbackController
         // DISPATCH (Redis down) tomberait ici — avalé, le signalement est déjà traité.
         try {
             $this->mailer->send($this->mailBuilder->buildTreated($to));
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            // Mail avalé (le signalement est déjà traité) mais l'échec de DISPATCH est
+            // tracé — sinon une panne du bus (Redis) resterait muette.
+            $this->logger->warning('Feedback acknowledgement mail dispatch failed', ['error' => $e->getMessage()]);
         }
     }
 

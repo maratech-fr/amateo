@@ -37,6 +37,7 @@ use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -94,6 +95,7 @@ final class AuthController extends AbstractController
         // controller démo : DevDemoRegisterController::$demoAnimatorEmail (même param).
         #[Autowire(param: 'app.demo_animator_email')]
         private readonly string $demoAnimatorEmail,
+        private readonly LoggerInterface $logger,
     ) {}
 
     #[Route('/api/register', name: 'api_register', methods: ['POST'])]
@@ -796,7 +798,10 @@ final class AuthController extends AbstractController
                     ->subject(\sprintf('Confirmez votre adresse e-mail %s', $product))
                     ->text("Bienvenue sur {$product} !\n\nPour activer votre compte, ouvrez ce lien :\n{$link}\n\nCe lien expire dans 24 heures."),
             );
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            // Le mail est avalé (un 500 ici serait un oracle d'énumération) mais l'échec
+            // de DISPATCH est tracé — sans quoi une panne du bus (Redis) resterait muette.
+            $this->logger->warning('Mailer dispatch failed (transactional email not enqueued)', ['error' => $e->getMessage()]);
         }
     }
 
@@ -833,7 +838,10 @@ final class AuthController extends AbstractController
                     ->subject(\sprintf('Confirmez votre nouvelle adresse e-mail %s', $product))
                     ->text("Vous avez demandé à changer l'adresse e-mail de votre compte {$product}.\n\nPour confirmer cette nouvelle adresse, ouvrez ce lien :\n{$link}\n\nVotre adresse actuelle reste active tant que vous n'avez pas confirmé.\n\nCe lien expire dans 24 heures. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message."),
             );
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            // Le mail est avalé (un 500 ici serait un oracle d'énumération) mais l'échec
+            // de DISPATCH est tracé — sans quoi une panne du bus (Redis) resterait muette.
+            $this->logger->warning('Mailer dispatch failed (transactional email not enqueued)', ['error' => $e->getMessage()]);
         }
     }
 
@@ -865,7 +873,10 @@ final class AuthController extends AbstractController
                     ->subject($subject)
                     ->text($body),
             );
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            // Le mail est avalé (un 500 ici serait un oracle d'énumération) mais l'échec
+            // de DISPATCH est tracé — sans quoi une panne du bus (Redis) resterait muette.
+            $this->logger->warning('Mailer dispatch failed (transactional email not enqueued)', ['error' => $e->getMessage()]);
         }
     }
 
@@ -883,7 +894,10 @@ final class AuthController extends AbstractController
                     ->subject(\sprintf('Tentative d’inscription sur %s', $this->productIdentity->name()))
                     ->text("Une inscription vient d’être tentée avec cette adresse, mais un compte existe déjà.\n\nConnectez-vous, ou réinitialisez votre mot de passe si vous l’avez oublié."),
             );
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            // Le mail est avalé (un 500 ici serait un oracle d'énumération) mais l'échec
+            // de DISPATCH est tracé — sans quoi une panne du bus (Redis) resterait muette.
+            $this->logger->warning('Mailer dispatch failed (transactional email not enqueued)', ['error' => $e->getMessage()]);
         }
     }
 

@@ -366,10 +366,105 @@ final class OpponentTravelResolverTest extends WebTestCase
         self::assertSame(1, $this->suggestionCount(self::OPPONENT_CODE, $newRef), 'le nouveau choix MANUAL compte +1');
     }
 
+    /**
+     * BCK-32 — cap dur : 61 adversaires AWAY géolocalisés (aucun MANUAL). Sans le cap,
+     * les 61 seraient routés ; {@see OpponentTravelResolver::MAX_OPPONENTS} (60) en route
+     * 60 et renvoie le 61ᵉ en `unresolved` SANS aucun appel IGN pour l'excès.
+     */
+    public function testResolveCapsAtSixtyOpponentsAndTheExcessComesBackUnresolvedWithoutNetwork(): void
+    {
+        [$club, $season] = $this->seedManyGeolocatedAwayOpponents(61);
+
+        $calls = 0;
+        $result = $this->countingResolver($calls)->resolve($club->getId(), $season->getId());
+
+        self::assertSame(60, $result['resolved'], 'exactement 60 adversaires routés (cap dur)');
+        self::assertCount(1, $result['unresolved'], 'le 61ᵉ revient non résolu');
+        self::assertSame(60, $calls, 'aucun appel IGN pour l\'excès — le 61ᵉ n\'est jamais dispatché');
+    }
+
     protected function setUp(): void
     {
         self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /**
+     * A resolver whose IGN rides a MockHttpClient that COUNTS every itinerary call
+     * (still MockClock, budget never bites) — to prove the cap spends no network on
+     * the excess.
+     */
+    private function countingResolver(int &$calls): OpponentTravelResolver
+    {
+        $ign = new IgnRoutingClient(new MockHttpClient(function () use (&$calls): MockResponse {
+            ++$calls;
+
+            return new MockResponse((string) json_encode(['duration' => 600]));
+        }), new MockClock);
+
+        return new OpponentTravelResolver(
+            $this->em,
+            $ign,
+            $this->travelRepository(),
+            self::getContainer()->get(OpponentDirectoryEntryRepository::class),
+            $this->suggestionRepository(),
+            $this->salleResolver(),
+            self::getContainer()->get(ClubRepository::class),
+            self::getContainer()->get(FixtureRepository::class),
+            new NullLogger,
+        );
+    }
+
+    /**
+     * A club with $count geolocated AWAY opponents (a fixture + a directory entry each,
+     * no MANUAL travel row) — the work set of a cap test.
+     *
+     * @return array{0: Club, 1: Season}
+     */
+    private function seedManyGeolocatedAwayOpponents(int $count): array
+    {
+        $uid = uniqid('', true);
+        $club = new Club;
+        $club->setName('Club cap ' . $uid);
+        $club->setSlug('club-cap-' . $uid);
+        $club->setTimezone('Europe/Paris');
+        $club->setLocale('fr');
+        $club->setLatitude(45.70);
+        $club->setLongitude(4.90);
+        $this->em->persist($club);
+        $this->em->flush();
+
+        $this->scopeGucToClub($club->getId());
+        $season = new Season;
+        $season->setClubId($club->getId());
+        $season->setName((string) SeasonResolver::seasonYear(new DateTimeImmutable('today')));
+        $season->setStartDate(new DateTimeImmutable('today'));
+        $season->setEndDate(new DateTimeImmutable('+300 days'));
+        $season->setStatus(SeasonStatus::ACTIVE);
+        $season->setTransitionData([]);
+        $this->em->persist($season);
+        for ($i = 0; $i < $count; ++$i) {
+            $fixture = new Fixture;
+            $fixture->setClubId($club->getId());
+            $fixture->setSeasonId($season->getId());
+            $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+            $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
+            $fixture->setHomeAway(FixtureHomeAway::AWAY);
+            $fixture->setOpponentLabel('Adverse cap ' . $i);
+            $fixture->setOpponentOrganismeCode(\sprintf('ARA0069C%03d', $i));
+            $this->em->persist($fixture);
+        }
+        $this->em->flush();
+
+        // Directory entries are GLOBAL (no club) → seeded without a GUC.
+        for ($i = 0; $i < $count; ++$i) {
+            $entry = new OpponentDirectoryEntry(\sprintf('ARA0069C%03d', $i), 'Adverse cap ' . $i, OpponentLocationPrecision::CITY);
+            $entry->setLatitude(45.76)->setLongitude(4.86)->setCity('Lyon');
+            $this->em->persist($entry);
+        }
+        $this->em->flush();
+
+        return [$club, $season];
     }
 
     /**

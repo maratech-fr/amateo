@@ -4,36 +4,17 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
-use App\Entity\Club;
-use App\Entity\CoachPlayerMembership;
-use App\Entity\Competition;
 use App\Entity\ConflictResolution;
 use App\Entity\Fixture;
 use App\Entity\Season;
-use App\Entity\SportCategory;
-use App\Entity\Team;
-use App\Entity\TeamCoach;
-use App\Entity\TeamLink;
-use App\Entity\TeamMatchHabit;
 use App\Entity\User;
-use App\Entity\VenueMatchWindow;
-use App\Entity\VenueUnavailability;
 use App\Enum\ConflictResolutionStatus;
-use App\Enum\FixtureHomeAway;
-use App\Repository\ClubRepository;
 use App\Repository\ConflictResolutionRepository;
-use App\Repository\LeagueMatchWindowRepository;
-use App\Repository\OpponentTravelRepository;
-use App\Service\Basketball\VenueLabelNormalizer;
-use App\Service\ClubDay;
 use App\Service\ConflictFingerprinter;
-use App\Service\LeagueEnvelopeResolver;
+use App\Service\ConflictRadarLoader;
 use App\Service\ManagementAccessGuard;
-use App\Service\MatchConflictDetector;
-use App\Service\MatchDurationResolver;
 use App\Service\OpponentPlaceResolver;
 use App\Service\SeasonResolver;
-use App\Service\TrainingCalendarContext;
 use DateTimeInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -68,18 +49,10 @@ final class FixtureConflictsController extends AbstractController
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
         private readonly SeasonResolver $seasonResolver,
-        private readonly MatchConflictDetector $detector,
+        private readonly ConflictRadarLoader $radarLoader,
         private readonly ConflictFingerprinter $fingerprinter,
-        private readonly TrainingCalendarContext $trainingCalendarContext,
-        private readonly ClubRepository $clubRepository,
-        private readonly LeagueMatchWindowRepository $leagueWindowRepository,
-        private readonly LeagueEnvelopeResolver $envelopeResolver,
-        private readonly MatchDurationResolver $matchDurationResolver,
-        private readonly OpponentTravelRepository $opponentTravelRepository,
-        private readonly ClubDay $clubDay,
         private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly ConflictResolutionRepository $resolutionRepository,
-        private readonly VenueLabelNormalizer $labelNormalizer,
         private readonly OpponentPlaceResolver $opponentPlaceResolver,
     ) {}
 
@@ -205,116 +178,25 @@ final class FixtureConflictsController extends AbstractController
     }
 
     /**
-     * The live conflict radar of a club: load everything through mapped-entity
-     * repositories (Doctrine club+season filters apply), detect, then stamp each
-     * item with its stable fingerprint. Shared by the GET feed and the resolution
-     * writes (which need the CURRENT flow to reject a vanished conflict).
+     * The live conflict radar of a club: loaded by the single {@see ConflictRadarLoader}
+     * (shared with MatchModuleDeltaComputer), then stamped here with each item's stable
+     * fingerprint and the away-side place decoration. Shared by the GET feed and the
+     * resolution writes (which need the CURRENT flow to reject a vanished conflict).
      *
      * @return array{0: Season|null, 1: list<array<string, mixed>>, 2: bool} season, conflicts (with fingerprint), seasonPlanChosen
      */
     private function computeConflicts(string $clubId): array
     {
-        /** @var list<Fixture> $fixtures */
-        $fixtures = $this->entityManager->getRepository(Fixture::class)->findBy([]);
-        /** @var list<TeamCoach> $teamCoachRows */
-        $teamCoachRows = $this->entityManager->getRepository(TeamCoach::class)->findBy([]);
-        // Lot « une personne = ses équipes coachées + ses équipes où elle joue » —
-        // les liens JOUEUR (CoachPlayerMembership) rejoignent les coachs dans la
-        // carte personne→équipes du détecteur. Chargés sous les mêmes filtres tenant.
-        /** @var list<CoachPlayerMembership> $playerMemberships */
-        $playerMemberships = $this->entityManager->getRepository(CoachPlayerMembership::class)->findBy([]);
-        /** @var list<VenueUnavailability> $unavailabilities */
-        $unavailabilities = $this->entityManager->getRepository(VenueUnavailability::class)->findBy([]);
-        /** @var list<TeamMatchHabit> $habits */
-        $habits = $this->entityManager->getRepository(TeamMatchHabit::class)->findBy([]);
-        /** @var list<TeamLink> $teamLinks */
-        $teamLinks = $this->entityManager->getRepository(TeamLink::class)->findBy([]);
-        /** @var list<VenueMatchWindow> $matchWindows */
-        $matchWindows = $this->entityManager->getRepository(VenueMatchWindow::class)->findBy([]);
-        // P1-4 PR E2 — the graded diagnostic needs the league envelope, resolved
-        // by the SAME tolerant join as the solver (one implementation, PR D).
-        /** @var list<Team> $teams */
-        $teams = $this->entityManager->getRepository(Team::class)->findBy([]);
-        /** @var list<SportCategory> $categories */
-        $categories = $this->entityManager->getRepository(SportCategory::class)->findBy([]);
-        $club = $this->clubRepository->find($clubId);
-        $league = $club?->getLeague();
-        $envelope = $this->envelopeResolver->resolve($teams, $categories, $this->leagueWindowRepository->findEnvelopeForLeague($league));
-        // D1 rule 3 — the club's civil today drops already-played matches from the
-        // radar (foyer ClubDay, never rebuilt inline).
-        $clubToday = $club instanceof Club ? $this->clubDay->todayFor($club) : null;
-        // P2-54 RMM-9 — teamId → match duration profile: the category's own values
-        // when set, else its family default (MatchDurationResolver). The detector
-        // stays PURE (data injected), the resolution happens once, here.
-        $categoriesById = [];
-        foreach ($categories as $category) {
-            $categoriesById[$category->getId()] = $category;
-        }
-        $profilesByTeam = [];
-        foreach ($teams as $team) {
-            $category = $categoriesById[$team->getSportCategoryId()] ?? null;
-            if (null !== $category) {
-                $profilesByTeam[$team->getId()] = $this->matchDurationResolver->resolve($category);
-            }
-        }
-        // P1-4 PR F2 — severity 6 (completeness of PAIRED competitions).
-        /** @var list<Competition> $competitions */
-        $competitions = $this->entityManager->getRepository(Competition::class)->findBy([]);
-
         $season = $this->seasonResolver->selectedOrCurrent($this->requestStack->getCurrentRequest(), $clubId);
-        // ADR-0002 context (chosen season version, active periods + overlays,
-        // slots) — shared with the unavailability impact (TrainingCalendarContext).
-        $context = $this->trainingCalendarContext->load($season?->getId());
 
-        // P2-54 RMM-9 PR-3 — the SPATIAL radar: an AWAY fixture's footprint grows by
-        // the round trip (2 × one-way car time) to the opponent's venue, read from
-        // the tenant `opponent_travel` via the stamped organisme code. Grain ÉQUIPE
-        // (P2-54 PR-1) : chaque rencontre résout son trajet par (code, libellé
-        // normalisé) → override équipe, sinon défaut club. Une rencontre sans code /
-        // sans trajet reste 0 (aucun conflit spatial — dit franchement).
-        $roundTripByFixtureId = [];
-        if ($season instanceof Season) {
-            $travelBySeason = $this->opponentTravelRepository->travelMinutesBySeason($season->getId());
-            if ([] !== $travelBySeason) {
-                foreach ($fixtures as $fixture) {
-                    $code = $fixture->getOpponentOrganismeCode();
-                    if (FixtureHomeAway::AWAY !== $fixture->getHomeAway() || null === $code || !isset($travelBySeason[$code])) {
-                        continue;
-                    }
-                    $teamKey = $this->labelNormalizer->normalize(trim($fixture->getOpponentLabel()));
-                    $entry = $travelBySeason[$code];
-                    $oneWay = $entry['teams'][$teamKey] ?? $entry['club'];
-                    if (null !== $oneWay) {
-                        $roundTripByFixtureId[$fixture->getId()] = 2 * $oneWay;
-                    }
-                }
-            }
-        }
-
-        $conflicts = $this->detector->detect(
-            $fixtures,
-            $teamCoachRows,
-            $context['seasonScheduleId'],
-            $context['activePeriods'],
-            $context['slotsBySchedule'],
-            $unavailabilities,
-            $habits,
-            $teamLinks,
-            $matchWindows,
-            $envelope,
-            $competitions,
-            $profilesByTeam,
-            $roundTripByFixtureId,
-            $clubToday,
-            $playerMemberships,
-        );
+        $radar = $this->radarLoader->conflicts($clubId, $season?->getId());
 
         // RMM-3 — champ ADDITIF : l'empreinte stable de chaque conflit, calculée EN
         // AVAL par la maison unique (le détecteur reste intact). Le gardien s'en sert
         // pour dire ce qui est « nouveau depuis ta dernière visite ».
         $conflicts = array_map(
             fn (array $conflict): array => $conflict + ['fingerprint' => $this->fingerprinter->fingerprint($conflict)],
-            $conflicts,
+            $radar['conflicts'],
         );
 
         // P2-54 conflict side details — champ ADDITIF `opponentPlace` sur les côtés
@@ -322,10 +204,10 @@ final class FixtureConflictsController extends AbstractController
         // Décoré EN AVAL (le détecteur ne le connaît pas), résolu en BATCH par
         // OpponentPlaceResolver ; un côté HOME ne porte jamais la clé.
         if ($season instanceof Season) {
-            $conflicts = $this->decorateOpponentPlace($conflicts, $fixtures, $season->getId());
+            $conflicts = $this->decorateOpponentPlace($conflicts, $radar['fixtures'], $season->getId());
         }
 
-        return [$season, $conflicts, null !== $context['seasonScheduleId']];
+        return [$season, $conflicts, null !== $radar['seasonScheduleId']];
     }
 
     /**

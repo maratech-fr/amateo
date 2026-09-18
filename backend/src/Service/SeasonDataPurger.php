@@ -20,6 +20,7 @@ use App\Entity\ImplicitRuleSetting;
 use App\Entity\MatchModuleVisit;
 use App\Entity\MatchSlotRotation;
 use App\Entity\MatchSlotRotationTeam;
+use App\Entity\OpponentTravel;
 use App\Entity\PeriodReminderLog;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
@@ -43,6 +44,7 @@ use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelRuleSetting;
 use App\Entity\VenueTravelTime;
 use App\Entity\VenueUnavailability;
+use App\Repository\OpponentVenueSuggestionRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -60,9 +62,137 @@ final class SeasonDataPurger
 {
     use DisablesTenantFilters;
 
+    /**
+     * Tenant, mais purgées AUTREMENT que par la boucle générique — chacune avec sa raison.
+     * Le test PurgeCompletenessTest exige que toute entité tenant soit couverte ici,
+     * dans une des deux boucles, ou nommément exclue.
+     *
+     * @var array<string, string> table => comment / pourquoi
+     */
+    public const HANDLED_APART = [
+        'team_tag_assignment' => 'purgé par season_id seul (BCK-11 : porte un club_id mais le périmètre reste la saison, RLS borne le club)',
+        'season' => 'la ligne pivot elle-même — supprimée conditionnellement ($deleteSeasonRow : purge de rétention / effacement, jamais le reset)',
+    ];
+
+    /**
+     * Tenant, VOLONTAIREMENT hors de la purge de SAISON — chacune avec sa raison. Une
+     * exclusion est une décision, pas un constat (patron RgpdExportService).
+     *
+     * @var array<string, string> table => pourquoi
+     */
+    public const EXCLUDED_FROM_SEASON_PURGE = [
+        // Ces cinq tables sont club-scoped SANS saison : les borner par la saison n'a pas
+        // de sens. Leur seule porte de sortie est l'effacement RGPD du club (ErasedClubPurger,
+        // delete par clubId), pas la purge de saison.
+        'solver_metrics' => 'club-scoped sans saison — porte de sortie ErasedClubPurger (télémétrie append-only, décision fondateur 2026-07-18)',
+        'feedback' => 'club-scoped sans saison — porte de sortie ErasedClubPurger',
+        'team_tag' => 'club-scoped sans saison — porte de sortie ErasedClubPurger',
+        'sport_category' => 'club-scoped sans saison — porte de sortie ErasedClubPurger',
+        'club_user' => 'club-scoped sans saison — porte de sortie ErasedClubPurger',
+        'audit_log' => 'accountability : rétention propre (app:audit:purge) ; l\'effacement écrit une ligne d\'audit APRÈS la purge',
+        'coach_wish_token' => 'part par la FK ON DELETE CASCADE de sa campagne (jamais supprimé directement)',
+    ];
+
+    /**
+     * Enfants SANS colonne club/season, résolus par leur PARENT (sous-requête sur
+     * le club+saison du parent) : entityClass => [champ de référence, classe parente].
+     * L'ordre est l'ordre de suppression — les enfants avant le DELETE de leur parent,
+     * sinon ils orphelinent en silence. La boucle de purge itère cette constante.
+     *
+     * @var array<class-string, array{0: string, 1: class-string}>
+     */
+    private const PURGED_VIA_PARENT = [
+        // conflicts hang off schedules
+        ConstraintConflict::class => ['scheduleId', Schedule::class],
+        // reminder logs off calendar entries
+        PeriodReminderLog::class => ['calendarEntryId', CalendarEntry::class],
+        // #10 — doléances coachs (ancrées à l'entrée de vacances). Table club_id, mais on
+        // borne par la saison via l'entrée, comme le reminder log.
+        CoachWish::class => ['calendarEntryId', CalendarEntry::class],
+        // #10 C2 — campagnes de collecte (leurs tokens partent par FK CASCADE).
+        CoachWishCampaign::class => ['calendarEntryId', CalendarEntry::class],
+    ];
+
+    /**
+     * Entités tenant purgées par (club_id, season_id) en DQL de masse. L'ordre est
+     * l'ordre de suppression (un enfant avant son parent — aucune FK en base, l'ordre
+     * est l'invariant applicatif). La boucle de purge itère cette constante.
+     *
+     * @var list<class-string>
+     */
+    private const PURGED_BY_CLUB_SEASON = [
+        ScheduleDiagnostic::class,
+        ScheduleStructureSnapshot::class,
+        ScheduleSlotTemplate::class,
+        Constraint::class,
+        // Réglages des règles implicites (club_id+season_id, aucun enfant) : purgés avec
+        // la saison comme les contraintes.
+        ImplicitRuleSetting::class,
+        // P2-53 RMM-8 PR-4 — le levier d'intensité de la règle de trajet (club_id+season_id,
+        // aucun enfant) : purgé avec la saison, comme les autres réglages tenant+saison.
+        VenueTravelRuleSetting::class,
+        Reservation::class,
+        TeamPeriodOverride::class,
+        ConstraintPeriodOverride::class,
+        VenuePeriodOverride::class,
+        // P2-51 — mutualisation par BLOC : les lignes membres avant le parent (aucune FK,
+        // ordre cosmétique). Deux tables club_id+season_id, purgées avec la saison.
+        SharedTrainingBlockTeam::class,
+        SharedTrainingBlock::class,
+        // RMM-5 — rotation A/B : les lignes membres avant le parent (aucune FK, ordre
+        // cosmétique). Deux tables club_id+season_id, purgées avec la saison.
+        MatchSlotRotationTeam::class,
+        MatchSlotRotation::class,
+        // Module matchs (ajouté après ce purger — gap RGPD constaté PR-1) :
+        // Fixture avant Competition (competitionId y pointe). Changement
+        // ASSUMÉ pour ResetSeasonController aussi : « réinitialiser la
+        // saison » supprime désormais matchs/compétitions/réservations —
+        // l'ancien comportement les gardait ORPHELINS (fixtures pointant
+        // des équipes supprimées), ce qui était le vrai bug.
+        Fixture::class,
+        Competition::class,
+        // RMM-3 — instantané de visite du module matchs (club_id+season_id, aucun
+        // enfant) : purgé avec la saison comme les autres tables tenant+saison.
+        MatchModuleVisit::class,
+        // P4-207 — statut de traitement d'un conflit (club_id+season_id, aucun
+        // enfant) : purgé avec la saison. C'est la SEULE porte de sortie d'une
+        // ligne orpheline (empreinte disparue du flux) — jamais nettoyée à la volée.
+        ConflictResolution::class,
+        // RMM-4 — ingestions FBI datées (club_id+season_id, aucun enfant) :
+        // purgées avec la saison ; ErasedClubPurger les suit via ce purger.
+        FbiIngestion::class,
+        // P2-54 RMM-9 — temps de trajet vers les adversaires (club_id+season_id, aucun
+        // enfant) : purgé avec la saison. Les lignes MANUAL qui portent un gymnase épinglé
+        // décrémentent d'abord le compteur PARTAGÉ ({@see decrementSharedVenueChoices}).
+        OpponentTravel::class,
+        TeamCoach::class,
+        CoachPlayerMembership::class,
+        // P1-4 PR C — préférences matchs, pointent team_id : avant Team.
+        TeamMatchHabit::class,
+        TeamLink::class,
+        CalendarEntry::class,
+        // ADR-0002: the named container of a season/period's versions — a
+        // club_id+season_id table, so it must be purged with the season
+        // (RGPD erasure + retention purge + season reset). No DB FK cascades.
+        SchedulePlan::class,
+        Schedule::class,
+        Team::class,
+        Coach::class,
+        VenueTrainingSlot::class,
+        // P1-4 PR B — capacité matchs : les deux tables pointent venue_id,
+        // purgées AVANT Venue (aucune FK en base, même règle que le reste).
+        VenueMatchWindow::class,
+        VenueUnavailability::class,
+        // P2-53 RMM-8 — la matrice de trajet (club_id+season_id, aucun enfant)
+        // avant Venue (elle pointe venue_a_id/venue_b_id, aucune FK en base).
+        VenueTravelTime::class,
+        Venue::class,
+    ];
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
+        private readonly OpponentVenueSuggestionRepository $venueSuggestions,
     ) {}
 
     /**
@@ -81,21 +211,16 @@ final class SeasonDataPurger
         $deleted = 0;
 
         // Children WITHOUT club/season columns first, resolved through their
-        // parent: conflicts hang off schedules, reminder logs off calendar
-        // entries. They must go before their parents' bulk DELETE or they
-        // orphan silently.
-        $deleted += $this->deleteBySubQuery(ConstraintConflict::class, 'scheduleId', Schedule::class, $clubId, $seasonId);
+        // parent (self::PURGED_VIA_PARENT). They must go before their parents'
+        // bulk DELETE or they orphan silently.
         // SolverMetric n'est VOLONTAIREMENT pas purgé au reset : télémétrie append-only
         // (décision fondateur 2026-07-18) — c'est de l'usage constaté, pas de la donnée
         // de saison ; il survit au reset en nommant des plannings supprimés (assumé, les
         // dimensions sont dénormalisées à la capture). L'effacement RGPD du club reste
         // sa seule porte de sortie (ErasedClubPurger, delete par clubId).
-        $deleted += $this->deleteBySubQuery(PeriodReminderLog::class, 'calendarEntryId', CalendarEntry::class, $clubId, $seasonId);
-        // #10 — doléances coachs (ancrées à l'entrée de vacances). Table club_id, mais on
-        // borne par la saison via l'entrée, comme le reminder log.
-        $deleted += $this->deleteBySubQuery(CoachWish::class, 'calendarEntryId', CalendarEntry::class, $clubId, $seasonId);
-        // #10 C2 — campagnes de collecte (leurs tokens partent par FK CASCADE).
-        $deleted += $this->deleteBySubQuery(CoachWishCampaign::class, 'calendarEntryId', CalendarEntry::class, $clubId, $seasonId);
+        foreach (self::PURGED_VIA_PARENT as $entityClass => [$parentRefField, $parentClass]) {
+            $deleted += $this->deleteBySubQuery($entityClass, $parentRefField, $parentClass, $clubId, $seasonId);
+        }
 
         // BCK-11 : la table porte désormais un club_id ; la purge reste par saison
         // (c'est son périmètre), et RLS borne la requête au club courant.
@@ -106,70 +231,14 @@ final class SeasonDataPurger
             ->getQuery()
             ->execute();
 
-        foreach ([
-            ScheduleDiagnostic::class,
-            ScheduleStructureSnapshot::class,
-            ScheduleSlotTemplate::class,
-            Constraint::class,
-            // Réglages des règles implicites (club_id+season_id, aucun enfant) : purgés avec
-            // la saison comme les contraintes.
-            ImplicitRuleSetting::class,
-            // P2-53 RMM-8 PR-4 — le levier d'intensité de la règle de trajet (club_id+season_id,
-            // aucun enfant) : purgé avec la saison, comme les autres réglages tenant+saison.
-            VenueTravelRuleSetting::class,
-            Reservation::class,
-            TeamPeriodOverride::class,
-            ConstraintPeriodOverride::class,
-            VenuePeriodOverride::class,
-            // P2-51 — mutualisation par BLOC : les lignes membres avant le parent (aucune FK,
-            // ordre cosmétique). Deux tables club_id+season_id, purgées avec la saison.
-            SharedTrainingBlockTeam::class,
-            SharedTrainingBlock::class,
-            // RMM-5 — rotation A/B : les lignes membres avant le parent (aucune FK, ordre
-            // cosmétique). Deux tables club_id+season_id, purgées avec la saison.
-            MatchSlotRotationTeam::class,
-            MatchSlotRotation::class,
-            // Module matchs (ajouté après ce purger — gap RGPD constaté PR-1) :
-            // Fixture avant Competition (competitionId y pointe). Changement
-            // ASSUMÉ pour ResetSeasonController aussi : « réinitialiser la
-            // saison » supprime désormais matchs/compétitions/réservations —
-            // l'ancien comportement les gardait ORPHELINS (fixtures pointant
-            // des équipes supprimées), ce qui était le vrai bug.
-            Fixture::class,
-            Competition::class,
-            // RMM-3 — instantané de visite du module matchs (club_id+season_id, aucun
-            // enfant) : purgé avec la saison comme les autres tables tenant+saison.
-            MatchModuleVisit::class,
-            // P4-207 — statut de traitement d'un conflit (club_id+season_id, aucun
-            // enfant) : purgé avec la saison. C'est la SEULE porte de sortie d'une
-            // ligne orpheline (empreinte disparue du flux) — jamais nettoyée à la volée.
-            ConflictResolution::class,
-            // RMM-4 — ingestions FBI datées (club_id+season_id, aucun enfant) :
-            // purgées avec la saison ; ErasedClubPurger les suit via ce purger.
-            FbiIngestion::class,
-            TeamCoach::class,
-            CoachPlayerMembership::class,
-            // P1-4 PR C — préférences matchs, pointent team_id : avant Team.
-            TeamMatchHabit::class,
-            TeamLink::class,
-            CalendarEntry::class,
-            // ADR-0002: the named container of a season/period's versions — a
-            // club_id+season_id table, so it must be purged with the season
-            // (RGPD erasure + retention purge + season reset). No DB FK cascades.
-            SchedulePlan::class,
-            Schedule::class,
-            Team::class,
-            Coach::class,
-            VenueTrainingSlot::class,
-            // P1-4 PR B — capacité matchs : les deux tables pointent venue_id,
-            // purgées AVANT Venue (aucune FK en base, même règle que le reste).
-            VenueMatchWindow::class,
-            VenueUnavailability::class,
-            // P2-53 RMM-8 — la matrice de trajet (club_id+season_id, aucun enfant)
-            // avant Venue (elle pointe venue_a_id/venue_b_id, aucune FK en base).
-            VenueTravelTime::class,
-            Venue::class,
-        ] as $entityClass) {
+        // P4-209(b) — les lignes opponent_travel MANUAL portant un gymnase épinglé ont
+        // incrémenté le compteur PARTAGÉ (opponent_venue_suggestion). Les purger sans
+        // décrémenter volerait le compte des autres clubs — même sémantique que
+        // revertToAuto/deleteTeamOverride (MANUAL + ref effectif seuls). Pré-passe AVANT
+        // le DELETE de masse ci-dessous (les lignes doivent encore exister).
+        $this->decrementSharedVenueChoices($clubId, $seasonId);
+
+        foreach (self::PURGED_BY_CLUB_SEASON as $entityClass) {
             $deleted += $this->deleteByClubSeason($entityClass, $clubId, $seasonId);
         }
 
@@ -222,6 +291,29 @@ final class SeasonDataPurger
         );
 
         return \is_string($name) ? $name : null;
+    }
+
+    /**
+     * P4-209(b) — décrémente le compteur PARTAGÉ pour chaque ligne opponent_travel
+     * MANUAL du club+saison qui épingle un gymnase fédéral, AVANT que la purge ne
+     * supprime ces lignes. Sémantique identique à {@see OpponentTravelResolver::revertToAuto}
+     * (MANUAL + ref effectif seuls ; le décrément est idempotent, GREATEST(0, …)). SQL brut :
+     * les lignes sont supprimées en DQL de masse juste après, on ne veut pas d'entités gérées.
+     * Tourne sous le GUC du club (RLS borne la table tenant).
+     */
+    private function decrementSharedVenueChoices(string $clubId, string $seasonId): void
+    {
+        /** @var list<array{opponent_organisme_code: string, override_venue_external_ref: string}> $rows */
+        $rows = $this->entityManager->getConnection()->fetchAllAssociative(
+            'SELECT opponent_organisme_code, override_venue_external_ref FROM opponent_travel'
+            . ' WHERE club_id = :clubId AND season_id = :seasonId'
+            . ' AND source = \'MANUAL\' AND override_venue_external_ref IS NOT NULL',
+            ['clubId' => $clubId, 'seasonId' => $seasonId],
+        );
+
+        foreach ($rows as $row) {
+            $this->venueSuggestions->decrement($row['opponent_organisme_code'], $row['override_venue_external_ref']);
+        }
     }
 
     /**

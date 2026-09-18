@@ -11,16 +11,20 @@ class CoachInput
 {
     #[Assert\NotBlank]
     #[Groups(['write'])]
+    #[Assert\Length(max: 120, maxMessage: 'Le prénom du coach ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $firstName = null;
 
     #[Groups(['write'])]
+    #[Assert\Length(max: 120, maxMessage: 'Le nom du coach ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $lastName = null;
 
     #[Assert\Email]
     #[Groups(['write'])]
+    #[Assert\Length(max: 180, maxMessage: 'L’adresse e-mail ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $email = null;
 
     #[Groups(['write'])]
+    #[Assert\Length(max: 40, maxMessage: 'Le numéro de téléphone ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $phone = null;
 
     /**

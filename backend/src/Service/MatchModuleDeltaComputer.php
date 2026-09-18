@@ -4,19 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Entity\Club;
-use App\Entity\CoachPlayerMembership;
-use App\Entity\Competition;
 use App\Entity\Fixture;
-use App\Entity\SportCategory;
-use App\Entity\Team;
-use App\Entity\TeamCoach;
-use App\Entity\TeamLink;
-use App\Entity\TeamMatchHabit;
-use App\Entity\VenueMatchWindow;
-use App\Entity\VenueUnavailability;
-use App\Repository\ClubRepository;
-use App\Repository\LeagueMatchWindowRepository;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -35,23 +23,20 @@ use Doctrine\ORM\EntityManagerInterface;
  *  - planningChanged : la version choisie OU la dernière COMPLETED du plan SEASON
  *    diffère du snapshot — comparaison d'IDS, jamais d'updatedAt.
  *
- * Le radar courant est chargé exactement comme {@see FixtureConflictsController}
- * (mêmes repositories sous les mêmes filtres, même enveloppe ligue) : l'empreinte
- * d'un conflit y est donc identique des deux côtés, garanti par la maison unique
- * {@see ConflictFingerprinter}.
+ * Le radar courant est chargé par la MAISON UNIQUE {@see ConflictRadarLoader}, la
+ * même que {@see FixtureConflictsController} — mêmes repositories sous les mêmes
+ * filtres, même enveloppe ligue, MÊMES profils de durée + trajets aller-retour
+ * (BCK-23 : ces deux dernières entrées manquaient ici, un conflit né du seul trajet
+ * adverse échappait donc au delta). L'empreinte d'un conflit est identique des deux
+ * côtés, garanti par la maison unique {@see ConflictFingerprinter}.
  */
 final class MatchModuleDeltaComputer
 {
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly MatchConflictDetector $detector,
         private readonly ConflictFingerprinter $fingerprinter,
-        private readonly TrainingCalendarContext $trainingCalendarContext,
-        private readonly ClubRepository $clubRepository,
-        private readonly LeagueMatchWindowRepository $leagueWindowRepository,
-        private readonly LeagueEnvelopeResolver $envelopeResolver,
+        private readonly ConflictRadarLoader $radarLoader,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
-        private readonly ClubDay $clubDay,
     ) {}
 
     /**
@@ -115,62 +100,15 @@ final class MatchModuleDeltaComputer
     }
 
     /**
-     * Le radar courant, chargé à l'identique de FixtureConflictsController (mêmes
-     * repositories sous filtres club+saison, même enveloppe ligue tolérante).
+     * Le radar courant, chargé par la MAISON UNIQUE partagée avec le contrôleur
+     * ({@see ConflictRadarLoader}) — donc profils de durée et trajets aller-retour
+     * INCLUS, à l'identique du feed servi (BCK-23).
      *
      * @return list<array<string, mixed>>
      */
     private function currentConflicts(string $clubId, ?string $seasonId): array
     {
-        /** @var list<Fixture> $fixtures */
-        $fixtures = $this->entityManager->getRepository(Fixture::class)->findBy([]);
-        /** @var list<TeamCoach> $teamCoachRows */
-        $teamCoachRows = $this->entityManager->getRepository(TeamCoach::class)->findBy([]);
-        // Les liens JOUEUR rejoignent les coachs dans la carte personne→équipes —
-        // chargés ici AUSSI, sinon le radar du delta divergerait de celui du
-        // contrôleur (parité MatchVisitDeltaParityTest).
-        /** @var list<CoachPlayerMembership> $playerMemberships */
-        $playerMemberships = $this->entityManager->getRepository(CoachPlayerMembership::class)->findBy([]);
-        /** @var list<VenueUnavailability> $unavailabilities */
-        $unavailabilities = $this->entityManager->getRepository(VenueUnavailability::class)->findBy([]);
-        /** @var list<TeamMatchHabit> $habits */
-        $habits = $this->entityManager->getRepository(TeamMatchHabit::class)->findBy([]);
-        /** @var list<TeamLink> $teamLinks */
-        $teamLinks = $this->entityManager->getRepository(TeamLink::class)->findBy([]);
-        /** @var list<VenueMatchWindow> $matchWindows */
-        $matchWindows = $this->entityManager->getRepository(VenueMatchWindow::class)->findBy([]);
-        /** @var list<Team> $teams */
-        $teams = $this->entityManager->getRepository(Team::class)->findBy([]);
-        /** @var list<SportCategory> $categories */
-        $categories = $this->entityManager->getRepository(SportCategory::class)->findBy([]);
-        $club = $this->clubRepository->find($clubId);
-        $league = $club?->getLeague();
-        $envelope = $this->envelopeResolver->resolve($teams, $categories, $this->leagueWindowRepository->findEnvelopeForLeague($league));
-        /** @var list<Competition> $competitions */
-        $competitions = $this->entityManager->getRepository(Competition::class)->findBy([]);
-
-        $context = $this->trainingCalendarContext->load($seasonId);
-
-        // D1 rule 3 — the delta reads the SAME radar as the controller, so it must
-        // apply the SAME past-match filter (foyer ClubDay), or a played match would
-        // stay in the fingerprint set on one side and not the other.
-        $clubToday = $club instanceof Club ? $this->clubDay->todayFor($club) : null;
-
-        return $this->detector->detect(
-            $fixtures,
-            $teamCoachRows,
-            $context['seasonScheduleId'],
-            $context['activePeriods'],
-            $context['slotsBySchedule'],
-            $unavailabilities,
-            $habits,
-            $teamLinks,
-            $matchWindows,
-            $envelope,
-            $competitions,
-            clubToday: $clubToday,
-            playerMemberships: $playerMemberships,
-        );
+        return $this->radarLoader->conflicts($clubId, $seasonId)['conflicts'];
     }
 
     /** Les Fixture nées après la référence — filtres club+saison automatiques. */

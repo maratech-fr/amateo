@@ -26,6 +26,7 @@
 | Journal d'audit | actions sensibles — **ids uniquement, jamais de PII** | intérêt légitime (accountability art. 5.2) | 12 mois | `app:audit:purge` (connexion admin — append-only DB pour le runtime) | `AuditTrailTest` |
 | Doléances coachs (#10) | `CoachWish` (souhaits par équipe × semaine, **commentaire libre**), `CoachWishToken` (lien personnel + horodatage d'envoi `sentAt`) | contrat (via le club) | saison courante + N-1 | `app:seasons:purge` (`SeasonDataPurger` supprime `CoachWish` et `CoachWishCampaign` ; les tokens partent par cascade FK de la campagne) | `PurgeSeasonsCommandTest` |
 | Visite du module matchs (RMM-3) | `MatchModuleVisit` — référence de visite PAR utilisateur (club+saison+user), horodatages seulement | contrat (via le club) | saison courante + N-1 (purge saison) ; vie du compte (effacement) | `app:seasons:purge` (`SeasonDataPurger`) **et** `DELETE /api/me` (`AccountErasureService`, boucle sur `findMemberClubIds` — clubs actifs ET quittés, pas seulement actifs) | `MatchVisitDeltaParityTest` |
+| Trajets vers les adversaires (P2-54) | `OpponentTravel` — code organisme adverse, gymnase épinglé à la main (override), minutes de trajet depuis le siège du club | contrat (via le club) | saison courante + N-1 (purge saison) ; vie du compte (effacement) | `app:seasons:purge` **et** `DELETE /api/me` (`SeasonDataPurger::PURGED_BY_CLUB_SEASON`, `ErasedClubPurger` itère chaque saison via le même purger) — une ligne `MANUAL` qui épingle un gymnase fédéral **décrémente d'abord** le compteur partagé `opponent_venue_suggestion` (`decrementSharedVenueChoices`, avant le DELETE de masse) | `PurgeCompletenessTest`, `AccountErasureTest` |
 | Consentement | `termsAcceptedAt` + `termsVersion` au register | obligation légale (preuve) | vie du compte (anonymisé avec lui). Couvre 100 % des comptes réels : exigé au register avant le premier utilisateur de production (pas de backfill nécessaire — les comptes dev/test antérieurs n'en ont pas) | — | `ConsentTest` |
 
 ### Ce que l'export de portabilité NE contient PAS, et pourquoi
@@ -44,6 +45,30 @@ décisions, tenues par `RgpdExportCompletenessTest` (qui refuse une exclusion sa
 > **9 tables** — dont `coach_wish` — et l'omission était **invisible** : la réponse restait 200
 > et le JSON valide, la clé simplement absente. Une entité tenant nouvelle fait désormais
 > **échouer** le test tant qu'elle n'est pas explicitement exportée ou exclue.
+
+### La purge ne se recopie plus non plus (BCK-24, 2026-09-18)
+
+Même patron que l'export (§ ci-dessus) : `SeasonDataPurger` et `ErasedClubPurger` tenaient chacun
+une liste manuscrite d'entités purgées — une entité tenant nouvelle (`OpponentTravel`, P2-54)
+pouvait donc survivre à un « réinitialiser la saison » **et** à un effacement RGPD sans qu'aucun
+test ne le voie (constaté par l'audit `AUDIT-2026-09-18-claude-fable-5-1.md`, finding BCK-24,
+Élevée : « seule l'identité FFBB survit » était faux à la lettre).
+
+Les deux purgers exposent désormais leurs listes comme des **constantes publiques introspectables**
+et `backend/tests/Security/PurgeCompletenessTest.php` (phase1, régime de garde identique à
+`RgpdExportCompletenessTest` — ne gate pas `build-docker`) dérive de ces constantes, sans en
+recopier une seule ligne, et **exige** que toute entité `TenantOwnedInterface` soit, pour chaque
+chemin, purgée ou nommément exclue avec sa raison :
+
+- `SeasonDataPurger::PURGED_VIA_PARENT` (enfants sans colonne club/saison, résolus via leur
+  parent), `::PURGED_BY_CLUB_SEASON` (purge de masse par `club_id`+`season_id`), `::HANDLED_APART`
+  (cas particuliers — `team_tag_assignment` scopée saison seule, la ligne `Season` elle-même) et
+  `::EXCLUDED_FROM_SEASON_PURGE` (club-scoped sans saison, `audit_log`, `coach_wish_token`).
+- `ErasedClubPurger::PURGED_BY_CLUB` (club-scoped sans saison, purgées par `club_id` à
+  l'effacement) et `::EXCLUDED_FROM_ERASURE` (`audit_log`, `coach_wish_token`).
+
+Une entité tenant nouvelle fait désormais **échouer** ce test tant qu'elle n'est pas explicitement
+couverte ou exclue — le même défaut par défaut que pour l'export.
 
 ## 3. Mécanismes clés (pointeurs code)
 

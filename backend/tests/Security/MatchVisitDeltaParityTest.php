@@ -343,6 +343,52 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         self::assertFalse($afterNoop['planningChanged'], 'un état identique ne re-signale pas');
     }
 
+    /**
+     * BCK-23 — un conflit né UNIQUEMENT du trajet adverse (le radar SPATIAL P2-54)
+     * doit être servi par `/api/fixtures/conflicts` ET porté par le delta du gardien.
+     * Le trou falsifié : le chargeur du delta ne passait ni les profils de durée ni
+     * les trajets aller-retour au détecteur, donc ce conflit-là existait dans le feed
+     * mais restait ABSENT de `newConflictFingerprints` — jamais compté « nouveau ».
+     *
+     * Géométrie (profil par défaut 105/30) : rencontre EXTÉRIEURE à 14:00, aller simple
+     * 60 min (aller-retour 120) → empreinte 12:30–16:45 ; rencontre DOMICILE à 16:30 →
+     * empreinte 16:00–18:15. Le recouvrement 16:00–16:45 n'existe QUE grâce au trajet
+     * (sans lui l'extérieure finit à 15:45, aucun conflit).
+     */
+    public function testAwayTravelConflictIsServedAndReachesTheDelta(): void
+    {
+        [, $season, $admin] = $this->createClub('trv');
+        $t1 = $this->teamId('trv', 1);
+        $t2 = $this->teamId('trv', 2);
+        $coachId = $this->coachOnTeams('trv', $season, [$t1, $t2]);
+
+        $first = $this->stamp($admin); // référence R0 : aucune rencontre, aucun conflit
+        self::assertTrue($first['firstVisit']);
+
+        // Une EXTÉRIEURE à 14:00 avec code organisme + un trajet club de 60 min, et une
+        // DOMICILE à 16:30 : elles ne se recouvrent QUE par le trajet aller-retour.
+        $code = 'ORG' . strtoupper(substr(md5('trv'), 0, 8));
+        $this->seedClubTravel($season, $code, 60);
+        $away = $this->awayFixtureWithCode($season, $t1, '14:00', $code);
+        $home = $this->homeFixture($season, $t2, '16:30');
+        $fingerprint = $this->matchMatchFingerprint($coachId, $away->getId(), $home->getId());
+
+        // (i) Le feed sert bien ce conflit spatial.
+        $served = array_map(
+            static fn (array $c): string => (string) ($c['fingerprint'] ?? ''),
+            $this->conflictsFeed($admin),
+        );
+        self::assertContains($fingerprint, $served, '/api/fixtures/conflicts sert le conflit de trajet');
+
+        // (ii) Le delta du gardien porte la MÊME empreinte (parité du radar spatial).
+        $out = $this->stamp($admin);
+        self::assertContains(
+            $fingerprint,
+            $out['newConflictFingerprints'],
+            'le conflit né du seul trajet adverse doit atteindre le delta (BCK-23)',
+        );
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -595,6 +641,53 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         $this->em->flush();
 
         return $fixture;
+    }
+
+    /** Une rencontre EXTÉRIEURE avec un code organisme (le radar spatial lit son trajet). */
+    private function awayFixtureWithCode(Season $season, string $teamId, string $kickoff, string $code): Fixture
+    {
+        $this->scopeGucToClub($season->getClubId());
+        $fixture = new Fixture;
+        $fixture->setClubId($season->getClubId());
+        $fixture->setSeasonId($season->getId());
+        $fixture->setTeamId($teamId);
+        $fixture->setMatchDate($this->matchDay());
+        $fixture->setHomeAway(FixtureHomeAway::AWAY);
+        $fixture->setOpponentLabel('Adv extérieur');
+        $fixture->setOpponentOrganismeCode($code);
+        $fixture->setKickoffTime(DateTimeImmutable::createFromFormat('!H:i', $kickoff) ?: null);
+        $this->em->persist($fixture);
+        $this->em->flush();
+
+        return $fixture;
+    }
+
+    /** Un trajet CLUB (défaut) vers un adversaire : aller simple en minutes, source AUTO. */
+    private function seedClubTravel(Season $season, string $code, int $oneWayMinutes): void
+    {
+        $this->scopeGucToClub($season->getClubId());
+        $this->conn()->executeStatement(
+            'INSERT INTO opponent_travel (id, version, created_at, updated_at, club_id, season_id, opponent_organisme_code, opponent_team_key, travel_minutes, source, resolved_at)'
+            . ' VALUES (gen_random_uuid(), 1, now(), now(), :cid, :sid, :code, NULL, :min, \'AUTO\', now())',
+            ['cid' => $season->getClubId(), 'sid' => $season->getId(), 'code' => $code, 'min' => $oneWayMinutes],
+        );
+    }
+
+    /**
+     * Le feed brut des conflits du club (GET /api/fixtures/conflicts).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function conflictsFeed(User $user): array
+    {
+        $this->client->request('GET', '/api/fixtures/conflicts', [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(200, (string) $this->client->getResponse()->getContent());
+        $payload = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($payload);
+        self::assertIsArray($payload['conflicts'] ?? null);
+
+        /* @var list<array<string, mixed>> */
+        return $payload['conflicts'];
     }
 
     /** Un match HOME SANS heure et SANS lieu, rattaché à une compétition : il ne pèse QUE sur COMPETITION_INCOMPLETE. */

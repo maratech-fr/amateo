@@ -18,6 +18,7 @@ class CoachPlayerMembershipInput
     public ?string $teamId = null;
 
     #[Groups(['write'])]
+    #[Assert\Length(max: 120, maxMessage: 'Le poste ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $position = null;
 
     #[Groups(['write'])]

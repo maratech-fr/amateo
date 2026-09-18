@@ -14,6 +14,7 @@ use App\Service\FbiFixtureImporter;
 use App\Service\Geo\BanGeocodingClient;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\Clock\ClockInterface;
 use Throwable;
 
 /**
@@ -61,6 +62,7 @@ final class OpponentLocationResolver
         private readonly OpponentVenueSuggestionRepository $suggestions,
         private readonly EntityManagerInterface $entityManager,
         private readonly LoggerInterface $logger,
+        private readonly ClockInterface $clock,
     ) {}
 
     /**
@@ -148,19 +150,24 @@ final class OpponentLocationResolver
      * by key (organisme code when known, else normalized name) so a network call is
      * never spent twice on the same opponent.
      *
+     * BCK-32 — `$deadline` (epoch flottant absolu, optionnel) : dès qu'il est franchi,
+     * les observations restantes (non encore traitées) reviennent en `unresolved` SANS
+     * appel réseau. Null (appel hors orchestrateur) = aucune borne de mur, inchangé.
+     *
      * @param list<array{organismeCode: string|null, name: string, directVenue: array{libelle: string, city: string|null, postalCode: string|null, latitude: float, longitude: float}|null}> $observations
      * @param iterable<Fixture>                                                                                                                                                              $awayFixturesToStamp
      *                                                                                                                                                                                                            the season's AWAY fixtures to stamp with the organisme code once known (P2-54 PR-3)
      *
      * @return array{resolved: int, unresolved: list<string>, skipped: int, stamped: int}
      */
-    public function resolveObservations(array $observations, iterable $awayFixturesToStamp = []): array
+    public function resolveObservations(array $observations, iterable $awayFixturesToStamp = [], ?float $deadline = null): array
     {
         $resolved = 0;
         $skipped = 0;
         $unresolved = [];
         $seen = [];
         $wrote = false;
+        $deadlineNoted = false;
         // normalizeLabel(name) → resolved organisme code, so the away fixtures of
         // this opponent can be stamped with their join key (P2-54 PR-3). Populated
         // whenever a code is known — even when the LOCATION could not be resolved:
@@ -173,6 +180,18 @@ final class OpponentLocationResolver
                 continue;
             }
             $seen[$dedupKey] = true;
+
+            // BCK-32 — budget de mur épuisé : ce qui reste part en `unresolved` sans
+            // réseau (best-effort, le gestionnaire relance pour continuer).
+            if (null !== $deadline && (float) $this->clock->now()->format('U.u') >= $deadline) {
+                if (!$deadlineNoted) {
+                    $this->logger->warning('Opponent directory: wall-clock budget spent, remaining opponents left unresolved');
+                    $deadlineNoted = true;
+                }
+                $unresolved[] = $observation['name'];
+
+                continue;
+            }
 
             try {
                 $outcome = $this->resolveOne($observation);

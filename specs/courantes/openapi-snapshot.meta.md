@@ -1,15 +1,23 @@
-Last verified @ 2026-09-17 (montée du lot Dependabot — `api-platform/*` 4.3.17 → **4.4.0** : l'export
-OpenAPI passe en **3.2.0** (était 3.1.0), qui autorise une `description` en frère d'un `$ref` (la 3.1
-l'interdisait, API Platform la supprimait) ; régénéré par le coder après `cache:pool:clear --all` +
-`api:openapi:export`).
-**200 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : aucune route,
-aucun schéma, aucune propriété ne bouge — seules 3 propriétés typées par RÉFÉRENCE
-(`Schedule.capabilities`, `ScheduleDiagnostic.causes`, `SchedulePlan.staleness`) gagnent leur description
-docblock, plus la version de spec `3.1.0`→`3.2.0` (9 clés `description` ajoutées = 3 propriétés × base/html/jsonld).
-· SHA-256 `c017ce7eba83b58db5c6936493cad4f7962e19aa8d0493735ed298a63d238add`
+Last verified @ 2026-09-18 (audit 2026-09-18 backend — réponse `429` sur `POST /api/opponents/travel/manual`
+(SEC-19), budget de mur documenté sur `POST /api/opponents/refresh` (BCK-32), et `maxLength` sur 26 propriétés
+texte des DTO d'entrée (BCK-27) ; régénéré par le coder après `cache:pool:clear --all` + `api:openapi:export`).
+**200 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : aucune route
+n'apparaît ni ne disparaît — seules une réponse `429` s'ajoute à `/api/opponents/travel/manual`, la description
+de `/api/opponents/refresh` gagne une phrase (budget de mur → réponse partielle), et 26 propriétés d'entrée
+gagnent leur `maxLength` (borne = longueur de la colonne cible).
+· SHA-256 `419573385089c2b4deaacb85e15dd1f25045bb84d3cef2e6ce64de8e5e24747c`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Audit 2026-09-18 — bornes des trajets adverses + longueurs de DTO, backend** : **+0 path** — trois
+  ajustements sans nouvelle route : (SEC-19) `POST /api/opponents/travel/manual` déclare une réponse `429`
+  (limiteur PAR UTILISATEUR `opponent_travel_manual`, 30/h) ; (BCK-32) la description de
+  `POST /api/opponents/refresh` gagne la mention du budget de mur (au-delà, réponse PARTIELLE : adversaires
+  restants en `unresolved`/`skipped`, relancer pour continuer) — la FORME de la réponse est inchangée ;
+  (BCK-27) 26 propriétés texte des DTO d'entrée gagnent un `maxLength` égal à la longueur de leur colonne
+  (`Fixture.opponentLabel`, `Club`/`Coach`/`Constraint`/`Venue`/`User`/`Season`/`Team`/… ) → un dépassement
+  rend un 422 parlant au lieu d'un 500 SQL. Backend PUR, contrat backend⇄engine **inchangé**
+  (`CONTRACT_VERSION` 2.21, aucun appel moteur).
 - **Montée Dependabot — API Platform 4.4 / OpenAPI 3.2.0 (2026-09-17)** : **+0 path** — la montée
   `api-platform/*` 4.3.17 → 4.4.0 fait passer l'export de `openapi: 3.1.0` à `3.2.0`. La 3.2 autorise
   une `description` en frère d'un `$ref` (interdit en 3.1, API Platform la supprimait) : 3 propriétés
@@ -71,11 +79,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   `opponentOrganismeCode` + `opponentTeamKey` (libellé adverse normalisé, servi pour joindre le trajet par
   équipe sans re-dériver). 198 → **198 paths**. Backend PUR, contrat backend⇄engine **inchangé**
   (`CONTRACT_VERSION` 2.21, aucun appel moteur, aucun payload solveur ne lit `opponent_travel`).
-- **B1 — P4-207 « Résolution des conflits », backend (2026-09-15)** : **+1 path** — `PUT`/`DELETE`
-  `/api/fixtures/conflicts/{fingerprint}/resolution` (poser/remplacer ou retirer le statut de traitement d'un
-  conflit — management-only ; « à traiter » = absence de ligne = `DELETE` idempotent) ; le radar
-  `GET /api/fixtures/conflicts` gagne le champ additif `resolution` (objet `status`/`note`/`updatedAt`,
-  nullable = « à traiter »). 197 → **198 paths**. Backend PUR, contrat backend⇄engine **inchangé** (aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

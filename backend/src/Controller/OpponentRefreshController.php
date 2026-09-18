@@ -14,6 +14,7 @@ use App\Service\ManagementAccessGuard;
 use App\Service\SeasonResolver;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -53,6 +54,17 @@ final class OpponentRefreshController extends AbstractController
     /** Borne dure sur les adversaires distincts d'une mise à jour (avant tout réseau). */
     private const int MAX_DISTINCT = 200;
 
+    /**
+     * BCK-32 — budget de MUR pour l'ensemble des trois passes. Chacune enchaîne une
+     * rafale d'appels sortants (FFBB salles/organismes, BAN, IGN) ; sans borne globale,
+     * une fédération dégradée pourrait tenir la requête près du plafond amont (prod :
+     * `max_execution_time` / `fastcgi_read_timeout` 60 s). 45 s = trois quarts du
+     * plafond : chaque passe s'arrête net dès qu'il est franchi et rend ce qu'elle n'a
+     * pas traité (unresolved / skipped), le gestionnaire relance pour continuer. En
+     * régime nominal (~140-230 ms/appel) le budget ne mord jamais.
+     */
+    private const float REFRESH_BUDGET_SECONDS = 45.0;
+
     public function __construct(
         private readonly OpponentLocationResolver $locationResolver,
         private readonly OpponentVenueAutoLocator $venueAutoLocator,
@@ -63,6 +75,7 @@ final class OpponentRefreshController extends AbstractController
         private readonly RequestStack $requestStack,
         private readonly RateLimiterFactory $opponentRefreshLimiter,
         private readonly LoggerInterface $logger,
+        private readonly ClockInterface $clock,
     ) {}
 
     #[Route('/api/opponents/refresh', name: 'api_opponents_refresh', methods: ['POST'])]
@@ -96,23 +109,30 @@ final class OpponentRefreshController extends AbstractController
             return $this->json(['error' => 'Trop de mises à jour des adversaires — réessayez plus tard.'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
+        // BCK-32 — budget de MUR partagé : un instant limite absolu que les trois passes
+        // ne dépassent pas (chacune rend ce qu'elle n'a pas traité au-delà). Calculé une
+        // fois, AVANT la première passe.
+        $deadline = $this->nowEpoch() + self::REFRESH_BUDGET_SECONDS;
+
         // Trois passes INDÉPENDANTES : chacune est isolée pour qu'un échec (réseau, FFBB
         // muet) n'annule jamais les suivantes. L'ordre compte : (a) estampille les codes
         // dont (b) et (c) ont besoin pour joindre l'adversaire.
         $seasonId = $season->getId();
         $codes = $this->step(
             'codes',
-            fn (): array => $this->locationResolver->resolveObservations($observations, $awayFixtures),
+            fn (): array => $this->locationResolver->resolveObservations($observations, $awayFixtures, $deadline),
             ['resolved' => 0, 'unresolved' => [], 'skipped' => 0, 'stamped' => 0],
         );
         $autoLocated = $this->step(
             'auto-locate',
-            fn (): array => $this->venueAutoLocator->locate($clubId, $seasonId),
+            fn (): array => $this->venueAutoLocator->locate($clubId, $seasonId, $deadline),
             ['located' => 0, 'ambiguous' => 0, 'unmatched' => 0, 'skipped' => 0],
         );
         $travel = $this->step(
             'travel',
-            fn (): array => $this->travelResolver->resolve($clubId, $seasonId),
+            // La passe trajet reçoit le RESTANT du budget de mur (borné dans resolve() par
+            // le budget de lot IGN) — 0 si le budget est déjà épuisé (tout en unresolved).
+            fn (): array => $this->travelResolver->resolve($clubId, $seasonId, max(0.0, $deadline - $this->nowEpoch())),
             ['resolved' => 0, 'unresolved' => [], 'skippedManual' => 0],
         );
 
@@ -121,6 +141,12 @@ final class OpponentRefreshController extends AbstractController
             'autoLocated' => $autoLocated,
             'travel' => $travel,
         ]);
+    }
+
+    /** L'instant courant en secondes flottantes (epoch) — foyer du budget de mur. */
+    private function nowEpoch(): float
+    {
+        return (float) $this->clock->now()->format('U.u');
     }
 
     /**

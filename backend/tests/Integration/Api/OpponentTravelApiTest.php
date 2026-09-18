@@ -25,6 +25,7 @@ use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\RateLimiter\RateLimiterFactory;
 
 /**
  * P2-54 RMM-9 PR-3 — the read shape of GET /api/opponents/travel (the display feed
@@ -288,6 +289,35 @@ final class OpponentTravelApiTest extends WebTestCase
         );
         self::assertSame('Lyon', $list[0]['city']);
         self::assertSame('69001', $list[0]['postalCode']);
+    }
+
+    /**
+     * SEC-19 — POST /api/opponents/travel/manual est borné PAR UTILISATEUR (30/h), non
+     * assoupli en test à dessein. On isole CETTE borne du limiteur `api` global (30/min
+     * en test) en pré-consommant 30 jetons du limiteur manuel pour l'utilisateur, puis en
+     * ne faisant QU'UN appel HTTP : le 31ᵉ jeton MANUEL est refusé, avec SON message (et
+     * non « API rate limit exceeded »). Utilisateur frais → clé de limiteur vierge, aucune
+     * pollution d'un autre test (jamais de FLUSHALL).
+     */
+    public function testTheManualLimiterTripsAtThirtyOneForOneUser(): void
+    {
+        [$club, $user, $season] = $this->seedClub();
+        $code = 'ARA00690L1';
+        $this->awayFixture($club, $season, $code, 'ADVERSAIRE LIMITE');
+
+        // Épuise la borne manuelle (30/h) hors HTTP, sur la clé exacte du contrôleur
+        // (l'id utilisateur) — le même Redis partagé que le contrôleur lira.
+        $limiter = self::getContainer()->get('limiter.opponent_travel_manual');
+        self::assertInstanceOf(RateLimiterFactory::class, $limiter);
+        for ($i = 0; $i < 30; ++$i) {
+            self::assertTrue($limiter->create($user->getId())->consume(1)->isAccepted(), "jeton {$i} sous la borne");
+        }
+
+        // Un SEUL appel HTTP (1 jeton `api` seulement, très sous 30/min) : le 31ᵉ jeton
+        // MANUEL est refusé, et c'est bien la borne SEC-19 (son message) qui tranche.
+        $this->post($user, '/api/opponents/travel/manual', ['opponentOrganismeCode' => $code, 'venueLabel' => 'Gymnase', 'latitude' => 45.7, 'longitude' => 4.8]);
+        self::assertResponseStatusCodeSame(429, 'le 31ᵉ épinglage dépasse la borne manuelle');
+        self::assertStringContainsString('gymnases', (string) $this->client->getResponse()->getContent(), 'c\'est bien la borne manuelle (SEC-19), pas le limiteur api global');
     }
 
     protected function setUp(): void

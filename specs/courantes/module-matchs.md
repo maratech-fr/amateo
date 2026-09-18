@@ -1,21 +1,19 @@
 # Module matchs (FFBB) — état livré
 
-Last verified @ 2026-09-17 (`documentation-update`, PR « mémoire de session des filtres »). Bullet
-« URL fusionnée » et § « Liens qui allument leurs filtres » recalés : le seed du Calendrier
-(`CalendarPage.tsx`, effet unique seed + re-synchro d'URL) ne redéfinit plus l'état Consulter
-DEPUIS L'URL à CHAQUE montage — il ne le fait QUE si l'URL porte au moins une des sept clés
-Consulter (`hasConsultParams`/`CONSULT_PARAM_KEYS`, `lib/urlState.ts`) ; sans aucune clé (retour
-par l'onglet « Calendrier », qui pointe `/matchs` sans query), le store Zustand — mémoire de
-session, NON persistée — est GARDÉ et l'adresse re-synchronisée depuis lui. Un lien AVEC query
-(« Voir la semaine », « Placer ») continue de faire foi à l'identique. Confronté au code lu :
-`CalendarPage.tsx` (effet fusionné, `touchedStore`), `lib/urlState.ts` (`hasConsultParams`),
-`ConflictsPage.tsx:178-188` (seed inconditionnel, PAS concerné par ce lot — trou signalé en
-roadmap). Reste du fichier (§ « Calendrier — l'écran unique » pour le reste, § « Détection », §
-« Détail par côté d'un conflit de personne », § « Configuration — repli visuel », §
-reconciliation coupes P4-194/195, § « Solveur de placement », § « Trajet AWAY », § « Espace
-Importer », § « Onglet Semaine type », § « Échéances ligue/comité », § « Écart de salle d'un
-domicile non placé ») non re-sondé cette passe — voir `git log -p --follow` pour sa dernière
-vérification.
+Last verified @ 2026-09-18 (`documentation-update`, PR correctrice de l'audit 0918 — BCK-23).
+§ « Endpoint — `GET /api/fixtures/conflicts` » et § « Le gardien à l'ouverture » recalés : les
+deux appelants (`FixtureConflictsController`, `MatchModuleDeltaComputer::currentConflicts`)
+chargent désormais leur radar via une maison UNIQUE, `App\Service\ConflictRadarLoader::conflicts`
+— avant cette date le delta copiait le chargement du contrôleur à la main, sans
+`profilesByTeam`/`roundTripByFixtureId`, donc un conflit né uniquement du trajet adverse pouvait
+être servi à l'écran sans jamais entrer dans `newConflictFingerprints` du bandeau « depuis ta
+dernière visite » (audit `AUDIT-2026-09-18-claude-fable-5-1.md`, finding BCK-23). Confronté au
+code lu : `ConflictRadarLoader.php` (les deux appelants), `MatchVisitDeltaParityTest.php` (cas
+trajet-only ajouté). Reste du fichier (§ « Calendrier — l'écran unique », § « Détail par côté
+d'un conflit de personne », § « Configuration — repli visuel », § reconciliation coupes
+P4-194/195, § « Solveur de placement », § « Trajet AWAY », § « Espace Importer », § « Onglet
+Semaine type », § « Échéances ligue/comité », § « Écart de salle d'un domicile non placé ») non
+re-sondé cette passe — voir `git log -p --follow` pour sa dernière vérification.
 > ⚠ **Le module est autonome dans ses DONNÉES, pas dans son OUVERTURE.** Décision fondateur du
 > 2026-07-31 (arbitrage DOC-1) : le couplage livré fait foi, la spec d'évolution a été alignée
 > dessus — **le gating reste**. Créer un match (`FixtureStateProcessor`) comme importer un fichier
@@ -515,8 +513,16 @@ filtre.
 ### Endpoint — `GET /api/fixtures/conflicts`
 
 Contrôleur invokable `FixtureConflictsController` (route `priority: 10` pour passer avant `/api/fixtures/{id}`
-d'API Platform). Recalcul **à la volée** à chaque appel, **rien n'est persisté**. Charge fixtures + `TeamCoach`
-+ périodes-overlay actives + slots du planning effectif via les repos (scope club+saison **automatique**).
+d'API Platform). Recalcul **à la volée** à chaque appel, **rien n'est persisté**. Le chargement (fixtures +
+`TeamCoach` + `CoachPlayerMembership` + périodes-overlay actives + slots du planning effectif + profils de
+durée par équipe + trajet aller-retour par rencontre, scope club+saison **automatique**) vit dans
+`App\Service\ConflictRadarLoader::conflicts` (**BCK-23, 2026-09-18** — maison UNIQUE, avant cette date le
+contrôleur et `MatchModuleDeltaComputer` § « Le gardien à l'ouverture » en tenaient chacun une copie ; celle du
+delta omettait les profils de durée et le trajet, donc un conflit né UNIQUEMENT du trajet adverse pouvait
+être servi par cet endpoint sans jamais compter comme « nouveau depuis ta dernière visite » —
+`MatchVisitDeltaParityTest` compare désormais les deux jeux d'empreintes). Le contrôleur décore ENSUITE en
+aval (`fingerprint`, `opponentPlace`, `resolution`).
+
 Réponse : `{ clubId, seasonId, conflicts: [{ type, coachId, start, end (segment de chevauchement),
 left/right | fixture/training }] }`. **Toutes les bornes datées** (`start`/`end`, `windowStart`/`windowEnd`
 du bloc `training`, `left.windowStart`/`right.windowEnd`…) sont l'heure MURALE du club, sans décalage
@@ -2461,7 +2467,12 @@ future.
     référence NON tournée, seul `lastOpenedAt` avance. Un F5 rejoue donc les mêmes badges
     (idempotent), il ne les éteint jamais.
   Le calcul lui-même vit dans `App\Service\MatchModuleDeltaComputer`, tenu SÉPARÉ de la rotation
-  (le contrôleur seul stampe) — trois signaux, tous falsifiables dans les deux sens
+  (le contrôleur seul stampe). **Depuis BCK-23 (2026-09-18)**, `currentConflicts()` charge son
+  radar via le même `ConflictRadarLoader` que `GET /api/fixtures/conflicts` (§ ci-dessus) — avant
+  cette date il appelait `MatchConflictDetector::detect` en copiant les paramètres à la main, sans
+  `profilesByTeam`/`roundTripByFixtureId`, donc un conflit né uniquement du trajet adverse pouvait
+  être signalé à l'écran sans jamais entrer dans `newConflictFingerprints`. Trois signaux, tous
+  falsifiables dans les deux sens
   (`MatchVisitDeltaParityTest`, liste canonique `docs/testing/blocking-tests.md`) : `newFixturesCount` (fixtures nées APRÈS la
   référence, `createdAt > takenAt`) · `newConflictFingerprints` (empreintes courantes ABSENTES du
   snapshot — un conflit disparu ne produit rien, seul le neuf est signalé) · `planningChanged` (la

@@ -36,6 +36,39 @@ final class ErasedClubPurger
 {
     use DisablesTenantFilters;
 
+    /**
+     * Tenant, VOLONTAIREMENT hors de l'effacement DIRECT — chacune avec sa raison. Le
+     * test PurgeCompletenessTest exige que toute entité tenant soit purgée (par saison
+     * via SeasonDataPurger, ou par club ici) ou nommément exclue ici.
+     *
+     * @var array<string, string> table => pourquoi
+     */
+    public const EXCLUDED_FROM_ERASURE = [
+        'audit_log' => 'accountability : l\'effacement du club ÉCRIT lui-même une ligne d\'audit (CLUB_PURGED) — le journal a sa propre rétention (app:audit:purge)',
+        'coach_wish_token' => 'part par la FK ON DELETE CASCADE de sa campagne (supprimée avec chaque saison par SeasonDataPurger)',
+    ];
+
+    /**
+     * Entités CLUB-scoped SANS saison, purgées par club_id à l'effacement RGPD (les
+     * tables tenant+saison partent, elles, par SeasonDataPurger itéré sur chaque saison).
+     * La boucle de purge itère cette constante.
+     *
+     * @var list<class-string>
+     */
+    private const PURGED_BY_CLUB = [
+        // SolverMetric est APPEND-ONLY (SA2-stats, 2026-07-18) : ni la validation ni
+        // le reset de saison ne le purgent plus. CE chemin est donc sa SEULE porte de
+        // sortie — « seule l'identité FFBB survit » doit être vrai à la lettre, et la
+        // suppression par clubId emporte tout l'historique, rattaché ou orphelin.
+        SolverMetric::class,
+        // RGPD : un club effacé ne garde pas ses signalements (P5-6). Delete par
+        // clubId, comme les autres tables club-scoped sans saison.
+        Feedback::class,
+        TeamTag::class,
+        SportCategory::class,
+        ClubUser::class,
+    ];
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly SeasonDataPurger $seasonDataPurger,
@@ -58,17 +91,7 @@ final class ErasedClubPurger
         // 2. Club-scoped sans saison. SeasonDataPurger::purge fait un clear()
         //    final → les filtres Doctrine doivent être re-désactivés.
         $this->disableTenantFilters($this->entityManager);
-        foreach ([
-            // SolverMetric est APPEND-ONLY (SA2-stats, 2026-07-18) : ni la validation ni
-            // le reset de saison ne le purgent plus. CE chemin est donc sa SEULE porte de
-            // sortie — « seule l'identité FFBB survit » doit être vrai à la lettre, et la
-            // suppression par clubId emporte tout l'historique, rattaché ou orphelin.
-            SolverMetric::class,
-            // RGPD : un club effacé ne garde pas ses signalements (P5-6). Delete par
-            // clubId, comme les autres tables club-scoped sans saison.
-            Feedback::class,
-            TeamTag::class, SportCategory::class, ClubUser::class,
-        ] as $entityClass) {
+        foreach (self::PURGED_BY_CLUB as $entityClass) {
             $deleted += (int) $this->entityManager->createQueryBuilder()
                 ->delete($entityClass, 'e')
                 ->where('e.clubId = :clubId')

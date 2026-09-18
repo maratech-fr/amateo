@@ -42,6 +42,10 @@ final class AccountErasureTest extends WebTestCase
 
     private KernelBrowser $client;
 
+    private string $manualRef;
+
+    private string $autoRef;
+
     public function testErasedAccountCannotAuthenticateAnymore(): void
     {
         [$token, , $email] = $this->registerVerified('ERAA');
@@ -249,6 +253,17 @@ final class AccountErasureTest extends WebTestCase
         $this->insertCoach($clubB, $seasonB, 'CoachB');
         // RGPD (P5-6) : un signalement du club A doit être emporté par la purge.
         $this->insertFeedback($clubA, $userA);
+        // BCK-24 / P4-209(b) — deux trajets adverses du club A, chacun avec sa suggestion
+        // PARTAGÉE à 2 : l'effacement décrémente celle de la ligne MANUAL, JAMAIS celle de
+        // la ligne AUTO (qui n'a jamais compté comme un choix).
+        $manualCode = 'ERADM' . strtoupper(substr(md5($clubA), 0, 6));
+        $autoCode = 'ERADA' . strtoupper(substr(md5($clubA), 6, 6));
+        $this->manualRef = 'SM' . strtoupper(substr(md5($clubA), 0, 8));
+        $this->autoRef = 'SA' . strtoupper(substr(md5($clubA), 8, 8));
+        $this->seedOpponentSuggestion($manualCode, $this->manualRef, 2);
+        $this->seedOpponentSuggestion($autoCode, $this->autoRef, 2);
+        $this->seedOpponentTravel($clubA, $seasonA, $manualCode, $this->manualRef, 'MANUAL');
+        $this->seedOpponentTravel($clubA, $seasonA, $autoCode, $this->autoRef, 'AUTO');
 
         $club = $em->getRepository(Club::class)->find($clubA);
         self::assertInstanceOf(Club::class, $club);
@@ -286,7 +301,25 @@ final class AccountErasureTest extends WebTestCase
             (int) $em->getConnection()->fetchOne('SELECT COUNT(*) FROM schedule_plan WHERE club_id = :cid', ['cid' => $clubA]),
             'plans (schedule_plan) du club A purgés',
         );
+        // BCK-24 — les trajets adverses du club A sont partis avec ses saisons.
+        self::assertSame(
+            0,
+            (int) $em->getConnection()->fetchOne('SELECT COUNT(*) FROM opponent_travel WHERE club_id = :cid', ['cid' => $clubA]),
+            'opponent_travel du club A purgé',
+        );
         $this->clearGuc();
+
+        // P4-209(b) — le compteur PARTAGÉ recule pour la ligne MANUAL, reste pour l'AUTO.
+        self::assertSame(
+            1,
+            (int) $em->getConnection()->fetchOne('SELECT chosen_by_count FROM opponent_venue_suggestion WHERE venue_external_ref = :ref', ['ref' => $this->manualRef]),
+            'choix MANUAL effacé → compteur partagé décrémenté (2 → 1)',
+        );
+        self::assertSame(
+            2,
+            (int) $em->getConnection()->fetchOne('SELECT chosen_by_count FROM opponent_venue_suggestion WHERE venue_external_ref = :ref', ['ref' => $this->autoRef]),
+            'ligne AUTO effacée → compteur partagé INCHANGÉ (n\'a jamais compté)',
+        );
 
         // Club B intact (frontière tenant).
         self::assertSame(1, $this->countRows(Coach::class, $clubB), 'club B intact');
@@ -398,6 +431,28 @@ final class AccountErasureTest extends WebTestCase
         $em->persist(new Feedback($clubId, $userId, 'bug', 'un souci quelconque'));
         $em->flush();
         $em->clear();
+    }
+
+    /** Une suggestion PARTAGÉE (table globale, hors RLS) au compteur donné. */
+    private function seedOpponentSuggestion(string $code, string $ref, int $count): void
+    {
+        $this->em()->getConnection()->executeStatement(
+            'INSERT INTO opponent_venue_suggestion (id, ffbb_organisme_code, venue_external_ref, venue_label, city, postal_code, latitude, longitude, source, chosen_by_count, last_chosen_at, created_at, updated_at)'
+            . ' VALUES (gen_random_uuid(), :code, :ref, \'Gymnase\', \'Ville\', \'69000\', 45.7, 4.8, \'MANUAL\', :count, now(), now(), now())',
+            ['code' => $code, 'ref' => $ref, 'count' => $count],
+        );
+    }
+
+    /** Un trajet adverse tenant (RLS : GUC du club exigé pour l'INSERT). */
+    private function seedOpponentTravel(string $clubId, string $seasonId, string $code, string $ref, string $source): void
+    {
+        $this->scopeGucToClub($clubId);
+        $this->em()->getConnection()->executeStatement(
+            'INSERT INTO opponent_travel (id, version, created_at, updated_at, club_id, season_id, opponent_organisme_code, opponent_team_key, travel_minutes, source, override_venue_external_ref, override_venue_label, override_latitude, override_longitude, resolved_at)'
+            . ' VALUES (gen_random_uuid(), 1, now(), now(), :cid, :sid, :code, NULL, 30, :source, :ref, \'Gymnase\', 45.7, 4.8, now())',
+            ['cid' => $clubId, 'sid' => $seasonId, 'code' => $code, 'ref' => $ref, 'source' => $source],
+        );
+        $this->clearGuc();
     }
 
     private function insertCoach(string $clubId, string $seasonId, string $name): void

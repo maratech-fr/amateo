@@ -33,6 +33,7 @@ class FixtureInput
 
     #[Assert\NotBlank]
     #[Groups(['write'])]
+    #[Assert\Length(max: 180, maxMessage: 'Le nom de l’adversaire ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $opponentLabel = null;
 
     #[Assert\Choice(callback: [FixtureStatus::class, 'values'])]

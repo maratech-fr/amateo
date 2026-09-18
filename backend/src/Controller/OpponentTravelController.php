@@ -63,6 +63,7 @@ final class OpponentTravelController extends AbstractController
         private readonly OpponentTravelResolver $resolver,
         private readonly VenueLabelNormalizer $labelNormalizer,
         private readonly RateLimiterFactory $opponentTravelResolveLimiter,
+        private readonly RateLimiterFactory $opponentTravelManualLimiter,
     ) {}
 
     #[Route('/api/opponents/travel', name: 'api_opponents_travel_list', methods: ['GET'])]
@@ -115,6 +116,13 @@ final class OpponentTravelController extends AbstractController
         }
         if (!$this->isAwayOpponent($season->getId(), $code, $teamKey)) {
             return $this->json(['error' => 'Cet adversaire n\'a aucune rencontre à l\'extérieur cette saison.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        // SEC-19 — borne PAR UTILISATEUR consommée APRÈS les 422 (aucun jeton brûlé sur un
+        // refus) : l'override recalcule un itinéraire IGN et peut écrire dans le partagé.
+        $user = $this->getUser();
+        if ($user instanceof User && !$this->opponentTravelManualLimiter->create($user->getId())->consume(1)->isAccepted()) {
+            return $this->json(['error' => 'Trop de gymnases épinglés — réessayez plus tard.'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
         $row = $this->resolver->applyManualOverride($clubId, $season->getId(), $code, $teamKey, $ref, mb_substr($label, 0, 180), $lat, $lon);
