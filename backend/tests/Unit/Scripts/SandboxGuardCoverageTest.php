@@ -61,6 +61,16 @@ final class SandboxGuardCoverageTest extends TestCase
                 continue;
             }
 
+            // `migration-rollback-drill.sh` (INF-05) ne mute JAMAIS une base partagée :
+            // il crée puis DÉTRUIT sa propre base JETABLE (amateo_migration_drill), lit
+            // son URL admin depuis backend/.env (jamais .env.local), et REFUSE toute URL
+            // visant une base « local ». Il ne DOIT pas sourcer la garde — celle-ci
+            // n'autorise que amateo_dev / *_test et tuerait le drill sur sa base jetable ;
+            // sa propre garde (refus des URL « local » + base éphémère) tient le fail-closed.
+            if ('migration-rollback-drill.sh' === $file->getFilename()) {
+                continue;
+            }
+
             $contents = file_get_contents($path);
             self::assertIsString($contents);
 
