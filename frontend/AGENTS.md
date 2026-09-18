@@ -493,7 +493,15 @@ bug above, one screen removed.
    `#8a720f`. Swatches/logos keep the raw club colour — only text/accent CSS vars go through
    the derivation. There is deliberately **no `--accent-fill` token** for a club that finds its
    derived accent too dark on filled buttons (closed decision — a bright yellow as TEXT on white
-   has no AA-legible form; see `specs/courantes/etat-des-lieux.md` §2).
+   has no AA-legible form; see `specs/courantes/etat-des-lieux.md` §2). The same hook also sets
+   **`--accent-hover`** next to `--accent`/`--accent-foreground`, via `accentHoverForMode(accent,
+   mode)` (`shared/lib/color.ts`) — a filled `bg-accent` button changes SHADE on hover (darkened in
+   light mode, lightened in dark, at least one step, until AA with the SAME resting foreground),
+   never `hover:opacity-90` (which composited the opaque accent toward the surface and dropped
+   white-on-accent from 4.85 to 4.26 in light mode — the pressed "Amical" chip on `/matchs`,
+   2026-09-18). Consumed by `button.tsx`'s `default` variant, `system-screen.tsx`,
+   `RouteErrorBoundary.tsx`. `destructive` (`bg-destructive`) and `ClubPage`'s avatar (`bg-muted`)
+   still hover via `opacity-90`, deliberately out of scope — `specs/evolution/roadmap.md` P4-244.
 8. **Engaged teams are read-only on two fields.** `Team.isEngaged` comes **from the server**
    (`TeamResource.isEngaged`) and is never recomputed client-side; `TeamsStep` greys out both
    **deletion** and **level change** for such a team — its matches are filed with the
@@ -548,6 +556,11 @@ bug above, one screen removed.
     token pairs measured this pass (`text-foreground` on `bg-warning/10` on a card, on the bright
     `#FFD21E22` venue tint, `text-muted-foreground` on `bg-muted` and on `bg-muted/40` over a
     card), in both themes, against the real rendered app.
+    **The same recipe applies on the other side too**: `features/planning/WeekGrid.tsx`'s coach
+    sub-label (`cell.secondaryLabel`, printed on a *venue-tinted* session card via `tint()`) used
+    `text-muted-foreground` — a plain token, no opacity — which still failed AA on a bright venue
+    tint in dark mode (4.24–4.33:1). Fixed to `text-foreground`, de-emphasised by SIZE alone
+    (`text-[10px]`) — the exact recipe `WeekendGrid`'s cell already used (2026-09-18).
 
 ---
 

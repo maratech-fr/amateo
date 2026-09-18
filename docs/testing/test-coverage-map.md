@@ -1,16 +1,13 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-16 (2ᵉ passe le même jour, `documentation-update` — PR backend « écart de
-salle d'un domicile non placé ») : §5 table Matchs gagne la ligne `un-domicile-non-place-dont-la-
-ligue-change-la-salle-est-arbitre.feature` (suite `ecart-salle-non-place`, `behat.dist.php`
-recroisé). 1ʳᵉ passe du jour (rotation `documentation-update`, PR fiabilité CI e2e — aucune feature
-Behat ni suite ajoutée par cette PR, zéro code produit). §1 ligne `Playwright` recroisée contre
-`frontend/playwright.config.ts` : la suite reste un seul job CI `e2e`, désormais structurée en
-trois PROJETS Playwright (`setup` → `superadmin`, `dependencies` ; `chromium`, le reste) plutôt
-qu'un run plat — la colonne `Local`/`Job CI` de la ligne ne change pas (`make -C frontend e2e`,
-`e2e`). Détail de la fiabilité infra (pré-pull/relance/classification) et de la session
-superadmin unique : [`testing-strategy.md`](testing-strategy.md) §1 et § « Le socle superadmin
-e2e » — non dupliqué ici (ce fichier ne porte QUE le « qui teste quoi »).
+Last verified @ 2026-09-18 (`documentation-update`, complément au lot correctif frontend de
+l'audit 0918) : §1 ligne « Accessibilité & rendu » recroisée contre
+`frontend/tests/e2e/a11y-contrast.spec.ts` — gagne la paire de survol `--accent-hover` et la note
+sur les témoins par écran (`/matchs` provisionne désormais sa propre rencontre, le club seedé CI
+n'en portant aucune). Liste des specs e2e recroisée contre `frontend/tests/e2e/` (`ls *.spec.ts`) :
+aucun fichier ajouté ni retiré cette passe. §1 ligne `Playwright` (parcours §2, specs axe) et le
+reste des lignes non touchées cette passe — historique complet :
+`git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
 > prouve**, **par quel job CI**, et **ce que personne ne prouve**. Il ne remplace ni
@@ -52,7 +49,7 @@ Recalculer les tailles : `find backend/tests -name '*Test.php' | awk -F/ '{print
 | Périmètre engagé | `EngagedTeamGuardTest` ; `matches.spec.ts` (matchs verrouillés tant que le plan principal n'est pas validé) ; feature Behat `le-perimetre-engage-est-protege.feature` (équipe engagée ni supprimable ni changeable de niveau, une équipe qui ne joue pas reste libre) | `blocking-tests`, `e2e`, `functional-tests` |
 | Contrat backend ⇄ engine | `ContractSchemaTest`, `ValidateAssignmentsContractSchemaTest`, `PayloadVersionMatchesContractVersionTest`, les `*PayloadParityTest` — **aucune feature Behat dédiée** : la forme d'un payload/schéma n'est pas une promesse qu'un gestionnaire relit, le PHPUnit cross-stack reste la preuve directe | `blocking-tests` |
 | Auth & memberships | `ClubUserAccessTests`, `MemberRoleTest`, `ManagementRoleTest`, `SuperAdminAccessTest`, `ApiRateLimitTest`, `PasswordResetEnumerationTest`, `RegisterTurnstileTest`, `MercureHardeningTest` ; `auth.spec.ts` ; feature Behat `voeux-des-coachs.feature` (seul chemin d'écriture non authentifié : token public → vœu persisté) ; feature Behat `l-export-du-planning.feature` (l'export du planning est refusé sans session) | `blocking-tests`, `e2e`, `functional-tests` |
-| Accessibilité & rendu | `a11y-contrast` (2 thèmes — paires `warning` P4-173 et `accent` P4-177 verrouillées : texte `text-foreground` sur fond teinté ≥ AA, icône de tonalité ≥ 1.4.11, `StatusPill`), `system-scene`, `modal-reachability`, `veil-double-click`, `width-calibration`, `security-headers` (A17 contre le build nginx, `E2E_A17_REQUIRED=1`) | `e2e` |
+| Accessibilité & rendu | `a11y-contrast` (2 thèmes — paires `warning` P4-173, `accent` P4-177 et **survol `--accent-hover`** (2026-09-18) verrouillées : texte `text-foreground` sur fond teinté ≥ AA, icône de tonalité ≥ 1.4.11, `StatusPill` ; les 4 écrans authentifiés (`/matchs`, `/matchs/semaine-type`, `/planning`, `/club`) portent chacun leur propre témoin de contenu rendu, `/matchs` provisionnant sa propre rencontre — le club seedé CI n'en a aucune), `system-scene`, `modal-reachability`, `veil-double-click`, `width-calibration`, `security-headers` (A17 contre le build nginx, `E2E_A17_REQUIRED=1`) | `e2e` |
 
 ## 3. Ce qui gate `main`
 
