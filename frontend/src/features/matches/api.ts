@@ -256,7 +256,7 @@ export type ConflictType =
  * l'instant). « À traiter » n'est PAS un statut : c'est l'ABSENCE de résolution
  * (`resolution === null`). Miroir de `App\Enum\ConflictResolutionStatus`.
  */
-export type ConflictResolutionStatus = "DEROGATION_REQUESTED" | "RESOLVED_INTERNALLY" | "NO_SOLUTION_YET";
+export type ConflictResolutionStatus = "DEROGATION_REQUESTED" | "RESOLVED_INTERNALLY" | "NO_SOLUTION_YET" | "COACHES_NOT_PLAYING" | "PLAYS_NOT_COACHING";
 
 /**
  * P4-207 — la résolution PERSISTÉE d'un conflit (par empreinte, jamais par id) : où

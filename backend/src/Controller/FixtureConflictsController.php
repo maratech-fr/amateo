@@ -130,8 +130,24 @@ final class FixtureConflictsController extends AbstractController
         }
 
         [$season, $conflicts] = $this->computeConflicts($clubId);
-        if (!$season instanceof Season || !\in_array($fingerprint, array_map(static fn (array $c): string => (string) ($c['fingerprint'] ?? ''), $conflicts), true)) {
+        $conflict = null;
+        foreach ($conflicts as $c) {
+            if ($fingerprint === (string) ($c['fingerprint'] ?? '')) {
+                $conflict = $c;
+                break;
+            }
+        }
+        if (!$season instanceof Season || null === $conflict) {
             return $this->json(['error' => 'Ce conflit n\'existe plus dans le radar actuel.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        // « Coache, ne joue pas » / « Joue, ne coache pas » n'ont de sens que si la personne
+        // JOUE réellement un des côtés (un côté servi porte le rôle PLAYER) — sinon 422 parlant.
+        if (
+            \in_array($status, [ConflictResolutionStatus::COACHES_NOT_PLAYING, ConflictResolutionStatus::PLAYS_NOT_COACHING], true)
+            && !$this->conflictHasPlayerSide($conflict)
+        ) {
+            return $this->json(['error' => 'Ce statut est réservé aux conflits où la personne joue.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         $user = $this->getUser();
@@ -278,6 +294,24 @@ final class FixtureConflictsController extends AbstractController
             'MATCH_TRAINING' => ['fixture'],
             default => [],
         };
+    }
+
+    /**
+     * Un côté servi du conflit porte-t-il le rôle PLAYER (la personne JOUE) ? On lit les
+     * rôles DÉJÀ servis (jamais de redérivation) sur les quatre côtés possibles.
+     *
+     * @param array<string, mixed> $conflict
+     */
+    private function conflictHasPlayerSide(array $conflict): bool
+    {
+        foreach (['left', 'right', 'fixture', 'training'] as $sideKey) {
+            $side = $conflict[$sideKey] ?? null;
+            if (\is_array($side) && 'PLAYER' === ($side['role'] ?? null)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return array{status: string, note: string|null, updatedAt: string} */

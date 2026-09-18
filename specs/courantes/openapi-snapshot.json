@@ -11691,7 +11691,9 @@
                                                                 "enum": [
                                                                     "DEROGATION_REQUESTED",
                                                                     "RESOLVED_INTERNALLY",
-                                                                    "NO_SOLUTION_YET"
+                                                                    "NO_SOLUTION_YET",
+                                                                    "COACHES_NOT_PLAYING",
+                                                                    "PLAYS_NOT_COACHING"
                                                                 ]
                                                             },
                                                             "note": {
@@ -11747,7 +11749,9 @@
                                                     "enum": [
                                                         "DEROGATION_REQUESTED",
                                                         "RESOLVED_INTERNALLY",
-                                                        "NO_SOLUTION_YET"
+                                                        "NO_SOLUTION_YET",
+                                                        "COACHES_NOT_PLAYING",
+                                                        "PLAYS_NOT_COACHING"
                                                     ]
                                                 },
                                                 "note": {
@@ -11775,7 +11779,7 @@
                         "description": "Malformed fingerprint (routing)"
                     },
                     "422": {
-                        "description": "Unknown status, note over 500 characters, or a fingerprint absent from the current radar"
+                        "description": "Unknown status, note over 500 characters, a fingerprint absent from the current radar, or a play-only status (COACHES_NOT_PLAYING / PLAYS_NOT_COACHING) on a conflict where nobody plays"
                     }
                 },
                 "summary": "Set (or replace) the handling status of a conflict \u2014 management only. \u00ab \u00c0 traiter \u00bb is not a status here (it is the absence of a row): reset with DELETE",
@@ -11804,7 +11808,9 @@
                                         "enum": [
                                             "DEROGATION_REQUESTED",
                                             "RESOLVED_INTERNALLY",
-                                            "NO_SOLUTION_YET"
+                                            "NO_SOLUTION_YET",
+                                            "COACHES_NOT_PLAYING",
+                                            "PLAYS_NOT_COACHING"
                                         ]
                                     },
                                     "note": {

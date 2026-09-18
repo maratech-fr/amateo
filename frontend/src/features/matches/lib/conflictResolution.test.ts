@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import type { Conflict, ConflictResolution } from "../api";
-import { countByTreatment, isOpenConflict, openConflictCount, RESOLUTION_LABEL, RESOLUTION_STATUSES, TREATMENT_KEYS, TREATMENT_SLUG, treatmentFromSlug, treatmentOf } from "./conflictResolution";
+import type { Conflict, ConflictFixtureView, ConflictResolution, ConflictSideRole } from "../api";
+import { countByTreatment, isOpenConflict, openConflictCount, RESOLUTION_LABEL, RESOLUTION_STATUSES, resolutionChoicesFor, TREATMENT_KEYS, TREATMENT_SLUG, treatmentFromSlug, treatmentOf } from "./conflictResolution";
 
 function conflict(resolution: ConflictResolution | null): Conflict {
   return { type: "VENUE_OVERLAP", severity: 1, resolution };
+}
+
+function sideWithRole(role: ConflictSideRole): ConflictFixtureView {
+  return { fixtureId: "f", teamId: "t", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:00", windowStart: "", windowEnd: "", role };
 }
 
 const resolved = (status: ConflictResolution["status"]): ConflictResolution => ({ status, note: null, updatedAt: "2026-10-03T20:45:00+02:00" });
@@ -86,5 +90,31 @@ describe("Traitement (B — clés, slugs, treatmentOf, countByTreatment)", () =>
     expect(counts.get("DEROGATION_REQUESTED")).toBe(1);
     expect(counts.get("NO_SOLUTION_YET")).toBe(1);
     expect(counts.get("RESOLVED_INTERNALLY")).toBeUndefined();
+  });
+});
+
+describe("statuts « joue/coache » (réservés aux conflits où la personne joue)", () => {
+  it("RESOLUTION_LABEL : les 2 nouveaux libellés, variante accent, glyphes distincts", () => {
+    expect(RESOLUTION_LABEL.COACHES_NOT_PLAYING.label).toBe("Coache, ne joue pas");
+    expect(RESOLUTION_LABEL.PLAYS_NOT_COACHING.label).toBe("Joue, ne coache pas");
+    expect(RESOLUTION_LABEL.COACHES_NOT_PLAYING.variant).toBe("accent");
+    expect(RESOLUTION_LABEL.PLAYS_NOT_COACHING.variant).toBe("accent");
+    const allIcons = [RESOLUTION_LABEL.DEROGATION_REQUESTED.icon, RESOLUTION_LABEL.RESOLVED_INTERNALLY.icon, RESOLUTION_LABEL.NO_SOLUTION_YET.icon, RESOLUTION_LABEL.COACHES_NOT_PLAYING.icon, RESOLUTION_LABEL.PLAYS_NOT_COACHING.icon];
+    expect(new Set(allIcons).size).toBe(5);
+  });
+
+  it("resolutionChoicesFor : les 2 statuts APPARAISSENT quand un côté servi porte PLAYER", () => {
+    const withPlayer: Conflict = { type: "MATCH_MATCH", severity: 3, resolution: null, left: sideWithRole("MAIN"), right: sideWithRole("PLAYER") };
+    expect(resolutionChoicesFor(withPlayer)).toEqual(["DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET", "COACHES_NOT_PLAYING", "PLAYS_NOT_COACHING"]);
+  });
+
+  it("resolutionChoicesFor : ABSENTS quand aucun côté ne joue (que des coachs)", () => {
+    const noPlayer: Conflict = { type: "MATCH_MATCH", severity: 3, resolution: null, left: sideWithRole("MAIN"), right: sideWithRole("ASSISTANT") };
+    expect(resolutionChoicesFor(noPlayer)).toEqual(["DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET"]);
+  });
+
+  it("treatmentOf : les 2 statuts se rangent sous « Réglé en interne » (aucun chip propre)", () => {
+    expect(treatmentOf(conflict(resolved("COACHES_NOT_PLAYING")))).toBe("RESOLVED_INTERNALLY");
+    expect(treatmentOf(conflict(resolved("PLAYS_NOT_COACHING")))).toBe("RESOLVED_INTERNALLY");
   });
 });

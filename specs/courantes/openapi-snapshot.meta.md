@@ -1,13 +1,20 @@
-Last verified @ 2026-09-19 (retours de tests — deux champs ADDITIFS : `failedSteps` sur la réponse de
-`POST /api/opponents/refresh`, et `windows` sur les conflits `ACCESS_WINDOW_LOST` du radar
-`GET /api/fixtures/conflicts` (les accès match du gymnase de la fixture, jour du match d'abord) ;
-régénéré par `api:openapi:export`).
+Last verified @ 2026-09-19 (retours de tests — trois ajouts ADDITIFS : `failedSteps` sur la réponse de
+`POST /api/opponents/refresh`, `windows` sur les conflits `ACCESS_WINDOW_LOST` du radar
+`GET /api/fixtures/conflicts`, et deux valeurs d'enum `COACHES_NOT_PLAYING`/`PLAYS_NOT_COACHING` sur le
+statut de résolution d'un conflit (`PUT /api/fixtures/conflicts/{fingerprint}/resolution` + le champ
+`resolution.status` du radar) ; régénéré par `api:openapi:export`).
 **200 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : aucune route
-n'apparaît ni ne disparaît — seules deux propriétés additives s'ajoutent (`failedSteps`, `windows`).
-· SHA-256 `ef0508b200163d1b9bc7d0d1e8fd5e6139ee4071c474a4ae247e858c15babebc`
+n'apparaît ni ne disparaît — seuls deux champs additifs et deux valeurs d'enum s'ajoutent.
+· SHA-256 `5914c4b0bb21a516b77f27953a7dacc887786158770d508d41847090ef173442`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Retours de tests — statuts « joue/coache » sur un conflit, backend (2026-09-19)** : **+0 path** — le
+  statut de résolution d'un conflit gagne deux valeurs d'enum ADDITIVES `COACHES_NOT_PLAYING` et
+  `PLAYS_NOT_COACHING` (`PUT /api/fixtures/conflicts/{fingerprint}/resolution`, requête + réponse, et le
+  champ `resolution.status` du radar `GET /api/fixtures/conflicts`). Elles ne sont acceptées que si un
+  côté servi du conflit porte le rôle PLAYER (sinon 422 parlant) ; colonne `length: 30`, aucune migration.
+  Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun appel moteur).
 - **Retours de tests — `windows` sur ACCESS_WINDOW_LOST, backend (2026-09-19)** : **+0 path** — un conflit
   `ACCESS_WINDOW_LOST` du radar `GET /api/fixtures/conflicts` porte désormais un champ ADDITIF `windows`
   (`array<{dayOfWeek, startTime, endTime}>`) : les accès match DU GYMNASE de la fixture, jour du match
@@ -65,13 +72,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   `/api/opponents/resolve` et `/api/opponents/travel/resolve` restent (compat). 199 → **200 paths**. Backend PUR,
   contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun appel moteur, aucun payload solveur ne lit
   `opponent_travel`).
-- **PR-2 « adversaire multi-gymnases », backend (2026-09-15)** : **+1 path** — les SUGGESTIONS partagées de
-  gymnases par club adverse. `GET /api/opponents/{code}/venue-suggestions` (management, A6) rend les gymnases
-  connus d'un adversaire — vus dans le calendrier fédéral (`FFBB_API`) ou choisis par des clubs (`MANUAL`) —
-  avec un `chosenByCount` (« un compte, jamais un qui »), FFBB_API d'abord puis MANUAL par compte décroissant ;
-  422 si le code n'est pas un adversaire AWAY de la saison. 198 → **199 paths**. Backend PUR, contrat
-  backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun appel moteur, aucun payload solveur ne lit le
-  partagé).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

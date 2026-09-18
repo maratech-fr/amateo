@@ -25,4 +25,11 @@ enum ConflictResolutionStatus: string
     case RESOLVED_INTERNALLY = 'RESOLVED_INTERNALLY';
 
     case NO_SOLUTION_YET = 'NO_SOLUTION_YET';
+
+    // Deux statuts réservés aux conflits où la personne JOUE (un côté servi porte
+    // le rôle PLAYER) : le gestionnaire tranche que la personne coache sans jouer,
+    // ou joue sans coacher. Colonne `length: 30` — aucune migration.
+    case COACHES_NOT_PLAYING = 'COACHES_NOT_PLAYING';
+
+    case PLAYS_NOT_COACHING = 'PLAYS_NOT_COACHING';
 }

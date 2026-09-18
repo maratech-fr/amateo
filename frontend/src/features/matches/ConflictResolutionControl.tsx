@@ -13,7 +13,7 @@ import { cn } from "@/shared/lib/utils";
 import type { Coach, Conflict, ConflictResolutionStatus, Team, Venue } from "./api";
 import { ConflictLine } from "./ConflictLine";
 import type { DiagnosticGroup } from "./lib/diagnostic";
-import { RESOLUTION_LABEL, RESOLUTION_STATUSES } from "./lib/conflictResolution";
+import { RESOLUTION_LABEL, resolutionChoicesFor } from "./lib/conflictResolution";
 import { useClearConflictResolution, useSetConflictResolution } from "./queries";
 
 /**
@@ -65,6 +65,8 @@ export function ConflictResolutionControl({ conflict, teams, coaches, venues, to
   const resolution = conflict.resolution ?? null;
   const fingerprint = conflict.fingerprint;
   const editable = canManage && undefined !== fingerprint;
+  // Les statuts proposés : les 3 de base + les 2 « joue/coache » quand un côté servi porte PLAYER.
+  const choices = resolutionChoicesFor(conflict);
 
   const noteFieldId = useId();
   const noteButtonRef = useRef<HTMLButtonElement>(null);
@@ -185,7 +187,7 @@ export function ConflictResolutionControl({ conflict, teams, coaches, venues, to
     } else {
       chip = (
         <Menu label={triggerAccessibleName} triggerClassName="rounded-full p-0.5" trigger={pill()}>
-          {RESOLUTION_STATUSES.map((status) => {
+          {choices.map((status) => {
             const meta = RESOLUTION_LABEL[status];
             const current = status === resolution.status;
             const ItemIcon = meta.icon;
@@ -224,7 +226,7 @@ export function ConflictResolutionControl({ conflict, teams, coaches, venues, to
           </span>
         }
       >
-        {RESOLUTION_STATUSES.map((status) => {
+        {choices.map((status) => {
           const meta = RESOLUTION_LABEL[status];
           const ItemIcon = meta.icon;
           return (

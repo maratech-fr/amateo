@@ -122,6 +122,11 @@ final class ConflictTruthContext extends BaseContext
 
     private string $playedMatchId = '';
 
+    /** Décor du statut de traitement « joue/coache » (empreinte écrite + code HTTP obtenu). */
+    private string $resolvedFingerprint = '';
+
+    private int $resolutionWriteStatus = 0;
+
     /** @var list<mixed> Conflits rendus par GET /api/fixtures/conflicts. */
     private array $conflicts = [];
 
@@ -643,6 +648,69 @@ final class ConflictTruthContext extends BaseContext
         }
     }
 
+    #[When('le gestionnaire pose « Coache, ne joue pas » sur ce conflit de personne')]
+    public function poseCoacheNeJouePas(): void
+    {
+        $this->resolvedFingerprint = $this->empreinteDuConflitDePersonne();
+        $response = $this->apiPut($this->resolutionPath($this->resolvedFingerprint), ['status' => 'COACHES_NOT_PLAYING'], $this->token);
+        $this->resolutionWriteStatus = $response['status'];
+    }
+
+    #[When('le gestionnaire tente « Joue, ne coache pas » sur ce conflit de personne')]
+    public function tenteJoueNeCoachePas(): void
+    {
+        // Un 422 n'écrit AUCUNE ligne → rien à nettoyer, `resolvedFingerprint` reste vide.
+        $fingerprint = $this->empreinteDuConflitDePersonne();
+        $response = $this->apiPut($this->resolutionPath($fingerprint), ['status' => 'PLAYS_NOT_COACHING'], $this->token);
+        $this->resolutionWriteStatus = $response['status'];
+    }
+
+    #[Then('le statut est accepté et le conflit le porte')]
+    public function leStatutEstAccepteEtLeConflitLePorte(): void
+    {
+        if (200 !== $this->resolutionWriteStatus) {
+            throw new RuntimeException(\sprintf('« Coache, ne joue pas » aurait dû être accepté (200) sur un conflit où la personne joue, obtenu %d', $this->resolutionWriteStatus));
+        }
+        $this->jeDemandeLesConflits();
+        $status = null;
+        foreach ($this->conflicts as $conflict) {
+            if (\is_array($conflict) && ($conflict['fingerprint'] ?? null) === $this->resolvedFingerprint) {
+                $resolution = $conflict['resolution'] ?? null;
+                $status = \is_array($resolution) ? ($resolution['status'] ?? null) : null;
+
+                break;
+            }
+        }
+        if ('COACHES_NOT_PLAYING' !== $status) {
+            throw new RuntimeException(\sprintf('le conflit ne porte pas « Coache, ne joue pas » (un statut ne masque jamais le conflit ; obtenu %s)', json_encode($status)));
+        }
+    }
+
+    #[Then('le statut lui est refusé faute de joueur')]
+    public function leStatutRefuseFauteDeJoueur(): void
+    {
+        if (422 !== $this->resolutionWriteStatus) {
+            throw new RuntimeException(\sprintf('un statut « joue/coache » aurait dû être refusé (422) sur un conflit sans joueur, obtenu %d', $this->resolutionWriteStatus));
+        }
+    }
+
+    /** L'empreinte de l'UNIQUE conflit MATCH_MATCH du radar (un décor = un conflit de personne). */
+    private function empreinteDuConflitDePersonne(): string
+    {
+        foreach ($this->conflicts as $conflict) {
+            if (\is_array($conflict) && 'MATCH_MATCH' === ($conflict['type'] ?? null) && \is_string($conflict['fingerprint'] ?? null) && '' !== $conflict['fingerprint']) {
+                return $conflict['fingerprint'];
+            }
+        }
+
+        throw new RuntimeException('aucun conflit MATCH_MATCH sur le radar — le décor a-t-il bien produit un conflit de personne ?');
+    }
+
+    private function resolutionPath(string $fingerprint): string
+    {
+        return \sprintf('fixtures/conflicts/%s/resolution', rawurlencode($fingerprint));
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
@@ -653,6 +721,12 @@ final class ConflictTruthContext extends BaseContext
         // Relâche l'horloge en PREMIER : quoi qu'il advienne du reste du nettoyage, le
         // bac à sable ne doit jamais rester bloqué dans un « aujourd'hui » figé.
         $this->releaseClock();
+
+        // La ligne de résolution AVANT les rencontres (sinon elle reste orpheline, jamais
+        // nettoyée à la volée — même précaution que ConflictResolutionContext).
+        if ('' !== $this->resolvedFingerprint) {
+            $this->apiDelete($this->resolutionPath($this->resolvedFingerprint), $this->token);
+        }
 
         foreach ([$this->fixtureId, $this->friendlyId, $this->championshipFixtureId, $this->cupFixtureId, $this->gymFixtureAId, $this->gymFixtureBId, $this->coachedMatchId, $this->playedMatchId, $this->personGymMatchAId, $this->personGymMatchBId] as $id) {
             if ('' !== $id) {

@@ -83,6 +83,26 @@ Fonctionnalité: Les conflits d'un match disent la vérité
     Quand je demande les conflits des matchs
     Alors un conflit de personne en double porte ses deux matchs, en gravité 3, coach d'un côté et joueuse de l'autre
 
+  Scénario: Un conflit où la personne joue accepte le statut « Coache, ne joue pas »
+    Les deux statuts « joue/coache » ne sont acceptés que si un côté du conflit porte le rôle
+    joueuse : ici la personne coache une équipe et JOUE l'autre, donc le gestionnaire peut trancher
+    qu'elle coache sans jouer. Le conflit reste rendu, portant sa résolution.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une personne qui coache une équipe et joue dans une autre, leurs deux matchs se chevauchant
+    Quand je demande les conflits des matchs
+    Et le gestionnaire pose « Coache, ne joue pas » sur ce conflit de personne
+    Alors le statut est accepté et le conflit le porte
+
+  Scénario: Un statut « joue/coache » est refusé sur un conflit où personne ne joue
+    Le même geste, mais sur un conflit de DEUX équipes COACHÉES (aucun côté joueuse) : « Joue, ne
+    coache pas » n'a pas de sens et le serveur le refuse (422), sans écrire de ligne.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe, un coach et un gymnase jetables
+    Et la même personne coache deux équipes qui enchaînent un match à domicile chacune dans deux gymnases différents
+    Quand je demande les conflits des matchs
+    Et le gestionnaire tente « Joue, ne coache pas » sur ce conflit de personne
+    Alors le statut lui est refusé faute de joueur
+
   Scénario: Une rencontre de coupe hors fenêtre de ligue est un vrai match, jamais un amical (P4-194)
     Une coupe PORTE une compétition (elle n'est jamais un amical à competitionId null) : le radar la
     soumet à l'enveloppe de ligue comme un championnat — hors de la fenêtre autorisée elle crie une
