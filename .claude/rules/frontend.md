@@ -47,8 +47,9 @@ paths:
   unique — `features/matches/SourceBadge.tsx` (P4-177, adossée à `StatusPill`), consommée par
   `TravelMatrixModal.tsx` et `OpponentTravelCard.tsx` (les deux copies locales ont disparu) ;
   `FilterToggle` (`shared/components/ui/filter-toggle.tsx`, P4-207) est la maison unique de la case
-  à cocher d'un filtre d'affichage — née du patron inline de `ReviewQueue.tsx`, qui garde ses deux
-  copies locales NON converties (candidat de convergence, signalé, non traité) ;
+  à cocher d'un filtre d'affichage — née du patron inline de `ReviewQueue.tsx`, qui l'utilise
+  désormais pour ses deux interrupteurs (« Afficher les traitées », « Masquer les extérieurs »,
+  UXC-21, lot audit 2026-09-18) : plus aucune copie locale du patron ;
   **couleurs/espacements** = tokens du thème (`text-warning`,
   `text-muted-foreground`, `bg-muted`, `border-border`…), **jamais un `#hex`** ni une classe sans
   jeton (`text-warning-foreground` était un no-op, P4-130). Recoder à la main un spinner nu, un
@@ -92,6 +93,10 @@ paths:
 - 🔴 **jsdom n'a AUCUN moteur de mise en page** : `boundingBox`, `scrollHeight` et
   `getBoundingClientRect` y valent 0. Le **contraste** et le **reflow** (WCAG 1.4.10) ne se testent
   qu'en **Playwright**. Un test jsdom sur ces sujets est vert par construction — il n'atteste rien.
+  C'est pour ça que `frontend/src/test/textOpacityGuard.test.ts` (A11Y-22, 2026-09-18) existe : un
+  garde STATIQUE (grep des sources `.tsx` sur `text-<jeton>/NN`/`opacity-[3-6]0`) qui rougit dans
+  Vitest, avant le scan de contraste Playwright — sans lui une régression d'opacité sur du texte
+  resterait verte jusqu'au prochain `a11y-contrast.spec.ts`.
 - **TDD obligatoire**, RED prouvé avant l'implémentation
   ([`../../frontend/docs/frontend-strategy.md`](../../frontend/docs/frontend-strategy.md) §1).
 - **Passe de design `ui-ux-pro-max`** (dans un agent — elle ne MESURE rien, mais elle TRANCHE une

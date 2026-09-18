@@ -1688,9 +1688,9 @@ version ne rendait pas la salle. Décisions retenues :
 - **La VALIDATION d'un planning devient la gâchette principale.** `GET
   /api/schedules/{id}/validate-impact` (lecture ouverte au Membre) sert l'impact AVANT que le
   gestionnaire confirme : `{orphanedFixtures, declaredOrphanedFixtures}` — combien de matchs
-  domicile perdront leur salle (gymnase disparu du club+saison) et, parmi eux, combien sont déjà
+  domicile perdront leur gymnase (gymnase disparu du club+saison) et, parmi eux, combien sont déjà
   `SUBMITTED`/`VALIDATED`. `ValidateDialog` n'affiche l'annonce (« N matchs [dont X déjà déclarés]
-  perdront leur salle ») QUE si N>0 (aucun bruit préventif — verbatim fondateur : « quel intérêt de
+  perdront leur gymnase ») QUE si N>0 (aucun bruit préventif — verbatim fondateur : « quel intérêt de
   faire du bruit préventif ») et désactive « Valider » tant que l'impact n'est pas connu (en vol ou
   en échec — jamais un impact inconnu présenté comme vide). `POST /api/schedules/{id}/validate`
   dépointe alors, dans la MÊME transaction que le choix de version, exactement les matchs que la

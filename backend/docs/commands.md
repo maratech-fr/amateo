@@ -1,11 +1,11 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-15 (**rotation de fraîcheur** `documentation-update`, PR conflits
-coach ↔ joueur — zone non touchée par cette PR). Re-confronté au code, tout juste :
-`app:fixtures:catch-up-review` (`CatchUpFixtureReviewCommand.php`) — options `--force`
+Last verified @ 2026-09-18 (**rotation de fraîcheur** `documentation-update`, lot correctif
+frontend de l'audit 2026-09-18 — zone non touchée par cette PR). Re-confronté au code, tout juste :
+`app:fixtures:catch-up-review` (`CatchUpFixtureReviewCommand.php:59-60,66,68`) — options `--force`
 (`InputOption::VALUE_NONE`)/`--club` (`VALUE_REQUIRED`) confirmées ; `make play`/`db-empty`/`reset`
 toujours dans `Makefile` (racine, cibles `play`/`db-empty`/`reset`) ; CI lance toujours
-`app:bccl:seed --no-interaction` directement (`.github/workflows/ci.yml:1012`, `:1226`).
+`app:bccl:seed --no-interaction` directement (`.github/workflows/ci.yml:1042`, `:1286`).
 Non re-sondé cette passe : le reste des commandes et gardes listées — un stamp REMPLACE,
 l'historique vit dans git.
 
