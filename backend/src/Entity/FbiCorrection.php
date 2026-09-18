@@ -291,7 +291,7 @@ class FbiCorrection implements TenantOwnedInterface
 
     public function isOpen(): bool
     {
-        return null === $this->closedAt;
+        return !$this->closedAt instanceof DateTimeImmutable;
     }
 
     public function getClosedBy(): ?FbiCorrectionCloseSource

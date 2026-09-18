@@ -6,6 +6,7 @@ namespace App\Service;
 
 use App\Entity\Club;
 use App\Entity\Competition;
+use App\Entity\FbiCorrection;
 use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
 use App\Entity\Season;
@@ -860,7 +861,7 @@ final class FbiFixtureImporter
                 $effect = 'take_file';
             } else {
                 $openCorrection = $this->ledger->findOpen($existing, FbiCorrectionField::from($field));
-                if (null !== $openCorrection && $this->ledger->stillShowsRecordedValue($openCorrection, $vals['file'])) {
+                if ($openCorrection instanceof FbiCorrection && $this->ledger->stillShowsRecordedValue($openCorrection, $vals['file'])) {
                     // (a) FBI affiche TOUJOURS la valeur d'origine : le gestionnaire a déjà
                     // tranché « garder l'appli », il n'y a rien de neuf à traiter — on ne
                     // re-crée PAS d'écart, on re-date juste « vu dans FBI ».
@@ -868,7 +869,7 @@ final class FbiFixtureImporter
 
                     continue;
                 }
-                if (null !== $openCorrection) {
+                if ($openCorrection instanceof FbiCorrection) {
                     // (c) FBI affiche une TROISIÈME valeur : l'ancienne correction est
                     // caduque (fermée par le dépôt) ET un écart normal s'ouvre à arbitrer.
                     $this->ledger->closeBySource($openCorrection, $now);
@@ -1353,7 +1354,7 @@ final class FbiFixtureImporter
     private function closeOpenCorrection(Fixture $fixture, string $field, DateTimeImmutable $now): void
     {
         $entry = $this->ledger->findOpen($fixture, FbiCorrectionField::from($field));
-        if (null !== $entry) {
+        if ($entry instanceof FbiCorrection) {
             $this->ledger->closeBySource($entry, $now);
         }
     }

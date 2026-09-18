@@ -109,7 +109,7 @@ final class FbiCorrectionController extends AbstractController
         $closedAt = $entry->getClosedAt();
         if ($entry->isOpen()
             || FbiCorrectionCloseSource::MANUAL !== $entry->getClosedBy()
-            || null === $closedAt
+            || !$closedAt instanceof DateTimeImmutable
             || $closedAt < DateTimeImmutable::createFromInterface($this->clock->now())->modify(\sprintf('-%d hours', self::REOPEN_GRACE_HOURS))) {
             return $this->json(['error' => 'Cette correction ne peut plus être rouverte.'], Response::HTTP_CONFLICT);
         }
