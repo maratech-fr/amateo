@@ -12,10 +12,12 @@ class ClubInput
 {
     #[Assert\NotBlank]
     #[Groups(['write'])]
+    #[Assert\Length(max: 180, maxMessage: 'Le nom du club ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $name = null;
 
     #[Assert\NotBlank]
     #[Groups(['write'])]
+    #[Assert\Length(max: 180, maxMessage: 'L’identifiant d’URL du club ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $slug = null;
 
     // SEC-15: plan / billing / quota fields are NOT client-writable — a club admin could
@@ -29,16 +31,19 @@ class ClubInput
 
     #[Assert\NotBlank]
     #[Groups(['write'])]
+    #[Assert\Length(max: 64, maxMessage: 'Le fuseau horaire ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $timezone = null;
 
     #[Assert\NotBlank]
     #[Groups(['write'])]
+    #[Assert\Length(max: 10, maxMessage: 'La langue ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $locale = null;
 
     #[Groups(['write'])]
     public ?bool $onboardingCompleted = null;
 
     #[Groups(['write'])]
+    #[Assert\Length(max: 64, maxMessage: 'Le code club FFBB ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $ffbbClubCode = null;
 
     #[Assert\Regex(pattern: '/^#[0-9a-fA-F]{6}$/', message: 'accentColor must be a #RRGGBB hex colour')]

@@ -27,6 +27,7 @@ class TeamInput
 
     #[Assert\NotBlank]
     #[Groups(['write'])]
+    #[Assert\Length(max: 180, maxMessage: 'Le nom de l’équipe ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $name = null;
 
     #[Assert\Choice(callback: [Gender::class, 'values'])]

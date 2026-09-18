@@ -15,6 +15,7 @@ class SportCategoryInput
 
     #[Assert\NotBlank]
     #[Groups(['write'])]
+    #[Assert\Length(max: 120, maxMessage: 'Le nom de la catégorie ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $name = null;
 
     #[Groups(['write'])]

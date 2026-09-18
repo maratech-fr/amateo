@@ -13,6 +13,7 @@ class SeasonInput
 {
     #[Assert\NotBlank]
     #[Groups(['write'])]
+    #[Assert\Length(max: 120, maxMessage: 'Le nom de la saison ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $name = null;
 
     /** Required at creation; null on update = keep the current value (partial PUT). */
