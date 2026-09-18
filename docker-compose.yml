@@ -1,5 +1,6 @@
 services:
   frontend:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: docker/frontend/Dockerfile
@@ -90,6 +91,7 @@ services:
       - amateo_network
 
   php-fpm:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: docker/php/Dockerfile
@@ -132,6 +134,7 @@ services:
       - amateo_network
 
   nginx:
+    restart: unless-stopped
     image: nginx:1.27-alpine
     container_name: amateo-nginx
     depends_on:
@@ -152,6 +155,7 @@ services:
       - amateo_network
 
   postgres:
+    restart: unless-stopped
     image: postgres:16-alpine
     container_name: amateo-postgres
     environment:
@@ -176,6 +180,7 @@ services:
       - amateo_network
 
   redis:
+    restart: unless-stopped
     image: redis:7-alpine
     container_name: amateo-redis
     ports:
@@ -236,6 +241,7 @@ services:
   # the allowlisted app:jobs:run wrapper prevents overlap and persists outcomes.
   # Missed slots are caught up once after restart; one failure never stops the next job.
   cron-runner:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: docker/php/Dockerfile
@@ -274,6 +280,7 @@ services:
       - amateo_network
 
   engine:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: docker/engine/Dockerfile
@@ -300,6 +307,7 @@ services:
       - amateo_network
 
   pdf-worker:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: docker/pdf-worker/Dockerfile
@@ -330,6 +338,7 @@ services:
       - amateo_network
 
   mercure:
+    restart: unless-stopped
     # Épinglé : Mercure 1.0 (2026-09-16) passe à l'authorization OAuth 2.0 et répond 401 aux
     # tokens 0.x → hub cassé sous `latest`. On reste sur 0.24.2 (version qui tourne) ; la
     # migration 1.0 est cadrée en roadmap. `latest` interdit ici désormais.
@@ -356,6 +365,7 @@ services:
       - amateo_network
 
   mailpit:
+    restart: unless-stopped
     image: axllent/mailpit:latest
     container_name: amateo-mailpit
     ports:
