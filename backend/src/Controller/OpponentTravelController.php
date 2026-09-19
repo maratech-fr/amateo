@@ -346,6 +346,10 @@ final class OpponentTravelController extends AbstractController
             'opponentTeamKey' => $teamKey,
             'opponentLabel' => $label,
             'located' => $located,
+            // C7 — l'adversaire a-t-il un logo fédéral connu ? (le front rend `<img>` via
+            // `GET /api/opponents/{code}/logo`, sinon des initiales.) Booléen dérivé de la
+            // présence du `logo_id` de l'annuaire — jamais l'uuid brut.
+            'hasLogo' => null !== $entry?->getLogoId(),
             'precision' => $hasOverride ? OpponentLocationPrecision::VENUE->value : $precision,
             'locationName' => $this->locationName($entry, $travel),
             'city' => $entry?->getCity(),

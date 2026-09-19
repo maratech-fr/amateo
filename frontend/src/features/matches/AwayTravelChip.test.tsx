@@ -10,6 +10,7 @@ const travel = (over: Partial<OpponentTravel>): OpponentTravel => ({
   opponentTeamKey: "ADVERSAIRE",
   opponentLabel: "Adversaire",
   located: true,
+  hasLogo: false,
   precision: "VENUE",
   locationName: "Gymnase du Clar",
   city: null,

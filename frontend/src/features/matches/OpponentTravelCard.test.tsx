@@ -30,6 +30,7 @@ const opp = (over: Partial<OpponentTravel> & { opponentLabel: string }): Opponen
   opponentOrganismeCode: "C1",
   opponentTeamKey: over.opponentLabel.toUpperCase(),
   located: true,
+  hasLogo: false,
   precision: "VENUE",
   locationName: "Halle X",
   city: null,

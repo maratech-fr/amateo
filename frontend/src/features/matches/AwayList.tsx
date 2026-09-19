@@ -4,6 +4,7 @@ import { useState } from "react";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { OpponentLogo } from "@/shared/components/ui/opponent-logo";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
 
 import type { Fixture, OpponentTravel, Team, TeamMatchHabit } from "./api";
@@ -12,6 +13,7 @@ import { compareAway } from "./lib/awayColumn";
 import { awayHour, awayTravelByKey, awayTravelKey } from "./lib/awayKickoff";
 import { awayTravelTitle } from "./lib/awayTravelTitle";
 import type { CoachTeamRole } from "./lib/matchFilter";
+import { opponentInitials } from "./lib/opponentInitials";
 
 interface AwayListProps {
   /** Fixtures of the ACTIVE weekend (already bucketed by the page). */
@@ -75,7 +77,10 @@ export function AwayList({ fixtures, teams, habits, travel = [], coachRoles, onE
                 {undefined !== coachRoles?.get(fixture.teamId) ? <StatusPill className="ml-1.5 text-foreground">{coachRoles.get(fixture.teamId)}</StatusPill> : null}
                 <span className="text-muted-foreground">
                   {" "}
-                  · {frDateWeekdayNoYear(fixture.matchDate)} · à {fixture.opponentLabel}
+                  · {frDateWeekdayNoYear(fixture.matchDate)} ·{" "}
+                  {/* C7 — logo fédéral de l'adversaire (sm) : rien si aucun logo (le libellé suffit). */}
+                  <OpponentLogo code={fixture.opponentOrganismeCode} hasLogo={null !== fixture.opponentOrganismeCode} initials={opponentInitials(fixture.opponentLabel)} size="sm" className="mr-1 inline-block align-middle" />
+                  à {fixture.opponentLabel}
                   {null !== fixture.fbiVenueLabel ? ` (${fixture.fbiVenueLabel})` : ""}
                   {null !== hour ? ` · ${hour}` : " · heure inconnue"}
                   {/* RMM-1 PR3 (L7) — n° de rencontre : repère discret, jamais une clé. */}

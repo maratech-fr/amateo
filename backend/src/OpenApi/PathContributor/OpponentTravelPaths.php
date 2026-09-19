@@ -91,6 +91,7 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                 'opponentTeamKey' => ['type' => ['string', 'null'], 'description' => 'Server-normalized opponent label — the grain of a per-team travel override; null for an unresolved opponent'],
                 'opponentLabel' => ['type' => 'string'],
                 'located' => ['type' => 'boolean', 'description' => 'A resolvable location exists (directory entry or manual override)'],
+                'hasLogo' => ['type' => 'boolean', 'description' => 'A federal logo is known for this opponent (serve it via GET /api/opponents/{code}/logo, member only)'],
                 'precision' => ['type' => ['string', 'null'], 'enum' => ['VENUE', 'CITY', null], 'description' => 'How precisely the opponent venue is known'],
                 'locationName' => ['type' => ['string', 'null'], 'description' => 'The gym label (VENUE / override) or the commune (CITY)'],
                 'city' => ['type' => ['string', 'null'], 'description' => 'The opponent commune from the shared directory'],
@@ -267,6 +268,18 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                 '429' => new Response('Too many requests (per-user rate limit)'),
             ],
             summary: 'Update all away opponents in one call — catch up codes, auto-locate gyms from the file, recompute travel (management only)',
+        )));
+
+        $paths->addPath('/api/opponents/{code}/logo', new PathItem(get: new Operation(
+            operationId: 'serveOpponentLogo',
+            tags: ['Fixture'],
+            responses: [
+                '200' => new Response('The opponent federal logo bytes (image/*), re-hosted lazily on the first GET; Cache-Control private, max-age 86400'),
+                '401' => new Response('Unauthorized (missing/expired JWT) — member only, never public'),
+                '404' => new Response('No federal logo known for this opponent, or its download failed (best-effort)'),
+            ],
+            summary: 'Serve the opponent federal logo (member only; re-hosted lazily, 404 without one)',
+            parameters: [['name' => 'code', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string'], 'description' => 'The opponent FFBB organisme code ([A-Za-z0-9]{1,24})']],
         )));
     }
 }

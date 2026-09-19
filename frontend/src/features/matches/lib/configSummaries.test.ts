@@ -37,6 +37,7 @@ const travel = (over: Partial<OpponentTravel> = {}): OpponentTravel => ({
   opponentTeamKey: "ADVERSAIRE",
   opponentLabel: "Adversaire",
   located: true,
+  hasLogo: false,
   precision: null,
   locationName: null,
   city: null,

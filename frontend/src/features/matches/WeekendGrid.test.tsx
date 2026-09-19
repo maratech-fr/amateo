@@ -44,7 +44,7 @@ describe("WeekendGrid — colonne extérieur (lot 3 PR-3a)", () => {
   const awayBase = { ...fixtureBase, homeAway: "AWAY" as const, venueId: null, kickoffTime: null, status: "UNPLACED" as const, placementSource: null as null };
   const habit = { id: "h", teamId: "tA", dayOfWeek: 6, kickoffTime: "15:30", venueId: null } as import("./api").TeamMatchHabit;
   const travel = {
-    opponentOrganismeCode: "C1", opponentTeamKey: "EPI-1", opponentLabel: "Épinouze", located: true, precision: "VENUE" as const,
+    opponentOrganismeCode: "C1", opponentTeamKey: "EPI-1", opponentLabel: "Épinouze", located: true, hasLogo: false, precision: "VENUE" as const,
     locationName: "Halle Y", city: null, postalCode: null, travelMinutes: 45, approximated: false, source: "AUTO" as const, scope: "CLUB" as const, overrideVenueLabel: null,
   };
   // Extérieur SANS heure réelle mais habitude samedi 15:30 → heure estimée + trajet 45 min.

@@ -68,6 +68,15 @@ class OpponentDirectoryEntry
     #[ORM\Column(name: 'venue_label', length: 180, nullable: true)]
     private ?string $venueLabel = null;
 
+    /**
+     * C7 — the opponent organisme's FEDERAL logo uuid (`logo.id` of the organisme hit),
+     * PUBLIC brand data like everything else here. Null when the federation carries none.
+     * The bytes are re-hosted lazily on the first GET (never hot-linked, never fetched at
+     * resolution time — the resolver only records the id it already holds).
+     */
+    #[ORM\Column(name: 'logo_id', length: 64, nullable: true)]
+    private ?string $logoId = null;
+
     #[ORM\Column(name: 'resolved_at', type: 'datetimetz_immutable')]
     private DateTimeImmutable $resolvedAt;
 
@@ -170,6 +179,18 @@ class OpponentDirectoryEntry
     public function setVenueLabel(?string $venueLabel): self
     {
         $this->venueLabel = $venueLabel;
+
+        return $this;
+    }
+
+    public function getLogoId(): ?string
+    {
+        return $this->logoId;
+    }
+
+    public function setLogoId(?string $logoId): self
+    {
+        $this->logoId = $logoId;
 
         return $this;
     }

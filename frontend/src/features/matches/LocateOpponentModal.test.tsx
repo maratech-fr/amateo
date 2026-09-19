@@ -22,6 +22,7 @@ const OPPONENT: OpponentTravel = {
   opponentTeamKey: "MEYZIEU BASKET",
   opponentLabel: "Meyzieu Basket",
   located: false,
+  hasLogo: false,
   precision: null,
   locationName: null,
   city: null,

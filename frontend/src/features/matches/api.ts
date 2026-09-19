@@ -1266,6 +1266,8 @@ export interface OpponentTravel {
   opponentTeamKey: string | null;
   opponentLabel: string;
   located: boolean;
+  /** C7 — un logo fédéral est connu (le rendre via `GET /api/opponents/{code}/logo`, sinon initiales). */
+  hasLogo: boolean;
   precision: OpponentLocationPrecision | null;
   locationName: string | null;
   /** La commune adverse, servie par l'annuaire partagé (pré-remplit la recherche CP). */

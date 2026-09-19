@@ -9180,6 +9180,10 @@
                                                         "type": "boolean",
                                                         "description": "A resolvable location exists (directory entry or manual override)"
                                                     },
+                                                    "hasLogo": {
+                                                        "type": "boolean",
+                                                        "description": "A federal logo is known for this opponent (serve it via GET /api/opponents/{code}/logo, member only)"
+                                                    },
                                                     "precision": {
                                                         "type": [
                                                             "string",
@@ -9555,6 +9559,37 @@
                     }
                 },
                 "summary": "Queue the async recompute of the season's away-opponent travel times (management only)"
+            }
+        },
+        "/api/opponents/{code}/logo": {
+            "get": {
+                "operationId": "serveOpponentLogo",
+                "tags": [
+                    "Fixture"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The opponent federal logo bytes (image/*), re-hosted lazily on the first GET; Cache-Control private, max-age 86400"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT) \u2014 member only, never public"
+                    },
+                    "404": {
+                        "description": "No federal logo known for this opponent, or its download failed (best-effort)"
+                    }
+                },
+                "summary": "Serve the opponent federal logo (member only; re-hosted lazily, 404 without one)",
+                "parameters": [
+                    {
+                        "name": "code",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "The opponent FFBB organisme code ([A-Za-z0-9]{1,24})"
+                    }
+                ]
             }
         },
         "/api/opponents/{code}/venue-suggestions": {

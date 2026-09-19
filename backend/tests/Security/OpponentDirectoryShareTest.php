@@ -59,7 +59,7 @@ final class OpponentDirectoryShareTest extends WebTestCase
 
         // Liste blanche EXACTE — falsifiée dans les deux sens (une colonne en plus ou en moins rougit).
         self::assertSame(
-            ['city', 'ffbb_organisme_code', 'id', 'latitude', 'longitude', 'name', 'postal_code', 'precision', 'resolved_at', 'venue_label'],
+            ['city', 'ffbb_organisme_code', 'id', 'latitude', 'logo_id', 'longitude', 'name', 'postal_code', 'precision', 'resolved_at', 'venue_label'],
             $columns,
             'l\'annuaire adverse ne porte QUE ces colonnes — aucune donnée club-identifiante',
         );
@@ -172,6 +172,25 @@ final class OpponentDirectoryShareTest extends WebTestCase
         self::assertInstanceOf(OpponentDirectoryEntry::class, $kept);
         self::assertSame(OpponentLocationPrecision::VENUE, $kept->getPrecision(), 'une résolution ville ne dégrade JAMAIS une salle connue');
         self::assertSame('GYMNASE JEANNE DESPARMET-RUELLO', $kept->getVenueLabel(), 'la salle connue est préservée');
+    }
+
+    public function testAResolutionWithoutALogoNeverErasesAKnownLogo(): void
+    {
+        $repository = $this->repository();
+        $repository->upsert('ARA0069LOGO', OpponentLocationPrecision::CITY, [
+            'name' => 'Adverse logo', 'city' => 'Lyon', 'postalCode' => '69000', 'latitude' => 45.75, 'longitude' => 4.85, 'venueLabel' => null, 'logoId' => 'logo-uuid-1',
+        ]);
+        // C7 — une résolution suivante SANS logo (le canal directVenue n'en porte pas) ne doit
+        // JAMAIS effacer le logo connu (COALESCE(EXCLUDED.logo_id, opponent_directory.logo_id)).
+        $repository->upsert('ARA0069LOGO', OpponentLocationPrecision::CITY, [
+            'name' => 'Adverse logo maj', 'city' => 'Lyon', 'postalCode' => '69000', 'latitude' => 45.75, 'longitude' => 4.85, 'venueLabel' => null, 'logoId' => null,
+        ]);
+        $this->em->clear();
+
+        $entry = $repository->findOneByFfbbOrganismeCode('ARA0069LOGO');
+        self::assertInstanceOf(OpponentDirectoryEntry::class, $entry);
+        self::assertSame('logo-uuid-1', $entry->getLogoId(), 'le logo connu survit à une résolution sans logo');
+        self::assertSame('Adverse logo maj', $entry->getName(), 'le reste est bien mis à jour');
     }
 
     protected function setUp(): void

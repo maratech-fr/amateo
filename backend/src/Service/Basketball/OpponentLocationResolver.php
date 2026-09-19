@@ -322,6 +322,7 @@ final class OpponentLocationResolver
             'latitude' => $location['latitude'],
             'longitude' => $location['longitude'],
             'venueLabel' => $location['venueLabel'],
+            'logoId' => $location['logoId'],
         ]);
 
         return ['status' => 'resolved', 'code' => $code];
@@ -332,7 +333,7 @@ final class OpponentLocationResolver
      *
      * @param array{libelle: string, city: string|null, postalCode: string|null, latitude: float, longitude: float}|null $directVenue
      *
-     * @return array{precision: OpponentLocationPrecision, name: string, city: string|null, postalCode: string|null, latitude: float|null, longitude: float|null, venueLabel: string|null}|null
+     * @return array{precision: OpponentLocationPrecision, name: string, city: string|null, postalCode: string|null, latitude: float|null, longitude: float|null, venueLabel: string|null, logoId: string|null}|null
      */
     private function locateVenueFromDirect(string $name, ?array $directVenue): ?array
     {
@@ -349,7 +350,7 @@ final class OpponentLocationResolver
      *
      * @param array<string, mixed>|null $organismeHit already resolved by name (name channel), else null
      *
-     * @return array{precision: OpponentLocationPrecision, name: string, city: string|null, postalCode: string|null, latitude: float|null, longitude: float|null, venueLabel: string|null}|null
+     * @return array{precision: OpponentLocationPrecision, name: string, city: string|null, postalCode: string|null, latitude: float|null, longitude: float|null, venueLabel: string|null, logoId: string|null}|null
      */
     private function locateCity(string $name, string $code, ?array $organismeHit): ?array
     {
@@ -376,11 +377,14 @@ final class OpponentLocationResolver
             'latitude' => $latitude,
             'longitude' => $longitude,
             'venueLabel' => null,
+            // C7 — le logo fédéral vient de l'organisme qu'on tient DÉJÀ (aucun appel réseau
+            // de plus) ; le canal directVenue de l'API n'en porte pas (→ null via venue()).
+            'logoId' => $this->logoIdOf($hit),
         ];
     }
 
     /**
-     * @return array{precision: OpponentLocationPrecision, name: string, city: string|null, postalCode: string|null, latitude: float|null, longitude: float|null, venueLabel: string|null}
+     * @return array{precision: OpponentLocationPrecision, name: string, city: string|null, postalCode: string|null, latitude: float|null, longitude: float|null, venueLabel: string|null, logoId: string|null}
      */
     private function venue(string $name, string $venueLabel, ?string $city, ?string $postalCode, ?float $latitude, ?float $longitude): array
     {
@@ -392,7 +396,22 @@ final class OpponentLocationResolver
             'latitude' => $latitude,
             'longitude' => $longitude,
             'venueLabel' => mb_substr($venueLabel, 0, 180),
+            // Le canal directVenue (rencontre API) ne porte pas d'organisme → pas de logo ici ;
+            // le COALESCE de l'upsert préserve un logo déjà connu.
+            'logoId' => null,
         ];
+    }
+
+    /**
+     * Le uuid du logo fédéral d'un hit organisme (`logo.id`), ou null.
+     *
+     * @param array<string, mixed> $hit
+     */
+    private function logoIdOf(array $hit): ?string
+    {
+        $logo = $hit['logo'] ?? null;
+
+        return \is_array($logo) ? $this->trimToNull($this->str($logo['id'] ?? null)) : null;
     }
 
     /**

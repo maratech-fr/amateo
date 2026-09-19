@@ -1,11 +1,19 @@
-Last verified @ 2026-09-19 (C6 — calcul des trajets ASYNCHRONE : `resolve`/`autofill` rendent
-`{queued}`, la passe travel de `refresh` rend `{queued, pending}`, `mercure/auth` gagne `travelTopic` ;
-régénéré par `api:openapi:export`).
-**204 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (formes de réponse remaniées, propriétés additives).
-· SHA-256 `da5aeaf7d778595744858792d055a1052db651f74704e4f37e3ef8500d54ff9c`
+Last verified @ 2026-09-19 (C7 — `logo_id` sur l'annuaire fédéral : route MEMBRE
+`GET /api/opponents/{code}/logo` + booléen `hasLogo` sur `GET /api/opponents/travel` ; régénéré par
+`api:openapi:export`).
+**205 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** (la route logo adversaire).
+· SHA-256 `67f6a2586a1685134028b24c4260e148c63b45e0196d7a7665f730401c705ee9`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **C7 — logo fédéral de l'adversaire, backend (2026-09-19)** : **+1 path** — nouvelle route MEMBRE
+  `GET /api/opponents/{code}/logo` (jamais publique : le logo d'un adversaire de club est une donnée du
+  module matchs) qui re-héberge PARESSEUSEMENT le logo fédéral au premier GET (uuid `logo_id` que le
+  résolveur a enregistré depuis les hits organismes qu'il tient déjà, zéro appel réseau de plus ; 404 sans
+  logo, `Cache-Control: private, max-age=86400`). `GET /api/opponents/travel` gagne un booléen ADDITIF
+  `hasLogo` par entrée (jamais l'uuid brut). Colonne `opponent_directory.logo_id` (table GLOBALE partagée,
+  whitelist `OpponentDirectoryShareTest` +1). Backend PUR, contrat backend⇄engine **inchangé**
+  (`CONTRACT_VERSION` 2.23, aucun appel moteur).
 - **C6 — calcul des trajets ASYNCHRONE, backend (2026-09-19)** : **+0 path** — le calcul des trajets
   quitte le rail synchrone (rafale IGN pacée > plafond HTTP). `POST /api/opponents/travel/resolve` et
   `POST /api/venue-travel-times/autofill` rendent désormais `{queued: true}` (au lieu du résultat
@@ -56,15 +64,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   les passes best-effort qui ont levé et sont retombées sur leur résultat neutre. Vide en régime nominal ; non-vide,
   le front signale une mise à jour PARTIELLE (au lieu d'un succès mensonger) et invite à relancer. La forme des trois
   blocs (`codes`/`autoLocated`/`travel`) est inchangée. Backend PUR, contrat backend⇄engine **inchangé**
-  (`CONTRACT_VERSION` 2.21, aucun appel moteur).
-- **Audit 2026-09-18 — bornes des trajets adverses + longueurs de DTO, backend** : **+0 path** — trois
-  ajustements sans nouvelle route : (SEC-19) `POST /api/opponents/travel/manual` déclare une réponse `429`
-  (limiteur PAR UTILISATEUR `opponent_travel_manual`, 30/h) ; (BCK-32) la description de
-  `POST /api/opponents/refresh` gagne la mention du budget de mur (au-delà, réponse PARTIELLE : adversaires
-  restants en `unresolved`/`skipped`, relancer pour continuer) — la FORME de la réponse est inchangée ;
-  (BCK-27) 26 propriétés texte des DTO d'entrée gagnent un `maxLength` égal à la longueur de leur colonne
-  (`Fixture.opponentLabel`, `Club`/`Coach`/`Constraint`/`Venue`/`User`/`Season`/`Team`/… ) → un dépassement
-  rend un 422 parlant au lieu d'un 500 SQL. Backend PUR, contrat backend⇄engine **inchangé**
   (`CONTRACT_VERSION` 2.21, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
