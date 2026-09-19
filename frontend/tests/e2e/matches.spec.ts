@@ -449,9 +449,10 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   //    code fédéral » (PR 2a — OpponentTravelCard sort les orphelins à part), et que le résumé
   //    d'en-tête parle d'« équipes adverses ». Un écran qui ne les montrerait pas fait ÉCHOUER
   //    ces attentes en le disant.
+  // C8 — les adversaires ont leur propre onglet ; l'ancien deep-link y redirige.
   await page.goto("/matchs/configuration?section=adversaires");
-  // Le résumé d'en-tête de la section porte le nouveau libellé « … équipes adverses ».
-  await expect(page.getByRole("button", { name: /Adversaires à localiser · .*équipes adverses/ })).toBeVisible({ timeout: 15_000 });
+  await expect(page).toHaveURL(/\/matchs\/adversaires/);
+  await expect(page.getByRole("heading", { name: "Adversaires", level: 2 })).toBeVisible({ timeout: 15_000 });
 
   // PR 2a : les adversaires sans code fédéral vivent dans une disclosure repliée par défaut.
   const orphansToggle = page.getByRole("button", { name: /\d+ adversaires? sans code fédéral$/ });
@@ -528,14 +529,15 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
   await page.goto("/matchs");
   const nav = page.getByRole("navigation", { name: "Espaces matchs" });
   const links = nav.getByRole("link");
-  // PR 3b — CINQ onglets : Conflits · Calendrier · Importer · Configuration · Semaine type
-  // (« Consulter » et « Semaine » ont fusionné dans « Calendrier »).
-  await expect(links).toHaveCount(5);
+  // C8 — SIX onglets : Conflits · Calendrier · Importer · Configuration · Adversaires · Semaine type
+  // (« Consulter » et « Semaine » ont fusionné dans « Calendrier » ; les Adversaires ont leur onglet).
+  await expect(links).toHaveCount(6);
   await expect(links.nth(0)).toContainText("Conflits");
   await expect(links.nth(1)).toHaveText("Calendrier");
   await expect(links.nth(2)).toContainText("Importer");
   await expect(links.nth(3)).toHaveText("Configuration");
-  await expect(links.nth(4)).toHaveText("Semaine type");
+  await expect(links.nth(4)).toHaveText("Adversaires");
+  await expect(links.nth(5)).toHaveText("Semaine type");
 
   // À 400 px la nav déborde : l'onglet actif (« Calendrier », l'index /matchs) est ramené en vue.
   await page.setViewportSize({ width: 400, height: 800 });
@@ -628,7 +630,7 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
   await expect.poll(readCount).toBe(before);
 
   // ── Recherche adversaires : « xyz » n'a aucun résultat, Escape vide la requête ──
-  await page.goto("/matchs/configuration?section=adversaires");
+  await page.goto("/matchs/adversaires");
   const search = page.getByRole("searchbox", { name: "Rechercher un club ou une équipe" });
   await expect(search).toBeVisible();
   await search.fill("xyznonexistant");

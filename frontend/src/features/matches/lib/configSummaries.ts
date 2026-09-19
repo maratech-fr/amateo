@@ -1,4 +1,4 @@
-import type { Competition, MatchSlotRotation, OpponentTravel, SportCategoryDuration, Venue, VenueLabelInventoryRow, VenueMatchWindow } from "../api";
+import type { Competition, MatchSlotRotation, SportCategoryDuration, Venue, VenueLabelInventoryRow, VenueMatchWindow } from "../api";
 
 /**
  * P4-185 — les résumés d'en-tête des sections de `/matchs/configuration` (accordéon
@@ -42,22 +42,6 @@ export function durationsSummary(categories?: SportCategoryDuration[]): string |
     return "défauts par catégorie";
   }
   return `${n} personnalisée${n > 1 ? "s" : ""}`;
-}
-
-export function opponentsSummary(travel?: OpponentTravel[]): string | null {
-  if (undefined === travel) {
-    return null;
-  }
-  // M = entrées servies (une PAR ÉQUIPE adverse depuis le grain équipe, 2026-09-15).
-  const m = travel.length;
-  if (0 === m) {
-    return "aucun adversaire";
-  }
-  const n = travel.filter((o) => !o.located).length;
-  if (0 === n) {
-    return "tous localisés";
-  }
-  return `${n} à localiser sur ${m} équipes adverses`;
 }
 
 /**

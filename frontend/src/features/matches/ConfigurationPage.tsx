@@ -14,14 +14,13 @@ import { cn } from "@/shared/lib/utils";
 
 import type { Venue, VenueMatchWindow } from "./api";
 import { type ConfigSection, applySectionToParams, decodeSectionParam } from "./lib/urlState";
-import { accessSummary, deadlinesSummary, durationsSummary, labelsSummary, opponentsSummary } from "./lib/configSummaries";
+import { accessSummary, deadlinesSummary, durationsSummary, labelsSummary } from "./lib/configSummaries";
 import { formatMatchAccessWindows } from "./lib/matchAccessSummary";
 import { VenueLabelsSection } from "./VenueLabelsSection";
 import { EntryDeadlinesEditor } from "./EntryDeadlinesEditor";
 import { MatchDurationsEditor } from "./MatchDurationsEditor";
-import { OpponentTravelCard } from "./OpponentTravelCard";
 import { MatchWindowsEditor } from "./MatchWindowsEditor";
-import { useCompetitions, useOpponentTravel, useSportCategoryDurations, useTeams, useVenueLabelInventory, useVenueMatchWindows, useVenues } from "./queries";
+import { useCompetitions, useSportCategoryDurations, useTeams, useVenueLabelInventory, useVenueMatchWindows, useVenues } from "./queries";
 
 /**
  * En-tête d'une section : le libellé (semibold, hérité du bouton d'accordéon) suivi,
@@ -66,8 +65,8 @@ function SectionBody<T>({ query, render }: { query: SectionQuery<T>; render: (da
 
 /**
  * RMM-1 PR2 — l'espace SET-UP (rare, cadrage §3.1 / §6ter). Ce qui ne sert PAS chaque semaine
- * vit ici, hors de la boucle : les échéances, la durée des matchs, les adversaires à localiser,
- * l'accès match des gymnases et les libellés FFBB.
+ * vit ici, hors de la boucle : les échéances, la durée des matchs,
+ * l'accès match des gymnases et les libellés FFBB (les adversaires ont leur propre onglet, C8).
  *
  * PR 2a « Configuration & navigation » — le gabarit idéal et les créneaux partagés ont DÉMÉNAGÉ
  * vers `/matchs/semaine-type` (page sœur), avec le bouton « Habitudes & passerelles ». Les anciens
@@ -84,8 +83,6 @@ export function ConfigurationPage() {
   const categoryDurations = useSportCategoryDurations();
   const labelInventory = useVenueLabelInventory();
   const matchWindows = useVenueMatchWindows();
-  // Même clé de query que `OpponentTravelCard` (zéro requête nouvelle) — sert le résumé d'en-tête.
-  const opponentTravel = useOpponentTravel();
 
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -103,6 +100,10 @@ export function ConfigurationPage() {
 
   if ("gabarit" === rawSection || "creneaux" === rawSection) {
     return <Navigate to="/matchs/semaine-type" replace />;
+  }
+  // C8 — les adversaires ont DÉMÉNAGÉ dans leur propre onglet : l'ancien deep-link y redirige.
+  if ("adversaires" === rawSection) {
+    return <Navigate to="/matchs/adversaires" replace />;
   }
 
   // UXS-08 — la PAGE est gatée sur ses deux lectures FONDATRICES (équipes + gymnases : elles
@@ -138,13 +139,8 @@ export function ConfigurationPage() {
         <SectionBody query={categoryDurations} render={(data) => <MatchDurationsEditor categories={data} />} />
       </AccordionSection>
 
-      {/* 3. Le trajet adverse — le radar de conflits devient SPATIAL (P2-54 PR-3).
-          La carte gère elle-même sa lecture (résumé null-safe via configSummaries). */}
-      <AccordionSection {...sectionProps("adversaires")} title={sectionTitle("Adversaires à localiser", opponentsSummary(opponentTravel.data))}>
-        <OpponentTravelCard />
-      </AccordionSection>
-
-      {/* 4. L'accès match des gymnases — clé URL `reglages` conservée. */}
+      {/* 3. L'accès match des gymnases — clé URL `reglages` conservée. (Les adversaires
+          ont leur propre onglet depuis C8 — `/matchs/adversaires`.) */}
       <AccordionSection {...sectionProps("reglages")} title={sectionTitle("Accès match", accessSummary(matchWindows.data, venuesData))}>
         <SectionBody query={matchWindows} render={(windows) => <MatchAccessSection venues={venuesData} windows={windows} />} />
       </AccordionSection>

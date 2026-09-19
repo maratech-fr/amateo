@@ -209,13 +209,14 @@ describe("decodeSectionParam (PR 2a — accordéon Configuration, défaut tout r
     expect(decodeSectionParam(new URLSearchParams("section=aucune"))).toBeNull();
   });
 
-  it("les clés déplacées « gabarit »/« creneaux » ⇒ null (la page redirige vers la Semaine type)", () => {
+  it("les clés déplacées « gabarit »/« creneaux »/« adversaires » ⇒ null (la page redirige — Semaine type / onglet Adversaires, C8)", () => {
     expect(decodeSectionParam(new URLSearchParams("section=gabarit"))).toBeNull();
     expect(decodeSectionParam(new URLSearchParams("section=creneaux"))).toBeNull();
+    expect(decodeSectionParam(new URLSearchParams("section=adversaires"))).toBeNull();
   });
 
-  it("chacune des 5 clés RÉGLAGE est reconnue", () => {
-    for (const key of ["echeances", "durees", "adversaires", "reglages", "libelles"] as const) {
+  it("chacune des 4 clés RÉGLAGE est reconnue", () => {
+    for (const key of ["echeances", "durees", "reglages", "libelles"] as const) {
       expect(decodeSectionParam(new URLSearchParams(`section=${key}`))).toBe(key);
     }
   });

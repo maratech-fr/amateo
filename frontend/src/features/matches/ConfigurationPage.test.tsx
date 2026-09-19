@@ -71,6 +71,7 @@ function renderWithRedirectRouter(initial: string) {
     [
       { path: "/matchs/configuration", element: <Harness /> },
       { path: "/matchs/semaine-type", element: <div>SEMAINE_TYPE_PAGE</div> },
+      { path: "/matchs/adversaires", element: <div>ADVERSAIRES_PAGE</div> },
     ],
     { initialEntries: [initial] },
   );
@@ -160,6 +161,19 @@ describe("ConfigurationPage — redirection des anciennes clés vers la Semaine 
   it("?section=creneaux ⇒ redirige vers /matchs/semaine-type", async () => {
     renderWithRedirectRouter("/matchs/configuration?section=creneaux");
     expect(await screen.findByText("SEMAINE_TYPE_PAGE")).toBeInTheDocument();
+  });
+
+  it("?section=adversaires ⇒ redirige vers /matchs/adversaires (C8 — déménagé dans son onglet)", async () => {
+    renderWithRedirectRouter("/matchs/configuration?section=adversaires");
+    expect(await screen.findByText("ADVERSAIRES_PAGE")).toBeInTheDocument();
+  });
+});
+
+describe("ConfigurationPage — les adversaires ont quitté la Configuration (C8)", () => {
+  it("ne porte PLUS la section « Adversaires à localiser » (partie dans son onglet)", async () => {
+    renderWithProviders(<Harness />, { route: "/matchs/configuration" });
+    await screen.findByRole("button", { name: /Échéances de saisie/ });
+    expect(screen.queryByRole("button", { name: /Adversaires à localiser/ })).not.toBeInTheDocument();
   });
 });
 

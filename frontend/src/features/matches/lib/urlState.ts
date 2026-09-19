@@ -357,17 +357,17 @@ export function applyConflictsToParams(current: URLSearchParams, conflicts: Conf
  * PR 2a « Configuration & navigation » — ancrage de la section ouverte de
  * `/matchs/configuration` (accordéon « une section = un écran »). `?section=<clé>`.
  *
- * Le gabarit et les créneaux ont DÉMÉNAGÉ vers `/matchs/semaine-type` : `ConfigSection` ne
- * porte plus que les cinq sections RÉGLAGE (`echeances|durees|adversaires|reglages|libelles`).
- * **Défaut = tout replié** : absent, `aucune` (toléré, ancien encodage), une valeur inconnue,
- * ou les clés déplacées `gabarit`/`creneaux` ⇒ `null` (aucune section ouverte). Écrire `null`
- * SUPPRIME le param (le défaut n'a plus besoin d'être encodé). La redirection des anciennes
- * clés `gabarit`/`creneaux` vers la Semaine type est portée par `ConfigurationPage`
- * (lecture du param brut). Mêmes conventions que `?vue=`/`?temps=`.
+ * Le gabarit/créneaux (→ `/matchs/semaine-type`) ET les adversaires (→ `/matchs/adversaires`,
+ * C8) ont DÉMÉNAGÉ : `ConfigSection` ne porte plus que les quatre sections RÉGLAGE restantes
+ * (`echeances|durees|reglages|libelles`). **Défaut = tout replié** : absent, `aucune` (toléré,
+ * ancien encodage), une valeur inconnue, ou les clés déplacées `gabarit`/`creneaux`/`adversaires`
+ * ⇒ `null` (aucune section ouverte). Écrire `null` SUPPRIME le param. Les redirections des
+ * anciennes clés déplacées sont portées par `ConfigurationPage` (lecture du param brut). Mêmes
+ * conventions que `?vue=`/`?temps=`.
  */
-export type ConfigSection = "echeances" | "durees" | "adversaires" | "reglages" | "libelles";
+export type ConfigSection = "echeances" | "durees" | "reglages" | "libelles";
 
-const CONFIG_SECTIONS: ConfigSection[] = ["echeances", "durees", "adversaires", "reglages", "libelles"];
+const CONFIG_SECTIONS: ConfigSection[] = ["echeances", "durees", "reglages", "libelles"];
 
 function isConfigSection(value: string | null): value is ConfigSection {
   return null !== value && (CONFIG_SECTIONS as string[]).includes(value);
