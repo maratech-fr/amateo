@@ -67,6 +67,29 @@ final class TravelTimeCache
         );
     }
 
+    /**
+     * All cached minutes from one origin (the club siège), keyed on the destination
+     * `"lat|lon"` in the canonical 5-decimal form ({@see destKey}). One query — a
+     * projection over many opponent gyms reads them all at once, never an N+1.
+     *
+     * @return array<string, int>
+     */
+    public function lookupAllFromOrigin(string $clubId, string $profile, float $originLat, float $originLon): array
+    {
+        $map = [];
+        foreach ($this->repository->findAllFromOrigin($clubId, $profile, $this->key($originLat), $this->key($originLon)) as $row) {
+            $map[$row->getDestLat() . '|' . $row->getDestLon()] = $row->getMinutes();
+        }
+
+        return $map;
+    }
+
+    /** The destination key used by {@see lookupAllFromOrigin}'s map — canonical 5-decimal. */
+    public function destKey(float $lat, float $lon): string
+    {
+        return $this->key($lat) . '|' . $this->key($lon);
+    }
+
     /** Canonical 5-decimal form of a coordinate — the exact key shared by read and write. */
     private function key(float $coordinate): string
     {

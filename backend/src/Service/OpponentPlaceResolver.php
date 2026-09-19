@@ -5,46 +5,35 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Fixture;
+use App\Entity\OpponentVenueLink;
 use App\Repository\OpponentDirectoryEntryRepository;
-use App\Repository\OpponentTravelRepository;
+use App\Repository\OpponentVenueLinkRepository;
 use App\Repository\OpponentVenueSuggestionRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 
 /**
- * Resolves WHERE an AWAY opponent plays — a CITY — for the conflict radar's
- * per-side rendering (P2-54 conflict side details). Decorates the AWAY sides of
- * MATCH_MATCH / MATCH_TRAINING with a human place (« extérieur à … »).
+ * Résout OÙ joue un adversaire extérieur — une VILLE — pour le détail par côté du radar
+ * (« extérieur à … »). Amendement 2026-09-20 : la salle CHOISIE est portée par le lien
+ * ({@see OpponentVenueLink}, grain `(code, libellé FBI normalisé)`), non plus par une
+ * ligne opponent_travel season+team.
  *
- * Loads in BATCH — one query over the season's `opponent_travel` rows, one over
- * the global `opponent_venue_suggestion` and one over the global
- * `opponent_directory`, all keyed on the organisme code — so decorating many
- * fixtures never fans out into an N+1 (three queries per batch). Pure resolution
- * afterwards.
+ * Chargement en BATCH (aucun N+1) : les liens du club, les suggestions fédérales et
+ * l'annuaire, tous keyés sur le code organisme. Résolution PURE ensuite.
  *
- * Ordering (founder decision 2026-09-17 — the manager's CHOSEN gym decides, and
- * we serve its CITY, never a gym label):
- *   1. The EFFECTIVE {@see OpponentTravel} override row — the TEAM row (keyed on
- *      the rencontre label NORMALIZED via {@see VenueLabelNormalizer}, the same
- *      key the travel-minutes resolver uses) when present, else the CLUB row. If
- *      that row carries an {@see OpponentTravel::getOverrideVenueExternalRef()}
- *      (a FFBB salle number), the city of the matching federal SUGGESTION
- *      `(ffbbOrganismeCode, venueExternalRef)` = {@see OpponentVenueSuggestion::getCity()};
- *   2. otherwise (no ref, a blank/absent suggestion city, or no override at all)
- *      {@see OpponentDirectoryEntry::getCity()} — the community-shared federal
- *      directory (GLOBAL, read-only), keyed on the opponent's FFBB organisme
- *      code (= {@see Fixture::getOpponentOrganismeCode()});
- *   3. null — nothing known (the key is not set → the UI says « lieu inconnu »).
+ * Ordre (le gymnase apparié décide, on sert SA ville — jamais un libellé de gymnase) :
+ *   1. le lien de la rencontre `(code, libellé FBI normalisé)` → sa référence de salle
+ *      fédérale → la ville de la SUGGESTION `(code, ref)` ({@see OpponentVenueSuggestion}) ;
+ *   2. sinon (pas de lien, pas de ref, ou suggestion sans ville) → la ville de l'ANNUAIRE
+ *      fédéral ({@see OpponentDirectoryEntry}, global, lecture seule), keyé sur le code ;
+ *   3. null — rien de connu (l'UI dit « lieu inconnu »).
  *
- * `overrideVenueLabel` and `fbiVenueLabel` are NEVER served (they are gym labels,
- * not cities). The city is served AS-IS (no case transformation). All reads are
- * scoped (tenant + season on `opponent_travel`) or over global references
- * (`opponent_venue_suggestion` / `opponent_directory` are read-only, no writes
- * here).
+ * Le libellé de gymnase n'est JAMAIS servi (c'est une salle, pas une ville). La ville est
+ * servie TELLE QUELLE (aucune transformation de casse).
  */
 final class OpponentPlaceResolver
 {
     public function __construct(
-        private readonly OpponentTravelRepository $travelRepository,
+        private readonly OpponentVenueLinkRepository $linkRepository,
         private readonly OpponentVenueSuggestionRepository $suggestionRepository,
         private readonly OpponentDirectoryEntryRepository $directoryRepository,
         private readonly VenueLabelNormalizer $labelNormalizer,
@@ -58,24 +47,18 @@ final class OpponentPlaceResolver
      */
     public function resolveByFixture(string $seasonId, array $awayFixtures): array
     {
+        unset($seasonId); // le lien est club-scoped (sans saison) ; le club vient des fixtures
         if ([] === $awayFixtures) {
             return [];
         }
+        $clubId = $awayFixtures[0]->getClubId();
 
-        // Batch 1 — the manual override rows of this club/season, indexed by code
-        // with the club default and the per-team overrides kept apart. We only
-        // keep the CHOSEN gym's FFBB salle ref (the label is never served).
-        /** @var array<string, array{club: string|null, teams: array<string, string|null>}> $refByCode */
-        $refByCode = [];
-        foreach ($this->travelRepository->findBySeason($seasonId) as $row) {
-            $code = $row->getOpponentOrganismeCode();
-            $refByCode[$code] ??= ['club' => null, 'teams' => []];
-            $teamKey = $row->getOpponentTeamKey();
-            if (null === $teamKey) {
-                $refByCode[$code]['club'] = $row->getOverrideVenueExternalRef();
-            } else {
-                $refByCode[$code]['teams'][$teamKey] = $row->getOverrideVenueExternalRef();
-            }
+        // Batch 1 — les liens du club, indexés `code|libellé normalisé`, dont on ne garde
+        // que la référence de salle fédérale (le libellé de gymnase n'est jamais servi).
+        /** @var array<string, string|null> $refByLinkKey */
+        $refByLinkKey = [];
+        foreach ($this->linkRepository->findByClub($clubId) as $link) {
+            $refByLinkKey[$link->getOpponentOrganismeCode() . '|' . $link->getFbiLabelNorm()] = $link->getVenueExternalRef();
         }
 
         $codes = [];
@@ -86,9 +69,8 @@ final class OpponentPlaceResolver
             }
         }
 
-        // Batch 2 — the federal SUGGESTION city for every gym in play, indexed
-        // code → (venueExternalRef → city). FFBB_API rows (null ref) can never
-        // match an override ref, so they are skipped.
+        // Batch 2 — la ville de la SUGGESTION fédérale par (code, ref). Les lignes FFBB_API
+        // (ref null) ne peuvent jamais matcher une ref de lien : ignorées.
         /** @var array<string, array<string, string|null>> $suggestionCityByCodeRef */
         $suggestionCityByCodeRef = [];
         foreach ($this->suggestionRepository->findByFfbbOrganismeCodes($codes) as $suggestion) {
@@ -99,7 +81,7 @@ final class OpponentPlaceResolver
             $suggestionCityByCodeRef[$suggestion->getFfbbOrganismeCode()][$ref] = $suggestion->getCity();
         }
 
-        // Batch 3 — the federal directory city for every organisme code in play.
+        // Batch 3 — la ville de l'annuaire fédéral par code.
         $cityByCode = [];
         foreach ($this->directoryRepository->findByFfbbOrganismeCodes($codes) as $entry) {
             $cityByCode[$entry->getFfbbOrganismeCode()] = $entry->getCity();
@@ -107,7 +89,7 @@ final class OpponentPlaceResolver
 
         $places = [];
         foreach ($awayFixtures as $fixture) {
-            $place = $this->resolveOne($fixture, $refByCode, $suggestionCityByCodeRef, $cityByCode);
+            $place = $this->resolveOne($fixture, $refByLinkKey, $suggestionCityByCodeRef, $cityByCode);
             if (null !== $place) {
                 $places[$fixture->getId()] = $place;
             }
@@ -117,24 +99,22 @@ final class OpponentPlaceResolver
     }
 
     /**
-     * @param array<string, array{club: string|null, teams: array<string, string|null>}> $refByCode
-     * @param array<string, array<string, string|null>>                                  $suggestionCityByCodeRef
-     * @param array<string, string|null>                                                 $cityByCode
+     * @param array<string, string|null>                $refByLinkKey
+     * @param array<string, array<string, string|null>> $suggestionCityByCodeRef
+     * @param array<string, string|null>                $cityByCode
      */
-    private function resolveOne(Fixture $fixture, array $refByCode, array $suggestionCityByCodeRef, array $cityByCode): ?string
+    private function resolveOne(Fixture $fixture, array $refByLinkKey, array $suggestionCityByCodeRef, array $cityByCode): ?string
     {
         $code = $fixture->getOpponentOrganismeCode();
         if (null === $code) {
-            // No organisme code → nothing to key a suggestion or the directory on,
-            // and the raw FBI label is no longer served → lieu inconnu.
             return null;
         }
 
-        // 1. The EFFECTIVE override row (team then club) → the CITY of its chosen
-        // gym, read from the federal suggestion by (code, salle ref).
-        if (isset($refByCode[$code])) {
-            $teamKey = $this->labelNormalizer->normalize(trim($fixture->getOpponentLabel()));
-            $ref = $refByCode[$code]['teams'][$teamKey] ?? $refByCode[$code]['club'];
+        // 1. Le lien de la rencontre → la ville de son gymnase apparié (via la ref fédérale).
+        $label = $fixture->getFbiVenueLabel();
+        if (null !== $label && '' !== trim($label)) {
+            $norm = $this->labelNormalizer->normalize(trim($label));
+            $ref = '' === $norm ? null : ($refByLinkKey[$code . '|' . $norm] ?? null);
             if (null !== $ref) {
                 $city = $this->firstNonBlank([$suggestionCityByCodeRef[$code][$ref] ?? null]);
                 if (null !== $city) {
@@ -143,7 +123,7 @@ final class OpponentPlaceResolver
             }
         }
 
-        // 2. Federal directory city.
+        // 2. Ville de l'annuaire fédéral.
         return $this->firstNonBlank([$cityByCode[$code] ?? null]);
     }
 

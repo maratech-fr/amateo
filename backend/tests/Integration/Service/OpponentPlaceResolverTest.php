@@ -7,11 +7,12 @@ namespace App\Tests\Integration\Service;
 use App\Entity\Club;
 use App\Entity\Fixture;
 use App\Entity\OpponentDirectoryEntry;
-use App\Entity\OpponentTravel;
+use App\Entity\OpponentVenueLink;
 use App\Entity\OpponentVenueSuggestion;
 use App\Entity\Season;
 use App\Enum\FixtureHomeAway;
 use App\Enum\OpponentLocationPrecision;
+use App\Enum\OpponentVenueLinkSource;
 use App\Enum\OpponentVenueSuggestionSource;
 use App\Enum\SeasonStatus;
 use App\Repository\OpponentVenueSuggestionRepository;
@@ -42,42 +43,33 @@ final class OpponentPlaceResolverTest extends WebTestCase
 
     private EntityManagerInterface $em;
 
-    public function testResolvesOverrideRefToSuggestionCityThenDirectory(): void
+    public function testResolvesLinkRefToSuggestionCityThenDirectory(): void
     {
         [$club, $season] = $this->seedClubSeason();
         $this->scopeGucToClub($club->getId());
-        $normalizer = $this->normalizer();
 
-        // Étage 1a — override ÉQUIPE avec réf → VILLE de la suggestion fédérale.
-        $fxTeam = $this->awayFixture($club, $season, 'CODE1', 'ASVEL - 2', 'Salle FBI 1');
-        $this->travelRow($club, $season, 'CODE1', $normalizer->normalize('ASVEL - 2'), 'REF-EQUIPE');
-        $this->travelRow($club, $season, 'CODE1', null, 'REF-CLUB-1'); // la ligne équipe prime
-        $this->suggestion('CODE1', 'REF-EQUIPE', 'Villeurbanne');
-        $this->suggestion('CODE1', 'REF-CLUB-1', 'Ville Club Ignorée');
+        // Étage 1 — le lien de la salle (par libellé FBI) porte une réf → VILLE de la suggestion.
+        $fxLink = $this->awayFixture($club, $season, 'CODE1', 'ASVEL - 2', 'Salle FBI 1');
+        $this->link($club, 'CODE1', 'Salle FBI 1', 'REF-1');
+        $this->suggestion('CODE1', 'REF-1', 'Villeurbanne');
         $this->directoryEntry('CODE1', 'Ville Annuaire Ignorée');
 
-        // Étage 1b — override CLUB (aucune ligne équipe) avec réf → VILLE de la suggestion.
-        $fxClub = $this->awayFixture($club, $season, 'CODE2', 'BC TEST - 1', 'Salle FBI 2');
-        $this->travelRow($club, $season, 'CODE2', null, 'REF-CLUB-2');
-        $this->suggestion('CODE2', 'REF-CLUB-2', 'Lyon');
-        $this->directoryEntry('CODE2', 'Ville 2 Ignorée');
-
-        // Étage 2 — aucun override → VILLE de l'annuaire.
+        // Étage 2 — aucun lien → VILLE de l'annuaire.
         $fxDir = $this->awayFixture($club, $season, 'CODE3', 'BC TEST - 3', 'Salle FBI 3');
         $this->directoryEntry('CODE3', 'Grenoble');
 
-        // Étage 3 — SEUL le libellé FBI est connu → ABSENT de la map (plus jamais servi).
+        // Étage 3 — un libellé FBI sans lien ni annuaire → ABSENT de la map.
         $fxFbi = $this->awayFixture($club, $season, 'CODE4', 'BC TEST - 4', 'Salle FBI 4');
 
-        // Override avec réf mais suggestion SANS ville → retombe sur l'annuaire.
+        // Lien avec réf mais suggestion SANS ville → retombe sur l'annuaire.
         $fxRefNoCity = $this->awayFixture($club, $season, 'CODE5', 'BC TEST - 5', 'Salle FBI 5');
-        $this->travelRow($club, $season, 'CODE5', null, 'REF-SANS-VILLE');
+        $this->link($club, 'CODE5', 'Salle FBI 5', 'REF-SANS-VILLE');
         $this->suggestion('CODE5', 'REF-SANS-VILLE', null);
         $this->directoryEntry('CODE5', 'Chambéry');
 
-        // Override LABEL seul (réf null) → aucune suggestion à interroger → annuaire.
-        $fxLabelOnly = $this->awayFixture($club, $season, 'CODE6', 'BC TEST - 6', 'Salle FBI 6');
-        $this->travelRow($club, $season, 'CODE6', null, null); // ligne club, réf null
+        // Lien SANS réf (gymnase par coordonnées seules) → aucune suggestion → annuaire.
+        $fxRefNull = $this->awayFixture($club, $season, 'CODE6', 'BC TEST - 6', 'Salle FBI 6');
+        $this->link($club, 'CODE6', 'Salle FBI 6', null);
         $this->directoryEntry('CODE6', 'Annecy');
 
         // Rien de rien → absent de la map.
@@ -87,15 +79,14 @@ final class OpponentPlaceResolverTest extends WebTestCase
 
         $places = $this->resolver()->resolveByFixture(
             $season->getId(),
-            [$fxTeam, $fxClub, $fxDir, $fxFbi, $fxRefNoCity, $fxLabelOnly, $fxNone],
+            [$fxLink, $fxDir, $fxFbi, $fxRefNoCity, $fxRefNull, $fxNone],
         );
 
-        self::assertSame('Villeurbanne', $places[$fxTeam->getId()], 'override équipe → ville de sa suggestion');
-        self::assertSame('Lyon', $places[$fxClub->getId()], 'override club → ville de sa suggestion');
-        self::assertSame('Grenoble', $places[$fxDir->getId()], 'aucun override → ville annuaire');
+        self::assertSame('Villeurbanne', $places[$fxLink->getId()], 'lien de la salle → ville de sa suggestion');
+        self::assertSame('Grenoble', $places[$fxDir->getId()], 'aucun lien → ville annuaire');
         self::assertArrayNotHasKey($fxFbi->getId(), $places, 'le libellé FBI seul n\'est plus servi → absent');
         self::assertSame('Chambéry', $places[$fxRefNoCity->getId()], 'suggestion sans ville → repli annuaire');
-        self::assertSame('Annecy', $places[$fxLabelOnly->getId()], 'override réf null → repli annuaire');
+        self::assertSame('Annecy', $places[$fxRefNull->getId()], 'lien réf null → repli annuaire');
         self::assertArrayNotHasKey($fxNone->getId(), $places, 'rien de résolvable → absent (lieu inconnu)');
     }
 
@@ -197,15 +188,19 @@ final class OpponentPlaceResolverTest extends WebTestCase
         return $fixture;
     }
 
-    private function travelRow(Club $club, Season $season, string $code, ?string $teamKey, ?string $overrideRef): void
+    private function link(Club $club, string $code, string $fbiLabel, ?string $venueRef): void
     {
-        $row = (new OpponentTravel)
+        $link = (new OpponentVenueLink)
             ->setClubId($club->getId())
-            ->setSeasonId($season->getId())
             ->setOpponentOrganismeCode($code)
-            ->setOpponentTeamKey($teamKey)
-            ->setOverrideVenueExternalRef($overrideRef);
-        $this->em->persist($row);
+            ->setFbiLabel($fbiLabel)
+            ->setFbiLabelNorm($this->normalizer()->normalize($fbiLabel))
+            ->setVenueExternalRef($venueRef)
+            ->setVenueLabel('Gymnase ' . $code)
+            ->setLatitude(45.5)
+            ->setLongitude(4.5)
+            ->setSource(OpponentVenueLinkSource::MANUAL);
+        $this->em->persist($link);
     }
 
     /**

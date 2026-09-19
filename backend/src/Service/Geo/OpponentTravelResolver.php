@@ -6,70 +6,53 @@ namespace App\Service\Geo;
 
 use App\Entity\Club;
 use App\Entity\OpponentDirectoryEntry;
-use App\Entity\OpponentTravel;
-use App\Enum\OpponentTravelSource;
+use App\Entity\OpponentVenueLink;
 use App\Repository\ClubRepository;
 use App\Repository\FixtureRepository;
 use App\Repository\OpponentDirectoryEntryRepository;
-use App\Repository\OpponentTravelRepository;
+use App\Repository\OpponentVenueLinkRepository;
 use App\Repository\OpponentVenueSuggestionRepository;
 use App\Service\Basketball\FfbbSalleResolver;
-use DateTimeImmutable;
-use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 
 /**
- * P2-54 RMM-9 PR-3 — computes the AUTO car travel time from a club's siège to
- * each of its AWAY opponents' venues, and upserts it into the tenant
- * `opponent_travel`. Patron {@see VenueTravelTimeAutofillService} (best-effort,
- * MANUAL never overwritten by AUTO).
+ * P2-54 — calcule le temps de trajet VOITURE du siège du club vers le gymnase de chaque
+ * adversaire apparié ({@see OpponentVenueLink}) et le range dans le cache CONSTANT
+ * {@see ClubTravelCache} (via {@see TravelTimeCache}). Amendement 2026-09-20 : le trajet
+ * n'appartient plus à une ligne season+team (`opponent_travel` a disparu) — c'est une
+ * fonction du siège du club et des coordonnées d'un gymnase, une CONSTANTE mise en cache,
+ * jamais recalculée. La cible de {@see resolve()} n'est donc plus « les lignes » mais
+ * « les PAIRES siège→gymnase manquantes du cache ».
  *
- * The location of an opponent is:
- *   - the MANUAL override on its `opponent_travel` row when the manager pinned a
- *     gym — but a MANUAL row is NEVER recomputed here (its travel was fixed when
- *     the manager set it) ;
- *   - otherwise the opponent's entry in the GLOBAL `opponent_directory` (public
- *     federal coordinates).
+ * Ce service porte aussi la comptabilité du compteur PARTAGÉ de gymnases d'un adversaire
+ * ({@see OpponentVenueSuggestion}, « un COMPTE, jamais un QUI ») : {@see accountManualChoice}
+ * est appelé par les gestes d'appariement MANUAL du contrôleur (ajout / ré-appariement /
+ * retrait d'un lien) — un lien AUTO ne compte jamais.
  *
- * Grain (P2-54 « adversaire multi-gymnases » PR-1) : {@see resolve()} — la passe AUTO
- * des TRAJETS — ne touche QUE les lignes CLUB (le défaut, `opponentTeamKey` NULL) ;
- * comportement historique inchangé. Une ligne ÉQUIPE peut naître de DEUX sources :
- *   - un choix manuel du gestionnaire ({@see applyManualOverride} portée ÉQUIPE), ou
- *   - l'auto-localisation du gymnase depuis le libellé du fichier FBI (PR-2b,
- *     {@see OpponentVenueAutoLocator}) — `source = AUTO`, portant un ref de salle
- *     fédéral mais ne comptant JAMAIS comme un choix au partagé.
- * « Rétablir l'automatique » sur une équipe = SUPPRIMER la ligne ({@see deleteTeamOverride},
- * décision A3) pour retomber sur la ligne club puis l'annuaire ; une ligne équipe AUTO
- * remplacée par un choix manuel devient MANUAL (+1 au partagé, sans −1). Le décrément
- * du compteur partagé ne joue donc QUE quand la ligne remplacée/supprimée était MANUAL.
- *
- * Best-effort intégral : IGN en panne → `travelMinutes` null (jamais une erreur
- * bloquante) ; un adversaire sans lieu connu (ni override ni directory géolocalisé)
- * est laissé « non localisé », sans ligne AUTO.
+ * Best-effort intégral : IGN en panne / siège non localisé → aucune écriture au cache
+ * (jamais une valeur fausse, jamais une exception bloquante).
  */
 final class OpponentTravelResolver
 {
+    /** Cap dur de paires siège→gymnase routées par passe (BCK-32). */
     public const int MAX_OPPONENTS = 60;
 
     public function __construct(
-        private readonly EntityManagerInterface $entityManager,
         private readonly IgnRoutingClient $routingClient,
-        private readonly OpponentTravelRepository $travelRepository,
+        private readonly OpponentVenueLinkRepository $linkRepository,
         private readonly OpponentDirectoryEntryRepository $directory,
         private readonly OpponentVenueSuggestionRepository $suggestions,
         private readonly FfbbSalleResolver $salleResolver,
         private readonly ClubRepository $clubRepository,
         private readonly FixtureRepository $fixtures,
+        private readonly TravelTimeCache $travelCache,
         private readonly LoggerInterface $logger,
-        // Cache-first (C4) : optionnel (défaut null) pour ne pas casser les sites de test
-        // qui n'instancient pas le cache ; en prod, le conteneur l'autowire.
-        private readonly ?TravelTimeCache $travelCache = null,
     ) {}
 
     /**
-     * The DISTINCT opponent organisme codes stamped on the season's AWAY fixtures
-     * — the work set. Exposed so the catch-up route can enforce its hard cap
-     * BEFORE any network call.
+     * Les codes organisme DISTINCTS estampillés sur les fixtures AWAY de la saison — le
+     * périmètre pertinent (les adversaires réellement joués cette saison). Exposé pour
+     * que le contrôleur borne son travail avant tout réseau.
      *
      * @return list<string>
      */
@@ -87,18 +70,15 @@ final class OpponentTravelResolver
     }
 
     /**
-     * Resolve the AUTO travel for every AWAY opponent of the club+season. A MANUAL
-     * row is left untouched. Best-effort per opponent.
+     * Calcule et met en cache le trajet siège→gymnase de chaque paire MANQUANTE — les
+     * gymnases des adversaires joués cette saison ({@see OpponentVenueLink}) dont le trajet
+     * n'est pas déjà dans {@see ClubTravelCache}. Une paire déjà en cache n'est jamais
+     * retouchée (constante). Best-effort par paire.
      *
-     * BCK-32 — deux bornes contre une passe qui traînerait : (1) un cap dur de
-     * {@see MAX_OPPONENTS} codes géolocalisés à router (l'excès part en `unresolved`
-     * SANS aucun appel réseau) ; (2) un budget de mur `$budgetSeconds` threadé vers
-     * {@see IgnRoutingClient::travelMinutesBatch} (les codes non tentés reviennent en
-     * `unresolved`). `$budgetSeconds` null (route dédiée `/travel/resolve`) = budget de
-     * lot par défaut, comportement inchangé.
-     *
-     * `$onProgress`, si fourni, est appelé avec (cibles traitées, total) au fil du lot
-     * (C6 — le worker asynchrone publie l'avancement).
+     * BCK-32 — deux bornes : (1) cap dur {@see MAX_OPPONENTS} de paires routées (l'excès
+     * part en `unresolved` SANS réseau) ; (2) budget de mur `$budgetSeconds` threadé vers
+     * {@see IgnRoutingClient::travelMinutesBatch}. `$budgetSeconds` null = budget du lot par
+     * défaut. `$onProgress(traitées, total)` est appelé au fil du lot (C6 — le worker publie).
      *
      * @param (callable(int, int): void)|null $onProgress
      *
@@ -110,314 +90,128 @@ final class OpponentTravelResolver
         $clubLat = $club instanceof Club ? $club->getLatitude() : null;
         $clubLon = $club instanceof Club ? $club->getLongitude() : null;
 
-        $codes = $this->distinctOpponentCodes($seasonId);
-        $existing = $this->existingByCode($seasonId);
-
+        $pairs = $this->pairsToRoute($clubId, $seasonId);
         $unresolved = [];
-        $skippedManual = 0;
-        /** @var list<array{key: string, code: string, teamKey: string|null, destLat: float, destLon: float, row: OpponentTravel|null}> $targets */
-        $targets = [];
 
-        // ── Passe CLUB : un code par ligne club (défaut, `opponentTeamKey` NULL) ──────
-        foreach ($codes as $code) {
-            $row = $existing[$code] ?? null;
-            if (null !== $row && OpponentTravelSource::MANUAL === $row->getSource()) {
-                // Une ligne MANUAL est normalement laissée intacte par la passe AUTO.
-                // Exception : une ligne MANUAL dont le trajet n'a JAMAIS pu être calculé
-                // (IGN muet au moment du choix) mais dont l'override porte des coordonnées
-                // est RE-ROUTÉE — seul le trajet changera, le gymnase épinglé reste souverain.
-                $overrideLat = $row->getOverrideLatitude();
-                $overrideLon = $row->getOverrideLongitude();
-                if (null === $row->getTravelMinutes() && null !== $overrideLat && null !== $overrideLon) {
-                    $targets[] = ['key' => $code, 'code' => $code, 'teamKey' => null, 'destLat' => $overrideLat, 'destLon' => $overrideLon, 'row' => $row];
-
-                    continue;
-                }
-                ++$skippedManual;
-
-                continue;
-            }
-
-            // C5 — un trajet est une CONSTANTE : une ligne AUTO qui porte DÉJÀ un trajet n'est
-            // JAMAIS re-routée (fini le « reroute TOUT » qui pouvait l'écraser). Seuls les
-            // MANQUES partent : un code sans ligne, ou une ligne AUTO au trajet null.
-            if (null !== $row && null !== $row->getTravelMinutes()) {
-                continue;
-            }
-
-            $location = $this->directoryLocation($code);
-            if (null === $location) {
-                $unresolved[] = $code;
-
-                continue;
-            }
-            $targets[] = ['key' => $code, 'code' => $code, 'teamKey' => null, 'destLat' => $location[0], 'destLon' => $location[1], 'row' => $row];
-        }
-
-        // ── C5-bis — Passe ÉQUIPE : une ligne ÉQUIPE (`opponentTeamKey` non NULL) AUTO au
-        // trajet null MAIS portant des coordonnées d'override (posée par l'auto-localisateur
-        // pendant un IGN dégradé) est enfin ROUTÉE. On n'écrira QUE le trajet — le gymnase
-        // épinglé et la source AUTO restent souverains (jamais l'écrasement du bloc override
-        // de la passe club).
-        foreach ($this->travelRepository->findBySeason($seasonId) as $teamRow) {
-            $teamKey = $teamRow->getOpponentTeamKey();
-            if (null === $teamKey || OpponentTravelSource::AUTO !== $teamRow->getSource() || null !== $teamRow->getTravelMinutes()) {
-                continue;
-            }
-            $overrideLat = $teamRow->getOverrideLatitude();
-            $overrideLon = $teamRow->getOverrideLongitude();
-            if (null === $overrideLat || null === $overrideLon) {
-                continue; // pas de lieu à router (une ligne équipe naît d'un override)
-            }
-            $code = $teamRow->getOpponentOrganismeCode();
-            $targets[] = ['key' => $code . '|team|' . $teamKey, 'code' => $code, 'teamKey' => $teamKey, 'destLat' => $overrideLat, 'destLon' => $overrideLon, 'row' => $teamRow];
-        }
-
-        // BCK-32 — cap dur : au-delà de MAX_OPPONENTS cibles à router (club + équipe),
-        // l'excès part en `unresolved` SANS aucun appel réseau (le rattrapage se fera à
-        // la prochaine passe). La borne était jusqu'ici tenue par la seule route dédiée ;
-        // l'orchestrateur /refresh l'atteint désormais aussi.
-        if (\count($targets) > self::MAX_OPPONENTS) {
-            foreach (\array_slice($targets, self::MAX_OPPONENTS) as $excess) {
-                $unresolved[] = $excess['code'];
-            }
-            $targets = \array_slice($targets, 0, self::MAX_OPPONENTS);
-        }
-
-        // No usable origin → nothing computable, every geolocated opponent is
-        // unresolved (best-effort, no exception).
+        // Sans siège localisé, rien n'est calculable : toutes les paires restent non
+        // résolues (best-effort, jamais une erreur).
         if (null === $clubLat || null === $clubLon) {
-            foreach ($targets as $target) {
-                $unresolved[] = $target['code'];
+            foreach ($pairs as $pair) {
+                $unresolved[] = $pair['code'];
             }
 
-            return ['resolved' => 0, 'unresolved' => $unresolved, 'skippedManual' => $skippedManual];
+            return ['resolved' => 0, 'unresolved' => $unresolved, 'skippedManual' => 0];
         }
-
-        // Cache-first (C4) : un trajet est une CONSTANTE. On regarde le cache club avant le
-        // réseau ; seules les cibles en MANQUE partent dans UN lot IGN (club + équipe partagent
-        // le MÊME budget de mur, sinon deux lots séquentiels doubleraient le temps mural).
         $clubLatF = (float) $clubLat;
         $clubLonF = (float) $clubLon;
-        $targetByKey = [];
-        $cachedMinutes = [];
+
+        // Cap dur : l'excès part en `unresolved` sans aucun appel réseau.
+        if (\count($pairs) > self::MAX_OPPONENTS) {
+            foreach (\array_slice($pairs, self::MAX_OPPONENTS) as $excess) {
+                $unresolved[] = $excess['code'];
+            }
+            $pairs = \array_slice($pairs, 0, self::MAX_OPPONENTS);
+        }
+
+        // Cache-first : un trajet est une CONSTANTE. Une paire DÉJÀ en cache est résolue (elle
+        // n'est jamais re-routée) ; seuls les vrais manques partent en lot IGN.
         $jobs = [];
-        foreach ($targets as $target) {
-            $targetByKey[$target['key']] = $target;
-            $cached = $this->travelCache?->lookup($clubId, IgnRoutingClient::PROFILE_CAR, $clubLatF, $clubLonF, $target['destLat'], $target['destLon']);
-            if (null !== $cached) {
-                $cachedMinutes[$target['key']] = $cached;
+        $cached = [];
+        $resolved = 0;
+        foreach ($pairs as $pair) {
+            if (null !== $this->travelCache->lookup($clubId, IgnRoutingClient::PROFILE_CAR, $clubLatF, $clubLonF, $pair['lat'], $pair['lon'])) {
+                $cached[$pair['key']] = true;
+                ++$resolved;
 
                 continue;
             }
             $jobs[] = [
-                'key' => $target['key'],
+                'key' => $pair['key'],
                 'profile' => IgnRoutingClient::PROFILE_CAR,
                 'startLat' => $clubLatF,
                 'startLon' => $clubLonF,
-                'endLat' => $target['destLat'],
-                'endLon' => $target['destLon'],
+                'endLat' => $pair['lat'],
+                'endLon' => $pair['lon'],
             ];
         }
 
-        // C6 — progression : les hits cache sont déjà « faits » (offset), le lot IGN ajoute
-        // ses jobs traités. Le total est l'ensemble des cibles (cache + réseau).
-        $totalTargets = \count($targets);
-        $cacheHitCount = \count($cachedMinutes);
-        if (null !== $onProgress && $totalTargets > 0) {
-            $onProgress($cacheHitCount, $totalTargets);
+        $total = \count($pairs);
+        $cacheHits = \count($cached);
+        if (null !== $onProgress && $total > 0) {
+            $onProgress($cacheHits, $total);
         }
 
         $batch = $this->routingClient->travelMinutesBatch(
             $jobs,
-            // C6 — le budget de mur est celui que l'appelant passe (null ⇒ défaut du lot IGN,
-            // 30 s). Depuis C6 `resolve()` est joué par le WORKER (rail async, pas de plafond
-            // HTTP) qui passe son budget large ; l'ancien clamp à BATCH_BUDGET_SECONDS, qui
-            // protégeait le plafond synchrone, n'a plus lieu d'être.
             budgetSeconds: $budgetSeconds,
-            onProgress: null === $onProgress ? null : static function (int $done) use ($onProgress, $cacheHitCount, $totalTargets): void {
-                $onProgress($cacheHitCount + $done, $totalTargets);
+            onProgress: null === $onProgress ? null : static function (int $done) use ($onProgress, $cacheHits, $total): void {
+                $onProgress($cacheHits + $done, $total);
             },
         );
-        // Un hit cache est résolu (jamais budget_exceeded) ; on fusionne avec les résultats IGN.
-        $minutes = $cachedMinutes + $batch['minutes'];
         $budgetExceeded = array_fill_keys($batch['budgetExceededKeys'], true);
 
-        // Mémorise les trajets FRAÎCHEMENT calculés (jamais un null, jamais un hit cache).
-        foreach ($batch['minutes'] as $key => $freshMinutes) {
-            if (null !== $freshMinutes && isset($targetByKey[$key])) {
-                $this->travelCache?->store($clubId, IgnRoutingClient::PROFILE_CAR, $clubLatF, $clubLonF, $targetByKey[$key]['destLat'], $targetByKey[$key]['destLon'], $freshMinutes);
+        foreach ($pairs as $pair) {
+            $key = $pair['key'];
+            if (isset($cached[$key])) {
+                continue; // déjà compté résolu
             }
-        }
-
-        $resolved = 0;
-        $wrote = false;
-        foreach ($targets as $target) {
-            $key = $target['key'];
-            // The budget stopped BEFORE this target was even tried: NOT the same as an
-            // IGN-mute answer. Leave the row untouched — no write, no creation — so a
-            // good value already in base survives, and a re-run resolves it.
             if (isset($budgetExceeded[$key])) {
-                $unresolved[] = $target['code'];
+                // Le budget s'est arrêté AVANT cette paire : non tentée, relance pour finir.
+                $unresolved[] = $pair['code'];
 
                 continue;
             }
-            $value = $minutes[$key] ?? null;
-            if (null === $value) {
-                // C5 — IGN muet : on ne fabrique ni n'altère RIEN. Jamais `setTravelMinutes(null)`
-                // (une valeur ne se perd pas), jamais une ligne vide créée. La cible reste « non
-                // résolue » et repartira au prochain passage.
-                $unresolved[] = $target['code'];
+            $minutes = $batch['minutes'][$key] ?? null;
+            if (null === $minutes) {
+                // IGN muet : jamais mis en cache (il pourrait réussir plus tard).
+                $unresolved[] = $pair['code'];
 
                 continue;
             }
-            $existingRow = $target['row'];
-            $row = $existingRow ?? $this->newRow($clubId, $seasonId, $target['code']);
-            if (null !== $target['teamKey'] || OpponentTravelSource::MANUAL === $row->getSource()) {
-                // Ligne ÉQUIPE (override souverain, C5-bis) OU ligne club MANUAL re-routée :
-                // on ne touche QUE le trajet (et resolvedAt). Le bloc override (gymnase épinglé)
-                // et la source restent intacts.
-                $row->setTravelMinutes($value)
-                    ->setResolvedAt(new DateTimeImmutable);
-            } else {
-                // AUTO club row: the location is the global directory's, no manual override.
-                $row->setTravelMinutes($value)
-                    ->setSource(OpponentTravelSource::AUTO)
-                    ->setOverrideVenueExternalRef(null)
-                    ->setOverrideVenueLabel(null)
-                    ->setOverrideLatitude(null)
-                    ->setOverrideLongitude(null)
-                    ->setResolvedAt(new DateTimeImmutable);
-            }
-            if (null === $existingRow) {
-                $this->entityManager->persist($row);
-            }
-            $wrote = true;
+            $this->travelCache->store($clubId, IgnRoutingClient::PROFILE_CAR, $clubLatF, $clubLonF, $pair['lat'], $pair['lon'], $minutes);
             ++$resolved;
         }
 
-        if ($wrote) {
-            $this->entityManager->flush();
-        }
-
-        return ['resolved' => $resolved, 'unresolved' => $unresolved, 'skippedManual' => $skippedManual];
+        return ['resolved' => $resolved, 'unresolved' => $unresolved, 'skippedManual' => 0];
     }
 
     /**
-     * The manager pins a specific gym for an opponent (MANUAL override). The
-     * travel is recomputed from that gym; a MANUAL row is never touched by the
-     * AUTO pass afterwards. Best-effort: IGN muet → `travelMinutes` null.
-     *
-     * `$teamKey` null → the CLUB row (the default for every rencontre of this code) ;
-     * `$teamKey` renseigné → the override of that single opponent TEAM. La portée CLUB
-     * ne remplit QUE la ligne club : les équipes sans ligne propre héritent du club via
-     * la résolution team → club → annuaire, donc il n'y a jamais de « ligne équipe vide »
-     * à remplir (elle n'existe que si un manuel l'a créée, auquel cas c'est un MANUAL
-     * qu'on n'écrase pas). Équivalence confirmée : la portée CLUB = la seule ligne club.
+     * Reste-t-il, pour ce club+saison, au moins une paire siège→gymnase à calculer ? Sert
+     * de garde aux hooks d'import : ne dispatcher un calcul asynchrone que s'il a du travail
+     * (sinon un simple re-dépôt lancerait un worker pour rien, faisant clignoter « calcul en
+     * cours » à l'écran). Faux si le siège n'est pas localisé (rien n'est calculable).
      */
-    public function applyManualOverride(string $clubId, string $seasonId, string $code, ?string $teamKey, ?string $venueRef, string $venueLabel, float $lat, float $lon): OpponentTravel
+    public function hasUncomputedTravel(string $clubId, string $seasonId): bool
     {
-        $minutes = $this->carMinutesFromClub($clubId, $lat, $lon);
-        $existing = $this->travelRepository->findOneByCode($seasonId, $code, $teamKey);
-        // Le ref que la ligne portait AVANT ce choix (null si nouvelle) — pour le
-        // comptage partagé (changement de choix = −1 ancien +1 nouveau). Le −1 ne vaut
-        // QUE si l'ancienne ligne était MANUAL : une ligne AUTO (grain équipe posé par
-        // {@see OpponentVenueAutoLocator}) porte un ref fédéral mais n'a JAMAIS compté
-        // comme un choix — la décrémenter volerait le compte d'un autre club (P4-209(a)).
-        $previousRef = $existing?->getOverrideVenueExternalRef();
-        $previousWasManual = $existing instanceof OpponentTravel && OpponentTravelSource::MANUAL === $existing->getSource();
-        $row = $existing ?? $this->newRow($clubId, $seasonId, $code, $teamKey);
-        $row->setOverrideVenueExternalRef($venueRef)
-            ->setOverrideVenueLabel($venueLabel)
-            ->setOverrideLatitude($lat)
-            ->setOverrideLongitude($lon)
-            ->setTravelMinutes($minutes)
-            ->setSource(OpponentTravelSource::MANUAL)
-            ->setResolvedAt(new DateTimeImmutable);
-        $this->accountManualChoice($code, $previousWasManual ? $previousRef : null, $venueRef, $lat, $lon);
-        $this->entityManager->persist($row);
-        $this->entityManager->flush();
-
-        return $row;
-    }
-
-    /**
-     * Return the CLUB row of an opponent to AUTO: drop the manual override and
-     * recompute the travel from the GLOBAL directory location. Null when there is
-     * no club row to revert (nothing was overridden). A TEAM override is reverted
-     * by DELETING it ({@see deleteTeamOverride}, décision A3), not by this method.
-     */
-    public function revertToAuto(string $clubId, string $seasonId, string $code): ?OpponentTravel
-    {
-        $row = $this->travelRepository->findOneByCode($seasonId, $code, null);
-        if (!$row instanceof OpponentTravel) {
-            return null;
-        }
-        $previousRef = $row->getOverrideVenueExternalRef();
-        $wasManual = OpponentTravelSource::MANUAL === $row->getSource();
-        $location = $this->directoryLocation($code);
-        $minutes = null === $location ? null : $this->carMinutesFromClub($clubId, $location[0], $location[1]);
-        $row->setOverrideVenueExternalRef(null)
-            ->setOverrideVenueLabel(null)
-            ->setOverrideLatitude(null)
-            ->setOverrideLongitude(null)
-            ->setTravelMinutes($minutes)
-            ->setSource(OpponentTravelSource::AUTO)
-            ->setResolvedAt(new DateTimeImmutable);
-        // Ce club ne choisit plus ce gymnase : la suggestion partagée recule — SEULEMENT
-        // si la ligne club était MANUAL (une ligne AUTO n'a jamais compté). Idempotent,
-        // ref effectif seul (une ligne AUTO club ne porte de toute façon pas de ref).
-        if ($wasManual && null !== $previousRef) {
-            $this->suggestions->decrement($code, $previousRef);
-        }
-        $this->entityManager->flush();
-
-        return $row;
-    }
-
-    /**
-     * Rétablir l'AUTO d'une ligne ÉQUIPE = la SUPPRIMER (décision A3) : la rencontre
-     * retombe alors sur la ligne club puis l'annuaire. True si une ligne a été
-     * supprimée, false s'il n'y en avait aucune (rien à rétablir).
-     */
-    public function deleteTeamOverride(string $seasonId, string $code, string $teamKey): bool
-    {
-        $row = $this->travelRepository->findOneByCode($seasonId, $code, $teamKey);
-        if (!$row instanceof OpponentTravel) {
+        $club = $this->clubRepository->find($clubId);
+        if (!$club instanceof Club || null === $club->getLatitude() || null === $club->getLongitude()) {
             return false;
         }
-        $previousRef = $row->getOverrideVenueExternalRef();
-        $wasManual = OpponentTravelSource::MANUAL === $row->getSource();
-        $this->entityManager->remove($row);
-        // Ce club ne choisit plus ce gymnase pour cette équipe : la suggestion recule —
-        // MAIS uniquement si la ligne supprimée était MANUAL. Une ligne AUTO (posée par
-        // {@see OpponentVenueAutoLocator} depuis le libellé du fichier) porte un ref
-        // fédéral sans avoir jamais incrémenté le partagé : la décrémenter volerait le
-        // compte d'un autre club (P4-209(a)). Décrément idempotent, ref effectif seul.
-        if ($wasManual && null !== $previousRef) {
-            $this->suggestions->decrement($code, $previousRef);
+        $clubLat = (float) $club->getLatitude();
+        $clubLon = (float) $club->getLongitude();
+        foreach ($this->pairsToRoute($clubId, $seasonId) as $pair) {
+            if (null === $this->travelCache->lookup($clubId, IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $pair['lat'], $pair['lon'])) {
+                return true;
+            }
         }
-        $this->entityManager->flush();
 
-        return true;
+        return false;
     }
 
     /**
-     * Comptabilise un choix manuel dans les suggestions PARTAGÉES de gymnases de
-     * l'adversaire (« un compte, jamais un qui »). Changement de choix = −1 sur
-     * l'ancien ref, +1 sur le nouveau ; re-choisir le même = neutre. `$previousRef`
-     * n'est transmis QUE lorsque la ligne remplacée était MANUAL : remplacer une ligne
-     * AUTO (grain équipe, {@see OpponentVenueAutoLocator}) par un choix manuel = +1 sur
-     * le nouveau, JAMAIS de −1 (l'AUTO n'avait jamais compté — P4-209(a)).
+     * Comptabilise un choix MANUEL dans les suggestions PARTAGÉES de gymnases de
+     * l'adversaire (« un compte, jamais un qui »). Changement de choix = −1 sur l'ancien
+     * ref, +1 sur le nouveau ; re-choisir le même = neutre ; retrait = −1 seul (newRef null).
+     * `$previousRef` n'est transmis QUE si le lien remplacé/retiré était MANUAL (un lien
+     * AUTO n'a jamais compté — le décrémenter volerait le compte d'un autre club, P4-209a).
      *
-     * 🔴 SÉCURITÉ (revue 2026-09-15) : le partagé ne reçoit QUE des données FÉDÉRALES.
-     * Le numéro de salle du corps est RE-RÉSOLU côté serveur contre l'index FFBB
-     * ({@see FfbbSalleResolver}, les coordonnées du corps ne sont qu'une graine de
-     * recherche) : le libellé/ville/CP/coordonnées écrits viennent du HIT fédéral,
-     * jamais du texte du client. Si le numéro ne résout pas (inconnu) ou si FFBB est
-     * muet : le choix reste TENANT seul, AUCUNE écriture ni incrément dans le partagé.
+     * 🔴 SÉCURITÉ (revue 2026-09-15) : le partagé ne reçoit QUE des données FÉDÉRALES. Le
+     * numéro de salle est RE-RÉSOLU côté serveur contre l'index FFBB ({@see FfbbSalleResolver} —
+     * les coordonnées ne sont qu'une graine de recherche) : libellé/ville/CP/coordonnées
+     * écrits viennent du HIT fédéral, jamais du corps client. Ref non résolue ou FFBB muet :
+     * le choix reste TENANT seul, AUCUNE écriture ni incrément au partagé.
      */
-    private function accountManualChoice(string $code, ?string $previousRef, ?string $newRef, float $lat, float $lon): void
+    public function accountManualChoice(string $code, ?string $previousRef, ?string $newRef, float $lat, float $lon): void
     {
         if ($previousRef === $newRef) {
             return; // re-choisir exactement le même gymnase : rien ne bouge
@@ -431,7 +225,6 @@ final class OpponentTravelResolver
 
         $federal = $this->salleResolver->resolveByExternalRef($newRef, $lat, $lon);
         if (null === $federal) {
-            // Référence inconnue ou FFBB muet → le choix reste tenant, rien au partagé.
             $this->logger->warning('Opponent venue suggestion: federal salle unresolved, shared feed skipped', ['ref' => $newRef]);
 
             return;
@@ -440,8 +233,12 @@ final class OpponentTravelResolver
         $this->suggestions->increment($code, $newRef);
     }
 
-    /** Car minutes from the club siège to a point, or null (no club geo / IGN muet). Cache-first (C4). */
-    private function carMinutesFromClub(string $clubId, float $lat, float $lon): ?int
+    /**
+     * Calcule (best-effort) le trajet voiture du siège du club vers un point et le range au
+     * cache. Cache-first. Null = siège non localisé ou IGN muet. Sert aux gestes MANUELS du
+     * contrôleur (un seul gymnase ajouté / ré-apparié) pour chauffer le cache tout de suite.
+     */
+    public function warmTravel(string $clubId, float $lat, float $lon): ?int
     {
         $club = $this->clubRepository->find($clubId);
         if (!$club instanceof Club || null === $club->getLatitude() || null === $club->getLongitude()) {
@@ -449,63 +246,70 @@ final class OpponentTravelResolver
         }
         $clubLat = (float) $club->getLatitude();
         $clubLon = (float) $club->getLongitude();
-
-        $cached = $this->travelCache?->lookup($clubId, IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $lat, $lon);
+        $cached = $this->travelCache->lookup($clubId, IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $lat, $lon);
         if (null !== $cached) {
             return $cached;
         }
         $minutes = $this->routingClient->travelMinutes(IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $lat, $lon);
         if (null !== $minutes) {
-            $this->travelCache?->store($clubId, IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $lat, $lon, $minutes);
+            $this->travelCache->store($clubId, IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $lat, $lon, $minutes);
         }
 
         return $minutes;
     }
 
     /**
-     * The opponent's location from the GLOBAL directory (coordinates), or null
-     * when unknown / not geolocated.
+     * Les paires siège→lieu à router pour ce club+saison : (1) un point par lien dont le
+     * code adverse est joué cette saison — le gymnase apparié ; (2) pour un code SANS lien,
+     * les coordonnées VILLE de l'annuaire fédéral (le repli « ville seule » de la projection
+     * a besoin de ce trajet approché). Dédupliquées par coordonnées arrondies (deux libellés
+     * du même gymnase = une paire). Le `code` est gardé pour reporter un `unresolved` parlant.
      *
-     * @return array{0: float, 1: float}|null [latitude, longitude]
+     * @return list<array{key: string, code: string, lat: float, lon: float}>
      */
-    private function directoryLocation(string $code): ?array
+    private function pairsToRoute(string $clubId, string $seasonId): array
     {
-        $entry = $this->directory->findOneByFfbbOrganismeCode($code);
-        if (!$entry instanceof OpponentDirectoryEntry) {
-            return null;
-        }
-        $lat = $entry->getLatitude();
-        $lon = $entry->getLongitude();
-
-        return null === $lat || null === $lon ? null : [$lat, $lon];
-    }
-
-    /**
-     * The CLUB rows (opponentTeamKey NULL) keyed by opponent organisme code — the
-     * travel AUTO pass only ever recomputes the club default. Team overrides (MANUAL,
-     * or AUTO posé par {@see OpponentVenueAutoLocator}) are left entirely untouched
-     * here — the venue auto-locator owns the team grain.
-     *
-     * @return array<string, OpponentTravel> keyed by opponent organisme code
-     */
-    private function existingByCode(string $seasonId): array
-    {
-        $map = [];
-        foreach ($this->travelRepository->findBySeason($seasonId) as $row) {
-            if (null === $row->getOpponentTeamKey()) {
-                $map[$row->getOpponentOrganismeCode()] = $row;
+        $codes = array_flip($this->distinctOpponentCodes($seasonId));
+        $pairs = [];
+        $seen = [];
+        $codesWithLink = [];
+        foreach ($this->linkRepository->findByClub($clubId) as $link) {
+            $code = $link->getOpponentOrganismeCode();
+            if (!isset($codes[$code])) {
+                continue;
             }
+            $codesWithLink[$code] = true;
+            $key = $this->travelCache->destKey($link->getLatitude(), $link->getLongitude());
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $pairs[] = ['key' => $key, 'code' => $code, 'lat' => $link->getLatitude(), 'lon' => $link->getLongitude()];
         }
 
-        return $map;
-    }
+        // (2) Repli VILLE : les codes joués cette saison SANS aucun lien apparié — on route
+        // leur point d'annuaire pour que « ville seule » porte un trajet approché.
+        foreach (array_keys($codes) as $code) {
+            if (isset($codesWithLink[$code])) {
+                continue;
+            }
+            $entry = $this->directory->findOneByFfbbOrganismeCode((string) $code);
+            if (!$entry instanceof OpponentDirectoryEntry) {
+                continue;
+            }
+            $lat = $entry->getLatitude();
+            $lon = $entry->getLongitude();
+            if (null === $lat || null === $lon) {
+                continue;
+            }
+            $key = $this->travelCache->destKey($lat, $lon);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $pairs[] = ['key' => $key, 'code' => (string) $code, 'lat' => $lat, 'lon' => $lon];
+        }
 
-    private function newRow(string $clubId, string $seasonId, string $code, ?string $teamKey = null): OpponentTravel
-    {
-        return (new OpponentTravel)
-            ->setClubId($clubId)
-            ->setSeasonId($seasonId)
-            ->setOpponentOrganismeCode($code)
-            ->setOpponentTeamKey($teamKey);
+        return $pairs;
     }
 }
