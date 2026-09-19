@@ -4,22 +4,25 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
-use App\Entity\Fixture;
+use App\Entity\ClubTravelCache;
 use App\Entity\OpponentDirectoryEntry;
-use App\Entity\OpponentTravel;
+use App\Entity\OpponentVenueLink;
 use App\Entity\OpponentVenueSuggestion;
 use App\Entity\Season;
 use App\Entity\User;
-use App\Enum\OpponentLocationPrecision;
+use App\Enum\FixtureHomeAway;
 use App\Enum\TravelComputeScope;
 use App\Message\ComputeTravelTimesMessage;
 use App\Repository\ClubRepository;
 use App\Repository\FixtureRepository;
 use App\Repository\OpponentDirectoryEntryRepository;
-use App\Repository\OpponentTravelRepository;
+use App\Repository\OpponentVenueLinkRepository;
 use App\Repository\OpponentVenueSuggestionRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
+use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\OpponentTravelResolver;
+use App\Service\Geo\OpponentVenueLinkManager;
+use App\Service\Geo\TravelTimeCache;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonResolver;
 use App\Service\TravelComputeLock;
@@ -34,40 +37,48 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
 
 /**
- * P2-54 RMM-9 PR-3 — la lecture et la correction du TRAJET adverse (tenant).
+ * P2-54 (amendement 2026-09-20) — lecture et correction de l'APPARIEMENT « libellé de
+ * salle → gymnase » d'un adversaire ({@see OpponentVenueLink}, tenant, club-scoped SANS
+ * saison). Le TRAJET est une CONSTANTE lue depuis {@see ClubTravelCache} (siège
+ * du club → gymnase), jamais stockée par ligne.
  *
- * GET  /api/opponents/travel          — pour l'affichage (membre) : par adversaire
- *   AWAY distinct, la précision du lieu (VENUE|CITY|absent), le nom du lieu, le
- *   trajet aller simple (nullable), le flag « approché » (= CITY, calculé serveur),
- *   la source (AUTO|MANUAL) et l'éventuelle surcharge de gymnase. DTO dédiés, jamais
- *   l'entité brute.
- * POST /api/opponents/travel/manual   — (management) le gestionnaire épingle un
- *   gymnase (choisi via /api/ffbb/salles) pour un adversaire → surcharge MANUAL +
- *   recalcul du trajet depuis ce lieu.
- * POST /api/opponents/travel/auto     — (management) retour à l'AUTO : la surcharge
- *   tombe, le trajet est recalculé depuis le lieu du global.
- * POST /api/opponents/travel/resolve  — (management) recalcule TOUS les trajets AUTO
- *   du club+saison. Cap dur AVANT réseau + rate-limit dédié par utilisateur.
- *
- * Écrit UNIQUEMENT la table tenant `opponent_travel` (donnée club-spécifique, RLS).
- * Le trajet dépend du siège du club — jamais dans le global partagé.
+ * GET  /api/opponents/travel                 — affichage (membre) : par CLUB adverse, ses
+ *   gymnases appariés (trajet, statut, source, n rencontres, gymnase de repli si retiré) et
+ *   ses libellés « à apparier ». DTO dédiés, jamais l'entité brute.
+ * POST /api/opponents/{code}/venues          — (management) ajouter un gymnase (ref fédérale
+ *   ou coordonnées choisies) — lien MANUAL, partagé re-résolu serveur.
+ * POST /api/opponents/{code}/venue-links     — (management) apparier un LIBELLÉ orphelin à
+ *   un gymnase.
+ * PUT  /api/opponents/venue-links/{id}       — (management) ré-apparier / fusionner : re-
+ *   pointer le lien vers un autre gymnase.
+ * DELETE /api/opponents/venue-links/{id}     — (management) retirer l'appariement LOCAL
+ *   (jamais le catalogue fédéral) ; décrémente le partagé si MANUAL.
+ * POST /api/opponents/travel/resolve         — (management) DISPATCHE le calcul asynchrone
+ *   des trajets manquants (worker). Cap dur + rate-limit dédié.
+ * GET  /api/opponents/{code}/venue-suggestions — (management) les gymnases connus de
+ *   l'adversaire (partagé, « un compte, jamais un qui »).
  */
 #[AsController]
 final class OpponentTravelController extends AbstractController
 {
     use ResolvesCurrentClubTrait;
 
+    /** Les codes organisme fédéraux sont alphanumériques : borne le {code} et exclut « venue-links » (tiret). */
+    private const string CODE_RE = '[A-Za-z0-9]+';
+
     public function __construct(
         private readonly RequestStack $requestStack,
         private readonly SeasonResolver $seasonResolver,
         private readonly FixtureRepository $fixtures,
         private readonly ClubRepository $clubRepository,
-        private readonly OpponentTravelRepository $travelRepository,
+        private readonly OpponentVenueLinkRepository $linkRepository,
         private readonly OpponentDirectoryEntryRepository $directory,
         private readonly OpponentVenueSuggestionRepository $suggestions,
         private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly OpponentTravelResolver $resolver,
+        private readonly OpponentVenueLinkManager $linkManager,
         private readonly VenueLabelNormalizer $labelNormalizer,
+        private readonly TravelTimeCache $travelCache,
         private readonly RateLimiterFactory $opponentTravelResolveLimiter,
         private readonly RateLimiterFactory $opponentTravelManualLimiter,
         private readonly TravelComputeLock $travelComputeLock,
@@ -83,30 +94,39 @@ final class OpponentTravelController extends AbstractController
         }
         \assert(null !== $clubId && $season instanceof Season);
 
-        $awayFixtures = $this->fixtures->findAwayBySeason($season->getId());
-        $travelIndex = $this->indexTravel($season->getId());
-        // Champ ADDITIF : le siège du club est-il localisé ? (sans quoi aucun trajet ne
-        // s'estime.) Un booléen SEUL — jamais les coordonnées brutes du club.
         $club = $this->clubRepository->find($clubId);
         $clubLat = $club?->getLatitude();
         $clubLon = $club?->getLongitude();
         $clubGeolocated = null !== $clubLat && null !== $clubLon;
-
-        // Un calcul de trajets est-il EN COURS pour ce club ? (C5 : toujours faux tant que
-        // le calcul reste synchrone — C6 pose la clé pendant le calcul asynchrone.) Lu UNE
-        // fois par requête ; alimente `travelStatus: pending` par entrée.
+        // Le cache des trajets siège→gymnase, chargé UNE fois (aucun N+1 sur les gymnases).
+        $cacheByDest = $clubGeolocated
+            ? $this->travelCache->lookupAllFromOrigin($clubId, IgnRoutingClient::PROFILE_CAR, (float) $clubLat, (float) $clubLon)
+            : [];
+        // pending = un calcul de trajets tourne pour ce club (C6) — alimente `travelStatus`.
         $computePending = $this->travelComputeLock->isHeld($clubId);
 
         return $this->json([
             'clubId' => $clubId,
             'seasonId' => $season->getId(),
             'clubGeolocated' => $clubGeolocated,
-            'opponents' => $this->buildOpponents($awayFixtures, $travelIndex, $computePending),
+            'opponents' => $this->buildOpponents($clubId, $season->getId(), $cacheByDest, $computePending),
         ]);
     }
 
-    #[Route('/api/opponents/travel/manual', name: 'api_opponents_travel_manual', methods: ['POST'])]
-    public function manual(Request $request): JsonResponse
+    #[Route('/api/opponents/{code}/venues', name: 'api_opponents_venue_add', requirements: ['code' => self::CODE_RE], methods: ['POST'])]
+    public function addVenue(Request $request, string $code): JsonResponse
+    {
+        return $this->writeLink($request, $code, requireFbiLabel: false);
+    }
+
+    #[Route('/api/opponents/{code}/venue-links', name: 'api_opponents_venue_link_add', requirements: ['code' => self::CODE_RE], methods: ['POST'])]
+    public function appairLabel(Request $request, string $code): JsonResponse
+    {
+        return $this->writeLink($request, $code, requireFbiLabel: true);
+    }
+
+    #[Route('/api/opponents/venue-links/{id}', name: 'api_opponents_venue_link_update', methods: ['PUT'])]
+    public function repointLink(Request $request, string $id): JsonResponse
     {
         $this->managementAccessGuard->assertManager(); // SEC-07
 
@@ -116,42 +136,31 @@ final class OpponentTravelController extends AbstractController
         }
         \assert(null !== $clubId && $season instanceof Season);
 
-        /** @var mixed $payload */
-        $payload = json_decode($request->getContent(), true);
-        $payload = \is_array($payload) ? $payload : [];
-
-        $code = $this->cleanCode($payload['opponentOrganismeCode'] ?? null);
-        $label = \is_string($payload['venueLabel'] ?? null) ? trim($payload['venueLabel']) : '';
-        $ref = \is_string($payload['venueExternalRef'] ?? null) && '' !== trim($payload['venueExternalRef']) ? mb_substr(trim($payload['venueExternalRef']), 0, 64) : null;
-        $lat = $this->coordinate($payload['latitude'] ?? null, -90.0, 90.0);
-        $lon = $this->coordinate($payload['longitude'] ?? null, -180.0, 180.0);
-        // Portée : TEAM dès qu'un teamKey est fourni, CLUB sinon — un `scope` explicite peut
-        // forcer CLUB (on ignore alors le teamKey). Un `scope=TEAM` sans teamKey est invalide.
-        $rawTeamKey = $this->cleanTeamKey($payload['opponentTeamKey'] ?? null);
-        $scope = $this->cleanScope($payload['scope'] ?? null) ?? (null !== $rawTeamKey ? 'TEAM' : 'CLUB');
-        $teamKey = 'CLUB' === $scope ? null : $rawTeamKey;
-
-        if (null === $code || '' === $label || null === $lat || null === $lon || ('TEAM' === $scope && null === $teamKey)) {
-            return $this->json(['error' => 'Adversaire ou gymnase invalide.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        $payload = $this->payload($request);
+        $gym = $this->parseGym($payload);
+        if (null === $gym) {
+            return $this->json(['error' => 'Gymnase invalide.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
-        if (!$this->isAwayOpponent($season->getId(), $code, $teamKey)) {
-            return $this->json(['error' => 'Cet adversaire n\'a aucune rencontre à l\'extérieur cette saison.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        if (null === $this->linkRepository->find($id)) {
+            // 404 byte-identique : un lien d'un autre club est invisible (RLS) → même 404.
+            return $this->json(['error' => 'Appariement introuvable.'], Response::HTTP_NOT_FOUND);
         }
-
-        // SEC-19 — borne PAR UTILISATEUR consommée APRÈS les 422 (aucun jeton brûlé sur un
-        // refus) : l'override recalcule un itinéraire IGN et peut écrire dans le partagé.
-        $user = $this->getUser();
-        if ($user instanceof User && !$this->opponentTravelManualLimiter->create($user->getId())->consume(1)->isAccepted()) {
+        if (!$this->consumeManualLimiter()) {
             return $this->json(['error' => 'Trop de gymnases épinglés — réessayez plus tard.'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
-        $row = $this->resolver->applyManualOverride($clubId, $season->getId(), $code, $teamKey, $ref, mb_substr($label, 0, 180), $lat, $lon);
+        $link = $this->linkManager->repoint($clubId, $id, $gym['label'], $gym['ref'], $gym['lat'], $gym['lon']);
+        if (!$link instanceof OpponentVenueLink) {
+            return $this->json(['error' => 'Appariement introuvable.'], Response::HTTP_NOT_FOUND);
+        }
 
-        return $this->json($this->travelView($row), Response::HTTP_OK);
+        // La fusion (deux libellés vers le même gymnase) veut le compte RÉSULTANT de la cible :
+        // toutes les rencontres AWAY du club dont le libellé résout désormais vers ce gymnase.
+        return $this->json($this->linkView($link, $this->targetFixtureCount($clubId, $season->getId(), $link)), Response::HTTP_OK);
     }
 
-    #[Route('/api/opponents/travel/auto', name: 'api_opponents_travel_auto', methods: ['POST'])]
-    public function auto(Request $request): JsonResponse
+    #[Route('/api/opponents/venue-links/{id}', name: 'api_opponents_venue_link_delete', methods: ['DELETE'])]
+    public function deleteLink(Request $request, string $id): JsonResponse
     {
         $this->managementAccessGuard->assertManager(); // SEC-07
 
@@ -161,35 +170,11 @@ final class OpponentTravelController extends AbstractController
         }
         \assert(null !== $clubId && $season instanceof Season);
 
-        /** @var mixed $payload */
-        $payload = json_decode($request->getContent(), true);
-        $payload = \is_array($payload) ? $payload : [];
-        $code = $this->cleanCode($payload['opponentOrganismeCode'] ?? null);
-        if (null === $code) {
-            return $this->json(['error' => 'Adversaire invalide.'], Response::HTTP_UNPROCESSABLE_ENTITY);
-        }
-        $teamKey = $this->cleanTeamKey($payload['opponentTeamKey'] ?? null);
-
-        // Grain ÉQUIPE (A3) : rétablir l'automatique = SUPPRIMER la ligne équipe ; la
-        // rencontre retombe sur la ligne club puis l'annuaire (vue résolue renvoyée).
-        if (null !== $teamKey) {
-            if (!$this->resolver->deleteTeamOverride($season->getId(), $code, $teamKey)) {
-                return $this->json(['error' => 'Aucune localisation manuelle à rétablir pour cet adversaire.'], Response::HTTP_UNPROCESSABLE_ENTITY);
-            }
-            $fallback = $this->travelRepository->findEffective($season->getId(), $code, $teamKey);
-
-            return $this->json(
-                $fallback instanceof OpponentTravel ? $this->travelView($fallback) : $this->emptyTravelView($code, $teamKey),
-                Response::HTTP_OK,
-            );
+        if (!$this->linkManager->delete($clubId, $id)) {
+            return $this->json(['error' => 'Appariement introuvable.'], Response::HTTP_NOT_FOUND);
         }
 
-        $row = $this->resolver->revertToAuto($clubId, $season->getId(), $code);
-        if (!$row instanceof OpponentTravel) {
-            return $this->json(['error' => 'Aucune localisation manuelle à rétablir pour cet adversaire.'], Response::HTTP_UNPROCESSABLE_ENTITY);
-        }
-
-        return $this->json($this->travelView($row), Response::HTTP_OK);
+        return new JsonResponse(null, Response::HTTP_NO_CONTENT);
     }
 
     #[Route('/api/opponents/travel/resolve', name: 'api_opponents_travel_resolve', methods: ['POST'])]
@@ -203,8 +188,7 @@ final class OpponentTravelController extends AbstractController
         }
         \assert(null !== $clubId && $season instanceof Season);
 
-        // Cap dur AVANT tout appel réseau (aucun jeton brûlé sur un 422-cap) : la lecture
-        // ne touche que la base (fixtures AWAY du club+saison).
+        // Cap dur AVANT tout réseau (aucun jeton brûlé sur un 422-cap).
         $codes = $this->resolver->distinctOpponentCodes($season->getId());
         if (\count($codes) > OpponentTravelResolver::MAX_OPPONENTS) {
             return $this->json([
@@ -221,29 +205,22 @@ final class OpponentTravelController extends AbstractController
             return $this->json(['error' => 'Trop de calculs de trajet — réessayez plus tard.'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
-        // Un calcul est-il DÉJÀ en cours pour ce club ? Dispatcher un second message le ferait
-        // échouer (le handler ne prend pas le verrou déjà tenu → `failed` après 3 retries) : on
-        // le dit honnêtement au lieu de faire miroiter une mise en file.
         if ($this->travelComputeLock->isHeld($clubId)) {
             return $this->json(['queued' => false, 'alreadyRunning' => true]);
         }
-
-        // C6 — le calcul quitte le rail synchrone (rafale IGN pacée > plafond HTTP) : on le
-        // DISPATCHE au worker (`club:{clubId}:travel` pousse la progression). `resolve()` ne
-        // route déjà QUE les trajets manquants (C5), donc « Réessayer les manquants » = ce POST.
+        // C6 — le calcul quitte le rail synchrone. « Réessayer les manquants » = ce POST
+        // (resolve() ne route déjà QUE les paires manquantes du cache).
         $this->messageBus->dispatch(new ComputeTravelTimesMessage($clubId, $season->getId(), TravelComputeScope::OPPONENTS));
 
         return $this->json(['queued' => true, 'alreadyRunning' => false]);
     }
 
     /**
-     * The PARTAGÉES venue suggestions for one away opponent (management, A6) : les
-     * gymnases connus de l'adversaire — vus dans le calendrier fédéral (FFBB_API) ou
-     * choisis par des clubs (MANUAL) — avec un COMPTE, jamais un « qui ». FFBB_API
-     * d'abord, puis MANUAL par compte décroissant. Le `{code}` doit être un adversaire
-     * AWAY de la saison courante du club (422 sinon), jamais un code arbitraire.
+     * The PARTAGÉES venue suggestions for one away opponent (management, A6) : les gymnases
+     * connus de l'adversaire — vus dans le calendrier fédéral (FFBB_API) ou choisis par des
+     * clubs (MANUAL) — avec un COMPTE, jamais un « qui ».
      */
-    #[Route('/api/opponents/{code}/venue-suggestions', name: 'api_opponents_venue_suggestions', methods: ['GET'])]
+    #[Route('/api/opponents/{code}/venue-suggestions', name: 'api_opponents_venue_suggestions', requirements: ['code' => self::CODE_RE], methods: ['GET'])]
     public function venueSuggestions(Request $request, string $code): JsonResponse
     {
         $this->managementAccessGuard->assertManager(); // SEC-07 first, so 403 wins (A6).
@@ -255,7 +232,7 @@ final class OpponentTravelController extends AbstractController
         \assert(null !== $clubId && $season instanceof Season);
 
         $clean = $this->cleanCode($code);
-        if (null === $clean || !$this->isAwayOpponent($season->getId(), $clean, null)) {
+        if (null === $clean || !$this->isAwayCode($season->getId(), $clean)) {
             return $this->json(['error' => 'Cet adversaire n\'a aucune rencontre à l\'extérieur cette saison.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
@@ -263,6 +240,266 @@ final class OpponentTravelController extends AbstractController
             'code' => $clean,
             'suggestions' => array_map($this->suggestionView(...), $this->suggestions->findByCode($clean)),
         ]);
+    }
+
+    /**
+     * Foyer commun des deux POST d'appariement MANUEL : ajouter un gymnase (`/venues`, le
+     * libellé de fichier est optionnel — on retombe sur le libellé du gymnase) et apparier
+     * un libellé orphelin (`/venue-links`, le libellé est obligatoire et doit être une salle
+     * réellement jouée à l'extérieur).
+     */
+    private function writeLink(Request $request, string $code, bool $requireFbiLabel): JsonResponse
+    {
+        $this->managementAccessGuard->assertManager(); // SEC-07
+
+        [$clubId, $season, $error] = $this->context($request);
+        if ($error instanceof JsonResponse) {
+            return $error;
+        }
+        \assert(null !== $clubId && $season instanceof Season);
+
+        $clean = $this->cleanCode($code);
+        if (null === $clean || !$this->isAwayCode($season->getId(), $clean)) {
+            return $this->json(['error' => 'Cet adversaire n\'a aucune rencontre à l\'extérieur cette saison.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $payload = $this->payload($request);
+        $gym = $this->parseGym($payload);
+        $rawFbiLabel = \is_string($payload['fbiLabel'] ?? null) ? trim($payload['fbiLabel']) : '';
+        $fbiLabel = '' !== $rawFbiLabel ? $rawFbiLabel : ($requireFbiLabel ? '' : $gym['label'] ?? '');
+
+        if (null === $gym || '' === $fbiLabel) {
+            return $this->json(['error' => 'Gymnase ou libellé invalide.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+        // Apparier un ORPHELIN : le libellé doit être une salle réellement jouée à l'extérieur
+        // (jamais un libellé arbitraire imposé au partagé par une requête forgée).
+        if ($requireFbiLabel && !$this->isAwayFbiLabel($season->getId(), $clean, $fbiLabel)) {
+            return $this->json(['error' => 'Ce libellé de salle n\'apparaît sur aucune rencontre à l\'extérieur de cet adversaire.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        // SEC-19 — borne PAR UTILISATEUR consommée APRÈS les 422 : le geste chauffe un
+        // itinéraire IGN et peut écrire dans le partagé.
+        if (!$this->consumeManualLimiter()) {
+            return $this->json(['error' => 'Trop de gymnases épinglés — réessayez plus tard.'], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+
+        $link = $this->linkManager->addOrUpdate($clubId, $clean, $fbiLabel, $gym['label'], $gym['ref'], $gym['lat'], $gym['lon']);
+
+        return $this->json($this->linkView($link, $this->targetFixtureCount($clubId, $season->getId(), $link)), Response::HTTP_OK);
+    }
+
+    /**
+     * Par CLUB adverse joué cette saison : ses gymnases appariés (`venues`) et ses libellés
+     * « à apparier » (`unmatchedLabels`). Groupé par code fédéral (les rencontres sans code
+     * sont regroupées au libellé, non appariables).
+     *
+     * @param array<string, int> $cacheByDest destKey → aller simple (minutes)
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function buildOpponents(string $clubId, string $seasonId, array $cacheByDest, bool $computePending): array
+    {
+        $away = $this->fixtures->findAwayBySeason($seasonId);
+        $linksByCode = $this->linksByCode($clubId);
+
+        // Regroupe les rencontres AWAY par code (ou par libellé si code absent) et compte, par
+        // code, les rencontres par libellé de salle normalisé.
+        /** @var array<string, array{code: string|null, name: string, labelCounts: array<string, array{label: string, count: int}>, total: int}> $groups */
+        $groups = [];
+        foreach ($away as $fixture) {
+            $rawTeamLabel = trim($fixture->getOpponentLabel());
+            $code = $fixture->getOpponentOrganismeCode();
+            $code = null !== $code && '' !== $code ? $code : null;
+            $key = null === $code ? 'label:' . mb_strtolower($rawTeamLabel) : 'code:' . $code;
+            $groups[$key] ??= ['code' => $code, 'name' => $rawTeamLabel, 'labelCounts' => [], 'total' => 0];
+            ++$groups[$key]['total'];
+
+            $fbiLabel = $fixture->getFbiVenueLabel();
+            if (null === $fbiLabel || '' === trim($fbiLabel)) {
+                continue; // rencontre sans salle de fichier : compte au total, jamais un libellé
+            }
+            $norm = $this->labelNormalizer->normalize(trim($fbiLabel));
+            if ('' === $norm) {
+                continue;
+            }
+            $groups[$key]['labelCounts'][$norm] ??= ['label' => trim($fbiLabel), 'count' => 0];
+            ++$groups[$key]['labelCounts'][$norm]['count'];
+        }
+
+        $opponents = [];
+        foreach ($groups as $group) {
+            $code = $group['code'];
+            $entry = null === $code ? null : $this->directory->findOneByFfbbOrganismeCode($code);
+            $links = null === $code ? [] : ($linksByCode[$code] ?? []);
+            $opponents[] = $this->opponentView($group, $entry, $links, $cacheByDest, $computePending);
+        }
+        usort($opponents, static function (array $a, array $b): int {
+            // Sans gymnase d'abord (aucun venue), puis alphabétique (fr, insensible à la casse).
+            $aEmpty = [] === $a['venues'] ? 0 : 1;
+            $bEmpty = [] === $b['venues'] ? 0 : 1;
+
+            return $aEmpty <=> $bEmpty ?: strcasecmp((string) $a['name'], (string) $b['name']);
+        });
+
+        return $opponents;
+    }
+
+    /**
+     * @param array{code: string|null, name: string, labelCounts: array<string, array{label: string, count: int}>, total: int} $group
+     * @param list<OpponentVenueLink>                                                                                          $links
+     * @param array<string, int>                                                                                               $cacheByDest
+     *
+     * @return array<string, mixed>
+     */
+    private function opponentView(array $group, ?OpponentDirectoryEntry $entry, array $links, array $cacheByDest, bool $computePending): array
+    {
+        // Les gymnases appariés (une entrée par lien), avec leur compte de rencontres et le
+        // gymnase de repli si on le retirait.
+        $venues = [];
+        foreach ($links as $link) {
+            $fixtureCount = $group['labelCounts'][$link->getFbiLabelNorm()]['count'] ?? 0;
+            $venues[] = $this->venueView($link, $fixtureCount, $links, $group['labelCounts'], $cacheByDest, $computePending);
+        }
+
+        // Les libellés SANS lien = « à apparier ».
+        $unmatched = [];
+        foreach ($group['labelCounts'] as $norm => $entryLabel) {
+            if ($this->hasLink($links, $norm)) {
+                continue;
+            }
+            $unmatched[] = ['label' => $entryLabel['label'], 'fixtureCount' => $entryLabel['count']];
+        }
+
+        return [
+            'code' => $group['code'],
+            'name' => $entry instanceof OpponentDirectoryEntry ? $entry->getName() : $group['name'],
+            'city' => $entry?->getCity(),
+            // La précision fédérale (VENUE|CITY|null) — le front distingue « ville seule »
+            // (CITY) de « aucun gymnase connu » (null) quand il n'y a aucun lien.
+            'precision' => $entry?->getPrecision()?->value,
+            'hasLogo' => null !== $entry?->getLogoId(),
+            'fixtureCount' => $group['total'],
+            'venues' => $venues,
+            'unmatchedLabels' => $unmatched,
+        ];
+    }
+
+    /**
+     * @param list<OpponentVenueLink>                         $siblings
+     * @param array<string, array{label: string, count: int}> $labelCounts
+     * @param array<string, int>                              $cacheByDest
+     *
+     * @return array<string, mixed>
+     */
+    private function venueView(OpponentVenueLink $link, int $fixtureCount, array $siblings, array $labelCounts, array $cacheByDest, bool $computePending): array
+    {
+        $oneWay = $cacheByDest[$this->travelCache->destKey($link->getLatitude(), $link->getLongitude())] ?? null;
+
+        return [
+            'id' => $link->getId(),
+            'label' => $link->getVenueLabel(),
+            'externalRef' => $link->getVenueExternalRef(),
+            'source' => $link->getSource()->value,
+            'travelMinutes' => $oneWay,
+            'travelStatus' => null !== $oneWay ? 'done' : ($computePending ? 'pending' : 'unavailable'),
+            // Un lien = un gymnase exact → jamais « approché » (le repli approché vit dans la
+            // projection par rencontre, pas ici).
+            'approximated' => false,
+            'fixtureCount' => $fixtureCount,
+            'fallbackVenueName' => $this->fallbackVenueName($link, $siblings, $labelCounts),
+        ];
+    }
+
+    /**
+     * Le gymnase qui recueillerait les rencontres de CE lien s'il était retiré : le plus
+     * fréquent des AUTRES liens de l'adversaire (compte des rencontres), null si c'est le
+     * dernier. Sert au dialogue de retrait (le front ne le dérive jamais).
+     *
+     * @param list<OpponentVenueLink>                         $siblings
+     * @param array<string, array{label: string, count: int}> $labelCounts
+     */
+    private function fallbackVenueName(OpponentVenueLink $link, array $siblings, array $labelCounts): ?string
+    {
+        $best = null;
+        $bestCount = -1;
+        foreach ($siblings as $sibling) {
+            if ($sibling->getId() === $link->getId()) {
+                continue;
+            }
+            $count = $labelCounts[$sibling->getFbiLabelNorm()]['count'] ?? 0;
+            if ($count > $bestCount) {
+                $bestCount = $count;
+                $best = $sibling->getVenueLabel();
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * Le compte RÉSULTANT d'un gymnase cible après un ajout/ré-appariement : toutes les
+     * rencontres AWAY du club (ce code) dont le libellé résout désormais vers CE gymnase (ses
+     * coordonnées) — la somme des libellés qui pointent le même lieu (fusion). Sert la réponse
+     * d'écriture (« qui en portera 8 »).
+     */
+    private function targetFixtureCount(string $clubId, string $seasonId, OpponentVenueLink $link): int
+    {
+        $destKey = $this->travelCache->destKey($link->getLatitude(), $link->getLongitude());
+        // Les libellés normalisés du club (ce code) qui pointent le même gymnase (coordonnées).
+        $normsAtGym = [];
+        foreach ($this->linkRepository->findByCode($clubId, $link->getOpponentOrganismeCode()) as $sibling) {
+            if ($this->travelCache->destKey($sibling->getLatitude(), $sibling->getLongitude()) === $destKey) {
+                $normsAtGym[$sibling->getFbiLabelNorm()] = true;
+            }
+        }
+        $count = 0;
+        foreach ($this->fixtures->findAwayBySeason($seasonId) as $fixture) {
+            if ($fixture->getOpponentOrganismeCode() !== $link->getOpponentOrganismeCode()) {
+                continue;
+            }
+            $label = $fixture->getFbiVenueLabel();
+            if (null === $label || '' === trim($label)) {
+                continue;
+            }
+            if (isset($normsAtGym[$this->labelNormalizer->normalize(trim($label))])) {
+                ++$count;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * The write response for one link + the resulting target fixture count (merge « en
+     * portera N »).
+     *
+     * @return array<string, mixed>
+     */
+    private function linkView(OpponentVenueLink $link, int $targetFixtureCount): array
+    {
+        $club = $this->clubRepository->find($link->getClubId());
+        $oneWay = null;
+        if (null !== $club?->getLatitude() && null !== $club->getLongitude()) {
+            $oneWay = $this->travelCache->lookup(
+                $link->getClubId(),
+                IgnRoutingClient::PROFILE_CAR,
+                (float) $club->getLatitude(),
+                (float) $club->getLongitude(),
+                $link->getLatitude(),
+                $link->getLongitude(),
+            );
+        }
+
+        return [
+            'id' => $link->getId(),
+            'opponentOrganismeCode' => $link->getOpponentOrganismeCode(),
+            'fbiLabel' => $link->getFbiLabel(),
+            'label' => $link->getVenueLabel(),
+            'externalRef' => $link->getVenueExternalRef(),
+            'source' => $link->getSource()->value,
+            'travelMinutes' => $oneWay,
+            'targetFixtureCount' => $targetFixtureCount,
+        ];
     }
 
     /**
@@ -279,189 +516,31 @@ final class OpponentTravelController extends AbstractController
             'longitude' => $suggestion->getLongitude(),
             'source' => $suggestion->getSource()->value,
             'chosenByCount' => $suggestion->getChosenByCount(),
-            // Date SEULE (jamais l'heure) : la seconde exacte serait un canal auxiliaire
-            // temporel permettant de corréler un choix à un club (« un compte, jamais un qui »).
+            // Date SEULE (jamais l'heure) — « un compte, jamais un qui ».
             'lastChosenAt' => $suggestion->getLastChosenAt()?->format('Y-m-d'),
         ];
     }
 
     /**
-     * Group the AWAY fixtures by opponent TEAM — `(organisme code, normalized label)`
-     * when stamped, else the normalized label alone — keeping the RAW rencontre label
-     * for display (P2-54 « adversaire multi-gymnases » : two teams of the same
-     * organisme, « BASKET 5EME - 1 » vs « - 2 », are two distinct entries). Each entry
-     * resolves its travel team → club → directory and says which grain won (`scope`).
-     *
-     * @param list<Fixture>                                                                         $awayFixtures
-     * @param array<string, array{club: OpponentTravel|null, teams: array<string, OpponentTravel>}> $travelIndex
-     *
-     * @return list<array<string, mixed>>
+     * @return array<string, list<OpponentVenueLink>> code → its links
      */
-    private function buildOpponents(array $awayFixtures, array $travelIndex, bool $computePending): array
-    {
-        /** @var array<string, array{code: string|null, teamKey: string|null, label: string}> $groups */
-        $groups = [];
-        foreach ($awayFixtures as $fixture) {
-            $label = trim($fixture->getOpponentLabel());
-            $code = $fixture->getOpponentOrganismeCode();
-            $code = null !== $code && '' !== $code ? $code : null;
-            if (null === $code) {
-                // Code fédéral non résolu : regroupé au libellé, jamais localisé (inchangé).
-                $key = 'label:' . mb_strtolower($label);
-                $groups[$key] ??= ['code' => null, 'teamKey' => null, 'label' => $label];
-
-                continue;
-            }
-            $teamKey = $this->labelNormalizer->normalize($label);
-            $teamKey = '' === $teamKey ? null : $teamKey;
-            $key = 'code:' . $code . '|team:' . ($teamKey ?? '');
-            $groups[$key] ??= ['code' => $code, 'teamKey' => $teamKey, 'label' => $label];
-        }
-
-        $opponents = [];
-        foreach ($groups as $group) {
-            $code = $group['code'];
-            $teamKey = $group['teamKey'];
-            $entry = null === $code ? null : $this->directory->findOneByFfbbOrganismeCode($code);
-            $codeTravel = null === $code ? null : ($travelIndex[$code] ?? null);
-            $teamRow = null !== $teamKey && null !== $codeTravel ? ($codeTravel['teams'][$teamKey] ?? null) : null;
-            $clubRow = $codeTravel['club'] ?? null;
-            $travel = $teamRow ?? $clubRow;
-            $scope = null !== $teamRow ? 'TEAM' : (null !== $clubRow ? 'CLUB' : null);
-            $opponents[] = $this->opponentView($group['label'], $code, $teamKey, $entry, $travel, $scope, $computePending);
-        }
-        usort($opponents, static fn (array $a, array $b): int => strcasecmp((string) $a['opponentLabel'], (string) $b['opponentLabel']));
-
-        return $opponents;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function opponentView(string $label, ?string $code, ?string $teamKey, ?OpponentDirectoryEntry $entry, ?OpponentTravel $travel, ?string $scope, bool $computePending): array
-    {
-        $hasOverride = $travel instanceof OpponentTravel && $travel->hasOverride();
-        $precision = $entry?->getPrecision()?->value;
-        // « approché » = ville seulement (calculé SERVEUR, le front ne re-dérive rien).
-        // Une surcharge manuelle est un gymnase précis → jamais approché.
-        $approximated = !$hasOverride && OpponentLocationPrecision::CITY === $entry?->getPrecision();
-        $located = null !== $code && ($entry instanceof OpponentDirectoryEntry || $hasOverride);
-        $travelMinutes = $travel?->getTravelMinutes();
-
-        return [
-            'opponentOrganismeCode' => $code,
-            'opponentTeamKey' => $teamKey,
-            'opponentLabel' => $label,
-            'located' => $located,
-            // C7 — l'adversaire a-t-il un logo fédéral connu ? (le front rend `<img>` via
-            // `GET /api/opponents/{code}/logo`, sinon des initiales.) Booléen dérivé de la
-            // présence du `logo_id` de l'annuaire — jamais l'uuid brut.
-            'hasLogo' => null !== $entry?->getLogoId(),
-            'precision' => $hasOverride ? OpponentLocationPrecision::VENUE->value : $precision,
-            'locationName' => $this->locationName($entry, $travel),
-            'city' => $entry?->getCity(),
-            'postalCode' => $entry?->getPostalCode(),
-            'travelMinutes' => $travelMinutes,
-            // Statut du TRAJET, calculé SERVEUR (le front ne re-dérive rien) : `done` = minutes
-            // présentes ; `pending` = un calcul est en cours pour ce club (C6) ; `unavailable` =
-            // sinon (tenté sans résultat, ou pas de lieu à router).
-            'travelStatus' => null !== $travelMinutes ? 'done' : ($computePending ? 'pending' : 'unavailable'),
-            'approximated' => $approximated,
-            'source' => $travel?->getSource()->value,
-            'scope' => $scope,
-            'overrideVenueLabel' => $hasOverride ? $travel->getOverrideVenueLabel() : null,
-        ];
-    }
-
-    private function locationName(?OpponentDirectoryEntry $entry, ?OpponentTravel $travel): ?string
-    {
-        if ($travel instanceof OpponentTravel && $travel->hasOverride()) {
-            return $travel->getOverrideVenueLabel();
-        }
-        if (!$entry instanceof OpponentDirectoryEntry) {
-            return null;
-        }
-
-        return OpponentLocationPrecision::VENUE === $entry->getPrecision()
-            ? ($entry->getVenueLabel() ?? $entry->getName())
-            : $entry->getCity();
-    }
-
-    /**
-     * The write response for one travel row (manual/auto) — additive `opponentTeamKey`
-     * + `scope` (TEAM|CLUB from the row's grain), the rest unchanged.
-     *
-     * @return array<string, mixed>
-     */
-    private function travelView(OpponentTravel $row): array
-    {
-        return [
-            'opponentOrganismeCode' => $row->getOpponentOrganismeCode(),
-            'opponentTeamKey' => $row->getOpponentTeamKey(),
-            'scope' => $row->isTeamScoped() ? 'TEAM' : 'CLUB',
-            'travelMinutes' => $row->getTravelMinutes(),
-            'source' => $row->getSource()->value,
-            'overrideVenueLabel' => $row->hasOverride() ? $row->getOverrideVenueLabel() : null,
-        ];
-    }
-
-    /**
-     * The write response when a TEAM override was reverted (A3 deletion) and nothing
-     * governs the team any more — no club row either: « retour à l'automatique, rien
-     * de connu ».
-     *
-     * @return array<string, mixed>
-     */
-    private function emptyTravelView(string $code, ?string $teamKey): array
-    {
-        return [
-            'opponentOrganismeCode' => $code,
-            'opponentTeamKey' => $teamKey,
-            'scope' => null,
-            'travelMinutes' => null,
-            'source' => null,
-            'overrideVenueLabel' => null,
-        ];
-    }
-
-    /**
-     * The travel rows of the club+season, indexed for a team → club resolution:
-     * per opponent organisme code, the club default row (teamKey NULL) and the
-     * per-team override rows.
-     *
-     * @return array<string, array{club: OpponentTravel|null, teams: array<string, OpponentTravel>}>
-     */
-    private function indexTravel(string $seasonId): array
+    private function linksByCode(string $clubId): array
     {
         $map = [];
-        foreach ($this->travelRepository->findBySeason($seasonId) as $row) {
-            $code = $row->getOpponentOrganismeCode();
-            $map[$code] ??= ['club' => null, 'teams' => []];
-            $teamKey = $row->getOpponentTeamKey();
-            if (null === $teamKey) {
-                $map[$code]['club'] = $row;
-            } else {
-                $map[$code]['teams'][$teamKey] = $row;
-            }
+        foreach ($this->linkRepository->findByClub($clubId) as $link) {
+            $map[$link->getOpponentOrganismeCode()][] = $link;
         }
 
         return $map;
     }
 
     /**
-     * True when `(code, teamKey)` names a real AWAY opponent of the club+season: for a
-     * CLUB write (teamKey null) the code must have an away fixture; for a TEAM write the
-     * teamKey must equal a stamped fixture's normalized label under that code.
+     * @param list<OpponentVenueLink> $links
      */
-    private function isAwayOpponent(string $seasonId, string $code, ?string $teamKey): bool
+    private function hasLink(array $links, string $fbiLabelNorm): bool
     {
-        if (null === $teamKey) {
-            return \in_array($code, $this->resolver->distinctOpponentCodes($seasonId), true);
-        }
-        foreach ($this->fixtures->findAwayBySeason($seasonId) as $fixture) {
-            $fixtureCode = $fixture->getOpponentOrganismeCode();
-            if (null !== $fixtureCode && '' !== $fixtureCode && $fixtureCode === $code
-                && $this->labelNormalizer->normalize(trim($fixture->getOpponentLabel())) === $teamKey) {
+        foreach ($links as $link) {
+            if ($link->getFbiLabelNorm() === $fbiLabelNorm) {
                 return true;
             }
         }
@@ -469,20 +548,66 @@ final class OpponentTravelController extends AbstractController
         return false;
     }
 
-    private function cleanTeamKey(mixed $value): ?string
+    /** True when `$code` is a real AWAY opponent of the club+season. */
+    private function isAwayCode(string $seasonId, string $code): bool
     {
-        if (!\is_string($value)) {
-            return null;
-        }
-        $trimmed = trim($value);
-
-        return '' === $trimmed ? null : mb_substr($trimmed, 0, 180);
+        return \in_array($code, $this->resolver->distinctOpponentCodes($seasonId), true);
     }
 
-    /** @return 'TEAM'|'CLUB'|null */
-    private function cleanScope(mixed $value): ?string
+    /** True when `$fbiLabel` normalises to a salle actually played AWAY under `$code` this season. */
+    private function isAwayFbiLabel(string $seasonId, string $code, string $fbiLabel): bool
     {
-        return \in_array($value, ['TEAM', 'CLUB'], true) ? $value : null;
+        $needle = $this->labelNormalizer->normalize(trim($fbiLabel));
+        if ('' === $needle) {
+            return false;
+        }
+        foreach ($this->fixtures->findAwayBySeason($seasonId) as $fixture) {
+            if (FixtureHomeAway::AWAY !== $fixture->getHomeAway() || $fixture->getOpponentOrganismeCode() !== $code) {
+                continue;
+            }
+            $label = $fixture->getFbiVenueLabel();
+            if (null !== $label && '' !== trim($label) && $this->labelNormalizer->normalize(trim($label)) === $needle) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function consumeManualLimiter(): bool
+    {
+        $user = $this->getUser();
+
+        return !$user instanceof User || $this->opponentTravelManualLimiter->create($user->getId())->consume(1)->isAccepted();
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array{label: string, ref: string|null, lat: float, lon: float}|null
+     */
+    private function parseGym(array $payload): ?array
+    {
+        $label = \is_string($payload['venueLabel'] ?? null) ? trim($payload['venueLabel']) : '';
+        $ref = \is_string($payload['venueExternalRef'] ?? null) && '' !== trim($payload['venueExternalRef'])
+            ? mb_substr(trim($payload['venueExternalRef']), 0, 64)
+            : null;
+        $lat = $this->coordinate($payload['latitude'] ?? null, -90.0, 90.0);
+        $lon = $this->coordinate($payload['longitude'] ?? null, -180.0, 180.0);
+        if ('' === $label || null === $lat || null === $lon) {
+            return null;
+        }
+
+        return ['label' => mb_substr($label, 0, 180), 'ref' => $ref, 'lat' => $lat, 'lon' => $lon];
+    }
+
+    /** @return array<string, mixed> */
+    private function payload(Request $request): array
+    {
+        /** @var mixed $payload */
+        $payload = json_decode($request->getContent(), true);
+
+        return \is_array($payload) ? $payload : [];
     }
 
     private function cleanCode(mixed $value): ?string

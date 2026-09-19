@@ -1,12 +1,24 @@
-Last verified @ 2026-09-19 (sécurité H — les trois dispatchers de trajets honnêtes quand un calcul
-tourne déjà : `{queued:false, alreadyRunning:true}` sur `POST /api/opponents/travel/resolve`,
-`POST /api/venue-travel-times/autofill` et la passe `travel` de `POST /api/opponents/refresh` ; régénéré
-par `api:openapi:export`).
-**205 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (champs ADDITIFS seuls).
-· SHA-256 `c0240f375c2cb92c201acf39777923a331f3c3e6ae5d207593274fa9aa45e861`
+Last verified @ 2026-09-20 (adversaire multi-gymnases, amendement : l'appariement libellé→gymnase devient
+club-scoped ; l'API des adversaires est GROUPÉE PAR CLUB adverse, avec les gestes d'appariement
+POST/PUT/DELETE ; `POST /api/opponents/travel/{manual,auto}` supprimées ; régénéré par `api:openapi:export`).
+**206 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** net (−2 manual/auto,
++3 venues/venue-links/{code} & /{id}).
+· SHA-256 `de441963f0e302c0dba8af574c2d0c844f6a3150510155a9053de7465daa02dd`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Adversaire multi-gymnases (amendement) — appariement club-scoped, backend (2026-09-20)** : **+1 path**
+  net — le gymnase d'un adversaire se rattache au CLUB adverse et au LIBELLÉ de salle (`opponent_venue_link`,
+  club-scoped sans saison), plus au trajet (une CONSTANTE servie depuis `club_travel_cache`). `GET
+  /api/opponents/travel` change de FORME : groupé PAR CLUB adverse → `{code, name, city, precision, hasLogo,
+  fixtureCount, venues:[{id, label, externalRef, source, travelMinutes, travelStatus, approximated,
+  fixtureCount, fallbackVenueName}], unmatchedLabels:[{label, fixtureCount}]}` + `clubGeolocated` au sommet.
+  Nouveaux gestes management : `POST /api/opponents/{code}/venues` (ajouter un gymnase), `POST
+  /api/opponents/{code}/venue-links` (apparier un libellé orphelin), `PUT`/`DELETE
+  /api/opponents/venue-links/{id}` (ré-apparier/fusionner, retirer). `POST /api/opponents/travel/{manual,auto}`
+  SUPPRIMÉES (grain équipe disparu). `POST /api/opponents/travel/resolve` conservée (dispatche le calcul des
+  paires manquantes). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23,
+  `matches[].roundTripMinutes` de forme identique, aucun appel moteur).
 - **Sécurité H — dispatchers de trajets honnêtes si un calcul tourne déjà, backend (2026-09-19)** :
   **+0 path** — les trois routes qui dispatchent un calcul de trajets ne mentent plus quand le verrou
   `travel_compute:{clubId}` est tenu (un second message finirait en `failed`). Elles rendent alors
@@ -61,12 +73,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   champ `resolution.status` du radar `GET /api/fixtures/conflicts`). Elles ne sont acceptées que si un
   côté servi du conflit porte le rôle PLAYER (sinon 422 parlant) ; colonne `length: 30`, aucune migration.
   Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun appel moteur).
-- **Retours de tests — `windows` sur ACCESS_WINDOW_LOST, backend (2026-09-19)** : **+0 path** — un conflit
-  `ACCESS_WINDOW_LOST` du radar `GET /api/fixtures/conflicts` porte désormais un champ ADDITIF `windows`
-  (`array<{dayOfWeek, startTime, endTime}>`) : les accès match DU GYMNASE de la fixture, jour du match
-  d'abord, pour que l'écran dise « placé hors des accès match de {Gymnase} (samedi 14:00–18:00, …) ». Champ
-  hors identité (l'empreinte reste `TYPE:fixtureId`). Backend PUR, contrat backend⇄engine **inchangé**
-  (`CONTRACT_VERSION` 2.21, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

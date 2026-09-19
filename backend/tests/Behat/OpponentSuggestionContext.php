@@ -165,7 +165,7 @@ final class OpponentSuggestionContext extends BaseContext
     {
         if ('' !== $this->opponentCode) {
             $this->dbalExec(\sprintf('DELETE FROM opponent_venue_suggestion WHERE ffbb_organisme_code=\'%s\'', $this->opponentCode), admin: true);
-            $this->dbalExec(\sprintf('DELETE FROM opponent_travel WHERE opponent_organisme_code=\'%s\'', $this->opponentCode), admin: true);
+            $this->dbalExec(\sprintf('DELETE FROM opponent_venue_link WHERE opponent_organisme_code=\'%s\'', $this->opponentCode), admin: true);
             $this->dbalExec(\sprintf('DELETE FROM fixture WHERE opponent_organisme_code=\'%s\'', $this->opponentCode), admin: true);
         }
         if ('' !== $this->clubIdB) {
