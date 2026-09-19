@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyConflictsToParams, applyConsultToParams, applyFbiToParams, applyFilterToParams, applyMatchToParams, applySectionToParams, applyWeekendToParams, decodeConflictsParams, decodeConsultParams, decodeFbiParam, decodeFilterParams, decodeMatchParam, decodeSectionParam, decodeWeekendParam, hasConsultParams } from "./urlState";
+import { applyConflictsToParams, applyConsultToParams, applyFbiToParams, applyFilterToParams, applyMatchToParams, applyOpponentFilterToParams, applySectionToParams, applyWeekendToParams, decodeConflictsParams, decodeConsultParams, decodeFbiParam, decodeFilterParams, decodeMatchParam, decodeOpponentFilter, decodeSectionParam, decodeWeekendParam, hasConsultParams } from "./urlState";
 
 describe("decodeMatchParam / applyMatchToParams (deep-link match=)", () => {
   it("absent ou vide ⇒ null", () => {
@@ -327,5 +327,32 @@ describe("decodeFbiParam / applyFbiToParams (deep-link « FBI — à faire »)",
     const closed = applyFbiToParams(new URLSearchParams("fbi=1&semaine=2026-10-03"), false);
     expect(closed.has("fbi")).toBe(false);
     expect(closed.get("semaine")).toBe("2026-10-03");
+  });
+});
+
+describe("decodeOpponentFilter / applyOpponentFilterToParams (C8 — filtre de l'onglet Adversaires)", () => {
+  it("absent ⇒ null (« Tous » par défaut)", () => {
+    expect(decodeOpponentFilter(new URLSearchParams(""))).toBeNull();
+  });
+
+  it("« tous » (toléré) ou une valeur inconnue ⇒ null", () => {
+    expect(decodeOpponentFilter(new URLSearchParams("filtre=tous"))).toBeNull();
+    expect(decodeOpponentFilter(new URLSearchParams("filtre=xxx"))).toBeNull();
+  });
+
+  it("chacune des deux clés est reconnue", () => {
+    expect(decodeOpponentFilter(new URLSearchParams("filtre=a-localiser"))).toBe("a-localiser");
+    expect(decodeOpponentFilter(new URLSearchParams("filtre=ville"))).toBe("ville");
+  });
+
+  it("null (défaut « Tous ») ⇒ param supprimé", () => {
+    expect(applyOpponentFilterToParams(new URLSearchParams("filtre=ville"), null).toString()).toBe("");
+  });
+
+  it("une clé ⇒ écrite et relue telle quelle, préserve les params sans rapport", () => {
+    const out = applyOpponentFilterToParams(new URLSearchParams("autre=1"), "a-localiser");
+    expect(out.get("filtre")).toBe("a-localiser");
+    expect(out.get("autre")).toBe("1");
+    expect(decodeOpponentFilter(out)).toBe("a-localiser");
   });
 });

@@ -32,6 +32,7 @@ const OPPONENT: OpponentTravel = {
   source: null,
   scope: null,
   overrideVenueLabel: null,
+  travelStatus: "unavailable",
 };
 
 const suggestion = (over: Partial<VenueSuggestion>): VenueSuggestion => ({

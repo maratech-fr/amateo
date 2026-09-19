@@ -27,18 +27,30 @@ export function AwayTravelChip({ travel }: { travel: OpponentTravel | undefined 
       {null === travel.travelMinutes ? (
         <span>· trajet indisponible</span>
       ) : (
-        <span
-          className="inline-flex items-center gap-1"
-          aria-label={`En voiture — trajet estimé à ${travel.travelMinutes} minutes jusqu'à ${place || "l'adversaire"}`}
-        >
-          ·<Car className="size-3.5 shrink-0" aria-hidden="true" />
-          <span className="tabular-nums">
-            {travel.approximated ? "~" : ""}
-            {travel.travelMinutes} min
-          </span>
-          {travel.approximated ? <span className="rounded bg-muted px-1 uppercase tracking-wide">approché</span> : null}
-        </span>
+        <>
+          <span aria-hidden="true">·</span>
+          <TravelMinutes minutes={travel.travelMinutes} approximated={travel.approximated} place={place} />
+        </>
       )}
+    </span>
+  );
+}
+
+/**
+ * Le FRAGMENT « voiture + minutes (+ approché) » d'un trajet estimé — extrait pour être réutilisé
+ * tel quel par la colonne « Trajet » du tableau des adversaires (C8), sans recopier le rendu.
+ * `tabular-nums` sur le nombre ; l'approximation par `~` + le mot « approché », jamais une teinte.
+ * L'`aria-label` porte la phrase complète (le `·` et l'icône restent décoratifs).
+ */
+export function TravelMinutes({ minutes, approximated, place }: { minutes: number; approximated: boolean; place: string }) {
+  return (
+    <span className="inline-flex items-center gap-1" aria-label={`En voiture — trajet estimé à ${minutes} minutes jusqu'à ${place || "l'adversaire"}`}>
+      <Car className="size-3.5 shrink-0" aria-hidden="true" />
+      <span className="tabular-nums">
+        {approximated ? "~" : ""}
+        {minutes} min
+      </span>
+      {approximated ? <span className="rounded bg-muted px-1 uppercase tracking-wide">approché</span> : null}
     </span>
   );
 }

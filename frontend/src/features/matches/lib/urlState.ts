@@ -386,3 +386,32 @@ export function applySectionToParams(current: URLSearchParams, section: ConfigSe
   }
   return next;
 }
+
+/**
+ * C8 — le filtre segmenté de l'onglet Adversaires (`/matchs/adversaires`), ancré `?filtre=<clé>`.
+ * Trois segments : « Tous » (défaut, param ABSENT), « À localiser » (`a-localiser` : au moins une
+ * équipe sans gymnase) et « Gymnase à préciser » (`ville` : localisé mais à la commune seule,
+ * précision CITY). Défaut = « Tous » : absent, `tous` (toléré), ou une valeur inconnue ⇒ `null`
+ * (aucun filtre). Écrire `null` SUPPRIME le param. Mêmes conventions que `?section=`.
+ */
+export type OpponentFilter = "a-localiser" | "ville";
+
+const OPPONENT_FILTERS: OpponentFilter[] = ["a-localiser", "ville"];
+
+function isOpponentFilter(value: string | null): value is OpponentFilter {
+  return null !== value && (OPPONENT_FILTERS as string[]).includes(value);
+}
+
+export function decodeOpponentFilter(params: URLSearchParams): OpponentFilter | null {
+  return isOpponentFilter(params.get("filtre")) ? (params.get("filtre") as OpponentFilter) : null;
+}
+
+export function applyOpponentFilterToParams(current: URLSearchParams, filter: OpponentFilter | null): URLSearchParams {
+  const next = new URLSearchParams(current);
+  if (null === filter) {
+    next.delete("filtre");
+  } else {
+    next.set("filtre", filter);
+  }
+  return next;
+}

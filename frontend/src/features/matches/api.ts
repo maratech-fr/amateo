@@ -1282,6 +1282,12 @@ export interface OpponentTravel {
   /** Le grain qui gouverne ce trajet : surcharge ÉQUIPE, défaut CLUB, ou aucun (null). */
   scope: OpponentTravelScope | null;
   overrideVenueLabel: string | null;
+  /**
+   * C5/C6 — l'état du trajet, SERVI (le front ne le re-dérive pas) : `done` (minutes présentes),
+   * `pending` (un calcul est en cours pour ce club, `club:{clubId}:travel`), `unavailable` (pas
+   * de calcul en cours et pas de minutes). Pilote la colonne « Trajet » et la progression.
+   */
+  travelStatus: "done" | "pending" | "unavailable";
 }
 
 export const getOpponentTravel = async (): Promise<OpponentTravel[]> =>
