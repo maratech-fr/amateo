@@ -1,22 +1,25 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-09-19 (`documentation-update`, PR H « onglet Adversaires » — cache de trajets
-club-scoped + calcul asynchrone). Re-confronté au code cette passe : `App\Entity\ClubTravelCache`
-(`ClubTravelCache.php`, tenant RLS, clé `(club, profile, origin_lat, origin_lon, dest_lat,
-dest_lon)`, `minutes` NON NULL) ✓ · `App\Service\Geo\TravelTimeCache` (`TravelTimeCache.php`,
-`INSERT … ON CONFLICT DO NOTHING`, clé `%.5f` canonique) ✓ · migration
+Last verified @ 2026-09-19 (`documentation-update`, retouches revue sécurité H — `81772f59`).
+Re-confronté au code cette passe : `IgnRoutingClient::MAX_RETRY_AFTER_SECONDS = 5.0`
+(`IgnRoutingClient.php:63`, abandon de la paire au-delà plutôt qu'un `sleep` du `Retry-After` reçu)
+✓ · les trois dispatchers (`OpponentRefreshController`, `OpponentTravelController`,
+`VenueTravelTimeAutofillController`) lisent `TravelComputeLock::isHeld` avant de dispatcher et
+rendent `{queued: false, alreadyRunning: true}` sinon ✓. Reste confronté à la passe précédente
+(2026-09-19, PR H « onglet Adversaires » — cache de trajets club-scoped + calcul asynchrone) :
+`App\Entity\ClubTravelCache` (`ClubTravelCache.php`, tenant RLS, clé `(club, profile, origin_lat,
+origin_lon, dest_lat, dest_lon)`, `minutes` NON NULL) ✓ · `App\Service\Geo\TravelTimeCache`
+(`TravelTimeCache.php`, `INSERT … ON CONFLICT DO NOTHING`, clé `%.5f` canonique) ✓ · migration
 `Version20260920120000::seedStatements()` (seed one-shot avant RLS) ✓ · `IgnRoutingClient::pace`/
-`MIN_INTERVAL_SECONDS = 1.0`/`MAX_ATTEMPTS = 3` (`IgnRoutingClient.php:55,58,223-234`) ✓ ·
-`App\Message\ComputeTravelTimesMessage` + `App\MessageHandler\ComputeTravelTimesHandler`
-(`WORKER_BUDGET_SECONDS = 180`, `PROGRESS_STEP = 5`) ✓ · `App\Service\TravelComputeLock` (clé
-`travel_compute:club:{clubId}`, patron `MatchPlacementLock`) ✓ · `OpponentTravelController::resolve`
-dispatche `ComputeTravelTimesMessage` au lieu de router en ligne (`OpponentTravelController.php:227`)
-✓ · `ClubSiegeController::coordinatesChanged` (invalidation + dispatch, `ClubSiegeController.php:89,
-103-112`) ✓. Reste confronté à la passe précédente (2026-09-19, PR F « retours de tests du
-18-19/09 ») : `BanGeocodingClient::geocodeTop` (`BanGeocodingClient.php:70`) ✓ ·
-`ClubSiegeController` SEC-15 ✓. Reste confronté à la passe d'avant (2026-09-18, PR E — recalage du
-contrat 2.23) : hosts en constantes dures, `BATCH_BUDGET_SECONDS = 30.0`, `MAX_AUTOFILL_PAIRS = 120`,
-rate-limit `venue_travel_time_autofill` 10/h.
+`MIN_INTERVAL_SECONDS = 1.0`/`MAX_ATTEMPTS = 3` ✓ · `App\Message\ComputeTravelTimesMessage` +
+`App\MessageHandler\ComputeTravelTimesHandler` (`WORKER_BUDGET_SECONDS = 180`, `PROGRESS_STEP = 5`)
+✓ · `App\Service\TravelComputeLock` (clé `travel_compute:club:{clubId}`, patron
+`MatchPlacementLock`) ✓ · `ClubSiegeController::coordinatesChanged` (invalidation + dispatch) ✓.
+Reste confronté à la passe d'avant (2026-09-19, PR F « retours de tests du 18-19/09 ») :
+`BanGeocodingClient::geocodeTop` ✓ · `ClubSiegeController` SEC-15 ✓. Reste confronté à la passe
+d'avant (2026-09-18, PR E — recalage du contrat 2.23) : hosts en constantes dures,
+`BATCH_BUDGET_SECONDS = 30.0`, `MAX_AUTOFILL_PAIRS = 120`, rate-limit
+`venue_travel_time_autofill` 10/h.
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,
@@ -123,6 +126,14 @@ lot (`travelMinutesBatch`) est désormais SÉRIEL (la fenêtre de 8 requêtes co
 le quota 1/s rend la concurrence contre-productive, elle ne gagnait que des 429), même budget mural
 (`BATCH_BUDGET_SECONDS`) et même distinction `budgetExceededKeys` qu'avant.
 
+⚠ **`Retry-After` HONORÉ, mais plafonné à 5 s** (`MAX_RETRY_AFTER_SECONDS`, revue sécurité C6,
+2026-09-19) : au-delà, la paire est **abandonnée** (`null` + warning « réessai différé, paire
+abandonnée ») plutôt que de `sleep` la valeur reçue — un `Retry-After: 3600` endormirait le worker
+UNIQUE et dépasserait de toute façon le plafond HTTP 60 s du rail synchrone
+(`carMinutesFromClub`/auto-locate). Le pire cas par paire reste donc borné à quelques dizaines de
+secondes (pacing 1 s + réessais bornés + timeout 5 s, jamais l'heure) — cité par le commentaire du
+TTL du verrou (`ComputeTravelTimesHandler::LOCK_TTL_MARGIN_SECONDS`).
+
 ### Cache de trajets club-scoped (`ClubTravelCache`, C4, 2026-09-19)
 
 Un trajet routier est une **CONSTANTE** : deux coordonnées (arrondies à 5 décimales, ~1 m) et un
@@ -170,6 +181,13 @@ gymnases à router. Le calcul (adversaires ET matrice de gymnases) part donc au 
   `OPPONENTS`|`VENUE_MATRIX`) — dispatché par `POST /api/opponents/travel/resolve`,
   `POST /api/venue-travel-times/autofill`, la passe (c) de `POST /api/opponents/refresh`, et
   `PATCH /api/club/siege` quand le siège bouge réellement.
+  ⚠ **Les trois dispatchers contrôleur (hors le siège) ne dispatchent PAS si un calcul est déjà en
+  cours** (revue sécurité C6, 2026-09-19) : `App\Service\TravelComputeLock::isHeld($clubId)` lu
+  AVANT le `dispatch` — un second message contre un verrou déjà tenu finirait en
+  `RecoverableMessageHandlingException` répétée (voir ci-dessous) sans jamais aboutir. Réponse
+  honnête `{queued: false, alreadyRunning: true}` (champ additif OpenAPI) plutôt qu'une mise en
+  file qui échouerait en silence ; pour `/opponents/refresh`, seule la passe (c) est concernée —
+  (a)/(b) tournent toujours. Le front toaste « Un calcul de trajets est déjà en cours. ».
 - **`App\MessageHandler\ComputeTravelTimesHandler`** : pose le GUC tenant lui-même (aucune requête
   HTTP dans le worker → aucun listener pour le faire), acquiert `App\Service\TravelComputeLock`
   (Redis, `SETEX NX` + compare-and-delete par token, patron `MatchPlacementLock`, clé

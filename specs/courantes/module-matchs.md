@@ -1,15 +1,19 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-19 (`documentation-update`, PR H « onglet Adversaires » — cache de trajets,
-calcul asynchrone, logo fédéral, deep-link `match=`, tri du rapprochement FFBB). Confronté au code
-cette passe : `OpponentsPage.tsx` (l'onglet dédié, `OpponentTravelCard` a disparu — nouvelle section
-« Écran Adversaires ») ; `App\Entity\ClubTravelCache`/`App\Service\Geo\TravelTimeCache` (cache
-club-scoped, §1) ; `App\Message\ComputeTravelTimesMessage`/`ComputeTravelTimesHandler` (calcul
-asynchrone, §1/§ Écran Adversaires) ; `OpponentTravelController::opponentView` (`travelStatus`,
-`hasLogo`, §1) ; `OpponentLogoController`/`opponent-logo.tsx` (logo fédéral, §1) ;
+Last verified @ 2026-09-19 (`documentation-update`, retouches revue sécurité H — `81772f59`).
+Confronté au code cette passe : les trois dispatchers de trajets répondent `{queued: false,
+alreadyRunning: true}` sans dispatcher quand `TravelComputeLock` est tenu — § Écran Adversaires
+recalée (toast « Un calcul de trajets est déjà en cours. »). Reste confronté à la passe précédente
+(2026-09-19, PR H « onglet Adversaires » — cache de trajets, calcul asynchrone, logo fédéral,
+deep-link `match=`, tri du rapprochement FFBB) : `OpponentsPage.tsx` (l'onglet dédié,
+`OpponentTravelCard` a disparu — nouvelle section « Écran Adversaires ») ;
+`App\Entity\ClubTravelCache`/`App\Service\Geo\TravelTimeCache` (cache club-scoped, §1) ;
+`App\Message\ComputeTravelTimesMessage`/`ComputeTravelTimesHandler` (calcul asynchrone, §1/§ Écran
+Adversaires) ; `OpponentTravelController::opponentView` (`travelStatus`, `hasLogo`, §1) ;
+`OpponentLogoController`/`opponent-logo.tsx` (logo fédéral, §1) ;
 `lib/urlState.ts::decodeMatchParam` + `ConflictsPage.revealSearch` (deep-link `match=`, §5/§6) ;
 `lib/creatableSort.ts` (tri du rapprochement, §7) ; `ConfigurationPage.tsx` (quatre
-`AccordionSection`, la section Adversaires est partie, §8). Reste confronté à la passe précédente
+`AccordionSection`, la section Adversaires est partie, §8). Reste confronté à la passe d'avant
 (2026-09-19, PR G « suppression d'une rencontre = ses entrées disparaissent ») :
 `FixtureStateProcessor::cascadeBeforeDelete` → `FbiCorrectionLedger::removeForFixture` (cascade
 applicative, §1). Reste confronté à la passe d'avant (2026-09-19, PR G « todo FBI unique ») :
@@ -678,7 +682,10 @@ stables + compteur chiffré frère, dérivée de `travelStatus` (rafraîchi par 
 pendant le calcul, aucun spinner par ligne. **Échec partiel** : `WarningPanel` « n trajets n'ont pas
 pu être calculés » + bouton « Réessayer les manquants » (`POST /api/opponents/travel/resolve`, qui
 ne route déjà que les manquants). Bandeau siège (`useClubGeolocated`, § Prérequis du trajet AUTO)
-et modale `LocateOpponentModal` réutilisés tels quels.
+et modale `LocateOpponentModal` réutilisés tels quels. **Revue sécurité H (2026-09-19)** : si un
+calcul de trajets tourne déjà pour le club (verrou tenu), « Réessayer les manquants »/« Mettre à
+jour » ne redispatche rien — toast « Un calcul de trajets est déjà en cours. » (`alreadyRunning`
+servi par la route, § Cache de trajets et calcul asynchrone).
 
 ## 10. Écran Semaine type (`/matchs/semaine-type`)
 
