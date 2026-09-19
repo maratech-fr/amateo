@@ -23,6 +23,7 @@ use App\Service\Basketball\FfbbSalleResolver;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\OpponentTravelResolver;
 use App\Service\SeasonResolver;
+use App\Tests\Double\FrozenClock;
 use App\Tests\Double\SteppingClock;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -440,11 +441,13 @@ final class OpponentTravelResolverTest extends WebTestCase
      */
     private function countingResolver(int &$calls): OpponentTravelResolver
     {
+        // FrozenClock : le pacing 1/s ne consomme aucun budget (sleep no-op), donc le
+        // budget ne mord jamais — le test isole le CAP DUR (60), pas le budget de mur.
         $ign = new IgnRoutingClient(new MockHttpClient(function () use (&$calls): MockResponse {
             ++$calls;
 
             return new MockResponse((string) json_encode(['duration' => 600]));
-        }), new MockClock);
+        }), new FrozenClock);
 
         return new OpponentTravelResolver(
             $this->em,
