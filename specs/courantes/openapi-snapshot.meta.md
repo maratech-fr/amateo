@@ -1,11 +1,19 @@
-Last verified @ 2026-09-19 (C7 — `logo_id` sur l'annuaire fédéral : route MEMBRE
-`GET /api/opponents/{code}/logo` + booléen `hasLogo` sur `GET /api/opponents/travel` ; régénéré par
-`api:openapi:export`).
-**205 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** (la route logo adversaire).
-· SHA-256 `67f6a2586a1685134028b24c4260e148c63b45e0196d7a7665f730401c705ee9`
+Last verified @ 2026-09-19 (sécurité H — les trois dispatchers de trajets honnêtes quand un calcul
+tourne déjà : `{queued:false, alreadyRunning:true}` sur `POST /api/opponents/travel/resolve`,
+`POST /api/venue-travel-times/autofill` et la passe `travel` de `POST /api/opponents/refresh` ; régénéré
+par `api:openapi:export`).
+**205 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (champs ADDITIFS seuls).
+· SHA-256 `c0240f375c2cb92c201acf39777923a331f3c3e6ae5d207593274fa9aa45e861`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Sécurité H — dispatchers de trajets honnêtes si un calcul tourne déjà, backend (2026-09-19)** :
+  **+0 path** — les trois routes qui dispatchent un calcul de trajets ne mentent plus quand le verrou
+  `travel_compute:{clubId}` est tenu (un second message finirait en `failed`). Elles rendent alors
+  `{queued:false, alreadyRunning:true}` sans rien dispatcher : champ ADDITIF `alreadyRunning` (booléen) sur
+  `POST /api/opponents/travel/resolve`, `POST /api/venue-travel-times/autofill`, et sur le bloc `travel` de
+  `POST /api/opponents/refresh` (dont les passes codes/gymnases restent jouées). Backend PUR, contrat
+  backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23, aucun appel moteur).
 - **C7 — logo fédéral de l'adversaire, backend (2026-09-19)** : **+1 path** — nouvelle route MEMBRE
   `GET /api/opponents/{code}/logo` (jamais publique : le logo d'un adversaire de club est une donnée du
   module matchs) qui re-héberge PARESSEUSEMENT le logo fédéral au premier GET (uuid `logo_id` que le
@@ -58,12 +66,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   (`array<{dayOfWeek, startTime, endTime}>`) : les accès match DU GYMNASE de la fixture, jour du match
   d'abord, pour que l'écran dise « placé hors des accès match de {Gymnase} (samedi 14:00–18:00, …) ». Champ
   hors identité (l'empreinte reste `TYPE:fixtureId`). Backend PUR, contrat backend⇄engine **inchangé**
-  (`CONTRACT_VERSION` 2.21, aucun appel moteur).
-- **Retours de tests — `failedSteps` sur la mise à jour des adversaires, backend (2026-09-19)** : **+0 path** —
-  la réponse 200 de `POST /api/opponents/refresh` gagne un champ ADDITIF `failedSteps` (`array<'codes'|'auto-locate'|'travel'>`) :
-  les passes best-effort qui ont levé et sont retombées sur leur résultat neutre. Vide en régime nominal ; non-vide,
-  le front signale une mise à jour PARTIELLE (au lieu d'un succès mensonger) et invite à relancer. La forme des trois
-  blocs (`codes`/`autoLocated`/`travel`) est inchangée. Backend PUR, contrat backend⇄engine **inchangé**
   (`CONTRACT_VERSION` 2.21, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît

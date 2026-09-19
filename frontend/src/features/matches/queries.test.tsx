@@ -71,12 +71,12 @@ vi.mock("./api", () => ({
   placeMatches: vi.fn().mockResolvedValue({ placed: 0, skipped: 0, unplaced: [], diagnostics: [] }),
   setOpponentTravelManual: vi.fn().mockResolvedValue({}),
   setOpponentTravelAuto: vi.fn().mockResolvedValue({}),
-  resolveOpponentTravel: vi.fn().mockResolvedValue({ queued: true }),
+  resolveOpponentTravel: vi.fn().mockResolvedValue({ queued: true, alreadyRunning: false }),
   resolveOpponents: vi.fn().mockResolvedValue({ resolved: 12, unresolved: [], skipped: 0, stamped: 40 }),
   refreshOpponents: vi.fn().mockResolvedValue({
     codes: { resolved: 12, unresolved: [], skipped: 0, stamped: 40 },
     autoLocated: { located: 8, ambiguous: 0, unmatched: 0, skipped: 0 },
-    travel: { queued: true, pending: 40 },
+    travel: { queued: true, alreadyRunning: false, pending: 40 },
     failedSteps: [],
   }),
   createVenueUnavailability: vi.fn().mockResolvedValue({ id: "u1", venueId: "v", startDate: "2026-10-01", endDate: "2026-10-02", label: null }),
@@ -299,7 +299,7 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     vi.mocked(matchesApi.refreshOpponents).mockResolvedValueOnce({
       codes: { resolved: 0, unresolved: [], skipped: 0, stamped: 0 },
       autoLocated: { located: 0, ambiguous: 0, unmatched: 0, skipped: 0 },
-      travel: { queued: true, pending: 0 },
+      travel: { queued: true, alreadyRunning: false, pending: 0 },
       failedSteps: ["codes"],
     });
     const client = makeClient();
@@ -326,7 +326,7 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
       autoLocated: { located: 3, ambiguous: 0, unmatched: 0, skipped: 0 },
       // C6 — les trajets partent au worker : leur échec se lit ensuite dans `travelStatus`,
       // plus dans ce toast synchrone. Seuls les CODES non retrouvés y comptent (1).
-      travel: { queued: true, pending: 4 },
+      travel: { queued: true, alreadyRunning: false, pending: 4 },
       failedSteps: [],
     });
     const { result } = renderHook(() => ({ update: useUpdateOpponents() }), { wrapper: wrapperFor(makeClient()) });

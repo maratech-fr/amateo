@@ -390,9 +390,10 @@ export function useResolveOpponentTravel() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => matchesApi.resolveOpponentTravel(),
-    onSuccess: () => {
+    onSuccess: (result) => {
       invalidateTravel(queryClient);
-      toast.success("Calcul des trajets manquants lancé.");
+      // Sécurité H — un calcul déjà en cours n'a rien dispatché : on le dit honnêtement.
+      toast.success(result.alreadyRunning ? "Un calcul de trajets est déjà en cours." : "Calcul des trajets manquants lancé.");
     },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
@@ -445,11 +446,15 @@ export function useUpdateOpponents(): UpdateOpponentsController {
           // progression et les trajets arrivent ensuite par Mercure, `travelStatus` par ligne).
           const trajets = result.travel.pending;
           const failed = result.codes.unresolved.length;
+          // Sécurité H — si un calcul de trajets tourne déjà, la passe (c) n'a rien dispatché :
+          // on le dit au lieu de « calcul de n trajets lancé » (les passes codes/gymnases, elles,
+          // ont bien tourné).
+          const travelSegment = result.travel.alreadyRunning ? "un calcul de trajets est déjà en cours" : `calcul de ${trajets} trajet${trajets > 1 ? "s" : ""} lancé`;
           toast.success(
             [
               `${codes} code${codes > 1 ? "s" : ""} retrouvé${codes > 1 ? "s" : ""}${0 < failed ? ` (${failed} en échec)` : ""}`,
               `${located} gymnase${located > 1 ? "s" : ""} localisé${located > 1 ? "s" : ""}`,
-              `calcul de ${trajets} trajet${trajets > 1 ? "s" : ""} lancé`,
+              travelSegment,
             ].join(" · "),
           );
         }

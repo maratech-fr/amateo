@@ -221,12 +221,19 @@ final class OpponentTravelController extends AbstractController
             return $this->json(['error' => 'Trop de calculs de trajet — réessayez plus tard.'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
+        // Un calcul est-il DÉJÀ en cours pour ce club ? Dispatcher un second message le ferait
+        // échouer (le handler ne prend pas le verrou déjà tenu → `failed` après 3 retries) : on
+        // le dit honnêtement au lieu de faire miroiter une mise en file.
+        if ($this->travelComputeLock->isHeld($clubId)) {
+            return $this->json(['queued' => false, 'alreadyRunning' => true]);
+        }
+
         // C6 — le calcul quitte le rail synchrone (rafale IGN pacée > plafond HTTP) : on le
         // DISPATCHE au worker (`club:{clubId}:travel` pousse la progression). `resolve()` ne
         // route déjà QUE les trajets manquants (C5), donc « Réessayer les manquants » = ce POST.
         $this->messageBus->dispatch(new ComputeTravelTimesMessage($clubId, $season->getId(), TravelComputeScope::OPPONENTS));
 
-        return $this->json(['queued' => true]);
+        return $this->json(['queued' => true, 'alreadyRunning' => false]);
     }
 
     /**

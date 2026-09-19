@@ -57,6 +57,13 @@ final class IgnRoutingClient
     /** A 429 is retried at most this many times (Retry-After, else 1 s) before null. */
     private const int MAX_ATTEMPTS = 3;
 
+    /**
+     * Plafond du `Retry-After` HONORÉ : au-delà, on ABANDONNE la paire (null) plutôt que
+     * d'endormir le worker unique — un `Retry-After: 3600` bloquerait la file entière, et
+     * dépasserait le plafond HTTP 60 s du rail synchrone (`carMinutesFromClub`/auto-locate).
+     */
+    private const float MAX_RETRY_AFTER_SECONDS = 5.0;
+
     private const string ITINERARY_URL = 'https://data.geopf.fr/navigation/itineraire';
     private const string RESOURCE = 'bdtopo-osrm';
     private const float TIMEOUT = 5.0;
@@ -199,6 +206,17 @@ final class IgnRoutingClient
 
             if (429 === $status) {
                 $retryAfter = $this->retryAfterSeconds($response);
+                if ($retryAfter > self::MAX_RETRY_AFTER_SECONDS) {
+                    // Un Retry-After long endormirait le worker unique et dépasserait le plafond
+                    // HTTP : on abandonne la paire plutôt que de bloquer la file.
+                    $this->logger->warning('IGN routing rate-limited — quota IGN : réessai différé, paire abandonnée', [
+                        'profile' => $profile,
+                        'attempt' => $attempt,
+                        'retryAfterSeconds' => $retryAfter,
+                    ]);
+
+                    return null;
+                }
                 $this->logger->warning('IGN routing rate-limited (HTTP 429)', [
                     'profile' => $profile,
                     'attempt' => $attempt,

@@ -10,6 +10,7 @@ use App\Message\ComputeTravelTimesMessage;
 use App\Service\Geo\VenueTravelTimeAutofillService;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
+use App\Service\TravelComputeLock;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -39,6 +40,7 @@ final class VenueTravelTimeAutofillController extends AbstractController
         private readonly RequestStack $requestStack,
         private readonly RateLimiterFactory $venueTravelTimeAutofillLimiter,
         private readonly MessageBusInterface $messageBus,
+        private readonly TravelComputeLock $travelComputeLock,
     ) {}
 
     #[Route('/api/venue-travel-times/autofill', name: 'api_venue_travel_times_autofill', methods: ['POST'])]
@@ -71,8 +73,14 @@ final class VenueTravelTimeAutofillController extends AbstractController
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        // Un calcul est-il DÉJÀ en cours pour ce club ? Un second dispatch finirait en `failed`
+        // (le handler ne reprend pas le verrou tenu) : on le dit au lieu de le mettre en file.
+        if ($this->travelComputeLock->isHeld($clubId)) {
+            return $this->json(['queued' => false, 'alreadyRunning' => true]);
+        }
+
         $this->messageBus->dispatch(new ComputeTravelTimesMessage($clubId, $seasonId, TravelComputeScope::VENUE_MATRIX));
 
-        return $this->json(['queued' => true]);
+        return $this->json(['queued' => true, 'alreadyRunning' => false]);
     }
 }

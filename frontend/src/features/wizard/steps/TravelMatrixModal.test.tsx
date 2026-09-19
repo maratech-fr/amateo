@@ -13,8 +13,11 @@ const autofillResultState: { value: VenueTravelTimeAutofillResult } = { value: {
 
 const createMut = vi.fn();
 const updateMut = vi.fn();
-// L'autofill DISPATCHE : onSuccess ne reçoit plus de verdict, il démarre l'écoute du flux.
-const autofillMut = vi.fn((_: undefined, opts?: { onSuccess?: () => void }) => opts?.onSuccess?.());
+// L'autofill DISPATCHE : onSuccess reçoit `{queued, alreadyRunning}` (sécurité H), pas un verdict.
+const autofillResponseState = { alreadyRunning: false };
+const autofillMut = vi.fn((_: undefined, opts?: { onSuccess?: (r: { queued: boolean; alreadyRunning: boolean }) => void }) =>
+  opts?.onSuccess?.({ queued: !autofillResponseState.alreadyRunning, alreadyRunning: autofillResponseState.alreadyRunning }),
+);
 
 vi.mock("../queries", () => ({
   useWizardVenues: () => ({ data: venuesState.data }),
@@ -55,6 +58,7 @@ beforeEach(() => {
   venuesState.data = [venue("v1", "Alpha"), venue("v2", "Beta"), venue("v3", "Gamma")];
   matrixState.data = [];
   autofillResultState.value = { filled: 0, unresolved: [] };
+  autofillResponseState.alreadyRunning = false;
   createMut.mockClear();
   updateMut.mockClear();
   autofillMut.mockClear();
@@ -80,6 +84,17 @@ describe("TravelMatrixModal — première ouverture (consentement)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Calculer les trajets" }));
     expect(autofillMut).toHaveBeenCalledTimes(1);
+  });
+
+  it("un calcul DÉJÀ en cours (sécurité H) ne bascule PAS en « Calcul des trajets en cours… »", () => {
+    autofillResponseState.alreadyRunning = true;
+    matrixState.data = [];
+    renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Calculer les trajets" }));
+    expect(autofillMut).toHaveBeenCalledTimes(1);
+    // Rien n'a été dispatché : l'écran reste au consentement, pas de fausse progression.
+    expect(screen.queryByText(/Calcul des trajets en cours/)).not.toBeInTheDocument();
   });
 });
 

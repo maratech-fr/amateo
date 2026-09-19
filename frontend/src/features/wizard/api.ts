@@ -517,7 +517,7 @@ export const updateVenueTravelTime = (id: string, body: VenueTravelTimePayload):
 
 /** POST /api/venue-travel-times/autofill (tirets) — C6 : DISPATCHE le calcul au worker (cap 422
  *  synchrone), la progression et le verdict arrivent par Mercure. 422 cap / 429 / 409. */
-export const autofillVenueTravelTimes = (): Promise<{ queued: boolean }> => api.post("venue-travel-times/autofill", { json: {} }).json();
+export const autofillVenueTravelTimes = (): Promise<{ queued: boolean; alreadyRunning: boolean }> => api.post("venue-travel-times/autofill", { json: {} }).json();
 
 
 // --- Levier d'intensité de la règle de trajet (P2-53 RMM-8 PR-4) ---

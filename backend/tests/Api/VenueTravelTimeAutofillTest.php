@@ -14,6 +14,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\VenueTravelTimeSource;
 use App\Service\Geo\VenueTravelTimeAutofillService;
 use App\Service\SeasonResolver;
+use App\Service\TravelComputeLock;
 use App\Tests\Double\IgnRoutingHttpClientStub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -95,6 +96,28 @@ final class VenueTravelTimeAutofillTest extends WebTestCase
         $this->client->request('POST', '/api/venue-travel-times/autofill', [], [], $this->authHeaders($user));
         self::assertResponseIsSuccessful();
         self::assertTrue($this->responseData()['queued'] ?? false, 'le calcul est mis en file, jamais joué en ligne');
+        self::assertFalse($this->responseData()['alreadyRunning'] ?? true, 'aucun calcul en cours → dispatché');
+    }
+
+    public function testTheEndpointRefusesWhenAComputationIsAlreadyRunning(): void
+    {
+        [$club, $user, $season] = $this->createClubUser('running');
+        $this->geoVenue($club, $season, 'A', '45.750000', '4.850000');
+        $this->geoVenue($club, $season, 'B', '45.760000', '4.860000');
+
+        // Sécurité H — un calcul tourne déjà pour ce club (verrou tenu) : un second dispatch
+        // finirait en `failed`. On répond honnêtement `{queued:false, alreadyRunning:true}`.
+        $lock = self::getContainer()->get(TravelComputeLock::class);
+        $token = $lock->acquire($club->getId(), 60);
+        self::assertNotNull($token, 'le verrou du club est pris pour simuler un calcul en cours');
+        try {
+            $this->client->request('POST', '/api/venue-travel-times/autofill', [], [], $this->authHeaders($user));
+            self::assertResponseIsSuccessful();
+            self::assertFalse($this->responseData()['queued'], 'rien n\'est mis en file pendant un calcul en cours');
+            self::assertTrue($this->responseData()['alreadyRunning'], 'la réponse dit qu\'un calcul est déjà en cours');
+        } finally {
+            $lock->release($club->getId(), $token);
+        }
     }
 
     public function testMissingGeoAndRoutingFailureAreUnresolvedOthersFilled(): void

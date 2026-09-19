@@ -197,8 +197,13 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
     setAutofillError(null);
     autofill.mutate(undefined, {
       // C6 — la réponse dit seulement que le calcul est EN FILE : on marque « lancé » et le flux
-      // fait le reste (progression puis verdict au terminal).
-      onSuccess: () => setLaunched(true),
+      // fait le reste (progression puis verdict au terminal). Sécurité H — si un calcul tourne
+      // déjà (rien dispatché), on NE bascule PAS en « en cours… » (le hook émet le toast).
+      onSuccess: (result) => {
+        if (!result.alreadyRunning) {
+          setLaunched(true);
+        }
+      },
       onError: async (e) => setAutofillError(await apiErrorMessage(e)),
     });
   };

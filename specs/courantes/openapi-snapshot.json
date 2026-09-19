@@ -9026,11 +9026,15 @@
                                         },
                                         "travel": {
                                             "type": "object",
-                                            "description": "Pass (c): the AUTO travel recompute \u2014 DISPATCHED to the worker (paced IGN routing > HTTP ceiling); progress pushed on the club Mercure travel topic",
+                                            "description": "Pass (c): the AUTO travel recompute \u2014 DISPATCHED to the worker (paced IGN routing > HTTP ceiling); progress pushed on the club Mercure travel topic. When a travel computation is already running for the club, nothing is dispatched (queued=false, alreadyRunning=true) \u2014 passes (a)/(b) still ran.",
                                             "properties": {
                                                 "queued": {
                                                     "type": "boolean",
                                                     "description": "The travel computation was dispatched to the worker"
+                                                },
+                                                "alreadyRunning": {
+                                                    "type": "boolean",
+                                                    "description": "A travel computation was already in flight for this club, so nothing was dispatched"
                                                 },
                                                 "pending": {
                                                     "type": "integer",
@@ -9527,7 +9531,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Queues an ASYNC recompute of the AUTO car travel from the club si\u00e8ge to every away opponent whose travel is MISSING (a travel is a constant \u2014 an already-known one is never recomputed). The cap is checked synchronously (422); the paced IGN routing runs in the worker, progress pushed on the club Mercure travel topic. A MANUAL override is left untouched.",
+                        "description": "Queues an ASYNC recompute of the AUTO car travel from the club si\u00e8ge to every away opponent whose travel is MISSING (a travel is a constant \u2014 an already-known one is never recomputed). The cap is checked synchronously (422); the paced IGN routing runs in the worker, progress pushed on the club Mercure travel topic. A MANUAL override is left untouched. When a travel computation is already running for the club, nothing is dispatched (queued=false, alreadyRunning=true).",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -9536,6 +9540,10 @@
                                         "queued": {
                                             "type": "boolean",
                                             "description": "The computation was dispatched to the worker"
+                                        },
+                                        "alreadyRunning": {
+                                            "type": "boolean",
+                                            "description": "A travel computation was already in flight for this club, so nothing was dispatched"
                                         }
                                     }
                                 }
@@ -20271,7 +20279,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Queues an ASYNC autofill of the AUTO driving/walking minutes for every geolocated venue pair (the paced IGN routing runs in the worker). The cap is checked synchronously (422). Progress and the terminal verdict ({filled, unresolved}) are pushed on the club Mercure travel topic; a MANUAL value is NEVER overwritten.",
+                        "description": "Queues an ASYNC autofill of the AUTO driving/walking minutes for every geolocated venue pair (the paced IGN routing runs in the worker). The cap is checked synchronously (422). Progress and the terminal verdict ({filled, unresolved}) are pushed on the club Mercure travel topic; a MANUAL value is NEVER overwritten. When a travel computation is already running for the club, nothing is dispatched (queued=false, alreadyRunning=true).",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -20280,6 +20288,10 @@
                                         "queued": {
                                             "type": "boolean",
                                             "description": "The computation was dispatched to the worker"
+                                        },
+                                        "alreadyRunning": {
+                                            "type": "boolean",
+                                            "description": "A travel computation was already in flight for this club, so nothing was dispatched"
                                         }
                                     }
                                 }

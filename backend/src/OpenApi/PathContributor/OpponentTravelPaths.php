@@ -46,10 +46,11 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
             operationId: 'autofillVenueTravelTimes',
             tags: ['Venue'],
             responses: [
-                '200' => $this->schemas->jsonResponse('Queues an ASYNC autofill of the AUTO driving/walking minutes for every geolocated venue pair (the paced IGN routing runs in the worker). The cap is checked synchronously (422). Progress and the terminal verdict ({filled, unresolved}) are pushed on the club Mercure travel topic; a MANUAL value is NEVER overwritten.', [
+                '200' => $this->schemas->jsonResponse('Queues an ASYNC autofill of the AUTO driving/walking minutes for every geolocated venue pair (the paced IGN routing runs in the worker). The cap is checked synchronously (422). Progress and the terminal verdict ({filled, unresolved}) are pushed on the club Mercure travel topic; a MANUAL value is NEVER overwritten. When a travel computation is already running for the club, nothing is dispatched (queued=false, alreadyRunning=true).', [
                     'type' => 'object',
                     'properties' => [
                         'queued' => ['type' => 'boolean', 'description' => 'The computation was dispatched to the worker'],
+                        'alreadyRunning' => ['type' => 'boolean', 'description' => 'A travel computation was already in flight for this club, so nothing was dispatched'],
                     ],
                 ]),
                 '400' => new Response('No club or season in context'),
@@ -187,10 +188,11 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
             operationId: 'resolveOpponentTravel',
             tags: ['Fixture'],
             responses: [
-                '200' => $this->schemas->jsonResponse('Queues an ASYNC recompute of the AUTO car travel from the club siège to every away opponent whose travel is MISSING (a travel is a constant — an already-known one is never recomputed). The cap is checked synchronously (422); the paced IGN routing runs in the worker, progress pushed on the club Mercure travel topic. A MANUAL override is left untouched.', [
+                '200' => $this->schemas->jsonResponse('Queues an ASYNC recompute of the AUTO car travel from the club siège to every away opponent whose travel is MISSING (a travel is a constant — an already-known one is never recomputed). The cap is checked synchronously (422); the paced IGN routing runs in the worker, progress pushed on the club Mercure travel topic. A MANUAL override is left untouched. When a travel computation is already running for the club, nothing is dispatched (queued=false, alreadyRunning=true).', [
                     'type' => 'object',
                     'properties' => [
                         'queued' => ['type' => 'boolean', 'description' => 'The computation was dispatched to the worker'],
+                        'alreadyRunning' => ['type' => 'boolean', 'description' => 'A travel computation was already in flight for this club, so nothing was dispatched'],
                     ],
                 ]),
                 '400' => new Response('No club or season in context'),
@@ -254,8 +256,9 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                             'unmatched' => ['type' => 'integer', 'description' => 'Opponent teams with no unique federal salle for their file label'],
                             'skipped' => ['type' => 'integer', 'description' => 'Opponent teams left untouched because a MANUAL override already governs them'],
                         ]],
-                        'travel' => ['type' => 'object', 'description' => 'Pass (c): the AUTO travel recompute — DISPATCHED to the worker (paced IGN routing > HTTP ceiling); progress pushed on the club Mercure travel topic', 'properties' => [
+                        'travel' => ['type' => 'object', 'description' => 'Pass (c): the AUTO travel recompute — DISPATCHED to the worker (paced IGN routing > HTTP ceiling); progress pushed on the club Mercure travel topic. When a travel computation is already running for the club, nothing is dispatched (queued=false, alreadyRunning=true) — passes (a)/(b) still ran.', 'properties' => [
                             'queued' => ['type' => 'boolean', 'description' => 'The travel computation was dispatched to the worker'],
+                            'alreadyRunning' => ['type' => 'boolean', 'description' => 'A travel computation was already in flight for this club, so nothing was dispatched'],
                             'pending' => ['type' => 'integer', 'description' => 'How many distinct away opponents the queued computation will process'],
                         ]],
                         'failedSteps' => ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['codes', 'auto-locate', 'travel']], 'description' => 'Passes that threw and fell back to their neutral (zero) result — empty in the nominal case. A non-empty list means the update is PARTIAL: re-run to continue.'],

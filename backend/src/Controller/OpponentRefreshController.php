@@ -13,6 +13,7 @@ use App\Service\Basketball\OpponentLocationResolver;
 use App\Service\Geo\OpponentVenueAutoLocator;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonResolver;
+use App\Service\TravelComputeLock;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
@@ -79,6 +80,7 @@ final class OpponentRefreshController extends AbstractController
         private readonly LoggerInterface $logger,
         private readonly ClockInterface $clock,
         private readonly MessageBusInterface $messageBus,
+        private readonly TravelComputeLock $travelComputeLock,
     ) {}
 
     #[Route('/api/opponents/refresh', name: 'api_opponents_refresh', methods: ['POST'])]
@@ -141,12 +143,17 @@ final class OpponentRefreshController extends AbstractController
         // elle seule une rafale d'appels IGN pacés (~1 req/s) au-delà du plafond HTTP. On la
         // DISPATCHE au worker (`club:{clubId}:travel` pousse la progression) ; la réponse dit
         // qu'un calcul est LANCÉ et combien d'adversaires distincts sont concernés (`pending`).
-        $this->messageBus->dispatch(new ComputeTravelTimesMessage($clubId, $seasonId, TravelComputeScope::OPPONENTS));
+        // Si un calcul est DÉJÀ en cours (verrou tenu), on ne dispatche pas — un second message
+        // finirait en `failed` : les passes (a)/(b) restent utiles, seule la passe (c) est différée.
+        $alreadyRunning = $this->travelComputeLock->isHeld($clubId);
+        if (!$alreadyRunning) {
+            $this->messageBus->dispatch(new ComputeTravelTimesMessage($clubId, $seasonId, TravelComputeScope::OPPONENTS));
+        }
 
         return $this->json([
             'codes' => $codes,
             'autoLocated' => $autoLocated,
-            'travel' => ['queued' => true, 'pending' => \count($observations)],
+            'travel' => ['queued' => !$alreadyRunning, 'alreadyRunning' => $alreadyRunning, 'pending' => \count($observations)],
             'failedSteps' => $failedSteps,
         ]);
     }

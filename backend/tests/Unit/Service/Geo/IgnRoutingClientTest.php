@@ -76,6 +76,25 @@ final class IgnRoutingClientTest extends TestCase
         self::assertCount(3, $warned429, 'une alerte par tentative (3 essais max)');
     }
 
+    public function testALongRetryAfterAbandonsThePairWithoutSleeping(): void
+    {
+        $clock = new MockClock(new DateTimeImmutable('2026-01-01T00:00:00+00:00'));
+        $logger = new RecordingLogger;
+        // Sécurité H — un `Retry-After: 3600` endormirait le worker unique : au-delà du plafond
+        // (5 s) on abandonne la paire (null) SANS dormir, plutôt que de bloquer la file.
+        $client = new IgnRoutingClient(
+            new MockHttpClient(static fn (): MockResponse => new MockResponse('', ['http_code' => 429, 'response_headers' => ['retry-after' => '3600']])),
+            $clock,
+            $logger,
+        );
+
+        $start = $clock->now();
+        self::assertNull($client->travelMinutes(IgnRoutingClient::PROFILE_CAR, 45.7, 4.8, 45.8, 4.9), 'un Retry-After abusif abandonne la paire');
+        self::assertLessThan(5, $clock->now()->getTimestamp() - $start->getTimestamp(), 'aucune longue attente : le worker n\'est pas endormi');
+        $deferred = array_filter($logger->records, static fn (array $r): bool => str_contains($r['message'], 'réessai différé'));
+        self::assertCount(1, $deferred, 'une seule alerte « réessai différé » — la paire est abandonnée, pas réessayée');
+    }
+
     public function testABatchIsPacedSeriallyAndReturnsMinutes(): void
     {
         $clock = new MockClock(new DateTimeImmutable('2026-01-01T00:00:00+00:00'));

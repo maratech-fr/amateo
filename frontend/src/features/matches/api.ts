@@ -1355,6 +1355,8 @@ export const getVenueSuggestions = async (code: string): Promise<VenueSuggestion
  */
 export interface OpponentTravelResolveResult {
   queued: boolean;
+  /** C6 (sécurité H) — un calcul était DÉJÀ en cours pour le club : rien n'a été dispatché. */
+  alreadyRunning: boolean;
 }
 
 /** Lance le recalcul des trajets AUTO MANQUANTS du club+saison (le MANUAL est préservé). */
@@ -1405,7 +1407,7 @@ export interface OpponentRefreshResult {
   autoLocated: { located: number; ambiguous: number; unmatched: number; skipped: number };
   /** C6 — le recalcul des trajets est DISPATCHÉ au worker : la réponse dit qu'il est en file
    *  et combien d'adversaires distincts il traitera (la progression arrive par Mercure). */
-  travel: { queued: boolean; pending: number };
+  travel: { queued: boolean; alreadyRunning: boolean; pending: number };
   /** Les passes best-effort qui ont levé et sont retombées sur leur résultat neutre (vide en régime nominal). */
   failedSteps: OpponentRefreshStep[];
 }

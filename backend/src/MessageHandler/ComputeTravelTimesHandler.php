@@ -6,6 +6,7 @@ namespace App\MessageHandler;
 
 use App\Enum\TravelComputeScope;
 use App\Message\ComputeTravelTimesMessage;
+use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\VenueTravelTimeAutofillService;
 use App\Service\TenantConnectionContext;
@@ -36,7 +37,13 @@ final class ComputeTravelTimesHandler
     /** Budget de mur du worker : large (pas de plafond HTTP), ~1 req/s IGN ⇒ ~180 trajets/run. */
     private const int WORKER_BUDGET_SECONDS = 180;
 
-    /** Marge du TTL du verrou AU-DESSUS du budget (l'aller-retour IGN + les écritures). */
+    /**
+     * Marge du TTL du verrou AU-DESSUS du budget (l'aller-retour IGN + les écritures). Le pire
+     * cas PAR PAIRE est borné : le `Retry-After` d'un 429 est plafonné à 5 s
+     * ({@see IgnRoutingClient} MAX_RETRY_AFTER_SECONDS) — un `Retry-After`
+     * abusif (3600 s) abandonne la paire au lieu d'endormir le worker, donc au pire quelques
+     * dizaines de secondes par paire (pacing 1 s + réessais bornés + timeout 5 s), jamais l'heure.
+     */
     private const int LOCK_TTL_MARGIN_SECONDS = 60;
 
     /** On publie la progression par paliers de 5 trajets (le front n'a pas besoin de plus fin). */

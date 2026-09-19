@@ -21,7 +21,7 @@ export function OpponentLogo({ code, hasLogo, initials, size = "sm", className }
   if (showImage) {
     return (
       <img
-        src={`/api/opponents/${code}/logo`}
+        src={`/api/opponents/${encodeURIComponent(code)}/logo`}
         width={px}
         height={px}
         loading="lazy"
