@@ -417,6 +417,10 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   // donc l'URL n'est plus le `/matchs` nu — et l'interrupteur « Extérieurs » arrive ALLUMÉ.
   await expect(page).toHaveURL(/\/matchs\?/);
   await expect(page).toHaveURL(/[?&]exterieurs=1/);
+  // Le lien « Voir la semaine » VISE une rencontre (`match=<fixtureId>`) : le seed du Calendrier
+  // la sélectionne, en fait la mise en évidence, PUIS retire le param (one-shot — jamais porté par
+  // l'adresse). Témoin falsifiable : `match=` a disparu une fois la page seedée.
+  await expect(page).not.toHaveURL(/[?&]match=/);
   await expect(page.getByRole("switch", { name: "Extérieurs" })).toHaveAttribute("aria-checked", "true");
   const weekSpan = page.getByText(/^Semaine du .+ au .+$/);
   await expect(weekSpan).toBeVisible({ timeout: 15_000 });

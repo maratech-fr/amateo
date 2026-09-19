@@ -1,6 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { applyConflictsToParams, applyConsultToParams, applyFbiToParams, applyFilterToParams, applySectionToParams, applyWeekendToParams, decodeConflictsParams, decodeConsultParams, decodeFbiParam, decodeFilterParams, decodeSectionParam, decodeWeekendParam, hasConsultParams } from "./urlState";
+import { applyConflictsToParams, applyConsultToParams, applyFbiToParams, applyFilterToParams, applyMatchToParams, applySectionToParams, applyWeekendToParams, decodeConflictsParams, decodeConsultParams, decodeFbiParam, decodeFilterParams, decodeMatchParam, decodeSectionParam, decodeWeekendParam, hasConsultParams } from "./urlState";
+
+describe("decodeMatchParam / applyMatchToParams (deep-link match=)", () => {
+  it("absent ou vide ⇒ null", () => {
+    expect(decodeMatchParam(new URLSearchParams(""))).toBeNull();
+    expect(decodeMatchParam(new URLSearchParams("match="))).toBeNull();
+  });
+
+  it("un fixtureId ⇒ conservé", () => {
+    expect(decodeMatchParam(new URLSearchParams("match=fx-42"))).toBe("fx-42");
+  });
+
+  it("null ⇒ match absent ; un id ⇒ écrit ; autres params préservés", () => {
+    expect(applyMatchToParams(new URLSearchParams("match=fx-42"), null).toString()).toBe("");
+    const out = applyMatchToParams(new URLSearchParams("semaine=2026-10-03"), "fx-7");
+    expect(out.get("semaine")).toBe("2026-10-03");
+    expect(out.get("match")).toBe("fx-7");
+  });
+});
 
 describe("decodeWeekendParam / applyWeekendToParams (PR 3b — semaine=)", () => {
   it("absent ⇒ null (auto)", () => {

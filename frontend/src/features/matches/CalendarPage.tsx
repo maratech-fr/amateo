@@ -1,5 +1,5 @@
 import { ArrowRight, CalendarX2, Info, Plus, Upload, Wand2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import { useCoachPlayers, useTeamCoaches } from "@/features/planning/queries";
@@ -21,7 +21,7 @@ import { FbiEntryList } from "./FbiEntryList";
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { FixtureFormDialog } from "./FixtureFormDialog";
 import { CONFLICT_FAMILIES } from "./lib/conflictLabels";
-import { applyFamilyFilter, applyKindFilter, countByFamily, DEFAULT_KINDS, familiesPresent, hiddenWeekBreakdown, KINDS, normalizeKinds, scopeConflictsToWeek } from "./lib/consultFilter";
+import { applyFamilyFilter, applyKindFilter, countByFamily, DEFAULT_KINDS, familiesPresent, hiddenWeekBreakdown, KINDS, normalizeKinds, revealPlan, scopeConflictsToWeek } from "./lib/consultFilter";
 import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
 import { depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
 import { datelessConflicts, deriveWeekCounters } from "./lib/loopSteps";
@@ -33,10 +33,12 @@ import {
   applyConsultToParams,
   applyFbiToParams,
   applyFilterToParams,
+  applyMatchToParams,
   applyWeekendToParams,
   decodeConsultParams,
   decodeFbiParam,
   decodeFilterParams,
+  decodeMatchParam,
   decodeWeekendParam,
   hasConsultParams,
 } from "./lib/urlState";
@@ -354,8 +356,28 @@ export function CalendarPage() {
   // aucun effet et l'adresse ne se re-synchroniserait qu'à la prochaine interaction.
   const [searchParams, setSearchParams] = useSearchParams();
   const seededRef = useRef(false);
+  // Le geste « aller à cette rencontre » après rendu : focalise la cellule de la grille
+  // week-end (`[data-fixture-id]`, la sélection porte déjà l'anneau `ring-accent`), sinon
+  // le `<h2>` « À placer » (repli d'un extérieur sans cellule propre). Partagé par le clic
+  // de table (Mois/Phase) et le deep-link `match=` du seed. `useCallback` : stable, sûr en
+  // dépendance d'effet. Déclaré AVANT le seed — un `const` postérieur serait en zone morte
+  // au moment où le tableau de dépendances est évalué.
+  const focusFixtureCell = useCallback((fixtureId: string): void => {
+    requestAnimationFrame(() => {
+      const cell = document.querySelector<HTMLElement>(`[data-fixture-id="${fixtureId}"]`);
+      if (null !== cell) {
+        cell.focus();
+        // `scrollIntoView` n'existe pas sous jsdom (aucun moteur de layout) — appel gardé.
+        cell.scrollIntoView?.({ block: "nearest" });
+        return;
+      }
+      document.getElementById(PLACE_HEADING_ID)?.focus();
+    });
+  }, []);
   useEffect(() => {
-    if (undefined === teams.data || undefined === coaches.data || undefined === venues.data) {
+    // `match=` (deep-link vers une rencontre) exige les fixtures chargées : on attend les
+    // quatre lectures pour que le seed ne rate jamais la mise en évidence.
+    if (undefined === teams.data || undefined === coaches.data || undefined === venues.data || undefined === fixtures.data) {
       return;
     }
     // `touchedStore` : le seed a-t-il écrit dans le store CETTE passe ? Si oui, on NE
@@ -400,6 +422,32 @@ export function CalendarPage() {
         setSelectedWeekend(weekend);
         touchedStore = true;
       }
+      // Deep-link `match=` : met EN ÉVIDENCE une rencontre précise (« Voir la semaine » depuis
+      // Conflits). One-shot — le param est retiré à la re-synchro (`applyMatchToParams(_, null)`
+      // ci-dessous) ; la mise en évidence vit ensuite dans le store (`selectedFixtureId`).
+      const matchId = decodeMatchParam(searchParams);
+      const matchFixture = null === matchId ? undefined : fixtures.data.find((f) => f.id === matchId);
+      if (undefined !== matchFixture) {
+        setConsultTemporality("semaine");
+        // Semaine : seulement si l'URL ne la porte pas déjà (un lien « Voir la semaine » porte
+        // les deux — `semaine` fait foi) et que le store est encore à l'auto.
+        if (null === weekend && null === useMatchesStore.getState().selectedWeekend) {
+          setSelectedWeekend(weekendKeyOf(matchFixture.matchDate));
+        }
+        setSelectedFixtureId(matchFixture.id);
+        // Lève le masque qui cacherait ce match (type de compétition décoché, extérieur masqué)
+        // — sinon la cellule visée n'existe pas. Redondant quand l'URL portait déjà la levée
+        // (le lien de Conflits l'inclut), inoffensif (`normalizeKinds` dédoublonne).
+        const plan = revealPlan([matchFixture], consultKinds ?? DEFAULT_KINDS, competitionsMap);
+        if (plan.away) {
+          setConsultAway(true);
+        }
+        if (plan.kinds.length > 0) {
+          setConsultKinds(normalizeKinds([...(consultKinds ?? DEFAULT_KINDS), ...plan.kinds]));
+        }
+        focusFixtureCell(matchFixture.id);
+        touchedStore = true;
+      }
     }
     if (touchedStore) {
       return;
@@ -416,11 +464,14 @@ export function CalendarPage() {
       month: consultMonth,
       phaseId: consultPhaseId,
     });
-    const next = applyWeekendToParams(withConsult, selectedWeekend);
+    const withWeekend = applyWeekendToParams(withConsult, selectedWeekend);
+    // `match=` est TOUJOURS retiré à la re-synchro : c'est un deep-link one-shot consommé au
+    // seed (« retiré en replace après sélection »), jamais un état porté par l'adresse.
+    const next = applyMatchToParams(withWeekend, null);
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [teams.data, coaches.data, venues.data, searchParams, filterMode, filterIds, consultKinds, consultFamilies, consultTypicalWeek, consultAway, consultTemporality, consultMonth, consultPhaseId, selectedWeekend, setFilterMode, toggleFilterId, setConsultKinds, setConsultFamilies, setConsultTypicalWeek, setConsultAway, setConsultTemporality, setConsultMonth, setConsultPhaseId, setSelectedWeekend, setSearchParams]);
+  }, [teams.data, coaches.data, venues.data, fixtures.data, searchParams, filterMode, filterIds, consultKinds, consultFamilies, consultTypicalWeek, consultAway, consultTemporality, consultMonth, consultPhaseId, selectedWeekend, setFilterMode, toggleFilterId, setConsultKinds, setConsultFamilies, setConsultTypicalWeek, setConsultAway, setConsultTemporality, setConsultMonth, setConsultPhaseId, setSelectedWeekend, setSelectedFixtureId, focusFixtureCell, competitionsMap, setSearchParams]);
 
   // Ouvrir/fermer la liste « FBI — à faire » synchronise le param `fbi` (l'URL fait foi).
   const openFbiModal = (): void => {
@@ -450,16 +501,7 @@ export function CalendarPage() {
     setConsultTemporality("semaine");
     setSelectedWeekend(weekendKeyOf(fixture.matchDate));
     setSelectedFixtureId(fixture.id);
-    requestAnimationFrame(() => {
-      const cell = document.querySelector<HTMLElement>(`[data-fixture-id="${fixtureId}"]`);
-      if (null !== cell) {
-        cell.focus();
-        // `scrollIntoView` n'existe pas sous jsdom (aucun moteur de layout) — appel gardé.
-        cell.scrollIntoView?.({ block: "nearest" });
-        return;
-      }
-      document.getElementById(PLACE_HEADING_ID)?.focus();
-    });
+    focusFixtureCell(fixture.id);
   };
 
   // A5 — lève SEULEMENT les masques qui cachent quelque chose sur la semaine affichée :

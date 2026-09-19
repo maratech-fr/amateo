@@ -97,6 +97,28 @@ export function applyFbiToParams(current: URLSearchParams, open: boolean): URLSe
 }
 
 /**
+ * Deep-link d'une rencontre à mettre en évidence sur le Calendrier : `match=<fixtureId>`
+ * (« Voir la semaine » depuis Conflits, ou tout lien qui pointe un match précis). Fonctions
+ * PURES, patron « param absent = défaut » : absent ⇒ aucune rencontre visée. Le param est
+ * CONSOMMÉ une fois au seed puis retiré en `replace` (il ne survit pas à la sélection : la
+ * mise en évidence est portée par le store, pas par l'URL — piège mémoire).
+ */
+export function decodeMatchParam(params: URLSearchParams): string | null {
+  const raw = params.get("match");
+  return null !== raw && "" !== raw ? raw : null;
+}
+
+export function applyMatchToParams(current: URLSearchParams, fixtureId: string | null): URLSearchParams {
+  const next = new URLSearchParams(current);
+  if (null === fixtureId) {
+    next.delete("match");
+  } else {
+    next.set("match", fixtureId);
+  }
+  return next;
+}
+
+/**
  * PR-2a/2b — sérialisation des filtres de l'onglet Consulter, fonctions PURES (mêmes
  * conventions que le filtre PR-1 : absent = défaut). `type` = types de compétition
  * cochés, `conflits` = familles de conflits cochées, `type_semaine=0|1` = semaine

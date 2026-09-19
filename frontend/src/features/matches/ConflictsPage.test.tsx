@@ -171,6 +171,41 @@ describe("ConflictsPage — « Voir la semaine » mène à Placer", () => {
   });
 });
 
+describe("ConflictsPage — « Voir la semaine » vise LA rencontre (match=)", () => {
+  async function clickVoirSemaine() {
+    const user = userEvent.setup();
+    renderAt();
+    await user.click(await screen.findByRole("button", { name: /Mara · 1/ }));
+    await user.click((await screen.findAllByRole("button", { name: "Voir la semaine" }))[0]);
+    await screen.findByText("PLACER");
+    return new URLSearchParams(screen.getByTestId("calendar-search").textContent ?? "");
+  }
+
+  it("deux côtés à domicile → vise le côté GAUCHE", async () => {
+    state.conflicts = [
+      { type: "MATCH_MATCH", severity: 3, resolution: null, coachId: "coach-1", start: "2026-10-03T20:00:00", end: "2026-10-03T22:00:00", left: side("fx-1", "team-1"), right: side("fx-2", "team-2") },
+    ];
+    expect((await clickVoirSemaine()).get("match")).toBe("fx-1");
+  });
+
+  it("un seul côté à domicile → vise CE domicile (pas le gauche par défaut)", async () => {
+    state.conflicts = [
+      {
+        type: "MATCH_MATCH",
+        severity: 3,
+        resolution: null,
+        coachId: "coach-1",
+        start: "2026-10-03T20:00:00",
+        end: "2026-10-03T22:00:00",
+        left: { ...side("fx-1", "team-1"), homeAway: "AWAY" as const },
+        right: side("fx-2", "team-2"),
+      },
+    ];
+    // Le gauche est extérieur, le droit est domicile → c'est le droit qui est visé.
+    expect((await clickVoirSemaine()).get("match")).toBe("fx-2");
+  });
+});
+
 describe("ConflictsPage — phrase sr-only aria-live", () => {
   it("vide au premier rendu, remplie APRÈS une interaction de pivot", async () => {
     const user = userEvent.setup();
