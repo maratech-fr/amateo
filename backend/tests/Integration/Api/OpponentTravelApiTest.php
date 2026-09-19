@@ -78,6 +78,7 @@ final class OpponentTravelApiTest extends WebTestCase
         self::assertSame('VENUE', $venue['precision']);
         self::assertSame('Halle Clemenceau', $venue['locationName']);
         self::assertSame(22, $venue['travelMinutes']);
+        self::assertSame('done', $venue['travelStatus'], 'trajet présent → done');
         self::assertFalse($venue['approximated']);
         self::assertSame('AUTO', $venue['source']);
 
@@ -86,6 +87,8 @@ final class OpponentTravelApiTest extends WebTestCase
         self::assertSame('CITY', $city['precision']);
         self::assertSame('Meyzieu', $city['locationName']);
         self::assertNull($city['travelMinutes']);
+        // Localisé mais sans trajet ET aucun calcul en cours (C5 : pending jamais) → unavailable.
+        self::assertSame('unavailable', $city['travelStatus']);
         self::assertTrue($city['approximated'], 'city precision is the server-computed « approché » flag');
         self::assertNull($city['source']);
 
@@ -96,12 +99,14 @@ final class OpponentTravelApiTest extends WebTestCase
         self::assertSame('VENUE', $manual['precision'], 'a hand-pinned gym is venue-precise, never approximated');
         self::assertFalse($manual['approximated']);
         self::assertSame(31, $manual['travelMinutes']);
+        self::assertSame('done', $manual['travelStatus']);
 
         $unlocated = $byLabel['Club sans code'];
         self::assertFalse($unlocated['located']);
         self::assertNull($unlocated['opponentOrganismeCode']);
         self::assertNull($unlocated['precision']);
         self::assertNull($unlocated['travelMinutes']);
+        self::assertSame('unavailable', $unlocated['travelStatus'], 'pas de lieu à router → unavailable');
     }
 
     /**

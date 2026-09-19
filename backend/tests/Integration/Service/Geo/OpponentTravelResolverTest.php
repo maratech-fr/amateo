@@ -25,7 +25,6 @@ use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
 use App\Tests\Double\FrozenClock;
-use App\Tests\Double\SteppingClock;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -161,12 +160,12 @@ final class OpponentTravelResolverTest extends WebTestCase
     }
 
     /**
-     * BCK-22 régression : un code que le budget n'a JAMAIS tenté ne doit pas être
-     * écrasé — une bonne valeur AUTO déjà en base survit, le code revient seulement
-     * `unresolved` (la relance le résoudra). Avant le correctif, l'absence de la clé
-     * dans `minutes` valait `setTravelMinutes(null)` et détruisait la valeur.
+     * C5 (durcit BCK-22) : un trajet est une CONSTANTE. Une ligne AUTO qui porte DÉJÀ
+     * un trajet n'est JAMAIS re-routée — fini le « reroute TOUT » qui, sur un IGN muet,
+     * valait `setTravelMinutes(null)` et détruisait la valeur. Résultat : aucun appel
+     * réseau, `resolved = 0`, `unresolved = []`, et toutes les valeurs survivent intactes.
      */
-    public function testABudgetSkippedCodeKeepsItsExistingAutoValue(): void
+    public function testAnExistingAutoTravelIsNeverRecomputed(): void
     {
         $club = new Club;
         $club->setName('Club budget ' . uniqid('', true));
@@ -189,9 +188,8 @@ final class OpponentTravelResolverTest extends WebTestCase
         $this->em->persist($season);
         $this->em->flush();
 
-        // 9 adversaires AWAY géolocalisés (> une fenêtre de 8), chacun avec une bonne
-        // ligne AUTO déjà en base (99 min). Aucun MANUAL, aucun sans localisation :
-        // le SEUL motif possible d'`unresolved` sera donc le budget.
+        // 9 adversaires AWAY géolocalisés, chacun avec une bonne ligne AUTO déjà en base
+        // (99 min) : le cas exact où « reroute TOUT » pouvait écraser une valeur.
         for ($i = 0; $i < 9; ++$i) {
             $code = \sprintf('ARA00699%03d', $i);
 
@@ -224,18 +222,21 @@ final class OpponentTravelResolverTest extends WebTestCase
         }
         $this->em->flush();
 
-        // Step 100 s ≫ the 30 s budget : after window 0 (8 codes) the next clock read
-        // is past the deadline, so the 9th code's window is never dispatched.
-        $result = $this->resolverWithIgn(600, new SteppingClock(stepSeconds: 100))->resolve($club->getId(), $season->getId());
+        $calls = 0;
+        $result = $this->cachingResolver($calls)->resolve($club->getId(), $season->getId());
 
-        self::assertNotSame([], $result['unresolved'], 'le budget doit avoir coupé au moins un code');
+        // Rien à recalculer : toutes les valeurs existent déjà (constantes).
+        self::assertSame(0, $result['resolved'], 'aucune valeur n\'est (re)calculée');
+        self::assertSame([], $result['unresolved'], 'aucun manque : rien n\'est ciblé');
+        self::assertSame(0, $calls, 'aucun appel IGN — une constante ne repart jamais au réseau');
 
+        // Les 9 bonnes valeurs AUTO survivent intactes.
         $this->em->clear();
         $this->scopeGucToClub($club->getId());
-        foreach ($result['unresolved'] as $code) {
-            $row = $this->travelRepository()->findOneByCode($season->getId(), $code);
-            self::assertInstanceOf(OpponentTravel::class, $row, "la ligne du code budget-coupé {$code} existe toujours");
-            self::assertSame(99, $row->getTravelMinutes(), "la bonne valeur AUTO survit au code budget-coupé {$code}");
+        for ($i = 0; $i < 9; ++$i) {
+            $row = $this->travelRepository()->findOneByCode($season->getId(), \sprintf('ARA00699%03d', $i));
+            self::assertInstanceOf(OpponentTravel::class, $row, "la ligne du code {$i} existe toujours");
+            self::assertSame(99, $row->getTravelMinutes(), "la bonne valeur AUTO du code {$i} survit");
             self::assertSame(OpponentTravelSource::AUTO, $row->getSource());
         }
     }

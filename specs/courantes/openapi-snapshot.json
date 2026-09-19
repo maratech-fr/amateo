@@ -9223,6 +9223,15 @@
                                                         ],
                                                         "description": "One-way car travel from the club si\u00e8ge (null = best-effort miss)"
                                                     },
+                                                    "travelStatus": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "done",
+                                                            "pending",
+                                                            "unavailable"
+                                                        ],
+                                                        "description": "Server-computed travel state: done (minutes present), pending (a computation is in flight for this club), unavailable (attempted without a result, or no location to route)"
+                                                    },
                                                     "approximated": {
                                                         "type": "boolean",
                                                         "description": "Server-computed: the location is only city-precise"

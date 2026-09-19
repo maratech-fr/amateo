@@ -1,15 +1,18 @@
-Last verified @ 2026-09-19 (registre « à corriger dans FBI » — trois NOUVELLES routes custom
-`GET /api/fixtures/fbi-corrections` (lecture membre des écarts que le gestionnaire a gardés côté appli et
-doit reporter dans FBI), `POST …/{id}/close` (marquer corrigé, gestionnaire) et `POST …/{id}/reopen`
-(annuler un « corrigé » manuel de moins de 24 h) ; plus deux champs ADDITIFS — `fbiEcho` sur le schéma
-`Fixture`, `fbiTodo {toEnter, toCorrect}` sur `GET /api/matches/deadline-outlook` ; régénéré par
+Last verified @ 2026-09-19 (C5 — champ ADDITIF `travelStatus` (`done`|`pending`|`unavailable`) par entrée
+adversaire de `GET /api/opponents/travel` : le statut du trajet calculé SERVEUR ; régénéré par
 `api:openapi:export`).
-**204 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+3 paths** :
-les trois routes `fbi-corrections` apparaissent ; le reste est additif (`fbiEcho`, `fbiTodo`).
-· SHA-256 `119521142f243afd254d06989135bba7ebbb5174ce6b5ceab881003aadf2819d`
+**204 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (propriété ADDITIVE).
+· SHA-256 `e1eb71cb966f9d76f7d50d553dff3514fea586b2ff28e090b2e83f0521fc32cc`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **C5 — `travelStatus` sur les trajets adverses, backend (2026-09-19)** : **+0 path** — chaque entrée
+  adversaire de `GET /api/opponents/travel` gagne un champ ADDITIF `travelStatus` (`done`|`pending`|
+  `unavailable`), statut du TRAJET calculé SERVEUR : `done` (minutes présentes), `pending` (un calcul est en
+  cours pour ce club — clé Redis `travel_compute:{clubId}`, posée par le calcul asynchrone à venir),
+  `unavailable` (tenté sans résultat, ou pas de lieu à router). En regard, la passe `resolve()` ne re-route
+  plus QUE les trajets MANQUANTS (un trajet est une constante : jamais recalculé, jamais écrasé par un IGN
+  muet). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23, aucun appel moteur).
 - **Registre « à corriger dans FBI », backend (2026-09-19)** : **+3 paths** — quand le gestionnaire garde
   l'appli sur un écart, FBI est en retard : `GET /api/fixtures/fbi-corrections` (lecture membre) sert les
   entrées OUVERTES du club+saison (`{id, fixtureId, field, appValue, fbiValue, venueFbiLabel, decidedAt,
@@ -63,14 +66,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   part en commentaire `//`, la phrase publique reste — garde `PublicTextIsFreeOfInternalIdentifiersTest`).
   Aucune route, aucun schéma, aucune propriété ne change ; contrat backend⇄engine **inchangé**
   (`CONTRACT_VERSION` 2.21, aucun appel moteur).
-- **VILLE de l'adversaire extérieur (au lieu du gymnase), backend (2026-09-17)** : **+0 path** — la
-  description du champ `opponentPlace` (côtés `left`/`right` de MATCH_MATCH, `fixture` de MATCH_TRAINING sur
-  le radar `GET /api/fixtures/conflicts`) est recalée : ligne d'override effective (équipe puis club) → VILLE
-  de la salle CHOISIE (`opponent_venue_suggestion` par (code, venueExternalRef)) → VILLE de l'annuaire fédéral
-  → null ; le libellé de gymnase d'override et le libellé FBI ne sont PLUS servis. Aucune forme de schéma ne
-  change (seule la description). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21,
-  aucun appel moteur). Le faux positif d'échauffement du même radar est corrigé dans la MÊME PR côté détecteur
-  (`MatchConflictDetector`) — aucun impact OpenAPI, hors de ce snapshot.
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

@@ -20,6 +20,7 @@ use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\OpponentTravelResolver;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonResolver;
+use App\Service\TravelComputeLock;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -66,6 +67,7 @@ final class OpponentTravelController extends AbstractController
         private readonly VenueLabelNormalizer $labelNormalizer,
         private readonly RateLimiterFactory $opponentTravelResolveLimiter,
         private readonly RateLimiterFactory $opponentTravelManualLimiter,
+        private readonly TravelComputeLock $travelComputeLock,
     ) {}
 
     #[Route('/api/opponents/travel', name: 'api_opponents_travel_list', methods: ['GET'])]
@@ -86,11 +88,16 @@ final class OpponentTravelController extends AbstractController
         $clubLon = $club?->getLongitude();
         $clubGeolocated = null !== $clubLat && null !== $clubLon;
 
+        // Un calcul de trajets est-il EN COURS pour ce club ? (C5 : toujours faux tant que
+        // le calcul reste synchrone — C6 pose la clé pendant le calcul asynchrone.) Lu UNE
+        // fois par requête ; alimente `travelStatus: pending` par entrée.
+        $computePending = $this->travelComputeLock->isHeld($clubId);
+
         return $this->json([
             'clubId' => $clubId,
             'seasonId' => $season->getId(),
             'clubGeolocated' => $clubGeolocated,
-            'opponents' => $this->buildOpponents($awayFixtures, $travelIndex),
+            'opponents' => $this->buildOpponents($awayFixtures, $travelIndex, $computePending),
         ]);
     }
 
@@ -274,7 +281,7 @@ final class OpponentTravelController extends AbstractController
      *
      * @return list<array<string, mixed>>
      */
-    private function buildOpponents(array $awayFixtures, array $travelIndex): array
+    private function buildOpponents(array $awayFixtures, array $travelIndex, bool $computePending): array
     {
         /** @var array<string, array{code: string|null, teamKey: string|null, label: string}> $groups */
         $groups = [];
@@ -305,7 +312,7 @@ final class OpponentTravelController extends AbstractController
             $clubRow = $codeTravel['club'] ?? null;
             $travel = $teamRow ?? $clubRow;
             $scope = null !== $teamRow ? 'TEAM' : (null !== $clubRow ? 'CLUB' : null);
-            $opponents[] = $this->opponentView($group['label'], $code, $teamKey, $entry, $travel, $scope);
+            $opponents[] = $this->opponentView($group['label'], $code, $teamKey, $entry, $travel, $scope, $computePending);
         }
         usort($opponents, static fn (array $a, array $b): int => strcasecmp((string) $a['opponentLabel'], (string) $b['opponentLabel']));
 
@@ -315,7 +322,7 @@ final class OpponentTravelController extends AbstractController
     /**
      * @return array<string, mixed>
      */
-    private function opponentView(string $label, ?string $code, ?string $teamKey, ?OpponentDirectoryEntry $entry, ?OpponentTravel $travel, ?string $scope): array
+    private function opponentView(string $label, ?string $code, ?string $teamKey, ?OpponentDirectoryEntry $entry, ?OpponentTravel $travel, ?string $scope, bool $computePending): array
     {
         $hasOverride = $travel instanceof OpponentTravel && $travel->hasOverride();
         $precision = $entry?->getPrecision()?->value;
@@ -323,6 +330,7 @@ final class OpponentTravelController extends AbstractController
         // Une surcharge manuelle est un gymnase précis → jamais approché.
         $approximated = !$hasOverride && OpponentLocationPrecision::CITY === $entry?->getPrecision();
         $located = null !== $code && ($entry instanceof OpponentDirectoryEntry || $hasOverride);
+        $travelMinutes = $travel?->getTravelMinutes();
 
         return [
             'opponentOrganismeCode' => $code,
@@ -333,7 +341,11 @@ final class OpponentTravelController extends AbstractController
             'locationName' => $this->locationName($entry, $travel),
             'city' => $entry?->getCity(),
             'postalCode' => $entry?->getPostalCode(),
-            'travelMinutes' => $travel?->getTravelMinutes(),
+            'travelMinutes' => $travelMinutes,
+            // Statut du TRAJET, calculé SERVEUR (le front ne re-dérive rien) : `done` = minutes
+            // présentes ; `pending` = un calcul est en cours pour ce club (C6) ; `unavailable` =
+            // sinon (tenté sans résultat, ou pas de lieu à router).
+            'travelStatus' => null !== $travelMinutes ? 'done' : ($computePending ? 'pending' : 'unavailable'),
             'approximated' => $approximated,
             'source' => $travel?->getSource()->value,
             'scope' => $scope,

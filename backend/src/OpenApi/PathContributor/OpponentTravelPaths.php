@@ -102,6 +102,7 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                 'city' => ['type' => ['string', 'null'], 'description' => 'The opponent commune from the shared directory'],
                 'postalCode' => ['type' => ['string', 'null'], 'description' => 'The opponent postal code from the shared directory'],
                 'travelMinutes' => ['type' => ['integer', 'null'], 'description' => 'One-way car travel from the club siège (null = best-effort miss)'],
+                'travelStatus' => ['type' => 'string', 'enum' => ['done', 'pending', 'unavailable'], 'description' => 'Server-computed travel state: done (minutes present), pending (a computation is in flight for this club), unavailable (attempted without a result, or no location to route)'],
                 'approximated' => ['type' => 'boolean', 'description' => 'Server-computed: the location is only city-precise'],
                 'source' => ['type' => ['string', 'null'], 'enum' => ['AUTO', 'MANUAL', null]],
                 'scope' => ['type' => ['string', 'null'], 'enum' => ['TEAM', 'CLUB', null], 'description' => 'Which grain governs this travel: a per-team override (TEAM), the club default (CLUB), or none (null)'],

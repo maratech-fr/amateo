@@ -132,6 +132,13 @@ final class OpponentTravelResolver
                 continue;
             }
 
+            // C5 — un trajet est une CONSTANTE : une ligne AUTO qui porte DÉJÀ un trajet n'est
+            // JAMAIS re-routée (fini le « reroute TOUT » qui pouvait l'écraser). Seuls les
+            // MANQUES partent : un code sans ligne, ou une ligne AUTO au trajet null.
+            if (null !== $row && null !== $row->getTravelMinutes()) {
+                continue;
+            }
+
             $location = $this->directoryLocation($code);
             if (null === $location) {
                 $unresolved[] = $code;
@@ -219,6 +226,15 @@ final class OpponentTravelResolver
                 continue;
             }
             $value = $minutes[$code] ?? null;
+            if (null === $value) {
+                // C5 — IGN muet : on ne fabrique ni n'altère RIEN. Jamais `setTravelMinutes(null)`
+                // (une valeur ne se perd pas — ici la cible était déjà null, mais la garde tient
+                // la règle explicitement), jamais une ligne vide créée. Le code reste « non
+                // résolu » et repartira au prochain passage.
+                $unresolved[] = $code;
+
+                continue;
+            }
             $row = $existing[$code] ?? $this->newRow($clubId, $seasonId, $code);
             if (OpponentTravelSource::MANUAL === $row->getSource()) {
                 // Re-route d'une ligne MANUAL restée sans trajet : on ne touche QUE le trajet
@@ -241,11 +257,7 @@ final class OpponentTravelResolver
                 $existing[$code] = $row;
             }
             $wrote = true;
-            if (null !== $value) {
-                ++$resolved;
-            } else {
-                $unresolved[] = $code; // located but IGN gave no duration
-            }
+            ++$resolved;
         }
 
         if ($wrote) {
