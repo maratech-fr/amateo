@@ -37,6 +37,9 @@ final class VenueTravelTimeAutofillService
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly IgnRoutingClient $routingClient,
+        // Cache-first (C4) : optionnel (défaut null) pour ne pas casser les sites de test ;
+        // en prod, le conteneur l'autowire.
+        private readonly ?TravelTimeCache $travelCache = null,
     ) {}
 
     /**
@@ -92,7 +95,7 @@ final class VenueTravelTimeAutofillService
             throw new AutofillCapExceededException(\count($geoPairs), self::MAX_AUTOFILL_PAIRS);
         }
 
-        $batch = $this->routingClient->travelMinutesBatch($this->buildJobs($geoPairs));
+        $batch = $this->cachedBatch($clubId, $this->buildJobs($geoPairs));
         $minutes = $batch['minutes'];
         $budgetExceeded = array_fill_keys($batch['budgetExceededKeys'], true);
 
@@ -153,6 +156,46 @@ final class VenueTravelTimeAutofillService
         $this->entityManager->flush();
 
         return ['filled' => $filled, 'unresolved' => $unresolved, 'skippedManual' => $skippedManual];
+    }
+
+    /**
+     * Cache-first (C4) autour du lot IGN : un couple/profil déjà connu (une constante) ne
+     * repart JAMAIS au réseau ; seuls les manques y vont, et les résultats neufs sont
+     * mémorisés. Renvoie la MÊME forme que {@see IgnRoutingClient::travelMinutesBatch}.
+     *
+     * @param list<array{key: string, profile: string, startLat: float, startLon: float, endLat: float, endLon: float}> $jobs
+     *
+     * @return array{minutes: array<string, int|null>, budgetExceededKeys: list<string>}
+     */
+    private function cachedBatch(string $clubId, array $jobs): array
+    {
+        if (!$this->travelCache instanceof TravelTimeCache) {
+            return $this->routingClient->travelMinutesBatch($jobs);
+        }
+
+        $cached = [];
+        $misses = [];
+        $missByKey = [];
+        foreach ($jobs as $job) {
+            $hit = $this->travelCache->lookup($clubId, $job['profile'], $job['startLat'], $job['startLon'], $job['endLat'], $job['endLon']);
+            if (null !== $hit) {
+                $cached[$job['key']] = $hit;
+
+                continue;
+            }
+            $misses[] = $job;
+            $missByKey[$job['key']] = $job;
+        }
+
+        $batch = $this->routingClient->travelMinutesBatch($misses);
+        foreach ($batch['minutes'] as $key => $minutes) {
+            if (null !== $minutes && isset($missByKey[$key])) {
+                $job = $missByKey[$key];
+                $this->travelCache->store($clubId, $job['profile'], $job['startLat'], $job['startLon'], $job['endLat'], $job['endLon'], $minutes);
+            }
+        }
+
+        return ['minutes' => $cached + $batch['minutes'], 'budgetExceededKeys' => $batch['budgetExceededKeys']];
     }
 
     /**

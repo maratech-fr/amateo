@@ -58,6 +58,11 @@ final class RgpdExportService
         // fournies par la personne sur base contrat/consentement. Il est de surcroît
         // append-only par construction et sans PII (« ids uniquement » — docs/security/rgpd.md).
         'audit_log' => 'accountability art. 5.2, hors périmètre art. 20 ; append-only, sans PII',
+        // Donnée d'ÉTABLISSEMENT recomputable, aucune PII : un temps de trajet dérivé du
+        // siège du club et de coordonnées de gymnases. Hors art. 20 (données fournies par la
+        // personne) ; l'exporter verserait de surcroît les coordonnées du siège dans un
+        // fichier utilisateur. Purgée par club à l'effacement (ErasedClubPurger).
+        'club_travel_cache' => 'donnée d\'établissement recomputable, sans PII — hors art. 20',
     ];
 
     public function __construct(

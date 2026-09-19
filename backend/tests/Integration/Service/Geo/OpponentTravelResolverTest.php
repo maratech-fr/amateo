@@ -22,6 +22,7 @@ use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\FfbbSalleResolver;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\OpponentTravelResolver;
+use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
 use App\Tests\Double\FrozenClock;
 use App\Tests\Double\SteppingClock;
@@ -428,6 +429,22 @@ final class OpponentTravelResolverTest extends WebTestCase
         self::assertSame(60, $calls, 'aucun appel IGN pour l\'excès — le 61ᵉ n\'est jamais dispatché');
     }
 
+    public function testResolveServesACachedTravelWithoutTouchingTheNetwork(): void
+    {
+        [$club, $season] = $this->seedManyGeolocatedAwayOpponents(1);
+        // Le trajet est DÉJÀ en cache (une constante) : siège 45.70,4.90 → adverse 45.76,4.86.
+        self::getContainer()->get(TravelTimeCache::class)->store($club->getId(), IgnRoutingClient::PROFILE_CAR, 45.70, 4.90, 45.76, 4.86, 88);
+
+        $calls = 0;
+        $result = $this->cachingResolver($calls)->resolve($club->getId(), $season->getId());
+
+        self::assertSame(1, $result['resolved'], 'l\'adversaire est résolu');
+        self::assertSame(0, $calls, 'un trajet en cache ne déclenche AUCUN appel IGN (jamais recalculé)');
+        $row = $this->em->getRepository(OpponentTravel::class)->findOneBy(['opponentOrganismeCode' => 'ARA0069C000']);
+        self::assertInstanceOf(OpponentTravel::class, $row);
+        self::assertSame(88, $row->getTravelMinutes(), 'la valeur servie vient du cache');
+    }
+
     protected function setUp(): void
     {
         self::createClient();
@@ -459,6 +476,29 @@ final class OpponentTravelResolverTest extends WebTestCase
             self::getContainer()->get(ClubRepository::class),
             self::getContainer()->get(FixtureRepository::class),
             new NullLogger,
+        );
+    }
+
+    /** The real resolver wired with the container's cache + a counting IGN (FrozenClock : pas de pacing). */
+    private function cachingResolver(int &$calls): OpponentTravelResolver
+    {
+        $ign = new IgnRoutingClient(new MockHttpClient(function () use (&$calls): MockResponse {
+            ++$calls;
+
+            return new MockResponse((string) json_encode(['duration' => 600]));
+        }), new FrozenClock);
+
+        return new OpponentTravelResolver(
+            $this->em,
+            $ign,
+            $this->travelRepository(),
+            self::getContainer()->get(OpponentDirectoryEntryRepository::class),
+            $this->suggestionRepository(),
+            $this->salleResolver(),
+            self::getContainer()->get(ClubRepository::class),
+            self::getContainer()->get(FixtureRepository::class),
+            new NullLogger,
+            self::getContainer()->get(TravelTimeCache::class),
         );
     }
 

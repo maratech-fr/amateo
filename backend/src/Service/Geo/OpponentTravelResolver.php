@@ -61,6 +61,9 @@ final class OpponentTravelResolver
         private readonly ClubRepository $clubRepository,
         private readonly FixtureRepository $fixtures,
         private readonly LoggerInterface $logger,
+        // Cache-first (C4) : optionnel (défaut null) pour ne pas casser les sites de test
+        // qui n'instancient pas le cache ; en prod, le conteneur l'autowire.
+        private readonly ?TravelTimeCache $travelCache = null,
     ) {}
 
     /**
@@ -159,24 +162,48 @@ final class OpponentTravelResolver
             return ['resolved' => 0, 'unresolved' => $unresolved, 'skippedManual' => $skippedManual];
         }
 
+        // Cache-first (C4) : un trajet est une CONSTANTE. On regarde le cache club avant
+        // le réseau ; seuls les codes en MANQUE partent en lot IGN. Le cap dur ci-dessus
+        // reste appliqué sur l'ENSEMBLE des cibles (borne le travail, pas le seul réseau).
+        $clubLatF = (float) $clubLat;
+        $clubLonF = (float) $clubLon;
+        $targetByCode = [];
+        $cachedMinutes = [];
+        $jobs = [];
+        foreach ($geoTargets as $target) {
+            $targetByCode[$target['code']] = $target;
+            $cached = $this->travelCache?->lookup($clubId, IgnRoutingClient::PROFILE_CAR, $clubLatF, $clubLonF, $target['lat'], $target['lon']);
+            if (null !== $cached) {
+                $cachedMinutes[$target['code']] = $cached;
+
+                continue;
+            }
+            $jobs[] = [
+                'key' => $target['code'],
+                'profile' => IgnRoutingClient::PROFILE_CAR,
+                'startLat' => $clubLatF,
+                'startLon' => $clubLonF,
+                'endLat' => $target['lat'],
+                'endLon' => $target['lon'],
+            ];
+        }
+
         $batch = $this->routingClient->travelMinutesBatch(
-            array_map(
-                static fn (array $t): array => [
-                    'key' => $t['code'],
-                    'profile' => IgnRoutingClient::PROFILE_CAR,
-                    'startLat' => (float) $clubLat,
-                    'startLon' => (float) $clubLon,
-                    'endLat' => $t['lat'],
-                    'endLon' => $t['lon'],
-                ],
-                $geoTargets,
-            ),
+            $jobs,
             // BCK-32 — jamais plus que le budget de lot ; l'orchestrateur passe le RESTANT
             // de son budget de mur, borné par BATCH_BUDGET_SECONDS.
             budgetSeconds: null === $budgetSeconds ? null : min($budgetSeconds, IgnRoutingClient::BATCH_BUDGET_SECONDS),
         );
-        $minutes = $batch['minutes'];
+        // Un hit cache est résolu (jamais budget_exceeded) ; on fusionne avec les résultats IGN.
+        $minutes = $cachedMinutes + $batch['minutes'];
         $budgetExceeded = array_fill_keys($batch['budgetExceededKeys'], true);
+
+        // Mémorise les trajets FRAÎCHEMENT calculés (jamais un null, jamais un hit cache).
+        foreach ($batch['minutes'] as $code => $freshMinutes) {
+            if (null !== $freshMinutes && isset($targetByCode[$code])) {
+                $this->travelCache?->store($clubId, IgnRoutingClient::PROFILE_CAR, $clubLatF, $clubLonF, $targetByCode[$code]['lat'], $targetByCode[$code]['lon'], $freshMinutes);
+            }
+        }
 
         $resolved = 0;
         $wrote = false;
@@ -365,15 +392,26 @@ final class OpponentTravelResolver
         $this->suggestions->increment($code, $newRef);
     }
 
-    /** Car minutes from the club siège to a point, or null (no club geo / IGN muet). */
+    /** Car minutes from the club siège to a point, or null (no club geo / IGN muet). Cache-first (C4). */
     private function carMinutesFromClub(string $clubId, float $lat, float $lon): ?int
     {
         $club = $this->clubRepository->find($clubId);
         if (!$club instanceof Club || null === $club->getLatitude() || null === $club->getLongitude()) {
             return null;
         }
+        $clubLat = (float) $club->getLatitude();
+        $clubLon = (float) $club->getLongitude();
 
-        return $this->routingClient->travelMinutes(IgnRoutingClient::PROFILE_CAR, (float) $club->getLatitude(), (float) $club->getLongitude(), $lat, $lon);
+        $cached = $this->travelCache?->lookup($clubId, IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $lat, $lon);
+        if (null !== $cached) {
+            return $cached;
+        }
+        $minutes = $this->routingClient->travelMinutes(IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $lat, $lon);
+        if (null !== $minutes) {
+            $this->travelCache?->store($clubId, IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $lat, $lon, $minutes);
+        }
+
+        return $minutes;
     }
 
     /**
