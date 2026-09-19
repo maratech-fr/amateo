@@ -1340,13 +1340,18 @@ export interface VenueSuggestion {
 export const getVenueSuggestions = async (code: string): Promise<VenueSuggestion[]> =>
   (await api.get(`opponents/${encodeURIComponent(code)}/venue-suggestions`).json<{ code: string; suggestions: VenueSuggestion[] }>()).suggestions;
 
+/**
+ * C6 — le recalcul quitte le rail synchrone : `POST /api/opponents/travel/resolve` DISPATCHE au
+ * worker (rafale IGN pacée > plafond HTTP) et répond `{queued}` immédiatement. La progression et
+ * les trajets arrivent ensuite par Mercure (`club:{clubId}:travel`), `travelStatus` par ligne au
+ * prochain GET. `resolve()` ne route QUE les trajets manquants (C5) — c'est le « Réessayer les
+ * manquants ».
+ */
 export interface OpponentTravelResolveResult {
-  resolved: number;
-  unresolved: string[];
-  skippedManual: number;
+  queued: boolean;
 }
 
-/** Recalcule TOUS les trajets AUTO du club+saison (le MANUAL est préservé). */
+/** Lance le recalcul des trajets AUTO MANQUANTS du club+saison (le MANUAL est préservé). */
 export const resolveOpponentTravel = (): Promise<OpponentTravelResolveResult> =>
   api.post("opponents/travel/resolve").json<OpponentTravelResolveResult>();
 

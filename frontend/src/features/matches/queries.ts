@@ -380,13 +380,19 @@ export function useVenueSuggestions(code: string) {
   });
 }
 
+/**
+ * C6 — « Réessayer les manquants » : le POST DISPATCHE au worker et répond `{queued}` ; la
+ * progression et les trajets arrivent par Mercure (`travelStream`), `travelStatus` par ligne au
+ * prochain GET. On invalide déjà à l'acquittement (le trajet + le radar refetchent), et on annonce
+ * que le CALCUL est LANCÉ — jamais un compte de trajets « recalculés » qu'on n'a pas encore.
+ */
 export function useResolveOpponentTravel() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => matchesApi.resolveOpponentTravel(),
-    onSuccess: (result) => {
+    onSuccess: () => {
       invalidateTravel(queryClient);
-      toast.success(`Trajets recalculés : ${result.resolved} localisé(s).`);
+      toast.success("Calcul des trajets manquants lancé.");
     },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });

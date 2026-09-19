@@ -71,7 +71,7 @@ vi.mock("./api", () => ({
   placeMatches: vi.fn().mockResolvedValue({ placed: 0, skipped: 0, unplaced: [], diagnostics: [] }),
   setOpponentTravelManual: vi.fn().mockResolvedValue({}),
   setOpponentTravelAuto: vi.fn().mockResolvedValue({}),
-  resolveOpponentTravel: vi.fn().mockResolvedValue({ resolved: 2, unresolved: [], skippedManual: 0 }),
+  resolveOpponentTravel: vi.fn().mockResolvedValue({ queued: true }),
   resolveOpponents: vi.fn().mockResolvedValue({ resolved: 12, unresolved: [], skipped: 0, stamped: 40 }),
   refreshOpponents: vi.fn().mockResolvedValue({
     codes: { resolved: 12, unresolved: [], skipped: 0, stamped: 40 },
@@ -245,7 +245,8 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     expect(matchesApi.setOpponentTravelAuto).toHaveBeenCalledWith({ opponentOrganismeCode: "ORG9", opponentTeamKey: "GRENOBLE-2" });
   });
 
-  it("useResolveOpponentTravel (recalcul global) refetche trajet ET radar", async () => {
+  it("useResolveOpponentTravel (C6 : dispatch async) refetche trajet ET radar, annonce un calcul LANCÉ", async () => {
+    toastMock.success.mockClear();
     const client = makeClient();
     const { result } = renderHook(
       () => ({ travel: useOpponentTravel(), conflicts: useConflicts(), resolve: useResolveOpponentTravel() }),
@@ -260,6 +261,9 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     await waitFor(() => expect(result.current.resolve.isSuccess).toBe(true));
     await waitFor(() => expect(matchesApi.getOpponentTravel).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(matchesApi.getConflicts).toHaveBeenCalledTimes(2));
+    // C6 — le POST est async (`{queued}`) : on annonce que le CALCUL est LANCÉ, jamais un compte
+    // de trajets « recalculés » qu'on n'a pas encore.
+    expect(toastMock.success).toHaveBeenCalledWith("Calcul des trajets manquants lancé.");
   });
 
   it("useUpdateOpponents (PR 2b) : UN seul appel refreshOpponents, refetche fixtures + trajet, UN toast à trois passes", async () => {
