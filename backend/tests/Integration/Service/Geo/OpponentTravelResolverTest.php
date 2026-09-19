@@ -145,6 +145,49 @@ final class OpponentTravelResolverTest extends WebTestCase
         self::assertSame(4.5, $row->getOverrideLongitude());
     }
 
+    /**
+     * C5-bis — une ligne ÉQUIPE (`opponentTeamKey` non NULL) AUTO au trajet null MAIS
+     * portant des coordonnées d'override (posée par l'auto-localisateur pendant un IGN
+     * dégradé) est enfin ROUTÉE : SEUL le trajet (et resolvedAt) change, le gymnase épinglé
+     * et la source AUTO restent souverains. Falsifié : avant C5-bis la passe ne regardait
+     * QUE les lignes club — une ligne équipe restait à jamais sans trajet.
+     */
+    public function testATeamAutoRowWithoutTravelIsReRoutedFromItsOverrideKeepingItSovereign(): void
+    {
+        [$club, $season] = $this->seedClubWithAwayOpponent(); // fixture code sans annuaire → passe club vide
+
+        $this->scopeGucToClub($club->getId());
+        $team = (new OpponentTravel)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setOpponentOrganismeCode('ARA0069TEAM')
+            ->setOpponentTeamKey('adverse 1')
+            ->setSource(OpponentTravelSource::AUTO)
+            ->setTravelMinutes(null) // IGN dégradé au moment de l'auto-localisation
+            ->setOverrideVenueLabel('Gymnase de l\'équipe 1')
+            ->setOverrideVenueExternalRef('166900199')
+            ->setOverrideLatitude(45.5)
+            ->setOverrideLongitude(4.5)
+            ->setResolvedAt(new DateTimeImmutable);
+        $this->em->persist($team);
+        $this->em->flush();
+
+        $result = $this->resolverWithIgn(1320)->resolve($club->getId(), $season->getId());
+
+        self::assertSame(1, $result['resolved'], 'la ligne équipe sans trajet est enfin routée');
+
+        $this->em->clear();
+        $this->scopeGucToClub($club->getId());
+        $row = $this->travelRepository()->findOneByCode($season->getId(), 'ARA0069TEAM', 'adverse 1');
+        self::assertInstanceOf(OpponentTravel::class, $row);
+        self::assertSame(22, $row->getTravelMinutes(), '1320 s → 22 min depuis l\'override');
+        self::assertSame(OpponentTravelSource::AUTO, $row->getSource(), 'la source reste AUTO');
+        self::assertSame('Gymnase de l\'équipe 1', $row->getOverrideVenueLabel(), 'le gymnase épinglé n\'est pas touché');
+        self::assertSame('166900199', $row->getOverrideVenueExternalRef());
+        self::assertSame(45.5, $row->getOverrideLatitude());
+        self::assertSame(4.5, $row->getOverrideLongitude());
+    }
+
     public function testAnOpponentWithNoDirectoryLocationComesBackUnresolved(): void
     {
         [$club, $season] = $this->seedClubWithAwayOpponent();

@@ -110,9 +110,10 @@ final class OpponentTravelResolver
 
         $unresolved = [];
         $skippedManual = 0;
-        /** @var list<array{code: string, lat: float, lon: float}> $geoTargets */
-        $geoTargets = [];
+        /** @var list<array{key: string, code: string, teamKey: string|null, destLat: float, destLon: float, row: OpponentTravel|null}> $targets */
+        $targets = [];
 
+        // ── Passe CLUB : un code par ligne club (défaut, `opponentTeamKey` NULL) ──────
         foreach ($codes as $code) {
             $row = $existing[$code] ?? null;
             if (null !== $row && OpponentTravelSource::MANUAL === $row->getSource()) {
@@ -123,7 +124,7 @@ final class OpponentTravelResolver
                 $overrideLat = $row->getOverrideLatitude();
                 $overrideLon = $row->getOverrideLongitude();
                 if (null === $row->getTravelMinutes() && null !== $overrideLat && null !== $overrideLon) {
-                    $geoTargets[] = ['code' => $code, 'lat' => $overrideLat, 'lon' => $overrideLon];
+                    $targets[] = ['key' => $code, 'code' => $code, 'teamKey' => null, 'destLat' => $overrideLat, 'destLon' => $overrideLon, 'row' => $row];
 
                     continue;
                 }
@@ -145,53 +146,72 @@ final class OpponentTravelResolver
 
                 continue;
             }
-            $geoTargets[] = ['code' => $code, 'lat' => $location[0], 'lon' => $location[1]];
+            $targets[] = ['key' => $code, 'code' => $code, 'teamKey' => null, 'destLat' => $location[0], 'destLon' => $location[1], 'row' => $row];
         }
 
-        // BCK-32 — cap dur : au-delà de MAX_OPPONENTS codes géolocalisés à router,
+        // ── C5-bis — Passe ÉQUIPE : une ligne ÉQUIPE (`opponentTeamKey` non NULL) AUTO au
+        // trajet null MAIS portant des coordonnées d'override (posée par l'auto-localisateur
+        // pendant un IGN dégradé) est enfin ROUTÉE. On n'écrira QUE le trajet — le gymnase
+        // épinglé et la source AUTO restent souverains (jamais l'écrasement du bloc override
+        // de la passe club).
+        foreach ($this->travelRepository->findBySeason($seasonId) as $teamRow) {
+            $teamKey = $teamRow->getOpponentTeamKey();
+            if (null === $teamKey || OpponentTravelSource::AUTO !== $teamRow->getSource() || null !== $teamRow->getTravelMinutes()) {
+                continue;
+            }
+            $overrideLat = $teamRow->getOverrideLatitude();
+            $overrideLon = $teamRow->getOverrideLongitude();
+            if (null === $overrideLat || null === $overrideLon) {
+                continue; // pas de lieu à router (une ligne équipe naît d'un override)
+            }
+            $code = $teamRow->getOpponentOrganismeCode();
+            $targets[] = ['key' => $code . '|team|' . $teamKey, 'code' => $code, 'teamKey' => $teamKey, 'destLat' => $overrideLat, 'destLon' => $overrideLon, 'row' => $teamRow];
+        }
+
+        // BCK-32 — cap dur : au-delà de MAX_OPPONENTS cibles à router (club + équipe),
         // l'excès part en `unresolved` SANS aucun appel réseau (le rattrapage se fera à
         // la prochaine passe). La borne était jusqu'ici tenue par la seule route dédiée ;
         // l'orchestrateur /refresh l'atteint désormais aussi.
-        if (\count($geoTargets) > self::MAX_OPPONENTS) {
-            foreach (\array_slice($geoTargets, self::MAX_OPPONENTS) as $excess) {
+        if (\count($targets) > self::MAX_OPPONENTS) {
+            foreach (\array_slice($targets, self::MAX_OPPONENTS) as $excess) {
                 $unresolved[] = $excess['code'];
             }
-            $geoTargets = \array_slice($geoTargets, 0, self::MAX_OPPONENTS);
+            $targets = \array_slice($targets, 0, self::MAX_OPPONENTS);
         }
 
         // No usable origin → nothing computable, every geolocated opponent is
         // unresolved (best-effort, no exception).
         if (null === $clubLat || null === $clubLon) {
-            foreach ($geoTargets as $target) {
+            foreach ($targets as $target) {
                 $unresolved[] = $target['code'];
             }
 
             return ['resolved' => 0, 'unresolved' => $unresolved, 'skippedManual' => $skippedManual];
         }
 
-        // Cache-first (C4) : un trajet est une CONSTANTE. On regarde le cache club avant
-        // le réseau ; seuls les codes en MANQUE partent en lot IGN. Le cap dur ci-dessus
-        // reste appliqué sur l'ENSEMBLE des cibles (borne le travail, pas le seul réseau).
+        // Cache-first (C4) : un trajet est une CONSTANTE. On regarde le cache club avant le
+        // réseau ; seules les cibles en MANQUE partent dans UN lot IGN (club + équipe partagent
+        // le MÊME budget de mur, sinon deux lots séquentiels doubleraient le temps mural).
         $clubLatF = (float) $clubLat;
         $clubLonF = (float) $clubLon;
-        $targetByCode = [];
+        $targetByKey = [];
         $cachedMinutes = [];
         $jobs = [];
-        foreach ($geoTargets as $target) {
-            $targetByCode[$target['code']] = $target;
-            $cached = $this->travelCache?->lookup($clubId, IgnRoutingClient::PROFILE_CAR, $clubLatF, $clubLonF, $target['lat'], $target['lon']);
+        foreach ($targets as $target) {
+            $targetByKey[$target['key']] = $target;
+            $cached = $this->travelCache?->lookup($clubId, IgnRoutingClient::PROFILE_CAR, $clubLatF, $clubLonF, $target['destLat'], $target['destLon']);
             if (null !== $cached) {
-                $cachedMinutes[$target['code']] = $cached;
+                $cachedMinutes[$target['key']] = $cached;
 
                 continue;
             }
             $jobs[] = [
-                'key' => $target['code'],
+                'key' => $target['key'],
                 'profile' => IgnRoutingClient::PROFILE_CAR,
                 'startLat' => $clubLatF,
                 'startLon' => $clubLonF,
-                'endLat' => $target['lat'],
-                'endLon' => $target['lon'],
+                'endLat' => $target['destLat'],
+                'endLon' => $target['destLon'],
             ];
         }
 
@@ -206,44 +226,43 @@ final class OpponentTravelResolver
         $budgetExceeded = array_fill_keys($batch['budgetExceededKeys'], true);
 
         // Mémorise les trajets FRAÎCHEMENT calculés (jamais un null, jamais un hit cache).
-        foreach ($batch['minutes'] as $code => $freshMinutes) {
-            if (null !== $freshMinutes && isset($targetByCode[$code])) {
-                $this->travelCache?->store($clubId, IgnRoutingClient::PROFILE_CAR, $clubLatF, $clubLonF, $targetByCode[$code]['lat'], $targetByCode[$code]['lon'], $freshMinutes);
+        foreach ($batch['minutes'] as $key => $freshMinutes) {
+            if (null !== $freshMinutes && isset($targetByKey[$key])) {
+                $this->travelCache?->store($clubId, IgnRoutingClient::PROFILE_CAR, $clubLatF, $clubLonF, $targetByKey[$key]['destLat'], $targetByKey[$key]['destLon'], $freshMinutes);
             }
         }
 
         $resolved = 0;
         $wrote = false;
-        foreach ($geoTargets as $target) {
-            $code = $target['code'];
-            // The budget stopped BEFORE this code was even tried: NOT the same as an
+        foreach ($targets as $target) {
+            $key = $target['key'];
+            // The budget stopped BEFORE this target was even tried: NOT the same as an
             // IGN-mute answer. Leave the row untouched — no write, no creation — so a
-            // good AUTO value already in base survives, and a re-run resolves it. Only
-            // a code that WAS tried and came back without a duration overwrites (below).
-            if (isset($budgetExceeded[$code])) {
-                $unresolved[] = $code;
+            // good value already in base survives, and a re-run resolves it.
+            if (isset($budgetExceeded[$key])) {
+                $unresolved[] = $target['code'];
 
                 continue;
             }
-            $value = $minutes[$code] ?? null;
+            $value = $minutes[$key] ?? null;
             if (null === $value) {
                 // C5 — IGN muet : on ne fabrique ni n'altère RIEN. Jamais `setTravelMinutes(null)`
-                // (une valeur ne se perd pas — ici la cible était déjà null, mais la garde tient
-                // la règle explicitement), jamais une ligne vide créée. Le code reste « non
-                // résolu » et repartira au prochain passage.
-                $unresolved[] = $code;
+                // (une valeur ne se perd pas), jamais une ligne vide créée. La cible reste « non
+                // résolue » et repartira au prochain passage.
+                $unresolved[] = $target['code'];
 
                 continue;
             }
-            $row = $existing[$code] ?? $this->newRow($clubId, $seasonId, $code);
-            if (OpponentTravelSource::MANUAL === $row->getSource()) {
-                // Re-route d'une ligne MANUAL restée sans trajet : on ne touche QUE le trajet
-                // (et resolvedAt). Le bloc override (gymnase épinglé) et la source MANUAL sont
-                // souverains — jamais remis à zéro.
+            $existingRow = $target['row'];
+            $row = $existingRow ?? $this->newRow($clubId, $seasonId, $target['code']);
+            if (null !== $target['teamKey'] || OpponentTravelSource::MANUAL === $row->getSource()) {
+                // Ligne ÉQUIPE (override souverain, C5-bis) OU ligne club MANUAL re-routée :
+                // on ne touche QUE le trajet (et resolvedAt). Le bloc override (gymnase épinglé)
+                // et la source restent intacts.
                 $row->setTravelMinutes($value)
                     ->setResolvedAt(new DateTimeImmutable);
             } else {
-                // AUTO row: the location is the global directory's, no manual override.
+                // AUTO club row: the location is the global directory's, no manual override.
                 $row->setTravelMinutes($value)
                     ->setSource(OpponentTravelSource::AUTO)
                     ->setOverrideVenueExternalRef(null)
@@ -252,9 +271,8 @@ final class OpponentTravelResolver
                     ->setOverrideLongitude(null)
                     ->setResolvedAt(new DateTimeImmutable);
             }
-            if (!isset($existing[$code])) {
+            if (null === $existingRow) {
                 $this->entityManager->persist($row);
-                $existing[$code] = $row;
             }
             $wrote = true;
             ++$resolved;
