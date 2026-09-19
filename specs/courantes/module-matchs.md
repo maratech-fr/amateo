@@ -1,7 +1,10 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-19 (`documentation-update`, PR G « todo FBI unique »). Confronté au code
-cette passe : `FbiCorrection`/`FbiCorrectionLedger`/`FbiCorrectionController` (registre « à
+Last verified @ 2026-09-19 (`documentation-update`, complément PR G « suppression d'une rencontre
+= ses entrées disparaissent »). Confronté au code cette passe : `FixtureStateProcessor::
+cascadeBeforeDelete` → `FbiCorrectionLedger::removeForFixture` (cascade applicative, `§1`). Reste
+confronté à la passe précédente (2026-09-19, PR G « todo FBI unique ») :
+`FbiCorrection`/`FbiCorrectionLedger`/`FbiCorrectionController` (registre « à
 corriger dans FBI », §1) ; `Fixture::setStatus`/`fbiEcho` (mémo « FBI affiche … », §1) ;
 `EntryDeadlineOutlook::compute` (`fbiTodo` global, §4) ; `FbiEntryList`/`WeekCounters`/
 `CalendarPage` (écran « FBI — à faire », deep-link `?fbi=1`, §5) ; `FbiDeadlineCard` (carte cockpit
@@ -210,6 +213,17 @@ PURGED_BY_CLUB_SEASON`). **Registre à ZÉRO au départ** : les « garder l'appl
 aucune trace exploitable, il ne se peuple que par les arbitrages à VENIR (décision fermée,
 `etat-des-lieux.md` §2). API : `GET /api/fixtures/fbi-corrections` (membre, entrées ouvertes du
 club+saison) ; `POST …/{id}/close` (gestionnaire + saison écrivable) ; `POST …/{id}/reopen`.
+
+**La suppression d'une rencontre supprime ses entrées** (ouvertes ET fermées) : `fbi_correction` ne
+porte aucune FK sur `fixture_id`, donc `FixtureStateProcessor::cascadeBeforeDelete` appelle
+`FbiCorrectionLedger::removeForFixture` (cascade APPLICATIVE, pas base) avant le `remove()` du
+parent — sinon une rencontre supprimée laisserait des lignes orphelines qui gonfleraient
+`fbiTodo.toCorrect` sans plus jamais apparaître dans la liste. Suppression PURE (pas une fermeture) :
+une rencontre disparue n'a plus rien à corriger. **Invariant d'appel** de `FbiCorrectionLedger::
+open()` : au plus un appel par (rencontre, champ) et par cycle de flush — deux appels avant flush ne
+se verraient pas l'un l'autre via `findOpen` (requête base) et violeraient l'index partiel unique.
+Tenu par la dédup EN AMONT des deux canaux (import xlsx : garde `$seenInFile` par `team|ref` ;
+canal API : garde `$consumed` par fixtureId), jamais par le ledger lui-même.
 
 `Fixture.fbiEcho` (colonne JSON nullable) : mémo `{field, value, at}` posé quand un « prendre le
 fichier » sur l'HEURE rétrograde un domicile `SUBMITTED`/`VALIDATED` à `PLACED` (la coche FBI
