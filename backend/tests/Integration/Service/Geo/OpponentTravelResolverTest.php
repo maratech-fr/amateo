@@ -22,8 +22,9 @@ use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\FfbbSalleResolver;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\OpponentTravelResolver;
+use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
-use App\Tests\Double\SteppingClock;
+use App\Tests\Double\FrozenClock;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -144,6 +145,49 @@ final class OpponentTravelResolverTest extends WebTestCase
         self::assertSame(4.5, $row->getOverrideLongitude());
     }
 
+    /**
+     * C5-bis — une ligne ÉQUIPE (`opponentTeamKey` non NULL) AUTO au trajet null MAIS
+     * portant des coordonnées d'override (posée par l'auto-localisateur pendant un IGN
+     * dégradé) est enfin ROUTÉE : SEUL le trajet (et resolvedAt) change, le gymnase épinglé
+     * et la source AUTO restent souverains. Falsifié : avant C5-bis la passe ne regardait
+     * QUE les lignes club — une ligne équipe restait à jamais sans trajet.
+     */
+    public function testATeamAutoRowWithoutTravelIsReRoutedFromItsOverrideKeepingItSovereign(): void
+    {
+        [$club, $season] = $this->seedClubWithAwayOpponent(); // fixture code sans annuaire → passe club vide
+
+        $this->scopeGucToClub($club->getId());
+        $team = (new OpponentTravel)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setOpponentOrganismeCode('ARA0069TEAM')
+            ->setOpponentTeamKey('adverse 1')
+            ->setSource(OpponentTravelSource::AUTO)
+            ->setTravelMinutes(null) // IGN dégradé au moment de l'auto-localisation
+            ->setOverrideVenueLabel('Gymnase de l\'équipe 1')
+            ->setOverrideVenueExternalRef('166900199')
+            ->setOverrideLatitude(45.5)
+            ->setOverrideLongitude(4.5)
+            ->setResolvedAt(new DateTimeImmutable);
+        $this->em->persist($team);
+        $this->em->flush();
+
+        $result = $this->resolverWithIgn(1320)->resolve($club->getId(), $season->getId());
+
+        self::assertSame(1, $result['resolved'], 'la ligne équipe sans trajet est enfin routée');
+
+        $this->em->clear();
+        $this->scopeGucToClub($club->getId());
+        $row = $this->travelRepository()->findOneByCode($season->getId(), 'ARA0069TEAM', 'adverse 1');
+        self::assertInstanceOf(OpponentTravel::class, $row);
+        self::assertSame(22, $row->getTravelMinutes(), '1320 s → 22 min depuis l\'override');
+        self::assertSame(OpponentTravelSource::AUTO, $row->getSource(), 'la source reste AUTO');
+        self::assertSame('Gymnase de l\'équipe 1', $row->getOverrideVenueLabel(), 'le gymnase épinglé n\'est pas touché');
+        self::assertSame('166900199', $row->getOverrideVenueExternalRef());
+        self::assertSame(45.5, $row->getOverrideLatitude());
+        self::assertSame(4.5, $row->getOverrideLongitude());
+    }
+
     public function testAnOpponentWithNoDirectoryLocationComesBackUnresolved(): void
     {
         [$club, $season] = $this->seedClubWithAwayOpponent();
@@ -159,12 +203,12 @@ final class OpponentTravelResolverTest extends WebTestCase
     }
 
     /**
-     * BCK-22 régression : un code que le budget n'a JAMAIS tenté ne doit pas être
-     * écrasé — une bonne valeur AUTO déjà en base survit, le code revient seulement
-     * `unresolved` (la relance le résoudra). Avant le correctif, l'absence de la clé
-     * dans `minutes` valait `setTravelMinutes(null)` et détruisait la valeur.
+     * C5 (durcit BCK-22) : un trajet est une CONSTANTE. Une ligne AUTO qui porte DÉJÀ
+     * un trajet n'est JAMAIS re-routée — fini le « reroute TOUT » qui, sur un IGN muet,
+     * valait `setTravelMinutes(null)` et détruisait la valeur. Résultat : aucun appel
+     * réseau, `resolved = 0`, `unresolved = []`, et toutes les valeurs survivent intactes.
      */
-    public function testABudgetSkippedCodeKeepsItsExistingAutoValue(): void
+    public function testAnExistingAutoTravelIsNeverRecomputed(): void
     {
         $club = new Club;
         $club->setName('Club budget ' . uniqid('', true));
@@ -187,9 +231,8 @@ final class OpponentTravelResolverTest extends WebTestCase
         $this->em->persist($season);
         $this->em->flush();
 
-        // 9 adversaires AWAY géolocalisés (> une fenêtre de 8), chacun avec une bonne
-        // ligne AUTO déjà en base (99 min). Aucun MANUAL, aucun sans localisation :
-        // le SEUL motif possible d'`unresolved` sera donc le budget.
+        // 9 adversaires AWAY géolocalisés, chacun avec une bonne ligne AUTO déjà en base
+        // (99 min) : le cas exact où « reroute TOUT » pouvait écraser une valeur.
         for ($i = 0; $i < 9; ++$i) {
             $code = \sprintf('ARA00699%03d', $i);
 
@@ -222,18 +265,21 @@ final class OpponentTravelResolverTest extends WebTestCase
         }
         $this->em->flush();
 
-        // Step 100 s ≫ the 30 s budget : after window 0 (8 codes) the next clock read
-        // is past the deadline, so the 9th code's window is never dispatched.
-        $result = $this->resolverWithIgn(600, new SteppingClock(stepSeconds: 100))->resolve($club->getId(), $season->getId());
+        $calls = 0;
+        $result = $this->cachingResolver($calls)->resolve($club->getId(), $season->getId());
 
-        self::assertNotSame([], $result['unresolved'], 'le budget doit avoir coupé au moins un code');
+        // Rien à recalculer : toutes les valeurs existent déjà (constantes).
+        self::assertSame(0, $result['resolved'], 'aucune valeur n\'est (re)calculée');
+        self::assertSame([], $result['unresolved'], 'aucun manque : rien n\'est ciblé');
+        self::assertSame(0, $calls, 'aucun appel IGN — une constante ne repart jamais au réseau');
 
+        // Les 9 bonnes valeurs AUTO survivent intactes.
         $this->em->clear();
         $this->scopeGucToClub($club->getId());
-        foreach ($result['unresolved'] as $code) {
-            $row = $this->travelRepository()->findOneByCode($season->getId(), $code);
-            self::assertInstanceOf(OpponentTravel::class, $row, "la ligne du code budget-coupé {$code} existe toujours");
-            self::assertSame(99, $row->getTravelMinutes(), "la bonne valeur AUTO survit au code budget-coupé {$code}");
+        for ($i = 0; $i < 9; ++$i) {
+            $row = $this->travelRepository()->findOneByCode($season->getId(), \sprintf('ARA00699%03d', $i));
+            self::assertInstanceOf(OpponentTravel::class, $row, "la ligne du code {$i} existe toujours");
+            self::assertSame(99, $row->getTravelMinutes(), "la bonne valeur AUTO du code {$i} survit");
             self::assertSame(OpponentTravelSource::AUTO, $row->getSource());
         }
     }
@@ -427,6 +473,22 @@ final class OpponentTravelResolverTest extends WebTestCase
         self::assertSame(60, $calls, 'aucun appel IGN pour l\'excès — le 61ᵉ n\'est jamais dispatché');
     }
 
+    public function testResolveServesACachedTravelWithoutTouchingTheNetwork(): void
+    {
+        [$club, $season] = $this->seedManyGeolocatedAwayOpponents(1);
+        // Le trajet est DÉJÀ en cache (une constante) : siège 45.70,4.90 → adverse 45.76,4.86.
+        self::getContainer()->get(TravelTimeCache::class)->store($club->getId(), IgnRoutingClient::PROFILE_CAR, 45.70, 4.90, 45.76, 4.86, 88);
+
+        $calls = 0;
+        $result = $this->cachingResolver($calls)->resolve($club->getId(), $season->getId());
+
+        self::assertSame(1, $result['resolved'], 'l\'adversaire est résolu');
+        self::assertSame(0, $calls, 'un trajet en cache ne déclenche AUCUN appel IGN (jamais recalculé)');
+        $row = $this->em->getRepository(OpponentTravel::class)->findOneBy(['opponentOrganismeCode' => 'ARA0069C000']);
+        self::assertInstanceOf(OpponentTravel::class, $row);
+        self::assertSame(88, $row->getTravelMinutes(), 'la valeur servie vient du cache');
+    }
+
     protected function setUp(): void
     {
         self::createClient();
@@ -440,11 +502,13 @@ final class OpponentTravelResolverTest extends WebTestCase
      */
     private function countingResolver(int &$calls): OpponentTravelResolver
     {
+        // FrozenClock : le pacing 1/s ne consomme aucun budget (sleep no-op), donc le
+        // budget ne mord jamais — le test isole le CAP DUR (60), pas le budget de mur.
         $ign = new IgnRoutingClient(new MockHttpClient(function () use (&$calls): MockResponse {
             ++$calls;
 
             return new MockResponse((string) json_encode(['duration' => 600]));
-        }), new MockClock);
+        }), new FrozenClock);
 
         return new OpponentTravelResolver(
             $this->em,
@@ -456,6 +520,29 @@ final class OpponentTravelResolverTest extends WebTestCase
             self::getContainer()->get(ClubRepository::class),
             self::getContainer()->get(FixtureRepository::class),
             new NullLogger,
+        );
+    }
+
+    /** The real resolver wired with the container's cache + a counting IGN (FrozenClock : pas de pacing). */
+    private function cachingResolver(int &$calls): OpponentTravelResolver
+    {
+        $ign = new IgnRoutingClient(new MockHttpClient(function () use (&$calls): MockResponse {
+            ++$calls;
+
+            return new MockResponse((string) json_encode(['duration' => 600]));
+        }), new FrozenClock);
+
+        return new OpponentTravelResolver(
+            $this->em,
+            $ign,
+            $this->travelRepository(),
+            self::getContainer()->get(OpponentDirectoryEntryRepository::class),
+            $this->suggestionRepository(),
+            $this->salleResolver(),
+            self::getContainer()->get(ClubRepository::class),
+            self::getContainer()->get(FixtureRepository::class),
+            new NullLogger,
+            self::getContainer()->get(TravelTimeCache::class),
         );
     }
 

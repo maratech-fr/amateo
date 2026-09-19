@@ -90,6 +90,7 @@ final class SeasonDataPurger
         'team_tag' => 'club-scoped sans saison — porte de sortie ErasedClubPurger',
         'sport_category' => 'club-scoped sans saison — porte de sortie ErasedClubPurger',
         'club_user' => 'club-scoped sans saison — porte de sortie ErasedClubPurger',
+        'club_travel_cache' => 'club-scoped sans saison (un trajet est une constante, jamais lié à une saison) — porte de sortie ErasedClubPurger',
         'audit_log' => 'accountability : rétention propre (app:audit:purge) ; l\'effacement écrit une ligne d\'audit APRÈS la purge',
         'coach_wish_token' => 'part par la FK ON DELETE CASCADE de sa campagne (jamais supprimé directement)',
     ];

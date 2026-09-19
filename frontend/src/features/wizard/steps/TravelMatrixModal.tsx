@@ -9,6 +9,7 @@ import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { Modal } from "@/shared/components/ui/modal";
 import { readState } from "@/shared/lib/readState";
+import { useTravelStream } from "@/shared/lib/travelStream";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { AutofillUnresolvedReason, Venue, VenueTravelTime, VenueTravelTimeAutofillResult, VenueTravelTimePayload } from "../api";
@@ -169,9 +170,20 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
   const update = useUpdateVenueTravelTime();
   const autofill = useAutofillVenueTravelTimes();
 
-  const [autofillResult, setAutofillResult] = useState<VenueTravelTimeAutofillResult | null>(null);
   const [autofillError, setAutofillError] = useState<string | null>(null);
+  // « lancé » = le gestionnaire a demandé au moins un calcul cette session (event handler) ;
+  // le reste se DÉRIVE du flux (useSyncExternalStore), jamais d'un setState dans un effet.
+  const [launched, setLaunched] = useState(false);
   const [filter, setFilter] = useState("");
+
+  // C6 — le calcul tourne dans le worker : on écoute la progression sur le flux des trajets tant
+  // qu'un calcul a été lancé. Le terminal porte le verdict (`{filled, unresolved}`) ; la matrice,
+  // elle, se rafraîchit toute seule (le flux invalide `["wizard","venue_travel_times"]`).
+  const stream = useTravelStream(launched);
+  const travel = "VENUE_MATRIX" === stream.latest?.scope ? stream.latest : null;
+  const computing = launched && (null === travel || !travel.terminal);
+  const autofillResult: VenueTravelTimeAutofillResult | null =
+    launched && null !== travel && travel.terminal ? { filled: travel.verdict?.filled ?? 0, unresolved: (travel.verdict?.unresolved ?? []) as VenueTravelTimeAutofillResult["unresolved"] } : null;
 
   const venues: Venue[] = venuesQuery.data ?? [];
   const matrix: VenueTravelTime[] = matrixQuery.data ?? [];
@@ -184,7 +196,14 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
   const runAutofill = () => {
     setAutofillError(null);
     autofill.mutate(undefined, {
-      onSuccess: (result) => setAutofillResult(result),
+      // C6 — la réponse dit seulement que le calcul est EN FILE : on marque « lancé » et le flux
+      // fait le reste (progression puis verdict au terminal). Sécurité H — si un calcul tourne
+      // déjà (rien dispatché), on NE bascule PAS en « en cours… » (le hook émet le toast).
+      onSuccess: (result) => {
+        if (!result.alreadyRunning) {
+          setLaunched(true);
+        }
+      },
       onError: async (e) => setAutofillError(await apiErrorMessage(e)),
     });
   };
@@ -203,7 +222,14 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
     }
   };
 
-  const showConsent = 0 === matrix.length && null === autofillResult;
+  const showConsent = 0 === matrix.length && null === autofillResult && !computing;
+  const busy = autofill.isPending || computing;
+  // Ligne de progression stable pendant le calcul (jauge `done/total` si le flux la porte).
+  const progressLabel = computing
+    ? null !== travel && travel.total > 0
+      ? `Calcul des trajets en cours… ${travel.done} / ${travel.total}`
+      : "Calcul des trajets en cours…"
+    : null;
 
   const needle = filter.trim().toLowerCase();
   const sorted = [...venues].sort((a, b) => a.name.localeCompare(b.name, "fr"));
@@ -219,11 +245,17 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
   const footer = showConsent ? undefined : (
     <>
       <div className="mr-auto flex flex-wrap items-center gap-2">
-        <Button variant="outline" onClick={runAutofill} disabled={autofill.isPending}>
-          {autofill.isPending ? <Spinner className="size-4" /> : <RefreshCw className="size-4" />}
+        <Button variant="outline" onClick={runAutofill} disabled={busy}>
+          {busy ? <Spinner className="size-4" /> : <RefreshCw className="size-4" />}
           Recalculer les trajets
         </Button>
-        <span className="text-xs text-muted-foreground">Vos valeurs saisies à la main sont conservées.</span>
+        {null !== progressLabel ? (
+          <span role="status" aria-live="polite" className="text-xs text-muted-foreground">
+            {progressLabel}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">Vos valeurs saisies à la main sont conservées.</span>
+        )}
       </div>
       <Button onClick={onClose}>Terminé</Button>
     </>
@@ -236,7 +268,7 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
       ) : venues.length < 2 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">Ajoutez au moins deux gymnases pour définir des temps de trajet entre eux.</p>
       ) : showConsent ? (
-        <AutofillConsent onRun={runAutofill} onClose={onClose} running={autofill.isPending} error={autofillError} />
+        <AutofillConsent onRun={runAutofill} onClose={onClose} running={busy} error={autofillError} />
       ) : (
         <div className="flex flex-col gap-3">
           {/* Zone d'en-tête non défilante : filtre + légende + gymnases sans adresse. */}

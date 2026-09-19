@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { Competition, MatchSlotRotation, OpponentTravel, SportCategoryDuration, Venue, VenueLabelInventoryRow, VenueMatchWindow } from "../api";
-import { accessSummary, deadlinesSummary, durationsSummary, labelsSummary, opponentsSummary, rotationsSummary } from "./configSummaries";
+import type { Competition, MatchSlotRotation, SportCategoryDuration, Venue, VenueLabelInventoryRow, VenueMatchWindow } from "../api";
+import { accessSummary, deadlinesSummary, durationsSummary, labelsSummary, rotationsSummary } from "./configSummaries";
 
 const venue = (id: string): Venue => ({ id, name: `Gymnase ${id}`, color: null, externalLabels: [] });
 const matchWindow = (venueId: string): VenueMatchWindow => ({ id: `${venueId}-w`, venueId, dayOfWeek: 6, startTime: "14:00", endTime: "22:00" });
@@ -32,22 +32,6 @@ const category = (over: Partial<SportCategoryDuration> = {}): SportCategoryDurat
   ...over,
 });
 
-const travel = (over: Partial<OpponentTravel> = {}): OpponentTravel => ({
-  opponentOrganismeCode: "ORG",
-  opponentTeamKey: "ADVERSAIRE",
-  opponentLabel: "Adversaire",
-  located: true,
-  precision: null,
-  locationName: null,
-  city: null,
-  postalCode: null,
-  travelMinutes: null,
-  approximated: false,
-  source: null,
-  scope: null,
-  overrideVenueLabel: null,
-  ...over,
-});
 
 describe("rotationsSummary", () => {
   it("undefined (chargement/échec) ⇒ null — jamais un « 0 » fabriqué", () => {
@@ -103,24 +87,6 @@ describe("durationsSummary", () => {
   it("une valeur match OU échauffement non nulle ⇒ compte comme personnalisée", () => {
     expect(durationsSummary([category({ matchMinutes: 100 }), category({ id: "cat2" })])).toBe("1 personnalisée");
     expect(durationsSummary([category({ warmupMinutes: 20 }), category({ id: "cat2", matchMinutes: 100 })])).toBe("2 personnalisées");
-  });
-});
-
-describe("opponentsSummary", () => {
-  it("undefined ⇒ null", () => {
-    expect(opponentsSummary(undefined)).toBeNull();
-  });
-
-  it("aucun adversaire ⇒ « aucun adversaire »", () => {
-    expect(opponentsSummary([])).toBe("aucun adversaire");
-  });
-
-  it("tous localisés (N=0, M>0) ⇒ « tous localisés »", () => {
-    expect(opponentsSummary([travel(), travel({ opponentLabel: "B" })])).toBe("tous localisés");
-  });
-
-  it("des non localisés ⇒ « N à localiser sur M équipes adverses »", () => {
-    expect(opponentsSummary([travel({ located: false }), travel({ opponentLabel: "B" }), travel({ opponentLabel: "C", located: false })])).toBe("2 à localiser sur 3 équipes adverses");
   });
 });
 

@@ -3182,6 +3182,10 @@
                                         "topicTemplate": {
                                             "type": "string",
                                             "description": "URI template club:{clubId}:schedule:{id} \u2014 subscribe to it as-is"
+                                        },
+                                        "travelTopic": {
+                                            "type": "string",
+                                            "description": "Fixed topic club:{clubId}:travel for the async travel-computation progress \u2014 subscribe to it as-is"
                                         }
                                     }
                                 }
@@ -9022,22 +9026,19 @@
                                         },
                                         "travel": {
                                             "type": "object",
-                                            "description": "Pass (c): the AUTO travel recompute",
+                                            "description": "Pass (c): the AUTO travel recompute \u2014 DISPATCHED to the worker (paced IGN routing > HTTP ceiling); progress pushed on the club Mercure travel topic. When a travel computation is already running for the club, nothing is dispatched (queued=false, alreadyRunning=true) \u2014 passes (a)/(b) still ran.",
                                             "properties": {
-                                                "resolved": {
-                                                    "type": "integer",
-                                                    "description": "Opponents with a computed travel time"
+                                                "queued": {
+                                                    "type": "boolean",
+                                                    "description": "The travel computation was dispatched to the worker"
                                                 },
-                                                "unresolved": {
-                                                    "type": "array",
-                                                    "items": {
-                                                        "type": "string"
-                                                    },
-                                                    "description": "Opponent codes with no located venue or no routing duration"
+                                                "alreadyRunning": {
+                                                    "type": "boolean",
+                                                    "description": "A travel computation was already in flight for this club, so nothing was dispatched"
                                                 },
-                                                "skippedManual": {
+                                                "pending": {
                                                     "type": "integer",
-                                                    "description": "Opponents whose MANUAL override was preserved"
+                                                    "description": "How many distinct away opponents the queued computation will process"
                                                 }
                                             }
                                         },
@@ -9183,6 +9184,10 @@
                                                         "type": "boolean",
                                                         "description": "A resolvable location exists (directory entry or manual override)"
                                                     },
+                                                    "hasLogo": {
+                                                        "type": "boolean",
+                                                        "description": "A federal logo is known for this opponent (serve it via GET /api/opponents/{code}/logo, member only)"
+                                                    },
                                                     "precision": {
                                                         "type": [
                                                             "string",
@@ -9222,6 +9227,15 @@
                                                             "null"
                                                         ],
                                                         "description": "One-way car travel from the club si\u00e8ge (null = best-effort miss)"
+                                                    },
+                                                    "travelStatus": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "done",
+                                                            "pending",
+                                                            "unavailable"
+                                                        ],
+                                                        "description": "Server-computed travel state: done (minutes present), pending (a computation is in flight for this club), unavailable (attempted without a result, or no location to route)"
                                                     },
                                                     "approximated": {
                                                         "type": "boolean",
@@ -9517,26 +9531,19 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Recomputes the AUTO car travel from the club si\u00e8ge to every away opponent's location (best-effort). A MANUAL override is left untouched; an opponent with no located venue comes back named.",
+                        "description": "Queues an ASYNC recompute of the AUTO car travel from the club si\u00e8ge to every away opponent whose travel is MISSING (a travel is a constant \u2014 an already-known one is never recomputed). The cap is checked synchronously (422); the paced IGN routing runs in the worker, progress pushed on the club Mercure travel topic. A MANUAL override is left untouched. When a travel computation is already running for the club, nothing is dispatched (queued=false, alreadyRunning=true).",
                         "content": {
                             "application/json": {
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "resolved": {
-                                            "type": "integer",
-                                            "description": "Opponents with a computed travel time"
+                                        "queued": {
+                                            "type": "boolean",
+                                            "description": "The computation was dispatched to the worker"
                                         },
-                                        "unresolved": {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "string"
-                                            },
-                                            "description": "Opponent codes with no located venue or no routing duration"
-                                        },
-                                        "skippedManual": {
-                                            "type": "integer",
-                                            "description": "Opponents whose MANUAL override was preserved"
+                                        "alreadyRunning": {
+                                            "type": "boolean",
+                                            "description": "A travel computation was already in flight for this club, so nothing was dispatched"
                                         }
                                     }
                                 }
@@ -9559,7 +9566,38 @@
                         "description": "Too many requests (per-user rate limit)"
                     }
                 },
-                "summary": "Recompute the AUTO travel times of the season's away opponents (management only)"
+                "summary": "Queue the async recompute of the season's away-opponent travel times (management only)"
+            }
+        },
+        "/api/opponents/{code}/logo": {
+            "get": {
+                "operationId": "serveOpponentLogo",
+                "tags": [
+                    "Fixture"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The opponent federal logo bytes (image/*), re-hosted lazily on the first GET; Cache-Control private, max-age 86400"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT) \u2014 member only, never public"
+                    },
+                    "404": {
+                        "description": "No federal logo known for this opponent, or its download failed (best-effort)"
+                    }
+                },
+                "summary": "Serve the opponent federal logo (member only; re-hosted lazily, 404 without one)",
+                "parameters": [
+                    {
+                        "name": "code",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "The opponent FFBB organisme code ([A-Za-z0-9]{1,24})"
+                    }
+                ]
             }
         },
         "/api/opponents/{code}/venue-suggestions": {
@@ -20241,41 +20279,19 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Fills AUTO driving/walking minutes for every geolocated venue pair via IGN routing. A MANUAL value is NEVER overwritten; a pair with a missing geolocation, a routing failure, or a spent batch time budget comes back named (best-effort, re-run to continue).",
+                        "description": "Queues an ASYNC autofill of the AUTO driving/walking minutes for every geolocated venue pair (the paced IGN routing runs in the worker). The cap is checked synchronously (422). Progress and the terminal verdict ({filled, unresolved}) are pushed on the club Mercure travel topic; a MANUAL value is NEVER overwritten. When a travel computation is already running for the club, nothing is dispatched (queued=false, alreadyRunning=true).",
                         "content": {
                             "application/json": {
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "filled": {
-                                            "type": "integer",
-                                            "description": "Pairs where at least one AUTO minute was written"
+                                        "queued": {
+                                            "type": "boolean",
+                                            "description": "The computation was dispatched to the worker"
                                         },
-                                        "unresolved": {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "object",
-                                                "properties": {
-                                                    "venueAId": {
-                                                        "type": "string"
-                                                    },
-                                                    "venueBId": {
-                                                        "type": "string"
-                                                    },
-                                                    "reason": {
-                                                        "type": "string",
-                                                        "enum": [
-                                                            "missing_geo",
-                                                            "routing_failed",
-                                                            "budget_exceeded"
-                                                        ]
-                                                    }
-                                                }
-                                            }
-                                        },
-                                        "skippedManual": {
-                                            "type": "integer",
-                                            "description": "Pairs whose MANUAL value was preserved"
+                                        "alreadyRunning": {
+                                            "type": "boolean",
+                                            "description": "A travel computation was already in flight for this club, so nothing was dispatched"
                                         }
                                     }
                                 }
@@ -20301,7 +20317,7 @@
                         "description": "Too many requests (per-user rate limit)"
                     }
                 },
-                "summary": "Autofill the venue travel-time matrix from IGN routing (management only; never overwrites a MANUAL value)"
+                "summary": "Queue the async autofill of the venue travel-time matrix (management only; never overwrites a MANUAL value)"
             }
         },
         "/api/venues": {

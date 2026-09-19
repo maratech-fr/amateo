@@ -14,6 +14,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\OpponentLocationPrecision;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
+use App\Service\TravelComputeLock;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -77,8 +78,35 @@ final class OpponentRefreshApiTest extends WebTestCase
         self::assertSame(['codes', 'autoLocated', 'travel', 'failedSteps'], array_keys($data));
         self::assertSame(['resolved', 'unresolved', 'skipped', 'stamped'], array_keys((array) $data['codes']));
         self::assertSame(['located', 'ambiguous', 'unmatched', 'skipped'], array_keys((array) $data['autoLocated']));
-        self::assertSame(['resolved', 'unresolved', 'skippedManual'], array_keys((array) $data['travel']));
+        // C6 — la 3ᵉ passe (trajets) est DISPATCHÉE au worker : la réponse dit seulement
+        // qu'un calcul est en file et combien d'adversaires distincts sont concernés.
+        self::assertSame(['queued', 'alreadyRunning', 'pending'], array_keys((array) $data['travel']));
+        self::assertTrue($data['travel']['queued']);
+        self::assertFalse($data['travel']['alreadyRunning'], 'aucun calcul en cours → dispatché');
+        self::assertSame(1, $data['travel']['pending'], 'un adversaire distinct à calculer');
         self::assertSame([], $data['failedSteps'], 'aucune passe en échec en régime nominal');
+    }
+
+    public function testAConcurrentComputationIsNotDispatchedTwice(): void
+    {
+        [$club, $user, $season] = $this->seedClub();
+        $this->awayFixture($club, $season, 'ARA0069R09', 'Adversaire localisable');
+        $this->directory('ARA0069R09', OpponentLocationPrecision::CITY, 'Villeurbanne', '69100');
+
+        // Sécurité H — un calcul tourne déjà pour ce club (verrou tenu) : la 3ᵉ passe NE doit PAS
+        // dispatcher un second message (il finirait en `failed`). Les passes (a)/(b) restent utiles.
+        $lock = self::getContainer()->get(TravelComputeLock::class);
+        $token = $lock->acquire($club->getId(), 60);
+        self::assertNotNull($token, 'le verrou du club est pris pour simuler un calcul en cours');
+        try {
+            $this->post($user, '/api/opponents/refresh');
+            self::assertResponseStatusCodeSame(200);
+            $data = $this->responseData();
+            self::assertFalse($data['travel']['queued'], 'rien n\'est mis en file pendant un calcul en cours');
+            self::assertTrue($data['travel']['alreadyRunning'], 'la réponse dit qu\'un calcul est déjà en cours');
+        } finally {
+            $lock->release($club->getId(), $token);
+        }
     }
 
     public function testTheLimiterTripsAtElevenCallsForOneUser(): void

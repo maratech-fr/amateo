@@ -74,6 +74,19 @@ describe("ReconciliationView (PR-3b — intégration des rencontres FFBB)", () =
     expect(screen.queryByRole("article")).not.toBeInTheDocument();
   });
 
+  it("affiche les rencontres à créer triées (date · heure — heure absente en dernier du jour · adversaire)", () => {
+    const early = { ...creatableA, rencontreId: "renc-late-day", date: "2026-09-25", kickoff: "20:00", opponentLabel: "AAA" };
+    const noTime = { ...creatableA, rencontreId: "renc-notime", date: "2026-09-23", kickoff: null, opponentLabel: "ZZZ" };
+    const midday = { ...creatableA, rencontreId: "renc-1800", date: "2026-09-23", kickoff: "18:00", opponentLabel: "MMM" };
+    // Ordre d'ENTRÉE volontairement mélangé — le tri doit le réordonner.
+    renderView({ channel: "api", creatable: [early, noTime, midday], fetchedAt: "2026-08-24T14:05:00+00:00" });
+
+    const rows = screen.getAllByRole("listitem").map((li) => li.textContent ?? "");
+    expect(rows[0]).toContain("MMM"); // 23, 18:00
+    expect(rows[1]).toContain("ZZZ"); // 23, sans heure → dernier du jour
+    expect(rows[2]).toContain("AAA"); // 25
+  });
+
   it("« Intégrer » envoie les créations choisies puis renvoie vers la file (/matchs/importer)", async () => {
     applyFfbbRencontres.mockResolvedValueOnce({ created: 1, updated: 0, unresolvedDeviations: [], depositedAt: "2026-08-24T14:06:00+00:00" });
     const user = userEvent.setup();

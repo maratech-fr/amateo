@@ -46,16 +46,11 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
             operationId: 'autofillVenueTravelTimes',
             tags: ['Venue'],
             responses: [
-                '200' => $this->schemas->jsonResponse('Fills AUTO driving/walking minutes for every geolocated venue pair via IGN routing. A MANUAL value is NEVER overwritten; a pair with a missing geolocation, a routing failure, or a spent batch time budget comes back named (best-effort, re-run to continue).', [
+                '200' => $this->schemas->jsonResponse('Queues an ASYNC autofill of the AUTO driving/walking minutes for every geolocated venue pair (the paced IGN routing runs in the worker). The cap is checked synchronously (422). Progress and the terminal verdict ({filled, unresolved}) are pushed on the club Mercure travel topic; a MANUAL value is NEVER overwritten. When a travel computation is already running for the club, nothing is dispatched (queued=false, alreadyRunning=true).', [
                     'type' => 'object',
                     'properties' => [
-                        'filled' => ['type' => 'integer', 'description' => 'Pairs where at least one AUTO minute was written'],
-                        'unresolved' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
-                            'venueAId' => ['type' => 'string'],
-                            'venueBId' => ['type' => 'string'],
-                            'reason' => ['type' => 'string', 'enum' => ['missing_geo', 'routing_failed', 'budget_exceeded']],
-                        ]]],
-                        'skippedManual' => ['type' => 'integer', 'description' => 'Pairs whose MANUAL value was preserved'],
+                        'queued' => ['type' => 'boolean', 'description' => 'The computation was dispatched to the worker'],
+                        'alreadyRunning' => ['type' => 'boolean', 'description' => 'A travel computation was already in flight for this club, so nothing was dispatched'],
                     ],
                 ]),
                 '400' => new Response('No club or season in context'),
@@ -65,7 +60,7 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                 '422' => new Response('Too many geolocated venue pairs for an automatic fill (fill by hand)'),
                 '429' => new Response('Too many requests (per-user rate limit)'),
             ],
-            summary: 'Autofill the venue travel-time matrix from IGN routing (management only; never overwrites a MANUAL value)',
+            summary: 'Queue the async autofill of the venue travel-time matrix (management only; never overwrites a MANUAL value)',
         )));
 
         $paths->addPath('/api/opponents/resolve', new PathItem(post: new Operation(
@@ -97,11 +92,13 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                 'opponentTeamKey' => ['type' => ['string', 'null'], 'description' => 'Server-normalized opponent label — the grain of a per-team travel override; null for an unresolved opponent'],
                 'opponentLabel' => ['type' => 'string'],
                 'located' => ['type' => 'boolean', 'description' => 'A resolvable location exists (directory entry or manual override)'],
+                'hasLogo' => ['type' => 'boolean', 'description' => 'A federal logo is known for this opponent (serve it via GET /api/opponents/{code}/logo, member only)'],
                 'precision' => ['type' => ['string', 'null'], 'enum' => ['VENUE', 'CITY', null], 'description' => 'How precisely the opponent venue is known'],
                 'locationName' => ['type' => ['string', 'null'], 'description' => 'The gym label (VENUE / override) or the commune (CITY)'],
                 'city' => ['type' => ['string', 'null'], 'description' => 'The opponent commune from the shared directory'],
                 'postalCode' => ['type' => ['string', 'null'], 'description' => 'The opponent postal code from the shared directory'],
                 'travelMinutes' => ['type' => ['integer', 'null'], 'description' => 'One-way car travel from the club siège (null = best-effort miss)'],
+                'travelStatus' => ['type' => 'string', 'enum' => ['done', 'pending', 'unavailable'], 'description' => 'Server-computed travel state: done (minutes present), pending (a computation is in flight for this club), unavailable (attempted without a result, or no location to route)'],
                 'approximated' => ['type' => 'boolean', 'description' => 'Server-computed: the location is only city-precise'],
                 'source' => ['type' => ['string', 'null'], 'enum' => ['AUTO', 'MANUAL', null]],
                 'scope' => ['type' => ['string', 'null'], 'enum' => ['TEAM', 'CLUB', null], 'description' => 'Which grain governs this travel: a per-team override (TEAM), the club default (CLUB), or none (null)'],
@@ -191,12 +188,11 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
             operationId: 'resolveOpponentTravel',
             tags: ['Fixture'],
             responses: [
-                '200' => $this->schemas->jsonResponse('Recomputes the AUTO car travel from the club siège to every away opponent\'s location (best-effort). A MANUAL override is left untouched; an opponent with no located venue comes back named.', [
+                '200' => $this->schemas->jsonResponse('Queues an ASYNC recompute of the AUTO car travel from the club siège to every away opponent whose travel is MISSING (a travel is a constant — an already-known one is never recomputed). The cap is checked synchronously (422); the paced IGN routing runs in the worker, progress pushed on the club Mercure travel topic. A MANUAL override is left untouched. When a travel computation is already running for the club, nothing is dispatched (queued=false, alreadyRunning=true).', [
                     'type' => 'object',
                     'properties' => [
-                        'resolved' => ['type' => 'integer', 'description' => 'Opponents with a computed travel time'],
-                        'unresolved' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Opponent codes with no located venue or no routing duration'],
-                        'skippedManual' => ['type' => 'integer', 'description' => 'Opponents whose MANUAL override was preserved'],
+                        'queued' => ['type' => 'boolean', 'description' => 'The computation was dispatched to the worker'],
+                        'alreadyRunning' => ['type' => 'boolean', 'description' => 'A travel computation was already in flight for this club, so nothing was dispatched'],
                     ],
                 ]),
                 '400' => new Response('No club or season in context'),
@@ -205,7 +201,7 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                 '422' => new Response('Too many away opponents to resolve at once (retry with fewer)'),
                 '429' => new Response('Too many requests (per-user rate limit)'),
             ],
-            summary: 'Recompute the AUTO travel times of the season\'s away opponents (management only)',
+            summary: 'Queue the async recompute of the season\'s away-opponent travel times (management only)',
         )));
 
         $paths->addPath('/api/opponents/{code}/venue-suggestions', new PathItem(get: new Operation(
@@ -260,10 +256,10 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                             'unmatched' => ['type' => 'integer', 'description' => 'Opponent teams with no unique federal salle for their file label'],
                             'skipped' => ['type' => 'integer', 'description' => 'Opponent teams left untouched because a MANUAL override already governs them'],
                         ]],
-                        'travel' => ['type' => 'object', 'description' => 'Pass (c): the AUTO travel recompute', 'properties' => [
-                            'resolved' => ['type' => 'integer', 'description' => 'Opponents with a computed travel time'],
-                            'unresolved' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Opponent codes with no located venue or no routing duration'],
-                            'skippedManual' => ['type' => 'integer', 'description' => 'Opponents whose MANUAL override was preserved'],
+                        'travel' => ['type' => 'object', 'description' => 'Pass (c): the AUTO travel recompute — DISPATCHED to the worker (paced IGN routing > HTTP ceiling); progress pushed on the club Mercure travel topic. When a travel computation is already running for the club, nothing is dispatched (queued=false, alreadyRunning=true) — passes (a)/(b) still ran.', 'properties' => [
+                            'queued' => ['type' => 'boolean', 'description' => 'The travel computation was dispatched to the worker'],
+                            'alreadyRunning' => ['type' => 'boolean', 'description' => 'A travel computation was already in flight for this club, so nothing was dispatched'],
+                            'pending' => ['type' => 'integer', 'description' => 'How many distinct away opponents the queued computation will process'],
                         ]],
                         'failedSteps' => ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['codes', 'auto-locate', 'travel']], 'description' => 'Passes that threw and fell back to their neutral (zero) result — empty in the nominal case. A non-empty list means the update is PARTIAL: re-run to continue.'],
                     ],
@@ -275,6 +271,18 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                 '429' => new Response('Too many requests (per-user rate limit)'),
             ],
             summary: 'Update all away opponents in one call — catch up codes, auto-locate gyms from the file, recompute travel (management only)',
+        )));
+
+        $paths->addPath('/api/opponents/{code}/logo', new PathItem(get: new Operation(
+            operationId: 'serveOpponentLogo',
+            tags: ['Fixture'],
+            responses: [
+                '200' => new Response('The opponent federal logo bytes (image/*), re-hosted lazily on the first GET; Cache-Control private, max-age 86400'),
+                '401' => new Response('Unauthorized (missing/expired JWT) — member only, never public'),
+                '404' => new Response('No federal logo known for this opponent, or its download failed (best-effort)'),
+            ],
+            summary: 'Serve the opponent federal logo (member only; re-hosted lazily, 404 without one)',
+            parameters: [['name' => 'code', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string'], 'description' => 'The opponent FFBB organisme code ([A-Za-z0-9]{1,24})']],
         )));
     }
 }

@@ -1266,6 +1266,8 @@ export interface OpponentTravel {
   opponentTeamKey: string | null;
   opponentLabel: string;
   located: boolean;
+  /** C7 — un logo fédéral est connu (le rendre via `GET /api/opponents/{code}/logo`, sinon initiales). */
+  hasLogo: boolean;
   precision: OpponentLocationPrecision | null;
   locationName: string | null;
   /** La commune adverse, servie par l'annuaire partagé (pré-remplit la recherche CP). */
@@ -1280,6 +1282,12 @@ export interface OpponentTravel {
   /** Le grain qui gouverne ce trajet : surcharge ÉQUIPE, défaut CLUB, ou aucun (null). */
   scope: OpponentTravelScope | null;
   overrideVenueLabel: string | null;
+  /**
+   * C5/C6 — l'état du trajet, SERVI (le front ne le re-dérive pas) : `done` (minutes présentes),
+   * `pending` (un calcul est en cours pour ce club, `club:{clubId}:travel`), `unavailable` (pas
+   * de calcul en cours et pas de minutes). Pilote la colonne « Trajet » et la progression.
+   */
+  travelStatus: "done" | "pending" | "unavailable";
 }
 
 export const getOpponentTravel = async (): Promise<OpponentTravel[]> =>
@@ -1338,13 +1346,20 @@ export interface VenueSuggestion {
 export const getVenueSuggestions = async (code: string): Promise<VenueSuggestion[]> =>
   (await api.get(`opponents/${encodeURIComponent(code)}/venue-suggestions`).json<{ code: string; suggestions: VenueSuggestion[] }>()).suggestions;
 
+/**
+ * C6 — le recalcul quitte le rail synchrone : `POST /api/opponents/travel/resolve` DISPATCHE au
+ * worker (rafale IGN pacée > plafond HTTP) et répond `{queued}` immédiatement. La progression et
+ * les trajets arrivent ensuite par Mercure (`club:{clubId}:travel`), `travelStatus` par ligne au
+ * prochain GET. `resolve()` ne route QUE les trajets manquants (C5) — c'est le « Réessayer les
+ * manquants ».
+ */
 export interface OpponentTravelResolveResult {
-  resolved: number;
-  unresolved: string[];
-  skippedManual: number;
+  queued: boolean;
+  /** C6 (sécurité H) — un calcul était DÉJÀ en cours pour le club : rien n'a été dispatché. */
+  alreadyRunning: boolean;
 }
 
-/** Recalcule TOUS les trajets AUTO du club+saison (le MANUAL est préservé). */
+/** Lance le recalcul des trajets AUTO MANQUANTS du club+saison (le MANUAL est préservé). */
 export const resolveOpponentTravel = (): Promise<OpponentTravelResolveResult> =>
   api.post("opponents/travel/resolve").json<OpponentTravelResolveResult>();
 
@@ -1390,7 +1405,9 @@ export type OpponentRefreshStep = "codes" | "auto-locate" | "travel";
 export interface OpponentRefreshResult {
   codes: { resolved: number; unresolved: string[]; skipped: number; stamped: number };
   autoLocated: { located: number; ambiguous: number; unmatched: number; skipped: number };
-  travel: { resolved: number; unresolved: string[]; skippedManual: number };
+  /** C6 — le recalcul des trajets est DISPATCHÉ au worker : la réponse dit qu'il est en file
+   *  et combien d'adversaires distincts il traitera (la progression arrive par Mercure). */
+  travel: { queued: boolean; alreadyRunning: boolean; pending: number };
   /** Les passes best-effort qui ont levé et sont retombées sur leur résultat neutre (vide en régime nominal). */
   failedSteps: OpponentRefreshStep[];
 }

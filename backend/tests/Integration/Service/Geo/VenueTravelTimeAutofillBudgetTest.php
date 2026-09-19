@@ -22,12 +22,13 @@ use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 
 /**
- * BCK-22 — le budget GLOBAL de l'autofill. Sans budget, un IGN dégradé pouvait tenir
- * la requête ~150 s (30 fenêtres × 5 s) sans rien rendre au gestionnaire. Le budget
- * arrête de dispatcher les fenêtres au-delà du temps imparti ; les paires restantes
- * reviennent `unresolved` avec la raison `budget_exceeded` (« relancez pour continuer »),
- * SANS casser le best-effort ni le cap dur. Le budget est prouvé par une horloge qui
- * avance à chaque lecture (jamais une vraie attente).
+ * BCK-22 — le budget GLOBAL de l'autofill. Depuis C3 les appels IGN sont SÉRIALISÉS et
+ * pacés (~1/s, quota mesuré) ; sans budget, un IGN lent pouvait tenir la requête
+ * longtemps sans rien rendre. Le budget arrête d'attaquer les jobs restants au-delà du
+ * temps imparti ; les paires concernées reviennent `unresolved` avec la raison
+ * `budget_exceeded` (« relancez pour continuer »), SANS casser le best-effort ni le cap
+ * dur. Le budget est prouvé par une horloge qui avance à chaque lecture (jamais une
+ * vraie attente).
  */
 #[Group('integration')]
 final class VenueTravelTimeAutofillBudgetTest extends WebTestCase
@@ -36,19 +37,21 @@ final class VenueTravelTimeAutofillBudgetTest extends WebTestCase
 
     private EntityManagerInterface $em;
 
-    /** L'horloge saute après la 1re fenêtre : les paires restantes → budget_exceeded. */
+    /** L'horloge saute après le 1er job : les jobs restants → budget_exceeded. */
     public function testPairsBeyondTheBudgetComeBackUnresolvedWithBudgetReason(): void
     {
-        [$clubId, $seasonId] = $this->seedGeolocatedVenues(5); // 5 venues → 10 pairs → 20 jobs → 3 windows.
+        [$clubId, $seasonId] = $this->seedGeolocatedVenues(5); // 5 venues → 10 pairs → 20 jobs (2 profils/paire).
 
-        // Step 100 s ≫ the 30 s budget: after window 0 (the first 8 jobs = the first
-        // 4 pairs) the next clock read is already past the deadline, so windows 1-2
-        // are never dispatched.
+        // Step 100 s ≫ the 30 s budget: the FIRST job always runs, but the very next
+        // clock read is already past the deadline, so every remaining job is skipped.
         $result = $this->autofillWith(new SteppingClock(stepSeconds: 100))->autofill($clubId, $seasonId);
 
-        // The 4 pairs of window 0 are filled; the 6 remaining come back budget_exceeded.
-        self::assertSame(4, $result['filled'], 'les paires de la 1re fenêtre sont remplies');
-        self::assertCount(6, $result['unresolved'], 'les 6 paires au-delà du budget reviennent non résolues');
+        // Seul le mode voiture de la 1re paire part avant que le budget ne saute — une
+        // écriture PARTIELLE. Cette paire reste donc « non résolue » sur son mode à pied,
+        // et les 9 autres paires n'ont aucun mode : 1 écriture, 10 paires non résolues,
+        // TOUTES avec la raison budget_exceeded (jamais routing_failed — rien n'a été tenté).
+        self::assertSame(1, $result['filled'], 'seul le 1er job passe avant le budget');
+        self::assertCount(10, $result['unresolved'], 'toutes les paires ont au moins un mode non résolu par le budget');
         foreach ($result['unresolved'] as $pair) {
             self::assertSame('budget_exceeded', $pair['reason']);
         }

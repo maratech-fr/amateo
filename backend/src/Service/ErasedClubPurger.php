@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Club;
+use App\Entity\ClubTravelCache;
 use App\Entity\ClubUser;
 use App\Entity\Feedback;
 use App\Entity\Season;
@@ -67,6 +68,9 @@ final class ErasedClubPurger
         TeamTag::class,
         SportCategory::class,
         ClubUser::class,
+        // Cache de trajets club-scoped (C4) : un club effacé ne garde pas les distances
+        // dérivées de son siège. Delete par clubId, comme les autres tables sans saison.
+        ClubTravelCache::class,
     ];
 
     public function __construct(

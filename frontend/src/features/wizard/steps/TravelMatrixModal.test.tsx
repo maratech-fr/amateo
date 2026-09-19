@@ -8,11 +8,16 @@ import type { Venue, VenueTravelTime, VenueTravelTimeAutofillResult } from "../a
 
 const venuesState: { data: Venue[] } = { data: [] };
 const matrixState: { data: VenueTravelTime[] } = { data: [] };
-const autofillResultState: { value: VenueTravelTimeAutofillResult } = { value: { filled: 0, unresolved: [], skippedManual: 0 } };
+// Le VERDICT arrive par le flux Mercure (C6), plus par la réponse HTTP.
+const autofillResultState: { value: VenueTravelTimeAutofillResult } = { value: { filled: 0, unresolved: [] } };
 
 const createMut = vi.fn();
 const updateMut = vi.fn();
-const autofillMut = vi.fn((_: undefined, opts?: { onSuccess?: (r: VenueTravelTimeAutofillResult) => void }) => opts?.onSuccess?.(autofillResultState.value));
+// L'autofill DISPATCHE : onSuccess reçoit `{queued, alreadyRunning}` (sécurité H), pas un verdict.
+const autofillResponseState = { alreadyRunning: false };
+const autofillMut = vi.fn((_: undefined, opts?: { onSuccess?: (r: { queued: boolean; alreadyRunning: boolean }) => void }) =>
+  opts?.onSuccess?.({ queued: !autofillResponseState.alreadyRunning, alreadyRunning: autofillResponseState.alreadyRunning }),
+);
 
 vi.mock("../queries", () => ({
   useWizardVenues: () => ({ data: venuesState.data }),
@@ -20,6 +25,12 @@ vi.mock("../queries", () => ({
   useCreateVenueTravelTime: () => ({ mutate: createMut, isPending: false }),
   useUpdateVenueTravelTime: () => ({ mutate: updateMut, isPending: false }),
   useAutofillVenueTravelTimes: () => ({ mutate: autofillMut, isPending: false }),
+}));
+
+// Le flux des trajets : au terminal (VENUE_MATRIX), le verdict courant est servi — c'est ce
+// qui, après le clic « Calculer » (computing=true), fige `{filled, unresolved}` dans la modale.
+vi.mock("@/shared/lib/travelStream", () => ({
+  useTravelStream: () => ({ connected: true, latest: { scope: "VENUE_MATRIX" as const, done: 1, total: 1, terminal: true, verdict: autofillResultState.value } }),
 }));
 
 import { TravelMatrixModal } from "./TravelMatrixModal";
@@ -46,7 +57,8 @@ const row = (over: Partial<VenueTravelTime> & Pick<VenueTravelTime, "id" | "venu
 beforeEach(() => {
   venuesState.data = [venue("v1", "Alpha"), venue("v2", "Beta"), venue("v3", "Gamma")];
   matrixState.data = [];
-  autofillResultState.value = { filled: 0, unresolved: [], skippedManual: 0 };
+  autofillResultState.value = { filled: 0, unresolved: [] };
+  autofillResponseState.alreadyRunning = false;
   createMut.mockClear();
   updateMut.mockClear();
   autofillMut.mockClear();
@@ -72,6 +84,17 @@ describe("TravelMatrixModal — première ouverture (consentement)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Calculer les trajets" }));
     expect(autofillMut).toHaveBeenCalledTimes(1);
+  });
+
+  it("un calcul DÉJÀ en cours (sécurité H) ne bascule PAS en « Calcul des trajets en cours… »", () => {
+    autofillResponseState.alreadyRunning = true;
+    matrixState.data = [];
+    renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Calculer les trajets" }));
+    expect(autofillMut).toHaveBeenCalledTimes(1);
+    // Rien n'a été dispatché : l'écran reste au consentement, pas de fausse progression.
+    expect(screen.queryByText(/Calcul des trajets en cours/)).not.toBeInTheDocument();
   });
 });
 
@@ -111,7 +134,7 @@ describe("TravelMatrixModal — la matrice", () => {
 
   it("les couples non résolus s'affichent « À saisir » avec leur raison (verdict servi)", () => {
     matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "AUTO" })];
-    autofillResultState.value = { filled: 1, unresolved: [{ venueAId: "v1", venueBId: "v3", reason: "missing_geo" }], skippedManual: 0 };
+    autofillResultState.value = { filled: 1, unresolved: [{ venueAId: "v1", venueBId: "v3", reason: "missing_geo" }] };
     renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
 
     // Avant recalcul : pas encore de raison affichée.
@@ -123,7 +146,7 @@ describe("TravelMatrixModal — la matrice", () => {
 
   it("un couple interrompu par le budget se lit « relancez », pas « calcul impossible »", () => {
     matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "AUTO" })];
-    autofillResultState.value = { filled: 1, unresolved: [{ venueAId: "v1", venueBId: "v3", reason: "budget_exceeded" }], skippedManual: 0 };
+    autofillResultState.value = { filled: 1, unresolved: [{ venueAId: "v1", venueBId: "v3", reason: "budget_exceeded" }] };
     renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Recalculer les trajets" }));
@@ -134,7 +157,7 @@ describe("TravelMatrixModal — la matrice", () => {
 
   it("re-lancer l'autofill : les valeurs MANUEL restent affichées inchangées", () => {
     matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "MANUAL" })];
-    autofillResultState.value = { filled: 0, unresolved: [], skippedManual: 1 };
+    autofillResultState.value = { filled: 0, unresolved: [] };
     renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
 
     expect(screen.getAllByText("Manuel").length).toBeGreaterThanOrEqual(1);

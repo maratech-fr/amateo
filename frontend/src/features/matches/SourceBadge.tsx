@@ -5,7 +5,7 @@ import { StatusPill } from "@/shared/components/ui/badge";
 /**
  * SourceBadge — l'origine d'une valeur : AUTO (calculée) ou MANUEL (saisie). Icône + mot, jamais la
  * couleur seule (WCAG 1.4.1). Maison UNIQUE (P4-177) : la matrice de trajets entre gymnases
- * (`wizard/steps/TravelMatrixModal`) et les trajets adverses (`matches/OpponentTravelCard`) en
+ * (`wizard/steps/TravelMatrixModal`) et les trajets adverses (`matches/OpponentsPage`) en
  * partageaient deux copies. Adossé à la pastille partagée `StatusPill` :
  *  - AUTO → variante `neutral` (état informatif) ;
  *  - MANUEL → variante `accent` (couleur du club) ; l'ambre… pardon, l'accent est porté par l'icône

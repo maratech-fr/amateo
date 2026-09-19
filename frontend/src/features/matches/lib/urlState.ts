@@ -97,6 +97,28 @@ export function applyFbiToParams(current: URLSearchParams, open: boolean): URLSe
 }
 
 /**
+ * Deep-link d'une rencontre à mettre en évidence sur le Calendrier : `match=<fixtureId>`
+ * (« Voir la semaine » depuis Conflits, ou tout lien qui pointe un match précis). Fonctions
+ * PURES, patron « param absent = défaut » : absent ⇒ aucune rencontre visée. Le param est
+ * CONSOMMÉ une fois au seed puis retiré en `replace` (il ne survit pas à la sélection : la
+ * mise en évidence est portée par le store, pas par l'URL — piège mémoire).
+ */
+export function decodeMatchParam(params: URLSearchParams): string | null {
+  const raw = params.get("match");
+  return null !== raw && "" !== raw ? raw : null;
+}
+
+export function applyMatchToParams(current: URLSearchParams, fixtureId: string | null): URLSearchParams {
+  const next = new URLSearchParams(current);
+  if (null === fixtureId) {
+    next.delete("match");
+  } else {
+    next.set("match", fixtureId);
+  }
+  return next;
+}
+
+/**
  * PR-2a/2b — sérialisation des filtres de l'onglet Consulter, fonctions PURES (mêmes
  * conventions que le filtre PR-1 : absent = défaut). `type` = types de compétition
  * cochés, `conflits` = familles de conflits cochées, `type_semaine=0|1` = semaine
@@ -335,17 +357,17 @@ export function applyConflictsToParams(current: URLSearchParams, conflicts: Conf
  * PR 2a « Configuration & navigation » — ancrage de la section ouverte de
  * `/matchs/configuration` (accordéon « une section = un écran »). `?section=<clé>`.
  *
- * Le gabarit et les créneaux ont DÉMÉNAGÉ vers `/matchs/semaine-type` : `ConfigSection` ne
- * porte plus que les cinq sections RÉGLAGE (`echeances|durees|adversaires|reglages|libelles`).
- * **Défaut = tout replié** : absent, `aucune` (toléré, ancien encodage), une valeur inconnue,
- * ou les clés déplacées `gabarit`/`creneaux` ⇒ `null` (aucune section ouverte). Écrire `null`
- * SUPPRIME le param (le défaut n'a plus besoin d'être encodé). La redirection des anciennes
- * clés `gabarit`/`creneaux` vers la Semaine type est portée par `ConfigurationPage`
- * (lecture du param brut). Mêmes conventions que `?vue=`/`?temps=`.
+ * Le gabarit/créneaux (→ `/matchs/semaine-type`) ET les adversaires (→ `/matchs/adversaires`,
+ * C8) ont DÉMÉNAGÉ : `ConfigSection` ne porte plus que les quatre sections RÉGLAGE restantes
+ * (`echeances|durees|reglages|libelles`). **Défaut = tout replié** : absent, `aucune` (toléré,
+ * ancien encodage), une valeur inconnue, ou les clés déplacées `gabarit`/`creneaux`/`adversaires`
+ * ⇒ `null` (aucune section ouverte). Écrire `null` SUPPRIME le param. Les redirections des
+ * anciennes clés déplacées sont portées par `ConfigurationPage` (lecture du param brut). Mêmes
+ * conventions que `?vue=`/`?temps=`.
  */
-export type ConfigSection = "echeances" | "durees" | "adversaires" | "reglages" | "libelles";
+export type ConfigSection = "echeances" | "durees" | "reglages" | "libelles";
 
-const CONFIG_SECTIONS: ConfigSection[] = ["echeances", "durees", "adversaires", "reglages", "libelles"];
+const CONFIG_SECTIONS: ConfigSection[] = ["echeances", "durees", "reglages", "libelles"];
 
 function isConfigSection(value: string | null): value is ConfigSection {
   return null !== value && (CONFIG_SECTIONS as string[]).includes(value);
@@ -361,6 +383,35 @@ export function applySectionToParams(current: URLSearchParams, section: ConfigSe
     next.delete("section");
   } else {
     next.set("section", section);
+  }
+  return next;
+}
+
+/**
+ * C8 — le filtre segmenté de l'onglet Adversaires (`/matchs/adversaires`), ancré `?filtre=<clé>`.
+ * Trois segments : « Tous » (défaut, param ABSENT), « À localiser » (`a-localiser` : au moins une
+ * équipe sans gymnase) et « Gymnase à préciser » (`ville` : localisé mais à la commune seule,
+ * précision CITY). Défaut = « Tous » : absent, `tous` (toléré), ou une valeur inconnue ⇒ `null`
+ * (aucun filtre). Écrire `null` SUPPRIME le param. Mêmes conventions que `?section=`.
+ */
+export type OpponentFilter = "a-localiser" | "ville";
+
+const OPPONENT_FILTERS: OpponentFilter[] = ["a-localiser", "ville"];
+
+function isOpponentFilter(value: string | null): value is OpponentFilter {
+  return null !== value && (OPPONENT_FILTERS as string[]).includes(value);
+}
+
+export function decodeOpponentFilter(params: URLSearchParams): OpponentFilter | null {
+  return isOpponentFilter(params.get("filtre")) ? (params.get("filtre") as OpponentFilter) : null;
+}
+
+export function applyOpponentFilterToParams(current: URLSearchParams, filter: OpponentFilter | null): URLSearchParams {
+  const next = new URLSearchParams(current);
+  if (null === filter) {
+    next.delete("filtre");
+  } else {
+    next.set("filtre", filter);
   }
   return next;
 }

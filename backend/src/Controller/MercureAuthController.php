@@ -78,17 +78,23 @@ final class MercureAuthController extends AbstractController
         // `{id}` est une expression URI-template : le hub matche
         // `club:X:schedule:abc` contre ce sélecteur — et RIEN d'un autre club.
         $topicTemplate = MercureTopic::selectorForClub($clubId);
+        // C6 — le topic du CALCUL DES TRAJETS, FIXE (pas de joker) et scopé au club : le
+        // même JWT autorise l'abonnement aux deux flux (génération + trajets), aucun autre
+        // club (le club est déjà revalidé canonique ci-dessus, aucune interpolation variable).
+        $travelTopic = MercureTopic::forTravel($clubId);
         $token = $config->builder()
             ->issuedAt($now)
             ->expiresAt($now->modify(\sprintf('+%d seconds', self::TTL_SECONDS)))
-            ->withClaim('mercure', ['subscribe' => [$topicTemplate]])
+            ->withClaim('mercure', ['subscribe' => [$topicTemplate, $travelTopic]])
             ->getToken($config->signer(), $config->signingKey());
 
         // Le template est AUSSI le topic auquel s'abonner : le front ne connaît pas
         // son clubId (tenant résolu côté serveur, aucun header) — il s'abonne au
         // sélecteur tel quel et reçoit les updates de TOUTES ses générations avec
         // un seul EventSource (délivrance template↔topic exact prouvée sur le hub).
-        $response = $this->json(['expiresIn' => self::TTL_SECONDS, 'topicTemplate' => $topicTemplate]);
+        // `travelTopic` (champ ADDITIF, C6) : le topic FIXE du calcul des trajets, auquel le
+        // front s'abonne tel quel (il ne connaît pas son clubId — tenant résolu serveur).
+        $response = $this->json(['expiresIn' => self::TTL_SECONDS, 'topicTemplate' => $topicTemplate, 'travelTopic' => $travelTopic]);
         $response->headers->setCookie(new Cookie(
             name: 'mercureAuthorization',
             value: $token->toString(),

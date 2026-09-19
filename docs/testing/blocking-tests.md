@@ -15,6 +15,7 @@
 `Security/SeasonReadonlyTest` (saison archivée → 409) ·
 `Security/MatchTenantIsolationTest` (entités match tenant+season) ·
 `Security/TenantCacheIsolationTest` (cache scopé club) ·
+`MessageHandler/ComputeTravelTimesHandlerTest` (worker de calcul des trajets : GUC posé/clear, verrou, jamais la ligne d'un autre club) ·
 `Queue/ConcurrentGenerationTest` (verrou de génération) ·
 `CrossStack/ContractSchemaTest` (contrat backend⇄engine) ·
 `CrossStack/PayloadVersionMatchesContractVersionTest` (la version que le payload s'attribue == `engine/CONTRACT_VERSION`, égalité STRICTE — la dérive avait vécu deux bumps en silence) ·

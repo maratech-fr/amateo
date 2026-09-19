@@ -1,6 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { applyConflictsToParams, applyConsultToParams, applyFbiToParams, applyFilterToParams, applySectionToParams, applyWeekendToParams, decodeConflictsParams, decodeConsultParams, decodeFbiParam, decodeFilterParams, decodeSectionParam, decodeWeekendParam, hasConsultParams } from "./urlState";
+import { applyConflictsToParams, applyConsultToParams, applyFbiToParams, applyFilterToParams, applyMatchToParams, applyOpponentFilterToParams, applySectionToParams, applyWeekendToParams, decodeConflictsParams, decodeConsultParams, decodeFbiParam, decodeFilterParams, decodeMatchParam, decodeOpponentFilter, decodeSectionParam, decodeWeekendParam, hasConsultParams } from "./urlState";
+
+describe("decodeMatchParam / applyMatchToParams (deep-link match=)", () => {
+  it("absent ou vide ⇒ null", () => {
+    expect(decodeMatchParam(new URLSearchParams(""))).toBeNull();
+    expect(decodeMatchParam(new URLSearchParams("match="))).toBeNull();
+  });
+
+  it("un fixtureId ⇒ conservé", () => {
+    expect(decodeMatchParam(new URLSearchParams("match=fx-42"))).toBe("fx-42");
+  });
+
+  it("null ⇒ match absent ; un id ⇒ écrit ; autres params préservés", () => {
+    expect(applyMatchToParams(new URLSearchParams("match=fx-42"), null).toString()).toBe("");
+    const out = applyMatchToParams(new URLSearchParams("semaine=2026-10-03"), "fx-7");
+    expect(out.get("semaine")).toBe("2026-10-03");
+    expect(out.get("match")).toBe("fx-7");
+  });
+});
 
 describe("decodeWeekendParam / applyWeekendToParams (PR 3b — semaine=)", () => {
   it("absent ⇒ null (auto)", () => {
@@ -191,13 +209,14 @@ describe("decodeSectionParam (PR 2a — accordéon Configuration, défaut tout r
     expect(decodeSectionParam(new URLSearchParams("section=aucune"))).toBeNull();
   });
 
-  it("les clés déplacées « gabarit »/« creneaux » ⇒ null (la page redirige vers la Semaine type)", () => {
+  it("les clés déplacées « gabarit »/« creneaux »/« adversaires » ⇒ null (la page redirige — Semaine type / onglet Adversaires, C8)", () => {
     expect(decodeSectionParam(new URLSearchParams("section=gabarit"))).toBeNull();
     expect(decodeSectionParam(new URLSearchParams("section=creneaux"))).toBeNull();
+    expect(decodeSectionParam(new URLSearchParams("section=adversaires"))).toBeNull();
   });
 
-  it("chacune des 5 clés RÉGLAGE est reconnue", () => {
-    for (const key of ["echeances", "durees", "adversaires", "reglages", "libelles"] as const) {
+  it("chacune des 4 clés RÉGLAGE est reconnue", () => {
+    for (const key of ["echeances", "durees", "reglages", "libelles"] as const) {
       expect(decodeSectionParam(new URLSearchParams(`section=${key}`))).toBe(key);
     }
   });
@@ -308,5 +327,32 @@ describe("decodeFbiParam / applyFbiToParams (deep-link « FBI — à faire »)",
     const closed = applyFbiToParams(new URLSearchParams("fbi=1&semaine=2026-10-03"), false);
     expect(closed.has("fbi")).toBe(false);
     expect(closed.get("semaine")).toBe("2026-10-03");
+  });
+});
+
+describe("decodeOpponentFilter / applyOpponentFilterToParams (C8 — filtre de l'onglet Adversaires)", () => {
+  it("absent ⇒ null (« Tous » par défaut)", () => {
+    expect(decodeOpponentFilter(new URLSearchParams(""))).toBeNull();
+  });
+
+  it("« tous » (toléré) ou une valeur inconnue ⇒ null", () => {
+    expect(decodeOpponentFilter(new URLSearchParams("filtre=tous"))).toBeNull();
+    expect(decodeOpponentFilter(new URLSearchParams("filtre=xxx"))).toBeNull();
+  });
+
+  it("chacune des deux clés est reconnue", () => {
+    expect(decodeOpponentFilter(new URLSearchParams("filtre=a-localiser"))).toBe("a-localiser");
+    expect(decodeOpponentFilter(new URLSearchParams("filtre=ville"))).toBe("ville");
+  });
+
+  it("null (défaut « Tous ») ⇒ param supprimé", () => {
+    expect(applyOpponentFilterToParams(new URLSearchParams("filtre=ville"), null).toString()).toBe("");
+  });
+
+  it("une clé ⇒ écrite et relue telle quelle, préserve les params sans rapport", () => {
+    const out = applyOpponentFilterToParams(new URLSearchParams("autre=1"), "a-localiser");
+    expect(out.get("filtre")).toBe("a-localiser");
+    expect(out.get("autre")).toBe("1");
+    expect(decodeOpponentFilter(out)).toBe("a-localiser");
   });
 });

@@ -1,14 +1,16 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D3).
-§3 « moteur » recalée contre le code (`grep -n '@app.post' engine/app/main.py` : les 4 routes ;
-`ls engine/app/solver/`) : les 6 routes du moteur sont listées, `result_builder/` et `objective/`
-sont décrits comme des PAQUETS (pas un fichier), `match_placement.py`, `validate_assignments.py`
-et `compromise.py` rejoignent la table des modules solveur. Reste du fichier (§1 repository
-layout, backend détaillé, ops, sécurité) non reconfronté cette passe — voir les stamps de zone
-pour ces sections. `engine/CONTRACT_VERSION` = **2.23** ✓ — deux bumps le même jour : `2.22`
-(ENG-40, nouveau diagnostic `placement_problem_too_large`) puis `2.23` (D3,
-`matches[].roundTripMinutes` sur `/place-matches`) — §3.3 ci-dessous recalée pour lister les deux.
+Last verified @ 2026-09-19 (`documentation-update`, PR H « onglet Adversaires »). §2.4 « Async /
+messaging » recalée contre le code cette passe : `App\Message\ComputeTravelTimesMessage` +
+`App\MessageHandler\ComputeTravelTimesHandler` (worker de calcul des trajets, `TravelComputeLock`)
+et le second topic Mercure `club:{clubId}:travel` (fixe, sans joker) ajoutés. Reste confronté à la
+passe précédente (2026-09-18, PR E « décisions de l'audit 0918 » — D3) : §3 « moteur » recalée
+contre le code (`grep -n '@app.post' engine/app/main.py` : les 4 routes ; `ls engine/app/solver/`) :
+les 6 routes du moteur sont listées, `result_builder/` et `objective/` sont décrits comme des
+PAQUETS (pas un fichier), `match_placement.py`, `validate_assignments.py` et `compromise.py`
+rejoignent la table des modules solveur. Reste du fichier (§1 repository layout, backend détaillé,
+ops, sécurité) non reconfronté cette passe — voir les stamps de zone pour ces sections.
+`engine/CONTRACT_VERSION` = **2.23** ✓ (inchangé cette passe).
 
 Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `feedback` (bouton + dialogue de signalement), `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes) ; voir `../frontend/docs/frontend-wizard.md` et `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 
@@ -114,7 +116,14 @@ All services share the Docker network `amateo_network`.
 - **Terminal-status guarantee (BCK-01):** a schedule never freezes in `PENDING`/`GENERATING`. Three nets: (1) the handler catch-all clears the dirty unit-of-work and marks `FAILED` on any uncaught error; (2) `ScheduleGenerationFailureListener` (`WorkerMessageFailedEvent`, `willRetry()===false`) terminates permanently-failed messages (e.g. lock-exhaustion); (3) `app:schedules:reconcile-stuck` fails `GENERATING` schedules older than `--older-than` minutes (worker crash/OOM) — executed every 10 minutes by the `cron-runner` compose service. PENDING is left to nets (1)/(2) to avoid racing a legitimately-queued message.
 - **Operational jobs (SA3-A/B/C/D):** `cron-runner` exécute `app:jobs:run-due` chaque minute. `AdminJobCatalog` est une allowlist de dix jobs à arguments et horaires fermés (`Europe/Paris`) : reconcile toutes les 10 min, rappels et purges quotidiens, imports vacances/fériés trimestriels. Le tick rattrape au plus le dernier créneau manqué ; `scheduled_for` et un index unique empêchent le doublon par `(job, créneau)`, tandis que le verrou advisory empêche le chevauchement. `AdminJobRunStore` écrit via la connexion `admin` dans `admin_job_run` (aucun privilège `amateo_app`, aucun output/message d'exception persisté). `GET /api/admin/jobs` rapproche le catalogue du dernier run, expose le prochain passage et `manualTriggerAllowed`. `POST /api/admin/jobs/{key}/run`, session + CSRF, relance uniquement les deux imports idempotents avec source/acteur `superadmin`; aucune purge ou commande brute n'est acceptée.
 - **`ExportPdfMessage`** → **`ExportPdfHandler`**: `PdfGenerator.generate()` → publish Mercure with export URLs.
-- **Mercure topic:** `club:{clubId}:schedule:{scheduleId}` (validated non-empty). `MERCURE_URL` env.
+- **`ComputeTravelTimesMessage`** (`clubId`, `seasonId`, `scope` OPPONENTS|VENUE_MATRIX) →
+  **`ComputeTravelTimesHandler`** (2026-09-19, C6): paced IGN routing (~1 req/s, the burst would
+  blow the 60 s HTTP ceiling), `TravelComputeLock` (Redis, `SETEX NX` + token-checked release,
+  same pattern as `ClubGenerationLock` below) at most one computation in flight per club, progress
+  on the second Mercure topic below (detail: `backend/docs/geo-api.md` § Calcul asynchrone).
+- **Mercure topics:** `club:{clubId}:schedule:{scheduleId}` (generation progress, validated
+  non-empty) and `club:{clubId}:travel` (async travel-time computation, fixed per club — no `{id}`
+  wildcard). `MERCURE_URL` env.
 - **`ClubGenerationLock`** (Redis): key `schedule_generation:club:{clubId}`, atomic `SETEX NX` + TTL, **atomic token-checked release** (Lua compare-and-delete — BCK-02; a GET-then-DEL could delete another worker's lock after a TTL-expiry race).
 
 ### 2.5 Multi-tenant isolation (security-critical)

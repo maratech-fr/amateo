@@ -6,6 +6,7 @@ namespace App\Tests\Security;
 
 use App\Clock\DevClockStore;
 use App\Entity\Club;
+use App\Entity\ClubTravelCache;
 use App\Entity\ClubUser;
 use App\Entity\Competition;
 use App\Entity\ConflictResolution;
@@ -35,6 +36,8 @@ use App\Enum\FixtureStatus;
 use App\Enum\OpponentTravelSource;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLinkType;
+use App\Service\Geo\IgnRoutingClient;
+use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
@@ -482,6 +485,31 @@ final class MatchTenantIsolationTest extends WebTestCase
         $this->client->request('GET', '/api/opponents/travel', [], [], $this->authHeaders($userB));
         self::assertResponseStatusCodeSame(200);
         self::assertSame([], $this->responseData()['opponents'] ?? ['sentinel']);
+    }
+
+    public function testClubTravelCacheIsTenantScoped(): void
+    {
+        [$clubA] = $this->createClubUser('a');
+        [$clubB] = $this->createClubUser('b');
+        $cache = self::getContainer()->get(TravelTimeCache::class);
+
+        // Même clé EXACTE (mêmes coordonnées, même profil) pour les deux clubs — seule la
+        // frontière tenant (RLS) sépare leurs deux valeurs.
+        $this->scopeGucToClub($clubA->getId());
+        $cache->store($clubA->getId(), IgnRoutingClient::PROFILE_CAR, 45.5, 4.5, 46.0, 5.0, 42);
+        $this->scopeGucToClub($clubB->getId());
+        $cache->store($clubB->getId(), IgnRoutingClient::PROFILE_CAR, 45.5, 4.5, 46.0, 5.0, 99);
+
+        // Club A ne voit QUE sa valeur (42) — jamais la ligne de B.
+        $this->scopeGucToClub($clubA->getId());
+        self::assertSame(42, $cache->lookup($clubA->getId(), IgnRoutingClient::PROFILE_CAR, 45.5, 4.5, 46.0, 5.0));
+        $rowsA = $this->em->getRepository(ClubTravelCache::class)->findAll();
+        self::assertCount(1, $rowsA, 'la RLS ne montre au club A que sa propre ligne de cache');
+        self::assertSame($clubA->getId(), $rowsA[0]->getClubId());
+
+        // Club B ne voit QUE 99.
+        $this->scopeGucToClub($clubB->getId());
+        self::assertSame(99, $cache->lookup($clubB->getId(), IgnRoutingClient::PROFILE_CAR, 45.5, 4.5, 46.0, 5.0));
     }
 
     /**

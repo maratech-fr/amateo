@@ -42,6 +42,7 @@ const travelEntry = (over: Partial<OpponentTravel> = {}): OpponentTravel => ({
   opponentTeamKey: "GRENOBLE-1",
   opponentLabel: "Grenoble",
   located: true,
+  hasLogo: false,
   precision: "VENUE",
   locationName: "Halle Y",
   city: null,
@@ -51,6 +52,7 @@ const travelEntry = (over: Partial<OpponentTravel> = {}): OpponentTravel => ({
   source: "AUTO",
   scope: "CLUB",
   overrideVenueLabel: null,
+  travelStatus: "done",
   ...over,
 });
 

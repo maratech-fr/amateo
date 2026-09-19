@@ -196,7 +196,14 @@ export function useAutofillVenueTravelTimes() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => wizardApi.autofillVenueTravelTimes(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: TRAVEL_TIMES_KEY }),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: TRAVEL_TIMES_KEY });
+      // Sécurité H — un calcul déjà en cours n'a rien dispatché : on le dit (la modale, elle,
+      // ne bascule pas en « Calcul en cours… » pour cette action).
+      if (result.alreadyRunning) {
+        toast.success("Un calcul de trajets est déjà en cours.");
+      }
+    },
   });
 }
 

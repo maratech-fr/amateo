@@ -611,6 +611,31 @@ describe("CalendarPage — chips, familles, temporalités (ex-Consulter)", () =>
   });
 });
 
+describe("CalendarPage — deep-link match= (mise en évidence d'une rencontre)", () => {
+  it("pointe la rencontre, la met en évidence (ring-accent) + focus, puis RETIRE le param", async () => {
+    renderCalendarWithLocation("/?match=fx-placed");
+    // La rencontre devient la sélection du store.
+    await waitFor(() => expect(useMatchesStore.getState().selectedFixtureId).toBe("fx-placed"));
+    // La cellule de la grille week-end porte l'anneau de sélection ET reçoit le focus.
+    await waitFor(() => {
+      const cell = document.querySelector<HTMLElement>('[data-fixture-id="fx-placed"]');
+      expect(cell).not.toBeNull();
+      expect(cell?.className).toContain("ring-accent");
+      expect(document.activeElement).toBe(cell);
+    });
+    // `match=` est consommé au seed puis retiré (one-shot, jamais porté par l'adresse).
+    await waitFor(() => expect(screen.getByTestId("calendar-search").textContent).not.toContain("match"));
+  });
+
+  it("un match caché par les défauts (amical décoché) est RÉVÉLÉ pour être visé", async () => {
+    // Store aux défauts : amicaux masqués. Le seed doit lever le masque pour que la cellule existe.
+    useMatchesStore.setState({ consultKinds: null, consultAway: false });
+    renderCalendarWithLocation("/?match=fx-placed"); // fx-placed est un amical (competitionId null)
+    await waitFor(() => expect(useMatchesStore.getState().selectedFixtureId).toBe("fx-placed"));
+    await waitFor(() => expect(document.querySelector('[data-fixture-id="fx-placed"]')).not.toBeNull());
+  });
+});
+
 describe("CalendarPage — modale FBI (ConfirmDialog imbriqué)", () => {
   it("le ConfirmDialog vit DANS la modale : Échap ferme le confirm seul, le focus revient au déclencheur", async () => {
     const user = userEvent.setup();

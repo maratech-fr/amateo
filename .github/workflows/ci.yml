@@ -353,6 +353,9 @@ jobs:
       - name: TenantCacheIsolationTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/TenantCacheIsolationTest.php --group phase1'
 
+      - name: ComputeTravelTimesHandlerTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/MessageHandler/ComputeTravelTimesHandlerTest.php --group phase1'
+
       - name: ConcurrentGenerationTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Queue/ConcurrentGenerationTest.php --group phase1'
 

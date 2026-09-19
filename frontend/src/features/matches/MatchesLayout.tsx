@@ -100,6 +100,11 @@ export function MatchesLayout() {
         <NavLink to="/matchs/configuration" className={linkClass}>
           Configuration
         </NavLink>
+        {/* C8 — les « Adversaires » : localisation + trajets, sortis de la Configuration
+            (une page sœur dédiée, deep-linkable). */}
+        <NavLink to="/matchs/adversaires" className={linkClass}>
+          Adversaires
+        </NavLink>
         {/* PR 2a — la « Semaine type » : le gabarit idéal + les créneaux partagés, sortis
             de la Configuration (une page sœur, deep-linkable). */}
         <NavLink to="/matchs/semaine-type" className={linkClass}>

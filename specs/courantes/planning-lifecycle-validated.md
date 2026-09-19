@@ -1,9 +1,9 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-09-18 (`documentation-update`, PR docs de l'audit 0918, AUD-DOC-38 —
-vérification ÉTROITE : seul le renvoi § « P2-52 » vers `module-matchs.md`, refondu le même jour en
-état courant par écran, est recalé sur son nouveau §10 ; le reste du fichier n'est pas re-sondé
-cette passe). Historique des passes vit dans git :
+Last verified @ 2026-09-19 (`documentation-update`, PR H « onglet Adversaires » — vérification
+ÉTROITE : seul le renvoi § « P2-52 » vers `module-matchs.md`, qui a gagné un nouvel écran
+« Adversaires » le même jour, est recalé sur son nouveau §11 (l'insertion a décalé l'ancien §10) ;
+le reste du fichier n'est pas re-sondé cette passe). Historique des passes vit dans git :
 `git log -p --follow specs/courantes/planning-lifecycle-validated.md`)
 
 > **Bascule 2026-07-16 (ADR-0002, `docs/architecture/adr-0002-pattern-plan.md`)** : le **plan de
@@ -153,7 +153,7 @@ DRAFT ──generate──▶ PENDING ──▶ GENERATING ──▶ COMPLETED
   pointage, tout match domicile dont le gymnase a disparu du club+saison est dépointé
   (`FixtureVenueLossMarker`, `UNPLACED` + raison persistante `venue_lost`) — annoncé au préalable
   par `GET /api/schedules/{id}/validate-impact` (même prédicat, parité par construction). Comportement
-  et détail complet : [`module-matchs.md`](module-matchs.md) §10 « Le périmètre engagé » (sous-§ salle
+  et détail complet : [`module-matchs.md`](module-matchs.md) §11 « Le périmètre engagé » (sous-§ salle
   non protégée) ; cette spec ne fait que pointer l'effet de bord, pas le redécrire.
 
 ### 3.4 Pas de nouveau statut

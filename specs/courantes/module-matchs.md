@@ -1,9 +1,22 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-19 (`documentation-update`, complément PR G « suppression d'une rencontre
-= ses entrées disparaissent »). Confronté au code cette passe : `FixtureStateProcessor::
-cascadeBeforeDelete` → `FbiCorrectionLedger::removeForFixture` (cascade applicative, `§1`). Reste
-confronté à la passe précédente (2026-09-19, PR G « todo FBI unique ») :
+Last verified @ 2026-09-19 (`documentation-update`, retouches revue sécurité H — `81772f59`).
+Confronté au code cette passe : les trois dispatchers de trajets répondent `{queued: false,
+alreadyRunning: true}` sans dispatcher quand `TravelComputeLock` est tenu — § Écran Adversaires
+recalée (toast « Un calcul de trajets est déjà en cours. »). Reste confronté à la passe précédente
+(2026-09-19, PR H « onglet Adversaires » — cache de trajets, calcul asynchrone, logo fédéral,
+deep-link `match=`, tri du rapprochement FFBB) : `OpponentsPage.tsx` (l'onglet dédié,
+`OpponentTravelCard` a disparu — nouvelle section « Écran Adversaires ») ;
+`App\Entity\ClubTravelCache`/`App\Service\Geo\TravelTimeCache` (cache club-scoped, §1) ;
+`App\Message\ComputeTravelTimesMessage`/`ComputeTravelTimesHandler` (calcul asynchrone, §1/§ Écran
+Adversaires) ; `OpponentTravelController::opponentView` (`travelStatus`, `hasLogo`, §1) ;
+`OpponentLogoController`/`opponent-logo.tsx` (logo fédéral, §1) ;
+`lib/urlState.ts::decodeMatchParam` + `ConflictsPage.revealSearch` (deep-link `match=`, §5/§6) ;
+`lib/creatableSort.ts` (tri du rapprochement, §7) ; `ConfigurationPage.tsx` (quatre
+`AccordionSection`, la section Adversaires est partie, §8). Reste confronté à la passe d'avant
+(2026-09-19, PR G « suppression d'une rencontre = ses entrées disparaissent ») :
+`FixtureStateProcessor::cascadeBeforeDelete` → `FbiCorrectionLedger::removeForFixture` (cascade
+applicative, §1). Reste confronté à la passe d'avant (2026-09-19, PR G « todo FBI unique ») :
 `FbiCorrection`/`FbiCorrectionLedger`/`FbiCorrectionController` (registre « à
 corriger dans FBI », §1) ; `Fixture::setStatus`/`fbiEcho` (mémo « FBI affiche … », §1) ;
 `EntryDeadlineOutlook::compute` (`fbiTodo` global, §4) ; `FbiEntryList`/`WeekCounters`/
@@ -34,9 +47,10 @@ NEW/OUT_OF_SYNC/REVIEWED, moteur partagé) · `VenueAliasResolver`/`OpponentLoca
 > reproduit que le résultat, jamais le débat. But de taille : décrire l'état courant sans historiser
 > — si une phrase commence par une date ou un id de PR, elle appartient à l'état des lieux, pas ici.
 
-Le module vit dans `frontend/src/features/matches/` (nav `MatchesLayout`, 6 routes sous `/matchs` :
-`index` = Calendrier, `conflits`, `importer`, `configuration`, `semaine-type`, `consulter` en
-redirection permanente vers l'index, `reconciliation` accessible seulement depuis le canal API,
+Le module vit dans `frontend/src/features/matches/` (nav `MatchesLayout`, sous `/matchs` :
+`index` = Calendrier, `conflits`, `importer`, `configuration`, `adversaires` (§ Écran Adversaires,
+sorti de Configuration le 2026-09-19), `semaine-type`, `consulter` en redirection permanente vers
+l'index, `reconciliation` accessible seulement depuis le canal API,
 `frontend/src/app/routes.tsx:141-186`) et dans les services backend `Match*`/`Fixture*`/
 `Opponent*`/`Ffbb*` (`backend/src/Service/`, `backend/src/Entity/`).
 
@@ -56,7 +70,7 @@ vigueur, il n'a rien à comparer.
 ### Entités season-scoped (tenant, RLS)
 
 - **`Competition`** (`teamId`, `name` = code/division FBI, `competitionType`
-  `CHAMPIONSHIP`/`CUP`/`BRASSAGE`, `entryDeadline` nullable, réfs FFBB — voir §9) — N par équipe.
+  `CHAMPIONSHIP`/`CUP`/`BRASSAGE`, `entryDeadline` nullable, réfs FFBB — voir §4) — N par équipe.
 - **`Fixture`** (table `fixture`) : `teamId`, `competitionId` nullable = amical, `matchDate`,
   `homeAway`, `opponentLabel`, `opponentOrganismeCode`/`opponentTeamKey` (résolus serveur),
   `status` (`FixtureStatus` : `UNPLACED → PLACED → SUBMITTED → VALIDATED`), `venueId`/`kickoffTime`
@@ -119,7 +133,7 @@ club lecteur).
   libellé du fichier, §5.2) ne compte jamais. `GET /api/opponents/{code}/venue-suggestions` sert
   `chosenByCount` (des CHOIX, pas des clubs distincts) et `lastChosenAt` au JOUR seul.
 - **`SharedCompetitionDeadline`** : le défaut communautaire d'échéance de saisie, keyé
-  `ffbbCompetitionId` — voir §9.
+  `ffbbCompetitionId` — voir §4.
 
 ### Table TENANT `OpponentTravel`
 
@@ -130,10 +144,13 @@ historique) ; unicité `(club, saison, code, teamKey)` en `NULLS NOT DISTINCT`. 
 cascade **équipe → club → annuaire global** (`OpponentTravelRepository::findEffective`). Une ligne
 équipe naît toujours d'un choix manuel ; « rétablir l'automatique » sur une équipe **supprime** la
 ligne (jamais un retour AUTO) — sur la ligne club, c'est un vrai recalcul AUTO. `GET
-/api/opponents/travel` groupe les AWAY par `(code, libellé normalisé)`. L'écran (`OpponentTravelCard`,
-`LocateOpponentModal`) est groupé par club, une ligne « toutes les équipes (défaut) » puis une par
-équipe, chip précision/source, recherche instantanée insensible aux accents, orphelins (sans code
-fédéral) repliés à part. **Auto-localisation depuis le libellé du fichier** (`OpponentVenueAutoLocator`,
+/api/opponents/travel` groupe les AWAY par `(code, libellé normalisé)` et sert par entrée
+`travelStatus` (`done`/`pending`/`unavailable`, calculé serveur — § « Cache et calcul asynchrone »
+ci-dessous) et `hasLogo` (§ Logo fédéral, `backend/docs/ffbb-api.md` §3bis). L'écran (`OpponentsPage`,
+`LocateOpponentModal` — détail : § Écran Adversaires) est groupé par club, une ligne « toutes les
+équipes (défaut) » puis une par équipe, chip précision/source, recherche instantanée insensible aux
+accents, orphelins (sans code fédéral) repliés à part. **Auto-localisation depuis le libellé du
+fichier** (`OpponentVenueAutoLocator`,
 égalité STRICTE nom du fichier ↔ salle fédérale candidate — 0/≥2 hits ou 2 libellés divergents
 n'écrivent rien) pose une ligne équipe `AUTO` sans saisie ; n'écrit **jamais** le partagé (une
 localisation devinée n'est pas un choix). **Bouton unique « Mettre à jour les adversaires »** →
@@ -158,10 +175,37 @@ souverain).
 trajet ne se calcule (`OpponentTravelResolver::resolve` rend tout en `unresolved`). Le siège se pose
 désormais depuis la fiche club (`PATCH /api/club/siege`, hors module matchs — voir
 `backend/docs/geo-api.md` §1 et `frontend/docs/frontend-spec.md`) ; `GET /api/opponents/travel`
-sert un champ additif `clubGeolocated` (booléen) que l'écran (`OpponentTravelCard`, Configuration ›
-Adversaires) lit via `useClubGeolocated()` pour afficher un bandeau « Trajets indisponibles : l'adresse
-du siège du club n'est pas localisée. » avec un lien direct vers `/club?section=informations` — «
-Mettre à jour les adversaires » reste utilisable (il localise quand même les gymnases adverses).
+sert un champ additif `clubGeolocated` (booléen) que l'écran (`OpponentsPage`, `/matchs/adversaires`
+depuis le 2026-09-19) lit via `useClubGeolocated()` pour afficher un bandeau « Trajets indisponibles :
+l'adresse du siège du club n'est pas localisée. » avec un lien direct vers `/club?section=informations`
+— « Mettre à jour les adversaires » reste utilisable (il localise quand même les gymnases adverses).
+
+### Cache de trajets et calcul asynchrone (C4/C6, 2026-09-19)
+
+Un trajet routier est une **CONSTANTE** (deux coordonnées + un profil) : `ClubTravelCache` (tenant,
+RLS, club-scoped SANS saison — un trajet ne dépend d'aucune saison) le met en cache et ne le
+recalcule **jamais**. Les 4 consommateurs IGN (résolveur de trajet adverse, auto-localisation,
+matrice de gymnases, résolution simple) passent d'abord par ce cache. Détail modèle/seed/RGPD :
+`backend/docs/geo-api.md` § Cache de trajets club-scoped, `docs/security/rgpd.md` §2.
+
+Le calcul lui-même (rafale IGN pacée ~1 req/s) quitte le rail synchrone : `POST
+/api/opponents/travel/resolve` **dispatche** au worker (réponse `{queued: true}`, plus
+`{resolved: N}`) et répond immédiatement — la progression se lit via `travelStatus` (rafraîchi par
+Mercure, topic `club:{clubId}:travel`, `docs/security/mercure.md`), jamais un spinner par ligne.
+`resolve()` ne route plus que les MANQUES (code sans ligne, ligne AUTO au trajet null — club ou
+équipe —, MANUAL null avec override) : une ligne déjà résolue n'est plus jamais retouchée, « Réessayer
+les manquants » (§ Écran Adversaires) est littéralement ce même appel. Détail worker/verrou/topic :
+`backend/docs/geo-api.md` § Calcul asynchrone.
+
+### Logo fédéral d'un adversaire (C7, 2026-09-19)
+
+`OpponentDirectoryEntry.logoId` (table GLOBALE) est posé sans coût réseau supplémentaire depuis les
+hits organismes déjà résolus (canal `directVenue`, sans hit organisme, n'en pose pas — dette
+`roadmap.md` P4-250) ; `GET /api/opponents/{code}/logo` (route MEMBRE, jamais publique) le
+re-héberge paresseusement au premier accès. `hasLogo` (booléen additif de `GET
+/api/opponents/travel`) pilote `shared/components/ui/opponent-logo.tsx` (rond, 16/24 px, repli
+initiales) dans `AwayList` — **pas dans `ConflictLine`** (le côté d'un conflit ne porte pas le code
+adverse) **ni dans la grille**. Détail : `backend/docs/ffbb-api.md` §3bis.
 
 ### Alias de gymnase (`Venue.externalLabels`, `VenueAliasResolver`)
 
@@ -460,6 +504,12 @@ Importer garde sa maison propre (§6).
   de session non persistée) est gardé et l'adresse se re-synchronise depuis lui. Un lien qui
   allume ses propres filtres (« Voir la semaine » depuis Conflits, « Placer » depuis Importer)
   construit toujours une query qui porte une clé dédiée, donc reste dans le cas qui fait foi.
+- **Deep-link `match=<fixtureId>`** (patron « absent = défaut », `lib/urlState.ts`
+  `decodeMatchParam`/`applyMatchToParams`) : au seed, la fixture visée est sélectionnée dans le
+  store, sa semaine posée (si absente de l'URL), son masque levé (`revealPlan`) si elle est
+  filtrée, puis focus + scroll sur sa cellule (`focusFixtureCell`) — la sélection (`ring-accent`)
+  EST la mise en évidence, pas d'anneau temporisé ni de `role="status"`. Le paramètre est retiré en
+  `replace` après consommation (one-shot). Posé par « Voir la semaine » depuis Conflits (§6).
 - **`WeekCounters`** (barre au-dessus de la grille) : deux compteurs BORNÉS à la semaine affichée
   dans un `role="group"` « Semaine affichée » (« N à placer » · « N conflits → », lien vers
   Conflits) ; le troisième — **« N FBI à faire »** — est GLOBAL (toutes semaines), vit HORS du
@@ -494,7 +544,11 @@ gymnase partagé (décision fermée — il fausserait le compte saison de l'ongl
   agir » — décision fermée). Ordre d'application : familles → traitement → domicile → pivot.
 - **Accordéon par entrée** (une seule ouverte) rend `ConflictSeverityGroups`/`ConflictLine` — même
   maison que le radar du Calendrier, gravité 7 repliée derrière un compte, conflits triés par date
-  croissante dans un groupe de gravité. Bouton « Voir la semaine » sur un conflit daté.
+  croissante dans un groupe de gravité. Bouton « Voir la semaine » sur un conflit daté : sélectionne
+  le côté GAUCHE par défaut, ou LE domicile si un seul des deux côtés joue à domicile (viser une
+  case pleine de la grille plutôt qu'un extérieur masqué), navigue vers le Calendrier avec `match=`
+  (§5). `ConflictLine` ne porte pas le logo de l'adversaire (§1 « Logo fédéral d'un adversaire ») —
+  le côté d'un conflit ne porte pas son code organisme, décision de scope C7.
 
 ### Résolution des conflits (`ConflictResolution`, P4-207)
 
@@ -545,7 +599,10 @@ FBI (xlsx) fait foi, l'API est un confort — bandeau d'honnêteté à chaque ou
 `Competition` `CUP` (le libellé fédéral tranche, jamais l'absence d'appariement) — seul le token
 `amical` laisse `competitionId` null. Les rencontres publiées sans fixture correspondante sont
 **proposées, jamais imposées** (`TeamSelect` par ligne, rien créé si vide) via la vue dédiée
-`/matchs/reconciliation` (zéro état serveur, payload en mémoire, renvoi propre sans payload).
+`/matchs/reconciliation` (zéro état serveur, payload en mémoire, renvoi propre sans payload), triées
+côté front **date croissante · heure croissante (une heure absente en dernier de son jour) ·
+adversaire en collation française** (`lib/creatableSort.ts`, appliqué une fois à la source — la
+liste ET la dérivation `creations` héritent du même ordre) plutôt que l'ordre brut du backend.
 `POST /api/ffbb/rencontres/apply` re-fetche côté serveur (jamais les valeurs client), écrit sa propre
 `FbiIngestion source=FFBB_API`.
 
@@ -587,13 +644,15 @@ seulement sur un domicile À VENIR.
 
 ## 8. Écran Configuration (`/matchs/configuration`)
 
-Réglages de saison RARES, cinq `AccordionSection` contrôlées (une seule ouverte, défaut **tout
+Réglages de saison RARES, quatre `AccordionSection` contrôlées (une seule ouverte, défaut **tout
 replié**), ancrées `?section=<clé>` : Échéances de saisie (§4) · Durée des matchs (`sport_category`
-par famille, table partagée) · Adversaires à localiser (`OpponentTravelCard`, §1) · Accès match
-(fenêtres `VenueMatchWindow`, modale par gymnase — même éditeur que le wizard) · Libellés FFBB des
-gymnases (écran d'appariement, ci-dessous). Un résumé discret dans le nom accessible de chaque
-bouton (`configSummaries.ts`, fonctions pures — comptent ce que le backend a déjà calculé, jamais
-une règle métier recalculée) ; une lecture en échec rend `null`, jamais un « 0 » fabriqué.
+par famille, table partagée) · Accès match (fenêtres `VenueMatchWindow`, modale par gymnase — même
+éditeur que le wizard) · Libellés FFBB des gymnases (écran d'appariement, ci-dessous). Un résumé
+discret dans le nom accessible de chaque bouton (`configSummaries.ts`, fonctions pures — comptent ce
+que le backend a déjà calculé, jamais une règle métier recalculée) ; une lecture en échec rend
+`null`, jamais un « 0 » fabriqué. **Les adversaires ont leur propre onglet depuis le 2026-09-19**
+(§ Écran Adversaires, `/matchs/adversaires`) — l'ancien deep-link `?section=adversaires` de cet
+écran redirige.
 
 **Écran d'appariement des libellés** (`VenueLabelsSection`) : une ligne par LIBELLÉ de l'inventaire
 (`GET /api/venues/fbi-labels`), `VenueSelect` dont la valeur effective est le gymnase confirmé sinon
@@ -604,7 +663,31 @@ ce qui bouge) ; **Retirer** (ne touche aucune rencontre déjà rattachée). Un s
 (`UnpairedVenueLabelsBanner`) renvoie vers cet écran unique depuis Importer et le Calendrier —
 décision fermée (une seule maison d'appariement, jamais une modale sur une modale).
 
-## 9. Écran Semaine type (`/matchs/semaine-type`)
+## 9. Écran Adversaires (`/matchs/adversaires`, 2026-09-19)
+
+Localisation + trajets vers les adversaires, sorti de la Configuration en page sœur dédiée entre
+Configuration et Semaine type dans la nav (`MatchesLayout.tsx`). `OpponentsPage` rend la liste
+LUI-MÊME (`OpponentTravelCard` a disparu, absorbée) en `Table` variant default : un `<tbody>` par
+club (`<th scope="row">` « Toutes les équipes (défaut) » en tête, puis une ligne par équipe).
+Colonnes ≥ `@md` (container query, repli 4 colonnes en dessous) : logo (`OpponentLogo`, § Logo
+fédéral d'un adversaire) · adversaire (club · ville) · gymnase (`SourceBadge` + `StatusPill` « ville
+seule » si précision `CITY`) · trajet (`TravelMinutes`, fragment extrait d'`AwayTravelChip`,
+« en cours… »/« indisponible » selon `travelStatus`) · rencontres (jointure front code+teamKey) ·
+action. Tri : sans trajet d'abord, puis alphabétique (fr).
+
+**Filtre segmenté** `role="group"` `aria-pressed` — À localiser · Gymnase à préciser · Tous — état
+URL `?filtre=` (`lib/urlState.ts`, C8). **Progression** : région `aria-live="polite"` à deux phrases
+stables + compteur chiffré frère, dérivée de `travelStatus` (rafraîchi par Mercure via
+`useTravelStream`, § Cache de trajets et calcul asynchrone) ; bouton « Mettre à jour » désactivé
+pendant le calcul, aucun spinner par ligne. **Échec partiel** : `WarningPanel` « n trajets n'ont pas
+pu être calculés » + bouton « Réessayer les manquants » (`POST /api/opponents/travel/resolve`, qui
+ne route déjà que les manquants). Bandeau siège (`useClubGeolocated`, § Prérequis du trajet AUTO)
+et modale `LocateOpponentModal` réutilisés tels quels. **Revue sécurité H (2026-09-19)** : si un
+calcul de trajets tourne déjà pour le club (verrou tenu), « Réessayer les manquants »/« Mettre à
+jour » ne redispatche rien — toast « Un calcul de trajets est déjà en cours. » (`alreadyRunning`
+servi par la route, § Cache de trajets et calcul asynchrone).
+
+## 10. Écran Semaine type (`/matchs/semaine-type`)
 
 Le MODÈLE sans dates que le placement respecte au maximum : le gabarit idéal (`TypicalWeekendGrid`
 — habitudes Sam/Dim × gymnases, sans dates, collisions posées côte à côte) en vedette, et l'éditeur
@@ -617,7 +700,7 @@ d'ici. Un signal « hors image » (écart entre placement réel et modèle de r�
 rotation du jour) et un signal « même week-end » (deux membres d'une même rotation reçus le même
 week-end, contredit l'image A/B) restent des SIGNAUX, jamais un blocage.
 
-## 10. Le périmètre engagé (`TeamEngagementGuard`)
+## 11. Le périmètre engagé (`TeamEngagementGuard`)
 
 Valider le planning valide aussi un périmètre : les équipes qui font de la compétition. **Engagée**
 = porte au moins un `Fixture`, quel qu'en soit le statut (l'import crée tout en `UNPLACED` —
@@ -641,14 +724,22 @@ dépointe **plus rien** — un match dont le gymnase est absent de la photo surv
 `venueId` transitoirement pendouillant. Le périmètre engagé résiste aux deux gâchettes (le match
 existe toujours après dépointage, son équipe reste engagée).
 
-## 11. Tests & gardes (pointeurs)
+## 12. Tests & gardes (pointeurs)
 
 NR tenant isolation bloquant : `MatchTenantIsolationTest` (Competition/Fixture/fenêtres/indispos/
-habitudes/passerelles/`opponent_travel`/`ConflictResolution` — étendu à chaque table tenant du
-module). Contrats cross-stack (groupe `contract`) : `MatchPlacementContractSchemaTest`,
+habitudes/passerelles/`opponent_travel`/`club_travel_cache`/`ConflictResolution` — étendu à chaque
+table tenant du module). **NR tenant GATANT (C6, step nommé `blocking-tests` de `ci.yml` +
+`docs/testing/blocking-tests.md`)** : `MessageHandler/ComputeTravelTimesHandlerTest` (GUC posé/
+clear, verrou, jamais la ligne d'un autre club). Cache de trajets : `TravelTimeCacheTest` (clé
+arrondie, jamais recalculé, profils séparés), `ClubTravelCacheSeedTest` (rejoue le seed de la
+migration verbatim, zéro dérive). Client IGN : `IgnRoutingClientTest` (pacing 1/s, 429 réessayé,
+journalisé). Progression Mercure : `TravelProgressPublisherTest`. Logo fédéral :
+`OpponentLogoApiTest` (401 anonyme, 404, MIME, Cache-Control, code invalide). Contrats cross-stack
+(groupe `contract`) : `MatchPlacementContractSchemaTest`,
 `ValidateAssignmentsContractSchemaTest`, `SlotRotationPayloadParityTest`,
-`MatchVisitDeltaParityTest`. Tables partagées : un `*ShareTest` par table (`OpponentDirectoryShareTest`,
-`OpponentVenueSuggestionShareTest`, `EntryDeadlineShareTest`). Périmètre engagé : `EngagedTeamGuardTest`,
+`MatchVisitDeltaParityTest`. Tables partagées : un `*ShareTest` par table (`OpponentDirectoryShareTest`
+— whitelist `logo_id` compris —, `OpponentVenueSuggestionShareTest`, `EntryDeadlineShareTest`).
+Périmètre engagé : `EngagedTeamGuardTest`,
 `DeletionImpactParityTest`. Détecteur/radar : `MatchConflictDetectorTest`,
 `FixtureConflictsApiTest` + feature Behat `les-conflits-d-un-match-disent-la-verite.feature`
 (`ConflictTruthContext`, D1/D1 étendu, statuts joue/coache). Solveur : `test_match_placement*.py` (unit, sémantique, golden épinglé)

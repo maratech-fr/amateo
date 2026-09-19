@@ -61,6 +61,9 @@ final class OpponentTravelResolver
         private readonly ClubRepository $clubRepository,
         private readonly FixtureRepository $fixtures,
         private readonly LoggerInterface $logger,
+        // Cache-first (C4) : optionnel (défaut null) pour ne pas casser les sites de test
+        // qui n'instancient pas le cache ; en prod, le conteneur l'autowire.
+        private readonly ?TravelTimeCache $travelCache = null,
     ) {}
 
     /**
@@ -94,9 +97,14 @@ final class OpponentTravelResolver
      * `unresolved`). `$budgetSeconds` null (route dédiée `/travel/resolve`) = budget de
      * lot par défaut, comportement inchangé.
      *
+     * `$onProgress`, si fourni, est appelé avec (cibles traitées, total) au fil du lot
+     * (C6 — le worker asynchrone publie l'avancement).
+     *
+     * @param (callable(int, int): void)|null $onProgress
+     *
      * @return array{resolved: int, unresolved: list<string>, skippedManual: int}
      */
-    public function resolve(string $clubId, string $seasonId, ?float $budgetSeconds = null): array
+    public function resolve(string $clubId, string $seasonId, ?float $budgetSeconds = null, ?callable $onProgress = null): array
     {
         $club = $this->clubRepository->find($clubId);
         $clubLat = $club instanceof Club ? $club->getLatitude() : null;
@@ -107,9 +115,10 @@ final class OpponentTravelResolver
 
         $unresolved = [];
         $skippedManual = 0;
-        /** @var list<array{code: string, lat: float, lon: float}> $geoTargets */
-        $geoTargets = [];
+        /** @var list<array{key: string, code: string, teamKey: string|null, destLat: float, destLon: float, row: OpponentTravel|null}> $targets */
+        $targets = [];
 
+        // ── Passe CLUB : un code par ligne club (défaut, `opponentTeamKey` NULL) ──────
         foreach ($codes as $code) {
             $row = $existing[$code] ?? null;
             if (null !== $row && OpponentTravelSource::MANUAL === $row->getSource()) {
@@ -120,12 +129,19 @@ final class OpponentTravelResolver
                 $overrideLat = $row->getOverrideLatitude();
                 $overrideLon = $row->getOverrideLongitude();
                 if (null === $row->getTravelMinutes() && null !== $overrideLat && null !== $overrideLon) {
-                    $geoTargets[] = ['code' => $code, 'lat' => $overrideLat, 'lon' => $overrideLon];
+                    $targets[] = ['key' => $code, 'code' => $code, 'teamKey' => null, 'destLat' => $overrideLat, 'destLon' => $overrideLon, 'row' => $row];
 
                     continue;
                 }
                 ++$skippedManual;
 
+                continue;
+            }
+
+            // C5 — un trajet est une CONSTANTE : une ligne AUTO qui porte DÉJÀ un trajet n'est
+            // JAMAIS re-routée (fini le « reroute TOUT » qui pouvait l'écraser). Seuls les
+            // MANQUES partent : un code sans ligne, ou une ligne AUTO au trajet null.
+            if (null !== $row && null !== $row->getTravelMinutes()) {
                 continue;
             }
 
@@ -135,72 +151,136 @@ final class OpponentTravelResolver
 
                 continue;
             }
-            $geoTargets[] = ['code' => $code, 'lat' => $location[0], 'lon' => $location[1]];
+            $targets[] = ['key' => $code, 'code' => $code, 'teamKey' => null, 'destLat' => $location[0], 'destLon' => $location[1], 'row' => $row];
         }
 
-        // BCK-32 — cap dur : au-delà de MAX_OPPONENTS codes géolocalisés à router,
+        // ── C5-bis — Passe ÉQUIPE : une ligne ÉQUIPE (`opponentTeamKey` non NULL) AUTO au
+        // trajet null MAIS portant des coordonnées d'override (posée par l'auto-localisateur
+        // pendant un IGN dégradé) est enfin ROUTÉE. On n'écrira QUE le trajet — le gymnase
+        // épinglé et la source AUTO restent souverains (jamais l'écrasement du bloc override
+        // de la passe club).
+        foreach ($this->travelRepository->findBySeason($seasonId) as $teamRow) {
+            $teamKey = $teamRow->getOpponentTeamKey();
+            if (null === $teamKey || OpponentTravelSource::AUTO !== $teamRow->getSource() || null !== $teamRow->getTravelMinutes()) {
+                continue;
+            }
+            $overrideLat = $teamRow->getOverrideLatitude();
+            $overrideLon = $teamRow->getOverrideLongitude();
+            if (null === $overrideLat || null === $overrideLon) {
+                continue; // pas de lieu à router (une ligne équipe naît d'un override)
+            }
+            $code = $teamRow->getOpponentOrganismeCode();
+            $targets[] = ['key' => $code . '|team|' . $teamKey, 'code' => $code, 'teamKey' => $teamKey, 'destLat' => $overrideLat, 'destLon' => $overrideLon, 'row' => $teamRow];
+        }
+
+        // BCK-32 — cap dur : au-delà de MAX_OPPONENTS cibles à router (club + équipe),
         // l'excès part en `unresolved` SANS aucun appel réseau (le rattrapage se fera à
         // la prochaine passe). La borne était jusqu'ici tenue par la seule route dédiée ;
         // l'orchestrateur /refresh l'atteint désormais aussi.
-        if (\count($geoTargets) > self::MAX_OPPONENTS) {
-            foreach (\array_slice($geoTargets, self::MAX_OPPONENTS) as $excess) {
+        if (\count($targets) > self::MAX_OPPONENTS) {
+            foreach (\array_slice($targets, self::MAX_OPPONENTS) as $excess) {
                 $unresolved[] = $excess['code'];
             }
-            $geoTargets = \array_slice($geoTargets, 0, self::MAX_OPPONENTS);
+            $targets = \array_slice($targets, 0, self::MAX_OPPONENTS);
         }
 
         // No usable origin → nothing computable, every geolocated opponent is
         // unresolved (best-effort, no exception).
         if (null === $clubLat || null === $clubLon) {
-            foreach ($geoTargets as $target) {
+            foreach ($targets as $target) {
                 $unresolved[] = $target['code'];
             }
 
             return ['resolved' => 0, 'unresolved' => $unresolved, 'skippedManual' => $skippedManual];
         }
 
-        $batch = $this->routingClient->travelMinutesBatch(
-            array_map(
-                static fn (array $t): array => [
-                    'key' => $t['code'],
-                    'profile' => IgnRoutingClient::PROFILE_CAR,
-                    'startLat' => (float) $clubLat,
-                    'startLon' => (float) $clubLon,
-                    'endLat' => $t['lat'],
-                    'endLon' => $t['lon'],
-                ],
-                $geoTargets,
-            ),
-            // BCK-32 — jamais plus que le budget de lot ; l'orchestrateur passe le RESTANT
-            // de son budget de mur, borné par BATCH_BUDGET_SECONDS.
-            budgetSeconds: null === $budgetSeconds ? null : min($budgetSeconds, IgnRoutingClient::BATCH_BUDGET_SECONDS),
-        );
-        $minutes = $batch['minutes'];
-        $budgetExceeded = array_fill_keys($batch['budgetExceededKeys'], true);
-
-        $resolved = 0;
-        $wrote = false;
-        foreach ($geoTargets as $target) {
-            $code = $target['code'];
-            // The budget stopped BEFORE this code was even tried: NOT the same as an
-            // IGN-mute answer. Leave the row untouched — no write, no creation — so a
-            // good AUTO value already in base survives, and a re-run resolves it. Only
-            // a code that WAS tried and came back without a duration overwrites (below).
-            if (isset($budgetExceeded[$code])) {
-                $unresolved[] = $code;
+        // Cache-first (C4) : un trajet est une CONSTANTE. On regarde le cache club avant le
+        // réseau ; seules les cibles en MANQUE partent dans UN lot IGN (club + équipe partagent
+        // le MÊME budget de mur, sinon deux lots séquentiels doubleraient le temps mural).
+        $clubLatF = (float) $clubLat;
+        $clubLonF = (float) $clubLon;
+        $targetByKey = [];
+        $cachedMinutes = [];
+        $jobs = [];
+        foreach ($targets as $target) {
+            $targetByKey[$target['key']] = $target;
+            $cached = $this->travelCache?->lookup($clubId, IgnRoutingClient::PROFILE_CAR, $clubLatF, $clubLonF, $target['destLat'], $target['destLon']);
+            if (null !== $cached) {
+                $cachedMinutes[$target['key']] = $cached;
 
                 continue;
             }
-            $value = $minutes[$code] ?? null;
-            $row = $existing[$code] ?? $this->newRow($clubId, $seasonId, $code);
-            if (OpponentTravelSource::MANUAL === $row->getSource()) {
-                // Re-route d'une ligne MANUAL restée sans trajet : on ne touche QUE le trajet
-                // (et resolvedAt). Le bloc override (gymnase épinglé) et la source MANUAL sont
-                // souverains — jamais remis à zéro.
+            $jobs[] = [
+                'key' => $target['key'],
+                'profile' => IgnRoutingClient::PROFILE_CAR,
+                'startLat' => $clubLatF,
+                'startLon' => $clubLonF,
+                'endLat' => $target['destLat'],
+                'endLon' => $target['destLon'],
+            ];
+        }
+
+        // C6 — progression : les hits cache sont déjà « faits » (offset), le lot IGN ajoute
+        // ses jobs traités. Le total est l'ensemble des cibles (cache + réseau).
+        $totalTargets = \count($targets);
+        $cacheHitCount = \count($cachedMinutes);
+        if (null !== $onProgress && $totalTargets > 0) {
+            $onProgress($cacheHitCount, $totalTargets);
+        }
+
+        $batch = $this->routingClient->travelMinutesBatch(
+            $jobs,
+            // C6 — le budget de mur est celui que l'appelant passe (null ⇒ défaut du lot IGN,
+            // 30 s). Depuis C6 `resolve()` est joué par le WORKER (rail async, pas de plafond
+            // HTTP) qui passe son budget large ; l'ancien clamp à BATCH_BUDGET_SECONDS, qui
+            // protégeait le plafond synchrone, n'a plus lieu d'être.
+            budgetSeconds: $budgetSeconds,
+            onProgress: null === $onProgress ? null : static function (int $done) use ($onProgress, $cacheHitCount, $totalTargets): void {
+                $onProgress($cacheHitCount + $done, $totalTargets);
+            },
+        );
+        // Un hit cache est résolu (jamais budget_exceeded) ; on fusionne avec les résultats IGN.
+        $minutes = $cachedMinutes + $batch['minutes'];
+        $budgetExceeded = array_fill_keys($batch['budgetExceededKeys'], true);
+
+        // Mémorise les trajets FRAÎCHEMENT calculés (jamais un null, jamais un hit cache).
+        foreach ($batch['minutes'] as $key => $freshMinutes) {
+            if (null !== $freshMinutes && isset($targetByKey[$key])) {
+                $this->travelCache?->store($clubId, IgnRoutingClient::PROFILE_CAR, $clubLatF, $clubLonF, $targetByKey[$key]['destLat'], $targetByKey[$key]['destLon'], $freshMinutes);
+            }
+        }
+
+        $resolved = 0;
+        $wrote = false;
+        foreach ($targets as $target) {
+            $key = $target['key'];
+            // The budget stopped BEFORE this target was even tried: NOT the same as an
+            // IGN-mute answer. Leave the row untouched — no write, no creation — so a
+            // good value already in base survives, and a re-run resolves it.
+            if (isset($budgetExceeded[$key])) {
+                $unresolved[] = $target['code'];
+
+                continue;
+            }
+            $value = $minutes[$key] ?? null;
+            if (null === $value) {
+                // C5 — IGN muet : on ne fabrique ni n'altère RIEN. Jamais `setTravelMinutes(null)`
+                // (une valeur ne se perd pas), jamais une ligne vide créée. La cible reste « non
+                // résolue » et repartira au prochain passage.
+                $unresolved[] = $target['code'];
+
+                continue;
+            }
+            $existingRow = $target['row'];
+            $row = $existingRow ?? $this->newRow($clubId, $seasonId, $target['code']);
+            if (null !== $target['teamKey'] || OpponentTravelSource::MANUAL === $row->getSource()) {
+                // Ligne ÉQUIPE (override souverain, C5-bis) OU ligne club MANUAL re-routée :
+                // on ne touche QUE le trajet (et resolvedAt). Le bloc override (gymnase épinglé)
+                // et la source restent intacts.
                 $row->setTravelMinutes($value)
                     ->setResolvedAt(new DateTimeImmutable);
             } else {
-                // AUTO row: the location is the global directory's, no manual override.
+                // AUTO club row: the location is the global directory's, no manual override.
                 $row->setTravelMinutes($value)
                     ->setSource(OpponentTravelSource::AUTO)
                     ->setOverrideVenueExternalRef(null)
@@ -209,16 +289,11 @@ final class OpponentTravelResolver
                     ->setOverrideLongitude(null)
                     ->setResolvedAt(new DateTimeImmutable);
             }
-            if (!isset($existing[$code])) {
+            if (null === $existingRow) {
                 $this->entityManager->persist($row);
-                $existing[$code] = $row;
             }
             $wrote = true;
-            if (null !== $value) {
-                ++$resolved;
-            } else {
-                $unresolved[] = $code; // located but IGN gave no duration
-            }
+            ++$resolved;
         }
 
         if ($wrote) {
@@ -365,15 +440,26 @@ final class OpponentTravelResolver
         $this->suggestions->increment($code, $newRef);
     }
 
-    /** Car minutes from the club siège to a point, or null (no club geo / IGN muet). */
+    /** Car minutes from the club siège to a point, or null (no club geo / IGN muet). Cache-first (C4). */
     private function carMinutesFromClub(string $clubId, float $lat, float $lon): ?int
     {
         $club = $this->clubRepository->find($clubId);
         if (!$club instanceof Club || null === $club->getLatitude() || null === $club->getLongitude()) {
             return null;
         }
+        $clubLat = (float) $club->getLatitude();
+        $clubLon = (float) $club->getLongitude();
 
-        return $this->routingClient->travelMinutes(IgnRoutingClient::PROFILE_CAR, (float) $club->getLatitude(), (float) $club->getLongitude(), $lat, $lon);
+        $cached = $this->travelCache?->lookup($clubId, IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $lat, $lon);
+        if (null !== $cached) {
+            return $cached;
+        }
+        $minutes = $this->routingClient->travelMinutes(IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $lat, $lon);
+        if (null !== $minutes) {
+            $this->travelCache?->store($clubId, IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $lat, $lon, $minutes);
+        }
+
+        return $minutes;
     }
 
     /**

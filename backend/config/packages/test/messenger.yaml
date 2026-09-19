@@ -10,6 +10,11 @@ framework:
             # ENFILE le mail (au lieu de l'envoyer dans la requête). Ce re-routage masque
             # le routing prod à l'exécution — le cas structurel lit donc messenger.yaml.
             mailer_in_memory: 'in-memory://'
+            # C6 : le calcul des trajets part en mémoire en test — sa mise en file par les
+            # contrôleurs (refresh/resolve/autofill/siège) est inspectable, sans Redis, et le
+            # handler s'exerce DIRECTEMENT dans son test (ComputeTravelTimesHandlerTest).
+            travel_in_memory: 'in-memory://'
         routing:
             App\Message\Basketball\PopulateClubFromFfbbMessage: ffbb_in_memory
             Symfony\Component\Mailer\Messenger\SendEmailMessage: mailer_in_memory
+            App\Message\ComputeTravelTimesMessage: travel_in_memory

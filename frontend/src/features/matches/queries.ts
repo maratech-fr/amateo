@@ -380,13 +380,20 @@ export function useVenueSuggestions(code: string) {
   });
 }
 
+/**
+ * C6 — « Réessayer les manquants » : le POST DISPATCHE au worker et répond `{queued}` ; la
+ * progression et les trajets arrivent par Mercure (`travelStream`), `travelStatus` par ligne au
+ * prochain GET. On invalide déjà à l'acquittement (le trajet + le radar refetchent), et on annonce
+ * que le CALCUL est LANCÉ — jamais un compte de trajets « recalculés » qu'on n'a pas encore.
+ */
 export function useResolveOpponentTravel() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => matchesApi.resolveOpponentTravel(),
     onSuccess: (result) => {
       invalidateTravel(queryClient);
-      toast.success(`Trajets recalculés : ${result.resolved} localisé(s).`);
+      // Sécurité H — un calcul déjà en cours n'a rien dispatché : on le dit honnêtement.
+      toast.success(result.alreadyRunning ? "Un calcul de trajets est déjà en cours." : "Calcul des trajets manquants lancé.");
     },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
@@ -435,13 +442,19 @@ export function useUpdateOpponents(): UpdateOpponentsController {
         } else {
           const codes = result.codes.resolved;
           const located = result.autoLocated.located;
-          const trajets = result.travel.resolved;
-          const failed = result.codes.unresolved.length + result.travel.unresolved.length;
+          // C6 — les trajets partent au worker : le toast dit qu'un calcul est LANCÉ (la
+          // progression et les trajets arrivent ensuite par Mercure, `travelStatus` par ligne).
+          const trajets = result.travel.pending;
+          const failed = result.codes.unresolved.length;
+          // Sécurité H — si un calcul de trajets tourne déjà, la passe (c) n'a rien dispatché :
+          // on le dit au lieu de « calcul de n trajets lancé » (les passes codes/gymnases, elles,
+          // ont bien tourné).
+          const travelSegment = result.travel.alreadyRunning ? "un calcul de trajets est déjà en cours" : `calcul de ${trajets} trajet${trajets > 1 ? "s" : ""} lancé`;
           toast.success(
             [
-              `${codes} code${codes > 1 ? "s" : ""} retrouvé${codes > 1 ? "s" : ""}`,
+              `${codes} code${codes > 1 ? "s" : ""} retrouvé${codes > 1 ? "s" : ""}${0 < failed ? ` (${failed} en échec)` : ""}`,
               `${located} gymnase${located > 1 ? "s" : ""} localisé${located > 1 ? "s" : ""}`,
-              `${trajets} trajet${trajets > 1 ? "s" : ""} calculé${trajets > 1 ? "s" : ""}${0 < failed ? ` (${failed} en échec)` : ""}`,
+              travelSegment,
             ].join(" · "),
           );
         }

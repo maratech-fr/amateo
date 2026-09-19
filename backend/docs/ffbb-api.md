@@ -1,9 +1,14 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-09-18 (`documentation-update`, PR docs de l'audit 0918 — vérification ÉTROITE :
-les 3 renvois vers `module-matchs.md` recalés sur ses nouveaux §1/§7 après sa refonte par écran du
-même jour ; AUD-DOC-38). Reste du fichier (hosts SSRF, routes, pont par référence FFBB de salle)
-non re-sondé cette passe — dernière vérification de fond : 2026-09-15 (P2-54 PR-2).
+Last verified @ 2026-09-19 (`documentation-update`, PR H « onglet Adversaires » — ajout §3bis « Logo
+d'un ADVERSAIRE »). Re-confronté au code cette passe : `OpponentDirectoryEntry::logoId`
+(`OpponentDirectoryEntry.php:77-78`) ✓ · `OpponentLocationResolver::logoIdOf` posé depuis le hit
+organisme déjà tenu, jamais un appel réseau de plus (`OpponentLocationResolver.php:380-401`,
+canal `directVenue` sans logo confirmé aux lignes 399-401) ✓ · `OpponentLogoController` (route
+membre `IS_AUTHENTICATED_FULLY`, 404 sans logo, `Cache-Control: private, max-age=86400`) ✓ ·
+`FfbbLogoFetcher` réutilise bien `ASSET_BASE = 'https://api.ffbb.com/assets/'` (même host que §3)
+✓. Reste du fichier (hosts SSRF, routes, pont par référence FFBB de salle) non re-sondé cette
+passe — dernière vérification de fond : 2026-09-15 (P2-54 PR-2).
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit rester dans la **liste blanche de hosts** du client (SSRF, A12). Vérifié le 2026-07-10 sur le code réel `ARA0069036` (BCCL).
 
@@ -84,6 +89,33 @@ GET https://api.ffbb.com/assets/{uuid}?format=webp&height=220&fit=contain
 
 - `{uuid}` = `logo.id` du hit.
 - **Réhébergé** chez nous (pas de hotlink) : download → validation MIME/taille → stockage via le pipeline logo existant.
+
+## 3bis. Logo d'un ADVERSAIRE (C7, 2026-09-19)
+
+Même host, même asset, même re-hébergement paresseux que §3, mais un usage DIFFÉRENT : le logo
+d'un organisme rencontré à l'extérieur, une donnée du **module matchs** plutôt que de la fiche club.
+
+- **`OpponentDirectoryEntry.logoId`** (colonne `logo_id`, table GLOBALE fédérale partagée — voir
+  `specs/courantes/module-matchs.md` § Modèle & données transverses) est posé par
+  `App\Service\Basketball\OpponentLocationResolver` depuis les hits organismes qu'il tient DÉJÀ
+  (`strictOrganismeMatch`/`resolveOrganismeByCode`, canal `search*`) — **zéro appel réseau de
+  plus**. Upsert `COALESCE(EXCLUDED.logo_id, opponent_directory.logo_id)` : un logo déjà connu
+  n'est **jamais** effacé par une résolution qui n'en porte pas. ⚠ **Le canal `directVenue`
+  (rencontre API sans hit organisme) ne pose PAS de logo** — dette connue, `roadmap.md` P4-250.
+  Whitelist du partage : `OpponentDirectoryShareTest`.
+- **`GET /api/opponents/{code}/logo`** (`App\Controller\Basketball\OpponentLogoController`) — route
+  **MEMBRE** (`IS_AUTHENTICATED_FULLY`), jamais publique : contrairement au logo club (§3, exposé
+  sans authentification car institutionnel), le logo d'un adversaire de CE club est une donnée du
+  module matchs. Sert les octets stockés sous `ffbb-opponent-{code}` (`LogoStorage`) ; absents →
+  télécharge une fois depuis `logo_id` (`FfbbLogoFetcher`, même host `api.ffbb.com/assets/`, mêmes
+  gardes que §3 : uuid validé, MIME réel vérifié, 500 KB, redirects désactivés), stocke, sert ;
+  sans logo connu ou téléchargement en échec → **404**. `Cache-Control: private, max-age=86400`.
+- **`GET /api/opponents/travel`** sert un booléen additif `hasLogo` par entrée (dérivé de la
+  présence du `logo_id`, jamais l'uuid brut) — l'écran rend `<img>` ssi `hasLogo`, sinon des
+  initiales (`shared/components/ui/opponent-logo.tsx`, `frontend/AGENTS.md` §Primitives).
+  Consommateurs : `AwayList` (16 px). **`ConflictLine` n'est PAS câblée** (décision de scope, C7) —
+  le côté d'un conflit ne porte pas le code organisme adverse, il suivrait un décorateur backend
+  dédié, hors scope.
 
 ## Ce que l'API NE fournit PAS
 

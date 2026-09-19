@@ -58,18 +58,23 @@ final class OpponentDirectoryEntryRepository extends ServiceEntityRepository
      * moins précise (CITY), JAMAIS l'inverse — le `WHERE NOT (…VENUE… AND EXCLUDED…CITY)`
      * saute la mise à jour quand elle dégraderait une salle connue en simple ville.
      *
-     * @param array{name: string, city: ?string, postalCode: ?string, latitude: ?float, longitude: ?float, venueLabel: ?string} $data
+     * C7 — `logo_id` suit un `COALESCE(EXCLUDED.logo_id, opponent_directory.logo_id)` : un
+     * logo déjà connu n'est jamais effacé par une résolution ultérieure qui n'en porte pas
+     * (le canal directVenue de l'API, par ex., ne fournit pas de logo).
+     *
+     * @param array{name: string, city: ?string, postalCode: ?string, latitude: ?float, longitude: ?float, venueLabel: ?string, logoId?: ?string} $data
      */
     public function upsert(string $ffbbOrganismeCode, OpponentLocationPrecision $precision, array $data): void
     {
         $this->getEntityManager()->getConnection()->executeStatement(
             'INSERT INTO opponent_directory'
-            . ' (id, ffbb_organisme_code, name, city, postal_code, latitude, longitude, precision, venue_label, resolved_at)'
-            . ' VALUES (:id, :code, :name, :city, :pc, :lat, :lng, :precision, :venueLabel, now())'
+            . ' (id, ffbb_organisme_code, name, city, postal_code, latitude, longitude, precision, venue_label, logo_id, resolved_at)'
+            . ' VALUES (:id, :code, :name, :city, :pc, :lat, :lng, :precision, :venueLabel, :logoId, now())'
             . ' ON CONFLICT (ffbb_organisme_code) DO UPDATE SET'
             . ' name = EXCLUDED.name, city = EXCLUDED.city, postal_code = EXCLUDED.postal_code,'
             . ' latitude = EXCLUDED.latitude, longitude = EXCLUDED.longitude,'
-            . ' precision = EXCLUDED.precision, venue_label = EXCLUDED.venue_label, resolved_at = now()'
+            . ' precision = EXCLUDED.precision, venue_label = EXCLUDED.venue_label,'
+            . ' logo_id = COALESCE(EXCLUDED.logo_id, opponent_directory.logo_id), resolved_at = now()'
             . ' WHERE NOT (opponent_directory.precision = \'VENUE\' AND EXCLUDED.precision = \'CITY\')',
             [
                 'id' => $this->newUuid(),
@@ -81,6 +86,7 @@ final class OpponentDirectoryEntryRepository extends ServiceEntityRepository
                 'lng' => $data['longitude'],
                 'precision' => $precision->value,
                 'venueLabel' => null === $data['venueLabel'] ? null : mb_substr($data['venueLabel'], 0, 180),
+                'logoId' => null === ($data['logoId'] ?? null) ? null : mb_substr($data['logoId'], 0, 64),
             ],
             ['lat' => ParameterType::STRING, 'lng' => ParameterType::STRING],
         );

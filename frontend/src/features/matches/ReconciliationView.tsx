@@ -8,6 +8,7 @@ import { TeamSelect } from "@/shared/components/ui/team-select";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { PriorityTier, RencontreCreatable, RencontreCreation, Team } from "./api";
+import { sortCreatable } from "./lib/creatableSort";
 import { usePriorityTiers, useApplyFfbbRencontres, useTeams } from "./queries";
 import { useMatchesStore } from "./store";
 
@@ -56,7 +57,8 @@ export function ReconciliationView() {
     );
   }
 
-  const creatable = payload.creatable;
+  // Ordre stable et lisible (date · heure · adversaire) — jamais l'ordre brut du backend.
+  const creatable = sortCreatable(payload.creatable);
 
   // WYSIWYG: a line is created for exactly the team the select DISPLAYS — the
   // manager's pick, else the FFBB suggestion pre-fill, else « Ne pas créer » («»).

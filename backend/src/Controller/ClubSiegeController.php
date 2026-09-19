@@ -4,15 +4,20 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Entity\Season;
+use App\Enum\TravelComputeScope;
+use App\Message\ComputeTravelTimesMessage;
 use App\Repository\ClubRepository;
 use App\Service\Geo\BanGeocodingClient;
 use App\Service\ManagementAccessGuard;
+use App\Service\SeasonResolver;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Throwable;
 
@@ -37,6 +42,8 @@ final class ClubSiegeController extends AbstractController
         private readonly RequestStack $requestStack,
         private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly BanGeocodingClient $geocoder,
+        private readonly SeasonResolver $seasonResolver,
+        private readonly MessageBusInterface $messageBus,
     ) {}
 
     #[Route('/api/club/siege', name: 'club_siege', methods: ['PATCH'])]
@@ -77,6 +84,10 @@ final class ClubSiegeController extends AbstractController
             return $this->json(['error' => 'Adresse introuvable — précisez la rue et la ville.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        // Le siège bouge-t-il vraiment ? (comparé à ~1 m près, la granularité du cache.) Un
+        // re-géocodage de la MÊME adresse ne doit pas invalider tous les trajets.
+        $moved = $this->coordinatesChanged($club->getLatitude(), $club->getLongitude(), $hit['latitude'], $hit['longitude']);
+
         $club->setAddress(mb_substr($hit['label'], 0, 255))
             ->setPostalCode(null === $hit['postalCode'] ? null : mb_substr($hit['postalCode'], 0, 16))
             ->setCity(null === $hit['city'] ? null : mb_substr($hit['city'], 0, 120))
@@ -84,11 +95,38 @@ final class ClubSiegeController extends AbstractController
             ->setLongitude($hit['longitude']);
         $this->entityManager->flush();
 
+        // C6 — le trajet d'un adversaire est calculé DEPUIS le siège : s'il déménage, TOUS les
+        // trajets dérivés (AUTO et MANUAL) sont périmés. On les invalide (travel_minutes NULL —
+        // le gymnase épinglé d'un MANUAL reste, seul son trajet repart) et on DISPATCHE un
+        // recalcul de la saison courante au worker (le cache repart tout seul : la nouvelle
+        // origine est une nouvelle clé, les anciennes lignes de cache ne sont plus jamais lues).
+        if ($moved) {
+            $this->entityManager->getConnection()->executeStatement(
+                'UPDATE opponent_travel SET travel_minutes = NULL WHERE club_id = :clubId',
+                ['clubId' => $clubId],
+            );
+            $season = $this->seasonResolver->selectedOrCurrent($request, $clubId);
+            if ($season instanceof Season) {
+                $this->messageBus->dispatch(new ComputeTravelTimesMessage($clubId, $season->getId(), TravelComputeScope::OPPONENTS));
+            }
+        }
+
         return $this->json([
             'address' => $club->getAddress(),
             'postalCode' => $club->getPostalCode(),
             'city' => $club->getCity(),
             'geolocated' => null !== $club->getLatitude() && null !== $club->getLongitude(),
         ]);
+    }
+
+    /** Le siège a-t-il bougé au-delà de la granularité du cache (~1 m, 5 décimales) ? */
+    private function coordinatesChanged(?float $oldLat, ?float $oldLon, float $newLat, float $newLon): bool
+    {
+        if (null === $oldLat || null === $oldLon) {
+            return true; // siège posé pour la première fois → tout est à calculer
+        }
+
+        return \sprintf('%.5f', $oldLat) !== \sprintf('%.5f', $newLat)
+            || \sprintf('%.5f', $oldLon) !== \sprintf('%.5f', $newLon);
     }
 }

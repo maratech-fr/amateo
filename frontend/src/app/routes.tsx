@@ -169,6 +169,12 @@ export const routes: RouteObject[] = [
                 lazy: async () => ({ Component: (await import("@/features/matches/ConfigurationPage")).ConfigurationPage }),
               },
               {
+                // C8 — les « Adversaires » (localisation + trajets), sortis de la Configuration
+                // en page sœur lazy dédiée. Garde socle héritée du layout.
+                path: "adversaires",
+                lazy: async () => ({ Component: (await import("@/features/matches/OpponentsPage")).OpponentsPage }),
+              },
+              {
                 // PR 2a — la « Semaine type » (gabarit idéal + créneaux partagés), sortie de la
                 // Configuration en page sœur lazy. Garde socle héritée du layout.
                 path: "semaine-type",

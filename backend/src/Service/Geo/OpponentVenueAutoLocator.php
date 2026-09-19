@@ -87,6 +87,9 @@ final class OpponentVenueAutoLocator
         private readonly ClubRepository $clubRepository,
         private readonly LoggerInterface $logger,
         private readonly ClockInterface $clock,
+        // Cache-first (C4) : optionnel (défaut null) pour ne pas casser les sites de test ;
+        // en prod, le conteneur l'autowire.
+        private readonly ?TravelTimeCache $travelCache = null,
     ) {}
 
     /**
@@ -350,6 +353,21 @@ final class OpponentVenueAutoLocator
         return array_values($foundByNumero)[0];
     }
 
+    /** Car minutes club siège → point, cache-first (C4) : le cache avant le réseau, mémorise le neuf. */
+    private function carMinutesCached(string $clubId, float $clubLat, float $clubLon, float $destLat, float $destLon): ?int
+    {
+        $cached = $this->travelCache?->lookup($clubId, IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $destLat, $destLon);
+        if (null !== $cached) {
+            return $cached;
+        }
+        $minutes = $this->routingClient->travelMinutes(IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $destLat, $destLon);
+        if (null !== $minutes) {
+            $this->travelCache?->store($clubId, IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $destLat, $destLon, $minutes);
+        }
+
+        return $minutes;
+    }
+
     /**
      * @param array{numero: string, label: string, lat: float, lon: float} $salle
      */
@@ -357,7 +375,7 @@ final class OpponentVenueAutoLocator
     {
         $minutes = null === $clubLat || null === $clubLon
             ? null
-            : $this->routingClient->travelMinutes(IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $salle['lat'], $salle['lon']);
+            : $this->carMinutesCached($clubId, $clubLat, $clubLon, $salle['lat'], $salle['lon']);
 
         $row = $existing ?? (new OpponentTravel)
             ->setClubId($clubId)

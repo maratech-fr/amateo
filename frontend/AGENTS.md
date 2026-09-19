@@ -319,6 +319,16 @@ their poll but degrade it (2.5 s stream down → 15 s stream connected) — the 
 best-effort, so polling must never die. Details & security contract:
 `docs/security/mercure.md` (root). `WaitingApprovalPage` still polls `/api/me` every 5 s.
 
+**Second stream, `shared/lib/travelStream.ts` (C6, 2026-09-19) — the ONE exception to "an SSE
+consumer lives in the feature that uses it" (`P4-123`, `specs/courantes/etat-des-lieux.md` §2
+closed decision).** Async travel-time computation (opponents + venue matrix) is consumed by
+**two** features — matchs' `OpponentsPage` and the wizard's `TravelMatrixModal` — so the stream
+sits in `shared/` instead of `features/planning/lib/` where `scheduleStream.ts` was deliberately
+pulled DOWN to. Same ref-counted `EventSource` singleton pattern, same `GET /api/mercure/auth`
+call (now returns an additive `travelTopic` alongside `topicTemplate`), subscribed to the fixed
+topic `club:{clubId}:travel`. Debounced (500 ms) invalidation of opponents/conflicts/venue-travel
+caches on message — the GET response (`travelStatus` per row) stays the truth.
+
 ### Wizard store = UI only
 
 `features/wizard/store.ts` holds the current step, the furthest step reached, the mode
@@ -343,6 +353,14 @@ product rules — reuse them instead of rolling your own:
 - **`delete-confirm`** — destructive confirmation that *announces its impacts* ("N réservations
   seront retirées"). Deleting without stating what it takes away is the bug it exists to prevent.
 - **`load-error-hint`** — "the read failed, here is a retry". Pairs with `readState` below.
+- **`opponent-logo`** (`OpponentLogo`, C7, 2026-09-19) — the federated opponent logo: `sm` (16 px,
+  bare, no fallback) / `md` (24 px, initials fallback via `features/matches/lib/opponentInitials.ts`
+  when `hasLogo` is false or the `<img>` errors), rounded, `object-cover`, `loading="lazy"`,
+  `alt=""` (decorative — the surrounding text already names the opponent). Fetches
+  `GET /api/opponents/{code}/logo` (member route, lazy re-hosting — `backend/docs/ffbb-api.md`
+  §3bis) only when `hasLogo` is true (server-derived boolean, never re-guessed). One consumer today:
+  `features/matches/AwayList.tsx` — deliberately **not** wired into `ConflictLine` (a conflict's
+  side doesn't carry the opponent's code) nor the calendar grid.
 - **`table`** (`Table`/`TableHeader`/`TableBody`/`TableRow`/`TableHead`/`TableCell`/`TableCaption`) —
   the shared data table, born with the Consulter tab's month/phase lists (module matchs, 2026-09-08):
   house tokens, `scope="col"` headers, `overflow-x-auto` container (a wide table scrolls inside itself,
@@ -423,7 +441,8 @@ product rules — reuse them instead of rolling your own:
   `features/cockpit/StalenessPill.tsx` (P4-173). All five pastilles that predated it have migrated
   (P4-177): `CreditBadge`, `CompromiseList`, `WeekWorkbench`'s (ex-`MatchesPage`) `offModelBadge`/`sameWeekendBadge`,
   and `SourceBadge` — now a single shared component (`features/matches/SourceBadge.tsx`) consumed
-  by both `TravelMatrixModal` and `OpponentTravelCard`, which each used to carry their own copy.
+  by both `TravelMatrixModal` and `OpponentsPage` (ex-`OpponentTravelCard`, absorbed 2026-09-19),
+  which each used to carry their own copy.
   Seven more migrated (P4-178): `CoachesStep` ("Salarié" + preferred cap), `VenueGeocodeField`
   ("Recommandé" — since 2026-09-19 rendered by the shared `AddressGeocodeField` it wraps, see
   Primitives above), `ImplicitRulesPanel`'s `TravelRuleNotice` ("Actif"), `CampaignDialog` ("✓

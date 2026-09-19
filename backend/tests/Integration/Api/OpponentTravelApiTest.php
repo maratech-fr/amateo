@@ -18,6 +18,7 @@ use App\Enum\SeasonStatus;
 use App\Repository\OpponentVenueSuggestionRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\SeasonResolver;
+use App\Service\TravelComputeLock;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -78,6 +79,7 @@ final class OpponentTravelApiTest extends WebTestCase
         self::assertSame('VENUE', $venue['precision']);
         self::assertSame('Halle Clemenceau', $venue['locationName']);
         self::assertSame(22, $venue['travelMinutes']);
+        self::assertSame('done', $venue['travelStatus'], 'trajet présent → done');
         self::assertFalse($venue['approximated']);
         self::assertSame('AUTO', $venue['source']);
 
@@ -86,6 +88,8 @@ final class OpponentTravelApiTest extends WebTestCase
         self::assertSame('CITY', $city['precision']);
         self::assertSame('Meyzieu', $city['locationName']);
         self::assertNull($city['travelMinutes']);
+        // Localisé mais sans trajet ET aucun calcul en cours (C5 : pending jamais) → unavailable.
+        self::assertSame('unavailable', $city['travelStatus']);
         self::assertTrue($city['approximated'], 'city precision is the server-computed « approché » flag');
         self::assertNull($city['source']);
 
@@ -96,12 +100,14 @@ final class OpponentTravelApiTest extends WebTestCase
         self::assertSame('VENUE', $manual['precision'], 'a hand-pinned gym is venue-precise, never approximated');
         self::assertFalse($manual['approximated']);
         self::assertSame(31, $manual['travelMinutes']);
+        self::assertSame('done', $manual['travelStatus']);
 
         $unlocated = $byLabel['Club sans code'];
         self::assertFalse($unlocated['located']);
         self::assertNull($unlocated['opponentOrganismeCode']);
         self::assertNull($unlocated['precision']);
         self::assertNull($unlocated['travelMinutes']);
+        self::assertSame('unavailable', $unlocated['travelStatus'], 'pas de lieu à router → unavailable');
     }
 
     /**
@@ -221,6 +227,40 @@ final class OpponentTravelApiTest extends WebTestCase
             $this->em->getRepository(OpponentTravel::class)->findOneBy(['opponentOrganismeCode' => $code, 'opponentTeamKey' => null]),
             'la ligne club survit et gouverne désormais',
         );
+    }
+
+    public function testTravelResolveQueuesTheComputation(): void
+    {
+        [$club, $user, $season] = $this->seedClub();
+        $this->awayFixture($club, $season, 'ARA0069R21', 'Adversaire à router');
+        $this->directory('ARA0069R21', OpponentLocationPrecision::CITY, null, 'Bron');
+
+        // C6 — le recalcul est DISPATCHÉ au worker : la réponse dit seulement qu'il est en file.
+        $this->client->request('POST', '/api/opponents/travel/resolve', [], [], $this->authHeaders($user) + ['HTTP_ACCEPT' => 'application/json']);
+        self::assertResponseStatusCodeSame(200);
+        self::assertTrue($this->responseData()['queued']);
+        self::assertFalse($this->responseData()['alreadyRunning'], 'aucun calcul en cours → dispatché');
+    }
+
+    public function testTravelResolveRefusesWhenAComputationIsAlreadyRunning(): void
+    {
+        [$club, $user, $season] = $this->seedClub();
+        $this->awayFixture($club, $season, 'ARA0069R22', 'Adversaire à router');
+        $this->directory('ARA0069R22', OpponentLocationPrecision::CITY, null, 'Bron');
+
+        // Sécurité H — un calcul tourne déjà (verrou tenu) : un second dispatch finirait en
+        // `failed`. On répond honnêtement `{queued:false, alreadyRunning:true}`.
+        $lock = self::getContainer()->get(TravelComputeLock::class);
+        $token = $lock->acquire($club->getId(), 60);
+        self::assertNotNull($token, 'le verrou du club est pris pour simuler un calcul en cours');
+        try {
+            $this->client->request('POST', '/api/opponents/travel/resolve', [], [], $this->authHeaders($user) + ['HTTP_ACCEPT' => 'application/json']);
+            self::assertResponseStatusCodeSame(200);
+            self::assertFalse($this->responseData()['queued'], 'rien n\'est mis en file pendant un calcul en cours');
+            self::assertTrue($this->responseData()['alreadyRunning'], 'la réponse dit qu\'un calcul est déjà en cours');
+        } finally {
+            $lock->release($club->getId(), $token);
+        }
     }
 
     /**

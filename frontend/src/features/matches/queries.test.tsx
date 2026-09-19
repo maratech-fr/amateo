@@ -71,12 +71,12 @@ vi.mock("./api", () => ({
   placeMatches: vi.fn().mockResolvedValue({ placed: 0, skipped: 0, unplaced: [], diagnostics: [] }),
   setOpponentTravelManual: vi.fn().mockResolvedValue({}),
   setOpponentTravelAuto: vi.fn().mockResolvedValue({}),
-  resolveOpponentTravel: vi.fn().mockResolvedValue({ resolved: 2, unresolved: [], skippedManual: 0 }),
+  resolveOpponentTravel: vi.fn().mockResolvedValue({ queued: true, alreadyRunning: false }),
   resolveOpponents: vi.fn().mockResolvedValue({ resolved: 12, unresolved: [], skipped: 0, stamped: 40 }),
   refreshOpponents: vi.fn().mockResolvedValue({
     codes: { resolved: 12, unresolved: [], skipped: 0, stamped: 40 },
     autoLocated: { located: 8, ambiguous: 0, unmatched: 0, skipped: 0 },
-    travel: { resolved: 40, unresolved: [], skippedManual: 0 },
+    travel: { queued: true, alreadyRunning: false, pending: 40 },
     failedSteps: [],
   }),
   createVenueUnavailability: vi.fn().mockResolvedValue({ id: "u1", venueId: "v", startDate: "2026-10-01", endDate: "2026-10-02", label: null }),
@@ -245,7 +245,8 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     expect(matchesApi.setOpponentTravelAuto).toHaveBeenCalledWith({ opponentOrganismeCode: "ORG9", opponentTeamKey: "GRENOBLE-2" });
   });
 
-  it("useResolveOpponentTravel (recalcul global) refetche trajet ET radar", async () => {
+  it("useResolveOpponentTravel (C6 : dispatch async) refetche trajet ET radar, annonce un calcul LANCÉ", async () => {
+    toastMock.success.mockClear();
     const client = makeClient();
     const { result } = renderHook(
       () => ({ travel: useOpponentTravel(), conflicts: useConflicts(), resolve: useResolveOpponentTravel() }),
@@ -260,6 +261,9 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     await waitFor(() => expect(result.current.resolve.isSuccess).toBe(true));
     await waitFor(() => expect(matchesApi.getOpponentTravel).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(matchesApi.getConflicts).toHaveBeenCalledTimes(2));
+    // C6 — le POST est async (`{queued}`) : on annonce que le CALCUL est LANCÉ, jamais un compte
+    // de trajets « recalculés » qu'on n'a pas encore.
+    expect(toastMock.success).toHaveBeenCalledWith("Calcul des trajets manquants lancé.");
   });
 
   it("useUpdateOpponents (PR 2b) : UN seul appel refreshOpponents, refetche fixtures + trajet, UN toast à trois passes", async () => {
@@ -286,7 +290,7 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     await waitFor(() => expect(matchesApi.getOpponentTravel).toHaveBeenCalledTimes(2));
     // UN seul toast de succès, résumant les TROIS passes.
     expect(toastMock.success).toHaveBeenCalledTimes(1);
-    expect(toastMock.success).toHaveBeenCalledWith("12 codes retrouvés · 8 gymnases localisés · 40 trajets calculés");
+    expect(toastMock.success).toHaveBeenCalledWith("12 codes retrouvés · 8 gymnases localisés · calcul de 40 trajets lancé");
   });
 
   it("useUpdateOpponents : une passe en échec (failedSteps) → toast d'erreur parlant, aucun succès, données rafraîchies quand même", async () => {
@@ -295,7 +299,7 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     vi.mocked(matchesApi.refreshOpponents).mockResolvedValueOnce({
       codes: { resolved: 0, unresolved: [], skipped: 0, stamped: 0 },
       autoLocated: { located: 0, ambiguous: 0, unmatched: 0, skipped: 0 },
-      travel: { resolved: 0, unresolved: [], skippedManual: 0 },
+      travel: { queued: true, alreadyRunning: false, pending: 0 },
       failedSteps: ["codes"],
     });
     const client = makeClient();
@@ -314,13 +318,15 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["opponents"] });
   });
 
-  it("useUpdateOpponents : des adversaires non résolus s'annoncent « (m en échec) » dans le toast de succès", async () => {
+  it("useUpdateOpponents : des CODES non retrouvés s'annoncent « (m en échec) » dans le toast de succès", async () => {
     toastMock.success.mockClear();
     toastMock.error.mockClear();
     vi.mocked(matchesApi.refreshOpponents).mockResolvedValueOnce({
       codes: { resolved: 5, unresolved: ["Adverse X"], skipped: 0, stamped: 5 },
       autoLocated: { located: 3, ambiguous: 0, unmatched: 0, skipped: 0 },
-      travel: { resolved: 4, unresolved: ["ARA0069ZZZ"], skippedManual: 0 },
+      // C6 — les trajets partent au worker : leur échec se lit ensuite dans `travelStatus`,
+      // plus dans ce toast synchrone. Seuls les CODES non retrouvés y comptent (1).
+      travel: { queued: true, alreadyRunning: false, pending: 4 },
       failedSteps: [],
     });
     const { result } = renderHook(() => ({ update: useUpdateOpponents() }), { wrapper: wrapperFor(makeClient()) });
@@ -328,7 +334,7 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     result.current.update.run();
 
     await waitFor(() => expect("idle" === result.current.update.step).toBe(true));
-    expect(toastMock.success).toHaveBeenCalledWith("5 codes retrouvés · 3 gymnases localisés · 4 trajets calculés (2 en échec)");
+    expect(toastMock.success).toHaveBeenCalledWith("5 codes retrouvés (1 en échec) · 3 gymnases localisés · calcul de 4 trajets lancé");
     expect(toastMock.error).not.toHaveBeenCalled();
   });
 

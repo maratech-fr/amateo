@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Mercure;
 
+use App\Service\TravelComputeLock;
+
 /**
  * Le topic Mercure d'une génération — foyer unique (audit D-10, 2026-08-08).
  *
@@ -47,5 +49,17 @@ final class MercureTopic
     public static function isEmpty(string $topic): bool
     {
         return self::for('', '') === $topic;
+    }
+
+    /**
+     * C6 — le topic du CALCUL DES TRAJETS d'un club : `club:{clubId}:travel`. UN topic FIXE
+     * par club (pas de joker `{id}` : un seul calcul de trajets à la fois par club, cf.
+     * {@see TravelComputeLock}), sur lequel on PUBLIE la progression ET auquel
+     * le JWT d'abonnement autorise à s'abonner tel quel (aucune interpolation d'identifiant
+     * variable — la frontière de sécurité reste le club).
+     */
+    public static function forTravel(string $clubId): string
+    {
+        return \sprintf('club:%s:travel', $clubId);
     }
 }

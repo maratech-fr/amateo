@@ -270,8 +270,8 @@ describe("colonne extérieur (lot 3 PR-3a)", () => {
     id: "h", teamId: "team-1", dayOfWeek: 6, kickoffTime: "15:30", venueId: null, ...over,
   });
   const travelEntry = (over: Partial<import("../api").OpponentTravel> = {}): import("../api").OpponentTravel => ({
-    opponentOrganismeCode: "C1", opponentTeamKey: "EPI-1", opponentLabel: "Épinouze", located: true, precision: "VENUE",
-    locationName: "Halle Y", city: null, postalCode: null, travelMinutes: 45, approximated: false, source: "AUTO", scope: "CLUB", overrideVenueLabel: null, ...over,
+    opponentOrganismeCode: "C1", opponentTeamKey: "EPI-1", opponentLabel: "Épinouze", located: true, hasLogo: false, precision: "VENUE",
+    locationName: "Halle Y", city: null, postalCode: null, travelMinutes: 45, approximated: false, source: "AUTO", scope: "CLUB", overrideVenueLabel: null, travelStatus: "done", ...over,
   });
 
   it("ajoute la colonne « Extérieur » EN DERNIER du groupe de date, jamais de pastille", () => {

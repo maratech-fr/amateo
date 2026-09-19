@@ -27,8 +27,9 @@ exposes the API, **engine** solves, **frontend** renders (wizard → generate �
 | `specs/` | Markdown | `specs/README.md` | Living specs (initiales/courantes/evolution) |
 
 **Boundaries (critical — never cross):** `frontend → backend` via `/api/*` · `backend → engine` via
-`POST http://engine:8000/generate` · `backend → frontend` via Mercure SSE topic
-`club:{clubId}:schedule:{scheduleId}` · **engine is reactive, it NEVER calls the backend** ·
+`POST http://engine:8000/generate` · `backend → frontend` via Mercure SSE, two fixed topics per
+club — `club:{clubId}:schedule:{scheduleId}` (generation progress) and `club:{clubId}:travel`
+(async travel-time computation, `docs/security/mercure.md`) · **engine is reactive, it NEVER calls the backend** ·
 **frontend NEVER calls the engine directly** — et **aucun proxy `/engine` nulle part, ne jamais en
 (ré)introduire** (l'ancien exposait le solveur SANS authentification) : pour debugger,
 `docker compose exec engine …` fait le travail.
