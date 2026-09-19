@@ -5,13 +5,9 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Service\Geo;
 
 use App\Entity\Club;
-use App\Entity\OpponentDirectoryEntry;
-use App\Entity\OpponentTravel;
 use App\Entity\Season;
 use App\Entity\Venue;
 use App\Entity\VenueTravelTime;
-use App\Enum\OpponentLocationPrecision;
-use App\Enum\OpponentTravelSource;
 use App\Enum\SeasonStatus;
 use App\Enum\VenueTravelTimeSource;
 use App\Service\Geo\IgnRoutingClient;
@@ -24,11 +20,15 @@ use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
- * C4 — le SEED one-shot de la migration `club_travel_cache`. On rejoue EXACTEMENT les
- * instructions de la migration ({@see Version20260920120000::seedStatements()}, foyer
- * partagé, aucune dérive) sur des sources fraîchement seedées, et on vérifie que le
- * cache se rétro-alimente : le trajet adverse (siège → lieu effectif) et la matrice des
- * gymnases (conduite/marche, DANS LES DEUX SENS).
+ * C4 — le SEED one-shot de la migration `club_travel_cache`. On rejoue les instructions de
+ * la migration ({@see Version20260920120000::seedStatements()}, foyer partagé) sur des
+ * sources fraîchement seedées, et on vérifie que le cache se rétro-alimente depuis la
+ * MATRICE des gymnases (conduite/marche, DANS LES DEUX SENS).
+ *
+ * ⚠ Amendement 2026-09-20 : `opponent_travel` a été SUPPRIMÉE (migration
+ * `Version20260920140000`). Le premier statement du seed historique la lit — on le SAUTE
+ * ici (il reste correct sur une base fraîche, où il tourne AVANT la suppression, dans
+ * l'ordre des migrations). La part matrice, elle, reste vérifiable.
  */
 #[Group('integration')]
 final class ClubTravelCacheSeedTest extends WebTestCase
@@ -39,24 +39,26 @@ final class ClubTravelCacheSeedTest extends WebTestCase
 
     private TravelTimeCache $cache;
 
-    public function testTheSeedBackfillsFromOpponentTravelAndVenueMatrix(): void
+    public function testTheSeedBackfillsFromTheVenueMatrix(): void
     {
         [$clubId, $seasonId, $venueAId, $venueBId] = $this->seedSources();
 
+        // On saute le premier statement (il lit opponent_travel, table supprimée depuis) et
+        // rejoue la part MATRICE des gymnases.
         foreach (Version20260920120000::seedStatements() as $sql) {
+            if (str_contains($sql, 'opponent_travel')) {
+                continue;
+            }
             $this->em->getConnection()->executeStatement($sql);
         }
 
-        // (1) Trajet adverse : siège (45.70, 4.90) → lieu de l'annuaire (45.76, 4.86) = 55.
-        self::assertSame(55, $this->cache->lookup($clubId, IgnRoutingClient::PROFILE_CAR, 45.70, 4.90, 45.76, 4.86), 'le trajet adverse est rétro-alimenté');
-
-        // (2) Matrice des gymnases, DANS LES DEUX SENS : conduite → car (30), marche → pedestrian (90).
+        // Matrice des gymnases, DANS LES DEUX SENS : conduite → car (30), marche → pedestrian (90).
         self::assertSame(30, $this->cache->lookup($clubId, IgnRoutingClient::PROFILE_CAR, 45.10, 4.10, 45.20, 4.20), 'A → B conduite');
         self::assertSame(30, $this->cache->lookup($clubId, IgnRoutingClient::PROFILE_CAR, 45.20, 4.20, 45.10, 4.10), 'B → A conduite (sens inverse seedé)');
         self::assertSame(90, $this->cache->lookup($clubId, IgnRoutingClient::PROFILE_PEDESTRIAN, 45.10, 4.10, 45.20, 4.20), 'A → B marche');
 
-        // Falsification : un profil marche pour le trajet ADVERSE n'existe pas (car seul).
-        self::assertNull($this->cache->lookup($clubId, IgnRoutingClient::PROFILE_PEDESTRIAN, 45.70, 4.90, 45.76, 4.86), 'le trajet adverse ne seede que la voiture');
+        // Falsification : un profil voiture pour la marche A→B n'existe pas au même trajet.
+        self::assertNull($this->cache->lookup($clubId, IgnRoutingClient::PROFILE_CAR, 45.30, 4.30, 45.40, 4.40), 'une paire jamais seedée reste absente');
 
         unset($seasonId, $venueAId, $venueBId); // seedés pour les FK logiques, pas relus ici.
     }
@@ -105,18 +107,6 @@ final class ClubTravelCacheSeedTest extends WebTestCase
             ->setDrivingMinutes(30)->setDrivingSource(VenueTravelTimeSource::AUTO)
             ->setWalkingMinutes(90)->setWalkingSource(VenueTravelTimeSource::AUTO);
         $this->em->persist($matrix);
-
-        $travel = (new OpponentTravel)
-            ->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setOpponentOrganismeCode('ARA0069SEED')
-            ->setTravelMinutes(55)->setSource(OpponentTravelSource::AUTO);
-        $this->em->persist($travel);
-        $this->em->flush();
-
-        // Annuaire GLOBAL (hors tenant) : le lieu de l'adversaire.
-        $entry = new OpponentDirectoryEntry('ARA0069SEED', 'Adverse seed', OpponentLocationPrecision::CITY);
-        $entry->setLatitude(45.76)->setLongitude(4.86)->setCity('Lyon');
-        $this->em->persist($entry);
         $this->em->flush();
 
         return [$club->getId(), $season->getId(), $venueA->getId(), $venueB->getId()];

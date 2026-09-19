@@ -6,14 +6,10 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
-use App\Entity\OpponentTravel;
-use App\Entity\Season;
+use App\Entity\OpponentVenueLink;
 use App\Entity\User;
-use App\Enum\OpponentTravelSource;
-use App\Enum\SeasonStatus;
-use App\Service\SeasonResolver;
+use App\Enum\OpponentVenueLinkSource;
 use App\Tests\TenantGucTrait;
-use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -61,24 +57,19 @@ final class ClubSiegeTest extends WebTestCase
         self::assertSame(4.85, $club->getLongitude());
     }
 
-    public function testChangingTheSiegeInvalidatesTheDerivedOpponentTravels(): void
+    public function testChangingTheSiegeKeepsTheOpponentVenueLinks(): void
     {
-        // Le club a déjà un siège AILLEURS (40/3) et un trajet adverse calculé depuis lui.
+        // Le club a déjà un siège AILLEURS (40/3) et un gymnase adverse ÉPINGLÉ (MANUAL).
         $this->scopeGucToClub($this->club->getId());
         $this->club->setLatitude(40.0)->setLongitude(3.0);
-        $season = new Season;
-        $season->setClubId($this->club->getId());
-        $season->setName((string) SeasonResolver::seasonYear(new DateTimeImmutable('today')));
-        $season->setStartDate(new DateTimeImmutable('today'));
-        $season->setEndDate(new DateTimeImmutable('+300 days'));
-        $season->setStatus(SeasonStatus::ACTIVE);
-        $this->em->persist($season);
-        $stale = (new OpponentTravel)
-            ->setClubId($this->club->getId())->setSeasonId($season->getId())
+        $link = (new OpponentVenueLink)
+            ->setClubId($this->club->getId())
             ->setOpponentOrganismeCode('ARA0069STALE')
-            ->setSource(OpponentTravelSource::AUTO)->setTravelMinutes(50)
-            ->setResolvedAt(new DateTimeImmutable);
-        $this->em->persist($stale);
+            ->setFbiLabel('SALLE X')->setFbiLabelNorm('salle x')
+            ->setVenueExternalRef('166900999')->setVenueLabel('Gymnase X')
+            ->setLatitude(45.5)->setLongitude(4.5)
+            ->setSource(OpponentVenueLinkSource::MANUAL);
+        $this->em->persist($link);
         $this->em->flush();
         $this->em->clear();
 
@@ -90,13 +81,14 @@ final class ClubSiegeTest extends WebTestCase
         ], json_encode(['address' => '5 rue Emile Duniere Villeurbanne'], \JSON_THROW_ON_ERROR));
         self::assertResponseIsSuccessful();
 
-        // Le trajet dérivé de l'ancien siège est PÉRIMÉ → travel_minutes remis à null
-        // (le worker le recalculera depuis le nouveau siège).
+        // Amendement 2026-09-20 : un déménagement de siège ne DÉTRUIT jamais les appariements
+        // de gymnase (le trajet est une constante du cache, directionnelle — la nouvelle origine
+        // est une nouvelle clé, rien à invalider). Le worker recalcule les paires manquantes.
         $this->em->clear();
         $this->scopeGucToClub($this->club->getId());
-        $row = $this->em->getRepository(OpponentTravel::class)->findOneBy(['opponentOrganismeCode' => 'ARA0069STALE']);
-        self::assertInstanceOf(OpponentTravel::class, $row);
-        self::assertNull($row->getTravelMinutes(), 'un siège qui déménage périme les trajets dérivés');
+        $survivor = $this->em->getRepository(OpponentVenueLink::class)->findOneBy(['opponentOrganismeCode' => 'ARA0069STALE']);
+        self::assertInstanceOf(OpponentVenueLink::class, $survivor, 'l\'appariement de gymnase survit au déménagement');
+        self::assertSame('166900999', $survivor->getVenueExternalRef(), 'le gymnase épinglé est intact');
     }
 
     public function testAddressNotFoundIs422(): void

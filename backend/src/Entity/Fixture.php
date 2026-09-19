@@ -122,8 +122,8 @@ class Fixture implements TenantOwnedInterface
     /**
      * The AWAY opponent's FFBB organisme code (P2-54 RMM-9 PR-3) — the JOIN KEY
      * between this fixture and both the GLOBAL opponent directory (where the
-     * opponent plays) and the TENANT `opponent_travel` (this club's siège →
-     * that venue travel time). Stamped best-effort by {@see
+     * opponent plays) and the TENANT `opponent_venue_link` (this club's
+     * label→gym pairing, whose gym feeds the constant travel cache). Stamped best-effort by {@see
      * App\Service\Basketball\OpponentLocationResolver} when it resolves the code
      * it already computes; null = opponent not (yet) located. HOME fixtures never
      * carry it (only an away match locates the opponent's own gym).
