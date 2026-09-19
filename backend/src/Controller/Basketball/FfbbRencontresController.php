@@ -6,15 +6,19 @@ namespace App\Controller\Basketball;
 
 use App\Controller\ResolvesCurrentClubTrait;
 use App\Entity\Season;
+use App\Enum\TravelComputeScope;
+use App\Message\ComputeTravelTimesMessage;
 use App\Repository\ClubRepository;
 use App\Repository\FixtureRepository;
 use App\Service\Basketball\FfbbRencontreReconciler;
 use App\Service\Basketball\OpponentLocationResolver;
+use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\OpponentVenueAutoLocator;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use App\Service\SocleGuard;
+use App\Service\TravelComputeLock;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -23,6 +27,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Throwable;
 
@@ -61,6 +66,9 @@ final class FfbbRencontresController extends AbstractController
         private readonly FfbbRencontreReconciler $reconciler,
         private readonly OpponentLocationResolver $opponentResolver,
         private readonly OpponentVenueAutoLocator $venueAutoLocator,
+        private readonly OpponentTravelResolver $travelResolver,
+        private readonly TravelComputeLock $travelComputeLock,
+        private readonly MessageBusInterface $messageBus,
         private readonly FixtureRepository $fixtures,
         private readonly LoggerInterface $logger,
     ) {}
@@ -141,6 +149,18 @@ final class FfbbRencontresController extends AbstractController
             $this->venueAutoLocator->locate($clubId, (string) $seasonId);
         } catch (Throwable $e) {
             $this->logger->warning('Opponent directory: post-apply venue auto-location failed', ['exception' => $e]);
+        }
+
+        // Amendement 2026-09-20 — le trajet quitte le rail d'import : DISPATCHER le calcul
+        // asynchrone si des paires siège→gymnase manquent au cache et qu'aucun calcul ne
+        // tourne déjà. Best-effort (jamais un apply réussi transformé en 502).
+        try {
+            if ($this->travelResolver->hasUncomputedTravel($clubId, (string) $seasonId)
+                && !$this->travelComputeLock->isHeld($clubId)) {
+                $this->messageBus->dispatch(new ComputeTravelTimesMessage($clubId, (string) $seasonId, TravelComputeScope::OPPONENTS));
+            }
+        } catch (Throwable $e) {
+            $this->logger->warning('Opponent directory: post-apply travel dispatch failed', ['exception' => $e]);
         }
 
         return $this->json([

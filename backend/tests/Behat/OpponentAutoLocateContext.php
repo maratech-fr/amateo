@@ -152,7 +152,7 @@ final class OpponentAutoLocateContext extends BaseContext
             if ('' === $code) {
                 continue;
             }
-            $this->dbalExec(\sprintf('DELETE FROM opponent_travel WHERE opponent_organisme_code=\'%s\'', $code), admin: true);
+            $this->dbalExec(\sprintf('DELETE FROM opponent_venue_link WHERE opponent_organisme_code=\'%s\'', $code), admin: true);
             $this->dbalExec(\sprintf('DELETE FROM opponent_venue_suggestion WHERE ffbb_organisme_code=\'%s\'', $code), admin: true);
             $this->dbalExec(\sprintf('DELETE FROM fixture WHERE opponent_organisme_code=\'%s\'', $code), admin: true);
             $this->dbalExec(\sprintf('DELETE FROM opponent_directory WHERE ffbb_organisme_code=\'%s\'', $code), admin: true);

@@ -7,19 +7,17 @@ namespace App\Tests\Integration\Service\Geo;
 use App\Entity\Club;
 use App\Entity\Fixture;
 use App\Entity\OpponentDirectoryEntry;
-use App\Entity\OpponentTravel;
+use App\Entity\OpponentVenueLink;
 use App\Entity\Season;
 use App\Enum\FixtureHomeAway;
 use App\Enum\OpponentLocationPrecision;
-use App\Enum\OpponentTravelSource;
+use App\Enum\OpponentVenueLinkSource;
 use App\Enum\SeasonStatus;
-use App\Repository\ClubRepository;
 use App\Repository\FixtureRepository;
 use App\Repository\OpponentDirectoryEntryRepository;
-use App\Repository\OpponentTravelRepository;
+use App\Repository\OpponentVenueLinkRepository;
 use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\VenueLabelNormalizer;
-use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\OpponentVenueAutoLocator;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
@@ -33,10 +31,11 @@ use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 
 /**
- * P2-54 PR-2b — l'auto-localisation d'un adversaire depuis le gymnase de salle ÉCRIT
- * dans son fichier FBI. Le cœur : égalité STRICTE du libellé fédéral, un hit UNIQUE,
- * une surcharge de trajet TENANT source AUTO portant le gymnase FÉDÉRAL — jamais le
- * texte du fichier, jamais une écriture au partagé, jamais un choix MANUAL touché.
+ * P2-54 (amendement 2026-09-20) — l'auto-appariement d'un LIBELLÉ de salle FBI vers un
+ * gymnase FÉDÉRAL ({@see OpponentVenueLink}, grain `(code, libellé FBI normalisé)`). Le
+ * cœur : égalité STRICTE du libellé, un hit UNIQUE, un lien source AUTO portant le gymnase
+ * FÉDÉRAL (jamais le texte du fichier), aucune écriture au partagé, aucun trajet calculé
+ * ici (le trajet est asynchrone), aucun choix MANUAL touché.
  */
 #[Group('integration')]
 final class OpponentVenueAutoLocatorTest extends WebTestCase
@@ -48,7 +47,7 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
 
     private EntityManagerInterface $em;
 
-    public function testAUniqueFederalSalleLocatesTheTeamAsAnAutoOverride(): void
+    public function testAUniqueFederalSalleLinksTheLabel(): void
     {
         [$club, $season] = $this->seedClubWithAway('GYMNASE MATEO', 'Adverse Mateo - 1');
         $this->seedDirectory();
@@ -59,22 +58,21 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
         self::assertSame(0, $result['ambiguous']);
         self::assertSame(0, $result['unmatched']);
 
-        $row = $this->teamRow($club, $season, 'adverse mateo 1');
-        self::assertInstanceOf(OpponentTravel::class, $row);
-        self::assertSame(OpponentTravelSource::AUTO, $row->getSource());
-        self::assertSame('166926604', $row->getOverrideVenueExternalRef());
-        self::assertSame('GYMNASE MATEO', $row->getOverrideVenueLabel(), 'le libellé écrit est le FÉDÉRAL, jamais celui du fichier');
-        self::assertSame(22, $row->getTravelMinutes(), '1320 s → 22 min (aller simple)');
-        self::assertTrue($row->isTeamScoped());
+        $link = $this->link($club, 'gymnase mateo');
+        self::assertInstanceOf(OpponentVenueLink::class, $link);
+        self::assertSame(OpponentVenueLinkSource::AUTO, $link->getSource());
+        self::assertSame('166926604', $link->getVenueExternalRef());
+        self::assertSame('GYMNASE MATEO', $link->getVenueLabel(), 'le libellé du gymnase écrit est le FÉDÉRAL, jamais celui du fichier');
+        self::assertSame(45.78, $link->getLatitude());
+        self::assertSame(4.88, $link->getLongitude());
 
         // Aucune écriture au partagé : une auto-localisation n'est pas un CHOIX.
         self::assertSame(0, $this->sharedRows());
     }
 
     /**
-     * BCK-32 — budget de mur épuisé (deadline dans le passé) : le groupe qui SE serait
-     * localisé est compté `skipped` sans aucun appel réseau — même canal que le cap
-     * {@see OpponentVenueAutoLocator::MAX_GROUPS}. Best-effort (relancer pour finir).
+     * BCK-32 — budget de mur épuisé (deadline dans le passé) : le libellé qui SE serait
+     * apparié est compté `skipped` sans aucun appel réseau. Best-effort (relancer pour finir).
      */
     public function testLocateStopsAtTheWallClockDeadline(): void
     {
@@ -83,12 +81,12 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
 
         $result = $this->locator([$this->salle('166926604', 'GYMNASE MATEO', 45.78, 4.88)])->locate($club->getId(), $season->getId(), 1.0);
 
-        self::assertSame(0, $result['located'], 'rien localisé passé le budget de mur');
-        self::assertSame(1, $result['skipped'], 'le groupe restant est compté skipped');
-        self::assertNull($this->teamRow($club, $season, 'adverse mateo 1'), 'aucune surcharge écrite');
+        self::assertSame(0, $result['located'], 'rien apparié passé le budget de mur');
+        self::assertSame(1, $result['skipped'], 'le libellé restant est compté skipped');
+        self::assertNull($this->link($club, 'gymnase mateo'), 'aucun lien écrit');
     }
 
-    public function testNoStrictMatchLeavesTheTeamUnlocated(): void
+    public function testNoStrictMatchLeavesTheLabelUnpaired(): void
     {
         [$club, $season] = $this->seedClubWithAway('GYMNASE INCONNU', 'Adverse X - 1');
         $this->seedDirectory();
@@ -97,7 +95,7 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
 
         self::assertSame(0, $result['located']);
         self::assertSame(1, $result['unmatched']);
-        self::assertNull($this->teamRow($club, $season, 'adverse x 1'));
+        self::assertNull($this->link($club, 'gymnase inconnu'));
     }
 
     /** « MATEO » ≠ « GYMNASE MATEO » (invariant d'égalité stricte : jamais une inclusion). */
@@ -112,8 +110,8 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
         self::assertSame(1, $result['unmatched'], '« MATEO » n\'égale pas STRICTEMENT « GYMNASE MATEO »');
     }
 
-    /** Deux salles fédérales de MÊME libellé pour le fichier = ≥ 2 hits → rien (non localisé). */
-    public function testTwoFederalSallesWithTheSameLabelYieldNothing(): void
+    /** Un libellé matchant DEUX salles fédérales = ≥ 2 hits → ambigu, rien n'est posé. */
+    public function testALabelMatchingTwoFederalSallesIsAmbiguous(): void
     {
         [$club, $season] = $this->seedClubWithAway('SALLE DOUBLE', 'Adverse Double - 1');
         $this->seedDirectory();
@@ -124,12 +122,12 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
         ])->locate($club->getId(), $season->getId());
 
         self::assertSame(0, $result['located']);
-        self::assertSame(1, $result['unmatched']);
-        self::assertNull($this->teamRow($club, $season, 'adverse double 1'));
+        self::assertSame(1, $result['ambiguous']);
+        self::assertNull($this->link($club, 'salle double'));
     }
 
-    /** FFBB muet (aucune salle rendue) → aucune localisation, jamais une erreur. */
-    public function testAMuteFfbbLeavesEverythingUnlocated(): void
+    /** FFBB muet (aucune salle rendue) → aucun appariement, jamais une erreur. */
+    public function testAMuteFfbbLeavesEverythingUnpaired(): void
     {
         [$club, $season] = $this->seedClubWithAway('GYMNASE MATEO', 'Adverse Muet - 1');
         $this->seedDirectory();
@@ -141,14 +139,14 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
     }
 
     /**
-     * Deux libellés de fichier DISTINCTS pour la MÊME équipe désignant deux salles
-     * fédérales différentes = AMBIGU → rien n'est posé.
+     * Deux LIBELLÉS de fichier DISTINCTS du même club adverse, chacun matchant une salle
+     * unique, donnent DEUX liens indépendants (le gymnase se rattache au libellé, pas à
+     * l'équipe : deux salles = deux liens).
      */
-    public function testTwoDistinctFileLabelsPointingToTwoSallesIsAmbiguous(): void
+    public function testTwoDistinctLabelsEachYieldTheirOwnLink(): void
     {
-        [$club, $season] = $this->seedClubWithAway('GYMNASE A', 'Adverse Ambigu - 1');
-        // Une seconde rencontre de la MÊME équipe adverse, libellé de salle DIFFÉRENT.
-        $this->awayFixture($club, $season, self::CODE, 'Adverse Ambigu - 1', 'GYMNASE B');
+        [$club, $season] = $this->seedClubWithAway('GYMNASE A', 'Adverse - 1');
+        $this->awayFixture($club, $season, self::CODE, 'Adverse - 2', 'GYMNASE B');
         $this->seedDirectory();
 
         $result = $this->locator([
@@ -156,69 +154,67 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
             $this->salle('100000002', 'GYMNASE B', 45.71, 4.81),
         ])->locate($club->getId(), $season->getId());
 
-        self::assertSame(0, $result['located']);
-        self::assertSame(1, $result['ambiguous']);
-        self::assertNull($this->teamRow($club, $season, 'adverse ambigu 1'));
+        self::assertSame(2, $result['located'], 'deux libellés distincts → deux liens');
+        self::assertSame('100000001', $this->link($club, 'gymnase a')?->getVenueExternalRef());
+        self::assertSame('100000002', $this->link($club, 'gymnase b')?->getVenueExternalRef());
     }
 
-    /** Une ligne équipe MANUAL est SOUVERAINE : jamais recalculée, comptée `skipped`. */
-    public function testAnExistingManualTeamRowIsNeverTouched(): void
+    /** Un lien MANUAL est SOUVERAIN : jamais recalculé, compté `skipped`. */
+    public function testAnExistingManualLinkIsNeverTouched(): void
     {
         [$club, $season] = $this->seedClubWithAway('GYMNASE MATEO', 'Adverse Manuel - 1');
         $this->seedDirectory();
 
         $this->scopeGucToClub($club->getId());
-        $manual = (new OpponentTravel)
-            ->setClubId($club->getId())->setSeasonId($season->getId())->setOpponentOrganismeCode(self::CODE)
-            ->setOpponentTeamKey('adverse manuel 1')
-            ->setSource(OpponentTravelSource::MANUAL)->setTravelMinutes(5)
-            ->setOverrideVenueLabel('Mon vrai gymnase')->setOverrideVenueExternalRef('999999999')
-            ->setOverrideLatitude(45.5)->setOverrideLongitude(4.5)->setResolvedAt(new DateTimeImmutable);
+        $manual = (new OpponentVenueLink)
+            ->setClubId($club->getId())->setOpponentOrganismeCode(self::CODE)
+            ->setFbiLabel('GYMNASE MATEO')->setFbiLabelNorm('gymnase mateo')
+            ->setVenueExternalRef('999999999')->setVenueLabel('Mon vrai gymnase')
+            ->setLatitude(45.5)->setLongitude(4.5)->setSource(OpponentVenueLinkSource::MANUAL);
         $this->em->persist($manual);
         $this->em->flush();
 
         $result = $this->locator([$this->salle('166926604', 'GYMNASE MATEO', 45.78, 4.88)])->locate($club->getId(), $season->getId());
 
         self::assertSame(0, $result['located']);
-        self::assertSame(1, $result['skipped'], 'la ligne MANUAL est sautée');
+        self::assertSame(1, $result['skipped'], 'le lien MANUAL est sauté');
 
         $this->em->clear();
-        $row = $this->teamRow($club, $season, 'adverse manuel 1');
-        self::assertInstanceOf(OpponentTravel::class, $row);
-        self::assertSame(OpponentTravelSource::MANUAL, $row->getSource(), 'le choix MANUAL survit intact');
-        self::assertSame('Mon vrai gymnase', $row->getOverrideVenueLabel());
-        self::assertSame(5, $row->getTravelMinutes());
+        $link = $this->link($club, 'gymnase mateo');
+        self::assertInstanceOf(OpponentVenueLink::class, $link);
+        self::assertSame(OpponentVenueLinkSource::MANUAL, $link->getSource(), 'le choix MANUAL survit intact');
+        self::assertSame('Mon vrai gymnase', $link->getVenueLabel());
+        self::assertSame('999999999', $link->getVenueExternalRef());
     }
 
-    /** Une ligne équipe AUTO existante est RE-vérifiée (minutes recalculées) — décision A3/PR-2b. */
-    public function testAnExistingAutoTeamRowIsReLocated(): void
+    /** Un lien AUTO pointant une AUTRE salle est ré-apparié (le gymnase fédéral change). */
+    public function testAnExistingAutoLinkIsReVerified(): void
     {
         [$club, $season] = $this->seedClubWithAway('GYMNASE MATEO', 'Adverse Auto - 1');
         $this->seedDirectory();
 
         $this->scopeGucToClub($club->getId());
-        $auto = (new OpponentTravel)
-            ->setClubId($club->getId())->setSeasonId($season->getId())->setOpponentOrganismeCode(self::CODE)
-            ->setOpponentTeamKey('adverse auto 1')
-            ->setSource(OpponentTravelSource::AUTO)->setTravelMinutes(99)
-            ->setOverrideVenueLabel('GYMNASE MATEO')->setOverrideVenueExternalRef('166926604')
-            ->setOverrideLatitude(45.78)->setOverrideLongitude(4.88)->setResolvedAt(new DateTimeImmutable);
+        $auto = (new OpponentVenueLink)
+            ->setClubId($club->getId())->setOpponentOrganismeCode(self::CODE)
+            ->setFbiLabel('GYMNASE MATEO')->setFbiLabelNorm('gymnase mateo')
+            ->setVenueExternalRef('000000000')->setVenueLabel('Ancien gymnase')
+            ->setLatitude(45.0)->setLongitude(4.0)->setSource(OpponentVenueLinkSource::AUTO);
         $this->em->persist($auto);
         $this->em->flush();
 
-        $this->locator([$this->salle('166926604', 'GYMNASE MATEO', 45.78, 4.88)], 600)->locate($club->getId(), $season->getId());
+        $result = $this->locator([$this->salle('166926604', 'GYMNASE MATEO', 45.78, 4.88)])->locate($club->getId(), $season->getId());
+        self::assertSame(1, $result['located']);
 
         $this->em->clear();
-        $row = $this->teamRow($club, $season, 'adverse auto 1');
-        self::assertInstanceOf(OpponentTravel::class, $row);
-        self::assertSame(OpponentTravelSource::AUTO, $row->getSource());
-        self::assertSame(10, $row->getTravelMinutes(), '600 s → 10 min : la ligne AUTO a été recalculée, pas laissée à 99');
+        $link = $this->link($club, 'gymnase mateo');
+        self::assertInstanceOf(OpponentVenueLink::class, $link);
+        self::assertSame(OpponentVenueLinkSource::AUTO, $link->getSource());
+        self::assertSame('166926604', $link->getVenueExternalRef(), 'la salle a été re-appariée, pas laissée à l\'ancienne');
     }
 
     /**
      * Borne de fan-out fédéral : au-delà de 200 groupes, la passe s'arrête proprement —
-     * au plus 200 recherches de salle, les groupes en excès comptés `skipped`, aucun
-     * appel réseau au-delà (un simple upload d'import ne déclenche jamais un fan-out illimité).
+     * au plus 200 recherches de salle, les groupes en excès comptés `skipped`.
      */
     public function testTheGroupCapBoundsTheFederalFanOut(): void
     {
@@ -228,8 +224,6 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
         $club->setSlug('club-auto-cap-' . $uid);
         $club->setTimezone('Europe/Paris');
         $club->setLocale('fr');
-        $club->setLatitude(45.70);
-        $club->setLongitude(4.90);
         $this->em->persist($club);
         $this->em->flush();
 
@@ -244,7 +238,7 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
         $this->em->persist($season);
         $this->em->flush();
 
-        // 201 adversaires AWAY distincts, chacun localisable (annuaire + libellé de fichier).
+        // 201 adversaires AWAY distincts (codes distincts), chacun un groupe (code|libellé).
         for ($i = 0; $i < 201; ++$i) {
             $code = \sprintf('ARA006C%04d', $i);
             $this->scopeGucToClub($club->getId());
@@ -273,32 +267,27 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
     }
 
     /**
-     * Le libellé normalisé (teamKey) est tronqué à 180 (colonne VARCHAR(180)) avant
-     * écriture : un adversaire au libellé très long est localisé sans erreur DB avalée.
+     * Le libellé normalisé (clé du lien) est tronqué à 180 (colonne VARCHAR(180)) avant
+     * écriture : un libellé de salle très long est apparié sans erreur DB avalée.
      */
-    public function testTheTeamKeyIsTruncatedToTheColumnLength(): void
+    public function testTheLabelNormIsTruncatedToTheColumnLength(): void
     {
-        // 180 ligatures « œ » tiennent dans `opponent_label` (VARCHAR(180), en CHARACTÈRES)
-        // mais la translittération ASCII les DILATE (« œ » → « oe ») : le libellé normalisé
-        // fait 360 caractères → il DOIT être tronqué à 180 avant écriture.
+        // 180 ligatures « œ » : la translittération ASCII les DILATE (« œ » → « oe »),
+        // le libellé normalisé fait 360 caractères → tronqué à 180 avant écriture.
         $longLabel = str_repeat("\u{0153}", 180);
-        [$club, $season] = $this->seedClubWithAway('GYMNASE MATEO', $longLabel);
+        [$club, $season] = $this->seedClubWithAway($longLabel, 'Adverse Long - 1');
         $this->seedDirectory();
 
-        $result = $this->locator([$this->salle('166926604', 'GYMNASE MATEO', 45.78, 4.88)])->locate($club->getId(), $season->getId());
+        $result = $this->locator([$this->salle('166926604', $longLabel, 45.78, 4.88)])->locate($club->getId(), $season->getId());
         self::assertSame(1, $result['located']);
 
         $this->scopeGucToClub($club->getId());
-        $repository = self::getContainer()->get(OpponentTravelRepository::class);
-        self::assertInstanceOf(OpponentTravelRepository::class, $repository);
-        $teamRows = array_values(array_filter(
-            $repository->findBySeason($season->getId()),
-            static fn (OpponentTravel $row): bool => null !== $row->getOpponentTeamKey(),
-        ));
-        self::assertCount(1, $teamRows);
-        $teamKey = (string) $teamRows[0]->getOpponentTeamKey();
-        self::assertSame(180, mb_strlen($teamKey), 'le teamKey est tronqué à la longueur de colonne (180)');
-        self::assertSame(str_repeat('oe', 90), $teamKey);
+        $repository = self::getContainer()->get(OpponentVenueLinkRepository::class);
+        self::assertInstanceOf(OpponentVenueLinkRepository::class, $repository);
+        $links = $repository->findByClub($club->getId());
+        self::assertCount(1, $links);
+        self::assertSame(180, mb_strlen($links[0]->getFbiLabelNorm()), 'le libellé normalisé est tronqué à la longueur de colonne (180)');
+        self::assertSame(str_repeat('oe', 90), $links[0]->getFbiLabelNorm());
     }
 
     protected function setUp(): void
@@ -324,28 +313,14 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
 
             return new MockResponse((string) json_encode(['results' => [['hits' => []]]]));
         });
-        $ign = new IgnRoutingClient(new MockHttpClient(
-            static fn (): MockResponse => new MockResponse((string) json_encode(['duration' => 1320])),
-        ), new MockClock);
 
-        return new OpponentVenueAutoLocator(
-            $this->em,
-            self::getContainer()->get(FixtureRepository::class),
-            self::getContainer()->get(OpponentTravelRepository::class),
-            self::getContainer()->get(OpponentDirectoryEntryRepository::class),
-            new FfbbApiClient($ffbb, 'stub-token'),
-            $ign,
-            self::getContainer()->get(VenueLabelNormalizer::class),
-            self::getContainer()->get(ClubRepository::class),
-            new NullLogger,
-            new MockClock,
-        );
+        return $this->buildLocator($ffbb);
     }
 
     /**
      * @param list<array<string, mixed>> $salles the federal salles any ffbbserver_salles query returns
      */
-    private function locator(array $salles, int $ignSeconds = 1320): OpponentVenueAutoLocator
+    private function locator(array $salles): OpponentVenueAutoLocator
     {
         $ffbb = new MockHttpClient(static function (string $method, string $url, array $options) use ($salles): MockResponse {
             if (str_contains($url, 'api.ffbb.com')) {
@@ -356,21 +331,21 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
 
             return new MockResponse((string) json_encode(['results' => [['hits' => $hits]]]));
         });
-        $ign = new IgnRoutingClient(new MockHttpClient(
-            static fn (): MockResponse => new MockResponse((string) json_encode(['duration' => $ignSeconds])),
-        ), new MockClock);
 
+        return $this->buildLocator($ffbb);
+    }
+
+    private function buildLocator(MockHttpClient $ffbb): OpponentVenueAutoLocator
+    {
         return new OpponentVenueAutoLocator(
             $this->em,
             self::getContainer()->get(FixtureRepository::class),
-            self::getContainer()->get(OpponentTravelRepository::class),
+            self::getContainer()->get(OpponentVenueLinkRepository::class),
             self::getContainer()->get(OpponentDirectoryEntryRepository::class),
             new FfbbApiClient($ffbb, 'stub-token'),
-            $ign,
             self::getContainer()->get(VenueLabelNormalizer::class),
-            self::getContainer()->get(ClubRepository::class),
-            new NullLogger,
             new MockClock,
+            new NullLogger,
         );
     }
 
@@ -393,8 +368,6 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
         $club->setSlug('club-auto-' . $uid);
         $club->setTimezone('Europe/Paris');
         $club->setLocale('fr');
-        $club->setLatitude(45.70);
-        $club->setLongitude(4.90);
         $this->em->persist($club);
         $this->em->flush();
 
@@ -438,13 +411,13 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
         $this->em->flush();
     }
 
-    private function teamRow(Club $club, Season $season, string $teamKey): ?OpponentTravel
+    private function link(Club $club, string $fbiLabelNorm): ?OpponentVenueLink
     {
         $this->scopeGucToClub($club->getId());
-        $repository = self::getContainer()->get(OpponentTravelRepository::class);
-        self::assertInstanceOf(OpponentTravelRepository::class, $repository);
+        $repository = self::getContainer()->get(OpponentVenueLinkRepository::class);
+        self::assertInstanceOf(OpponentVenueLinkRepository::class, $repository);
 
-        return $repository->findOneByCode($season->getId(), self::CODE, $teamKey);
+        return $repository->findOneByKey($club->getId(), self::CODE, $fbiLabelNorm);
     }
 
     private function sharedRows(): int

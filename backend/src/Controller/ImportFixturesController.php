@@ -6,13 +6,17 @@ namespace App\Controller;
 
 use App\Entity\Club;
 use App\Entity\Season;
+use App\Enum\TravelComputeScope;
 use App\Exception\ImportRejectedException;
+use App\Message\ComputeTravelTimesMessage;
 use App\Repository\FixtureRepository;
 use App\Service\Basketball\OpponentLocationResolver;
 use App\Service\FbiFixtureImporter;
 use App\Service\FixtureImportGate;
+use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\OpponentVenueAutoLocator;
 use App\Service\SeasonResolver;
+use App\Service\TravelComputeLock;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
@@ -24,6 +28,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Throwable;
 
 /**
@@ -46,6 +51,9 @@ final class ImportFixturesController extends AbstractController
         private readonly SeasonResolver $seasonResolver,
         private readonly OpponentLocationResolver $opponentResolver,
         private readonly OpponentVenueAutoLocator $venueAutoLocator,
+        private readonly OpponentTravelResolver $travelResolver,
+        private readonly TravelComputeLock $travelComputeLock,
+        private readonly MessageBusInterface $messageBus,
         private readonly FixtureRepository $fixtures,
     ) {}
 
@@ -140,6 +148,18 @@ final class ImportFixturesController extends AbstractController
             $this->venueAutoLocator->locate($club->getId(), $season->getId());
         } catch (Throwable $e) {
             $this->logger->warning('Opponent directory: post-import venue auto-location failed', ['exception' => $e]);
+        }
+
+        // Amendement 2026-09-20 — le trajet quitte le rail d'import : on DISPATCHE le calcul
+        // asynchrone (worker) si des paires siège→gymnase manquent au cache et qu'aucun calcul
+        // ne tourne déjà (sinon un re-dépôt lancerait un worker pour rien). Best-effort.
+        try {
+            if ($this->travelResolver->hasUncomputedTravel($club->getId(), $season->getId())
+                && !$this->travelComputeLock->isHeld($club->getId())) {
+                $this->messageBus->dispatch(new ComputeTravelTimesMessage($club->getId(), $season->getId(), TravelComputeScope::OPPONENTS));
+            }
+        } catch (Throwable $e) {
+            $this->logger->warning('Opponent directory: post-import travel dispatch failed', ['exception' => $e]);
         }
     }
 
