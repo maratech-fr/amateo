@@ -1,21 +1,22 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-09-19 (`documentation-update`, PR F « retours de tests du 18-19/09 »).
-Re-confronté au code cette passe : `BanGeocodingClient::geocodeTop` (`BanGeocodingClient.php:70`,
-le seul candidat structuré, coordonnées jamais celles du client) ✓ · `ClubSiegeController`
-(`ClubSiegeController.php`, `PATCH /api/club/siege`, SEC-15) ✓. Reste confronté à la passe
-précédente (2026-09-18, PR E « décisions de l'audit 0918 » — recalage du contrat 2.23) :
-`BanGeocodingClient::SEARCH_URL`
-(`BanGeocodingClient.php:24`) et `IgnRoutingClient::ITINERARY_URL` (`IgnRoutingClient.php:44`)
-hosts en constantes dures ✓ · `IgnRoutingClient::BATCH_BUDGET_SECONDS = 30.0`
-(`IgnRoutingClient.php:42`) ✓ · `PROFILE_CAR`/`PROFILE_PEDESTRIAN` seuls, aucune 3ᵉ constante
-(`IgnRoutingClient.php:25-26`) ✓ · `VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS = 120`
-(`Service/Geo/VenueTravelTimeAutofillService.php:27`) ✓ · rate-limit `venue_travel_time_autofill`
-10/h sliding window (`rate_limiter.yaml:59-62`) ✓ · `engine/CONTRACT_VERSION` a bougé deux fois
-le même jour, sans rapport avec ce fichier de géo — `2.21→2.22` (ENG-40, diagnostic
-`placement_problem_too_large`) puis `2.22→2.23` (D3, `matches[].roundTripMinutes`) — occurrence
-ci-dessous recalée à **2.23** ; la ligne §« Le solveur d'ENTRAÎNEMENT la lit » ne fige déjà aucune
-valeur (« voir le fichier pour la valeur courante ») donc rien à corriger là.
+Last verified @ 2026-09-19 (`documentation-update`, PR H « onglet Adversaires » — cache de trajets
+club-scoped + calcul asynchrone). Re-confronté au code cette passe : `App\Entity\ClubTravelCache`
+(`ClubTravelCache.php`, tenant RLS, clé `(club, profile, origin_lat, origin_lon, dest_lat,
+dest_lon)`, `minutes` NON NULL) ✓ · `App\Service\Geo\TravelTimeCache` (`TravelTimeCache.php`,
+`INSERT … ON CONFLICT DO NOTHING`, clé `%.5f` canonique) ✓ · migration
+`Version20260920120000::seedStatements()` (seed one-shot avant RLS) ✓ · `IgnRoutingClient::pace`/
+`MIN_INTERVAL_SECONDS = 1.0`/`MAX_ATTEMPTS = 3` (`IgnRoutingClient.php:55,58,223-234`) ✓ ·
+`App\Message\ComputeTravelTimesMessage` + `App\MessageHandler\ComputeTravelTimesHandler`
+(`WORKER_BUDGET_SECONDS = 180`, `PROGRESS_STEP = 5`) ✓ · `App\Service\TravelComputeLock` (clé
+`travel_compute:club:{clubId}`, patron `MatchPlacementLock`) ✓ · `OpponentTravelController::resolve`
+dispatche `ComputeTravelTimesMessage` au lieu de router en ligne (`OpponentTravelController.php:227`)
+✓ · `ClubSiegeController::coordinatesChanged` (invalidation + dispatch, `ClubSiegeController.php:89,
+103-112`) ✓. Reste confronté à la passe précédente (2026-09-19, PR F « retours de tests du
+18-19/09 ») : `BanGeocodingClient::geocodeTop` (`BanGeocodingClient.php:70`) ✓ ·
+`ClubSiegeController` SEC-15 ✓. Reste confronté à la passe d'avant (2026-09-18, PR E — recalage du
+contrat 2.23) : hosts en constantes dures, `BATCH_BUDGET_SECONDS = 30.0`, `MAX_AUTOFILL_PAIRS = 120`,
+rate-limit `venue_travel_time_autofill` 10/h.
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,
@@ -81,8 +82,9 @@ pourrait de toute façon pas imposer de coordonnées. Management-gated (SEC-07) 
 introuvable » (aucun candidat), 502 (BAN muette). Réponse `{address, postalCode, city, geolocated}`
 — `geolocated` reflète l'état réel (`latitude`/`longitude` non nuls), jamais recalculé côté front.
 `GET /api/opponents/travel` (module matchs) sert un champ additif `clubGeolocated` dérivé de la même
-vérité, consommé par `useClubGeolocated()` pour le bandeau « Trajets indisponibles » de Configuration
-› Adversaires — voir `specs/courantes/module-matchs.md` §1.
+vérité, consommé par `useClubGeolocated()` pour le bandeau « Trajets indisponibles » de l'onglet
+« Adversaires » (`/matchs/adversaires`, sorti de Configuration le 2026-09-19) — voir
+`specs/courantes/module-matchs.md` § Écran Adversaires.
 
 ## 2. Itinéraire (temps de trajet) — IGN Géoplateforme
 
@@ -108,7 +110,96 @@ Headers:
 **Consommateurs backend** : `VenueTravelTimeAutofillService` (matrice ENTRAÎNEMENT gym→gym, en lot)
 **et**, depuis P2-54 PR-3, `OpponentTravelResolver` (trajet MATCHS siège club ↔ lieu adverse, table
 tenant `opponent_travel`) — même client `IgnRoutingClient`, même confinement SSRF. Pas de proxy `GET`
-individuel exposé.
+individuel exposé. Depuis C4/C6 (ci-dessous), les deux passent d'abord par le cache club-scoped et
+le calcul quitte le rail synchrone.
+
+**PACING (mesuré, C6 2026-09-19)** : l'endpoint rend `x-ratelimit-limit-second: 1` et un **429** au
+bout de ~9 appels rapprochés — `IgnRoutingClient` PACE désormais chaque requête à **1/s** sur
+l'horloge injectée (`ClockInterface`, `IgnRoutingClient::pace`, dernier dispatch mémorisé) : un
+appel trop tôt `sleep` la différence. Un 429 est rejoué (`Retry-After` sinon 1 s) jusqu'à **3**
+tentatives avant de rendre `null`, chaque échec journalisé (`logger->warning`, statut + tentative) —
+l'ancien code lisait `toArray(false)` AVANT le statut et avalait le 429 en `null` muet, sans log. Le
+lot (`travelMinutesBatch`) est désormais SÉRIEL (la fenêtre de 8 requêtes concurrentes a disparu :
+le quota 1/s rend la concurrence contre-productive, elle ne gagnait que des 429), même budget mural
+(`BATCH_BUDGET_SECONDS`) et même distinction `budgetExceededKeys` qu'avant.
+
+### Cache de trajets club-scoped (`ClubTravelCache`, C4, 2026-09-19)
+
+Un trajet routier est une **CONSTANTE** : deux coordonnées (arrondies à 5 décimales, ~1 m) et un
+profil (voiture/à pied) ne changent jamais de durée. `App\Entity\ClubTravelCache` (table
+`club_travel_cache`, **tenant, RLS FORCE** — les coordonnées croisées trahiraient le siège d'un club
+précis, même raison que `OpponentTravel`) tient donc, **club-scoped mais SANS saison**, la clé
+`(club, profil, origin_lat, origin_lon, dest_lat, dest_lon)` → minutes. `minutes` est NON NULL : un
+échec IGN n'entre jamais au cache (il pourrait réussir plus tard).
+
+`App\Service\Geo\TravelTimeCache` (lookup/store) est branché **cache-first** sur les 4 consommateurs
+IGN : `OpponentTravelResolver`, `carMinutesFromClub`, `OpponentVenueAutoLocator`,
+`VenueTravelTimeAutofillService`. `lookup()` formate la clé canonique `%.5f` des deux côtés (lecture
+et écriture) ; `store()` écrit en `INSERT … ON CONFLICT (club_id, profile, origin_lat, origin_lon,
+dest_lat, dest_lon) DO NOTHING` — **jamais d'écrasement**, deux sources qui convergent sur la même
+clé fusionnent silencieusement. Le service est optionnel (défaut `null`) pour ne pas casser les
+sites de test qui l'omettent ; le conteneur l'autowire en prod.
+
+**Seed one-shot** (migration `Version20260920120000`, avant l'armement RLS — les migrations tournent
+sous `amateo_owner`, qui contourne la RLS des tables sources) : rétro-alimente le cache depuis (1)
+`opponent_travel.travel_minutes` (siège ACTUEL du club → lieu adverse effectif, override sinon
+annuaire) et (2) `venue_travel_time` conduite/marche entre deux gymnases, **dans les deux sens** (le
+cache est directionnel, la matrice non) — profils `car`/`pedestrian`. Les instructions SQL vivent
+dans `Version20260920120000::seedStatements()`, rejouées à l'identique par `ClubTravelCacheSeedTest`
+(aucune dérive possible entre la migration et ce que le test vérifie).
+
+**Complétude RGPD** : `ErasedClubPurger::PURGED_BY_CLUB` (effacement d'un compte → purge par
+`clubId`), `SeasonDataPurger::EXCLUDED_FROM_SEASON_PURGE` (club-scoped SANS saison, une purge de
+saison ne le touche pas), `RgpdExportService::EXCLUDED_FROM_EXPORT` (donnée d'établissement
+RECOMPUTABLE, sans PII — retirée de l'export de portabilité). Détail : `docs/security/rgpd.md` §2.
+
+⚠ **Dette connue** : un déménagement de siège (`PATCH /api/club/siege`, ci-dessous) invalide
+`opponent_travel` et relance un calcul, mais ne PURGE PAS les anciennes lignes du cache dont
+l'origine était l'ancien siège — elles ne sont plus jamais lues (nouvelle origine = nouvelle clé)
+mais restent en base indéfiniment. Assumé pour l'instant (croissance non bornée, jamais mesurée en
+pratique) — `roadmap.md` P4-249.
+
+### Calcul asynchrone (C6, 2026-09-19) — le calcul quitte le rail synchrone
+
+La rafale IGN pacée à 1/s dépasserait le plafond HTTP prod (`max_execution_time`/
+`fastcgi_read_timeout` = 60 s chacun) dès qu'un club a plus d'une poignée d'adversaires ou de
+gymnases à router. Le calcul (adversaires ET matrice de gymnases) part donc au **worker**
+(`messenger-worker`, patron `GenerateScheduleHandler`) :
+
+- **`App\Message\ComputeTravelTimesMessage`** `{clubId, seasonId, scope}` (`TravelComputeScope`
+  `OPPONENTS`|`VENUE_MATRIX`) — dispatché par `POST /api/opponents/travel/resolve`,
+  `POST /api/venue-travel-times/autofill`, la passe (c) de `POST /api/opponents/refresh`, et
+  `PATCH /api/club/siege` quand le siège bouge réellement.
+- **`App\MessageHandler\ComputeTravelTimesHandler`** : pose le GUC tenant lui-même (aucune requête
+  HTTP dans le worker → aucun listener pour le faire), acquiert `App\Service\TravelComputeLock`
+  (Redis, `SETEX NX` + compare-and-delete par token, patron `MatchPlacementLock`, clé
+  `travel_compute:club:{clubId}`) — verrou déjà tenu ⇒ `RecoverableMessageHandlingException` (le
+  message repart en file, un seul calcul de trajets à la fois par club). Budget mural
+  **~180 s** (`WORKER_BUDGET_SECONDS`), TTL du verrou = budget + 60 s de marge. Un événement
+  **terminal est toujours publié**, même sur exception (best-effort : le front doit cesser
+  d'attendre), l'erreur elle-même est seulement journalisée.
+- **Progression** : `App\Service\TravelProgressPublisher` pousse `{scope, done, total, terminal,
+  verdict?}` par paliers de **5** trajets + le terminal, sur le topic Mercure FIXE
+  `club:{clubId}:travel` (`docs/security/mercure.md` § async travel-time computation).
+- **`travelStatus` servi par `GET /api/opponents/travel`** (par entrée) : `done` (minutes
+  présentes) · `pending` (`TravelComputeLock::isHeld($clubId)` — un calcul tourne pour ce club) ·
+  `unavailable` (tenté sans résultat, ou pas de lieu à router).
+- **`resolve()` ne re-route plus TOUT** — un trajet est une constante : une ligne AUTO qui porte
+  déjà un trajet est sautée. Cibles = les MANQUES seuls (code sans ligne, ligne AUTO au trajet
+  null, ligne ÉQUIPE AUTO sans trajet mais avec des coordonnées d'override, MANUAL null avec
+  override) — club et équipe forment un seul ensemble routé en un seul lot. « Réessayer les
+  manquants » côté écran (`specs/courantes/module-matchs.md` § Écran Adversaires) est donc
+  littéralement ce même `POST /resolve`.
+
+### Poser le siège invalide les trajets dérivés (`PATCH /api/club/siege`, C6)
+
+Si l'adresse re-géocodée diverge de plus de ~1 m de l'ancienne (`ClubSiegeController::
+coordinatesChanged`, comparaison à 5 décimales — un re-géocodage de la MÊME adresse ne doit rien
+invalider), le contrôleur met `opponent_travel.travel_minutes` à `NULL` pour tout le club (le
+gymnase épinglé d'un MANUAL reste, seul son trajet repart) puis dispatche
+`ComputeTravelTimesMessage(scope: OPPONENTS)` sur la saison courante — le cache, lui, n'a rien à
+purger : la nouvelle origine est une nouvelle clé, les anciennes lignes ne sont simplement plus
+jamais lues (dette ci-dessus).
 
 ## 3. L'autofill de la matrice de trajet (`POST /api/venue-travel-times/autofill`)
 

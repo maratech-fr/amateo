@@ -106,6 +106,31 @@ on the next poll).
 
 `anonymous` stays off; nothing here relaxes the hub configuration above.
 
+## Second topic: async travel-time computation (C6, 2026-09-19)
+
+The opponent-travel and venue-matrix computations (IGN routing, paced ~1 req/s) run in the
+Messenger worker (`ComputeTravelTimesHandler`), never on the HTTP request — the paced burst would
+blow the 60 s upstream ceiling. Progress is pushed on a **second, FIXED topic per club** (no `{id}`
+wildcard: at most one travel computation in flight per club, guarded by `TravelComputeLock` —
+`backend/docs/geo-api.md` § travel cache & async computation):
+
+- **Topic**: `club:{clubId}:travel` (`App\Mercure\MercureTopic::forTravel`). Same publish/subscribe
+  split as the schedule topic — the backend publishes, the browser subscribes.
+- **Auth**: the **same** `GET /api/mercure/auth` call mints ONE JWT whose `subscribe` claim carries
+  **both** topics — the schedule template (`club:{clubId}:schedule:{id}`) and the travel topic
+  (`club:{clubId}:travel`) — and the response body gains an additive `travelTopic` field alongside
+  `topicTemplate` (`MercureAuthController.php`). No second auth round-trip, no second cookie.
+- **Client**: `frontend/src/shared/lib/travelStream.ts` — deliberately in `shared/`, not
+  `features/planning/`, because **two** features consume it (matchs' `OpponentsPage`/Conflicts
+  radar and the wizard's `TravelMatrixModal`) — this is the one exception to the "SSE consumer
+  lives in the feature that uses it" placement decided for `scheduleStream.ts` (`P4-123`,
+  `specs/courantes/etat-des-lieux.md` §2). Same ref-counted `EventSource` singleton pattern; on
+  message, invalidates react-query caches (opponents, conflicts, venue-travel-times) debounced
+  500 ms — the GET response stays the source of truth (`travelStatus` per row), Mercure is only a
+  refetch trigger.
+- **Payload**: `{scope: "OPPONENTS"|"VENUE_MATRIX", done, total, terminal, verdict?}`, pushed every
+  5 items plus a terminal event (even on failure — best-effort, so the front never waits forever).
+
 ### ⚠ The club id in that selector must be a CANONICAL uuid (security review, fixed 2026-08-07)
 
 The `subscribe` selector is parsed by the hub as an **RFC 6570 URI template**:

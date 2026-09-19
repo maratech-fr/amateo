@@ -1,16 +1,11 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-09-16 (rotation de fraîcheur `documentation-update`, PR 3b module matchs —
-fichier hors sujet). Re-confronté au code, tout juste : `add_coach_player_non_overlap`
-toujours à `app/solver/constraints/structural.py:237` ; les champs `Team` cités (`sessionsPerWeek`,
-`priorityTier`) toujours ceux du schéma Pydantic (`app/schemas/input_schema.py:82,86`,
-`priority_tier_id`/`sessions_per_week`) ; la dérivation de capacité `canSplit ? capacity : 1` toujours
-à `ScheduleConstraintBuilder.php:1053` ; `resolve_implicit_rules` toujours dans
-`app/solver/constraints/parsing.py:57`, pose bien `MAX_CONSECUTIVE_DAYS` en `OFF` par défaut
-(`parsing.py:89`) ; le retrait de `FACILITY_CAPACITY` toujours documenté à `app/main.py:488` ; les
-poids de tier S=10000/A=1000/B=100 toujours en dur dans `app/solver/objective/weights.py:34-36`, non
-lus depuis `orToolsWeight` (aucune occurrence dans `engine/app/solver/`). Reste du fichier non
-re-vérifié cette passe — historique : `git log -p --follow engine/docs/business.md`.
+Last verified @ 2026-09-19 (rotation de fraîcheur `documentation-update`, PR H « onglet Adversaires »
+— fichier hors sujet). Re-confronté au code, tout juste : `add_coach_player_non_overlap` toujours à
+`app/solver/constraints/structural.py:237` ; la dérivation de capacité `canSplit ? capacity : 1`
+toujours dans `ScheduleConstraintBuilder.php` (`Service/ScheduleConstraintBuilder.php:1052`) ; les
+poids de tier S=10000/A=1000/B=100 toujours en dur dans `app/solver/objective/weights.py:34-36`.
+Reste du fichier non re-vérifié cette passe — historique : `git log -p --follow engine/docs/business.md`.
 
 > Ce document explique le domaine de la planification sportive et ce que le moteur `engine` resout. Destine aux nouveaux developpeurs rejoignant le projet ClubScheduler.
 
