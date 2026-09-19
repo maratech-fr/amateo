@@ -91,18 +91,23 @@ final class FfbbClubPopulator
         if (null !== $ffbbName) {
             $club->setName(mb_substr($ffbbName, 0, 180));
         }
-        $this->setIfPresent($this->str($hit['adresse'] ?? null), $club->setAddress(...));
-        $this->setIfPresent($this->postalCode($hit), $club->setPostalCode(...));
-        $this->setIfPresent($this->city($hit), $club->setCity(...));
+        // Le SIÈGE (adresse/CP/ville + coordonnées) n'est posé QUE si le club n'a pas encore de
+        // coordonnées : « Actualiser depuis la FFBB » ne doit jamais écraser un siège choisi à la
+        // main (only-fill-when-empty, comme le seeder). Le contact (tél/mail/site) reste rafraîchi.
+        if (null === $club->getLatitude() || null === $club->getLongitude()) {
+            $this->setIfPresent($this->str($hit['adresse'] ?? null), $club->setAddress(...));
+            $this->setIfPresent($this->postalCode($hit), $club->setPostalCode(...));
+            $this->setIfPresent($this->city($hit), $club->setCity(...));
+
+            [$lat, $lng] = $this->coordinates($hit);
+            if (null !== $lat && null !== $lng) {
+                $club->setLatitude($lat);
+                $club->setLongitude($lng);
+            }
+        }
         $this->setIfPresent($this->str($hit['telephone'] ?? null), $club->setContactPhone(...));
         $this->setIfPresent($this->str($hit['mail'] ?? null), $club->setContactEmail(...));
         $this->setIfPresent($this->str($hit['urlSiteWeb'] ?? null), $club->setWebsite(...));
-
-        [$lat, $lng] = $this->coordinates($hit);
-        if (null !== $lat && null !== $lng) {
-            $club->setLatitude($lat);
-            $club->setLongitude($lng);
-        }
 
         $parent = $this->arr($hit['organisme_id_pere'] ?? null);
         $this->setIfPresent(null === $parent ? null : $this->str($parent['code'] ?? null), $club->setCommitteeCode(...));

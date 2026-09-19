@@ -1,4 +1,4 @@
-# Roadmap (71) — ce qui reste à faire
+# Roadmap (74) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -320,6 +320,19 @@
 | P4-242 | **`ClubViewTable`/`WeekendGrid` — estompage transitoire encore en `opacity`, hors du scope `grayscale` d'A11Y-22** | ⚪ | S | Exemptions nominatives du garde `textOpacityGuard.test.ts` (`frontend/src/test/textOpacityGuard.test.ts`) : `ClubViewTable.tsx` (cellule dimmed/lens, `opacity-[34]0`) et `WeekendGrid.tsx` (bloc extérieur inerte en mode échange, `opacity-40`) n'ont pas été convertis vers `grayscale` comme le reste du lot A11Y-22 (2026-09-18) — raison consignée dans le garde lui-même (fond déjà gris pour `WeekendGrid`, hors périmètre pour `ClubViewTable`). À résorber pour vider ces deux entrées de la liste des exemptions |
 | P4-243 | **Jeton `--accent-fill` séparé — si un club juge son accent dérivé trop sombre sur un bouton rempli** | ⚪ | S | Décision différée du lot A11Y-22 (2026-09-18, `frontend/src/shared/lib/color.ts` `accentForMode`) : `accentForMode` assombrit/éclaircit un accent club jusqu'à AA en TEXTE sur `--background`/`--card` — un jaune vif (`#FFD21E`) devient `#8a720f` en clair, ce qui peut lire "terne" sur un bouton REMPLI (où seul le contraste avec `--accent-foreground` compte, pas avec le fond de page). Pas de retour terrain à ce jour ; si un club le signale, ajouter un `--accent-fill` dérivé séparément (contraste contre `--accent-foreground` seul, pas contre `--background`/`--card`) plutôt que de relâcher `accentForMode` |
 | P4-244 | **`destructive` et l'avatar de `ClubPage` gardent `hover:opacity-90` — hors scope du jeton `--accent-hover`** | ⚪ | XS | Constaté en livrant le survol accent AA (2026-09-18, `frontend/src/shared/components/ui/button.tsx:26` variante `destructive`, `frontend/src/features/club/ClubPage.tsx:137` fond `bg-muted`) : le survol de ces deux fonds pleins compose toujours l'opacité vers la surface, jamais mesuré contre AA à ce jour (contrairement à `bg-accent`, qui l'a fait chuter sous 4,5:1). À traiter si une mesure trouve un cas sous AA — même recette qu'`--accent-hover` (`accentHoverForMode`, `shared/lib/color.ts`) : un jeton `--destructive-hover` dérivé par le contraste plutôt qu'une opacité |
+
+### Retours de tests du 18-19/09 — dette assumée
+
+| # | Sujet | Impact | Effort | Note |
+|---|-------|:---:|:---:|---|
+| P4-247 | **« Mettre à jour les adversaires » n'a pas de `resetManager()` — un `EntityManager` fermé en passe (a) prive (b)/(c) d'exécution utile** | ⚪ | S | Décision assumée (`OpponentRefreshController::step`, docblock) : si une passe ferme l'`EntityManager` (ex. une violation d'unicité qui échapperait encore au correctif `ON CONFLICT` de `OpponentDirectoryEntryRepository::upsert`), les passes suivantes du MÊME appel le reçoivent fermé (injecté au constructeur, un `resetManager()` ne recâblerait pas ces références déjà injectées et détacherait les entités préchargées) et retombent elles aussi sur leur résultat neutre via `failedSteps`. La réponse reste HONNÊTE (jamais un succès mensonger, le front invite à relancer) mais une seule casse en cascade sur les trois passes d'un même appel — dette assumée, pas un bug caché |
+
+### Revue sécurité PR F « retours de tests du 18-19/09 » (2026-09-19) — observations non bloquantes
+
+| # | Sujet | Impact | Effort | Note |
+|---|-------|:---:|:---:|---|
+| P4-245 | **`ClubSiegeController`/`ClubAppearanceController` gardent un fallback `X-Club-Id` mort** | ⚪ | XS | `ClubSiegeController.php:48` et `ClubAppearanceController.php:39` résolvent le club par `$request?->attributes->get('_club_id') ?? $request?->headers->get('X-Club-Id')` — le front n'envoie jamais ce header (CLAUDE.md §10.3, tenant résolu serveur depuis le JWT) et `TenantFilterListener` rejette la requête avant que ce fallback ne serve à quoi que ce soit : sûr, mais mort. À retirer au prochain passage sur ces deux contrôleurs |
+| P4-246 | **`BanGeocodingClient` lit la réponse BAN sans cap d'octets explicite** | ⚪ | XS | `BanGeocodingClient.php:100` (`fetchFeatures`) appelle `->toArray(false)` sans `max_content_size`/cap explicite — borné EN PRATIQUE par `max_duration` (5 s) et `limit ≤ 5` côté requête, mais rien n'empêche une réponse BAN anormalement volumineuse de tenir la mémoire du process le temps du timeout. Hardening partagé avec `GeocodeController` (même client) : poser un cap d'octets explicite sur la requête HttpClient |
 
 ---
 

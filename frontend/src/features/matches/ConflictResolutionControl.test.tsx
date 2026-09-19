@@ -68,6 +68,28 @@ describe("ConflictResolutionControl — à traiter (gestionnaire)", () => {
   });
 });
 
+describe("ConflictResolutionControl — statuts « joue/coache » (proposés seulement si la personne joue)", () => {
+  const sideRole = (fixtureId: string, teamId: string, role: "MAIN" | "ASSISTANT" | "PLAYER") => ({ ...side(fixtureId, teamId), role });
+
+  it("PROPOSE « Coache, ne joue pas » / « Joue, ne coache pas » quand un côté servi porte PLAYER", async () => {
+    const user = userEvent.setup();
+    const conflict: Conflict = { type: "MATCH_MATCH", severity: 3, fingerprint: "fp-1", resolution: null, left: sideRole("fx-1", "team-1", "MAIN"), right: sideRole("fx-2", "team-2", "PLAYER") };
+    renderControl(conflict);
+    await user.click(screen.getByRole("button", { name: "Traiter le conflit" }));
+    expect(screen.getByRole("menuitem", { name: "Coache, ne joue pas" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Joue, ne coache pas" })).toBeInTheDocument();
+  });
+
+  it("N'AFFICHE PAS ces 2 statuts quand aucun côté ne joue (que des coachs)", async () => {
+    const user = userEvent.setup();
+    const conflict: Conflict = { type: "MATCH_MATCH", severity: 3, fingerprint: "fp-1", resolution: null, left: sideRole("fx-1", "team-1", "MAIN"), right: sideRole("fx-2", "team-2", "ASSISTANT") };
+    renderControl(conflict);
+    await user.click(screen.getByRole("button", { name: "Traiter le conflit" }));
+    expect(screen.queryByRole("menuitem", { name: "Coache, ne joue pas" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Joue, ne coache pas" })).not.toBeInTheDocument();
+  });
+});
+
 describe("ConflictResolutionControl — annoté (gestionnaire)", () => {
   it("la pastille EST le déclencheur (nom accessible = statut + date) ; changer de statut resservit la note", async () => {
     const user = userEvent.setup();

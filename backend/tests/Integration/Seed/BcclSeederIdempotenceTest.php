@@ -78,6 +78,36 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
+     * Retours de tests — le seed pose le SIÈGE du club dev (adresse/CP/ville + coordonnées)
+     * quand il est vide, pour que les trajets vers les adversaires s'estiment sur le club réel.
+     * Only-fill-when-empty (même patron que schoolZone/league/accent) : un PATCH manuel survit
+     * à un re-run. Falsifié dans les deux sens : un siège absent au premier run, ET une
+     * coordonnée corrigée à la main écrasée au second.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testDevSeedFillsTheClubSiegeAndNeverOverwritesAManualValue(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+
+        self::assertSame('5 RUE EMILE DUNIERE', $club->getAddress(), 'le siège du club dev est posé');
+        self::assertSame('69100', $club->getPostalCode());
+        self::assertSame('VILLEURBANNE', $club->getCity());
+        self::assertSame(45.78017, $club->getLatitude(), 'les coordonnées du siège sont posées');
+        self::assertSame(4.88467, $club->getLongitude());
+
+        // Un gestionnaire corrige le siège à la main.
+        $club->setLatitude(45.5)->setLongitude(4.5)->setAddress('AUTRE ADRESSE');
+        $this->em->flush();
+
+        // Un second seed ne réverte JAMAIS la correction (only-fill-when-empty).
+        $this->seeder->run($this->em, BcclSeedProfile::dev());
+        self::assertSame(45.5, $club->getLatitude(), 'un re-run n\'écrase pas une coordonnée corrigée à la main');
+        self::assertSame(4.5, $club->getLongitude());
+        self::assertSame('AUTRE ADRESSE', $club->getAddress());
+    }
+
+    /**
      * NR — les noms des contraintes semées SONT ceux que le wizard produirait (décision fondateur
      * 2026-08-15 : « on doit croire que la donnée vient de l'app »). Test de FORME, pas de contenu :
      * chaque nom suit « <cible> · <prédicat> », et une contrainte ciblant un TAG commence par

@@ -347,6 +347,20 @@ product rules — reuse them instead of rolling your own:
   the shared data table, born with the Consulter tab's month/phase lists (module matchs, 2026-09-08):
   house tokens, `scope="col"` headers, `overflow-x-auto` container (a wide table scrolls inside itself,
   the page never scrolls sideways). A new tabular list uses it; no `div` grid dressed as a table.
+  **`variant="inline"` (retours de tests, 2026-09-19)** — a bare table (no border/fill/radius,
+  `text-xs`) meant to nest inside an already-framed card: born for the per-side conflict detail
+  (`features/matches/ConflictLine.tsx`'s `ConflictSideDetail`, four fixed hour columns — kickoff
+  always column 2 — the Durée column folding under 360 px via `@container`, not the viewport).
+- **`address-geocode-field`** (`AddressGeocodeField`) — the shared geo-capture gesture: type an
+  address, "Localiser" (proxies `GET /api/geocode` → BAN, never a direct third-party call —
+  boundary §2), pick a candidate, the FEDERAL candidate bubbles up via `onPick` — the caller decides
+  what to do with it (venue lat/long, or a club siège that re-geocodes server-side). Never
+  overwrites an existing geo in silence: a `located` state shows "Localisé"/"Siège localisé" until
+  "Modifier l'adresse" is clicked explicitly. Extracted (retours de tests, 2026-09-19) from
+  `wizard/steps/VenueGeocodeField.tsx` (P2-53), now a thin wrapper around it; second consumer:
+  `features/club/ClubPage.tsx`'s `ClubSiegeSubsection` (`PATCH /api/club/siege`, `backend/docs/
+  geo-api.md` §1). The "Recommandé"/"correspondance approximative" `StatusPill` badges (P4-178) live
+  here now, not in `VenueGeocodeField`.
 - **`accordion`** (`AccordionSection`) gained an opt-in **controlled mode** (`open`/`onToggle`,
   backward-compatible — omit both to keep the old uncontrolled state) for a caller that mirrors the
   open section in the URL. Closing a controlled section **unmounts** its body — a caller holding
@@ -411,7 +425,8 @@ product rules — reuse them instead of rolling your own:
   and `SourceBadge` — now a single shared component (`features/matches/SourceBadge.tsx`) consumed
   by both `TravelMatrixModal` and `OpponentTravelCard`, which each used to carry their own copy.
   Seven more migrated (P4-178): `CoachesStep` ("Salarié" + preferred cap), `VenueGeocodeField`
-  ("Recommandé"), `ImplicitRulesPanel`'s `TravelRuleNotice` ("Actif"), `CampaignDialog` ("✓
+  ("Recommandé" — since 2026-09-19 rendered by the shared `AddressGeocodeField` it wraps, see
+  Primitives above), `ImplicitRulesPanel`'s `TravelRuleNotice` ("Actif"), `CampaignDialog` ("✓
   répondu le …", the ✓ became a `Check` icon; its two filter buttons keep their accent
   border/tint but their active-state text moved `text-accent` → `text-foreground`),
   `RadarCoachWishAction` (the responded-count pill), `ConflictRadar` ("Nouveau" chip, size

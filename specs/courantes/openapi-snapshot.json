@@ -4183,6 +4183,35 @@
                 "summary": "Remove the club logo"
             }
         },
+        "/api/club/siege": {
+            "patch": {
+                "operationId": "patchApiClubSiege",
+                "tags": [
+                    "Club"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Si\u00e8ge set \u2014 the server re-geocoded the address and wrote the club address/postcode/city + coordinates from its BAN hit (returns { address, postalCode, city, geolocated }); a forged latitude in the body is ignored"
+                    },
+                    "400": {
+                        "description": "No club in context, or invalid JSON"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "404": {
+                        "description": "Club not found"
+                    },
+                    "422": {
+                        "description": "Address not found \u2014 refine the street and city"
+                    },
+                    "502": {
+                        "description": "Geocoding service unreachable \u2014 retry later"
+                    }
+                },
+                "summary": "Set the club si\u00e8ge from a free-text address (management only; the server re-geocodes, never the client)"
+            }
+        },
         "/api/clubs": {
             "get": {
                 "operationId": "api_clubs_get_collection",
@@ -9011,6 +9040,18 @@
                                                     "description": "Opponents whose MANUAL override was preserved"
                                                 }
                                             }
+                                        },
+                                        "failedSteps": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string",
+                                                "enum": [
+                                                    "codes",
+                                                    "auto-locate",
+                                                    "travel"
+                                                ]
+                                            },
+                                            "description": "Passes that threw and fell back to their neutral (zero) result \u2014 empty in the nominal case. A non-empty list means the update is PARTIAL: re-run to continue."
                                         }
                                     }
                                 }
@@ -9112,6 +9153,10 @@
                                         },
                                         "seasonId": {
                                             "type": "string"
+                                        },
+                                        "clubGeolocated": {
+                                            "type": "boolean",
+                                            "description": "The club si\u00e8ge has coordinates (without which no opponent travel can be estimated) \u2014 a boolean only, never the raw coordinates"
                                         },
                                         "opponents": {
                                             "type": "array",
@@ -11644,6 +11689,27 @@
                                                             }
                                                         }
                                                     },
+                                                    "windows": {
+                                                        "type": "array",
+                                                        "description": "ACCESS_WINDOW_LOST: the match-access windows of the fixture's venue, the match weekday first \u2014 so the screen can name where the kickoff should have sat",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "dayOfWeek": {
+                                                                    "type": "integer",
+                                                                    "description": "ISO weekday 1..7"
+                                                                },
+                                                                "startTime": {
+                                                                    "type": "string",
+                                                                    "description": "\u00ab HH:MM \u00bb"
+                                                                },
+                                                                "endTime": {
+                                                                    "type": "string",
+                                                                    "description": "\u00ab HH:MM \u00bb"
+                                                                }
+                                                            }
+                                                        }
+                                                    },
                                                     "fingerprint": {
                                                         "type": "string",
                                                         "description": "Stable identity of the conflict \u2014 same while it is the same dispute, changes when its nature changes (the guardian compares it across visits)"
@@ -11658,7 +11724,9 @@
                                                                 "enum": [
                                                                     "DEROGATION_REQUESTED",
                                                                     "RESOLVED_INTERNALLY",
-                                                                    "NO_SOLUTION_YET"
+                                                                    "NO_SOLUTION_YET",
+                                                                    "COACHES_NOT_PLAYING",
+                                                                    "PLAYS_NOT_COACHING"
                                                                 ]
                                                             },
                                                             "note": {
@@ -11714,7 +11782,9 @@
                                                     "enum": [
                                                         "DEROGATION_REQUESTED",
                                                         "RESOLVED_INTERNALLY",
-                                                        "NO_SOLUTION_YET"
+                                                        "NO_SOLUTION_YET",
+                                                        "COACHES_NOT_PLAYING",
+                                                        "PLAYS_NOT_COACHING"
                                                     ]
                                                 },
                                                 "note": {
@@ -11742,7 +11812,7 @@
                         "description": "Malformed fingerprint (routing)"
                     },
                     "422": {
-                        "description": "Unknown status, note over 500 characters, or a fingerprint absent from the current radar"
+                        "description": "Unknown status, note over 500 characters, a fingerprint absent from the current radar, or a play-only status (COACHES_NOT_PLAYING / PLAYS_NOT_COACHING) on a conflict where nobody plays"
                     }
                 },
                 "summary": "Set (or replace) the handling status of a conflict \u2014 management only. \u00ab \u00c0 traiter \u00bb is not a status here (it is the absence of a row): reset with DELETE",
@@ -11771,7 +11841,9 @@
                                         "enum": [
                                             "DEROGATION_REQUESTED",
                                             "RESOLVED_INTERNALLY",
-                                            "NO_SOLUTION_YET"
+                                            "NO_SOLUTION_YET",
+                                            "COACHES_NOT_PLAYING",
+                                            "PLAYS_NOT_COACHING"
                                         ]
                                     },
                                     "note": {

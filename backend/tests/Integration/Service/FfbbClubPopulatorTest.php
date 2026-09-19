@@ -143,6 +143,26 @@ final class FfbbClubPopulatorTest extends KernelTestCase
         self::assertSame('#123456', $reloaded?->getAccentColor(), 'chosen accent preserved on refresh');
     }
 
+    public function testPopulateNeverOverwritesAManuallyChosenSiege(): void
+    {
+        // Un club qui a DÉJÀ des coordonnées (siège choisi à la main) : « Actualiser depuis la
+        // FFBB » ne doit plus écraser son adresse/CP/ville/lat/lon (only-fill-when-empty).
+        $club = $this->seedClub(self::CLUB_CODE);
+        $club->setAddress('12 RUE DU CHOIX MANUEL')->setPostalCode('69003')->setCity('LYON')->setLatitude(45.5)->setLongitude(4.5);
+        $this->em->flush();
+
+        self::assertTrue($this->buildPopulator()->populate($club));
+
+        $reloaded = $this->em->getRepository(Club::class)->find($club->getId());
+        self::assertSame('12 RUE DU CHOIX MANUEL', $reloaded?->getAddress(), 'le siège saisi survit à « Actualiser depuis la FFBB »');
+        self::assertSame('69003', $reloaded?->getPostalCode());
+        self::assertSame('LYON', $reloaded?->getCity());
+        self::assertEqualsWithDelta(45.5, (float) $reloaded?->getLatitude(), 0.0001);
+        self::assertEqualsWithDelta(4.5, (float) $reloaded?->getLongitude(), 0.0001);
+        // Le contact, lui, reste rafraîchi par la fédération (jamais gardé).
+        self::assertSame('0643720140', $reloaded?->getContactPhone());
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();

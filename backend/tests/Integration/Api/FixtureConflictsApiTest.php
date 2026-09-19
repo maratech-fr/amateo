@@ -279,6 +279,28 @@ final class FixtureConflictsApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
+    public function testPlayOnlyStatusIsAcceptedWhenThePersonPlays(): void
+    {
+        // La personne COACHE team-1 (MAIN) et JOUE team-2 (PLAYER) : le conflit porte un côté PLAYER.
+        [, $user] = $this->createClubWithOverlappingMatches('pl', playsSecondTeam: true);
+        $fingerprint = $this->conflictsFor($user)[0]['fingerprint'];
+
+        $this->putResolution($user, $fingerprint, ['status' => 'COACHES_NOT_PLAYING']);
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame('COACHES_NOT_PLAYING', $this->conflictsFor($user)[0]['resolution']['status']);
+    }
+
+    public function testPlayOnlyStatusIs422WhenNobodyPlays(): void
+    {
+        // Deux équipes COACHÉES (aucun côté PLAYER) : un statut « joue/coache » n'a pas de sens.
+        [, $user] = $this->createClubWithOverlappingMatches('nj');
+        $fingerprint = $this->conflictsFor($user)[0]['fingerprint'];
+
+        $this->putResolution($user, $fingerprint, ['status' => 'PLAYS_NOT_COACHING']);
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('réservé aux conflits où la personne joue', (string) ($this->responseData()['error'] ?? ''));
+    }
+
     public function testMalformedFingerprintIs404(): void
     {
         [, $user] = $this->createClubWithOverlappingMatches('mf');

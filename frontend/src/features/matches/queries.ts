@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { errorMessage } from "@/shared/lib/errorMessage";
+import { useMe } from "@/shared/session/queries";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { CreateFixtureInput, Fixture, PlaceFixtureInput } from "./api";
@@ -300,6 +301,17 @@ export function useOpponentTravel() {
   return useQuery({ queryKey: OPPONENT_TRAVEL_KEY, queryFn: matchesApi.getOpponentTravel, staleTime: 30_000 });
 }
 
+/**
+ * Le siège du club est-il localisé ? (coordonnées posées sur `me.club`) — pilote le bandeau
+ * « trajets indisponibles » de la carte des trajets adverses. Le backend l'expose aussi en
+ * booléen sur `GET /api/opponents/travel` (`clubGeolocated`) ; ici on lit la même vérité depuis
+ * la session déjà chargée, sans jamais toucher aux coordonnées brutes.
+ */
+export function useClubGeolocated(): boolean {
+  const { data: me } = useMe();
+  return null != me?.club?.latitude && null != me.club.longitude;
+}
+
 export function useSetOpponentTravelManual() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -351,6 +363,13 @@ export function useResolveOpponentTravel() {
   });
 }
 
+/** Étape serveur → libellé FR lu par le gestionnaire (jamais la clé technique). */
+const REFRESH_STEP_LABELS: Record<matchesApi.OpponentRefreshStep, string> = {
+  codes: "codes",
+  "auto-locate": "gymnases",
+  travel: "trajets",
+};
+
 /** L'état de la mise à jour des adversaires — pilote le libellé du bouton et l'annonce a11y. */
 export type UpdateOpponentsStep = "idle" | "running";
 
@@ -380,16 +399,23 @@ export function useUpdateOpponents(): UpdateOpponentsController {
       setStep("running");
       try {
         const result = await matchesApi.refreshOpponents();
-        const codes = result.codes.resolved;
-        const located = result.autoLocated.located;
-        const trajets = result.travel.resolved;
-        toast.success(
-          [
-            `${codes} code${codes > 1 ? "s" : ""} retrouvé${codes > 1 ? "s" : ""}`,
-            `${located} gymnase${located > 1 ? "s" : ""} localisé${located > 1 ? "s" : ""} depuis le fichier`,
-            `${trajets} trajet${trajets > 1 ? "s" : ""} calculé${trajets > 1 ? "s" : ""}`,
-          ].join(" · "),
-        );
+        if (0 < result.failedSteps.length) {
+          // Une passe a levé côté serveur : la mise à jour est PARTIELLE. On le dit
+          // franchement (au lieu d'un « succès » mensonger) et on invite à relancer.
+          toast.error(`Mise à jour interrompue à l'étape ${REFRESH_STEP_LABELS[result.failedSteps[0]]} — réessayez.`);
+        } else {
+          const codes = result.codes.resolved;
+          const located = result.autoLocated.located;
+          const trajets = result.travel.resolved;
+          const failed = result.codes.unresolved.length + result.travel.unresolved.length;
+          toast.success(
+            [
+              `${codes} code${codes > 1 ? "s" : ""} retrouvé${codes > 1 ? "s" : ""}`,
+              `${located} gymnase${located > 1 ? "s" : ""} localisé${located > 1 ? "s" : ""}`,
+              `${trajets} trajet${trajets > 1 ? "s" : ""} calculé${trajets > 1 ? "s" : ""}${0 < failed ? ` (${failed} en échec)` : ""}`,
+            ].join(" · "),
+          );
+        }
       } catch (error) {
         toast.error(await errorMessage(error));
       }

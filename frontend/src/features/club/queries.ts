@@ -32,6 +32,18 @@ export function useUpdateAppearance() {
   });
 }
 
+/**
+ * Pose le siège du club depuis un libellé d'adresse ; refetch /me (le siège + ses coordonnées
+ * vivent sur `me.club`). Le voile global d'enregistrement couvre l'attente — aucun spinner ajouté.
+ */
+export function useUpdateSiege() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (address: string) => clubApi.updateSiege(address),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["me"] }),
+  });
+}
+
 /** Ré-import FFBB (management) : la fédération fait autorité sur les champs qu'elle fournit. */
 export function useFfbbImport() {
   const queryClient = useQueryClient();

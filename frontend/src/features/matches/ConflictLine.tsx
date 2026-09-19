@@ -2,12 +2,14 @@ import { Bus, ChevronDown, ChevronRight, Clock, Dumbbell, Home, Sparkles } from 
 import { Fragment, type ReactNode, useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { coachFullName } from "@/shared/lib/coachName";
 import { frDateShortNoYear } from "@/shared/lib/date";
+import { dayLabelLong } from "@/shared/lib/days";
 import { formatDurationMinutes } from "@/shared/lib/time";
 import { cn } from "@/shared/lib/utils";
 
-import type { Coach, Conflict, ConflictSideRole, Team, Venue } from "./api";
+import type { Coach, Conflict, ConflictSideRole, LeagueKickoffWindow, Team, Venue, VenueAccessWindow } from "./api";
 import { SIDE_ROLE_WORD } from "./lib/conflictLabels";
 import { buildConflictSideLines, type ConflictSideKind, type ConflictSideLine, type ConflictSideModel } from "./lib/conflictSideLines";
 import { sortConflictsByDate } from "./lib/conflictOrder";
@@ -54,7 +56,7 @@ function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string 
     case "LEAGUE_WINDOW_VIOLATION":
       return "Hors fenêtre autorisée par la ligue";
     case "ACCESS_WINDOW_LOST":
-      return "L'accès match ne couvre plus ce match";
+      return "Hors accès match";
     case "TEAM_LINK_OVERLAP":
       return "Passerelle violée";
     case "COMPETITION_INCOMPLETE":
@@ -68,7 +70,17 @@ function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string 
   }
 }
 
-function conflictSummary(conflict: Conflict, teams: Map<string, Team>): string {
+/** « samedi 16:00–18:00, mercredi 18:00–20:00 » (jour du match d'abord, servi par le serveur) ;
+ *  sans aucun accès match sur ce gymnase → « aucun accès match ce jour-là ». */
+function accessWindowsPhrase(conflict: Conflict): string {
+  const windows = (conflict.windows ?? []) as VenueAccessWindow[];
+  if (0 === windows.length) {
+    return "aucun accès match ce jour-là";
+  }
+  return windows.map((w) => `${dayLabelLong(w.dayOfWeek)} ${w.startTime}–${w.endTime}`).join(", ");
+}
+
+function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: Map<string, Venue>): string {
   if ("VENUE_OVERLAP" === conflict.type && conflict.left && conflict.right) {
     return `${teamName(teams, conflict.left.teamId)} et ${teamName(teams, conflict.right.teamId)} — ${frDateShortNoYear(conflict.left.matchDate)}`;
   }
@@ -95,10 +107,11 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>): string {
     return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} — gymnase indisponible, à repositionner`;
   }
   if ("ACCESS_WINDOW_LOST" === conflict.type && conflict.fixture) {
-    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} à ${conflict.fixture.kickoffTime ?? "?"} — la fenêtre d'accès a changé après le placement`;
+    const venueName = venues.get(conflict.venueId ?? "")?.name ?? "ce gymnase";
+    return `Placé hors des accès match de ${venueName} (${accessWindowsPhrase(conflict)}) — déplacez le match ou ajustez l'accès dans Configuration.`;
   }
   if ("LEAGUE_WINDOW_VIOLATION" === conflict.type && conflict.fixture) {
-    const windows = (conflict.windows ?? []).map((w) => `${w.kickoffMin}–${w.kickoffMax}`).join(", ");
+    const windows = ((conflict.windows ?? []) as LeagueKickoffWindow[]).map((w) => `${w.kickoffMin}–${w.kickoffMax}`).join(", ");
     return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} à ${conflict.fixture.kickoffTime ?? "?"} (fenêtres : ${windows}) — dérogation à demander tôt`;
   }
   if ("TEAM_LINK_OVERLAP" === conflict.type && conflict.left && conflict.right) {
@@ -146,20 +159,40 @@ function EstimatedPill(): ReactNode {
   );
 }
 
-/** Une ligne de côté (équipe + rôle | lieu · adversaire + horaires) — MATCH_MATCH / MATCH_TRAINING. */
+/** La cellule d'un créneau : l'heure `tabular-nums`, ou « — » muet quand le créneau est absent. */
+function TimeCell({ value, emphasis, children }: { value?: string; emphasis?: boolean; children?: ReactNode }) {
+  const has = undefined !== value && "" !== value;
+  return (
+    <TableCell className={cn("whitespace-nowrap px-1.5 py-0.5 align-top tabular-nums", true === emphasis ? "font-semibold" : undefined)}>
+      {true === emphasis ? (
+        <span className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
+          {has ? <span className="text-foreground">{value}</span> : <span className="text-muted-foreground">—</span>}
+          {children}
+        </span>
+      ) : has ? (
+        <span className="text-foreground">{value}</span>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      )}
+    </TableCell>
+  );
+}
+
+/**
+ * Une ligne de côté = une ligne de tableau : `<th scope="row">` l'identité (équipe + rôle,
+ * lieu · adversaire, « · trajet inconnu » le cas échéant), puis 4 cellules horaires à créneaux
+ * FIXES — le coup d'envoi toujours colonne 2, pour que les heures s'alignent d'un côté à l'autre.
+ */
 function ConflictSideRow({ side }: { side: ConflictSideLine }) {
   const Icon = KIND_ICON[side.kind];
   return (
-    <li className="grid grid-cols-[5.5rem_1fr] gap-x-2">
-      <span>
-        <span className="font-medium text-foreground">{side.teamName}</span>
-        {undefined !== side.roleWord ? <span className="text-muted-foreground"> {side.roleWord}</span> : null}
-      </span>
-      {/* min-w-0 : sans lui, une piste 1fr de grille refuse de rétrécir → l'enfant déborde. */}
-      <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-0.5">
-        {/* Groupe LIEU : le bloc icône + domicile/extérieur reste insécable ; l'adversaire
-            (potentiellement long) est un bloc SÉPARÉ qui s'enroule et se casse — jamais tronqué,
-            jamais nowrap (seules les HEURES le sont). */}
+    <TableRow>
+      <th scope="row" className="w-full px-1.5 py-0.5 text-left align-top font-normal">
+        <span className="block">
+          <span className="font-medium text-foreground">{side.teamName}</span>
+          {undefined !== side.roleWord ? <span className="text-muted-foreground"> {side.roleWord}</span> : null}
+        </span>
+        {/* Ligne 2 : lieu · adversaire (jamais tronqué), puis « trajet inconnu » le cas échéant. */}
         <span className="flex min-w-0 flex-wrap items-center gap-x-1">
           <span className="flex items-center gap-1 whitespace-nowrap">
             <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -171,47 +204,55 @@ function ConflictSideRow({ side }: { side: ConflictSideLine }) {
               {side.opponent}
             </span>
           ) : null}
-        </span>
-        {/* Groupe HORAIRES : chaque segment (libellé + heure) insécable. */}
-        <span className="flex flex-wrap items-center gap-x-1">
-          {side.segments.map((segment, index) => (
-            <span key={index} className="whitespace-nowrap">
-              {undefined !== segment.separator ? <span aria-hidden="true">{"arrow" === segment.separator ? " → " : " · "}</span> : null}
-              {undefined !== segment.label ? <span className={true === segment.emphasis ? "font-semibold text-foreground" : "text-muted-foreground"}>{segment.label} </span> : null}
-              <span className={cn("tabular-nums text-foreground", true === segment.emphasis ? "font-semibold" : undefined)}>{segment.value}</span>
-              {true === segment.estimated ? (
-                <>
-                  {" "}
-                  <EstimatedPill />
-                </>
-              ) : null}
-            </span>
-          ))}
           {true === side.travelUnknown ? (
             <span className="whitespace-nowrap text-muted-foreground">
               <span aria-hidden="true"> · </span>trajet inconnu
             </span>
           ) : null}
         </span>
-      </div>
-    </li>
+      </th>
+      <TimeCell value={side.times.departure} />
+      <TimeCell value={side.times.kickoff.value} emphasis>
+        {side.times.kickoff.estimated ? <EstimatedPill /> : null}
+      </TimeCell>
+      <TimeCell value={side.times.end} />
+      {/* Colonne « Durée » masquée sous @sm (container query) : place au coup d'envoi d'abord. */}
+      <td className="hidden whitespace-nowrap px-1.5 py-0.5 align-top tabular-nums @sm:table-cell">
+        {undefined !== side.times.duration && "" !== side.times.duration ? <span className="text-foreground">{side.times.duration}</span> : <span className="text-muted-foreground">—</span>}
+      </td>
+    </TableRow>
   );
 }
 
 /**
- * Le DÉTAIL par côté d'un conflit de personne : une ligne par équipe + la ligne de
- * chevauchement. Remplace, pour MATCH_MATCH / MATCH_TRAINING, la ligne grise et la
- * pastille globale « heure estimée » (le coup d'envoi porte sa propre pastille).
+ * Le DÉTAIL par côté d'un conflit de personne : un TABLEAU à créneaux fixes (le coup d'envoi
+ * toujours colonne 2) + la ligne de chevauchement. Remplace, pour MATCH_MATCH / MATCH_TRAINING,
+ * la ligne grise et la pastille globale « heure estimée » (le coup d'envoi porte sa pastille).
+ * `@container` : la colonne « Durée » se replie sur la LARGEUR DU RADAR (colonne), pas du viewport.
  */
 function ConflictSideDetail({ model }: { model: ConflictSideModel }) {
   const { overlap } = model;
   return (
-    <div className="mt-1 text-xs">
-      <ul className="flex flex-col gap-0.5" aria-label="Détail par équipe">
-        {model.sides.map((side, index) => (
-          <ConflictSideRow key={index} side={side} />
-        ))}
-      </ul>
+    <div className="mt-1 @container text-xs">
+      <Table variant="inline">
+        <TableCaption className="sr-only">Détail par équipe</TableCaption>
+        <TableHeader>
+          <TableRow>
+            {/* Colonne d'identité SANS en-tête de colonne (un simple td) : les 4 en-têtes
+                nommés correspondent aux 4 colonnes horaires. */}
+            <td className="w-full px-1.5 py-0.5" />
+            <TableHead className="px-1.5 py-0.5 normal-case">Départ</TableHead>
+            <TableHead className="px-1.5 py-0.5 normal-case">Coup d'envoi</TableHead>
+            <TableHead className="px-1.5 py-0.5 normal-case">Fin / retour</TableHead>
+            <TableHead className="hidden px-1.5 py-0.5 normal-case @sm:table-cell">Durée</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {model.sides.map((side, index) => (
+            <ConflictSideRow key={index} side={side} />
+          ))}
+        </TableBody>
+      </Table>
       {/* Chevauchement : PAS de text-warning (sous AA sur fond teinté) ; date répétée
           seulement quand début et fin tombent deux jours différents. */}
       <p className="mt-1 font-medium text-foreground">
@@ -280,7 +321,7 @@ export function ConflictLine({ conflict, teams, coaches, venues, tone, isNew, tr
         ) : null}
       </p>
       <p className="text-muted-foreground">
-        {conflictSummary(conflict, teams)}
+        {conflictSummary(conflict, teams, venues)}
         {/* La pastille GLOBALE « heure estimée » disparaît pour les familles à détail par côté. */}
         {null === sideModel && estimatedTag(conflict) ? <span className="ml-1 rounded bg-muted px-1 text-xs uppercase tracking-wide">heure estimée</span> : null}
       </p>

@@ -40,15 +40,23 @@ const plans: { data: unknown[] | undefined; isError: boolean } = {
 // Stats d'utilisation des gymnases (P3-22) — mutable pour piloter par test.
 const venueStats: { data: unknown; isLoading: boolean; isError: boolean } = { data: undefined, isLoading: false, isError: false };
 
+const updateSiege = vi.fn();
+
 vi.mock("./queries", () => ({
   useUpdateAppearance: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   useUploadLogo: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteLogo: () => ({ mutate: vi.fn(), isPending: false }),
   useFfbbImport: () => ({ mutate: ffbbImport, isPending: false }),
+  useUpdateSiege: () => ({ mutate: updateSiege, isPending: false }),
   useResetClub: () => ({ mutate: vi.fn(), isPending: false }),
   useDownloadClubExport: () => ({ mutate: vi.fn(), isPending: false }),
   useSubscriptionPlans: () => plans,
   useVenueUsageStats: () => venueStats,
+}));
+
+// Le géocodage (AddressGeocodeField du siège) — mutation réelle sinon : on la neutralise.
+vi.mock("@/shared/hooks/useGeocode", () => ({
+  useGeocode: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 import { ClubPage } from "./ClubPage";
@@ -114,11 +122,9 @@ describe("ClubPage", () => {
     expect(screen.queryByRole("link", { name: "contact@bccl.fr" })).toBeNull();
   });
 
-  it("club info: everything read-only and compact — no inputs, no save, no officer blocks", async () => {
-    // Décision fondateur 2026-08-04 : la FFBB fait autorité ; correspondant/
-    // président/salle principale SUPPRIMÉS (l'API ne les fournira jamais, la
-    // saisie manuelle n'est pas voulue). Contact compact : les coordonnées
-    // s'empilent nues — un téléphone se reconnaît sans sous-titre.
+  it("club info: le SIÈGE est la seule saisie — le reste (identité, contact) demeure FFBB, lecture seule", async () => {
+    // Décision fondateur : la FFBB fait autorité, SAUF le siège du club (adresse re-géocodée
+    // côté serveur) — la seule saisie de la fiche. Le contact reste compact et nu.
     me.data = {
       role: "admin",
       club: {
@@ -139,19 +145,46 @@ describe("ClubPage", () => {
     const user = userEvent.setup();
     render(<ClubPage />);
     await user.click(screen.getByRole("button", { name: /Informations du club/ }));
-    // Valeurs affichées, compactes : l'adresse est UNE ligne, tél sans étiquette.
-    expect(screen.getByText("5 RUE EMILE DUNIERE, 69100 VILLEURBANNE")).toBeInTheDocument();
+    // Le contact reste : tél sans étiquette, email lien. L'adresse a QUITTÉ le bloc contact.
     expect(screen.getByText("0643720140")).toBeInTheDocument();
     expect(screen.queryByText("Téléphone")).toBeNull();
     expect(screen.getByRole("link", { name: "contact@bccl.fr" })).toHaveAttribute("href", "mailto:contact@bccl.fr");
-    // AUCUN champ saisissable ni bouton Enregistrer dans la section.
+    expect(screen.queryByText("5 RUE EMILE DUNIERE, 69100 VILLEURBANNE")).toBeNull();
+    // La SEULE saisie : le champ « Adresse du siège » (le reste demeure FFBB, sans « Enregistrer »).
+    expect(screen.getByRole("textbox", { name: "Adresse du siège" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Enregistrer" })).toBeNull();
     expect(screen.queryByText("Correspondant")).toBeNull();
     expect(screen.queryByText("Président")).toBeNull();
-    expect(screen.queryByText("Salle principale")).toBeNull();
-    // Le geste de correction : le ré-import FFBB.
+    // Le geste de correction FFBB : le ré-import.
     await user.click(screen.getByRole("button", { name: "Actualiser depuis la FFBB" }));
     expect(ffbbImport).toHaveBeenCalledOnce();
+  });
+
+  it("siège NON localisé (pas de coordonnées) : statut « Siège non localisé » + champ pré-rempli avec l'adresse FFBB", async () => {
+    me.data = {
+      role: "admin",
+      club: { name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null, address: "5 RUE EMILE DUNIERE", latitude: null, longitude: null },
+    };
+    const user = userEvent.setup();
+    render(<ClubPage />);
+    await user.click(screen.getByRole("button", { name: /Informations du club/ }));
+    expect(screen.getByText(/Siège non localisé/)).toBeInTheDocument();
+    // Champ ouvert, pré-rempli avec l'adresse FFBB.
+    expect(screen.getByRole("textbox", { name: "Adresse du siège" })).toHaveValue("5 RUE EMILE DUNIERE");
+  });
+
+  it("siège localisé (coordonnées présentes) : statut « Siège localisé » + bouton « Modifier l'adresse »", async () => {
+    me.data = {
+      role: "admin",
+      club: { name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null, address: "5 RUE EMILE DUNIERE", latitude: 45.78, longitude: 4.88 },
+    };
+    const user = userEvent.setup();
+    render(<ClubPage />);
+    await user.click(screen.getByRole("button", { name: /Informations du club/ }));
+    expect(screen.getByText("Siège localisé")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Modifier l'adresse" })).toBeInTheDocument();
+    // Repliée : aucun champ tant qu'on ne clique pas « Modifier l'adresse ».
+    expect(screen.queryByRole("textbox", { name: "Adresse du siège" })).toBeNull();
   });
 
   it("hides the club-info section for a non-admin", () => {

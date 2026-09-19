@@ -256,7 +256,7 @@ export type ConflictType =
  * l'instant). « À traiter » n'est PAS un statut : c'est l'ABSENCE de résolution
  * (`resolution === null`). Miroir de `App\Enum\ConflictResolutionStatus`.
  */
-export type ConflictResolutionStatus = "DEROGATION_REQUESTED" | "RESOLVED_INTERNALLY" | "NO_SOLUTION_YET";
+export type ConflictResolutionStatus = "DEROGATION_REQUESTED" | "RESOLVED_INTERNALLY" | "NO_SOLUTION_YET" | "COACHES_NOT_PLAYING" | "PLAYS_NOT_COACHING";
 
 /**
  * P4-207 — la résolution PERSISTÉE d'un conflit (par empreinte, jamais par id) : où
@@ -268,6 +268,20 @@ export interface ConflictResolution {
   status: ConflictResolutionStatus;
   note: string | null;
   updatedAt: string;
+}
+
+/** LEAGUE_WINDOW_VIOLATION — an allowed kickoff window (envelope) the placement violates. */
+export interface LeagueKickoffWindow {
+  dayOfWeek: number;
+  kickoffMin: string;
+  kickoffMax: string;
+}
+
+/** ACCESS_WINDOW_LOST — one match-access window of the fixture's venue. */
+export interface VenueAccessWindow {
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
 }
 
 export interface Conflict {
@@ -299,8 +313,11 @@ export interface Conflict {
   label?: string | null;
   unavailableFrom?: string;
   unavailableUntil?: string;
-  /** LEAGUE_WINDOW_VIOLATION — the windows the placement violates. */
-  windows?: { dayOfWeek: number; kickoffMin: string; kickoffMax: string }[];
+  /**
+   * LEAGUE_WINDOW_VIOLATION — the allowed kickoff windows the placement violates (`kickoffMin`/`kickoffMax`).
+   * ACCESS_WINDOW_LOST — the fixture's venue match-access windows, the match weekday first (`startTime`/`endTime`).
+   */
+  windows?: LeagueKickoffWindow[] | VenueAccessWindow[];
   /** COMPETITION_INCOMPLETE (severity 6) — paired-competition completeness. */
   competitionId?: string;
   competitionName?: string;
@@ -1306,10 +1323,14 @@ export const resolveOpponents = (): Promise<OpponentResolveResult> => api.post("
  * Chaque passe est indépendante (l'échec de l'une n'annule pas les autres). Champs alignés sur le
  * snapshot OpenAPI (`/api/opponents/refresh`).
  */
+export type OpponentRefreshStep = "codes" | "auto-locate" | "travel";
+
 export interface OpponentRefreshResult {
   codes: { resolved: number; unresolved: string[]; skipped: number; stamped: number };
   autoLocated: { located: number; ambiguous: number; unmatched: number; skipped: number };
   travel: { resolved: number; unresolved: string[]; skippedManual: number };
+  /** Les passes best-effort qui ont levé et sont retombées sur leur résultat neutre (vide en régime nominal). */
+  failedSteps: OpponentRefreshStep[];
 }
 
 /** Met à jour tous les adversaires AWAY en UN appel : codes FFBB + gymnases depuis le fichier + trajets. Best-effort, management. */

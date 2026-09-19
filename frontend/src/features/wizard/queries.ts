@@ -200,12 +200,9 @@ export function useAutofillVenueTravelTimes() {
   });
 }
 
-/** Géocodage à la demande (le clic « Localiser »). Une mutation, pas une requête permanente. */
-export function useGeocode() {
-  return useMutation({
-    mutationFn: (q: string) => wizardApi.geocodeAddress(q),
-  });
-}
+// `useGeocode` a migré dans la maison partagée `shared/hooks/useGeocode.ts` — ré-exporté pour
+// les consommateurs wizard existants.
+export { useGeocode } from "@/shared/hooks/useGeocode";
 
 const TRAVEL_RULE_SETTING_KEY = ["wizard", "venue_travel_rule_setting"] as const;
 

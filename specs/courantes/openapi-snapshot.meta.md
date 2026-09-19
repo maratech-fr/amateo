@@ -1,14 +1,39 @@
-Last verified @ 2026-09-18 (audit 2026-09-18 backend — réponse `429` sur `POST /api/opponents/travel/manual`
-(SEC-19), budget de mur documenté sur `POST /api/opponents/refresh` (BCK-32), et `maxLength` sur 26 propriétés
-texte des DTO d'entrée (BCK-27) ; régénéré par le coder après `cache:pool:clear --all` + `api:openapi:export`).
-**200 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** : aucune route
-n'apparaît ni ne disparaît — seules une réponse `429` s'ajoute à `/api/opponents/travel/manual`, la description
-de `/api/opponents/refresh` gagne une phrase (budget de mur → réponse partielle), et 26 propriétés d'entrée
-gagnent leur `maxLength` (borne = longueur de la colonne cible).
-· SHA-256 `419573385089c2b4deaacb85e15dd1f25045bb84d3cef2e6ce64de8e5e24747c`
+Last verified @ 2026-09-19 (retours de tests — une NOUVELLE route `PATCH /api/club/siege` (le serveur
+re-géocode l'adresse via la BAN et écrit adresse/CP/ville + coordonnées depuis son hit, jamais le
+client) et un champ ADDITIF `clubGeolocated` sur `GET /api/opponents/travel` ; plus trois ajouts
+additifs des passes précédentes (`failedSteps`, `windows`, deux valeurs d'enum de résolution) ;
+régénéré par `api:openapi:export`).
+**201 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** :
+`PATCH /api/club/siege` apparaît ; le reste est additif (`clubGeolocated`).
+· SHA-256 `bfa260deaf86fc84fdb35700ef7d2a6281b7a45f6e7a880db643722ad4504e17`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Retours de tests — siège du club géocodé côté serveur, backend (2026-09-19)** : **+1 path** —
+  `PATCH /api/club/siege` (management) : le corps ne porte QUE du texte d'adresse ; le serveur
+  RE-géocode via la BAN et écrit adresse/CP/ville + lat/lon depuis SON hit (réponse
+  `{address, postalCode, city, geolocated}`) — une latitude forgée est ignorée (patron SEC-15) ; 422
+  « adresse introuvable », 502 BAN muet. `GET /api/opponents/travel` gagne un booléen ADDITIF
+  `clubGeolocated` (le siège est-il localisé ? — jamais les coordonnées brutes). 200 → **201 paths**.
+  Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun appel moteur).
+- **Retours de tests — statuts « joue/coache » sur un conflit, backend (2026-09-19)** : **+0 path** — le
+  statut de résolution d'un conflit gagne deux valeurs d'enum ADDITIVES `COACHES_NOT_PLAYING` et
+  `PLAYS_NOT_COACHING` (`PUT /api/fixtures/conflicts/{fingerprint}/resolution`, requête + réponse, et le
+  champ `resolution.status` du radar `GET /api/fixtures/conflicts`). Elles ne sont acceptées que si un
+  côté servi du conflit porte le rôle PLAYER (sinon 422 parlant) ; colonne `length: 30`, aucune migration.
+  Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun appel moteur).
+- **Retours de tests — `windows` sur ACCESS_WINDOW_LOST, backend (2026-09-19)** : **+0 path** — un conflit
+  `ACCESS_WINDOW_LOST` du radar `GET /api/fixtures/conflicts` porte désormais un champ ADDITIF `windows`
+  (`array<{dayOfWeek, startTime, endTime}>`) : les accès match DU GYMNASE de la fixture, jour du match
+  d'abord, pour que l'écran dise « placé hors des accès match de {Gymnase} (samedi 14:00–18:00, …) ». Champ
+  hors identité (l'empreinte reste `TYPE:fixtureId`). Backend PUR, contrat backend⇄engine **inchangé**
+  (`CONTRACT_VERSION` 2.21, aucun appel moteur).
+- **Retours de tests — `failedSteps` sur la mise à jour des adversaires, backend (2026-09-19)** : **+0 path** —
+  la réponse 200 de `POST /api/opponents/refresh` gagne un champ ADDITIF `failedSteps` (`array<'codes'|'auto-locate'|'travel'>`) :
+  les passes best-effort qui ont levé et sont retombées sur leur résultat neutre. Vide en régime nominal ; non-vide,
+  le front signale une mise à jour PARTIELLE (au lieu d'un succès mensonger) et invite à relancer. La forme des trois
+  blocs (`codes`/`autoLocated`/`travel`) est inchangée. Backend PUR, contrat backend⇄engine **inchangé**
+  (`CONTRACT_VERSION` 2.21, aucun appel moteur).
 - **Audit 2026-09-18 — bornes des trajets adverses + longueurs de DTO, backend** : **+0 path** — trois
   ajustements sans nouvelle route : (SEC-19) `POST /api/opponents/travel/manual` déclare une réponse `429`
   (limiteur PAR UTILISATEUR `opponent_travel_manual`, 30/h) ; (BCK-32) la description de
@@ -44,41 +69,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   override manuel équipe > club > annuaire fédéral > libellé FBI > null). Aucune empreinte de conflit ne change
   (ces champs sont hors identité). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun
   appel moteur, aucun payload solveur ne lit ces champs).
-- **PR-2b « adversaire multi-gymnases » — auto-localisation depuis le fichier + orchestrateur, backend (2026-09-16)** :
-  **+1 path** — `POST /api/opponents/refresh` (management) enchaîne EN UN APPEL les trois passes best-effort qui
-  mettent à jour les adversaires AWAY : (`codes`) rattrapage des codes fédéraux dans l'annuaire + estampille des
-  rencontres, (`autoLocated`) auto-localisation du gymnase de chaque équipe adverse depuis le libellé de salle
-  du FICHIER FBI (salle FÉDÉRALE, surcharge de trajet TENANT source AUTO, jamais le partagé ni le texte client),
-  (`travel`) recalcul des trajets AUTO. Réponse à trois blocs (`codes`/`autoLocated`/`travel`), chaque passe
-  indépendante ; cap dur 200 avant réseau (422) + limiteur `opponent_refresh` (429). Les routes fines
-  `/api/opponents/resolve` et `/api/opponents/travel/resolve` restent (compat). 199 → **200 paths**. Backend PUR,
-  contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun appel moteur, aucun payload solveur ne lit
-  `opponent_travel`).
-- **« Une personne = ses équipes coachées + ses équipes où elle joue », backend (2026-09-15)** : **+0 path** —
-  le radar `GET /api/fixtures/conflicts` unit les coachs (`team_coach`) et les joueurs (`CoachPlayerMembership`
-  actifs) dans une même carte personne→équipes. Champs ADDITIFS : `coachRole` gagne la valeur `PLAYER` (agrégat
-  MAIN si tous MAIN, ASSISTANT dès qu'un côté ASSISTANT, PLAYER sinon) ; chaque côté d'un conflit personne porte
-  son `role` (`MAIN`|`ASSISTANT`|`PLAYER`) — `left.role`/`right.role` sur MATCH_MATCH, `fixture.role`/`training.role`
-  sur MATCH_TRAINING ; l'enum `type` du conflit est recalé sur ses 10 familles réelles (VENUE_OVERLAP,
-  LEAGUE_WINDOW_VIOLATION, MATCH_MATCH, MATCH_TRAINING, VENUE_UNAVAILABLE, ACCESS_WINDOW_LOST, TEAM_LINK_OVERLAP,
-  COMPETITION_INCOMPLETE, AWAY_NO_FOOTPRINT, FRIENDLY_ON_MATCH_SLOT). Aucune empreinte de conflit ne change
-  (le rôle est hors identité). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun
-  appel moteur, aucun payload solveur ne lit les adhésions joueur).
-- **PR-2 « adversaire multi-gymnases », backend (2026-09-15)** : **+1 path** — les SUGGESTIONS partagées de
-  gymnases par club adverse. `GET /api/opponents/{code}/venue-suggestions` (management, A6) rend les gymnases
-  connus d'un adversaire — vus dans le calendrier fédéral (`FFBB_API`) ou choisis par des clubs (`MANUAL`) —
-  avec un `chosenByCount` (« un compte, jamais un qui »), FFBB_API d'abord puis MANUAL par compte décroissant ;
-  422 si le code n'est pas un adversaire AWAY de la saison. 198 → **199 paths**. Backend PUR, contrat
-  backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun appel moteur, aucun payload solveur ne lit le
-  partagé).
-- **PR-1 « adversaire multi-gymnases », backend (2026-09-15)** : **+0 path** — le trajet adverse gagne le
-  grain ÉQUIPE. `GET /api/opponents/travel` : une entrée par (code, équipe) au lieu d'une par code, avec les
-  champs additifs `opponentTeamKey`, `scope` (`TEAM`|`CLUB`|null), `city`, `postalCode`. Les corps
-  `POST /api/opponents/travel/manual` et `/auto` acceptent `opponentTeamKey` (+ `scope` optionnel sur
-  `manual`) ; leurs réponses gagnent `opponentTeamKey`/`scope`. Le schéma read `Fixture` gagne
-  `opponentOrganismeCode` + `opponentTeamKey` (libellé adverse normalisé, servi pour joindre le trajet par
-  équipe sans re-dériver). 198 → **198 paths**. Backend PUR, contrat backend⇄engine **inchangé**
-  (`CONTRACT_VERSION` 2.21, aucun appel moteur, aucun payload solveur ne lit `opponent_travel`).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

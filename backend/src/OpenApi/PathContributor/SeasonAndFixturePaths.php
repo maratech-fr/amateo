@@ -128,9 +128,14 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                             'training' => ['type' => 'object', 'nullable' => true, 'description' => 'MATCH_TRAINING: the training slot', 'properties' => [
                                 'role' => ['type' => 'string', 'enum' => ['MAIN', 'ASSISTANT', 'PLAYER'], 'description' => 'The person\'s role with the training team'],
                             ]],
+                            'windows' => ['type' => 'array', 'description' => 'ACCESS_WINDOW_LOST: the match-access windows of the fixture\'s venue, the match weekday first — so the screen can name where the kickoff should have sat', 'items' => ['type' => 'object', 'properties' => [
+                                'dayOfWeek' => ['type' => 'integer', 'description' => 'ISO weekday 1..7'],
+                                'startTime' => ['type' => 'string', 'description' => '« HH:MM »'],
+                                'endTime' => ['type' => 'string', 'description' => '« HH:MM »'],
+                            ]]],
                             'fingerprint' => ['type' => 'string', 'description' => 'Stable identity of the conflict — same while it is the same dispute, changes when its nature changes (the guardian compares it across visits)'],
                             'resolution' => ['type' => 'object', 'nullable' => true, 'description' => 'The handling status a manager stamped on this conflict (null = « à traiter », the default with no row)', 'properties' => [
-                                'status' => ['type' => 'string', 'enum' => ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET']],
+                                'status' => ['type' => 'string', 'enum' => ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET', 'COACHES_NOT_PLAYING', 'PLAYS_NOT_COACHING']],
                                 'note' => ['type' => 'string', 'nullable' => true],
                                 'updatedAt' => ['type' => 'string', 'format' => 'date-time'],
                             ]],
@@ -153,7 +158,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                         'properties' => [
                             'fingerprint' => ['type' => 'string'],
                             'resolution' => ['type' => 'object', 'properties' => [
-                                'status' => ['type' => 'string', 'enum' => ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET']],
+                                'status' => ['type' => 'string', 'enum' => ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET', 'COACHES_NOT_PLAYING', 'PLAYS_NOT_COACHING']],
                                 'note' => ['type' => 'string', 'nullable' => true],
                                 'updatedAt' => ['type' => 'string', 'format' => 'date-time'],
                             ]],
@@ -162,7 +167,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                     '400' => new Response('No club in context'),
                     '403' => new Response('Not a management member'),
                     '404' => new Response('Malformed fingerprint (routing)'),
-                    '422' => new Response('Unknown status, note over 500 characters, or a fingerprint absent from the current radar'),
+                    '422' => new Response('Unknown status, note over 500 characters, a fingerprint absent from the current radar, or a play-only status (COACHES_NOT_PLAYING / PLAYS_NOT_COACHING) on a conflict where nobody plays'),
                 ],
                 summary: 'Set (or replace) the handling status of a conflict — management only. « À traiter » is not a status here (it is the absence of a row): reset with DELETE',
                 parameters: [['name' => 'fingerprint', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string'], 'description' => 'The stable fingerprint of the conflict (from the radar feed)']],
@@ -170,7 +175,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                     'type' => 'object',
                     'required' => ['status'],
                     'properties' => [
-                        'status' => ['type' => 'string', 'enum' => ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET']],
+                        'status' => ['type' => 'string', 'enum' => ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET', 'COACHES_NOT_PLAYING', 'PLAYS_NOT_COACHING']],
                         'note' => ['type' => 'string', 'nullable' => true, 'description' => 'Optional free note, at most 500 characters'],
                     ],
                 ]),

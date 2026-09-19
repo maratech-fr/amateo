@@ -294,6 +294,19 @@ final readonly class UncoveredCustomPaths implements CustomPathContributor
                 ],
                 summary: 'Club colours and display preferences',
             )),
+            '/api/club/siege' => new PathItem(patch: new Operation(
+                operationId: 'patchApiClubSiege',
+                tags: ['Club'],
+                responses: [
+                    '200' => new Response('Siège set — the server re-geocoded the address and wrote the club address/postcode/city + coordinates from its BAN hit (returns { address, postalCode, city, geolocated }); a forged latitude in the body is ignored'),
+                    '400' => new Response('No club in context, or invalid JSON'),
+                    '403' => new Response('Not a management member'),
+                    '404' => new Response('Club not found'),
+                    '422' => new Response('Address not found — refine the street and city'),
+                    '502' => new Response('Geocoding service unreachable — retry later'),
+                ],
+                summary: 'Set the club siège from a free-text address (management only; the server re-geocodes, never the client)',
+            )),
             '/api/club/logo' => new PathItem(
                 post: new Operation(
                     operationId: 'postApiClubLogo',

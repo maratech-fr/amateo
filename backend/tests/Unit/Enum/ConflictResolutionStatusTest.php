@@ -17,16 +17,21 @@ final class ConflictResolutionStatusTest extends TestCase
         self::assertSame('DEROGATION_REQUESTED', ConflictResolutionStatus::DEROGATION_REQUESTED->value);
         self::assertSame('RESOLVED_INTERNALLY', ConflictResolutionStatus::RESOLVED_INTERNALLY->value);
         self::assertSame('NO_SOLUTION_YET', ConflictResolutionStatus::NO_SOLUTION_YET->value);
+        self::assertSame('COACHES_NOT_PLAYING', ConflictResolutionStatus::COACHES_NOT_PLAYING->value);
+        self::assertSame('PLAYS_NOT_COACHING', ConflictResolutionStatus::PLAYS_NOT_COACHING->value);
     }
 
-    public function testOnlyThreeStoredCases(): void
+    public function testOnlyFiveStoredCases(): void
     {
         // « À traiter » ne se stocke JAMAIS (c'est l'absence de ligne) : exactement
-        // trois cas persistables, sinon la migration/colonne et l'API divergent.
+        // cinq cas persistables, sinon la colonne (length 30) et l'API divergent. Les deux
+        // derniers sont réservés aux conflits où la personne joue (garde côté contrôleur).
         self::assertSame(
-            ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET'],
+            ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET', 'COACHES_NOT_PLAYING', 'PLAYS_NOT_COACHING'],
             ConflictResolutionStatus::values(),
         );
+        // La plus longue valeur tient dans la colonne length: 30 (aucune migration).
+        self::assertLessThanOrEqual(30, max(array_map('strlen', ConflictResolutionStatus::values())));
     }
 
     public function testFromValidValue(): void

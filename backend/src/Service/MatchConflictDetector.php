@@ -659,11 +659,28 @@ final class MatchConflictDetector
             if (self::kickoffInsideWindow($venueId, $day, $kickoff, $windowArrays)) {
                 continue;
             }
+            // Les accès match du GYMNASE de la fixture, jour du match d'abord — de quoi
+            // dire à l'écran « placé hors des accès (samedi 14:00–18:00, …) ». Champ
+            // ADDITIF (hors identité : l'empreinte reste TYPE:fixtureId).
+            $venueWindows = array_values(array_filter(
+                $windowArrays,
+                static fn (array $w): bool => $w['venueId'] === $venueId,
+            ));
+            usort($venueWindows, static fn (array $a, array $b): int => [
+                $a['dayOfWeek'] === $day ? 0 : 1, $a['dayOfWeek'], $a['startTime'],
+            ] <=> [
+                $b['dayOfWeek'] === $day ? 0 : 1, $b['dayOfWeek'], $b['startTime'],
+            ]);
             $conflicts[] = [
                 'type' => 'ACCESS_WINDOW_LOST',
                 'severity' => 4,
                 'venueId' => $venueId,
                 'fixture' => $this->bareFixtureView($fixture),
+                'windows' => array_map(static fn (array $w): array => [
+                    'dayOfWeek' => $w['dayOfWeek'],
+                    'startTime' => $w['startTime'],
+                    'endTime' => $w['endTime'],
+                ], $venueWindows),
             ];
         }
 

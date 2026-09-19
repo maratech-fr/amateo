@@ -47,6 +47,46 @@ final class BanGeocodingClient
      */
     public function geocode(string $query, int $limit = 5): array
     {
+        $candidates = [];
+        foreach ($this->fetchFeatures($query, $limit) as $feature) {
+            $candidate = $this->mapFeature($feature);
+            if (null !== $candidate) {
+                $candidates[] = $candidate;
+            }
+        }
+
+        return $candidates;
+    }
+
+    /**
+     * The single BEST candidate for an address, with its STRUCTURED fields (postcode/city
+     * from the BAN properties, when present). Used to set a club SIÈGE from a chosen address:
+     * the coordinates are the federal geocoder's, never the caller's (a forged latitude in a
+     * request body is ignored). Null = invalid query or no usable feature. Transport failures
+     * propagate — the caller returns a 502, never a broken form.
+     *
+     * @return array{label: string, postalCode: string|null, city: string|null, latitude: float, longitude: float}|null
+     */
+    public function geocodeTop(string $query): ?array
+    {
+        foreach ($this->fetchFeatures($query, 1) as $feature) {
+            $structured = $this->mapFeatureStructured($feature);
+            if (null !== $structured) {
+                return $structured;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The raw BAN features for a query (SSRF-safe request). An invalid query (too short/long)
+     * returns [] without any network call.
+     *
+     * @return list<mixed>
+     */
+    private function fetchFeatures(string $query, int $limit): array
+    {
         if (!self::isValidQuery($query)) {
             return [];
         }
@@ -60,19 +100,30 @@ final class BanGeocodingClient
         ])->toArray(false);
 
         $features = $data['features'] ?? null;
-        if (!\is_array($features)) {
-            return [];
-        }
 
-        $candidates = [];
-        foreach ($features as $feature) {
-            $candidate = $this->mapFeature($feature);
-            if (null !== $candidate) {
-                $candidates[] = $candidate;
-            }
-        }
+        return \is_array($features) ? array_values($features) : [];
+    }
 
-        return $candidates;
+    /**
+     * @return array{label: string, postalCode: string|null, city: string|null, latitude: float, longitude: float}|null
+     */
+    private function mapFeatureStructured(mixed $feature): ?array
+    {
+        $simple = $this->mapFeature($feature);
+        if (null === $simple) {
+            return null;
+        }
+        $properties = \is_array($feature) && \is_array($feature['properties'] ?? null) ? $feature['properties'] : [];
+        $postcode = $properties['postcode'] ?? null;
+        $city = $properties['city'] ?? null;
+
+        return [
+            'label' => $simple['label'],
+            'postalCode' => \is_string($postcode) && '' !== $postcode ? $postcode : null,
+            'city' => \is_string($city) && '' !== $city ? $city : null,
+            'latitude' => $simple['latitude'],
+            'longitude' => $simple['longitude'],
+        ];
     }
 
     /**

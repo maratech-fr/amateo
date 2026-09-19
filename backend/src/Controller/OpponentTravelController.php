@@ -11,6 +11,7 @@ use App\Entity\OpponentVenueSuggestion;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\OpponentLocationPrecision;
+use App\Repository\ClubRepository;
 use App\Repository\FixtureRepository;
 use App\Repository\OpponentDirectoryEntryRepository;
 use App\Repository\OpponentTravelRepository;
@@ -56,6 +57,7 @@ final class OpponentTravelController extends AbstractController
         private readonly RequestStack $requestStack,
         private readonly SeasonResolver $seasonResolver,
         private readonly FixtureRepository $fixtures,
+        private readonly ClubRepository $clubRepository,
         private readonly OpponentTravelRepository $travelRepository,
         private readonly OpponentDirectoryEntryRepository $directory,
         private readonly OpponentVenueSuggestionRepository $suggestions,
@@ -77,10 +79,17 @@ final class OpponentTravelController extends AbstractController
 
         $awayFixtures = $this->fixtures->findAwayBySeason($season->getId());
         $travelIndex = $this->indexTravel($season->getId());
+        // Champ ADDITIF : le siège du club est-il localisé ? (sans quoi aucun trajet ne
+        // s'estime.) Un booléen SEUL — jamais les coordonnées brutes du club.
+        $club = $this->clubRepository->find($clubId);
+        $clubLat = $club?->getLatitude();
+        $clubLon = $club?->getLongitude();
+        $clubGeolocated = null !== $clubLat && null !== $clubLon;
 
         return $this->json([
             'clubId' => $clubId,
             'seasonId' => $season->getId(),
+            'clubGeolocated' => $clubGeolocated,
             'opponents' => $this->buildOpponents($awayFixtures, $travelIndex),
         ]);
     }

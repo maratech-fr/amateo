@@ -77,6 +77,7 @@ vi.mock("./api", () => ({
     codes: { resolved: 12, unresolved: [], skipped: 0, stamped: 40 },
     autoLocated: { located: 8, ambiguous: 0, unmatched: 0, skipped: 0 },
     travel: { resolved: 40, unresolved: [], skippedManual: 0 },
+    failedSteps: [],
   }),
   createVenueUnavailability: vi.fn().mockResolvedValue({ id: "u1", venueId: "v", startDate: "2026-10-01", endDate: "2026-10-02", label: null }),
   createTeamMatchHabit: vi.fn().mockResolvedValue({ id: "h1", teamId: "t", dayOfWeek: 6, kickoffTime: "18:00", venueId: null }),
@@ -285,7 +286,50 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     await waitFor(() => expect(matchesApi.getOpponentTravel).toHaveBeenCalledTimes(2));
     // UN seul toast de succès, résumant les TROIS passes.
     expect(toastMock.success).toHaveBeenCalledTimes(1);
-    expect(toastMock.success).toHaveBeenCalledWith("12 codes retrouvés · 8 gymnases localisés depuis le fichier · 40 trajets calculés");
+    expect(toastMock.success).toHaveBeenCalledWith("12 codes retrouvés · 8 gymnases localisés · 40 trajets calculés");
+  });
+
+  it("useUpdateOpponents : une passe en échec (failedSteps) → toast d'erreur parlant, aucun succès, données rafraîchies quand même", async () => {
+    toastMock.success.mockClear();
+    toastMock.error.mockClear();
+    vi.mocked(matchesApi.refreshOpponents).mockResolvedValueOnce({
+      codes: { resolved: 0, unresolved: [], skipped: 0, stamped: 0 },
+      autoLocated: { located: 0, ambiguous: 0, unmatched: 0, skipped: 0 },
+      travel: { resolved: 0, unresolved: [], skippedManual: 0 },
+      failedSteps: ["codes"],
+    });
+    const client = makeClient();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    const { result } = renderHook(() => ({ update: useUpdateOpponents() }), { wrapper: wrapperFor(client) });
+
+    result.current.update.run();
+
+    await waitFor(() => expect("idle" === result.current.update.step).toBe(true));
+    // 200 mensonger évité : l'étape échouée est nommée en clair, aucun succès.
+    expect(toastMock.error).toHaveBeenCalledTimes(1);
+    expect(toastMock.error).toHaveBeenCalledWith("Mise à jour interrompue à l'étape codes — réessayez.");
+    expect(toastMock.success).not.toHaveBeenCalled();
+    // Le serveur a pu écrire partiellement : on invalide quand même.
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["fixtures"] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["opponents"] });
+  });
+
+  it("useUpdateOpponents : des adversaires non résolus s'annoncent « (m en échec) » dans le toast de succès", async () => {
+    toastMock.success.mockClear();
+    toastMock.error.mockClear();
+    vi.mocked(matchesApi.refreshOpponents).mockResolvedValueOnce({
+      codes: { resolved: 5, unresolved: ["Adverse X"], skipped: 0, stamped: 5 },
+      autoLocated: { located: 3, ambiguous: 0, unmatched: 0, skipped: 0 },
+      travel: { resolved: 4, unresolved: ["ARA0069ZZZ"], skippedManual: 0 },
+      failedSteps: [],
+    });
+    const { result } = renderHook(() => ({ update: useUpdateOpponents() }), { wrapper: wrapperFor(makeClient()) });
+
+    result.current.update.run();
+
+    await waitFor(() => expect("idle" === result.current.update.step).toBe(true));
+    expect(toastMock.success).toHaveBeenCalledWith("5 codes retrouvés · 3 gymnases localisés · 4 trajets calculés (2 en échec)");
+    expect(toastMock.error).not.toHaveBeenCalled();
   });
 
   it("useUpdateOpponents : un échec du refresh remonte un toast d'erreur, sans toast de succès, mais invalide quand même", async () => {

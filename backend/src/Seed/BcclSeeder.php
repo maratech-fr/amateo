@@ -152,6 +152,24 @@ final class BcclSeeder
         if (null === $club->getAccentColorDark()) {
             $club->setAccentColorDark('#E53935');
         }
+        // Siège du club dev (adresse réelle) + ses coordonnées, pour que les trajets vers les
+        // adversaires s'estiment sur le vrai club. Only-fill-when-empty, comme les champs
+        // ci-dessus : un PATCH manuel du siège survit à un re-run.
+        if (null === $club->getAddress()) {
+            $club->setAddress('5 RUE EMILE DUNIERE');
+        }
+        if (null === $club->getPostalCode()) {
+            $club->setPostalCode('69100');
+        }
+        if (null === $club->getCity()) {
+            $club->setCity('VILLEURBANNE');
+        }
+        if (null === $club->getLatitude()) {
+            $club->setLatitude(45.78017);
+        }
+        if (null === $club->getLongitude()) {
+            $club->setLongitude(4.88467);
+        }
         // P1-3 — le club dev/démo vit en Bêta (tout illimité) : « les tests sont de
         // facto en bêta » (fondateur). Only-fill-when-empty, comme les champs ci-dessus.
         if (null === $club->getPlanId()) {

@@ -17,6 +17,20 @@ export interface AppearanceResult {
 /** Partial update of the club identity (accent), scoped server-side to the JWT club. */
 export const updateAppearance = (body: AppearancePayload): Promise<AppearanceResult> => api.patch("club/appearance", { json: body }).json();
 
+export interface SiegeResult {
+  address: string | null;
+  postalCode: string | null;
+  city: string | null;
+  geolocated: boolean;
+}
+
+/**
+ * Pose le SIÈGE du club depuis un LIBELLÉ d'adresse (management). Le serveur RE-géocode via la
+ * BAN et écrit adresse/CP/ville + coordonnées depuis SON hit — jamais les coordonnées du client
+ * (patron SEC-15). 422 « adresse introuvable », 502 BAN muet.
+ */
+export const updateSiege = (address: string): Promise<SiegeResult> => api.patch("club/siege", { json: { address } }).json();
+
 // La fiche club n'a plus AUCUN champ saisissable (décision fondateur 2026-08-04) :
 // la FFBB fait autorité, le geste de correction est le ré-import ci-dessous.
 // L'ancien PATCH /api/club/info a été supprimé avec ses champs.

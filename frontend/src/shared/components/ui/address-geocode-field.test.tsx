@@ -5,85 +5,86 @@ import { renderWithProviders } from "@/test/utils";
 
 import type { GeocodeCandidate } from "@/shared/api/geocode";
 import * as geocodeApi from "@/shared/api/geocode";
+import { AddressGeocodeField } from "./address-geocode-field";
 
-// Le géocodage a migré dans la maison partagée : on mocke `geocodeAddress` À LA SOURCE (le hook
-// `useGeocode` l'importe depuis là) — mocker le ré-export wizard ne l'intercepterait pas.
+// `geocodeAddress` est mocké À LA SOURCE (le hook `useGeocode` l'importe depuis là).
 vi.mock("@/shared/api/geocode", async (importActual) => {
   const actual = await importActual<typeof import("@/shared/api/geocode")>();
   return { ...actual, geocodeAddress: vi.fn() };
 });
-
-import { VenueGeocodeField } from "./VenueGeocodeField";
 
 const CANDIDATES: GeocodeCandidate[] = [
   { label: "12 Rue du Sport, 69100 Villeurbanne", latitude: 45.766, longitude: 4.88, score: 0.92 },
   { label: "12 Rue du Sport, 01000 Bourg", latitude: 46.2, longitude: 5.22, score: 0.31 },
 ];
 
+const baseProps = { placeholder: "Adresse", label: "Adresse", statusWord: "Localisé" as const };
+
 beforeEach(() => {
   vi.mocked(geocodeApi.geocodeAddress).mockReset();
 });
 
-describe("VenueGeocodeField — géocodage d'une adresse", () => {
-  it("saisir une adresse → candidats → choisir écrit address + lat/long (chaînes)", async () => {
+describe("AddressGeocodeField — géocodage partagé", () => {
+  it("saisir une adresse → candidats → choisir remonte le CANDIDAT fédéral (onPick)", async () => {
     vi.mocked(geocodeApi.geocodeAddress).mockResolvedValue(CANDIDATES);
-    const onLocate = vi.fn();
-    renderWithProviders(<VenueGeocodeField venue={{ id: "v1", address: null, latitude: null, longitude: null }} onLocate={onLocate} />);
+    const onPick = vi.fn();
+    renderWithProviders(<AddressGeocodeField {...baseProps} address={null} located={false} onPick={onPick} />);
 
     fireEvent.change(screen.getByRole("textbox", { name: "Adresse" }), { target: { value: "12 rue du sport" } });
     fireEvent.click(screen.getByRole("button", { name: "Localiser" }));
 
     await waitFor(() => expect(vi.mocked(geocodeApi.geocodeAddress)).toHaveBeenCalledWith("12 rue du sport"));
     const first = await screen.findByText("12 Rue du Sport, 69100 Villeurbanne");
-    // Le premier candidat porte « Recommandé », le second (score faible) « correspondance approximative ».
-    const recommande = screen.getByText("Recommandé");
-    expect(recommande).toBeInTheDocument();
-    // P4-178 — repli AA : la pastille passe par StatusPill accent, le texte reste `text-foreground`.
-    expect(recommande).not.toHaveClass("text-accent");
+    expect(screen.getByText("Recommandé")).not.toHaveClass("text-accent");
     expect(screen.getByText("correspondance approximative")).toBeInTheDocument();
 
     fireEvent.click(first);
-    expect(onLocate).toHaveBeenCalledWith({ address: "12 Rue du Sport, 69100 Villeurbanne", latitude: "45.766", longitude: "4.88" });
+    expect(onPick).toHaveBeenCalledWith(CANDIDATES[0]);
   });
 
   it("aucun candidat : message lisible, aucune écriture", async () => {
     vi.mocked(geocodeApi.geocodeAddress).mockResolvedValue([]);
-    const onLocate = vi.fn();
-    renderWithProviders(<VenueGeocodeField venue={{ id: "v1", address: null, latitude: null, longitude: null }} onLocate={onLocate} />);
+    const onPick = vi.fn();
+    renderWithProviders(<AddressGeocodeField {...baseProps} address={null} located={false} onPick={onPick} />);
 
     fireEvent.change(screen.getByRole("textbox", { name: "Adresse" }), { target: { value: "zzzzzz" } });
     fireEvent.click(screen.getByRole("button", { name: "Localiser" }));
 
     expect(await screen.findByText(/Aucune adresse trouvée/)).toBeInTheDocument();
-    expect(onLocate).not.toHaveBeenCalled();
+    expect(onPick).not.toHaveBeenCalled();
   });
 
   it("service indisponible : une alerte lisible, aucune écriture", async () => {
     vi.mocked(geocodeApi.geocodeAddress).mockRejectedValue(new Error("502"));
-    const onLocate = vi.fn();
-    renderWithProviders(<VenueGeocodeField venue={{ id: "v1", address: null, latitude: null, longitude: null }} onLocate={onLocate} />);
+    const onPick = vi.fn();
+    renderWithProviders(<AddressGeocodeField {...baseProps} address={null} located={false} onPick={onPick} />);
 
     fireEvent.change(screen.getByRole("textbox", { name: "Adresse" }), { target: { value: "12 rue du sport" } });
     fireEvent.click(screen.getByRole("button", { name: "Localiser" }));
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(onLocate).not.toHaveBeenCalled();
+    expect(onPick).not.toHaveBeenCalled();
   });
 
   it("le bouton reste inerte sous 3 caractères (pas d'appel BAN pour rien)", () => {
-    renderWithProviders(<VenueGeocodeField venue={{ id: "v1", address: null, latitude: null, longitude: null }} onLocate={vi.fn()} />);
+    renderWithProviders(<AddressGeocodeField {...baseProps} address={null} located={false} onPick={vi.fn()} />);
     fireEvent.change(screen.getByRole("textbox", { name: "Adresse" }), { target: { value: "12" } });
     expect(screen.getByRole("button", { name: "Localiser" })).toBeDisabled();
   });
 
-  it("gymnase FFBB déjà géolocalisé : « Localisé », aucun géocodage lancé, coordonnées intactes", () => {
-    const onLocate = vi.fn();
-    renderWithProviders(<VenueGeocodeField venue={{ id: "v1", address: null, latitude: "45.75", longitude: "4.85" }} onLocate={onLocate} />);
+  it("déjà localisé : « {statusWord} », aucun champ ouvert, aucun géocodage au montage", () => {
+    const onPick = vi.fn();
+    renderWithProviders(<AddressGeocodeField {...baseProps} address="5 rue X" located={true} onPick={onPick} />);
 
     expect(screen.getByText("Localisé")).toBeInTheDocument();
-    // Pas de champ ouvert par défaut → rien n'est réécrit ; le géocodage n'est jamais appelé au montage.
     expect(screen.queryByRole("textbox", { name: "Adresse" })).toBeNull();
     expect(vi.mocked(geocodeApi.geocodeAddress)).not.toHaveBeenCalled();
-    expect(onLocate).not.toHaveBeenCalled();
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it("non localisé avec `unlocatedStatus` : le statut permanent s'affiche + le champ pré-rempli", () => {
+    renderWithProviders(<AddressGeocodeField {...baseProps} address="5 rue X" located={false} onPick={vi.fn()} unlocatedStatus="Siège non localisé — …" />);
+    expect(screen.getByText(/Siège non localisé/)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Adresse" })).toHaveValue("5 rue X");
   });
 });

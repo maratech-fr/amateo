@@ -1,4 +1,4 @@
-import { Check, Hourglass, type LucideIcon, Send } from "lucide-react";
+import { Check, ClipboardList, Dumbbell, Hourglass, type LucideIcon, Send } from "lucide-react";
 
 import type { Conflict, ConflictResolutionStatus } from "../api";
 
@@ -23,7 +23,25 @@ export const RESOLUTION_LABEL: Record<ConflictResolutionStatus, { label: string;
   DEROGATION_REQUESTED: { label: "Dérogation demandée", variant: "warning", icon: Send },
   RESOLVED_INTERNALLY: { label: "Réglé en interne", variant: "accent", icon: Check },
   NO_SOLUTION_YET: { label: "Sans solution pour l'instant", variant: "neutral", icon: Hourglass },
+  // Réservés aux conflits où la personne JOUE (proposés seulement dans ce cas).
+  COACHES_NOT_PLAYING: { label: "Coache, ne joue pas", variant: "accent", icon: ClipboardList },
+  PLAYS_NOT_COACHING: { label: "Joue, ne coache pas", variant: "accent", icon: Dumbbell },
 };
+
+/** Un côté servi porte-t-il le rôle PLAYER ? (lecture des rôles servis, jamais de redérivation).
+ *  Le côté VENUE_UNAVAILABLE ne porte aucun rôle — le garde `"role" in side` l'écarte. */
+const conflictHasPlayerSide = (conflict: Conflict): boolean =>
+  [conflict.left, conflict.right, conflict.fixture, conflict.training].some(
+    (side) => null != side && "role" in side && "PLAYER" === side.role,
+  );
+
+/**
+ * Les statuts PROPOSÉS pour ce conflit : les 3 de base, PLUS les 2 « joue/coache » quand la
+ * personne joue un côté servi. Le backend refuse ces 2 hors ce cas (422) — on masque le geste
+ * voué au refus (🔴 `.claude/rules/frontend.md`), on ne re-décide rien.
+ */
+export const resolutionChoicesFor = (conflict: Conflict): ConflictResolutionStatus[] =>
+  conflictHasPlayerSide(conflict) ? [...RESOLUTION_STATUSES, "COACHES_NOT_PLAYING", "PLAYS_NOT_COACHING"] : RESOLUTION_STATUSES;
 
 /**
  * Un conflit est « à traiter » quand il n'a AUCUNE résolution. Le backend sert
@@ -40,9 +58,11 @@ export const openConflictCount = (conflicts: Conflict[] | undefined): number => 
  * résolution) + les trois statuts de `ConflictResolutionStatus`. « à traiter » n'est
  * PAS un statut serveur, d'où la clé distincte `"a_traiter"`.
  */
-export type TreatmentKey = "a_traiter" | ConflictResolutionStatus;
+export type TreatmentKey = "a_traiter" | "DEROGATION_REQUESTED" | "RESOLVED_INTERNALLY" | "NO_SOLUTION_YET";
 
-/** Les 4 clés, dans l'ordre des puces (« à traiter » en tête). */
+/** Les 4 clés, dans l'ordre des puces (« à traiter » en tête). Volontairement PAS toute la
+ *  liste `ConflictResolutionStatus` : les 2 statuts « joue/coache » n'ont pas de chip propre —
+ *  ils se rangent sous « Réglé en interne » (voir `treatmentOf`). */
 export const TREATMENT_KEYS: TreatmentKey[] = ["a_traiter", "DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET"];
 
 /**
@@ -63,8 +83,18 @@ const SLUG_TO_TREATMENT: Record<string, TreatmentKey> = Object.fromEntries(
 /** La clé d'un slug URL connu, sinon `null` (slug inconnu ignoré au décodage). */
 export const treatmentFromSlug = (slug: string): TreatmentKey | null => SLUG_TO_TREATMENT[slug] ?? null;
 
-/** Le traitement d'un conflit : son statut de résolution, sinon « à traiter ». */
-export const treatmentOf = (conflict: Conflict): TreatmentKey => conflict.resolution?.status ?? "a_traiter";
+/** Le traitement d'un conflit : sa clé de FILTRE. Les statuts « joue/coache » n'ont pas de chip
+ *  propre et se rangent sous « Réglé en interne » ; sinon le statut, sinon « à traiter ». */
+export const treatmentOf = (conflict: Conflict): TreatmentKey => {
+  const status = conflict.resolution?.status;
+  if (undefined === status) {
+    return "a_traiter";
+  }
+  if ("COACHES_NOT_PLAYING" === status || "PLAYS_NOT_COACHING" === status) {
+    return "RESOLVED_INTERNALLY";
+  }
+  return status;
+};
 
 /** Compte par clé de traitement (les 4) sur un lot — compteurs FIXES saison (doctrine
  *  de la page : un filtre change l'affichage, jamais les compteurs). */
