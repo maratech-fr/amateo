@@ -1,12 +1,17 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-19 (`documentation-update`, PR F « retours de la passe de tests du
-18-19/09 »). Confronté au code cette passe : `OpponentDirectoryEntryRepository::upsert` (upsert
+Last verified @ 2026-09-19 (`documentation-update`, PR G « todo FBI unique »). Confronté au code
+cette passe : `FbiCorrection`/`FbiCorrectionLedger`/`FbiCorrectionController` (registre « à
+corriger dans FBI », §1) ; `Fixture::setStatus`/`fbiEcho` (mémo « FBI affiche … », §1) ;
+`EntryDeadlineOutlook::compute` (`fbiTodo` global, §4) ; `FbiEntryList`/`WeekCounters`/
+`CalendarPage` (écran « FBI — à faire », deep-link `?fbi=1`, §5) ; `FbiDeadlineCard` (carte cockpit
+rendue aussi hors fenêtre J-7 quand du FBI reste à faire, §4). Reste confronté à la passe
+précédente (2026-09-19, PR F) : `OpponentDirectoryEntryRepository::upsert` (upsert
 natif `ON CONFLICT`, §1) ; `OpponentRefreshController::step`/`failedSteps` (§1) ;
 `OpponentTravelResolver::resolve` (re-route d'une ligne MANUAL sans trajet depuis ses coordonnées
 épinglées, §1) ; `ConflictResolutionStatus` (`COACHES_NOT_PLAYING`/`PLAYS_NOT_COACHING`, §6) ;
 `MatchConflictDetector::accessWindowLostConflicts` (champ additif `windows`, §2). Reste confronté à
-la passe précédente (2026-09-18, D2/D3/FRT-32) : `FixtureStateProcessor::assertVenueAccessAllowed`
+la passe d'avant (2026-09-18, D2/D3/FRT-32) : `FixtureStateProcessor::assertVenueAccessAllowed`
 (D2, §5) ; `MatchConflictDetector::kickoffInsideLeagueWindow` +
 `matches/lib/envelope.ts::kickoffInsideLeagueWindow` (FRT-32, miroir déclaré, §5) ;
 `OpponentTravelProjection::roundTripByFixtureId` + `matches[].roundTripMinutes` (D3, §3). Reste
@@ -182,6 +187,36 @@ source répète ce libellé, la question ne revient pas) ; « Prendre le fichier
 confirmé du nouveau libellé, sinon vide `venueId` (« à rattacher »). Le geste vit dans la file de
 traitement de l'onglet Importer (§4), pas dans le rapport de dépôt.
 
+### Registre « à corriger dans FBI » (`FbiCorrection`, `FbiCorrectionLedger`)
+
+Angle INVERSE de l'écart de réconciliation (ci-dessus) : quand le gestionnaire tranche « garder
+l'appli » sur un champ divergent (date/heure/salle), c'est **FBI qui est en retard** — il faut le
+corriger à la main dans le portail fédéral. `FbiCorrection` (table tenant, RLS, une entrée par
+`(club, saison, rencontre, champ)`, unicité PARTIELLE sur les ouvertes seulement) dit ce qu'il faut
+**taper** dans FBI (`appValue`) en face de ce que FBI **affiche encore** (`fbiValue`), avec l'alias
+FBI confirmé du gymnase de l'appli quand connu (`venueFbiLabel`, premier `Venue.externalLabels`).
+Maison unique : `FbiCorrectionLedger` (`open`/`refreshSeen`/`closeBySource`/`closeManually`),
+injectée dans les DEUX foyers d'arbitrage — le moteur de réconciliation partagé
+(`FbiFixtureImporter`, canaux xlsx **et** API) et l'arbitrage hors dépôt
+(`ReviewFixtureDeviationController`). Un « garder l'appli » ouvre (ou re-date) une entrée OUVERTE ;
+« prendre le fichier » n'en ouvre **jamais** (l'appli s'aligne sur FBI, rien à reporter). Cycle
+d'une entrée : un dépôt qui montre toujours l'ancienne valeur ne recrée pas d'écart, il re-date
+« vu dans FBI » ; un dépôt qui montre la valeur appli la ferme (`closed_by=deposit`) ; un dépôt qui
+montre une TROISIÈME valeur la ferme ET rouvre un écart normal à arbitrer ; le gestionnaire peut
+aussi la cocher « Corrigé dans FBI » (`closed_by=manual`, réouvrable **< 24 h**, `POST
+…/{id}/reopen`, 409 au-delà ou sur une fermeture non manuelle). Une entrée FERMÉE reste en base
+(trace), jamais rendue par la liste — purgée avec la saison (`SeasonDataPurger::
+PURGED_BY_CLUB_SEASON`). **Registre à ZÉRO au départ** : les « garder l'appli » passés n'ont laissé
+aucune trace exploitable, il ne se peuple que par les arbitrages à VENIR (décision fermée,
+`etat-des-lieux.md` §2). API : `GET /api/fixtures/fbi-corrections` (membre, entrées ouvertes du
+club+saison) ; `POST …/{id}/close` (gestionnaire + saison écrivable) ; `POST …/{id}/reopen`.
+
+`Fixture.fbiEcho` (colonne JSON nullable) : mémo `{field, value, at}` posé quand un « prendre le
+fichier » sur l'HEURE rétrograde un domicile `SUBMITTED`/`VALIDATED` à `PLACED` (la coche FBI
+portait une mauvaise heure) — dit ce que FBI affiche encore sur la ligne « à saisir » de la liste
+(§5). Effacé dès que le statut repasse `SUBMITTED`/`VALIDATED` (`Fixture::setStatus`, maison
+unique).
+
 ## 2. Détecteur de conflits (`MatchConflictDetector`, service pur)
 
 Recalculé **à la volée** à chaque appel (`GET /api/fixtures/conflicts`, `FixtureConflictsController`,
@@ -333,11 +368,16 @@ via l'endpoint bulk `POST /api/competitions/entry-deadlines` (hors CRUD, managem
 toujours, l'effacement de sa propre valeur ne touche jamais le partagé. `CompetitionResource` sert
 `entryDeadline`/`effectiveEntryDeadline`/`deadlineSource` — la règle « club gagne » n'est jamais
 recalculée au front. `GET /api/matches/deadline-outlook` (ouvert au Membre, `REMINDER_WINDOW_DAYS =
-7`) sert les échéances dues sous J-7 + le compte de domiciles restant à saisir, et joint
-`guardianDelta` (réutilise `MatchModuleDeltaComputer` **sans stamper**) si une référence de visite
-existe déjà. La carte cockpit `FbiDeadlineCard` (`/`, sous `SeasonPlanBanner`) est muette hors
-fenêtre, fusionne le résumé du gardien dans la même carte (jamais un second bloc), reste affichée
-(ton warning) même dépassée.
+7`) sert les échéances dues sous J-7 (par compétition, fenêtre glissante) **et** `fbiTodo {toEnter,
+toCorrect}` — le compte GLOBAL « à faire dans FBI » toutes semaines confondues (à saisir =
+domiciles PLACED, à corriger = entrées OUVERTES du registre ci-dessus), pour que le cockpit ET la
+barre de compteurs (§5) n'aient jamais à charger les fixtures —, et joint `guardianDelta` (réutilise
+`MatchModuleDeltaComputer` **sans stamper**) si une référence de visite existe déjà. La carte
+cockpit `FbiDeadlineCard` (`/`, sous `SeasonPlanBanner`) fusionne le résumé du gardien dans la même
+carte (jamais un second bloc) et distingue trois régimes : une échéance en fenêtre J-7 → ton accent
+(warning si dépassée) avec la ligne globale au-dessus des échéances ; hors fenêtre mais `fbiTodo` >
+0 → ton NEUTRE, la seule ligne globale (« N FBI à faire, dont M à corriger ») ; rien à faire ET
+aucune fenêtre → muette. Lien unique « Ouvrir la liste FBI » → `/matchs?fbi=1`.
 
 ## 5. Écran Calendrier (`/matchs`, route index)
 
@@ -406,9 +446,21 @@ Importer garde sa maison propre (§6).
   de session non persistée) est gardé et l'adresse se re-synchronise depuis lui. Un lien qui
   allume ses propres filtres (« Voir la semaine » depuis Conflits, « Placer » depuis Importer)
   construit toujours une query qui porte une clé dédiée, donc reste dans le cas qui fait foi.
-- **`WeekCounters`** (barre au-dessus de la grille) : trois compteurs purs — « N à placer » · « N
-  conflits → » (lien vers Conflits) · « N à saisir dans FBI » (ouvre la modale `FbiEntryList`,
-  groupée par équipe, filtrable équipe/date, « Tout marquer saisi » borné à l'affiché).
+- **`WeekCounters`** (barre au-dessus de la grille) : deux compteurs BORNÉS à la semaine affichée
+  dans un `role="group"` « Semaine affichée » (« N à placer » · « N conflits → », lien vers
+  Conflits) ; le troisième — **« N FBI à faire »** — est GLOBAL (toutes semaines), vit HORS du
+  groupe (frère `ml-auto`) pour ne jamais laisser croire qu'il compte la seule semaine affichée, et
+  ouvre l'écran **« FBI — à faire »** (deep-link `?fbi=1`, ouvrable aussi depuis le cockpit,
+  `lib/urlState.ts` `decodeFbiParam`/`applyFbiToParams`). `FbiEntryList` (maison unique de l'écran) :
+  deux sections empilées, **« À corriger dans FBI » en premier** (l'appli fait foi, une ligne par
+  match groupée par rencontre, gras = valeur Amateo à taper, FBI en sourdine jamais barré, « vu
+  dans FBI le … » tant que rien n'a bougé) puis **« À saisir »** (domiciles PLACED, mention « FBI
+  affiche … » depuis `Fixture.fbiEcho` sur une ligne contredite) ; une famille vide est masquée, les
+  deux vides → « Rien à faire dans FBI. ». Cocher « Corrigé dans FBI » (`POST …/close`, sans
+  confirmation) ou « saisi » grise la ligne et offre « Annuler » (`POST …/reopen`) jusqu'à la
+  fermeture de la modale (`Set`/`Map` local, remis à zéro à l'unmount — patron d'undo sans toast) ;
+  « Tout marquer saisi » reste borné aux lignes « à saisir » affichées. Filtre Équipe conservé, le
+  filtre Date a disparu (la liste est globale, triée par date de match).
 
 ## 6. Écran Conflits (`/matchs/conflits`)
 
@@ -590,6 +642,9 @@ module). Contrats cross-stack (groupe `contract`) : `MatchPlacementContractSchem
 `FbiFixtureImporterTest`, `FfbbRencontresApiTest`, `FixtureReviewApiTest` + features Behat dédiées
 (`un-domicile-importe-retrouve-son-gymnase`, `le-gymnase-du-fichier-localise-l-adversaire`,
 `les-gymnases-d-un-adversaire-se-partagent-en-suggestions`, `un-conflit-traite-reste-visible-mais-decompte`,
-`une-rencontre-importee-dit-si-elle-est-traitee`). Front : suites Vitest sous
+`une-rencontre-importee-dit-si-elle-est-traitee`). Registre « à corriger dans FBI » :
+`FbiCorrectionApiTest` (lecture/close/reopen, 404 cross-club, 403 membre sur close),
+`MatchTenantIsolationTest` (étendu) + feature Behat `ce-que-fbi-doit-refleter.feature`
+(`FbiCorrectionContext`, suite `fbi-a-corriger`). Front : suites Vitest sous
 `frontend/src/features/matches/` (`lib/*.test.ts` pour chaque dérivation pure, `*.test.tsx` par
 écran) + e2e `frontend/tests/e2e/matches*.spec.ts`.

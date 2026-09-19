@@ -8,10 +8,12 @@ use App\Clock\DevClockStore;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\FbiCorrection;
+use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\FbiCorrectionCloseSource;
 use App\Enum\FbiCorrectionField;
+use App\Enum\FixtureHomeAway;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -131,6 +133,34 @@ final class FbiCorrectionApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(409);
     }
 
+    public function testDeletingAFixtureRemovesItsCorrectionsAndDecrementsToCorrect(): void
+    {
+        [$club, $user, $season] = $this->createClubUser('fdel');
+        $fixture = $this->createFixture($club, $season);
+        $this->seedOpenForFixture($club, $season, $fixture->getId());
+
+        // Avant : le registre porte l'entrée, `fbiTodo.toCorrect` = 1.
+        $this->client->request('GET', '/api/matches/deadline-outlook', [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(1, $this->responseData()['fbiTodo']['toCorrect']);
+
+        // Suppression de la rencontre via l'API : ses entrées « à corriger » partent avec elle.
+        $this->client->request('DELETE', '/api/fixtures/' . $fixture->getId(), [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(204);
+
+        // Après : plus rien dans le registre, `fbiTodo.toCorrect` décrémenté, aucune ligne
+        // orpheline en base (suppression PURE, pas une fermeture).
+        $this->client->request('GET', '/api/fixtures/fbi-corrections', [], [], $this->authHeaders($user));
+        self::assertSame([], $this->responseData()['corrections'] ?? ['sentinel']);
+        $this->client->request('GET', '/api/matches/deadline-outlook', [], [], $this->authHeaders($user));
+        self::assertSame(0, $this->responseData()['fbiTodo']['toCorrect']);
+
+        $this->scopeGucToClub($club->getId());
+        $count = self::getContainer()->get(EntityManagerInterface::class)->getConnection()
+            ->fetchOne('SELECT count(*) FROM fbi_correction WHERE fixture_id = ?', [$fixture->getId()]);
+        self::assertSame(0, (int) $count, 'aucune entrée n\'orpheline la rencontre supprimée');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -160,6 +190,37 @@ final class FbiCorrectionApiTest extends WebTestCase
         $this->em->flush();
 
         return $entry;
+    }
+
+    private function createFixture(Club $club, Season $season): Fixture
+    {
+        $this->scopeGucToClub($club->getId());
+        $fixture = new Fixture;
+        $fixture->setClubId($club->getId());
+        $fixture->setSeasonId($season->getId());
+        $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
+        $fixture->setHomeAway(FixtureHomeAway::HOME);
+        $fixture->setOpponentLabel('Adversaire');
+        $this->em->persist($fixture);
+        $this->em->flush();
+
+        return $fixture;
+    }
+
+    private function seedOpenForFixture(Club $club, Season $season, string $fixtureId): void
+    {
+        $this->scopeGucToClub($club->getId());
+        $entry = (new FbiCorrection)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setFixtureId($fixtureId)
+            ->setField(FbiCorrectionField::KICKOFF)
+            ->setAppValue('15:30')
+            ->setFbiValue('17:00')
+            ->setDecidedBy('44444444-4444-4444-8444-444444444444');
+        $this->em->persist($entry);
+        $this->em->flush();
     }
 
     /** Seeds a CLOSED entry and returns its id. */

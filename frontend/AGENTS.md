@@ -443,9 +443,11 @@ product rules — reuse them instead of rolling your own:
   itself, and deliberately **no `className` prop** (same rationale as `modal`).
   **Second consumer RETIRED (PR 3b, 2026-09-16)**: `features/matches` used `step-rail` from RMM-1
   PR3 through the merged « Calendrier » screen — the 5-derived-step rail (`MatchesPage.tsx`,
-  deleted) is gone, replaced by the `WeekCounters` bar (three pure counters, `lib/loopSteps.ts`
-  `deriveWeekCounters` — no `steps`/`done` array, no `step-rail` import). The wizard is `step-rail`'s
-  **only** consumer today; don't assume it still tracks matches-module progression.
+  deleted) is gone, replaced by the `WeekCounters` bar (two pure counters bound to the displayed
+  week, `lib/loopSteps.ts` `deriveWeekCounters` — no `steps`/`done` array, no `step-rail` import —
+  plus a third, GLOBAL "N FBI à faire" counter fed by the backend's `fbiTodo`, deliberately outside
+  the week-scoped group, todo-FBI lot 2026-09-19). The wizard is `step-rail`'s **only** consumer
+  today; don't assume it still tracks matches-module progression.
 
 ### `shared/lib/readState.ts` — the anti-"credible emptiness" rule
 
@@ -476,6 +478,17 @@ accordion: `PlacementPanel` (D2, `features/matches`) derives its own three-query
 (`CalendarPage`) and suspends only its own placement gesture (`LoadErrorHint` + retry on
 `failed`, `Spinner` on `loading`) — the rest of the Calendrier screen (filters, other gestures,
 the radar) stays live regardless.
+
+### A "done" gesture, undoable for the life of the modal — no toast
+
+Pattern born with the "FBI — à faire" screen (`features/matches/FbiEntryList.tsx`, todo-FBI lot,
+2026-09-19). Ticking "Corrigé dans FBI" or "saisi" fires the mutation immediately (server call,
+same as any other action) **and** greys the row + offers "Annuler" for as long as the modal stays
+open — a plain `Set`/`Map` of ids kept in **local component state**, reset on unmount. It is
+presentation only (which rows read as done, which show the undo button): the server call already
+happened, there is no queued/delayed mutation and no toast-with-action. Closing the modal *is* the
+confirmation, not a timer. Reach for this instead of a toast-undo when the "session" the undo must
+survive is naturally bounded by a modal's lifetime.
 
 ---
 

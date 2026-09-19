@@ -79,6 +79,17 @@ final class FbiCorrectionLedger
      * (`fbiValue` = ce que FBI affiche encore). Upsert : une entrée OUVERTE existante est
      * re-datée au lieu d'être dupliquée. `lastSeenInFbiAt` est posé « maintenant » — cet
      * écart vient d'être constaté dans FBI.
+     *
+     * ⚠ INVARIANT d'appel : AU PLUS UN `open()` par (rencontre, champ) et par cycle de
+     * flush. Le `findOpen` ci-dessous interroge la BASE ; deux `open()` avant flush pour
+     * le même couple ne se verraient pas mutuellement → deux INSERT → violation de l'index
+     * partiel unique (`WHERE closed_at IS NULL`). Les appelants respectent l'invariant par
+     * leur dé-duplication EN AMONT : l'import xlsx traite chaque rencontre une seule fois
+     * par dépôt (`FbiFixtureImporter::import`, garde `$seenInFile` sur `team|ref`), le canal
+     * API de même (`FfbbRencontreReconciler`, garde `$consumed` par fixtureId). Un futur
+     * appelant qui bouclerait sur le même couple sans dédup DOIT flusher entre deux `open()`
+     * — sinon l'index partiel mord (gardé : {@see FbiFixtureImporterTest} « un doublon de
+     * ligne dans un même dépôt n'ouvre qu'une entrée »).
      */
     public function open(Fixture $fixture, FbiCorrectionField $field, ?string $appValue, ?string $fbiValue, DateTimeImmutable $now): FbiCorrection
     {
@@ -118,6 +129,20 @@ final class FbiCorrectionLedger
     public function closeManually(FbiCorrection $entry, DateTimeImmutable $now): void
     {
         $this->close($entry, FbiCorrectionCloseSource::MANUAL, $now);
+    }
+
+    /**
+     * Une rencontre supprimée n'a plus rien à corriger : on RETIRE toutes ses entrées
+     * (ouvertes ET fermées — `fbi_correction` n'a aucune FK sur `fixture_id`, sinon
+     * elles orphelineraient en silence et gonfleraient `fbiTodo.toCorrect` avec des
+     * lignes invisibles de la liste). Suppression PURE (pas une fermeture) : l'écart
+     * n'existe plus. Le flush est fait par l'appelant (processor de suppression).
+     */
+    public function removeForFixture(Fixture $fixture): void
+    {
+        foreach ($this->repository->findBy(['fixtureId' => $fixture->getId()]) as $entry) {
+            $this->entityManager->remove($entry);
+        }
     }
 
     private function close(FbiCorrection $entry, FbiCorrectionCloseSource $source, DateTimeImmutable $now): void

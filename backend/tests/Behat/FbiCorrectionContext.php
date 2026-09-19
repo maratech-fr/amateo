@@ -165,7 +165,7 @@ final class FbiCorrectionContext extends BaseContext
         }
     }
 
-    #[Then('une entrée « à corriger dans FBI » est ouverte : taper 15:30, FBI affiche 17:00')]
+    #[Then('une entrée « à corriger dans FBI » est ouverte, à taper 15h30 alors que FBI affiche 17h00')]
     public function uneEntreeEstOuverte(): void
     {
         $entry = $this->onlyCorrection();

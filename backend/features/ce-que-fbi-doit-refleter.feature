@@ -12,7 +12,7 @@ Fonctionnalité: Ce que FBI doit encore refléter
     Et un accès match le samedi sur « GYM BEHAT »
     Quand je dépose puis place un domicile au gymnase « GYM BEHAT » à 15h30
     Et FBI affiche 17h00 et je garde l'appli
-    Alors une entrée « à corriger dans FBI » est ouverte : taper 15:30, FBI affiche 17:00
+    Alors une entrée « à corriger dans FBI » est ouverte, à taper 15h30 alors que FBI affiche 17h00
     Quand FBI affiche toujours 17h00 au dépôt suivant
     Alors aucun écart n'est à traiter et l'entrée dit « vu dans FBI »
     Quand FBI est corrigé et affiche de nouveau 15h30
@@ -24,6 +24,6 @@ Fonctionnalité: Ce que FBI doit encore refléter
     Et un accès match le samedi sur « GYM BEHAT »
     Quand je dépose puis place un domicile au gymnase « GYM BEHAT » à 15h30
     Et FBI affiche 17h00 et je garde l'appli
-    Alors une entrée « à corriger dans FBI » est ouverte : taper 15:30, FBI affiche 17:00
+    Alors une entrée « à corriger dans FBI » est ouverte, à taper 15h30 alors que FBI affiche 17h00
     Quand je marque la correction faite dans FBI
     Alors le registre « à corriger dans FBI » est vide

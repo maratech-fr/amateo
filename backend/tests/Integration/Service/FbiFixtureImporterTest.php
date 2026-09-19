@@ -729,6 +729,31 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertNull($this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RK04'])?->getFbiEcho());
     }
 
+    /**
+     * Invariant d'appel du ledger (index partiel unique) : une rencontre est traitée UNE
+     * fois par dépôt (garde $seenInFile sur team|ref) → AU PLUS un `open()` par (rencontre,
+     * champ). Une ligne DUPLIQUÉE dans le même fichier n'ouvre donc qu'UNE entrée, sans
+     * violer l'index `WHERE closed_at IS NULL` (deux INSERT non flushés ne se voient pas).
+     */
+    public function testADuplicateRowInOneDepositOpensOnlyOneCorrectionEntry(): void
+    {
+        $this->importMapped([['D2', 'RDUP', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->place('RDUP');
+        $id = $this->fixtureId('RDUP');
+
+        $this->importMapped(
+            [
+                ['D2', 'RDUP', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', ''],
+                ['D2', 'RDUP', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', ''],
+            ],
+            null,
+            [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'keep_app']],
+        );
+        $this->em->clear();
+
+        self::assertCount(1, $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $id]));
+    }
+
     // ── Fermeture / idempotence du registre (dépôt) ─────────────────────────
 
     /** (a) Un re-dépôt de la MÊME valeur FBI ne re-crée pas d'écart — juste « vu dans FBI ». */
