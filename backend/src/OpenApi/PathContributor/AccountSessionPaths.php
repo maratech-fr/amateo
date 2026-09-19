@@ -311,6 +311,7 @@ final readonly class AccountSessionPaths implements CustomPathContributor
                     'properties' => [
                         'expiresIn' => ['type' => 'integer', 'description' => 'Cookie/JWT TTL in seconds'],
                         'topicTemplate' => ['type' => 'string', 'description' => 'URI template club:{clubId}:schedule:{id} — subscribe to it as-is'],
+                        'travelTopic' => ['type' => 'string', 'description' => 'Fixed topic club:{clubId}:travel for the async travel-computation progress — subscribe to it as-is'],
                     ],
                 ]),
                 '400' => new Response('No club resolved for the authenticated user'),

@@ -77,7 +77,11 @@ final class OpponentRefreshApiTest extends WebTestCase
         self::assertSame(['codes', 'autoLocated', 'travel', 'failedSteps'], array_keys($data));
         self::assertSame(['resolved', 'unresolved', 'skipped', 'stamped'], array_keys((array) $data['codes']));
         self::assertSame(['located', 'ambiguous', 'unmatched', 'skipped'], array_keys((array) $data['autoLocated']));
-        self::assertSame(['resolved', 'unresolved', 'skippedManual'], array_keys((array) $data['travel']));
+        // C6 — la 3ᵉ passe (trajets) est DISPATCHÉE au worker : la réponse dit seulement
+        // qu'un calcul est en file et combien d'adversaires distincts sont concernés.
+        self::assertSame(['queued', 'pending'], array_keys((array) $data['travel']));
+        self::assertTrue($data['travel']['queued']);
+        self::assertSame(1, $data['travel']['pending'], 'un adversaire distinct à calculer');
         self::assertSame([], $data['failedSteps'], 'aucune passe en échec en régime nominal');
     }
 

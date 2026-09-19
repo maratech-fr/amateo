@@ -97,9 +97,14 @@ final class OpponentTravelResolver
      * `unresolved`). `$budgetSeconds` null (route dédiée `/travel/resolve`) = budget de
      * lot par défaut, comportement inchangé.
      *
+     * `$onProgress`, si fourni, est appelé avec (cibles traitées, total) au fil du lot
+     * (C6 — le worker asynchrone publie l'avancement).
+     *
+     * @param (callable(int, int): void)|null $onProgress
+     *
      * @return array{resolved: int, unresolved: list<string>, skippedManual: int}
      */
-    public function resolve(string $clubId, string $seasonId, ?float $budgetSeconds = null): array
+    public function resolve(string $clubId, string $seasonId, ?float $budgetSeconds = null, ?callable $onProgress = null): array
     {
         $club = $this->clubRepository->find($clubId);
         $clubLat = $club instanceof Club ? $club->getLatitude() : null;
@@ -215,11 +220,24 @@ final class OpponentTravelResolver
             ];
         }
 
+        // C6 — progression : les hits cache sont déjà « faits » (offset), le lot IGN ajoute
+        // ses jobs traités. Le total est l'ensemble des cibles (cache + réseau).
+        $totalTargets = \count($targets);
+        $cacheHitCount = \count($cachedMinutes);
+        if (null !== $onProgress && $totalTargets > 0) {
+            $onProgress($cacheHitCount, $totalTargets);
+        }
+
         $batch = $this->routingClient->travelMinutesBatch(
             $jobs,
-            // BCK-32 — jamais plus que le budget de lot ; l'orchestrateur passe le RESTANT
-            // de son budget de mur, borné par BATCH_BUDGET_SECONDS.
-            budgetSeconds: null === $budgetSeconds ? null : min($budgetSeconds, IgnRoutingClient::BATCH_BUDGET_SECONDS),
+            // C6 — le budget de mur est celui que l'appelant passe (null ⇒ défaut du lot IGN,
+            // 30 s). Depuis C6 `resolve()` est joué par le WORKER (rail async, pas de plafond
+            // HTTP) qui passe son budget large ; l'ancien clamp à BATCH_BUDGET_SECONDS, qui
+            // protégeait le plafond synchrone, n'a plus lieu d'être.
+            budgetSeconds: $budgetSeconds,
+            onProgress: null === $onProgress ? null : static function (int $done) use ($onProgress, $cacheHitCount, $totalTargets): void {
+                $onProgress($cacheHitCount + $done, $totalTargets);
+            },
         );
         // Un hit cache est résolu (jamais budget_exceeded) ; on fusionne avec les résultats IGN.
         $minutes = $cachedMinutes + $batch['minutes'];

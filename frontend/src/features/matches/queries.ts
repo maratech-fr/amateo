@@ -435,13 +435,15 @@ export function useUpdateOpponents(): UpdateOpponentsController {
         } else {
           const codes = result.codes.resolved;
           const located = result.autoLocated.located;
-          const trajets = result.travel.resolved;
-          const failed = result.codes.unresolved.length + result.travel.unresolved.length;
+          // C6 — les trajets partent au worker : le toast dit qu'un calcul est LANCÉ (la
+          // progression et les trajets arrivent ensuite par Mercure, `travelStatus` par ligne).
+          const trajets = result.travel.pending;
+          const failed = result.codes.unresolved.length;
           toast.success(
             [
-              `${codes} code${codes > 1 ? "s" : ""} retrouvé${codes > 1 ? "s" : ""}`,
+              `${codes} code${codes > 1 ? "s" : ""} retrouvé${codes > 1 ? "s" : ""}${0 < failed ? ` (${failed} en échec)` : ""}`,
               `${located} gymnase${located > 1 ? "s" : ""} localisé${located > 1 ? "s" : ""}`,
-              `${trajets} trajet${trajets > 1 ? "s" : ""} calculé${trajets > 1 ? "s" : ""}${0 < failed ? ` (${failed} en échec)` : ""}`,
+              `calcul de ${trajets} trajet${trajets > 1 ? "s" : ""} lancé`,
             ].join(" · "),
           );
         }

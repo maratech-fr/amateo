@@ -12,6 +12,7 @@ use App\Entity\Venue;
 use App\Entity\VenueTravelTime;
 use App\Enum\SeasonStatus;
 use App\Enum\VenueTravelTimeSource;
+use App\Service\Geo\VenueTravelTimeAutofillService;
 use App\Service\SeasonResolver;
 use App\Tests\Double\IgnRoutingHttpClientStub;
 use App\Tests\TenantGucTrait;
@@ -43,7 +44,7 @@ final class VenueTravelTimeAutofillTest extends WebTestCase
 
     public function testAutofillFillsAutoAndNullColumnsAndNeverTouchesManual(): void
     {
-        [$club, $user, $season] = $this->createClubUser('a');
+        [$club, , $season] = $this->createClubUser('a');
         $a = $this->geoVenue($club, $season, 'A', '45.750000', '4.850000');
         $b = $this->geoVenue($club, $season, 'B', '45.760000', '4.860000');
         $c = $this->geoVenue($club, $season, 'C', '45.770000', '4.870000');
@@ -58,9 +59,10 @@ final class VenueTravelTimeAutofillTest extends WebTestCase
         $this->em->flush();
         $this->em->clear();
 
-        $this->client->request('POST', '/api/venue-travel-times/autofill', [], [], $this->authHeaders($user));
-        self::assertResponseIsSuccessful();
-        $result = $this->responseData();
+        // C6 — l'endpoint DISPATCHE désormais le calcul au worker : on exerce le SERVICE
+        // (ce que le worker appelle) directement, avec l'IGN stubbé du conteneur de test.
+        $this->scopeGucToClub($club->getId());
+        $result = self::getContainer()->get(VenueTravelTimeAutofillService::class)->autofill($club->getId(), $season->getId());
 
         self::assertSame([], $result['unresolved'], 'trois gymnases géolocalisés : aucune paire irrésolue');
         self::assertSame(3, $result['filled'], 'A–B (walking), A–C, B–C reçoivent au moins une valeur AUTO');
@@ -82,18 +84,31 @@ final class VenueTravelTimeAutofillTest extends WebTestCase
         self::assertSame(VenueTravelTimeSource::AUTO, $ac->getWalkingSource());
     }
 
+    public function testTheEndpointQueuesTheComputationInsteadOfRunningItInline(): void
+    {
+        [$club, $user, $season] = $this->createClubUser('queued');
+        $this->geoVenue($club, $season, 'A', '45.750000', '4.850000');
+        $this->geoVenue($club, $season, 'B', '45.760000', '4.860000');
+
+        // C6 — la réponse dit seulement que le calcul est EN FILE (le worker le joue) ;
+        // aucune valeur n'est calculée en ligne (rafale IGN pacée > plafond HTTP).
+        $this->client->request('POST', '/api/venue-travel-times/autofill', [], [], $this->authHeaders($user));
+        self::assertResponseIsSuccessful();
+        self::assertTrue($this->responseData()['queued'] ?? false, 'le calcul est mis en file, jamais joué en ligne');
+    }
+
     public function testMissingGeoAndRoutingFailureAreUnresolvedOthersFilled(): void
     {
-        [$club, $user, $season] = $this->createClubUser('b');
+        [$club, , $season] = $this->createClubUser('b');
         $a = $this->geoVenue($club, $season, 'A', '45.750000', '4.850000');
         $b = $this->geoVenue($club, $season, 'B', '45.760000', '4.860000');
         $noGeo = $this->geoVenue($club, $season, 'NoGeo', null, null);
         // Un gymnase dont les coordonnées font échouer l'itinéraire dans le stub.
         $poison = $this->geoVenue($club, $season, 'Poison', IgnRoutingHttpClientStub::POISON_COORD, IgnRoutingHttpClientStub::POISON_COORD);
 
-        $this->client->request('POST', '/api/venue-travel-times/autofill', [], [], $this->authHeaders($user));
-        self::assertResponseIsSuccessful();
-        $result = $this->responseData();
+        // C6 — l'endpoint dispatche au worker ; on exerce le SERVICE directement (IGN stubbé).
+        $this->scopeGucToClub($club->getId());
+        $result = self::getContainer()->get(VenueTravelTimeAutofillService::class)->autofill($club->getId(), $season->getId());
 
         self::assertSame(1, $result['filled'], 'seule la paire A–B (les deux géolocalisés, routables) est remplie');
 

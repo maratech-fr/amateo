@@ -11,6 +11,8 @@ use App\Entity\OpponentVenueSuggestion;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\OpponentLocationPrecision;
+use App\Enum\TravelComputeScope;
+use App\Message\ComputeTravelTimesMessage;
 use App\Repository\ClubRepository;
 use App\Repository\FixtureRepository;
 use App\Repository\OpponentDirectoryEntryRepository;
@@ -27,6 +29,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
 
@@ -68,6 +71,7 @@ final class OpponentTravelController extends AbstractController
         private readonly RateLimiterFactory $opponentTravelResolveLimiter,
         private readonly RateLimiterFactory $opponentTravelManualLimiter,
         private readonly TravelComputeLock $travelComputeLock,
+        private readonly MessageBusInterface $messageBus,
     ) {}
 
     #[Route('/api/opponents/travel', name: 'api_opponents_travel_list', methods: ['GET'])]
@@ -217,7 +221,12 @@ final class OpponentTravelController extends AbstractController
             return $this->json(['error' => 'Trop de calculs de trajet — réessayez plus tard.'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
-        return $this->json($this->resolver->resolve($clubId, $season->getId()));
+        // C6 — le calcul quitte le rail synchrone (rafale IGN pacée > plafond HTTP) : on le
+        // DISPATCHE au worker (`club:{clubId}:travel` pousse la progression). `resolve()` ne
+        // route déjà QUE les trajets manquants (C5), donc « Réessayer les manquants » = ce POST.
+        $this->messageBus->dispatch(new ComputeTravelTimesMessage($clubId, $season->getId(), TravelComputeScope::OPPONENTS));
+
+        return $this->json(['queued' => true]);
     }
 
     /**

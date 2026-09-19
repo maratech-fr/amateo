@@ -103,19 +103,25 @@ final class IgnRoutingClient
      * one-per-second quota makes concurrency counter-productive (it only earns 429s),
      * so the lot is single-threaded and paced.
      *
+     * $onProgress, si fourni, est appelé APRÈS chaque job traité avec (jobs traités,
+     * total) — le worker asynchrone (C6) s'en sert pour publier l'avancement.
+     *
      * @param list<array{key: string, profile: string, startLat: float, startLon: float, endLat: float, endLon: float}> $jobs
+     * @param (callable(int, int): void)|null                                                                           $onProgress
      *
      * @return array{minutes: array<string, int|null>, budgetExceededKeys: list<string>} minutes keyed by the job's `key` (null = routing failure); keys never attempted because the budget ran out
      */
-    public function travelMinutesBatch(array $jobs, int $concurrency = 8, ?float $budgetSeconds = null): array
+    public function travelMinutesBatch(array $jobs, int $concurrency = 8, ?float $budgetSeconds = null, ?callable $onProgress = null): array
     {
         unset($concurrency); // serial + paced; kept only for API stability (see docblock).
         $budgetSeconds ??= self::BATCH_BUDGET_SECONDS;
         $deadline = $this->nowSeconds() + $budgetSeconds;
+        $total = \count($jobs);
 
         $results = [];
         $budgetExceededKeys = [];
         $overBudget = false;
+        $processed = 0;
 
         foreach ($jobs as $index => $job) {
             // The first job always runs; from the second on, stop once the batch
@@ -136,6 +142,10 @@ final class IgnRoutingClient
                 $job['endLat'],
                 $job['endLon'],
             );
+            ++$processed;
+            if (null !== $onProgress) {
+                $onProgress($processed, $total);
+            }
         }
 
         return ['minutes' => $results, 'budgetExceededKeys' => $budgetExceededKeys];

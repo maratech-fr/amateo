@@ -46,16 +46,10 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
             operationId: 'autofillVenueTravelTimes',
             tags: ['Venue'],
             responses: [
-                '200' => $this->schemas->jsonResponse('Fills AUTO driving/walking minutes for every geolocated venue pair via IGN routing. A MANUAL value is NEVER overwritten; a pair with a missing geolocation, a routing failure, or a spent batch time budget comes back named (best-effort, re-run to continue).', [
+                '200' => $this->schemas->jsonResponse('Queues an ASYNC autofill of the AUTO driving/walking minutes for every geolocated venue pair (the paced IGN routing runs in the worker). The cap is checked synchronously (422). Progress and the terminal verdict ({filled, unresolved}) are pushed on the club Mercure travel topic; a MANUAL value is NEVER overwritten.', [
                     'type' => 'object',
                     'properties' => [
-                        'filled' => ['type' => 'integer', 'description' => 'Pairs where at least one AUTO minute was written'],
-                        'unresolved' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
-                            'venueAId' => ['type' => 'string'],
-                            'venueBId' => ['type' => 'string'],
-                            'reason' => ['type' => 'string', 'enum' => ['missing_geo', 'routing_failed', 'budget_exceeded']],
-                        ]]],
-                        'skippedManual' => ['type' => 'integer', 'description' => 'Pairs whose MANUAL value was preserved'],
+                        'queued' => ['type' => 'boolean', 'description' => 'The computation was dispatched to the worker'],
                     ],
                 ]),
                 '400' => new Response('No club or season in context'),
@@ -65,7 +59,7 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                 '422' => new Response('Too many geolocated venue pairs for an automatic fill (fill by hand)'),
                 '429' => new Response('Too many requests (per-user rate limit)'),
             ],
-            summary: 'Autofill the venue travel-time matrix from IGN routing (management only; never overwrites a MANUAL value)',
+            summary: 'Queue the async autofill of the venue travel-time matrix (management only; never overwrites a MANUAL value)',
         )));
 
         $paths->addPath('/api/opponents/resolve', new PathItem(post: new Operation(
@@ -192,12 +186,10 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
             operationId: 'resolveOpponentTravel',
             tags: ['Fixture'],
             responses: [
-                '200' => $this->schemas->jsonResponse('Recomputes the AUTO car travel from the club siège to every away opponent\'s location (best-effort). A MANUAL override is left untouched; an opponent with no located venue comes back named.', [
+                '200' => $this->schemas->jsonResponse('Queues an ASYNC recompute of the AUTO car travel from the club siège to every away opponent whose travel is MISSING (a travel is a constant — an already-known one is never recomputed). The cap is checked synchronously (422); the paced IGN routing runs in the worker, progress pushed on the club Mercure travel topic. A MANUAL override is left untouched.', [
                     'type' => 'object',
                     'properties' => [
-                        'resolved' => ['type' => 'integer', 'description' => 'Opponents with a computed travel time'],
-                        'unresolved' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Opponent codes with no located venue or no routing duration'],
-                        'skippedManual' => ['type' => 'integer', 'description' => 'Opponents whose MANUAL override was preserved'],
+                        'queued' => ['type' => 'boolean', 'description' => 'The computation was dispatched to the worker'],
                     ],
                 ]),
                 '400' => new Response('No club or season in context'),
@@ -206,7 +198,7 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                 '422' => new Response('Too many away opponents to resolve at once (retry with fewer)'),
                 '429' => new Response('Too many requests (per-user rate limit)'),
             ],
-            summary: 'Recompute the AUTO travel times of the season\'s away opponents (management only)',
+            summary: 'Queue the async recompute of the season\'s away-opponent travel times (management only)',
         )));
 
         $paths->addPath('/api/opponents/{code}/venue-suggestions', new PathItem(get: new Operation(
@@ -261,10 +253,9 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                             'unmatched' => ['type' => 'integer', 'description' => 'Opponent teams with no unique federal salle for their file label'],
                             'skipped' => ['type' => 'integer', 'description' => 'Opponent teams left untouched because a MANUAL override already governs them'],
                         ]],
-                        'travel' => ['type' => 'object', 'description' => 'Pass (c): the AUTO travel recompute', 'properties' => [
-                            'resolved' => ['type' => 'integer', 'description' => 'Opponents with a computed travel time'],
-                            'unresolved' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Opponent codes with no located venue or no routing duration'],
-                            'skippedManual' => ['type' => 'integer', 'description' => 'Opponents whose MANUAL override was preserved'],
+                        'travel' => ['type' => 'object', 'description' => 'Pass (c): the AUTO travel recompute — DISPATCHED to the worker (paced IGN routing > HTTP ceiling); progress pushed on the club Mercure travel topic', 'properties' => [
+                            'queued' => ['type' => 'boolean', 'description' => 'The travel computation was dispatched to the worker'],
+                            'pending' => ['type' => 'integer', 'description' => 'How many distinct away opponents the queued computation will process'],
                         ]],
                         'failedSteps' => ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['codes', 'auto-locate', 'travel']], 'description' => 'Passes that threw and fell back to their neutral (zero) result — empty in the nominal case. A non-empty list means the update is PARTIAL: re-run to continue.'],
                     ],

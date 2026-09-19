@@ -6,9 +6,10 @@ namespace App\Controller;
 
 use App\Entity\Season;
 use App\Entity\User;
+use App\Enum\TravelComputeScope;
+use App\Message\ComputeTravelTimesMessage;
 use App\Repository\FixtureRepository;
 use App\Service\Basketball\OpponentLocationResolver;
-use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\OpponentVenueAutoLocator;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonResolver;
@@ -20,6 +21,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
 use Throwable;
@@ -33,7 +35,8 @@ use Throwable;
  *       comme `POST /api/opponents/resolve` — annuaire global + estampille des rencontres) ;
  *   (b) auto-localisation des gymnases depuis le libellé du FICHIER FBI
  *       ({@see OpponentVenueAutoLocator} — grain équipe, surcharge AUTO tenant) ;
- *   (c) recalcul des TRAJETS AUTO ({@see OpponentTravelResolver::resolve} — le MANUAL préservé).
+ *   (c) recalcul des TRAJETS AUTO — DISPATCHÉ au worker (C6, {@see ComputeTravelTimesMessage},
+ *       scope OPPONENTS) : le calcul pacé (~1 req/s IGN) dépasserait le plafond HTTP.
  *
  * Un contrôleur DÉDIÉ (plutôt qu'une action de plus dans `OpponentTravelController`) :
  * il compose trois services que ce dernier ne connaît pas et n'a aucune donnée en
@@ -68,7 +71,6 @@ final class OpponentRefreshController extends AbstractController
     public function __construct(
         private readonly OpponentLocationResolver $locationResolver,
         private readonly OpponentVenueAutoLocator $venueAutoLocator,
-        private readonly OpponentTravelResolver $travelResolver,
         private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SeasonResolver $seasonResolver,
         private readonly FixtureRepository $fixtures,
@@ -76,6 +78,7 @@ final class OpponentRefreshController extends AbstractController
         private readonly RateLimiterFactory $opponentRefreshLimiter,
         private readonly LoggerInterface $logger,
         private readonly ClockInterface $clock,
+        private readonly MessageBusInterface $messageBus,
     ) {}
 
     #[Route('/api/opponents/refresh', name: 'api_opponents_refresh', methods: ['POST'])]
@@ -133,19 +136,17 @@ final class OpponentRefreshController extends AbstractController
             ['located' => 0, 'ambiguous' => 0, 'unmatched' => 0, 'skipped' => 0],
             $failedSteps,
         );
-        $travel = $this->step(
-            'travel',
-            // La passe trajet reçoit le RESTANT du budget de mur (borné dans resolve() par
-            // le budget de lot IGN) — 0 si le budget est déjà épuisé (tout en unresolved).
-            fn (): array => $this->travelResolver->resolve($clubId, $seasonId, max(0.0, $deadline - $this->nowEpoch())),
-            ['resolved' => 0, 'unresolved' => [], 'skippedManual' => 0],
-            $failedSteps,
-        );
+
+        // C6 — la 3ᵉ passe (recalcul des TRAJETS) quitte le rail synchrone : elle ferait à
+        // elle seule une rafale d'appels IGN pacés (~1 req/s) au-delà du plafond HTTP. On la
+        // DISPATCHE au worker (`club:{clubId}:travel` pousse la progression) ; la réponse dit
+        // qu'un calcul est LANCÉ et combien d'adversaires distincts sont concernés (`pending`).
+        $this->messageBus->dispatch(new ComputeTravelTimesMessage($clubId, $seasonId, TravelComputeScope::OPPONENTS));
 
         return $this->json([
             'codes' => $codes,
             'autoLocated' => $autoLocated,
-            'travel' => $travel,
+            'travel' => ['queued' => true, 'pending' => \count($observations)],
             'failedSteps' => $failedSteps,
         ]);
     }

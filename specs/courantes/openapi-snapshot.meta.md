@@ -1,11 +1,20 @@
-Last verified @ 2026-09-19 (C5 — champ ADDITIF `travelStatus` (`done`|`pending`|`unavailable`) par entrée
-adversaire de `GET /api/opponents/travel` : le statut du trajet calculé SERVEUR ; régénéré par
-`api:openapi:export`).
-**204 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (propriété ADDITIVE).
-· SHA-256 `e1eb71cb966f9d76f7d50d553dff3514fea586b2ff28e090b2e83f0521fc32cc`
+Last verified @ 2026-09-19 (C6 — calcul des trajets ASYNCHRONE : `resolve`/`autofill` rendent
+`{queued}`, la passe travel de `refresh` rend `{queued, pending}`, `mercure/auth` gagne `travelTopic` ;
+régénéré par `api:openapi:export`).
+**204 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (formes de réponse remaniées, propriétés additives).
+· SHA-256 `da5aeaf7d778595744858792d055a1052db651f74704e4f37e3ef8500d54ff9c`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **C6 — calcul des trajets ASYNCHRONE, backend (2026-09-19)** : **+0 path** — le calcul des trajets
+  quitte le rail synchrone (rafale IGN pacée > plafond HTTP). `POST /api/opponents/travel/resolve` et
+  `POST /api/venue-travel-times/autofill` rendent désormais `{queued: true}` (au lieu du résultat
+  synchrone) ; la passe (c) « travel » de `POST /api/opponents/refresh` rend `{queued, pending}` (au lieu
+  de `{resolved, unresolved, skippedManual}`). Le cap dur reste vérifié SYNCHRONEMENT (422). `GET
+  /api/mercure/auth` gagne un champ ADDITIF `travelTopic` (`club:{clubId}:travel`, topic FIXE joint au
+  claim `subscribe`) : la progression et le verdict (`{filled, unresolved}` pour la matrice) sont poussés
+  par Mercure sur ce topic. Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23,
+  aucun appel moteur).
 - **C5 — `travelStatus` sur les trajets adverses, backend (2026-09-19)** : **+0 path** — chaque entrée
   adversaire de `GET /api/opponents/travel` gagne un champ ADDITIF `travelStatus` (`done`|`pending`|
   `unavailable`), statut du TRAJET calculé SERVEUR : `done` (minutes présentes), `pending` (un calcul est en
@@ -56,15 +65,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   (BCK-27) 26 propriétés texte des DTO d'entrée gagnent un `maxLength` égal à la longueur de leur colonne
   (`Fixture.opponentLabel`, `Club`/`Coach`/`Constraint`/`Venue`/`User`/`Season`/`Team`/… ) → un dépassement
   rend un 422 parlant au lieu d'un 500 SQL. Backend PUR, contrat backend⇄engine **inchangé**
-  (`CONTRACT_VERSION` 2.21, aucun appel moteur).
-- **Montée Dependabot — API Platform 4.4 / OpenAPI 3.2.0 (2026-09-17)** : **+0 path** — la montée
-  `api-platform/*` 4.3.17 → 4.4.0 fait passer l'export de `openapi: 3.1.0` à `3.2.0`. La 3.2 autorise
-  une `description` en frère d'un `$ref` (interdit en 3.1, API Platform la supprimait) : 3 propriétés
-  typées par référence publient donc désormais leur docblock — `Schedule.capabilities` (→ `ScheduleCapabilities`),
-  `ScheduleDiagnostic.causes` (→ liste de `DiagnosticCause`), `SchedulePlan.staleness` (→ `SchedulePlanStaleness`).
-  Les docblocks de `capabilities` et `causes` ont été RÉÉCRITS dans la même passe (la référence interne
-  part en commentaire `//`, la phrase publique reste — garde `PublicTextIsFreeOfInternalIdentifiersTest`).
-  Aucune route, aucun schéma, aucune propriété ne change ; contrat backend⇄engine **inchangé**
   (`CONTRACT_VERSION` 2.21, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît

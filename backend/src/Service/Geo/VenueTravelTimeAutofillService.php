@@ -50,7 +50,7 @@ final class VenueTravelTimeAutofillService
      *
      * @return array{filled: int, unresolved: list<array{venueAId: string, venueBId: string, reason: string}>, skippedManual: int}
      */
-    public function autofill(string $clubId, string $seasonId): array
+    public function autofill(string $clubId, string $seasonId, ?callable $onProgress = null, ?float $budgetSeconds = null): array
     {
         // RLS + the Doctrine tenant/season filters already scope this, but the
         // explicit clubId/seasonId is defence in depth and makes the query intent plain.
@@ -95,7 +95,7 @@ final class VenueTravelTimeAutofillService
             throw new AutofillCapExceededException(\count($geoPairs), self::MAX_AUTOFILL_PAIRS);
         }
 
-        $batch = $this->cachedBatch($clubId, $this->buildJobs($geoPairs));
+        $batch = $this->cachedBatch($clubId, $this->buildJobs($geoPairs), $onProgress, $budgetSeconds);
         $minutes = $batch['minutes'];
         $budgetExceeded = array_fill_keys($batch['budgetExceededKeys'], true);
 
@@ -159,18 +159,42 @@ final class VenueTravelTimeAutofillService
     }
 
     /**
+     * C6 — le nombre de PAIRES de gymnases géolocalisés du club+saison, pour vérifier le cap
+     * SYNCHRONEMENT (422 immédiat) avant de dispatcher le calcul au worker. Même prédicat
+     * `isGeolocated` que {@see autofill}, sans aucun appel réseau (lecture base seule).
+     */
+    public function geolocatedPairCount(string $clubId, string $seasonId): int
+    {
+        /** @var list<Venue> $venues */
+        $venues = $this->entityManager->getRepository(Venue::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]);
+        $count = 0;
+        $n = \count($venues);
+        for ($i = 0; $i < $n; ++$i) {
+            for ($j = $i + 1; $j < $n; ++$j) {
+                if ($this->isGeolocated($venues[$i]) && $this->isGeolocated($venues[$j])) {
+                    ++$count;
+                }
+            }
+        }
+
+        return $count;
+    }
+
+    /**
      * Cache-first (C4) autour du lot IGN : un couple/profil déjà connu (une constante) ne
      * repart JAMAIS au réseau ; seuls les manques y vont, et les résultats neufs sont
      * mémorisés. Renvoie la MÊME forme que {@see IgnRoutingClient::travelMinutesBatch}.
      *
      * @param list<array{key: string, profile: string, startLat: float, startLon: float, endLat: float, endLon: float}> $jobs
+     * @param (callable(int, int): void)|null                                                                           $onProgress reçoit (jobs traités, total) — C6, avancement du worker
      *
      * @return array{minutes: array<string, int|null>, budgetExceededKeys: list<string>}
      */
-    private function cachedBatch(string $clubId, array $jobs): array
+    private function cachedBatch(string $clubId, array $jobs, ?callable $onProgress = null, ?float $budgetSeconds = null): array
     {
+        $total = \count($jobs);
         if (!$this->travelCache instanceof TravelTimeCache) {
-            return $this->routingClient->travelMinutesBatch($jobs);
+            return $this->routingClient->travelMinutesBatch($jobs, budgetSeconds: $budgetSeconds, onProgress: $onProgress);
         }
 
         $cached = [];
@@ -187,7 +211,18 @@ final class VenueTravelTimeAutofillService
             $missByKey[$job['key']] = $job;
         }
 
-        $batch = $this->routingClient->travelMinutesBatch($misses);
+        // Les hits cache sont déjà « faits » (offset) ; le lot IGN ajoute ses jobs.
+        $cacheHitCount = \count($cached);
+        if (null !== $onProgress && $total > 0) {
+            $onProgress($cacheHitCount, $total);
+        }
+        $batch = $this->routingClient->travelMinutesBatch(
+            $misses,
+            budgetSeconds: $budgetSeconds,
+            onProgress: null === $onProgress ? null : static function (int $done) use ($onProgress, $cacheHitCount, $total): void {
+                $onProgress($cacheHitCount + $done, $total);
+            },
+        );
         foreach ($batch['minutes'] as $key => $minutes) {
             if (null !== $minutes && isset($missByKey[$key])) {
                 $job = $missByKey[$key];

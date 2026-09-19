@@ -5,17 +5,18 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Entity\User;
-use App\Service\Geo\AutofillCapExceededException;
+use App\Enum\TravelComputeScope;
+use App\Message\ComputeTravelTimesMessage;
 use App\Service\Geo\VenueTravelTimeAutofillService;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
-use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
 
@@ -37,6 +38,7 @@ final class VenueTravelTimeAutofillController extends AbstractController
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly RequestStack $requestStack,
         private readonly RateLimiterFactory $venueTravelTimeAutofillLimiter,
+        private readonly MessageBusInterface $messageBus,
     ) {}
 
     #[Route('/api/venue-travel-times/autofill', name: 'api_venue_travel_times_autofill', methods: ['POST'])]
@@ -59,21 +61,18 @@ final class VenueTravelTimeAutofillController extends AbstractController
             return $this->json(['error' => 'Trop de calculs de trajet — réessayez plus tard.'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
-        try {
-            $result = $this->autofiller->autofill($clubId, $seasonId);
-        } catch (UniqueConstraintViolationException) {
-            // Revue sécurité 2026-08-26 (F-1) : deux autofill concurrents (ou un
-            // autofill contre un POST manuel du même couple) pré-lisent tous deux
-            // « couple absent » et persistent chacun leur ligne — l'unicité DB tient,
-            // on la nomme en 409 rejouable au lieu de laisser fuir un 500 (idiome
-            // P4-67 du rail d'écriture).
-            return $this->json(['error' => 'Un remplissage concurrent a créé les mêmes trajets — réessayez.'], Response::HTTP_CONFLICT);
-        } catch (AutofillCapExceededException $e) {
+        // C6 — cap dur vérifié SYNCHRONEMENT (422 immédiat, aucun réseau : lecture base seule),
+        // puis le calcul est DISPATCHÉ au worker (rafale IGN pacée > plafond HTTP) ; la
+        // progression et le verdict `{filled, unresolved}` arrivent par `club:{clubId}:travel`.
+        $pairs = $this->autofiller->geolocatedPairCount($clubId, $seasonId);
+        if ($pairs > VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS) {
             return $this->json([
-                'error' => \sprintf('Trop de gymnases géolocalisés pour un remplissage automatique (%d paires, maximum %d). Renseignez les trajets à la main.', $e->pairs, $e->cap),
+                'error' => \sprintf('Trop de gymnases géolocalisés pour un remplissage automatique (%d paires, maximum %d). Renseignez les trajets à la main.', $pairs, VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS),
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        return $this->json($result);
+        $this->messageBus->dispatch(new ComputeTravelTimesMessage($clubId, $seasonId, TravelComputeScope::VENUE_MATRIX));
+
+        return $this->json(['queued' => true]);
     }
 }

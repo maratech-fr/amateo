@@ -56,10 +56,10 @@ final class MercureAuthTest extends WebTestCase
         $cookieA = $this->fetchAuthCookie($tokenA);
         $cookieB = $this->fetchAuthCookie($tokenB);
 
-        // Le claim `subscribe` est EXACTEMENT le template du club du porteur — pas
-        // de wildcard global, pas d'autre topic, pas le club du voisin.
-        self::assertSame([\sprintf('club:%s:schedule:{id}', $clubA)], $this->subscribeClaim($cookieA->getValue()));
-        self::assertSame([\sprintf('club:%s:schedule:{id}', $clubB)], $this->subscribeClaim($cookieB->getValue()));
+        // Le claim `subscribe` est EXACTEMENT les deux topics du club du porteur (génération
+        // + calcul des trajets, C6) — pas de wildcard global, pas le club du voisin.
+        self::assertSame([\sprintf('club:%s:schedule:{id}', $clubA), \sprintf('club:%s:travel', $clubA)], $this->subscribeClaim($cookieA->getValue()));
+        self::assertSame([\sprintf('club:%s:schedule:{id}', $clubB), \sprintf('club:%s:travel', $clubB)], $this->subscribeClaim($cookieB->getValue()));
         self::assertNotSame($clubA, $clubB);
     }
 
@@ -116,6 +116,8 @@ final class MercureAuthTest extends WebTestCase
         // connaît pas son clubId (tenant résolu serveur), c'est sa seule source.
         $body = json_decode((string) $this->client->getResponse()->getContent(), true, flags: \JSON_THROW_ON_ERROR);
         self::assertSame(\sprintf('club:%s:schedule:{id}', $clubId), $body['topicTemplate'] ?? null);
+        // C6 — champ additif : le topic FIXE du calcul des trajets.
+        self::assertSame(\sprintf('club:%s:travel', $clubId), $body['travelTopic'] ?? null);
     }
 
     /**

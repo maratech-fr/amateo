@@ -1390,7 +1390,9 @@ export type OpponentRefreshStep = "codes" | "auto-locate" | "travel";
 export interface OpponentRefreshResult {
   codes: { resolved: number; unresolved: string[]; skipped: number; stamped: number };
   autoLocated: { located: number; ambiguous: number; unmatched: number; skipped: number };
-  travel: { resolved: number; unresolved: string[]; skippedManual: number };
+  /** C6 — le recalcul des trajets est DISPATCHÉ au worker : la réponse dit qu'il est en file
+   *  et combien d'adversaires distincts il traitera (la progression arrive par Mercure). */
+  travel: { queued: boolean; pending: number };
   /** Les passes best-effort qui ont levé et sont retombées sur leur résultat neutre (vide en régime nominal). */
   failedSteps: OpponentRefreshStep[];
 }

@@ -495,12 +495,11 @@ export interface VenueTravelTimePayload {
 /** La raison qu'un couple n'a pu être résolu par l'autofill (servie, jamais devinée). */
 export type AutofillUnresolvedReason = "missing_geo" | "routing_failed" | "budget_exceeded";
 
-/** Le verdict d'un autofill : combien remplis, quels couples non résolus (avec raison), combien de
- *  valeurs MANUAL préservées. */
+/** Le VERDICT d'un autofill (C6 : poussé par Mercure au terminal du calcul worker, plus dans la
+ *  réponse HTTP) : combien remplis, quels couples non résolus (avec raison). */
 export interface VenueTravelTimeAutofillResult {
   filled: number;
   unresolved: { venueAId: string; venueBId: string; reason: AutofillUnresolvedReason }[];
-  skippedManual: number;
 }
 
 // Le géocodage d'une adresse (type + appel) a migré dans la maison PARTAGÉE
@@ -516,8 +515,9 @@ export const createVenueTravelTime = (body: VenueTravelTimePayload): Promise<Ven
 
 export const updateVenueTravelTime = (id: string, body: VenueTravelTimePayload): Promise<VenueTravelTime> => api.put(`venue_travel_times/${id}`, { json: body }).json();
 
-/** POST /api/venue-travel-times/autofill (tirets) — remplit AUTO, saute les MANUAL. 422 cap / 429 / 409. */
-export const autofillVenueTravelTimes = (): Promise<VenueTravelTimeAutofillResult> => api.post("venue-travel-times/autofill", { json: {} }).json();
+/** POST /api/venue-travel-times/autofill (tirets) — C6 : DISPATCHE le calcul au worker (cap 422
+ *  synchrone), la progression et le verdict arrivent par Mercure. 422 cap / 429 / 409. */
+export const autofillVenueTravelTimes = (): Promise<{ queued: boolean }> => api.post("venue-travel-times/autofill", { json: {} }).json();
 
 
 // --- Levier d'intensité de la règle de trajet (P2-53 RMM-8 PR-4) ---
