@@ -635,7 +635,7 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
 
 /**
  * PR 3b « Calendrier unique » — la barre « Semaine affichée » (3 compteurs), la modale
- * « À recopier dans FBI », le suivi P4-197 après « Placer », et le clic d'une ligne Mois
+ * « FBI — à faire », le suivi P4-197 après « Placer », et le clic d'une ligne Mois
  * qui bascule en Semaine (URL `semaine=`, cellule focalisée). Le test CRÉE sa donnée (un
  * domicile daté loin) et se nettoie en `finally` (base dev non réinitialisée).
  */
@@ -669,7 +669,7 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
     const counters = page.getByRole("group", { name: "Semaine affichée" });
     await expect(counters.getByRole("button", { name: /à placer/ })).toBeVisible();
     await expect(counters.getByRole("link", { name: /conflits/ })).toHaveAttribute("href", "/matchs/conflits");
-    await expect(counters.getByRole("button", { name: /à saisir dans FBI/ })).toHaveAttribute("aria-haspopup", "dialog");
+    await expect(page.getByRole("button", { name: /FBI à faire/ })).toHaveAttribute("aria-haspopup", "dialog");
 
     // ── Naviguer jusqu'à la semaine du domicile créé ─────────────────────────────
     // La liste « À placer » couvre TOUTES les semaines (P4-197) : on navigue sur la
@@ -706,11 +706,11 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
     await expect(page.getByRole("heading", { name: "À placer" })).toBeFocused();
 
     // ── « FBI » ouvre la modale ; Échap la ferme et rend le focus au compteur ─────
-    const fbiBtn = counters.getByRole("button", { name: /à saisir dans FBI/ });
+    const fbiBtn = page.getByRole("button", { name: /FBI à faire/ });
     await fbiBtn.click();
-    await expect(page.getByRole("dialog", { name: "À recopier dans FBI" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "FBI — à faire" })).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog", { name: "À recopier dans FBI" })).toBeHidden();
+    await expect(page.getByRole("dialog", { name: "FBI — à faire" })).toBeHidden();
     await expect(fbiBtn).toBeFocused();
 
     // ── Suivi P4-197 : « Placer » recadre sur le match et le focalise ─────────────

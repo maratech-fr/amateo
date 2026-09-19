@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyConflictsToParams, applyConsultToParams, applyFilterToParams, applySectionToParams, applyWeekendToParams, decodeConflictsParams, decodeConsultParams, decodeFilterParams, decodeSectionParam, decodeWeekendParam, hasConsultParams } from "./urlState";
+import { applyConflictsToParams, applyConsultToParams, applyFbiToParams, applyFilterToParams, applySectionToParams, applyWeekendToParams, decodeConflictsParams, decodeConsultParams, decodeFbiParam, decodeFilterParams, decodeSectionParam, decodeWeekendParam, hasConsultParams } from "./urlState";
 
 describe("decodeWeekendParam / applyWeekendToParams (PR 3b — semaine=)", () => {
   it("absent ⇒ null (auto)", () => {
@@ -293,5 +293,20 @@ describe("applyConflictsToParams (onglet Conflits, B)", () => {
     const out = applyConflictsToParams(new URLSearchParams("traites=masques"), decoded);
     expect(out.get("traitement")).toBe("a_traiter");
     expect(out.has("traites")).toBe(false);
+  });
+});
+
+describe("decodeFbiParam / applyFbiToParams (deep-link « FBI — à faire »)", () => {
+  it("absent ⇒ fermée ; fbi=1 ⇒ ouverte ; toute autre valeur ⇒ fermée", () => {
+    expect(decodeFbiParam(new URLSearchParams(""))).toBe(false);
+    expect(decodeFbiParam(new URLSearchParams("fbi=1"))).toBe(true);
+    expect(decodeFbiParam(new URLSearchParams("fbi=0"))).toBe(false);
+  });
+
+  it("ouverte ⇒ fbi=1 ; fermée ⇒ absent ; préserve les autres params", () => {
+    expect(applyFbiToParams(new URLSearchParams("semaine=2026-10-03"), true).get("fbi")).toBe("1");
+    const closed = applyFbiToParams(new URLSearchParams("fbi=1&semaine=2026-10-03"), false);
+    expect(closed.has("fbi")).toBe(false);
+    expect(closed.get("semaine")).toBe("2026-10-03");
   });
 });

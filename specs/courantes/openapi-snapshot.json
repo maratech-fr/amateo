@@ -11891,6 +11891,148 @@
                 ]
             }
         },
+        "/api/fixtures/fbi-corrections": {
+            "get": {
+                "operationId": "listFbiCorrections",
+                "tags": [
+                    "Match"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The OPEN \u00ab to correct in FBI \u00bb ledger of the club+season: divergences where the manager kept the app value, so FBI is behind and must be edited by hand. Each entry says what to type in FBI (appValue) against what FBI still shows (fbiValue).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "corrections": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string"
+                                                    },
+                                                    "fixtureId": {
+                                                        "type": "string"
+                                                    },
+                                                    "field": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "date",
+                                                            "kickoff",
+                                                            "venue"
+                                                        ]
+                                                    },
+                                                    "appValue": {
+                                                        "type": "string",
+                                                        "nullable": true,
+                                                        "description": "What to type in FBI (the app value)"
+                                                    },
+                                                    "fbiValue": {
+                                                        "type": "string",
+                                                        "nullable": true,
+                                                        "description": "What FBI still shows"
+                                                    },
+                                                    "venueFbiLabel": {
+                                                        "type": "string",
+                                                        "nullable": true,
+                                                        "description": "The FBI alias of the app venue, when known \u2014 what to select in FBI"
+                                                    },
+                                                    "decidedAt": {
+                                                        "type": "string",
+                                                        "format": "date-time"
+                                                    },
+                                                    "lastSeenInFbiAt": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "nullable": true,
+                                                        "description": "Last time a deposit re-saw this divergence in FBI"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No club in context"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    }
+                },
+                "summary": "The open \u00ab to correct in FBI \u00bb ledger for the club+season (read-only, open to any member)"
+            }
+        },
+        "/api/fixtures/fbi-corrections/{id}/close": {
+            "post": {
+                "operationId": "closeFbiCorrection",
+                "tags": [
+                    "Match"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The correction, now closed manually"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "404": {
+                        "description": "No open correction with this id in the club+season (byte-identical cross-club)"
+                    },
+                    "409": {
+                        "description": "Archived (read-only) season"
+                    }
+                },
+                "summary": "Mark a \u00ab to correct in FBI \u00bb entry as done in FBI (closed_by=manual) \u2014 management only",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
+        "/api/fixtures/fbi-corrections/{id}/reopen": {
+            "post": {
+                "operationId": "reopenFbiCorrection",
+                "tags": [
+                    "Match"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The correction, reopened"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "404": {
+                        "description": "No correction with this id in the club+season (byte-identical cross-club)"
+                    },
+                    "409": {
+                        "description": "Already open, closed by a deposit, or the manual close is older than 24 hours \u2014 cannot be reopened, or archived season"
+                    }
+                },
+                "summary": "Undo a recent manual \u00ab done in FBI \u00bb (only a manual close under 24 hours) \u2014 management only",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
         "/api/fixtures/place": {
             "post": {
                 "operationId": "placeMatches",
@@ -12253,6 +12395,20 @@
                                                         "type": "boolean",
                                                         "description": "True within seven days of the deadline (overdue included)"
                                                     }
+                                                }
+                                            }
+                                        },
+                                        "fbiTodo": {
+                                            "type": "object",
+                                            "description": "The GLOBAL \u00ab to do in FBI \u00bb counts (all weeks), so the cockpit and the counters bar never load the fixtures",
+                                            "properties": {
+                                                "toEnter": {
+                                                    "type": "integer",
+                                                    "description": "Home fixtures PLACED but not yet entered in FBI (UNPLACED and already-submitted excluded)"
+                                                },
+                                                "toCorrect": {
+                                                    "type": "integer",
+                                                    "description": "Open \u00ab to correct in FBI \u00bb ledger entries (kept-app divergences FBI is still behind on)"
                                                 }
                                             }
                                         },
@@ -26288,6 +26444,16 @@
                                 ]
                             }
                         }
+                    },
+                    "fbiEcho": {
+                        "description": "M\u00e9mo \u00ab FBI affiche encore \u2026 \u00bb d'un domicile r\u00e9trograd\u00e9 \u00e0 \u00ab \u00e0 saisir \u00bb par une\nheure prise du fichier \u2014 `{field, value, at}` ou null. Sert la mention de la\nligne \u00ab \u00e0 saisir \u00bb de la liste FBI.",
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "additionalProperties": {
+                            "type": "string"
+                        }
                     }
                 }
             },
@@ -26538,6 +26704,16 @@
                                 ]
                             }
                         }
+                    },
+                    "fbiEcho": {
+                        "description": "M\u00e9mo \u00ab FBI affiche encore \u2026 \u00bb d'un domicile r\u00e9trograd\u00e9 \u00e0 \u00ab \u00e0 saisir \u00bb par une\nheure prise du fichier \u2014 `{field, value, at}` ou null. Sert la mention de la\nligne \u00ab \u00e0 saisir \u00bb de la liste FBI.",
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "additionalProperties": {
+                            "type": "string"
+                        }
                     }
                 }
             },
@@ -26694,6 +26870,16 @@
                                             }
                                         ]
                                     }
+                                }
+                            },
+                            "fbiEcho": {
+                                "description": "M\u00e9mo \u00ab FBI affiche encore \u2026 \u00bb d'un domicile r\u00e9trograd\u00e9 \u00e0 \u00ab \u00e0 saisir \u00bb par une\nheure prise du fichier \u2014 `{field, value, at}` ou null. Sert la mention de la\nligne \u00ab \u00e0 saisir \u00bb de la liste FBI.",
+                                "type": [
+                                    "object",
+                                    "null"
+                                ],
+                                "additionalProperties": {
+                                    "type": "string"
                                 }
                             }
                         }

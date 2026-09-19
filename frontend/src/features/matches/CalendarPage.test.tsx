@@ -137,6 +137,9 @@ vi.mock("./api", () => ({
   getLatestFbiIngestion: vi.fn(() => Promise.resolve({ latest: { depositedAt: "2026-08-20T09:00:00+00:00", source: "FBI_XLSX", created: 10, updated: 2, unchanged: 3, deviationsCount: 0 } })),
   getOpponentTravel: vi.fn(() => Promise.resolve([])),
   getVenueLabelInventory: vi.fn(() => Promise.resolve([])),
+  getFbiCorrections: vi.fn(() => Promise.resolve([])),
+  closeFbiCorrection: vi.fn(() => Promise.resolve({})),
+  reopenFbiCorrection: vi.fn(() => Promise.resolve({})),
 }));
 
 beforeEach(() => {
@@ -181,7 +184,9 @@ describe("CalendarPage — la Semaine (ex-boucle, fusion PR 3b)", () => {
     const group = await screen.findByRole("group", { name: "Semaine affichée" });
     expect(within(group).getByRole("button", { name: /1 à placer/ })).toBeInTheDocument();
     expect(within(group).getByRole("link", { name: /1 conflits/ })).toBeInTheDocument();
-    expect(within(group).getByRole("button", { name: /2 à saisir dans FBI/ })).toBeInTheDocument();
+    // « FBI à faire » est GLOBAL — hors du groupe « Semaine affichée » (1 domicile PLACÉ).
+    expect(within(group).queryByRole("button", { name: /FBI à faire/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /1 FBI à faire/ })).toBeInTheDocument();
     // Le radar est visible d'emblée (plus de vue à sélectionner) : le conflit du coach.
     expect(await screen.findByText("Jean Dupont")).toBeInTheDocument();
     expect(screen.getByText(/U13 et Seniors/)).toBeInTheDocument();
@@ -201,12 +206,12 @@ describe("CalendarPage — la Semaine (ex-boucle, fusion PR 3b)", () => {
     expect(screen.queryByTitle(/16:00–17:45/)).not.toBeInTheDocument();
   });
 
-  it("« à saisir dans FBI » ouvre la modale de saisie ; cocher appelle submit", async () => {
+  it("« FBI à faire » ouvre la liste ; cocher une ligne « à saisir » appelle submit", async () => {
     const user = userEvent.setup();
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
-    await user.click(await screen.findByRole("button", { name: /à saisir dans FBI/ }));
-    const dialog = await screen.findByRole("dialog", { name: "À recopier dans FBI" });
-    expect(within(dialog).getByRole("heading", { name: "Seniors" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: /FBI à faire/ }));
+    const dialog = await screen.findByRole("dialog", { name: "FBI — à faire" });
+    expect(within(dialog).getByRole("heading", { name: /À saisir/ })).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: /Marquer saisi.*Rivaux/ }));
     expect(submitFixture).toHaveBeenCalledWith(expect.objectContaining({ id: "fx-placed" }));
   });
@@ -610,8 +615,8 @@ describe("CalendarPage — modale FBI (ConfirmDialog imbriqué)", () => {
   it("le ConfirmDialog vit DANS la modale : Échap ferme le confirm seul, le focus revient au déclencheur", async () => {
     const user = userEvent.setup();
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
-    await user.click(await screen.findByRole("button", { name: /à saisir dans FBI/ }));
-    const dialog = await screen.findByRole("dialog", { name: "À recopier dans FBI" });
+    await user.click(await screen.findByRole("button", { name: /FBI à faire/ }));
+    const dialog = await screen.findByRole("dialog", { name: "FBI — à faire" });
     const batchBtn = within(dialog).getByRole("button", { name: "Tout marquer saisi" });
     await user.click(batchBtn);
     // Le ConfirmDialog imbriqué est ouvert.
@@ -619,7 +624,7 @@ describe("CalendarPage — modale FBI (ConfirmDialog imbriqué)", () => {
     // Échap ne ferme QUE le confirm ; la modale FBI reste ouverte.
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByText(/Marquer saisi 1 match/)).not.toBeInTheDocument());
-    expect(screen.getByRole("dialog", { name: "À recopier dans FBI" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "FBI — à faire" })).toBeInTheDocument();
     // Le focus est revenu au bouton déclencheur (restauration `useModalA11y`).
     expect(batchBtn).toHaveFocus();
   });
@@ -627,11 +632,11 @@ describe("CalendarPage — modale FBI (ConfirmDialog imbriqué)", () => {
   it("Échap sur la modale FBI la ferme et rend le focus au bouton compteur", async () => {
     const user = userEvent.setup();
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
-    const fbiBtn = await screen.findByRole("button", { name: /à saisir dans FBI/ });
+    const fbiBtn = await screen.findByRole("button", { name: /FBI à faire/ });
     await user.click(fbiBtn);
-    await screen.findByRole("dialog", { name: "À recopier dans FBI" });
+    await screen.findByRole("dialog", { name: "FBI — à faire" });
     await user.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "À recopier dans FBI" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "FBI — à faire" })).not.toBeInTheDocument());
     expect(fbiBtn).toHaveFocus();
   });
 });

@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Service;
 use App\Clock\DevClockStore;
 use App\Entity\Club;
 use App\Entity\Competition;
+use App\Entity\FbiCorrection;
 use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
 use App\Entity\Season;
@@ -15,6 +16,8 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\Venue;
 use App\Enum\CompetitionType;
+use App\Enum\FbiCorrectionCloseSource;
+use App\Enum\FbiCorrectionField;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
@@ -622,6 +625,236 @@ final class FbiFixtureImporterTest extends KernelTestCase
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RS01']);
         self::assertSame(FixtureStatus::SUBMITTED, $fixture?->getStatus());
         self::assertSame('17:00', $fixture?->getKickoffTime()?->format('H:i'));
+    }
+
+    // ── Registre « à corriger dans FBI » (keep_app crée) + mémo fbiEcho ──────
+
+    public function testKeepAppOpensAnFbiCorrectionEntry(): void
+    {
+        // « Garder l'appli » sur un écart de DATE d'un domicile placé : FBI est en
+        // retard → une entrée OUVERTE « à corriger dans FBI » (app = ce qu'il faut
+        // taper, fbi = ce que FBI affiche encore). L'écart pendant, lui, est retiré.
+        $this->importMapped([['D2', 'RK01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->place('RK01');
+        $id = $this->fixtureId('RK01');
+
+        $this->importMapped(
+            [['D2', 'RK01', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']],
+            null,
+            [['fixtureId' => $id, 'field' => 'date', 'choice' => 'keep_app']],
+        );
+        $this->em->clear();
+
+        $entries = $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $id]);
+        self::assertCount(1, $entries);
+        self::assertTrue($entries[0]->isOpen());
+        self::assertSame(FbiCorrectionField::DATE, $entries[0]->getField());
+        self::assertSame('2026-10-03', $entries[0]->getAppValue(), 'la valeur de l\'appli — à taper dans FBI');
+        self::assertSame('2026-10-10', $entries[0]->getFbiValue(), 'la valeur que FBI affiche encore');
+        self::assertNotNull($entries[0]->getLastSeenInFbiAt());
+    }
+
+    public function testKeepAppOnVenueServesTheAmateoVenueFbiAlias(): void
+    {
+        // « Garder l'appli » sur un écart de SALLE d'un domicile placé dans un gymnase
+        // qui porte un alias FBI confirmé → l'entrée sert `venueFbiLabel` (le nom FBI
+        // du gymnase de l'appli), pour dire quoi sélectionner dans FBI.
+        $venueId = $this->createVenueWithAliases('Gymnase Coubertin', ['gymnase pierre de coubertin']);
+        $this->importMapped([['D2', 'RK02', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'Gymnase Coubertin']]);
+        $this->placeAt('RK02', $venueId);
+        $id = $this->fixtureId('RK02');
+
+        $this->importMapped(
+            [['D2', 'RK02', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']],
+            null,
+            [['fixtureId' => $id, 'field' => 'venue', 'choice' => 'keep_app']],
+        );
+        $this->em->clear();
+
+        $entry = $this->em->getRepository(FbiCorrection::class)->findOneBy(['fixtureId' => $id, 'field' => FbiCorrectionField::VENUE]);
+        self::assertInstanceOf(FbiCorrection::class, $entry);
+        self::assertSame('Gymnase Coubertin', $entry->getAppValue());
+        self::assertSame('GYMNASE MATEO', $entry->getFbiValue());
+        self::assertSame('gymnase pierre de coubertin', $entry->getVenueFbiLabel(), 'l\'alias FBI du gymnase de l\'appli, servi');
+    }
+
+    public function testTakeFileNeverOpensAnFbiCorrectionEntry(): void
+    {
+        // « Prendre le fichier » aligne l'appli sur FBI : rien à reporter dans FBI,
+        // donc AUCUNE entrée « à corriger » n'est ouverte.
+        $this->importMapped([['D2', 'RK03', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->place('RK03');
+        $id = $this->fixtureId('RK03');
+
+        $this->importMapped(
+            [['D2', 'RK03', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']],
+            null,
+            [['fixtureId' => $id, 'field' => 'date', 'choice' => 'take_file']],
+        );
+        $this->em->clear();
+
+        self::assertCount(0, $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $id]));
+    }
+
+    public function testKickoffTakeFileOnSubmittedPostsFbiEchoClearedOnResubmit(): void
+    {
+        // « Prendre le fichier » sur l'HEURE d'un SUBMITTED : rétrogradé à PLACED (la
+        // coche FBI portait une mauvaise heure) ET un mémo fbiEcho « FBI affiche 17:00 »
+        // pour la ligne « à saisir ». Re-passer SUBMITTED efface le mémo.
+        $this->importMapped([['D2', 'RK04', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->place('RK04');
+        $this->setStatus('RK04', FixtureStatus::SUBMITTED);
+        $id = $this->fixtureId('RK04');
+
+        $this->importMapped(
+            [['D2', 'RK04', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', '']],
+            null,
+            [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'take_file']],
+        );
+        $this->em->clear();
+
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RK04']);
+        self::assertSame(FixtureStatus::PLACED, $fixture?->getStatus());
+        $echo = $fixture?->getFbiEcho();
+        self::assertIsArray($echo);
+        self::assertSame('kickoff', $echo['field']);
+        self::assertSame('17:00', $echo['value']);
+        self::assertArrayHasKey('at', $echo);
+        // take_file n'ouvre jamais d'entrée « à corriger » (l'appli s'aligne sur FBI).
+        self::assertCount(0, $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $id]));
+
+        // Re-saisi dans FBI → SUBMITTED → le mémo n'a plus d'objet, il est effacé.
+        $this->setStatus('RK04', FixtureStatus::SUBMITTED);
+        $this->em->clear();
+        self::assertNull($this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RK04'])?->getFbiEcho());
+    }
+
+    /**
+     * Invariant d'appel du ledger (index partiel unique) : une rencontre est traitée UNE
+     * fois par dépôt (garde $seenInFile sur team|ref) → AU PLUS un `open()` par (rencontre,
+     * champ). Une ligne DUPLIQUÉE dans le même fichier n'ouvre donc qu'UNE entrée, sans
+     * violer l'index `WHERE closed_at IS NULL` (deux INSERT non flushés ne se voient pas).
+     */
+    public function testADuplicateRowInOneDepositOpensOnlyOneCorrectionEntry(): void
+    {
+        $this->importMapped([['D2', 'RDUP', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->place('RDUP');
+        $id = $this->fixtureId('RDUP');
+
+        $this->importMapped(
+            [
+                ['D2', 'RDUP', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', ''],
+                ['D2', 'RDUP', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', ''],
+            ],
+            null,
+            [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'keep_app']],
+        );
+        $this->em->clear();
+
+        self::assertCount(1, $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $id]));
+    }
+
+    // ── Fermeture / idempotence du registre (dépôt) ─────────────────────────
+
+    /** (a) Un re-dépôt de la MÊME valeur FBI ne re-crée pas d'écart — juste « vu dans FBI ». */
+    public function testReDepositingTheSameDivergenceRefreshesSeenWithoutRecreatingAnEcart(): void
+    {
+        $this->pinClock(new DateTimeImmutable('2026-09-01 10:00:00'));
+        $this->importMapped([['D2', 'RF01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->place('RF01');
+        $id = $this->fixtureId('RF01');
+        $this->importMapped(
+            [['D2', 'RF01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', '']],
+            null,
+            [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'keep_app']],
+        );
+
+        // Re-dépôt du MÊME fichier divergent, sans décision : FBI affiche toujours 17:00.
+        $this->pinClock(new DateTimeImmutable('2026-09-08 10:00:00'));
+        $result = $this->importMapped([['D2', 'RF01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', '']]);
+        self::assertSame([], $result['unresolvedDeviations'], 'aucun écart re-créé — le gestionnaire a déjà tranché');
+        $this->em->clear();
+
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RF01']);
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState(), 'pas de retour « à traiter »');
+        self::assertSame([], $fixture?->getPendingDeviations());
+        $entry = $this->em->getRepository(FbiCorrection::class)->findOneBy(['fixtureId' => $id, 'field' => FbiCorrectionField::KICKOFF]);
+        self::assertInstanceOf(FbiCorrection::class, $entry);
+        self::assertTrue($entry->isOpen(), 'l\'entrée reste ouverte — FBI n\'a pas été corrigé');
+        self::assertSame('2026-09-08', $entry->getLastSeenInFbiAt()?->format('Y-m-d'), '« vu dans FBI » re-daté');
+    }
+
+    /** (b) FBI corrigé (le fichier montre de nouveau la valeur de l'appli) → entrée fermée par le dépôt. */
+    public function testFbiCorrectedClosesTheEntryByDeposit(): void
+    {
+        $this->importMapped([['D2', 'RF02', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->place('RF02');
+        $id = $this->fixtureId('RF02');
+        $this->importMapped(
+            [['D2', 'RF02', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', '']],
+            null,
+            [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'keep_app']],
+        );
+
+        // FBI est corrigé : le fichier montre de nouveau 15:30 (la valeur de l'appli).
+        $this->importMapped([['D2', 'RF02', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->em->clear();
+
+        $entry = $this->em->getRepository(FbiCorrection::class)->findOneBy(['fixtureId' => $id, 'field' => FbiCorrectionField::KICKOFF]);
+        self::assertInstanceOf(FbiCorrection::class, $entry);
+        self::assertFalse($entry->isOpen(), 'FBI reflète l\'appli → l\'entrée est faite');
+        self::assertSame(FbiCorrectionCloseSource::DEPOSIT, $entry->getClosedBy());
+    }
+
+    /** (c) FBI affiche une TROISIÈME valeur → ancienne entrée fermée (dépôt) ET un écart normal à arbitrer. */
+    public function testAThirdValueClosesTheOldEntryAndOpensANormalEcart(): void
+    {
+        $this->importMapped([['D2', 'RF03', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->place('RF03');
+        $id = $this->fixtureId('RF03');
+        $this->importMapped(
+            [['D2', 'RF03', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', '']],
+            null,
+            [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'keep_app']],
+        );
+
+        // FBI affiche maintenant 18:00 (ni l'appli 15:30 ni le 17:00 mémorisé).
+        $result = $this->importMapped([['D2', 'RF03', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '18:00', '']]);
+        self::assertCount(1, $result['unresolvedDeviations'], 'un écart normal à arbitrer');
+        $this->em->clear();
+
+        $entry = $this->em->getRepository(FbiCorrection::class)->findOneBy(['fixtureId' => $id, 'field' => FbiCorrectionField::KICKOFF]);
+        self::assertInstanceOf(FbiCorrection::class, $entry);
+        self::assertFalse($entry->isOpen(), 'la correction devient caduque (3ᵉ valeur)');
+        self::assertSame(FbiCorrectionCloseSource::DEPOSIT, $entry->getClosedBy());
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RF03']);
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState());
+    }
+
+    /** (d) Fenêtre imminente (« FBI fait foi ») → l'appli s'aligne d'office, l'entrée se ferme (dépôt). */
+    public function testImminentWindowClosesTheEntryByDeposit(): void
+    {
+        $this->pinClock(new DateTimeImmutable('2026-09-01 10:00:00'));
+        $this->importMapped([['D2', 'RF04', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->place('RF04');
+        $id = $this->fixtureId('RF04');
+        $this->importMapped(
+            [['D2', 'RF04', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', '']],
+            null,
+            [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'keep_app']],
+        );
+
+        // La date de match entre dans la semaine ISO en cours → source d'office.
+        $this->pinClock(new DateTimeImmutable('2026-10-01 10:00:00'));
+        $this->importMapped([['D2', 'RF04', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '18:00', '']]);
+        $this->em->clear();
+
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RF04']);
+        self::assertSame('18:00', $fixture?->getKickoffTime()?->format('H:i'), 'la source a fait foi');
+        $entry = $this->em->getRepository(FbiCorrection::class)->findOneBy(['fixtureId' => $id, 'field' => FbiCorrectionField::KICKOFF]);
+        self::assertInstanceOf(FbiCorrection::class, $entry);
+        self::assertFalse($entry->isOpen(), 'la source imminente ferme la correction');
+        self::assertSame(FbiCorrectionCloseSource::DEPOSIT, $entry->getClosedBy());
     }
 
     public function testVenueContainmentIsNoDeviationADifferentRoomIs(): void

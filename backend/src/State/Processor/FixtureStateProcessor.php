@@ -18,6 +18,7 @@ use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\ConflictRadarLoader;
+use App\Service\FbiCorrectionLedger;
 use App\Service\MatchConflictDetector;
 use App\Service\SocleGuard;
 use DateTimeImmutable;
@@ -39,10 +40,18 @@ class FixtureStateProcessor extends AbstractStateProcessor
 
     private VenueAliasResolver $venueAliasResolver;
 
+    private FbiCorrectionLedger $fbiCorrectionLedger;
+
     #[Required]
     public function setSocleGuard(SocleGuard $socleGuard): void
     {
         $this->socleGuard = $socleGuard;
+    }
+
+    #[Required]
+    public function setFbiCorrectionLedger(FbiCorrectionLedger $fbiCorrectionLedger): void
+    {
+        $this->fbiCorrectionLedger = $fbiCorrectionLedger;
     }
 
     #[Required]
@@ -174,6 +183,19 @@ class FixtureStateProcessor extends AbstractStateProcessor
             $entity->setPlacementSource(FixturePlacementSource::SOLVER);
         }
         $this->assertVenueAccessAllowed($entity);
+    }
+
+    /**
+     * Une rencontre supprimée emporte ses entrées « à corriger dans FBI » (aucune FK sur
+     * `fixture_id`) : sans ça, `fbiTodo.toCorrect` compterait des orphelins que la liste ne
+     * montre jamais (leur rencontre a disparu). Suppression PURE — un match supprimé n'a
+     * plus rien à corriger. Appelé AVANT le remove+flush du parent ({@see AbstractStateProcessor}).
+     *
+     * @param Fixture $entity
+     */
+    protected function cascadeBeforeDelete(object $entity): void
+    {
+        $this->fbiCorrectionLedger->removeForFixture($entity);
     }
 
     /**

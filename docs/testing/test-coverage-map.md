@@ -1,9 +1,9 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D3) :
-§5 ligne `placement-des-matchs.feature` recroisée contre `backend/features/placement-des-matchs.feature`
-— nouveau scénario (D3, trajet adversaire protège un coach partagé pendant le placement
-automatique). Reste des lignes non touchées cette passe — historique complet :
+Last verified @ 2026-09-19 (`documentation-update`, PR G « todo FBI unique ») : nouvelle ligne
+`ce-que-fbi-doit-refleter.feature` (registre « à corriger dans FBI ») recroisée contre
+`backend/features/ce-que-fbi-doit-refleter.feature` — 2 scénarios, suite `fbi-a-corriger`. Reste
+des lignes non touchées cette passe — historique complet :
 `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
@@ -165,6 +165,7 @@ une feature par PR (`ls backend/features/` fait foi du compte) :
 | `une-rencontre-importee-dit-si-elle-est-traitee.feature` (PR-3a, 2026-09-08 ; **+P4-199, 2026-09-12** ; **+D2, 2026-09-14**) | du premier dépôt au traitement : une rencontre importée est « à traiter », placer la traite, un re-dépôt identique la fait passer « attestée FBI » (D9 — le pas Gherkin vérifie `status === VALIDATED`, libellé recalé P4-187a), un re-dépôt divergent la rend « déphasée » sans écraser la valeur app, trancher l'écart la replace « à replacer » et de nouveau traitée ; une rencontre absente d'un dépôt reste intouchée ; **depuis P4-199** : un match à l'extérieur, ou un domicile déjà passé, naît déjà « traité » ; un écart ultérieur sur un extérieur est pris en compte sans arbitrage (bandeau, puis « Pris en compte » d'un clic) ; le suffixe FFBB « (n) » est retiré du libellé de l'adversaire à l'import ; **depuis D2** : un extérieur resté « à traiter » d'un ancien dépôt (résidu d'avant P4-199) est rattrapé « traité » au re-dépôt |
 | `un-domicile-importe-retrouve-son-gymnase.feature` (P4-187a, 2026-09-09 ; +1 scénario E1, 2026-09-14) | un domicile déposé avec un libellé de salle inconnu n'a pas de gymnase ; rattacher le libellé au gymnase (`POST /api/venues/{id}/external-labels`) le lui donne sans le placer (reste UNPLACED) ; un re-dépôt au même libellé est rattaché d'office ; le gymnase fermé à la date du match fait naître le conflit « gymnase indisponible » ; **E1** : ré-affecter un libellé rattaché au mauvais gymnase (`reassign: true`) bascule le domicile non placé sur le bon gymnase, garde le témoin déjà placé sur l'ancien, et fait changer l'alias de porteur |
 | `un-domicile-non-place-dont-la-ligue-change-la-salle-est-arbitre.feature` (2026-09-16, suite `ecart-salle-non-place`) | un domicile NON PLACÉ déjà rattaché à un gymnase, dont un dépôt suivant nomme une autre salle, ouvre un écart sans jamais réécrire le gymnase en silence ; « Garder l'appli » mémorise le libellé (un re-dépôt identique reste muet, idempotence) ; « Prendre le fichier » suit l'alias confirmé de la nouvelle salle |
+| `ce-que-fbi-doit-refleter.feature` (2026-09-19, suite `fbi-a-corriger`) | « garder l'appli » sur un écart ouvre une entrée « à corriger dans FBI » (taper la valeur appli, FBI affiche encore l'ancienne) ; un dépôt qui montre toujours l'ancienne valeur ne recrée pas d'écart (« vu dans FBI ») ; un dépôt qui montre FBI corrigé ferme l'entrée seule ; le gestionnaire peut aussi la cocher « corrigé dans FBI » |
 | `les-conflits-d-un-match-disent-la-verite.feature` (P4-188/189/191, 2026-09-09 ; +P4-193 +P4-194/195, 2026-09-10 ; +D1, 2026-09-13) | une fermeture racine découpée en milieu/fin dont l'enfant « milieu » pointe un entraînement remonte ce conflit `MATCH_TRAINING` (la période la plus ÉTROITE gagne, jamais un repli sur la racine sans plan) — la borne de début du conflit est l'heure murale du club, sans décalage horaire ; **depuis P4-193** : un amical placé le dimanche d'un week-end où le club joue une rencontre de championnat le samedi est signalé `FRIENDLY_ON_MATCH_SLOT` (raison week-end de match), jamais bloqué ; **depuis P4-194/195** : une rencontre de coupe hors fenêtre de ligue lève `LEAGUE_WINDOW_VIOLATION` comme un championnat et n'est JAMAIS signalée `FRIENDLY_ON_MATCH_SLOT` — la coupe seede sa propre fenêtre de ligue dans la table GLOBALE `league_match_window` sous une catégorie jetable distinctive, nettoyée derrière elle ; **depuis D1** (3 scénarios de plus, horloge dev ÉPINGLÉE via `POST /api/dev/clock` le temps du scénario, relâchée en `AfterScenario` — sinon la règle « passé muet » aurait tu le décor daté janvier 2027) : un match posé sur le créneau d'entraînement de SA PROPRE équipe ne remonte aucun conflit ; deux matchs à domicile enchaînés à deux heures d'écart dans le même gymnase ne collisionnent plus (fenêtre SALLE seule, sans échauffement) ; un match déjà joué ne porte plus aucun conflit |
 
 Côté frontend, PR-3b (2026-09-08, même jour) : **`tests/e2e/matches-importer.spec.ts`** — l'onglet
@@ -172,6 +173,11 @@ Importer est atteint, son badge égale le compte serveur NEW+OUT_OF_SYNC (jamais
 Configuration ne porte plus le dépôt FBI ni les Engagements FFBB (P4-186), et une rencontre créée à
 la main (auto-provisionnée, nettoyée en `finally`) est déjà TRAITÉE — invisible tant que
 « Afficher les traitées » n'est pas activé (témoin qui échoue si le geste n'exerce rien).
+
+Todo FBI (2026-09-19) : **`tests/e2e/matches-fbi-todo.spec.ts`** — crée son propre domicile placé
+(POST `/api/fixtures`, nettoyé en `finally`), atteint le compteur global « FBI à faire » du
+Calendrier, ouvre la liste « FBI — à faire », coche « saisi » sur sa rencontre et vérifie le toast
+« Match marqué saisi dans FBI ».
 
 **Période (overlay, reprise, découpage, vacances)**
 

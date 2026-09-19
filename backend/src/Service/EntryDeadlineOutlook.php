@@ -10,6 +10,7 @@ use App\Entity\MatchModuleVisit;
 use App\Entity\SharedCompetitionDeadline;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
+use App\Repository\FbiCorrectionRepository;
 use App\Repository\MatchModuleVisitRepository;
 use App\Repository\SharedCompetitionDeadlineRepository;
 use DateTimeImmutable;
@@ -39,12 +40,14 @@ final class EntryDeadlineOutlook
         private readonly SharedCompetitionDeadlineRepository $sharedDeadlineRepository,
         private readonly MatchModuleVisitRepository $visitRepository,
         private readonly MatchModuleDeltaComputer $deltaComputer,
+        private readonly FbiCorrectionRepository $correctionRepository,
         private readonly ClockInterface $clock,
     ) {}
 
     /**
      * @return array{
      *     windows: list<array{deadline: string, source: string, competitionNames: list<string>, toEnterCount: int, withinWindow: bool}>,
+     *     fbiTodo: array{toEnter: int, toCorrect: int},
      *     guardianDelta?: array{newFixturesCount: int, newConflictFingerprints: list<string>, planningChanged: bool}
      * }
      */
@@ -101,7 +104,23 @@ final class EntryDeadlineOutlook
         unset($window);
         usort($windows, static fn (array $a, array $b): int => [$a['deadline'], $a['source']] <=> [$b['deadline'], $b['source']]);
 
-        $result = ['windows' => $windows];
+        // Le « à faire dans FBI » GLOBAL (toutes semaines) — servi pour que le cockpit
+        // ET la barre des compteurs n'aient JAMAIS à charger les fixtures : à saisir =
+        // domiciles PLACED (ni UNPLACED « à placer », ni SUBMITTED/VALIDATED déjà saisis),
+        // à corriger = entrées OUVERTES du registre (filtres tenant+saison Doctrine).
+        $toEnter = 0;
+        foreach ($fixtures as $fixture) {
+            if (FixtureHomeAway::HOME === $fixture->getHomeAway() && FixtureStatus::PLACED === $fixture->getStatus()) {
+                ++$toEnter;
+            }
+        }
+        $result = [
+            'windows' => $windows,
+            'fbiTodo' => [
+                'toEnter' => $toEnter,
+                'toCorrect' => \count($this->correctionRepository->findBy(['closedAt' => null])),
+            ],
+        ];
 
         // Le bloc gardien n'est joint QUE si une fenêtre J-7 est ouverte ET que
         // l'utilisateur a déjà une référence de visite — jamais on ne la stampe ici.

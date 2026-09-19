@@ -1,11 +1,13 @@
 # ClubScheduler — Tenant Isolation Architecture
 
-Last verified @ 2026-09-16 (rotation `documentation-update`, PR 2b « auto-localisation des
-adversaires » — fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code :
-priorité 7 toujours en place (`TenantFilterListener.php:55`, `KernelEvents::REQUEST =>
-['onKernelRequest', 7]`) ✓ · sortie immédiate sur `/api/admin/**` (`TenantFilterListener.php:81`)
-✓ · `TenantOwnedInterfaceCompletenessTest.php` présent (`backend/tests/Security/`) ✓. Rien à
-corriger.
+Last verified @ 2026-09-19 (rotation `documentation-update`, PR G « todo FBI unique » — fichier
+hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code : priorité 7 toujours en place
+(`TenantFilterListener.php:55`, `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · sortie
+immédiate sur `/api/admin/**` (`TenantFilterListener.php:81`, `str_starts_with(…, '/api/admin')`)
+✓ · `TenantOwnedInterfaceCompletenessTest.php` présent (`backend/tests/Security/`) ✓. Preuve neuve
+cette passe : la nouvelle entité tenant `FbiCorrection` (registre « à corriger dans FBI »,
+migration `Version20260919120000`) suit le patron canonique attesté ici (RLS FORCE + policy
+`tenant_isolation` + porte `admin_all`) sans y déroger. Rien à corriger.
 
 ## Overview
 

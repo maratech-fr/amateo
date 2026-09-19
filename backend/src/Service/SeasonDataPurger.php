@@ -14,6 +14,7 @@ use App\Entity\ConflictResolution;
 use App\Entity\Constraint;
 use App\Entity\ConstraintConflict;
 use App\Entity\ConstraintPeriodOverride;
+use App\Entity\FbiCorrection;
 use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
 use App\Entity\ImplicitRuleSetting;
@@ -161,6 +162,10 @@ final class SeasonDataPurger
         // RMM-4 — ingestions FBI datées (club_id+season_id, aucun enfant) :
         // purgées avec la saison ; ErasedClubPurger les suit via ce purger.
         FbiIngestion::class,
+        // Registre « à corriger dans FBI » (club_id+season_id, aucun enfant) : purgé
+        // avec la saison. C'est la SEULE porte de sortie d'une entrée FERMÉE (trace) —
+        // les ouvertes disparaissent aussi, la saison partant.
+        FbiCorrection::class,
         // P2-54 RMM-9 — temps de trajet vers les adversaires (club_id+season_id, aucun
         // enfant) : purgé avec la saison. Les lignes MANUAL qui portent un gymnase épinglé
         // décrémentent d'abord le compteur PARTAGÉ ({@see decrementSharedVenueChoices}).

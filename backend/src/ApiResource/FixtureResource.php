@@ -184,6 +184,16 @@ class FixtureResource
     #[Groups(['read'])]
     public array $pendingDeviations = [];
 
+    /**
+     * Mémo « FBI affiche encore … » d'un domicile rétrogradé à « à saisir » par une
+     * heure prise du fichier — `{field, value, at}` ou null. Sert la mention de la
+     * ligne « à saisir » de la liste FBI.
+     *
+     * @var array{field: string, value: string, at: string}|null
+     */
+    #[Groups(['read'])]
+    public ?array $fbiEcho = null;
+
     public static function fromEntity(Fixture $entity): self
     {
         $dto = new self;
@@ -209,6 +219,7 @@ class FixtureResource
         $dto->reviewState = $entity->getReviewState()->value;
         $dto->reviewedAt = $entity->getReviewedAt();
         $dto->pendingDeviations = $entity->getPendingDeviations();
+        $dto->fbiEcho = $entity->getFbiEcho();
 
         return $dto;
     }

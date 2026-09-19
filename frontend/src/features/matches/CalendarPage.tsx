@@ -31,9 +31,11 @@ import { listPhases, phaseCompleteness, phaseFixtures, scopeConflictsToPhase } f
 import { placementToastMessage } from "./lib/placementToast";
 import {
   applyConsultToParams,
+  applyFbiToParams,
   applyFilterToParams,
   applyWeekendToParams,
   decodeConsultParams,
+  decodeFbiParam,
   decodeFilterParams,
   decodeWeekendParam,
   hasConsultParams,
@@ -45,9 +47,11 @@ import { MonthTable } from "./MonthTable";
 import { PhaseTable } from "./PhaseTable";
 import {
   useCategories,
+  useCloseFbiCorrection,
   useCoaches,
   useCompetitions,
   useConflicts,
+  useFbiCorrections,
   useFixtures,
   useLatestFbiIngestion,
   useLeagueWindows,
@@ -56,7 +60,7 @@ import {
   useOpponentTravel,
   usePlaceMatches,
   usePriorityTiers,
-  useReopenFixture,
+  useReopenFbiCorrection,
   useSportCategoryDurations,
   useSubmitFixture,
   useTeamMatchHabits,
@@ -113,12 +117,16 @@ export function CalendarPage() {
   const coachPlayers = useCoachPlayers();
   const placeMatches = usePlaceMatches();
   const submitFixture = useSubmitFixture();
-  const reopenFixture = useReopenFixture();
   const moduleVisit = useModuleVisit();
   const freshness = useLatestFbiIngestion();
+  const fbiCorrections = useFbiCorrections();
+  const closeFbiCorrection = useCloseFbiCorrection();
+  const reopenFbiCorrection = useReopenFbiCorrection();
 
   const [editFixture, setEditFixture] = useState<Fixture | null>(null);
-  const [fbiModalOpen, setFbiModalOpen] = useState(false);
+  // Deep-link « FBI — à faire » (`fbi=1`, depuis le cockpit) : lu UNE fois au montage
+  // depuis l'URL (l'adresse fait foi — l'état vit dans l'URL, pas posé après coup).
+  const [fbiModalOpen, setFbiModalOpen] = useState(() => decodeFbiParam(new URLSearchParams(window.location.search)));
   const [ffbbDialogOpen, setFfbbDialogOpen] = useState(false);
 
   const {
@@ -161,6 +169,13 @@ export function CalendarPage() {
   const matchDurations = useMemo(() => matchMinutesByCategory(categoryDurations.data ?? []), [categoryDurations.data]);
 
   const allFixtures = useMemo<Fixture[]>(() => fixtures.data ?? [], [fixtures.data]);
+  const openCorrections = useMemo(() => fbiCorrections.data ?? [], [fbiCorrections.data]);
+  // « FBI à faire » GLOBAL (toutes semaines) : domiciles PLACED (à saisir) + entrées
+  // ouvertes du registre (à corriger). Calculé ici — la page charge déjà les fixtures.
+  const fbiTodoCount = useMemo(
+    () => allFixtures.filter((f) => "HOME" === f.homeAway && "PLACED" === f.status).length + openCorrections.length,
+    [allFixtures, openCorrections],
+  );
   const windows = useMemo(() => leagueWindows.data?.items ?? [], [leagueWindows.data]);
   const resolvedTeamWindows = useMemo(() => leagueWindows.data?.resolvedTeamWindows ?? {}, [leagueWindows.data]);
   const habits = useMemo(() => habitsQuery.data ?? [], [habitsQuery.data]);
@@ -407,6 +422,16 @@ export function CalendarPage() {
     }
   }, [teams.data, coaches.data, venues.data, searchParams, filterMode, filterIds, consultKinds, consultFamilies, consultTypicalWeek, consultAway, consultTemporality, consultMonth, consultPhaseId, selectedWeekend, setFilterMode, toggleFilterId, setConsultKinds, setConsultFamilies, setConsultTypicalWeek, setConsultAway, setConsultTemporality, setConsultMonth, setConsultPhaseId, setSelectedWeekend, setSearchParams]);
 
+  // Ouvrir/fermer la liste « FBI — à faire » synchronise le param `fbi` (l'URL fait foi).
+  const openFbiModal = (): void => {
+    setFbiModalOpen(true);
+    setSearchParams(applyFbiToParams(searchParams, true), { replace: true });
+  };
+  const closeFbiModal = (): void => {
+    setFbiModalOpen(false);
+    setSearchParams(applyFbiToParams(searchParams, false), { replace: true });
+  };
+
   // « à placer » : ramène la liste dans le champ et lui donne le focus (le `<h2>`).
   const scrollToPlace = (): void => {
     const heading = document.getElementById(PLACE_HEADING_ID);
@@ -548,7 +573,7 @@ export function CalendarPage() {
       {/* ── Le corps, selon la temporalité ─────────────────────────────────────── */}
       {isWeek ? (
         <>
-          <WeekCounters unplaced={weekCounts.unplaced} conflicts={weekCounts.conflicts} fbiToEnter={weekCounts.fbiToEnter} onScrollToPlace={scrollToPlace} onOpenFbi={() => setFbiModalOpen(true)} />
+          <WeekCounters unplaced={weekCounts.unplaced} conflicts={weekCounts.conflicts} fbiTodo={fbiTodoCount} onScrollToPlace={scrollToPlace} onOpenFbi={openFbiModal} />
           {null === activeWeekend ? (
             <div className="flex flex-col items-start gap-3">
               <EmptyState icon={Upload} title="Aucun match importé" description="Importez vos rencontres FBI pour commencer la saison." />
@@ -643,25 +668,37 @@ export function CalendarPage() {
       {ffbbDialogOpen ? <FfbbEngagementsDialog teams={teams.data ?? []} tiers={priorityTiers.data ?? []} onClose={() => setFfbbDialogOpen(false)} /> : null}
       {fbiModalOpen ? (
         <Modal
-          label="À recopier dans FBI"
-          title={`À recopier dans FBI — ${null === activeWeekend ? "" : weekLabel(activeWeekend)}`}
+          label="FBI — à faire"
+          title="FBI — à faire"
           size="lg"
-          onClose={() => setFbiModalOpen(false)}
+          onClose={closeFbiModal}
           footer={
-            <Button variant="outline" size="sm" onClick={() => setFbiModalOpen(false)}>
+            <Button variant="outline" size="sm" onClick={closeFbiModal}>
               Fermer
             </Button>
           }
         >
+          <p className="mb-3 text-sm text-muted-foreground">Tout ce qui reste à reporter dans FBI, toutes semaines, par date de match.</p>
           <FbiEntryList
-            fixtures={weekendFixturesAll}
+            fixtures={allFixtures}
+            corrections={openCorrections}
             teams={teamsMap}
             venues={venuesMap}
             competitions={competitionsMap}
             today={todayISO()}
-            busy={submitFixture.isPending || reopenFixture.isPending}
+            busy={submitFixture.isPending || closeFbiCorrection.isPending || reopenFbiCorrection.isPending}
             onSubmit={(fixture) => submitFixture.mutate(fixture, { onSuccess: () => toast.success("Match marqué saisi dans FBI") })}
-            onReopen={(fixture) => reopenFixture.mutate(fixture)}
+            onCorrected={(entries) => {
+              for (const entry of entries) {
+                closeFbiCorrection.mutate(entry.id);
+              }
+              toast.success("Correction marquée faite dans FBI");
+            }}
+            onUndoCorrected={(entries) => {
+              for (const entry of entries) {
+                reopenFbiCorrection.mutate(entry.id);
+              }
+            }}
           />
         </Modal>
       ) : null}

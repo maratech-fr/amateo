@@ -48,7 +48,7 @@ function conflictOn(fixtureId: string): Conflict {
 
 describe("deriveWeekCounters — les 3 compteurs DÉRIVÉS de la semaine (PR 3b, ex-rail)", () => {
   it("semaine vide ⇒ 0 · 0 · 0", () => {
-    expect(deriveWeekCounters([], [])).toEqual({ unplaced: 0, conflicts: 0, fbiToEnter: 0 });
+    expect(deriveWeekCounters([], [])).toEqual({ unplaced: 0, conflicts: 0 });
   });
 
   it("« à placer » = domiciles UNPLACED (habitude ou non — le compteur ne filtre pas par modèle)", () => {
@@ -75,15 +75,7 @@ describe("deriveWeekCounters — les 3 compteurs DÉRIVÉS de la semaine (PR 3b,
     expect(deriveWeekCounters(weekFixtures, [treated]).conflicts).toBe(0);
   });
 
-  it("« à saisir dans FBI » = domiciles − (SUBMITTED + VALIDATED)", () => {
-    // Un domicile PLACÉ non encore saisi ⇒ 1 à saisir.
-    expect(deriveWeekCounters([fx({ id: "a", status: "PLACED" })], []).fbiToEnter).toBe(1);
-    // Tout SUBMITTED/VALIDATED ⇒ 0 à saisir.
-    const submitted = [fx({ id: "a", status: "SUBMITTED" }), fx({ id: "b", status: "VALIDATED" })];
-    expect(deriveWeekCounters(submitted, []).fbiToEnter).toBe(0);
-    // Un extérieur ne compte pas (jamais un domicile à recopier).
-    expect(deriveWeekCounters([fx({ id: "away", homeAway: "AWAY", status: "UNPLACED" })], []).fbiToEnter).toBe(0);
-  });
+  // « à saisir dans FBI » a QUITTÉ deriveWeekCounters (compteur GLOBAL `fbiTodo` désormais).
 });
 
 describe("weekConflictCount — conflits À TRAITER rattachés à la semaine (exporté PR 3b)", () => {
@@ -175,6 +167,6 @@ describe("le SIGNAL ne pèse JAMAIS dans les compteurs (les rotations n'y entren
     expect(offModelCount([home1, home2], [], rots)).toBe(2);
     expect(sameWeekendRotationCount([home1, home2], rots)).toBe(1);
     // …et pourtant les compteurs sont intacts : tout est SUBMITTED, aucun conflit.
-    expect(deriveWeekCounters([home1, home2], [])).toEqual({ unplaced: 0, conflicts: 0, fbiToEnter: 0 });
+    expect(deriveWeekCounters([home1, home2], [])).toEqual({ unplaced: 0, conflicts: 0 });
   });
 });
