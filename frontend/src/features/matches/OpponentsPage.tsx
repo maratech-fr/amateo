@@ -388,9 +388,11 @@ function ClubTbody({
         </TableCell>
         <TableCell className="hidden text-right tabular-nums @md:table-cell">{noGym ? club.fixtureCount : ""}</TableCell>
         <TableCell className="text-right">
+          {/* Le libellé se replie en icône seule sous `@md` (`sr-only` garde le nom accessible) :
+              rendu inconditionnellement (sans-code compris), il débordait sinon la boîte à 360 px. */}
           <Button variant="ghost" size="sm" onClick={onAddVenue}>
             <Plus className="size-3.5" aria-hidden="true" />
-            Ajouter un gymnase
+            <span className="sr-only @md:not-sr-only">Ajouter un gymnase</span>
           </Button>
         </TableCell>
       </TableRow>

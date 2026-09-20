@@ -447,8 +447,9 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   //    On NE dépend d'aucune donnée FFBB live (réseau non fiable en CI) : le témoin RÉALISTE est que
   //    les deux extérieurs créés par CE run (`${opponent}-EXT`, `-EXT2`, saisis à la main → AUCUN
   //    code fédéral) apparaissent comme LIGNE CLUB (th scope=row), marquées « Aucun gymnase connu »
-  //    et SANS bouton « Ajouter un gymnase » (on ne peut apparier un gymnase qu'à un adversaire À
-  //    CODE fédéral). Un écran qui ne les montrerait pas fait ÉCHOUER ces attentes en le disant.
+  //    et PORTENT l'action « Ajouter un gymnase » utilisable — décision fondateur 2026-09-21 : plus
+  //    aucun bouton mort, un sans-code reçoit un gymnase via sa clé sentinelle locale (abefb489). Un
+  //    écran qui ne les montrerait pas fait ÉCHOUER ces attentes en le disant.
   // L'ancien deep-link `configuration?section=adversaires` redirige vers l'onglet dédié.
   await page.goto("/matchs/configuration?section=adversaires");
   await expect(page).toHaveURL(/\/matchs\/adversaires/);
@@ -463,11 +464,15 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
       rowheader,
       `l'extérieur ${opponent}-${suffix} devrait figurer comme adversaire (ligne club) — le test ne prouverait rien sinon`,
     ).toBeVisible({ timeout: 15_000 });
-    // Sa LIGNE porte « Aucun gymnase connu » (aucun venue) et n'offre PAS « Ajouter un gymnase »
-    // (pas de code fédéral) — scopé au <tr> pour ne pas résoudre à plusieurs éléments.
+    // Sa LIGNE porte « Aucun gymnase connu » (aucun venue) ET offre bien l'action « Ajouter un
+    // gymnase », utilisable (règle NOUVELLE : un sans-code s'apparie via sa clé sentinelle) —
+    // scopé au <tr> pour ne pas résoudre à plusieurs éléments. Le bouton se replie en icône seule
+    // sous @md mais garde son nom accessible (`sr-only`), donc le locator par nom tient.
     const row = rowheader.locator("xpath=ancestor::tr[1]");
     await expect(row.getByText("Aucun gymnase connu")).toBeVisible();
-    await expect(row.getByRole("button", { name: /Ajouter un gymnase/ })).toHaveCount(0);
+    const addVenue = row.getByRole("button", { name: /Ajouter un gymnase/ });
+    await expect(addVenue).toHaveCount(1);
+    await expect(addVenue).toBeEnabled();
   }
 });
 
