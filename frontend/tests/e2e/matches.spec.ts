@@ -442,37 +442,32 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   await page.getByRole("button", { name: /Angles morts/ }).first().click();
   await expect(page.getByRole("button", { name: "Voir la semaine" }).first()).toBeVisible();
 
-  // ── PR-3 « adversaire multi-gymnases » : l'écran de trajet adverse, groupé par club ─────
-  //    On NE dépend d'aucune donnée FFBB live (réseau non fiable en CI) : le témoin RÉALISTE
-  //    est que les deux extérieurs créés par CE run (`${opponent}-EXT`, `-EXT2`, saisis à la
-  //    main → AUCUN code fédéral résolu) apparaissent dans la liste repliée « N adversaires sans
-  //    code fédéral » (PR 2a — OpponentTravelCard sort les orphelins à part), et que le résumé
-  //    d'en-tête parle d'« équipes adverses ». Un écran qui ne les montrerait pas fait ÉCHOUER
-  //    ces attentes en le disant.
-  // C8 — les adversaires ont leur propre onglet ; l'ancien deep-link y redirige.
+  // ── C8 (amendement 2026-09-20) « adversaire multi-gymnases » : l'onglet Adversaires, groupé par
+  //    club ─────────────────────────────────────────────────────────────────────────────────────
+  //    On NE dépend d'aucune donnée FFBB live (réseau non fiable en CI) : le témoin RÉALISTE est que
+  //    les deux extérieurs créés par CE run (`${opponent}-EXT`, `-EXT2`, saisis à la main → AUCUN
+  //    code fédéral) apparaissent comme LIGNE CLUB (th scope=row), marquées « Aucun gymnase connu »
+  //    et SANS bouton « Ajouter un gymnase » (on ne peut apparier un gymnase qu'à un adversaire À
+  //    CODE fédéral). Un écran qui ne les montrerait pas fait ÉCHOUER ces attentes en le disant.
+  // L'ancien deep-link `configuration?section=adversaires` redirige vers l'onglet dédié.
   await page.goto("/matchs/configuration?section=adversaires");
   await expect(page).toHaveURL(/\/matchs\/adversaires/);
   await expect(page.getByRole("heading", { name: "Adversaires", level: 2 })).toBeVisible({ timeout: 15_000 });
 
-  // PR 2a : les adversaires sans code fédéral vivent dans une disclosure repliée par défaut.
-  const orphansToggle = page.getByRole("button", { name: /\d+ adversaires? sans code fédéral$/ });
-  await expect(orphansToggle, "témoin: les extérieurs sans code fédéral doivent former la liste repliée").toBeVisible({ timeout: 15_000 });
-  await orphansToggle.click();
-
   for (const suffix of ["EXT", "EXT2"] as const) {
-    // `exact: true` : le nom Playwright est une SOUS-CHAÎNE insensible à la casse par défaut, donc
-    // « …-EXT » attraperait aussi « …-EXT2 » (strict mode violation). Chaque orphelin déplié est
-    // <li><h4>…</h4><p>code fédéral non résolu</p></li> (OpponentTravelCard, PR 2a).
-    const heading = page.getByRole("heading", { name: `${opponent}-${suffix}`, exact: true, level: 4 });
+    // Chaque orphelin (code fédéral absent) est une LIGNE CLUB : un `<th scope="row">` portant son
+    // nom. Le nom accessible inclut le texte de la cellule (« … Aucun gymnase connu ») → RegExp avec
+    // `\b` après le suffixe pour que « …-EXT » n'attrape pas « …-EXT2 » (mode strict).
+    const rowheader = page.getByRole("rowheader", { name: new RegExp(`${opponent}-${suffix}\\b`) });
     await expect(
-      heading,
-      `l'extérieur ${opponent}-${suffix} devrait figurer dans la liste « sans code fédéral » — le test ne prouverait rien sinon`,
+      rowheader,
+      `l'extérieur ${opponent}-${suffix} devrait figurer comme adversaire (ligne club) — le test ne prouverait rien sinon`,
     ).toBeVisible({ timeout: 15_000 });
-    // Sa ligne (le <li> de CET en-tête exact) porte le sous-libellé « code fédéral non résolu » ET
-    // n'offre PAS de « Localiser » — scopé au <li> pour ne pas résoudre à plusieurs éléments.
-    const row = heading.locator("xpath=ancestor::li[1]");
-    await expect(row.getByText("code fédéral non résolu")).toBeVisible();
-    await expect(row.getByRole("button", { name: /Localiser/ })).toHaveCount(0);
+    // Sa LIGNE porte « Aucun gymnase connu » (aucun venue) et n'offre PAS « Ajouter un gymnase »
+    // (pas de code fédéral) — scopé au <tr> pour ne pas résoudre à plusieurs éléments.
+    const row = rowheader.locator("xpath=ancestor::tr[1]");
+    await expect(row.getByText("Aucun gymnase connu")).toBeVisible();
+    await expect(row.getByRole("button", { name: /Ajouter un gymnase/ })).toHaveCount(0);
   }
 });
 
@@ -631,7 +626,7 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
 
   // ── Recherche adversaires : « xyz » n'a aucun résultat, Escape vide la requête ──
   await page.goto("/matchs/adversaires");
-  const search = page.getByRole("searchbox", { name: "Rechercher un club ou une équipe" });
+  const search = page.getByRole("searchbox", { name: "Rechercher un club ou un gymnase" });
   await expect(search).toBeVisible();
   await search.fill("xyznonexistant");
   await expect(page.getByText(/Aucun adversaire pour/)).toBeVisible();
@@ -660,7 +655,7 @@ test("gymnases adverses: l'écran Adversaires reflow sans défilement horizontal
   await page.goto("/matchs/adversaires");
 
   // Témoin : la barre de recherche est rendue quoi qu'il arrive — un scan sur page vide ne prouve rien.
-  const search = page.getByRole("searchbox", { name: "Rechercher un club ou une équipe" });
+  const search = page.getByRole("searchbox", { name: "Rechercher un club ou un gymnase" });
   await expect(search).toBeVisible({ timeout: 15_000 });
 
   // WCAG 1.4.10 — aucun défilement horizontal de la page à largeur téléphone.
