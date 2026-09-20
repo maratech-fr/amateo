@@ -277,6 +277,23 @@ final class OpponentTravelController extends AbstractController
             return $this->json(['error' => 'Ce libellé de salle n\'apparaît sur aucune rencontre à l\'extérieur de cet adversaire.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        // Borne le nombre de gymnases par (club, adversaire) : l'ajout d'une NOUVELLE clé de
+        // libellé est refusé au-delà du plafond (l'actualisation d'un libellé déjà apparié
+        // reste permise). Empêche l'inflation d'un compteur communautaire par des libellés forgés.
+        $existingLinks = $this->linkRepository->findByCode($clubId, $clean);
+        $norm = $this->labelNormalizer->normalize(trim($fbiLabel));
+        $isNewKey = true;
+        foreach ($existingLinks as $existingLink) {
+            if ($existingLink->getFbiLabelNorm() === $norm) {
+                $isNewKey = false;
+
+                break;
+            }
+        }
+        if ($isNewKey && \count($existingLinks) >= OpponentVenueLinkManager::MAX_VENUES_PER_OPPONENT) {
+            return $this->json(['error' => 'Trop de gymnases pour cet adversaire.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
         // SEC-19 — borne PAR UTILISATEUR consommée APRÈS les 422 : le geste chauffe un
         // itinéraire IGN et peut écrire dans le partagé.
         if (!$this->consumeManualLimiter()) {

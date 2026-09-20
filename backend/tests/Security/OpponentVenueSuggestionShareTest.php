@@ -277,6 +277,76 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
         unset($seasonA, $seasonB);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // (g) la comptabilité du partagé est IDEMPOTENTE et SYMÉTRIQUE (revue sécurité)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function testTwoManualLinksOfOneClubOnTheSameFederalRefCreditTheSharedCatalogOnce(): void
+    {
+        $ffbb = 'ARA0069I' . random_int(10, 99);
+        [$club] = $this->createClub('idem');
+        $manager = $this->manager();
+
+        // Un même club apparie DEUX libellés de fichier différents vers le MÊME gymnase fédéral.
+        // Le compteur communautaire compte des CLUBS, pas des libellés : il ne doit monter qu'à 1.
+        $this->scopeGucToClub($club->getId());
+        $manager->addOrUpdate($club->getId(), $ffbb, 'SALLE UNE', 'GYM CHOISI', self::FED_REF_A, 45.76, 4.86);
+        $manager->addOrUpdate($club->getId(), $ffbb, 'SALLE DEUX', 'GYM CHOISI', self::FED_REF_A, 45.76, 4.86);
+
+        self::assertSame(1, $this->sharedCount($ffbb, self::FED_REF_A), 'deux libellés du MÊME club vers le MÊME gymnase = +1, jamais +2');
+    }
+
+    public function testAManualRefThatDoesNotResolveFederallyIsPersistedAsNull(): void
+    {
+        $ffbb = 'ARA0069N' . random_int(10, 99);
+        [$club] = $this->createClub('nullref');
+
+        // Une ref qui NE résout PAS fédéralement (radius/annuaire) n'alimente pas le partagé —
+        // elle ne doit pas non plus être persistée sur le lien : un ref présent implique toujours
+        // un crédit passé, sinon un retrait pourrait décrémenter sans avoir jamais incrémenté.
+        $this->scopeGucToClub($club->getId());
+        $manager = $this->manager();
+        $manager->addOrUpdate($club->getId(), $ffbb, 'SALLE FBI', 'GYM INCONNU', self::UNKNOWN_REF, 45.76, 4.86);
+
+        $count = (int) $this->conn()->fetchOne(
+            'SELECT COUNT(*) FROM opponent_venue_link WHERE club_id = :cid AND opponent_organisme_code = :code',
+            ['cid' => $club->getId(), 'code' => $ffbb],
+        );
+        self::assertSame(1, $count, 'le lien tenant est bien créé (la correction locale reste)');
+        $ref = $this->conn()->fetchOne(
+            'SELECT venue_external_ref FROM opponent_venue_link WHERE club_id = :cid AND opponent_organisme_code = :code',
+            ['cid' => $club->getId(), 'code' => $ffbb],
+        );
+        self::assertNull($ref, 'une ref non résolue fédéralement n\'est jamais persistée (lien par coordonnées seules)');
+    }
+
+    public function testTheSharedDecrementIsSymmetricPerFederalRef(): void
+    {
+        $ffbb = 'ARA0069S' . random_int(10, 99);
+        [$club] = $this->createClub('sym');
+        $manager = $this->manager();
+
+        $this->scopeGucToClub($club->getId());
+        $manager->addOrUpdate($club->getId(), $ffbb, 'SALLE UNE', 'GYM CHOISI', self::FED_REF_A, 45.76, 4.86);
+        $manager->addOrUpdate($club->getId(), $ffbb, 'SALLE DEUX', 'GYM CHOISI', self::FED_REF_A, 45.76, 4.86);
+        self::assertSame(1, $this->sharedCount($ffbb, self::FED_REF_A), 'deux liens du club vers un gymnase = compte 1');
+
+        /** @var list<string> $ids */
+        $ids = $this->conn()->fetchFirstColumn(
+            'SELECT id FROM opponent_venue_link WHERE club_id = :cid AND opponent_organisme_code = :code ORDER BY fbi_label_norm',
+            ['cid' => $club->getId(), 'code' => $ffbb],
+        );
+        self::assertCount(2, $ids);
+
+        // Retirer UN lien alors qu'un AUTRE du même club pointe encore ce gymnase : pas de décrément.
+        $manager->delete($club->getId(), $ids[0]);
+        self::assertSame(1, $this->sharedCount($ffbb, self::FED_REF_A), 'retirer un lien non-dernier sur ce gymnase ne décrémente pas le partagé');
+
+        // Retirer le DERNIER lien du club sur ce gymnase : le compte redescend.
+        $manager->delete($club->getId(), $ids[1]);
+        self::assertSame(0, $this->sharedCount($ffbb, self::FED_REF_A), 'retirer le dernier lien du club sur ce gymnase décrémente');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

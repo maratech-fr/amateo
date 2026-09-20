@@ -217,20 +217,51 @@ final class OpponentTravelResolver
             return; // re-choisir exactement le même gymnase : rien ne bouge
         }
         if (null !== $previousRef) {
-            $this->suggestions->decrement($code, $previousRef);
+            $this->debitSharedVenue($code, $previousRef);
         }
         if (null === $newRef) {
             return; // un gymnase sans référence fédérale ne partage rien (tenant seul)
         }
 
-        $federal = $this->salleResolver->resolveByExternalRef($newRef, $lat, $lon);
+        $federal = $this->resolveFederalVenue($newRef, $lat, $lon);
         if (null === $federal) {
             $this->logger->warning('Opponent venue suggestion: federal salle unresolved, shared feed skipped', ['ref' => $newRef]);
 
             return;
         }
-        $this->suggestions->upsertManual($code, $newRef, $federal['label'], $federal['city'], $federal['postalCode'], $federal['latitude'], $federal['longitude']);
-        $this->suggestions->increment($code, $newRef);
+        $this->creditSharedVenue($code, $newRef, $federal);
+    }
+
+    /**
+     * Re-résout une ref fédérale contre l'index FFBB (best-effort, off-network en test) — la
+     * SEULE source du libellé/coordonnées écrits dans le partagé. Null = inconnue.
+     *
+     * @return array{label: string, city: ?string, postalCode: ?string, latitude: ?float, longitude: ?float}|null
+     */
+    public function resolveFederalVenue(string $ref, float $lat, float $lon): ?array
+    {
+        return $this->salleResolver->resolveByExternalRef($ref, $lat, $lon);
+    }
+
+    /**
+     * +1 sur le catalogue partagé pour `(code, ref)` : upsert du libellé FÉDÉRAL (jamais le
+     * texte du client) puis incrément. L'appelant garantit l'idempotence (un crédit par club).
+     *
+     * @param array{label: string, city: ?string, postalCode: ?string, latitude: ?float, longitude: ?float} $federal
+     */
+    public function creditSharedVenue(string $code, string $ref, array $federal): void
+    {
+        $this->suggestions->upsertManual($code, $ref, $federal['label'], $federal['city'], $federal['postalCode'], $federal['latitude'], $federal['longitude']);
+        $this->suggestions->increment($code, $ref);
+    }
+
+    /**
+     * −1 sur le catalogue partagé pour `(code, ref)` (jamais sous 0, cf. repo). L'appelant
+     * garantit la symétrie (décrément au retrait du DERNIER lien du club sur ce gymnase).
+     */
+    public function debitSharedVenue(string $code, string $ref): void
+    {
+        $this->suggestions->decrement($code, $ref);
     }
 
     /**

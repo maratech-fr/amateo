@@ -19,6 +19,7 @@ use App\Repository\OpponentVenueLinkRepository;
 use App\Repository\OpponentVenueSuggestionRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
+use App\Service\Geo\OpponentVenueLinkManager;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
 use App\Service\TravelComputeLock;
@@ -358,6 +359,26 @@ final class OpponentTravelApiTest extends WebTestCase
         ]);
         self::assertResponseStatusCodeSame(429, 'le 31ᵉ épinglage dépasse la borne manuelle');
         self::assertStringContainsString('gymnases', (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testAddingMoreVenuesThanTheCapForOneOpponentIsRejected(): void
+    {
+        [$club, $user, $season] = $this->seedClub();
+        $code = 'ARA00690C1';
+        $this->awayFixture($club, $season, $code, 'ADVERSAIRE CAP', 'SALLE CAP');
+
+        // Sème le maximum de gymnases (coordonnées seules, MANUAL) pour cet adversaire.
+        for ($i = 0; $i < OpponentVenueLinkManager::MAX_VENUES_PER_OPPONENT; ++$i) {
+            $this->link($club, $code, 'SALLE ' . $i, 'Gymnase ' . $i, null, 45.80, 5.00, OpponentVenueLinkSource::MANUAL);
+        }
+
+        // Le gymnase suivant (nouvelle clé) dépasse la borne → 422, sans être validé contre les
+        // rencontres (l'ajout avant tout match — cas playoff — doit rester possible sous la borne).
+        $this->post($user, '/api/opponents/' . $code . '/venues', [
+            'venueLabel' => 'Gymnase de trop', 'latitude' => 45.81, 'longitude' => 5.01,
+        ]);
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('Trop de gymnases', (string) $this->client->getResponse()->getContent());
     }
 
     protected function setUp(): void

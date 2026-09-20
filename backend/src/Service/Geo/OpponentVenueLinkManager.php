@@ -25,6 +25,13 @@ use Doctrine\ORM\EntityManagerInterface;
  */
 final class OpponentVenueLinkManager
 {
+    /**
+     * Borne le nombre de gymnases appariés par (club, adversaire) : l'ajout avant toute
+     * rencontre reste possible (cas playoff), mais on empêche l'inflation d'un compteur
+     * communautaire par des libellés forgés (revue sécurité 2026-09-20).
+     */
+    public const int MAX_VENUES_PER_OPPONENT = 20;
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly OpponentVenueLinkRepository $linkRepository,
@@ -52,18 +59,8 @@ final class OpponentVenueLinkManager
             ->setOpponentOrganismeCode(mb_substr($code, 0, 64))
             ->setFbiLabel(mb_substr(trim($fbiLabel), 0, 180))
             ->setFbiLabelNorm(mb_substr($norm, 0, 180));
-        $link->setVenueLabel(mb_substr($venueLabel, 0, 180))
-            ->setVenueExternalRef(null === $venueRef ? null : mb_substr($venueRef, 0, 64))
-            ->setLatitude($lat)
-            ->setLongitude($lon)
-            ->setSource(OpponentVenueLinkSource::MANUAL);
-        if (!$existing instanceof OpponentVenueLink) {
-            $this->entityManager->persist($link);
-        }
-        $this->entityManager->flush();
 
-        $this->travelResolver->accountManualChoice($code, $previousRef, $venueRef, $lat, $lon);
-        $this->travelResolver->warmTravel($clubId, $lat, $lon);
+        $this->writeGym($clubId, $link, $venueLabel, $venueRef, $lat, $lon, $previousRef);
 
         return $link;
     }
@@ -80,16 +77,8 @@ final class OpponentVenueLinkManager
             return null;
         }
         $previousRef = OpponentVenueLinkSource::MANUAL === $link->getSource() ? $link->getVenueExternalRef() : null;
-        $code = $link->getOpponentOrganismeCode();
-        $link->setVenueLabel(mb_substr($venueLabel, 0, 180))
-            ->setVenueExternalRef(null === $venueRef ? null : mb_substr($venueRef, 0, 64))
-            ->setLatitude($lat)
-            ->setLongitude($lon)
-            ->setSource(OpponentVenueLinkSource::MANUAL);
-        $this->entityManager->flush();
 
-        $this->travelResolver->accountManualChoice($code, $previousRef, $venueRef, $lat, $lon);
-        $this->travelResolver->warmTravel($clubId, $lat, $lon);
+        $this->writeGym($clubId, $link, $venueLabel, $venueRef, $lat, $lon, $previousRef);
 
         return $link;
     }
@@ -105,13 +94,53 @@ final class OpponentVenueLinkManager
         if (!$link instanceof OpponentVenueLink || $link->getClubId() !== $clubId) {
             return false;
         }
-        if (OpponentVenueLinkSource::MANUAL === $link->getSource() && null !== $link->getVenueExternalRef()) {
-            // accountManualChoice(previous, null) = −1 sur l'ancien ref, aucun incrément.
-            $this->travelResolver->accountManualChoice($link->getOpponentOrganismeCode(), $link->getVenueExternalRef(), null, 0.0, 0.0);
+        $ref = $link->getVenueExternalRef();
+        // Décrément SYMÉTRIQUE : un ref n'est persisté que s'il a été crédité (résolu fédéralement,
+        // cf. writeGym), et on ne décrémente qu'au retrait du DERNIER lien du club sur ce gymnase.
+        if (OpponentVenueLinkSource::MANUAL === $link->getSource() && null !== $ref
+            && 0 === $this->linkRepository->countManualByRef($clubId, $link->getOpponentOrganismeCode(), $ref, $link->getId())) {
+            $this->travelResolver->debitSharedVenue($link->getOpponentOrganismeCode(), $ref);
         }
         $this->entityManager->remove($link);
         $this->entityManager->flush();
 
         return true;
+    }
+
+    /**
+     * Écrit le gymnase sur le lien (MANUAL) et tient la comptabilité du partagé IDEMPOTENTE et
+     * SYMÉTRIQUE. Le nouveau ref n'est PERSISTÉ que s'il résout fédéralement (b) — un ref présent
+     * implique donc toujours un crédit passé. On ne crédite le nouveau gymnase que si le club ne
+     * le portait pas déjà (a), et on ne débite l'ancien que si plus aucun autre lien du club ne le
+     * porte (a). Chauffe enfin le trajet du nouveau gymnase (cache-first).
+     */
+    private function writeGym(string $clubId, OpponentVenueLink $link, string $venueLabel, ?string $newRef, float $lat, float $lon, ?string $previousRef): void
+    {
+        $federal = null === $newRef ? null : $this->travelResolver->resolveFederalVenue($newRef, $lat, $lon);
+        $storedRef = null !== $newRef && null !== $federal ? mb_substr($newRef, 0, 64) : null;
+        $code = $link->getOpponentOrganismeCode();
+
+        $link->setVenueLabel(mb_substr($venueLabel, 0, 180))
+            ->setVenueExternalRef($storedRef)
+            ->setLatitude($lat)
+            ->setLongitude($lon)
+            ->setSource(OpponentVenueLinkSource::MANUAL);
+        $this->entityManager->persist($link);
+        $this->entityManager->flush();
+
+        if ($previousRef !== $storedRef) {
+            // Débit de l'ancien ref s'il n'est plus porté par aucun AUTRE lien du club.
+            if (null !== $previousRef && 0 === $this->linkRepository->countManualByRef($clubId, $code, $previousRef, $link->getId())) {
+                $this->travelResolver->debitSharedVenue($code, $previousRef);
+            }
+            // Crédit du nouveau ref si le club ne le portait pas déjà. Un $storedRef non nul
+            // implique un $federal non nul (il n'est posé que lorsque la résolution a abouti,
+            // ce que PHPStan sait narrower — d'où l'absence de test « null !== $federal »).
+            if (null !== $storedRef && 0 === $this->linkRepository->countManualByRef($clubId, $code, $storedRef, $link->getId())) {
+                $this->travelResolver->creditSharedVenue($code, $storedRef, $federal);
+            }
+        }
+
+        $this->travelResolver->warmTravel($clubId, $lat, $lon);
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Repository;
 
 use App\Entity\OpponentVenueLink;
+use App\Enum\OpponentVenueLinkSource;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -69,5 +70,30 @@ final class OpponentVenueLinkRepository extends ServiceEntityRepository
             'opponentOrganismeCode' => $opponentOrganismeCode,
             'fbiLabelNorm' => $fbiLabelNorm,
         ]);
+    }
+
+    /**
+     * Combien de liens MANUAL du club pointent la ref fédérale `(code, ref)` — hors le lien
+     * `$excludeId` s'il est fourni. Sert la comptabilité IDEMPOTENTE/SYMÉTRIQUE du catalogue
+     * partagé : on ne crédite un gymnase que si le club ne le porte pas déjà, et on ne le
+     * décrémente qu'au retrait de son DERNIER lien (revue sécurité 2026-09-20).
+     */
+    public function countManualByRef(string $clubId, string $opponentOrganismeCode, string $venueExternalRef, ?string $excludeId = null): int
+    {
+        $qb = $this->createQueryBuilder('l')
+            ->select('COUNT(l.id)')
+            ->andWhere('l.clubId = :clubId')
+            ->andWhere('l.opponentOrganismeCode = :code')
+            ->andWhere('l.venueExternalRef = :ref')
+            ->andWhere('l.source = :manual')
+            ->setParameter('clubId', $clubId)
+            ->setParameter('code', $opponentOrganismeCode)
+            ->setParameter('ref', $venueExternalRef)
+            ->setParameter('manual', OpponentVenueLinkSource::MANUAL);
+        if (null !== $excludeId) {
+            $qb->andWhere('l.id != :excludeId')->setParameter('excludeId', $excludeId);
+        }
+
+        return (int) $qb->getQuery()->getSingleScalarResult();
     }
 }
