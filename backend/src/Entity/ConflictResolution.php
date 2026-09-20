@@ -24,8 +24,8 @@ use Doctrine\ORM\Mapping as ORM;
  * ORPHELIN : jamais rendu (la jointure ne sert que les empreintes du flux),
  * jamais nettoyé à la volée — purgé avec la saison ({@see SeasonDataPurger}).
  *
- * Un couple (club, saison, empreinte) = une ligne (unique). Patron structurel
- * {@see OpponentTravel}.
+ * Un couple (club, saison, empreinte) = une ligne (unique). Patron structurel des
+ * entités tenant season-scoped du module (uuid, version, timestamps, RLS).
  */
 #[ORM\Entity(repositoryClass: ConflictResolutionRepository::class)]
 #[ORM\Table(name: 'conflict_resolution')]

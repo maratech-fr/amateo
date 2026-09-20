@@ -14,7 +14,7 @@ namespace App\Enum;
  * Poser « À traiter » = SUPPRIMER la ligne (DELETE), jamais stocker une valeur.
  * Ces trois cas sont donc EXACTEMENT ceux qui se persistent.
  *
- * Patron {@see OpponentTravelSource}.
+ * Patron {@see OpponentVenueLinkSource} (enum string court adossé à HasValues).
  */
 enum ConflictResolutionStatus: string
 {

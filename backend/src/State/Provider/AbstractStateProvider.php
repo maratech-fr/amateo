@@ -84,7 +84,10 @@ abstract class AbstractStateProvider implements ProviderInterface
         $qb->addOrderBy('e.id', 'ASC');
 
         if ($bounded || !$this->pagination->isEnabled($operation, $context)) {
-            return array_map([$this, 'mapEntityToOutput'], $qb->getQuery()->getResult());
+            $outputs = array_map([$this, 'mapEntityToOutput'], $qb->getQuery()->getResult());
+            $this->decorateCollection($outputs);
+
+            return $outputs;
         }
 
         $offset = $this->pagination->getOffset($operation, $context);
@@ -97,9 +100,22 @@ abstract class AbstractStateProvider implements ProviderInterface
         $doctrinePaginator = new DoctrinePaginator($qb->getQuery(), fetchJoinCollection: false);
         $total = \count($doctrinePaginator);
         $items = array_map([$this, 'mapEntityToOutput'], iterator_to_array($doctrinePaginator));
+        $this->decorateCollection($items);
         $currentPage = $limit > 0 ? (int) floor($offset / $limit) + 1 : 1;
 
         return new TraversablePaginator(new ArrayIterator($items), $currentPage, $limit, $total);
+    }
+
+    /**
+     * Hook: decorate the mapped outputs of a collection IN BATCH (zero N+1), once all
+     * items are known — for fields that can't be derived per item without a fan-out. Called
+     * on both the bounded and the paginated paths. No-op by default.
+     *
+     * @param array<int, TOutput> $outputs
+     */
+    protected function decorateCollection(array $outputs): void
+    {
+        unset($outputs);
     }
 
     /**

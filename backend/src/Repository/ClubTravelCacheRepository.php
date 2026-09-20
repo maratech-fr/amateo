@@ -36,4 +36,21 @@ final class ClubTravelCacheRepository extends ServiceEntityRepository
             'destLon' => $destLon,
         ]);
     }
+
+    /**
+     * All cached rows for one (club, profile, origin) — the whole fan-out from a single
+     * origin (the club siège). One query so a projection over many opponent gyms never
+     * fans into an N+1.
+     *
+     * @return list<ClubTravelCache>
+     */
+    public function findAllFromOrigin(string $clubId, string $profile, string $originLat, string $originLon): array
+    {
+        return $this->findBy([
+            'clubId' => $clubId,
+            'profile' => $profile,
+            'originLat' => $originLat,
+            'originLon' => $originLon,
+        ]);
+    }
 }

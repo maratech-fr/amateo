@@ -214,7 +214,7 @@ final class MatchConflictDetector
      * @param array<string, int>                                                                     $roundTripByFixtureId
      *                                                                                                                     fixtureId → round-trip car travel minutes (P2-54 RMM-9 PR-3, AWAY only); absent = 0
      *                                                                                                                     (no travel modelled → no spatial extension of the footprint). The controller projects it
-     *                                                                                                                     from `opponent_travel` (2 × one-way), the detector stays pure.
+     *                                                                                                                     via OpponentTravelProjection (link gym → constant travel cache, 2 × one-way), the detector stays pure.
      * @param DateTimeImmutable|null                                                                 $clubToday
      *                                                                                                                     the club's civil today ({@see ClubDay}); a fixture whose matchDate is strictly BEFORE
      *                                                                                                                     it is already played — it neither PORTS nor RECEIVES a conflict (D1, rule 3). null

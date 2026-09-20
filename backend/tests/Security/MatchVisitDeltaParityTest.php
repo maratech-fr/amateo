@@ -496,6 +496,9 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         $club->setTimezone('Europe/Paris');
         $club->setLocale('fr');
         $club->setOnboardingCompleted(true);
+        // Siège localisé : sans coordonnées, la projection de trajet rend un tableau vide.
+        $club->setLatitude(45.70);
+        $club->setLongitude(4.90);
         $this->em->persist($club);
 
         $user = new User;
@@ -655,6 +658,8 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         $fixture->setHomeAway(FixtureHomeAway::AWAY);
         $fixture->setOpponentLabel('Adv extérieur');
         $fixture->setOpponentOrganismeCode($code);
+        // La rencontre pointe SA salle : c'est le libellé qui résout son lien puis son trajet.
+        $fixture->setFbiVenueLabel('SALLE DELTA');
         $fixture->setKickoffTime(DateTimeImmutable::createFromFormat('!H:i', $kickoff) ?: null);
         $this->em->persist($fixture);
         $this->em->flush();
@@ -662,14 +667,24 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         return $fixture;
     }
 
-    /** Un trajet CLUB (défaut) vers un adversaire : aller simple en minutes, source AUTO. */
+    /**
+     * Amendement 2026-09-20 — le trajet vers un adversaire n'est plus une ligne season+team
+     * mais (1) un APPARIEMENT libellé→gymnase ({@see OpponentVenueLink}) et (2) une CONSTANTE
+     * dans le cache club (siège → gymnase). On seede les deux : le lien de « SALLE DELTA » vers
+     * un gymnase fixe (45.76, 4.86) et le trajet en cache siège(45.70,4.90)→gymnase = oneWay.
+     */
     private function seedClubTravel(Season $season, string $code, int $oneWayMinutes): void
     {
         $this->scopeGucToClub($season->getClubId());
         $this->conn()->executeStatement(
-            'INSERT INTO opponent_travel (id, version, created_at, updated_at, club_id, season_id, opponent_organisme_code, opponent_team_key, travel_minutes, source, resolved_at)'
-            . ' VALUES (gen_random_uuid(), 1, now(), now(), :cid, :sid, :code, NULL, :min, \'AUTO\', now())',
-            ['cid' => $season->getClubId(), 'sid' => $season->getId(), 'code' => $code, 'min' => $oneWayMinutes],
+            'INSERT INTO opponent_venue_link (id, version, created_at, updated_at, club_id, opponent_organisme_code, fbi_label, fbi_label_norm, venue_external_ref, venue_label, latitude, longitude, source)'
+            . ' VALUES (gen_random_uuid(), 1, now(), now(), :cid, :code, \'SALLE DELTA\', \'salle delta\', NULL, \'Salle Delta\', 45.76, 4.86, \'AUTO\')',
+            ['cid' => $season->getClubId(), 'code' => $code],
+        );
+        $this->conn()->executeStatement(
+            'INSERT INTO club_travel_cache (id, club_id, profile, origin_lat, origin_lon, dest_lat, dest_lon, minutes, resolved_at)'
+            . ' VALUES (gen_random_uuid(), :cid, \'car\', 45.70000, 4.90000, 45.76000, 4.86000, :min, now())',
+            ['cid' => $season->getClubId(), 'min' => $oneWayMinutes],
         );
     }
 

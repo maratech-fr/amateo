@@ -7,13 +7,20 @@ namespace App\Tests\Integration\Api;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Competition;
+use App\Entity\Fixture;
+use App\Entity\OpponentVenueLink;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
 use App\Enum\CompetitionType;
+use App\Enum\FixtureHomeAway;
+use App\Enum\OpponentVenueLinkSource;
 use App\Enum\SeasonStatus;
+use App\Service\Basketball\VenueLabelNormalizer;
+use App\Service\Geo\IgnRoutingClient;
+use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
@@ -354,6 +361,65 @@ final class FixtureApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    /**
+     * Le trajet d'une rencontre EXTÉRIEURE est DÉRIVÉ de la rencontre (champ additif
+     * `awayTravel`), calculé EN BATCH par le provider de collection. Preuve de toute la PR :
+     * deux rencontres du MÊME club adverse dans DEUX salles différentes portent DEUX trajets
+     * différents. Repli « gymnase supposé » marqué ; domicile → null.
+     */
+    public function testAwayTravelIsDerivedFromEachFixtureVenue(): void
+    {
+        // Siège du club localisé (sans quoi aucun trajet ne se calcule).
+        $this->scopeGucToClub($this->club->getId());
+        $this->club->setLatitude(45.70)->setLongitude(4.90);
+        $this->em->flush();
+
+        // ADV1 : deux salles distinctes → deux liens → deux trajets (le cœur de la PR).
+        $a = $this->seedAway('ARA0069AAA', 'ASVEL - 1', 'SALLE ALPHA');
+        $b = $this->seedAway('ARA0069AAA', 'ASVEL - 2', 'SALLE BRAVO');
+        $this->seedLink('ARA0069AAA', 'SALLE ALPHA', 'Gymnase Alpha', 45.80, 5.00);
+        $this->seedLink('ARA0069AAA', 'SALLE BRAVO', 'Gymnase Bravo', 45.90, 5.10);
+        $this->seedCache(45.80, 5.00, 25);
+        $this->seedCache(45.90, 5.10, 40);
+
+        // ADV2 : une salle appariée (deux rencontres) + une salle orpheline → repli « gymnase
+        // le plus fréquent » (Gymnase Charlie), marqué approché.
+        $this->seedAway('ARA0069BBB', 'BC - 1', 'SALLE CHARLIE');
+        $this->seedAway('ARA0069BBB', 'BC - 2', 'SALLE CHARLIE');
+        $orphan = $this->seedAway('ARA0069BBB', 'BC - 3', 'SALLE INCONNUE');
+        $this->seedLink('ARA0069BBB', 'SALLE CHARLIE', 'Gymnase Charlie', 46.00, 5.20);
+        $this->seedCache(46.00, 5.20, 55);
+
+        // Un domicile → awayTravel null.
+        $home = $this->seedHome('ARA0069AAA', 'ASVEL - 1');
+
+        $this->client->request('GET', '/api/fixtures', [], [], $this->authHeaders());
+        self::assertResponseStatusCodeSame(200);
+        $byId = [];
+        foreach ($this->responseData()['member'] ?? [] as $row) {
+            $byId[$row['id']] = $row;
+        }
+
+        // Deux trajets DIFFÉRENTS pour deux salles du même adversaire.
+        self::assertSame('linked', $byId[$a]['awayTravel']['basis']);
+        self::assertSame(25, $byId[$a]['awayTravel']['oneWayMinutes']);
+        self::assertSame('Gymnase Alpha', $byId[$a]['awayTravel']['venueLabel']);
+        self::assertFalse($byId[$a]['awayTravel']['approximated']);
+        self::assertSame(40, $byId[$b]['awayTravel']['oneWayMinutes'], 'la 2ᵉ salle porte SON propre trajet');
+
+        // Repli « gymnase supposé » approché.
+        self::assertSame('most_frequent', $byId[$orphan]['awayTravel']['basis']);
+        self::assertSame('Gymnase Charlie', $byId[$orphan]['awayTravel']['venueLabel']);
+        self::assertSame(55, $byId[$orphan]['awayTravel']['oneWayMinutes']);
+        self::assertTrue($byId[$orphan]['awayTravel']['approximated']);
+
+        // Domicile : aucun trajet adverse (champ omis à la sérialisation quand null).
+        self::assertNull($byId[$home]['awayTravel'] ?? null);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -392,11 +458,56 @@ final class FixtureApiTest extends WebTestCase
         $this->client->request('PUT', '/api/fixtures/' . $id, [], [], $this->authHeaders() + ['CONTENT_TYPE' => 'application/json'], json_encode($body, \JSON_THROW_ON_ERROR));
     }
 
-    /**
-     * @param array<string, mixed> $body
-     *
-     * @return array<string, mixed>
-     */
+    private function seedAway(string $code, string $opponentLabel, string $fbiVenueLabel): string
+    {
+        return $this->seedFixture($code, $opponentLabel, $fbiVenueLabel, FixtureHomeAway::AWAY);
+    }
+
+    private function seedHome(string $code, string $opponentLabel): string
+    {
+        return $this->seedFixture($code, $opponentLabel, null, FixtureHomeAway::HOME);
+    }
+
+    private function seedFixture(string $code, string $opponentLabel, ?string $fbiVenueLabel, FixtureHomeAway $homeAway): string
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $fixture = new Fixture;
+        $fixture->setClubId($this->club->getId());
+        $fixture->setSeasonId($this->season->getId());
+        $fixture->setTeamId(self::TEAM_ID);
+        $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
+        $fixture->setHomeAway($homeAway);
+        $fixture->setOpponentLabel($opponentLabel);
+        $fixture->setOpponentOrganismeCode($code);
+        $fixture->setFbiVenueLabel($fbiVenueLabel);
+        $this->em->persist($fixture);
+        $this->em->flush();
+
+        return $fixture->getId();
+    }
+
+    private function seedLink(string $code, string $fbiLabel, string $venueLabel, float $lat, float $lon): void
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $normalizer = self::getContainer()->get(VenueLabelNormalizer::class);
+        $link = (new OpponentVenueLink)
+            ->setClubId($this->club->getId())
+            ->setOpponentOrganismeCode($code)
+            ->setFbiLabel($fbiLabel)
+            ->setFbiLabelNorm($normalizer->normalize($fbiLabel))
+            ->setVenueLabel($venueLabel)
+            ->setLatitude($lat)
+            ->setLongitude($lon)
+            ->setSource(OpponentVenueLinkSource::AUTO);
+        $this->em->persist($link);
+        $this->em->flush();
+    }
+
+    private function seedCache(float $destLat, float $destLon, int $minutes): void
+    {
+        self::getContainer()->get(TravelTimeCache::class)->store($this->club->getId(), IgnRoutingClient::PROFILE_CAR, 45.70, 4.90, $destLat, $destLon, $minutes);
+    }
+
     private function post(array $body): array
     {
         $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders() + ['CONTENT_TYPE' => 'application/json'], json_encode($body, \JSON_THROW_ON_ERROR));

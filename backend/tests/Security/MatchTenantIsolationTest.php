@@ -15,7 +15,7 @@ use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
 use App\Entity\MatchSlotRotation;
 use App\Entity\MatchSlotRotationTeam;
-use App\Entity\OpponentTravel;
+use App\Entity\OpponentVenueLink;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
@@ -33,9 +33,10 @@ use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
-use App\Enum\OpponentTravelSource;
+use App\Enum\OpponentVenueLinkSource;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLinkType;
+use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
@@ -451,37 +452,35 @@ final class MatchTenantIsolationTest extends WebTestCase
     // ── Trajet adverse (P2-54 RMM-9 PR-3) : le trajet est CLUB-spécifique (siège) ──
 
     /**
-     * NR axe §7.1 tenant isolation : le trajet adverse vit dans une table TENANT
-     * (le trajet dépend du siège d'UN club) — club A ne lit/écrit jamais
-     * l'`OpponentTravel` de club B, et un MANUAL de A ne fuit pas à B. Falsifié
-     * dans les deux sens : chaque club voit SA ligne et RIEN de l'autre.
+     * NR axe §7.1 tenant isolation : l'appariement « libellé → gymnase » vit dans une table
+     * TENANT (club-scoped, sans saison — amendement 2026-09-20). Club A ne lit/écrit jamais
+     * l'`OpponentVenueLink` de club B. Falsifié dans les deux sens : chaque club voit SON lien
+     * et RIEN de l'autre.
      */
-    public function testOpponentTravelIsTenantScopedAndManualDoesNotLeak(): void
+    public function testOpponentVenueLinkIsTenantScopedAndDoesNotLeak(): void
     {
-        [$clubA, , $seasonA] = $this->createClubUser('a');
-        [$clubB, $userB, $seasonB] = $this->createClubUser('b');
+        [$clubA] = $this->createClubUser('a');
+        [$clubB, $userB] = $this->createClubUser('b');
 
-        // A MANUAL travel row for club A, one for club B — same opponent code, so the
-        // ONLY thing separating them is the tenant boundary.
-        $this->seedManualTravel($clubA, $seasonA, 'ORGSHARED', 42, 'Gymnase A');
-        $this->seedManualTravel($clubB, $seasonB, 'ORGSHARED', 99, 'Gymnase B');
+        // Un lien pour A, un pour B — MÊME code adverse et MÊME libellé : seule la frontière
+        // tenant (RLS) les sépare.
+        $this->seedLink($clubA, 'ORGSHARED', 'SALLE X', '166900001', OpponentVenueLinkSource::MANUAL);
+        $this->seedLink($clubB, 'ORGSHARED', 'SALLE X', '166900002', OpponentVenueLinkSource::MANUAL);
 
-        // Club A's RLS-scoped repository sees its own row and nothing of B's.
+        // Club A ne voit QUE son lien (ref …001), jamais celui de B.
         $this->scopeGucToClub($clubA->getId());
-        $rowsA = $this->em->getRepository(OpponentTravel::class)->findBy(['opponentOrganismeCode' => 'ORGSHARED']);
+        $rowsA = $this->em->getRepository(OpponentVenueLink::class)->findBy(['opponentOrganismeCode' => 'ORGSHARED']);
         self::assertCount(1, $rowsA);
         self::assertSame($clubA->getId(), $rowsA[0]->getClubId());
-        self::assertSame(42, $rowsA[0]->getTravelMinutes());
+        self::assertSame('166900001', $rowsA[0]->getVenueExternalRef());
 
-        // Club B's RLS-scoped repository sees ITS row only (99), never A's 42.
+        // Club B ne voit QUE …002.
         $this->scopeGucToClub($clubB->getId());
-        $rowsB = $this->em->getRepository(OpponentTravel::class)->findBy(['opponentOrganismeCode' => 'ORGSHARED']);
+        $rowsB = $this->em->getRepository(OpponentVenueLink::class)->findBy(['opponentOrganismeCode' => 'ORGSHARED']);
         self::assertCount(1, $rowsB);
-        self::assertSame($clubB->getId(), $rowsB[0]->getClubId());
-        self::assertSame(99, $rowsB[0]->getTravelMinutes());
+        self::assertSame('166900002', $rowsB[0]->getVenueExternalRef());
 
-        // The travel READ endpoint of club B never surfaces club A's opponents
-        // (B has no away fixtures → empty, and A's row is invisible either way).
+        // Le feed de B ne montre jamais les adversaires de A (B n'a aucune rencontre AWAY).
         $this->client->request('GET', '/api/opponents/travel', [], [], $this->authHeaders($userB));
         self::assertResponseStatusCodeSame(200);
         self::assertSame([], $this->responseData()['opponents'] ?? ['sentinel']);
@@ -513,63 +512,54 @@ final class MatchTenantIsolationTest extends WebTestCase
     }
 
     /**
-     * The MANUAL/AUTO travel writes are management-gated (SEC-07): a non-management
-     * member is refused, and a foreign opponent code (no away fixture) is a 422.
+     * Les gestes d'appariement sont management-gated (SEC-07) : un membre non-management est
+     * refusé (403), et un code d'adversaire inconnu (aucune rencontre AWAY) rend 422 sans écrire.
      */
-    public function testOpponentTravelWritesAreManagementGated(): void
+    public function testOpponentVenueWritesAreManagementGated(): void
     {
         [$clubA, $userA] = $this->createClubUser('a');
         $editor = $this->createMember($clubA, 'editor');
 
-        // A non-management member cannot pin a gym (403 wins over the 422 below).
-        $this->client->request('POST', '/api/opponents/travel/manual', [], [], $this->authHeaders($editor) + ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'opponentOrganismeCode' => 'ORGX', 'venueLabel' => 'Gymnase', 'latitude' => 45.7, 'longitude' => 4.9,
+        // Un membre non-management ne peut pas apparier (403 gagne sur le 422).
+        $this->client->request('POST', '/api/opponents/ORGX/venues', [], [], $this->authHeaders($editor) + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'venueLabel' => 'Gymnase', 'fbiLabel' => 'SALLE X', 'latitude' => 45.7, 'longitude' => 4.9,
         ], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(403);
 
-        // A code with no away fixture of the club this season → 422, no write.
-        $this->client->request('POST', '/api/opponents/travel/manual', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'opponentOrganismeCode' => 'ORGX', 'venueLabel' => 'Gymnase', 'latitude' => 45.7, 'longitude' => 4.9,
+        // Un code sans rencontre AWAY du club cette saison → 422, aucune écriture.
+        $this->client->request('POST', '/api/opponents/ORGX/venues', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'venueLabel' => 'Gymnase', 'fbiLabel' => 'SALLE X', 'latitude' => 45.7, 'longitude' => 4.9,
         ], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(422);
         $this->scopeGucToClub($clubA->getId());
-        self::assertCount(0, $this->em->getRepository(OpponentTravel::class)->findBy(['opponentOrganismeCode' => 'ORGX']));
+        self::assertCount(0, $this->em->getRepository(OpponentVenueLink::class)->findBy(['opponentOrganismeCode' => 'ORGX']));
     }
 
     /**
-     * NR axe §7.1 tenant isolation — grain ÉQUIPE (P2-54 « adversaire multi-gymnases »).
-     * Une ligne de trajet PAR ÉQUIPE (teamKey) reste scopée tenant : club B ne lit ni
-     * n'écrase la ligne équipe de A ; un `manual` de B portant le code ET le teamKey
-     * d'une équipe de A est refusé (422 : aucune rencontre AWAY correspondante chez B),
-     * jamais une fuite ni un écrasement. Falsifié : la ligne équipe de A reste intacte.
+     * NR axe §7.1 tenant isolation — un lien d'un club reste scopé TENANT : club B ne peut ni
+     * lire ni ré-apparier/supprimer le lien de A. Un PUT/DELETE de B sur l'id du lien de A rend
+     * 404 byte-identique (RLS : le lien de A est invisible à B). Falsifié : le lien de A intact.
      */
-    public function testOpponentTeamTravelIsTenantScopedAndAForeignTeamKeyIsRejected(): void
+    public function testAForeignClubCannotReadOrRepointAnotherClubsLink(): void
     {
-        [$clubA, , $seasonA] = $this->createClubUser('teama');
+        [$clubA] = $this->createClubUser('teama');
         [$clubB, $userB] = $this->createClubUser('teamb');
 
-        // A team-grain MANUAL row for club A only (code + teamKey).
-        $this->seedTeamManualTravel($clubA, $seasonA, 'ORGTEAM', 'equipe alpha', 42, 'Gymnase A');
+        $link = $this->seedLink($clubA, 'ORGTEAM', 'SALLE A', '166900042', OpponentVenueLinkSource::MANUAL);
 
-        // Club A's RLS-scoped repository sees its team row; club B sees nothing.
+        // Club A voit son lien ; club B ne voit rien.
         $this->scopeGucToClub($clubA->getId());
-        $rowsA = $this->em->getRepository(OpponentTravel::class)->findBy(['opponentOrganismeCode' => 'ORGTEAM', 'opponentTeamKey' => 'equipe alpha']);
-        self::assertCount(1, $rowsA);
-        self::assertSame(42, $rowsA[0]->getTravelMinutes());
-
+        self::assertCount(1, $this->em->getRepository(OpponentVenueLink::class)->findBy(['opponentOrganismeCode' => 'ORGTEAM']));
         $this->scopeGucToClub($clubB->getId());
-        self::assertCount(0, $this->em->getRepository(OpponentTravel::class)->findBy(['opponentOrganismeCode' => 'ORGTEAM']));
+        self::assertCount(0, $this->em->getRepository(OpponentVenueLink::class)->findBy(['opponentOrganismeCode' => 'ORGTEAM']));
 
-        // Club B tries to pin a gym for A's team (same code + teamKey) → 422, no write:
-        // B has no AWAY fixture matching that (code, teamKey).
-        $this->client->request('POST', '/api/opponents/travel/manual', [], [], $this->authHeaders($userB) + ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'opponentOrganismeCode' => 'ORGTEAM', 'opponentTeamKey' => 'equipe alpha', 'venueLabel' => 'Gymnase pirate', 'latitude' => 45.7, 'longitude' => 4.9,
+        // Club B tente de ré-apparier le lien de A → 404 (le lien de A est invisible, RLS).
+        $this->client->request('PUT', '/api/opponents/venue-links/' . $link->getId(), [], [], $this->authHeaders($userB) + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'venueLabel' => 'Gymnase pirate', 'latitude' => 45.7, 'longitude' => 4.9,
         ], \JSON_THROW_ON_ERROR));
-        self::assertResponseStatusCodeSame(422);
+        self::assertResponseStatusCodeSame(404);
 
-        // A's team row is untouched (still 42, still « Gymnase A »). The kernel request
-        // left the Doctrine filters scoped to B; disable them and rely on the RLS GUC
-        // (scoped to A) so the assertion reads A's rows at the DB level.
+        // Le lien de A est intact.
         $this->scopeGucToClub($clubA->getId());
         $this->em->clear();
         $filters = $this->em->getFilters();
@@ -578,45 +568,33 @@ final class MatchTenantIsolationTest extends WebTestCase
                 $filters->disable($filter);
             }
         }
-        $survivor = $this->em->getRepository(OpponentTravel::class)->findOneBy(['opponentOrganismeCode' => 'ORGTEAM', 'opponentTeamKey' => 'equipe alpha']);
-        self::assertInstanceOf(OpponentTravel::class, $survivor);
+        $survivor = $this->em->getRepository(OpponentVenueLink::class)->findOneBy(['opponentOrganismeCode' => 'ORGTEAM']);
+        self::assertInstanceOf(OpponentVenueLink::class, $survivor);
         self::assertSame($clubA->getId(), $survivor->getClubId());
-        self::assertSame(42, $survivor->getTravelMinutes());
-        self::assertSame('Gymnase A', $survivor->getOverrideVenueLabel());
+        self::assertSame('166900042', $survivor->getVenueExternalRef());
+        self::assertSame('Gymnase A', $survivor->getVenueLabel());
     }
 
     /**
-     * NR axe §7.1 tenant isolation — grain ÉQUIPE AUTO (P2-54 PR-2b, auto-localisation
-     * depuis le libellé du fichier). Une ligne de trajet ÉQUIPE `source = AUTO` (portant
-     * un ref de salle fédéral) reste scopée TENANT : club B ne la lit jamais, et
-     * l'ORCHESTRATEUR `POST /api/opponents/refresh` lancé par B — qui enchaîne rattrapage
-     * des codes, auto-localisation et recalcul des trajets — n'écrit RIEN chez A.
-     * Falsifié : la ligne AUTO de A reste byte-identique après le refresh de B.
+     * NR axe §7.1 tenant isolation — l'ORCHESTRATEUR `POST /api/opponents/refresh` lancé par B
+     * (rattrapage des codes, auto-appariement des libellés, recalcul des trajets) n'écrit RIEN
+     * chez A. Falsifié : le lien AUTO de A reste byte-identique après le refresh de B.
      */
-    public function testOpponentTeamAutoTravelIsTenantScopedAndRefreshOfBWritesNothingAtA(): void
+    public function testRefreshOfBWritesNothingAtA(): void
     {
-        [$clubA, , $seasonA] = $this->createClubUser('autoa');
+        [$clubA] = $this->createClubUser('autoa');
         [$clubB, $userB] = $this->createClubUser('autob');
 
-        // A TEAM AUTO row for club A only (code + teamKey + federal salle ref, source AUTO).
-        $this->seedTeamAutoTravel($clubA, $seasonA, 'ORGAUTO', 'equipe auto', 33, '166900777', 'GYMNASE FEDERAL A');
-
-        // Club A's RLS-scoped repository sees its team AUTO row; club B sees nothing.
-        $this->scopeGucToClub($clubA->getId());
-        $rowsA = $this->em->getRepository(OpponentTravel::class)->findBy(['opponentOrganismeCode' => 'ORGAUTO']);
-        self::assertCount(1, $rowsA);
-        self::assertSame(OpponentTravelSource::AUTO, $rowsA[0]->getSource());
+        $this->seedLink($clubA, 'ORGAUTO', 'GYMNASE FEDERAL A', '166900777', OpponentVenueLinkSource::AUTO);
 
         $this->scopeGucToClub($clubB->getId());
-        self::assertCount(0, $this->em->getRepository(OpponentTravel::class)->findBy(['opponentOrganismeCode' => 'ORGAUTO']));
+        self::assertCount(0, $this->em->getRepository(OpponentVenueLink::class)->findBy(['opponentOrganismeCode' => 'ORGAUTO']));
 
-        // Club B runs the refresh orchestrator — B has no away fixtures of its own, so the
-        // three passes write nothing, and A's tenant row is unreachable to B either way.
+        // Club B lance l'orchestrateur — B n'a aucune rencontre AWAY, les trois passes n'écrivent
+        // rien, et le lien tenant de A est de toute façon inatteignable pour B.
         $this->client->request('POST', '/api/opponents/refresh', [], [], $this->authHeaders($userB) + ['HTTP_ACCEPT' => 'application/json']);
         self::assertResponseStatusCodeSame(200);
 
-        // A's team AUTO row survives byte-identical. Disable the request-scoped Doctrine
-        // filters (left pointing at B) and rely on the RLS GUC scoped to A.
         $this->scopeGucToClub($clubA->getId());
         $this->em->clear();
         $filters = $this->em->getFilters();
@@ -625,12 +603,11 @@ final class MatchTenantIsolationTest extends WebTestCase
                 $filters->disable($filter);
             }
         }
-        $survivor = $this->em->getRepository(OpponentTravel::class)->findOneBy(['opponentOrganismeCode' => 'ORGAUTO', 'opponentTeamKey' => 'equipe auto']);
-        self::assertInstanceOf(OpponentTravel::class, $survivor);
+        $survivor = $this->em->getRepository(OpponentVenueLink::class)->findOneBy(['opponentOrganismeCode' => 'ORGAUTO']);
+        self::assertInstanceOf(OpponentVenueLink::class, $survivor);
         self::assertSame($clubA->getId(), $survivor->getClubId());
-        self::assertSame(33, $survivor->getTravelMinutes());
-        self::assertSame(OpponentTravelSource::AUTO, $survivor->getSource());
-        self::assertSame('166900777', $survivor->getOverrideVenueExternalRef());
+        self::assertSame(OpponentVenueLinkSource::AUTO, $survivor->getSource());
+        self::assertSame('166900777', $survivor->getVenueExternalRef());
     }
 
     // ── Résolution des conflits (P4-207) : le statut vit dans une table TENANT ──
@@ -858,59 +835,24 @@ final class MatchTenantIsolationTest extends WebTestCase
         $this->em->flush();
     }
 
-    private function seedManualTravel(Club $club, Season $season, string $code, int $minutes, string $venueLabel): void
+    private function seedLink(Club $club, string $code, string $fbiLabel, string $venueRef, OpponentVenueLinkSource $source): OpponentVenueLink
     {
         $this->scopeGucToClub($club->getId());
-        $row = (new OpponentTravel)
+        $normalizer = self::getContainer()->get(VenueLabelNormalizer::class);
+        $link = (new OpponentVenueLink)
             ->setClubId($club->getId())
-            ->setSeasonId($season->getId())
             ->setOpponentOrganismeCode($code)
-            ->setSource(OpponentTravelSource::MANUAL)
-            ->setTravelMinutes($minutes)
-            ->setOverrideVenueExternalRef(null)
-            ->setOverrideVenueLabel($venueLabel)
-            ->setOverrideLatitude(45.75)
-            ->setOverrideLongitude(4.85)
-            ->setResolvedAt(new DateTimeImmutable);
-        $this->em->persist($row);
+            ->setFbiLabel($fbiLabel)
+            ->setFbiLabelNorm($normalizer->normalize($fbiLabel))
+            ->setVenueExternalRef($venueRef)
+            ->setVenueLabel('Gymnase A')
+            ->setLatitude(45.75)
+            ->setLongitude(4.85)
+            ->setSource($source);
+        $this->em->persist($link);
         $this->em->flush();
-    }
 
-    private function seedTeamManualTravel(Club $club, Season $season, string $code, string $teamKey, int $minutes, string $venueLabel): void
-    {
-        $this->scopeGucToClub($club->getId());
-        $row = (new OpponentTravel)
-            ->setClubId($club->getId())
-            ->setSeasonId($season->getId())
-            ->setOpponentOrganismeCode($code)
-            ->setOpponentTeamKey($teamKey)
-            ->setSource(OpponentTravelSource::MANUAL)
-            ->setTravelMinutes($minutes)
-            ->setOverrideVenueLabel($venueLabel)
-            ->setOverrideLatitude(45.75)
-            ->setOverrideLongitude(4.85)
-            ->setResolvedAt(new DateTimeImmutable);
-        $this->em->persist($row);
-        $this->em->flush();
-    }
-
-    private function seedTeamAutoTravel(Club $club, Season $season, string $code, string $teamKey, int $minutes, string $venueRef, string $venueLabel): void
-    {
-        $this->scopeGucToClub($club->getId());
-        $row = (new OpponentTravel)
-            ->setClubId($club->getId())
-            ->setSeasonId($season->getId())
-            ->setOpponentOrganismeCode($code)
-            ->setOpponentTeamKey($teamKey)
-            ->setSource(OpponentTravelSource::AUTO)
-            ->setTravelMinutes($minutes)
-            ->setOverrideVenueExternalRef($venueRef)
-            ->setOverrideVenueLabel($venueLabel)
-            ->setOverrideLatitude(45.75)
-            ->setOverrideLongitude(4.85)
-            ->setResolvedAt(new DateTimeImmutable);
-        $this->em->persist($row);
-        $this->em->flush();
+        return $link;
     }
 
     private function createTeam(Club $club, Season $season, string $name): Team

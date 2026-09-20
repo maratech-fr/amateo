@@ -11,43 +11,41 @@ import { Spinner } from "@/shared/components/ui/spinner";
 import { readState } from "@/shared/lib/readState";
 import { toast } from "@/shared/stores/toastStore";
 
-import type { FfbbSalle, OpponentTravel, OpponentTravelScope, VenueSuggestion } from "./api";
-import { useFfbbSalles, useSetOpponentTravelManual, useVenueSuggestions } from "./queries";
+import type { FfbbSalle, VenueSuggestion } from "./api";
+import { useAddOpponentVenue, useFfbbSalles, usePairOpponentVenueLabel, useVenueSuggestions } from "./queries";
 
 /**
- * P2-54 « adversaire multi-gymnases » PR-3 — la correction MANUELLE du lieu d'un adversaire.
+ * Amendement 2026-09-20 — la modale d'AJOUT / d'APPARIEMENT d'un gymnase pour un adversaire.
  * Deux façons de choisir un gymnase, un SEUL geste de validation (le clic sur un gymnase) :
  *  1. « Gymnases connus » — les suggestions PARTAGÉES du club (`useVenueSuggestions`, données
  *     fédérales, « un compte jamais un qui ») ;
- *  2. « Ajouter un gymnase » — la recherche FFBB par code postal (préremplie), patron VenuesStep.
- * La PORTÉE (cette équipe / tout le club) est choisie en tête ; depuis la ligne club elle est
- * verrouillée sur « tout le club ». L'échec d'écriture remonte en toast (onError du hook, la
- * modale reste ouverte) ; le succès ferme et confirme.
+ *  2. « Chercher un gymnase » — la recherche FFBB par code postal, patron VenuesStep.
+ * `fbiLabel` renseigné = on apparie un LIBELLÉ orphelin (`pairOpponentVenueLabel`) ; null = on
+ * ajoute un gymnase au club (`addOpponentVenue`, keyé sur le libellé du gymnase). L'échec remonte
+ * en toast (onError du hook, la modale reste ouverte) ; le succès ferme et confirme.
  */
 export function LocateOpponentModal({
-  opponent,
-  clubLabel,
-  lockedToClub,
-  fileVenueLabels = [],
+  code,
+  clubName,
+  fbiLabel,
+  postalCode,
   onClose,
 }: {
-  opponent: OpponentTravel;
-  clubLabel: string;
-  lockedToClub: boolean;
-  /** Les salles vues dans le fichier FBI pour cet adversaire (indice, jamais un pré-remplissage). */
-  fileVenueLabels?: string[];
+  code: string;
+  clubName: string;
+  /** Le libellé de fichier à apparier (ligne orpheline) ; null = ajouter un gymnase au club. */
+  fbiLabel: string | null;
+  postalCode: string | null;
   onClose: () => void;
 }) {
-  const code = opponent.opponentOrganismeCode ?? "";
-  const [scope, setScope] = useState<OpponentTravelScope>(lockedToClub ? "CLUB" : "TEAM");
-  const [cp, setCp] = useState(opponent.postalCode ?? "");
+  const [cp, setCp] = useState(postalCode ?? "");
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   const suggestionsQuery = useVenueSuggestions(code);
   const sallesQuery = useFfbbSalles(cp);
-  const setManual = useSetOpponentTravelManual();
-
-  const displayName = lockedToClub ? `${clubLabel}, toutes les équipes` : opponent.opponentLabel;
+  const addVenue = useAddOpponentVenue();
+  const pairLabel = usePairOpponentVenueLabel();
+  const writing = addVenue.isPending || pairLabel.isPending;
 
   const suggestions = suggestionsQuery.data ?? [];
   const suggestionsState = readState(suggestionsQuery);
@@ -56,36 +54,28 @@ export function LocateOpponentModal({
   const cpReady = /^\d{5}$/.test(cp);
   const sallesState = readState({ data: cpReady ? (sallesQuery.data ?? undefined) : {}, isError: sallesQuery.isError });
 
-  /** Un seul geste : un clic pose la surcharge MANUELLE (portée courante) et ferme au succès. */
-  const submitManual = (venueLabel: string, venueExternalRef: string | null, latitude: number, longitude: number, key: string): void => {
+  /** Un seul geste : un clic pose le lien (appariement d'orphelin OU ajout) et ferme au succès. */
+  const submit = (venueLabel: string, venueExternalRef: string | null, latitude: number, longitude: number, key: string): void => {
     if ("" === code) {
       return;
     }
     setPendingKey(key);
-    setManual.mutate(
-      {
-        opponentOrganismeCode: code,
-        venueLabel,
-        venueExternalRef,
-        latitude,
-        longitude,
-        // TEAM → on épingle CETTE équipe ; CLUB → le défaut du club (jamais un teamKey).
-        ...("TEAM" === scope ? { opponentTeamKey: opponent.opponentTeamKey, scope: "TEAM" as const } : { scope: "CLUB" as const }),
-      },
-      {
-        onSuccess: () => {
-          toast.success(`Gymnase enregistré pour ${displayName}.`);
-          onClose();
-        },
-        onSettled: () => setPendingKey(null),
-      },
-    );
+    const onSettled = { onSettled: () => setPendingKey(null) } as const;
+    const onSuccess = () => {
+      toast.success(null === fbiLabel ? `Gymnase ajouté pour ${clubName}.` : `« ${fbiLabel} » apparié.`);
+      onClose();
+    };
+    if (null === fbiLabel) {
+      addVenue.mutate({ code, venueLabel, venueExternalRef, latitude, longitude }, { onSuccess, ...onSettled });
+    } else {
+      pairLabel.mutate({ code, fbiLabel, venueLabel, venueExternalRef, latitude, longitude }, { onSuccess, ...onSettled });
+    }
   };
 
   return (
     <Modal
-      label="Localiser un adversaire"
-      title={`Localiser ${displayName}`}
+      label={null === fbiLabel ? "Ajouter un gymnase" : "Apparier un libellé"}
+      title={null === fbiLabel ? `Ajouter un gymnase — ${clubName}` : `Apparier « ${fbiLabel} »`}
       onClose={onClose}
       size="lg"
       footer={
@@ -95,32 +85,11 @@ export function LocateOpponentModal({
       }
     >
       <div className="flex flex-col gap-4">
-        {/* Indice « Dans le fichier » — les salles FBI vues pour cet adversaire (jamais préremplies). */}
-        {fileVenueLabels.length > 0 ? (
+        {null !== fbiLabel ? (
           <p className="text-xs text-muted-foreground">
-            Dans le fichier : <span className="font-medium text-foreground">{fileVenueLabels.join(" · ")}</span>
+            Choisissez le gymnase de <span className="font-medium text-foreground">« {fbiLabel} »</span> ({clubName}).
           </p>
         ) : null}
-
-        {/* Portée de la correction — verrouillée « tout le club » depuis la ligne club. */}
-        <fieldset className="flex flex-col gap-1.5" aria-describedby="locate-scope-help">
-          <legend className="text-xs font-medium">Portée de la correction</legend>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            {lockedToClub ? null : (
-              <label className="flex items-center gap-1.5">
-                <input type="radio" name="locate-scope" value="TEAM" checked={"TEAM" === scope} onChange={() => setScope("TEAM")} />
-                Pour cette équipe
-              </label>
-            )}
-            <label className="flex items-center gap-1.5">
-              <input type="radio" name="locate-scope" value="CLUB" checked={"CLUB" === scope} onChange={() => setScope("CLUB")} disabled={lockedToClub} />
-              Pour tout le club
-            </label>
-          </div>
-          <p id="locate-scope-help" className="text-xs text-muted-foreground">
-            Tout le club = défaut, n'écrase pas une équipe déjà choisie.
-          </p>
-        </fieldset>
 
         {/* Section 1 — les gymnases DÉJÀ connus de cet adversaire (suggestions partagées). */}
         <div className="flex flex-col gap-2">
@@ -133,16 +102,16 @@ export function LocateOpponentModal({
             <EmptyHint>Aucun gymnase connu pour ce club — cherchez-le par code postal.</EmptyHint>
           ) : null}
           {suggestions.length > 0 ? (
-            <ul aria-label={`Gymnases connus de ${clubLabel}`} className="flex max-h-64 flex-col gap-1 overflow-y-auto">
+            <ul aria-label={`Gymnases connus de ${clubName}`} className="flex max-h-64 flex-col gap-1 overflow-y-auto">
               {suggestions.map((suggestion) => (
                 <SuggestionButton
                   key={`sugg-${suggestion.externalRef ?? suggestion.label}`}
                   suggestion={suggestion}
                   outline={1 === suggestions.length}
                   pending={pendingKey === `sugg-${suggestion.externalRef ?? suggestion.label}`}
-                  disabled={setManual.isPending}
+                  disabled={writing}
                   onPick={() =>
-                    submitManual(
+                    submit(
                       suggestion.label,
                       suggestion.externalRef,
                       suggestion.latitude as number,
@@ -156,9 +125,9 @@ export function LocateOpponentModal({
           ) : null}
         </div>
 
-        {/* Section 2 — ajouter un gymnase par recherche FFBB (code postal préremplie). */}
+        {/* Section 2 — chercher un gymnase par recherche FFBB (code postal). */}
         <div className="flex flex-col gap-2">
-          <h5 className="text-sm font-medium">Ajouter un gymnase</h5>
+          <h5 className="text-sm font-medium">Chercher un gymnase</h5>
           <Input
             aria-label="Commune (code postal)"
             placeholder="Code postal du gymnase"
@@ -181,8 +150,8 @@ export function LocateOpponentModal({
                     key={key}
                     salle={salle}
                     pending={pendingKey === key}
-                    disabled={setManual.isPending}
-                    onPick={() => submitManual(salle.name, salle.externalRef, Number(salle.latitude), Number(salle.longitude), key)}
+                    disabled={writing}
+                    onPick={() => submit(salle.name, salle.externalRef, Number(salle.latitude), Number(salle.longitude), key)}
                   />
                 );
               })}

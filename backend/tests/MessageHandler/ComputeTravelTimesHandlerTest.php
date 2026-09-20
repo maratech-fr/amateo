@@ -7,16 +7,15 @@ namespace App\Tests\MessageHandler;
 use App\Entity\Club;
 use App\Entity\Fixture;
 use App\Entity\OpponentDirectoryEntry;
-use App\Entity\OpponentTravel;
 use App\Entity\Season;
 use App\Enum\FixtureHomeAway;
 use App\Enum\OpponentLocationPrecision;
-use App\Enum\OpponentTravelSource;
 use App\Enum\SeasonStatus;
 use App\Enum\TravelComputeScope;
 use App\Message\ComputeTravelTimesMessage;
 use App\MessageHandler\ComputeTravelTimesHandler;
-use App\Repository\OpponentTravelRepository;
+use App\Service\Geo\IgnRoutingClient;
+use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
 use App\Service\TravelComputeLock;
 use App\Tests\Double\IgnRoutingHttpClientStub;
@@ -44,35 +43,30 @@ final class ComputeTravelTimesHandlerTest extends WebTestCase
 
     public function testTheComputationIsScopedToTheMessageClubAndNeverTouchesAnother(): void
     {
-        // Club A : un adversaire AWAY localisable, aucun trajet encore (à calculer).
+        // Club A et Club B : chacun un adversaire AWAY localisable (annuaire), trajet non
+        // encore en cache. Un calcul lancé pour A ne doit JAMAIS remplir le cache de B.
         [$clubA, $seasonA] = $this->seedClubWithGeolocatedAwayOpponent('AAA');
-        // Club B : une ligne de trajet AUTO déjà présente, SANS minutes — un calcul lancé
-        // pour A ne doit JAMAIS la toucher (frontière tenant).
-        [$clubB, $seasonB] = $this->seedClubWithGeolocatedAwayOpponent('BBB');
-        $this->scopeGucToClub($clubB->getId());
-        $bRow = (new OpponentTravel)
-            ->setClubId($clubB->getId())->setSeasonId($seasonB->getId())
-            ->setOpponentOrganismeCode('ARA0069BBB')
-            ->setSource(OpponentTravelSource::AUTO)->setTravelMinutes(null)
-            ->setResolvedAt(new DateTimeImmutable);
-        $this->em->persist($bRow);
-        $this->em->flush();
+        [$clubB] = $this->seedClubWithGeolocatedAwayOpponent('BBB');
         $this->em->clear();
 
         // Le handler pose son PROPRE GUC (aucune requête HTTP ici) : on ne le pré-scope pas.
         $this->handler()->__invoke(new ComputeTravelTimesMessage($clubA->getId(), $seasonA->getId(), TravelComputeScope::OPPONENTS));
 
-        // A : le trajet de son adversaire est calculé (stub IGN → DRIVING_MINUTES).
+        $cache = $this->cache();
+        // A : le trajet siège(45.70,4.90) → lieu de l'annuaire (45.76,4.86) est en cache (stub IGN).
         $this->scopeGucToClub($clubA->getId());
-        $aRow = $this->travelRepository()->findOneByCode($seasonA->getId(), 'ARA0069AAA');
-        self::assertInstanceOf(OpponentTravel::class, $aRow, 'le trajet de A est calculé');
-        self::assertSame(IgnRoutingHttpClientStub::DRIVING_MINUTES, $aRow->getTravelMinutes());
+        self::assertSame(
+            IgnRoutingHttpClientStub::DRIVING_MINUTES,
+            $cache->lookup($clubA->getId(), IgnRoutingClient::PROFILE_CAR, 45.70, 4.90, 45.76, 4.86),
+            'le trajet de A est calculé et mis en cache',
+        );
 
-        // B : sa ligne pré-existante est INTACTE (jamais touchée par le calcul de A).
+        // B : son cache reste VIDE (jamais touché par le calcul de A — frontière tenant).
         $this->scopeGucToClub($clubB->getId());
-        $bAfter = $this->travelRepository()->findOneByCode($seasonB->getId(), 'ARA0069BBB');
-        self::assertInstanceOf(OpponentTravel::class, $bAfter);
-        self::assertNull($bAfter->getTravelMinutes(), 'la ligne d\'un autre club n\'est jamais touchée');
+        self::assertNull(
+            $cache->lookup($clubB->getId(), IgnRoutingClient::PROFILE_CAR, 45.70, 4.90, 45.76, 4.86),
+            'le cache d\'un autre club n\'est jamais rempli',
+        );
     }
 
     public function testASecondComputationIsRefusedWhileTheLockIsHeld(): void
@@ -101,9 +95,9 @@ final class ComputeTravelTimesHandlerTest extends WebTestCase
         return self::getContainer()->get(ComputeTravelTimesHandler::class);
     }
 
-    private function travelRepository(): OpponentTravelRepository
+    private function cache(): TravelTimeCache
     {
-        return self::getContainer()->get(OpponentTravelRepository::class);
+        return self::getContainer()->get(TravelTimeCache::class);
     }
 
     /**

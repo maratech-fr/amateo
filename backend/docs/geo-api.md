@@ -1,11 +1,19 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-09-19 (`documentation-update`, retouches revue sécurité H — `81772f59`).
-Re-confronté au code cette passe : `IgnRoutingClient::MAX_RETRY_AFTER_SECONDS = 5.0`
+Last verified @ 2026-09-20 (`documentation-update`, PR I « les gymnases adverses appartiennent au
+club, le trajet au gymnase » — amendement fondateur, `3993cbd3`…`3e203402`). Re-confronté au code
+cette passe : `OpponentVenueLink` (tenant, club-scoped SANS saison, grain `(club, code organisme,
+libellé FBI normalisé)`) a remplacé `OpponentTravel` (supprimée, migration
+`Version20260920140000`) ✓ · `OpponentTravelResolver::pairsToRoute` route désormais les paires
+siège→gymnase depuis les LIENS du club (plus de notion d'équipe/ligne saison) ✓ ·
+`ClubSiegeController::__invoke` ne touche plus aucune ligne `opponent_travel` (elle n'existe plus) :
+un déménagement de siège dispatche juste un recalcul, le cache étant directionnel (nouvelle origine
+= nouvelle clé) ✓. Reste confronté à la passe précédente (2026-09-19, revue sécurité H) :
+`IgnRoutingClient::MAX_RETRY_AFTER_SECONDS = 5.0`
 (`IgnRoutingClient.php:63`, abandon de la paire au-delà plutôt qu'un `sleep` du `Retry-After` reçu)
 ✓ · les trois dispatchers (`OpponentRefreshController`, `OpponentTravelController`,
 `VenueTravelTimeAutofillController`) lisent `TravelComputeLock::isHeld` avant de dispatcher et
-rendent `{queued: false, alreadyRunning: true}` sinon ✓. Reste confronté à la passe précédente
+rendent `{queued: false, alreadyRunning: true}` sinon ✓. Reste confronté à la passe d'avant
 (2026-09-19, PR H « onglet Adversaires » — cache de trajets club-scoped + calcul asynchrone) :
 `App\Entity\ClubTravelCache` (`ClubTravelCache.php`, tenant RLS, clé `(club, profile, origin_lat,
 origin_lon, dest_lat, dest_lon)`, `minutes` NON NULL) ✓ · `App\Service\Geo\TravelTimeCache`
@@ -79,7 +87,9 @@ Le corps ne porte **que du texte d'adresse** (`address`/`postalCode`/`city`, con
 `ClubSiegeController` re-géocode via `BanGeocodingClient::geocodeTop` (le MEILLEUR candidat
 structuré : `{label, postalCode, city, latitude, longitude}`) et écrit adresse/CP/ville/lat/lon
 depuis **SON** hit fédéral, jamais depuis une latitude/longitude que le corps porterait (patron
-SEC-15, comme `OpponentTravelResolver::accountManualChoice`) : le front n'envoie que le `label` du
+SEC-15, même famille que `OpponentTravelResolver::resolveFederalVenue` sur le catalogue PARTAGÉ des
+gymnases adverses — le lien tenant `OpponentVenueLink`, lui, garde les coordonnées choisies par le
+club, § « Table TENANT `OpponentVenueLink` » de `module-matchs.md`) : le front n'envoie que le `label` du
 candidat choisi dans `AddressGeocodeField`, mais une requête forgée directement sur la route ne
 pourrait de toute façon pas imposer de coordonnées. Management-gated (SEC-07) ; 422 « adresse
 introuvable » (aucun candidat), 502 (BAN muette). Réponse `{address, postalCode, city, geolocated}`
@@ -111,10 +121,12 @@ Headers:
   échec de transport rendent `null` — jamais une exception qui casserait le lot.
 
 **Consommateurs backend** : `VenueTravelTimeAutofillService` (matrice ENTRAÎNEMENT gym→gym, en lot)
-**et**, depuis P2-54 PR-3, `OpponentTravelResolver` (trajet MATCHS siège club ↔ lieu adverse, table
-tenant `opponent_travel`) — même client `IgnRoutingClient`, même confinement SSRF. Pas de proxy `GET`
-individuel exposé. Depuis C4/C6 (ci-dessous), les deux passent d'abord par le cache club-scoped et
-le calcul quitte le rail synchrone.
+**et**, depuis P2-54 PR-3, `OpponentTravelResolver` (trajet MATCHS siège club ↔ gymnase adverse
+apparié — amendement PR I 2026-09-20 : le lieu vient du lien tenant `OpponentVenueLink`, le trajet
+lui-même n'est plus stocké par ligne, seulement dans le cache constant ci-dessous) — même client
+`IgnRoutingClient`, même confinement SSRF. Pas de proxy `GET` individuel exposé. Depuis C4/C6
+(ci-dessous), les deux passent d'abord par le cache club-scoped et le calcul quitte le rail
+synchrone.
 
 **PACING (mesuré, C6 2026-09-19)** : l'endpoint rend `x-ratelimit-limit-second: 1` et un **429** au
 bout de ~9 appels rapprochés — `IgnRoutingClient` PACE désormais chaque requête à **1/s** sur
@@ -139,7 +151,8 @@ TTL du verrou (`ComputeTravelTimesHandler::LOCK_TTL_MARGIN_SECONDS`).
 Un trajet routier est une **CONSTANTE** : deux coordonnées (arrondies à 5 décimales, ~1 m) et un
 profil (voiture/à pied) ne changent jamais de durée. `App\Entity\ClubTravelCache` (table
 `club_travel_cache`, **tenant, RLS FORCE** — les coordonnées croisées trahiraient le siège d'un club
-précis, même raison que `OpponentTravel`) tient donc, **club-scoped mais SANS saison**, la clé
+précis, même raison que l'ex-`OpponentTravel` (supprimée par PR I, § ci-dessous)) tient donc,
+**club-scoped mais SANS saison**, la clé
 `(club, profil, origin_lat, origin_lon, dest_lat, dest_lon)` → minutes. `minutes` est NON NULL : un
 échec IGN n'entre jamais au cache (il pourrait réussir plus tard).
 
@@ -202,22 +215,25 @@ gymnases à router. Le calcul (adversaires ET matrice de gymnases) part donc au 
 - **`travelStatus` servi par `GET /api/opponents/travel`** (par entrée) : `done` (minutes
   présentes) · `pending` (`TravelComputeLock::isHeld($clubId)` — un calcul tourne pour ce club) ·
   `unavailable` (tenté sans résultat, ou pas de lieu à router).
-- **`resolve()` ne re-route plus TOUT** — un trajet est une constante : une ligne AUTO qui porte
-  déjà un trajet est sautée. Cibles = les MANQUES seuls (code sans ligne, ligne AUTO au trajet
-  null, ligne ÉQUIPE AUTO sans trajet mais avec des coordonnées d'override, MANUAL null avec
-  override) — club et équipe forment un seul ensemble routé en un seul lot. « Réessayer les
-  manquants » côté écran (`specs/courantes/module-matchs.md` § Écran Adversaires) est donc
-  littéralement ce même `POST /resolve`.
+- **`resolve()` ne re-route plus TOUT** — un trajet est une constante : une paire déjà présente au
+  cache est sautée. Cibles (`OpponentTravelResolver::pairsToRoute`, amendement PR I 2026-09-20) =
+  les PAIRES siège→gymnase manquantes : (1) un point par lien `OpponentVenueLink` dont le code
+  adverse est joué cette saison — le gymnase apparié ; (2) pour un code SANS aucun lien, le point
+  VILLE de l'annuaire fédéral (pour que le repli « ville seule » de la projection porte un trajet
+  approché) ; dédupliquées par coordonnées arrondies (deux libellés du même gymnase = une paire).
+  « Réessayer les manquants » côté écran (`specs/courantes/module-matchs.md` § Écran Adversaires)
+  est donc littéralement ce même `POST /resolve`.
 
-### Poser le siège invalide les trajets dérivés (`PATCH /api/club/siege`, C6)
+### Poser le siège invalide les trajets dérivés (`PATCH /api/club/siege`, C6, amendé PR I)
 
 Si l'adresse re-géocodée diverge de plus de ~1 m de l'ancienne (`ClubSiegeController::
 coordinatesChanged`, comparaison à 5 décimales — un re-géocodage de la MÊME adresse ne doit rien
-invalider), le contrôleur met `opponent_travel.travel_minutes` à `NULL` pour tout le club (le
-gymnase épinglé d'un MANUAL reste, seul son trajet repart) puis dispatche
-`ComputeTravelTimesMessage(scope: OPPONENTS)` sur la saison courante — le cache, lui, n'a rien à
-purger : la nouvelle origine est une nouvelle clé, les anciennes lignes ne sont simplement plus
-jamais lues (dette ci-dessus).
+invalider), le contrôleur dispatche `ComputeTravelTimesMessage(scope: OPPONENTS)` sur la saison
+courante. **Rien n'est plus « invalidé » explicitement depuis PR I** (2026-09-20) : le trajet ne
+vit plus que dans le cache CONSTANT `club_travel_cache` (directionnel) — un nouveau siège est
+simplement une nouvelle clé d'origine, les anciennes lignes ne sont plus jamais lues (l'appariement
+`OpponentVenueLink` lui-même, gymnase apparié compris, ne bouge pas). Rien à purger côté cache
+(dette de croissance connue ci-dessus).
 
 ## 3. L'autofill de la matrice de trajet (`POST /api/venue-travel-times/autofill`)
 
@@ -248,13 +264,14 @@ renseigne les paires à la main :
    d'atteindre cette paire — pas un échec, un « relancez pour continuer ») —, **jamais** un échec
    global du lot.
 6. Réponse `{filled, unresolved[], skippedManual}`. `OpponentTravelResolver` (trajet adverse, §
-   ci-dessous) consomme le même `travelMinutesBatch`, mais **distingue les deux sens de `null`** : une
-   clé jamais atteinte par le budget (`budgetExceededKeys`) laisse la ligne `opponent_travel` INTACTE
-   — ni écriture, ni création — et revient seulement `unresolved` ; seule une clé RÉELLEMENT tentée,
-   dont l'IGN n'a rendu aucune durée, écrase la valeur. Sans cette distinction, une relance sur un IGN
-   dégradé effaçait des trajets adverses déjà bons et sortait les rencontres concernées du radar de
-   conflits spatiaux (régression BCK-22, gardée par
-   `OpponentTravelResolverTest::testABudgetSkippedCodeKeepsItsExistingAutoValue`).
+   ci-dessous) consomme le même `travelMinutesBatch` et distingue toujours les deux sens de `null`
+   (une paire jamais atteinte par le budget vs une clé RÉELLEMENT tentée sans durée IGN) — mais
+   **depuis l'amendement PR I (2026-09-20), la distinction n'est plus un garde-fou anti-écrasement** :
+   `ClubTravelCache` écrit en `INSERT … ON CONFLICT DO NOTHING` (jamais un `UPDATE`), et une paire déjà
+   en cache est court-circuitée AVANT même d'être routée (cache-first, § ci-dessus) — la régression
+   historique BCK-22 (« une relance effaçait des trajets adverse déjà bons ») est désormais
+   STRUCTURELLEMENT impossible, plus seulement évitée par cette distinction. Elle reste utile pour un
+   `unresolved` honnête (« relancez pour continuer » vs « IGN a vraiment échoué »).
 
 **Route** : management-gated (SEC-07) + saison écrivable (`SeasonAccessGuard::assertWritable` —
 archivée → 409) + **rate-limit dédié PAR UTILISATEUR** `venue_travel_time_autofill` (10/h, sliding

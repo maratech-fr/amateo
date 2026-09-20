@@ -14,12 +14,15 @@ use App\Enum\SeasonStatus;
 use App\Repository\ClubRepository;
 use App\Repository\FixtureRepository;
 use App\Repository\OpponentDirectoryEntryRepository;
-use App\Repository\OpponentTravelRepository;
+use App\Repository\OpponentVenueLinkRepository;
 use App\Repository\OpponentVenueSuggestionRepository;
 use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\FfbbSalleResolver;
+use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\OpponentTravelResolver;
+use App\Service\Geo\OpponentVenueLinkManager;
+use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -200,7 +203,8 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
         // Le corps ment sur le libellé ET les coordonnées : le partagé doit écrire le
         // libellé FÉDÉRAL re-résolu, JAMAIS le texte du client.
         $this->scopeGucToClub($club->getId());
-        $this->manualResolver()->applyManualOverride($club->getId(), $season->getId(), $ffbb, null, self::FED_REF_A, 'LIBELLE FORGE PAR LE CLUB', 45.76, 4.86);
+        $this->manager()->addOrUpdate($club->getId(), $ffbb, 'SALLE FBI', 'LIBELLE FORGE PAR LE CLUB', self::FED_REF_A, 45.76, 4.86);
+        unset($season);
 
         $row = $this->conn()->fetchAssociative(
             'SELECT venue_label, city, postal_code FROM opponent_venue_suggestion WHERE ffbb_organisme_code = :code AND venue_external_ref = :ref',
@@ -219,7 +223,8 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
 
         // Ref inconnue de l'index FFBB : la correction reste TENANT, RIEN au partagé.
         $this->scopeGucToClub($club->getId());
-        $this->manualResolver()->applyManualOverride($club->getId(), $season->getId(), $ffbb, null, self::UNKNOWN_REF, 'GYMNASE INVENTE', 45.76, 4.86);
+        $this->manager()->addOrUpdate($club->getId(), $ffbb, 'SALLE FBI', 'GYMNASE INVENTE', self::UNKNOWN_REF, 45.76, 4.86);
+        unset($season);
 
         self::assertSame(0, (int) $this->conn()->fetchOne(
             'SELECT COUNT(*) FROM opponent_venue_suggestion WHERE ffbb_organisme_code = :code',
@@ -232,12 +237,13 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
         $ffbb = 'ARA00697' . random_int(10, 99);
         [$clubA, $seasonA] = $this->createClub('la');
         [$clubB, $seasonB] = $this->createClub('lb');
-        $resolver = $this->manualResolver();
+        $manager = $this->manager();
 
         $this->scopeGucToClub($clubA->getId());
-        $resolver->applyManualOverride($clubA->getId(), $seasonA->getId(), $ffbb, null, self::FED_REF_A, 'CORPS DE A', 45.76, 4.86);
+        $manager->addOrUpdate($clubA->getId(), $ffbb, 'SALLE FBI', 'CORPS DE A', self::FED_REF_A, 45.76, 4.86);
         $this->scopeGucToClub($clubB->getId());
-        $resolver->applyManualOverride($clubB->getId(), $seasonB->getId(), $ffbb, null, self::FED_REF_A, 'CORPS DE B DIFFERENT', 45.10, 4.10);
+        $manager->addOrUpdate($clubB->getId(), $ffbb, 'SALLE FBI', 'CORPS DE B DIFFERENT', self::FED_REF_A, 45.10, 4.10);
+        unset($seasonA, $seasonB);
 
         $row = $this->conn()->fetchAssociative(
             'SELECT venue_label, chosen_by_count FROM opponent_venue_suggestion WHERE ffbb_organisme_code = :code AND venue_external_ref = :ref',
@@ -257,17 +263,88 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
         $ffbb = 'ARA00698' . random_int(10, 99);
         [$clubA, $seasonA] = $this->createClub('ta');
         [$clubB, $seasonB] = $this->createClub('tb');
-        $resolver = $this->manualResolver();
+        $manager = $this->manager();
 
         $this->scopeGucToClub($clubA->getId());
-        $resolver->applyManualOverride($clubA->getId(), $seasonA->getId(), $ffbb, null, self::FED_REF_A, 'GYMNASE DE A', 45.76, 4.86);
-        $travelBefore = $this->travelRowOf($clubA->getId(), $seasonA->getId(), $ffbb);
+        $manager->addOrUpdate($clubA->getId(), $ffbb, 'SALLE FBI', 'GYMNASE DE A', self::FED_REF_A, 45.76, 4.86);
+        $linkBefore = $this->linkRowOf($clubA->getId(), $ffbb);
 
         $this->scopeGucToClub($clubB->getId());
-        $resolver->applyManualOverride($clubB->getId(), $seasonB->getId(), $ffbb, null, self::FED_REF_B, 'GYMNASE DE B', 45.76, 4.86);
+        $manager->addOrUpdate($clubB->getId(), $ffbb, 'SALLE FBI', 'GYMNASE DE B', self::FED_REF_B, 45.76, 4.86);
 
-        $travelAfter = $this->travelRowOf($clubA->getId(), $seasonA->getId(), $ffbb);
-        self::assertSame($travelBefore, $travelAfter, 'le choix de B ne touche jamais le trajet (tenant) de A');
+        $linkAfter = $this->linkRowOf($clubA->getId(), $ffbb);
+        self::assertSame($linkBefore, $linkAfter, 'le choix de B ne touche jamais l\'appariement (tenant) de A');
+        unset($seasonA, $seasonB);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // (g) la comptabilité du partagé est IDEMPOTENTE et SYMÉTRIQUE (revue sécurité)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function testTwoManualLinksOfOneClubOnTheSameFederalRefCreditTheSharedCatalogOnce(): void
+    {
+        $ffbb = 'ARA0069I' . random_int(10, 99);
+        [$club] = $this->createClub('idem');
+        $manager = $this->manager();
+
+        // Un même club apparie DEUX libellés de fichier différents vers le MÊME gymnase fédéral.
+        // Le compteur communautaire compte des CLUBS, pas des libellés : il ne doit monter qu'à 1.
+        $this->scopeGucToClub($club->getId());
+        $manager->addOrUpdate($club->getId(), $ffbb, 'SALLE UNE', 'GYM CHOISI', self::FED_REF_A, 45.76, 4.86);
+        $manager->addOrUpdate($club->getId(), $ffbb, 'SALLE DEUX', 'GYM CHOISI', self::FED_REF_A, 45.76, 4.86);
+
+        self::assertSame(1, $this->sharedCount($ffbb, self::FED_REF_A), 'deux libellés du MÊME club vers le MÊME gymnase = +1, jamais +2');
+    }
+
+    public function testAManualRefThatDoesNotResolveFederallyIsPersistedAsNull(): void
+    {
+        $ffbb = 'ARA0069N' . random_int(10, 99);
+        [$club] = $this->createClub('nullref');
+
+        // Une ref qui NE résout PAS fédéralement (radius/annuaire) n'alimente pas le partagé —
+        // elle ne doit pas non plus être persistée sur le lien : un ref présent implique toujours
+        // un crédit passé, sinon un retrait pourrait décrémenter sans avoir jamais incrémenté.
+        $this->scopeGucToClub($club->getId());
+        $manager = $this->manager();
+        $manager->addOrUpdate($club->getId(), $ffbb, 'SALLE FBI', 'GYM INCONNU', self::UNKNOWN_REF, 45.76, 4.86);
+
+        $count = (int) $this->conn()->fetchOne(
+            'SELECT COUNT(*) FROM opponent_venue_link WHERE club_id = :cid AND opponent_organisme_code = :code',
+            ['cid' => $club->getId(), 'code' => $ffbb],
+        );
+        self::assertSame(1, $count, 'le lien tenant est bien créé (la correction locale reste)');
+        $ref = $this->conn()->fetchOne(
+            'SELECT venue_external_ref FROM opponent_venue_link WHERE club_id = :cid AND opponent_organisme_code = :code',
+            ['cid' => $club->getId(), 'code' => $ffbb],
+        );
+        self::assertNull($ref, 'une ref non résolue fédéralement n\'est jamais persistée (lien par coordonnées seules)');
+    }
+
+    public function testTheSharedDecrementIsSymmetricPerFederalRef(): void
+    {
+        $ffbb = 'ARA0069S' . random_int(10, 99);
+        [$club] = $this->createClub('sym');
+        $manager = $this->manager();
+
+        $this->scopeGucToClub($club->getId());
+        $manager->addOrUpdate($club->getId(), $ffbb, 'SALLE UNE', 'GYM CHOISI', self::FED_REF_A, 45.76, 4.86);
+        $manager->addOrUpdate($club->getId(), $ffbb, 'SALLE DEUX', 'GYM CHOISI', self::FED_REF_A, 45.76, 4.86);
+        self::assertSame(1, $this->sharedCount($ffbb, self::FED_REF_A), 'deux liens du club vers un gymnase = compte 1');
+
+        /** @var list<string> $ids */
+        $ids = $this->conn()->fetchFirstColumn(
+            'SELECT id FROM opponent_venue_link WHERE club_id = :cid AND opponent_organisme_code = :code ORDER BY fbi_label_norm',
+            ['cid' => $club->getId(), 'code' => $ffbb],
+        );
+        self::assertCount(2, $ids);
+
+        // Retirer UN lien alors qu'un AUTRE du même club pointe encore ce gymnase : pas de décrément.
+        $manager->delete($club->getId(), $ids[0]);
+        self::assertSame(1, $this->sharedCount($ffbb, self::FED_REF_A), 'retirer un lien non-dernier sur ce gymnase ne décrémente pas le partagé');
+
+        // Retirer le DERNIER lien du club sur ce gymnase : le compte redescend.
+        $manager->delete($club->getId(), $ids[1]);
+        self::assertSame(0, $this->sharedCount($ffbb, self::FED_REF_A), 'retirer le dernier lien du club sur ce gymnase décrémente');
     }
 
     protected function setUp(): void
@@ -293,15 +370,29 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
         );
 
         return new OpponentTravelResolver(
-            $this->em,
             $ign,
-            $this->service(OpponentTravelRepository::class),
+            $this->service(OpponentVenueLinkRepository::class),
             $this->service(OpponentDirectoryEntryRepository::class),
             $this->suggestions(),
             $this->salleResolverMock(),
             $this->service(ClubRepository::class),
             $this->service(FixtureRepository::class),
+            $this->service(TravelTimeCache::class),
             new NullLogger,
+        );
+    }
+
+    /**
+     * Le gestionnaire d'appariement MANUEL réel, sur le résolveur ci-dessus (mock salle
+     * fédérale) — le geste qui, comme l'API, crée le lien tenant ET alimente le partagé.
+     */
+    private function manager(): OpponentVenueLinkManager
+    {
+        return new OpponentVenueLinkManager(
+            $this->em,
+            $this->service(OpponentVenueLinkRepository::class),
+            $this->manualResolver(),
+            $this->service(VenueLabelNormalizer::class),
         );
     }
 
@@ -342,13 +433,13 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
         );
     }
 
-    /** A's opponent_travel row for the code, as a stable string (read under A's GUC). */
-    private function travelRowOf(string $clubId, string $seasonId, string $code): string
+    /** A's opponent_venue_link row for the code, as a stable string (read under A's GUC). */
+    private function linkRowOf(string $clubId, string $code): string
     {
         $this->scopeGucToClub($clubId);
         $row = $this->conn()->fetchAssociative(
-            'SELECT override_venue_external_ref, override_venue_label, override_latitude, override_longitude, travel_minutes, source, opponent_team_key FROM opponent_travel WHERE season_id = :sid AND opponent_organisme_code = :code',
-            ['sid' => $seasonId, 'code' => $code],
+            'SELECT venue_external_ref, venue_label, latitude, longitude, source, fbi_label_norm FROM opponent_venue_link WHERE club_id = :cid AND opponent_organisme_code = :code',
+            ['cid' => $clubId, 'code' => $code],
         );
         self::assertIsArray($row);
 

@@ -4,60 +4,50 @@ declare(strict_types=1);
 
 namespace App\Service\Geo;
 
-use App\Entity\Club;
-use App\Entity\Fixture;
 use App\Entity\OpponentDirectoryEntry;
-use App\Entity\OpponentTravel;
+use App\Entity\OpponentVenueLink;
 use App\Enum\FixtureHomeAway;
-use App\Enum\OpponentTravelSource;
-use App\Repository\ClubRepository;
+use App\Enum\OpponentVenueLinkSource;
+use App\Message\ComputeTravelTimesMessage;
 use App\Repository\FixtureRepository;
 use App\Repository\OpponentDirectoryEntryRepository;
-use App\Repository\OpponentTravelRepository;
+use App\Repository\OpponentVenueLinkRepository;
 use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\VenueLabelNormalizer;
-use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\ClockInterface;
 use Throwable;
 
 /**
- * P2-54 PR-2b — auto-localise un adversaire à partir du gymnase de salle ÉCRIT dans
- * le fichier FBI (`Fixture::getFbiVenueLabel()`) : pour chaque équipe adverse jouée à
- * l'extérieur, on cherche parmi les salles FÉDÉRALES de sa commune (index
- * `ffbbserver_salles`) celle dont le libellé égale STRICTEMENT le libellé du fichier,
- * et on pose une surcharge de trajet TENANT ({@see OpponentTravel}) au grain ÉQUIPE,
- * `source = AUTO`, avec le gymnase FÉDÉRAL (libellé, numéro, coordonnées) — jamais le
- * texte du fichier (patron {@see OpponentLocationResolver}, revue sécurité).
+ * P2-54 « adversaire multi-gymnases » — auto-apparie un LIBELLÉ de salle FBI vers un
+ * gymnase FÉDÉRAL, pose un {@see OpponentVenueLink} (grain `(club, code, libellé FBI
+ * normalisé)`, `source = AUTO`). Pour chaque libellé de salle DISTINCT écrit dans les
+ * fixtures AWAY (`Fixture::getFbiVenueLabel()`), on cherche parmi les salles fédérales
+ * de la commune de l'adversaire (index `ffbbserver_salles`) celle dont le libellé égale
+ * STRICTEMENT le libellé du fichier, et on épingle ce gymnase — jamais le texte du
+ * fichier (patron {@see OpponentLocationResolver}, revue sécurité).
  *
- * ⚠ N'écrit QUE la table TENANT `opponent_travel` — JAMAIS le partagé
+ * ⚠ N'écrit QUE la table TENANT `opponent_venue_link` — JAMAIS le partagé
  * `opponent_venue_suggestion` : une localisation AUTOMATIQUE (devinée d'un libellé de
  * fichier saisi par le club) n'est pas un CHOIX et ne doit pas alimenter le compteur
  * communautaire (revue sécurité — « un compte, jamais un qui », données fédérales
- * seules au partagé). Une ligne TEAM AUTO ne compte donc jamais comme un choix.
+ * seules au partagé). Un lien AUTO ne compte donc jamais comme un choix.
  *
- * Sémantique par groupe AWAY `(code organisme, teamKey = libellé normalisé)` :
- *   - une ligne `opponent_travel` TEAM déjà **MANUAL** → laissée intacte (le choix du
- *     gestionnaire est souverain), comptée `skipped` ;
- *   - pas de ligne TEAM, ou une ligne TEAM **AUTO** existante → on (re)tente
- *     l'auto-localisation : libellé re-vérifié, minutes recalculées. Une ligne AUTO
- *     n'est mise à jour QUE si une salle unique est trouvée — un échec (0/≥2 hits,
- *     FFBB muet) laisse la valeur en place (best-effort, jamais destructeur).
+ * ⚠ Ne calcule PLUS de trajet ici (amendement 2026-09-20). Le trajet est une CONSTANTE
+ * servie depuis {@see ClubTravelCache} ; son calcul quitte le rail d'import pour le
+ * worker — les hooks d'import dispatchent {@see ComputeTravelTimesMessage}
+ * (scope OPPONENTS) après cette passe.
  *
- * Résolution d'un groupe :
- *   - candidats = `searchSalles(CP de l'annuaire)` si l'annuaire porte un CP, sinon
- *     `searchSallesNearby(coords de l'annuaire, {@see SEARCH_RADIUS_METERS})`, sinon
- *     rien (pas d'ancre de recherche → non localisable) ;
- *   - **égalité STRICTE** `normalize(fbiVenueLabel) === normalize(salle.libelle)` ;
- *   - un groupe peut porter plusieurs libellés de fichier distincts : on tente chacun,
- *     0 ou ≥ 2 hits pour un libellé = ce libellé n'apporte rien (debug) ; la salle
- *     retenue est l'UNIQUE salle fédérale sur laquelle convergent les libellés qui ont
- *     un hit unique. Deux libellés → deux salles différentes = AMBIGU, rien n'est posé.
+ * Sémantique par (code, libellé FBI normalisé) :
+ *   - lien déjà **MANUAL** → laissé intact (le choix du gestionnaire est souverain),
+ *     compté `skipped` ;
+ *   - pas de lien, ou lien **AUTO** existant → on (re)tente : libellé re-vérifié contre
+ *     l'index fédéral. Salle unique et stricte → lien posé/actualisé (`located`) ;
+ *     0/≥2 hits → rien (best-effort, jamais destructeur — un lien AUTO déjà là survit).
  *
- * Best-effort intégral : FFBB muet / réseau en panne → le groupe reste non localisé,
- * jamais une exception (les hooks d'import l'appellent en try/catch, mais le service
- * se protège lui-même en plus).
+ * Best-effort intégral : FFBB muet / réseau en panne → le libellé reste « à apparier »,
+ * jamais une exception (les hooks l'appellent en try/catch, le service se protège en plus).
  */
 final class OpponentVenueAutoLocator
 {
@@ -73,47 +63,37 @@ final class OpponentVenueAutoLocator
      */
     private const int MAX_GROUPS = 200;
 
-    /** Longueur de la colonne `opponent_travel.opponent_team_key` (VARCHAR(180)). */
-    private const int TEAM_KEY_MAX_LENGTH = 180;
+    /** Longueur des colonnes `opponent_venue_link.fbi_label*` (VARCHAR(180)). */
+    private const int LABEL_MAX_LENGTH = 180;
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly FixtureRepository $fixtures,
-        private readonly OpponentTravelRepository $travelRepository,
+        private readonly OpponentVenueLinkRepository $linkRepository,
         private readonly OpponentDirectoryEntryRepository $directory,
         private readonly FfbbApiClient $apiClient,
-        private readonly IgnRoutingClient $routingClient,
         private readonly VenueLabelNormalizer $labelNormalizer,
-        private readonly ClubRepository $clubRepository,
-        private readonly LoggerInterface $logger,
         private readonly ClockInterface $clock,
-        // Cache-first (C4) : optionnel (défaut null) pour ne pas casser les sites de test ;
-        // en prod, le conteneur l'autowire.
-        private readonly ?TravelTimeCache $travelCache = null,
+        private readonly LoggerInterface $logger,
     ) {}
 
     /**
-     * Auto-localise chaque équipe adverse AWAY du club+saison depuis le libellé de
-     * salle de son fichier FBI. Best-effort.
+     * Auto-apparie chaque libellé de salle FBI DISTINCT des fixtures AWAY du club vers un
+     * gymnase fédéral. Best-effort.
      *
      * BCK-32 — `$deadline` (epoch flottant absolu, optionnel) : une fois franchi, les
-     * groupes restants sont comptés `skipped` sans aucun appel réseau — même canal que
-     * le cap {@see MAX_GROUPS}. Null (appel hors orchestrateur, hooks d'import) = aucune
-     * borne de mur, inchangé.
+     * groupes restants sont comptés `skipped` sans aucun appel réseau — même canal que le
+     * cap {@see MAX_GROUPS}. Null (hooks d'import) = aucune borne de mur.
      *
      * @return array{located: int, ambiguous: int, unmatched: int, skipped: int}
      */
     public function locate(string $clubId, string $seasonId, ?float $deadline = null): array
     {
-        $club = $this->clubRepository->find($clubId);
-        $clubLat = $club instanceof Club ? $club->getLatitude() : null;
-        $clubLon = $club instanceof Club ? $club->getLongitude() : null;
+        $groups = $this->groupAwayFixtures($clubId, $seasonId);
+        $existingLinks = $this->existingLinks($clubId);
 
-        $groups = $this->groupAwayFixtures($seasonId);
-        $existingTeamRows = $this->existingTeamRows($seasonId);
-
-        // Un seul appel réseau salle par CODE organisme (sa commune ne bouge pas d'une
-        // équipe à l'autre) : cache local par run. `false` = déjà tenté, aucune salle.
+        // Un seul appel réseau salle par CODE organisme (sa commune ne bouge pas d'un
+        // libellé à l'autre) : cache local par run. `false` = déjà tenté, aucune salle.
         /** @var array<string, list<array{numero: string, label: string, lat: float, lon: float}>|false> $candidateCache */
         $candidateCache = [];
 
@@ -122,26 +102,23 @@ final class OpponentVenueAutoLocator
         $unmatched = 0;
         $skipped = 0;
         $wrote = false;
-        // Budget de fan-out fédéral : seuls les groupes qui DÉCLENCHENT du réseau (ni
-        // MANUAL souverain, ni déjà sous la borne) le consomment.
         $processed = 0;
         $capNoted = false;
         $deadlineNoted = false;
 
         foreach ($groups as $group) {
-            $existing = $existingTeamRows[$group['key']] ?? null;
-            if ($existing instanceof OpponentTravel && OpponentTravelSource::MANUAL === $existing->getSource()) {
+            $existing = $existingLinks[$group['code'] . '|' . $group['norm']] ?? null;
+            if ($existing instanceof OpponentVenueLink && OpponentVenueLinkSource::MANUAL === $existing->getSource()) {
                 // Un choix manuel du gestionnaire est souverain : jamais recalculé (aucun réseau).
                 ++$skipped;
 
                 continue;
             }
 
-            // BCK-32 — budget de mur épuisé : les groupes restants sont sautés SANS
-            // réseau, même canal que le cap ci-dessous (best-effort, relance pour finir).
+            // BCK-32 — budget de mur épuisé : les groupes restants sautés SANS réseau.
             if (null !== $deadline && (float) $this->clock->now()->format('U.u') >= $deadline) {
                 if (!$deadlineNoted) {
-                    $this->logger->warning('Opponent venue auto-locate: wall-clock budget spent, remaining opponents skipped');
+                    $this->logger->warning('Opponent venue auto-locate: wall-clock budget spent, remaining labels skipped');
                     $deadlineNoted = true;
                 }
                 ++$skipped;
@@ -150,9 +127,8 @@ final class OpponentVenueAutoLocator
             }
 
             if ($processed >= self::MAX_GROUPS) {
-                // Cap atteint : les groupes en excès sont sautés SANS aucun appel réseau.
                 if (!$capNoted) {
-                    $this->logger->warning('Opponent venue auto-locate: group cap reached, remaining opponents skipped', ['cap' => self::MAX_GROUPS, 'groups' => \count($groups)]);
+                    $this->logger->warning('Opponent venue auto-locate: group cap reached, remaining labels skipped', ['cap' => self::MAX_GROUPS, 'groups' => \count($groups)]);
                     $capNoted = true;
                 }
                 ++$skipped;
@@ -168,14 +144,23 @@ final class OpponentVenueAutoLocator
                 continue;
             }
 
-            $salle = $this->uniqueFederalSalle($group['code'], $group['labels'], $candidates, $ambiguous, $unmatched);
-            if (null === $salle) {
-                continue; // le compteur ambiguous/unmatched a déjà été incrémenté
+            $matches = $this->strictMatches($group['label'], $candidates);
+            if (1 !== \count($matches)) {
+                // 0 hit = à apparier ; ≥ 2 hits = ambigu (le libellé n'apparie rien de sûr).
+                $this->logger->debug('Opponent venue auto-locate: label not uniquely matched', ['code' => $group['code'], 'label' => $group['label'], 'hits' => \count($matches)]);
+                if (\count($matches) > 1) {
+                    ++$ambiguous;
+                } else {
+                    ++$unmatched;
+                }
+
+                continue;
             }
 
-            $this->writeAutoTeamRow($existing, $clubId, $seasonId, $group['code'], $group['teamKey'], $salle, $clubLat, $clubLon);
-            ++$located;
-            $wrote = true;
+            if ($this->writeAutoLink($existing, $clubId, $group['code'], $group['label'], $group['norm'], $matches[0])) {
+                ++$located;
+                $wrote = true;
+            }
         }
 
         if ($wrote) {
@@ -186,16 +171,16 @@ final class OpponentVenueAutoLocator
     }
 
     /**
-     * Les groupes AWAY `(code, teamKey)` de la saison porteurs d'un libellé de salle
-     * FBI ET d'un code organisme résolu — chacun avec ses libellés de fichier
-     * DISTINCTS (dédupliqués par forme normalisée, ordre d'apparition conservé, libellé
-     * BRUT gardé pour la comparaison stricte).
+     * Les groupes AWAY `(code, libellé FBI normalisé)` de la saison porteurs d'un libellé
+     * de salle FBI ET d'un code organisme résolu — chacun avec son libellé BRUT (gardé
+     * pour la comparaison stricte). Un libellé = un groupe (le grain du lien).
      *
-     * @return list<array{key: string, code: string, teamKey: string, labels: list<string>}>
+     * @return list<array{code: string, label: string, norm: string}>
      */
-    private function groupAwayFixtures(string $seasonId): array
+    private function groupAwayFixtures(string $clubId, string $seasonId): array
     {
-        /** @var array<string, array{key: string, code: string, teamKey: string, labels: list<string>, seen: array<string, true>}> $groups */
+        unset($clubId); // la saison suffit à borner (RLS + filtre tenant scopent le club).
+        /** @var array<string, array{code: string, label: string, norm: string}> $groups */
         $groups = [];
         foreach ($this->fixtures->findAwayBySeason($seasonId) as $fixture) {
             if (FixtureHomeAway::AWAY !== $fixture->getHomeAway()) {
@@ -204,58 +189,43 @@ final class OpponentVenueAutoLocator
             $code = $fixture->getOpponentOrganismeCode();
             $fbiLabel = $fixture->getFbiVenueLabel();
             if (null === $code || '' === $code || null === $fbiLabel || '' === trim($fbiLabel)) {
-                continue; // sans code fédéral OU sans salle de fichier : rien à localiser
+                continue; // sans code fédéral OU sans salle de fichier : rien à apparier
             }
-            $teamKey = $this->labelNormalizer->normalize(trim($fixture->getOpponentLabel()));
-            if ('' === $teamKey) {
+            $rawLabel = trim($fbiLabel);
+            $norm = $this->labelNormalizer->normalize($rawLabel);
+            if ('' === $norm) {
                 continue;
             }
-            // Colonne VARCHAR(180) : on tronque (comme le fait `cleanTeamKey` du contrôleur
-            // travel) — sinon un libellé très long lèverait une erreur DB avalée par le
-            // best-effort, qui masquerait la ligne. La clé de groupe ET la clé de recherche
-            // des lignes existantes restent alors cohérentes (elles sont déjà ≤ 180 en base).
-            $teamKey = mb_substr($teamKey, 0, self::TEAM_KEY_MAX_LENGTH);
-            $normalizedFbi = $this->labelNormalizer->normalize(trim($fbiLabel));
-            if ('' === $normalizedFbi) {
-                continue;
-            }
-            $key = $code . '|' . $teamKey;
-            $groups[$key] ??= ['key' => $key, 'code' => $code, 'teamKey' => $teamKey, 'labels' => [], 'seen' => []];
-            if (!isset($groups[$key]['seen'][$normalizedFbi])) {
-                $groups[$key]['seen'][$normalizedFbi] = true;
-                $groups[$key]['labels'][] = trim($fbiLabel);
-            }
+            $norm = mb_substr($norm, 0, self::LABEL_MAX_LENGTH);
+            $key = $code . '|' . $norm;
+            // Un même libellé normalisé peut arriver avec des casses/espacements différents :
+            // le premier libellé brut vu fait foi (stable, déterministe).
+            $groups[$key] ??= ['code' => $code, 'label' => mb_substr($rawLabel, 0, self::LABEL_MAX_LENGTH), 'norm' => $norm];
         }
 
-        return array_values(array_map(
-            static fn (array $g): array => ['key' => $g['key'], 'code' => $g['code'], 'teamKey' => $g['teamKey'], 'labels' => $g['labels']],
-            $groups,
-        ));
+        return array_values($groups);
     }
 
     /**
-     * Les lignes `opponent_travel` de grain ÉQUIPE (teamKey non nul) du club+saison,
-     * indexées `code|teamKey` — le grain que ce service crée ou re-localise.
+     * Les liens `opponent_venue_link` du club, indexés `code|libellé normalisé` — le grain
+     * exact que ce service pose ou re-vérifie.
      *
-     * @return array<string, OpponentTravel>
+     * @return array<string, OpponentVenueLink>
      */
-    private function existingTeamRows(string $seasonId): array
+    private function existingLinks(string $clubId): array
     {
         $map = [];
-        foreach ($this->travelRepository->findBySeason($seasonId) as $row) {
-            $teamKey = $row->getOpponentTeamKey();
-            if (null !== $teamKey) {
-                $map[$row->getOpponentOrganismeCode() . '|' . $teamKey] = $row;
-            }
+        foreach ($this->linkRepository->findByClub($clubId) as $link) {
+            $map[$link->getOpponentOrganismeCode() . '|' . $link->getFbiLabelNorm()] = $link;
         }
 
         return $map;
     }
 
     /**
-     * Les salles fédérales candidates pour un code organisme : par le CP de l'annuaire
-     * si connu, sinon par un rayon autour de ses coordonnées, sinon aucune. Cache par
-     * run (un seul appel réseau par code). Best-effort : FFBB muet → [] (mémorisé).
+     * Les salles fédérales candidates pour un code organisme : par le CP de l'annuaire si
+     * connu, sinon par un rayon autour de ses coordonnées, sinon aucune. Cache par run (un
+     * seul appel réseau par code). Best-effort : FFBB muet → [] (mémorisé).
      *
      * @param array<string, list<array{numero: string, label: string, lat: float, lon: float}>|false> $cache
      *
@@ -308,96 +278,53 @@ final class OpponentVenueAutoLocator
     }
 
     /**
-     * L'UNIQUE salle fédérale sur laquelle convergent les libellés de fichier du groupe
-     * (égalité stricte normalisée). null si aucun libellé n'a de hit unique (unmatched),
-     * ou si deux libellés désignent deux salles différentes (ambiguous) — le compteur
-     * correspondant est incrémenté par référence.
-     *
-     * @param list<string>                                                       $labels
      * @param list<array{numero: string, label: string, lat: float, lon: float}> $candidates
      *
-     * @return array{numero: string, label: string, lat: float, lon: float}|null
+     * @return list<array{numero: string, label: string, lat: float, lon: float}>
      */
-    private function uniqueFederalSalle(string $code, array $labels, array $candidates, int &$ambiguous, int &$unmatched): ?array
+    private function strictMatches(string $label, array $candidates): array
     {
-        /** @var array<string, array{numero: string, label: string, lat: float, lon: float}> $foundByNumero */
-        $foundByNumero = [];
-        foreach ($labels as $label) {
-            $needle = $this->labelNormalizer->normalize($label);
-            $matches = array_values(array_filter(
-                $candidates,
-                fn (array $salle): bool => $this->labelNormalizer->normalize($salle['label']) === $needle,
-            ));
-            if (1 !== \count($matches)) {
-                // 0 ou ≥ 2 hits pour ce libellé : il n'apporte rien (journalisé).
-                $this->logger->debug('Opponent venue auto-locate: label not uniquely matched', ['code' => $code, 'label' => $label, 'hits' => \count($matches)]);
+        $needle = $this->labelNormalizer->normalize($label);
 
-                continue;
-            }
-            $foundByNumero[$matches[0]['numero']] = $matches[0];
-        }
-
-        if ([] === $foundByNumero) {
-            ++$unmatched;
-
-            return null;
-        }
-        if (\count($foundByNumero) > 1) {
-            // Deux libellés convergent vers deux salles fédérales différentes : ambigu.
-            $this->logger->debug('Opponent venue auto-locate: ambiguous federal salles', ['code' => $code, 'numeros' => array_keys($foundByNumero)]);
-            ++$ambiguous;
-
-            return null;
-        }
-
-        return array_values($foundByNumero)[0];
-    }
-
-    /** Car minutes club siège → point, cache-first (C4) : le cache avant le réseau, mémorise le neuf. */
-    private function carMinutesCached(string $clubId, float $clubLat, float $clubLon, float $destLat, float $destLon): ?int
-    {
-        $cached = $this->travelCache?->lookup($clubId, IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $destLat, $destLon);
-        if (null !== $cached) {
-            return $cached;
-        }
-        $minutes = $this->routingClient->travelMinutes(IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $destLat, $destLon);
-        if (null !== $minutes) {
-            $this->travelCache?->store($clubId, IgnRoutingClient::PROFILE_CAR, $clubLat, $clubLon, $destLat, $destLon, $minutes);
-        }
-
-        return $minutes;
+        return array_values(array_filter(
+            $candidates,
+            fn (array $salle): bool => $this->labelNormalizer->normalize($salle['label']) === $needle,
+        ));
     }
 
     /**
+     * Pose ou actualise le lien AUTO. Retourne true si le lien a été créé ou si son gymnase
+     * a changé (un lien AUTO déjà pointé sur cette salle n'est pas réécrit — idempotent).
+     *
      * @param array{numero: string, label: string, lat: float, lon: float} $salle
      */
-    private function writeAutoTeamRow(?OpponentTravel $existing, string $clubId, string $seasonId, string $code, string $teamKey, array $salle, ?float $clubLat, ?float $clubLon): void
+    private function writeAutoLink(?OpponentVenueLink $existing, string $clubId, string $code, string $label, string $norm, array $salle): bool
     {
-        $minutes = null === $clubLat || null === $clubLon
-            ? null
-            : $this->carMinutesCached($clubId, $clubLat, $clubLon, $salle['lat'], $salle['lon']);
-
-        $row = $existing ?? (new OpponentTravel)
-            ->setClubId($clubId)
-            ->setSeasonId($seasonId)
-            ->setOpponentOrganismeCode($code)
-            ->setOpponentTeamKey($teamKey);
-        $row->setOverrideVenueExternalRef(mb_substr($salle['numero'], 0, 64))
-            ->setOverrideVenueLabel(mb_substr($salle['label'], 0, 180))
-            ->setOverrideLatitude($salle['lat'])
-            ->setOverrideLongitude($salle['lon'])
-            ->setTravelMinutes($minutes)
-            ->setSource(OpponentTravelSource::AUTO)
-            ->setResolvedAt(new DateTimeImmutable);
-        if (!$existing instanceof OpponentTravel) {
-            $this->entityManager->persist($row);
+        $ref = mb_substr($salle['numero'], 0, 64);
+        if ($existing instanceof OpponentVenueLink && $existing->getVenueExternalRef() === $ref) {
+            return false; // déjà apparié à cette salle : rien à écrire
         }
+
+        $link = $existing ?? (new OpponentVenueLink)
+            ->setClubId($clubId)
+            ->setOpponentOrganismeCode(mb_substr($code, 0, 64))
+            ->setFbiLabel($label)
+            ->setFbiLabelNorm($norm);
+        $link->setVenueExternalRef($ref)
+            ->setVenueLabel(mb_substr($salle['label'], 0, 180))
+            ->setLatitude($salle['lat'])
+            ->setLongitude($salle['lon'])
+            ->setSource(OpponentVenueLinkSource::AUTO);
+        if (!$existing instanceof OpponentVenueLink) {
+            $this->entityManager->persist($link);
+        }
+
+        return true;
     }
 
     /**
      * Extrait une salle fédérale exploitable d'un hit `ffbbserver_salles` : numéro et
-     * libellé non vides, coordonnées numériques (sans coordonnées, aucun trajet ni
-     * surcharge de lieu possible).
+     * libellé non vides, coordonnées numériques (sans coordonnées, aucun lien routable).
      *
      * @param array<string, mixed> $hit
      *

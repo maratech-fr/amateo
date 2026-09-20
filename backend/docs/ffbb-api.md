@@ -1,14 +1,10 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-09-19 (`documentation-update`, PR H « onglet Adversaires » — ajout §3bis « Logo
-d'un ADVERSAIRE »). Re-confronté au code cette passe : `OpponentDirectoryEntry::logoId`
-(`OpponentDirectoryEntry.php:77-78`) ✓ · `OpponentLocationResolver::logoIdOf` posé depuis le hit
-organisme déjà tenu, jamais un appel réseau de plus (`OpponentLocationResolver.php:380-401`,
-canal `directVenue` sans logo confirmé aux lignes 399-401) ✓ · `OpponentLogoController` (route
-membre `IS_AUTHENTICATED_FULLY`, 404 sans logo, `Cache-Control: private, max-age=86400`) ✓ ·
-`FfbbLogoFetcher` réutilise bien `ASSET_BASE = 'https://api.ffbb.com/assets/'` (même host que §3)
-✓. Reste du fichier (hosts SSRF, routes, pont par référence FFBB de salle) non re-sondé cette
-passe — dernière vérification de fond : 2026-09-15 (P2-54 PR-2).
+Last verified @ 2026-09-20 (`documentation-update`, PR I « les gymnases adverses appartiennent au
+club, le trajet au gymnase » — amendement fondateur). Recalé cette passe : `OpponentVenueAutoLocator`
+pose désormais un `OpponentVenueLink` tenant (remplace l'ancienne surcharge de trajet
+`opponent_travel`, supprimée) ✓ — reste du fichier (hosts SSRF, routes, pont par référence FFBB de
+salle, §3bis logo) non re-sondé cette passe, dernière vérification de fond : 2026-09-19 (PR H).
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit rester dans la **liste blanche de hosts** du client (SSRF, A12). Vérifié le 2026-07-10 sur le code réel `ARA0069036` (BCCL).
 
@@ -274,7 +270,8 @@ désormais exploité côté réconciliation — voir § « Réconciliation FBI, 
 - **P2-54 PR-2b** — nouveau consommateur : `App\Service\Geo\OpponentVenueAutoLocator` (salles par
   CP `searchSalles` de l'annuaire adverse, sinon `searchSallesNearby` par rayon autour de ses
   coordonnées) — égalité STRICTE `normalize(libellé du fichier FBI) === normalize(salle.libelle)`
-  pour poser le gymnase FÉDÉRAL comme surcharge de trajet TENANT (source AUTO, jamais le partagé).
+  pour poser un lien `OpponentVenueLink` TENANT vers ce gymnase FÉDÉRAL (source AUTO, jamais le
+  partagé — amendement PR I 2026-09-20 : le lien remplace l'ancienne surcharge `opponent_travel`).
 
 ## Ce qui est disponible et NON exploité
 

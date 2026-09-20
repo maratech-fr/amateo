@@ -1,8 +1,8 @@
 import { compareNamesFr } from "@/shared/lib/nameOrder";
 import { formatMinutes } from "@/shared/lib/time";
 
-import type { Fixture, OpponentTravel, Team, TeamMatchHabit } from "../api";
-import { awayHour, awayTravelByKey, awayTravelKey } from "./awayKickoff";
+import type { AwayTravel, Fixture, Team, TeamMatchHabit } from "../api";
+import { awayHour } from "./awayKickoff";
 import { timeToMinutes } from "./envelope";
 import type { WeekendCell } from "./weekendGrid";
 
@@ -16,11 +16,11 @@ import type { WeekendCell } from "./weekendGrid";
 
 /** Libellé de trajet d'un bloc extérieur : « 45 min » (`~` si approché), `null` quand
  *  le trajet est inconnu/indisponible. `travelMinutes`/`approximated` viennent du serveur. */
-export function awayTravelLabel(travel: OpponentTravel | undefined): string | null {
-  if (undefined === travel || !travel.located || null === travel.precision || null === travel.travelMinutes) {
+export function awayTravelLabel(travel: AwayTravel | null | undefined): string | null {
+  if (null === travel || undefined === travel || null === travel.oneWayMinutes) {
     return null;
   }
-  return `${travel.approximated ? "~" : ""}${travel.travelMinutes} min`;
+  return `${travel.approximated ? "~" : ""}${travel.oneWayMinutes} min`;
 }
 
 /** Ordre commun des extérieurs (colonne de grille ET bande `AwayList`) : date, puis
@@ -66,7 +66,6 @@ export interface AwayLayout {
   awayFixtures: Fixture[];
   teams: Map<string, Team>;
   habits: TeamMatchHabit[];
-  travel: OpponentTravel[];
   /** Durée effective (min) du match d'une équipe — partagée avec le layout domicile. */
   matchMinutesOf: (teamId: string) => number;
   /** Clé de colonne `${dateKey}:away` → index 0-based dans le tableau `columns`. */
@@ -85,8 +84,7 @@ export interface AwayLayout {
  * cellules À HEURE pour qu'`assignLanes` les réparte.
  */
 export function buildAwayCells(layout: AwayLayout, intervals: { startMin: number; endMin: number; cell: WeekendCell }[]): WeekendCell[] {
-  const { awayFixtures, teams, habits, travel, matchMinutesOf, columnIndex, startMin, stepMin, bandRows } = layout;
-  const travelByKey = awayTravelByKey(travel);
+  const { awayFixtures, teams, habits, matchMinutesOf, columnIndex, startMin, stepMin, bandRows } = layout;
   const cells: WeekendCell[] = [];
   // Un compteur de blocs sans heure PAR colonne (par date) : ils s'empilent verticalement.
   const unknownSlotByColumn = new Map<number, number>();
@@ -97,8 +95,9 @@ export function buildAwayCells(layout: AwayLayout, intervals: { startMin: number
       continue;
     }
     const { hour, estimated } = awayHour(fixture, habits);
-    const key = awayTravelKey(fixture.opponentOrganismeCode, fixture.opponentTeamKey);
-    const travelLabel = awayTravelLabel(null === key ? undefined : travelByKey.get(key));
+    // Amendement 2026-09-20 : le trajet est DÉRIVÉ de la rencontre (`fixture.awayTravel`),
+    // plus de jointure `(code, teamKey)`.
+    const travelLabel = awayTravelLabel(fixture.awayTravel);
     const base = {
       fixtureId: fixture.id,
       gridColumn: 2 + idx,

@@ -194,6 +194,21 @@ class FixtureResource
     #[Groups(['read'])]
     public ?array $fbiEcho = null;
 
+    /**
+     * Le trajet d'une rencontre EXTÉRIEURE, DÉRIVÉ de la rencontre (jamais du club) : le
+     * lieu de l'adversaire + l'aller simple voiture depuis le siège du club. `null` pour un
+     * domicile ou si rien n'est connu. `oneWayMinutes` peut être null même avec un lieu connu
+     * (trajet pas encore calculé). `basis` porte la CAUSE (le front n'en dérive rien) :
+     * `linked` = la salle de la rencontre est appariée (exact) ; `most_frequent` = repli sur le
+     * gymnase le plus fréquent du club adverse (« gymnase supposé ») ; `city` = coordonnées de
+     * ville (« ville seule »). `approximated` = le trajet est approché (repli). Rempli EN BATCH
+     * par le provider de collection (jamais par item — zéro N+1).
+     *
+     * @var array{venueLabel: string|null, city: string|null, precision: string|null, oneWayMinutes: int|null, approximated: bool, basis: string}|null
+     */
+    #[Groups(['read'])]
+    public ?array $awayTravel = null;
+
     public static function fromEntity(Fixture $entity): self
     {
         $dto = new self;

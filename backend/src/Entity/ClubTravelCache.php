@@ -17,8 +17,8 @@ use Doctrine\ORM\Mapping as ORM;
  * cache, dont la clé est (club, profil, origine, destination).
  *
  * ⚠ Pourquoi TENANT (RLS) et non global : la clé porte des coordonnées qui, croisées,
- * trahissent le SIÈGE d'un club précis (même raison qu'{@see OpponentTravel} vit ici et
- * non dans l'annuaire fédéral partagé). Le cache est donc club-scoped, RLS FORCE.
+ * trahissent le SIÈGE d'un club précis (donnée club-spécifique, jamais dans l'annuaire
+ * fédéral partagé). Le cache est donc club-scoped, RLS FORCE.
  *
  * `minutes` est NON NULL : on ne met JAMAIS en cache un échec (un IGN muet peut réussir
  * plus tard). Pas de source AUTO/MANUAL : un MANUAL est un CHOIX de gymnase, pas une

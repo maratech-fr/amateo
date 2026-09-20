@@ -85,35 +85,55 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
             summary: 'Resolve the away opponents of the season into the shared opponent directory (management only)',
         )));
 
+        $venueView = [
+            'type' => 'object',
+            'description' => 'One paired gym of the opponent club (an OpponentVenueLink).',
+            'properties' => [
+                'id' => ['type' => 'string', 'description' => 'The link id — the target of PUT/DELETE /api/opponents/venue-links/{id}'],
+                'label' => ['type' => 'string', 'description' => 'The federal gym label'],
+                'externalRef' => ['type' => ['string', 'null'], 'description' => 'The FFBB salle number, or null for a gym pinned by coordinates only'],
+                'latitude' => ['type' => 'number', 'format' => 'float', 'description' => 'The federal gym coordinates (public) — the client passes them back to the merge gesture'],
+                'longitude' => ['type' => 'number', 'format' => 'float'],
+                'source' => ['type' => 'string', 'enum' => ['AUTO', 'MANUAL']],
+                'travelMinutes' => ['type' => ['integer', 'null'], 'description' => 'One-way car travel from the club siège (from the constant travel cache; null = not computed yet)'],
+                'travelStatus' => ['type' => 'string', 'enum' => ['done', 'pending', 'unavailable'], 'description' => 'Server-computed: done (minutes present), pending (a computation is in flight for this club), unavailable'],
+                'approximated' => ['type' => 'boolean', 'description' => 'Always false for a link (an exact gym); the approximate fallback lives in the per-fixture projection'],
+                'fixtureCount' => ['type' => 'integer', 'description' => 'How many AWAY fixtures resolve to this gym via its label'],
+                'fallbackVenueName' => ['type' => ['string', 'null'], 'description' => 'The gym that would receive this one\'s fixtures if it were removed (the most frequent remaining gym of the club); null if it is the last one — server-computed, never re-derived by the client'],
+            ],
+        ];
         $opponentView = [
             'type' => 'object',
+            'description' => 'One AWAY opponent CLUB, with its paired gyms and its labels still to pair.',
             'properties' => [
-                'opponentOrganismeCode' => ['type' => ['string', 'null']],
-                'opponentTeamKey' => ['type' => ['string', 'null'], 'description' => 'Server-normalized opponent label — the grain of a per-team travel override; null for an unresolved opponent'],
-                'opponentLabel' => ['type' => 'string'],
-                'located' => ['type' => 'boolean', 'description' => 'A resolvable location exists (directory entry or manual override)'],
-                'hasLogo' => ['type' => 'boolean', 'description' => 'A federal logo is known for this opponent (serve it via GET /api/opponents/{code}/logo, member only)'],
-                'precision' => ['type' => ['string', 'null'], 'enum' => ['VENUE', 'CITY', null], 'description' => 'How precisely the opponent venue is known'],
-                'locationName' => ['type' => ['string', 'null'], 'description' => 'The gym label (VENUE / override) or the commune (CITY)'],
+                'code' => ['type' => ['string', 'null'], 'description' => 'The opponent FFBB organisme code; null when the code is unresolved (grouped by label, not pairable)'],
+                'name' => ['type' => 'string', 'description' => 'The opponent name (federal directory, else the raw fixture label)'],
                 'city' => ['type' => ['string', 'null'], 'description' => 'The opponent commune from the shared directory'],
-                'postalCode' => ['type' => ['string', 'null'], 'description' => 'The opponent postal code from the shared directory'],
-                'travelMinutes' => ['type' => ['integer', 'null'], 'description' => 'One-way car travel from the club siège (null = best-effort miss)'],
-                'travelStatus' => ['type' => 'string', 'enum' => ['done', 'pending', 'unavailable'], 'description' => 'Server-computed travel state: done (minutes present), pending (a computation is in flight for this club), unavailable (attempted without a result, or no location to route)'],
-                'approximated' => ['type' => 'boolean', 'description' => 'Server-computed: the location is only city-precise'],
-                'source' => ['type' => ['string', 'null'], 'enum' => ['AUTO', 'MANUAL', null]],
-                'scope' => ['type' => ['string', 'null'], 'enum' => ['TEAM', 'CLUB', null], 'description' => 'Which grain governs this travel: a per-team override (TEAM), the club default (CLUB), or none (null)'],
-                'overrideVenueLabel' => ['type' => ['string', 'null'], 'description' => 'The gym the manager pinned by hand'],
+                'precision' => ['type' => ['string', 'null'], 'enum' => ['VENUE', 'CITY', null], 'description' => 'The federal directory precision — the client tells « city only » (CITY) from « no known gym » (null) when there is no link'],
+                'hasLogo' => ['type' => 'boolean', 'description' => 'A federal logo is known (serve it via GET /api/opponents/{code}/logo, member only)'],
+                'fixtureCount' => ['type' => 'integer', 'description' => 'Total AWAY fixtures against this opponent this season'],
+                'venues' => ['type' => 'array', 'items' => $venueView],
+                'unmatchedLabels' => ['type' => 'array', 'description' => 'The file salle labels of this opponent that carry no link yet (« to pair »)', 'items' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'label' => ['type' => 'string'],
+                        'fixtureCount' => ['type' => 'integer'],
+                    ],
+                ]],
             ],
         ];
         $writeView = [
             'type' => 'object',
+            'description' => 'The written link + the resulting count carried by its target gym (merge « will carry N »).',
             'properties' => [
+                'id' => ['type' => 'string'],
                 'opponentOrganismeCode' => ['type' => 'string'],
-                'opponentTeamKey' => ['type' => ['string', 'null'], 'description' => 'The opponent-team grain of this row; null = the club default'],
-                'scope' => ['type' => ['string', 'null'], 'enum' => ['TEAM', 'CLUB', null]],
-                'travelMinutes' => ['type' => ['integer', 'null']],
-                'source' => ['type' => ['string', 'null'], 'enum' => ['AUTO', 'MANUAL', null]],
-                'overrideVenueLabel' => ['type' => ['string', 'null']],
+                'fbiLabel' => ['type' => 'string', 'description' => 'The file salle label this link keys on'],
+                'label' => ['type' => 'string', 'description' => 'The federal gym label'],
+                'externalRef' => ['type' => ['string', 'null']],
+                'source' => ['type' => 'string', 'enum' => ['AUTO', 'MANUAL']],
+                'travelMinutes' => ['type' => ['integer', 'null'], 'description' => 'One-way car travel from the club siège (warmed synchronously on write; null = IGN mute)'],
+                'targetFixtureCount' => ['type' => 'integer', 'description' => 'The fixtures that now resolve to this gym (sum of the labels pointing at it — the merge result)'],
             ],
         ];
 
@@ -121,7 +141,7 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
             operationId: 'listOpponentTravel',
             tags: ['Fixture'],
             responses: [
-                '200' => $this->schemas->jsonResponse('Per distinct AWAY opponent: where it plays (precision + location name), the one-way car travel from the club siège (nullable, best-effort), whether it is only approximated (city), and the AUTO/MANUAL source. Read-only display feed for the travel radar.', [
+                '200' => $this->schemas->jsonResponse('Per AWAY opponent CLUB: its paired gyms (each with travel, status, source, fixture count and the fallback gym if removed) and its file labels still to pair. Read-only display feed for the Adversaires screen.', [
                     'type' => 'object',
                     'properties' => [
                         'clubId' => ['type' => 'string'],
@@ -133,62 +153,109 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                 '400' => new Response('No club or season in context'),
                 '401' => new Response('Unauthorized (missing/expired JWT)'),
             ],
-            summary: 'The AWAY opponents\' locations and travel times for the current club/season',
+            summary: 'The AWAY opponents\' gyms and travel times for the current club/season',
         )));
 
-        $paths->addPath('/api/opponents/travel/manual', new PathItem(post: new Operation(
-            operationId: 'setOpponentTravelManual',
+        $addVenueBody = $this->schemas->jsonBody([
+            'type' => 'object',
+            'required' => ['venueLabel', 'latitude', 'longitude'],
+            'properties' => [
+                'venueLabel' => ['type' => 'string', 'description' => 'The federal gym label'],
+                'venueExternalRef' => ['type' => 'string', 'nullable' => true, 'description' => 'The FFBB salle number, when picked from /api/ffbb/salles (re-resolved server-side for the shared count)'],
+                'latitude' => ['type' => 'number'],
+                'longitude' => ['type' => 'number'],
+                'fbiLabel' => ['type' => 'string', 'nullable' => true, 'description' => 'The file salle label this gym covers; defaults to the gym label when omitted'],
+            ],
+        ]);
+        $paths->addPath('/api/opponents/{code}/venues', new PathItem(post: new Operation(
+            operationId: 'addOpponentVenue',
             tags: ['Fixture'],
             responses: [
-                '200' => $this->schemas->jsonResponse('Pins a specific gym for the opponent (MANUAL override) and recomputes the car travel from it. A MANUAL value is never overwritten by the AUTO pass afterwards.', $writeView),
+                '200' => $this->schemas->jsonResponse('Adds a gym for the opponent (a MANUAL link) — by FFBB salle ref or chosen coordinates — and warms its travel. The shared count is re-resolved federally (never client text).', $writeView),
                 '400' => new Response('No club or season in context'),
                 '401' => new Response('Unauthorized (missing/expired JWT)'),
                 '403' => new Response('Not a management member'),
-                '422' => new Response('Invalid opponent/venue, or the opponent has no away fixture this season'),
+                '422' => new Response('Invalid gym/label, or the code is not an away opponent this season'),
                 '429' => new Response('Too many requests (per-user rate limit)'),
             ],
-            summary: 'Pin an opponent\'s gym by hand and recompute its travel (management only)',
+            summary: 'Add a gym for an away opponent (management only)',
+            parameters: [['name' => 'code', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string'], 'description' => 'The opponent FFBB organisme code (must be an away opponent this season)']],
+            requestBody: $addVenueBody,
+        )));
+
+        $paths->addPath('/api/opponents/{code}/venue-links', new PathItem(post: new Operation(
+            operationId: 'pairOpponentVenueLabel',
+            tags: ['Fixture'],
+            responses: [
+                '200' => $this->schemas->jsonResponse('Pairs an orphan file salle label to a gym (a MANUAL link) and warms its travel. The label must be a salle actually played away by this opponent.', $writeView),
+                '400' => new Response('No club or season in context'),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+                '403' => new Response('Not a management member'),
+                '422' => new Response('Invalid gym/label, the code is not an away opponent, or the label is on no away fixture of it'),
+                '429' => new Response('Too many requests (per-user rate limit)'),
+            ],
+            summary: 'Pair an orphan file salle label of an away opponent to a gym (management only)',
+            parameters: [['name' => 'code', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string'], 'description' => 'The opponent FFBB organisme code']],
             requestBody: $this->schemas->jsonBody([
                 'type' => 'object',
-                'required' => ['opponentOrganismeCode', 'venueLabel', 'latitude', 'longitude'],
+                'required' => ['fbiLabel', 'venueLabel', 'latitude', 'longitude'],
                 'properties' => [
-                    'opponentOrganismeCode' => ['type' => 'string', 'description' => 'The opponent FFBB organisme code (must be an away opponent of the season)'],
-                    'opponentTeamKey' => ['type' => 'string', 'nullable' => true, 'description' => 'The server-normalized opponent label to pin a SINGLE team; omit for the club default'],
-                    'scope' => ['type' => 'string', 'enum' => ['TEAM', 'CLUB'], 'nullable' => true, 'description' => 'Grain of the override — defaults to TEAM when opponentTeamKey is given, else CLUB'],
+                    'fbiLabel' => ['type' => 'string', 'description' => 'The orphan file salle label to pair (must be played away by this opponent)'],
                     'venueLabel' => ['type' => 'string'],
-                    'venueExternalRef' => ['type' => 'string', 'nullable' => true, 'description' => 'The FFBB salle number, when picked from /api/ffbb/salles'],
+                    'venueExternalRef' => ['type' => 'string', 'nullable' => true],
                     'latitude' => ['type' => 'number'],
                     'longitude' => ['type' => 'number'],
                 ],
             ]),
         )));
 
-        $paths->addPath('/api/opponents/travel/auto', new PathItem(post: new Operation(
-            operationId: 'setOpponentTravelAuto',
-            tags: ['Fixture'],
-            responses: [
-                '200' => $this->schemas->jsonResponse('Drops the manual override and recomputes the travel from the shared directory location (return to AUTO).', $writeView),
-                '400' => new Response('No club or season in context'),
-                '401' => new Response('Unauthorized (missing/expired JWT)'),
-                '403' => new Response('Not a management member'),
-                '422' => new Response('No manual override to revert for this opponent'),
+        $repointBody = $this->schemas->jsonBody([
+            'type' => 'object',
+            'required' => ['venueLabel', 'latitude', 'longitude'],
+            'properties' => [
+                'venueLabel' => ['type' => 'string'],
+                'venueExternalRef' => ['type' => 'string', 'nullable' => true],
+                'latitude' => ['type' => 'number'],
+                'longitude' => ['type' => 'number'],
             ],
-            summary: 'Return an opponent to automatic travel resolution (management only)',
-            requestBody: $this->schemas->jsonBody([
-                'type' => 'object',
-                'required' => ['opponentOrganismeCode'],
-                'properties' => [
-                    'opponentOrganismeCode' => ['type' => 'string'],
-                    'opponentTeamKey' => ['type' => 'string', 'nullable' => true, 'description' => 'Revert a SINGLE team to automatic (deletes its override); omit to revert the club default'],
+        ]);
+        $paths->addPath('/api/opponents/venue-links/{id}', new PathItem(
+            put: new Operation(
+                operationId: 'repointOpponentVenueLink',
+                tags: ['Fixture'],
+                responses: [
+                    '200' => $this->schemas->jsonResponse('Re-points a link to another gym (re-pair / merge — the file label stays recognised at import). The shared count follows; travel is warmed. The response carries the target gym\'s resulting fixture count.', $writeView),
+                    '400' => new Response('No club or season in context'),
+                    '401' => new Response('Unauthorized (missing/expired JWT)'),
+                    '403' => new Response('Not a management member'),
+                    '404' => new Response('No such link for this club (byte-identical for a foreign link)'),
+                    '422' => new Response('Invalid gym'),
+                    '429' => new Response('Too many requests (per-user rate limit)'),
                 ],
-            ]),
-        )));
+                summary: 'Re-pair or merge an opponent venue link onto another gym (management only)',
+                parameters: [['name' => 'id', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string'], 'description' => 'The link id']],
+                requestBody: $repointBody,
+            ),
+            delete: new Operation(
+                operationId: 'deleteOpponentVenueLink',
+                tags: ['Fixture'],
+                responses: [
+                    '204' => new Response('The local pairing was removed (the federal catalogue is never touched; the shared count is decremented if it was MANUAL)'),
+                    '400' => new Response('No club or season in context'),
+                    '401' => new Response('Unauthorized (missing/expired JWT)'),
+                    '403' => new Response('Not a management member'),
+                    '404' => new Response('No such link for this club (byte-identical for a foreign link)'),
+                ],
+                summary: 'Remove an opponent venue link — the local pairing only (management only)',
+                parameters: [['name' => 'id', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string'], 'description' => 'The link id']],
+            ),
+        ));
 
         $paths->addPath('/api/opponents/travel/resolve', new PathItem(post: new Operation(
             operationId: 'resolveOpponentTravel',
             tags: ['Fixture'],
             responses: [
-                '200' => $this->schemas->jsonResponse('Queues an ASYNC recompute of the AUTO car travel from the club siège to every away opponent whose travel is MISSING (a travel is a constant — an already-known one is never recomputed). The cap is checked synchronously (422); the paced IGN routing runs in the worker, progress pushed on the club Mercure travel topic. A MANUAL override is left untouched. When a travel computation is already running for the club, nothing is dispatched (queued=false, alreadyRunning=true).', [
+                '200' => $this->schemas->jsonResponse('Queues an ASYNC compute of the car travel from the club siège to every away opponent GYM (link) whose travel is MISSING from the cache (a travel is a constant — an already-cached one is never recomputed). The cap is checked synchronously (422); the paced IGN routing runs in the worker, progress pushed on the club Mercure travel topic. When a travel computation is already running for the club, nothing is dispatched (queued=false, alreadyRunning=true).', [
                     'type' => 'object',
                     'properties' => [
                         'queued' => ['type' => 'boolean', 'description' => 'The computation was dispatched to the worker'],
@@ -250,11 +317,11 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                             'skipped' => ['type' => 'integer', 'description' => 'Opponents already known at venue precision (no network call)'],
                             'stamped' => ['type' => 'integer', 'description' => 'Away fixtures whose opponent organisme code was stamped (join key)'],
                         ]],
-                        'autoLocated' => ['type' => 'object', 'description' => 'Pass (b): the gym auto-location from the FBI file salle label', 'properties' => [
-                            'located' => ['type' => 'integer', 'description' => 'Opponent teams whose gym was located from the file (a unique federal salle)'],
-                            'ambiguous' => ['type' => 'integer', 'description' => 'Opponent teams whose file labels pointed to two different federal salles (nothing written)'],
-                            'unmatched' => ['type' => 'integer', 'description' => 'Opponent teams with no unique federal salle for their file label'],
-                            'skipped' => ['type' => 'integer', 'description' => 'Opponent teams left untouched because a MANUAL override already governs them'],
+                        'autoLocated' => ['type' => 'object', 'description' => 'Pass (b): the gym auto-pairing from the FBI file salle label', 'properties' => [
+                            'located' => ['type' => 'integer', 'description' => 'File salle labels paired to a unique federal salle (a link posted)'],
+                            'ambiguous' => ['type' => 'integer', 'description' => 'File salle labels matching two or more federal salles (nothing written)'],
+                            'unmatched' => ['type' => 'integer', 'description' => 'File salle labels with no unique federal salle'],
+                            'skipped' => ['type' => 'integer', 'description' => 'File salle labels left untouched because a MANUAL link already governs them'],
                         ]],
                         'travel' => ['type' => 'object', 'description' => 'Pass (c): the AUTO travel recompute — DISPATCHED to the worker (paced IGN routing > HTTP ceiling); progress pushed on the club Mercure travel topic. When a travel computation is already running for the club, nothing is dispatched (queued=false, alreadyRunning=true) — passes (a)/(b) still ran.', 'properties' => [
                             'queued' => ['type' => 'boolean', 'description' => 'The travel computation was dispatched to the worker'],

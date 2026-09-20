@@ -335,24 +335,27 @@ describe("decodeOpponentFilter / applyOpponentFilterToParams (C8 — filtre de l
     expect(decodeOpponentFilter(new URLSearchParams(""))).toBeNull();
   });
 
-  it("« tous » (toléré) ou une valeur inconnue ⇒ null", () => {
+  it("« tous », une valeur inconnue, ou l'ancien « ville » ⇒ null", () => {
     expect(decodeOpponentFilter(new URLSearchParams("filtre=tous"))).toBeNull();
     expect(decodeOpponentFilter(new URLSearchParams("filtre=xxx"))).toBeNull();
+    // L'ancien filtre `ville` (retiré) ne plante pas : décode en null (aucun segment pressé).
+    expect(decodeOpponentFilter(new URLSearchParams("filtre=ville"))).toBeNull();
+    expect(decodeOpponentFilter(new URLSearchParams("filtre=a-localiser"))).toBeNull();
   });
 
   it("chacune des deux clés est reconnue", () => {
-    expect(decodeOpponentFilter(new URLSearchParams("filtre=a-localiser"))).toBe("a-localiser");
-    expect(decodeOpponentFilter(new URLSearchParams("filtre=ville"))).toBe("ville");
+    expect(decodeOpponentFilter(new URLSearchParams("filtre=sans-gymnase"))).toBe("sans-gymnase");
+    expect(decodeOpponentFilter(new URLSearchParams("filtre=a-apparier"))).toBe("a-apparier");
   });
 
   it("null (défaut « Tous ») ⇒ param supprimé", () => {
-    expect(applyOpponentFilterToParams(new URLSearchParams("filtre=ville"), null).toString()).toBe("");
+    expect(applyOpponentFilterToParams(new URLSearchParams("filtre=a-apparier"), null).toString()).toBe("");
   });
 
   it("une clé ⇒ écrite et relue telle quelle, préserve les params sans rapport", () => {
-    const out = applyOpponentFilterToParams(new URLSearchParams("autre=1"), "a-localiser");
-    expect(out.get("filtre")).toBe("a-localiser");
+    const out = applyOpponentFilterToParams(new URLSearchParams("autre=1"), "sans-gymnase");
+    expect(out.get("filtre")).toBe("sans-gymnase");
     expect(out.get("autre")).toBe("1");
-    expect(decodeOpponentFilter(out)).toBe("a-localiser");
+    expect(decodeOpponentFilter(out)).toBe("sans-gymnase");
   });
 });

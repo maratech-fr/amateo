@@ -142,9 +142,16 @@ final class OpponentSuggestionContext extends BaseContext
     #[When('le premier club retire son choix')]
     public function lePremierClubRetireSonChoix(): void
     {
-        $result = $this->apiPost('opponents/travel/auto', ['opponentOrganismeCode' => $this->opponentCode], $this->tokenA);
-        if (200 !== $result['status']) {
-            throw new RuntimeException(\sprintf('le retour à l\'automatique a échoué (HTTP %d)', $result['status']));
+        // Retirer son choix = supprimer l'appariement LOCAL (le lien) ; le catalogue partagé
+        // n'est jamais effacé, seul son compteur redescend (décrément du MANUAL).
+        $venue = $this->firstVenueOf($this->tokenA);
+        $id = \is_array($venue) ? ($venue['id'] ?? null) : null;
+        if (!\is_string($id) || '' === $id) {
+            throw new RuntimeException('le premier club n\'a aucun gymnase apparié à retirer');
+        }
+        $result = $this->apiDelete(\sprintf('opponents/venue-links/%s', $id), $this->tokenA);
+        if (204 !== $result['status']) {
+            throw new RuntimeException(\sprintf('le retrait du choix a échoué (HTTP %d)', $result['status']));
         }
     }
 
@@ -165,7 +172,7 @@ final class OpponentSuggestionContext extends BaseContext
     {
         if ('' !== $this->opponentCode) {
             $this->dbalExec(\sprintf('DELETE FROM opponent_venue_suggestion WHERE ffbb_organisme_code=\'%s\'', $this->opponentCode), admin: true);
-            $this->dbalExec(\sprintf('DELETE FROM opponent_travel WHERE opponent_organisme_code=\'%s\'', $this->opponentCode), admin: true);
+            $this->dbalExec(\sprintf('DELETE FROM opponent_venue_link WHERE opponent_organisme_code=\'%s\'', $this->opponentCode), admin: true);
             $this->dbalExec(\sprintf('DELETE FROM fixture WHERE opponent_organisme_code=\'%s\'', $this->opponentCode), admin: true);
         }
         if ('' !== $this->clubIdB) {
@@ -180,8 +187,9 @@ final class OpponentSuggestionContext extends BaseContext
 
     private function pinGym(string $token, string $ref, string $label, float $lat, float $lon): void
     {
-        $result = $this->apiPost('opponents/travel/manual', [
-            'opponentOrganismeCode' => $this->opponentCode,
+        // Ajouter un gymnase = choix MANUEL qui alimente le catalogue partagé et son compteur
+        // (le code adverse est dans l'URL ; le libellé de fichier retombe sur celui du gymnase).
+        $result = $this->apiPost(\sprintf('opponents/%s/venues', $this->opponentCode), [
             'venueLabel' => $label,
             'venueExternalRef' => $ref,
             'latitude' => $lat,
@@ -211,16 +219,39 @@ final class OpponentSuggestionContext extends BaseContext
         return null;
     }
 
+    /**
+     * Le libellé du gymnase apparié par CE club pour l'adversaire — lu par CLUB adverse dans
+     * GET /api/opponents/travel (grain lien). Le choix d'un club ne dépend que de SES liens
+     * (tenant) : le choix d'un autre club ne peut donc pas le changer.
+     */
     private function travelOverrideLabelOf(string $token): ?string
     {
+        $venue = $this->firstVenueOf($token);
+        $label = \is_array($venue) ? ($venue['label'] ?? null) : null;
+
+        return \is_string($label) ? $label : null;
+    }
+
+    /**
+     * Le premier gymnase apparié du club (token) pour l'adversaire courant, ou null.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function firstVenueOf(string $token): ?array
+    {
         $result = $this->apiGet('opponents/travel', $token);
+        if (200 !== $result['status']) {
+            throw new RuntimeException(\sprintf('lecture des adversaires refusée (HTTP %d)', $result['status']));
+        }
         $opponents = $result['json']['opponents'] ?? [];
         foreach (\is_array($opponents) ? $opponents : [] as $opponent) {
-            if (\is_array($opponent) && ($opponent['opponentOrganismeCode'] ?? null) === $this->opponentCode) {
-                $label = $opponent['overrideVenueLabel'] ?? null;
-
-                return \is_string($label) ? $label : null;
+            if (!\is_array($opponent) || ($opponent['code'] ?? null) !== $this->opponentCode) {
+                continue;
             }
+            $venues = $opponent['venues'] ?? [];
+            $first = \is_array($venues) ? ($venues[0] ?? null) : null;
+
+            return \is_array($first) ? $first : null;
         }
 
         return null;

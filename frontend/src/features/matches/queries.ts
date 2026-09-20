@@ -315,10 +315,14 @@ export function useSwapFixtures() {
 
 const OPPONENT_TRAVEL_KEY = ["opponents", "travel"] as const;
 
-/** Any travel write changes the spatial radar → invalidate travel AND conflicts. */
+/**
+ * Un geste d'appariement change le radar spatial ET le trajet dérivé de chaque rencontre
+ * (`fixture.awayTravel`) : on invalide la liste des adversaires, le radar de conflits ET les
+ * fixtures (dont le chip de trajet du calendrier).
+ */
 function invalidateTravel(queryClient: ReturnType<typeof useQueryClient>): void {
   void queryClient.invalidateQueries({ queryKey: OPPONENT_TRAVEL_KEY });
-  void queryClient.invalidateQueries({ queryKey: ["fixtures", "conflicts"] });
+  void queryClient.invalidateQueries({ queryKey: ["fixtures"] });
 }
 
 /** Choosing/reverting a gym bumps the SHARED suggestion counters of that opponent → re-read them. */
@@ -341,25 +345,55 @@ export function useClubGeolocated(): boolean {
   return null != me?.club?.latitude && null != me.club.longitude;
 }
 
-export function useSetOpponentTravelManual() {
+/** Ajouter un gymnase pour un adversaire (lien MANUAL). Invalide trajet + suggestions du code. */
+export function useAddOpponentVenue() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: matchesApi.OpponentTravelManualInput) => matchesApi.setOpponentTravelManual(input),
+    mutationFn: (input: matchesApi.AddOpponentVenueInput) => matchesApi.addOpponentVenue(input),
     onSuccess: (_data, input) => {
       invalidateTravel(queryClient);
-      invalidateSuggestions(queryClient, input.opponentOrganismeCode);
+      invalidateSuggestions(queryClient, input.code);
     },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
-export function useSetOpponentTravelAuto() {
+/** Apparier un libellé orphelin à un gymnase. */
+export function usePairOpponentVenueLabel() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: matchesApi.OpponentTravelAutoInput) => matchesApi.setOpponentTravelAuto(input),
+    mutationFn: (input: matchesApi.PairVenueLabelInput) => matchesApi.pairOpponentVenueLabel(input),
     onSuccess: (_data, input) => {
       invalidateTravel(queryClient);
-      invalidateSuggestions(queryClient, input.opponentOrganismeCode);
+      invalidateSuggestions(queryClient, input.code);
+    },
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+/** Ré-apparier / fusionner un lien vers un autre gymnase (le résultat porte le compte de la cible). */
+export function useRepointVenueLink() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: matchesApi.RepointVenueLinkInput) => matchesApi.repointVenueLink(input),
+    onSuccess: (result) => {
+      invalidateTravel(queryClient);
+      invalidateSuggestions(queryClient, result.opponentOrganismeCode);
+    },
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+/** Retirer un lien (appariement LOCAL seul). Le code n'est pas connu ici → invalide large. */
+export function useDeleteVenueLink() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => matchesApi.deleteVenueLink(id),
+    onSuccess: () => {
+      // Le code n'est pas connu ici → on invalide TOUT `["opponents"]` (trajet + suggestions,
+      // le trajet une seule fois : `travel` est un préfixe) et les fixtures (chip du calendrier).
+      void queryClient.invalidateQueries({ queryKey: ["opponents"] });
+      void queryClient.invalidateQueries({ queryKey: ["fixtures"] });
     },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });

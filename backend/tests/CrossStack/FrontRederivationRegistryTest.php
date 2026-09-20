@@ -134,8 +134,10 @@ final class FrontRederivationRegistryTest extends TestCase
         'features/wizard/steps/RecapStep.tsx' => 'affichage : compte les contraintes HARD pour un chiffre du récap',
         'features/planning/SlotDetail.tsx' => 'présentation : ruleType → libellé « obligatoire »/« préférence »',
         'features/matches/lib/teamLinkLabel.ts' => 'présentation : maison UNIQUE du libellé d\'intensité de passerelle (table PREFERRED/MANDATORY → « Préféré »/« Obligatoire »), consommée par les deux hôtes de la sous-ligne — aucun verdict, le solveur reste seul juge de ce qu\'une intensité FAIT',
-        'features/matches/OpponentsPage.tsx' => 'FAUX POSITIF par collision de noms : branche sur OpponentTravelScope (grain du trajet adverse TEAM|CLUB, SERVI par GET /api/opponents/travel), homonyme de ConstraintScope mais sans rapport — présentation/plomberie : choisit QUELLE entrée révèle le défaut du club (ligne « Toutes les équipes (défaut) ») et quelle pastille/action afficher par ligne ; aucune règle de contrainte, le solveur n\'en applique rien (l\'ancienne OpponentTravelCard, absorbée en C8)',
-        'features/matches/LocateOpponentModal.tsx' => 'FAUX POSITIF par collision de noms : branche sur OpponentTravelScope (grain du trajet adverse TEAM|CLUB, SERVI par GET /api/opponents/travel), homonyme de ConstraintScope mais sans rapport — plomberie : choisit le PAYLOAD (opponentTeamKey + scope) re-envoyé TEL QUEL au backend selon la radio de portée ; aucun verdict solveur',
+        // OpponentsPage.tsx / LocateOpponentModal.tsx : ex-faux positifs par collision de noms
+        // (branche sur OpponentTravelScope TEAM|CLUB). L'amendement 2026-09-20 a retiré le grain
+        // « scope » du trajet adverse (gymnase rattaché au club adverse + libellé) : ces fichiers
+        // ne branchent plus sur aucune valeur d'enum de contrainte — exemptions retirées.
     ];
 
     // ---------------------------------------------------------------- (i) REGISTRE

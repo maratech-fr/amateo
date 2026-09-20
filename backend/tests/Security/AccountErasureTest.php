@@ -262,8 +262,8 @@ final class AccountErasureTest extends WebTestCase
         $this->autoRef = 'SA' . strtoupper(substr(md5($clubA), 8, 8));
         $this->seedOpponentSuggestion($manualCode, $this->manualRef, 2);
         $this->seedOpponentSuggestion($autoCode, $this->autoRef, 2);
-        $this->seedOpponentTravel($clubA, $seasonA, $manualCode, $this->manualRef, 'MANUAL');
-        $this->seedOpponentTravel($clubA, $seasonA, $autoCode, $this->autoRef, 'AUTO');
+        $this->seedOpponentVenueLink($clubA, $manualCode, $this->manualRef, 'MANUAL');
+        $this->seedOpponentVenueLink($clubA, $autoCode, $this->autoRef, 'AUTO');
 
         $club = $em->getRepository(Club::class)->find($clubA);
         self::assertInstanceOf(Club::class, $club);
@@ -301,11 +301,11 @@ final class AccountErasureTest extends WebTestCase
             (int) $em->getConnection()->fetchOne('SELECT COUNT(*) FROM schedule_plan WHERE club_id = :cid', ['cid' => $clubA]),
             'plans (schedule_plan) du club A purgés',
         );
-        // BCK-24 — les trajets adverses du club A sont partis avec ses saisons.
+        // BCK-24 — les appariements de gymnase (club-scoped) du club A sont partis à l'effacement.
         self::assertSame(
             0,
-            (int) $em->getConnection()->fetchOne('SELECT COUNT(*) FROM opponent_travel WHERE club_id = :cid', ['cid' => $clubA]),
-            'opponent_travel du club A purgé',
+            (int) $em->getConnection()->fetchOne('SELECT COUNT(*) FROM opponent_venue_link WHERE club_id = :cid', ['cid' => $clubA]),
+            'opponent_venue_link du club A purgé',
         );
         $this->clearGuc();
 
@@ -443,14 +443,14 @@ final class AccountErasureTest extends WebTestCase
         );
     }
 
-    /** Un trajet adverse tenant (RLS : GUC du club exigé pour l'INSERT). */
-    private function seedOpponentTravel(string $clubId, string $seasonId, string $code, string $ref, string $source): void
+    /** Un appariement de gymnase tenant, club-scoped (RLS : GUC du club exigé pour l'INSERT). */
+    private function seedOpponentVenueLink(string $clubId, string $code, string $ref, string $source): void
     {
         $this->scopeGucToClub($clubId);
         $this->em()->getConnection()->executeStatement(
-            'INSERT INTO opponent_travel (id, version, created_at, updated_at, club_id, season_id, opponent_organisme_code, opponent_team_key, travel_minutes, source, override_venue_external_ref, override_venue_label, override_latitude, override_longitude, resolved_at)'
-            . ' VALUES (gen_random_uuid(), 1, now(), now(), :cid, :sid, :code, NULL, 30, :source, :ref, \'Gymnase\', 45.7, 4.8, now())',
-            ['cid' => $clubId, 'sid' => $seasonId, 'code' => $code, 'ref' => $ref, 'source' => $source],
+            'INSERT INTO opponent_venue_link (id, version, created_at, updated_at, club_id, opponent_organisme_code, fbi_label, fbi_label_norm, venue_external_ref, venue_label, latitude, longitude, source)'
+            . ' VALUES (gen_random_uuid(), 1, now(), now(), :cid, :code, \'Gymnase\', \'gymnase\', :ref, \'Gymnase\', 45.7, 4.8, :source)',
+            ['cid' => $clubId, 'code' => $code, 'ref' => $ref, 'source' => $source],
         );
         $this->clearGuc();
     }

@@ -442,37 +442,32 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
   await page.getByRole("button", { name: /Angles morts/ }).first().click();
   await expect(page.getByRole("button", { name: "Voir la semaine" }).first()).toBeVisible();
 
-  // ── PR-3 « adversaire multi-gymnases » : l'écran de trajet adverse, groupé par club ─────
-  //    On NE dépend d'aucune donnée FFBB live (réseau non fiable en CI) : le témoin RÉALISTE
-  //    est que les deux extérieurs créés par CE run (`${opponent}-EXT`, `-EXT2`, saisis à la
-  //    main → AUCUN code fédéral résolu) apparaissent dans la liste repliée « N adversaires sans
-  //    code fédéral » (PR 2a — OpponentTravelCard sort les orphelins à part), et que le résumé
-  //    d'en-tête parle d'« équipes adverses ». Un écran qui ne les montrerait pas fait ÉCHOUER
-  //    ces attentes en le disant.
-  // C8 — les adversaires ont leur propre onglet ; l'ancien deep-link y redirige.
+  // ── C8 (amendement 2026-09-20) « adversaire multi-gymnases » : l'onglet Adversaires, groupé par
+  //    club ─────────────────────────────────────────────────────────────────────────────────────
+  //    On NE dépend d'aucune donnée FFBB live (réseau non fiable en CI) : le témoin RÉALISTE est que
+  //    les deux extérieurs créés par CE run (`${opponent}-EXT`, `-EXT2`, saisis à la main → AUCUN
+  //    code fédéral) apparaissent comme LIGNE CLUB (th scope=row), marquées « Aucun gymnase connu »
+  //    et SANS bouton « Ajouter un gymnase » (on ne peut apparier un gymnase qu'à un adversaire À
+  //    CODE fédéral). Un écran qui ne les montrerait pas fait ÉCHOUER ces attentes en le disant.
+  // L'ancien deep-link `configuration?section=adversaires` redirige vers l'onglet dédié.
   await page.goto("/matchs/configuration?section=adversaires");
   await expect(page).toHaveURL(/\/matchs\/adversaires/);
   await expect(page.getByRole("heading", { name: "Adversaires", level: 2 })).toBeVisible({ timeout: 15_000 });
 
-  // PR 2a : les adversaires sans code fédéral vivent dans une disclosure repliée par défaut.
-  const orphansToggle = page.getByRole("button", { name: /\d+ adversaires? sans code fédéral$/ });
-  await expect(orphansToggle, "témoin: les extérieurs sans code fédéral doivent former la liste repliée").toBeVisible({ timeout: 15_000 });
-  await orphansToggle.click();
-
   for (const suffix of ["EXT", "EXT2"] as const) {
-    // `exact: true` : le nom Playwright est une SOUS-CHAÎNE insensible à la casse par défaut, donc
-    // « …-EXT » attraperait aussi « …-EXT2 » (strict mode violation). Chaque orphelin déplié est
-    // <li><h4>…</h4><p>code fédéral non résolu</p></li> (OpponentTravelCard, PR 2a).
-    const heading = page.getByRole("heading", { name: `${opponent}-${suffix}`, exact: true, level: 4 });
+    // Chaque orphelin (code fédéral absent) est une LIGNE CLUB : un `<th scope="row">` portant son
+    // nom. Le nom accessible inclut le texte de la cellule (« … Aucun gymnase connu ») → RegExp avec
+    // `\b` après le suffixe pour que « …-EXT » n'attrape pas « …-EXT2 » (mode strict).
+    const rowheader = page.getByRole("rowheader", { name: new RegExp(`${opponent}-${suffix}\\b`) });
     await expect(
-      heading,
-      `l'extérieur ${opponent}-${suffix} devrait figurer dans la liste « sans code fédéral » — le test ne prouverait rien sinon`,
+      rowheader,
+      `l'extérieur ${opponent}-${suffix} devrait figurer comme adversaire (ligne club) — le test ne prouverait rien sinon`,
     ).toBeVisible({ timeout: 15_000 });
-    // Sa ligne (le <li> de CET en-tête exact) porte le sous-libellé « code fédéral non résolu » ET
-    // n'offre PAS de « Localiser » — scopé au <li> pour ne pas résoudre à plusieurs éléments.
-    const row = heading.locator("xpath=ancestor::li[1]");
-    await expect(row.getByText("code fédéral non résolu")).toBeVisible();
-    await expect(row.getByRole("button", { name: /Localiser/ })).toHaveCount(0);
+    // Sa LIGNE porte « Aucun gymnase connu » (aucun venue) et n'offre PAS « Ajouter un gymnase »
+    // (pas de code fédéral) — scopé au <tr> pour ne pas résoudre à plusieurs éléments.
+    const row = rowheader.locator("xpath=ancestor::tr[1]");
+    await expect(row.getByText("Aucun gymnase connu")).toBeVisible();
+    await expect(row.getByRole("button", { name: /Ajouter un gymnase/ })).toHaveCount(0);
   }
 });
 
@@ -631,12 +626,76 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
 
   // ── Recherche adversaires : « xyz » n'a aucun résultat, Escape vide la requête ──
   await page.goto("/matchs/adversaires");
-  const search = page.getByRole("searchbox", { name: "Rechercher un club ou une équipe" });
+  const search = page.getByRole("searchbox", { name: "Rechercher un club ou un gymnase" });
   await expect(search).toBeVisible();
   await search.fill("xyznonexistant");
   await expect(page.getByText(/Aucun adversaire pour/)).toBeVisible();
   await search.press("Escape");
   await expect(search).toHaveValue("");
+});
+
+/**
+ * Gymnases adverses (2026-09-20) — REFLOW mobile du TABLEAU Adversaires (WCAG 1.4.10). Le tableau
+ * par club adverse (`OpponentsPage`) est un `@container` : sous `@md`, les colonnes « Trajet » et
+ * « Rencontres » DISPARAISSENT (`hidden @md:table-cell`) et le trajet redescend dans une ligne
+ * empilée (`@md:hidden`), pour que le tableau ne déborde JAMAIS horizontalement de sa boîte à
+ * largeur téléphone. Ce test verrouille CETTE promesse à 360 px :
+ *   - témoin de rendu = la barre de recherche (peinte seulement s'il existe des adversaires) → le
+ *     test CRÉE un extérieur pour garantir un tableau, sinon l'écran resterait un EmptyState ;
+ *   - assertion = aucun débordement horizontal du CONTENEUR du tableau (le wrapper `overflow-x-auto`
+ *     de `Table`), scrollWidth ≤ clientWidth, tol. 1 px ;
+ *   - preuve directe du `@container` = l'en-tête de colonne « Trajet » est MASQUÉ à cette largeur.
+ *
+ * ⚠ On mesure le TABLEAU, PAS le document : au 20/09/2026 (Playwright, base réelle, lecture seule)
+ * TOUT le produit débordait déjà à 360 px — accueil `scrollWidth` 558, /planning 501, /matchs ·
+ * /club · /matchs/adversaires 370 (le coupant commun des 370 est le bouton horloge de l'en-tête
+ * `AppLayout`, ~103 px). Cette dette de reflow GLOBALE est une ligne de roadmap ouverte (passe doc
+ * du 20/09) ; la mesurer au niveau document ne prouverait PAS ce que ce test annonce (le
+ * `@container` replie les colonnes du tableau).
+ *
+ * e2e écrit, PAS lancé (l'exécution des e2e reste au fondateur).
+ */
+test("gymnases adverses: le tableau Adversaires reflow sans défilement horizontal à 360 px", async ({ page }) => {
+  test.setTimeout(240_000); // l'onboarding peut lancer une génération CP-SAT réelle
+  await login(page);
+  await ensureValidated(page);
+
+  // e2e crée ce qu'il vérifie : un extérieur → ≥1 adversaire → le tableau (et sa searchbox) sont
+  // rendus. Le club seedé CI n'a aucune rencontre garantie (cf. `.claude/rules/frontend.md`).
+  const teamsRes = await page.request.get("/api/teams?itemsPerPage=100");
+  expect(teamsRes.ok(), "GET /api/teams").toBeTruthy();
+  const teamId = ((await teamsRes.json()).member?.[0]?.id ?? undefined) as string | undefined;
+  expect(teamId, "le club seedé a au moins une équipe").toBeTruthy();
+  const opponent = `REFLOW-${Date.now().toString(36).toUpperCase()}`;
+  const created = await page.request.post("/api/fixtures", {
+    data: { teamId, matchDate: "2027-03-06", homeAway: "AWAY", opponentLabel: opponent, competitionId: null },
+  });
+  expect(created.ok(), "POST /api/fixtures").toBeTruthy();
+  const fixtureId = (await created.json()).id as string;
+
+  try {
+    await page.setViewportSize({ width: 360, height: 740 });
+    await page.goto("/matchs/adversaires");
+
+    // Témoin : la searchbox n'est peinte que si des adversaires existent — pas de faux vert.
+    await expect(page.getByRole("searchbox", { name: "Rechercher un club ou un gymnase" })).toBeVisible({ timeout: 15_000 });
+
+    // Débordement horizontal du CONTENEUR du tableau (le wrapper `overflow-x-auto` de `Table`,
+    // parent direct du <table>), jamais du document (dette globale, cf. docblock).
+    const table = page.getByRole("table"); // un seul <table> sur l'écran Adversaires
+    await expect(table).toBeVisible();
+    const overflow = await table.evaluate((el) => {
+      const box = el.parentElement; // le wrapper `overflow-x-auto` de la primitive Table
+      return null === box ? 0 : box.scrollWidth - box.clientWidth;
+    });
+    expect(overflow, "le tableau Adversaires déborde horizontalement à 360 px (le @container ne replie pas ses colonnes)").toBeLessThanOrEqual(1);
+
+    // Preuve directe du `@container` : l'en-tête « Trajet » (`@md:table-cell`) est masqué à 360 px.
+    await expect(page.getByRole("columnheader", { name: "Trajet" })).toBeHidden();
+  } finally {
+    // Base dev CI non remise à zéro : on nettoie NOTRE rencontre.
+    await page.request.delete(`/api/fixtures/${fixtureId}`).catch(() => undefined);
+  }
 });
 
 /**

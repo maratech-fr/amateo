@@ -7,8 +7,10 @@ namespace App\State\Provider;
 use App\ApiResource\FixtureResource;
 use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
+use App\Repository\FixtureRepository;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
+use App\Service\OpponentTravelProjection;
 use Doctrine\ORM\QueryBuilder;
 use Symfony\Contracts\Service\Attribute\Required;
 
@@ -21,6 +23,10 @@ class FixtureStateProvider extends AbstractStateProvider
 
     private VenueLabelNormalizer $labelNormalizer;
 
+    private OpponentTravelProjection $travelProjection;
+
+    private FixtureRepository $fixtures;
+
     #[Required]
     public function setVenueAliasResolver(VenueAliasResolver $venueAliasResolver): void
     {
@@ -31,6 +37,18 @@ class FixtureStateProvider extends AbstractStateProvider
     public function setLabelNormalizer(VenueLabelNormalizer $labelNormalizer): void
     {
         $this->labelNormalizer = $labelNormalizer;
+    }
+
+    #[Required]
+    public function setTravelProjection(OpponentTravelProjection $travelProjection): void
+    {
+        $this->travelProjection = $travelProjection;
+    }
+
+    #[Required]
+    public function setFixtureRepository(FixtureRepository $fixtures): void
+    {
+        $this->fixtures = $fixtures;
     }
 
     protected function getEntityClass(): string
@@ -74,5 +92,29 @@ class FixtureStateProvider extends AbstractStateProvider
         }
 
         return $output;
+    }
+
+    /**
+     * Le trajet d'une rencontre EXTÉRIEURE (`awayTravel`) est DÉRIVÉ de la rencontre. On le
+     * pose EN BATCH : la projection ({@see OpponentTravelProjection}) lit le cache par origine
+     * en un seul lot (zéro N+1) et calcule le repli « gymnase le plus fréquent » sur TOUTES les
+     * rencontres AWAY de la saison — jamais sur la seule page, sinon le repli varierait d'une
+     * page à l'autre. On assigne ensuite le détail à chaque sortie par id.
+     *
+     * @param array<int, FixtureResource> $outputs
+     */
+    protected function decorateCollection(array $outputs): void
+    {
+        if ([] === $outputs) {
+            return;
+        }
+        $seasonId = $outputs[0]->seasonId;
+        if ('' === $seasonId) {
+            return;
+        }
+        $details = $this->travelProjection->awayTravelByFixtureId($seasonId, $this->fixtures->findAwayBySeason($seasonId));
+        foreach ($outputs as $output) {
+            $output->awayTravel = $details[$output->id] ?? null;
+        }
     }
 }

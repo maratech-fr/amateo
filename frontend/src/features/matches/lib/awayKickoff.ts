@@ -1,4 +1,4 @@
-import type { Fixture, OpponentTravel, TeamMatchHabit } from "../api";
+import type { Fixture, TeamMatchHabit } from "../api";
 import { isoWeekday } from "./envelope";
 
 /**
@@ -21,23 +21,4 @@ export function awayHour(fixture: Fixture, habits: TeamMatchHabit[]): AwayHour {
   const habit = habits.find((h) => h.teamId === fixture.teamId && h.dayOfWeek === isoWeekday(fixture.matchDate));
   const hour = fixture.kickoffTime ?? habit?.kickoffTime ?? null;
   return { hour, estimated: null === fixture.kickoffTime && null !== hour };
-}
-
-/** Clé de jointure d'un trajet adverse : `(code, teamKey)` servis, `null` sans code
- *  fédéral résolu — plus de repli par libellé brut (P2-54 « adversaire multi-gymnases »
- *  PR-3, une AWAY sans code résolu reste sans trajet). */
-export function awayTravelKey(code: string | null, teamKey: string | null): string | null {
-  return null === code ? null : `${code} ${teamKey ?? ""}`;
-}
-
-/** Index des trajets adverses par `(code, teamKey)` — une AWAY se joint sans re-dériver. */
-export function awayTravelByKey(travel: OpponentTravel[]): Map<string, OpponentTravel> {
-  const byKey = new Map<string, OpponentTravel>();
-  for (const t of travel) {
-    const key = awayTravelKey(t.opponentOrganismeCode, t.opponentTeamKey);
-    if (null !== key) {
-      byKey.set(key, t);
-    }
-  }
-  return byKey;
 }

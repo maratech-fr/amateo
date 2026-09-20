@@ -246,21 +246,37 @@ final class MatchPlacementContext extends BaseContext
         if (!\is_string($seasonId) || '' === $seasonId) {
             throw new RuntimeException('la saison de la rencontre extérieure est introuvable');
         }
-        $this->travelCode = 'BEHAT-D3-' . substr(md5($this->awayId), 0, 8);
+        $this->travelCode = 'BEHATD3' . substr(md5($this->awayId), 0, 8);
+        // La rencontre pointe SA salle (« SALLE LOIN ») + son code organisme.
         $this->dbalExec(
-            \sprintf('UPDATE fixture SET opponent_organisme_code=\'%s\' WHERE id=\'%s\'', $this->travelCode, $this->awayId),
+            \sprintf('UPDATE fixture SET opponent_organisme_code=\'%s\', fbi_venue_label=\'SALLE LOIN\' WHERE id=\'%s\'', $this->travelCode, $this->awayId),
+            admin: true,
+        );
+        // Amendement 2026-09-20 — le trajet est (1) un APPARIEMENT libellé→gymnase et (2) une
+        // CONSTANTE en cache (siège → gymnase). Siège du club localisé, lien « SALLE LOIN » vers
+        // un gymnase fixe (45.80, 5.00) et trajet aller simple 180 min en cache.
+        $this->dbalExec(
+            \sprintf('UPDATE club SET latitude=45.70, longitude=4.90 WHERE id=\'%s\'', $this->clubId),
             admin: true,
         );
         $this->dbalExec(
             \sprintf(
-                'INSERT INTO opponent_travel (id, version, created_at, updated_at, club_id, season_id, opponent_organisme_code, travel_minutes, source) '
-                . 'VALUES (gen_random_uuid(), 1, now(), now(), \'%s\', \'%s\', \'%s\', 180, \'MANUAL\')',
+                'INSERT INTO opponent_venue_link (id, version, created_at, updated_at, club_id, opponent_organisme_code, fbi_label, fbi_label_norm, venue_external_ref, venue_label, latitude, longitude, source) '
+                . 'VALUES (gen_random_uuid(), 1, now(), now(), \'%s\', \'%s\', \'SALLE LOIN\', \'salle loin\', NULL, \'Salle Loin\', 45.80, 5.00, \'MANUAL\')',
                 $this->clubId,
-                $seasonId,
                 $this->travelCode,
             ),
             admin: true,
         );
+        $this->dbalExec(
+            \sprintf(
+                'INSERT INTO club_travel_cache (id, club_id, profile, origin_lat, origin_lon, dest_lat, dest_lon, minutes, resolved_at) '
+                . 'VALUES (gen_random_uuid(), \'%s\', \'car\', 45.70000, 4.90000, 45.80000, 5.00000, 180, now())',
+                $this->clubId,
+            ),
+            admin: true,
+        );
+        unset($seasonId);
     }
 
     #[Given('un match à domicile de la première équipe le samedi à placer')]
@@ -480,7 +496,10 @@ final class MatchPlacementContext extends BaseContext
         }
         // Trajet injecté en base (D3) + affectations coach : retirés avant les équipes.
         if ('' !== $this->travelCode) {
-            $this->dbalExec(\sprintf('DELETE FROM opponent_travel WHERE opponent_organisme_code=\'%s\'', $this->travelCode), admin: true);
+            $this->dbalExec(\sprintf('DELETE FROM opponent_venue_link WHERE opponent_organisme_code=\'%s\'', $this->travelCode), admin: true);
+        }
+        if ('' !== $this->clubId) {
+            $this->dbalExec(\sprintf('DELETE FROM club_travel_cache WHERE club_id=\'%s\'', $this->clubId), admin: true);
         }
         foreach ([$this->teamCoachAId, $this->teamCoachBId] as $id) {
             if ('' !== $id) {

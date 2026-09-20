@@ -26,10 +26,12 @@ import {
   usePlaceFixture,
   usePlaceMatches,
   useResolveOpponentTravel,
+  useAddOpponentVenue,
+  useDeleteVenueLink,
+  usePairOpponentVenueLabel,
+  useRepointVenueLink,
   useSetConflictResolution,
   useSetEntryDeadlines,
-  useSetOpponentTravelAuto,
-  useSetOpponentTravelManual,
   useVenueSuggestions,
   useSportCategoryDurations,
   useSwapFixtures,
@@ -55,7 +57,7 @@ vi.mock("./api", () => ({
   getFixtures: vi.fn().mockResolvedValue([]),
   getConflicts: vi.fn().mockResolvedValue({ clubId: "c", seasonId: null, conflicts: [], seasonPlanChosen: true }),
   getCompetitions: vi.fn().mockResolvedValue([]),
-  getOpponentTravel: vi.fn().mockResolvedValue([]),
+  getOpponentTravel: vi.fn().mockResolvedValue({ clubGeolocated: true, opponents: [] }),
   getVenueUnavailabilities: vi.fn().mockResolvedValue([]),
   getUnavailabilityImpact: vi.fn().mockResolvedValue({ clubId: "c", seasonId: null, items: [] }),
   getTeamMatchHabits: vi.fn().mockResolvedValue([]),
@@ -69,8 +71,10 @@ vi.mock("./api", () => ({
   deleteFixture: vi.fn().mockResolvedValue(undefined),
   placeFixture: vi.fn().mockResolvedValue({}),
   placeMatches: vi.fn().mockResolvedValue({ placed: 0, skipped: 0, unplaced: [], diagnostics: [] }),
-  setOpponentTravelManual: vi.fn().mockResolvedValue({}),
-  setOpponentTravelAuto: vi.fn().mockResolvedValue({}),
+  addOpponentVenue: vi.fn().mockResolvedValue({ id: "l1", opponentOrganismeCode: "ORG9", fbiLabel: "SALLE X", label: "Salle X", externalRef: null, source: "MANUAL", travelMinutes: 10, targetFixtureCount: 1 }),
+  pairOpponentVenueLabel: vi.fn().mockResolvedValue({ id: "l2", opponentOrganismeCode: "ORG9", fbiLabel: "SALLE Y", label: "Salle Y", externalRef: null, source: "MANUAL", travelMinutes: 10, targetFixtureCount: 1 }),
+  repointVenueLink: vi.fn().mockResolvedValue({ id: "l1", opponentOrganismeCode: "ORG9", fbiLabel: "SALLE X", label: "Salle Z", externalRef: null, source: "MANUAL", travelMinutes: 10, targetFixtureCount: 2 }),
+  deleteVenueLink: vi.fn().mockResolvedValue(null),
   resolveOpponentTravel: vi.fn().mockResolvedValue({ queued: true, alreadyRunning: false }),
   resolveOpponents: vi.fn().mockResolvedValue({ resolved: 12, unresolved: [], skipped: 0, stamped: 40 }),
   refreshOpponents: vi.fn().mockResolvedValue({
@@ -182,67 +186,68 @@ describe("matches queries — le radar de conflits est réellement rafraîchi (e
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("matches queries — trajet adverse : les 3 écritures rafraîchissent trajet ET conflits", () => {
-  it("useSetOpponentTravelManual refetche ['opponents','travel'] ET le radar ['fixtures','conflicts']", async () => {
+  it("useAddOpponentVenue refetche ['opponents','travel'] ET les fixtures (le chip du calendrier)", async () => {
     const client = makeClient();
     const { result } = renderHook(
-      () => ({ travel: useOpponentTravel(), conflicts: useConflicts(), pin: useSetOpponentTravelManual() }),
+      () => ({ travel: useOpponentTravel(), fixtures: useFixtures(), add: useAddOpponentVenue() }),
       { wrapper: wrapperFor(client) },
     );
 
     await waitFor(() => expect(result.current.travel.isSuccess).toBe(true));
-    await waitFor(() => expect(result.current.conflicts.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.fixtures.isSuccess).toBe(true));
 
-    const input = { opponentOrganismeCode: "ORG9", venueLabel: "Salle X", venueExternalRef: null, latitude: 45.7, longitude: 4.8 };
-    result.current.pin.mutate(input);
+    const input = { code: "ORG9", venueLabel: "Salle X", venueExternalRef: null, latitude: 45.7, longitude: 4.8 };
+    result.current.add.mutate(input);
 
-    await waitFor(() => expect(result.current.pin.isSuccess).toBe(true));
-    expect(matchesApi.setOpponentTravelManual).toHaveBeenCalledWith(input);
+    await waitFor(() => expect(result.current.add.isSuccess).toBe(true));
+    expect(matchesApi.addOpponentVenue).toHaveBeenCalledWith(input);
     await waitFor(() => expect(matchesApi.getOpponentTravel).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(matchesApi.getConflicts).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(matchesApi.getFixtures).toHaveBeenCalledTimes(2));
   });
 
-  it("useSetOpponentTravelAuto refetche trajet ET radar (même invalidateTravel)", async () => {
+  it("usePairOpponentVenueLabel invalide AUSSI les suggestions partagées du code", async () => {
     const client = makeClient();
     const { result } = renderHook(
-      () => ({ travel: useOpponentTravel(), conflicts: useConflicts(), auto: useSetOpponentTravelAuto() }),
-      { wrapper: wrapperFor(client) },
-    );
-
-    await waitFor(() => expect(result.current.travel.isSuccess).toBe(true));
-    await waitFor(() => expect(result.current.conflicts.isSuccess).toBe(true));
-
-    result.current.auto.mutate({ opponentOrganismeCode: "ORG9" });
-
-    await waitFor(() => expect(result.current.auto.isSuccess).toBe(true));
-    expect(matchesApi.setOpponentTravelAuto).toHaveBeenCalledWith({ opponentOrganismeCode: "ORG9" });
-    await waitFor(() => expect(matchesApi.getOpponentTravel).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(matchesApi.getConflicts).toHaveBeenCalledTimes(2));
-  });
-
-  it("useSetOpponentTravelManual invalide AUSSI les suggestions partagées du code (un lecteur useVenueSuggestions refetch)", async () => {
-    const client = makeClient();
-    const { result } = renderHook(
-      () => ({ suggestions: useVenueSuggestions("ORG9"), pin: useSetOpponentTravelManual() }),
+      () => ({ suggestions: useVenueSuggestions("ORG9"), pair: usePairOpponentVenueLabel() }),
       { wrapper: wrapperFor(client) },
     );
 
     await waitFor(() => expect(result.current.suggestions.isSuccess).toBe(true));
     expect(matchesApi.getVenueSuggestions).toHaveBeenCalledTimes(1);
 
-    result.current.pin.mutate({ opponentOrganismeCode: "ORG9", venueLabel: "Salle X", venueExternalRef: null, latitude: 45.7, longitude: 4.8 });
+    result.current.pair.mutate({ code: "ORG9", fbiLabel: "SALLE Y", venueLabel: "Salle Y", venueExternalRef: null, latitude: 45.7, longitude: 4.8 });
 
-    await waitFor(() => expect(result.current.pin.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.pair.isSuccess).toBe(true));
     await waitFor(() => expect(matchesApi.getVenueSuggestions).toHaveBeenCalledTimes(2));
   });
 
-  it("useSetOpponentTravelAuto avec teamKey supprime la ligne équipe (transmet le teamKey au POST auto)", async () => {
+  it("useRepointVenueLink (fusion) refetche trajet + suggestions du code servi par la réponse", async () => {
     const client = makeClient();
-    const { result } = renderHook(() => ({ auto: useSetOpponentTravelAuto() }), { wrapper: wrapperFor(client) });
+    const { result } = renderHook(
+      () => ({ travel: useOpponentTravel(), suggestions: useVenueSuggestions("ORG9"), repoint: useRepointVenueLink() }),
+      { wrapper: wrapperFor(client) },
+    );
+    await waitFor(() => expect(result.current.travel.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.suggestions.isSuccess).toBe(true));
 
-    result.current.auto.mutate({ opponentOrganismeCode: "ORG9", opponentTeamKey: "GRENOBLE-2" });
+    result.current.repoint.mutate({ id: "l1", venueLabel: "Salle Z", venueExternalRef: null, latitude: 45.7, longitude: 4.8 });
 
-    await waitFor(() => expect(result.current.auto.isSuccess).toBe(true));
-    expect(matchesApi.setOpponentTravelAuto).toHaveBeenCalledWith({ opponentOrganismeCode: "ORG9", opponentTeamKey: "GRENOBLE-2" });
+    await waitFor(() => expect(result.current.repoint.isSuccess).toBe(true));
+    expect(matchesApi.repointVenueLink).toHaveBeenCalled();
+    await waitFor(() => expect(matchesApi.getOpponentTravel).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(matchesApi.getVenueSuggestions).toHaveBeenCalledTimes(2));
+  });
+
+  it("useDeleteVenueLink retire le lien puis refetche trajet + adversaires", async () => {
+    const client = makeClient();
+    const { result } = renderHook(() => ({ travel: useOpponentTravel(), del: useDeleteVenueLink() }), { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(result.current.travel.isSuccess).toBe(true));
+
+    result.current.del.mutate("l1");
+
+    await waitFor(() => expect(result.current.del.isSuccess).toBe(true));
+    expect(matchesApi.deleteVenueLink).toHaveBeenCalledWith("l1");
+    await waitFor(() => expect(matchesApi.getOpponentTravel).toHaveBeenCalledTimes(2));
   });
 
   it("useResolveOpponentTravel (C6 : dispatch async) refetche trajet ET radar, annonce un calcul LANCÉ", async () => {

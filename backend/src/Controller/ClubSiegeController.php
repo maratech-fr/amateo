@@ -95,16 +95,12 @@ final class ClubSiegeController extends AbstractController
             ->setLongitude($hit['longitude']);
         $this->entityManager->flush();
 
-        // C6 — le trajet d'un adversaire est calculé DEPUIS le siège : s'il déménage, TOUS les
-        // trajets dérivés (AUTO et MANUAL) sont périmés. On les invalide (travel_minutes NULL —
-        // le gymnase épinglé d'un MANUAL reste, seul son trajet repart) et on DISPATCHE un
-        // recalcul de la saison courante au worker (le cache repart tout seul : la nouvelle
-        // origine est une nouvelle clé, les anciennes lignes de cache ne sont plus jamais lues).
+        // C6 — le trajet d'un adversaire est calculé DEPUIS le siège : s'il déménage, on
+        // DISPATCHE un recalcul de la saison courante au worker. Amendement 2026-09-20 : rien à
+        // invalider — le trajet vit dans le cache CONSTANT club_travel_cache, directionnel ; la
+        // nouvelle origine est une nouvelle clé, les anciennes lignes ne sont plus jamais lues
+        // (dette de croissance connue, roadmap P4-249). Le worker remplit les paires manquantes.
         if ($moved) {
-            $this->entityManager->getConnection()->executeStatement(
-                'UPDATE opponent_travel SET travel_minutes = NULL WHERE club_id = :clubId',
-                ['clubId' => $clubId],
-            );
             $season = $this->seasonResolver->selectedOrCurrent($request, $clubId);
             if ($season instanceof Season) {
                 $this->messageBus->dispatch(new ComputeTravelTimesMessage($clubId, $season->getId(), TravelComputeScope::OPPONENTS));

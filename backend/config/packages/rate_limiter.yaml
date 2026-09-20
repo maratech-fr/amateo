@@ -78,12 +78,12 @@ framework:
             policy: 'sliding_window'
             limit: 10
             interval: '1 hour'
-        # SEC-19 : POST /api/opponents/travel/manual épingle À LA MAIN un gymnase pour un
-        # adversaire — chaque appel RECALCULE un itinéraire IGN et peut RE-RÉSOUDRE la salle
-        # fédérale (FfbbSalleResolver), donc écrire dans le PARTAGÉ. Keyé PAR UTILISATEUR
-        # (JWT), 30/h : large pour un gestionnaire qui corrige plusieurs gymnases d'affilée,
-        # mais borne un management qui pomperait l'IGN / l'index fédéral en boucle. Non
-        # assoupli en test À DESSEIN (comme les autres bornes du module).
+        # SEC-19 : les gestes d'appariement MANUEL d'un gymnase (POST /api/opponents/{code}/venues,
+        # POST /api/opponents/{code}/venue-links, PUT /api/opponents/venue-links/{id}) — chaque appel
+        # CHAUFFE un itinéraire IGN (warmTravel) et peut RE-RÉSOUDRE la salle fédérale
+        # (FfbbSalleResolver), donc écrire dans le PARTAGÉ. Keyé PAR UTILISATEUR (JWT), 30/h : large
+        # pour un gestionnaire qui corrige plusieurs gymnases d'affilée, mais borne un management qui
+        # pomperait l'IGN / l'index fédéral en boucle. Non assoupli en test À DESSEIN.
         opponent_travel_manual:
             policy: 'sliding_window'
             limit: 30

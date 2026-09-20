@@ -8,11 +8,14 @@ use App\Entity\Club;
 use App\Entity\ClubTravelCache;
 use App\Entity\ClubUser;
 use App\Entity\Feedback;
+use App\Entity\OpponentVenueLink;
 use App\Entity\Season;
 use App\Entity\SolverMetric;
 use App\Entity\SportCategory;
 use App\Entity\TeamTag;
 use App\Enum\AuditAction;
+use App\Enum\OpponentVenueLinkSource;
+use App\Repository\OpponentVenueSuggestionRepository;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -71,12 +74,18 @@ final class ErasedClubPurger
         // Cache de trajets club-scoped (C4) : un club effacé ne garde pas les distances
         // dérivées de son siège. Delete par clubId, comme les autres tables sans saison.
         ClubTravelCache::class,
+        // Appariements « libellé FBI → gymnase » club-scoped SANS saison (amendement
+        // 2026-09-20). CE chemin est leur seule porte de sortie ; le décrément du compteur
+        // partagé des liens MANUAL ({@see decrementSharedVenueChoices}) tourne AVANT ce
+        // DELETE (les liens doivent encore exister).
+        OpponentVenueLink::class,
     ];
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly SeasonDataPurger $seasonDataPurger,
         private readonly AuditTrail $auditTrail,
+        private readonly OpponentVenueSuggestionRepository $venueSuggestions,
     ) {}
 
     /** @return int nombre de lignes supprimées (workspace complet) */
@@ -95,6 +104,13 @@ final class ErasedClubPurger
         // 2. Club-scoped sans saison. SeasonDataPurger::purge fait un clear()
         //    final → les filtres Doctrine doivent être re-désactivés.
         $this->disableTenantFilters($this->entityManager);
+
+        // P4-209(b) — un appariement MANUAL a incrémenté le compteur PARTAGÉ
+        // (opponent_venue_suggestion). L'effacer sans décrémenter volerait le compte des
+        // autres clubs. Pré-passe AVANT le DELETE des liens ci-dessous (les lignes doivent
+        // encore exister). Suit le nouveau grain : club-scoped, sans saison.
+        $this->decrementSharedVenueChoices($clubId);
+
         foreach (self::PURGED_BY_CLUB as $entityClass) {
             $deleted += (int) $this->entityManager->createQueryBuilder()
                 ->delete($entityClass, 'e')
@@ -126,5 +142,27 @@ final class ErasedClubPurger
         $this->auditTrail->record(AuditAction::CLUB_PURGED, null, $clubId, 'Club', $clubId, ['rowsDeleted' => $deleted]);
 
         return $deleted;
+    }
+
+    /**
+     * P4-209(b) — décrémente le compteur PARTAGÉ pour chaque appariement MANUAL du club
+     * qui épingle un gymnase fédéral (`venue_external_ref` non nul), AVANT que la purge ne
+     * supprime ces liens. Sémantique identique à l'ancien décrément d'opponent_travel
+     * (MANUAL + ref effectif seuls ; le décrément est idempotent, GREATEST(0, …)). SQL brut :
+     * les lignes sont supprimées en DQL de masse juste après, on ne veut pas d'entités
+     * gérées. Tourne sous le GUC du club (RLS borne la table tenant).
+     */
+    private function decrementSharedVenueChoices(string $clubId): void
+    {
+        /** @var list<array{opponent_organisme_code: string, venue_external_ref: string}> $rows */
+        $rows = $this->entityManager->getConnection()->fetchAllAssociative(
+            'SELECT opponent_organisme_code, venue_external_ref FROM opponent_venue_link'
+            . ' WHERE club_id = :clubId AND source = :source AND venue_external_ref IS NOT NULL',
+            ['clubId' => $clubId, 'source' => OpponentVenueLinkSource::MANUAL->value],
+        );
+
+        foreach ($rows as $row) {
+            $this->venueSuggestions->decrement($row['opponent_organisme_code'], $row['venue_external_ref']);
+        }
     }
 }

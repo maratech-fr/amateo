@@ -21,7 +21,6 @@ use App\Entity\ImplicitRuleSetting;
 use App\Entity\MatchModuleVisit;
 use App\Entity\MatchSlotRotation;
 use App\Entity\MatchSlotRotationTeam;
-use App\Entity\OpponentTravel;
 use App\Entity\PeriodReminderLog;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
@@ -45,7 +44,6 @@ use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelRuleSetting;
 use App\Entity\VenueTravelTime;
 use App\Entity\VenueUnavailability;
-use App\Repository\OpponentVenueSuggestionRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -91,6 +89,7 @@ final class SeasonDataPurger
         'sport_category' => 'club-scoped sans saison — porte de sortie ErasedClubPurger',
         'club_user' => 'club-scoped sans saison — porte de sortie ErasedClubPurger',
         'club_travel_cache' => 'club-scoped sans saison (un trajet est une constante, jamais lié à une saison) — porte de sortie ErasedClubPurger',
+        'opponent_venue_link' => 'club-scoped SANS saison (un libellé désigne le même gymnase d\'une saison à l\'autre — amendement 2026-09-20) : une purge de saison ne le touche jamais, sa porte de sortie est ErasedClubPurger (qui décrémente d\'abord le compteur partagé des liens MANUAL)',
         'audit_log' => 'accountability : rétention propre (app:audit:purge) ; l\'effacement écrit une ligne d\'audit APRÈS la purge',
         'coach_wish_token' => 'part par la FK ON DELETE CASCADE de sa campagne (jamais supprimé directement)',
     ];
@@ -167,10 +166,6 @@ final class SeasonDataPurger
         // avec la saison. C'est la SEULE porte de sortie d'une entrée FERMÉE (trace) —
         // les ouvertes disparaissent aussi, la saison partant.
         FbiCorrection::class,
-        // P2-54 RMM-9 — temps de trajet vers les adversaires (club_id+season_id, aucun
-        // enfant) : purgé avec la saison. Les lignes MANUAL qui portent un gymnase épinglé
-        // décrémentent d'abord le compteur PARTAGÉ ({@see decrementSharedVenueChoices}).
-        OpponentTravel::class,
         TeamCoach::class,
         CoachPlayerMembership::class,
         // P1-4 PR C — préférences matchs, pointent team_id : avant Team.
@@ -198,7 +193,6 @@ final class SeasonDataPurger
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
-        private readonly OpponentVenueSuggestionRepository $venueSuggestions,
     ) {}
 
     /**
@@ -237,13 +231,11 @@ final class SeasonDataPurger
             ->getQuery()
             ->execute();
 
-        // P4-209(b) — les lignes opponent_travel MANUAL portant un gymnase épinglé ont
-        // incrémenté le compteur PARTAGÉ (opponent_venue_suggestion). Les purger sans
-        // décrémenter volerait le compte des autres clubs — même sémantique que
-        // revertToAuto/deleteTeamOverride (MANUAL + ref effectif seuls). Pré-passe AVANT
-        // le DELETE de masse ci-dessous (les lignes doivent encore exister).
-        $this->decrementSharedVenueChoices($clubId, $seasonId);
-
+        // P4-209(b) — le décrément du compteur PARTAGÉ à l'effacement d'un appariement
+        // MANUAL a suivi le grain de l'appariement : club-scoped SANS saison (amendement
+        // 2026-09-20). Il ne vit donc PLUS ici (une purge de saison ne touche pas les
+        // liens, qui survivent au changement de saison) mais dans ErasedClubPurger, la
+        // seule porte de sortie d'un lien.
         foreach (self::PURGED_BY_CLUB_SEASON as $entityClass) {
             $deleted += $this->deleteByClubSeason($entityClass, $clubId, $seasonId);
         }
@@ -297,29 +289,6 @@ final class SeasonDataPurger
         );
 
         return \is_string($name) ? $name : null;
-    }
-
-    /**
-     * P4-209(b) — décrémente le compteur PARTAGÉ pour chaque ligne opponent_travel
-     * MANUAL du club+saison qui épingle un gymnase fédéral, AVANT que la purge ne
-     * supprime ces lignes. Sémantique identique à {@see OpponentTravelResolver::revertToAuto}
-     * (MANUAL + ref effectif seuls ; le décrément est idempotent, GREATEST(0, …)). SQL brut :
-     * les lignes sont supprimées en DQL de masse juste après, on ne veut pas d'entités gérées.
-     * Tourne sous le GUC du club (RLS borne la table tenant).
-     */
-    private function decrementSharedVenueChoices(string $clubId, string $seasonId): void
-    {
-        /** @var list<array{opponent_organisme_code: string, override_venue_external_ref: string}> $rows */
-        $rows = $this->entityManager->getConnection()->fetchAllAssociative(
-            'SELECT opponent_organisme_code, override_venue_external_ref FROM opponent_travel'
-            . ' WHERE club_id = :clubId AND season_id = :seasonId'
-            . ' AND source = \'MANUAL\' AND override_venue_external_ref IS NOT NULL',
-            ['clubId' => $clubId, 'seasonId' => $seasonId],
-        );
-
-        foreach ($rows as $row) {
-            $this->venueSuggestions->decrement($row['opponent_organisme_code'], $row['override_venue_external_ref']);
-        }
     }
 
     /**
