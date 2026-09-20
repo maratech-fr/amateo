@@ -161,6 +161,17 @@ final class FfbbHttpClientStub implements HttpClientInterface
 
                 return $this->search($hits);
             }
+            if (str_contains($body, 'ffbbserver_salles') && !str_contains($body, '"q":""')) {
+                // Recherche par NOM (`q` non vide, aucun filtre) : une salle dont le libellé
+                // égale le nom cherché (le repli nom auto exige une égalité stricte + unique).
+                // Sans cette branche, une requête nom tomberait dans le cas CP et rendrait [].
+                $hits = [
+                    ['libelle' => 'GYMNASE RECHERCHE PAR NOM', 'adresse' => '3 rue du Nom', 'numero' => '166900500',
+                        'cartographie' => ['ville' => 'Villeurbanne', 'latitude' => 45.77, 'longitude' => 4.89]],
+                ];
+
+                return $this->search($hits);
+            }
             if (str_contains($body, 'ffbbserver_salles')) {
                 // P2-20 : deux salles pour le CP de test, une SANS libellé (le
                 // mapping serveur doit l'écarter au lieu de rendre une ligne vide).

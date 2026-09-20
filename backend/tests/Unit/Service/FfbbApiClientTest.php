@@ -53,6 +53,33 @@ final class FfbbApiClientTest extends TestCase
         self::assertStringContainsString('commune.codePostal = \'69100\'', (string) json_decode($bodies[0], true)['queries'][0]['filter']);
     }
 
+    public function testSearchSallesByNameBoundsTheQueryAndNeverInterpolatesAFilter(): void
+    {
+        // Le nom part en `q` (plein-texte), JAMAIS dans un `filter` : aucune surface d'injection.
+        // Il est borné 2..180 ; hors bornes → liste vide, zéro appel réseau.
+        $bodies = [];
+        $client = new FfbbApiClient(new MockHttpClient(function (string $method, string $url, array $options) use (&$bodies): MockResponse {
+            if (str_contains($url, 'configuration')) {
+                return new MockResponse((string) json_encode(['data' => ['key_ms' => 't']]));
+            }
+            $bodies[] = (string) $options['body'];
+
+            return new MockResponse((string) json_encode(['results' => [['hits' => [['libelle' => 'ASTROBALLE']]]]]));
+        }));
+
+        self::assertSame([], $client->searchSallesByName('A'), 'moins de 2 caractères → refusé');
+        self::assertSame([], $client->searchSallesByName(str_repeat('x', 181)), 'plus de 180 caractères → refusé');
+        self::assertSame([], $bodies, 'aucun appel réseau hors bornes');
+
+        $hits = $client->searchSallesByName('ASTROBALLE');
+        self::assertSame('ASTROBALLE', $hits[0]['libelle'] ?? null);
+        self::assertCount(1, $bodies);
+        $query = (array) json_decode($bodies[0], true)['queries'][0];
+        self::assertSame('ffbbserver_salles', $query['indexUid']);
+        self::assertSame('ASTROBALLE', $query['q']);
+        self::assertArrayNotHasKey('filter', $query, 'aucun filtre — le nom ne s\'interpole jamais');
+    }
+
     public function testSearchRencontresKeepsOnlyHitsCarryingTheClubCode(): void
     {
         // RMM-4 PR-3 — MESURÉ 2026-08-24 : le plein texte fait pleuvoir du bruit

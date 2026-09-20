@@ -96,6 +96,9 @@ final class OpponentVenueAutoLocator
         // libellé à l'autre) : cache local par run. `false` = déjà tenté, aucune salle.
         /** @var array<string, list<array{numero: string, label: string, lat: float, lon: float}>|false> $candidateCache */
         $candidateCache = [];
+        // Repli par NOM (plein-texte fédéral), caché par libellé NORMALISÉ (indépendant du code).
+        /** @var array<string, list<array{numero: string, label: string, lat: float, lon: float}>|false> $nameCache */
+        $nameCache = [];
 
         $located = 0;
         $ambiguous = 0;
@@ -138,13 +141,20 @@ final class OpponentVenueAutoLocator
             ++$processed;
 
             $candidates = $this->candidates($group['code'], $candidateCache);
-            if ([] === $candidates) {
-                ++$unmatched;
+            $matches = [] === $candidates ? [] : $this->strictMatches($group['label'], $candidates);
 
-                continue;
+            // Repli par NOM quand la voie commune (commune / rayon) ne rend PAS un match unique
+            // (0 candidat, ou 0/≥2 matches stricts) : on cherche la salle par son libellé en
+            // plein-texte fédéral et on ne retient qu'une égalité STRICTE UNIQUE. Ambigu (≥2) ou
+            // 0 → on laisse à la main : le comptage `ambiguous`/`unmatched` de la voie commune ne
+            // change pas.
+            if (1 !== \count($matches)) {
+                $byName = $this->strictMatches($group['label'], $this->candidatesByName($group['label'], $nameCache));
+                if (1 === \count($byName)) {
+                    $matches = $byName;
+                }
             }
 
-            $matches = $this->strictMatches($group['label'], $candidates);
             if (1 !== \count($matches)) {
                 // 0 hit = à apparier ; ≥ 2 hits = ambigu (le libellé n'apparie rien de sûr).
                 $this->logger->debug('Opponent venue auto-locate: label not uniquely matched', ['code' => $group['code'], 'label' => $group['label'], 'hits' => \count($matches)]);
@@ -247,6 +257,39 @@ final class OpponentVenueAutoLocator
             }
         }
         $cache[$code] = [] === $candidates ? false : $candidates;
+
+        return $candidates;
+    }
+
+    /**
+     * Les salles candidates par NOM (plein-texte fédéral) pour un libellé de fichier — le repli
+     * quand la commune/rayon ne tranche pas. Caché par libellé NORMALISÉ (un même libellé, quel
+     * que soit le code, ne relance pas la recherche). Best-effort : FFBB muet → [] (mémorisé).
+     *
+     * @param array<string, list<array{numero: string, label: string, lat: float, lon: float}>|false> $cache
+     *
+     * @return list<array{numero: string, label: string, lat: float, lon: float}>
+     */
+    private function candidatesByName(string $label, array &$cache): array
+    {
+        $key = $this->labelNormalizer->normalize($label);
+        if (\array_key_exists($key, $cache)) {
+            return false === $cache[$key] ? [] : $cache[$key];
+        }
+
+        $candidates = [];
+        try {
+            foreach ($this->apiClient->searchSallesByName($label) as $hit) {
+                $salle = $this->salleFromHit($hit);
+                if (null !== $salle) {
+                    $candidates[] = $salle;
+                }
+            }
+        } catch (Throwable $e) {
+            // Best-effort : FFBB muet / réseau en panne → aucune salle, jamais une erreur.
+            $this->logger->debug('Opponent venue auto-locate: salle name search failed', ['label' => $label, 'error' => $e->getMessage()]);
+        }
+        $cache[$key] = [] === $candidates ? false : $candidates;
 
         return $candidates;
     }
