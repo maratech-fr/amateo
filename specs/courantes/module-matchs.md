@@ -1,65 +1,30 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-20 (`documentation-update`, PR J « recherche de gymnase préfiltrée par le
-code postal de l'adversaire », `e60fbb1f`). Confronté au code cette passe : `postalCode` additif
-sur `OpponentDirectoryEntry`/`OpponentTravelController::opponentView`
-(`OpponentTravelController.php:395`), passé par `OpponentClub`/`OpponentsPage.tsx` à
-`LocateOpponentModal.tsx` (préremplit le champ CP, sous-titre ville+CP jamais inventé) — § Écran
-Adversaires mis à jour ci-dessous. Reste confronté à la passe précédente, même jour
-(`documentation-update`, PR I « les gymnases adverses appartiennent au club, le trajet au
-gymnase » — amendement fondateur, `3993cbd3`…`3e203402`) : `OpponentVenueLink` (entité tenant, club-scoped SANS saison, grain `(club, code
-organisme, libellé FBI normalisé)`, `OpponentVenueLink.php`) a remplacé `OpponentTravel`
-(supprimée, migration `Version20260920140000`, cf. `PurgeCompletenessTest` RED→GREEN sur le
-nouveau grain) — un adversaire joue dans une salle donnée quelle que soit son équipe ou la saison
-(prouvé en base : même équipe, deux salles) ; `OpponentTravelController` (4 routes neuves `POST
-/{code}/venues`, `POST /{code}/venue-links`, `PUT`/`DELETE /venue-links/{id}` — foyer d'écriture
-`OpponentVenueLinkManager` —, 2 supprimées `travel/manual`/`travel/auto`) ; `GET
-/api/opponents/travel` change de forme (groupé par CLUB adverse, § Écran Adversaires) ;
-`App\Service\OpponentTravelProjection::awayTravelByFixtureId` (le trajet DÉRIVÉ de la rencontre,
-`basis: linked|most_frequent|city`) alimente `FixtureResource.awayTravel` (champ additif, calculé
-en BATCH par `FixtureStateProvider::decorateCollection`, zéro N+1) ; `OpponentPlaceResolver`/
-`OpponentTravelResolver` re-pointés sur le lien ; `opponent_venue_suggestion` requalifié
-« catalogue fédéral des gymnases adverses » (contenu inchangé, grain de comptage suit désormais le
-lien). Preuve : `MatchPlacementContractSchemaTest` vert SANS modification, `engine/CONTRACT_VERSION`
-inchangé (2.23). Reste confronté à la passe précédente (2026-09-19, retouches revue sécurité H) :
-les trois dispatchers de trajets répondent `{queued: false, alreadyRunning: true}` sans dispatcher
-quand `TravelComputeLock` est tenu — § Écran Adversaires (toast « Un calcul de trajets est déjà en
-cours. »). Reste confronté à la passe d'avant
-(2026-09-19, PR H « onglet Adversaires » — cache de trajets, calcul asynchrone, logo fédéral,
-deep-link `match=`, tri du rapprochement FFBB) : `OpponentsPage.tsx` (l'onglet dédié,
-`OpponentTravelCard` a disparu — nouvelle section « Écran Adversaires ») ;
-`App\Entity\ClubTravelCache`/`App\Service\Geo\TravelTimeCache` (cache club-scoped, §1) ;
-`App\Message\ComputeTravelTimesMessage`/`ComputeTravelTimesHandler` (calcul asynchrone, §1/§ Écran
-Adversaires) ; `OpponentTravelController::opponentView` (`travelStatus`, `hasLogo`, §1) ;
-`OpponentLogoController`/`opponent-logo.tsx` (logo fédéral, §1) ;
-`lib/urlState.ts::decodeMatchParam` + `ConflictsPage.revealSearch` (deep-link `match=`, §5/§6) ;
-`lib/creatableSort.ts` (tri du rapprochement, §7) ; `ConfigurationPage.tsx` (quatre
-`AccordionSection`, la section Adversaires est partie, §8). Reste confronté à la passe d'avant
-(2026-09-19, PR G « suppression d'une rencontre = ses entrées disparaissent ») :
-`FixtureStateProcessor::cascadeBeforeDelete` → `FbiCorrectionLedger::removeForFixture` (cascade
-applicative, §1). Reste confronté à la passe d'avant (2026-09-19, PR G « todo FBI unique ») :
-`FbiCorrection`/`FbiCorrectionLedger`/`FbiCorrectionController` (registre « à
-corriger dans FBI », §1) ; `Fixture::setStatus`/`fbiEcho` (mémo « FBI affiche … », §1) ;
-`EntryDeadlineOutlook::compute` (`fbiTodo` global, §4) ; `FbiEntryList`/`WeekCounters`/
-`CalendarPage` (écran « FBI — à faire », deep-link `?fbi=1`, §5) ; `FbiDeadlineCard` (carte cockpit
-rendue aussi hors fenêtre J-7 quand du FBI reste à faire, §4). Reste confronté à la passe
-précédente (2026-09-19, PR F) : `OpponentDirectoryEntryRepository::upsert` (upsert
-natif `ON CONFLICT`, §1) ; `OpponentRefreshController::step`/`failedSteps` (§1) ;
-`OpponentTravelResolver::resolve` (re-route d'une ligne MANUAL sans trajet depuis ses coordonnées
-épinglées, §1) ; `ConflictResolutionStatus` (`COACHES_NOT_PLAYING`/`PLAYS_NOT_COACHING`, §6) ;
-`MatchConflictDetector::accessWindowLostConflicts` (champ additif `windows`, §2). Reste confronté à
-la passe d'avant (2026-09-18, D2/D3/FRT-32) : `FixtureStateProcessor::assertVenueAccessAllowed`
-(D2, §5) ; `MatchConflictDetector::kickoffInsideLeagueWindow` +
-`matches/lib/envelope.ts::kickoffInsideLeagueWindow` (FRT-32, miroir déclaré, §5) ;
-`OpponentTravelProjection::roundTripByFixtureId` + `matches[].roundTripMinutes` (D3, §3). Reste
-confronté à la refonte précédente : composants `frontend/src/features/matches/` (routes,
-`CalendarPage`/`ConflictsPage`/`ImportPage`/`ConfigurationPage`/`TypicalWeekPage`) ·
-`MatchConflictDetector` (D1/D1 étendu, échelle de sévérité) · `ConflictRadarLoader` (chargement
-unique GET conflicts ⇄ delta de visite) · `FbiFixtureImporter`/`FfbbRencontreReconciler` (workflow
-NEW/OUT_OF_SYNC/REVIEWED, moteur partagé) · `VenueAliasResolver`/`OpponentLocationResolver`/
-`OpponentTravelResolver` (tables partagées et tenant) · `OpponentPlaceResolver` (détail par côté) ·
-`engine/app/solver/match_placement.py` (HARD/SOFT, `W_PROTECT_HABIT=25`) ·
-`engine/CONTRACT_VERSION` = **2.23**.
+Last verified @ 2026-09-21 (`documentation-update`, lot K « appariement UX des gymnases adverses »,
+8 commits `23aa3ef1`…`5bfe2f92`). Confronté au code cette passe : l'onglet Adversaires fige le rang
+des clubs au montage (`OpponentsPage.tsx`, un `setState` gardé pendant le rendu — pas un effet,
+pas une ref lue au rendu) — quitter l'onglet et y revenir recalcule (assumé) ; la modale
+d'appariement (`LocateOpponentModal.tsx`) enchaîne désormais les libellés orphelins du même club
+(file locale figée à l'ouverture, garde le code postal et la liste de salles déjà chargée, footer
+« Terminer ») ; un adversaire SANS code fédéral s'apparie via une clé SENTINELLE locale
+(`App\Service\OpponentPairingKey`, `'X' + sha256(libellé normalisé)[0:40]`, rangée dans
+`opponent_organisme_code`, **sans migration**, jamais écrite au catalogue fédéral partagé) ; les
+boutons « Ajouter un gymnase »/« Apparier » sont désormais **inconditionnels** ; l'auto-appariement
+(`OpponentVenueAutoLocator`) et la recherche manuelle (modale, `GET /api/ffbb/salles?q=`) gagnent
+un repli par NOM en plein-texte fédéral (`FfbbApiClient::searchSallesByName`, égalité stricte
+retenue). **Commits `93f36c29`→`5bfe2f92` (2026-09-21, 4 défauts de revue de sécurité) re-confrontés** :
+la neutralisation de la ref sentinelle vit ENTIÈREMENT dans la MAISON UNIQUE
+`OpponentVenueLinkManager::writeGym` (couvre POST **et** PUT de fusion — le contrôleur ne porte
+plus AUCUN filtre propre depuis `5bfe2f92`, la « ceinture » posée par `93f36c29` a été retirée : elle
+court-circuitait le manager sur l'épinglage et rendait sa garde intestable) ;
+`OpponentTravelResolver::awayPairingKeys` inclut les liens sentinelle dans le recalcul asynchrone de
+trajets (`pairsToRoute`, avant réservé aux codes fédéraux) ; les deux hooks d'auto-localisation
+déclenchés par un import (xlsx, canal API) portent désormais un budget de mur de 30 s (patron
+`OpponentRefreshController`). § « Écran Adversaires » et § « Cache de trajets » mis à jour ci-dessous,
+détail réseau
+[`../../backend/docs/ffbb-api.md`](../../backend/docs/ffbb-api.md) § « Salles d'une commune ». Le
+reste du fichier (radar, solveur, importer, delta de visite…) n'a pas bougé sous ce lot — historique
+des passes précédentes : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme (refonte 2026-09-18, AUD-DOC-38)** : ce fichier décrit **l'état courant, par
 > écran** — jamais une section datée d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id)
@@ -213,7 +178,13 @@ lot fusionnent en une ligne au lieu d'un double `persist` applicatif qui violait
 silencieusement avalés, réponse 200 vide). Chaque passe qui lève est isolée
 (`OpponentRefreshController::step`) et s'inscrit dans un champ additif `failedSteps` — le front dit
 franchement « mise à jour interrompue à l'étape … » plutôt qu'un succès mensonger ; volontairement
-**pas** de `resetManager()` (dette assumée : `roadmap.md` P4-247).
+**pas** de `resetManager()` (dette assumée : `roadmap.md` P4-247). **Les deux AUTRES hooks d'appel**
+(import xlsx `ImportFixturesController`, apply du canal API `FfbbRencontresController`, § « Écran
+Importer ») appelaient `locate()` **sans aucune borne** jusqu'au correctif de revue `93f36c29`
+(2026-09-21) : le repli par nom (lot K, ci-dessus) double un fan-out sortant déjà non borné à ces
+deux hooks. Ils calculent désormais leur propre `deadline` (`VENUE_AUTOLOCATE_BUDGET_SECONDS = 30`
+secondes, même patron best-effort que l'orchestrateur — dépassement = arrêt propre des libellés
+restants, jamais un import ou un apply cassé).
 
 **Gestes management** (`OpponentTravelController`, foyer d'écriture unique
 `OpponentVenueLinkManager` — écriture du lien + comptabilité du partagé + chauffage synchrone du
@@ -254,7 +225,15 @@ Mercure, topic `club:{clubId}:travel`, `docs/security/mercure.md`), jamais un sp
 `resolve()` ne route plus que les PAIRES siège→gymnase MANQUANTES du cache (`OpponentTravelResolver::
 pairsToRoute`, amendement PR I 2026-09-20 : un point par lien apparié + un point VILLE pour un code
 sans lien — plus de notion d'équipe ni de ligne saison) : une paire déjà résolue n'est plus jamais
-retouchée, « Réessayer les manquants » (§ Écran Adversaires) est littéralement ce même appel. Détail
+retouchée, « Réessayer les manquants » (§ Écran Adversaires) est littéralement ce même appel.
+**Correctif de revue (`93f36c29`, 2026-09-21)** : le filtre amont ne portait que sur les codes
+fédéraux (`distinctOpponentCodes`) — un gymnase épinglé sur un adversaire SANS code (clé sentinelle,
+§ Écran Adversaires) restait donc exclu de ce recalcul, son trajet ne tenant que le chauffage
+synchrone posé à l'épinglage (perdu sans rattrapage si l'IGN répond 429). `OpponentTravelResolver::
+awayPairingKeys` (méthode SŒUR, code fédéral OU clé sentinelle — même maison que la projection et
+le contrôleur) alimente désormais aussi ce filtre ; `distinctOpponentCodes` garde son contrat
+« codes fédéraux seuls » pour ses autres appelants ; le repli VILLE (2) reste réservé aux codes
+fédéraux (un sans-code n'a pas d'entrée d'annuaire fédérale à router en repli). Détail
 worker/verrou/topic : `backend/docs/geo-api.md` § Calcul asynchrone.
 
 ### Logo fédéral d'un adversaire (C7, 2026-09-19)
@@ -741,18 +720,69 @@ seulement) · gymnase (label + `StatusPill` « ville seule » si un club sans li
 précision `CITY`) · trajet (`TravelMinutes`, fragment extrait d'`AwayTravelChip`, « en cours… »/
 « indisponible » selon `travelStatus`) · rencontres (`fixtureCount` servi par ligne — le compte
 RÉEL de rencontres qui résolvent vers CE gymnase, jamais re-dérivé) · action. Tri : les clubs SANS
-gymnase d'abord, puis alphabétique (fr).
+gymnase d'abord, puis alphabétique (fr). **Rang gelé au montage** (lot K, décision fondateur
+2026-09-20) : le front fige cet ordre backend à la première liste non vide (`OpponentsPage.tsx`,
+un `setState` posé PENDANT le rendu — patron React « stocker une info des rendus précédents »,
+pas un effet) pour qu'un club tout juste apparié ne saute plus de place sous le curseur ; quitter
+l'onglet et y revenir recalcule (assumé). Un club apparu après le gel s'ajoute en fin, rang
+« infini ».
 
 **Gestes d'appariement** passent par le menu APG partagé sur chaque ligne gymnase (« Fusionner
 dans « X » » — vers un AUTRE gymnase du MÊME club, `PUT /api/opponents/venue-links/{id}` ;
 « Retirer ce gymnase » — `DELETE`) et une `ConfirmDialog` dont le texte vient de la donnée SERVIE
 (`fallbackVenueName`, `fixtureCount` — le front n'invente aucune règle métier, §
-`.claude/rules/frontend.md`). « Ajouter un gymnase »/« Apparier » ouvrent `LocateOpponentModal`
-(recherche `/api/ffbb/salles`, écrit via `POST /{code}/venues` ou `POST /{code}/venue-links`).
+`.claude/rules/frontend.md`). « Ajouter un gymnase »/« Apparier » (désormais **inconditionnels**,
+lot K — voir ci-dessous) ouvrent `LocateOpponentModal` (recherche `/api/ffbb/salles`, écrit via
+`POST /{code}/venues` ou `POST /{code}/venue-links`).
 **PR J (2026-09-20)** : la recherche part **préfiltrée par le code postal fédéral de
 l'adversaire** (`OpponentClub.postalCode`, additif servi par `GET /api/opponents/travel`) — le
 gestionnaire n'a plus à ressaisir un CP déjà connu ; un sous-titre situe le club (« · Brignais
 69530 »), jamais inventé quand ville/CP sont absents de l'annuaire fédéral.
+
+**Adversaires SANS code fédéral (lot K, 2026-09-20/21).** Un adversaire sans code (amical saisi à
+la main, coupe non appariée) n'avait jusque-là aucune clé d'appariement — ses rencontres
+restaient hors du trajet et les deux boutons ci-dessus étaient absents (`club.code !== null`
+gardait le geste). `App\Service\OpponentPairingKey` (maison unique) dérive une clé SENTINELLE
+stable de son libellé normalisé (`'X' + sha256(libellé)[0:40]`, 41 caractères alphanumériques —
+passe la borne `[A-Za-z0-9]+` des routes `/api/opponents/{code}/…`, tient dans le `VARCHAR(64)`
+existant, **zéro migration**) quand le code fédéral est absent. `GET /api/opponents/travel` sert
+cette clé (`pairingKey`) que le front réutilise TELLE QUELLE dans les routes d'écriture — il ne la
+redérive jamais (🔴 `.claude/rules/frontend.md`). La sentinelle reste strictement LOCALE au club :
+la garde qui neutralise toute ref fédérale pour une clé sentinelle vit ENTIÈREMENT dans la MAISON
+UNIQUE `OpponentVenueLinkManager::writeGym` (AVANT toute résolution fédérale, `resolveFederalVenue`
+jamais appelé pour une sentinelle) — le contrôleur ne porte **aucun** filtre propre, POST comme PUT.
+Défaut trouvé en revue de sécurité (`93f36c29`, 2026-09-21) : la garde initiale ne couvrait que le
+POST d'ajout, laissant le PUT de ré-appariement/fusion passer la ref brute du client et créditer le
+catalogue partagé sous un code organisme inexistant. Le contrôleur a d'abord gagné un filtre
+IDENTIQUE en défense en profondeur, puis ce filtre a été **retiré** (`5bfe2f92`, même jour) : une
+garde dupliquée sur le même chemin d'écriture court-circuitait le manager AVANT qu'il soit atteint,
+rendant sa propre garde intestable par ce chemin — le NR de sécurité restait vert les DEUX gardes
+désactivées, parce que la référence de test envoyée ne résolvait fédéralement dans AUCUN des deux
+cas (payload qui ne credite jamais, garde ou pas). Corrigé en deux temps : une référence
+RÉELLEMENT servie par le stub FFBB remplace celle qui ne résolvait jamais, et le contrôleur cède
+toute la garde au manager — seul foyer testable sur POST comme PUT. L'appariement reste tenant
+seul, jamais crédité au catalogue partagé `opponent_venue_suggestion` (falsifié par
+`OpponentVenueSuggestionShareTest`, rouge sur la garde du manager désactivée — POST et PUT).
+`LocateOpponentModal` remplace alors la section
+« Gymnases connus » (le partagé fédéral n'a rien à proposer pour une sentinelle) par une phrase
+d'explication : le choix restera propre au club.
+
+**La modale enchaîne les libellés orphelins (lot K, 2026-09-20).** Après un appariement réussi,
+`LocateOpponentModal` retire le libellé apparié d'une file LOCALE (figée à l'ouverture — le
+libellé cliqué en tête puis les autres orphelins du même club) et avance au suivant, code postal
+et liste de salles déjà chargée restent en place ; footer « Terminer » remplace « Fermer ». File
+vidée → fermeture, comme avant. Le mode « Ajouter un gymnase » (pas de file, `fbiLabel` null)
+garde la fermeture immédiate au succès.
+
+**Recherche par nom (lot K, 2026-09-20).** `GET /api/ffbb/salles` accepte `q` (≥ 3 caractères) en
+alternative à `postalCode` — plein-texte fédéral sur l'index `ffbbserver_salles`
+(`FfbbApiClient::searchSallesByName`, détail + sonde réseau réelle :
+[`../../backend/docs/ffbb-api.md`](../../backend/docs/ffbb-api.md) § « Salles d'une commune »). La
+modale gagne un champ « Nom du gymnase » à côté du code postal, débounced (300 ms) ; une recherche
+par nom active prend la main sur le code postal. Même repli côté **auto-appariement** :
+`OpponentVenueAutoLocator` retente par NOM (égalité stricte, un seul hit retenu) quand la voie
+commune/rayon ne rend pas un match unique — le comptage `ambiguous`/`unmatched` de la voie commune
+ne bouge pas pour ce repli.
 
 **Filtre segmenté** `role="group"` `aria-pressed` — **Sans gymnase · À apparier · Tous** — état URL
 `?filtre=` (`lib/urlState.ts`), deux unités de compte distinctes (clubs pour « Sans gymnase »,

@@ -1,10 +1,13 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-09-20 (`documentation-update`, PR I « les gymnases adverses appartiennent au
-club, le trajet au gymnase » — amendement fondateur). Recalé cette passe : `OpponentVenueAutoLocator`
-pose désormais un `OpponentVenueLink` tenant (remplace l'ancienne surcharge de trajet
-`opponent_travel`, supprimée) ✓ — reste du fichier (hosts SSRF, routes, pont par référence FFBB de
-salle, §3bis logo) non re-sondé cette passe, dernière vérification de fond : 2026-09-19 (PR H).
+Last verified @ 2026-09-21 (`documentation-update`, lot K « appariement UX des gymnases
+adverses »). Confronté au code cette passe : `FfbbApiClient::searchSallesByName` (nouveau, index
+`ffbbserver_salles`, `q` en plein-texte JAMAIS interpolé dans un `filter`, borné 2..180 chars) ;
+`FfbbSallesController` accepte `q` en alternative à `postalCode` (seuil 3 caractères) ; repris par
+`OpponentVenueAutoLocator` en repli par NOM de l'auto-appariement — § « Salles d'une commune »
+mise à jour ci-dessous avec la sonde réseau réelle du 2026-09-20. Reste du fichier (hosts SSRF,
+routes rencontres/engagements, pont par référence FFBB de salle hors ce point précis, §3bis logo)
+non re-sondé cette passe, dernière vérification de fond : 2026-09-20 (PR I).
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit rester dans la **liste blanche de hosts** du client (SSRF, A12). Vérifié le 2026-07-10 sur le code réel `ARA0069036` (BCCL).
 
@@ -272,6 +275,30 @@ désormais exploité côté réconciliation — voir § « Réconciliation FBI, 
   coordonnées) — égalité STRICTE `normalize(libellé du fichier FBI) === normalize(salle.libelle)`
   pour poser un lien `OpponentVenueLink` TENANT vers ce gymnase FÉDÉRAL (source AUTO, jamais le
   partagé — amendement PR I 2026-09-20 : le lien remplace l'ancienne surcharge `opponent_travel`).
+  **Lot K (2026-09-20)** : quand cette voie CP/rayon ne rend pas un match unique (0 candidat, ou
+  0/≥2 égalités strictes), `OpponentVenueAutoLocator` retente par **NOM** (ci-dessous) avant de
+  renoncer — le comptage `ambiguous`/`unmatched` de la voie commune ne bouge pas pour ce repli.
+
+### Recherche de salle par NOM (lot K, 2026-09-20)
+
+- `searchSallesByName(name)` (`FfbbApiClient`) — même index **`ffbbserver_salles`**, mais en
+  **plein-texte** (`q`, borné 2..180 caractères, **jamais interpolé dans un `filter`** — même
+  posture anti-injection que les autres `search*`). **Sondé en réel le 2026-09-20** : `libelle`
+  EST plein-texte avec la clé search-only et Meilisearch classe les correspondances EXACTES en
+  tête — `ASTROBALLE` → 1 hit, `SALLE TOLA VOLOGE` → 1, `GYMNASE JEAN GUIMIER` → 4, `limit: 50`
+  les capte toutes. `estimatedTotalHits` est **trompeur** (jusqu'à 2859 pour une seule
+  correspondance exacte) : l'appelant décide sur l'égalité STRICTE du libellé normalisé, jamais
+  sur ce compte. ⚠ Ce résultat porte sur `libelle` seulement — l'index reste **non** queryable par
+  `numero` (constat 2026-09-15 inchangé, § « Réconciliation FBI » ci-dessus, roadmap P4-204).
+- Exposé par `GET /api/ffbb/salles?q=` — **alternative** à `?postalCode=` sur la même route
+  (`FfbbSallesController`), seuil 3 caractères côté serveur ET front (en-dessous : liste vide,
+  aucun appel réseau). Même mapping serveur que la voie CP (`{name, address, city, externalRef,
+  latitude, longitude}`).
+- Consommé par `LocateOpponentModal` (champ « Nom du gymnase », débounced 300 ms, prend la main
+  sur le code postal dès qu'elle est active — détail produit :
+  [`../../specs/courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) §9 « Écran
+  Adversaires ») et par `OpponentVenueAutoLocator` (repli automatique ci-dessus, ne retient qu'une
+  égalité stricte et unique).
 
 ## Ce qui est disponible et NON exploité
 
