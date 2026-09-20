@@ -49,7 +49,7 @@ final class OpponentAutoLocateContext extends BaseContext
 
     private string $realCode = '';
 
-    private string $realTeamKey = '';
+    private string $realLinkId = '';
 
     private string $fakeCode = '';
 
@@ -75,25 +75,40 @@ final class OpponentAutoLocateContext extends BaseContext
     #[Then('l\'équipe adverse est localisée sur ce gymnase, source automatique')]
     public function lEquipeEstLocaliseeSourceAuto(): void
     {
-        $entry = $this->travelEntryOf($this->realCode);
-        if (null === $entry) {
-            throw new RuntimeException('aucune entrée de trajet pour l\'adversaire du fichier réel');
+        // Le gymnase apparié se lit désormais par CLUB adverse : un `venue` en source AUTO,
+        // né du libellé du fichier re-résolu contre l'index fédéral (grain lien, plus de trajet).
+        $opponent = $this->opponentOf($this->realCode);
+        if (null === $opponent) {
+            throw new RuntimeException('l\'adversaire du fichier réel n\'apparaît pas dans la liste des adversaires');
         }
-        $override = $entry['overrideVenueLabel'] ?? null;
-        if (!\is_string($override) || '' === $override) {
-            throw new RuntimeException('l\'équipe adverse n\'a pas été localisée depuis le fichier (aucune surcharge de gymnase)');
+        $venue = $this->autoVenueOf($opponent);
+        if (null === $venue) {
+            throw new RuntimeException('l\'équipe adverse n\'a pas été localisée depuis le fichier (aucun gymnase apparié en source automatique)');
         }
-        if ('AUTO' !== ($entry['source'] ?? null)) {
-            throw new RuntimeException(\sprintf('la localisation depuis le fichier doit être AUTO, vue « %s »', json_encode($entry['source'] ?? null)));
+        $label = $venue['label'] ?? null;
+        if (!\is_string($label) || '' === $label) {
+            throw new RuntimeException('le gymnase apparié n\'expose pas son libellé fédéral');
         }
-        if (true !== ($entry['located'] ?? null)) {
-            throw new RuntimeException('l\'adversaire localisé n\'est pas marqué « located »');
+        // La promesse tient au niveau du LIEN : un `opponent_venue_link` AUTO existe en base pour
+        // le libellé du fichier, pointant le gymnase fédéral (coordonnées présentes).
+        $linkCount = (int) $this->dbalScalar(
+            \sprintf(
+                'SELECT count(*) AS behatval FROM opponent_venue_link'
+                . ' WHERE club_id=\'%s\' AND opponent_organisme_code=\'%s\' AND source=\'AUTO\''
+                . ' AND latitude IS NOT NULL AND longitude IS NOT NULL',
+                $this->clubId,
+                $this->realCode,
+            ),
+            admin: true,
+        );
+        if ($linkCount < 1) {
+            throw new RuntimeException('aucun lien AUTO en base pour le libellé du fichier réel');
         }
-        $teamKey = $entry['opponentTeamKey'] ?? null;
-        if (!\is_string($teamKey) || '' === $teamKey) {
-            throw new RuntimeException('l\'entrée localisée n\'expose pas son grain équipe (opponentTeamKey)');
+        $id = $venue['id'] ?? null;
+        if (!\is_string($id) || '' === $id) {
+            throw new RuntimeException('le gymnase apparié n\'expose pas son identifiant de lien');
         }
-        $this->realTeamKey = $teamKey;
+        $this->realLinkId = $id;
     }
 
     #[Given('une autre rencontre dont le fichier porte un gymnase inventé')]
@@ -110,28 +125,36 @@ final class OpponentAutoLocateContext extends BaseContext
     #[Then('cette équipe-là n\'est pas localisée depuis le fichier')]
     public function cetteEquipeNestPasLocaliseeDepuisLeFichier(): void
     {
-        $entry = $this->travelEntryOf($this->fakeCode);
-        if (null === $entry) {
-            throw new RuntimeException('aucune entrée de trajet pour l\'adversaire du gymnase inventé');
+        // Un gymnase inventé ne résout rien : AUCUN lien AUTO en base, et le libellé reste
+        // « à apparier » (jamais promu en gymnase apparié).
+        $linkCount = (int) $this->dbalScalar(
+            \sprintf(
+                'SELECT count(*) AS behatval FROM opponent_venue_link'
+                . ' WHERE club_id=\'%s\' AND opponent_organisme_code=\'%s\' AND source=\'AUTO\'',
+                $this->clubId,
+                $this->fakeCode,
+            ),
+            admin: true,
+        );
+        if (0 !== $linkCount) {
+            throw new RuntimeException('un gymnase inventé n\'aurait pas dû créer de lien AUTO');
         }
-        // Un gymnase inventé ne pose AUCUNE surcharge depuis le fichier (le trajet AUTO du
-        // club peut exister, mais sans gymnase épinglé et jamais au grain ÉQUIPE).
-        if (null !== ($entry['overrideVenueLabel'] ?? null)) {
-            throw new RuntimeException('un gymnase inventé n\'aurait pas dû poser de surcharge de gymnase');
-        }
-        if ('TEAM' === ($entry['scope'] ?? null)) {
-            throw new RuntimeException('un gymnase inventé n\'aurait pas dû créer de localisation au grain équipe');
+        $opponent = $this->opponentOf($this->fakeCode);
+        if (null !== $opponent && null !== $this->autoVenueOf($opponent)) {
+            throw new RuntimeException('un gymnase inventé n\'aurait pas dû apparaître comme gymnase localisé');
         }
     }
 
     #[When('le club revient au défaut du club pour l\'équipe localisée')]
     public function leClubRevientAuDefaut(): void
     {
-        $result = $this->apiPost('opponents/travel/auto', [
-            'opponentOrganismeCode' => $this->realCode,
-            'opponentTeamKey' => $this->realTeamKey,
-        ], $this->token);
-        if (200 !== $result['status']) {
+        // « Revenir au défaut » = retirer l'appariement LOCAL (le lien AUTO) ; le catalogue
+        // fédéral n'est jamais touché.
+        if ('' === $this->realLinkId) {
+            throw new RuntimeException('aucun lien à retirer (la localisation automatique n\'a pas été captée)');
+        }
+        $result = $this->apiDelete('opponents/venue-links/' . $this->realLinkId, $this->token);
+        if (204 !== $result['status']) {
             throw new RuntimeException(\sprintf('le retour au défaut du club a échoué (HTTP %d)', $result['status']));
         }
     }
@@ -139,9 +162,21 @@ final class OpponentAutoLocateContext extends BaseContext
     #[Then('la localisation automatique de cette équipe a disparu')]
     public function laLocalisationAutoADisparu(): void
     {
-        $entry = $this->travelEntryOf($this->realCode);
-        if (null !== $entry && null !== ($entry['overrideVenueLabel'] ?? null) && 'TEAM' === ($entry['scope'] ?? null)) {
-            throw new RuntimeException('la localisation automatique de l\'équipe aurait dû disparaître après le retour au défaut');
+        $opponent = $this->opponentOf($this->realCode);
+        if (null !== $opponent && null !== $this->autoVenueOf($opponent)) {
+            throw new RuntimeException('la localisation automatique aurait dû disparaître après le retour au défaut');
+        }
+        $linkCount = (int) $this->dbalScalar(
+            \sprintf(
+                'SELECT count(*) AS behatval FROM opponent_venue_link'
+                . ' WHERE club_id=\'%s\' AND opponent_organisme_code=\'%s\' AND source=\'AUTO\'',
+                $this->clubId,
+                $this->realCode,
+            ),
+            admin: true,
+        );
+        if (0 !== $linkCount) {
+            throw new RuntimeException('le lien AUTO aurait dû disparaître en base après le retour au défaut');
         }
     }
 
@@ -168,18 +203,40 @@ final class OpponentAutoLocateContext extends BaseContext
     }
 
     /**
+     * L'adversaire (groupe par CLUB adverse) servi par GET /api/opponents/travel, repéré par
+     * son code fédéral (`code`) — porte `venues` (gymnases appariés) et `unmatchedLabels`.
+     *
      * @return array<string, mixed>|null
      */
-    private function travelEntryOf(string $code): ?array
+    private function opponentOf(string $code): ?array
     {
         $result = $this->apiGet('opponents/travel', $this->token);
         if (200 !== $result['status']) {
-            throw new RuntimeException(\sprintf('lecture du trajet adverse refusée (HTTP %d)', $result['status']));
+            throw new RuntimeException(\sprintf('lecture des adversaires refusée (HTTP %d)', $result['status']));
         }
         $opponents = $result['json']['opponents'] ?? [];
         foreach (\is_array($opponents) ? $opponents : [] as $opponent) {
-            if (\is_array($opponent) && ($opponent['opponentOrganismeCode'] ?? null) === $code) {
+            if (\is_array($opponent) && ($opponent['code'] ?? null) === $code) {
                 return $opponent;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Le premier gymnase apparié en source AUTO d'un adversaire, ou null.
+     *
+     * @param array<string, mixed> $opponent
+     *
+     * @return array<string, mixed>|null
+     */
+    private function autoVenueOf(array $opponent): ?array
+    {
+        $venues = $opponent['venues'] ?? [];
+        foreach (\is_array($venues) ? $venues : [] as $venue) {
+            if (\is_array($venue) && 'AUTO' === ($venue['source'] ?? null)) {
+                return $venue;
             }
         }
 
