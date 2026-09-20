@@ -399,6 +399,10 @@ final class OpponentTravelController extends AbstractController
             'id' => $link->getId(),
             'label' => $link->getVenueLabel(),
             'externalRef' => $link->getVenueExternalRef(),
+            // Coordonnées fédérales du gymnase (données publiques) — le front les repasse tel
+            // quel au geste de FUSION (ré-appariement vers CE gymnase). Jamais le siège du club.
+            'latitude' => $link->getLatitude(),
+            'longitude' => $link->getLongitude(),
             'source' => $link->getSource()->value,
             'travelMinutes' => $oneWay,
             'travelStatus' => null !== $oneWay ? 'done' : ($computePending ? 'pending' : 'unavailable'),

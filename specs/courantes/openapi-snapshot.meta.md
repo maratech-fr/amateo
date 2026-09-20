@@ -3,7 +3,7 @@ club-scoped ; l'API des adversaires est GROUPÉE PAR CLUB adverse, avec les gest
 POST/PUT/DELETE ; `POST /api/opponents/travel/{manual,auto}` supprimées ; régénéré par `api:openapi:export`).
 **206 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** net (−2 manual/auto,
 +3 venues/venue-links/{code} & /{id}).
-· SHA-256 `07ad52ca7ac33b9142a483621b006a1e3dc0093fd841e2530fbd06c43af6951d`
+· SHA-256 `209b7c40d22206675e91d50276adebc52af2f961ae56e68f956e16d3c90125de`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :

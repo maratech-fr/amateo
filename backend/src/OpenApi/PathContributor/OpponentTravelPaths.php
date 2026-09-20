@@ -92,6 +92,8 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                 'id' => ['type' => 'string', 'description' => 'The link id — the target of PUT/DELETE /api/opponents/venue-links/{id}'],
                 'label' => ['type' => 'string', 'description' => 'The federal gym label'],
                 'externalRef' => ['type' => ['string', 'null'], 'description' => 'The FFBB salle number, or null for a gym pinned by coordinates only'],
+                'latitude' => ['type' => 'number', 'format' => 'float', 'description' => 'The federal gym coordinates (public) — the client passes them back to the merge gesture'],
+                'longitude' => ['type' => 'number', 'format' => 'float'],
                 'source' => ['type' => 'string', 'enum' => ['AUTO', 'MANUAL']],
                 'travelMinutes' => ['type' => ['integer', 'null'], 'description' => 'One-way car travel from the club siège (from the constant travel cache; null = not computed yet)'],
                 'travelStatus' => ['type' => 'string', 'enum' => ['done', 'pending', 'unavailable'], 'description' => 'Server-computed: done (minutes present), pending (a computation is in flight for this club), unavailable'],
