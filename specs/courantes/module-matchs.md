@@ -1,8 +1,13 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-20 (`documentation-update`, PR I « les gymnases adverses appartiennent au
-club, le trajet au gymnase » — amendement fondateur, `3993cbd3`…`3e203402`). Confronté au code
-cette passe : `OpponentVenueLink` (entité tenant, club-scoped SANS saison, grain `(club, code
+Last verified @ 2026-09-20 (`documentation-update`, PR J « recherche de gymnase préfiltrée par le
+code postal de l'adversaire », `e60fbb1f`). Confronté au code cette passe : `postalCode` additif
+sur `OpponentDirectoryEntry`/`OpponentTravelController::opponentView`
+(`OpponentTravelController.php:395`), passé par `OpponentClub`/`OpponentsPage.tsx` à
+`LocateOpponentModal.tsx` (préremplit le champ CP, sous-titre ville+CP jamais inventé) — § Écran
+Adversaires mis à jour ci-dessous. Reste confronté à la passe précédente, même jour
+(`documentation-update`, PR I « les gymnases adverses appartiennent au club, le trajet au
+gymnase » — amendement fondateur, `3993cbd3`…`3e203402`) : `OpponentVenueLink` (entité tenant, club-scoped SANS saison, grain `(club, code
 organisme, libellé FBI normalisé)`, `OpponentVenueLink.php`) a remplacé `OpponentTravel`
 (supprimée, migration `Version20260920140000`, cf. `PurgeCompletenessTest` RED→GREEN sur le
 nouveau grain) — un adversaire joue dans une salle donnée quelle que soit son équipe ou la saison
@@ -744,6 +749,10 @@ dans « X » » — vers un AUTRE gymnase du MÊME club, `PUT /api/opponents/ven
 (`fallbackVenueName`, `fixtureCount` — le front n'invente aucune règle métier, §
 `.claude/rules/frontend.md`). « Ajouter un gymnase »/« Apparier » ouvrent `LocateOpponentModal`
 (recherche `/api/ffbb/salles`, écrit via `POST /{code}/venues` ou `POST /{code}/venue-links`).
+**PR J (2026-09-20)** : la recherche part **préfiltrée par le code postal fédéral de
+l'adversaire** (`OpponentClub.postalCode`, additif servi par `GET /api/opponents/travel`) — le
+gestionnaire n'a plus à ressaisir un CP déjà connu ; un sous-titre situe le club (« · Brignais
+69530 »), jamais inventé quand ville/CP sont absents de l'annuaire fédéral.
 
 **Filtre segmenté** `role="group"` `aria-pressed` — **Sans gymnase · À apparier · Tous** — état URL
 `?filtre=` (`lib/urlState.ts`), deux unités de compte distinctes (clubs pour « Sans gymnase »,

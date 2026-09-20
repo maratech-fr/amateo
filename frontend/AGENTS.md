@@ -346,7 +346,10 @@ product rules — reuse them instead of rolling your own:
 - **`modal`** — its width is a **named palier** (`size`: sm/md/lg/xl), and there is deliberately
   **no `className` prop**: six callers had each patched their own `max-w-…` before P4-107's 3rd
   tranche. The scale and its ceilings live in `MODAL_WIDTH` — see `frontend/docs/frontend-spec.md`
-  §6.9.
+  §6.9. Its scrollable content zone carries a `p-1 -m-1` gutter (padding + matching negative
+  margin, content unmoved) — never remove it: an `overflow-y-auto` ancestor clips a
+  `focus-visible:ring-2` that overflows it, so a field at the bottom of a long modal would lose
+  its focus ring at the very edge (2026-09-20, `e60fbb1f`).
 - **`fiche-page`** — the frame of a "fiche" screen (Club, Profil, Nouveautés): 832 px centred,
   with help paragraphs bounded to a readable line length. A new fiche uses it; it never rolls its
   own `mx-auto max-w-*` (same §6.9).
