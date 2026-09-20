@@ -1,5 +1,5 @@
 import { MapPinOff, MoreHorizontal, Plus, RefreshCw, Search } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import { StatusPill } from "@/shared/components/ui/badge";
@@ -114,14 +114,16 @@ export function OpponentsPage() {
   // pour qu'un club qu'on vient d'apparier ne SAUTE pas de place sous les mains. Portée =
   // montage du composant (quitter l'onglet et revenir recalcule, assumé). Un club apparu
   // après le gel s'ajoute en fin (rang « infini », stable dans l'ordre backend).
-  const rankRef = useRef<Map<string, number>>(new Map());
-  useEffect(() => {
-    if (0 === rankRef.current.size && opponents.length > 0) {
-      opponents.forEach((o, index) => rankRef.current.set(o.code ?? o.name, index));
-    }
-  }, [opponents]);
-  const frozenRank = (o: OpponentClub): number => rankRef.current.get(o.code ?? o.name) ?? Number.MAX_SAFE_INTEGER;
-  const sortedOpponents = [...filteredOpponents].sort((a, b) => frozenRank(a) - frozenRank(b));
+  // On fige le rang à la première liste non vue : un setState GARDÉ pendant le rendu (patron React
+  // « stocker une info des rendus précédents ») — React re-rend aussitôt, sans effet ni lecture de ref.
+  const [frozenRank, setFrozenRank] = useState<Map<string, number> | null>(null);
+  if (null === frozenRank && opponents.length > 0) {
+    const ranks = new Map<string, number>();
+    opponents.forEach((o, index) => ranks.set(o.code ?? o.name, index));
+    setFrozenRank(ranks);
+  }
+  const rankOf = (o: OpponentClub): number => frozenRank?.get(o.code ?? o.name) ?? Number.MAX_SAFE_INTEGER;
+  const sortedOpponents = [...filteredOpponents].sort((a, b) => rankOf(a) - rankOf(b));
 
   const updateLabel = "running" === update.step ? "Mise à jour…" : "Mettre à jour les adversaires";
 
