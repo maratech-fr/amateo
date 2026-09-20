@@ -304,14 +304,13 @@ final class OpponentTravelController extends AbstractController
             return $this->json(['error' => 'Trop de gymnases épinglés — réessayez plus tard.'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
-        // Appariement LOCAL seul pour un sans-code : on force `ref = null` AVANT l'écriture, si
-        // bien que le gestionnaire ne résout rien fédéralement et ne crédite JAMAIS le catalogue
-        // partagé (données fédérales seules — un sans-code n'y entre pas). Le retrait ne débite
-        // jamais non plus (ref null). CEINTURE : la BRETELLE (la vraie garde) vit dans
-        // {@see OpponentVenueLinkManager::writeGym}, qui couvre AUSSI le PUT de ré-appariement ;
-        // on garde ce filtre POST par défense en profondeur (une seule ligne, aucun coût).
-        $ref = $this->pairingKey->isSentinel($clean) ? null : $gym['ref'];
-        $link = $this->linkManager->addOrUpdate($clubId, $clean, $fbiLabel, $gym['label'], $ref, $gym['lat'], $gym['lon']);
+        // Un adversaire SANS code fédéral (clé sentinelle) reste apparié LOCALEMENT (jamais de ref
+        // fédérale, jamais de crédit au catalogue partagé). La neutralisation de la référence vit
+        // ENTIÈREMENT dans la maison unique {@see OpponentVenueLinkManager::writeGym}, qui couvre
+        // addOrUpdate ET repoint — POST comme PUT — et tout appelant futur. Aucune garde dupliquée
+        // ici : une ceinture qui court-circuiterait le manager rendrait sa garde intestable sur ce
+        // chemin (un test de sécurité vert « pour la mauvaise raison »).
+        $link = $this->linkManager->addOrUpdate($clubId, $clean, $fbiLabel, $gym['label'], $gym['ref'], $gym['lat'], $gym['lon']);
 
         return $this->json($this->linkView($link, $this->targetFixtureCount($clubId, $season->getId(), $link)), Response::HTTP_OK);
     }

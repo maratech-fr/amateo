@@ -323,8 +323,10 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
 
     /**
      * (h) un adversaire SANS code fédéral (clé sentinelle) n'entre JAMAIS dans le catalogue
-     * partagé, même si le corps porte une ref qui résoudrait fédéralement : le contrôleur force
-     * l'appariement LOCAL (ref neutralisée avant écriture). Falsifié via l'API réelle.
+     * partagé, même si le corps porte une ref qui résout RÉELLEMENT fédéralement : la maison
+     * unique {@see OpponentVenueLinkManager::writeGym} neutralise la référence avant écriture.
+     * Falsifié via l'API réelle — la ref « 900000001 » est bel et bien servie par le stub FFBB
+     * (recherche géo, cf. FfbbHttpClientStub), donc SANS la garde le partagé serait crédité.
      */
     public function testASentinelKeyManualChoiceNeverCreditsTheSharedCatalog(): void
     {
@@ -334,12 +336,13 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
         $this->awayFixtureNoCode($season, $label);
         $key = 'X' . substr(hash('sha256', mb_strtolower($label)), 0, 40);
 
-        // Le corps porte une ref FÉDÉRALE (elle résoudrait) — le contrôleur DOIT la neutraliser.
+        // Le corps porte une ref FÉDÉRALE qui RÉSOUT côté serveur (« 900000001 ») — la garde DOIT
+        // la neutraliser AVANT toute résolution : sans elle, ce POST créditerait le partagé.
         $this->client->request('POST', '/api/opponents/' . $key . '/venues', [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], (string) json_encode([
             'venueLabel' => 'Gymnase amical',
-            'venueExternalRef' => self::FED_REF_A,
-            'latitude' => 45.76,
-            'longitude' => 4.86,
+            'venueExternalRef' => '900000001',
+            'latitude' => 45.001,
+            'longitude' => 4.001,
         ], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(200, (string) $this->client->getResponse()->getContent());
 
