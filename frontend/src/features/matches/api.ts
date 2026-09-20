@@ -1449,6 +1449,10 @@ export interface FfbbSalle {
 export const listFfbbSalles = (postalCode: string): Promise<{ postalCode: string | null; salles: FfbbSalle[] }> =>
   api.get("ffbb/salles", { searchParams: { postalCode } }).json();
 
+/** Recherche des salles FFBB par NOM (plein-texte, ≥ 3 caractères) — alternative au code postal. */
+export const listFfbbSallesByName = (name: string): Promise<{ postalCode: string | null; salles: FfbbSalle[] }> =>
+  api.get("ffbb/salles", { searchParams: { q: name } }).json();
+
 // ── Rattrapage des codes FFBB des adversaires — annuaire GLOBAL (PR 2a) ───────
 /**
  * La réponse du rattrapage d'annuaire (`POST /api/opponents/resolve`) : combien d'adversaires

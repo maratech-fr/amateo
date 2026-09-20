@@ -520,6 +520,17 @@ export function useFfbbSalles(postalCode: string) {
   });
 }
 
+/** Salles FFBB par NOM (plein-texte, ≥ 3 caractères) — alternative au code postal. Best-effort. */
+export function useFfbbSallesByName(name: string) {
+  return useQuery({
+    queryKey: ["ffbb_salles_name", name],
+    queryFn: () => matchesApi.listFfbbSallesByName(name),
+    enabled: name.trim().length >= 3,
+    staleTime: 3_600_000,
+    retry: false,
+  });
+}
+
 // ── FFBB pairing (P1-4 PR F) ─────────────────────────────────────────────────
 
 /** Fetched when the dialog OPENS only — on-demand consumption, never cached long. */

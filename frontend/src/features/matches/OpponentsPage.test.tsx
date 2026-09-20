@@ -25,6 +25,7 @@ vi.mock("./queries", () => ({
   // The add/pair modal (opened by « Ajouter un gymnase » / « Apparier ») needs these.
   useVenueSuggestions: () => ({ data: undefined, isError: false, refetch: vi.fn() }),
   useFfbbSalles: () => ({ data: undefined, isError: false, refetch: vi.fn() }),
+  useFfbbSallesByName: () => ({ data: undefined, isError: false, refetch: vi.fn() }),
   useAddOpponentVenue: () => ({ mutate: vi.fn(), isPending: false }),
   usePairOpponentVenueLabel: () => ({ mutate: vi.fn(), isPending: false }),
 }));

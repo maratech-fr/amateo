@@ -1,5 +1,5 @@
 import { Building2, MapPin } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -12,7 +12,7 @@ import { readState } from "@/shared/lib/readState";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { FfbbSalle, VenueSuggestion } from "./api";
-import { useAddOpponentVenue, useFfbbSalles, usePairOpponentVenueLabel, useVenueSuggestions } from "./queries";
+import { useAddOpponentVenue, useFfbbSalles, useFfbbSallesByName, usePairOpponentVenueLabel, useVenueSuggestions } from "./queries";
 
 /**
  * Amendement 2026-09-20 — la modale d'AJOUT / d'APPARIEMENT d'un gymnase pour un adversaire.
@@ -57,6 +57,14 @@ export function LocateOpponentModal({
   onClose: () => void;
 }) {
   const [cp, setCp] = useState(postalCode ?? "");
+  // Recherche par NOM — alternative au code postal, débounée (≥ 3 caractères). Le code postal
+  // reste le défaut affiché ; dès qu'un nom est saisi, il pilote les résultats.
+  const [name, setName] = useState("");
+  const [debouncedName, setDebouncedName] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedName(name), 300);
+    return () => clearTimeout(id);
+  }, [name]);
   // « Brignais 69530 » / « Brignais » / « 69530 » / "" — on ne montre que ce qui est connu.
   const locationContext = [city, postalCode].filter((part): part is string => null !== part && "" !== part).join(" ");
   const [pendingKey, setPendingKey] = useState<string | null>(null);
@@ -77,9 +85,18 @@ export function LocateOpponentModal({
   const suggestions = suggestionsQuery.data ?? [];
   const suggestionsState = readState(suggestionsQuery);
 
-  const salles = sallesQuery.data?.salles ?? [];
+  const nameQuery = debouncedName.trim();
+  const searchingByName = nameQuery.length >= 3;
+  const nameSallesQuery = useFfbbSallesByName(nameQuery);
+
   const cpReady = /^\d{5}$/.test(cp);
-  const sallesState = readState({ data: cpReady ? (sallesQuery.data ?? undefined) : {}, isError: sallesQuery.isError });
+  // La recherche par nom prend la main dès qu'elle est active ; sinon le code postal.
+  const salles = searchingByName ? (nameSallesQuery.data?.salles ?? []) : (sallesQuery.data?.salles ?? []);
+  const sallesState = searchingByName
+    ? readState({ data: nameSallesQuery.data ?? undefined, isError: nameSallesQuery.isError })
+    : readState({ data: cpReady ? (sallesQuery.data ?? undefined) : {}, isError: sallesQuery.isError });
+  const searchReady = searchingByName || cpReady;
+  const searchLabel = searchingByName ? `« ${nameQuery} »` : cp;
 
   /**
    * Un clic pose le lien. Mode AJOUT : un seul geste, on ferme au succès. Mode APPARIEMENT :
@@ -187,24 +204,29 @@ export function LocateOpponentModal({
           </div>
         )}
 
-        {/* Section 2 — chercher un gymnase par recherche FFBB (code postal). */}
+        {/* Section 2 — chercher un gymnase par code postal OU par nom (FFBB). */}
         <div className="flex flex-col gap-2">
           <h5 className="text-sm font-medium">Chercher un gymnase</h5>
-          <Input
-            aria-label="Commune (code postal)"
-            placeholder="Code postal du gymnase"
-            inputMode="numeric"
-            maxLength={5}
-            className="h-8 w-full sm:w-40"
-            value={cp}
-            onChange={(e) => setCp(e.target.value.replace(/\D/g, ""))}
-          />
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input
+              aria-label="Commune (code postal)"
+              placeholder="Code postal du gymnase"
+              inputMode="numeric"
+              maxLength={5}
+              className="h-8 w-full sm:w-40"
+              value={cp}
+              onChange={(e) => setCp(e.target.value.replace(/\D/g, ""))}
+            />
+            <Input aria-label="Nom du gymnase" placeholder="Nom du gymnase" className="h-8 w-full sm:flex-1" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
           {"failed" === sallesState ? (
-            <LoadErrorHint onRetry={() => void sallesQuery.refetch()}>FFBB indisponible, réessayez plus tard.</LoadErrorHint>
+            <LoadErrorHint onRetry={() => void (searchingByName ? nameSallesQuery.refetch() : sallesQuery.refetch())}>FFBB indisponible, réessayez plus tard.</LoadErrorHint>
           ) : null}
-          {cpReady && "ready" === sallesState && 0 === salles.length ? <EmptyHint>Aucune salle trouvée pour ce code postal.</EmptyHint> : null}
+          {searchReady && "ready" === sallesState && 0 === salles.length ? (
+            <EmptyHint>{searchingByName ? "Aucune salle trouvée pour ce nom." : "Aucune salle trouvée pour ce code postal."}</EmptyHint>
+          ) : null}
           {salles.length > 0 ? (
-            <ul aria-label={`Salles FFBB à ${cp}`} className="max-h-64 overflow-y-auto rounded-md border border-border bg-background py-1 text-sm">
+            <ul aria-label={`Salles FFBB ${searchLabel}`} className="max-h-64 overflow-y-auto rounded-md border border-border bg-background py-1 text-sm">
               {salles.map((salle) => {
                 const key = `salle-${salle.externalRef ?? salle.name}-${salle.address ?? ""}`;
                 return (

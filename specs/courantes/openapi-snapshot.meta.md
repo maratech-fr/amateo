@@ -1,11 +1,20 @@
-Last verified @ 2026-09-20 (adversaire — préfiltre code postal : `GET /api/opponents/travel` sert
-`postalCode` par club adverse, à côté de `city` ; régénéré par `api:openapi:export`).
-**206 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** net (champ additif
-`postalCode`).
-· SHA-256 `d20cfda482eebe58e7b757716a69c70b817910c5bb9962c8b3c83fa187a3703d`
+Last verified @ 2026-09-21 (adversaire — UX d'appariement : `GET /api/opponents/travel` sert `pairingKey`
+par adversaire (code fédéral ou clé sentinelle d'un sans-code) ; `GET /api/ffbb/salles` gagne le paramètre
+`q` (recherche de salle par nom) ; régénéré par `api:openapi:export`).
+**206 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** net (champs / paramètre additifs).
+· SHA-256 `15785657c11f1813faa0e5cd7f313fce175aa99f8b70213a0f388d916ac541cb`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Adversaire — UX d'appariement des gymnases, backend (2026-09-21)** : **+0 path** — deux champs / un
+  paramètre ADDITIFS. `GET /api/opponents/travel` sert `pairingKey` par adversaire : son code fédéral, ou une
+  clé SENTINELLE (`X` + sha-256 du libellé) pour un adversaire SANS code, que le front repasse tel quel aux
+  routes d'écriture `POST /api/opponents/{code}/venues` et `.../venue-links` — elles acceptent désormais la
+  sentinelle, un sans-code étant apparié LOCALEMENT (ref neutralisée, jamais de crédit au partagé fédéral) ;
+  la projection de trajet indexe par cette clé, ce qui débloque le trajet des rencontres sans code. `GET
+  /api/ffbb/salles` gagne le paramètre de requête `q` (recherche de salle par NOM, plein-texte, ≥ 3
+  caractères, alternative au `postalCode` — `postalCode` null dans la réponse). Backend PUR, contrat
+  backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23, aucun appel moteur).
 - **Adversaire — préfiltre par code postal, backend (2026-09-20)** : **+0 path** — `GET
   /api/opponents/travel` gagne un champ ADDITIF `postalCode` (`string`|null) par club adverse, à côté de
   `city`, depuis `opponent_directory.postal_code` — le front préremplit la recherche de gymnase FFBB avec.
@@ -67,13 +76,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   sur `GET /api/matches/deadline-outlook` (le « à faire dans FBI » global, servi pour que le cockpit ne
   charge pas les fixtures). 201 → **204 paths**. Backend PUR, contrat backend⇄engine **inchangé**
   (`CONTRACT_VERSION` 2.23, aucun appel moteur).
-- **Retours de tests — siège du club géocodé côté serveur, backend (2026-09-19)** : **+1 path** —
-  `PATCH /api/club/siege` (management) : le corps ne porte QUE du texte d'adresse ; le serveur
-  RE-géocode via la BAN et écrit adresse/CP/ville + lat/lon depuis SON hit (réponse
-  `{address, postalCode, city, geolocated}`) — une latitude forgée est ignorée (patron SEC-15) ; 422
-  « adresse introuvable », 502 BAN muet. `GET /api/opponents/travel` gagne un booléen ADDITIF
-  `clubGeolocated` (le siège est-il localisé ? — jamais les coordonnées brutes). 200 → **201 paths**.
-  Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine
