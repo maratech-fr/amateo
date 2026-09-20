@@ -20,12 +20,14 @@ use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\OpponentVenueAutoLocator;
 use App\Service\SeasonResolver;
+use App\Tests\Double\SteppingClock;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Psr\Log\NullLogger;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\Clock\MockClock;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
@@ -84,6 +86,35 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
         self::assertSame(0, $result['located'], 'rien apparié passé le budget de mur');
         self::assertSame(1, $result['skipped'], 'le libellé restant est compté skipped');
         self::assertNull($this->link($club, 'gymnase mateo'), 'aucun lien écrit');
+    }
+
+    /**
+     * BCK-32 (défaut 3) — le rail d'IMPORT borne désormais l'auto-localisation par un budget de
+     * mur ({@see ImportFixturesController} / {@see FfbbRencontresController} calculent
+     * `deadline = now + budget` et le passent à {@see OpponentVenueAutoLocator::locate}, comme
+     * l'orchestrateur `/opponents/refresh`). Ce test reproduit ce calcul avec une horloge qui
+     * saute à chaque lecture : le budget est dépassé AVANT le premier groupe, donc AUCUN appel
+     * sortant FFBB n'est émis, la passe s'arrête proprement (le libellé reste `skipped`) et
+     * RIEN n'est levé — l'import (best-effort) réussit quand même.
+     */
+    public function testTheImportWallBudgetStopsTheFanOutWithoutAnyOutboundCall(): void
+    {
+        [$club, $season] = $this->seedClubWithAway('GYMNASE MATEO', 'Adverse Budget - 1');
+        $this->seedDirectory();
+
+        // Step 100 s ≫ le budget : la 1re lecture fixe la deadline, la lecture SUIVANTE (dans
+        // locate) l'a déjà dépassée → tout groupe restant est sauté sans réseau.
+        $clock = new SteppingClock(stepSeconds: 100);
+        $budgetSeconds = 30.0; // même modèle que le budget de mur des contrôleurs d'import.
+        $deadline = (float) $clock->now()->format('U.u') + $budgetSeconds;
+
+        $calls = 0;
+        $result = $this->countingLocator($calls, $clock)->locate($club->getId(), $season->getId(), $deadline);
+
+        self::assertSame(0, $calls, 'budget dépassé → AUCUN appel salle sortant (le fan-out est borné)');
+        self::assertSame(0, $result['located'], 'rien apparié passé le budget de mur');
+        self::assertSame(1, $result['skipped'], 'le libellé restant est compté skipped (relancer pour finir)');
+        self::assertNull($this->link($club, 'gymnase mateo'), 'aucun lien écrit — l\'import reste best-effort et réussit');
     }
 
     public function testNoStrictMatchLeavesTheLabelUnpaired(): void
@@ -339,7 +370,7 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
      * A locator whose FFBB client returns empty salles but COUNTS every salle search,
      * so the fan-out cap can be falsified.
      */
-    private function countingLocator(int &$calls): OpponentVenueAutoLocator
+    private function countingLocator(int &$calls, ?ClockInterface $clock = null): OpponentVenueAutoLocator
     {
         $ffbb = new MockHttpClient(function (string $method, string $url, array $options) use (&$calls): MockResponse {
             if (str_contains($url, 'api.ffbb.com')) {
@@ -353,7 +384,7 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
             return new MockResponse((string) json_encode(['results' => [['hits' => []]]]));
         });
 
-        return $this->buildLocator($ffbb);
+        return $this->buildLocator($ffbb, $clock);
     }
 
     /**
@@ -400,7 +431,7 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
         return $this->buildLocator($ffbb);
     }
 
-    private function buildLocator(MockHttpClient $ffbb): OpponentVenueAutoLocator
+    private function buildLocator(MockHttpClient $ffbb, ?ClockInterface $clock = null): OpponentVenueAutoLocator
     {
         return new OpponentVenueAutoLocator(
             $this->em,
@@ -409,7 +440,7 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
             self::getContainer()->get(OpponentDirectoryEntryRepository::class),
             new FfbbApiClient($ffbb, 'stub-token'),
             self::getContainer()->get(VenueLabelNormalizer::class),
-            new MockClock,
+            $clock ?? new MockClock,
             new NullLogger,
         );
     }

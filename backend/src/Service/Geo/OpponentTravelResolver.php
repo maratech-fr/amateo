@@ -13,6 +13,7 @@ use App\Repository\OpponentDirectoryEntryRepository;
 use App\Repository\OpponentVenueLinkRepository;
 use App\Repository\OpponentVenueSuggestionRepository;
 use App\Service\Basketball\FfbbSalleResolver;
+use App\Service\OpponentPairingKey;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -46,6 +47,7 @@ final class OpponentTravelResolver
         private readonly ClubRepository $clubRepository,
         private readonly FixtureRepository $fixtures,
         private readonly TravelTimeCache $travelCache,
+        private readonly OpponentPairingKey $pairingKey,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -290,6 +292,31 @@ final class OpponentTravelResolver
     }
 
     /**
+     * Les CLÉS d'appariement distinctes des fixtures AWAY de la saison — code fédéral pour un
+     * adversaire coded, clé SENTINELLE dérivée du libellé pour un sans-code ({@see
+     * OpponentPairingKey::fromOpponent}, la MÊME maison que la projection et le contrôleur).
+     * Méthode SŒUR de {@see distinctOpponentCodes} : ce dernier garde son contrat « codes
+     * fédéraux seulement » (cap du contrôleur, `isAwayCode`), celle-ci ajoute les sans-code pour
+     * que leurs gymnases appariés entrent aussi dans le calcul de trajet ({@see pairsToRoute}).
+     *
+     * @return array<string, string> clé d'appariement → libellé LISIBLE (le code fédéral pour un
+     *                               coded, le LIBELLÉ pour un sans-code : un `unresolved` parlant,
+     *                               jamais la sentinelle illisible)
+     */
+    private function awayPairingKeys(string $seasonId): array
+    {
+        $keys = [];
+        foreach ($this->fixtures->findAwayBySeason($seasonId) as $fixture) {
+            $code = $fixture->getOpponentOrganismeCode();
+            $label = trim($fixture->getOpponentLabel());
+            $key = $this->pairingKey->fromOpponent($code, $label);
+            $keys[$key] ??= null !== $code && '' !== $code ? $code : $label;
+        }
+
+        return $keys;
+    }
+
+    /**
      * Les paires siège→lieu à router pour ce club+saison : (1) un point par lien dont le
      * code adverse est joué cette saison — le gymnase apparié ; (2) pour un code SANS lien,
      * les coordonnées VILLE de l'annuaire fédéral (le repli « ville seule » de la projection
@@ -300,28 +327,32 @@ final class OpponentTravelResolver
      */
     private function pairsToRoute(string $clubId, string $seasonId): array
     {
-        $codes = array_flip($this->distinctOpponentCodes($seasonId));
+        // (1) Les liens appariés : filtrés sur les CLÉS d'appariement jouées cette saison (code
+        // fédéral OU sentinelle d'un sans-code) — sans quoi un gymnase épinglé sur un adversaire
+        // sans code fédéral serait éternellement sauté et n'aurait jamais de trajet par ce rail.
+        $pairingKeys = $this->awayPairingKeys($seasonId);
         $pairs = [];
         $seen = [];
-        $codesWithLink = [];
+        $keysWithLink = [];
         foreach ($this->linkRepository->findByClub($clubId) as $link) {
-            $code = $link->getOpponentOrganismeCode();
-            if (!isset($codes[$code])) {
+            $linkKey = $link->getOpponentOrganismeCode();
+            if (!isset($pairingKeys[$linkKey])) {
                 continue;
             }
-            $codesWithLink[$code] = true;
+            $keysWithLink[$linkKey] = true;
             $key = $this->travelCache->destKey($link->getLatitude(), $link->getLongitude());
             if (isset($seen[$key])) {
                 continue;
             }
             $seen[$key] = true;
-            $pairs[] = ['key' => $key, 'code' => $code, 'lat' => $link->getLatitude(), 'lon' => $link->getLongitude()];
+            $pairs[] = ['key' => $key, 'code' => $pairingKeys[$linkKey], 'lat' => $link->getLatitude(), 'lon' => $link->getLongitude()];
         }
 
-        // (2) Repli VILLE : les codes joués cette saison SANS aucun lien apparié — on route
-        // leur point d'annuaire pour que « ville seule » porte un trajet approché.
-        foreach (array_keys($codes) as $code) {
-            if (isset($codesWithLink[$code])) {
+        // (2) Repli VILLE : les codes FÉDÉRAUX joués cette saison SANS aucun lien apparié — on
+        // route leur point d'annuaire pour que « ville seule » porte un trajet approché. Réservé
+        // aux coded : un sans-code n'a pas d'entrée d'annuaire fédérale (rien à router en repli).
+        foreach ($this->distinctOpponentCodes($seasonId) as $code) {
+            if (isset($keysWithLink[$code])) {
                 continue;
             }
             $entry = $this->directory->findOneByFfbbOrganismeCode((string) $code);

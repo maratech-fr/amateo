@@ -307,7 +307,9 @@ final class OpponentTravelController extends AbstractController
         // Appariement LOCAL seul pour un sans-code : on force `ref = null` AVANT l'écriture, si
         // bien que le gestionnaire ne résout rien fédéralement et ne crédite JAMAIS le catalogue
         // partagé (données fédérales seules — un sans-code n'y entre pas). Le retrait ne débite
-        // jamais non plus (ref null).
+        // jamais non plus (ref null). CEINTURE : la BRETELLE (la vraie garde) vit dans
+        // {@see OpponentVenueLinkManager::writeGym}, qui couvre AUSSI le PUT de ré-appariement ;
+        // on garde ce filtre POST par défense en profondeur (une seule ligne, aucun coût).
         $ref = $this->pairingKey->isSentinel($clean) ? null : $gym['ref'];
         $link = $this->linkManager->addOrUpdate($clubId, $clean, $fbiLabel, $gym['label'], $ref, $gym['lat'], $gym['lon']);
 

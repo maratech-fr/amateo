@@ -25,6 +25,7 @@ use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\TravelTimeCache;
+use App\Service\OpponentPairingKey;
 use App\Service\SeasonResolver;
 use App\Tests\Double\FrozenClock;
 use App\Tests\TenantGucTrait;
@@ -75,6 +76,66 @@ final class OpponentTravelResolverTest extends WebTestCase
 
         self::assertSame(1, $result['resolved']);
         self::assertSame(22, $this->cachedMinutes($club->getId(), 45.80, 5.00), 'le gymnase du lien est routé et mis en cache');
+    }
+
+    /**
+     * Un gymnase épinglé sur un adversaire SANS code fédéral (clé SENTINELLE) doit entrer dans
+     * les paires à router et recevoir son trajet par la voie ASYNCHRONE ({@see resolve}) — et
+     * plus jamais rester à la merci du seul `warmTravel` synchrone (429 IGN en rafale). C'était
+     * le bug : `pairsToRoute` filtrait sur les codes fédéraux seuls et sautait ces liens.
+     */
+    public function testASentinelKeyLinkEntersThePairsAndIsRoutedAsync(): void
+    {
+        [$club, $season] = $this->seedClubSeason('sentinel');
+        $label = 'AMICAL SANS CODE FEDERAL';
+        $this->scopeGucToClub($club->getId());
+        $fixture = new Fixture;
+        $fixture->setClubId($club->getId());
+        $fixture->setSeasonId($season->getId());
+        $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
+        $fixture->setHomeAway(FixtureHomeAway::AWAY);
+        $fixture->setOpponentLabel($label); // aucun code organisme : adversaire sans code
+        $this->em->persist($fixture);
+        $this->em->flush();
+
+        $sentinelKey = (new OpponentPairingKey)->fromOpponent(null, $label);
+        $this->link($club, $sentinelKey, 'GYMNASE AMICAL', 45.80, 5.00);
+
+        $result = $this->resolverWithIgn(1320)->resolve($club->getId(), $season->getId());
+
+        self::assertSame(1, $result['resolved'], 'le lien sous clé sentinelle est bien routé (plus jamais sauté)');
+        self::assertSame([], $result['unresolved']);
+        self::assertSame(22, $this->cachedMinutes($club->getId(), 45.80, 5.00), 'son trajet arrive par la voie asynchrone');
+    }
+
+    /**
+     * Corollaire du bug : tant que `pairsToRoute` sautait les liens sentinelle, il n'y avait
+     * « rien à faire » pour un adversaire sans code — l'écran restait « en attente » sans jamais
+     * rien calculer. Le lien sentinelle non caché doit compter comme du travail.
+     */
+    public function testHasUncomputedTravelSeesASentinelKeyLink(): void
+    {
+        [$club, $season] = $this->seedClubSeason('sentinelpending');
+        $label = 'COUPE SANS CODE';
+        $this->scopeGucToClub($club->getId());
+        $fixture = new Fixture;
+        $fixture->setClubId($club->getId());
+        $fixture->setSeasonId($season->getId());
+        $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
+        $fixture->setHomeAway(FixtureHomeAway::AWAY);
+        $fixture->setOpponentLabel($label);
+        $this->em->persist($fixture);
+        $this->em->flush();
+
+        $sentinelKey = (new OpponentPairingKey)->fromOpponent(null, $label);
+        $this->link($club, $sentinelKey, 'GYMNASE COUPE', 45.81, 5.01);
+
+        self::assertTrue(
+            $this->resolverWithIgn(1320)->hasUncomputedTravel($club->getId(), $season->getId()),
+            'un gymnase sentinelle non caché = du travail (sinon l\'écran ne calcule jamais)',
+        );
     }
 
     public function testAnOpponentWithNoLocationYieldsNoPairToRoute(): void
@@ -212,6 +273,7 @@ final class OpponentTravelResolverTest extends WebTestCase
             self::getContainer()->get(ClubRepository::class),
             self::getContainer()->get(FixtureRepository::class),
             self::getContainer()->get(TravelTimeCache::class),
+            new OpponentPairingKey,
             new NullLogger,
         );
     }
