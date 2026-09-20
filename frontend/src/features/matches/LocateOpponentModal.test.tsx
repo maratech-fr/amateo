@@ -42,8 +42,8 @@ const salle = (over: Partial<FfbbSalle>): FfbbSalle => ({
   ...over,
 });
 
-const renderAdd = (onClose = vi.fn()) => renderWithProviders(<LocateOpponentModal code="ARA0069001" clubName="Meyzieu Basket" fbiLabel={null} postalCode="69330" onClose={onClose} />);
-const renderPair = (onClose = vi.fn()) => renderWithProviders(<LocateOpponentModal code="ARA0069001" clubName="Meyzieu Basket" fbiLabel="SALLE MACHIN" postalCode="69330" onClose={onClose} />);
+const renderAdd = (onClose = vi.fn()) => renderWithProviders(<LocateOpponentModal code="ARA0069001" clubName="Meyzieu Basket" fbiLabel={null} postalCode="69330" city="Meyzieu" onClose={onClose} />);
+const renderPair = (onClose = vi.fn()) => renderWithProviders(<LocateOpponentModal code="ARA0069001" clubName="Meyzieu Basket" fbiLabel="SALLE MACHIN" postalCode="69330" city="Meyzieu" onClose={onClose} />);
 
 beforeEach(() => {
   addMutate.mockReset();
@@ -127,6 +127,22 @@ describe("LocateOpponentModal — ajouter / apparier un gymnase", () => {
     suggestionsState.data = [];
     renderAdd();
     expect(screen.getByText(/Aucun gymnase connu pour ce club/)).toBeInTheDocument();
+  });
+
+  it("le sous-titre situe le club par sa ville et son code postal (contexte de la recherche)", () => {
+    renderAdd();
+    expect(screen.getByText(/Meyzieu 69330/)).toBeInTheDocument();
+  });
+
+  it("mode APPARIER : le sous-titre garde la phrase d'appariement ET ajoute le contexte ville+CP", () => {
+    renderPair();
+    expect(screen.getByText(/Choisissez le gymnase de/)).toBeInTheDocument();
+    expect(screen.getByText(/Meyzieu 69330/)).toBeInTheDocument();
+  });
+
+  it("sans ville ni code postal connus, aucun contexte n'est inventé (mode AJOUT)", () => {
+    renderWithProviders(<LocateOpponentModal code="ARA0069001" clubName="Meyzieu Basket" fbiLabel={null} postalCode={null} city={null} onClose={vi.fn()} />);
+    expect(screen.queryByText(/Meyzieu 69330/)).not.toBeInTheDocument();
   });
 
   it("le code postal est prérempli et lance la recherche FFBB", () => {

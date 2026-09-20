@@ -1,8 +1,8 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-09-17 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
-cette PR — défauts Calendrier + filtres Conflits, frontend seul). Re-vérifié contre le code, tout
-juste : `RedatePreviewController` (`backend/src/Controller/RedatePreviewController.php:36`) ✓,
+Last verified @ 2026-09-20 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+cette PR — PR J « recherche de gymnase par code postal », module matchs). Re-vérifié contre le
+code, tout juste : `RedatePreviewController` (`backend/src/Controller/RedatePreviewController.php:36`) ✓,
 `SplitMotherRedatePlanner` (`backend/src/Service/SplitMotherRedatePlanner.php:41`) ✓,
 `CalendarEntryRedatability::redateNeedsPreview` (`backend/src/Service/CalendarEntryRedatability.php:68`) ✓,
 `CalendarEntryResource.redateNeedsPreview` (`backend/src/ApiResource/CalendarEntryResource.php:78`) ✓,

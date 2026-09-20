@@ -1,12 +1,15 @@
-Last verified @ 2026-09-20 (adversaire multi-gymnases, amendement : l'appariement libellé→gymnase devient
-club-scoped ; l'API des adversaires est GROUPÉE PAR CLUB adverse, avec les gestes d'appariement
-POST/PUT/DELETE ; `POST /api/opponents/travel/{manual,auto}` supprimées ; régénéré par `api:openapi:export`).
-**206 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** net (−2 manual/auto,
-+3 venues/venue-links/{code} & /{id}).
-· SHA-256 `209b7c40d22206675e91d50276adebc52af2f961ae56e68f956e16d3c90125de`
+Last verified @ 2026-09-20 (adversaire — préfiltre code postal : `GET /api/opponents/travel` sert
+`postalCode` par club adverse, à côté de `city` ; régénéré par `api:openapi:export`).
+**206 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** net (champ additif
+`postalCode`).
+· SHA-256 `d20cfda482eebe58e7b757716a69c70b817910c5bb9962c8b3c83fa187a3703d`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Adversaire — préfiltre par code postal, backend (2026-09-20)** : **+0 path** — `GET
+  /api/opponents/travel` gagne un champ ADDITIF `postalCode` (`string`|null) par club adverse, à côté de
+  `city`, depuis `opponent_directory.postal_code` — le front préremplit la recherche de gymnase FFBB avec.
+  Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23, aucun appel moteur).
 - **Adversaire multi-gymnases (amendement) — appariement club-scoped, backend (2026-09-20)** : **+1 path**
   net — le gymnase d'un adversaire se rattache au CLUB adverse et au LIBELLÉ de salle (`opponent_venue_link`,
   club-scoped sans saison), plus au trajet (une CONSTANTE servie depuis `club_travel_cache`). `GET
@@ -70,12 +73,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   `{address, postalCode, city, geolocated}`) — une latitude forgée est ignorée (patron SEC-15) ; 422
   « adresse introuvable », 502 BAN muet. `GET /api/opponents/travel` gagne un booléen ADDITIF
   `clubGeolocated` (le siège est-il localisé ? — jamais les coordonnées brutes). 200 → **201 paths**.
-  Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun appel moteur).
-- **Retours de tests — statuts « joue/coache » sur un conflit, backend (2026-09-19)** : **+0 path** — le
-  statut de résolution d'un conflit gagne deux valeurs d'enum ADDITIVES `COACHES_NOT_PLAYING` et
-  `PLAYS_NOT_COACHING` (`PUT /api/fixtures/conflicts/{fingerprint}/resolution`, requête + réponse, et le
-  champ `resolution.status` du radar `GET /api/fixtures/conflicts`). Elles ne sont acceptées que si un
-  côté servi du conflit porte le rôle PLAYER (sinon 422 parlant) ; colonne `length: 30`, aucune migration.
   Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.21, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît

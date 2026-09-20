@@ -61,7 +61,7 @@ final class OpponentTravelApiTest extends WebTestCase
         // « SALLE B » n'en a pas → « à apparier ».
         $this->awayFixture($club, $season, 'ARA0069001', 'ASVEL - 1', 'SALLE A');
         $this->awayFixture($club, $season, 'ARA0069001', 'ASVEL - 2', 'SALLE B');
-        $this->directory('ARA0069001', OpponentLocationPrecision::VENUE, 'Lyon');
+        $this->directory('ARA0069001', OpponentLocationPrecision::VENUE, 'Lyon', '69001');
         $this->link($club, 'ARA0069001', 'SALLE A', 'Gymnase A', '166900001', 45.80, 5.00, OpponentVenueLinkSource::AUTO);
         $this->cacheTravel($club, 45.80, 5.00, 25);
 
@@ -85,6 +85,8 @@ final class OpponentTravelApiTest extends WebTestCase
 
         $orga = $byCode['ARA0069001'];
         self::assertSame('Lyon', $orga['city']);
+        // Le code postal fédéral est servi : le front préremplit la recherche de gymnase avec.
+        self::assertSame('69001', $orga['postalCode']);
         self::assertSame('VENUE', $orga['precision']);
         self::assertSame(2, $orga['fixtureCount'], 'deux rencontres contre cet adversaire');
         self::assertCount(1, $orga['venues']);
@@ -544,10 +546,10 @@ final class OpponentTravelApiTest extends WebTestCase
         return $fixture;
     }
 
-    private function directory(string $code, OpponentLocationPrecision $precision, ?string $city): void
+    private function directory(string $code, OpponentLocationPrecision $precision, ?string $city, ?string $postalCode = null): void
     {
         $entry = new OpponentDirectoryEntry($code, $city ?? 'Adversaire', $precision);
-        $entry->setCity($city)->setLatitude(45.7)->setLongitude(4.85);
+        $entry->setCity($city)->setPostalCode($postalCode)->setLatitude(45.7)->setLongitude(4.85);
         $this->em->persist($entry);
         $this->em->flush();
     }

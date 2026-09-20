@@ -28,6 +28,7 @@ export function LocateOpponentModal({
   code,
   clubName,
   fbiLabel,
+  city,
   postalCode,
   onClose,
 }: {
@@ -35,10 +36,14 @@ export function LocateOpponentModal({
   clubName: string;
   /** Le libellé de fichier à apparier (ligne orpheline) ; null = ajouter un gymnase au club. */
   fbiLabel: string | null;
+  /** Ville + code postal fédéraux du club adverse — situent la recherche, jamais inventés si null. */
+  city: string | null;
   postalCode: string | null;
   onClose: () => void;
 }) {
   const [cp, setCp] = useState(postalCode ?? "");
+  // « Brignais 69530 » / « Brignais » / « 69530 » / "" — on ne montre que ce qui est connu.
+  const locationContext = [city, postalCode].filter((part): part is string => null !== part && "" !== part).join(" ");
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   const suggestionsQuery = useVenueSuggestions(code);
@@ -87,8 +92,11 @@ export function LocateOpponentModal({
       <div className="flex flex-col gap-4">
         {null !== fbiLabel ? (
           <p className="text-xs text-muted-foreground">
-            Choisissez le gymnase de <span className="font-medium text-foreground">« {fbiLabel} »</span> ({clubName}).
+            Choisissez le gymnase de <span className="font-medium text-foreground">« {fbiLabel} »</span> ({clubName})
+            {"" !== locationContext ? <span> · {locationContext}</span> : "."}
           </p>
+        ) : "" !== locationContext ? (
+          <p className="text-xs text-muted-foreground">{locationContext}</p>
         ) : null}
 
         {/* Section 1 — les gymnases DÉJÀ connus de cet adversaire (suggestions partagées). */}

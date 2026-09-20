@@ -1311,6 +1311,7 @@ export interface OpponentClub {
   code: string | null;
   name: string;
   city: string | null;
+  postalCode: string | null;
   precision: OpponentLocationPrecision | null;
   hasLogo: boolean;
   fixtureCount: number;

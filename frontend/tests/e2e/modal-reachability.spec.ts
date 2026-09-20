@@ -153,6 +153,20 @@ test.describe("une modale longue reste atteignable", () => {
           scrolledTop,
           "témoin clavier : tabuler dans la modale n'a JAMAIS fait défiler la zone de contenu — le bas de la modale est inatteignable au clavier (repli `tabIndex={0}` requis)",
         ).toBeGreaterThan(0);
+
+        // ─ GOUTTIÈRE DE L'ANNEAU DE FOCUS (constat 2026-09-20) — `modal.tsx` réserve `p-1 -m-1`
+        //   sur sa zone défilante pour qu'un anneau `focus-visible:ring-2` d'un champ en bas de
+        //   zone ne soit pas clippé au ras du pied. jsdom ne peint pas → `modal-overflow.test.tsx`
+        //   épingle la CLASSE ; ici on prouve que le padding existe VRAIMENT en CSS rendu (≥ 3 px
+        //   pour un anneau de 2 px).
+        const padBottom = await dialog.evaluate((panel: HTMLElement) => {
+          const scroller = panel.querySelector<HTMLElement>(":scope > .overflow-y-auto");
+          return scroller ? Number.parseFloat(getComputedStyle(scroller).paddingBottom) : 0;
+        });
+        expect(
+          padBottom,
+          "gouttière d'anneau de focus absente : un champ en bas de modale se ferait clipper au ras du pied (p-1 sur la zone défilante de modal.tsx)",
+        ).toBeGreaterThanOrEqual(3);
       }
 
       await page.getByRole("dialog").getByRole("button", { name: "Fermer", exact: true }).click();
