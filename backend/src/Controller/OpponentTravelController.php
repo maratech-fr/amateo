@@ -24,6 +24,7 @@ use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\OpponentVenueLinkManager;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\ManagementAccessGuard;
+use App\Service\OpponentPairingKey;
 use App\Service\SeasonResolver;
 use App\Service\TravelComputeLock;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -78,6 +79,7 @@ final class OpponentTravelController extends AbstractController
         private readonly OpponentTravelResolver $resolver,
         private readonly OpponentVenueLinkManager $linkManager,
         private readonly VenueLabelNormalizer $labelNormalizer,
+        private readonly OpponentPairingKey $pairingKey,
         private readonly TravelTimeCache $travelCache,
         private readonly RateLimiterFactory $opponentTravelResolveLimiter,
         private readonly RateLimiterFactory $opponentTravelManualLimiter,
@@ -258,8 +260,10 @@ final class OpponentTravelController extends AbstractController
         }
         \assert(null !== $clubId && $season instanceof Season);
 
+        // Accepte le code fédéral OU la clé sentinelle d'un adversaire SANS code (elle doit se
+        // re-dériver d'une rencontre AWAY de la saison — jamais une clé forgée).
         $clean = $this->cleanCode($code);
-        if (null === $clean || !$this->isAwayCode($season->getId(), $clean)) {
+        if (null === $clean || !$this->isAwayPairingKey($season->getId(), $clean)) {
             return $this->json(['error' => 'Cet adversaire n\'a aucune rencontre à l\'extérieur cette saison.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
@@ -300,7 +304,12 @@ final class OpponentTravelController extends AbstractController
             return $this->json(['error' => 'Trop de gymnases épinglés — réessayez plus tard.'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
-        $link = $this->linkManager->addOrUpdate($clubId, $clean, $fbiLabel, $gym['label'], $gym['ref'], $gym['lat'], $gym['lon']);
+        // Appariement LOCAL seul pour un sans-code : on force `ref = null` AVANT l'écriture, si
+        // bien que le gestionnaire ne résout rien fédéralement et ne crédite JAMAIS le catalogue
+        // partagé (données fédérales seules — un sans-code n'y entre pas). Le retrait ne débite
+        // jamais non plus (ref null).
+        $ref = $this->pairingKey->isSentinel($clean) ? null : $gym['ref'];
+        $link = $this->linkManager->addOrUpdate($clubId, $clean, $fbiLabel, $gym['label'], $ref, $gym['lat'], $gym['lon']);
 
         return $this->json($this->linkView($link, $this->targetFixtureCount($clubId, $season->getId(), $link)), Response::HTTP_OK);
     }
@@ -347,7 +356,9 @@ final class OpponentTravelController extends AbstractController
         foreach ($groups as $group) {
             $code = $group['code'];
             $entry = null === $code ? null : $this->directory->findOneByFfbbOrganismeCode($code);
-            $links = null === $code ? [] : ($linksByCode[$code] ?? []);
+            // Les liens sont keyés par clé d'appariement (code fédéral OU sentinelle) : un
+            // adversaire sans code retrouve ainsi ses gymnases appariés sous sa sentinelle.
+            $links = $linksByCode[$this->pairingKey->fromOpponent($code, $group['name'])] ?? [];
             $opponents[] = $this->opponentView($group, $entry, $links, $cacheByDest, $computePending);
         }
         usort($opponents, static function (array $a, array $b): int {
@@ -389,6 +400,10 @@ final class OpponentTravelController extends AbstractController
 
         return [
             'code' => $group['code'],
+            // La clé d'appariement SERVIE par le backend (code fédéral, ou clé sentinelle pour un
+            // sans-code) : le front l'utilise telle quelle dans les routes d'écriture, il ne la
+            // redérive JAMAIS (🔴 .claude/rules/frontend.md).
+            'pairingKey' => $this->pairingKey->fromOpponent($group['code'], $group['name']),
             'name' => $entry instanceof OpponentDirectoryEntry ? $entry->getName() : $group['name'],
             'city' => $entry?->getCity(),
             // Le code postal fédéral (données publiques) — préfiltre la recherche de gymnase.
@@ -477,7 +492,9 @@ final class OpponentTravelController extends AbstractController
         }
         $count = 0;
         foreach ($this->fixtures->findAwayBySeason($seasonId) as $fixture) {
-            if ($fixture->getOpponentOrganismeCode() !== $link->getOpponentOrganismeCode()) {
+            // Comparaison par clé d'appariement : un lien sous clé sentinelle (sans-code) matche
+            // ses rencontres dont le code est null mais dont le libellé re-dérive la même clé.
+            if ($this->pairingKey->fromOpponent($fixture->getOpponentOrganismeCode(), trim($fixture->getOpponentLabel())) !== $link->getOpponentOrganismeCode()) {
                 continue;
             }
             $label = $fixture->getFbiVenueLabel();
@@ -571,21 +588,44 @@ final class OpponentTravelController extends AbstractController
         return false;
     }
 
-    /** True when `$code` is a real AWAY opponent of the club+season. */
+    /** True when `$code` is a real AWAY opponent of the club+season (federal code only). */
     private function isAwayCode(string $seasonId, string $code): bool
     {
         return \in_array($code, $this->resolver->distinctOpponentCodes($seasonId), true);
     }
 
-    /** True when `$fbiLabel` normalises to a salle actually played AWAY under `$code` this season. */
-    private function isAwayFbiLabel(string $seasonId, string $code, string $fbiLabel): bool
+    /**
+     * True when `$key` is the pairing key of an AWAY opponent of the club+season — its federal
+     * code, or the sentinel key of a code-less opponent. Miroir de la clé servie par `opponentView`.
+     */
+    private function isAwayPairingKey(string $seasonId, string $key): bool
+    {
+        foreach ($this->fixtures->findAwayBySeason($seasonId) as $fixture) {
+            if (FixtureHomeAway::AWAY !== $fixture->getHomeAway()) {
+                continue;
+            }
+            if ($this->pairingKey->fromOpponent($fixture->getOpponentOrganismeCode(), trim($fixture->getOpponentLabel())) === $key) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * True when `$fbiLabel` normalises to a salle actually played AWAY under the pairing key
+     * `$key` this season (real code or sentinel). On compare par clé d'appariement, jamais par
+     * code brut : un sans-code n'a pas de code à comparer.
+     */
+    private function isAwayFbiLabel(string $seasonId, string $key, string $fbiLabel): bool
     {
         $needle = $this->labelNormalizer->normalize(trim($fbiLabel));
         if ('' === $needle) {
             return false;
         }
         foreach ($this->fixtures->findAwayBySeason($seasonId) as $fixture) {
-            if (FixtureHomeAway::AWAY !== $fixture->getHomeAway() || $fixture->getOpponentOrganismeCode() !== $code) {
+            if (FixtureHomeAway::AWAY !== $fixture->getHomeAway()
+                || $this->pairingKey->fromOpponent($fixture->getOpponentOrganismeCode(), trim($fixture->getOpponentLabel())) !== $key) {
                 continue;
             }
             $label = $fixture->getFbiVenueLabel();

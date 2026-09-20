@@ -1309,6 +1309,13 @@ export interface OpponentUnmatchedLabel {
  */
 export interface OpponentClub {
   code: string | null;
+  /**
+   * La clé d'appariement SERVIE par le backend : le code fédéral quand il existe, sinon une clé
+   * sentinelle locale dérivée du libellé (adversaire sans code, apparié localement). Le front
+   * l'utilise telle quelle dans les routes d'écriture ; il ne la redérive JAMAIS
+   * (🔴 .claude/rules/frontend.md).
+   */
+  pairingKey: string;
   name: string;
   city: string | null;
   postalCode: string | null;

@@ -9170,7 +9170,11 @@
                                                             "string",
                                                             "null"
                                                         ],
-                                                        "description": "The opponent FFBB organisme code; null when the code is unresolved (grouped by label, not pairable)"
+                                                        "description": "The opponent FFBB organisme code; null when the opponent has no federal code (grouped by label). Use pairingKey \u2014 not code \u2014 to pair its gyms."
+                                                    },
+                                                    "pairingKey": {
+                                                        "type": "string",
+                                                        "description": "The pairing key the client passes to the write routes: the FFBB code when present, else a local sentinel derived from the label (a code-less opponent, paired locally, never fed to the shared federal catalogue). Server-computed, never re-derived by the client."
                                                     },
                                                     "name": {
                                                         "type": "string",

@@ -320,6 +320,44 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
         self::assertNull($ref, 'une ref non résolue fédéralement n\'est jamais persistée (lien par coordonnées seules)');
     }
 
+    /**
+     * (h) un adversaire SANS code fédéral (clé sentinelle) n'entre JAMAIS dans le catalogue
+     * partagé, même si le corps porte une ref qui résoudrait fédéralement : le contrôleur force
+     * l'appariement LOCAL (ref neutralisée avant écriture). Falsifié via l'API réelle.
+     */
+    public function testASentinelKeyManualChoiceNeverCreditsTheSharedCatalog(): void
+    {
+        [$club, $season, $user] = $this->createClub('sentinel');
+        // Un adversaire AWAY sans code fédéral (amical saisi à la main).
+        $label = 'CLUB AMICAL SANS CODE';
+        $this->awayFixtureNoCode($season, $label);
+        $key = 'X' . substr(hash('sha256', mb_strtolower($label)), 0, 40);
+
+        // Le corps porte une ref FÉDÉRALE (elle résoudrait) — le contrôleur DOIT la neutraliser.
+        $this->client->request('POST', '/api/opponents/' . $key . '/venues', [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], (string) json_encode([
+            'venueLabel' => 'Gymnase amical',
+            'venueExternalRef' => self::FED_REF_A,
+            'latitude' => 45.76,
+            'longitude' => 4.86,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(200, (string) $this->client->getResponse()->getContent());
+
+        // Le lien tenant existe sous la clé sentinelle, SANS ref (appariement local seul)…
+        $this->scopeGucToClub($club->getId());
+        $storedRef = $this->conn()->fetchOne(
+            'SELECT venue_external_ref FROM opponent_venue_link WHERE club_id = :cid AND opponent_organisme_code = :key',
+            ['cid' => $club->getId(), 'key' => $key],
+        );
+        self::assertNull($storedRef, 'un adversaire sans code est apparié LOCALEMENT — jamais de ref fédérale persistée');
+
+        // … et RIEN n'entre dans le catalogue partagé pour la clé sentinelle.
+        self::assertSame(0, (int) $this->conn()->fetchOne(
+            'SELECT COUNT(*) FROM opponent_venue_suggestion WHERE ffbb_organisme_code = :key',
+            ['key' => $key],
+        ), 'la clé sentinelle n\'entre JAMAIS dans le partagé fédéral');
+        unset($season);
+    }
+
     public function testTheSharedDecrementIsSymmetricPerFederalRef(): void
     {
         $ffbb = 'ARA0069S' . random_int(10, 99);
@@ -351,6 +389,20 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    private function awayFixtureNoCode(Season $season, string $opponentLabel): void
+    {
+        $this->scopeGucToClub($season->getClubId());
+        $fixture = new Fixture;
+        $fixture->setClubId($season->getClubId());
+        $fixture->setSeasonId($season->getId());
+        $fixture->setTeamId($this->uuid());
+        $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
+        $fixture->setHomeAway(FixtureHomeAway::AWAY);
+        $fixture->setOpponentLabel($opponentLabel);
+        $this->em->persist($fixture);
+        $this->em->flush();
     }
 
     // ─────────────────────────────────────────────────────────────────────────

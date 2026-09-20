@@ -43,6 +43,8 @@ interface Locating {
   fbiLabel: string | null;
   /** Les libellés orphelins du club — la file que la modale enchaîne (mode appariement). */
   unmatchedLabels: string[];
+  /** L'adversaire n'a aucun code fédéral (apparié par clé sentinelle, pas de suggestions partagées). */
+  sansCode: boolean;
   city: string | null;
   postalCode: string | null;
 }
@@ -244,10 +246,19 @@ export function OpponentsPage() {
                     key={`club-${club.code ?? club.name}`}
                     club={club}
                     filter={activeFilter}
-                    onAddVenue={() => club.code !== null && setLocating({ code: club.code, clubName: club.name, fbiLabel: null, unmatchedLabels: [], city: club.city, postalCode: club.postalCode })}
+                    onAddVenue={() =>
+                      setLocating({ code: club.pairingKey, clubName: club.name, fbiLabel: null, unmatchedLabels: [], sansCode: null === club.code, city: club.city, postalCode: club.postalCode })
+                    }
                     onPairLabel={(label) =>
-                      club.code !== null
-                      && setLocating({ code: club.code, clubName: club.name, fbiLabel: label, unmatchedLabels: club.unmatchedLabels.map((u) => u.label), city: club.city, postalCode: club.postalCode })
+                      setLocating({
+                        code: club.pairingKey,
+                        clubName: club.name,
+                        fbiLabel: label,
+                        unmatchedLabels: club.unmatchedLabels.map((u) => u.label),
+                        sansCode: null === club.code,
+                        city: club.city,
+                        postalCode: club.postalCode,
+                      })
                     }
                     onRemove={(venue) => setToRemove({ club, venue })}
                     onMerge={(source, target) => setToMerge({ club, source, target })}
@@ -271,6 +282,7 @@ export function OpponentsPage() {
           clubName={locating.clubName}
           fbiLabel={locating.fbiLabel}
           unmatchedLabels={locating.unmatchedLabels}
+          sansCode={locating.sansCode}
           city={locating.city}
           postalCode={locating.postalCode}
           onClose={() => setLocating(null)}
@@ -374,12 +386,10 @@ function ClubTbody({
         </TableCell>
         <TableCell className="hidden text-right tabular-nums @md:table-cell">{noGym ? club.fixtureCount : ""}</TableCell>
         <TableCell className="text-right">
-          {club.code !== null ? (
-            <Button variant="ghost" size="sm" onClick={onAddVenue}>
-              <Plus className="size-3.5" aria-hidden="true" />
-              Ajouter un gymnase
-            </Button>
-          ) : null}
+          <Button variant="ghost" size="sm" onClick={onAddVenue}>
+            <Plus className="size-3.5" aria-hidden="true" />
+            Ajouter un gymnase
+          </Button>
         </TableCell>
       </TableRow>
 

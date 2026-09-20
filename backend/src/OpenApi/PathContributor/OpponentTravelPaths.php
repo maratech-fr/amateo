@@ -106,7 +106,8 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
             'type' => 'object',
             'description' => 'One AWAY opponent CLUB, with its paired gyms and its labels still to pair.',
             'properties' => [
-                'code' => ['type' => ['string', 'null'], 'description' => 'The opponent FFBB organisme code; null when the code is unresolved (grouped by label, not pairable)'],
+                'code' => ['type' => ['string', 'null'], 'description' => 'The opponent FFBB organisme code; null when the opponent has no federal code (grouped by label). Use pairingKey — not code — to pair its gyms.'],
+                'pairingKey' => ['type' => 'string', 'description' => 'The pairing key the client passes to the write routes: the FFBB code when present, else a local sentinel derived from the label (a code-less opponent, paired locally, never fed to the shared federal catalogue). Server-computed, never re-derived by the client.'],
                 'name' => ['type' => 'string', 'description' => 'The opponent name (federal directory, else the raw fixture label)'],
                 'city' => ['type' => ['string', 'null'], 'description' => 'The opponent commune from the shared directory'],
                 'postalCode' => ['type' => ['string', 'null'], 'description' => 'The opponent postal code from the shared directory — pre-fills the gym search by postal code'],

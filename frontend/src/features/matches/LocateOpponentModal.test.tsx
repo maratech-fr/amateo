@@ -174,6 +174,17 @@ describe("LocateOpponentModal — ajouter / apparier un gymnase", () => {
     expect(within(list).getByRole("button", { name: /Gymnase des Servizières/ })).toBeDisabled();
   });
 
+  it("adversaire SANS code fédéral : pas de section « Gymnases connus », une explication du repli local", () => {
+    // Même si des suggestions traînent, un sans-code ne les montre pas (la requête est désactivée).
+    suggestionsState.data = [suggestion({ label: "Ne doit pas paraître" })];
+    renderWithProviders(
+      <LocateOpponentModal code="Xdeadbeef" clubName="Club Amical" fbiLabel="SALLE AMICALE" unmatchedLabels={["SALLE AMICALE"]} sansCode postalCode={null} city={null} onClose={vi.fn()} />,
+    );
+    expect(screen.getByText(/Club sans code fédéral/)).toBeInTheDocument();
+    expect(screen.queryByText("Gymnases connus")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ne doit pas paraître")).not.toBeInTheDocument();
+  });
+
   it("mode APPARIER enchaîne : un succès retire le libellé et avance au suivant sans fermer, le pied dit « Terminer »", async () => {
     pairMutate.mockImplementation((_input: unknown, opts?: { onSuccess?: () => void; onSettled?: () => void }) => {
       opts?.onSuccess?.();
