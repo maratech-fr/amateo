@@ -149,8 +149,22 @@ club lecteur).
   `/api/ffbb/salles`, `numero` fédéral **re-résolu serveur** — les coordonnées du corps client ne
   sont qu'une graine de recherche `_geoRadius`, jamais écrites telles quelles). Décision : « un
   COMPTE, jamais un QUI » — aucune colonne club/user/provenance, une ligne AUTO (posée depuis le
-  libellé du fichier, §5.2) ne compte jamais. `GET /api/opponents/{code}/venue-suggestions` sert
-  `chosenByCount` (des CHOIX, pas des clubs distincts) et `lastChosenAt` au JOUR seul.
+  libellé du fichier, §5.2) ne compte jamais. **Comptabilité IDEMPOTENTE et SYMÉTRIQUE par `(club,
+  code organisme, ref)` — revue sécurité 2026-09-20** : `OpponentVenueLinkManager` ne crédite un
+  gymnase que si le club ne le porte pas DÉJÀ (plusieurs libellés du même club vers le même gymnase
+  ne créditent qu'une fois — `OpponentVenueLinkRepository::countManualByRef`) et ne débite qu'au
+  retrait du DERNIER lien du club sur ce gymnase. `venueExternalRef` n'est **persisté sur un lien
+  que s'il résout fédéralement** (`OpponentTravelResolver::resolveFederalVenue` — sinon un lien par
+  coordonnées seules, `ref` null, tenant seul) : un ref présent implique donc toujours un crédit
+  passé, le débit est symétrique **par construction**, jamais une inférence à part. `GET
+  /api/opponents/{code}/venue-suggestions` sert `chosenByCount` (des CHOIX par club×gymnase, pas des
+  clubs distincts) et `lastChosenAt` au JOUR seul. **Plafond `MAX_VENUES_PER_OPPONENT = 20`** par
+  `(club, adversaire)` — l'ajout d'une NOUVELLE clé de libellé au-delà rend 422 « Trop de gymnases
+  pour cet adversaire », l'actualisation d'un libellé déjà apparié reste libre ; empêche l'inflation
+  du compteur communautaire par des libellés forgés. `POST /api/opponents/{code}/venues` ne valide
+  **jamais** le libellé contre les rencontres de la saison (à dessein — ajouter un gymnase AVANT
+  toute rencontre reste possible, cas playoff/poule pas encore tirée) ; seul `POST
+  /api/opponents/{code}/venue-links` (apparier un libellé ORPHELIN) l'exige.
 - **`SharedCompetitionDeadline`** : le défaut communautaire d'échéance de saisie, keyé
   `ffbbCompetitionId` — voir §4.
 

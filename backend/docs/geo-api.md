@@ -87,7 +87,9 @@ Le corps ne porte **que du texte d'adresse** (`address`/`postalCode`/`city`, con
 `ClubSiegeController` re-géocode via `BanGeocodingClient::geocodeTop` (le MEILLEUR candidat
 structuré : `{label, postalCode, city, latitude, longitude}`) et écrit adresse/CP/ville/lat/lon
 depuis **SON** hit fédéral, jamais depuis une latitude/longitude que le corps porterait (patron
-SEC-15, comme `OpponentTravelResolver::accountManualChoice`) : le front n'envoie que le `label` du
+SEC-15, même famille que `OpponentTravelResolver::resolveFederalVenue` sur le catalogue PARTAGÉ des
+gymnases adverses — le lien tenant `OpponentVenueLink`, lui, garde les coordonnées choisies par le
+club, § « Table TENANT `OpponentVenueLink` » de `module-matchs.md`) : le front n'envoie que le `label` du
 candidat choisi dans `AddressGeocodeField`, mais une requête forgée directement sur la route ne
 pourrait de toute façon pas imposer de coordonnées. Management-gated (SEC-07) ; 422 « adresse
 introuvable » (aucun candidat), 502 (BAN muette). Réponse `{address, postalCode, city, geolocated}`
