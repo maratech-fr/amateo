@@ -17,7 +17,7 @@ const fixture = (over: Partial<Fixture> = {}): Fixture => ({
   externalRef: null,
   fbiVenueLabel: null,
   placementSource: null,
-  unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null, ...over,
+  unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null, fbiEcho: null, awayTravel: null, ...over,
 });
 
 const venues = new Map<string, Venue>([["venue-1", { id: "venue-1", name: "Gymnase Alpha", color: "#00aa00", externalLabels: [] }]]);
@@ -269,10 +269,6 @@ describe("colonne extérieur (lot 3 PR-3a)", () => {
   const habitSat = (over: Partial<import("../api").TeamMatchHabit> = {}): import("../api").TeamMatchHabit => ({
     id: "h", teamId: "team-1", dayOfWeek: 6, kickoffTime: "15:30", venueId: null, ...over,
   });
-  const travelEntry = (over: Partial<import("../api").OpponentTravel> = {}): import("../api").OpponentTravel => ({
-    opponentOrganismeCode: "C1", opponentTeamKey: "EPI-1", opponentLabel: "Épinouze", located: true, hasLogo: false, precision: "VENUE",
-    locationName: "Halle Y", city: null, postalCode: null, travelMinutes: 45, approximated: false, source: "AUTO", scope: "CLUB", overrideVenueLabel: null, travelStatus: "done", ...over,
-  });
 
   it("ajoute la colonne « Extérieur » EN DERNIER du groupe de date, jamais de pastille", () => {
     const grid = buildWeekendGrid([fixture(), away({ kickoffTime: "18:00" })], venues, teams);
@@ -358,16 +354,16 @@ describe("colonne extérieur (lot 3 PR-3a)", () => {
     expect(new Set(cells.map((c) => c.lane))).toEqual(new Set([0, 1]));
   });
 
-  it("porte le libellé de trajet servi (« 45 min », joint par (code, teamKey))", () => {
+  it("porte le libellé de trajet DÉRIVÉ de la rencontre (« 45 min »)", () => {
     const grid = buildWeekendGrid(
-      [away({ kickoffTime: "18:00", opponentOrganismeCode: "C1", opponentTeamKey: "EPI-1" })],
-      venues, teams, new Set(), [], "2026-10-03", 15, new Map(), [travelEntry()],
+      [away({ kickoffTime: "18:00", awayTravel: { venueLabel: "Halle Y", city: null, precision: "VENUE", oneWayMinutes: 45, approximated: false, basis: "linked" } })],
+      venues, teams,
     );
     expect(grid.cells.find((c) => true === c.away)?.travelLabel).toBe("45 min");
     // Approché → préfixe « ~ ».
     const approx = buildWeekendGrid(
-      [away({ kickoffTime: "18:00", opponentOrganismeCode: "C1", opponentTeamKey: "EPI-1" })],
-      venues, teams, new Set(), [], "2026-10-03", 15, new Map(), [travelEntry({ approximated: true })],
+      [away({ kickoffTime: "18:00", awayTravel: { venueLabel: "Halle Y", city: null, precision: "VENUE", oneWayMinutes: 45, approximated: true, basis: "most_frequent" } })],
+      venues, teams,
     );
     expect(approx.cells.find((c) => true === c.away)?.travelLabel).toBe("~45 min");
   });
@@ -380,13 +376,13 @@ describe("colonne extérieur (lot 3 PR-3a)", () => {
       { id: "hg", teamId: "team-ghost", dayOfWeek: 6, kickoffTime: "14:00", venueId: "venue-1" } as import("../api").TeamMatchHabit,
     ];
     // 10ᵉ argument `showGhosts=false` : pas de fantôme, MAIS l'extérieur reste estimé (habitudes pleines).
-    const grid = buildWeekendGrid([away()], venues, teams, new Set(), habits, "2026-10-03", 15, new Map(), [], false);
+    const grid = buildWeekendGrid([away()], venues, teams, new Set(), habits, "2026-10-03", 15, new Map(), false);
     expect(grid.cells.filter((c) => true === c.ghost)).toHaveLength(0);
     const awayCell = grid.cells.find((c) => true === c.away);
     expect(awayCell?.estimated).toBe(true);
     expect(awayCell?.kickoffLabel).toBe("15:30");
     // showGhosts=true (défaut) : le fantôme réapparaît, l'extérieur reste estimé.
-    const withGhost = buildWeekendGrid([away()], venues, teams, new Set(), habits, "2026-10-03", 15, new Map(), []);
+    const withGhost = buildWeekendGrid([away()], venues, teams, new Set(), habits, "2026-10-03", 15, new Map());
     expect(withGhost.cells.filter((c) => true === c.ghost)).toHaveLength(1);
     expect(withGhost.cells.find((c) => true === c.away)?.estimated).toBe(true);
   });

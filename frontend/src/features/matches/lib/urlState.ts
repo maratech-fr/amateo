@@ -389,14 +389,14 @@ export function applySectionToParams(current: URLSearchParams, section: ConfigSe
 
 /**
  * C8 — le filtre segmenté de l'onglet Adversaires (`/matchs/adversaires`), ancré `?filtre=<clé>`.
- * Trois segments : « Tous » (défaut, param ABSENT), « À localiser » (`a-localiser` : au moins une
- * équipe sans gymnase) et « Gymnase à préciser » (`ville` : localisé mais à la commune seule,
- * précision CITY). Défaut = « Tous » : absent, `tous` (toléré), ou une valeur inconnue ⇒ `null`
- * (aucun filtre). Écrire `null` SUPPRIME le param. Mêmes conventions que `?section=`.
+ * Trois segments : « Tous » (défaut, param ABSENT), « Sans gymnase » (`sans-gymnase` : club sans
+ * aucun gymnase apparié) et « À apparier » (`a-apparier` : au moins un libellé de salle orphelin).
+ * Défaut = « Tous » : absent, `tous`, ou une valeur inconnue (dont l'ancien `ville`) ⇒ `null`
+ * (aucun filtre, aucun segment pressé). Écrire `null` SUPPRIME le param. Conventions de `?section=`.
  */
-export type OpponentFilter = "a-localiser" | "ville";
+export type OpponentFilter = "sans-gymnase" | "a-apparier";
 
-const OPPONENT_FILTERS: OpponentFilter[] = ["a-localiser", "ville"];
+const OPPONENT_FILTERS: OpponentFilter[] = ["sans-gymnase", "a-apparier"];
 
 function isOpponentFilter(value: string | null): value is OpponentFilter {
   return null !== value && (OPPONENT_FILTERS as string[]).includes(value);

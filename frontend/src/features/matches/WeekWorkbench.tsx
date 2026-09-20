@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
 import { toast } from "@/shared/stores/toastStore";
 
-import type { Category, Coach, Conflict, Fixture, LeagueWindow, MatchSlotRotation, OpponentTravel, Team, TeamMatchHabit, Venue } from "./api";
+import type { Category, Coach, Conflict, Fixture, LeagueWindow, MatchSlotRotation, Team, TeamMatchHabit, Venue } from "./api";
 import { AwayList } from "./AwayList";
 import { ConflictRadar } from "./ConflictRadar";
 import type { HiddenWeekBreakdown } from "./lib/consultFilter";
@@ -67,7 +67,6 @@ interface WeekWorkbenchProps {
   guards: PlacementGuards;
   habits: TeamMatchHabit[];
   rotations: MatchSlotRotation[];
-  opponentTravel: OpponentTravel[];
   coachRoles?: Map<string, CoachTeamRole>;
   resolvedTeamWindows: Record<string, string[]>;
   windows: LeagueWindow[];
@@ -111,7 +110,6 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
     guards,
     habits,
     rotations,
-    opponentTravel,
     coachRoles,
     resolvedTeamWindows,
     windows,
@@ -148,8 +146,8 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
     reopenFixture.isPending;
 
   const grid = useMemo(
-    () => buildWeekendGrid(weekendFixtures, venuesMap, teamsMap, outOfEnvelope, habits, activeWeekend, 15, matchDurations, opponentTravel, showGhosts),
-    [weekendFixtures, venuesMap, teamsMap, outOfEnvelope, habits, activeWeekend, matchDurations, opponentTravel, showGhosts],
+    () => buildWeekendGrid(weekendFixtures, venuesMap, teamsMap, outOfEnvelope, habits, activeWeekend, 15, matchDurations, showGhosts),
+    [weekendFixtures, venuesMap, teamsMap, outOfEnvelope, habits, activeWeekend, matchDurations, showGhosts],
   );
 
   const selectedFixture = allFixtures.find((f) => f.id === selectedFixtureId) ?? null;
@@ -356,7 +354,7 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
             showHabits={showGhosts && grid.cells.some((c) => c.ghost)}
           />
         </div>
-        <AwayList fixtures={weekendFixtures} teams={teamsMap} habits={habits} travel={opponentTravel} coachRoles={coachRoles} onEdit={onEditFixture} onDelete={(fixture) => deleteFixture.mutate(fixture.id)} />
+        <AwayList fixtures={weekendFixtures} teams={teamsMap} habits={habits} coachRoles={coachRoles} onEdit={onEditFixture} onDelete={(fixture) => deleteFixture.mutate(fixture.id)} />
         {radarLoaded ? <ConflictRadar conflicts={radarConflicts} teams={teamsMap} coaches={coachesMap} venues={venuesMap} newFingerprints={newFingerprints} /> : null}
       </div>
     </div>

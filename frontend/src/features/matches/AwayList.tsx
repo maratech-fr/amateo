@@ -7,10 +7,10 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { OpponentLogo } from "@/shared/components/ui/opponent-logo";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
 
-import type { Fixture, OpponentTravel, Team, TeamMatchHabit } from "./api";
+import type { Fixture, Team, TeamMatchHabit } from "./api";
 import { AwayTravelChip } from "./AwayTravelChip";
 import { compareAway } from "./lib/awayColumn";
-import { awayHour, awayTravelByKey, awayTravelKey } from "./lib/awayKickoff";
+import { awayHour } from "./lib/awayKickoff";
 import { awayTravelTitle } from "./lib/awayTravelTitle";
 import type { CoachTeamRole } from "./lib/matchFilter";
 import { opponentInitials } from "./lib/opponentInitials";
@@ -20,8 +20,6 @@ interface AwayListProps {
   fixtures: Fixture[];
   teams: Map<string, Team>;
   habits: TeamMatchHabit[];
-  /** Per-opponent-team travel (P2-54 PR-3), joined to a fixture by (code, opponentTeamKey). */
-  travel?: OpponentTravel[];
   /** PR-1 — en vue coach : rôle du coach filtré sur l'équipe, affiché en pastille. */
   coachRoles?: Map<string, CoachTeamRole>;
   /**
@@ -39,15 +37,12 @@ interface AwayListProps {
  * exactly the radar's estimation rule. `fbiVenueLabel` = the opponent's venue
  * as FBI ships it (never one of our venues).
  */
-export function AwayList({ fixtures, teams, habits, travel = [], coachRoles, onEdit, onDelete }: AwayListProps) {
+export function AwayList({ fixtures, teams, habits, coachRoles, onEdit, onDelete }: AwayListProps) {
   const readOnly = undefined === onEdit && undefined === onDelete;
   const [toDelete, setToDelete] = useState<Fixture | null>(null);
   // Tri commun à la colonne « Extérieur » de la grille (lot 3 PR-3a) : date, puis
   // sans-heure d'abord, puis heure, puis équipe.
   const away = fixtures.filter((f) => "AWAY" === f.homeAway).sort((a, b) => compareAway(a, b, teams, habits));
-  // Jointure par (code, opponentTeamKey) servis — PLUS de repli par libellé brut (P2-54
-  // « adversaire multi-gymnases » PR-3) : une AWAY sans code fédéral résolu reste sans trajet.
-  const travelByKey = awayTravelByKey(travel);
 
   if (0 === away.length) {
     return null;
@@ -64,8 +59,8 @@ export function AwayList({ fixtures, teams, habits, travel = [], coachRoles, onE
         {away.map((fixture) => {
           const { hour, estimated } = awayHour(fixture, habits);
           const teamLabel = teams.get(fixture.teamId)?.name ?? "Équipe ?";
-          const joinKey = awayTravelKey(fixture.opponentOrganismeCode, fixture.opponentTeamKey);
-          const travelInfo = null === joinKey ? undefined : travelByKey.get(joinKey);
+          // Amendement 2026-09-20 : le trajet est DÉRIVÉ de la rencontre (`fixture.awayTravel`).
+          const travelInfo = fixture.awayTravel;
           // L'heure (et son badge « estimée ») portent les conflits de coach et sont en QUEUE de
           // ligne (§6bis B5) : on n'enroule plus jamais dans une troncature, et un `title` de
           // secours rend la ligne entière lisible dans la colonne étroite.

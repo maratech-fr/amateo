@@ -94,6 +94,13 @@ export interface Fixture {
    * matérialise TOUJOURS à `null` quand la source ne l'envoie pas.
    */
   fbiEcho?: FbiEcho | null;
+  /**
+   * Le trajet d'une rencontre EXTÉRIEURE, DÉRIVÉ de la rencontre (jamais du club), calculé
+   * SERVEUR : le lieu de l'adversaire + l'aller simple depuis le siège. null pour un domicile
+   * ou si rien de connu. Optionnel côté TS (nullable, pas `required` côté OpenAPI, patron
+   * `fbiEcho`) ; `normalizeFixture` le matérialise TOUJOURS à null quand absent.
+   */
+  awayTravel?: AwayTravel | null;
 }
 
 /** Mémo `Fixture.fbiEcho` — ce que FBI affiche encore pour un champ, sur un domicile « à saisir ». */
@@ -102,6 +109,22 @@ export interface FbiEcho {
   value: string;
   /** ISO. */
   at: string;
+}
+
+/**
+ * `Fixture.awayTravel` — le trajet d'une rencontre extérieure, tout SERVEUR (le front n'en
+ * dérive RIEN, il affiche). `basis` porte la CAUSE : `linked` (salle appariée, exact),
+ * `most_frequent` (repli gymnase le plus fréquent → « gymnase supposé »), `city` (coordonnées
+ * de ville → « ville seule »). `approximated` = trajet approché (repli). `oneWayMinutes` = aller
+ * simple, null si pas encore calculé (le lieu peut être connu sans les minutes).
+ */
+export interface AwayTravel {
+  venueLabel: string | null;
+  city: string | null;
+  precision: OpponentLocationPrecision | null;
+  oneWayMinutes: number | null;
+  approximated: boolean;
+  basis: "linked" | "most_frequent" | "city";
 }
 
 export interface Competition {
@@ -475,6 +498,7 @@ function normalizeFixture(raw: Fixture): Fixture {
     opponentOrganismeCode: raw.opponentOrganismeCode ?? null,
     opponentTeamKey: raw.opponentTeamKey ?? null,
     fbiEcho: raw.fbiEcho ?? null,
+    awayTravel: raw.awayTravel ?? null,
   };
 }
 
@@ -1250,74 +1274,115 @@ export const swapFixtures = async (a: Fixture, b: Fixture): Promise<void> => {
 /** How precisely an away opponent's venue is known (mirror of the backend enum, présentation seule). */
 export type OpponentLocationPrecision = "VENUE" | "CITY";
 export type OpponentTravelSource = "AUTO" | "MANUAL";
-/** Quel grain gouverne un trajet : surcharge PAR ÉQUIPE, défaut du CLUB, ou aucun (mirror serveur). */
-export type OpponentTravelScope = "TEAM" | "CLUB";
 
 /**
- * Le trajet d'un adversaire AWAY, TOUT calculé côté serveur (le front n'en re-dérive
- * rien — `approximated` et `travelMinutes` viennent du backend). Une entrée par ÉQUIPE
- * adverse (grain `(code, opponentTeamKey)`). `located` = un lieu exploitable existe ;
- * `precision`/`locationName` disent lequel ; `source` distingue l'AUTO calculé de la
- * correction MANUELLE ; `scope` dit quel grain (équipe/club) gouverne cette ligne.
+ * Un gymnase APPARIÉ d'un club adverse (`OpponentVenueLink`), TOUT calculé côté serveur.
+ * Amendement 2026-09-20 : le gymnase se rattache au club adverse et au libellé de salle,
+ * jamais à l'équipe. `travelMinutes` = aller simple ; `travelStatus` done|pending|unavailable ;
+ * `fixtureCount` = rencontres qui pointent ce gymnase ; `fallbackVenueName` = le gymnase qui
+ * recueillerait ses rencontres s'il était retiré (null si dernier) — le front ne le dérive JAMAIS.
  */
-export interface OpponentTravel {
-  opponentOrganismeCode: string | null;
-  /** Libellé adverse normalisé SERVEUR — le grain d'une surcharge PAR ÉQUIPE ; null si non résolu. */
-  opponentTeamKey: string | null;
-  opponentLabel: string;
-  located: boolean;
-  /** C7 — un logo fédéral est connu (le rendre via `GET /api/opponents/{code}/logo`, sinon initiales). */
-  hasLogo: boolean;
-  precision: OpponentLocationPrecision | null;
-  locationName: string | null;
-  /** La commune adverse, servie par l'annuaire partagé (pré-remplit la recherche CP). */
-  city: string | null;
-  /** Le code postal adverse, servi par l'annuaire partagé (pré-remplit la recherche CP). */
-  postalCode: string | null;
-  /** Aller simple en voiture, minutes — null = best-effort non calculé. */
-  travelMinutes: number | null;
-  /** Calculé SERVEUR (= précision ville) — le front NE le re-dérive PAS d'un seuil. */
-  approximated: boolean;
-  source: OpponentTravelSource | null;
-  /** Le grain qui gouverne ce trajet : surcharge ÉQUIPE, défaut CLUB, ou aucun (null). */
-  scope: OpponentTravelScope | null;
-  overrideVenueLabel: string | null;
-  /**
-   * C5/C6 — l'état du trajet, SERVI (le front ne le re-dérive pas) : `done` (minutes présentes),
-   * `pending` (un calcul est en cours pour ce club, `club:{clubId}:travel`), `unavailable` (pas
-   * de calcul en cours et pas de minutes). Pilote la colonne « Trajet » et la progression.
-   */
-  travelStatus: "done" | "pending" | "unavailable";
-}
-
-export const getOpponentTravel = async (): Promise<OpponentTravel[]> =>
-  (await api.get("opponents/travel").json<{ opponents: OpponentTravel[] }>()).opponents;
-
-export interface OpponentTravelManualInput {
-  opponentOrganismeCode: string;
-  venueLabel: string;
-  venueExternalRef: string | null;
+export interface OpponentVenue {
+  id: string;
+  label: string;
+  externalRef: string | null;
+  /** Coordonnées fédérales du gymnase (publiques) — repassées telles quelles au geste de fusion. */
   latitude: number;
   longitude: number;
-  /** Le grain-équipe à épingler ; omis = le défaut du club. */
-  opponentTeamKey?: string | null;
-  /** TEAM (cette équipe) ou CLUB (défaut du club, n'écrase jamais une équipe déjà choisie). */
-  scope?: OpponentTravelScope;
+  source: OpponentTravelSource;
+  travelMinutes: number | null;
+  travelStatus: "done" | "pending" | "unavailable";
+  approximated: boolean;
+  fixtureCount: number;
+  fallbackVenueName: string | null;
 }
 
-/** Épingle un gymnase à la main pour un adversaire (surcharge MANUAL + recalcul du trajet). */
-export const setOpponentTravelManual = (input: OpponentTravelManualInput): Promise<unknown> =>
-  api.post("opponents/travel/manual", { json: input }).json();
+/** Un libellé de salle du fichier encore SANS lien (« à apparier »). */
+export interface OpponentUnmatchedLabel {
+  label: string;
+  fixtureCount: number;
+}
 
-export interface OpponentTravelAutoInput {
+/**
+ * Un CLUB adverse joué à l'extérieur, avec ses gymnases appariés et ses libellés à apparier.
+ * `code` null = adversaire sans code fédéral (non appariable). Tout vient du serveur.
+ */
+export interface OpponentClub {
+  code: string | null;
+  name: string;
+  city: string | null;
+  precision: OpponentLocationPrecision | null;
+  hasLogo: boolean;
+  fixtureCount: number;
+  venues: OpponentVenue[];
+  unmatchedLabels: OpponentUnmatchedLabel[];
+}
+
+export interface OpponentTravelPayload {
+  clubGeolocated: boolean;
+  opponents: OpponentClub[];
+}
+
+/** GET /api/opponents/travel — la liste PAR CLUB adverse + le booléen « siège localisé ». */
+export const getOpponentTravel = async (): Promise<OpponentTravelPayload> => {
+  const payload = await api.get("opponents/travel").json<{ clubGeolocated: boolean; opponents: OpponentClub[] }>();
+  return { clubGeolocated: payload.clubGeolocated, opponents: payload.opponents };
+};
+
+/** La réponse d'écriture d'un lien + le compte résultant du gymnase cible (fusion « en portera N »). */
+export interface VenueLinkWriteResult {
+  id: string;
   opponentOrganismeCode: string;
-  /** Avec teamKey : SUPPRIME la ligne équipe (retour au défaut du club). Sans : retour AUTO du club. */
-  opponentTeamKey?: string | null;
+  fbiLabel: string;
+  label: string;
+  externalRef: string | null;
+  source: OpponentTravelSource;
+  travelMinutes: number | null;
+  targetFixtureCount: number;
 }
 
-/** Rétablit la localisation automatique d'un adversaire (retire la surcharge). */
-export const setOpponentTravelAuto = (input: OpponentTravelAutoInput): Promise<unknown> =>
-  api.post("opponents/travel/auto", { json: input }).json();
+export interface AddOpponentVenueInput {
+  code: string;
+  venueLabel: string;
+  venueExternalRef?: string | null;
+  latitude: number;
+  longitude: number;
+  /** Le libellé de fichier que ce gymnase couvre ; par défaut le libellé du gymnase. */
+  fbiLabel?: string;
+}
+
+/** Ajoute un gymnase pour un adversaire (lien MANUAL, ref fédérale ou coordonnées). */
+export const addOpponentVenue = ({ code, ...body }: AddOpponentVenueInput): Promise<VenueLinkWriteResult> =>
+  api.post(`opponents/${encodeURIComponent(code)}/venues`, { json: body }).json<VenueLinkWriteResult>();
+
+export interface PairVenueLabelInput {
+  code: string;
+  fbiLabel: string;
+  venueLabel: string;
+  venueExternalRef?: string | null;
+  latitude: number;
+  longitude: number;
+}
+
+/** Apparie un libellé de salle ORPHELIN à un gymnase (lien MANUAL). */
+export const pairOpponentVenueLabel = ({ code, ...body }: PairVenueLabelInput): Promise<VenueLinkWriteResult> =>
+  api.post(`opponents/${encodeURIComponent(code)}/venue-links`, { json: body }).json<VenueLinkWriteResult>();
+
+export interface RepointVenueLinkInput {
+  id: string;
+  venueLabel: string;
+  venueExternalRef?: string | null;
+  latitude: number;
+  longitude: number;
+}
+
+/** Ré-apparie / fusionne un lien vers un autre gymnase (le libellé reste reconnu à l'import). */
+export const repointVenueLink = ({ id, ...body }: RepointVenueLinkInput): Promise<VenueLinkWriteResult> =>
+  api.put(`opponents/venue-links/${encodeURIComponent(id)}`, { json: body }).json<VenueLinkWriteResult>();
+
+/** Retire l'appariement LOCAL (le catalogue fédéral n'est jamais touché). */
+export const deleteVenueLink = (id: string): Promise<unknown> =>
+  api.delete(`opponents/venue-links/${encodeURIComponent(id)}`).then(() => null);
 
 /** L'origine fédérale d'un gymnase suggéré pour un adversaire — observé (API) ou choisi par des clubs (manuel). */
 export type VenueSuggestionSource = "FFBB_API" | "MANUAL";

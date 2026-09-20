@@ -1,4 +1,4 @@
-import type { Fixture, OpponentTravel, SportCategoryDuration, Team, TeamMatchHabit, Venue } from "../api";
+import type { Fixture, SportCategoryDuration, Team, TeamMatchHabit, Venue } from "../api";
 import { awayBandRows, buildAwayCells, shortWeekday } from "./awayColumn";
 import { awayHour } from "./awayKickoff";
 import { isoWeekday, timeToMinutes } from "./envelope";
@@ -336,7 +336,6 @@ export function buildWeekendGrid(
   weekendKey: string | null = null,
   stepMin = 15,
   durations: Map<string, number> = new Map(),
-  travel: OpponentTravel[] = [],
   showGhosts = true,
 ): WeekendGridModel {
   const placed = fixtures.filter(isPlacedOnGrid);
@@ -483,7 +482,7 @@ export function buildWeekendGrid(
   // lot 3 PR-3a — les blocs de la colonne « Extérieur » (à heure : couloirs partagés ;
   // sans heure : bande en tête). Ils rejoignent les couloirs via `intervals`.
   const awayCells = buildAwayCells(
-    { awayFixtures, teams, habits, travel, matchMinutesOf: (teamId) => matchMinutesOf(teamId, teams, durations), columnIndex, startMin, stepMin, bandRows },
+    { awayFixtures, teams, habits, matchMinutesOf: (teamId) => matchMinutesOf(teamId, teams, durations), columnIndex, startMin, stepMin, bandRows },
     intervals,
   );
   cells.push(...awayCells);

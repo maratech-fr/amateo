@@ -13,7 +13,7 @@ const teams = new Map<string, Team>([
 ].map((t) => [t.id, t as Team]));
 
 // Deux domiciles placés le même week-end, même gymnase, deux heures.
-const fixtureBase = { seasonId: "s", competitionId: null, homeAway: "HOME" as const, fbiVenueLabel: null, unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null };
+const fixtureBase = { seasonId: "s", competitionId: null, homeAway: "HOME" as const, fbiVenueLabel: null, unplacedReason: null, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null, fbiEcho: null, awayTravel: null };
 const fixtures = [
   { ...fixtureBase, id: "fxA", teamId: "tA", matchDate: "2026-10-03", opponentLabel: "Voisins", status: "PLACED" as const, venueId: "v1", kickoffTime: "16:00", externalRef: "12", placementSource: "MANUAL" as const },
   { ...fixtureBase, id: "fxB", teamId: "tB", matchDate: "2026-10-03", opponentLabel: "Rivaux", status: "PLACED" as const, venueId: "v1", kickoffTime: "18:00", externalRef: "26", placementSource: "SOLVER" as const },
@@ -43,15 +43,11 @@ describe("WeekendGrid — mode échange (RMM-1 PR4, L6)", () => {
 describe("WeekendGrid — colonne extérieur (lot 3 PR-3a)", () => {
   const awayBase = { ...fixtureBase, homeAway: "AWAY" as const, venueId: null, kickoffTime: null, status: "UNPLACED" as const, placementSource: null as null };
   const habit = { id: "h", teamId: "tA", dayOfWeek: 6, kickoffTime: "15:30", venueId: null } as import("./api").TeamMatchHabit;
-  const travel = {
-    opponentOrganismeCode: "C1", opponentTeamKey: "EPI-1", opponentLabel: "Épinouze", located: true, hasLogo: false, precision: "VENUE" as const,
-    locationName: "Halle Y", city: null, postalCode: null, travelMinutes: 45, approximated: false, source: "AUTO" as const, scope: "CLUB" as const, overrideVenueLabel: null, travelStatus: "done" as const,
-  };
   // Extérieur SANS heure réelle mais habitude samedi 15:30 → heure estimée + trajet 45 min.
-  const estimatedAway = { ...awayBase, id: "fxAway", teamId: "tA", matchDate: "2026-10-03", opponentLabel: "Épinouze", externalRef: null, opponentOrganismeCode: "C1", opponentTeamKey: "EPI-1" };
+  const estimatedAway = { ...awayBase, id: "fxAway", teamId: "tA", matchDate: "2026-10-03", opponentLabel: "Épinouze", externalRef: null, opponentOrganismeCode: "C1", opponentTeamKey: "EPI-1", awayTravel: { venueLabel: "Halle Y", city: null, precision: "VENUE" as const, oneWayMinutes: 45, approximated: false, basis: "linked" as const } };
 
   it("l'en-tête « Extérieur » porte l'icône bus (title À l'extérieur), jamais de pastille de gymnase", () => {
-    const model = buildWeekendGrid([estimatedAway], venues, teams, new Set(), [habit], "2026-10-03", 15, new Map(), [travel]);
+    const model = buildWeekendGrid([estimatedAway], venues, teams, new Set(), [habit], "2026-10-03", 15, new Map());
     const { container } = render(<WeekendGrid model={model} onSelectFixture={() => {}} />);
     const header = screen.getByTitle("À l'extérieur");
     expect(header).toHaveTextContent("Extérieur");
@@ -62,7 +58,7 @@ describe("WeekendGrid — colonne extérieur (lot 3 PR-3a)", () => {
   });
 
   it("le bloc extérieur porte data-away + data-fixture-id et un aria-label complet", () => {
-    const model = buildWeekendGrid([estimatedAway], venues, teams, new Set(), [habit], "2026-10-03", 15, new Map(), [travel]);
+    const model = buildWeekendGrid([estimatedAway], venues, teams, new Set(), [habit], "2026-10-03", 15, new Map());
     const { container } = render(<WeekendGrid model={model} onSelectFixture={() => {}} />);
     const block = container.querySelector('[data-away="true"]') as HTMLElement;
     expect(block).toHaveAttribute("data-fixture-id", "fxAway");
@@ -81,7 +77,7 @@ describe("WeekendGrid — colonne extérieur (lot 3 PR-3a)", () => {
 
   it("en mode échange, le bloc extérieur est INERTE (pas de bouton, estompé)", async () => {
     const onSelect = vi.fn();
-    const model = buildWeekendGrid([estimatedAway], venues, teams, new Set(), [habit], "2026-10-03", 15, new Map(), [travel]);
+    const model = buildWeekendGrid([estimatedAway], venues, teams, new Set(), [habit], "2026-10-03", 15, new Map());
     const { container } = render(<WeekendGrid model={model} onSelectFixture={onSelect} swapCandidateIds={new Set()} />);
     const block = container.querySelector('[data-away="true"]') as HTMLElement;
     // Rendu en <div>, pas <button> : aucun handler en mode échange.
@@ -93,7 +89,7 @@ describe("WeekendGrid — colonne extérieur (lot 3 PR-3a)", () => {
 
   it("hors échange, cliquer le bloc extérieur remonte son fixtureId (édition côté page)", async () => {
     const onSelect = vi.fn();
-    const model = buildWeekendGrid([estimatedAway], venues, teams, new Set(), [habit], "2026-10-03", 15, new Map(), [travel]);
+    const model = buildWeekendGrid([estimatedAway], venues, teams, new Set(), [habit], "2026-10-03", 15, new Map());
     render(<WeekendGrid model={model} onSelectFixture={onSelect} />);
     await userEvent.click(screen.getByRole("button", { name: /à Épinouze/ }));
     expect(onSelect).toHaveBeenCalledWith("fxAway");

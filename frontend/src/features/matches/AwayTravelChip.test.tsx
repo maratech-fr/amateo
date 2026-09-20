@@ -1,63 +1,63 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { OpponentTravel } from "./api";
+import type { AwayTravel } from "./api";
 import { AwayTravelChip } from "./AwayTravelChip";
 import { awayTravelTitle } from "./lib/awayTravelTitle";
 
-const travel = (over: Partial<OpponentTravel>): OpponentTravel => ({
-  opponentOrganismeCode: "ORG",
-  opponentTeamKey: "ADVERSAIRE",
-  opponentLabel: "Adversaire",
-  located: true,
-  hasLogo: false,
-  precision: "VENUE",
-  locationName: "Gymnase du Clar",
+const travel = (over: Partial<AwayTravel>): AwayTravel => ({
+  venueLabel: "Gymnase du Clar",
   city: null,
-  postalCode: null,
-  travelMinutes: 22,
+  precision: "VENUE",
+  oneWayMinutes: 22,
   approximated: false,
-  source: "AUTO",
-  scope: "CLUB",
-  overrideVenueLabel: null,
-  travelStatus: "done",
+  basis: "linked",
   ...over,
 });
 
-describe("AwayTravelChip — le trajet + la précision en queue de ligne (P2-54 PR-3)", () => {
-  it("VENUE : le gymnase exact + les minutes exactes, sans « approché »", () => {
+describe("AwayTravelChip — le trajet + le lieu d'une rencontre AWAY (dérivé de la rencontre)", () => {
+  it("linked : le gymnase exact + les minutes exactes, sans aucun repli", () => {
     render(<AwayTravelChip travel={travel({})} />);
     expect(screen.getByText("Gymnase du Clar")).toBeInTheDocument();
     expect(screen.getByText("22 min")).toBeInTheDocument();
     expect(screen.queryByText("approché")).not.toBeInTheDocument();
-    // a11y : le trajet voiture porte un aria-label nommant le lieu (patron TravelCell).
+    expect(screen.queryByText("gymnase supposé")).not.toBeInTheDocument();
     expect(screen.getByLabelText(/En voiture — trajet estimé à 22 minutes jusqu'à Gymnase du Clar/)).toBeInTheDocument();
   });
 
-  it("CITY : « ville de … », minutes préfixées de ~ et le mot « approché » (calculé serveur)", () => {
-    render(<AwayTravelChip travel={travel({ precision: "CITY", locationName: "Meyzieu", travelMinutes: 35, approximated: true })} />);
-    expect(screen.getByText("ville de Meyzieu")).toBeInTheDocument();
+  it("most_frequent : « gymnase supposé » + minutes préfixées de ~ et le mot « approché »", () => {
+    render(<AwayTravelChip travel={travel({ basis: "most_frequent", venueLabel: "Gymnase Principal", oneWayMinutes: 30, approximated: true })} />);
+    expect(screen.getByText("Gymnase Principal")).toBeInTheDocument();
+    expect(screen.getByText("gymnase supposé")).toBeInTheDocument();
+    expect(screen.getByText("~30 min")).toBeInTheDocument();
+    expect(screen.getByText("approché")).toBeInTheDocument();
+  });
+
+  it("city : « ville seule » sur la commune, minutes approchées", () => {
+    render(<AwayTravelChip travel={travel({ basis: "city", venueLabel: null, city: "Meyzieu", precision: "CITY", oneWayMinutes: 35, approximated: true })} />);
+    expect(screen.getByText("Meyzieu")).toBeInTheDocument();
+    expect(screen.getByText("ville seule")).toBeInTheDocument();
     expect(screen.getByText("~35 min")).toBeInTheDocument();
     expect(screen.getByText("approché")).toBeInTheDocument();
   });
 
-  it("adversaire non localisé : « lieu inconnu », aucun trajet", () => {
-    render(<AwayTravelChip travel={travel({ located: false, precision: null, locationName: null, travelMinutes: null, source: null })} />);
+  it("rencontre sans trajet (null) : « lieu inconnu », aucun trajet", () => {
+    render(<AwayTravelChip travel={null} />);
     expect(screen.getByText("lieu inconnu")).toBeInTheDocument();
     expect(screen.queryByText(/min/)).not.toBeInTheDocument();
   });
 
   it("lieu connu mais trajet non calculé : « trajet indisponible » muted, jamais role=alert", () => {
-    render(<AwayTravelChip travel={travel({ travelMinutes: null })} />);
+    render(<AwayTravelChip travel={travel({ oneWayMinutes: null })} />);
     expect(screen.getByText("· trajet indisponible")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("le titre de secours épelle le trajet en toutes lettres", () => {
     expect(awayTravelTitle(travel({}))).toBe("Gymnase du Clar · 22 min");
-    expect(awayTravelTitle(travel({ precision: "CITY", locationName: "Meyzieu", travelMinutes: 35, approximated: true }))).toBe(
+    expect(awayTravelTitle(travel({ basis: "city", venueLabel: null, city: "Meyzieu", precision: "CITY", oneWayMinutes: 35, approximated: true }))).toBe(
       "ville de Meyzieu · ~35 min (approché)",
     );
-    expect(awayTravelTitle(undefined)).toBe("lieu inconnu");
+    expect(awayTravelTitle(null)).toBe("lieu inconnu");
   });
 });

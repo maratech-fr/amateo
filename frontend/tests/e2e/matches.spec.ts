@@ -640,6 +640,45 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
 });
 
 /**
+ * Gymnases adverses (2026-09-20) — REFLOW mobile de l'écran Adversaires (WCAG 1.4.10). Le tableau
+ * par club adverse (`OpponentsPage`) est un `@container` : sous `@md`, les colonnes « Trajet » et
+ * « Rencontres » DISPARAISSENT (`hidden @md:table-cell`) et le trajet redescend dans une ligne
+ * empilée (`@md:hidden`), pour qu'à largeur téléphone la page ne défile JAMAIS horizontalement.
+ * Ce test verrouille cette promesse à 360 px, indépendamment du contenu (liste vide OU pleine) :
+ *   - témoin de rendu = la barre de recherche (toujours peinte, même liste vide) → pas de faux vert ;
+ *   - assertion = aucun débordement horizontal du document (scrollWidth ≤ largeur visible, tol. 1 px) ;
+ *   - contrôle du `@container` = l'en-tête de colonne « Trajet », s'il existe (liste non vide), est
+ *     bien MASQUÉ à cette largeur (il ne réapparaît qu'au-delà de `@md`).
+ * e2e écrit, PAS lancé (l'exécution des e2e reste au fondateur).
+ */
+test("gymnases adverses: l'écran Adversaires reflow sans défilement horizontal à 360 px", async ({ page }) => {
+  test.setTimeout(240_000); // l'onboarding peut lancer une génération CP-SAT réelle
+  await login(page);
+  await ensureValidated(page);
+
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto("/matchs/adversaires");
+
+  // Témoin : la barre de recherche est rendue quoi qu'il arrive — un scan sur page vide ne prouve rien.
+  const search = page.getByRole("searchbox", { name: "Rechercher un club ou une équipe" });
+  await expect(search).toBeVisible({ timeout: 15_000 });
+
+  // WCAG 1.4.10 — aucun défilement horizontal de la page à largeur téléphone.
+  const overflow = await page.evaluate(() => {
+    const el = document.documentElement;
+    return el.scrollWidth - el.clientWidth;
+  });
+  expect(overflow, "la page Adversaires déborde horizontalement à 360 px (le @container ne replie pas les colonnes)").toBeLessThanOrEqual(1);
+
+  // Si la liste porte au moins un club, l'en-tête « Trajet » (colonne `@md:table-cell`) est masqué
+  // à 360 px — la preuve directe que le repli `@container` opère (au-delà de la simple absence de scroll).
+  const trajetHeader = page.getByRole("columnheader", { name: "Trajet" });
+  if ((await trajetHeader.count()) > 0) {
+    await expect(trajetHeader.first()).toBeHidden();
+  }
+});
+
+/**
  * PR 3b « Calendrier unique » — la barre « Semaine affichée » (3 compteurs), la modale
  * « FBI — à faire », le suivi P4-197 après « Placer », et le clic d'une ligne Mois
  * qui bascule en Semaine (URL `semaine=`, cellule focalisée). Le test CRÉE sa donnée (un

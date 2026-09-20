@@ -59,7 +59,6 @@ import {
   useLeagueWindows,
   useMatchSlotRotations,
   useModuleVisit,
-  useOpponentTravel,
   usePlaceMatches,
   usePriorityTiers,
   useReopenFbiCorrection,
@@ -114,7 +113,6 @@ export function CalendarPage() {
   const unavailabilities = useVenueUnavailabilities();
   const habitsQuery = useTeamMatchHabits();
   const rotationsQuery = useMatchSlotRotations();
-  const opponentTravel = useOpponentTravel();
   const teamCoaches = useTeamCoaches();
   const coachPlayers = useCoachPlayers();
   const placeMatches = usePlaceMatches();
@@ -659,7 +657,6 @@ export function CalendarPage() {
               guards={placementGuards}
               habits={habits}
               rotations={rotations}
-              opponentTravel={opponentTravel.data ?? []}
               coachRoles={coachTeamRoles}
               resolvedTeamWindows={resolvedTeamWindows}
               windows={windows}

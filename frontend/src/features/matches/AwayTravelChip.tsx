@@ -1,35 +1,45 @@
-import { Car, MapPin, MapPinned } from "lucide-react";
+import { Car, HelpCircle, MapPin, MapPinned } from "lucide-react";
 
-import type { OpponentTravel } from "./api";
+import { StatusPill } from "@/shared/components/ui/badge";
+
+import type { AwayTravel } from "./api";
 
 /**
- * P2-54 RMM-9 PR-3 — le trajet + la précision du lieu d'un match AWAY, en CHIP de
- * queue de ligne (patron du badge « heure estimée »). La précision est portée par
- * l'ICÔNE + le MOT, jamais la couleur seule ; l'approximation par le `~` et le mot
- * « approché », jamais une teinte. Tout (précision, minutes, `approximated`) vient
- * du BACKEND — on choisit seulement l'icône/le mot depuis l'enum (présentation).
- * Un trajet manquant est un état muted silencieux, JAMAIS un role=alert.
+ * P2-54 — le trajet + le lieu d'un match AWAY, en CHIP de queue de ligne. Amendement
+ * 2026-09-20 : lit `fixture.awayTravel` (le trajet DÉRIVÉ de la rencontre, tout serveur —
+ * le front n'en dérive RIEN, il choisit l'icône/le mot depuis `basis`). Trois mots :
+ * `most_frequent` → « gymnase supposé » (repli), `city` → « ville seule », et un trajet de
+ * repli → « approché » (le tout en `StatusPill neutral`, jamais une teinte seule). Un trajet
+ * manquant est un état muted silencieux, jamais un role=alert.
  */
-export function AwayTravelChip({ travel }: { travel: OpponentTravel | undefined }) {
-  if (undefined === travel || !travel.located || null === travel.precision) {
+export function AwayTravelChip({ travel }: { travel: AwayTravel | null | undefined }) {
+  if (null === travel || undefined === travel) {
     return <span className="ml-1 text-xs text-muted-foreground">lieu inconnu</span>;
   }
 
-  const isCity = "CITY" === travel.precision;
-  const LocationIcon = isCity ? MapPin : MapPinned;
-  const place = travel.locationName ?? "";
-  const locationText = isCity ? `ville de ${place}` : place;
+  const place = travel.venueLabel ?? travel.city ?? "";
+  const LocationIcon = "city" === travel.basis ? MapPin : "most_frequent" === travel.basis ? HelpCircle : MapPinned;
 
   return (
     <span className="ml-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
       <LocationIcon className="size-3.5 shrink-0" aria-hidden="true" />
-      <span>{locationText}</span>
-      {null === travel.travelMinutes ? (
+      <span>{place}</span>
+      {"most_frequent" === travel.basis ? (
+        <StatusPill variant="warning" className="text-[10px]">
+          gymnase supposé
+        </StatusPill>
+      ) : null}
+      {"city" === travel.basis ? (
+        <StatusPill variant="warning" className="text-[10px]">
+          ville seule
+        </StatusPill>
+      ) : null}
+      {null === travel.oneWayMinutes ? (
         <span>· trajet indisponible</span>
       ) : (
         <>
           <span aria-hidden="true">·</span>
-          <TravelMinutes minutes={travel.travelMinutes} approximated={travel.approximated} place={place} />
+          <TravelMinutes minutes={travel.oneWayMinutes} approximated={travel.approximated} place={place} />
         </>
       )}
     </span>
@@ -37,10 +47,10 @@ export function AwayTravelChip({ travel }: { travel: OpponentTravel | undefined 
 }
 
 /**
- * Le FRAGMENT « voiture + minutes (+ approché) » d'un trajet estimé — extrait pour être réutilisé
- * tel quel par la colonne « Trajet » du tableau des adversaires (C8), sans recopier le rendu.
- * `tabular-nums` sur le nombre ; l'approximation par `~` + le mot « approché », jamais une teinte.
- * L'`aria-label` porte la phrase complète (le `·` et l'icône restent décoratifs).
+ * Le FRAGMENT « voiture + minutes (+ approché) » d'un trajet estimé — réutilisé tel quel par la
+ * colonne « Trajet » du tableau des adversaires. `tabular-nums` sur le nombre ; l'approximation
+ * par `~` + le mot « approché » en `StatusPill neutral` (jamais une teinte seule, dette soldée
+ * 2026-09-20). L'`aria-label` porte la phrase complète (le `·` et l'icône restent décoratifs).
  */
 export function TravelMinutes({ minutes, approximated, place }: { minutes: number; approximated: boolean; place: string }) {
   return (
@@ -50,7 +60,11 @@ export function TravelMinutes({ minutes, approximated, place }: { minutes: numbe
         {approximated ? "~" : ""}
         {minutes} min
       </span>
-      {approximated ? <span className="rounded bg-muted px-1 uppercase tracking-wide">approché</span> : null}
+      {approximated ? (
+        <StatusPill variant="neutral" className="text-[10px]">
+          approché
+        </StatusPill>
+      ) : null}
     </span>
   );
 }
