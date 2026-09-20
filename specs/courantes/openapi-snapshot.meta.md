@@ -3,7 +3,7 @@ club-scoped ; l'API des adversaires est GROUPÉE PAR CLUB adverse, avec les gest
 POST/PUT/DELETE ; `POST /api/opponents/travel/{manual,auto}` supprimées ; régénéré par `api:openapi:export`).
 **206 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** net (−2 manual/auto,
 +3 venues/venue-links/{code} & /{id}).
-· SHA-256 `de441963f0e302c0dba8af574c2d0c844f6a3150510155a9053de7465daa02dd`
+· SHA-256 `07ad52ca7ac33b9142a483621b006a1e3dc0093fd841e2530fbd06c43af6951d`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
@@ -17,8 +17,12 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   /api/opponents/{code}/venue-links` (apparier un libellé orphelin), `PUT`/`DELETE
   /api/opponents/venue-links/{id}` (ré-apparier/fusionner, retirer). `POST /api/opponents/travel/{manual,auto}`
   SUPPRIMÉES (grain équipe disparu). `POST /api/opponents/travel/resolve` conservée (dispatche le calcul des
-  paires manquantes). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23,
-  `matches[].roundTripMinutes` de forme identique, aucun appel moteur).
+  paires manquantes). **`FixtureResource` gagne un champ additif `awayTravel`** (le trajet DÉRIVÉ de la
+  rencontre extérieure : `{venueLabel, city, precision, oneWayMinutes, approximated, basis}` où `basis` =
+  `linked`|`most_frequent`|`city`, null pour un domicile), calculé EN BATCH par le provider de collection
+  (zéro N+1) — le chip de trajet du calendrier ne dépend plus de l'endpoint adversaires. Backend PUR, contrat
+  backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23, `matches[].roundTripMinutes` de forme identique,
+  aucun appel moteur).
 - **Sécurité H — dispatchers de trajets honnêtes si un calcul tourne déjà, backend (2026-09-19)** :
   **+0 path** — les trois routes qui dispatchent un calcul de trajets ne mentent plus quand le verrou
   `travel_compute:{clubId}` est tenu (un second message finirait en `failed`). Elles rendent alors

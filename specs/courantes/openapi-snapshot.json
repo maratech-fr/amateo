@@ -26649,6 +26649,29 @@
                         "additionalProperties": {
                             "type": "string"
                         }
+                    },
+                    "awayTravel": {
+                        "description": "Le trajet d'une rencontre EXT\u00c9RIEURE, D\u00c9RIV\u00c9 de la rencontre (jamais du club) : le\nlieu de l'adversaire + l'aller simple voiture depuis le si\u00e8ge du club. `null` pour un\ndomicile ou si rien n'est connu. `oneWayMinutes` peut \u00eatre null m\u00eame avec un lieu connu\n(trajet pas encore calcul\u00e9). `basis` porte la CAUSE (le front n'en d\u00e9rive rien) :\n`linked` = la salle de la rencontre est appari\u00e9e (exact) ; `most_frequent` = repli sur le\ngymnase le plus fr\u00e9quent du club adverse (\u00ab gymnase suppos\u00e9 \u00bb) ; `city` = coordonn\u00e9es de\nville (\u00ab ville seule \u00bb). `approximated` = le trajet est approch\u00e9 (repli). Rempli EN BATCH\npar le provider de collection (jamais par item \u2014 z\u00e9ro N+1).",
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "additionalProperties": {
+                            "anyOf": [
+                                {
+                                    "type": "boolean"
+                                },
+                                {
+                                    "type": "integer"
+                                },
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ]
+                        }
                     }
                 }
             },
@@ -26909,6 +26932,29 @@
                         "additionalProperties": {
                             "type": "string"
                         }
+                    },
+                    "awayTravel": {
+                        "description": "Le trajet d'une rencontre EXT\u00c9RIEURE, D\u00c9RIV\u00c9 de la rencontre (jamais du club) : le\nlieu de l'adversaire + l'aller simple voiture depuis le si\u00e8ge du club. `null` pour un\ndomicile ou si rien n'est connu. `oneWayMinutes` peut \u00eatre null m\u00eame avec un lieu connu\n(trajet pas encore calcul\u00e9). `basis` porte la CAUSE (le front n'en d\u00e9rive rien) :\n`linked` = la salle de la rencontre est appari\u00e9e (exact) ; `most_frequent` = repli sur le\ngymnase le plus fr\u00e9quent du club adverse (\u00ab gymnase suppos\u00e9 \u00bb) ; `city` = coordonn\u00e9es de\nville (\u00ab ville seule \u00bb). `approximated` = le trajet est approch\u00e9 (repli). Rempli EN BATCH\npar le provider de collection (jamais par item \u2014 z\u00e9ro N+1).",
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "additionalProperties": {
+                            "anyOf": [
+                                {
+                                    "type": "boolean"
+                                },
+                                {
+                                    "type": "integer"
+                                },
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ]
+                        }
                     }
                 }
             },
@@ -27075,6 +27121,29 @@
                                 ],
                                 "additionalProperties": {
                                     "type": "string"
+                                }
+                            },
+                            "awayTravel": {
+                                "description": "Le trajet d'une rencontre EXT\u00c9RIEURE, D\u00c9RIV\u00c9 de la rencontre (jamais du club) : le\nlieu de l'adversaire + l'aller simple voiture depuis le si\u00e8ge du club. `null` pour un\ndomicile ou si rien n'est connu. `oneWayMinutes` peut \u00eatre null m\u00eame avec un lieu connu\n(trajet pas encore calcul\u00e9). `basis` porte la CAUSE (le front n'en d\u00e9rive rien) :\n`linked` = la salle de la rencontre est appari\u00e9e (exact) ; `most_frequent` = repli sur le\ngymnase le plus fr\u00e9quent du club adverse (\u00ab gymnase suppos\u00e9 \u00bb) ; `city` = coordonn\u00e9es de\nville (\u00ab ville seule \u00bb). `approximated` = le trajet est approch\u00e9 (repli). Rempli EN BATCH\npar le provider de collection (jamais par item \u2014 z\u00e9ro N+1).",
+                                "type": [
+                                    "object",
+                                    "null"
+                                ],
+                                "additionalProperties": {
+                                    "anyOf": [
+                                        {
+                                            "type": "boolean"
+                                        },
+                                        {
+                                            "type": "integer"
+                                        },
+                                        {
+                                            "type": "string"
+                                        },
+                                        {
+                                            "type": "null"
+                                        }
+                                    ]
                                 }
                             }
                         }

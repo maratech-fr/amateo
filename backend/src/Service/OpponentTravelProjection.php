@@ -6,6 +6,7 @@ namespace App\Service;
 
 use App\Entity\Club;
 use App\Entity\Fixture;
+use App\Entity\OpponentDirectoryEntry;
 use App\Entity\OpponentVenueLink;
 use App\Enum\FixtureHomeAway;
 use App\Repository\ClubRepository;
@@ -16,25 +17,26 @@ use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\TravelTimeCache;
 
 /**
- * P2-54 — la MAISON UNIQUE de la projection « trajet aller-retour par rencontre AWAY ».
- * Amendement 2026-09-20 : le gymnase se rattache au CLUB adverse et au LIBELLÉ de salle
- * ({@see OpponentVenueLink}), le trajet est une CONSTANTE lue depuis {@see ClubTravelCache}
- * (siège du club → gymnase), jamais stockée par rencontre.
+ * P2-54 — la MAISON UNIQUE du trajet d'une rencontre AWAY. Amendement 2026-09-20 : le
+ * gymnase se rattache au CLUB adverse et au LIBELLÉ de salle ({@see OpponentVenueLink}),
+ * le trajet est une CONSTANTE lue depuis {@see ClubTravelCache} (siège du club → gymnase),
+ * jamais stockée par rencontre. Le trajet EST une propriété DÉRIVÉE de la rencontre (le
+ * besoin fondateur), pas du club — c'est ce service qui la dérive, en un seul endroit.
  *
- * Résolution d'une rencontre AWAY :
- *   1. son lien `(code, libellé FBI normalisé)` → gymnase → trajet en cache (EXACT) ;
- *   2. repli si la rencontre n'a pas de libellé ou pas de lien : le gymnase le PLUS
- *      FRÉQUENT de ce club adverse (parmi ses liens dont le trajet est déjà en cache,
- *      compté sur les rencontres AWAY) → trajet approché (`approximated`) ;
- *   3. repli VILLE : les coordonnées d'annuaire fédéral de l'adversaire → trajet approché ;
- *   4. sinon absente (aucun conflit spatial, dit franchement).
+ * Résolution d'une rencontre AWAY, avec sa CAUSE (`basis`) :
+ *   1. `linked` — son lien `(code, libellé FBI normalisé)` → gymnase EXACT ;
+ *   2. `most_frequent` — pas de libellé/lien : le gymnase le PLUS FRÉQUENT de ce club
+ *      adverse (parmi ses liens au trajet déjà en cache) → « gymnase supposé », approché ;
+ *   3. `city` — repli VILLE : l'annuaire fédéral de l'adversaire → « ville seule », approché ;
+ *   4. sinon absente (rien de connu).
  *
- * `roundTripByFixtureId` (fixtureId → 2 × aller simple) garde EXACTEMENT sa forme
- * `array<string, int>` : ses deux consommateurs de contrat — le radar
- * ({@see ConflictRadarLoader}) et le payload de placement D3
- * ({@see MatchPlacementPayloadBuilder}) — n'ont pas bougé (aucun bump de CONTRACT_VERSION).
- * {@see roundTripDetailByFixtureId} sert le même trajet PLUS le drapeau `approximated`
- * (calculé SERVEUR) aux consommateurs qui l'affichent (API adversaires).
+ * Trois vues, UNE source :
+ *   - {@see roundTripByFixtureId} (fixtureId → 2 × aller simple) — forme `array<string,int>`
+ *     INCHANGÉE, ses deux consommateurs de contrat (radar {@see ConflictRadarLoader}, payload
+ *     de placement D3 {@see MatchPlacementPayloadBuilder}) n'ont pas bougé (aucun bump) ;
+ *   - {@see roundTripDetailByFixtureId} (+ `approximated`) ;
+ *   - {@see awayTravelByFixtureId} — le DÉTAIL complet (lieu + aller simple + cause) que
+ *     `FixtureResource.awayTravel` expose au calendrier (chip par rencontre).
  */
 final class OpponentTravelProjection
 {
@@ -56,22 +58,59 @@ final class OpponentTravelProjection
     public function roundTripByFixtureId(?string $seasonId, array $fixtures): array
     {
         $minutes = [];
-        foreach ($this->roundTripDetailByFixtureId($seasonId, $fixtures) as $fixtureId => $detail) {
-            $minutes[$fixtureId] = $detail['minutes'];
+        foreach ($this->detailByFixtureId($seasonId, $fixtures) as $fixtureId => $detail) {
+            if (null !== $detail['oneWayMinutes']) {
+                $minutes[$fixtureId] = 2 * $detail['oneWayMinutes'];
+            }
         }
 
         return $minutes;
     }
 
     /**
-     * fixtureId → { minutes: aller-retour, approximated: le trajet vient d'un repli
-     * (gymnase supposé ou ville seule), pas du lien exact de la rencontre }.
+     * fixtureId → { minutes: aller-retour, approximated }. Seules les rencontres au trajet
+     * connu (aller simple en cache) y figurent.
      *
      * @param list<Fixture> $fixtures
      *
      * @return array<string, array{minutes: int, approximated: bool}>
      */
     public function roundTripDetailByFixtureId(?string $seasonId, array $fixtures): array
+    {
+        $result = [];
+        foreach ($this->detailByFixtureId($seasonId, $fixtures) as $fixtureId => $detail) {
+            if (null !== $detail['oneWayMinutes']) {
+                $result[$fixtureId] = ['minutes' => 2 * $detail['oneWayMinutes'], 'approximated' => $detail['approximated']];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * fixtureId → le DÉTAIL du trajet d'une rencontre AWAY (lieu, aller simple, cause),
+     * pour `FixtureResource.awayTravel`. Une rencontre dont RIEN n'est connu est ABSENTE
+     * (le champ vaut alors null). `oneWayMinutes` peut être null même avec un lieu connu
+     * (trajet pas encore calculé) — le chip montre le lieu sans les minutes.
+     *
+     * @param list<Fixture> $fixtures
+     *
+     * @return array<string, array{venueLabel: string|null, city: string|null, precision: string|null, oneWayMinutes: int|null, approximated: bool, basis: string}>
+     */
+    public function awayTravelByFixtureId(?string $seasonId, array $fixtures): array
+    {
+        return $this->detailByFixtureId($seasonId, $fixtures);
+    }
+
+    /**
+     * Le foyer de résolution : fixtureId → détail complet, pour les seules rencontres AWAY
+     * dont au moins un LIEU est connu (lien, gymnase supposé, ou ville).
+     *
+     * @param list<Fixture> $fixtures
+     *
+     * @return array<string, array{venueLabel: string|null, city: string|null, precision: string|null, oneWayMinutes: int|null, approximated: bool, basis: string}>
+     */
+    private function detailByFixtureId(?string $seasonId, array $fixtures): array
     {
         $result = [];
         if (null === $seasonId || [] === $fixtures) {
@@ -103,38 +142,58 @@ final class OpponentTravelProjection
         ));
 
         $mostFrequentGym = $this->mostFrequentResolvedGymByCode($away, $linkByKey, $cacheByDest);
-        $directoryByCode = $this->directoryCoordsByCode($away);
+        $directoryByCode = $this->directoryByCode($away);
 
         foreach ($away as $fixture) {
             $code = (string) $fixture->getOpponentOrganismeCode();
             $norm = $this->normalizedLabel($fixture);
             $link = null !== $norm ? ($linkByKey[$code . '|' . $norm] ?? null) : null;
 
-            // 1. Le lien EXACT de la rencontre.
+            // 1. `linked` — le lien EXACT de la rencontre (lieu toujours connu ; trajet peut
+            // n'être pas encore en cache → oneWay null, le chip montre le lieu sans minutes).
             if ($link instanceof OpponentVenueLink) {
-                $oneWay = $cacheByDest[$this->travelCache->destKey($link->getLatitude(), $link->getLongitude())] ?? null;
-                if (null !== $oneWay) {
-                    $result[$fixture->getId()] = ['minutes' => 2 * $oneWay, 'approximated' => false];
-                }
-
-                continue; // lien présent mais trajet non calculé (pending) → absent, jamais un repli
-            }
-
-            // 2. Repli gymnase le plus fréquent de ce club adverse.
-            $fallback = $mostFrequentGym[$code] ?? null;
-            if (null !== $fallback) {
-                $result[$fixture->getId()] = ['minutes' => 2 * $fallback, 'approximated' => true];
+                $result[$fixture->getId()] = [
+                    'venueLabel' => $link->getVenueLabel(),
+                    'city' => null,
+                    'precision' => 'VENUE',
+                    'oneWayMinutes' => $cacheByDest[$this->travelCache->destKey($link->getLatitude(), $link->getLongitude())] ?? null,
+                    'approximated' => false,
+                    'basis' => 'linked',
+                ];
 
                 continue;
             }
 
-            // 3. Repli VILLE (coordonnées d'annuaire).
-            $dir = $directoryByCode[$code] ?? null;
-            if (null !== $dir) {
-                $oneWay = $cacheByDest[$this->travelCache->destKey($dir[0], $dir[1])] ?? null;
-                if (null !== $oneWay) {
-                    $result[$fixture->getId()] = ['minutes' => 2 * $oneWay, 'approximated' => true];
-                }
+            // 2. `most_frequent` — le gymnase dominant de ce club adverse (toujours en cache).
+            $fallback = $mostFrequentGym[$code] ?? null;
+            if (null !== $fallback) {
+                $result[$fixture->getId()] = [
+                    'venueLabel' => $fallback['label'],
+                    'city' => null,
+                    'precision' => 'VENUE',
+                    'oneWayMinutes' => $fallback['oneWay'],
+                    'approximated' => true,
+                    'basis' => 'most_frequent',
+                ];
+
+                continue;
+            }
+
+            // 3. `city` — l'annuaire fédéral (ville seule). Trajet depuis les coordonnées ville
+            // si en cache, sinon absent (le chip montre « ville seule » sans minutes).
+            $entry = $directoryByCode[$code] ?? null;
+            if ($entry instanceof OpponentDirectoryEntry && (null !== $entry->getCity() || (null !== $entry->getLatitude() && null !== $entry->getLongitude()))) {
+                $lat = $entry->getLatitude();
+                $lon = $entry->getLongitude();
+                $oneWay = null !== $lat && null !== $lon ? ($cacheByDest[$this->travelCache->destKey($lat, $lon)] ?? null) : null;
+                $result[$fixture->getId()] = [
+                    'venueLabel' => null,
+                    'city' => $entry->getCity(),
+                    'precision' => $entry->getPrecision()->value,
+                    'oneWayMinutes' => $oneWay,
+                    'approximated' => true,
+                    'basis' => 'city',
+                ];
             }
         }
 
@@ -142,19 +201,18 @@ final class OpponentTravelProjection
     }
 
     /**
-     * Par code adverse, le trajet aller simple (en cache) du gymnase le PLUS FRÉQUENT parmi
-     * les rencontres AWAY qui portent un lien résolu (trajet déjà calculé). Sert de repli aux
-     * rencontres du même adversaire sans libellé/lien.
+     * Par code adverse, le gymnase le PLUS FRÉQUENT (libellé + aller simple en cache) parmi
+     * les rencontres AWAY qui portent un lien résolu. Repli des rencontres sans libellé/lien.
      *
      * @param list<Fixture>                    $away
      * @param array<string, OpponentVenueLink> $linkByKey
      * @param array<string, int>               $cacheByDest
      *
-     * @return array<string, int> code → aller simple (minutes) du gymnase dominant
+     * @return array<string, array{oneWay: int, label: string}>
      */
     private function mostFrequentResolvedGymByCode(array $away, array $linkByKey, array $cacheByDest): array
     {
-        /** @var array<string, array<string, array{count: int, oneWay: int}>> $byCode */
+        /** @var array<string, array<string, array{count: int, oneWay: int, label: string}>> $byCode */
         $byCode = [];
         foreach ($away as $fixture) {
             $norm = $this->normalizedLabel($fixture);
@@ -171,7 +229,7 @@ final class OpponentTravelProjection
             if (null === $oneWay) {
                 continue; // gymnase non encore routé : ne peut servir de repli
             }
-            $byCode[$code][$destKey] ??= ['count' => 0, 'oneWay' => $oneWay];
+            $byCode[$code][$destKey] ??= ['count' => 0, 'oneWay' => $oneWay, 'label' => $link->getVenueLabel()];
             ++$byCode[$code][$destKey]['count'];
         }
 
@@ -184,7 +242,7 @@ final class OpponentTravelProjection
                 }
             }
             if (null !== $best) {
-                $result[$code] = $best['oneWay'];
+                $result[$code] = ['oneWay' => $best['oneWay'], 'label' => $best['label']];
             }
         }
 
@@ -194,9 +252,9 @@ final class OpponentTravelProjection
     /**
      * @param list<Fixture> $away
      *
-     * @return array<string, array{0: float, 1: float}> code → [lat, lon] de l'annuaire
+     * @return array<string, OpponentDirectoryEntry> code → entrée d'annuaire fédéral
      */
-    private function directoryCoordsByCode(array $away): array
+    private function directoryByCode(array $away): array
     {
         $codes = [];
         foreach ($away as $fixture) {
@@ -207,11 +265,7 @@ final class OpponentTravelProjection
         }
         $byCode = [];
         foreach ($this->directory->findByFfbbOrganismeCodes(array_values(array_unique($codes))) as $entry) {
-            $lat = $entry->getLatitude();
-            $lon = $entry->getLongitude();
-            if (null !== $lat && null !== $lon) {
-                $byCode[$entry->getFfbbOrganismeCode()] = [$lat, $lon];
-            }
+            $byCode[$entry->getFfbbOrganismeCode()] = $entry;
         }
 
         return $byCode;
