@@ -221,6 +221,28 @@ describe("OpponentsPage — la liste par club adverse (grain gymnase)", () => {
     expect(within(dialog).getByLabelText("Commune (code postal)")).toHaveValue("69530");
   });
 
+  it("le rang du club est GELÉ au montage : un club apparié ne saute pas dans le tri", async () => {
+    const user = userEvent.setup();
+    // Au montage : « Zoulou » (sans gymnase) passe premier (règle sans-gym), « Alpha » (avec gymnase) second.
+    travelState.data = {
+      clubGeolocated: true,
+      opponents: [club({ code: "Z", name: "Zoulou", venues: [] }), club({ code: "A", name: "Alpha", venues: [venue({ id: "la", label: "Gym Alpha" })] })],
+    };
+    renderWithProviders(<OpponentsPage />);
+    expect(screen.getAllByRole("rowheader")[0]).toHaveTextContent("Zoulou");
+
+    // « Zoulou » gagne un gymnase ; une recherche neutre (« Gym » matche les deux) force un
+    // re-render sur la NOUVELLE donnée. SANS gel, le tri alpha le ferait passer APRÈS « Alpha ».
+    travelState.data = {
+      clubGeolocated: true,
+      opponents: [club({ code: "Z", name: "Zoulou", venues: [venue({ id: "lz", label: "Gym Zoulou" })] }), club({ code: "A", name: "Alpha", venues: [venue({ id: "la", label: "Gym Alpha" })] })],
+    };
+    await user.type(screen.getByRole("searchbox"), "Gym");
+    const order = screen.getAllByRole("rowheader");
+    expect(order[0]).toHaveTextContent("Zoulou");
+    expect(order[1]).toHaveTextContent("Alpha");
+  });
+
   it("le bandeau siège paraît quand le club n'est pas localisé", () => {
     geolocatedState.value = false;
     travelState.data = { clubGeolocated: false, opponents: [club({ name: "ASVEL", venues: [venue({ id: "l1", label: "Gym" })] })] };

@@ -1,5 +1,5 @@
 import { MapPinOff, MoreHorizontal, Plus, RefreshCw, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import { StatusPill } from "@/shared/components/ui/badge";
@@ -104,8 +104,20 @@ export function OpponentsPage() {
       return haystacks.some((h) => textMatchesQuery(h, tokens));
     });
   }, [opponents, tokens, activeFilter]);
-  // Tri : les clubs SANS gymnase d'abord, puis alphabétique (fr).
-  const sortedOpponents = [...filteredOpponents].sort((a, b) => (0 === a.venues.length ? 0 : 1) - (0 === b.venues.length ? 0 : 1) || a.name.localeCompare(b.name, "fr"));
+
+  // Rang GELÉ au montage (décision fondateur 2026-09-20) : le backend sert déjà les clubs
+  // SANS gymnase d'abord, puis alphabétique — on FIGE cet ordre à la première liste non vide
+  // pour qu'un club qu'on vient d'apparier ne SAUTE pas de place sous les mains. Portée =
+  // montage du composant (quitter l'onglet et revenir recalcule, assumé). Un club apparu
+  // après le gel s'ajoute en fin (rang « infini », stable dans l'ordre backend).
+  const rankRef = useRef<Map<string, number>>(new Map());
+  useEffect(() => {
+    if (0 === rankRef.current.size && opponents.length > 0) {
+      opponents.forEach((o, index) => rankRef.current.set(o.code ?? o.name, index));
+    }
+  }, [opponents]);
+  const frozenRank = (o: OpponentClub): number => rankRef.current.get(o.code ?? o.name) ?? Number.MAX_SAFE_INTEGER;
+  const sortedOpponents = [...filteredOpponents].sort((a, b) => frozenRank(a) - frozenRank(b));
 
   const updateLabel = "running" === update.step ? "Mise à jour…" : "Mettre à jour les adversaires";
 
