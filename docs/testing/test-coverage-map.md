@@ -1,9 +1,11 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-19 (`documentation-update`, PR G « todo FBI unique ») : nouvelle ligne
-`ce-que-fbi-doit-refleter.feature` (registre « à corriger dans FBI ») recroisée contre
-`backend/features/ce-que-fbi-doit-refleter.feature` — 2 scénarios, suite `fbi-a-corriger`. Reste
-des lignes non touchées cette passe — historique complet :
+Last verified @ 2026-09-20 (`documentation-update`, dette CI « reflow cassé sous 360 px »,
+mesure Playwright hors `/audit`) : nouveau §4 « Reflow sous 360 px » — confronté au code cette
+passe : `DevClock` rendu par `AppLayout.tsx:64` uniquement sous `import.meta.env.DEV`
+(`frontend/src/app/DevClock.tsx:71-79`, bouton horloge date+heure) ✓ ; seul
+`frontend/tests/e2e/matches.spec.ts` porte un test de reflow à 360 px, scopé à
+`/matchs/adversaires` ✓. Reste des lignes non touchées cette passe — historique complet :
 `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
@@ -92,6 +94,22 @@ rail réel, le comportement est conforme à l'invariant `CLAUDE.md` §6 (le verr
 diagnostiquée) — la relocalisation constatée au cadrage venait d'un cache de payload périmé, pas du
 produit. `un-verrou-est-souverain.feature` porte désormais ce scénario. Cette section reste la
 maison des prochains angles morts trouvés.
+
+**Reflow sous 360 px (WCAG 1.4.10) — mesuré cassé sur tout le produit, aucune garde généralisée
+(2026-09-20).** `axe-core` (les scans `a11y-contrast.spec.ts` et consorts) ne teste QUE le contraste/
+les rôles ARIA — jamais le reflow (débordement horizontal à largeur téléphone) : seul Playwright,
+qui possède un vrai moteur de layout (jsdom n'en a aucun, `.claude/rules/frontend.md`), peut le
+mesurer, et rien ne le fait aujourd'hui à l'échelle du produit. Mesure directe (`document.
+scrollingElement.scrollWidth` vs `clientWidth` à 360 px) : accueil **558 px**, `/planning`
+**501 px**, `/matchs` **370 px**, `/club` **370 px**, `/matchs/adversaires` **370 px** — cinq routes
+débordent, aucune ne tient les 360 px annoncés. Le coupable commun des trois `370 px` est le bouton
+horloge de l'en-tête global (`DevClock`, `frontend/src/app/AppLayout.tsx:64` sous
+`import.meta.env.DEV`, label date+heure complet non tronqué, `frontend/src/app/DevClock.tsx:71-79`)
+— **DEV-only** : son impact sur un build de PRODUCTION (où `DevClock` ne se monte jamais) reste à
+re-mesurer séparément, ne pas le supposer identique. Accueil et `/planning` débordent pour leurs
+PROPRES raisons, non instruites. Seul `/matchs/adversaires` porte aujourd'hui un test ciblé
+(`frontend/tests/e2e/matches.spec.ts`, écrit avec l'écran lui-même, PR I 2026-09-20) — un seul écran
+sur cinq mesurés en défaut. Roadmap : P4-251.
 
 **Appariement FFBB (engagements, tous canaux) — jamais de feature Behat, structurel.** L'env dev de
 Behat pointe la vraie FFBB (`with-sandbox.sh`) ; le double déterministe `FfbbHttpClientStub` n'est
