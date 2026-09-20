@@ -173,4 +173,42 @@ describe("LocateOpponentModal — ajouter / apparier un gymnase", () => {
     const list = screen.getByRole("list", { name: /Salles FFBB/ });
     expect(within(list).getByRole("button", { name: /Gymnase des Servizières/ })).toBeDisabled();
   });
+
+  it("mode APPARIER enchaîne : un succès retire le libellé et avance au suivant sans fermer, le pied dit « Terminer »", async () => {
+    pairMutate.mockImplementation((_input: unknown, opts?: { onSuccess?: () => void; onSettled?: () => void }) => {
+      opts?.onSuccess?.();
+      opts?.onSettled?.();
+    });
+    suggestionsState.data = [suggestion({ externalRef: "S1", label: "Gym Choisi", latitude: 45.7, longitude: 4.9 })];
+    const onClose = vi.fn();
+    renderWithProviders(
+      <LocateOpponentModal code="ARA0069001" clubName="Meyzieu Basket" fbiLabel="SALLE A" unmatchedLabels={["SALLE A", "SALLE B"]} postalCode="69330" city="Meyzieu" onClose={onClose} />,
+    );
+    expect(screen.getByText("Apparier « SALLE A »")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Terminer" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Gym Choisi/ }));
+    expect(pairMutate.mock.calls[0][0].fbiLabel).toBe("SALLE A");
+    expect(onClose).not.toHaveBeenCalled();
+    // La file avance : le titre passe au libellé suivant, la modale reste ouverte.
+    expect(screen.getByText("Apparier « SALLE B »")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Gym Choisi/ }));
+    expect(pairMutate.mock.calls[1][0].fbiLabel).toBe("SALLE B");
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("mode AJOUT : le succès ferme la modale (jamais d'enchaînement)", async () => {
+    addMutate.mockImplementation((_input: unknown, opts?: { onSuccess?: () => void; onSettled?: () => void }) => {
+      opts?.onSuccess?.();
+      opts?.onSettled?.();
+    });
+    suggestionsState.data = [suggestion({ externalRef: "S1", label: "Gym", latitude: 45.7, longitude: 4.9 })];
+    const onClose = vi.fn();
+    renderAdd(onClose);
+    // Le pied « Terminer » de l'enchaînement n'existe PAS en mode ajout.
+    expect(screen.queryByRole("button", { name: "Terminer" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Gym/ }));
+    expect(onClose).toHaveBeenCalled();
+  });
 });

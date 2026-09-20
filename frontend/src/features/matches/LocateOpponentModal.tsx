@@ -28,6 +28,7 @@ export function LocateOpponentModal({
   code,
   clubName,
   fbiLabel,
+  unmatchedLabels,
   city,
   postalCode,
   onClose,
@@ -36,6 +37,12 @@ export function LocateOpponentModal({
   clubName: string;
   /** Le libellé de fichier à apparier (ligne orpheline) ; null = ajouter un gymnase au club. */
   fbiLabel: string | null;
+  /**
+   * Les libellés orphelins du club (mode appariement) — la FILE que la modale enchaîne : au
+   * succès, elle retire l'apparié et avance au suivant. LOCALE (figée à l'ouverture) : le refetch
+   * invalidé arrive après le succès et ferait clignoter le titre. Ignorée en mode ajout.
+   */
+  unmatchedLabels?: string[];
   /** Ville + code postal fédéraux du club adverse — situent la recherche, jamais inventés si null. */
   city: string | null;
   postalCode: string | null;
@@ -45,6 +52,11 @@ export function LocateOpponentModal({
   // « Brignais 69530 » / « Brignais » / « 69530 » / "" — on ne montre que ce qui est connu.
   const locationContext = [city, postalCode].filter((part): part is string => null !== part && "" !== part).join(" ");
   const [pendingKey, setPendingKey] = useState<string | null>(null);
+
+  // La FILE des libellés à apparier — figée à l'ouverture (le libellé cliqué en tête, puis les
+  // autres orphelins du club). En mode ajout, vide. Le libellé courant = queue[0].
+  const [queue, setQueue] = useState<string[]>(() => (null === fbiLabel ? [] : [fbiLabel, ...(unmatchedLabels ?? []).filter((label) => label !== fbiLabel)]));
+  const currentLabel = null === fbiLabel ? null : (queue[0] ?? fbiLabel);
 
   const suggestionsQuery = useVenueSuggestions(code);
   const sallesQuery = useFfbbSalles(cp);
@@ -59,40 +71,67 @@ export function LocateOpponentModal({
   const cpReady = /^\d{5}$/.test(cp);
   const sallesState = readState({ data: cpReady ? (sallesQuery.data ?? undefined) : {}, isError: sallesQuery.isError });
 
-  /** Un seul geste : un clic pose le lien (appariement d'orphelin OU ajout) et ferme au succès. */
+  /**
+   * Un clic pose le lien. Mode AJOUT : un seul geste, on ferme au succès. Mode APPARIEMENT :
+   * on ENCHAÎNE — au succès on retire le libellé apparié de la file et on avance au suivant ;
+   * file vidée → fermeture. La file est locale (jamais dérivée du refetch, qui clignoterait).
+   */
   const submit = (venueLabel: string, venueExternalRef: string | null, latitude: number, longitude: number, key: string): void => {
     if ("" === code) {
       return;
     }
     setPendingKey(key);
     const onSettled = { onSettled: () => setPendingKey(null) } as const;
-    const onSuccess = () => {
-      toast.success(null === fbiLabel ? `Gymnase ajouté pour ${clubName}.` : `« ${fbiLabel} » apparié.`);
-      onClose();
-    };
     if (null === fbiLabel) {
-      addVenue.mutate({ code, venueLabel, venueExternalRef, latitude, longitude }, { onSuccess, ...onSettled });
-    } else {
-      pairLabel.mutate({ code, fbiLabel, venueLabel, venueExternalRef, latitude, longitude }, { onSuccess, ...onSettled });
+      addVenue.mutate(
+        { code, venueLabel, venueExternalRef, latitude, longitude },
+        {
+          onSuccess: () => {
+            toast.success(`Gymnase ajouté pour ${clubName}.`);
+            onClose();
+          },
+          ...onSettled,
+        },
+      );
+      return;
     }
+    const label = currentLabel;
+    if (null === label) {
+      return;
+    }
+    pairLabel.mutate(
+      { code, fbiLabel: label, venueLabel, venueExternalRef, latitude, longitude },
+      {
+        onSuccess: () => {
+          toast.success(`« ${label} » apparié.`);
+          const rest = queue.slice(1);
+          if (0 === rest.length) {
+            onClose();
+            return;
+          }
+          setQueue(rest);
+        },
+        ...onSettled,
+      },
+    );
   };
 
   return (
     <Modal
       label={null === fbiLabel ? "Ajouter un gymnase" : "Apparier un libellé"}
-      title={null === fbiLabel ? `Ajouter un gymnase — ${clubName}` : `Apparier « ${fbiLabel} »`}
+      title={null === fbiLabel ? `Ajouter un gymnase — ${clubName}` : `Apparier « ${currentLabel} »`}
       onClose={onClose}
       size="lg"
       footer={
         <Button variant="outline" size="sm" onClick={onClose}>
-          Fermer
+          {null === fbiLabel ? "Fermer" : "Terminer"}
         </Button>
       }
     >
       <div className="flex flex-col gap-4">
         {null !== fbiLabel ? (
           <p className="text-xs text-muted-foreground">
-            Choisissez le gymnase de <span className="font-medium text-foreground">« {fbiLabel} »</span> ({clubName})
+            Choisissez le gymnase de <span className="font-medium text-foreground">« {currentLabel} »</span> ({clubName})
             {"" !== locationContext ? <span> · {locationContext}</span> : "."}
           </p>
         ) : "" !== locationContext ? (

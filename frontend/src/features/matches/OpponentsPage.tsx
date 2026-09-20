@@ -41,6 +41,8 @@ interface Locating {
   clubName: string;
   /** Le libellé de fichier à apparier (ligne orpheline) ; null = « ajouter un gymnase » au club. */
   fbiLabel: string | null;
+  /** Les libellés orphelins du club — la file que la modale enchaîne (mode appariement). */
+  unmatchedLabels: string[];
   city: string | null;
   postalCode: string | null;
 }
@@ -242,8 +244,11 @@ export function OpponentsPage() {
                     key={`club-${club.code ?? club.name}`}
                     club={club}
                     filter={activeFilter}
-                    onAddVenue={() => club.code !== null && setLocating({ code: club.code, clubName: club.name, fbiLabel: null, city: club.city, postalCode: club.postalCode })}
-                    onPairLabel={(label) => club.code !== null && setLocating({ code: club.code, clubName: club.name, fbiLabel: label, city: club.city, postalCode: club.postalCode })}
+                    onAddVenue={() => club.code !== null && setLocating({ code: club.code, clubName: club.name, fbiLabel: null, unmatchedLabels: [], city: club.city, postalCode: club.postalCode })}
+                    onPairLabel={(label) =>
+                      club.code !== null
+                      && setLocating({ code: club.code, clubName: club.name, fbiLabel: label, unmatchedLabels: club.unmatchedLabels.map((u) => u.label), city: club.city, postalCode: club.postalCode })
+                    }
                     onRemove={(venue) => setToRemove({ club, venue })}
                     onMerge={(source, target) => setToMerge({ club, source, target })}
                   />
@@ -261,7 +266,15 @@ export function OpponentsPage() {
       ) : null}
 
       {null !== locating ? (
-        <LocateOpponentModal code={locating.code} clubName={locating.clubName} fbiLabel={locating.fbiLabel} city={locating.city} postalCode={locating.postalCode} onClose={() => setLocating(null)} />
+        <LocateOpponentModal
+          code={locating.code}
+          clubName={locating.clubName}
+          fbiLabel={locating.fbiLabel}
+          unmatchedLabels={locating.unmatchedLabels}
+          city={locating.city}
+          postalCode={locating.postalCode}
+          onClose={() => setLocating(null)}
+        />
       ) : null}
 
       {/* Retirer un gymnase — destructif, la conséquence NOMMÉE (texte du serveur, jamais dérivé). */}
