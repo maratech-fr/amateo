@@ -1,9 +1,25 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-19 (`documentation-update`, retouches revue sécurité H — `81772f59`).
-Confronté au code cette passe : les trois dispatchers de trajets répondent `{queued: false,
-alreadyRunning: true}` sans dispatcher quand `TravelComputeLock` est tenu — § Écran Adversaires
-recalée (toast « Un calcul de trajets est déjà en cours. »). Reste confronté à la passe précédente
+Last verified @ 2026-09-20 (`documentation-update`, PR I « les gymnases adverses appartiennent au
+club, le trajet au gymnase » — amendement fondateur, `3993cbd3`…`3e203402`). Confronté au code
+cette passe : `OpponentVenueLink` (entité tenant, club-scoped SANS saison, grain `(club, code
+organisme, libellé FBI normalisé)`, `OpponentVenueLink.php`) a remplacé `OpponentTravel`
+(supprimée, migration `Version20260920140000`, cf. `PurgeCompletenessTest` RED→GREEN sur le
+nouveau grain) — un adversaire joue dans une salle donnée quelle que soit son équipe ou la saison
+(prouvé en base : même équipe, deux salles) ; `OpponentTravelController` (4 routes neuves `POST
+/{code}/venues`, `POST /{code}/venue-links`, `PUT`/`DELETE /venue-links/{id}` — foyer d'écriture
+`OpponentVenueLinkManager` —, 2 supprimées `travel/manual`/`travel/auto`) ; `GET
+/api/opponents/travel` change de forme (groupé par CLUB adverse, § Écran Adversaires) ;
+`App\Service\OpponentTravelProjection::awayTravelByFixtureId` (le trajet DÉRIVÉ de la rencontre,
+`basis: linked|most_frequent|city`) alimente `FixtureResource.awayTravel` (champ additif, calculé
+en BATCH par `FixtureStateProvider::decorateCollection`, zéro N+1) ; `OpponentPlaceResolver`/
+`OpponentTravelResolver` re-pointés sur le lien ; `opponent_venue_suggestion` requalifié
+« catalogue fédéral des gymnases adverses » (contenu inchangé, grain de comptage suit désormais le
+lien). Preuve : `MatchPlacementContractSchemaTest` vert SANS modification, `engine/CONTRACT_VERSION`
+inchangé (2.23). Reste confronté à la passe précédente (2026-09-19, retouches revue sécurité H) :
+les trois dispatchers de trajets répondent `{queued: false, alreadyRunning: true}` sans dispatcher
+quand `TravelComputeLock` est tenu — § Écran Adversaires (toast « Un calcul de trajets est déjà en
+cours. »). Reste confronté à la passe d'avant
 (2026-09-19, PR H « onglet Adversaires » — cache de trajets, calcul asynchrone, logo fédéral,
 deep-link `match=`, tri du rapprochement FFBB) : `OpponentsPage.tsx` (l'onglet dédié,
 `OpponentTravelCard` a disparu — nouvelle section « Écran Adversaires ») ;
@@ -78,7 +94,10 @@ vigueur, il n'a rien à comparer.
   (`MANUAL`/`SOLVER`/null legacy), `unplacedReason` (raison persistante, ex. `venue_lost`),
   `keptVenueLabel` (idempotence d'arbitrage salle), `reviewState`/`reviewedAt`/`pendingDeviations`
   (workflow de traitement, §5). L'import FBI crée **tout** en `UNPLACED`, domicile et extérieur —
-  seul un geste du gestionnaire pose un autre statut (`FixtureStatus` docblock).
+  seul un geste du gestionnaire pose un autre statut (`FixtureStatus` docblock). `awayTravel`
+  (champ additif en LECTURE seulement, `FixtureResource`, jamais persisté sur l'entité) : le trajet
+  d'une rencontre EXTÉRIEURE, DÉRIVÉ de la rencontre elle-même — voir « Table TENANT
+  `OpponentVenueLink` » ci-dessous.
 - **`TeamMatchHabit`** : jour ISO + heure-point + gymnase optionnel, une par jour et par équipe.
 - **`TeamLink`** (couple symétrique `teamAId < teamBId`, cap `MAX_TEAM_LINKS = 50`) : côté MATCHS
   `TeamLinkType` `NOT_SIMULTANEOUS`/`BACK_TO_BACK` (rail SOFT radar/placement) ; côté ENTRAÎNEMENT
@@ -135,41 +154,62 @@ club lecteur).
 - **`SharedCompetitionDeadline`** : le défaut communautaire d'échéance de saisie, keyé
   `ffbbCompetitionId` — voir §4.
 
-### Table TENANT `OpponentTravel`
+### Table TENANT `OpponentVenueLink` (amendement PR I, 2026-09-20)
 
-Le trajet aller simple (voiture, `IgnRoutingClient` depuis `Club.latitude/longitude`) vers le
-gymnase d'un adversaire, résolu par `OpponentTravelResolver` (MANUAL jamais écrasé par AUTO). Grain
-**ÉQUIPE** : `opponent_team_key` (libellé de rencontre normalisé) surcharge la ligne CLUB (défaut
-historique) ; unicité `(club, saison, code, teamKey)` en `NULLS NOT DISTINCT`. Résolution en
-cascade **équipe → club → annuaire global** (`OpponentTravelRepository::findEffective`). Une ligne
-équipe naît toujours d'un choix manuel ; « rétablir l'automatique » sur une équipe **supprime** la
-ligne (jamais un retour AUTO) — sur la ligne club, c'est un vrai recalcul AUTO. `GET
-/api/opponents/travel` groupe les AWAY par `(code, libellé normalisé)` et sert par entrée
+L'appariement d'un LIBELLÉ de salle FBI vers un GYMNASE fédéral, POUR UN CLUB — remplace
+`OpponentTravel` (supprimée, migration `Version20260920140000`). Un adversaire joue dans une salle
+donnée quels que soient l'équipe ou la saison (**prouvé en base** : la même équipe adverse joue
+dans deux salles ; ≥ 8 adversaires sur 75 ont 2 gymnases) : le gymnase se rattache au CLUB adverse
+et au LIBELLÉ vu dans le fichier, jamais à l'équipe ni à la saison (« SALLE TOLA VOLOGE = ce
+gymnase de Bron » ne dépend d'aucune saison, exactement comme les distances de
+`ClubTravelCache`). Grain **`(club, code organisme adverse, libellé FBI normalisé)`** — un lien
+par couple (unique) ; le libellé normalisé (`VenueLabelNormalizer::normalize`) est la clé qu'une
+rencontre AWAY retrouve par sa propre salle (`Fixture::getFbiVenueLabel()`). Chaque lien porte le
+SNAPSHOT fédéral du gymnase (`venueLabel` + `latitude`/`longitude`, jamais le texte brut du
+fichier) + `venueExternalRef` nullable (numéro de salle fédéral, null pour un gymnase choisi par
+coordonnées seules) ; `source` AUTO|MANUAL — un MANUAL n'est jamais écrasé par une passe AUTO.
+**Le trajet n'y est PAS** : c'est une CONSTANTE lue depuis `ClubTravelCache` (siège du club →
+gymnase, § « Cache de trajets et calcul asynchrone » ci-dessous), jamais dupliquée par lien.
+**Purge** : club-scoped SANS saison → une purge de SAISON ne le touche jamais
+(`SeasonDataPurger::EXCLUDED_FROM_SEASON_PURGE`), sa seule porte de sortie est l'effacement RGPD du
+club (`ErasedClubPurger::PURGED_BY_CLUB`, qui décrémente d'abord le compteur partagé des liens
+MANUAL).
+
+**Auto-localisation depuis le libellé du fichier** (`OpponentVenueAutoLocator`, égalité STRICTE
+libellé du fichier ↔ salle fédérale candidate) pose un `OpponentVenueLink` `AUTO` par `(code,
+libellé normalisé)` DISTINCT des fixtures AWAY — 0/≥2 hits n'écrivent rien (le libellé reste « à
+apparier ») ; n'écrit **jamais** le partagé (une localisation devinée n'est pas un choix) ; un lien
+MANUAL existant reste souverain. Ne calcule plus de trajet ici (le calcul est asynchrone, §
+ci-dessous). **Bouton unique « Mettre à jour les adversaires »** → `POST /api/opponents/refresh`
+(`OpponentRefreshController`, cap `MAX_DISTINCT = 200` avant tout réseau, limiteur
+`opponent_refresh` 10/h) enchaîne trois passes best-effort indépendantes : rattrapage des codes
+fédéraux, auto-localisation (pose des liens), dispatch du calcul des trajets manquants. Budget
+global `REFRESH_BUDGET_SECONDS = 45` threadé aux trois passes (au-delà : réponse partielle
+`unresolved`/`skipped`). Best-effort intégral à chaque étage — une panne réseau rend « non
+localisé », jamais un import bloqué. L'écriture de l'annuaire (`OpponentDirectoryEntryRepository::
+upsert`) est un `INSERT … ON CONFLICT (ffbb_organisme_code) DO UPDATE` natif (retours de tests
+2026-09-19) : deux noms d'observation différents qui résolvent le MÊME code fédéral dans un seul
+lot fusionnent en une ligne au lieu d'un double `persist` applicatif qui violait l'unicité et
+**fermait l'`EntityManager`** (les passes/imports suivants du même appel se retrouvaient
+silencieusement avalés, réponse 200 vide). Chaque passe qui lève est isolée
+(`OpponentRefreshController::step`) et s'inscrit dans un champ additif `failedSteps` — le front dit
+franchement « mise à jour interrompue à l'étape … » plutôt qu'un succès mensonger ; volontairement
+**pas** de `resetManager()` (dette assumée : `roadmap.md` P4-247).
+
+**Gestes management** (`OpponentTravelController`, foyer d'écriture unique
+`OpponentVenueLinkManager` — écriture du lien + comptabilité du partagé + chauffage synchrone du
+cache de trajet du nouveau gymnase, un seul itinéraire IGN) : `POST /api/opponents/{code}/venues`
+(ajouter un gymnase au club, ref fédérale ou coordonnées choisies) ; `POST
+/api/opponents/{code}/venue-links` (apparier un libellé orphelin — 422 si le libellé n'est celui
+d'aucune rencontre AWAY réelle de cet adversaire) ; `PUT /api/opponents/venue-links/{id}`
+(ré-apparier/fusionner — re-pointe le lien vers un autre gymnase, la réponse porte le compte
+RÉSULTANT de la cible, « en portera N ») ; `DELETE /api/opponents/venue-links/{id}` (retire
+l'appariement LOCAL, jamais le catalogue fédéral — décrémente le partagé si MANUAL). Les trois
+gestes d'écriture partagent le limiteur SEC-19 `opponent_travel_manual` 30/h par utilisateur ; 404
+byte-identique cross-club (un lien d'un autre club est invisible, RLS). `GET /api/opponents/travel`
+groupe désormais **par CLUB adverse** (§ Écran Adversaires ci-dessous) et sert par gymnase
 `travelStatus` (`done`/`pending`/`unavailable`, calculé serveur — § « Cache et calcul asynchrone »
-ci-dessous) et `hasLogo` (§ Logo fédéral, `backend/docs/ffbb-api.md` §3bis). L'écran (`OpponentsPage`,
-`LocateOpponentModal` — détail : § Écran Adversaires) est groupé par club, une ligne « toutes les
-équipes (défaut) » puis une par équipe, chip précision/source, recherche instantanée insensible aux
-accents, orphelins (sans code fédéral) repliés à part. **Auto-localisation depuis le libellé du
-fichier** (`OpponentVenueAutoLocator`,
-égalité STRICTE nom du fichier ↔ salle fédérale candidate — 0/≥2 hits ou 2 libellés divergents
-n'écrivent rien) pose une ligne équipe `AUTO` sans saisie ; n'écrit **jamais** le partagé (une
-localisation devinée n'est pas un choix). **Bouton unique « Mettre à jour les adversaires »** →
-`POST /api/opponents/refresh` (`OpponentRefreshController`, cap `MAX_DISTINCT = 200` avant tout
-réseau, limiteur `opponent_refresh` 10/h) enchaîne trois passes best-effort indépendantes :
-rattrapage des codes fédéraux, auto-localisation, recalcul des trajets AUTO. Budget global
-`REFRESH_BUDGET_SECONDS = 45` threadé aux trois passes (au-delà : réponse partielle
-`unresolved`/`skipped`). Best-effort intégral à chaque étage — une panne réseau rend « non localisé »,
-jamais un import bloqué. L'écriture de l'annuaire (`OpponentDirectoryEntryRepository::upsert`) est un
-`INSERT … ON CONFLICT (ffbb_organisme_code) DO UPDATE` natif (retours de tests 2026-09-19) : deux noms
-d'observation différents qui résolvent le MÊME code fédéral dans un seul lot fusionnent en une ligne au
-lieu d'un double `persist` applicatif qui violait l'unicité et **fermait l'`EntityManager`** (les
-passes/imports suivants du même appel se retrouvaient silencieusement avalés, réponse 200 vide). Chaque
-passe qui lève est isolée (`OpponentRefreshController::step`) et s'inscrit dans un champ additif
-`failedSteps` — le front dit franchement « mise à jour interrompue à l'étape … » plutôt qu'un succès
-mensonger ; volontairement **pas** de `resetManager()` (dette assumée : `roadmap.md` P4-247). Une ligne
-`opponent_travel` **MANUAL sans trajet** (IGN muet au moment du choix) mais dont l'override porte des
-coordonnées épinglées est re-routée par la passe AUTO (le trajet seul change, le gymnase choisi reste
-souverain).
+ci-dessous) et `hasLogo` (§ Logo fédéral, `backend/docs/ffbb-api.md` §3bis).
 
 **Prérequis du trajet AUTO — le siège du club doit être localisé.** Sans coordonnées sur `Club`, aucun
 trajet ne se calcule (`OpponentTravelResolver::resolve` rend tout en `unresolved`). Le siège se pose
@@ -192,10 +232,11 @@ Le calcul lui-même (rafale IGN pacée ~1 req/s) quitte le rail synchrone : `POS
 /api/opponents/travel/resolve` **dispatche** au worker (réponse `{queued: true}`, plus
 `{resolved: N}`) et répond immédiatement — la progression se lit via `travelStatus` (rafraîchi par
 Mercure, topic `club:{clubId}:travel`, `docs/security/mercure.md`), jamais un spinner par ligne.
-`resolve()` ne route plus que les MANQUES (code sans ligne, ligne AUTO au trajet null — club ou
-équipe —, MANUAL null avec override) : une ligne déjà résolue n'est plus jamais retouchée, « Réessayer
-les manquants » (§ Écran Adversaires) est littéralement ce même appel. Détail worker/verrou/topic :
-`backend/docs/geo-api.md` § Calcul asynchrone.
+`resolve()` ne route plus que les PAIRES siège→gymnase MANQUANTES du cache (`OpponentTravelResolver::
+pairsToRoute`, amendement PR I 2026-09-20 : un point par lien apparié + un point VILLE pour un code
+sans lien — plus de notion d'équipe ni de ligne saison) : une paire déjà résolue n'est plus jamais
+retouchée, « Réessayer les manquants » (§ Écran Adversaires) est littéralement ce même appel. Détail
+worker/verrou/topic : `backend/docs/geo-api.md` § Calcul asynchrone.
 
 ### Logo fédéral d'un adversaire (C7, 2026-09-19)
 
@@ -346,8 +387,9 @@ jour). Réponse : bornes datées en heure MURALE du club (jamais un offset).
 sert quatre champs additifs par côté (`estimatedKickoffTime`, `travelOneWayMinutes` — `null` =
 trajet non modélisé, `matchDurationMinutes`, `opponentLabel`) ; `opponentPlace` (ville de
 l'adversaire, jamais un gymnase) est décoré EN AVAL par `FixtureConflictsController::
-decorateOpponentPlace` sur les côtés AWAY seulement, via `OpponentPlaceResolver` (batch) : (1)
-override effectif équipe/club portant une réf FFBB de salle → ville de la suggestion fédérale
+decorateOpponentPlace` sur les côtés AWAY seulement, via `OpponentPlaceResolver` (batch,
+re-pointé sur le lien par l'amendement PR I 2026-09-20) : (1) le lien de la rencontre `(code,
+libellé FBI normalisé)` → sa référence de salle fédérale → ville de la suggestion fédérale
 correspondante ; (2) sinon la ville de l'annuaire fédéral global ; (3) `null`. Le front (`conflictSideLines.ts`,
 `ConflictLine.tsx`) rend un vrai TABLEAU (`Table variant="inline"` — primitive partagée
 `shared/components/ui/table.tsx`, `frontend/AGENTS.md` §Primitives) à quatre colonnes horaires
@@ -589,7 +631,10 @@ avec compteur d'appariement ; recherche/`Listbox` avec champ de recherche au-del
 Garde-fou poule (`PR F2`) : adversaires du fichier confrontés à la liste des clubs de la poule
 appariée — > 50 % d'inconnus = division refusée nommée et sautée, 1..50 % = warning
 `POULE_MISMATCH`. Fichier lu en mémoire (snapshot `arrayBuffer`) une fois à la sélection —
-insensible à une réouverture externe du fichier entre analyse et import.
+insensible à une réouverture externe du fichier entre analyse et import. Chaque libellé de salle
+AWAY importé est auto-localisé (`OpponentVenueAutoLocator`, un des trois hooks d'appel, § « Table
+TENANT `OpponentVenueLink` ») s'il matche UNE salle fédérale exacte ; sinon il reste « à apparier »
+(§9 « Écran Adversaires ») — jamais deviné à l'import.
 
 ### Canal API FFBB (à la demande, `FfbbRencontreReconciler`)
 
@@ -663,29 +708,43 @@ ce qui bouge) ; **Retirer** (ne touche aucune rencontre déjà rattachée). Un s
 (`UnpairedVenueLabelsBanner`) renvoie vers cet écran unique depuis Importer et le Calendrier —
 décision fermée (une seule maison d'appariement, jamais une modale sur une modale).
 
-## 9. Écran Adversaires (`/matchs/adversaires`, 2026-09-19)
+## 9. Écran Adversaires (`/matchs/adversaires`, C8 2026-09-19, refondu au grain GYMNASE par PR I 2026-09-20)
 
-Localisation + trajets vers les adversaires, sorti de la Configuration en page sœur dédiée entre
-Configuration et Semaine type dans la nav (`MatchesLayout.tsx`). `OpponentsPage` rend la liste
-LUI-MÊME (`OpponentTravelCard` a disparu, absorbée) en `Table` variant default : un `<tbody>` par
-club (`<th scope="row">` « Toutes les équipes (défaut) » en tête, puis une ligne par équipe).
-Colonnes ≥ `@md` (container query, repli 4 colonnes en dessous) : logo (`OpponentLogo`, § Logo
-fédéral d'un adversaire) · adversaire (club · ville) · gymnase (`SourceBadge` + `StatusPill` « ville
-seule » si précision `CITY`) · trajet (`TravelMinutes`, fragment extrait d'`AwayTravelChip`,
-« en cours… »/« indisponible » selon `travelStatus`) · rencontres (jointure front code+teamKey) ·
-action. Tri : sans trajet d'abord, puis alphabétique (fr).
+Localisation + trajets vers les adversaires, page sœur dédiée entre Configuration et Semaine type
+dans la nav (`MatchesLayout.tsx`). `OpponentsPage` rend la liste LUI-MÊME (`OpponentTravelCard` a
+disparu, absorbée) en `Table` : un `<tbody>` PAR CLUB adverse — ligne club (`<th scope="row">`,
+son nom, puis « Ajouter un gymnase » ; un club sans aucun lien affiche « Aucun gymnase connu »),
+puis une ligne par GYMNASE apparié (`OpponentVenueLink`, `SourceBadge` AUTO/MANUEL), puis les
+libellés de fichier encore « à apparier » dans le MÊME rowgroup que leur club (bouton
+« Apparier »). Colonnes ≥ `@md` (container query, repli sous 360 px — Trajet et Rencontres se
+replient en sous-ligne) : logo (`OpponentLogo`, § Logo fédéral d'un adversaire, sur la ligne club
+seulement) · gymnase (label + `StatusPill` « ville seule » si un club sans lien n'a qu'une
+précision `CITY`) · trajet (`TravelMinutes`, fragment extrait d'`AwayTravelChip`, « en cours… »/
+« indisponible » selon `travelStatus`) · rencontres (`fixtureCount` servi par ligne — le compte
+RÉEL de rencontres qui résolvent vers CE gymnase, jamais re-dérivé) · action. Tri : les clubs SANS
+gymnase d'abord, puis alphabétique (fr).
 
-**Filtre segmenté** `role="group"` `aria-pressed` — À localiser · Gymnase à préciser · Tous — état
-URL `?filtre=` (`lib/urlState.ts`, C8). **Progression** : région `aria-live="polite"` à deux phrases
-stables + compteur chiffré frère, dérivée de `travelStatus` (rafraîchi par Mercure via
-`useTravelStream`, § Cache de trajets et calcul asynchrone) ; bouton « Mettre à jour » désactivé
-pendant le calcul, aucun spinner par ligne. **Échec partiel** : `WarningPanel` « n trajets n'ont pas
-pu être calculés » + bouton « Réessayer les manquants » (`POST /api/opponents/travel/resolve`, qui
-ne route déjà que les manquants). Bandeau siège (`useClubGeolocated`, § Prérequis du trajet AUTO)
-et modale `LocateOpponentModal` réutilisés tels quels. **Revue sécurité H (2026-09-19)** : si un
-calcul de trajets tourne déjà pour le club (verrou tenu), « Réessayer les manquants »/« Mettre à
-jour » ne redispatche rien — toast « Un calcul de trajets est déjà en cours. » (`alreadyRunning`
-servi par la route, § Cache de trajets et calcul asynchrone).
+**Gestes d'appariement** passent par le menu APG partagé sur chaque ligne gymnase (« Fusionner
+dans « X » » — vers un AUTRE gymnase du MÊME club, `PUT /api/opponents/venue-links/{id}` ;
+« Retirer ce gymnase » — `DELETE`) et une `ConfirmDialog` dont le texte vient de la donnée SERVIE
+(`fallbackVenueName`, `fixtureCount` — le front n'invente aucune règle métier, §
+`.claude/rules/frontend.md`). « Ajouter un gymnase »/« Apparier » ouvrent `LocateOpponentModal`
+(recherche `/api/ffbb/salles`, écrit via `POST /{code}/venues` ou `POST /{code}/venue-links`).
+
+**Filtre segmenté** `role="group"` `aria-pressed` — **Sans gymnase · À apparier · Tous** — état URL
+`?filtre=` (`lib/urlState.ts`), deux unités de compte distinctes (clubs pour « Sans gymnase »,
+salles pour « À apparier », nommées par l'`aria-label`, jamais par le seul chiffre visible).
+Recherche instantanée (club, gymnase, libellé non apparié) combinée au filtre. **Progression** :
+région `aria-live="polite"` à deux phrases stables + compteur chiffré frère, dérivée de
+`travelStatus` (rafraîchi par Mercure via `useTravelStream`, § Cache de trajets et calcul
+asynchrone) ; bouton « Mettre à jour » désactivé pendant le calcul, aucun spinner par ligne.
+**Échec partiel** : `WarningPanel` « n trajets n'ont pas pu être calculés » + bouton « Réessayer
+les manquants » (`POST /api/opponents/travel/resolve`, qui ne route déjà que les paires siège→
+gymnase manquantes). Bandeau siège (`useClubGeolocated`, § Prérequis du trajet AUTO) réutilisé tel
+quel. **Revue sécurité H (2026-09-19)** : si un calcul de trajets tourne déjà pour le club (verrou
+tenu), « Réessayer les manquants »/« Mettre à jour » ne redispatche rien — toast « Un calcul de
+trajets est déjà en cours. » (`alreadyRunning` servi par la route, § Cache de trajets et calcul
+asynchrone).
 
 ## 10. Écran Semaine type (`/matchs/semaine-type`)
 
@@ -727,7 +786,7 @@ existe toujours après dépointage, son équipe reste engagée).
 ## 12. Tests & gardes (pointeurs)
 
 NR tenant isolation bloquant : `MatchTenantIsolationTest` (Competition/Fixture/fenêtres/indispos/
-habitudes/passerelles/`opponent_travel`/`club_travel_cache`/`ConflictResolution` — étendu à chaque
+habitudes/passerelles/`opponent_venue_link`/`club_travel_cache`/`ConflictResolution` — étendu à chaque
 table tenant du module). **NR tenant GATANT (C6, step nommé `blocking-tests` de `ci.yml` +
 `docs/testing/blocking-tests.md`)** : `MessageHandler/ComputeTravelTimesHandlerTest` (GUC posé/
 clear, verrou, jamais la ligne d'un autre club). Cache de trajets : `TravelTimeCacheTest` (clé

@@ -1,11 +1,13 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-09-16 (rotation `documentation-update`, PR-3a « extérieurs dans la grille »
-— fichier hors sujet de la PR). Re-confronté à `frontend/package.json` : `vitest`/
-`@vitest/coverage-v8` `^4.1.11`, `@testing-library/react` `^16.3.0`, `@testing-library/jest-dom`
-`^7.0.1`, `jsdom` `^30.0.1`, `msw` `^2.15.0`, `@playwright/test` `^1.62.1`, `vitest-axe` `^0.1.0`,
-`@axe-core/playwright` `^4.13.0`, `storybook`/`@storybook/react-vite` `^10.5.10` — toutes les
-majeures citées (§ Outils de test) tiennent encore, rien à corriger. Historique des passes :
+Last verified @ 2026-09-20 (rotation `documentation-update`, PR I « les gymnases adverses
+appartiennent au club, le trajet au gymnase » — fichier hors sujet de la PR). Re-confronté à
+`frontend/package.json` : `vitest`/`@vitest/coverage-v8` `^4.1.11`, `@testing-library/react`
+`^16.3.3` (dérive mineure depuis `^16.3.0`, corrigée), `@testing-library/jest-dom` `^7.0.1`,
+`jsdom` `^30.0.1`, `msw` `^2.15.0`, `@playwright/test` `^1.63.0` (dérive mineure depuis `^1.62.1`,
+corrigée), `vitest-axe` `^0.1.0`, `@axe-core/playwright` `^4.13.0`, `storybook`/
+`@storybook/react-vite` `^10.6.0` (dérive mineure depuis `^10.5.10`, corrigée) — toutes les
+majeures citées (§ Outils de test) tiennent encore. Historique des passes :
 `git log -p --follow frontend/docs/frontend-strategy.md`.)
 
 > **Statut : le rebuild est LIVRÉ.** Les formulations « pour le rebuild » ci-dessous sont
