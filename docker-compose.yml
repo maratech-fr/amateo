@@ -40,12 +40,15 @@ services:
   # P4-33 — e2e Playwright DOCKERISÉ : l'hôte n'a plus besoin de Node (dernier
   # maillon qui l'exigeait). Image officielle, navigateurs préinstallés.
   # ⚠ Le tag DOIT suivre la version de @playwright/test du package-lock
-  # (aujourd'hui 1.62.0) : une dérive = « browser not found » au premier run.
+  # (aujourd'hui 1.63.0) : une dérive = « browser not found » au premier run.
+  # La CI ne l'attrape PAS — elle n'utilise pas cette image, elle fait
+  # `npx playwright install chromium` (clé de cache = hash du lock, ci.yml) :
+  # seul le lancement LOCAL casse, en silence, après une montée de @playwright/test.
   # node_modules dans un volume DÉDIÉ (pas celui de frontend-dev : autre image,
   # binaires natifs potentiellement incompatibles).
   e2e:
     profiles: ["tools"]
-    image: mcr.microsoft.com/playwright:v1.62.0-noble
+    image: mcr.microsoft.com/playwright:v1.63.0-noble
     working_dir: /app/frontend
     # UID hôte (patron php-fpm) : en root, les artefacts test-results/ devenaient
     # intouchables depuis l'hôte. HOME inscriptible requis par Chromium.
