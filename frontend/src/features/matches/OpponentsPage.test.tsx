@@ -47,6 +47,7 @@ const venue = (over: Partial<OpponentVenue> & { id: string; label: string }): Op
 const club = (over: Partial<OpponentClub> & { name: string }): OpponentClub => ({
   code: "C1",
   city: "Lyon",
+  postalCode: null,
   precision: "VENUE",
   hasLogo: false,
   fixtureCount: 1,
@@ -193,6 +194,31 @@ describe("OpponentsPage — la liste par club adverse (grain gymnase)", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/n'aura plus aucun gymnase connu/)).toBeInTheDocument();
     expect(within(dialog).getByText(/6 rencontres sortiront du radar/)).toBeInTheDocument();
+  });
+
+  it("« Ajouter un gymnase » : la modale reçoit le code postal du club — CP prérempli, contexte ville+CP", async () => {
+    const user = userEvent.setup();
+    travelState.data = { clubGeolocated: true, opponents: [club({ code: "C9", name: "BC Brignais", city: "Brignais", postalCode: "69530", venues: [] })] };
+    renderWithProviders(<OpponentsPage />);
+
+    await user.click(screen.getByRole("button", { name: /Ajouter un gymnase/ }));
+    const dialog = await screen.findByRole("dialog");
+    // Le champ de recherche FFBB part prérempli du code postal fédéral — aucune saisie manuelle.
+    expect(within(dialog).getByLabelText("Commune (code postal)")).toHaveValue("69530");
+    expect(within(dialog).getByText(/Brignais 69530/)).toBeInTheDocument();
+  });
+
+  it("« Apparier » : la modale reçoit aussi le code postal du club (prérempli)", async () => {
+    const user = userEvent.setup();
+    travelState.data = {
+      clubGeolocated: true,
+      opponents: [club({ code: "C9", name: "BC Brignais", city: "Brignais", postalCode: "69530", venues: [], unmatchedLabels: [{ label: "SALLE ORPH", fixtureCount: 1 }] })],
+    };
+    renderWithProviders(<OpponentsPage />);
+
+    await user.click(screen.getByRole("button", { name: "Apparier" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("Commune (code postal)")).toHaveValue("69530");
   });
 
   it("le bandeau siège paraît quand le club n'est pas localisé", () => {

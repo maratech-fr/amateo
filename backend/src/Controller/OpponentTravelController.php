@@ -391,6 +391,8 @@ final class OpponentTravelController extends AbstractController
             'code' => $group['code'],
             'name' => $entry instanceof OpponentDirectoryEntry ? $entry->getName() : $group['name'],
             'city' => $entry?->getCity(),
+            // Le code postal fédéral (données publiques) — préfiltre la recherche de gymnase.
+            'postalCode' => $entry?->getPostalCode(),
             // La précision fédérale (VENUE|CITY|null) — le front distingue « ville seule »
             // (CITY) de « aucun gymnase connu » (null) quand il n'y a aucun lien.
             'precision' => $entry?->getPrecision()?->value,

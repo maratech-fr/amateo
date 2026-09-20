@@ -90,6 +90,27 @@ describe("les modales bornent leur hauteur et laissent défiler leur contenu", (
     expect(foot?.className).toMatch(/\bshrink-0\b/);
   });
 
+  it("Modal : la zone défilante réserve une gouttière pour l'anneau de focus (non clippé au ras du pied)", () => {
+    render(
+      <Modal label="Test" title="Titre" footer={<button type="button">Valider</button>} onClose={vi.fn()}>
+        <input aria-label="Dernier champ" />
+      </Modal>,
+    );
+
+    const zone = scroller(panel());
+    expect(zone).not.toBeNull();
+    // ⚠ jsdom ne peint pas : le CLIPPING réel (anneau `focus-visible:ring-2` coupé au ras du pied,
+    // primitive PARTAGÉE, donc toutes les modales dont le dernier champ touche le bas) se prouve en
+    // Playwright, PAS ici. On épingle la gouttière qui le corrige : le padding laisse respirer
+    // l'anneau, la marge négative le compense pour ne décaler ni le contenu ni son alignement avec
+    // l'en-tête et le pied.
+    expect(zone?.className, "padding-gouttière absent : l'anneau de focus se ferait clipper au ras du pied").toMatch(/(^|\s)p-1(\s|$)/);
+    expect(zone?.className, "marge négative absente : la gouttière décalerait le contenu et casserait l'alignement").toMatch(/(^|\s)-m-1(\s|$)/);
+    // Le contrat d'origine ne bouge pas : la zone reste bornée-défilante et effondrable (flexbox).
+    expect(zone?.className).toMatch(/\bmin-h-0\b/);
+    expect(zone?.className).toMatch(/\boverflow-y-auto\b/);
+  });
+
   it("Modal : aucun pied rendu quand le slot `footer` est absent", () => {
     render(
       <Modal label="Test" title="Titre" onClose={vi.fn()}>

@@ -109,6 +109,7 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
                 'code' => ['type' => ['string', 'null'], 'description' => 'The opponent FFBB organisme code; null when the code is unresolved (grouped by label, not pairable)'],
                 'name' => ['type' => 'string', 'description' => 'The opponent name (federal directory, else the raw fixture label)'],
                 'city' => ['type' => ['string', 'null'], 'description' => 'The opponent commune from the shared directory'],
+                'postalCode' => ['type' => ['string', 'null'], 'description' => 'The opponent postal code from the shared directory — pre-fills the gym search by postal code'],
                 'precision' => ['type' => ['string', 'null'], 'enum' => ['VENUE', 'CITY', null], 'description' => 'The federal directory precision — the client tells « city only » (CITY) from « no known gym » (null) when there is no link'],
                 'hasLogo' => ['type' => 'boolean', 'description' => 'A federal logo is known (serve it via GET /api/opponents/{code}/logo, member only)'],
                 'fixtureCount' => ['type' => 'integer', 'description' => 'Total AWAY fixtures against this opponent this season'],

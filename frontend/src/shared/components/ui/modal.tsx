@@ -85,7 +85,10 @@ export function Modal({ label, title, onClose, children, size = "md", footer }: 
             <X className="size-4" />
           </button>
         </div>
-        <div className="min-h-0 overflow-y-auto">{children}</div>
+        {/* `p-1 -m-1` : une gouttière qui laisse respirer l'anneau `focus-visible:ring-2` d'un
+            champ en bas de zone (sinon clippé au ras du pied) sans décaler le contenu — la marge
+            négative compense le padding, l'alignement avec l'en-tête et le pied ne bouge pas. */}
+        <div className="-m-1 min-h-0 overflow-y-auto p-1">{children}</div>
         {footer ? <footer className="mt-4 flex shrink-0 flex-wrap justify-end gap-2 border-t border-border pt-4">{footer}</footer> : null}
       </div>
     </div>,
