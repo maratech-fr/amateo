@@ -635,41 +635,66 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
 });
 
 /**
- * Gymnases adverses (2026-09-20) — REFLOW mobile de l'écran Adversaires (WCAG 1.4.10). Le tableau
+ * Gymnases adverses (2026-09-20) — REFLOW mobile du TABLEAU Adversaires (WCAG 1.4.10). Le tableau
  * par club adverse (`OpponentsPage`) est un `@container` : sous `@md`, les colonnes « Trajet » et
  * « Rencontres » DISPARAISSENT (`hidden @md:table-cell`) et le trajet redescend dans une ligne
- * empilée (`@md:hidden`), pour qu'à largeur téléphone la page ne défile JAMAIS horizontalement.
- * Ce test verrouille cette promesse à 360 px, indépendamment du contenu (liste vide OU pleine) :
- *   - témoin de rendu = la barre de recherche (toujours peinte, même liste vide) → pas de faux vert ;
- *   - assertion = aucun débordement horizontal du document (scrollWidth ≤ largeur visible, tol. 1 px) ;
- *   - contrôle du `@container` = l'en-tête de colonne « Trajet », s'il existe (liste non vide), est
- *     bien MASQUÉ à cette largeur (il ne réapparaît qu'au-delà de `@md`).
+ * empilée (`@md:hidden`), pour que le tableau ne déborde JAMAIS horizontalement de sa boîte à
+ * largeur téléphone. Ce test verrouille CETTE promesse à 360 px :
+ *   - témoin de rendu = la barre de recherche (peinte seulement s'il existe des adversaires) → le
+ *     test CRÉE un extérieur pour garantir un tableau, sinon l'écran resterait un EmptyState ;
+ *   - assertion = aucun débordement horizontal du CONTENEUR du tableau (le wrapper `overflow-x-auto`
+ *     de `Table`), scrollWidth ≤ clientWidth, tol. 1 px ;
+ *   - preuve directe du `@container` = l'en-tête de colonne « Trajet » est MASQUÉ à cette largeur.
+ *
+ * ⚠ On mesure le TABLEAU, PAS le document : au 20/09/2026 (Playwright, base réelle, lecture seule)
+ * TOUT le produit débordait déjà à 360 px — accueil `scrollWidth` 558, /planning 501, /matchs ·
+ * /club · /matchs/adversaires 370 (le coupant commun des 370 est le bouton horloge de l'en-tête
+ * `AppLayout`, ~103 px). Cette dette de reflow GLOBALE est une ligne de roadmap ouverte (passe doc
+ * du 20/09) ; la mesurer au niveau document ne prouverait PAS ce que ce test annonce (le
+ * `@container` replie les colonnes du tableau).
+ *
  * e2e écrit, PAS lancé (l'exécution des e2e reste au fondateur).
  */
-test("gymnases adverses: l'écran Adversaires reflow sans défilement horizontal à 360 px", async ({ page }) => {
+test("gymnases adverses: le tableau Adversaires reflow sans défilement horizontal à 360 px", async ({ page }) => {
   test.setTimeout(240_000); // l'onboarding peut lancer une génération CP-SAT réelle
   await login(page);
   await ensureValidated(page);
 
-  await page.setViewportSize({ width: 360, height: 740 });
-  await page.goto("/matchs/adversaires");
-
-  // Témoin : la barre de recherche est rendue quoi qu'il arrive — un scan sur page vide ne prouve rien.
-  const search = page.getByRole("searchbox", { name: "Rechercher un club ou un gymnase" });
-  await expect(search).toBeVisible({ timeout: 15_000 });
-
-  // WCAG 1.4.10 — aucun défilement horizontal de la page à largeur téléphone.
-  const overflow = await page.evaluate(() => {
-    const el = document.documentElement;
-    return el.scrollWidth - el.clientWidth;
+  // e2e crée ce qu'il vérifie : un extérieur → ≥1 adversaire → le tableau (et sa searchbox) sont
+  // rendus. Le club seedé CI n'a aucune rencontre garantie (cf. `.claude/rules/frontend.md`).
+  const teamsRes = await page.request.get("/api/teams?itemsPerPage=100");
+  expect(teamsRes.ok(), "GET /api/teams").toBeTruthy();
+  const teamId = ((await teamsRes.json()).member?.[0]?.id ?? undefined) as string | undefined;
+  expect(teamId, "le club seedé a au moins une équipe").toBeTruthy();
+  const opponent = `REFLOW-${Date.now().toString(36).toUpperCase()}`;
+  const created = await page.request.post("/api/fixtures", {
+    data: { teamId, matchDate: "2027-03-06", homeAway: "AWAY", opponentLabel: opponent, competitionId: null },
   });
-  expect(overflow, "la page Adversaires déborde horizontalement à 360 px (le @container ne replie pas les colonnes)").toBeLessThanOrEqual(1);
+  expect(created.ok(), "POST /api/fixtures").toBeTruthy();
+  const fixtureId = (await created.json()).id as string;
 
-  // Si la liste porte au moins un club, l'en-tête « Trajet » (colonne `@md:table-cell`) est masqué
-  // à 360 px — la preuve directe que le repli `@container` opère (au-delà de la simple absence de scroll).
-  const trajetHeader = page.getByRole("columnheader", { name: "Trajet" });
-  if ((await trajetHeader.count()) > 0) {
-    await expect(trajetHeader.first()).toBeHidden();
+  try {
+    await page.setViewportSize({ width: 360, height: 740 });
+    await page.goto("/matchs/adversaires");
+
+    // Témoin : la searchbox n'est peinte que si des adversaires existent — pas de faux vert.
+    await expect(page.getByRole("searchbox", { name: "Rechercher un club ou un gymnase" })).toBeVisible({ timeout: 15_000 });
+
+    // Débordement horizontal du CONTENEUR du tableau (le wrapper `overflow-x-auto` de `Table`,
+    // parent direct du <table>), jamais du document (dette globale, cf. docblock).
+    const table = page.getByRole("table"); // un seul <table> sur l'écran Adversaires
+    await expect(table).toBeVisible();
+    const overflow = await table.evaluate((el) => {
+      const box = el.parentElement; // le wrapper `overflow-x-auto` de la primitive Table
+      return null === box ? 0 : box.scrollWidth - box.clientWidth;
+    });
+    expect(overflow, "le tableau Adversaires déborde horizontalement à 360 px (le @container ne replie pas ses colonnes)").toBeLessThanOrEqual(1);
+
+    // Preuve directe du `@container` : l'en-tête « Trajet » (`@md:table-cell`) est masqué à 360 px.
+    await expect(page.getByRole("columnheader", { name: "Trajet" })).toBeHidden();
+  } finally {
+    // Base dev CI non remise à zéro : on nettoie NOTRE rencontre.
+    await page.request.delete(`/api/fixtures/${fixtureId}`).catch(() => undefined);
   }
 });
 
