@@ -1,27 +1,27 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-21 (`documentation-update`, lot L « l'import FBI se confirme "validé ligue"
-en lot » + revue `d60b3fc0` le même jour). Confronté au code cette passe : le prédicat
-d'éligibilité unique (`LeagueValidatedFixturesController::isEligible` — domicile `UNPLACED`,
-`kickoffTime` ET `venueId` présents, aucun écart en attente, **aucune condition de date, aucun
-contrôle d'accès — divergence assumée**) ; les deux routes `GET`/`POST /api/fixtures/league-validation`
-(management + saison écrivable + socle pointé, **refus 409 explicite si aucune saison ne se
-résout**, POST refusant en plus une collision d'écriture simultanée — verrou optimiste `Fixture`) ;
-l'application pose `VALIDATED` + `placementSource` `MANUAL` ; le `MANUAL` vérifié requis à la fois
-par le cadenas de grille (`weekendGrid.ts:440`) et par l'ancre `FIXED` du solveur (§3) ; rejouable ;
-le chemin de création de l'import (`FbiFixtureImporter::attachConfirmedVenue`) N'A PAS bougé.
-**`d60b3fc0` (revue, même jour)** : `PlacementPanel.tsx` offre désormais « Corriger — repasser en
-Placé » sur `VALIDATED` (réconciliation D9 ET lot L), le commentaire/texte « lecture seule »/
-« attesté par FBI » de l'origine étaient faux pour le lot — corrigé côté code ET ci-dessous ; radar
-`ACCESS_WINDOW_LOST` confirmé comme la visibilité de la divergence assumée
-(`MatchConflictDetector.php:153` : « le front l'utilise pour BLOQUER la pose, le backend pour
-DIAGNOSTIQUER ») ; snapshot OpenAPI
-régénéré une seconde fois (descriptions 409 élargies, **routes inchangées, 207**). Côté écran :
-bandeau (`LeagueValidationBanner`) et section du rapport (`LeagueValidationReportEntry`) muets à 0 ;
-la pastille de statut `VALIDATED` reste « Attesté FBI » (`fixtureStatusLabel.ts` non touché) — seule
-la confirmation dit « validé ligue ». § « Validé ligue » en lot mise à jour ci-dessous (§7). Le
-reste du fichier (radar générique, solveur, Écran Adversaires, delta de visite…) n'a pas bougé sous
-ce lot — historique des passes précédentes : `git log -p --follow specs/courantes/module-matchs.md`.
+Last verified @ 2026-09-21 (`documentation-update`, lot M « l'échauffement sort de l'empreinte des
+conflits de PERSONNE » + correctif `e881d748` « le conflit passerelle disparu quitte le contrat
+public et l'empreinte »). Confronté au code cette passe : `MatchFootprint::personConflictOccupancy`/
+`personConflictOccupancyAt` (occupation moins l'échauffement, trajet AWAY conservé) ;
+`MatchConflictDetector` — `MATCH_MATCH` et le côté match de `MATCH_TRAINING` testent désormais ce
+chevauchement (`conflictWindow`, plus `effectiveMatchWindows`/`sameHomeVenue`, supprimées comme code
+mort) ; le chargement de `TeamLink` retiré de `ConflictRadarLoader`/`MatchConflictDetector`
+(paramètre `teamLinks` disparu de la signature) ; le solveur `match_placement.py` — les trois
+fenêtres de personne (`fixed_windows_by_coach`, poids TO_PLACE, `_overlap_pairs` coach+passerelle)
+ne retranchent plus `warmupMinutes`, seul le trajet AWAY reste ; `CONTRACT_VERSION` inchangé
+(**2.23**, `warmupMinutes` reste au schéma, simplement plus lu par le solveur). **`e881d748`
+(même jour) referme le volet contrat** : `TEAM_LINK_OVERLAP` retiré de l'énumération OpenAPI
+`conflicts[].type` (`SeasonAndFixturePaths`, snapshot régénéré, 207 routes inchangées, 9 valeurs
+restantes) et de `ConflictFingerprinter` (branche `match` devenue morte) — vérifié : zéro hit
+`TEAM_LINK_OVERLAP` dans `specs/courantes/openapi-snapshot.json` ni dans `ConflictFingerprinter.php`.
+**Reste ouvert, VOLONTAIREMENT** : la part FRONTEND de cette dérive — `conflictLabels.ts`/`api.ts`
+gardent leurs 10 `ConflictType` (dont `TEAM_LINK_OVERLAP`), la chip « Passerelle » de l'onglet
+Conflits reste affichée et cochable alors qu'elle ne peut plus se peupler (§2 « Chips familles »
+ci-dessous) — un lot séparé reprend cet écran juste après ce lot, décision de ne pas l'entamer ici.
+Le reste du fichier (Validé ligue, Écran Adversaires, delta de visite…) n'a pas bougé sous ce lot —
+historique des passes précédentes :
+`git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme (refonte 2026-09-18, AUD-DOC-38)** : ce fichier décrit **l'état courant, par
 > écran** — jamais une section datée d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id)
@@ -67,7 +67,9 @@ vigueur, il n'a rien à comparer.
   `OpponentVenueLink` » ci-dessous.
 - **`TeamMatchHabit`** : jour ISO + heure-point + gymnase optionnel, une par jour et par équipe.
 - **`TeamLink`** (couple symétrique `teamAId < teamBId`, cap `MAX_TEAM_LINKS = 50`) : côté MATCHS
-  `TeamLinkType` `NOT_SIMULTANEOUS`/`BACK_TO_BACK` (rail SOFT radar/placement) ; côté ENTRAÎNEMENT
+  `TeamLinkType` `NOT_SIMULTANEOUS`/`BACK_TO_BACK` (**depuis le lot M, 2026-09-21** : rail SOFT
+  **placement seul** — le radar de conflits a cessé de charger `TeamLink`, décision fondateur « ça
+  fait plus de bruit qu'autre chose », § « Détecteur de conflits » ci-dessous) ; côté ENTRAÎNEMENT
   `TeamLinkIntensity` `PREFERRED`/`MANDATORY` (honoré par le solveur d'entraînement — arbitrage :
   cette intensité ne gouverne jamais les matchs, `engine/docs/constraint-vocabulary.md` §Passerelles).
 - **`MatchSlotRotation`** + **`MatchSlotRotationTeam`** (membres ORDONNÉS, `position` purement
@@ -334,26 +336,38 @@ sur PLAYER pour la même équipe. Chaque côté d'un conflit porte son rôle PAR
 compat, plus utilisé à l'affichage.
 
 **Deux familles** :
-- `MATCH_MATCH` — deux fixtures d'équipes partageant une personne, fenêtres qui se chevauchent.
-  Gravité `pairSeverity` : dur (MAIN×MAIN, MAIN×PLAYER, PLAYER×PLAYER) = 3 ; un côté ASSISTANT = 5.
+- `MATCH_MATCH` — deux fixtures d'équipes partageant une personne dont les fenêtres de **conflit**
+  se chevauchent (`MatchFootprint::personConflictOccupancy`/`personConflictOccupancyAt`, § D1
+  ci-dessous — échauffement retranché, trajet conservé). Gravité `pairSeverity` : dur (MAIN×MAIN,
+  MAIN×PLAYER, PLAYER×PLAYER) = 3 ; un côté ASSISTANT = 5.
 - `MATCH_TRAINING` — une fixture chevauchant un entraînement (lu dans le planning **effectif à la
-  date du match** : overlay ACTIVE sinon version choisie du plan SEASON, `EffectiveScheduleResolver`).
-  Gravité `trainingSeverity` (asymétrique) : match joué × entraînement joué/coaché MAIN = 3 ; match
-  coaché MAIN × entraînement où elle ne fait que jouer = 5 ; tout côté ASSISTANT = 5. L'entraînement
-  de l'équipe qui joue CE match n'est **jamais** un conflit avec lui (ni coachs ni joueurs), quel
-  que soit le gymnase — une équipe sœur reste couverte normalement.
+  date du match** : overlay ACTIVE sinon version choisie du plan SEASON, `EffectiveScheduleResolver`)
+  sur la MÊME fenêtre de conflit côté match. Gravité `trainingSeverity` (asymétrique) : match joué ×
+  entraînement joué/coaché MAIN = 3 ; match coaché MAIN × entraînement où elle ne fait que jouer = 5 ;
+  tout côté ASSISTANT = 5. L'entraînement de l'équipe qui joue CE match n'est **jamais** un conflit
+  avec lui (ni coachs ni joueurs), quel que soit le gymnase — une équipe sœur reste couverte
+  normalement.
 
 **Chevauchement demi-ouvert** (créneaux jointifs = pas de conflit). Une empreinte qui passe minuit
 est vérifiée sur les deux jours. Résolution déterministe par la période la plus ÉTROITE en cas de
 chevauchement de périodes.
 
-**D1 (échauffement salle seule) + D1 étendu (« déjà sur place »)** : la fenêtre SALLE (sans
-échauffement) sert `VENUE_OVERLAP`/`MATCH_SLOT_WINDOW` — deux matchs enchaînés à 2 h d'écart ne
-collisionnent plus. Étendu : deux fixtures `MATCH_MATCH` **HOME** dans le **même** gymnase → le
-côté au coup d'envoi le plus tardif perd son échauffement (`effectiveMatchWindows`/`sameHomeVenue`),
-la personne étant déjà sur place ; un vrai recouvrement de jeu reste un conflit. Étendu à
-`MATCH_TRAINING` sur le même principe. Inchangé si gymnases différents, gymnase inconnu, un côté
-AWAY, coups d'envoi égaux.
+**D1 (échauffement salle seule) + lot M (échauffement hors des conflits de PERSONNE,
+2026-09-21)** : la fenêtre SALLE (sans échauffement) sert `VENUE_OVERLAP`/`MATCH_SLOT_WINDOW` —
+deux matchs enchaînés à 2 h d'écart ne collisionnent plus. **Fenêtre de conflit PERSONNE**
+(`MatchFootprint::personConflictOccupancy`/`personConflictOccupancyAt`, occupation MOINS
+l'échauffement, trajet AWAY conservé) : une personne engagée deux fois — joueuse OU coach, sans
+distinction de rôle — n'est en conflit QUE si son arrivée dépasse le coup d'envoi du second
+engagement, quel que soit le gymnase ; arrivée pile au coup d'envoi = pas de conflit (chevauchement
+demi-ouvert). `MATCH_MATCH` et le côté match de `MATCH_TRAINING` testent le chevauchement sur cette
+fenêtre ; les bornes SERVIES par côté (`windowStart`/`windowEnd`) restent la fenêtre PERSONNE
+complète (échauffement inclus, § « Détail par côté » ci-dessous) — seul le TEST de chevauchement a
+changé. ⚠ **Remplace l'exception « même gymnase » de septembre** (`effectiveMatchWindows`/
+`sameHomeVenue`, supprimées avec leur code) : la règle générale la SUBSUME — à domicile il n'y a pas
+de trajet, la fenêtre de conflit y vaut donc exactement l'ancienne fenêtre effective, preuve que les
+six tests same-gym restaient verts sans une seule modification. Cas fondateur : une personne coache
+à l'extérieur (retour estimé 19h17) et joue à domicile (coup d'envoi 19h30) — arrivée avant le coup
+d'envoi, aucun conflit, même règle que pour un coach.
 
 **Amicaux** (`competitionId` null) : jamais comparés aux fenêtres ligue, jamais soumis aux
 fenêtres/week-ends de match (ni solveur ni garde de placement manuel — juste un avertissement) ;
@@ -371,7 +385,7 @@ plus aucun conflit.
 4 `VENUE_UNAVAILABLE` + `ACCESS_WINDOW_LOST` (« Hors accès match » — champ additif `windows`, les
 accès du gymnase de la fixture triés jour du match d'abord, hors identité de l'empreinte
 `TYPE:fixtureId` ; l'écran nomme le gymnase et ses fenêtres, « aucun accès match ce jour-là » sans
-aucune) · 5 clash adouci + `TEAM_LINK_OVERLAP` +
+aucune) · 5 clash adouci +
 `FRIENDLY_ON_MATCH_SLOT` (amical HOME placé sur un créneau de match — `reasons`:
 `MATCH_SLOT_WINDOW`/`MATCH_WEEKEND`, samedi = clé du week-end, le vendredi ne compte jamais) · 6
 `COMPETITION_INCOMPLETE` (compétitions APPARIÉES sous leur attendu, `expectedMatchdays` — jamais
@@ -410,11 +424,16 @@ MATCH, fenêtre ligue quand l'enveloppe est résolue (non résolue = diagnostic 
 105/30. **Trajet adversaire (D3, contrat 2.23)** : une ligne AWAY porte `roundTripMinutes` (2 ×
 aller simple, projeté par la maison unique `App\Service\OpponentTravelProjection`, partagée avec
 le radar §2) ; le solveur étend la fenêtre de blocage du coach de ce trajet — moitié avant
-l'échauffement, moitié après le match, réplique exacte de `MatchFootprint` — pour le protéger
+le coup d'envoi, moitié après le match (**depuis le lot M, 2026-09-21** : plus d'échauffement dans
+cette fenêtre, réplique exacte de `MatchFootprint::personConflictOccupancy`) — pour le protéger
 pendant son déplacement. Absent/0 (adversaire sans trajet connu) ⇒ aucune extension. **SOFT
 (golden-épinglés)** : conflit coach MAIN −60 · passerelle `NOT_SIMULTANEOUS` violée
-−40 · habitude heure +15/gymnase +5 · fenêtre habituelle protégée −25 · `BACK_TO_BACK` enchaîné +15
-· coach ASSISTANT −10 · stabilité re-solve +8 · compactage −1/15 min de trou. La rotation A/B
+−40 (⚠ **asymétrie délibérée depuis le lot M** : le radar §2 a cessé de signaler cette famille,
+le solveur GARDE cette préférence souple — sens sûr, une pénalité SOFT ne bloque jamais rien, à ne
+pas « aligner » en la retirant) · habitude heure +15/gymnase +5 · fenêtre habituelle protégée −25 ·
+`BACK_TO_BACK` enchaîné +15 · coach ASSISTANT −10 · stabilité re-solve +8 · compactage −1/15 min de
+trou. Les fenêtres coach et passerelle sont **toutes deux** sans échauffement depuis le lot M — à
+domicile (candidats TO_PLACE, aucun trajet) la fenêtre personne vaut la fenêtre salle. La rotation A/B
 (`slotRotations`, §1) ajoute une attraction équivalente (`W_ROTATION_TIME=15`/`W_ROTATION_VENUE=5`)
 et une protection de fenêtre (`W_PROTECT_HABIT=25`) — une équipe ne porte jamais habitude ET
 rotation le même jour (suppléance côté backend), les deux bonus ne s'additionnent donc jamais.
@@ -574,8 +593,15 @@ gymnase partagé (décision fermée — il fausserait le compte saison de l'ongl
   conflits sans ressource résolue (« Autres conflits », « Extérieur », « Sans date »), toujours en
   dernier. Un conflit à 2 équipes apparaît sous chacune en pivot équipe (assumé). Tri : compte
   décroissant puis alphabétique fr (chronologique pour la journée).
-- **Chips familles** (10 `ConflictType`, toutes cochées par défaut) : compteur SAISON, à traiter
-  seulement — une famille 100 % traitée garde sa chip, « · 0 » en sourdine.
+- **Chips familles** (10 `ConflictType` **côté frontend**, toutes cochées par défaut) : compteur
+  SAISON, à traiter seulement — une famille 100 % traitée garde sa chip, « · 0 » en sourdine. ⚠
+  **Dérive partiellement corrigée** : le backend a cessé d'émettre `TEAM_LINK_OVERLAP` (lot M,
+  2026-09-21, § « Détecteur de conflits » ci-dessus) ; le contrat public l'a suivi le même jour
+  (`e881d748` — retiré de l'énumération OpenAPI `conflicts[].type` ET de `ConflictFingerprinter`,
+  qui ne compte plus que 9 types possibles). **Reste ouvert, volontairement** : le frontend garde
+  encore ses 10 clés `ConflictType` (`conflictLabels.ts`) — la chip « Passerelle » de l'onglet
+  Conflits reste affichée et cochable alors qu'elle ne peut plus jamais se peupler ; un lot séparé
+  reprend cet écran juste après ce lot, décision de ne pas l'entamer ici.
 - **Puces « Traitement »** (À traiter · Dérogation demandée · Réglé en interne · Sans solution pour
   l'instant) et filtre « Seulement avec un match à domicile » (critère descriptif, pas « où je peux
   agir » — décision fermée). Ordre d'application : familles → traitement → domicile → pivot.

@@ -62,6 +62,20 @@ désormais celui dont le suivant démarre exactement à la fin du match précéd
 selon les durées, plus une constante 2h15). Golden re-épinglé consciemment (changement de géométrie =
 changement de produit) : `engine/tests/golden/test_match_placement_golden.py`.
 
+**Amendement 2026-09-21 (lot M)** : la fenêtre PERSONNE (coach, passerelle `NOT_SIMULTANEOUS`,
+entraînements projetés) perd à son tour l'échauffement — elle n'est plus
+`[coup d'envoi − warmupMinutes, coup d'envoi + matchMinutes]` mais
+`[coup d'envoi − travelOut, coup d'envoi + matchMinutes + travelBack]` (`travelOut`/`travelBack` =
+la moitié du trajet aller-retour AWAY, D3 ; nuls à domicile, où elle vaut donc la fenêtre SALLE).
+Réplique exacte de `MatchFootprint::personConflictOccupancy` côté radar (`module-matchs.md` §2) :
+une personne engagée deux fois n'a plus qu'à ARRIVER au coup d'envoi du second engagement, l'ancien
+paragraphe de ce document ci-dessus (« l'échauffement reste une contrainte de personne… ») est donc
+**superseded**. `CONTRACT_VERSION` inchangé (2.23) : `warmupMinutes` reste au schéma, simplement
+plus lu par le solveur pour aucune fenêtre. ⚠ **Asymétrie délibérée conservée** : le radar de
+conflits a cessé d'émettre la famille passerelle (`TEAM_LINK_OVERLAP`, décision fondateur) mais le
+solveur GARDE son malus SOFT `NOT_SIMULTANEOUS` (−40) — une préférence souple ne bloque jamais un
+placement, la retirer serait un recul silencieux si la famille revenait un jour au radar.
+
 Poids SOFT (produit, golden-épinglés) : conflit coach MAIN −60 ·
 passerelle NOT_SIMULTANEOUS violée −40 · habitude heure +15 / gymnase +5 (le jour est constant) ·
 fenêtre habituelle protégée −25 · **rotation A/B — attraction heure +15 / gymnase +5 · fenêtre de

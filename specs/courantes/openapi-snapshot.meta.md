@@ -1,11 +1,23 @@
-Last verified @ 2026-09-21 (lot L + correctifs de revue `d60b3fc0` — « validé ligue » en lot :
-nouvelle route `GET`/`POST /api/fixtures/league-validation`, contributeur `SeasonAndFixturePaths` ;
-régénéré deux fois par `api:openapi:export`, la seconde après `d60b3fc0`).
-**207 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** net (nouvelle route,
-inchangé par les correctifs). · SHA-256 `9ae9779b0dd470df5e462dfde029234e980ed85e16505229f30a763c2d13e238`
-(`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
+Last verified @ 2026-09-21 (`e881d748` — « le conflit passerelle disparu quitte le contrat public et
+l'empreinte » : `TEAM_LINK_OVERLAP` retiré de l'énumération `conflicts[].type`,
+`SeasonAndFixturePaths` ; régénéré par `api:openapi:export`, aucune route touchée).
+**207 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (une valeur
+d'enum retirée, aucune route ajoutée/supprimée) · **9 valeurs** dans l'énumération `conflicts[].type`
+(`VENUE_OVERLAP`, `LEAGUE_WINDOW_VIOLATION`, `MATCH_MATCH`, `MATCH_TRAINING`, `VENUE_UNAVAILABLE`,
+`ACCESS_WINDOW_LOST`, `COMPETITION_INCOMPLETE`, `AWAY_NO_FOOTPRINT`, `FRIENDLY_ON_MATCH_SLOT` —
+zéro hit `TEAM_LINK_OVERLAP` dans le fichier ✓) · SHA-256
+`59d2ec08af75fb0a5a22464aeee4cca4da38121d159c0e1829d288ab83b388a7` (`sha256sum`, confirmé sur le
+fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Le conflit passerelle disparu quitte le contrat public, backend (2026-09-21, `e881d748`)** :
+  **+0 path** — la valeur `TEAM_LINK_OVERLAP` quitte l'énumération `conflicts[].type` (contributeur
+  `SeasonAndFixturePaths`) : lot M a retiré la famille TEAM_LINK du détecteur de conflits
+  (`MatchConflictDetector`/`ConflictRadarLoader` ne chargent plus les liens d'équipes), le contrat
+  public l'annonçait encore alors qu'elle ne peut plus jamais être émise. L'inatteignabilité est
+  démontrée, pas supposée : le détecteur n'émet plus que neuf types. `ConflictFingerprinter` perd sa
+  branche `match` devenue morte. **9 valeurs restantes** dans l'énumération. Backend PUR, contrat
+  backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23, aucun appel moteur).
 - **Lot L — « validé ligue » en lot, backend (2026-09-21, amendé par `d60b3fc0` le même jour)** :
   **+1 path** — nouvelle route `GET`/`POST /api/fixtures/league-validation` (management + saison
   écrivable + socle pointé). GET rend le compte des domiciles UNPLACED éligibles (heure + venueId
@@ -73,13 +85,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   claim `subscribe`) : la progression et le verdict (`{filled, unresolved}` pour la matrice) sont poussés
   par Mercure sur ce topic. Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23,
   aucun appel moteur).
-- **C5 — `travelStatus` sur les trajets adverses, backend (2026-09-19)** : **+0 path** — chaque entrée
-  adversaire de `GET /api/opponents/travel` gagne un champ ADDITIF `travelStatus` (`done`|`pending`|
-  `unavailable`), statut du TRAJET calculé SERVEUR : `done` (minutes présentes), `pending` (un calcul est en
-  cours pour ce club — clé Redis `travel_compute:{clubId}`, posée par le calcul asynchrone à venir),
-  `unavailable` (tenté sans résultat, ou pas de lieu à router). En regard, la passe `resolve()` ne re-route
-  plus QUE les trajets MANQUANTS (un trajet est une constante : jamais recalculé, jamais écrasé par un IGN
-  muet). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine
