@@ -344,4 +344,52 @@ describe("ConflictLine — détail par côté (P2-54)", () => {
     expect(screen.queryByText("heure estimée")).not.toBeInTheDocument();
     expect(screen.getByText(/Chevauchement/)).toBeInTheDocument();
   });
+
+  // Correction d'affichage (fondateur, sur capture) : « 1 ligne par équipe ». jsdom n'a pas de
+  // moteur de mise en page — on atteste les CLASSES qui GARANTISSENT la ligne unique (le rendu
+  // réel se prouve en Playwright), exactement comme le détail personne le fait plus haut.
+  const oneLineVenue: Conflict = {
+    type: "VENUE_OVERLAP",
+    severity: 1,
+    resolution: null,
+    venueId: "v-1",
+    start: "2026-11-08T16:00:00",
+    end: "2026-11-08T17:25:00",
+    left: { ...homeReal, fixtureId: "fx-a", teamId: "team-1", kickoffTime: "15:30", matchDurationMinutes: 120, opponentLabel: "BC Villeurbanne" },
+    right: { ...homeReal, fixtureId: "fx-b", teamId: "team-2", kickoffTime: "16:00", matchDurationMinutes: 120, opponentLabel: "ASVEL U21" },
+  };
+
+  it("VENUE_OVERLAP : équipe et « vs adversaire » sur UNE ligne (flex empilable), jamais deux blocs empilés", () => {
+    renderDetail(oneLineVenue);
+    const opponent = screen.getByText("vs BC Villeurbanne");
+    // L'adversaire n'est plus un `block` (qui forçait un saut de ligne sous l'équipe).
+    expect(opponent).not.toHaveClass("block");
+    const identity = opponent.parentElement as HTMLElement;
+    // Équipe + adversaire dans un conteneur `flex` (côte à côte au bureau), `flex-wrap` pour
+    // s'empiler en largeur téléphone (repli assumé).
+    expect(identity).toHaveClass("flex");
+    expect(identity).toHaveClass("flex-wrap");
+    const teamName = within(identity).getByText("U13");
+    expect(teamName).not.toHaveClass("block");
+  });
+
+  it("VENUE_OVERLAP : le créneau ne se casse jamais autour de sa flèche (cellule insécable, sans flex-wrap)", () => {
+    renderDetail(oneLineVenue);
+    const table = screen.getByRole("table", { name: "Détail par équipe" });
+    const firstRow = within(table).getAllByRole("row").slice(1)[0];
+    // identité(0) · Gymnase(1) · Date(2) · Créneau(3)
+    const creneau = cellsOf(firstRow)[3];
+    expect(creneau).toHaveClass("whitespace-nowrap");
+    // Le groupe coup d'envoi → fin n'enroule plus (plus de `flex-wrap` qui cassait « 18:45 → 20:45 »).
+    const group = creneau.querySelector("span");
+    expect(group).not.toHaveClass("flex-wrap");
+  });
+
+  it("VENUE_OVERLAP : la colonne d'identité ne capte plus tout le vide (pas de w-full → l'espace se répartit)", () => {
+    renderDetail(oneLineVenue);
+    const table = screen.getByRole("table", { name: "Détail par équipe" });
+    const firstRow = within(table).getAllByRole("row").slice(1)[0];
+    const identityCell = cellsOf(firstRow)[0];
+    expect(identityCell).not.toHaveClass("w-full");
+  });
 });
