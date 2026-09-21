@@ -91,8 +91,10 @@ describe("decodeConsultParams (A — défauts + extérieurs)", () => {
     expect(decodeConsultParams(new URLSearchParams("type=")).kinds).toEqual([]);
   });
 
-  it("conflits ⇒ liste de familles filtrée sur les valeurs connues", () => {
-    expect(decodeConsultParams(new URLSearchParams("conflits=MATCH_MATCH,GHOST,TEAM_LINK_OVERLAP")).families).toEqual(["MATCH_MATCH", "TEAM_LINK_OVERLAP"]);
+  it("conflits ⇒ liste de familles filtrée sur les valeurs connues (une famille fictive ET l'ancienne Passerelle retirée sont ignorées)", () => {
+    // GHOST prouve le mécanisme générique ; TEAM_LINK_OVERLAP est un ANCIEN lien profond
+    // dont la famille a disparu (backend + contrat) — il doit s'ignorer proprement, comme GHOST.
+    expect(decodeConsultParams(new URLSearchParams("conflits=MATCH_MATCH,GHOST,TEAM_LINK_OVERLAP,VENUE_OVERLAP")).families).toEqual(["MATCH_MATCH", "VENUE_OVERLAP"]);
   });
 
   it("type_semaine INVERSÉ : 1 ⇒ affichée ; absent/0 ⇒ masquée", () => {

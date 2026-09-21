@@ -228,15 +228,15 @@ export interface ConflictFixtureView {
    * without a real hour): say « heure estimée ». */
   estimatedKickoff?: boolean;
   /** Le rôle de la personne sur CE côté — servi seulement pour MATCH_MATCH
-   * (`left`/`right`). Absent sur les familles gymnase/passerelle, qui partagent
-   * cette vue mais ne portent aucune personne. */
+   * (`left`/`right`). Absent sur la famille gymnase, qui partage
+   * cette vue mais ne porte aucune personne. */
   role?: ConflictSideRole;
   windowStart: string;
   windowEnd: string;
   /**
    * Détail par côté (MATCH_MATCH / MATCH_TRAINING) — champs ADDITIFS servis par le
-   * backend pour rendre une ligne par côté. Optionnels : les familles gymnase/passerelle
-   * partagent cette vue mais le front ne les lit pas pour elles.
+   * backend pour rendre une ligne par côté. Optionnels : la famille gymnase
+   * partage cette vue mais le front ne les lit pas pour elle.
    */
   /** Heure estimée « HH:MM » empruntée à l'habitude — non-null SSI `estimatedKickoff`. */
   estimatedKickoffTime?: string | null;
@@ -283,7 +283,6 @@ export type ConflictType =
   | "MATCH_TRAINING"
   | "VENUE_UNAVAILABLE"
   | "ACCESS_WINDOW_LOST"
-  | "TEAM_LINK_OVERLAP"
   | "COMPETITION_INCOMPLETE"
   | "AWAY_NO_FOOTPRINT"
   | "FRIENDLY_ON_MATCH_SLOT";
@@ -332,8 +331,6 @@ export interface Conflict {
    * PAR CÔTÉ vit sur `left`/`right` (ou `fixture`/`training`). */
   coachRole?: ConflictSideRole;
   coachId?: string;
-  /** TEAM_LINK_OVERLAP only. */
-  teamLinkId?: string;
   /**
    * Overlap segment — coach conflicts only. ISO datetimes carrying the club's
    * WALL-CLOCK time WITHOUT an offset (`2026-10-03T20:45:00`): the UI parses
