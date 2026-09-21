@@ -171,8 +171,10 @@ final class EntryDeadlineOutlook
     }
 
     /**
-     * The effective deadline of a competition and where it comes from:
-     * the club value wins, else the community default (paired competitions only).
+     * The effective deadline of a competition and where it comes from — the club value
+     * wins, else the community default (paired competitions only). The rule itself lives
+     * in {@see CompetitionDeadlineResolver} (single home); here we only pick WHICH shared
+     * default to feed it (the paired one, keyed by federation id).
      *
      * @param array<string, SharedCompetitionDeadline> $sharedByFfbbId
      *
@@ -180,15 +182,11 @@ final class EntryDeadlineOutlook
      */
     private function effectiveDeadline(Competition $competition, array $sharedByFfbbId): array
     {
-        $club = $competition->getEntryDeadline();
-        if ($club instanceof DateTimeImmutable) {
-            return [$club, 'club'];
-        }
         $ffbbCompetitionId = $competition->getFfbbCompetitionId();
-        if (null !== $ffbbCompetitionId && isset($sharedByFfbbId[$ffbbCompetitionId])) {
-            return [$sharedByFfbbId[$ffbbCompetitionId]->getEntryDeadline(), 'community'];
-        }
+        $shared = null !== $ffbbCompetitionId ? ($sharedByFfbbId[$ffbbCompetitionId] ?? null) : null;
 
-        return [null, ''];
+        [$effective, $source] = CompetitionDeadlineResolver::resolve($competition, $shared);
+
+        return [$effective, $source ?? ''];
     }
 }

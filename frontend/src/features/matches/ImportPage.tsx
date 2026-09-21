@@ -14,6 +14,7 @@ import { toast } from "@/shared/stores/toastStore";
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { ImportFbiDialog } from "./ImportFbiDialog";
 import { EntryDeadlinesLink, LeagueValidationBanner } from "./LeagueValidation";
+import { REVIEW_QUEUE_ANCHOR } from "./lib/leagueValidation";
 import { STALE_DAYS, depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
 import { useApplyFfbbRencontres, useFfbbRencontres, useFixtures, useLatestFbiIngestion, usePriorityTiers, useTeams, useVenues } from "./queries";
 import { ReviewQueue } from "./ReviewQueue";
@@ -133,8 +134,12 @@ export function ImportPage() {
           les domiciles déjà datés (heure + gymnase) se confirment d'un geste chiffré. Muet à 0. */}
       <LeagueValidationBanner />
 
-      {/* 2. La file de traitement, par équipe. */}
-      <ReviewQueue fixtures={fixtures.data ?? []} teams={teams.data ?? []} venues={venues.data ?? []} />
+      {/* 2. La file de traitement, par équipe. `id` = cible du renvoi « Traiter dans la
+          file » du bandeau « validé ligue » (les rencontres échues à traiter y sont
+          visibles par défaut : elles ne sont pas traitées, donc jamais masquées). */}
+      <div id={REVIEW_QUEUE_ANCHOR}>
+        <ReviewQueue fixtures={fixtures.data ?? []} teams={teams.data ?? []} venues={venues.data ?? []} />
+      </div>
 
       {importDialogOpen ? <ImportFbiDialog teams={teams.data ?? []} tiers={tiers.data ?? []} onClose={() => setImportDialogOpen(false)} /> : null}
       {ffbbDialogOpen ? <FfbbEngagementsDialog teams={teams.data ?? []} tiers={tiers.data ?? []} onClose={() => setFfbbDialogOpen(false)} /> : null}

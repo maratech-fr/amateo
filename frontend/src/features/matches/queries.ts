@@ -19,13 +19,20 @@ export function useCompetitions() {
 /**
  * RMM-6 — l'écriture bulk des échéances de saisie. Invalide `competitions` : les
  * champs lus (`entryDeadline`/`effectiveEntryDeadline`/`deadlineSource`) y vivent.
+ *
+ * ⚠ Lot O — l'échéance est DEVENUE le déclencheur de « validé ligue » : recaler une
+ * échéance doit rafraîchir la lecture du bandeau, sinon le gestionnaire pose son échéance,
+ * revient, et ne voit rien. On invalide donc AUSSI `["fixtures","league-validation"]`.
  * 422/409 remontent par `onError` (toast) ; l'éditeur ajoute son alerte de formulaire.
  */
 export function useSetEntryDeadlines() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ competitionIds, deadline }: { competitionIds: string[]; deadline: string | null }) => matchesApi.setEntryDeadlines(competitionIds, deadline),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["competitions"] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["competitions"] });
+      void queryClient.invalidateQueries({ queryKey: ["fixtures", "league-validation"] });
+    },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
@@ -607,13 +614,14 @@ export function useResolveFixtureDeviation() {
 }
 
 /**
- * Lot L — le COMPTE des rencontres validables « validé ligue ». La clé vit sous
- * `["fixtures"]`, donc tout `invalidateFixtures` (import, confirmation, placement…) la
- * recale : le bandeau de rattrapage et la section du rapport suivent sans effort. Le
- * front n'a AUCUN prédicat — il affiche `count`.
+ * Lot O — la LECTURE « validé ligue » (par championnat échu + rencontres à traiter +
+ * championnats sans échéance). La clé vit sous `["fixtures"]`, donc tout
+ * `invalidateFixtures` (import, confirmation, placement…) la recale ; l'écriture des
+ * échéances l'invalide aussi (voir `useSetEntryDeadlines`). Le front n'a AUCUNE règle —
+ * il affiche la lecture servie.
  */
-export function useLeagueValidationCount() {
-  return useQuery({ queryKey: ["fixtures", "league-validation"], queryFn: matchesApi.getLeagueValidationCount, staleTime: 30_000 });
+export function useLeagueValidationOutlook() {
+  return useQuery({ queryKey: ["fixtures", "league-validation"], queryFn: matchesApi.getLeagueValidationOutlook, staleTime: 30_000 });
 }
 
 /**
