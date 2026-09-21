@@ -4,16 +4,20 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-09-21 (`documentation-update`, lot L « l'import FBI se confirme "validé ligue"
-en lot » + revue `d60b3fc0` le même jour). Re-confronté au code cette passe : `LeagueValidationBanner`
-(bandeau de rattrapage, muet à 0) sur `ImportPage.tsx`, `LeagueValidationReportEntry` (section du
-rapport, même règle de vacuité) sur `ImportFbiDialog.tsx` — même confirmation chiffrée partagée
-(`LeagueValidationConfirmDialog`), front sans prédicat propre (`useLeagueValidationCount` affiche
-le compte SERVI) ; `EntryDeadlinesLink` rendu INCONDITIONNELLEMENT, pas gated sur l'éligibilité lot
-L. **`d60b3fc0` vérifié au code** : `PlacementPanel.tsx` offre « Corriger — repasser en Placé » sur
-`VALIDATED` (réconciliation D9 ET lot L) — le test `PlacementPanel.test.tsx` clique le bouton et
-vérifie `onReopen` appelé, le texte affiché est désormais « … ancré sur les date, heure et salle
-enregistrées côté ligue… » (générique, plus « Attesté par FBI »). Reste confronté à la passe
+Last verified @ 2026-09-21 (`documentation-update`, lot O « l'échéance du championnat pilote la
+validation "validé ligue" » — amende le lot L livré plus tôt le même jour + revue `d60b3fc0`).
+Re-confronté au code cette passe : `LeagueValidationBanner` (bandeau de rattrapage sur
+`ImportPage.tsx`, rend TROIS blocs indépendants — championnats échus prêts, domiciles échus à
+traiter nommés, championnats sans échéance — muet seulement si les trois sont vides, PAS un simple
+« muet à 0 »), `LeagueValidationReportEntry` (section du rapport sur `ImportFbiDialog.tsx`, muette si
+`totalValidatable` est nul) — même confirmation chiffrée partagée (`LeagueValidationConfirmDialog`,
+lib pure `lib/leagueValidation.ts`), front sans prédicat propre (`useLeagueValidationOutlook` affiche
+la lecture SERVIE — plus le seul compte : `{matured, toTreat, missingDeadline, totalValidatable}`) ;
+`EntryDeadlinesLink` rendu INCONDITIONNELLEMENT. **`d60b3fc0` vérifié au code (comportement inchangé
+par le lot O)** : `PlacementPanel.tsx` offre « Corriger — repasser en Placé » sur `VALIDATED`
+(réconciliation D9 ET bascule en lot) — le test `PlacementPanel.test.tsx` clique le bouton et vérifie
+`onReopen` appelé, le texte affiché est désormais « … ancré sur les date, heure et salle enregistrées
+côté ligue… » (générique, plus « Attesté par FBI »). Reste confronté à la passe
 précédente (2026-09-20, PR I « les gymnases adverses appartiennent au club ») : `OpponentsPage.tsx`
 au grain GYMNASE (un `<tbody>` par club adverse), filtre segmenté **Sans gymnase · À apparier ·
 Tous**, `AwayTravelChip` lit `fixture.awayTravel`. Reste confronté à la passe d'avant (2026-09-19,

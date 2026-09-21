@@ -1,14 +1,13 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D3).
-Reconfirmé : `engine/CONTRACT_VERSION` = `2.23` ✓ — deux bumps le même jour : `2.21→2.22`
-(ENG-40, diagnostic `placement_problem_too_large`) puis `2.22→2.23` (D3,
-`matches[].roundTripMinutes` sur `/place-matches`, sans rapport avec ce document — ce fichier ne
-décrit que `/generate`) ; les occurrences de `2.21` ci-dessous recalées à `2.23` ;
-`DiagnosticSchema.id` toujours requis (`app/schemas/output_schema.py:61`) ✓ ; le commentaire mort
-`FACILITY_CAPACITY` toujours présent, non-code (`app/main.py:488-491`) — non re-sondé cette
-passe (dernière confrontation 2026-09-17). Reste non re-parcouru ligne à ligne cette passe —
-historique : `git log -p --follow engine/docs/nominal-flow.md`.
+Last verified @ 2026-09-21 (rotation de fraîcheur `documentation-update`, lot O « l'échéance du
+championnat pilote la validation "validé ligue" » — engine non touché par cette PR, zéro appel
+moteur, contrat backend⇄engine inchangé). Re-confronté au code : `engine/CONTRACT_VERSION` =
+`2.23` ✓ (inchangé) ; `DiagnosticSchema.id` toujours requis, sans défaut
+(`app/schemas/output_schema.py:61`) ✓ ; le commentaire mort `FACILITY_CAPACITY` toujours présent,
+non-code — **citation recalée** : `app/main.py:447-450` (le fichier a bougé depuis la dernière
+confrontation, plus `:488-491`) ✓. Reste non re-parcouru ligne à ligne cette passe — historique :
+`git log -p --follow engine/docs/nominal-flow.md`.
 
 > Ce document decrit le chemin complet d'une requete de generation d'emploi du temps, du moment ou le backend construit le payload jusqu'a la notification en temps reel du frontend. Destine aux developpeurs travaillant sur l'integration backend/engine.
 
