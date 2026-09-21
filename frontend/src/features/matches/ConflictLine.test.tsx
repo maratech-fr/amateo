@@ -305,7 +305,7 @@ describe("ConflictLine — détail par côté (P2-54)", () => {
     expect(duree).toHaveClass("hidden");
   });
 
-  it("VENUE_OVERLAP garde la pastille GLOBALE « heure estimée » (témoin de non-régression) et AUCUN détail par côté", () => {
+  it("VENUE_OVERLAP SANS venueId (donnée dégradée) : repli sur la pastille GLOBALE « heure estimée » et AUCUN détail par côté", () => {
     const venueOverlap: Conflict = {
       type: "VENUE_OVERLAP",
       severity: 1,
@@ -318,5 +318,30 @@ describe("ConflictLine — détail par côté (P2-54)", () => {
     renderDetail(venueOverlap);
     expect(screen.getByText("heure estimée")).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "Détail par équipe" })).not.toBeInTheDocument();
+  });
+
+  it("VENUE_OVERLAP (collision de gymnase) : détail par côté — équipe · vs adversaire · gymnase sur CHAQUE ligne · date · créneau, sans pastille globale", () => {
+    const homeA = { ...homeReal, fixtureId: "fx-a", teamId: "team-1", kickoffTime: "15:30", matchDurationMinutes: 120, opponentLabel: "BC Villeurbanne" };
+    const homeB = { ...homeReal, fixtureId: "fx-b", teamId: "team-2", kickoffTime: "16:00", matchDurationMinutes: 120, opponentLabel: "ASVEL U21" };
+    const venueOverlap: Conflict = {
+      type: "VENUE_OVERLAP",
+      severity: 1,
+      resolution: null,
+      venueId: "v-1",
+      start: "2026-11-08T16:00:00",
+      end: "2026-11-08T17:25:00",
+      left: homeA,
+      right: homeB,
+    };
+    renderDetail(venueOverlap);
+    const table = screen.getByRole("table", { name: "Détail par équipe" });
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Gymnase", "Date", "Créneau"]);
+    // Le gymnase est nommé sur CHAQUE ligne (forme imposée par le fondateur).
+    expect(within(table).getAllByText("Gymnase Mateo")).toHaveLength(2);
+    expect(screen.getByText("vs BC Villeurbanne")).toBeInTheDocument();
+    expect(screen.getByText("vs ASVEL U21")).toBeInTheDocument();
+    // La pastille GLOBALE « heure estimée » et la ligne grise horaire disparaissent (comme pour les familles de personne).
+    expect(screen.queryByText("heure estimée")).not.toBeInTheDocument();
+    expect(screen.getByText(/Chevauchement/)).toBeInTheDocument();
   });
 });

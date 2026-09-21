@@ -5,11 +5,17 @@ import type { Conflict, ConflictFixtureView, ConflictTrainingView, HomeAway, Tea
 import { SIDE_ROLE_WORD } from "./conflictLabels";
 
 /**
- * P2-54 « détail par côté » — le BUILDER PUR du modèle de lignes d'un conflit de
- * PERSONNE (MATCH_MATCH / MATCH_TRAINING) : une ligne par côté (équipe, rôle, lieu,
- * adversaire, horaires) + une ligne de chevauchement. `ConflictLine` le rend ;
- * seules ces deux familles l'utilisent (les familles gymnase/passerelle gardent
- * leur ligne grise + pastille globale).
+ * « détail par côté » — le BUILDER PUR du modèle de lignes d'un conflit qui gagne à
+ * s'expliquer côté par côté. Deux VARIANTES, discriminées par `model.kind` :
+ *
+ * - `person` (P2-54, MATCH_MATCH / MATCH_TRAINING) : une ligne par côté (équipe, rôle,
+ *   lieu, adversaire, horaires à 4 créneaux) + une ligne de chevauchement.
+ * - `venue` (collision de gymnase VENUE_OVERLAP) : une ligne par rencontre — équipe,
+ *   « vs adversaire », le GYMNASE (répété sur chaque ligne), la DATE (répétée sur
+ *   chaque ligne), et le créneau (coup d'envoi → fin) — forme imposée par le fondateur.
+ *   Le gymnase se loge dans `place`, la date dans `date`. `ConflictLine` choisit la
+ *   mise en page sur `model.kind`. Les autres familles gardent leur ligne grise +
+ *   pastille globale (le builder renvoie `null`).
  *
  * PRÉSENTATION pure — il ne décide d'AUCUN comportement métier : il choisit des
  * libellés/icônes depuis des TABLES (`HOME_AWAY_*`, `SIDE_ROLE_WORD`), jamais un
@@ -42,10 +48,12 @@ export interface ConflictSideLine {
   /** Le mot du rôle (`SIDE_ROLE_WORD`) — absent quand le côté ne porte pas de rôle. */
   roleWord?: string;
   kind: ConflictSideKind;
-  /** Le texte du groupe « lieu » : « domicile » | « extérieur à X » | « extérieur (lieu inconnu) » | « Entraînement · Gymnase X ». */
+  /** Le texte du groupe « lieu » : « domicile » | « extérieur à X » | « extérieur (lieu inconnu) » | « Entraînement · Gymnase X » ; pour la variante `venue`, le NOM DU GYMNASE. */
   place: string;
   /** « vs <adversaire> » — côtés MATCH seulement (jamais un entraînement). */
   opponent?: string;
+  /** Variante `venue` seulement : la date courte de la rencontre (« 14/03 »), répétée sur chaque ligne. */
+  date?: string;
   times: ConflictSideTimes;
   /** Extérieur sans trajet modélisé : départ/retour absents, un « trajet inconnu » muet à la place. */
   travelUnknown?: boolean;
@@ -66,6 +74,8 @@ export interface ConflictOverlapLine {
 }
 
 export interface ConflictSideModel {
+  /** `person` : 4 colonnes horaires (départ/coup d'envoi/fin/durée). `venue` : gymnase · date · créneau. */
+  kind: "person" | "venue";
   sides: ConflictSideLine[];
   overlap: ConflictOverlapLine;
 }
@@ -146,6 +156,31 @@ function matchSide(side: ConflictFixtureView, teams: Map<string, Team>): Conflic
   };
 }
 
+/**
+ * Un côté d'une collision de gymnase (VENUE_OVERLAP) : équipe, « vs adversaire », le
+ * gymnase (dans `place`, répété sur chaque ligne), la date (répétée), et le créneau
+ * coup d'envoi → fin. Les deux rencontres sont à domicile sur le même gymnase ; le
+ * coup d'envoi RÉEL (sinon l'estimé emprunté à l'habitude), la fin = coup d'envoi +
+ * durée (arithmétique d'affichage, comme le côté domicile d'un conflit de personne).
+ */
+function venueSide(side: ConflictFixtureView, teams: Map<string, Team>, venueName: string): ConflictSideLine {
+  const estimated = true === side.estimatedKickoff;
+  const kickoff = side.kickoffTime ?? side.estimatedKickoffTime ?? "";
+  const kickoffMin = parseTime(kickoff);
+  const duration = side.matchDurationMinutes;
+  return {
+    teamName: teams.get(side.teamId)?.name ?? "Équipe ?",
+    kind: HOME_AWAY_KIND[side.homeAway],
+    place: venueName,
+    opponent: undefined !== side.opponentLabel && "" !== side.opponentLabel ? `vs ${side.opponentLabel}` : undefined,
+    date: frDateShortNoYear(side.matchDate),
+    times: {
+      kickoff: { value: kickoff, estimated },
+      end: null !== kickoffMin && undefined !== duration ? formatMinutes(kickoffMin + duration) : undefined,
+    },
+  };
+}
+
 function trainingSide(training: ConflictTrainingView, teams: Map<string, Team>, venues: Map<string, Venue>): ConflictSideLine {
   const venueName = venues.get(training.venueId)?.name ?? "Gymnase ?";
   return {
@@ -177,20 +212,32 @@ function isFixtureView(fixture: Conflict["fixture"]): fixture is ConflictFixture
 }
 
 /**
- * Le modèle de lignes d'un conflit de PERSONNE, ou `null` pour toute autre famille
- * (le caller garde alors la ligne grise). Deux familles seulement : MATCH_MATCH
- * (left/right) et MATCH_TRAINING (fixture + training).
+ * Le modèle de lignes d'un conflit qui gagne à s'expliquer côté par côté, ou `null`
+ * pour toute autre famille (le caller garde alors la ligne grise). Trois cas :
+ * MATCH_MATCH (left/right) et MATCH_TRAINING (fixture + training) → variante `person` ;
+ * VENUE_OVERLAP (left/right + venueId) → variante `venue`. Un VENUE_OVERLAP sans
+ * `venueId` (donnée dégradée : on ne peut pas nommer le gymnase) retombe sur `null`.
  */
 export function buildConflictSideLines(conflict: Conflict, teams: Map<string, Team>, venues: Map<string, Venue>): ConflictSideModel | null {
   if ("MATCH_MATCH" === conflict.type && undefined !== conflict.left && undefined !== conflict.right && undefined !== conflict.start && undefined !== conflict.end) {
     return {
+      kind: "person",
       sides: [matchSide(conflict.left, teams), matchSide(conflict.right, teams)],
       overlap: overlapLine(conflict.start, conflict.end),
     };
   }
   if ("MATCH_TRAINING" === conflict.type && isFixtureView(conflict.fixture) && undefined !== conflict.training && undefined !== conflict.start && undefined !== conflict.end) {
     return {
+      kind: "person",
       sides: [matchSide(conflict.fixture, teams), trainingSide(conflict.training, teams, venues)],
+      overlap: overlapLine(conflict.start, conflict.end),
+    };
+  }
+  if ("VENUE_OVERLAP" === conflict.type && undefined !== conflict.left && undefined !== conflict.right && undefined !== conflict.start && undefined !== conflict.end && undefined !== conflict.venueId) {
+    const venueName = venues.get(conflict.venueId)?.name ?? "Gymnase ?";
+    return {
+      kind: "venue",
+      sides: [venueSide(conflict.left, teams, venueName), venueSide(conflict.right, teams, venueName)],
       overlap: overlapLine(conflict.start, conflict.end),
     };
   }

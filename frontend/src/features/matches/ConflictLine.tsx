@@ -1,4 +1,4 @@
-import { Bus, ChevronDown, ChevronRight, Clock, Dumbbell, Home, Sparkles } from "lucide-react";
+import { Bus, ChevronDown, ChevronRight, Clock, Dumbbell, Home, MapPin, Sparkles } from "lucide-react";
 import { Fragment, type ReactNode, useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
@@ -11,7 +11,7 @@ import { cn } from "@/shared/lib/utils";
 
 import type { Coach, Conflict, ConflictSideRole, LeagueKickoffWindow, Team, Venue, VenueAccessWindow } from "./api";
 import { SIDE_ROLE_WORD } from "./lib/conflictLabels";
-import { buildConflictSideLines, type ConflictSideKind, type ConflictSideLine, type ConflictSideModel } from "./lib/conflictSideLines";
+import { buildConflictSideLines, type ConflictOverlapLine, type ConflictSideKind, type ConflictSideLine, type ConflictSideModel } from "./lib/conflictSideLines";
 import { sortConflictsByDate } from "./lib/conflictOrder";
 import { groupBySeverity, type DiagnosticGroup } from "./lib/diagnostic";
 
@@ -57,8 +57,6 @@ function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string 
       return "Hors fenêtre autorisée par la ligue";
     case "ACCESS_WINDOW_LOST":
       return "Hors accès match";
-    case "TEAM_LINK_OVERLAP":
-      return "Passerelle violée";
     case "COMPETITION_INCOMPLETE":
       return "Calendrier incomplet";
     case "AWAY_NO_FOOTPRINT":
@@ -113,9 +111,6 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: M
   if ("LEAGUE_WINDOW_VIOLATION" === conflict.type && conflict.fixture) {
     const windows = ((conflict.windows ?? []) as LeagueKickoffWindow[]).map((w) => `${w.kickoffMin}–${w.kickoffMax}`).join(", ");
     return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} à ${conflict.fixture.kickoffTime ?? "?"} (fenêtres : ${windows}) — dérogation à demander tôt`;
-  }
-  if ("TEAM_LINK_OVERLAP" === conflict.type && conflict.left && conflict.right) {
-    return `Équipes liées en même temps — ${teamName(teams, conflict.left.teamId)} et ${teamName(teams, conflict.right.teamId)} (joueurs partagés)`;
   }
   if ("COMPETITION_INCOMPLETE" === conflict.type && undefined !== conflict.teamId) {
     return `${conflict.competitionName ?? "?"} (${teamName(teams, conflict.teamId)}) — ${conflict.imported ?? 0}/${conflict.expected ?? "?"} journées : fichier partiel ou phase pas encore sortie`;
@@ -253,22 +248,98 @@ function ConflictSideDetail({ model }: { model: ConflictSideModel }) {
           ))}
         </TableBody>
       </Table>
-      {/* Chevauchement : PAS de text-warning (sous AA sur fond teinté) ; date répétée
-          seulement quand début et fin tombent deux jours différents. */}
-      <p className="mt-1 font-medium text-foreground">
-        Chevauchement <span className="sr-only">de </span>
-        <span className="tabular-nums">
-          {overlap.crossDay ? `${overlap.startDay} ` : null}
-          {overlap.start}
+      <OverlapPhrase overlap={overlap} />
+    </div>
+  );
+}
+
+/**
+ * La ligne de chevauchement, partagée par le détail PERSONNE et le détail GYMNASE :
+ * PAS de `text-warning` (sous AA sur fond teinté) ; la date n'est répétée que si le
+ * recouvrement franchit minuit (`crossDay`).
+ */
+function OverlapPhrase({ overlap }: { overlap: ConflictOverlapLine }) {
+  return (
+    <p className="mt-1 font-medium text-foreground">
+      Chevauchement <span className="sr-only">de </span>
+      <span className="tabular-nums">
+        {overlap.crossDay ? `${overlap.startDay} ` : null}
+        {overlap.start}
+      </span>
+      <span aria-hidden="true"> → </span>
+      <span className="sr-only"> à </span>
+      <span className="tabular-nums">
+        {overlap.crossDay ? `${overlap.endDay} ` : null}
+        {overlap.end}
+      </span>{" "}
+      · <span className="font-semibold">{formatDurationMinutes(overlap.minutes)}</span>
+    </p>
+  );
+}
+
+/**
+ * Une ligne de collision de gymnase = une ligne de tableau : `<th scope="row">` l'identité
+ * (équipe + « vs adversaire »), puis Gymnase · Date · Créneau (coup d'envoi → fin). Le
+ * gymnase et la date sont RÉPÉTÉS sur chaque ligne (forme imposée par le fondateur : les
+ * deux rencontres sont au même gymnase, le même jour, mais chacune l'affiche).
+ */
+function ConflictVenueRow({ side }: { side: ConflictSideLine }) {
+  return (
+    <TableRow>
+      <th scope="row" className="w-full px-1.5 py-0.5 text-left align-top font-normal">
+        <span className="block font-medium text-foreground">{side.teamName}</span>
+        {undefined !== side.opponent ? <span className="block min-w-0 text-foreground [overflow-wrap:anywhere]">{side.opponent}</span> : null}
+      </th>
+      <TableCell className="px-1.5 py-0.5 align-top">
+        <span className="flex items-center gap-1">
+          <MapPin className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="text-foreground">{side.place}</span>
         </span>
-        <span aria-hidden="true"> → </span>
-        <span className="sr-only"> à </span>
-        <span className="tabular-nums">
-          {overlap.crossDay ? `${overlap.endDay} ` : null}
-          {overlap.end}
-        </span>{" "}
-        · <span className="font-semibold">{formatDurationMinutes(overlap.minutes)}</span>
-      </p>
+      </TableCell>
+      <TableCell className="whitespace-nowrap px-1.5 py-0.5 align-top tabular-nums text-foreground">{side.date ?? "—"}</TableCell>
+      <TableCell className="whitespace-nowrap px-1.5 py-0.5 align-top tabular-nums">
+        <span className="inline-flex flex-wrap items-center gap-x-1">
+          <span className="text-foreground">{undefined !== side.times.kickoff.value && "" !== side.times.kickoff.value ? side.times.kickoff.value : "—"}</span>
+          {side.times.kickoff.estimated ? <EstimatedPill /> : null}
+          {undefined !== side.times.end && "" !== side.times.end ? (
+            <>
+              <span aria-hidden="true">→</span>
+              <span className="sr-only"> à </span>
+              <span className="text-foreground">{side.times.end}</span>
+            </>
+          ) : null}
+        </span>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+/**
+ * Le DÉTAIL par côté d'une COLLISION DE GYMNASE : un tableau Gymnase · Date · Créneau,
+ * une ligne par rencontre + le chevauchement. Remplace la ligne grise et la pastille
+ * globale « heure estimée », exactement comme le détail personne (P4-207 lot N).
+ */
+function ConflictVenueDetail({ model }: { model: ConflictSideModel }) {
+  return (
+    <div className="mt-1 @container text-xs">
+      <Table variant="inline">
+        <TableCaption className="sr-only">Détail par équipe</TableCaption>
+        <TableHeader>
+          <TableRow>
+            {/* Colonne d'identité SANS en-tête nommé : les 3 en-têtes correspondent aux 3 colonnes. */}
+            <td className="w-full px-1.5 py-0.5" />
+            <TableHead className="px-1.5 py-0.5 normal-case">Gymnase</TableHead>
+            <TableHead className="px-1.5 py-0.5 normal-case">Date</TableHead>
+            <TableHead className="px-1.5 py-0.5 normal-case">Créneau</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {model.sides.map((side, index) => (
+            <ConflictVenueRow key={index} side={side} />
+          ))}
+        </TableBody>
+      </Table>
+      <OverlapPhrase overlap={model.overlap} />
     </div>
   );
 }
@@ -301,10 +372,11 @@ interface ConflictLineProps {
  * en pleine largeur sous la ligne (la note). Sans trailing ni below, la structure et
  * le rendu sont ceux du radar d'origine.
  *
- * Familles PERSONNE (MATCH_MATCH / MATCH_TRAINING) : une LIGNE PAR CÔTÉ + une ligne de
- * chevauchement (`buildConflictSideLines`) remplacent la ligne grise et la pastille
- * globale « heure estimée » (le coup d'envoi porte sa propre pastille). Les familles
- * gymnase/passerelle gardent leur rendu ACTUEL (ligne grise + pastille globale).
+ * Familles à DÉTAIL par côté (`buildConflictSideLines`) : une LIGNE PAR CÔTÉ + une
+ * ligne de chevauchement remplacent la ligne grise horaire et la pastille globale
+ * « heure estimée ». Deux mises en page selon `model.kind` : PERSONNE (MATCH_MATCH /
+ * MATCH_TRAINING, 4 colonnes horaires) et GYMNASE (VENUE_OVERLAP : Gymnase · Date ·
+ * Créneau). Les autres familles gardent leur rendu ACTUEL (ligne grise + pastille).
  */
 export function ConflictLine({ conflict, teams, coaches, venues, tone, isNew, trailing, below, ariaBusy }: ConflictLineProps) {
   const sideModel = buildConflictSideLines(conflict, teams, venues);
@@ -326,7 +398,11 @@ export function ConflictLine({ conflict, teams, coaches, venues, tone, isNew, tr
         {null === sideModel && estimatedTag(conflict) ? <span className="ml-1 rounded bg-muted px-1 text-xs uppercase tracking-wide">heure estimée</span> : null}
       </p>
       {null !== sideModel ? (
-        <ConflictSideDetail model={sideModel} />
+        "venue" === sideModel.kind ? (
+          <ConflictVenueDetail model={sideModel} />
+        ) : (
+          <ConflictSideDetail model={sideModel} />
+        )
       ) : undefined !== conflict.start && undefined !== conflict.end ? (
         <p className="text-xs text-muted-foreground">
           {whenLabel(conflict.start)} → {whenLabel(conflict.end)}

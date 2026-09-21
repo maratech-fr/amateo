@@ -184,17 +184,59 @@ describe("buildConflictSideLines — chevauchement", () => {
   });
 });
 
-describe("buildConflictSideLines — familles NON personne", () => {
-  it("VENUE_OVERLAP (left/right mais pas une famille personne) → null", () => {
-    const conflict: Conflict = {
+describe("buildConflictSideLines — VENUE_OVERLAP (collision de gymnase, détail par côté)", () => {
+  /** Deux rencontres DOMICILE qui se percutent sur le même gymnase. */
+  function venueOverlap(over: Partial<Conflict> = {}): Conflict {
+    return {
       type: "VENUE_OVERLAP",
       severity: 1,
       resolution: null,
-      start: "2026-11-08T15:30:00",
+      venueId: "v-mateo",
+      start: "2026-11-08T16:00:00",
       end: "2026-11-08T17:25:00",
-      left: homeSide(),
-      right: awaySide(),
+      left: homeSide({ fixtureId: "fx-a", teamId: "team-sf2", kickoffTime: "15:30", matchDurationMinutes: 120, opponentLabel: "BC Villeurbanne" }),
+      right: homeSide({ fixtureId: "fx-b", teamId: "team-sm2", kickoffTime: "16:00", matchDurationMinutes: 120, opponentLabel: "ASVEL U21" }),
+      ...over,
     };
-    expect(buildConflictSideLines(conflict, teams, venues)).toBeNull();
+  }
+
+  it("une ligne par côté : équipe · vs adversaire · gymnase (sur CHAQUE ligne) · date (sur CHAQUE ligne) · coup d'envoi → fin", () => {
+    const model = buildConflictSideLines(venueOverlap(), teams, venues);
+    expect(model).not.toBeNull();
+    expect(model!.kind).toBe("venue");
+    const [a, b] = model!.sides;
+    // Le gymnase vit dans `place`, la date sur CHAQUE ligne, le créneau dans `times` (coup d'envoi → fin).
+    expect(a).toEqual({
+      teamName: "SF2",
+      kind: "home",
+      place: "Gymnase Mateo",
+      opponent: "vs BC Villeurbanne",
+      date: "8 nov.",
+      times: { kickoff: { value: "15:30", estimated: false }, end: "17:30" },
+    });
+    expect(b).toEqual({
+      teamName: "SM2",
+      kind: "home",
+      place: "Gymnase Mateo",
+      opponent: "vs ASVEL U21",
+      date: "8 nov.",
+      times: { kickoff: { value: "16:00", estimated: false }, end: "18:00" },
+    });
+  });
+
+  it("le chevauchement reste servi par le backend (start/end du conflit)", () => {
+    const model = buildConflictSideLines(venueOverlap(), teams, venues);
+    expect(model!.overlap).toEqual({ start: "16:00", end: "17:25", minutes: 85, crossDay: false, startDay: undefined, endDay: undefined });
+  });
+
+  it("gymnase absent de la map → « Gymnase ? » (jamais un crash)", () => {
+    const model = buildConflictSideLines(venueOverlap(), teams, new Map());
+    expect(model!.kind).toBe("venue");
+    expect(model!.sides[0].place).toBe("Gymnase ?");
+  });
+
+  it("sans venueId (donnée dégradée) → null : on ne peut pas nommer le gymnase, repli sur la ligne grise", () => {
+    const model = buildConflictSideLines(venueOverlap({ venueId: undefined }), teams, venues);
+    expect(model).toBeNull();
   });
 });
