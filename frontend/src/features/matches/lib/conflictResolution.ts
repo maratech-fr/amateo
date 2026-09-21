@@ -1,6 +1,6 @@
-import { Check, ClipboardList, Dumbbell, Hourglass, type LucideIcon, Send } from "lucide-react";
+import { Check, ClipboardList, Download, Dumbbell, FileWarning, Hourglass, type LucideIcon, Move, Send } from "lucide-react";
 
-import type { Conflict, ConflictResolutionStatus } from "../api";
+import type { Conflict, ConflictResolutionStatus, ConflictType } from "../api";
 
 /**
  * P4-207 — la MAISON UNIQUE du traitement d'un conflit : la table de PRÉSENTATION des
@@ -26,6 +26,21 @@ export const RESOLUTION_LABEL: Record<ConflictResolutionStatus, { label: string;
   // Réservés aux conflits où la personne JOUE (proposés seulement dans ce cas).
   COACHES_NOT_PLAYING: { label: "Coache, ne joue pas", variant: "accent", icon: ClipboardList },
   PLAYS_NOT_COACHING: { label: "Joue, ne coache pas", variant: "accent", icon: Dumbbell },
+  // Statuts propres à une famille (lot N) : « on a une action, pas forcément directe ».
+  IMPORT_MISSING_MATCHES: { label: "Importer les matchs manquants", variant: "neutral", icon: Download },
+  FBI_ERROR: { label: "Erreur FBI", variant: "warning", icon: FileWarning },
+  MATCH_TO_MOVE: { label: "Match à déplacer", variant: "neutral", icon: Move },
+};
+
+/**
+ * Les statuts EN PLUS de la base, PAR FAMILLE — TABLE (jamais un `switch` décideur :
+ * `.claude/rules/frontend.md`), miroir de présentation de `ConflictResolutionStatus::FAMILY_EXTRA`
+ * côté serveur. Les 2 statuts « joue/coache » des familles de personne restent CONDITIONNÉS à un
+ * côté PLAYER (voir `resolutionChoicesFor`), donc absents de cette table statique.
+ */
+const FAMILY_EXTRA_STATUSES: Partial<Record<ConflictType, ConflictResolutionStatus[]>> = {
+  COMPETITION_INCOMPLETE: ["IMPORT_MISSING_MATCHES"],
+  VENUE_OVERLAP: ["FBI_ERROR", "MATCH_TO_MOVE"],
 };
 
 /** Un côté servi porte-t-il le rôle PLAYER ? (lecture des rôles servis, jamais de redérivation).
@@ -36,12 +51,20 @@ const conflictHasPlayerSide = (conflict: Conflict): boolean =>
   );
 
 /**
- * Les statuts PROPOSÉS pour ce conflit : les 3 de base, PLUS les 2 « joue/coache » quand la
- * personne joue un côté servi. Le backend refuse ces 2 hors ce cas (422) — on masque le geste
- * voué au refus (🔴 `.claude/rules/frontend.md`), on ne re-décide rien.
+ * Les statuts PROPOSÉS pour ce conflit : les 3 de base, PLUS les statuts propres à sa famille
+ * (par ex. « erreur FBI » / « match à déplacer » sur une collision de gymnase), PLUS les 2
+ * « joue/coache » quand la personne joue un côté servi. Le backend refuse tout statut hors de la
+ * table de sa famille (422) — on masque le geste voué au refus (🔴 `.claude/rules/frontend.md`),
+ * on ne re-décide rien.
  */
-export const resolutionChoicesFor = (conflict: Conflict): ConflictResolutionStatus[] =>
-  conflictHasPlayerSide(conflict) ? [...RESOLUTION_STATUSES, "COACHES_NOT_PLAYING", "PLAYS_NOT_COACHING"] : RESOLUTION_STATUSES;
+export const resolutionChoicesFor = (conflict: Conflict): ConflictResolutionStatus[] => {
+  const familyExtra = FAMILY_EXTRA_STATUSES[conflict.type] ?? [];
+  const play: ConflictResolutionStatus[] = conflictHasPlayerSide(conflict) ? ["COACHES_NOT_PLAYING", "PLAYS_NOT_COACHING"] : [];
+  return [...RESOLUTION_STATUSES, ...familyExtra, ...play];
+};
+
+/** « Erreur FBI » exige un complément (rencontre + champ) : c'est le seul statut qui ouvre un dialogue. */
+export const statusNeedsFbiComplement = (status: ConflictResolutionStatus): boolean => "FBI_ERROR" === status;
 
 /**
  * Un conflit est « à traiter » quand il n'a AUCUNE résolution. Le backend sert
@@ -58,22 +81,39 @@ export const openConflictCount = (conflicts: Conflict[] | undefined): number => 
  * résolution) + les trois statuts de `ConflictResolutionStatus`. « à traiter » n'est
  * PAS un statut serveur, d'où la clé distincte `"a_traiter"`.
  */
-export type TreatmentKey = "a_traiter" | "DEROGATION_REQUESTED" | "RESOLVED_INTERNALLY" | "NO_SOLUTION_YET";
+export type TreatmentKey =
+  | "a_traiter"
+  | "DEROGATION_REQUESTED"
+  | "RESOLVED_INTERNALLY"
+  | "NO_SOLUTION_YET"
+  | "IMPORT_MISSING_MATCHES"
+  | "FBI_ERROR"
+  | "MATCH_TO_MOVE";
 
-/** Les 4 clés, dans l'ordre des puces (« à traiter » en tête). Volontairement PAS toute la
- *  liste `ConflictResolutionStatus` : les 2 statuts « joue/coache » n'ont pas de chip propre —
- *  ils se rangent sous « Réglé en interne » (voir `treatmentOf`). */
-export const TREATMENT_KEYS: TreatmentKey[] = ["a_traiter", "DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET"];
+/** Les 4 clés HISTORIQUES, TOUJOURS rendues comme puces (même à zéro). « À traiter » en tête. */
+export const HISTORIC_TREATMENT_KEYS: TreatmentKey[] = ["a_traiter", "DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET"];
+
+/** Les 3 clés propres à une famille (lot N) : une puce ne se rend que si elle est PRÉSENTE
+ *  (patron des puces de famille) — sinon on passerait de 4 à 7 puces permanentes. */
+export const CONDITIONAL_TREATMENT_KEYS: TreatmentKey[] = ["IMPORT_MISSING_MATCHES", "FBI_ERROR", "MATCH_TO_MOVE"];
+
+/** L'ensemble des clés de filtre (historiques + conditionnelles), dans l'ordre des puces.
+ *  Les 2 statuts « joue/coache » n'ont pas de chip propre — ils se rangent sous « Réglé en
+ *  interne » (voir `treatmentOf`). */
+export const TREATMENT_KEYS: TreatmentKey[] = [...HISTORIC_TREATMENT_KEYS, ...CONDITIONAL_TREATMENT_KEYS];
 
 /**
- * Slug URL par clé — TABLE `Record` exhaustive (TypeScript exige les 4), jamais un
- * `switch`. PRÉSENTATION du deep-link : `?traitement=derogation,regle_interne`.
+ * Slug URL par clé — TABLE `Record` exhaustive (TypeScript exige les 7), jamais un
+ * `switch`. PRÉSENTATION du deep-link : `?traitement=derogation,erreur_fbi`.
  */
 export const TREATMENT_SLUG: Record<TreatmentKey, string> = {
   a_traiter: "a_traiter",
   DEROGATION_REQUESTED: "derogation",
   RESOLVED_INTERNALLY: "regle_interne",
   NO_SOLUTION_YET: "sans_solution",
+  IMPORT_MISSING_MATCHES: "import_matchs",
+  FBI_ERROR: "erreur_fbi",
+  MATCH_TO_MOVE: "match_a_deplacer",
 };
 
 const SLUG_TO_TREATMENT: Record<string, TreatmentKey> = Object.fromEntries(
@@ -96,7 +136,7 @@ export const treatmentOf = (conflict: Conflict): TreatmentKey => {
   return status;
 };
 
-/** Compte par clé de traitement (les 4) sur un lot — compteurs FIXES saison (doctrine
+/** Compte par clé de traitement sur un lot — compteurs FIXES saison (doctrine
  *  de la page : un filtre change l'affichage, jamais les compteurs). */
 export function countByTreatment(conflicts: Conflict[]): Map<TreatmentKey, number> {
   const counts = new Map<TreatmentKey, number>();
@@ -105,4 +145,14 @@ export function countByTreatment(conflicts: Conflict[]): Map<TreatmentKey, numbe
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   return counts;
+}
+
+/**
+ * Les clés de traitement à AFFICHER en puces : les 4 historiques (toujours rendues, même
+ * à zéro) + les conditionnelles PRÉSENTES (au moins un conflit) — patron des puces de
+ * famille (`familiesPresent`), pour ne pas passer de 4 à 7 puces permanentes.
+ */
+export function treatmentChipKeys(conflicts: Conflict[]): TreatmentKey[] {
+  const present = new Set(conflicts.map(treatmentOf));
+  return TREATMENT_KEYS.filter((key) => HISTORIC_TREATMENT_KEYS.includes(key) || present.has(key));
 }

@@ -44,6 +44,14 @@ describe("FbiEntryList — « FBI — à faire »", () => {
     expect(screen.queryByRole("heading", { name: /À saisir/ })).not.toBeInTheDocument();
   });
 
+  it("erreur FBI sur une salle sans libellé ni valeur cible : « à vérifier » plutôt qu'un « ? » nu (lot N)", () => {
+    renderList(
+      [fx({ id: "fxA1", status: "SUBMITTED" })],
+      [correction({ id: "cv", fixtureId: "fxA1", field: "venue", appValue: null, fbiValue: null, venueFbiLabel: null })],
+    );
+    expect(screen.getByText("à vérifier")).toBeInTheDocument();
+  });
+
   it("les deux vides → « Rien à faire dans FBI. »", () => {
     renderList([fx({ id: "u", status: "UNPLACED" }), fx({ id: "away", homeAway: "AWAY" })], []);
     expect(screen.getByText("Rien à faire dans FBI.")).toBeInTheDocument();

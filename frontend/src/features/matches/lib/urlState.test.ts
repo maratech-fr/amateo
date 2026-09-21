@@ -267,6 +267,11 @@ describe("decodeConflictsParams (onglet Conflits, B)", () => {
     expect(decodeConflictsParams(new URLSearchParams("traitement=regle_interne,sans_solution")).treatments).toEqual(["RESOLVED_INTERNALLY", "NO_SOLUTION_YET"]);
   });
 
+  it("traitement : les 3 slugs propres à une famille décodent (lot N) ; un slug inconnu reste ignoré", () => {
+    expect(decodeConflictsParams(new URLSearchParams("traitement=import_matchs,erreur_fbi,match_a_deplacer")).treatments).toEqual(["IMPORT_MISSING_MATCHES", "FBI_ERROR", "MATCH_TO_MOVE"]);
+    expect(decodeConflictsParams(new URLSearchParams("traitement=erreur_fbi,inconnu")).treatments).toEqual(["FBI_ERROR"]);
+  });
+
   it("domicile=1 ⇒ homeOnly", () => {
     expect(decodeConflictsParams(new URLSearchParams("domicile=1")).homeOnly).toBe(true);
     expect(decodeConflictsParams(new URLSearchParams("")).homeOnly).toBe(false);
@@ -291,9 +296,12 @@ describe("applyConflictsToParams (onglet Conflits, B)", () => {
     expect(out.get("conflits")).toBe("MATCH_MATCH");
   });
 
-  it("treatments partiels ⇒ traitement=slugs ; les 4 ⇒ absent ; toujours purge le legacy traites", () => {
+  it("treatments partiels ⇒ traitement=slugs ; les 7 clés ⇒ absent (défaut) ; toujours purge le legacy traites", () => {
     expect(applyConflictsToParams(new URLSearchParams(""), { ...base, treatments: ["a_traiter", "DEROGATION_REQUESTED"] }).get("traitement")).toBe("a_traiter,derogation");
-    expect(applyConflictsToParams(new URLSearchParams(""), { ...base, treatments: ["a_traiter", "DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET"] }).has("traitement")).toBe(false);
+    // Les 7 clés (historiques + propres à une famille) = le défaut ⇒ rien dans l'URL.
+    expect(applyConflictsToParams(new URLSearchParams(""), { ...base, treatments: ["a_traiter", "DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET", "IMPORT_MISSING_MATCHES", "FBI_ERROR", "MATCH_TO_MOVE"] }).has("traitement")).toBe(false);
+    // Les 4 historiques SEULES (les 3 propres à une famille décochées) = un sous-ensemble explicite, donc écrit.
+    expect(applyConflictsToParams(new URLSearchParams(""), { ...base, treatments: ["a_traiter", "DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET"] }).get("traitement")).toBe("a_traiter,derogation,regle_interne,sans_solution");
     expect(applyConflictsToParams(new URLSearchParams("traites=masques"), base).has("traites")).toBe(false);
   });
 

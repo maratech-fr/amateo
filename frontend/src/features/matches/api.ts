@@ -294,7 +294,18 @@ export type ConflictType =
  * l'instant). « À traiter » n'est PAS un statut : c'est l'ABSENCE de résolution
  * (`resolution === null`). Miroir de `App\Enum\ConflictResolutionStatus`.
  */
-export type ConflictResolutionStatus = "DEROGATION_REQUESTED" | "RESOLVED_INTERNALLY" | "NO_SOLUTION_YET" | "COACHES_NOT_PLAYING" | "PLAYS_NOT_COACHING";
+export type ConflictResolutionStatus =
+  | "DEROGATION_REQUESTED"
+  | "RESOLVED_INTERNALLY"
+  | "NO_SOLUTION_YET"
+  | "COACHES_NOT_PLAYING"
+  | "PLAYS_NOT_COACHING"
+  // Statuts propres à une famille (lot N) : calendrier incomplet → importer les matchs
+  // manquants ; collision de gymnase → erreur FBI / match à déplacer. Le backend refuse
+  // un statut hors de la table de sa famille (`ConflictResolutionStatus::casesForFamily`).
+  | "IMPORT_MISSING_MATCHES"
+  | "FBI_ERROR"
+  | "MATCH_TO_MOVE";
 
 /**
  * P4-207 — la résolution PERSISTÉE d'un conflit (par empreinte, jamais par id) : où
@@ -623,9 +634,15 @@ export const getConflicts = (): Promise<ConflictsResponse> => api.get("fixtures/
  * (jamais un id). Le PUT est un remplacement plein : `note` absente ⇒ note vidée côté
  * serveur — l'appelant qui ne veut CHANGER que le statut resservit donc la note
  * existante. Management-gated (403 membre) ; 422 statut inconnu / note > 500 /
- * empreinte disparue du flux. Rend l'état à jour `{fingerprint, resolution}`.
+ * empreinte disparue du flux / statut hors table de famille / complément d'erreur FBI
+ * invalide. Le complément `fbiCorrection` (FBI_ERROR seulement) ouvre l'entrée « à
+ * corriger dans FBI » du côté fautif ; ignoré pour les autres statuts. Rend l'état à
+ * jour `{fingerprint, resolution}`.
  */
-export const putConflictResolution = (fingerprint: string, input: { status: ConflictResolutionStatus; note?: string }): Promise<{ fingerprint: string; resolution: ConflictResolution }> =>
+export const putConflictResolution = (
+  fingerprint: string,
+  input: { status: ConflictResolutionStatus; note?: string; fbiCorrection?: { fixtureId: string; field: DeviationField } },
+): Promise<{ fingerprint: string; resolution: ConflictResolution }> =>
   api.put(`fixtures/conflicts/${fingerprint}/resolution`, { json: input }).json<{ fingerprint: string; resolution: ConflictResolution }>();
 
 /**

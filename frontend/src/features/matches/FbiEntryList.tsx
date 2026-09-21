@@ -331,7 +331,10 @@ export function FbiEntryList({ fixtures, corrections, teams, venues, competition
 function CorrectionField({ correction }: { correction: FbiCorrection }) {
   const label = FIELD_LABEL[correction.field] ?? correction.field;
   if ("venue" === correction.field) {
-    const bold = correction.venueFbiLabel ?? correction.appValue ?? "?";
+    // « à vérifier » plutôt qu'un « ? » nu quand ni le libellé FBI ni la valeur cible ne sont
+    // connus (cas d'une erreur FBI : l'appli a importé l'erreur, elle ne l'invente pas) — un
+    // « ? » se lisait comme un bug (décision fondateur, lot N).
+    const bold = correction.venueFbiLabel ?? correction.appValue ?? "à vérifier";
     const showAmateo = null !== correction.venueFbiLabel && correction.venueFbiLabel !== correction.appValue && null !== correction.appValue;
     return (
       <li>

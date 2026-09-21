@@ -10,10 +10,11 @@ import { Spinner } from "@/shared/components/ui/spinner";
 import { frDateShortNoYear } from "@/shared/lib/date";
 import { cn } from "@/shared/lib/utils";
 
-import type { Coach, Conflict, ConflictResolutionStatus, Team, Venue } from "./api";
+import type { Coach, Conflict, ConflictResolutionStatus, DeviationField, Team, Venue } from "./api";
 import { ConflictLine } from "./ConflictLine";
+import { FbiErrorDialog } from "./FbiErrorDialog";
 import type { DiagnosticGroup } from "./lib/diagnostic";
-import { RESOLUTION_LABEL, resolutionChoicesFor } from "./lib/conflictResolution";
+import { RESOLUTION_LABEL, resolutionChoicesFor, statusNeedsFbiComplement } from "./lib/conflictResolution";
 import { useClearConflictResolution, useSetConflictResolution } from "./queries";
 
 /**
@@ -77,6 +78,8 @@ export function ConflictResolutionControl({ conflict, teams, coaches, venues, to
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // « Erreur FBI » exige un complément (rencontre + champ) → un dialogue avant d'écrire.
+  const [fbiDialogOpen, setFbiDialogOpen] = useState(false);
   // Drapeau NON réactif (ref) : « une remise à traiter vient de réussir, rends le focus
   // au « Traiter » qui remplacera la pastille au prochain rendu ». Un état déclencherait
   // un setState-dans-effet (interdit) sans rien changer à l'écran.
@@ -106,8 +109,24 @@ export function ConflictResolutionControl({ conflict, teams, coaches, venues, to
     if (undefined === fingerprint) {
       return;
     }
+    // « Erreur FBI » ne s'écrit pas d'un clic : elle ouvre un dialogue (quelle rencontre,
+    // quel champ) avant le PUT. Les autres statuts écrivent immédiatement.
+    if (statusNeedsFbiComplement(status)) {
+      setFbiDialogOpen(true);
+      return;
+    }
     // PUT REMPLACE la note : en ne changeant QUE le statut, on resservit la note existante.
     setResolution.mutate({ fingerprint, status, note: resolution?.note ?? undefined });
+  };
+
+  const declareFbiError = (complement: { fixtureId: string; field: DeviationField }): void => {
+    if (undefined === fingerprint) {
+      return;
+    }
+    setResolution.mutate(
+      { fingerprint, status: "FBI_ERROR", note: resolution?.note ?? undefined, fbiCorrection: complement },
+      { onSuccess: () => setFbiDialogOpen(false) },
+    );
   };
 
   const openNoteEditor = (): void => {
@@ -317,6 +336,9 @@ export function ConflictResolutionControl({ conflict, teams, coaches, venues, to
         onConfirm={confirmReset}
         onCancel={() => setConfirmOpen(false)}
       />
+      {fbiDialogOpen ? (
+        <FbiErrorDialog conflict={conflict} teams={teams} venues={venues} busy={busy} onConfirm={declareFbiError} onCancel={() => setFbiDialogOpen(false)} />
+      ) : null}
     </>
   );
 }

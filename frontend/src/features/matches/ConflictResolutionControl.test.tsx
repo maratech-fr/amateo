@@ -90,6 +90,38 @@ describe("ConflictResolutionControl — statuts « joue/coache » (proposés seu
   });
 });
 
+describe("ConflictResolutionControl — erreur FBI (dialogue avant écriture, lot N)", () => {
+  it("une collision de gymnase PROPOSE « Erreur FBI » et « Match à déplacer »", async () => {
+    const user = userEvent.setup();
+    renderControl(conflictWith(null));
+    await user.click(screen.getByRole("button", { name: "Traiter le conflit" }));
+    expect(screen.getByRole("menuitem", { name: "Erreur FBI" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Match à déplacer" })).toBeInTheDocument();
+  });
+
+  it("« Erreur FBI » ouvre un dialogue SANS écrire ; confirmer PUT avec le complément (rencontre + champ)", async () => {
+    const user = userEvent.setup();
+    renderControl(conflictWith(null));
+    await user.click(screen.getByRole("button", { name: "Traiter le conflit" }));
+    await user.click(screen.getByRole("menuitem", { name: "Erreur FBI" }));
+    // Le dialogue s'ouvre ; AUCUN PUT tant qu'on n'a pas confirmé (contrairement aux autres statuts).
+    expect(screen.getByRole("dialog", { name: "Déclarer une erreur FBI" })).toBeInTheDocument();
+    expect(matchesApi.putConflictResolution).not.toHaveBeenCalled();
+    // Confirmer avec les défauts : première rencontre (fx-1), champ « salle » (venue).
+    await user.click(screen.getByRole("button", { name: "Déclarer l'erreur FBI" }));
+    expect(matchesApi.putConflictResolution).toHaveBeenCalledWith("fp-1", { status: "FBI_ERROR", note: undefined, fbiCorrection: { fixtureId: "fx-1", field: "venue" } });
+  });
+
+  it("« Match à déplacer » écrit immédiatement (pas de dialogue)", async () => {
+    const user = userEvent.setup();
+    renderControl(conflictWith(null));
+    await user.click(screen.getByRole("button", { name: "Traiter le conflit" }));
+    await user.click(screen.getByRole("menuitem", { name: "Match à déplacer" }));
+    expect(screen.queryByRole("dialog", { name: "Déclarer une erreur FBI" })).not.toBeInTheDocument();
+    expect(matchesApi.putConflictResolution).toHaveBeenCalledWith("fp-1", { status: "MATCH_TO_MOVE", note: undefined });
+  });
+});
+
 describe("ConflictResolutionControl — annoté (gestionnaire)", () => {
   it("la pastille EST le déclencheur (nom accessible = statut + date) ; changer de statut resservit la note", async () => {
     const user = userEvent.setup();
