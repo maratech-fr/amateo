@@ -10,6 +10,7 @@ import { TeamSelect } from "@/shared/components/ui/team-select";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { FbiMapping, ImportAnalysisDivision, ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team } from "./api";
+import { LeagueValidationReportEntry } from "./LeagueValidation";
 import { classifyDivision, type DivisionFamily, FAMILY_LABEL, FAMILY_ORDER } from "./lib/divisionFamily";
 import { useAnalyzeFbiFixtures, useImportFbiFixtures, useVenueLabelInventory } from "./queries";
 import { PAIR_VENUES_LABEL, PAIR_VENUES_PATH } from "./UnpairedVenueLabelsBanner";
@@ -379,6 +380,11 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
                 </Button>
               </div>
             ) : null}
+
+            {/* Lot L — les domiciles importés déjà datés (heure + gymnase) se confirment
+                « validé ligue » d'un geste chiffré, à côté des actions ci-dessus. Muet à 0.
+                Le compte, invalidé par l'import, se recalcule ; jamais un prédicat côté front. */}
+            <LeagueValidationReportEntry />
 
             {/* Le placement automatique (solveur) ne se propose PLUS ici : c'est un geste
                 de l'onglet Semaine (« Placer automatiquement »), pas une suite de l'import

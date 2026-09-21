@@ -13,6 +13,7 @@ import { toast } from "@/shared/stores/toastStore";
 
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { ImportFbiDialog } from "./ImportFbiDialog";
+import { EntryDeadlinesLink, LeagueValidationBanner } from "./LeagueValidation";
 import { STALE_DAYS, depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
 import { useApplyFfbbRencontres, useFfbbRencontres, useFixtures, useLatestFbiIngestion, usePriorityTiers, useTeams, useVenues } from "./queries";
 import { ReviewQueue } from "./ReviewQueue";
@@ -123,8 +124,14 @@ export function ImportPage() {
           <div className="mt-3">
             <UnpairedVenueLabelsBanner />
           </div>
+          {/* Lot L — un renvoi vers les « Échéances de saisie » : à remplir tout de suite si elles manquent. */}
+          <EntryDeadlinesLink />
         </CardContent>
       </Card>
+
+      {/* Lot L — le rattrapage « validé ligue » : dès qu'un club démarre en cours de saison,
+          les domiciles déjà datés (heure + gymnase) se confirment d'un geste chiffré. Muet à 0. */}
+      <LeagueValidationBanner />
 
       {/* 2. La file de traitement, par équipe. */}
       <ReviewQueue fixtures={fixtures.data ?? []} teams={teams.data ?? []} venues={venues.data ?? []} />

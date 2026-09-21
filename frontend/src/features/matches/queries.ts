@@ -603,6 +603,31 @@ export function useResolveFixtureDeviation() {
 }
 
 /**
+ * Lot L — le COMPTE des rencontres validables « validé ligue ». La clé vit sous
+ * `["fixtures"]`, donc tout `invalidateFixtures` (import, confirmation, placement…) la
+ * recale : le bandeau de rattrapage et la section du rapport suivent sans effort. Le
+ * front n'a AUCUN prédicat — il affiche `count`.
+ */
+export function useLeagueValidationCount() {
+  return useQuery({ queryKey: ["fixtures", "league-validation"], queryFn: matchesApi.getLeagueValidationCount, staleTime: 30_000 });
+}
+
+/**
+ * Lot L — le geste confirmé. Bascule les rencontres éligibles en VALIDATED + MANUAL et
+ * invalide `["fixtures"]` (statut/source/verrou de grille, radar) — la clé du compte
+ * en fait partie, donc le bandeau disparaît de lui-même. Le toast de succès (« N
+ * validées ») est composé par l'appelant.
+ */
+export function useConfirmLeagueValidatedFixtures() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => matchesApi.confirmLeagueValidatedFixtures(),
+    onSuccess: () => invalidateFixtures(queryClient),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+/**
  * P4-187b — rattache un libellé de salle FBI/FFBB à un gymnase. Invalide
  * `["fixtures"]` (le `suggestedVenueId` et le `venueId` backfillé y vivent, la file
  * de traitement et le radar se recalculent) ET `["venues"]` (le gymnase gagne un

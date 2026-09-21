@@ -12279,6 +12279,75 @@
                 ]
             }
         },
+        "/api/fixtures/league-validation": {
+            "get": {
+                "operationId": "countLeagueValidatableFixtures",
+                "tags": [
+                    "Match"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "How many home fixtures are ready to be marked \u00ab valid\u00e9 ligue \u00bb in one gesture: UNPLACED home matches the imported FBI file already attests (kickoff present, an identified venue, no pending deviation). No date condition \u2014 a future home match carrying hour and gym is federation-recorded too.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "count": {
+                                            "type": "integer"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "409": {
+                        "description": "Season plan not chosen, or archived season"
+                    }
+                },
+                "summary": "Count the home fixtures eligible for a batch \u00ab valid\u00e9 ligue \u00bb (read-only, management only)"
+            },
+            "post": {
+                "operationId": "confirmLeagueValidatedFixtures",
+                "tags": [
+                    "Match"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Mark every eligible home fixture \u00ab valid\u00e9 ligue \u00bb (status VALIDATED + placement source MANUAL \u2014 the anchor the grid lock and the placement solver both require). Idempotent: a second call finds nothing (the predicate excludes VALIDATED).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "confirmed": {
+                                            "type": "integer",
+                                            "description": "How many fixtures were switched to \u00ab valid\u00e9 ligue \u00bb"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "409": {
+                        "description": "Season plan not chosen, or archived season"
+                    }
+                },
+                "summary": "Mark the eligible home fixtures \u00ab valid\u00e9 ligue \u00bb in one confirmed gesture (management only)"
+            }
+        },
         "/api/fixtures/place": {
             "post": {
                 "operationId": "placeMatches",

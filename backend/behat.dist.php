@@ -12,6 +12,7 @@ use App\Tests\Behat\ExportContext;
 use App\Tests\Behat\FbiCorrectionContext;
 use App\Tests\Behat\FixtureReviewContext;
 use App\Tests\Behat\HolidayWeekContext;
+use App\Tests\Behat\LeagueValidationContext;
 use App\Tests\Behat\LockContext;
 use App\Tests\Behat\MatchPlacementContext;
 use App\Tests\Behat\OnboardingContext;
@@ -161,5 +162,10 @@ return (new Config)
                 new Suite('gymnase-du-fichier')
                     ->withPaths('%paths.base%/features/le-gymnase-du-fichier-localise-l-adversaire.feature')
                     ->withContexts(OpponentAutoLocateContext::class),
+            )
+            ->withSuite(
+                new Suite('validation-ligue')
+                    ->withPaths('%paths.base%/features/un-club-en-cours-de-saison-valide-ses-matchs-en-lot.feature')
+                    ->withContexts(LeagueValidationContext::class),
             ),
     );

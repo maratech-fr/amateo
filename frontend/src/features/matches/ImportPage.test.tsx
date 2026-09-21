@@ -24,6 +24,8 @@ const {
   resolveFixtureDeviation,
   attachVenueLabel,
   getVenueLabelInventory,
+  getLeagueValidationCount,
+  confirmLeagueValidatedFixtures,
 } = vi.hoisted(() => ({
   getTeams: vi.fn(),
   getPriorityTiers: vi.fn(() => Promise.resolve([{ id: 1, label: "S", name: "Fanion", color: null }, { id: 2, label: "A", name: "Réserve", color: null }])),
@@ -36,9 +38,11 @@ const {
   resolveFixtureDeviation: vi.fn(() => Promise.resolve({ fixtureId: "x", reviewState: "REVIEWED", reviewedAt: "2026-10-02T10:00:00+00:00", pendingDeviations: [] })),
   attachVenueLabel: vi.fn((): Promise<AttachVenueLabelResult> => Promise.resolve({ venueId: "venue-1", label: "GYMNASE MATEO", attached: 2 })),
   getVenueLabelInventory: vi.fn((): Promise<VenueLabelInventoryRow[]> => Promise.resolve([])),
+  getLeagueValidationCount: vi.fn(() => Promise.resolve({ count: 0 })),
+  confirmLeagueValidatedFixtures: vi.fn(() => Promise.resolve({ confirmed: 0 })),
 }));
 
-vi.mock("./api", () => ({ getTeams, getPriorityTiers, getFixtures, getVenues, getLatestFbiIngestion, getFfbbRencontres, applyFfbbRencontres, reviewFixtures, resolveFixtureDeviation, attachVenueLabel, getVenueLabelInventory, getCompetitions: () => Promise.resolve([]) }));
+vi.mock("./api", () => ({ getTeams, getPriorityTiers, getFixtures, getVenues, getLatestFbiIngestion, getFfbbRencontres, applyFfbbRencontres, reviewFixtures, resolveFixtureDeviation, attachVenueLabel, getVenueLabelInventory, getLeagueValidationCount, confirmLeagueValidatedFixtures, getCompetitions: () => Promise.resolve([]) }));
 
 /** ky 2.x expose le corps parsé sur `error.data` — on reproduit ce contrat pour le 422 nommé. */
 function httpError(status: number, body: unknown): HTTPError {
@@ -92,6 +96,7 @@ function renderPage(fixtures: Fixture[], route = "/matchs/importer") {
       { path: "/matchs/importer", element: <ImportPage /> },
       { path: "/matchs", element: <div>BOUCLE</div> },
       { path: "/matchs/reconciliation", element: <div>RECONCILIATION</div> },
+      { path: "/matchs/configuration", element: <div>CONFIG</div> },
     ],
     { initialEntries: [route] },
   );
@@ -112,6 +117,8 @@ beforeEach(() => {
   reviewFixtures.mockResolvedValue({ reviewed: 1, skipped: [] });
   getVenues.mockResolvedValue([{ id: "venue-1", name: "Gymnase Alpha", color: null, externalLabels: [] }]);
   attachVenueLabel.mockResolvedValue({ venueId: "venue-1", label: "GYMNASE MATEO", attached: 2 });
+  getLeagueValidationCount.mockResolvedValue({ count: 0 });
+  confirmLeagueValidatedFixtures.mockResolvedValue({ confirmed: 0 });
   useMatchesStore.setState({ reconciliation: null, filterMode: "equipe", filterIds: [], selectedWeekend: null, selectedFixtureId: null });
   useToastStore.setState({ toasts: [] });
 });
@@ -142,6 +149,54 @@ describe("ImportPage — les entrées de données", () => {
     renderPage([]);
     await screen.findByRole("button", { name: /Importer FBI/ });
     expect(screen.queryByText(/non apparié/)).not.toBeInTheDocument();
+  });
+
+  it("Lot L — un renvoi vers les « Échéances de saisie » (deep-link ?section=echeances)", async () => {
+    const user = userEvent.setup();
+    const { router } = renderPage([]);
+    await user.click(await screen.findByRole("button", { name: /Échéances de saisie/ }));
+    expect(await screen.findByText("CONFIG")).toBeInTheDocument();
+    expect(router.state.location.search).toContain("section=echeances");
+  });
+});
+
+describe("ImportPage — rattrapage « validé ligue » (lot L)", () => {
+  it("compte à 0 ⇒ aucun bandeau (jamais un geste sans rencontre à valider)", async () => {
+    renderPage([]);
+    await screen.findByRole("button", { name: /Importer FBI/ });
+    expect(screen.queryByText(/à confirmer « validé ligue »/)).not.toBeInTheDocument();
+  });
+
+  it("compte non nul ⇒ bandeau chiffré, et confirmer bascule via l'API + toast avec le nombre RÉEL", async () => {
+    getLeagueValidationCount.mockResolvedValue({ count: 3 });
+    // Le nombre affiché vient du COMPTE (3) ; le toast, du serveur (2 réellement basculées).
+    confirmLeagueValidatedFixtures.mockResolvedValueOnce({ confirmed: 2 });
+    const user = userEvent.setup();
+    renderPage([]);
+    expect(await screen.findByText(/3 rencontres importées portent déjà date, heure et gymnase/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Marquer « validé ligue »/ }));
+    const dialog = await screen.findByRole("dialog");
+    // La confirmation ANNONCE le nombre et ce qui va changer (chiffrée).
+    expect(within(dialog).getByText(/3 rencontres importées portent déjà leur date/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: /Marquer « validé ligue »/ }));
+
+    expect(confirmLeagueValidatedFixtures).toHaveBeenCalledOnce();
+    await waitFor(() => {
+      const messages = useToastStore.getState().toasts.map((t) => t.message);
+      expect(messages.some((m) => /2 rencontres marquées « validé ligue »/.test(m))).toBe(true);
+    });
+  });
+
+  it("refuser n'écrit rien (la bannière reste, c'est refaisable)", async () => {
+    getLeagueValidationCount.mockResolvedValue({ count: 3 });
+    const user = userEvent.setup();
+    renderPage([]);
+    await user.click(await screen.findByRole("button", { name: /Marquer « validé ligue »/ }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Annuler" }));
+    expect(confirmLeagueValidatedFixtures).not.toHaveBeenCalled();
+    expect(screen.getByText(/à confirmer « validé ligue »/)).toBeInTheDocument();
   });
 });
 
