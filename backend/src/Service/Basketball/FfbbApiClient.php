@@ -187,6 +187,31 @@ final class FfbbApiClient
     }
 
     /**
+     * Les salles fédérales par NOM (plein-texte). Mesuré le 2026-09-20 : `libelle` EST
+     * plein-texte avec la clé search-only, et Meilisearch classe les correspondances EXACTES
+     * en tête — `limit: 50` les capte toutes. `estimatedTotalHits` est trompeur (2859 pour 1
+     * exact) : l'appelant décide sur l'égalité STRICTE du libellé normalisé, jamais sur le compte.
+     *
+     * `q` est un paramètre de requête (borné 2..180), JAMAIS interpolé dans un `filter` — aucune
+     * surface d'injection (même posture anti-injection que les autres `search*`).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function searchSallesByName(string $name): array
+    {
+        $query = trim($name);
+        if (mb_strlen($query) < 2 || mb_strlen($query) > 180) {
+            return [];
+        }
+
+        return $this->query([
+            'indexUid' => 'ffbbserver_salles',
+            'q' => $query,
+            'limit' => 50,
+        ]);
+    }
+
+    /**
      * @param array<string, mixed> $searchQuery
      *
      * @return list<array<string, mixed>>

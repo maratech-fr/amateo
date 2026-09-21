@@ -1,17 +1,14 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-18 (`documentation-update`, seconde passe du jour — PR correctrice de
-l'audit moteur 0918). Re-confronté (passe précédente, même jour) le § 3bis ci-dessous (piège e2e
-« worker mort = plus de mail ») : `docker-compose.yml` pose désormais `restart: unless-stopped`
-sur `messenger-worker` (seul service de dev à le porter) — un exit sur `--time-limit=3600` ou un
-`cache:clear` ne laisse plus le worker mort pendant des heures, il repart seul en quelques
-secondes ; le self-heal `compose up -d --wait` de `make -C frontend e2e` reste la seule protection
-pour une invocation `npx playwright test` directe (hors périmètre de cette politique de
-redémarrage). **Cette passe** : §1 recalé contre `ci.yml` — `engine-tests` gagne un step `bandit`
-(ENG-46) et `engine-perf` (main) couvre désormais TROIS tiers `-m perf` (dense, BCCL,
-`test_perf_place_matches.py` — budget de construction `/place-matches`, ENG-40). Reste du fichier
-non re-sondé cette passe (voir `git log -p --follow docs/testing/testing-strategy.md` pour
-l'historique des passes).
+Last verified @ 2026-09-21 (`documentation-update`, piège ops « image e2e Playwright désalignée du
+lock »). Re-confronté au code cette passe (§4 « How to run locally », paragraphe « Dockerized
+run ») : `docker-compose.yml:51` sert
+`mcr.microsoft.com/playwright:v1.63.0-noble`, aligné sur `"@playwright/test": "^1.63.0"` de
+`frontend/package-lock.json:34` (corrigé par `b7959d98` après une dérive mesurée le 2026-09-21,
+image restée en `1.62.0-noble`) ; la CI ne suit pas ce tag — elle installe son propre chromium
+(`npx playwright install chromium`, `ci.yml:1078-1082`, caché par un hash du lock) — donc une
+dérive locale ne rougit jamais la CI, ajouté au paragraphe. Reste du fichier non re-sondé cette
+passe (voir `git log -p --follow docs/testing/testing-strategy.md` pour l'historique des passes).
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique), [`test-coverage-map.md`](test-coverage-map.md) (qui teste quoi, angles morts) and [`../project-map.md`](../project-map.md).
 
@@ -325,7 +322,7 @@ qui ouvre UNE session par run et la fige ; le projet `superadmin` la réutilise 
 `retries: 0` — un retry ne rejouerait aucun login). Sans préflight, le setup écrit un état VIDE et
 les specs se skippent via leur garde. **Le limiteur backend n'est pas touché.**
 
-**Dockerized run (P4-33, 2026-08-04)** : `make -C frontend e2e` exécute la suite DANS le service compose `e2e` (image officielle Playwright **épinglée sur la version de `@playwright/test`** du lock — une dérive = « browser not found ») : l'hôte n'a plus besoin de Node, dernier maillon qui l'exigeait. Cibles internes au réseau (`E2E_BASE_URL=http://frontend-dev:5173`, `MAILPIT_WEB_URL=http://mailpit:8025`), donc stack + `make -C frontend dev` doivent tourner ; Vite doit autoriser le host interne (`server.allowedHosts: ['frontend-dev']` — sans quoi 403 « Blocked request »). La CI, elle, garde son chemin Node natif (elle installe déjà Node pour Vite).
+**Dockerized run (P4-33, 2026-08-04)** : `make -C frontend e2e` exécute la suite DANS le service compose `e2e` (image officielle Playwright **épinglée sur la version de `@playwright/test`** du lock — une dérive = « browser not found ») : l'hôte n'a plus besoin de Node, dernier maillon qui l'exigeait. Cibles internes au réseau (`E2E_BASE_URL=http://frontend-dev:5173`, `MAILPIT_WEB_URL=http://mailpit:8025`), donc stack + `make -C frontend dev` doivent tourner ; Vite doit autoriser le host interne (`server.allowedHosts: ['frontend-dev']` — sans quoi 403 « Blocked request »). La CI, elle, garde son chemin Node natif (elle installe déjà Node pour Vite) : elle installe SON PROPRE chromium (`npx playwright install chromium`, `ci.yml:1078-1082`, caché par un hash du lock), donc une montée de version de `@playwright/test` qui n'a pas suivi le tag `mcr.microsoft.com/playwright` de l'image `e2e` casse la suite e2e **locale en silence** sans jamais rougir la CI — le navigateur manque uniquement chez qui essaie `make -C frontend e2e`. Constaté le 2026-09-21 (image restée en `1.62.0-noble` pendant que le lock montait en `1.63.0`), corrigé par `b7959d98`.
 
 ---
 

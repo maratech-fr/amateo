@@ -72,6 +72,19 @@ final class FfbbSallesTest extends WebTestCase
         self::assertSame([], $data['salles']);
     }
 
+    public function testNameSearchQueriesByNameAndIgnoresPostalCode(): void
+    {
+        // `q` (≥ 3 caractères) cherche par NOM en plein-texte — `postalCode` est null, la voie
+        // CP est ignorée. Le stub rend la salle « GYMNASE RECHERCHE PAR NOM » sur toute requête nom.
+        $data = $this->get('/api/ffbb/salles?q=' . urlencode('GYMNASE'), $this->adminToken);
+        self::assertNull($data['postalCode'], 'une recherche par nom ne porte pas de code postal');
+        self::assertSame(['GYMNASE RECHERCHE PAR NOM'], array_column($data['salles'], 'name'));
+
+        // Moins de 3 caractères → liste vide, aucun appel (même seuil que le front).
+        $data = $this->get('/api/ffbb/salles?q=GY', $this->adminToken);
+        self::assertSame([], $data['salles'], 'moins de 3 caractères → vide');
+    }
+
     public function testNearbyAutoWidensUntilUsefulAndKeepsDistanceOrder(): void
     {
         // P2-21 lot D : club géolocalisé, mode AUTO — 3 km ne rend que 2 salles

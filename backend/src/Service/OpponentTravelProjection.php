@@ -46,6 +46,7 @@ final class OpponentTravelProjection
         private readonly ClubRepository $clubRepository,
         private readonly TravelTimeCache $travelCache,
         private readonly VenueLabelNormalizer $labelNormalizer,
+        private readonly OpponentPairingKey $pairingKey,
     ) {}
 
     /**
@@ -136,16 +137,19 @@ final class OpponentTravelProjection
             $linkByKey[$link->getOpponentOrganismeCode() . '|' . $link->getFbiLabelNorm()] = $link;
         }
 
+        // Toutes les rencontres AWAY, code fédéral OU non : un adversaire sans code est keyé
+        // par sa clé SENTINELLE (dérivée du libellé) — le lien manuel posé sous cette clé rend
+        // le trajet `linked`/`most_frequent`, ce qui débloque les rencontres sans code.
         $away = array_values(array_filter(
             $fixtures,
-            static fn (Fixture $f): bool => FixtureHomeAway::AWAY === $f->getHomeAway() && null !== $f->getOpponentOrganismeCode(),
+            static fn (Fixture $f): bool => FixtureHomeAway::AWAY === $f->getHomeAway(),
         ));
 
         $mostFrequentGym = $this->mostFrequentResolvedGymByCode($away, $linkByKey, $cacheByDest);
         $directoryByCode = $this->directoryByCode($away);
 
         foreach ($away as $fixture) {
-            $code = (string) $fixture->getOpponentOrganismeCode();
+            $code = $this->pairingKey->fromOpponent($fixture->getOpponentOrganismeCode(), trim($fixture->getOpponentLabel()));
             $norm = $this->normalizedLabel($fixture);
             $link = null !== $norm ? ($linkByKey[$code . '|' . $norm] ?? null) : null;
 
@@ -219,7 +223,7 @@ final class OpponentTravelProjection
             if (null === $norm) {
                 continue;
             }
-            $code = (string) $fixture->getOpponentOrganismeCode();
+            $code = $this->pairingKey->fromOpponent($fixture->getOpponentOrganismeCode(), trim($fixture->getOpponentLabel()));
             $link = $linkByKey[$code . '|' . $norm] ?? null;
             if (!$link instanceof OpponentVenueLink) {
                 continue;

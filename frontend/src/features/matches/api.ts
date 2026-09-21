@@ -1309,6 +1309,13 @@ export interface OpponentUnmatchedLabel {
  */
 export interface OpponentClub {
   code: string | null;
+  /**
+   * La clé d'appariement SERVIE par le backend : le code fédéral quand il existe, sinon une clé
+   * sentinelle locale dérivée du libellé (adversaire sans code, apparié localement). Le front
+   * l'utilise telle quelle dans les routes d'écriture ; il ne la redérive JAMAIS
+   * (🔴 .claude/rules/frontend.md).
+   */
+  pairingKey: string;
   name: string;
   city: string | null;
   postalCode: string | null;
@@ -1441,6 +1448,10 @@ export interface FfbbSalle {
 
 export const listFfbbSalles = (postalCode: string): Promise<{ postalCode: string | null; salles: FfbbSalle[] }> =>
   api.get("ffbb/salles", { searchParams: { postalCode } }).json();
+
+/** Recherche des salles FFBB par NOM (plein-texte, ≥ 3 caractères) — alternative au code postal. */
+export const listFfbbSallesByName = (name: string): Promise<{ postalCode: string | null; salles: FfbbSalle[] }> =>
+  api.get("ffbb/salles", { searchParams: { q: name } }).json();
 
 // ── Rattrapage des codes FFBB des adversaires — annuaire GLOBAL (PR 2a) ───────
 /**

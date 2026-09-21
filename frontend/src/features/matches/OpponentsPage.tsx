@@ -41,6 +41,10 @@ interface Locating {
   clubName: string;
   /** Le libellé de fichier à apparier (ligne orpheline) ; null = « ajouter un gymnase » au club. */
   fbiLabel: string | null;
+  /** Les libellés orphelins du club — la file que la modale enchaîne (mode appariement). */
+  unmatchedLabels: string[];
+  /** L'adversaire n'a aucun code fédéral (apparié par clé sentinelle, pas de suggestions partagées). */
+  sansCode: boolean;
   city: string | null;
   postalCode: string | null;
 }
@@ -104,8 +108,22 @@ export function OpponentsPage() {
       return haystacks.some((h) => textMatchesQuery(h, tokens));
     });
   }, [opponents, tokens, activeFilter]);
-  // Tri : les clubs SANS gymnase d'abord, puis alphabétique (fr).
-  const sortedOpponents = [...filteredOpponents].sort((a, b) => (0 === a.venues.length ? 0 : 1) - (0 === b.venues.length ? 0 : 1) || a.name.localeCompare(b.name, "fr"));
+
+  // Rang GELÉ au montage (décision fondateur 2026-09-20) : le backend sert déjà les clubs
+  // SANS gymnase d'abord, puis alphabétique — on FIGE cet ordre à la première liste non vide
+  // pour qu'un club qu'on vient d'apparier ne SAUTE pas de place sous les mains. Portée =
+  // montage du composant (quitter l'onglet et revenir recalcule, assumé). Un club apparu
+  // après le gel s'ajoute en fin (rang « infini », stable dans l'ordre backend).
+  // On fige le rang à la première liste non vue : un setState GARDÉ pendant le rendu (patron React
+  // « stocker une info des rendus précédents ») — React re-rend aussitôt, sans effet ni lecture de ref.
+  const [frozenRank, setFrozenRank] = useState<Map<string, number> | null>(null);
+  if (null === frozenRank && opponents.length > 0) {
+    const ranks = new Map<string, number>();
+    opponents.forEach((o, index) => ranks.set(o.code ?? o.name, index));
+    setFrozenRank(ranks);
+  }
+  const rankOf = (o: OpponentClub): number => frozenRank?.get(o.code ?? o.name) ?? Number.MAX_SAFE_INTEGER;
+  const sortedOpponents = [...filteredOpponents].sort((a, b) => rankOf(a) - rankOf(b));
 
   const updateLabel = "running" === update.step ? "Mise à jour…" : "Mettre à jour les adversaires";
 
@@ -230,8 +248,20 @@ export function OpponentsPage() {
                     key={`club-${club.code ?? club.name}`}
                     club={club}
                     filter={activeFilter}
-                    onAddVenue={() => club.code !== null && setLocating({ code: club.code, clubName: club.name, fbiLabel: null, city: club.city, postalCode: club.postalCode })}
-                    onPairLabel={(label) => club.code !== null && setLocating({ code: club.code, clubName: club.name, fbiLabel: label, city: club.city, postalCode: club.postalCode })}
+                    onAddVenue={() =>
+                      setLocating({ code: club.pairingKey, clubName: club.name, fbiLabel: null, unmatchedLabels: [], sansCode: null === club.code, city: club.city, postalCode: club.postalCode })
+                    }
+                    onPairLabel={(label) =>
+                      setLocating({
+                        code: club.pairingKey,
+                        clubName: club.name,
+                        fbiLabel: label,
+                        unmatchedLabels: club.unmatchedLabels.map((u) => u.label),
+                        sansCode: null === club.code,
+                        city: club.city,
+                        postalCode: club.postalCode,
+                      })
+                    }
                     onRemove={(venue) => setToRemove({ club, venue })}
                     onMerge={(source, target) => setToMerge({ club, source, target })}
                   />
@@ -249,7 +279,16 @@ export function OpponentsPage() {
       ) : null}
 
       {null !== locating ? (
-        <LocateOpponentModal code={locating.code} clubName={locating.clubName} fbiLabel={locating.fbiLabel} city={locating.city} postalCode={locating.postalCode} onClose={() => setLocating(null)} />
+        <LocateOpponentModal
+          code={locating.code}
+          clubName={locating.clubName}
+          fbiLabel={locating.fbiLabel}
+          unmatchedLabels={locating.unmatchedLabels}
+          sansCode={locating.sansCode}
+          city={locating.city}
+          postalCode={locating.postalCode}
+          onClose={() => setLocating(null)}
+        />
       ) : null}
 
       {/* Retirer un gymnase — destructif, la conséquence NOMMÉE (texte du serveur, jamais dérivé). */}
@@ -349,12 +388,12 @@ function ClubTbody({
         </TableCell>
         <TableCell className="hidden text-right tabular-nums @md:table-cell">{noGym ? club.fixtureCount : ""}</TableCell>
         <TableCell className="text-right">
-          {club.code !== null ? (
-            <Button variant="ghost" size="sm" onClick={onAddVenue}>
-              <Plus className="size-3.5" aria-hidden="true" />
-              Ajouter un gymnase
-            </Button>
-          ) : null}
+          {/* Le libellé se replie en icône seule sous `@md` (`sr-only` garde le nom accessible) :
+              rendu inconditionnellement (sans-code compris), il débordait sinon la boîte à 360 px. */}
+          <Button variant="ghost" size="sm" onClick={onAddVenue}>
+            <Plus className="size-3.5" aria-hidden="true" />
+            <span className="sr-only @md:not-sr-only">Ajouter un gymnase</span>
+          </Button>
         </TableCell>
       </TableRow>
 

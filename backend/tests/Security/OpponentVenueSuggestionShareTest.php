@@ -23,6 +23,7 @@ use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\OpponentVenueLinkManager;
 use App\Service\Geo\TravelTimeCache;
+use App\Service\OpponentPairingKey;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -320,6 +321,102 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
         self::assertNull($ref, 'une ref non résolue fédéralement n\'est jamais persistée (lien par coordonnées seules)');
     }
 
+    /**
+     * (h) un adversaire SANS code fédéral (clé sentinelle) n'entre JAMAIS dans le catalogue
+     * partagé, même si le corps porte une ref qui résout RÉELLEMENT fédéralement : la maison
+     * unique {@see OpponentVenueLinkManager::writeGym} neutralise la référence avant écriture.
+     * Falsifié via l'API réelle — la ref « 900000001 » est bel et bien servie par le stub FFBB
+     * (recherche géo, cf. FfbbHttpClientStub), donc SANS la garde le partagé serait crédité.
+     */
+    public function testASentinelKeyManualChoiceNeverCreditsTheSharedCatalog(): void
+    {
+        [$club, $season, $user] = $this->createClub('sentinel');
+        // Un adversaire AWAY sans code fédéral (amical saisi à la main).
+        $label = 'CLUB AMICAL SANS CODE';
+        $this->awayFixtureNoCode($season, $label);
+        $key = 'X' . substr(hash('sha256', mb_strtolower($label)), 0, 40);
+
+        // Le corps porte une ref FÉDÉRALE qui RÉSOUT côté serveur (« 900000001 ») — la garde DOIT
+        // la neutraliser AVANT toute résolution : sans elle, ce POST créditerait le partagé.
+        $this->client->request('POST', '/api/opponents/' . $key . '/venues', [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], (string) json_encode([
+            'venueLabel' => 'Gymnase amical',
+            'venueExternalRef' => '900000001',
+            'latitude' => 45.001,
+            'longitude' => 4.001,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(200, (string) $this->client->getResponse()->getContent());
+
+        // Le lien tenant existe sous la clé sentinelle, SANS ref (appariement local seul)…
+        $this->scopeGucToClub($club->getId());
+        $storedRef = $this->conn()->fetchOne(
+            'SELECT venue_external_ref FROM opponent_venue_link WHERE club_id = :cid AND opponent_organisme_code = :key',
+            ['cid' => $club->getId(), 'key' => $key],
+        );
+        self::assertNull($storedRef, 'un adversaire sans code est apparié LOCALEMENT — jamais de ref fédérale persistée');
+
+        // … et RIEN n'entre dans le catalogue partagé pour la clé sentinelle.
+        self::assertSame(0, (int) $this->conn()->fetchOne(
+            'SELECT COUNT(*) FROM opponent_venue_suggestion WHERE ffbb_organisme_code = :key',
+            ['key' => $key],
+        ), 'la clé sentinelle n\'entre JAMAIS dans le partagé fédéral');
+        unset($season);
+    }
+
+    /**
+     * (h bis) — MIROIR du cas POST par le PUT de ré-appariement : un lien SOUS clé sentinelle
+     * (adversaire sans code) est d'abord posé LOCALEMENT, puis re-pointé (PUT) vers un gymnase
+     * dont le corps porte une ref FÉDÉRALE qui résoudrait. La garde vit dans la maison unique
+     * ({@see OpponentVenueLinkManager::writeGym}) et couvre AUSSI ce chemin : la ref est
+     * neutralisée AVANT toute résolution, RIEN n'entre dans `opponent_venue_suggestion` (table
+     * PARTAGÉE, hors-tenant, sans GRANT DELETE — une écriture forgée serait DÉFINITIVE). Sans le
+     * correctif du manager, le PUT créditait le partagé sous un code organisme inexistant.
+     */
+    public function testASentinelKeyRepointNeverCreditsTheSharedCatalog(): void
+    {
+        [$club, $season, $user] = $this->createClub('sentinelput');
+        $label = 'CLUB AMICAL PUT SANS CODE';
+        $this->awayFixtureNoCode($season, $label);
+        $key = 'X' . substr(hash('sha256', mb_strtolower($label)), 0, 40);
+
+        // 1) Poser le lien LOCAL (aucune ref) sous la clé sentinelle via l'API réelle.
+        $this->client->request('POST', '/api/opponents/' . $key . '/venues', [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], (string) json_encode([
+            'venueLabel' => 'Gymnase amical local',
+            'latitude' => 45.76,
+            'longitude' => 4.86,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(200, (string) $this->client->getResponse()->getContent());
+        /** @var array{id: string} $created */
+        $created = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        $linkId = $created['id'];
+
+        // 2) Ré-apparier (PUT) vers un gymnase dont le corps porte une ref FÉDÉRALE qui RÉSOUT
+        //    réellement côté serveur (« 900000001 » est servi par le stub FFBB via la recherche
+        //    géo, cf. FfbbHttpClientStub) — c'est le chemin qui n'avait AUCUNE garde avant le
+        //    correctif : sans lui, le partagé serait crédité sous la clé sentinelle.
+        $this->client->request('PUT', '/api/opponents/venue-links/' . $linkId, [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], (string) json_encode([
+            'venueLabel' => 'Autre gymnase amical',
+            'venueExternalRef' => '900000001',
+            'latitude' => 45.001,
+            'longitude' => 4.001,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(200, (string) $this->client->getResponse()->getContent());
+
+        // Le lien reste LOCAL (aucune ref persistée) même après le PUT à ref fédérale…
+        $this->scopeGucToClub($club->getId());
+        $storedRef = $this->conn()->fetchOne(
+            'SELECT venue_external_ref FROM opponent_venue_link WHERE club_id = :cid AND opponent_organisme_code = :key',
+            ['cid' => $club->getId(), 'key' => $key],
+        );
+        self::assertNull($storedRef, 'le PUT sous clé sentinelle reste un appariement LOCAL — jamais de ref fédérale persistée');
+
+        // … et RIEN n'entre dans le catalogue partagé pour la clé sentinelle.
+        self::assertSame(0, (int) $this->conn()->fetchOne(
+            'SELECT COUNT(*) FROM opponent_venue_suggestion WHERE ffbb_organisme_code = :key',
+            ['key' => $key],
+        ), 'le ré-appariement d\'une clé sentinelle n\'entre JAMAIS dans le partagé fédéral');
+        unset($season);
+    }
+
     public function testTheSharedDecrementIsSymmetricPerFederalRef(): void
     {
         $ffbb = 'ARA0069S' . random_int(10, 99);
@@ -353,6 +450,20 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
     }
 
+    private function awayFixtureNoCode(Season $season, string $opponentLabel): void
+    {
+        $this->scopeGucToClub($season->getClubId());
+        $fixture = new Fixture;
+        $fixture->setClubId($season->getClubId());
+        $fixture->setSeasonId($season->getId());
+        $fixture->setTeamId($this->uuid());
+        $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
+        $fixture->setHomeAway(FixtureHomeAway::AWAY);
+        $fixture->setOpponentLabel($opponentLabel);
+        $this->em->persist($fixture);
+        $this->em->flush();
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Infrastructure
     // ─────────────────────────────────────────────────────────────────────────
@@ -378,6 +489,7 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
             $this->service(ClubRepository::class),
             $this->service(FixtureRepository::class),
             $this->service(TravelTimeCache::class),
+            new OpponentPairingKey,
             new NullLogger,
         );
     }
@@ -393,6 +505,7 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
             $this->service(OpponentVenueLinkRepository::class),
             $this->manualResolver(),
             $this->service(VenueLabelNormalizer::class),
+            new OpponentPairingKey,
         );
     }
 

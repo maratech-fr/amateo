@@ -11,10 +11,12 @@ const addMutate = vi.fn();
 const pairMutate = vi.fn();
 const suggestionsState: { data: VenueSuggestion[] | undefined; isError: boolean } = { data: undefined, isError: false };
 const sallesState: { data: { postalCode: string | null; salles: FfbbSalle[] } | undefined; isError: boolean } = { data: undefined, isError: false };
+const nameSallesState: { data: { postalCode: string | null; salles: FfbbSalle[] } | undefined; isError: boolean } = { data: undefined, isError: false };
 
 vi.mock("./queries", () => ({
   useVenueSuggestions: () => ({ data: suggestionsState.data, isError: suggestionsState.isError, refetch: vi.fn() }),
   useFfbbSalles: () => ({ data: sallesState.data, isError: sallesState.isError, refetch: vi.fn() }),
+  useFfbbSallesByName: () => ({ data: nameSallesState.data, isError: nameSallesState.isError, refetch: vi.fn() }),
   useAddOpponentVenue: () => ({ mutate: addMutate, isPending: false }),
   usePairOpponentVenueLabel: () => ({ mutate: pairMutate, isPending: false }),
 }));
@@ -52,6 +54,8 @@ beforeEach(() => {
   suggestionsState.isError = false;
   sallesState.data = undefined;
   sallesState.isError = false;
+  nameSallesState.data = undefined;
+  nameSallesState.isError = false;
 });
 
 describe("LocateOpponentModal — ajouter / apparier un gymnase", () => {
@@ -172,5 +176,67 @@ describe("LocateOpponentModal — ajouter / apparier un gymnase", () => {
     renderAdd();
     const list = screen.getByRole("list", { name: /Salles FFBB/ });
     expect(within(list).getByRole("button", { name: /Gymnase des Servizières/ })).toBeDisabled();
+  });
+
+  it("un champ « Nom du gymnase » cherche par nom, le code postal reste le défaut affiché", async () => {
+    const user = userEvent.setup();
+    nameSallesState.data = { postalCode: null, salles: [salle({ name: "Gymnase Trouvé Par Nom", externalRef: "S777" })] };
+    renderAdd();
+    // Le code postal reste prérempli (le défaut).
+    expect(screen.getByLabelText("Commune (code postal)")).toHaveValue("69330");
+
+    // Saisir un nom (≥ 3 caractères, débouné) fait piloter la liste par la recherche par nom.
+    await user.type(screen.getByLabelText("Nom du gymnase"), "GYM");
+    const list = await screen.findByRole("list", { name: /Salles FFBB/ });
+    expect(within(list).getByText("Gymnase Trouvé Par Nom")).toBeInTheDocument();
+  });
+
+  it("adversaire SANS code fédéral : pas de section « Gymnases connus », une explication du repli local", () => {
+    // Même si des suggestions traînent, un sans-code ne les montre pas (la requête est désactivée).
+    suggestionsState.data = [suggestion({ label: "Ne doit pas paraître" })];
+    renderWithProviders(
+      <LocateOpponentModal code="Xdeadbeef" clubName="Club Amical" fbiLabel="SALLE AMICALE" unmatchedLabels={["SALLE AMICALE"]} sansCode postalCode={null} city={null} onClose={vi.fn()} />,
+    );
+    expect(screen.getByText(/Club sans code fédéral/)).toBeInTheDocument();
+    expect(screen.queryByText("Gymnases connus")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ne doit pas paraître")).not.toBeInTheDocument();
+  });
+
+  it("mode APPARIER enchaîne : un succès retire le libellé et avance au suivant sans fermer, le pied dit « Terminer »", async () => {
+    pairMutate.mockImplementation((_input: unknown, opts?: { onSuccess?: () => void; onSettled?: () => void }) => {
+      opts?.onSuccess?.();
+      opts?.onSettled?.();
+    });
+    suggestionsState.data = [suggestion({ externalRef: "S1", label: "Gym Choisi", latitude: 45.7, longitude: 4.9 })];
+    const onClose = vi.fn();
+    renderWithProviders(
+      <LocateOpponentModal code="ARA0069001" clubName="Meyzieu Basket" fbiLabel="SALLE A" unmatchedLabels={["SALLE A", "SALLE B"]} postalCode="69330" city="Meyzieu" onClose={onClose} />,
+    );
+    expect(screen.getByText("Apparier « SALLE A »")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Terminer" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Gym Choisi/ }));
+    expect(pairMutate.mock.calls[0][0].fbiLabel).toBe("SALLE A");
+    expect(onClose).not.toHaveBeenCalled();
+    // La file avance : le titre passe au libellé suivant, la modale reste ouverte.
+    expect(screen.getByText("Apparier « SALLE B »")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Gym Choisi/ }));
+    expect(pairMutate.mock.calls[1][0].fbiLabel).toBe("SALLE B");
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("mode AJOUT : le succès ferme la modale (jamais d'enchaînement)", async () => {
+    addMutate.mockImplementation((_input: unknown, opts?: { onSuccess?: () => void; onSettled?: () => void }) => {
+      opts?.onSuccess?.();
+      opts?.onSettled?.();
+    });
+    suggestionsState.data = [suggestion({ externalRef: "S1", label: "Gym", latitude: 45.7, longitude: 4.9 })];
+    const onClose = vi.fn();
+    renderAdd(onClose);
+    // Le pied « Terminer » de l'enchaînement n'existe PAS en mode ajout.
+    expect(screen.queryByRole("button", { name: "Terminer" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Gym/ }));
+    expect(onClose).toHaveBeenCalled();
   });
 });

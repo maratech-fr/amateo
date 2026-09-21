@@ -64,9 +64,9 @@ final readonly class FfbbProxyPaths implements CustomPathContributor
                 operationId: 'getFfbbSalles',
                 tags: ['Ffbb'],
                 responses: [
-                    // Ni le param ni le club ne donnent un CP exploitable ⇒ liste VIDE et
+                    // Ni le param ni le club ne donnent un CP/nom exploitable ⇒ liste VIDE et
                     // `postalCode` null, jamais une erreur : le wizard garde la saisie libre.
-                    '200' => $this->schemas->jsonResponse('The FFBB venues of a postal code, sorted by name (empty list when no usable postal code)', [
+                    '200' => $this->schemas->jsonResponse('The FFBB venues of a postal code OR of a name search, sorted by name (empty list when no usable postal code or name; postalCode is null on a name search)', [
                         'type' => 'object',
                         'properties' => [
                             'postalCode' => ['type' => ['string', 'null']],
@@ -77,9 +77,10 @@ final readonly class FfbbProxyPaths implements CustomPathContributor
                     '403' => $forbidden,
                     '502' => $unavailable,
                 ],
-                summary: 'Search the FFBB venues of a postal code (defaults to the club\'s)',
+                summary: 'Search the FFBB venues by postal code (defaults to the club\'s) or by name (q)',
                 parameters: [
-                    ['name' => 'postalCode', 'in' => 'query', 'required' => false, 'schema' => ['type' => 'string', 'pattern' => '^\d{5}$'], 'description' => 'Defaults to the current club\'s postal code'],
+                    ['name' => 'postalCode', 'in' => 'query', 'required' => false, 'schema' => ['type' => 'string', 'pattern' => '^\d{5}$'], 'description' => 'Defaults to the current club\'s postal code (ignored when q is given)'],
+                    ['name' => 'q', 'in' => 'query', 'required' => false, 'schema' => ['type' => 'string'], 'description' => 'Full-text venue name search (min 3 chars), an alternative to postalCode; when given, postalCode is ignored and the response postalCode is null'],
                 ],
             )),
             '/api/ffbb/salles-proches' => new PathItem(get: new Operation(

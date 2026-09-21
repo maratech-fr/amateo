@@ -1,19 +1,19 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-09-17 (rotation `documentation-update`, hors sujet de la PR — défauts
-Calendrier + filtres Conflits, frontend). Re-confronté au code, un écart TROUVÉ ET CORRIGÉ :
-firewall `admin` = `pattern: ^/api/admin`, `provider: super_admin_provider`
+Last verified @ 2026-09-21 (rotation `documentation-update`, lot K « appariement UX des gymnases
+adverses », hors sujet de la PR). Re-confronté au code, rien de faux trouvé : firewall `admin` =
+`pattern: ^/api/admin`, `provider: super_admin_provider`
 (`backend/config/packages/security.yaml:34,36`) ✓ ; `AdminCsrfListener` toujours à la priorité 6
 (`#[AsEventListener(event: KernelEvents::REQUEST, priority: 6)]`) ✓ ; politique de mot de passe
 12 caractères + majuscule + caractère spécial toujours dans `PasswordPolicy::MIN_LENGTH`/
 `REQUIREMENT_FR` (`backend/src/Service/PasswordPolicy.php:15,18`) ✓ ; challenge de session
 password→TOTP toujours borné à 5 minutes (`time() - $startedAt > 300`,
 `backend/src/Controller/AdminAuthController.php:72`) ✓ ; entité `SuperAdmin` toujours séparée
-(`backend/src/Entity/SuperAdmin.php:13`) ✓ ; **§ « Relances d'imports SA3-D » corrigé** — le doc
-ne citait que deux jobs `manualTriggerAllowed: true`, un troisième (`club-approval-digest`)
-le porte aussi (`backend/src/AdminJob/AdminJobCatalog.php:53,63,64`). Reste du fichier non
-re-confronté cette passe ; l'historique des vérifications précédentes vit dans
-`git log -p --follow specs/courantes/superadmin-auth.md`)
+(`backend/src/Entity/SuperAdmin.php:13`) ✓ ; les trois jobs `manualTriggerAllowed: true`
+(`club-approval-digest`, `import-school-holidays`, `import-public-holidays`) toujours dans
+`backend/src/AdminJob/AdminJobCatalog.php:53,63,64` ✓. Reste du fichier non re-confronté cette
+passe ; l'historique des vérifications précédentes vit dans
+`git log -p --follow specs/courantes/superadmin-auth.md`.
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle
 > d'historisation SA3-A, la supervision SA3-B, la planification fiable SA3-C et

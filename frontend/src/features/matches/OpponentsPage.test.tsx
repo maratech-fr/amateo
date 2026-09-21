@@ -25,6 +25,7 @@ vi.mock("./queries", () => ({
   // The add/pair modal (opened by « Ajouter un gymnase » / « Apparier ») needs these.
   useVenueSuggestions: () => ({ data: undefined, isError: false, refetch: vi.fn() }),
   useFfbbSalles: () => ({ data: undefined, isError: false, refetch: vi.fn() }),
+  useFfbbSallesByName: () => ({ data: undefined, isError: false, refetch: vi.fn() }),
   useAddOpponentVenue: () => ({ mutate: vi.fn(), isPending: false }),
   usePairOpponentVenueLabel: () => ({ mutate: vi.fn(), isPending: false }),
 }));
@@ -46,6 +47,7 @@ const venue = (over: Partial<OpponentVenue> & { id: string; label: string }): Op
 
 const club = (over: Partial<OpponentClub> & { name: string }): OpponentClub => ({
   code: "C1",
+  pairingKey: "C1",
   city: "Lyon",
   postalCode: null,
   precision: "VENUE",
@@ -219,6 +221,49 @@ describe("OpponentsPage — la liste par club adverse (grain gymnase)", () => {
     await user.click(screen.getByRole("button", { name: "Apparier" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByLabelText("Commune (code postal)")).toHaveValue("69530");
+  });
+
+  it("le rang du club est GELÉ au montage : un club apparié ne saute pas dans le tri", async () => {
+    const user = userEvent.setup();
+    // Au montage : « Zoulou » (sans gymnase) passe premier (règle sans-gym), « Alpha » (avec gymnase) second.
+    travelState.data = {
+      clubGeolocated: true,
+      opponents: [club({ code: "Z", name: "Zoulou", venues: [] }), club({ code: "A", name: "Alpha", venues: [venue({ id: "la", label: "Gym Alpha" })] })],
+    };
+    renderWithProviders(<OpponentsPage />);
+    expect(screen.getAllByRole("rowheader")[0]).toHaveTextContent("Zoulou");
+
+    // « Zoulou » gagne un gymnase ; une recherche neutre (« Gym » matche les deux) force un
+    // re-render sur la NOUVELLE donnée. SANS gel, le tri alpha le ferait passer APRÈS « Alpha ».
+    travelState.data = {
+      clubGeolocated: true,
+      opponents: [club({ code: "Z", name: "Zoulou", venues: [venue({ id: "lz", label: "Gym Zoulou" })] }), club({ code: "A", name: "Alpha", venues: [venue({ id: "la", label: "Gym Alpha" })] })],
+    };
+    await user.type(screen.getByRole("searchbox"), "Gym");
+    const order = screen.getAllByRole("rowheader");
+    expect(order[0]).toHaveTextContent("Zoulou");
+    expect(order[1]).toHaveTextContent("Alpha");
+  });
+
+  it("un club SANS code fédéral (pairingKey sentinelle) : « Ajouter un gymnase » et « Apparier » restent actifs", async () => {
+    const user = userEvent.setup();
+    travelState.data = {
+      clubGeolocated: true,
+      opponents: [
+        club({ code: null, pairingKey: "Xdeadbeef", name: "Club Amical", venues: [], unmatchedLabels: [{ label: "SALLE AMICALE", fixtureCount: 1 }] }),
+      ],
+    };
+    renderWithProviders(<OpponentsPage />);
+
+    // Zéro bouton mort : les deux gestes sont proposés même sans code fédéral.
+    expect(screen.getByRole("button", { name: /Ajouter un gymnase/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apparier" })).toBeInTheDocument();
+
+    // La modale ouverte pour un sans-code explique le repli local (pas de « Gymnases connus »).
+    await user.click(screen.getByRole("button", { name: "Apparier" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/Club sans code fédéral/)).toBeInTheDocument();
+    expect(within(dialog).queryByText("Gymnases connus")).not.toBeInTheDocument();
   });
 
   it("le bandeau siège paraît quand le club n'est pas localisé", () => {

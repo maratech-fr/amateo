@@ -94,6 +94,20 @@ final class OpponentTravelProjectionTest extends KernelTestCase
         self::assertSame(['minutes' => 80, 'approximated' => true], $detail[$orphan->getId()]);
     }
 
+    public function testACodeLessOpponentGetsLinkedTravelViaItsSentinelKey(): void
+    {
+        // Un adversaire SANS code fédéral : son lien est posé sous la clé SENTINELLE dérivée de
+        // son libellé (comme le contrôleur l'écrit). La projection le retrouve → trajet `linked`,
+        // là où le filtre `code !== null` laissait ces rencontres hors trajet.
+        $label = 'Club Sans Code';
+        $key = 'X' . substr(hash('sha256', mb_strtolower($label)), 0, 40);
+        $this->link($key, 'SALLE AMICALE', 45.76, 4.86);
+        $this->cacheTravel(45.76, 4.86, 40);
+        $away = $this->fixture(FixtureHomeAway::AWAY, null, $label, 'SALLE AMICALE');
+
+        self::assertSame([$away->getId() => 80], $this->projection->roundTripByFixtureId($this->season->getId(), [$away]));
+    }
+
     public function testALinkWithNoCachedTravelYetIsAbsent(): void
     {
         // Lien présent mais trajet pas encore calculé (cache vide) → absent (pending), jamais un repli.

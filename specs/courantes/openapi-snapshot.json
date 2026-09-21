@@ -8165,7 +8165,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "The FFBB venues of a postal code, sorted by name (empty list when no usable postal code)",
+                        "description": "The FFBB venues of a postal code OR of a name search, sorted by name (empty list when no usable postal code or name; postalCode is null on a name search)",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -8233,7 +8233,7 @@
                         "description": "FFBB unreachable \u2014 best effort, never a broken gesture"
                     }
                 },
-                "summary": "Search the FFBB venues of a postal code (defaults to the club's)",
+                "summary": "Search the FFBB venues by postal code (defaults to the club's) or by name (q)",
                 "parameters": [
                     {
                         "name": "postalCode",
@@ -8243,7 +8243,16 @@
                             "type": "string",
                             "pattern": "^\\d{5}$"
                         },
-                        "description": "Defaults to the current club's postal code"
+                        "description": "Defaults to the current club's postal code (ignored when q is given)"
+                    },
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Full-text venue name search (min 3 chars), an alternative to postalCode; when given, postalCode is ignored and the response postalCode is null"
                     }
                 ]
             }
@@ -9170,7 +9179,11 @@
                                                             "string",
                                                             "null"
                                                         ],
-                                                        "description": "The opponent FFBB organisme code; null when the code is unresolved (grouped by label, not pairable)"
+                                                        "description": "The opponent FFBB organisme code; null when the opponent has no federal code (grouped by label). Use pairingKey \u2014 not code \u2014 to pair its gyms."
+                                                    },
+                                                    "pairingKey": {
+                                                        "type": "string",
+                                                        "description": "The pairing key the client passes to the write routes: the FFBB code when present, else a local sentinel derived from the label (a code-less opponent, paired locally, never fed to the shared federal catalogue). Server-computed, never re-derived by the client."
                                                     },
                                                     "name": {
                                                         "type": "string",

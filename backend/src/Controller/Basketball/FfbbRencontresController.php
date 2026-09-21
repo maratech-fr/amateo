@@ -22,6 +22,7 @@ use App\Service\TravelComputeLock;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -56,6 +57,15 @@ final class FfbbRencontresController extends AbstractController
 
     private const string UUID_RE = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
 
+    /**
+     * BCK-32 — budget de MUR de la passe d'auto-localisation post-apply (patron
+     * {@see OpponentRefreshController}::REFRESH_BUDGET_SECONDS). Mesuré APRÈS l'apply (déjà
+     * consommateur d'une part du plafond de 60 s), il borne la rafale d'appels sortants FFBB
+     * qu'une auto-localisation déclenche. Best-effort : le dépassement arrête proprement la
+     * passe SANS transformer un apply réussi en 502.
+     */
+    private const float VENUE_AUTOLOCATE_BUDGET_SECONDS = 30.0;
+
     public function __construct(
         private readonly ClubRepository $clubRepository,
         private readonly RequestStack $requestStack,
@@ -71,6 +81,7 @@ final class FfbbRencontresController extends AbstractController
         private readonly MessageBusInterface $messageBus,
         private readonly FixtureRepository $fixtures,
         private readonly LoggerInterface $logger,
+        private readonly ClockInterface $clock,
     ) {}
 
     #[Route('/api/ffbb/rencontres', name: 'api_ffbb_rencontres', methods: ['GET'])]
@@ -144,9 +155,11 @@ final class FfbbRencontresController extends AbstractController
         }
         // P2-54 PR-2b — puis auto-localiser le gymnase de chaque équipe adverse depuis le
         // libellé de salle du fichier (surcharge de trajet TENANT, source AUTO). Passe
-        // SÉPARÉE, best-effort : un échec ne transforme jamais un apply réussi en 502.
+        // SÉPARÉE, best-effort : un échec ne transforme jamais un apply réussi en 502. BCK-32 —
+        // bornée par un budget de mur : au-delà, les libellés restants sont sautés SANS réseau.
         try {
-            $this->venueAutoLocator->locate($clubId, (string) $seasonId);
+            $deadline = $this->nowEpoch() + self::VENUE_AUTOLOCATE_BUDGET_SECONDS;
+            $this->venueAutoLocator->locate($clubId, (string) $seasonId, $deadline);
         } catch (Throwable $e) {
             $this->logger->warning('Opponent directory: post-apply venue auto-location failed', ['exception' => $e]);
         }
@@ -169,6 +182,12 @@ final class FfbbRencontresController extends AbstractController
             'unresolvedDeviations' => $result['unresolvedDeviations'],
             'depositedAt' => $result['depositedAt'],
         ]);
+    }
+
+    /** L'instant courant en secondes flottantes (epoch) — foyer du budget de mur (BCK-32). */
+    private function nowEpoch(): float
+    {
+        return (float) $this->clock->now()->format('U.u');
     }
 
     /**

@@ -22,6 +22,7 @@ use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -44,6 +45,17 @@ final class ImportFixturesController extends AbstractController
     /** Même règle que `ImportController` : aucun détail d'origine dans la réponse (P4-5). */
     private const GENERIC_FAILURE = 'Le fichier n\'a pas pu être lu. Vérifiez qu\'il s\'agit bien d\'un export FBI au format .xlsx, puis réessayez.';
 
+    /**
+     * BCK-32 — budget de MUR de la passe d'auto-localisation post-import (patron
+     * {@see OpponentRefreshController}::REFRESH_BUDGET_SECONDS). Elle enchaîne une rafale
+     * d'appels sortants FFBB (une recherche salle par commune + repli par nom) chaque fois
+     * qu'un libellé n'apparie pas exactement — sans borne, un import de centaines de libellés
+     * distincts tiendrait le worker près du plafond amont. On la mesure APRÈS le parse (qui a
+     * déjà consommé une part du plafond de 60 s), d'où un budget plus court que l'orchestrateur.
+     * Best-effort : le dépassement arrête proprement la passe SANS faire échouer l'import.
+     */
+    private const float VENUE_AUTOLOCATE_BUDGET_SECONDS = 30.0;
+
     public function __construct(
         private readonly FbiFixtureImporter $importer,
         private readonly FixtureImportGate $gate,
@@ -55,6 +67,7 @@ final class ImportFixturesController extends AbstractController
         private readonly TravelComputeLock $travelComputeLock,
         private readonly MessageBusInterface $messageBus,
         private readonly FixtureRepository $fixtures,
+        private readonly ClockInterface $clock,
     ) {}
 
     public function __invoke(Request $request): JsonResponse
@@ -143,9 +156,11 @@ final class ImportFixturesController extends AbstractController
         // P2-54 PR-2b — puis auto-localiser le gymnase de chaque équipe adverse depuis le
         // libellé de salle du fichier FBI (surcharge de trajet TENANT, source AUTO). Passe
         // SÉPARÉE : un échec ici (ou de la résolution ci-dessus) ne bloque jamais l'autre,
-        // et jamais l'import (best-effort intégral, jamais un 500).
+        // et jamais l'import (best-effort intégral, jamais un 500). BCK-32 — bornée par un
+        // budget de mur : au-delà, les libellés restants sont sautés SANS appel réseau.
         try {
-            $this->venueAutoLocator->locate($club->getId(), $season->getId());
+            $deadline = $this->nowEpoch() + self::VENUE_AUTOLOCATE_BUDGET_SECONDS;
+            $this->venueAutoLocator->locate($club->getId(), $season->getId(), $deadline);
         } catch (Throwable $e) {
             $this->logger->warning('Opponent directory: post-import venue auto-location failed', ['exception' => $e]);
         }
@@ -161,6 +176,12 @@ final class ImportFixturesController extends AbstractController
         } catch (Throwable $e) {
             $this->logger->warning('Opponent directory: post-import travel dispatch failed', ['exception' => $e]);
         }
+    }
+
+    /** L'instant courant en secondes flottantes (epoch) — foyer du budget de mur (BCK-32). */
+    private function nowEpoch(): float
+    {
+        return (float) $this->clock->now()->format('U.u');
     }
 
     /**

@@ -37,6 +37,9 @@ final class FfbbSallesController extends AbstractController
     /** En-dessous, la liste n'aide pas : l'auto-élargissement continue (§6.9). */
     private const USEFUL_COUNT = 5;
 
+    /** Longueur minimale d'une recherche par NOM (en-dessous, trop de bruit — même seuil côté front). */
+    private const int MIN_NAME_LENGTH = 3;
+
     public function __construct(
         private readonly ClubRepository $clubRepository,
         private readonly FfbbApiClient $api,
@@ -48,6 +51,24 @@ final class FfbbSallesController extends AbstractController
     public function __invoke(Request $request): JsonResponse
     {
         $this->managementAccessGuard->assertManager(); // SEC-07
+
+        // Recherche par NOM (`q`) en ALTERNATIVE au code postal : le libellé de salle en
+        // plein-texte fédéral (`mapSalle` inchangé). Best-effort 502 comme la voie CP.
+        $name = trim((string) $request->query->get('q', ''));
+        if ('' !== $name) {
+            if (mb_strlen($name) < self::MIN_NAME_LENGTH) {
+                return $this->json(['postalCode' => null, 'salles' => []]);
+            }
+            try {
+                $hits = $this->api->searchSallesByName($name);
+            } catch (Throwable) {
+                return $this->json(['error' => 'FFBB indisponible, réessayez plus tard.'], Response::HTTP_BAD_GATEWAY);
+            }
+            $salles = array_values(array_filter(array_map($this->mapSalle(...), $hits), static fn (?array $salle): bool => null !== $salle));
+            usort($salles, static fn (array $a, array $b): int => strcasecmp((string) $a['name'], (string) $b['name']));
+
+            return $this->json(['postalCode' => null, 'salles' => $salles]);
+        }
 
         $postalCode = (string) $request->query->get('postalCode', '');
         if ('' === $postalCode) {

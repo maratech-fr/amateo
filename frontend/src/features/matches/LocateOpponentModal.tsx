@@ -1,5 +1,5 @@
 import { Building2, MapPin } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -12,7 +12,7 @@ import { readState } from "@/shared/lib/readState";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { FfbbSalle, VenueSuggestion } from "./api";
-import { useAddOpponentVenue, useFfbbSalles, usePairOpponentVenueLabel, useVenueSuggestions } from "./queries";
+import { useAddOpponentVenue, useFfbbSalles, useFfbbSallesByName, usePairOpponentVenueLabel, useVenueSuggestions } from "./queries";
 
 /**
  * Amendement 2026-09-20 — la modale d'AJOUT / d'APPARIEMENT d'un gymnase pour un adversaire.
@@ -28,25 +28,55 @@ export function LocateOpponentModal({
   code,
   clubName,
   fbiLabel,
+  unmatchedLabels,
+  sansCode,
   city,
   postalCode,
   onClose,
 }: {
+  /** La clé d'appariement (code fédéral OU sentinelle) — passée telle quelle aux routes d'écriture. */
   code: string;
   clubName: string;
   /** Le libellé de fichier à apparier (ligne orpheline) ; null = ajouter un gymnase au club. */
   fbiLabel: string | null;
+  /**
+   * Les libellés orphelins du club (mode appariement) — la FILE que la modale enchaîne : au
+   * succès, elle retire l'apparié et avance au suivant. LOCALE (figée à l'ouverture) : le refetch
+   * invalidé arrive après le succès et ferait clignoter le titre. Ignorée en mode ajout.
+   */
+  unmatchedLabels?: string[];
+  /**
+   * L'adversaire n'a AUCUN code fédéral (apparié par clé sentinelle, localement). On ne requête
+   * PAS les suggestions partagées (elles 422raient), et la section « Gymnases connus » est
+   * remplacée par une explication : le choix restera propre au club.
+   */
+  sansCode?: boolean;
   /** Ville + code postal fédéraux du club adverse — situent la recherche, jamais inventés si null. */
   city: string | null;
   postalCode: string | null;
   onClose: () => void;
 }) {
   const [cp, setCp] = useState(postalCode ?? "");
+  // Recherche par NOM — alternative au code postal, débounée (≥ 3 caractères). Le code postal
+  // reste le défaut affiché ; dès qu'un nom est saisi, il pilote les résultats.
+  const [name, setName] = useState("");
+  const [debouncedName, setDebouncedName] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedName(name), 300);
+    return () => clearTimeout(id);
+  }, [name]);
   // « Brignais 69530 » / « Brignais » / « 69530 » / "" — on ne montre que ce qui est connu.
   const locationContext = [city, postalCode].filter((part): part is string => null !== part && "" !== part).join(" ");
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
-  const suggestionsQuery = useVenueSuggestions(code);
+  // La FILE des libellés à apparier — figée à l'ouverture (le libellé cliqué en tête, puis les
+  // autres orphelins du club). En mode ajout, vide. Le libellé courant = queue[0].
+  const [queue, setQueue] = useState<string[]>(() => (null === fbiLabel ? [] : [fbiLabel, ...(unmatchedLabels ?? []).filter((label) => label !== fbiLabel)]));
+  const currentLabel = null === fbiLabel ? null : (queue[0] ?? fbiLabel);
+
+  // Un adversaire sans code fédéral n'a pas de suggestions partagées (la route 422rait) : on
+  // désactive la requête en lui passant une clé vide (le hook n'appelle pas pour "").
+  const suggestionsQuery = useVenueSuggestions(true === sansCode ? "" : code);
   const sallesQuery = useFfbbSalles(cp);
   const addVenue = useAddOpponentVenue();
   const pairLabel = usePairOpponentVenueLabel();
@@ -55,102 +85,148 @@ export function LocateOpponentModal({
   const suggestions = suggestionsQuery.data ?? [];
   const suggestionsState = readState(suggestionsQuery);
 
-  const salles = sallesQuery.data?.salles ?? [];
-  const cpReady = /^\d{5}$/.test(cp);
-  const sallesState = readState({ data: cpReady ? (sallesQuery.data ?? undefined) : {}, isError: sallesQuery.isError });
+  const nameQuery = debouncedName.trim();
+  const searchingByName = nameQuery.length >= 3;
+  const nameSallesQuery = useFfbbSallesByName(nameQuery);
 
-  /** Un seul geste : un clic pose le lien (appariement d'orphelin OU ajout) et ferme au succès. */
+  const cpReady = /^\d{5}$/.test(cp);
+  // La recherche par nom prend la main dès qu'elle est active ; sinon le code postal.
+  const salles = searchingByName ? (nameSallesQuery.data?.salles ?? []) : (sallesQuery.data?.salles ?? []);
+  const sallesState = searchingByName
+    ? readState({ data: nameSallesQuery.data ?? undefined, isError: nameSallesQuery.isError })
+    : readState({ data: cpReady ? (sallesQuery.data ?? undefined) : {}, isError: sallesQuery.isError });
+  const searchReady = searchingByName || cpReady;
+  const searchLabel = searchingByName ? `« ${nameQuery} »` : cp;
+
+  /**
+   * Un clic pose le lien. Mode AJOUT : un seul geste, on ferme au succès. Mode APPARIEMENT :
+   * on ENCHAÎNE — au succès on retire le libellé apparié de la file et on avance au suivant ;
+   * file vidée → fermeture. La file est locale (jamais dérivée du refetch, qui clignoterait).
+   */
   const submit = (venueLabel: string, venueExternalRef: string | null, latitude: number, longitude: number, key: string): void => {
     if ("" === code) {
       return;
     }
     setPendingKey(key);
     const onSettled = { onSettled: () => setPendingKey(null) } as const;
-    const onSuccess = () => {
-      toast.success(null === fbiLabel ? `Gymnase ajouté pour ${clubName}.` : `« ${fbiLabel} » apparié.`);
-      onClose();
-    };
     if (null === fbiLabel) {
-      addVenue.mutate({ code, venueLabel, venueExternalRef, latitude, longitude }, { onSuccess, ...onSettled });
-    } else {
-      pairLabel.mutate({ code, fbiLabel, venueLabel, venueExternalRef, latitude, longitude }, { onSuccess, ...onSettled });
+      addVenue.mutate(
+        { code, venueLabel, venueExternalRef, latitude, longitude },
+        {
+          onSuccess: () => {
+            toast.success(`Gymnase ajouté pour ${clubName}.`);
+            onClose();
+          },
+          ...onSettled,
+        },
+      );
+      return;
     }
+    const label = currentLabel;
+    if (null === label) {
+      return;
+    }
+    pairLabel.mutate(
+      { code, fbiLabel: label, venueLabel, venueExternalRef, latitude, longitude },
+      {
+        onSuccess: () => {
+          toast.success(`« ${label} » apparié.`);
+          const rest = queue.slice(1);
+          if (0 === rest.length) {
+            onClose();
+            return;
+          }
+          setQueue(rest);
+        },
+        ...onSettled,
+      },
+    );
   };
 
   return (
     <Modal
       label={null === fbiLabel ? "Ajouter un gymnase" : "Apparier un libellé"}
-      title={null === fbiLabel ? `Ajouter un gymnase — ${clubName}` : `Apparier « ${fbiLabel} »`}
+      title={null === fbiLabel ? `Ajouter un gymnase — ${clubName}` : `Apparier « ${currentLabel} »`}
       onClose={onClose}
       size="lg"
       footer={
         <Button variant="outline" size="sm" onClick={onClose}>
-          Fermer
+          {null === fbiLabel ? "Fermer" : "Terminer"}
         </Button>
       }
     >
       <div className="flex flex-col gap-4">
         {null !== fbiLabel ? (
           <p className="text-xs text-muted-foreground">
-            Choisissez le gymnase de <span className="font-medium text-foreground">« {fbiLabel} »</span> ({clubName})
+            Choisissez le gymnase de <span className="font-medium text-foreground">« {currentLabel} »</span> ({clubName})
             {"" !== locationContext ? <span> · {locationContext}</span> : "."}
           </p>
         ) : "" !== locationContext ? (
           <p className="text-xs text-muted-foreground">{locationContext}</p>
         ) : null}
 
-        {/* Section 1 — les gymnases DÉJÀ connus de cet adversaire (suggestions partagées). */}
-        <div className="flex flex-col gap-2">
-          <h5 className="text-sm font-medium">Gymnases connus</h5>
-          {"loading" === suggestionsState ? <EmptyHint>Recherche des gymnases connus…</EmptyHint> : null}
-          {"failed" === suggestionsState ? (
-            <LoadErrorHint onRetry={() => void suggestionsQuery.refetch()}>Suggestions indisponibles — cherchez par code postal ci-dessous.</LoadErrorHint>
-          ) : null}
-          {"ready" === suggestionsState && 0 === suggestions.length ? (
-            <EmptyHint>Aucun gymnase connu pour ce club — cherchez-le par code postal.</EmptyHint>
-          ) : null}
-          {suggestions.length > 0 ? (
-            <ul aria-label={`Gymnases connus de ${clubName}`} className="flex max-h-64 flex-col gap-1 overflow-y-auto">
-              {suggestions.map((suggestion) => (
-                <SuggestionButton
-                  key={`sugg-${suggestion.externalRef ?? suggestion.label}`}
-                  suggestion={suggestion}
-                  outline={1 === suggestions.length}
-                  pending={pendingKey === `sugg-${suggestion.externalRef ?? suggestion.label}`}
-                  disabled={writing}
-                  onPick={() =>
-                    submit(
-                      suggestion.label,
-                      suggestion.externalRef,
-                      suggestion.latitude as number,
-                      suggestion.longitude as number,
-                      `sugg-${suggestion.externalRef ?? suggestion.label}`,
-                    )
-                  }
-                />
-              ))}
-            </ul>
-          ) : null}
-        </div>
+        {/* Section 1 — un adversaire SANS code fédéral n'a pas de catalogue partagé : on explique
+            plutôt que de laisser une section vide (le choix restera propre au club). */}
+        {true === sansCode ? (
+          <p className="text-xs text-muted-foreground">Club sans code fédéral — cherchez le gymnase par code postal ou par nom ; votre choix restera propre à votre club.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <h5 className="text-sm font-medium">Gymnases connus</h5>
+            {"loading" === suggestionsState ? <EmptyHint>Recherche des gymnases connus…</EmptyHint> : null}
+            {"failed" === suggestionsState ? (
+              <LoadErrorHint onRetry={() => void suggestionsQuery.refetch()}>Suggestions indisponibles — cherchez par code postal ci-dessous.</LoadErrorHint>
+            ) : null}
+            {"ready" === suggestionsState && 0 === suggestions.length ? (
+              <EmptyHint>Aucun gymnase connu pour ce club — cherchez-le par code postal.</EmptyHint>
+            ) : null}
+            {suggestions.length > 0 ? (
+              <ul aria-label={`Gymnases connus de ${clubName}`} className="flex max-h-64 flex-col gap-1 overflow-y-auto">
+                {suggestions.map((suggestion) => (
+                  <SuggestionButton
+                    key={`sugg-${suggestion.externalRef ?? suggestion.label}`}
+                    suggestion={suggestion}
+                    outline={1 === suggestions.length}
+                    pending={pendingKey === `sugg-${suggestion.externalRef ?? suggestion.label}`}
+                    disabled={writing}
+                    onPick={() =>
+                      submit(
+                        suggestion.label,
+                        suggestion.externalRef,
+                        suggestion.latitude as number,
+                        suggestion.longitude as number,
+                        `sugg-${suggestion.externalRef ?? suggestion.label}`,
+                      )
+                    }
+                  />
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        )}
 
-        {/* Section 2 — chercher un gymnase par recherche FFBB (code postal). */}
+        {/* Section 2 — chercher un gymnase par code postal OU par nom (FFBB). */}
         <div className="flex flex-col gap-2">
           <h5 className="text-sm font-medium">Chercher un gymnase</h5>
-          <Input
-            aria-label="Commune (code postal)"
-            placeholder="Code postal du gymnase"
-            inputMode="numeric"
-            maxLength={5}
-            className="h-8 w-full sm:w-40"
-            value={cp}
-            onChange={(e) => setCp(e.target.value.replace(/\D/g, ""))}
-          />
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input
+              aria-label="Commune (code postal)"
+              placeholder="Code postal du gymnase"
+              inputMode="numeric"
+              maxLength={5}
+              className="h-8 w-full sm:w-40"
+              value={cp}
+              onChange={(e) => setCp(e.target.value.replace(/\D/g, ""))}
+            />
+            <Input aria-label="Nom du gymnase" placeholder="Nom du gymnase" className="h-8 w-full sm:flex-1" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
           {"failed" === sallesState ? (
-            <LoadErrorHint onRetry={() => void sallesQuery.refetch()}>FFBB indisponible, réessayez plus tard.</LoadErrorHint>
+            <LoadErrorHint onRetry={() => void (searchingByName ? nameSallesQuery.refetch() : sallesQuery.refetch())}>FFBB indisponible, réessayez plus tard.</LoadErrorHint>
           ) : null}
-          {cpReady && "ready" === sallesState && 0 === salles.length ? <EmptyHint>Aucune salle trouvée pour ce code postal.</EmptyHint> : null}
+          {searchReady && "ready" === sallesState && 0 === salles.length ? (
+            <EmptyHint>{searchingByName ? "Aucune salle trouvée pour ce nom." : "Aucune salle trouvée pour ce code postal."}</EmptyHint>
+          ) : null}
           {salles.length > 0 ? (
-            <ul aria-label={`Salles FFBB à ${cp}`} className="max-h-64 overflow-y-auto rounded-md border border-border bg-background py-1 text-sm">
+            <ul aria-label={`Salles FFBB ${searchLabel}`} className="max-h-64 overflow-y-auto rounded-md border border-border bg-background py-1 text-sm">
               {salles.map((salle) => {
                 const key = `salle-${salle.externalRef ?? salle.name}-${salle.address ?? ""}`;
                 return (

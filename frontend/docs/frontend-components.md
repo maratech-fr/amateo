@@ -1,20 +1,20 @@
 # FORWARD Components Spec — Pages & Shared Components (hors wizard)
 
-Last verified @ 2026-09-17 (`documentation-update`, défauts Calendrier + filtres Conflits —
-re-confronté après édition de la ligne `FilterToggle`, `DocStampFreshnessTest` rouge). Re-confronté
-au code : `filter-toggle.tsx` (`frontend/src/shared/components/ui/filter-toggle.tsx`) toujours la
-maison unique, consommée par `ConflictsPage.tsx:370-372` pour « Seulement avec un match à
-domicile » (le libellé « Masquer les traités » a disparu de son SEUL usage, remplacé par les puces
-« Traitement » — table non-`FilterToggle`, hors périmètre de cette ligne) ✓ ; `ReviewQueue.tsx`
-porte toujours ses deux cases à cocher inline non converties (`type="checkbox"` ×2, lignes 225 et
-234) ✓ ; `Listbox` (`listbox.tsx`) : `SEARCH_THRESHOLD = 8` (`:73`), consommé par `team-select.tsx`
-et `venue-select.tsx` (tous deux important `Listbox` depuis `@/shared/components/ui/listbox`) ✓.
-Rien de faux trouvé cette passe côté §3. Le bloc « Historique » (sections 2-9) reste marqué
-superseded par son en-tête, mais §3 (Shared Components) est en pratique tenu à jour au fil des PR
-(cf. les lignes P4-127/P4-149/P4-198/P4-207) — signalé pour ce que ça vaut, non déplacé cette
-passe. ⚠ Drift **toujours présent, non corrigé** (re-confirmé cette passe, `StatusPill` vit dans
-`badge.tsx` — pas un fichier dédié) : `StatusPill` et `SourceBadge` (maisons uniques citées dans
-`.claude/rules/frontend.md` et `module-matchs.md`) sont ABSENTES de la table §3.
+Last verified @ 2026-09-21 (`documentation-update`, rotation — lot K « appariement UX des
+gymnases adverses », hors sujet de cette PR). Re-confronté au code : `FilterToggle`
+(`frontend/src/shared/components/ui/filter-toggle.tsx`) toujours la maison unique, consommée par
+`ConflictsPage.tsx:384` pour « Seulement avec un match à domicile » ✓ ; **écart TROUVÉ ET
+CORRIGÉ** — la table §3 disait encore `ReviewQueue.tsx` non converti (deux cases à cocher inline) :
+le code le contredit, `ReviewQueue.tsx:181,185,197,200` consomme désormais `FilterToggle` pour ses
+deux interrupteurs (« Afficher les traitées », « Masquer les extérieurs » — conversion UXC-21, lot
+audit 2026-09-18, plus aucune copie locale) — ligne corrigée ; `Listbox` (`listbox.tsx`) :
+`SEARCH_THRESHOLD = 8` (`:73`), consommé par `team-select.tsx` et `venue-select.tsx` ✓. Drift
+**toujours présent, non corrigé** (`StatusPill` vit dans `badge.tsx` — pas un fichier dédié) :
+`StatusPill` et `SourceBadge` (maisons uniques citées dans `.claude/rules/frontend.md` et
+`module-matchs.md`) restent ABSENTES de la table §3. Le bloc « Historique » (sections 2-9) reste
+marqué superseded par son en-tête ; §3 (Shared Components) reste en pratique tenu à jour au fil des
+PR (cf. les lignes P4-127/P4-149/P4-198/P4-207) — signalé pour ce que ça vaut, non déplacé cette
+passe.
 
 > 🛑 **Ce document est SUPERSEDED. Il ne décrit pas le frontend livré.**
 >
@@ -554,7 +554,7 @@ de la présentation + accessibilité.
 | `ErrorBoundary` | Error boundary React avec message + "Réessayer" | `children`, `onRetry` | Toutes les pages (wrap de contenu) |
 | `EmptyState` / `EmptyBlock` / `EmptyHint` | Les TROIS étages du vide, une seule maison (`empty-hint.tsx`, UXC-17). **Règle de choix** (UXC-10, tranchée en ralliant les sites inline) : une **vue entière** sans rien à montrer → `EmptyState` (Card pointillée) ; une **grille/panneau** vide dans un écran par ailleurs peuplé → `EmptyBlock` (bloc pointillé) ; une **liste/résultat de filtre** vide, en ligne dans le flux → `EmptyHint` (paragraphe discret). `EmptyBlock`/`EmptyHint` portent une prop `variant` (`SurfaceSkin`, P4-149, 2026-08-30) : `app` (jetons de thème, **défaut**) ou `console` (jetons `--console-*`) — même patron que les onglets | `EmptyState` : `icon` (défaut `CalendarX2`), `title`, `description` — pas de prop `action` (l'ancienne ligne en promettait une qui n'a jamais existé) ; `EmptyBlock`/`EmptyHint` : `children`, `className`, `variant` (`SurfaceSkin`, défaut `app`) | PlanningPage (State) · grilles horaires (Block) · la plupart des listes/filtres vides (Hint) — exceptions structurelles (balisage `<li>`/`<ul>`, valeur italique porteuse de sens, espacement centré délibéré) : décision fermée `specs/courantes/etat-des-lieux.md` §2. `features/admin/` consomme `variant="console"` sur une partie de ses empty states — reste ouvert : `roadmap.md` P4-149 |
 | `Menu` / `MenuItem` | Dropdown accessible (burger, motif APG menu-button) — focus au 1er item à l'ouverture, flèches ↑/↓ (roving), Esc/Tab ferment + rendent le focus au déclencheur, clic-dehors, `z-50` au-dessus du plein écran wizard, sans dépendance. **Activer un item referme le menu et rend le focus au déclencheur par défaut** (`restoreFocusOnSelect`, défaut `true`, P4-207) — à mettre `false` seulement quand le déclencheur sera DÉMONTÉ par la sélection (l'appelant refocalise lui-même son remplaçant via `triggerRef`, ref externe forwardée sur le `<button>` déclencheur) | `label`, `trigger`, `children` / `onSelect` \| `to` (NavLink, état actif), `icon`, `restoreFocusOnSelect`, `triggerRef` | AppLayout (menu compte : Club · Profil · Thème · Logout), `ConflictResolutionControl` (menu de statut, `triggerRef` sur le bouton « Traiter ») |
-| `FilterToggle` | La case à cocher PARTAGÉE d'un filtre d'affichage (« Seulement avec un match à domicile »…) — un `<input type="checkbox">` `size-4` + libellé `text-muted-foreground`, ligne entière cliquable (`<label>` enveloppant). Présentation seule, l'état vit chez l'appelant (miroir d'URL). Née P4-207 du patron déjà inline dans `ReviewQueue.tsx` — **`ReviewQueue.tsx` garde ses deux copies locales**, non converties (candidat de convergence, non traité) | `checked`, `onChange`, `children` | `ConflictsPage` (« Seulement avec un match à domicile » — l'ex-usage « Masquer les traités » a été remplacé par les puces « Traitement », 2026-09-16/17) |
+| `FilterToggle` | La case à cocher PARTAGÉE d'un filtre d'affichage (« Seulement avec un match à domicile »…) — un `<input type="checkbox">` `size-4` + libellé `text-muted-foreground`, ligne entière cliquable (`<label>` enveloppant). Présentation seule, l'état vit chez l'appelant (miroir d'URL). Née P4-207 du patron déjà inline dans `ReviewQueue.tsx` — **converti depuis (UXC-21, lot audit 2026-09-18)** : `ReviewQueue.tsx` consomme désormais `FilterToggle` pour ses deux interrupteurs (« Afficher les traitées », « Masquer les extérieurs »), plus aucune copie locale | `checked`, `onChange`, `children` | `ConflictsPage` (« Seulement avec un match à domicile » — l'ex-usage « Masquer les traités » a été remplacé par les puces « Traitement », 2026-09-16/17) · `ReviewQueue` (deux interrupteurs, depuis 2026-09-18) |
 | `AccordionSection` | Section dépliable (`aria-expanded`/`aria-controls`, chevron) | `title`, `defaultOpen`, `children` | ClubPage (sections Demandes / Visuel) |
 | `Modal` | Modal accessible (focus trap, Escape, backdrop), **hauteur bornée + contenu défilant**, **largeur par palier nommé**, **pied d'actions ÉPINGLÉ hors défilement** (P4-127 d — la règle de partage : le pied reçoit les actions et le microcopy qui les qualifie, les conséquences restent dans le corps) | `label`, `title`, `onClose`, `children`, `footer`, `size` (`sm`\|`md`\|`lg`\|`xl`, défaut `md`) | cockpit, wizard, matchs, planning, admin |
 | `FichePage` | Le cadre des pages « fiche » : 832 px centrés + paragraphes bornés à la longueur de ligne lisible | `className` (rythme vertical de la page), `children` | ClubPage, ProfilePage, ReleaseNotesPage |

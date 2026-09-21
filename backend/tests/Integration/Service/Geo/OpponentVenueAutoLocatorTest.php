@@ -20,12 +20,14 @@ use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\OpponentVenueAutoLocator;
 use App\Service\SeasonResolver;
+use App\Tests\Double\SteppingClock;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Psr\Log\NullLogger;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\Clock\MockClock;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
@@ -84,6 +86,35 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
         self::assertSame(0, $result['located'], 'rien apparié passé le budget de mur');
         self::assertSame(1, $result['skipped'], 'le libellé restant est compté skipped');
         self::assertNull($this->link($club, 'gymnase mateo'), 'aucun lien écrit');
+    }
+
+    /**
+     * BCK-32 (défaut 3) — le rail d'IMPORT borne désormais l'auto-localisation par un budget de
+     * mur ({@see ImportFixturesController} / {@see FfbbRencontresController} calculent
+     * `deadline = now + budget` et le passent à {@see OpponentVenueAutoLocator::locate}, comme
+     * l'orchestrateur `/opponents/refresh`). Ce test reproduit ce calcul avec une horloge qui
+     * saute à chaque lecture : le budget est dépassé AVANT le premier groupe, donc AUCUN appel
+     * sortant FFBB n'est émis, la passe s'arrête proprement (le libellé reste `skipped`) et
+     * RIEN n'est levé — l'import (best-effort) réussit quand même.
+     */
+    public function testTheImportWallBudgetStopsTheFanOutWithoutAnyOutboundCall(): void
+    {
+        [$club, $season] = $this->seedClubWithAway('GYMNASE MATEO', 'Adverse Budget - 1');
+        $this->seedDirectory();
+
+        // Step 100 s ≫ le budget : la 1re lecture fixe la deadline, la lecture SUIVANTE (dans
+        // locate) l'a déjà dépassée → tout groupe restant est sauté sans réseau.
+        $clock = new SteppingClock(stepSeconds: 100);
+        $budgetSeconds = 30.0; // même modèle que le budget de mur des contrôleurs d'import.
+        $deadline = (float) $clock->now()->format('U.u') + $budgetSeconds;
+
+        $calls = 0;
+        $result = $this->countingLocator($calls, $clock)->locate($club->getId(), $season->getId(), $deadline);
+
+        self::assertSame(0, $calls, 'budget dépassé → AUCUN appel salle sortant (le fan-out est borné)');
+        self::assertSame(0, $result['located'], 'rien apparié passé le budget de mur');
+        self::assertSame(1, $result['skipped'], 'le libellé restant est compté skipped (relancer pour finir)');
+        self::assertNull($this->link($club, 'gymnase mateo'), 'aucun lien écrit — l\'import reste best-effort et réussit');
     }
 
     public function testNoStrictMatchLeavesTheLabelUnpaired(): void
@@ -157,6 +188,42 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
         self::assertSame(2, $result['located'], 'deux libellés distincts → deux liens');
         self::assertSame('100000001', $this->link($club, 'gymnase a')?->getVenueExternalRef());
         self::assertSame('100000002', $this->link($club, 'gymnase b')?->getVenueExternalRef());
+    }
+
+    /**
+     * Repli par NOM : la voie commune (CP/rayon) ne rend AUCUNE salle, mais la recherche par
+     * nom rend une salle unique stricte → le libellé s'apparie (le bénéfice réel du repli).
+     */
+    public function testNameFallbackLinksWhenTheCommuneSearchFindsNothing(): void
+    {
+        [$club, $season] = $this->seedClubWithAway('GYMNASE PAR NOM', 'Adverse Nom - 1');
+        $this->seedDirectory();
+
+        $locator = $this->splitLocator([], [$this->salle('166900700', 'GYMNASE PAR NOM', 45.79, 4.89)]);
+        $result = $locator->locate($club->getId(), $season->getId());
+
+        self::assertSame(1, $result['located'], 'le repli par nom apparie quand la commune ne trouve rien');
+        self::assertSame('166900700', $this->link($club, 'gymnase par nom')?->getVenueExternalRef());
+    }
+
+    /**
+     * Repli par NOM NON unique (deux salles exactes) : on ne retient rien, on laisse à la main.
+     * Le comptage reste celui de la voie commune (0 candidat → `unmatched`), jamais `ambiguous`.
+     */
+    public function testNameFallbackIsIgnoredWhenItIsNotUnique(): void
+    {
+        [$club, $season] = $this->seedClubWithAway('GYMNASE COMMUN', 'Adverse Nom - 2');
+        $this->seedDirectory();
+
+        $locator = $this->splitLocator([], [
+            $this->salle('100000010', 'GYMNASE COMMUN', 45.70, 4.80),
+            $this->salle('100000011', 'GYMNASE COMMUN', 45.71, 4.81),
+        ]);
+        $result = $locator->locate($club->getId(), $season->getId());
+
+        self::assertSame(0, $result['located']);
+        self::assertSame(1, $result['unmatched'], 'repli nom non unique → laissé à la main (comptage de la voie commune)');
+        self::assertNull($this->link($club, 'gymnase commun'));
     }
 
     /** Un lien MANUAL est SOUVERAIN : jamais recalculé, compté `skipped`. */
@@ -261,7 +328,10 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
         $calls = 0;
         $result = $this->countingLocator($calls)->locate($club->getId(), $season->getId());
 
-        self::assertLessThanOrEqual(200, $calls, 'au plus 200 recherches de salle — le cap borne le fan-out fédéral');
+        // Le cap borne les GROUPES traités (200) : ≤ 200 recherches par COMMUNE (une par code)
+        // plus le repli par NOM, caché par libellé (ici un unique « GYMNASE CAP » partagé → 1).
+        // Le 201ᵉ groupe est sauté AVANT tout réseau : il n'ajoute aucune recherche.
+        self::assertLessThanOrEqual(201, $calls, 'le cap borne le fan-out fédéral (200 par commune + 1 repli nom partagé)');
         self::assertSame(1, $result['skipped'], 'le 201ᵉ groupe est sauté (aucun réseau)');
         self::assertSame(200, $result['located'] + $result['ambiguous'] + $result['unmatched'], '200 groupes traités au total');
     }
@@ -300,7 +370,7 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
      * A locator whose FFBB client returns empty salles but COUNTS every salle search,
      * so the fan-out cap can be falsified.
      */
-    private function countingLocator(int &$calls): OpponentVenueAutoLocator
+    private function countingLocator(int &$calls, ?ClockInterface $clock = null): OpponentVenueAutoLocator
     {
         $ffbb = new MockHttpClient(function (string $method, string $url, array $options) use (&$calls): MockResponse {
             if (str_contains($url, 'api.ffbb.com')) {
@@ -314,7 +384,7 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
             return new MockResponse((string) json_encode(['results' => [['hits' => []]]]));
         });
 
-        return $this->buildLocator($ffbb);
+        return $this->buildLocator($ffbb, $clock);
     }
 
     /**
@@ -335,7 +405,33 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
         return $this->buildLocator($ffbb);
     }
 
-    private function buildLocator(MockHttpClient $ffbb): OpponentVenueAutoLocator
+    /**
+     * A locator whose FFBB client answers the COMMUNE/radius search and the NAME search
+     * DIFFERENTLY: `q = ''` (CP/rayon) → `$communeSalles`, `q` non vide (nom) → `$nameSalles`.
+     *
+     * @param list<array<string, mixed>> $communeSalles the salles the CP/radius search returns
+     * @param list<array<string, mixed>> $nameSalles    the salles the name search returns
+     */
+    private function splitLocator(array $communeSalles, array $nameSalles): OpponentVenueAutoLocator
+    {
+        $ffbb = new MockHttpClient(static function (string $method, string $url, array $options) use ($communeSalles, $nameSalles): MockResponse {
+            if (str_contains($url, 'api.ffbb.com')) {
+                return new MockResponse((string) json_encode(['data' => ['key_ms' => 'stub-token']]));
+            }
+            $body = \is_string($options['body'] ?? null) ? $options['body'] : '';
+            if (!str_contains($body, 'ffbbserver_salles')) {
+                return new MockResponse((string) json_encode(['results' => [['hits' => []]]]));
+            }
+            // `q` non vide = recherche par NOM ; `"q":""` = commune/rayon.
+            $hits = str_contains($body, '"q":""') ? $communeSalles : $nameSalles;
+
+            return new MockResponse((string) json_encode(['results' => [['hits' => $hits]]]));
+        });
+
+        return $this->buildLocator($ffbb);
+    }
+
+    private function buildLocator(MockHttpClient $ffbb, ?ClockInterface $clock = null): OpponentVenueAutoLocator
     {
         return new OpponentVenueAutoLocator(
             $this->em,
@@ -344,7 +440,7 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
             self::getContainer()->get(OpponentDirectoryEntryRepository::class),
             new FfbbApiClient($ffbb, 'stub-token'),
             self::getContainer()->get(VenueLabelNormalizer::class),
-            new MockClock,
+            $clock ?? new MockClock,
             new NullLogger,
         );
     }

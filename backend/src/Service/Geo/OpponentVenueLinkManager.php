@@ -9,6 +9,7 @@ use App\Entity\OpponentVenueLink;
 use App\Enum\OpponentVenueLinkSource;
 use App\Repository\OpponentVenueLinkRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
+use App\Service\OpponentPairingKey;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -37,6 +38,7 @@ final class OpponentVenueLinkManager
         private readonly OpponentVenueLinkRepository $linkRepository,
         private readonly OpponentTravelResolver $travelResolver,
         private readonly VenueLabelNormalizer $labelNormalizer,
+        private readonly OpponentPairingKey $pairingKey,
     ) {}
 
     /**
@@ -116,6 +118,15 @@ final class OpponentVenueLinkManager
      */
     private function writeGym(string $clubId, OpponentVenueLink $link, string $venueLabel, ?string $newRef, float $lat, float $lon, ?string $previousRef): void
     {
+        // 🔴 SÉCURITÉ (revue 2026-09-21) — un adversaire SANS code fédéral (clé SENTINELLE) n'entre
+        // JAMAIS dans le catalogue partagé `opponent_venue_suggestion` (keyé sur le code organisme
+        // fédéral PUBLIC ; table hors-tenant, sans GRANT DELETE). On neutralise la référence ICI,
+        // AVANT toute résolution fédérale et pour TOUS les appelants (addOrUpdate, repoint) — foyer
+        // unique de la garde, plutôt qu'une rustine par contrôleur. Sans ref, `resolveFederalVenue`
+        // n'est pas appelé et rien n'est crédité : l'appariement reste LOCAL (coordonnées seules).
+        if ($this->pairingKey->isSentinel($link->getOpponentOrganismeCode())) {
+            $newRef = null;
+        }
         $federal = null === $newRef ? null : $this->travelResolver->resolveFederalVenue($newRef, $lat, $lon);
         $storedRef = null !== $newRef && null !== $federal ? mb_substr($newRef, 0, 64) : null;
         $code = $link->getOpponentOrganismeCode();

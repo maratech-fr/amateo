@@ -84,6 +84,7 @@ final class OpponentTravelApiTest extends WebTestCase
         self::assertCount(3, $byCode);
 
         $orga = $byCode['ARA0069001'];
+        self::assertSame('ARA0069001', $orga['pairingKey'], 'la clé d\'appariement d\'un adversaire à code EST son code');
         self::assertSame('Lyon', $orga['city']);
         // Le code postal fédéral est servi : le front préremplit la recherche de gymnase avec.
         self::assertSame('69001', $orga['postalCode']);
@@ -109,7 +110,47 @@ final class OpponentTravelApiTest extends WebTestCase
 
         $noCode = $byCode['NULL'];
         self::assertNull($noCode['code']);
+        self::assertStringStartsWith('X', (string) $noCode['pairingKey'], 'un adversaire sans code reçoit une clé sentinelle');
         self::assertSame([], $noCode['venues']);
+    }
+
+    public function testACodeLessOpponentIsPairedViaItsSentinelKeyAndGetsTravel(): void
+    {
+        [$club, $user, $season] = $this->seedClub();
+        // Un adversaire AWAY SANS code fédéral (amical), avec une salle de fichier « à apparier ».
+        $this->awayFixtureNoCodeWithVenue($club, $season, 'Club Amical', 'SALLE AMICALE');
+
+        // Le feed sert la clé sentinelle et le libellé à apparier.
+        $this->client->request('GET', '/api/opponents/travel', [], [], $this->authHeaders($user));
+        $noCode = null;
+        foreach ($this->responseData()['opponents'] as $opponent) {
+            if (null === $opponent['code']) {
+                $noCode = $opponent;
+            }
+        }
+        self::assertIsArray($noCode);
+        $key = (string) $noCode['pairingKey'];
+        self::assertStringStartsWith('X', $key);
+        self::assertSame([['label' => 'SALLE AMICALE', 'fixtureCount' => 1]], $noCode['unmatchedLabels']);
+
+        // La clé sentinelle sert à apparier un gymnase (lien LOCAL) : warmTravel chauffe le trajet.
+        $this->post($user, '/api/opponents/' . $key . '/venues', [
+            'venueLabel' => 'Gymnase amical', 'fbiLabel' => 'SALLE AMICALE', 'latitude' => 45.80, 'longitude' => 5.00,
+        ]);
+        self::assertResponseStatusCodeSame(200, (string) $this->client->getResponse()->getContent());
+        self::assertSame('MANUAL', $this->responseData()['source']);
+        self::assertSame(1, $this->responseData()['targetFixtureCount'], 'la rencontre sans code pointe ce gymnase');
+
+        // Le feed montre désormais le gymnase apparié (avec trajet) sous cet adversaire sans code.
+        $this->client->request('GET', '/api/opponents/travel', [], [], $this->authHeaders($user));
+        foreach ($this->responseData()['opponents'] as $opponent) {
+            if (null === $opponent['code']) {
+                self::assertCount(1, $opponent['venues'], 'le gymnase apparié sous la clé sentinelle est bien listé');
+                self::assertSame('Gymnase amical', $opponent['venues'][0]['label']);
+                self::assertSame(IgnRoutingHttpClientStub::DRIVING_MINUTES, $opponent['venues'][0]['travelMinutes']);
+                self::assertSame([], $opponent['unmatchedLabels'], 'le libellé a quitté « à apparier »');
+            }
+        }
     }
 
     public function testTwoLinksExposeTheFallbackVenueNameForRemoval(): void
@@ -530,6 +571,14 @@ final class OpponentTravelApiTest extends WebTestCase
     private function awayFixtureNoCode(Club $club, Season $season, string $opponentLabel): void
     {
         $this->em->persist($this->baseFixture($club, $season, $opponentLabel));
+        $this->em->flush();
+    }
+
+    private function awayFixtureNoCodeWithVenue(Club $club, Season $season, string $opponentLabel, string $fbiVenueLabel): void
+    {
+        $fixture = $this->baseFixture($club, $season, $opponentLabel);
+        $fixture->setFbiVenueLabel($fbiVenueLabel);
+        $this->em->persist($fixture);
         $this->em->flush();
     }
 
