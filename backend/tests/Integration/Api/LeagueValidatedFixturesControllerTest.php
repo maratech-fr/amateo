@@ -193,6 +193,55 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         self::assertLessThanOrEqual('19:00', $kickoff);
     }
 
+    /**
+     * NR — la DIVERGENCE ASSUMÉE avec le contrôle d'accès du geste unitaire : une
+     * rencontre à domicile dont l'heure tombe HORS des créneaux d'accès match déclarés
+     * du gymnase reste ÉLIGIBLE et bascule (la source fédérale fait foi), et le radar la
+     * signale (`ACCESS_WINDOW_LOST`). Sans ce témoin, la divergence se refermerait par
+     * accident à la prochaine passe (le prédicat se remettrait à contrôler l'accès).
+     */
+    public function testAnOutOfAccessWindowHomeFixtureStaysEligibleAndTheRadarSignalsIt(): void
+    {
+        [$token, $clubId, $seasonId] = $this->createClub();
+        $this->scopeGucToClub($clubId);
+        $team = $this->createTeam($clubId, $seasonId);
+        $venue = $this->createVenue($clubId, $seasonId);
+
+        // Un créneau d'accès match 14:00–18:00 le jour du match — que le coup d'envoi
+        // (20:30) NE couvre PAS. Le geste unitaire refuserait cette pose ; le lot, non.
+        $date = '2099-03-14';
+        $day = (int) new DateTimeImmutable($date)->format('N');
+        $this->createWindow($clubId, $seasonId, $venue->getId(), $day, '14:00', '18:00');
+        $fixtureId = $this->eligible($clubId, $seasonId, $team->getId(), $venue->getId(), $date, '20:30')->getId();
+
+        // (1) Le prédicat ne fait PAS le contrôle d'accès : la rencontre reste validable.
+        $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(200);
+        $count = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertSame(1, $count['count'], 'hors créneau d\'accès mais enregistrée côté fédération → éligible');
+
+        // (2) Elle bascule malgré tout (la réalité fédérale fait foi). L'EM a été vidé par
+        // le GET intermédiaire : on RELIT par id plutôt que refresh sur une entité détachée.
+        $this->client->request('POST', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(200);
+        $this->em->clear();
+        $fixture = $this->em->find(Fixture::class, $fixtureId);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        self::assertSame(FixtureStatus::VALIDATED, $fixture->getStatus());
+        self::assertSame(FixturePlacementSource::MANUAL, $fixture->getPlacementSource());
+
+        // (3) L'incohérence n'est pas tue : le radar la signale (ACCESS_WINDOW_LOST).
+        $this->client->request('GET', '/api/fixtures/conflicts', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(200);
+        $radar = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($radar['conflicts'] ?? null);
+        $signalled = array_filter(
+            $radar['conflicts'],
+            static fn (array $c): bool => 'ACCESS_WINDOW_LOST' === ($c['type'] ?? null) && ($c['fixture']['fixtureId'] ?? null) === $fixture->getId(),
+        );
+        self::assertCount(1, $signalled, 'le radar signale la rencontre validée hors créneau d\'accès');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

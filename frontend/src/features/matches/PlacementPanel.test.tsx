@@ -368,15 +368,23 @@ describe("PlacementPanel", () => {
     expect(onReopen).toHaveBeenCalledOnce();
   });
 
-  it("on a VALIDATED match: French status, FBI-attested sentence, and NO exit here", () => {
-    renderPanel(openEnvelope, vi.fn(), { fixture: { ...placedFixture, status: "VALIDATED" } });
+  it("on a VALIDATED match: French status, anchored sentence, and the « Corriger » exit (founder decision, lot L) — edit gestures gone", async () => {
+    const user = userEvent.setup();
+    const onReopen = vi.fn();
+    renderPanel(openEnvelope, vi.fn(), { fixture: { ...placedFixture, status: "VALIDATED" }, onReopen });
 
     expect(screen.getByText("Attesté FBI")).toBeInTheDocument();
-    expect(screen.getByText(/Attesté par FBI/)).toBeInTheDocument();
-    // No exit at all — not even the repair path.
-    expect(screen.queryByRole("button", { name: "Corriger — repasser en Placé" })).not.toBeInTheDocument();
+    expect(screen.getByText(/ancré sur les date, heure et salle enregistrées côté ligue/)).toBeInTheDocument();
+
+    // The edit gestures stay blocked while validated.
     expect(screen.queryByRole("button", { name: "Marquer saisi dans FBI" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Déplacer" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Supprimer" })).not.toBeInTheDocument();
+
+    // But « Corriger » is now offered — a batch bascule can rest on an auto-matched
+    // venue, so the manager must always be able to unwind it (never a dead end).
+    await user.click(screen.getByRole("button", { name: "Corriger — repasser en Placé" }));
+    expect(onReopen).toHaveBeenCalledOnce();
   });
 
   it("affiche la date formatée FR sur la ligne « Date », jamais l'ISO brut (UXC-19)", () => {

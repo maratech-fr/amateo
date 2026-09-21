@@ -12308,7 +12308,7 @@
                         "description": "Not a management member"
                     },
                     "409": {
-                        "description": "Season plan not chosen, or archived season"
+                        "description": "No active season, season plan not chosen, or archived season"
                     }
                 },
                 "summary": "Count the home fixtures eligible for a batch \u00ab valid\u00e9 ligue \u00bb (read-only, management only)"
@@ -12342,7 +12342,7 @@
                         "description": "Not a management member"
                     },
                     "409": {
-                        "description": "Season plan not chosen, or archived season"
+                        "description": "No active season, season plan not chosen, archived season, or a concurrent modification (another tab / double-click)"
                     }
                 },
                 "summary": "Mark the eligible home fixtures \u00ab valid\u00e9 ligue \u00bb in one confirmed gesture (management only)"
