@@ -1,15 +1,14 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D1).
-**§Exclusivité groupe corrigée** : le backend n'ajoute plus de `forbiddenVenueId` hors tag depuis
-D1 (décision fondateur lecture 1, 2026-09-18) — « impose Y au groupe X » force le groupe SANS
-réserver le gymnase aux autres équipes (`ScheduleConstraintBuilder.php`, plus de bloc « forbidden
-hors tag » ; `PeriodConstraintSelector::clubTagVerdict` suit à l'identique). L'engine, lui,
-n'a PAS changé : un `preferredVenueId`/`forcedVenueId` HARD/LOCK reste traité comme un gymnase
-FORCÉ pour l'équipe qui le porte (défense en profondeur sur donnée legacy) — seule l'ÉMISSION
-backend a changé. `SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"` et
-`LEVEL_2_OBJECTIVE_WEIGHTS` (S=10000/A=1000/B=100…) dans `objective/weights.py` ; poids
-`"preferred": 10` / `"avoided_venue": -10` (`objective/weights.py:53,61`) ✓.
+Last verified @ 2026-09-21 (rotation de fraîcheur `documentation-update`, lot L « validé ligue en
+lot » — engine non touché par cette PR, zéro appel moteur). Re-confronté au code, tout juste :
+`SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"` (`objective/weights.py:31`) ✓ ; poids
+`"preferred": 10` / `"avoided_venue": -10` (`objective/weights.py:53,61`) ✓ ; le backend n'ajoute
+toujours pas de `forbiddenVenueId` hors tag depuis D1 (`ScheduleConstraintBuilder.php:256` —
+« per-team `forbiddenVenueId` expansion is GONE » — et `:1364`) ✓. L'engine reste inchangé sur ce
+point : un `preferredVenueId`/`forcedVenueId` HARD/LOCK toujours traité comme un gymnase FORCÉ
+(défense en profondeur sur donnée legacy). Non re-sondé cette passe : le reste du vocabulaire
+listé ci-dessous — un stamp REMPLACE, l'historique vit dans git.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.

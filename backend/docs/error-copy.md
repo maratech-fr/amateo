@@ -4,15 +4,18 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-09-18 (rotation de fraîcheur `documentation-update`, PR E « décisions de
-l'audit 0918 » — zone non touchée par le reste de la PR). Re-confronté au code : la règle « le
-corps du serveur ne parle qu'en deçà de 500 » tient toujours (`frontend/src/shared/lib/errorMessage.ts:32`,
-et le repli générique `if (status >= 500)` `:65` au-delà) ✓ ; le rail 422 des state processors
-reste gardé par `Unit/ValidationExceptionCarriesViolationsTest` (interdit le constructeur-chaîne
-partout ailleurs dans `src/`, cf. `.claude/rules/backend.md`) ✓ ; les deux nouveaux refus D1/D2
-(`ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`,
-`FixtureStateProcessor::assertVenueAccessAllowed`) suivent déjà l'idiome unique `$this->refuse(…)`
-— rien à cataloguer ligne à ligne (ce fichier ne tient pas d'inventaire). Rien à corriger.
+Last verified @ 2026-09-21 (rotation de fraîcheur `documentation-update`, lot L « validé ligue en
+lot » — zone non touchée par le reste de la PR). Re-confronté au code : la règle « le corps du
+serveur ne parle qu'en deçà de 500 » tient toujours (`frontend/src/shared/lib/errorMessage.ts:32`,
+et le repli générique `if (status >= 500)` `:65` au-delà) ✓ (lignes inchangées) ; le rail 422 des
+state processors reste gardé par `backend/tests/Unit/ValidationExceptionCarriesViolationsTest.php`
+✓ ; `ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`
+(`backend/src/State/Processor/ConstraintStateProcessor.php:174-186`) et
+`FixtureStateProcessor::assertVenueAccessAllowed`
+(`backend/src/State/Processor/FixtureStateProcessor.php:229-…`) suivent bien l'idiome unique
+`$this->refuse(…)` ✓ ; le nouveau `LeagueValidatedFixturesController` (lot L) n'écrit AUCUN message
+d'erreur métier propre — ses 401/403/409 sont ceux des guards partagés (`ManagementAccessGuard`/
+`SeasonAccessGuard`/`SocleGuard`), déjà couverts ailleurs — rien à cataloguer ici. Rien à corriger.
 
 ## La règle
 

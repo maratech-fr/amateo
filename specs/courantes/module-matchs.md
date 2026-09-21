@@ -1,30 +1,27 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-21 (`documentation-update`, lot K « appariement UX des gymnases adverses »,
-8 commits `23aa3ef1`…`5bfe2f92`). Confronté au code cette passe : l'onglet Adversaires fige le rang
-des clubs au montage (`OpponentsPage.tsx`, un `setState` gardé pendant le rendu — pas un effet,
-pas une ref lue au rendu) — quitter l'onglet et y revenir recalcule (assumé) ; la modale
-d'appariement (`LocateOpponentModal.tsx`) enchaîne désormais les libellés orphelins du même club
-(file locale figée à l'ouverture, garde le code postal et la liste de salles déjà chargée, footer
-« Terminer ») ; un adversaire SANS code fédéral s'apparie via une clé SENTINELLE locale
-(`App\Service\OpponentPairingKey`, `'X' + sha256(libellé normalisé)[0:40]`, rangée dans
-`opponent_organisme_code`, **sans migration**, jamais écrite au catalogue fédéral partagé) ; les
-boutons « Ajouter un gymnase »/« Apparier » sont désormais **inconditionnels** ; l'auto-appariement
-(`OpponentVenueAutoLocator`) et la recherche manuelle (modale, `GET /api/ffbb/salles?q=`) gagnent
-un repli par NOM en plein-texte fédéral (`FfbbApiClient::searchSallesByName`, égalité stricte
-retenue). **Commits `93f36c29`→`5bfe2f92` (2026-09-21, 4 défauts de revue de sécurité) re-confrontés** :
-la neutralisation de la ref sentinelle vit ENTIÈREMENT dans la MAISON UNIQUE
-`OpponentVenueLinkManager::writeGym` (couvre POST **et** PUT de fusion — le contrôleur ne porte
-plus AUCUN filtre propre depuis `5bfe2f92`, la « ceinture » posée par `93f36c29` a été retirée : elle
-court-circuitait le manager sur l'épinglage et rendait sa garde intestable) ;
-`OpponentTravelResolver::awayPairingKeys` inclut les liens sentinelle dans le recalcul asynchrone de
-trajets (`pairsToRoute`, avant réservé aux codes fédéraux) ; les deux hooks d'auto-localisation
-déclenchés par un import (xlsx, canal API) portent désormais un budget de mur de 30 s (patron
-`OpponentRefreshController`). § « Écran Adversaires » et § « Cache de trajets » mis à jour ci-dessous,
-détail réseau
-[`../../backend/docs/ffbb-api.md`](../../backend/docs/ffbb-api.md) § « Salles d'une commune ». Le
-reste du fichier (radar, solveur, importer, delta de visite…) n'a pas bougé sous ce lot — historique
-des passes précédentes : `git log -p --follow specs/courantes/module-matchs.md`.
+Last verified @ 2026-09-21 (`documentation-update`, lot L « l'import FBI se confirme "validé ligue"
+en lot » + revue `d60b3fc0` le même jour). Confronté au code cette passe : le prédicat
+d'éligibilité unique (`LeagueValidatedFixturesController::isEligible` — domicile `UNPLACED`,
+`kickoffTime` ET `venueId` présents, aucun écart en attente, **aucune condition de date, aucun
+contrôle d'accès — divergence assumée**) ; les deux routes `GET`/`POST /api/fixtures/league-validation`
+(management + saison écrivable + socle pointé, **refus 409 explicite si aucune saison ne se
+résout**, POST refusant en plus une collision d'écriture simultanée — verrou optimiste `Fixture`) ;
+l'application pose `VALIDATED` + `placementSource` `MANUAL` ; le `MANUAL` vérifié requis à la fois
+par le cadenas de grille (`weekendGrid.ts:440`) et par l'ancre `FIXED` du solveur (§3) ; rejouable ;
+le chemin de création de l'import (`FbiFixtureImporter::attachConfirmedVenue`) N'A PAS bougé.
+**`d60b3fc0` (revue, même jour)** : `PlacementPanel.tsx` offre désormais « Corriger — repasser en
+Placé » sur `VALIDATED` (réconciliation D9 ET lot L), le commentaire/texte « lecture seule »/
+« attesté par FBI » de l'origine étaient faux pour le lot — corrigé côté code ET ci-dessous ; radar
+`ACCESS_WINDOW_LOST` confirmé comme la visibilité de la divergence assumée
+(`MatchConflictDetector.php:153` : « le front l'utilise pour BLOQUER la pose, le backend pour
+DIAGNOSTIQUER ») ; snapshot OpenAPI
+régénéré une seconde fois (descriptions 409 élargies, **routes inchangées, 207**). Côté écran :
+bandeau (`LeagueValidationBanner`) et section du rapport (`LeagueValidationReportEntry`) muets à 0 ;
+la pastille de statut `VALIDATED` reste « Attesté FBI » (`fixtureStatusLabel.ts` non touché) — seule
+la confirmation dit « validé ligue ». § « Validé ligue » en lot mise à jour ci-dessous (§7). Le
+reste du fichier (radar générique, solveur, Écran Adversaires, delta de visite…) n'a pas bougé sous
+ce lot — historique des passes précédentes : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme (refonte 2026-09-18, AUD-DOC-38)** : ce fichier décrit **l'état courant, par
 > écran** — jamais une section datée d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id)
@@ -634,6 +631,71 @@ AWAY importé est auto-localisé (`OpponentVenueAutoLocator`, un des trois hooks
 TENANT `OpponentVenueLink` ») s'il matche UNE salle fédérale exacte ; sinon il reste « à apparier »
 (§9 « Écran Adversaires ») — jamais deviné à l'import.
 
+### « Validé ligue » en lot — démarrage en cours de saison (lot L, `LeagueValidatedFixturesController`)
+
+Un club qui démarre l'application EN COURS de saison importe un fichier FBI dont les échéances sont
+déjà passées : date, heure et gymnase sont déjà enregistrés côté fédération. Confirmer chaque
+placement à la main n'a pas de sens — un geste SÉPARÉ, chiffré et confirmé les bascule d'un coup.
+**Exception consentie**, pas une contradiction, à « une rencontre naît AVEC son gymnase mais jamais
+placée d'office » (`FbiFixtureImporter::attachConfirmedVenue`) : le chemin de création de l'import ne
+change pas, continue de créer en `UNPLACED` — le statut n'est **jamais** posé pendant l'import (le
+compte ne peut pas être annoncé avant d'écrire, et le fondateur veut une confirmation chiffrée). C'est
+CE geste, distinct, qui valide.
+
+Deux routes `GET`/`POST /api/fixtures/league-validation` (management + saison écrivable + socle
+pointé), même prédicat d'éligibilité maison unique (`isEligible`) : un domicile `UNPLACED` qui porte
+une heure ET un `venueId` (gymnase identifié, jamais le libellé brut) et n'a aucun écart en attente.
+**Pas de condition de date** — un domicile futur portant heure + gymnase est tout autant enregistré
+côté fédération. GET rend le compte (bandeau + rapport, ci-dessous) ; POST applique et rend le nombre
+réellement basculé. Application : statut `VALIDATED` (horodaté) + `placementSource` `MANUAL` — le
+`MANUAL` n'est pas cosmétique, la formule du cadenas de la grille et l'ancre `FIXED` du solveur de
+placement l'exigent (§3), sinon les rencontres basculées s'afficheraient déverrouillées alors que le
+solveur les traite déjà en ancres. Rejouable : le prédicat exclut `VALIDATED`, une seconde application
+ne trouve plus rien.
+
+⚠ **Divergence ASSUMÉE avec le contrôle d'accès du geste unitaire** (revue `d60b3fc0`) : le placement
+manuel d'un domicile refuse en 422 hors des créneaux d'accès match déclarés du gymnase
+(`FixtureStateProcessor::assertVenueAccessAllowed`, §3) — `isEligible` ne fait PAS ce contrôle,
+volontairement. La fédération a déjà enregistré cette réalité (date, heure, gymnase joués ou
+programmés côté FBI) ; l'application la reflète au lieu de la nier. L'incohérence n'est pas tue :
+le radar de conflits la signale (`ACCESS_WINDOW_LOST`, §2) — une rencontre basculée hors créneau
+reste `VALIDATED` (le lot ne bloque jamais une réalité fédérale), le radar alerte. Figé par un NR
+(`LeagueValidatedFixturesControllerTest`, cas hors créneau) : une passe future qui « corrigerait »
+cet écart en y ajoutant le contrôle unitaire romprait le geste — c'est exactement le type de
+divergence qu'un futur agent pourrait refermer par accident en croyant boucher un oubli.
+
+**Isolation de saison, défense en profondeur (revue `d60b3fc0`)** : les deux routes refusent
+désormais **explicitement en 409** si aucune saison ne se résout (`_season_id` absent), au lieu de
+lire/écrire sur TOUTES les saisons du club via un `findBy([])` non scopé si le filtre Doctrine
+venait à ne pas s'activer — aucun chemin d'exploitation trouvé en revue, mais le comportement est
+maintenant explicite et visible côté API (409, pas un silence qui élargirait le périmètre). Le POST
+refuse aussi en 409, message actionnable en français, sur une collision d'écriture simultanée
+(verrou optimiste `Fixture`, deux onglets ou un double-clic) — aucun verrou ajouté, l'écriture reste
+idempotente.
+
+Deux points d'ancrage écran, même confirmation chiffrée partagée (`LeagueValidationConfirmDialog`) —
+refuser n'écrit rien : un bandeau de rattrapage sur l'onglet Importer (`LeagueValidationBanner`,
+muet à 0 — couvre donc aussi les rencontres déjà en base sans re-déposer de fichier) et une section du
+rapport de fin d'import (`LeagueValidationReportEntry`, même règle). Le front n'a aucun prédicat
+d'éligibilité : il affiche le compte servi par le backend. Ajout du fondateur : un renvoi permanent
+vers les « Échéances de saisie » (`EntryDeadlinesLink`, deep-link `?section=echeances`) sur l'onglet
+Importer, pour les renseigner sans détour. Vocabulaire : la pastille de statut ne change pas (`VALIDATED`
+reste « Attesté FBI », §7 « Workflow de traitement ») — seule cette confirmation emploie les mots du
+fondateur, « validé ligue ».
+
+**`VALIDATED` n'est PLUS un cul-de-sac (décision fondateur, revue `d60b3fc0`)** — corrige une
+affirmation fausse portée par le code d'origine (commentaire « VALIDATED is fully read-only — the
+league owns it. ») et par le texte affiché (« Attesté par FBI : … »), qui ne décrivait que le
+chemin de réconciliation D9 et non celui du lot L. `PlacementPanel` offre désormais **« Corriger —
+repasser en Placé »** sur `VALIDATED` comme sur `SUBMITTED` — quel que soit le CHEMIN qui a posé
+`VALIDATED` (réconciliation D9 OU bascule en lot du lot L). Raison : une bascule en lot peut porter
+sur des centaines de rencontres d'un coup, dont le gymnase peut venir d'un appariement AUTOMATIQUE
+(§1, `OpponentVenueAutoLocator`) — sans sortie, un mauvais appariement les aurait toutes figées, la
+seule échappatoire étant de supprimer le gymnase. Le texte affiché sous la pastille a changé en
+conséquence, générique aux deux chemins (« Ce match est ancré sur les date, heure et salle
+enregistrées côté ligue. Corrigez-le si l'une d'elles doit changer… »), sans plus attribuer
+l'ancrage au seul fichier fédéral.
+
 ### Canal API FFBB (à la demande, `FfbbRencontreReconciler`)
 
 FBI (xlsx) fait foi, l'API est un confort — bandeau d'honnêteté à chaque ouverture. Appariement à 3
@@ -859,7 +921,12 @@ Périmètre engagé : `EngagedTeamGuardTest`,
 `FbiFixtureImporterTest`, `FfbbRencontresApiTest`, `FixtureReviewApiTest` + features Behat dédiées
 (`un-domicile-importe-retrouve-son-gymnase`, `le-gymnase-du-fichier-localise-l-adversaire`,
 `les-gymnases-d-un-adversaire-se-partagent-en-suggestions`, `un-conflit-traite-reste-visible-mais-decompte`,
-`une-rencontre-importee-dit-si-elle-est-traitee`). Registre « à corriger dans FBI » :
+`une-rencontre-importee-dit-si-elle-est-traitee`). « Validé ligue » en lot (lot L) :
+`LeagueValidatedFixturesControllerTest` (prédicat, idempotence, guards, verrou optimiste,
+`testAnOutOfAccessWindowHomeFixtureStaysEligibleAndTheRadarSignalsIt` — la divergence ASSUMÉE avec
+le contrôle d'accès unitaire, figée), `MatchTenantIsolationTest` (étendu — club B éligible, club A
+lit 0 et bascule 0) + feature Behat `un-club-en-cours-de-saison-valide-ses-matchs-en-lot.feature`
+(`LeagueValidationContext`). Registre « à corriger dans FBI » :
 `FbiCorrectionApiTest` (lecture/close/reopen, 404 cross-club, 403 membre sur close),
 `MatchTenantIsolationTest` (étendu) + feature Behat `ce-que-fbi-doit-refleter.feature`
 (`FbiCorrectionContext`, suite `fbi-a-corriger`). Front : suites Vitest sous
