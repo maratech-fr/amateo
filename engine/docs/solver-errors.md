@@ -1,14 +1,16 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D3).
-Re-confronté au code : `engine/CONTRACT_VERSION` = `2.23` ✓ — deux bumps le même jour : `2.22`
-(ENG-40, nouveau diagnostic `placement_problem_too_large` ajouté à la table ci-dessous) puis
-`2.23` (D3, `matches[].roundTripMinutes` sur `/place-matches` — sans nouveau diagnostic, sans
-rapport avec ce fichier) ;
-`SCORE_FORMULA_VERSION` = `T24_LEVEL_2_FIXED_WEIGHTS_V13` (`app/solver/objective/weights.py:31`,
-non re-sondé cette passe) ; budget adaptatif 60/180/600 s aux paliers ≤50/≤200 de complexité
-(`app/main.py`, `_adaptive_timeout`, non re-sondé cette passe) ; `solverTimeoutSeconds` défaut 650
-sur `/generate` (`app/schemas/input_schema.py`, non re-sondé cette passe).
+Last verified @ 2026-09-21 (`documentation-update`, rotation de fraîcheur — sans rapport avec le
+sujet de la PR qui l'a déclenchée). Re-confronté au code : `engine/CONTRACT_VERSION` = `2.23` ✓ ;
+**la liste `type` de `DiagnosticSchema` (`app/schemas/output_schema.py:69-97`) porte 15 valeurs, la
+table ci-dessous n'en documentait que 13** — deux manquaient, ajoutées cette passe :
+`team_link_not_honored` (`_diagnose_team_links`, lot PASSERELLES PR-2) et `travel_time_infeasible`
+(`constraints/travel.py`, P2-53/RMM-8, émis aussi côté `/validate-assignments`). Les 13 déjà
+documentées confirmées présentes dans le même `Literal`, rien d'autre retiré. `SCORE_FORMULA_VERSION`
+= `T24_LEVEL_2_FIXED_WEIGHTS_V13` (`app/solver/objective/weights.py:31`) ; `BUILD_BUDGET_SECONDS` =
+`10.0` (`app/solver/match_placement.py:77`, cité par `placement_problem_too_large`) — les deux
+confirmés cette passe. Budget adaptatif 60/180/600 s et `solverTimeoutSeconds` défaut 650 : non
+re-sondés cette passe.
 
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 
@@ -83,6 +85,8 @@ Les diagnostics apparaissent dans le tableau `diagnostics[]` de la reponse. Ils 
 | `venue_minimum_unreachable` | ERROR | Un plancher "au moins N seances dans ce gymnase" est inatteignable | Le gymnase offre a l'equipe moins de **jours distincts** que N (elle joue au plus une seance par jour). | Baisser N, ou ouvrir des creneaux sur d'autres jours dans ce gymnase. |
 | `shared_block_not_honored` | ERROR | Un BLOC de mutualisation (P2-51 — un ensemble d'equipes qui se comporte comme UNE equipe, SEULE notion depuis le retrait du modele groupe {equipes, K} par PR-7, 2026-08-31) n'a pas pu placer ses `commonSessions` seances communes | Sur INFEASIBLE, deux causes **certaines** — moins de cases (gymnase, jour, heure) communes candidates que de seances demandees, ou (2026-09-07) PLUS de cases EXCLUSIVES ou TOUS les membres sont epingles HARD ensemble (aucun autre bloc toute-epingle sur la case — deux blocs imbriques peuvent se partager une case) que de seances demandees (bloc sur-epingle : le pin est souverain, la sortie est de de-epingler une case) ; sur un solve abouti, defense en profondeur — le compte reel de seances communes du bloc diverge du declare. **Distinct du verdict** `shared_block_broken` (`/validate-assignments`, refus d'un DEPLACEMENT qui casserait un bloc deja honore) — celui-ci n'est pas un diagnostic de generation. | Ouvrir un creneau commun aux equipes du bloc, ou reduire son nombre de seances communes. |
 | `constraint_not_honored` | INFO / WARNING | Une contrainte saisie n'a pas pu etre appliquee | **INFO** : un verrou HARD l'a ecrasee (P2-9) — indisponibilite coach, fenetre horaire, jour exclu, gymnase interdit. Le verrou prime, la contrainte devient inatteignable. **WARNING** : la contrainte est arrivee sans equipe cible et n'a donc pu etre appliquee a personne, OU sa famille/son type n'est reconnu par aucune branche du parseur (contrat 2.22, ENG-42 — ex. skew de deploiement, backend plus recent que l'engine ; message nommant la famille et le type recus). | INFO : retirer le verrou, ou assumer qu'il prime — c'est une decision de gestionnaire, pas une erreur. WARNING (cible) : verifier le ciblage de la regle cote backend. WARNING (type inconnu) : verifier la version de l'application, ou supprimer/resaisir la contrainte. |
+| `team_link_not_honored` | ERROR | Deux equipes declarees en passerelle (partage de joueurs) ont des seances qui se chevauchent dans le temps, sur un solve ABOUTI | Lu sur les PLACES finales (`_diagnose_team_links`), jamais un INFEASIBLE muet : soit la passerelle est `PREFERRED` et le solveur a CEDE le malus soft (les deux seances coincident quand meme), soit elle est `MANDATORY` et les deux seances sont verrouillees HARD par le gestionnaire — deux actes volontaires qui se contredisent. Une seance mutualisee DECLAREE (meme case, groupe partage) n'est jamais rapportee ici (exemption). | `PREFERRED` : accepter le chevauchement, ou ecarter les deux equipes dans la semaine. `MANDATORY` : lever l'un des deux verrous HARD contradictoires. |
+| `travel_time_infeasible` | ERROR | Un coach (ou une passerelle) enchaine deux seances VERROUILLEES a des gymnases differents sans le temps materiel du trajet | Contrainte `travelTime` MANDATORY (P2-53, RMM-8) : le battement entre les deux creneaux verrouilles est plus court que le bareme de trajet (a pied entre deux equipes passerelees, module chez un coach). Comme `team_link_not_honored`, jamais un INFEASIBLE muet — la contradiction entre deux verrous est ANNONCEE post-solve. | Deverrouiller l'une des deux seances, les ecarter dans la journee, ou ajuster le temps de trajet entre ces deux gymnases. |
 
 ⚑ **Proprietaire du texte `message`** (ENG-47) : pour `unused_slot`, le moteur (`_diagnose_unused_slots`,
 `result_builder/diagnostics.py`) n'envoie plus qu'une chaine VIDE — gymnase/jour/plage sont reconstruits

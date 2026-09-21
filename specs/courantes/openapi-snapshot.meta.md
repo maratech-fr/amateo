@@ -1,19 +1,38 @@
-Last verified @ 2026-09-21 (`e881d748` — « le conflit passerelle disparu quitte le contrat public et
-l'empreinte » : `TEAM_LINK_OVERLAP` retiré de l'énumération `conflicts[].type`,
-`SeasonAndFixturePaths` ; régénéré par `api:openapi:export`, aucune route touchée — puis
-`documentation-update`, `d34188e4` : le compte et l'empreinte ci-dessous ne sont plus une simple
-promesse à recaler à la main, `backend/tests/Unit/Documentation/OpenApiSnapshotMetaMatchesSnapshotTest.php`
-les recalcule contre CE fichier et le snapshot réel et rougit s'ils dérivent — vérifié que le test
-lit bien ces deux fichiers).
-**207 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (une valeur
-d'enum retirée, aucune route ajoutée/supprimée) · **9 valeurs** dans l'énumération `conflicts[].type`
-(`VENUE_OVERLAP`, `LEAGUE_WINDOW_VIOLATION`, `MATCH_MATCH`, `MATCH_TRAINING`, `VENUE_UNAVAILABLE`,
-`ACCESS_WINDOW_LOST`, `COMPETITION_INCOMPLETE`, `AWAY_NO_FOOTPRINT`, `FRIENDLY_ON_MATCH_SLOT` —
-zéro hit `TEAM_LINK_OVERLAP` dans le fichier ✓) · SHA-256
+Last verified @ 2026-09-21 (`13810b0e` — lot N « vocabulaire de traitement par famille + erreur FBI
+alimente le registre » : `SeasonAndFixturePaths` — `resolution.status` passe de 5 à 8 valeurs
+(`IMPORT_MISSING_MATCHES`, `FBI_ERROR`, `MATCH_TO_MOVE`, miroir de `ConflictResolutionStatus`) sur
+le `GET`/`PUT` de `.../conflicts/{fingerprint}/resolution` ; le corps du `PUT` gagne un champ additif
+nullable `fbiCorrection` (`{fixtureId, field}`) ; description 422 étendue (statut hors table de sa
+famille, `fbiCorrection` invalide) — régénéré par `api:openapi:export`, **aucune route
+ajoutée/supprimée**, puis `documentation-update` cette même passe : recalculé le compte (207,
+inchangé) et l'empreinte contre le fichier réel — `OpenApiSnapshotMetaMatchesSnapshotTest` les
+compare aux mêmes deux fichiers et les deux concordent. `conflicts[].type` (la famille du conflit,
+distincte de `resolution.status`) n'a pas bougé sous ce lot : toujours 9 valeurs, `TEAM_LINK_OVERLAP`
+absent depuis le lot M — non re-confronté cette passe, voir l'entrée de journal correspondante).
+**207 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (huit
+valeurs d'enum au lieu de cinq sur `resolution.status`, plus un champ additif, aucune route
+ajoutée/supprimée) · **8 valeurs** dans l'énumération `resolution.status` (`DEROGATION_REQUESTED`,
+`RESOLVED_INTERNALLY`, `NO_SOLUTION_YET`, `COACHES_NOT_PLAYING`, `PLAYS_NOT_COACHING`,
+`IMPORT_MISSING_MATCHES`, `FBI_ERROR`, `MATCH_TO_MOVE` — confirmé sur le fichier régénéré) · SHA-256
 `a4be21c487e6f46e9159eca97fa122cc98add29bc54f51002601ec3dc799d480` (`sha256sum`, confirmé sur le
-fichier régénéré. Reste du journal non re-confronté au code cette passe.)
+fichier régénéré — recalculé indépendamment cette passe, concorde. Reste du journal non
+re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Vocabulaire de traitement par famille + « erreur FBI » alimente le registre, backend
+  (2026-09-21, `13810b0e`)** : **+0 path** — `resolution.status` (`GET`/`PUT
+  /api/fixtures/{fingerprint}/conflict-resolution`, `SeasonAndFixturePaths`) passe de cinq à huit
+  valeurs : `IMPORT_MISSING_MATCHES` (famille `COMPETITION_INCOMPLETE`) et `FBI_ERROR`/
+  `MATCH_TO_MOVE` (famille `VENUE_OVERLAP`) rejoignent les trois statuts de base, chaque famille de
+  conflit ayant désormais sa propre table de statuts autorisés (`ConflictResolutionStatus::
+  casesForFamily`) — un statut hors de cette table est refusé en 422 côté serveur. Le corps du `PUT`
+  gagne un champ ADDITIF nullable `fbiCorrection` (`{fixtureId, field: date|kickoff|venue}`),
+  `FBI_ERROR` seulement : il ouvre, atomiquement avec la résolution, une entrée du registre « à
+  corriger dans FBI » (`FbiCorrectionLedger`, maison unique déjà existante — troisième foyer
+  d'appel, § `module-matchs.md` §1) pour le côté fautif du conflit et le champ concerné ; la valeur
+  cible reste VIDE (l'app a importé l'erreur, elle ne la connaît pas), idempotent (un double appel
+  ne duplique pas l'entrée, prouvé par un test). Description 422 étendue en conséquence. Backend
+  PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23, aucun appel moteur).
 - **Le conflit passerelle disparu quitte le contrat public, backend (2026-09-21, `e881d748`)** :
   **+0 path** — la valeur `TEAM_LINK_OVERLAP` quitte l'énumération `conflicts[].type` (contributeur
   `SeasonAndFixturePaths`) : lot M a retiré la famille TEAM_LINK du détecteur de conflits
@@ -80,15 +99,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   `hasLogo` par entrée (jamais l'uuid brut). Colonne `opponent_directory.logo_id` (table GLOBALE partagée,
   whitelist `OpponentDirectoryShareTest` +1). Backend PUR, contrat backend⇄engine **inchangé**
   (`CONTRACT_VERSION` 2.23, aucun appel moteur).
-- **C6 — calcul des trajets ASYNCHRONE, backend (2026-09-19)** : **+0 path** — le calcul des trajets
-  quitte le rail synchrone (rafale IGN pacée > plafond HTTP). `POST /api/opponents/travel/resolve` et
-  `POST /api/venue-travel-times/autofill` rendent désormais `{queued: true}` (au lieu du résultat
-  synchrone) ; la passe (c) « travel » de `POST /api/opponents/refresh` rend `{queued, pending}` (au lieu
-  de `{resolved, unresolved, skippedManual}`). Le cap dur reste vérifié SYNCHRONEMENT (422). `GET
-  /api/mercure/auth` gagne un champ ADDITIF `travelTopic` (`club:{clubId}:travel`, topic FIXE joint au
-  claim `subscribe`) : la progression et le verdict (`{filled, unresolved}` pour la matrice) sont poussés
-  par Mercure sur ce topic. Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23,
-  aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés
 en tête ne sont plus une promesse sur l'honneur** : `OpenApiSnapshotMetaMatchesSnapshotTest`
