@@ -11971,7 +11971,10 @@
                                                                     "RESOLVED_INTERNALLY",
                                                                     "NO_SOLUTION_YET",
                                                                     "COACHES_NOT_PLAYING",
-                                                                    "PLAYS_NOT_COACHING"
+                                                                    "PLAYS_NOT_COACHING",
+                                                                    "IMPORT_MISSING_MATCHES",
+                                                                    "FBI_ERROR",
+                                                                    "MATCH_TO_MOVE"
                                                                 ]
                                                             },
                                                             "note": {
@@ -12029,7 +12032,10 @@
                                                         "RESOLVED_INTERNALLY",
                                                         "NO_SOLUTION_YET",
                                                         "COACHES_NOT_PLAYING",
-                                                        "PLAYS_NOT_COACHING"
+                                                        "PLAYS_NOT_COACHING",
+                                                        "IMPORT_MISSING_MATCHES",
+                                                        "FBI_ERROR",
+                                                        "MATCH_TO_MOVE"
                                                     ]
                                                 },
                                                 "note": {
@@ -12057,7 +12063,7 @@
                         "description": "Malformed fingerprint (routing)"
                     },
                     "422": {
-                        "description": "Unknown status, note over 500 characters, a fingerprint absent from the current radar, or a play-only status (COACHES_NOT_PLAYING / PLAYS_NOT_COACHING) on a conflict where nobody plays"
+                        "description": "Unknown status, note over 500 characters, a fingerprint absent from the current radar, a status outside its conflict family's table, a play-only status (COACHES_NOT_PLAYING / PLAYS_NOT_COACHING) on a conflict where nobody plays, or an FBI_ERROR whose fbiCorrection does not name a valid side fixture and field"
                     }
                 },
                 "summary": "Set (or replace) the handling status of a conflict \u2014 management only. \u00ab \u00c0 traiter \u00bb is not a status here (it is the absence of a row): reset with DELETE",
@@ -12088,13 +12094,35 @@
                                             "RESOLVED_INTERNALLY",
                                             "NO_SOLUTION_YET",
                                             "COACHES_NOT_PLAYING",
-                                            "PLAYS_NOT_COACHING"
+                                            "PLAYS_NOT_COACHING",
+                                            "IMPORT_MISSING_MATCHES",
+                                            "FBI_ERROR",
+                                            "MATCH_TO_MOVE"
                                         ]
                                     },
                                     "note": {
                                         "type": "string",
                                         "nullable": true,
                                         "description": "Optional free note, at most 500 characters"
+                                    },
+                                    "fbiCorrection": {
+                                        "type": "object",
+                                        "nullable": true,
+                                        "description": "FBI_ERROR only \u2014 opens a \u00ab to correct in FBI \u00bb ledger entry for the offending fixture and field, atomically with the resolution. The fixture must be one of the two sides of this conflict; the target value stays empty (the app imported the error and does not know the right value)",
+                                        "properties": {
+                                            "fixtureId": {
+                                                "type": "string",
+                                                "description": "The offending fixture \u2014 one of the two sides of this conflict"
+                                            },
+                                            "field": {
+                                                "type": "string",
+                                                "enum": [
+                                                    "date",
+                                                    "kickoff",
+                                                    "venue"
+                                                ]
+                                            }
+                                        }
                                     }
                                 }
                             }

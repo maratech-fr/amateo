@@ -10,7 +10,7 @@ d'enum retirée, aucune route ajoutée/supprimée) · **9 valeurs** dans l'énum
 (`VENUE_OVERLAP`, `LEAGUE_WINDOW_VIOLATION`, `MATCH_MATCH`, `MATCH_TRAINING`, `VENUE_UNAVAILABLE`,
 `ACCESS_WINDOW_LOST`, `COMPETITION_INCOMPLETE`, `AWAY_NO_FOOTPRINT`, `FRIENDLY_ON_MATCH_SLOT` —
 zéro hit `TEAM_LINK_OVERLAP` dans le fichier ✓) · SHA-256
-`59d2ec08af75fb0a5a22464aeee4cca4da38121d159c0e1829d288ab83b388a7` (`sha256sum`, confirmé sur le
+`a4be21c487e6f46e9159eca97fa122cc98add29bc54f51002601ec3dc799d480` (`sha256sum`, confirmé sur le
 fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :

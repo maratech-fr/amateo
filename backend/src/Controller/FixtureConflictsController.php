@@ -9,14 +9,18 @@ use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\ConflictResolutionStatus;
+use App\Enum\FbiCorrectionField;
 use App\Repository\ConflictResolutionRepository;
 use App\Service\ConflictFingerprinter;
 use App\Service\ConflictRadarLoader;
+use App\Service\FbiCorrectionLedger;
 use App\Service\ManagementAccessGuard;
 use App\Service\OpponentPlaceResolver;
 use App\Service\SeasonResolver;
+use DateTimeImmutable;
 use DateTimeInterface;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\Clock\ClockInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -54,6 +58,8 @@ final class FixtureConflictsController extends AbstractController
         private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly ConflictResolutionRepository $resolutionRepository,
         private readonly OpponentPlaceResolver $opponentPlaceResolver,
+        private readonly FbiCorrectionLedger $fbiCorrectionLedger,
+        private readonly ClockInterface $clock,
     ) {}
 
     // priority > 0: this static path must win over API Platform's /api/fixtures/{id}
@@ -141,6 +147,14 @@ final class FixtureConflictsController extends AbstractController
             return $this->json(['error' => 'Ce conflit n\'existe plus dans le radar actuel.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        $conflictType = \is_string($conflict['type'] ?? null) ? $conflict['type'] : '';
+
+        // Chaque famille a sa table de statuts (les 3 de base + les siens). Un statut hors
+        // de cette table est refusé — le front masque le geste, mais le serveur est souverain.
+        if (!\in_array($status, ConflictResolutionStatus::casesForFamily($conflictType), true)) {
+            return $this->json(['error' => 'Ce statut de traitement ne s\'applique pas à cette famille de conflit.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
         // « Coache, ne joue pas » / « Joue, ne coache pas » n'ont de sens que si la personne
         // JOUE réellement un des côtés (un côté servi porte le rôle PLAYER) — sinon 422 parlant.
         if (
@@ -148,6 +162,18 @@ final class FixtureConflictsController extends AbstractController
             && !$this->conflictHasPlayerSide($conflict)
         ) {
             return $this->json(['error' => 'Ce statut est réservé aux conflits où la personne joue.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        // « Erreur FBI » (collision de gymnase) alimente le registre « à corriger dans FBI » :
+        // le complément désigne la rencontre fautive (un des deux côtés du conflit) et le champ
+        // (date/kickoff/venue). Un seul appel, atomique avec la résolution (un flush plus bas).
+        $fbiTarget = null;
+        if (ConflictResolutionStatus::FBI_ERROR === $status) {
+            $resolved = $this->resolveFbiErrorTarget($payload['fbiCorrection'] ?? null, $conflict);
+            if (\is_string($resolved)) {
+                return $this->json(['error' => $resolved], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+            $fbiTarget = $resolved;
         }
 
         $user = $this->getUser();
@@ -162,6 +188,16 @@ final class FixtureConflictsController extends AbstractController
             ->setNote($note)
             ->setUpdatedBy($user->getId());
         $this->entityManager->persist($row);
+
+        if (null !== $fbiTarget) {
+            // Valeur cible VIDE (l'appli ne connaît pas la bonne valeur : elle a importé
+            // l'erreur, inventer serait mentir) ; l'entrée dit seulement « ce champ est à
+            // vérifier dans FBI ». Idempotent : `open()` re-date une entrée ouverte au lieu
+            // de la dupliquer (un double-clic ne crée pas de doublon).
+            [$fixture, $field] = $fbiTarget;
+            $this->fbiCorrectionLedger->open($fixture, $field, null, null, DateTimeImmutable::createFromInterface($this->clock->now()));
+        }
+
         $this->entityManager->flush();
 
         return $this->json(['fingerprint' => $fingerprint, 'resolution' => $this->resolutionView($row)], Response::HTTP_OK);
@@ -312,6 +348,61 @@ final class FixtureConflictsController extends AbstractController
         }
 
         return false;
+    }
+
+    /**
+     * Résout et valide le complément « erreur FBI » d'un PUT de résolution : la rencontre
+     * fautive DOIT être l'un des côtés du conflit COURANT (donc du club, déjà filtré par la
+     * même plomberie que le GET), et le champ l'un des trois du registre (date/kickoff/venue).
+     * Renvoie [Fixture, FbiCorrectionField] prête à ouvrir, ou un message d'erreur français
+     * (le contrôleur en fait un 422) — jamais une exception.
+     *
+     * @param array<string, mixed> $conflict
+     *
+     * @return array{0: Fixture, 1: FbiCorrectionField}|string
+     */
+    private function resolveFbiErrorTarget(mixed $payload, array $conflict): array|string
+    {
+        if (!\is_array($payload)) {
+            return 'Une erreur FBI doit préciser la rencontre fautive et le champ concerné.';
+        }
+        $field = FbiCorrectionField::tryFrom(\is_string($payload['field'] ?? null) ? $payload['field'] : '');
+        if (!$field instanceof FbiCorrectionField) {
+            return 'Le champ à corriger doit être la date, l\'heure ou la salle.';
+        }
+        $fixtureId = \is_string($payload['fixtureId'] ?? null) ? $payload['fixtureId'] : '';
+        if ('' === $fixtureId || !\in_array($fixtureId, $this->conflictSideFixtureIds($conflict), true)) {
+            return 'La rencontre fautive doit être l\'une des deux rencontres de ce conflit.';
+        }
+        // Tenant/season filtered — la rencontre est un côté du conflit du club, elle
+        // résout ; un null défensif (course) reste un 422 lisible, jamais un 500.
+        $fixture = $this->entityManager->getRepository(Fixture::class)->findOneBy(['id' => $fixtureId]);
+        if (!$fixture instanceof Fixture) {
+            return 'La rencontre fautive est introuvable.';
+        }
+
+        return [$fixture, $field];
+    }
+
+    /**
+     * Les identifiants de rencontre portés par les côtés MATCH d'un conflit
+     * (left / right / fixture) — le périmètre où une « erreur FBI » peut viser.
+     *
+     * @param array<string, mixed> $conflict
+     *
+     * @return list<string>
+     */
+    private function conflictSideFixtureIds(array $conflict): array
+    {
+        $ids = [];
+        foreach (['left', 'right', 'fixture'] as $sideKey) {
+            $side = $conflict[$sideKey] ?? null;
+            if (\is_array($side) && \is_string($side['fixtureId'] ?? null)) {
+                $ids[] = $side['fixtureId'];
+            }
+        }
+
+        return $ids;
     }
 
     /** @return array{status: string, note: string|null, updatedAt: string} */

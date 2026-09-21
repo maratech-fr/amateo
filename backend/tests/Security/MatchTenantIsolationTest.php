@@ -677,6 +677,40 @@ final class MatchTenantIsolationTest extends WebTestCase
     }
 
     /**
+     * NR axe §7.1 tenant isolation (lot N) — « erreur FBI » ouvre un NOUVEAU chemin d'écriture
+     * vers le registre « à corriger dans FBI ». Un club qui déclare une erreur FBI en visant le
+     * conflit d'un AUTRE club est refusé (422 : empreinte absente de son flux), et AUCUNE entrée
+     * n'est créée — le chemin d'écriture se trouve derrière la validation tenant du flux.
+     */
+    public function testFbiErrorDeclarationCannotTargetAnotherClubsConflict(): void
+    {
+        self::getContainer()->get(DevClockStore::class)->set(new DateTimeImmutable('2026-09-01 10:00:00'));
+
+        [$clubA, $userA, $seasonA] = $this->createClubUser('fea');
+        [$clubB, $userB, $seasonB] = $this->createClubUser('feb');
+        $fixtureAId = $this->createAwayNoFootprintFixture($clubA, $seasonA);
+        $this->createAwayNoFootprintFixture($clubB, $seasonB);
+
+        $fingerprintA = $this->firstConflict($userA)['fingerprint'];
+        self::assertIsString($fingerprintA);
+
+        // B déclare une erreur FBI en visant l'empreinte de A → 422 (absente du flux de B).
+        $this->putConflictResolution($userB, $fingerprintA, [
+            'status' => 'FBI_ERROR',
+            'fbiCorrection' => ['fixtureId' => $fixtureAId, 'field' => 'venue'],
+        ]);
+        self::assertResponseStatusCodeSame(422);
+
+        // Aucune entrée « à corriger dans FBI » n'a été créée, ni chez A ni chez B.
+        $this->scopeGucToClub($clubA->getId());
+        self::assertCount(0, $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $fixtureAId]));
+        $this->scopeGucToClub($clubB->getId());
+        self::assertCount(0, $this->em->getRepository(FbiCorrection::class)->findAll());
+
+        unset($clubB, $seasonB);
+    }
+
+    /**
      * NR axe §7.1 tenant isolation — le registre « à corriger dans FBI » vit dans une
      * table TENANT. Club A ouvre une entrée ; club B ne la lit jamais (sa
      * `findOpenBySeason`/`findOpen` reste vide sur la MÊME rencontre+champ), et une

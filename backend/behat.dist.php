@@ -10,6 +10,7 @@ use App\Tests\Behat\ConstraintHonoredContext;
 use App\Tests\Behat\EngagedTeamContext;
 use App\Tests\Behat\ExportContext;
 use App\Tests\Behat\FbiCorrectionContext;
+use App\Tests\Behat\FbiErrorLedgerContext;
 use App\Tests\Behat\FixtureReviewContext;
 use App\Tests\Behat\HolidayWeekContext;
 use App\Tests\Behat\LeagueValidationContext;
@@ -152,6 +153,11 @@ return (new Config)
                 new Suite('conflits-resolution')
                     ->withPaths('%paths.base%/features/un-conflit-traite-reste-visible-mais-decompte.feature')
                     ->withContexts(ConflictResolutionContext::class),
+            )
+            ->withSuite(
+                new Suite('erreur-fbi-registre')
+                    ->withPaths('%paths.base%/features/une-erreur-fbi-alimente-le-registre.feature')
+                    ->withContexts(FbiErrorLedgerContext::class),
             )
             ->withSuite(
                 new Suite('suggestions-gymnases')

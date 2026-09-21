@@ -10,11 +10,14 @@ use App\Entity\ClubUser;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\ConflictResolution;
+use App\Entity\FbiCorrection;
 use App\Entity\Fixture;
 use App\Entity\OpponentDirectoryEntry;
 use App\Entity\Season;
 use App\Entity\TeamCoach;
 use App\Entity\User;
+use App\Entity\Venue;
+use App\Enum\FbiCorrectionField;
 use App\Enum\FixtureHomeAway;
 use App\Enum\OpponentLocationPrecision;
 use App\Enum\SeasonStatus;
@@ -301,6 +304,73 @@ final class FixtureConflictsApiTest extends WebTestCase
         self::assertStringContainsString('réservé aux conflits où la personne joue', (string) ($this->responseData()['error'] ?? ''));
     }
 
+    // ── Lot N : vocabulaire par famille + « erreur FBI » alimente le registre ──
+
+    public function testFamilySpecificStatusIsRefusedOnAnotherFamily(): void
+    {
+        // Une collision de gymnase accepte FBI_ERROR / MATCH_TO_MOVE, mais pas
+        // IMPORT_MISSING_MATCHES (propre au calendrier incomplet) → 422 parlant.
+        [, $user] = $this->createClubWithVenueOverlap('fam');
+        $fingerprint = $this->conflictsFor($user)[0]['fingerprint'];
+
+        $this->putResolution($user, $fingerprint, ['status' => 'IMPORT_MISSING_MATCHES']);
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('ne s\'applique pas à cette famille', (string) ($this->responseData()['error'] ?? ''));
+
+        // …et MATCH_TO_MOVE, lui, est accepté sur cette même famille.
+        $this->putResolution($user, $fingerprint, ['status' => 'MATCH_TO_MOVE']);
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame('MATCH_TO_MOVE', $this->conflictsFor($user)[0]['resolution']['status']);
+    }
+
+    public function testFbiErrorOnAGymCollisionOpensExactlyOneLedgerEntryAndIsIdempotent(): void
+    {
+        [$club, $user, $fixtureId] = $this->createClubWithVenueOverlap('fbe');
+        $fingerprint = $this->conflictsFor($user)[0]['fingerprint'];
+
+        // Déclarer l'erreur FBI (salle) sur l'un des deux côtés → 200, la résolution est posée.
+        $this->putResolution($user, $fingerprint, ['status' => 'FBI_ERROR', 'fbiCorrection' => ['fixtureId' => $fixtureId, 'field' => 'venue']]);
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame('FBI_ERROR', $this->conflictsFor($user)[0]['resolution']['status']);
+
+        // Exactement UNE entrée ouverte, valeur cible VIDE (l'appli ne l'invente pas).
+        $this->scopeGucToClub($club->getId());
+        $entries = $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $fixtureId, 'field' => FbiCorrectionField::VENUE]);
+        self::assertCount(1, $entries);
+        self::assertNull($entries[0]->getAppValue(), 'la valeur cible reste vide — l\'appli a importé l\'erreur');
+        self::assertTrue($entries[0]->isOpen());
+
+        // Idempotence : un second appel (double-clic) ne crée PAS de doublon.
+        $this->putResolution($user, $fingerprint, ['status' => 'FBI_ERROR', 'fbiCorrection' => ['fixtureId' => $fixtureId, 'field' => 'venue']]);
+        self::assertResponseStatusCodeSame(200);
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        self::assertCount(1, $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $fixtureId, 'field' => FbiCorrectionField::VENUE]));
+    }
+
+    public function testFbiErrorWithoutAValidComplementIs422AndWritesNothing(): void
+    {
+        [$club, $user, $fixtureId] = $this->createClubWithVenueOverlap('fbx');
+        $fingerprint = $this->conflictsFor($user)[0]['fingerprint'];
+
+        // (1) FBI_ERROR sans complément → 422.
+        $this->putResolution($user, $fingerprint, ['status' => 'FBI_ERROR']);
+        self::assertResponseStatusCodeSame(422);
+
+        // (2) FBI_ERROR visant une rencontre qui n'est PAS un côté du conflit → 422.
+        $this->putResolution($user, $fingerprint, ['status' => 'FBI_ERROR', 'fbiCorrection' => ['fixtureId' => 'ffffffff-ffff-4fff-8fff-ffffffffffff', 'field' => 'venue']]);
+        self::assertResponseStatusCodeSame(422);
+
+        // (3) FBI_ERROR avec un champ inconnu → 422.
+        $this->putResolution($user, $fingerprint, ['status' => 'FBI_ERROR', 'fbiCorrection' => ['fixtureId' => $fixtureId, 'field' => 'opponent']]);
+        self::assertResponseStatusCodeSame(422);
+
+        // Aucune entrée n'a été créée, ni résolution posée (rien d'atomique n'a fui).
+        $this->scopeGucToClub($club->getId());
+        self::assertCount(0, $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $fixtureId]));
+        self::assertNull($this->conflictsFor($user)[0]['resolution']);
+    }
+
     public function testMalformedFingerprintIs404(): void
     {
         [, $user] = $this->createClubWithOverlappingMatches('mf');
@@ -518,6 +588,85 @@ final class FixtureConflictsApiTest extends WebTestCase
         $this->em->flush();
 
         return [$club, $user, $coach->getId()];
+    }
+
+    /**
+     * A club with two HOME matches on the SAME venue with overlapping windows → exactly
+     * one VENUE_OVERLAP conflict (no coach, so no person conflict). Returns club, user,
+     * and the two fixture ids (the 16:00 one is the conflict's `left`).
+     *
+     * @return array{0: Club, 1: User, 2: string, 3: string} club, user, fixtureId1, fixtureId2
+     */
+    private function createClubWithVenueOverlap(string $suffix): array
+    {
+        $uid = uniqid($suffix, true);
+        $hasher = self::getContainer()->get('security.user_password_hasher');
+
+        $club = new Club;
+        $club->setName('Club venue ' . $suffix);
+        $club->setSlug('club-venue-' . $uid);
+        $club->setTimezone('Europe/Paris');
+        $club->setLocale('fr');
+        $club->setOnboardingCompleted(true);
+        $club->setFfbbClubCode(strtoupper(substr(md5($uid), 0, 3)) . strtoupper(substr(md5($uid), 3, 10)));
+        $this->em->persist($club);
+
+        $user = new User;
+        $user->setEmail('venue' . $uid . '@test.com');
+        $user->setFirstName('Ven');
+        $user->setLastName('Ue');
+        $user->setPasswordHash($hasher->hashPassword($user, 'pass'));
+        $this->em->persist($user);
+        $this->em->flush();
+
+        $this->scopeGucToClub($club->getId());
+
+        $membership = new ClubUser;
+        $membership->setClubId($club->getId());
+        $membership->setUserId($user->getId());
+        $membership->setRole('admin');
+        $membership->setIsActive(true);
+        $this->em->persist($membership);
+
+        $season = new Season;
+        $season->setClubId($club->getId());
+        $year = SeasonResolver::seasonYear(new DateTimeImmutable('today'));
+        $season->setName((string) $year);
+        $season->setStartDate(new DateTimeImmutable($year . '-08-01'));
+        $season->setEndDate(new DateTimeImmutable(($year + 1) . '-07-15'));
+        $season->setStatus(SeasonStatus::ACTIVE);
+        $season->setTransitionData([]);
+        $this->em->persist($season);
+
+        $venue = new Venue;
+        $venue->setClubId($club->getId());
+        $venue->setSeasonId($season->getId());
+        $venue->setName('Gymnase Coubertin');
+        $venue->setSource('manual');
+        $this->em->persist($venue);
+        $this->em->flush();
+
+        $f1 = $this->homeFixtureAtVenue($club, $season, $this->uuid($suffix, 1), '16:00', $venue->getId());
+        $f2 = $this->homeFixtureAtVenue($club, $season, $this->uuid($suffix, 2), '16:30', $venue->getId());
+        $this->em->flush();
+
+        return [$club, $user, $f1, $f2];
+    }
+
+    private function homeFixtureAtVenue(Club $club, Season $season, string $teamId, string $kickoff, string $venueId): string
+    {
+        $fixture = new Fixture;
+        $fixture->setClubId($club->getId());
+        $fixture->setSeasonId($season->getId());
+        $fixture->setTeamId($teamId);
+        $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
+        $fixture->setHomeAway(FixtureHomeAway::HOME);
+        $fixture->setOpponentLabel('Adv');
+        $fixture->setVenueId($venueId);
+        $fixture->setKickoffTime(DateTimeImmutable::createFromFormat('!H:i', $kickoff) ?: null);
+        $this->em->persist($fixture);
+
+        return $fixture->getId();
     }
 
     private function uuid(string $suffix, int $n): string
