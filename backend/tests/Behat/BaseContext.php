@@ -96,6 +96,14 @@ abstract class BaseContext implements Context
             if (1 === preg_match('/^-+$/', $value)) {
                 continue;
             }
+            // `dbal:run-sql` imprime cette bannière de succès quand la requête
+            // ne ramène AUCUNE ligne. Ce n'est pas une valeur : c'est une
+            // absence. La rendre telle quelle la ferait filer dans la requête
+            // suivante (WHERE id='[OK] The query yielded…'), qui échouerait en
+            // erreur de type ou, pire, porterait silencieusement sur rien.
+            if (str_contains($value, 'The query yielded an empty result set')) {
+                return '';
+            }
 
             return $value;
         }
