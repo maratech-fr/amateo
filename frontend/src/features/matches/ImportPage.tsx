@@ -131,7 +131,9 @@ export function ImportPage() {
       </Card>
 
       {/* Lot L — le rattrapage « validé ligue » : dès qu'un club démarre en cours de saison,
-          les domiciles déjà datés (heure + gymnase) se confirment d'un geste chiffré. Muet à 0. */}
+          les domiciles déjà datés (heure + gymnase) se confirment d'un geste chiffré. Trois blocs
+          indépendants (championnats échus à valider, rencontres échues à traiter, championnats
+          sans échéance) — muet seulement si les trois sont vides à la fois. */}
       <LeagueValidationBanner />
 
       {/* 2. La file de traitement, par équipe. `id` = cible du renvoi « Traiter dans la
