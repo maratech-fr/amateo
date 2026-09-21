@@ -1,12 +1,13 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D3,
-hors filet du garde `test_contract_version_doc_sync.py`, AUD-DOC-39). `CONTRACT_VERSION`
-(`ScheduleConstraintBuilder.php:64` ⇄ `engine/CONTRACT_VERSION`) avait dérivé à `2.21`, puis
-bumpé deux fois le même jour : `2.22` (lot correctif ENG-40, diagnostic
-`placement_problem_too_large`) puis `2.23` (D3, `matches[].roundTripMinutes` sur
-`/place-matches` — sans rapport avec ce document de génération d'entraînement) — corrigé aux
-occurrences ci-dessous ✓. Reste non re-sondé cette passe : TTL du verrou, `ScheduleStatus`
+Last verified @ 2026-09-21 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+cette PR — lot P « le nom FBI d'un gymnase », module matchs). Re-confronté : `CONTRACT_VERSION`
+toujours **`'2.23'`** (`ScheduleConstraintBuilder.php:63` ⇄ `engine/CONTRACT_VERSION`, ligne 137
+ci-dessous inchangée) ; le margin du TTL du verrou (« timeoutSeconds + 60 s ») confirmé
+(`GenerateScheduleHandler.php:62` `LOCK_TTL_MARGIN_SECONDS = 60`, ligne 117 `acquire(...
+getTimeoutSeconds() + self::LOCK_TTL_MARGIN_SECONDS)`) ; le frontend consomme bien Mercure par un
+seul `EventSource` par session tel que décrit §6.1 (`scheduleStream.ts`, cohérent avec
+`specs/courantes/generation-pipeline.md`). Reste non re-sondé cette passe : `ScheduleStatus`
 (dernière confrontation 2026-09-15).
 
 > ClubScheduler — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
