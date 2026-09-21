@@ -1,6 +1,10 @@
 Last verified @ 2026-09-21 (`e881d748` — « le conflit passerelle disparu quitte le contrat public et
 l'empreinte » : `TEAM_LINK_OVERLAP` retiré de l'énumération `conflicts[].type`,
-`SeasonAndFixturePaths` ; régénéré par `api:openapi:export`, aucune route touchée).
+`SeasonAndFixturePaths` ; régénéré par `api:openapi:export`, aucune route touchée — puis
+`documentation-update`, `d34188e4` : le compte et l'empreinte ci-dessous ne sont plus une simple
+promesse à recaler à la main, `backend/tests/Unit/Documentation/OpenApiSnapshotMetaMatchesSnapshotTest.php`
+les recalcule contre CE fichier et le snapshot réel et rougit s'ils dérivent — vérifié que le test
+lit bien ces deux fichiers).
 **207 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (une valeur
 d'enum retirée, aucune route ajoutée/supprimée) · **9 valeurs** dans l'énumération `conflicts[].type`
 (`VENUE_OVERLAP`, `LEAGUE_WINDOW_VIOLATION`, `MATCH_MATCH`, `MATCH_TRAINING`, `VENUE_UNAVAILABLE`,
@@ -86,7 +90,11 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   par Mercure sur ce topic. Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23,
   aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
-(resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
+(resource, controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés
+en tête ne sont plus une promesse sur l'honneur** : `OpenApiSnapshotMetaMatchesSnapshotTest`
+(`backend/tests/Unit/Documentation/`) les recalcule contre le snapshot réel à chaque run et rougit
+si l'un des deux ment — non bloquant, `phase1`, `unit-tests` seul ; le bumper à la main reste
+nécessaire (le test ne régénère rien, il compare). Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine
 (`backend/src/OpenApi/PathContributor/`), composé par `CustomRoutesOpenApiFactory` — depuis
 P4-138 (2026-08-30), **ajouter une entrée directement à la factory ne fait plus rien** : elle
