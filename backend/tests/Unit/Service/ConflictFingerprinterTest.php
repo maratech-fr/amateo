@@ -12,7 +12,7 @@ use PHPUnit\Framework\TestCase;
 /**
  * RMM-3 — la maison unique de l'empreinte d'un conflit. Pure : elle prend un item
  * du tableau de MatchConflictDetector et en rend l'IDENTITÉ stable. Ce test épingle
- * les 10 types (les champs d'identité, tels que le détecteur les émet), la STABILITÉ
+ * les 9 types (les champs d'identité, tels que le détecteur les émet), la STABILITÉ
  * (même empreinte quand sévérité / segment / rôle / reasons bougent) et le changement de
  * NATURE (autre paire, ou autre type → autre empreinte).
  */
@@ -57,17 +57,6 @@ final class ConflictFingerprinterTest extends TestCase
             'right' => ['fixtureId' => 'fix-a'],
         ];
         self::assertSame('VENUE_OVERLAP:venue-3:fix-a,fix-z', $this->fingerprinter->fingerprint($conflict));
-    }
-
-    public function testTeamLinkOverlapIsLinkPlusSortedPair(): void
-    {
-        $conflict = [
-            'type' => 'TEAM_LINK_OVERLAP',
-            'teamLinkId' => 'link-2',
-            'left' => ['fixtureId' => 'fix-m'],
-            'right' => ['fixtureId' => 'fix-c'],
-        ];
-        self::assertSame('TEAM_LINK_OVERLAP:link-2:fix-c,fix-m', $this->fingerprinter->fingerprint($conflict));
     }
 
     public function testSingleFixtureTypesAreFixtureId(): void

@@ -57,11 +57,6 @@ final class ConflictFingerprinter
                 $this->nestedStr($conflict, 'left', 'fixtureId'),
                 $this->nestedStr($conflict, 'right', 'fixtureId'),
             )),
-            // La passerelle + les deux fixtures (triées).
-            'TEAM_LINK_OVERLAP' => \sprintf('%s:%s:%s', $type, $this->str($conflict, 'teamLinkId'), $this->pair(
-                $this->nestedStr($conflict, 'left', 'fixtureId'),
-                $this->nestedStr($conflict, 'right', 'fixtureId'),
-            )),
             // Une seule fixture porte le litige. FRIENDLY_ON_MATCH_SLOT : ses
             // `reasons` (MATCH_SLOT_WINDOW/MATCH_WEEKEND) sont EXCLUS de l'identité
             // — le litige reste « cet amical sur un créneau match » qu'il touche la
