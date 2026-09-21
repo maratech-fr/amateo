@@ -1085,11 +1085,13 @@ final class MatchConflictDetector
             // P1-4 PR C — the window was built on the team's HABITUAL kickoff,
             // not a real hour: the UI must say « heure estimée ».
             'estimatedKickoff' => $view['estimated'],
-            // P2-54 conflict side details — ADDITIVE per-side fields for the
-            // MATCH_MATCH/MATCH_TRAINING rendering. Harmless extras on the
-            // gym/link families that share this view (the UI ignores them for
-            // those); the ConflictFingerprinter is a whitelist and never reads
-            // them. `opponentPlace` is NOT here — it is decorated by
+            // P2-54 conflict side details — ADDITIVE per-side fields served on
+            // EVERY family that shares this view, because the conflicts screen now
+            // renders a per-side line for the gym family too: VENUE_OVERLAP reads
+            // opponentLabel + matchDurationMinutes (matches/lib/conflictSideLines.ts
+            // ::venueSide), not only MATCH_MATCH/MATCH_TRAINING. The
+            // ConflictFingerprinter is a whitelist and never reads them.
+            // `opponentPlace` is NOT here — it is decorated by
             // FixtureConflictsController on AWAY sides after detection.
             'estimatedKickoffTime' => $view['estimatedKickoffTime'],
             'travelOneWayMinutes' => $view['travelOneWayMinutes'],

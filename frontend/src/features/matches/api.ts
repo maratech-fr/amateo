@@ -234,9 +234,11 @@ export interface ConflictFixtureView {
   windowStart: string;
   windowEnd: string;
   /**
-   * Détail par côté (MATCH_MATCH / MATCH_TRAINING) — champs ADDITIFS servis par le
-   * backend pour rendre une ligne par côté. Optionnels : la famille gymnase
-   * partage cette vue mais le front ne les lit pas pour elle.
+   * Détail par côté — champs ADDITIFS servis par le backend pour rendre une ligne par
+   * côté sur TOUTES les familles qui partagent cette vue : l'écran des conflits les lit
+   * aussi pour la famille gymnase (VENUE_OVERLAP lit `opponentLabel` et
+   * `matchDurationMinutes`, `lib/conflictSideLines.ts::venueSide`), pas seulement pour
+   * MATCH_MATCH / MATCH_TRAINING. Optionnels côté TS.
    */
   /** Heure estimée « HH:MM » empruntée à l'habitude — non-null SSI `estimatedKickoff`. */
   estimatedKickoffTime?: string | null;
