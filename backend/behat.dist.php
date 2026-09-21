@@ -27,6 +27,7 @@ use App\Tests\Behat\StaleScheduleContext;
 use App\Tests\Behat\TenantIsolationContext;
 use App\Tests\Behat\TrainingBlockContext;
 use App\Tests\Behat\VenueAliasContext;
+use App\Tests\Behat\VenueAliasIdentityContext;
 use App\Tests\Behat\VenueDeviationContext;
 use Behat\Config\Config;
 use Behat\Config\Profile;
@@ -143,6 +144,11 @@ return (new Config)
                 new Suite('ecart-salle-non-place')
                     ->withPaths('%paths.base%/features/un-domicile-non-place-dont-la-ligue-change-la-salle-est-arbitre.feature')
                     ->withContexts(VenueDeviationContext::class),
+            )
+            ->withSuite(
+                new Suite('nom-fbi-gymnase')
+                    ->withPaths('%paths.base%/features/le-nom-que-fbi-donne-a-un-gymnase.feature')
+                    ->withContexts(VenueAliasIdentityContext::class),
             )
             ->withSuite(
                 new Suite('conflits-verite')
