@@ -885,24 +885,28 @@ final class MatchTenantIsolationTest extends WebTestCase
         [$clubB, $userB, $seasonB] = $this->createClubUser('lvb');
         $venueB = $this->createVenue($clubB, $seasonB, 'Gymnase B');
 
-        // B : un domicile UNPLACED portant heure + gymnase, sans écart → éligible.
+        // B : un domicile UNPLACED portant heure + gymnase, sans écart, dont le championnat
+        // est ÉCHU (échéance de saisie passée) → validable « validé ligue » (lot O).
+        $compB = $this->createCompetition($clubB, $seasonB, 'Championnat B');
+        $compB->setEntryDeadline(new DateTimeImmutable('2020-09-10'));
         $foreign = $this->createFixture($clubB, 'Adversaire B');
         $this->scopeGucToClub($clubB->getId());
+        $foreign->setCompetitionId($compB->getId());
         $foreign->setVenueId($venueB->getId());
         $foreign->setKickoffTime(new DateTimeImmutable('15:30'));
         $this->em->flush();
         $foreignId = $foreign->getId();
 
-        // Témoin : sous SA propre identité, B compte bien 1 — le 0 vu par A ne peut donc
+        // Témoin : sous SA propre identité, B en compte bien 1 — le 0 vu par A ne peut donc
         // venir que du cloisonnement, jamais de l'inéligibilité de la rencontre.
         $this->client->request('GET', '/api/fixtures/league-validation', [], [], $this->authHeaders($userB));
         self::assertResponseStatusCodeSame(200);
-        self::assertSame(1, $this->responseData()['count'] ?? -1);
+        self::assertSame(1, $this->responseData()['totalValidatable'] ?? -1);
 
-        // A ne voit RIEN : compte 0…
+        // A ne voit RIEN : total 0…
         $this->client->request('GET', '/api/fixtures/league-validation', [], [], $this->authHeaders($userA));
         self::assertResponseStatusCodeSame(200);
-        self::assertSame(0, $this->responseData()['count'] ?? -1);
+        self::assertSame(0, $this->responseData()['totalValidatable'] ?? -1);
 
         // …et une bascule par A ne touche aucune rencontre de B.
         $this->client->request('POST', '/api/fixtures/league-validation', [], [], $this->authHeaders($userA));

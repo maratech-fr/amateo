@@ -1,10 +1,10 @@
 # Wizard — saisie des données (tranche 3, LIVRÉ)
 
-Last verified @ 2026-09-18 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
-cette PR — lot correctif frontend de l'audit 2026-09-18, module matchs). Re-confronté au code :
-`VenueSelect` (`frontend/src/shared/components/ui/venue-select.tsx:1,53-58`) reste construit sur
-`Listbox` (`shared/components/ui/listbox.tsx`) ; `WIZARD_STEPS`
-(`frontend/src/features/wizard/lib/steps.ts:8-15`) porte toujours exactement 6 étapes
+Last verified @ 2026-09-21 (**rotation de fraîcheur** `documentation-update`, lot O « l'échéance du
+championnat pilote la validation "validé ligue" » — zone non touchée par cette PR, module matchs
+seul). Re-confronté au code : `VenueSelect` (`frontend/src/shared/components/ui/venue-select.tsx:1`)
+reste construit sur `Listbox` (`shared/components/ui/listbox.tsx`) ; `WIZARD_STEPS`
+(`frontend/src/features/wizard/lib/steps.ts:9-16`) porte toujours exactement 6 étapes
 (teams/venues/coaches/constraints/recap/generate), inchangé ; `frontend/src/features/wizard/lib/teamColumns.ts`
 existe toujours (foyer unique des largeurs de colonnes). Reste du fichier non re-contrôlé ligne à
 ligne cette passe — un stamp REMPLACE, l'historique vit dans git.

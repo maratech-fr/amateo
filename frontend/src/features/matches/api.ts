@@ -1175,24 +1175,59 @@ export const resolveFixtureDeviation = (input: ResolveDeviationInput): Promise<R
   api.post("fixtures/review/deviations", { json: input }).json<ResolveDeviationResult>();
 
 /**
- * Lot L — « validé ligue » en lot. Un club qui démarre EN COURS de saison importe des
- * domiciles déjà datés côté fédération (date + heure + gymnase) : plutôt que confirmer
- * chaque placement, un geste chiffré les bascule d'un coup. Le backend est la SEULE
- * maison du prédicat d'éligibilité — le front AFFICHE le compte servi, il ne le
- * redérive JAMAIS (🔴 `.claude/rules/frontend.md`). `count` = combien sont validables ;
- * `confirmed` = combien ont basculé (VALIDATED + source MANUAL). Rejouable : un second
- * appel rend 0.
+ * Lot O — « validé ligue » en lot, PILOTÉ PAR L'ÉCHÉANCE du championnat. Un club qui
+ * démarre EN COURS de saison confirme d'un geste les domiciles des championnats DONT
+ * L'ÉCHÉANCE EST PASSÉE (jour inclus) : `confirmed` = combien ont basculé (VALIDATED +
+ * source MANUAL). Un championnat dont l'échéance n'est pas passée (nouvelle vague, dates
+ * provisoires) n'est proposé nulle part. Rejouable : un second appel rend 0.
  */
-export interface LeagueValidationCount {
-  count: number;
+/** Un championnat ÉCHU (échéance passée, jour inclus) avec son compte de validables. */
+export interface MaturedCompetition {
+  competitionId: string;
+  name: string;
+  deadline: string;
+  deadlineSource: "club" | "community";
+  validatableCount: number;
+}
+
+/** Pourquoi un domicile d'un championnat échu n'est pas validable — nommé, jamais tu. */
+export type LeagueToTreatReason = "NO_KICKOFF" | "NO_VENUE" | "PENDING_DEVIATION";
+
+/** Une rencontre d'un championnat échu à traiter (ni heure ni gymnase, ou écart en attente). */
+export interface LeagueToTreatFixture {
+  fixtureId: string;
+  teamId: string;
+  competitionName: string;
+  matchDate: string;
+  opponentLabel: string;
+  reason: LeagueToTreatReason;
+}
+
+/** Un championnat SANS échéance ayant pourtant des rencontres prêtes (à renseigner). */
+export interface MissingDeadlineCompetition {
+  competitionId: string;
+  name: string;
+  validatableCount: number;
+}
+
+/**
+ * La lecture « validé ligue », pilotée par l'échéance du championnat. Le backend est la
+ * SEULE maison de la règle (échéance passée ⇒ championnat proposé) — le front AFFICHE ce
+ * qu'il sert, il ne le redérive JAMAIS (🔴 `.claude/rules/frontend.md`).
+ */
+export interface LeagueValidationOutlook {
+  matured: MaturedCompetition[];
+  toTreat: LeagueToTreatFixture[];
+  missingDeadline: MissingDeadlineCompetition[];
+  totalValidatable: number;
 }
 
 export interface LeagueValidationResult {
   confirmed: number;
 }
 
-export const getLeagueValidationCount = (): Promise<LeagueValidationCount> =>
-  api.get("fixtures/league-validation").json<LeagueValidationCount>();
+export const getLeagueValidationOutlook = (): Promise<LeagueValidationOutlook> =>
+  api.get("fixtures/league-validation").json<LeagueValidationOutlook>();
 
 export const confirmLeagueValidatedFixtures = (): Promise<LeagueValidationResult> =>
   api.post("fixtures/league-validation").json<LeagueValidationResult>();

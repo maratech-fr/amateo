@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Behat;
 
+use App\Controller\CompetitionEntryDeadlinesController;
 use Behat\Hook\AfterScenario;
 use Behat\Step\Given;
 use Behat\Step\Then;
@@ -16,12 +17,17 @@ use Symfony\Component\Mime\Part\DataPart;
 use Symfony\Component\Mime\Part\Multipart\FormDataPart;
 
 /**
- * Le geste « validé ligue » en lot (lot L), de bout en bout sur la stack qui tourne :
- * un club en cours de saison importe des domiciles déjà datés (heure + gymnase),
- * apparie le libellé de salle, puis bascule d'un geste confirmé toutes les rencontres
- * que le fichier atteste — un domicile sans heure ne compte pas, et rejouer ne
+ * Le geste « validé ligue » en lot piloté par l'ÉCHÉANCE du championnat (lot O), de bout
+ * en bout sur la stack qui tourne : un club en cours de saison importe des domiciles déjà
+ * datés (heure + gymnase), apparie le libellé de salle, PUIS l'échéance de saisie du
+ * championnat pilote la validation — passée, on bascule ; non passée, rien n'est proposé.
+ * Un domicile sans heure n'est pas validé mais il est nommé à traiter, et rejouer ne
  * bascule plus rien. On possède TOUTES les ressources (équipe + gymnase + division
  * jetables) et on restaure en fin de scénario.
+ *
+ * ⚠ La division jetable N'EST PAS appariée à la fédération : poser son échéance n'écrit
+ * QUE la valeur club (`Competition.entryDeadline`), jamais la table partagée entre tous
+ * les clubs ({@see CompetitionEntryDeadlinesController}).
  */
 final class LeagueValidationContext extends BaseContext
 {
@@ -144,13 +150,49 @@ final class LeagueValidationContext extends BaseContext
         }
     }
 
+    #[Given('l\'échéance de saisie du championnat est déjà passée')]
+    public function lEcheanceDejaPassee(): void
+    {
+        // Une échéance BIEN dans le passé : le championnat est échu, la validation ouverte.
+        $this->setDeadline('2020-09-10');
+    }
+
+    #[Given('l\'échéance de saisie du championnat n\'est pas encore passée')]
+    public function lEcheancePasEncorePassee(): void
+    {
+        // Une échéance loin dans le futur : le championnat n'est pas échu, rien n'est proposé.
+        $this->setDeadline('2099-12-31');
+    }
+
     #[Then('1 rencontre est validable « validé ligue »')]
     public function uneRencontreEstValidable(): void
     {
         $this->assertCount(1);
     }
 
+    #[Then('le domicile sans heure est nommé parmi les rencontres à traiter')]
+    public function leDomicileSansHeureEstNomme(): void
+    {
+        $noHourId = $this->dbalScalar(
+            \sprintf('SELECT id AS behatval FROM fixture WHERE club_id=\'%s\' AND external_ref=\'%s\' LIMIT 1', $this->clubId, self::REF_NO_HOUR),
+            admin: true,
+        );
+        $result = $this->apiGet('fixtures/league-validation', $this->token);
+        $toTreat = \is_array($result['json']['toTreat'] ?? null) ? $result['json']['toTreat'] : [];
+        foreach ($toTreat as $entry) {
+            if (\is_array($entry) && ($entry['fixtureId'] ?? null) === $noHourId) {
+                if ('NO_KICKOFF' !== ($entry['reason'] ?? null)) {
+                    throw new RuntimeException(\sprintf('le domicile sans heure est nommé avec la raison « %s » au lieu de NO_KICKOFF', (string) ($entry['reason'] ?? '')));
+                }
+
+                return;
+            }
+        }
+        throw new RuntimeException('le domicile sans heure n\'est PAS nommé parmi les rencontres à traiter');
+    }
+
     #[Then('plus aucune rencontre n\'est validable « validé ligue »')]
+    #[Then('aucune rencontre n\'est validable « validé ligue »')]
     public function plusAucuneRencontreValidable(): void
     {
         $this->assertCount(0);
@@ -221,13 +263,25 @@ final class LeagueValidationContext extends BaseContext
         }
     }
 
+    private function setDeadline(string $date): void
+    {
+        if ('' === $this->competitionId) {
+            throw new RuntimeException('aucune compétition à échéancer — le dépôt FBI a-t-il eu lieu ?');
+        }
+        // Division NON appariée → écrit seulement la valeur CLUB, jamais la table partagée.
+        $result = $this->apiPost('competitions/entry-deadlines', ['competitionIds' => [$this->competitionId], 'deadline' => $date], $this->token);
+        if (200 !== $result['status']) {
+            throw new RuntimeException(\sprintf('poser l\'échéance de saisie a répondu %d (200 attendu)', $result['status']));
+        }
+    }
+
     private function assertCount(int $expected): void
     {
         $result = $this->apiGet('fixtures/league-validation', $this->token);
         if (200 !== $result['status']) {
-            throw new RuntimeException(\sprintf('le compte des validables ligue a répondu %d (200 attendu)', $result['status']));
+            throw new RuntimeException(\sprintf('la lecture des validables ligue a répondu %d (200 attendu)', $result['status']));
         }
-        $count = $result['json']['count'] ?? null;
+        $count = $result['json']['totalValidatable'] ?? null;
         if ($count !== $expected) {
             throw new RuntimeException(\sprintf('%s rencontre(s) validable(s) au lieu de %d', \is_int($count) ? (string) $count : 'inconnu', $expected));
         }

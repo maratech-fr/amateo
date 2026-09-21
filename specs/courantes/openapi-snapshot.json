@@ -12308,19 +12308,96 @@
         },
         "/api/fixtures/league-validation": {
             "get": {
-                "operationId": "countLeagueValidatableFixtures",
+                "operationId": "leagueValidationOutlook",
                 "tags": [
                     "Match"
                 ],
                 "responses": {
                     "200": {
-                        "description": "How many home fixtures are ready to be marked \u00ab valid\u00e9 ligue \u00bb in one gesture: UNPLACED home matches the imported FBI file already attests (kickoff present, an identified venue, no pending deviation). No date condition \u2014 a future home match carrying hour and gym is federation-recorded too.",
+                        "description": "The batch \u00ab valid\u00e9 ligue \u00bb outlook, driven by each competition's entry deadline. The deadline validates the whole championship's dates FROM the deadline day (inclusive), so only MATURED competitions (deadline passed) are proposed \u2014 a future-deadline championship (e.g. a new October youth wave with provisional dates) is deliberately left untouched. Per matured competition: its name, deadline, source and count of validatable home fixtures (UNPLACED, kickoff + identified venue, no pending deviation). Plus the NAMED fixtures still to treat in a matured competition (no kickoff, no venue, or a pending deviation), the no-deadline competitions that nonetheless have ready fixtures (deadline to be entered), and the grand total to validate.",
                         "content": {
                             "application/json": {
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "count": {
+                                        "matured": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "competitionId": {
+                                                        "type": "string"
+                                                    },
+                                                    "name": {
+                                                        "type": "string"
+                                                    },
+                                                    "deadline": {
+                                                        "type": "string",
+                                                        "format": "date"
+                                                    },
+                                                    "deadlineSource": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "club",
+                                                            "community"
+                                                        ]
+                                                    },
+                                                    "validatableCount": {
+                                                        "type": "integer"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "toTreat": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "fixtureId": {
+                                                        "type": "string"
+                                                    },
+                                                    "teamId": {
+                                                        "type": "string"
+                                                    },
+                                                    "competitionName": {
+                                                        "type": "string"
+                                                    },
+                                                    "matchDate": {
+                                                        "type": "string",
+                                                        "format": "date"
+                                                    },
+                                                    "opponentLabel": {
+                                                        "type": "string"
+                                                    },
+                                                    "reason": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "NO_KICKOFF",
+                                                            "NO_VENUE",
+                                                            "PENDING_DEVIATION"
+                                                        ]
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "missingDeadline": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "competitionId": {
+                                                        "type": "string"
+                                                    },
+                                                    "name": {
+                                                        "type": "string"
+                                                    },
+                                                    "validatableCount": {
+                                                        "type": "integer"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "totalValidatable": {
                                             "type": "integer"
                                         }
                                     }
@@ -12338,7 +12415,7 @@
                         "description": "No active season, season plan not chosen, or archived season"
                     }
                 },
-                "summary": "Count the home fixtures eligible for a batch \u00ab valid\u00e9 ligue \u00bb (read-only, management only)"
+                "summary": "The batch \u00ab valid\u00e9 ligue \u00bb outlook by matured competition (read-only, management only)"
             },
             "post": {
                 "operationId": "confirmLeagueValidatedFixtures",

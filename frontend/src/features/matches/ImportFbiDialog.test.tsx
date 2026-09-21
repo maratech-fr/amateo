@@ -6,11 +6,11 @@ import { toast } from "@/shared/stores/toastStore";
 import { listboxTrigger, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
-import type { ImportAnalysisDivision, ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team, VenueLabelInventoryRow } from "./api";
+import type { ImportAnalysisDivision, ImportFbiAnalysis, ImportFbiResult, LeagueValidationOutlook, PriorityTier, Team, VenueLabelInventoryRow } from "./api";
 import { ImportFbiDialog } from "./ImportFbiDialog";
 
-const { analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInventory, getLeagueValidationCount, confirmLeagueValidatedFixtures } = vi.hoisted(() => ({
-  getLeagueValidationCount: vi.fn(() => Promise.resolve({ count: 0 })),
+const { analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInventory, getLeagueValidationOutlook, confirmLeagueValidatedFixtures } = vi.hoisted(() => ({
+  getLeagueValidationOutlook: vi.fn(() => Promise.resolve<LeagueValidationOutlook>({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0 })),
   confirmLeagueValidatedFixtures: vi.fn(() => Promise.resolve({ confirmed: 0 })),
   analyzeFbiFixtures: vi.fn(() =>
     Promise.resolve({
@@ -44,7 +44,7 @@ const { analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInvent
   getVenueLabelInventory: vi.fn((): Promise<VenueLabelInventoryRow[]> => Promise.resolve([])),
 }));
 
-vi.mock("./api", () => ({ analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInventory, getLeagueValidationCount, confirmLeagueValidatedFixtures }));
+vi.mock("./api", () => ({ analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInventory, getLeagueValidationOutlook, confirmLeagueValidatedFixtures }));
 
 // useCredits lit useMe : `club` mutable pour piloter le solde (bouton de placement
 // de fin d'import — grisé à 0 AVEC le solde, jamais masqué).
@@ -89,8 +89,8 @@ beforeEach(() => {
   analyzeFbiFixtures.mockClear();
   importFbiFixtures.mockClear();
   placeMatches.mockClear();
-  getLeagueValidationCount.mockReset();
-  getLeagueValidationCount.mockResolvedValue({ count: 0 });
+  getLeagueValidationOutlook.mockReset();
+  getLeagueValidationOutlook.mockResolvedValue({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0 });
   confirmLeagueValidatedFixtures.mockReset();
   confirmLeagueValidatedFixtures.mockResolvedValue({ confirmed: 0 });
   meState.club = undefined;
@@ -335,7 +335,7 @@ describe("ImportFbiDialog", () => {
   it("Lot L — après import, des rencontres validables ⇒ section « validé ligue » dans le rapport, et confirmer bascule", async () => {
     // Persistant (pas Once) : l'import invalide le compte → il refetche ; les DEUX lectures
     // voient les 4 validables. Remis à 0 par le beforeEach du test suivant.
-    getLeagueValidationCount.mockResolvedValue({ count: 4 });
+    getLeagueValidationOutlook.mockResolvedValue({ matured: [{ competitionId: "c1", name: "PNM", deadline: "2026-11-10", deadlineSource: "club", validatableCount: 4 }], toTreat: [], missingDeadline: [], totalValidatable: 4 });
     confirmLeagueValidatedFixtures.mockResolvedValueOnce({ confirmed: 4 });
     const user = userEvent.setup();
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
@@ -345,7 +345,7 @@ describe("ImportFbiDialog", () => {
     await user.click(screen.getByRole("button", { name: "Importer" }));
     await user.click(await screen.findByRole("button", { name: "Importer quand même" }));
 
-    await waitFor(() => expect(screen.getByText(/4 rencontres portent déjà date, heure et gymnase dans FBI/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/4 rencontres de championnats échus portent déjà date, heure et gymnase dans FBI/)).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: /Marquer « validé ligue »/ }));
     // La modale d'import est elle-même un role=dialog : on cible la confirmation par son nom.
     const dialog = await screen.findByRole("dialog", { name: /Marquer « validé ligue »/ });

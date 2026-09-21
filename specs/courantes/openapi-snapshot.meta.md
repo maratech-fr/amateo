@@ -1,24 +1,30 @@
-Last verified @ 2026-09-21 (`13810b0e` — lot N « vocabulaire de traitement par famille + erreur FBI
-alimente le registre » : `SeasonAndFixturePaths` — `resolution.status` passe de 5 à 8 valeurs
-(`IMPORT_MISSING_MATCHES`, `FBI_ERROR`, `MATCH_TO_MOVE`, miroir de `ConflictResolutionStatus`) sur
-le `GET`/`PUT` de `.../conflicts/{fingerprint}/resolution` ; le corps du `PUT` gagne un champ additif
-nullable `fbiCorrection` (`{fixtureId, field}`) ; description 422 étendue (statut hors table de sa
-famille, `fbiCorrection` invalide) — régénéré par `api:openapi:export`, **aucune route
-ajoutée/supprimée**, puis `documentation-update` cette même passe : recalculé le compte (207,
-inchangé) et l'empreinte contre le fichier réel — `OpenApiSnapshotMetaMatchesSnapshotTest` les
-compare aux mêmes deux fichiers et les deux concordent. `conflicts[].type` (la famille du conflit,
-distincte de `resolution.status`) n'a pas bougé sous ce lot : toujours 9 valeurs, `TEAM_LINK_OVERLAP`
-absent depuis le lot M — non re-confronté cette passe, voir l'entrée de journal correspondante).
-**207 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (huit
-valeurs d'enum au lieu de cinq sur `resolution.status`, plus un champ additif, aucune route
-ajoutée/supprimée) · **8 valeurs** dans l'énumération `resolution.status` (`DEROGATION_REQUESTED`,
-`RESOLVED_INTERNALLY`, `NO_SOLUTION_YET`, `COACHES_NOT_PLAYING`, `PLAYS_NOT_COACHING`,
-`IMPORT_MISSING_MATCHES`, `FBI_ERROR`, `MATCH_TO_MOVE` — confirmé sur le fichier régénéré) · SHA-256
-`a4be21c487e6f46e9159eca97fa122cc98add29bc54f51002601ec3dc799d480` (`sha256sum`, confirmé sur le
-fichier régénéré — recalculé indépendamment cette passe, concorde. Reste du journal non
-re-confronté au code cette passe.)
+Last verified @ 2026-09-21 (lot O « validé ligue piloté par l'échéance du championnat » :
+`SeasonAndFixturePaths` — la réponse du `GET /api/fixtures/league-validation` change de FORME, le
+`{count: int}` devient `{matured[], toTreat[], missingDeadline[], totalValidatable}` (par
+championnat échu : nom, échéance, provenance, compte de validables ; les domiciles échus non
+validables NOMMÉS avec leur `reason` ; les championnats sans échéance ayant des rencontres prêtes ;
+le total). Le `POST` est inchangé. Régénéré par `api:openapi:export`, **aucune route
+ajoutée/supprimée** (207, inchangé) et l'empreinte recalculée contre le fichier réel —
+`OpenApiSnapshotMetaMatchesSnapshotTest` compare compte et empreinte aux mêmes deux fichiers et les
+deux concordent. Reste du journal non re-confronté au code cette passe.)
+**207 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (la réponse
+d'une route existante change de forme, aucune route ajoutée/supprimée) · SHA-256
+`9cd7cd4e34efd1cdeb00d268f9eacdf86765458cf18e75a8bb65cbb14d2df399` (`sha256sum`, confirmé sur le
+fichier régénéré).
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Lot O — « validé ligue » piloté par l'échéance du championnat, backend (2026-09-21)** : **+0
+  path** — la réponse du `GET /api/fixtures/league-validation` (`SeasonAndFixturePaths`) passe du
+  `{count: int}` à une lecture détaillée `{matured, toTreat, missingDeadline, totalValidatable}`.
+  Seuls les championnats DONT L'ÉCHÉANCE DE SAISIE EST PASSÉE (jour inclus) sont proposés — un
+  championnat à échéance future (nouvelle vague d'octobre, dates provisoires) n'est plus jamais
+  proposé, il resterait mobile. Chaque championnat échu porte nom/échéance/provenance/compte de
+  validables ; les domiciles échus non validables sont NOMMÉS (`reason`
+  `NO_KICKOFF`|`NO_VENUE`|`PENDING_DEVIATION`) ; les championnats sans échéance ayant des
+  rencontres prêtes sont signalés. Le `POST` reste SANS corps (le serveur recalcule les échus au
+  moment de l'application). La règle d'échéance effective (« club sinon communautaire ») est
+  extraite en maison unique (`CompetitionDeadlineResolver`), consommée par ses trois appelants.
+  Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23, aucun appel moteur).
 - **Vocabulaire de traitement par famille + « erreur FBI » alimente le registre, backend
   (2026-09-21, `13810b0e`)** : **+0 path** — `resolution.status` (`GET`/`PUT
   /api/fixtures/{fingerprint}/conflict-resolution`, `SeasonAndFixturePaths`) passe de cinq à huit
@@ -91,14 +97,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   `POST /api/opponents/travel/resolve`, `POST /api/venue-travel-times/autofill`, et sur le bloc `travel` de
   `POST /api/opponents/refresh` (dont les passes codes/gymnases restent jouées). Backend PUR, contrat
   backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23, aucun appel moteur).
-- **C7 — logo fédéral de l'adversaire, backend (2026-09-19)** : **+1 path** — nouvelle route MEMBRE
-  `GET /api/opponents/{code}/logo` (jamais publique : le logo d'un adversaire de club est une donnée du
-  module matchs) qui re-héberge PARESSEUSEMENT le logo fédéral au premier GET (uuid `logo_id` que le
-  résolveur a enregistré depuis les hits organismes qu'il tient déjà, zéro appel réseau de plus ; 404 sans
-  logo, `Cache-Control: private, max-age=86400`). `GET /api/opponents/travel` gagne un booléen ADDITIF
-  `hasLogo` par entrée (jamais l'uuid brut). Colonne `opponent_directory.logo_id` (table GLOBALE partagée,
-  whitelist `OpponentDirectoryShareTest` +1). Backend PUR, contrat backend⇄engine **inchangé**
-  (`CONTRACT_VERSION` 2.23, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés
 en tête ne sont plus une promesse sur l'honneur** : `OpenApiSnapshotMetaMatchesSnapshotTest`

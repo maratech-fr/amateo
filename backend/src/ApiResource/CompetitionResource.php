@@ -15,6 +15,7 @@ use ApiPlatform\Metadata\Put;
 use App\Dto\CompetitionInput;
 use App\Entity\Competition;
 use App\Entity\SharedCompetitionDeadline;
+use App\Service\CompetitionDeadlineResolver;
 use App\State\Processor\CompetitionStateProcessor;
 use App\State\Provider\CompetitionStateProvider;
 use DateTimeImmutable;
@@ -120,18 +121,13 @@ class CompetitionResource
         $dto->ffbbCompetitionName = $entity->getFfbbCompetitionName();
         $dto->expectedMatchdays = $entity->getExpectedMatchdays();
 
-        $clubDeadline = $entity->getEntryDeadline();
-        $dto->entryDeadline = $clubDeadline?->format('Y-m-d');
-        // « club gagne, sinon le défaut communautaire » — servi par le backend
-        // (le front n'invente jamais la règle). Le partagé n'est joint que pour
-        // une compétition appariée (ffbbCompetitionId non null → sa clé).
-        if ($clubDeadline instanceof DateTimeImmutable) {
-            $dto->effectiveEntryDeadline = $clubDeadline->format('Y-m-d');
-            $dto->deadlineSource = 'club';
-        } elseif ($shared instanceof SharedCompetitionDeadline) {
-            $dto->effectiveEntryDeadline = $shared->getEntryDeadline()->format('Y-m-d');
-            $dto->deadlineSource = 'community';
-        }
+        $dto->entryDeadline = $entity->getEntryDeadline()?->format('Y-m-d');
+        // « club gagne, sinon le défaut communautaire » — la règle vit en maison unique
+        // ({@see CompetitionDeadlineResolver}), le front ne l'invente jamais. Le partagé
+        // n'est joint que pour une compétition appariée (résolu par l'appelant).
+        [$effective, $source] = CompetitionDeadlineResolver::resolve($entity, $shared);
+        $dto->effectiveEntryDeadline = $effective?->format('Y-m-d');
+        $dto->deadlineSource = $source;
 
         return $dto;
     }

@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useToastStore } from "@/shared/stores/toastStore";
 
-import type { AttachVenueLabelResult, FbiIngestionLatest, Fixture, FixtureReviewState, PendingDeviation, ReviewFixturesResult, Venue, VenueLabelInventoryRow } from "./api";
+import type { AttachVenueLabelResult, FbiIngestionLatest, Fixture, FixtureReviewState, LeagueValidationOutlook, PendingDeviation, ReviewFixturesResult, Venue, VenueLabelInventoryRow } from "./api";
 import { ImportPage } from "./ImportPage";
 import { weekendKeyOf } from "./lib/weekendGrid";
 import { useMatchesStore } from "./store";
@@ -24,7 +24,7 @@ const {
   resolveFixtureDeviation,
   attachVenueLabel,
   getVenueLabelInventory,
-  getLeagueValidationCount,
+  getLeagueValidationOutlook,
   confirmLeagueValidatedFixtures,
 } = vi.hoisted(() => ({
   getTeams: vi.fn(),
@@ -38,11 +38,11 @@ const {
   resolveFixtureDeviation: vi.fn(() => Promise.resolve({ fixtureId: "x", reviewState: "REVIEWED", reviewedAt: "2026-10-02T10:00:00+00:00", pendingDeviations: [] })),
   attachVenueLabel: vi.fn((): Promise<AttachVenueLabelResult> => Promise.resolve({ venueId: "venue-1", label: "GYMNASE MATEO", attached: 2 })),
   getVenueLabelInventory: vi.fn((): Promise<VenueLabelInventoryRow[]> => Promise.resolve([])),
-  getLeagueValidationCount: vi.fn(() => Promise.resolve({ count: 0 })),
+  getLeagueValidationOutlook: vi.fn(() => Promise.resolve<LeagueValidationOutlook>({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0 })),
   confirmLeagueValidatedFixtures: vi.fn(() => Promise.resolve({ confirmed: 0 })),
 }));
 
-vi.mock("./api", () => ({ getTeams, getPriorityTiers, getFixtures, getVenues, getLatestFbiIngestion, getFfbbRencontres, applyFfbbRencontres, reviewFixtures, resolveFixtureDeviation, attachVenueLabel, getVenueLabelInventory, getLeagueValidationCount, confirmLeagueValidatedFixtures, getCompetitions: () => Promise.resolve([]) }));
+vi.mock("./api", () => ({ getTeams, getPriorityTiers, getFixtures, getVenues, getLatestFbiIngestion, getFfbbRencontres, applyFfbbRencontres, reviewFixtures, resolveFixtureDeviation, attachVenueLabel, getVenueLabelInventory, getLeagueValidationOutlook, confirmLeagueValidatedFixtures, getCompetitions: () => Promise.resolve([]) }));
 
 /** ky 2.x expose le corps parsé sur `error.data` — on reproduit ce contrat pour le 422 nommé. */
 function httpError(status: number, body: unknown): HTTPError {
@@ -117,7 +117,7 @@ beforeEach(() => {
   reviewFixtures.mockResolvedValue({ reviewed: 1, skipped: [] });
   getVenues.mockResolvedValue([{ id: "venue-1", name: "Gymnase Alpha", color: null, externalLabels: [] }]);
   attachVenueLabel.mockResolvedValue({ venueId: "venue-1", label: "GYMNASE MATEO", attached: 2 });
-  getLeagueValidationCount.mockResolvedValue({ count: 0 });
+  getLeagueValidationOutlook.mockResolvedValue({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0 });
   confirmLeagueValidatedFixtures.mockResolvedValue({ confirmed: 0 });
   useMatchesStore.setState({ reconciliation: null, filterMode: "equipe", filterIds: [], selectedWeekend: null, selectedFixtureId: null });
   useToastStore.setState({ toasts: [] });
@@ -160,25 +160,32 @@ describe("ImportPage — les entrées de données", () => {
   });
 });
 
-describe("ImportPage — rattrapage « validé ligue » (lot L)", () => {
-  it("compte à 0 ⇒ aucun bandeau (jamais un geste sans rencontre à valider)", async () => {
+const MATURED_OUTLOOK = {
+  matured: [{ competitionId: "c1", name: "PNM", deadline: "2026-11-10", deadlineSource: "club" as const, validatableCount: 3 }],
+  toTreat: [],
+  missingDeadline: [],
+  totalValidatable: 3,
+};
+
+describe("ImportPage — rattrapage « validé ligue » piloté par l'échéance (lot O)", () => {
+  it("rien d'échu ⇒ aucun bandeau (jamais un geste sans rencontre à valider)", async () => {
     renderPage([]);
     await screen.findByRole("button", { name: /Importer FBI/ });
     expect(screen.queryByText(/à confirmer « validé ligue »/)).not.toBeInTheDocument();
   });
 
-  it("compte non nul ⇒ bandeau chiffré, et confirmer bascule via l'API + toast avec le nombre RÉEL", async () => {
-    getLeagueValidationCount.mockResolvedValue({ count: 3 });
-    // Le nombre affiché vient du COMPTE (3) ; le toast, du serveur (2 réellement basculées).
+  it("championnats échus prêts ⇒ bandeau chiffré, et confirmer bascule via l'API + toast avec le nombre RÉEL", async () => {
+    getLeagueValidationOutlook.mockResolvedValue(MATURED_OUTLOOK);
+    // Le nombre affiché vient du total (3) ; le toast, du serveur (2 réellement basculées).
     confirmLeagueValidatedFixtures.mockResolvedValueOnce({ confirmed: 2 });
     const user = userEvent.setup();
     renderPage([]);
-    expect(await screen.findByText(/3 rencontres importées portent déjà date, heure et gymnase/)).toBeInTheDocument();
+    expect(await screen.findByText(/à confirmer « validé ligue »/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Marquer « validé ligue »/ }));
     const dialog = await screen.findByRole("dialog");
-    // La confirmation ANNONCE le nombre et ce qui va changer (chiffrée).
-    expect(within(dialog).getByText(/3 rencontres importées portent déjà leur date/)).toBeInTheDocument();
+    // La confirmation DÉTAILLE chaque championnat échu (nom + échéance + compte).
+    expect(within(dialog).getByText(/PNM — échéance .* — 3 à valider/)).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: /Marquer « validé ligue »/ }));
 
     expect(confirmLeagueValidatedFixtures).toHaveBeenCalledOnce();
@@ -189,7 +196,7 @@ describe("ImportPage — rattrapage « validé ligue » (lot L)", () => {
   });
 
   it("refuser n'écrit rien (la bannière reste, c'est refaisable)", async () => {
-    getLeagueValidationCount.mockResolvedValue({ count: 3 });
+    getLeagueValidationOutlook.mockResolvedValue(MATURED_OUTLOOK);
     const user = userEvent.setup();
     renderPage([]);
     await user.click(await screen.findByRole("button", { name: /Marquer « validé ligue »/ }));
