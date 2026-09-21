@@ -27,6 +27,13 @@ services:
       context: .
       dockerfile: docker/frontend/Dockerfile
       target: prod
+      # P5-19 — the frontend Sentry DSN is baked at BUILD time (a bundle can't
+      # read it at runtime). Passed through for a local prod rehearsal
+      # (`docker compose -f docker-compose.prod.yml build`); the VM pulls the
+      # image built by the deploy workflow, which passes the same arg there.
+      # Empty by default → Sentry stays inert (main.tsx skips init).
+      args:
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
     container_name: amateo-frontend
     # Only published port of the whole stack — bound to localhost, the host
     # reverse-proxy (Caddy, TLS) is the actual internet-facing edge.

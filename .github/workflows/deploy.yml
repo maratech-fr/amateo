@@ -152,6 +152,14 @@ jobs:
           file: docker/frontend/Dockerfile
           target: prod
           push: true
+          # P5-19 — the frontend Sentry DSN is frozen into the bundle at build
+          # time, so it must be injected HERE (the runtime .env.prod can't reach
+          # a compiled bundle). Empty until the VITE_SENTRY_DSN secret is set →
+          # Sentry stays inert and the build guard is a no-op. Turning it on also
+          # requires the DSN's ingest host in docker/frontend/csp.conf, else the
+          # build fails on purpose (tooling/sentryCspGuard.ts).
+          build-args: |
+            VITE_SENTRY_DSN=${{ secrets.VITE_SENTRY_DSN }}
           tags: |
             ghcr.io/${{ steps.meta.outputs.owner }}/scheduler-frontend:${{ steps.meta.outputs.version }}
             ${{ steps.meta.outputs.push_latest == 'true' && format('ghcr.io/{0}/scheduler-frontend:latest', steps.meta.outputs.owner) || '' }}
