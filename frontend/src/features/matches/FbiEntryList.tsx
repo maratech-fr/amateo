@@ -344,9 +344,12 @@ function CorrectionField({ correction }: { correction: FbiCorrection }) {
       </li>
     );
   }
+  // Même absence de valeur cible que la salle (une erreur FBI n'apporte aucune valeur à
+  // taper : l'appli a importé l'erreur, elle ne l'invente pas) → même lecture « à vérifier »
+  // que la branche salle, jamais un tiret muet qui se lisait différemment (lot N).
   return (
     <li>
-      {label} : <span className="font-medium">{correction.appValue ?? "—"}</span>
+      {label} : <span className="font-medium">{correction.appValue ?? "à vérifier"}</span>
       {null !== correction.fbiValue ? <span className="text-muted-foreground"> · FBI affiche {correction.fbiValue}</span> : null}
     </li>
   );

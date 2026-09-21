@@ -12,6 +12,10 @@ namespace App\Enum;
  *     le gestionnaire n'a rien eu à faire, la source l'a fermée.
  *   - MANUAL : le gestionnaire a coché « Corrigé dans FBI » dans la liste (aucun dépôt
  *     ne l'a encore confirmé) — réouvrable dans les 24 h.
+ *   - REDECLARED : le gestionnaire a RE-déclaré l'erreur FBI du MÊME conflit sur une
+ *     autre rencontre / un autre champ (lot N) — l'entrée précédente est fermée pour
+ *     ne garder qu'UNE déclaration vivante par conflit. Fermeture définitive (pas de
+ *     réouverture : le geste a désigné une autre cible).
  */
 enum FbiCorrectionCloseSource: string
 {
@@ -20,4 +24,6 @@ enum FbiCorrectionCloseSource: string
     case DEPOSIT = 'deposit';
 
     case MANUAL = 'manual';
+
+    case REDECLARED = 'redeclared';
 }

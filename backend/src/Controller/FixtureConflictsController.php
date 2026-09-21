@@ -19,6 +19,7 @@ use App\Service\OpponentPlaceResolver;
 use App\Service\SeasonResolver;
 use DateTimeImmutable;
 use DateTimeInterface;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
@@ -167,6 +168,8 @@ final class FixtureConflictsController extends AbstractController
         // « Erreur FBI » (collision de gymnase) alimente le registre « à corriger dans FBI » :
         // le complément désigne la rencontre fautive (un des deux côtés du conflit) et le champ
         // (date/kickoff/venue). Un seul appel, atomique avec la résolution (un flush plus bas).
+        // Un complément envoyé avec un AUTRE statut est incohérent : on le refuse explicitement
+        // plutôt que de l'ignorer en silence (il ne serait jamais lu).
         $fbiTarget = null;
         if (ConflictResolutionStatus::FBI_ERROR === $status) {
             $resolved = $this->resolveFbiErrorTarget($payload['fbiCorrection'] ?? null, $conflict);
@@ -174,6 +177,8 @@ final class FixtureConflictsController extends AbstractController
                 return $this->json(['error' => $resolved], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
             $fbiTarget = $resolved;
+        } elseif (null !== ($payload['fbiCorrection'] ?? null)) {
+            return $this->json(['error' => 'Un complément « erreur FBI » ne s\'applique qu\'au statut « erreur FBI ».'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         $user = $this->getUser();
@@ -192,13 +197,33 @@ final class FixtureConflictsController extends AbstractController
         if (null !== $fbiTarget) {
             // Valeur cible VIDE (l'appli ne connaît pas la bonne valeur : elle a importé
             // l'erreur, inventer serait mentir) ; l'entrée dit seulement « ce champ est à
-            // vérifier dans FBI ». Idempotent : `open()` re-date une entrée ouverte au lieu
-            // de la dupliquer (un double-clic ne crée pas de doublon).
+            // vérifier dans FBI ». Rattachée au conflit : re-déclarer sur CE conflit ferme
+            // la déclaration précédente (une seule vivante par conflit, lot N) ; un
+            // double-clic sur la MÊME cible re-date sans dupliquer.
             [$fixture, $field] = $fbiTarget;
-            $this->fbiCorrectionLedger->open($fixture, $field, null, null, DateTimeImmutable::createFromInterface($this->clock->now()));
+            $this->fbiCorrectionLedger->declareFromConflict($fixture, $field, $fingerprint, DateTimeImmutable::createFromInterface($this->clock->now()));
         }
 
-        $this->entityManager->flush();
+        try {
+            $this->entityManager->flush();
+        } catch (UniqueConstraintViolationException) {
+            // Course : la pose est « lecture puis insertion » sans verrou. Deux PUT
+            // simultanés du même (club, saison, empreinte) — ou de la même entrée de
+            // registre « erreur FBI » — perdent l'unicité au flush. Le geste est
+            // IDEMPOTENT : on relit la ligne gagnante et on rend un succès, jamais un 500
+            // (l'idiome de rattrapage déjà en place dans six autres contrôleurs). Le flush
+            // échoué a CLOS l'EM, mais la connexion — et son GUC tenant — vit : relecture
+            // SQL brute, scopée club par la RLS.
+            $winner = $this->entityManager->getConnection()->fetchAssociative(
+                'SELECT status, note, updated_at FROM conflict_resolution WHERE season_id = ? AND fingerprint = ?',
+                [$season->getId(), $fingerprint],
+            );
+            $view = \is_array($winner)
+                ? ['status' => (string) $winner['status'], 'note' => null !== $winner['note'] ? (string) $winner['note'] : null, 'updatedAt' => new DateTimeImmutable((string) $winner['updated_at'])->format(DateTimeInterface::ATOM)]
+                : ['status' => $status->value, 'note' => $note, 'updatedAt' => DateTimeImmutable::createFromInterface($this->clock->now())->format(DateTimeInterface::ATOM)];
+
+            return $this->json(['fingerprint' => $fingerprint, 'resolution' => $view], Response::HTTP_OK);
+        }
 
         return $this->json(['fingerprint' => $fingerprint, 'resolution' => $this->resolutionView($row)], Response::HTTP_OK);
     }

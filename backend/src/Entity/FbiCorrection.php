@@ -83,6 +83,17 @@ class FbiCorrection implements TenantOwnedInterface
     #[ORM\Column(length: 180, nullable: true)]
     private ?string $venueFbiLabel = null;
 
+    /**
+     * L'EMPREINTE du conflit du radar qui a ouvert cette entrée « erreur FBI » (lot N),
+     * ou null quand l'entrée vient d'un arbitrage de dépôt (import xlsx / canal API /
+     * revue d'écart hors dépôt — ces chemins n'ont pas de conflit derrière eux). C'est
+     * le LIEN qui garantit « une seule déclaration vivante par conflit » : re-déclarer
+     * sur le MÊME conflit ferme (REDECLARED) l'entrée qu'il avait déjà ouverte. Même
+     * type que {@see ConflictResolution::$fingerprint} (identité durable du litige).
+     */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $conflictFingerprint = null;
+
     #[ORM\Column(type: 'datetimetz_immutable')]
     private DateTimeImmutable $decidedAt;
 
@@ -237,6 +248,18 @@ class FbiCorrection implements TenantOwnedInterface
     public function setVenueFbiLabel(?string $venueFbiLabel): self
     {
         $this->venueFbiLabel = $venueFbiLabel;
+
+        return $this;
+    }
+
+    public function getConflictFingerprint(): ?string
+    {
+        return $this->conflictFingerprint;
+    }
+
+    public function setConflictFingerprint(?string $conflictFingerprint): self
+    {
+        $this->conflictFingerprint = $conflictFingerprint;
 
         return $this;
     }

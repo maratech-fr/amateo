@@ -52,6 +52,19 @@ describe("FbiEntryList — « FBI — à faire »", () => {
     expect(screen.getByText("à vérifier")).toBeInTheDocument();
   });
 
+  it("erreur FBI sur date/heure sans valeur cible : « à vérifier » comme la salle, jamais un tiret muet (lot N)", () => {
+    renderList(
+      [fx({ id: "fxA1", status: "SUBMITTED" })],
+      [
+        correction({ id: "cd", fixtureId: "fxA1", field: "date", appValue: null, fbiValue: null }),
+        correction({ id: "ck", fixtureId: "fxA1", field: "kickoff", appValue: null, fbiValue: null }),
+      ],
+    );
+    // Deux champs (date + heure), la même lecture « à vérifier » que la salle — pas de « — ».
+    expect(screen.getAllByText("à vérifier")).toHaveLength(2);
+    expect(screen.queryByText("—")).not.toBeInTheDocument();
+  });
+
   it("les deux vides → « Rien à faire dans FBI. »", () => {
     renderList([fx({ id: "u", status: "UNPLACED" }), fx({ id: "away", homeAway: "AWAY" })], []);
     expect(screen.getByText("Rien à faire dans FBI.")).toBeInTheDocument();

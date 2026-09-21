@@ -17,6 +17,8 @@ use App\Entity\Season;
 use App\Entity\TeamCoach;
 use App\Entity\User;
 use App\Entity\Venue;
+use App\Enum\ConflictResolutionStatus;
+use App\Enum\FbiCorrectionCloseSource;
 use App\Enum\FbiCorrectionField;
 use App\Enum\FixtureHomeAway;
 use App\Enum\OpponentLocationPrecision;
@@ -25,6 +27,7 @@ use App\Enum\TeamCoachRole;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
@@ -369,6 +372,113 @@ final class FixtureConflictsApiTest extends WebTestCase
         $this->scopeGucToClub($club->getId());
         self::assertCount(0, $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $fixtureId]));
         self::assertNull($this->conflictsFor($user)[0]['resolution']);
+    }
+
+    /**
+     * Lot N, point 1 — « une seule déclaration d'erreur FBI vivante par conflit ». Re-déclarer
+     * sur le MÊME conflit (autre rencontre + autre champ) FERME l'entrée précédente (REDECLARED)
+     * et n'en ouvre qu'une nouvelle : le gestionnaire qui se ravise ne laisse pas une ligne
+     * fausse. ⚠ Décision fondateur : remettre le conflit « à traiter » (DELETE) ne ferme PAS
+     * l'entrée vivante — le rappel d'une erreur FBI réelle survit.
+     */
+    public function testRedeclaringFbiErrorOnTheSameConflictClosesThePreviousEntry(): void
+    {
+        [$club, $user, $f1, $f2] = $this->createClubWithVenueOverlap('rd');
+        $fingerprint = $this->conflictsFor($user)[0]['fingerprint'];
+
+        // 1re déclaration : (f1, salle).
+        $this->putResolution($user, $fingerprint, ['status' => 'FBI_ERROR', 'fbiCorrection' => ['fixtureId' => $f1, 'field' => 'venue']]);
+        self::assertResponseStatusCodeSame(200);
+
+        // Re-déclaration sur le MÊME conflit, AUTRE rencontre + AUTRE champ : (f2, heure).
+        $this->putResolution($user, $fingerprint, ['status' => 'FBI_ERROR', 'fbiCorrection' => ['fixtureId' => $f2, 'field' => 'kickoff']]);
+        self::assertResponseStatusCodeSame(200);
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        $repo = $this->em->getRepository(FbiCorrection::class);
+
+        // Une SEULE entrée vivante, sur la nouvelle cible ; l'ancienne est fermée (REDECLARED).
+        $open = array_values(array_filter($repo->findAll(), static fn (FbiCorrection $e): bool => $e->isOpen()));
+        self::assertCount(1, $open, 'une seule déclaration vivante par conflit');
+        self::assertSame($f2, $open[0]->getFixtureId());
+        self::assertSame(FbiCorrectionField::KICKOFF, $open[0]->getField());
+
+        $former = $repo->findOneBy(['fixtureId' => $f1, 'field' => FbiCorrectionField::VENUE]);
+        self::assertInstanceOf(FbiCorrection::class, $former);
+        self::assertFalse($former->isOpen(), 'la déclaration précédente est fermée');
+        self::assertSame(FbiCorrectionCloseSource::REDECLARED, $former->getClosedBy());
+
+        // Décision fondateur : DELETE (retour « à traiter ») ne ferme PAS l'entrée vivante.
+        $this->client->request('DELETE', $this->resolutionUrl($fingerprint), [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(204);
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        $survivor = $this->em->getRepository(FbiCorrection::class)->findOneBy(['fixtureId' => $f2, 'field' => FbiCorrectionField::KICKOFF]);
+        self::assertInstanceOf(FbiCorrection::class, $survivor);
+        self::assertTrue($survivor->isOpen(), 'supprimer la résolution ne ferme pas l\'entrée (décision fondateur, lot N)');
+    }
+
+    /**
+     * Lot N, point 3 — un complément « erreur FBI » envoyé avec un statut qui ne l'attend pas
+     * est REFUSÉ explicitement (422 parlant), plutôt qu'ignoré en silence : le contrat ne
+     * tolère pas une requête incohérente qui n'écrirait rien au registre.
+     */
+    public function testAComplementSentWithANonFbiStatusIsRefused(): void
+    {
+        [$club, $user, $f1] = $this->createClubWithVenueOverlap('cx');
+        $fingerprint = $this->conflictsFor($user)[0]['fingerprint'];
+
+        // MATCH_TO_MOVE est valide sur cette famille, mais accompagné d'un complément « erreur
+        // FBI » → incohérent (le complément ne serait jamais lu) → 422 explicite.
+        $this->putResolution($user, $fingerprint, ['status' => 'MATCH_TO_MOVE', 'fbiCorrection' => ['fixtureId' => $f1, 'field' => 'venue']]);
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('complément', (string) ($this->responseData()['error'] ?? ''));
+
+        // Rien n'a été posé — ni résolution, ni entrée de registre.
+        $this->scopeGucToClub($club->getId());
+        self::assertCount(0, $this->em->getRepository(FbiCorrection::class)->findAll());
+        self::assertNull($this->conflictsFor($user)[0]['resolution']);
+    }
+
+    /**
+     * Lot N, point 2 — la pose est « lecture puis insertion » sans verrou : deux poses
+     * simultanées du même (club, saison, empreinte) racent, et le contrôleur rattrape
+     * désormais la violation d'unicité en 200 idempotent. On PROUVE ici le filet que ce
+     * rattrapage suppose : l'unicité BASE `(club, saison, empreinte)` lève bien
+     * UniqueConstraintViolationException.
+     *
+     * ⚠ La récupération HTTP elle-même n'est PAS simulable en test : sous DAMA une seule
+     * transaction, un seul instantané — une lecture qui MANQUE la ligne concurrente et une
+     * relecture qui la VOIT ne coexistent pas sur la même connexion, et deux connexions
+     * vraiment concurrentes sont impraticables (cf. PeriodWindowRaceTest). Le chemin de
+     * rattrapage relit donc sur la connexion vivante (l'EM clos par le flush échoué), scopé
+     * club par la RLS.
+     */
+    public function testTheUniqueBackstopBehindTheIdempotentRecoveryFires(): void
+    {
+        [$club, $user] = $this->createClubWithVenueOverlap('bk');
+        $fingerprint = $this->conflictsFor($user)[0]['fingerprint'];
+
+        $this->scopeGucToClub($club->getId());
+        $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $club->getId()]);
+        self::assertInstanceOf(Season::class, $season);
+        $seasonId = $season->getId();
+
+        $make = static fn (): ConflictResolution => (new ConflictResolution)
+            ->setClubId($club->getId())
+            ->setSeasonId($seasonId)
+            ->setFingerprint($fingerprint)
+            ->setStatus(ConflictResolutionStatus::DEROGATION_REQUESTED)
+            ->setUpdatedBy($user->getId());
+
+        $this->em->persist($make());
+        $this->em->flush();
+
+        // Une seconde ligne de MÊME clé (la « course perdante ») → le filet BASE mord.
+        $this->em->persist($make());
+        $this->expectException(UniqueConstraintViolationException::class);
+        $this->em->flush();
     }
 
     public function testMalformedFingerprintIs404(): void

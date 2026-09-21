@@ -113,6 +113,38 @@ final class FbiCorrectionLedger
         return $entry;
     }
 
+    /**
+     * « Erreur FBI » posée depuis un conflit du radar (lot N) : ouvre (ou re-date)
+     * l'entrée du (rencontre, champ) fautif et la RATTACHE au conflit ($conflictFingerprint).
+     * UNE SEULE déclaration vivante par conflit : toute autre entrée OUVERTE déjà ouverte
+     * par CE conflit (autre rencontre / autre champ) est FERMÉE (REDECLARED) — le
+     * gestionnaire qui se ravise ne laisse pas une ligne fausse derrière lui.
+     *
+     * ⚠ Décision fondateur (lot N) : remettre le conflit « à traiter » (supprimer la
+     * résolution) NE ferme PAS l'entrée — la symétrie complète est volontairement écartée
+     * pour ne pas perdre le rappel d'une erreur FBI réelle déclassée. Ce foyer n'est donc
+     * appelé QUE sur une (re)déclaration, jamais sur un retour à « à traiter ».
+     *
+     * Valeur cible VIDE : l'appli a importé l'erreur, elle ne l'invente pas ; l'entrée dit
+     * seulement « ce champ est à vérifier dans FBI ».
+     */
+    public function declareFromConflict(Fixture $fixture, FbiCorrectionField $field, string $conflictFingerprint, DateTimeImmutable $now): FbiCorrection
+    {
+        // Ferme la déclaration vivante PRÉCÉDENTE de ce conflit, SAUF la cible elle-même
+        // (même rencontre + même champ) : `open()` la re-datera au lieu de la dupliquer.
+        foreach ($this->repository->findOpenByConflictFingerprint($fixture->getSeasonId(), $conflictFingerprint) as $previous) {
+            if ($previous->getFixtureId() === $fixture->getId() && $previous->getField() === $field) {
+                continue;
+            }
+            $this->close($previous, FbiCorrectionCloseSource::REDECLARED, $now);
+        }
+
+        $entry = $this->open($fixture, $field, null, null, $now);
+        $entry->setConflictFingerprint($conflictFingerprint);
+
+        return $entry;
+    }
+
     /** Un dépôt a RE-VU cet écart dans FBI (FBI affiche toujours l'ancienne valeur) : on re-date le témoin. */
     public function refreshSeen(FbiCorrection $entry, DateTimeImmutable $now): void
     {
