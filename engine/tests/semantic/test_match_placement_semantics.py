@@ -260,6 +260,123 @@ def test_ab_rotation_image_is_honoured_across_two_weekends() -> None:
     assert_no_hard_violation(input_data, output)
 
 
+def test_warmup_only_overlap_is_no_longer_penalised_lot_m() -> None:
+    # NR sémantique lot M — l'échauffement sort de l'empreinte de PERSONNE : deux
+    # matchs d'un MÊME coach dans le MÊME gymnase ne se pénalisent plus sur le seul
+    # chevauchement d'échauffement. Le no-overlap de gymnase (HARD) force ≥ 105 min
+    # d'écart ; la compaction de journée les rapproche. Avant lot M, l'empreinte
+    # personne (avec échauffement) se recouvrait de 30 min en dos-à-dos → malus coach
+    # 60 → le solveur les écartait de 135 min. Sans l'échauffement, le dos-à-dos exact
+    # (105 min) ne recouvre plus rien → il est retenu. On MESURE cet écart de 105.
+    payload: dict[str, Any] = {
+        "version": read_contract_version(),
+        "clubId": "club-bccl",
+        "seasonId": "season-2026",
+        "solverSeed": 42,
+        "solverTimeoutSeconds": 30,
+        "matches": [
+            {"id": "m1", "teamId": "t1", "date": SATURDAY, "kind": "TO_PLACE"},
+            {"id": "m2", "teamId": "t2", "date": SATURDAY, "kind": "TO_PLACE"},
+        ],
+        "venues": [
+            {
+                "id": "mateo",
+                "name": "Mateo",
+                "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
+                "unavailabilities": [],
+            }
+        ],
+        "teams": [
+            {
+                "id": "t1",
+                "name": "T1",
+                "leagueWindows": [],
+                "habits": [],
+                "coaches": [{"coachId": "c", "role": "MAIN"}],
+            },
+            {
+                "id": "t2",
+                "name": "T2",
+                "leagueWindows": [],
+                "habits": [],
+                "coaches": [{"coachId": "c", "role": "MAIN"}],
+            },
+        ],
+        "teamLinks": [],
+        "trainingOccupancies": [],
+    }
+    input_data = MatchPlacementInputSchema.model_validate(payload)
+    output = MatchPlacementOutputSchema.model_validate(solve_match_placement(input_data))
+
+    assert output.unplaced == []
+    assert len(output.placements) == 2
+    kicks = sorted(_minutes(p.kickoff) for p in output.placements)
+    # Back-to-back EXACT (105 min) : le chevauchement d'échauffement ne coûte plus rien.
+    assert kicks[1] - kicks[0] == 105, f"attendu dos-à-dos exact (105), obtenu {kicks[1] - kicks[0]} min"
+    assert {p.venue_id for p in output.placements} == {"mateo"}
+    assert_no_hard_violation(input_data, output)
+
+
+def _real_overlap_payload(*, share_coach: bool) -> dict[str, Any]:
+    """Un match à placer, attiré à 17:00 par une habitude, dont le coach porte une
+    séance FIXE 18:00-19:45. Un match posé à 17:00 (17:00-18:45) recouvre RÉELLEMENT
+    la séance → il est pénalisé. `share_coach=False` retire le lien de coach (témoin :
+    plus aucune pénalité, l'habitude gagne)."""
+    return {
+        "version": read_contract_version(),
+        "clubId": "club-bccl",
+        "seasonId": "season-2026",
+        "solverSeed": 42,
+        "solverTimeoutSeconds": 30,
+        "matches": [{"id": "m-a", "teamId": "a", "date": SATURDAY, "kind": "TO_PLACE"}],
+        "venues": [
+            {
+                "id": "mateo",
+                "name": "Mateo",
+                "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
+                "unavailabilities": [],
+            }
+        ],
+        "teams": [
+            {
+                "id": "a",
+                "name": "A",
+                "leagueWindows": [],
+                "habits": [{"dayOfWeek": 6, "kickoff": "17:00", "venueId": "mateo"}],
+                "coaches": [{"coachId": "c", "role": "MAIN"}] if share_coach else [],
+            }
+        ],
+        "teamLinks": [],
+        # La séance FIXE du coach c : sa fenêtre RÉELLE 18:00-19:45 (sans échauffement).
+        "trainingOccupancies": [{"date": SATURDAY, "start": "18:00", "end": "19:45", "coachId": "c"}],
+    }
+
+
+def test_a_real_person_overlap_is_still_penalised_lot_m() -> None:
+    # NR sémantique lot M (l'autre moitié) — un VRAI recouvrement reste pénalisé.
+    # Avec le coach partagé, poser à 17:00 (le match 17:00-18:45 mord la séance
+    # 18:00-19:45) coûte le malus coach 60, qui bat l'attrait d'habitude 20 → le
+    # solveur DÉPLACE le match hors de son habitude, sur un créneau qui ne recouvre
+    # plus la séance. TÉMOIN sans coach partagé : l'habitude 17:00 est honorée.
+    with_coach = MatchPlacementOutputSchema.model_validate(
+        solve_match_placement(MatchPlacementInputSchema.model_validate(_real_overlap_payload(share_coach=True)))
+    )
+    assert len(with_coach.placements) == 1
+    chosen = _minutes(with_coach.placements[0].kickoff)
+    assert chosen != _minutes(time(17, 0)), "un recouvrement réel doit repousser le match hors de son habitude"
+    # Le créneau retenu ne recouvre plus la séance réelle 18:00-19:45 (fenêtre personne
+    # sans échauffement = [kickoff, kickoff + 105]).
+    assert chosen + DEFAULT_MATCH_MIN <= _minutes(time(18, 0)) or chosen >= _minutes(time(19, 45))
+
+    witness = MatchPlacementOutputSchema.model_validate(
+        solve_match_placement(MatchPlacementInputSchema.model_validate(_real_overlap_payload(share_coach=False)))
+    )
+    assert len(witness.placements) == 1
+    assert _minutes(witness.placements[0].kickoff) == _minutes(time(17, 0)), (
+        "sans coach partagé, rien ne pénalise l'habitude 17:00 — témoin cassé"
+    )
+
+
 def test_horizon_spans_weeks_and_stays_consistent() -> None:
     # Two successive Saturdays solve in ONE call (the whole known horizon).
     payload = wire_payload()

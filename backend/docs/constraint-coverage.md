@@ -1,18 +1,15 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D1).
-Re-confronté au code : les poids cités ligne 35 (`spacing`, −2), ligne 45 (`preferredVenueId`,
-+10) et ligne 67 (tiers S=10000…D=1) sont exacts contre `engine/app/solver/objective/weights.py`
-(`LEVEL_2_OBJECTIVE_WEIGHTS["spacing"]=-2`, `["preferred"]=10`, `["S"]=10000`/`["D"]=1`) ;
+Last verified @ 2026-09-21 (`documentation-update`, rotation de fraîcheur, lot M — sujet sans
+rapport, fichier choisi par son stamp le plus ancien du dépôt). Re-confronté au code : les poids
+cités ligne 35 (`spacing`, −2), ligne 45 (`preferredVenueId`, +10) et ligne 67 (tiers S=10000…D=1)
+toujours exacts contre `engine/app/solver/objective/weights.py`
+(`LEVEL_2_OBJECTIVE_WEIGHTS["spacing"]=-2`, `["preferred"]=10`, `["S"]=10000`/`["D"]=1`, même dict) ;
 `ConstraintFamily` (`backend/src/Enum/ConstraintFamily.php:11-14`) n'a toujours que 4 cas
-(TIME/DAY/FACILITY/COACH_AVAILABILITY), `FACILITY_CAPACITY` absent de l'enum ✓. **Ligne « Réserver
-un gymnase à un groupe » repassée en ❌** (D1, décision fondateur lecture 1) : `ScheduleConstraintBuilder`
-n'émet plus les lignes `forbiddenVenueId` « interdit hors tag » et `PeriodConstraintSelector::
-clubTagVerdict` ne les attend plus — « impose Y au groupe X » force le groupe, il ne réserve plus
-rien aux autres équipes (`backend/src/Service/ScheduleConstraintBuilder.php`, plus de bloc
-« forbidden hors tag » ; `PeriodConstraintSelector.php`, `$forbiddenRowsSurvive` supprimé). Décision
-fermée : `specs/courantes/etat-des-lieux.md` §2 ; besoin non couvert consigné en Parking
-(`specs/evolution/roadmap.md`).
+(TIME/DAY/FACILITY/COACH_AVAILABILITY), `FACILITY_CAPACITY` absent de l'enum ✓. « Réserver un
+gymnase à un groupe » toujours ❌ : `ScheduleConstraintBuilder.php:256` confirme l'expansion
+`forbiddenVenueId` par équipe « GONE » (commentaire code), zéro hit `forbiddenRowsSurvive` dans
+`backend/src/` ✓. Rien de faux trouvé cette passe.
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels

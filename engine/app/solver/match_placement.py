@@ -18,15 +18,22 @@ from app.schemas.match_input_schema import (
 
 logger = logging.getLogger("engine.match_placement")
 
-# ── Geometry (D1, P4-203) ─────────────────────────────────────────────────────
+# ── Geometry (D1, P4-203, lot M) ──────────────────────────────────────────────
 # Durations are PER TEAM now: the payload carries teams[].matchMinutes /
 # teams[].warmupMinutes (resolved by the backend from the sport category). The
 # court is held for the MATCH only ([kickoff, kickoff + matchMinutes]) — the
 # warm-up no longer occupies the venue (founder decision 2026-09-13: "you warm
-# up on the side during the previous match"). The PERSON footprint (coach /
-# NOT_SIMULTANEOUS link) still carries the warm-up:
-# [kickoff − warmupMinutes, kickoff + matchMinutes]. Two league matches chained
-# two hours apart in the same gym therefore no longer collide.
+# up on the side during the previous match").
+#
+# ⚠ Lot M — the PERSON footprint (coach / NOT_SIMULTANEOUS link) ALSO drops the
+# warm-up now, mirroring MatchConflictDetector: a person coming from another
+# engagement only has to ARRIVE by the kickoff, the warm-up is hers to skip. So
+# the person window is [kickoff − travelOut, kickoff + matchMinutes + travelBack]
+# — warm-up-free, travel kept (an away arrival is a real drive). At home (no
+# travel) it collapses to [kickoff, kickoff + matchMinutes], i.e. the VENUE
+# window. warmupMinutes stays on the contract (no version bump) but the solver
+# no longer reads it for any window; keeping it avoids re-syncing the schemas for
+# a nil gain.
 STEP_MIN = 15
 DEFAULT_MATCH_MIN = 105
 DEFAULT_WARMUP_MIN = 30
@@ -209,9 +216,9 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     court, D1; FIXED matches consume their slot without being variables).
     SOFT: habits, A/B slot rotations (attraction + window protection, at parity
     with habits — RMM-5), MAIN/ASSISTANT coach clashes (vs matches AND projected
-    trainings, on the PERSON window that keeps the warm-up), NOT_SIMULTANEOUS
-    links, BACK_TO_BACK chains, habit-window protection, day compaction,
-    re-solve stability.
+    trainings, on the PERSON window — warm-up-free since lot M), NOT_SIMULTANEOUS
+    links (same warm-up-free window), BACK_TO_BACK chains, habit-window
+    protection, day compaction, re-solve stability.
     """
     model = cp_model.CpModel()
     deadline = time_module.monotonic() + BUILD_BUDGET_SECONDS
@@ -296,9 +303,10 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
         objective.append(W_PLACE * is_placed[match.id])
 
     # 3. Per-candidate constant terms: habit bonus, stability, protection,
-    # coach clash vs FIXED/AWAY footprints and projected trainings. The coach /
-    # person window carries the warm-up: [kickoff − warmupMinutes, kickoff +
-    # matchMinutes].
+    # coach clash vs FIXED/AWAY footprints and projected trainings. Lot M — the
+    # coach / person window is warm-up-FREE: [kickoff − travelOut, kickoff +
+    # matchMinutes + travelBack]. At home (no travel) it is [kickoff, kickoff +
+    # matchMinutes] — the person only has to arrive by the kickoff.
     fixed_windows_by_coach: dict[tuple[str, date], list[tuple[int, int]]] = {}
     for match in input_data.matches:
         if match.kind == "TO_PLACE" or match.kickoff is None:
@@ -306,14 +314,14 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
         team = teams_by_id.get(match.team_id)
         if team is None:
             continue
-        match_min, warmup_min = _durations(team)
+        match_min, _ = _durations(team)
         # D3 — an AWAY window grows by the round trip to the opponent: half the trip
-        # before the warm-up (outbound), the rest after the match (return). Replicates
+        # before the kickoff (outbound), the rest after the match (return). Replicates
         # MatchFootprint EXACTLY (intdiv / `//`): the coach is protected while away.
-        # FIXED (home anchors) carry no travel leg.
+        # FIXED (home anchors) carry no travel leg. Lot M — no warm-up either side.
         travel_out = match.round_trip_minutes // 2 if match.kind == "AWAY" else 0
         travel_back = (match.round_trip_minutes - match.round_trip_minutes // 2) if match.kind == "AWAY" else 0
-        start = _minutes(match.kickoff) - warmup_min - travel_out
+        start = _minutes(match.kickoff) - travel_out
         end = _minutes(match.kickoff) + match_min + travel_back
         for ref in team.coaches:
             fixed_windows_by_coach.setdefault((ref.coach_id, match.match_date), []).append((start, end))
@@ -360,7 +368,7 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     for match in solvable:
         _ensure_budget()
         team = teams_by_id.get(match.team_id)
-        match_min, warmup_min = _durations(team)
+        match_min, _ = _durations(team)
         team_habit: TeamHabitSchema | None = None
         if team is not None:
             team_habit = next((h for h in team.habits if h.day_of_week == _iso_day(match.match_date)), None)
@@ -369,7 +377,9 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
             weight = 0
             venue_start = cand.kickoff_min
             venue_end = cand.kickoff_min + match_min
-            person_start = cand.kickoff_min - warmup_min
+            # Lot M — the person window is warm-up-free; a TO_PLACE match is HOME
+            # (no travel), so it equals the venue window: [kickoff, kickoff + match].
+            person_start = cand.kickoff_min
             person_end = cand.kickoff_min + match_min
             if team_habit is not None:
                 if cand.kickoff_min == _minutes(team_habit.kickoff):
@@ -394,7 +404,7 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
             for p_start, p_end in protected.get((cand.venue_id, match.match_date), []):
                 if venue_start < p_end and p_start < venue_end:
                     weight -= W_PROTECT_HABIT
-            # Coach clash is a PERSON conflict → the warm-up-carrying window.
+            # Coach clash is a PERSON conflict → the warm-up-FREE person window (lot M).
             if team is not None:
                 for ref in team.coaches:
                     role_weight = W_COACH_MAIN if ref.role == "MAIN" else W_COACH_ASSISTANT
@@ -404,18 +414,19 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
             if weight:
                 objective.append(weight * cand.var)
 
-    # 4. Pairwise SOFT between TO_PLACE matches: shared-coach clash, links. Coach
-    # and NOT_SIMULTANEOUS overlap on the PERSON window (warm-up kept).
+    # 4. Pairwise SOFT between TO_PLACE matches: shared-coach clash, links. Lot M —
+    # coach AND NOT_SIMULTANEOUS overlap on the warm-up-FREE person window. TO_PLACE
+    # matches are HOME (no travel), so the person window is [kickoff, kickoff + match].
     def _overlap_pairs(left: MatchSchema, right: MatchSchema, penalty: int, tag: str) -> None:
         if left.match_date != right.match_date:
             return
-        l_match, l_warm = _durations(teams_by_id.get(left.team_id))
-        r_match, r_warm = _durations(teams_by_id.get(right.team_id))
+        l_match, _ = _durations(teams_by_id.get(left.team_id))
+        r_match, _ = _durations(teams_by_id.get(right.team_id))
         for lc in candidates[left.id]:
             _ensure_budget()
-            l_start, l_end = lc.kickoff_min - l_warm, lc.kickoff_min + l_match
+            l_start, l_end = lc.kickoff_min, lc.kickoff_min + l_match
             for rc in candidates[right.id]:
-                r_start, r_end = rc.kickoff_min - r_warm, rc.kickoff_min + r_match
+                r_start, r_end = rc.kickoff_min, rc.kickoff_min + r_match
                 if l_start < r_end and r_start < l_end:
                     both = model.new_bool_var(f"{tag}_{left.id}_{right.id}_{lc.kickoff_min}_{rc.kickoff_min}")
                     # Penalised (negative in a Maximize): only the LOWER bound is
@@ -442,6 +453,13 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     matches_by_team: dict[str, list[MatchSchema]] = {}
     for match in solvable:
         matches_by_team.setdefault(match.team_id, []).append(match)
+    # ⚠ Lot M — DELIBERATE asymmetry: MatchConflictDetector no longer surfaces the
+    # TEAM_LINK family (« ça fait plus de bruit qu'autre chose »), but the PLACEMENT
+    # solver KEEPS this soft NOT_SIMULTANEOUS preference — it still tries to avoid
+    # posing two bridged teams' matches at once. Safe in this direction: a soft
+    # preference never blocks a placement, it only nudges. Do NOT "align" the two by
+    # dropping this loop — the radar being mute is not a reason to make the solver
+    # careless. The window is warm-up-free like every other person window (lot M).
     for link in input_data.team_links:
         _ensure_budget()
         for left in matches_by_team.get(link.team_a_id, []):

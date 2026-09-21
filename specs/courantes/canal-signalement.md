@@ -1,10 +1,10 @@
-Last verified @ 2026-09-18 (**rotation de fraîcheur** `documentation-update`, PR E « décisions de
-l'audit 0918 » — zone non touchée par cette PR). Re-confronté au code : `POST /api/feedback`
-route toujours présente, **désormais `FeedbackController.php:68`** (ligne recalée, dérive
-mineure) ; `EventListener/RequestIdListener.php` + `Messenger/RequestIdMiddleware.php` existent
-toujours (backend+bus) ; `monolog-bundle` toujours dans `composer.json:31` ; le digest quotidien
-(D4) existe (`app:feedback:digest`, `FeedbackDigestCommand.php`) ; l'email « bien reçu »/« traité »
-(§3bis) existe (`FeedbackMailBuilder.php`).
+Last verified @ 2026-09-21 (**rotation de fraîcheur** `documentation-update`, lot M — zone sans
+rapport, fichier choisi par son stamp le plus ancien du dépôt). Re-confronté au code : `POST
+/api/feedback` route toujours présente à la MÊME ligne (`FeedbackController.php:68`) ;
+`EventListener/RequestIdListener.php` + `Messenger/RequestIdMiddleware.php` existent toujours
+(backend+bus) ; `monolog-bundle` toujours dans `composer.json:31` ; le digest quotidien (D4) existe
+(`app:feedback:digest`, `FeedbackDigestCommand.php`) ; l'email « bien reçu »/« traité » (§3bis)
+existe (`FeedbackMailBuilder.php`). Rien de faux trouvé cette passe.
 
 # Canal signalement, support & reproduction
 

@@ -10,7 +10,6 @@ use App\Entity\Fixture;
 use App\Entity\LeagueMatchWindow;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\TeamCoach;
-use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
@@ -18,7 +17,6 @@ use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\TeamCoachRole;
-use App\Enum\TeamLinkType;
 use App\Service\AwayKickoffEstimator;
 use App\Service\EffectiveScheduleResolver;
 use App\Service\MatchConflictDetector;
@@ -799,47 +797,18 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame([], $conflicts);
     }
 
-    public function testLinkedTeamsOverlappingRaiseTeamLinkOverlapEvenWithoutCoaches(): void
+    public function testTeamLinksNoLongerRaiseAnyConflict(): void
     {
-        // SM1 home 20:30 and SM2 home 21:00 the same evening, NO coach rows —
-        // the declared bridge alone raises the finding (players are shared).
+        // Lot M — the TEAM_LINK family LEFT the radar (founder decision : « pour
+        // l'instant ça fait plus de bruit qu'autre chose »). Two home matches of two
+        // teams that WOULD have been a declared bridge, overlapping and coach-less,
+        // now raise nothing at all (no coach, no shared player, no venue collision).
+        // The placement solver keeps its soft preference on the link — the radar is
+        // simply mute. `$teamLinks` is no longer even a parameter of the detector.
         $left = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '20:30');
         $right = $this->fixture('fx-2', 'team-2', '2026-10-03', '21:00');
 
-        $conflicts = $this->detect(
-            [$left, $right],
-            [],
-            null,
-            [],
-            [],
-            [],
-            [],
-            [$this->teamLink(self::TEAM_1, 'team-2', TeamLinkType::NOT_SIMULTANEOUS)],
-        );
-
-        self::assertCount(1, $conflicts);
-        self::assertSame('TEAM_LINK_OVERLAP', $conflicts[0]['type']);
-        self::assertSame('fx-1', $conflicts[0]['left']['fixtureId']);
-        self::assertSame('fx-2', $conflicts[0]['right']['fixtureId']);
-    }
-
-    public function testBackToBackLinkRaisesNothingAndBackToBackFixturesDoNotOverlap(): void
-    {
-        // BACK_TO_BACK is a PR D preference, never a finding; and two chained
-        // matches (end == start) don't overlap (half-open) even when linked
-        // NOT_SIMULTANEOUS.
-        $first = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '18:00'); // window 17:30→19:45
-        $chained = $this->fixture('fx-2', 'team-2', '2026-10-03', '20:15'); // window 19:45→22:00
-
-        $viaBackToBack = $this->detect([$first, $chained], [], null, [], [], [], [], [
-            $this->teamLink(self::TEAM_1, 'team-2', TeamLinkType::BACK_TO_BACK),
-        ]);
-        self::assertSame([], $viaBackToBack);
-
-        $viaNotSimultaneous = $this->detect([$first, $chained], [], null, [], [], [], [], [
-            $this->teamLink(self::TEAM_1, 'team-2', TeamLinkType::NOT_SIMULTANEOUS),
-        ]);
-        self::assertSame([], $viaNotSimultaneous);
+        self::assertSame([], $this->detect([$left, $right], []));
     }
 
     public function testPerCategoryProfileDrivesTheFootprint(): void
@@ -1217,7 +1186,12 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame('MAIN', $conflicts[0]['left']['role']);
     }
 
-    // ── D1 étendu : personnes déjà sur place (même gymnase, 2026-09-17) ──────
+    // ── Lot M : l'échauffement sort de l'empreinte des conflits de PERSONNE ──
+    // La règle générale (l'échauffement ne compte plus, quel que soit le gymnase)
+    // SUBSUME l'exception « même gymnase à domicile » de septembre : les cas
+    // same-gym ci-dessous restent verts SANS modification (preuve de redondance) ;
+    // les cas NON couverts par l'ancienne exception (autre gymnase, sans gymnase,
+    // extérieur) encodaient la règle inverse et sont INVERSÉS.
 
     public function testTwoHomeMatchesSameGymTheLaterDropsWarmupNoConflict(): void
     {
@@ -1259,10 +1233,13 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame('2026-10-03T20:25:00', $matchMatch[0]['end']);
     }
 
-    public function testTwoHomeMatchesDifferentGymsKeepTheFullPersonOverlap(): void
+    public function testTwoHomeMatchesDifferentGymsNoLongerConflictOnWarmupOnly(): void
     {
-        // Same times as the founder case but DIFFERENT gyms → the rule does not
-        // apply → the full person windows overlap 20:15→20:25 (10 min) conserved.
+        // INVERSÉ (lot M) — same times as the founder case but DIFFERENT gyms. Under
+        // the OLD rule the same-gym exception did not apply, so the full person
+        // windows overlapped 20:15→20:25 (warm-up only) and a conflict stood. Now the
+        // warm-up drops WHATEVER the gym: SM2 [18:30→20:25], SM1 [20:45→22:30] — the
+        // shared person reaches SM1 by its kickoff, so NO conflict.
         $sm2 = $this->fixture('fx-sm2', self::TEAM_1, '2026-10-03', '18:30');
         $sm2->setVenueId('jdr');
         $sm1 = $this->fixture('fx-sm1', self::TEAM_2, '2026-10-03', '20:45');
@@ -1273,15 +1250,14 @@ final class MatchConflictDetectorTest extends TestCase
             $this->detect([$sm2, $sm1], $links, profilesByTeam: [self::TEAM_1 => new MatchDurationProfile(115, 30)]),
             static fn (array $c): bool => 'MATCH_MATCH' === $c['type'],
         ));
-        self::assertCount(1, $matchMatch);
-        self::assertSame('2026-10-03T20:15:00', $matchMatch[0]['start']);
-        self::assertSame('2026-10-03T20:25:00', $matchMatch[0]['end']);
+        self::assertSame([], $matchMatch);
     }
 
-    public function testTwoHomeMatchesOneWithoutVenueKeepTheFullPersonOverlap(): void
+    public function testTwoHomeMatchesOneWithoutVenueNoLongerConflictOnWarmupOnly(): void
     {
-        // SM1 has NO venue (unplaced): the same-gym rule needs BOTH venues non-null
-        // → it cannot apply → the full person windows overlap 20:15→20:25 conserved.
+        // INVERSÉ (lot M) — SM1 has NO venue (unplaced). The old same-gym exception
+        // needed both venues non-null, so the full windows overlapped 20:15→20:25 and
+        // a conflict stood. The warm-up now drops regardless of the venue → no overlap.
         $sm2 = $this->fixture('fx-sm2', self::TEAM_1, '2026-10-03', '18:30');
         $sm2->setVenueId('jdr');
         $sm1 = $this->fixture('fx-sm1', self::TEAM_2, '2026-10-03', '20:45'); // no venue
@@ -1291,14 +1267,15 @@ final class MatchConflictDetectorTest extends TestCase
             $this->detect([$sm2, $sm1], $links, profilesByTeam: [self::TEAM_1 => new MatchDurationProfile(115, 30)]),
             static fn (array $c): bool => 'MATCH_MATCH' === $c['type'],
         ));
-        self::assertCount(1, $matchMatch);
-        self::assertSame('2026-10-03T20:15:00', $matchMatch[0]['start']);
+        self::assertSame([], $matchMatch);
     }
 
-    public function testTwoMatchesSameGymButOneAwayKeepTheFullPersonOverlap(): void
+    public function testTwoMatchesSameGymButOneAwayNoLongerConflictOnWarmupOnly(): void
     {
-        // Same gym, same times, but SM1 is AWAY: the rule requires BOTH sides HOME
-        // → full person windows overlap 20:15→20:25 conserved.
+        // INVERSÉ (lot M) — same gym, same times, but SM1 is AWAY. The old rule
+        // required both sides HOME, so the full windows overlapped 20:15→20:25 and a
+        // conflict stood. The warm-up now drops for the away side too (travel kept,
+        // here zero) → SM1 [20:45→22:30], no overlap with SM2 [18:30→20:25].
         $sm2 = $this->fixture('fx-sm2', self::TEAM_1, '2026-10-03', '18:30');
         $sm2->setVenueId('jdr');
         $sm1 = $this->awayFixture('fx-sm1', self::TEAM_2, '2026-10-03', '20:45');
@@ -1309,8 +1286,28 @@ final class MatchConflictDetectorTest extends TestCase
             $this->detect([$sm2, $sm1], $links, profilesByTeam: [self::TEAM_1 => new MatchDurationProfile(115, 30)]),
             static fn (array $c): bool => 'MATCH_MATCH' === $c['type'],
         ));
+        self::assertSame([], $matchMatch);
+    }
+
+    public function testTwoHomeMatchesRealOverlapStillConflictAcrossGyms(): void
+    {
+        // Contre-exemple à recouvrement RÉEL (lot M) — SM1 pulled to 20:00 (before SM2
+        // ends 20:25), DIFFERENT gyms. Even with the warm-up dropped everywhere, the
+        // shared person cannot be at SM1's 20:00 kickoff while SM2 runs until 20:25 →
+        // the conflict STANDS, its bounds are the conflict-window intersection.
+        $sm2 = $this->fixture('fx-sm2', self::TEAM_1, '2026-10-03', '18:30');
+        $sm2->setVenueId('jdr');
+        $sm1 = $this->fixture('fx-sm1', self::TEAM_2, '2026-10-03', '20:00');
+        $sm1->setVenueId('other');
+        $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
+
+        $matchMatch = array_values(array_filter(
+            $this->detect([$sm2, $sm1], $links, profilesByTeam: [self::TEAM_1 => new MatchDurationProfile(115, 30)]),
+            static fn (array $c): bool => 'MATCH_MATCH' === $c['type'],
+        ));
         self::assertCount(1, $matchMatch);
-        self::assertSame('2026-10-03T20:15:00', $matchMatch[0]['start']);
+        self::assertSame('2026-10-03T20:00:00', $matchMatch[0]['start']);
+        self::assertSame('2026-10-03T20:25:00', $matchMatch[0]['end']);
     }
 
     public function testTwoHomeMatchesSameGymEqualKickoffsKeepTheFullOverlap(): void
@@ -1367,11 +1364,13 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame('2026-10-04T20:45:00', $training[0]['start']);
     }
 
-    public function testHomeMatchDifferentGymFromTrainingKeepsTheWarmupOverlap(): void
+    public function testHomeMatchDifferentGymFromTrainingNoLongerConflictsOnWarmupOnly(): void
     {
-        // Match in gym 'other', training in the slot's gym 'venue': different gyms →
-        // the rule does not apply → the full person window (from 20:15) overlaps the
-        // 19:00→20:30 session → MATCH_TRAINING conserved, start = 20:15.
+        // INVERSÉ (lot M) — match in gym 'other', training in the slot's gym 'venue':
+        // different gyms. Under the OLD rule the same-gym special case did not apply,
+        // so the full window (from 20:15, warm-up) overlapped the 19:00→20:30 session
+        // and a conflict stood. The warm-up now drops WHATEVER the gym: the match's
+        // conflict window 20:45→22:30 clears the session → no MATCH_TRAINING.
         $fixture = $this->fixture('fx-1', self::TEAM_1, '2026-10-04', '20:45');
         $fixture->setVenueId('other');
         $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
@@ -1381,8 +1380,55 @@ final class MatchConflictDetectorTest extends TestCase
             $this->detect([$fixture], $links, self::BASELINE, [], [self::BASELINE => $slots]),
             static fn (array $c): bool => 'MATCH_TRAINING' === $c['type'],
         ));
-        self::assertCount(1, $training);
-        self::assertSame('2026-10-04T20:15:00', $training[0]['start']);
+        self::assertSame([], $training);
+    }
+
+    // ── Lot M : le cas Inès, arrivée exactement au coup d'envoi (demi-ouvert) ──
+
+    public function testInesArrivalExactlyAtTheSecondKickoffIsNoConflict(): void
+    {
+        // Le cas terrain qui fonde la règle : Inès coache U13F2 à l'EXTÉRIEUR (coup
+        // d'envoi 18:00) et JOUE SF2 à DOMICILE (coup d'envoi 19:30). L'échauffement de
+        // SF2 sort de l'empreinte de personne → son côté de conflit commence au coup
+        // d'envoi 19:30. On fige l'arithmétique pour que U13F2 finisse EXACTEMENT à
+        // 19:30 : match 70 min + retour 20 min (aller-retour 40) après 18:00 → fin
+        // 19:30. La fin du premier engagement TOUCHE l'arrivée du second (19:30 = 19:30)
+        // → chevauchement DEMI-OUVERT, aucun conflit. Verdict fondateur : « pas de
+        // conflit du tout, et même règle pour le coach » (ici coach d'un côté, joueuse
+        // de l'autre : la règle ne distingue pas les rôles).
+        $u13f2 = $this->awayFixture('fx-u13f2', self::TEAM_1, '2026-10-10', '18:00');
+        $sf2 = $this->fixture('fx-sf2', self::TEAM_2, '2026-10-10', '19:30');
+        $sf2->setVenueId('gym-sf2');
+        // Inès : coach de U13F2 (MAIN), joueuse de SF2.
+        $links = [$this->link(self::COACH_A, self::TEAM_1, TeamCoachRole::MAIN)];
+        $memberships = [$this->membership(self::COACH_A, self::TEAM_2)];
+        // U13F2 : match 70 min ; aller-retour 40 min (retour 20) → fin = 18:00 + 70 + 20 = 19:30.
+        $profiles = [self::TEAM_1 => new MatchDurationProfile(70, 20)];
+
+        $conflicts = $this->detect([$u13f2, $sf2], $links, null, [], [], [], [], [], [], [], [], $profiles, null, $memberships, ['fx-u13f2' => 40]);
+
+        self::assertSame([], $conflicts, 'arrivée pile au coup d\'envoi = pas de conflit (demi-ouvert, même règle coach/joueuse)');
+    }
+
+    public function testInesArrivalOneMinutePastKickoffIsAConflict(): void
+    {
+        // Le contre-témoin du demi-ouvert : si U13F2 finit UNE minute APRÈS le coup
+        // d'envoi de SF2 (retour à 19:31 pour un coup d'envoi 19:30), Inès dépasse le
+        // coup d'envoi → conflit RÉEL. Retour = 18:00 + 70 + 21 = 19:31.
+        $u13f2 = $this->awayFixture('fx-u13f2', self::TEAM_1, '2026-10-10', '18:00');
+        $sf2 = $this->fixture('fx-sf2', self::TEAM_2, '2026-10-10', '19:30');
+        $sf2->setVenueId('gym-sf2');
+        $links = [$this->link(self::COACH_A, self::TEAM_1, TeamCoachRole::MAIN)];
+        $memberships = [$this->membership(self::COACH_A, self::TEAM_2)];
+        // aller-retour 42 → retour 21 → fin U13F2 = 18:00 + 70 + 21 = 19:31 > 19:30.
+        $profiles = [self::TEAM_1 => new MatchDurationProfile(70, 20)];
+
+        $conflicts = array_values(array_filter(
+            $this->detect([$u13f2, $sf2], $links, null, [], [], [], [], [], [], [], [], $profiles, null, $memberships, ['fx-u13f2' => 42]),
+            static fn (array $c): bool => 'MATCH_MATCH' === $c['type'],
+        ));
+
+        self::assertCount(1, $conflicts, 'un dépassement réel du coup d\'envoi (retour 19:31 > 19:30) reste un conflit');
     }
 
     public function testTrainingStartingAfterTheKickoffKeepsTheConflict(): void
@@ -1429,18 +1475,6 @@ final class MatchConflictDetectorTest extends TestCase
         return $habit;
     }
 
-    private function teamLink(string $teamAId, string $teamBId, TeamLinkType $type): TeamLink
-    {
-        $link = new TeamLink;
-        $link->setClubId('club');
-        $link->setSeasonId('season');
-        $link->setTeamAId($teamAId);
-        $link->setTeamBId($teamBId);
-        $link->setLinkType($type);
-
-        return $link;
-    }
-
     private function awayFixture(string $id, string $teamId, string $date, ?string $kickoff): Fixture
     {
         $fixture = $this->fixture($id, $teamId, $date, $kickoff);
@@ -1483,8 +1517,14 @@ final class MatchConflictDetectorTest extends TestCase
      */
     private function detect(array $fixtures, array $links, ?string $baselineScheduleId = null, array $overlayPeriods = [], array $slotsBySchedule = [], array $unavailabilities = [], array $habits = [], array $teamLinks = [], array $matchWindows = [], array $envelope = [], array $competitions = [], array $profilesByTeam = [], ?DateTimeImmutable $clubToday = null, array $playerMemberships = [], array $roundTripByFixtureId = []): array
     {
+        // Lot M — the TEAM_LINK family left the radar; the detector no longer takes
+        // team links. `$teamLinks` is kept in THIS helper's positional shape only so
+        // the many callers that pass later args positionally do not all shift; it is
+        // never forwarded.
+        unset($teamLinks);
+
         return new MatchConflictDetector(new MatchFootprint, new EffectiveScheduleResolver, new AwayKickoffEstimator)
-            ->detect($fixtures, $links, $baselineScheduleId, $overlayPeriods, $slotsBySchedule, $unavailabilities, $habits, $teamLinks, $matchWindows, $envelope, $competitions, $profilesByTeam, $roundTripByFixtureId, $clubToday, $playerMemberships);
+            ->detect($fixtures, $links, $baselineScheduleId, $overlayPeriods, $slotsBySchedule, $unavailabilities, $habits, $matchWindows, $envelope, $competitions, $profilesByTeam, $roundTripByFixtureId, $clubToday, $playerMemberships);
     }
 
     private function membership(string $coachId, string $teamId, bool $active = true): CoachPlayerMembership

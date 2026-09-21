@@ -11773,7 +11773,6 @@
                                                             "MATCH_TRAINING",
                                                             "VENUE_UNAVAILABLE",
                                                             "ACCESS_WINDOW_LOST",
-                                                            "TEAM_LINK_OVERLAP",
                                                             "COMPETITION_INCOMPLETE",
                                                             "AWAY_NO_FOOTPRINT",
                                                             "FRIENDLY_ON_MATCH_SLOT"
