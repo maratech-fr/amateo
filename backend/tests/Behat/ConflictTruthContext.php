@@ -301,12 +301,19 @@ final class ConflictTruthContext extends BaseContext
     #[Given('la même personne coache deux équipes qui enchaînent un match à domicile chacune dans deux gymnases différents')]
     public function enchainementMemePersonneDeuxGymnases(): void
     {
-        $second = $this->apiPost('venues', [
-            'name' => 'Second gymnase jetable (vérité conflits)',
-            'source' => 'manual',
-        ], $this->token);
-        $this->secondVenueId = $this->idOf($second, 'second gymnase jetable');
-        $this->poserEnchainementMemePersonne($this->secondVenueId);
+        // Lot M — enchaînement à échauffement seul (B à 20h15, après la fin de A à
+        // 20h00), mais dans DEUX gymnases : la règle générale retranche l'échauffement
+        // quel que soit le gymnase → toujours aucun conflit de personne.
+        $this->poserEnchainementMemePersonne($this->creerSecondGymnase());
+    }
+
+    #[Given('la même personne coache deux équipes dont les matchs à domicile se chevauchent vraiment, le second commençant avant la fin du premier')]
+    public function enchainementMemePersonneRecouvrementReel(): void
+    {
+        // Contre-exemple à recouvrement RÉEL : B à 19h30 commence AVANT la fin de A
+        // (20h00) → conflit de personne, quel que soit le gymnase. Deux gymnases
+        // différents pour isoler le conflit de PERSONNE (aucune collision de gymnase).
+        $this->poserEnchainementMemePersonne($this->creerSecondGymnase(), '19:30');
     }
 
     #[Given('une rencontre de championnat le samedi et un amical placé le dimanche du même week-end')]
@@ -912,13 +919,30 @@ final class ConflictTruthContext extends BaseContext
     /**
      * Épingle une catégorie à durée CONNUE (match 90 / échauffement 30) sur les deux
      * équipes jetables du MÊME coach, puis pose deux matchs à domicile enchaînés : A à
-     * 18h30 (gymnase primaire), B à 20h15 ($secondVenueId). Avec 90/30 : A occupe la
-     * personne 18h00→20h00, B 19h45→21h45. Dans le MÊME gymnase, la règle D1 étendue
-     * retranche l'échauffement de B (déjà sur place) → fenêtre effective 20h15→… qui ne
-     * touche plus les 20h00 de A → aucun conflit de personne ; dans DEUX gymnases, les
-     * fenêtres personne pleines se recouvrent (19h45→20h00) → le conflit demeure.
+     * 18h30 (gymnase primaire), B à $secondKickoff ($secondVenueId).
+     *
+     * ⚠ Lot M — l'échauffement sort de l'empreinte de PERSONNE, quel que soit le
+     * gymnase : le côté conflit de chaque match est [coup d'envoi, fin du match]. Avec
+     * 90/30, A occupe la personne 18h30→20h00.
+     *  - $secondKickoff = 20h15 (défaut) : B commence à 20h15, APRÈS la fin de A (20h00)
+     *    → aucun recouvrement, aucun conflit de personne — MÊME dans deux gymnases (la
+     *    personne arrive à B pour son coup d'envoi).
+     *  - $secondKickoff = 19h30 : B (19h30→21h00) recouvre RÉELLEMENT la fin de A →
+     *    conflit de personne, quel que soit le gymnase.
      */
-    private function poserEnchainementMemePersonne(string $secondVenueId): void
+    /** Crée un second gymnase jetable (nettoyé en AfterScenario) et renvoie son id. */
+    private function creerSecondGymnase(): string
+    {
+        $second = $this->apiPost('venues', [
+            'name' => 'Second gymnase jetable (vérité conflits)',
+            'source' => 'manual',
+        ], $this->token);
+        $this->secondVenueId = $this->idOf($second, 'second gymnase jetable');
+
+        return $this->secondVenueId;
+    }
+
+    private function poserEnchainementMemePersonne(string $secondVenueId, string $secondKickoff = '20:15'): void
     {
         // Catégorie DISTINCTIVE à durée épinglée, réaffectée aux deux équipes jetables :
         // la durée du match ne dépend plus de la catégorie clonée du club (indéterminée).
@@ -960,7 +984,7 @@ final class ConflictTruthContext extends BaseContext
             'homeAway' => 'HOME',
             'opponentLabel' => 'Adversaire jetable',
             'venueId' => $secondVenueId,
-            'kickoffTime' => '20:15',
+            'kickoffTime' => $secondKickoff,
         ], $this->token), 'match enchaîné B');
     }
 

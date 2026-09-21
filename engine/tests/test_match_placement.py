@@ -361,7 +361,9 @@ def test_stability_keeps_the_previous_solver_placement() -> None:
 
 
 def test_main_coach_training_pushes_the_match_away() -> None:
-    # MAIN coach trains 15:00-17:15 → every kickoff before 17:45 overlaps.
+    # MAIN coach trains 15:00-17:15. Lot M — the person window is warm-up-free
+    # ([kickoff, kickoff + 105]), so a kickoff at 17:15 (window 17:15-19:00) already
+    # clears the session ; before lot M the warm-up pushed it to 17:45.
     result = solve_match_placement(
         payload(
             matches=[to_place()],
@@ -370,13 +372,14 @@ def test_main_coach_training_pushes_the_match_away() -> None:
             trainingOccupancies=[{"date": SATURDAY, "start": "15:00", "end": "17:15", "coachId": "c1"}],
         )
     )
-    assert kickoff_of(result, "m1") >= "17:45"
+    assert kickoff_of(result, "m1") >= "17:15"
 
 
 def test_not_simultaneous_link_separates_the_two_teams() -> None:
-    # Two venues, wide windows: overlapping placements are possible AND
-    # separation is possible (a 14:00-18:00 window would cap Δ at 105 < 135,
-    # making separation infeasible — the link must not fight physics).
+    # Two venues, wide windows: overlapping placements are possible AND separation
+    # is possible. Lot M — the NOT_SIMULTANEOUS window is warm-up-free like every
+    # person window, so « not simultaneous » means the MATCH windows do not overlap:
+    # the two are pushed ≥ one match (105 min) apart (before lot M: ≥ 135).
     wide = [{"dayOfWeek": 6, "start": "14:00", "end": "22:30"}]
     result = solve_match_placement(
         payload(
@@ -387,7 +390,7 @@ def test_not_simultaneous_link_separates_the_two_teams() -> None:
         )
     )
     minutes = lambda s: int(s[:2]) * 60 + int(s[3:])  # noqa: E731
-    assert abs(minutes(kickoff_of(result, "m1")) - minutes(kickoff_of(result, "m2"))) >= 135
+    assert abs(minutes(kickoff_of(result, "m1")) - minutes(kickoff_of(result, "m2"))) >= 105
 
 
 def test_back_to_back_link_chains_on_the_same_venue() -> None:
@@ -404,15 +407,16 @@ def test_back_to_back_link_chains_on_the_same_venue() -> None:
     assert abs(minutes(kickoff_of(result, "m1")) - minutes(kickoff_of(result, "m2"))) == 105
 
 
-def test_shared_coach_keeps_the_warmup_in_the_person_window() -> None:
-    # The PERSON (coach) window still carries the warm-up (D1): two matches of one
-    # MAIN coach are pushed ≥ warm-up + match (135 min) apart even on two DIFFERENT
-    # venues, where the match-only venue windows would allow them closer.
-    wide = [{"dayOfWeek": 6, "start": "14:00", "end": "22:30"}]
+def test_shared_coach_no_longer_forces_extra_warmup_spacing() -> None:
+    # INVERSÉ (lot M) — the PERSON (coach) window is now warm-up-FREE. Two matches of
+    # one MAIN coach in a SINGLE venue pack BACK-TO-BACK (exactly one match, 105 min):
+    # the HARD venue no-overlap already keeps the match windows apart, and there is no
+    # warm-up left to penalise. Before lot M the warm-up pushed them to 135 min apart.
+    # (Single venue so day-compaction forces the tight packing deterministically.)
     result = solve_match_placement(
         payload(
             matches=[to_place("m1", "t1"), to_place("m2", "t2")],
-            venues=[venue("v1", windows=wide), venue("v2", windows=wide)],
+            venues=[venue("v1", windows=[{"dayOfWeek": 6, "start": "14:00", "end": "22:30"}])],
             teams=[
                 team("t1", coaches=[{"coachId": "c1", "role": "MAIN"}]),
                 team("t2", coaches=[{"coachId": "c1", "role": "MAIN"}]),
@@ -420,7 +424,7 @@ def test_shared_coach_keeps_the_warmup_in_the_person_window() -> None:
         )
     )
     minutes = lambda s: int(s[:2]) * 60 + int(s[3:])  # noqa: E731
-    assert abs(minutes(kickoff_of(result, "m1")) - minutes(kickoff_of(result, "m2"))) >= 135
+    assert abs(minutes(kickoff_of(result, "m1")) - minutes(kickoff_of(result, "m2"))) == 105
 
 
 def test_rotation_time_and_venue_attract_the_placement() -> None:

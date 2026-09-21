@@ -70,6 +70,49 @@ final class MatchFootprintTest extends TestCase
         self::assertNull(new MatchFootprint()->occupancyMinutes($fixture, $this->profile()));
     }
 
+    public function testPersonConflictWindowDropsTheWarmupAtHome(): void
+    {
+        // Lot M — la fenêtre de conflit de PERSONNE retranche l'échauffement : à
+        // domicile (pas de trajet) elle vaut exactement [coup d'envoi, fin du match],
+        // soit la fenêtre SALLE. L'empreinte AFFICHÉE (occupancy) garde l'échauffement.
+        $fixture = $this->fixture(FixtureHomeAway::HOME, '2026-10-04', '16:00');
+        $window = new MatchFootprint()->personConflictOccupancy($fixture, $this->profile());
+
+        self::assertNotNull($window);
+        self::assertSame('2026-10-04 16:00', $window['start']->format('Y-m-d H:i')); // coup d'envoi, échauffement retranché
+        self::assertSame('2026-10-04 17:45', $window['end']->format('Y-m-d H:i')); // kickoff + 105
+    }
+
+    public function testPersonConflictWindowKeepsTravelButDropsWarmupAway(): void
+    {
+        // À l'extérieur, seul l'échauffement sort : le trajet (arrivée réelle) reste.
+        // 80 min aller-retour → 40 avant (aller) + 40 après (retour). Sans l'échauffement,
+        // start = kickoff - 40 (au lieu de -70), end = kickoff + 105 + 40 (inchangé).
+        $fixture = $this->fixture(FixtureHomeAway::AWAY, '2026-10-04', '15:30');
+        $window = new MatchFootprint()->personConflictOccupancy($fixture, $this->profile(), 80);
+
+        self::assertNotNull($window);
+        self::assertSame('14:50', $window['start']->format('H:i')); // 15:30 - 40 (aller seul, pas d'échauffement)
+        self::assertSame('17:55', $window['end']->format('H:i')); // 15:30 + 105 + 40, comme l'empreinte
+    }
+
+    public function testPersonConflictWindowAtAnExplicitKickoffDropsWarmupToo(): void
+    {
+        // La variante « heure estimée » (extérieur empruntant l'heure habituelle) :
+        // même règle, l'échauffement retranché, sur un coup d'envoi explicite.
+        $fixture = $this->fixture(FixtureHomeAway::AWAY, '2026-10-04', null);
+        $window = new MatchFootprint()->personConflictOccupancyAt($fixture, new DateTimeImmutable('17:30'), $this->profile());
+
+        self::assertSame('17:30', $window['start']->format('H:i')); // pas de trajet modélisé, pas d'échauffement → coup d'envoi
+        self::assertSame('19:15', $window['end']->format('H:i')); // 17:30 + 105
+    }
+
+    public function testPersonConflictWindowNullWithoutKickoff(): void
+    {
+        $fixture = $this->fixture(FixtureHomeAway::HOME, '2026-10-04', null);
+        self::assertNull(new MatchFootprint()->personConflictOccupancy($fixture, $this->profile()));
+    }
+
     // Profil de référence : 105 min match + 30 min échauffement (le défaut Seniors /
     // le repli). Les durées sont désormais RÉSOLUES par catégorie et injectées.
     private function profile(): MatchDurationProfile

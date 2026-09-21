@@ -11,7 +11,6 @@ use App\Entity\Fixture;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
-use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
@@ -73,8 +72,10 @@ final class ConflictRadarLoader
         $unavailabilities = $this->entityManager->getRepository(VenueUnavailability::class)->findBy([]);
         /** @var list<TeamMatchHabit> $habits */
         $habits = $this->entityManager->getRepository(TeamMatchHabit::class)->findBy([]);
-        /** @var list<TeamLink> $teamLinks */
-        $teamLinks = $this->entityManager->getRepository(TeamLink::class)->findBy([]);
+        // Lot M — the TEAM_LINK conflict family has left the radar (founder
+        // decision) ; the detector no longer takes team links. The PLACEMENT solver
+        // keeps its soft NOT_SIMULTANEOUS preference (MatchPlacementPayloadBuilder),
+        // a deliberate, safe asymmetry.
         /** @var list<VenueMatchWindow> $matchWindows */
         $matchWindows = $this->entityManager->getRepository(VenueMatchWindow::class)->findBy([]);
         // P1-4 PR E2 — the graded diagnostic needs the league envelope, resolved
@@ -125,7 +126,6 @@ final class ConflictRadarLoader
             $context['slotsBySchedule'],
             $unavailabilities,
             $habits,
-            $teamLinks,
             $matchWindows,
             $envelope,
             $competitions,

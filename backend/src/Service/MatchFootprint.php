@@ -76,6 +76,56 @@ final class MatchFootprint
     }
 
     /**
+     * The window used to DETECT a PERSON conflict (match↔match, and the match
+     * side of a match↔training): the occupancy window MINUS the leading warm-up.
+     * A person arriving from another engagement only has to be there by the
+     * KICKOFF — the warm-up is hers to skip (lot M, cas Inès 2026-10-10 : « pas de
+     * conflit du tout, et même règle pour le coach »). Travel is KEPT (an away
+     * arrival is a real drive), only the warm-up drops:
+     * - HOME (no travel): [kickoff, kickoff + matchMinutes] — identical to the
+     *   VENUE window.
+     * - AWAY: [kickoff − travelOut, kickoff + matchMinutes + travelBack].
+     * The DISPLAYED occupancy ({@see occupancy}) keeps the warm-up; ONLY this
+     * conflict-test window drops it. Null when the kickoff is unknown.
+     *
+     * @param int $roundTripTravelMinutes total there-and-back travel (away only); 0 until the travel matrix exists
+     *
+     * @return array{start: DateTimeImmutable, end: DateTimeImmutable}|null
+     */
+    public function personConflictOccupancy(Fixture $fixture, MatchDurationProfile $profile, int $roundTripTravelMinutes = 0): ?array
+    {
+        $kickoff = $this->kickoffMoment($fixture);
+        if (!$kickoff instanceof DateTimeImmutable) {
+            return null;
+        }
+
+        return [
+            'start' => $kickoff->modify(\sprintf('-%d minutes', $this->travelOutMinutes($fixture, $roundTripTravelMinutes))),
+            'end' => $kickoff->modify(\sprintf('+%d minutes', $this->minutesAfter($fixture, $profile, $roundTripTravelMinutes))),
+        ];
+    }
+
+    /**
+     * The person-conflict window for an EXPLICIT kickoff time — the estimation
+     * path (an away fixture borrowing its team's habitual kickoff), symmetric to
+     * {@see occupancyAt} but warm-up-free like {@see personConflictOccupancy}.
+     *
+     * @return array{start: DateTimeImmutable, end: DateTimeImmutable}
+     */
+    public function personConflictOccupancyAt(Fixture $fixture, DateTimeImmutable $kickoffTime, MatchDurationProfile $profile, int $roundTripTravelMinutes = 0): array
+    {
+        $kickoff = $fixture->getMatchDate()->setTime(
+            (int) $kickoffTime->format('H'),
+            (int) $kickoffTime->format('i'),
+        );
+
+        return [
+            'start' => $kickoff->modify(\sprintf('-%d minutes', $this->travelOutMinutes($fixture, $roundTripTravelMinutes))),
+            'end' => $kickoff->modify(\sprintf('+%d minutes', $this->minutesAfter($fixture, $profile, $roundTripTravelMinutes))),
+        ];
+    }
+
+    /**
      * The VENUE-occupancy window: [kickoff, kickoff + matchMinutes] — the gym is
      * held for the match itself ONLY, with NO warm-up and NO travel (D1, founder
      * decision 2026-09-13). Two matches chained two hours apart in the same gym
@@ -136,9 +186,13 @@ final class MatchFootprint
 
     private function minutesBefore(Fixture $fixture, MatchDurationProfile $profile, int $roundTripTravelMinutes): int
     {
-        $travelOut = FixtureHomeAway::AWAY === $fixture->getHomeAway() ? intdiv($roundTripTravelMinutes, 2) : 0;
+        return $this->travelOutMinutes($fixture, $roundTripTravelMinutes) + $profile->warmupMinutes;
+    }
 
-        return $travelOut + $profile->warmupMinutes;
+    /** The outbound travel leg (half the round trip) — away only, 0 at home. */
+    private function travelOutMinutes(Fixture $fixture, int $roundTripTravelMinutes): int
+    {
+        return FixtureHomeAway::AWAY === $fixture->getHomeAway() ? intdiv($roundTripTravelMinutes, 2) : 0;
     }
 
     private function minutesAfter(Fixture $fixture, MatchDurationProfile $profile, int $roundTripTravelMinutes): int

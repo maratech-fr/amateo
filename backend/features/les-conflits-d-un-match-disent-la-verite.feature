@@ -7,8 +7,10 @@ Fonctionnalité: Les conflits d'un match disent la vérité
   l'heure murale du club, sans décalage horaire (P4-191). Depuis D1 (2026-09-13) le radar dit AUSSI
   trois vérités de plus : deux matchs enchaînés dans un même gymnase ne se chevauchent que sur leur
   fenêtre SALLE (échauffement exclu), un match posé sur le créneau de SA PROPRE équipe n'est pas un
-  conflit, et un match déjà joué ne porte plus aucun conflit. L'horloge de l'app est épinglée le
-  temps du scénario pour que le décor daté reste stable quelle que soit la date du jour.
+  conflit, et un match déjà joué ne porte plus aucun conflit. Depuis le lot M, l'échauffement sort
+  AUSSI de l'empreinte des conflits de PERSONNE, quel que soit le gymnase : une personne engagée
+  deux fois n'est en conflit que si elle dépasse le COUP D'ENVOI du second engagement. L'horloge de
+  l'app est épinglée le temps du scénario pour que le décor daté reste stable quelle que soit la date du jour.
 
   Scénario: Le conflit d'entraînement d'un enfant « milieu » remonte, en heure murale
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
@@ -58,12 +60,23 @@ Fonctionnalité: Les conflits d'un match disent la vérité
     Quand je demande les conflits des matchs
     Alors le radar ne signale aucun conflit de personne entre ces deux matchs
 
-  Scénario: Deux domiciles enchaînés dans deux gymnases différents : le conflit de personne demeure (contre-exemple)
-    Le même enchaînement, mais dans DEUX gymnases : la personne devrait être aux deux à la fois,
-    l'échauffement du second recouvre bel et bien le premier match — le conflit de personne demeure.
+  Scénario: Deux domiciles enchaînés dans deux gymnases différents : l'échauffement seul n'est plus un conflit (lot M)
+    Le même enchaînement à échauffement seul, mais dans DEUX gymnases. Depuis le lot M l'échauffement
+    sort de l'empreinte de personne QUEL QUE SOIT le gymnase : la personne n'a qu'à ARRIVER pour le
+    coup d'envoi du second, elle saute l'échauffement. Le radar ne DOIT signaler aucun conflit de personne.
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe, un coach et un gymnase jetables
     Et la même personne coache deux équipes qui enchaînent un match à domicile chacune dans deux gymnases différents
+    Quand je demande les conflits des matchs
+    Alors le radar ne signale aucun conflit de personne entre ces deux matchs
+
+  Scénario: Deux domiciles qui se chevauchent vraiment : le conflit de personne demeure (contre-exemple, lot M)
+    Contre-exemple à recouvrement RÉEL : le second coup d'envoi tombe AVANT la fin du premier match.
+    L'échauffement retranché n'y change rien — la personne ne peut pas être au coup d'envoi du second
+    pendant que le premier match tourne encore. Le conflit de personne demeure.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe, un coach et un gymnase jetables
+    Et la même personne coache deux équipes dont les matchs à domicile se chevauchent vraiment, le second commençant avant la fin du premier
     Quand je demande les conflits des matchs
     Alors un conflit de personne en double porte ces deux matchs enchaînés
 
@@ -98,7 +111,7 @@ Fonctionnalité: Les conflits d'un match disent la vérité
     coache pas » n'a pas de sens et le serveur le refuse (422), sans écrire de ligne.
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe, un coach et un gymnase jetables
-    Et la même personne coache deux équipes qui enchaînent un match à domicile chacune dans deux gymnases différents
+    Et la même personne coache deux équipes dont les matchs à domicile se chevauchent vraiment, le second commençant avant la fin du premier
     Quand je demande les conflits des matchs
     Et le gestionnaire tente « Joue, ne coache pas » sur ce conflit de personne
     Alors le statut lui est refusé faute de joueur
